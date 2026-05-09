@@ -1,0 +1,19 @@
+# macOS
+.DS_Store
+
+# Local environment files
+.env
+.env.*
+!.env.example
+
+# Docker Compose local overrides
+compose.override.yaml
+docker-compose.override.yml
+
+# Logs and temporary files
+*.log
+tmp/
+temp/
+
+# VitalServer is managed as a git submodule.
+vitalserver/
