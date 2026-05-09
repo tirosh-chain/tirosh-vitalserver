@@ -1,0 +1,73 @@
+services:
+  redis:
+    image: redis:3.2.12-alpine
+    platform: linux/amd64
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --bind
+      - 0.0.0.0
+      - --protected-mode
+      - "no"
+    ports:
+      - "${VITALSERVER_HTTP_PORT:-8080}:80"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  app:
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: vitalserver:2.3.4
+    network_mode: "service:redis"
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      VITALSERVER_ADMIN_PASSWORD: "${VITALSERVER_ADMIN_PASSWORD:-admin}"
+      VITALSERVER_MIN_CPUS: "6"
+    volumes:
+      - type: volume
+        source: vital-files
+        target: /opt/vitalserver/vital_files
+      - type: volume
+        source: vital-vr-release
+        target: /opt/vitalserver/service/vr_release
+      - type: volume
+        source: vital-tmp-files
+        target: /opt/vitalserver/service/tmp_files
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          node -e "require('http').get('http://127.0.0.1/check', r => process.exit(r.statusCode < 500 ? 0 : 1)).on('error', () => process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+  redis-ui:
+    image: rediscommander/redis-commander:latest
+    platform: linux/amd64
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      REDIS_HOSTS: local:redis:6379
+    ports:
+      - "${REDIS_UI_PORT:-8081}:8081"
+    restart: unless-stopped
+
+volumes:
+  redis-data:
+  vital-files:
+  vital-vr-release:
+  vital-tmp-files:

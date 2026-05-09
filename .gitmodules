@@ -1,0 +1,4 @@
+[submodule "vitalserver"]
+	path = vitalserver
+	url = https://github.com/vitaldb/vitalserver.git
+	branch = main
