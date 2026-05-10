@@ -1,0 +1,190 @@
+# VitalServer 제품화 전략
+
+이 문서는 upstream VitalServer를 연구/데모용 서버가 아니라 제품 환경에서 사용할 수 있는
+구성요소로 만들기 위한 기준 문서입니다. 상세 실행법은 다른 문서로 분리하고, 여기서는
+제품화 목표, 현재 확인된 동작, 운영에 필요한 보강 지점, 다음 작업을 정리합니다.
+
+관련 문서:
+
+- [문서 지도](index.md): 문서별 역할과 읽는 순서
+- [OpenAPI 문서](openapi.yaml): upstream route를 분석해 정리한 Swagger/OpenAPI 문서
+- [Redis 데이터 구조](redis-data-model.md): 실시간 monitor data가 Redis에 저장되는 방식
+- [testkit 사용법](testkit-usage.md): 실시간 수집, upload, health 검증 도구 사용법
+
+## 목표
+
+이 저장소의 목표는 upstream VitalServer를 직접 fork해서 대대적으로 고치는 것이 아니라,
+외곽 레이어를 쌓아 운영 가능한 제품 구성요소로 만드는 것입니다.
+
+우리가 관리하는 영역:
+
+- Docker Compose 기반 실행 환경
+- upstream code를 건드리지 않는 wrapper app과 runtime shim
+- API와 Socket.IO 동작 문서화
+- Redis 데이터 구조 분석과 relay 설계
+- 실시간 수집, `.vital` upload, 장시간 운영 검증 도구
+- 제품 운영에 필요한 설정, 관측, 백업, 복구 지점
+
+우리가 지금 단계에서 하지 않는 영역:
+
+- `vendor/vitalserver` 내부 application logic 직접 수정
+- upstream UI 대규모 개편
+- VitalDB public cloud API와의 완전 호환 보장
+- 의료기기 수준의 인증/감사 요구사항 충족 선언
+
+## 현재 구성
+
+```text
+.
+├── compose.yaml                # VitalServer, Redis UI, Swagger UI 실행
+├── apps/vitalserver/           # upstream vitalserver-old를 감싼 제품 실행 app
+│   ├── docker/                 # Docker image 배포 target
+│   └── runtime/                # 배포 방식과 무관한 실행 shim
+├── infra/swagger-ui/           # Swagger UI reverse proxy 설정
+├── make/                       # Makefile target group
+├── docs/                       # 문서 지도, 제품화 문서, OpenAPI, Redis 구조
+├── packages/vitalserver-testkit/
+│   └── src/                    # 운영 검증용 Python CLI/package
+└── vendor/vitalserver/         # upstream git submodule
+```
+
+기본 로컬 endpoint:
+
+- VitalServer: `http://localhost:8080`
+- Redis UI: `http://localhost:8081`
+- Swagger UI: `http://localhost:8082`
+
+Swagger UI는 같은 origin에서 VitalServer를 호출하도록 `/vitalserver` reverse proxy를 사용합니다.
+Swagger에서 `Try it out`을 실행할 때는 server를 `/vitalserver`로 둡니다.
+
+```sh
+make up
+make swagger
+```
+
+## 확인된 upstream 동작
+
+upstream VitalServer `2.3.4` 코드를 분석하면서 public 문서와 다른 부분을 확인했습니다.
+
+| 영역 | public 문서/초기 가정 | upstream 코드 기준 |
+| --- | --- | --- |
+| 실시간 수집 | `POST /api/send` | Socket.IO `send_data` event |
+| 실시간 payload | JSON body | zlib 압축 JSON |
+| upload | `POST /api/upload` | `POST /upload`, `POST /upload_vital.php` |
+| API 문서 | 별도 Swagger 없음 | 이 repo에서 `docs/openapi.yaml`로 생성 |
+| Redis 구조 | 문서화 부족 | `monitor.js`, `db.js` 기준으로 별도 정리 |
+
+제품화 작업에서는 public 문서보다 현재 포함한 upstream code를 우선 기준으로 삼습니다.
+public 문서와 다른 부분은 OpenAPI와 제품화 문서에 명시합니다.
+
+## 데이터 흐름
+
+실시간 수집 흐름:
+
+1. Vital Recorder 또는 testkit이 Socket.IO `send_data` event를 보냅니다.
+2. payload는 `{vrcode, ver, rooms}` 형태의 JSON을 zlib으로 압축한 값입니다.
+3. VitalServer는 payload를 해제하고 room을 bed로 등록합니다.
+4. Redis에 bed 상태, device metadata, timestamp index, 압축 frame을 저장합니다.
+5. Web Monitoring client에는 `recv_data` event를 emit합니다.
+
+testkit은 기본적으로 simulated room map payload를 생성하고, 필요하면 실제 장비에서 캡처한
+JSON payload를 upstream이 기대하는 형태로 감싼 뒤 전송합니다.
+
+제품화 검증의 첫 기준은 단순 전송 성공이 아니라, 전송 후 VitalServer의 UI용 endpoint에서
+bed metadata가 조회되는 것입니다.
+
+여러 recorder machine이 동시에 붙는 상황, 반복 전송량, 장시간 streaming 검증은 testkit
+scenario로 재현합니다. 실제 실행 명령과 config 예시는 [testkit 사용법](testkit-usage.md)에
+모읍니다.
+
+Redis에 저장되는 핵심 key는 아래입니다.
+
+- `beds`, `beds:<bedid>`
+- `vrs`, `vrs:<vrcode>`
+- `utimes`, `utime_<bedid>`, `utime_<vrcode>`
+- `devs_<bedid>`, `dtapp_<bedid>`, `ptcon_<bedid>`
+- `dts_<bedid>`, `<bedid><timestamp>`
+
+자세한 key type, TTL, relay 방식은 [Redis 데이터 구조](redis-data-model.md)를 기준으로 봅니다.
+
+## 제품화 기준
+
+제품으로 쓰기 위해 최소한 아래 조건을 만족해야 합니다.
+
+### 실행
+
+- `make up`으로 깨끗한 환경에서 재현 가능하게 실행됩니다.
+- 포트, 관리자 비밀번호, Swagger 포트는 `.env`로 조정할 수 있습니다.
+- upstream submodule은 명시적으로 고정하고, 변경 시 submodule commit을 리뷰합니다.
+
+### API
+
+- OpenAPI 문서가 현재 upstream route와 맞습니다.
+- Swagger UI에서 주요 API를 실제로 호출할 수 있습니다.
+- public 문서와 다른 route는 문서에 명시합니다.
+- session 기반 UI API와 token 기반 API를 구분합니다.
+
+### 실시간 수집
+
+- Socket.IO `send_data` 경로로 Vital Recorder payload를 수신할 수 있습니다.
+- Redis에 bed/device/frame key가 생성됩니다.
+- `/vr_devs` 같은 UI용 endpoint에서 device metadata가 조회됩니다.
+- simulated payload 또는 실제 payload를 timestamp shift하면서 반복 검증할 수 있습니다.
+- 여러 recorder와 여러 bed를 동시에 보내는 상황을 재현할 수 있어야 합니다.
+- recorder가 계속 연결된 상태에서 data를 streaming하는 상황을 재현할 수 있어야 합니다.
+
+### Redis relay
+
+- source Redis의 실시간 key를 target Redis로 전송할 수 있어야 합니다.
+- 초기 구현은 `utimes`와 `dts_<bedid>`를 polling하는 방식으로 둡니다.
+- `<bedid><timestamp>` frame은 binary 그대로 복제합니다.
+- TTL, sorted set score, metadata key를 보존합니다.
+- relay 중단 후에도 최근 4시간 window 안에서는 catch-up할 수 있어야 합니다.
+
+### 운영 관측
+
+- container health와 log를 확인할 수 있어야 합니다.
+- Redis key 증가, TTL, active bed 수를 관측할 수 있어야 합니다.
+- 장시간 실행 중 memory, Redis size, frame 처리량을 기록할 수 있어야 합니다.
+- 실패율과 처리량은 testkit summary로 남깁니다.
+
+## 현재 비어 있는 부분
+
+다른 문서를 기준으로 보면 아직 아래가 비어 있습니다.
+
+- Redis relay CLI/package 구현
+- target Redis를 Compose로 함께 띄우는 선택적 profile
+- relay 검증 시나리오와 테스트 데이터 세트
+- Redis memory 사용량과 retention 정책
+- 운영용 backup/restore 절차
+- 관리자 비밀번호 rotation과 초기 계정 재설정 절차
+- 실시간 수집 장시간 soak test 기준
+- `.vital` upload 후 file metadata 생성 검증 절차
+- 장애 재시작 후 catch-up 검증
+
+## 다음 작업
+
+우선순위는 Redis relay입니다. 제품 구성에서 source VitalServer의 Redis 데이터를 다른 Redis로
+실시간 전송해야 하기 때문입니다.
+
+1. `vitalserver-testkit redis-relay` subcommand 추가
+2. source/target Redis URL, polling interval, lookback window 설정
+3. `utimes`에서 active `bedid` 조회
+4. `dts_<bedid>`에서 새 timestamp 조회
+5. `<bedid><timestamp>` binary frame과 상태 key 복제
+6. target Redis에서 key/TTL/sorted set score 검증
+7. relay 중단 후 재시작 catch-up 검증
+
+그 다음에는 제품 운영성을 높이는 작업으로 넘어갑니다.
+
+- Compose profile로 target Redis와 relay worker 추가
+- Redis 상태 exporter 또는 간단한 metrics command 추가
+- `.vital` upload 검증을 실제 파일 기반으로 보강
+- Swagger/OpenAPI를 upstream code 변경에 맞춰 갱신하는 절차 정리
+
+## 참고 문서
+
+- VitalDB 문서 목록: <https://vitaldb.net/docs/>
+- VitalServer on-premise 사용자 매뉴얼: <https://vitaldb.net/docs/?documentId=1yE95k9nfTm2qyWooCFgGB3Rz76EVgi_c-rsWFr3Rxsk>
+- IntraNet VitalDB API: <https://vitaldb.net/docs/?documentId=1bWaC2aylECIvBYPgTmLING3lgaUYDZ5LYymE17hgBdo>
+- VitalDB Web API: <https://vitaldb.net/docs/?documentId=1jLTcF4JYbRTuSM2mZeTMmvzxMmrqUjEEp6p02cFEs_Q>

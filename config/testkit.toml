@@ -1,0 +1,39 @@
+# VitalServer productization check defaults.
+#
+# 기본 scenario는 smoke로 두되, recorder 수와 load/stream 설정은 제품화 검증에
+# 의미 있는 수준으로 둔다. `make testkit-load`는 recorders * repeat 만큼
+# send_data event를 보낸다. `make testkit-stream`은 recorders 개수만큼
+# persistent Socket.IO connection을 유지하고 Ctrl+C 전까지 계속 전송한다.
+
+[scenario]
+name = "smoke"
+
+[server]
+base_url = "http://localhost:8080"
+timeout = 60
+wait_seconds = 60
+poll_interval_seconds = 1
+
+[recorder]
+# payload를 비워두면 testkit이 simulated recorder data를 생성한다.
+# 실제 장비 payload를 재현해야 할 때만 아래처럼 지정한다.
+# payload = "path/to/recorder-payload.json"
+recorders = 5
+default_scenario = "normal"
+
+[[recorder.beds]]
+index = 2
+scenario = "tachycardia"
+
+[[recorder.beds]]
+index = 4
+scenario = "desaturation"
+
+[transfer]
+concurrency = 10
+repeat = 100
+max_failure_rate = 0
+
+[stream]
+interval_seconds = 1
+duration_seconds = 0
