@@ -1,0 +1,100 @@
+[project]
+name = "tirosh-vitalserver"
+version = "0.1.0"
+description = "Production wrapper and validation workspace for upstream VitalServer."
+requires-python = ">=3.14.0,!=3.14.0b3"
+dependencies = [
+  "pydantic-settings>=2.14.1",
+  "tirosh-vitalserver-testkit",
+]
+
+[dependency-groups]
+dev = [
+  "mypy>=1.18.0",
+  "pytest>=8.0",
+  "ruff>=0.8.0",
+]
+
+[tool.uv.workspace]
+members = [
+  "packages/vitalserver-testkit",
+]
+
+[tool.uv.sources]
+tirosh-vitalserver-testkit = { workspace = true }
+
+[tool.ruff]
+src = [
+  "packages/vitalserver-testkit/src",
+  "packages/vitalserver-testkit/tests",
+  "scripts",
+]
+exclude = [
+  ".git",
+  ".mypy_cache",
+  ".pytest_cache",
+  ".ruff_cache",
+  ".venv",
+  "*/__pycache__/*",
+  "*/dist/*",
+  "*/migrations/*",
+  "*/tmp/*",
+  "vendor/*",
+]
+line-length = 88
+target-version = "py314"
+
+[tool.ruff.lint]
+select = [
+  "E",
+  "F",
+  "I",
+  "UP",
+  "B",
+  "SIM",
+  "C4",
+  "RUF",
+]
+fixable = ["ALL"]
+
+[tool.ruff.format]
+indent-style = "space"
+line-ending = "lf"
+quote-style = "double"
+docstring-code-format = true
+
+[tool.ruff.lint.isort]
+known-first-party = [
+  "tirosh_vitalserver",
+]
+
+[tool.mypy]
+check_untyped_defs = true
+disallow_untyped_defs = true
+explicit_package_bases = true
+files = [
+  "packages/vitalserver-testkit/src",
+  "packages/vitalserver-testkit/tests",
+  "scripts",
+]
+ignore_missing_imports = true
+mypy_path = [
+  "packages/vitalserver-testkit/src",
+]
+namespace_packages = true
+no_implicit_optional = true
+python_version = "3.14"
+show_error_codes = true
+warn_redundant_casts = true
+warn_unused_configs = true
+warn_unused_ignores = true
+
+[tool.pytest.ini_options]
+addopts = "-ra -v"
+pythonpath = [
+  ".",
+  "packages/vitalserver-testkit/src",
+]
+testpaths = [
+  "packages/vitalserver-testkit/tests",
+]

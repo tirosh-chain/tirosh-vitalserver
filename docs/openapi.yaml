@@ -1,0 +1,1115 @@
+openapi: 3.1.0
+info:
+  title: VitalServer Upstream API
+  version: "2.3.4"
+  description: |
+    VitalDB upstream VitalServer의 Express route를 분석해 작성한 OpenAPI 문서입니다.
+
+    기준 파일:
+      - vendor/vitalserver/vitalserver-old/service/app.js
+      - vendor/vitalserver/vitalserver-old/service/include/db.js
+      - vendor/vitalserver/vitalserver-old/service/include/monitor.js
+
+    주의:
+      - 이 문서는 upstream 코드에서 추론한 best-effort 문서입니다.
+      - local VitalServer에는 `POST /api/send`가 없습니다.
+      - 실시간 monitor data는 HTTP endpoint가 아니라 Socket.IO `send_data` 이벤트로
+        들어갑니다.
+      - `.vital` 파일 업로드는 `POST /upload` 또는 `POST /upload_vital.php`를 사용합니다.
+servers:
+  - url: /vitalserver
+    description: Swagger UI reverse proxy to the local Docker Compose VitalServer
+  - url: http://localhost:8080
+    description: Direct local Docker Compose default
+tags:
+  - name: Public API
+    description: Token-based API for file metadata and download
+  - name: Upload
+    description: Vital Recorder file upload endpoints
+  - name: Session
+    description: Browser session and login endpoints
+  - name: Web UI
+    description: HTML pages used by the bundled web UI
+  - name: Internal UI
+    description: Internal AJAX endpoints used by the bundled web UI
+  - name: HL7
+    description: HL7 output endpoint
+  - name: Socket.IO
+    description: Real-time monitor events, documented as an extension
+paths:
+  /api/login:
+    post:
+      tags: [Public API]
+      summary: Issue an API access token
+      description: |
+        Accepts credentials either in form/json body or query string. The token is
+        stored in Redis and refreshed on later API calls.
+
+        Try it out:
+          1. Use the `/vitalserver` server in Swagger UI.
+          2. Keep the default `admin` / `admin` values for a fresh local server.
+          3. Copy `access_token` from the response into token-based API calls.
+      parameters:
+        - $ref: "#/components/parameters/UserIdQuery"
+        - $ref: "#/components/parameters/PasswordQuery"
+      requestBody:
+        required: false
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+            examples:
+              localAdmin:
+                summary: Local default admin
+                value:
+                  id: admin
+                  pw: admin
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+            examples:
+              localAdmin:
+                summary: Local default admin
+                value:
+                  id: admin
+                  pw: admin
+      responses:
+        "200":
+          description: Login succeeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginSuccess"
+              examples:
+                success:
+                  value:
+                    res: true
+                    access_token: 7xwhw4lhd
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /api/filelist:
+    get:
+      tags: [Public API]
+      summary: Download a gzipped file metadata list
+      description: |
+        Returns a gzip attachment containing a JSON array of `.vital` file
+        metadata visible to the access token owner.
+
+        Conditions:
+          - Requires an `access_token` from `POST /api/login`.
+          - Returns an empty gzipped JSON list when no `.vital` files have been uploaded.
+      parameters:
+        - $ref: "#/components/parameters/AccessToken"
+        - $ref: "#/components/parameters/BedName"
+        - $ref: "#/components/parameters/DtStart"
+        - $ref: "#/components/parameters/DtEnd"
+        - $ref: "#/components/parameters/DtUploadStart"
+        - $ref: "#/components/parameters/DtUploadEnd"
+        - name: hid
+          in: query
+          schema:
+            type: string
+            enum: ["1"]
+          description: Include `hid1` and `hid2` fields when set to `1`.
+        - name: notimestamp
+          in: query
+          schema:
+            type: string
+            enum: ["1"]
+          description: Return stored timestamp values without date conversion.
+        - name: unixtimestamp
+          in: query
+          schema:
+            type: string
+            enum: ["1"]
+          description: Keep timestamps as Unix seconds.
+      responses:
+        "200":
+          description: Gzipped JSON file list attachment
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+          content:
+            application/x-gzip:
+              schema:
+                type: string
+                format: binary
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/tracklist:
+    get:
+      tags: [Public API]
+      summary: Download a gzipped track list
+      description: |
+        Returns a gzip attachment containing track names per `.vital` file.
+
+        Conditions:
+          - Requires an `access_token` from `POST /api/login`.
+          - Useful after at least one `.vital` file has been uploaded and parsed.
+      parameters:
+        - $ref: "#/components/parameters/AccessToken"
+        - $ref: "#/components/parameters/BedName"
+        - $ref: "#/components/parameters/DtStart"
+        - $ref: "#/components/parameters/DtEnd"
+        - $ref: "#/components/parameters/DtUploadStart"
+        - $ref: "#/components/parameters/DtUploadEnd"
+      responses:
+        "200":
+          description: Gzipped JSON track list attachment
+          content:
+            application/x-gzip:
+              schema:
+                type: string
+                format: binary
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /api/download:
+    get:
+      tags: [Public API]
+      summary: Download a `.vital` file
+      description: |
+        Conditions:
+          - Requires an `access_token` from `POST /api/login`.
+          - `filename` must exist in VitalServer storage.
+      parameters:
+        - $ref: "#/components/parameters/AccessToken"
+        - name: filename
+          in: query
+          required: true
+          schema:
+            type: string
+            example: BED01_260510_093000.vital
+      responses:
+        "200":
+          description: Vital file download
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          description: Access token expired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /upload:
+    post:
+      tags: [Upload]
+      summary: Upload a `.vital` file
+      description: |
+        Endpoint used by Vital Recorder. The server stores the upload under
+        `tmp_files`, then parses and moves it into VitalServer storage.
+
+        Conditions:
+          - Requires a real `.vital` file.
+          - File names should follow `bedname_yymmdd_hhmmss.vital`.
+          - The response can be `success` or an error text from the upstream parser.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/VitalUploadRequest"
+            encoding:
+              vitalfile:
+                contentType: application/octet-stream
+      responses:
+        "200":
+          description: Upload result text. Usually `success` when parsing succeeds.
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: success
+
+  /upload_vital.php:
+    post:
+      tags: [Upload]
+      summary: Upload a `.vital` file
+      description: |
+        Alias of `POST /upload`.
+
+        Conditions:
+          - Requires a real `.vital` file.
+          - File names should follow `bedname_yymmdd_hhmmss.vital`.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/VitalUploadRequest"
+            encoding:
+              vitalfile:
+                contentType: application/octet-stream
+      responses:
+        "200":
+          description: Upload result text. Usually `success` when parsing succeeds.
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: success
+
+  /check:
+    get:
+      tags: [Session]
+      summary: Render login/check page or redirect logged-in user
+      responses:
+        "200":
+          description: HTML login/check page
+          content:
+            text/html:
+              schema:
+                type: string
+        "302":
+          description: Redirect to next page or root
+    post:
+      tags: [Session]
+      summary: Browser login
+      description: |
+        Browser-session login used by the bundled Web UI. This is separate from
+        token-based `POST /api/login`.
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                mb_id:
+                  type: string
+                mb_password:
+                  type: string
+              required: [mb_id, mb_password]
+            examples:
+              localAdmin:
+                summary: Local default admin browser login
+                value:
+                  mb_id: admin
+                  mb_password: admin
+      responses:
+        "302":
+          description: Redirect after login attempt
+
+  /logout:
+    get:
+      tags: [Session]
+      summary: Destroy browser session
+      responses:
+        "302":
+          description: Redirect to `/check`
+
+  /refresh_session:
+    get:
+      tags: [Session]
+      summary: Extend browser session cookie
+      responses:
+        "200":
+          description: Empty success response
+
+  /:
+    get:
+      tags: [Web UI]
+      summary: Render Web Monitoring page or redirect to login
+      responses:
+        "200":
+          description: HTML page
+          content:
+            text/html:
+              schema:
+                type: string
+        "302":
+          description: Redirect to `/check`
+
+  /web-monitoring:
+    get:
+      tags: [Web UI]
+      summary: Render Web Monitoring page
+      responses:
+        "200":
+          description: HTML page
+          content:
+            text/html:
+              schema:
+                type: string
+        "302":
+          description: Redirect to `/check`
+
+  /webview:
+    get:
+      tags: [Web UI]
+      summary: Render vital file web viewer
+      description: Requires a filename that exists in VitalServer storage.
+      parameters:
+        - name: filename
+          in: query
+          schema:
+            type: string
+            example: BED01_260510_093000.vital
+      responses:
+        "200":
+          description: HTML page
+          content:
+            text/html:
+              schema:
+                type: string
+
+  /webview2:
+    get:
+      tags: [Web UI]
+      summary: Render alternate web viewer
+      responses:
+        "200":
+          description: HTML page
+          content:
+            text/html:
+              schema:
+                type: string
+
+  /icu:
+    get:
+      tags: [Web UI]
+      summary: Render ICU dashboard
+      responses:
+        "200":
+          description: HTML page
+        "302":
+          description: Redirect to `/check`
+
+  /my-files:
+    get:
+      tags: [Web UI]
+      summary: Render My Files page
+      responses:
+        "200":
+          description: HTML page
+        "302":
+          description: Redirect to `/check`
+
+  /my-files/stats:
+    get:
+      tags: [Web UI]
+      summary: Render file stats page
+      responses:
+        "200":
+          description: HTML page
+        "302":
+          description: Redirect to `/check`
+
+  /manage-config:
+    get:
+      tags: [Web UI]
+      summary: Render configuration management page
+      responses:
+        "200":
+          description: HTML page
+        "302":
+          description: Redirect to `/check`
+
+  /manage-user:
+    get:
+      tags: [Web UI]
+      summary: Render user management page
+      responses:
+        "200":
+          description: HTML page
+        "302":
+          description: Redirect to `/check` or root
+
+  /manage-hl7:
+    get:
+      tags: [Web UI]
+      summary: Render HL7 management page
+      responses:
+        "200":
+          description: HTML page
+        "302":
+          description: Redirect to `/check` or root
+
+  /manage-account:
+    get:
+      tags: [Web UI]
+      summary: Render account management page
+      responses:
+        "200":
+          description: HTML page
+        "302":
+          description: Redirect to `/check`
+
+  /my-files/download:
+    get:
+      tags: [Internal UI]
+      summary: Download a file from the browser session context
+      description: Requires a browser login session and an existing file.
+      parameters:
+        - name: filename
+          in: query
+          required: true
+          schema:
+            type: string
+            example: BED01_260510_093000.vital
+      responses:
+        "200":
+          description: File download
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /my-files/data.php:
+    post:
+      tags: [Internal UI]
+      summary: Query file list for My Files page
+      description: Requires a browser login session.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                job:
+                  type: string
+                  enum: [list]
+                sdate:
+                  type: number
+                edate:
+                  type: number
+                bedname:
+                  type: string
+                selected_bed:
+                  type: string
+              required: [job, sdate, edate]
+            examples:
+              todayAllBeds:
+                summary: Query today's files for all beds
+                value:
+                  job: list
+                  sdate: 1778342400
+                  edate: 1778428799
+                  bedname: ""
+              selectedBed:
+                summary: Query one bed
+                value:
+                  job: list
+                  sdate: 1778342400
+                  edate: 1778428799
+                  selected_bed: BED01
+      responses:
+        "200":
+          description: File metadata array or redirect HTML when not logged in
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FileInfo"
+            text/html:
+              schema:
+                type: string
+        "302":
+          description: Redirect to `/check`
+
+  /my-vr/data.php:
+    post:
+      tags: [Internal UI]
+      summary: Execute My VR management action
+      description: |
+        Requires a browser login session. Some jobs require admin permissions or
+        additional fields not fully inferred from upstream minified code.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MyVrAction"
+            examples:
+              getMyVrs:
+                summary: List my Vital Recorders
+                value:
+                  job: get_myvrs
+              getSharedVrs:
+                summary: List shared Vital Recorders
+                value:
+                  job: get_sharedvrs
+              getViewers:
+                summary: List viewer accounts for a bed
+                value:
+                  job: get_viewers
+                  bedname: BED01
+      responses:
+        "200":
+          description: Action-specific JSON response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /set-config:
+    post:
+      tags: [Internal UI]
+      summary: Update server configuration
+      description: Requires an admin browser login session.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfigUpdate"
+            examples:
+              storageOnly:
+                summary: Update storage path only
+                value:
+                  storage: /opt/vitalserver/vital_files
+              websocketAndFilter:
+                summary: Update websocket/filter connection
+                value:
+                  websocketIp: 127.0.0.1
+                  websocketPort: "80"
+                  filterIp: 127.0.0.1
+                  filterPort: "8080"
+      responses:
+        "200":
+          description: Boolean-like result
+          content:
+            text/plain:
+              schema:
+                oneOf:
+                  - type: string
+                  - type: boolean
+
+  /trd_noti:
+    post:
+      tags: [Internal UI]
+      summary: Return trend notification data for a bed
+      description: Requires cached live monitor data for the bed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                bedid:
+                  type: string
+                range:
+                  type: number
+              required: [bedid, range]
+            examples:
+              recentBedTrend:
+                value:
+                  bedid: BED01
+                  range: 3600
+      responses:
+        "200":
+          description: JSON object keyed by trend timestamp
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /vr_devs:
+    post:
+      tags: [Internal UI]
+      summary: Return cached device metadata for a bed
+      description: Requires cached live monitor data for the bed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BedIdRequest"
+            examples:
+              bed01:
+                value:
+                  bedid: BED01
+      responses:
+        "200":
+          description: Device metadata JSON or empty object
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /vr_filts:
+    post:
+      tags: [Internal UI]
+      summary: Return cached filter metadata for a bed
+      description: Requires cached live monitor data for the bed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BedIdRequest"
+            examples:
+              bed01:
+                value:
+                  bedid: BED01
+      responses:
+        "200":
+          description: Filter metadata JSON or empty object
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /adt:
+    post:
+      tags: [Internal UI]
+      summary: Save ADT patient identifier mapping for a file
+      description: Requires an existing file and a browser login session.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                filename:
+                  type: string
+                hid:
+                  type: string
+              required: [filename, hid]
+            examples:
+              mapPatient:
+                value:
+                  filename: BED01_260510_093000.vital
+                  hid: PATIENT-0001
+      responses:
+        "200":
+          description: Empty success response
+    get:
+      tags: [Internal UI]
+      summary: Download ADT CSV
+      parameters:
+        - $ref: "#/components/parameters/AccessTokenOptional"
+      responses:
+        "200":
+          description: ADT CSV
+          content:
+            text/csv:
+              schema:
+                type: string
+        "302":
+          description: Redirect to `/check`
+
+  /adt/{yyyy}:
+    get:
+      tags: [Internal UI]
+      summary: Download ADT CSV filtered by year
+      parameters:
+        - $ref: "#/components/parameters/Yyyy"
+        - $ref: "#/components/parameters/AccessTokenOptional"
+      responses:
+        "200":
+          description: ADT CSV
+          content:
+            text/csv:
+              schema:
+                type: string
+        "302":
+          description: Redirect to `/check`
+
+  /adt/{yyyy}/{mm}:
+    get:
+      tags: [Internal UI]
+      summary: Download ADT CSV filtered by year and month
+      parameters:
+        - $ref: "#/components/parameters/Yyyy"
+        - $ref: "#/components/parameters/Mm"
+        - $ref: "#/components/parameters/AccessTokenOptional"
+      responses:
+        "200":
+          description: ADT CSV
+          content:
+            text/csv:
+              schema:
+                type: string
+        "302":
+          description: Redirect to `/check`
+
+  /adt/{yyyy}/{mm}/{dd}:
+    get:
+      tags: [Internal UI]
+      summary: Download ADT CSV filtered by date
+      parameters:
+        - $ref: "#/components/parameters/Yyyy"
+        - $ref: "#/components/parameters/Mm"
+        - $ref: "#/components/parameters/Dd"
+        - $ref: "#/components/parameters/AccessTokenOptional"
+      responses:
+        "200":
+          description: ADT CSV
+          content:
+            text/csv:
+              schema:
+                type: string
+        "302":
+          description: Redirect to `/check`
+
+  /getvr.php:
+    get:
+      tags: [Internal UI]
+      summary: Download latest Vital Recorder installer
+      responses:
+        "200":
+          description: Installer download
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+
+  /pivr:
+    get:
+      tags: [Internal UI]
+      summary: Download latest PIVR binary
+      responses:
+        "200":
+          description: PIVR download
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+
+  /download-vr/{prevurl}:
+    get:
+      tags: [Internal UI]
+      summary: Download Vital Recorder release from cloud and redirect
+      parameters:
+        - name: prevurl
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "302":
+          description: Redirect after download
+
+  /HL7:
+    get:
+      tags: [HL7]
+      summary: Return HL7 ORU message text
+      responses:
+        "200":
+          description: HL7 message stream
+          content:
+            text/plain:
+              schema:
+                type: string
+    post:
+      tags: [HL7]
+      summary: Return HL7 ORU message text
+      responses:
+        "200":
+          description: HL7 message stream
+          content:
+            text/plain:
+              schema:
+                type: string
+
+components:
+  parameters:
+    AccessToken:
+      name: access_token
+      in: query
+      required: true
+      description: Copy this value from the `POST /api/login` response.
+      schema:
+        type: string
+        example: 7xwhw4lhd
+    AccessTokenOptional:
+      name: access_token
+      in: query
+      required: false
+      description: Optional token from `POST /api/login`; browser session may also be used.
+      schema:
+        type: string
+        example: 7xwhw4lhd
+    UserIdQuery:
+      name: id
+      in: query
+      required: false
+      description: API account id. Fresh local servers use `admin`.
+      schema:
+        type: string
+        example: admin
+    PasswordQuery:
+      name: pw
+      in: query
+      required: false
+      description: API account password. Fresh local servers use `admin`.
+      schema:
+        type: string
+        example: admin
+    BedName:
+      name: bedname
+      in: query
+      required: false
+      description: Optional bed name filter.
+      schema:
+        type: string
+        example: BED01
+    DtStart:
+      name: dtstart
+      in: query
+      required: false
+      schema:
+        type: string
+        example: "2026-05-10 00:00:00"
+    DtEnd:
+      name: dtend
+      in: query
+      required: false
+      schema:
+        type: string
+        example: "2026-05-10 23:59:59"
+    DtUploadStart:
+      name: dtuploadstart
+      in: query
+      required: false
+      schema:
+        type: string
+        example: "2026-05-10 00:00:00"
+    DtUploadEnd:
+      name: dtuploadend
+      in: query
+      required: false
+      schema:
+        type: string
+        example: "2026-05-10 23:59:59"
+    Yyyy:
+      name: yyyy
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: "^[0-9]{4}$"
+        example: "2026"
+    Mm:
+      name: mm
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: "^[0-9]{2}$"
+        example: "05"
+    Dd:
+      name: dd
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: "^[0-9]{2}$"
+        example: "10"
+
+  responses:
+    BadRequest:
+      description: Invalid input, invalid credential, or invalid access token
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorMessage"
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorMessage"
+
+  schemas:
+    ErrorMessage:
+      type: object
+      properties:
+        message:
+          type: string
+          example: invalid access token
+      required: [message]
+
+    LoginRequest:
+      type: object
+      properties:
+        id:
+          type: string
+          example: admin
+        pw:
+          type: string
+          example: admin
+      required: [id, pw]
+
+    LoginSuccess:
+      type: object
+      properties:
+        res:
+          type: boolean
+          example: true
+        access_token:
+          type: string
+          example: 7xwhw4lhd
+      required: [res, access_token]
+
+    VitalUploadRequest:
+      type: object
+      properties:
+        vitalfile:
+          type: string
+          format: binary
+          description: "`.vital` file. Field name is inferred from busboy file handling."
+      required: [vitalfile]
+
+    FileInfo:
+      type: object
+      additionalProperties: true
+      properties:
+        filename:
+          type: string
+          example: BED01_260510_093000.vital
+        dtstart:
+          oneOf:
+            - type: number
+            - type: string
+        dtend:
+          oneOf:
+            - type: number
+            - type: string
+        dtupload:
+          oneOf:
+            - type: number
+            - type: string
+        filesize:
+          type: number
+          example: 1048576
+        trks:
+          type: array
+          items:
+            type: string
+          example:
+            - ECG_II
+            - PLETH
+            - HR
+
+    BedIdRequest:
+      type: object
+      properties:
+        bedid:
+          type: string
+          example: BED01
+      required: [bedid]
+
+    ConfigUpdate:
+      type: object
+      properties:
+        websocketIp:
+          type: string
+          example: 127.0.0.1
+        websocketPort:
+          type: string
+          example: "80"
+        filterIp:
+          type: string
+          example: 127.0.0.1
+        filterPort:
+          type: string
+          example: "8080"
+        storage:
+          type: string
+          example: /opt/vitalserver/vital_files
+
+    MyVrAction:
+      type: object
+      additionalProperties: true
+      properties:
+        job:
+          type: string
+          enum:
+            - get_myvrs
+            - get_sharedvrs
+            - get_viewers
+            - edit_permission
+            - del_bed
+            - del_beds
+            - move_vrs
+            - share
+            - add_group
+            - edit_group
+            - del_group
+          example: get_myvrs
+      required: [job]
+
+x-socket-io-events:
+  namespace: /
+  note: |
+    Socket.IO events are not representable as normal OpenAPI paths. They are
+    listed here because this upstream VitalServer receives real-time monitor
+    payloads through Socket.IO, not through `POST /api/send`.
+  client_to_server:
+    - event: send_data
+      description: |
+        Vital Recorder sends compressed binary/string payloads. Server inflates
+        with zlib, parses JSON, registers beds, stores recent data in Redis,
+        and emits `recv_data` to bed rooms.
+    - event: join_vr
+      description: Join a Vital Recorder room and register client IP.
+    - event: join_bed
+      description: Join a bed room and receive recorder IP address.
+    - event: leave_bed
+      description: Leave a bed room.
+    - event: send_vrconf
+      description: Request recorder configuration.
+    - event: req_folder_list
+      description: Request file/folder listing.
+    - event: req_json
+      description: Request static device and filter metadata.
+    - event: req_bed_status
+      description: Request cached bed status.
+    - event: req_prev_data
+      description: Request recent cached monitor data.
+    - event: req_cmd
+      description: Send management command to recorder.
+    - event: req_manage_config
+      description: Update configuration through UI.
+    - event: req_manage_user
+      description: Manage users through UI.
+    - event: req_manage_hl7
+      description: Manage HL7 mappings through UI.
+    - event: req_change_password
+      description: Change account password.
+    - event: upgrade_all_vr
+      description: Broadcast recorder update command.
+  server_to_client:
+    - event: dt
+    - event: recv_data
+    - event: recv_filter
+    - event: recv_vr_ipaddr
+    - event: recv_vrs_ipaddr
+    - event: recv_vrconf
+    - event: res_folder_list
+    - event: res_json
+    - event: res_bed_status
+    - event: res_prev_data
+    - event: res_cmd
+    - event: res_manage
+    - event: res_manage_config
+    - event: res_manage_account
+    - event: res_change_password
