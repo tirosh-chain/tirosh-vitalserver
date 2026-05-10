@@ -17,7 +17,7 @@ poll_interval_seconds = 1
 [recorder]
 # payload를 비워두면 testkit이 simulated recorder data를 생성한다.
 # 실제 장비 payload를 재현해야 할 때만 아래처럼 지정한다.
-# payload = "sample_data.json"
+# payload = "path/to/recorder-payload.json"
 recorders = 5
 default_scenario = "normal"
 
