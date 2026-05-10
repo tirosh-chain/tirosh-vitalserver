@@ -1,18 +1,24 @@
 # tirosh-vitalserver
 
-VitalDB VitalServer를 Docker Compose로 실행하기 위한 래퍼 저장소입니다.
+VitalDB upstream VitalServer를 실제 제품 환경에서 사용할 수 있는 수준으로 감싸고,
+운영에 필요한 실행, 관측, 검증 도구를 쌓아가는 저장소입니다.
 
-이 저장소는 VitalServer 애플리케이션 코드를 직접 관리하지 않습니다. VitalDB upstream
-코드는 `vitalserver` git submodule로 고정하고, 이 저장소에서는 Dockerfile,
-Compose 설정, 실행 보조 파일만 관리합니다.
+upstream VitalServer는 연구/데모 성격이 강하다고 보고, 이 저장소에서는 그 코드를 직접
+고치기보다 제품 운영에 필요한 외곽 레이어를 관리합니다.
 
-## 1. 빠른실행
+이 저장소는 VitalServer 애플리케이션 코드를 직접 수정하지 않습니다. VitalDB upstream
+코드는 `vendor/vitalserver` git submodule로 고정하고, 이 저장소에서는 wrapper app,
+Compose 설정, API 문서, Redis relay, 검증 도구를 관리합니다.
+
+## 빠른 실행
 
 ```sh
 git clone --recurse-submodules https://github.com/tirosh-chain/tirosh-vitalserver.git
 cd tirosh-vitalserver
 make up
 ```
+
+VitalServer:
 
 ```text
 http://localhost:8080
@@ -31,158 +37,108 @@ UserId: admin
 Password: admin
 ```
 
-## 2. 사용 방법
-
-### 2-1. 요구사항
+## 요구사항
 
 - Docker
 - Docker Compose v2
 - Git submodule 지원 Git 클라이언트
+- uv
 
-Apple Silicon 환경에서도 amd64 이미지로 실행되도록 `compose.yaml`에
-`platform: linux/amd64`가 지정되어 있습니다.
+Python 검증 도구는 Python 3.14 이상을 사용합니다.
 
-### 2-2. 실행
-
-기본 HTTP 포트는 `8080`입니다.
+## 자주 쓰는 명령
 
 ```sh
-make up
+make help            # 사용 가능한 명령 확인
+make up              # VitalServer stack 실행
+make down            # stack 중지, Docker volume 유지
+make logs            # log 확인
+make ps              # container 상태 확인
+make swagger         # Swagger UI 실행
+make testkit-smoke   # simulator 기반 smoke scenario
+make check           # lint, typecheck, test 실행
 ```
 
-설정을 고정해서 쓰려면 `.env.example`을 복사해 `.env`를 만듭니다.
-
-```sh
-cp .env.example .env
-```
-
-다른 경로의 환경변수 파일을 쓰려면 `COMPOSE_ENV_FILE`을 지정합니다.
-
-```sh
-COMPOSE_ENV_FILE=.env.local make up
-```
-
-예를 들어 포트를 바꾸려면 `.env`에서 `VITALSERVER_HTTP_PORT` 또는
-`REDIS_UI_PORT`를 수정합니다.
-
-```env
-VITALSERVER_HTTP_PORT=18080
-REDIS_UI_PORT=18081
-```
-
-이 경우 접속 주소는 `http://localhost:18080`, Redis UI 주소는
-`http://localhost:18081`입니다. 한 번만 다르게 실행하려면 inline 환경변수도 사용할 수
-있습니다.
-
-```sh
-VITALSERVER_HTTP_PORT=18080 make up
-```
-
-### 2-3. 초기 계정
-
-초기 관리자 계정은 `admin` / `admin`입니다.
-
-초기 비밀번호를 바꾸려면 최초 실행 전에 `.env`에서
-`VITALSERVER_ADMIN_PASSWORD`를 수정합니다.
-
-```env
-VITALSERVER_ADMIN_PASSWORD=change-me
-```
-
-관리자 UserId는 upstream 코드에서 `admin`을 특별 취급하므로 변경하지 않습니다.
-이미 `redis-data` 볼륨이 생성된 뒤에는 초기 계정 생성이 다시 실행되지 않습니다. 이
-경우 웹 UI에서 비밀번호를 변경하거나, 개발 환경에서는 `make clean-volumes`로 데이터를
-초기화한 뒤 다시 실행합니다.
-
-## 3. 운영
-
-### 3-1. 자주 쓰는 명령
-
-```sh
-make help       # 사용 가능한 명령 보기
-make init       # submodule 초기화/업데이트
-make build      # Docker image 빌드
-make up         # 백그라운드 실행
-make logs       # 로그 보기
-make ps         # 컨테이너 상태 보기
-make restart    # 재시작
-make down       # 중지
-```
-
-Compose를 직접 사용할 수도 있습니다.
-
-```sh
-docker compose up -d --build
-docker compose logs -f
-docker compose down
-```
-
-### 3-2. 데이터 볼륨
-
-Compose는 아래 Docker volume을 사용합니다.
-
-- `redis-data`: Redis append-only 데이터
-- `vital-files`: VitalServer 파일 저장소 (`/opt/vitalserver/vital_files`)
-- `vital-vr-release`: VR release 디렉터리
-- `vital-tmp-files`: 임시 파일 디렉터리
-
-이 볼륨들은 호스트 경로를 직접 지정하는 bind mount가 아니라 Docker가 관리하는 named
-volume입니다. 그래서 `compose.yaml`에는 `./data/...` 같은 로컬 경로가 보이지 않습니다.
-실제 volume 이름은 Compose project 이름이 붙어 아래처럼 생성됩니다.
+Swagger UI는 아래 주소에서 볼 수 있습니다.
 
 ```text
-tirosh-vitaldb_redis-data
-tirosh-vitaldb_vital-files
-tirosh-vitaldb_vital-vr-release
-tirosh-vitaldb_vital-tmp-files
+http://localhost:8082
 ```
 
-위치를 확인하려면 Docker volume 명령을 사용합니다.
+포트를 바꾸려면 `.env` 또는 실행 환경에서 `SWAGGER_UI_PORT`를 지정합니다.
+`Try it out`을 실행할 때는 server를 `/vitalserver`로 둡니다. Swagger UI가 같은 origin에서
+VitalServer로 proxy해 주기 때문에 CORS에 걸리지 않습니다.
 
-```sh
-docker volume ls
-docker volume inspect tirosh-vitaldb_vital-files
-```
-
-호스트에서 직접 보이는 디렉터리로 관리하고 싶다면 named volume 대신 bind mount로 바꿀
-수 있습니다. 예를 들어 `vital-files`를 `./data/vital-files`로 관리하려면:
-
-```yaml
-volumes:
-  - type: bind
-    source: ./data/vital-files
-    target: /opt/vitalserver/vital_files
-```
-
-Redis UI는 Redis Commander를 사용하며 기본 포트는 `8081`입니다.
-
-컨테이너만 내릴 때는 데이터가 유지됩니다.
-
-```sh
-make down
-```
-
-데이터 볼륨까지 삭제하려면:
-
-```sh
-make clean-volumes
-```
-
-## 4. 저장소 관리
-
-### 4-1. 구조
+## 구조
 
 ```text
 .
 ├── compose.yaml
-├── Dockerfile
-├── runtime/
-│   └── node-preload.js
-└── vitalserver/               # git submodule: vitaldb/vitalserver
-    └── vitalserver-old/       # Docker image에 복사되는 upstream 코드
+├── Makefile
+├── pyproject.toml
+├── apps/
+│   └── vitalserver/           # upstream VitalServer를 감싼 제품 실행 app
+│       ├── docker/            # Docker 배포 target
+│       └── runtime/           # 공통 실행 shim
+├── config/
+│   └── testkit.toml
+├── docs/
+├── infra/
+│   └── swagger-ui/           # Swagger UI reverse proxy 설정
+├── make/                     # Makefile target group
+├── packages/
+│   └── vitalserver-testkit/   # 운영 검증과 데이터 전송 검증용 Python 도구
+├── scripts/
+└── vendor/
+    └── vitalserver/           # git submodule: vitaldb/vitalserver
 ```
 
-### 4-2. Submodule 초기화
+## 제품화 방향
+
+이 저장소의 목적은 upstream VitalServer를 바로 운영에 올리기 어려운 연구용 서버에서,
+제품 환경에 투입 가능한 구성요소로 끌어올리는 것입니다.
+
+우선순위는 아래에 둡니다.
+
+- Compose로 재현 가능한 실행 환경 만들기
+- upstream route와 Socket.IO 동작을 문서화하기
+- Redis에 쌓이는 실시간 데이터 구조를 파악하고 relay 가능하게 만들기
+- simulated Vital Recorder data와 실제 payload를 흘려보내며 운영 검증하기
+- 장시간 실행 중 서버, Redis, container 상태를 관측하기
+- 제품에서 필요한 설정, 백업, 복구, 모니터링 지점을 외곽에서 보강하기
+
+`packages/vitalserver-testkit`은 이 제품화 작업을 검증하기 위한 도구입니다. testkit 자체가
+저장소의 목적은 아니고, 실시간 수집/업로드/relay가 운영 요구를 만족하는지 확인하는
+수단입니다.
+
+제품화 검증 시나리오는 `scripts/test_vitalserver.py`와 Makefile target으로 실행합니다.
+
+```sh
+make testkit-smoke
+make testkit-verify
+make testkit-load
+make testkit-stream
+```
+
+기본 설정은 `config/testkit.toml`에 둡니다. 기본값은 recorder 5대를 흉내내고,
+`make testkit-load`에서 총 500개 `send_data` event를 보내도록 잡아 둡니다.
+`make testkit-stream`은 Ctrl+C 전까지 계속 보냅니다.
+더 강한 부하나 별도 시나리오가 필요하면 다른 config를 지정합니다.
+
+```sh
+cp config/testkit.toml config/load-test.toml
+TESTKIT_CONFIG=config/load-test.toml make testkit-load
+```
+
+관련 문서는 `docs/` 아래에 둡니다. 전체 문서 구조는 `docs/index.md`를 기준으로 봅니다.
+
+- `docs/index.md`: 문서 지도와 작성 기준
+- `docs/vitalserver-productization.md`: VitalServer 제품화 맥락과 API/payload 배경
+- `docs/testkit-usage.md`: testkit 실행 방법과 결과 해석
+- `docs/redis-data-model.md`: Redis key 구조와 relay 설계 메모
+- `docs/openapi.yaml`: upstream VitalServer route에서 추출한 OpenAPI 문서
+
+## Submodule 관리
 
 이미 clone한 저장소에서 submodule이 비어 있다면 아래 명령으로 초기화합니다.
 
@@ -190,23 +146,14 @@ make clean-volumes
 make init
 ```
 
-또는 Git 명령을 직접 사용할 수 있습니다.
-
-```sh
-git submodule update --init --recursive
-```
-
-### 4-3. VitalServer upstream 업데이트
-
-upstream 변경분을 반영하려면 submodule을 업데이트한 뒤, 변경된 submodule commit을
-이 저장소에 commit합니다.
+upstream 변경분을 반영하려면 submodule을 업데이트한 뒤 변경된 submodule commit을 이
+저장소에 commit합니다.
 
 ```sh
 make update-submodule
 git status
-git add vitalserver
+git add vendor/vitalserver
 git commit -m "Update vitalserver submodule"
 ```
 
-일반적인 작업에서는 `vitalserver` 내부 코드를 수정하지 않습니다. 우리 쪽
-변경은 Dockerfile, `compose.yaml`, `runtime/` 아래 보조 파일에 둡니다.
+일반적인 작업에서는 `vendor/vitalserver` 내부 코드를 수정하지 않습니다.
