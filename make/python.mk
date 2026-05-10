@@ -1,16 +1,16 @@
 .PHONY: lint format typecheck test check
 
-lint:
+lint: require-uv
 	$(UV) run ruff check .
 
-format:
+format: require-uv
 	$(UV) run ruff format .
 	$(UV) run ruff check --fix .
 
-typecheck:
+typecheck: require-uv
 	$(UV) run mypy
 
-test:
+test: require-uv
 	$(UV) run pytest
 
 check: lint typecheck test

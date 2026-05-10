@@ -10,6 +10,7 @@ COMPOSE := $(strip $(DOCKER_COMPOSE) $(if $(COMPOSE_ENV_FILE),--env-file $(COMPO
 TESTKIT := $(UV) run python scripts/test_vitalserver.py --config $(TESTKIT_CONFIG)
 
 include make/submodule.mk
+include make/env.mk
 include make/compose.mk
 include make/testkit.mk
 include make/python.mk
@@ -19,6 +20,8 @@ help:
 	@printf "tirosh-vitalserver\n"
 	@printf "\n"
 	@printf "Run:\n"
+	@printf "  make doctor          Check local tools and repository setup\n"
+	@printf "  make bootstrap       Initialize submodules and sync Python env when uv exists\n"
 	@printf "  make up              Start VitalServer stack\n"
 	@printf "  make down            Stop stack and keep volumes\n"
 	@printf "  make restart         Restart stack\n"
