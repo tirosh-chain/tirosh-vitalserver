@@ -1,0 +1,24 @@
+server {
+    listen 8080;
+    server_name _;
+
+    root /usr/share/nginx/html;
+    index index.html;
+
+    location = /openapi.yaml {
+        alias /openapi.yaml;
+        default_type text/yaml;
+        add_header Cache-Control "no-cache";
+    }
+
+    location /vitalserver/ {
+        proxy_pass http://redis/;
+        proxy_http_version 1.1;
+        proxy_set_header Host redis;
+        proxy_set_header X-Forwarded-Proto http;
+    }
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}
