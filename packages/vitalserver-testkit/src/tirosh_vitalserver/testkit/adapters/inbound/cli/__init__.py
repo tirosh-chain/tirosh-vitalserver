@@ -1,0 +1,1 @@
+"""VitalServer testkit CLI package."""
