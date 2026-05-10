@@ -1,0 +1,62 @@
+name: Testkit CI
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/testkit-ci.yml"
+      - "config/testkit.toml"
+      - "make/python.mk"
+      - "packages/vitalserver-testkit/**"
+      - "pyproject.toml"
+      - "scripts/**"
+      - "uv.lock"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/testkit-ci.yml"
+      - "config/testkit.toml"
+      - "make/python.mk"
+      - "packages/vitalserver-testkit/**"
+      - "pyproject.toml"
+      - "scripts/**"
+      - "uv.lock"
+
+jobs:
+  testkit:
+    name: Test and build testkit
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: ".python-version"
+
+      - name: Install workspace
+        run: uv sync --all-groups
+
+      - name: Lint
+        run: uv run ruff check packages/vitalserver-testkit/src packages/vitalserver-testkit/tests scripts
+
+      - name: Typecheck
+        run: uv run mypy
+
+      - name: Test
+        run: uv run pytest packages/vitalserver-testkit/tests
+
+      - name: Build package
+        run: uv build --out-dir packages/vitalserver-testkit/dist --clear packages/vitalserver-testkit
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vitalserver-testkit-dist
+          path: packages/vitalserver-testkit/dist/*
+          if-no-files-found: error

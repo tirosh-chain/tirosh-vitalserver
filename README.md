@@ -158,6 +158,26 @@ cp config/testkit.toml config/load-test.toml
 TESTKIT_CONFIG=config/load-test.toml make testkit-load
 ```
 
+### testkit release
+
+`vitalserver-testkit`은 당분간 수동 versioning으로 관리합니다.
+`packages/vitalserver-testkit/pyproject.toml`의 `version`을 올리고 `testkit-v{version}`
+형태의 tag를 push하면 GitHub Actions가 wheel과 sdist를 build한 뒤 GitHub Release asset에
+업로드합니다.
+
+```sh
+make check
+make build-testkit
+git tag testkit-v0.1.0
+git push origin testkit-v0.1.0
+```
+
+`make build-testkit`은 wheel과 sdist를 `packages/vitalserver-testkit/dist/` 아래에 생성합니다.
+
+PR과 `main` push에서는 testkit 관련 파일이 바뀐 경우에만 testkit CI가 실행됩니다.
+Release workflow도 이전 `testkit-v*` tag 이후 testkit 관련 변경이 있을 때만 package를
+build하고 release asset을 업로드합니다.
+
 관련 문서는 `docs/` 아래에 둡니다. 전체 문서 구조는 `docs/index.md`를 기준으로 봅니다.
 
 - `docs/index.md`: 문서 지도와 작성 기준
