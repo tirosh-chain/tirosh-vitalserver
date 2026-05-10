@@ -176,7 +176,8 @@ git push origin testkit-v0.1.0
 
 PR과 `main` push에서는 testkit 관련 파일이 바뀐 경우에만 testkit CI가 실행됩니다.
 Release workflow도 이전 `testkit-v*` tag 이후 testkit 관련 변경이 있을 때만 package를
-build하고 release asset을 업로드합니다.
+build하고 release asset을 업로드합니다. Release note는 monorepo 전체 changelog가 아니라
+`vitalserver-testkit` package 기준의 간단한 설치 안내만 남깁니다.
 
 관련 문서는 `docs/` 아래에 둡니다. 전체 문서 구조는 `docs/index.md`를 기준으로 봅니다.
 
