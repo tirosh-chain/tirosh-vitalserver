@@ -1,4 +1,4 @@
-.PHONY: bootstrap doctor require-uv
+.PHONY: bootstrap doctor install-testkit-release require-testkit-runtime require-uv
 
 bootstrap: init
 	@if command -v "$(UV)" >/dev/null 2>&1; then \
@@ -25,8 +25,39 @@ doctor:
 	@if command -v "$(UV)" >/dev/null 2>&1; then \
 		printf "ok: uv\n"; \
 	else \
-		printf "optional missing: uv; Docker runtime works, Python testkit does not\n"; \
+		printf "optional missing: uv; checking installed testkit package\n"; \
+		"$(PYTHON)" -c "import pydantic_settings, tirosh_vitalserver.testkit" >/dev/null 2>&1 \
+			&& printf "ok: installed testkit runtime\n" \
+			|| printf "optional missing: installed testkit runtime; run 'make install-testkit-release'\n"; \
 	fi
+
+install-testkit-release:
+	@command -v gh >/dev/null 2>&1 || { \
+		printf "missing: gh\n"; \
+		printf "Install GitHub CLI and run 'gh auth login', or download the wheel from GitHub Release manually.\n"; \
+		exit 127; \
+	}
+	@command -v "$(PYTHON)" >/dev/null 2>&1 || { printf "missing: $(PYTHON)\n"; exit 127; }
+	@mkdir -p "$(TESTKIT_RELEASE_DIR)"
+	@gh release download "$(TESTKIT_RELEASE_TAG)" \
+		--repo tirosh-chain/tirosh-vitalserver \
+		--pattern "*.whl" \
+		--dir "$(TESTKIT_RELEASE_DIR)" \
+		--clobber
+	@wheel=$$(ls "$(TESTKIT_RELEASE_DIR)"/tirosh_vitalserver_testkit-$(TESTKIT_VERSION)-*.whl | head -n 1); \
+		printf "Installing %s with %s\n" "$$wheel" "$(PYTHON)"; \
+		"$(PYTHON)" -m pip install --upgrade "$$wheel" pydantic-settings
+
+require-testkit-runtime:
+	@if command -v "$(UV)" >/dev/null 2>&1; then \
+		exit 0; \
+	fi
+	@command -v "$(PYTHON)" >/dev/null 2>&1 || { printf "missing: $(PYTHON)\n"; exit 127; }
+	@"$(PYTHON)" -c "import pydantic_settings, tirosh_vitalserver.testkit" >/dev/null 2>&1 || { \
+		printf "missing: installed testkit runtime\n"; \
+		printf "Run 'make install-testkit-release' or install uv for workspace execution.\n"; \
+		exit 127; \
+	}
 
 require-uv:
 	@command -v "$(UV)" >/dev/null 2>&1 || { \

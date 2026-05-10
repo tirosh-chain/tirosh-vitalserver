@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import argparse
+import os
+import shlex
+import shutil
 import signal
 import subprocess
 import sys
@@ -147,7 +150,7 @@ def run_scenario(scenario: ScenarioName, config: VitalServerCheckConfig) -> None
 
 def run_health(config: VitalServerCheckConfig) -> None:
     run(
-        "vitalserver-testkit",
+        *testkit_command(),
         "health",
         "--base-url",
         config.server.base_url,
@@ -162,7 +165,7 @@ def run_health(config: VitalServerCheckConfig) -> None:
 
 def run_verify(config: VitalServerCheckConfig) -> None:
     command = [
-        "vitalserver-testkit",
+        *testkit_command(),
         "verify-recorder",
         "--base-url",
         config.server.base_url,
@@ -182,7 +185,7 @@ def run_verify(config: VitalServerCheckConfig) -> None:
 
 def run_load(config: VitalServerCheckConfig) -> None:
     command = [
-        "vitalserver-testkit",
+        *testkit_command(),
         "send-recorder",
         "--base-url",
         config.server.base_url,
@@ -212,7 +215,7 @@ def run_stream(
         max_messages = default_max_messages
 
     command = [
-        "vitalserver-testkit",
+        *testkit_command(),
         "stream-recorder",
         "--base-url",
         config.server.base_url,
@@ -260,6 +263,24 @@ def run(*args: str) -> None:
 
     if return_code:
         raise subprocess.CalledProcessError(return_code, command)
+
+
+def testkit_command() -> list[str]:
+    """Return the installed testkit command, with a module fallback."""
+
+    configured = os.environ.get("TESTKIT_CLI")
+
+    if configured:
+        return shlex.split(configured)
+
+    if shutil.which("vitalserver-testkit") is not None:
+        return ["vitalserver-testkit"]
+
+    return [
+        sys.executable,
+        "-m",
+        "tirosh_vitalserver.testkit.adapters.inbound.cli",
+    ]
 
 
 def stop_process(process: subprocess.Popen[bytes]) -> None:

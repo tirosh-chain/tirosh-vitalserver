@@ -1,18 +1,18 @@
 .PHONY: testkit-health testkit-smoke testkit-verify testkit-load testkit-stream
 
-testkit-health: require-uv
+testkit-health: require-testkit-runtime
 	$(TESTKIT) health
 
-testkit-smoke: require-uv up
+testkit-smoke: require-testkit-runtime up
 	$(TESTKIT) smoke
 
-testkit-verify: require-uv up
+testkit-verify: require-testkit-runtime up
 	$(TESTKIT) verify
 
-testkit-load: require-uv up
+testkit-load: require-testkit-runtime up
 	$(TESTKIT) load
 
-testkit-stream: require-uv up
+testkit-stream: require-testkit-runtime up
 	$(TESTKIT) stream || code=$$?; \
 	if [ "$$code" -eq 130 ]; then \
 		echo "testkit stream interrupted"; \

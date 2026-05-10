@@ -48,6 +48,7 @@ VitalServer를 Docker Compose로 실행하기만 할 때는 아래 도구만 있
 
 Python 기반 검증 도구와 개발용 검사까지 실행하려면 uv가 추가로 필요합니다.
 uv가 없더라도 `make up`, `make down`, `make logs`, `make swagger`는 사용할 수 있습니다.
+Release wheel을 설치하면 uv 없이도 `make testkit-smoke` 같은 testkit scenario를 실행할 수 있습니다.
 
 - uv
 - Python 3.14 이상
@@ -72,12 +73,23 @@ uv가 없는 환경에서는 Python 동기화를 건너뛰고 Docker 실행 환�
 https://docs.astral.sh/uv/getting-started/installation/
 ```
 
+uv 없이 release된 testkit wheel을 설치하려면 GitHub CLI 인증 후 아래 명령을 사용합니다.
+
+```sh
+gh auth login
+make install-testkit-release TESTKIT_VERSION=0.1.0
+```
+
+이후 `make testkit-smoke`, `make testkit-load` 같은 검증 target은 설치된 wheel을 사용합니다.
+uv가 설치된 개발 환경에서는 기존처럼 workspace source를 우선 사용합니다.
+
 ## 자주 쓰는 명령
 
 ```sh
 make help            # 사용 가능한 명령 확인
 make doctor          # 로컬 도구와 submodule 상태 확인
 make bootstrap       # submodule 초기화, uv가 있으면 Python workspace 동기화
+make install-testkit-release  # uv 없이 release wheel 기반 testkit 설치
 make up              # VitalServer stack 실행
 make down            # stack 중지, Docker volume 유지
 make logs            # log 확인
@@ -173,6 +185,7 @@ git push origin testkit-v0.1.0
 ```
 
 `make build-testkit`은 wheel과 sdist를 `packages/vitalserver-testkit/dist/` 아래에 생성합니다.
+Release wheel은 `make install-testkit-release TESTKIT_VERSION=0.1.0`으로 설치할 수 있습니다.
 
 PR과 `main` push에서는 testkit 관련 파일이 바뀐 경우에만 testkit CI가 실행됩니다.
 Release workflow도 이전 `testkit-v*` tag 이후 testkit 관련 변경이 있을 때만 package를
