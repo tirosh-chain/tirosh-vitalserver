@@ -1,4 +1,4 @@
-.PHONY: lint format typecheck test check
+.PHONY: lint format typecheck test build-testkit check
 
 lint:
 	$(UV) run ruff check .
@@ -12,5 +12,8 @@ typecheck:
 
 test:
 	$(UV) run pytest
+
+build-testkit:
+	$(UV) build --out-dir packages/vitalserver-testkit/dist --clear packages/vitalserver-testkit
 
 check: lint typecheck test

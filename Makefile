@@ -37,6 +37,7 @@ help:
 	@printf "  make format          Format Python code\n"
 	@printf "  make typecheck       Run mypy\n"
 	@printf "  make test            Run pytest\n"
+	@printf "  make build-testkit   Build vitalserver-testkit wheel and sdist\n"
 	@printf "  make check           Run lint, typecheck, and test\n"
 	@printf "\n"
 	@printf "Config:\n"
