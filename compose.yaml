@@ -78,13 +78,13 @@ services:
       redis:
         condition: service_healthy
     environment:
-      SWAGGER_JSON: /openapi.yaml
+      URL: /openapi.yaml
     ports:
       - "${SWAGGER_UI_PORT:-8082}:8080"
     volumes:
       - type: bind
         source: ./docs/openapi.yaml
-        target: /openapi.yaml
+        target: /usr/share/nginx/html/openapi.yaml
         read_only: true
       - type: bind
         source: ./infra/swagger-ui/default.conf.template

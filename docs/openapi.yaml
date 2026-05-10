@@ -1,4 +1,4 @@
-openapi: 3.1.0
+openapi: 3.0.3
 info:
   title: VitalServer Upstream API
   version: "2.3.4"
@@ -19,8 +19,6 @@ info:
 servers:
   - url: /vitalserver
     description: Swagger UI reverse proxy to the local Docker Compose VitalServer
-  - url: http://localhost:8080
-    description: Direct local Docker Compose default
 tags:
   - name: Public API
     description: Token-based API for file metadata and download
@@ -46,9 +44,8 @@ paths:
         stored in Redis and refreshed on later API calls.
 
         Try it out:
-          1. Use the `/vitalserver` server in Swagger UI.
-          2. Keep the default `admin` / `admin` values for a fresh local server.
-          3. Copy `access_token` from the response into token-based API calls.
+          1. Keep the default `admin` / `admin` values for a fresh local server.
+          2. Copy `access_token` from the response into token-based API calls.
       parameters:
         - $ref: "#/components/parameters/UserIdQuery"
         - $ref: "#/components/parameters/PasswordQuery"

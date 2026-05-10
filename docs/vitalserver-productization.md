@@ -55,7 +55,8 @@
 - Swagger UI: `http://localhost:8082`
 
 Swagger UI는 같은 origin에서 VitalServer를 호출하도록 `/vitalserver` reverse proxy를 사용합니다.
-Swagger에서 `Try it out`을 실행할 때는 server를 `/vitalserver`로 둡니다.
+OpenAPI 문서에는 이 proxy server만 노출해서, Swagger의 `Try it out`이 브라우저 CORS에
+걸리지 않도록 합니다.
 
 ```sh
 make up
