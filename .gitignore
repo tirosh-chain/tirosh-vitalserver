@@ -15,5 +15,17 @@ docker-compose.override.yml
 tmp/
 temp/
 
+# IDE and editor files
+.idea/
+.vscode/
+.history/
+
+# Python
+.venv/
+.pytest_cache/
+.ruff_cache/
+__pycache__/
+*.py[cod]
+
 # VitalServer is managed as a git submodule.
-vitalserver/
+vendor/vitalserver/
