@@ -15,6 +15,7 @@ Compose 설정, API 문서, Redis relay, 검증 도구를 관리합니다.
 ```sh
 git clone --recurse-submodules https://github.com/tirosh-chain/tirosh-vitalserver.git
 cd tirosh-vitalserver
+make doctor
 make up
 ```
 
@@ -39,17 +40,44 @@ Password: admin
 
 ## 요구사항
 
+VitalServer를 Docker Compose로 실행하기만 할 때는 아래 도구만 있으면 됩니다.
+
 - Docker
 - Docker Compose v2
 - Git submodule 지원 Git 클라이언트
-- uv
 
-Python 검증 도구는 Python 3.14 이상을 사용합니다.
+Python 기반 검증 도구와 개발용 검사까지 실행하려면 uv가 추가로 필요합니다.
+uv가 없더라도 `make up`, `make down`, `make logs`, `make swagger`는 사용할 수 있습니다.
+
+- uv
+- Python 3.14 이상
+
+로컬 환경이 준비됐는지 확인하려면 아래 명령을 실행합니다.
+
+```sh
+make doctor
+```
+
+submodule을 초기화하고, uv가 설치되어 있으면 Python workspace까지 동기화하려면 아래 명령을
+사용합니다.
+
+```sh
+make bootstrap
+```
+
+uv가 없는 환경에서는 Python 동기화를 건너뛰고 Docker 실행 환경만 준비합니다. uv 설치가
+필요하면 공식 설치 문서를 따릅니다.
+
+```text
+https://docs.astral.sh/uv/getting-started/installation/
+```
 
 ## 자주 쓰는 명령
 
 ```sh
 make help            # 사용 가능한 명령 확인
+make doctor          # 로컬 도구와 submodule 상태 확인
+make bootstrap       # submodule 초기화, uv가 있으면 Python workspace 동기화
 make up              # VitalServer stack 실행
 make down            # stack 중지, Docker volume 유지
 make logs            # log 확인
