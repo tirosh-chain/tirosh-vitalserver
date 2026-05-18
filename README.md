@@ -47,7 +47,8 @@ VitalServer를 Docker Compose로 실행하기만 할 때는 아래 도구만 있
 - Git submodule 지원 Git 클라이언트
 
 Python 기반 검증 도구와 개발용 검사까지 실행하려면 uv가 추가로 필요합니다.
-uv가 없더라도 `make up`, `make down`, `make logs`, `make swagger`는 사용할 수 있습니다.
+uv가 없더라도 `make up`, `make down`, `make logs`, `make swagger`,
+`make swagger-down`은 사용할 수 있습니다.
 Release wheel을 설치하면 uv 없이도 `make testkit-smoke` 같은 testkit scenario를 실행할 수 있습니다.
 
 - uv
@@ -91,10 +92,13 @@ make doctor          # 로컬 도구와 submodule 상태 확인
 make bootstrap       # submodule 초기화, uv가 있으면 Python workspace 동기화
 make install-testkit-release  # uv 없이 release wheel 기반 testkit 설치
 make up              # VitalServer stack 실행
-make down            # stack 중지, Docker volume 유지
+make down            # 전체 Compose stack 중지, Docker volume 유지
 make logs            # log 확인
 make ps              # container 상태 확인
-make swagger         # Swagger UI 실행
+make clean-volumes   # 전체 Compose stack 중지, Docker volume 삭제
+make open            # VitalServer 브라우저 열기
+make swagger         # 기본 stack은 건드리지 않고 Swagger UI만 시작
+make swagger-down    # 기본 stack은 유지하고 Swagger UI만 중지
 make testkit-smoke   # simulator 기반 smoke scenario
 make check           # lint, typecheck, test 실행
 ```
@@ -105,9 +109,18 @@ Swagger UI는 아래 주소에서 볼 수 있습니다.
 http://localhost:8082
 ```
 
+Swagger UI는 기본 stack을 먼저 실행한 뒤 별도로 시작합니다. `make swagger`는 `swagger-ui`
+컨테이너만 시작하며, `redis`나 `app`을 함께 시작하지 않습니다.
+
+```sh
+make up
+make swagger
+```
+
 포트를 바꾸려면 `.env` 또는 실행 환경에서 `SWAGGER_UI_PORT`를 지정합니다.
 Swagger UI는 `/vitalserver` reverse proxy를 통해 같은 origin에서 VitalServer를 호출합니다.
 브라우저가 직접 `http://localhost:8080`을 호출하지 않기 때문에 CORS에 걸리지 않습니다.
+Swagger UI만 정리하려면 전체 stack을 내리지 않고 `make swagger-down`을 실행합니다.
 
 ## 구조
 

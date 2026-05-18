@@ -59,8 +59,14 @@ OpenAPI 문서에는 이 proxy server만 노출해서, Swagger의 `Try it out`�
 걸리지 않도록 합니다.
 
 ```sh
-make up
-make swagger
+make up            # 기본 stack 실행
+make open          # VitalServer 브라우저 열기
+make restart       # 기본 stack 재시작
+make down          # 전체 Compose stack 중지, Docker volume 유지
+make clean-volumes # 전체 Compose stack 중지, Docker volume 삭제
+
+make swagger       # 기본 stack은 건드리지 않고 Swagger UI만 시작
+make swagger-down  # 기본 stack은 유지하고 Swagger UI만 중지
 ```
 
 ## 확인된 upstream 동작
