@@ -27,6 +27,15 @@ apps/vitalserver/
 `localhost:8080`이고, `.env`에서 `VITALSERVER_PUBLIC_HOST`, `VITALSERVER_PUBLIC_PORT`로
 바꿀 수 있습니다.
 
+VR 접속이 신뢰할 수 있는 host-level proxy나 ingress를 지날 때는 `.env`에서
+`VITALSERVER_TRUST_PROXY=1`을 켜면 fork된 VitalServer가 `X-Forwarded-For`,
+`Forwarded: for=...`, `X-Real-IP`, `X-Client-IP` header를 실제 VR IP 후보로 사용합니다.
+기본값은 `0`이며 기존처럼 socket remote address를 사용합니다.
+
+macOS Docker Desktop에서는 Docker published port를 VR 장비에 직접 노출하지 말고, host
+nginx 같은 proxy가 외부 접속을 받은 뒤 Docker backend로 전달해야 실제 VR IP를 header로
+보존할 수 있습니다. nginx config template은 `infra/macos-nginx/`에 있습니다.
+
 Compose stack은 repository root의 `compose.yaml`에서 관리합니다.
 
 제품화 전체 맥락은 repository root의 `README.md`와 `docs/index.md`를 기준으로 봅니다.
