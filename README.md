@@ -1,13 +1,13 @@
 # tirosh-vitalserver
 
-VitalDB upstream VitalServer를 실제 제품 환경에서 사용할 수 있는 수준으로 감싸고,
+VitalDB VitalServer를 실제 제품 환경에서 사용할 수 있는 수준으로 감싸고,
 운영에 필요한 실행, 관측, 검증 도구를 쌓아가는 저장소입니다.
 
-upstream VitalServer는 연구/데모 성격이 강하다고 보고, 이 저장소에서는 그 코드를 직접
-고치기보다 제품 운영에 필요한 외곽 레이어를 관리합니다.
+공식 upstream VitalServer는 연구/데모 성격이 강하다고 보고, 이 저장소에서는 그 코드를
+직접 고치기보다 제품 운영에 필요한 외곽 레이어를 관리합니다.
 
-이 저장소는 VitalServer 애플리케이션 코드를 직접 수정하지 않습니다. VitalDB upstream
-코드는 `vendor/vitalserver` git submodule로 고정하고, 이 저장소에서는 wrapper app,
+`vendor/vitalserver`는 Tirosh fork를 가리키는 git submodule입니다. VitalServer
+애플리케이션 자체 수정은 fork repository에서 처리하고, 이 저장소에서는 wrapper app,
 Compose 설정, API 문서, Redis relay, 검증 도구를 관리합니다.
 
 ## 빠른 실행
@@ -143,7 +143,7 @@ Swagger UI만 정리하려면 전체 stack을 내리지 않고 `make swagger-dow
 │   └── vitalserver-testkit/   # 운영 검증과 데이터 전송 검증용 Python 도구
 ├── scripts/
 └── vendor/
-    └── vitalserver/           # git submodule: vitaldb/vitalserver
+    └── vitalserver/           # git submodule: tirosh-chain/vitalserver
 ```
 
 ## 제품화 방향
@@ -221,8 +221,8 @@ build하고 release asset을 업로드합니다. Release note는 monorepo 전체
 make init
 ```
 
-upstream 변경분을 반영하려면 submodule을 업데이트한 뒤 변경된 submodule commit을 이
-저장소에 commit합니다.
+fork repository의 변경분을 반영하려면 submodule을 업데이트한 뒤 변경된 submodule commit을
+이 저장소에 commit합니다.
 
 ```sh
 make update-submodule
@@ -232,3 +232,6 @@ git commit -m "Update vitalserver submodule"
 ```
 
 일반적인 작업에서는 `vendor/vitalserver` 내부 코드를 수정하지 않습니다.
+VitalServer 애플리케이션 로직을 바꿔야 하면 `tirosh-chain/vitalserver` fork에서 작업한 뒤
+이 저장소의 submodule commit만 갱신합니다. 공식 upstream 변경을 가져올 때는 fork
+repository에서 `upstream` remote를 기준으로 merge/rebase한 뒤 반영합니다.

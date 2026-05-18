@@ -1,8 +1,8 @@
 # VitalServer 제품화 전략
 
-이 문서는 upstream VitalServer를 연구/데모용 서버가 아니라 제품 환경에서 사용할 수 있는
-구성요소로 만들기 위한 기준 문서입니다. 상세 실행법은 다른 문서로 분리하고, 여기서는
-제품화 목표, 현재 확인된 동작, 운영에 필요한 보강 지점, 다음 작업을 정리합니다.
+이 문서는 VitalServer를 연구/데모용 서버가 아니라 제품 환경에서 사용할 수 있는 구성요소로
+만들기 위한 기준 문서입니다. 상세 실행법은 다른 문서로 분리하고, 여기서는 제품화 목표,
+현재 확인된 동작, 운영에 필요한 보강 지점, 다음 작업을 정리합니다.
 
 관련 문서:
 
@@ -13,13 +13,14 @@
 
 ## 목표
 
-이 저장소의 목표는 upstream VitalServer를 직접 fork해서 대대적으로 고치는 것이 아니라,
-외곽 레이어를 쌓아 운영 가능한 제품 구성요소로 만드는 것입니다.
+이 저장소의 목표는 VitalServer fork를 제품 기준으로 고정하고, 외곽 레이어를 쌓아 운영
+가능한 제품 구성요소로 만드는 것입니다. Compose, 문서, 검증 도구는 이 저장소에서 관리하고,
+VitalServer 애플리케이션 자체 수정은 fork repository에서 관리합니다.
 
 우리가 관리하는 영역:
 
 - Docker Compose 기반 실행 환경
-- upstream code를 건드리지 않는 wrapper app과 runtime shim
+- fork된 VitalServer를 감싸는 wrapper app과 runtime shim
 - API와 Socket.IO 동작 문서화
 - Redis 데이터 구조 분석과 relay 설계
 - 실시간 수집, `.vital` upload, 장시간 운영 검증 도구
@@ -27,7 +28,7 @@
 
 우리가 지금 단계에서 하지 않는 영역:
 
-- `vendor/vitalserver` 내부 application logic 직접 수정
+- 이 저장소에서 `vendor/vitalserver` 내부 application logic 직접 수정
 - upstream UI 대규모 개편
 - VitalDB public cloud API와의 완전 호환 보장
 - 의료기기 수준의 인증/감사 요구사항 충족 선언
@@ -45,7 +46,7 @@
 ├── docs/                       # 문서 지도, 제품화 문서, OpenAPI, Redis 구조
 ├── packages/vitalserver-testkit/
 │   └── src/                    # 운영 검증용 Python CLI/package
-└── vendor/vitalserver/         # upstream git submodule
+└── vendor/vitalserver/         # tirosh-chain/vitalserver fork submodule
 ```
 
 기본 로컬 endpoint:
@@ -122,7 +123,7 @@ Redis에 저장되는 핵심 key는 아래입니다.
 
 - `make up`으로 깨끗한 환경에서 재현 가능하게 실행됩니다.
 - 포트, 관리자 비밀번호, Swagger 포트는 `.env`로 조정할 수 있습니다.
-- upstream submodule은 명시적으로 고정하고, 변경 시 submodule commit을 리뷰합니다.
+- VitalServer fork submodule은 명시적으로 고정하고, 변경 시 submodule commit을 리뷰합니다.
 
 ### API
 
