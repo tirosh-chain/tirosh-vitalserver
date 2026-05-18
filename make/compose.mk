@@ -1,6 +1,7 @@
 .PHONY: build up down restart logs ps shell config clean-volumes
 .PHONY: open
 .PHONY: swagger swagger-down
+.PHONY: proxy-config
 
 build: init
 	$(COMPOSE) build
@@ -40,3 +41,8 @@ swagger:
 
 swagger-down:
 	$(COMPOSE) --profile swagger stop swagger-ui
+
+proxy-config:
+	@VITALSERVER_PROXY_PORT="$${VITALSERVER_PROXY_PORT:-8080}" \
+	VITALSERVER_HTTP_PORT="$${VITALSERVER_HTTP_PORT:-18080}" \
+	"$(PYTHON)" -c 'import os, pathlib; p=pathlib.Path("infra/macos-nginx/vitalserver.conf.template"); s=p.read_text(); print(s.replace("$${VITALSERVER_PROXY_PORT}", os.environ["VITALSERVER_PROXY_PORT"]).replace("$${VITALSERVER_HTTP_PORT}", os.environ["VITALSERVER_HTTP_PORT"]), end="")'

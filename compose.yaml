@@ -36,6 +36,7 @@ services:
       VITALSERVER_MIN_CPUS: "6"
       VITALSERVER_PUBLIC_HOST: "${VITALSERVER_PUBLIC_HOST:-localhost}"
       VITALSERVER_PUBLIC_PORT: "${VITALSERVER_PUBLIC_PORT:-${VITALSERVER_HTTP_PORT:-8080}}"
+      VITALSERVER_TRUST_PROXY: "${VITALSERVER_TRUST_PROXY:-0}"
     volumes:
       - type: volume
         source: vital-files

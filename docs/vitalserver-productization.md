@@ -85,6 +85,48 @@ upstream VitalServer `2.3.4` 코드를 분석하면서 public 문서와 다른 �
 제품화 작업에서는 public 문서보다 현재 포함한 upstream code를 우선 기준으로 삼습니다.
 public 문서와 다른 부분은 OpenAPI와 제품화 문서에 명시합니다.
 
+### VR Network Settings IP
+
+Web Monitoring의 `Network Settings`는 VR이 Socket.IO `join_vr`로 접속할 때 저장된
+`ip_<vrcode>` 값을 받아 `http://<ip>`로 엽니다. macOS Docker Desktop의 port forwarding을
+직접 거치면 container 내부에서는 실제 VR IP 대신 Docker gateway IP가 보일 수 있습니다.
+
+fork된 VitalServer는 `VITALSERVER_TRUST_PROXY=1`일 때만 `X-Forwarded-For`,
+`Forwarded: for=...`, `X-Real-IP`, `X-Client-IP` header를 우선 사용합니다. 기본값은 기존처럼
+socket remote address를 사용합니다. 따라서 macOS 운영 환경에서는 VR 접속이 host-level
+proxy나 ingress를 지나면서 실제 client IP header를 전달하도록 구성하고,
+`VITALSERVER_TRUST_PROXY=1`을 명시적으로 켭니다. Docker container 내부에서만 network 정보를
+읽어서는 NAT 이전의 VR IP를 복원할 수 없습니다.
+
+macOS 운영 서버에서는 Docker published port를 외부에 직접 노출하지 않고, host nginx가
+외부 접속을 받은 뒤 Docker backend로 proxy합니다.
+
+```text
+VR 장비 / 브라우저
+  -> macOS host nginx :8080
+  -> Docker published backend 127.0.0.1:18080
+  -> VitalServer container :80
+```
+
+예시 `.env`:
+
+```env
+VITALSERVER_HTTP_PORT=18080
+VITALSERVER_PUBLIC_HOST=<macOS host LAN IP 또는 DNS>
+VITALSERVER_PUBLIC_PORT=8080
+VITALSERVER_TRUST_PROXY=1
+```
+
+host nginx config는 아래 명령으로 렌더링합니다.
+
+```sh
+VITALSERVER_PROXY_PORT=8080 VITALSERVER_HTTP_PORT=18080 make proxy-config
+```
+
+렌더링된 config는 macOS host의 nginx 설정에 포함합니다. 이 config는 client가 보낸
+forwarding header를 신뢰하지 않고 host nginx의 `$remote_addr`로 덮어써서 VitalServer에
+전달합니다.
+
 ## 데이터 흐름
 
 실시간 수집 흐름:

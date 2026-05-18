@@ -37,6 +37,7 @@ help:
 	@printf "  make open            Open VitalServer in browser\n"
 	@printf "  make swagger         Start Swagger UI only\n"
 	@printf "  make swagger-down    Stop Swagger UI only, keep base stack\n"
+	@printf "  make proxy-config    Render macOS host nginx proxy config\n"
 	@printf "\n"
 	@printf "Verify:\n"
 	@printf "  make testkit-smoke   Run bounded productization smoke scenario\n"
