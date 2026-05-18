@@ -1,11 +1,12 @@
 # VitalServer wrapper app
 
-이 디렉터리는 `vendor/vitalserver`에 고정한 upstream VitalServer를 제품 실행 단위로 감싸는
+이 디렉터리는 `vendor/vitalserver`에 고정한 VitalServer fork를 제품 실행 단위로 감싸는
 app입니다.
 
-upstream 코드는 이 디렉터리에 복사해 두지 않습니다. 각 배포 target은 root build context의
+VitalServer 코드는 이 디렉터리에 복사해 두지 않습니다. 각 배포 target은 root build context의
 `vendor/vitalserver/vitalserver-old`를 가져오고, 이 app에서 관리하는 runtime shim만
-추가합니다. 현재는 Docker target만 둡니다.
+추가합니다. 현재는 Docker target만 둡니다. VitalServer 애플리케이션 자체 수정은
+`tirosh-chain/vitalserver` fork에서 처리합니다.
 
 ## 구성
 
