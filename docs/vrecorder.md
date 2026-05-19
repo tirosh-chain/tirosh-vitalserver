@@ -25,6 +25,28 @@ VitalServer code 기준으로 VRecorder 호환 client는 Socket.IO로 접속한 
 `ip_<vrcode>`를 채우는 정상 경로가 사라집니다. UI의 online/offline 판단은 `join_vr` 연결
 자체가 아니라 `send_data`로 갱신되는 timestamp를 기준으로 합니다.
 
+### VRecorder 식별 기준
+
+VitalServer code 기준으로 VRecorder의 identity는 IP가 아니라 `vrcode`입니다.
+
+`join_vr(vrcode)`를 받으면 VitalServer는 해당 socket을 `vrcode` room에 join시키고,
+Redis에는 현재 접속 주소를 `ip_<vrcode>`로 저장합니다. 따라서 `ip_<vrcode>`는 장비의
+고정 식별자가 아니라, 특정 `vrcode`가 마지막으로 등록한 현재 접속 주소입니다.
+
+정리하면 아래처럼 봅니다.
+
+| 관계 | 의미 |
+| --- | --- |
+| `1 vrcode = 1 VRecorder identity` | VitalServer가 VRecorder를 구분하는 기준 |
+| `1 vrcode -> 1 current IP` | `join_vr` 시점의 접속 IP가 `ip_<vrcode>`에 저장됨 |
+| `1 vrcode -> N beds` | 하나의 VRecorder가 여러 room/bed data를 보낼 수 있음 |
+| `1 IP -> N vrcode 가능` | 같은 host/VM/NAT 뒤에서 여러 `vrcode`가 접속하는 것도 구조상 가능 |
+
+같은 `vrcode`가 다른 IP에서 다시 `join_vr`를 보내면 `ip_<vrcode>` 값은 새 IP로 덮어써집니다.
+실제 제품 운영에서는 보통 장비 1대가 `vrcode` 1개를 가지는 것으로 보는 것이 자연스럽지만,
+testkit처럼 한 VM에서 여러 virtual recorder를 실행하면 같은 IP에 여러 `vrcode`가 매핑될 수
+있습니다.
+
 ### Realtime Payload
 
 `send_data` payload는 zlib으로 압축된 JSON입니다. VitalServer가 기대하는 최상위 구조는
@@ -145,3 +167,33 @@ VM 또는 별도 장비에서 testkit을 실행할 때는 bridged network로 DHC
 public proxy 주소로 접속합니다. Network Settings를 눌렀을 때 열린 페이지가 testkit 상태
 페이지라면 VitalServer의 `join_vr` 처리, proxy IP 보존, Web Monitoring IP 전달이 함께
 검증된 것입니다.
+
+예시:
+
+```sh
+uv run vitalserver-testkit stream-recorder \
+  --vitalserver-url http://<vitalserver-host>:8080 \
+  --vrcode VR_TEST \
+  --status-page \
+  --status-port 80
+```
+
+일반 사용자 권한으로 port `80`을 bind할 수 없는 환경에서는 `--status-port 8080` 같은 대체
+port로 상태 페이지를 먼저 확인합니다. 단, Web Monitoring의 Network Settings는 현재 port를
+붙이지 않고 `http://<vr_ipaddr>`를 열기 때문에 실제 Network Settings 검증에는 port `80`에서
+상태 페이지가 떠 있어야 합니다.
+
+#### 수동 E2E 체크리스트
+
+아래 항목은 실제 VM 또는 장비 network에서 확인합니다. unit/integration test는 Socket.IO
+lifecycle과 status page 동작을 검증하지만, 실제 client IP 보존 여부는 배포 network 구성을
+통과해야만 확인할 수 있습니다.
+
+| 단계 | 확인 항목 |
+| --- | --- |
+| VM network | testkit VM이 bridged network에서 DHCP LAN IP를 받음 |
+| 접속 | `stream-recorder --status-page --status-port 80`로 VitalServer public 주소에 접속 |
+| Redis | `ip_<vrcode>` 값이 Docker gateway가 아니라 VM LAN IP로 저장됨 |
+| Web Monitoring | 해당 bed가 online으로 표시되고 최근 `send_data`가 반영됨 |
+| Network Settings | 버튼 클릭 시 `http://<vm-lan-ip>`가 열리고 testkit status page가 표시됨 |
+| Status JSON | `/status.json`에서 `join_sent`, `server_dt`, management event 이력을 확인 가능 |

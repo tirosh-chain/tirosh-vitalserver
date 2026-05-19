@@ -9,7 +9,7 @@ dependencies = [
 ]
 
 [project.scripts]
-vitalserver-testkit = "tirosh_vitalserver.testkit.adapters.inbound.cli.__main__:main"
+vitalserver-testkit = "tirosh_vitalserver.testkit.cli:main"
 
 [build-system]
 requires = ["hatchling"]

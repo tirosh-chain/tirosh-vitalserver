@@ -96,7 +96,7 @@ bed device metadata가 조회되는지 확인합니다.
 
 ```sh
 uv run vitalserver-testkit verify-recorder \
-  --base-url http://localhost:8080
+  --vitalserver-url http://localhost:8080
 ```
 
 성공하면 아래처럼 room과 bed id가 출력됩니다.
@@ -112,7 +112,7 @@ visible: room=mnw4anvs4 bed_id=de8d5733096db32506a924ac566c903c343e2338 bytes=..
 
 ```sh
 uv run vitalserver-testkit verify-recorder \
-  --base-url http://localhost:8080 \
+  --vitalserver-url http://localhost:8080 \
   --recorders 5
 ```
 
@@ -120,19 +120,20 @@ uv run vitalserver-testkit verify-recorder \
 
 ```sh
 uv run vitalserver-testkit send-recorder \
-  --base-url http://localhost:8080 \
+  --vitalserver-url http://localhost:8080 \
   --recorders 5 \
   --concurrency 10 \
   --repeat 100
 ```
 
-실제 recorder처럼 계속 흘려보내는 상황은 `stream-recorder`를 사용합니다. 기본값은
-Ctrl+C로 중단할 때까지 streaming하며, 검증 자동화에서는 `--duration` 또는
-`--max-messages`로 종료 조건을 둡니다.
+실제 recorder처럼 `join_vr`를 보내고 계속 흘려보내는 상황은 `stream-recorder`를 사용합니다.
+기본값은 Ctrl+C로 중단할 때까지 streaming하며, 검증 자동화에서는 `--duration` 또는
+`--max-messages`로 종료 조건을 둡니다. `send-recorder`와 `verify-recorder`는 one-shot
+`send_data` 확인용이며 VRecorder lifecycle 검증에는 사용하지 않습니다.
 
 ```sh
 uv run vitalserver-testkit stream-recorder \
-  --base-url http://localhost:8080 \
+  --vitalserver-url http://localhost:8080 \
   --recorders 5 \
   --interval 1
 ```
@@ -141,7 +142,7 @@ uv run vitalserver-testkit stream-recorder \
 
 ```sh
 uv run vitalserver-testkit stream-recorder \
-  --base-url http://localhost:8080 \
+  --vitalserver-url http://localhost:8080 \
   --recorders 5 \
   --interval 1 \
   --duration 10
@@ -197,7 +198,7 @@ print(f"bytes={transfer_total_bytes_sent(summary)}")
 
 ```sh
 uv run vitalserver-testkit upload-vital path/to/vital-files \
-  --base-url http://localhost:8080 \
+  --vitalserver-url http://localhost:8080 \
   --endpoint /upload \
   --concurrency 4 \
   --repeat 10
@@ -280,5 +281,5 @@ make down
 testkit에서 health check만 확인할 수도 있습니다.
 
 ```sh
-uv run vitalserver-testkit health --base-url http://localhost:8080
+uv run vitalserver-testkit health --vitalserver-url http://localhost:8080
 ```

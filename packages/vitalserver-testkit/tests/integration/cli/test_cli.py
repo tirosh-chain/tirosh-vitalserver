@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from tirosh_vitalserver.testkit.adapters.inbound.cli.__main__ import main
+from tirosh_vitalserver.testkit.cli import main
 
 
 def test_cli_help_returns_usage(capsys: pytest.CaptureFixture[str]) -> None:
@@ -22,3 +22,14 @@ def test_cli_subcommand_help(capsys: pytest.CaptureFixture[str]) -> None:
     assert "sample_data.json" not in captured.out
     assert "payload" in captured.out
     assert "Socket.IO" in captured.out
+
+
+def test_cli_bed_scenario_parse_error_is_user_facing(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit) as exc_info:
+        main(["stream-recorder", "--bed-scenario", "bad"])
+
+    captured = capsys.readouterr()
+    assert exc_info.value.code == 2
+    assert "bed scenario must be INDEX=SCENARIO" in captured.err

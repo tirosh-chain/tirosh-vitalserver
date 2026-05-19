@@ -1,6 +1,12 @@
 """VitalServer load and transfer test helpers."""
 
+from .adapters.outbound.recorder import connect_socketio
 from .adapters.outbound.vitalserver import VitalServerClient
+from .application.metrics import (
+    stream_total_bytes_sent,
+    stream_total_messages_sent,
+)
+from .application.recorder_runtime import RecorderRuntimeRegistry
 from .application.results import (
     RealtimeSendResult,
     RealtimeStreamResult,
@@ -15,6 +21,7 @@ from .application.usecases import (
     send_recorder_payloads,
     send_virtual_recorder_payloads,
     stream_virtual_recorder_payloads,
+    stream_vrecorder_session,
     upload_vital_files,
     wait_for_server,
 )
@@ -56,6 +63,7 @@ __all__ = [
     "RealtimeSendResult",
     "RealtimeStreamResult",
     "RecorderRoom",
+    "RecorderRuntimeRegistry",
     "RecorderSendResult",
     "RecorderSignalScenario",
     "RecorderTrackMontype",
@@ -73,6 +81,7 @@ __all__ = [
     "build_simulated_recorder_payload",
     "build_virtual_recorder_payloads",
     "combine_virtual_recorder_rooms",
+    "connect_socketio",
     "encode_realtime_payload",
     "iter_recorder_rooms",
     "iter_vital_files",
@@ -85,7 +94,10 @@ __all__ = [
     "send_virtual_recorder_payloads",
     "shift_recorder_payload_time",
     "stream_realtime_payload",
+    "stream_total_bytes_sent",
+    "stream_total_messages_sent",
     "stream_virtual_recorder_payloads",
+    "stream_vrecorder_session",
     "upload_vital_files",
     "wait_for_recorder_visibility",
     "wait_for_server",
