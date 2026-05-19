@@ -57,7 +57,7 @@ def add_vital_file_parsers(
 def run_upload_vital(args: argparse.Namespace) -> int:
     """Upload one file or a directory of `.vital` files to VitalServer."""
 
-    client = VitalServerClient(args.base_url, timeout=args.timeout)
+    client = VitalServerClient(args.vitalserver_url, timeout=args.timeout)
     payloads = iter_vital_files(args.path)
 
     if not args.skip_filename_check:

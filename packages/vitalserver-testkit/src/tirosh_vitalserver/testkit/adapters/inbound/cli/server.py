@@ -38,7 +38,7 @@ def add_server_parsers(
 def run_health(args: argparse.Namespace) -> int:
     """Wait until the configured VitalServer health endpoint responds."""
 
-    client = VitalServerClient(args.base_url, timeout=args.timeout)
+    client = VitalServerClient(args.vitalserver_url, timeout=args.timeout)
 
     wait_for_server(
         client,
@@ -47,6 +47,6 @@ def run_health(args: argparse.Namespace) -> int:
         interval_seconds=args.interval,
     )
 
-    print(f"VitalServer is ready: {args.base_url}{args.path}")
+    print(f"VitalServer is ready: {args.vitalserver_url}{args.path}")
 
     return 0

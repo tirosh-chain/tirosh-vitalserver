@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 
 from tirosh_vitalserver.testkit.schemas.http import HttpResponse
 from tirosh_vitalserver.testkit.types.json import JsonValue
@@ -39,7 +39,9 @@ class SocketIoClientPort(Protocol):
 
     connected: bool
 
-    def emit(self, event: str, data: bytes) -> None: ...
+    def emit(self, event: str, data: Any = None) -> None: ...
+
+    def on(self, event: str, handler: Callable[..., None]) -> None: ...
 
     def sleep(self, seconds: float) -> None: ...
 

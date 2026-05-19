@@ -152,7 +152,7 @@ def run_health(config: VitalServerCheckConfig) -> None:
     run(
         *testkit_command(),
         "health",
-        "--base-url",
+        "--vitalserver-url",
         config.server.base_url,
         "--timeout",
         str(config.server.timeout),
@@ -167,7 +167,7 @@ def run_verify(config: VitalServerCheckConfig) -> None:
     command = [
         *testkit_command(),
         "verify-recorder",
-        "--base-url",
+        "--vitalserver-url",
         config.server.base_url,
         "--timeout",
         str(config.server.timeout),
@@ -187,7 +187,7 @@ def run_load(config: VitalServerCheckConfig) -> None:
     command = [
         *testkit_command(),
         "send-recorder",
-        "--base-url",
+        "--vitalserver-url",
         config.server.base_url,
         "--timeout",
         str(config.server.timeout),
@@ -217,7 +217,7 @@ def run_stream(
     command = [
         *testkit_command(),
         "stream-recorder",
-        "--base-url",
+        "--vitalserver-url",
         config.server.base_url,
         "--timeout",
         str(config.server.timeout),

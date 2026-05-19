@@ -18,6 +18,9 @@ from tirosh_vitalserver.testkit.application.ports import (
     SocketIoConnectorPort,
     VitalServerPort,
 )
+from tirosh_vitalserver.testkit.application.recorder_runtime import (
+    RecorderRuntimeRegistry,
+)
 from tirosh_vitalserver.testkit.application.results import (
     RealtimeSendResult,
     RealtimeStreamResult,
@@ -154,6 +157,7 @@ def stream_virtual_recorder_payloads(
     generate_frames: bool = True,
     default_signal_profile: SignalProfile = DEFAULT_SIGNAL_PROFILE,
     signal_profiles: Mapping[int, SignalProfile] | None = None,
+    runtime_registry: RecorderRuntimeRegistry | None = None,
     connector: SocketIoConnectorPort,
 ) -> StreamSummary:
     """Stream distinct virtual recorder payloads through persistent Socket.IO."""
@@ -183,6 +187,14 @@ def stream_virtual_recorder_payloads(
                     signal_profiles=signal_profiles,
                 ),
                 stop_event=stop_event,
+                runtime_state=(
+                    runtime_registry.state_for(
+                        vrcode=payload.vrcode,
+                        base_url=base_url,
+                    )
+                    if runtime_registry is not None
+                    else None
+                ),
                 connector=connector,
             )
             for index, payload in enumerate(payload_list, start=1)

@@ -7,6 +7,12 @@ import time
 from collections.abc import Mapping
 
 from tirosh_vitalserver.testkit.application.ports import SocketIoConnectorPort
+from tirosh_vitalserver.testkit.application.recorder_lifecycle import (
+    register_vrecorder_lifecycle,
+)
+from tirosh_vitalserver.testkit.application.recorder_runtime import (
+    RecorderRuntimeState,
+)
 from tirosh_vitalserver.testkit.application.results import RealtimeStreamResult
 from tirosh_vitalserver.testkit.application.usecases.recorder.sender import (
     encode_realtime_payload,
@@ -33,6 +39,7 @@ def stream_realtime_payload(
     generate_frames: bool = False,
     signal_profile: SignalProfile = DEFAULT_SIGNAL_PROFILE,
     stop_event: threading.Event | None = None,
+    runtime_state: RecorderRuntimeState | None = None,
     connector: SocketIoConnectorPort,
 ) -> RealtimeStreamResult:
     """Keep one Socket.IO connection open and emit `send_data` repeatedly."""
@@ -49,6 +56,8 @@ def stream_realtime_payload(
 
     try:
         client = connector(base_url, timeout=timeout)
+        if runtime_state is not None:
+            register_vrecorder_lifecycle(client, state=runtime_state)
 
         try:
             while should_continue_stream(
@@ -70,6 +79,8 @@ def stream_realtime_payload(
                     shift_time=shift_time and not generate_frames,
                 )
                 client.emit("send_data", encoded)
+                if runtime_state is not None:
+                    runtime_state.record_send_data(bytes_sent=len(encoded))
                 client.sleep(0.05)
 
                 messages_sent += 1

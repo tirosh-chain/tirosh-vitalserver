@@ -1,18 +1,29 @@
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Thread
-from typing import ClassVar, cast
+from typing import Any, ClassVar, cast
 
 from tirosh_vitalserver.testkit.application.ports import SocketIoClientPort
 
 
 class FakeSocketIoClient:
     connected = True
+    emitted: list[tuple[str, Any]]
+    handlers: dict[str, Callable[..., None]]
 
-    def emit(self, event: str, data: bytes) -> None:
+    def __init__(self) -> None:
+        self.emitted = []
+        self.handlers = {}
+
+    def emit(self, event: str, data: Any = None) -> None:
+        self.emitted.append((event, data))
+        return
+
+    def on(self, event: str, handler: Callable[..., None]) -> None:
+        self.handlers[event] = handler
         return
 
     def sleep(self, seconds: float) -> None:

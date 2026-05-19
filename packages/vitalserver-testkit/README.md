@@ -6,34 +6,57 @@ Python 패키지입니다. upstream VitalServer를 직접 수정하지 않고, s
 
 ## 빠른 실행
 
-저장소 root에서 VitalServer를 먼저 실행합니다.
-
 ```sh
+# 저장소 root에서 VitalServer를 먼저 실행
 make up
 ```
 
-CLI는 workspace 환경에서 실행합니다.
-
 ```sh
+# CLI는 workspace 환경에서 실행
 uv run vitalserver-testkit --help
+
+# 서버 준비가 끝났는지 먼저 확인
+uv run vitalserver-testkit health \
+  --vitalserver-url http://localhost
 ```
 
-파일 없이 simulated recorder data를 VitalServer Socket.IO `send_data` event로 보내고
-UI-visible 상태까지 확인합니다.
-
-```sh
-uv run vitalserver-testkit verify-recorder \
-  --base-url http://localhost
-```
-
-여러 recorder machine을 동시에 흉내내려면 `--recorders`를 사용합니다.
+VRecorder처럼 Socket.IO에 접속해 `join_vr`를 보내고, simulated recorder data를 계속 흘립니다.
+VRecorder 접속 lifecycle, `dt` 수신, 관리 이벤트 수신은 `stream-recorder` 기준으로 검증합니다.
+`send-recorder`와 `verify-recorder`는 one-shot `send_data` 확인용이며 `join_vr`를 보내지 않습니다.
 
 ```sh
 uv run vitalserver-testkit stream-recorder \
-  --base-url http://localhost \
+  --vitalserver-url http://localhost \
   --recorders 5 \
   --interval 1
 ```
+
+`stream-recorder`는 VitalServer가 보내는 `dt`와 관리 이벤트를 수신합니다. Network Settings
+대상 확인용 상태 페이지가 필요하면 `--status-page`를 켭니다.
+
+```sh
+uv run vitalserver-testkit stream-recorder \
+  --vitalserver-url http://<vitalserver-host> \
+  --vrcode VR_TEST \
+  --status-page \
+  --status-port 80
+```
+
+VitalServer Web Monitoring의 Network Settings는 `http://<vr-ip>`처럼 port 없이 열기 때문에
+end-to-end 검증에는 port `80`이 필요합니다. 일반 사용자 권한으로 실행해야 하는 환경에서는
+아래처럼 대체 port를 사용할 수 있지만, 이 경우 Network Settings 버튼이 자동으로 여는 URL과는
+다르므로 브라우저에서 `http://<vr-ip>:8080`을 직접 확인해야 합니다.
+
+```sh
+uv run vitalserver-testkit stream-recorder \
+  --vitalserver-url http://<vitalserver-host> \
+  --vrcode VR_TEST \
+  --status-page \
+  --status-port 8080
+```
+
+상태 페이지는 `join_vr` 전송 여부, 서버 `dt`, local IP, 마지막 `send_data` 시각, 전송 횟수,
+관리 이벤트 수신 이력을 보여줍니다. JSON으로는 `/status.json`을 조회합니다.
 
 ## Simulated Signal Scenario
 
@@ -73,22 +96,22 @@ scenario = "desaturation"
 
 ## Python API
 
+Python에서 VRecorder 접속 lifecycle까지 검증하려면 `stream_vrecorder_session`을 사용합니다.
+
 ```python
 from tirosh_vitalserver.testkit import (
     build_simulated_recorder_payload,
     build_virtual_recorder_payloads,
-    stream_virtual_recorder_payloads,
-)
-from tirosh_vitalserver.testkit.adapters.outbound.recorder import connect_socketio
-from tirosh_vitalserver.testkit.application.metrics import (
+    connect_socketio,
     stream_total_bytes_sent,
     stream_total_messages_sent,
+    stream_vrecorder_session,
 )
 
 payload = build_simulated_recorder_payload()
 virtual_payloads = build_virtual_recorder_payloads(payload, count=5)
 
-summary = stream_virtual_recorder_payloads(
+summary = stream_vrecorder_session(
     "http://localhost",
     virtual_payloads,
     interval_seconds=1,
@@ -104,6 +127,8 @@ print(stream_total_bytes_sent(summary))
 
 ```text
 src/tirosh_vitalserver/testkit/
+  cli.py            # CLI composition root
+
   domain/
     recorder/       # Recorder value object, montype, payload 변환
       payloads/     # wire type, encoding, time, virtual, realtime helpers
@@ -113,6 +138,8 @@ src/tirosh_vitalserver/testkit/
 
   application/
     ports.py        # usecase가 요구하는 외부 시스템 계약
+    recorder_lifecycle.py  # VRecorder Socket.IO lifecycle wiring
+    recorder_runtime.py    # stream 상태와 status page snapshot
     results.py      # usecase 실행 결과 value object
     metrics.py      # result/summary 계산 함수
     assertions.py   # 실패율 검증
@@ -123,7 +150,9 @@ src/tirosh_vitalserver/testkit/
 
   adapters/
     inbound/cli/    # argparse CLI
-      recorder/     # recorder command/parser/scenario adapter
+      recorder.py   # recorder command/parser adapter
+    inbound/http/   # local HTTP endpoints exposed by the testkit
+      recorder_status.py
     outbound/       # VitalServer HTTP, Socket.IO 구현체
 
   schemas/          # 외부 입력 Pydantic schema와 document loader

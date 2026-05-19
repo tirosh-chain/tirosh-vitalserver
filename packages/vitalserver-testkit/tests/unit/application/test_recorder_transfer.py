@@ -12,9 +12,15 @@ from tirosh_vitalserver.testkit.application.metrics import (
     stream_total_streams,
 )
 from tirosh_vitalserver.testkit.application.ports import SocketIoConnectorPort
+from tirosh_vitalserver.testkit.application.recorder_runtime import (
+    RecorderRuntimeState,
+)
 from tirosh_vitalserver.testkit.application.results import RealtimeStreamResult
 from tirosh_vitalserver.testkit.application.usecases.recorder import (
     transfer as recorder_transfer_module,
+)
+from tirosh_vitalserver.testkit.application.usecases.recorder.stream_vrecorder import (
+    stream_vrecorder_session,
 )
 from tirosh_vitalserver.testkit.application.usecases.recorder.transfer import (
     stream_virtual_recorder_payloads,
@@ -56,6 +62,7 @@ def test_stream_virtual_recorder_payloads_streams_each_recorder(
         generate_frames: bool = True,
         signal_profile: SignalProfile = DEFAULT_SIGNAL_PROFILE,
         stop_event: threading.Event | None = None,
+        runtime_state: RecorderRuntimeState | None = None,
         connector: SocketIoConnectorPort,
     ) -> RealtimeStreamResult:
         rooms = iter_recorder_rooms(payload)
@@ -123,6 +130,7 @@ def test_stream_virtual_recorder_payloads_stops_peers_after_failure(
         generate_frames: bool = True,
         signal_profile: SignalProfile = DEFAULT_SIGNAL_PROFILE,
         stop_event: threading.Event | None = None,
+        runtime_state: RecorderRuntimeState | None = None,
         connector: SocketIoConnectorPort,
     ) -> RealtimeStreamResult:
         nonlocal peer_observed_stop
@@ -160,3 +168,55 @@ def test_stream_virtual_recorder_payloads_stops_peers_after_failure(
     assert stream_total_streams(summary) == 2
     assert stream_failed_streams(summary) == 1
     assert peer_observed_stop
+
+
+def test_stream_vrecorder_session_registers_lifecycle_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recorder_payload: JsonObject = {
+        "recorder-code": {
+            "roomname": "BED01",
+            "trks": [],
+        }
+    }
+    virtual_payloads = build_virtual_recorder_payloads(recorder_payload, count=1)
+    runtime_states: list[RecorderRuntimeState | None] = []
+
+    def fake_stream_realtime_payload(
+        base_url: str,
+        payload: Mapping[str, JsonValue],
+        *,
+        timeout: float = 30.0,
+        interval_seconds: float = 1.0,
+        duration_seconds: float | None = None,
+        max_messages: int | None = None,
+        shift_time: bool = True,
+        generate_frames: bool = True,
+        signal_profile: SignalProfile = DEFAULT_SIGNAL_PROFILE,
+        stop_event: threading.Event | None = None,
+        runtime_state: RecorderRuntimeState | None = None,
+        connector: SocketIoConnectorPort,
+    ) -> RealtimeStreamResult:
+        runtime_states.append(runtime_state)
+
+        return RealtimeStreamResult(
+            messages_sent=1,
+            bytes_sent=10,
+            elapsed_seconds=0.01,
+        )
+
+    monkeypatch.setattr(
+        recorder_transfer_module,
+        "stream_realtime_payload",
+        fake_stream_realtime_payload,
+    )
+
+    summary = stream_vrecorder_session(
+        "http://example.test",
+        virtual_payloads,
+        connector=fake_socketio_connector,
+    )
+
+    assert stream_total_streams(summary) == 1
+    assert runtime_states
+    assert runtime_states[0] is not None
