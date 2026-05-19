@@ -35,7 +35,7 @@ help:
 	@printf "\n"
 	@printf "Setup:\n"
 	@printf "  make doctor          Check local tools and repository setup\n"
-	@printf "  make bootstrap       Initialize submodules and sync Python env when uv exists\n"
+	@printf "  make bootstrap       Prepare .env, submodules, proxy config, and optional Python env\n"
 	@printf "\n"
 	@printf "Proxy:\n"
 	@printf "  make proxy-status    Show macOS host nginx proxy status\n"

@@ -1,13 +1,27 @@
 .PHONY: bootstrap doctor install-testkit-release require-testkit-runtime require-uv
 
 bootstrap: init
+	@printf "Preparing local workspace\n"
+	@if [ -f .env ]; then \
+		printf "ok: .env exists\n"; \
+	else \
+		cp .env.example .env; \
+		printf "created: .env from .env.example\n"; \
+	fi
+	@mkdir -p "$(PROXY_RUNTIME_DIR)/logs"
+	@$(MAKE) proxy-write-config
 	@if command -v "$(UV)" >/dev/null 2>&1; then \
 		printf "Syncing Python workspace with %s\n" "$(UV)"; \
-		"$(UV)" sync; \
+		if "$(UV)" sync; then \
+			printf "ok: Python workspace synced\n"; \
+		else \
+			printf "warn: Python workspace sync failed; continuing because testkit/dev env is optional for make up\n"; \
+		fi; \
 	else \
 		printf "uv not found; skipping Python workspace sync.\n"; \
 		printf "Install uv only when you need testkit, lint, typecheck, or pytest.\n"; \
 	fi
+	@$(MAKE) doctor
 
 doctor:
 	@printf "Checking local environment\n"

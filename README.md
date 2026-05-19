@@ -60,15 +60,16 @@ Release wheel을 설치하면 uv 없이도 `make testkit-smoke` 같은 testkit s
 make doctor
 ```
 
-submodule을 초기화하고, uv가 설치되어 있으면 Python workspace까지 동기화하려면 아래 명령을
-사용합니다.
+submodule, `.env`, 로컬 proxy config를 준비하고, uv가 설치되어 있으면 Python workspace까지
+동기화하려면 아래 명령을 사용합니다.
 
 ```sh
 make bootstrap
 ```
 
-uv가 없는 환경에서는 Python 동기화를 건너뛰고 Docker 실행 환경만 준비합니다. uv 설치가
-필요하면 공식 설치 문서를 따릅니다.
+`make bootstrap`은 마지막에 `make doctor`를 실행해 Docker, nginx, proxy port, compose 설정을
+확인합니다. uv가 없는 환경에서는 Python 동기화를 건너뛰고 Docker 실행 환경만 준비합니다. uv
+설치가 필요하면 공식 설치 문서를 따릅니다.
 
 ```text
 https://docs.astral.sh/uv/getting-started/installation/
@@ -89,7 +90,7 @@ uv가 설치된 개발 환경에서는 기존처럼 workspace source를 우선 �
 ```sh
 make help            # 사용 가능한 명령 확인
 make doctor          # 로컬 도구와 submodule 상태 확인
-make bootstrap       # submodule 초기화, uv가 있으면 Python workspace 동기화
+make bootstrap       # .env, submodule, proxy config, 선택적 Python workspace 준비
 make install-testkit-release  # uv 없이 release wheel 기반 testkit 설치
 make up              # macOS host proxy와 VitalServer stack 실행
 make down            # proxy와 Compose stack 중지, Docker volume 유지
