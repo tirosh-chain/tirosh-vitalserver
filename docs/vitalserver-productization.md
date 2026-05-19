@@ -139,6 +139,17 @@ VITALSERVER_PROXY_PORT=8080 VITALSERVER_HTTP_PORT=18080 make proxy-config
 forwarding header를 신뢰하지 않고 host nginx의 `$remote_addr`로 덮어써서 VitalServer에
 전달합니다.
 
+로컬 PoC에서는 Homebrew nginx를 설치한 뒤 repository의 임시 prefix로 proxy를 실행합니다.
+
+```sh
+VITALSERVER_PROXY_PORT=8080 VITALSERVER_HTTP_PORT=18080 make proxy-start
+make proxy-status
+make proxy-stop
+```
+
+`make proxy-start`는 `.tmp/macos-nginx/vitalserver.conf`를 생성하고 해당 config로 nginx를
+실행합니다. Homebrew service를 등록하거나 launchd를 수정하지 않습니다.
+
 설치형 배포에서는 nginx binary와 config를 macOS host에 설치하고 launchd로 관리합니다.
 LaunchDaemon plist는 아래 명령으로 렌더링합니다.
 

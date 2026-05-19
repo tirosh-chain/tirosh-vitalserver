@@ -17,6 +17,7 @@ TESTKIT := $(TESTKIT_RUNNER) --config $(TESTKIT_CONFIG)
 include make/submodule.mk
 include make/env.mk
 include make/compose.mk
+include make/proxy.mk
 include make/testkit.mk
 include make/python.mk
 
@@ -39,6 +40,9 @@ help:
 	@printf "  make swagger-down    Stop Swagger UI only, keep base stack\n"
 	@printf "  make proxy-config    Render macOS host nginx proxy config\n"
 	@printf "  make proxy-plist     Render macOS launchd plist for host nginx proxy\n"
+	@printf "  make proxy-start     Start macOS host nginx proxy for local PoC\n"
+	@printf "  make proxy-stop      Stop macOS host nginx proxy for local PoC\n"
+	@printf "  make proxy-status    Show macOS host nginx proxy status\n"
 	@printf "\n"
 	@printf "Verify:\n"
 	@printf "  make testkit-smoke   Run bounded productization smoke scenario\n"

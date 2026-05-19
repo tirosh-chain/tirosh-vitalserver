@@ -30,6 +30,39 @@ VITALSERVER_PROXY_PORT=80 VITALSERVER_HTTP_PORT=18080 make proxy-config \
 The generated config overwrites client-supplied forwarding headers with
 nginx's `$remote_addr` at the macOS host trust boundary.
 
+## Local PoC with Homebrew nginx
+
+For local verification, install nginx with Homebrew and run it with the
+repository-managed temporary prefix.
+
+```sh
+brew install nginx
+
+VITALSERVER_PROXY_PORT=8080 \
+VITALSERVER_HTTP_PORT=18080 \
+make proxy-start
+```
+
+The local PoC writes the rendered config to `.tmp/macos-nginx/vitalserver.conf`.
+It does not install a LaunchDaemon and does not modify the Homebrew service.
+
+Useful commands:
+
+```sh
+make proxy-status
+make proxy-reload
+make proxy-stop
+```
+
+Run the Docker backend on loopback while testing the proxy.
+
+```sh
+VITALSERVER_BIND_HOST=127.0.0.1 \
+VITALSERVER_HTTP_PORT=18080 \
+VITALSERVER_TRUST_PROXY=1 \
+make up
+```
+
 ## Render launchd Plist
 
 ```sh

@@ -100,6 +100,9 @@ make open            # VitalServer 브라우저 열기
 make swagger         # 기본 stack은 건드리지 않고 Swagger UI만 시작
 make swagger-down    # 기본 stack은 유지하고 Swagger UI만 중지
 make proxy-config    # macOS host nginx proxy config 출력
+make proxy-start     # macOS host nginx proxy 시작
+make proxy-stop      # macOS host nginx proxy 중지
+make proxy-status    # macOS host nginx proxy 상태 확인
 make testkit-smoke   # simulator 기반 smoke scenario
 make check           # lint, typecheck, test 실행
 ```

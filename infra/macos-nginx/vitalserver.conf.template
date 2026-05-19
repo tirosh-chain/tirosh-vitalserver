@@ -5,6 +5,7 @@
 # VR device source IP before macOS container runtime port forwarding rewrites it.
 
 worker_processes 1;
+pid logs/nginx.pid;
 
 events {
     worker_connections 1024;
