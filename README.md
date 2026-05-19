@@ -98,7 +98,7 @@ make logs            # log 확인
 make ps              # container 상태 확인
 make app-rebuild     # app image rebuild 후 app container만 재생성
 make clean-volumes   # proxy와 전체 Compose stack 중지, Docker volume 삭제
-make clean           # proxy, container, volume, orphan, local image 정리
+make clean           # proxy runtime, container, volume, orphan, local image 정리
 make open            # VitalServer 브라우저 열기
 make swagger         # 기본 stack은 건드리지 않고 Swagger UI만 시작
 make swagger-down    # 기본 stack은 유지하고 Swagger UI만 중지

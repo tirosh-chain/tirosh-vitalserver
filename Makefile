@@ -51,7 +51,7 @@ help:
 	@printf "  make swagger-down    Stop Swagger UI only, keep base stack\n"
 	@printf "  make app-build       Build the app image only\n"
 	@printf "  make clean-volumes   Stop proxy and Compose stack, remove volumes\n"
-	@printf "  make clean           Remove proxy, containers, volumes, orphans, and local images\n"
+	@printf "  make clean           Remove proxy runtime, containers, volumes, orphans, and local images\n"
 	@printf "  make install-testkit-release  Install released testkit wheel without uv\n"
 	@printf "\n"
 	@printf "Verify:\n"
