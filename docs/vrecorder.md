@@ -127,6 +127,10 @@ gateway IP가 저장될 수 있습니다. 운영 환경에서는 host-level prox
 forwarding header로 전달하고, VitalServer는 `VITALSERVER_TRUST_PROXY=1`일 때만 해당 header를
 신뢰합니다.
 
+macOS 제품 구성에서는 Docker backend를 `127.0.0.1:<backend-port>`로만 열고, VRecorder와
+브라우저는 macOS host nginx public port로 접속합니다. 이때 Network Settings 검증은
+Docker backend port가 아니라 host proxy port를 대상으로 수행합니다.
+
 ### Testkit 구현 기준
 
 testkit이 실제 VRecorder처럼 보이려면 아래를 만족해야 합니다.

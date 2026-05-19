@@ -29,7 +29,7 @@ class ScenarioSelectionConfig(StrictConfig):
 
 
 class ServerConfig(StrictConfig):
-    base_url: str = "http://localhost:8080"
+    base_url: str = "http://localhost"
     timeout: float = Field(default=30, gt=0)
     wait_seconds: float = Field(default=30, gt=0)
     poll_interval_seconds: float = Field(default=1, gt=0)
