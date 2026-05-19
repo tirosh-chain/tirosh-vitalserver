@@ -151,6 +151,23 @@ host nginx를 앞단에 둡니다. 예시는 `docs/vitalserver-productization.md
     └── vitalserver/           # git submodule: tirosh-chain/vitalserver
 ```
 
+## Branch 운영
+
+이 저장소는 monorepo이고 package별 tag를 사용합니다. branch는 release version을 표현하기보다
+작업의 위험도와 통합 위치를 구분합니다.
+
+- `main`: 보호된 안정 브랜치, release/tag 기준
+- `develop`: main으로 보내기 전 작업을 모으는 통합 브랜치
+- `feature/*`: 이슈 단위 구현, `develop`에서 따고 `develop`으로 PR
+- `experiment/*`: 성공 여부가 불확실한 실험
+- `hotfix/*`: main 기준 긴급 수정
+
+작은 문서 정리나 낮은 위험도의 운영 메모는 `develop`에 직접 commit할 수 있습니다. 기능
+구현이나 위험한 변경은 별도 branch에서 작업한 뒤 `develop`으로 합칩니다. release는
+`develop`에서 검증한 내용을 `main`으로 PR merge한 뒤 package tag를 붙입니다.
+
+자세한 기준은 `docs/branching.md`를 봅니다.
+
 ## 제품화 방향
 
 이 저장소의 목적은 upstream VitalServer를 바로 운영에 올리기 어려운 연구용 서버에서,
@@ -213,7 +230,9 @@ build하고 release asset을 업로드합니다. Release note는 monorepo 전체
 관련 문서는 `docs/` 아래에 둡니다. 전체 문서 구조는 `docs/index.md`를 기준으로 봅니다.
 
 - `docs/index.md`: 문서 지도와 작성 기준
+- `docs/branching.md`: branch와 package tag 운영 기준
 - `docs/vitalserver-productization.md`: VitalServer 제품화 맥락과 API/payload 배경
+- `docs/vrecorder.md`: VRecorder 접속 흐름과 Web Monitoring 상태 표시 기준
 - `docs/testkit-usage.md`: testkit 실행 방법과 결과 해석
 - `docs/redis-data-model.md`: Redis key 구조와 relay 설계 메모
 - `docs/openapi.yaml`: upstream VitalServer route에서 추출한 OpenAPI 문서
