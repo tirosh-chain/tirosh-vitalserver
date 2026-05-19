@@ -114,9 +114,14 @@ VR 장비 / 브라우저
 예시 `.env`:
 
 ```env
+VITALSERVER_BIND_HOST=127.0.0.1
 VITALSERVER_HTTP_PORT=18080
 VITALSERVER_TRUST_PROXY=1
 ```
+
+이 구성에서 Docker backend는 macOS host loopback에만 열고, 외부 장비와 브라우저는 host
+nginx port로만 접속합니다. Docker published port를 LAN에 직접 노출하면 Docker Desktop NAT
+이후의 gateway IP가 `ip_<vrcode>`에 저장될 수 있습니다.
 
 Web Monitoring의 Socket.IO 접속 주소는 기본적으로 same-origin path(`/`)를 사용합니다. 즉 브라우저가
 `http://<macOS host LAN IP 또는 DNS>:8080`으로 접속하면 Socket.IO도 같은 host와 port로
@@ -133,6 +138,16 @@ VITALSERVER_PROXY_PORT=8080 VITALSERVER_HTTP_PORT=18080 make proxy-config
 렌더링된 config는 macOS host의 nginx 설정에 포함합니다. 이 config는 client가 보낸
 forwarding header를 신뢰하지 않고 host nginx의 `$remote_addr`로 덮어써서 VitalServer에
 전달합니다.
+
+설치형 배포에서는 nginx binary와 config를 macOS host에 설치하고 launchd로 관리합니다.
+LaunchDaemon plist는 아래 명령으로 렌더링합니다.
+
+```sh
+make proxy-plist
+```
+
+설치 패키지는 nginx config, launchd plist, Docker `.env`를 함께 생성해 container backend와
+native proxy가 같은 port 계약을 사용하도록 유지합니다.
 
 ## 데이터 흐름
 

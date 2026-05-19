@@ -126,6 +126,8 @@ Swagger UI만 정리하려면 전체 stack을 내리지 않고 `make swagger-dow
 macOS 운영 서버에서 VR 장비의 원 IP를 보존해야 하면 Docker port를 장비에 직접 노출하지 않고
 host nginx를 앞단에 둡니다. 예시는 `docs/vitalserver-productization.md`의
 `VR Network Settings IP` 섹션과 `infra/macos-nginx/vitalserver.conf.template`을 봅니다.
+설치형 배포에서는 Docker backend를 `127.0.0.1:18080`으로 묶고, macOS host nginx를
+LaunchDaemon으로 실행해 외부 장비와 브라우저가 proxy port로만 접속하게 합니다.
 
 ## 구조
 

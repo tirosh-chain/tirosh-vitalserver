@@ -37,6 +37,15 @@ VR 접속이 신뢰할 수 있는 host-level proxy나 ingress를 지날 때는 `
 macOS Docker Desktop에서는 Docker published port를 VR 장비에 직접 노출하지 말고, host
 nginx 같은 proxy가 외부 접속을 받은 뒤 Docker backend로 전달해야 실제 VR IP를 header로
 보존할 수 있습니다. nginx config template은 `infra/macos-nginx/`에 있습니다.
+제품 배포에서는 Docker backend를 loopback에만 publish합니다.
+
+```env
+VITALSERVER_BIND_HOST=127.0.0.1
+VITALSERVER_HTTP_PORT=18080
+VITALSERVER_TRUST_PROXY=1
+```
+
+외부 장비와 브라우저는 macOS host nginx의 public port로 접속합니다.
 
 Compose stack은 repository root의 `compose.yaml`에서 관리합니다.
 

@@ -11,7 +11,7 @@ services:
       - --protected-mode
       - "no"
     ports:
-      - "${VITALSERVER_HTTP_PORT:-8080}:80"
+      - "${VITALSERVER_BIND_HOST:-0.0.0.0}:${VITALSERVER_HTTP_PORT:-8080}:80"
     volumes:
       - redis-data:/data
     healthcheck:
