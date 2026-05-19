@@ -50,7 +50,7 @@ moduleLoader._load = function patchedModuleLoad(request, parent, isMain) {
   if (request === "./include/db.js" && exported && exported.get_websocket_host) {
     exported.get_websocket_host = async function getPublicWebSocketHost() {
       if (!publicHost) {
-        return "";
+        return "/";
       }
 
       return publicPort ? `${publicHost}:${publicPort}` : publicHost;
