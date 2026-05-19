@@ -10,6 +10,9 @@ TESTKIT_VERSION ?= 0.1.0
 TESTKIT_RELEASE_TAG ?= testkit-v$(TESTKIT_VERSION)
 TESTKIT_RELEASE_DIR ?= .tmp/testkit-release
 
+-include .env
+-include $(COMPOSE_ENV_FILE)
+
 COMPOSE := $(strip $(DOCKER_COMPOSE) $(if $(COMPOSE_ENV_FILE),--env-file $(COMPOSE_ENV_FILE),))
 TESTKIT_RUNNER ?= $(shell if command -v "$(UV)" >/dev/null 2>&1; then printf "%s" "$(UV) run python scripts/test_vitalserver.py"; else printf "%s" "$(PYTHON) scripts/test_vitalserver.py"; fi)
 TESTKIT := $(TESTKIT_RUNNER) --config $(TESTKIT_CONFIG)
@@ -70,6 +73,7 @@ help:
 	@printf "  make check           Run lint, typecheck, and test\n"
 	@printf "\n"
 	@printf "Config:\n"
+	@printf "  .env is loaded by make when present\n"
 	@printf "  TESTKIT_CONFIG=config/testkit.toml\n"
 	@printf "  TESTKIT_VERSION=0.1.0\n"
 	@printf "  COMPOSE_ENV_FILE=.env.local\n"

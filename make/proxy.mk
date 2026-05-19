@@ -34,8 +34,18 @@ proxy-test: proxy-write-config
 proxy-start: proxy-test proxy-run
 
 proxy-run:
-	$(NGINX_CMD) -p "$(CURDIR)/$(PROXY_RUNTIME_DIR)" -c "$(CURDIR)/$(PROXY_CONFIG)"
-	@printf "Proxy: http://localhost:%s -> http://127.0.0.1:%s\n" "$(VITALSERVER_PROXY_PORT)" "$(VITALSERVER_HTTP_PORT)"
+	@if [ -f "$(PROXY_RUNTIME_DIR)/logs/nginx.pid" ]; then \
+		pid="$$(cat "$(PROXY_RUNTIME_DIR)/logs/nginx.pid")"; \
+	else \
+		pid=""; \
+	fi; \
+	if [ -n "$$pid" ] && kill -0 "$$pid" >/dev/null 2>&1; then \
+		$(NGINX_CMD) -p "$(CURDIR)/$(PROXY_RUNTIME_DIR)" -c "$(CURDIR)/$(PROXY_CONFIG)" -s reload; \
+		printf "Proxy reloaded: http://localhost:%s -> http://127.0.0.1:%s\n" "$(VITALSERVER_PROXY_PORT)" "$(VITALSERVER_HTTP_PORT)"; \
+	else \
+		$(NGINX_CMD) -p "$(CURDIR)/$(PROXY_RUNTIME_DIR)" -c "$(CURDIR)/$(PROXY_CONFIG)"; \
+		printf "Proxy: http://localhost:%s -> http://127.0.0.1:%s\n" "$(VITALSERVER_PROXY_PORT)" "$(VITALSERVER_HTTP_PORT)"; \
+	fi
 
 proxy-stop:
 	@if [ -f "$(PROXY_RUNTIME_DIR)/logs/nginx.pid" ]; then \

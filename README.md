@@ -125,7 +125,9 @@ make up
 make swagger
 ```
 
-포트를 바꾸려면 `.env` 또는 실행 환경에서 `SWAGGER_UI_PORT`를 지정합니다.
+Make는 `.env`를 자동으로 읽습니다. 포트를 바꾸려면 `.env`를 수정하거나 일회성으로
+`make VITALSERVER_PROXY_PORT=8080 up`처럼 Make 변수로 넘깁니다.
+Swagger UI 포트는 `SWAGGER_UI_PORT`로 조정합니다.
 Swagger UI는 `/vitalserver` reverse proxy를 통해 같은 origin에서 VitalServer를 호출합니다.
 브라우저가 직접 Docker backend인 `http://localhost:18080`을 호출하지 않기 때문에 CORS에
 걸리지 않습니다.

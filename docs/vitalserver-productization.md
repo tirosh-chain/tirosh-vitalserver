@@ -199,6 +199,7 @@ Redis에 저장되는 핵심 key는 아래입니다.
 
 - `make up`으로 깨끗한 환경에서 재현 가능하게 실행됩니다.
 - 포트, 관리자 비밀번호, Swagger 포트는 `.env`로 조정할 수 있습니다.
+- 일회성 override는 `make VITALSERVER_PROXY_PORT=8080 up`처럼 Make 변수로 넘깁니다.
 - VitalServer fork submodule은 명시적으로 고정하고, 변경 시 submodule commit을 리뷰합니다.
 
 ### API
