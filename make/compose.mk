@@ -1,9 +1,19 @@
-.PHONY: build up down restart logs ps shell config clean-volumes
+.PHONY: build app-build app-rebuild up down restart logs ps shell config clean clean-volumes
 .PHONY: open
 .PHONY: swagger swagger-down
 
 build: init
 	$(COMPOSE) build
+
+app-build: init
+	$(COMPOSE) build app
+
+app-rebuild: init
+	$(COMPOSE) build app
+	VITALSERVER_BIND_HOST="$(VITALSERVER_BIND_HOST)" \
+	VITALSERVER_HTTP_PORT="$(VITALSERVER_HTTP_PORT)" \
+	VITALSERVER_TRUST_PROXY="$(VITALSERVER_TRUST_PROXY)" \
+	$(COMPOSE) up -d --no-deps --force-recreate app
 
 up: init proxy-test
 	VITALSERVER_BIND_HOST="$(VITALSERVER_BIND_HOST)" \
@@ -49,6 +59,10 @@ config:
 clean-volumes:
 	$(MAKE) proxy-stop
 	$(COMPOSE) down --volumes
+
+clean:
+	$(MAKE) proxy-stop
+	$(COMPOSE) down --volumes --remove-orphans --rmi local
 
 swagger:
 	$(COMPOSE) --profile swagger up -d --no-deps swagger-ui

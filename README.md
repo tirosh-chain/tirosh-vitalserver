@@ -96,7 +96,9 @@ make up              # macOS host proxy와 VitalServer stack 실행
 make down            # proxy와 Compose stack 중지, Docker volume 유지
 make logs            # log 확인
 make ps              # container 상태 확인
+make app-rebuild     # app image rebuild 후 app container만 재생성
 make clean-volumes   # proxy와 전체 Compose stack 중지, Docker volume 삭제
+make clean           # proxy, container, volume, orphan, local image 정리
 make open            # VitalServer 브라우저 열기
 make swagger         # 기본 stack은 건드리지 않고 Swagger UI만 시작
 make swagger-down    # 기본 stack은 유지하고 Swagger UI만 중지
@@ -104,6 +106,7 @@ make proxy-config    # macOS host nginx proxy config 출력
 make proxy-start     # macOS host nginx proxy만 수동 시작
 make proxy-stop      # macOS host nginx proxy만 수동 중지
 make proxy-status    # macOS host nginx proxy 상태 확인
+make app-build       # app image만 build
 make testkit-smoke   # simulator 기반 smoke scenario
 make check           # lint, typecheck, test 실행
 ```
