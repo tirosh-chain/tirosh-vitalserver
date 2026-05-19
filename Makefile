@@ -13,6 +13,13 @@ TESTKIT_RELEASE_DIR ?= .tmp/testkit-release
 -include .env
 -include $(COMPOSE_ENV_FILE)
 
+VITALSERVER_PROXY_PORT ?= 80
+VITALSERVER_BIND_HOST ?= 127.0.0.1
+VITALSERVER_HTTP_PORT ?= 18080
+VITALSERVER_REDIS_HOST ?= redis
+VITALSERVER_REDIS_PORT ?= 6379
+VITALSERVER_TRUST_PROXY ?= 1
+
 COMPOSE := $(strip $(DOCKER_COMPOSE) $(if $(COMPOSE_ENV_FILE),--env-file $(COMPOSE_ENV_FILE),))
 TESTKIT_RUNNER ?= $(shell if command -v "$(UV)" >/dev/null 2>&1; then printf "%s" "$(UV) run python scripts/test_vitalserver.py"; else printf "%s" "$(PYTHON) scripts/test_vitalserver.py"; fi)
 TESTKIT := $(TESTKIT_RUNNER) --config $(TESTKIT_CONFIG)
