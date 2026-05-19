@@ -2,7 +2,7 @@
 name = "tirosh-vitalserver-testkit"
 version = "0.1.0"
 description = "Validation and transfer helpers for productionizing VitalServer."
-requires-python = ">=3.14.0,!=3.14.0b3"
+requires-python = ">=3.14"
 dependencies = [
   "pydantic>=2.12,<3",
   "python-socketio[client]>=4.6,<5",
