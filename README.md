@@ -81,7 +81,7 @@ uv 없이 release된 testkit wheel을 설치하려면 GitHub CLI 인증 후 아�
 
 ```sh
 gh auth login
-make install-testkit-release TESTKIT_VERSION=0.1.0
+make install-testkit-release TESTKIT_VERSION=0.1.1
 ```
 
 이후 `make testkit-smoke`, `make testkit-load` 같은 검증 target은 설치된 wheel을 사용합니다.
@@ -230,12 +230,12 @@ TESTKIT_CONFIG=config/load-test.toml make testkit-load
 ```sh
 make check
 make build-testkit
-git tag testkit-v0.1.0
-git push origin testkit-v0.1.0
+git tag testkit-v0.1.1
+git push origin testkit-v0.1.1
 ```
 
 `make build-testkit`은 wheel과 sdist를 `packages/vitalserver-testkit/dist/` 아래에 생성합니다.
-Release wheel은 `make install-testkit-release TESTKIT_VERSION=0.1.0`으로 설치할 수 있습니다.
+Release wheel은 `make install-testkit-release TESTKIT_VERSION=0.1.1`으로 설치할 수 있습니다.
 
 PR과 `main` push에서는 testkit 관련 파일이 바뀐 경우에만 testkit CI가 실행됩니다.
 Release workflow도 이전 `testkit-v*` tag 이후 testkit 관련 변경이 있을 때만 package를

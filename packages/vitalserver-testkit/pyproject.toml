@@ -1,6 +1,6 @@
 [project]
 name = "tirosh-vitalserver-testkit"
-version = "0.1.0"
+version = "0.1.1"
 description = "Validation and transfer helpers for productionizing VitalServer."
 requires-python = ">=3.14"
 dependencies = [

@@ -6,7 +6,7 @@ PYTHON ?= python3
 
 COMPOSE_ENV_FILE ?=
 TESTKIT_CONFIG ?= config/testkit.toml
-TESTKIT_VERSION ?= 0.1.0
+TESTKIT_VERSION ?= 0.1.1
 TESTKIT_RELEASE_TAG ?= testkit-v$(TESTKIT_VERSION)
 TESTKIT_RELEASE_DIR ?= .tmp/testkit-release
 
@@ -82,5 +82,5 @@ help:
 	@printf "Config:\n"
 	@printf "  .env is loaded by make when present\n"
 	@printf "  TESTKIT_CONFIG=config/testkit.toml\n"
-	@printf "  TESTKIT_VERSION=0.1.0\n"
+	@printf "  TESTKIT_VERSION=0.1.1\n"
 	@printf "  COMPOSE_ENV_FILE=.env.local\n"
