@@ -17,7 +17,7 @@ uv run vitalserver-testkit --help
 
 # 서버 준비가 끝났는지 먼저 확인
 uv run vitalserver-testkit health \
-  --vitalserver-url http://localhost:8080
+  --vitalserver-url http://localhost
 ```
 
 VRecorder처럼 Socket.IO에 접속해 `join_vr`를 보내고, simulated recorder data를 계속 흘립니다.
@@ -26,7 +26,7 @@ VRecorder 접속 lifecycle, `dt` 수신, 관리 이벤트 수신은 `stream-reco
 
 ```sh
 uv run vitalserver-testkit stream-recorder \
-  --vitalserver-url http://localhost:8080 \
+  --vitalserver-url http://localhost \
   --recorders 5 \
   --interval 1
 ```
@@ -36,7 +36,7 @@ uv run vitalserver-testkit stream-recorder \
 
 ```sh
 uv run vitalserver-testkit stream-recorder \
-  --vitalserver-url http://<vitalserver-host>:8080 \
+  --vitalserver-url http://<vitalserver-host> \
   --vrcode VR_TEST \
   --status-page \
   --status-port 80
@@ -49,7 +49,7 @@ end-to-end 검증에는 port `80`이 필요합니다. 일반 사용자 권한으
 
 ```sh
 uv run vitalserver-testkit stream-recorder \
-  --vitalserver-url http://<vitalserver-host>:8080 \
+  --vitalserver-url http://<vitalserver-host> \
   --vrcode VR_TEST \
   --status-page \
   --status-port 8080
@@ -112,7 +112,7 @@ payload = build_simulated_recorder_payload()
 virtual_payloads = build_virtual_recorder_payloads(payload, count=5)
 
 summary = stream_vrecorder_session(
-    "http://localhost:8080",
+    "http://localhost",
     virtual_payloads,
     interval_seconds=1,
     max_messages=10,

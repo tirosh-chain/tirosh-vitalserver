@@ -23,6 +23,7 @@ make up
 포트 충돌이 있다면 `.env`를 사용합니다.
 
 ```env
+VITALSERVER_PROXY_PORT=8080
 VITALSERVER_HTTP_PORT=28080
 REDIS_UI_PORT=28081
 VITALSERVER_ADMIN_PASSWORD=admin
@@ -96,7 +97,7 @@ bed device metadata가 조회되는지 확인합니다.
 
 ```sh
 uv run vitalserver-testkit verify-recorder \
-  --vitalserver-url http://localhost:8080
+  --vitalserver-url http://localhost
 ```
 
 성공하면 아래처럼 room과 bed id가 출력됩니다.
@@ -112,7 +113,7 @@ visible: room=mnw4anvs4 bed_id=de8d5733096db32506a924ac566c903c343e2338 bytes=..
 
 ```sh
 uv run vitalserver-testkit verify-recorder \
-  --vitalserver-url http://localhost:8080 \
+  --vitalserver-url http://localhost \
   --recorders 5
 ```
 
@@ -120,7 +121,7 @@ uv run vitalserver-testkit verify-recorder \
 
 ```sh
 uv run vitalserver-testkit send-recorder \
-  --vitalserver-url http://localhost:8080 \
+  --vitalserver-url http://localhost \
   --recorders 5 \
   --concurrency 10 \
   --repeat 100
@@ -133,7 +134,7 @@ uv run vitalserver-testkit send-recorder \
 
 ```sh
 uv run vitalserver-testkit stream-recorder \
-  --vitalserver-url http://localhost:8080 \
+  --vitalserver-url http://localhost \
   --recorders 5 \
   --interval 1
 ```
@@ -142,7 +143,7 @@ uv run vitalserver-testkit stream-recorder \
 
 ```sh
 uv run vitalserver-testkit stream-recorder \
-  --vitalserver-url http://localhost:8080 \
+  --vitalserver-url http://localhost \
   --recorders 5 \
   --interval 1 \
   --duration 10
@@ -165,7 +166,7 @@ from tirosh_vitalserver.testkit.application.metrics import (
 
 payload = build_simulated_recorder_payload()
 summary = send_realtime_payloads(
-    "http://localhost:8080",
+    "http://localhost",
     payload,
     concurrency=10,
     repeat=100,
@@ -198,7 +199,7 @@ print(f"bytes={transfer_total_bytes_sent(summary)}")
 
 ```sh
 uv run vitalserver-testkit upload-vital path/to/vital-files \
-  --vitalserver-url http://localhost:8080 \
+  --vitalserver-url http://localhost \
   --endpoint /upload \
   --concurrency 4 \
   --repeat 10
@@ -219,7 +220,7 @@ from tirosh_vitalserver.testkit.application.metrics import (
     transfer_total_requests,
 )
 
-client = VitalServerClient("http://localhost:8080", timeout=60)
+client = VitalServerClient("http://localhost", timeout=60)
 wait_for_server(client)
 
 payloads = iter_vital_files("path/to/vital-files")
@@ -281,5 +282,5 @@ make down
 testkit에서 health check만 확인할 수도 있습니다.
 
 ```sh
-uv run vitalserver-testkit health --vitalserver-url http://localhost:8080
+uv run vitalserver-testkit health --vitalserver-url http://localhost
 ```

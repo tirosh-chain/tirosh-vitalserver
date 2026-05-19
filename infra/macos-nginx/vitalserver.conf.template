@@ -1,30 +1,42 @@
 # Render with:
-#   VITALSERVER_PROXY_PORT=8080 VITALSERVER_HTTP_PORT=18080 make proxy-config
+#   VITALSERVER_PROXY_PORT=80 VITALSERVER_HTTP_PORT=18080 make proxy-config
 #
 # The proxy must run on the macOS host, not inside Docker. It preserves the
-# VR device source IP before Docker Desktop port forwarding rewrites it.
+# VR device source IP before macOS container runtime port forwarding rewrites it.
 
-map $http_upgrade $connection_upgrade {
-    default upgrade;
-    '' close;
+worker_processes 1;
+pid logs/nginx.pid;
+
+events {
+    worker_connections 1024;
 }
 
-server {
-    listen ${VITALSERVER_PROXY_PORT};
-    server_name _;
+http {
+    access_log logs/access.log;
+    error_log logs/error.log;
 
-    location / {
-        proxy_pass http://127.0.0.1:${VITALSERVER_HTTP_PORT};
-        proxy_http_version 1.1;
+    map $http_upgrade $connection_upgrade {
+        default upgrade;
+        '' close;
+    }
 
-        proxy_set_header Host $host;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection $connection_upgrade;
+    server {
+        listen ${VITALSERVER_PROXY_PORT};
+        server_name _;
 
-        # Overwrite client-supplied forwarding headers at the trust boundary.
-        proxy_set_header X-Forwarded-For $remote_addr;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Client-IP $remote_addr;
-        proxy_set_header Forwarded "for=$remote_addr;proto=$scheme;host=$host";
+        location / {
+            proxy_pass http://127.0.0.1:${VITALSERVER_HTTP_PORT};
+            proxy_http_version 1.1;
+
+            proxy_set_header Host $host;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection $connection_upgrade;
+
+            # Overwrite client-supplied forwarding headers at the trust boundary.
+            proxy_set_header X-Forwarded-For $remote_addr;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Client-IP $remote_addr;
+            proxy_set_header Forwarded "for=$remote_addr;proto=$scheme;host=$host";
+        }
     }
 }

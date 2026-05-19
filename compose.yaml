@@ -10,8 +10,8 @@ services:
       - 0.0.0.0
       - --protected-mode
       - "no"
-    ports:
-      - "${VITALSERVER_HTTP_PORT:-8080}:80"
+    expose:
+      - "6379"
     volumes:
       - redis-data:/data
     healthcheck:
@@ -27,15 +27,18 @@ services:
       context: .
       dockerfile: apps/vitalserver/docker/Dockerfile
     image: vitalserver:2.3.4
-    network_mode: "service:redis"
     depends_on:
       redis:
         condition: service_healthy
+    ports:
+      - "${VITALSERVER_BIND_HOST:-127.0.0.1}:${VITALSERVER_HTTP_PORT:-18080}:80"
     environment:
       VITALSERVER_ADMIN_PASSWORD: "${VITALSERVER_ADMIN_PASSWORD:-admin}"
       VITALSERVER_MIN_CPUS: "6"
       VITALSERVER_PUBLIC_HOST: "${VITALSERVER_PUBLIC_HOST:-}"
       VITALSERVER_PUBLIC_PORT: "${VITALSERVER_PUBLIC_PORT:-}"
+      VITALSERVER_REDIS_HOST: "${VITALSERVER_REDIS_HOST:-redis}"
+      VITALSERVER_REDIS_PORT: "${VITALSERVER_REDIS_PORT:-6379}"
       VITALSERVER_TRUST_PROXY: "${VITALSERVER_TRUST_PROXY:-0}"
     volumes:
       - type: volume

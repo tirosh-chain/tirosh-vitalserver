@@ -12,6 +12,7 @@ docker-compose.override.yml
 
 # Logs and temporary files
 *.log
+.tmp/
 tmp/
 temp/
 

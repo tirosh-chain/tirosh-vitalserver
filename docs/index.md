@@ -12,6 +12,7 @@
 | [Vital Recorder](vrecorder.md) | VRecorder 접속 흐름과 Web Monitoring 상태 표시 기준 |
 | [Testkit 사용법](testkit-usage.md) | `vitalserver-testkit` CLI와 검증 시나리오 실행 방법 |
 | [Redis 데이터 구조](redis-data-model.md) | VitalServer가 Redis에 저장하는 key 구조와 relay 설계 |
+| [ADR 0001](adr/0001-macos-host-proxy-for-vrecorder-ip.md) | macOS host proxy로 VRecorder 원 IP를 보존하기로 한 결정 |
 | [OpenAPI 문서](openapi.yaml) | upstream VitalServer route를 분석해 만든 Swagger/OpenAPI spec |
 
 ## 읽는 순서
