@@ -114,14 +114,18 @@ VR 장비 / 브라우저
 예시 `.env`:
 
 ```env
+VITALSERVER_PROXY_PORT=80
 VITALSERVER_BIND_HOST=127.0.0.1
 VITALSERVER_HTTP_PORT=18080
+VITALSERVER_REDIS_HOST=redis
+VITALSERVER_REDIS_PORT=6379
 VITALSERVER_TRUST_PROXY=1
 ```
 
 이 구성에서 Docker backend는 macOS host loopback에만 열고, 외부 장비와 브라우저는 host
 nginx port로만 접속합니다. Docker published port를 LAN에 직접 노출하면 Docker Desktop NAT
 이후의 gateway IP가 `ip_<vrcode>`에 저장될 수 있습니다.
+Redis는 host에 publish하지 않고 Compose 내부 network의 `redis:6379`로만 접근합니다.
 
 Web Monitoring의 Socket.IO 접속 주소는 기본적으로 same-origin path(`/`)를 사용합니다. 즉 브라우저가
 `http://<macOS host LAN IP 또는 DNS>`로 접속하면 Socket.IO도 같은 host와 port로

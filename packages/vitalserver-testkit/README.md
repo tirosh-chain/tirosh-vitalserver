@@ -23,14 +23,14 @@ UI-visible 상태까지 확인합니다.
 
 ```sh
 uv run vitalserver-testkit verify-recorder \
-  --base-url http://localhost:8080
+  --base-url http://localhost
 ```
 
 여러 recorder machine을 동시에 흉내내려면 `--recorders`를 사용합니다.
 
 ```sh
 uv run vitalserver-testkit stream-recorder \
-  --base-url http://localhost:8080 \
+  --base-url http://localhost \
   --recorders 5 \
   --interval 1
 ```
@@ -89,7 +89,7 @@ payload = build_simulated_recorder_payload()
 virtual_payloads = build_virtual_recorder_payloads(payload, count=5)
 
 summary = stream_virtual_recorder_payloads(
-    "http://localhost:8080",
+    "http://localhost",
     virtual_payloads,
     interval_seconds=1,
     max_messages=10,

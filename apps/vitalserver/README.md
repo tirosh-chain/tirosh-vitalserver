@@ -29,6 +29,10 @@ apps/vitalserver/
 고정해야 하는 환경에서는 `.env`에서 `VITALSERVER_PUBLIC_HOST`, `VITALSERVER_PUBLIC_PORT`를
 명시합니다.
 
+upstream VitalServer는 Redis client를 `0.0.0.0:6379`로 생성합니다. wrapper runtime은 이
+값을 `VITALSERVER_REDIS_HOST`, `VITALSERVER_REDIS_PORT`로 보정해 Compose 내부 Redis service에
+연결합니다. 그래서 app container가 redis container의 network namespace를 공유하지 않아도 됩니다.
+
 VR 접속이 신뢰할 수 있는 host-level proxy나 ingress를 지날 때는 `.env`에서
 `VITALSERVER_TRUST_PROXY=1`을 켜면 fork된 VitalServer가 `X-Forwarded-For`,
 `Forwarded: for=...`, `X-Real-IP`, `X-Client-IP` header를 실제 VR IP 후보로 사용합니다.
@@ -42,6 +46,8 @@ nginx 같은 proxy가 외부 접속을 받은 뒤 Docker backend로 전달해야
 ```env
 VITALSERVER_BIND_HOST=127.0.0.1
 VITALSERVER_HTTP_PORT=18080
+VITALSERVER_REDIS_HOST=redis
+VITALSERVER_REDIS_PORT=6379
 VITALSERVER_TRUST_PROXY=1
 ```
 

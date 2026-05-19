@@ -45,10 +45,12 @@ VitalServer를 Docker Compose로 실행하기만 할 때는 아래 도구만 있
 - Docker
 - Docker Compose v2
 - Git submodule 지원 Git 클라이언트
+- nginx
 
 Python 기반 검증 도구와 개발용 검사까지 실행하려면 uv가 추가로 필요합니다.
 uv가 없더라도 `make up`, `make down`, `make logs`, `make swagger`,
-`make swagger-down`은 사용할 수 있습니다.
+`make swagger-down`은 사용할 수 있습니다. macOS 기본 구성에서는 `make up`이 host nginx
+proxy를 함께 실행하므로 Homebrew nginx가 필요합니다.
 Release wheel을 설치하면 uv 없이도 `make testkit-smoke` 같은 testkit scenario를 실행할 수 있습니다.
 
 - uv
@@ -154,6 +156,7 @@ LaunchDaemon으로 실행해 외부 장비와 브라우저가 proxy port로만 �
 │   └── testkit.toml
 ├── docs/
 ├── infra/
+│   ├── macos-nginx/          # macOS host proxy 설정과 launchd template
 │   └── swagger-ui/           # Swagger UI reverse proxy 설정
 ├── make/                     # Makefile target group
 ├── packages/
