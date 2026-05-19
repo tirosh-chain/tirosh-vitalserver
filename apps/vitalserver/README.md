@@ -23,7 +23,7 @@ apps/vitalserver/
   shim
 
 `runtime/node-preload.js`는 Web Monitoring 브라우저가 Socket.IO에 붙을 때 사용하는
-`websocket:ip`, `websocket:port` Redis key도 보정합니다. 기본값은 same-origin입니다.
+`websocket:ip`, `websocket:port` Redis key도 보정합니다. 기본값은 same-origin path(`/`)입니다.
 즉 브라우저가 `http://localhost:8080`으로 접속하면 Socket.IO도 localhost로 붙고,
 `http://172.31.0.146/`으로 접속하면 Socket.IO도 같은 host로 붙습니다. 단일 public 주소로
 고정해야 하는 환경에서는 `.env`에서 `VITALSERVER_PUBLIC_HOST`, `VITALSERVER_PUBLIC_PORT`를
