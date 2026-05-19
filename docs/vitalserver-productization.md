@@ -9,6 +9,7 @@
 - [문서 지도](index.md): 문서별 역할과 읽는 순서
 - [OpenAPI 문서](openapi.yaml): upstream route를 분석해 정리한 Swagger/OpenAPI 문서
 - [Redis 데이터 구조](redis-data-model.md): 실시간 monitor data가 Redis에 저장되는 방식
+- [Vital Recorder](vrecorder.md): VRecorder 접속 흐름과 Web Monitoring 상태 표시 기준
 - [testkit 사용법](testkit-usage.md): 실시간 수집, upload, health 검증 도구 사용법
 
 ## 목표
@@ -87,9 +88,11 @@ public 문서와 다른 부분은 OpenAPI와 제품화 문서에 명시합니다
 
 ### VR Network Settings IP
 
-Web Monitoring의 `Network Settings`는 VR이 Socket.IO `join_vr`로 접속할 때 저장된
-`ip_<vrcode>` 값을 받아 `http://<ip>`로 엽니다. macOS Docker Desktop의 port forwarding을
-직접 거치면 container 내부에서는 실제 VR IP 대신 Docker gateway IP가 보일 수 있습니다.
+Web Monitoring의 `Network Settings`는 Socket.IO `join_vr` 처리 시 저장된 `ip_<vrcode>` 값을
+받아 `http://<ip>`로 엽니다. 실제 VRecorder client source는 이 repo에 없으므로 제품 장비가
+`join_vr`를 보내는지는 접속 로그와 Redis 값으로 검증합니다. macOS Docker Desktop의 port
+forwarding을 직접 거치면 container 내부에서는 실제 VR IP 대신 Docker gateway IP가 보일 수
+있습니다.
 
 fork된 VitalServer는 `VITALSERVER_TRUST_PROXY=1`일 때만 `X-Forwarded-For`,
 `Forwarded: for=...`, `X-Real-IP`, `X-Client-IP` header를 우선 사용합니다. 기본값은 기존처럼
