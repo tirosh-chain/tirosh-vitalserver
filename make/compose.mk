@@ -61,9 +61,8 @@ clean-volumes:
 	$(COMPOSE) down --volumes
 
 clean:
-	$(MAKE) proxy-stop
+	$(MAKE) proxy-clean
 	$(COMPOSE) down --volumes --remove-orphans --rmi local
-	rm -rf "$(PROXY_RUNTIME_DIR)"
 
 swagger:
 	$(COMPOSE) --profile swagger up -d --no-deps swagger-ui
