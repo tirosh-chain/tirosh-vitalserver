@@ -5,14 +5,19 @@
 build: init
 	$(COMPOSE) build
 
-up: init
+up: init proxy-test
+	VITALSERVER_BIND_HOST="$(VITALSERVER_BIND_HOST)" \
+	VITALSERVER_HTTP_PORT="$(VITALSERVER_HTTP_PORT)" \
+	VITALSERVER_TRUST_PROXY="$(VITALSERVER_TRUST_PROXY)" \
 	$(COMPOSE) up -d
+	$(MAKE) proxy-run
 
 down:
+	$(MAKE) proxy-stop
 	$(COMPOSE) down
 
 restart: down
-	$(COMPOSE) up -d
+	$(MAKE) up
 
 logs:
 	$(COMPOSE) logs -f
@@ -21,7 +26,14 @@ ps:
 	$(COMPOSE) ps
 
 open:
-	@url="$${VITALSERVER_URL:-http://localhost:$${VITALSERVER_HTTP_PORT:-8080}}"; \
+	@port="$${VITALSERVER_PROXY_PORT:-80}"; \
+	if [ -n "$${VITALSERVER_URL:-}" ]; then \
+		url="$$VITALSERVER_URL"; \
+	elif [ "$$port" = "80" ]; then \
+		url="http://localhost"; \
+	else \
+		url="http://localhost:$$port"; \
+	fi; \
 	printf "VitalServer: %s\n" "$$url"; \
 	"$(PYTHON)" -m webbrowser -t "$$url"
 
@@ -29,9 +41,13 @@ shell:
 	$(COMPOSE) exec app sh
 
 config:
+	VITALSERVER_BIND_HOST="$(VITALSERVER_BIND_HOST)" \
+	VITALSERVER_HTTP_PORT="$(VITALSERVER_HTTP_PORT)" \
+	VITALSERVER_TRUST_PROXY="$(VITALSERVER_TRUST_PROXY)" \
 	$(COMPOSE) config
 
 clean-volumes:
+	$(MAKE) proxy-stop
 	$(COMPOSE) down --volumes
 
 swagger:

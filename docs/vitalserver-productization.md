@@ -52,7 +52,7 @@ VitalServer 애플리케이션 자체 수정은 fork repository에서 관리합�
 
 기본 로컬 endpoint:
 
-- VitalServer: `http://localhost:8080`
+- VitalServer: `http://localhost`
 - Redis UI: `http://localhost:8081`
 - Swagger UI: `http://localhost:8082`
 
@@ -61,11 +61,11 @@ OpenAPI 문서에는 이 proxy server만 노출해서, Swagger의 `Try it out`�
 걸리지 않도록 합니다.
 
 ```sh
-make up            # 기본 stack 실행
+make up            # proxy와 기본 stack 실행
 make open          # VitalServer 브라우저 열기
-make restart       # 기본 stack 재시작
-make down          # 전체 Compose stack 중지, Docker volume 유지
-make clean-volumes # 전체 Compose stack 중지, Docker volume 삭제
+make restart       # proxy와 기본 stack 재시작
+make down          # proxy와 전체 Compose stack 중지, Docker volume 유지
+make clean-volumes # proxy와 전체 Compose stack 중지, Docker volume 삭제
 
 make swagger       # 기본 stack은 건드리지 않고 Swagger UI만 시작
 make swagger-down  # 기본 stack은 유지하고 Swagger UI만 중지
@@ -106,7 +106,7 @@ macOS 운영 서버에서는 Docker published port를 외부에 직접 노출하
 
 ```text
 VR 장비 / 브라우저
-  -> macOS host nginx :8080
+  -> macOS host nginx :80
   -> Docker published backend 127.0.0.1:18080
   -> VitalServer container :80
 ```
@@ -124,7 +124,7 @@ nginx port로만 접속합니다. Docker published port를 LAN에 직접 노출�
 이후의 gateway IP가 `ip_<vrcode>`에 저장될 수 있습니다.
 
 Web Monitoring의 Socket.IO 접속 주소는 기본적으로 same-origin path(`/`)를 사용합니다. 즉 브라우저가
-`http://<macOS host LAN IP 또는 DNS>:8080`으로 접속하면 Socket.IO도 같은 host와 port로
+`http://<macOS host LAN IP 또는 DNS>`로 접속하면 Socket.IO도 같은 host와 port로
 붙습니다. 여러 접속 주소를 동시에 지원해야 하는 환경에서는 `VITALSERVER_PUBLIC_HOST`를
 비워두는 것이 안전합니다. 단일 public 주소로 강제해야 하는 환경에서만
 `VITALSERVER_PUBLIC_HOST`, `VITALSERVER_PUBLIC_PORT`를 명시합니다.
@@ -132,23 +132,24 @@ Web Monitoring의 Socket.IO 접속 주소는 기본적으로 same-origin path(`/
 host nginx config는 아래 명령으로 렌더링합니다.
 
 ```sh
-VITALSERVER_PROXY_PORT=8080 VITALSERVER_HTTP_PORT=18080 make proxy-config
+make proxy-config
 ```
 
 렌더링된 config는 macOS host의 nginx 설정에 포함합니다. 이 config는 client가 보낸
 forwarding header를 신뢰하지 않고 host nginx의 `$remote_addr`로 덮어써서 VitalServer에
 전달합니다.
 
-로컬 PoC에서는 Homebrew nginx를 설치한 뒤 repository의 임시 prefix로 proxy를 실행합니다.
+로컬 PoC에서는 Homebrew nginx를 설치한 뒤 `make up`으로 proxy와 Docker backend를 함께 실행합니다.
+기본 proxy port는 80이므로 nginx 실행 시 관리자 권한이 필요할 수 있습니다.
 
 ```sh
-VITALSERVER_PROXY_PORT=8080 VITALSERVER_HTTP_PORT=18080 make proxy-start
+make up
 make proxy-status
-make proxy-stop
+make down
 ```
 
-`make proxy-start`는 `.tmp/macos-nginx/vitalserver.conf`를 생성하고 해당 config로 nginx를
-실행합니다. Homebrew service를 등록하거나 launchd를 수정하지 않습니다.
+`make up`은 Docker backend를 loopback으로 올리고, `.tmp/macos-nginx/vitalserver.conf`를 생성한 뒤
+해당 config로 nginx를 실행합니다. Homebrew service를 등록하거나 launchd를 수정하지 않습니다.
 
 설치형 배포에서는 nginx binary와 config를 macOS host에 설치하고 launchd로 관리합니다.
 LaunchDaemon plist는 아래 명령으로 렌더링합니다.

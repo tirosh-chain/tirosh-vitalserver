@@ -1,13 +1,19 @@
 PROXY_RUNTIME_DIR ?= .tmp/macos-nginx
 PROXY_CONFIG ?= $(PROXY_RUNTIME_DIR)/vitalserver.conf
-VITALSERVER_PROXY_PORT ?= 8080
+VITALSERVER_PROXY_PORT ?= 80
+VITALSERVER_BIND_HOST ?= 127.0.0.1
 VITALSERVER_HTTP_PORT ?= 18080
-NGINX ?= nginx
-NGINX_BIN ?= /opt/homebrew/bin/nginx
+VITALSERVER_TRUST_PROXY ?= 1
+NGINX_BIN ?= $(shell command -v nginx 2>/dev/null || printf "/opt/homebrew/bin/nginx")
+ifeq ($(VITALSERVER_PROXY_PORT),80)
+NGINX_CMD ?= sudo $(NGINX_BIN)
+else
+NGINX_CMD ?= $(NGINX_BIN)
+endif
 NGINX_CONF ?= /Library/Application Support/TiroshVitalServer/nginx/vitalserver.conf
 NGINX_PREFIX ?= /Library/Application Support/TiroshVitalServer/nginx
 
-.PHONY: proxy-config proxy-write-config proxy-test proxy-start proxy-stop proxy-reload proxy-status proxy-plist
+.PHONY: proxy-config proxy-write-config proxy-test proxy-start proxy-run proxy-stop proxy-reload proxy-status proxy-plist
 
 proxy-config:
 	@VITALSERVER_PROXY_PORT="$(VITALSERVER_PROXY_PORT)" \
@@ -23,17 +29,28 @@ proxy-write-config:
 	@printf "Wrote %s\n" "$(PROXY_CONFIG)"
 
 proxy-test: proxy-write-config
-	$(NGINX) -t -p "$(CURDIR)/$(PROXY_RUNTIME_DIR)" -c "$(CURDIR)/$(PROXY_CONFIG)"
+	$(NGINX_CMD) -t -p "$(CURDIR)/$(PROXY_RUNTIME_DIR)" -c "$(CURDIR)/$(PROXY_CONFIG)"
 
-proxy-start: proxy-test
-	$(NGINX) -p "$(CURDIR)/$(PROXY_RUNTIME_DIR)" -c "$(CURDIR)/$(PROXY_CONFIG)"
+proxy-start: proxy-test proxy-run
+
+proxy-run:
+	$(NGINX_CMD) -p "$(CURDIR)/$(PROXY_RUNTIME_DIR)" -c "$(CURDIR)/$(PROXY_CONFIG)"
 	@printf "Proxy: http://localhost:%s -> http://127.0.0.1:%s\n" "$(VITALSERVER_PROXY_PORT)" "$(VITALSERVER_HTTP_PORT)"
 
 proxy-stop:
-	$(NGINX) -p "$(CURDIR)/$(PROXY_RUNTIME_DIR)" -c "$(CURDIR)/$(PROXY_CONFIG)" -s quit
+	@if [ -f "$(PROXY_RUNTIME_DIR)/logs/nginx.pid" ]; then \
+		pid="$$(cat "$(PROXY_RUNTIME_DIR)/logs/nginx.pid")"; \
+		if [ -n "$$pid" ] && kill -0 "$$pid" >/dev/null 2>&1; then \
+			$(NGINX_CMD) -p "$(CURDIR)/$(PROXY_RUNTIME_DIR)" -c "$(CURDIR)/$(PROXY_CONFIG)" -s quit; \
+		else \
+			printf "nginx proxy is already stopped\n"; \
+		fi; \
+	else \
+		printf "nginx proxy is already stopped\n"; \
+	fi
 
 proxy-reload: proxy-test
-	$(NGINX) -p "$(CURDIR)/$(PROXY_RUNTIME_DIR)" -c "$(CURDIR)/$(PROXY_CONFIG)" -s reload
+	$(NGINX_CMD) -p "$(CURDIR)/$(PROXY_RUNTIME_DIR)" -c "$(CURDIR)/$(PROXY_CONFIG)" -s reload
 
 proxy-status:
 	@if [ -f "$(PROXY_RUNTIME_DIR)/logs/nginx.pid" ]; then \

@@ -22,7 +22,7 @@ make up
 VitalServer:
 
 ```text
-http://localhost:8080
+http://localhost
 ```
 
 Redis UI:
@@ -91,17 +91,17 @@ make help            # 사용 가능한 명령 확인
 make doctor          # 로컬 도구와 submodule 상태 확인
 make bootstrap       # submodule 초기화, uv가 있으면 Python workspace 동기화
 make install-testkit-release  # uv 없이 release wheel 기반 testkit 설치
-make up              # VitalServer stack 실행
-make down            # 전체 Compose stack 중지, Docker volume 유지
+make up              # macOS host proxy와 VitalServer stack 실행
+make down            # proxy와 Compose stack 중지, Docker volume 유지
 make logs            # log 확인
 make ps              # container 상태 확인
-make clean-volumes   # 전체 Compose stack 중지, Docker volume 삭제
+make clean-volumes   # proxy와 전체 Compose stack 중지, Docker volume 삭제
 make open            # VitalServer 브라우저 열기
 make swagger         # 기본 stack은 건드리지 않고 Swagger UI만 시작
 make swagger-down    # 기본 stack은 유지하고 Swagger UI만 중지
 make proxy-config    # macOS host nginx proxy config 출력
-make proxy-start     # macOS host nginx proxy 시작
-make proxy-stop      # macOS host nginx proxy 중지
+make proxy-start     # macOS host nginx proxy만 수동 시작
+make proxy-stop      # macOS host nginx proxy만 수동 중지
 make proxy-status    # macOS host nginx proxy 상태 확인
 make testkit-smoke   # simulator 기반 smoke scenario
 make check           # lint, typecheck, test 실행
@@ -123,7 +123,8 @@ make swagger
 
 포트를 바꾸려면 `.env` 또는 실행 환경에서 `SWAGGER_UI_PORT`를 지정합니다.
 Swagger UI는 `/vitalserver` reverse proxy를 통해 같은 origin에서 VitalServer를 호출합니다.
-브라우저가 직접 `http://localhost:8080`을 호출하지 않기 때문에 CORS에 걸리지 않습니다.
+브라우저가 직접 Docker backend인 `http://localhost:18080`을 호출하지 않기 때문에 CORS에
+걸리지 않습니다.
 Swagger UI만 정리하려면 전체 stack을 내리지 않고 `make swagger-down`을 실행합니다.
 
 macOS 운영 서버에서 VR 장비의 원 IP를 보존해야 하면 Docker port를 장비에 직접 노출하지 않고

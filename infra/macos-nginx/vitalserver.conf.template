@@ -1,5 +1,5 @@
 # Render with:
-#   VITALSERVER_PROXY_PORT=8080 VITALSERVER_HTTP_PORT=18080 make proxy-config
+#   VITALSERVER_PROXY_PORT=80 VITALSERVER_HTTP_PORT=18080 make proxy-config
 #
 # The proxy must run on the macOS host, not inside Docker. It preserves the
 # VR device source IP before macOS container runtime port forwarding rewrites it.
