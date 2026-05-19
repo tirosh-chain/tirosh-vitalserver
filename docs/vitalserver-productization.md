@@ -115,10 +115,14 @@ VR 장비 / 브라우저
 
 ```env
 VITALSERVER_HTTP_PORT=18080
-VITALSERVER_PUBLIC_HOST=<macOS host LAN IP 또는 DNS>
-VITALSERVER_PUBLIC_PORT=8080
 VITALSERVER_TRUST_PROXY=1
 ```
+
+Web Monitoring의 Socket.IO 접속 주소는 기본적으로 same-origin을 사용합니다. 즉 브라우저가
+`http://<macOS host LAN IP 또는 DNS>:8080`으로 접속하면 Socket.IO도 같은 host와 port로
+붙습니다. 여러 접속 주소를 동시에 지원해야 하는 환경에서는 `VITALSERVER_PUBLIC_HOST`를
+비워두는 것이 안전합니다. 단일 public 주소로 강제해야 하는 환경에서만
+`VITALSERVER_PUBLIC_HOST`, `VITALSERVER_PUBLIC_PORT`를 명시합니다.
 
 host nginx config는 아래 명령으로 렌더링합니다.
 

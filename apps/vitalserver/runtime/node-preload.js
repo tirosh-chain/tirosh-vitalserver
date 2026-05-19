@@ -7,8 +7,8 @@ const redis = require("redis");
 const realCpus = os.cpus.bind(os);
 const minCpus = Number.parseInt(process.env.VITALSERVER_MIN_CPUS || "6", 10);
 const adminPassword = process.env.VITALSERVER_ADMIN_PASSWORD || "admin";
-const publicHost = process.env.VITALSERVER_PUBLIC_HOST || "localhost";
-const publicPort = process.env.VITALSERVER_PUBLIC_PORT || "8080";
+const publicHost = process.env.VITALSERVER_PUBLIC_HOST || "";
+const publicPort = process.env.VITALSERVER_PUBLIC_PORT || "";
 
 os.cpus = function patchedCpus() {
   const cpus = realCpus();
@@ -49,6 +49,10 @@ moduleLoader._load = function patchedModuleLoad(request, parent, isMain) {
 
   if (request === "./include/db.js" && exported && exported.get_websocket_host) {
     exported.get_websocket_host = async function getPublicWebSocketHost() {
+      if (!publicHost) {
+        return "";
+      }
+
       return publicPort ? `${publicHost}:${publicPort}` : publicHost;
     };
   }
