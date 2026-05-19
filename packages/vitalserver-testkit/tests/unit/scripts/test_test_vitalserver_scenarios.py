@@ -118,7 +118,7 @@ def test_run_verify_omits_payload_argument_by_default(
     run_verify(config)
 
     assert commands[0][:2] == ("vitalserver-testkit", "verify-recorder")
-    assert commands[0][2] == "--base-url"
+    assert commands[0][2] == "--vitalserver-url"
 
 
 def test_run_verify_inserts_configured_payload_argument(

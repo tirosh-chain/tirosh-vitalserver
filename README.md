@@ -22,7 +22,7 @@ make up
 VitalServer:
 
 ```text
-http://localhost:8080
+http://localhost
 ```
 
 Redis UI:
@@ -45,10 +45,12 @@ VitalServer를 Docker Compose로 실행하기만 할 때는 아래 도구만 있
 - Docker
 - Docker Compose v2
 - Git submodule 지원 Git 클라이언트
+- nginx
 
 Python 기반 검증 도구와 개발용 검사까지 실행하려면 uv가 추가로 필요합니다.
 uv가 없더라도 `make up`, `make down`, `make logs`, `make swagger`,
-`make swagger-down`은 사용할 수 있습니다.
+`make swagger-down`은 사용할 수 있습니다. macOS 기본 구성에서는 `make up`이 host nginx
+proxy를 함께 실행하므로 Homebrew nginx가 필요합니다.
 Release wheel을 설치하면 uv 없이도 `make testkit-smoke` 같은 testkit scenario를 실행할 수 있습니다.
 
 - uv
@@ -60,15 +62,16 @@ Release wheel을 설치하면 uv 없이도 `make testkit-smoke` 같은 testkit s
 make doctor
 ```
 
-submodule을 초기화하고, uv가 설치되어 있으면 Python workspace까지 동기화하려면 아래 명령을
-사용합니다.
+submodule, `.env`, 로컬 proxy config를 준비하고, uv가 설치되어 있으면 Python workspace까지
+동기화하려면 아래 명령을 사용합니다.
 
 ```sh
 make bootstrap
 ```
 
-uv가 없는 환경에서는 Python 동기화를 건너뛰고 Docker 실행 환경만 준비합니다. uv 설치가
-필요하면 공식 설치 문서를 따릅니다.
+`make bootstrap`은 마지막에 `make doctor`를 실행해 Docker, nginx, proxy port, compose 설정을
+확인합니다. uv가 없는 환경에서는 Python 동기화를 건너뛰고 Docker 실행 환경만 준비합니다. uv
+설치가 필요하면 공식 설치 문서를 따릅니다.
 
 ```text
 https://docs.astral.sh/uv/getting-started/installation/
@@ -78,7 +81,7 @@ uv 없이 release된 testkit wheel을 설치하려면 GitHub CLI 인증 후 아�
 
 ```sh
 gh auth login
-make install-testkit-release TESTKIT_VERSION=0.1.0
+make install-testkit-release TESTKIT_VERSION=0.1.1
 ```
 
 이후 `make testkit-smoke`, `make testkit-load` 같은 검증 target은 설치된 wheel을 사용합니다.
@@ -89,17 +92,23 @@ uv가 설치된 개발 환경에서는 기존처럼 workspace source를 우선 �
 ```sh
 make help            # 사용 가능한 명령 확인
 make doctor          # 로컬 도구와 submodule 상태 확인
-make bootstrap       # submodule 초기화, uv가 있으면 Python workspace 동기화
+make bootstrap       # .env, submodule, proxy config, 선택적 Python workspace 준비
 make install-testkit-release  # uv 없이 release wheel 기반 testkit 설치
-make up              # VitalServer stack 실행
-make down            # 전체 Compose stack 중지, Docker volume 유지
+make up              # macOS host proxy와 VitalServer stack 실행
+make down            # proxy와 Compose stack 중지, Docker volume 유지
 make logs            # log 확인
 make ps              # container 상태 확인
-make clean-volumes   # 전체 Compose stack 중지, Docker volume 삭제
+make app-rebuild     # app image rebuild 후 app container만 재생성
+make clean-volumes   # proxy와 전체 Compose stack 중지, Docker volume 삭제
+make clean           # proxy runtime, container, volume, orphan, local image 정리
 make open            # VitalServer 브라우저 열기
 make swagger         # 기본 stack은 건드리지 않고 Swagger UI만 시작
 make swagger-down    # 기본 stack은 유지하고 Swagger UI만 중지
 make proxy-config    # macOS host nginx proxy config 출력
+make proxy-start     # macOS host nginx proxy만 수동 시작
+make proxy-stop      # macOS host nginx proxy만 수동 중지
+make proxy-status    # macOS host nginx proxy 상태 확인
+make app-build       # app image만 build
 make testkit-smoke   # simulator 기반 smoke scenario
 make check           # lint, typecheck, test 실행
 ```
@@ -118,14 +127,19 @@ make up
 make swagger
 ```
 
-포트를 바꾸려면 `.env` 또는 실행 환경에서 `SWAGGER_UI_PORT`를 지정합니다.
+Make는 `.env`를 자동으로 읽습니다. 포트를 바꾸려면 `.env`를 수정하거나 일회성으로
+`make VITALSERVER_PROXY_PORT=8080 up`처럼 Make 변수로 넘깁니다.
+Swagger UI 포트는 `SWAGGER_UI_PORT`로 조정합니다.
 Swagger UI는 `/vitalserver` reverse proxy를 통해 같은 origin에서 VitalServer를 호출합니다.
-브라우저가 직접 `http://localhost:8080`을 호출하지 않기 때문에 CORS에 걸리지 않습니다.
+브라우저가 직접 Docker backend인 `http://localhost:18080`을 호출하지 않기 때문에 CORS에
+걸리지 않습니다.
 Swagger UI만 정리하려면 전체 stack을 내리지 않고 `make swagger-down`을 실행합니다.
 
 macOS 운영 서버에서 VR 장비의 원 IP를 보존해야 하면 Docker port를 장비에 직접 노출하지 않고
 host nginx를 앞단에 둡니다. 예시는 `docs/vitalserver-productization.md`의
 `VR Network Settings IP` 섹션과 `infra/macos-nginx/vitalserver.conf.template`을 봅니다.
+설치형 배포에서는 Docker backend를 `127.0.0.1:18080`으로 묶고, macOS host nginx를
+LaunchDaemon으로 실행해 외부 장비와 브라우저가 proxy port로만 접속하게 합니다.
 
 ## 구조
 
@@ -142,6 +156,7 @@ host nginx를 앞단에 둡니다. 예시는 `docs/vitalserver-productization.md
 │   └── testkit.toml
 ├── docs/
 ├── infra/
+│   ├── macos-nginx/          # macOS host proxy 설정과 launchd template
 │   └── swagger-ui/           # Swagger UI reverse proxy 설정
 ├── make/                     # Makefile target group
 ├── packages/
@@ -150,6 +165,23 @@ host nginx를 앞단에 둡니다. 예시는 `docs/vitalserver-productization.md
 └── vendor/
     └── vitalserver/           # git submodule: tirosh-chain/vitalserver
 ```
+
+## Branch 운영
+
+이 저장소는 monorepo이고 package별 tag를 사용합니다. branch는 release version을 표현하기보다
+작업의 위험도와 통합 위치를 구분합니다.
+
+- `main`: 보호된 안정 브랜치, release/tag 기준
+- `develop`: main으로 보내기 전 작업을 모으는 통합 브랜치
+- `feature/*`: 이슈 단위 구현, `develop`에서 따고 `develop`으로 PR
+- `experiment/*`: 성공 여부가 불확실한 실험
+- `hotfix/*`: main 기준 긴급 수정
+
+작은 문서 정리나 낮은 위험도의 운영 메모는 `develop`에 직접 commit할 수 있습니다. 기능
+구현이나 위험한 변경은 별도 branch에서 작업한 뒤 `develop`으로 합칩니다. release는
+`develop`에서 검증한 내용을 `main`으로 PR merge한 뒤 package tag를 붙입니다.
+
+자세한 기준은 `docs/branching.md`를 봅니다.
 
 ## 제품화 방향
 
@@ -198,12 +230,12 @@ TESTKIT_CONFIG=config/load-test.toml make testkit-load
 ```sh
 make check
 make build-testkit
-git tag testkit-v0.1.0
-git push origin testkit-v0.1.0
+git tag testkit-v0.1.1
+git push origin testkit-v0.1.1
 ```
 
 `make build-testkit`은 wheel과 sdist를 `packages/vitalserver-testkit/dist/` 아래에 생성합니다.
-Release wheel은 `make install-testkit-release TESTKIT_VERSION=0.1.0`으로 설치할 수 있습니다.
+Release wheel은 `make install-testkit-release TESTKIT_VERSION=0.1.1`으로 설치할 수 있습니다.
 
 PR과 `main` push에서는 testkit 관련 파일이 바뀐 경우에만 testkit CI가 실행됩니다.
 Release workflow도 이전 `testkit-v*` tag 이후 testkit 관련 변경이 있을 때만 package를
@@ -213,7 +245,9 @@ build하고 release asset을 업로드합니다. Release note는 monorepo 전체
 관련 문서는 `docs/` 아래에 둡니다. 전체 문서 구조는 `docs/index.md`를 기준으로 봅니다.
 
 - `docs/index.md`: 문서 지도와 작성 기준
+- `docs/branching.md`: branch와 package tag 운영 기준
 - `docs/vitalserver-productization.md`: VitalServer 제품화 맥락과 API/payload 배경
+- `docs/vrecorder.md`: VRecorder 접속 흐름과 Web Monitoring 상태 표시 기준
 - `docs/testkit-usage.md`: testkit 실행 방법과 결과 해석
 - `docs/redis-data-model.md`: Redis key 구조와 relay 설계 메모
 - `docs/openapi.yaml`: upstream VitalServer route에서 추출한 OpenAPI 문서

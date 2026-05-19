@@ -8,8 +8,11 @@
 | 문서 | 역할 |
 | --- | --- |
 | [VitalServer 제품화 전략](vitalserver-productization.md) | 저장소의 목표, 제품화 기준, 아직 비어 있는 영역 |
+| [Branch 운영 기준](branching.md) | main/develop/feature branch와 package tag 운영 방식 |
+| [Vital Recorder](vrecorder.md) | VRecorder 접속 흐름과 Web Monitoring 상태 표시 기준 |
 | [Testkit 사용법](testkit-usage.md) | `vitalserver-testkit` CLI와 검증 시나리오 실행 방법 |
 | [Redis 데이터 구조](redis-data-model.md) | VitalServer가 Redis에 저장하는 key 구조와 relay 설계 |
+| [ADR 0001](adr/0001-macos-host-proxy-for-vrecorder-ip.md) | macOS host proxy로 VRecorder 원 IP를 보존하기로 한 결정 |
 | [OpenAPI 문서](openapi.yaml) | upstream VitalServer route를 분석해 만든 Swagger/OpenAPI spec |
 
 ## 읽는 순서
@@ -18,8 +21,10 @@
 
 1. repository root의 [README](../README.md)
 2. [VitalServer 제품화 전략](vitalserver-productization.md)
-3. [Testkit 사용법](testkit-usage.md)
-4. [Redis 데이터 구조](redis-data-model.md)
+3. [Branch 운영 기준](branching.md)
+4. [Vital Recorder](vrecorder.md)
+5. [Testkit 사용법](testkit-usage.md)
+6. [Redis 데이터 구조](redis-data-model.md)
 
 Swagger UI로 API를 확인할 때는 root에서 아래 명령을 실행합니다.
 

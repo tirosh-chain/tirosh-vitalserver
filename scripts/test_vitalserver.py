@@ -29,7 +29,7 @@ class ScenarioSelectionConfig(StrictConfig):
 
 
 class ServerConfig(StrictConfig):
-    base_url: str = "http://localhost:8080"
+    base_url: str = "http://localhost"
     timeout: float = Field(default=30, gt=0)
     wait_seconds: float = Field(default=30, gt=0)
     poll_interval_seconds: float = Field(default=1, gt=0)
@@ -152,7 +152,7 @@ def run_health(config: VitalServerCheckConfig) -> None:
     run(
         *testkit_command(),
         "health",
-        "--base-url",
+        "--vitalserver-url",
         config.server.base_url,
         "--timeout",
         str(config.server.timeout),
@@ -167,7 +167,7 @@ def run_verify(config: VitalServerCheckConfig) -> None:
     command = [
         *testkit_command(),
         "verify-recorder",
-        "--base-url",
+        "--vitalserver-url",
         config.server.base_url,
         "--timeout",
         str(config.server.timeout),
@@ -187,7 +187,7 @@ def run_load(config: VitalServerCheckConfig) -> None:
     command = [
         *testkit_command(),
         "send-recorder",
-        "--base-url",
+        "--vitalserver-url",
         config.server.base_url,
         "--timeout",
         str(config.server.timeout),
@@ -217,7 +217,7 @@ def run_stream(
     command = [
         *testkit_command(),
         "stream-recorder",
-        "--base-url",
+        "--vitalserver-url",
         config.server.base_url,
         "--timeout",
         str(config.server.timeout),

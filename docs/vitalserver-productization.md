@@ -9,6 +9,7 @@
 - [문서 지도](index.md): 문서별 역할과 읽는 순서
 - [OpenAPI 문서](openapi.yaml): upstream route를 분석해 정리한 Swagger/OpenAPI 문서
 - [Redis 데이터 구조](redis-data-model.md): 실시간 monitor data가 Redis에 저장되는 방식
+- [Vital Recorder](vrecorder.md): VRecorder 접속 흐름과 Web Monitoring 상태 표시 기준
 - [testkit 사용법](testkit-usage.md): 실시간 수집, upload, health 검증 도구 사용법
 
 ## 목표
@@ -51,7 +52,7 @@ VitalServer 애플리케이션 자체 수정은 fork repository에서 관리합�
 
 기본 로컬 endpoint:
 
-- VitalServer: `http://localhost:8080`
+- VitalServer: `http://localhost`
 - Redis UI: `http://localhost:8081`
 - Swagger UI: `http://localhost:8082`
 
@@ -60,11 +61,11 @@ OpenAPI 문서에는 이 proxy server만 노출해서, Swagger의 `Try it out`�
 걸리지 않도록 합니다.
 
 ```sh
-make up            # 기본 stack 실행
+make up            # proxy와 기본 stack 실행
 make open          # VitalServer 브라우저 열기
-make restart       # 기본 stack 재시작
-make down          # 전체 Compose stack 중지, Docker volume 유지
-make clean-volumes # 전체 Compose stack 중지, Docker volume 삭제
+make restart       # proxy와 기본 stack 재시작
+make down          # proxy와 전체 Compose stack 중지, Docker volume 유지
+make clean-volumes # proxy와 전체 Compose stack 중지, Docker volume 삭제
 
 make swagger       # 기본 stack은 건드리지 않고 Swagger UI만 시작
 make swagger-down  # 기본 stack은 유지하고 Swagger UI만 중지
@@ -87,9 +88,11 @@ public 문서와 다른 부분은 OpenAPI와 제품화 문서에 명시합니다
 
 ### VR Network Settings IP
 
-Web Monitoring의 `Network Settings`는 VR이 Socket.IO `join_vr`로 접속할 때 저장된
-`ip_<vrcode>` 값을 받아 `http://<ip>`로 엽니다. macOS Docker Desktop의 port forwarding을
-직접 거치면 container 내부에서는 실제 VR IP 대신 Docker gateway IP가 보일 수 있습니다.
+Web Monitoring의 `Network Settings`는 Socket.IO `join_vr` 처리 시 저장된 `ip_<vrcode>` 값을
+받아 `http://<ip>`로 엽니다. 실제 VRecorder client source는 이 repo에 없으므로 제품 장비가
+`join_vr`를 보내는지는 접속 로그와 Redis 값으로 검증합니다. macOS Docker Desktop의 port
+forwarding을 직접 거치면 container 내부에서는 실제 VR IP 대신 Docker gateway IP가 보일 수
+있습니다.
 
 fork된 VitalServer는 `VITALSERVER_TRUST_PROXY=1`일 때만 `X-Forwarded-For`,
 `Forwarded: for=...`, `X-Real-IP`, `X-Client-IP` header를 우선 사용합니다. 기본값은 기존처럼
@@ -103,7 +106,7 @@ macOS 운영 서버에서는 Docker published port를 외부에 직접 노출하
 
 ```text
 VR 장비 / 브라우저
-  -> macOS host nginx :8080
+  -> macOS host nginx :80
   -> Docker published backend 127.0.0.1:18080
   -> VitalServer container :80
 ```
@@ -111,12 +114,21 @@ VR 장비 / 브라우저
 예시 `.env`:
 
 ```env
+VITALSERVER_PROXY_PORT=80
+VITALSERVER_BIND_HOST=127.0.0.1
 VITALSERVER_HTTP_PORT=18080
+VITALSERVER_REDIS_HOST=redis
+VITALSERVER_REDIS_PORT=6379
 VITALSERVER_TRUST_PROXY=1
 ```
 
+이 구성에서 Docker backend는 macOS host loopback에만 열고, 외부 장비와 브라우저는 host
+nginx port로만 접속합니다. Docker published port를 LAN에 직접 노출하면 Docker Desktop NAT
+이후의 gateway IP가 `ip_<vrcode>`에 저장될 수 있습니다.
+Redis는 host에 publish하지 않고 Compose 내부 network의 `redis:6379`로만 접근합니다.
+
 Web Monitoring의 Socket.IO 접속 주소는 기본적으로 same-origin path(`/`)를 사용합니다. 즉 브라우저가
-`http://<macOS host LAN IP 또는 DNS>:8080`으로 접속하면 Socket.IO도 같은 host와 port로
+`http://<macOS host LAN IP 또는 DNS>`로 접속하면 Socket.IO도 같은 host와 port로
 붙습니다. 여러 접속 주소를 동시에 지원해야 하는 환경에서는 `VITALSERVER_PUBLIC_HOST`를
 비워두는 것이 안전합니다. 단일 public 주소로 강제해야 하는 환경에서만
 `VITALSERVER_PUBLIC_HOST`, `VITALSERVER_PUBLIC_PORT`를 명시합니다.
@@ -124,12 +136,34 @@ Web Monitoring의 Socket.IO 접속 주소는 기본적으로 same-origin path(`/
 host nginx config는 아래 명령으로 렌더링합니다.
 
 ```sh
-VITALSERVER_PROXY_PORT=8080 VITALSERVER_HTTP_PORT=18080 make proxy-config
+make proxy-config
 ```
 
 렌더링된 config는 macOS host의 nginx 설정에 포함합니다. 이 config는 client가 보낸
 forwarding header를 신뢰하지 않고 host nginx의 `$remote_addr`로 덮어써서 VitalServer에
 전달합니다.
+
+로컬 PoC에서는 Homebrew nginx를 설치한 뒤 `make up`으로 proxy와 Docker backend를 함께 실행합니다.
+기본 proxy port는 80이므로 nginx 실행 시 관리자 권한이 필요할 수 있습니다.
+
+```sh
+make up
+make proxy-status
+make down
+```
+
+`make up`은 Docker backend를 loopback으로 올리고, `.tmp/macos-nginx/vitalserver.conf`를 생성한 뒤
+해당 config로 nginx를 실행합니다. Homebrew service를 등록하거나 launchd를 수정하지 않습니다.
+
+설치형 배포에서는 nginx binary와 config를 macOS host에 설치하고 launchd로 관리합니다.
+LaunchDaemon plist는 아래 명령으로 렌더링합니다.
+
+```sh
+make proxy-plist
+```
+
+설치 패키지는 nginx config, launchd plist, Docker `.env`를 함께 생성해 container backend와
+native proxy가 같은 port 계약을 사용하도록 유지합니다.
 
 ## 데이터 흐름
 
@@ -169,6 +203,7 @@ Redis에 저장되는 핵심 key는 아래입니다.
 
 - `make up`으로 깨끗한 환경에서 재현 가능하게 실행됩니다.
 - 포트, 관리자 비밀번호, Swagger 포트는 `.env`로 조정할 수 있습니다.
+- 일회성 override는 `make VITALSERVER_PROXY_PORT=8080 up`처럼 Make 변수로 넘깁니다.
 - VitalServer fork submodule은 명시적으로 고정하고, 변경 시 submodule commit을 리뷰합니다.
 
 ### API

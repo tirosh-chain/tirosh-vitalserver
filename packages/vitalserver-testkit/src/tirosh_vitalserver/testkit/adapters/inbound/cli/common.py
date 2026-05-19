@@ -9,8 +9,8 @@ def add_common_server_args(parser: argparse.ArgumentParser) -> None:
     """Add VitalServer connection options shared by every command."""
 
     parser.add_argument(
-        "--base-url",
-        default="http://localhost:8080",
+        "--vitalserver-url",
+        default="http://localhost",
         help="VitalServer base URL",
     )
     parser.add_argument(
