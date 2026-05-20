@@ -83,6 +83,7 @@ make vm-up-bridged
 | `make vm-docker-images` | air-gapped 설치용 Docker image bundle 생성 |
 | `make vm-airgap-rootfs` | 온라인 빌드 환경에서 rootfs에 Docker/nginx/Compose 설치 |
 | `make vm-app` | `/Applications`에 설치될 가벼운 macOS control app 생성 |
+| `make vm-installer-app` | DMG에서 실행할 설치 전 설정/설치 실행 app 생성 |
 | `make vm-pkg` | control app, VM runtime, boot asset, guest bundle, host proxy launcher를 `.pkg`로 묶기 |
 | `make vm-pkg-install` | 생성된 개발용 `.pkg`를 설치 |
 | `make vm-pkg-uninstall-dev` | 개발용 설치물을 제거 |
@@ -167,8 +168,14 @@ make vm-dmg
     -> .tmp/vitalserver-vm-pkg/root
   -> pkgbuild
     -> dist/TiroshVitalServerVM-<version>.pkg
+  -> vm-installer-app
+    -> .tmp/Configure & Install Tirosh VitalServer.app
   -> hdiutil create
     -> dist/TiroshVitalServer-<version>.dmg
+
+Configure & Install Tirosh VitalServer.app
+  -> write /private/tmp/tirosh-vitalserver-install.json
+  -> run installer -pkg "Install Tirosh VitalServer.pkg" -target /
 
 Install Tirosh VitalServer.pkg
   -> payload copy

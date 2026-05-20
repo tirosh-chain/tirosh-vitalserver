@@ -19,6 +19,7 @@ VM_BRIDGED_CODESIGN_IDENTITY ?= $(VM_CODESIGN_IDENTITY)
 VM_LAUNCHER_DIR := apps/vitalserver-vm-launcher
 VM_LAUNCHER_BIN := $(VM_LAUNCHER_DIR)/.build/release/vitalserver-vm
 VM_APP_BIN := $(VM_LAUNCHER_DIR)/.build/release/TiroshVitalServerApp
+VM_INSTALLER_APP_BIN := $(VM_LAUNCHER_DIR)/.build/release/TiroshVitalServerInstallerApp
 VM_LAUNCHER_ENTITLEMENTS := $(VM_LAUNCHER_DIR)/Entitlements.shared.plist
 VM_LAUNCHER_BRIDGED_ENTITLEMENTS := $(VM_LAUNCHER_DIR)/Entitlements.plist
 VM_SDKROOT := $(firstword $(wildcard /Library/Developer/CommandLineTools/SDKs/MacOSX15.4.sdk) $(shell xcrun --sdk macosx --show-sdk-path 2>/dev/null))
@@ -68,6 +69,8 @@ VM_UPDATE_BUNDLE_PATH := $(VM_UPDATE_BUNDLE_DIR)/update-bundle-$(VM_UPDATE_BUNDL
 # App artifacts.
 VM_APP_NAME := Tirosh VitalServer Manager
 VM_APP_BUNDLE := .tmp/$(VM_APP_NAME).app
+VM_INSTALLER_APP_NAME := Configure & Install Tirosh VitalServer
+VM_INSTALLER_APP_BUNDLE := .tmp/$(VM_INSTALLER_APP_NAME).app
 VM_DMG_STAGING := .tmp/vitalserver-vm-dmg
 VM_DMG_OUTPUT := $(VM_DIST_DIR)/TiroshVitalServer-$(VM_PKG_VERSION).dmg
 VM_INSTALLED_IP_FILE := $(VM_INSTALL_HOME)/data/run/vm-ip

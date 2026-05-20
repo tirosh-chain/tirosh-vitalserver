@@ -248,10 +248,15 @@ rollback success    -> healthy
 ## GUI와 Package
 
 제품 설치 책임은 `.pkg`에 둡니다. `.dmg`는 installer 전달 매체이고, installer가 app과 runtime을
-함께 설치합니다. Manager app은 설치 이후 상태 확인과 운영 작업을 담당합니다.
+함께 설치합니다. DMG root의 `Configure & Install Tirosh VitalServer.app`은 설치 전 설정을 받고
+PKG 실행을 위임하는 bootstrapper이며, `/Applications`에 설치하지 않습니다. Manager app은 설치 이후
+상태 확인과 운영 작업을 담당합니다.
 
 ```text
 TiroshVitalServer.dmg
+  -> Configure & Install Tirosh VitalServer.app
+      -> write /private/tmp/tirosh-vitalserver-install.json
+      -> run Install Tirosh VitalServer.pkg
   -> Install Tirosh VitalServer.pkg
       -> /Applications/Tirosh VitalServer Manager.app
       -> /Library/Application Support/TiroshVitalServer runtime
@@ -279,9 +284,10 @@ make vm-app
 open ".tmp/Tirosh VitalServer Manager.app"
 ```
 
-제품 DMG는 app wrapper가 아니라 installer pkg를 전달합니다. `make vm-pkg`는 이 app을
-`/Applications/Tirosh VitalServer Manager.app` payload로 포함하고, `make vm-dmg`는 DMG root에
-`Install Tirosh VitalServer.pkg`만 배치합니다.
+제품 DMG는 drag-and-drop app wrapper가 아니라 installer pkg와 설치 전 bootstrapper app을 전달합니다.
+`make vm-pkg`는 Manager app을 `/Applications/Tirosh VitalServer Manager.app` payload로 포함하고,
+`make vm-dmg`는 DMG root에 `Configure & Install Tirosh VitalServer.app`과
+`Install Tirosh VitalServer.pkg`를 배치합니다.
 
 현재 배포 기준은 unsigned입니다. `.pkg`와 `.dmg`에 Developer ID 서명/notarization을 적용하지 않습니다. 단, nginx binary와 dylib는 `install_name_tool`로 load path를 수정하므로 실행 가능한 Mach-O 상태를 위해 ad-hoc signing(`codesign --sign -`)만 수행합니다.
 
@@ -423,7 +429,7 @@ make vm-dmg
 | PKG output | `dist/TiroshVitalServerVM-<version>.pkg` | installer payload |
 | DMG output | `dist/TiroshVitalServer-<version>.dmg` | 사용자 전달 매체 |
 
-DMG root에는 `Install Tirosh VitalServer.pkg`만 둡니다. 사용자는 app을 Applications로 drag하지 않고 installer pkg를 실행합니다.
+DMG root에는 `Configure & Install Tirosh VitalServer.app`과 `Install Tirosh VitalServer.pkg`를 둡니다. 사용자는 app을 Applications로 drag하지 않고 bootstrapper app을 실행하거나, 기본값 설치가 필요하면 pkg를 직접 실행합니다.
 
 ## DMG 설치 흐름
 
@@ -431,12 +437,15 @@ DMG root에는 `Install Tirosh VitalServer.pkg`만 둡니다. 사용자는 app�
 
 ```text
 1. TiroshVitalServer-<version>.dmg mount
-2. Install Tirosh VitalServer.pkg 실행
-3. macOS Installer가 payload 복사
-4. PKG postinstall 실행
-5. Swift runtime install이 runtime instance provision
-6. launchd VM/proxy service 등록 및 정책 적용
-7. Manager.app 또는 CLI로 status/health 확인
+2. Configure & Install Tirosh VitalServer.app 실행
+3. 설치 전 CPU/RAM/disk/proxy/admin/start-on-boot 등 설정 입력
+4. bootstrapper가 `/private/tmp/tirosh-vitalserver-install.json` 작성
+5. bootstrapper가 `Install Tirosh VitalServer.pkg`를 관리자 권한으로 실행
+6. macOS Installer가 payload 복사
+7. PKG postinstall 실행
+8. Swift runtime install이 runtime instance provision
+9. launchd VM/proxy/watchdog service 등록 및 정책 적용
+10. Manager.app 또는 CLI로 status/health 확인
 ```
 
 실제 코드 호출은 아래처럼 이어집니다.
