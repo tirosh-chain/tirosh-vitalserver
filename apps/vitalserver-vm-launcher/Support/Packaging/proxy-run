@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+vm_home="${VITALSERVER_VM_HOME:-/Library/Application Support/TiroshVitalServer/vm}"
+nginx_prefix="${VITALSERVER_NGINX_PREFIX:-/Library/Application Support/TiroshVitalServer/nginx}"
+nginx_bin="${VITALSERVER_NGINX_BIN:-${nginx_prefix}/sbin/nginx}"
+proxy_port="${VITALSERVER_PROXY_PORT:-80}"
+
+ip_file="${vm_home}/data/run/vm-ip"
+template="${vm_home}/Support/Proxy/vitalserver.conf.template"
+config="${nginx_prefix}/vitalserver.conf"
+
+mkdir -p "${nginx_prefix}/logs"
+
+deadline=$(( $(date +%s) + ${VITALSERVER_PROXY_WAIT_TIMEOUT:-600} ))
+while [ "$(date +%s)" -lt "${deadline}" ]; do
+  if [ -s "${ip_file}" ]; then
+    vm_ip="$(cat "${ip_file}")"
+    upstream="${vm_ip}:80"
+
+    sed \
+      -e "s|\${VITALSERVER_PROXY_PORT}|${proxy_port}|g" \
+      -e "s|\${PROXY_UPSTREAM}|${upstream}|g" \
+      "${template}" > "${config}"
+
+    exec "${nginx_bin}" -p "${nginx_prefix}" -c "${config}" -g "daemon off;"
+  fi
+
+  sleep 2
+done
+
+printf "timed out waiting for VM IP file: %s\n" "${ip_file}" >&2
+exit 1

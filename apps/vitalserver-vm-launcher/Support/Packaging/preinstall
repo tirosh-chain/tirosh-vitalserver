@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+labels=(
+  "com.tirosh.vitalserver-proxy"
+  "com.tirosh.vitalserver-vm"
+)
+
+for label in "${labels[@]}"; do
+  if launchctl print "system/${label}" >/dev/null 2>&1; then
+    launchctl bootout "system/${label}" >/dev/null 2>&1 || true
+  fi
+done

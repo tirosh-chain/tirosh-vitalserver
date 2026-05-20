@@ -29,6 +29,7 @@ os.cpus = function patchedCpus() {
 
 const realRedisSet = redis.RedisClient.prototype.set;
 const realModuleLoad = moduleLoader._load;
+const adminUserKey = "users:admin";
 
 function shouldRewriteRedisHost(host) {
   return !host || host === "0.0.0.0" || host === "127.0.0.1" || host === "localhost";
@@ -90,13 +91,9 @@ function patchRedisModule(redisModule) {
 patchRedisModule(redis);
 
 redis.RedisClient.prototype.set = function patchedRedisSet(key, value, ...rest) {
-  if (key === "users:admin" && typeof value === "string") {
+  if (key === adminUserKey && typeof value === "string") {
     try {
-      const user = JSON.parse(value);
-      if (user && user.id === "admin") {
-        user.password = adminPassword;
-        value = JSON.stringify(user);
-      }
+      value = JSON.stringify(withConfiguredAdminPassword(JSON.parse(value)));
     } catch (error) {
       // Keep the upstream value if it is not the expected JSON payload.
     }
@@ -104,6 +101,74 @@ redis.RedisClient.prototype.set = function patchedRedisSet(key, value, ...rest) 
 
   return realRedisSet.call(this, key, value, ...rest);
 };
+
+function withConfiguredAdminPassword(user) {
+  if (user && user.id === "admin") {
+    user.password = adminPassword;
+  }
+  return user;
+}
+
+function syncConfiguredAdminPassword() {
+  const client = redis.createClient(redisPort, redisHost);
+  let completed = false;
+
+  function close() {
+    if (!completed) {
+      completed = true;
+      client.quit();
+    }
+  }
+
+  client.on("ready", () => {
+    client.get(adminUserKey, (getError, value) => {
+      if (getError) {
+        console.error("[tirosh] failed to read admin user:", getError.message);
+        close();
+        return;
+      }
+
+      let user;
+      try {
+        user = value ? JSON.parse(value) : null;
+      } catch (error) {
+        console.error("[tirosh] failed to parse admin user:", error.message);
+        close();
+        return;
+      }
+
+      if (!user || user.id !== "admin") {
+        user = {
+          id: "admin",
+          password: adminPassword,
+          name: "admin",
+          email: "",
+          admin_yn: "Y",
+        };
+      } else {
+        user = withConfiguredAdminPassword(user);
+      }
+
+      client.sadd("users", "admin", () => {
+        client.set(adminUserKey, JSON.stringify(user), (setError) => {
+          if (setError) {
+            console.error("[tirosh] failed to sync admin password:", setError.message);
+          } else {
+            console.log("[tirosh] admin password synced");
+          }
+          close();
+        });
+      });
+    });
+  });
+
+  client.on("error", (error) => {
+    console.error("[tirosh] admin password sync redis error:", error.message);
+    close();
+  });
+}
+
+setTimeout(syncConfiguredAdminPassword, 1000);
 
 moduleLoader._load = function patchedModuleLoad(request, parent, isMain) {
   const exported = realModuleLoad.call(this, request, parent, isMain);

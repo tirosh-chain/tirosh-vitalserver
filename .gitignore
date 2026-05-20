@@ -1,5 +1,8 @@
 # macOS
 .DS_Store
+._*
+.AppleDouble
+.LSOverride
 
 # Local environment files
 .env
@@ -12,6 +15,7 @@ docker-compose.override.yml
 
 # Logs and temporary files
 *.log
+tmp.txt
 .tmp/
 tmp/
 temp/

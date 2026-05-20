@@ -10,6 +10,7 @@ struct VMRuntimeConfig: Codable {
     var kernelCommandLine: String
     var network: NetworkConfig
     var sharedDirectory: SharedDirectoryConfig?
+    var vitalFilesDirectory: SharedDirectoryConfig?
 
     // The default boot asset names match the Linux kernel/initrd style used by
     // Apple's Linux VM sample and keep the first PoC explicit.
@@ -36,6 +37,12 @@ struct VMRuntimeConfig: Codable {
                 hostPath: sharedData.path,
                 tag: Constants.Defaults.sharedDirectoryTag,
                 guestMountPath: Constants.Defaults.sharedDirectoryGuestMountPath,
+                readOnly: false
+            ),
+            vitalFilesDirectory: SharedDirectoryConfig(
+                hostPath: sharedData.appendingPathComponent(Constants.Paths.vitalFilesDirectory).path,
+                tag: Constants.Defaults.vitalFilesDirectoryTag,
+                guestMountPath: Constants.Defaults.vitalFilesDirectoryGuestMountPath,
                 readOnly: false
             )
         )
@@ -72,6 +79,17 @@ struct VMRuntimeConfig: Codable {
                 .appendingPathComponent(Constants.Paths.imagesDirectory)
                 .appendingPathComponent(Constants.BootAssets.cloudInit)
                 .path
+        }
+        if config.vitalFilesDirectory == nil {
+            config.vitalFilesDirectory = SharedDirectoryConfig(
+                hostPath: home
+                    .appendingPathComponent(Constants.Paths.dataDirectory)
+                    .appendingPathComponent(Constants.Paths.vitalFilesDirectory)
+                    .path,
+                tag: Constants.Defaults.vitalFilesDirectoryTag,
+                guestMountPath: Constants.Defaults.vitalFilesDirectoryGuestMountPath,
+                readOnly: false
+            )
         }
     }
 

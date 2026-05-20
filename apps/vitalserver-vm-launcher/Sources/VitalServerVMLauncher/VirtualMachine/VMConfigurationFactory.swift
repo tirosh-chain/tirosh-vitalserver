@@ -20,11 +20,9 @@ final class VMConfigurationFactory {
         vmConfiguration.entropyDevices = [VZVirtioEntropyDeviceConfiguration()]
         vmConfiguration.serialPorts = [serialPortConfiguration()]
         vmConfiguration.networkDevices = [try networkDeviceConfiguration(config.network)]
-        if let sharedDirectory = config.sharedDirectory {
-            vmConfiguration.directorySharingDevices = [
-                try directorySharingConfiguration(sharedDirectory)
-            ]
-        }
+        vmConfiguration.directorySharingDevices = try [config.sharedDirectory, config.vitalFilesDirectory]
+            .compactMap { $0 }
+            .map(directorySharingConfiguration)
 
         vmConfiguration.storageDevices = try storageDeviceConfigurations(config)
 

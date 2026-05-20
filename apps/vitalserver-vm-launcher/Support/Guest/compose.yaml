@@ -1,7 +1,6 @@
 services:
   redis:
     image: redis:3.2.12-alpine
-    platform: linux/amd64
     command:
       - redis-server
       - --appendonly
@@ -42,7 +41,7 @@ services:
       VITALSERVER_TRUST_PROXY: "${VITALSERVER_TRUST_PROXY:-1}"
     volumes:
       - type: bind
-        source: /mnt/tirosh/vital-files
+        source: ${VITALSERVER_VITAL_FILES_DIR:-/mnt/tirosh-vital-files}
         target: /opt/vitalserver/vital_files
       - type: bind
         source: /mnt/tirosh/vr-release
@@ -58,6 +57,32 @@ services:
       interval: 10s
       timeout: 5s
       retries: 30
+    restart: unless-stopped
+
+  redis-ui:
+    image: rediscommander/redis-commander:latest
+    depends_on:
+      redis:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${REDIS_UI_PORT:-18081}:8081"
+    environment:
+      REDIS_HOSTS: "local:redis:6379"
+      URL_PREFIX: "/redis-ui"
+    restart: unless-stopped
+
+  swagger-ui:
+    image: swaggerapi/swagger-ui:v5.17.14
+    ports:
+      - "127.0.0.1:${SWAGGER_UI_PORT:-18082}:8080"
+    environment:
+      BASE_URL: "/swagger"
+      URL: "/swagger/openapi.yaml"
+    volumes:
+      - type: bind
+        source: /mnt/tirosh/deploy/docs/openapi.yaml
+        target: /usr/share/nginx/html/openapi.yaml
+        read_only: true
     restart: unless-stopped
 
 volumes:

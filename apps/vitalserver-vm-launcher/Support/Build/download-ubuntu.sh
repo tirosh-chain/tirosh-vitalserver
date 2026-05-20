@@ -31,7 +31,8 @@ load_config() {
 resolve_paths() {
   images_dir="${VM_IMAGE_DIR:-${VM_HOME:-${HOME}/.tirosh/vitalserver-vm}/images}"
   download_dir="${images_dir}/downloads"
-  rootfs_size="${VM_ROOTFS_SIZE:-16G}"
+  rootfs_size="${VM_ROOTFS_SIZE:-8G}"
+  recreate_rootfs="${VM_RECREATE_ROOTFS:-false}"
 }
 
 resolve_asset_names() {
@@ -89,6 +90,10 @@ download_assets() {
 install_boot_assets() {
   gzip -dc "${download_dir}/${kernel_name}" >"${images_dir}/Image"
   cp "${download_dir}/${initrd_name}" "${images_dir}/initrd.img"
+
+  if [ "${recreate_rootfs}" = "true" ]; then
+    rm -f "${images_dir}/rootfs.raw"
+  fi
 
   if [ -s "${images_dir}/rootfs.raw" ]; then
     printf "exists %s\n" "${images_dir}/rootfs.raw"

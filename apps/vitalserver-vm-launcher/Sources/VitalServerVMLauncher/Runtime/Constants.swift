@@ -28,11 +28,13 @@ enum Constants {
     }
 
     enum Defaults {
-        static let minimumCPUCount = 2
-        static let maximumCPUCount = 8
-        static let memoryMiB: UInt64 = 4096
+        static let minimumCPUCount = 7
+        static let maximumCPUCount = 64
+        static let memoryMiB: UInt64 = 8192
         static let sharedDirectoryTag = "tirosh"
         static let sharedDirectoryGuestMountPath = "/mnt/tirosh"
+        static let vitalFilesDirectoryTag = "tirosh-vital-files"
+        static let vitalFilesDirectoryGuestMountPath = "/mnt/tirosh-vital-files"
     }
 
     enum Network {

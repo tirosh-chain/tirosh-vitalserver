@@ -143,6 +143,159 @@ TiroshVitalServer.dmg
 
 GUI는 VM을 직접 만드는 도구라기보다, 이 파일들을 안전하게 생성/수정하는 설정 도구로 봅니다.
 
+현재 개발용 GUI는 `make vm-app`으로 생성합니다.
+
+```sh
+make vm-app
+open ".tmp/Tirosh VitalServer.app"
+```
+
+이 앱은 runtime `.pkg`와 uninstaller를 Resources에 포함하고, `osascript ... with administrator privileges`를 통해 설치/제거를 수행합니다. DMG는 아직 만들지 않습니다. 먼저 `.app`에서 설치, 상태 확인, 제거 UX를 검증한 뒤 최종 배포 포장으로 DMG를 추가합니다.
+
+## Package 구성
+
+현재 repository의 `make vm-pkg`는 `.pkg`까지 가기 위한 개발 검증용 packaging target입니다.
+
+```sh
+make vm-pkg
+make vm-pkg-install
+make vm-installed-health
+make vm-pkg-uninstall-dev
+```
+
+생성물:
+
+```text
+.tmp/TiroshVitalServerVM-0.1.0.pkg
+```
+
+설치 후 구조:
+
+```text
+/usr/local/bin/vitalserver-vm
+/usr/local/bin/vitalserver-proxy-run
+/usr/local/bin/tirosh-vitalserver-uninstall
+/Library/LaunchDaemons/com.tirosh.vitalserver-vm.plist
+/Library/LaunchDaemons/com.tirosh.vitalserver-proxy.plist
+/Library/Application Support/TiroshVitalServer/
+  vm/
+    images/
+      Image
+      initrd.img
+      rootfs.raw.gz    # package payload
+      rootfs.raw       # install 시 압축 해제
+      seed.iso        # install 시 생성
+    data/
+      deploy/
+      run/
+      vital-files/
+      vr-release/
+    Support/
+      Build/create-cloud-init.sh
+      Proxy/vitalserver.conf.template
+  nginx/
+    sbin/nginx
+    lib/
+      libpcre2-8.0.dylib
+      libssl.3.dylib
+      libcrypto.3.dylib
+    vitalserver.conf # VM IP 확인 후 생성
+    logs/
+```
+
+shared/NAT mode에서는 VM IP가 부팅 후에 결정됩니다. 그래서 package는 nginx config에 upstream을 미리 박아두지 않습니다.
+
+```text
+launchd
+  -> com.tirosh.vitalserver-vm
+      -> vitalserver-vm start
+      -> VM이 /mnt/tirosh/run/vm-ip 기록
+
+launchd
+  -> com.tirosh.vitalserver-proxy
+      -> vitalserver-proxy-run
+      -> vm-ip 대기
+      -> nginx config 렌더링
+      -> nginx daemon off
+```
+
+이 구조에서 운영자가 `VITALSERVER_PROXY_UPSTREAM`을 직접 설정할 필요는 없습니다.
+
+`rootfs.raw`는 16G sparse disk라 package payload에 그대로 넣으면 `pkgbuild`가 실패할 수 있습니다. 따라서 package에는 `rootfs.raw.gz`를 넣고, 설치 시 `postinstall`에서 다시 raw disk로 풉니다.
+
+설치 테스트는 실제 시스템 경로를 사용합니다.
+
+| 경로 | 내용 |
+|---|---|
+| `/usr/local/bin` | launcher/proxy runner |
+| `/Library/LaunchDaemons` | VM/proxy 자동 실행 plist |
+| `/Library/Application Support/TiroshVitalServer` | VM image, deploy bundle, nginx runtime |
+
+설치 후 `make vm-installed-health`로 launchd load 상태, VM IP, guest HTTP, host proxy HTTP를 확인합니다.
+
+개발 중 설치/제거를 반복할 때는 `make vm-pkg-uninstall-dev`를 사용합니다. 이 target은 `/Library/Application Support/TiroshVitalServer`, 관련 LaunchDaemon plist, `/usr/local/bin/vitalserver-*`를 제거하므로 운영 환경에서는 사용하지 않습니다.
+
+설치된 Mac mini에서 사용자가 CLI로 제거할 때는 아래 명령을 사용합니다.
+
+```sh
+sudo tirosh-vitalserver-uninstall
+```
+
+이 명령은 VM/proxy LaunchDaemon을 unload하고, package가 설치한 runtime 파일을 제거합니다. GUI 제품에서는 이 명령을 “Uninstall” 버튼이나 별도 uninstaller 앱에서 호출하는 구조로 확장할 수 있습니다.
+
+### 아직 제품 package가 아닌 부분
+
+현재 `make vm-pkg`는 local nginx binary를 package에 복사합니다. Homebrew nginx를 복사하면 실행 파일은 들어가지만, 동적 library 의존성이 build machine 환경에 묶일 수 있습니다.
+
+현재 `make vm-nginx-bundle`은 Homebrew nginx 실행 파일과 비시스템 dylib를 package 내부로 복사합니다.
+
+```text
+nginx/sbin/nginx
+  -> @executable_path/../lib/libpcre2-8.0.dylib
+  -> @executable_path/../lib/libssl.3.dylib
+  -> @executable_path/../lib/libcrypto.3.dylib
+  -> /usr/lib/libz.1.dylib
+  -> /usr/lib/libSystem.B.dylib
+```
+
+즉 운영 Mac mini에 Homebrew가 없어도 host proxy가 뜰 수 있는 구조입니다. 다만 제품 release에서는 build machine의 Homebrew 상태를 그대로 가져오지 않고, nginx version/configure option과 dependency version을 고정한 release artifact로 관리해야 합니다.
+
+air-gapped 제품 package는 외부 Docker registry 없이 container를 시작할 수 있어야 합니다. 현재 package flow는 `make vm-docker-images`로 아래 image를 하나의 bundle로 만들고, 설치 후 guest bootstrap에서 `docker load`를 먼저 수행합니다.
+
+```text
+vitalserver:2.3.4
+redis:3.2.12-alpine
+rediscommander/redis-commander:latest
+swaggerapi/swagger-ui:v5.17.14
+```
+
+생성/설치 경로는 아래와 같습니다.
+
+```text
+.tmp/vitalserver-vm-pkg/docker-images/vitalserver-images.tar.gz
+/Library/Application Support/TiroshVitalServer/vm/data/deploy/docker-images/vitalserver-images.tar.gz
+```
+
+Docker image만으로는 충분하지 않습니다. Guest VM이 처음 부팅될 때 `docker.io`, Docker Compose, nginx, qemu-user-static을 apt로 설치해야 한다면 air-gapped 환경에서 실패합니다. 그래서 제품용 package를 만들기 전 온라인 빌드 환경에서 아래 target으로 `rootfs.raw`를 한 번 준비합니다.
+
+```sh
+VM_RECREATE_ROOTFS=true make vm-download
+make vm-airgap-rootfs
+make vm-pkg
+```
+
+기본 package용 rootfs는 8GB입니다. 설치 후에는 wizard의 Disk size 설정에 맞춰 VM disk 파일을 확장합니다. `make vm-airgap-rootfs`는 VM을 임시로 띄우고 `prepare-airgap-rootfs.sh`만 실행합니다. 이 스크립트는 OS package를 설치하고 `/mnt/tirosh/run/rootfs-ready` marker를 기록한 뒤 종료됩니다. Container는 시작하지 않기 때문에 운영 데이터나 Redis volume을 golden rootfs에 섞지 않습니다.
+
+남은 제품화 항목은 아래입니다.
+
+| 항목 | 필요한 이유 |
+|---|---|
+| nginx release artifact 고정 | build machine Homebrew 상태에 따라 package가 달라지지 않도록 고정 |
+| clean golden rootfs | 개발 중 변형된 `rootfs.raw`가 package에 섞이지 않도록 고정 |
+| guest OS package preload | `docker.io`, `nginx`, `qemu-user-static` 같은 OS package를 외부 apt 없이 설치 |
+| Developer ID signing | launchd/Virtualization binary 배포 신뢰성 확보 |
+| notarization | Gatekeeper 환경에서 설치 마찰 감소 |
+
 ## Runtime Directory
 
 PoC 기본 runtime directory는 아래입니다.

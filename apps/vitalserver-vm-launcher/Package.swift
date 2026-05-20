@@ -11,11 +11,18 @@ let package = Package(
         .executable(
             name: "vitalserver-vm",
             targets: ["VitalServerVMLauncher"]
+        ),
+        .executable(
+            name: "TiroshVitalServerApp",
+            targets: ["TiroshVitalServerApp"]
         )
     ],
     targets: [
         .executableTarget(
             name: "VitalServerVMLauncher"
+        ),
+        .executableTarget(
+            name: "TiroshVitalServerApp"
         )
     ]
 )

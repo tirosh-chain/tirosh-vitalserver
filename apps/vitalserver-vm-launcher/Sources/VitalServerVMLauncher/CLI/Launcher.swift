@@ -23,6 +23,8 @@ struct Launcher {
             try configureNetwork(paths: paths, arguments: Array(arguments.dropFirst()))
         case .interfaces:
             listInterfaces()
+        case .configure:
+            try configureRuntime(paths: paths, arguments: Array(arguments.dropFirst()))
         case .clean:
             try clean(paths: paths)
         case .version:
@@ -178,6 +180,81 @@ struct Launcher {
         }
     }
 
+    func configureRuntime(paths: LauncherPaths, arguments: [String]) throws {
+        var config = try VMRuntimeConfig.load(from: paths.config)
+        var remaining = arguments
+
+        while !remaining.isEmpty {
+            let key = remaining.removeFirst()
+            guard let value = remaining.first else {
+                throw LauncherError.missingArgument("missing value for \(key)")
+            }
+            remaining.removeFirst()
+
+            switch key {
+            case "--cpu":
+                guard let cpu = Int(value),
+                      cpu >= Constants.Defaults.minimumCPUCount,
+                      cpu <= Constants.Defaults.maximumCPUCount else {
+                    throw LauncherError.missingArgument(
+                        "--cpu must be between \(Constants.Defaults.minimumCPUCount) and \(Constants.Defaults.maximumCPUCount)"
+                    )
+                }
+                config.cpuCount = cpu
+            case "--memory-mib":
+                guard let memory = UInt64(value), memory >= 1024 else {
+                    throw LauncherError.missingArgument("--memory-mib must be at least 1024")
+                }
+                config.memoryMiB = memory
+            case "--network":
+                guard let mode = NetworkMode(rawValue: value) else {
+                    throw LauncherError.missingArgument("--network must be `shared` or `bridged`")
+                }
+                config.network.mode = mode
+                if mode == .shared {
+                    config.network.bridgedInterface = nil
+                }
+            case "--shared-dir":
+                guard value.hasPrefix("/") else {
+                    throw LauncherError.missingArgument("--shared-dir must be an absolute path")
+                }
+                if config.sharedDirectory == nil {
+                    config.sharedDirectory = SharedDirectoryConfig(
+                        hostPath: value,
+                        tag: Constants.Defaults.sharedDirectoryTag,
+                        guestMountPath: Constants.Defaults.sharedDirectoryGuestMountPath,
+                        readOnly: false
+                    )
+                } else {
+                    config.sharedDirectory?.hostPath = value
+                    config.sharedDirectory?.readOnly = false
+                }
+            case "--vital-files-dir":
+                guard value.hasPrefix("/") else {
+                    throw LauncherError.missingArgument("--vital-files-dir must be an absolute path")
+                }
+                if config.vitalFilesDirectory == nil {
+                    config.vitalFilesDirectory = SharedDirectoryConfig(
+                        hostPath: value,
+                        tag: Constants.Defaults.vitalFilesDirectoryTag,
+                        guestMountPath: Constants.Defaults.vitalFilesDirectoryGuestMountPath,
+                        readOnly: false
+                    )
+                } else {
+                    config.vitalFilesDirectory?.hostPath = value
+                    config.vitalFilesDirectory?.readOnly = false
+                }
+            default:
+                throw LauncherError.missingArgument("unsupported configure option: \(key)")
+            }
+        }
+
+        VMRuntimeConfig.ensureRuntimeDefaults(&config, home: paths.home)
+        let data = try JSONEncoder.pretty.encode(config)
+        try data.write(to: paths.config)
+        print("updated \(paths.config.path)")
+    }
+
     private func resolveBridgedInterface(_ requestedInterface: String?) throws -> VZBridgedNetworkInterface {
         let interfaces = VZBridgedNetworkInterface.networkInterfaces
         guard !interfaces.isEmpty else {
@@ -218,6 +295,7 @@ struct Launcher {
               vitalserver-vm network shared
               vitalserver-vm network bridged <interface>
               vitalserver-vm interfaces
+              vitalserver-vm configure --cpu <count> --memory-mib <mib> --network shared --vital-files-dir <path>
               vitalserver-vm clean
               vitalserver-vm version
 

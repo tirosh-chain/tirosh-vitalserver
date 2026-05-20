@@ -23,6 +23,7 @@ resolve_settings() {
   run_bootstrap="${VM_CLOUD_INIT_RUN_BOOTSTRAP:-true}"
   share_tag="${VM_CLOUD_INIT_SHARE_TAG:-tirosh}"
   share_mount="${VM_CLOUD_INIT_SHARE_MOUNT:-/mnt/tirosh}"
+  bootstrap_script="${VM_CLOUD_INIT_BOOTSTRAP_SCRIPT:-${share_mount}/deploy/bootstrap.sh}"
 }
 
 require_tools() {
@@ -99,8 +100,8 @@ cloud_init_bootstrap_commands() {
 runcmd:
   - mkdir -p ${share_mount}
   - mountpoint -q ${share_mount} || mount -t virtiofs ${share_tag} ${share_mount}
-  - test -x ${share_mount}/deploy/bootstrap.sh
-  - ${share_mount}/deploy/bootstrap.sh
+  - test -x ${bootstrap_script}
+  - ${bootstrap_script}
 EOF
 }
 
@@ -122,6 +123,9 @@ print_result() {
   printf "  hostname: %s\n" "${hostname}"
   printf "  instance-id: %s\n" "${instance_id}"
   printf "  auto bootstrap: %s\n" "${run_bootstrap}"
+  if [ "${run_bootstrap}" = "true" ]; then
+    printf "  bootstrap script: %s\n" "${bootstrap_script}"
+  fi
 }
 
 require_command() {

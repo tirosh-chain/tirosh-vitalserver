@@ -1,0 +1,172 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+vm_home="/Library/Application Support/TiroshVitalServer/vm"
+vm_bin="/usr/local/bin/vitalserver-vm"
+proxy_run="/usr/local/bin/vitalserver-proxy-run"
+nginx_prefix="/Library/Application Support/TiroshVitalServer/nginx"
+nginx_bin="${nginx_prefix}/sbin/nginx"
+cloud_init_script="${vm_home}/Support/Build/create-cloud-init.sh"
+vm_plist="/Library/LaunchDaemons/com.tirosh.vitalserver-vm.plist"
+proxy_plist="/Library/LaunchDaemons/com.tirosh.vitalserver-proxy.plist"
+rootfs="${vm_home}/images/rootfs.raw"
+rootfs_archive="${vm_home}/images/rootfs.raw.gz"
+settings_file="/private/tmp/tirosh-vitalserver-install.env"
+default_data_dir="${vm_home}/data"
+default_vital_files_dir="${default_data_dir}/vital-files"
+
+TIROSH_CPU_COUNT="8"
+TIROSH_MEMORY_GIB="8"
+TIROSH_DISK_GIB="64"
+TIROSH_NETWORK_MODE="shared"
+TIROSH_PROXY_PORT="80"
+TIROSH_VITAL_FILES_DIR="${default_vital_files_dir}"
+TIROSH_ADMIN_PASSWORD_B64=""
+TIROSH_VM_HOSTNAME="tirosh-vitalserver"
+TIROSH_PUBLIC_HOST=""
+TIROSH_PUBLIC_PORT="80"
+TIROSH_START_AFTER_INSTALL="true"
+TIROSH_START_ON_BOOT="true"
+
+if [ -f "${settings_file}" ]; then
+  while IFS='=' read -r key value; do
+    case "${key}" in
+      TIROSH_CPU_COUNT)
+        if [[ "${value}" =~ ^[0-9]+$ ]] && [ "${value}" -ge 7 ] && [ "${value}" -le 64 ]; then
+          TIROSH_CPU_COUNT="${value}"
+        fi
+        ;;
+      TIROSH_MEMORY_GIB)
+        case "${value}" in
+          4|8|12|16|20|24|28|32|36|40|44|48|52|56|60|64) TIROSH_MEMORY_GIB="${value}" ;;
+        esac
+        ;;
+      TIROSH_DISK_GIB)
+        case "${value}" in
+          32|48|64|80|96|112|128|144|160|176|192|208|224|240|256|272|288|304|320|336|352|368|384|400|416|432|448|464|480|496|512) TIROSH_DISK_GIB="${value}" ;;
+        esac
+        ;;
+      TIROSH_NETWORK_MODE)
+        case "${value}" in
+          shared|bridged) TIROSH_NETWORK_MODE="${value}" ;;
+        esac
+        ;;
+      TIROSH_PROXY_PORT)
+        if [[ "${value}" =~ ^[0-9]+$ ]] && [ "${value}" -ge 1 ] && [ "${value}" -le 65535 ]; then
+          TIROSH_PROXY_PORT="${value}"
+        fi
+        ;;
+      TIROSH_VITAL_FILES_DIR)
+        case "${value}" in
+          /*) TIROSH_VITAL_FILES_DIR="${value}" ;;
+        esac
+        ;;
+      TIROSH_ADMIN_PASSWORD_B64)
+        case "${value}" in
+          *[!A-Za-z0-9+/=]*|"") ;;
+          *) TIROSH_ADMIN_PASSWORD_B64="${value}" ;;
+        esac
+        ;;
+      TIROSH_VM_HOSTNAME)
+        if [[ "${value}" =~ ^[A-Za-z0-9][A-Za-z0-9-]{0,62}$ ]]; then
+          TIROSH_VM_HOSTNAME="${value}"
+        fi
+        ;;
+      TIROSH_PUBLIC_HOST)
+        case "${value}" in
+          *[$'\n\r=']*) ;;
+          *) TIROSH_PUBLIC_HOST="${value}" ;;
+        esac
+        ;;
+      TIROSH_PUBLIC_PORT)
+        if [[ "${value}" =~ ^[0-9]+$ ]] && [ "${value}" -ge 1 ] && [ "${value}" -le 65535 ]; then
+          TIROSH_PUBLIC_PORT="${value}"
+        fi
+        ;;
+      TIROSH_START_AFTER_INSTALL)
+        case "${value}" in
+          true|false) TIROSH_START_AFTER_INSTALL="${value}" ;;
+        esac
+        ;;
+      TIROSH_START_ON_BOOT)
+        case "${value}" in
+          true|false) TIROSH_START_ON_BOOT="${value}" ;;
+        esac
+        ;;
+    esac
+  done < "${settings_file}"
+fi
+
+mkdir -p \
+  "${TIROSH_VITAL_FILES_DIR}" \
+  "${default_data_dir}/deploy" \
+  "${default_data_dir}/run" \
+  "${default_data_dir}/vr-release" \
+  "${vm_home}/logs" \
+  "${vm_home}/run" \
+  "${nginx_prefix}/logs"
+
+deploy_env="${default_data_dir}/deploy/.env"
+set_deploy_env() {
+  local key="$1"
+  local value="$2"
+
+  awk -F= -v key="${key}" '$1 != key { print }' "${deploy_env}" > "${deploy_env}.tmp"
+  {
+    cat "${deploy_env}.tmp"
+    printf "%s=%s\n" "${key}" "${value}"
+  } > "${deploy_env}"
+  rm -f "${deploy_env}.tmp"
+}
+
+if [ -f "${deploy_env}" ]; then
+  if [ -n "${TIROSH_ADMIN_PASSWORD_B64}" ]; then
+    admin_password="$(printf "%s" "${TIROSH_ADMIN_PASSWORD_B64}" | /usr/bin/base64 -D)"
+    set_deploy_env "VITALSERVER_ADMIN_PASSWORD" "${admin_password}"
+  fi
+
+  set_deploy_env "VITALSERVER_PUBLIC_HOST" "${TIROSH_PUBLIC_HOST}"
+  set_deploy_env "VITALSERVER_PUBLIC_PORT" "${TIROSH_PUBLIC_PORT}"
+  set_deploy_env "VITALSERVER_VITAL_FILES_DIR" "/mnt/tirosh-vital-files"
+fi
+
+chmod 0755 "${vm_bin}"
+chmod 0755 "${proxy_run}"
+chmod 0755 "${cloud_init_script}"
+chmod 0755 "${nginx_bin}"
+
+if [ ! -s "${rootfs}" ] && [ -s "${rootfs_archive}" ]; then
+  gunzip -c "${rootfs_archive}" > "${rootfs}.tmp"
+  mv "${rootfs}.tmp" "${rootfs}"
+fi
+truncate -s "${TIROSH_DISK_GIB}G" "${rootfs}"
+
+VITALSERVER_VM_HOME="${vm_home}" "${vm_bin}" init
+VITALSERVER_VM_HOME="${vm_home}" "${vm_bin}" configure \
+  --cpu "${TIROSH_CPU_COUNT}" \
+  --memory-mib "$((TIROSH_MEMORY_GIB * 1024))" \
+  --network "${TIROSH_NETWORK_MODE}" \
+  --shared-dir "${default_data_dir}" \
+  --vital-files-dir "${TIROSH_VITAL_FILES_DIR}"
+
+VM_IMAGE_DIR="${vm_home}/images" \
+VM_CLOUD_INIT_SSH_KEY="/dev/null" \
+VM_CLOUD_INIT_HOSTNAME="${TIROSH_VM_HOSTNAME}" \
+"${cloud_init_script}"
+
+chown -R root:wheel "${vm_home}"
+chown -R root:wheel "${nginx_prefix}"
+/usr/libexec/PlistBuddy -c "Set :EnvironmentVariables:VITALSERVER_PROXY_PORT ${TIROSH_PROXY_PORT}" "${proxy_plist}" >/dev/null
+chmod 0644 "${vm_plist}" "${proxy_plist}"
+chown root:wheel "${vm_plist}" "${proxy_plist}"
+
+if [ "${TIROSH_START_AFTER_INSTALL}" = "true" ]; then
+  launchctl bootstrap system "${vm_plist}" >/dev/null 2>&1 || launchctl kickstart -k "system/com.tirosh.vitalserver-vm"
+  launchctl bootstrap system "${proxy_plist}" >/dev/null 2>&1 || launchctl kickstart -k "system/com.tirosh.vitalserver-proxy"
+fi
+
+if [ "${TIROSH_START_ON_BOOT}" = "false" ]; then
+  rm -f "${vm_plist}" "${proxy_plist}"
+fi
+
+rm -f "${settings_file}"
