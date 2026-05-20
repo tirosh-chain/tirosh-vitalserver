@@ -6,7 +6,9 @@ from pathlib import Path
 from .cloud_init import run_cloud_init
 from .config import default_config_path, parse_bool
 from .docker_images import run_docker_images
+from .nginx_bundle import run_nginx_bundle
 from .render_template import run_render_template
+from .rootfs_base import add_rootfs_base_arguments, run_rootfs_base
 from .ubuntu import run_ubuntu
 from .update_bundle import run_build_update_bundle, run_verify_update_bundle
 
@@ -36,6 +38,20 @@ def main() -> int:
     )
     docker_images.add_argument("--bundle-path", type=Path)
     docker_images.add_argument("--platform")
+
+    rootfs_base = subparsers.add_parser(
+        "rootfs-base",
+        help="compress a clean VM disk into an immutable rootfs base artifact",
+    )
+    add_rootfs_base_arguments(rootfs_base)
+
+    nginx_bundle = subparsers.add_parser(
+        "nginx-bundle",
+        help="build a self-contained nginx bundle for the macOS host proxy",
+    )
+    nginx_bundle.add_argument("--bundle-dir", required=True, type=Path)
+    nginx_bundle.add_argument("--binary")
+    nginx_bundle.add_argument("--expected-version")
 
     cloud_init = subparsers.add_parser(
         "cloud-init",
@@ -84,6 +100,10 @@ def main() -> int:
         return run_ubuntu(args)
     if args.command == "docker-images":
         return run_docker_images(args)
+    if args.command == "rootfs-base":
+        return run_rootfs_base(args)
+    if args.command == "nginx-bundle":
+        return run_nginx_bundle(args)
     if args.command == "cloud-init":
         return run_cloud_init(args)
     if args.command == "update-bundle":

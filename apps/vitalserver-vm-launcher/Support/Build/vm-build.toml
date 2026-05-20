@@ -34,3 +34,7 @@ images = [
   "rediscommander/redis-commander:latest",
   "swaggerapi/swagger-ui:v5.17.14",
 ]
+
+[nginx]
+binary_path = ".artifacts/nginx/macos/bin/nginx"
+expected_version = "nginx/1.28.0"

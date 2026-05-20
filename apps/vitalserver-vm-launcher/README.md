@@ -148,15 +148,14 @@ sudo vitalserver-vm runtime rollback
 .tmp/update-bundles/update-bundle-0.1.0/
 ```
 
-완전한 air-gapped 설치물을 만들려면 `.pkg` 생성 전에 온라인 빌드 환경에서 아래를 한 번 실행해 base가 될 `vm-disk.img`에 Docker, Docker Compose, nginx, qemu-user-static을 미리 설치합니다.
+완전한 air-gapped 설치물은 개발용 VM disk가 아니라 별도 golden VM home에서 만든 clean rootfs base를 사용합니다.
 
 ```sh
-VM_RECREATE_ROOTFS=true make vm-download
-make vm-airgap-rootfs
+make vm-golden-rootfs
 make vm-pkg
 ```
 
-기본 package용 rootfs는 8GB입니다. 설치 후에는 wizard의 Disk size 설정에 맞춰 VM disk 파일을 확장합니다. 설치된 VM은 부팅 시 필요한 guest package가 이미 있으면 `apt-get` 단계를 건너뜁니다.
+`make vm-pkg`도 `vm-golden-rootfs`를 dependency로 실행하므로, package payload에는 `.tmp/vitalserver-vm-pkg/rootfs-base.raw.gz`가 들어갑니다. 기본 package용 rootfs는 8GB입니다. 설치된 VM은 부팅 시 필요한 guest package가 이미 있으면 `apt-get` 단계를 건너뜁니다.
 
 설치 테스트:
 
@@ -181,9 +180,7 @@ sudo tirosh-vitalserver-uninstall
 
 이 명령은 VM/proxy LaunchDaemon을 내리고, 설치된 runtime 파일을 제거합니다.
 
-`make vm-nginx-bundle`은 nginx가 참조하는 Homebrew `pcre2`, `openssl` dylib를 package 내부 `nginx/lib`로 복사하고, nginx load path를 `@executable_path/../lib`로 바꿉니다. 운영 Mac mini에 Homebrew가 없어도 host proxy가 실행되는 방향입니다.
-
-현재는 build machine의 nginx binary를 번들링합니다. 제품용으로는 nginx build version과 configure option을 고정한 release artifact로 관리해야 합니다.
+`make vm-nginx-bundle`은 `vm-build.toml`의 `[nginx]`에 선언된 release artifact를 사용합니다. 기본 경로는 `.artifacts/nginx/macos/bin/nginx`이고, `expected_version`으로 build artifact 버전을 검증합니다. nginx가 참조하는 비시스템 dylib는 package 내부 `nginx/lib`로 복사하고, nginx load path를 `@executable_path/../lib`로 바꿉니다.
 
 ## Control App
 
@@ -240,8 +237,6 @@ vitalserver-vm version
 아직 제품 기능은 아닙니다.
 
 - codesign/notarization 제품화
-- offline VM image build pipeline
-- nginx release artifact 고정
 - VM image 업데이트
 
 ## 참고 문서

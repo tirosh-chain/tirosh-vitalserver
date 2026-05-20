@@ -2,7 +2,7 @@ include make/vm/config.mk
 
 .PHONY: vm-up vm-up-bridged vm-down vm-prepare vm-start vm-start-detached vm-start-bridged vm-stop vm-status vm-clean vm-ip vm-wait-ip vm-wait-http vm-wait-rootfs-ready vm-proxy-start vm-health
 .PHONY: vm-build vm-sign vm-sign-bridged vm-bridged-preflight vm-init vm-download vm-cloud-init vm-stage vm-interfaces vm-network-shared vm-network-bridged vm-nginx-bundle vm-docker-images vm-pkg-stage vm-pkg vm-app vm-dmg vm-pkg-clean vm-pkg-install vm-pkg-uninstall-dev vm-installed-status vm-installed-health vm-update-bundle vm-update-bundle-verify
-.PHONY: vm-airgap-rootfs
+.PHONY: vm-airgap-rootfs vm-golden-rootfs
 
 vm-build:
 	cd "$(VM_LAUNCHER_DIR)" && env SDKROOT="$(VM_SDKROOT)" CLANG_MODULE_CACHE_PATH="$(VM_CLANG_MODULE_CACHE)" swift build -c release
@@ -229,9 +229,19 @@ vm-airgap-rootfs: vm-download vm-stage
 	$(MAKE) vm-stop
 	@printf "Air-gapped rootfs is prepared: %s\n" "$(VM_DISK_IMAGE)"
 
+vm-golden-rootfs:
+	$(MAKE) vm-airgap-rootfs \
+		VM_HOME="$(abspath $(VM_GOLDEN_HOME))" \
+		VM_RECREATE_ROOTFS="$(VM_RECREATE_GOLDEN_ROOTFS)"
+	$(VM_BUILD_RUNNER) rootfs-base \
+		--source "$(VM_GOLDEN_DISK_IMAGE)" \
+		--output "$(VM_PKG_ROOTFS_CACHE)"
+
 vm-nginx-bundle:
-	@test -x "$(VM_PKG_NGINX_BIN_SOURCE)" || { printf "missing nginx binary for bundle: %s\n" "$(VM_PKG_NGINX_BIN_SOURCE)" >&2; exit 1; }
-	"$(VM_PACKAGING_DIR)/bundle-nginx.sh" "$(VM_PKG_NGINX_BIN_SOURCE)" "$(VM_PKG_NGINX_BUNDLE_DIR)"
+	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" nginx-bundle \
+		--bundle-dir "$(VM_PKG_NGINX_BUNDLE_DIR)" \
+		$(if $(VM_NGINX_BIN),--binary "$(VM_NGINX_BIN)") \
+		$(if $(VM_NGINX_EXPECTED_VERSION),--expected-version "$(VM_NGINX_EXPECTED_VERSION)")
 
 vm-docker-images:
 	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" docker-images \
@@ -247,10 +257,10 @@ vm-app:
 	codesign --force --sign "$(VM_CODESIGN_IDENTITY)" "$(VM_APP_BUNDLE)"
 	@printf "VM control app is ready: %s\n" "$(VM_APP_BUNDLE)"
 
-vm-pkg-stage: vm-sign vm-app vm-download vm-nginx-bundle vm-docker-images
-	@test -s "$(VM_RUNTIME_DIR)/Image" || { printf "missing %s\n" "$(VM_RUNTIME_DIR)/Image" >&2; exit 1; }
-	@test -s "$(VM_RUNTIME_DIR)/initrd.img" || { printf "missing %s\n" "$(VM_RUNTIME_DIR)/initrd.img" >&2; exit 1; }
-	@test -s "$(VM_DISK_IMAGE)" || { printf "missing %s\n" "$(VM_DISK_IMAGE)" >&2; exit 1; }
+vm-pkg-stage: vm-sign vm-app vm-golden-rootfs vm-nginx-bundle vm-docker-images
+	@test -s "$(VM_GOLDEN_RUNTIME_DIR)/Image" || { printf "missing %s\n" "$(VM_GOLDEN_RUNTIME_DIR)/Image" >&2; exit 1; }
+	@test -s "$(VM_GOLDEN_RUNTIME_DIR)/initrd.img" || { printf "missing %s\n" "$(VM_GOLDEN_RUNTIME_DIR)/initrd.img" >&2; exit 1; }
+	@test -s "$(VM_PKG_ROOTFS_CACHE)" || { printf "missing %s\n" "$(VM_PKG_ROOTFS_CACHE)" >&2; exit 1; }
 	rm -rf "$(VM_PKG_ROOT)" "$(VM_PKG_SCRIPTS)"
 	@mkdir -p \
 		"$(VM_PKG_ROOT)$(VM_INSTALL_APPLICATIONS_DIR)" \
@@ -266,16 +276,8 @@ vm-pkg-stage: vm-sign vm-app vm-download vm-nginx-bundle vm-docker-images
 	install -m 0755 "$(VM_PACKAGING_DIR)/uninstall" "$(VM_PKG_ROOT)$(VM_INSTALL_UNINSTALL)"
 	rsync -a --delete "$(VM_APP_BUNDLE)/" "$(VM_PKG_ROOT)$(VM_INSTALL_APP_BUNDLE)/"
 	rsync -a "$(VM_PKG_NGINX_BUNDLE_DIR)/" "$(VM_PKG_ROOT)$(VM_INSTALL_NGINX_PREFIX)/"
-	install -m 0644 "$(VM_RUNTIME_DIR)/Image" "$(VM_PKG_ROOT)$(VM_INSTALL_HOME)/runtime/Image"
-	install -m 0644 "$(VM_RUNTIME_DIR)/initrd.img" "$(VM_PKG_ROOT)$(VM_INSTALL_HOME)/runtime/initrd.img"
-	@if [ -s "$(VM_PKG_ROOTFS_CACHE)" ] && [ "$(VM_PKG_ROOTFS_CACHE)" -nt "$(VM_DISK_IMAGE)" ]; then \
-		printf "reusing cached %s\n" "$(VM_PKG_ROOTFS_CACHE)"; \
-	else \
-		printf "compressing %s -> %s\n" "$(VM_DISK_IMAGE)" "$(VM_PKG_ROOTFS_CACHE)"; \
-		mkdir -p "$(dir $(VM_PKG_ROOTFS_CACHE))"; \
-		gzip -c "$(VM_DISK_IMAGE)" > "$(VM_PKG_ROOTFS_CACHE).tmp"; \
-		mv "$(VM_PKG_ROOTFS_CACHE).tmp" "$(VM_PKG_ROOTFS_CACHE)"; \
-	fi
+	install -m 0644 "$(VM_GOLDEN_RUNTIME_DIR)/Image" "$(VM_PKG_ROOT)$(VM_INSTALL_HOME)/runtime/Image"
+	install -m 0644 "$(VM_GOLDEN_RUNTIME_DIR)/initrd.img" "$(VM_PKG_ROOT)$(VM_INSTALL_HOME)/runtime/initrd.img"
 	install -m 0644 "$(VM_PKG_ROOTFS_CACHE)" "$(VM_PKG_ROOT)$(VM_INSTALL_HOME)/runtime/rootfs-base.raw.gz"
 	install -m 0644 "infra/macos-nginx/vitalserver.conf.template" "$(VM_PKG_ROOT)$(VM_INSTALL_HOME)/Support/Proxy/vitalserver.conf.template"
 	rsync -a $(VM_RSYNC_EXCLUDES) "$(VM_GUEST_DIR)/" "$(VM_PKG_ROOT)$(VM_INSTALL_HOME)/data/deploy/"

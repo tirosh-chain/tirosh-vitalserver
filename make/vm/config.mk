@@ -2,11 +2,14 @@
 VM_HOME ?= $(HOME)/.tirosh/vitalserver-vm
 VM_ROOTFS_SIZE ?= 8G
 VM_RECREATE_ROOTFS ?= false
+VM_RECREATE_GOLDEN_ROOTFS ?= true
 VM_WAIT_TIMEOUT ?= 300
 VM_HTTP_WAIT_TIMEOUT ?= 600
 VM_PKG_VERSION ?= 0.1.0
 VM_UPDATE_BUNDLE_VERSION ?= $(VM_PKG_VERSION)
 VM_UPDATE_MIGRATIONS ?=
+VM_NGINX_BIN ?=
+VM_NGINX_EXPECTED_VERSION ?=
 VM_CODESIGN_IDENTITY ?= -
 VM_BRIDGED_CODESIGN_IDENTITY ?= $(VM_CODESIGN_IDENTITY)
 
@@ -51,7 +54,6 @@ VM_PKG_BUILD_DIR := .tmp/vitalserver-vm-pkg
 VM_PKG_ROOT := $(VM_PKG_BUILD_DIR)/root
 VM_PKG_SCRIPTS := $(VM_PKG_BUILD_DIR)/scripts
 VM_PKG_OUTPUT := .tmp/TiroshVitalServerVM-$(VM_PKG_VERSION).pkg
-VM_PKG_NGINX_BIN_SOURCE := $(NGINX_BIN)
 VM_PKG_NGINX_BUNDLE_DIR := $(VM_PKG_BUILD_DIR)/nginx-bundle
 VM_PKG_ROOTFS_CACHE := $(VM_PKG_BUILD_DIR)/rootfs-base.raw.gz
 VM_DOCKER_IMAGE_BUNDLE := $(VM_PKG_BUILD_DIR)/docker-images/vitalserver-images.tar.gz
@@ -64,3 +66,9 @@ VM_APP_BUNDLE := .tmp/$(VM_APP_NAME).app
 VM_DMG_STAGING := .tmp/vitalserver-vm-dmg
 VM_DMG_OUTPUT := .tmp/TiroshVitalServer-$(VM_PKG_VERSION).dmg
 VM_INSTALLED_IP_FILE := $(VM_INSTALL_HOME)/data/run/vm-ip
+
+# Golden rootfs build paths. Keep these separate from the developer VM home so
+# mutable local VM state never becomes the package base artifact by accident.
+VM_GOLDEN_HOME := .tmp/vitalserver-vm-golden
+VM_GOLDEN_RUNTIME_DIR := $(VM_GOLDEN_HOME)/runtime
+VM_GOLDEN_DISK_IMAGE := $(VM_GOLDEN_RUNTIME_DIR)/vm-disk.img

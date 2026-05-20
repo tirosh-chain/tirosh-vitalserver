@@ -12,9 +12,28 @@ Commands:
 ubuntu
 cloud-init
 docker-images
+rootfs-base
+nginx-bundle
 update-bundle
 verify-update-bundle
 render-template
+```
+
+Create an immutable rootfs base from a clean VM disk:
+
+```sh
+uv run --project packages/vm-build vitalserver-vm-build rootfs-base \
+  --source .tmp/vitalserver-vm-golden/runtime/vm-disk.img \
+  --output .tmp/vitalserver-vm-pkg/rootfs-base.raw.gz
+```
+
+Build the pinned nginx bundle declared in `vm-build.toml`:
+
+```sh
+uv run --project packages/vm-build vitalserver-vm-build \
+  --config apps/vitalserver-vm-launcher/Support/Build/vm-build.toml \
+  nginx-bundle \
+  --bundle-dir .tmp/vitalserver-vm-pkg/nginx-bundle
 ```
 
 Example with update migrations:

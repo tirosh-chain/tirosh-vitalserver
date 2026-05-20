@@ -257,11 +257,15 @@ sudo tirosh-vitalserver-uninstall
 
 이 명령은 VM/proxy LaunchDaemon을 unload하고, package가 설치한 runtime 파일을 제거합니다. GUI 제품에서는 이 명령을 “Uninstall” 버튼이나 별도 uninstaller 앱에서 호출하는 구조로 확장할 수 있습니다.
 
-### 아직 제품 package가 아닌 부분
+### nginx release artifact
 
-현재 `make vm-pkg`는 local nginx binary를 package에 복사합니다. Homebrew nginx를 복사하면 실행 파일은 들어가지만, 동적 library 의존성이 build machine 환경에 묶일 수 있습니다.
+`make vm-nginx-bundle`은 `apps/vitalserver-vm-launcher/Support/Build/vm-build.toml`의 `[nginx]`에 선언된 release artifact를 사용합니다. 기본 경로는 아래입니다.
 
-현재 `make vm-nginx-bundle`은 Homebrew nginx 실행 파일과 비시스템 dylib를 package 내부로 복사합니다.
+```text
+.artifacts/nginx/macos/bin/nginx
+```
+
+build tooling은 이 binary의 `nginx -v` 출력이 `expected_version`과 맞는지 확인한 뒤, 실행 파일과 비시스템 dylib를 package 내부로 복사합니다.
 
 ```text
 nginx/sbin/nginx
@@ -272,7 +276,13 @@ nginx/sbin/nginx
   -> /usr/lib/libSystem.B.dylib
 ```
 
-즉 운영 Mac mini에 Homebrew가 없어도 host proxy가 뜰 수 있는 구조입니다. 다만 제품 release에서는 build machine의 Homebrew 상태를 그대로 가져오지 않고, nginx version/configure option과 dependency version을 고정한 release artifact로 관리해야 합니다.
+즉 운영 Mac mini에 Homebrew가 없어도 host proxy가 뜰 수 있는 구조입니다. 임시로 다른 binary를 쓰려면 명시적으로 override합니다.
+
+```sh
+VM_NGINX_BIN=/path/to/nginx \
+VM_NGINX_EXPECTED_VERSION=nginx/1.28.0 \
+make vm-nginx-bundle
+```
 
 air-gapped 제품 package는 외부 Docker registry 없이 container를 시작할 수 있어야 합니다. 현재 package flow는 `make vm-docker-images`로 아래 image를 하나의 bundle로 만들고, 설치 후 guest bootstrap에서 `docker load`를 먼저 수행합니다.
 
@@ -290,15 +300,20 @@ swaggerapi/swagger-ui:v5.17.14
 /Library/Application Support/TiroshVitalServer/vm/data/deploy/docker-images/vitalserver-images.tar.gz
 ```
 
-Docker image만으로는 충분하지 않습니다. Guest VM이 처음 부팅될 때 `docker.io`, Docker Compose, nginx, qemu-user-static을 apt로 설치해야 한다면 air-gapped 환경에서 실패합니다. 그래서 제품용 package를 만들기 전 온라인 빌드 환경에서 아래 target으로 base가 될 `vm-disk.img`를 한 번 준비합니다.
+Docker image만으로는 충분하지 않습니다. Guest VM이 처음 부팅될 때 `docker.io`, Docker Compose, nginx, qemu-user-static을 apt로 설치해야 한다면 air-gapped 환경에서 실패합니다. 그래서 제품용 package는 개발용 VM disk가 아니라 별도 golden VM home에서 만든 clean rootfs base를 사용합니다.
 
 ```sh
-VM_RECREATE_ROOTFS=true make vm-download
-make vm-airgap-rootfs
+make vm-golden-rootfs
 make vm-pkg
 ```
 
-기본 package용 rootfs는 8GB입니다. 설치 후에는 wizard의 Disk size 설정에 맞춰 VM disk 파일을 확장합니다. `make vm-airgap-rootfs`는 VM을 임시로 띄우고 `prepare-airgap-rootfs.sh`만 실행합니다. 이 스크립트는 OS package를 설치하고 `/mnt/tirosh/run/rootfs-ready` marker를 기록한 뒤 종료됩니다. Container는 시작하지 않기 때문에 운영 데이터나 Redis volume을 golden rootfs에 섞지 않습니다.
+기본 package용 rootfs는 8GB입니다. `make vm-golden-rootfs`는 `.tmp/vitalserver-vm-golden` 아래에서 VM을 임시로 띄우고 `prepare-airgap-rootfs.sh`만 실행한 뒤 `.tmp/vitalserver-vm-pkg/rootfs-base.raw.gz`를 생성합니다. 이 스크립트는 OS package를 설치하고 `/mnt/tirosh/run/rootfs-ready` marker를 기록한 뒤 종료됩니다. Container는 시작하지 않기 때문에 운영 데이터나 Redis volume을 golden rootfs에 섞지 않습니다.
+
+기본값은 매번 golden disk를 새로 만듭니다. 반복 개발 중 재사용하려면:
+
+```sh
+VM_RECREATE_GOLDEN_ROOTFS=false make vm-golden-rootfs
+```
 
 ## Update Bundle
 
@@ -349,9 +364,6 @@ Shell은 installer/launchd wrapper로만 남깁니다. Bundle manifest parsing, 
 
 | 항목 | 필요한 이유 |
 |---|---|
-| nginx release artifact 고정 | build machine Homebrew 상태에 따라 package가 달라지지 않도록 고정 |
-| clean golden rootfs | 개발 중 변형된 `vm-disk.img`가 base artifact에 섞이지 않도록 고정 |
-| guest OS package preload | `docker.io`, `nginx`, `qemu-user-static` 같은 OS package를 외부 apt 없이 설치 |
 | Developer ID signing | launchd/Virtualization binary 배포 신뢰성 확보 |
 | notarization | Gatekeeper 환경에서 설치 마찰 감소 |
 
