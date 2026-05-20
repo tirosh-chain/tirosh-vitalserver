@@ -38,7 +38,7 @@ VM_ROOTFS_READY_FILE := $(VM_RUN_DIR)/rootfs-ready
 # Source directories.
 VM_GUEST_DIR := $(VM_LAUNCHER_DIR)/Support/Guest
 VM_PACKAGING_DIR := $(VM_LAUNCHER_DIR)/Support/Packaging
-VM_RSYNC_EXCLUDES := --exclude .DS_Store --exclude __pycache__
+VM_RSYNC_EXCLUDES := --exclude .DS_Store --exclude '._*' --exclude __pycache__
 
 # Product/install constants.
 VM_PKG_IDENTIFIER := com.tirosh.vitalserver.vm

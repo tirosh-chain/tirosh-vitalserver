@@ -321,6 +321,7 @@ vm-pkg-stage: vm-sign vm-app vm-golden-rootfs vm-nginx-bundle vm-docker-images
 		--var "VITALSERVER_VM_HOME=$(VM_INSTALL_HOME)"
 	install -m 0755 "$(VM_PACKAGING_DIR)/preinstall" "$(VM_PKG_SCRIPTS)/preinstall"
 	install -m 0755 "$(VM_PACKAGING_DIR)/postinstall" "$(VM_PKG_SCRIPTS)/postinstall"
+	find "$(VM_PKG_ROOT)" "$(VM_PKG_SCRIPTS)" -name '._*' -delete
 	@xattr -rc "$(VM_PKG_ROOT)" 2>/dev/null || true
 	@printf "VM package staging root is ready: %s\n" "$(VM_PKG_ROOT)"
 
