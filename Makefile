@@ -30,6 +30,7 @@ include make/compose.mk
 include make/proxy.mk
 include make/testkit.mk
 include make/python.mk
+include make/vm.mk
 
 .PHONY: help
 help:
@@ -56,6 +57,17 @@ help:
 	@printf "  make proxy-stop      Stop macOS host nginx proxy only\n"
 	@printf "  make proxy-clean     Stop proxy and remove local proxy runtime files\n"
 	@printf "  make proxy-reload    Reload macOS host nginx proxy config\n"
+	@printf "\n"
+	@printf "VM PoC:\n"
+	@printf "  make vm-build        Build Apple Virtualization VM launcher\n"
+	@printf "  make vm-sign         Ad-hoc sign VM launcher with entitlements\n"
+	@printf "  make vm-sign-bridged Sign VM launcher with bridged networking entitlement\n"
+	@printf "  make vm-init         Initialize VM runtime config\n"
+	@printf "  make vm-start        Start Linux VM PoC\n"
+	@printf "  make vm-status       Show Linux VM PoC process status\n"
+	@printf "  make vm-stop         Stop Linux VM PoC process\n"
+	@printf "  make vm-interfaces   List bridged network interfaces\n"
+	@printf "  make vm-clean        Remove VM runtime state, keep shared data\n"
 	@printf "\n"
 	@printf "Tools:\n"
 	@printf "  make swagger         Start Swagger UI only\n"
