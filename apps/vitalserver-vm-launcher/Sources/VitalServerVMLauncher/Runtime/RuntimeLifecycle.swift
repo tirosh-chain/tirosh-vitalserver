@@ -649,6 +649,7 @@ struct RuntimeLifecycle {
                 expectedSize: artifact.size,
                 checksumMap: checksumMap
             )
+            try validateUpdateArtifactPayload(artifact, source: artifactURL)
         }
 
         for migration in manifest.migrations {
@@ -761,9 +762,15 @@ struct RuntimeLifecycle {
         } catch {
             log("bundle apply failed; rolling back error=\(error)")
             try? writeRuntimeStatus(.recovering, operation: "apply-bundle", message: "bundle apply failed; rolling back: \(error)")
-            try rollback(backup)
-            try startRuntimeServices(restartVM: restartVM, restartProxy: restartProxy, restartWatchdog: restartWatchdog)
-            try? writeRuntimeStatus(.degraded, operation: "apply-bundle", message: "bundle apply failed; rollback completed: \(error)")
+            do {
+                try rollback(backup)
+                try startRuntimeServices(restartVM: restartVM, restartProxy: restartProxy, restartWatchdog: restartWatchdog)
+                try? writeRuntimeStatus(.degraded, operation: "apply-bundle", message: "bundle apply failed; rollback completed: \(error)")
+            } catch {
+                log("bundle apply rollback failed error=\(error)")
+                try? startRuntimeServices(restartVM: restartVM, restartProxy: restartProxy, restartWatchdog: restartWatchdog)
+                try? writeRuntimeStatus(.critical, operation: "apply-bundle", message: "bundle apply failed and rollback failed: \(error)")
+            }
             throw error
         }
 
@@ -909,9 +916,13 @@ struct RuntimeLifecycle {
     private func replaceUpdateArtifacts(_ artifacts: [UpdateBundleArtifact], stagedBundle: URL) throws {
         for artifact in artifacts where artifact.type != "rootfs-base" {
             let source = stagedBundle.appendingPathComponent(artifact.name)
+            try validateUpdateArtifactPayload(artifact, source: source)
             switch artifact.type {
             case "app-bundle":
-                try replaceTarGz(source, destination: URL(fileURLWithPath: "/Applications/Tirosh VitalServer Manager.app"))
+                try replaceTarGz(
+                    source,
+                    destination: URL(fileURLWithPath: "/Applications/Tirosh VitalServer Manager.app")
+                )
             case "nginx-bundle":
                 try replaceTarGz(source, destination: productRoot.appendingPathComponent("nginx"))
             case "guest-deploy":
@@ -926,6 +937,30 @@ struct RuntimeLifecycle {
             default:
                 throw LauncherError.bundleVerificationFailed("unsupported artifact type: \(artifact.type)")
             }
+        }
+    }
+
+    private func validateUpdateArtifactPayload(_ artifact: UpdateBundleArtifact, source: URL) throws {
+        switch artifact.type {
+        case "rootfs-base":
+            return
+        case "app-bundle":
+            try validateTarGz(source, requiredTopLevel: "Tirosh VitalServer Manager.app")
+        case "nginx-bundle":
+            try validateTarGz(source, requiredTopLevel: "nginx")
+        case "guest-deploy":
+            try validateTarGz(source, requiredTopLevel: "deploy")
+        case "runtime-tools":
+            try validateTarGz(
+                source,
+                allowedRootEntries: [
+                    "vitalserver-vm",
+                    "vitalserver-proxy-run",
+                    "tirosh-vitalserver-uninstall",
+                ]
+            )
+        default:
+            throw LauncherError.bundleVerificationFailed("unsupported artifact type: \(artifact.type)")
         }
     }
 
@@ -946,6 +981,69 @@ struct RuntimeLifecycle {
     private func extractTarGz(_ source: URL, destination: URL) throws {
         try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
         try runRequired(Constants.Commands.tar, arguments: ["-xzf", source.path, "-C", destination.path])
+    }
+
+    private func validateTarGz(
+        _ source: URL,
+        requiredTopLevel: String? = nil,
+        allowedRootEntries: Set<String>? = nil
+    ) throws {
+        let listOutput = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tirosh-\(UUID().uuidString)-tar-list.txt")
+        defer {
+            try? FileManager.default.removeItem(at: listOutput)
+        }
+        try runProcessToFile(Constants.Commands.tar, arguments: ["-tzf", source.path], output: listOutput)
+        let entries = try String(contentsOf: listOutput, encoding: .utf8)
+            .split(separator: "\n")
+            .map(String.init)
+            .filter { !$0.isEmpty }
+        guard !entries.isEmpty else {
+            throw LauncherError.bundleVerificationFailed("empty tar.gz: \(source.lastPathComponent)")
+        }
+
+        for entry in entries {
+            try validateTarEntryName(entry, source: source)
+            let rootEntry = entry.split(separator: "/", omittingEmptySubsequences: true).first.map(String.init) ?? entry
+            if let requiredTopLevel, rootEntry != requiredTopLevel {
+                throw LauncherError.bundleVerificationFailed(
+                    "unexpected top-level entry in \(source.lastPathComponent): \(rootEntry)"
+                )
+            }
+            if let allowedRootEntries, !allowedRootEntries.contains(rootEntry) {
+                throw LauncherError.bundleVerificationFailed(
+                    "unexpected root entry in \(source.lastPathComponent): \(rootEntry)"
+                )
+            }
+        }
+
+        let verboseOutput = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tirosh-\(UUID().uuidString)-tar-verbose.txt")
+        defer {
+            try? FileManager.default.removeItem(at: verboseOutput)
+        }
+        try runProcessToFile(Constants.Commands.tar, arguments: ["-tvzf", source.path], output: verboseOutput)
+        let verboseText = try String(contentsOf: verboseOutput, encoding: .utf8)
+        for line in verboseText.split(separator: "\n") {
+            guard let entryType = line.first else {
+                continue
+            }
+            if entryType == "l" || entryType == "h" {
+                throw LauncherError.bundleVerificationFailed(
+                    "tar.gz must not contain links: \(source.lastPathComponent)"
+                )
+            }
+        }
+    }
+
+    private func validateTarEntryName(_ entry: String, source: URL) throws {
+        if entry.hasPrefix("/") || entry.contains("\0") {
+            throw LauncherError.bundleVerificationFailed("unsafe tar entry in \(source.lastPathComponent): \(entry)")
+        }
+        let components = entry.split(separator: "/", omittingEmptySubsequences: false)
+        if components.contains("..") {
+            throw LauncherError.bundleVerificationFailed("path traversal in \(source.lastPathComponent): \(entry)")
+        }
     }
 
     private func createBackup(reason: String) throws -> URL {

@@ -208,7 +208,7 @@ struct ContentView: View {
                 Button(AppConstants.Actions.rollback) {
                     showingRollbackConfirmation = true
                 }
-                .disabled(controller.isBusy || !controller.status.runtimeInstalled)
+                .disabled(controller.isBusy || !controller.status.runtimeInstalled || controller.backups.isEmpty)
                 Button(AppConstants.Actions.openLogs) {
                     controller.openLogs()
                 }

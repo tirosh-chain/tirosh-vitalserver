@@ -12,6 +12,7 @@ final class InstallerController: ObservableObject {
     private let settingsPath = "/private/tmp/tirosh-vitalserver-install.json"
     private let packageName = "Install Tirosh VitalServer.pkg"
     private let installLog = "/Library/Application Support/TiroshVitalServer/logs/install.log"
+    private let installFreeSpaceMarginBytes: UInt64 = 4 * 1024 * 1024 * 1024
 
     func chooseVitalFilesDirectory() {
         let panel = NSOpenPanel()
@@ -26,20 +27,22 @@ final class InstallerController: ObservableObject {
     }
 
     func install() async {
-        validationIssues = validate()
-        guard validationIssues.isEmpty else {
-            message = validationIssues.joined(separator: "\n")
-            stage = "Fix settings"
-            return
-        }
-
         isBusy = true
         defer { isBusy = false }
 
         do {
             stage = "Preparing"
             let packageURL = try resolvePackageURL()
+            validationIssues = validate(packageURL: packageURL)
+            guard validationIssues.isEmpty else {
+                message = validationIssues.joined(separator: "\n")
+                stage = "Fix settings"
+                return
+            }
             try writeSettings()
+            defer {
+                cleanupSettingsFile()
+            }
             let logTask = Task { await followInstallLog() }
             defer { logTask.cancel() }
             message = "Waiting for administrator approval..."
@@ -66,7 +69,7 @@ final class InstallerController: ObservableObject {
     }
 
     func revalidate() {
-        validationIssues = validate()
+        validationIssues = validate(packageURL: try? resolvePackageURL())
         if validationIssues.isEmpty {
             message = "Settings look valid."
             stage = "Ready"
@@ -95,7 +98,11 @@ final class InstallerController: ObservableObject {
         message = "Wrote install settings: \(settingsPath)"
     }
 
-    private func validate() -> [String] {
+    private func cleanupSettingsFile() {
+        try? FileManager.default.removeItem(atPath: settingsPath)
+    }
+
+    private func validate(packageURL: URL?) -> [String] {
         var issues: [String] = []
         if !settings.vitalFilesDirectory.hasPrefix("/") {
             issues.append("Vital files directory must be an absolute path.")
@@ -118,19 +125,29 @@ final class InstallerController: ObservableObject {
         if !portAvailable(settings.proxyPort) {
             issues.append("Proxy port \(settings.proxyPort) is already in use.")
         }
-        if availableBytes(at: "/Library/Application Support") < requiredInstallBytes() {
-            issues.append("Not enough free disk space under /Library/Application Support for the selected disk/rootfs policy.")
+        if availableBytes(at: "/Library/Application Support") < requiredInstallBytes(packageURL: packageURL) {
+            issues.append("Not enough free disk space under /Library/Application Support for the selected disk/rootfs/update policy.")
         }
         return issues
     }
 
-    private func requiredInstallBytes() -> UInt64 {
-        UInt64(settings.diskGiB) * 1024 * 1024 * 1024 / 8
+    private func requiredInstallBytes(packageURL: URL?) -> UInt64 {
+        let gib = UInt64(settings.diskGiB) * 1024 * 1024 * 1024
+        let packageBytes = packageURL.flatMap { fileSize(at: $0.path) } ?? 0
+        return packageBytes + (gib / 4) + installFreeSpaceMarginBytes
     }
 
     private func availableBytes(at path: String) -> UInt64 {
         guard let attributes = try? FileManager.default.attributesOfFileSystem(forPath: path),
               let value = attributes[.systemFreeSize] as? NSNumber else {
+            return 0
+        }
+        return value.uint64Value
+    }
+
+    private func fileSize(at path: String) -> UInt64 {
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: path),
+              let value = attributes[.size] as? NSNumber else {
             return 0
         }
         return value.uint64Value

@@ -18,8 +18,11 @@ final class RuntimeController: ObservableObject {
         status = RuntimeStatus.load(paths: runtime)
         settings = RuntimeSettings.load()
         backups = RuntimeBackup.loadAll()
-        if selectedBackupPath.isEmpty, let latest = backups.first {
+        let backupPaths = Set(backups.map(\.path))
+        if let latest = backups.first, (selectedBackupPath.isEmpty || !backupPaths.contains(selectedBackupPath)) {
             selectedBackupPath = latest.path
+        } else if backups.isEmpty {
+            selectedBackupPath = ""
         }
         if let displayMessage = status.displayMessage {
             message = displayMessage
@@ -134,6 +137,7 @@ final class RuntimeController: ObservableObject {
             runningMessage: "Rolling back runtime...",
             successMessage: AppConstants.StatusText.rollbackCompleted
         )
+        await refresh()
         await refreshHealthStatus()
     }
 
