@@ -2,6 +2,8 @@ import SwiftUI
 
 struct ContentView: View {
     @StateObject private var controller = RuntimeController()
+    @State private var showingUpdateConfirmation = false
+    @State private var showingRollbackConfirmation = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -116,6 +118,22 @@ struct ContentView: View {
             }
             .disabled(controller.isBusy)
         }
+        .alert(AppConstants.Actions.applyBundle, isPresented: $showingUpdateConfirmation) {
+            Button(AppConstants.Actions.cancel, role: .cancel) {}
+            Button(AppConstants.Actions.startUpdate) {
+                Task { await controller.applySelectedBundle() }
+            }
+        } message: {
+            Text(controller.selectedBundleSummary.isEmpty ? controller.selectedBundlePath : controller.selectedBundleSummary)
+        }
+        .alert(AppConstants.Actions.rollback, isPresented: $showingRollbackConfirmation) {
+            Button(AppConstants.Actions.cancel, role: .cancel) {}
+            Button(AppConstants.Actions.startRollback, role: .destructive) {
+                Task { await controller.rollbackRuntime() }
+            }
+        } message: {
+            Text(controller.selectedBackupPath.isEmpty ? "Latest backup" : controller.selectedBackupPath)
+        }
     }
 
     private var settingsPanel: some View {
@@ -153,6 +171,7 @@ struct ContentView: View {
 
     private var updatePanel: some View {
         VStack(alignment: .leading, spacing: 14) {
+            statusBadge
             HStack {
                 Text(controller.selectedBundlePath.isEmpty ? "No update bundle selected" : controller.selectedBundlePath)
                     .lineLimit(2)
@@ -174,13 +193,20 @@ struct ContentView: View {
                     .truncationMode(.middle)
                     .textSelection(.enabled)
             }
+            if !controller.backups.isEmpty {
+                Picker("Rollback backup", selection: $controller.selectedBackupPath) {
+                    ForEach(controller.backups) { backup in
+                        Text(backup.name).tag(backup.path)
+                    }
+                }
+            }
             HStack(spacing: 10) {
                 Button(AppConstants.Actions.applyBundle) {
-                    Task { await controller.applySelectedBundle() }
+                    showingUpdateConfirmation = true
                 }
                 .disabled(controller.isBusy || controller.selectedBundlePath.isEmpty || !controller.status.runtimeInstalled)
                 Button(AppConstants.Actions.rollback) {
-                    Task { await controller.rollbackRuntime() }
+                    showingRollbackConfirmation = true
                 }
                 .disabled(controller.isBusy || !controller.status.runtimeInstalled)
                 Button(AppConstants.Actions.openLogs) {
@@ -190,6 +216,31 @@ struct ContentView: View {
             }
         }
         .padding(16)
+    }
+
+    private var statusBadge: some View {
+        Text(controller.status.runtimeState ?? AppConstants.StatusText.unknown)
+            .font(.headline)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .foregroundStyle(.white)
+            .background(statusColor)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+    }
+
+    private var statusColor: Color {
+        switch controller.status.runtimeState {
+        case "healthy":
+            return .green
+        case "installing", "updating", "recovering":
+            return .orange
+        case "degraded":
+            return .yellow
+        case "critical":
+            return .red
+        default:
+            return .gray
+        }
     }
 
     private func labeledValue(_ label: String, _ value: String) -> some View {

@@ -237,6 +237,18 @@ make vm-update-bundle
 make vm-update-bundle-verify
 ```
 
+`make vm-update-artifacts`는 package staging root에서 아래 tarball을 자동 생성합니다.
+
+```text
+.tmp/vitalserver-vm-pkg/update-artifacts/
+  app-bundle.tar.gz
+  runtime-tools.tar.gz
+  nginx-bundle.tar.gz
+  guest-deploy.tar.gz
+```
+
+`make vm-update-bundle`은 이 artifact들을 기본 포함합니다.
+
 설치된 Mac mini/Mac Studio에서는 runtime lifecycle CLI가 같은 bundle을 검증하고 적용합니다.
 
 ```sh

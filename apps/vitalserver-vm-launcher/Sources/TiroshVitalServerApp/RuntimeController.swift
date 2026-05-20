@@ -7,6 +7,8 @@ final class RuntimeController: ObservableObject {
     @Published var settings = RuntimeSettings.load()
     @Published var selectedBundlePath = ""
     @Published var selectedBundleSummary = ""
+    @Published var backups = RuntimeBackup.loadAll()
+    @Published var selectedBackupPath = ""
     @Published var message = AppConstants.StatusText.ready
     @Published var isBusy = false
 
@@ -15,6 +17,10 @@ final class RuntimeController: ObservableObject {
     func refresh() async {
         status = RuntimeStatus.load(paths: runtime)
         settings = RuntimeSettings.load()
+        backups = RuntimeBackup.loadAll()
+        if selectedBackupPath.isEmpty, let latest = backups.first {
+            selectedBackupPath = latest.path
+        }
         if let displayMessage = status.displayMessage {
             message = displayMessage
         }
@@ -119,7 +125,7 @@ final class RuntimeController: ObservableObject {
         }
         let command = shellCommand(
             executable: runtime.launcher,
-            arguments: ["runtime", "rollback"]
+            arguments: ["runtime", "rollback"] + (selectedBackupPath.isEmpty ? [] : [selectedBackupPath])
         )
         _ = await runPrivileged(
             shellCommand: command,

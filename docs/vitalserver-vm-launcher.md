@@ -718,6 +718,11 @@ make vm-update-bundle
 make vm-update-bundle-verify
 ```
 
+`make vm-update-artifacts`는 package staging root를 기준으로 `app-bundle.tar.gz`,
+`runtime-tools.tar.gz`, `nginx-bundle.tar.gz`, `guest-deploy.tar.gz`를 자동 생성합니다.
+`make vm-update-bundle`은 이 artifact들을 기본 포함하므로 Manager app, runtime tools, host nginx,
+guest deploy bundle까지 같은 online/offline bundle 계약으로 배포할 수 있습니다.
+
 마이그레이션 실행 파일을 bundle에 포함하려면:
 
 ```sh

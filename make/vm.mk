@@ -1,7 +1,7 @@
 include make/vm/config.mk
 
 .PHONY: vm-up vm-up-bridged vm-down vm-prepare vm-start vm-start-detached vm-start-bridged vm-stop vm-status vm-clean vm-ip vm-wait-ip vm-wait-http vm-wait-rootfs-ready vm-proxy-start vm-health
-.PHONY: vm-build vm-sign vm-sign-bridged vm-bridged-preflight vm-init vm-download vm-cloud-init vm-stage vm-interfaces vm-network-shared vm-network-bridged vm-nginx-artifact vm-nginx-bundle vm-docker-images vm-pkg-stage vm-pkg vm-app vm-installer-app vm-dmg vm-pkg-clean vm-pkg-install vm-pkg-uninstall-dev vm-installed-status vm-installed-health vm-update-bundle vm-update-bundle-verify
+.PHONY: vm-build vm-sign vm-sign-bridged vm-bridged-preflight vm-init vm-download vm-cloud-init vm-stage vm-interfaces vm-network-shared vm-network-bridged vm-nginx-artifact vm-nginx-bundle vm-docker-images vm-pkg-stage vm-pkg vm-app vm-installer-app vm-dmg vm-pkg-clean vm-pkg-install vm-pkg-uninstall-dev vm-installed-status vm-installed-health vm-update-artifacts vm-update-bundle vm-update-bundle-verify
 .PHONY: vm-airgap-rootfs vm-golden-rootfs
 
 vm-build:
@@ -365,7 +365,16 @@ vm-dmg: vm-pkg vm-installer-app
 		"$(VM_DMG_OUTPUT)"
 	@printf "VM control app dmg is ready: %s\n" "$(VM_DMG_OUTPUT)"
 
-vm-update-bundle: vm-pkg
+vm-update-artifacts: vm-pkg-stage
+	rm -rf "$(VM_UPDATE_ARTIFACT_DIR)"
+	@mkdir -p "$(VM_UPDATE_ARTIFACT_DIR)"
+	tar -czf "$(VM_UPDATE_APP_BUNDLE_ARCHIVE)" -C "$(VM_PKG_ROOT)$(VM_INSTALL_APPLICATIONS_DIR)" "Tirosh VitalServer Manager.app"
+	tar -czf "$(VM_UPDATE_RUNTIME_TOOLS_ARCHIVE)" -C "$(VM_PKG_ROOT)/usr/local/bin" vitalserver-vm vitalserver-proxy-run tirosh-vitalserver-uninstall
+	tar -czf "$(VM_UPDATE_NGINX_BUNDLE_ARCHIVE)" -C "$(VM_PKG_ROOT)$(VM_INSTALL_PREFIX)" nginx
+	tar -czf "$(VM_UPDATE_GUEST_DEPLOY_ARCHIVE)" -C "$(VM_PKG_ROOT)$(VM_INSTALL_HOME)/data" deploy
+	@printf "VM update artifacts are ready: %s\n" "$(VM_UPDATE_ARTIFACT_DIR)"
+
+vm-update-bundle: vm-pkg vm-update-artifacts
 	$(VM_BUILD_RUNNER) update-bundle \
 		--version "$(VM_UPDATE_BUNDLE_VERSION)" \
 		--runtime-version "$(VM_PKG_VERSION)" \
