@@ -103,6 +103,7 @@ help:
 	@printf "  make vm-start-detached  Start VM in background\n"
 	@printf "  make vm-health       Check VM IP, guest HTTP, and host proxy reachability\n"
 	@printf "  make vm-wait-ip      Wait until guest writes its VM IP\n"
+	@printf "  make vm-wait-http    Wait until guest HTTP returns 2xx/3xx\n"
 	@printf "  make vm-proxy-start  Start host nginx for VM_PROXY_UPSTREAM=<vm-ip>:80\n"
 	@printf "  make vm-interfaces   List bridged network interfaces\n"
 	@printf "  make vm-network-shared   Configure VM to use shared/NAT networking\n"

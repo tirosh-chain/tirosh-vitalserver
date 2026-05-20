@@ -69,7 +69,7 @@ proxy-run:
 proxy-stop:
 	@if [ -f "$(PROXY_RUNTIME_DIR)/logs/nginx.pid" ]; then \
 		pid="$$(cat "$(PROXY_RUNTIME_DIR)/logs/nginx.pid")"; \
-		if [ -n "$$pid" ] && kill -0 "$$pid" >/dev/null 2>&1; then \
+		if [ -n "$$pid" ] && { kill -0 "$$pid" >/dev/null 2>&1 || ps -p "$$pid" >/dev/null 2>&1; }; then \
 			$(NGINX_CMD) -p "$(CURDIR)/$(PROXY_RUNTIME_DIR)" -c "$(CURDIR)/$(PROXY_CONFIG)" -s quit; \
 		else \
 			printf "nginx proxy is already stopped\n"; \
@@ -109,7 +109,7 @@ proxy-status:
 		pid="$$(cat "$(PROXY_RUNTIME_DIR)/logs/nginx.pid")"; \
 		if [ -z "$$pid" ]; then \
 			printf "nginx proxy is not running: empty pid file %s/logs/nginx.pid\n" "$(PROXY_RUNTIME_DIR)"; \
-		elif kill -0 "$$pid" >/dev/null 2>&1; then \
+		elif kill -0 "$$pid" >/dev/null 2>&1 || ps -p "$$pid" >/dev/null 2>&1; then \
 			printf "nginx proxy is running: pid %s\n" "$$pid"; \
 		else \
 			printf "nginx proxy pid file exists, but process is not running: %s\n" "$$pid"; \

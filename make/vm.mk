@@ -17,8 +17,9 @@ VM_IP_FILE ?= $(VM_RUN_DIR)/vm-ip
 VM_UBUNTU_CONFIG ?= $(VM_BUILD_SUPPORT_DIR)/ubuntu-cloud-image.env
 VM_RSYNC_EXCLUDES ?= --exclude .DS_Store --exclude __pycache__
 VM_WAIT_TIMEOUT ?= 300
+VM_HTTP_WAIT_TIMEOUT ?= 600
 
-.PHONY: vm-up vm-up-bridged vm-down vm-prepare vm-start vm-start-detached vm-start-bridged vm-stop vm-status vm-clean vm-ip vm-wait-ip vm-proxy-start vm-health
+.PHONY: vm-up vm-up-bridged vm-down vm-prepare vm-start vm-start-detached vm-start-bridged vm-stop vm-status vm-clean vm-ip vm-wait-ip vm-wait-http vm-proxy-start vm-health
 .PHONY: vm-build vm-sign vm-sign-bridged vm-bridged-preflight vm-init vm-download vm-cloud-init vm-stage vm-interfaces vm-network-shared vm-network-bridged
 
 vm-build:
@@ -55,7 +56,7 @@ vm-prepare: vm-download vm-cloud-init vm-stage
 	@printf "VM runtime is prepared under %s\n" "$(VM_HOME)"
 	@printf "Start it with: make vm-start\n"
 
-vm-up: vm-prepare vm-start-detached vm-wait-ip vm-proxy-start
+vm-up: vm-prepare vm-start-detached vm-wait-ip vm-wait-http vm-proxy-start
 
 vm-up-bridged: vm-bridged-preflight vm-prepare vm-network-bridged vm-start-bridged
 
@@ -117,6 +118,28 @@ vm-wait-ip:
 		sleep 2; \
 	done; \
 	printf "error: timed out waiting for VM IP. Check %s\n" "$(VM_HOME)/logs/launcher.log" >&2; \
+	exit 1
+
+vm-wait-http:
+	@if [ ! -s "$(VM_IP_FILE)" ]; then \
+		printf "VM IP is not available yet: %s\n" "$(VM_IP_FILE)" >&2; \
+		exit 1; \
+	fi
+	@vm_ip="$$(cat "$(VM_IP_FILE)")"; \
+	printf "Waiting for VM HTTP: http://%s/\n" "$$vm_ip"; \
+	deadline=$$(( $$(date +%s) + $(VM_HTTP_WAIT_TIMEOUT) )); \
+	last_code=""; \
+	while [ $$(date +%s) -lt $$deadline ]; do \
+		code="$$(curl -sS -I -o /dev/null -w '%{http_code}' --max-time 5 "http://$$vm_ip/" 2>/dev/null)" && http_status=0 || http_status=$$?; \
+		if [ "$$http_status" -eq 0 ] && [ "$$code" -ge 200 ] && [ "$$code" -lt 400 ]; then \
+			printf "VM HTTP ready: http://%s/ -> %s\n" "$$vm_ip" "$$code"; \
+			exit 0; \
+		fi; \
+		last_code="$${code:-curl-error}"; \
+		sleep 2; \
+	done; \
+	printf "error: timed out waiting for VM HTTP: http://%s/ last=%s\n" "$$vm_ip" "$$last_code" >&2; \
+	printf "Check guest bootstrap in %s\n" "$(VM_HOME)/logs/launcher.log" >&2; \
 	exit 1
 
 vm-proxy-start:

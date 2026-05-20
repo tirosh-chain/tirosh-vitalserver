@@ -24,7 +24,7 @@ shared/NAT mode로 부팅 PoC를 확인합니다.
 make vm-up
 ```
 
-`make vm-up`은 VM을 background로 시작하고, guest가 기록한 VM IP를 기다린 뒤 host nginx를 VM으로 연결합니다.
+`make vm-up`은 VM을 background로 시작하고, guest가 기록한 VM IP와 HTTP readiness를 기다린 뒤 host nginx를 VM으로 연결합니다.
 
 VM 콘솔을 직접 보고 싶으면 아래처럼 실행합니다.
 
@@ -68,7 +68,7 @@ make vm-up-bridged
 | 명령 | 설명 |
 |---|---|
 | `make vm-prepare` | Linux boot asset 준비, cloud-init 생성, guest bundle staging |
-| `make vm-up` | shared/NAT VM 시작, VM IP 대기, host nginx 연결 |
+| `make vm-up` | shared/NAT VM 시작, VM IP/HTTP 대기, host nginx 연결 |
 | `make vm-up-bridged` | 승인된 signing identity로 bridged mode 준비 후 시작 |
 | `make vm-down` | VM 종료 |
 | `make vm-status` | VM process 상태 확인 |
