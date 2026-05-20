@@ -87,9 +87,37 @@ wait_for_network_time() {
   printf "warning: network time is not synchronized yet\n" >&2
 }
 
+disable_flash_kernel_hook() {
+  local hook="/etc/initramfs/post-update.d/flash-kernel"
+
+  if [ -x "${hook}" ]; then
+    # Ubuntu arm64 cloud images may include flash-kernel, but Apple
+    # Virtualization boots the kernel/initrd supplied by macOS. The guest-side
+    # flash-kernel hook can fail with "Unsupported platform" and block apt.
+    chmod -x "${hook}"
+  fi
+}
+
+remove_flash_kernel_package() {
+  if dpkg-query -W flash-kernel >/dev/null 2>&1; then
+    apt-get purge -y flash-kernel \
+      || dpkg --purge --force-all flash-kernel \
+      || true
+  fi
+}
+
+repair_package_state() {
+  if ! dpkg --configure -a; then
+    apt-get -f install -y
+  fi
+}
+
 export DEBIAN_FRONTEND=noninteractive
 write_vm_ip
 wait_for_network_time
+disable_flash_kernel_hook
+remove_flash_kernel_package
+repair_package_state
 apt-get update
 apt-get install -y \
   avahi-daemon \
