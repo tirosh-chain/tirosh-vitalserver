@@ -116,7 +116,7 @@ make vm-pkg
 | nginx config template | `/Library/Application Support/TiroshVitalServer/vm/Support/Proxy/` |
 | LaunchDaemons | `/Library/LaunchDaemons/com.tirosh.vitalserver-*.plist` |
 
-shared/NAT mode에서는 VM IP가 부팅 후에 결정되므로, `vitalserver-proxy-run`이 VM IP 파일을 기다린 뒤 host nginx config를 렌더링하고 proxy를 실행합니다.
+shared/NAT mode에서는 VM IP가 부팅 후에 결정되므로, `vitalserver-proxy-run`이 VM IP 파일을 감시합니다. VM IP가 바뀌면 host nginx config를 다시 렌더링하고 proxy를 reload합니다.
 
 `rootfs.raw`는 package에 그대로 넣지 않고 `rootfs.raw.gz`로 묶습니다. 설치 시 `postinstall`이 다시 `rootfs.raw`로 풀어 VM disk로 사용합니다.
 

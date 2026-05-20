@@ -216,7 +216,8 @@ launchd
       -> vitalserver-proxy-run
       -> vm-ip 대기
       -> nginx config 렌더링
-      -> nginx daemon off
+      -> nginx start/reload
+      -> vm-ip 변경 감시
 ```
 
 이 구조에서 운영자가 `VITALSERVER_PROXY_UPSTREAM`을 직접 설정할 필요는 없습니다.

@@ -9,25 +9,61 @@ proxy_port="${VITALSERVER_PROXY_PORT:-80}"
 ip_file="${vm_home}/data/run/vm-ip"
 template="${vm_home}/Support/Proxy/vitalserver.conf.template"
 config="${nginx_prefix}/vitalserver.conf"
+pid_file="${nginx_prefix}/logs/nginx.pid"
 
 mkdir -p "${nginx_prefix}/logs"
 
+nginx_is_running() {
+  [ -s "${pid_file}" ] && kill -0 "$(cat "${pid_file}")" >/dev/null 2>&1
+}
+
+stop_nginx() {
+  if nginx_is_running; then
+    "${nginx_bin}" -p "${nginx_prefix}" -c "${config}" -s quit >/dev/null 2>&1 || true
+  fi
+}
+
+render_config() {
+  local upstream="$1"
+
+  sed \
+    -e "s|\${VITALSERVER_PROXY_PORT}|${proxy_port}|g" \
+    -e "s|\${PROXY_UPSTREAM}|${upstream}|g" \
+    "${template}" > "${config}"
+}
+
+apply_config() {
+  local upstream="$1"
+
+  render_config "${upstream}"
+  "${nginx_bin}" -p "${nginx_prefix}" -c "${config}" -t
+
+  if nginx_is_running; then
+    "${nginx_bin}" -p "${nginx_prefix}" -c "${config}" -s reload
+    printf "reloaded proxy: http://localhost:%s -> http://%s\n" "${proxy_port}" "${upstream}"
+  else
+    "${nginx_bin}" -p "${nginx_prefix}" -c "${config}"
+    printf "started proxy: http://localhost:%s -> http://%s\n" "${proxy_port}" "${upstream}"
+  fi
+}
+
+trap stop_nginx EXIT INT TERM
+
 deadline=$(( $(date +%s) + ${VITALSERVER_PROXY_WAIT_TIMEOUT:-600} ))
-while [ "$(date +%s)" -lt "${deadline}" ]; do
+last_upstream=""
+while true; do
   if [ -s "${ip_file}" ]; then
     vm_ip="$(cat "${ip_file}")"
     upstream="${vm_ip}:80"
 
-    sed \
-      -e "s|\${VITALSERVER_PROXY_PORT}|${proxy_port}|g" \
-      -e "s|\${PROXY_UPSTREAM}|${upstream}|g" \
-      "${template}" > "${config}"
-
-    exec "${nginx_bin}" -p "${nginx_prefix}" -c "${config}" -g "daemon off;"
+    if [ "${upstream}" != "${last_upstream}" ] || ! nginx_is_running; then
+      apply_config "${upstream}"
+      last_upstream="${upstream}"
+    fi
+  elif [ "$(date +%s)" -ge "${deadline}" ]; then
+    printf "timed out waiting for VM IP file: %s\n" "${ip_file}" >&2
+    exit 1
   fi
 
-  sleep 2
+  sleep "${VITALSERVER_PROXY_RELOAD_INTERVAL:-2}"
 done
-
-printf "timed out waiting for VM IP file: %s\n" "${ip_file}" >&2
-exit 1
