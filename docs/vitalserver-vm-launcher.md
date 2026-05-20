@@ -159,6 +159,8 @@ open ".tmp/Tirosh VitalServer Manager.app"
 `/Applications/Tirosh VitalServer Manager.app` payload로 포함하고, `make vm-dmg`는 DMG root에
 `Install Tirosh VitalServer.pkg`만 배치합니다.
 
+현재 배포 기준은 unsigned입니다. `.pkg`와 `.dmg`에 Developer ID 서명/notarization을 적용하지 않습니다. 단, nginx binary와 dylib는 `install_name_tool`로 load path를 수정하므로 실행 가능한 Mach-O 상태를 위해 ad-hoc signing(`codesign --sign -`)만 수행합니다.
+
 ## Package 구성
 
 현재 repository의 `make vm-pkg`는 `.pkg`까지 가기 위한 개발 검증용 packaging target입니다.
@@ -238,6 +240,104 @@ launchd
 
 `vm-disk.img`는 sparse disk라 package payload에 그대로 넣으면 `pkgbuild`가 실패할 수 있습니다. 따라서 package에는 immutable base artifact인 `rootfs-base.raw.gz`를 넣고, 설치 시 `postinstall`에서 `vm-disk.img`를 생성합니다.
 
+## Source 책임
+
+현재 구현의 책임 경계는 아래처럼 둡니다. 이 표가 코드 배치의 기준입니다.
+
+| 영역 | 주요 파일 | 책임 | 책임 밖 |
+|---|---|---|---|
+| build orchestration | `make/vm.mk`, `make/vm/config.mk` | target dependency, 중간/최종 산출물 경로, unsigned build 변수, install test wrapper | manifest 해석, disk/rootfs 세부 처리 |
+| build config | `apps/vitalserver-vm-launcher/Support/Build/vm-build.toml` | Ubuntu/rootfs/Docker/nginx pinned input 값 | 설치 시 사용자 설정 |
+| Python build package | `packages/vm-build/src/tirosh_vitalserver/vm_build/*.py` | Ubuntu asset 준비, cloud-init ISO 생성, rootfs 압축, nginx bundle, Docker image bundle, update bundle 생성/검증, plist/template rendering | 설치 후 runtime 상태 변경 |
+| Swift CLI entry | `Sources/VitalServerVMLauncher/CLI/Launcher.swift`, `Command.swift` | `vitalserver-vm` command routing, VM start/stop/status/network/runtime command 연결 | package staging, DMG 생성 |
+| Swift runtime lifecycle | `Sources/VitalServerVMLauncher/Runtime/RuntimeLifecycle.swift` | `runtime install/status/health/verify-bundle/stage-bundle/apply-bundle/rollback`, install settings 적용, VM disk 생성, launchd load, backup/rollback | DMG/PKG 파일 생성 |
+| Swift runtime paths/constants | `LauncherPaths.swift`, `Constants.swift` | 설치/runtime 경로, artifact 이름, launchd/service 이름, command path | runtime 동작 정책 결정 |
+| VM configuration | `VirtualMachine/VMRuntimeConfig.swift`, `VMConfigurationFactory.swift` | `vm-config.json` schema, Apple Virtualization configuration 생성 | install settings 파일 읽기 |
+| Manager app | `Sources/TiroshVitalServerApp/*` | 설치 후 상태/health/open/update/uninstall 진입 UI | rootfs, VM disk, privileged provisioning 포함 |
+| PKG scripts | `Support/Packaging/preinstall`, `postinstall`, `proxy-run`, `uninstall` | installer/launchd/uninstall entrypoint wrapper | 복잡한 provisioning 로직 |
+| guest bootstrap | `Support/Guest/bootstrap.sh`, `prepare-airgap-rootfs.sh`, `compose.yaml` | Linux guest 내부 Docker/nginx/Compose 구성, Docker image load, VM IP marker 기록 | macOS launchd/proxy 관리 |
+
+Shell은 의도적으로 얇게 유지합니다. `postinstall`은 로그를 열고 `VITALSERVER_VM_HOME=/Library/Application Support/TiroshVitalServer/vm vitalserver-vm runtime install`만 호출합니다. 설치 정책은 Swift `RuntimeLifecycle`에 둡니다.
+
+## DMG Build 흐름
+
+`make vm-dmg`는 최종 전달 매체를 만들지만, 실제로는 아래 dependency chain을 실행합니다.
+
+```text
+make vm-dmg
+  -> make vm-pkg
+    -> make vm-pkg-stage
+      -> make vm-sign              # unsigned 기준: ad-hoc sign
+      -> make vm-app               # Manager.app 생성
+      -> make vm-golden-rootfs     # clean VM disk -> rootfs-base.raw.gz
+      -> make vm-nginx-bundle      # pinned nginx -> self-contained bundle
+      -> make vm-docker-images     # air-gapped Docker image tar.gz
+    -> pkgbuild                    # dist/TiroshVitalServerVM-<version>.pkg
+  -> hdiutil create                # dist/TiroshVitalServer-<version>.dmg
+```
+
+중간 파일과 최종 파일은 아래 위치를 사용합니다.
+
+| 단계 | 경로 | 의미 |
+|---|---|---|
+| nginx artifact cache | `.artifacts/nginx/macos/bin/nginx` | repository에 commit하지 않는 pinned build input |
+| package work dir | `.tmp/vitalserver-vm-pkg/` | PKG staging, rootfs cache, nginx bundle, Docker bundle |
+| package root | `.tmp/vitalserver-vm-pkg/root/` | `pkgbuild --root` 입력 |
+| app bundle staging | `.tmp/Tirosh VitalServer Manager.app` | `/Applications` payload로 들어갈 app |
+| golden VM home | `.tmp/vitalserver-vm-golden/` | package용 clean rootfs를 만들기 위한 임시 VM home |
+| DMG staging | `.tmp/vitalserver-vm-dmg/` | DMG root에 들어갈 파일 배치 |
+| PKG output | `dist/TiroshVitalServerVM-<version>.pkg` | installer payload |
+| DMG output | `dist/TiroshVitalServer-<version>.dmg` | 사용자 전달 매체 |
+
+DMG root에는 `Install Tirosh VitalServer.pkg`만 둡니다. 사용자는 app을 Applications로 drag하지 않고 installer pkg를 실행합니다.
+
+## DMG 설치 흐름
+
+사용자 관점의 설치 순서는 아래입니다.
+
+```text
+1. TiroshVitalServer-<version>.dmg mount
+2. Install Tirosh VitalServer.pkg 실행
+3. macOS Installer가 payload 복사
+4. PKG postinstall 실행
+5. Swift runtime install이 runtime instance provision
+6. launchd VM/proxy service 등록 및 정책 적용
+7. Manager.app 또는 CLI로 status/health 확인
+```
+
+실제 코드 호출은 아래처럼 이어집니다.
+
+```text
+Install Tirosh VitalServer.pkg
+  -> payload copy
+    -> /Applications/Tirosh VitalServer Manager.app
+    -> /usr/local/bin/vitalserver-vm
+    -> /usr/local/bin/vitalserver-proxy-run
+    -> /Library/Application Support/TiroshVitalServer/vm/runtime/rootfs-base.raw.gz
+    -> /Library/Application Support/TiroshVitalServer/vm/data/deploy/*
+    -> /Library/Application Support/TiroshVitalServer/nginx/*
+    -> /Library/LaunchDaemons/com.tirosh.vitalserver-*.plist
+  -> Support/Packaging/postinstall
+    -> vitalserver-vm runtime install
+      -> read /private/tmp/tirosh-vitalserver-install.json if present
+      -> create runtime/data/log directories
+      -> write deploy/runtime-config.json
+      -> gunzip rootfs-base.raw.gz into runtime/vm-disk.img if missing
+      -> truncate vm-disk.img to configured diskGiB
+      -> write runtime/vm-config.json
+      -> create runtime/seed.iso
+      -> write runtime/runtime-version.json
+      -> chown/chmod installed files
+      -> write proxy port into proxy LaunchDaemon plist
+      -> launchctl bootstrap/kickstart services when startAfterInstall=true
+      -> launchctl enable/disable according to startOnBoot
+      -> remove install settings JSON
+```
+
+VM service가 시작되면 `vitalserver-vm start`가 `vm-config.json`을 읽어 Apple Virtualization VM을 띄웁니다. guest cloud-init은 `seed.iso`의 `runcmd`로 `/mnt/tirosh/deploy/bootstrap.sh`를 실행합니다. guest bootstrap은 Docker image bundle을 load하고 Compose stack과 guest nginx를 구성한 뒤 `/mnt/tirosh/run/vm-ip`를 기록합니다. proxy service의 `vitalserver-proxy-run`은 이 VM IP 파일을 기다렸다가 host nginx config를 렌더링하고 nginx를 시작 또는 reload합니다.
+
+설치 시 설정값은 installer UI, MDM, 또는 wrapper가 `installer` 실행 전에 `/private/tmp/tirosh-vitalserver-install.json`에 씁니다. 이 파일은 partial JSON이며 `postinstall` 이후 삭제됩니다.
+
 ## 인터페이스 계약
 
 현재 제품화 흐름은 여러 실행 환경을 건너므로, 각 경계의 입력과 출력 계약을 분리해서 관리합니다.
@@ -274,7 +374,7 @@ launchd
 | `memoryGiB` | 8 | 4-64, 4 단위 |
 | `diskGiB` | 64 | 32-512, 16 단위 |
 | `networkMode` | `shared` | `shared` 또는 `bridged` |
-| `proxyPort` | 80 | 1-65535, 단 Manager/health는 현재 80 기준 |
+| `proxyPort` | 80 | 1-65535, LaunchDaemon plist에 저장하고 Runtime CLI/Manager가 해당 값을 읽음 |
 | `vitalFilesDirectory` | `/Library/Application Support/TiroshVitalServer/vm/data/vital-files` | absolute path |
 | `adminPassword` | `admin` | empty가 아니면 적용 |
 | `vmHostname` | `tirosh-vitalserver` | hostname-safe 문자열 |

@@ -140,6 +140,42 @@ shared/NAT mode에서는 VM IP가 부팅 후에 결정되므로, `vitalserver-pr
 | guest `bootstrap.sh` | `runtime-config.json`, Docker image bundle | Docker Compose stack and VM-local nginx |
 | update bundle | `manifest.json`, `checksums.txt`, `signature`, `rootfs-base.raw.gz`, migrations | verified/staged bundle, rootfs-base backup/replacement, migrations |
 
+주요 source 책임은 아래처럼 나눕니다.
+
+| 영역 | 파일 | 책임 |
+|---|---|---|
+| Make | `make/vm.mk`, `make/vm/config.mk` | build/install target orchestration, artifact path |
+| Python | `packages/vm-build/src/tirosh_vitalserver/vm_build` | Ubuntu/rootfs/nginx/Docker/update bundle build tooling |
+| Swift CLI | `Sources/VitalServerVMLauncher` | VM start/stop/status, runtime install/update/health |
+| PKG wrapper | `Support/Packaging/postinstall` | install log 연결 후 `vitalserver-vm runtime install` 호출 |
+| launchd proxy | `Support/Packaging/proxy-run` | VM IP 감시, host nginx config render/reload |
+| Guest | `Support/Guest/bootstrap.sh` | guest nginx/Docker Compose bootstrap, VM IP marker 기록 |
+| Manager app | `Sources/TiroshVitalServerApp` | 설치 후 status/health/open/update/uninstall UI |
+
+DMG build/install 흐름은 아래입니다.
+
+```text
+make vm-dmg
+  -> make vm-pkg-stage
+    -> vm-app, vm-golden-rootfs, vm-nginx-bundle, vm-docker-images
+    -> .tmp/vitalserver-vm-pkg/root
+  -> pkgbuild
+    -> dist/TiroshVitalServerVM-<version>.pkg
+  -> hdiutil create
+    -> dist/TiroshVitalServer-<version>.dmg
+
+Install Tirosh VitalServer.pkg
+  -> payload copy
+  -> postinstall
+  -> vitalserver-vm runtime install
+  -> vm-disk.img, vm-config.json, seed.iso 생성
+  -> launchd VM/proxy service 등록/시작
+  -> guest bootstrap
+  -> host nginx proxy ready
+```
+
+상세한 파일별 책임과 DMG 설치 단계는 `docs/vitalserver-vm-launcher.md`의 `Source 책임`, `DMG Build 흐름`, `DMG 설치 흐름`을 기준으로 봅니다.
+
 현재 `runtime apply-bundle`이 실제로 적용하는 artifact는 `rootfs-base.raw.gz`와 executable migration입니다. `.pkg` 재설치나 app/runtime tools 교체는 아직 update bundle 계약에 포함하지 않습니다. 필요한 시점에 artifact type별 apply 동작을 추가합니다.
 
 `rootfs-base.raw.gz`는 immutable base artifact이고, 설치된 `vm-disk.img`는 mutable runtime instance입니다. 따라서 update에서 rootfs base를 교체해도 이미 실행 중인 `vm-disk.img` 내부 OS/runtime이 자동으로 교체되지는 않습니다. 설치된 VM 내부 변경은 migration이나 별도 guest update contract로 처리해야 합니다.
