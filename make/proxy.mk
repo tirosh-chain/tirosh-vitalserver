@@ -8,13 +8,15 @@ VITALSERVER_TRUST_PROXY ?= 1
 NGINX_BIN ?= $(shell command -v nginx 2>/dev/null || printf "/opt/homebrew/bin/nginx")
 ifeq ($(VITALSERVER_PROXY_PORT),80)
 NGINX_CMD ?= sudo $(NGINX_BIN)
+PROXY_KILL_CMD ?= sudo kill
 else
 NGINX_CMD ?= $(NGINX_BIN)
+PROXY_KILL_CMD ?= kill
 endif
 NGINX_CONF ?= /Library/Application Support/TiroshVitalServer/nginx/vitalserver.conf
 NGINX_PREFIX ?= /Library/Application Support/TiroshVitalServer/nginx
 
-.PHONY: proxy-config proxy-write-config proxy-test proxy-start proxy-run proxy-port-check proxy-stop proxy-clean proxy-reload proxy-status proxy-plist
+.PHONY: proxy-config proxy-write-config proxy-test proxy-start proxy-run proxy-port-check proxy-stop proxy-stop-orphans proxy-clean proxy-reload proxy-status proxy-plist
 
 proxy-config:
 	@VITALSERVER_PROXY_PORT="$(VITALSERVER_PROXY_PORT)" \
@@ -74,9 +76,29 @@ proxy-stop:
 		fi; \
 	else \
 		printf "nginx proxy is already stopped\n"; \
+	fi; \
+	if command -v lsof >/dev/null 2>&1; then \
+		listeners="$$(lsof -nP -iTCP:"$(VITALSERVER_PROXY_PORT)" -sTCP:LISTEN 2>/dev/null | awk 'NR>1 {print $$1 "/" $$2}' | sort -u | paste -sd, -)"; \
+		if [ -n "$$listeners" ]; then \
+			printf "warning: listeners remain on port %s: %s\n" "$(VITALSERVER_PROXY_PORT)" "$$listeners" >&2; \
+			printf "Run: make proxy-stop-orphans VITALSERVER_PROXY_PORT=%s\n" "$(VITALSERVER_PROXY_PORT)" >&2; \
+		fi; \
 	fi
 
-proxy-clean: proxy-stop
+proxy-stop-orphans:
+	@if ! command -v lsof >/dev/null 2>&1; then \
+		printf "error: lsof is required to find orphan proxy listeners\n" >&2; \
+		exit 1; \
+	fi
+	@pids="$$(lsof -nP -iTCP:"$(VITALSERVER_PROXY_PORT)" -sTCP:LISTEN 2>/dev/null | awk 'NR>1 && $$1 == "nginx" {print $$2}' | sort -u | paste -sd" " -)"; \
+	if [ -z "$$pids" ]; then \
+		printf "no nginx listeners on port %s\n" "$(VITALSERVER_PROXY_PORT)"; \
+	else \
+		printf "stopping orphan nginx listeners on port %s: %s\n" "$(VITALSERVER_PROXY_PORT)" "$$pids"; \
+		$(PROXY_KILL_CMD) -TERM $$pids; \
+	fi
+
+proxy-clean: proxy-stop proxy-stop-orphans
 	rm -rf "$(PROXY_RUNTIME_DIR)"
 
 proxy-reload: proxy-test

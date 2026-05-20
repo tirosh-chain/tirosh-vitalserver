@@ -55,6 +55,7 @@ help:
 	@printf "  make proxy-plist     Render macOS launchd plist for host nginx proxy\n"
 	@printf "  make proxy-start     Start macOS host nginx proxy only\n"
 	@printf "  make proxy-stop      Stop macOS host nginx proxy only\n"
+	@printf "  make proxy-stop-orphans  Stop nginx listeners left on the proxy port\n"
 	@printf "  make proxy-clean     Stop proxy and remove local proxy runtime files\n"
 	@printf "  make proxy-reload    Reload macOS host nginx proxy config\n"
 	@printf "\n"

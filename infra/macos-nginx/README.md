@@ -70,6 +70,7 @@ make proxy-start
 make proxy-status
 make proxy-reload
 make proxy-stop
+make proxy-stop-orphans  # pid file 없이 남은 nginx listener 정리
 make proxy-clean
 ```
 
