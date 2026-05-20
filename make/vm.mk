@@ -1,7 +1,7 @@
 include make/vm/config.mk
 
 .PHONY: vm-up vm-up-bridged vm-down vm-prepare vm-start vm-start-detached vm-start-bridged vm-stop vm-status vm-clean vm-ip vm-wait-ip vm-wait-http vm-wait-rootfs-ready vm-proxy-start vm-health
-.PHONY: vm-build vm-sign vm-sign-bridged vm-bridged-preflight vm-init vm-download vm-cloud-init vm-stage vm-interfaces vm-network-shared vm-network-bridged vm-nginx-artifact vm-nginx-bundle vm-docker-images vm-pkg-stage vm-pkg vm-app vm-installer-app vm-dmg vm-pkg-clean vm-pkg-install vm-pkg-uninstall-dev vm-installed-status vm-installed-health vm-update-artifacts vm-update-bundle vm-update-bundle-verify
+.PHONY: vm-build vm-sign vm-sign-bridged vm-bridged-preflight vm-init vm-download vm-cloud-init vm-stage vm-interfaces vm-network-shared vm-network-bridged vm-nginx-artifact vm-nginx-bundle vm-docker-images vm-pkg-stage vm-pkg vm-app vm-dmg vm-pkg-clean vm-pkg-install vm-pkg-uninstall-dev vm-installed-status vm-installed-health vm-update-artifacts vm-update-bundle vm-update-bundle-verify
 .PHONY: vm-airgap-rootfs vm-golden-rootfs
 
 vm-build:
@@ -271,16 +271,6 @@ vm-app:
 	codesign --force --sign "$(VM_CODESIGN_IDENTITY)" "$(VM_APP_BUNDLE)"
 	@printf "VM control app is ready: %s\n" "$(VM_APP_BUNDLE)"
 
-vm-installer-app:
-	cd "$(VM_LAUNCHER_DIR)" && env SDKROOT="$(VM_SDKROOT)" CLANG_MODULE_CACHE_PATH="$(VM_CLANG_MODULE_CACHE)" swift build -c release --product TiroshVitalServerInstallerApp
-	rm -rf "$(VM_INSTALLER_APP_BUNDLE)"
-	@mkdir -p "$(VM_INSTALLER_APP_BUNDLE)/Contents/MacOS" "$(VM_INSTALLER_APP_BUNDLE)/Contents/Resources"
-	install -m 0755 "$(VM_INSTALLER_APP_BIN)" "$(VM_INSTALLER_APP_BUNDLE)/Contents/MacOS/$(VM_INSTALLER_APP_NAME)"
-	install -m 0644 "$(VM_LAUNCHER_DIR)/Support/InstallerApp/Info.plist" "$(VM_INSTALLER_APP_BUNDLE)/Contents/Info.plist"
-	install -m 0644 "$(VM_LAUNCHER_DIR)/Support/App/AppIcon.icns" "$(VM_INSTALLER_APP_BUNDLE)/Contents/Resources/AppIcon.icns"
-	codesign --force --sign "$(VM_CODESIGN_IDENTITY)" "$(VM_INSTALLER_APP_BUNDLE)"
-	@printf "VM installer app is ready: %s\n" "$(VM_INSTALLER_APP_BUNDLE)"
-
 vm-pkg-stage: vm-sign vm-app vm-golden-rootfs vm-nginx-bundle vm-docker-images
 	@test -s "$(VM_GOLDEN_RUNTIME_DIR)/Image" || { printf "missing %s\n" "$(VM_GOLDEN_RUNTIME_DIR)/Image" >&2; exit 1; }
 	@test -s "$(VM_GOLDEN_RUNTIME_DIR)/initrd.img" || { printf "missing %s\n" "$(VM_GOLDEN_RUNTIME_DIR)/initrd.img" >&2; exit 1; }
@@ -350,11 +340,10 @@ vm-pkg: vm-pkg-stage
 		"$(VM_PKG_OUTPUT)"
 	@printf "VM package is ready: %s\n" "$(VM_PKG_OUTPUT)"
 
-vm-dmg: vm-pkg vm-installer-app
+vm-dmg: vm-pkg
 	rm -rf "$(VM_DMG_STAGING)"
 	@mkdir -p "$(VM_DMG_STAGING)"
 	install -m 0644 "$(VM_PKG_OUTPUT)" "$(VM_DMG_STAGING)/Install Tirosh VitalServer.pkg"
-	rsync -a --delete "$(VM_INSTALLER_APP_BUNDLE)/" "$(VM_DMG_STAGING)/$(VM_INSTALLER_APP_NAME).app/"
 	rm -f "$(VM_DMG_OUTPUT)"
 	@mkdir -p "$(dir $(VM_DMG_OUTPUT))"
 	hdiutil create \

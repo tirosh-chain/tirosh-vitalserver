@@ -83,7 +83,6 @@ make vm-up-bridged
 | `make vm-docker-images` | air-gapped 설치용 Docker image bundle 생성 |
 | `make vm-airgap-rootfs` | 온라인 빌드 환경에서 rootfs에 Docker/nginx/Compose 설치 |
 | `make vm-app` | `/Applications`에 설치될 가벼운 macOS control app 생성 |
-| `make vm-installer-app` | DMG에서 실행할 설치 전 설정/설치 실행 app 생성 |
 | `make vm-pkg` | control app, VM runtime, boot asset, guest bundle, host proxy launcher를 `.pkg`로 묶기 |
 | `make vm-pkg-install` | 생성된 개발용 `.pkg`를 설치 |
 | `make vm-pkg-uninstall-dev` | 개발용 설치물을 제거 |
@@ -92,19 +91,33 @@ make vm-up-bridged
 ## Package
 
 제품 목표는 Mac mini/Mac Studio에 설치 가능한 `.pkg`입니다. 현재 `make vm-pkg`는 개발 검증용 package를 만듭니다.
+단일 PKG를 기본 배포물로 쓰는 이유는 이 제품이 단순 app bundle이 아니라 system-wide runtime을
+설치하기 때문입니다. 설치 과정은 `/Applications` 밖의 경로, `/usr/local/bin`, LaunchDaemon,
+host nginx bundle, Linux VM runtime asset, postinstall provisioning을 다룹니다.
+
+`.app`만 제공하는 방식은 앱이 self-contained이고 `/Applications`로 복사한 뒤 사용자 권한으로 실행할 수
+있을 때 적합합니다. 예를 들어 system daemon, privileged helper, `/usr/local/bin` CLI, shared runtime
+asset, install-time provisioning이 없으면 `.app` 또는 drag-and-drop DMG가 더 자연스럽습니다. 이
+프로젝트는 Mac mini/Mac Studio에 VM 기반 서비스를 설치하고 부팅 시 자동 시작해야 하므로 `.pkg`가
+source of truth입니다.
 
 ```sh
 make vm-pkg
 ```
 
-생성물:
+`make vm-pkg` 생성물:
 
 ```text
 dist/TiroshVitalServerVM-0.1.0.pkg
+```
+
+전달용 DMG가 필요하면 `make vm-dmg`를 실행합니다. DMG에는 단일 PKG만 들어갑니다.
+
+```text
 dist/TiroshVitalServer-0.1.0.dmg
 ```
 
-이 package는 아래 항목을 설치합니다.
+이 package는 아래 항목을 설치하고, `postinstall`에서 runtime provisioning을 수행합니다.
 
 | 항목 | 설치 위치 |
 |---|---|
@@ -168,14 +181,8 @@ make vm-dmg
     -> .tmp/vitalserver-vm-pkg/root
   -> pkgbuild
     -> dist/TiroshVitalServerVM-<version>.pkg
-  -> vm-installer-app
-    -> .tmp/Tirosh VitalServer Setup.app
   -> hdiutil create
     -> dist/TiroshVitalServer-<version>.dmg
-
-Tirosh VitalServer Setup.app
-  -> write /private/tmp/tirosh-vitalserver-install.json
-  -> run installer -pkg "Install Tirosh VitalServer.pkg" -target /
 
 Install Tirosh VitalServer.pkg
   -> payload copy
@@ -336,9 +343,9 @@ Tirosh VitalServer Manager.app
 | Open VitalServer | `http://127.0.0.1/` 열기 |
 | Uninstall | 설치된 `/usr/local/bin/tirosh-vitalserver-uninstall` 실행 |
 
-Setup app은 설치 전에는 `Install` 진입점을 제공하고, 설치 후 다시 열면 `Open Manager`,
-`Uninstall`, `Reinstall / Repair` 유지보수 진입점을 제공합니다. `Uninstall`의 실제 구현은
-Manager app과 동일하게 설치된 `/usr/local/bin/tirosh-vitalserver-uninstall`을 호출합니다.
+Uninstall의 주 진입점은 Manager app입니다. Manager app을 열 수 없는 깨진 설치 상태에서는
+`sudo /usr/local/bin/tirosh-vitalserver-uninstall`을 fallback으로 실행합니다. MDM/Jamf 배포에서도
+같은 uninstaller를 root로 실행합니다.
 
 CPU는 VitalServer 내부 동작 조건 때문에 7 vCPU 이상만 허용하고, target Mac 운영 기본값은 8 vCPU입니다.
 

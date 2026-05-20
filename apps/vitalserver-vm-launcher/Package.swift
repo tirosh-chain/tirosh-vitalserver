@@ -15,10 +15,6 @@ let package = Package(
         .executable(
             name: "TiroshVitalServerApp",
             targets: ["TiroshVitalServerApp"]
-        ),
-        .executable(
-            name: "TiroshVitalServerInstallerApp",
-            targets: ["TiroshVitalServerInstallerApp"]
         )
     ],
     targets: [
@@ -27,9 +23,6 @@ let package = Package(
         ),
         .executableTarget(
             name: "TiroshVitalServerApp"
-        ),
-        .executableTarget(
-            name: "TiroshVitalServerInstallerApp"
         )
     ]
 )
