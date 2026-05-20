@@ -124,7 +124,7 @@ struct ContentView: View {
                 Task { await controller.applySelectedBundle() }
             }
         } message: {
-            Text(controller.selectedBundleSummary.isEmpty ? controller.selectedBundlePath : controller.selectedBundleSummary)
+            Text(controller.selectedBundleConfirmation)
         }
         .alert(AppConstants.Actions.rollback, isPresented: $showingRollbackConfirmation) {
             Button(AppConstants.Actions.cancel, role: .cancel) {}
@@ -178,12 +178,23 @@ struct ContentView: View {
                     .truncationMode(.middle)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 Button(AppConstants.Actions.chooseBundle) {
-                    controller.chooseUpdateBundle()
+                    Task { await controller.chooseUpdateBundle() }
                 }
+                .disabled(controller.isBusy)
+                Button(AppConstants.Actions.verifyBundle) {
+                    Task { await controller.verifySelectedBundle() }
+                }
+                .disabled(controller.isBusy || controller.selectedBundlePath.isEmpty)
             }
             if !controller.selectedBundleSummary.isEmpty {
                 Text(controller.selectedBundleSummary)
                     .font(.system(.body, design: .monospaced))
+                    .textSelection(.enabled)
+            }
+            if !controller.selectedBundleVerification.isEmpty {
+                Text(controller.selectedBundleVerification)
+                    .font(.system(.body, design: .monospaced))
+                    .foregroundStyle(controller.selectedBundleVerified ? .green : .red)
                     .textSelection(.enabled)
             }
             if let latestBackup = controller.status.latestBackup {
@@ -204,7 +215,12 @@ struct ContentView: View {
                 Button(AppConstants.Actions.applyBundle) {
                     showingUpdateConfirmation = true
                 }
-                .disabled(controller.isBusy || controller.selectedBundlePath.isEmpty || !controller.status.runtimeInstalled)
+                .disabled(
+                    controller.isBusy
+                        || controller.selectedBundlePath.isEmpty
+                        || !controller.selectedBundleVerified
+                        || !controller.status.runtimeInstalled
+                )
                 Button(AppConstants.Actions.rollback) {
                     showingRollbackConfirmation = true
                 }

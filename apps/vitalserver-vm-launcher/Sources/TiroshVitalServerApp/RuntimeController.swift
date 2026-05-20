@@ -7,12 +7,23 @@ final class RuntimeController: ObservableObject {
     @Published var settings = RuntimeSettings.load()
     @Published var selectedBundlePath = ""
     @Published var selectedBundleSummary = ""
+    @Published var selectedBundleVerification = ""
+    @Published var selectedBundleVerified = false
     @Published var backups = RuntimeBackup.loadAll()
     @Published var selectedBackupPath = ""
     @Published var message = AppConstants.StatusText.ready
     @Published var isBusy = false
 
     private let runtime = RuntimePaths()
+
+    var selectedBundleConfirmation: String {
+        [
+            selectedBundleSummary.isEmpty ? selectedBundlePath : selectedBundleSummary,
+            selectedBundleVerification,
+        ]
+        .filter { !$0.isEmpty }
+        .joined(separator: "\n\n")
+    }
 
     func refresh() async {
         status = RuntimeStatus.load(paths: runtime)
@@ -86,7 +97,7 @@ final class RuntimeController: ObservableObject {
         await refreshHealthStatus()
     }
 
-    func chooseUpdateBundle() {
+    func chooseUpdateBundle() async {
         let panel = NSOpenPanel()
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
@@ -95,12 +106,19 @@ final class RuntimeController: ObservableObject {
         if panel.runModal() == .OK, let url = panel.url {
             selectedBundlePath = url.path
             selectedBundleSummary = updateBundleSummary(url: url)
+            selectedBundleVerified = false
+            selectedBundleVerification = AppConstants.StatusText.updateBundleVerifying
+            await verifySelectedBundle()
         }
     }
 
     func applySelectedBundle() async {
         guard !selectedBundlePath.isEmpty else {
             message = AppConstants.StatusText.missingBundle
+            return
+        }
+        guard selectedBundleVerified else {
+            message = AppConstants.StatusText.updateBundleNotVerified
             return
         }
         guard FileManager.default.isExecutableFile(atPath: runtime.launcher) else {
@@ -119,6 +137,45 @@ final class RuntimeController: ObservableObject {
             successMessage: AppConstants.StatusText.updateBundleApplied
         )
         await refreshHealthStatus()
+    }
+
+    func verifySelectedBundle() async {
+        guard !selectedBundlePath.isEmpty else {
+            selectedBundleVerification = ""
+            selectedBundleVerified = false
+            message = AppConstants.StatusText.missingBundle
+            return
+        }
+        guard FileManager.default.isExecutableFile(atPath: runtime.launcher) else {
+            selectedBundleVerification = AppConstants.StatusText.missingLauncher
+            selectedBundleVerified = false
+            message = AppConstants.StatusText.missingLauncher
+            return
+        }
+
+        isBusy = true
+        defer { isBusy = false }
+
+        message = AppConstants.StatusText.updateBundleVerifying
+        let result = await ProcessRunner.run(
+            runtime.launcher,
+            arguments: ["runtime", "verify-bundle", selectedBundlePath]
+        )
+        if result.exitCode == 0 {
+            selectedBundleVerified = true
+            selectedBundleVerification = messageWithLog(
+                title: AppConstants.StatusText.updateBundleVerified,
+                result: result
+            )
+            message = selectedBundleVerification
+        } else {
+            selectedBundleVerified = false
+            selectedBundleVerification = messageWithLog(
+                title: AppConstants.StatusText.updateBundleVerificationFailed,
+                result: result
+            )
+            message = selectedBundleVerification
+        }
     }
 
     func rollbackRuntime() async {
