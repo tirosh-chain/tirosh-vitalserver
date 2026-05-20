@@ -29,6 +29,9 @@
   <key>KeepAlive</key>
   <true/>
 
+  <key>ThrottleInterval</key>
+  <integer>30</integer>
+
   <key>StandardOutPath</key>
   <string>${VITALSERVER_VM_HOME}/logs/proxy.out.log</string>
 

@@ -62,6 +62,8 @@ struct RuntimeLifecycle {
             printStatus()
         case "health":
             try health()
+        case "watchdog":
+            try watchdog()
         case "verify-bundle":
             guard let bundlePath = arguments.dropFirst().first else {
                 throw LauncherError.missingArgument("usage: vitalserver-vm runtime verify-bundle <bundle-dir>")
@@ -94,6 +96,7 @@ struct RuntimeLifecycle {
               vitalserver-vm runtime install
               vitalserver-vm runtime status
               vitalserver-vm runtime health
+              vitalserver-vm runtime watchdog
               vitalserver-vm runtime verify-bundle <bundle-dir>
               vitalserver-vm runtime stage-bundle <bundle-dir>
               vitalserver-vm runtime apply-bundle <bundle-dir>
@@ -169,6 +172,7 @@ struct RuntimeLifecycle {
         print("  version: \(runtimeVersionValue())")
         print("  VM service: \(launchdState(Constants.Launchd.vmService))")
         print("  proxy service: \(launchdState(Constants.Launchd.proxyService))")
+        print("  watchdog service: \(launchdState(Constants.Launchd.watchdogService))")
         print("  VM IP: \(readTrimmed(vmIPFile) ?? "waiting")")
         let proxyPort = installedProxyPort()
         print("  proxy port: \(proxyPort)")
@@ -381,6 +385,7 @@ struct RuntimeLifecycle {
         for plist in [
             "/Library/LaunchDaemons/\(Constants.Launchd.vmService).plist",
             "/Library/LaunchDaemons/\(Constants.Launchd.proxyService).plist",
+            "/Library/LaunchDaemons/\(Constants.Launchd.watchdogService).plist",
         ] {
             try runRequired(Constants.Commands.chmod, arguments: ["0644", plist])
             try runRequired(Constants.Commands.chown, arguments: ["root:wheel", plist])
@@ -394,6 +399,7 @@ struct RuntimeLifecycle {
         }
         startLaunchdService(Constants.Launchd.vmService)
         startLaunchdService(Constants.Launchd.proxyService)
+        startLaunchdService(Constants.Launchd.watchdogService)
     }
 
     private func applyStartOnBootPolicy(_ settings: InstallSettings) throws {
@@ -404,6 +410,7 @@ struct RuntimeLifecycle {
         for plist in [
             "/Library/LaunchDaemons/\(Constants.Launchd.vmService).plist",
             "/Library/LaunchDaemons/\(Constants.Launchd.proxyService).plist",
+            "/Library/LaunchDaemons/\(Constants.Launchd.watchdogService).plist",
         ] where FileManager.default.fileExists(atPath: plist) {
             try FileManager.default.removeItem(atPath: plist)
         }
@@ -418,26 +425,63 @@ struct RuntimeLifecycle {
 
     func health() throws {
         printStatus()
-        var failed = false
-        failed = failed || !FileManager.default.isExecutableFile(atPath: Constants.InstallPaths.vmBin)
-        failed = failed || !FileManager.default.isExecutableFile(atPath: Constants.InstallPaths.proxyRun)
-        failed = failed || !fileExists(rootfsBase)
-        failed = failed || !fileExists(vmDisk)
-        failed = failed || launchdState(Constants.Launchd.vmService) != "loaded"
-        failed = failed || launchdState(Constants.Launchd.proxyService) != "loaded"
-
-        let proxyStatus = httpStatus(Constants.Runtime.proxyHealthURL(port: installedProxyPort()))
-        if !isSuccessfulHTTPStatus(proxyStatus) {
-            failed = true
-        }
+        let snapshot = runtimeHealthSnapshot()
+        let failed = !snapshot.isHealthy
 
         if failed {
-            try? writeRuntimeStatus(.degraded, operation: "health", message: "runtime health check failed")
+            try? writeRuntimeStatus(
+                .degraded,
+                operation: "health",
+                message: "runtime health check failed: \(snapshot.failureReasons.joined(separator: ", "))"
+            )
             print("health: failed")
             throw LauncherError.runtimeHealthFailed
         }
         try writeRuntimeStatus(.healthy, operation: "health", message: "runtime health check passed")
         print("health: ok")
+    }
+
+    func watchdog() throws {
+        let initial = runtimeHealthSnapshot()
+        guard !initial.isHealthy else {
+            try writeRuntimeStatus(.healthy, operation: "watchdog", message: "runtime watchdog passed")
+            print("watchdog: ok")
+            return
+        }
+
+        let reasons = initial.failureReasons.joined(separator: ", ")
+        log("watchdog detected unhealthy runtime reasons=\(reasons)")
+        try writeRuntimeStatus(.recovering, operation: "watchdog", message: "watchdog recovery started: \(reasons)")
+
+        if !FileManager.default.isExecutableFile(atPath: Constants.InstallPaths.vmBin)
+            || !FileManager.default.isExecutableFile(atPath: Constants.InstallPaths.proxyRun)
+            || !fileExists(rootfsBase)
+            || !fileExists(vmDisk) {
+            try writeRuntimeStatus(.critical, operation: "watchdog", message: "watchdog cannot recover missing installed artifacts: \(reasons)")
+            print("watchdog: critical")
+            return
+        }
+
+        if initial.vmService != "loaded" || initial.vmIP == nil || !isSuccessfulHTTPStatus(initial.guestHTTP) {
+            restartLaunchdService(Constants.Launchd.vmService)
+        }
+        if initial.proxyService != "loaded" || !isSuccessfulHTTPStatus(initial.hostProxyHTTP) {
+            restartLaunchdService(Constants.Launchd.proxyService)
+        }
+
+        Thread.sleep(forTimeInterval: Constants.Runtime.watchdogRecoveryWaitSeconds)
+        let recovered = runtimeHealthSnapshot()
+        if recovered.isHealthy {
+            try writeRuntimeStatus(.healthy, operation: "watchdog", message: "watchdog recovery completed")
+            print("watchdog: recovered")
+        } else {
+            try writeRuntimeStatus(
+                .critical,
+                operation: "watchdog",
+                message: "watchdog recovery failed: \(recovered.failureReasons.joined(separator: ", "))"
+            )
+            print("watchdog: critical")
+        }
     }
 
     func verifyBundle(_ bundleURL: URL) throws {
@@ -530,6 +574,7 @@ struct RuntimeLifecycle {
 
         let restartVM = isLaunchdLoaded(Constants.Launchd.vmService)
         let restartProxy = isLaunchdLoaded(Constants.Launchd.proxyService)
+        let restartWatchdog = isLaunchdLoaded(Constants.Launchd.watchdogService)
         let backup = try createBackup(reason: "before-\(manifest.version)")
         log("backup created path=\(backup.path)")
 
@@ -551,16 +596,16 @@ struct RuntimeLifecycle {
                 try writeRuntimeVersion(version: manifest.version, bundle: stagedBundle)
             }
             try runStep("start-runtime-services") {
-                try startRuntimeServices(restartVM: restartVM, restartProxy: restartProxy)
+                try startRuntimeServices(restartVM: restartVM, restartProxy: restartProxy, restartWatchdog: restartWatchdog)
             }
             try runStep("wait-runtime-health") {
-                try waitForHealth(restartVM: restartVM, restartProxy: restartProxy)
+                try waitForHealth(restartVM: restartVM, restartProxy: restartProxy, restartWatchdog: restartWatchdog)
             }
         } catch {
             log("bundle apply failed; rolling back error=\(error)")
             try? writeRuntimeStatus(.recovering, operation: "apply-bundle", message: "bundle apply failed; rolling back: \(error)")
             try rollback(backup)
-            try startRuntimeServices(restartVM: restartVM, restartProxy: restartProxy)
+            try startRuntimeServices(restartVM: restartVM, restartProxy: restartProxy, restartWatchdog: restartWatchdog)
             try? writeRuntimeStatus(.degraded, operation: "apply-bundle", message: "bundle apply failed; rollback completed: \(error)")
             throw error
         }
@@ -585,6 +630,7 @@ struct RuntimeLifecycle {
 
         let restartVM = isLaunchdLoaded(Constants.Launchd.vmService)
         let restartProxy = isLaunchdLoaded(Constants.Launchd.proxyService)
+        let restartWatchdog = isLaunchdLoaded(Constants.Launchd.watchdogService)
         try runStep("rollback-stop-runtime-services") {
             try stopRuntimeServices()
         }
@@ -599,10 +645,10 @@ struct RuntimeLifecycle {
             }
         }
         try runStep("rollback-start-runtime-services") {
-            try startRuntimeServices(restartVM: restartVM, restartProxy: restartProxy)
+            try startRuntimeServices(restartVM: restartVM, restartProxy: restartProxy, restartWatchdog: restartWatchdog)
         }
         try runStep("rollback-wait-runtime-health") {
-            try waitForHealth(restartVM: restartVM, restartProxy: restartProxy)
+            try waitForHealth(restartVM: restartVM, restartProxy: restartProxy, restartWatchdog: restartWatchdog)
         }
 
         try writeRuntimeStatus(.healthy, operation: "rollback", message: "rollback completed")
@@ -776,6 +822,12 @@ struct RuntimeLifecycle {
 
     private func stopRuntimeServices() throws {
         log("stopping runtime services")
+        if isLaunchdLoaded(Constants.Launchd.watchdogService) {
+            _ = runProcess(
+                Constants.Commands.launchctl,
+                arguments: ["bootout", "system/\(Constants.Launchd.watchdogService)"]
+            )
+        }
         if isLaunchdLoaded(Constants.Launchd.proxyService) {
             _ = runProcess(
                 Constants.Commands.launchctl,
@@ -790,7 +842,7 @@ struct RuntimeLifecycle {
         }
     }
 
-    private func startRuntimeServices(restartVM: Bool, restartProxy: Bool) throws {
+    private func startRuntimeServices(restartVM: Bool, restartProxy: Bool, restartWatchdog: Bool) throws {
         if restartVM {
             log("starting VM service label=\(Constants.Launchd.vmService)")
             startLaunchdService(Constants.Launchd.vmService)
@@ -798,6 +850,10 @@ struct RuntimeLifecycle {
         if restartProxy {
             log("starting proxy service label=\(Constants.Launchd.proxyService)")
             startLaunchdService(Constants.Launchd.proxyService)
+        }
+        if restartWatchdog {
+            log("starting watchdog service label=\(Constants.Launchd.watchdogService)")
+            startLaunchdService(Constants.Launchd.watchdogService)
         }
     }
 
@@ -817,8 +873,19 @@ struct RuntimeLifecycle {
         }
     }
 
-    private func waitForHealth(restartVM: Bool, restartProxy: Bool) throws {
-        guard restartVM || restartProxy else {
+    private func restartLaunchdService(_ label: String) {
+        log("launchd restart label=\(label)")
+        _ = runProcess(
+            Constants.Commands.launchctl,
+            arguments: ["kickstart", "-k", "system/\(label)"]
+        )
+        if !isLaunchdLoaded(label) {
+            startLaunchdService(label)
+        }
+    }
+
+    private func waitForHealth(restartVM: Bool, restartProxy: Bool, restartWatchdog: Bool) throws {
+        guard restartVM || restartProxy || restartWatchdog else {
             log("runtime services were not running before apply; skipping health wait")
             return
         }
@@ -831,6 +898,10 @@ struct RuntimeLifecycle {
                 continue
             }
             if restartProxy, !isLaunchdLoaded(Constants.Launchd.proxyService) {
+                Thread.sleep(forTimeInterval: 3)
+                continue
+            }
+            if restartWatchdog, !isLaunchdLoaded(Constants.Launchd.watchdogService) {
                 Thread.sleep(forTimeInterval: 3)
                 continue
             }
@@ -895,12 +966,70 @@ struct RuntimeLifecycle {
         return status
     }
 
+    private func runtimeHealthSnapshot() -> RuntimeHealthSnapshot {
+        let vmExecutable = FileManager.default.isExecutableFile(atPath: Constants.InstallPaths.vmBin)
+        let proxyExecutable = FileManager.default.isExecutableFile(atPath: Constants.InstallPaths.proxyRun)
+        let rootfsBaseState = fileState(url: rootfsBase)
+        let vmDiskState = fileState(url: vmDisk)
+        let vmService = launchdState(Constants.Launchd.vmService)
+        let proxyService = launchdState(Constants.Launchd.proxyService)
+        let watchdogService = launchdState(Constants.Launchd.watchdogService)
+        let vmIP = readTrimmed(vmIPFile)
+        let proxyPort = installedProxyPort()
+        let hostProxyHTTP = httpStatus(Constants.Runtime.proxyHealthURL(port: proxyPort))
+        let guestHTTP = vmIP.map { httpStatus("http://\($0)/") } ?? "missing-vm-ip"
+        var failureReasons: [String] = []
+
+        if !vmExecutable {
+            failureReasons.append("missing-vm-bin")
+        }
+        if !proxyExecutable {
+            failureReasons.append("missing-proxy-runner")
+        }
+        if rootfsBaseState != "present" {
+            failureReasons.append("missing-rootfs-base")
+        }
+        if vmDiskState != "present" {
+            failureReasons.append("missing-vm-disk")
+        }
+        if vmService != "loaded" {
+            failureReasons.append("vm-service-\(vmService)")
+        }
+        if proxyService != "loaded" {
+            failureReasons.append("proxy-service-\(proxyService)")
+        }
+        if watchdogService != "loaded" {
+            failureReasons.append("watchdog-service-\(watchdogService)")
+        }
+        if !isSuccessfulHTTPStatus(hostProxyHTTP) {
+            failureReasons.append("host-proxy-http-\(hostProxyHTTP)")
+        }
+        if !isSuccessfulHTTPStatus(guestHTTP) {
+            failureReasons.append("guest-http-\(guestHTTP)")
+        }
+
+        return RuntimeHealthSnapshot(
+            vmExecutable: vmExecutable,
+            proxyExecutable: proxyExecutable,
+            rootfsBase: rootfsBaseState,
+            vmDisk: vmDiskState,
+            vmService: vmService,
+            proxyService: proxyService,
+            watchdogService: watchdogService,
+            vmIP: vmIP,
+            proxyPort: proxyPort,
+            hostProxyHTTP: hostProxyHTTP,
+            guestHTTP: guestHTTP,
+            failureReasons: failureReasons
+        )
+    }
+
     private func writeRuntimeStatus(
         _ status: RuntimeStatusLevel,
         operation: String,
         message: String
     ) throws {
-        let proxyPort = installedProxyPort()
+        let snapshot = runtimeHealthSnapshot()
         let document = RuntimeStatusDocument(
             product: "TiroshVitalServer",
             status: status.rawValue,
@@ -910,13 +1039,16 @@ struct RuntimeLifecycle {
             productRoot: productRoot.path,
             runtimeHome: paths.home.path,
             runtimeVersion: runtimeVersionValue(),
-            vmService: launchdState(Constants.Launchd.vmService),
-            proxyService: launchdState(Constants.Launchd.proxyService),
-            vmIP: readTrimmed(vmIPFile),
-            proxyPort: proxyPort,
-            hostProxyHTTP: httpStatus(Constants.Runtime.proxyHealthURL(port: proxyPort)),
-            rootfsBase: fileState(url: rootfsBase),
-            vmDisk: fileState(url: vmDisk),
+            vmService: snapshot.vmService,
+            proxyService: snapshot.proxyService,
+            watchdogService: snapshot.watchdogService,
+            vmIP: snapshot.vmIP,
+            proxyPort: snapshot.proxyPort,
+            hostProxyHTTP: snapshot.hostProxyHTTP,
+            guestHTTP: snapshot.guestHTTP,
+            rootfsBase: snapshot.rootfsBase,
+            vmDisk: snapshot.vmDisk,
+            failureReasons: snapshot.failureReasons,
             latestBackup: latestBackup()?.path
         )
         let data = try JSONEncoder.pretty.encode(document)
@@ -1102,6 +1234,25 @@ struct RuntimeProcessResult {
     let stderr: String
 }
 
+struct RuntimeHealthSnapshot {
+    let vmExecutable: Bool
+    let proxyExecutable: Bool
+    let rootfsBase: String
+    let vmDisk: String
+    let vmService: String
+    let proxyService: String
+    let watchdogService: String
+    let vmIP: String?
+    let proxyPort: Int
+    let hostProxyHTTP: String
+    let guestHTTP: String
+    let failureReasons: [String]
+
+    var isHealthy: Bool {
+        failureReasons.isEmpty
+    }
+}
+
 enum RuntimeStatusLevel: String, Encodable {
     case installing
     case updating
@@ -1122,11 +1273,14 @@ struct RuntimeStatusDocument: Encodable {
     let runtimeVersion: String
     let vmService: String
     let proxyService: String
+    let watchdogService: String
     let vmIP: String?
     let proxyPort: Int
     let hostProxyHTTP: String
+    let guestHTTP: String
     let rootfsBase: String
     let vmDisk: String
+    let failureReasons: [String]
     let latestBackup: String?
 }
 

@@ -62,11 +62,13 @@ enum Constants {
     enum Launchd {
         static let vmService = "com.tirosh.vitalserver-vm"
         static let proxyService = "com.tirosh.vitalserver-proxy"
+        static let watchdogService = "com.tirosh.vitalserver-watchdog"
     }
 
     enum Runtime {
         static let vmIPFile = "vm-ip"
         static let waitTimeoutSeconds = 600.0
+        static let watchdogRecoveryWaitSeconds = 20.0
 
         static func proxyHealthURL(port: Int) -> String {
             "http://127.0.0.1:\(port)/"

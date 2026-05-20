@@ -137,6 +137,7 @@ shared/NAT mode에서는 VM IP가 부팅 후에 결정되므로, `vitalserver-pr
 | PKG `postinstall` | installed payload, optional install settings JSON | `/Library/Application Support/TiroshVitalServer/vm` runtime provisioning |
 | `vitalserver-vm runtime install` | `rootfs-base.raw.gz`, deploy bundle, LaunchDaemon plist | mutable `vm-disk.img`, `vm-config.json`, `seed.iso`, loaded services |
 | LaunchDaemon VM service | `VITALSERVER_VM_HOME`, `VITALSERVER_VM_DETACHED=1`, `vm-config.json` | background VM process |
+| LaunchDaemon watchdog service | `VITALSERVER_VM_HOME`, `runtime-status.json` | periodic health check, VM/proxy restart, updated runtime status |
 | `vitalserver-proxy-run` | `vm/data/run/vm-ip`, proxy template | host nginx config and proxy process |
 | guest `bootstrap.sh` | `runtime-config.json`, Docker image bundle | Docker Compose stack and VM-local nginx |
 | update bundle | `manifest.json`, `checksums.txt`, `signature`, `rootfs-base.raw.gz`, migrations | verified/staged bundle, rootfs-base backup/replacement, migrations |
@@ -319,6 +320,7 @@ vitalserver-vm configure --cpu <count> --memory-mib <mib> --network shared
 vitalserver-vm runtime install
 vitalserver-vm runtime status
 vitalserver-vm runtime health
+vitalserver-vm runtime watchdog
 vitalserver-vm runtime verify-bundle <bundle-dir>
 vitalserver-vm runtime stage-bundle <bundle-dir>
 vitalserver-vm runtime apply-bundle <bundle-dir>

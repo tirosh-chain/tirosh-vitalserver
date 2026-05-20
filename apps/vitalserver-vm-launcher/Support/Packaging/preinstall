@@ -2,6 +2,7 @@
 set -euo pipefail
 
 labels=(
+  "com.tirosh.vitalserver-watchdog"
   "com.tirosh.vitalserver-proxy"
   "com.tirosh.vitalserver-vm"
 )

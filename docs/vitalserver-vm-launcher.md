@@ -132,8 +132,8 @@ TiroshVitalServer.pkg
 | 범위 | 보장 방식 |
 |---|---|
 | macOS 재부팅 후 자동 기동 | VM/proxy LaunchDaemon `RunAtLoad`, start-on-boot policy |
-| VM launcher 비정상 종료 복구 | VM LaunchDaemon `KeepAlive`, detached VM process |
-| host nginx proxy 비정상 종료 복구 | proxy LaunchDaemon `KeepAlive`, `vitalserver-proxy-run` loop |
+| VM launcher 비정상 종료 복구 | VM LaunchDaemon `KeepAlive`, detached VM process, watchdog recovery |
+| host nginx proxy 비정상 종료 복구 | proxy LaunchDaemon `KeepAlive`, `vitalserver-proxy-run` loop, watchdog recovery |
 | VM IP 변경 대응 | `vitalserver-proxy-run`이 `vm/data/run/vm-ip`를 감시하고 nginx config reload |
 | guest service 복구 | guest systemd, Docker, nginx, Compose restart policy |
 | 설치/업데이트 실패 진단 | 고정 log path, runtime status/health command |
@@ -173,7 +173,7 @@ Single-node self-healing runtime
 구현 우선순위는 아래 순서입니다.
 
 1. VM/proxy LaunchDaemon에 `KeepAlive`, `RunAtLoad`, `ThrottleInterval`, stdout/stderr log path를 명확히 둡니다.
-2. `vitalserver-vm runtime health`를 주기 실행하는 watchdog LaunchDaemon을 추가합니다.
+2. `vitalserver-vm runtime watchdog`을 주기 실행하는 watchdog LaunchDaemon을 추가합니다.
 3. watchdog은 연속 실패 횟수 기준으로 proxy reload, VM restart, critical 상태 기록을 수행합니다.
 4. guest 내부 systemd unit과 Compose restart policy를 정리합니다.
 5. `/Library/Application Support/TiroshVitalServer/status/runtime-status.json` 같은 운영 상태 파일을 추가해 Manager app이 정상/복구중/장애/업데이트중 상태를 읽게 합니다.
@@ -187,7 +187,7 @@ Single-node self-healing runtime
 /Library/Application Support/TiroshVitalServer/status/runtime-status.json
 ```
 
-이 파일은 `vitalserver-vm runtime install`, `health`, `apply-bundle`, `rollback`이 갱신합니다. Manager app, watchdog, 운영 CLI는 같은 파일을 읽어 상태를 판단합니다.
+이 파일은 `vitalserver-vm runtime install`, `health`, `watchdog`, `apply-bundle`, `rollback`이 갱신합니다. Manager app, watchdog, 운영 CLI는 같은 파일을 읽어 상태를 판단합니다.
 
 상태 값은 아래로 제한합니다.
 
@@ -214,11 +214,14 @@ Single-node self-healing runtime
   "runtimeVersion": "0.1.0",
   "vmService": "loaded",
   "proxyService": "loaded",
+  "watchdogService": "loaded",
   "vmIP": "192.168.64.2",
   "proxyPort": 80,
   "hostProxyHTTP": "200",
+  "guestHTTP": "200",
   "rootfsBase": "present",
   "vmDisk": "present",
+  "failureReasons": [],
   "latestBackup": "/Library/Application Support/TiroshVitalServer/backups/..."
 }
 ```
@@ -231,6 +234,9 @@ install success     -> healthy
 install failure     -> critical
 health success      -> healthy
 health failure      -> degraded
+watchdog success    -> healthy
+watchdog recovery   -> recovering -> healthy
+watchdog failure    -> critical
 apply-bundle start  -> updating
 apply success       -> healthy
 apply failure       -> recovering -> degraded after rollback
@@ -304,6 +310,7 @@ dist/TiroshVitalServer-0.1.0.dmg
 /usr/local/bin/tirosh-vitalserver-uninstall
 /Library/LaunchDaemons/com.tirosh.vitalserver-vm.plist
 /Library/LaunchDaemons/com.tirosh.vitalserver-proxy.plist
+/Library/LaunchDaemons/com.tirosh.vitalserver-watchdog.plist
 /Library/Application Support/TiroshVitalServer/
   backups/
   logs/
@@ -339,6 +346,13 @@ dist/TiroshVitalServer-0.1.0.dmg
 shared/NAT mode에서는 VM IP가 부팅 후에 결정됩니다. 그래서 package는 nginx config에 upstream을 미리 박아두지 않습니다.
 
 ```text
+launchd
+  -> com.tirosh.vitalserver-watchdog
+      -> vitalserver-vm runtime watchdog
+      -> health snapshot 확인
+      -> 필요 시 VM/proxy launchd kickstart
+      -> runtime-status.json 갱신
+
 launchd
   -> com.tirosh.vitalserver-vm
       -> vitalserver-vm start
@@ -446,7 +460,7 @@ Install Tirosh VitalServer.pkg
       -> write runtime/runtime-version.json
       -> chown/chmod installed files
       -> write proxy port into proxy LaunchDaemon plist
-      -> launchctl bootstrap/kickstart services when startAfterInstall=true
+      -> launchctl bootstrap/kickstart VM/proxy/watchdog services when startAfterInstall=true
       -> launchctl enable/disable according to startOnBoot
       -> remove install settings JSON
 ```
@@ -469,6 +483,7 @@ VM service가 시작되면 `vitalserver-vm start`가 `vm-config.json`을 읽어 
 | install provisioning | PKG `postinstall` | `vitalserver-vm runtime install` | installed payload, optional `/private/tmp/tirosh-vitalserver-install.json` | `vm-disk.img`, `vm-config.json`, `seed.iso`, permissions, launchd services |
 | runtime status | RuntimeLifecycle | `runtime-status.json` | health/install/update/rollback result | Manager/watchdog-readable status |
 | VM launch | launchd | `vitalserver-vm start` | `VITALSERVER_VM_HOME`, `VITALSERVER_VM_DETACHED=1`, `runtime/vm-config.json` | Virtualization.framework VM process |
+| watchdog | launchd | `vitalserver-vm runtime watchdog` | runtime files, launchd state, VM IP, HTTP health | runtime status update, VM/proxy kickstart |
 | host proxy | launchd | `vitalserver-proxy-run` | `vm/data/run/vm-ip`, proxy template, nginx binary | rendered host nginx config, nginx process |
 | guest bootstrap | cloud-init | `bootstrap.sh` | VirtioFS mounts, `runtime-config.json`, Docker bundle | guest nginx, Docker Compose stack, `vm-ip` marker |
 | update verification | operator/Manager | `vitalserver-vm runtime verify-bundle` | bundle directory | manifest/checksum validation |

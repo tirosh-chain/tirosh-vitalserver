@@ -301,6 +301,7 @@ struct Launcher {
               vitalserver-vm runtime install
               vitalserver-vm runtime status
               vitalserver-vm runtime health
+              vitalserver-vm runtime watchdog
               vitalserver-vm runtime verify-bundle <bundle-dir>
               vitalserver-vm runtime stage-bundle <bundle-dir>
               vitalserver-vm runtime apply-bundle <bundle-dir>

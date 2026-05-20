@@ -314,6 +314,11 @@ vm-pkg-stage: vm-sign vm-app vm-golden-rootfs vm-nginx-bundle vm-docker-images
 		--var "VITALSERVER_NGINX_PREFIX=$(VM_INSTALL_NGINX_PREFIX)" \
 		--var "VITALSERVER_NGINX_BIN=$(VM_INSTALL_NGINX_BIN)" \
 		--var "VITALSERVER_PROXY_PORT=$(VITALSERVER_PROXY_PORT)"
+	$(VM_BUILD_RUNNER) render-template \
+		--template "$(VM_LAUNCHER_DIR)/launchd/com.tirosh.vitalserver-watchdog.plist.template" \
+		--output "$(VM_PKG_ROOT)/Library/LaunchDaemons/com.tirosh.vitalserver-watchdog.plist" \
+		--var "VITALSERVER_VM_BIN=$(VM_INSTALL_BIN)" \
+		--var "VITALSERVER_VM_HOME=$(VM_INSTALL_HOME)"
 	install -m 0755 "$(VM_PACKAGING_DIR)/preinstall" "$(VM_PKG_SCRIPTS)/preinstall"
 	install -m 0755 "$(VM_PACKAGING_DIR)/postinstall" "$(VM_PKG_SCRIPTS)/postinstall"
 	@xattr -rc "$(VM_PKG_ROOT)" 2>/dev/null || true
@@ -383,6 +388,7 @@ vm-installed-status:
 	@test -x "$(VM_INSTALL_NGINX_BIN)" && printf "  nginx: %s\n" "$(VM_INSTALL_NGINX_BIN)" || printf "  missing nginx: %s\n" "$(VM_INSTALL_NGINX_BIN)"
 	@launchctl print system/com.tirosh.vitalserver-vm >/dev/null 2>&1 && printf "  launchd vm: loaded\n" || printf "  launchd vm: not loaded\n"
 	@launchctl print system/com.tirosh.vitalserver-proxy >/dev/null 2>&1 && printf "  launchd proxy: loaded\n" || printf "  launchd proxy: not loaded\n"
+	@launchctl print system/com.tirosh.vitalserver-watchdog >/dev/null 2>&1 && printf "  launchd watchdog: loaded\n" || printf "  launchd watchdog: not loaded\n"
 	@if [ -s "$(VM_INSTALLED_IP_FILE)" ]; then \
 		printf "  vm ip: %s\n" "$$(cat "$(VM_INSTALLED_IP_FILE)")"; \
 	else \
