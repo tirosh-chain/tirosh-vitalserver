@@ -10,6 +10,7 @@ enum LauncherError: Error, CustomStringConvertible {
     case invalidMacAddress(String)
     case runtimeHealthFailed
     case bundleVerificationFailed(String)
+    case insufficientFreeSpace(operation: String, required: UInt64, available: UInt64)
 
     var description: String {
         switch self {
@@ -31,6 +32,13 @@ enum LauncherError: Error, CustomStringConvertible {
             return "runtime health check failed"
         case let .bundleVerificationFailed(message):
             return "bundle verification failed: \(message)"
+        case let .insufficientFreeSpace(operation, required, available):
+            return "insufficient free space for \(operation): required \(formatBytes(required)), available \(formatBytes(available))"
         }
+    }
+
+    private func formatBytes(_ bytes: UInt64) -> String {
+        let gib = Double(bytes) / 1_073_741_824
+        return String(format: "%.1f GiB", gib)
     }
 }

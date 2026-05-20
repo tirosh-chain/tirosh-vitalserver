@@ -135,11 +135,11 @@ TiroshVitalServer.pkg
 | VM launcher 비정상 종료 복구 | VM LaunchDaemon `KeepAlive`, detached VM process, watchdog recovery |
 | host nginx proxy 비정상 종료 복구 | proxy LaunchDaemon `KeepAlive`, `vitalserver-proxy-run` loop, watchdog recovery |
 | VM IP 변경 대응 | `vitalserver-proxy-run`이 `vm/data/run/vm-ip`를 감시하고 nginx config reload |
-| guest service 복구 | guest systemd, Docker, nginx, Compose restart policy |
+| guest service 복구 | guest systemd unit, Docker, nginx, Compose restart policy |
 | 설치/업데이트 실패 진단 | 고정 log path, runtime status/health command |
 | update 실패 복구 | apply 전 backup, health check 실패 시 rollback |
 | 설정/데이터 보존 | rootfs artifact와 mutable runtime/data 영역 분리 |
-| 디스크 full 예방 | 사전 용량 check, log rotation, Docker/image/cache 정리 정책 |
+| 디스크 full 예방 | install/update 사전 용량 check, log rotation, Docker dangling image cleanup |
 
 단일 target Mac에서 보장할 수 없는 범위도 명확히 둡니다.
 
@@ -170,14 +170,15 @@ Single-node self-healing runtime
 - 두 대 이상의 장비를 쓰는 cluster HA
 ```
 
-구현 우선순위는 아래 순서입니다.
+현재 구현된 단일 노드 복구 장치는 아래입니다.
 
-1. VM/proxy LaunchDaemon에 `KeepAlive`, `RunAtLoad`, `ThrottleInterval`, stdout/stderr log path를 명확히 둡니다.
-2. `vitalserver-vm runtime watchdog`을 주기 실행하는 watchdog LaunchDaemon을 추가합니다.
-3. watchdog은 연속 실패 횟수 기준으로 proxy reload, VM restart, critical 상태 기록을 수행합니다.
-4. guest 내부 systemd unit과 Compose restart policy를 정리합니다.
-5. `/Library/Application Support/TiroshVitalServer/status/runtime-status.json` 같은 운영 상태 파일을 추가해 Manager app이 정상/복구중/장애/업데이트중 상태를 읽게 합니다.
-6. free-space preflight, log rotation, Docker image/cache cleanup 정책을 추가합니다.
+1. VM/proxy LaunchDaemon은 `RunAtLoad`, `KeepAlive`, `ThrottleInterval`, stdout/stderr log path를 가진다.
+2. watchdog LaunchDaemon은 `vitalserver-vm runtime watchdog`을 주기 실행한다.
+3. watchdog은 VM/proxy/HTTP health를 기준으로 VM/proxy를 kickstart하고 `runtime-status.json`을 갱신한다.
+4. guest 내부 Docker Compose stack은 `tirosh-vitalserver-compose.service`로 재부팅 후 재적용된다.
+5. Manager app은 `/Library/Application Support/TiroshVitalServer/status/runtime-status.json`을 읽어 정상/복구중/장애/업데이트중 상태를 표시한다.
+6. install/update는 free-space preflight를 수행하고, installer/runtime log는 size 기반 rotation을 수행한다.
+7. guest bootstrap은 bundled image load 후 Docker dangling image cleanup을 수행한다.
 
 ### Runtime Status 계약
 
@@ -612,7 +613,7 @@ update에서 rootfs base를 교체해도 기존 `vm-disk.img` 내부 OS와 appli
 | `/usr/local/bin` | VM launcher/runtime lifecycle CLI, proxy runner |
 | `/Library/LaunchDaemons` | VM/proxy 자동 실행 plist |
 | `/Library/Application Support/TiroshVitalServer` | VM image, deploy bundle, nginx runtime |
-| `/Library/Application Support/TiroshVitalServer/logs/install.log` | installer provisioning log |
+| `/Library/Application Support/TiroshVitalServer/logs/install.log` | installer provisioning log, 10 MiB 기준 rotation |
 | `/Library/Application Support/TiroshVitalServer/status/runtime-status.json` | Manager/watchdog용 runtime 상태 |
 
 설치 후 `make vm-installed-health`로 launchd load 상태, VM IP, guest HTTP, host proxy HTTP를 확인합니다.
@@ -902,7 +903,9 @@ bootstrap 순서:
 3. `docker.io`, `docker-compose-plugin`, `nginx` 설치
 4. Apple Silicon Linux guest에서 `linux/amd64` container 실행을 위해 `qemu-user-static`, `binfmt-support` 설치
 5. nginx를 port 80 edge proxy로 설정
-6. `docker compose up -d --build`로 VitalServer/Redis 실행
+6. bundled Docker image를 load하고 dangling image cleanup 수행
+7. `docker compose up -d --build`로 VitalServer/Redis 실행
+8. `tirosh-vitalserver-compose.service`를 등록해 VM 재부팅 후 Compose stack을 다시 적용
 
 ## macOS Data Sharing
 

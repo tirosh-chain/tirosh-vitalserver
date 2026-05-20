@@ -20,6 +20,10 @@ struct RuntimeLifecycle {
         productRoot.appendingPathComponent(Constants.Paths.statusDirectory)
     }
 
+    private var logsDirectory: URL {
+        paths.home.appendingPathComponent(Constants.Paths.logsDirectory)
+    }
+
     private var runtimeStatus: URL {
         statusDirectory.appendingPathComponent(Constants.Artifacts.runtimeStatus)
     }
@@ -119,6 +123,9 @@ struct RuntimeLifecycle {
             }
             try runStep("prepare-install-directories") {
                 try prepareInstallDirectories(settings)
+            }
+            try runStep("rotate-runtime-logs") {
+                try rotateRuntimeLogs()
             }
             try runStep("configure-guest-runtime-config") {
                 try configureDeployEnvironment(settings)
@@ -230,6 +237,11 @@ struct RuntimeLifecycle {
 
     private func provisionVMDisk(_ settings: InstallSettings) throws {
         if !fileExists(vmDisk), fileExists(rootfsBase) {
+            try requireFreeSpace(
+                at: vmDisk.deletingLastPathComponent(),
+                minimumBytes: (try fileSize(rootfsBase) * 6) + Constants.Runtime.freeSpaceMarginBytes,
+                operation: "provision-vm-disk"
+            )
             let temporary = vmDisk.deletingLastPathComponent().appendingPathComponent(".\(vmDisk.lastPathComponent).tmp")
             if fileExists(temporary) {
                 try FileManager.default.removeItem(at: temporary)
@@ -442,6 +454,9 @@ struct RuntimeLifecycle {
     }
 
     func watchdog() throws {
+        try? FileManager.default.createDirectory(at: logsDirectory, withIntermediateDirectories: true)
+        try? rotateRuntimeLogs()
+
         let initial = runtimeHealthSnapshot()
         guard !initial.isHealthy else {
             try writeRuntimeStatus(.healthy, operation: "watchdog", message: "runtime watchdog passed")
@@ -557,6 +572,11 @@ struct RuntimeLifecycle {
         if FileManager.default.fileExists(atPath: destination.path) {
             try FileManager.default.removeItem(at: destination)
         }
+        try requireFreeSpace(
+            at: bundlesDirectory,
+            minimumBytes: (try directorySize(bundleURL)) + Constants.Runtime.updateFreeSpaceMarginBytes,
+            operation: "stage-bundle"
+        )
         try FileManager.default.copyItem(at: bundleURL, to: destination)
         print("bundle staged: \(destination.path)")
         return destination
@@ -564,19 +584,42 @@ struct RuntimeLifecycle {
 
     func applyBundle(_ bundleURL: URL) throws {
         log("bundle apply started input=\(bundleURL.path)")
+        try? FileManager.default.createDirectory(at: logsDirectory, withIntermediateDirectories: true)
+        try? rotateRuntimeLogs()
         try writeRuntimeStatus(.updating, operation: "apply-bundle", message: "bundle apply started")
-        let stagedBundle = try stageBundle(bundleURL)
-        let manifest = try loadManifest(stagedBundle.appendingPathComponent(Constants.Bundle.manifest))
-        let stagedRootfs = stagedBundle.appendingPathComponent(Constants.Artifacts.rootfsBase)
-        guard fileExists(stagedRootfs) else {
-            throw LauncherError.missingFile(stagedRootfs.path)
-        }
 
-        let restartVM = isLaunchdLoaded(Constants.Launchd.vmService)
-        let restartProxy = isLaunchdLoaded(Constants.Launchd.proxyService)
-        let restartWatchdog = isLaunchdLoaded(Constants.Launchd.watchdogService)
-        let backup = try createBackup(reason: "before-\(manifest.version)")
-        log("backup created path=\(backup.path)")
+        let stagedBundle: URL
+        let manifest: UpdateBundleManifest
+        let stagedRootfs: URL
+        let restartVM: Bool
+        let restartProxy: Bool
+        let restartWatchdog: Bool
+        let backup: URL
+
+        do {
+            stagedBundle = try stageBundle(bundleURL)
+            manifest = try loadManifest(stagedBundle.appendingPathComponent(Constants.Bundle.manifest))
+            stagedRootfs = stagedBundle.appendingPathComponent(Constants.Artifacts.rootfsBase)
+            guard fileExists(stagedRootfs) else {
+                throw LauncherError.missingFile(stagedRootfs.path)
+            }
+
+            try FileManager.default.createDirectory(at: backupsDirectory, withIntermediateDirectories: true)
+            try requireFreeSpace(
+                at: backupsDirectory,
+                minimumBytes: (try fileSize(rootfsBase)) + (try fileSize(stagedRootfs)) + Constants.Runtime.updateFreeSpaceMarginBytes,
+                operation: "apply-bundle"
+            )
+
+            restartVM = isLaunchdLoaded(Constants.Launchd.vmService)
+            restartProxy = isLaunchdLoaded(Constants.Launchd.proxyService)
+            restartWatchdog = isLaunchdLoaded(Constants.Launchd.watchdogService)
+            backup = try createBackup(reason: "before-\(manifest.version)")
+            log("backup created path=\(backup.path)")
+        } catch {
+            try? writeRuntimeStatus(.critical, operation: "apply-bundle", message: "bundle apply preflight failed: \(error)")
+            throw error
+        }
 
         do {
             try runStep("stop-runtime-services") {
@@ -914,6 +957,96 @@ struct RuntimeLifecycle {
             Thread.sleep(forTimeInterval: 3)
         }
         throw LauncherError.runtimeHealthFailed
+    }
+
+    private func rotateRuntimeLogs() throws {
+        let fileManager = FileManager.default
+        let logFiles = [
+            "launcher.log",
+            "launchd.out.log",
+            "launchd.err.log",
+            "proxy.out.log",
+            "proxy.err.log",
+            "watchdog.out.log",
+            "watchdog.err.log",
+        ]
+
+        for fileName in logFiles {
+            let logFile = logsDirectory.appendingPathComponent(fileName)
+            guard fileExists(logFile),
+                  try fileSize(logFile) >= Constants.Runtime.logRotationMaxBytes
+            else {
+                continue
+            }
+
+            for index in stride(from: Constants.Runtime.logRotationKeepCount - 1, through: 1, by: -1) {
+                let source = logsDirectory.appendingPathComponent("\(fileName).\(index)")
+                let destination = logsDirectory.appendingPathComponent("\(fileName).\(index + 1)")
+                if fileExists(destination) {
+                    try fileManager.removeItem(at: destination)
+                }
+                if fileExists(source) {
+                    try fileManager.moveItem(at: source, to: destination)
+                }
+            }
+
+            let rotated = logsDirectory.appendingPathComponent("\(fileName).1")
+            if fileExists(rotated) {
+                try fileManager.removeItem(at: rotated)
+            }
+            try fileManager.moveItem(at: logFile, to: rotated)
+            fileManager.createFile(atPath: logFile.path, contents: nil)
+            log("rotated log file=\(logFile.path)")
+        }
+    }
+
+    private func requireFreeSpace(at url: URL, minimumBytes: UInt64, operation: String) throws {
+        let available = try availableBytes(at: url)
+        guard available >= minimumBytes else {
+            throw LauncherError.insufficientFreeSpace(
+                operation: operation,
+                required: minimumBytes,
+                available: available
+            )
+        }
+        log("free-space preflight passed operation=\(operation) required=\(formatBytes(minimumBytes)) available=\(formatBytes(available))")
+    }
+
+    private func availableBytes(at url: URL) throws -> UInt64 {
+        let attributes = try FileManager.default.attributesOfFileSystem(forPath: url.path)
+        guard let value = attributes[.systemFreeSize] as? NSNumber else {
+            throw LauncherError.missingArgument("could not determine free space for \(url.path)")
+        }
+        return value.uint64Value
+    }
+
+    private func fileSize(_ url: URL) throws -> UInt64 {
+        let values = try url.resourceValues(forKeys: [.fileSizeKey])
+        return UInt64(values.fileSize ?? 0)
+    }
+
+    private func directorySize(_ url: URL) throws -> UInt64 {
+        guard let enumerator = FileManager.default.enumerator(
+            at: url,
+            includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            throw LauncherError.missingFile(url.path)
+        }
+
+        var total: UInt64 = 0
+        for case let fileURL as URL in enumerator {
+            let values = try fileURL.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
+            if values.isRegularFile == true {
+                total += UInt64(values.fileSize ?? 0)
+            }
+        }
+        return total
+    }
+
+    private func formatBytes(_ bytes: UInt64) -> String {
+        let gib = Double(bytes) / 1_073_741_824
+        return String(format: "%.1fGiB", gib)
     }
 
     private func isoTimestamp() -> String {

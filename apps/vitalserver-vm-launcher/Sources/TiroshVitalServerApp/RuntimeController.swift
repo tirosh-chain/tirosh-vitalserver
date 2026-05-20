@@ -11,10 +11,16 @@ final class RuntimeController: ObservableObject {
 
     func refresh() async {
         status = RuntimeStatus.load(paths: runtime)
+        if let displayMessage = status.displayMessage {
+            message = displayMessage
+        }
     }
 
     func refreshHealthStatus() async {
         status = await loadHealthStatus()
+        if let displayMessage = status.displayMessage {
+            message = displayMessage
+        }
     }
 
     func healthCheck() async {
@@ -22,7 +28,11 @@ final class RuntimeController: ObservableObject {
         defer { isBusy = false }
 
         status = await loadHealthStatus()
-        message = AppConstants.StatusText.healthCheckCompleted
+        if let displayMessage = status.displayMessage {
+            message = "\(AppConstants.StatusText.healthCheckCompleted)\n\n\(displayMessage)"
+        } else {
+            message = AppConstants.StatusText.healthCheckCompleted
+        }
     }
 
     func uninstallRuntime() async {

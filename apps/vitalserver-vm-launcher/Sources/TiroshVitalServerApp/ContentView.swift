@@ -37,6 +37,10 @@ struct ContentView: View {
                     ? AppConstants.StatusText.installed
                     : AppConstants.StatusText.notInstalled
             )
+            statusRow(AppConstants.Labels.runtimeState, controller.status.runtimeState ?? AppConstants.StatusText.unknown)
+            statusRow(AppConstants.Labels.operation, controller.status.operation ?? AppConstants.StatusText.unknown)
+            statusRow(AppConstants.Labels.runtimeVersion, controller.status.runtimeVersion ?? AppConstants.StatusText.unknown)
+            statusRow(AppConstants.Labels.updatedAt, controller.status.updatedAt ?? AppConstants.StatusText.unknown)
             statusRow(
                 AppConstants.Labels.vmService,
                 controller.status.vmServiceLoaded
@@ -49,10 +53,19 @@ struct ContentView: View {
                     ? AppConstants.StatusText.loaded
                     : AppConstants.StatusText.notLoaded
             )
+            statusRow(
+                AppConstants.Labels.watchdogService,
+                controller.status.watchdogServiceLoaded
+                    ? AppConstants.StatusText.loaded
+                    : AppConstants.StatusText.notLoaded
+            )
             statusRow(AppConstants.Labels.proxyPort, String(controller.status.proxyPort))
             statusRow(AppConstants.Labels.vmIP, controller.status.vmIP ?? AppConstants.StatusText.waiting)
             statusRow(AppConstants.Labels.guestHTTP, controller.status.guestHTTP ?? AppConstants.StatusText.notChecked)
             statusRow(AppConstants.Labels.hostProxy, controller.status.hostProxyHTTP ?? AppConstants.StatusText.notChecked)
+            if !controller.status.failureReasons.isEmpty {
+                statusRow(AppConstants.Labels.failureReasons, controller.status.failureReasons.joined(separator: ", "))
+            }
         }
         .padding(16)
         .background(Color(nsColor: .controlBackgroundColor))

@@ -1,7 +1,7 @@
 enum AppConstants {
     enum Product {
         static let displayName = "Tirosh VitalServer Manager"
-        static let subtitle = "Manage the Mac mini runtime"
+        static let subtitle = "Manage the dedicated Mac runtime"
         static let defaultProxyPort = 80
         static func vitalServerURL(proxyPort: Int) -> String {
             "http://127.0.0.1:\(proxyPort)/"
@@ -22,12 +22,18 @@ enum AppConstants {
 
     enum Labels {
         static let runtime = "Runtime"
+        static let runtimeState = "Runtime state"
+        static let operation = "Operation"
+        static let runtimeVersion = "Runtime version"
+        static let updatedAt = "Updated at"
         static let vmService = "VM service"
         static let proxyService = "Proxy service"
+        static let watchdogService = "Watchdog service"
         static let proxyPort = "Proxy port"
         static let vmIP = "VM IP"
         static let guestHTTP = "Guest HTTP"
         static let hostProxy = "Host proxy"
+        static let failureReasons = "Failure reasons"
         static let log = "Log"
     }
 
@@ -53,6 +59,7 @@ enum AppConstants {
         static let notLoaded = "Not loaded"
         static let waiting = "Waiting"
         static let notChecked = "Not checked"
+        static let unknown = "Unknown"
         static let failed = "failed"
         static let done = "Done"
         static let healthCheckCompleted = "Health check completed"
@@ -71,6 +78,7 @@ enum AppConstants {
         static let launcher = "/usr/local/bin/vitalserver-vm"
         static let uninstaller = "/usr/local/bin/tirosh-vitalserver-uninstall"
         static let vmIPFile = "/Library/Application Support/TiroshVitalServer/vm/data/run/vm-ip"
+        static let runtimeStatus = "/Library/Application Support/TiroshVitalServer/status/runtime-status.json"
         static let proxyLaunchDaemon = "/Library/LaunchDaemons/com.tirosh.vitalserver-proxy.plist"
         static let commandLogFile = "/private/tmp/tirosh-vitalserver-manager-command.log"
     }
@@ -78,6 +86,7 @@ enum AppConstants {
     enum Launchd {
         static let vmService = "com.tirosh.vitalserver-vm"
         static let proxyService = "com.tirosh.vitalserver-proxy"
+        static let watchdogService = "com.tirosh.vitalserver-watchdog"
     }
 
     enum Commands {

@@ -113,6 +113,90 @@ UNIT
   systemctl enable tirosh-vm-ip.service
 }
 
+install_compose_stack_service() {
+  install -m 0755 /dev/stdin /usr/local/bin/tirosh-vitalserver-compose <<'SCRIPT'
+#!/usr/bin/env bash
+set -euo pipefail
+
+ACTION="${1:-up}"
+MOUNT_TAG="${TIROSH_SHARE_TAG:-tirosh}"
+MOUNT_POINT="${TIROSH_SHARE_MOUNT:-/mnt/tirosh}"
+VITAL_FILES_MOUNT_TAG="${TIROSH_VITAL_FILES_SHARE_TAG:-tirosh-vital-files}"
+VITAL_FILES_MOUNT_POINT="${TIROSH_VITAL_FILES_SHARE_MOUNT:-/mnt/tirosh-vital-files}"
+DEPLOY_DIR="${TIROSH_DEPLOY_DIR:-${MOUNT_POINT}/deploy}"
+
+mkdir -p "${MOUNT_POINT}"
+if ! mountpoint -q "${MOUNT_POINT}"; then
+  mount -t virtiofs "${MOUNT_TAG}" "${MOUNT_POINT}"
+fi
+mkdir -p "${VITAL_FILES_MOUNT_POINT}"
+if ! mountpoint -q "${VITAL_FILES_MOUNT_POINT}"; then
+  mount -t virtiofs "${VITAL_FILES_MOUNT_TAG}" "${VITAL_FILES_MOUNT_POINT}"
+fi
+
+eval "$(
+  python3 - "${DEPLOY_DIR}/runtime-config.json" <<'PY'
+import json
+import shlex
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    config = json.load(handle)
+
+
+def emit(name, value):
+    print(f"export {name}={shlex.quote(str(value))}")
+
+
+emit("VITALSERVER_HTTP_PORT", config.get("vitalserverHttpPort", 18080))
+emit("VITALSERVER_REDIS_HOST", config.get("redisHost", "redis"))
+emit("VITALSERVER_REDIS_PORT", config.get("redisPort", 6379))
+emit("VITALSERVER_TRUST_PROXY", "1" if config.get("trustProxy", True) else "0")
+emit("VITALSERVER_PUBLIC_HOST", config.get("publicHost", ""))
+emit("VITALSERVER_PUBLIC_PORT", config.get("publicPort", ""))
+emit("VITALSERVER_ADMIN_PASSWORD", config.get("adminPassword", "admin"))
+emit("VITALSERVER_VITAL_FILES_DIR", config.get("vitalFilesDirectory", "/mnt/tirosh-vital-files"))
+emit("REDIS_UI_PORT", config.get("redisUiPort", 18081))
+emit("SWAGGER_UI_PORT", config.get("swaggerUiPort", 18082))
+PY
+)"
+
+case "${ACTION}" in
+  up)
+    exec docker compose --project-name vitalserver -f "${DEPLOY_DIR}/compose.yaml" up -d
+    ;;
+  stop)
+    exec docker compose --project-name vitalserver -f "${DEPLOY_DIR}/compose.yaml" stop
+    ;;
+  *)
+    printf "usage: tirosh-vitalserver-compose [up|stop]\n" >&2
+    exit 2
+    ;;
+esac
+SCRIPT
+
+  cat >/etc/systemd/system/tirosh-vitalserver-compose.service <<'UNIT'
+[Unit]
+Description=Tirosh VitalServer Docker Compose stack
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/tirosh-vitalserver-compose up
+ExecStop=/usr/local/bin/tirosh-vitalserver-compose stop
+TimeoutStartSec=900
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+  systemctl daemon-reload
+  systemctl enable tirosh-vitalserver-compose.service
+}
+
 write_vm_ip() {
   mkdir -p "${RUNTIME_DIR}"
   hostname -I \
@@ -283,6 +367,10 @@ load_bundled_docker_images() {
   fi
 }
 
+cleanup_docker_cache() {
+  docker image prune -f >/dev/null 2>&1 || true
+}
+
 wait_for_vitalserver_http() {
   local deadline code http_status
 
@@ -329,6 +417,7 @@ nginx -t
 systemctl reload nginx
 
 load_bundled_docker_images
+cleanup_docker_cache
 
 compose_build_args=()
 if ! docker image inspect vitalserver:2.3.4 >/dev/null 2>&1; then
@@ -340,6 +429,7 @@ docker compose \
   -f "${DEPLOY_DIR}/compose.yaml" \
   up -d "${compose_build_args[@]}"
 
+install_compose_stack_service
 wait_for_vitalserver_http
 write_vm_ip
 

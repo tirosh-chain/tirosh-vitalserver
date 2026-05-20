@@ -69,6 +69,10 @@ enum Constants {
         static let vmIPFile = "vm-ip"
         static let waitTimeoutSeconds = 600.0
         static let watchdogRecoveryWaitSeconds = 20.0
+        static let freeSpaceMarginBytes: UInt64 = 4 * 1024 * 1024 * 1024
+        static let updateFreeSpaceMarginBytes: UInt64 = 2 * 1024 * 1024 * 1024
+        static let logRotationMaxBytes: UInt64 = 10 * 1024 * 1024
+        static let logRotationKeepCount = 5
 
         static func proxyHealthURL(port: Int) -> String {
             "http://127.0.0.1:\(port)/"

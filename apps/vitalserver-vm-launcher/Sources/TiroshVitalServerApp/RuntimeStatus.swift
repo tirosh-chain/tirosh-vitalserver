@@ -4,30 +4,72 @@ struct RuntimeStatus {
     var runtimeInstalled = false
     var vmServiceLoaded = false
     var proxyServiceLoaded = false
+    var watchdogServiceLoaded = false
+    var runtimeState: String?
+    var operation: String?
+    var statusMessage: String?
+    var updatedAt: String?
+    var runtimeVersion: String?
     var vmIP: String?
     var guestHTTP: String?
     var hostProxyHTTP: String?
     var proxyPort = AppConstants.Product.defaultProxyPort
+    var failureReasons: [String] = []
 
     var isReady: Bool {
         runtimeInstalled
             && vmServiceLoaded
             && proxyServiceLoaded
+            && watchdogServiceLoaded
+            && runtimeState == "healthy"
             && vmIP != nil
             && isSuccessfulHTTPStatus(guestHTTP)
             && isSuccessfulHTTPStatus(hostProxyHTTP)
     }
 
+    var displayMessage: String? {
+        var lines: [String] = []
+        if let statusMessage, !statusMessage.isEmpty {
+            lines.append(statusMessage)
+        }
+        if !failureReasons.isEmpty {
+            lines.append("\(AppConstants.Labels.failureReasons): \(failureReasons.joined(separator: ", "))")
+        }
+        return lines.isEmpty ? nil : lines.joined(separator: "\n")
+    }
+
     static func load(paths: RuntimePaths) -> RuntimeStatus {
-        RuntimeStatus(
+        let document = runtimeStatusDocument(paths.runtimeStatus)
+        return RuntimeStatus(
             runtimeInstalled: FileManager.default.isExecutableFile(atPath: paths.launcher),
-            vmServiceLoaded: launchdLoaded(AppConstants.Launchd.vmService),
-            proxyServiceLoaded: launchdLoaded(AppConstants.Launchd.proxyService),
-            vmIP: readTrimmed(paths.vmIPFile),
-            guestHTTP: nil,
-            hostProxyHTTP: nil,
-            proxyPort: proxyPort(paths.proxyLaunchDaemon)
+            vmServiceLoaded: loaded(document?.vmService) ?? launchdLoaded(AppConstants.Launchd.vmService),
+            proxyServiceLoaded: loaded(document?.proxyService) ?? launchdLoaded(AppConstants.Launchd.proxyService),
+            watchdogServiceLoaded: loaded(document?.watchdogService) ?? launchdLoaded(AppConstants.Launchd.watchdogService),
+            runtimeState: document?.status,
+            operation: document?.operation,
+            statusMessage: document?.message,
+            updatedAt: document?.updatedAt,
+            runtimeVersion: document?.runtimeVersion,
+            vmIP: document?.vmIP ?? readTrimmed(paths.vmIPFile),
+            guestHTTP: document?.guestHTTP,
+            hostProxyHTTP: document?.hostProxyHTTP,
+            proxyPort: document?.proxyPort ?? proxyPort(paths.proxyLaunchDaemon),
+            failureReasons: document?.failureReasons ?? []
         )
+    }
+
+    private static func runtimeStatusDocument(_ path: String) -> RuntimeStatusDocument? {
+        guard let data = FileManager.default.contents(atPath: path) else {
+            return nil
+        }
+        return try? JSONDecoder().decode(RuntimeStatusDocument.self, from: data)
+    }
+
+    private static func loaded(_ value: String?) -> Bool? {
+        guard let value else {
+            return nil
+        }
+        return value == "loaded"
     }
 
     private static func launchdLoaded(_ label: String) -> Bool {
@@ -77,5 +119,22 @@ struct RuntimePaths {
     let launcher = AppConstants.Paths.launcher
     let uninstaller = AppConstants.Paths.uninstaller
     let vmIPFile = AppConstants.Paths.vmIPFile
+    let runtimeStatus = AppConstants.Paths.runtimeStatus
     let proxyLaunchDaemon = AppConstants.Paths.proxyLaunchDaemon
+}
+
+private struct RuntimeStatusDocument: Decodable {
+    let status: String
+    let operation: String
+    let message: String
+    let updatedAt: String
+    let runtimeVersion: String
+    let vmService: String
+    let proxyService: String
+    let watchdogService: String
+    let vmIP: String?
+    let proxyPort: Int
+    let hostProxyHTTP: String
+    let guestHTTP: String
+    let failureReasons: [String]
 }
