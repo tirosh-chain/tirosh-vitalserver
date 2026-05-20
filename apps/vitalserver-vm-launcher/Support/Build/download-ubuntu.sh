@@ -86,7 +86,7 @@ download_assets() {
 }
 
 install_boot_assets() {
-  cp "${download_dir}/${kernel_name}" "${images_dir}/vmlinuz"
+  gzip -dc "${download_dir}/${kernel_name}" >"${images_dir}/Image"
   cp "${download_dir}/${initrd_name}" "${images_dir}/initrd.img"
 
   if [ -s "${images_dir}/rootfs.raw" ]; then
@@ -115,7 +115,7 @@ download_once() {
 
 print_result() {
   printf "Linux boot assets are ready:\n"
-  printf "  %s\n" "${images_dir}/vmlinuz"
+  printf "  %s\n" "${images_dir}/Image"
   printf "  %s\n" "${images_dir}/initrd.img"
   printf "  %s\n" "${images_dir}/rootfs.raw"
 }

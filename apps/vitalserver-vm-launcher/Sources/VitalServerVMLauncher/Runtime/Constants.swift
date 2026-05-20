@@ -19,10 +19,10 @@ enum Constants {
     }
 
     enum BootAssets {
-        static let kernel = "vmlinuz"
+        static let kernel = "Image"
         static let initialRamdisk = "initrd.img"
         static let disk = "rootfs.raw"
-        static let commandLine = "console=hvc0 root=/dev/vda rw"
+        static let commandLine = "console=hvc0 root=/dev/vda1 rw"
     }
 
     enum Defaults {

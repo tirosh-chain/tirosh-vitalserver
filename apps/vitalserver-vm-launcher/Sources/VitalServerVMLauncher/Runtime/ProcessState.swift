@@ -24,6 +24,7 @@ enum ProcessState {
             print("running: pid \(pid)")
         } else {
             print("stale pid file: \(pidFile.path)")
+            removePidFile(pidFile)
         }
     }
 
@@ -37,6 +38,7 @@ enum ProcessState {
             print("sent SIGTERM to pid \(pid)")
         } else {
             print("failed to stop pid \(pid)")
+            removePidFile(pidFile)
         }
     }
 

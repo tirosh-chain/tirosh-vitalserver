@@ -50,7 +50,7 @@ vitalserver-vm version
 - codesign/notarization 제품화
 - VM image 업데이트
 
-중요: 현재 `make vm-download`와 Support/Guest `bootstrap.sh`는 **개발/PoC용**입니다. 최종 `.pkg`에는 이미 준비된 `vmlinuz`, `initrd.img`, `rootfs.raw`와 VM 내부 runtime이 포함되어야 합니다.
+중요: 현재 `make vm-download`와 Support/Guest `bootstrap.sh`는 **개발/PoC용**입니다. 최종 `.pkg`에는 이미 준비된 `Image`, `initrd.img`, `rootfs.raw`와 VM 내부 runtime이 포함되어야 합니다.
 
 ## 배포 모델
 
@@ -77,7 +77,7 @@ download Ubuntu cloud image
 TiroshVitalServer.pkg
   -> /usr/local/bin/vitalserver-vm
   -> /Library/Application Support/Tirosh/VitalServer/images/
-       vmlinuz
+       Image
        initrd.img
        rootfs.raw
   -> /Library/Application Support/Tirosh/VitalServer/data/
@@ -244,8 +244,8 @@ VITALSERVER_VM_HOME="$PWD/.tmp/vitalserver-vm" make vm-init
   "cpuCount": 4,
   "diskPath": "/Users/<user>/.tirosh/vitalserver-vm/images/rootfs.raw",
   "initialRamdiskPath": "/Users/<user>/.tirosh/vitalserver-vm/images/initrd.img",
-  "kernelCommandLine": "console=hvc0 root=/dev/vda rw",
-  "kernelPath": "/Users/<user>/.tirosh/vitalserver-vm/images/vmlinuz",
+  "kernelCommandLine": "console=hvc0 root=/dev/vda1 rw",
+  "kernelPath": "/Users/<user>/.tirosh/vitalserver-vm/images/Image",
   "memoryMiB": 4096,
   "network": {
     "bridgedInterface": null,
@@ -289,7 +289,7 @@ apps/vitalserver-vm-launcher/Support/Build/ubuntu-cloud-image.env
 
 ```text
 ~/.tirosh/vitalserver-vm/images/
-  vmlinuz
+  Image
   initrd.img
   rootfs.raw
 ```
@@ -559,7 +559,7 @@ make vm-clean
 boot asset이 없으면 `make vm-start`는 다음처럼 실패합니다.
 
 ```text
-error: missing file: .../images/vmlinuz
+error: missing file: .../images/Image
 ```
 
 이 실패는 정상입니다. 먼저 `images/` 아래에 Linux boot asset을 준비해야 합니다.

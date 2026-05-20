@@ -11,6 +11,7 @@ VM_GUEST_DIR ?= $(VM_SUPPORT_DIR)/Guest
 VM_IMAGE_DIR ?= $(VM_HOME)/images
 VM_DEPLOY_DIR ?= $(VM_HOME)/data/deploy
 VM_UBUNTU_CONFIG ?= $(VM_BUILD_SUPPORT_DIR)/ubuntu-cloud-image.env
+VM_RSYNC_EXCLUDES ?= --exclude .DS_Store --exclude __pycache__
 
 .PHONY: vm-up vm-down vm-prepare vm-start vm-stop vm-status vm-clean
 .PHONY: vm-build vm-sign vm-sign-bridged vm-init vm-download vm-stage vm-interfaces
@@ -43,11 +44,11 @@ vm-down: vm-stop
 vm-stage: vm-init
 	@printf "Staging Linux guest deployment bundle into %s\n" "$(VM_DEPLOY_DIR)"
 	@mkdir -p "$(VM_DEPLOY_DIR)" "$(VM_HOME)/data/vital-files" "$(VM_HOME)/data/vr-release"
-	rsync -a "$(VM_GUEST_DIR)/" "$(VM_DEPLOY_DIR)/"
+	rsync -a $(VM_RSYNC_EXCLUDES) "$(VM_GUEST_DIR)/" "$(VM_DEPLOY_DIR)/"
 	@mkdir -p "$(VM_DEPLOY_DIR)/apps/vitalserver" "$(VM_DEPLOY_DIR)/vendor/vitalserver"
-	rsync -a --delete apps/vitalserver/docker "$(VM_DEPLOY_DIR)/apps/vitalserver/"
-	rsync -a --delete apps/vitalserver/runtime "$(VM_DEPLOY_DIR)/apps/vitalserver/"
-	rsync -a --delete vendor/vitalserver/vitalserver-old "$(VM_DEPLOY_DIR)/vendor/vitalserver/"
+	rsync -a --delete $(VM_RSYNC_EXCLUDES) apps/vitalserver/docker "$(VM_DEPLOY_DIR)/apps/vitalserver/"
+	rsync -a --delete $(VM_RSYNC_EXCLUDES) apps/vitalserver/runtime "$(VM_DEPLOY_DIR)/apps/vitalserver/"
+	rsync -a --delete $(VM_RSYNC_EXCLUDES) vendor/vitalserver/vitalserver-old "$(VM_DEPLOY_DIR)/vendor/vitalserver/"
 	@if [ ! -f "$(VM_DEPLOY_DIR)/.env" ]; then \
 		cp "$(VM_DEPLOY_DIR)/vitalserver.env" "$(VM_DEPLOY_DIR)/.env"; \
 		printf "created %s\n" "$(VM_DEPLOY_DIR)/.env"; \
