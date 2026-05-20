@@ -98,6 +98,34 @@ TiroshVitalServer.pkg
 | 외부 apt repository | 필요 없음 |
 | 외부 container registry | 필요 없음 |
 
+### GUI 설정
+
+`.pkg` 자체는 풍부한 설정 UI를 제공하기에 적합하지 않습니다. 제품으로는 `.dmg` 안에 GUI 앱을 제공하고, 그 앱이 설정을 만든 뒤 privileged install 또는 bundled `.pkg` 설치를 실행하는 구조가 더 안전합니다.
+
+권장 UX:
+
+```text
+TiroshVitalServer.dmg
+  -> Tirosh VitalServer.app
+      -> VM spec 설정
+      -> network mode 설정
+      -> bridged interface 선택
+      -> DHCP reservation용 MAC 표시
+      -> cloud-init user/SSH key 설정
+      -> pkg install 또는 launchd service 등록
+```
+
+설정 결과물:
+
+| 설정 | 저장 위치 |
+|---|---|
+| VM CPU/RAM/kernel/disk/network/MAC | `config.json` |
+| cloud-init user/hostname/SSH key | `seed.iso` |
+| VitalServer container 환경변수 | deploy `.env` |
+| 서비스 자동 실행 | LaunchDaemon plist |
+
+즉 GUI는 VM을 직접 “마법처럼” 만들기보다, 이 파일들을 안전하게 생성/수정하는 설정 도구가 됩니다.
+
 ### VM 내부
 
 VM 내부에는 이미 다음이 준비되어 있어야 합니다.
@@ -180,8 +208,9 @@ make vm-status
 1. `vitalserver-vm` 빌드
 2. Ubuntu boot asset 다운로드
 3. `rootfs.raw` 변환
-4. VM runtime directory 초기화
-5. guest deployment bundle staging
+4. cloud-init seed image 생성
+5. VM runtime directory 초기화
+6. guest deployment bundle staging
 
 ## 세부 명령
 
@@ -189,6 +218,7 @@ make vm-status
 make vm-build
 make vm-init
 make vm-download
+make vm-cloud-init
 make vm-stage
 ```
 
@@ -244,6 +274,7 @@ VITALSERVER_VM_HOME="$PWD/.tmp/vitalserver-vm" make vm-init
   "cpuCount": 4,
   "diskPath": "/Users/<user>/.tirosh/vitalserver-vm/images/rootfs.raw",
   "initialRamdiskPath": "/Users/<user>/.tirosh/vitalserver-vm/images/initrd.img",
+  "cloudInitPath": "/Users/<user>/.tirosh/vitalserver-vm/images/seed.iso",
   "kernelCommandLine": "console=hvc0 root=/dev/vda1 rw",
   "kernelPath": "/Users/<user>/.tirosh/vitalserver-vm/images/Image",
   "memoryMiB": 4096,
@@ -313,6 +344,36 @@ VM_IMAGE_DIR=/path/to/images make vm-download
 ```
 
 주의: `make vm-download`는 runtime `config.json`을 만들지 않습니다. 다운로드/변환은 빌드 단계 작업이고, `config.json`과 VM MAC address는 설치 대상 또는 PoC runtime에서 `make vm-init`이 생성해야 합니다.
+
+### cloud-init seed 생성
+
+PoC cloud image에 로그인할 수 있도록 NoCloud seed image를 만듭니다.
+
+```sh
+make vm-cloud-init
+```
+
+기본값:
+
+| 항목 | 값 |
+|---|---|
+| seed image | `~/.tirosh/vitalserver-vm/images/seed.iso` |
+| hostname | `tirosh-vitalserver` |
+| user | `ubuntu` |
+| password | `ubuntu` |
+| SSH public key | `~/.ssh/id_ed25519.pub`가 있으면 자동 포함 |
+
+값을 바꾸고 싶다면:
+
+```sh
+VM_CLOUD_INIT_HOSTNAME=tirosh-vitalserver \
+VM_CLOUD_INIT_USER=ubuntu \
+VM_CLOUD_INIT_PASSWORD=change-me \
+VM_CLOUD_INIT_SSH_KEY=~/.ssh/id_ed25519.pub \
+make vm-cloud-init
+```
+
+주의: 기본 password는 PoC 편의용입니다. 제품 `.pkg`에서는 GUI 또는 first-run flow가 설치 대상별 credential을 생성해야 합니다.
 
 ### Linux guest 배포 준비
 

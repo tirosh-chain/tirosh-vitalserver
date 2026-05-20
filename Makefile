@@ -91,6 +91,7 @@ help:
 	@printf "  make vm-sign-bridged Sign VM launcher with bridged networking entitlement\n"
 	@printf "  make vm-init         Initialize VM runtime config only\n"
 	@printf "  make vm-download     Download Ubuntu boot assets only\n"
+	@printf "  make vm-cloud-init   Create local cloud-init seed image only\n"
 	@printf "  make vm-stage        Stage guest deployment bundle only\n"
 	@printf "  make vm-interfaces   List bridged network interfaces\n"
 	@printf "\n"

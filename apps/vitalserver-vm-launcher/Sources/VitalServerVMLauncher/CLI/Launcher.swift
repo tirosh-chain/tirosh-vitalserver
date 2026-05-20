@@ -62,18 +62,19 @@ struct Launcher {
 
         if !fileManager.fileExists(atPath: paths.config.path) {
             var config = VMRuntimeConfig.default(home: paths.home)
-            VMRuntimeConfig.ensureNetworkIdentity(&config)
+            VMRuntimeConfig.ensureRuntimeDefaults(&config, home: paths.home)
             let data = try JSONEncoder.pretty.encode(config)
             try data.write(to: paths.config)
             print("created \(paths.config.path)")
         } else {
             var config = try VMRuntimeConfig.load(from: paths.config)
-            let previousMacAddress = config.network.macAddress
-            VMRuntimeConfig.ensureNetworkIdentity(&config)
-            if config.network.macAddress != previousMacAddress {
+            let previous = config
+            VMRuntimeConfig.ensureRuntimeDefaults(&config, home: paths.home)
+            if config.network.macAddress != previous.network.macAddress
+                || config.cloudInitPath != previous.cloudInitPath {
                 let data = try JSONEncoder.pretty.encode(config)
                 try data.write(to: paths.config)
-                print("updated \(paths.config.path) with stable VM MAC address")
+                print("updated \(paths.config.path) with missing runtime defaults")
             } else {
                 print("exists \(paths.config.path)")
             }

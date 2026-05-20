@@ -14,7 +14,7 @@ VM_UBUNTU_CONFIG ?= $(VM_BUILD_SUPPORT_DIR)/ubuntu-cloud-image.env
 VM_RSYNC_EXCLUDES ?= --exclude .DS_Store --exclude __pycache__
 
 .PHONY: vm-up vm-down vm-prepare vm-start vm-stop vm-status vm-clean
-.PHONY: vm-build vm-sign vm-sign-bridged vm-init vm-download vm-stage vm-interfaces
+.PHONY: vm-build vm-sign vm-sign-bridged vm-init vm-download vm-cloud-init vm-stage vm-interfaces
 
 vm-build:
 	cd "$(VM_LAUNCHER_DIR)" && env SDKROOT="$(VM_SDKROOT)" CLANG_MODULE_CACHE_PATH="$(VM_CLANG_MODULE_CACHE)" swift build -c release
@@ -33,7 +33,11 @@ vm-download:
 	VM_UBUNTU_CONFIG="$(VM_UBUNTU_CONFIG)" \
 	"$(VM_BUILD_SUPPORT_DIR)/download-ubuntu.sh"
 
-vm-prepare: vm-download vm-stage
+vm-cloud-init:
+	VM_IMAGE_DIR="$(VM_IMAGE_DIR)" \
+	"$(VM_BUILD_SUPPORT_DIR)/create-cloud-init.sh"
+
+vm-prepare: vm-download vm-cloud-init vm-stage
 	@printf "VM runtime is prepared under %s\n" "$(VM_HOME)"
 	@printf "Start it with: make vm-start\n"
 

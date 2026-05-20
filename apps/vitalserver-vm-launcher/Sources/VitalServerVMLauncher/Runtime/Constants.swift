@@ -22,6 +22,7 @@ enum Constants {
         static let kernel = "Image"
         static let initialRamdisk = "initrd.img"
         static let disk = "rootfs.raw"
+        static let cloudInit = "seed.iso"
         static let commandLine = "console=hvc0 root=/dev/vda1 rw"
     }
 

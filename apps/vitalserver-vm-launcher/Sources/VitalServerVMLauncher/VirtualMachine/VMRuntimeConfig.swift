@@ -6,6 +6,7 @@ struct VMRuntimeConfig: Codable {
     var kernelPath: String
     var initialRamdiskPath: String?
     var diskPath: String?
+    var cloudInitPath: String?
     var kernelCommandLine: String
     var network: NetworkConfig
     var sharedDirectory: SharedDirectoryConfig?
@@ -24,6 +25,7 @@ struct VMRuntimeConfig: Codable {
             kernelPath: images.appendingPathComponent(Constants.BootAssets.kernel).path,
             initialRamdiskPath: images.appendingPathComponent(Constants.BootAssets.initialRamdisk).path,
             diskPath: images.appendingPathComponent(Constants.BootAssets.disk).path,
+            cloudInitPath: images.appendingPathComponent(Constants.BootAssets.cloudInit).path,
             kernelCommandLine: Constants.BootAssets.commandLine,
             network: NetworkConfig(
                 mode: .shared,
@@ -60,6 +62,16 @@ struct VMRuntimeConfig: Codable {
     static func ensureNetworkIdentity(_ config: inout VMRuntimeConfig) {
         if config.network.macAddress == nil || config.network.macAddress?.isEmpty == true {
             config.network.macAddress = generateMacAddress()
+        }
+    }
+
+    static func ensureRuntimeDefaults(_ config: inout VMRuntimeConfig, home: URL) {
+        ensureNetworkIdentity(&config)
+        if config.cloudInitPath == nil || config.cloudInitPath?.isEmpty == true {
+            config.cloudInitPath = home
+                .appendingPathComponent(Constants.Paths.imagesDirectory)
+                .appendingPathComponent(Constants.BootAssets.cloudInit)
+                .path
         }
     }
 

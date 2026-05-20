@@ -24,16 +24,36 @@ struct VMConfigurationFactory {
             ]
         }
 
+        vmConfiguration.storageDevices = try storageDeviceConfigurations(config)
+
+        try vmConfiguration.validate()
+        return vmConfiguration
+    }
+
+    private func storageDeviceConfigurations(
+        _ config: VMRuntimeConfig
+    ) throws -> [VZVirtioBlockDeviceConfiguration] {
+        var storageDevices: [VZVirtioBlockDeviceConfiguration] = []
+
         if let diskPath = config.diskPath, !diskPath.isEmpty {
             let attachment = try VZDiskImageStorageDeviceAttachment(
                 url: URL(fileURLWithPath: diskPath),
                 readOnly: false
             )
-            vmConfiguration.storageDevices = [VZVirtioBlockDeviceConfiguration(attachment: attachment)]
+            storageDevices.append(VZVirtioBlockDeviceConfiguration(attachment: attachment))
         }
 
-        try vmConfiguration.validate()
-        return vmConfiguration
+        if let cloudInitPath = config.cloudInitPath,
+           !cloudInitPath.isEmpty,
+           FileManager.default.fileExists(atPath: cloudInitPath) {
+            let attachment = try VZDiskImageStorageDeviceAttachment(
+                url: URL(fileURLWithPath: cloudInitPath),
+                readOnly: true
+            )
+            storageDevices.append(VZVirtioBlockDeviceConfiguration(attachment: attachment))
+        }
+
+        return storageDevices
     }
 
     // Attach the guest console to this CLI for the PoC.
