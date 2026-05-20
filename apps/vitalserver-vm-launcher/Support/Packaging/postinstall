@@ -15,7 +15,7 @@ log() {
 
 on_error() {
   local status="$?"
-  log "postinstall failed with status ${status}"
+  log "postinstall failed status=${status} command=${BASH_COMMAND}"
   exit "${status}"
 }
 

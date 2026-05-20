@@ -100,19 +100,44 @@ struct RuntimeLifecycle {
             .appendingPathComponent(Constants.Paths.vitalFilesDirectory)
             .path
         let settings = try InstallSettings.load(defaultVitalFilesDirectory: defaultVitalFilesDirectory)
-        print("install settings loaded")
-        try prepareInstallDirectories(settings)
-        try configureDeployEnvironment(settings)
-        try prepareInstalledExecutables()
-        try provisionVMDisk(settings)
-        try configureInstalledVMRuntime(settings)
-        try createCloudInitSeed(settings)
-        try writeInstalledRuntimeVersion()
-        try configureInstalledPermissions(settings)
-        try startInstalledServices(settings)
-        try applyStartOnBootPolicy(settings)
-        try cleanupInstallSettings()
-        print("runtime install completed")
+        log("runtime install started home=\(paths.home.path)")
+        try runStep("load-install-settings") {
+            log("install settings loaded")
+        }
+        try runStep("prepare-install-directories") {
+            try prepareInstallDirectories(settings)
+        }
+        try runStep("configure-guest-runtime-config") {
+            try configureDeployEnvironment(settings)
+        }
+        try runStep("prepare-installed-executables") {
+            try prepareInstalledExecutables()
+        }
+        try runStep("provision-vm-disk") {
+            try provisionVMDisk(settings)
+        }
+        try runStep("configure-vm-runtime") {
+            try configureInstalledVMRuntime(settings)
+        }
+        try runStep("create-cloud-init-seed") {
+            try createCloudInitSeed(settings)
+        }
+        try runStep("write-runtime-version") {
+            try writeInstalledRuntimeVersion()
+        }
+        try runStep("configure-installed-permissions") {
+            try configureInstalledPermissions(settings)
+        }
+        try runStep("start-installed-services") {
+            try startInstalledServices(settings)
+        }
+        try runStep("apply-start-on-boot-policy") {
+            try applyStartOnBootPolicy(settings)
+        }
+        try runStep("cleanup-install-settings") {
+            try cleanupInstallSettings()
+        }
+        log("runtime install completed home=\(paths.home.path)")
     }
 
     func printStatus() {
@@ -132,7 +157,6 @@ struct RuntimeLifecycle {
     }
 
     private func prepareInstallDirectories(_ settings: InstallSettings) throws {
-        print("preparing runtime directories")
         let data = paths.home.appendingPathComponent(Constants.Paths.dataDirectory)
         let directories = [
             paths.home.appendingPathComponent(Constants.Paths.runtimeDirectory),
@@ -150,7 +174,6 @@ struct RuntimeLifecycle {
     }
 
     private func configureDeployEnvironment(_ settings: InstallSettings) throws {
-        print("configuring guest runtime config")
         let runtimeConfig = paths.home
             .appendingPathComponent(Constants.Paths.dataDirectory)
             .appendingPathComponent("deploy")
@@ -172,7 +195,6 @@ struct RuntimeLifecycle {
     }
 
     private func prepareInstalledExecutables() throws {
-        print("preparing installed executables")
         for path in [
             Constants.InstallPaths.vmBin,
             Constants.InstallPaths.proxyRun,
@@ -183,7 +205,6 @@ struct RuntimeLifecycle {
     }
 
     private func provisionVMDisk(_ settings: InstallSettings) throws {
-        print("provisioning VM disk")
         if !fileExists(vmDisk), fileExists(rootfsBase) {
             let temporary = vmDisk.deletingLastPathComponent().appendingPathComponent(".\(vmDisk.lastPathComponent).tmp")
             if fileExists(temporary) {
@@ -195,7 +216,7 @@ struct RuntimeLifecycle {
                 output: temporary
             )
             try FileManager.default.moveItem(at: temporary, to: vmDisk)
-            print("created \(vmDisk.path) from \(rootfsBase.lastPathComponent)")
+            log("created vm disk path=\(vmDisk.path) source=\(rootfsBase.lastPathComponent)")
         }
         guard fileExists(vmDisk) else {
             throw LauncherError.missingFile(rootfsBase.path)
@@ -204,7 +225,6 @@ struct RuntimeLifecycle {
     }
 
     private func configureInstalledVMRuntime(_ settings: InstallSettings) throws {
-        print("configuring VM runtime")
         let data = paths.home.appendingPathComponent(Constants.Paths.dataDirectory)
         try FileManager.default.createDirectory(
             at: paths.home.appendingPathComponent(Constants.Paths.runtimeDirectory),
@@ -254,7 +274,6 @@ struct RuntimeLifecycle {
     }
 
     private func createCloudInitSeed(_ settings: InstallSettings) throws {
-        print("creating cloud-init seed")
         let runtime = paths.home.appendingPathComponent(Constants.Paths.runtimeDirectory)
         let seedDir = runtime.appendingPathComponent("cloud-init-seed")
         let seedISO = runtime.appendingPathComponent(Constants.BootAssets.cloudInit)
@@ -316,7 +335,6 @@ struct RuntimeLifecycle {
     }
 
     private func writeInstalledRuntimeVersion() throws {
-        print("writing runtime version")
         let document = InstalledRuntimeVersionDocument(
             product: "TiroshVitalServer",
             runtimeVersion: Constants.launcherVersion,
@@ -330,7 +348,6 @@ struct RuntimeLifecycle {
     }
 
     private func configureInstalledPermissions(_ settings: InstallSettings) throws {
-        print("configuring ownership and launchd plists")
         try runRequired(Constants.Commands.chown, arguments: ["-R", "root:wheel", paths.home.path])
         try runRequired(Constants.Commands.chown, arguments: ["-R", "root:wheel", "\(productRoot.path)/nginx"])
         try runRequired(
@@ -352,10 +369,9 @@ struct RuntimeLifecycle {
 
     private func startInstalledServices(_ settings: InstallSettings) throws {
         guard settings.startAfterInstall else {
-            print("start after install disabled")
+            log("start after install disabled")
             return
         }
-        print("starting launchd services")
         startLaunchdService(Constants.Launchd.vmService)
         startLaunchdService(Constants.Launchd.proxyService)
     }
@@ -364,7 +380,7 @@ struct RuntimeLifecycle {
         guard !settings.startOnBoot else {
             return
         }
-        print("disabling start on boot")
+        log("start on boot disabled; removing launchd plists")
         for plist in [
             "/Library/LaunchDaemons/\(Constants.Launchd.vmService).plist",
             "/Library/LaunchDaemons/\(Constants.Launchd.proxyService).plist",
@@ -481,6 +497,7 @@ struct RuntimeLifecycle {
     }
 
     func applyBundle(_ bundleURL: URL) throws {
+        log("bundle apply started input=\(bundleURL.path)")
         let stagedBundle = try stageBundle(bundleURL)
         let manifest = try loadManifest(stagedBundle.appendingPathComponent(Constants.Bundle.manifest))
         let stagedRootfs = stagedBundle.appendingPathComponent(Constants.Artifacts.rootfsBase)
@@ -491,32 +508,45 @@ struct RuntimeLifecycle {
         let restartVM = isLaunchdLoaded(Constants.Launchd.vmService)
         let restartProxy = isLaunchdLoaded(Constants.Launchd.proxyService)
         let backup = try createBackup(reason: "before-\(manifest.version)")
+        log("backup created path=\(backup.path)")
 
         do {
-            try stopRuntimeServices()
-            try FileManager.default.createDirectory(
-                at: rootfsBase.deletingLastPathComponent(),
-                withIntermediateDirectories: true
-            )
-            try replaceFile(from: stagedRootfs, to: rootfsBase)
-            try runMigrations(manifest.migrations, stagedBundle: stagedBundle)
-            try writeRuntimeVersion(version: manifest.version, bundle: stagedBundle)
-            try startRuntimeServices(restartVM: restartVM, restartProxy: restartProxy)
-            try waitForHealth(restartVM: restartVM, restartProxy: restartProxy)
+            try runStep("stop-runtime-services") {
+                try stopRuntimeServices()
+            }
+            try runStep("replace-rootfs-base") {
+                try FileManager.default.createDirectory(
+                    at: rootfsBase.deletingLastPathComponent(),
+                    withIntermediateDirectories: true
+                )
+                try replaceFile(from: stagedRootfs, to: rootfsBase)
+            }
+            try runStep("run-migrations") {
+                try runMigrations(manifest.migrations, stagedBundle: stagedBundle)
+            }
+            try runStep("write-runtime-version") {
+                try writeRuntimeVersion(version: manifest.version, bundle: stagedBundle)
+            }
+            try runStep("start-runtime-services") {
+                try startRuntimeServices(restartVM: restartVM, restartProxy: restartProxy)
+            }
+            try runStep("wait-runtime-health") {
+                try waitForHealth(restartVM: restartVM, restartProxy: restartProxy)
+            }
         } catch {
-            print("bundle apply failed; rolling back")
+            log("bundle apply failed; rolling back error=\(error)")
             try rollback(backup)
             try startRuntimeServices(restartVM: restartVM, restartProxy: restartProxy)
             throw error
         }
 
-        print("bundle applied: \(stagedBundle.path)")
-        print("backup created: \(backup.path)")
-        print("mutable VM disk preserved: \(vmDisk.path)")
+        log("bundle applied path=\(stagedBundle.path)")
+        log("mutable VM disk preserved path=\(vmDisk.path)")
     }
 
     func rollback(_ requestedBackup: URL?) throws {
         let backup = try requestedBackup ?? requireLatestBackup()
+        log("rollback started backup=\(backup.path)")
         let backupRootfs = backup.appendingPathComponent(Constants.Artifacts.rootfsBase)
         let backupVersion = backup.appendingPathComponent(Constants.Artifacts.runtimeVersion)
         guard directoryExists(backup) else {
@@ -528,18 +558,28 @@ struct RuntimeLifecycle {
 
         let restartVM = isLaunchdLoaded(Constants.Launchd.vmService)
         let restartProxy = isLaunchdLoaded(Constants.Launchd.proxyService)
-        try stopRuntimeServices()
-        try replaceFile(from: backupRootfs, to: rootfsBase)
-        if fileExists(backupVersion) {
-            try replaceFile(from: backupVersion, to: runtimeVersion)
-        } else {
-            try writeRuntimeVersion(version: "rolled-back", bundle: backup)
+        try runStep("rollback-stop-runtime-services") {
+            try stopRuntimeServices()
         }
-        try startRuntimeServices(restartVM: restartVM, restartProxy: restartProxy)
-        try waitForHealth(restartVM: restartVM, restartProxy: restartProxy)
+        try runStep("rollback-restore-rootfs-base") {
+            try replaceFile(from: backupRootfs, to: rootfsBase)
+        }
+        try runStep("rollback-restore-runtime-version") {
+            if fileExists(backupVersion) {
+                try replaceFile(from: backupVersion, to: runtimeVersion)
+            } else {
+                try writeRuntimeVersion(version: "rolled-back", bundle: backup)
+            }
+        }
+        try runStep("rollback-start-runtime-services") {
+            try startRuntimeServices(restartVM: restartVM, restartProxy: restartProxy)
+        }
+        try runStep("rollback-wait-runtime-health") {
+            try waitForHealth(restartVM: restartVM, restartProxy: restartProxy)
+        }
 
-        print("rollback restored: \(backup.path)")
-        print("mutable VM disk preserved: \(vmDisk.path)")
+        log("rollback restored backup=\(backup.path)")
+        log("mutable VM disk preserved path=\(vmDisk.path)")
     }
 
     private func loadManifest(_ url: URL) throws -> UpdateBundleManifest {
@@ -600,7 +640,7 @@ struct RuntimeLifecycle {
 
     private func runMigrations(_ migrations: [UpdateBundleMigration], stagedBundle: URL) throws {
         guard !migrations.isEmpty else {
-            print("no migrations to run")
+            log("no migrations to run")
             return
         }
 
@@ -612,7 +652,7 @@ struct RuntimeLifecycle {
                     "migration is not executable: \(migration.name)"
                 )
             }
-            print("running migration: \(migration.name)")
+            log("running migration name=\(migration.name) path=\(migrationURL.path)")
             try runRequired(migrationURL.path, arguments: [])
         }
     }
@@ -707,7 +747,7 @@ struct RuntimeLifecycle {
     }
 
     private func stopRuntimeServices() throws {
-        print("stopping runtime services")
+        log("stopping runtime services")
         if isLaunchdLoaded(Constants.Launchd.proxyService) {
             _ = runProcess(
                 Constants.Commands.launchctl,
@@ -724,22 +764,24 @@ struct RuntimeLifecycle {
 
     private func startRuntimeServices(restartVM: Bool, restartProxy: Bool) throws {
         if restartVM {
-            print("starting VM service")
+            log("starting VM service label=\(Constants.Launchd.vmService)")
             startLaunchdService(Constants.Launchd.vmService)
         }
         if restartProxy {
-            print("starting proxy service")
+            log("starting proxy service label=\(Constants.Launchd.proxyService)")
             startLaunchdService(Constants.Launchd.proxyService)
         }
     }
 
     private func startLaunchdService(_ label: String) {
         let plist = "/Library/LaunchDaemons/\(label).plist"
+        log("launchd bootstrap label=\(label) plist=\(plist)")
         let bootstrap = runProcess(
             Constants.Commands.launchctl,
             arguments: ["bootstrap", "system", plist]
         )
         if bootstrap.exitCode != 0 {
+            log("launchd bootstrap failed label=\(label) exitCode=\(bootstrap.exitCode); trying kickstart")
             _ = runProcess(
                 Constants.Commands.launchctl,
                 arguments: ["kickstart", "-k", "system/\(label)"]
@@ -749,12 +791,12 @@ struct RuntimeLifecycle {
 
     private func waitForHealth(restartVM: Bool, restartProxy: Bool) throws {
         guard restartVM || restartProxy else {
-            print("runtime services were not running before apply; skipping health wait")
+            log("runtime services were not running before apply; skipping health wait")
             return
         }
 
         let deadline = Date().addingTimeInterval(Constants.Runtime.waitTimeoutSeconds)
-        print("waiting for runtime health")
+        log("waiting for runtime health timeoutSeconds=\(Constants.Runtime.waitTimeoutSeconds)")
         while Date() < deadline {
             if restartVM, !isLaunchdLoaded(Constants.Launchd.vmService) {
                 Thread.sleep(forTimeInterval: 3)
@@ -767,7 +809,7 @@ struct RuntimeLifecycle {
 
             let proxyStatus = httpStatus(Constants.Runtime.proxyHealthURL)
             if isSuccessfulHTTPStatus(proxyStatus) {
-                print("runtime health ok: host proxy HTTP \(proxyStatus)")
+                log("runtime health ok hostProxyHTTP=\(proxyStatus)")
                 return
             }
             Thread.sleep(forTimeInterval: 3)
@@ -777,6 +819,21 @@ struct RuntimeLifecycle {
 
     private func isoTimestamp() -> String {
         ISO8601DateFormatter().string(from: Date())
+    }
+
+    private func log(_ message: String) {
+        print("[\(isoTimestamp())] \(message)")
+    }
+
+    private func runStep(_ name: String, _ operation: () throws -> Void) throws {
+        log("step=\(name) status=started")
+        do {
+            try operation()
+            log("step=\(name) status=completed")
+        } catch {
+            log("step=\(name) status=failed error=\(error)")
+            throw error
+        }
     }
 
     private func backupTimestamp() -> String {
@@ -843,22 +900,35 @@ struct RuntimeLifecycle {
             try process.run()
             process.waitUntilExit()
             let output = stdout.fileHandleForReading.readDataToEndOfFile()
+            let errorOutput = stderr.fileHandleForReading.readDataToEndOfFile()
             return RuntimeProcessResult(
                 exitCode: process.terminationStatus,
-                stdout: String(data: output, encoding: .utf8) ?? ""
+                stdout: String(data: output, encoding: .utf8) ?? "",
+                stderr: String(data: errorOutput, encoding: .utf8) ?? ""
             )
         } catch {
-            return RuntimeProcessResult(exitCode: 127, stdout: "")
+            return RuntimeProcessResult(
+                exitCode: 127,
+                stdout: "",
+                stderr: error.localizedDescription
+            )
         }
     }
 
     private func runRequired(_ executable: String, arguments: [String]) throws {
+        log("command started executable=\(executable) arguments=\(arguments.joined(separator: " "))")
         let result = runProcess(executable, arguments: arguments)
         guard result.exitCode == 0 else {
+            let stderr = result.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !stderr.isEmpty {
+                log("command stderr executable=\(executable) stderr=\(stderr)")
+            }
+            log("command failed executable=\(executable) exitCode=\(result.exitCode)")
             throw LauncherError.missingArgument(
                 "command failed: \(([executable] + arguments).joined(separator: " "))"
             )
         }
+        log("command completed executable=\(executable)")
     }
 
     private func runProcessToFile(_ executable: String, arguments: [String], output: URL) throws {
@@ -876,6 +946,13 @@ struct RuntimeLifecycle {
         try process.run()
         process.waitUntilExit()
         guard process.terminationStatus == 0 else {
+            let errorOutput = stderr.fileHandleForReading.readDataToEndOfFile()
+            let stderrText = String(data: errorOutput, encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if !stderrText.isEmpty {
+                log("command stderr executable=\(executable) stderr=\(stderrText)")
+            }
+            log("command failed executable=\(executable) exitCode=\(process.terminationStatus)")
             throw LauncherError.missingArgument(
                 "command failed: \(([executable] + arguments).joined(separator: " "))"
             )
@@ -938,6 +1015,7 @@ struct UpdateBundleMigration: Decodable {
 struct RuntimeProcessResult {
     let exitCode: Int32
     let stdout: String
+    let stderr: String
 }
 
 struct RuntimeVersionDocument: Encodable {
