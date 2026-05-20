@@ -99,7 +99,8 @@ make vm-pkg
 생성물:
 
 ```text
-.tmp/TiroshVitalServerVM-0.1.0.pkg
+dist/TiroshVitalServerVM-0.1.0.pkg
+dist/TiroshVitalServer-0.1.0.dmg
 ```
 
 이 package는 아래 항목을 설치합니다.
@@ -145,7 +146,7 @@ sudo vitalserver-vm runtime rollback
 기본 생성 위치:
 
 ```text
-.tmp/update-bundles/update-bundle-0.1.0/
+dist/update-bundles/update-bundle-0.1.0/
 ```
 
 완전한 air-gapped 설치물은 개발용 VM disk가 아니라 별도 golden VM home에서 만든 clean rootfs base를 사용합니다.

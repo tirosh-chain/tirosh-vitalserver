@@ -50,21 +50,22 @@ VM_INSTALL_NGINX_PREFIX := $(VM_INSTALL_PREFIX)/nginx
 VM_INSTALL_NGINX_BIN := $(VM_INSTALL_NGINX_PREFIX)/sbin/nginx
 
 # Package artifacts.
+VM_DIST_DIR := dist
 VM_PKG_BUILD_DIR := .tmp/vitalserver-vm-pkg
 VM_PKG_ROOT := $(VM_PKG_BUILD_DIR)/root
 VM_PKG_SCRIPTS := $(VM_PKG_BUILD_DIR)/scripts
-VM_PKG_OUTPUT := .tmp/TiroshVitalServerVM-$(VM_PKG_VERSION).pkg
+VM_PKG_OUTPUT := $(VM_DIST_DIR)/TiroshVitalServerVM-$(VM_PKG_VERSION).pkg
 VM_PKG_NGINX_BUNDLE_DIR := $(VM_PKG_BUILD_DIR)/nginx-bundle
 VM_PKG_ROOTFS_CACHE := $(VM_PKG_BUILD_DIR)/rootfs-base.raw.gz
 VM_DOCKER_IMAGE_BUNDLE := $(VM_PKG_BUILD_DIR)/docker-images/vitalserver-images.tar.gz
-VM_UPDATE_BUNDLE_DIR := .tmp/update-bundles
+VM_UPDATE_BUNDLE_DIR := $(VM_DIST_DIR)/update-bundles
 VM_UPDATE_BUNDLE_PATH := $(VM_UPDATE_BUNDLE_DIR)/update-bundle-$(VM_UPDATE_BUNDLE_VERSION)
 
 # App artifacts.
 VM_APP_NAME := Tirosh VitalServer Manager
 VM_APP_BUNDLE := .tmp/$(VM_APP_NAME).app
 VM_DMG_STAGING := .tmp/vitalserver-vm-dmg
-VM_DMG_OUTPUT := .tmp/TiroshVitalServer-$(VM_PKG_VERSION).dmg
+VM_DMG_OUTPUT := $(VM_DIST_DIR)/TiroshVitalServer-$(VM_PKG_VERSION).dmg
 VM_INSTALLED_IP_FILE := $(VM_INSTALL_HOME)/data/run/vm-ip
 
 # Golden rootfs build paths. Keep these separate from the developer VM home so

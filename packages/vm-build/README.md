@@ -42,7 +42,7 @@ Example with update migrations:
 uv run --project packages/vm-build vitalserver-vm-build update-bundle \
   --version 0.1.1 \
   --runtime-version 0.1.1 \
-  --output-dir .tmp/update-bundles \
+  --output-dir dist/update-bundles \
   --rootfs-base .tmp/vitalserver-vm-pkg/rootfs-base.raw.gz \
   --migration release/migrations/001-example
 ```

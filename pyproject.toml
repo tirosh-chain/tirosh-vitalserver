@@ -78,6 +78,7 @@ disallow_untyped_defs = true
 explicit_package_bases = true
 files = [
   "packages/vm-build/src",
+  "packages/vm-build/tests",
   "packages/vitalserver-testkit/src",
   "packages/vitalserver-testkit/tests",
   "scripts",
@@ -103,5 +104,6 @@ pythonpath = [
   "packages/vitalserver-testkit/src",
 ]
 testpaths = [
+  "packages/vm-build/tests",
   "packages/vitalserver-testkit/tests",
 ]

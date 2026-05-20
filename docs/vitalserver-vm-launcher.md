@@ -162,6 +162,7 @@ open ".tmp/Tirosh VitalServer Manager.app"
 ## Package 구성
 
 현재 repository의 `make vm-pkg`는 `.pkg`까지 가기 위한 개발 검증용 packaging target입니다.
+최종 배포 산출물은 `dist/`에 두고, `.tmp/`는 중간 작업물 전용으로 사용합니다.
 
 ```sh
 make vm-pkg
@@ -173,7 +174,8 @@ make vm-pkg-uninstall-dev
 생성물:
 
 ```text
-.tmp/TiroshVitalServerVM-0.1.0.pkg
+dist/TiroshVitalServerVM-0.1.0.pkg
+dist/TiroshVitalServer-0.1.0.dmg
 ```
 
 설치 후 구조:
@@ -333,7 +335,7 @@ VM_UPDATE_MIGRATIONS="release/migrations/001-example" make vm-update-bundle
 생성물:
 
 ```text
-.tmp/update-bundles/update-bundle-0.1.0/
+dist/update-bundles/update-bundle-0.1.0/
   manifest.json
   checksums.txt
   signature
