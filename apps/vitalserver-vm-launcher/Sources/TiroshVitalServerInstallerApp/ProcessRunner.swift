@@ -13,6 +13,28 @@ struct ProcessResult {
 }
 
 enum ProcessRunner {
+    static func runSync(_ executable: String, arguments: [String]) -> ProcessResult {
+        let process = Process()
+        let stdout = Pipe()
+        let stderr = Pipe()
+        process.executableURL = URL(fileURLWithPath: executable)
+        process.arguments = arguments
+        process.standardOutput = stdout
+        process.standardError = stderr
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+            return ProcessResult(
+                exitCode: process.terminationStatus,
+                stdout: String(data: stdout.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? "",
+                stderr: String(data: stderr.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+            )
+        } catch {
+            return ProcessResult(exitCode: 127, stdout: "", stderr: error.localizedDescription)
+        }
+    }
+
     static func run(_ executable: String, arguments: [String]) async -> ProcessResult {
         await Task.detached {
             let process = Process()

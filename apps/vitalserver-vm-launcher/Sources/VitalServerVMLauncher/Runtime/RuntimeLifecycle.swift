@@ -743,6 +743,9 @@ struct RuntimeLifecycle {
                 )
                 try replaceFile(from: stagedRootfs, to: rootfsBase)
             }
+            try runStep("replace-update-artifacts") {
+                try replaceUpdateArtifacts(manifest.artifacts, stagedBundle: stagedBundle)
+            }
             try runStep("run-migrations") {
                 try runMigrations(manifest.migrations, stagedBundle: stagedBundle)
             }
@@ -765,6 +768,7 @@ struct RuntimeLifecycle {
         }
 
         try writeRuntimeStatus(.healthy, operation: "apply-bundle", message: "bundle applied: \(manifest.version)")
+        try pruneOldRuntimeArtifacts()
         log("bundle applied path=\(stagedBundle.path)")
         log("mutable VM disk preserved path=\(vmDisk.path)")
     }
@@ -797,6 +801,23 @@ struct RuntimeLifecycle {
             } else {
                 try writeRuntimeVersion(version: "rolled-back", bundle: backup)
             }
+        }
+        try runStep("rollback-restore-update-artifacts") {
+            try restoreBackupPathIfExists(
+                backup.appendingPathComponent("app-bundle"),
+                to: URL(fileURLWithPath: "/Applications/Tirosh VitalServer Manager.app")
+            )
+            try restoreBackupPathIfExists(
+                backup.appendingPathComponent("nginx-bundle"),
+                to: productRoot.appendingPathComponent("nginx")
+            )
+            try restoreBackupPathIfExists(
+                backup.appendingPathComponent("guest-deploy"),
+                to: paths.home
+                    .appendingPathComponent(Constants.Paths.dataDirectory)
+                    .appendingPathComponent("deploy")
+            )
+            try restoreRuntimeToolsIfExists(backup.appendingPathComponent("runtime-tools"))
         }
         try runStep("rollback-start-runtime-services") {
             try startRuntimeServices(restartVM: restartVM, restartProxy: restartProxy, restartWatchdog: restartWatchdog)
@@ -885,6 +906,48 @@ struct RuntimeLifecycle {
         }
     }
 
+    private func replaceUpdateArtifacts(_ artifacts: [UpdateBundleArtifact], stagedBundle: URL) throws {
+        for artifact in artifacts where artifact.type != "rootfs-base" {
+            let source = stagedBundle.appendingPathComponent(artifact.name)
+            switch artifact.type {
+            case "app-bundle":
+                try replaceTarGz(source, destination: URL(fileURLWithPath: "/Applications/Tirosh VitalServer Manager.app"))
+            case "nginx-bundle":
+                try replaceTarGz(source, destination: productRoot.appendingPathComponent("nginx"))
+            case "guest-deploy":
+                try replaceTarGz(
+                    source,
+                    destination: paths.home
+                        .appendingPathComponent(Constants.Paths.dataDirectory)
+                        .appendingPathComponent("deploy")
+                )
+            case "runtime-tools":
+                try extractTarGz(source, destination: URL(fileURLWithPath: "/usr/local/bin"))
+            default:
+                throw LauncherError.bundleVerificationFailed("unsupported artifact type: \(artifact.type)")
+            }
+        }
+    }
+
+    private func replaceTarGz(_ source: URL, destination: URL) throws {
+        let parent = destination.deletingLastPathComponent()
+        let temporary = parent.appendingPathComponent(".\(destination.lastPathComponent).update")
+        if FileManager.default.fileExists(atPath: temporary.path) {
+            try FileManager.default.removeItem(at: temporary)
+        }
+        try FileManager.default.createDirectory(at: temporary, withIntermediateDirectories: true)
+        try runRequired(Constants.Commands.tar, arguments: ["-xzf", source.path, "-C", temporary.path, "--strip-components", "1"])
+        if FileManager.default.fileExists(atPath: destination.path) {
+            try FileManager.default.removeItem(at: destination)
+        }
+        try FileManager.default.moveItem(at: temporary, to: destination)
+    }
+
+    private func extractTarGz(_ source: URL, destination: URL) throws {
+        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+        try runRequired(Constants.Commands.tar, arguments: ["-xzf", source.path, "-C", destination.path])
+    }
+
     private func createBackup(reason: String) throws -> URL {
         let timestamp = backupTimestamp()
         let backup = backupsDirectory.appendingPathComponent("\(timestamp)-\(reason)")
@@ -902,6 +965,18 @@ struct RuntimeLifecycle {
                 to: backup.appendingPathComponent(Constants.Artifacts.runtimeVersion)
             )
         }
+        try backupPathIfExists(
+            URL(fileURLWithPath: "/Applications/Tirosh VitalServer Manager.app"),
+            to: backup.appendingPathComponent("app-bundle")
+        )
+        try backupPathIfExists(productRoot.appendingPathComponent("nginx"), to: backup.appendingPathComponent("nginx-bundle"))
+        try backupPathIfExists(
+            paths.home
+                .appendingPathComponent(Constants.Paths.dataDirectory)
+                .appendingPathComponent("deploy"),
+            to: backup.appendingPathComponent("guest-deploy")
+        )
+        try backupRuntimeTools(to: backup.appendingPathComponent("runtime-tools"))
 
         let manifest = BackupManifest(
             product: "TiroshVitalServer",
@@ -914,6 +989,52 @@ struct RuntimeLifecycle {
         let data = try JSONEncoder.pretty.encode(manifest)
         try data.write(to: backup.appendingPathComponent(Constants.Artifacts.backupManifest))
         return backup
+    }
+
+    private func backupPathIfExists(_ source: URL, to destination: URL) throws {
+        guard FileManager.default.fileExists(atPath: source.path) else {
+            return
+        }
+        try FileManager.default.copyItem(at: source, to: destination)
+    }
+
+    private func restoreBackupPathIfExists(_ source: URL, to destination: URL) throws {
+        guard FileManager.default.fileExists(atPath: source.path) else {
+            return
+        }
+        if FileManager.default.fileExists(atPath: destination.path) {
+            try FileManager.default.removeItem(at: destination)
+        }
+        try FileManager.default.copyItem(at: source, to: destination)
+    }
+
+    private func backupRuntimeTools(to destination: URL) throws {
+        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+        for path in [
+            Constants.InstallPaths.vmBin,
+            Constants.InstallPaths.proxyRun,
+            "/usr/local/bin/tirosh-vitalserver-uninstall",
+        ] {
+            let source = URL(fileURLWithPath: path)
+            if FileManager.default.fileExists(atPath: source.path) {
+                try FileManager.default.copyItem(at: source, to: destination.appendingPathComponent(source.lastPathComponent))
+            }
+        }
+    }
+
+    private func restoreRuntimeToolsIfExists(_ source: URL) throws {
+        guard directoryExists(source) else {
+            return
+        }
+        let tools = try FileManager.default.contentsOfDirectory(at: source, includingPropertiesForKeys: nil)
+        for tool in tools {
+            let destination = URL(fileURLWithPath: "/usr/local/bin").appendingPathComponent(tool.lastPathComponent)
+            if FileManager.default.fileExists(atPath: destination.path) {
+                try FileManager.default.removeItem(at: destination)
+            }
+            try FileManager.default.copyItem(at: tool, to: destination)
+            try runRequired(Constants.Commands.chmod, arguments: ["0755", destination.path])
+        }
     }
 
     private func latestBackup() -> URL? {
@@ -931,6 +1052,32 @@ struct RuntimeLifecycle {
             }
             .sorted { $0.lastPathComponent < $1.lastPathComponent }
             .last
+    }
+
+    private func pruneOldRuntimeArtifacts() throws {
+        try pruneOldDirectories(in: backupsDirectory, keep: Constants.Runtime.backupKeepCount, requiredNameFragment: "-before-")
+        try pruneOldDirectories(in: bundlesDirectory, keep: Constants.Runtime.stagedBundleKeepCount, requiredNameFragment: "update-bundle-")
+    }
+
+    private func pruneOldDirectories(in directory: URL, keep: Int, requiredNameFragment: String) throws {
+        guard let contents = try? FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            return
+        }
+        let directories = contents
+            .filter { url in
+                let values = try? url.resourceValues(forKeys: [.isDirectoryKey])
+                return values?.isDirectory == true && url.lastPathComponent.contains(requiredNameFragment)
+            }
+            .sorted { $0.lastPathComponent < $1.lastPathComponent }
+
+        for directory in directories.dropLast(keep) {
+            try FileManager.default.removeItem(at: directory)
+            log("pruned runtime artifact path=\(directory.path)")
+        }
     }
 
     private func requireLatestBackup() throws -> URL {

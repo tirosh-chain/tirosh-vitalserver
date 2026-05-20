@@ -5,10 +5,13 @@ import Foundation
 final class InstallerController: ObservableObject {
     @Published var settings = InstallerSettings()
     @Published var message = "Ready"
+    @Published var stage = "Ready"
+    @Published var validationIssues: [String] = []
     @Published var isBusy = false
 
     private let settingsPath = "/private/tmp/tirosh-vitalserver-install.json"
     private let packageName = "Install Tirosh VitalServer.pkg"
+    private let installLog = "/Library/Application Support/TiroshVitalServer/logs/install.log"
 
     func chooseVitalFilesDirectory() {
         let panel = NSOpenPanel()
@@ -23,24 +26,53 @@ final class InstallerController: ObservableObject {
     }
 
     func install() async {
+        validationIssues = validate()
+        guard validationIssues.isEmpty else {
+            message = validationIssues.joined(separator: "\n")
+            stage = "Fix settings"
+            return
+        }
+
         isBusy = true
         defer { isBusy = false }
 
         do {
+            stage = "Preparing"
             let packageURL = try resolvePackageURL()
             try writeSettings()
+            let logTask = Task { await followInstallLog() }
+            defer { logTask.cancel() }
             message = "Waiting for administrator approval..."
+            stage = "Waiting for administrator approval"
             let command = "installer -pkg \(shellQuote(packageURL.path)) -target /"
             let script = #"do shell script "\#(appleScriptEscaped(command))" with administrator privileges"#
             let result = await ProcessRunner.run("/usr/bin/osascript", arguments: ["-e", script])
             if result.exitCode == 0 {
+                stage = "Completed"
                 message = "Installation completed."
             } else {
+                stage = "Failed"
                 let output = result.summary.trimmingCharacters(in: .whitespacesAndNewlines)
                 message = output.isEmpty ? "Installation was cancelled or failed." : output
             }
         } catch {
+            stage = "Failed"
             message = "\(error)"
+        }
+    }
+
+    func openInstallLog() {
+        NSWorkspace.shared.open(URL(fileURLWithPath: installLog))
+    }
+
+    func revalidate() {
+        validationIssues = validate()
+        if validationIssues.isEmpty {
+            message = "Settings look valid."
+            stage = "Ready"
+        } else {
+            message = validationIssues.joined(separator: "\n")
+            stage = "Fix settings"
         }
     }
 
@@ -61,6 +93,81 @@ final class InstallerController: ObservableObject {
             ofItemAtPath: settingsPath
         )
         message = "Wrote install settings: \(settingsPath)"
+    }
+
+    private func validate() -> [String] {
+        var issues: [String] = []
+        if !settings.vitalFilesDirectory.hasPrefix("/") {
+            issues.append("Vital files directory must be an absolute path.")
+        }
+        if settings.networkMode != "shared", settings.networkMode != "bridged" {
+            issues.append("Network must be shared or bridged.")
+        }
+        if settings.vmHostname.isEmpty || settings.vmHostname.count > 63 {
+            issues.append("VM hostname must be 1-63 characters.")
+        }
+        if settings.vmHostname.contains("\n") || settings.vmHostname.contains("\r") {
+            issues.append("VM hostname must not contain newlines.")
+        }
+        if settings.publicHost.contains("\n") || settings.publicHost.contains("\r") {
+            issues.append("Public host must not contain newlines.")
+        }
+        if settings.adminPassword.isEmpty {
+            issues.append("Admin password must not be empty.")
+        }
+        if !portAvailable(settings.proxyPort) {
+            issues.append("Proxy port \(settings.proxyPort) is already in use.")
+        }
+        if availableBytes(at: "/Library/Application Support") < requiredInstallBytes() {
+            issues.append("Not enough free disk space under /Library/Application Support for the selected disk/rootfs policy.")
+        }
+        return issues
+    }
+
+    private func requiredInstallBytes() -> UInt64 {
+        UInt64(settings.diskGiB) * 1024 * 1024 * 1024 / 8
+    }
+
+    private func availableBytes(at path: String) -> UInt64 {
+        guard let attributes = try? FileManager.default.attributesOfFileSystem(forPath: path),
+              let value = attributes[.systemFreeSize] as? NSNumber else {
+            return 0
+        }
+        return value.uint64Value
+    }
+
+    private func portAvailable(_ port: Int) -> Bool {
+        let result = ProcessRunner.runSync("/usr/sbin/lsof", arguments: ["-nP", "-iTCP:\(port)", "-sTCP:LISTEN"])
+        return result.exitCode != 0
+    }
+
+    private func followInstallLog() async {
+        while !Task.isCancelled {
+            if let text = try? String(contentsOfFile: installLog, encoding: .utf8) {
+                let lines = text.split(separator: "\n").suffix(20).joined(separator: "\n")
+                if !lines.isEmpty {
+                    message = lines
+                    updateStage(from: lines)
+                }
+            }
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+        }
+    }
+
+    private func updateStage(from logTail: String) {
+        if logTail.contains("provision-vm-disk") {
+            stage = "Creating VM disk"
+        } else if logTail.contains("create-cloud-init-seed") {
+            stage = "Creating VM boot seed"
+        } else if logTail.contains("start-installed-services") {
+            stage = "Starting services"
+        } else if logTail.contains("runtime install completed") {
+            stage = "Completed"
+        } else if logTail.contains("status=failed") || logTail.contains("postinstall failed") {
+            stage = "Failed"
+        } else if logTail.contains("runtime install started") {
+            stage = "Installing runtime"
+        }
     }
 
     private func shellQuote(_ value: String) -> String {

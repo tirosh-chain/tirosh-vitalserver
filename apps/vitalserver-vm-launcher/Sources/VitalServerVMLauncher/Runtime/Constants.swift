@@ -73,6 +73,8 @@ enum Constants {
         static let updateFreeSpaceMarginBytes: UInt64 = 2 * 1024 * 1024 * 1024
         static let logRotationMaxBytes: UInt64 = 10 * 1024 * 1024
         static let logRotationKeepCount = 5
+        static let backupKeepCount = 5
+        static let stagedBundleKeepCount = 3
 
         static func proxyHealthURL(port: Int) -> String {
             "http://127.0.0.1:\(port)/"
@@ -94,5 +96,6 @@ enum Constants {
         static let plistBuddy = "/usr/libexec/PlistBuddy"
         static let chmod = "/bin/chmod"
         static let chown = "/usr/sbin/chown"
+        static let tar = "/usr/bin/tar"
     }
 }

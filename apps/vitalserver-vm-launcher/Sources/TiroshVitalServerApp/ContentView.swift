@@ -162,6 +162,18 @@ struct ContentView: View {
                     controller.chooseUpdateBundle()
                 }
             }
+            if !controller.selectedBundleSummary.isEmpty {
+                Text(controller.selectedBundleSummary)
+                    .font(.system(.body, design: .monospaced))
+                    .textSelection(.enabled)
+            }
+            if let latestBackup = controller.status.latestBackup {
+                Text("Latest backup: \(latestBackup)")
+                    .font(.system(.body, design: .monospaced))
+                    .lineLimit(2)
+                    .truncationMode(.middle)
+                    .textSelection(.enabled)
+            }
             HStack(spacing: 10) {
                 Button(AppConstants.Actions.applyBundle) {
                     Task { await controller.applySelectedBundle() }
@@ -171,6 +183,9 @@ struct ContentView: View {
                     Task { await controller.rollbackRuntime() }
                 }
                 .disabled(controller.isBusy || !controller.status.runtimeInstalled)
+                Button(AppConstants.Actions.openLogs) {
+                    controller.openLogs()
+                }
                 Spacer()
             }
         }

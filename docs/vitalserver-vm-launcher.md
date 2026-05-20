@@ -732,6 +732,10 @@ dist/update-bundles/update-bundle-0.1.0/
   checksums.txt
   signature
   rootfs-base.raw.gz
+  app-bundle.tar.gz
+  runtime-tools.tar.gz
+  nginx-bundle.tar.gz
+  guest-deploy.tar.gz
   migrations/
 ```
 
@@ -750,6 +754,16 @@ sudo vitalserver-vm runtime rollback
 ```
 
 `apply-bundle`은 mutable `vm-disk.img`를 보존하고, replaceable artifact만 backup/rollback 대상으로 삼습니다. 적용 전 backup을 만들고 VM/proxy를 중지한 뒤 artifact를 교체하고 executable migration을 순서대로 실행합니다. 기존에 서비스가 실행 중이었다면 재시작 후 health check를 통과해야 성공 처리합니다. migration 또는 health check 실패 시 `rollback`으로 직전 backup을 복원합니다.
+
+지원 artifact type:
+
+| type | artifact name | 적용 대상 |
+|---|---|---|
+| `rootfs-base` | `rootfs-base.raw.gz` | 이후 provisioning 기준 rootfs base |
+| `app-bundle` | `app-bundle.tar.gz` | `/Applications/Tirosh VitalServer Manager.app` |
+| `runtime-tools` | `runtime-tools.tar.gz` | `/usr/local/bin` runtime tools |
+| `nginx-bundle` | `nginx-bundle.tar.gz` | host nginx bundle |
+| `guest-deploy` | `guest-deploy.tar.gz` | VM shared deploy bundle |
 
 설치 후 runtime 설정 변경은 아래 command가 source of truth입니다.
 

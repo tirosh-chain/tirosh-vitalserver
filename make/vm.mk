@@ -371,6 +371,10 @@ vm-update-bundle: vm-pkg
 		--runtime-version "$(VM_PKG_VERSION)" \
 		--output-dir "$(VM_UPDATE_BUNDLE_DIR)" \
 		--rootfs-base "$(VM_PKG_ROOTFS_CACHE)" \
+		$(if $(VM_UPDATE_APP_BUNDLE),--app-bundle "$(VM_UPDATE_APP_BUNDLE)") \
+		$(if $(VM_UPDATE_RUNTIME_TOOLS),--runtime-tools "$(VM_UPDATE_RUNTIME_TOOLS)") \
+		$(if $(VM_UPDATE_NGINX_BUNDLE),--nginx-bundle "$(VM_UPDATE_NGINX_BUNDLE)") \
+		$(if $(VM_UPDATE_GUEST_DEPLOY),--guest-deploy "$(VM_UPDATE_GUEST_DEPLOY)") \
 		$(foreach migration,$(VM_UPDATE_MIGRATIONS),--migration "$(migration)")
 	@printf "VM update bundle is ready: %s\n" "$(VM_UPDATE_BUNDLE_PATH)"
 

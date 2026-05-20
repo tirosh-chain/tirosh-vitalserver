@@ -6,6 +6,7 @@ final class RuntimeController: ObservableObject {
     @Published var status = RuntimeStatus()
     @Published var settings = RuntimeSettings.load()
     @Published var selectedBundlePath = ""
+    @Published var selectedBundleSummary = ""
     @Published var message = AppConstants.StatusText.ready
     @Published var isBusy = false
 
@@ -84,6 +85,7 @@ final class RuntimeController: ObservableObject {
         panel.prompt = AppConstants.Actions.chooseBundle
         if panel.runModal() == .OK, let url = panel.url {
             selectedBundlePath = url.path
+            selectedBundleSummary = updateBundleSummary(url: url)
         }
     }
 
@@ -127,6 +129,14 @@ final class RuntimeController: ObservableObject {
             successMessage: AppConstants.StatusText.rollbackCompleted
         )
         await refreshHealthStatus()
+    }
+
+    func openLogs() {
+        if FileManager.default.fileExists(atPath: AppConstants.Paths.runtimeLogs) {
+            NSWorkspace.shared.open(URL(fileURLWithPath: AppConstants.Paths.runtimeLogs))
+        } else {
+            NSWorkspace.shared.open(URL(fileURLWithPath: AppConstants.Paths.installLog))
+        }
     }
 
     func openVitalServer() {
@@ -189,6 +199,23 @@ final class RuntimeController: ObservableObject {
         )
         let code = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
         return result.exitCode == 0 ? code : AppConstants.StatusText.failed
+    }
+
+    private func updateBundleSummary(url: URL) -> String {
+        let manifestURL = url.appendingPathComponent("manifest.json")
+        guard let data = FileManager.default.contents(atPath: manifestURL.path),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return "Missing or invalid manifest.json"
+        }
+        let version = object["version"] as? String ?? "unknown"
+        let artifacts = (object["artifacts"] as? [[String: Any]] ?? [])
+            .compactMap { artifact -> String? in
+                guard let type = artifact["type"] as? String,
+                      let name = artifact["name"] as? String else { return nil }
+                return "\(type): \(name)"
+            }
+            .joined(separator: "\n")
+        return "Version: \(version)\nArtifacts:\n\(artifacts)"
     }
 
     private func shellQuote(_ value: String) -> String {

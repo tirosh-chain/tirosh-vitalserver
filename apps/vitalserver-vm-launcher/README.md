@@ -189,7 +189,17 @@ Install Tirosh VitalServer.pkg
 
 상세한 파일별 책임과 DMG 설치 단계는 `docs/vitalserver-vm-launcher.md`의 `Source 책임`, `DMG Build 흐름`, `DMG 설치 흐름`을 기준으로 봅니다.
 
-현재 `runtime apply-bundle`이 실제로 적용하는 artifact는 `rootfs-base.raw.gz`와 executable migration입니다. `.pkg` 재설치나 app/runtime tools 교체는 아직 update bundle 계약에 포함하지 않습니다. 필요한 시점에 artifact type별 apply 동작을 추가합니다.
+현재 `runtime apply-bundle`이 실제로 적용하는 artifact type은 아래입니다.
+
+| type | artifact name | 적용 대상 |
+|---|---|---|
+| `rootfs-base` | `rootfs-base.raw.gz` | 이후 provisioning 기준 rootfs base |
+| `app-bundle` | `app-bundle.tar.gz` | `/Applications/Tirosh VitalServer Manager.app` |
+| `runtime-tools` | `runtime-tools.tar.gz` | `/usr/local/bin` runtime tools |
+| `nginx-bundle` | `nginx-bundle.tar.gz` | host nginx bundle |
+| `guest-deploy` | `guest-deploy.tar.gz` | VM shared deploy bundle |
+
+각 artifact는 apply 전 backup 대상이며, migration 또는 health check 실패 시 rollback 대상입니다.
 
 `rootfs-base.raw.gz`는 immutable base artifact이고, 설치된 `vm-disk.img`는 mutable runtime instance입니다. 따라서 update에서 rootfs base를 교체해도 이미 실행 중인 `vm-disk.img` 내부 OS/runtime이 자동으로 교체되지는 않습니다. 설치된 VM 내부 변경은 migration이나 별도 guest update contract로 처리해야 합니다.
 

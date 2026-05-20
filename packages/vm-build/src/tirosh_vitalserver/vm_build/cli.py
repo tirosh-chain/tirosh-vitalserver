@@ -78,6 +78,10 @@ def main() -> int:
     update_bundle.add_argument("--runtime-version", required=True)
     update_bundle.add_argument("--output-dir", type=Path, required=True)
     update_bundle.add_argument("--rootfs-base", type=Path, required=True)
+    update_bundle.add_argument("--app-bundle", type=Path)
+    update_bundle.add_argument("--runtime-tools", type=Path)
+    update_bundle.add_argument("--nginx-bundle", type=Path)
+    update_bundle.add_argument("--guest-deploy", type=Path)
     update_bundle.add_argument("--migration", action="append", type=Path, default=[])
 
     verify_update_bundle = subparsers.add_parser(

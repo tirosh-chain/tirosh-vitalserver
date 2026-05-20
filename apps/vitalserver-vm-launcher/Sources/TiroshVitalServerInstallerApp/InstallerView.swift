@@ -6,6 +6,7 @@ struct InstallerView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             header
+            progressPanel
             settingsForm
             actionBar
             logPanel
@@ -61,6 +62,13 @@ struct InstallerView: View {
 
     private var actionBar: some View {
         HStack {
+            Button("Validate") {
+                controller.revalidate()
+            }
+            .disabled(controller.isBusy)
+            Button("Open Install Log") {
+                controller.openInstallLog()
+            }
             Spacer()
             Button("Install") {
                 Task { await controller.install() }
@@ -68,6 +76,29 @@ struct InstallerView: View {
             .keyboardShortcut(.defaultAction)
             .disabled(controller.isBusy)
         }
+    }
+
+    private var progressPanel: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(controller.stage)
+                    .fontWeight(.semibold)
+                Spacer()
+                if controller.isBusy {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+            }
+            if !controller.validationIssues.isEmpty {
+                ForEach(controller.validationIssues, id: \.self) { issue in
+                    Text(issue)
+                        .foregroundStyle(.red)
+                }
+            }
+        }
+        .padding(12)
+        .background(Color(nsColor: .controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
     private var logPanel: some View {

@@ -10,6 +10,7 @@ struct RuntimeStatus {
     var statusMessage: String?
     var updatedAt: String?
     var runtimeVersion: String?
+    var latestBackup: String?
     var vmIP: String?
     var guestHTTP: String?
     var hostProxyHTTP: String?
@@ -50,6 +51,7 @@ struct RuntimeStatus {
             statusMessage: document?.message,
             updatedAt: document?.updatedAt,
             runtimeVersion: document?.runtimeVersion,
+            latestBackup: document?.latestBackup,
             vmIP: document?.vmIP ?? readTrimmed(paths.vmIPFile),
             guestHTTP: document?.guestHTTP,
             hostProxyHTTP: document?.hostProxyHTTP,
@@ -137,4 +139,5 @@ private struct RuntimeStatusDocument: Decodable {
     let hostProxyHTTP: String
     let guestHTTP: String
     let failureReasons: [String]
+    let latestBackup: String?
 }

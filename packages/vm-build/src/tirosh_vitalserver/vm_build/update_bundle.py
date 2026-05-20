@@ -28,6 +28,15 @@ def run_build_update_bundle(args: Any) -> int:
     artifacts = [
         ArtifactInput(args.rootfs_base, "rootfs-base.raw.gz", "rootfs-base"),
     ]
+    optional_artifacts = [
+        (args.app_bundle, "app-bundle.tar.gz", "app-bundle"),
+        (args.runtime_tools, "runtime-tools.tar.gz", "runtime-tools"),
+        (args.nginx_bundle, "nginx-bundle.tar.gz", "nginx-bundle"),
+        (args.guest_deploy, "guest-deploy.tar.gz", "guest-deploy"),
+    ]
+    for source, name, kind in optional_artifacts:
+        if source is not None:
+            artifacts.append(ArtifactInput(source, name, kind))
 
     artifact_entries = []
     checksum_lines = []
