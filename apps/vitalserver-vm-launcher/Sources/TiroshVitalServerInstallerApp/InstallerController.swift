@@ -7,12 +7,35 @@ final class InstallerController: ObservableObject {
     @Published var message = "Ready"
     @Published var stage = "Ready"
     @Published var validationIssues: [String] = []
+    @Published var isInstalled = false
     @Published var isBusy = false
 
     private let settingsPath = "/private/tmp/tirosh-vitalserver-install.json"
     private let packageName = "Install Tirosh VitalServer.pkg"
+    private let managerAppPath = "/Applications/Tirosh VitalServer Manager.app"
+    private let launcherPath = "/usr/local/bin/vitalserver-vm"
+    private let uninstallerPath = "/usr/local/bin/tirosh-vitalserver-uninstall"
+    private let runtimeStatusPath = "/Library/Application Support/TiroshVitalServer/status/runtime-status.json"
     private let installLog = "/Library/Application Support/TiroshVitalServer/logs/install.log"
+    private let uninstallLog = "/private/tmp/tirosh-vitalserver-uninstall.log"
     private let installFreeSpaceMarginBytes: UInt64 = 4 * 1024 * 1024 * 1024
+
+    var canOpenManager: Bool {
+        FileManager.default.fileExists(atPath: managerAppPath)
+    }
+
+    var canUninstall: Bool {
+        FileManager.default.isExecutableFile(atPath: uninstallerPath)
+    }
+
+    func refreshInstallationState() {
+        isInstalled = [
+            managerAppPath,
+            launcherPath,
+            uninstallerPath,
+            runtimeStatusPath,
+        ].contains { FileManager.default.fileExists(atPath: $0) }
+    }
 
     func chooseVitalFilesDirectory() {
         let panel = NSOpenPanel()
@@ -26,20 +49,25 @@ final class InstallerController: ObservableObject {
         }
     }
 
-    func install() async {
+    func install(shouldWriteSettings: Bool = true) async {
         isBusy = true
         defer { isBusy = false }
 
         do {
             stage = "Preparing"
             let packageURL = try resolvePackageURL()
-            validationIssues = validate(packageURL: packageURL)
-            guard validationIssues.isEmpty else {
-                message = validationIssues.joined(separator: "\n")
-                stage = "Fix settings"
-                return
+            if shouldWriteSettings {
+                validationIssues = validate(packageURL: packageURL)
+                guard validationIssues.isEmpty else {
+                    message = validationIssues.joined(separator: "\n")
+                    stage = "Fix settings"
+                    return
+                }
+                try writeSettings()
+            } else {
+                validationIssues = []
+                cleanupSettingsFile()
             }
-            try writeSettings()
             defer {
                 cleanupSettingsFile()
             }
@@ -53,6 +81,7 @@ final class InstallerController: ObservableObject {
             if result.exitCode == 0 {
                 stage = "Completed"
                 message = "Installation completed."
+                refreshInstallationState()
             } else {
                 stage = "Failed"
                 let output = result.summary.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -64,8 +93,46 @@ final class InstallerController: ObservableObject {
         }
     }
 
+    func openManager() {
+        guard canOpenManager else {
+            message = "Manager app is not installed at \(managerAppPath)."
+            refreshInstallationState()
+            return
+        }
+        NSWorkspace.shared.open(URL(fileURLWithPath: managerAppPath))
+    }
+
+    func uninstall() async {
+        guard canUninstall else {
+            message = "Missing uninstaller: \(uninstallerPath)"
+            refreshInstallationState()
+            return
+        }
+
+        isBusy = true
+        defer { isBusy = false }
+
+        stage = "Waiting for administrator approval"
+        message = "Waiting for administrator approval..."
+        let script = #"do shell script "\#(appleScriptEscaped(shellQuote(uninstallerPath)))" with administrator privileges"#
+        let result = await ProcessRunner.run("/usr/bin/osascript", arguments: ["-e", script])
+        if result.exitCode == 0 {
+            stage = "Ready"
+            message = "Uninstall completed."
+        } else {
+            stage = "Failed"
+            let output = result.summary.trimmingCharacters(in: .whitespacesAndNewlines)
+            message = output.isEmpty ? "Uninstall was cancelled or failed." : output
+        }
+        refreshInstallationState()
+    }
+
     func openInstallLog() {
         NSWorkspace.shared.open(URL(fileURLWithPath: installLog))
+    }
+
+    func openUninstallLog() {
+        NSWorkspace.shared.open(URL(fileURLWithPath: uninstallLog))
     }
 
     func revalidate() {

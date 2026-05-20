@@ -169,11 +169,11 @@ make vm-dmg
   -> pkgbuild
     -> dist/TiroshVitalServerVM-<version>.pkg
   -> vm-installer-app
-    -> .tmp/Configure & Install Tirosh VitalServer.app
+    -> .tmp/Tirosh VitalServer Setup.app
   -> hdiutil create
     -> dist/TiroshVitalServer-<version>.dmg
 
-Configure & Install Tirosh VitalServer.app
+Tirosh VitalServer Setup.app
   -> write /private/tmp/tirosh-vitalserver-install.json
   -> run installer -pkg "Install Tirosh VitalServer.pkg" -target /
 
@@ -335,6 +335,10 @@ Tirosh VitalServer Manager.app
 | Rollback | 최신 backup을 `runtime rollback`으로 복원 |
 | Open VitalServer | `http://127.0.0.1/` 열기 |
 | Uninstall | 설치된 `/usr/local/bin/tirosh-vitalserver-uninstall` 실행 |
+
+Setup app은 설치 전에는 `Install` 진입점을 제공하고, 설치 후 다시 열면 `Open Manager`,
+`Uninstall`, `Reinstall / Repair` 유지보수 진입점을 제공합니다. `Uninstall`의 실제 구현은
+Manager app과 동일하게 설치된 `/usr/local/bin/tirosh-vitalserver-uninstall`을 호출합니다.
 
 CPU는 VitalServer 내부 동작 조건 때문에 7 vCPU 이상만 허용하고, target Mac 운영 기본값은 8 vCPU입니다.
 

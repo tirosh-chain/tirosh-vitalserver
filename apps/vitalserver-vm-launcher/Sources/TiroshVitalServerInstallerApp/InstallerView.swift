@@ -9,21 +9,28 @@ struct InstallerView: View {
                 header
                 progressPanel
                 installLocationsPanel
-                settingsPanel
+                if controller.isInstalled {
+                    maintenancePanel
+                } else {
+                    settingsPanel
+                }
                 actionBar
                 logPanel
             }
             .padding(24)
         }
         .frame(minWidth: 760, idealWidth: 820, minHeight: 720, idealHeight: 760)
+        .task {
+            controller.refreshInstallationState()
+        }
     }
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Configure & Install Tirosh VitalServer")
+            Text("Tirosh VitalServer Setup")
                 .font(.title2)
                 .fontWeight(.semibold)
-            Text("Set the runtime policy before installing the product package.")
+            Text(controller.isInstalled ? "Maintain the installed runtime." : "Set the runtime policy before installing the product package.")
                 .foregroundStyle(.secondary)
         }
     }
@@ -84,16 +91,37 @@ struct InstallerView: View {
             Button("Validate") {
                 controller.revalidate()
             }
-            .disabled(controller.isBusy)
+            .disabled(controller.isBusy || controller.isInstalled)
             Button("Open Install Log") {
                 controller.openInstallLog()
             }
-            Spacer()
-            Button("Install") {
-                Task { await controller.install() }
+            if controller.isInstalled {
+                Button("Open Uninstall Log") {
+                    controller.openUninstallLog()
+                }
             }
-            .keyboardShortcut(.defaultAction)
-            .disabled(controller.isBusy)
+            Spacer()
+            if controller.isInstalled {
+                Button("Open Manager") {
+                    controller.openManager()
+                }
+                .disabled(controller.isBusy || !controller.canOpenManager)
+                Button("Uninstall") {
+                    Task { await controller.uninstall() }
+                }
+                .foregroundStyle(.red)
+                .disabled(controller.isBusy || !controller.canUninstall)
+                Button("Reinstall / Repair") {
+                    Task { await controller.install(shouldWriteSettings: false) }
+                }
+                .disabled(controller.isBusy)
+            } else {
+                Button("Install") {
+                    Task { await controller.install() }
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(controller.isBusy)
+            }
         }
     }
 
@@ -122,17 +150,31 @@ struct InstallerView: View {
 
     private var installLocationsPanel: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("PKG Install Locations")
+            Text(controller.isInstalled ? "Installed Runtime" : "PKG Install Locations")
                 .font(.headline)
             locationRow("Manager app", "/Applications/Tirosh VitalServer Manager.app")
             locationRow("Runtime home", "/Library/Application Support/TiroshVitalServer/vm")
             locationRow("Nginx bundle", "/Library/Application Support/TiroshVitalServer/nginx")
             locationRow("Runtime tools", "/usr/local/bin/vitalserver-vm")
+            locationRow("Uninstaller", "/usr/local/bin/tirosh-vitalserver-uninstall")
             locationRow("LaunchDaemons", "/Library/LaunchDaemons/com.tirosh.vitalserver-*.plist")
             locationRow("Install log", "/Library/Application Support/TiroshVitalServer/logs/install.log")
         }
         .padding(16)
         .background(Color(nsColor: .textBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private var maintenancePanel: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Maintenance")
+                .font(.headline)
+            statusRow("Install state", "Installed")
+            statusRow("Manager app", controller.canOpenManager ? "Available" : "Missing")
+            statusRow("Uninstaller", controller.canUninstall ? "Available" : "Missing")
+        }
+        .padding(16)
+        .background(Color(nsColor: .controlBackgroundColor))
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
@@ -177,6 +219,16 @@ struct InstallerView: View {
                 .textSelection(.enabled)
                 .lineLimit(1)
                 .truncationMode(.middle)
+        }
+    }
+
+    private func statusRow(_ label: String, _ value: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            Text(label)
+                .foregroundStyle(.secondary)
+                .frame(width: 130, alignment: .leading)
+            Text(value)
+                .fontWeight(.medium)
         }
     }
 }

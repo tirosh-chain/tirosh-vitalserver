@@ -248,13 +248,14 @@ rollback success    -> healthy
 ## GUI와 Package
 
 제품 설치 책임은 `.pkg`에 둡니다. `.dmg`는 installer 전달 매체이고, installer가 app과 runtime을
-함께 설치합니다. DMG root의 `Configure & Install Tirosh VitalServer.app`은 설치 전 설정을 받고
-PKG 실행을 위임하는 bootstrapper이며, `/Applications`에 설치하지 않습니다. Manager app은 설치 이후
-상태 확인과 운영 작업을 담당합니다.
+함께 설치합니다. DMG root의 `Tirosh VitalServer Setup.app`은 설치 전 설정을 받고 PKG 실행을
+위임하며, 설치 후에는 Open Manager, Uninstall, Reinstall / Repair 유지보수 진입점을 제공하는
+entrypoint입니다. Setup app은 `/Applications`에 설치하지 않습니다. Manager app은 설치 이후 상태
+확인과 운영 작업을 담당합니다.
 
 ```text
 TiroshVitalServer.dmg
-  -> Configure & Install Tirosh VitalServer.app
+  -> Tirosh VitalServer Setup.app
       -> write /private/tmp/tirosh-vitalserver-install.json
       -> run Install Tirosh VitalServer.pkg
   -> Install Tirosh VitalServer.pkg
@@ -286,7 +287,7 @@ open ".tmp/Tirosh VitalServer Manager.app"
 
 제품 DMG는 drag-and-drop app wrapper가 아니라 installer pkg와 설치 전 bootstrapper app을 전달합니다.
 `make vm-pkg`는 Manager app을 `/Applications/Tirosh VitalServer Manager.app` payload로 포함하고,
-`make vm-dmg`는 DMG root에 `Configure & Install Tirosh VitalServer.app`과
+`make vm-dmg`는 DMG root에 `Tirosh VitalServer Setup.app`과
 `Install Tirosh VitalServer.pkg`를 배치합니다.
 
 현재 배포 기준은 unsigned입니다. `.pkg`와 `.dmg`에 Developer ID 서명/notarization을 적용하지 않습니다. 단, nginx binary와 dylib는 `install_name_tool`로 load path를 수정하므로 실행 가능한 Mach-O 상태를 위해 ad-hoc signing(`codesign --sign -`)만 수행합니다.
@@ -413,6 +414,7 @@ make vm-dmg
       -> make vm-nginx-bundle      # pinned nginx -> self-contained bundle
       -> make vm-docker-images     # air-gapped Docker image tar.gz
     -> pkgbuild                    # dist/TiroshVitalServerVM-<version>.pkg
+  -> make vm-installer-app         # Tirosh VitalServer Setup.app 생성
   -> hdiutil create                # dist/TiroshVitalServer-<version>.dmg
 ```
 
@@ -429,7 +431,7 @@ make vm-dmg
 | PKG output | `dist/TiroshVitalServerVM-<version>.pkg` | installer payload |
 | DMG output | `dist/TiroshVitalServer-<version>.dmg` | 사용자 전달 매체 |
 
-DMG root에는 `Configure & Install Tirosh VitalServer.app`과 `Install Tirosh VitalServer.pkg`를 둡니다. 사용자는 app을 Applications로 drag하지 않고 bootstrapper app을 실행하거나, 기본값 설치가 필요하면 pkg를 직접 실행합니다.
+DMG root에는 `Tirosh VitalServer Setup.app`과 `Install Tirosh VitalServer.pkg`를 둡니다. 사용자는 app을 Applications로 drag하지 않고 Setup app을 실행하거나, 기본값 설치가 필요하면 pkg를 직접 실행합니다.
 
 ## DMG 설치 흐름
 
@@ -437,7 +439,7 @@ DMG root에는 `Configure & Install Tirosh VitalServer.app`과 `Install Tirosh V
 
 ```text
 1. TiroshVitalServer-<version>.dmg mount
-2. Configure & Install Tirosh VitalServer.app 실행
+2. Tirosh VitalServer Setup.app 실행
 3. 설치 전 CPU/RAM/disk/proxy/admin/start-on-boot 등 설정 입력
 4. bootstrapper가 `/private/tmp/tirosh-vitalserver-install.json` 작성
 5. bootstrapper가 `Install Tirosh VitalServer.pkg`를 관리자 권한으로 실행
@@ -480,6 +482,29 @@ Install Tirosh VitalServer.pkg
 VM service가 시작되면 `vitalserver-vm start`가 `vm-config.json`을 읽어 Apple Virtualization VM을 띄웁니다. guest cloud-init은 `seed.iso`의 `runcmd`로 `/mnt/tirosh/deploy/bootstrap.sh`를 실행합니다. guest bootstrap은 Docker image bundle을 load하고 Compose stack과 guest nginx를 구성한 뒤 `/mnt/tirosh/run/vm-ip`를 기록합니다. proxy service의 `vitalserver-proxy-run`은 이 VM IP 파일을 기다렸다가 host nginx config를 렌더링하고 nginx를 시작 또는 reload합니다.
 
 설치 시 설정값은 installer UI, MDM, 또는 wrapper가 `installer` 실행 전에 `/private/tmp/tirosh-vitalserver-install.json`에 씁니다. 이 파일은 partial JSON이며 `postinstall` 이후 삭제됩니다.
+
+설치 후 사용자가 Setup app을 다시 실행하면 설치 흔적을 감지해 아래 유지보수 동작을 제공합니다.
+Uninstall 로직은 Setup app이나 Manager app에 중복 구현하지 않고, 둘 다 설치된
+`/usr/local/bin/tirosh-vitalserver-uninstall`을 관리자 권한으로 호출합니다.
+
+```text
+Tirosh VitalServer Setup.app
+  설치 전:
+    Install
+  설치 후:
+    Open Manager
+    Uninstall
+    Reinstall / Repair
+
+Tirosh VitalServer Manager.app
+  운영 중:
+    Status
+    Settings
+    Update
+    Rollback
+    Logs
+    Uninstall
+```
 
 ## 인터페이스 계약
 

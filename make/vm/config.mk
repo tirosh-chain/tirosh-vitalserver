@@ -78,7 +78,7 @@ VM_UPDATE_GUEST_DEPLOY ?= $(VM_UPDATE_GUEST_DEPLOY_ARCHIVE)
 # App artifacts.
 VM_APP_NAME := Tirosh VitalServer Manager
 VM_APP_BUNDLE := .tmp/$(VM_APP_NAME).app
-VM_INSTALLER_APP_NAME := Configure & Install Tirosh VitalServer
+VM_INSTALLER_APP_NAME := Tirosh VitalServer Setup
 VM_INSTALLER_APP_BUNDLE := .tmp/$(VM_INSTALLER_APP_NAME).app
 VM_DMG_STAGING := .tmp/vitalserver-vm-dmg
 VM_DMG_OUTPUT := $(VM_DIST_DIR)/TiroshVitalServer-$(VM_PKG_VERSION).dmg
