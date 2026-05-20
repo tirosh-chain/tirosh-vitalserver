@@ -179,6 +179,65 @@ Single-node self-healing runtime
 5. `/Library/Application Support/TiroshVitalServer/status/runtime-status.json` 같은 운영 상태 파일을 추가해 Manager app이 정상/복구중/장애/업데이트중 상태를 읽게 합니다.
 6. free-space preflight, log rotation, Docker image/cache cleanup 정책을 추가합니다.
 
+### Runtime Status 계약
+
+운영 상태의 source of truth는 아래 JSON 파일입니다.
+
+```text
+/Library/Application Support/TiroshVitalServer/status/runtime-status.json
+```
+
+이 파일은 `vitalserver-vm runtime install`, `health`, `apply-bundle`, `rollback`이 갱신합니다. Manager app, watchdog, 운영 CLI는 같은 파일을 읽어 상태를 판단합니다.
+
+상태 값은 아래로 제한합니다.
+
+| status | 의미 |
+|---|---|
+| `installing` | installer가 runtime instance를 provision 중 |
+| `updating` | update bundle 적용 중 |
+| `recovering` | rollback 또는 복구 동작 중 |
+| `healthy` | 현재 health 기준 통과 |
+| `degraded` | 서비스는 복구됐거나 일부 실패가 있으나 진단/조치가 필요한 상태 |
+| `critical` | install/provisioning 실패 또는 자동 복구 불가 상태 |
+
+현재 schema:
+
+```json
+{
+  "product": "TiroshVitalServer",
+  "status": "healthy",
+  "operation": "health",
+  "message": "runtime health check passed",
+  "updatedAt": "2026-05-21T00:00:00Z",
+  "productRoot": "/Library/Application Support/TiroshVitalServer",
+  "runtimeHome": "/Library/Application Support/TiroshVitalServer/vm",
+  "runtimeVersion": "0.1.0",
+  "vmService": "loaded",
+  "proxyService": "loaded",
+  "vmIP": "192.168.64.2",
+  "proxyPort": 80,
+  "hostProxyHTTP": "200",
+  "rootfsBase": "present",
+  "vmDisk": "present",
+  "latestBackup": "/Library/Application Support/TiroshVitalServer/backups/..."
+}
+```
+
+상태 전이의 기본 원칙은 아래입니다.
+
+```text
+install start       -> installing
+install success     -> healthy
+install failure     -> critical
+health success      -> healthy
+health failure      -> degraded
+apply-bundle start  -> updating
+apply success       -> healthy
+apply failure       -> recovering -> degraded after rollback
+rollback start      -> recovering
+rollback success    -> healthy
+```
+
 ## GUI와 Package
 
 제품 설치 책임은 `.pkg`에 둡니다. `.dmg`는 installer 전달 매체이고, installer가 app과 runtime을
@@ -249,6 +308,8 @@ dist/TiroshVitalServer-0.1.0.dmg
   backups/
   logs/
     install.log
+  status/
+    runtime-status.json
   vm/
     runtime/
       Image
@@ -406,6 +467,7 @@ VM service가 시작되면 `vitalserver-vm start`가 `vm-config.json`을 읽어 
 | Docker image bundle | `make vm-docker-images` | Python `docker-images` | Dockerfile, image list, build platform | `vitalserver-images.tar.gz` |
 | PKG staging | `make vm-pkg-stage` | macOS filesystem tools | app bundle, rootfs base, nginx bundle, Docker bundle, templates | package root under `.tmp/vitalserver-vm-pkg/root` |
 | install provisioning | PKG `postinstall` | `vitalserver-vm runtime install` | installed payload, optional `/private/tmp/tirosh-vitalserver-install.json` | `vm-disk.img`, `vm-config.json`, `seed.iso`, permissions, launchd services |
+| runtime status | RuntimeLifecycle | `runtime-status.json` | health/install/update/rollback result | Manager/watchdog-readable status |
 | VM launch | launchd | `vitalserver-vm start` | `VITALSERVER_VM_HOME`, `VITALSERVER_VM_DETACHED=1`, `runtime/vm-config.json` | Virtualization.framework VM process |
 | host proxy | launchd | `vitalserver-proxy-run` | `vm/data/run/vm-ip`, proxy template, nginx binary | rendered host nginx config, nginx process |
 | guest bootstrap | cloud-init | `bootstrap.sh` | VirtioFS mounts, `runtime-config.json`, Docker bundle | guest nginx, Docker Compose stack, `vm-ip` marker |
@@ -536,6 +598,7 @@ update에서 rootfs base를 교체해도 기존 `vm-disk.img` 내부 OS와 appli
 | `/Library/LaunchDaemons` | VM/proxy 자동 실행 plist |
 | `/Library/Application Support/TiroshVitalServer` | VM image, deploy bundle, nginx runtime |
 | `/Library/Application Support/TiroshVitalServer/logs/install.log` | installer provisioning log |
+| `/Library/Application Support/TiroshVitalServer/status/runtime-status.json` | Manager/watchdog용 runtime 상태 |
 
 설치 후 `make vm-installed-health`로 launchd load 상태, VM IP, guest HTTP, host proxy HTTP를 확인합니다.
 

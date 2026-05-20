@@ -16,6 +16,14 @@ struct RuntimeLifecycle {
         productRoot.appendingPathComponent(Constants.Paths.backupsDirectory)
     }
 
+    private var statusDirectory: URL {
+        productRoot.appendingPathComponent(Constants.Paths.statusDirectory)
+    }
+
+    private var runtimeStatus: URL {
+        statusDirectory.appendingPathComponent(Constants.Artifacts.runtimeStatus)
+    }
+
     private var rootfsBase: URL {
         paths.home
             .appendingPathComponent(Constants.Paths.runtimeDirectory)
@@ -101,43 +109,50 @@ struct RuntimeLifecycle {
             .path
         let settings = try InstallSettings.load(defaultVitalFilesDirectory: defaultVitalFilesDirectory)
         log("runtime install started home=\(paths.home.path)")
-        try runStep("load-install-settings") {
-            log("install settings loaded")
+        try writeRuntimeStatus(.installing, operation: "install", message: "runtime install started")
+        do {
+            try runStep("load-install-settings") {
+                log("install settings loaded")
+            }
+            try runStep("prepare-install-directories") {
+                try prepareInstallDirectories(settings)
+            }
+            try runStep("configure-guest-runtime-config") {
+                try configureDeployEnvironment(settings)
+            }
+            try runStep("prepare-installed-executables") {
+                try prepareInstalledExecutables()
+            }
+            try runStep("provision-vm-disk") {
+                try provisionVMDisk(settings)
+            }
+            try runStep("configure-vm-runtime") {
+                try configureInstalledVMRuntime(settings)
+            }
+            try runStep("create-cloud-init-seed") {
+                try createCloudInitSeed(settings)
+            }
+            try runStep("write-runtime-version") {
+                try writeInstalledRuntimeVersion()
+            }
+            try runStep("configure-installed-permissions") {
+                try configureInstalledPermissions(settings)
+            }
+            try runStep("start-installed-services") {
+                try startInstalledServices(settings)
+            }
+            try runStep("apply-start-on-boot-policy") {
+                try applyStartOnBootPolicy(settings)
+            }
+            try runStep("cleanup-install-settings") {
+                try cleanupInstallSettings()
+            }
+            try writeRuntimeStatus(.healthy, operation: "install", message: "runtime install completed")
+            log("runtime install completed home=\(paths.home.path)")
+        } catch {
+            try? writeRuntimeStatus(.critical, operation: "install", message: "runtime install failed: \(error)")
+            throw error
         }
-        try runStep("prepare-install-directories") {
-            try prepareInstallDirectories(settings)
-        }
-        try runStep("configure-guest-runtime-config") {
-            try configureDeployEnvironment(settings)
-        }
-        try runStep("prepare-installed-executables") {
-            try prepareInstalledExecutables()
-        }
-        try runStep("provision-vm-disk") {
-            try provisionVMDisk(settings)
-        }
-        try runStep("configure-vm-runtime") {
-            try configureInstalledVMRuntime(settings)
-        }
-        try runStep("create-cloud-init-seed") {
-            try createCloudInitSeed(settings)
-        }
-        try runStep("write-runtime-version") {
-            try writeInstalledRuntimeVersion()
-        }
-        try runStep("configure-installed-permissions") {
-            try configureInstalledPermissions(settings)
-        }
-        try runStep("start-installed-services") {
-            try startInstalledServices(settings)
-        }
-        try runStep("apply-start-on-boot-policy") {
-            try applyStartOnBootPolicy(settings)
-        }
-        try runStep("cleanup-install-settings") {
-            try cleanupInstallSettings()
-        }
-        log("runtime install completed home=\(paths.home.path)")
     }
 
     func printStatus() {
@@ -145,6 +160,8 @@ struct RuntimeLifecycle {
         print("  product root: \(productRoot.path)")
         print("  runtime dir: \(paths.home.appendingPathComponent(Constants.Paths.runtimeDirectory).path)")
         print("  latest backup: \(latestBackup()?.path ?? "none")")
+        print("  status file: \(fileState(url: runtimeStatus))")
+        print("  status: \(runtimeStatusValue())")
         print("  launcher: \(fileState(path: Constants.InstallPaths.vmBin))")
         print("  proxy runner: \(fileState(path: Constants.InstallPaths.proxyRun))")
         print("  rootfs base: \(fileState(url: rootfsBase))")
@@ -168,6 +185,7 @@ struct RuntimeLifecycle {
             data.appendingPathComponent(Constants.Paths.vrReleaseDirectory),
             paths.home.appendingPathComponent(Constants.Paths.logsDirectory),
             paths.home.appendingPathComponent(Constants.Paths.runDirectory),
+            statusDirectory,
             URL(fileURLWithPath: "\(productRoot.path)/nginx/logs"),
         ]
         for directory in directories {
@@ -414,9 +432,11 @@ struct RuntimeLifecycle {
         }
 
         if failed {
+            try? writeRuntimeStatus(.degraded, operation: "health", message: "runtime health check failed")
             print("health: failed")
             throw LauncherError.runtimeHealthFailed
         }
+        try writeRuntimeStatus(.healthy, operation: "health", message: "runtime health check passed")
         print("health: ok")
     }
 
@@ -500,6 +520,7 @@ struct RuntimeLifecycle {
 
     func applyBundle(_ bundleURL: URL) throws {
         log("bundle apply started input=\(bundleURL.path)")
+        try writeRuntimeStatus(.updating, operation: "apply-bundle", message: "bundle apply started")
         let stagedBundle = try stageBundle(bundleURL)
         let manifest = try loadManifest(stagedBundle.appendingPathComponent(Constants.Bundle.manifest))
         let stagedRootfs = stagedBundle.appendingPathComponent(Constants.Artifacts.rootfsBase)
@@ -537,11 +558,14 @@ struct RuntimeLifecycle {
             }
         } catch {
             log("bundle apply failed; rolling back error=\(error)")
+            try? writeRuntimeStatus(.recovering, operation: "apply-bundle", message: "bundle apply failed; rolling back: \(error)")
             try rollback(backup)
             try startRuntimeServices(restartVM: restartVM, restartProxy: restartProxy)
+            try? writeRuntimeStatus(.degraded, operation: "apply-bundle", message: "bundle apply failed; rollback completed: \(error)")
             throw error
         }
 
+        try writeRuntimeStatus(.healthy, operation: "apply-bundle", message: "bundle applied: \(manifest.version)")
         log("bundle applied path=\(stagedBundle.path)")
         log("mutable VM disk preserved path=\(vmDisk.path)")
     }
@@ -549,6 +573,7 @@ struct RuntimeLifecycle {
     func rollback(_ requestedBackup: URL?) throws {
         let backup = try requestedBackup ?? requireLatestBackup()
         log("rollback started backup=\(backup.path)")
+        try writeRuntimeStatus(.recovering, operation: "rollback", message: "rollback started")
         let backupRootfs = backup.appendingPathComponent(Constants.Artifacts.rootfsBase)
         let backupVersion = backup.appendingPathComponent(Constants.Artifacts.runtimeVersion)
         guard directoryExists(backup) else {
@@ -580,6 +605,7 @@ struct RuntimeLifecycle {
             try waitForHealth(restartVM: restartVM, restartProxy: restartProxy)
         }
 
+        try writeRuntimeStatus(.healthy, operation: "rollback", message: "rollback completed")
         log("rollback restored backup=\(backup.path)")
         log("mutable VM disk preserved path=\(vmDisk.path)")
     }
@@ -858,6 +884,46 @@ struct RuntimeLifecycle {
         return version
     }
 
+    private func runtimeStatusValue() -> String {
+        guard fileExists(runtimeStatus),
+              let data = try? Data(contentsOf: runtimeStatus),
+              let document = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let status = document["status"] as? String
+        else {
+            return "unknown"
+        }
+        return status
+    }
+
+    private func writeRuntimeStatus(
+        _ status: RuntimeStatusLevel,
+        operation: String,
+        message: String
+    ) throws {
+        let proxyPort = installedProxyPort()
+        let document = RuntimeStatusDocument(
+            product: "TiroshVitalServer",
+            status: status.rawValue,
+            operation: operation,
+            message: message,
+            updatedAt: isoTimestamp(),
+            productRoot: productRoot.path,
+            runtimeHome: paths.home.path,
+            runtimeVersion: runtimeVersionValue(),
+            vmService: launchdState(Constants.Launchd.vmService),
+            proxyService: launchdState(Constants.Launchd.proxyService),
+            vmIP: readTrimmed(vmIPFile),
+            proxyPort: proxyPort,
+            hostProxyHTTP: httpStatus(Constants.Runtime.proxyHealthURL(port: proxyPort)),
+            rootfsBase: fileState(url: rootfsBase),
+            vmDisk: fileState(url: vmDisk),
+            latestBackup: latestBackup()?.path
+        )
+        let data = try JSONEncoder.pretty.encode(document)
+        try FileManager.default.createDirectory(at: statusDirectory, withIntermediateDirectories: true)
+        try data.write(to: runtimeStatus, options: .atomic)
+    }
+
     private func fileState(path: String) -> String {
         if FileManager.default.isExecutableFile(atPath: path) {
             return "executable"
@@ -1034,6 +1100,34 @@ struct RuntimeProcessResult {
     let exitCode: Int32
     let stdout: String
     let stderr: String
+}
+
+enum RuntimeStatusLevel: String, Encodable {
+    case installing
+    case updating
+    case recovering
+    case healthy
+    case degraded
+    case critical
+}
+
+struct RuntimeStatusDocument: Encodable {
+    let product: String
+    let status: String
+    let operation: String
+    let message: String
+    let updatedAt: String
+    let productRoot: String
+    let runtimeHome: String
+    let runtimeVersion: String
+    let vmService: String
+    let proxyService: String
+    let vmIP: String?
+    let proxyPort: Int
+    let hostProxyHTTP: String
+    let rootfsBase: String
+    let vmDisk: String
+    let latestBackup: String?
 }
 
 struct RuntimeVersionDocument: Encodable {

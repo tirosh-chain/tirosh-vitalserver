@@ -113,6 +113,7 @@ dist/TiroshVitalServer-0.1.0.dmg
 | uninstaller | `/usr/local/bin/tirosh-vitalserver-uninstall` |
 | nginx bundle | `/Library/Application Support/TiroshVitalServer/nginx/` |
 | install log | `/Library/Application Support/TiroshVitalServer/logs/install.log` |
+| runtime status | `/Library/Application Support/TiroshVitalServer/status/runtime-status.json` |
 | Linux runtime assets | `/Library/Application Support/TiroshVitalServer/vm/runtime/` |
 | guest deployment bundle | `/Library/Application Support/TiroshVitalServer/vm/data/deploy/` |
 | Docker image bundle | `/Library/Application Support/TiroshVitalServer/vm/data/deploy/docker-images/` |
@@ -139,6 +140,8 @@ shared/NAT mode에서는 VM IP가 부팅 후에 결정되므로, `vitalserver-pr
 | `vitalserver-proxy-run` | `vm/data/run/vm-ip`, proxy template | host nginx config and proxy process |
 | guest `bootstrap.sh` | `runtime-config.json`, Docker image bundle | Docker Compose stack and VM-local nginx |
 | update bundle | `manifest.json`, `checksums.txt`, `signature`, `rootfs-base.raw.gz`, migrations | verified/staged bundle, rootfs-base backup/replacement, migrations |
+
+`runtime-status.json`은 Manager app과 향후 watchdog이 공유할 운영 상태 파일입니다. `runtime install`, `health`, `apply-bundle`, `rollback`이 이 파일을 갱신하며, 상태 값은 `installing`, `updating`, `recovering`, `healthy`, `degraded`, `critical` 중 하나입니다.
 
 주요 source 책임은 아래처럼 나눕니다.
 

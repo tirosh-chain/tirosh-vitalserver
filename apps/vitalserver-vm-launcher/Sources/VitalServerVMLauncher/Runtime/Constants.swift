@@ -19,6 +19,7 @@ enum Constants {
         static let vrReleaseDirectory = "vr-release"
         static let bundlesDirectory = "bundles"
         static let backupsDirectory = "backups"
+        static let statusDirectory = "status"
     }
 
     enum Artifacts {
@@ -26,6 +27,7 @@ enum Constants {
         static let runtimeVersion = "runtime-version.json"
         static let backupManifest = "backup-manifest.json"
         static let runtimeConfig = "runtime-config.json"
+        static let runtimeStatus = "runtime-status.json"
     }
 
     enum BootAssets {
