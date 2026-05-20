@@ -118,6 +118,8 @@ help:
 	@printf "  make vm-network-shared   Configure VM to use shared/NAT networking\n"
 	@printf "  make vm-network-bridged  Configure VM to use bridged networking\n"
 	@printf "  make vm-pkg-stage    Stage VM runtime pkg payload\n"
+	@printf "  make vm-update-bundle Build update bundle manifest and checksums\n"
+	@printf "  make vm-update-bundle-verify Verify staged update bundle\n"
 	@printf "  make vm-pkg-clean    Remove VM runtime pkg build artifacts\n"
 	@printf "\n"
 	@printf "Config:\n"

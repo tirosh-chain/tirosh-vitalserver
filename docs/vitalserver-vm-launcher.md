@@ -98,11 +98,15 @@ TiroshVitalServer.pkg
   -> /usr/local/tirosh/nginx/sbin/nginx
   -> /Library/LaunchDaemons/com.tirosh.vitalserver-proxy.plist
   -> /Library/LaunchDaemons/com.tirosh.vitalserver-vm.plist
-  -> /Library/Application Support/Tirosh/VitalServer/images/
+  -> /Library/Application Support/TiroshVitalServer/vm/runtime/
        Image
        initrd.img
-       rootfs.raw
-  -> /Library/Application Support/Tirosh/VitalServer/data/
+       rootfs-base.raw.gz
+       vm-disk.img
+       vm-config.json
+       seed.iso
+       runtime-version.json
+  -> /Library/Application Support/TiroshVitalServer/vm/data/
        vital-files/
        vr-release/
 ```
@@ -121,36 +125,39 @@ TiroshVitalServer.pkg
 
 ## GUI와 Package
 
-`.pkg` 자체는 풍부한 설정 UI에 적합하지 않습니다. 제품으로는 `.dmg` 안에 GUI 앱을 제공하고, GUI가 설정을 만든 뒤 privileged install 또는 bundled `.pkg` 설치를 실행하는 구조가 좋습니다.
+제품 설치 책임은 `.pkg`에 둡니다. `.dmg`는 installer 전달 매체이고, installer가 app과 runtime을
+함께 설치합니다. Manager app은 설치 이후 상태 확인과 운영 작업을 담당합니다.
 
 ```text
 TiroshVitalServer.dmg
-  -> Tirosh VitalServer.app
-      -> VM spec 설정
-      -> network mode 설정
-      -> bridged interface 선택
-      -> DHCP reservation용 MAC 표시
-      -> cloud-init user/SSH key/bootstrap 설정
-      -> pkg install 또는 launchd service 등록
+  -> Install Tirosh VitalServer.pkg
+      -> /Applications/Tirosh VitalServer Manager.app
+      -> /Library/Application Support/TiroshVitalServer runtime
+      -> /usr/local/bin runtime tools
+      -> LaunchDaemons
+      -> postinstall runtime provisioning
 ```
 
 | 설정 | 저장 위치 |
 |---|---|
-| VM CPU/RAM/kernel/disk/network/MAC | `config.json` |
+| VM CPU/RAM/kernel/disk/network/MAC | `runtime/vm-config.json` |
 | cloud-init user/hostname/SSH key/bootstrap | `seed.iso` |
-| VitalServer container 환경변수 | deploy `.env` |
+| VitalServer container/runtime 설정 | deploy `runtime-config.json` |
 | 서비스 자동 실행 | LaunchDaemon plist |
 
-GUI는 VM을 직접 만드는 도구라기보다, 이 파일들을 안전하게 생성/수정하는 설정 도구로 봅니다.
+Manager app은 설치 이후 상태 확인, health check, service 관리, update/rollback 진입점을 제공하는
+가벼운 UI로 봅니다. VM runtime artifact와 privileged provisioning은 installer pkg가 담당합니다.
 
-현재 개발용 GUI는 `make vm-app`으로 생성합니다.
+현재 개발용 app bundle은 `make vm-app`으로 생성합니다.
 
 ```sh
 make vm-app
-open ".tmp/Tirosh VitalServer.app"
+open ".tmp/Tirosh VitalServer Manager.app"
 ```
 
-이 앱은 runtime `.pkg`와 uninstaller를 Resources에 포함하고, `osascript ... with administrator privileges`를 통해 설치/제거를 수행합니다. DMG는 아직 만들지 않습니다. 먼저 `.app`에서 설치, 상태 확인, 제거 UX를 검증한 뒤 최종 배포 포장으로 DMG를 추가합니다.
+제품 DMG는 app wrapper가 아니라 installer pkg를 전달합니다. `make vm-pkg`는 이 app을
+`/Applications/Tirosh VitalServer Manager.app` payload로 포함하고, `make vm-dmg`는 DMG root에
+`Install Tirosh VitalServer.pkg`만 배치합니다.
 
 ## Package 구성
 
@@ -172,26 +179,31 @@ make vm-pkg-uninstall-dev
 설치 후 구조:
 
 ```text
+/Applications/Tirosh VitalServer Manager.app
 /usr/local/bin/vitalserver-vm
 /usr/local/bin/vitalserver-proxy-run
 /usr/local/bin/tirosh-vitalserver-uninstall
 /Library/LaunchDaemons/com.tirosh.vitalserver-vm.plist
 /Library/LaunchDaemons/com.tirosh.vitalserver-proxy.plist
 /Library/Application Support/TiroshVitalServer/
+  backups/
+  logs/
+    install.log
   vm/
-    images/
+    runtime/
       Image
       initrd.img
-      rootfs.raw.gz    # package payload
-      rootfs.raw       # install 시 압축 해제
-      seed.iso        # install 시 생성
+      rootfs-base.raw.gz  # immutable package payload
+      vm-disk.img         # install 시 생성되는 mutable runtime disk
+      vm-config.json      # install 시 생성/수정
+      seed.iso            # install 시 생성
+      runtime-version.json
     data/
       deploy/
       run/
       vital-files/
       vr-release/
     Support/
-      Build/create-cloud-init.sh
       Proxy/vitalserver.conf.template
   nginx/
     sbin/nginx
@@ -222,15 +234,16 @@ launchd
 
 이 구조에서 운영자가 `VITALSERVER_PROXY_UPSTREAM`을 직접 설정할 필요는 없습니다.
 
-`rootfs.raw`는 16G sparse disk라 package payload에 그대로 넣으면 `pkgbuild`가 실패할 수 있습니다. 따라서 package에는 `rootfs.raw.gz`를 넣고, 설치 시 `postinstall`에서 다시 raw disk로 풉니다.
+`vm-disk.img`는 sparse disk라 package payload에 그대로 넣으면 `pkgbuild`가 실패할 수 있습니다. 따라서 package에는 immutable base artifact인 `rootfs-base.raw.gz`를 넣고, 설치 시 `postinstall`에서 `vm-disk.img`를 생성합니다.
 
 설치 테스트는 실제 시스템 경로를 사용합니다.
 
 | 경로 | 내용 |
 |---|---|
-| `/usr/local/bin` | launcher/proxy runner |
+| `/usr/local/bin` | VM launcher/runtime lifecycle CLI, proxy runner |
 | `/Library/LaunchDaemons` | VM/proxy 자동 실행 plist |
 | `/Library/Application Support/TiroshVitalServer` | VM image, deploy bundle, nginx runtime |
+| `/Library/Application Support/TiroshVitalServer/logs/install.log` | installer provisioning log |
 
 설치 후 `make vm-installed-health`로 launchd load 상태, VM IP, guest HTTP, host proxy HTTP를 확인합니다.
 
@@ -277,7 +290,7 @@ swaggerapi/swagger-ui:v5.17.14
 /Library/Application Support/TiroshVitalServer/vm/data/deploy/docker-images/vitalserver-images.tar.gz
 ```
 
-Docker image만으로는 충분하지 않습니다. Guest VM이 처음 부팅될 때 `docker.io`, Docker Compose, nginx, qemu-user-static을 apt로 설치해야 한다면 air-gapped 환경에서 실패합니다. 그래서 제품용 package를 만들기 전 온라인 빌드 환경에서 아래 target으로 `rootfs.raw`를 한 번 준비합니다.
+Docker image만으로는 충분하지 않습니다. Guest VM이 처음 부팅될 때 `docker.io`, Docker Compose, nginx, qemu-user-static을 apt로 설치해야 한다면 air-gapped 환경에서 실패합니다. 그래서 제품용 package를 만들기 전 온라인 빌드 환경에서 아래 target으로 base가 될 `vm-disk.img`를 한 번 준비합니다.
 
 ```sh
 VM_RECREATE_ROOTFS=true make vm-download
@@ -287,12 +300,57 @@ make vm-pkg
 
 기본 package용 rootfs는 8GB입니다. 설치 후에는 wizard의 Disk size 설정에 맞춰 VM disk 파일을 확장합니다. `make vm-airgap-rootfs`는 VM을 임시로 띄우고 `prepare-airgap-rootfs.sh`만 실행합니다. 이 스크립트는 OS package를 설치하고 `/mnt/tirosh/run/rootfs-ready` marker를 기록한 뒤 종료됩니다. Container는 시작하지 않기 때문에 운영 데이터나 Redis volume을 golden rootfs에 섞지 않습니다.
 
+## Update Bundle
+
+온라인/오프라인 업데이트는 같은 bundle directory를 입력으로 사용합니다.
+
+```sh
+make vm-update-bundle
+make vm-update-bundle-verify
+```
+
+마이그레이션 실행 파일을 bundle에 포함하려면:
+
+```sh
+VM_UPDATE_MIGRATIONS="release/migrations/001-example" make vm-update-bundle
+```
+
+생성물:
+
+```text
+.tmp/update-bundles/update-bundle-0.1.0/
+  manifest.json
+  checksums.txt
+  signature
+  rootfs-base.raw.gz
+  TiroshVitalServerVM-0.1.0.pkg
+  migrations/
+```
+
+`manifest.json`은 `schemaVersion: 2`를 사용합니다. `artifacts`와 `migrations`는 모두
+`checksums.txt`와 manifest 자체의 sha256/size 값으로 검증됩니다.
+
+현재 `signature`는 `unsigned` placeholder입니다. 이 파일은 호환 레이어가 아니라 bundle 계약의 고정 자리이며, release hardening 단계에서 실제 signature 검증으로 교체합니다.
+
+설치된 Mac mini에서는 Swift runtime lifecycle command가 bundle을 검증하고 적용합니다.
+
+```sh
+vitalserver-vm runtime verify-bundle /path/to/update-bundle-0.1.0
+sudo vitalserver-vm runtime stage-bundle /path/to/update-bundle-0.1.0
+sudo vitalserver-vm runtime apply-bundle /path/to/update-bundle-0.1.0
+sudo vitalserver-vm runtime rollback
+```
+
+`apply-bundle`은 mutable `vm-disk.img`를 보존하고, replaceable artifact만 backup/rollback 대상으로 삼습니다. 적용 전 backup을 만들고 VM/proxy를 중지한 뒤 artifact를 교체하고 executable migration을 순서대로 실행합니다. 기존에 서비스가 실행 중이었다면 재시작 후 health check를 통과해야 성공 처리합니다. migration 또는 health check 실패 시 `rollback`으로 직전 backup을 복원합니다.
+
+Shell은 installer/launchd wrapper로만 남깁니다. Bundle manifest parsing, checksum 검증, backup, rollback 정책은 Swift runtime lifecycle command가 담당합니다.
+
 남은 제품화 항목은 아래입니다.
 
 | 항목 | 필요한 이유 |
 |---|---|
 | nginx release artifact 고정 | build machine Homebrew 상태에 따라 package가 달라지지 않도록 고정 |
-| clean golden rootfs | 개발 중 변형된 `rootfs.raw`가 package에 섞이지 않도록 고정 |
+| clean golden rootfs | 개발 중 변형된 `vm-disk.img`가 base artifact에 섞이지 않도록 고정 |
 | guest OS package preload | `docker.io`, `nginx`, `qemu-user-static` 같은 OS package를 외부 apt 없이 설치 |
 | Developer ID signing | launchd/Virtualization binary 배포 신뢰성 확보 |
 | notarization | Gatekeeper 환경에서 설치 마찰 감소 |
@@ -303,11 +361,11 @@ PoC 기본 runtime directory는 아래입니다.
 
 ```text
 ~/.tirosh/vitalserver-vm/
-  config.json
-  images/
+  runtime/
     Image
     initrd.img
-    rootfs.raw
+    vm-disk.img
+    vm-config.json
     seed.iso
   data/
     deploy/
@@ -330,11 +388,11 @@ VITALSERVER_VM_HOME="$PWD/.tmp/vitalserver-vm" make vm-init
 ```json
 {
   "cpuCount": 4,
-  "diskPath": "/Users/<user>/.tirosh/vitalserver-vm/images/rootfs.raw",
-  "initialRamdiskPath": "/Users/<user>/.tirosh/vitalserver-vm/images/initrd.img",
-  "cloudInitPath": "/Users/<user>/.tirosh/vitalserver-vm/images/seed.iso",
+  "diskPath": "/Users/<user>/.tirosh/vitalserver-vm/runtime/vm-disk.img",
+  "initialRamdiskPath": "/Users/<user>/.tirosh/vitalserver-vm/runtime/initrd.img",
+  "cloudInitPath": "/Users/<user>/.tirosh/vitalserver-vm/runtime/seed.iso",
   "kernelCommandLine": "console=hvc0 root=/dev/vda1 rw",
-  "kernelPath": "/Users/<user>/.tirosh/vitalserver-vm/images/Image",
+  "kernelPath": "/Users/<user>/.tirosh/vitalserver-vm/runtime/Image",
   "memoryMiB": 4096,
   "network": {
     "bridgedInterface": null,
@@ -361,16 +419,19 @@ make vm-download
 설정 파일:
 
 ```text
-apps/vitalserver-vm-launcher/Support/Build/ubuntu-cloud-image.env
+apps/vitalserver-vm-launcher/Support/Build/vm-build.toml
 ```
+
+`make vm-download`는 build-machine 전용 Python package인
+`packages/vm-build`의 `vitalserver-vm-build ubuntu` CLI를 호출합니다.
 
 | 항목 | 기본값 |
 |---|---|
 | 배포판 | Ubuntu Server 24.04 LTS Noble cloud image |
 | architecture | macOS host architecture 기준 자동 선택 |
-| 다운로드 경로 | `~/.tirosh/vitalserver-vm/images/downloads/` |
-| 실행 경로 | `~/.tirosh/vitalserver-vm/images/` |
-| root disk target size | `16G` |
+| 다운로드 경로 | `~/.tirosh/vitalserver-vm/runtime/downloads/` |
+| 실행 경로 | `~/.tirosh/vitalserver-vm/runtime/` |
+| root disk target size | `8G` |
 
 root disk 크기를 바꾸려면:
 
@@ -390,7 +451,7 @@ make vm-cloud-init
 
 | 항목 | 기본값 |
 |---|---|
-| seed image | `~/.tirosh/vitalserver-vm/images/seed.iso` |
+| seed image | `~/.tirosh/vitalserver-vm/runtime/seed.iso` |
 | hostname | `tirosh-vitalserver` |
 | instance-id | 자동 생성 |
 | user | `ubuntu` |
@@ -398,15 +459,19 @@ make vm-cloud-init
 | SSH public key | `~/.ssh/id_ed25519.pub`가 있으면 자동 포함 |
 | bootstrap | `/mnt/tirosh/deploy/bootstrap.sh` 자동 실행 |
 
-값을 바꾸려면:
+기본값은 `apps/vitalserver-vm-launcher/Support/Build/vm-build.toml`의 `[cloud_init]`에서 관리합니다.
+일회성 값을 바꾸려면 build CLI를 직접 호출합니다.
 
 ```sh
-VM_CLOUD_INIT_HOSTNAME=tirosh-vitalserver \
-VM_CLOUD_INIT_INSTANCE_ID=tirosh-site-a-001 \
-VM_CLOUD_INIT_USER=ubuntu \
-VM_CLOUD_INIT_PASSWORD=change-me \
-VM_CLOUD_INIT_SSH_KEY=~/.ssh/id_ed25519.pub \
-make vm-cloud-init
+uv run --project packages/vm-build vitalserver-vm-build \
+  --config apps/vitalserver-vm-launcher/Support/Build/vm-build.toml \
+  cloud-init \
+  --runtime-dir ~/.tirosh/vitalserver-vm/runtime \
+  --hostname tirosh-vitalserver \
+  --instance-id tirosh-site-a-001 \
+  --username ubuntu \
+  --password change-me \
+  --ssh-key ~/.ssh/id_ed25519.pub
 ```
 
 기본 password는 PoC 편의용입니다. 제품에서는 GUI 또는 first-run flow가 설치 대상별 credential을 생성해야 합니다.
@@ -424,7 +489,7 @@ make vm-stage
 | `bootstrap.sh` | Linux guest에서 Docker/nginx 설치 후 Compose 실행 |
 | `compose.yaml` | VM 내부 VitalServer/Redis Compose stack |
 | `nginx/vitalserver.conf` | VM 내부 nginx edge proxy 설정 |
-| `.env` | VitalServer container 환경변수 |
+| `runtime-config.json` | VitalServer container/runtime 설정 |
 | `apps/vitalserver/docker` | VitalServer image build Dockerfile |
 | `apps/vitalserver/runtime` | VitalServer runtime preload |
 | `vendor/vitalserver/vitalserver-old` | upstream VitalServer source |
@@ -560,7 +625,7 @@ VM MAC address
       -> 고정된 VM LAN IP
 ```
 
-`make vm-init`은 `config.json`에 VM MAC address를 생성해 저장합니다. 이 값은 제품 설치 후 유지되어야 합니다.
+`make vm-init`은 `runtime/vm-config.json`에 VM MAC address를 생성해 저장합니다. 이 값은 제품 설치 후 유지되어야 합니다.
 
 ## VM Identity
 
@@ -568,7 +633,7 @@ Golden image는 여러 병원과 여러 Mac mini에 복제될 수 있으므로, 
 
 | Identity | 언제 결정하나 | 어디에 보존하나 | 정책 |
 |---|---|---|---|
-| MAC address | 설치/초기화 시 | `config.json` | 장비마다 다르게, 재설치 후에도 유지 |
+| MAC address | 설치/초기화 시 | `runtime/vm-config.json` | 장비마다 다르게, 재설치 후에도 유지 |
 | hostname | 설치/초기화 시 | `seed.iso` 또는 guest config | 사이트/장비를 구분할 수 있게 고유화 |
 | cloud-init instance-id | `seed.iso` 생성 시 | `seed.iso` | VM마다 다르게 생성 |
 | machine-id | guest 첫 부팅 시 | guest `/etc/machine-id` | golden image에서는 비워둠 |
@@ -641,7 +706,7 @@ bridged mode는 별도 승인 이후 체크합니다.
 증상:
 
 ```text
-error: missing file: .../images/Image
+error: missing file: .../runtime/Image
 ```
 
 원인:
@@ -744,7 +809,7 @@ Ubuntu cloud image의 기본 root disk는 Docker, nginx, qemu-user-static, Vital
 
 조치:
 
-`make vm-download`는 rootfs를 기본 `16G`로 확장합니다. 더 크게 만들려면:
+`make vm-download`는 VM disk를 기본 `8G`로 확장합니다. 더 크게 만들려면:
 
 ```sh
 VM_ROOTFS_SIZE=32G make vm-download
@@ -795,7 +860,11 @@ cloud-init은 `instance-id`를 기준으로 이미 처리한 instance인지 판�
 `make vm-cloud-init`은 기본적으로 새 instance-id를 생성합니다. 수동으로 지정하려면:
 
 ```sh
-VM_CLOUD_INIT_INSTANCE_ID=tirosh-site-a-001 make vm-cloud-init
+uv run --project packages/vm-build vitalserver-vm-build \
+  --config apps/vitalserver-vm-launcher/Support/Build/vm-build.toml \
+  cloud-init \
+  --runtime-dir ~/.tirosh/vitalserver-vm/runtime \
+  --instance-id tirosh-site-a-001
 ```
 
 ### nginx가 `502 Bad Gateway`를 반환

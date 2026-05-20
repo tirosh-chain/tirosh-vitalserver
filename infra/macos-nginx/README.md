@@ -81,5 +81,6 @@ make proxy-plist \
   > /Library/LaunchDaemons/com.tirosh.vitalserver-proxy.plist
 ```
 
-설치형 배포에서는 nginx binary, 렌더링된 nginx config, LaunchDaemon plist, Docker `.env`를 함께
-제공해야 합니다. 그래야 container backend와 native proxy가 같은 port 계약을 유지합니다.
+설치형 배포에서는 nginx binary, 렌더링된 nginx config, LaunchDaemon plist,
+VM deploy `runtime-config.json`을 함께 제공합니다. 그래야 container backend와 native proxy가 같은
+port 계약을 유지합니다.

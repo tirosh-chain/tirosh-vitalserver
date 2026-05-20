@@ -25,61 +25,10 @@ final class RuntimeController: ObservableObject {
         message = AppConstants.StatusText.healthCheckCompleted
     }
 
-    func installRuntime(settings: InstallSettings) async {
-        let currentStatus = RuntimeStatus.load(paths: runtime)
-        if currentStatus.runtimeInstalled {
-            status = currentStatus
-            message = AppConstants.StatusText.installAlreadyPresent
-            return
-        }
-
-        guard let pkgURL = Bundle.main.url(
-            forResource: AppConstants.Product.bundledPackageName,
-            withExtension: AppConstants.Product.bundledPackageExtension
-        ) else {
-            message = AppConstants.StatusText.missingBundledPackage
-            return
-        }
-
-        message = [
-            AppConstants.StatusText.installSettingsCaptured,
-            settings.summaryLines.joined(separator: "\n")
-        ].joined(separator: "\n\n")
-
-        do {
-            try settings.installEnvironment.write(
-                toFile: AppConstants.Paths.installSettingsFile,
-                atomically: true,
-                encoding: .utf8
-            )
-        } catch {
-            message = "\(AppConstants.StatusText.installSettingsWriteFailed)\n\(error.localizedDescription)"
-            return
-        }
-
-        let installed = await runPrivileged(
-            shellCommand: "\(AppConstants.Commands.installer) -pkg \(shellQuote(pkgURL.path)) -target /",
-            preparingMessage: AppConstants.StatusText.installPreparing,
-            waitingMessage: AppConstants.StatusText.installWaitingForPrivilege,
-            runningMessage: AppConstants.StatusText.installRunning,
-            successMessage: AppConstants.StatusText.installCompleted
-        )
-        if installed {
-            await waitForRuntimeReadiness()
-        } else {
-            await refreshHealthStatus()
-        }
-    }
-
     func uninstallRuntime() async {
         let command: String
         if FileManager.default.isExecutableFile(atPath: runtime.uninstaller) {
             command = shellQuote(runtime.uninstaller)
-        } else if let bundled = Bundle.main.url(
-            forResource: AppConstants.Product.bundledUninstallerName,
-            withExtension: nil
-        ) {
-            command = shellQuote(bundled.path)
         } else {
             message = AppConstants.StatusText.missingUninstaller
             return
@@ -137,34 +86,6 @@ final class RuntimeController: ObservableObject {
         }
     }
 
-    private func waitForRuntimeReadiness() async {
-        isBusy = true
-        defer { isBusy = false }
-
-        let deadline = Date().addingTimeInterval(600)
-        while Date() < deadline {
-            let next = await loadHealthStatus()
-            status = next
-
-            message = readinessMessage(for: next)
-            if next.isReady {
-                message = [
-                    AppConstants.StatusText.installReady,
-                    readinessSummary(for: next)
-                ].joined(separator: "\n\n")
-                return
-            }
-
-            try? await Task.sleep(nanoseconds: 3_000_000_000)
-        }
-
-        status = await loadHealthStatus()
-        message = [
-            AppConstants.StatusText.installReadinessTimedOut,
-            readinessSummary(for: status)
-        ].joined(separator: "\n\n")
-    }
-
     private func loadHealthStatus() async -> RuntimeStatus {
         var next = RuntimeStatus.load(paths: runtime)
 
@@ -174,24 +95,6 @@ final class RuntimeController: ObservableObject {
         next.hostProxyHTTP = await httpStatus(url: AppConstants.Product.hostProxyHealthURL)
 
         return next
-    }
-
-    private func readinessMessage(for status: RuntimeStatus) -> String {
-        [
-            AppConstants.StatusText.installWaitingForRuntime,
-            readinessSummary(for: status)
-        ].joined(separator: "\n\n")
-    }
-
-    private func readinessSummary(for status: RuntimeStatus) -> String {
-        [
-            "Runtime: \(status.runtimeInstalled ? AppConstants.StatusText.installed : AppConstants.StatusText.notInstalled)",
-            "VM service: \(status.vmServiceLoaded ? AppConstants.StatusText.loaded : AppConstants.StatusText.notLoaded)",
-            "Proxy service: \(status.proxyServiceLoaded ? AppConstants.StatusText.loaded : AppConstants.StatusText.notLoaded)",
-            "VM IP: \(status.vmIP ?? AppConstants.StatusText.waiting)",
-            "Guest HTTP: \(status.guestHTTP ?? AppConstants.StatusText.notChecked)",
-            "Host proxy: \(status.hostProxyHTTP ?? AppConstants.StatusText.notChecked)"
-        ].joined(separator: "\n")
     }
 
     private func httpStatus(url: String) async -> String {

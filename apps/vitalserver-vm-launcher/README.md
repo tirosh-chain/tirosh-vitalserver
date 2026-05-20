@@ -82,8 +82,8 @@ make vm-up-bridged
 | `make vm-nginx-bundle` | nginx와 비시스템 dylib를 self-contained bundle로 묶기 |
 | `make vm-docker-images` | air-gapped 설치용 Docker image bundle 생성 |
 | `make vm-airgap-rootfs` | 온라인 빌드 환경에서 rootfs에 Docker/nginx/Compose 설치 |
-| `make vm-pkg` | VM runtime, boot asset, guest bundle, host proxy launcher를 `.pkg`로 묶기 |
-| `make vm-app` | runtime `.pkg`를 포함한 macOS control app 생성 |
+| `make vm-app` | `/Applications`에 설치될 가벼운 macOS control app 생성 |
+| `make vm-pkg` | control app, VM runtime, boot asset, guest bundle, host proxy launcher를 `.pkg`로 묶기 |
 | `make vm-pkg-install` | 생성된 개발용 `.pkg`를 설치 |
 | `make vm-pkg-uninstall-dev` | 개발용 설치물을 제거 |
 | `make vm-installed-health` | 설치된 launchd VM/proxy 상태와 HTTP 확인 |
@@ -106,11 +106,13 @@ make vm-pkg
 
 | 항목 | 설치 위치 |
 |---|---|
-| VM launcher | `/usr/local/bin/vitalserver-vm` |
+| control app | `/Applications/Tirosh VitalServer Manager.app` |
+| VM launcher and runtime lifecycle CLI | `/usr/local/bin/vitalserver-vm` |
 | host proxy runner | `/usr/local/bin/vitalserver-proxy-run` |
 | uninstaller | `/usr/local/bin/tirosh-vitalserver-uninstall` |
 | nginx bundle | `/Library/Application Support/TiroshVitalServer/nginx/` |
-| Linux boot assets | `/Library/Application Support/TiroshVitalServer/vm/images/` |
+| install log | `/Library/Application Support/TiroshVitalServer/logs/install.log` |
+| Linux runtime assets | `/Library/Application Support/TiroshVitalServer/vm/runtime/` |
 | guest deployment bundle | `/Library/Application Support/TiroshVitalServer/vm/data/deploy/` |
 | Docker image bundle | `/Library/Application Support/TiroshVitalServer/vm/data/deploy/docker-images/` |
 | nginx config template | `/Library/Application Support/TiroshVitalServer/vm/Support/Proxy/` |
@@ -118,11 +120,35 @@ make vm-pkg
 
 shared/NAT mode에서는 VM IP가 부팅 후에 결정되므로, `vitalserver-proxy-run`이 VM IP 파일을 감시합니다. VM IP가 바뀌면 host nginx config를 다시 렌더링하고 proxy를 reload합니다.
 
-`rootfs.raw`는 package에 그대로 넣지 않고 `rootfs.raw.gz`로 묶습니다. 설치 시 `postinstall`이 다시 `rootfs.raw`로 풀어 VM disk로 사용합니다.
+`vm-disk.img`는 package에 그대로 넣지 않고 immutable base artifact인 `rootfs-base.raw.gz`로 묶습니다. 설치 시 `postinstall`이 이 base에서 mutable `vm-disk.img`를 생성합니다.
 
 `make vm-pkg`는 Docker registry 없이도 container를 시작할 수 있도록 `vitalserver`, `redis`, `redis-ui`, `swagger-ui` image를 `vitalserver-images.tar.gz`로 묶어 포함합니다. Guest bootstrap은 이 bundle을 먼저 `docker load`한 뒤 Compose를 실행합니다.
 
-완전한 air-gapped 설치물을 만들려면 `.pkg` 생성 전에 온라인 빌드 환경에서 아래를 한 번 실행해 `rootfs.raw`에 Docker, Docker Compose, nginx, qemu-user-static을 미리 설치합니다.
+업데이트 입력 단위는 bundle directory입니다.
+
+```sh
+make vm-update-bundle
+make vm-update-bundle-verify
+```
+
+설치된 Mac mini에서는 runtime lifecycle CLI가 같은 bundle을 검증하고 적용합니다.
+
+```sh
+sudo vitalserver-vm runtime verify-bundle /path/to/update-bundle-0.1.0
+sudo vitalserver-vm runtime stage-bundle /path/to/update-bundle-0.1.0
+sudo vitalserver-vm runtime apply-bundle /path/to/update-bundle-0.1.0
+sudo vitalserver-vm runtime rollback
+```
+
+`apply-bundle`은 mutable `vm-disk.img`를 보존하고 replaceable artifact만 교체합니다. 적용 전 backup을 만들고, runtime health check가 실패하면 Swift runtime lifecycle command가 해당 backup으로 rollback합니다.
+
+기본 생성 위치:
+
+```text
+.tmp/update-bundles/update-bundle-0.1.0/
+```
+
+완전한 air-gapped 설치물을 만들려면 `.pkg` 생성 전에 온라인 빌드 환경에서 아래를 한 번 실행해 base가 될 `vm-disk.img`에 Docker, Docker Compose, nginx, qemu-user-static을 미리 설치합니다.
 
 ```sh
 VM_RECREATE_ROOTFS=true make vm-download
@@ -161,30 +187,29 @@ sudo tirosh-vitalserver-uninstall
 
 ## Control App
 
-사용자용 진입점은 `.app`입니다.
+사용자용 진입점은 `.app`입니다. 제품 설치에서는 `.pkg`가 이 app을 `/Applications`에 설치합니다.
 
 ```sh
 make vm-app
 open ".tmp/Tirosh VitalServer Manager.app"
 ```
 
-개발용 app은 내부 Resources에 runtime `.pkg`와 uninstaller를 포함합니다.
+App bundle은 가벼운 관리 UI만 포함합니다. Runtime package, rootfs, VM disk는 app Resources에 넣지 않습니다.
 
 ```text
 Tirosh VitalServer Manager.app
   Contents/MacOS/Tirosh VitalServer Manager
-  Contents/Resources/TiroshVitalServerVM.pkg
-  Contents/Resources/tirosh-vitalserver-uninstall
+  Contents/Info.plist
+  Contents/Resources/AppIcon.icns
 ```
 
 앱에서 제공하는 기능은 아래입니다.
 
 | 기능 | 내부 동작 |
 |---|---|
-| Install Runtime | 설치 Wizard에서 CPU/RAM/disk/network/service 설정을 받고 bundled `.pkg`를 관리자 권한으로 설치 |
 | Health Check | VM IP, guest HTTP, host proxy HTTP 확인 |
 | Open VitalServer | `http://127.0.0.1/` 열기 |
-| Uninstall | 설치된 uninstaller 또는 bundled uninstaller 실행 |
+| Uninstall | 설치된 `/usr/local/bin/tirosh-vitalserver-uninstall` 실행 |
 
 CPU는 VitalServer 내부 동작 조건 때문에 7 vCPU 이상만 허용하고, Mac mini 운영 기본값은 8 vCPU입니다.
 
@@ -201,6 +226,13 @@ vitalserver-vm network shared
 vitalserver-vm network bridged <interface>
 vitalserver-vm interfaces
 vitalserver-vm configure --cpu <count> --memory-mib <mib> --network shared
+vitalserver-vm runtime install
+vitalserver-vm runtime status
+vitalserver-vm runtime health
+vitalserver-vm runtime verify-bundle <bundle-dir>
+vitalserver-vm runtime stage-bundle <bundle-dir>
+vitalserver-vm runtime apply-bundle <bundle-dir>
+vitalserver-vm runtime rollback [backup-dir]
 vitalserver-vm clean
 vitalserver-vm version
 ```

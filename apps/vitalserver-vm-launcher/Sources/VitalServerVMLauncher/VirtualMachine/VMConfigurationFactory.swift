@@ -90,7 +90,7 @@ final class VMConfigurationFactory {
             networkDevice.attachment = VZNATNetworkDeviceAttachment()
         case .bridged:
             guard let bridgedInterface = network.bridgedInterface, !bridgedInterface.isEmpty else {
-                throw LauncherError.missingArgument("bridged network requires `bridgedInterface` in config.json")
+                throw LauncherError.missingArgument("bridged network requires `bridgedInterface` in vm-config.json")
             }
             let interfaces = VZBridgedNetworkInterface.networkInterfaces
             guard !interfaces.isEmpty else {

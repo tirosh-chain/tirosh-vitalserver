@@ -15,7 +15,7 @@ struct VMRuntimeConfig: Codable {
     // The default boot asset names match the Linux kernel/initrd style used by
     // Apple's Linux VM sample and keep the first PoC explicit.
     static func `default`(home: URL) -> VMRuntimeConfig {
-        let images = home.appendingPathComponent(Constants.Paths.imagesDirectory)
+        let runtime = home.appendingPathComponent(Constants.Paths.runtimeDirectory)
         let sharedData = home.appendingPathComponent(Constants.Paths.dataDirectory)
         return VMRuntimeConfig(
             cpuCount: min(
@@ -23,10 +23,10 @@ struct VMRuntimeConfig: Codable {
                 Constants.Defaults.maximumCPUCount
             ),
             memoryMiB: Constants.Defaults.memoryMiB,
-            kernelPath: images.appendingPathComponent(Constants.BootAssets.kernel).path,
-            initialRamdiskPath: images.appendingPathComponent(Constants.BootAssets.initialRamdisk).path,
-            diskPath: images.appendingPathComponent(Constants.BootAssets.disk).path,
-            cloudInitPath: images.appendingPathComponent(Constants.BootAssets.cloudInit).path,
+            kernelPath: runtime.appendingPathComponent(Constants.BootAssets.kernel).path,
+            initialRamdiskPath: runtime.appendingPathComponent(Constants.BootAssets.initialRamdisk).path,
+            diskPath: runtime.appendingPathComponent(Constants.BootAssets.disk).path,
+            cloudInitPath: runtime.appendingPathComponent(Constants.BootAssets.cloudInit).path,
             kernelCommandLine: Constants.BootAssets.commandLine,
             network: NetworkConfig(
                 mode: .shared,
@@ -76,7 +76,7 @@ struct VMRuntimeConfig: Codable {
         ensureNetworkIdentity(&config)
         if config.cloudInitPath == nil || config.cloudInitPath?.isEmpty == true {
             config.cloudInitPath = home
-                .appendingPathComponent(Constants.Paths.imagesDirectory)
+                .appendingPathComponent(Constants.Paths.runtimeDirectory)
                 .appendingPathComponent(Constants.BootAssets.cloudInit)
                 .path
         }

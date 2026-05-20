@@ -9,20 +9,29 @@ enum Constants {
     enum Paths {
         static let defaultHomeDisplay = "~/.tirosh/vitalserver-vm"
         static let defaultHomePathComponents = [".tirosh", "vitalserver-vm"]
-        static let configFile = "config.json"
+        static let configFile = "runtime/vm-config.json"
         static let dataDirectory = "data"
-        static let imagesDirectory = "images"
+        static let runtimeDirectory = "runtime"
         static let logsDirectory = "logs"
         static let runDirectory = "run"
         static let pidFile = "vitalserver-vm.pid"
         static let vitalFilesDirectory = "vital-files"
         static let vrReleaseDirectory = "vr-release"
+        static let bundlesDirectory = "bundles"
+        static let backupsDirectory = "backups"
+    }
+
+    enum Artifacts {
+        static let rootfsBase = "rootfs-base.raw.gz"
+        static let runtimeVersion = "runtime-version.json"
+        static let backupManifest = "backup-manifest.json"
+        static let runtimeConfig = "runtime-config.json"
     }
 
     enum BootAssets {
         static let kernel = "Image"
         static let initialRamdisk = "initrd.img"
-        static let disk = "rootfs.raw"
+        static let disk = "vm-disk.img"
         static let cloudInit = "seed.iso"
         static let commandLine = "console=hvc0 root=/dev/vda1 rw"
     }
@@ -39,7 +48,40 @@ enum Constants {
 
     enum Network {
         // Locally administered, unicast MAC prefix. The rest is generated once
-        // at init time and persisted in config.json for DHCP reservation.
+        // at init time and persisted in vm-config.json for DHCP reservation.
         static let localMacPrefix0: UInt8 = 0x52
+    }
+
+    enum InstallPaths {
+        static let vmBin = "/usr/local/bin/vitalserver-vm"
+        static let proxyRun = "/usr/local/bin/vitalserver-proxy-run"
+    }
+
+    enum Launchd {
+        static let vmService = "com.tirosh.vitalserver-vm"
+        static let proxyService = "com.tirosh.vitalserver-proxy"
+    }
+
+    enum Runtime {
+        static let vmIPFile = "vm-ip"
+        static let proxyHealthURL = "http://127.0.0.1:80/"
+        static let waitTimeoutSeconds = 600.0
+    }
+
+    enum Bundle {
+        static let manifest = "manifest.json"
+        static let checksums = "checksums.txt"
+        static let signature = "signature"
+    }
+
+    enum Commands {
+        static let launchctl = "/bin/launchctl"
+        static let curl = "/usr/bin/curl"
+        static let gunzip = "/usr/bin/gunzip"
+        static let truncate = "/usr/bin/truncate"
+        static let hdiutil = "/usr/bin/hdiutil"
+        static let plistBuddy = "/usr/libexec/PlistBuddy"
+        static let chmod = "/bin/chmod"
+        static let chown = "/usr/sbin/chown"
     }
 }

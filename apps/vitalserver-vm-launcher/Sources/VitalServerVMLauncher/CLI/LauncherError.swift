@@ -8,6 +8,8 @@ enum LauncherError: Error, CustomStringConvertible {
     case bridgedInterfaceUnavailable(String)
     case noBridgedInterfaces
     case invalidMacAddress(String)
+    case runtimeHealthFailed
+    case bundleVerificationFailed(String)
 
     var description: String {
         switch self {
@@ -25,6 +27,10 @@ enum LauncherError: Error, CustomStringConvertible {
             return "no bridged network interfaces are available"
         case let .invalidMacAddress(value):
             return "invalid MAC address: \(value)"
+        case .runtimeHealthFailed:
+            return "runtime health check failed"
+        case let .bundleVerificationFailed(message):
+            return "bundle verification failed: \(message)"
         }
     }
 }

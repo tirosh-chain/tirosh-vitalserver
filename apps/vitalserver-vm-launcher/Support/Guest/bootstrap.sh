@@ -35,6 +35,44 @@ if [ ! -f "${DEPLOY_DIR}/compose.yaml" ]; then
   exit 1
 fi
 
+load_runtime_config() {
+  local config_file="${DEPLOY_DIR}/runtime-config.json"
+
+  if [ ! -f "${config_file}" ]; then
+    printf "error: missing %s\n" "${config_file}" >&2
+    exit 1
+  fi
+
+  eval "$(
+    python3 - "${config_file}" <<'PY'
+import json
+import shlex
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    config = json.load(handle)
+
+
+def emit(name, value):
+    print(f"export {name}={shlex.quote(str(value))}")
+
+
+emit("VITALSERVER_HTTP_PORT", config.get("vitalserverHttpPort", 18080))
+emit("VITALSERVER_REDIS_HOST", config.get("redisHost", "redis"))
+emit("VITALSERVER_REDIS_PORT", config.get("redisPort", 6379))
+emit("VITALSERVER_TRUST_PROXY", "1" if config.get("trustProxy", True) else "0")
+emit("VITALSERVER_PUBLIC_HOST", config.get("publicHost", ""))
+emit("VITALSERVER_PUBLIC_PORT", config.get("publicPort", ""))
+emit("VITALSERVER_ADMIN_PASSWORD", config.get("adminPassword", "admin"))
+emit("VITALSERVER_VITAL_FILES_DIR", config.get("vitalFilesDirectory", "/mnt/tirosh-vital-files"))
+emit("REDIS_UI_PORT", config.get("redisUiPort", 18081))
+emit("SWAGGER_UI_PORT", config.get("swaggerUiPort", 18082))
+PY
+  )"
+
+  APP_PORT="${VITALSERVER_HTTP_PORT}"
+}
+
 install_vm_ip_writer() {
   install -m 0755 /dev/stdin /usr/local/bin/tirosh-write-vm-ip <<'SCRIPT'
 #!/usr/bin/env bash
@@ -214,6 +252,8 @@ if ! docker compose version >/dev/null 2>&1; then
   exit 1
 fi
 
+load_runtime_config
+
 systemctl enable --now docker
 systemctl enable --now nginx
 systemctl enable --now binfmt-support >/dev/null 2>&1 || true
@@ -265,34 +305,15 @@ wait_for_vitalserver_http() {
   printf "error: VitalServer app did not become ready\n" >&2
   docker compose \
     --project-name vitalserver \
-    --env-file "${DEPLOY_DIR}/.env" \
     -f "${DEPLOY_DIR}/compose.yaml" \
     ps >&2 || true
   docker compose \
     --project-name vitalserver \
-    --env-file "${DEPLOY_DIR}/.env" \
     -f "${DEPLOY_DIR}/compose.yaml" \
     logs --tail=200 >&2 || true
   df -h / >&2 || true
   exit 1
 }
-
-read_env_value() {
-  local key="$1"
-  local fallback="$2"
-  local env_file="${DEPLOY_DIR}/.env"
-
-  if [ -f "${env_file}" ]; then
-    awk -F= -v key="${key}" -v fallback="${fallback}" \
-      '$1 == key { value = substr($0, length(key) + 2) } END { print value ? value : fallback }' \
-      "${env_file}"
-  else
-    printf "%s" "${fallback}"
-  fi
-}
-
-REDIS_UI_PORT="$(read_env_value REDIS_UI_PORT "${REDIS_UI_PORT}")"
-SWAGGER_UI_PORT="$(read_env_value SWAGGER_UI_PORT "${SWAGGER_UI_PORT}")"
 
 tmp_nginx="$(mktemp)"
 sed \
@@ -316,7 +337,6 @@ fi
 
 docker compose \
   --project-name vitalserver \
-  --env-file "${DEPLOY_DIR}/.env" \
   -f "${DEPLOY_DIR}/compose.yaml" \
   up -d "${compose_build_args[@]}"
 

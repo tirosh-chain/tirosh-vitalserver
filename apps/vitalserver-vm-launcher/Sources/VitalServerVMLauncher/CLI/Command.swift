@@ -6,6 +6,7 @@ enum Command: String {
     case network
     case interfaces
     case configure
+    case runtime
     case clean
     case version
     case help

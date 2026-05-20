@@ -2,7 +2,6 @@ import SwiftUI
 
 struct ContentView: View {
     @StateObject private var controller = RuntimeController()
-    @State private var showsInstallWizard = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -17,13 +16,6 @@ struct ContentView: View {
         }
         .task {
             await pollStatus()
-        }
-        .sheet(isPresented: $showsInstallWizard) {
-            InstallWizardView { settings in
-                Task {
-                    await controller.installRuntime(settings: settings)
-                }
-            }
         }
     }
 
@@ -77,10 +69,6 @@ struct ContentView: View {
 
     private var actionBar: some View {
         HStack(spacing: 10) {
-            Button(AppConstants.Actions.installRuntime) {
-                showsInstallWizard = true
-            }
-            .disabled(controller.isBusy || controller.status.runtimeInstalled)
             Button(AppConstants.Actions.healthCheck) {
                 Task { await controller.healthCheck() }
             }

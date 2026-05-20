@@ -25,6 +25,8 @@ struct Launcher {
             listInterfaces()
         case .configure:
             try configureRuntime(paths: paths, arguments: Array(arguments.dropFirst()))
+        case .runtime:
+            try RuntimeLifecycle(paths: paths).run(arguments: Array(arguments.dropFirst()))
         case .clean:
             try clean(paths: paths)
         case .version:
@@ -40,7 +42,7 @@ struct Launcher {
     func initialize(paths: LauncherPaths) throws {
         let fileManager = FileManager.default
         try fileManager.createDirectory(
-            at: paths.home.appendingPathComponent(Constants.Paths.imagesDirectory),
+            at: paths.home.appendingPathComponent(Constants.Paths.runtimeDirectory),
             withIntermediateDirectories: true
         )
         try fileManager.createDirectory(
@@ -84,8 +86,8 @@ struct Launcher {
             }
         }
 
-        let imagesPath = paths.home.appendingPathComponent(Constants.Paths.imagesDirectory).path
-        print("place Linux boot assets under \(imagesPath)")
+        let runtimePath = paths.home.appendingPathComponent(Constants.Paths.runtimeDirectory).path
+        print("place Linux runtime assets under \(runtimePath)")
         print("shared data directory: \(paths.home.appendingPathComponent(Constants.Paths.dataDirectory).path)")
     }
 
@@ -296,6 +298,13 @@ struct Launcher {
               vitalserver-vm network bridged <interface>
               vitalserver-vm interfaces
               vitalserver-vm configure --cpu <count> --memory-mib <mib> --network shared --vital-files-dir <path>
+              vitalserver-vm runtime install
+              vitalserver-vm runtime status
+              vitalserver-vm runtime health
+              vitalserver-vm runtime verify-bundle <bundle-dir>
+              vitalserver-vm runtime stage-bundle <bundle-dir>
+              vitalserver-vm runtime apply-bundle <bundle-dir>
+              vitalserver-vm runtime rollback [backup-dir]
               vitalserver-vm clean
               vitalserver-vm version
 

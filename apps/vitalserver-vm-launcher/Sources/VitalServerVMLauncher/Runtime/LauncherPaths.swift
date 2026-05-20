@@ -26,8 +26,7 @@ struct LauncherPaths {
 
     var cleanableRuntimePaths: [URL] {
         [
-            config,
-            home.appendingPathComponent(Constants.Paths.imagesDirectory),
+            home.appendingPathComponent(Constants.Paths.runtimeDirectory),
             home.appendingPathComponent(Constants.Paths.logsDirectory),
             home.appendingPathComponent(Constants.Paths.runDirectory),
         ]
