@@ -109,7 +109,8 @@ struct Launcher {
         try VMRuntimeConfig.validateBootFiles(config)
         try ProcessState.writeCurrentPid(pidFile: paths.pidFile)
 
-        let vmConfiguration = try VMConfigurationFactory().build(from: config)
+        let configurationFactory = VMConfigurationFactory()
+        let vmConfiguration = try configurationFactory.build(from: config)
         let virtualMachine = VZVirtualMachine(configuration: vmConfiguration)
         let delegate = VirtualMachineDelegate(pidFile: paths.pidFile)
         virtualMachine.delegate = delegate
@@ -128,6 +129,7 @@ struct Launcher {
 
         // Keep the CLI alive while the Virtualization framework owns the VM.
         RunLoop.main.run()
+        _ = configurationFactory
         _ = delegate
     }
 

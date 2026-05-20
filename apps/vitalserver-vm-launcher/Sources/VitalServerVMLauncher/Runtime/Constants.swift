@@ -3,6 +3,7 @@ enum Constants {
 
     enum Environment {
         static let vmHome = "VITALSERVER_VM_HOME"
+        static let detached = "VITALSERVER_VM_DETACHED"
     }
 
     enum Paths {

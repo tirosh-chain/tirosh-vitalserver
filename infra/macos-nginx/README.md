@@ -7,8 +7,8 @@ macOS에서 Docker나 OrbStack으로 container port를 직접 publish하면 Vita
 ```text
 VRecorder / Browser
   -> macOS host nginx public port
-  -> Docker backend 127.0.0.1:18080
-  -> VitalServer container :80
+  -> backend 127.0.0.1:18080 or VM shared/NAT IP:80
+  -> VitalServer :80
 ```
 
 ## Backend 환경
@@ -29,6 +29,12 @@ VITALSERVER_PUBLIC_PORT=
 
 외부 VRecorder 장비와 브라우저는 Docker backend port가 아니라 macOS host proxy port로 접속해야
 합니다.
+
+VM shared/NAT mode에서는 backend upstream을 VM endpoint로 바꿉니다.
+
+```sh
+VM_PROXY_UPSTREAM=<vm-ip>:80 make vm-proxy-start
+```
 
 ## nginx config 렌더링
 

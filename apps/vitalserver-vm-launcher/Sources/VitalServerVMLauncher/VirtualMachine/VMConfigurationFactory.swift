@@ -1,7 +1,9 @@
 import Foundation
 import Virtualization
 
-struct VMConfigurationFactory {
+final class VMConfigurationFactory {
+    private var retainedSerialInputPipes: [Pipe] = []
+
     // Build only the Virtualization.framework object graph here.
     func build(from config: VMRuntimeConfig) throws -> VZVirtualMachineConfiguration {
         let bootLoader = VZLinuxBootLoader(kernelURL: URL(fileURLWithPath: config.kernelPath))
@@ -59,8 +61,16 @@ struct VMConfigurationFactory {
     // Attach the guest console to this CLI for the PoC.
     private func serialPortConfiguration() -> VZVirtioConsoleDeviceSerialPortConfiguration {
         let serialPort = VZVirtioConsoleDeviceSerialPortConfiguration()
+        let input: FileHandle
+        if ProcessInfo.processInfo.environment[Constants.Environment.detached] == "1" {
+            let pipe = Pipe()
+            retainedSerialInputPipes.append(pipe)
+            input = pipe.fileHandleForReading
+        } else {
+            input = FileHandle.standardInput
+        }
         serialPort.attachment = VZFileHandleSerialPortAttachment(
-            fileHandleForReading: FileHandle.standardInput,
+            fileHandleForReading: input,
             fileHandleForWriting: FileHandle.standardOutput
         )
         return serialPort

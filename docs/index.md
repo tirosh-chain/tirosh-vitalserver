@@ -12,6 +12,7 @@
 | [Vital Recorder](vrecorder.md) | VRecorder 접속 흐름과 Web Monitoring 상태 표시 기준 |
 | [Testkit 사용법](testkit-usage.md) | `vitalserver-testkit` CLI와 검증 시나리오 실행 방법 |
 | [Redis 데이터 구조](redis-data-model.md) | VitalServer가 Redis에 저장하는 key 구조와 relay 설계 |
+| [VitalServer VM Launcher](vitalserver-vm-launcher.md) | Apple Virtualization 기반 Linux VM 운영 PoC와 네트워크/identity 정책 |
 | [ADR 0001](adr/0001-macos-host-proxy-for-vrecorder-ip.md) | macOS host proxy로 VRecorder 원 IP를 보존하기로 한 결정 |
 | [OpenAPI 문서](openapi.yaml) | upstream VitalServer route를 분석해 만든 Swagger/OpenAPI spec |
 
@@ -25,6 +26,7 @@
 4. [Vital Recorder](vrecorder.md)
 5. [Testkit 사용법](testkit-usage.md)
 6. [Redis 데이터 구조](redis-data-model.md)
+7. [VitalServer VM Launcher](vitalserver-vm-launcher.md)
 
 Swagger UI로 API를 확인할 때는 root에서 아래 명령을 실행합니다.
 
