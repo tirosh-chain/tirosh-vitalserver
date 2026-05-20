@@ -67,6 +67,33 @@ make proxy-stop
 make proxy-clean
 ```
 
+`make proxy-status`는 nginx pid file뿐 아니라 proxy port listener와 Docker backend
+`/check` 응답도 함께 확인합니다. `make proxy-stop`은 pid file이 없거나 stale이어도 repository
+config 기준으로 nginx stop을 한 번 더 시도합니다.
+
+## 502 Bad Gateway 확인
+
+nginx 화면에서 `502 Bad Gateway`가 보이면 proxy는 요청을 받았지만 Docker backend에 연결하지
+못한 상태입니다. nginx error log에는 보통 아래와 같은 메시지가 남습니다.
+
+```text
+connect() failed (61: Connection refused) while connecting to upstream
+upstream: "http://127.0.0.1:18080/..."
+```
+
+이때는 아래 순서로 확인합니다.
+
+```sh
+make proxy-status
+docker compose ps
+curl -sv http://127.0.0.1:18080/check
+tail -80 .tmp/macos-nginx/logs/error.log
+```
+
+`proxy-status`에서 backend가 reachable하지 않다고 나오면 `make up` 또는 `docker compose up -d`로
+backend를 먼저 살립니다. proxy port가 nginx가 아닌 다른 process에 잡혀 있으면 해당 process를
+중지하거나 `VITALSERVER_PROXY_PORT`를 바꿔 실행합니다.
+
 ## launchd plist 렌더링
 
 ```sh
