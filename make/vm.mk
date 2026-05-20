@@ -13,8 +13,8 @@ VM_DEPLOY_DIR ?= $(VM_HOME)/data/deploy
 VM_UBUNTU_CONFIG ?= $(VM_BUILD_SUPPORT_DIR)/ubuntu-cloud-image.env
 VM_RSYNC_EXCLUDES ?= --exclude .DS_Store --exclude __pycache__
 
-.PHONY: vm-up vm-down vm-prepare vm-start vm-stop vm-status vm-clean
-.PHONY: vm-build vm-sign vm-sign-bridged vm-init vm-download vm-cloud-init vm-stage vm-interfaces
+.PHONY: vm-up vm-up-bridged vm-down vm-prepare vm-start vm-start-bridged vm-stop vm-status vm-clean
+.PHONY: vm-build vm-sign vm-sign-bridged vm-init vm-download vm-cloud-init vm-stage vm-interfaces vm-network-shared vm-network-bridged
 
 vm-build:
 	cd "$(VM_LAUNCHER_DIR)" && env SDKROOT="$(VM_SDKROOT)" CLANG_MODULE_CACHE_PATH="$(VM_CLANG_MODULE_CACHE)" swift build -c release
@@ -43,6 +43,8 @@ vm-prepare: vm-download vm-cloud-init vm-stage
 
 vm-up: vm-prepare vm-start
 
+vm-up-bridged: vm-prepare vm-network-bridged vm-start-bridged
+
 vm-down: vm-stop
 
 vm-stage: vm-init
@@ -64,6 +66,9 @@ vm-stage: vm-init
 vm-start: vm-sign
 	VITALSERVER_VM_HOME="$(VM_HOME)" "$(VM_LAUNCHER_BIN)" start
 
+vm-start-bridged: vm-sign-bridged
+	VITALSERVER_VM_HOME="$(VM_HOME)" "$(VM_LAUNCHER_BIN)" start
+
 vm-stop:
 	VITALSERVER_VM_HOME="$(VM_HOME)" "$(VM_LAUNCHER_BIN)" stop
 
@@ -72,6 +77,13 @@ vm-status:
 
 vm-interfaces: vm-sign-bridged
 	"$(VM_LAUNCHER_BIN)" interfaces
+
+vm-network-shared: vm-build
+	VITALSERVER_VM_HOME="$(VM_HOME)" "$(VM_LAUNCHER_BIN)" network shared
+
+vm-network-bridged: vm-sign-bridged
+	@test -n "$(VM_BRIDGED_INTERFACE)" || { printf "Set VM_BRIDGED_INTERFACE. Run: make vm-interfaces\n" >&2; exit 1; }
+	VITALSERVER_VM_HOME="$(VM_HOME)" "$(VM_LAUNCHER_BIN)" network bridged "$(VM_BRIDGED_INTERFACE)"
 
 vm-clean: vm-build
 	VITALSERVER_VM_HOME="$(VM_HOME)" "$(VM_LAUNCHER_BIN)" clean

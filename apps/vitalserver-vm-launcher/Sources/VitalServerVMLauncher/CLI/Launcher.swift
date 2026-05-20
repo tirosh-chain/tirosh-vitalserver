@@ -19,6 +19,8 @@ struct Launcher {
             try ProcessState.status(pidFile: paths.pidFile)
         case .stop:
             try ProcessState.stop(pidFile: paths.pidFile)
+        case .network:
+            try configureNetwork(paths: paths, arguments: Array(arguments.dropFirst()))
         case .interfaces:
             listInterfaces()
         case .clean:
@@ -141,6 +143,66 @@ struct Launcher {
         }
     }
 
+    func configureNetwork(paths: LauncherPaths, arguments: [String]) throws {
+        guard let modeValue = arguments.first else {
+            throw LauncherError.missingArgument("usage: vitalserver-vm network shared|bridged [interface]")
+        }
+        guard let mode = NetworkMode(rawValue: modeValue) else {
+            throw LauncherError.missingArgument("network mode must be `shared` or `bridged`")
+        }
+
+        var config = try VMRuntimeConfig.load(from: paths.config)
+        config.network.mode = mode
+
+        switch mode {
+        case .shared:
+            config.network.bridgedInterface = nil
+        case .bridged:
+            let interface = try resolveBridgedInterface(arguments.dropFirst().first)
+            config.network.bridgedInterface = interface.identifier
+        }
+
+        VMRuntimeConfig.ensureRuntimeDefaults(&config, home: paths.home)
+        let data = try JSONEncoder.pretty.encode(config)
+        try data.write(to: paths.config)
+
+        switch mode {
+        case .shared:
+            print("network mode: shared")
+        case .bridged:
+            print("network mode: bridged")
+            print("bridged interface: \(config.network.bridgedInterface ?? "")")
+            print("mac address: \(config.network.macAddress ?? "")")
+        }
+    }
+
+    private func resolveBridgedInterface(_ requestedInterface: String?) throws -> VZBridgedNetworkInterface {
+        let interfaces = VZBridgedNetworkInterface.networkInterfaces
+        guard !interfaces.isEmpty else {
+            throw LauncherError.noBridgedInterfaces
+        }
+
+        if let requestedInterface, !requestedInterface.isEmpty {
+            guard let interface = interfaces.first(where: {
+                $0.identifier == requestedInterface || $0.localizedDisplayName == requestedInterface
+            }) else {
+                throw LauncherError.bridgedInterfaceUnavailable(requestedInterface)
+            }
+            return interface
+        }
+
+        if interfaces.count == 1, let interface = interfaces.first {
+            return interface
+        }
+
+        let available = interfaces
+            .map { "\($0.identifier)\t\($0.localizedDisplayName ?? "")" }
+            .joined(separator: "\n")
+        throw LauncherError.missingArgument(
+            "bridged interface is required. Run `vitalserver-vm interfaces` and choose one.\n\(available)"
+        )
+    }
+
     func printUsage() {
         print(
             """
@@ -151,6 +213,8 @@ struct Launcher {
               vitalserver-vm start
               vitalserver-vm stop
               vitalserver-vm status
+              vitalserver-vm network shared
+              vitalserver-vm network bridged <interface>
               vitalserver-vm interfaces
               vitalserver-vm clean
               vitalserver-vm version

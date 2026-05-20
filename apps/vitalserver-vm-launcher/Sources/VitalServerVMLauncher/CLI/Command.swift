@@ -3,6 +3,7 @@ enum Command: String {
     case start
     case stop
     case status
+    case network
     case interfaces
     case clean
     case version

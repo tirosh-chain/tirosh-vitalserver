@@ -185,6 +185,13 @@ make vm-start
 make vm-up
 ```
 
+병원 LAN에 직접 붙는 bridged mode를 검증하려면:
+
+```sh
+make vm-interfaces
+VM_BRIDGED_INTERFACE=en0 make vm-up-bridged
+```
+
 VM이 부팅되면 cloud-init이 `/mnt/tirosh`를 mount하고 `deploy/bootstrap.sh`를 자동 실행합니다.
 
 정지:
@@ -497,6 +504,22 @@ services:
 | VM MAC address | `config.json`에 생성 후 영구 저장 |
 | 사용자 접근 | VM IP 표시 + mDNS/Bonjour 보조 |
 | static IP | advanced option으로만 제공 |
+
+bridged mode는 운영 목표이지만 항상 가능한 모드는 아닙니다. 병원/회사망 정책에 따라 VM의 bridged traffic이 차단될 수 있으므로, 제품 GUI에서는 `bridged`와 `shared/NAT`를 선택할 수 있어야 합니다.
+
+| 모드 | IP를 주는 곳 | 장점 | 한계 |
+|---|---|---|---|
+| `bridged` | 병원 LAN DHCP | VRecorder와 같은 LAN IP 대역 사용, source IP 보존에 유리 | 네트워크 정책에 따라 차단 가능 |
+| `shared` | macOS Virtualization NAT DHCP | 설치/부팅 PoC가 쉽고 안정적 | VRecorder가 직접 접근하는 운영 검증에는 부적합 |
+
+CLI에서 모드를 바꾸려면:
+
+```sh
+make vm-network-shared
+
+make vm-interfaces
+VM_BRIDGED_INTERFACE=en0 make vm-network-bridged
+```
 
 핵심은 static IP를 기본값으로 두지 않는 것입니다. 병원/회사망은 `192.168.0.x`, `192.168.1.x`, `10.x.x.x`, `172.x.x.x`처럼 subnet이 제각각이고, 임의 static IP는 충돌을 만들 수 있습니다. 대신 VM의 MAC address를 고정하고 네트워크 장비에서 DHCP reservation을 설정하는 방식이 운영상 가장 안전합니다.
 
