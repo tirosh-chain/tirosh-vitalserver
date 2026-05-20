@@ -47,5 +47,19 @@ uv run --project packages/vm-build vitalserver-vm-build update-bundle \
   --migration release/migrations/001-example
 ```
 
+Update bundle contract:
+
+| artifact | builder behavior | installed runtime apply behavior |
+|---|---|---|
+| `rootfs-base.raw.gz` | copied into bundle and listed as `rootfs-base` | verified, backed up, and used to replace installed rootfs base |
+| migrations | copied under `migrations/` | verified and executed if executable |
+
+Runtime `.pkg`, app replacement, and runtime tool replacement are not part of the
+current update bundle contract. Add a new artifact type and Swift apply behavior
+together when that update path is needed.
+
+`signature` is currently written as `unsigned`. It is a fixed bundle slot for
+release hardening, not an active cryptographic verification step yet.
+
 This package is for build machines only. Installed Mac mini runtime logic stays in
 the Swift `vitalserver-vm` CLI.

@@ -238,6 +238,106 @@ launchd
 
 `vm-disk.img`는 sparse disk라 package payload에 그대로 넣으면 `pkgbuild`가 실패할 수 있습니다. 따라서 package에는 immutable base artifact인 `rootfs-base.raw.gz`를 넣고, 설치 시 `postinstall`에서 `vm-disk.img`를 생성합니다.
 
+## 인터페이스 계약
+
+현재 제품화 흐름은 여러 실행 환경을 건너므로, 각 경계의 입력과 출력 계약을 분리해서 관리합니다.
+
+| 경계 | 호출자 | 피호출자 | 입력 계약 | 출력/부작용 |
+|---|---|---|---|---|
+| build orchestration | `make/vm.mk` | `vitalserver-vm-build` | `vm-build.toml`, source tree, optional Make overrides | `.tmp/vitalserver-vm-pkg/*`, `dist/*` |
+| Ubuntu/rootfs build | `make vm-golden-rootfs` | Python `ubuntu`, `cloud-init`, Swift launcher | Ubuntu cloud image, deploy bundle, bootstrap script | clean `vm-disk.img`, compressed `rootfs-base.raw.gz` |
+| nginx bundle | `make vm-nginx-bundle` | Python `nginx-bundle` | pinned macOS nginx binary, expected version | self-contained `nginx/sbin`, `nginx/lib` bundle |
+| Docker image bundle | `make vm-docker-images` | Python `docker-images` | Dockerfile, image list, build platform | `vitalserver-images.tar.gz` |
+| PKG staging | `make vm-pkg-stage` | macOS filesystem tools | app bundle, rootfs base, nginx bundle, Docker bundle, templates | package root under `.tmp/vitalserver-vm-pkg/root` |
+| install provisioning | PKG `postinstall` | `vitalserver-vm runtime install` | installed payload, optional `/private/tmp/tirosh-vitalserver-install.json` | `vm-disk.img`, `vm-config.json`, `seed.iso`, permissions, launchd services |
+| VM launch | launchd | `vitalserver-vm start` | `VITALSERVER_VM_HOME`, `VITALSERVER_VM_DETACHED=1`, `runtime/vm-config.json` | Virtualization.framework VM process |
+| host proxy | launchd | `vitalserver-proxy-run` | `vm/data/run/vm-ip`, proxy template, nginx binary | rendered host nginx config, nginx process |
+| guest bootstrap | cloud-init | `bootstrap.sh` | VirtioFS mounts, `runtime-config.json`, Docker bundle | guest nginx, Docker Compose stack, `vm-ip` marker |
+| update verification | operator/Manager | `vitalserver-vm runtime verify-bundle` | bundle directory | manifest/checksum validation |
+| update apply | operator/Manager | `vitalserver-vm runtime apply-bundle` | verified bundle directory | staged bundle, backup, rootfs-base replacement, migrations, health check |
+
+이 표가 현재 source of truth입니다. Shell은 installer/launchd wrapper로 제한하고, manifest parsing, checksum 검증, backup, rollback 정책은 Swift runtime lifecycle command가 담당합니다.
+
+### 설치 설정 계약
+
+설치 시 optional settings 파일은 아래 경로를 사용합니다.
+
+```text
+/private/tmp/tirosh-vitalserver-install.json
+```
+
+파일이 없으면 기본값을 사용합니다.
+
+| 설정 | 기본값 | 현재 계약 |
+|---|---:|---|
+| `cpuCount` | 8 | 7-64 |
+| `memoryGiB` | 8 | 4-64, 4 단위 |
+| `diskGiB` | 64 | 32-512, 16 단위 |
+| `networkMode` | `shared` | `shared` 또는 `bridged` |
+| `proxyPort` | 80 | 1-65535, 단 Manager/health는 현재 80 기준 |
+| `vitalFilesDirectory` | `/Library/Application Support/TiroshVitalServer/vm/data/vital-files` | absolute path |
+| `adminPassword` | `admin` | empty가 아니면 적용 |
+| `vmHostname` | `tirosh-vitalserver` | hostname-safe 문자열 |
+| `publicHost` | empty | single-line 문자열 |
+| `publicPort` | 80 | 1-65535 |
+| `startAfterInstall` | true | bool |
+| `startOnBoot` | true | bool |
+
+현재 `InstallSettingsDocument`는 partial override가 아니라 complete JSON 계약입니다. 파일을 제공하는 installer UI나 MDM은 모든 필드를 써야 합니다. partial override를 제품 기능으로 열려면 Swift decoder를 optional field 기반으로 바꾸고 migration 없이 기존 complete JSON만 남기지 않습니다.
+
+### Proxy Port 계약
+
+v1 기본 proxy port는 80입니다.
+
+```text
+external client
+  -> Mac mini host nginx :80
+  -> Linux VM nginx :80
+  -> VitalServer container :18080
+```
+
+`proxyPort`는 설치 설정과 LaunchDaemon environment로 전달되지만, 현재 runtime health URL과 Manager app open/health URL은 80으로 고정되어 있습니다. 따라서 80 외 port는 내부 실험 값으로만 사용하고, 제품 설정으로 노출하기 전에는 아래 항목을 같이 바꿔야 합니다.
+
+```text
+RuntimeLifecycle health/status URL
+Manager app health URL
+Manager app Open URL
+docs and install settings schema
+```
+
+### Update Bundle 계약
+
+`make vm-update-bundle`은 현재 아래 artifact를 만들 수 있습니다.
+
+| artifact type | 생성 여부 | Swift verify | Swift apply |
+|---|---:|---:|---:|
+| `rootfs-base` | 항상 포함 | 예 | `rootfs-base.raw.gz` 교체 |
+| `migration` | optional | 예 | executable이면 순차 실행 |
+
+따라서 현재 update apply의 실제 효과는 아래로 제한됩니다.
+
+```text
+verify bundle
+stage bundle
+backup rootfs-base/runtime-version
+stop services
+replace rootfs-base.raw.gz
+run executable migrations
+write runtime-version.json
+restart services if previously running
+health check
+rollback on failure
+```
+
+중요한 제약은 `rootfs-base.raw.gz`와 `vm-disk.img`의 역할 차이입니다.
+
+```text
+rootfs-base.raw.gz = immutable base artifact
+vm-disk.img        = installed mutable runtime instance
+```
+
+update에서 rootfs base를 교체해도 기존 `vm-disk.img` 내부 OS와 application runtime은 자동으로 교체되지 않습니다. 이미 설치된 VM 내부를 바꾸는 작업은 migration 또는 별도 guest update artifact로 정의해야 합니다. `.pkg` 재설치나 app/runtime tools 교체는 아직 update bundle 계약에 포함하지 않습니다.
+
 설치 테스트는 실제 시스템 경로를 사용합니다.
 
 | 경로 | 내용 |
@@ -340,7 +440,6 @@ dist/update-bundles/update-bundle-0.1.0/
   checksums.txt
   signature
   rootfs-base.raw.gz
-  TiroshVitalServerVM-0.1.0.pkg
   migrations/
 ```
 
@@ -359,6 +458,8 @@ sudo vitalserver-vm runtime rollback
 ```
 
 `apply-bundle`은 mutable `vm-disk.img`를 보존하고, replaceable artifact만 backup/rollback 대상으로 삼습니다. 적용 전 backup을 만들고 VM/proxy를 중지한 뒤 artifact를 교체하고 executable migration을 순서대로 실행합니다. 기존에 서비스가 실행 중이었다면 재시작 후 health check를 통과해야 성공 처리합니다. migration 또는 health check 실패 시 `rollback`으로 직전 backup을 복원합니다.
+
+rootfs base 교체는 이후 install/provisioning 기준 artifact를 바꾸는 동작입니다. 이미 생성된 `vm-disk.img` 내부에 새 rootfs를 자동 전개하지 않습니다.
 
 Shell은 installer/launchd wrapper로만 남깁니다. Bundle manifest parsing, checksum 검증, backup, rollback 정책은 Swift runtime lifecycle command가 담당합니다.
 

@@ -28,10 +28,6 @@ def run_build_update_bundle(args: Any) -> int:
     artifacts = [
         ArtifactInput(args.rootfs_base, "rootfs-base.raw.gz", "rootfs-base"),
     ]
-    if args.runtime_pkg is not None:
-        artifacts.append(
-            ArtifactInput(args.runtime_pkg, args.runtime_pkg.name, "runtime-pkg")
-        )
 
     artifact_entries = []
     checksum_lines = []

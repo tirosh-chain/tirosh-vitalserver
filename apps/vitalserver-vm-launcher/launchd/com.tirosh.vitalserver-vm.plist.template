@@ -16,6 +16,8 @@
   <dict>
     <key>VITALSERVER_VM_HOME</key>
     <string>${VITALSERVER_VM_HOME}</string>
+    <key>VITALSERVER_VM_DETACHED</key>
+    <string>1</string>
   </dict>
 
   <key>RunAtLoad</key>

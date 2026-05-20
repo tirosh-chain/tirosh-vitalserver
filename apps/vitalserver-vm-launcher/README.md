@@ -125,6 +125,27 @@ shared/NAT mode에서는 VM IP가 부팅 후에 결정되므로, `vitalserver-pr
 
 `make vm-pkg`는 Docker registry 없이도 container를 시작할 수 있도록 `vitalserver`, `redis`, `redis-ui`, `swagger-ui` image를 `vitalserver-images.tar.gz`로 묶어 포함합니다. Guest bootstrap은 이 bundle을 먼저 `docker load`한 뒤 Compose를 실행합니다.
 
+## Interface Contracts
+
+현재 제품화 경로의 주요 계약은 아래처럼 고정합니다.
+
+| 경계 | 입력 | 출력/부작용 |
+|---|---|---|
+| `make vm-dmg` | `.artifacts` 입력, source tree | `dist/TiroshVitalServer-<version>.dmg` |
+| `make vm-pkg` | golden rootfs, nginx bundle, Docker image bundle | `dist/TiroshVitalServerVM-<version>.pkg` |
+| PKG `postinstall` | installed payload, optional install settings JSON | `/Library/Application Support/TiroshVitalServer/vm` runtime provisioning |
+| `vitalserver-vm runtime install` | `rootfs-base.raw.gz`, deploy bundle, LaunchDaemon plist | mutable `vm-disk.img`, `vm-config.json`, `seed.iso`, loaded services |
+| LaunchDaemon VM service | `VITALSERVER_VM_HOME`, `VITALSERVER_VM_DETACHED=1`, `vm-config.json` | background VM process |
+| `vitalserver-proxy-run` | `vm/data/run/vm-ip`, proxy template | host nginx config and proxy process |
+| guest `bootstrap.sh` | `runtime-config.json`, Docker image bundle | Docker Compose stack and VM-local nginx |
+| update bundle | `manifest.json`, `checksums.txt`, `signature`, `rootfs-base.raw.gz`, migrations | verified/staged bundle, rootfs-base backup/replacement, migrations |
+
+현재 `runtime apply-bundle`이 실제로 적용하는 artifact는 `rootfs-base.raw.gz`와 executable migration입니다. `.pkg` 재설치나 app/runtime tools 교체는 아직 update bundle 계약에 포함하지 않습니다. 필요한 시점에 artifact type별 apply 동작을 추가합니다.
+
+`rootfs-base.raw.gz`는 immutable base artifact이고, 설치된 `vm-disk.img`는 mutable runtime instance입니다. 따라서 update에서 rootfs base를 교체해도 이미 실행 중인 `vm-disk.img` 내부 OS/runtime이 자동으로 교체되지는 않습니다. 설치된 VM 내부 변경은 migration이나 별도 guest update contract로 처리해야 합니다.
+
+기본 host proxy port는 80입니다. 설치 설정에서 다른 `proxyPort`를 사용할 수 있지만, 현재 Manager app과 runtime health URL은 80 기준입니다. 80 외 port를 제품 기능으로 열기 전에는 status/health/open URL 계약을 먼저 확장해야 합니다.
+
 업데이트 입력 단위는 bundle directory입니다.
 
 ```sh

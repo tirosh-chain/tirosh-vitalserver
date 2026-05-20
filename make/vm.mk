@@ -347,7 +347,7 @@ vm-update-bundle: vm-pkg
 		--runtime-version "$(VM_PKG_VERSION)" \
 		--output-dir "$(VM_UPDATE_BUNDLE_DIR)" \
 		--rootfs-base "$(VM_PKG_ROOTFS_CACHE)" \
-		--runtime-pkg "$(VM_PKG_OUTPUT)" $(foreach migration,$(VM_UPDATE_MIGRATIONS),--migration "$(migration)")
+		$(foreach migration,$(VM_UPDATE_MIGRATIONS),--migration "$(migration)")
 	@printf "VM update bundle is ready: %s\n" "$(VM_UPDATE_BUNDLE_PATH)"
 
 vm-update-bundle-verify:
