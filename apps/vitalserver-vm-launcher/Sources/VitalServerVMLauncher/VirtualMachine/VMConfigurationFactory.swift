@@ -50,6 +50,12 @@ struct VMConfigurationFactory {
     // smoke tests where source IP preservation is not being validated.
     private func networkDeviceConfiguration(_ network: NetworkConfig) throws -> VZVirtioNetworkDeviceConfiguration {
         let networkDevice = VZVirtioNetworkDeviceConfiguration()
+        if let macAddressValue = network.macAddress, !macAddressValue.isEmpty {
+            guard let macAddress = VZMACAddress(string: macAddressValue) else {
+                throw LauncherError.invalidMacAddress(macAddressValue)
+            }
+            networkDevice.macAddress = macAddress
+        }
 
         switch network.mode {
         case .shared:

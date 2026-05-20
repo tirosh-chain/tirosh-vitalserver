@@ -32,4 +32,10 @@ enum Constants {
         static let sharedDirectoryTag = "tirosh"
         static let sharedDirectoryGuestMountPath = "/mnt/tirosh"
     }
+
+    enum Network {
+        // Locally administered, unicast MAC prefix. The rest is generated once
+        // at init time and persisted in config.json for DHCP reservation.
+        static let localMacPrefix0: UInt8 = 0x52
+    }
 }

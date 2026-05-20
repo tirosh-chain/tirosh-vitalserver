@@ -25,7 +25,11 @@ struct VMRuntimeConfig: Codable {
             initialRamdiskPath: images.appendingPathComponent(Constants.BootAssets.initialRamdisk).path,
             diskPath: images.appendingPathComponent(Constants.BootAssets.disk).path,
             kernelCommandLine: Constants.BootAssets.commandLine,
-            network: NetworkConfig(mode: .shared, bridgedInterface: nil),
+            network: NetworkConfig(
+                mode: .shared,
+                bridgedInterface: nil,
+                macAddress: Self.generateMacAddress()
+            ),
             sharedDirectory: SharedDirectoryConfig(
                 hostPath: sharedData.path,
                 tag: Constants.Defaults.sharedDirectoryTag,
@@ -52,11 +56,30 @@ struct VMRuntimeConfig: Codable {
             }
         }
     }
+
+    static func ensureNetworkIdentity(_ config: inout VMRuntimeConfig) {
+        if config.network.macAddress == nil || config.network.macAddress?.isEmpty == true {
+            config.network.macAddress = generateMacAddress()
+        }
+    }
+
+    private static func generateMacAddress() -> String {
+        let bytes = [
+            Constants.Network.localMacPrefix0,
+            UInt8.random(in: 0...255),
+            UInt8.random(in: 0...255),
+            UInt8.random(in: 0...255),
+            UInt8.random(in: 0...255),
+            UInt8.random(in: 0...255),
+        ]
+        return bytes.map { String(format: "%02x", $0) }.joined(separator: ":")
+    }
 }
 
 struct NetworkConfig: Codable {
     var mode: NetworkMode
     var bridgedInterface: String?
+    var macAddress: String?
 }
 
 struct SharedDirectoryConfig: Codable {

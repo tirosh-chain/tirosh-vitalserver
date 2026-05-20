@@ -7,6 +7,7 @@ enum LauncherError: Error, CustomStringConvertible {
     case missingFile(String)
     case bridgedInterfaceUnavailable(String)
     case noBridgedInterfaces
+    case invalidMacAddress(String)
 
     var description: String {
         switch self {
@@ -22,6 +23,8 @@ enum LauncherError: Error, CustomStringConvertible {
             return "bridged interface is not available: \(identifier)"
         case .noBridgedInterfaces:
             return "no bridged network interfaces are available"
+        case let .invalidMacAddress(value):
+            return "invalid MAC address: \(value)"
         }
     }
 }

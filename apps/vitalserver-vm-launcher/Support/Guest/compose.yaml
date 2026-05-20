@@ -1,0 +1,65 @@
+services:
+  redis:
+    image: redis:3.2.12-alpine
+    platform: linux/amd64
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --bind
+      - 0.0.0.0
+      - --protected-mode
+      - "no"
+    expose:
+      - "6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  app:
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: apps/vitalserver/docker/Dockerfile
+    image: vitalserver:2.3.4
+    depends_on:
+      redis:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${VITALSERVER_HTTP_PORT:-18080}:80"
+    environment:
+      VITALSERVER_ADMIN_PASSWORD: "${VITALSERVER_ADMIN_PASSWORD:-admin}"
+      VITALSERVER_MIN_CPUS: "6"
+      VITALSERVER_PUBLIC_HOST: "${VITALSERVER_PUBLIC_HOST:-}"
+      VITALSERVER_PUBLIC_PORT: "${VITALSERVER_PUBLIC_PORT:-}"
+      VITALSERVER_REDIS_HOST: "${VITALSERVER_REDIS_HOST:-redis}"
+      VITALSERVER_REDIS_PORT: "${VITALSERVER_REDIS_PORT:-6379}"
+      VITALSERVER_TRUST_PROXY: "${VITALSERVER_TRUST_PROXY:-1}"
+    volumes:
+      - type: bind
+        source: /mnt/tirosh/vital-files
+        target: /opt/vitalserver/vital_files
+      - type: bind
+        source: /mnt/tirosh/vr-release
+        target: /opt/vitalserver/service/vr_release
+      - type: volume
+        source: vital-tmp-files
+        target: /opt/vitalserver/service/tmp_files
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          node -e "require('http').get('http://127.0.0.1/check', r => process.exit(r.statusCode < 500 ? 0 : 1)).on('error', () => process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+volumes:
+  redis-data:
+  vital-tmp-files:

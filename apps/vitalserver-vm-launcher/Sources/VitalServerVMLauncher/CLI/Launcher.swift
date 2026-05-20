@@ -61,12 +61,22 @@ struct Launcher {
         )
 
         if !fileManager.fileExists(atPath: paths.config.path) {
-            let config = VMRuntimeConfig.default(home: paths.home)
+            var config = VMRuntimeConfig.default(home: paths.home)
+            VMRuntimeConfig.ensureNetworkIdentity(&config)
             let data = try JSONEncoder.pretty.encode(config)
             try data.write(to: paths.config)
             print("created \(paths.config.path)")
         } else {
-            print("exists \(paths.config.path)")
+            var config = try VMRuntimeConfig.load(from: paths.config)
+            let previousMacAddress = config.network.macAddress
+            VMRuntimeConfig.ensureNetworkIdentity(&config)
+            if config.network.macAddress != previousMacAddress {
+                let data = try JSONEncoder.pretty.encode(config)
+                try data.write(to: paths.config)
+                print("updated \(paths.config.path) with stable VM MAC address")
+            } else {
+                print("exists \(paths.config.path)")
+            }
         }
 
         let imagesPath = paths.home.appendingPathComponent(Constants.Paths.imagesDirectory).path
