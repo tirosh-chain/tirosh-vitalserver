@@ -197,6 +197,81 @@ UNIT
   systemctl enable tirosh-vitalserver-compose.service
 }
 
+install_guest_operations_tools() {
+  install -m 0755 /dev/stdin /usr/local/bin/tirosh-vitalserver-health <<'SCRIPT'
+#!/usr/bin/env bash
+set -euo pipefail
+
+MOUNT_POINT="${TIROSH_SHARE_MOUNT:-/mnt/tirosh}"
+DEPLOY_DIR="${TIROSH_DEPLOY_DIR:-${MOUNT_POINT}/deploy}"
+
+systemctl is-active --quiet docker
+systemctl is-active --quiet nginx
+docker compose --project-name vitalserver -f "${DEPLOY_DIR}/compose.yaml" ps
+curl -fsS -I --max-time 5 http://127.0.0.1/ >/dev/null
+SCRIPT
+
+  install -m 0755 /dev/stdin /usr/local/bin/tirosh-vitalserver-diagnostics <<'SCRIPT'
+#!/usr/bin/env bash
+set -euo pipefail
+
+MOUNT_POINT="${TIROSH_SHARE_MOUNT:-/mnt/tirosh}"
+DEPLOY_DIR="${TIROSH_DEPLOY_DIR:-${MOUNT_POINT}/deploy}"
+
+printf "== system ==\n"
+hostnamectl || true
+uptime || true
+df -h / "${MOUNT_POINT}" 2>/dev/null || true
+printf "\n== services ==\n"
+systemctl --no-pager --full status docker nginx tirosh-vitalserver-compose.service tirosh-vm-ip.service || true
+printf "\n== compose ps ==\n"
+docker compose --project-name vitalserver -f "${DEPLOY_DIR}/compose.yaml" ps || true
+printf "\n== compose logs ==\n"
+docker compose --project-name vitalserver -f "${DEPLOY_DIR}/compose.yaml" logs --tail=200 || true
+SCRIPT
+
+  install -m 0755 /dev/stdin /usr/local/bin/tirosh-vitalserver-redis-backup <<'SCRIPT'
+#!/usr/bin/env bash
+set -euo pipefail
+
+MOUNT_POINT="${TIROSH_SHARE_MOUNT:-/mnt/tirosh}"
+DEPLOY_DIR="${TIROSH_DEPLOY_DIR:-${MOUNT_POINT}/deploy}"
+BACKUP_DIR="${MOUNT_POINT}/backups/redis"
+STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+
+mkdir -p "${BACKUP_DIR}"
+docker compose --project-name vitalserver -f "${DEPLOY_DIR}/compose.yaml" exec -T redis redis-cli SAVE >/dev/null
+tar -C /var/lib/docker/volumes/vitalserver_redis-data/_data -czf "${BACKUP_DIR}/redis-${STAMP}.tar.gz" .
+find "${BACKUP_DIR}" -name 'redis-*.tar.gz' -type f | sort | head -n -7 | xargs -r rm -f
+SCRIPT
+
+  cat >/etc/systemd/system/tirosh-vitalserver-redis-backup.service <<'UNIT'
+[Unit]
+Description=Back up Tirosh VitalServer Redis volume
+After=docker.service tirosh-vitalserver-compose.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/tirosh-vitalserver-redis-backup
+UNIT
+
+  cat >/etc/systemd/system/tirosh-vitalserver-redis-backup.timer <<'UNIT'
+[Unit]
+Description=Daily Tirosh VitalServer Redis backup
+
+[Timer]
+OnCalendar=*-*-* 03:15:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+UNIT
+
+  systemctl daemon-reload
+  systemctl enable --now tirosh-vitalserver-redis-backup.timer
+}
+
 write_vm_ip() {
   mkdir -p "${RUNTIME_DIR}"
   hostname -I \
@@ -344,6 +419,7 @@ systemctl enable --now binfmt-support >/dev/null 2>&1 || true
 hostnamectl set-hostname "${TIROSH_GUEST_HOSTNAME:-tirosh-vitalserver}"
 systemctl enable --now avahi-daemon
 install_vm_ip_writer
+install_guest_operations_tools
 
 mkdir -p "${VITAL_FILES_MOUNT_POINT}" "${MOUNT_POINT}/vr-release"
 

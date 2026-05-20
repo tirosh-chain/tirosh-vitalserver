@@ -267,8 +267,10 @@ TiroshVitalServer.dmg
 | VitalServer container/runtime 설정 | deploy `runtime-config.json` |
 | 서비스 자동 실행 | LaunchDaemon plist |
 
-Manager app은 설치 이후 상태 확인, health check, service 관리, update/rollback 진입점을 제공하는
-가벼운 UI로 봅니다. VM runtime artifact와 privileged provisioning은 installer pkg가 담당합니다.
+Manager app은 설치 이후 상태 확인, health check, runtime 설정 저장, offline update bundle 적용,
+rollback 진입점을 제공하는 UI로 봅니다. VM runtime artifact와 privileged provisioning은 installer pkg가 담당합니다.
+설정 변경은 Manager가 직접 JSON/plist를 수정하지 않고 `vitalserver-vm runtime configure ... --restart`를
+administrator privilege로 호출합니다.
 
 현재 개발용 app bundle은 `make vm-app`으로 생성합니다.
 
@@ -740,6 +742,24 @@ sudo vitalserver-vm runtime rollback
 
 `apply-bundle`은 mutable `vm-disk.img`를 보존하고, replaceable artifact만 backup/rollback 대상으로 삼습니다. 적용 전 backup을 만들고 VM/proxy를 중지한 뒤 artifact를 교체하고 executable migration을 순서대로 실행합니다. 기존에 서비스가 실행 중이었다면 재시작 후 health check를 통과해야 성공 처리합니다. migration 또는 health check 실패 시 `rollback`으로 직전 backup을 복원합니다.
 
+설치 후 runtime 설정 변경은 아래 command가 source of truth입니다.
+
+```sh
+sudo vitalserver-vm runtime configure \
+  --cpu 8 \
+  --memory-gib 8 \
+  --network shared \
+  --bridged-interface "<interface-id-if-bridged>" \
+  --proxy-port 80 \
+  --vital-files-dir "/Library/Application Support/TiroshVitalServer/vm/data/vital-files" \
+  --public-host "" \
+  --public-port 80 \
+  --admin-password "<password>" \
+  --restart
+```
+
+이 command는 `vm-config.json`, deploy `runtime-config.json`, proxy LaunchDaemon plist를 갱신하고 `--restart`가 있으면 VM/proxy/watchdog을 kickstart합니다. Manager app의 Settings tab도 이 command를 호출합니다.
+
 rootfs base 교체는 이후 install/provisioning 기준 artifact를 바꾸는 동작입니다. 이미 생성된 `vm-disk.img` 내부에 새 rootfs를 자동 전개하지 않습니다.
 
 Shell은 installer/launchd wrapper로만 남깁니다. Bundle manifest parsing, checksum 검증, backup, rollback 정책은 Swift runtime lifecycle command가 담당합니다.
@@ -906,6 +926,7 @@ bootstrap 순서:
 6. bundled Docker image를 load하고 dangling image cleanup 수행
 7. `docker compose up -d --build`로 VitalServer/Redis 실행
 8. `tirosh-vitalserver-compose.service`를 등록해 VM 재부팅 후 Compose stack을 다시 적용
+9. `tirosh-vitalserver-health`, `tirosh-vitalserver-diagnostics`, Redis backup timer를 설치
 
 ## macOS Data Sharing
 

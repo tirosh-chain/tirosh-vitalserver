@@ -6,7 +6,15 @@ struct ContentView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             header
-            statusGrid
+            TabView {
+                statusGrid
+                    .tabItem { Text("Status") }
+                settingsPanel
+                    .tabItem { Text("Settings") }
+                updatePanel
+                    .tabItem { Text("Update") }
+            }
+            .frame(minHeight: 360)
             actionBar
             logPanel
         }
@@ -107,6 +115,74 @@ struct ContentView: View {
                 Task { await controller.refresh() }
             }
             .disabled(controller.isBusy)
+        }
+    }
+
+    private var settingsPanel: some View {
+        Form {
+            Stepper(value: $controller.settings.cpuCount, in: 7...64) {
+                labeledValue("CPU", "\(controller.settings.cpuCount)")
+            }
+            Stepper(value: $controller.settings.memoryGiB, in: 4...64, step: 4) {
+                labeledValue("Memory", "\(controller.settings.memoryGiB) GiB")
+            }
+            Picker("Network", selection: $controller.settings.networkMode) {
+                Text("Shared").tag("shared")
+                Text("Bridged").tag("bridged")
+            }
+            if controller.settings.networkMode == "bridged" {
+                TextField("Bridged interface", text: $controller.settings.bridgedInterface)
+            }
+            TextField("Vital files directory", text: $controller.settings.vitalFilesDirectory)
+            Stepper(value: $controller.settings.proxyPort, in: 1...65_535) {
+                labeledValue("Proxy port", "\(controller.settings.proxyPort)")
+            }
+            TextField("Public host", text: $controller.settings.publicHost)
+            Stepper(value: $controller.settings.publicPort, in: 1...65_535) {
+                labeledValue("Public port", "\(controller.settings.publicPort)")
+            }
+            SecureField("Admin password", text: $controller.settings.adminPassword)
+            Toggle("Restart services after save", isOn: $controller.settings.restartAfterSave)
+            Button(AppConstants.Actions.saveSettings) {
+                Task { await controller.saveSettings() }
+            }
+            .disabled(controller.isBusy || !controller.status.runtimeInstalled)
+        }
+        .padding(16)
+    }
+
+    private var updatePanel: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Text(controller.selectedBundlePath.isEmpty ? "No update bundle selected" : controller.selectedBundlePath)
+                    .lineLimit(2)
+                    .truncationMode(.middle)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Button(AppConstants.Actions.chooseBundle) {
+                    controller.chooseUpdateBundle()
+                }
+            }
+            HStack(spacing: 10) {
+                Button(AppConstants.Actions.applyBundle) {
+                    Task { await controller.applySelectedBundle() }
+                }
+                .disabled(controller.isBusy || controller.selectedBundlePath.isEmpty || !controller.status.runtimeInstalled)
+                Button(AppConstants.Actions.rollback) {
+                    Task { await controller.rollbackRuntime() }
+                }
+                .disabled(controller.isBusy || !controller.status.runtimeInstalled)
+                Spacer()
+            }
+        }
+        .padding(16)
+    }
+
+    private func labeledValue(_ label: String, _ value: String) -> some View {
+        HStack {
+            Text(label)
+            Spacer()
+            Text(value)
+                .foregroundStyle(.secondary)
         }
     }
 

@@ -68,6 +68,8 @@ struct RuntimeLifecycle {
             try health()
         case "watchdog":
             try watchdog()
+        case "configure":
+            try configure(arguments: Array(arguments.dropFirst()))
         case "verify-bundle":
             guard let bundlePath = arguments.dropFirst().first else {
                 throw LauncherError.missingArgument("usage: vitalserver-vm runtime verify-bundle <bundle-dir>")
@@ -101,6 +103,7 @@ struct RuntimeLifecycle {
               vitalserver-vm runtime status
               vitalserver-vm runtime health
               vitalserver-vm runtime watchdog
+              vitalserver-vm runtime configure [--cpu <count>] [--memory-gib <gib>] [--network shared|bridged] [--bridged-interface <id>] [--proxy-port <port>] [--vital-files-dir <path>] [--public-host <host>] [--public-port <port>] [--admin-password <password>] [--restart]
               vitalserver-vm runtime verify-bundle <bundle-dir>
               vitalserver-vm runtime stage-bundle <bundle-dir>
               vitalserver-vm runtime apply-bundle <bundle-dir>
@@ -497,6 +500,114 @@ struct RuntimeLifecycle {
             )
             print("watchdog: critical")
         }
+    }
+
+    func configure(arguments: [String]) throws {
+        var remaining = arguments
+        var restart = false
+        var vmConfig = try VMRuntimeConfig.load(from: paths.config)
+        let runtimeConfigURL = paths.home
+            .appendingPathComponent(Constants.Paths.dataDirectory)
+            .appendingPathComponent("deploy")
+            .appendingPathComponent(Constants.Artifacts.runtimeConfig)
+        var guestConfig = try GuestRuntimeConfigDocument.load(from: runtimeConfigURL)
+
+        while !remaining.isEmpty {
+            let key = remaining.removeFirst()
+            if key == "--restart" {
+                restart = true
+                continue
+            }
+            guard let value = remaining.first else {
+                throw LauncherError.missingArgument("missing value for \(key)")
+            }
+            remaining.removeFirst()
+
+            switch key {
+            case "--cpu":
+                guard let cpu = Int(value),
+                      cpu >= Constants.Defaults.minimumCPUCount,
+                      cpu <= Constants.Defaults.maximumCPUCount else {
+                    throw LauncherError.missingArgument(
+                        "--cpu must be between \(Constants.Defaults.minimumCPUCount) and \(Constants.Defaults.maximumCPUCount)"
+                    )
+                }
+                vmConfig.cpuCount = cpu
+            case "--memory-gib":
+                guard let memoryGiB = UInt64(value),
+                      stride(from: 4, through: 64, by: 4).contains(Int(memoryGiB)) else {
+                    throw LauncherError.missingArgument("--memory-gib must be between 4 and 64 in 4 GiB steps")
+                }
+                vmConfig.memoryMiB = memoryGiB * 1024
+            case "--network":
+                guard let mode = NetworkMode(rawValue: value) else {
+                    throw LauncherError.missingArgument("--network must be `shared` or `bridged`")
+                }
+                vmConfig.network.mode = mode
+                if mode == .shared {
+                    vmConfig.network.bridgedInterface = nil
+                }
+            case "--bridged-interface":
+                guard isLineSafe(value), !value.isEmpty else {
+                    throw LauncherError.missingArgument("--bridged-interface must not be empty or contain newlines")
+                }
+                vmConfig.network.bridgedInterface = value
+            case "--proxy-port":
+                guard let port = Int(value), (1...65_535).contains(port) else {
+                    throw LauncherError.missingArgument("--proxy-port must be between 1 and 65535")
+                }
+                try setInstalledProxyPort(port)
+            case "--vital-files-dir":
+                guard value.hasPrefix("/") else {
+                    throw LauncherError.missingArgument("--vital-files-dir must be an absolute path")
+                }
+                try FileManager.default.createDirectory(atPath: value, withIntermediateDirectories: true)
+                vmConfig.vitalFilesDirectory = SharedDirectoryConfig(
+                    hostPath: value,
+                    tag: Constants.Defaults.vitalFilesDirectoryTag,
+                    guestMountPath: Constants.Defaults.vitalFilesDirectoryGuestMountPath,
+                    readOnly: false
+                )
+                guestConfig.vitalFilesDirectory = Constants.Defaults.vitalFilesDirectoryGuestMountPath
+            case "--public-host":
+                guard isLineSafe(value) else {
+                    throw LauncherError.missingArgument("--public-host must not contain newlines")
+                }
+                guestConfig.publicHost = value
+            case "--public-port":
+                guard let port = Int(value), (1...65_535).contains(port) else {
+                    throw LauncherError.missingArgument("--public-port must be between 1 and 65535")
+                }
+                guestConfig.publicPort = port
+            case "--admin-password":
+                guard !value.isEmpty, isLineSafe(value) else {
+                    throw LauncherError.missingArgument("--admin-password must not be empty or contain newlines")
+                }
+                guestConfig.adminPassword = value
+            default:
+                throw LauncherError.missingArgument("unsupported runtime configure option: \(key)")
+            }
+        }
+
+        if vmConfig.network.mode == .bridged,
+           vmConfig.network.bridgedInterface?.isEmpty != false {
+            throw LauncherError.missingArgument("--bridged-interface is required when --network bridged")
+        }
+
+        VMRuntimeConfig.ensureRuntimeDefaults(&vmConfig, home: paths.home)
+        try JSONEncoder.pretty.encode(vmConfig).write(to: paths.config, options: .atomic)
+        try JSONEncoder.pretty.encode(guestConfig).write(to: runtimeConfigURL, options: .atomic)
+        try writeRuntimeStatus(.degraded, operation: "configure", message: "runtime configuration updated")
+        log("runtime configuration updated restart=\(restart)")
+
+        guard restart else {
+            print("runtime configuration updated; restart required for VM/guest changes")
+            return
+        }
+        restartLaunchdService(Constants.Launchd.vmService)
+        restartLaunchdService(Constants.Launchd.proxyService)
+        restartLaunchdService(Constants.Launchd.watchdogService)
+        print("runtime configuration updated and services restarted")
     }
 
     func verifyBundle(_ bundleURL: URL) throws {
@@ -1227,6 +1338,17 @@ struct RuntimeLifecycle {
         return port
     }
 
+    private func setInstalledProxyPort(_ port: Int) throws {
+        try runRequired(
+            Constants.Commands.plistBuddy,
+            arguments: [
+                "-c",
+                "Set :EnvironmentVariables:VITALSERVER_PROXY_PORT \(port)",
+                "/Library/LaunchDaemons/\(Constants.Launchd.proxyService).plist",
+            ]
+        )
+    }
+
     private func httpStatus(_ url: String) -> String {
         let result = runProcess(
             Constants.Commands.curl,
@@ -1313,6 +1435,10 @@ struct RuntimeLifecycle {
             return false
         }
         return code >= 200 && code < 400
+    }
+
+    private func isLineSafe(_ value: String) -> Bool {
+        !value.contains("\n") && !value.contains("\r")
     }
 
     private func readTrimmed(_ url: URL) -> String? {
@@ -1434,17 +1560,36 @@ struct InstalledRuntimeVersionDocument: Encodable {
     let vmDisk: String
 }
 
-struct GuestRuntimeConfigDocument: Encodable {
-    let vitalserverHttpPort: Int
-    let redisHost: String
-    let redisPort: Int
-    let trustProxy: Bool
-    let publicHost: String
-    let publicPort: Int
-    let adminPassword: String
-    let vitalFilesDirectory: String
-    let redisUiPort: Int
-    let swaggerUiPort: Int
+struct GuestRuntimeConfigDocument: Codable {
+    var vitalserverHttpPort: Int
+    var redisHost: String
+    var redisPort: Int
+    var trustProxy: Bool
+    var publicHost: String
+    var publicPort: Int
+    var adminPassword: String
+    var vitalFilesDirectory: String
+    var redisUiPort: Int
+    var swaggerUiPort: Int
+
+    static func load(from url: URL) throws -> GuestRuntimeConfigDocument {
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            return GuestRuntimeConfigDocument(
+                vitalserverHttpPort: 18080,
+                redisHost: "redis",
+                redisPort: 6379,
+                trustProxy: true,
+                publicHost: "",
+                publicPort: 80,
+                adminPassword: "admin",
+                vitalFilesDirectory: Constants.Defaults.vitalFilesDirectoryGuestMountPath,
+                redisUiPort: 18081,
+                swaggerUiPort: 18082
+            )
+        }
+        let data = try Data(contentsOf: url)
+        return try JSONDecoder().decode(GuestRuntimeConfigDocument.self, from: data)
+    }
 }
 
 struct BackupManifest: Encodable {

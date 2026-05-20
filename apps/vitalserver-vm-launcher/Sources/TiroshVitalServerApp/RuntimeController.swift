@@ -4,6 +4,8 @@ import Foundation
 @MainActor
 final class RuntimeController: ObservableObject {
     @Published var status = RuntimeStatus()
+    @Published var settings = RuntimeSettings.load()
+    @Published var selectedBundlePath = ""
     @Published var message = AppConstants.StatusText.ready
     @Published var isBusy = false
 
@@ -11,6 +13,7 @@ final class RuntimeController: ObservableObject {
 
     func refresh() async {
         status = RuntimeStatus.load(paths: runtime)
+        settings = RuntimeSettings.load()
         if let displayMessage = status.displayMessage {
             message = displayMessage
         }
@@ -50,6 +53,78 @@ final class RuntimeController: ObservableObject {
             waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
             runningMessage: AppConstants.StatusText.uninstallRunning,
             successMessage: AppConstants.StatusText.uninstallCompleted
+        )
+        await refreshHealthStatus()
+    }
+
+    func saveSettings() async {
+        guard FileManager.default.isExecutableFile(atPath: runtime.launcher) else {
+            message = AppConstants.StatusText.missingLauncher
+            return
+        }
+        let command = shellCommand(
+            executable: runtime.launcher,
+            arguments: settings.configureArguments()
+        )
+        _ = await runPrivileged(
+            shellCommand: command,
+            preparingMessage: "Preparing runtime settings...",
+            waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
+            runningMessage: "Saving runtime settings...",
+            successMessage: AppConstants.StatusText.settingsSaved
+        )
+        await refreshHealthStatus()
+    }
+
+    func chooseUpdateBundle() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.prompt = AppConstants.Actions.chooseBundle
+        if panel.runModal() == .OK, let url = panel.url {
+            selectedBundlePath = url.path
+        }
+    }
+
+    func applySelectedBundle() async {
+        guard !selectedBundlePath.isEmpty else {
+            message = AppConstants.StatusText.missingBundle
+            return
+        }
+        guard FileManager.default.isExecutableFile(atPath: runtime.launcher) else {
+            message = AppConstants.StatusText.missingLauncher
+            return
+        }
+        let command = shellCommand(
+            executable: runtime.launcher,
+            arguments: ["runtime", "apply-bundle", selectedBundlePath]
+        )
+        _ = await runPrivileged(
+            shellCommand: command,
+            preparingMessage: "Preparing update bundle...",
+            waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
+            runningMessage: "Applying update bundle...",
+            successMessage: AppConstants.StatusText.updateBundleApplied
+        )
+        await refreshHealthStatus()
+    }
+
+    func rollbackRuntime() async {
+        guard FileManager.default.isExecutableFile(atPath: runtime.launcher) else {
+            message = AppConstants.StatusText.missingLauncher
+            return
+        }
+        let command = shellCommand(
+            executable: runtime.launcher,
+            arguments: ["runtime", "rollback"]
+        )
+        _ = await runPrivileged(
+            shellCommand: command,
+            preparingMessage: "Preparing rollback...",
+            waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
+            runningMessage: "Rolling back runtime...",
+            successMessage: AppConstants.StatusText.rollbackCompleted
         )
         await refreshHealthStatus()
     }
@@ -118,6 +193,10 @@ final class RuntimeController: ObservableObject {
 
     private func shellQuote(_ value: String) -> String {
         "'\(value.replacingOccurrences(of: "'", with: "'\\''"))'"
+    }
+
+    private func shellCommand(executable: String, arguments: [String]) -> String {
+        ([executable] + arguments).map(shellQuote).joined(separator: " ")
     }
 
     private func commandWithLog(_ shellCommand: String) -> String {

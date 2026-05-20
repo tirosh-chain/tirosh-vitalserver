@@ -139,12 +139,12 @@ shared/NAT mode에서는 VM IP가 부팅 후에 결정되므로, `vitalserver-pr
 | LaunchDaemon VM service | `VITALSERVER_VM_HOME`, `VITALSERVER_VM_DETACHED=1`, `vm-config.json` | background VM process |
 | LaunchDaemon watchdog service | `VITALSERVER_VM_HOME`, `runtime-status.json` | periodic health check, VM/proxy restart, updated runtime status |
 | `vitalserver-proxy-run` | `vm/data/run/vm-ip`, proxy template | host nginx config and proxy process |
-| guest `bootstrap.sh` | `runtime-config.json`, Docker image bundle | Docker Compose stack, guest systemd service, VM-local nginx |
+| guest `bootstrap.sh` | `runtime-config.json`, Docker image bundle | Docker Compose stack, guest systemd service, VM-local nginx, diagnostics, Redis backup timer |
 | update bundle | `manifest.json`, `checksums.txt`, `signature`, `rootfs-base.raw.gz`, migrations | verified/staged bundle, rootfs-base backup/replacement, migrations |
 
 `runtime-status.json`은 Manager app, watchdog, 운영 CLI가 공유하는 운영 상태 파일입니다. `runtime install`, `health`, `watchdog`, `apply-bundle`, `rollback`이 이 파일을 갱신하며, 상태 값은 `installing`, `updating`, `recovering`, `healthy`, `degraded`, `critical` 중 하나입니다.
 
-설치/업데이트 경로는 적용 전에 free-space preflight를 수행합니다. 설치 로그와 runtime launchd/proxy/watchdog 로그는 10 MiB 기준으로 최대 5개까지 rotation하며, guest bootstrap은 Docker image bundle을 load한 뒤 dangling image cleanup을 수행합니다.
+설치/업데이트 경로는 적용 전에 free-space preflight를 수행합니다. 설치 로그와 runtime launchd/proxy/watchdog 로그는 10 MiB 기준으로 최대 5개까지 rotation하며, guest bootstrap은 Docker image bundle을 load한 뒤 dangling image cleanup을 수행합니다. Guest에는 `tirosh-vitalserver-health`, `tirosh-vitalserver-diagnostics`, `tirosh-vitalserver-redis-backup.timer`를 설치해 현장 진단과 Redis volume 백업을 같은 계약으로 운용합니다.
 
 주요 source 책임은 아래처럼 나눕니다.
 
@@ -155,8 +155,8 @@ shared/NAT mode에서는 VM IP가 부팅 후에 결정되므로, `vitalserver-pr
 | Swift CLI | `Sources/VitalServerVMLauncher` | VM start/stop/status, runtime install/update/health |
 | PKG wrapper | `Support/Packaging/postinstall` | install log 연결 후 `vitalserver-vm runtime install` 호출 |
 | launchd proxy | `Support/Packaging/proxy-run` | VM IP 감시, host nginx config render/reload |
-| Guest | `Support/Guest/bootstrap.sh` | guest nginx/Docker Compose bootstrap, compose systemd service, VM IP marker 기록 |
-| Manager app | `Sources/TiroshVitalServerApp` | 설치 후 runtime-status/health/open/uninstall UI |
+| Guest | `Support/Guest/bootstrap.sh` | guest nginx/Docker Compose bootstrap, compose systemd service, VM IP marker, diagnostics, Redis backup timer |
+| Manager app | `Sources/TiroshVitalServerApp` | 설치 후 runtime-status/settings/update/rollback/health/open/uninstall UI |
 
 DMG build/install 흐름은 아래입니다.
 
@@ -301,6 +301,9 @@ Tirosh VitalServer Manager.app
 | 기능 | 내부 동작 |
 |---|---|
 | Health Check | VM IP, guest HTTP, host proxy HTTP 확인 |
+| Settings | `vitalserver-vm runtime configure ... --restart`로 VM/runtime/proxy 설정 저장 |
+| Apply Bundle | 선택한 offline update bundle을 `runtime apply-bundle`로 검증/적용 |
+| Rollback | 최신 backup을 `runtime rollback`으로 복원 |
 | Open VitalServer | `http://127.0.0.1/` 열기 |
 | Uninstall | 설치된 `/usr/local/bin/tirosh-vitalserver-uninstall` 실행 |
 
@@ -323,6 +326,7 @@ vitalserver-vm runtime install
 vitalserver-vm runtime status
 vitalserver-vm runtime health
 vitalserver-vm runtime watchdog
+vitalserver-vm runtime configure [--cpu <count>] [--memory-gib <gib>] [--network shared|bridged] [--bridged-interface <id>] [--proxy-port <port>] [--vital-files-dir <path>] [--public-host <host>] [--public-port <port>] [--admin-password <password>] [--restart]
 vitalserver-vm runtime verify-bundle <bundle-dir>
 vitalserver-vm runtime stage-bundle <bundle-dir>
 vitalserver-vm runtime apply-bundle <bundle-dir>
