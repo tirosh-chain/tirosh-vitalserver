@@ -339,6 +339,14 @@ VM_UBUNTU_CONFIG=/path/to/ubuntu-cloud-image.env make vm-download
 VM_IMAGE_DIR=/path/to/images make vm-download
 ```
 
+root disk 크기를 바꾸고 싶다면:
+
+```sh
+VM_ROOTFS_SIZE=32G make vm-download
+```
+
+기본값은 `16G`입니다. Docker, nginx, qemu-user-static, VitalServer image build까지 PoC guest 안에서 실행하므로 Ubuntu cloud image의 기본 root disk 크기만으로는 부족합니다.
+
 주의: `make vm-download`는 runtime `config.json`을 만들지 않습니다. 다운로드/변환은 빌드 단계 작업이고, `config.json`과 VM MAC address는 설치 대상 또는 PoC runtime에서 `make vm-init`이 생성해야 합니다.
 
 ### cloud-init seed 생성

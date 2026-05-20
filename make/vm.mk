@@ -59,7 +59,7 @@ vm-stage: vm-init
 	else \
 		printf "exists %s\n" "$(VM_DEPLOY_DIR)/.env"; \
 	fi
-	@printf "Inside Linux guest, run: sudo /mnt/tirosh/deploy/bootstrap.sh\n"
+	@printf "cloud-init will run /mnt/tirosh/deploy/bootstrap.sh on first boot\n"
 
 vm-start: vm-sign
 	VITALSERVER_VM_HOME="$(VM_HOME)" "$(VM_LAUNCHER_BIN)" start

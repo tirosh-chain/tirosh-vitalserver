@@ -23,7 +23,22 @@ if [ ! -f "${DEPLOY_DIR}/compose.yaml" ]; then
   exit 1
 fi
 
+wait_for_network_time() {
+  timedatectl set-ntp true >/dev/null 2>&1 || true
+  systemctl restart systemd-timesyncd >/dev/null 2>&1 || true
+
+  for _ in $(seq 1 60); do
+    if [ "$(timedatectl show -p NTPSynchronized --value 2>/dev/null)" = "yes" ]; then
+      return
+    fi
+    sleep 1
+  done
+
+  printf "warning: network time is not synchronized yet\n" >&2
+}
+
 export DEBIAN_FRONTEND=noninteractive
+wait_for_network_time
 apt-get update
 apt-get install -y \
   avahi-daemon \

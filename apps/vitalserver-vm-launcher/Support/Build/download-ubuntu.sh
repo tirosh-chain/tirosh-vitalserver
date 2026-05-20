@@ -31,6 +31,7 @@ load_config() {
 resolve_paths() {
   images_dir="${VM_IMAGE_DIR:-${VM_HOME:-${HOME}/.tirosh/vitalserver-vm}/images}"
   download_dir="${images_dir}/downloads"
+  rootfs_size="${VM_ROOTFS_SIZE:-16G}"
 }
 
 resolve_asset_names() {
@@ -91,11 +92,51 @@ install_boot_assets() {
 
   if [ -s "${images_dir}/rootfs.raw" ]; then
     printf "exists %s\n" "${images_dir}/rootfs.raw"
+  else
+    printf "converting %s to rootfs.raw\n" "${download_dir}/${image_name}"
+    qemu-img convert -p -O raw "${download_dir}/${image_name}" "${images_dir}/rootfs.raw"
+  fi
+
+  resize_rootfs_if_needed
+}
+
+resize_rootfs_if_needed() {
+  current_size="$(qemu-img info --output=json "${images_dir}/rootfs.raw" \
+    | sed -n 's/^ *"virtual-size": *\([0-9][0-9]*\).*/\1/p' \
+    | head -n 1)"
+  desired_size="$(size_to_bytes "${rootfs_size}")"
+
+  if [ "${current_size}" -ge "${desired_size}" ]; then
+    printf "rootfs.raw size is already >= %s\n" "${rootfs_size}"
     return
   fi
 
-  printf "converting %s to rootfs.raw\n" "${download_dir}/${image_name}"
-  qemu-img convert -p -O raw "${download_dir}/${image_name}" "${images_dir}/rootfs.raw"
+  printf "resizing rootfs.raw to %s\n" "${rootfs_size}"
+  qemu-img resize -f raw "${images_dir}/rootfs.raw" "${rootfs_size}"
+}
+
+size_to_bytes() {
+  value="$1"
+  number="${value%[KkMmGg]}"
+  unit="${value##${number}}"
+
+  case "${unit}" in
+    K | k)
+      printf "%s\n" "$((number * 1024))"
+      ;;
+    M | m)
+      printf "%s\n" "$((number * 1024 * 1024))"
+      ;;
+    G | g)
+      printf "%s\n" "$((number * 1024 * 1024 * 1024))"
+      ;;
+    "")
+      printf "%s\n" "${number}"
+      ;;
+    *)
+      fail "unsupported VM_ROOTFS_SIZE: ${value}"
+      ;;
+  esac
 }
 
 download_once() {
@@ -117,7 +158,7 @@ print_result() {
   printf "Linux boot assets are ready:\n"
   printf "  %s\n" "${images_dir}/Image"
   printf "  %s\n" "${images_dir}/initrd.img"
-  printf "  %s\n" "${images_dir}/rootfs.raw"
+  printf "  %s (%s target)\n" "${images_dir}/rootfs.raw" "${rootfs_size}"
 }
 
 require_command() {

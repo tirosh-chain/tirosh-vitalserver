@@ -5,7 +5,7 @@ const moduleLoader = require("module");
 const redis = require("redis");
 
 const realCpus = os.cpus.bind(os);
-const minCpus = Number.parseInt(process.env.VITALSERVER_MIN_CPUS || "6", 10);
+const minCpus = Number.parseInt(process.env.VITALSERVER_MIN_CPUS || "8", 10);
 const adminPassword = process.env.VITALSERVER_ADMIN_PASSWORD || "admin";
 const publicHost = process.env.VITALSERVER_PUBLIC_HOST || "";
 const publicPort = process.env.VITALSERVER_PUBLIC_PORT || "";
