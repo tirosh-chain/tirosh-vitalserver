@@ -6,7 +6,7 @@
 
 ## 목표
 
-Mac mini에서 Linux VM을 직접 실행하고, VM 내부에서 VitalServer stack을 운영합니다.
+Mac mini 또는 Mac Studio에서 Linux VM을 직접 실행하고, VM 내부에서 VitalServer stack을 운영합니다.
 
 v1 기본 구조는 `shared/NAT VM + macOS host nginx`입니다.
 
@@ -14,7 +14,7 @@ v1 기본 구조는 `shared/NAT VM + macOS host nginx`입니다.
 shared/NAT mode
 
 VRecorder / Browser
-  -> Mac mini LAN IP :80
+  -> target Mac LAN IP :80
       -> host nginx
           -> Linux VM shared/NAT IP
               -> Docker Compose
@@ -42,7 +42,7 @@ VRecorder / Browser
 | 항목 | shared/NAT mode | bridged mode |
 |---|---|---|
 | 제품 v1 기본값 | 예 | 아니오 |
-| VRecorder 접속 대상 | Mac mini LAN IP | Linux VM LAN IP |
+| VRecorder 접속 대상 | target Mac LAN IP | Linux VM LAN IP |
 | edge proxy 위치 | macOS host nginx | Linux VM 내부 nginx |
 | VM IP 부여 | macOS Virtualization NAT DHCP | 병원 LAN DHCP |
 | 원 IP 보존 | host nginx 경유로 보존 | VM이 LAN에서 직접 수신 |
@@ -52,7 +52,7 @@ VRecorder / Browser
 최종 v1 목표:
 
 ```text
-Mac mini
+Mac mini / Mac Studio
   -> host nginx :80
       -> vitalserver-vm
           -> Linux VM shared/NAT
@@ -62,7 +62,7 @@ Mac mini
                   - vitaldb-observer
 ```
 
-v1 제품 구조는 `shared/NAT VM + macOS host nginx`입니다. VRecorder는 Mac mini의 LAN IP로 접속하고, host nginx가 요청을 VM 내부 VitalServer로 전달합니다.
+v1 제품 구조는 `shared/NAT VM + macOS host nginx`입니다. VRecorder는 target Mac의 LAN IP로 접속하고, host nginx가 요청을 VM 내부 VitalServer로 전달합니다.
 
 이 구조는 macOS Docker Desktop/OrbStack 의존성을 제거하면서도, 이미 검증한 host nginx 경유 원 IP 보존 방식을 제품화하기 위한 것입니다.
 
@@ -70,7 +70,7 @@ bridged mode는 host nginx 없이 VM이 병원 LAN에 직접 붙는 선택지로
 
 ## 배포 모델
 
-최종 목표는 병원 Mac mini에 설치 가능한 self-contained package입니다. 운영 Mac mini는 air-gapped 환경까지 고려합니다.
+최종 목표는 병원 Mac mini/Mac Studio에 설치 가능한 self-contained package입니다. 운영 target Mac은 air-gapped 환경까지 고려합니다.
 
 ### Build Machine
 
@@ -88,9 +88,9 @@ download Ubuntu cloud image
 
 이 단계에서는 `qemu-img`, image customization 도구, 네트워크 접근이 필요할 수 있습니다.
 
-### Target Mac Mini
+### Target Mac
 
-병원 Mac mini는 설치 파일만 받습니다.
+병원 Mac mini/Mac Studio는 설치 파일만 받습니다.
 
 ```text
 TiroshVitalServer.pkg
@@ -111,9 +111,9 @@ TiroshVitalServer.pkg
        vr-release/
 ```
 
-운영 Mac mini에는 아래 의존성이 없어야 합니다.
+운영 target Mac에는 아래 의존성이 없어야 합니다.
 
-| 의존성 | 운영 Mac mini 필요 여부 |
+| 의존성 | 운영 target Mac 필요 여부 |
 |---|---|
 | Homebrew | 필요 없음 |
 | `qemu-img` | 필요 없음 |
@@ -122,6 +122,62 @@ TiroshVitalServer.pkg
 | brew nginx | 필요 없음, package에 포함 |
 | 외부 apt repository | 필요 없음 |
 | 외부 container registry | 필요 없음 |
+
+## 단일 노드 가용성 범위
+
+이 제품은 단일 Mac mini/Mac Studio 위에서 동작하는 single-node runtime입니다. 따라서 제품 문구에서 “고가용성”은 여러 장비로 구성한 HA cluster가 아니라, 단일 장비 안에서 가능한 self-healing, 자동 복구, 데이터 보존, rollback을 의미합니다.
+
+제품이 단일 target Mac에서 보장할 수 있는 범위는 아래입니다.
+
+| 범위 | 보장 방식 |
+|---|---|
+| macOS 재부팅 후 자동 기동 | VM/proxy LaunchDaemon `RunAtLoad`, start-on-boot policy |
+| VM launcher 비정상 종료 복구 | VM LaunchDaemon `KeepAlive`, detached VM process |
+| host nginx proxy 비정상 종료 복구 | proxy LaunchDaemon `KeepAlive`, `vitalserver-proxy-run` loop |
+| VM IP 변경 대응 | `vitalserver-proxy-run`이 `vm/data/run/vm-ip`를 감시하고 nginx config reload |
+| guest service 복구 | guest systemd, Docker, nginx, Compose restart policy |
+| 설치/업데이트 실패 진단 | 고정 log path, runtime status/health command |
+| update 실패 복구 | apply 전 backup, health check 실패 시 rollback |
+| 설정/데이터 보존 | rootfs artifact와 mutable runtime/data 영역 분리 |
+| 디스크 full 예방 | 사전 용량 check, log rotation, Docker/image/cache 정리 정책 |
+
+단일 target Mac에서 보장할 수 없는 범위도 명확히 둡니다.
+
+| 범위 | 이유 | 필요한 외부 구성 |
+|---|---|---|
+| 하드웨어 고장 시 무중단 서비스 | 장애 도메인이 하나임 | standby Mac, VIP/DNS failover |
+| 단일 내장 디스크 완전 손상 시 데이터 보존 | local disk가 단일 실패 지점 | 외부 backup, RAID/replication, Time Machine/remote backup |
+| 전원 장애 중 서비스 지속 | 장비 전원이 끊김 | UPS |
+| macOS kernel panic/OS 손상 중 서비스 지속 | runtime host 자체가 중단됨 | standby Mac, 재설치/복구 절차 |
+| 네트워크 장비 장애 대응 | 제품 밖의 network path | 이중화 switch/router, 병원망 HA |
+| zero-downtime update | 단일 VM runtime을 중지/교체해야 함 | active-standby node 또는 rolling pair |
+
+제품 수준의 정확한 표현은 아래처럼 둡니다.
+
+```text
+Single-node self-healing runtime
+
+보장:
+- macOS reboot 후 자동 기동
+- VM/proxy/guest service 비정상 종료 후 자동 복구
+- update 실패 시 rollback
+- mutable data/config 영역 보존
+- health 기반 장애 감지와 진단 로그 제공
+
+보장하지 않음:
+- 단일 Mac mini/Mac Studio 하드웨어 장애 시 무중단 운영
+- 전원/디스크/macOS 전체 장애 중 서비스 지속
+- 두 대 이상의 장비를 쓰는 cluster HA
+```
+
+구현 우선순위는 아래 순서입니다.
+
+1. VM/proxy LaunchDaemon에 `KeepAlive`, `RunAtLoad`, `ThrottleInterval`, stdout/stderr log path를 명확히 둡니다.
+2. `vitalserver-vm runtime health`를 주기 실행하는 watchdog LaunchDaemon을 추가합니다.
+3. watchdog은 연속 실패 횟수 기준으로 proxy reload, VM restart, critical 상태 기록을 수행합니다.
+4. guest 내부 systemd unit과 Compose restart policy를 정리합니다.
+5. `/Library/Application Support/TiroshVitalServer/status/runtime-status.json` 같은 운영 상태 파일을 추가해 Manager app이 정상/복구중/장애/업데이트중 상태를 읽게 합니다.
+6. free-space preflight, log rotation, Docker image/cache cleanup 정책을 추가합니다.
 
 ## GUI와 Package
 
@@ -423,7 +479,7 @@ v1 기본 proxy port는 80입니다.
 
 ```text
 external client
-  -> Mac mini host nginx :80
+  -> target Mac host nginx :80
   -> Linux VM nginx :80
   -> VitalServer container :18080
 ```
@@ -485,7 +541,7 @@ update에서 rootfs base를 교체해도 기존 `vm-disk.img` 내부 OS와 appli
 
 개발 중 설치/제거를 반복할 때는 `make vm-pkg-uninstall-dev`를 사용합니다. 이 target은 `/Library/Application Support/TiroshVitalServer`, 관련 LaunchDaemon plist, `/usr/local/bin/vitalserver-*`를 제거하므로 운영 환경에서는 사용하지 않습니다.
 
-설치된 Mac mini에서 사용자가 CLI로 제거할 때는 아래 명령을 사용합니다.
+설치된 Mac mini/Mac Studio에서 사용자가 CLI로 제거할 때는 아래 명령을 사용합니다.
 
 ```sh
 sudo tirosh-vitalserver-uninstall
@@ -524,7 +580,7 @@ nginx/sbin/nginx
   -> /usr/lib/libSystem.B.dylib
 ```
 
-즉 운영 Mac mini에 Homebrew가 없어도 host proxy가 뜰 수 있는 구조입니다. 임시로 다른 binary를 bundle 입력으로 직접 쓰려면 명시적으로 override합니다.
+즉 운영 target Mac에 Homebrew가 없어도 host proxy가 뜰 수 있는 구조입니다. 임시로 다른 binary를 bundle 입력으로 직접 쓰려면 명시적으로 override합니다.
 
 ```sh
 VM_NGINX_BIN=/path/to/nginx \
@@ -594,7 +650,7 @@ dist/update-bundles/update-bundle-0.1.0/
 
 현재 `signature`는 `unsigned` placeholder입니다. 이 파일은 호환 레이어가 아니라 bundle 계약의 고정 자리이며, release hardening 단계에서 실제 signature 검증으로 교체합니다.
 
-설치된 Mac mini에서는 Swift runtime lifecycle command가 bundle을 검증하고 적용합니다.
+설치된 Mac mini/Mac Studio에서는 Swift runtime lifecycle command가 bundle을 검증하고 적용합니다.
 
 ```sh
 vitalserver-vm runtime verify-bundle /path/to/update-bundle-0.1.0
@@ -804,7 +860,7 @@ v1 기본값은 `shared/NAT`입니다.
 
 ```text
 VRecorder
-  -> Mac mini host nginx :80
+  -> target Mac host nginx :80
       -> Linux VM shared/NAT
           -> VitalServer
 ```
@@ -832,7 +888,7 @@ make vm-up-bridged
 
 shared/NAT mode에서 보이는 `192.168.64.x` IP는 macOS Virtualization NAT DHCP가 부여한 IP입니다. 병원 LAN에서 VRecorder가 접근해야 하는 운영 IP가 아닙니다.
 
-v1 운영에서는 사용자가 VM IP로 접속하지 않습니다. 사용자는 Mac mini의 LAN IP 또는 host nginx가 노출하는 이름으로 접속합니다.
+v1 운영에서는 사용자가 VM IP로 접속하지 않습니다. 사용자는 target Mac의 LAN IP 또는 host nginx가 노출하는 이름으로 접속합니다.
 
 bridged mode가 활성화되면 VM은 병원 LAN DHCP에서 `172.x`, `10.x`, `192.168.x` 대역의 IP를 직접 받을 수 있습니다.
 
@@ -842,7 +898,7 @@ v1에서는 host nginx가 제품의 public edge입니다. VM은 shared/NAT 뒤�
 
 ```text
 public:
-  http://<Mac mini LAN IP>:80
+  http://<target Mac LAN IP>:80
 
 upstream:
   http://<VM shared/NAT IP>:80
@@ -890,7 +946,7 @@ VM MAC address
 
 ## VM Identity
 
-Golden image는 여러 병원과 여러 Mac mini에 복제될 수 있으므로, 장비마다 달라야 하는 값은 image에 고정해서 넣지 않습니다.
+Golden image는 여러 병원과 여러 Mac mini/Mac Studio에 복제될 수 있으므로, 장비마다 달라야 하는 값은 image에 고정해서 넣지 않습니다.
 
 | Identity | 언제 결정하나 | 어디에 보존하나 | 정책 |
 |---|---|---|---|
@@ -942,7 +998,7 @@ make vm-sign-bridged
 - cloud-init이 seed를 인식한다.
 - guest bootstrap이 자동 실행된다.
 - VitalServer/Redis container가 healthy가 된다.
-- host nginx가 Mac mini port 80에서 요청을 받는다.
+- host nginx가 target Mac port 80에서 요청을 받는다.
 - host nginx가 VM 내부 VitalServer로 proxy한다.
 - guest가 VM IP를 shared directory에 기록한다.
 - `make vm-up`이 VM IP를 기다린 뒤 host proxy upstream을 VM으로 설정한다.
@@ -1004,11 +1060,11 @@ shared/NAT mode에서는 macOS Virtualization NAT DHCP가 VM IP를 부여합니�
 
 조치:
 
-v1 구조에서는 정상입니다. 사용자는 이 VM IP로 직접 접속하지 않고, Mac mini host nginx로 접속합니다.
+v1 구조에서는 정상입니다. 사용자는 이 VM IP로 직접 접속하지 않고, target Mac host nginx로 접속합니다.
 
 ```text
 VRecorder
-  -> http://<Mac mini LAN IP>/
+  -> http://<target Mac LAN IP>/
       -> host nginx
       -> VM shared/NAT IP
 ```

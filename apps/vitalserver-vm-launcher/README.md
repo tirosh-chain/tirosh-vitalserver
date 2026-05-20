@@ -2,10 +2,10 @@
 
 `vitalserver-vm-launcher`는 Apple Virtualization Framework로 Linux VM을 실행하는 PoC입니다.
 
-목표는 Mac mini에서 Linux VM을 직접 띄우고, macOS host nginx를 통해 VM 내부 VitalServer를 운영할 수 있는지 검증하는 것입니다.
+목표는 Mac mini 또는 Mac Studio에서 Linux VM을 직접 띄우고, macOS host nginx를 통해 VM 내부 VitalServer를 운영할 수 있는지 검증하는 것입니다.
 
 ```text
-Mac mini
+Mac mini / Mac Studio
   -> host nginx :80
       -> vitalserver-vm
           -> Linux VM shared/NAT
@@ -90,7 +90,7 @@ make vm-up-bridged
 
 ## Package
 
-제품 목표는 Mac mini에 설치 가능한 `.pkg`입니다. 현재 `make vm-pkg`는 개발 검증용 package를 만듭니다.
+제품 목표는 Mac mini/Mac Studio에 설치 가능한 `.pkg`입니다. 현재 `make vm-pkg`는 개발 검증용 package를 만듭니다.
 
 ```sh
 make vm-pkg
@@ -214,7 +214,7 @@ make vm-update-bundle
 make vm-update-bundle-verify
 ```
 
-설치된 Mac mini에서는 runtime lifecycle CLI가 같은 bundle을 검증하고 적용합니다.
+설치된 Mac mini/Mac Studio에서는 runtime lifecycle CLI가 같은 bundle을 검증하고 적용합니다.
 
 ```sh
 sudo vitalserver-vm runtime verify-bundle /path/to/update-bundle-0.1.0
@@ -255,7 +255,7 @@ make vm-installed-health
 make vm-pkg-uninstall-dev
 ```
 
-설치된 Mac mini에서 사용자가 직접 제거할 때는:
+설치된 Mac mini/Mac Studio에서 사용자가 직접 제거할 때는:
 
 ```sh
 sudo tirosh-vitalserver-uninstall
@@ -298,7 +298,7 @@ Tirosh VitalServer Manager.app
 | Open VitalServer | `http://127.0.0.1/` 열기 |
 | Uninstall | 설치된 `/usr/local/bin/tirosh-vitalserver-uninstall` 실행 |
 
-CPU는 VitalServer 내부 동작 조건 때문에 7 vCPU 이상만 허용하고, Mac mini 운영 기본값은 8 vCPU입니다.
+CPU는 VitalServer 내부 동작 조건 때문에 7 vCPU 이상만 허용하고, target Mac 운영 기본값은 8 vCPU입니다.
 
 ## 현재 범위
 
