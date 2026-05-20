@@ -355,6 +355,7 @@ make vm-cloud-init
 |---|---|
 | seed image | `~/.tirosh/vitalserver-vm/images/seed.iso` |
 | hostname | `tirosh-vitalserver` |
+| instance-id | 자동 생성 |
 | user | `ubuntu` |
 | password | `ubuntu` |
 | SSH public key | `~/.ssh/id_ed25519.pub`가 있으면 자동 포함 |
@@ -364,6 +365,7 @@ make vm-cloud-init
 
 ```sh
 VM_CLOUD_INIT_HOSTNAME=tirosh-vitalserver \
+VM_CLOUD_INIT_INSTANCE_ID=tirosh-site-a-001 \
 VM_CLOUD_INIT_USER=ubuntu \
 VM_CLOUD_INIT_PASSWORD=change-me \
 VM_CLOUD_INIT_SSH_KEY=~/.ssh/id_ed25519.pub \
@@ -513,6 +515,22 @@ services:
 - `vm-clean`은 PoC용이라 `config.json`을 삭제합니다.
 - 제품 `.pkg`에서는 config와 MAC address 보존 정책을 별도로 가져가야 합니다.
 - VM을 새로 만들더라도 같은 `macAddress`를 유지해야 DHCP reservation이 깨지지 않습니다.
+
+### VM identity
+
+Golden image는 여러 병원과 여러 Mac mini에 복제될 수 있으므로, 장비마다 달라야 하는 값은 image에 고정해서 넣지 않습니다.
+
+| Identity | 언제 결정하나 | 어디에 보존하나 | 정책 |
+|---|---|---|---|
+| MAC address | 설치/초기화 시 | `config.json` | 장비마다 다르게, 재설치 후에도 유지 |
+| hostname | 설치/초기화 시 | `seed.iso` 또는 guest config | 사이트/장비를 구분할 수 있게 고유화 |
+| cloud-init instance-id | `seed.iso` 생성 시 | `seed.iso` | VM마다 다르게 생성 |
+| machine-id | guest 첫 부팅 시 | guest `/etc/machine-id` | golden image에서는 비워둠 |
+| SSH host keys | guest 첫 부팅 시 | guest `/etc/ssh/` | golden image에서는 삭제 |
+| TLS/cert identity | 설치 또는 등록 시 | host/guest secure storage | 장비별로 발급 |
+| site/device id | 설치 또는 등록 시 | observer/app config | 관제 기준 식별자로 유지 |
+
+공통으로 배포해도 되는 값은 OS, kernel, initrd, base rootfs, container image, compose/nginx template입니다. Redis data, Vital 파일, bed/VR mapping 같은 runtime state는 image에 넣지 않고 운영 volume에만 저장합니다.
 
 ### DHCP reservation
 

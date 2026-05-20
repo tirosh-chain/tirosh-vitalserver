@@ -16,6 +16,7 @@ resolve_settings() {
   seed_dir="${VM_CLOUD_INIT_DIR:-${images_dir}/cloud-init-seed}"
   seed_iso="${VM_CLOUD_INIT_ISO:-${images_dir}/seed.iso}"
   hostname="${VM_CLOUD_INIT_HOSTNAME:-tirosh-vitalserver}"
+  instance_id="${VM_CLOUD_INIT_INSTANCE_ID:-$(generate_instance_id)}"
   username="${VM_CLOUD_INIT_USER:-ubuntu}"
   password="${VM_CLOUD_INIT_PASSWORD:-ubuntu}"
   ssh_key_path="${VM_CLOUD_INIT_SSH_KEY:-${HOME}/.ssh/id_ed25519.pub}"
@@ -35,9 +36,18 @@ prepare_seed_directory() {
 
 write_meta_data() {
   cat >"${seed_dir}/meta-data" <<EOF
-instance-id: tirosh-vitalserver
+instance-id: ${instance_id}
 local-hostname: ${hostname}
 EOF
+}
+
+generate_instance_id() {
+  if require_command uuidgen; then
+    printf "tirosh-%s\n" "$(uuidgen | tr '[:upper:]' '[:lower:]')"
+    return
+  fi
+
+  printf "tirosh-%s\n" "$(date +%s)"
 }
 
 write_user_data() {
@@ -110,6 +120,7 @@ print_result() {
   printf "  user: %s\n" "${username}"
   printf "  password: %s\n" "${password}"
   printf "  hostname: %s\n" "${hostname}"
+  printf "  instance-id: %s\n" "${instance_id}"
   printf "  auto bootstrap: %s\n" "${run_bootstrap}"
 }
 
