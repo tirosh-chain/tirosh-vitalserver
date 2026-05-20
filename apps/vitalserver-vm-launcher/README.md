@@ -111,7 +111,7 @@ TiroshVitalServer.dmg
       -> network mode 설정
       -> bridged interface 선택
       -> DHCP reservation용 MAC 표시
-      -> cloud-init user/SSH key 설정
+      -> cloud-init user/SSH key/bootstrap 설정
       -> pkg install 또는 launchd service 등록
 ```
 
@@ -120,7 +120,7 @@ TiroshVitalServer.dmg
 | 설정 | 저장 위치 |
 |---|---|
 | VM CPU/RAM/kernel/disk/network/MAC | `config.json` |
-| cloud-init user/hostname/SSH key | `seed.iso` |
+| cloud-init user/hostname/SSH key/bootstrap | `seed.iso` |
 | VitalServer container 환경변수 | deploy `.env` |
 | 서비스 자동 실행 | LaunchDaemon plist |
 
@@ -185,11 +185,7 @@ make vm-start
 make vm-up
 ```
 
-VM이 부팅되면 Linux guest console에서:
-
-```sh
-sudo /mnt/tirosh/deploy/bootstrap.sh
-```
+VM이 부팅되면 cloud-init이 `/mnt/tirosh`를 mount하고 `deploy/bootstrap.sh`를 자동 실행합니다.
 
 정지:
 
@@ -362,6 +358,7 @@ make vm-cloud-init
 | user | `ubuntu` |
 | password | `ubuntu` |
 | SSH public key | `~/.ssh/id_ed25519.pub`가 있으면 자동 포함 |
+| bootstrap | `/mnt/tirosh/deploy/bootstrap.sh` 자동 실행 |
 
 값을 바꾸고 싶다면:
 
@@ -371,6 +368,12 @@ VM_CLOUD_INIT_USER=ubuntu \
 VM_CLOUD_INIT_PASSWORD=change-me \
 VM_CLOUD_INIT_SSH_KEY=~/.ssh/id_ed25519.pub \
 make vm-cloud-init
+```
+
+bootstrap 자동 실행을 끄고 cloud-init seed만 만들고 싶다면:
+
+```sh
+VM_CLOUD_INIT_RUN_BOOTSTRAP=false make vm-cloud-init
 ```
 
 주의: 기본 password는 PoC 편의용입니다. 제품 `.pkg`에서는 GUI 또는 first-run flow가 설치 대상별 credential을 생성해야 합니다.
@@ -395,7 +398,7 @@ make vm-stage
 | `apps/vitalserver/runtime` | VitalServer runtime preload |
 | `vendor/vitalserver/vitalserver-old` | upstream VitalServer source |
 
-Linux guest가 부팅된 뒤 console에서 아래 명령을 실행합니다.
+`make vm-prepare`로 cloud-init seed를 만든 경우 Linux guest 첫 부팅 때 아래 명령이 자동으로 실행됩니다.
 
 ```sh
 sudo /mnt/tirosh/deploy/bootstrap.sh

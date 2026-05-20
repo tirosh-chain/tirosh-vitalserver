@@ -19,6 +19,9 @@ resolve_settings() {
   username="${VM_CLOUD_INIT_USER:-ubuntu}"
   password="${VM_CLOUD_INIT_PASSWORD:-ubuntu}"
   ssh_key_path="${VM_CLOUD_INIT_SSH_KEY:-${HOME}/.ssh/id_ed25519.pub}"
+  run_bootstrap="${VM_CLOUD_INIT_RUN_BOOTSTRAP:-true}"
+  share_tag="${VM_CLOUD_INIT_SHARE_TAG:-tirosh}"
+  share_mount="${VM_CLOUD_INIT_SHARE_MOUNT:-/mnt/tirosh}"
 }
 
 require_tools() {
@@ -39,6 +42,7 @@ EOF
 
 write_user_data() {
   ssh_keys="$(cloud_init_ssh_keys)"
+  bootstrap_commands="$(cloud_init_bootstrap_commands)"
 
   cat >"${seed_dir}/user-data" <<EOF
 #cloud-config
@@ -60,6 +64,7 @@ chpasswd:
     - name: ${username}
       password: ${password}
       type: text
+${bootstrap_commands}
 EOF
 }
 
@@ -73,6 +78,20 @@ cloud_init_ssh_keys() {
   while IFS= read -r key; do
     printf "      - %s\n" "${key}"
   done <"${ssh_key_path}"
+}
+
+cloud_init_bootstrap_commands() {
+  if [ "${run_bootstrap}" != "true" ]; then
+    return
+  fi
+
+  cat <<EOF
+runcmd:
+  - mkdir -p ${share_mount}
+  - mountpoint -q ${share_mount} || mount -t virtiofs ${share_tag} ${share_mount}
+  - test -x ${share_mount}/deploy/bootstrap.sh
+  - ${share_mount}/deploy/bootstrap.sh
+EOF
 }
 
 build_seed_iso() {
@@ -91,6 +110,7 @@ print_result() {
   printf "  user: %s\n" "${username}"
   printf "  password: %s\n" "${password}"
   printf "  hostname: %s\n" "${hostname}"
+  printf "  auto bootstrap: %s\n" "${run_bootstrap}"
 }
 
 require_command() {
