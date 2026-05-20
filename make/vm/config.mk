@@ -10,6 +10,7 @@ VM_UPDATE_BUNDLE_VERSION ?= $(VM_PKG_VERSION)
 VM_UPDATE_MIGRATIONS ?=
 VM_NGINX_BIN ?=
 VM_NGINX_EXPECTED_VERSION ?=
+VM_INSTALL_SETTINGS ?=
 VM_CODESIGN_IDENTITY ?= -
 VM_BRIDGED_CODESIGN_IDENTITY ?= $(VM_CODESIGN_IDENTITY)
 
@@ -48,6 +49,7 @@ VM_INSTALL_PROXY_RUN := /usr/local/bin/vitalserver-proxy-run
 VM_INSTALL_UNINSTALL := /usr/local/bin/tirosh-vitalserver-uninstall
 VM_INSTALL_NGINX_PREFIX := $(VM_INSTALL_PREFIX)/nginx
 VM_INSTALL_NGINX_BIN := $(VM_INSTALL_NGINX_PREFIX)/sbin/nginx
+VM_INSTALL_SETTINGS_PATH := /private/tmp/tirosh-vitalserver-install.json
 
 # Package artifacts.
 VM_DIST_DIR := dist

@@ -144,7 +144,32 @@ shared/NAT mode에서는 VM IP가 부팅 후에 결정되므로, `vitalserver-pr
 
 `rootfs-base.raw.gz`는 immutable base artifact이고, 설치된 `vm-disk.img`는 mutable runtime instance입니다. 따라서 update에서 rootfs base를 교체해도 이미 실행 중인 `vm-disk.img` 내부 OS/runtime이 자동으로 교체되지는 않습니다. 설치된 VM 내부 변경은 migration이나 별도 guest update contract로 처리해야 합니다.
 
-기본 host proxy port는 80입니다. 설치 설정에서 다른 `proxyPort`를 사용할 수 있지만, 현재 Manager app과 runtime health URL은 80 기준입니다. 80 외 port를 제품 기능으로 열기 전에는 status/health/open URL 계약을 먼저 확장해야 합니다.
+기본 host proxy port는 80입니다. 설치 설정에서 다른 `proxyPort`를 지정하면 LaunchDaemon environment에 저장되고, runtime CLI와 Manager app은 설치된 plist에서 port를 읽어 health/open URL에 반영합니다.
+
+설치 시 설정값은 installer 실행 전에 `/private/tmp/tirosh-vitalserver-install.json`에 partial JSON으로 씁니다. 누락된 값은 기본값을 사용합니다.
+
+```json
+{
+  "cpuCount": 8,
+  "memoryGiB": 16,
+  "diskGiB": 128,
+  "proxyPort": 8080,
+  "vitalFilesDirectory": "/Users/Shared/TiroshVitalFiles",
+  "publicHost": "vitalserver.local",
+  "publicPort": 8080
+}
+```
+
+```sh
+sudo install -m 0600 install-settings.json /private/tmp/tirosh-vitalserver-install.json
+sudo installer -pkg dist/TiroshVitalServerVM-0.1.0.pkg -target /
+```
+
+개발용 install target에서는 같은 동작을 아래처럼 실행할 수 있습니다.
+
+```sh
+VM_INSTALL_SETTINGS=install-settings.json make vm-pkg-install
+```
 
 업데이트 입력 단위는 bundle directory입니다.
 

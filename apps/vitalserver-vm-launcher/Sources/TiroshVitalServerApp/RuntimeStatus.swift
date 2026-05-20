@@ -7,6 +7,7 @@ struct RuntimeStatus {
     var vmIP: String?
     var guestHTTP: String?
     var hostProxyHTTP: String?
+    var proxyPort = AppConstants.Product.defaultProxyPort
 
     var isReady: Bool {
         runtimeInstalled
@@ -24,7 +25,8 @@ struct RuntimeStatus {
             proxyServiceLoaded: launchdLoaded(AppConstants.Launchd.proxyService),
             vmIP: readTrimmed(paths.vmIPFile),
             guestHTTP: nil,
-            hostProxyHTTP: nil
+            hostProxyHTTP: nil,
+            proxyPort: proxyPort(paths.proxyLaunchDaemon)
         )
     }
 
@@ -45,6 +47,24 @@ struct RuntimeStatus {
         return value
     }
 
+    private static func proxyPort(_ plistPath: String) -> Int {
+        guard let data = FileManager.default.contents(atPath: plistPath),
+              let plist = try? PropertyListSerialization.propertyList(
+                from: data,
+                options: [],
+                format: nil
+              ),
+              let document = plist as? [String: Any],
+              let environment = document["EnvironmentVariables"] as? [String: Any],
+              let rawPort = environment["VITALSERVER_PROXY_PORT"] as? String,
+              let port = Int(rawPort),
+              (1...65_535).contains(port)
+        else {
+            return AppConstants.Product.defaultProxyPort
+        }
+        return port
+    }
+
     private func isSuccessfulHTTPStatus(_ value: String?) -> Bool {
         guard let value, let code = Int(value) else {
             return false
@@ -57,4 +77,5 @@ struct RuntimePaths {
     let launcher = AppConstants.Paths.launcher
     let uninstaller = AppConstants.Paths.uninstaller
     let vmIPFile = AppConstants.Paths.vmIPFile
+    let proxyLaunchDaemon = AppConstants.Paths.proxyLaunchDaemon
 }

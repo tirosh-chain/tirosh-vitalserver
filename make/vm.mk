@@ -358,6 +358,11 @@ vm-pkg-clean:
 
 vm-pkg-install:
 	@test -s "$(VM_PKG_OUTPUT)" || { printf "missing %s. Run: make vm-pkg\n" "$(VM_PKG_OUTPUT)" >&2; exit 1; }
+	@if [ -n "$(VM_INSTALL_SETTINGS)" ]; then \
+		test -s "$(VM_INSTALL_SETTINGS)" || { printf "missing %s\n" "$(VM_INSTALL_SETTINGS)" >&2; exit 1; }; \
+		sudo install -m 0600 "$(VM_INSTALL_SETTINGS)" "$(VM_INSTALL_SETTINGS_PATH)"; \
+		printf "installed runtime settings: %s\n" "$(VM_INSTALL_SETTINGS_PATH)"; \
+	fi
 	sudo installer -pkg "$(VM_PKG_OUTPUT)" -target /
 
 vm-pkg-uninstall-dev:

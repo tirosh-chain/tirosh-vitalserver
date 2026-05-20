@@ -283,7 +283,39 @@ launchd
 | `startAfterInstall` | true | bool |
 | `startOnBoot` | true | bool |
 
-현재 `InstallSettingsDocument`는 partial override가 아니라 complete JSON 계약입니다. 파일을 제공하는 installer UI나 MDM은 모든 필드를 써야 합니다. partial override를 제품 기능으로 열려면 Swift decoder를 optional field 기반으로 바꾸고 migration 없이 기존 complete JSON만 남기지 않습니다.
+현재 settings JSON은 partial override 계약입니다. 파일을 제공하는 installer UI, MDM, 또는 설치 wrapper는 바꾸고 싶은 필드만 쓰면 됩니다. 누락된 필드는 기본값을 사용하고, 범위를 벗어난 값은 무시합니다.
+
+예시:
+
+```json
+{
+  "cpuCount": 8,
+  "memoryGiB": 16,
+  "diskGiB": 128,
+  "proxyPort": 8080,
+  "vitalFilesDirectory": "/Users/Shared/TiroshVitalFiles",
+  "adminPassword": "change-me",
+  "publicHost": "vitalserver.local",
+  "publicPort": 8080,
+  "startAfterInstall": true,
+  "startOnBoot": true
+}
+```
+
+설치 wrapper는 `installer` 실행 전에 이 파일을 씁니다.
+
+```sh
+sudo install -m 0600 /path/to/install-settings.json /private/tmp/tirosh-vitalserver-install.json
+sudo installer -pkg dist/TiroshVitalServerVM-0.1.0.pkg -target /
+```
+
+개발용 Make target은 같은 계약을 `VM_INSTALL_SETTINGS`로 감쌉니다.
+
+```sh
+VM_INSTALL_SETTINGS=/path/to/install-settings.json make vm-pkg-install
+```
+
+`postinstall`이 설정을 읽어 runtime provisioning에 반영한 뒤 settings 파일을 삭제합니다.
 
 ### Proxy Port 계약
 
@@ -296,13 +328,15 @@ external client
   -> VitalServer container :18080
 ```
 
-`proxyPort`는 설치 설정과 LaunchDaemon environment로 전달되지만, 현재 runtime health URL과 Manager app open/health URL은 80으로 고정되어 있습니다. 따라서 80 외 port는 내부 실험 값으로만 사용하고, 제품 설정으로 노출하기 전에는 아래 항목을 같이 바꿔야 합니다.
+`proxyPort`는 설치 설정과 LaunchDaemon environment로 전달됩니다. Runtime CLI와 Manager app은 설치된 proxy LaunchDaemon plist에서 `VITALSERVER_PROXY_PORT`를 읽어 health/open URL에 반영합니다.
 
 ```text
-RuntimeLifecycle health/status URL
-Manager app health URL
-Manager app Open URL
-docs and install settings schema
+install settings JSON
+  -> postinstall
+  -> proxy LaunchDaemon EnvironmentVariables:VITALSERVER_PROXY_PORT
+  -> vitalserver-proxy-run
+  -> RuntimeLifecycle status/health
+  -> Manager app health/open URL
 ```
 
 ### Update Bundle 계약

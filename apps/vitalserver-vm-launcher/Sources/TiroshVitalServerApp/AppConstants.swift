@@ -2,10 +2,19 @@ enum AppConstants {
     enum Product {
         static let displayName = "Tirosh VitalServer Manager"
         static let subtitle = "Manage the Mac mini runtime"
-        static let vitalServerURL = "http://127.0.0.1/"
-        static let redisUIURL = "http://127.0.0.1/redis-ui/"
-        static let swaggerURL = "http://127.0.0.1/swagger/"
-        static let hostProxyHealthURL = "http://127.0.0.1:80/"
+        static let defaultProxyPort = 80
+        static func vitalServerURL(proxyPort: Int) -> String {
+            "http://127.0.0.1:\(proxyPort)/"
+        }
+        static func redisUIURL(proxyPort: Int) -> String {
+            "http://127.0.0.1:\(proxyPort)/redis-ui/"
+        }
+        static func swaggerURL(proxyPort: Int) -> String {
+            "http://127.0.0.1:\(proxyPort)/swagger/"
+        }
+        static func hostProxyHealthURL(proxyPort: Int) -> String {
+            "http://127.0.0.1:\(proxyPort)/"
+        }
         static func guestHealthURL(vmIP: String) -> String {
             "http://\(vmIP)/"
         }
@@ -15,6 +24,7 @@ enum AppConstants {
         static let runtime = "Runtime"
         static let vmService = "VM service"
         static let proxyService = "Proxy service"
+        static let proxyPort = "Proxy port"
         static let vmIP = "VM IP"
         static let guestHTTP = "Guest HTTP"
         static let hostProxy = "Host proxy"
@@ -61,6 +71,7 @@ enum AppConstants {
         static let launcher = "/usr/local/bin/vitalserver-vm"
         static let uninstaller = "/usr/local/bin/tirosh-vitalserver-uninstall"
         static let vmIPFile = "/Library/Application Support/TiroshVitalServer/vm/data/run/vm-ip"
+        static let proxyLaunchDaemon = "/Library/LaunchDaemons/com.tirosh.vitalserver-proxy.plist"
         static let commandLogFile = "/private/tmp/tirosh-vitalserver-manager-command.log"
     }
 

@@ -49,6 +49,7 @@ struct ContentView: View {
                     ? AppConstants.StatusText.loaded
                     : AppConstants.StatusText.notLoaded
             )
+            statusRow(AppConstants.Labels.proxyPort, String(controller.status.proxyPort))
             statusRow(AppConstants.Labels.vmIP, controller.status.vmIP ?? AppConstants.StatusText.waiting)
             statusRow(AppConstants.Labels.guestHTTP, controller.status.guestHTTP ?? AppConstants.StatusText.notChecked)
             statusRow(AppConstants.Labels.hostProxy, controller.status.hostProxyHTTP ?? AppConstants.StatusText.notChecked)

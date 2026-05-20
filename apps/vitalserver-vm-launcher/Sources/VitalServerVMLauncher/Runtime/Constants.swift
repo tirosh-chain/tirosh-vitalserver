@@ -64,8 +64,11 @@ enum Constants {
 
     enum Runtime {
         static let vmIPFile = "vm-ip"
-        static let proxyHealthURL = "http://127.0.0.1:80/"
         static let waitTimeoutSeconds = 600.0
+
+        static func proxyHealthURL(port: Int) -> String {
+            "http://127.0.0.1:\(port)/"
+        }
     }
 
     enum Bundle {

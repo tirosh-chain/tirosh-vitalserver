@@ -45,15 +45,15 @@ final class RuntimeController: ObservableObject {
     }
 
     func openVitalServer() {
-        NSWorkspace.shared.open(URL(string: AppConstants.Product.vitalServerURL)!)
+        NSWorkspace.shared.open(URL(string: AppConstants.Product.vitalServerURL(proxyPort: status.proxyPort))!)
     }
 
     func openRedisUI() {
-        NSWorkspace.shared.open(URL(string: AppConstants.Product.redisUIURL)!)
+        NSWorkspace.shared.open(URL(string: AppConstants.Product.redisUIURL(proxyPort: status.proxyPort))!)
     }
 
     func openSwagger() {
-        NSWorkspace.shared.open(URL(string: AppConstants.Product.swaggerURL)!)
+        NSWorkspace.shared.open(URL(string: AppConstants.Product.swaggerURL(proxyPort: status.proxyPort))!)
     }
 
     private func runPrivileged(
@@ -92,7 +92,7 @@ final class RuntimeController: ObservableObject {
         if let vmIP = next.vmIP {
             next.guestHTTP = await httpStatus(url: AppConstants.Product.guestHealthURL(vmIP: vmIP))
         }
-        next.hostProxyHTTP = await httpStatus(url: AppConstants.Product.hostProxyHealthURL)
+        next.hostProxyHTTP = await httpStatus(url: AppConstants.Product.hostProxyHealthURL(proxyPort: next.proxyPort))
 
         return next
     }

@@ -153,7 +153,9 @@ struct RuntimeLifecycle {
         print("  VM service: \(launchdState(Constants.Launchd.vmService))")
         print("  proxy service: \(launchdState(Constants.Launchd.proxyService))")
         print("  VM IP: \(readTrimmed(vmIPFile) ?? "waiting")")
-        print("  host proxy HTTP: \(httpStatus(Constants.Runtime.proxyHealthURL))")
+        let proxyPort = installedProxyPort()
+        print("  proxy port: \(proxyPort)")
+        print("  host proxy HTTP: \(httpStatus(Constants.Runtime.proxyHealthURL(port: proxyPort)))")
     }
 
     private func prepareInstallDirectories(_ settings: InstallSettings) throws {
@@ -406,7 +408,7 @@ struct RuntimeLifecycle {
         failed = failed || launchdState(Constants.Launchd.vmService) != "loaded"
         failed = failed || launchdState(Constants.Launchd.proxyService) != "loaded"
 
-        let proxyStatus = httpStatus(Constants.Runtime.proxyHealthURL)
+        let proxyStatus = httpStatus(Constants.Runtime.proxyHealthURL(port: installedProxyPort()))
         if !isSuccessfulHTTPStatus(proxyStatus) {
             failed = true
         }
@@ -807,7 +809,7 @@ struct RuntimeLifecycle {
                 continue
             }
 
-            let proxyStatus = httpStatus(Constants.Runtime.proxyHealthURL)
+            let proxyStatus = httpStatus(Constants.Runtime.proxyHealthURL(port: installedProxyPort()))
             if isSuccessfulHTTPStatus(proxyStatus) {
                 log("runtime health ok hostProxyHTTP=\(proxyStatus)")
                 return
@@ -876,6 +878,22 @@ struct RuntimeLifecycle {
             arguments: ["print", "system/\(label)"]
         )
         return result.exitCode == 0 ? "loaded" : "not loaded"
+    }
+
+    private func installedProxyPort() -> Int {
+        let plist = "/Library/LaunchDaemons/\(Constants.Launchd.proxyService).plist"
+        let result = runProcess(
+            Constants.Commands.plistBuddy,
+            arguments: ["-c", "Print :EnvironmentVariables:VITALSERVER_PROXY_PORT", plist]
+        )
+        let value = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard result.exitCode == 0,
+              let port = Int(value),
+              (1...65_535).contains(port)
+        else {
+            return InstallSettings.defaultProxyPort
+        }
+        return port
     }
 
     private func httpStatus(_ url: String) -> String {
@@ -1059,12 +1077,13 @@ struct BackupManifest: Encodable {
 
 struct InstallSettings {
     static let defaultSettingsPath = "/private/tmp/tirosh-vitalserver-install.json"
+    static let defaultProxyPort = 80
 
     var cpuCount = 8
     var memoryGiB = 8
     var diskGiB = 64
     var networkMode = NetworkMode.shared
-    var proxyPort = 80
+    var proxyPort = defaultProxyPort
     var vitalFilesDirectory: String
     var adminPassword: String?
     var vmHostname = "tirosh-vitalserver"
@@ -1091,39 +1110,55 @@ struct InstallSettings {
     }
 
     private mutating func apply(document: InstallSettingsDocument) {
-        if document.cpuCount >= Constants.Defaults.minimumCPUCount,
-           document.cpuCount <= Constants.Defaults.maximumCPUCount {
-            cpuCount = document.cpuCount
+        if let requestedCPUCount = document.cpuCount,
+           requestedCPUCount >= Constants.Defaults.minimumCPUCount,
+           requestedCPUCount <= Constants.Defaults.maximumCPUCount {
+            cpuCount = requestedCPUCount
         }
-        if stride(from: 4, through: 64, by: 4).contains(document.memoryGiB) {
-            memoryGiB = document.memoryGiB
+        if let requestedMemoryGiB = document.memoryGiB,
+           stride(from: 4, through: 64, by: 4).contains(requestedMemoryGiB) {
+            memoryGiB = requestedMemoryGiB
         }
-        if stride(from: 32, through: 512, by: 16).contains(document.diskGiB) {
-            diskGiB = document.diskGiB
+        if let requestedDiskGiB = document.diskGiB,
+           stride(from: 32, through: 512, by: 16).contains(requestedDiskGiB) {
+            diskGiB = requestedDiskGiB
         }
-        if let mode = NetworkMode(rawValue: document.networkMode) {
+        if let requestedNetworkMode = document.networkMode,
+           let mode = NetworkMode(rawValue: requestedNetworkMode) {
             networkMode = mode
         }
-        if document.proxyPort >= 1, document.proxyPort <= 65_535 {
-            proxyPort = document.proxyPort
+        if let requestedProxyPort = document.proxyPort,
+           requestedProxyPort >= 1,
+           requestedProxyPort <= 65_535 {
+            proxyPort = requestedProxyPort
         }
-        if document.vitalFilesDirectory.hasPrefix("/") {
-            vitalFilesDirectory = document.vitalFilesDirectory
+        if let requestedVitalFilesDirectory = document.vitalFilesDirectory,
+           requestedVitalFilesDirectory.hasPrefix("/") {
+            vitalFilesDirectory = requestedVitalFilesDirectory
         }
-        if !document.adminPassword.isEmpty {
-            adminPassword = document.adminPassword
+        if let requestedAdminPassword = document.adminPassword,
+           !requestedAdminPassword.isEmpty {
+            adminPassword = requestedAdminPassword
         }
-        if isValidHostname(document.vmHostname) {
-            vmHostname = document.vmHostname
+        if let requestedVMHostname = document.vmHostname,
+           isValidHostname(requestedVMHostname) {
+            vmHostname = requestedVMHostname
         }
-        if isLineSafe(document.publicHost) {
-            publicHost = document.publicHost
+        if let requestedPublicHost = document.publicHost,
+           isLineSafe(requestedPublicHost) {
+            publicHost = requestedPublicHost
         }
-        if document.publicPort >= 1, document.publicPort <= 65_535 {
-            publicPort = document.publicPort
+        if let requestedPublicPort = document.publicPort,
+           requestedPublicPort >= 1,
+           requestedPublicPort <= 65_535 {
+            publicPort = requestedPublicPort
         }
-        startAfterInstall = document.startAfterInstall
-        startOnBoot = document.startOnBoot
+        if let requestedStartAfterInstall = document.startAfterInstall {
+            startAfterInstall = requestedStartAfterInstall
+        }
+        if let requestedStartOnBoot = document.startOnBoot {
+            startOnBoot = requestedStartOnBoot
+        }
     }
 
     private func isLineSafe(_ value: String) -> Bool {
@@ -1142,16 +1177,16 @@ struct InstallSettings {
 }
 
 private struct InstallSettingsDocument: Decodable {
-    let cpuCount: Int
-    let memoryGiB: Int
-    let diskGiB: Int
-    let networkMode: String
-    let proxyPort: Int
-    let vitalFilesDirectory: String
-    let adminPassword: String
-    let vmHostname: String
-    let publicHost: String
-    let publicPort: Int
-    let startAfterInstall: Bool
-    let startOnBoot: Bool
+    let cpuCount: Int?
+    let memoryGiB: Int?
+    let diskGiB: Int?
+    let networkMode: String?
+    let proxyPort: Int?
+    let vitalFilesDirectory: String?
+    let adminPassword: String?
+    let vmHostname: String?
+    let publicHost: String?
+    let publicPort: Int?
+    let startAfterInstall: Bool?
+    let startOnBoot: Bool?
 }
