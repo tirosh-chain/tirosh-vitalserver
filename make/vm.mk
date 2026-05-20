@@ -1,7 +1,7 @@
 include make/vm/config.mk
 
 .PHONY: vm-up vm-up-bridged vm-down vm-prepare vm-start vm-start-detached vm-start-bridged vm-stop vm-status vm-clean vm-ip vm-wait-ip vm-wait-http vm-wait-rootfs-ready vm-proxy-start vm-health
-.PHONY: vm-build vm-sign vm-sign-bridged vm-bridged-preflight vm-init vm-download vm-cloud-init vm-stage vm-interfaces vm-network-shared vm-network-bridged vm-nginx-bundle vm-docker-images vm-pkg-stage vm-pkg vm-app vm-dmg vm-pkg-clean vm-pkg-install vm-pkg-uninstall-dev vm-installed-status vm-installed-health vm-update-bundle vm-update-bundle-verify
+.PHONY: vm-build vm-sign vm-sign-bridged vm-bridged-preflight vm-init vm-download vm-cloud-init vm-stage vm-interfaces vm-network-shared vm-network-bridged vm-nginx-artifact vm-nginx-bundle vm-docker-images vm-pkg-stage vm-pkg vm-app vm-dmg vm-pkg-clean vm-pkg-install vm-pkg-uninstall-dev vm-installed-status vm-installed-health vm-update-bundle vm-update-bundle-verify
 .PHONY: vm-airgap-rootfs vm-golden-rootfs
 
 vm-build:
@@ -243,6 +243,13 @@ vm-golden-rootfs:
 			--source "$(VM_GOLDEN_DISK_IMAGE)" \
 			--output "$(VM_PKG_ROOTFS_CACHE)"; \
 	fi
+
+vm-nginx-artifact:
+	@test -x "$(VM_NGINX_SOURCE_BIN)" || { printf "missing nginx source binary: %s\n" "$(VM_NGINX_SOURCE_BIN)" >&2; exit 1; }
+	@mkdir -p "$(dir $(VM_NGINX_ARTIFACT_BIN))"
+	install -m 0755 "$(VM_NGINX_SOURCE_BIN)" "$(VM_NGINX_ARTIFACT_BIN)"
+	@"$(VM_NGINX_ARTIFACT_BIN)" -v
+	@printf "nginx release artifact is ready: %s\n" "$(VM_NGINX_ARTIFACT_BIN)"
 
 vm-nginx-bundle:
 	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" nginx-bundle \

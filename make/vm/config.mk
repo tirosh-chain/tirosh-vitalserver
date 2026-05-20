@@ -8,6 +8,7 @@ VM_HTTP_WAIT_TIMEOUT ?= 600
 VM_PKG_VERSION ?= 0.1.0
 VM_UPDATE_BUNDLE_VERSION ?= $(VM_PKG_VERSION)
 VM_UPDATE_MIGRATIONS ?=
+VM_NGINX_SOURCE_BIN ?= /opt/homebrew/opt/nginx/bin/nginx
 VM_NGINX_BIN ?=
 VM_NGINX_EXPECTED_VERSION ?=
 VM_INSTALL_SETTINGS ?=
@@ -24,6 +25,7 @@ VM_SDKROOT := $(firstword $(wildcard /Library/Developer/CommandLineTools/SDKs/Ma
 VM_CLANG_MODULE_CACHE := $(CURDIR)/.tmp/clang-module-cache
 VM_BUILD_RUNNER := $(UV) run --project packages/vm-build vitalserver-vm-build
 VM_BUILD_CONFIG := $(VM_LAUNCHER_DIR)/Support/Build/vm-build.toml
+VM_NGINX_ARTIFACT_BIN := .artifacts/nginx/macos/bin/nginx
 
 # Local runtime paths.
 VM_RUNTIME_DIR := $(VM_HOME)/runtime

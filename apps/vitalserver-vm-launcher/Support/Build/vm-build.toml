@@ -37,4 +37,4 @@ images = [
 
 [nginx]
 binary_path = ".artifacts/nginx/macos/bin/nginx"
-expected_version = "nginx/1.28.0"
+expected_version = "nginx/1.31.0"

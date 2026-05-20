@@ -98,6 +98,7 @@ help:
 	@printf "  make build-testkit   Build vitalserver-testkit wheel and sdist\n"
 	@printf "  make check           Run lint, typecheck, and test\n"
 	@printf "  make vm-build        Build Apple Virtualization VM launcher\n"
+	@printf "  make vm-nginx-artifact Copy pinned nginx binary into local artifact cache\n"
 	@printf "  make vm-nginx-bundle Build self-contained nginx bundle for VM pkg\n"
 	@printf "  make vm-docker-images Build Docker image bundle for air-gapped VM pkg\n"
 	@printf "  make vm-sign         Ad-hoc sign VM launcher with shared networking entitlement\n"

@@ -227,7 +227,14 @@ sudo tirosh-vitalserver-uninstall
 
 이 명령은 VM/proxy LaunchDaemon을 내리고, 설치된 runtime 파일을 제거합니다.
 
-`make vm-nginx-bundle`은 `vm-build.toml`의 `[nginx]`에 선언된 release artifact를 사용합니다. 기본 경로는 `.artifacts/nginx/macos/bin/nginx`이고, `expected_version`으로 build artifact 버전을 검증합니다. nginx가 참조하는 비시스템 dylib는 package 내부 `nginx/lib`로 복사하고, nginx load path를 `@executable_path/../lib`로 바꿉니다.
+`make vm-nginx-bundle`은 `vm-build.toml`의 `[nginx]`에 선언된 release artifact를 사용합니다. 기본 경로는 `.artifacts/nginx/macos/bin/nginx`이고, `expected_version`으로 build artifact 버전을 검증합니다. 현재 pinned version은 `nginx/1.31.0`입니다.
+
+```sh
+make vm-nginx-artifact
+make vm-nginx-bundle
+```
+
+`.artifacts`는 build-machine 입력 cache이며 repository에 commit하지 않습니다. nginx가 참조하는 비시스템 dylib는 package 내부 `nginx/lib`로 복사하고, nginx load path를 `@executable_path/../lib`로 바꿉니다.
 
 ## Control App
 

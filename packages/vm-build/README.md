@@ -27,14 +27,18 @@ uv run --project packages/vm-build vitalserver-vm-build rootfs-base \
   --output .tmp/vitalserver-vm-pkg/rootfs-base.raw.gz
 ```
 
-Build the pinned nginx bundle declared in `vm-build.toml`:
+Build the pinned nginx bundle declared in `vm-build.toml`. The default input is the local release artifact cache at `.artifacts/nginx/macos/bin/nginx`; create that artifact from the pinned local source before bundling:
 
 ```sh
+make vm-nginx-artifact
+
 uv run --project packages/vm-build vitalserver-vm-build \
   --config apps/vitalserver-vm-launcher/Support/Build/vm-build.toml \
   nginx-bundle \
   --bundle-dir .tmp/vitalserver-vm-pkg/nginx-bundle
 ```
+
+The artifact cache is not committed. The bundle command validates the binary against the pinned `expected_version` and copies non-system dylibs into the package bundle.
 
 Example with update migrations:
 

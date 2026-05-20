@@ -401,7 +401,19 @@ sudo tirosh-vitalserver-uninstall
 .artifacts/nginx/macos/bin/nginx
 ```
 
-build tooling은 이 binary의 `nginx -v` 출력이 `expected_version`과 맞는지 확인한 뒤, 실행 파일과 비시스템 dylib를 package 내부로 복사합니다.
+이 파일은 repository에 commit하지 않는 build-machine 입력 cache입니다. 로컬 unsigned build에서는 Homebrew nginx를 한 번 복사해 release artifact를 만듭니다.
+
+```sh
+make vm-nginx-artifact
+```
+
+기본 source binary는 `/opt/homebrew/opt/nginx/bin/nginx`입니다. 다른 위치를 쓰려면 artifact 생성 단계에서만 명시적으로 지정합니다.
+
+```sh
+VM_NGINX_SOURCE_BIN=/path/to/nginx make vm-nginx-artifact
+```
+
+build tooling은 이 binary의 `nginx -v` 출력이 pinned `expected_version`과 맞는지 확인한 뒤, 실행 파일과 비시스템 dylib를 package 내부로 복사합니다. 현재 pinned version은 `nginx/1.31.0`입니다.
 
 ```text
 nginx/sbin/nginx
@@ -412,11 +424,11 @@ nginx/sbin/nginx
   -> /usr/lib/libSystem.B.dylib
 ```
 
-즉 운영 Mac mini에 Homebrew가 없어도 host proxy가 뜰 수 있는 구조입니다. 임시로 다른 binary를 쓰려면 명시적으로 override합니다.
+즉 운영 Mac mini에 Homebrew가 없어도 host proxy가 뜰 수 있는 구조입니다. 임시로 다른 binary를 bundle 입력으로 직접 쓰려면 명시적으로 override합니다.
 
 ```sh
 VM_NGINX_BIN=/path/to/nginx \
-VM_NGINX_EXPECTED_VERSION=nginx/1.28.0 \
+VM_NGINX_EXPECTED_VERSION=nginx/1.31.0 \
 make vm-nginx-bundle
 ```
 
