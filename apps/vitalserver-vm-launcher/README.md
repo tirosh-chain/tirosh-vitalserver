@@ -342,10 +342,15 @@ Tirosh VitalServer Manager.app
 | Rollback | 최신 backup을 `runtime rollback`으로 복원 |
 | Open VitalServer | `http://127.0.0.1/` 열기 |
 | Uninstall | 설치된 `/usr/local/bin/tirosh-vitalserver-uninstall` 실행 |
+| Clean Uninstall | 설치된 `/usr/local/bin/tirosh-vitalserver-uninstall --clean` 실행 |
 
 Uninstall의 주 진입점은 Manager app입니다. Manager app을 열 수 없는 깨진 설치 상태에서는
 `sudo /usr/local/bin/tirosh-vitalserver-uninstall`을 fallback으로 실행합니다. MDM/Jamf 배포에서도
 같은 uninstaller를 root로 실행합니다.
+
+기본 Uninstall은 Manager app, LaunchDaemon, runtime tools, VM disk, logs, package receipt를 제거하지만
+`.vital` 파일 경로와 backups는 보존합니다. Clean Uninstall은 backups와 설정된 vital files directory까지
+삭제합니다.
 
 CPU는 VitalServer 내부 동작 조건 때문에 7 vCPU 이상만 허용하고, target Mac 운영 기본값은 8 vCPU입니다.
 
@@ -366,7 +371,7 @@ vitalserver-vm runtime install
 vitalserver-vm runtime status
 vitalserver-vm runtime health
 vitalserver-vm runtime watchdog
-vitalserver-vm runtime configure [--cpu <count>] [--memory-gib <gib>] [--network shared|bridged] [--bridged-interface <id>] [--proxy-port <port>] [--vital-files-dir <path>] [--public-host <host>] [--public-port <port>] [--admin-password <password>] [--start-on-boot true|false] [--restart]
+vitalserver-vm runtime configure [--cpu <count>] [--memory-gib <gib>] [--network shared|bridged] [--bridged-interface <id>] [--proxy-port <port>] [--vital-files-dir <path>] [--public-host <host>] [--public-port <port>] [--admin-password-file <path>] [--start-on-boot true|false] [--restart]
 vitalserver-vm runtime verify-bundle <bundle-dir>
 vitalserver-vm runtime stage-bundle <bundle-dir>
 vitalserver-vm runtime apply-bundle <bundle-dir>

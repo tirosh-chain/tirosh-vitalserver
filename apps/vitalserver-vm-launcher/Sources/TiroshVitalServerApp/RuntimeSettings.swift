@@ -12,6 +12,7 @@ struct RuntimeSettings {
     var adminPassword = ""
     var changeAdminPassword = false
     var startOnBoot = true
+    var startOnBootConfigurable = true
     var restartAfterSave = true
 
     static func load() -> RuntimeSettings {
@@ -33,11 +34,16 @@ struct RuntimeSettings {
         }
 
         settings.proxyPort = RuntimeStatus.load(paths: RuntimePaths()).proxyPort
-        settings.startOnBoot = startOnBootEnabled()
+        if let startOnBoot = startOnBootEnabled() {
+            settings.startOnBoot = startOnBoot
+            settings.startOnBootConfigurable = true
+        } else {
+            settings.startOnBootConfigurable = false
+        }
         return settings
     }
 
-    func configureArguments() -> [String] {
+    func configureArguments(adminPasswordFile: String? = nil) -> [String] {
         var arguments = [
             "runtime",
             "configure",
@@ -55,14 +61,18 @@ struct RuntimeSettings {
             publicHost,
             "--public-port",
             String(publicPort),
-            "--start-on-boot",
-            startOnBoot ? "true" : "false",
         ]
+        if startOnBootConfigurable {
+            arguments += [
+                "--start-on-boot",
+                startOnBoot ? "true" : "false",
+            ]
+        }
         if networkMode == "bridged", !bridgedInterface.isEmpty {
             arguments += ["--bridged-interface", bridgedInterface]
         }
-        if changeAdminPassword, !adminPassword.isEmpty {
-            arguments += ["--admin-password", adminPassword]
+        if let adminPasswordFile {
+            arguments += ["--admin-password-file", adminPasswordFile]
         }
         if restartAfterSave {
             arguments.append("--restart")
@@ -70,13 +80,13 @@ struct RuntimeSettings {
         return arguments
     }
 
-    private static func startOnBootEnabled() -> Bool {
+    private static func startOnBootEnabled() -> Bool? {
         let result = ProcessRunner.runSync(
             AppConstants.Commands.launchctl,
             arguments: ["print-disabled", "system"]
         )
         guard result.exitCode == 0 else {
-            return true
+            return nil
         }
         let output = result.stdout
         for label in [

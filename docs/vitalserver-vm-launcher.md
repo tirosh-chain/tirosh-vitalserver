@@ -505,6 +505,8 @@ VM service가 시작되면 `vitalserver-vm start`가 `vm-config.json`을 읽어 
 Uninstall 로직은 Manager app에 중복 구현하지 않고, 설치된
 `/usr/local/bin/tirosh-vitalserver-uninstall`을 관리자 권한으로 호출합니다. Manager app을 열 수 없는 깨진 설치 상태에서는 같은 command를 Terminal 또는 MDM/Jamf에서 root로 실행합니다.
 
+기본 Uninstall은 Manager app, LaunchDaemon, runtime tools, VM disk, logs, package receipt를 제거하지만 `.vital` 파일 경로와 backups는 보존합니다. Clean Uninstall은 `--clean`을 전달해 backups와 설정된 vital files directory까지 삭제합니다.
+
 ```text
 Tirosh VitalServer Manager.app
   운영 중:
@@ -514,9 +516,11 @@ Tirosh VitalServer Manager.app
     Rollback
     Logs
     Uninstall
+    Clean Uninstall
 
 Fallback:
   sudo /usr/local/bin/tirosh-vitalserver-uninstall
+  sudo /usr/local/bin/tirosh-vitalserver-uninstall --clean
 ```
 
 ## 인터페이스 계약
@@ -675,7 +679,7 @@ update에서 rootfs base를 교체해도 기존 `vm-disk.img` 내부 OS와 appli
 sudo tirosh-vitalserver-uninstall
 ```
 
-이 명령은 VM/proxy LaunchDaemon을 unload하고, package가 설치한 runtime 파일을 제거합니다. GUI 제품에서는 Manager app의 “Uninstall” 버튼이 같은 command를 호출합니다.
+이 명령은 VM/proxy LaunchDaemon을 unload하고, package가 설치한 runtime 파일과 Manager app을 제거합니다. 기본 모드는 `.vital` 파일 경로와 backups를 보존합니다. 완전 삭제가 필요하면 `sudo tirosh-vitalserver-uninstall --clean`을 사용합니다. GUI 제품에서는 Manager app의 “Uninstall”과 “Clean Uninstall”이 같은 backend command를 호출합니다.
 
 ### nginx release artifact
 
@@ -821,13 +825,13 @@ sudo vitalserver-vm runtime configure \
   --public-host "" \
   --public-port 80 \
   --start-on-boot true \
-  --admin-password "<password>" \
+  --admin-password-file "/private/tmp/admin-password" \
   --restart
 ```
 
-이 command는 `vm-config.json`, deploy `runtime-config.json`, proxy LaunchDaemon plist, launchd enable/disable 정책을 갱신하고 `--restart`가 있으면 VM/proxy/watchdog을 kickstart합니다. Manager app의 Settings tab도 이 command를 호출합니다. Manager app의 admin password 입력은 기존 값을 표시하지 않고, 운영자용 admin password reset을 선택했을 때만 `--admin-password`를 전달합니다.
+이 command는 `vm-config.json`, deploy `runtime-config.json`, proxy LaunchDaemon plist, launchd enable/disable 정책을 갱신하고 `--restart`가 있으면 VM/proxy/watchdog을 kickstart합니다. Manager app의 Settings tab도 이 command를 호출합니다. Manager app의 admin password 입력은 기존 값을 표시하지 않고, 운영자용 admin password reset을 선택했을 때만 `/private/tmp` 아래 0600 임시 파일을 만들고 `--admin-password-file`을 전달합니다. CLI의 `--admin-password`는 개발/수동 복구용으로 남기지만, 운영 UI에서는 argv/log 노출을 줄이기 위해 file 입력을 사용합니다.
 
-admin password reset은 VitalServer 본체의 사용자 계정 기능을 확장하거나 수정하는 기능이 아닙니다. VitalServer UI의 비밀번호 변경은 현재 비밀번호를 아는 사용자가 본인 계정을 변경하는 흐름이고, Manager의 reset은 설치/운영 관리자가 `admin` 계정을 복구하거나 초기화하기 위한 패키징 레벨의 유지보수 기능입니다. 위험도가 높은 설정이므로 향후 운영 정책에 따라 Manager UI에서 제거하고 CLI 또는 recovery flow로만 남길 수 있습니다.
+admin password reset은 VitalServer 본체의 사용자 계정 기능을 확장하거나 수정하는 기능이 아닙니다. VitalServer UI의 비밀번호 변경은 현재 비밀번호를 아는 사용자가 본인 계정을 변경하는 흐름이고, Manager의 reset은 설치/운영 관리자가 `admin` 계정을 복구하거나 초기화하기 위한 패키징 레벨의 유지보수 기능입니다. 위험도가 높은 설정이므로 향후 운영 정책에 따라 Manager UI에서 제거하고 CLI 또는 recovery flow로만 남길 수 있습니다. deploy `runtime-config.json`은 admin reset 값을 포함하므로 install/configure 직후 0600 권한으로 제한합니다.
 
 설치 후 Manager에서 바로 변경하는 범위와 별도 기능으로 분리해야 하는 범위는 아래처럼 구분합니다.
 

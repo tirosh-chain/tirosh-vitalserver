@@ -59,10 +59,10 @@ final class RuntimeController: ObservableObject {
         }
     }
 
-    func uninstallRuntime() async {
+    func uninstallRuntime(clean: Bool = false) async {
         let command: String
         if FileManager.default.isExecutableFile(atPath: runtime.uninstaller) {
-            command = shellQuote(runtime.uninstaller)
+            command = ([runtime.uninstaller] + (clean ? ["--clean"] : [])).map(shellQuote).joined(separator: " ")
         } else {
             message = AppConstants.StatusText.missingUninstaller
             return
@@ -73,7 +73,9 @@ final class RuntimeController: ObservableObject {
             preparingMessage: AppConstants.StatusText.uninstallPreparing,
             waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
             runningMessage: AppConstants.StatusText.uninstallRunning,
-            successMessage: AppConstants.StatusText.uninstallCompleted
+            successMessage: clean
+                ? AppConstants.StatusText.cleanUninstallCompleted
+                : AppConstants.StatusText.uninstallCompleted
         )
         await refreshHealthStatus()
     }
@@ -86,9 +88,23 @@ final class RuntimeController: ObservableObject {
         guard validateSettings() else {
             return
         }
+        var adminPasswordFile: URL?
+        if settings.changeAdminPassword {
+            do {
+                adminPasswordFile = try writeAdminPasswordFile(settings.adminPassword)
+            } catch {
+                message = error.localizedDescription
+                return
+            }
+        }
+        defer {
+            if let adminPasswordFile {
+                try? FileManager.default.removeItem(at: adminPasswordFile)
+            }
+        }
         let command = shellCommand(
             executable: runtime.launcher,
-            arguments: settings.configureArguments()
+            arguments: settings.configureArguments(adminPasswordFile: adminPasswordFile?.path)
         )
         let didSave = await runPrivileged(
             shellCommand: command,
@@ -239,7 +255,31 @@ final class RuntimeController: ObservableObject {
             message = "Admin password reset value must not be empty."
             return false
         }
+        if settings.changeAdminPassword, !isLineSafe(settings.adminPassword) {
+            message = "Admin password reset value must not contain newlines."
+            return false
+        }
         return true
+    }
+
+    private func writeAdminPasswordFile(_ password: String) throws -> URL {
+        let url = URL(fileURLWithPath: "/private/tmp")
+            .appendingPathComponent("tirosh-vitalserver-admin-password-\(UUID().uuidString)")
+        guard let data = password.data(using: .utf8) else {
+            throw RuntimeControllerError.invalidAdminPassword
+        }
+        guard FileManager.default.createFile(
+            atPath: url.path,
+            contents: data,
+            attributes: [.posixPermissions: 0o600]
+        ) else {
+            throw RuntimeControllerError.adminPasswordFileCreateFailed
+        }
+        return url
+    }
+
+    private func isLineSafe(_ value: String) -> Bool {
+        !value.contains("\n") && !value.contains("\r")
     }
 
     private func runPrivileged(
@@ -341,5 +381,19 @@ final class RuntimeController: ObservableObject {
         value
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"")
+    }
+}
+
+private enum RuntimeControllerError: LocalizedError {
+    case invalidAdminPassword
+    case adminPasswordFileCreateFailed
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidAdminPassword:
+            return "Admin password reset value is invalid."
+        case .adminPasswordFileCreateFailed:
+            return "Could not prepare admin password reset file."
+        }
     }
 }

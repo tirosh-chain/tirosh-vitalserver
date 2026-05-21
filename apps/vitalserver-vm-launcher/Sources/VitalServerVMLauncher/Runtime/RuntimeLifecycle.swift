@@ -104,6 +104,7 @@ struct RuntimeLifecycle {
               vitalserver-vm runtime health
               vitalserver-vm runtime watchdog
               vitalserver-vm runtime configure [--cpu <count>] [--memory-gib <gib>] [--network shared|bridged] [--bridged-interface <id>] [--proxy-port <port>] [--vital-files-dir <path>] [--public-host <host>] [--public-port <port>] [--admin-password <password>] [--start-on-boot true|false] [--restart]
+              vitalserver-vm runtime configure [--admin-password-file <path>] [--restart]
               vitalserver-vm runtime verify-bundle <bundle-dir>
               vitalserver-vm runtime stage-bundle <bundle-dir>
               vitalserver-vm runtime apply-bundle <bundle-dir>
@@ -226,6 +227,7 @@ struct RuntimeLifecycle {
         )
         let data = try JSONEncoder.pretty.encode(document)
         try data.write(to: runtimeConfig, options: .atomic)
+        try restrictSecretFile(runtimeConfig)
     }
 
     private func prepareInstalledExecutables() throws {
@@ -574,6 +576,12 @@ struct RuntimeLifecycle {
                     throw LauncherError.missingArgument("--admin-password must not be empty or contain newlines")
                 }
                 guestConfig.adminPassword = value
+            case "--admin-password-file":
+                let password = try readSecretFile(URL(fileURLWithPath: value))
+                guard !password.isEmpty, isLineSafe(password) else {
+                    throw LauncherError.missingArgument("--admin-password-file must contain a non-empty single-line password")
+                }
+                guestConfig.adminPassword = password
             case "--start-on-boot":
                 guard let enabled = parseBool(value) else {
                     throw LauncherError.missingArgument("--start-on-boot must be true or false")
@@ -592,6 +600,7 @@ struct RuntimeLifecycle {
         VMRuntimeConfig.ensureRuntimeDefaults(&vmConfig, home: paths.home)
         try JSONEncoder.pretty.encode(vmConfig).write(to: paths.config, options: .atomic)
         try JSONEncoder.pretty.encode(guestConfig).write(to: runtimeConfigURL, options: .atomic)
+        try restrictSecretFile(runtimeConfigURL)
         try writeRuntimeStatus(.degraded, operation: "configure", message: "runtime configuration updated")
         log("runtime configuration updated restart=\(restart)")
 
@@ -1587,6 +1596,21 @@ struct RuntimeLifecycle {
                 "/Library/LaunchDaemons/\(Constants.Launchd.proxyService).plist",
             ]
         )
+    }
+
+    private func readSecretFile(_ url: URL) throws -> String {
+        guard url.path.hasPrefix("/private/tmp/") || url.path.hasPrefix("/tmp/") else {
+            throw LauncherError.missingArgument("--admin-password-file must be under /private/tmp")
+        }
+        let data = try Data(contentsOf: url)
+        guard let value = String(data: data, encoding: .utf8) else {
+            throw LauncherError.missingArgument("--admin-password-file must be UTF-8")
+        }
+        return value
+    }
+
+    private func restrictSecretFile(_ url: URL) throws {
+        try runRequired(Constants.Commands.chmod, arguments: ["0600", url.path])
     }
 
     private func setStartOnBoot(_ enabled: Bool) throws {

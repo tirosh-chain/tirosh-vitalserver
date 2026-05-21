@@ -4,6 +4,8 @@ struct ContentView: View {
     @StateObject private var controller = RuntimeController()
     @State private var showingUpdateConfirmation = false
     @State private var showingRollbackConfirmation = false
+    @State private var showingUninstallConfirmation = false
+    @State private var showingCleanUninstallConfirmation = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -107,8 +109,13 @@ struct ContentView: View {
                     controller.openSwagger()
                 }
             }
-            Button(AppConstants.Actions.uninstall) {
-                Task { await controller.uninstallRuntime() }
+            Menu(AppConstants.Actions.uninstall) {
+                Button(AppConstants.Actions.standardUninstall, role: .destructive) {
+                    showingUninstallConfirmation = true
+                }
+                Button(AppConstants.Actions.cleanUninstall, role: .destructive) {
+                    showingCleanUninstallConfirmation = true
+                }
             }
             .foregroundStyle(.red)
             .disabled(controller.isBusy || !controller.status.runtimeInstalled)
@@ -133,6 +140,22 @@ struct ContentView: View {
             }
         } message: {
             Text(controller.selectedBackupPath.isEmpty ? "Latest backup" : controller.selectedBackupPath)
+        }
+        .alert(AppConstants.Actions.standardUninstall, isPresented: $showingUninstallConfirmation) {
+            Button(AppConstants.Actions.cancel, role: .cancel) {}
+            Button(AppConstants.Actions.uninstall, role: .destructive) {
+                Task { await controller.uninstallRuntime() }
+            }
+        } message: {
+            Text("Removes the Manager app, runtime services, tools, VM disk, logs, and package receipt. Vital files and backups are preserved.")
+        }
+        .alert(AppConstants.Actions.cleanUninstall, isPresented: $showingCleanUninstallConfirmation) {
+            Button(AppConstants.Actions.cancel, role: .cancel) {}
+            Button(AppConstants.Actions.cleanUninstall, role: .destructive) {
+                Task { await controller.uninstallRuntime(clean: true) }
+            }
+        } message: {
+            Text("Removes the Manager app, runtime services, tools, VM disk, logs, backups, and configured vital files directory.")
         }
     }
 
@@ -160,6 +183,7 @@ struct ContentView: View {
                 labeledValue("Public port", "\(controller.settings.publicPort)")
             }
             Toggle("Start on boot", isOn: $controller.settings.startOnBoot)
+                .disabled(!controller.settings.startOnBootConfigurable)
             Toggle("Reset admin password", isOn: $controller.settings.changeAdminPassword)
             if controller.settings.changeAdminPassword {
                 SecureField("New admin password", text: $controller.settings.adminPassword)
