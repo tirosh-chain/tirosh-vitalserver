@@ -335,6 +335,8 @@ tail -n 200 "/Library/Application Support/TiroshVitalServer/vm/data/run/containe
 
 최신 Helper app은 command log를 Logs 탭에서 실시간 갱신하고, runtime health wait 중에도 `waiting for runtime health reasons=...` 형태의 진행 로그를 남깁니다. 이전 버전에서 시작한 update/rollback 작업에는 이 개선이 적용되지 않습니다.
 
+Update 탭에서는 적용 중인 현재 step과 Command log tail을 함께 표시합니다. 화면이 `Applying update bundle...` 한 줄에서 오래 멈춰 보이면 먼저 `Command log` source를 확인합니다.
+
 조치:
 
 먼저 command log와 container log에서 실제 실패 원인을 확인합니다. update가 이미 rollback 단계에 들어간 경우에는 중간에 강제 종료하면 runtime이 반쯤 교체된 상태로 남을 수 있으므로, 가능한 한 rollback timeout이 끝날 때까지 기다립니다. 반복적으로 health가 회복되지 않으면 새 bundle 또는 재설치로 복구합니다.
@@ -342,6 +344,23 @@ tail -n 200 "/Library/Application Support/TiroshVitalServer/vm/data/run/containe
 Helper app의 Advanced > Recovery operations에는 `Repair Data Store`가 있습니다. 이 작업은 VM 내부에 복구 요청 파일을 만들고, guest systemd path unit이 Redis AOF 검사/복구와 container 재시작을 수행하게 합니다. update 실패 후 Redis 또는 VitalServer health가 회복되지 않을 때 먼저 시도합니다.
 
 Update 과정의 전체 계약, 보존/변경 범위, 0.1.3 실패 분석은 [Update](update.md)를 봅니다.
+
+### update 후 bootstrap이 `missing runtime package`로 실패
+
+증상:
+
+```text
+error: missing runtime package in air-gapped rootfs
+Required commands/services: curl, docker, docker compose, avahi-daemon, growpart.
+```
+
+원인:
+
+일반 update bundle은 `rootfs-base.raw.gz`를 교체하지만, 이미 설치되어 실행 중인 mutable disk인 `vm-disk.img`는 보존합니다. 따라서 기존 `vm-disk.img` 안에 Docker/Compose/Avahi/growpart 같은 runtime package가 빠져 있으면, guest deploy나 cloud-init seed만 갱신해도 bootstrap이 성공할 수 없습니다.
+
+조치:
+
+같은 bundle을 반복 적용하지 말고, 새 package 재설치 또는 별도 VM/rootfs replacement 흐름으로 복구합니다. 운영 데이터 보존 범위는 [Update](update.md)의 `0.1.4 update에서 다시 실패하는 경우`를 확인합니다.
 
 ### update 후 Redis가 `exec format error`로 실패
 
@@ -383,9 +402,32 @@ tar -xOf /tmp/vitalserver-images.tar.gz manifest.json
 
 조치:
 
-`guest-deploy`나 Docker image bundle을 바꾸는 update에는 guest-side activation migration이 필요합니다. 이 migration은 VM 안에서 Docker image bundle을 다시 load하고, 기존 container를 recreate해야 합니다. 단순히 같은 bundle을 다시 적용하면 이전 wrong-arch image cache를 계속 사용할 수 있습니다.
+`guest-deploy`나 Docker image bundle을 바꾸는 update는 반드시 guest activation까지 진행되어야 합니다. 현재 update bundle은 기본 migration으로 cloud-init seed를 갱신하고, 새 runtime은 `activate-update.request`를 통해 VM 안에서 Docker image bundle을 다시 load하고 기존 container를 recreate합니다. 단순히 host shared directory만 교체되면 이전 wrong-arch image cache를 계속 사용할 수 있습니다.
 
 0.1.3에서 확인한 상세 원인은 [Update 문서의 0.1.3 실패 분석](update.md#013-실패-분석)에 남겨둡니다.
+
+### VM은 부팅됐지만 VM IP가 계속 Waiting
+
+증상:
+
+Helper Status에서 VM service와 watchdog은 running인데 VM IP, VitalServer, Redis가 계속 Waiting으로 표시됩니다.
+
+확인:
+
+```sh
+tail -n 200 "/Library/Application Support/TiroshVitalServer/vm/logs/launchd.out.log"
+tail -n 200 "/Library/Application Support/TiroshVitalServer/vm/logs/launchd.err.log"
+cat "/Library/Application Support/TiroshVitalServer/vm/data/run/bootstrap.log"
+cat "/Library/Application Support/TiroshVitalServer/vm/data/run/runtime-state.json"
+```
+
+원인:
+
+VM 자체는 부팅됐지만 guest bootstrap이 실패하면 `runtime-state.json`이 생성되지 않습니다. 이 경우 UI는 VM IP를 알 수 없어 Waiting으로 남습니다. 한 사례에서는 bootstrap preflight가 arm64 VM에서 `qemu-x86_64-static`을 필수로 요구해 실패했습니다. 현재 container image는 `linux/arm64`로 제공하므로 qemu-user-static은 runtime 필수 조건이 아닙니다.
+
+조치:
+
+수정된 `bootstrap.sh`가 들어간 update bundle을 다시 만들고 적용합니다. 해당 변경은 `guest-deploy.tar.gz`에 포함되며, 기본 migration과 guest activation 경로를 통해 현장 runtime에 반영됩니다.
 
 ### Redis AOF 손상으로 runtime health가 회복되지 않음
 

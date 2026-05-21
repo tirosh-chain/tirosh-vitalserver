@@ -99,24 +99,24 @@ expand_root_filesystem() {
   df -h /
 }
 
-qemu_user_ready() {
-  case "$(uname -m)" in
-    x86_64 | amd64)
-      return 0
-      ;;
-    *)
-      command -v qemu-x86_64-static >/dev/null 2>&1
-      ;;
-  esac
-}
-
 runtime_packages_ready() {
   command -v curl >/dev/null 2>&1 \
     && command -v docker >/dev/null 2>&1 \
     && command -v avahi-daemon >/dev/null 2>&1 \
     && command -v growpart >/dev/null 2>&1 \
-    && docker compose version >/dev/null 2>&1 \
-    && qemu_user_ready
+    && docker compose version >/dev/null 2>&1
+}
+
+missing_runtime_packages() {
+  local missing=()
+
+  command -v curl >/dev/null 2>&1 || missing+=("curl")
+  command -v docker >/dev/null 2>&1 || missing+=("docker")
+  command -v avahi-daemon >/dev/null 2>&1 || missing+=("avahi-daemon")
+  command -v growpart >/dev/null 2>&1 || missing+=("growpart")
+  docker compose version >/dev/null 2>&1 || missing+=("docker compose")
+
+  printf "%s\n" "${missing[@]}"
 }
 
 require_runtime_packages() {
@@ -127,7 +127,9 @@ require_runtime_packages() {
 
   printf "error: missing runtime package in air-gapped rootfs\n" >&2
   printf "The target bootstrap never runs apt-get. Rebuild the package rootfs with make vm-golden-rootfs.\n" >&2
-  printf "Required commands/services: curl, docker, docker compose, avahi-daemon, growpart, qemu-user-static on arm64.\n" >&2
+  printf "Required commands/services: curl, docker, docker compose, avahi-daemon, growpart.\n" >&2
+  printf "Missing commands/services:\n" >&2
+  missing_runtime_packages | sed 's/^/  - /' >&2
   exit 1
 }
 

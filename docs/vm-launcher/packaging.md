@@ -497,7 +497,7 @@ Docker image bundle은 guest VM architecture에 맞춰 `linux/arm64`로 생성�
 /Library/Application Support/TiroshVitalServer/vm/data/deploy/docker-images/vitalserver-images.tar.gz
 ```
 
-Docker image만으로는 충분하지 않습니다. Guest VM이 처음 부팅될 때 `docker.io`, Docker Compose, qemu-user-static을 apt로 설치해야 한다면 air-gapped 환경에서 실패합니다. 그래서 제품용 package는 개발용 VM disk가 아니라 별도 golden VM home에서 만든 clean rootfs base를 사용합니다. VM 내부 edge nginx는 OS package가 아니라 `nginx:1.24-alpine` container로 실행합니다.
+Docker image만으로는 충분하지 않습니다. Guest VM이 처음 부팅될 때 `docker.io`, Docker Compose 같은 runtime package를 apt로 설치해야 한다면 air-gapped 환경에서 실패합니다. 그래서 제품용 package는 개발용 VM disk가 아니라 별도 golden VM home에서 만든 clean rootfs base를 사용합니다. VM 내부 edge nginx는 OS package가 아니라 `nginx:1.24-alpine` container로 실행합니다.
 
 ```sh
 make vm-golden-rootfs
@@ -541,13 +541,15 @@ update bundle도 압축이 필요합니다. 다만 압축 대상은 update artif
 | runtime tools | `runtime-tools.tar.gz` | 기본 포함 | `/usr/local/bin` runtime CLI/runner 교체 |
 | host nginx bundle | `nginx-bundle.tar.gz` | 기본 포함 | host proxy binary/dylib 교체 |
 | guest deploy bundle | `guest-deploy.tar.gz` | 기본 포함 | VM shared deploy script/config 교체 |
-| migration | executable files | 필요 시 포함 | 설치된 VM/runtime 상태 변경 |
+| migration | executable files | 기본 포함 | cloud-init seed refresh 등 설치된 VM/runtime 상태 변경 |
 | Docker images | `vitalserver-images.tar.gz` | 필요 시 포함 | container image 갱신이 있을 때만 무겁게 포함 |
 | rootfs base | `rootfs-base.raw.gz` | major/runtime base 변경 시 포함 | 신규 설치 또는 base OS/package 변경용. 기존 `vm-disk.img`를 자동 교체하지 않음 |
 
 따라서 “bundle을 만든다”는 것은 보통 작은 runtime artifact를 압축해 묶는다는 뜻입니다. rootfs나 Docker image 갱신이 없는 일반 update bundle은 package build보다 훨씬 가벼워야 합니다.
 
-마이그레이션 실행 파일을 bundle에 포함하려면:
+기본 update bundle에는 `apps/vitalserver-vm-launcher/Support/Build/migrations/001-refresh-cloud-init-seed`가 포함됩니다. 구버전 Helper가 bundle을 적용해도 이 migration은 실행되므로, 새 `guest-deploy/bootstrap.sh`가 다음 VM 부팅에서 실행될 수 있습니다.
+
+추가 마이그레이션 실행 파일을 bundle에 포함하려면:
 
 ```sh
 VM_UPDATE_MIGRATIONS="release/migrations/001-example" make vm-update-bundle
@@ -582,7 +584,7 @@ sudo /usr/local/bin/vitalserver-vm runtime apply-bundle /path/to/update-bundle-<
 sudo /usr/local/bin/vitalserver-vm runtime rollback
 ```
 
-`apply-bundle`은 mutable `vm-disk.img`를 보존하고, replaceable artifact만 backup/rollback 대상으로 삼습니다. 적용 전 backup을 만들고 VM/proxy를 중지한 뒤 artifact를 교체하고 executable migration을 순서대로 실행합니다. 기존에 서비스가 실행 중이었다면 재시작 후 health check를 통과해야 성공 처리합니다. migration 또는 health check 실패 시 `rollback`으로 직전 backup을 복원합니다.
+`apply-bundle`은 mutable `vm-disk.img`를 보존하고, replaceable artifact만 backup/rollback 대상으로 삼습니다. 적용 전 backup을 만들고 VM/proxy를 중지한 뒤 artifact를 교체하고 executable migration을 순서대로 실행합니다. 새 runtime은 `guest-deploy`가 포함된 update에서 cloud-init seed를 갱신하고 guest activation request를 생성해 VM 내부 Docker image load와 compose recreate를 수행합니다. 기존에 서비스가 실행 중이었다면 재시작 후 health check를 통과해야 성공 처리합니다. migration 또는 health check 실패 시 `rollback`으로 직전 backup을 복원합니다.
 
 지원 artifact type:
 
@@ -593,6 +595,22 @@ sudo /usr/local/bin/vitalserver-vm runtime rollback
 | `runtime-tools` | `runtime-tools.tar.gz` | `/usr/local/bin` runtime tools |
 | `nginx-bundle` | `nginx-bundle.tar.gz` | host nginx bundle |
 | `guest-deploy` | `guest-deploy.tar.gz` | VM shared deploy bundle |
+
+### Guest deploy 변경 반영 정책
+
+`guest-deploy.tar.gz`는 host shared directory의 `vm/data/deploy`를 교체합니다. 여기에 `bootstrap.sh`, compose, guest bin/systemd, Docker image bundle이 포함됩니다. 단순 파일 교체만으로 VM 내부 Docker daemon이나 systemd unit이 자동 갱신되는 것은 아니므로, update bundle은 아래 경로로 반영합니다.
+
+```text
+apply-bundle
+  -> guest-deploy 교체
+  -> 기본 migration으로 seed.iso 갱신
+  -> VM 재시작 시 bootstrap.sh 재실행
+  -> 새 runtime이면 activate-update.request 생성
+  -> VM 내부에서 Docker image load + compose recreate
+  -> runtime-state.json 갱신
+```
+
+따라서 `bootstrap.sh` 같은 guest deploy 수정은 새 update bundle을 만들면 포함됩니다. 이미 설치된 현장에서는 해당 bundle을 적용해야 실제 `/Library/Application Support/TiroshVitalServer/vm/data/deploy`와 VM 내부 runtime에 반영됩니다.
 
 설치 후 runtime 설정 변경은 아래 command가 source of truth입니다.
 

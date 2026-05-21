@@ -13,6 +13,7 @@ VitalServer Helper의 update bundle이 무엇을 바꾸고, 무엇을 보존하�
 | mutable VM disk는 교체하나? | 기본적으로 교체하지 않는다 |
 | Redis/Vital files 데이터는 보존하나? | 보존 대상이다 |
 | Docker image bundle만 바꾸면 container가 자동 갱신되나? | update 단계에서 guest-side activation을 실행해야 한다 |
+| `bootstrap.sh` 수정은 update bundle로 반영되나? | 된다. `guest-deploy.tar.gz`에 포함되고 기본 migration/activation 경로로 반영된다 |
 | 실패 시 자동 rollback하나? | apply 중 health check 실패 시 managed backup으로 rollback을 시도한다 |
 
 ## Update Bundle 구조
@@ -52,6 +53,8 @@ vm-disk.img        = installed mutable VM instance
 
 update에서 `rootfs-base.raw.gz`를 교체해도 이미 생성된 `vm-disk.img` 내부 OS/package는 자동으로 바뀌지 않습니다. 이미 설치된 VM 내부를 바꾸려면 migration이나 guest-side activation 단계가 필요합니다.
 
+따라서 기존 `vm-disk.img` 자체가 Docker, Docker Compose, Avahi, growpart 같은 runtime package를 가지고 있지 않다면 일반 update bundle만으로는 복구할 수 없습니다. 이 경우에는 새 package로 재설치하거나, 별도의 VM/rootfs replacement 흐름을 사용해야 합니다. 이 흐름은 운영 데이터 보존 정책이 더 민감하므로 일반 Update 탭이 아니라 Danger Zone 대상입니다.
+
 ## 보존되는 것과 바뀌는 것
 
 기본 update는 운영 데이터 보존을 우선합니다.
@@ -73,6 +76,8 @@ update에서 `rootfs-base.raw.gz`를 교체해도 이미 생성된 `vm-disk.img`
 | guest deploy bundle | `vm/data/deploy/` | 교체 |
 
 `guest-deploy.tar.gz` 안에 Docker image bundle이 포함되어도, 그것은 “host shared directory에 새 image tar가 놓였다”는 뜻입니다. VM 안의 Docker daemon에 image가 실제로 load되고, 기존 container가 새 image로 recreate되는 것은 별도의 guest-side activation입니다.
+
+따라서 `apps/vitalserver-vm-launcher/Support/Guest/bootstrap.sh` 같은 guest deploy 파일을 수정했다면, 새 update bundle을 만들면 그 수정은 `guest-deploy.tar.gz`에 들어갑니다. 이미 설치된 현장에서 실제로 반영되려면 Helper Update 탭 또는 `apply-bundle`로 해당 bundle을 적용해야 합니다.
 
 ## Apply 과정
 
@@ -110,6 +115,8 @@ Helper app의 Update 탭과 CLI는 같은 Swift runtime lifecycle을 사용합�
 | guest activation | VM 내부에서 Docker image load, compose recreate, runtime-state 갱신 |
 | health wait | guest HTTP, host proxy, Redis UI, Swagger UI 등 runtime health 대기 |
 | rollback | health wait 실패 또는 migration 실패 시 backup 복원 시도 |
+
+Helper app은 update 중 Command log를 1초 단위로 갱신합니다. Update 탭에서는 현재 단계와 command log tail을 함께 보여주며, 상세 로그는 Logs 탭의 `Command log`, `Update activation`, `Containers` source에서 확인합니다.
 
 ## Guest-Side Activation
 
@@ -229,17 +236,49 @@ NSPOSIXErrorDomain Code=24 "Too many open files"
 
 ## 0.1.4에서 반영해야 하는 보강
 
-다음 update부터 아래 항목을 update flow에 포함해야 합니다.
+0.1.4에서는 update flow에 아래 보강을 포함합니다.
 
 | 항목 | 이유 |
 |---|---|
 | guest deploy activation | Docker image bundle load, compose recreate, guest bin/systemd 갱신을 update 과정에 포함 |
 | cloud-init seed refresh | activation unit이 없는 이전 설치본도 부팅 시 bootstrap을 다시 수행할 수 있게 함 |
+| qemu preflight 제거 | arm64 image로 운영하므로 `qemu-x86_64-static`은 runtime 필수 조건이 아님 |
 | image architecture preflight | bundle의 image config가 guest architecture와 맞는지 verify 단계에서 표시 |
 | stale/wrong image cleanup | 동일 tag의 wrong-arch image가 남아도 새 image를 확실히 사용하게 함 |
 | rollback copy 안정화 | app bundle 복원 시 `Too many open files`를 피하도록 tar/ditto 기반 atomic restore 검토 |
 | proxy port preflight | apply 전 port 80을 점유한 stale nginx를 감지하고 중단 또는 repair 안내 |
 | health reason 정규화 | `guest-http-000failed`, `host-proxy-http-`처럼 빈 code가 나오지 않게 표현 정리 |
+
+## 0.1.4 update에서 다시 실패하는 경우
+
+0.1.4 bundle은 0.1.3에서 빠졌던 guest activation 보강을 포함하지만, 기존 설치본의 `vm-disk.img`가 이미 air-gapped runtime package를 갖고 있지 않은 경우에는 VM 내부 bootstrap 단계에서 실패할 수 있습니다.
+
+대표 로그:
+
+```text
+error: missing runtime package in air-gapped rootfs
+The target bootstrap never runs apt-get. Rebuild the package rootfs with make vm-golden-rootfs.
+Required commands/services: curl, docker, docker compose, avahi-daemon, growpart.
+```
+
+이 메시지는 update bundle의 `rootfs-base.raw.gz`가 잘못 교체됐다는 뜻이 아닙니다. 이미 설치되어 사용 중인 mutable disk인 `vm-disk.img` 안에 필요한 OS package가 없다는 뜻입니다.
+
+중요한 제약:
+
+| 항목 | 설명 |
+|---|---|
+| `rootfs-base.raw.gz` | update로 교체됨. 새 설치 또는 VM disk 재생성 기준 |
+| `vm-disk.img` | 운영 중인 mutable disk. 일반 update에서는 보존됨 |
+| guest deploy | update로 교체됨. VM 안에서 bootstrap/activation이 실행되어야 반영됨 |
+| OS package | 기존 `vm-disk.img` 안에 없으면 일반 guest deploy update만으로 추가할 수 없음 |
+
+이 상태에서 가능한 선택지는 아래입니다.
+
+1. 새 package로 재설치한다. `.vital` 저장 경로와 backup 보존 여부를 먼저 확인합니다.
+2. Danger Zone에 VM/rootfs replacement 기능을 추가해 `vm-disk.img`를 새 rootfs에서 재생성하고, Redis/Vital files 같은 운영 데이터를 별도로 보존/복원합니다.
+3. 현장용 offline OS package bundle을 별도로 만들어 guest migration에서 설치합니다. 완전 air-gapped 제품에서는 이 방식도 artifact 검증과 rollback 정책이 필요합니다.
+
+단순히 같은 bundle을 다시 적용하면 같은 bootstrap 실패가 반복됩니다.
 
 ## 확인해야 할 로그
 

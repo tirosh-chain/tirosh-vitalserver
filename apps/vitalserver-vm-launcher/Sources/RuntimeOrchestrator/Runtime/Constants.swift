@@ -93,6 +93,7 @@ enum Constants {
     enum Runtime {
         static let vmIPFile = "vm-ip"
         static let runtimeStateFile = "runtime-state.json"
+        static let bootstrapLogFile = "bootstrap.log"
         static let datastoreRepairRequestFile = "repair-datastore.request"
         static let datastoreRepairResultFile = "repair-datastore-result.json"
         static let datastoreRepairLogFile = "repair-datastore.log"

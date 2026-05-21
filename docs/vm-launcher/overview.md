@@ -88,7 +88,7 @@ make vm-update-bundle-verify
 dist/update-bundles/update-bundle-<version>/
 ```
 
-일반 update bundle은 Helper app, runtime tools, host nginx bundle, guest deploy bundle 같은 작은 artifact를 `.tar.gz`로 묶습니다. 현재 기본 target은 호환성을 위해 `rootfs-base.raw.gz`도 함께 만들 수 있지만, 이미 설치된 현장의 mutable `vm-disk.img`를 자동 교체하지는 않습니다. Docker image bundle과 rootfs base는 base OS/package 또는 container image 갱신이 있을 때만 의미가 큽니다.
+일반 update bundle은 Helper app, runtime tools, host nginx bundle, guest deploy bundle 같은 artifact를 `.tar.gz`로 묶습니다. 현재 기본 target은 호환성을 위해 `rootfs-base.raw.gz`도 함께 만들 수 있지만, 이미 설치된 현장의 mutable `vm-disk.img`를 자동 교체하지는 않습니다. `guest-deploy` 변경은 기본 migration과 guest activation 경로를 통해 VM 내부에 반영됩니다. Docker image bundle과 rootfs base는 base OS/package 또는 container image 갱신이 있을 때만 의미가 큽니다.
 
 ### 개발용 설치 테스트
 

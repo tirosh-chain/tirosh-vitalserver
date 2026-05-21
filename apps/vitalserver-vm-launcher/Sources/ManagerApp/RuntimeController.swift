@@ -12,6 +12,7 @@ final class RuntimeController: ObservableObject {
     @Published var backups: [RuntimeBackup] = []
     @Published var selectedBackupPath = ""
     @Published var message = AppConstants.StatusText.ready
+    @Published var operationDetail = ""
     @Published var logText = AppConstants.StatusText.ready
     @Published var logLineLimit = 500
     @Published var selectedLogSource = LogSourceID.helperMessage.rawValue
@@ -43,8 +44,8 @@ final class RuntimeController: ObservableObject {
 
     var selectedBundleConfirmation: String {
         [
-            selectedBundleSummary.isEmpty ? selectedBundlePath : selectedBundleSummary,
-            selectedBundleVerification,
+            AppConstants.StatusText.updateBundleConfirmation,
+            selectedBundlePath,
         ]
         .filter { !$0.isEmpty }
         .joined(separator: "\n\n")
@@ -537,39 +538,52 @@ final class RuntimeController: ObservableObject {
         successMessage: String
     ) async -> Bool {
         isBusy = true
-        defer { isBusy = false }
+        defer {
+            isBusy = false
+            operationDetail = ""
+        }
 
         message = preparingMessage
+        operationDetail = preparingMessage
         try? await Task.sleep(nanoseconds: 200_000_000)
         message = waitingMessage
+        operationDetail = waitingMessage
 
         let loggedCommand = commandWithLog(shellCommand)
         let script = #"do shell script "\#(appleScriptEscaped(loggedCommand))" with administrator privileges"#
         selectedLogSource = LogSourceID.command.rawValue
         refreshLogs()
         message = runningMessage
+        operationDetail = runningMessage
         let logRefreshTask = Task { @MainActor in
             while !Task.isCancelled {
-                refreshLogsIfLive()
+                refreshLogs()
+                refreshOperationDetail(fallback: runningMessage)
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
             }
         }
         defer {
             logRefreshTask.cancel()
-            refreshLogsIfLive()
+            refreshLogs()
         }
 
         let result = await ProcessRunner.run(AppConstants.Commands.osascript, arguments: ["-e", script])
         if result.exitCode == 0 {
             message = messageWithLog(title: successMessage, result: result)
+            operationDetail = successMessage
             return true
         } else {
             message = messageWithLog(
                 title: result.summary.isEmpty ? AppConstants.StatusText.commandCancelled : result.summary,
                 result: result
             )
+            operationDetail = AppConstants.StatusText.commandCancelled
             return false
         }
+    }
+
+    private func refreshOperationDetail(fallback: String) {
+        operationDetail = latestCommandProgressLine() ?? fallback
     }
 
     private func quitAfterSuccessfulUninstall() async {
@@ -600,7 +614,7 @@ final class RuntimeController: ObservableObject {
             arguments: ["-sS", "-L", "-o", "/dev/null", "-w", "%{http_code}", "--max-time", "5", url]
         )
         let code = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
-        return result.exitCode == 0 ? code : AppConstants.StatusText.failed
+        return result.exitCode == 0 && !code.isEmpty ? code : AppConstants.StatusText.failed
     }
 
     private func withDataStorageUsage(_ status: RuntimeStatus) -> RuntimeStatus {
@@ -795,6 +809,105 @@ final class RuntimeController: ObservableObject {
         return body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? AppConstants.StatusText.noLogData
             : body
+    }
+
+    private func latestCommandProgressLine() -> String? {
+        guard FileManager.default.fileExists(atPath: AppConstants.Paths.commandLogFile),
+              let content = try? String(contentsOfFile: AppConstants.Paths.commandLogFile, encoding: .utf8)
+        else {
+            return nil
+        }
+        let lines = content
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .map(String.init)
+            .reversed()
+
+        for rawLine in lines {
+            let line = normalizedProgressLine(rawLine)
+            if line.isEmpty {
+                continue
+            }
+            if let progress = commandProgressMessage(from: line) {
+                return progress
+            }
+        }
+        return nil
+    }
+
+    private func normalizedProgressLine(_ line: String) -> String {
+        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix("["),
+              let closing = trimmed.firstIndex(of: "]") else {
+            return trimmed
+        }
+        let afterTimestamp = trimmed.index(after: closing)
+        return String(trimmed[afterTimestamp...]).trimmingCharacters(in: .whitespaces)
+    }
+
+    private func commandProgressMessage(from line: String) -> String? {
+        if line.contains("waiting for runtime health reasons=") {
+            let reasons = value(after: "reasons=", in: line) ?? line
+            return "Waiting for runtime health: \(reasons)"
+        }
+        if line.contains("waiting for guest update activation result") {
+            return "Waiting for VM update activation..."
+        }
+        if line.contains("guest update activation completed") {
+            return "VM update activation completed."
+        }
+        if line.contains("runtime health ok") {
+            return "Runtime health check passed."
+        }
+        if line.contains("bundle apply started") {
+            return "Update bundle apply started."
+        }
+        if line.contains("bundle apply completed") {
+            return "Update bundle apply completed."
+        }
+        if line.contains("bundle apply failed") {
+            return "Update bundle apply failed."
+        }
+        if line.contains("running migration") {
+            return line
+        }
+        if let step = value(after: "step=", in: line),
+           let status = value(after: "status=", in: line) {
+            return "\(stepStatusText(status)): \(humanizeStepName(step))"
+        }
+        if line.contains("error:") || line.contains("status=failed") {
+            return line
+        }
+        return nil
+    }
+
+    private func value(after marker: String, in line: String) -> String? {
+        guard let range = line.range(of: marker) else {
+            return nil
+        }
+        let remainder = line[range.upperBound...]
+        guard let token = remainder.split(separator: " ").first else {
+            return nil
+        }
+        return String(token)
+    }
+
+    private func stepStatusText(_ status: String) -> String {
+        switch status {
+        case "started":
+            return "Running"
+        case "completed":
+            return "Completed"
+        case "failed":
+            return "Failed"
+        default:
+            return status.capitalized
+        }
+    }
+
+    private func humanizeStepName(_ step: String) -> String {
+        step
+            .replacingOccurrences(of: "-", with: " ")
+            .capitalized
     }
 
     private func tail(_ content: String, lineLimit: Int) -> String {

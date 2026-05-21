@@ -110,7 +110,9 @@ sudo /usr/local/bin/vitalserver-vm runtime apply-bundle /path/to/update-bundle-<
 
 update bundle 생성 시에도 artifact 압축은 필요합니다. 기본 bundle은 Helper app, runtime tools, host nginx bundle, guest deploy bundle을 각각 `.tar.gz`로 묶습니다. 이 압축은 rootfs 전체를 매번 다시 만드는 것보다 훨씬 가볍습니다.
 
-`rootfs-base.raw.gz`는 신규 설치나 큰 runtime 변경용 artifact입니다. 기본 update bundle target은 호환성을 위해 이 파일을 만들 수 있지만, 이미 설치된 현장의 mutable `vm-disk.img`를 자동 교체하지 않습니다. 실제 현장 업데이트의 핵심은 `app-bundle`, `runtime-tools`, `nginx-bundle`, `guest-deploy`, migration입니다. Docker image 갱신은 container image가 바뀔 때만 의미가 큽니다.
+`rootfs-base.raw.gz`는 신규 설치나 큰 runtime 변경용 artifact입니다. 기본 update bundle target은 호환성을 위해 이 파일을 만들 수 있지만, 이미 설치된 현장의 mutable `vm-disk.img`를 자동 교체하지 않습니다. 실제 현장 업데이트의 핵심은 `app-bundle`, `runtime-tools`, `nginx-bundle`, `guest-deploy`, 기본 migration입니다.
+
+`guest-deploy`에 들어간 `bootstrap.sh`, compose, guest systemd, Docker image bundle 수정은 update bundle에 포함됩니다. 적용 시 기본 migration이 cloud-init seed를 갱신하고, 새 runtime은 guest activation request를 통해 VM 내부에서 Docker image load와 compose recreate를 수행합니다.
 
 ### 3. 개발 Mac에 package 설치 테스트
 

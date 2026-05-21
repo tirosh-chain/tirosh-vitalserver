@@ -66,6 +66,10 @@ struct RuntimeLifecycle {
             .appendingPathComponent(Constants.Paths.runDirectory)
     }
 
+    private var guestBootstrapLog: URL {
+        guestRunDirectory.appendingPathComponent(Constants.Runtime.bootstrapLogFile)
+    }
+
     private var datastoreRepairRequest: URL {
         guestRunDirectory.appendingPathComponent(Constants.Runtime.datastoreRepairRequestFile)
     }
@@ -1510,6 +1514,10 @@ struct RuntimeLifecycle {
             }
 
             let snapshot = runtimeHealthSnapshot()
+            if let bootstrapFailure = snapshot.failureReasons.first(where: { $0.hasPrefix("guest-bootstrap-") }) {
+                log("runtime health failed early reason=\(bootstrapFailure)")
+                throw LauncherError.runtimeHealthFailed
+            }
             if snapshot.isHealthy {
                 log("runtime health ok hostProxyHTTP=\(snapshot.hostProxyHTTP)")
                 return
@@ -1816,6 +1824,9 @@ struct RuntimeLifecycle {
         }
         if !isSuccessfulHTTPStatus(guestHTTP) {
             failureReasons.append("guest-http-\(guestHTTP)")
+            if let bootstrapFailure = guestBootstrapFailureReason() {
+                failureReasons.append(bootstrapFailure)
+            }
         }
 
         return RuntimeHealthSnapshot(
@@ -1847,6 +1858,25 @@ struct RuntimeLifecycle {
             return httpStatus("http://\(vmIP)/")
         }
         return "missing-vm-ip"
+    }
+
+    private func guestBootstrapFailureReason() -> String? {
+        guard fileExists(guestBootstrapLog),
+              let content = try? String(contentsOf: guestBootstrapLog, encoding: .utf8) else {
+            return nil
+        }
+        let tail = content
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .suffix(80)
+            .joined(separator: "\n")
+            .lowercased()
+        if tail.contains("missing runtime package") {
+            return "guest-bootstrap-missing-runtime-packages"
+        }
+        if tail.contains("error:") || tail.contains("failed") {
+            return "guest-bootstrap-failed"
+        }
+        return nil
     }
 
     private func writeRuntimeStatus(
@@ -1975,7 +2005,7 @@ struct RuntimeLifecycle {
             arguments: ["-sS", "-L", "-o", "/dev/null", "-w", "%{http_code}", "--max-time", "5", url]
         )
         let code = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
-        return result.exitCode == 0 ? code : "failed"
+        return result.exitCode == 0 && !code.isEmpty ? code : "failed"
     }
 
     private func proxyPortFailureReasons(port: Int) -> [String] {

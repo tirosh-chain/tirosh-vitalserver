@@ -594,15 +594,14 @@ struct ContentView: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 if !controller.selectedBundleSummary.isEmpty {
-                    Text(controller.selectedBundleSummary)
-                        .font(.system(.body, design: .monospaced))
-                        .textSelection(.enabled)
+                    scrollableMonospacedText(controller.selectedBundleSummary, maxHeight: 120)
                 }
                 if !controller.selectedBundleVerification.isEmpty {
-                    Text(controller.selectedBundleVerification)
-                        .font(.system(.body, design: .monospaced))
-                        .foregroundStyle(controller.selectedBundleVerified ? .green : .red)
-                        .textSelection(.enabled)
+                    scrollableMonospacedText(
+                        controller.selectedBundleVerification,
+                        maxHeight: 180,
+                        foregroundColor: controller.selectedBundleVerified ? .green : .red
+                    )
                 }
                 Button(AppConstants.Actions.verifyBundle) {
                     Task { await controller.verifySelectedBundle() }
@@ -620,6 +619,12 @@ struct ContentView: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 applyBundleActionRow
+                if controller.isBusy {
+                    Text(AppConstants.Labels.updateProgressLog)
+                        .font(.caption)
+                        .fontWeight(.medium)
+                    scrollableMonospacedText(controller.logText, maxHeight: 220)
+                }
             }
         }
     }
@@ -639,10 +644,11 @@ struct ContentView: View {
             if controller.isBusy {
                 ProgressView()
                     .controlSize(.small)
-                Text(controller.message)
+                Text(controller.operationDetail.isEmpty ? controller.message : controller.operationDetail)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.tail)
+                    .frame(maxWidth: 420, alignment: .leading)
             }
 
             Spacer()
@@ -1117,6 +1123,24 @@ struct ContentView: View {
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(nsColor: .controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func scrollableMonospacedText(
+        _ text: String,
+        maxHeight: CGFloat,
+        foregroundColor: Color = .primary
+    ) -> some View {
+        ScrollView {
+            Text(text)
+                .font(.system(.body, design: .monospaced))
+                .foregroundStyle(foregroundColor)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .textSelection(.enabled)
+        }
+        .frame(maxHeight: maxHeight)
+        .padding(10)
+        .background(Color(nsColor: .textBackgroundColor))
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
