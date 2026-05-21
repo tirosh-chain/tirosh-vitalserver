@@ -337,7 +337,7 @@ Tirosh VitalServer Manager.app
 | 기능 | 내부 동작 |
 |---|---|
 | Health Check | VM IP, guest HTTP, host proxy HTTP 확인 |
-| Settings | `vitalserver-vm runtime configure ... --restart`로 VM/runtime/proxy 설정 저장 |
+| Settings | `vitalserver-vm runtime configure ... --restart`로 VM/runtime/proxy/start-on-boot 설정 저장 |
 | Apply Bundle | 선택한 offline update bundle을 `runtime apply-bundle`로 검증/적용 |
 | Rollback | 최신 backup을 `runtime rollback`으로 복원 |
 | Open VitalServer | `http://127.0.0.1/` 열기 |
@@ -366,7 +366,7 @@ vitalserver-vm runtime install
 vitalserver-vm runtime status
 vitalserver-vm runtime health
 vitalserver-vm runtime watchdog
-vitalserver-vm runtime configure [--cpu <count>] [--memory-gib <gib>] [--network shared|bridged] [--bridged-interface <id>] [--proxy-port <port>] [--vital-files-dir <path>] [--public-host <host>] [--public-port <port>] [--admin-password <password>] [--restart]
+vitalserver-vm runtime configure [--cpu <count>] [--memory-gib <gib>] [--network shared|bridged] [--bridged-interface <id>] [--proxy-port <port>] [--vital-files-dir <path>] [--public-host <host>] [--public-port <port>] [--admin-password <password>] [--start-on-boot true|false] [--restart]
 vitalserver-vm runtime verify-bundle <bundle-dir>
 vitalserver-vm runtime stage-bundle <bundle-dir>
 vitalserver-vm runtime apply-bundle <bundle-dir>

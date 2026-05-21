@@ -820,11 +820,24 @@ sudo vitalserver-vm runtime configure \
   --vital-files-dir "/Library/Application Support/TiroshVitalServer/vm/data/vital-files" \
   --public-host "" \
   --public-port 80 \
+  --start-on-boot true \
   --admin-password "<password>" \
   --restart
 ```
 
-이 command는 `vm-config.json`, deploy `runtime-config.json`, proxy LaunchDaemon plist를 갱신하고 `--restart`가 있으면 VM/proxy/watchdog을 kickstart합니다. Manager app의 Settings tab도 이 command를 호출합니다.
+이 command는 `vm-config.json`, deploy `runtime-config.json`, proxy LaunchDaemon plist, launchd enable/disable 정책을 갱신하고 `--restart`가 있으면 VM/proxy/watchdog을 kickstart합니다. Manager app의 Settings tab도 이 command를 호출합니다. Manager app의 admin password 입력은 기존 값을 표시하지 않고, 변경할 때만 `--admin-password`를 전달합니다.
+
+설치 후 Manager에서 바로 변경하는 범위와 별도 기능으로 분리해야 하는 범위는 아래처럼 구분합니다.
+
+| 범위 | 처리 |
+|---|---|
+| CPU, memory, network, bridged interface | `vm-config.json` 갱신 후 restart |
+| proxy port | proxy LaunchDaemon environment 갱신 후 restart |
+| Vital files directory | VM shared directory와 guest runtime config 갱신 후 restart |
+| public host/port, admin password | guest `runtime-config.json` 갱신 후 restart |
+| start on boot | `launchctl enable/disable system/<label>`로 VM/proxy/watchdog 정책 갱신 |
+| disk size | 별도 resize/migration flow 필요 |
+| VM hostname | `seed.iso`/guest hostname 재생성 또는 guest migration flow 필요 |
 
 rootfs base 교체는 이후 install/provisioning 기준 artifact를 바꾸는 동작입니다. 이미 생성된 `vm-disk.img` 내부에 새 rootfs를 자동 전개하지 않습니다.
 

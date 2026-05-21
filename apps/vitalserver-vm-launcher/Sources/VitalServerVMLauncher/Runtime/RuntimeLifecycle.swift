@@ -103,7 +103,7 @@ struct RuntimeLifecycle {
               vitalserver-vm runtime status
               vitalserver-vm runtime health
               vitalserver-vm runtime watchdog
-              vitalserver-vm runtime configure [--cpu <count>] [--memory-gib <gib>] [--network shared|bridged] [--bridged-interface <id>] [--proxy-port <port>] [--vital-files-dir <path>] [--public-host <host>] [--public-port <port>] [--admin-password <password>] [--restart]
+              vitalserver-vm runtime configure [--cpu <count>] [--memory-gib <gib>] [--network shared|bridged] [--bridged-interface <id>] [--proxy-port <port>] [--vital-files-dir <path>] [--public-host <host>] [--public-port <port>] [--admin-password <password>] [--start-on-boot true|false] [--restart]
               vitalserver-vm runtime verify-bundle <bundle-dir>
               vitalserver-vm runtime stage-bundle <bundle-dir>
               vitalserver-vm runtime apply-bundle <bundle-dir>
@@ -418,17 +418,7 @@ struct RuntimeLifecycle {
     }
 
     private func applyStartOnBootPolicy(_ settings: InstallSettings) throws {
-        guard !settings.startOnBoot else {
-            return
-        }
-        log("start on boot disabled; removing launchd plists")
-        for plist in [
-            "/Library/LaunchDaemons/\(Constants.Launchd.vmService).plist",
-            "/Library/LaunchDaemons/\(Constants.Launchd.proxyService).plist",
-            "/Library/LaunchDaemons/\(Constants.Launchd.watchdogService).plist",
-        ] where FileManager.default.fileExists(atPath: plist) {
-            try FileManager.default.removeItem(atPath: plist)
-        }
+        try setStartOnBoot(settings.startOnBoot)
     }
 
     private func cleanupInstallSettings() throws {
@@ -584,6 +574,11 @@ struct RuntimeLifecycle {
                     throw LauncherError.missingArgument("--admin-password must not be empty or contain newlines")
                 }
                 guestConfig.adminPassword = value
+            case "--start-on-boot":
+                guard let enabled = parseBool(value) else {
+                    throw LauncherError.missingArgument("--start-on-boot must be true or false")
+                }
+                try setStartOnBoot(enabled)
             default:
                 throw LauncherError.missingArgument("unsupported runtime configure option: \(key)")
             }
@@ -1592,6 +1587,28 @@ struct RuntimeLifecycle {
                 "/Library/LaunchDaemons/\(Constants.Launchd.proxyService).plist",
             ]
         )
+    }
+
+    private func setStartOnBoot(_ enabled: Bool) throws {
+        let action = enabled ? "enable" : "disable"
+        for label in [
+            Constants.Launchd.vmService,
+            Constants.Launchd.proxyService,
+            Constants.Launchd.watchdogService,
+        ] {
+            try runRequired(Constants.Commands.launchctl, arguments: [action, "system/\(label)"])
+        }
+    }
+
+    private func parseBool(_ value: String) -> Bool? {
+        switch value.lowercased() {
+        case "true", "yes", "1":
+            return true
+        case "false", "no", "0":
+            return false
+        default:
+            return nil
+        }
     }
 
     private func httpStatus(_ url: String) -> String {

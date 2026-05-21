@@ -10,6 +10,8 @@ struct RuntimeSettings {
     var publicHost = ""
     var publicPort = 80
     var adminPassword = ""
+    var changeAdminPassword = false
+    var startOnBoot = true
     var restartAfterSave = true
 
     static func load() -> RuntimeSettings {
@@ -28,10 +30,10 @@ struct RuntimeSettings {
         if let guestConfig = GuestRuntimeConfig.load(path: AppConstants.Paths.guestRuntimeConfig) {
             settings.publicHost = guestConfig.publicHost
             settings.publicPort = guestConfig.publicPort
-            settings.adminPassword = guestConfig.adminPassword
         }
 
         settings.proxyPort = RuntimeStatus.load(paths: RuntimePaths()).proxyPort
+        settings.startOnBoot = startOnBootEnabled()
         return settings
     }
 
@@ -53,17 +55,38 @@ struct RuntimeSettings {
             publicHost,
             "--public-port",
             String(publicPort),
+            "--start-on-boot",
+            startOnBoot ? "true" : "false",
         ]
         if networkMode == "bridged", !bridgedInterface.isEmpty {
             arguments += ["--bridged-interface", bridgedInterface]
         }
-        if !adminPassword.isEmpty {
+        if changeAdminPassword, !adminPassword.isEmpty {
             arguments += ["--admin-password", adminPassword]
         }
         if restartAfterSave {
             arguments.append("--restart")
         }
         return arguments
+    }
+
+    private static func startOnBootEnabled() -> Bool {
+        let result = ProcessRunner.runSync(
+            AppConstants.Commands.launchctl,
+            arguments: ["print-disabled", "system"]
+        )
+        guard result.exitCode == 0 else {
+            return true
+        }
+        let output = result.stdout
+        for label in [
+            AppConstants.Launchd.vmService,
+            AppConstants.Launchd.proxyService,
+            AppConstants.Launchd.watchdogService,
+        ] where output.contains("\"\(label)\" => true") {
+            return false
+        }
+        return true
     }
 }
 
@@ -93,7 +116,6 @@ private struct SharedDirectoryDocument: Decodable {
 private struct GuestRuntimeConfig: Decodable {
     let publicHost: String
     let publicPort: Int
-    let adminPassword: String
 
     static func load(path: String) -> GuestRuntimeConfig? {
         guard let data = FileManager.default.contents(atPath: path) else {

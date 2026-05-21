@@ -159,7 +159,11 @@ struct ContentView: View {
             Stepper(value: $controller.settings.publicPort, in: 1...65_535) {
                 labeledValue("Public port", "\(controller.settings.publicPort)")
             }
-            SecureField("Admin password", text: $controller.settings.adminPassword)
+            Toggle("Start on boot", isOn: $controller.settings.startOnBoot)
+            Toggle("Change admin password", isOn: $controller.settings.changeAdminPassword)
+            if controller.settings.changeAdminPassword {
+                SecureField("New admin password", text: $controller.settings.adminPassword)
+            }
             Toggle("Restart services after save", isOn: $controller.settings.restartAfterSave)
             Button(AppConstants.Actions.saveSettings) {
                 Task { await controller.saveSettings() }

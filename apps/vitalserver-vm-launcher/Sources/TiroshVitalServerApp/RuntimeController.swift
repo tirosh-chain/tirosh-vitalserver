@@ -83,17 +83,24 @@ final class RuntimeController: ObservableObject {
             message = AppConstants.StatusText.missingLauncher
             return
         }
+        guard validateSettings() else {
+            return
+        }
         let command = shellCommand(
             executable: runtime.launcher,
             arguments: settings.configureArguments()
         )
-        _ = await runPrivileged(
+        let didSave = await runPrivileged(
             shellCommand: command,
             preparingMessage: "Preparing runtime settings...",
             waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
             runningMessage: "Saving runtime settings...",
             successMessage: AppConstants.StatusText.settingsSaved
         )
+        if didSave {
+            settings.adminPassword = ""
+            settings.changeAdminPassword = false
+        }
         await refreshHealthStatus()
     }
 
@@ -216,6 +223,23 @@ final class RuntimeController: ObservableObject {
 
     func openSwagger() {
         NSWorkspace.shared.open(URL(string: AppConstants.Product.swaggerURL(proxyPort: status.proxyPort))!)
+    }
+
+    private func validateSettings() -> Bool {
+        if settings.networkMode == "bridged", settings.bridgedInterface.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            message = "Choose a bridged interface before saving."
+            return false
+        }
+        if settings.vitalFilesDirectory.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !settings.vitalFilesDirectory.hasPrefix("/") {
+            message = "Vital files directory must be an absolute path."
+            return false
+        }
+        if settings.changeAdminPassword, settings.adminPassword.isEmpty {
+            message = "New admin password must not be empty."
+            return false
+        }
+        return true
     }
 
     private func runPrivileged(
