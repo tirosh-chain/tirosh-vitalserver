@@ -311,6 +311,64 @@ open ".tmp/VitalServer Helper.app"
 
 현재 배포 기준은 unsigned입니다. `.pkg`와 `.dmg`에 Developer ID 서명/notarization을 적용하지 않습니다. 단, nginx binary와 dylib는 `install_name_tool`로 load path를 수정하므로 실행 가능한 Mach-O 상태를 위해 ad-hoc signing(`codesign --sign -`)만 수행합니다.
 
+## Runtime 계층과 통신 계약
+
+설치된 target Mac에서 운영 중인 runtime은 실행 관점에서 세 계층으로 봅니다.
+
+```text
+[ManagerApp]
+사용자 화면, 설정 입력, 버튼 액션
+        |
+        | CLI command
+        | /usr/local/bin/vitalserver-vm ...
+        v
+[RuntimeOrchestrator]
+VM lifecycle, install, configure, health, update, rollback
+        |
+        | VirtioFS shared directory
+        | JSON config/request, scripts, bundle files
+        v
+[Guest VM]
+Linux guest bootstrap, Docker Compose stack, update/repair execution
+```
+
+상태와 결과는 반대 방향으로 올라옵니다.
+
+```text
+[Guest VM]
+runtime-state.json, result JSON, guest logs
+        |
+        | VirtioFS shared directory
+        v
+[RuntimeOrchestrator]
+health/evaluator/waiter 판단, runtime-status.json 갱신
+        |
+        | status JSON, command/install/container logs
+        v
+[ManagerApp]
+Status/Settings/Update/Logs UI에 표시
+```
+
+`RuntimeCore`는 별도 실행 계층이 아니라 `ManagerApp`과 `RuntimeOrchestrator`가 import하는 공유 계약/정책 라이브러리입니다. JSON schema, enum, evaluator, operation plan, port protocol을 담고, macOS process 실행이나 SwiftUI 화면 같은 adapter 책임은 갖지 않습니다.
+
+| 계층 | 역할 | 주요 코드 | 책임 |
+|---|---|---|---|
+| `ManagerApp` | 운영 UI | `Sources/ManagerApp/*` | 사용자 입력 수집, CLI 호출, status/log/settings 표시 |
+| `RuntimeOrchestrator` | runtime backend | `Sources/RuntimeOrchestrator/*` | VM 시작/중지, 설치/설정/업데이트/롤백, launchd/nginx/health 제어 |
+| `Guest VM` | Linux 실행 환경 | `Support/Guest/*` | bootstrap, Docker image load, Compose stack 실행, update activation, datastore repair |
+| `RuntimeCore` | 공유 계약/정책 | `Sources/RuntimeCore/*` | DTO/enum/file names, health/guest evaluator, operation plan, repository/clock/command/file port |
+
+계층 간 통신 방식은 아래로 고정합니다.
+
+| 방향 | 방식 | 입력 | 출력 |
+|---|---|---|---|
+| `ManagerApp -> RuntimeOrchestrator` | CLI 실행 | `install`, `start`, `stop`, `runtime configure`, `apply-bundle`, `rollback` 명령과 CPU/RAM/disk/network/proxy/admin 설정 | command exit code, command log |
+| `RuntimeOrchestrator -> ManagerApp` | host file read | `runtime-status.json`, install/runtime/container logs, backup/update bundle metadata | UI status, progress, failure reason, log view |
+| `RuntimeOrchestrator -> Guest VM` | shared directory file contract | `runtime-config.json`, cloud-init/bootstrap files, update/repair request JSON, deploy bundle files | guest 작업 시작 조건 |
+| `Guest VM -> RuntimeOrchestrator` | shared directory file contract | `runtime-state.json`, bootstrap/update/repair result JSON, guest logs | health 판단, waiter completion, rollback/update result |
+
+이 구조에서 파일 기반 계약은 모든 계층에 쓰는 범용 통신 방식이 아닙니다. Swift module 사이에서는 `public` API와 protocol을 import해서 호출하고, 파일 기반 JSON은 process/VM 경계를 넘는 계약에만 사용합니다. 특히 guest VM은 bootstrap 초기에 HTTP service가 아직 없을 수 있으므로, shared directory의 request/result JSON이 update와 repair의 안정적인 최소 계약입니다.
+
 ## Source 책임
 
 초기 PoC는 Shell script가 대부분의 일을 직접 수행했습니다. 제품화 단계에서는 책임을 아래처럼 재배치합니다.
