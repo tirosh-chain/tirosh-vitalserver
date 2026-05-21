@@ -10,7 +10,7 @@ initrd_suffix = "initrd-generic"
 
 [runtime]
 disk_image_name = "vm-disk.img"
-rootfs_size = "8G"
+rootfs_size = "4G"
 runtime_dir = "~/.tirosh/vitalserver-vm/runtime"
 
 [cloud_init]
@@ -33,6 +33,7 @@ images = [
   "redis:3.2.12-alpine",
   "rediscommander/redis-commander:latest",
   "swaggerapi/swagger-ui:v5.17.14",
+  "nginx:1.24-alpine",
 ]
 
 [nginx]

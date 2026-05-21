@@ -14,6 +14,7 @@ PoC와 패키징 과정에서 확인한 문제, 원인, 조치 방법을 모았�
 | cloud-init이 다시 안 돎 | [cloud-init이 bootstrap을 다시 실행하지 않음](#cloud-init이-bootstrap을-다시-실행하지-않음) |
 | nginx `502 Bad Gateway` | [nginx가 `502 Bad Gateway`를 반환](#nginx가-502-bad-gateway를-반환) |
 | watchdog이 `host-proxy-http-502`를 표시 | [watchdog이 host proxy 502를 복구하지 못함](#watchdog이-host-proxy-502를-복구하지-못함) |
+| VM IP가 계속 `Waiting` | [설치된 runtime binary에 virtualization entitlement가 없음](#설치된-runtime-binary에-virtualization-entitlement가-없음) |
 | pkg 설치 후 Manager app이 안 보임 | [pkg 설치 후 `/Applications`에 Manager app이 없음](#pkg-설치-후-applications에-manager-app이-없음) |
 | Manager app이 없어 GUI 삭제가 안 됨 | [Manager app 없이 설치물을 제거해야 함](#manager-app-없이-설치물을-제거해야-함) |
 | app container health가 오래 starting | [app container가 오래 `health: starting` 상태](#app-container가-오래-health-starting-상태) |
@@ -130,7 +131,7 @@ Ubuntu cloud image의 기본 root disk는 Docker, nginx, qemu-user-static, Vital
 
 조치:
 
-`make vm-download`는 VM disk를 기본 `8G`로 확장합니다. 더 크게 만들려면:
+`make vm-download`는 VM disk를 기본 `4G`로 확장합니다. 더 크게 만들려면:
 
 ```sh
 VM_ROOTFS_SIZE=32G make vm-download
@@ -200,14 +201,15 @@ curl -I http://<vm-ip>/
 
 원인:
 
-VM 내부 nginx는 `127.0.0.1:18080`의 VitalServer container로 proxy합니다. app container가 아직 healthy가 아니거나 HTTP worker가 뜨지 않으면 502가 납니다.
+VM 내부 Compose edge nginx는 `app:80`의 VitalServer container로 proxy합니다. app container가 아직 healthy가 아니거나 HTTP worker가 뜨지 않으면 502가 납니다.
 
 확인:
 
 ```sh
 ssh ubuntu@<vm-ip> 'sudo docker ps'
 ssh ubuntu@<vm-ip> 'sudo docker logs --tail 120 vitalserver-app-1'
-ssh ubuntu@<vm-ip> 'curl -I http://127.0.0.1:18080/'
+ssh ubuntu@<vm-ip> 'sudo docker compose --project-name vitalserver -f /mnt/tirosh/deploy/compose.yaml ps'
+ssh ubuntu@<vm-ip> 'curl -I http://127.0.0.1/'
 ```
 
 이번 PoC에서는 `VITALSERVER_MIN_CPUS=6` 때문에 upstream VitalServer가 worker를 0개만 만들었습니다.
@@ -272,6 +274,40 @@ make proxy-stop-orphans
 ```
 
 최신 runtime은 host proxy health가 실패할 때 `proxy-port-80-in-use-by-...` 형태의 failure reason도 같이 기록합니다.
+
+### 설치된 runtime binary에 virtualization entitlement가 없음
+
+증상:
+
+```text
+Runtime state: critical
+VM IP: Waiting
+Guest HTTP: missing-vm-ip
+Host proxy: failed
+```
+
+launchd log에는 아래 오류가 남습니다.
+
+```text
+The process doesn't have the "com.apple.security.virtualization" entitlement.
+Invalid virtual machine configuration.
+```
+
+원인:
+
+패키징 중 `vm-golden-rootfs` 준비 과정이 Swift binary를 다시 빌드하면, 앞에서 signing했던 `vitalserver-vm`이 unsigned binary로 덮일 수 있습니다. 이 상태로 `.pkg`에 들어가면 설치된 `/usr/local/bin/vitalserver-vm`이 VM을 띄우지 못하고, guest가 부팅되지 않으므로 runtime state에 VM IP가 기록되지 않습니다.
+
+확인:
+
+```sh
+codesign -d --entitlements :- /usr/local/bin/vitalserver-vm 2>&1 | grep com.apple.security.virtualization
+sudo launchctl print system/com.tirosh.vitalserver-vm
+cat "/Library/Application Support/TiroshVitalServer/vm/logs/launcher.err.log"
+```
+
+조치:
+
+`make vm-pkg`는 package root에 binary를 복사하기 직전에 다시 signing하고 entitlement를 검증합니다. 기존에 설치된 잘못된 package는 다시 빌드한 package로 재설치해야 합니다.
 
 ### pkg 설치 후 `/Applications`에 Manager app이 없음
 
@@ -429,7 +465,7 @@ make vm-status
 ## Code Structure
 
 ```text
-Sources/VitalServerVMLauncher/
+Sources/RuntimeOrchestrator/
   main.swift
 
   CLI/

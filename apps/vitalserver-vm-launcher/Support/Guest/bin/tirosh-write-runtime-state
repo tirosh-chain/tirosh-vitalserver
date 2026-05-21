@@ -1,0 +1,63 @@
+#!/usr/bin/env python3
+import json
+import socket
+import subprocess
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+
+def first_non_loopback_ip() -> str:
+    try:
+        output = subprocess.check_output(["hostname", "-I"], stderr=subprocess.DEVNULL, text=True)
+        for candidate in output.split():
+            if not candidate.startswith(("127.", "169.254.")):
+                return candidate
+    except Exception:
+        pass
+
+    try:
+        for candidate in socket.gethostbyname_ex(socket.gethostname())[2]:
+            if not candidate.startswith(("127.", "169.254.")):
+                return candidate
+    except socket.gaierror:
+        pass
+
+    return ""
+
+
+def boot_id() -> str | None:
+    path = Path("/proc/sys/kernel/random/boot_id")
+    if not path.is_file():
+        return None
+    return path.read_text(encoding="utf-8").strip()
+
+
+def main() -> int:
+    if len(sys.argv) < 2 or len(sys.argv) > 3:
+        print("usage: tirosh-write-runtime-state <runtime-state.json> [guest-http]", file=sys.stderr)
+        return 2
+
+    state_path = Path(sys.argv[1])
+    guest_http = sys.argv[2] if len(sys.argv) == 3 and sys.argv[2] else None
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "vmIP": first_non_loopback_ip(),
+                "bootID": boot_id(),
+                "guestHTTP": guest_http,
+                "updatedAt": datetime.now(timezone.utc).isoformat(),
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

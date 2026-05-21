@@ -1479,10 +1479,11 @@ struct RuntimeLifecycle {
         let vmService = launchdState(Constants.Launchd.vmService)
         let proxyService = launchdState(Constants.Launchd.proxyService)
         let watchdogService = launchdState(Constants.Launchd.watchdogService)
-        let vmIP = guestRuntimeState()?.vmIP ?? readTrimmed(vmIPFile)
+        let guestState = guestRuntimeState()
+        let vmIP = guestState?.vmIP ?? readTrimmed(vmIPFile)
         let proxyPort = installedProxyPort()
         let hostProxyHTTP = httpStatus(Constants.Runtime.proxyHealthURL(port: proxyPort))
-        let guestHTTP = vmIP.map { httpStatus("http://\($0)/") } ?? "missing-vm-ip"
+        let guestHTTP = guestHTTPStatus(guestState: guestState, vmIP: vmIP)
         var failureReasons: [String] = []
 
         if !vmExecutable {
@@ -1528,6 +1529,19 @@ struct RuntimeLifecycle {
             guestHTTP: guestHTTP,
             failureReasons: failureReasons
         )
+    }
+
+    private func guestHTTPStatus(guestState: GuestRuntimeStateDocument?, vmIP: String?) -> String {
+        if let guestHTTP = guestState?.guestHTTP, !guestHTTP.isEmpty {
+            return guestHTTP
+        }
+        if guestState != nil {
+            return "bootstrap-pending"
+        }
+        if let vmIP {
+            return httpStatus("http://\(vmIP)/")
+        }
+        return "missing-vm-ip"
     }
 
     private func writeRuntimeStatus(

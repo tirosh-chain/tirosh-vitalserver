@@ -80,7 +80,7 @@ final class RuntimeController: ObservableObject {
             return
         }
 
-        _ = await runPrivileged(
+        let didUninstall = await runPrivileged(
             shellCommand: command,
             preparingMessage: AppConstants.StatusText.uninstallPreparing,
             waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
@@ -89,7 +89,11 @@ final class RuntimeController: ObservableObject {
                 ? AppConstants.StatusText.cleanUninstallCompleted
                 : AppConstants.StatusText.uninstallCompleted
         )
-        await refreshHealthStatus()
+        if didUninstall {
+            await quitAfterSuccessfulUninstall()
+        } else {
+            await refreshHealthStatus()
+        }
     }
 
     func saveSettingsDraft() {
@@ -283,22 +287,61 @@ final class RuntimeController: ObservableObject {
 
     func openLogs() {
         if FileManager.default.fileExists(atPath: AppConstants.Paths.runtimeLogs) {
-            NSWorkspace.shared.open(URL(fileURLWithPath: AppConstants.Paths.runtimeLogs))
+            openFolder(AppConstants.Paths.runtimeLogs)
         } else {
-            NSWorkspace.shared.open(URL(fileURLWithPath: AppConstants.Paths.installLog))
+            openFolder(AppConstants.Paths.installLog)
         }
     }
 
+    func openVitalFilesDirectory() {
+        openFolder(settings.vitalFilesDirectory)
+    }
+
+    func openFolder(_ path: String) {
+        NSWorkspace.shared.open(URL(fileURLWithPath: path))
+    }
+
+    func vitalFileFolders() -> [VitalFileFolder] {
+        let root = settings.vitalFilesDirectory
+        guard let entries = try? FileManager.default.contentsOfDirectory(
+            atPath: root
+        ) else {
+            return []
+        }
+        return entries
+            .map { entry in
+                (name: entry, path: (root as NSString).appendingPathComponent(entry))
+            }
+            .filter { item in
+                var isDirectory: ObjCBool = false
+                return FileManager.default.fileExists(atPath: item.path, isDirectory: &isDirectory)
+                    && isDirectory.boolValue
+            }
+            .sorted { lhs, rhs in
+                lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+            }
+            .map { item in
+                VitalFileFolder(name: item.name, path: item.path)
+            }
+    }
+
     func openVitalServer() {
-        NSWorkspace.shared.open(URL(string: AppConstants.Product.vitalServerURL(proxyPort: status.proxyPort))!)
+        openRuntimeURL(AppConstants.Product.vitalServerURL(proxyPort: status.proxyPort))
     }
 
     func openRedisUI() {
-        NSWorkspace.shared.open(URL(string: AppConstants.Product.redisUIURL(proxyPort: status.proxyPort))!)
+        openRuntimeURL(AppConstants.Product.redisUIURL(proxyPort: status.proxyPort))
     }
 
     func openSwagger() {
-        NSWorkspace.shared.open(URL(string: AppConstants.Product.swaggerURL(proxyPort: status.proxyPort))!)
+        openRuntimeURL(AppConstants.Product.swaggerURL(proxyPort: status.proxyPort))
+    }
+
+    private func openRuntimeURL(_ rawURL: String) {
+        guard let url = URL(string: rawURL) else {
+            return
+        }
+        NSWorkspace.shared.open(url)
     }
 
     private func validateSettings() -> Bool {
@@ -375,6 +418,15 @@ final class RuntimeController: ObservableObject {
             )
             return false
         }
+    }
+
+    private func quitAfterSuccessfulUninstall() async {
+        message = [
+            message,
+            AppConstants.StatusText.applicationWillQuit,
+        ].joined(separator: "\n\n")
+        try? await Task.sleep(nanoseconds: 800_000_000)
+        NSApplication.shared.terminate(nil)
     }
 
     private func loadHealthStatus() async -> RuntimeStatus {
@@ -492,6 +544,12 @@ final class RuntimeController: ObservableObject {
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"")
     }
+}
+
+struct VitalFileFolder: Identifiable {
+    var id: String { path }
+    let name: String
+    let path: String
 }
 
 private enum RuntimeControllerError: LocalizedError {

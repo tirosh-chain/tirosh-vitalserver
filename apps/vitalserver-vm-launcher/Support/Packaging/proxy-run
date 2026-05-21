@@ -54,21 +54,46 @@ apply_config() {
   fi
 }
 
-read_vm_ip() {
+read_state_value() {
+  local key="$1"
   local value=""
 
-  if [ -s "${state_file}" ]; then
-    if [ -x /usr/bin/plutil ]; then
-      value="$(/usr/bin/plutil -extract vmIP raw -o - "${state_file}" 2>/dev/null || true)"
-    fi
-    if [ -z "${value}" ]; then
-      value="$(sed -n 's/.*"vmIP"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "${state_file}" | head -n 1)"
-    fi
-  elif [ -s "${legacy_ip_file}" ]; then
-    value="$(cat "${legacy_ip_file}")"
+  if [ -s "${state_file}" ] && [ -x /usr/bin/plutil ]; then
+    value="$(/usr/bin/plutil -extract "${key}" raw -o - "${state_file}" 2>/dev/null || true)"
+  fi
+  if [ -z "${value}" ] && [ -s "${state_file}" ]; then
+    value="$(sed -n "s/.*\"${key}\"[[:space:]]*:[[:space:]]*\"\\([^\"]*\\)\".*/\\1/p" "${state_file}" | head -n 1)"
   fi
 
   printf "%s" "${value}" | tr -d '[:space:]'
+}
+
+read_vm_ip() {
+  local value=""
+
+  value="$(read_state_value vmIP)"
+  if [ -z "${value}" ] && [ -s "${legacy_ip_file}" ]; then
+    value="$(cat "${legacy_ip_file}" | tr -d '[:space:]')"
+  fi
+
+  printf "%s" "${value}"
+}
+
+read_guest_http() {
+  read_state_value guestHTTP
+}
+
+successful_http_status() {
+  local value="$1"
+
+  case "${value}" in
+    2* | 3*)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
 }
 
 upstream_ready() {
@@ -86,8 +111,20 @@ while true; do
   vm_ip="$(read_vm_ip)"
   if [ -n "${vm_ip}" ]; then
     upstream="${vm_ip}:80"
+    guest_http="$(read_guest_http)"
 
-    if upstream_ready "${upstream}"; then
+    if ! successful_http_status "${guest_http}"; then
+      if nginx_is_running; then
+        printf "VM runtime bootstrap is not ready; stopping proxy upstream=%s guestHTTP=%s\n" "${upstream}" "${guest_http:-missing}" >&2
+        stop_nginx
+      fi
+      wait_key="bootstrap:${upstream}:${guest_http:-missing}"
+      if [ "${last_wait_message}" != "${wait_key}" ]; then
+        printf "waiting for VM runtime bootstrap: upstream=http://%s/ guestHTTP=%s\n" "${upstream}" "${guest_http:-missing}" >&2
+        last_wait_message="${wait_key}"
+      fi
+      last_upstream=""
+    elif upstream_ready "${upstream}"; then
       if [ "${upstream}" != "${last_upstream}" ] || ! nginx_is_running; then
         apply_config "${upstream}"
         last_upstream="${upstream}"

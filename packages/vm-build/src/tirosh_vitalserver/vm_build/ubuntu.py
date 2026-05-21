@@ -27,7 +27,7 @@ def run_ubuntu(args: Namespace) -> int:
     rootfs_size = args.rootfs_size or optional_string(
         runtime_config,
         "rootfs_size",
-        "8G",
+        "4G",
     )
     recreate_rootfs = (
         args.recreate_rootfs

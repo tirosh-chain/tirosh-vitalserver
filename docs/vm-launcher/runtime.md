@@ -17,7 +17,7 @@ runtime 단계의 source of truth는 Swift CLI인 `vitalserver-vm`입니다. She
 
 | 책임 | 구현 |
 |---|---|
-| VM start/stop/status/network | Swift `Sources/VitalServerVMLauncher` |
+| VM start/stop/status/network | Swift `Sources/RuntimeOrchestrator` |
 | install/status/health/configure/update/rollback/watchdog | Swift `RuntimeLifecycle` |
 | runtime 상태 파일 | `/Library/Application Support/TiroshVitalServer/status/runtime-status.json` |
 | host proxy runner | `Support/Packaging/proxy-run`, nginx start/reload loop |
@@ -101,7 +101,7 @@ apps/vitalserver-vm-launcher/Support/Build/vm-build.toml
 | architecture | macOS host architecture 기준 자동 선택 |
 | 다운로드 경로 | `~/.tirosh/vitalserver-vm/runtime/downloads/` |
 | 실행 경로 | `~/.tirosh/vitalserver-vm/runtime/` |
-| root disk target size | `8G` |
+| root disk target size | `4G` |
 
 root disk 크기를 바꾸려면:
 
@@ -156,9 +156,11 @@ make vm-stage
 
 | 항목 | 용도 |
 |---|---|
-| `bootstrap.sh` | Linux guest에서 Docker/nginx 설치 후 Compose 실행 |
-| `compose.yaml` | VM 내부 VitalServer/Redis Compose stack |
-| `nginx/vitalserver.conf` | VM 내부 nginx edge proxy 설정 |
+| `bootstrap.sh` | Linux guest 초기 entrypoint. mount/package 확인 후 `bin/`, `systemd/`, Compose stack 연결 |
+| `bin/*` | runtime env export, runtime state 기록, Compose start/stop, health, diagnostics, Redis backup 명령 |
+| `systemd/*` | runtime state writer, Compose stack, Redis backup timer unit |
+| `compose.yaml` | VM 내부 VitalServer/Redis/UI/edge nginx Compose stack |
+| `nginx/vitalserver.conf` | Compose edge nginx container 설정 |
 | `runtime-config.json` | VitalServer container/runtime 설정 |
 | `apps/vitalserver/docker` | VitalServer image build Dockerfile |
 | `apps/vitalserver/runtime` | VitalServer runtime preload |
@@ -174,13 +176,12 @@ bootstrap 순서:
 
 1. VirtioFS 공유 디렉터리를 `/mnt/tirosh`에 mount
 2. network time sync 대기
-3. `docker.io`, `docker-compose-plugin`, `nginx` 설치
+3. `docker.io`, `docker-compose-plugin` 설치
 4. Apple Silicon Linux guest에서 `linux/amd64` container 실행을 위해 `qemu-user-static`, `binfmt-support` 설치
-5. nginx를 port 80 edge proxy로 설정
+5. `Support/Guest/bin`, `Support/Guest/systemd` 파일을 guest OS에 설치
 6. bundled Docker image를 load하고 dangling image cleanup 수행
-7. `docker compose up -d --build`로 VitalServer/Redis 실행
-8. `tirosh-vitalserver-compose.service`를 등록해 VM 재부팅 후 Compose stack을 다시 적용
-9. `tirosh-vitalserver-health`, `tirosh-vitalserver-diagnostics`, Redis backup timer를 설치
+7. `docker compose up -d --build`로 VitalServer/Redis/UI/edge nginx 실행
+8. runtime state에 VM IP와 guest HTTP readiness 기록
 
 ## macOS Data Sharing
 

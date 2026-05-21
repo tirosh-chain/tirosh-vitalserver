@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+MOUNT_POINT="${TIROSH_SHARE_MOUNT:-/mnt/tirosh}"
+DEPLOY_DIR="${TIROSH_DEPLOY_DIR:-${MOUNT_POINT}/deploy}"
+
+systemctl is-active --quiet docker
+docker compose --project-name vitalserver -f "${DEPLOY_DIR}/compose.yaml" ps
+curl -fsS -I --max-time 5 http://127.0.0.1/ >/dev/null

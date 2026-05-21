@@ -6,9 +6,6 @@ MOUNT_POINT="${TIROSH_SHARE_MOUNT:-/mnt/tirosh}"
 VITAL_FILES_MOUNT_TAG="${TIROSH_VITAL_FILES_SHARE_TAG:-tirosh-vital-files}"
 VITAL_FILES_MOUNT_POINT="${TIROSH_VITAL_FILES_SHARE_MOUNT:-/mnt/tirosh-vital-files}"
 DEPLOY_DIR="${TIROSH_DEPLOY_DIR:-${MOUNT_POINT}/deploy}"
-APP_PORT="${VITALSERVER_VM_APP_PORT:-18080}"
-REDIS_UI_PORT="${REDIS_UI_PORT:-18081}"
-SWAGGER_UI_PORT="${SWAGGER_UI_PORT:-18082}"
 RUNTIME_DIR="${MOUNT_POINT}/run"
 RUNTIME_STATE_FILE="${RUNTIME_DIR}/runtime-state.json"
 
@@ -17,320 +14,31 @@ if [ "$(id -u)" -ne 0 ]; then
   exit 1
 fi
 
-mkdir -p "${MOUNT_POINT}"
-if ! mountpoint -q "${MOUNT_POINT}"; then
-  # The launcher exposes the macOS runtime directory through VirtioFS.
-  mount -t virtiofs "${MOUNT_TAG}" "${MOUNT_POINT}"
-fi
+mount_share() {
+  local tag="$1"
+  local mount_point="$2"
 
-mkdir -p "${VITAL_FILES_MOUNT_POINT}"
-if ! mountpoint -q "${VITAL_FILES_MOUNT_POINT}"; then
-  # Store .vital files in the operator-selected macOS directory.
-  mount -t virtiofs "${VITAL_FILES_MOUNT_TAG}" "${VITAL_FILES_MOUNT_POINT}"
-fi
+  mkdir -p "${mount_point}"
+  if ! mountpoint -q "${mount_point}"; then
+    mount -t virtiofs "${tag}" "${mount_point}"
+  fi
+}
 
-if [ ! -f "${DEPLOY_DIR}/compose.yaml" ]; then
-  printf "error: missing %s/compose.yaml\n" "${DEPLOY_DIR}" >&2
-  printf "Run 'make vm-stage' on macOS first.\n" >&2
-  exit 1
-fi
-
-load_runtime_config() {
-  local config_file="${DEPLOY_DIR}/runtime-config.json"
-
-  if [ ! -f "${config_file}" ]; then
-    printf "error: missing %s\n" "${config_file}" >&2
+require_deploy_bundle() {
+  if [ ! -f "${DEPLOY_DIR}/compose.yaml" ]; then
+    printf "error: missing %s/compose.yaml\n" "${DEPLOY_DIR}" >&2
+    printf "Run 'make vm-stage' on macOS first.\n" >&2
     exit 1
   fi
 
-  eval "$(
-    python3 - "${config_file}" <<'PY'
-import json
-import shlex
-import sys
-
-with open(sys.argv[1], encoding="utf-8") as handle:
-    config = json.load(handle)
-
-
-def emit(name, value):
-    print(f"export {name}={shlex.quote(str(value))}")
-
-
-emit("VITALSERVER_HTTP_PORT", config.get("vitalserverHttpPort", 18080))
-emit("VITALSERVER_REDIS_HOST", config.get("redisHost", "redis"))
-emit("VITALSERVER_REDIS_PORT", config.get("redisPort", 6379))
-emit("VITALSERVER_TRUST_PROXY", "1" if config.get("trustProxy", True) else "0")
-emit("VITALSERVER_PUBLIC_HOST", config.get("publicHost", ""))
-emit("VITALSERVER_PUBLIC_PORT", config.get("publicPort", ""))
-emit("VITALSERVER_ADMIN_PASSWORD", config.get("adminPassword", "admin"))
-emit("VITALSERVER_VITAL_FILES_DIR", config.get("vitalFilesDirectory", "/mnt/tirosh-vital-files"))
-emit("REDIS_UI_PORT", config.get("redisUiPort", 18081))
-emit("SWAGGER_UI_PORT", config.get("swaggerUiPort", 18082))
-PY
-  )"
-
-  APP_PORT="${VITALSERVER_HTTP_PORT}"
-}
-
-install_runtime_state_writer() {
-  install -m 0755 /dev/stdin /usr/local/bin/tirosh-write-runtime-state <<'SCRIPT'
-#!/usr/bin/env bash
-set -euo pipefail
-
-MOUNT_TAG="${TIROSH_SHARE_TAG:-tirosh}"
-MOUNT_POINT="${TIROSH_SHARE_MOUNT:-/mnt/tirosh}"
-RUNTIME_DIR="${MOUNT_POINT}/run"
-RUNTIME_STATE_FILE="${RUNTIME_DIR}/runtime-state.json"
-
-mkdir -p "${MOUNT_POINT}"
-if ! mountpoint -q "${MOUNT_POINT}"; then
-  mount -t virtiofs "${MOUNT_TAG}" "${MOUNT_POINT}"
-fi
-
-mkdir -p "${RUNTIME_DIR}"
-vm_ip="$(hostname -I \
-  | tr ' ' '\n' \
-  | awk 'NF && $1 !~ /^127\./ && $1 !~ /^169\.254\./ { print $1; exit }')"
-python3 - "${RUNTIME_STATE_FILE}" "${vm_ip}" <<'PY'
-import json
-import sys
-from datetime import datetime, timezone
-from pathlib import Path
-
-state_path = Path(sys.argv[1])
-vm_ip = sys.argv[2]
-boot_id = Path("/proc/sys/kernel/random/boot_id").read_text(encoding="utf-8").strip()
-state_path.write_text(
-    json.dumps(
-        {
-            "schemaVersion": 1,
-            "vmIP": vm_ip,
-            "bootID": boot_id,
-            "guestHTTP": None,
-            "updatedAt": datetime.now(timezone.utc).isoformat(),
-        },
-        indent=2,
-        sort_keys=True,
-    )
-    + "\n",
-    encoding="utf-8",
-)
-PY
-SCRIPT
-
-  cat >/etc/systemd/system/tirosh-runtime-state.service <<'UNIT'
-[Unit]
-Description=Write Tirosh VM runtime state to shared runtime directory
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=oneshot
-ExecStart=/usr/local/bin/tirosh-write-runtime-state
-
-[Install]
-WantedBy=multi-user.target
-UNIT
-
-  systemctl daemon-reload
-  systemctl enable tirosh-runtime-state.service
-}
-
-install_compose_stack_service() {
-  install -m 0755 /dev/stdin /usr/local/bin/tirosh-vitalserver-compose <<'SCRIPT'
-#!/usr/bin/env bash
-set -euo pipefail
-
-ACTION="${1:-up}"
-MOUNT_TAG="${TIROSH_SHARE_TAG:-tirosh}"
-MOUNT_POINT="${TIROSH_SHARE_MOUNT:-/mnt/tirosh}"
-VITAL_FILES_MOUNT_TAG="${TIROSH_VITAL_FILES_SHARE_TAG:-tirosh-vital-files}"
-VITAL_FILES_MOUNT_POINT="${TIROSH_VITAL_FILES_SHARE_MOUNT:-/mnt/tirosh-vital-files}"
-DEPLOY_DIR="${TIROSH_DEPLOY_DIR:-${MOUNT_POINT}/deploy}"
-
-mkdir -p "${MOUNT_POINT}"
-if ! mountpoint -q "${MOUNT_POINT}"; then
-  mount -t virtiofs "${MOUNT_TAG}" "${MOUNT_POINT}"
-fi
-mkdir -p "${VITAL_FILES_MOUNT_POINT}"
-if ! mountpoint -q "${VITAL_FILES_MOUNT_POINT}"; then
-  mount -t virtiofs "${VITAL_FILES_MOUNT_TAG}" "${VITAL_FILES_MOUNT_POINT}"
-fi
-
-eval "$(
-  python3 - "${DEPLOY_DIR}/runtime-config.json" <<'PY'
-import json
-import shlex
-import sys
-
-with open(sys.argv[1], encoding="utf-8") as handle:
-    config = json.load(handle)
-
-
-def emit(name, value):
-    print(f"export {name}={shlex.quote(str(value))}")
-
-
-emit("VITALSERVER_HTTP_PORT", config.get("vitalserverHttpPort", 18080))
-emit("VITALSERVER_REDIS_HOST", config.get("redisHost", "redis"))
-emit("VITALSERVER_REDIS_PORT", config.get("redisPort", 6379))
-emit("VITALSERVER_TRUST_PROXY", "1" if config.get("trustProxy", True) else "0")
-emit("VITALSERVER_PUBLIC_HOST", config.get("publicHost", ""))
-emit("VITALSERVER_PUBLIC_PORT", config.get("publicPort", ""))
-emit("VITALSERVER_ADMIN_PASSWORD", config.get("adminPassword", "admin"))
-emit("VITALSERVER_VITAL_FILES_DIR", config.get("vitalFilesDirectory", "/mnt/tirosh-vital-files"))
-emit("REDIS_UI_PORT", config.get("redisUiPort", 18081))
-emit("SWAGGER_UI_PORT", config.get("swaggerUiPort", 18082))
-PY
-)"
-
-case "${ACTION}" in
-  up)
-    exec docker compose --project-name vitalserver -f "${DEPLOY_DIR}/compose.yaml" up -d
-    ;;
-  stop)
-    exec docker compose --project-name vitalserver -f "${DEPLOY_DIR}/compose.yaml" stop
-    ;;
-  *)
-    printf "usage: tirosh-vitalserver-compose [up|stop]\n" >&2
-    exit 2
-    ;;
-esac
-SCRIPT
-
-  cat >/etc/systemd/system/tirosh-vitalserver-compose.service <<'UNIT'
-[Unit]
-Description=Tirosh VitalServer Docker Compose stack
-After=docker.service network-online.target
-Requires=docker.service
-Wants=network-online.target
-
-[Service]
-Type=oneshot
-RemainAfterExit=yes
-ExecStart=/usr/local/bin/tirosh-vitalserver-compose up
-ExecStop=/usr/local/bin/tirosh-vitalserver-compose stop
-TimeoutStartSec=900
-
-[Install]
-WantedBy=multi-user.target
-UNIT
-
-  systemctl daemon-reload
-  systemctl enable tirosh-vitalserver-compose.service
-}
-
-install_guest_operations_tools() {
-  install -m 0755 /dev/stdin /usr/local/bin/tirosh-vitalserver-health <<'SCRIPT'
-#!/usr/bin/env bash
-set -euo pipefail
-
-MOUNT_POINT="${TIROSH_SHARE_MOUNT:-/mnt/tirosh}"
-DEPLOY_DIR="${TIROSH_DEPLOY_DIR:-${MOUNT_POINT}/deploy}"
-
-systemctl is-active --quiet docker
-systemctl is-active --quiet nginx
-docker compose --project-name vitalserver -f "${DEPLOY_DIR}/compose.yaml" ps
-curl -fsS -I --max-time 5 http://127.0.0.1/ >/dev/null
-SCRIPT
-
-  install -m 0755 /dev/stdin /usr/local/bin/tirosh-vitalserver-diagnostics <<'SCRIPT'
-#!/usr/bin/env bash
-set -euo pipefail
-
-MOUNT_POINT="${TIROSH_SHARE_MOUNT:-/mnt/tirosh}"
-DEPLOY_DIR="${TIROSH_DEPLOY_DIR:-${MOUNT_POINT}/deploy}"
-
-printf "== system ==\n"
-hostnamectl || true
-uptime || true
-df -h / "${MOUNT_POINT}" 2>/dev/null || true
-printf "\n== services ==\n"
-systemctl --no-pager --full status docker nginx tirosh-vitalserver-compose.service tirosh-runtime-state.service || true
-printf "\n== compose ps ==\n"
-docker compose --project-name vitalserver -f "${DEPLOY_DIR}/compose.yaml" ps || true
-printf "\n== compose logs ==\n"
-docker compose --project-name vitalserver -f "${DEPLOY_DIR}/compose.yaml" logs --tail=200 || true
-SCRIPT
-
-  install -m 0755 /dev/stdin /usr/local/bin/tirosh-vitalserver-redis-backup <<'SCRIPT'
-#!/usr/bin/env bash
-set -euo pipefail
-
-MOUNT_POINT="${TIROSH_SHARE_MOUNT:-/mnt/tirosh}"
-DEPLOY_DIR="${TIROSH_DEPLOY_DIR:-${MOUNT_POINT}/deploy}"
-BACKUP_DIR="${MOUNT_POINT}/backups/redis"
-STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
-
-mkdir -p "${BACKUP_DIR}"
-docker compose --project-name vitalserver -f "${DEPLOY_DIR}/compose.yaml" exec -T redis redis-cli SAVE >/dev/null
-tar -C /var/lib/docker/volumes/vitalserver_redis-data/_data -czf "${BACKUP_DIR}/redis-${STAMP}.tar.gz" .
-find "${BACKUP_DIR}" -name 'redis-*.tar.gz' -type f | sort | head -n -7 | xargs -r rm -f
-SCRIPT
-
-  cat >/etc/systemd/system/tirosh-vitalserver-redis-backup.service <<'UNIT'
-[Unit]
-Description=Back up Tirosh VitalServer Redis volume
-After=docker.service tirosh-vitalserver-compose.service
-Requires=docker.service
-
-[Service]
-Type=oneshot
-ExecStart=/usr/local/bin/tirosh-vitalserver-redis-backup
-UNIT
-
-  cat >/etc/systemd/system/tirosh-vitalserver-redis-backup.timer <<'UNIT'
-[Unit]
-Description=Daily Tirosh VitalServer Redis backup
-
-[Timer]
-OnCalendar=*-*-* 03:15:00
-Persistent=true
-
-[Install]
-WantedBy=timers.target
-UNIT
-
-  systemctl daemon-reload
-  systemctl enable --now tirosh-vitalserver-redis-backup.timer
+  if [ ! -f "${DEPLOY_DIR}/runtime-config.json" ]; then
+    printf "error: missing %s/runtime-config.json\n" "${DEPLOY_DIR}" >&2
+    exit 1
+  fi
 }
 
 write_runtime_state() {
-  mkdir -p "${RUNTIME_DIR}"
-  local vm_ip boot_id guest_http
-  vm_ip="$(hostname -I \
-    | tr ' ' '\n' \
-    | awk 'NF && $1 !~ /^127\\./ && $1 !~ /^169\\.254\\./ { print $1; exit }')"
-  boot_id="$(cat /proc/sys/kernel/random/boot_id 2>/dev/null || true)"
-  guest_http="${1:-}"
-
-  python3 - "${RUNTIME_STATE_FILE}" "${vm_ip}" "${boot_id}" "${guest_http}" <<'PY'
-import json
-import sys
-from datetime import datetime, timezone
-from pathlib import Path
-
-state_path = Path(sys.argv[1])
-vm_ip = sys.argv[2]
-boot_id = sys.argv[3] or None
-guest_http = sys.argv[4] or None
-state_path.write_text(
-    json.dumps(
-        {
-            "schemaVersion": 1,
-            "vmIP": vm_ip,
-            "bootID": boot_id,
-            "guestHTTP": guest_http,
-            "updatedAt": datetime.now(timezone.utc).isoformat(),
-        },
-        indent=2,
-        sort_keys=True,
-    )
-    + "\n",
-    encoding="utf-8",
-)
-PY
+  /usr/local/bin/tirosh-write-runtime-state "${RUNTIME_STATE_FILE}" "${1:-}"
 }
 
 wait_for_network_time() {
@@ -376,9 +84,33 @@ expand_root_filesystem() {
   local root_source parent_device partition_number filesystem_type
 
   root_source="$(findmnt -n -o SOURCE /)"
-  parent_device="$(lsblk -no PKNAME "${root_source}" 2>/dev/null | head -n 1)"
-  partition_number="$(lsblk -no PARTNUM "${root_source}" 2>/dev/null | head -n 1)"
+  parent_device="$(lsblk -no PKNAME "${root_source}" 2>/dev/null | head -n 1 || true)"
+  partition_number="$(lsblk -no PARTNUM "${root_source}" 2>/dev/null | head -n 1 || true)"
   filesystem_type="$(findmnt -n -o FSTYPE /)"
+
+  if [ -z "${partition_number}" ]; then
+    case "${root_source}" in
+      /dev/nvme*n*p[0-9]* | /dev/mmcblk*p[0-9]*)
+        partition_number="${root_source##*p}"
+        ;;
+      /dev/*[0-9])
+        partition_number="${root_source##*[!0-9]}"
+        ;;
+    esac
+  fi
+
+  if [ -z "${parent_device}" ] && [ -n "${partition_number}" ]; then
+    case "${root_source}" in
+      /dev/nvme*n*p"${partition_number}" | /dev/mmcblk*p"${partition_number}")
+        parent_device="${root_source#/dev/}"
+        parent_device="${parent_device%p${partition_number}}"
+        ;;
+      /dev/*"${partition_number}")
+        parent_device="${root_source#/dev/}"
+        parent_device="${parent_device%${partition_number}}"
+        ;;
+    esac
+  fi
 
   if [ -z "${parent_device}" ] || [ -z "${partition_number}" ]; then
     printf "warning: could not resolve root partition for resize: %s\n" "${root_source}" >&2
@@ -406,16 +138,6 @@ expand_root_filesystem() {
   df -h /
 }
 
-runtime_packages_ready() {
-  command -v curl >/dev/null 2>&1 \
-    && command -v docker >/dev/null 2>&1 \
-    && command -v nginx >/dev/null 2>&1 \
-    && command -v avahi-daemon >/dev/null 2>&1 \
-    && command -v growpart >/dev/null 2>&1 \
-    && docker compose version >/dev/null 2>&1 \
-    && qemu_user_ready
-}
-
 qemu_user_ready() {
   case "$(uname -m)" in
     x86_64 | amd64)
@@ -425,6 +147,15 @@ qemu_user_ready() {
       command -v qemu-x86_64-static >/dev/null 2>&1
       ;;
   esac
+}
+
+runtime_packages_ready() {
+  command -v curl >/dev/null 2>&1 \
+    && command -v docker >/dev/null 2>&1 \
+    && command -v avahi-daemon >/dev/null 2>&1 \
+    && command -v growpart >/dev/null 2>&1 \
+    && docker compose version >/dev/null 2>&1 \
+    && qemu_user_ready
 }
 
 install_runtime_packages() {
@@ -441,7 +172,6 @@ install_runtime_packages() {
     cloud-guest-utils \
     curl \
     docker.io \
-    nginx \
     qemu-user-static
 
   if ! docker compose version >/dev/null 2>&1; then
@@ -450,31 +180,25 @@ install_runtime_packages() {
   fi
 }
 
-export DEBIAN_FRONTEND=noninteractive
-write_runtime_state
-expand_root_filesystem
-if runtime_packages_ready; then
-  printf "Runtime packages are already available; skipping apt install.\n"
-else
-  install_runtime_packages
-fi
+install_guest_runtime_files() {
+  install -m 0755 "${DEPLOY_DIR}/bin/tirosh-runtime-env" /usr/local/bin/tirosh-runtime-env
+  install -m 0755 "${DEPLOY_DIR}/bin/tirosh-write-runtime-state" /usr/local/bin/tirosh-write-runtime-state
+  install -m 0755 "${DEPLOY_DIR}/bin/tirosh-runtime-state" /usr/local/bin/tirosh-runtime-state
+  install -m 0755 "${DEPLOY_DIR}/bin/tirosh-vitalserver-compose" /usr/local/bin/tirosh-vitalserver-compose
+  install -m 0755 "${DEPLOY_DIR}/bin/tirosh-vitalserver-health" /usr/local/bin/tirosh-vitalserver-health
+  install -m 0755 "${DEPLOY_DIR}/bin/tirosh-vitalserver-diagnostics" /usr/local/bin/tirosh-vitalserver-diagnostics
+  install -m 0755 "${DEPLOY_DIR}/bin/tirosh-vitalserver-redis-backup" /usr/local/bin/tirosh-vitalserver-redis-backup
 
-if ! docker compose version >/dev/null 2>&1; then
-  printf "error: Docker Compose v2 is not available\n" >&2
-  exit 1
-fi
+  install -m 0644 "${DEPLOY_DIR}/systemd/tirosh-runtime-state.service" /etc/systemd/system/tirosh-runtime-state.service
+  install -m 0644 "${DEPLOY_DIR}/systemd/tirosh-vitalserver-compose.service" /etc/systemd/system/tirosh-vitalserver-compose.service
+  install -m 0644 "${DEPLOY_DIR}/systemd/tirosh-vitalserver-redis-backup.service" /etc/systemd/system/tirosh-vitalserver-redis-backup.service
+  install -m 0644 "${DEPLOY_DIR}/systemd/tirosh-vitalserver-redis-backup.timer" /etc/systemd/system/tirosh-vitalserver-redis-backup.timer
 
-load_runtime_config
-
-systemctl enable --now docker
-systemctl enable --now nginx
-systemctl enable --now binfmt-support >/dev/null 2>&1 || true
-hostnamectl set-hostname "${TIROSH_GUEST_HOSTNAME:-tirosh-vitalserver}"
-systemctl enable --now avahi-daemon
-install_runtime_state_writer
-install_guest_operations_tools
-
-mkdir -p "${VITAL_FILES_MOUNT_POINT}" "${MOUNT_POINT}/vr-release"
+  systemctl daemon-reload
+  systemctl enable tirosh-runtime-state.service
+  systemctl enable tirosh-vitalserver-compose.service
+  systemctl enable --now tirosh-vitalserver-redis-backup.timer
+}
 
 load_bundled_docker_images() {
   local image_dir="${DEPLOY_DIR}/docker-images"
@@ -500,19 +224,19 @@ cleanup_docker_cache() {
   docker image prune -f >/dev/null 2>&1 || true
 }
 
-wait_for_vitalserver_http() {
+wait_for_vitalserver_edge() {
   local deadline code http_status
 
-  printf "Waiting for VitalServer app: http://127.0.0.1:%s/\n" "${APP_PORT}"
+  printf "Waiting for VitalServer edge: http://127.0.0.1/\n"
   deadline=$(( "$(date +%s)" + 600 ))
 
   while [ "$(date +%s)" -lt "${deadline}" ]; do
-    code="$(curl -sS -I -o /dev/null -w '%{http_code}' --max-time 5 "http://127.0.0.1:${APP_PORT}/" 2>/dev/null)" \
+    code="$(curl -sS -I -o /dev/null -w '%{http_code}' --max-time 5 "http://127.0.0.1/" 2>/dev/null)" \
       && http_status=0 \
       || http_status=$?
 
     if [ "${http_status}" -eq 0 ] && [ "${code}" -ge 200 ] && [ "${code}" -lt 400 ]; then
-      printf "VitalServer app is ready: %s\n" "${code}"
+      printf "VitalServer edge is ready: %s\n" "${code}"
       write_runtime_state "${code}"
       return
     fi
@@ -520,7 +244,7 @@ wait_for_vitalserver_http() {
     sleep 3
   done
 
-  printf "error: VitalServer app did not become ready\n" >&2
+  printf "error: VitalServer edge did not become ready\n" >&2
   docker compose \
     --project-name vitalserver \
     -f "${DEPLOY_DIR}/compose.yaml" \
@@ -533,18 +257,33 @@ wait_for_vitalserver_http() {
   exit 1
 }
 
-tmp_nginx="$(mktemp)"
-sed \
-  -e "s/__VITALSERVER_APP_PORT__/${APP_PORT}/g" \
-  -e "s/__REDIS_UI_PORT__/${REDIS_UI_PORT}/g" \
-  -e "s/__SWAGGER_UI_PORT__/${SWAGGER_UI_PORT}/g" \
-  "${DEPLOY_DIR}/nginx/vitalserver.conf" >"${tmp_nginx}"
-install -m 0644 "${tmp_nginx}" /etc/nginx/sites-available/vitalserver
-rm -f "${tmp_nginx}"
-ln -sfn /etc/nginx/sites-available/vitalserver /etc/nginx/sites-enabled/vitalserver
-rm -f /etc/nginx/sites-enabled/default
-nginx -t
-systemctl reload nginx
+mount_share "${MOUNT_TAG}" "${MOUNT_POINT}"
+mount_share "${VITAL_FILES_MOUNT_TAG}" "${VITAL_FILES_MOUNT_POINT}"
+require_deploy_bundle
+
+export DEBIAN_FRONTEND=noninteractive
+expand_root_filesystem
+
+if runtime_packages_ready; then
+  printf "Runtime packages are already available; skipping apt install.\n"
+else
+  install_runtime_packages
+fi
+
+if ! docker compose version >/dev/null 2>&1; then
+  printf "error: Docker Compose v2 is not available\n" >&2
+  exit 1
+fi
+
+install_guest_runtime_files
+write_runtime_state
+
+systemctl enable --now docker
+systemctl enable --now binfmt-support >/dev/null 2>&1 || true
+hostnamectl set-hostname "${TIROSH_GUEST_HOSTNAME:-tirosh-vitalserver}"
+systemctl enable --now avahi-daemon
+
+mkdir -p "${VITAL_FILES_MOUNT_POINT}" "${MOUNT_POINT}/vr-release"
 
 load_bundled_docker_images
 cleanup_docker_cache
@@ -554,13 +293,13 @@ if ! docker image inspect vitalserver:2.3.4 >/dev/null 2>&1; then
   compose_build_args+=(--build)
 fi
 
+eval "$(/usr/local/bin/tirosh-runtime-env "${DEPLOY_DIR}/runtime-config.json")"
 docker compose \
   --project-name vitalserver \
   -f "${DEPLOY_DIR}/compose.yaml" \
   up -d "${compose_build_args[@]}"
 
-install_compose_stack_service
-wait_for_vitalserver_http
+wait_for_vitalserver_edge
 write_runtime_state "200"
 
 printf "VitalServer edge is ready on this VM at port 80.\n"

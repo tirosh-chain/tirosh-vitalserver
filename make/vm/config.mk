@@ -1,6 +1,6 @@
 # User-facing knobs.
 VM_HOME ?= $(HOME)/.tirosh/vitalserver-vm
-VM_ROOTFS_SIZE ?= 8G
+VM_ROOTFS_SIZE ?= 4G
 VM_RECREATE_ROOTFS ?= false
 VM_RECREATE_GOLDEN_ROOTFS ?= false
 VM_WAIT_TIMEOUT ?= 300

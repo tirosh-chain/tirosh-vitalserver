@@ -1,0 +1,15 @@
+[Unit]
+Description=Tirosh VitalServer Docker Compose stack
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/tirosh-vitalserver-compose up
+ExecStop=/usr/local/bin/tirosh-vitalserver-compose stop
+TimeoutStartSec=900
+
+[Install]
+WantedBy=multi-user.target

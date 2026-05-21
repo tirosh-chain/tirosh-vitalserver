@@ -1,0 +1,11 @@
+[Unit]
+Description=Write Tirosh VM runtime state to shared runtime directory
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/tirosh-runtime-state
+
+[Install]
+WantedBy=multi-user.target

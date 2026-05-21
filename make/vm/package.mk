@@ -72,7 +72,12 @@ vm-pkg-stage: vm-sign vm-app vm-golden-rootfs vm-nginx-bundle vm-docker-images
 		"$(VM_PKG_ROOT)$(VM_INSTALL_NGINX_PREFIX)" \
 		"$(VM_PKG_ROOT)/Library/LaunchDaemons" \
 		"$(VM_PKG_SCRIPTS)"
+	codesign --force --sign "$(VM_CODESIGN_IDENTITY)" --entitlements "$(VM_LAUNCHER_ENTITLEMENTS)" "$(VM_LAUNCHER_BIN)"
 	install -m 0755 "$(VM_LAUNCHER_BIN)" "$(VM_PKG_ROOT)$(VM_INSTALL_BIN)"
+	@codesign -d --entitlements :- "$(VM_PKG_ROOT)$(VM_INSTALL_BIN)" 2>&1 | grep -q "com.apple.security.virtualization" || { \
+		printf "packaged vitalserver-vm is missing virtualization entitlement: %s\n" "$(VM_PKG_ROOT)$(VM_INSTALL_BIN)" >&2; \
+		exit 1; \
+	}
 	install -m 0755 "$(VM_PACKAGING_DIR)/proxy-run" "$(VM_PKG_ROOT)$(VM_INSTALL_PROXY_RUN)"
 	install -m 0755 "$(VM_PACKAGING_DIR)/uninstall" "$(VM_PKG_ROOT)$(VM_INSTALL_UNINSTALL)"
 	rsync -a --delete "$(VM_APP_BUNDLE)/" "$(VM_PKG_ROOT)$(VM_INSTALL_APP_BUNDLE)/"

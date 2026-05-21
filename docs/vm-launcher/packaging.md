@@ -195,7 +195,7 @@ Install Tirosh VitalServer.pkg
       -> remove install settings JSON
 ```
 
-VM service가 시작되면 `vitalserver-vm start`가 `vm-config.json`을 읽어 Apple Virtualization VM을 띄웁니다. guest cloud-init은 `seed.iso`의 `runcmd`로 `/mnt/tirosh/deploy/bootstrap.sh`를 실행합니다. guest bootstrap은 Docker image bundle을 load하고 Compose stack과 guest nginx를 구성한 뒤 `/mnt/tirosh/run/vm-ip`를 기록합니다. proxy service의 `vitalserver-proxy-run`은 이 VM IP 파일을 기다렸다가 host nginx config를 렌더링하고 nginx를 시작 또는 reload합니다.
+VM service가 시작되면 `vitalserver-vm start`가 `vm-config.json`을 읽어 Apple Virtualization VM을 띄웁니다. guest cloud-init은 `seed.iso`의 `runcmd`로 `/mnt/tirosh/deploy/bootstrap.sh`를 실행합니다. guest bootstrap은 Docker image bundle을 load하고 Compose stack 안의 edge nginx container를 구성한 뒤 `/mnt/tirosh/run/runtime-state.json`에 VM IP와 guest HTTP readiness를 기록합니다. proxy service의 `vitalserver-proxy-run`은 이 runtime state를 기다렸다가 host nginx config를 렌더링하고 nginx를 시작 또는 reload합니다.
 
 설치 시 설정값은 MDM 또는 고급 설치 wrapper가 `installer` 실행 전에 `/private/tmp/tirosh-vitalserver-install.json`에 쓸 수 있습니다. 이 파일은 partial JSON이며 `postinstall` 이후 삭제됩니다. 일반 사용자 설치는 기본값으로 진행하고, 설치 후 Manager app의 Settings에서 runtime 설정을 변경합니다.
 
@@ -236,7 +236,7 @@ Fallback:
 | VM launch | launchd | `vitalserver-vm start` | `VITALSERVER_VM_HOME`, `VITALSERVER_VM_DETACHED=1`, `runtime/vm-config.json` | Virtualization.framework VM process |
 | watchdog | launchd | `vitalserver-vm runtime watchdog` | runtime files, launchd state, VM IP, HTTP health | runtime status update, VM/proxy kickstart |
 | host proxy | launchd | `vitalserver-proxy-run` | `vm/data/run/vm-ip`, proxy template, nginx binary | rendered host nginx config, nginx process |
-| guest bootstrap | cloud-init | `bootstrap.sh` | VirtioFS mounts, `runtime-config.json`, Docker bundle | guest nginx, Docker Compose stack, `vm-ip` marker |
+| guest bootstrap | cloud-init | `bootstrap.sh`, `bin/*`, `systemd/*` | VirtioFS mounts, `runtime-config.json`, Docker bundle | Docker Compose stack, edge nginx container, runtime state marker |
 | update verification | operator/Manager | `vitalserver-vm runtime verify-bundle` | bundle directory | manifest/checksum validation |
 | update apply | operator/Manager | `vitalserver-vm runtime apply-bundle` | verified bundle directory | staged bundle, backup, rootfs-base replacement, migrations, health check |
 
@@ -424,6 +424,7 @@ vitalserver:2.3.4
 redis:3.2.12-alpine
 rediscommander/redis-commander:latest
 swaggerapi/swagger-ui:v5.17.14
+nginx:1.24-alpine
 ```
 
 생성/설치 경로는 아래와 같습니다.
@@ -433,14 +434,14 @@ swaggerapi/swagger-ui:v5.17.14
 /Library/Application Support/TiroshVitalServer/vm/data/deploy/docker-images/vitalserver-images.tar.gz
 ```
 
-Docker image만으로는 충분하지 않습니다. Guest VM이 처음 부팅될 때 `docker.io`, Docker Compose, nginx, qemu-user-static을 apt로 설치해야 한다면 air-gapped 환경에서 실패합니다. 그래서 제품용 package는 개발용 VM disk가 아니라 별도 golden VM home에서 만든 clean rootfs base를 사용합니다.
+Docker image만으로는 충분하지 않습니다. Guest VM이 처음 부팅될 때 `docker.io`, Docker Compose, qemu-user-static을 apt로 설치해야 한다면 air-gapped 환경에서 실패합니다. 그래서 제품용 package는 개발용 VM disk가 아니라 별도 golden VM home에서 만든 clean rootfs base를 사용합니다. VM 내부 edge nginx는 OS package가 아니라 `nginx:1.24-alpine` container로 실행합니다.
 
 ```sh
 make vm-golden-rootfs
 make vm-pkg
 ```
 
-기본 package용 rootfs는 8GB입니다. `make vm-golden-rootfs`는 `.tmp/vitalserver-vm-golden` 아래에서 VM을 임시로 띄우고 `prepare-airgap-rootfs.sh`만 실행한 뒤 `.tmp/vitalserver-vm-pkg/rootfs-base.raw.gz`를 생성합니다. 이 스크립트는 OS package를 설치하고 `/mnt/tirosh/run/rootfs-ready` marker를 기록한 뒤 종료됩니다. Container는 시작하지 않기 때문에 운영 데이터나 Redis volume을 golden rootfs에 섞지 않습니다.
+기본 package용 rootfs는 4GB입니다. `make vm-golden-rootfs`는 `.tmp/vitalserver-vm-golden` 아래에서 VM을 임시로 띄우고 `prepare-airgap-rootfs.sh`만 실행한 뒤 `.tmp/vitalserver-vm-pkg/rootfs-base.raw.gz`를 생성합니다. 이 스크립트는 OS package를 설치하고 `/mnt/tirosh/run/rootfs-ready` marker를 기록한 뒤 종료됩니다. Container는 시작하지 않기 때문에 운영 데이터나 Redis volume을 golden rootfs에 섞지 않습니다.
 
 반복 개발 중에는 기존 golden rootfs cache를 재사용합니다. cache가 없으면 `make vm-pkg`가 자동으로 한 번 생성합니다. release 검증처럼 clean rootfs를 반드시 다시 만들려면:
 

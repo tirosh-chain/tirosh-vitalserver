@@ -3,26 +3,26 @@
 import PackageDescription
 
 let package = Package(
-    name: "VitalServerVMLauncher",
+    name: "TiroshVitalServerRuntime",
     platforms: [
         .macOS(.v13)
     ],
     products: [
         .executable(
             name: "vitalserver-vm",
-            targets: ["VitalServerVMLauncher"]
+            targets: ["RuntimeOrchestrator"]
         ),
         .executable(
             name: "TiroshVitalServerApp",
-            targets: ["TiroshVitalServerApp"]
+            targets: ["ManagerApp"]
         )
     ],
     targets: [
         .executableTarget(
-            name: "VitalServerVMLauncher"
+            name: "RuntimeOrchestrator"
         ),
         .executableTarget(
-            name: "TiroshVitalServerApp"
+            name: "ManagerApp"
         )
     ]
 )

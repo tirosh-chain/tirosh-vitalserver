@@ -81,7 +81,7 @@ make vm-up-bridged
 | `make vm-network-bridged` | VM config를 bridged mode로 설정 |
 | `make vm-nginx-bundle` | nginx와 비시스템 dylib를 self-contained bundle로 묶기 |
 | `make vm-docker-images` | air-gapped 설치용 Docker image bundle 생성 |
-| `make vm-airgap-rootfs` | 온라인 빌드 환경에서 rootfs에 Docker/nginx/Compose 설치 |
+| `make vm-airgap-rootfs` | 온라인 빌드 환경에서 rootfs에 Docker/Compose 설치 |
 | `make vm-app` | `/Applications`에 설치될 가벼운 macOS control app 생성 |
 | `make vm-pkg` | control app, VM runtime, boot asset, guest bundle, host proxy launcher를 `.pkg`로 묶기 |
 | `make vm-pkg-install` | 생성된 개발용 `.pkg`를 설치 |
@@ -153,7 +153,7 @@ shared/NAT mode에서는 VM IP가 부팅 후에 결정되므로, `vitalserver-pr
 | LaunchDaemon VM service | `VITALSERVER_VM_HOME`, `VITALSERVER_VM_DETACHED=1`, `vm-config.json` | background VM process |
 | LaunchDaemon watchdog service | `VITALSERVER_VM_HOME`, `runtime-status.json` | periodic health check, VM/proxy restart, updated runtime status |
 | `vitalserver-proxy-run` | `vm/data/run/vm-ip`, proxy template | host nginx config and proxy process |
-| guest `bootstrap.sh` | `runtime-config.json`, Docker image bundle | Docker Compose stack, guest systemd service, VM-local nginx, diagnostics, Redis backup timer |
+| guest `bootstrap.sh` | `runtime-config.json`, `bin/*`, `systemd/*`, Docker image bundle | Docker Compose stack, edge nginx container, guest systemd service, diagnostics, Redis backup timer |
 | update bundle | `manifest.json`, `checksums.txt`, `signature`, `rootfs-base.raw.gz`, migrations | verified/staged bundle, rootfs-base backup/replacement, migrations |
 
 `runtime-status.json`은 Manager app, watchdog, 운영 CLI가 공유하는 운영 상태 파일입니다. `runtime install`, `health`, `watchdog`, `apply-bundle`, `rollback`이 이 파일을 갱신하며, 상태 값은 `installing`, `updating`, `recovering`, `healthy`, `degraded`, `critical` 중 하나입니다.
@@ -166,11 +166,11 @@ shared/NAT mode에서는 VM IP가 부팅 후에 결정되므로, `vitalserver-pr
 |---|---|---|
 | Make | `make/vm.mk`, `make/vm/config.mk` | build/install target orchestration, artifact path |
 | Python | `packages/vm-build/src/tirosh_vitalserver/vm_build` | Ubuntu/rootfs/nginx/Docker/update bundle build tooling |
-| Swift CLI | `Sources/VitalServerVMLauncher` | VM start/stop/status, runtime install/update/health |
+| Runtime orchestrator | `Sources/RuntimeOrchestrator` | VM start/stop/status, runtime install/update/health |
 | PKG wrapper | `Support/Packaging/postinstall` | install log 연결 후 `vitalserver-vm runtime install` 호출 |
 | launchd proxy | `Support/Packaging/proxy-run` | VM IP 감시, host nginx config render/reload |
-| Guest | `Support/Guest/bootstrap.sh` | guest nginx/Docker Compose bootstrap, compose systemd service, VM IP marker, diagnostics, Redis backup timer |
-| Manager app | `Sources/TiroshVitalServerApp` | 설치 후 runtime-status/settings/update/rollback/health/open/uninstall UI |
+| Guest | `Support/Guest/bootstrap.sh` | Docker Compose bootstrap, edge nginx container, compose systemd service, runtime state marker, diagnostics, Redis backup timer |
+| Manager app | `Sources/ManagerApp` | 설치 후 runtime-status/settings/update/rollback/health/open/uninstall UI |
 
 DMG build/install 흐름은 아래입니다.
 
@@ -280,7 +280,7 @@ make vm-golden-rootfs
 make vm-pkg
 ```
 
-`make vm-pkg`도 `vm-golden-rootfs`를 dependency로 실행하므로, package payload에는 `.tmp/vitalserver-vm-pkg/rootfs-base.raw.gz`가 들어갑니다. 기본 package용 rootfs는 8GB입니다. 반복 개발 중에는 기존 golden rootfs cache를 재사용합니다. release 검증처럼 clean rootfs를 반드시 다시 만들려면 `make vm-pkg-release` 또는 `make vm-dmg-release`를 사용합니다. 설치된 VM은 부팅 시 필요한 guest package가 이미 있으면 `apt-get` 단계를 건너뜁니다.
+`make vm-pkg`도 `vm-golden-rootfs`를 dependency로 실행하므로, package payload에는 `.tmp/vitalserver-vm-pkg/rootfs-base.raw.gz`가 들어갑니다. 기본 package용 rootfs는 4GB입니다. 반복 개발 중에는 기존 golden rootfs cache를 재사용합니다. release 검증처럼 clean rootfs를 반드시 다시 만들려면 `make vm-pkg-release` 또는 `make vm-dmg-release`를 사용합니다. 설치된 VM은 부팅 시 필요한 guest package가 이미 있으면 `apt-get` 단계를 건너뜁니다.
 
 설치 테스트:
 

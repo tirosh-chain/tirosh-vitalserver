@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct ContentView: View {
-    @StateObject private var controller = RuntimeController()
+    @EnvironmentObject private var controller: RuntimeController
     @State private var showingUpdateConfirmation = false
     @State private var showingRollbackConfirmation = false
     @State private var showingRepairProxyConfirmation = false
@@ -13,15 +13,16 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 20) {
             header
             TabView {
-                statusGrid
+                statusPanel
                     .tabItem { Text(AppConstants.Labels.tabStatus) }
                 settingsPanel
                     .tabItem { Text(AppConstants.Labels.tabSettings) }
                 updatePanel
                     .tabItem { Text(AppConstants.Labels.tabUpdate) }
+                advancedPanel
+                    .tabItem { Text(AppConstants.Labels.tabAdvanced) }
             }
             .frame(minHeight: 360)
-            actionBar
             logPanel
         }
         .padding(24)
@@ -32,6 +33,46 @@ struct ContentView: View {
             }
         } message: {
             Text(controller.applySettingsConfirmation)
+        }
+        .alert(AppConstants.Actions.applyBundle, isPresented: $showingUpdateConfirmation) {
+            Button(AppConstants.Actions.cancel, role: .cancel) {}
+            Button(AppConstants.Actions.startUpdate) {
+                Task { await controller.applySelectedBundle() }
+            }
+        } message: {
+            Text(controller.selectedBundleConfirmation)
+        }
+        .alert(AppConstants.Actions.rollback, isPresented: $showingRollbackConfirmation) {
+            Button(AppConstants.Actions.cancel, role: .cancel) {}
+            Button(AppConstants.Actions.startRollback, role: .destructive) {
+                Task { await controller.rollbackRuntime() }
+            }
+        } message: {
+            Text(controller.selectedBackupPath.isEmpty ? AppConstants.StatusText.latestBackupFallback : controller.selectedBackupPath)
+        }
+        .alert(AppConstants.Actions.repairProxyPort, isPresented: $showingRepairProxyConfirmation) {
+            Button(AppConstants.Actions.cancel, role: .cancel) {}
+            Button(AppConstants.Actions.repairProxy, role: .destructive) {
+                Task { await controller.repairProxyPort() }
+            }
+        } message: {
+            Text(AppConstants.StatusText.repairProxyConfirmation)
+        }
+        .alert(AppConstants.Actions.standardUninstall, isPresented: $showingUninstallConfirmation) {
+            Button(AppConstants.Actions.cancel, role: .cancel) {}
+            Button(AppConstants.Actions.uninstall, role: .destructive) {
+                Task { await controller.uninstallRuntime() }
+            }
+        } message: {
+            Text(AppConstants.StatusText.standardUninstallConfirmation)
+        }
+        .alert(AppConstants.Actions.cleanUninstall, isPresented: $showingCleanUninstallConfirmation) {
+            Button(AppConstants.Actions.cancel, role: .cancel) {}
+            Button(AppConstants.Actions.cleanUninstall, role: .destructive) {
+                Task { await controller.uninstallRuntime(clean: true) }
+            }
+        } message: {
+            Text(AppConstants.StatusText.cleanUninstallConfirmation)
         }
         .task {
             await controller.refresh()
@@ -51,15 +92,44 @@ struct ContentView: View {
         }
     }
 
-    private var statusGrid: some View {
+    private var statusPanel: some View {
         Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 12) {
+            GridRow {
+                Text(AppConstants.Labels.runtimeState)
+                    .foregroundStyle(.secondary)
+                statusBadge
+            }
             statusRow(
                 AppConstants.Labels.runtime,
                 controller.status.runtimeInstalled
                     ? AppConstants.StatusText.installed
                     : AppConstants.StatusText.notInstalled
             )
-            statusRow(AppConstants.Labels.runtimeState, controller.status.runtimeState ?? AppConstants.StatusText.unknown)
+            statusRow(AppConstants.Labels.vitalServer, vitalServerAvailability)
+            statusRow(AppConstants.Labels.accessURL, AppConstants.Product.vitalServerURL(proxyPort: controller.status.proxyPort))
+            statusRow(AppConstants.Labels.dataDirectory, controller.settings.vitalFilesDirectory)
+            if let displayMessage = controller.status.statusMessage, !displayMessage.isEmpty {
+                statusRow(AppConstants.Labels.log, displayMessage)
+            }
+        }
+        .padding(16)
+        .background(Color(nsColor: .controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private var advancedStatusGrid: some View {
+        Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 12) {
+            GridRow {
+                Text(AppConstants.Labels.runtimeState)
+                    .foregroundStyle(.secondary)
+                statusBadge
+            }
+            statusRow(
+                AppConstants.Labels.runtime,
+                controller.status.runtimeInstalled
+                    ? AppConstants.StatusText.installed
+                    : AppConstants.StatusText.notInstalled
+            )
             statusRow(AppConstants.Labels.operation, controller.status.operation ?? AppConstants.StatusText.unknown)
             statusRow(AppConstants.Labels.runtimeVersion, controller.status.runtimeVersion ?? AppConstants.StatusText.unknown)
             statusRow(AppConstants.Labels.updatedAt, controller.status.updatedAt ?? AppConstants.StatusText.unknown)
@@ -92,6 +162,16 @@ struct ContentView: View {
         .padding(16)
         .background(Color(nsColor: .controlBackgroundColor))
         .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private var vitalServerAvailability: String {
+        if isSuccessfulHTTPStatus(controller.status.hostProxyHTTP) {
+            return AppConstants.StatusText.available
+        }
+        if controller.status.runtimeInstalled {
+            return AppConstants.StatusText.waiting
+        }
+        return AppConstants.StatusText.unavailable
     }
 
     private func statusRow(_ label: String, _ value: String) -> some View {
@@ -140,46 +220,6 @@ struct ContentView: View {
                 Task { await controller.refresh() }
             }
             .disabled(controller.isBusy)
-        }
-        .alert(AppConstants.Actions.applyBundle, isPresented: $showingUpdateConfirmation) {
-            Button(AppConstants.Actions.cancel, role: .cancel) {}
-            Button(AppConstants.Actions.startUpdate) {
-                Task { await controller.applySelectedBundle() }
-            }
-        } message: {
-            Text(controller.selectedBundleConfirmation)
-        }
-        .alert(AppConstants.Actions.rollback, isPresented: $showingRollbackConfirmation) {
-            Button(AppConstants.Actions.cancel, role: .cancel) {}
-            Button(AppConstants.Actions.startRollback, role: .destructive) {
-                Task { await controller.rollbackRuntime() }
-            }
-        } message: {
-            Text(controller.selectedBackupPath.isEmpty ? AppConstants.StatusText.latestBackupFallback : controller.selectedBackupPath)
-        }
-        .alert(AppConstants.Actions.repairProxyPort, isPresented: $showingRepairProxyConfirmation) {
-            Button(AppConstants.Actions.cancel, role: .cancel) {}
-            Button(AppConstants.Actions.repairProxy, role: .destructive) {
-                Task { await controller.repairProxyPort() }
-            }
-        } message: {
-            Text(AppConstants.StatusText.repairProxyConfirmation)
-        }
-        .alert(AppConstants.Actions.standardUninstall, isPresented: $showingUninstallConfirmation) {
-            Button(AppConstants.Actions.cancel, role: .cancel) {}
-            Button(AppConstants.Actions.uninstall, role: .destructive) {
-                Task { await controller.uninstallRuntime() }
-            }
-        } message: {
-            Text(AppConstants.StatusText.standardUninstallConfirmation)
-        }
-        .alert(AppConstants.Actions.cleanUninstall, isPresented: $showingCleanUninstallConfirmation) {
-            Button(AppConstants.Actions.cancel, role: .cancel) {}
-            Button(AppConstants.Actions.cleanUninstall, role: .destructive) {
-                Task { await controller.uninstallRuntime(clean: true) }
-            }
-        } message: {
-            Text(AppConstants.StatusText.cleanUninstallConfirmation)
         }
     }
 
@@ -244,7 +284,6 @@ struct ContentView: View {
 
     private var updatePanel: some View {
         VStack(alignment: .leading, spacing: 14) {
-            statusBadge
             HStack {
                 Text(controller.selectedBundlePath.isEmpty ? AppConstants.Labels.noUpdateBundleSelected : controller.selectedBundlePath)
                     .lineLimit(2)
@@ -307,6 +346,21 @@ struct ContentView: View {
         .padding(16)
     }
 
+    private var advancedPanel: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(AppConstants.Labels.advancedSummary)
+                    .font(.headline)
+                Text(AppConstants.Labels.advancedDescription)
+                    .foregroundStyle(.secondary)
+            }
+            advancedStatusGrid
+            actionBar
+            Spacer()
+        }
+        .padding(16)
+    }
+
     private var statusBadge: some View {
         Text(controller.status.runtimeState ?? AppConstants.StatusText.unknown)
             .font(.headline)
@@ -330,6 +384,13 @@ struct ContentView: View {
         default:
             return .gray
         }
+    }
+
+    private func isSuccessfulHTTPStatus(_ value: String?) -> Bool {
+        guard let value, let code = Int(value) else {
+            return false
+        }
+        return code >= 200 && code < 400
     }
 
     private func settingsSection<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {

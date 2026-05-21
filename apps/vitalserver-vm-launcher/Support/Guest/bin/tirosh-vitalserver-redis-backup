@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+MOUNT_POINT="${TIROSH_SHARE_MOUNT:-/mnt/tirosh}"
+DEPLOY_DIR="${TIROSH_DEPLOY_DIR:-${MOUNT_POINT}/deploy}"
+BACKUP_DIR="${MOUNT_POINT}/backups/redis"
+STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+
+mkdir -p "${BACKUP_DIR}"
+docker compose --project-name vitalserver -f "${DEPLOY_DIR}/compose.yaml" exec -T redis redis-cli SAVE >/dev/null
+tar -C /var/lib/docker/volumes/vitalserver_redis-data/_data -czf "${BACKUP_DIR}/redis-${STAMP}.tar.gz" .
+find "${BACKUP_DIR}" -name 'redis-*.tar.gz' -type f | sort | head -n -7 | xargs -r rm -f

@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ACTION="${1:-up}"
+MOUNT_TAG="${TIROSH_SHARE_TAG:-tirosh}"
+MOUNT_POINT="${TIROSH_SHARE_MOUNT:-/mnt/tirosh}"
+VITAL_FILES_MOUNT_TAG="${TIROSH_VITAL_FILES_SHARE_TAG:-tirosh-vital-files}"
+VITAL_FILES_MOUNT_POINT="${TIROSH_VITAL_FILES_SHARE_MOUNT:-/mnt/tirosh-vital-files}"
+DEPLOY_DIR="${TIROSH_DEPLOY_DIR:-${MOUNT_POINT}/deploy}"
+
+mkdir -p "${MOUNT_POINT}"
+if ! mountpoint -q "${MOUNT_POINT}"; then
+  mount -t virtiofs "${MOUNT_TAG}" "${MOUNT_POINT}"
+fi
+
+mkdir -p "${VITAL_FILES_MOUNT_POINT}"
+if ! mountpoint -q "${VITAL_FILES_MOUNT_POINT}"; then
+  mount -t virtiofs "${VITAL_FILES_MOUNT_TAG}" "${VITAL_FILES_MOUNT_POINT}"
+fi
+
+eval "$(/usr/local/bin/tirosh-runtime-env "${DEPLOY_DIR}/runtime-config.json")"
+
+case "${ACTION}" in
+  up)
+    exec docker compose --project-name vitalserver -f "${DEPLOY_DIR}/compose.yaml" up -d
+    ;;
+  stop)
+    exec docker compose --project-name vitalserver -f "${DEPLOY_DIR}/compose.yaml" stop
+    ;;
+  *)
+    printf "usage: tirosh-vitalserver-compose [up|stop]\n" >&2
+    exit 2
+    ;;
+esac

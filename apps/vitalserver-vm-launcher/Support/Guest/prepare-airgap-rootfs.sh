@@ -55,7 +55,6 @@ install_runtime_packages() {
     cloud-guest-utils \
     curl \
     docker.io \
-    nginx \
     qemu-user-static
 
   if ! docker compose version >/dev/null 2>&1; then
@@ -69,7 +68,6 @@ install_runtime_packages() {
 
 install_runtime_packages
 systemctl enable docker
-systemctl enable nginx
 systemctl enable avahi-daemon
 systemctl enable binfmt-support >/dev/null 2>&1 || true
 
@@ -77,7 +75,6 @@ systemctl enable binfmt-support >/dev/null 2>&1 || true
   printf "ready_at=%s\n" "$(date -Iseconds)"
   printf "docker=%s\n" "$(docker --version 2>/dev/null || true)"
   printf "compose=%s\n" "$(docker compose version 2>/dev/null || true)"
-  printf "nginx=%s\n" "$(nginx -v 2>&1 || true)"
 } >"${READY_FILE}"
 
 printf "Air-gapped rootfs package prerequisites are ready.\n"

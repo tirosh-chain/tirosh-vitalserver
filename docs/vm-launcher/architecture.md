@@ -39,11 +39,10 @@ bridged mode
 
 VRecorder / Browser
   -> Linux VM LAN IP :80
-      -> guest nginx
-          -> Docker Compose
-              - vitalserver
-              - redis
-              - vitaldb-observer
+      -> Docker Compose edge nginx
+          -> vitalserver
+          -> redis
+          -> vitaldb-observer
 ```
 
 두 구조를 비교하면 아래와 같습니다.
@@ -52,7 +51,7 @@ VRecorder / Browser
 |---|---|---|
 | 제품 v1 기본값 | 예 | 아니오 |
 | VRecorder 접속 대상 | target Mac LAN IP | Linux VM LAN IP |
-| edge proxy 위치 | macOS host nginx | Linux VM 내부 nginx |
+| edge proxy 위치 | macOS host nginx | Linux VM Compose edge nginx |
 | VM IP 부여 | macOS Virtualization NAT DHCP | 병원 LAN DHCP |
 | 원 IP 보존 | host nginx 경유로 보존 | VM이 LAN에서 직접 수신 |
 | Apple `com.apple.vm.networking` 승인 | 필요 없음 | 필요 |
@@ -331,15 +330,15 @@ Shell
 | 영역 | 주요 파일 | 책임 | 책임 밖 |
 |---|---|---|---|
 | build orchestration | `make/vm.mk`, `make/vm/config.mk` | target dependency, 중간/최종 산출물 경로, unsigned build 변수, install test wrapper | manifest 해석, disk/rootfs 세부 처리 |
-| build config | `apps/vitalserver-vm-launcher/Support/Build/vm-build.toml` | Ubuntu/rootfs/Docker/nginx pinned input 값 | 설치 시 사용자 설정 |
+| build config | `apps/vitalserver-vm-launcher/Support/Build/vm-build.toml` | Ubuntu/rootfs/Docker image/nginx bundle pinned input 값 | 설치 시 사용자 설정 |
 | Python build package | `packages/vm-build/src/tirosh_vitalserver/vm_build/*.py` | Ubuntu asset 준비, cloud-init ISO 생성, rootfs 압축, nginx bundle, Docker image bundle, update bundle 생성/검증, plist/template rendering | 설치 후 runtime 상태 변경 |
-| Swift CLI entry | `Sources/VitalServerVMLauncher/CLI/Launcher.swift`, `Command.swift` | `vitalserver-vm` command routing, VM start/stop/status/network/runtime command 연결 | package staging, DMG 생성 |
-| Swift runtime lifecycle | `Sources/VitalServerVMLauncher/Runtime/RuntimeLifecycle.swift` | `runtime install/status/health/verify-bundle/stage-bundle/apply-bundle/rollback`, install settings 적용, VM disk 생성, launchd load, backup/rollback | DMG/PKG 파일 생성 |
+| Runtime orchestrator entry | `Sources/RuntimeOrchestrator/CLI/Launcher.swift`, `Command.swift` | `vitalserver-vm` command routing, VM start/stop/status/network/runtime command 연결 | package staging, DMG 생성 |
+| Runtime lifecycle | `Sources/RuntimeOrchestrator/Runtime/RuntimeLifecycle.swift` | `runtime install/status/health/verify-bundle/stage-bundle/apply-bundle/rollback`, install settings 적용, VM disk 생성, launchd load, backup/rollback | DMG/PKG 파일 생성 |
 | Swift runtime paths/constants | `LauncherPaths.swift`, `Constants.swift` | 설치/runtime 경로, artifact 이름, launchd/service 이름, command path | runtime 동작 정책 결정 |
 | VM configuration | `VirtualMachine/VMRuntimeConfig.swift`, `VMConfigurationFactory.swift` | `vm-config.json` schema, Apple Virtualization configuration 생성 | install settings 파일 읽기 |
-| Manager app | `Sources/TiroshVitalServerApp/*` | 설치 후 상태/health/open/update/uninstall 진입 UI | rootfs, VM disk, privileged provisioning 포함 |
+| Manager app | `Sources/ManagerApp/*` | 설치 후 상태/health/open/update/uninstall 진입 UI | rootfs, VM disk, privileged provisioning 포함 |
 | PKG scripts | `Support/Packaging/preinstall`, `postinstall`, `proxy-run`, `uninstall` | installer/launchd/uninstall entrypoint wrapper | 복잡한 provisioning 로직 |
-| guest bootstrap | `Support/Guest/bootstrap.sh`, `prepare-airgap-rootfs.sh`, `compose.yaml` | Linux guest 내부 Docker/nginx/Compose 구성, Docker image load, VM IP marker 기록 | macOS launchd/proxy 관리 |
+| guest bootstrap | `Support/Guest/bootstrap.sh`, `bin/*`, `systemd/*`, `prepare-airgap-rootfs.sh`, `compose.yaml` | Linux guest 내부 Docker/Compose 구성, edge nginx container, Docker image load, runtime state 기록 | macOS launchd/proxy 관리 |
 
 Shell은 의도적으로 얇게 유지합니다. `postinstall`은 로그를 열고 `VITALSERVER_VM_HOME=/Library/Application Support/TiroshVitalServer/vm vitalserver-vm runtime install`만 호출합니다. 설치 정책은 Swift `RuntimeLifecycle`에 둡니다.
 
@@ -350,6 +349,6 @@ Shell은 의도적으로 얇게 유지합니다. `postinstall`은 로그를 열�
 | Ubuntu image URL, rootfs 압축, cloud-init ISO, Docker image bundle, nginx bundle | Python `packages/vm-build` |
 | PKG/DMG target dependency, 산출물 경로, 개발용 install wrapper | `make/vm/*.mk` |
 | 설치 후 VM disk 생성, launchd load, runtime config, health, update/rollback | Swift `RuntimeLifecycle` |
-| VM start/stop/network mode와 Apple Virtualization config | Swift `VitalServerVMLauncher` |
-| Linux guest 내부 Docker/nginx/systemd 구성 | `Support/Guest/*.sh`, guest config |
+| VM start/stop/network mode와 Apple Virtualization config | Swift `RuntimeOrchestrator` |
+| Linux guest 내부 Docker Compose, edge nginx container, systemd entrypoint 구성 | `Support/Guest/*.sh`, guest config |
 | installer/launchd가 호출하는 command 연결 | `Support/Packaging/*.sh` |
