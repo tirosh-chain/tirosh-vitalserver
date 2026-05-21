@@ -411,15 +411,7 @@ struct ContentView: View {
                         }
                     }
                 }
-                HStack {
-                    Button(AppConstants.Actions.applySettings) {
-                        if controller.prepareApplySettings() {
-                            showingApplySettingsConfirmation = true
-                        }
-                    }
-                    .disabled(controller.isBusy || !controller.status.runtimeInstalled)
-                    Spacer()
-                }
+                applyActionRow
             }
             .frame(maxWidth: 760, alignment: .leading)
             .padding(16)
@@ -610,12 +602,29 @@ struct ContentView: View {
             settingHelp(AppConstants.Labels.proxyPortHelp)
             settingTextField(AppConstants.Labels.publicHost, text: $controller.settings.publicHost)
             settingPortField(AppConstants.Labels.publicPort, value: $controller.settings.publicPort)
+            applyActionRow
+        }
+    }
+
+    private var applyActionRow: some View {
+        HStack(spacing: 12) {
             Button(AppConstants.Actions.applySettings) {
                 if controller.prepareApplySettings() {
                     showingApplySettingsConfirmation = true
                 }
             }
             .disabled(controller.isBusy || !controller.status.runtimeInstalled)
+
+            if controller.isBusy {
+                ProgressView()
+                    .controlSize(.small)
+                Text(controller.message)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+
+            Spacer()
         }
     }
 
