@@ -59,8 +59,8 @@ final class RuntimeController: ObservableObject {
     }
 
     func refresh() async {
-        status = RuntimeStatus.load(paths: runtime)
         settings = RuntimeSettings.load()
+        status = withDataStorageUsage(RuntimeStatus.load(paths: runtime))
         backups = RuntimeBackup.loadAll()
         let backupPaths = Set(backups.map(\.path))
         if let latest = backups.first, (selectedBackupPath.isEmpty || !backupPaths.contains(selectedBackupPath)) {
@@ -72,7 +72,7 @@ final class RuntimeController: ObservableObject {
             message = displayMessage
         }
         handleHealthNotificationTransition(status)
-        refreshLogs()
+        refreshLogsIfLive()
     }
 
     func refreshHealthStatus() async {
@@ -81,7 +81,7 @@ final class RuntimeController: ObservableObject {
             message = displayMessage
         }
         handleHealthNotificationTransition(status)
-        refreshLogs()
+        refreshLogsIfLive()
     }
 
     func healthCheck() async {
@@ -171,9 +171,14 @@ final class RuntimeController: ObservableObject {
         let panel = NSOpenPanel()
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
+        panel.canCreateDirectories = true
         panel.allowsMultipleSelection = false
         panel.prompt = AppConstants.Actions.chooseDirectory
         if panel.runModal() == .OK, let url = panel.url {
+            try? FileManager.default.createDirectory(
+                at: url,
+                withIntermediateDirectories: true
+            )
             settings.vitalFilesDirectory = url.path
         }
     }
@@ -322,6 +327,12 @@ final class RuntimeController: ObservableObject {
     func refreshLogs() {
         let limit = max(logLineLimit, 1)
         logText = selectedLogText(lineLimit: limit)
+    }
+
+    func refreshLogsIfLive() {
+        if logStreaming {
+            refreshLogs()
+        }
     }
 
     func openVitalFilesDirectory() {
@@ -474,7 +485,7 @@ final class RuntimeController: ObservableObject {
         next.redisUIHTTP = await httpStatus(url: AppConstants.Product.redisUIURL(proxyPort: next.proxyPort))
         next.swaggerUIHTTP = await httpStatus(url: AppConstants.Product.swaggerURL(proxyPort: next.proxyPort))
 
-        return next
+        return withDataStorageUsage(next)
     }
 
     private func httpStatus(url: String) async -> String {
@@ -484,6 +495,46 @@ final class RuntimeController: ObservableObject {
         )
         let code = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
         return result.exitCode == 0 ? code : AppConstants.StatusText.failed
+    }
+
+    private func withDataStorageUsage(_ status: RuntimeStatus) -> RuntimeStatus {
+        var next = status
+        next.dataStorage = storageUsage(for: settings.vitalFilesDirectory)
+        return next
+    }
+
+    private func storageUsage(for path: String) -> ResourceUsage? {
+        guard let volumeURL = existingStorageURL(for: path),
+              let values = try? volumeURL.resourceValues(forKeys: [
+                .volumeAvailableCapacityForImportantUsageKey,
+                .volumeAvailableCapacityKey,
+                .volumeTotalCapacityKey,
+            ]),
+              let total = values.volumeTotalCapacity,
+              total > 0 else {
+            return nil
+        }
+
+        let available = values.volumeAvailableCapacityForImportantUsage
+            ?? values.volumeAvailableCapacity.map(Int64.init)
+            ?? 0
+        return ResourceUsage(
+            usedBytes: max(Int64(total) - available, 0),
+            totalBytes: Int64(total)
+        )
+    }
+
+    private func existingStorageURL(for path: String) -> URL? {
+        var url = URL(fileURLWithPath: path)
+        let fileManager = FileManager.default
+        while !fileManager.fileExists(atPath: url.path) {
+            let parent = url.deletingLastPathComponent()
+            guard parent.path != url.path else {
+                return nil
+            }
+            url = parent
+        }
+        return url
     }
 
     private func updateBundleSummary(url: URL) -> String {
@@ -521,7 +572,7 @@ final class RuntimeController: ObservableObject {
         for _ in 0..<12 {
             settings = RuntimeSettings.load()
             status = await loadHealthStatus()
-            refreshLogs()
+            refreshLogsIfLive()
             if status.isReady || !settings.restartAfterSave {
                 return
             }

@@ -32,6 +32,17 @@ make vm-pkg-uninstall-dev
 dist/TiroshVitalServerVM-0.1.0.pkg
 ```
 
+패키징 시간이 길면 압축 단계에서 CPU를 더 쓰도록 설정할 수 있습니다. `rootfs-base.raw.gz`와
+`vitalserver-images.tar.gz` 생성은 `VM_COMPRESSION_THREADS` 값을 사용합니다.
+
+```sh
+VM_COMPRESSION_THREADS=8 make vm-pkg
+```
+
+빌드 머신에 `pigz`가 있으면 병렬 gzip을 사용하고, 없으면 Python gzip으로 자동 fallback합니다.
+`make -j`는 일부 target을 병렬 실행할 수 있지만, golden VM 부팅과 Swift binary signing이 같은
+중간 산출물을 공유하므로 기본 권장 경로는 `VM_COMPRESSION_THREADS`로 압축 병목을 줄이는 것입니다.
+
 전달용 DMG가 필요하면 `make vm-dmg`를 실행합니다. DMG에는 단일 PKG만 들어갑니다.
 
 ```text

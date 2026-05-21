@@ -1,3 +1,4 @@
+import Foundation
 import SwiftUI
 
 struct ContentView: View {
@@ -10,6 +11,7 @@ struct ContentView: View {
     @State private var showingApplySettingsConfirmation = false
     @State private var showingHealthDetails = false
     @State private var selectedTab = ManagerTab.status
+    @State private var hoveredServiceLink: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -136,6 +138,8 @@ struct ContentView: View {
                 }
             }
             Divider()
+            resourceUsageSection
+            Divider()
             DisclosureGroup(AppConstants.Labels.healthDetails, isExpanded: $showingHealthDetails) {
                 Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 10) {
                     ForEach(healthItems) { item in
@@ -149,6 +153,32 @@ struct ContentView: View {
         .background(Color(nsColor: .controlBackgroundColor))
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .frame(maxWidth: 760, alignment: .leading)
+    }
+
+    private var resourceUsageSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(AppConstants.Labels.resourceUsage)
+                .font(.headline)
+            Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 10) {
+                resourceRow(
+                    AppConstants.Labels.cpuUsage,
+                    percent: controller.status.cpuUsagePercent,
+                    detail: percentDetail(controller.status.cpuUsagePercent)
+                )
+                resourceRow(
+                    AppConstants.Labels.memoryUsage,
+                    usage: controller.status.memory
+                )
+                resourceRow(
+                    AppConstants.Labels.systemDiskUsage,
+                    usage: controller.status.systemDisk
+                )
+                resourceRow(
+                    AppConstants.Labels.dataStorageUsage,
+                    usage: controller.status.dataStorage
+                )
+            }
+        }
     }
 
     private var overallHealthLabel: String {
@@ -218,14 +248,9 @@ struct ContentView: View {
                 isHealthy: controller.status.proxyServiceLoaded && isSuccessfulHTTPStatus(controller.status.hostProxyHTTP)
             ),
             HealthItem(
-                label: AppConstants.Labels.redisUI,
+                label: AppConstants.Labels.redis,
                 value: serviceReachabilityLabel(controller.status.redisUIHTTP),
                 isHealthy: isSuccessfulHTTPStatus(controller.status.redisUIHTTP)
-            ),
-            HealthItem(
-                label: AppConstants.Labels.swaggerUI,
-                value: serviceReachabilityLabel(controller.status.swaggerUIHTTP),
-                isHealthy: isSuccessfulHTTPStatus(controller.status.swaggerUIHTTP)
             ),
             HealthItem(
                 label: AppConstants.Labels.watchdog,
@@ -333,57 +358,64 @@ struct ContentView: View {
         }
     }
 
-    private var actionBar: some View {
-        HStack(spacing: 10) {
-            Button(AppConstants.Actions.healthCheck) {
-                Task { await controller.healthCheck() }
+    private func resourceRow(_ label: String, usage: ResourceUsage?) -> some View {
+        resourceRow(
+            label,
+            percent: usage?.percent,
+            detail: usage.map { "\(formatBytes($0.usedBytes)) / \(formatBytes($0.totalBytes))" } ?? AppConstants.StatusText.notChecked
+        )
+    }
+
+    private func resourceRow(_ label: String, percent: Double?, detail: String) -> some View {
+        GridRow {
+            Text(label)
+                .foregroundStyle(.secondary)
+            HStack(spacing: 10) {
+                ProgressView(value: min(max(percent ?? 0, 0), 100), total: 100)
+                    .frame(width: 160)
+                Text(detail)
+                    .fontWeight(.medium)
+                    .monospacedDigit()
             }
-            Menu(AppConstants.Actions.open) {
-                Button(AppConstants.Actions.openVitalServer) {
-                    controller.openVitalServer()
-                }
-                Button(AppConstants.Actions.openRedisUI) {
-                    controller.openRedisUI()
-                }
-                Button(AppConstants.Actions.openSwagger) {
-                    controller.openSwagger()
-                }
-            }
-            .fixedSize()
-            Button(AppConstants.Actions.repairProxy) {
-                showingRepairProxyConfirmation = true
-            }
-            .disabled(controller.isBusy || !controller.status.runtimeInstalled)
-            Menu(AppConstants.Actions.uninstall) {
-                Button(AppConstants.Actions.standardUninstall, role: .destructive) {
-                    showingUninstallConfirmation = true
-                }
-                Button(AppConstants.Actions.cleanUninstall, role: .destructive) {
-                    showingCleanUninstallConfirmation = true
-                }
-            }
-            .foregroundStyle(.red)
-            .disabled(controller.isBusy || !controller.status.runtimeInstalled)
-            .fixedSize()
-            Spacer()
-            Button(AppConstants.Actions.refresh) {
-                Task { await controller.refresh() }
-            }
-            .disabled(controller.isBusy)
         }
+    }
+
+    private func percentDetail(_ percent: Double?) -> String {
+        guard let percent else {
+            return AppConstants.StatusText.notChecked
+        }
+        return "\(Int(percent.rounded()))%"
+    }
+
+    private func formatBytes(_ bytes: Int64) -> String {
+        let formatter = ByteCountFormatter()
+        formatter.allowedUnits = [.useGB, .useMB]
+        formatter.countStyle = .file
+        return formatter.string(fromByteCount: bytes)
     }
 
     private var settingsPanel: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 settingsSection(AppConstants.Labels.sectionVM) {
-                    settingSlider(AppConstants.Labels.cpu, value: $controller.settings.cpuCount, range: 7...64, suffix: AppConstants.Labels.unitVCPU)
-                    settingSlider(AppConstants.Labels.memory, value: $controller.settings.memoryGiB, range: 4...64, step: 4, suffix: AppConstants.Labels.unitGiB)
+                    settingSlider(
+                        AppConstants.Labels.cpu,
+                        value: $controller.settings.cpuCount,
+                        range: AppConstants.SettingsLimits.minimumCPUCount...AppConstants.SettingsLimits.maximumCPUCount,
+                        suffix: AppConstants.Labels.unitVCPU
+                    )
+                    settingSlider(
+                        AppConstants.Labels.memory,
+                        value: $controller.settings.memoryGiB,
+                        range: AppConstants.SettingsLimits.minimumMemoryGiB...AppConstants.SettingsLimits.maximumMemoryGiB,
+                        step: AppConstants.SettingsLimits.memoryStepGiB,
+                        suffix: AppConstants.Labels.unitGiB
+                    )
                     settingSlider(
                         AppConstants.Labels.disk,
                         value: $controller.settings.diskGiB,
                         range: diskSizeRange,
-                        step: 4,
+                        step: AppConstants.SettingsLimits.diskStepGiB,
                         suffix: AppConstants.Labels.unitGiB
                     )
                     settingWarning(AppConstants.Labels.diskIncreaseOnlyHelp(controller.settings.minimumDiskGiB))
@@ -401,15 +433,6 @@ struct ContentView: View {
                     settingToggle(AppConstants.Labels.startOnBoot, isOn: $controller.settings.startOnBoot)
                         .disabled(!controller.settings.startOnBootConfigurable)
                     settingToggle(AppConstants.Labels.restartServicesAfterSave, isOn: $controller.settings.restartAfterSave)
-                    settingToggle(AppConstants.Labels.resetAdminPassword, isOn: $controller.settings.changeAdminPassword)
-                    if controller.settings.changeAdminPassword {
-                        settingRow(AppConstants.Labels.newAdminPassword) {
-                            SecureField("", text: $controller.settings.adminPassword)
-                                .labelsHidden()
-                                .textFieldStyle(.roundedBorder)
-                                .frame(maxWidth: 360)
-                        }
-                    }
                 }
                 applyActionRow
             }
@@ -520,7 +543,7 @@ struct ContentView: View {
 
     private var diskSizeRange: ClosedRange<Int> {
         let minimum = controller.settings.minimumDiskGiB
-        return minimum...max(minimum, 512)
+        return minimum...max(minimum, AppConstants.SettingsLimits.maximumDiskGiB)
     }
 
     private var advancedPanel: some View {
@@ -585,10 +608,26 @@ struct ContentView: View {
                     isHealthy: controller.status.watchdogServiceLoaded,
                     value: controller.status.watchdogServiceLoaded ? AppConstants.StatusText.running : AppConstants.StatusText.notLoaded
                 )
-                httpStateRow(AppConstants.Labels.vitalServerApp, value: controller.status.guestHTTP)
-                httpStateRow(AppConstants.Labels.hostProxyService, value: controller.status.hostProxyHTTP)
-                httpStateRow(AppConstants.Labels.redisUI, value: controller.status.redisUIHTTP)
-                httpStateRow(AppConstants.Labels.swaggerUI, value: controller.status.swaggerUIHTTP)
+                httpStateRow(
+                    AppConstants.Labels.vitalServerApp,
+                    value: controller.status.guestHTTP,
+                    action: controller.openVitalServer
+                )
+                httpStateRow(
+                    AppConstants.Labels.hostProxyService,
+                    value: controller.status.hostProxyHTTP,
+                    action: controller.openVitalServer
+                )
+                httpStateRow(
+                    AppConstants.Labels.redisUI,
+                    value: controller.status.redisUIHTTP,
+                    action: controller.openRedisUI
+                )
+                httpStateRow(
+                    AppConstants.Labels.swaggerUI,
+                    value: controller.status.swaggerUIHTTP,
+                    action: controller.openSwagger
+                )
             }
         }
     }
@@ -627,7 +666,40 @@ struct ContentView: View {
 
     private var adminOperationsCard: some View {
         advancedCard(AppConstants.Labels.sectionAdminOperations) {
-            actionBar
+            VStack(alignment: .leading, spacing: 12) {
+                Text(AppConstants.Labels.adminOperationsHelp)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                settingToggle(AppConstants.Labels.resetAdminPassword, isOn: $controller.settings.changeAdminPassword)
+                if controller.settings.changeAdminPassword {
+                    settingRow(AppConstants.Labels.newAdminPassword) {
+                        SecureField("", text: $controller.settings.adminPassword)
+                            .labelsHidden()
+                            .textFieldStyle(.roundedBorder)
+                            .frame(maxWidth: 360)
+                    }
+                }
+                applyActionRow
+                Divider()
+                HStack(spacing: 10) {
+                    Button(AppConstants.Actions.repairProxy) {
+                        showingRepairProxyConfirmation = true
+                    }
+                    .disabled(controller.isBusy || !controller.status.runtimeInstalled)
+                    Menu(AppConstants.Actions.uninstall) {
+                        Button(AppConstants.Actions.standardUninstall, role: .destructive) {
+                            showingUninstallConfirmation = true
+                        }
+                        Button(AppConstants.Actions.cleanUninstall, role: .destructive) {
+                            showingCleanUninstallConfirmation = true
+                        }
+                    }
+                    .foregroundStyle(.red)
+                    .disabled(controller.isBusy || !controller.status.runtimeInstalled)
+                    .fixedSize()
+                }
+            }
         }
     }
 
@@ -643,10 +715,14 @@ struct ContentView: View {
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
-    private func serviceStateRow(_ label: String, isHealthy: Bool, value: String) -> some View {
+    private func serviceStateRow(
+        _ label: String,
+        isHealthy: Bool,
+        value: String,
+        action: (() -> Void)? = nil
+    ) -> some View {
         GridRow {
-            Text(label)
-                .foregroundStyle(.secondary)
+            serviceName(label, action: action)
             HStack(spacing: 8) {
                 Circle()
                     .fill(isHealthy ? Color.green : Color.orange)
@@ -657,11 +733,14 @@ struct ContentView: View {
         }
     }
 
-    private func httpStateRow(_ label: String, value: String?) -> some View {
+    private func httpStateRow(
+        _ label: String,
+        value: String?,
+        action: (() -> Void)? = nil
+    ) -> some View {
         let healthy = isSuccessfulHTTPStatus(value)
         return GridRow {
-            Text(label)
-                .foregroundStyle(.secondary)
+            serviceName(label, action: action)
             HStack(spacing: 8) {
                 Circle()
                     .fill(healthy ? Color.green : Color.orange)
@@ -674,6 +753,29 @@ struct ContentView: View {
                         .foregroundStyle(.secondary)
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private func serviceName(_ label: String, action: (() -> Void)?) -> some View {
+        if let action {
+            Button(action: action) {
+                Text(label)
+                    .underline()
+                    .foregroundStyle(
+                        hoveredServiceLink == label
+                            ? Color.accentColor
+                            : Color.secondary
+                    )
+            }
+            .buttonStyle(.plain)
+            .onHover { isHovering in
+                hoveredServiceLink = isHovering ? label : nil
+            }
+            .help(AppConstants.Labels.openServiceHelp(label))
+        } else {
+            Text(label)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -846,11 +948,16 @@ struct ContentView: View {
                 }
                 Toggle(AppConstants.Labels.logStreaming, isOn: $controller.logStreaming)
                     .toggleStyle(.checkbox)
+                    .onChange(of: controller.logStreaming) { isLive in
+                        if isLive {
+                            controller.refreshLogs()
+                        }
+                    }
+                Text(controller.logStreaming ? AppConstants.Labels.logLive : AppConstants.Labels.logPaused)
+                    .font(.caption)
+                    .foregroundStyle(controller.logStreaming ? .green : .secondary)
                 Button(AppConstants.Actions.openLogs) {
                     controller.openLogs()
-                }
-                Button(AppConstants.Actions.refresh) {
-                    controller.refreshLogs()
                 }
             }
             ScrollView {
@@ -885,9 +992,7 @@ struct ContentView: View {
 
     private func pollLogs() async {
         while !Task.isCancelled {
-            if controller.logStreaming {
-                controller.refreshLogs()
-            }
+            controller.refreshLogsIfLive()
             try? await Task.sleep(nanoseconds: 1_000_000_000)
         }
     }

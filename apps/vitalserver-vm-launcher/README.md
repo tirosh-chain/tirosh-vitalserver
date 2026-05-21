@@ -105,6 +105,15 @@ source of truth입니다.
 make vm-pkg
 ```
 
+압축 단계가 오래 걸리면 build machine의 CPU thread 수를 명시할 수 있습니다.
+
+```sh
+VM_COMPRESSION_THREADS=8 make vm-pkg
+```
+
+`pigz`가 설치된 build machine에서는 `rootfs-base.raw.gz`와 Docker image bundle 압축이 병렬로
+진행됩니다. `pigz`가 없으면 기존 gzip 방식으로 자동 fallback합니다.
+
 `make vm-pkg` 생성물:
 
 ```text

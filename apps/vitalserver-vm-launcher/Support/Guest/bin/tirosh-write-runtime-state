@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 import json
+import os
 import socket
 import subprocess
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -40,6 +42,61 @@ def optional_arg(index: int) -> str | None:
     return value if value else None
 
 
+def read_proc_stat() -> tuple[int, int] | None:
+    try:
+        fields = Path("/proc/stat").read_text(encoding="utf-8").splitlines()[0].split()[1:]
+        values = [int(value) for value in fields]
+    except Exception:
+        return None
+
+    idle = values[3] + (values[4] if len(values) > 4 else 0)
+    total = sum(values)
+    return idle, total
+
+
+def cpu_usage_percent() -> float | None:
+    first = read_proc_stat()
+    if first is None:
+        return None
+    time.sleep(0.1)
+    second = read_proc_stat()
+    if second is None:
+        return None
+
+    idle_delta = second[0] - first[0]
+    total_delta = second[1] - first[1]
+    if total_delta <= 0:
+        return None
+    return round(max(0.0, min(100.0, (1.0 - (idle_delta / total_delta)) * 100.0)), 1)
+
+
+def memory_usage() -> dict[str, int] | None:
+    values: dict[str, int] = {}
+    try:
+        for line in Path("/proc/meminfo").read_text(encoding="utf-8").splitlines():
+            key, raw_value = line.split(":", 1)
+            values[key] = int(raw_value.strip().split()[0]) * 1024
+    except Exception:
+        return None
+
+    total = values.get("MemTotal")
+    available = values.get("MemAvailable")
+    if total is None or available is None:
+        return None
+    return {"usedBytes": max(total - available, 0), "totalBytes": total}
+
+
+def disk_usage(path: str) -> dict[str, int] | None:
+    try:
+        stats = os.statvfs(path)
+    except OSError:
+        return None
+
+    total = stats.f_frsize * stats.f_blocks
+    available = stats.f_frsize * stats.f_bavail
+    return {"usedBytes": max(total - available, 0), "totalBytes": total}
+
+
 def main() -> int:
     if len(sys.argv) < 2 or len(sys.argv) > 5:
         print(
@@ -59,10 +116,14 @@ def main() -> int:
                 "schemaVersion": 1,
                 "vmIP": first_non_loopback_ip(),
                 "bootID": boot_id(),
+                "cpuUsagePercent": cpu_usage_percent(),
                 "guestHTTP": guest_http,
+                "memory": memory_usage(),
                 "redisUIHTTP": redis_ui_http,
+                "systemDisk": disk_usage("/"),
                 "swaggerUIHTTP": swagger_ui_http,
                 "updatedAt": datetime.now(timezone.utc).isoformat(),
+                "vitalFilesDisk": disk_usage("/mnt/tirosh-vital-files"),
             },
             indent=2,
             sort_keys=True,

@@ -16,6 +16,10 @@ struct RuntimeStatus {
     var hostProxyHTTP: String?
     var redisUIHTTP: String?
     var swaggerUIHTTP: String?
+    var cpuUsagePercent: Double?
+    var memory: ResourceUsage?
+    var systemDisk: ResourceUsage?
+    var dataStorage: ResourceUsage?
     var proxyPort = AppConstants.Product.defaultProxyPort
     var failureReasons: [String] = []
 
@@ -58,10 +62,14 @@ struct RuntimeStatus {
             runtimeVersion: document?.runtimeVersion,
             latestBackup: document?.latestBackup,
             vmIP: document?.vmIP ?? guestState?.vmIP ?? readTrimmed(paths.vmIPFile),
-            guestHTTP: document?.guestHTTP,
+            guestHTTP: document?.guestHTTP ?? guestState?.guestHTTP,
             hostProxyHTTP: document?.hostProxyHTTP,
             redisUIHTTP: document?.redisUIHTTP ?? guestState?.redisUIHTTP,
             swaggerUIHTTP: document?.swaggerUIHTTP ?? guestState?.swaggerUIHTTP,
+            cpuUsagePercent: guestState?.cpuUsagePercent,
+            memory: guestState?.memory,
+            systemDisk: guestState?.systemDisk,
+            dataStorage: nil,
             proxyPort: document?.proxyPort ?? proxyPort(paths.proxyLaunchDaemon),
             failureReasons: document?.failureReasons ?? []
         )
@@ -131,6 +139,18 @@ struct RuntimeStatus {
     }
 }
 
+struct ResourceUsage: Decodable {
+    let usedBytes: Int64
+    let totalBytes: Int64
+
+    var percent: Double {
+        guard totalBytes > 0 else {
+            return 0
+        }
+        return min(max((Double(usedBytes) / Double(totalBytes)) * 100.0, 0), 100)
+    }
+}
+
 struct RuntimePaths {
     let launcher = AppConstants.Paths.launcher
     let uninstaller = AppConstants.Paths.uninstaller
@@ -141,9 +161,13 @@ struct RuntimePaths {
 }
 
 private struct GuestRuntimeStateDocument: Decodable {
-    let vmIP: String
+    let vmIP: String?
+    let guestHTTP: String?
     let redisUIHTTP: String?
     let swaggerUIHTTP: String?
+    let cpuUsagePercent: Double?
+    let memory: ResourceUsage?
+    let systemDisk: ResourceUsage?
 }
 
 private struct RuntimeStatusDocument: Decodable {

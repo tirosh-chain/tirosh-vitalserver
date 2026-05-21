@@ -130,3 +130,4 @@ help:
 	@printf "  TESTKIT_CONFIG=config/testkit.toml\n"
 	@printf "  TESTKIT_VERSION=0.1.1\n"
 	@printf "  COMPOSE_ENV_FILE=.env.local\n"
+	@printf "  VM_COMPRESSION_THREADS=<cpu-count> for faster pkg compression when pigz is installed\n"

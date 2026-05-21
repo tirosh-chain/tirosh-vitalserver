@@ -24,7 +24,8 @@ vm-golden-rootfs:
 			VM_RECREATE_ROOTFS="$(VM_RECREATE_GOLDEN_ROOTFS)"; \
 		$(VM_BUILD_RUNNER) rootfs-base \
 			--source "$(VM_GOLDEN_DISK_IMAGE)" \
-			--output "$(VM_PKG_ROOTFS_CACHE)"; \
+			--output "$(VM_PKG_ROOTFS_CACHE)" \
+			--compression-threads "$(VM_COMPRESSION_THREADS)"; \
 	fi
 
 vm-nginx-artifact:
@@ -46,7 +47,8 @@ vm-nginx-bundle: $(if $(VM_NGINX_BIN),,vm-nginx-artifact)
 
 vm-docker-images:
 	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" docker-images \
-		--bundle-path "$(VM_DOCKER_IMAGE_BUNDLE)"
+		--bundle-path "$(VM_DOCKER_IMAGE_BUNDLE)" \
+		--compression-threads "$(VM_COMPRESSION_THREADS)"
 
 vm-app:
 	cd "$(VM_LAUNCHER_DIR)" && env SDKROOT="$(VM_SDKROOT)" CLANG_MODULE_CACHE_PATH="$(VM_CLANG_MODULE_CACHE)" swift build -c release --product TiroshVitalServerApp

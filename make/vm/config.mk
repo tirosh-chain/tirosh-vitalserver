@@ -3,6 +3,7 @@ VM_HOME ?= $(HOME)/.tirosh/vitalserver-vm
 VM_ROOTFS_SIZE ?= 4G
 VM_RECREATE_ROOTFS ?= false
 VM_RECREATE_GOLDEN_ROOTFS ?= false
+VM_COMPRESSION_THREADS ?= $(shell sysctl -n hw.ncpu 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)
 VM_WAIT_TIMEOUT ?= 300
 VM_HTTP_WAIT_TIMEOUT ?= 600
 VM_PKG_VERSION ?= 0.1.0

@@ -38,6 +38,7 @@ def main() -> int:
     )
     docker_images.add_argument("--bundle-path", type=Path)
     docker_images.add_argument("--platform")
+    docker_images.add_argument("--compression-threads", type=int)
 
     rootfs_base = subparsers.add_parser(
         "rootfs-base",

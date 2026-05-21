@@ -51,7 +51,7 @@ struct RuntimeHealthSnapshot {
 }
 
 struct GuestRuntimeStateDocument: Decodable {
-    let vmIP: String
+    let vmIP: String?
     let updatedAt: String?
     let bootID: String?
     let guestHTTP: String?
@@ -169,7 +169,7 @@ struct InstallSettings {
 
     var cpuCount = 8
     var memoryGiB = 8
-    var diskGiB = 64
+    var diskGiB = Constants.Defaults.defaultDiskGiB
     var networkMode = NetworkMode.shared
     var proxyPort = defaultProxyPort
     var vitalFilesDirectory: String
@@ -204,11 +204,19 @@ struct InstallSettings {
             cpuCount = requestedCPUCount
         }
         if let requestedMemoryGiB = document.memoryGiB,
-           stride(from: 4, through: 64, by: 4).contains(requestedMemoryGiB) {
+           stride(
+            from: Constants.Defaults.minimumMemoryGiB,
+            through: Constants.Defaults.maximumMemoryGiB,
+            by: Constants.Defaults.memoryStepGiB
+           ).contains(requestedMemoryGiB) {
             memoryGiB = requestedMemoryGiB
         }
         if let requestedDiskGiB = document.diskGiB,
-           stride(from: 32, through: 512, by: 16).contains(requestedDiskGiB) {
+           stride(
+            from: Constants.Defaults.minimumDiskGiB,
+            through: Constants.Defaults.maximumDiskGiB,
+            by: Constants.Defaults.diskStepGiB
+           ).contains(requestedDiskGiB) {
             diskGiB = requestedDiskGiB
         }
         if let requestedNetworkMode = document.networkMode,
@@ -225,7 +233,8 @@ struct InstallSettings {
             vitalFilesDirectory = requestedVitalFilesDirectory
         }
         if let requestedAdminPassword = document.adminPassword,
-           !requestedAdminPassword.isEmpty {
+           !requestedAdminPassword.isEmpty,
+           isLineSafe(requestedAdminPassword) {
             adminPassword = requestedAdminPassword
         }
         if let requestedVMHostname = document.vmHostname,

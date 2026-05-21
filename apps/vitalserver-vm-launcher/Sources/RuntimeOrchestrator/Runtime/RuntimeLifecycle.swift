@@ -535,8 +535,14 @@ struct RuntimeLifecycle {
                 vmConfig.cpuCount = cpu
             case "--memory-gib":
                 guard let memoryGiB = UInt64(value),
-                      stride(from: 4, through: 64, by: 4).contains(Int(memoryGiB)) else {
-                    throw LauncherError.missingArgument("--memory-gib must be between 4 and 64 in 4 GiB steps")
+                      stride(
+                        from: Constants.Defaults.minimumMemoryGiB,
+                        through: Constants.Defaults.maximumMemoryGiB,
+                        by: Constants.Defaults.memoryStepGiB
+                      ).contains(Int(memoryGiB)) else {
+                    throw LauncherError.missingArgument(
+                        "--memory-gib must be between \(Constants.Defaults.minimumMemoryGiB) and \(Constants.Defaults.maximumMemoryGiB) in \(Constants.Defaults.memoryStepGiB) GiB steps"
+                    )
                 }
                 vmConfig.memoryMiB = memoryGiB * 1024
             case "--disk-gib":
@@ -544,10 +550,10 @@ struct RuntimeLifecycle {
                       stride(
                         from: Constants.Defaults.minimumDiskGiB,
                         through: Constants.Defaults.maximumDiskGiB,
-                        by: 4
+                        by: Constants.Defaults.diskStepGiB
                       ).contains(diskGiB) else {
                     throw LauncherError.missingArgument(
-                        "--disk-gib must be between \(Constants.Defaults.minimumDiskGiB) and \(Constants.Defaults.maximumDiskGiB) in 4 GiB steps"
+                        "--disk-gib must be between \(Constants.Defaults.minimumDiskGiB) and \(Constants.Defaults.maximumDiskGiB) in \(Constants.Defaults.diskStepGiB) GiB steps"
                     )
                 }
                 try resizeVMDiskIfNeeded(diskGiB: diskGiB)

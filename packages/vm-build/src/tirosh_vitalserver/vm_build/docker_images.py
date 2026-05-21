@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-import gzip
-import subprocess
 from argparse import Namespace
 
+from .compression import compression_threads, gzip_command
 from .config import load_config, optional_string, required_string_list, section
 from .paths import repo_root
 from .process import require_tool, run
@@ -52,25 +51,7 @@ def run_docker_images(args: Namespace) -> int:
         ]
     )
 
-    tmp_bundle = bundle_path.with_name(bundle_path.name + ".tmp")
-    with tmp_bundle.open("wb") as raw_output, gzip.GzipFile(
-        fileobj=raw_output,
-        mode="wb",
-    ) as gzip_output:
-        process = subprocess.Popen(
-            ["docker", "save", *images],
-            stdout=subprocess.PIPE,
-        )
-        assert process.stdout is not None
-        try:
-            for chunk in iter(lambda: process.stdout.read(1024 * 1024), b""):
-                gzip_output.write(chunk)
-        finally:
-            process.stdout.close()
-        status = process.wait()
-        if status != 0:
-            tmp_bundle.unlink(missing_ok=True)
-            raise SystemExit(status)
-    tmp_bundle.replace(bundle_path)
+    threads = compression_threads(args.compression_threads)
+    gzip_command(["docker", "save", *images], bundle_path, threads=threads)
     print(f"Docker image bundle is ready: {bundle_path}")
     return 0

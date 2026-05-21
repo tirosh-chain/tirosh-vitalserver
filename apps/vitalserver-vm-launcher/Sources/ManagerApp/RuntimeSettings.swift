@@ -3,8 +3,8 @@ import Foundation
 struct RuntimeSettings: Codable {
     var cpuCount = 8
     var memoryGiB = 8
-    var diskGiB = 64
-    var minimumDiskGiB = 4
+    var diskGiB = AppConstants.SettingsLimits.defaultDiskGiB
+    var minimumDiskGiB = AppConstants.SettingsLimits.minimumDiskGiB
     var networkMode = AppConstants.Values.networkShared
     var bridgedInterface = ""
     var proxyPort = AppConstants.Product.defaultProxyPort

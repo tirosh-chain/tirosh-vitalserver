@@ -21,6 +21,18 @@ enum AppConstants {
         }
     }
 
+    enum SettingsLimits {
+        static let minimumCPUCount = 7
+        static let maximumCPUCount = 64
+        static let defaultDiskGiB = 32
+        static let minimumDiskGiB = 4
+        static let maximumDiskGiB = 512
+        static let diskStepGiB = 4
+        static let minimumMemoryGiB = 4
+        static let maximumMemoryGiB = 64
+        static let memoryStepGiB = 4
+    }
+
     enum Labels {
         static let tabStatus = "Status"
         static let tabSettings = "Settings"
@@ -33,11 +45,17 @@ enum AppConstants {
         static let vitalServerURL = "VitalServer URL"
         static let dataDirectory = "Data directory"
         static let overallHealth = "Overall health"
+        static let resourceUsage = "Resource usage"
+        static let cpuUsage = "CPU"
+        static let memoryUsage = "Memory"
+        static let systemDiskUsage = "VM disk"
+        static let dataStorageUsage = "Data storage"
         static let healthDetails = "Health details"
         static let managerRuntime = "Helper runtime"
         static let vmIPAddress = "VM IP"
-        static let vitalServerApp = "VitalServer app"
-        static let hostProxyService = "Host proxy"
+        static let vitalServerApp = "VitalServer"
+        static let hostProxyService = "Network access"
+        static let redis = "Redis"
         static let redisUI = "Redis UI"
         static let swaggerUI = "Swagger UI"
         static let watchdog = "Watchdog"
@@ -58,13 +76,16 @@ enum AppConstants {
         static let log = "Log"
         static let logLines = "Lines"
         static let logSource = "Source"
-        static let logStreaming = "Stream"
+        static let logStreaming = "Live"
+        static let logLive = "Live"
+        static let logPaused = "Paused"
         static let advancedSummary = "Advanced runtime details"
         static let advancedDescription = "Diagnostics, service internals, proxy repair, update rollback, and uninstall tools for administrators."
         static let sectionDiagnostics = "Diagnostics"
         static let sectionServiceHealth = "Service health"
         static let sectionNetworkOverrides = "Network overrides"
         static let sectionAdminOperations = "Admin operations"
+        static let adminOperationsHelp = "Use these actions only when administering the installed runtime. Password changes are applied with the same runtime configuration flow as Settings."
         static let menuVitalFiles = "Vital Files"
         static let menuRuntimeServices = "Runtime Services"
         static let noVitalFileFolders = "No vital file folders"
@@ -98,6 +119,9 @@ enum AppConstants {
         static let noUpdateBundleSelected = "No update bundle selected"
         static let unitVCPU = "vCPU"
         static let unitGiB = "GB"
+        static func openServiceHelp(_ serviceName: String) -> String {
+            "Open \(serviceName)"
+        }
     }
 
     enum Values {
