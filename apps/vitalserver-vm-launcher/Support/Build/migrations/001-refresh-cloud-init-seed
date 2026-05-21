@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+vm_home="${VITALSERVER_VM_HOME:-/Library/Application Support/TiroshVitalServer/vm}"
+runtime_dir="${vm_home}/runtime"
+seed_dir="${runtime_dir}/cloud-init-seed"
+seed_iso="${runtime_dir}/seed.iso"
+hostname="${TIROSH_GUEST_HOSTNAME:-tirosh-vitalserver}"
+instance_id="tirosh-$(uuidgen | tr '[:upper:]' '[:lower:]')"
+
+mkdir -p "${seed_dir}"
+rm -rf "${seed_dir:?}/"*
+
+cat > "${seed_dir}/meta-data" <<EOF
+instance-id: ${instance_id}
+local-hostname: ${hostname}
+
+EOF
+
+cat > "${seed_dir}/user-data" <<EOF
+#cloud-config
+hostname: ${hostname}
+manage_etc_hosts: true
+ssh_pwauth: true
+disable_root: true
+users:
+  - default
+  - name: ubuntu
+    groups: [adm, sudo]
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    lock_passwd: false
+    ssh_authorized_keys: []
+chpasswd:
+  expire: false
+  users:
+    - name: ubuntu
+      password: ubuntu
+      type: text
+runcmd:
+  - mkdir -p /mnt/tirosh
+  - mountpoint -q /mnt/tirosh || mount -t virtiofs tirosh /mnt/tirosh
+  - mkdir -p /mnt/tirosh/run
+  - test -x /mnt/tirosh/deploy/bootstrap.sh
+  - bash -lc '/mnt/tirosh/deploy/bootstrap.sh > /mnt/tirosh/run/bootstrap.log 2>&1'
+
+EOF
+
+rm -f "${seed_iso}"
+hdiutil makehybrid \
+  -iso \
+  -joliet \
+  -default-volume-name cidata \
+  -o "${seed_iso}" \
+  "${seed_dir}"
+
+printf "cloud-init seed refreshed for guest update activation: %s\n" "${seed_iso}"

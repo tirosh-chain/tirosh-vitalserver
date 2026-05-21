@@ -360,6 +360,7 @@ enum AppConstants {
         static let installLog = "/Library/Application Support/TiroshVitalServer/logs/install.log"
         static let runtimeLogs = "/Library/Application Support/TiroshVitalServer/vm/logs"
         static let containerLogs = "/Library/Application Support/TiroshVitalServer/vm/data/run/container-logs.log"
+        static let updateActivationLog = "/Library/Application Support/TiroshVitalServer/vm/data/run/activate-update.log"
         static let backups = "/Library/Application Support/TiroshVitalServer/backups"
         static let vmConfig = "/Library/Application Support/TiroshVitalServer/vm/runtime/vm-config.json"
         static let vmDisk = "/Library/Application Support/TiroshVitalServer/vm/runtime/vm-disk.img"

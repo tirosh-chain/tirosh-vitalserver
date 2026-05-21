@@ -47,6 +47,7 @@ VM runtime 문서는 [VitalServer VM Launcher](vitalserver-vm-launcher.md)를 �
 | [VM Launcher Overview](vm-launcher/overview.md) | VM runtime 세부 문서의 한눈에 보기와 사용자 시나리오 |
 | [Architecture](vm-launcher/architecture.md) | 제품 구조, 단일 노드 가용성, GUI/PKG/runtime 책임 경계 |
 | [Packaging and Update](vm-launcher/packaging.md) | PKG/DMG 빌드, 설치 흐름, install settings, update bundle 계약 |
+| [Update](vm-launcher/update.md) | update bundle 적용 과정, 보존/변경 범위, guest-side activation, rollback 계약 |
 | [Runtime](vm-launcher/runtime.md) | boot asset, cloud-init, guest bootstrap, network/identity/signing 정책 |
 | [Troubleshooting](vm-launcher/troubleshooting.md) | PoC와 패키징 중 확인한 증상과 조치 |
 

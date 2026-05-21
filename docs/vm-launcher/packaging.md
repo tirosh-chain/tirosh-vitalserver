@@ -25,7 +25,7 @@
 | bundle 검증 | update bundle directory | `make vm-update-bundle-verify` | 전달 전 manifest/checksum 검증 |
 | 개발 설치 테스트 | installed runtime | `make vm-pkg-install` | 현재 Mac에 설치 후 `make vm-installed-health` |
 
-사용자에게 “bundle”로 제공하는 대상은 두 가지입니다. 신규 설치는 `.dmg`/`.pkg`이고, 이미 설치된 현장 업데이트는 `update-bundle-<version>/` directory입니다. air-gapped 환경에서는 update bundle directory를 tarball로 묶어 USB나 폐쇄망 파일 서버로 전달합니다.
+사용자에게 “bundle”로 제공하는 대상은 두 가지입니다. 신규 설치는 `.dmg`/`.pkg`이고, 이미 설치된 현장 업데이트는 `update-bundle-<version>/` directory입니다. air-gapped 환경에서는 update bundle directory를 tarball로 묶어 USB나 폐쇄망 파일 서버로 전달합니다. 적용 과정과 보존/변경 범위는 [Update](update.md)에 따로 정리합니다.
 
 ## 버전 source of truth
 
@@ -150,15 +150,15 @@ launchd
 launchd
   -> com.tirosh.vitalserver-vm
       -> vitalserver-vm start
-      -> VM이 /mnt/tirosh/run/vm-ip 기록
+      -> VM이 /mnt/tirosh/run/runtime-state.json 기록
 
 launchd
   -> com.tirosh.vitalserver-proxy
       -> vitalserver-proxy-run
-      -> vm-ip 대기
+      -> runtime-state.json 대기
       -> nginx config 렌더링
       -> nginx start/reload
-      -> vm-ip 변경 감시
+      -> VM IP 변경 감시
 ```
 
 이 구조에서 운영자가 `VITALSERVER_PROXY_UPSTREAM`을 직접 설정할 필요는 없습니다.
@@ -289,13 +289,13 @@ Fallback:
 | Docker image bundle | `make vm-docker-images` | Python `docker-images` | Dockerfile, image list, build platform | `vitalserver-images.tar.gz` |
 | PKG staging | `make vm-pkg-stage` | macOS filesystem tools | app bundle, rootfs base, nginx bundle, Docker bundle, templates | package root under `.tmp/vitalserver-vm-pkg/root` |
 | install provisioning | PKG `postinstall` | `vitalserver-vm runtime install` | installed payload, optional `/private/tmp/tirosh-vitalserver-install.json` | `vm-disk.img`, `vm-config.json`, `seed.iso`, permissions, launchd services |
-| runtime status | RuntimeLifecycle | `runtime-status.json` | health/install/update/rollback result | Manager/watchdog-readable status |
+| runtime status | RuntimeLifecycle | `runtime-status.json` | health/install/update/rollback result | Helper/watchdog-readable status |
 | VM launch | launchd | `vitalserver-vm start` | `VITALSERVER_VM_HOME`, `VITALSERVER_VM_DETACHED=1`, `runtime/vm-config.json` | Virtualization.framework VM process |
-| watchdog | launchd | `vitalserver-vm runtime watchdog` | runtime files, launchd state, VM IP, HTTP health | runtime status update, VM/proxy kickstart |
-| host proxy | launchd | `vitalserver-proxy-run` | `vm/data/run/vm-ip`, proxy template, nginx binary | rendered host nginx config, nginx process |
+| watchdog | launchd | `vitalserver-vm runtime watchdog` | runtime files, launchd state, guest runtime state, HTTP health | runtime status update, VM/proxy kickstart |
+| host proxy | launchd | `vitalserver-proxy-run` | `vm/data/run/runtime-state.json`, legacy `vm-ip`, proxy template, nginx binary | rendered host nginx config, nginx process |
 | guest bootstrap | cloud-init | `bootstrap.sh`, `bin/*`, `systemd/*` | VirtioFS mounts, `runtime-config.json`, Docker bundle | Docker Compose stack, edge nginx container, runtime state marker |
-| update verification | operator/Manager | `vitalserver-vm runtime verify-bundle` | bundle directory | manifest/checksum validation |
-| update apply | operator/Manager | `vitalserver-vm runtime apply-bundle` | verified bundle directory | staged bundle, backup, rootfs-base replacement, migrations, health check |
+| update verification | operator/Helper | `vitalserver-vm runtime verify-bundle` | bundle directory | manifest/checksum validation |
+| update apply | operator/Helper | `vitalserver-vm runtime apply-bundle` | verified bundle directory | staged bundle, backup, rootfs-base replacement, migrations, health check |
 
 이 표가 현재 source of truth입니다. Shell은 installer/launchd wrapper로 제한하고, manifest parsing, checksum 검증, backup, rollback 정책은 Swift runtime lifecycle command가 담당합니다.
 
@@ -315,7 +315,7 @@ Fallback:
 | `memoryGiB` | 8 | 4-64 GiB, 4 GiB 단위 |
 | `diskGiB` | 32 | 4-512 GiB, 4 GiB 단위. 설치 후에는 증가만 허용 |
 | `networkMode` | `shared` | `shared` 또는 `bridged` |
-| `proxyPort` | 80 | 1-65535, LaunchDaemon plist에 저장하고 Runtime CLI/Manager가 해당 값을 읽음 |
+| `proxyPort` | 80 | 1-65535, LaunchDaemon plist에 저장하고 Runtime CLI/Helper가 해당 값을 읽음 |
 | `vitalFilesDirectory` | `/Library/Application Support/TiroshVitalServer/vm/data/vital-files` | absolute path |
 | `adminPassword` | `admin` | admin 계정 reset 값. empty가 아니면 guest runtime에 적용 |
 | `vmHostname` | `tirosh-vitalserver` | hostname-safe 문자열 |
@@ -365,7 +365,7 @@ v1 기본 proxy port는 80입니다.
 ```text
 external client
   -> target Mac host nginx :80
-  -> Linux VM nginx :80
+  -> Linux VM edge nginx :80
   -> VitalServer container :18080
 ```
 
@@ -386,17 +386,21 @@ install settings JSON
 
 | artifact type | 생성 여부 | Swift verify | Swift apply |
 |---|---:|---:|---:|
-| `rootfs-base` | 항상 포함 | 예 | `rootfs-base.raw.gz` 교체 |
+| `rootfs-base` | 기본 target에서 포함 | 예 | `rootfs-base.raw.gz` 교체 |
+| `app-bundle` | 기본 포함 | 예 | `/Applications/VitalServer Helper.app` 교체 |
+| `runtime-tools` | 기본 포함 | 예 | `/usr/local/bin` runtime CLI/runner 교체 |
+| `nginx-bundle` | 기본 포함 | 예 | host nginx bundle 교체 |
+| `guest-deploy` | 기본 포함 | 예 | VM shared deploy bundle 교체 |
 | `migration` | optional | 예 | executable이면 순차 실행 |
 
-따라서 현재 update apply의 실제 효과는 아래로 제한됩니다.
+따라서 현재 update apply의 실제 효과는 아래입니다.
 
 ```text
 verify bundle
 stage bundle
-backup rootfs-base/runtime-version
+backup managed artifacts/runtime-version
 stop services
-replace rootfs-base.raw.gz
+replace app/runtime-tools/nginx/guest-deploy/rootfs-base artifacts
 run executable migrations
 write runtime-version.json
 restart services if previously running
@@ -411,7 +415,7 @@ rootfs-base.raw.gz = immutable base artifact
 vm-disk.img        = installed mutable runtime instance
 ```
 
-update에서 rootfs base를 교체해도 기존 `vm-disk.img` 내부 OS와 application runtime은 자동으로 교체되지 않습니다. 이미 설치된 VM 내부를 바꾸는 작업은 migration 또는 별도 guest update artifact로 정의해야 합니다. `.pkg` 재설치나 app/runtime tools 교체는 아직 update bundle 계약에 포함하지 않습니다.
+update에서 rootfs base를 교체해도 기존 `vm-disk.img` 내부 OS와 application runtime은 자동으로 교체되지 않습니다. 이미 설치된 VM 내부를 바꾸는 작업은 migration, guest deploy 변경, Docker image bundle 갱신 같은 별도 artifact로 정의해야 합니다.
 
 설치 테스트는 실제 시스템 경로를 사용합니다.
 
@@ -421,7 +425,7 @@ update에서 rootfs base를 교체해도 기존 `vm-disk.img` 내부 OS와 appli
 | `/Library/LaunchDaemons` | VM/proxy 자동 실행 plist |
 | `/Library/Application Support/TiroshVitalServer` | VM image, deploy bundle, nginx runtime |
 | `/Library/Application Support/TiroshVitalServer/logs/install.log` | installer provisioning log, 10 MiB 기준 rotation |
-| `/Library/Application Support/TiroshVitalServer/status/runtime-status.json` | Manager/watchdog용 runtime 상태 |
+| `/Library/Application Support/TiroshVitalServer/status/runtime-status.json` | Helper/watchdog용 runtime 상태 |
 
 설치 후 `make vm-installed-health`로 launchd load 상태, VM IP, guest HTTP, host proxy HTTP를 확인합니다.
 
@@ -572,10 +576,10 @@ dist/update-bundles/update-bundle-<version>/
 설치된 Mac mini/Mac Studio에서는 Swift runtime lifecycle command가 bundle을 검증하고 적용합니다.
 
 ```sh
-vitalserver-vm runtime verify-bundle /path/to/update-bundle-<version>
-sudo vitalserver-vm runtime stage-bundle /path/to/update-bundle-<version>
-sudo vitalserver-vm runtime apply-bundle /path/to/update-bundle-<version>
-sudo vitalserver-vm runtime rollback
+/usr/local/bin/vitalserver-vm runtime verify-bundle /path/to/update-bundle-<version>
+sudo /usr/local/bin/vitalserver-vm runtime stage-bundle /path/to/update-bundle-<version>
+sudo /usr/local/bin/vitalserver-vm runtime apply-bundle /path/to/update-bundle-<version>
+sudo /usr/local/bin/vitalserver-vm runtime rollback
 ```
 
 `apply-bundle`은 mutable `vm-disk.img`를 보존하고, replaceable artifact만 backup/rollback 대상으로 삼습니다. 적용 전 backup을 만들고 VM/proxy를 중지한 뒤 artifact를 교체하고 executable migration을 순서대로 실행합니다. 기존에 서비스가 실행 중이었다면 재시작 후 health check를 통과해야 성공 처리합니다. migration 또는 health check 실패 시 `rollback`으로 직전 backup을 복원합니다.
@@ -593,7 +597,7 @@ sudo vitalserver-vm runtime rollback
 설치 후 runtime 설정 변경은 아래 command가 source of truth입니다.
 
 ```sh
-sudo vitalserver-vm runtime configure \
+sudo /usr/local/bin/vitalserver-vm runtime configure \
   --cpu 8 \
   --memory-gib 8 \
   --network shared \
@@ -609,9 +613,9 @@ sudo vitalserver-vm runtime configure \
 
 이 command는 `vm-config.json`, deploy `runtime-config.json`, proxy LaunchDaemon plist, launchd enable/disable 정책을 갱신하고 `--restart`가 있으면 VM/proxy/watchdog을 kickstart합니다. Helper app의 Settings tab도 이 command를 호출합니다. Helper app의 admin password 입력은 기존 값을 표시하지 않고, 운영자용 admin password reset을 선택했을 때만 `/private/tmp` 아래 0600 임시 파일을 만들고 `--admin-password-file`을 전달합니다. CLI의 `--admin-password`는 개발/수동 복구용으로 남기지만, 운영 UI에서는 argv/log 노출을 줄이기 위해 file 입력을 사용합니다.
 
-admin password reset은 VitalServer 본체의 사용자 계정 기능을 확장하거나 수정하는 기능이 아닙니다. VitalServer UI의 비밀번호 변경은 현재 비밀번호를 아는 사용자가 본인 계정을 변경하는 흐름이고, Manager의 reset은 설치/운영 관리자가 `admin` 계정을 복구하거나 초기화하기 위한 패키징 레벨의 유지보수 기능입니다. 위험도가 높은 설정이므로 향후 운영 정책에 따라 Manager UI에서 제거하고 CLI 또는 recovery flow로만 남길 수 있습니다. deploy `runtime-config.json`은 admin reset 값을 포함하므로 install/configure 직후 0600 권한으로 제한합니다.
+admin password reset은 VitalServer 본체의 사용자 계정 기능을 확장하거나 수정하는 기능이 아닙니다. VitalServer UI의 비밀번호 변경은 현재 비밀번호를 아는 사용자가 본인 계정을 변경하는 흐름이고, Helper의 reset은 설치/운영 관리자가 `admin` 계정을 복구하거나 초기화하기 위한 패키징 레벨의 유지보수 기능입니다. 위험도가 높은 설정이므로 향후 운영 정책에 따라 Helper UI에서 제거하고 CLI 또는 recovery flow로만 남길 수 있습니다. deploy `runtime-config.json`은 admin reset 값을 포함하므로 install/configure 직후 0600 권한으로 제한합니다.
 
-설치 후 Manager에서 바로 변경하는 범위와 별도 기능으로 분리해야 하는 범위는 아래처럼 구분합니다.
+설치 후 Helper에서 바로 변경하는 범위와 별도 기능으로 분리해야 하는 범위는 아래처럼 구분합니다.
 
 | 범위 | 처리 |
 |---|---|

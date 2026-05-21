@@ -23,6 +23,20 @@ struct UpdateBundleMigration: Decodable {
     let size: Int
 }
 
+struct GuestUpdateActivationResultDocument: Decodable {
+    let status: String
+    let message: String?
+    let updatedAt: String?
+
+    var completed: Bool {
+        status == "completed"
+    }
+
+    var failed: Bool {
+        status == "failed"
+    }
+}
+
 struct RuntimeProcessResult {
     let exitCode: Int32
     let stdout: String

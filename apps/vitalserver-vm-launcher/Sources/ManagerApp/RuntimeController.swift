@@ -28,6 +28,7 @@ final class RuntimeController: ObservableObject {
         LogSourceOption(id: LogSourceID.launcher.rawValue, title: "VM launcher"),
         LogSourceOption(id: LogSourceID.proxyOutput.rawValue, title: "Host proxy output"),
         LogSourceOption(id: LogSourceID.proxyError.rawValue, title: "Host proxy error"),
+        LogSourceOption(id: LogSourceID.updateActivation.rawValue, title: "Update activation"),
         LogSourceOption(id: LogSourceID.containers.rawValue, title: "Containers"),
     ]
     private var healthNotificationBaseline: HealthNotificationState?
@@ -778,6 +779,8 @@ final class RuntimeController: ObservableObject {
                 path: (AppConstants.Paths.runtimeLogs as NSString).appendingPathComponent("proxy.err.log"),
                 lineLimit: lineLimit
             )
+        case .updateActivation:
+            return logFile(path: AppConstants.Paths.updateActivationLog, lineLimit: lineLimit)
         case .containers:
             return logFile(path: AppConstants.Paths.containerLogs, lineLimit: lineLimit)
         }
@@ -856,6 +859,7 @@ private enum LogSourceID: String {
     case launcher
     case proxyOutput
     case proxyError
+    case updateActivation
     case containers
 }
 

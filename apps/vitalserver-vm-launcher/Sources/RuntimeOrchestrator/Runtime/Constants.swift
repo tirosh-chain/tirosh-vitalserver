@@ -96,8 +96,12 @@ enum Constants {
         static let datastoreRepairRequestFile = "repair-datastore.request"
         static let datastoreRepairResultFile = "repair-datastore-result.json"
         static let datastoreRepairLogFile = "repair-datastore.log"
+        static let updateActivationRequestFile = "activate-update.request"
+        static let updateActivationResultFile = "activate-update-result.json"
+        static let updateActivationLogFile = "activate-update.log"
         static let waitTimeoutSeconds = 600.0
         static let datastoreRepairWaitTimeoutSeconds = 300.0
+        static let updateActivationWaitTimeoutSeconds = 600.0
         static let watchdogRecoveryWaitSeconds = 20.0
         static let freeSpaceMarginBytes: UInt64 = 4 * 1024 * 1024 * 1024
         static let updateFreeSpaceMarginBytes: UInt64 = 2 * 1024 * 1024 * 1024
@@ -123,6 +127,14 @@ enum Constants {
         static let manifest = "manifest.json"
         static let checksums = "checksums.txt"
         static let signature = "signature"
+
+        enum ArtifactType {
+            static let rootfsBase = "rootfs-base"
+            static let appBundle = "app-bundle"
+            static let nginxBundle = "nginx-bundle"
+            static let guestDeploy = "guest-deploy"
+            static let runtimeTools = "runtime-tools"
+        }
     }
 
     enum Commands {

@@ -57,13 +57,13 @@ VITALSERVER_VM_HOME="$PWD/.tmp/vitalserver-vm" make vm-init
 
 ```json
 {
-  "cpuCount": 4,
+  "cpuCount": 8,
   "diskPath": "/Users/<user>/.tirosh/vitalserver-vm/runtime/vm-disk.img",
   "initialRamdiskPath": "/Users/<user>/.tirosh/vitalserver-vm/runtime/initrd.img",
   "cloudInitPath": "/Users/<user>/.tirosh/vitalserver-vm/runtime/seed.iso",
   "kernelCommandLine": "console=hvc0 root=/dev/vda1 rw",
   "kernelPath": "/Users/<user>/.tirosh/vitalserver-vm/runtime/Image",
-  "memoryMiB": 4096,
+  "memoryMiB": 8192,
   "network": {
     "bridgedInterface": null,
     "macAddress": "52:12:34:56:78:9a",
@@ -111,7 +111,7 @@ VM_ROOTFS_SIZE=32G make vm-download
 
 `VM_ROOTFS_SIZE`의 `G` suffix는 build tool 입력 형식이며 GiB 기준으로 해석합니다. 예를 들어 `32G`는 32 GiB root disk target size입니다.
 
-Docker, nginx, qemu-user-static, VitalServer image build까지 PoC guest 안에서 실행하므로 Ubuntu cloud image의 기본 root disk 크기만으로는 부족합니다.
+`4G`는 packaging 효율을 위한 golden rootfs base 크기입니다. 설치 wizard에서 사용자가 고르는 runtime disk 크기와 다릅니다. 설치 시에는 `rootfs-base.raw.gz`를 `vm-disk.img`로 풀고, 기본 32 GiB 또는 사용자가 고른 크기로 sparse disk를 확장합니다. 설치 후 disk 크기는 증가만 허용합니다.
 
 ## Cloud-Init
 
@@ -146,7 +146,7 @@ uv run --project packages/vm-build vitalserver-vm-build \
   --ssh-key ~/.ssh/id_ed25519.pub
 ```
 
-기본 password는 PoC 편의용입니다. 제품에서는 GUI 또는 first-run flow가 설치 대상별 credential을 생성해야 합니다.
+기본 password는 build-time seed 편의값입니다. 제품 설치에서는 Helper app wizard 또는 install settings JSON이 설치 대상별 admin password를 runtime config에 전달합니다.
 
 ## Guest Bootstrap
 
@@ -177,11 +177,11 @@ sudo /mnt/tirosh/deploy/bootstrap.sh
 bootstrap 순서:
 
 1. VirtioFS 공유 디렉터리를 `/mnt/tirosh`에 mount
-2. air-gapped rootfs에 Docker/Compose/qemu-user-static/binfmt/avahi/growpart가 준비됐는지 확인
+2. air-gapped rootfs에 Docker/Compose/avahi/growpart 등 guest 필수 package가 준비됐는지 확인
 3. 준비물이 없으면 `apt-get`을 시도하지 않고 실패 처리
 4. `Support/Guest/bin`, `Support/Guest/systemd` 파일을 guest OS에 설치
 5. bundled Docker image를 load하고 dangling image cleanup 수행
-6. `docker compose up -d --build`로 VitalServer/Redis/UI/edge nginx 실행
+6. bundled Docker image를 load한 뒤 `docker compose up -d`로 VitalServer/Redis/UI/edge nginx 실행
 7. runtime state에 VM IP와 guest HTTP readiness 기록
 
 ## macOS Data Sharing
@@ -225,7 +225,7 @@ VRecorder
 
 host nginx 경유 시 VRecorder 원 IP 보존은 확인되었습니다. 따라서 v1에서는 VM이 병원 LAN IP를 직접 받을 필요가 없습니다.
 
-bridged mode는 향후 host nginx 제거, 네트워크 구조 단순화, 또는 직접 LAN 노출이 필요한 경우의 옵션으로 둡니다. 제품 GUI에서는 `shared/NAT`를 기본값으로 두고, bridged는 entitlement와 병원망 조건을 만족할 때만 선택하게 하는 것이 안전합니다.
+bridged mode는 향후 host nginx 제거, 네트워크 구조 단순화, 또는 직접 LAN 노출이 필요한 경우의 옵션으로 둡니다. 현재 제품 GUI에서는 `shared/NAT`만 선택 가능하게 두고, bridged는 entitlement와 병원망 조건을 만족하는 release에서만 열어야 합니다.
 
 CLI에서 모드를 바꾸려면:
 
@@ -268,7 +268,7 @@ PoC에서는 VM IP를 확인한 뒤 아래처럼 host proxy upstream을 지정�
 make vm-up
 ```
 
-`make vm-up`은 VM을 background로 시작하고, guest가 shared directory에 기록한 VM IP와 guest HTTP readiness를 기다린 뒤 host nginx upstream을 `<vm-ip>:80`으로 설정합니다.
+`make vm-up`은 VM을 background로 시작하고, guest가 shared directory에 기록한 runtime state와 guest HTTP readiness를 기다린 뒤 host nginx upstream을 `<vm-ip>:80`으로 설정합니다.
 
 VM IP만 확인하거나 proxy를 다시 붙이고 싶을 때는 아래 target을 사용합니다.
 

@@ -18,10 +18,11 @@ PoC와 패키징 과정에서 확인한 문제, 원인, 조치 방법을 모았�
 | Redis UI가 template fetch 오류를 표시 | [Redis UI가 `failed to fetch html template`을 표시](#redis-ui가-failed-to-fetch-html-template을-표시) |
 | Service health가 302를 Reachable로 표시 | [HTTP 302가 Reachable로 표시됨](#http-302가-reachable로-표시됨) |
 | bundle update가 오래 멈춘 것처럼 보임 | [bundle update가 health wait 또는 rollback에서 오래 멈춤](#bundle-update가-health-wait-또는-rollback에서-오래-멈춤) |
+| update 후 Redis가 `exec format error` | [update 후 Redis가 `exec format error`로 실패](#update-후-redis가-exec-format-error로-실패) |
 | Redis가 AOF 오류로 재시작 반복 | [Redis AOF 손상으로 runtime health가 회복되지 않음](#redis-aof-손상으로-runtime-health가-회복되지-않음) |
 | VM IP가 계속 `Waiting` | [설치된 runtime binary에 virtualization entitlement가 없음](#설치된-runtime-binary에-virtualization-entitlement가-없음) |
-| pkg 설치 후 Helper app이 안 보임 | [pkg 설치 후 `/Applications`에 Helper app이 없음](#pkg-설치-후-applications에-manager-app이-없음) |
-| Helper app이 없어 GUI 삭제가 안 됨 | [Helper app 없이 설치물을 제거해야 함](#manager-app-없이-설치물을-제거해야-함) |
+| pkg 설치 후 Helper app이 안 보임 | [pkg 설치 후 `/Applications`에 Helper app이 없음](#pkg-설치-후-applications에-helper-app이-없음) |
+| Helper app이 없어 GUI 삭제가 안 됨 | [Helper app 없이 설치물을 제거해야 함](#helper-app-없이-설치물을-제거해야-함) |
 | app container health가 오래 starting | [app container가 오래 `health: starting` 상태](#app-container가-오래-health-starting-상태) |
 | Ubuntu arm64 `flash-kernel` 실패 | [Ubuntu arm64 cloud image에서 `flash-kernel`이 실패](#ubuntu-arm64-cloud-image에서-flash-kernel이-실패) |
 | stale pid file | [`make vm-status`가 stale pid file을 표시](#make-vm-status가-stale-pid-file을-표시) |
@@ -132,7 +133,7 @@ cannot copy extracted data ... failed to write (No space left on device)
 
 원인:
 
-Ubuntu cloud image의 기본 root disk는 Docker, nginx, qemu-user-static, VitalServer image build까지 수행하기에 작습니다.
+Ubuntu cloud image의 기본 root disk는 Docker, Compose, nginx, guest systemd unit, VitalServer image 준비까지 수행하기에 작습니다.
 
 조치:
 
@@ -304,7 +305,7 @@ worker가 없으면 master process만 살아 있고 HTTP listener가 없어 ngin
 
 증상:
 
-Helper app에서 `Apply Bundle`을 실행한 뒤 화면상으로 업데이트가 5분 이상 진행되지 않는 것처럼 보입니다. Log tab에도 최신 진행 상태가 바로 보이지 않거나, command log가 마지막 줄에서 끊긴 것처럼 보일 수 있습니다.
+Helper app에서 `Apply Bundle`을 실행한 뒤 화면상으로 업데이트가 5분 이상 진행되지 않는 것처럼 보입니다. Logs 탭에도 최신 진행 상태가 바로 보이지 않거나, command log가 마지막 줄에서 끊긴 것처럼 보일 수 있습니다.
 
 원인:
 
@@ -332,13 +333,59 @@ cat "/Library/Application Support/TiroshVitalServer/status/runtime-status.json"
 tail -n 200 "/Library/Application Support/TiroshVitalServer/vm/data/run/container-logs.log"
 ```
 
-최신 Helper app은 command log를 Log tab에서 실시간 갱신하고, runtime health wait 중에도 `waiting for runtime health reasons=...` 형태의 진행 로그를 남깁니다. 이전 버전에서 시작한 update/rollback 작업에는 이 개선이 적용되지 않습니다.
+최신 Helper app은 command log를 Logs 탭에서 실시간 갱신하고, runtime health wait 중에도 `waiting for runtime health reasons=...` 형태의 진행 로그를 남깁니다. 이전 버전에서 시작한 update/rollback 작업에는 이 개선이 적용되지 않습니다.
 
 조치:
 
 먼저 command log와 container log에서 실제 실패 원인을 확인합니다. update가 이미 rollback 단계에 들어간 경우에는 중간에 강제 종료하면 runtime이 반쯤 교체된 상태로 남을 수 있으므로, 가능한 한 rollback timeout이 끝날 때까지 기다립니다. 반복적으로 health가 회복되지 않으면 새 bundle 또는 재설치로 복구합니다.
 
 Helper app의 Advanced > Recovery operations에는 `Repair Data Store`가 있습니다. 이 작업은 VM 내부에 복구 요청 파일을 만들고, guest systemd path unit이 Redis AOF 검사/복구와 container 재시작을 수행하게 합니다. update 실패 후 Redis 또는 VitalServer health가 회복되지 않을 때 먼저 시도합니다.
+
+Update 과정의 전체 계약, 보존/변경 범위, 0.1.3 실패 분석은 [Update](update.md)를 봅니다.
+
+### update 후 Redis가 `exec format error`로 실패
+
+증상:
+
+```text
+redis-1 | exec /usr/local/bin/docker-entrypoint.sh: exec format error
+```
+
+동시에 runtime status에는 아래처럼 표시될 수 있습니다.
+
+```text
+host-proxy-http-502
+redis-ui-http-502
+swagger-ui-http-502
+guest-http-000failed
+```
+
+원인:
+
+guest VM architecture와 Docker image architecture가 맞지 않을 때 발생합니다. 단, update bundle 내부 image가 `arm64`로 맞아 있어도 실패할 수 있습니다. update가 `guest-deploy.tar.gz`를 host shared directory에 교체하는 것만으로는 VM 내부 Docker daemon에 새 image가 load되지 않습니다. 최초 설치 때만 cloud-init bootstrap이 image bundle을 load합니다.
+
+확인:
+
+```sh
+tail -n 200 "/Library/Application Support/TiroshVitalServer/vm/data/run/container-logs.log"
+tail -n 200 "/Library/Application Support/TiroshVitalServer/vm/data/run/bootstrap.log"
+cat "/Library/Application Support/TiroshVitalServer/status/runtime-status.json"
+```
+
+bundle 내부 image architecture 확인:
+
+```sh
+tar -xOf dist/update-bundles/update-bundle-<version>/guest-deploy.tar.gz \
+  deploy/docker-images/vitalserver-images.tar.gz > /tmp/vitalserver-images.tar.gz
+
+tar -xOf /tmp/vitalserver-images.tar.gz manifest.json
+```
+
+조치:
+
+`guest-deploy`나 Docker image bundle을 바꾸는 update에는 guest-side activation migration이 필요합니다. 이 migration은 VM 안에서 Docker image bundle을 다시 load하고, 기존 container를 recreate해야 합니다. 단순히 같은 bundle을 다시 적용하면 이전 wrong-arch image cache를 계속 사용할 수 있습니다.
+
+0.1.3에서 확인한 상세 원인은 [Update 문서의 0.1.3 실패 분석](update.md#013-실패-분석)에 남겨둡니다.
 
 ### Redis AOF 손상으로 runtime health가 회복되지 않음
 
@@ -393,7 +440,7 @@ watchdog recovery failed: host-proxy-http-502
 
 원인:
 
-`guest-http-missing-vm-ip`는 VM 첫 부팅 중 아직 `/Library/Application Support/TiroshVitalServer/vm/data/run/vm-ip`가 없을 때 나올 수 있습니다. 이후 VM IP가 생겼는데도 `host-proxy-http-502`가 계속 남으면 host nginx proxy 쪽을 봅니다.
+`guest-http-missing-vm-ip`는 VM 첫 부팅 중 아직 `/Library/Application Support/TiroshVitalServer/vm/data/run/runtime-state.json`에 VM IP가 기록되지 않았을 때 나올 수 있습니다. legacy fallback으로 `vm-ip` 파일도 볼 수 있습니다. 이후 VM IP가 생겼는데도 `host-proxy-http-502`가 계속 남으면 host nginx proxy 쪽을 봅니다.
 
 이번 사례에서는 guest VM IP는 생성됐지만, 설치된 host nginx가 port 80을 bind하지 못했습니다.
 
@@ -404,6 +451,7 @@ nginx: [emerg] bind() to 0.0.0.0:80 failed (48: Address already in use)
 확인:
 
 ```sh
+cat "/Library/Application Support/TiroshVitalServer/vm/data/run/runtime-state.json"
 cat "/Library/Application Support/TiroshVitalServer/vm/data/run/vm-ip"
 cat "/Library/Application Support/TiroshVitalServer/vm/logs/proxy.err.log"
 sudo lsof -nP -iTCP:80 -sTCP:LISTEN

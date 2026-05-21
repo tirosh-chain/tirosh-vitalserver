@@ -2,7 +2,7 @@
 
 `apps/vitalserver-vm-launcher`는 Mac mini/Mac Studio에 VitalServer 전용 runtime을 설치하고 운영하기 위한 macOS app, Swift runtime orchestrator, guest VM asset, packaging 도구를 담고 있습니다.
 
-제품 사용자는 `/Applications/VitalServer Helper.app`을 통해 상태 확인, 설정 변경, offline update bundle 적용, rollback, uninstall을 수행합니다. 개발자는 아래 Make target으로 설치물과 update bundle을 만듭니다.
+제품 사용자는 `/Applications/VitalServer Helper.app`을 통해 상태 확인, 설정 변경, offline update bundle 적용, 로그 조회, rollback, uninstall을 수행합니다. 개발자는 아래 Make target으로 설치물과 update bundle을 만듭니다.
 
 ```text
 Browser / VRecorder
@@ -17,6 +17,18 @@ Browser / VRecorder
 ```
 
 기본 네트워크 구조는 `shared/NAT VM + macOS host proxy`입니다. bridged mode는 Apple restricted entitlement 승인이 필요한 향후 옵션이며, 현재 사용자 UI에서는 선택하지 않습니다.
+
+## Helper app 탭
+
+| 탭 | 사용 목적 |
+|---|---|
+| Status | VitalServer URL, data directory, 전체 health와 주요 서비스 상태 확인 |
+| Settings | CPU, memory, disk 증가, shared/NAT network, vital files directory, start-on-boot 같은 운영 설정 |
+| Update | offline/online 공통 update bundle 검증과 적용 |
+| Logs | Helper, install, command, VM/container log를 필터링해 확인 |
+| About | Helper, VitalServer, container image, runtime version 확인 |
+| Advanced | 네트워크 override, service diagnostics, admin password reset, recovery operation |
+| Danger Zone | uninstall, clean uninstall, 향후 VM/rootfs 교체처럼 파괴적인 작업 |
 
 ## 먼저 볼 것
 
@@ -57,6 +69,8 @@ Install Tirosh VitalServer.pkg
 
 이 package는 Helper app, Swift runtime CLI, host proxy, Linux VM runtime asset, golden rootfs, Docker image bundle, LaunchDaemon을 설치합니다. target Mac은 설치 시점에 인터넷이 없어도 됩니다.
 
+package에 들어가는 golden rootfs base는 설치 파일 효율을 위해 기본 4 GiB로 만듭니다. 실제 설치된 VM disk는 wizard 기본값 32 GiB로 확장되며, 설치 후에는 증가만 허용합니다.
+
 반복 개발 중에는 cache를 재사용합니다. release 검증처럼 clean golden rootfs부터 다시 만들려면:
 
 ```sh
@@ -88,15 +102,15 @@ tar -czf update-bundle-<version>.tar.gz update-bundle-<version>
 현장에서는 Helper app의 Update 탭에서 bundle directory를 선택하거나, CLI로 검증/적용합니다.
 
 ```sh
-sudo vitalserver-vm runtime verify-bundle /path/to/update-bundle-<version>
-sudo vitalserver-vm runtime apply-bundle /path/to/update-bundle-<version>
+/usr/local/bin/vitalserver-vm runtime verify-bundle /path/to/update-bundle-<version>
+sudo /usr/local/bin/vitalserver-vm runtime apply-bundle /path/to/update-bundle-<version>
 ```
 
 `apply-bundle`은 mutable `vm-disk.img`를 보존하고 replaceable artifact만 교체합니다. 적용 전 backup을 만들고 health check 실패 시 rollback합니다.
 
 update bundle 생성 시에도 artifact 압축은 필요합니다. 기본 bundle은 Helper app, runtime tools, host nginx bundle, guest deploy bundle을 각각 `.tar.gz`로 묶습니다. 이 압축은 rootfs 전체를 매번 다시 만드는 것보다 훨씬 가볍습니다.
 
-`rootfs-base.raw.gz`는 신규 설치나 큰 runtime 변경용 artifact입니다. 이미 설치된 현장 업데이트에서는 가능한 한 `app-bundle`, `runtime-tools`, `nginx-bundle`, `guest-deploy`, migration 중심으로 배포하고, rootfs/Docker image 갱신은 필요할 때만 포함합니다.
+`rootfs-base.raw.gz`는 신규 설치나 큰 runtime 변경용 artifact입니다. 기본 update bundle target은 호환성을 위해 이 파일을 만들 수 있지만, 이미 설치된 현장의 mutable `vm-disk.img`를 자동 교체하지 않습니다. 실제 현장 업데이트의 핵심은 `app-bundle`, `runtime-tools`, `nginx-bundle`, `guest-deploy`, migration입니다. Docker image 갱신은 container image가 바뀔 때만 의미가 큽니다.
 
 ### 3. 개발 Mac에 package 설치 테스트
 

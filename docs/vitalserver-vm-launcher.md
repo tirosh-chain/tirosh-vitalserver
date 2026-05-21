@@ -11,6 +11,7 @@
 | [VM Launcher Overview](vm-launcher/overview.md) | VM runtime 문서군 전체 지도와 사용자 시나리오 |
 | [Architecture](vm-launcher/architecture.md) | 제품 구조, shared/NAT + host nginx 선택 이유, 단일 노드 가용성 범위, 책임 경계 확인 |
 | [Packaging and Update](vm-launcher/packaging.md) | `make vm-pkg`, `make vm-dmg`, PKG 설치 흐름, install settings, update bundle 계약 확인 |
+| [Update](vm-launcher/update.md) | update bundle 적용 과정, 보존/변경 범위, guest-side activation, rollback 계약 확인 |
 | [Runtime](vm-launcher/runtime.md) | VM boot asset, cloud-init, guest bootstrap, data sharing, network mode, identity/signing 정책 확인 |
 | [Troubleshooting](vm-launcher/troubleshooting.md) | 502, cloud-init 재실행, disk full, bridged entitlement, stale pid 같은 문제 확인 |
 
@@ -23,11 +24,11 @@ VRecorder / Browser
   -> target Mac LAN IP :80
       -> host nginx
           -> Linux VM shared/NAT IP
-              -> Docker Compose
-                  - vitalserver
-                  - redis
-                  - redis-ui
-                  - swagger-ui
+              -> Docker Compose edge nginx
+                  -> VitalServer
+                  -> Redis
+                  -> Redis UI
+                  -> Swagger UI
 ```
 
 bridged mode는 Apple `com.apple.vm.networking` restricted entitlement 승인이 필요한 향후 옵션입니다. v1에서는 host nginx를 통해 VRecorder 원 IP 보존을 제품화합니다.
@@ -71,5 +72,6 @@ make vm-down
 | 문서군 전체 지도 | [VM Launcher Overview](vm-launcher/overview.md) |
 | 제품 구조와 책임 분리 | [Architecture](vm-launcher/architecture.md) |
 | 패키지 산출물과 설치/update 계약 | [Packaging and Update](vm-launcher/packaging.md) |
+| update 적용과 rollback 계약 | [Update](vm-launcher/update.md) |
 | VM runtime 동작과 네트워크 정책 | [Runtime](vm-launcher/runtime.md) |
 | 장애 증상과 조치 | [Troubleshooting](vm-launcher/troubleshooting.md) |

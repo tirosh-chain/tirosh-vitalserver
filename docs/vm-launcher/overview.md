@@ -20,6 +20,18 @@ VRecorder / Browser
 
 v1 기본값은 `shared/NAT VM + macOS host proxy`입니다. 이 구조는 Docker Desktop/OrbStack류 VM NAT에서 원 IP가 바뀌는 문제를 피하기 위해 host proxy를 Mac에서 직접 실행합니다. bridged mode는 Apple restricted entitlement 승인이 필요한 향후 옵션입니다.
 
+## Helper app 화면 지도
+
+| 탭 | 역할 |
+|---|---|
+| Status | 사용자가 가장 먼저 보는 운영 상태. VitalServer URL, data directory, overall health, 핵심 service health 표시 |
+| Settings | 일반 운영 설정. CPU, memory, disk 증가, shared/NAT network, vital files directory, start-on-boot |
+| Update | 현장 update bundle 검증/적용. air-gapped와 online update가 같은 bundle 계약을 사용 |
+| Logs | Helper/install/command/VM/container log를 선택해서 확인 |
+| About | Helper, VitalServer, container image, runtime version 같은 제품 정보 |
+| Advanced | 네트워크 override, recovery operation, admin operation, 내부 진단 |
+| Danger Zone | uninstall, clean uninstall, 향후 VM/rootfs 교체처럼 되돌리기 어려운 작업 |
+
 ## 사용자 시나리오 지도
 
 | 시나리오 | 사용자가 보는 것 | 개발/운영자가 쓰는 것 | 세부 문서 |
@@ -29,7 +41,7 @@ v1 기본값은 `shared/NAT VM + macOS host proxy`입니다. 이 구조는 Docke
 | 온라인 업데이트 | 같은 update bundle 계약, download source만 온라인 | release hardening 대상 | [Packaging and Update](packaging.md) |
 | 설치 후 상태 확인 | `/Applications/VitalServer Helper.app` Status 탭 | `make vm-installed-health`, `vitalserver-vm runtime health` | [Runtime](runtime.md), [Troubleshooting](troubleshooting.md) |
 | 운영 설정 변경 | Helper app Settings/Advanced 탭 | `vitalserver-vm runtime configure ... --restart` | [Runtime](runtime.md) |
-| 장애 대응 | Helper app Health/Log/Advanced, uninstaller | watchdog log, runtime status, troubleshooting guide | [Troubleshooting](troubleshooting.md) |
+| 장애 대응 | Helper app Status/Logs/Advanced/Danger Zone, uninstaller | watchdog log, runtime status, troubleshooting guide | [Troubleshooting](troubleshooting.md) |
 | 개발 VM PoC | package 없이 VM/proxy 직접 실행 | `make vm-up`, `make vm-health`, `make vm-down` | [Runtime](runtime.md) |
 | 구조 판단/리뷰 | 왜 host proxy인지, 책임이 어디인지 | ADR, architecture 문서 | [Architecture](architecture.md), [ADR 0001](../adr/0001-macos-host-proxy-for-vrecorder-ip.md) |
 
@@ -39,6 +51,7 @@ v1 기본값은 `shared/NAT VM + macOS host proxy`입니다. 이 구조는 Docke
 |---|---|
 | [Architecture](architecture.md) | shared/NAT + host proxy 선택 이유, 단일 노드 가용성, build/runtime/GUI 책임 경계를 볼 때 |
 | [Packaging and Update](packaging.md) | `make vm-pkg`, `make vm-dmg`, update bundle, install settings, release artifact 흐름을 볼 때 |
+| [Update](update.md) | bundle 적용 과정, 보존/변경되는 항목, guest-side activation, rollback 실패 조건을 볼 때 |
 | [Runtime](runtime.md) | VM boot asset, cloud-init, guest bootstrap, data sharing, network mode, identity/signing 정책을 볼 때 |
 | [Troubleshooting](troubleshooting.md) | 502, stale pid, cloud-init 재실행, disk full, package cleanup, bridged entitlement 문제를 볼 때 |
 
@@ -75,7 +88,7 @@ make vm-update-bundle-verify
 dist/update-bundles/update-bundle-<version>/
 ```
 
-일반 update bundle은 Helper app, runtime tools, host nginx bundle, guest deploy bundle 같은 작은 artifact를 `.tar.gz`로 묶습니다. `rootfs-base.raw.gz`나 Docker image bundle은 크기가 크므로 base OS/package 또는 container image 갱신이 있을 때만 포함하는 방향입니다.
+일반 update bundle은 Helper app, runtime tools, host nginx bundle, guest deploy bundle 같은 작은 artifact를 `.tar.gz`로 묶습니다. 현재 기본 target은 호환성을 위해 `rootfs-base.raw.gz`도 함께 만들 수 있지만, 이미 설치된 현장의 mutable `vm-disk.img`를 자동 교체하지는 않습니다. Docker image bundle과 rootfs base는 base OS/package 또는 container image 갱신이 있을 때만 의미가 큽니다.
 
 ### 개발용 설치 테스트
 
@@ -111,7 +124,7 @@ make vm-down
 | Make | `make/vm/*.mk` | target dependency, 산출물 경로, 개발용 실행/설치 wrapper |
 | Build | Python `packages/vm-build` | Ubuntu asset, cloud-init, rootfs, nginx bundle, Docker image bundle, update bundle |
 | Runtime | Swift `vitalserver-vm` | VM lifecycle, install, health, configure, update, rollback, watchdog |
-| Manager UI | Swift `VitalServer Helper.app` | 사용자가 보는 status/settings/update/advanced/log UI |
+| Helper UI | Swift `VitalServer Helper.app` | 사용자가 보는 Status/Settings/Update/Logs/About/Advanced/Danger Zone UI |
 | Installer/launchd | Shell wrapper | `postinstall`, `proxy-run`, uninstall entrypoint 연결 |
 | Guest | Shell + Compose | Linux guest Docker Compose stack, edge nginx container, VM runtime state 기록 |
 

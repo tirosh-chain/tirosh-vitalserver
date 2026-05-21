@@ -74,6 +74,14 @@ struct RuntimeLifecycle {
         guestRunDirectory.appendingPathComponent(Constants.Runtime.datastoreRepairResultFile)
     }
 
+    private var updateActivationRequest: URL {
+        guestRunDirectory.appendingPathComponent(Constants.Runtime.updateActivationRequestFile)
+    }
+
+    private var updateActivationResult: URL {
+        guestRunDirectory.appendingPathComponent(Constants.Runtime.updateActivationResultFile)
+    }
+
     func run(arguments: [String]) throws {
         guard let command = arguments.first else {
             printUsage()
@@ -339,6 +347,10 @@ struct RuntimeLifecycle {
     }
 
     private func createCloudInitSeed(_ settings: InstallSettings) throws {
+        try createCloudInitSeed(hostname: settings.vmHostname)
+    }
+
+    private func createCloudInitSeed(hostname: String) throws {
         let runtime = paths.home.appendingPathComponent(Constants.Paths.runtimeDirectory)
         let seedDir = runtime.appendingPathComponent("cloud-init-seed")
         let seedISO = runtime.appendingPathComponent(Constants.BootAssets.cloudInit)
@@ -349,13 +361,13 @@ struct RuntimeLifecycle {
         let instanceID = "tirosh-\(UUID().uuidString.lowercased())"
         try """
         instance-id: \(instanceID)
-        local-hostname: \(settings.vmHostname)
+        local-hostname: \(hostname)
 
         """.write(to: seedDir.appendingPathComponent("meta-data"), atomically: true, encoding: .utf8)
 
         try """
         #cloud-config
-        hostname: \(settings.vmHostname)
+        hostname: \(hostname)
         manage_etc_hosts: true
         ssh_pwauth: true
         disable_root: true
@@ -832,11 +844,17 @@ struct RuntimeLifecycle {
             try runStep("run-migrations") {
                 try runMigrations(manifest.migrations, stagedBundle: stagedBundle)
             }
+            try runStep("refresh-cloud-init-seed") {
+                try refreshCloudInitSeedIfNeeded(manifest)
+            }
             try runStep("write-runtime-version") {
                 try writeRuntimeVersion(version: manifest.version, bundle: stagedBundle)
             }
             try runStep("start-runtime-services") {
                 try startRuntimeServices(restartVM: restartVM, restartProxy: restartProxy, restartWatchdog: restartWatchdog)
+            }
+            try runStep("activate-guest-update") {
+                try activateGuestUpdateIfNeeded(manifest)
             }
             try runStep("wait-runtime-health") {
                 try waitForHealth(restartVM: restartVM, restartProxy: restartProxy, restartWatchdog: restartWatchdog)
@@ -1027,28 +1045,28 @@ struct RuntimeLifecycle {
     }
 
     private func replaceUpdateArtifacts(_ artifacts: [UpdateBundleArtifact], stagedBundle: URL) throws {
-        for artifact in artifacts where artifact.type != "rootfs-base" {
+        for artifact in artifacts where artifact.type != Constants.Bundle.ArtifactType.rootfsBase {
             let source = stagedBundle.appendingPathComponent(artifact.name)
             log(
                 "artifact replacement started type=\(artifact.type) name=\(artifact.name) source=\(source.path) size=\(formatBytes(bundleItemSize(artifact.size)))"
             )
             try validateUpdateArtifactPayload(artifact, source: source)
             switch artifact.type {
-            case "app-bundle":
+            case Constants.Bundle.ArtifactType.appBundle:
                 try replaceTarGz(
                     source,
                     destination: URL(fileURLWithPath: Constants.Product.managerAppPath)
                 )
-            case "nginx-bundle":
+            case Constants.Bundle.ArtifactType.nginxBundle:
                 try replaceTarGz(source, destination: productRoot.appendingPathComponent("nginx"))
-            case "guest-deploy":
+            case Constants.Bundle.ArtifactType.guestDeploy:
                 try replaceTarGz(
                     source,
                     destination: paths.home
                         .appendingPathComponent(Constants.Paths.dataDirectory)
                         .appendingPathComponent("deploy")
                 )
-            case "runtime-tools":
+            case Constants.Bundle.ArtifactType.runtimeTools:
                 try extractTarGz(source, destination: URL(fileURLWithPath: "/usr/local/bin"))
             default:
                 throw LauncherError.bundleVerificationFailed("unsupported artifact type: \(artifact.type)")
@@ -1059,15 +1077,15 @@ struct RuntimeLifecycle {
 
     private func validateUpdateArtifactPayload(_ artifact: UpdateBundleArtifact, source: URL) throws {
         switch artifact.type {
-        case "rootfs-base":
+        case Constants.Bundle.ArtifactType.rootfsBase:
             return
-        case "app-bundle":
+        case Constants.Bundle.ArtifactType.appBundle:
             try validateTarGz(source, requiredTopLevel: Constants.Product.managerAppName)
-        case "nginx-bundle":
+        case Constants.Bundle.ArtifactType.nginxBundle:
             try validateTarGz(source, requiredTopLevel: "nginx")
-        case "guest-deploy":
+        case Constants.Bundle.ArtifactType.guestDeploy:
             try validateTarGz(source, requiredTopLevel: "deploy")
-        case "runtime-tools":
+        case Constants.Bundle.ArtifactType.runtimeTools:
             try validateTarGz(
                 source,
                 allowedRootEntries: [
@@ -1418,6 +1436,41 @@ struct RuntimeLifecycle {
         "\(Constants.InstallPaths.launchDaemons)/\(label).plist"
     }
 
+    private func refreshCloudInitSeedIfNeeded(_ manifest: UpdateBundleManifest) throws {
+        guard manifest.artifacts.contains(where: { $0.type == Constants.Bundle.ArtifactType.guestDeploy }) else {
+            log("cloud-init seed refresh not required")
+            return
+        }
+        log("refreshing cloud-init seed so guest bootstrap can activate updated deploy bundle")
+        try createCloudInitSeed(hostname: Constants.Guest.hostname)
+    }
+
+    private func activateGuestUpdateIfNeeded(_ manifest: UpdateBundleManifest) throws {
+        guard manifest.artifacts.contains(where: { $0.type == Constants.Bundle.ArtifactType.guestDeploy }) else {
+            log("guest update activation not required")
+            return
+        }
+
+        log("guest update activation requested version=\(manifest.version)")
+        try FileManager.default.createDirectory(at: guestRunDirectory, withIntermediateDirectories: true)
+        try? FileManager.default.removeItem(at: updateActivationResult)
+
+        let request = [
+            "requestedAt": isoTimestamp(),
+            "operation": "activate-update",
+            "version": manifest.version,
+        ]
+        let requestData = try JSONSerialization.data(withJSONObject: request, options: [.prettyPrinted, .sortedKeys])
+        try requestData.write(to: updateActivationRequest)
+
+        if !isLaunchdLoaded(Constants.Launchd.vmService) {
+            startLaunchdService(Constants.Launchd.vmService)
+        }
+
+        try waitForGuestUpdateActivationResult()
+        log("guest update activation completed version=\(manifest.version)")
+    }
+
     private func waitForHealth(restartVM: Bool, restartProxy: Bool, restartWatchdog: Bool) throws {
         guard restartVM || restartProxy || restartWatchdog else {
             log("runtime services were not running before apply; skipping health wait")
@@ -1466,6 +1519,36 @@ struct RuntimeLifecycle {
                 operation: "wait-runtime-health",
                 lastProgressLog: &lastProgressLog
             )
+            Thread.sleep(forTimeInterval: 3)
+        }
+        throw LauncherError.runtimeHealthFailed
+    }
+
+    private func waitForGuestUpdateActivationResult() throws {
+        let deadline = Date().addingTimeInterval(Constants.Runtime.updateActivationWaitTimeoutSeconds)
+        var lastProgressLog = Date.distantPast
+        log("waiting for guest update activation result timeoutSeconds=\(Constants.Runtime.updateActivationWaitTimeoutSeconds)")
+        while Date() < deadline {
+            if let data = try? Data(contentsOf: updateActivationResult),
+               let result = try? JSONDecoder().decode(GuestUpdateActivationResultDocument.self, from: data) {
+                if result.completed {
+                    log("guest update activation result completed")
+                    return
+                }
+                if result.failed {
+                    log("guest update activation result failed message=\(result.message ?? "unknown")")
+                    throw LauncherError.runtimeHealthFailed
+                }
+            }
+            if Date().timeIntervalSince(lastProgressLog) >= 15 {
+                lastProgressLog = Date()
+                log("waiting for guest update activation worker")
+                try? writeRuntimeStatus(
+                    .recovering,
+                    operation: "activate-guest-update",
+                    message: "waiting for guest update activation worker"
+                )
+            }
             Thread.sleep(forTimeInterval: 3)
         }
         throw LauncherError.runtimeHealthFailed

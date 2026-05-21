@@ -26,10 +26,11 @@ VRecorder / Browser
   -> target Mac LAN IP :80
       -> host nginx
           -> Linux VM shared/NAT IP
-              -> Docker Compose
-                  - vitalserver
-                  - redis
-                  - vitaldb-observer
+              -> Docker Compose edge nginx
+                  -> VitalServer
+                  -> Redis
+                  -> Redis UI
+                  -> Swagger UI
 ```
 
 bridged mode는 Apple 승인이 필요한 향후 옵션입니다.
@@ -40,9 +41,10 @@ bridged mode
 VRecorder / Browser
   -> Linux VM LAN IP :80
       -> Docker Compose edge nginx
-          -> vitalserver
-          -> redis
-          -> vitaldb-observer
+          -> VitalServer
+          -> Redis
+          -> Redis UI
+          -> Swagger UI
 ```
 
 두 구조를 비교하면 아래와 같습니다.
@@ -73,7 +75,7 @@ bridged mode는 host nginx 없이 VM이 병원 LAN에 직접 붙는 선택지로
 download Ubuntu cloud image
   -> convert root disk to raw
   -> expand rootfs
-  -> install docker/nginx/compose inside rootfs
+  -> install Docker/Compose and guest prerequisites inside rootfs
   -> preload required container images
   -> install systemd units
   -> build signed/notarized macOS pkg
@@ -88,9 +90,13 @@ download Ubuntu cloud image
 ```text
 TiroshVitalServer.pkg
   -> /usr/local/bin/vitalserver-vm
-  -> /usr/local/tirosh/nginx/sbin/nginx
+  -> /usr/local/bin/vitalserver-proxy-run
+  -> /usr/local/bin/tirosh-vitalserver-uninstall
+  -> /Applications/VitalServer Helper.app
+  -> /Library/Application Support/TiroshVitalServer/nginx/sbin/nginx
   -> /Library/LaunchDaemons/com.tirosh.vitalserver-proxy.plist
   -> /Library/LaunchDaemons/com.tirosh.vitalserver-vm.plist
+  -> /Library/LaunchDaemons/com.tirosh.vitalserver-watchdog.plist
   -> /Library/Application Support/TiroshVitalServer/vm/runtime/
        Image
        initrd.img
@@ -127,7 +133,7 @@ TiroshVitalServer.pkg
 | macOS 재부팅 후 자동 기동 | VM/proxy LaunchDaemon `RunAtLoad`, start-on-boot policy |
 | VM launcher 비정상 종료 복구 | VM LaunchDaemon `KeepAlive`, detached VM process, watchdog recovery |
 | host nginx proxy 비정상 종료 복구 | proxy LaunchDaemon `KeepAlive`, `vitalserver-proxy-run` loop, watchdog recovery |
-| VM IP 변경 대응 | `vitalserver-proxy-run`이 `vm/data/run/vm-ip`를 감시하고 nginx config reload |
+| VM IP 변경 대응 | `vitalserver-proxy-run`이 guest `runtime-state.json`을 감시하고 nginx config reload. legacy `vm-ip` 파일은 fallback |
 | guest service 복구 | guest systemd unit, Docker, nginx, Compose restart policy |
 | 설치/업데이트 실패 진단 | 고정 log path, runtime status/health command |
 | update 실패 복구 | apply 전 backup, health check 실패 시 rollback |
@@ -211,8 +217,10 @@ Single-node self-healing runtime
   "watchdogService": "loaded",
   "vmIP": "192.168.64.2",
   "proxyPort": 80,
-  "hostProxyHTTP": "200",
-  "guestHTTP": "200",
+  "hostProxyHTTP": "302",
+  "guestHTTP": "302",
+  "redisUIHTTP": "200",
+  "swaggerUIHTTP": "200",
   "rootfsBase": "present",
   "vmDisk": "present",
   "failureReasons": [],
@@ -276,9 +284,9 @@ TiroshVitalServer.dmg
 | VitalServer container/runtime 설정 | deploy `runtime-config.json` |
 | 서비스 자동 실행 | LaunchDaemon plist |
 
-Helper app은 설치 이후 상태 확인, health check, runtime 설정 저장, offline update bundle 적용,
-rollback, uninstall 진입점을 제공하는 UI로 봅니다. VM runtime artifact와 privileged provisioning은 installer pkg가 담당합니다.
-설정 변경은 Manager가 직접 JSON/plist를 수정하지 않고 `vitalserver-vm runtime configure ... --restart`를
+Helper app은 설치 이후 상태 확인, 설정 변경, offline/online update bundle 적용,
+rollback, 로그 조회, 제거 진입점을 제공하는 UI로 봅니다. VM runtime artifact와 privileged provisioning은 installer pkg가 담당합니다.
+설정 변경은 Helper app이 직접 JSON/plist를 수정하지 않고 `vitalserver-vm runtime configure ... --restart`를
 administrator privilege로 호출합니다.
 
 역할 경계는 아래처럼 고정합니다.
@@ -286,9 +294,9 @@ administrator privilege로 호출합니다.
 | 대상 | 책임 |
 |---|---|
 | `Install Tirosh VitalServer.pkg` | 파일 배치, 권한 설정, LaunchDaemon 설치, 최초 runtime provisioning |
-| `VitalServer Helper.app` | 설치 후 상태/설정/업데이트/롤백/로그/제거 진입점 |
+| `VitalServer Helper.app` | 설치 후 Status/Settings/Update/Logs/About/Advanced/Danger Zone 진입점 |
 | `/usr/local/bin/vitalserver-vm` | VM lifecycle, health, configure, update, rollback backend |
-| `/usr/local/bin/tirosh-vitalserver-uninstall` | 제거 source of truth, Manager/Terminal/MDM 공통 backend |
+| `/usr/local/bin/tirosh-vitalserver-uninstall` | 제거 source of truth, Helper/Terminal/MDM 공통 backend |
 
 현재 개발용 app bundle은 `make vm-app`으로 생성합니다.
 
@@ -336,7 +344,7 @@ Shell
 | Runtime lifecycle | `Sources/RuntimeOrchestrator/Runtime/RuntimeLifecycle.swift` | `runtime install/status/health/verify-bundle/stage-bundle/apply-bundle/rollback`, install settings 적용, VM disk 생성, launchd load, backup/rollback | DMG/PKG 파일 생성 |
 | Swift runtime paths/constants | `LauncherPaths.swift`, `Constants.swift` | 설치/runtime 경로, artifact 이름, launchd/service 이름, command path | runtime 동작 정책 결정 |
 | VM configuration | `VirtualMachine/VMRuntimeConfig.swift`, `VMConfigurationFactory.swift` | `vm-config.json` schema, Apple Virtualization configuration 생성 | install settings 파일 읽기 |
-| Helper app | `Sources/ManagerApp/*` | 설치 후 상태/health/open/update/uninstall 진입 UI | rootfs, VM disk, privileged provisioning 포함 |
+| Helper app | `Sources/ManagerApp/*` | 설치 후 Status/Settings/Update/Logs/About/Advanced/Danger Zone UI | rootfs, VM disk, privileged provisioning 포함 |
 | PKG scripts | `Support/Packaging/preinstall`, `postinstall`, `proxy-run`, `uninstall` | installer/launchd/uninstall entrypoint wrapper | 복잡한 provisioning 로직 |
 | guest bootstrap | `Support/Guest/bootstrap.sh`, `bin/*`, `systemd/*`, `prepare-airgap-rootfs.sh`, `compose.yaml` | Linux guest 내부 Docker/Compose 구성, edge nginx container, Docker image load, runtime state 기록 | macOS launchd/proxy 관리 |
 
