@@ -53,6 +53,13 @@ struct RuntimeLifecycle {
             .appendingPathComponent(Constants.Runtime.vmIPFile)
     }
 
+    private var guestRuntimeStateFile: URL {
+        paths.home
+            .appendingPathComponent(Constants.Paths.dataDirectory)
+            .appendingPathComponent(Constants.Paths.runDirectory)
+            .appendingPathComponent(Constants.Runtime.runtimeStateFile)
+    }
+
     func run(arguments: [String]) throws {
         guard let command = arguments.first else {
             printUsage()
@@ -184,7 +191,7 @@ struct RuntimeLifecycle {
         print("  VM service: \(launchdState(Constants.Launchd.vmService))")
         print("  proxy service: \(launchdState(Constants.Launchd.proxyService))")
         print("  watchdog service: \(launchdState(Constants.Launchd.watchdogService))")
-        print("  VM IP: \(readTrimmed(vmIPFile) ?? "waiting")")
+        print("  VM IP: \(guestRuntimeState()?.vmIP ?? readTrimmed(vmIPFile) ?? "waiting")")
         let proxyPort = installedProxyPort()
         print("  proxy port: \(proxyPort)")
         print("  host proxy HTTP: \(httpStatus(Constants.Runtime.proxyHealthURL(port: proxyPort)))")
@@ -214,16 +221,16 @@ struct RuntimeLifecycle {
             .appendingPathComponent("deploy")
             .appendingPathComponent(Constants.Artifacts.runtimeConfig)
         let document = GuestRuntimeConfigDocument(
-            vitalserverHttpPort: 18080,
-            redisHost: "redis",
-            redisPort: 6379,
+            vitalserverHttpPort: Constants.Guest.vitalserverHTTPPort,
+            redisHost: Constants.Guest.redisHost,
+            redisPort: Constants.Guest.redisPort,
             trustProxy: true,
             publicHost: settings.publicHost,
             publicPort: settings.publicPort,
-            adminPassword: settings.adminPassword ?? "admin",
+            adminPassword: settings.adminPassword ?? Constants.Guest.defaultAdminPassword,
             vitalFilesDirectory: Constants.Defaults.vitalFilesDirectoryGuestMountPath,
-            redisUiPort: 18081,
-            swaggerUiPort: 18082
+            redisUiPort: Constants.Guest.redisUIPort,
+            swaggerUiPort: Constants.Guest.swaggerUIPort
         )
         let data = try JSONEncoder.pretty.encode(document)
         try data.write(to: runtimeConfig, options: .atomic)
@@ -352,8 +359,9 @@ struct RuntimeLifecycle {
         runcmd:
           - mkdir -p /mnt/tirosh
           - mountpoint -q /mnt/tirosh || mount -t virtiofs tirosh /mnt/tirosh
+          - mkdir -p /mnt/tirosh/run
           - test -x /mnt/tirosh/deploy/bootstrap.sh
-          - /mnt/tirosh/deploy/bootstrap.sh
+          - bash -lc '/mnt/tirosh/deploy/bootstrap.sh > /mnt/tirosh/run/bootstrap.log 2>&1'
 
         """.write(to: seedDir.appendingPathComponent("user-data"), atomically: true, encoding: .utf8)
 
@@ -377,7 +385,7 @@ struct RuntimeLifecycle {
 
     private func writeInstalledRuntimeVersion() throws {
         let document = InstalledRuntimeVersionDocument(
-            product: "TiroshVitalServer",
+            product: Constants.Product.identifier,
             runtimeVersion: Constants.launcherVersion,
             installedAt: isoTimestamp(),
             rootfsBase: Constants.Artifacts.rootfsBase,
@@ -396,13 +404,13 @@ struct RuntimeLifecycle {
             arguments: [
                 "-c",
                 "Set :EnvironmentVariables:VITALSERVER_PROXY_PORT \(settings.proxyPort)",
-                "/Library/LaunchDaemons/\(Constants.Launchd.proxyService).plist",
+                launchDaemonPlist(Constants.Launchd.proxyService),
             ]
         )
         for plist in [
-            "/Library/LaunchDaemons/\(Constants.Launchd.vmService).plist",
-            "/Library/LaunchDaemons/\(Constants.Launchd.proxyService).plist",
-            "/Library/LaunchDaemons/\(Constants.Launchd.watchdogService).plist",
+            launchDaemonPlist(Constants.Launchd.vmService),
+            launchDaemonPlist(Constants.Launchd.proxyService),
+            launchDaemonPlist(Constants.Launchd.watchdogService),
         ] {
             try runRequired(Constants.Commands.chmod, arguments: ["0644", plist])
             try runRequired(Constants.Commands.chown, arguments: ["root:wheel", plist])
@@ -632,7 +640,7 @@ struct RuntimeLifecycle {
         guard manifest.schemaVersion == 2 else {
             throw LauncherError.missingArgument("unsupported bundle schema: \(manifest.schemaVersion)")
         }
-        guard manifest.product == "TiroshVitalServer" else {
+        guard manifest.product == Constants.Product.identifier else {
             throw LauncherError.missingArgument("unsupported bundle product: \(manifest.product)")
         }
 
@@ -816,7 +824,7 @@ struct RuntimeLifecycle {
         try runStep("rollback-restore-update-artifacts") {
             try restoreBackupPathIfExists(
                 backup.appendingPathComponent("app-bundle"),
-                to: URL(fileURLWithPath: "/Applications/Tirosh VitalServer Manager.app")
+                to: URL(fileURLWithPath: Constants.Product.managerAppPath)
             )
             try restoreBackupPathIfExists(
                 backup.appendingPathComponent("nginx-bundle"),
@@ -925,7 +933,7 @@ struct RuntimeLifecycle {
             case "app-bundle":
                 try replaceTarGz(
                     source,
-                    destination: URL(fileURLWithPath: "/Applications/Tirosh VitalServer Manager.app")
+                    destination: URL(fileURLWithPath: Constants.Product.managerAppPath)
                 )
             case "nginx-bundle":
                 try replaceTarGz(source, destination: productRoot.appendingPathComponent("nginx"))
@@ -949,7 +957,7 @@ struct RuntimeLifecycle {
         case "rootfs-base":
             return
         case "app-bundle":
-            try validateTarGz(source, requiredTopLevel: "Tirosh VitalServer Manager.app")
+            try validateTarGz(source, requiredTopLevel: Constants.Product.managerAppName)
         case "nginx-bundle":
             try validateTarGz(source, requiredTopLevel: "nginx")
         case "guest-deploy":
@@ -960,7 +968,7 @@ struct RuntimeLifecycle {
                 allowedRootEntries: [
                     "vitalserver-vm",
                     "vitalserver-proxy-run",
-                    "tirosh-vitalserver-uninstall",
+                    URL(fileURLWithPath: Constants.InstallPaths.uninstall).lastPathComponent,
                 ]
             )
         default:
@@ -1068,7 +1076,7 @@ struct RuntimeLifecycle {
             )
         }
         try backupPathIfExists(
-            URL(fileURLWithPath: "/Applications/Tirosh VitalServer Manager.app"),
+            URL(fileURLWithPath: Constants.Product.managerAppPath),
             to: backup.appendingPathComponent("app-bundle")
         )
         try backupPathIfExists(productRoot.appendingPathComponent("nginx"), to: backup.appendingPathComponent("nginx-bundle"))
@@ -1081,7 +1089,7 @@ struct RuntimeLifecycle {
         try backupRuntimeTools(to: backup.appendingPathComponent("runtime-tools"))
 
         let manifest = BackupManifest(
-            product: "TiroshVitalServer",
+            product: Constants.Product.identifier,
             createdAt: isoTimestamp(),
             reason: reason,
             rootfsBase: Constants.Artifacts.rootfsBase,
@@ -1115,7 +1123,7 @@ struct RuntimeLifecycle {
         for path in [
             Constants.InstallPaths.vmBin,
             Constants.InstallPaths.proxyRun,
-            "/usr/local/bin/tirosh-vitalserver-uninstall",
+            Constants.InstallPaths.uninstall,
         ] {
             let source = URL(fileURLWithPath: path)
             if FileManager.default.fileExists(atPath: source.path) {
@@ -1208,7 +1216,7 @@ struct RuntimeLifecycle {
 
     private func writeRuntimeVersion(version: String, bundle: URL) throws {
         let document = RuntimeVersionDocument(
-            product: "TiroshVitalServer",
+            product: Constants.Product.identifier,
             runtimeVersion: version,
             appliedAt: isoTimestamp(),
             bundle: bundle.lastPathComponent,
@@ -1261,7 +1269,7 @@ struct RuntimeLifecycle {
     }
 
     private func startLaunchdService(_ label: String) {
-        let plist = "/Library/LaunchDaemons/\(label).plist"
+        let plist = launchDaemonPlist(label)
         log("launchd bootstrap label=\(label) plist=\(plist)")
         let bootstrap = runProcess(
             Constants.Commands.launchctl,
@@ -1285,6 +1293,10 @@ struct RuntimeLifecycle {
         if !isLaunchdLoaded(label) {
             startLaunchdService(label)
         }
+    }
+
+    private func launchDaemonPlist(_ label: String) -> String {
+        "\(Constants.InstallPaths.launchDaemons)/\(label).plist"
     }
 
     private func waitForHealth(restartVM: Bool, restartProxy: Bool, restartWatchdog: Bool) throws {
@@ -1467,7 +1479,7 @@ struct RuntimeLifecycle {
         let vmService = launchdState(Constants.Launchd.vmService)
         let proxyService = launchdState(Constants.Launchd.proxyService)
         let watchdogService = launchdState(Constants.Launchd.watchdogService)
-        let vmIP = readTrimmed(vmIPFile)
+        let vmIP = guestRuntimeState()?.vmIP ?? readTrimmed(vmIPFile)
         let proxyPort = installedProxyPort()
         let hostProxyHTTP = httpStatus(Constants.Runtime.proxyHealthURL(port: proxyPort))
         let guestHTTP = vmIP.map { httpStatus("http://\($0)/") } ?? "missing-vm-ip"
@@ -1496,6 +1508,7 @@ struct RuntimeLifecycle {
         }
         if !isSuccessfulHTTPStatus(hostProxyHTTP) {
             failureReasons.append("host-proxy-http-\(hostProxyHTTP)")
+            failureReasons.append(contentsOf: proxyPortFailureReasons(port: proxyPort))
         }
         if !isSuccessfulHTTPStatus(guestHTTP) {
             failureReasons.append("guest-http-\(guestHTTP)")
@@ -1524,7 +1537,7 @@ struct RuntimeLifecycle {
     ) throws {
         let snapshot = runtimeHealthSnapshot()
         let document = RuntimeStatusDocument(
-            product: "TiroshVitalServer",
+            product: Constants.Product.identifier,
             status: status.rawValue,
             operation: operation,
             message: message,
@@ -1572,7 +1585,7 @@ struct RuntimeLifecycle {
     }
 
     private func installedProxyPort() -> Int {
-        let plist = "/Library/LaunchDaemons/\(Constants.Launchd.proxyService).plist"
+        let plist = launchDaemonPlist(Constants.Launchd.proxyService)
         let result = runProcess(
             Constants.Commands.plistBuddy,
             arguments: ["-c", "Print :EnvironmentVariables:VITALSERVER_PROXY_PORT", plist]
@@ -1593,7 +1606,7 @@ struct RuntimeLifecycle {
             arguments: [
                 "-c",
                 "Set :EnvironmentVariables:VITALSERVER_PROXY_PORT \(port)",
-                "/Library/LaunchDaemons/\(Constants.Launchd.proxyService).plist",
+                launchDaemonPlist(Constants.Launchd.proxyService),
             ]
         )
     }
@@ -1642,6 +1655,64 @@ struct RuntimeLifecycle {
         )
         let code = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
         return result.exitCode == 0 ? code : "failed"
+    }
+
+    private func proxyPortFailureReasons(port: Int) -> [String] {
+        guard FileManager.default.isExecutableFile(atPath: Constants.Commands.lsof) else {
+            return []
+        }
+        let expectedNginxPID = readInstalledProxyNginxPID()
+        let result = runProcess(
+            Constants.Commands.lsof,
+            arguments: ["-nP", "-iTCP:\(port)", "-sTCP:LISTEN"]
+        )
+        guard result.exitCode == 0 else {
+            return []
+        }
+
+        let listenerFields = result.stdout
+            .split(separator: "\n")
+            .dropFirst()
+            .compactMap { line -> (command: String, pid: String)? in
+                let fields = line.split(whereSeparator: { $0 == " " || $0 == "\t" })
+                guard fields.count >= 2 else {
+                    return nil
+                }
+                return (String(fields[0]), String(fields[1]))
+            }
+        guard !listenerFields.isEmpty else {
+            return []
+        }
+
+        let hasExpectedProxyNginx = expectedNginxPID.map { expectedPID in
+            listenerFields.contains { $0.command == "nginx" && $0.pid == expectedPID }
+        } ?? false
+        if hasExpectedProxyNginx {
+            return []
+        }
+
+        let listeners = listenerFields.map { "\($0.command)-\($0.pid)" }
+        let joined = Array(listeners.prefix(5))
+            .joined(separator: "_")
+        return ["proxy-port-\(port)-in-use-by-\(joined)"]
+    }
+
+    private func readInstalledProxyNginxPID() -> String? {
+        let pidFile = productRoot
+            .appendingPathComponent("nginx")
+            .appendingPathComponent("logs")
+            .appendingPathComponent("nginx.pid")
+        guard let value = try? String(contentsOf: pidFile, encoding: .utf8)
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+            !value.isEmpty
+        else {
+            return nil
+        }
+        return value
+    }
+
+    private func guestRuntimeState() -> GuestRuntimeStateDocument? {
+        GuestRuntimeStateDocument.load(from: guestRuntimeStateFile)
     }
 
     private func runProcess(_ executable: String, arguments: [String]) -> RuntimeProcessResult {
@@ -1748,257 +1819,4 @@ struct RuntimeLifecycle {
         return FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory)
             && isDirectory.boolValue
     }
-}
-
-struct UpdateBundleManifest: Decodable {
-    let schemaVersion: Int
-    let product: String
-    let version: String
-    let runtimeVersion: String
-    let createdAt: String
-    let artifacts: [UpdateBundleArtifact]
-    let migrations: [UpdateBundleMigration]
-}
-
-struct UpdateBundleArtifact: Decodable {
-    let name: String
-    let type: String
-    let sha256: String
-    let size: Int
-}
-
-struct UpdateBundleMigration: Decodable {
-    let name: String
-    let sha256: String
-    let size: Int
-}
-
-struct RuntimeProcessResult {
-    let exitCode: Int32
-    let stdout: String
-    let stderr: String
-}
-
-struct RuntimeHealthSnapshot {
-    let vmExecutable: Bool
-    let proxyExecutable: Bool
-    let rootfsBase: String
-    let vmDisk: String
-    let vmService: String
-    let proxyService: String
-    let watchdogService: String
-    let vmIP: String?
-    let proxyPort: Int
-    let hostProxyHTTP: String
-    let guestHTTP: String
-    let failureReasons: [String]
-
-    var isHealthy: Bool {
-        failureReasons.isEmpty
-    }
-}
-
-enum RuntimeStatusLevel: String, Encodable {
-    case installing
-    case updating
-    case recovering
-    case healthy
-    case degraded
-    case critical
-}
-
-struct RuntimeStatusDocument: Encodable {
-    let product: String
-    let status: String
-    let operation: String
-    let message: String
-    let updatedAt: String
-    let productRoot: String
-    let runtimeHome: String
-    let runtimeVersion: String
-    let vmService: String
-    let proxyService: String
-    let watchdogService: String
-    let vmIP: String?
-    let proxyPort: Int
-    let hostProxyHTTP: String
-    let guestHTTP: String
-    let rootfsBase: String
-    let vmDisk: String
-    let failureReasons: [String]
-    let latestBackup: String?
-}
-
-struct RuntimeVersionDocument: Encodable {
-    let product: String
-    let runtimeVersion: String
-    let appliedAt: String
-    let bundle: String
-    let rootfsBase: String
-    let vmDisk: String
-}
-
-struct InstalledRuntimeVersionDocument: Encodable {
-    let product: String
-    let runtimeVersion: String
-    let installedAt: String
-    let rootfsBase: String
-    let vmDisk: String
-}
-
-struct GuestRuntimeConfigDocument: Codable {
-    var vitalserverHttpPort: Int
-    var redisHost: String
-    var redisPort: Int
-    var trustProxy: Bool
-    var publicHost: String
-    var publicPort: Int
-    var adminPassword: String
-    var vitalFilesDirectory: String
-    var redisUiPort: Int
-    var swaggerUiPort: Int
-
-    static func load(from url: URL) throws -> GuestRuntimeConfigDocument {
-        guard FileManager.default.fileExists(atPath: url.path) else {
-            return GuestRuntimeConfigDocument(
-                vitalserverHttpPort: 18080,
-                redisHost: "redis",
-                redisPort: 6379,
-                trustProxy: true,
-                publicHost: "",
-                publicPort: 80,
-                adminPassword: "admin",
-                vitalFilesDirectory: Constants.Defaults.vitalFilesDirectoryGuestMountPath,
-                redisUiPort: 18081,
-                swaggerUiPort: 18082
-            )
-        }
-        let data = try Data(contentsOf: url)
-        return try JSONDecoder().decode(GuestRuntimeConfigDocument.self, from: data)
-    }
-}
-
-struct BackupManifest: Encodable {
-    let product: String
-    let createdAt: String
-    let reason: String
-    let rootfsBase: String
-    let vmDisk: String
-    let vmDiskPreserved: Bool
-}
-
-struct InstallSettings {
-    static let defaultSettingsPath = "/private/tmp/tirosh-vitalserver-install.json"
-    static let defaultProxyPort = 80
-
-    var cpuCount = 8
-    var memoryGiB = 8
-    var diskGiB = 64
-    var networkMode = NetworkMode.shared
-    var proxyPort = defaultProxyPort
-    var vitalFilesDirectory: String
-    var adminPassword: String?
-    var vmHostname = "tirosh-vitalserver"
-    var publicHost = ""
-    var publicPort = 80
-    var startAfterInstall = true
-    var startOnBoot = true
-
-    static func load(
-        path: String = defaultSettingsPath,
-        defaultVitalFilesDirectory: String
-    ) throws -> InstallSettings {
-        var settings = InstallSettings(
-            vitalFilesDirectory: defaultVitalFilesDirectory
-        )
-        let url = URL(fileURLWithPath: path)
-        guard FileManager.default.fileExists(atPath: url.path) else {
-            return settings
-        }
-        let data = try Data(contentsOf: url)
-        let document = try JSONDecoder().decode(InstallSettingsDocument.self, from: data)
-        settings.apply(document: document)
-        return settings
-    }
-
-    private mutating func apply(document: InstallSettingsDocument) {
-        if let requestedCPUCount = document.cpuCount,
-           requestedCPUCount >= Constants.Defaults.minimumCPUCount,
-           requestedCPUCount <= Constants.Defaults.maximumCPUCount {
-            cpuCount = requestedCPUCount
-        }
-        if let requestedMemoryGiB = document.memoryGiB,
-           stride(from: 4, through: 64, by: 4).contains(requestedMemoryGiB) {
-            memoryGiB = requestedMemoryGiB
-        }
-        if let requestedDiskGiB = document.diskGiB,
-           stride(from: 32, through: 512, by: 16).contains(requestedDiskGiB) {
-            diskGiB = requestedDiskGiB
-        }
-        if let requestedNetworkMode = document.networkMode,
-           let mode = NetworkMode(rawValue: requestedNetworkMode) {
-            networkMode = mode
-        }
-        if let requestedProxyPort = document.proxyPort,
-           requestedProxyPort >= 1,
-           requestedProxyPort <= 65_535 {
-            proxyPort = requestedProxyPort
-        }
-        if let requestedVitalFilesDirectory = document.vitalFilesDirectory,
-           requestedVitalFilesDirectory.hasPrefix("/") {
-            vitalFilesDirectory = requestedVitalFilesDirectory
-        }
-        if let requestedAdminPassword = document.adminPassword,
-           !requestedAdminPassword.isEmpty {
-            adminPassword = requestedAdminPassword
-        }
-        if let requestedVMHostname = document.vmHostname,
-           isValidHostname(requestedVMHostname) {
-            vmHostname = requestedVMHostname
-        }
-        if let requestedPublicHost = document.publicHost,
-           isLineSafe(requestedPublicHost) {
-            publicHost = requestedPublicHost
-        }
-        if let requestedPublicPort = document.publicPort,
-           requestedPublicPort >= 1,
-           requestedPublicPort <= 65_535 {
-            publicPort = requestedPublicPort
-        }
-        if let requestedStartAfterInstall = document.startAfterInstall {
-            startAfterInstall = requestedStartAfterInstall
-        }
-        if let requestedStartOnBoot = document.startOnBoot {
-            startOnBoot = requestedStartOnBoot
-        }
-    }
-
-    private func isLineSafe(_ value: String) -> Bool {
-        !value.contains("\n") && !value.contains("\r")
-    }
-
-    private func isValidHostname(_ value: String) -> Bool {
-        guard !value.isEmpty, value.count <= 63 else {
-            return false
-        }
-        let allowed = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-")
-        let alphanumeric = CharacterSet.alphanumerics
-        return value.unicodeScalars.allSatisfy { allowed.contains($0) }
-            && value.unicodeScalars.first.map { alphanumeric.contains($0) } == true
-    }
-}
-
-private struct InstallSettingsDocument: Decodable {
-    let cpuCount: Int?
-    let memoryGiB: Int?
-    let diskGiB: Int?
-    let networkMode: String?
-    let proxyPort: Int?
-    let vitalFilesDirectory: String?
-    let adminPassword: String?
-    let vmHostname: String?
-    let publicHost: String?
-    let publicPort: Int?
-    let startAfterInstall: Bool?
-    let startOnBoot: Bool?
 }

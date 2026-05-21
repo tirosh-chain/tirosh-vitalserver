@@ -2,7 +2,7 @@
 VM_HOME ?= $(HOME)/.tirosh/vitalserver-vm
 VM_ROOTFS_SIZE ?= 8G
 VM_RECREATE_ROOTFS ?= false
-VM_RECREATE_GOLDEN_ROOTFS ?= true
+VM_RECREATE_GOLDEN_ROOTFS ?= false
 VM_WAIT_TIMEOUT ?= 300
 VM_HTTP_WAIT_TIMEOUT ?= 600
 VM_PKG_VERSION ?= 0.1.0
@@ -58,6 +58,7 @@ VM_DIST_DIR := dist
 VM_PKG_BUILD_DIR := .tmp/vitalserver-vm-pkg
 VM_PKG_ROOT := $(VM_PKG_BUILD_DIR)/root
 VM_PKG_SCRIPTS := $(VM_PKG_BUILD_DIR)/scripts
+VM_PKG_COMPONENT_PLIST := $(VM_PACKAGING_DIR)/components.plist
 VM_PKG_OUTPUT := $(VM_DIST_DIR)/TiroshVitalServerVM-$(VM_PKG_VERSION).pkg
 VM_PKG_NGINX_BUNDLE_DIR := $(VM_PKG_BUILD_DIR)/nginx-bundle
 VM_PKG_ROOTFS_CACHE := $(VM_PKG_BUILD_DIR)/rootfs-base.raw.gz

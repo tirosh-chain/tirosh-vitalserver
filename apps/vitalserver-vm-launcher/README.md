@@ -194,7 +194,7 @@ Install Tirosh VitalServer.pkg
   -> host nginx proxy ready
 ```
 
-상세한 파일별 책임과 DMG 설치 단계는 `docs/vitalserver-vm-launcher.md`의 `Source 책임`, `DMG Build 흐름`, `DMG 설치 흐름`을 기준으로 봅니다.
+상세한 파일별 책임은 `docs/vm-launcher/architecture.md`, DMG/PKG 설치 단계는 `docs/vm-launcher/packaging.md`를 기준으로 봅니다.
 
 현재 `runtime apply-bundle`이 실제로 적용하는 artifact type은 아래입니다.
 
@@ -280,7 +280,7 @@ make vm-golden-rootfs
 make vm-pkg
 ```
 
-`make vm-pkg`도 `vm-golden-rootfs`를 dependency로 실행하므로, package payload에는 `.tmp/vitalserver-vm-pkg/rootfs-base.raw.gz`가 들어갑니다. 기본 package용 rootfs는 8GB입니다. 설치된 VM은 부팅 시 필요한 guest package가 이미 있으면 `apt-get` 단계를 건너뜁니다.
+`make vm-pkg`도 `vm-golden-rootfs`를 dependency로 실행하므로, package payload에는 `.tmp/vitalserver-vm-pkg/rootfs-base.raw.gz`가 들어갑니다. 기본 package용 rootfs는 8GB입니다. 반복 개발 중에는 기존 golden rootfs cache를 재사용합니다. release 검증처럼 clean rootfs를 반드시 다시 만들려면 `make vm-pkg-release` 또는 `make vm-dmg-release`를 사용합니다. 설치된 VM은 부팅 시 필요한 guest package가 이미 있으면 `apt-get` 단계를 건너뜁니다.
 
 설치 테스트:
 
@@ -305,14 +305,13 @@ sudo tirosh-vitalserver-uninstall
 
 이 명령은 VM/proxy LaunchDaemon을 내리고, 설치된 runtime 파일을 제거합니다.
 
-`make vm-nginx-bundle`은 `vm-build.toml`의 `[nginx]`에 선언된 release artifact를 사용합니다. 기본 경로는 `.artifacts/nginx/macos/bin/nginx`이고, `expected_version`으로 build artifact 버전을 검증합니다. 현재 pinned version은 `nginx/1.31.0`입니다.
+`make vm-pkg`는 package에 넣을 macOS nginx bundle도 함께 준비합니다. 기본값은 build machine의 `/opt/homebrew/opt/nginx/bin/nginx`를 `.artifacts/nginx/macos/bin/nginx`로 복사한 뒤, `vm-build.toml`의 `expected_version`으로 검증하는 흐름입니다. 현재 pinned version은 `nginx/1.31.0`입니다.
 
 ```sh
-make vm-nginx-artifact
 make vm-nginx-bundle
 ```
 
-`.artifacts`는 build-machine 입력 cache이며 repository에 commit하지 않습니다. nginx가 참조하는 비시스템 dylib는 package 내부 `nginx/lib`로 복사하고, nginx load path를 `@executable_path/../lib`로 바꿉니다.
+`vm-nginx-bundle`을 단독으로 실행해도 기본 artifact를 먼저 준비합니다. 다른 nginx binary를 직접 쓰려면 `VM_NGINX_BIN=/path/to/nginx make vm-nginx-bundle`처럼 명시합니다. `.artifacts`는 build-machine 입력 cache이며 repository에 commit하지 않습니다. nginx가 참조하는 비시스템 dylib는 package 내부 `nginx/lib`로 복사하고, nginx load path를 `@executable_path/../lib`로 바꿉니다.
 
 ## Control App
 

@@ -25,6 +25,18 @@ final class RuntimeController: ObservableObject {
         .joined(separator: "\n\n")
     }
 
+    var applySettingsConfirmation: String {
+        [
+            AppConstants.StatusText.applySettingsConfirmation,
+            "Proxy port: \(settings.proxyPort)",
+            "Public host: \(settings.publicHost.isEmpty ? "(same host)" : settings.publicHost)",
+            "Public port: \(settings.publicPort)",
+            "Network mode: \(settings.networkMode)",
+            "Vital files directory: \(settings.vitalFilesDirectory)",
+            "Restart services: \(settings.restartAfterSave ? AppConstants.Values.boolTrue : AppConstants.Values.boolFalse)",
+        ].joined(separator: "\n")
+    }
+
     func refresh() async {
         status = RuntimeStatus.load(paths: runtime)
         settings = RuntimeSettings.load()
@@ -80,7 +92,19 @@ final class RuntimeController: ObservableObject {
         await refreshHealthStatus()
     }
 
-    func saveSettings() async {
+    func saveSettingsDraft() {
+        guard validateSettings() else {
+            return
+        }
+        settings.saveDraft()
+        message = AppConstants.StatusText.settingsDraftSaved
+    }
+
+    func prepareApplySettings() -> Bool {
+        validateSettings()
+    }
+
+    func applySettings() async {
         guard FileManager.default.isExecutableFile(atPath: runtime.launcher) else {
             message = AppConstants.StatusText.missingLauncher
             return
@@ -108,16 +132,28 @@ final class RuntimeController: ObservableObject {
         )
         let didSave = await runPrivileged(
             shellCommand: command,
-            preparingMessage: "Preparing runtime settings...",
+            preparingMessage: AppConstants.StatusText.settingsApplyPreparing,
             waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
-            runningMessage: "Saving runtime settings...",
-            successMessage: AppConstants.StatusText.settingsSaved
+            runningMessage: AppConstants.StatusText.settingsApplyRunning,
+            successMessage: AppConstants.StatusText.settingsApplied
         )
         if didSave {
+            RuntimeSettings.clearDraft()
             settings.adminPassword = ""
             settings.changeAdminPassword = false
         }
         await refreshHealthStatus()
+    }
+
+    func chooseVitalFilesDirectory() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.prompt = AppConstants.Actions.chooseDirectory
+        if panel.runModal() == .OK, let url = panel.url {
+            settings.vitalFilesDirectory = url.path
+        }
     }
 
     func chooseUpdateBundle() async {
@@ -150,7 +186,11 @@ final class RuntimeController: ObservableObject {
         }
         let command = shellCommand(
             executable: runtime.launcher,
-            arguments: ["runtime", "apply-bundle", selectedBundlePath]
+            arguments: [
+                AppConstants.RuntimeCommand.runtime,
+                AppConstants.RuntimeCommand.applyBundle,
+                selectedBundlePath,
+            ]
         )
         _ = await runPrivileged(
             shellCommand: command,
@@ -182,7 +222,11 @@ final class RuntimeController: ObservableObject {
         message = AppConstants.StatusText.updateBundleVerifying
         let result = await ProcessRunner.run(
             runtime.launcher,
-            arguments: ["runtime", "verify-bundle", selectedBundlePath]
+            arguments: [
+                AppConstants.RuntimeCommand.runtime,
+                AppConstants.RuntimeCommand.verifyBundle,
+                selectedBundlePath,
+            ]
         )
         if result.exitCode == 0 {
             selectedBundleVerified = true
@@ -208,7 +252,10 @@ final class RuntimeController: ObservableObject {
         }
         let command = shellCommand(
             executable: runtime.launcher,
-            arguments: ["runtime", "rollback"] + (selectedBackupPath.isEmpty ? [] : [selectedBackupPath])
+            arguments: [
+                AppConstants.RuntimeCommand.runtime,
+                AppConstants.RuntimeCommand.rollback,
+            ] + (selectedBackupPath.isEmpty ? [] : [selectedBackupPath])
         )
         _ = await runPrivileged(
             shellCommand: command,
@@ -218,6 +265,19 @@ final class RuntimeController: ObservableObject {
             successMessage: AppConstants.StatusText.rollbackCompleted
         )
         await refresh()
+        await refreshHealthStatus()
+    }
+
+    func repairProxyPort() async {
+        let proxyPort = status.proxyPort
+        let command = proxyRepairCommand(proxyPort: proxyPort)
+        _ = await runPrivileged(
+            shellCommand: command,
+            preparingMessage: AppConstants.StatusText.proxyRepairPreparing,
+            waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
+            runningMessage: AppConstants.StatusText.proxyRepairRunning,
+            successMessage: AppConstants.StatusText.proxyRepairCompleted
+        )
         await refreshHealthStatus()
     }
 
@@ -242,21 +302,26 @@ final class RuntimeController: ObservableObject {
     }
 
     private func validateSettings() -> Bool {
-        if settings.networkMode == "bridged", settings.bridgedInterface.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            message = "Choose a bridged interface before saving."
+        if settings.networkMode == AppConstants.Values.networkBridged,
+           settings.bridgedInterface.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            message = AppConstants.StatusText.bridgedInterfaceRequired
+            return false
+        }
+        if !(1...65_535).contains(settings.proxyPort) || !(1...65_535).contains(settings.publicPort) {
+            message = AppConstants.StatusText.invalidPort
             return false
         }
         if settings.vitalFilesDirectory.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             || !settings.vitalFilesDirectory.hasPrefix("/") {
-            message = "Vital files directory must be an absolute path."
+            message = AppConstants.StatusText.vitalFilesDirectoryRequired
             return false
         }
         if settings.changeAdminPassword, settings.adminPassword.isEmpty {
-            message = "Admin password reset value must not be empty."
+            message = AppConstants.StatusText.adminPasswordRequired
             return false
         }
         if settings.changeAdminPassword, !isLineSafe(settings.adminPassword) {
-            message = "Admin password reset value must not contain newlines."
+            message = AppConstants.StatusText.adminPasswordNewline
             return false
         }
         return true
@@ -355,6 +420,51 @@ final class RuntimeController: ObservableObject {
 
     private func shellCommand(executable: String, arguments: [String]) -> String {
         ([executable] + arguments).map(shellQuote).joined(separator: " ")
+    }
+
+    private func proxyRepairCommand(proxyPort: Int) -> String {
+        let script = """
+        set -euo pipefail
+        port=\(proxyPort)
+        echo "Checking TCP port ${port}..."
+        if [ ! -x \(shellQuote(AppConstants.Commands.lsof)) ]; then
+          echo "lsof is not available"
+          exit 1
+        fi
+        expected_nginx_pid=""
+        if [ -s \(shellQuote(AppConstants.Paths.proxyNginxPid)) ]; then
+          expected_nginx_pid="$(cat \(shellQuote(AppConstants.Paths.proxyNginxPid)) 2>/dev/null || true)"
+        fi
+        listeners="$(\(shellQuote(AppConstants.Commands.lsof)) -nP -iTCP:${port} -sTCP:LISTEN 2>/dev/null || true)"
+        if [ -n "${listeners}" ]; then
+          printf "%s\\n" "${listeners}"
+        else
+          echo "No listeners found on TCP port ${port}."
+        fi
+        nginx_pids="$(printf "%s\\n" "${listeners}" | awk 'NR>1 && $1 == "nginx" {print $2}' | sort -u | paste -sd" " -)"
+        other_listeners="$(printf "%s\\n" "${listeners}" | awk 'NR>1 && $1 != "nginx" {print $1 "/" $2}' | sort -u | paste -sd, -)"
+        foreign_nginx_pids="${nginx_pids}"
+        if [ -n "${expected_nginx_pid}" ] && printf " %s " "${nginx_pids}" | grep -q " ${expected_nginx_pid} "; then
+          echo "Configured host proxy nginx is already listening: ${nginx_pids}"
+          foreign_nginx_pids=""
+        fi
+        if [ -n "${foreign_nginx_pids}" ]; then
+          echo "Stopping foreign nginx listeners: ${foreign_nginx_pids}"
+          kill -TERM ${foreign_nginx_pids} || true
+          sleep 1
+        fi
+        if [ -n "${other_listeners}" ]; then
+          echo "Non-nginx listeners remain on port ${port}: ${other_listeners}"
+          echo "Stop that process or change the proxy port in Settings."
+          exit 2
+        fi
+        echo "Restarting host proxy service..."
+        \(shellQuote(AppConstants.Commands.launchctl)) kickstart -k system/\(AppConstants.Launchd.proxyService)
+        sleep 2
+        \(shellQuote(AppConstants.Commands.launchctl)) print system/\(AppConstants.Launchd.proxyService) >/dev/null
+        echo "Host proxy service restarted."
+        """
+        return "/bin/bash -lc \(shellQuote(script))"
     }
 
     private func commandWithLog(_ shellCommand: String) -> String {

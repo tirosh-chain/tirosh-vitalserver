@@ -1,9 +1,9 @@
 import Foundation
 
-struct RuntimeSettings {
+struct RuntimeSettings: Codable {
     var cpuCount = 8
     var memoryGiB = 8
-    var networkMode = "shared"
+    var networkMode = AppConstants.Values.networkShared
     var bridgedInterface = ""
     var proxyPort = AppConstants.Product.defaultProxyPort
     var vitalFilesDirectory = "/Library/Application Support/TiroshVitalServer/vm/data/vital-files"
@@ -16,6 +16,35 @@ struct RuntimeSettings {
     var restartAfterSave = true
 
     static func load() -> RuntimeSettings {
+        let installedSettings = loadInstalled()
+        guard var draft = loadDraft() else {
+            return installedSettings
+        }
+        draft.startOnBootConfigurable = installedSettings.startOnBootConfigurable
+        return draft
+    }
+
+    static func clearDraft() {
+        UserDefaults.standard.removeObject(forKey: AppConstants.UserDefaultsKeys.settingsDraft)
+    }
+
+    func saveDraft() {
+        var draft = self
+        draft.adminPassword = ""
+        draft.changeAdminPassword = false
+        if let data = try? JSONEncoder().encode(draft) {
+            UserDefaults.standard.set(data, forKey: AppConstants.UserDefaultsKeys.settingsDraft)
+        }
+    }
+
+    private static func loadDraft() -> RuntimeSettings? {
+        guard let data = UserDefaults.standard.data(forKey: AppConstants.UserDefaultsKeys.settingsDraft) else {
+            return nil
+        }
+        return try? JSONDecoder().decode(RuntimeSettings.self, from: data)
+    }
+
+    private static func loadInstalled() -> RuntimeSettings {
         var settings = RuntimeSettings()
 
         if let vmConfig = VMConfigDocument.load(path: AppConstants.Paths.vmConfig) {
@@ -45,37 +74,37 @@ struct RuntimeSettings {
 
     func configureArguments(adminPasswordFile: String? = nil) -> [String] {
         var arguments = [
-            "runtime",
-            "configure",
-            "--cpu",
+            AppConstants.RuntimeCommand.runtime,
+            AppConstants.RuntimeCommand.configure,
+            AppConstants.RuntimeCommand.optionCPU,
             String(cpuCount),
-            "--memory-gib",
+            AppConstants.RuntimeCommand.optionMemoryGiB,
             String(memoryGiB),
-            "--network",
+            AppConstants.RuntimeCommand.optionNetwork,
             networkMode,
-            "--proxy-port",
+            AppConstants.RuntimeCommand.optionProxyPort,
             String(proxyPort),
-            "--vital-files-dir",
+            AppConstants.RuntimeCommand.optionVitalFilesDirectory,
             vitalFilesDirectory,
-            "--public-host",
+            AppConstants.RuntimeCommand.optionPublicHost,
             publicHost,
-            "--public-port",
+            AppConstants.RuntimeCommand.optionPublicPort,
             String(publicPort),
         ]
         if startOnBootConfigurable {
             arguments += [
-                "--start-on-boot",
-                startOnBoot ? "true" : "false",
+                AppConstants.RuntimeCommand.optionStartOnBoot,
+                startOnBoot ? AppConstants.Values.boolTrue : AppConstants.Values.boolFalse,
             ]
         }
-        if networkMode == "bridged", !bridgedInterface.isEmpty {
-            arguments += ["--bridged-interface", bridgedInterface]
+        if networkMode == AppConstants.Values.networkBridged, !bridgedInterface.isEmpty {
+            arguments += [AppConstants.RuntimeCommand.optionBridgedInterface, bridgedInterface]
         }
         if let adminPasswordFile {
-            arguments += ["--admin-password-file", adminPasswordFile]
+            arguments += [AppConstants.RuntimeCommand.optionAdminPasswordFile, adminPasswordFile]
         }
         if restartAfterSave {
-            arguments.append("--restart")
+            arguments.append(AppConstants.RuntimeCommand.optionRestart)
         }
         return arguments
     }

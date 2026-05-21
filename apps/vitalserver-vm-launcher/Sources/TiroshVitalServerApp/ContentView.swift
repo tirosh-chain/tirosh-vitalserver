@@ -4,25 +4,35 @@ struct ContentView: View {
     @StateObject private var controller = RuntimeController()
     @State private var showingUpdateConfirmation = false
     @State private var showingRollbackConfirmation = false
+    @State private var showingRepairProxyConfirmation = false
     @State private var showingUninstallConfirmation = false
     @State private var showingCleanUninstallConfirmation = false
+    @State private var showingApplySettingsConfirmation = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             header
             TabView {
                 statusGrid
-                    .tabItem { Text("Status") }
+                    .tabItem { Text(AppConstants.Labels.tabStatus) }
                 settingsPanel
-                    .tabItem { Text("Settings") }
+                    .tabItem { Text(AppConstants.Labels.tabSettings) }
                 updatePanel
-                    .tabItem { Text("Update") }
+                    .tabItem { Text(AppConstants.Labels.tabUpdate) }
             }
             .frame(minHeight: 360)
             actionBar
             logPanel
         }
         .padding(24)
+        .alert(AppConstants.Actions.applySettings, isPresented: $showingApplySettingsConfirmation) {
+            Button(AppConstants.Actions.cancel, role: .cancel) {}
+            Button(AppConstants.Actions.applySettings) {
+                Task { await controller.applySettings() }
+            }
+        } message: {
+            Text(controller.applySettingsConfirmation)
+        }
         .task {
             await controller.refresh()
         }
@@ -109,6 +119,11 @@ struct ContentView: View {
                     controller.openSwagger()
                 }
             }
+            .fixedSize()
+            Button(AppConstants.Actions.repairProxy) {
+                showingRepairProxyConfirmation = true
+            }
+            .disabled(controller.isBusy || !controller.status.runtimeInstalled)
             Menu(AppConstants.Actions.uninstall) {
                 Button(AppConstants.Actions.standardUninstall, role: .destructive) {
                     showingUninstallConfirmation = true
@@ -119,6 +134,7 @@ struct ContentView: View {
             }
             .foregroundStyle(.red)
             .disabled(controller.isBusy || !controller.status.runtimeInstalled)
+            .fixedSize()
             Spacer()
             Button(AppConstants.Actions.refresh) {
                 Task { await controller.refresh() }
@@ -139,7 +155,15 @@ struct ContentView: View {
                 Task { await controller.rollbackRuntime() }
             }
         } message: {
-            Text(controller.selectedBackupPath.isEmpty ? "Latest backup" : controller.selectedBackupPath)
+            Text(controller.selectedBackupPath.isEmpty ? AppConstants.StatusText.latestBackupFallback : controller.selectedBackupPath)
+        }
+        .alert(AppConstants.Actions.repairProxyPort, isPresented: $showingRepairProxyConfirmation) {
+            Button(AppConstants.Actions.cancel, role: .cancel) {}
+            Button(AppConstants.Actions.repairProxy, role: .destructive) {
+                Task { await controller.repairProxyPort() }
+            }
+        } message: {
+            Text(AppConstants.StatusText.repairProxyConfirmation)
         }
         .alert(AppConstants.Actions.standardUninstall, isPresented: $showingUninstallConfirmation) {
             Button(AppConstants.Actions.cancel, role: .cancel) {}
@@ -147,7 +171,7 @@ struct ContentView: View {
                 Task { await controller.uninstallRuntime() }
             }
         } message: {
-            Text("Removes the Manager app, runtime services, tools, VM disk, logs, and package receipt. Vital files and backups are preserved.")
+            Text(AppConstants.StatusText.standardUninstallConfirmation)
         }
         .alert(AppConstants.Actions.cleanUninstall, isPresented: $showingCleanUninstallConfirmation) {
             Button(AppConstants.Actions.cancel, role: .cancel) {}
@@ -155,53 +179,74 @@ struct ContentView: View {
                 Task { await controller.uninstallRuntime(clean: true) }
             }
         } message: {
-            Text("Removes the Manager app, runtime services, tools, VM disk, logs, backups, and configured vital files directory.")
+            Text(AppConstants.StatusText.cleanUninstallConfirmation)
         }
     }
 
     private var settingsPanel: some View {
-        Form {
-            Stepper(value: $controller.settings.cpuCount, in: 7...64) {
-                labeledValue("CPU", "\(controller.settings.cpuCount)")
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                settingsSection(AppConstants.Labels.sectionVM) {
+                    settingStepper(AppConstants.Labels.cpu, value: $controller.settings.cpuCount, range: 7...64, suffix: AppConstants.Labels.unitVCPU)
+                    settingStepper(AppConstants.Labels.memory, value: $controller.settings.memoryGiB, range: 4...64, step: 4, suffix: AppConstants.Labels.unitGiB)
+                }
+                settingsSection(AppConstants.Labels.sectionNetwork) {
+                    settingRow(AppConstants.Labels.mode) {
+                        Picker("", selection: $controller.settings.networkMode) {
+                            Text(AppConstants.Labels.shared).tag(AppConstants.Values.networkShared)
+                            Text(AppConstants.Labels.bridged).tag(AppConstants.Values.networkBridged)
+                        }
+                        .labelsHidden()
+                        .frame(maxWidth: 260, alignment: .leading)
+                    }
+                    if controller.settings.networkMode == AppConstants.Values.networkBridged {
+                        settingTextField(AppConstants.Labels.bridgedInterface, text: $controller.settings.bridgedInterface)
+                    }
+                    settingPortField(AppConstants.Labels.proxyPort, value: $controller.settings.proxyPort)
+                    settingTextField(AppConstants.Labels.publicHost, text: $controller.settings.publicHost)
+                    settingPortField(AppConstants.Labels.publicPort, value: $controller.settings.publicPort)
+                }
+                settingsSection(AppConstants.Labels.sectionStorage) {
+                    settingDirectoryField(AppConstants.Labels.vitalFilesDirectory, text: $controller.settings.vitalFilesDirectory)
+                }
+                settingsSection(AppConstants.Labels.sectionOperations) {
+                    settingToggle(AppConstants.Labels.startOnBoot, isOn: $controller.settings.startOnBoot)
+                        .disabled(!controller.settings.startOnBootConfigurable)
+                    settingToggle(AppConstants.Labels.restartServicesAfterSave, isOn: $controller.settings.restartAfterSave)
+                    settingToggle(AppConstants.Labels.resetAdminPassword, isOn: $controller.settings.changeAdminPassword)
+                    if controller.settings.changeAdminPassword {
+                        settingRow(AppConstants.Labels.newAdminPassword) {
+                            SecureField("", text: $controller.settings.adminPassword)
+                                .labelsHidden()
+                                .textFieldStyle(.roundedBorder)
+                                .frame(maxWidth: 360)
+                        }
+                    }
+                }
+                HStack {
+                    Button(AppConstants.Actions.saveSettings) {
+                        controller.saveSettingsDraft()
+                    }
+                    .disabled(controller.isBusy)
+                    Button(AppConstants.Actions.applySettings) {
+                        if controller.prepareApplySettings() {
+                            showingApplySettingsConfirmation = true
+                        }
+                    }
+                    .disabled(controller.isBusy || !controller.status.runtimeInstalled)
+                    Spacer()
+                }
             }
-            Stepper(value: $controller.settings.memoryGiB, in: 4...64, step: 4) {
-                labeledValue("Memory", "\(controller.settings.memoryGiB) GiB")
-            }
-            Picker("Network", selection: $controller.settings.networkMode) {
-                Text("Shared").tag("shared")
-                Text("Bridged").tag("bridged")
-            }
-            if controller.settings.networkMode == "bridged" {
-                TextField("Bridged interface", text: $controller.settings.bridgedInterface)
-            }
-            TextField("Vital files directory", text: $controller.settings.vitalFilesDirectory)
-            Stepper(value: $controller.settings.proxyPort, in: 1...65_535) {
-                labeledValue("Proxy port", "\(controller.settings.proxyPort)")
-            }
-            TextField("Public host", text: $controller.settings.publicHost)
-            Stepper(value: $controller.settings.publicPort, in: 1...65_535) {
-                labeledValue("Public port", "\(controller.settings.publicPort)")
-            }
-            Toggle("Start on boot", isOn: $controller.settings.startOnBoot)
-                .disabled(!controller.settings.startOnBootConfigurable)
-            Toggle("Reset admin password", isOn: $controller.settings.changeAdminPassword)
-            if controller.settings.changeAdminPassword {
-                SecureField("New admin password", text: $controller.settings.adminPassword)
-            }
-            Toggle("Restart services after save", isOn: $controller.settings.restartAfterSave)
-            Button(AppConstants.Actions.saveSettings) {
-                Task { await controller.saveSettings() }
-            }
-            .disabled(controller.isBusy || !controller.status.runtimeInstalled)
+            .frame(maxWidth: 760, alignment: .leading)
+            .padding(16)
         }
-        .padding(16)
     }
 
     private var updatePanel: some View {
         VStack(alignment: .leading, spacing: 14) {
             statusBadge
             HStack {
-                Text(controller.selectedBundlePath.isEmpty ? "No update bundle selected" : controller.selectedBundlePath)
+                Text(controller.selectedBundlePath.isEmpty ? AppConstants.Labels.noUpdateBundleSelected : controller.selectedBundlePath)
                     .lineLimit(2)
                     .truncationMode(.middle)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -226,14 +271,14 @@ struct ContentView: View {
                     .textSelection(.enabled)
             }
             if let latestBackup = controller.status.latestBackup {
-                Text("Latest backup: \(latestBackup)")
+                Text("\(AppConstants.Labels.latestBackup): \(latestBackup)")
                     .font(.system(.body, design: .monospaced))
                     .lineLimit(2)
                     .truncationMode(.middle)
                     .textSelection(.enabled)
             }
             if !controller.backups.isEmpty {
-                Picker("Rollback backup", selection: $controller.selectedBackupPath) {
+                Picker(AppConstants.Labels.rollbackBackup, selection: $controller.selectedBackupPath) {
                     ForEach(controller.backups) { backup in
                         Text(backup.name).tag(backup.path)
                     }
@@ -274,25 +319,92 @@ struct ContentView: View {
 
     private var statusColor: Color {
         switch controller.status.runtimeState {
-        case "healthy":
+        case AppConstants.Values.stateHealthy:
             return .green
-        case "installing", "updating", "recovering":
+        case AppConstants.Values.stateInstalling, AppConstants.Values.stateUpdating, AppConstants.Values.stateRecovering:
             return .orange
-        case "degraded":
+        case AppConstants.Values.stateDegraded:
             return .yellow
-        case "critical":
+        case AppConstants.Values.stateCritical:
             return .red
         default:
             return .gray
         }
     }
 
-    private func labeledValue(_ label: String, _ value: String) -> some View {
-        HStack {
+    private func settingsSection<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title)
+                .font(.headline)
+            VStack(alignment: .leading, spacing: 10) {
+                content()
+            }
+        }
+    }
+
+    private func settingRow<Content: View>(_ label: String, @ViewBuilder content: () -> Content) -> some View {
+        HStack(alignment: .center, spacing: 14) {
             Text(label)
-            Spacer()
-            Text(value)
                 .foregroundStyle(.secondary)
+                .frame(width: 160, alignment: .leading)
+            content()
+            Spacer()
+        }
+    }
+
+    private func settingStepper(
+        _ label: String,
+        value: Binding<Int>,
+        range: ClosedRange<Int>,
+        step: Int = 1,
+        suffix: String = ""
+    ) -> some View {
+        settingRow(label) {
+            Stepper(value: value, in: range, step: step) {
+                Text(suffix.isEmpty ? "\(value.wrappedValue)" : "\(value.wrappedValue) \(suffix)")
+                    .frame(width: 100, alignment: .leading)
+            }
+            .fixedSize()
+        }
+    }
+
+    private func settingTextField(_ label: String, text: Binding<String>) -> some View {
+        settingRow(label) {
+            TextField("", text: text)
+                .labelsHidden()
+                .textFieldStyle(.roundedBorder)
+                .frame(maxWidth: 440)
+        }
+    }
+
+    private func settingPortField(_ label: String, value: Binding<Int>) -> some View {
+        settingRow(label) {
+            TextField("", value: value, formatter: portNumberFormatter)
+                .labelsHidden()
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 120)
+        }
+    }
+
+    private func settingDirectoryField(_ label: String, text: Binding<String>) -> some View {
+        settingRow(label) {
+            HStack(spacing: 8) {
+                TextField("", text: text)
+                    .labelsHidden()
+                    .textFieldStyle(.roundedBorder)
+                    .frame(maxWidth: 440)
+                Button(AppConstants.Actions.chooseDirectory) {
+                    controller.chooseVitalFilesDirectory()
+                }
+                .disabled(controller.isBusy)
+            }
+        }
+    }
+
+    private func settingToggle(_ label: String, isOn: Binding<Bool>) -> some View {
+        settingRow(label) {
+            Toggle("", isOn: isOn)
+                .labelsHidden()
         }
     }
 
@@ -311,6 +423,15 @@ struct ContentView: View {
             .background(Color(nsColor: .textBackgroundColor))
             .clipShape(RoundedRectangle(cornerRadius: 8))
         }
+    }
+
+    private var portNumberFormatter: NumberFormatter {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .none
+        formatter.minimum = 1
+        formatter.maximum = 65_535
+        formatter.allowsFloats = false
+        return formatter
     }
 
     private func pollStatus() async {

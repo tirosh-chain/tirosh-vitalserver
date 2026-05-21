@@ -18,6 +18,7 @@ docker-compose.override.yml
 tmp.txt
 .artifacts/
 .tmp/
+dist/
 tmp/
 temp/
 .build/

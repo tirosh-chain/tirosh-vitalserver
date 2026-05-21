@@ -111,6 +111,7 @@ struct Launcher {
     func start(paths: LauncherPaths) throws {
         let config = try VMRuntimeConfig.load(from: paths.config)
         try VMRuntimeConfig.validateBootFiles(config)
+        try removeStaleRuntimeState(paths: paths)
         try ProcessState.writeCurrentPid(pidFile: paths.pidFile)
 
         let configurationFactory = VMConfigurationFactory()
@@ -135,6 +136,19 @@ struct Launcher {
         RunLoop.main.run()
         _ = configurationFactory
         _ = delegate
+    }
+
+    private func removeStaleRuntimeState(paths: LauncherPaths) throws {
+        let runDirectory = paths.home
+            .appendingPathComponent(Constants.Paths.dataDirectory)
+            .appendingPathComponent(Constants.Paths.runDirectory)
+        for fileName in [Constants.Runtime.runtimeStateFile, Constants.Runtime.vmIPFile] {
+            let url = runDirectory.appendingPathComponent(fileName)
+            if FileManager.default.fileExists(atPath: url.path) {
+                try FileManager.default.removeItem(at: url)
+                print("removed stale runtime state: \(url.path)")
+            }
+        }
     }
 
     func listInterfaces() {

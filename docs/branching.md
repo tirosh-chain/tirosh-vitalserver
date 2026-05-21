@@ -42,7 +42,7 @@ git switch -c feature/issue-18-vrecorder-capture
 ```sh
 git switch develop
 git pull  # git pull --prune
-# edit docs
+# 문서를 수정합니다.
 git commit -m "Document branch workflow"
 git push
 ```

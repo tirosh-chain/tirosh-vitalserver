@@ -22,7 +22,7 @@ struct RuntimeStatus {
             && vmServiceLoaded
             && proxyServiceLoaded
             && watchdogServiceLoaded
-            && runtimeState == "healthy"
+            && runtimeState == AppConstants.Values.stateHealthy
             && vmIP != nil
             && isSuccessfulHTTPStatus(guestHTTP)
             && isSuccessfulHTTPStatus(hostProxyHTTP)
@@ -41,6 +41,7 @@ struct RuntimeStatus {
 
     static func load(paths: RuntimePaths) -> RuntimeStatus {
         let document = runtimeStatusDocument(paths.runtimeStatus)
+        let guestState = guestRuntimeStateDocument(paths.runtimeState)
         return RuntimeStatus(
             runtimeInstalled: FileManager.default.isExecutableFile(atPath: paths.launcher),
             vmServiceLoaded: loaded(document?.vmService) ?? launchdLoaded(AppConstants.Launchd.vmService),
@@ -52,7 +53,7 @@ struct RuntimeStatus {
             updatedAt: document?.updatedAt,
             runtimeVersion: document?.runtimeVersion,
             latestBackup: document?.latestBackup,
-            vmIP: document?.vmIP ?? readTrimmed(paths.vmIPFile),
+            vmIP: document?.vmIP ?? guestState?.vmIP ?? readTrimmed(paths.vmIPFile),
             guestHTTP: document?.guestHTTP,
             hostProxyHTTP: document?.hostProxyHTTP,
             proxyPort: document?.proxyPort ?? proxyPort(paths.proxyLaunchDaemon),
@@ -67,11 +68,18 @@ struct RuntimeStatus {
         return try? JSONDecoder().decode(RuntimeStatusDocument.self, from: data)
     }
 
+    private static func guestRuntimeStateDocument(_ path: String) -> GuestRuntimeStateDocument? {
+        guard let data = FileManager.default.contents(atPath: path) else {
+            return nil
+        }
+        return try? JSONDecoder().decode(GuestRuntimeStateDocument.self, from: data)
+    }
+
     private static func loaded(_ value: String?) -> Bool? {
         guard let value else {
             return nil
         }
-        return value == "loaded"
+        return value == AppConstants.Values.launchdLoaded
     }
 
     private static func launchdLoaded(_ label: String) -> Bool {
@@ -121,8 +129,13 @@ struct RuntimePaths {
     let launcher = AppConstants.Paths.launcher
     let uninstaller = AppConstants.Paths.uninstaller
     let vmIPFile = AppConstants.Paths.vmIPFile
+    let runtimeState = AppConstants.Paths.runtimeState
     let runtimeStatus = AppConstants.Paths.runtimeStatus
     let proxyLaunchDaemon = AppConstants.Paths.proxyLaunchDaemon
+}
+
+private struct GuestRuntimeStateDocument: Decodable {
+    let vmIP: String
 }
 
 private struct RuntimeStatusDocument: Decodable {

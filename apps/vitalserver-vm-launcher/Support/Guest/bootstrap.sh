@@ -10,7 +10,7 @@ APP_PORT="${VITALSERVER_VM_APP_PORT:-18080}"
 REDIS_UI_PORT="${REDIS_UI_PORT:-18081}"
 SWAGGER_UI_PORT="${SWAGGER_UI_PORT:-18082}"
 RUNTIME_DIR="${MOUNT_POINT}/run"
-VM_IP_FILE="${RUNTIME_DIR}/vm-ip"
+RUNTIME_STATE_FILE="${RUNTIME_DIR}/runtime-state.json"
 
 if [ "$(id -u)" -ne 0 ]; then
   printf "error: run with sudo\n" >&2
@@ -73,15 +73,15 @@ PY
   APP_PORT="${VITALSERVER_HTTP_PORT}"
 }
 
-install_vm_ip_writer() {
-  install -m 0755 /dev/stdin /usr/local/bin/tirosh-write-vm-ip <<'SCRIPT'
+install_runtime_state_writer() {
+  install -m 0755 /dev/stdin /usr/local/bin/tirosh-write-runtime-state <<'SCRIPT'
 #!/usr/bin/env bash
 set -euo pipefail
 
 MOUNT_TAG="${TIROSH_SHARE_TAG:-tirosh}"
 MOUNT_POINT="${TIROSH_SHARE_MOUNT:-/mnt/tirosh}"
 RUNTIME_DIR="${MOUNT_POINT}/run"
-VM_IP_FILE="${RUNTIME_DIR}/vm-ip"
+RUNTIME_STATE_FILE="${RUNTIME_DIR}/runtime-state.json"
 
 mkdir -p "${MOUNT_POINT}"
 if ! mountpoint -q "${MOUNT_POINT}"; then
@@ -89,28 +89,52 @@ if ! mountpoint -q "${MOUNT_POINT}"; then
 fi
 
 mkdir -p "${RUNTIME_DIR}"
-hostname -I \
+vm_ip="$(hostname -I \
   | tr ' ' '\n' \
-  | awk 'NF && $1 !~ /^127\./ && $1 !~ /^169\.254\./ { print $1; exit }' \
-  >"${VM_IP_FILE}"
+  | awk 'NF && $1 !~ /^127\./ && $1 !~ /^169\.254\./ { print $1; exit }')"
+python3 - "${RUNTIME_STATE_FILE}" "${vm_ip}" <<'PY'
+import json
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+state_path = Path(sys.argv[1])
+vm_ip = sys.argv[2]
+boot_id = Path("/proc/sys/kernel/random/boot_id").read_text(encoding="utf-8").strip()
+state_path.write_text(
+    json.dumps(
+        {
+            "schemaVersion": 1,
+            "vmIP": vm_ip,
+            "bootID": boot_id,
+            "guestHTTP": None,
+            "updatedAt": datetime.now(timezone.utc).isoformat(),
+        },
+        indent=2,
+        sort_keys=True,
+    )
+    + "\n",
+    encoding="utf-8",
+)
+PY
 SCRIPT
 
-  cat >/etc/systemd/system/tirosh-vm-ip.service <<'UNIT'
+  cat >/etc/systemd/system/tirosh-runtime-state.service <<'UNIT'
 [Unit]
-Description=Write Tirosh VM IP to shared runtime directory
+Description=Write Tirosh VM runtime state to shared runtime directory
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/bin/tirosh-write-vm-ip
+ExecStart=/usr/local/bin/tirosh-write-runtime-state
 
 [Install]
 WantedBy=multi-user.target
 UNIT
 
   systemctl daemon-reload
-  systemctl enable tirosh-vm-ip.service
+  systemctl enable tirosh-runtime-state.service
 }
 
 install_compose_stack_service() {
@@ -223,7 +247,7 @@ hostnamectl || true
 uptime || true
 df -h / "${MOUNT_POINT}" 2>/dev/null || true
 printf "\n== services ==\n"
-systemctl --no-pager --full status docker nginx tirosh-vitalserver-compose.service tirosh-vm-ip.service || true
+systemctl --no-pager --full status docker nginx tirosh-vitalserver-compose.service tirosh-runtime-state.service || true
 printf "\n== compose ps ==\n"
 docker compose --project-name vitalserver -f "${DEPLOY_DIR}/compose.yaml" ps || true
 printf "\n== compose logs ==\n"
@@ -272,12 +296,41 @@ UNIT
   systemctl enable --now tirosh-vitalserver-redis-backup.timer
 }
 
-write_vm_ip() {
+write_runtime_state() {
   mkdir -p "${RUNTIME_DIR}"
-  hostname -I \
+  local vm_ip boot_id guest_http
+  vm_ip="$(hostname -I \
     | tr ' ' '\n' \
-    | awk 'NF && $1 !~ /^127\\./ && $1 !~ /^169\\.254\\./ { print $1; exit }' \
-    >"${VM_IP_FILE}"
+    | awk 'NF && $1 !~ /^127\\./ && $1 !~ /^169\\.254\\./ { print $1; exit }')"
+  boot_id="$(cat /proc/sys/kernel/random/boot_id 2>/dev/null || true)"
+  guest_http="${1:-}"
+
+  python3 - "${RUNTIME_STATE_FILE}" "${vm_ip}" "${boot_id}" "${guest_http}" <<'PY'
+import json
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+state_path = Path(sys.argv[1])
+vm_ip = sys.argv[2]
+boot_id = sys.argv[3] or None
+guest_http = sys.argv[4] or None
+state_path.write_text(
+    json.dumps(
+        {
+            "schemaVersion": 1,
+            "vmIP": vm_ip,
+            "bootID": boot_id,
+            "guestHTTP": guest_http,
+            "updatedAt": datetime.now(timezone.utc).isoformat(),
+        },
+        indent=2,
+        sort_keys=True,
+    )
+    + "\n",
+    encoding="utf-8",
+)
+PY
 }
 
 wait_for_network_time() {
@@ -398,7 +451,7 @@ install_runtime_packages() {
 }
 
 export DEBIAN_FRONTEND=noninteractive
-write_vm_ip
+write_runtime_state
 expand_root_filesystem
 if runtime_packages_ready; then
   printf "Runtime packages are already available; skipping apt install.\n"
@@ -418,7 +471,7 @@ systemctl enable --now nginx
 systemctl enable --now binfmt-support >/dev/null 2>&1 || true
 hostnamectl set-hostname "${TIROSH_GUEST_HOSTNAME:-tirosh-vitalserver}"
 systemctl enable --now avahi-daemon
-install_vm_ip_writer
+install_runtime_state_writer
 install_guest_operations_tools
 
 mkdir -p "${VITAL_FILES_MOUNT_POINT}" "${MOUNT_POINT}/vr-release"
@@ -460,6 +513,7 @@ wait_for_vitalserver_http() {
 
     if [ "${http_status}" -eq 0 ] && [ "${code}" -ge 200 ] && [ "${code}" -lt 400 ]; then
       printf "VitalServer app is ready: %s\n" "${code}"
+      write_runtime_state "${code}"
       return
     fi
 
@@ -507,6 +561,6 @@ docker compose \
 
 install_compose_stack_service
 wait_for_vitalserver_http
-write_vm_ip
+write_runtime_state "200"
 
 printf "VitalServer edge is ready on this VM at port 80.\n"

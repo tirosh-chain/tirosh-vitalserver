@@ -1,6 +1,12 @@
 enum Constants {
     static let launcherVersion = "0.1.0"
 
+    enum Product {
+        static let identifier = "TiroshVitalServer"
+        static let managerAppName = "Tirosh VitalServer Manager.app"
+        static let managerAppPath = "/Applications/\(managerAppName)"
+    }
+
     enum Environment {
         static let vmHome = "VITALSERVER_VM_HOME"
         static let detached = "VITALSERVER_VM_DETACHED"
@@ -57,6 +63,20 @@ enum Constants {
     enum InstallPaths {
         static let vmBin = "/usr/local/bin/vitalserver-vm"
         static let proxyRun = "/usr/local/bin/vitalserver-proxy-run"
+        static let uninstall = "/usr/local/bin/tirosh-vitalserver-uninstall"
+        static let settingsPath = "/private/tmp/tirosh-vitalserver-install.json"
+        static let launchDaemons = "/Library/LaunchDaemons"
+    }
+
+    enum Guest {
+        static let hostname = "tirosh-vitalserver"
+        static let vitalserverHTTPPort = 18080
+        static let redisHost = "redis"
+        static let redisPort = 6379
+        static let redisUIPort = 18081
+        static let swaggerUIPort = 18082
+        static let publicPort = 80
+        static let defaultAdminPassword = "admin"
     }
 
     enum Launchd {
@@ -67,6 +87,7 @@ enum Constants {
 
     enum Runtime {
         static let vmIPFile = "vm-ip"
+        static let runtimeStateFile = "runtime-state.json"
         static let waitTimeoutSeconds = 600.0
         static let watchdogRecoveryWaitSeconds = 20.0
         static let freeSpaceMarginBytes: UInt64 = 4 * 1024 * 1024 * 1024
@@ -97,5 +118,6 @@ enum Constants {
         static let chmod = "/bin/chmod"
         static let chown = "/usr/sbin/chown"
         static let tar = "/usr/bin/tar"
+        static let lsof = "/usr/sbin/lsof"
     }
 }
