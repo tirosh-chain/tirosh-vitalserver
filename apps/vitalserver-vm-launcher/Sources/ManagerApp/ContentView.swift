@@ -512,9 +512,6 @@ struct ContentView: View {
                     showingRollbackConfirmation = true
                 }
                 .disabled(controller.isBusy || !controller.status.runtimeInstalled || controller.backups.isEmpty)
-                Button(AppConstants.Actions.openLogs) {
-                    controller.openLogs()
-                }
                 Spacer()
             }
         }
@@ -849,6 +846,9 @@ struct ContentView: View {
                 }
                 Toggle(AppConstants.Labels.logStreaming, isOn: $controller.logStreaming)
                     .toggleStyle(.checkbox)
+                Button(AppConstants.Actions.openLogs) {
+                    controller.openLogs()
+                }
                 Button(AppConstants.Actions.refresh) {
                     controller.refreshLogs()
                 }
