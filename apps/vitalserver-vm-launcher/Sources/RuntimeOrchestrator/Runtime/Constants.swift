@@ -47,6 +47,8 @@ enum Constants {
     enum Defaults {
         static let minimumCPUCount = 7
         static let maximumCPUCount = 64
+        static let minimumDiskGiB = 4
+        static let maximumDiskGiB = 512
         static let memoryMiB: UInt64 = 8192
         static let sharedDirectoryTag = "tirosh"
         static let sharedDirectoryGuestMountPath = "/mnt/tirosh"

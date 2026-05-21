@@ -110,7 +110,7 @@ struct RuntimeLifecycle {
               vitalserver-vm runtime status
               vitalserver-vm runtime health
               vitalserver-vm runtime watchdog
-              vitalserver-vm runtime configure [--cpu <count>] [--memory-gib <gib>] [--network shared|bridged] [--bridged-interface <id>] [--proxy-port <port>] [--vital-files-dir <path>] [--public-host <host>] [--public-port <port>] [--admin-password <password>] [--start-on-boot true|false] [--restart]
+              vitalserver-vm runtime configure [--cpu <count>] [--memory-gib <gib>] [--disk-gib <gib>] [--network shared|bridged] [--bridged-interface <id>] [--proxy-port <port>] [--vital-files-dir <path>] [--public-host <host>] [--public-port <port>] [--admin-password <password>] [--start-on-boot true|false] [--restart]
               vitalserver-vm runtime configure [--admin-password-file <path>] [--restart]
               vitalserver-vm runtime verify-bundle <bundle-dir>
               vitalserver-vm runtime stage-bundle <bundle-dir>
@@ -539,6 +539,18 @@ struct RuntimeLifecycle {
                     throw LauncherError.missingArgument("--memory-gib must be between 4 and 64 in 4 GiB steps")
                 }
                 vmConfig.memoryMiB = memoryGiB * 1024
+            case "--disk-gib":
+                guard let diskGiB = Int(value),
+                      stride(
+                        from: Constants.Defaults.minimumDiskGiB,
+                        through: Constants.Defaults.maximumDiskGiB,
+                        by: 4
+                      ).contains(diskGiB) else {
+                    throw LauncherError.missingArgument(
+                        "--disk-gib must be between \(Constants.Defaults.minimumDiskGiB) and \(Constants.Defaults.maximumDiskGiB) in 4 GiB steps"
+                    )
+                }
+                try resizeVMDiskIfNeeded(diskGiB: diskGiB)
             case "--network":
                 guard let mode = NetworkMode(rawValue: value) else {
                     throw LauncherError.missingArgument("--network must be `shared` or `bridged`")
@@ -1395,6 +1407,24 @@ struct RuntimeLifecycle {
     private func fileSize(_ url: URL) throws -> UInt64 {
         let values = try url.resourceValues(forKeys: [.fileSizeKey])
         return UInt64(values.fileSize ?? 0)
+    }
+
+    private func resizeVMDiskIfNeeded(diskGiB: Int) throws {
+        guard fileExists(vmDisk) else {
+            throw LauncherError.missingFile(vmDisk.path)
+        }
+        let bytesPerGiB: UInt64 = 1024 * 1024 * 1024
+        let currentGiB = Int((try fileSize(vmDisk) + bytesPerGiB - 1) / bytesPerGiB)
+        guard diskGiB >= currentGiB else {
+            throw LauncherError.missingArgument(
+                "--disk-gib can only increase the VM disk; current disk is \(currentGiB) GiB"
+            )
+        }
+        guard diskGiB > currentGiB else {
+            return
+        }
+        try runRequired(Constants.Commands.truncate, arguments: ["-s", "\(diskGiB)G", vmDisk.path])
+        log("resized vm disk path=\(vmDisk.path) from=\(currentGiB)G to=\(diskGiB)G")
     }
 
     private func directorySize(_ url: URL) throws -> UInt64 {

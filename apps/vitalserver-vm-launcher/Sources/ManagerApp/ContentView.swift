@@ -8,24 +8,30 @@ struct ContentView: View {
     @State private var showingUninstallConfirmation = false
     @State private var showingCleanUninstallConfirmation = false
     @State private var showingApplySettingsConfirmation = false
+    @State private var showingHealthDetails = false
+    @State private var selectedTab = ManagerTab.status
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
+        VStack(alignment: .leading, spacing: 16) {
             header
-            TabView {
-                statusPanel
-                    .tabItem { Text(AppConstants.Labels.tabStatus) }
-                settingsPanel
-                    .tabItem { Text(AppConstants.Labels.tabSettings) }
-                updatePanel
-                    .tabItem { Text(AppConstants.Labels.tabUpdate) }
-                advancedPanel
-                    .tabItem { Text(AppConstants.Labels.tabAdvanced) }
+            tabSelector
+            Group {
+                switch selectedTab {
+                case .status:
+                    statusPanel
+                case .settings:
+                    settingsPanel
+                case .update:
+                    updatePanel
+                case .advanced:
+                    advancedPanel
+                }
             }
-            .frame(minHeight: 360)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             logPanel
         }
         .padding(24)
+        .frame(minWidth: 900, minHeight: 700)
         .alert(AppConstants.Actions.applySettings, isPresented: $showingApplySettingsConfirmation) {
             Button(AppConstants.Actions.cancel, role: .cancel) {}
             Button(AppConstants.Actions.applySettings) {
@@ -92,29 +98,124 @@ struct ContentView: View {
         }
     }
 
-    private var statusPanel: some View {
-        Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 12) {
-            GridRow {
-                Text(AppConstants.Labels.runtimeState)
-                    .foregroundStyle(.secondary)
-                statusBadge
+    private var tabSelector: some View {
+        Picker("", selection: $selectedTab) {
+            ForEach(ManagerTab.allCases) { tab in
+                Text(tab.title).tag(tab)
             }
-            statusRow(
-                AppConstants.Labels.runtime,
-                controller.status.runtimeInstalled
-                    ? AppConstants.StatusText.installed
-                    : AppConstants.StatusText.notInstalled
-            )
-            statusRow(AppConstants.Labels.vitalServer, vitalServerAvailability)
-            statusRow(AppConstants.Labels.accessURL, AppConstants.Product.vitalServerURL(proxyPort: controller.status.proxyPort))
-            statusRow(AppConstants.Labels.dataDirectory, controller.settings.vitalFilesDirectory)
-            if let displayMessage = controller.status.statusMessage, !displayMessage.isEmpty {
-                statusRow(AppConstants.Labels.log, displayMessage)
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .frame(width: 420)
+        .frame(maxWidth: .infinity, alignment: .center)
+    }
+
+    private var statusPanel: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 12) {
+                statusRow(AppConstants.Labels.overallHealth) {
+                    healthStatusValue
+                }
+                statusRow(AppConstants.Labels.vitalServer, vitalServerAvailability)
+                statusRow(AppConstants.Labels.vitalServerURL) {
+                    linkButton(AppConstants.Product.vitalServerURL(proxyPort: controller.status.proxyPort)) {
+                        controller.openVitalServer()
+                    }
+                }
+                statusRow(AppConstants.Labels.dataDirectory) {
+                    linkButton(controller.settings.vitalFilesDirectory) {
+                        controller.openVitalFilesDirectory()
+                    }
+                }
+            }
+            Divider()
+            DisclosureGroup(AppConstants.Labels.healthDetails, isExpanded: $showingHealthDetails) {
+                Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 10) {
+                    ForEach(healthItems) { item in
+                        healthRow(item)
+                    }
+                }
+                .padding(.top, 8)
             }
         }
         .padding(16)
         .background(Color(nsColor: .controlBackgroundColor))
         .clipShape(RoundedRectangle(cornerRadius: 8))
+        .frame(maxWidth: 760, alignment: .leading)
+    }
+
+    private var overallHealthLabel: String {
+        if controller.status.isReady {
+            return AppConstants.StatusText.healthy
+        }
+        if !controller.status.runtimeInstalled {
+            return AppConstants.StatusText.notInstalled
+        }
+        switch controller.status.runtimeState {
+        case AppConstants.Values.stateCritical:
+            return AppConstants.StatusText.critical
+        case AppConstants.Values.stateDegraded, AppConstants.Values.stateRecovering:
+            return AppConstants.StatusText.needsAttention
+        default:
+            return AppConstants.StatusText.starting
+        }
+    }
+
+    private var overallHealthColor: Color {
+        if controller.status.isReady {
+            return .green
+        }
+        if !controller.status.runtimeInstalled {
+            return .red
+        }
+        switch controller.status.runtimeState {
+        case AppConstants.Values.stateCritical:
+            return .red
+        case AppConstants.Values.stateDegraded, AppConstants.Values.stateRecovering:
+            return .orange
+        default:
+            return .orange
+        }
+    }
+
+    private var healthStatusValue: some View {
+        HStack(spacing: 8) {
+            Circle()
+                .fill(overallHealthColor)
+                .frame(width: 11, height: 11)
+            Text(overallHealthLabel)
+                .fontWeight(.medium)
+        }
+    }
+
+    private var healthItems: [HealthItem] {
+        [
+            HealthItem(
+                label: AppConstants.Labels.managerRuntime,
+                value: controller.status.runtimeInstalled ? AppConstants.StatusText.ready : AppConstants.StatusText.notInstalled,
+                isHealthy: controller.status.runtimeInstalled
+            ),
+            HealthItem(
+                label: AppConstants.Labels.vmIPAddress,
+                value: controller.status.vmIP ?? AppConstants.StatusText.waiting,
+                isHealthy: controller.status.vmServiceLoaded && controller.status.vmIP != nil
+            ),
+            HealthItem(
+                label: AppConstants.Labels.vitalServerApp,
+                value: serviceReachabilityLabel(controller.status.guestHTTP),
+                isHealthy: isSuccessfulHTTPStatus(controller.status.guestHTTP)
+            ),
+            HealthItem(
+                label: AppConstants.Labels.hostProxyService,
+                value: serviceReachabilityLabel(controller.status.hostProxyHTTP),
+                isHealthy: controller.status.proxyServiceLoaded && isSuccessfulHTTPStatus(controller.status.hostProxyHTTP)
+            ),
+            HealthItem(
+                label: AppConstants.Labels.watchdog,
+                value: controller.status.watchdogServiceLoaded ? AppConstants.StatusText.running : AppConstants.StatusText.notLoaded,
+                isHealthy: controller.status.watchdogServiceLoaded
+            ),
+        ]
     }
 
     private var advancedStatusGrid: some View {
@@ -175,11 +276,41 @@ struct ContentView: View {
     }
 
     private func statusRow(_ label: String, _ value: String) -> some View {
+        statusRow(label) {
+            Text(value)
+                .fontWeight(.medium)
+        }
+    }
+
+    private func statusRow<Content: View>(_ label: String, @ViewBuilder content: () -> Content) -> some View {
         GridRow {
             Text(label)
                 .foregroundStyle(.secondary)
-            Text(value)
+            content()
+        }
+    }
+
+    private func linkButton(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
                 .fontWeight(.medium)
+                .lineLimit(1)
+                .truncationMode(.middle)
+        }
+        .buttonStyle(.link)
+    }
+
+    private func healthRow(_ item: HealthItem) -> some View {
+        GridRow {
+            Text(item.label)
+                .foregroundStyle(.secondary)
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(item.isHealthy ? Color.green : Color.orange)
+                    .frame(width: 9, height: 9)
+                Text(item.value)
+                    .fontWeight(.medium)
+            }
         }
     }
 
@@ -227,24 +358,16 @@ struct ContentView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 settingsSection(AppConstants.Labels.sectionVM) {
-                    settingStepper(AppConstants.Labels.cpu, value: $controller.settings.cpuCount, range: 7...64, suffix: AppConstants.Labels.unitVCPU)
-                    settingStepper(AppConstants.Labels.memory, value: $controller.settings.memoryGiB, range: 4...64, step: 4, suffix: AppConstants.Labels.unitGiB)
+                    settingSlider(AppConstants.Labels.cpu, value: $controller.settings.cpuCount, range: 7...64, suffix: AppConstants.Labels.unitVCPU)
+                    settingSlider(AppConstants.Labels.memory, value: $controller.settings.memoryGiB, range: 4...64, step: 4, suffix: AppConstants.Labels.unitGiB)
+                    settingSlider(AppConstants.Labels.disk, value: $controller.settings.diskGiB, range: 4...512, step: 4, suffix: AppConstants.Labels.unitGiB)
+                    settingWarning(AppConstants.Labels.diskIncreaseOnlyHelp)
                 }
                 settingsSection(AppConstants.Labels.sectionNetwork) {
                     settingRow(AppConstants.Labels.mode) {
-                        Picker("", selection: $controller.settings.networkMode) {
-                            Text(AppConstants.Labels.shared).tag(AppConstants.Values.networkShared)
-                            Text(AppConstants.Labels.bridged).tag(AppConstants.Values.networkBridged)
-                        }
-                        .labelsHidden()
-                        .frame(maxWidth: 260, alignment: .leading)
+                        networkModeSelector
                     }
-                    if controller.settings.networkMode == AppConstants.Values.networkBridged {
-                        settingTextField(AppConstants.Labels.bridgedInterface, text: $controller.settings.bridgedInterface)
-                    }
-                    settingPortField(AppConstants.Labels.proxyPort, value: $controller.settings.proxyPort)
-                    settingTextField(AppConstants.Labels.publicHost, text: $controller.settings.publicHost)
-                    settingPortField(AppConstants.Labels.publicPort, value: $controller.settings.publicPort)
+                    settingHelp(networkModeHelp)
                 }
                 settingsSection(AppConstants.Labels.sectionStorage) {
                     settingDirectoryField(AppConstants.Labels.vitalFilesDirectory, text: $controller.settings.vitalFilesDirectory)
@@ -264,10 +387,6 @@ struct ContentView: View {
                     }
                 }
                 HStack {
-                    Button(AppConstants.Actions.saveSettings) {
-                        controller.saveSettingsDraft()
-                    }
-                    .disabled(controller.isBusy)
                     Button(AppConstants.Actions.applySettings) {
                         if controller.prepareApplySettings() {
                             showingApplySettingsConfirmation = true
@@ -280,6 +399,45 @@ struct ContentView: View {
             .frame(maxWidth: 760, alignment: .leading)
             .padding(16)
         }
+    }
+
+    private func settingHelp(_ text: String) -> some View {
+        Text(text)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .padding(.leading, 174)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func settingWarning(_ text: String) -> some View {
+        Text(text)
+            .font(.caption)
+            .foregroundStyle(.red)
+            .padding(.leading, 174)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var networkModeSelector: some View {
+        HStack(spacing: 8) {
+            Text(AppConstants.Labels.shared)
+                .fontWeight(.medium)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(Color.accentColor.opacity(0.15))
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+            Text(AppConstants.Labels.bridgedUnavailable)
+                .foregroundStyle(.tertiary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(Color(nsColor: .quaternaryLabelColor).opacity(0.15))
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+        }
+    }
+
+    private var networkModeHelp: String {
+        controller.settings.networkMode == AppConstants.Values.networkShared
+            ? AppConstants.Labels.sharedNetworkHelp
+            : AppConstants.Labels.bridgedNetworkHelp
     }
 
     private var updatePanel: some View {
@@ -347,18 +505,36 @@ struct ContentView: View {
     }
 
     private var advancedPanel: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text(AppConstants.Labels.advancedSummary)
-                    .font(.headline)
-                Text(AppConstants.Labels.advancedDescription)
-                    .foregroundStyle(.secondary)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(AppConstants.Labels.advancedSummary)
+                        .font(.headline)
+                    Text(AppConstants.Labels.advancedDescription)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                settingsSection(AppConstants.Labels.sectionAdvancedConfiguration) {
+                    settingPortField(AppConstants.Labels.proxyPort, value: $controller.settings.proxyPort)
+                    settingTextField(AppConstants.Labels.publicHost, text: $controller.settings.publicHost)
+                    settingPortField(AppConstants.Labels.publicPort, value: $controller.settings.publicPort)
+                    Button(AppConstants.Actions.applySettings) {
+                        if controller.prepareApplySettings() {
+                            showingApplySettingsConfirmation = true
+                        }
+                    }
+                    .disabled(controller.isBusy || !controller.status.runtimeInstalled)
+                }
+                advancedStatusGrid
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(AppConstants.Labels.sectionOperations)
+                        .font(.headline)
+                    actionBar
+                }
             }
-            advancedStatusGrid
-            actionBar
-            Spacer()
+            .frame(maxWidth: 760, alignment: .leading)
+            .padding(16)
         }
-        .padding(16)
     }
 
     private var statusBadge: some View {
@@ -391,6 +567,16 @@ struct ContentView: View {
             return false
         }
         return code >= 200 && code < 400
+    }
+
+    private func serviceReachabilityLabel(_ value: String?) -> String {
+        if isSuccessfulHTTPStatus(value) {
+            return AppConstants.StatusText.reachable
+        }
+        if value == AppConstants.StatusText.failed {
+            return AppConstants.StatusText.needsRepair
+        }
+        return AppConstants.StatusText.waiting
     }
 
     private func settingsSection<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
@@ -426,6 +612,31 @@ struct ContentView: View {
                     .frame(width: 100, alignment: .leading)
             }
             .fixedSize()
+        }
+    }
+
+    private func settingSlider(
+        _ label: String,
+        value: Binding<Int>,
+        range: ClosedRange<Int>,
+        step: Int = 1,
+        suffix: String = ""
+    ) -> some View {
+        settingRow(label) {
+            HStack(spacing: 12) {
+                Slider(
+                    value: Binding(
+                        get: { Double(value.wrappedValue) },
+                        set: { value.wrappedValue = Int($0) }
+                    ),
+                    in: Double(range.lowerBound)...Double(range.upperBound),
+                    step: Double(step)
+                )
+                .frame(width: 260)
+                Text(suffix.isEmpty ? "\(value.wrappedValue)" : "\(value.wrappedValue) \(suffix)")
+                    .fontWeight(.medium)
+                    .frame(width: 90, alignment: .leading)
+            }
         }
     }
 
@@ -501,6 +712,35 @@ struct ContentView: View {
                 await controller.refreshHealthStatus()
             }
             try? await Task.sleep(nanoseconds: 5_000_000_000)
+        }
+    }
+}
+
+private struct HealthItem: Identifiable {
+    var id: String { label }
+    let label: String
+    let value: String
+    let isHealthy: Bool
+}
+
+private enum ManagerTab: CaseIterable, Identifiable {
+    case status
+    case settings
+    case update
+    case advanced
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .status:
+            return AppConstants.Labels.tabStatus
+        case .settings:
+            return AppConstants.Labels.tabSettings
+        case .update:
+            return AppConstants.Labels.tabUpdate
+        case .advanced:
+            return AppConstants.Labels.tabAdvanced
         }
     }
 }

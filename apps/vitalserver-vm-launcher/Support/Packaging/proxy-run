@@ -44,7 +44,7 @@ apply_config() {
     printf "reloaded proxy: http://localhost:%s -> http://%s\n" "${proxy_port}" "${upstream}"
   else
     if command -v lsof >/dev/null 2>&1; then
-      listeners="$(lsof -nP -iTCP:"${proxy_port}" -sTCP:LISTEN 2>/dev/null | awk 'NR>1 {print $1 "/" $2}' | sort -u | paste -sd, -)"
+      listeners="$(lsof -nP -iTCP:"${proxy_port}" -sTCP:LISTEN 2>/dev/null | awk 'NR>1 {print $1 "/" $2}' | sort -u | paste -sd, - || true)"
       if [ -n "${listeners}" ]; then
         printf "proxy port %s is already used by: %s\n" "${proxy_port}" "${listeners}" >&2
       fi

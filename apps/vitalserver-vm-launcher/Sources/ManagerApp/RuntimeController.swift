@@ -32,6 +32,7 @@ final class RuntimeController: ObservableObject {
             "Public host: \(settings.publicHost.isEmpty ? "(same host)" : settings.publicHost)",
             "Public port: \(settings.publicPort)",
             "Network mode: \(settings.networkMode)",
+            "Disk size: \(settings.diskGiB) GiB",
             "Vital files directory: \(settings.vitalFilesDirectory)",
             "Restart services: \(settings.restartAfterSave ? AppConstants.Values.boolTrue : AppConstants.Values.boolFalse)",
         ].joined(separator: "\n")
@@ -96,14 +97,6 @@ final class RuntimeController: ObservableObject {
         }
     }
 
-    func saveSettingsDraft() {
-        guard validateSettings() else {
-            return
-        }
-        settings.saveDraft()
-        message = AppConstants.StatusText.settingsDraftSaved
-    }
-
     func prepareApplySettings() -> Bool {
         validateSettings()
     }
@@ -142,7 +135,6 @@ final class RuntimeController: ObservableObject {
             successMessage: AppConstants.StatusText.settingsApplied
         )
         if didSave {
-            RuntimeSettings.clearDraft()
             settings.adminPassword = ""
             settings.changeAdminPassword = false
         }
@@ -345,9 +337,13 @@ final class RuntimeController: ObservableObject {
     }
 
     private func validateSettings() -> Bool {
-        if settings.networkMode == AppConstants.Values.networkBridged,
-           settings.bridgedInterface.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            message = AppConstants.StatusText.bridgedInterfaceRequired
+        if settings.networkMode == AppConstants.Values.networkBridged {
+            message = AppConstants.StatusText.bridgedModeUnavailable
+            return false
+        }
+        let installedDiskGiB = RuntimeSettings.load().diskGiB
+        if settings.diskGiB < installedDiskGiB {
+            message = AppConstants.StatusText.diskDecreaseUnavailable
             return false
         }
         if !(1...65_535).contains(settings.proxyPort) || !(1...65_535).contains(settings.publicPort) {

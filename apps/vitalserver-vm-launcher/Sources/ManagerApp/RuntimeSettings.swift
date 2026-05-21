@@ -3,6 +3,7 @@ import Foundation
 struct RuntimeSettings: Codable {
     var cpuCount = 8
     var memoryGiB = 8
+    var diskGiB = 64
     var networkMode = AppConstants.Values.networkShared
     var bridgedInterface = ""
     var proxyPort = AppConstants.Product.defaultProxyPort
@@ -16,32 +17,7 @@ struct RuntimeSettings: Codable {
     var restartAfterSave = true
 
     static func load() -> RuntimeSettings {
-        let installedSettings = loadInstalled()
-        guard var draft = loadDraft() else {
-            return installedSettings
-        }
-        draft.startOnBootConfigurable = installedSettings.startOnBootConfigurable
-        return draft
-    }
-
-    static func clearDraft() {
-        UserDefaults.standard.removeObject(forKey: AppConstants.UserDefaultsKeys.settingsDraft)
-    }
-
-    func saveDraft() {
-        var draft = self
-        draft.adminPassword = ""
-        draft.changeAdminPassword = false
-        if let data = try? JSONEncoder().encode(draft) {
-            UserDefaults.standard.set(data, forKey: AppConstants.UserDefaultsKeys.settingsDraft)
-        }
-    }
-
-    private static func loadDraft() -> RuntimeSettings? {
-        guard let data = UserDefaults.standard.data(forKey: AppConstants.UserDefaultsKeys.settingsDraft) else {
-            return nil
-        }
-        return try? JSONDecoder().decode(RuntimeSettings.self, from: data)
+        loadInstalled()
     }
 
     private static func loadInstalled() -> RuntimeSettings {
@@ -50,13 +26,16 @@ struct RuntimeSettings: Codable {
         if let vmConfig = VMConfigDocument.load(path: AppConstants.Paths.vmConfig) {
             settings.cpuCount = vmConfig.cpuCount
             settings.memoryGiB = max(Int(vmConfig.memoryMiB / 1024), 1)
-            settings.networkMode = vmConfig.network.mode
+            settings.networkMode = AppConstants.Values.networkShared
             settings.bridgedInterface = vmConfig.network.bridgedInterface ?? ""
             if let vitalFilesDirectory = vmConfig.vitalFilesDirectory?.hostPath {
                 settings.vitalFilesDirectory = vitalFilesDirectory
             }
         }
 
+        if let diskGiB = diskSizeGiB(path: AppConstants.Paths.vmDisk) {
+            settings.diskGiB = diskGiB
+        }
         if let guestConfig = GuestRuntimeConfig.load(path: AppConstants.Paths.guestRuntimeConfig) {
             settings.publicHost = guestConfig.publicHost
             settings.publicPort = guestConfig.publicPort
@@ -80,6 +59,8 @@ struct RuntimeSettings: Codable {
             String(cpuCount),
             AppConstants.RuntimeCommand.optionMemoryGiB,
             String(memoryGiB),
+            AppConstants.RuntimeCommand.optionDiskGiB,
+            String(diskGiB),
             AppConstants.RuntimeCommand.optionNetwork,
             networkMode,
             AppConstants.RuntimeCommand.optionProxyPort,
@@ -126,6 +107,15 @@ struct RuntimeSettings: Codable {
             return false
         }
         return true
+    }
+
+    private static func diskSizeGiB(path: String) -> Int? {
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: path),
+              let size = attributes[.size] as? NSNumber else {
+            return nil
+        }
+        let bytesPerGiB = 1024 * 1024 * 1024
+        return max(Int((size.int64Value + Int64(bytesPerGiB - 1)) / Int64(bytesPerGiB)), 1)
     }
 }
 
