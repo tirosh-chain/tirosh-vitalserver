@@ -1,3 +1,6 @@
+import Foundation
+import RuntimeCore
+
 enum AppConstants {
     enum Product {
         static let displayName = "VitalServer Helper"
@@ -352,24 +355,27 @@ enum AppConstants {
     }
 
     enum Paths {
-        static let vmHome = "/Library/Application Support/TiroshVitalServer/vm"
-        static let launcher = "/usr/local/bin/vitalserver-vm"
-        static let uninstaller = "/usr/local/bin/tirosh-vitalserver-uninstall"
-        static let vmIPFile = "/Library/Application Support/TiroshVitalServer/vm/data/run/vm-ip"
-        static let runtimeState = "/Library/Application Support/TiroshVitalServer/vm/data/run/runtime-state.json"
-        static let runtimeStatus = "/Library/Application Support/TiroshVitalServer/status/runtime-status.json"
-        static let managerApp = "/Applications/VitalServer Helper.app"
-        static let installLog = "/Library/Application Support/TiroshVitalServer/logs/install.log"
-        static let runtimeLogs = "/Library/Application Support/TiroshVitalServer/vm/logs"
-        static let containerLogs = "/Library/Application Support/TiroshVitalServer/vm/data/run/container-logs.log"
-        static let updateActivationLog = "/Library/Application Support/TiroshVitalServer/vm/data/run/activate-update.log"
-        static let backups = "/Library/Application Support/TiroshVitalServer/backups"
-        static let vmConfig = "/Library/Application Support/TiroshVitalServer/vm/runtime/vm-config.json"
-        static let vmDisk = "/Library/Application Support/TiroshVitalServer/vm/runtime/vm-disk.img"
-        static let guestRuntimeConfig = "/Library/Application Support/TiroshVitalServer/vm/data/deploy/runtime-config.json"
-        static let proxyNginxPid = "/Library/Application Support/TiroshVitalServer/nginx/logs/nginx.pid"
-        static let proxyLaunchDaemon = "/Library/LaunchDaemons/com.tirosh.vitalserver-proxy.plist"
-        static let commandLogFile = "/private/tmp/tirosh-vitalserver-manager-command.log"
+        private static let installed = InstalledRuntimePaths.defaultInstalled
+
+        static let vmHome = installed.runtimeHome.path
+        static let launcher = installed.launcher.path
+        static let uninstaller = installed.uninstaller.path
+        static let vmIPFile = installed.vmIPFile.path
+        static let runtimeState = installed.runtimeState.path
+        static let runtimeStatus = installed.runtimeStatus.path
+        static let managerApp = installed.managerApp.path
+        static let installLog = installed.installLog.path
+        static let runtimeLogs = installed.logsDirectory.path
+        static let containerLogs = installed.containerLogs.path
+        static let updateActivationLog = installed.updateActivationLog.path
+        static let vitalFiles = installed.vitalFilesDirectory.path
+        static let backups = installed.backupsDirectory.path
+        static let vmConfig = installed.vmConfig.path
+        static let vmDisk = installed.vmDisk.path
+        static let guestRuntimeConfig = installed.guestRuntimeConfig.path
+        static let proxyNginxPid = installed.proxyNginxPID.path
+        static let proxyLaunchDaemon = installed.proxyLaunchDaemon.path
+        static let commandLogFile = installed.managerCommandLog.path
     }
 
     enum Launchd {

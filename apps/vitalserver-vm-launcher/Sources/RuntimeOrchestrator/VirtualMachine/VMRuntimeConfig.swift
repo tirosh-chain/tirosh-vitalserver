@@ -1,4 +1,5 @@
 import Foundation
+import RuntimeCore
 
 struct VMRuntimeConfig: Codable {
     var cpuCount: Int
@@ -14,19 +15,17 @@ struct VMRuntimeConfig: Codable {
 
     // The default boot asset names match the Linux kernel/initrd style used by
     // Apple's Linux VM sample and keep the first PoC explicit.
-    static func `default`(home: URL) -> VMRuntimeConfig {
-        let runtime = home.appendingPathComponent(Constants.Paths.runtimeDirectory)
-        let sharedData = home.appendingPathComponent(Constants.Paths.dataDirectory)
+    static func `default`(paths: InstalledRuntimePaths) -> VMRuntimeConfig {
         return VMRuntimeConfig(
             cpuCount: min(
                 max(ProcessInfo.processInfo.processorCount / 2, Constants.Defaults.minimumCPUCount),
                 Constants.Defaults.maximumCPUCount
             ),
             memoryMiB: Constants.Defaults.memoryMiB,
-            kernelPath: runtime.appendingPathComponent(Constants.BootAssets.kernel).path,
-            initialRamdiskPath: runtime.appendingPathComponent(Constants.BootAssets.initialRamdisk).path,
-            diskPath: runtime.appendingPathComponent(Constants.BootAssets.disk).path,
-            cloudInitPath: runtime.appendingPathComponent(Constants.BootAssets.cloudInit).path,
+            kernelPath: paths.runtimeDirectory.appendingPathComponent(Constants.BootAssets.kernel).path,
+            initialRamdiskPath: paths.runtimeDirectory.appendingPathComponent(Constants.BootAssets.initialRamdisk).path,
+            diskPath: paths.runtimeDirectory.appendingPathComponent(Constants.BootAssets.disk).path,
+            cloudInitPath: paths.runtimeDirectory.appendingPathComponent(Constants.BootAssets.cloudInit).path,
             kernelCommandLine: Constants.BootAssets.commandLine,
             network: NetworkConfig(
                 mode: .shared,
@@ -34,13 +33,13 @@ struct VMRuntimeConfig: Codable {
                 macAddress: Self.generateMacAddress()
             ),
             sharedDirectory: SharedDirectoryConfig(
-                hostPath: sharedData.path,
+                hostPath: paths.dataDirectory.path,
                 tag: Constants.Defaults.sharedDirectoryTag,
                 guestMountPath: Constants.Defaults.sharedDirectoryGuestMountPath,
                 readOnly: false
             ),
             vitalFilesDirectory: SharedDirectoryConfig(
-                hostPath: sharedData.appendingPathComponent(Constants.Paths.vitalFilesDirectory).path,
+                hostPath: paths.vitalFilesDirectory.path,
                 tag: Constants.Defaults.vitalFilesDirectoryTag,
                 guestMountPath: Constants.Defaults.vitalFilesDirectoryGuestMountPath,
                 readOnly: false
@@ -72,20 +71,14 @@ struct VMRuntimeConfig: Codable {
         }
     }
 
-    static func ensureRuntimeDefaults(_ config: inout VMRuntimeConfig, home: URL) {
+    static func ensureRuntimeDefaults(_ config: inout VMRuntimeConfig, paths: InstalledRuntimePaths) {
         ensureNetworkIdentity(&config)
         if config.cloudInitPath == nil || config.cloudInitPath?.isEmpty == true {
-            config.cloudInitPath = home
-                .appendingPathComponent(Constants.Paths.runtimeDirectory)
-                .appendingPathComponent(Constants.BootAssets.cloudInit)
-                .path
+            config.cloudInitPath = paths.runtimeDirectory.appendingPathComponent(Constants.BootAssets.cloudInit).path
         }
         if config.vitalFilesDirectory == nil {
             config.vitalFilesDirectory = SharedDirectoryConfig(
-                hostPath: home
-                    .appendingPathComponent(Constants.Paths.dataDirectory)
-                    .appendingPathComponent(Constants.Paths.vitalFilesDirectory)
-                    .path,
+                hostPath: paths.vitalFilesDirectory.path,
                 tag: Constants.Defaults.vitalFilesDirectoryTag,
                 guestMountPath: Constants.Defaults.vitalFilesDirectoryGuestMountPath,
                 readOnly: false

@@ -1,89 +1,97 @@
 import CryptoKit
 import Foundation
+import RuntimeCore
 
 struct RuntimeLifecycle {
     let paths: LauncherPaths
+    private let installedPaths: InstalledRuntimePaths
+    private let clock: RuntimeClock
+    private let sleeper: RuntimeSleeper
+    private let commandRunner: RuntimeCommandRunner
+    private let httpProber: RuntimeHTTPProber
+    private let serviceManager: RuntimeServiceManager
+    private let runtimeStatusRepository: RuntimeStatusRepository
+    private let guestGateway: RuntimeGuestGateway
+    private let fileStore: RuntimeFileStore
+
+    init(
+        paths: LauncherPaths,
+        clock: RuntimeClock = SystemRuntimeClock(),
+        sleeper: RuntimeSleeper = ThreadRuntimeSleeper(),
+        commandRunner: RuntimeCommandRunner = SystemRuntimeCommandRunner(),
+        httpProber: RuntimeHTTPProber? = nil,
+        serviceManager: RuntimeServiceManager? = nil,
+        runtimeStatusRepository: RuntimeStatusRepository? = nil,
+        guestGateway: RuntimeGuestGateway? = nil,
+        fileStore: RuntimeFileStore = LocalRuntimeFileStore()
+    ) {
+        self.paths = paths
+        self.installedPaths = paths.installed
+        self.clock = clock
+        self.sleeper = sleeper
+        self.commandRunner = commandRunner
+        self.httpProber = httpProber ?? CurlRuntimeHTTPProber(commandRunner: commandRunner)
+        self.serviceManager = serviceManager ?? LaunchdRuntimeServiceManager(commandRunner: commandRunner)
+        self.fileStore = fileStore
+        let statusURL = installedPaths.runtimeStatus
+        self.runtimeStatusRepository = runtimeStatusRepository ?? JSONFileRuntimeStatusRepository(url: statusURL)
+        let guestRunDirectory = installedPaths.guestRunDirectory
+        self.guestGateway = guestGateway ?? JSONFileRuntimeGuestGateway(
+            runtimeStateURL: guestRunDirectory.appendingPathComponent(Constants.Runtime.runtimeStateFile),
+            bootstrapResultURL: guestRunDirectory.appendingPathComponent(Constants.Runtime.bootstrapResultFile),
+            updateActivationRequestURL: guestRunDirectory.appendingPathComponent(Constants.Runtime.updateActivationRequestFile),
+            updateActivationResultURL: guestRunDirectory.appendingPathComponent(Constants.Runtime.updateActivationResultFile),
+            datastoreRepairRequestURL: guestRunDirectory.appendingPathComponent(Constants.Runtime.datastoreRepairRequestFile),
+            datastoreRepairResultURL: guestRunDirectory.appendingPathComponent(Constants.Runtime.datastoreRepairResultFile)
+        )
+    }
 
     private var productRoot: URL {
-        paths.home.deletingLastPathComponent()
+        installedPaths.productRoot
     }
 
     private var bundlesDirectory: URL {
-        productRoot.appendingPathComponent(Constants.Paths.bundlesDirectory)
+        installedPaths.bundlesDirectory
     }
 
     private var backupsDirectory: URL {
-        productRoot.appendingPathComponent(Constants.Paths.backupsDirectory)
+        installedPaths.backupsDirectory
     }
 
     private var statusDirectory: URL {
-        productRoot.appendingPathComponent(Constants.Paths.statusDirectory)
+        installedPaths.statusDirectory
     }
 
     private var logsDirectory: URL {
-        paths.home.appendingPathComponent(Constants.Paths.logsDirectory)
+        installedPaths.logsDirectory
     }
 
     private var runtimeStatus: URL {
-        statusDirectory.appendingPathComponent(Constants.Artifacts.runtimeStatus)
+        installedPaths.runtimeStatus
     }
 
     private var rootfsBase: URL {
-        paths.home
-            .appendingPathComponent(Constants.Paths.runtimeDirectory)
-            .appendingPathComponent(Constants.Artifacts.rootfsBase)
+        installedPaths.runtimeDirectory.appendingPathComponent(Constants.Artifacts.rootfsBase)
     }
 
     private var vmDisk: URL {
-        paths.home
-            .appendingPathComponent(Constants.Paths.runtimeDirectory)
-            .appendingPathComponent(Constants.BootAssets.disk)
+        installedPaths.runtimeDirectory.appendingPathComponent(Constants.BootAssets.disk)
     }
 
     private var runtimeVersion: URL {
-        paths.home
-            .appendingPathComponent(Constants.Paths.runtimeDirectory)
-            .appendingPathComponent(Constants.Artifacts.runtimeVersion)
+        installedPaths.runtimeDirectory.appendingPathComponent(Constants.Artifacts.runtimeVersion)
     }
 
     private var vmIPFile: URL {
-        paths.home
-            .appendingPathComponent(Constants.Paths.dataDirectory)
-            .appendingPathComponent(Constants.Paths.runDirectory)
-            .appendingPathComponent(Constants.Runtime.vmIPFile)
-    }
-
-    private var guestRuntimeStateFile: URL {
-        paths.home
-            .appendingPathComponent(Constants.Paths.dataDirectory)
-            .appendingPathComponent(Constants.Paths.runDirectory)
-            .appendingPathComponent(Constants.Runtime.runtimeStateFile)
+        installedPaths.vmIPFile
     }
 
     private var guestRunDirectory: URL {
-        paths.home
-            .appendingPathComponent(Constants.Paths.dataDirectory)
-            .appendingPathComponent(Constants.Paths.runDirectory)
+        installedPaths.guestRunDirectory
     }
 
     private var guestBootstrapLog: URL {
-        guestRunDirectory.appendingPathComponent(Constants.Runtime.bootstrapLogFile)
-    }
-
-    private var datastoreRepairRequest: URL {
-        guestRunDirectory.appendingPathComponent(Constants.Runtime.datastoreRepairRequestFile)
-    }
-
-    private var datastoreRepairResult: URL {
-        guestRunDirectory.appendingPathComponent(Constants.Runtime.datastoreRepairResultFile)
-    }
-
-    private var updateActivationRequest: URL {
-        guestRunDirectory.appendingPathComponent(Constants.Runtime.updateActivationRequestFile)
-    }
-
-    private var updateActivationResult: URL {
-        guestRunDirectory.appendingPathComponent(Constants.Runtime.updateActivationResultFile)
+        installedPaths.bootstrapLog
     }
 
     func run(arguments: [String]) throws {
@@ -150,52 +158,13 @@ struct RuntimeLifecycle {
     }
 
     func install() throws {
-        let defaultVitalFilesDirectory = paths.home
-            .appendingPathComponent(Constants.Paths.dataDirectory)
-            .appendingPathComponent(Constants.Paths.vitalFilesDirectory)
-            .path
+        let defaultVitalFilesDirectory = installedPaths.vitalFilesDirectory.path
         let settings = try InstallSettings.load(defaultVitalFilesDirectory: defaultVitalFilesDirectory)
         log("runtime install started home=\(paths.home.path)")
         try writeRuntimeStatus(.installing, operation: "install", message: "runtime install started")
         do {
-            try runStep("load-install-settings") {
-                log("install settings loaded")
-            }
-            try runStep("prepare-install-directories") {
-                try prepareInstallDirectories(settings)
-            }
-            try runStep("rotate-runtime-logs") {
-                try rotateRuntimeLogs()
-            }
-            try runStep("configure-guest-runtime-config") {
-                try configureDeployEnvironment(settings)
-            }
-            try runStep("prepare-installed-executables") {
-                try prepareInstalledExecutables()
-            }
-            try runStep("provision-vm-disk") {
-                try provisionVMDisk(settings)
-            }
-            try runStep("configure-vm-runtime") {
-                try configureInstalledVMRuntime(settings)
-            }
-            try runStep("create-cloud-init-seed") {
-                try createCloudInitSeed(settings)
-            }
-            try runStep("write-runtime-version") {
-                try writeInstalledRuntimeVersion()
-            }
-            try runStep("configure-installed-permissions") {
-                try configureInstalledPermissions(settings)
-            }
-            try runStep("start-installed-services") {
-                try startInstalledServices(settings)
-            }
-            try runStep("apply-start-on-boot-policy") {
-                try applyStartOnBootPolicy(settings)
-            }
-            try runStep("cleanup-install-settings") {
-                try cleanupInstallSettings()
+            try runPlan(RuntimeOperationPlans.install, status: .installing) { step in
+                try executeInstallStep(step, settings: settings)
             }
             try writeRuntimeStatus(.healthy, operation: "install", message: "runtime install completed")
             log("runtime install completed home=\(paths.home.path)")
@@ -205,10 +174,43 @@ struct RuntimeLifecycle {
         }
     }
 
+    private func executeInstallStep(_ step: RuntimeWorkflowStep, settings: InstallSettings) throws {
+        switch step {
+        case .loadInstallSettings:
+            log("install settings loaded")
+        case .prepareInstallDirectories:
+            try prepareInstallDirectories(settings)
+        case .rotateRuntimeLogs:
+            try rotateRuntimeLogs()
+        case .configureGuestRuntimeConfig:
+            try configureDeployEnvironment(settings)
+        case .prepareInstalledExecutables:
+            try prepareInstalledExecutables()
+        case .provisionVMDisk:
+            try provisionVMDisk(settings)
+        case .configureVMRuntime:
+            try configureInstalledVMRuntime(settings)
+        case .createCloudInitSeed:
+            try createCloudInitSeed(settings)
+        case .writeInstallRuntimeVersion:
+            try writeInstalledRuntimeVersion()
+        case .configureInstalledPermissions:
+            try configureInstalledPermissions(settings)
+        case .startInstalledServices:
+            try startInstalledServices(settings)
+        case .applyStartOnBootPolicy:
+            try applyStartOnBootPolicy(settings)
+        case .cleanupInstallSettings:
+            try cleanupInstallSettings()
+        default:
+            throw LauncherError.unsupportedCommand("install step \(step.rawValue)")
+        }
+    }
+
     func printStatus() {
         print("Tirosh VitalServer runtime")
         print("  product root: \(productRoot.path)")
-        print("  runtime dir: \(paths.home.appendingPathComponent(Constants.Paths.runtimeDirectory).path)")
+        print("  runtime dir: \(installedPaths.runtimeDirectory.path)")
         print("  latest backup: \(latestBackup()?.path ?? "none")")
         print("  status file: \(fileState(url: runtimeStatus))")
         print("  status: \(runtimeStatusValue())")
@@ -223,32 +225,28 @@ struct RuntimeLifecycle {
         print("  VM IP: \(guestRuntimeState()?.vmIP ?? readTrimmed(vmIPFile) ?? "waiting")")
         let proxyPort = installedProxyPort()
         print("  proxy port: \(proxyPort)")
-        print("  host proxy HTTP: \(httpStatus(Constants.Runtime.proxyHealthURL(port: proxyPort)))")
+        print("  host proxy HTTP: \(httpProber.statusCode(url: Constants.Runtime.proxyHealthURL(port: proxyPort)))")
     }
 
     private func prepareInstallDirectories(_ settings: InstallSettings) throws {
-        let data = paths.home.appendingPathComponent(Constants.Paths.dataDirectory)
         let directories = [
-            paths.home.appendingPathComponent(Constants.Paths.runtimeDirectory),
+            installedPaths.runtimeDirectory,
             URL(fileURLWithPath: settings.vitalFilesDirectory),
-            data.appendingPathComponent("deploy"),
-            data.appendingPathComponent(Constants.Paths.runDirectory),
-            data.appendingPathComponent(Constants.Paths.vrReleaseDirectory),
-            paths.home.appendingPathComponent(Constants.Paths.logsDirectory),
-            paths.home.appendingPathComponent(Constants.Paths.runDirectory),
+            installedPaths.deployDirectory,
+            installedPaths.guestRunDirectory,
+            installedPaths.vrReleaseDirectory,
+            installedPaths.logsDirectory,
+            installedPaths.hostRunDirectory,
             statusDirectory,
-            URL(fileURLWithPath: "\(productRoot.path)/nginx/logs"),
+            installedPaths.nginxLogsDirectory,
         ]
         for directory in directories {
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try fileStore.createDirectory(at: directory, withIntermediateDirectories: true)
         }
     }
 
     private func configureDeployEnvironment(_ settings: InstallSettings) throws {
-        let runtimeConfig = paths.home
-            .appendingPathComponent(Constants.Paths.dataDirectory)
-            .appendingPathComponent("deploy")
-            .appendingPathComponent(Constants.Artifacts.runtimeConfig)
+        let runtimeConfig = installedPaths.guestRuntimeConfig
         let document = GuestRuntimeConfigDocument(
             vitalserverHttpPort: Constants.Guest.vitalserverHTTPPort,
             redisHost: Constants.Guest.redisHost,
@@ -262,7 +260,7 @@ struct RuntimeLifecycle {
             swaggerUiPort: Constants.Guest.swaggerUIPort
         )
         let data = try JSONEncoder.pretty.encode(document)
-        try data.write(to: runtimeConfig, options: .atomic)
+        try fileStore.writeData(data, to: runtimeConfig, options: .atomic)
         try restrictSecretFile(runtimeConfig)
     }
 
@@ -270,7 +268,7 @@ struct RuntimeLifecycle {
         for path in [
             Constants.InstallPaths.vmBin,
             Constants.InstallPaths.proxyRun,
-            "\(productRoot.path)/nginx/sbin/nginx",
+            installedPaths.nginxExecutable.path,
         ] {
             try runRequired(Constants.Commands.chmod, arguments: ["0755", path])
         }
@@ -285,14 +283,14 @@ struct RuntimeLifecycle {
             )
             let temporary = vmDisk.deletingLastPathComponent().appendingPathComponent(".\(vmDisk.lastPathComponent).tmp")
             if fileExists(temporary) {
-                try FileManager.default.removeItem(at: temporary)
+                try fileStore.removeItem(at: temporary)
             }
             try runProcessToFile(
                 Constants.Commands.gunzip,
                 arguments: ["-c", rootfsBase.path],
                 output: temporary
             )
-            try FileManager.default.moveItem(at: temporary, to: vmDisk)
+            try fileStore.moveItem(at: temporary, to: vmDisk)
             log("created vm disk path=\(vmDisk.path) source=\(rootfsBase.lastPathComponent)")
         }
         guard fileExists(vmDisk) else {
@@ -302,21 +300,20 @@ struct RuntimeLifecycle {
     }
 
     private func configureInstalledVMRuntime(_ settings: InstallSettings) throws {
-        let data = paths.home.appendingPathComponent(Constants.Paths.dataDirectory)
-        try FileManager.default.createDirectory(
-            at: paths.home.appendingPathComponent(Constants.Paths.runtimeDirectory),
+        try fileStore.createDirectory(
+            at: installedPaths.runtimeDirectory,
             withIntermediateDirectories: true
         )
-        try FileManager.default.createDirectory(
-            at: data.appendingPathComponent(Constants.Paths.vitalFilesDirectory),
+        try fileStore.createDirectory(
+            at: installedPaths.vitalFilesDirectory,
             withIntermediateDirectories: true
         )
-        try FileManager.default.createDirectory(
-            at: data.appendingPathComponent(Constants.Paths.vrReleaseDirectory),
+        try fileStore.createDirectory(
+            at: installedPaths.vrReleaseDirectory,
             withIntermediateDirectories: true
         )
-        try FileManager.default.createDirectory(
-            at: paths.home.appendingPathComponent(Constants.Paths.runDirectory),
+        try fileStore.createDirectory(
+            at: installedPaths.hostRunDirectory,
             withIntermediateDirectories: true
         )
 
@@ -324,7 +321,7 @@ struct RuntimeLifecycle {
         if fileExists(paths.config) {
             config = try VMRuntimeConfig.load(from: paths.config)
         } else {
-            config = VMRuntimeConfig.default(home: paths.home)
+            config = VMRuntimeConfig.default(paths: installedPaths)
         }
         config.cpuCount = settings.cpuCount
         config.memoryMiB = UInt64(settings.memoryGiB * 1024)
@@ -333,7 +330,7 @@ struct RuntimeLifecycle {
             config.network.bridgedInterface = nil
         }
         config.sharedDirectory = SharedDirectoryConfig(
-            hostPath: data.path,
+            hostPath: installedPaths.dataDirectory.path,
             tag: Constants.Defaults.sharedDirectoryTag,
             guestMountPath: Constants.Defaults.sharedDirectoryGuestMountPath,
             readOnly: false
@@ -344,10 +341,10 @@ struct RuntimeLifecycle {
             guestMountPath: Constants.Defaults.vitalFilesDirectoryGuestMountPath,
             readOnly: false
         )
-        VMRuntimeConfig.ensureRuntimeDefaults(&config, home: paths.home)
+        VMRuntimeConfig.ensureRuntimeDefaults(&config, paths: installedPaths)
         let encoded = try JSONEncoder.pretty.encode(config)
-        try FileManager.default.createDirectory(at: paths.config.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try encoded.write(to: paths.config)
+        try fileStore.createDirectory(at: paths.config.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try fileStore.writeData(encoded, to: paths.config, options: [])
     }
 
     private func createCloudInitSeed(_ settings: InstallSettings) throws {
@@ -355,21 +352,20 @@ struct RuntimeLifecycle {
     }
 
     private func createCloudInitSeed(hostname: String) throws {
-        let runtime = paths.home.appendingPathComponent(Constants.Paths.runtimeDirectory)
-        let seedDir = runtime.appendingPathComponent("cloud-init-seed")
-        let seedISO = runtime.appendingPathComponent(Constants.BootAssets.cloudInit)
+        let seedDir = installedPaths.runtimeDirectory.appendingPathComponent("cloud-init-seed")
+        let seedISO = installedPaths.runtimeDirectory.appendingPathComponent(Constants.BootAssets.cloudInit)
         if directoryExists(seedDir) {
-            try FileManager.default.removeItem(at: seedDir)
+            try fileStore.removeItem(at: seedDir)
         }
-        try FileManager.default.createDirectory(at: seedDir, withIntermediateDirectories: true)
+        try fileStore.createDirectory(at: seedDir, withIntermediateDirectories: true)
         let instanceID = "tirosh-\(UUID().uuidString.lowercased())"
-        try """
+        try fileStore.writeData(Data("""
         instance-id: \(instanceID)
         local-hostname: \(hostname)
 
-        """.write(to: seedDir.appendingPathComponent("meta-data"), atomically: true, encoding: .utf8)
+        """.utf8), to: seedDir.appendingPathComponent("meta-data"), options: .atomic)
 
-        try """
+        try fileStore.writeData(Data("""
         #cloud-config
         hostname: \(hostname)
         manage_etc_hosts: true
@@ -396,10 +392,10 @@ struct RuntimeLifecycle {
           - test -x /mnt/tirosh/deploy/bootstrap.sh
           - bash -lc '/mnt/tirosh/deploy/bootstrap.sh > /mnt/tirosh/run/bootstrap.log 2>&1'
 
-        """.write(to: seedDir.appendingPathComponent("user-data"), atomically: true, encoding: .utf8)
+        """.utf8), to: seedDir.appendingPathComponent("user-data"), options: .atomic)
 
         if fileExists(seedISO) {
-            try FileManager.default.removeItem(at: seedISO)
+            try fileStore.removeItem(at: seedISO)
         }
         try runRequired(
             Constants.Commands.hdiutil,
@@ -425,8 +421,8 @@ struct RuntimeLifecycle {
             vmDisk: Constants.BootAssets.disk
         )
         let data = try JSONEncoder.pretty.encode(document)
-        try FileManager.default.createDirectory(at: runtimeVersion.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try data.write(to: runtimeVersion)
+        try fileStore.createDirectory(at: runtimeVersion.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try fileStore.writeData(data, to: runtimeVersion, options: [])
     }
 
     private func configureInstalledPermissions(_ settings: InstallSettings) throws {
@@ -467,7 +463,7 @@ struct RuntimeLifecycle {
     private func cleanupInstallSettings() throws {
         let settingsFile = URL(fileURLWithPath: InstallSettings.defaultSettingsPath)
         if fileExists(settingsFile) {
-            try FileManager.default.removeItem(at: settingsFile)
+            try fileStore.removeItem(at: settingsFile)
         }
     }
 
@@ -480,7 +476,7 @@ struct RuntimeLifecycle {
             try? writeRuntimeStatus(
                 .degraded,
                 operation: "health",
-                message: "runtime health check failed: \(snapshot.failureReasons.joined(separator: ", "))"
+                message: "runtime health check failed: \(reasonText(snapshot.failureReasons))"
             )
             print("health: failed")
             throw LauncherError.runtimeHealthFailed
@@ -490,7 +486,7 @@ struct RuntimeLifecycle {
     }
 
     func watchdog() throws {
-        try? FileManager.default.createDirectory(at: logsDirectory, withIntermediateDirectories: true)
+        try? fileStore.createDirectory(at: logsDirectory, withIntermediateDirectories: true)
         try? rotateRuntimeLogs()
 
         let initial = runtimeHealthSnapshot()
@@ -500,12 +496,12 @@ struct RuntimeLifecycle {
             return
         }
 
-        let reasons = initial.failureReasons.joined(separator: ", ")
+        let reasons = reasonText(initial.failureReasons)
         log("watchdog detected unhealthy runtime reasons=\(reasons)")
         try writeRuntimeStatus(.recovering, operation: "watchdog", message: "watchdog recovery started: \(reasons)")
 
-        if !FileManager.default.isExecutableFile(atPath: Constants.InstallPaths.vmBin)
-            || !FileManager.default.isExecutableFile(atPath: Constants.InstallPaths.proxyRun)
+        if !fileStore.isExecutableFile(atPath: Constants.InstallPaths.vmBin)
+            || !fileStore.isExecutableFile(atPath: Constants.InstallPaths.proxyRun)
             || !fileExists(rootfsBase)
             || !fileExists(vmDisk) {
             try writeRuntimeStatus(.critical, operation: "watchdog", message: "watchdog cannot recover missing installed artifacts: \(reasons)")
@@ -520,7 +516,7 @@ struct RuntimeLifecycle {
             restartLaunchdService(Constants.Launchd.proxyService)
         }
 
-        Thread.sleep(forTimeInterval: Constants.Runtime.watchdogRecoveryWaitSeconds)
+        sleeper.sleep(forTimeInterval: Constants.Runtime.watchdogRecoveryWaitSeconds)
         let recovered = runtimeHealthSnapshot()
         if recovered.isHealthy {
             try writeRuntimeStatus(.healthy, operation: "watchdog", message: "watchdog recovery completed")
@@ -529,7 +525,7 @@ struct RuntimeLifecycle {
             try writeRuntimeStatus(
                 .critical,
                 operation: "watchdog",
-                message: "watchdog recovery failed: \(recovered.failureReasons.joined(separator: ", "))"
+                message: "watchdog recovery failed: \(reasonText(recovered.failureReasons))"
             )
             print("watchdog: critical")
         }
@@ -539,15 +535,13 @@ struct RuntimeLifecycle {
         var remaining = arguments
         var restart = false
         var vmConfig = try VMRuntimeConfig.load(from: paths.config)
-        let runtimeConfigURL = paths.home
-            .appendingPathComponent(Constants.Paths.dataDirectory)
-            .appendingPathComponent("deploy")
-            .appendingPathComponent(Constants.Artifacts.runtimeConfig)
+        let runtimeConfigURL = installedPaths.guestRuntimeConfig
         var guestConfig = try GuestRuntimeConfigDocument.load(from: runtimeConfigURL)
 
         while !remaining.isEmpty {
             let key = remaining.removeFirst()
-            if key == "--restart" {
+            let option = RuntimeConfigureOption(rawValue: key)
+            if option == .restart {
                 restart = true
                 continue
             }
@@ -556,8 +550,8 @@ struct RuntimeLifecycle {
             }
             remaining.removeFirst()
 
-            switch key {
-            case "--cpu":
+            switch option {
+            case .cpu:
                 guard let cpu = Int(value),
                       cpu >= Constants.Defaults.minimumCPUCount,
                       cpu <= Constants.Defaults.maximumCPUCount else {
@@ -566,7 +560,7 @@ struct RuntimeLifecycle {
                     )
                 }
                 vmConfig.cpuCount = cpu
-            case "--memory-gib":
+            case .memoryGiB:
                 guard let memoryGiB = UInt64(value),
                       stride(
                         from: Constants.Defaults.minimumMemoryGiB,
@@ -578,7 +572,7 @@ struct RuntimeLifecycle {
                     )
                 }
                 vmConfig.memoryMiB = memoryGiB * 1024
-            case "--disk-gib":
+            case .diskGiB:
                 guard let diskGiB = Int(value),
                       stride(
                         from: Constants.Defaults.minimumDiskGiB,
@@ -590,7 +584,7 @@ struct RuntimeLifecycle {
                     )
                 }
                 try resizeVMDiskIfNeeded(diskGiB: diskGiB)
-            case "--network":
+            case .network:
                 guard let mode = NetworkMode(rawValue: value) else {
                     throw LauncherError.missingArgument("--network must be `shared` or `bridged`")
                 }
@@ -598,21 +592,21 @@ struct RuntimeLifecycle {
                 if mode == .shared {
                     vmConfig.network.bridgedInterface = nil
                 }
-            case "--bridged-interface":
-                guard isLineSafe(value), !value.isEmpty else {
+            case .bridgedInterface:
+                guard RuntimeTextValidator.isSingleLine(value), !value.isEmpty else {
                     throw LauncherError.missingArgument("--bridged-interface must not be empty or contain newlines")
                 }
                 vmConfig.network.bridgedInterface = value
-            case "--proxy-port":
+            case .proxyPort:
                 guard let port = Int(value), (1...65_535).contains(port) else {
                     throw LauncherError.missingArgument("--proxy-port must be between 1 and 65535")
                 }
                 try setInstalledProxyPort(port)
-            case "--vital-files-dir":
+            case .vitalFilesDirectory:
                 guard value.hasPrefix("/") else {
                     throw LauncherError.missingArgument("--vital-files-dir must be an absolute path")
                 }
-                try FileManager.default.createDirectory(atPath: value, withIntermediateDirectories: true)
+                try fileStore.createDirectory(at: URL(fileURLWithPath: value), withIntermediateDirectories: true)
                 vmConfig.vitalFilesDirectory = SharedDirectoryConfig(
                     hostPath: value,
                     tag: Constants.Defaults.vitalFilesDirectoryTag,
@@ -620,32 +614,34 @@ struct RuntimeLifecycle {
                     readOnly: false
                 )
                 guestConfig.vitalFilesDirectory = Constants.Defaults.vitalFilesDirectoryGuestMountPath
-            case "--public-host":
-                guard isLineSafe(value) else {
+            case .publicHost:
+                guard RuntimeTextValidator.isSingleLine(value) else {
                     throw LauncherError.missingArgument("--public-host must not contain newlines")
                 }
                 guestConfig.publicHost = value
-            case "--public-port":
+            case .publicPort:
                 guard let port = Int(value), (1...65_535).contains(port) else {
                     throw LauncherError.missingArgument("--public-port must be between 1 and 65535")
                 }
                 guestConfig.publicPort = port
-            case "--admin-password":
-                guard !value.isEmpty, isLineSafe(value) else {
+            case .adminPassword:
+                guard !value.isEmpty, RuntimeTextValidator.isSingleLine(value) else {
                     throw LauncherError.missingArgument("--admin-password must not be empty or contain newlines")
                 }
                 guestConfig.adminPassword = value
-            case "--admin-password-file":
+            case .adminPasswordFile:
                 let password = try readSecretFile(URL(fileURLWithPath: value))
-                guard !password.isEmpty, isLineSafe(password) else {
+                guard !password.isEmpty, RuntimeTextValidator.isSingleLine(password) else {
                     throw LauncherError.missingArgument("--admin-password-file must contain a non-empty single-line password")
                 }
                 guestConfig.adminPassword = password
-            case "--start-on-boot":
-                guard let enabled = parseBool(value) else {
+            case .startOnBoot:
+                guard let enabled = RuntimeBooleanParser.parse(value) else {
                     throw LauncherError.missingArgument("--start-on-boot must be true or false")
                 }
                 try setStartOnBoot(enabled)
+            case .restart:
+                restart = true
             default:
                 throw LauncherError.missingArgument("unsupported runtime configure option: \(key)")
             }
@@ -656,9 +652,9 @@ struct RuntimeLifecycle {
             throw LauncherError.missingArgument("--bridged-interface is required when --network bridged")
         }
 
-        VMRuntimeConfig.ensureRuntimeDefaults(&vmConfig, home: paths.home)
-        try JSONEncoder.pretty.encode(vmConfig).write(to: paths.config, options: .atomic)
-        try JSONEncoder.pretty.encode(guestConfig).write(to: runtimeConfigURL, options: .atomic)
+        VMRuntimeConfig.ensureRuntimeDefaults(&vmConfig, paths: installedPaths)
+        try fileStore.writeData(try JSONEncoder.pretty.encode(vmConfig), to: paths.config, options: .atomic)
+        try fileStore.writeData(try JSONEncoder.pretty.encode(guestConfig), to: runtimeConfigURL, options: .atomic)
         try restrictSecretFile(runtimeConfigURL)
         try writeRuntimeStatus(.degraded, operation: "configure", message: "runtime configuration updated")
         log("runtime configuration updated restart=\(restart)")
@@ -689,45 +685,31 @@ struct RuntimeLifecycle {
         }
 
         let manifest = try loadManifest(manifestURL)
-        guard manifest.schemaVersion == 2 else {
-            throw LauncherError.missingArgument("unsupported bundle schema: \(manifest.schemaVersion)")
-        }
-        guard manifest.product == Constants.Product.identifier else {
-            throw LauncherError.missingArgument("unsupported bundle product: \(manifest.product)")
-        }
+        let plan = try makeBundleVerificationPlan(manifest)
         log(
             "bundle manifest loaded version=\(manifest.version) runtimeVersion=\(manifest.runtimeVersion) artifacts=\(manifest.artifacts.count) migrations=\(manifest.migrations.count)"
         )
 
         let checksumMap = try loadChecksums(checksumsURL)
-        for artifact in manifest.artifacts {
-            guard isSafeBundleName(artifact.name) else {
-                throw LauncherError.missingArgument("invalid artifact name: \(artifact.name)")
-            }
-            let artifactURL = bundleURL.appendingPathComponent(artifact.name)
+        for (artifact, fileVerification) in zip(manifest.artifacts, plan.artifactFiles) {
+            let artifactURL = bundleURL.appendingPathComponent(fileVerification.name)
             guard fileExists(artifactURL) else {
                 throw LauncherError.missingFile(artifactURL.path)
             }
 
             log(
-                "verifying artifact type=\(artifact.type) name=\(artifact.name) size=\(formatBytes(bundleItemSize(artifact.size)))"
+                "verifying artifact type=\(artifact.type.rawValue) name=\(artifact.name) size=\(formatBytes(bundleItemSize(artifact.size)))"
             )
             try verifyDigestedFile(
                 artifactURL,
-                checksumKey: artifact.name,
-                expectedSHA256: artifact.sha256,
-                expectedSize: artifact.size,
+                fileVerification: fileVerification,
                 checksumMap: checksumMap
             )
             try validateUpdateArtifactPayload(artifact, source: artifactURL)
         }
 
-        for migration in manifest.migrations {
-            guard isSafeBundleName(migration.name) else {
-                throw LauncherError.missingArgument("invalid migration name: \(migration.name)")
-            }
-            let checksumKey = "migrations/\(migration.name)"
-            let migrationURL = bundleURL.appendingPathComponent(checksumKey)
+        for (migration, fileVerification) in zip(manifest.migrations, plan.migrationFiles) {
+            let migrationURL = bundleURL.appendingPathComponent(fileVerification.checksumKey)
             guard fileExists(migrationURL) else {
                 throw LauncherError.missingFile(migrationURL.path)
             }
@@ -735,9 +717,7 @@ struct RuntimeLifecycle {
             log("verifying migration name=\(migration.name) size=\(formatBytes(bundleItemSize(migration.size)))")
             try verifyDigestedFile(
                 migrationURL,
-                checksumKey: checksumKey,
-                expectedSHA256: migration.sha256,
-                expectedSize: migration.size,
+                fileVerification: fileVerification,
                 checksumMap: checksumMap
             )
         }
@@ -754,10 +734,10 @@ struct RuntimeLifecycle {
         let destination = bundlesDirectory.appendingPathComponent("update-bundle-\(manifest.version)")
         let bundleSize = try directorySize(bundleURL)
 
-        try FileManager.default.createDirectory(at: bundlesDirectory, withIntermediateDirectories: true)
-        if FileManager.default.fileExists(atPath: destination.path) {
+        try fileStore.createDirectory(at: bundlesDirectory, withIntermediateDirectories: true)
+        if fileExists(destination) || directoryExists(destination) {
             log("removing existing staged bundle path=\(destination.path)")
-            try FileManager.default.removeItem(at: destination)
+            try fileStore.removeItem(at: destination)
         }
         try requireFreeSpace(
             at: bundlesDirectory,
@@ -767,7 +747,7 @@ struct RuntimeLifecycle {
         log(
             "copying bundle to managed storage source=\(bundleURL.path) destination=\(destination.path) size=\(formatBytes(bundleSize))"
         )
-        try FileManager.default.copyItem(at: bundleURL, to: destination)
+        try fileStore.copyItem(at: bundleURL, to: destination)
         log("bundle stage completed destination=\(destination.path)")
         print("bundle staged: \(destination.path)")
         return destination
@@ -775,127 +755,138 @@ struct RuntimeLifecycle {
 
     func applyBundle(_ bundleURL: URL) throws {
         log("bundle apply started input=\(bundleURL.path)")
-        try? FileManager.default.createDirectory(at: logsDirectory, withIntermediateDirectories: true)
+        try? fileStore.createDirectory(at: logsDirectory, withIntermediateDirectories: true)
         try? rotateRuntimeLogs()
         try writeRuntimeStatus(.updating, operation: "apply-bundle", message: "bundle apply started")
 
         let initialHealth = runtimeHealthSnapshot()
         if !initialHealth.isHealthy {
-            log("bundle apply preflight warning runtime unhealthy reasons=\(initialHealth.failureReasons.joined(separator: ", "))")
+            log("bundle apply preflight warning runtime unhealthy reasons=\(reasonText(initialHealth.failureReasons))")
         }
 
-        let stagedBundle: URL
-        let manifest: UpdateBundleManifest
-        let stagedRootfs: URL
-        let restartVM: Bool
-        let restartProxy: Bool
-        let restartWatchdog: Bool
-        let backup: URL
+        let preflight: ApplyBundlePreflightContext
 
         do {
-            stagedBundle = try stageBundle(bundleURL)
-            manifest = try loadManifest(stagedBundle.appendingPathComponent(Constants.Bundle.manifest))
-            log(
-                "bundle apply manifest version=\(manifest.version) runtimeVersion=\(manifest.runtimeVersion) artifacts=\(manifest.artifacts.count) migrations=\(manifest.migrations.count)"
-            )
-            stagedRootfs = stagedBundle.appendingPathComponent(Constants.Artifacts.rootfsBase)
-            guard fileExists(stagedRootfs) else {
-                throw LauncherError.missingFile(stagedRootfs.path)
-            }
-
-            try FileManager.default.createDirectory(at: backupsDirectory, withIntermediateDirectories: true)
-            log(
-                "bundle apply storage preflight installedRootfs=\(formatBytes(try fileSize(rootfsBase))) incomingRootfs=\(formatBytes(try fileSize(stagedRootfs)))"
-            )
-            try requireFreeSpace(
-                at: backupsDirectory,
-                minimumBytes: (try fileSize(rootfsBase)) + (try fileSize(stagedRootfs)) + Constants.Runtime.updateFreeSpaceMarginBytes,
-                operation: "apply-bundle"
-            )
-
-            restartVM = isLaunchdLoaded(Constants.Launchd.vmService)
-            restartProxy = isLaunchdLoaded(Constants.Launchd.proxyService)
-            restartWatchdog = isLaunchdLoaded(Constants.Launchd.watchdogService)
-            log(
-                "runtime services before update vm=\(restartVM ? "loaded" : "not-loaded") proxy=\(restartProxy ? "loaded" : "not-loaded") watchdog=\(restartWatchdog ? "loaded" : "not-loaded")"
-            )
-            log("creating managed backup reason=before-\(manifest.version)")
-            backup = try createBackup(reason: "before-\(manifest.version)")
-            log("backup created path=\(backup.path) size=\(formatBytes(try directorySize(backup)))")
+            preflight = try prepareApplyBundlePreflight(bundleURL)
         } catch {
             try? writeRuntimeStatus(.critical, operation: "apply-bundle", message: "bundle apply preflight failed: \(error)")
             throw error
         }
 
         do {
-            try runStep("stop-runtime-services") {
-                try stopRuntimeServices()
-            }
-            try runStep("replace-rootfs-base") {
-                try FileManager.default.createDirectory(
-                    at: rootfsBase.deletingLastPathComponent(),
-                    withIntermediateDirectories: true
+            try runPlan(RuntimeOperationPlans.applyBundle, status: .updating) { step in
+                try executeApplyBundleStep(
+                    step,
+                    preflight: preflight
                 )
-                log(
-                    "replacing rootfs-base source=\(stagedRootfs.path) destination=\(rootfsBase.path) size=\(formatBytes(try fileSize(stagedRootfs)))"
-                )
-                try replaceFile(from: stagedRootfs, to: rootfsBase)
-                log("rootfs-base replaced destination=\(rootfsBase.path)")
-            }
-            try runStep("replace-update-artifacts") {
-                try replaceUpdateArtifacts(manifest.artifacts, stagedBundle: stagedBundle)
-            }
-            try runStep("run-migrations") {
-                try runMigrations(manifest.migrations, stagedBundle: stagedBundle)
-            }
-            try runStep("refresh-cloud-init-seed") {
-                try refreshCloudInitSeedIfNeeded(manifest)
-            }
-            try runStep("write-runtime-version") {
-                try writeRuntimeVersion(version: manifest.version, bundle: stagedBundle)
-            }
-            try runStep("start-runtime-services") {
-                try startRuntimeServices(restartVM: restartVM, restartProxy: restartProxy, restartWatchdog: restartWatchdog)
-            }
-            try runStep("activate-guest-update") {
-                try activateGuestUpdateIfNeeded(manifest)
-            }
-            try runStep("wait-runtime-health") {
-                try waitForHealth(restartVM: restartVM, restartProxy: restartProxy, restartWatchdog: restartWatchdog)
             }
         } catch {
             log("bundle apply failed; rolling back error=\(error)")
             try? writeRuntimeStatus(.recovering, operation: "apply-bundle", message: "bundle apply failed; rolling back: \(error)")
             do {
-                try rollback(backup)
-                try startRuntimeServices(restartVM: restartVM, restartProxy: restartProxy, restartWatchdog: restartWatchdog)
+                try rollback(preflight.backup)
+                try startRuntimeServices(preflight.restartPolicy)
                 try? writeRuntimeStatus(.degraded, operation: "apply-bundle", message: "bundle apply failed; rollback completed: \(error)")
             } catch {
                 log("bundle apply rollback failed error=\(error)")
-                try? startRuntimeServices(restartVM: restartVM, restartProxy: restartProxy, restartWatchdog: restartWatchdog)
+                try? startRuntimeServices(preflight.restartPolicy)
                 try? writeRuntimeStatus(.critical, operation: "apply-bundle", message: "bundle apply failed and rollback failed: \(error)")
             }
             throw error
         }
 
-        try writeRuntimeStatus(.healthy, operation: "apply-bundle", message: "bundle applied: \(manifest.version)")
+        try writeRuntimeStatus(.healthy, operation: "apply-bundle", message: "bundle applied: \(preflight.manifest.version)")
         try pruneOldRuntimeArtifacts()
-        log("bundle applied path=\(stagedBundle.path)")
+        log("bundle applied path=\(preflight.stagedBundle.path)")
         log("mutable VM disk preserved path=\(vmDisk.path)")
+    }
+
+    private func prepareApplyBundlePreflight(_ bundleURL: URL) throws -> ApplyBundlePreflightContext {
+        let stagedBundle = try stageBundle(bundleURL)
+        let manifest = try loadManifest(stagedBundle.appendingPathComponent(Constants.Bundle.manifest))
+        log(
+            "bundle apply manifest version=\(manifest.version) runtimeVersion=\(manifest.runtimeVersion) artifacts=\(manifest.artifacts.count) migrations=\(manifest.migrations.count)"
+        )
+        let stagedRootfs = stagedBundle.appendingPathComponent(Constants.Artifacts.rootfsBase)
+        guard fileExists(stagedRootfs) else {
+            throw LauncherError.missingFile(stagedRootfs.path)
+        }
+
+        try fileStore.createDirectory(at: backupsDirectory, withIntermediateDirectories: true)
+        log(
+            "bundle apply storage preflight installedRootfs=\(formatBytes(try fileSize(rootfsBase))) incomingRootfs=\(formatBytes(try fileSize(stagedRootfs)))"
+        )
+        try requireFreeSpace(
+            at: backupsDirectory,
+            minimumBytes: (try fileSize(rootfsBase)) + (try fileSize(stagedRootfs)) + Constants.Runtime.updateFreeSpaceMarginBytes,
+            operation: "apply-bundle"
+        )
+
+        let restartPolicy = RuntimeServiceRestartPolicy(
+            restartVM: isLaunchdLoaded(Constants.Launchd.vmService),
+            restartProxy: isLaunchdLoaded(Constants.Launchd.proxyService),
+            restartWatchdog: isLaunchdLoaded(Constants.Launchd.watchdogService)
+        )
+        log(
+            "runtime services before update vm=\(restartPolicy.restartVM ? "loaded" : "not-loaded") proxy=\(restartPolicy.restartProxy ? "loaded" : "not-loaded") watchdog=\(restartPolicy.restartWatchdog ? "loaded" : "not-loaded")"
+        )
+        log("creating managed backup reason=before-\(manifest.version)")
+        let backup = try createBackup(reason: "before-\(manifest.version)")
+        log("backup created path=\(backup.path) size=\(formatBytes(try directorySize(backup)))")
+
+        return ApplyBundlePreflightContext(
+            stagedBundle: stagedBundle,
+            manifest: manifest,
+            stagedRootfs: stagedRootfs,
+            backup: backup,
+            restartPolicy: restartPolicy
+        )
+    }
+
+    private func executeApplyBundleStep(
+        _ step: RuntimeWorkflowStep,
+        preflight: ApplyBundlePreflightContext
+    ) throws {
+        switch step {
+        case .stopRuntimeServices:
+            try stopRuntimeServices()
+        case .replaceRootfsBase:
+            try fileStore.createDirectory(
+                at: rootfsBase.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            log(
+                "replacing rootfs-base source=\(preflight.stagedRootfs.path) destination=\(rootfsBase.path) size=\(formatBytes(try fileSize(preflight.stagedRootfs)))"
+            )
+            try replaceFile(from: preflight.stagedRootfs, to: rootfsBase)
+            log("rootfs-base replaced destination=\(rootfsBase.path)")
+        case .replaceUpdateArtifacts:
+            try replaceUpdateArtifacts(preflight.manifest.artifacts, stagedBundle: preflight.stagedBundle)
+        case .runMigrations:
+            try runMigrations(preflight.manifest.migrations, stagedBundle: preflight.stagedBundle)
+        case .refreshCloudInitSeed:
+            try refreshCloudInitSeedIfNeeded(preflight.manifest)
+        case .writeRuntimeVersion:
+            try writeRuntimeVersion(version: preflight.manifest.version, bundle: preflight.stagedBundle)
+        case .startRuntimeServices:
+            try startRuntimeServices(preflight.restartPolicy)
+        case .activateGuestUpdate:
+            try activateGuestUpdateIfNeeded(preflight.manifest)
+        case .waitRuntimeHealth:
+            try waitForHealth(preflight.restartPolicy)
+        default:
+            throw LauncherError.unsupportedCommand("apply-bundle step \(step.rawValue)")
+        }
     }
 
     func repairDatastore() throws {
         log("datastore repair requested")
-        try FileManager.default.createDirectory(at: guestRunDirectory, withIntermediateDirectories: true)
-        try? FileManager.default.removeItem(at: datastoreRepairResult)
+        try fileStore.createDirectory(at: guestRunDirectory, withIntermediateDirectories: true)
+        try? guestGateway.removeDatastoreRepairResult()
         try writeRuntimeStatus(.recovering, operation: "repair-datastore", message: "datastore repair requested")
+        let requestId = UUID().uuidString
 
-        let request = [
-            "requestedAt": isoTimestamp(),
-            "operation": "repair-datastore",
-        ]
-        let requestData = try JSONSerialization.data(withJSONObject: request, options: [.prettyPrinted, .sortedKeys])
-        try requestData.write(to: datastoreRepairRequest)
+        try guestGateway.writeDatastoreRepairRequest(requestId: requestId, requestedAt: isoTimestamp())
 
         if !isLaunchdLoaded(Constants.Launchd.vmService) {
             startLaunchdService(Constants.Launchd.vmService)
@@ -903,7 +894,7 @@ struct RuntimeLifecycle {
             restartLaunchdService(Constants.Launchd.vmService)
         }
 
-        try waitForDatastoreRepairResult()
+        try waitForDatastoreRepairResult(requestId: requestId)
         restartLaunchdService(Constants.Launchd.proxyService)
         restartLaunchdService(Constants.Launchd.watchdogService)
         try waitForHealth(restartVM: true, restartProxy: true, restartWatchdog: true)
@@ -912,9 +903,24 @@ struct RuntimeLifecycle {
     }
 
     func rollback(_ requestedBackup: URL?) throws {
-        let backup = try requestedBackup ?? requireLatestBackup()
-        log("rollback started backup=\(backup.path)")
+        let preflight = try prepareRollbackPreflight(requestedBackup)
+        log("rollback started backup=\(preflight.backup.path)")
         try writeRuntimeStatus(.recovering, operation: "rollback", message: "rollback started")
+
+        try runPlan(RuntimeOperationPlans.rollback, status: .recovering) { step in
+            try executeRollbackStep(
+                step,
+                preflight: preflight
+            )
+        }
+
+        try writeRuntimeStatus(.healthy, operation: "rollback", message: "rollback completed")
+        log("rollback restored backup=\(preflight.backup.path)")
+        log("mutable VM disk preserved path=\(vmDisk.path)")
+    }
+
+    private func prepareRollbackPreflight(_ requestedBackup: URL?) throws -> RollbackPreflightContext {
+        let backup = try requestedBackup ?? requireLatestBackup()
         let backupRootfs = backup.appendingPathComponent(Constants.Artifacts.rootfsBase)
         let backupVersion = backup.appendingPathComponent(Constants.Artifacts.runtimeVersion)
         guard directoryExists(backup) else {
@@ -924,49 +930,55 @@ struct RuntimeLifecycle {
             throw LauncherError.missingFile(backupRootfs.path)
         }
 
-        let restartVM = isLaunchdLoaded(Constants.Launchd.vmService)
-        let restartProxy = isLaunchdLoaded(Constants.Launchd.proxyService)
-        let restartWatchdog = isLaunchdLoaded(Constants.Launchd.watchdogService)
-        try runStep("rollback-stop-runtime-services") {
+        let restartPolicy = RuntimeServiceRestartPolicy(
+            restartVM: isLaunchdLoaded(Constants.Launchd.vmService),
+            restartProxy: isLaunchdLoaded(Constants.Launchd.proxyService),
+            restartWatchdog: isLaunchdLoaded(Constants.Launchd.watchdogService)
+        )
+        return RollbackPreflightContext(
+            backup: backup,
+            backupRootfs: backupRootfs,
+            backupVersion: backupVersion,
+            restartPolicy: restartPolicy
+        )
+    }
+
+    private func executeRollbackStep(
+        _ step: RuntimeWorkflowStep,
+        preflight: RollbackPreflightContext
+    ) throws {
+        switch step {
+        case .rollbackStopRuntimeServices:
             try stopRuntimeServices()
-        }
-        try runStep("rollback-restore-rootfs-base") {
-            try replaceFile(from: backupRootfs, to: rootfsBase)
-        }
-        try runStep("rollback-restore-runtime-version") {
-            if fileExists(backupVersion) {
-                try replaceFile(from: backupVersion, to: runtimeVersion)
+        case .rollbackRestoreRootfsBase:
+            try replaceFile(from: preflight.backupRootfs, to: rootfsBase)
+        case .rollbackRestoreRuntimeVersion:
+            if fileExists(preflight.backupVersion) {
+                try replaceFile(from: preflight.backupVersion, to: runtimeVersion)
             } else {
-                try writeRuntimeVersion(version: "rolled-back", bundle: backup)
+                try writeRuntimeVersion(version: "rolled-back", bundle: preflight.backup)
             }
-        }
-        try runStep("rollback-restore-update-artifacts") {
+        case .rollbackRestoreUpdateArtifacts:
             try restoreBackupPathIfExists(
-                backup.appendingPathComponent("app-bundle"),
+                preflight.backup.appendingPathComponent(UpdateBundleArtifactType.appBundle.rawValue),
                 to: URL(fileURLWithPath: Constants.Product.managerAppPath)
             )
             try restoreBackupPathIfExists(
-                backup.appendingPathComponent("nginx-bundle"),
-                to: productRoot.appendingPathComponent("nginx")
+                preflight.backup.appendingPathComponent(UpdateBundleArtifactType.nginxBundle.rawValue),
+                to: installedPaths.nginxDirectory
             )
             try restoreBackupPathIfExists(
-                backup.appendingPathComponent("guest-deploy"),
-                to: paths.home
-                    .appendingPathComponent(Constants.Paths.dataDirectory)
-                    .appendingPathComponent("deploy")
+                preflight.backup.appendingPathComponent(UpdateBundleArtifactType.guestDeploy.rawValue),
+                to: installedPaths.deployDirectory
             )
-            try restoreRuntimeToolsIfExists(backup.appendingPathComponent("runtime-tools"))
+            try restoreRuntimeToolsIfExists(preflight.backup.appendingPathComponent(UpdateBundleArtifactType.runtimeTools.rawValue))
+        case .rollbackStartRuntimeServices:
+            try startRuntimeServices(preflight.restartPolicy)
+        case .rollbackWaitRuntimeHealth:
+            try waitForHealth(preflight.restartPolicy)
+        default:
+            throw LauncherError.unsupportedCommand("rollback step \(step.rawValue)")
         }
-        try runStep("rollback-start-runtime-services") {
-            try startRuntimeServices(restartVM: restartVM, restartProxy: restartProxy, restartWatchdog: restartWatchdog)
-        }
-        try runStep("rollback-wait-runtime-health") {
-            try waitForHealth(restartVM: restartVM, restartProxy: restartProxy, restartWatchdog: restartWatchdog)
-        }
-
-        try writeRuntimeStatus(.healthy, operation: "rollback", message: "rollback completed")
-        log("rollback restored backup=\(backup.path)")
-        log("mutable VM disk preserved path=\(vmDisk.path)")
     }
 
     private func loadManifest(_ url: URL) throws -> UpdateBundleManifest {
@@ -987,6 +999,17 @@ struct RuntimeLifecycle {
         return checksums
     }
 
+    private func makeBundleVerificationPlan(_ manifest: UpdateBundleManifest) throws -> UpdateBundleVerificationPlan {
+        do {
+            return try UpdateBundleVerifier.makePlan(
+                manifest: manifest,
+                expectedProduct: Constants.Product.identifier
+            )
+        } catch let error as UpdateBundleVerificationError {
+            throw launcherError(error)
+        }
+    }
+
     private func sha256(_ url: URL) throws -> String {
         let data = try Data(contentsOf: url)
         let digest = SHA256.hash(data: data)
@@ -995,38 +1018,48 @@ struct RuntimeLifecycle {
 
     private func verifyDigestedFile(
         _ url: URL,
-        checksumKey: String,
-        expectedSHA256: String,
-        expectedSize: Int,
+        fileVerification: UpdateBundleFileVerification,
         checksumMap: [String: String]
     ) throws {
         log(
-            "checksum started key=\(checksumKey) path=\(url.path) expectedSize=\(formatBytes(bundleItemSize(expectedSize)))"
+            "checksum started key=\(fileVerification.checksumKey) path=\(url.path) expectedSize=\(formatBytes(bundleItemSize(fileVerification.expectedSize)))"
         )
         let actualDigest = try sha256(url)
-        guard actualDigest == expectedSHA256 else {
-            throw LauncherError.bundleVerificationFailed(
-                "manifest checksum mismatch for \(checksumKey)"
-            )
-        }
-        guard checksumMap[checksumKey] == actualDigest else {
-            throw LauncherError.bundleVerificationFailed(
-                "checksums.txt mismatch for \(checksumKey)"
-            )
-        }
-
         let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? -1
-        guard size == expectedSize else {
-            throw LauncherError.bundleVerificationFailed("size mismatch for \(checksumKey)")
+        do {
+            try UpdateBundleVerifier.verifyDigest(
+                checksumKey: fileVerification.checksumKey,
+                expectedSHA256: fileVerification.expectedSHA256,
+                expectedSize: fileVerification.expectedSize,
+                checksumMap: checksumMap,
+                actualSHA256: actualDigest,
+                actualSize: size
+            )
+        } catch let error as UpdateBundleVerificationError {
+            throw launcherError(error)
         }
-        log("checksum completed key=\(checksumKey) actualSize=\(formatBytes(bundleItemSize(size)))")
+        log("checksum completed key=\(fileVerification.checksumKey) actualSize=\(formatBytes(bundleItemSize(size)))")
     }
 
-    private func isSafeBundleName(_ name: String) -> Bool {
-        !name.isEmpty
-            && name != "."
-            && name != ".."
-            && URL(fileURLWithPath: name).lastPathComponent == name
+    private func launcherError(_ error: UpdateBundleVerificationError) -> LauncherError {
+        switch error {
+        case .unsupportedSchema(let schemaVersion):
+            return .missingArgument("unsupported bundle schema: \(schemaVersion)")
+        case .unsupportedProduct(let product):
+            return .missingArgument("unsupported bundle product: \(product)")
+        case .invalidArtifactName(let name):
+            return .missingArgument("invalid artifact name: \(name)")
+        case .invalidMigrationName(let name):
+            return .missingArgument("invalid migration name: \(name)")
+        case .unsupportedArtifactType(let type):
+            return .bundleVerificationFailed("unsupported artifact type: \(type)")
+        case .manifestChecksumMismatch(let checksumKey):
+            return .bundleVerificationFailed("manifest checksum mismatch for \(checksumKey)")
+        case .checksumFileMismatch(let checksumKey):
+            return .bundleVerificationFailed("checksums.txt mismatch for \(checksumKey)")
+        case .sizeMismatch(let checksumKey):
+            return .bundleVerificationFailed("size mismatch for \(checksumKey)")
+        }
     }
 
     private func runMigrations(_ migrations: [UpdateBundleMigration], stagedBundle: URL) throws {
@@ -1038,7 +1071,7 @@ struct RuntimeLifecycle {
         let migrationDirectory = stagedBundle.appendingPathComponent("migrations")
         for migration in migrations {
             let migrationURL = migrationDirectory.appendingPathComponent(migration.name)
-            guard FileManager.default.isExecutableFile(atPath: migrationURL.path) else {
+            guard fileStore.isExecutableFile(atPath: migrationURL.path) else {
                 throw LauncherError.bundleVerificationFailed(
                     "migration is not executable: \(migration.name)"
                 )
@@ -1049,47 +1082,45 @@ struct RuntimeLifecycle {
     }
 
     private func replaceUpdateArtifacts(_ artifacts: [UpdateBundleArtifact], stagedBundle: URL) throws {
-        for artifact in artifacts where artifact.type != Constants.Bundle.ArtifactType.rootfsBase {
+        for artifact in artifacts where artifact.type != .rootfsBase {
             let source = stagedBundle.appendingPathComponent(artifact.name)
             log(
-                "artifact replacement started type=\(artifact.type) name=\(artifact.name) source=\(source.path) size=\(formatBytes(bundleItemSize(artifact.size)))"
+                "artifact replacement started type=\(artifact.type.rawValue) name=\(artifact.name) source=\(source.path) size=\(formatBytes(bundleItemSize(artifact.size)))"
             )
             try validateUpdateArtifactPayload(artifact, source: source)
             switch artifact.type {
-            case Constants.Bundle.ArtifactType.appBundle:
+            case .appBundle:
                 try replaceTarGz(
                     source,
                     destination: URL(fileURLWithPath: Constants.Product.managerAppPath)
                 )
-            case Constants.Bundle.ArtifactType.nginxBundle:
-                try replaceTarGz(source, destination: productRoot.appendingPathComponent("nginx"))
-            case Constants.Bundle.ArtifactType.guestDeploy:
+            case .nginxBundle:
+                try replaceTarGz(source, destination: installedPaths.nginxDirectory)
+            case .guestDeploy:
                 try replaceTarGz(
                     source,
-                    destination: paths.home
-                        .appendingPathComponent(Constants.Paths.dataDirectory)
-                        .appendingPathComponent("deploy")
+                    destination: installedPaths.deployDirectory
                 )
-            case Constants.Bundle.ArtifactType.runtimeTools:
+            case .runtimeTools:
                 try extractTarGz(source, destination: URL(fileURLWithPath: "/usr/local/bin"))
             default:
-                throw LauncherError.bundleVerificationFailed("unsupported artifact type: \(artifact.type)")
+                throw LauncherError.bundleVerificationFailed("unsupported artifact type: \(artifact.type.rawValue)")
             }
-            log("artifact replacement completed type=\(artifact.type) name=\(artifact.name)")
+            log("artifact replacement completed type=\(artifact.type.rawValue) name=\(artifact.name)")
         }
     }
 
     private func validateUpdateArtifactPayload(_ artifact: UpdateBundleArtifact, source: URL) throws {
         switch artifact.type {
-        case Constants.Bundle.ArtifactType.rootfsBase:
+        case .rootfsBase:
             return
-        case Constants.Bundle.ArtifactType.appBundle:
+        case .appBundle:
             try validateTarGz(source, requiredTopLevel: Constants.Product.managerAppName)
-        case Constants.Bundle.ArtifactType.nginxBundle:
+        case .nginxBundle:
             try validateTarGz(source, requiredTopLevel: "nginx")
-        case Constants.Bundle.ArtifactType.guestDeploy:
+        case .guestDeploy:
             try validateTarGz(source, requiredTopLevel: "deploy")
-        case Constants.Bundle.ArtifactType.runtimeTools:
+        case .runtimeTools:
             try validateTarGz(
                 source,
                 allowedRootEntries: [
@@ -1099,7 +1130,7 @@ struct RuntimeLifecycle {
                 ]
             )
         default:
-            throw LauncherError.bundleVerificationFailed("unsupported artifact type: \(artifact.type)")
+            throw LauncherError.bundleVerificationFailed("unsupported artifact type: \(artifact.type.rawValue)")
         }
     }
 
@@ -1109,15 +1140,15 @@ struct RuntimeLifecycle {
         log(
             "archive replacement started source=\(source.path) destination=\(destination.path) temporary=\(temporary.path) size=\(formatBytes(try fileSize(source)))"
         )
-        if FileManager.default.fileExists(atPath: temporary.path) {
-            try FileManager.default.removeItem(at: temporary)
+        if fileExists(temporary) || directoryExists(temporary) {
+            try fileStore.removeItem(at: temporary)
         }
-        try FileManager.default.createDirectory(at: temporary, withIntermediateDirectories: true)
+        try fileStore.createDirectory(at: temporary, withIntermediateDirectories: true)
         try runRequired(Constants.Commands.tar, arguments: ["-xzf", source.path, "-C", temporary.path, "--strip-components", "1"])
-        if FileManager.default.fileExists(atPath: destination.path) {
-            try FileManager.default.removeItem(at: destination)
+        if fileExists(destination) || directoryExists(destination) {
+            try fileStore.removeItem(at: destination)
         }
-        try FileManager.default.moveItem(at: temporary, to: destination)
+        try fileStore.moveItem(at: temporary, to: destination)
         log("archive replacement completed destination=\(destination.path)")
     }
 
@@ -1125,7 +1156,7 @@ struct RuntimeLifecycle {
         log(
             "archive extraction started source=\(source.path) destination=\(destination.path) size=\(formatBytes(try fileSize(source)))"
         )
-        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+        try fileStore.createDirectory(at: destination, withIntermediateDirectories: true)
         try runRequired(Constants.Commands.tar, arguments: ["-xzf", source.path, "-C", destination.path])
         log("archive extraction completed destination=\(destination.path)")
     }
@@ -1135,13 +1166,13 @@ struct RuntimeLifecycle {
         requiredTopLevel: String? = nil,
         allowedRootEntries: Set<String>? = nil
     ) throws {
-        let listOutput = FileManager.default.temporaryDirectory
+        let listOutput = fileStore.temporaryDirectory
             .appendingPathComponent("tirosh-\(UUID().uuidString)-tar-list.txt")
         defer {
-            try? FileManager.default.removeItem(at: listOutput)
+            try? fileStore.removeItem(at: listOutput)
         }
         try runProcessToFile(Constants.Commands.tar, arguments: ["-tzf", source.path], output: listOutput)
-        let entries = try String(contentsOf: listOutput, encoding: .utf8)
+        let entries = try fileStore.readUTF8Text(listOutput)
             .split(separator: "\n")
             .map(String.init)
             .filter { !$0.isEmpty }
@@ -1164,13 +1195,13 @@ struct RuntimeLifecycle {
             }
         }
 
-        let verboseOutput = FileManager.default.temporaryDirectory
+        let verboseOutput = fileStore.temporaryDirectory
             .appendingPathComponent("tirosh-\(UUID().uuidString)-tar-verbose.txt")
         defer {
-            try? FileManager.default.removeItem(at: verboseOutput)
+            try? fileStore.removeItem(at: verboseOutput)
         }
         try runProcessToFile(Constants.Commands.tar, arguments: ["-tvzf", source.path], output: verboseOutput)
-        let verboseText = try String(contentsOf: verboseOutput, encoding: .utf8)
+        let verboseText = try fileStore.readUTF8Text(verboseOutput)
         for line in verboseText.split(separator: "\n") {
             guard let entryType = line.first else {
                 continue
@@ -1196,34 +1227,35 @@ struct RuntimeLifecycle {
     private func createBackup(reason: String) throws -> URL {
         let timestamp = backupTimestamp()
         let backup = backupsDirectory.appendingPathComponent("\(timestamp)-\(reason)")
-        try FileManager.default.createDirectory(at: backup, withIntermediateDirectories: true)
+        try fileStore.createDirectory(at: backup, withIntermediateDirectories: true)
 
         if fileExists(rootfsBase) {
             log("backup rootfs-base source=\(rootfsBase.path)")
-            try FileManager.default.copyItem(
+            try fileStore.copyItem(
                 at: rootfsBase,
                 to: backup.appendingPathComponent(Constants.Artifacts.rootfsBase)
             )
         }
         if fileExists(runtimeVersion) {
             log("backup runtime-version source=\(runtimeVersion.path)")
-            try FileManager.default.copyItem(
+            try fileStore.copyItem(
                 at: runtimeVersion,
                 to: backup.appendingPathComponent(Constants.Artifacts.runtimeVersion)
             )
         }
         try backupPathIfExists(
             URL(fileURLWithPath: Constants.Product.managerAppPath),
-            to: backup.appendingPathComponent("app-bundle")
+            to: backup.appendingPathComponent(UpdateBundleArtifactType.appBundle.rawValue)
         )
-        try backupPathIfExists(productRoot.appendingPathComponent("nginx"), to: backup.appendingPathComponent("nginx-bundle"))
         try backupPathIfExists(
-            paths.home
-                .appendingPathComponent(Constants.Paths.dataDirectory)
-                .appendingPathComponent("deploy"),
-            to: backup.appendingPathComponent("guest-deploy")
+            installedPaths.nginxDirectory,
+            to: backup.appendingPathComponent(UpdateBundleArtifactType.nginxBundle.rawValue)
         )
-        try backupRuntimeTools(to: backup.appendingPathComponent("runtime-tools"))
+        try backupPathIfExists(
+            installedPaths.deployDirectory,
+            to: backup.appendingPathComponent(UpdateBundleArtifactType.guestDeploy.rawValue)
+        )
+        try backupRuntimeTools(to: backup.appendingPathComponent(UpdateBundleArtifactType.runtimeTools.rawValue))
 
         let manifest = BackupManifest(
             product: Constants.Product.identifier,
@@ -1234,37 +1266,37 @@ struct RuntimeLifecycle {
             vmDiskPreserved: true
         )
         let data = try JSONEncoder.pretty.encode(manifest)
-        try data.write(to: backup.appendingPathComponent(Constants.Artifacts.backupManifest))
+        try fileStore.writeData(data, to: backup.appendingPathComponent(Constants.Artifacts.backupManifest), options: [])
         return backup
     }
 
     private func backupPathIfExists(_ source: URL, to destination: URL) throws {
-        guard FileManager.default.fileExists(atPath: source.path) else {
+        guard fileExists(source) || directoryExists(source) else {
             return
         }
-        try FileManager.default.copyItem(at: source, to: destination)
+        try fileStore.copyItem(at: source, to: destination)
     }
 
     private func restoreBackupPathIfExists(_ source: URL, to destination: URL) throws {
-        guard FileManager.default.fileExists(atPath: source.path) else {
+        guard fileExists(source) || directoryExists(source) else {
             return
         }
-        if FileManager.default.fileExists(atPath: destination.path) {
-            try FileManager.default.removeItem(at: destination)
+        if fileExists(destination) || directoryExists(destination) {
+            try fileStore.removeItem(at: destination)
         }
-        try FileManager.default.copyItem(at: source, to: destination)
+        try fileStore.copyItem(at: source, to: destination)
     }
 
     private func backupRuntimeTools(to destination: URL) throws {
-        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+        try fileStore.createDirectory(at: destination, withIntermediateDirectories: true)
         for path in [
             Constants.InstallPaths.vmBin,
             Constants.InstallPaths.proxyRun,
             Constants.InstallPaths.uninstall,
         ] {
             let source = URL(fileURLWithPath: path)
-            if FileManager.default.fileExists(atPath: source.path) {
-                try FileManager.default.copyItem(at: source, to: destination.appendingPathComponent(source.lastPathComponent))
+            if fileExists(source) {
+                try fileStore.copyItem(at: source, to: destination.appendingPathComponent(source.lastPathComponent))
             }
         }
     }
@@ -1273,19 +1305,19 @@ struct RuntimeLifecycle {
         guard directoryExists(source) else {
             return
         }
-        let tools = try FileManager.default.contentsOfDirectory(at: source, includingPropertiesForKeys: nil)
+        let tools = try fileStore.contentsOfDirectory(at: source, includingPropertiesForKeys: nil, options: [])
         for tool in tools {
             let destination = URL(fileURLWithPath: "/usr/local/bin").appendingPathComponent(tool.lastPathComponent)
-            if FileManager.default.fileExists(atPath: destination.path) {
-                try FileManager.default.removeItem(at: destination)
+            if fileExists(destination) {
+                try fileStore.removeItem(at: destination)
             }
-            try FileManager.default.copyItem(at: tool, to: destination)
+            try fileStore.copyItem(at: tool, to: destination)
             try runRequired(Constants.Commands.chmod, arguments: ["0755", destination.path])
         }
     }
 
     private func latestBackup() -> URL? {
-        guard let contents = try? FileManager.default.contentsOfDirectory(
+        guard let contents = try? fileStore.contentsOfDirectory(
             at: backupsDirectory,
             includingPropertiesForKeys: [.isDirectoryKey],
             options: [.skipsHiddenFiles]
@@ -1307,7 +1339,7 @@ struct RuntimeLifecycle {
     }
 
     private func pruneOldDirectories(in directory: URL, keep: Int, requiredNameFragment: String) throws {
-        guard let contents = try? FileManager.default.contentsOfDirectory(
+        guard let contents = try? fileStore.contentsOfDirectory(
             at: directory,
             includingPropertiesForKeys: [.isDirectoryKey],
             options: [.skipsHiddenFiles]
@@ -1322,7 +1354,7 @@ struct RuntimeLifecycle {
             .sorted { $0.lastPathComponent < $1.lastPathComponent }
 
         for directory in directories.dropLast(keep) {
-            try FileManager.default.removeItem(at: directory)
+            try fileStore.removeItem(at: directory)
             log("pruned runtime artifact path=\(directory.path)")
         }
     }
@@ -1335,7 +1367,7 @@ struct RuntimeLifecycle {
     }
 
     private func replaceFile(from source: URL, to destination: URL) throws {
-        try FileManager.default.createDirectory(
+        try fileStore.createDirectory(
             at: destination.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
@@ -1344,14 +1376,14 @@ struct RuntimeLifecycle {
         log(
             "file replacement started source=\(source.path) destination=\(destination.path) temporary=\(temporary.path) size=\(formatBytes(try fileSize(source)))"
         )
-        if FileManager.default.fileExists(atPath: temporary.path) {
-            try FileManager.default.removeItem(at: temporary)
+        if fileExists(temporary) {
+            try fileStore.removeItem(at: temporary)
         }
-        try FileManager.default.copyItem(at: source, to: temporary)
-        if FileManager.default.fileExists(atPath: destination.path) {
-            try FileManager.default.removeItem(at: destination)
+        try fileStore.copyItem(at: source, to: temporary)
+        if fileExists(destination) {
+            try fileStore.removeItem(at: destination)
         }
-        try FileManager.default.moveItem(at: temporary, to: destination)
+        try fileStore.moveItem(at: temporary, to: destination)
         log("file replacement completed destination=\(destination.path)")
     }
 
@@ -1365,7 +1397,7 @@ struct RuntimeLifecycle {
             vmDisk: Constants.BootAssets.disk
         )
         let data = try JSONEncoder.pretty.encode(document)
-        try data.write(to: runtimeVersion)
+        try fileStore.writeData(data, to: runtimeVersion, options: [])
     }
 
     private func isLaunchdLoaded(_ label: String) -> Bool {
@@ -1375,22 +1407,13 @@ struct RuntimeLifecycle {
     private func stopRuntimeServices() throws {
         log("stopping runtime services")
         if isLaunchdLoaded(Constants.Launchd.watchdogService) {
-            _ = runProcess(
-                Constants.Commands.launchctl,
-                arguments: ["bootout", "system/\(Constants.Launchd.watchdogService)"]
-            )
+            serviceManager.stop(label: Constants.Launchd.watchdogService)
         }
         if isLaunchdLoaded(Constants.Launchd.proxyService) {
-            _ = runProcess(
-                Constants.Commands.launchctl,
-                arguments: ["bootout", "system/\(Constants.Launchd.proxyService)"]
-            )
+            serviceManager.stop(label: Constants.Launchd.proxyService)
         }
         if isLaunchdLoaded(Constants.Launchd.vmService) {
-            _ = runProcess(
-                Constants.Commands.launchctl,
-                arguments: ["bootout", "system/\(Constants.Launchd.vmService)"]
-            )
+            serviceManager.stop(label: Constants.Launchd.vmService)
         }
     }
 
@@ -1409,28 +1432,23 @@ struct RuntimeLifecycle {
         }
     }
 
+    private func startRuntimeServices(_ policy: RuntimeServiceRestartPolicy) throws {
+        try startRuntimeServices(
+            restartVM: policy.restartVM,
+            restartProxy: policy.restartProxy,
+            restartWatchdog: policy.restartWatchdog
+        )
+    }
+
     private func startLaunchdService(_ label: String) {
         let plist = launchDaemonPlist(label)
         log("launchd bootstrap label=\(label) plist=\(plist)")
-        let bootstrap = runProcess(
-            Constants.Commands.launchctl,
-            arguments: ["bootstrap", "system", plist]
-        )
-        if bootstrap.exitCode != 0 {
-            log("launchd bootstrap failed label=\(label) exitCode=\(bootstrap.exitCode); trying kickstart")
-            _ = runProcess(
-                Constants.Commands.launchctl,
-                arguments: ["kickstart", "-k", "system/\(label)"]
-            )
-        }
+        serviceManager.start(label: label, plist: plist)
     }
 
     private func restartLaunchdService(_ label: String) {
         log("launchd restart label=\(label)")
-        _ = runProcess(
-            Constants.Commands.launchctl,
-            arguments: ["kickstart", "-k", "system/\(label)"]
-        )
+        serviceManager.restart(label: label)
         if !isLaunchdLoaded(label) {
             startLaunchdService(label)
         }
@@ -1441,7 +1459,7 @@ struct RuntimeLifecycle {
     }
 
     private func refreshCloudInitSeedIfNeeded(_ manifest: UpdateBundleManifest) throws {
-        guard manifest.artifacts.contains(where: { $0.type == Constants.Bundle.ArtifactType.guestDeploy }) else {
+        guard manifest.artifacts.contains(where: { $0.type == .guestDeploy }) else {
             log("cloud-init seed refresh not required")
             return
         }
@@ -1450,28 +1468,27 @@ struct RuntimeLifecycle {
     }
 
     private func activateGuestUpdateIfNeeded(_ manifest: UpdateBundleManifest) throws {
-        guard manifest.artifacts.contains(where: { $0.type == Constants.Bundle.ArtifactType.guestDeploy }) else {
+        guard manifest.artifacts.contains(where: { $0.type == .guestDeploy }) else {
             log("guest update activation not required")
             return
         }
 
         log("guest update activation requested version=\(manifest.version)")
-        try FileManager.default.createDirectory(at: guestRunDirectory, withIntermediateDirectories: true)
-        try? FileManager.default.removeItem(at: updateActivationResult)
+        try fileStore.createDirectory(at: guestRunDirectory, withIntermediateDirectories: true)
+        try? guestGateway.removeUpdateActivationResult()
+        let requestId = UUID().uuidString
 
-        let request = [
-            "requestedAt": isoTimestamp(),
-            "operation": "activate-update",
-            "version": manifest.version,
-        ]
-        let requestData = try JSONSerialization.data(withJSONObject: request, options: [.prettyPrinted, .sortedKeys])
-        try requestData.write(to: updateActivationRequest)
+        try guestGateway.writeUpdateActivationRequest(
+            requestId: requestId,
+            requestedAt: isoTimestamp(),
+            version: manifest.version
+        )
 
         if !isLaunchdLoaded(Constants.Launchd.vmService) {
             startLaunchdService(Constants.Launchd.vmService)
         }
 
-        try waitForGuestUpdateActivationResult()
+        try waitForGuestUpdateActivationResult(requestId: requestId)
         log("guest update activation completed version=\(manifest.version)")
     }
 
@@ -1481,135 +1498,136 @@ struct RuntimeLifecycle {
             return
         }
 
-        let deadline = Date().addingTimeInterval(Constants.Runtime.waitTimeoutSeconds)
-        var lastProgressLog = Date.distantPast
         log("waiting for runtime health timeoutSeconds=\(Constants.Runtime.waitTimeoutSeconds)")
-        while Date() < deadline {
-            if restartVM, !isLaunchdLoaded(Constants.Launchd.vmService) {
-                logHealthWaitProgressIfNeeded(
-                    reasons: ["vm-service-not-loaded"],
-                    operation: "wait-runtime-health",
-                    lastProgressLog: &lastProgressLog
+        let maxAttempts = Int(ceil(Constants.Runtime.waitTimeoutSeconds / 3.0))
+        let waitResult = RuntimeHealthWaiter.wait(
+            configuration: RuntimeHealthWaitConfiguration(maxAttempts: maxAttempts, progressEveryAttempts: 5),
+            observe: {
+                RuntimeHealthWaitObservation(
+                    vmServiceRequired: restartVM,
+                    proxyServiceRequired: restartProxy,
+                    watchdogServiceRequired: restartWatchdog,
+                    vmServiceLoaded: isLaunchdLoaded(Constants.Launchd.vmService),
+                    proxyServiceLoaded: isLaunchdLoaded(Constants.Launchd.proxyService),
+                    watchdogServiceLoaded: isLaunchdLoaded(Constants.Launchd.watchdogService),
+                    snapshot: runtimeHealthSnapshot()
                 )
-                Thread.sleep(forTimeInterval: 3)
-                continue
-            }
-            if restartProxy, !isLaunchdLoaded(Constants.Launchd.proxyService) {
-                logHealthWaitProgressIfNeeded(
-                    reasons: ["proxy-service-not-loaded"],
+            },
+            onProgress: { reasons in
+                let reasonText = reasonText(reasons)
+                log("waiting for runtime health reasons=\(reasonText)")
+                try? writeRuntimeStatus(
+                    .recovering,
                     operation: "wait-runtime-health",
-                    lastProgressLog: &lastProgressLog
+                    message: "waiting for runtime health: \(reasonText)"
                 )
-                Thread.sleep(forTimeInterval: 3)
-                continue
+            },
+            sleep: {
+                sleeper.sleep(forTimeInterval: 3)
             }
-            if restartWatchdog, !isLaunchdLoaded(Constants.Launchd.watchdogService) {
-                logHealthWaitProgressIfNeeded(
-                    reasons: ["watchdog-service-not-loaded"],
-                    operation: "wait-runtime-health",
-                    lastProgressLog: &lastProgressLog
-                )
-                Thread.sleep(forTimeInterval: 3)
-                continue
-            }
+        )
 
+        switch waitResult {
+        case .healthy:
             let snapshot = runtimeHealthSnapshot()
-            if let bootstrapFailure = snapshot.failureReasons.first(where: { $0.hasPrefix("guest-bootstrap-") }) {
-                log("runtime health failed early reason=\(bootstrapFailure)")
-                throw LauncherError.runtimeHealthFailed
-            }
-            if snapshot.isHealthy {
-                log("runtime health ok hostProxyHTTP=\(snapshot.hostProxyHTTP)")
-                return
-            }
-            logHealthWaitProgressIfNeeded(
-                reasons: snapshot.failureReasons,
-                operation: "wait-runtime-health",
-                lastProgressLog: &lastProgressLog
-            )
-            Thread.sleep(forTimeInterval: 3)
+            log("runtime health ok hostProxyHTTP=\(snapshot.hostProxyHTTP)")
+        case .failedEarly(let reason):
+            log("runtime health failed early reason=\(reason.rawValue)")
+            throw LauncherError.runtimeHealthFailed
+        case .timedOut:
+            throw LauncherError.runtimeHealthFailed
         }
-        throw LauncherError.runtimeHealthFailed
     }
 
-    private func waitForGuestUpdateActivationResult() throws {
-        let deadline = Date().addingTimeInterval(Constants.Runtime.updateActivationWaitTimeoutSeconds)
-        var lastProgressLog = Date.distantPast
-        log("waiting for guest update activation result timeoutSeconds=\(Constants.Runtime.updateActivationWaitTimeoutSeconds)")
-        while Date() < deadline {
-            if let data = try? Data(contentsOf: updateActivationResult),
-               let result = try? JSONDecoder().decode(GuestUpdateActivationResultDocument.self, from: data) {
-                if result.completed {
-                    log("guest update activation result completed")
-                    return
-                }
-                if result.failed {
-                    log("guest update activation result failed message=\(result.message ?? "unknown")")
-                    throw LauncherError.runtimeHealthFailed
-                }
-            }
-            if Date().timeIntervalSince(lastProgressLog) >= 15 {
-                lastProgressLog = Date()
-                log("waiting for guest update activation worker")
-                try? writeRuntimeStatus(
-                    .recovering,
-                    operation: "activate-guest-update",
-                    message: "waiting for guest update activation worker"
-                )
-            }
-            Thread.sleep(forTimeInterval: 3)
-        }
-        throw LauncherError.runtimeHealthFailed
-    }
-
-    private func waitForDatastoreRepairResult() throws {
-        let deadline = Date().addingTimeInterval(Constants.Runtime.datastoreRepairWaitTimeoutSeconds)
-        var lastProgressLog = Date.distantPast
-        log("waiting for datastore repair result timeoutSeconds=\(Constants.Runtime.datastoreRepairWaitTimeoutSeconds)")
-        while Date() < deadline {
-            if let result = try? String(contentsOf: datastoreRepairResult, encoding: .utf8) {
-                if result.contains(#""status" : "completed""#) || result.contains(#""status":"completed""#) {
-                    log("datastore repair guest result completed")
-                    return
-                }
-                if result.contains(#""status" : "failed""#) || result.contains(#""status":"failed""#) {
-                    throw LauncherError.runtimeHealthFailed
-                }
-            }
-            if Date().timeIntervalSince(lastProgressLog) >= 15 {
-                lastProgressLog = Date()
-                log("waiting for datastore repair guest worker")
-                try? writeRuntimeStatus(
-                    .recovering,
-                    operation: "repair-datastore",
-                    message: "waiting for datastore repair guest worker"
-                )
-            }
-            Thread.sleep(forTimeInterval: 3)
-        }
-        throw LauncherError.runtimeHealthFailed
-    }
-
-    private func logHealthWaitProgressIfNeeded(
-        reasons: [String],
-        operation: String,
-        lastProgressLog: inout Date
-    ) {
-        guard Date().timeIntervalSince(lastProgressLog) >= 15 else {
-            return
-        }
-        lastProgressLog = Date()
-        let reasonText = reasons.isEmpty ? "unknown" : reasons.joined(separator: ", ")
-        log("waiting for runtime health reasons=\(reasonText)")
-        try? writeRuntimeStatus(
-            .recovering,
-            operation: operation,
-            message: "waiting for runtime health: \(reasonText)"
+    private func waitForHealth(_ policy: RuntimeServiceRestartPolicy) throws {
+        try waitForHealth(
+            restartVM: policy.restartVM,
+            restartProxy: policy.restartProxy,
+            restartWatchdog: policy.restartWatchdog
         )
     }
 
+    private func waitForGuestUpdateActivationResult(requestId: String) throws {
+        log("waiting for guest update activation result timeoutSeconds=\(Constants.Runtime.updateActivationWaitTimeoutSeconds)")
+        let maxAttempts = Int(ceil(Constants.Runtime.updateActivationWaitTimeoutSeconds / 3.0))
+        let waitResult = GuestActivationWaiter.wait(
+            expectedRequestId: requestId,
+            configuration: GuestActivationWaitConfiguration(
+                maxAttempts: maxAttempts,
+                progressEveryAttempts: 5
+            ),
+            loadResult: { guestGateway.loadUpdateActivationResult() },
+            onProgress: { message in
+                log(message)
+                try? writeRuntimeStatus(
+                    .recovering,
+                    operation: "activate-guest-update",
+                    message: message
+                )
+            },
+            onStale: { message in
+                log("guest update activation result stale message=\(message)")
+            },
+            sleep: {
+                sleeper.sleep(forTimeInterval: 3)
+            }
+        )
+
+        switch waitResult {
+        case .completed(let message):
+            log("guest update activation result completed message=\(message)")
+            return
+        case .failed(let message):
+            log("guest update activation result failed message=\(message)")
+            throw LauncherError.runtimeHealthFailed
+        case .timedOut:
+            throw LauncherError.runtimeHealthFailed
+        }
+    }
+
+    private func waitForDatastoreRepairResult(requestId: String) throws {
+        log("waiting for datastore repair result timeoutSeconds=\(Constants.Runtime.datastoreRepairWaitTimeoutSeconds)")
+        let maxAttempts = Int(ceil(Constants.Runtime.datastoreRepairWaitTimeoutSeconds / 3.0))
+        let waitResult = DatastoreRepairWaiter.wait(
+            expectedRequestId: requestId,
+            configuration: DatastoreRepairWaitConfiguration(
+                maxAttempts: maxAttempts,
+                progressEveryAttempts: 5
+            ),
+            loadResult: { guestGateway.loadDatastoreRepairResult() },
+            onProgress: { message in
+                log(message)
+                try? writeRuntimeStatus(
+                    .recovering,
+                    operation: "repair-datastore",
+                    message: message
+                )
+            },
+            onStale: { message in
+                log("datastore repair result stale message=\(message)")
+            },
+            sleep: {
+                sleeper.sleep(forTimeInterval: 3)
+            }
+        )
+
+        switch waitResult {
+        case .completed(let message):
+            log("datastore repair guest result completed message=\(message)")
+            return
+        case .failed(let message):
+            log("datastore repair guest result failed message=\(message)")
+            throw LauncherError.runtimeHealthFailed
+        case .timedOut:
+            throw LauncherError.runtimeHealthFailed
+        }
+    }
+
+    private func reasonText(_ reasons: [RuntimeFailureReason]) -> String {
+        reasons.isEmpty ? "unknown" : reasons.map(\.rawValue).joined(separator: ", ")
+    }
+
     private func rotateRuntimeLogs() throws {
-        let fileManager = FileManager.default
         let logFiles = [
             "launcher.log",
             "launchd.out.log",
@@ -1632,19 +1650,19 @@ struct RuntimeLifecycle {
                 let source = logsDirectory.appendingPathComponent("\(fileName).\(index)")
                 let destination = logsDirectory.appendingPathComponent("\(fileName).\(index + 1)")
                 if fileExists(destination) {
-                    try fileManager.removeItem(at: destination)
+                    try fileStore.removeItem(at: destination)
                 }
                 if fileExists(source) {
-                    try fileManager.moveItem(at: source, to: destination)
+                    try fileStore.moveItem(at: source, to: destination)
                 }
             }
 
             let rotated = logsDirectory.appendingPathComponent("\(fileName).1")
             if fileExists(rotated) {
-                try fileManager.removeItem(at: rotated)
+                try fileStore.removeItem(at: rotated)
             }
-            try fileManager.moveItem(at: logFile, to: rotated)
-            fileManager.createFile(atPath: logFile.path, contents: nil)
+            try fileStore.moveItem(at: logFile, to: rotated)
+            try fileStore.writeData(Data(), to: logFile, options: [])
             log("rotated log file=\(logFile.path)")
         }
     }
@@ -1662,7 +1680,7 @@ struct RuntimeLifecycle {
     }
 
     private func availableBytes(at url: URL) throws -> UInt64 {
-        let attributes = try FileManager.default.attributesOfFileSystem(forPath: url.path)
+        let attributes = try fileStore.attributesOfFileSystem(forPath: url.path)
         guard let value = attributes[.systemFreeSize] as? NSNumber else {
             throw LauncherError.missingArgument("could not determine free space for \(url.path)")
         }
@@ -1693,7 +1711,7 @@ struct RuntimeLifecycle {
     }
 
     private func directorySize(_ url: URL) throws -> UInt64 {
-        guard let enumerator = FileManager.default.enumerator(
+        guard let enumerator = fileStore.enumerator(
             at: url,
             includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey],
             options: [.skipsHiddenFiles]
@@ -1725,22 +1743,34 @@ struct RuntimeLifecycle {
     }
 
     private func isoTimestamp() -> String {
-        ISO8601DateFormatter().string(from: Date())
+        ISO8601DateFormatter().string(from: clock.now)
     }
 
     private func log(_ message: String) {
         print("[\(isoTimestamp())] \(message)")
     }
 
-    private func runStep(_ name: String, _ operation: () throws -> Void) throws {
-        log("step=\(name) status=started")
-        do {
-            try operation()
-            log("step=\(name) status=completed")
-        } catch {
-            log("step=\(name) status=failed error=\(error)")
-            throw error
-        }
+    private func runPlan(
+        _ plan: RuntimeOperationPlan,
+        status: RuntimeStatusLevel,
+        execute: (RuntimeWorkflowStep) throws -> Void
+    ) throws {
+        try RuntimeOperationPlanRunner.run(
+            plan: plan,
+            status: status,
+            execute: execute,
+            publish: { event in
+                log("step=\(event.step.rawValue) status=\(event.stepStatus.rawValue)")
+                try? writeRuntimeProgress(
+                    event.status,
+                    operation: event.operation,
+                    step: event.step.rawValue,
+                    stepStatus: event.stepStatus,
+                    phase: event.phase,
+                    message: event.message
+                )
+            }
+        )
     }
 
     private func backupTimestamp() -> String {
@@ -1749,12 +1779,12 @@ struct RuntimeLifecycle {
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.timeZone = TimeZone(secondsFromGMT: 0)
         formatter.dateFormat = "yyyyMMdd'T'HHmmss'Z'"
-        return formatter.string(from: Date())
+        return formatter.string(from: clock.now)
     }
 
     private func runtimeVersionValue() -> String {
         guard fileExists(runtimeVersion),
-              let data = try? Data(contentsOf: runtimeVersion),
+              let data = try? fileStore.readData(runtimeVersion),
               let document = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let version = document["runtimeVersion"] as? String
         else {
@@ -1764,19 +1794,12 @@ struct RuntimeLifecycle {
     }
 
     private func runtimeStatusValue() -> String {
-        guard fileExists(runtimeStatus),
-              let data = try? Data(contentsOf: runtimeStatus),
-              let document = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let status = document["status"] as? String
-        else {
-            return "unknown"
-        }
-        return status
+        runtimeStatusRepository.load()?.status.rawValue ?? "unknown"
     }
 
     private func runtimeHealthSnapshot() -> RuntimeHealthSnapshot {
-        let vmExecutable = FileManager.default.isExecutableFile(atPath: Constants.InstallPaths.vmBin)
-        let proxyExecutable = FileManager.default.isExecutableFile(atPath: Constants.InstallPaths.proxyRun)
+        let vmExecutable = fileStore.isExecutableFile(atPath: Constants.InstallPaths.vmBin)
+        let proxyExecutable = fileStore.isExecutableFile(atPath: Constants.InstallPaths.proxyRun)
         let rootfsBaseState = fileState(url: rootfsBase)
         let vmDiskState = fileState(url: vmDisk)
         let vmService = launchdState(Constants.Launchd.vmService)
@@ -1785,51 +1808,12 @@ struct RuntimeLifecycle {
         let guestState = guestRuntimeState()
         let vmIP = guestState?.vmIP ?? readTrimmed(vmIPFile)
         let proxyPort = installedProxyPort()
-        let hostProxyHTTP = httpStatus(Constants.Runtime.proxyHealthURL(port: proxyPort))
-        let redisUIHTTP = httpStatus(Constants.Runtime.redisUIHealthURL(port: proxyPort))
-        let swaggerUIHTTP = httpStatus(Constants.Runtime.swaggerUIHealthURL(port: proxyPort))
+        let hostProxyHTTP = httpProber.statusCode(url: Constants.Runtime.proxyHealthURL(port: proxyPort))
+        let redisUIHTTP = httpProber.statusCode(url: Constants.Runtime.redisUIHealthURL(port: proxyPort))
+        let swaggerUIHTTP = httpProber.statusCode(url: Constants.Runtime.swaggerUIHealthURL(port: proxyPort))
         let guestHTTP = guestHTTPStatus(guestState: guestState, vmIP: vmIP)
-        var failureReasons: [String] = []
 
-        if !vmExecutable {
-            failureReasons.append("missing-vm-bin")
-        }
-        if !proxyExecutable {
-            failureReasons.append("missing-proxy-runner")
-        }
-        if rootfsBaseState != "present" {
-            failureReasons.append("missing-rootfs-base")
-        }
-        if vmDiskState != "present" {
-            failureReasons.append("missing-vm-disk")
-        }
-        if vmService != "loaded" {
-            failureReasons.append("vm-service-\(vmService)")
-        }
-        if proxyService != "loaded" {
-            failureReasons.append("proxy-service-\(proxyService)")
-        }
-        if watchdogService != "loaded" {
-            failureReasons.append("watchdog-service-\(watchdogService)")
-        }
-        if !isSuccessfulHTTPStatus(hostProxyHTTP) {
-            failureReasons.append("host-proxy-http-\(hostProxyHTTP)")
-            failureReasons.append(contentsOf: proxyPortFailureReasons(port: proxyPort))
-        }
-        if !isSuccessfulHTTPStatus(redisUIHTTP) {
-            failureReasons.append("redis-ui-http-\(redisUIHTTP)")
-        }
-        if !isSuccessfulHTTPStatus(swaggerUIHTTP) {
-            failureReasons.append("swagger-ui-http-\(swaggerUIHTTP)")
-        }
-        if !isSuccessfulHTTPStatus(guestHTTP) {
-            failureReasons.append("guest-http-\(guestHTTP)")
-            if let bootstrapFailure = guestBootstrapFailureReason() {
-                failureReasons.append(bootstrapFailure)
-            }
-        }
-
-        return RuntimeHealthSnapshot(
+        return RuntimeHealthEvaluator.evaluate(RuntimeHealthInput(
             vmExecutable: vmExecutable,
             proxyExecutable: proxyExecutable,
             rootfsBase: rootfsBaseState,
@@ -1843,8 +1827,9 @@ struct RuntimeLifecycle {
             guestHTTP: guestHTTP,
             redisUIHTTP: redisUIHTTP,
             swaggerUIHTTP: swaggerUIHTTP,
-            failureReasons: failureReasons
-        )
+            proxyPortFailureReasons: proxyPortFailureReasons(port: proxyPort),
+            guestBootstrapFailureReason: guestBootstrapFailureReason()
+        ))
     }
 
     private func guestHTTPStatus(guestState: GuestRuntimeStateDocument?, vmIP: String?) -> String {
@@ -1855,69 +1840,91 @@ struct RuntimeLifecycle {
             return "bootstrap-pending"
         }
         if let vmIP {
-            return httpStatus("http://\(vmIP)/")
+            return httpProber.statusCode(url: "http://\(vmIP)/")
         }
         return "missing-vm-ip"
     }
 
-    private func guestBootstrapFailureReason() -> String? {
+    private func guestBootstrapFailureReason() -> RuntimeFailureReason? {
+        if let bootstrapResult = guestGateway.loadBootstrapResult() {
+            return GuestBootstrapEvaluator.failureReason(bootstrapResult)
+        }
+
         guard fileExists(guestBootstrapLog),
-              let content = try? String(contentsOf: guestBootstrapLog, encoding: .utf8) else {
+              let content = try? fileStore.readUTF8Text(guestBootstrapLog) else {
             return nil
         }
-        let tail = content
-            .split(separator: "\n", omittingEmptySubsequences: false)
-            .suffix(80)
-            .joined(separator: "\n")
-            .lowercased()
-        if tail.contains("missing runtime package") {
-            return "guest-bootstrap-missing-runtime-packages"
-        }
-        if tail.contains("error:") || tail.contains("failed") {
-            return "guest-bootstrap-failed"
-        }
-        return nil
+        return LegacyBootstrapLogEvaluator.failureReason(logContent: content)
     }
 
     private func writeRuntimeStatus(
         _ status: RuntimeStatusLevel,
         operation: String,
-        message: String
+        message: String,
+        progress: RuntimeProgressDocument? = nil
+    ) throws {
+        try writeRuntimeStatus(
+            status,
+            operation: RuntimeOperation(rawValue: operation),
+            message: message,
+            progress: progress
+        )
+    }
+
+    private func writeRuntimeStatus(
+        _ status: RuntimeStatusLevel,
+        operation: RuntimeOperation,
+        message: String,
+        progress: RuntimeProgressDocument? = nil
     ) throws {
         let snapshot = runtimeHealthSnapshot()
-        let document = RuntimeStatusDocument(
+        let document = RuntimeStatusDocumentBuilder.build(RuntimeStatusDocumentInput(
             product: Constants.Product.identifier,
-            status: status.rawValue,
+            status: status,
             operation: operation,
             message: message,
             updatedAt: isoTimestamp(),
             productRoot: productRoot.path,
-            runtimeHome: paths.home.path,
+            runtimeHome: installedPaths.runtimeHome.path,
             runtimeVersion: runtimeVersionValue(),
-            vmService: snapshot.vmService,
-            proxyService: snapshot.proxyService,
-            watchdogService: snapshot.watchdogService,
-            vmIP: snapshot.vmIP,
-            proxyPort: snapshot.proxyPort,
-            hostProxyHTTP: snapshot.hostProxyHTTP,
-            guestHTTP: snapshot.guestHTTP,
-            redisUIHTTP: snapshot.redisUIHTTP,
-            swaggerUIHTTP: snapshot.swaggerUIHTTP,
-            rootfsBase: snapshot.rootfsBase,
-            vmDisk: snapshot.vmDisk,
-            failureReasons: snapshot.failureReasons,
-            latestBackup: latestBackup()?.path
+            healthSnapshot: snapshot,
+            latestBackup: latestBackup()?.path,
+            progress: progress
+        ))
+        try runtimeStatusRepository.save(document)
+    }
+
+    private func writeRuntimeProgress(
+        _ status: RuntimeStatusLevel,
+        operation: RuntimeOperation,
+        step: String,
+        stepStatus: RuntimeProgressStepStatus,
+        phase: RuntimeProgressPhase,
+        message: String,
+        reasonCodes: [String] = []
+    ) throws {
+        try writeRuntimeStatus(
+            status,
+            operation: operation,
+            message: message,
+            progress: RuntimeProgressDocument(
+                operation: operation,
+                phase: phase,
+                step: step,
+                stepStatus: stepStatus,
+                message: message,
+                reasonCodes: reasonCodes,
+                startedAt: nil,
+                updatedAt: isoTimestamp()
+            )
         )
-        let data = try JSONEncoder.pretty.encode(document)
-        try FileManager.default.createDirectory(at: statusDirectory, withIntermediateDirectories: true)
-        try data.write(to: runtimeStatus, options: .atomic)
     }
 
     private func fileState(path: String) -> String {
-        if FileManager.default.isExecutableFile(atPath: path) {
+        if fileStore.isExecutableFile(atPath: path) {
             return "executable"
         }
-        if FileManager.default.fileExists(atPath: path) {
+        if fileStore.fileExists(URL(fileURLWithPath: path)) {
             return "present"
         }
         return "missing"
@@ -1928,11 +1935,7 @@ struct RuntimeLifecycle {
     }
 
     private func launchdState(_ label: String) -> String {
-        let result = runProcess(
-            Constants.Commands.launchctl,
-            arguments: ["print", "system/\(label)"]
-        )
-        return result.exitCode == 0 ? "loaded" : "not loaded"
+        serviceManager.state(label: label)
     }
 
     private func installedProxyPort() -> Int {
@@ -1966,7 +1969,7 @@ struct RuntimeLifecycle {
         guard url.path.hasPrefix("/private/tmp/") || url.path.hasPrefix("/tmp/") else {
             throw LauncherError.missingArgument("--admin-password-file must be under /private/tmp")
         }
-        let data = try Data(contentsOf: url)
+        let data = try fileStore.readData(url)
         guard let value = String(data: data, encoding: .utf8) else {
             throw LauncherError.missingArgument("--admin-password-file must be UTF-8")
         }
@@ -1978,38 +1981,27 @@ struct RuntimeLifecycle {
     }
 
     private func setStartOnBoot(_ enabled: Bool) throws {
-        let action = enabled ? "enable" : "disable"
         for label in [
             Constants.Launchd.vmService,
             Constants.Launchd.proxyService,
             Constants.Launchd.watchdogService,
         ] {
-            try runRequired(Constants.Commands.launchctl, arguments: [action, "system/\(label)"])
+            let result = serviceManager.setEnabled(label: label, enabled: enabled)
+            guard result.exitCode == 0 else {
+                let stderr = result.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !stderr.isEmpty {
+                    log("command stderr executable=\(Constants.Commands.launchctl) stderr=\(stderr)")
+                }
+                log("command failed executable=\(Constants.Commands.launchctl) exitCode=\(result.exitCode)")
+                throw LauncherError.missingArgument(
+                    "command failed: \(Constants.Commands.launchctl) \(enabled ? "enable" : "disable") system/\(label)"
+                )
+            }
         }
     }
 
-    private func parseBool(_ value: String) -> Bool? {
-        switch value.lowercased() {
-        case "true", "yes", "1":
-            return true
-        case "false", "no", "0":
-            return false
-        default:
-            return nil
-        }
-    }
-
-    private func httpStatus(_ url: String) -> String {
-        let result = runProcess(
-            Constants.Commands.curl,
-            arguments: ["-sS", "-L", "-o", "/dev/null", "-w", "%{http_code}", "--max-time", "5", url]
-        )
-        let code = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
-        return result.exitCode == 0 && !code.isEmpty ? code : "failed"
-    }
-
-    private func proxyPortFailureReasons(port: Int) -> [String] {
-        guard FileManager.default.isExecutableFile(atPath: Constants.Commands.lsof) else {
+    private func proxyPortFailureReasons(port: Int) -> [RuntimeFailureReason] {
+        guard fileStore.isExecutableFile(atPath: Constants.Commands.lsof) else {
             return []
         }
         let expectedNginxPID = readInstalledProxyNginxPID()
@@ -2045,15 +2037,11 @@ struct RuntimeLifecycle {
         let listeners = listenerFields.map { "\($0.command)-\($0.pid)" }
         let joined = Array(listeners.prefix(5))
             .joined(separator: "_")
-        return ["proxy-port-\(port)-in-use-by-\(joined)"]
+        return [.proxyPortInUse(port: port, listeners: joined)]
     }
 
     private func readInstalledProxyNginxPID() -> String? {
-        let pidFile = productRoot
-            .appendingPathComponent("nginx")
-            .appendingPathComponent("logs")
-            .appendingPathComponent("nginx.pid")
-        guard let value = try? String(contentsOf: pidFile, encoding: .utf8)
+        guard let value = try? fileStore.readUTF8Text(installedPaths.proxyNginxPID)
             .trimmingCharacters(in: .whitespacesAndNewlines),
             !value.isEmpty
         else {
@@ -2063,35 +2051,11 @@ struct RuntimeLifecycle {
     }
 
     private func guestRuntimeState() -> GuestRuntimeStateDocument? {
-        GuestRuntimeStateDocument.load(from: guestRuntimeStateFile)
+        guestGateway.loadRuntimeState()
     }
 
     private func runProcess(_ executable: String, arguments: [String]) -> RuntimeProcessResult {
-        let process = Process()
-        let stdout = Pipe()
-        let stderr = Pipe()
-        process.executableURL = URL(fileURLWithPath: executable)
-        process.arguments = arguments
-        process.standardOutput = stdout
-        process.standardError = stderr
-
-        do {
-            try process.run()
-            process.waitUntilExit()
-            let output = stdout.fileHandleForReading.readDataToEndOfFile()
-            let errorOutput = stderr.fileHandleForReading.readDataToEndOfFile()
-            return RuntimeProcessResult(
-                exitCode: process.terminationStatus,
-                stdout: String(data: output, encoding: .utf8) ?? "",
-                stderr: String(data: errorOutput, encoding: .utf8) ?? ""
-            )
-        } catch {
-            return RuntimeProcessResult(
-                exitCode: 127,
-                stdout: "",
-                stderr: error.localizedDescription
-            )
-        }
+        commandRunner.run(executable, arguments: arguments)
     }
 
     private func runRequired(_ executable: String, arguments: [String]) throws {
@@ -2111,27 +2075,13 @@ struct RuntimeLifecycle {
     }
 
     private func runProcessToFile(_ executable: String, arguments: [String], output: URL) throws {
-        let process = Process()
-        let stderr = Pipe()
-        FileManager.default.createFile(atPath: output.path, contents: nil)
-        let outputHandle = try FileHandle(forWritingTo: output)
-        defer {
-            try? outputHandle.close()
-        }
-        process.executableURL = URL(fileURLWithPath: executable)
-        process.arguments = arguments
-        process.standardOutput = outputHandle
-        process.standardError = stderr
-        try process.run()
-        process.waitUntilExit()
-        guard process.terminationStatus == 0 else {
-            let errorOutput = stderr.fileHandleForReading.readDataToEndOfFile()
-            let stderrText = String(data: errorOutput, encoding: .utf8)?
-                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let result = commandRunner.runWritingOutput(executable, arguments: arguments, output: output)
+        guard result.exitCode == 0 else {
+            let stderrText = result.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
             if !stderrText.isEmpty {
                 log("command stderr executable=\(executable) stderr=\(stderrText)")
             }
-            log("command failed executable=\(executable) exitCode=\(process.terminationStatus)")
+            log("command failed executable=\(executable) exitCode=\(result.exitCode)")
             throw LauncherError.missingArgument(
                 "command failed: \(([executable] + arguments).joined(separator: " "))"
             )
@@ -2145,12 +2095,8 @@ struct RuntimeLifecycle {
         return code >= 200 && code < 300
     }
 
-    private func isLineSafe(_ value: String) -> Bool {
-        !value.contains("\n") && !value.contains("\r")
-    }
-
     private func readTrimmed(_ url: URL) -> String? {
-        guard let value = try? String(contentsOf: url, encoding: .utf8)
+        guard let value = try? fileStore.readUTF8Text(url)
             .trimmingCharacters(in: .whitespacesAndNewlines),
             !value.isEmpty
         else {
@@ -2160,14 +2106,10 @@ struct RuntimeLifecycle {
     }
 
     private func fileExists(_ url: URL) -> Bool {
-        var isDirectory: ObjCBool = false
-        return FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory)
-            && !isDirectory.boolValue
+        fileStore.fileExists(url)
     }
 
     private func directoryExists(_ url: URL) -> Bool {
-        var isDirectory: ObjCBool = false
-        return FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory)
-            && isDirectory.boolValue
+        fileStore.directoryExists(url)
     }
 }

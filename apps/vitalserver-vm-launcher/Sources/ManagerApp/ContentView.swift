@@ -1,4 +1,5 @@
 import Foundation
+import RuntimeCore
 import SwiftUI
 
 struct ContentView: View {
@@ -342,7 +343,7 @@ struct ContentView: View {
             statusRow(AppConstants.Labels.redisUIHTTP, controller.status.redisUIHTTP ?? AppConstants.StatusText.notChecked)
             statusRow(AppConstants.Labels.swaggerUIHTTP, controller.status.swaggerUIHTTP ?? AppConstants.StatusText.notChecked)
             if !controller.status.failureReasons.isEmpty {
-                statusRow(AppConstants.Labels.failureReasons, controller.status.failureReasons.joined(separator: ", "))
+                statusRow(AppConstants.Labels.failureReasons, controller.status.failureReasonText)
             }
         }
         .padding(16)
@@ -921,7 +922,7 @@ struct ContentView: View {
                 statusRow(AppConstants.Labels.vmIP, controller.status.vmIP ?? AppConstants.StatusText.waiting)
                 if !controller.status.failureReasons.isEmpty {
                     statusRow(AppConstants.Labels.failureReasons) {
-                        Text(controller.status.failureReasons.joined(separator: ", "))
+                        Text(controller.status.failureReasonText)
                             .fontWeight(.medium)
                             .fixedSize(horizontal: false, vertical: true)
                     }

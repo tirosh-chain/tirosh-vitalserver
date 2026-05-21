@@ -1,4 +1,5 @@
 import Foundation
+import RuntimeCore
 
 struct RuntimeStatus {
     var runtimeInstalled = false
@@ -21,7 +22,8 @@ struct RuntimeStatus {
     var systemDisk: ResourceUsage?
     var dataStorage: ResourceUsage?
     var proxyPort = AppConstants.Product.defaultProxyPort
-    var failureReasons: [String] = []
+    var failureReasons: [RuntimeFailureReason] = []
+    var progress: RuntimeProgressDocument?
 
     var isReady: Bool {
         runtimeInstalled
@@ -42,93 +44,47 @@ struct RuntimeStatus {
             lines.append(statusMessage)
         }
         if !failureReasons.isEmpty {
-            lines.append("\(AppConstants.Labels.failureReasons): \(failureReasons.joined(separator: ", "))")
+            lines.append("\(AppConstants.Labels.failureReasons): \(failureReasonText)")
         }
         return lines.isEmpty ? nil : lines.joined(separator: "\n")
     }
 
-    static func load(paths: RuntimePaths) -> RuntimeStatus {
-        let document = runtimeStatusDocument(paths.runtimeStatus)
-        let guestState = guestRuntimeStateDocument(paths.runtimeState)
-        return RuntimeStatus(
-            runtimeInstalled: FileManager.default.isExecutableFile(atPath: paths.launcher),
-            vmServiceLoaded: loaded(document?.vmService) ?? launchdLoaded(AppConstants.Launchd.vmService),
-            proxyServiceLoaded: loaded(document?.proxyService) ?? launchdLoaded(AppConstants.Launchd.proxyService),
-            watchdogServiceLoaded: loaded(document?.watchdogService) ?? launchdLoaded(AppConstants.Launchd.watchdogService),
-            runtimeState: document?.status,
-            operation: document?.operation,
-            statusMessage: document?.message,
-            updatedAt: document?.updatedAt,
-            runtimeVersion: document?.runtimeVersion,
-            latestBackup: document?.latestBackup,
-            vmIP: document?.vmIP ?? guestState?.vmIP ?? readTrimmed(paths.vmIPFile),
-            guestHTTP: document?.guestHTTP ?? guestState?.guestHTTP,
-            hostProxyHTTP: document?.hostProxyHTTP,
-            redisUIHTTP: document?.redisUIHTTP ?? guestState?.redisUIHTTP,
-            swaggerUIHTTP: document?.swaggerUIHTTP ?? guestState?.swaggerUIHTTP,
-            cpuUsagePercent: guestState?.cpuUsagePercent,
-            memory: guestState?.memory,
-            systemDisk: guestState?.systemDisk,
-            dataStorage: nil,
-            proxyPort: document?.proxyPort ?? proxyPort(paths.proxyLaunchDaemon),
-            failureReasons: document?.failureReasons ?? []
-        )
+    var failureReasonText: String {
+        failureReasons.map(\.rawValue).joined(separator: ", ")
     }
 
-    private static func runtimeStatusDocument(_ path: String) -> RuntimeStatusDocument? {
-        guard let data = FileManager.default.contents(atPath: path) else {
+    var progressDisplayMessage: String? {
+        guard let progress else {
             return nil
         }
-        return try? JSONDecoder().decode(RuntimeStatusDocument.self, from: data)
-    }
-
-    private static func guestRuntimeStateDocument(_ path: String) -> GuestRuntimeStateDocument? {
-        guard let data = FileManager.default.contents(atPath: path) else {
-            return nil
+        if let step = progress.step,
+           let stepStatus = progress.stepStatus {
+            return "\(stepStatusDisplayName(stepStatus)): \(humanizeStepName(step))"
         }
-        return try? JSONDecoder().decode(GuestRuntimeStateDocument.self, from: data)
+        return progress.message.isEmpty ? nil : progress.message
     }
 
-    private static func loaded(_ value: String?) -> Bool? {
-        guard let value else {
-            return nil
+    private func stepStatusDisplayName(_ status: RuntimeProgressStepStatus) -> String {
+        switch status {
+        case .pending:
+            return AppConstants.StatusText.waiting
+        case .started:
+            return AppConstants.StatusText.running
+        case .completed:
+            return AppConstants.StatusText.done
+        case .failed:
+            return AppConstants.StatusText.failed.capitalized
+        case .skipped:
+            return "Skipped"
+        case .unknown(let value):
+            return value.capitalized
         }
-        return value == AppConstants.Values.launchdLoaded
     }
 
-    private static func launchdLoaded(_ label: String) -> Bool {
-        ProcessRunner.runSync(
-            AppConstants.Commands.launchctl,
-            arguments: ["print", "system/\(label)"]
-        ).exitCode == 0
-    }
-
-    private static func readTrimmed(_ path: String) -> String? {
-        guard let value = try? String(contentsOfFile: path, encoding: .utf8)
-            .trimmingCharacters(in: .whitespacesAndNewlines),
-            !value.isEmpty
-        else {
-            return nil
-        }
-        return value
-    }
-
-    private static func proxyPort(_ plistPath: String) -> Int {
-        guard let data = FileManager.default.contents(atPath: plistPath),
-              let plist = try? PropertyListSerialization.propertyList(
-                from: data,
-                options: [],
-                format: nil
-              ),
-              let document = plist as? [String: Any],
-              let environment = document["EnvironmentVariables"] as? [String: Any],
-              let rawPort = environment["VITALSERVER_PROXY_PORT"] as? String,
-              let port = Int(rawPort),
-              (1...65_535).contains(port)
-        else {
-            return AppConstants.Product.defaultProxyPort
-        }
-        return port
+    private func humanizeStepName(_ step: String) -> String {
+        step
+            .replacingOccurrences(of: "-", with: " ")
+            .capitalized
     }
 
     private func isSuccessfulHTTPStatus(_ value: String?) -> Bool {
@@ -139,52 +95,27 @@ struct RuntimeStatus {
     }
 }
 
-struct ResourceUsage: Decodable {
-    let usedBytes: Int64
-    let totalBytes: Int64
-
-    var percent: Double {
-        guard totalBytes > 0 else {
-            return 0
-        }
-        return min(max((Double(usedBytes) / Double(totalBytes)) * 100.0, 0), 100)
-    }
-}
-
 struct RuntimePaths {
-    let launcher = AppConstants.Paths.launcher
-    let uninstaller = AppConstants.Paths.uninstaller
-    let vmIPFile = AppConstants.Paths.vmIPFile
-    let runtimeState = AppConstants.Paths.runtimeState
-    let runtimeStatus = AppConstants.Paths.runtimeStatus
-    let proxyLaunchDaemon = AppConstants.Paths.proxyLaunchDaemon
-}
+    let launcher: String
+    let uninstaller: String
+    let vmIPFile: String
+    let runtimeState: String
+    let runtimeStatus: String
+    let proxyLaunchDaemon: String
 
-private struct GuestRuntimeStateDocument: Decodable {
-    let vmIP: String?
-    let guestHTTP: String?
-    let redisUIHTTP: String?
-    let swaggerUIHTTP: String?
-    let cpuUsagePercent: Double?
-    let memory: ResourceUsage?
-    let systemDisk: ResourceUsage?
-}
-
-private struct RuntimeStatusDocument: Decodable {
-    let status: String
-    let operation: String
-    let message: String
-    let updatedAt: String
-    let runtimeVersion: String
-    let vmService: String
-    let proxyService: String
-    let watchdogService: String
-    let vmIP: String?
-    let proxyPort: Int
-    let hostProxyHTTP: String
-    let guestHTTP: String
-    let redisUIHTTP: String?
-    let swaggerUIHTTP: String?
-    let failureReasons: [String]
-    let latestBackup: String?
+    init(
+        launcher: String = AppConstants.Paths.launcher,
+        uninstaller: String = AppConstants.Paths.uninstaller,
+        vmIPFile: String = AppConstants.Paths.vmIPFile,
+        runtimeState: String = AppConstants.Paths.runtimeState,
+        runtimeStatus: String = AppConstants.Paths.runtimeStatus,
+        proxyLaunchDaemon: String = AppConstants.Paths.proxyLaunchDaemon
+    ) {
+        self.launcher = launcher
+        self.uninstaller = uninstaller
+        self.vmIPFile = vmIPFile
+        self.runtimeState = runtimeState
+        self.runtimeStatus = runtimeStatus
+        self.proxyLaunchDaemon = proxyLaunchDaemon
+    }
 }

@@ -1,0 +1,23 @@
+{
+  "product": "TiroshVitalServer",
+  "status": "healthy",
+  "operation": "health",
+  "message": "runtime health check passed",
+  "updatedAt": "2026-05-21T12:33:57Z",
+  "productRoot": "/Library/Application Support/TiroshVitalServer",
+  "runtimeHome": "/Library/Application Support/TiroshVitalServer/vm",
+  "runtimeVersion": "0.1.4",
+  "vmService": "loaded",
+  "proxyService": "loaded",
+  "watchdogService": "loaded",
+  "vmIP": "192.168.64.2",
+  "proxyPort": 80,
+  "hostProxyHTTP": "200",
+  "guestHTTP": "200",
+  "redisUIHTTP": "200",
+  "swaggerUIHTTP": "200",
+  "rootfsBase": "present",
+  "vmDisk": "present",
+  "failureReasons": [],
+  "latestBackup": "/Library/Application Support/TiroshVitalServer/backups/20260521T123000Z-before-0.1.4"
+}

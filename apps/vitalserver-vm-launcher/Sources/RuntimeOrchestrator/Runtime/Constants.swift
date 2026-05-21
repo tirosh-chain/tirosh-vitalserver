@@ -1,3 +1,5 @@
+import RuntimeCore
+
 enum Constants {
     enum Product {
         static let identifier = "TiroshVitalServer"
@@ -31,7 +33,7 @@ enum Constants {
         static let runtimeVersion = "runtime-version.json"
         static let backupManifest = "backup-manifest.json"
         static let runtimeConfig = "runtime-config.json"
-        static let runtimeStatus = "runtime-status.json"
+        static let runtimeStatus = RuntimeFileNames.runtimeStatus
     }
 
     enum BootAssets {
@@ -91,15 +93,16 @@ enum Constants {
     }
 
     enum Runtime {
-        static let vmIPFile = "vm-ip"
-        static let runtimeStateFile = "runtime-state.json"
-        static let bootstrapLogFile = "bootstrap.log"
-        static let datastoreRepairRequestFile = "repair-datastore.request"
-        static let datastoreRepairResultFile = "repair-datastore-result.json"
-        static let datastoreRepairLogFile = "repair-datastore.log"
-        static let updateActivationRequestFile = "activate-update.request"
-        static let updateActivationResultFile = "activate-update-result.json"
-        static let updateActivationLogFile = "activate-update.log"
+        static let vmIPFile = RuntimeFileNames.vmIP
+        static let runtimeStateFile = RuntimeFileNames.runtimeState
+        static let bootstrapLogFile = RuntimeFileNames.bootstrapLog
+        static let bootstrapResultFile = RuntimeFileNames.bootstrapResult
+        static let datastoreRepairRequestFile = RuntimeFileNames.datastoreRepairRequest
+        static let datastoreRepairResultFile = RuntimeFileNames.datastoreRepairResult
+        static let datastoreRepairLogFile = RuntimeFileNames.datastoreRepairLog
+        static let updateActivationRequestFile = RuntimeFileNames.updateActivationRequest
+        static let updateActivationResultFile = RuntimeFileNames.updateActivationResult
+        static let updateActivationLogFile = RuntimeFileNames.updateActivationLog
         static let waitTimeoutSeconds = 600.0
         static let datastoreRepairWaitTimeoutSeconds = 300.0
         static let updateActivationWaitTimeoutSeconds = 600.0
@@ -128,14 +131,6 @@ enum Constants {
         static let manifest = "manifest.json"
         static let checksums = "checksums.txt"
         static let signature = "signature"
-
-        enum ArtifactType {
-            static let rootfsBase = "rootfs-base"
-            static let appBundle = "app-bundle"
-            static let nginxBundle = "nginx-bundle"
-            static let guestDeploy = "guest-deploy"
-            static let runtimeTools = "runtime-tools"
-        }
     }
 
     enum Commands {

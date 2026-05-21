@@ -18,11 +18,27 @@ let package = Package(
         )
     ],
     targets: [
-        .executableTarget(
-            name: "RuntimeOrchestrator"
+        .target(
+            name: "RuntimeCore"
         ),
         .executableTarget(
-            name: "ManagerApp"
+            name: "RuntimeOrchestrator",
+            dependencies: ["RuntimeCore"]
+        ),
+        .executableTarget(
+            name: "ManagerApp",
+            dependencies: ["RuntimeCore"]
+        ),
+        .testTarget(
+            name: "RuntimeCoreTests",
+            dependencies: ["RuntimeCore"],
+            resources: [
+                .process("Fixtures")
+            ]
+        ),
+        .testTarget(
+            name: "ManagerAppTests",
+            dependencies: ["ManagerApp"]
         )
     ]
 )

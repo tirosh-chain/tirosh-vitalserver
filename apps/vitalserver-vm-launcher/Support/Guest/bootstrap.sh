@@ -8,6 +8,8 @@ VITAL_FILES_MOUNT_POINT="${TIROSH_VITAL_FILES_SHARE_MOUNT:-/mnt/tirosh-vital-fil
 DEPLOY_DIR="${TIROSH_DEPLOY_DIR:-${MOUNT_POINT}/deploy}"
 RUNTIME_DIR="${MOUNT_POINT}/run"
 RUNTIME_STATE_FILE="${RUNTIME_DIR}/runtime-state.json"
+BOOTSTRAP_RESULT_FILE="${RUNTIME_DIR}/bootstrap-result.json"
+BOOTSTRAP_RESULT_WRITTEN=0
 
 if [ "$(id -u)" -ne 0 ]; then
   printf "error: run with sudo\n" >&2
@@ -22,6 +24,41 @@ mount_share() {
   if ! mountpoint -q "${mount_point}"; then
     mount -t virtiofs "${tag}" "${mount_point}"
   fi
+}
+
+write_bootstrap_result() {
+  local status="$1"
+  local message="$2"
+  local reason_code="${3:-}"
+  local updated_at reason_codes_json
+
+  mkdir -p "${RUNTIME_DIR}"
+  updated_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  if [ -n "${reason_code}" ]; then
+    reason_codes_json="[\"${reason_code}\"]"
+  else
+    reason_codes_json="[]"
+  fi
+
+  cat > "${BOOTSTRAP_RESULT_FILE}" <<EOF
+{
+  "message" : "${message}",
+  "operation" : "bootstrap",
+  "reasonCodes" : ${reason_codes_json},
+  "schemaVersion" : 2,
+  "status" : "${status}",
+  "updatedAt" : "${updated_at}"
+}
+EOF
+  BOOTSTRAP_RESULT_WRITTEN=1
+}
+
+write_bootstrap_failed_on_exit() {
+  local status="$?"
+  if [ "${status}" -ne 0 ] && [ "${BOOTSTRAP_RESULT_WRITTEN}" -eq 0 ]; then
+    write_bootstrap_result "failed" "Guest bootstrap failed." "guest-bootstrap-failed" || true
+  fi
+  exit "${status}"
 }
 
 require_deploy_bundle() {
@@ -102,6 +139,7 @@ expand_root_filesystem() {
 runtime_packages_ready() {
   command -v curl >/dev/null 2>&1 \
     && command -v docker >/dev/null 2>&1 \
+    && command -v python3 >/dev/null 2>&1 \
     && command -v avahi-daemon >/dev/null 2>&1 \
     && command -v growpart >/dev/null 2>&1 \
     && docker compose version >/dev/null 2>&1
@@ -112,6 +150,7 @@ missing_runtime_packages() {
 
   command -v curl >/dev/null 2>&1 || missing+=("curl")
   command -v docker >/dev/null 2>&1 || missing+=("docker")
+  command -v python3 >/dev/null 2>&1 || missing+=("python3-minimal")
   command -v avahi-daemon >/dev/null 2>&1 || missing+=("avahi-daemon")
   command -v growpart >/dev/null 2>&1 || missing+=("growpart")
   docker compose version >/dev/null 2>&1 || missing+=("docker compose")
@@ -127,9 +166,10 @@ require_runtime_packages() {
 
   printf "error: missing runtime package in air-gapped rootfs\n" >&2
   printf "The target bootstrap never runs apt-get. Rebuild the package rootfs with make vm-golden-rootfs.\n" >&2
-  printf "Required commands/services: curl, docker, docker compose, avahi-daemon, growpart.\n" >&2
+  printf "Required commands/services: curl, docker, docker compose, python3-minimal, avahi-daemon, growpart.\n" >&2
   printf "Missing commands/services:\n" >&2
   missing_runtime_packages | sed 's/^/  - /' >&2
+  write_bootstrap_result "failed" "Missing runtime packages." "guest-bootstrap-missing-runtime-packages"
   exit 1
 }
 
@@ -223,6 +263,8 @@ wait_for_vitalserver_edge() {
 
 mount_share "${MOUNT_TAG}" "${MOUNT_POINT}"
 mount_share "${VITAL_FILES_MOUNT_TAG}" "${VITAL_FILES_MOUNT_POINT}"
+trap write_bootstrap_failed_on_exit EXIT
+write_bootstrap_result "running" "Guest bootstrap is running."
 require_deploy_bundle
 
 export DEBIAN_FRONTEND=noninteractive
@@ -255,4 +297,5 @@ eval "$(/usr/local/bin/tirosh-runtime-env "${DEPLOY_DIR}/runtime-config.json")"
 wait_for_vitalserver_edge
 systemctl restart tirosh-runtime-state.service
 
+write_bootstrap_result "completed" "Guest bootstrap completed."
 printf "VitalServer edge is ready on this VM at port 80.\n"

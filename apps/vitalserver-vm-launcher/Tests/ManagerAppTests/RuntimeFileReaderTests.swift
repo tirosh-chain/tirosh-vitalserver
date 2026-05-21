@@ -1,0 +1,76 @@
+import XCTest
+@testable import ManagerApp
+
+final class RuntimeFileReaderTests: XCTestCase {
+    func testUpdateBundleSummaryReadsManifestArtifacts() throws {
+        let directory = try temporaryDirectory()
+        try """
+        {
+          "version": "1.2.3",
+          "artifacts": [
+            { "type": "rootfs", "name": "rootfs.img.gz" },
+            { "type": "package", "name": "vitalserver.tar.gz" }
+          ]
+        }
+        """.write(
+            to: directory.appendingPathComponent("manifest.json"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let summary = SystemRuntimeManagerFileReader().updateBundleSummary(url: directory)
+
+        XCTAssertTrue(summary.contains("Version: 1.2.3"))
+        XCTAssertTrue(summary.contains("rootfs: rootfs.img.gz"))
+        XCTAssertTrue(summary.contains("package: vitalserver.tar.gz"))
+    }
+
+    func testUpdateBundleSummaryReportsInvalidManifest() throws {
+        let directory = try temporaryDirectory()
+
+        XCTAssertEqual(
+            SystemRuntimeManagerFileReader().updateBundleSummary(url: directory),
+            "Missing or invalid manifest.json"
+        )
+    }
+
+    func testVitalFileFoldersReturnsSortedDirectoriesOnly() throws {
+        let directory = try temporaryDirectory()
+        try FileManager.default.createDirectory(
+            at: directory.appendingPathComponent("zeta"),
+            withIntermediateDirectories: true
+        )
+        try FileManager.default.createDirectory(
+            at: directory.appendingPathComponent("alpha"),
+            withIntermediateDirectories: true
+        )
+        FileManager.default.createFile(
+            atPath: directory.appendingPathComponent("plain.txt").path,
+            contents: Data()
+        )
+
+        let folders = SystemRuntimeManagerFileReader().vitalFileFolders(root: directory.path)
+
+        XCTAssertEqual(folders.map(\.name), ["alpha", "zeta"])
+    }
+
+    func testHelperMessageLogTextUsesNoDataForBlankMessage() {
+        let reader = SystemRuntimeManagerFileReader()
+
+        XCTAssertEqual(
+            reader.logText(sourceID: LogSourceID.helperMessage.rawValue, helperMessage: "  \n", lineLimit: 10),
+            AppConstants.StatusText.noLogData
+        )
+        XCTAssertEqual(
+            reader.logText(sourceID: LogSourceID.helperMessage.rawValue, helperMessage: "Ready", lineLimit: 10),
+            "Ready"
+        )
+    }
+
+    private func temporaryDirectory() throws -> URL {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("RuntimeFileReaderTests-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory
+    }
+}

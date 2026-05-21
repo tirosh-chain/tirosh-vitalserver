@@ -41,41 +41,38 @@ struct Launcher {
     // Initialize the runtime directory without requiring VM entitlements.
     func initialize(paths: LauncherPaths) throws {
         let fileManager = FileManager.default
+        let installedPaths = paths.installed
         try fileManager.createDirectory(
-            at: paths.home.appendingPathComponent(Constants.Paths.runtimeDirectory),
+            at: installedPaths.runtimeDirectory,
             withIntermediateDirectories: true
         )
         try fileManager.createDirectory(
-            at: paths.home
-                .appendingPathComponent(Constants.Paths.dataDirectory)
-                .appendingPathComponent(Constants.Paths.vitalFilesDirectory),
+            at: installedPaths.vitalFilesDirectory,
             withIntermediateDirectories: true
         )
         try fileManager.createDirectory(
-            at: paths.home
-                .appendingPathComponent(Constants.Paths.dataDirectory)
-                .appendingPathComponent(Constants.Paths.vrReleaseDirectory),
+            at: installedPaths.vrReleaseDirectory,
             withIntermediateDirectories: true
         )
         try fileManager.createDirectory(
-            at: paths.home.appendingPathComponent(Constants.Paths.runDirectory),
+            at: installedPaths.hostRunDirectory,
             withIntermediateDirectories: true
         )
         try fileManager.createDirectory(
-            at: paths.home.appendingPathComponent(Constants.Paths.logsDirectory),
+            at: installedPaths.logsDirectory,
             withIntermediateDirectories: true
         )
 
         if !fileManager.fileExists(atPath: paths.config.path) {
-            var config = VMRuntimeConfig.default(home: paths.home)
-            VMRuntimeConfig.ensureRuntimeDefaults(&config, home: paths.home)
+            var config = VMRuntimeConfig.default(paths: installedPaths)
+            VMRuntimeConfig.ensureRuntimeDefaults(&config, paths: installedPaths)
             let data = try JSONEncoder.pretty.encode(config)
             try data.write(to: paths.config)
             print("created \(paths.config.path)")
         } else {
             var config = try VMRuntimeConfig.load(from: paths.config)
             let previous = config
-            VMRuntimeConfig.ensureRuntimeDefaults(&config, home: paths.home)
+            VMRuntimeConfig.ensureRuntimeDefaults(&config, paths: installedPaths)
             if config.network.macAddress != previous.network.macAddress
                 || config.cloudInitPath != previous.cloudInitPath {
                 let data = try JSONEncoder.pretty.encode(config)
@@ -86,9 +83,8 @@ struct Launcher {
             }
         }
 
-        let runtimePath = paths.home.appendingPathComponent(Constants.Paths.runtimeDirectory).path
-        print("place Linux runtime assets under \(runtimePath)")
-        print("shared data directory: \(paths.home.appendingPathComponent(Constants.Paths.dataDirectory).path)")
+        print("place Linux runtime assets under \(installedPaths.runtimeDirectory.path)")
+        print("shared data directory: \(installedPaths.dataDirectory.path)")
     }
 
     // Remove disposable VM runtime state while preserving host-bound data.
@@ -103,8 +99,7 @@ struct Launcher {
             }
         }
 
-        let dataPath = paths.home.appendingPathComponent(Constants.Paths.dataDirectory).path
-        print("preserved shared data directory: \(dataPath)")
+        print("preserved shared data directory: \(paths.installed.dataDirectory.path)")
     }
 
     // Build the VM configuration, start it, then keep the process alive.
@@ -139,11 +134,7 @@ struct Launcher {
     }
 
     private func removeStaleRuntimeState(paths: LauncherPaths) throws {
-        let runDirectory = paths.home
-            .appendingPathComponent(Constants.Paths.dataDirectory)
-            .appendingPathComponent(Constants.Paths.runDirectory)
-        for fileName in [Constants.Runtime.runtimeStateFile, Constants.Runtime.vmIPFile] {
-            let url = runDirectory.appendingPathComponent(fileName)
+        for url in [paths.installed.runtimeState, paths.installed.vmIPFile] {
             if FileManager.default.fileExists(atPath: url.path) {
                 try FileManager.default.removeItem(at: url)
                 print("removed stale runtime state: \(url.path)")
@@ -182,7 +173,7 @@ struct Launcher {
             config.network.bridgedInterface = interface.identifier
         }
 
-        VMRuntimeConfig.ensureRuntimeDefaults(&config, home: paths.home)
+        VMRuntimeConfig.ensureRuntimeDefaults(&config, paths: paths.installed)
         let data = try JSONEncoder.pretty.encode(config)
         try data.write(to: paths.config)
 
@@ -265,7 +256,7 @@ struct Launcher {
             }
         }
 
-        VMRuntimeConfig.ensureRuntimeDefaults(&config, home: paths.home)
+        VMRuntimeConfig.ensureRuntimeDefaults(&config, paths: paths.installed)
         let data = try JSONEncoder.pretty.encode(config)
         try data.write(to: paths.config)
         print("updated \(paths.config.path)")

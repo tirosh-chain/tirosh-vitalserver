@@ -55,6 +55,7 @@ install_runtime_packages() {
     cloud-guest-utils \
     curl \
     docker.io \
+    python3-minimal \
     qemu-user-static
 
   if ! docker compose version >/dev/null 2>&1; then

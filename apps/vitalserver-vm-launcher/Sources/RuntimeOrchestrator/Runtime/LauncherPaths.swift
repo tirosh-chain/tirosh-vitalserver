@@ -1,7 +1,9 @@
 import Foundation
+import RuntimeCore
 
 struct LauncherPaths {
     let home: URL
+    let installed: InstalledRuntimePaths
     let config: URL
     let pidFile: URL
 
@@ -15,20 +17,20 @@ struct LauncherPaths {
                 url.appendingPathComponent(component)
             }.path
         let home = URL(fileURLWithPath: homePath)
+        let installed = InstalledRuntimePaths(runtimeHome: home)
         return LauncherPaths(
             home: home,
-            config: home.appendingPathComponent(Constants.Paths.configFile),
-            pidFile: home
-                .appendingPathComponent(Constants.Paths.runDirectory)
-                .appendingPathComponent(Constants.Paths.pidFile)
+            installed: installed,
+            config: installed.vmConfig,
+            pidFile: installed.pidFile
         )
     }
 
     var cleanableRuntimePaths: [URL] {
         [
-            home.appendingPathComponent(Constants.Paths.runtimeDirectory),
-            home.appendingPathComponent(Constants.Paths.logsDirectory),
-            home.appendingPathComponent(Constants.Paths.runDirectory),
+            installed.runtimeDirectory,
+            installed.logsDirectory,
+            installed.hostRunDirectory,
         ]
     }
 }

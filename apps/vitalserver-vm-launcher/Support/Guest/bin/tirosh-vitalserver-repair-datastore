@@ -10,6 +10,7 @@ RESULT_FILE="${RUNTIME_DIR}/repair-datastore-result.json"
 LOG_FILE="${RUNTIME_DIR}/repair-datastore.log"
 PROJECT_NAME="vitalserver"
 REDIS_VOLUME="${PROJECT_NAME}_redis-data"
+REQUEST_ID=""
 
 mount_runtime_share() {
   mkdir -p "${MOUNT_POINT}"
@@ -17,6 +18,29 @@ mount_runtime_share() {
     mount -t virtiofs "${MOUNT_TAG}" "${MOUNT_POINT}"
   fi
   mkdir -p "${RUNTIME_DIR}"
+}
+
+load_request_metadata() {
+  if ! command -v python3 >/dev/null 2>&1; then
+    printf "python3 is required to read datastore repair request metadata\n" >&2
+    return 1
+  fi
+
+  REQUEST_ID="$(python3 - "${REQUEST_FILE}" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], "r", encoding="utf-8") as handle:
+    document = json.load(handle)
+
+print(document.get("requestId") or "")
+PY
+)"
+
+  if [ -z "${REQUEST_ID}" ]; then
+    printf "datastore repair requestId is missing\n" >&2
+    return 1
+  fi
 }
 
 write_result() {
@@ -27,6 +51,9 @@ write_result() {
   updated_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   cat > "${RESULT_FILE}" <<EOF
 {
+  "operation" : "repair-datastore",
+  "requestId" : "${REQUEST_ID}",
+  "schemaVersion" : 2,
   "message" : "${message}",
   "status" : "${status}",
   "updatedAt" : "${updated_at}"
@@ -79,6 +106,9 @@ main() {
     write_result "skipped" "request file is missing"
     return
   fi
+
+  load_request_metadata
+  write_result "running" "Datastore repair is running."
 
   if restart_runtime_compose; then
     rm -f "${REQUEST_FILE}"

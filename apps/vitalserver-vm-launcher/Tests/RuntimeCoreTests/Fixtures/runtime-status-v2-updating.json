@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 2,
+  "product": "TiroshVitalServer",
+  "status": "updating",
+  "operation": "apply-bundle",
+  "message": "Waiting for VM update activation",
+  "updatedAt": "2026-05-21T12:33:57Z",
+  "productRoot": "/Library/Application Support/TiroshVitalServer",
+  "runtimeHome": "/Library/Application Support/TiroshVitalServer/vm",
+  "runtimeVersion": "0.1.4",
+  "vmService": "loaded",
+  "proxyService": "loaded",
+  "watchdogService": "loaded",
+  "vmIP": "192.168.64.2",
+  "proxyPort": 80,
+  "hostProxyHTTP": "502",
+  "guestHTTP": "bootstrap-pending",
+  "redisUIHTTP": "502",
+  "swaggerUIHTTP": "502",
+  "rootfsBase": "present",
+  "vmDisk": "present",
+  "failureReasons": [
+    "guest-activation-pending"
+  ],
+  "latestBackup": "/Library/Application Support/TiroshVitalServer/backups/20260521T123000Z-before-0.1.4",
+  "progress": {
+    "operation": "apply-bundle",
+    "phase": "running",
+    "step": "activate-guest-update",
+    "stepStatus": "started",
+    "message": "Waiting for VM update activation",
+    "reasonCodes": [
+      "guest-activation-pending"
+    ],
+    "startedAt": "2026-05-21T12:30:00Z",
+    "updatedAt": "2026-05-21T12:33:57Z"
+  }
+}
