@@ -20,7 +20,7 @@ def run_docker_images(args: Namespace) -> int:
     build_platform = args.platform or optional_string(
         docker_config,
         "platform",
-        "linux/amd64",
+        "linux/arm64",
     )
     images = required_string_list(docker_config, "images")
     app_image = images[0]
@@ -29,11 +29,11 @@ def run_docker_images(args: Namespace) -> int:
     bundle_path.parent.mkdir(parents=True, exist_ok=True)
 
     print("Preparing Docker image bundle")
-    print(f"VitalServer image platform: {build_platform}")
+    print(f"Container image platform: {build_platform}")
     print(f"Bundle: {bundle_path}")
 
     for image in images[1:]:
-        run(["docker", "pull", image])
+        run(["docker", "pull", "--platform", build_platform, image])
 
     run(
         [

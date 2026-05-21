@@ -50,12 +50,13 @@ vm-docker-images:
 		--bundle-path "$(VM_DOCKER_IMAGE_BUNDLE)" \
 		--compression-threads "$(VM_COMPRESSION_THREADS)"
 
-vm-app:
+vm-app: vm-version-source
 	cd "$(VM_LAUNCHER_DIR)" && env SDKROOT="$(VM_SDKROOT)" CLANG_MODULE_CACHE_PATH="$(VM_CLANG_MODULE_CACHE)" swift build -c release --product TiroshVitalServerApp
 	rm -rf "$(VM_APP_BUNDLE)"
 	@mkdir -p "$(VM_APP_BUNDLE)/Contents/MacOS" "$(VM_APP_BUNDLE)/Contents/Resources"
 	install -m 0755 "$(VM_APP_BIN)" "$(VM_APP_BUNDLE)/Contents/MacOS/$(VM_APP_NAME)"
-	install -m 0644 "$(VM_LAUNCHER_DIR)/Support/App/Info.plist" "$(VM_APP_BUNDLE)/Contents/Info.plist"
+	install -m 0644 "$(VM_LAUNCHER_DIR)/Support/App/Info.plist" "$(VM_APP_INFO_PLIST)"
+	/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $(VM_PRODUCT_VERSION)" "$(VM_APP_INFO_PLIST)"
 	install -m 0644 "$(VM_LAUNCHER_DIR)/Support/App/AppIcon.icns" "$(VM_APP_BUNDLE)/Contents/Resources/AppIcon.icns"
 	codesign --force --sign "$(VM_CODESIGN_IDENTITY)" "$(VM_APP_BUNDLE)"
 	@printf "VM control app is ready: %s\n" "$(VM_APP_BUNDLE)"

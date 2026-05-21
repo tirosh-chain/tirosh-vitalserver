@@ -2,13 +2,16 @@ services:
   redis:
     image: redis:3.2.12-alpine
     command:
-      - redis-server
-      - --appendonly
-      - "yes"
-      - --bind
-      - 0.0.0.0
-      - --protected-mode
-      - "no"
+      - sh
+      - -c
+      - |
+        if [ -f /data/appendonly.aof ]; then
+          redis-check-aof /data/appendonly.aof >/tmp/redis-aof-check.log 2>&1 || {
+            cp /data/appendonly.aof "/data/appendonly.aof.bak.$(date +%Y%m%d%H%M%S)" || true
+            printf 'y\n' | redis-check-aof --fix /data/appendonly.aof
+          }
+        fi
+        exec redis-server --appendonly yes --bind 0.0.0.0 --protected-mode no
     expose:
       - "6379"
     volumes:
@@ -21,7 +24,6 @@ services:
     restart: unless-stopped
 
   app:
-    platform: linux/amd64
     build:
       context: .
       dockerfile: apps/vitalserver/docker/Dockerfile
@@ -39,6 +41,37 @@ services:
       VITALSERVER_REDIS_HOST: "${VITALSERVER_REDIS_HOST:-redis}"
       VITALSERVER_REDIS_PORT: "${VITALSERVER_REDIS_PORT:-6379}"
       VITALSERVER_TRUST_PROXY: "${VITALSERVER_TRUST_PROXY:-1}"
+    command:
+      - sh
+      - -c
+      - |
+        node -e '
+        const net = require("net");
+        const host = process.env.VITALSERVER_REDIS_HOST || "redis";
+        const port = Number(process.env.VITALSERVER_REDIS_PORT || 6379);
+        const deadline = Date.now() + 120000;
+        function wait() {
+          const socket = net.createConnection({ host, port });
+          socket.setTimeout(3000);
+          socket.on("connect", () => {
+            socket.end();
+            process.exit(0);
+          });
+          socket.on("error", retry);
+          socket.on("timeout", () => {
+            socket.destroy();
+            retry();
+          });
+        }
+        function retry() {
+          if (Date.now() > deadline) {
+            console.error("redis is not reachable: " + host + ":" + port);
+            process.exit(1);
+          }
+          setTimeout(wait, 1000);
+        }
+        wait();
+        ' && exec node service/app.js
     volumes:
       - type: bind
         source: ${VITALSERVER_VITAL_FILES_DIR:-/mnt/tirosh-vital-files}
@@ -60,7 +93,7 @@ services:
     restart: unless-stopped
 
   redis-ui:
-    image: rediscommander/redis-commander:latest
+    image: ghcr.io/joeferner/redis-commander:0.9.0
     depends_on:
       redis:
         condition: service_healthy
@@ -68,7 +101,6 @@ services:
       - "8081"
     environment:
       REDIS_HOSTS: "local:redis:6379"
-      URL_PREFIX: "/redis-ui"
     restart: unless-stopped
 
   swagger-ui:
@@ -102,7 +134,7 @@ services:
         target: /etc/nginx/conf.d/default.conf
         read_only: true
     healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1/ || exit 1"]
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1/check || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 30

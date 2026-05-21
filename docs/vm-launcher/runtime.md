@@ -101,13 +101,15 @@ apps/vitalserver-vm-launcher/Support/Build/vm-build.toml
 | architecture | macOS host architecture 기준 자동 선택 |
 | 다운로드 경로 | `~/.tirosh/vitalserver-vm/runtime/downloads/` |
 | 실행 경로 | `~/.tirosh/vitalserver-vm/runtime/` |
-| root disk target size | `4G` |
+| root disk target size | `4G` (4 GiB) |
 
 root disk 크기를 바꾸려면:
 
 ```sh
 VM_ROOTFS_SIZE=32G make vm-download
 ```
+
+`VM_ROOTFS_SIZE`의 `G` suffix는 build tool 입력 형식이며 GiB 기준으로 해석합니다. 예를 들어 `32G`는 32 GiB root disk target size입니다.
 
 Docker, nginx, qemu-user-static, VitalServer image build까지 PoC guest 안에서 실행하므로 Ubuntu cloud image의 기본 root disk 크기만으로는 부족합니다.
 

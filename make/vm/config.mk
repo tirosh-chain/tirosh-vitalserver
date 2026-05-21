@@ -1,4 +1,5 @@
 # User-facing knobs.
+VM_LAUNCHER_DIR := apps/vitalserver-vm-launcher
 VM_HOME ?= $(HOME)/.tirosh/vitalserver-vm
 VM_ROOTFS_SIZE ?= 4G
 VM_RECREATE_ROOTFS ?= false
@@ -6,7 +7,10 @@ VM_RECREATE_GOLDEN_ROOTFS ?= false
 VM_COMPRESSION_THREADS ?= $(shell sysctl -n hw.ncpu 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)
 VM_WAIT_TIMEOUT ?= 300
 VM_HTTP_WAIT_TIMEOUT ?= 600
-VM_PKG_VERSION ?= 0.1.0
+VM_VERSION_FILE := $(VM_LAUNCHER_DIR)/VERSION
+VM_PRODUCT_VERSION := $(strip $(shell cat "$(VM_VERSION_FILE)" 2>/dev/null))
+VM_GENERATED_VERSION_SWIFT := $(VM_LAUNCHER_DIR)/Sources/RuntimeOrchestrator/Runtime/GeneratedVersion.swift
+VM_PKG_VERSION ?= $(VM_PRODUCT_VERSION)
 VM_UPDATE_BUNDLE_VERSION ?= $(VM_PKG_VERSION)
 VM_UPDATE_MIGRATIONS ?=
 VM_NGINX_SOURCE_BIN ?= /opt/homebrew/opt/nginx/bin/nginx
@@ -17,11 +21,11 @@ VM_CODESIGN_IDENTITY ?= -
 VM_BRIDGED_CODESIGN_IDENTITY ?= $(VM_CODESIGN_IDENTITY)
 
 # Build toolchain.
-VM_LAUNCHER_DIR := apps/vitalserver-vm-launcher
 VM_LAUNCHER_BIN := $(VM_LAUNCHER_DIR)/.build/release/vitalserver-vm
 VM_APP_BIN := $(VM_LAUNCHER_DIR)/.build/release/TiroshVitalServerApp
 VM_LAUNCHER_ENTITLEMENTS := $(VM_LAUNCHER_DIR)/Entitlements.shared.plist
 VM_LAUNCHER_BRIDGED_ENTITLEMENTS := $(VM_LAUNCHER_DIR)/Entitlements.plist
+VM_APP_INFO_PLIST = $(VM_APP_BUNDLE)/Contents/Info.plist
 VM_SDKROOT := $(firstword $(wildcard /Library/Developer/CommandLineTools/SDKs/MacOSX15.4.sdk) $(shell xcrun --sdk macosx --show-sdk-path 2>/dev/null))
 VM_CLANG_MODULE_CACHE := $(CURDIR)/.tmp/clang-module-cache
 VM_BUILD_RUNNER := $(UV) run --project packages/vm-build vitalserver-vm-build

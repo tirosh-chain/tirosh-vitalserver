@@ -39,6 +39,10 @@ enum LauncherError: Error, CustomStringConvertible {
 
     private func formatBytes(_ bytes: UInt64) -> String {
         let gib = Double(bytes) / 1_073_741_824
-        return String(format: "%.1f GiB", gib)
+        if gib >= 1 {
+            return String(format: "%.1f GiB", gib)
+        }
+        let mib = Double(bytes) / 1_048_576
+        return String(format: "%.1f MiB", max(mib, 0))
     }
 }

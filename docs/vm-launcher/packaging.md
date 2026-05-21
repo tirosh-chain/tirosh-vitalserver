@@ -14,6 +14,29 @@
 | Shell script 역할은? | `postinstall`, launchd, uninstall wrapper |
 | update bundle은 누가 검증/적용하나? | Swift `RuntimeLifecycle` |
 
+## 배포 시나리오
+
+| 시나리오 | 산출물 | 생성 명령 | 현장 적용 |
+|---|---|---|---|
+| 신규 설치 | `dist/TiroshVitalServer-<version>.dmg` | `make vm-dmg` | DMG 안의 `Install Tirosh VitalServer.pkg` 실행 |
+| 신규 설치 release 검증 | `dist/TiroshVitalServer-<version>.dmg` | `make vm-dmg-release` | clean golden rootfs부터 다시 만든 설치물 사용 |
+| `.pkg` 직접 배포 | `dist/TiroshVitalServerVM-<version>.pkg` | `make vm-pkg` | `sudo installer -pkg ... -target /` |
+| air-gapped 업데이트 | `dist/update-bundles/update-bundle-<version>/` | `make vm-update-bundle` | Helper app Update 탭 또는 `vitalserver-vm runtime apply-bundle` |
+| bundle 검증 | update bundle directory | `make vm-update-bundle-verify` | 전달 전 manifest/checksum 검증 |
+| 개발 설치 테스트 | installed runtime | `make vm-pkg-install` | 현재 Mac에 설치 후 `make vm-installed-health` |
+
+사용자에게 “bundle”로 제공하는 대상은 두 가지입니다. 신규 설치는 `.dmg`/`.pkg`이고, 이미 설치된 현장 업데이트는 `update-bundle-<version>/` directory입니다. air-gapped 환경에서는 update bundle directory를 tarball로 묶어 USB나 폐쇄망 파일 서버로 전달합니다.
+
+## 버전 source of truth
+
+package, DMG, update bundle, Swift runtime version은 아래 파일을 기준으로 관리합니다.
+
+```text
+apps/vitalserver-vm-launcher/VERSION
+```
+
+`make vm-build`는 이 값을 Swift `GeneratedVersion.swift`에 반영하고, `make vm-app`은 app bundle `Info.plist`의 `CFBundleShortVersionString`에 같은 값을 씁니다. `make vm-pkg`와 `make vm-update-bundle`은 기본적으로 이 값을 `VM_PKG_VERSION`, `VM_UPDATE_BUNDLE_VERSION`으로 사용합니다. 특별한 검증이 아니라면 버전 변경은 이 파일 하나만 수정합니다.
+
 ## Package 구성
 
 현재 repository의 `make vm-pkg`는 `.pkg`까지 가기 위한 개발 검증용 packaging target입니다.
@@ -29,7 +52,7 @@ make vm-pkg-uninstall-dev
 `make vm-pkg` 생성물:
 
 ```text
-dist/TiroshVitalServerVM-0.1.0.pkg
+dist/TiroshVitalServerVM-<version>.pkg
 ```
 
 패키징 시간이 길면 압축 단계에서 CPU를 더 쓰도록 설정할 수 있습니다. `rootfs-base.raw.gz`와
@@ -39,14 +62,37 @@ dist/TiroshVitalServerVM-0.1.0.pkg
 VM_COMPRESSION_THREADS=8 make vm-pkg
 ```
 
-빌드 머신에 `pigz`가 있으면 병렬 gzip을 사용하고, 없으면 Python gzip으로 자동 fallback합니다.
-`make -j`는 일부 target을 병렬 실행할 수 있지만, golden VM 부팅과 Swift binary signing이 같은
-중간 산출물을 공유하므로 기본 권장 경로는 `VM_COMPRESSION_THREADS`로 압축 병목을 줄이는 것입니다.
+이 설정은 Python/uv package를 병렬화하는 옵션이 아닙니다. 빌드 머신에 `pigz` binary가 있을 때만
+병렬 gzip 경로를 사용합니다. `pigz`가 없으면 자동으로 Python gzip fallback을 타며, 이 fallback은
+single-thread로 동작합니다.
+
+```sh
+command -v pigz
+brew install pigz
+VM_COMPRESSION_THREADS=8 make vm-pkg
+```
+
+정상적으로 병렬 압축을 타면 build log에 아래처럼 표시됩니다.
+
+```text
+using pigz compression threads=8
+```
+
+아래처럼 표시되면 `pigz`를 찾지 못한 것이고 병렬 압축을 사용하지 않은 것입니다.
+
+```text
+using Python gzip compression
+```
+
+`pigz`는 build machine 전용 optional accelerator입니다. 최종 `.pkg`, 병원 Mac runtime,
+air-gapped target 환경에는 설치할 필요가 없습니다. `make -j`는 일부 target을 병렬 실행할 수 있지만,
+golden VM 부팅과 Swift binary signing이 같은 중간 산출물을 공유하므로 기본 권장 경로는
+`VM_COMPRESSION_THREADS`와 `pigz`로 압축 병목을 줄이는 것입니다.
 
 전달용 DMG가 필요하면 `make vm-dmg`를 실행합니다. DMG에는 단일 PKG만 들어갑니다.
 
 ```text
-dist/TiroshVitalServer-0.1.0.dmg
+dist/TiroshVitalServer-<version>.dmg
 ```
 
 설치 후 구조:
@@ -266,8 +312,8 @@ Fallback:
 | 설정 | 기본값 | 현재 계약 |
 |---|---:|---|
 | `cpuCount` | 8 | 7-64 |
-| `memoryGiB` | 8 | 4-64, 4 단위 |
-| `diskGiB` | 64 | 32-512, 16 단위 |
+| `memoryGiB` | 8 | 4-64 GiB, 4 GiB 단위 |
+| `diskGiB` | 32 | 4-512 GiB, 4 GiB 단위. 설치 후에는 증가만 허용 |
 | `networkMode` | `shared` | `shared` 또는 `bridged` |
 | `proxyPort` | 80 | 1-65535, LaunchDaemon plist에 저장하고 Runtime CLI/Manager가 해당 값을 읽음 |
 | `vitalFilesDirectory` | `/Library/Application Support/TiroshVitalServer/vm/data/vital-files` | absolute path |
@@ -301,7 +347,7 @@ Fallback:
 
 ```sh
 sudo install -m 0600 /path/to/install-settings.json /private/tmp/tirosh-vitalserver-install.json
-sudo installer -pkg dist/TiroshVitalServerVM-0.1.0.pkg -target /
+sudo installer -pkg dist/TiroshVitalServerVM-<version>.pkg -target /
 ```
 
 개발용 Make target은 같은 계약을 `VM_INSTALL_SETTINGS`로 감쌉니다.
@@ -433,10 +479,12 @@ air-gapped 제품 package는 외부 Docker registry 없이 container를 시작�
 ```text
 vitalserver:2.3.4
 redis:3.2.12-alpine
-rediscommander/redis-commander:latest
+ghcr.io/joeferner/redis-commander:0.9.0
 swaggerapi/swagger-ui:v5.17.14
 nginx:1.24-alpine
 ```
+
+Docker image bundle은 guest VM architecture에 맞춰 `linux/arm64`로 생성합니다. Apple Virtualization Framework 기반 guest가 arm64 Ubuntu로 부팅되므로, amd64 image를 넣으면 guest에서 `exec format error`가 발생합니다. Redis Commander는 Docker Hub의 `latest`가 아니라 GHCR의 pinned multi-arch image를 사용합니다.
 
 생성/설치 경로는 아래와 같습니다.
 
@@ -452,7 +500,7 @@ make vm-golden-rootfs
 make vm-pkg
 ```
 
-기본 package용 rootfs는 4GB입니다. `make vm-golden-rootfs`는 `.tmp/vitalserver-vm-golden` 아래에서 VM을 임시로 띄우고 `prepare-airgap-rootfs.sh`만 실행한 뒤 `.tmp/vitalserver-vm-pkg/rootfs-base.raw.gz`를 생성합니다. 이 스크립트는 OS package를 설치하고 `/mnt/tirosh/run/rootfs-ready` marker를 기록한 뒤 종료됩니다. Container는 시작하지 않기 때문에 운영 데이터나 Redis volume을 golden rootfs에 섞지 않습니다.
+기본 package용 rootfs는 `4G`(4 GiB)입니다. `VM_ROOTFS_SIZE`의 `G` suffix는 build tool 입력 형식이며 GiB 기준으로 해석합니다. `make vm-golden-rootfs`는 `.tmp/vitalserver-vm-golden` 아래에서 VM을 임시로 띄우고 `prepare-airgap-rootfs.sh`만 실행한 뒤 `.tmp/vitalserver-vm-pkg/rootfs-base.raw.gz`를 생성합니다. 이 스크립트는 OS package를 설치하고 `/mnt/tirosh/run/rootfs-ready` marker를 기록한 뒤 종료됩니다. Container는 시작하지 않기 때문에 운영 데이터나 Redis volume을 golden rootfs에 섞지 않습니다.
 
 반복 개발 중에는 기존 golden rootfs cache를 재사용합니다. cache가 없으면 `make vm-pkg`가 자동으로 한 번 생성합니다. release 검증처럼 clean rootfs를 반드시 다시 만들려면:
 
@@ -481,6 +529,20 @@ make vm-update-bundle-verify
 `make vm-update-bundle`은 이 artifact들을 기본 포함하므로 Helper app, runtime tools, host nginx,
 guest deploy bundle까지 같은 online/offline bundle 계약으로 배포할 수 있습니다.
 
+update bundle도 압축이 필요합니다. 다만 압축 대상은 update artifact 단위입니다. 일반적인 현장 업데이트는 작은 `.tar.gz` artifact를 교체하는 흐름이고, 무거운 `rootfs-base.raw.gz`를 매번 다시 압축하거나 배포하는 흐름이 아닙니다.
+
+| artifact | 압축 파일 | 일반 업데이트 포함 여부 | 비고 |
+|---|---|---|---|
+| Helper app | `app-bundle.tar.gz` | 기본 포함 | `/Applications/VitalServer Helper.app` 교체 |
+| runtime tools | `runtime-tools.tar.gz` | 기본 포함 | `/usr/local/bin` runtime CLI/runner 교체 |
+| host nginx bundle | `nginx-bundle.tar.gz` | 기본 포함 | host proxy binary/dylib 교체 |
+| guest deploy bundle | `guest-deploy.tar.gz` | 기본 포함 | VM shared deploy script/config 교체 |
+| migration | executable files | 필요 시 포함 | 설치된 VM/runtime 상태 변경 |
+| Docker images | `vitalserver-images.tar.gz` | 필요 시 포함 | container image 갱신이 있을 때만 무겁게 포함 |
+| rootfs base | `rootfs-base.raw.gz` | major/runtime base 변경 시 포함 | 신규 설치 또는 base OS/package 변경용. 기존 `vm-disk.img`를 자동 교체하지 않음 |
+
+따라서 “bundle을 만든다”는 것은 보통 작은 runtime artifact를 압축해 묶는다는 뜻입니다. rootfs나 Docker image 갱신이 없는 일반 update bundle은 package build보다 훨씬 가벼워야 합니다.
+
 마이그레이션 실행 파일을 bundle에 포함하려면:
 
 ```sh
@@ -490,7 +552,7 @@ VM_UPDATE_MIGRATIONS="release/migrations/001-example" make vm-update-bundle
 생성물:
 
 ```text
-dist/update-bundles/update-bundle-0.1.0/
+dist/update-bundles/update-bundle-<version>/
   manifest.json
   checksums.txt
   signature
@@ -510,9 +572,9 @@ dist/update-bundles/update-bundle-0.1.0/
 설치된 Mac mini/Mac Studio에서는 Swift runtime lifecycle command가 bundle을 검증하고 적용합니다.
 
 ```sh
-vitalserver-vm runtime verify-bundle /path/to/update-bundle-0.1.0
-sudo vitalserver-vm runtime stage-bundle /path/to/update-bundle-0.1.0
-sudo vitalserver-vm runtime apply-bundle /path/to/update-bundle-0.1.0
+vitalserver-vm runtime verify-bundle /path/to/update-bundle-<version>
+sudo vitalserver-vm runtime stage-bundle /path/to/update-bundle-<version>
+sudo vitalserver-vm runtime apply-bundle /path/to/update-bundle-<version>
 sudo vitalserver-vm runtime rollback
 ```
 

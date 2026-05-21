@@ -14,6 +14,11 @@ PoC와 패키징 과정에서 확인한 문제, 원인, 조치 방법을 모았�
 | cloud-init이 다시 안 돎 | [cloud-init이 bootstrap을 다시 실행하지 않음](#cloud-init이-bootstrap을-다시-실행하지-않음) |
 | nginx `502 Bad Gateway` | [nginx가 `502 Bad Gateway`를 반환](#nginx가-502-bad-gateway를-반환) |
 | watchdog이 `host-proxy-http-502`를 표시 | [watchdog이 host proxy 502를 복구하지 못함](#watchdog이-host-proxy-502를-복구하지-못함) |
+| Redis가 `exec format error`로 재시작됨 | [Redis가 `exec format error`를 출력함](#redis가-exec-format-error를-출력함) |
+| Redis UI가 template fetch 오류를 표시 | [Redis UI가 `failed to fetch html template`을 표시](#redis-ui가-failed-to-fetch-html-template을-표시) |
+| Service health가 302를 Reachable로 표시 | [HTTP 302가 Reachable로 표시됨](#http-302가-reachable로-표시됨) |
+| bundle update가 오래 멈춘 것처럼 보임 | [bundle update가 health wait 또는 rollback에서 오래 멈춤](#bundle-update가-health-wait-또는-rollback에서-오래-멈춤) |
+| Redis가 AOF 오류로 재시작 반복 | [Redis AOF 손상으로 runtime health가 회복되지 않음](#redis-aof-손상으로-runtime-health가-회복되지-않음) |
 | VM IP가 계속 `Waiting` | [설치된 runtime binary에 virtualization entitlement가 없음](#설치된-runtime-binary에-virtualization-entitlement가-없음) |
 | pkg 설치 후 Helper app이 안 보임 | [pkg 설치 후 `/Applications`에 Helper app이 없음](#pkg-설치-후-applications에-manager-app이-없음) |
 | Helper app이 없어 GUI 삭제가 안 됨 | [Helper app 없이 설치물을 제거해야 함](#manager-app-없이-설치물을-제거해야-함) |
@@ -131,11 +136,13 @@ Ubuntu cloud image의 기본 root disk는 Docker, nginx, qemu-user-static, Vital
 
 조치:
 
-`make vm-download`는 VM disk를 기본 `4G`로 확장합니다. 더 크게 만들려면:
+`make vm-download`는 VM disk를 기본 `4G`(4 GiB)로 확장합니다. 더 크게 만들려면:
 
 ```sh
 VM_ROOTFS_SIZE=32G make vm-download
 ```
+
+`VM_ROOTFS_SIZE`의 `G` suffix는 build tool 입력 형식이며 GiB 기준으로 해석합니다. 예를 들어 `32G`는 32 GiB root disk target size입니다.
 
 이미 디스크 부족으로 망가진 PoC runtime은 재생성합니다.
 
@@ -218,11 +225,156 @@ ssh ubuntu@<vm-ip> 'curl -I http://127.0.0.1/'
 numCPUs = os.cpus().length - 6
 ```
 
+### Redis가 `exec format error`를 출력함
+
+증상:
+
+```text
+redis-1 | exec /usr/local/bin/docker-entrypoint.sh: exec format error
+```
+
+원인:
+
+guest VM은 arm64 Ubuntu인데 Docker image bundle이나 compose 설정이 amd64 image를 강제로 사용하면 container entrypoint를 실행하지 못합니다. 이 경우 Redis뿐 아니라 다른 container도 같은 방식으로 실패할 수 있습니다.
+
+조치:
+
+- Docker image bundle은 `linux/arm64`로 생성합니다.
+- Compose에서 특정 service에 `platform: linux/amd64`를 강제하지 않습니다.
+- Redis Commander처럼 운영 UI container도 `latest` 대신 pinned multi-arch image를 사용합니다.
+
+현재 기준:
+
+```text
+docker image platform: linux/arm64
+Redis Commander: ghcr.io/joeferner/redis-commander:0.9.0
+```
+
+이미 잘못된 bundle을 적용했다면 수정된 bundle을 다시 적용하거나 runtime을 재설치한 뒤 health를 확인합니다.
+
+### Redis UI가 `failed to fetch html template`을 표시
+
+증상:
+
+```text
+failed to fetch html template templates/editBranch.ejs
+```
+
+원인:
+
+Redis Commander는 browser에서 `templates/*.ejs` 같은 상대 경로를 가져옵니다. `/redis-ui/` 아래에 붙일 때 nginx가 prefix를 그대로 upstream에 넘기면 Redis Commander의 정적 template 경로와 어긋날 수 있습니다.
+
+조치:
+
+guest edge nginx는 `/redis-ui/` prefix를 제거해서 Redis Commander upstream에는 root path로 보이게 합니다.
+
+```nginx
+location = /redis-ui {
+  return 301 /redis-ui/;
+}
+
+location /redis-ui/ {
+  proxy_pass http://redis-ui:8081/;
+}
+```
+
+Compose에는 `URL_PREFIX=/redis-ui`를 넣지 않습니다. prefix는 edge nginx가 처리하고 Redis Commander는 root app처럼 실행합니다.
+
+### HTTP 302가 Reachable로 표시됨
+
+증상:
+
+Helper app의 Service health에서 VitalServer 또는 Network access가 `HTTP 302`인데도 `Reachable`로 표시됩니다.
+
+원인:
+
+`/` 요청은 로그인 화면 등으로 redirect될 수 있습니다. Redirect 자체는 proxy가 살아 있다는 신호일 수 있지만, 운영 health를 의미하지는 않습니다.
+
+조치:
+
+health check는 `/` 대신 VitalServer readiness endpoint인 `/check`를 사용하고, 성공 상태는 2xx만 인정합니다. 브라우저로 여는 URL은 여전히 `/`를 사용합니다.
+
 worker가 없으면 master process만 살아 있고 HTTP listener가 없어 nginx가 502를 냅니다.
 
 조치:
 
 `VITALSERVER_MIN_CPUS` 기본값을 `8`로 두어 최소 worker 2개가 뜨게 했습니다.
+
+### bundle update가 health wait 또는 rollback에서 오래 멈춤
+
+증상:
+
+Helper app에서 `Apply Bundle`을 실행한 뒤 화면상으로 업데이트가 5분 이상 진행되지 않는 것처럼 보입니다. Log tab에도 최신 진행 상태가 바로 보이지 않거나, command log가 마지막 줄에서 끊긴 것처럼 보일 수 있습니다.
+
+원인:
+
+bundle apply는 아래 순서로 동작합니다.
+
+```text
+verify bundle
+stage bundle
+create managed backup
+stop runtime services
+replace bundle artifacts
+start runtime services
+wait for runtime health
+rollback if health does not recover
+wait for rollback health
+```
+
+runtime health wait는 의도적으로 길게 잡혀 있습니다. VM 부팅, Docker compose 재시작, VitalServer app worker 준비가 모두 끝나야 하기 때문입니다. 다만 health wait 중 내부 서비스가 계속 실패하면, 사용자는 멈춘 것으로 느낄 수 있습니다.
+
+확인:
+
+```sh
+tail -f /private/tmp/tirosh-vitalserver-manager-command.log
+cat "/Library/Application Support/TiroshVitalServer/status/runtime-status.json"
+tail -n 200 "/Library/Application Support/TiroshVitalServer/vm/data/run/container-logs.log"
+```
+
+최신 Helper app은 command log를 Log tab에서 실시간 갱신하고, runtime health wait 중에도 `waiting for runtime health reasons=...` 형태의 진행 로그를 남깁니다. 이전 버전에서 시작한 update/rollback 작업에는 이 개선이 적용되지 않습니다.
+
+조치:
+
+먼저 command log와 container log에서 실제 실패 원인을 확인합니다. update가 이미 rollback 단계에 들어간 경우에는 중간에 강제 종료하면 runtime이 반쯤 교체된 상태로 남을 수 있으므로, 가능한 한 rollback timeout이 끝날 때까지 기다립니다. 반복적으로 health가 회복되지 않으면 새 bundle 또는 재설치로 복구합니다.
+
+Helper app의 Advanced > Recovery operations에는 `Repair Data Store`가 있습니다. 이 작업은 VM 내부에 복구 요청 파일을 만들고, guest systemd path unit이 Redis AOF 검사/복구와 container 재시작을 수행하게 합니다. update 실패 후 Redis 또는 VitalServer health가 회복되지 않을 때 먼저 시도합니다.
+
+### Redis AOF 손상으로 runtime health가 회복되지 않음
+
+증상:
+
+bundle update 이후 VitalServer, Network access, Redis UI, Swagger UI가 502 또는 500을 반환하고, Redis container log에 아래 오류가 반복됩니다.
+
+```text
+Bad file format reading the append only file
+make a backup of your AOF file, then use ./redis-check-aof --fix <filename>
+```
+
+원인:
+
+Redis append-only file이 손상되면 Redis가 기동하지 못하고 재시작을 반복합니다. VitalServer app은 Redis에 의존하므로 Redis가 준비되지 않으면 app readiness도 실패하고, host proxy는 최종적으로 502를 반환합니다.
+
+조치:
+
+최신 guest compose는 Redis container 시작 전에 `redis-check-aof`를 실행합니다. AOF가 깨져 있으면 기존 파일을 `.bak.<timestamp>`로 백업한 뒤 `redis-check-aof --fix`를 수행하고 Redis를 시작합니다.
+
+이미 이전 bundle로 update가 진행 중이라면, 실행 중인 old runtime binary에는 이 복구 로직이 없습니다. 현재 apply/rollback 작업이 끝난 뒤 Redis AOF 복구가 포함된 새 bundle을 다시 적용합니다.
+
+최신 runtime에서는 아래 복구 명령도 사용할 수 있습니다.
+
+```sh
+sudo vitalserver-vm runtime repair-datastore
+```
+
+이 명령은 host에서 `/Library/Application Support/TiroshVitalServer/vm/data/run/repair-datastore.request`를 만들고, VM 내부의 `tirosh-vitalserver-repair-datastore.path`가 이를 감지해 Redis AOF를 검사/복구합니다. 복구 결과는 아래 파일에 기록됩니다.
+
+```text
+/Library/Application Support/TiroshVitalServer/vm/data/run/repair-datastore-result.json
+/Library/Application Support/TiroshVitalServer/vm/data/run/repair-datastore.log
+```
+
+그래도 회복되지 않으면 managed backup rollback을 다시 시도하거나, vital files를 보존한 상태로 runtime을 재설치합니다.
 
 ### watchdog이 host proxy 502를 복구하지 못함
 
@@ -323,7 +475,7 @@ ls "/Applications/VitalServer Helper.app"
 
 ```sh
 pkgutil --files com.tirosh.vitalserver.vm | grep "VitalServer Helper.app"
-pkgutil --payload-files dist/TiroshVitalServerVM-0.1.0.pkg | grep "VitalServer Helper.app"
+pkgutil --payload-files dist/TiroshVitalServerVM-<version>.pkg | grep "VitalServer Helper.app"
 ```
 
 원인:
@@ -410,7 +562,7 @@ vitalserver-app-1   Up ... (health: starting)
 
 원인:
 
-Apple Silicon Linux guest에서 VitalServer는 `linux/amd64` Node 12 image를 qemu-user-static으로 실행합니다. 첫 build/pull 직후에는 시작이 느릴 수 있습니다.
+Apple Silicon Linux guest에서는 container image도 `linux/arm64`로 맞춥니다. 첫 build/pull 직후에는 Docker image load, Redis healthcheck, VitalServer worker boot 때문에 시작이 느릴 수 있습니다.
 
 확인:
 

@@ -1,6 +1,4 @@
 enum Constants {
-    static let launcherVersion = "0.1.0"
-
     enum Product {
         static let identifier = "TiroshVitalServer"
         static let managerAppName = "VitalServer Helper.app"
@@ -95,7 +93,11 @@ enum Constants {
     enum Runtime {
         static let vmIPFile = "vm-ip"
         static let runtimeStateFile = "runtime-state.json"
+        static let datastoreRepairRequestFile = "repair-datastore.request"
+        static let datastoreRepairResultFile = "repair-datastore-result.json"
+        static let datastoreRepairLogFile = "repair-datastore.log"
         static let waitTimeoutSeconds = 600.0
+        static let datastoreRepairWaitTimeoutSeconds = 300.0
         static let watchdogRecoveryWaitSeconds = 20.0
         static let freeSpaceMarginBytes: UInt64 = 4 * 1024 * 1024 * 1024
         static let updateFreeSpaceMarginBytes: UInt64 = 2 * 1024 * 1024 * 1024
@@ -105,7 +107,7 @@ enum Constants {
         static let stagedBundleKeepCount = 3
 
         static func proxyHealthURL(port: Int) -> String {
-            "http://127.0.0.1:\(port)/"
+            "http://127.0.0.1:\(port)/check"
         }
 
         static func redisUIHealthURL(port: Int) -> String {

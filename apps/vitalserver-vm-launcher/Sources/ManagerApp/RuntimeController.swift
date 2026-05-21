@@ -9,7 +9,7 @@ final class RuntimeController: ObservableObject {
     @Published var selectedBundleSummary = ""
     @Published var selectedBundleVerification = ""
     @Published var selectedBundleVerified = false
-    @Published var backups = RuntimeBackup.loadAll()
+    @Published var backups: [RuntimeBackup] = []
     @Published var selectedBackupPath = ""
     @Published var message = AppConstants.StatusText.ready
     @Published var logText = AppConstants.StatusText.ready
@@ -34,6 +34,10 @@ final class RuntimeController: ObservableObject {
 
     init() {
         healthNotifications.configure()
+    }
+
+    var selectedBackup: RuntimeBackup? {
+        backups.first { $0.path == selectedBackupPath }
     }
 
     var selectedBundleConfirmation: String {
@@ -61,13 +65,7 @@ final class RuntimeController: ObservableObject {
     func refresh() async {
         settings = RuntimeSettings.load()
         status = withDataStorageUsage(RuntimeStatus.load(paths: runtime))
-        backups = RuntimeBackup.loadAll()
-        let backupPaths = Set(backups.map(\.path))
-        if let latest = backups.first, (selectedBackupPath.isEmpty || !backupPaths.contains(selectedBackupPath)) {
-            selectedBackupPath = latest.path
-        } else if backups.isEmpty {
-            selectedBackupPath = ""
-        }
+        refreshBackupList()
         if let displayMessage = status.displayMessage {
             message = displayMessage
         }
@@ -219,13 +217,18 @@ final class RuntimeController: ObservableObject {
                 selectedBundlePath,
             ]
         )
-        _ = await runPrivileged(
+        let didApply = await runPrivileged(
             shellCommand: command,
-            preparingMessage: "Preparing update bundle...",
+            preparingMessage: AppConstants.StatusText.updateBundlePreparing,
             waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
-            runningMessage: "Applying update bundle...",
+            runningMessage: AppConstants.StatusText.updateBundleApplying,
             successMessage: AppConstants.StatusText.updateBundleApplied
         )
+        if didApply {
+            message = AppConstants.StatusText.updateBundleAppliedRelaunching
+            relaunchHelper()
+            return
+        }
         await refreshHealthStatus()
     }
 
@@ -273,6 +276,10 @@ final class RuntimeController: ObservableObject {
     }
 
     func rollbackRuntime() async {
+        guard !selectedBackupPath.isEmpty else {
+            message = AppConstants.StatusText.missingBackup
+            return
+        }
         guard FileManager.default.isExecutableFile(atPath: runtime.launcher) else {
             message = AppConstants.StatusText.missingLauncher
             return
@@ -286,13 +293,39 @@ final class RuntimeController: ObservableObject {
         )
         _ = await runPrivileged(
             shellCommand: command,
-            preparingMessage: "Preparing rollback...",
+            preparingMessage: AppConstants.StatusText.rollbackPreparing,
             waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
-            runningMessage: "Rolling back runtime...",
+            runningMessage: AppConstants.StatusText.rollbackRunning,
             successMessage: AppConstants.StatusText.rollbackCompleted
         )
         await refresh()
         await refreshHealthStatus()
+    }
+
+    func deleteSelectedBackup() async {
+        guard !selectedBackupPath.isEmpty else {
+            message = AppConstants.StatusText.missingBackup
+            return
+        }
+        guard isManagedBackupPath(selectedBackupPath) else {
+            message = AppConstants.StatusText.invalidBackup
+            return
+        }
+        let command = shellCommand(
+            executable: AppConstants.Commands.rm,
+            arguments: ["-rf", "--", selectedBackupPath]
+        )
+        let didDelete = await runPrivileged(
+            shellCommand: command,
+            preparingMessage: AppConstants.StatusText.backupDeletePreparing,
+            waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
+            runningMessage: AppConstants.StatusText.backupDeleteRunning,
+            successMessage: AppConstants.StatusText.backupDeleted
+        )
+        if didDelete {
+            selectedBackupPath = ""
+            await refresh()
+        }
     }
 
     func repairProxyPort() async {
@@ -304,6 +337,28 @@ final class RuntimeController: ObservableObject {
             waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
             runningMessage: AppConstants.StatusText.proxyRepairRunning,
             successMessage: AppConstants.StatusText.proxyRepairCompleted
+        )
+        await refreshHealthStatus()
+    }
+
+    func repairDatastore() async {
+        guard FileManager.default.isExecutableFile(atPath: runtime.launcher) else {
+            message = AppConstants.StatusText.missingLauncher
+            return
+        }
+        let command = shellCommand(
+            executable: runtime.launcher,
+            arguments: [
+                AppConstants.RuntimeCommand.runtime,
+                AppConstants.RuntimeCommand.repairDatastore,
+            ]
+        )
+        _ = await runPrivileged(
+            shellCommand: command,
+            preparingMessage: AppConstants.StatusText.datastoreRepairPreparing,
+            waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
+            runningMessage: AppConstants.StatusText.datastoreRepairRunning,
+            successMessage: AppConstants.StatusText.datastoreRepairCompleted
         )
         await refreshHealthStatus()
     }
@@ -379,11 +434,29 @@ final class RuntimeController: ObservableObject {
         openRuntimeURL(AppConstants.Product.swaggerURL(proxyPort: status.proxyPort))
     }
 
+    func openTiroshWebsite() {
+        openRuntimeURL(AppConstants.Product.tiroshURL)
+    }
+
     private func openRuntimeURL(_ rawURL: String) {
         guard let url = URL(string: rawURL) else {
             return
         }
         NSWorkspace.shared.open(url)
+    }
+
+    private func relaunchHelper() {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: AppConstants.Commands.shell)
+        process.arguments = [
+            "-c",
+            [
+                shellCommand(executable: AppConstants.Commands.sleep, arguments: ["1"]),
+                shellCommand(executable: AppConstants.Commands.open, arguments: ["-n", AppConstants.Paths.managerApp]),
+            ].joined(separator: " && "),
+        ]
+        try? process.run()
+        NSApplication.shared.terminate(nil)
     }
 
     private func validateSettings() -> Bool {
@@ -436,6 +509,25 @@ final class RuntimeController: ObservableObject {
         !value.contains("\n") && !value.contains("\r")
     }
 
+    private func refreshBackupList() {
+        backups = RuntimeBackup.loadAll(latestBackupPath: status.latestBackup)
+        let backupPaths = Set(backups.map(\.path))
+        if let latest = backups.first, selectedBackupPath.isEmpty || !backupPaths.contains(selectedBackupPath) {
+            selectedBackupPath = latest.path
+        } else if backups.isEmpty {
+            selectedBackupPath = ""
+        }
+    }
+
+    private func isManagedBackupPath(_ path: String) -> Bool {
+        let backupURL = URL(fileURLWithPath: path).standardizedFileURL
+        let backupsURL = URL(fileURLWithPath: AppConstants.Paths.backups).standardizedFileURL
+        guard backupURL.lastPathComponent.contains("-before-") else {
+            return false
+        }
+        return backupURL.path.hasPrefix(backupsURL.path + "/")
+    }
+
     private func runPrivileged(
         shellCommand: String,
         preparingMessage: String,
@@ -452,7 +544,20 @@ final class RuntimeController: ObservableObject {
 
         let loggedCommand = commandWithLog(shellCommand)
         let script = #"do shell script "\#(appleScriptEscaped(loggedCommand))" with administrator privileges"#
+        selectedLogSource = LogSourceID.command.rawValue
+        refreshLogs()
         message = runningMessage
+        let logRefreshTask = Task { @MainActor in
+            while !Task.isCancelled {
+                refreshLogsIfLive()
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+            }
+        }
+        defer {
+            logRefreshTask.cancel()
+            refreshLogsIfLive()
+        }
+
         let result = await ProcessRunner.run(AppConstants.Commands.osascript, arguments: ["-e", script])
         if result.exitCode == 0 {
             message = messageWithLog(title: successMessage, result: result)
@@ -491,7 +596,7 @@ final class RuntimeController: ObservableObject {
     private func httpStatus(url: String) async -> String {
         let result = await ProcessRunner.run(
             AppConstants.Commands.curl,
-            arguments: ["-sS", "-I", "-o", "/dev/null", "-w", "%{http_code}", "--max-time", "5", url]
+            arguments: ["-sS", "-L", "-o", "/dev/null", "-w", "%{http_code}", "--max-time", "5", url]
         )
         let code = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
         return result.exitCode == 0 ? code : AppConstants.StatusText.failed

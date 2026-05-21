@@ -26,12 +26,12 @@ share_mount = "/mnt/tirosh"
 bootstrap_script = "/mnt/tirosh/deploy/bootstrap.sh"
 
 [docker_images]
-platform = "linux/amd64"
+platform = "linux/arm64"
 bundle_path = ".tmp/vitalserver-vm-pkg/docker-images/vitalserver-images.tar.gz"
 images = [
   "vitalserver:2.3.4",
   "redis:3.2.12-alpine",
-  "rediscommander/redis-commander:latest",
+  "ghcr.io/joeferner/redis-commander:0.9.0",
   "swaggerapi/swagger-ui:v5.17.14",
   "nginx:1.24-alpine",
 ]

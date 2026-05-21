@@ -140,18 +140,22 @@ install_guest_runtime_files() {
   install -m 0755 "${DEPLOY_DIR}/bin/tirosh-vitalserver-diagnostics" /usr/local/bin/tirosh-vitalserver-diagnostics
   install -m 0755 "${DEPLOY_DIR}/bin/tirosh-vitalserver-container-logs" /usr/local/bin/tirosh-vitalserver-container-logs
   install -m 0755 "${DEPLOY_DIR}/bin/tirosh-vitalserver-redis-backup" /usr/local/bin/tirosh-vitalserver-redis-backup
+  install -m 0755 "${DEPLOY_DIR}/bin/tirosh-vitalserver-repair-datastore" /usr/local/bin/tirosh-vitalserver-repair-datastore
 
   install -m 0644 "${DEPLOY_DIR}/systemd/tirosh-runtime-state.service" /etc/systemd/system/tirosh-runtime-state.service
   install -m 0644 "${DEPLOY_DIR}/systemd/tirosh-vitalserver-compose.service" /etc/systemd/system/tirosh-vitalserver-compose.service
   install -m 0644 "${DEPLOY_DIR}/systemd/tirosh-vitalserver-container-logs.service" /etc/systemd/system/tirosh-vitalserver-container-logs.service
   install -m 0644 "${DEPLOY_DIR}/systemd/tirosh-vitalserver-redis-backup.service" /etc/systemd/system/tirosh-vitalserver-redis-backup.service
   install -m 0644 "${DEPLOY_DIR}/systemd/tirosh-vitalserver-redis-backup.timer" /etc/systemd/system/tirosh-vitalserver-redis-backup.timer
+  install -m 0644 "${DEPLOY_DIR}/systemd/tirosh-vitalserver-repair-datastore.service" /etc/systemd/system/tirosh-vitalserver-repair-datastore.service
+  install -m 0644 "${DEPLOY_DIR}/systemd/tirosh-vitalserver-repair-datastore.path" /etc/systemd/system/tirosh-vitalserver-repair-datastore.path
 
   systemctl daemon-reload
   systemctl enable tirosh-runtime-state.service
   systemctl enable tirosh-vitalserver-compose.service
   systemctl enable --now tirosh-vitalserver-container-logs.service
   systemctl enable --now tirosh-vitalserver-redis-backup.timer
+  systemctl enable --now tirosh-vitalserver-repair-datastore.path
 }
 
 load_bundled_docker_images() {
@@ -181,15 +185,15 @@ cleanup_docker_cache() {
 wait_for_vitalserver_edge() {
   local deadline code http_status
 
-  printf "Waiting for VitalServer edge: http://127.0.0.1/\n"
+  printf "Waiting for VitalServer edge: http://127.0.0.1/check\n"
   deadline=$(( "$(date +%s)" + 600 ))
 
   while [ "$(date +%s)" -lt "${deadline}" ]; do
-    code="$(curl -sS -I -o /dev/null -w '%{http_code}' --max-time 5 "http://127.0.0.1/" 2>/dev/null)" \
+    code="$(curl -sS -L -o /dev/null -w '%{http_code}' --max-time 5 "http://127.0.0.1/check" 2>/dev/null)" \
       && http_status=0 \
       || http_status=$?
 
-    if [ "${http_status}" -eq 0 ] && [ "${code}" -ge 200 ] && [ "${code}" -lt 400 ]; then
+    if [ "${http_status}" -eq 0 ] && [ "${code}" -ge 200 ] && [ "${code}" -lt 300 ]; then
       printf "VitalServer edge is ready: %s\n" "${code}"
       write_runtime_state
       return
@@ -232,16 +236,15 @@ mkdir -p "${VITAL_FILES_MOUNT_POINT}" "${MOUNT_POINT}/vr-release"
 load_bundled_docker_images
 cleanup_docker_cache
 
-compose_build_args=()
 if ! docker image inspect vitalserver:2.3.4 >/dev/null 2>&1; then
-  compose_build_args+=(--build)
+  docker compose \
+    --project-name vitalserver \
+    -f "${DEPLOY_DIR}/compose.yaml" \
+    build app
 fi
 
 eval "$(/usr/local/bin/tirosh-runtime-env "${DEPLOY_DIR}/runtime-config.json")"
-docker compose \
-  --project-name vitalserver \
-  -f "${DEPLOY_DIR}/compose.yaml" \
-  up -d "${compose_build_args[@]}"
+/usr/local/bin/tirosh-vitalserver-compose up
 
 wait_for_vitalserver_edge
 systemctl restart tirosh-runtime-state.service

@@ -205,7 +205,7 @@ Single-node self-healing runtime
   "updatedAt": "2026-05-21T00:00:00Z",
   "productRoot": "/Library/Application Support/TiroshVitalServer",
   "runtimeHome": "/Library/Application Support/TiroshVitalServer/vm",
-  "runtimeVersion": "0.1.0",
+  "runtimeVersion": "<version>",
   "vmService": "loaded",
   "proxyService": "loaded",
   "watchdogService": "loaded",

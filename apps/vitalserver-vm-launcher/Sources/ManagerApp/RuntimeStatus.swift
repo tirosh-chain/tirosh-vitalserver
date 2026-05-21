@@ -135,7 +135,7 @@ struct RuntimeStatus {
         guard let value, let code = Int(value) else {
             return false
         }
-        return code >= 200 && code < 400
+        return code >= 200 && code < 300
     }
 }
 

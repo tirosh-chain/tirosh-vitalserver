@@ -60,6 +60,20 @@ struct RuntimeLifecycle {
             .appendingPathComponent(Constants.Runtime.runtimeStateFile)
     }
 
+    private var guestRunDirectory: URL {
+        paths.home
+            .appendingPathComponent(Constants.Paths.dataDirectory)
+            .appendingPathComponent(Constants.Paths.runDirectory)
+    }
+
+    private var datastoreRepairRequest: URL {
+        guestRunDirectory.appendingPathComponent(Constants.Runtime.datastoreRepairRequestFile)
+    }
+
+    private var datastoreRepairResult: URL {
+        guestRunDirectory.appendingPathComponent(Constants.Runtime.datastoreRepairResultFile)
+    }
+
     func run(arguments: [String]) throws {
         guard let command = arguments.first else {
             printUsage()
@@ -95,6 +109,8 @@ struct RuntimeLifecycle {
         case "rollback":
             let backupPath = arguments.dropFirst().first
             try rollback(backupPath.map { URL(fileURLWithPath: $0) })
+        case "repair-datastore":
+            try repairDatastore()
         case "-h", "--help", "help":
             printUsage()
         default:
@@ -116,6 +132,7 @@ struct RuntimeLifecycle {
               vitalserver-vm runtime stage-bundle <bundle-dir>
               vitalserver-vm runtime apply-bundle <bundle-dir>
               vitalserver-vm runtime rollback [backup-dir]
+              vitalserver-vm runtime repair-datastore
             """
         )
     }
@@ -641,6 +658,7 @@ struct RuntimeLifecycle {
     }
 
     func verifyBundle(_ bundleURL: URL) throws {
+        log("bundle verification started path=\(bundleURL.path)")
         let manifestURL = bundleURL.appendingPathComponent(Constants.Bundle.manifest)
         let checksumsURL = bundleURL.appendingPathComponent(Constants.Bundle.checksums)
         let signatureURL = bundleURL.appendingPathComponent(Constants.Bundle.signature)
@@ -661,6 +679,9 @@ struct RuntimeLifecycle {
         guard manifest.product == Constants.Product.identifier else {
             throw LauncherError.missingArgument("unsupported bundle product: \(manifest.product)")
         }
+        log(
+            "bundle manifest loaded version=\(manifest.version) runtimeVersion=\(manifest.runtimeVersion) artifacts=\(manifest.artifacts.count) migrations=\(manifest.migrations.count)"
+        )
 
         let checksumMap = try loadChecksums(checksumsURL)
         for artifact in manifest.artifacts {
@@ -672,6 +693,9 @@ struct RuntimeLifecycle {
                 throw LauncherError.missingFile(artifactURL.path)
             }
 
+            log(
+                "verifying artifact type=\(artifact.type) name=\(artifact.name) size=\(formatBytes(bundleItemSize(artifact.size)))"
+            )
             try verifyDigestedFile(
                 artifactURL,
                 checksumKey: artifact.name,
@@ -692,6 +716,7 @@ struct RuntimeLifecycle {
                 throw LauncherError.missingFile(migrationURL.path)
             }
 
+            log("verifying migration name=\(migration.name) size=\(formatBytes(bundleItemSize(migration.size)))")
             try verifyDigestedFile(
                 migrationURL,
                 checksumKey: checksumKey,
@@ -701,25 +726,33 @@ struct RuntimeLifecycle {
             )
         }
 
+        log("bundle verification completed path=\(bundleURL.path)")
         print("bundle verified: \(bundleURL.path)")
     }
 
     @discardableResult
     func stageBundle(_ bundleURL: URL) throws -> URL {
+        log("bundle stage started source=\(bundleURL.path)")
         try verifyBundle(bundleURL)
         let manifest = try loadManifest(bundleURL.appendingPathComponent(Constants.Bundle.manifest))
         let destination = bundlesDirectory.appendingPathComponent("update-bundle-\(manifest.version)")
+        let bundleSize = try directorySize(bundleURL)
 
         try FileManager.default.createDirectory(at: bundlesDirectory, withIntermediateDirectories: true)
         if FileManager.default.fileExists(atPath: destination.path) {
+            log("removing existing staged bundle path=\(destination.path)")
             try FileManager.default.removeItem(at: destination)
         }
         try requireFreeSpace(
             at: bundlesDirectory,
-            minimumBytes: (try directorySize(bundleURL)) + Constants.Runtime.updateFreeSpaceMarginBytes,
+            minimumBytes: bundleSize + Constants.Runtime.updateFreeSpaceMarginBytes,
             operation: "stage-bundle"
         )
+        log(
+            "copying bundle to managed storage source=\(bundleURL.path) destination=\(destination.path) size=\(formatBytes(bundleSize))"
+        )
         try FileManager.default.copyItem(at: bundleURL, to: destination)
+        log("bundle stage completed destination=\(destination.path)")
         print("bundle staged: \(destination.path)")
         return destination
     }
@@ -729,6 +762,11 @@ struct RuntimeLifecycle {
         try? FileManager.default.createDirectory(at: logsDirectory, withIntermediateDirectories: true)
         try? rotateRuntimeLogs()
         try writeRuntimeStatus(.updating, operation: "apply-bundle", message: "bundle apply started")
+
+        let initialHealth = runtimeHealthSnapshot()
+        if !initialHealth.isHealthy {
+            log("bundle apply preflight warning runtime unhealthy reasons=\(initialHealth.failureReasons.joined(separator: ", "))")
+        }
 
         let stagedBundle: URL
         let manifest: UpdateBundleManifest
@@ -741,12 +779,18 @@ struct RuntimeLifecycle {
         do {
             stagedBundle = try stageBundle(bundleURL)
             manifest = try loadManifest(stagedBundle.appendingPathComponent(Constants.Bundle.manifest))
+            log(
+                "bundle apply manifest version=\(manifest.version) runtimeVersion=\(manifest.runtimeVersion) artifacts=\(manifest.artifacts.count) migrations=\(manifest.migrations.count)"
+            )
             stagedRootfs = stagedBundle.appendingPathComponent(Constants.Artifacts.rootfsBase)
             guard fileExists(stagedRootfs) else {
                 throw LauncherError.missingFile(stagedRootfs.path)
             }
 
             try FileManager.default.createDirectory(at: backupsDirectory, withIntermediateDirectories: true)
+            log(
+                "bundle apply storage preflight installedRootfs=\(formatBytes(try fileSize(rootfsBase))) incomingRootfs=\(formatBytes(try fileSize(stagedRootfs)))"
+            )
             try requireFreeSpace(
                 at: backupsDirectory,
                 minimumBytes: (try fileSize(rootfsBase)) + (try fileSize(stagedRootfs)) + Constants.Runtime.updateFreeSpaceMarginBytes,
@@ -756,8 +800,12 @@ struct RuntimeLifecycle {
             restartVM = isLaunchdLoaded(Constants.Launchd.vmService)
             restartProxy = isLaunchdLoaded(Constants.Launchd.proxyService)
             restartWatchdog = isLaunchdLoaded(Constants.Launchd.watchdogService)
+            log(
+                "runtime services before update vm=\(restartVM ? "loaded" : "not-loaded") proxy=\(restartProxy ? "loaded" : "not-loaded") watchdog=\(restartWatchdog ? "loaded" : "not-loaded")"
+            )
+            log("creating managed backup reason=before-\(manifest.version)")
             backup = try createBackup(reason: "before-\(manifest.version)")
-            log("backup created path=\(backup.path)")
+            log("backup created path=\(backup.path) size=\(formatBytes(try directorySize(backup)))")
         } catch {
             try? writeRuntimeStatus(.critical, operation: "apply-bundle", message: "bundle apply preflight failed: \(error)")
             throw error
@@ -772,7 +820,11 @@ struct RuntimeLifecycle {
                     at: rootfsBase.deletingLastPathComponent(),
                     withIntermediateDirectories: true
                 )
+                log(
+                    "replacing rootfs-base source=\(stagedRootfs.path) destination=\(rootfsBase.path) size=\(formatBytes(try fileSize(stagedRootfs)))"
+                )
                 try replaceFile(from: stagedRootfs, to: rootfsBase)
+                log("rootfs-base replaced destination=\(rootfsBase.path)")
             }
             try runStep("replace-update-artifacts") {
                 try replaceUpdateArtifacts(manifest.artifacts, stagedBundle: stagedBundle)
@@ -808,6 +860,33 @@ struct RuntimeLifecycle {
         try pruneOldRuntimeArtifacts()
         log("bundle applied path=\(stagedBundle.path)")
         log("mutable VM disk preserved path=\(vmDisk.path)")
+    }
+
+    func repairDatastore() throws {
+        log("datastore repair requested")
+        try FileManager.default.createDirectory(at: guestRunDirectory, withIntermediateDirectories: true)
+        try? FileManager.default.removeItem(at: datastoreRepairResult)
+        try writeRuntimeStatus(.recovering, operation: "repair-datastore", message: "datastore repair requested")
+
+        let request = [
+            "requestedAt": isoTimestamp(),
+            "operation": "repair-datastore",
+        ]
+        let requestData = try JSONSerialization.data(withJSONObject: request, options: [.prettyPrinted, .sortedKeys])
+        try requestData.write(to: datastoreRepairRequest)
+
+        if !isLaunchdLoaded(Constants.Launchd.vmService) {
+            startLaunchdService(Constants.Launchd.vmService)
+        } else {
+            restartLaunchdService(Constants.Launchd.vmService)
+        }
+
+        try waitForDatastoreRepairResult()
+        restartLaunchdService(Constants.Launchd.proxyService)
+        restartLaunchdService(Constants.Launchd.watchdogService)
+        try waitForHealth(restartVM: true, restartProxy: true, restartWatchdog: true)
+        try writeRuntimeStatus(.healthy, operation: "repair-datastore", message: "datastore repair completed")
+        log("datastore repair completed")
     }
 
     func rollback(_ requestedBackup: URL?) throws {
@@ -899,6 +978,9 @@ struct RuntimeLifecycle {
         expectedSize: Int,
         checksumMap: [String: String]
     ) throws {
+        log(
+            "checksum started key=\(checksumKey) path=\(url.path) expectedSize=\(formatBytes(bundleItemSize(expectedSize)))"
+        )
         let actualDigest = try sha256(url)
         guard actualDigest == expectedSHA256 else {
             throw LauncherError.bundleVerificationFailed(
@@ -915,6 +997,7 @@ struct RuntimeLifecycle {
         guard size == expectedSize else {
             throw LauncherError.bundleVerificationFailed("size mismatch for \(checksumKey)")
         }
+        log("checksum completed key=\(checksumKey) actualSize=\(formatBytes(bundleItemSize(size)))")
     }
 
     private func isSafeBundleName(_ name: String) -> Bool {
@@ -946,6 +1029,9 @@ struct RuntimeLifecycle {
     private func replaceUpdateArtifacts(_ artifacts: [UpdateBundleArtifact], stagedBundle: URL) throws {
         for artifact in artifacts where artifact.type != "rootfs-base" {
             let source = stagedBundle.appendingPathComponent(artifact.name)
+            log(
+                "artifact replacement started type=\(artifact.type) name=\(artifact.name) source=\(source.path) size=\(formatBytes(bundleItemSize(artifact.size)))"
+            )
             try validateUpdateArtifactPayload(artifact, source: source)
             switch artifact.type {
             case "app-bundle":
@@ -967,6 +1053,7 @@ struct RuntimeLifecycle {
             default:
                 throw LauncherError.bundleVerificationFailed("unsupported artifact type: \(artifact.type)")
             }
+            log("artifact replacement completed type=\(artifact.type) name=\(artifact.name)")
         }
     }
 
@@ -997,6 +1084,9 @@ struct RuntimeLifecycle {
     private func replaceTarGz(_ source: URL, destination: URL) throws {
         let parent = destination.deletingLastPathComponent()
         let temporary = parent.appendingPathComponent(".\(destination.lastPathComponent).update")
+        log(
+            "archive replacement started source=\(source.path) destination=\(destination.path) temporary=\(temporary.path) size=\(formatBytes(try fileSize(source)))"
+        )
         if FileManager.default.fileExists(atPath: temporary.path) {
             try FileManager.default.removeItem(at: temporary)
         }
@@ -1006,11 +1096,16 @@ struct RuntimeLifecycle {
             try FileManager.default.removeItem(at: destination)
         }
         try FileManager.default.moveItem(at: temporary, to: destination)
+        log("archive replacement completed destination=\(destination.path)")
     }
 
     private func extractTarGz(_ source: URL, destination: URL) throws {
+        log(
+            "archive extraction started source=\(source.path) destination=\(destination.path) size=\(formatBytes(try fileSize(source)))"
+        )
         try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
         try runRequired(Constants.Commands.tar, arguments: ["-xzf", source.path, "-C", destination.path])
+        log("archive extraction completed destination=\(destination.path)")
     }
 
     private func validateTarGz(
@@ -1082,12 +1177,14 @@ struct RuntimeLifecycle {
         try FileManager.default.createDirectory(at: backup, withIntermediateDirectories: true)
 
         if fileExists(rootfsBase) {
+            log("backup rootfs-base source=\(rootfsBase.path)")
             try FileManager.default.copyItem(
                 at: rootfsBase,
                 to: backup.appendingPathComponent(Constants.Artifacts.rootfsBase)
             )
         }
         if fileExists(runtimeVersion) {
+            log("backup runtime-version source=\(runtimeVersion.path)")
             try FileManager.default.copyItem(
                 at: runtimeVersion,
                 to: backup.appendingPathComponent(Constants.Artifacts.runtimeVersion)
@@ -1222,6 +1319,9 @@ struct RuntimeLifecycle {
         )
         let temporary = destination.deletingLastPathComponent()
             .appendingPathComponent(".\(destination.lastPathComponent).tmp")
+        log(
+            "file replacement started source=\(source.path) destination=\(destination.path) temporary=\(temporary.path) size=\(formatBytes(try fileSize(source)))"
+        )
         if FileManager.default.fileExists(atPath: temporary.path) {
             try FileManager.default.removeItem(at: temporary)
         }
@@ -1230,6 +1330,7 @@ struct RuntimeLifecycle {
             try FileManager.default.removeItem(at: destination)
         }
         try FileManager.default.moveItem(at: temporary, to: destination)
+        log("file replacement completed destination=\(destination.path)")
     }
 
     private func writeRuntimeVersion(version: String, bundle: URL) throws {
@@ -1324,29 +1425,96 @@ struct RuntimeLifecycle {
         }
 
         let deadline = Date().addingTimeInterval(Constants.Runtime.waitTimeoutSeconds)
+        var lastProgressLog = Date.distantPast
         log("waiting for runtime health timeoutSeconds=\(Constants.Runtime.waitTimeoutSeconds)")
         while Date() < deadline {
             if restartVM, !isLaunchdLoaded(Constants.Launchd.vmService) {
+                logHealthWaitProgressIfNeeded(
+                    reasons: ["vm-service-not-loaded"],
+                    operation: "wait-runtime-health",
+                    lastProgressLog: &lastProgressLog
+                )
                 Thread.sleep(forTimeInterval: 3)
                 continue
             }
             if restartProxy, !isLaunchdLoaded(Constants.Launchd.proxyService) {
+                logHealthWaitProgressIfNeeded(
+                    reasons: ["proxy-service-not-loaded"],
+                    operation: "wait-runtime-health",
+                    lastProgressLog: &lastProgressLog
+                )
                 Thread.sleep(forTimeInterval: 3)
                 continue
             }
             if restartWatchdog, !isLaunchdLoaded(Constants.Launchd.watchdogService) {
+                logHealthWaitProgressIfNeeded(
+                    reasons: ["watchdog-service-not-loaded"],
+                    operation: "wait-runtime-health",
+                    lastProgressLog: &lastProgressLog
+                )
                 Thread.sleep(forTimeInterval: 3)
                 continue
             }
 
-            let proxyStatus = httpStatus(Constants.Runtime.proxyHealthURL(port: installedProxyPort()))
-            if isSuccessfulHTTPStatus(proxyStatus) {
-                log("runtime health ok hostProxyHTTP=\(proxyStatus)")
+            let snapshot = runtimeHealthSnapshot()
+            if snapshot.isHealthy {
+                log("runtime health ok hostProxyHTTP=\(snapshot.hostProxyHTTP)")
                 return
+            }
+            logHealthWaitProgressIfNeeded(
+                reasons: snapshot.failureReasons,
+                operation: "wait-runtime-health",
+                lastProgressLog: &lastProgressLog
+            )
+            Thread.sleep(forTimeInterval: 3)
+        }
+        throw LauncherError.runtimeHealthFailed
+    }
+
+    private func waitForDatastoreRepairResult() throws {
+        let deadline = Date().addingTimeInterval(Constants.Runtime.datastoreRepairWaitTimeoutSeconds)
+        var lastProgressLog = Date.distantPast
+        log("waiting for datastore repair result timeoutSeconds=\(Constants.Runtime.datastoreRepairWaitTimeoutSeconds)")
+        while Date() < deadline {
+            if let result = try? String(contentsOf: datastoreRepairResult, encoding: .utf8) {
+                if result.contains(#""status" : "completed""#) || result.contains(#""status":"completed""#) {
+                    log("datastore repair guest result completed")
+                    return
+                }
+                if result.contains(#""status" : "failed""#) || result.contains(#""status":"failed""#) {
+                    throw LauncherError.runtimeHealthFailed
+                }
+            }
+            if Date().timeIntervalSince(lastProgressLog) >= 15 {
+                lastProgressLog = Date()
+                log("waiting for datastore repair guest worker")
+                try? writeRuntimeStatus(
+                    .recovering,
+                    operation: "repair-datastore",
+                    message: "waiting for datastore repair guest worker"
+                )
             }
             Thread.sleep(forTimeInterval: 3)
         }
         throw LauncherError.runtimeHealthFailed
+    }
+
+    private func logHealthWaitProgressIfNeeded(
+        reasons: [String],
+        operation: String,
+        lastProgressLog: inout Date
+    ) {
+        guard Date().timeIntervalSince(lastProgressLog) >= 15 else {
+            return
+        }
+        lastProgressLog = Date()
+        let reasonText = reasons.isEmpty ? "unknown" : reasons.joined(separator: ", ")
+        log("waiting for runtime health reasons=\(reasonText)")
+        try? writeRuntimeStatus(
+            .recovering,
+            operation: operation,
+            message: "waiting for runtime health: \(reasonText)"
+        )
     }
 
     private func rotateRuntimeLogs() throws {
@@ -1430,7 +1598,7 @@ struct RuntimeLifecycle {
             return
         }
         try runRequired(Constants.Commands.truncate, arguments: ["-s", "\(diskGiB)G", vmDisk.path])
-        log("resized vm disk path=\(vmDisk.path) from=\(currentGiB)G to=\(diskGiB)G")
+        log("resized vm disk path=\(vmDisk.path) from=\(currentGiB) GiB to=\(diskGiB) GiB")
     }
 
     private func directorySize(_ url: URL) throws -> UInt64 {
@@ -1454,7 +1622,15 @@ struct RuntimeLifecycle {
 
     private func formatBytes(_ bytes: UInt64) -> String {
         let gib = Double(bytes) / 1_073_741_824
-        return String(format: "%.1fGiB", gib)
+        if gib >= 1 {
+            return String(format: "%.1f GiB", gib)
+        }
+        let mib = Double(bytes) / 1_048_576
+        return String(format: "%.1f MiB", max(mib, 0))
+    }
+
+    private func bundleItemSize(_ bytes: Int) -> UInt64 {
+        UInt64(max(bytes, 0))
     }
 
     private func isoTimestamp() -> String {
@@ -1713,7 +1889,7 @@ struct RuntimeLifecycle {
     private func httpStatus(_ url: String) -> String {
         let result = runProcess(
             Constants.Commands.curl,
-            arguments: ["-sS", "-I", "-o", "/dev/null", "-w", "%{http_code}", "--max-time", "5", url]
+            arguments: ["-sS", "-L", "-o", "/dev/null", "-w", "%{http_code}", "--max-time", "5", url]
         )
         let code = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
         return result.exitCode == 0 ? code : "failed"
@@ -1853,7 +2029,7 @@ struct RuntimeLifecycle {
         guard let code = Int(value) else {
             return false
         }
-        return code >= 200 && code < 400
+        return code >= 200 && code < 300
     }
 
     private func isLineSafe(_ value: String) -> Bool {

@@ -5,7 +5,9 @@ struct ContentView: View {
     @EnvironmentObject private var controller: RuntimeController
     @State private var showingUpdateConfirmation = false
     @State private var showingRollbackConfirmation = false
+    @State private var showingDeleteBackupConfirmation = false
     @State private var showingRepairProxyConfirmation = false
+    @State private var showingRepairDatastoreConfirmation = false
     @State private var showingUninstallConfirmation = false
     @State private var showingCleanUninstallConfirmation = false
     @State private var showingApplySettingsConfirmation = false
@@ -27,6 +29,10 @@ struct ContentView: View {
                     updatePanel
                 case .advanced:
                     advancedPanel
+                case .info:
+                    infoPanel
+                case .dangerZone:
+                    dangerZonePanel
                 case .log:
                     logPanel
                 }
@@ -59,6 +65,17 @@ struct ContentView: View {
         } message: {
             Text(controller.selectedBackupPath.isEmpty ? AppConstants.StatusText.latestBackupFallback : controller.selectedBackupPath)
         }
+        .alert(AppConstants.Actions.deleteBackup, isPresented: $showingDeleteBackupConfirmation) {
+            Button(AppConstants.Actions.cancel, role: .cancel) {}
+            Button(AppConstants.Actions.deleteBackup, role: .destructive) {
+                Task { await controller.deleteSelectedBackup() }
+            }
+        } message: {
+            Text([
+                AppConstants.StatusText.deleteBackupConfirmation,
+                controller.selectedBackupPath,
+            ].filter { !$0.isEmpty }.joined(separator: "\n\n"))
+        }
         .alert(AppConstants.Actions.repairProxyPort, isPresented: $showingRepairProxyConfirmation) {
             Button(AppConstants.Actions.cancel, role: .cancel) {}
             Button(AppConstants.Actions.repairProxy, role: .destructive) {
@@ -66,6 +83,14 @@ struct ContentView: View {
             }
         } message: {
             Text(AppConstants.StatusText.repairProxyConfirmation)
+        }
+        .alert(AppConstants.Actions.repairDatastore, isPresented: $showingRepairDatastoreConfirmation) {
+            Button(AppConstants.Actions.cancel, role: .cancel) {}
+            Button(AppConstants.Actions.repairDatastore, role: .destructive) {
+                Task { await controller.repairDatastore() }
+            }
+        } message: {
+            Text(AppConstants.StatusText.repairDatastoreConfirmation)
         }
         .alert(AppConstants.Actions.standardUninstall, isPresented: $showingUninstallConfirmation) {
             Button(AppConstants.Actions.cancel, role: .cancel) {}
@@ -99,11 +124,27 @@ struct ContentView: View {
             Text(AppConstants.Product.displayName)
                 .font(.title)
                 .fontWeight(.semibold)
-            Text(AppConstants.Product.poweredBy)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Text(AppConstants.Product.subtitle)
-                .foregroundStyle(.secondary)
+            HStack(spacing: 4) {
+                Text(AppConstants.Product.poweredByPrefix)
+                    .foregroundStyle(.secondary)
+                Button {
+                    controller.openTiroshWebsite()
+                } label: {
+                    Text(AppConstants.Product.tiroshName)
+                        .underline()
+                        .foregroundStyle(
+                            hoveredServiceLink == AppConstants.Product.tiroshName
+                                ? Color.accentColor
+                                : Color.secondary
+                        )
+                }
+                .buttonStyle(.plain)
+                .onHover { isHovering in
+                    hoveredServiceLink = isHovering ? AppConstants.Product.tiroshName : nil
+                }
+                .help(AppConstants.Product.tiroshURL)
+            }
+            .font(.caption)
         }
     }
 
@@ -115,7 +156,7 @@ struct ContentView: View {
         }
         .pickerStyle(.segmented)
         .labelsHidden()
-        .frame(width: 420)
+        .frame(width: 640)
         .frame(maxWidth: .infinity, alignment: .center)
     }
 
@@ -334,6 +375,16 @@ struct ContentView: View {
         }
     }
 
+    private func pathRow(_ label: String, _ path: String) -> some View {
+        statusRow(label) {
+            Text(path)
+                .font(.system(.body, design: .monospaced))
+                .lineLimit(2)
+                .truncationMode(.middle)
+                .textSelection(.enabled)
+        }
+    }
+
     private func linkButton(_ title: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title)
@@ -388,10 +439,12 @@ struct ContentView: View {
     }
 
     private func formatBytes(_ bytes: Int64) -> String {
-        let formatter = ByteCountFormatter()
-        formatter.allowedUnits = [.useGB, .useMB]
-        formatter.countStyle = .file
-        return formatter.string(fromByteCount: bytes)
+        let gib = Double(bytes) / 1_073_741_824
+        if gib >= 1 {
+            return String(format: "%.1f GiB", gib)
+        }
+        let mib = Double(bytes) / 1_048_576
+        return String(format: "%.1f MiB", max(mib, 0))
     }
 
     private var settingsPanel: some View {
@@ -481,64 +534,182 @@ struct ContentView: View {
     }
 
     private var updatePanel: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                Text(controller.selectedBundlePath.isEmpty ? AppConstants.Labels.noUpdateBundleSelected : controller.selectedBundlePath)
-                    .lineLimit(2)
-                    .truncationMode(.middle)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                updateSourceCard
+                bundleVerificationCard
+                applyUpdateCard
+            }
+            .frame(maxWidth: 900, alignment: .leading)
+            .padding(16)
+        }
+    }
+
+    private var updateSourceCard: some View {
+        updateCard(AppConstants.Labels.sectionUpdateSource) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 10) {
+                    Text(AppConstants.Labels.offlineBundle)
+                        .fontWeight(.medium)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Color.accentColor.opacity(0.15))
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                    Text(AppConstants.Labels.onlineUpdate)
+                        .foregroundStyle(.tertiary)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Color(nsColor: .quaternaryLabelColor).opacity(0.15))
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
+                Text(AppConstants.Labels.updateSourceHelp)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(AppConstants.Labels.onlineUpdateUnavailable)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Grid(alignment: .leading, horizontalSpacing: 20, verticalSpacing: 10) {
+                    statusRow(AppConstants.Labels.selectedBundle) {
+                        Text(controller.selectedBundlePath.isEmpty ? AppConstants.Labels.noUpdateBundleSelected : controller.selectedBundlePath)
+                            .fontWeight(.medium)
+                            .lineLimit(2)
+                            .truncationMode(.middle)
+                    }
+                }
                 Button(AppConstants.Actions.chooseBundle) {
                     Task { await controller.chooseUpdateBundle() }
                 }
                 .disabled(controller.isBusy)
+            }
+        }
+    }
+
+    private var bundleVerificationCard: some View {
+        updateCard(AppConstants.Labels.sectionBundleVerification) {
+            VStack(alignment: .leading, spacing: 12) {
+                Text(AppConstants.Labels.bundleVerificationHelp)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                if !controller.selectedBundleSummary.isEmpty {
+                    Text(controller.selectedBundleSummary)
+                        .font(.system(.body, design: .monospaced))
+                        .textSelection(.enabled)
+                }
+                if !controller.selectedBundleVerification.isEmpty {
+                    Text(controller.selectedBundleVerification)
+                        .font(.system(.body, design: .monospaced))
+                        .foregroundStyle(controller.selectedBundleVerified ? .green : .red)
+                        .textSelection(.enabled)
+                }
                 Button(AppConstants.Actions.verifyBundle) {
                     Task { await controller.verifySelectedBundle() }
                 }
                 .disabled(controller.isBusy || controller.selectedBundlePath.isEmpty)
             }
-            if !controller.selectedBundleSummary.isEmpty {
-                Text(controller.selectedBundleSummary)
-                    .font(.system(.body, design: .monospaced))
-                    .textSelection(.enabled)
-            }
-            if !controller.selectedBundleVerification.isEmpty {
-                Text(controller.selectedBundleVerification)
-                    .font(.system(.body, design: .monospaced))
-                    .foregroundStyle(controller.selectedBundleVerified ? .green : .red)
-                    .textSelection(.enabled)
-            }
-            if let latestBackup = controller.status.latestBackup {
-                Text("\(AppConstants.Labels.latestBackup): \(latestBackup)")
-                    .font(.system(.body, design: .monospaced))
-                    .lineLimit(2)
-                    .truncationMode(.middle)
-                    .textSelection(.enabled)
-            }
-            if !controller.backups.isEmpty {
-                Picker(AppConstants.Labels.rollbackBackup, selection: $controller.selectedBackupPath) {
-                    ForEach(controller.backups) { backup in
-                        Text(backup.name).tag(backup.path)
-                    }
-                }
-            }
-            HStack(spacing: 10) {
-                Button(AppConstants.Actions.applyBundle) {
-                    showingUpdateConfirmation = true
-                }
-                .disabled(
-                    controller.isBusy
-                        || controller.selectedBundlePath.isEmpty
-                        || !controller.selectedBundleVerified
-                        || !controller.status.runtimeInstalled
-                )
-                Button(AppConstants.Actions.rollback) {
-                    showingRollbackConfirmation = true
-                }
-                .disabled(controller.isBusy || !controller.status.runtimeInstalled || controller.backups.isEmpty)
-                Spacer()
+        }
+    }
+
+    private var applyUpdateCard: some View {
+        updateCard(AppConstants.Labels.sectionApplyUpdate) {
+            VStack(alignment: .leading, spacing: 12) {
+                Text(AppConstants.Labels.applyUpdateHelp)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                applyBundleActionRow
             }
         }
+    }
+
+    private var applyBundleActionRow: some View {
+        HStack(spacing: 12) {
+            Button(AppConstants.Actions.applyBundle) {
+                showingUpdateConfirmation = true
+            }
+            .disabled(
+                controller.isBusy
+                    || controller.selectedBundlePath.isEmpty
+                    || !controller.selectedBundleVerified
+                    || !controller.status.runtimeInstalled
+            )
+
+            if controller.isBusy {
+                ProgressView()
+                    .controlSize(.small)
+                Text(controller.message)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+
+            Spacer()
+        }
+    }
+
+    private func updateCard<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(title)
+                .font(.headline)
+            content()
+        }
         .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(nsColor: .controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private var updateRecoveryCard: some View {
+        advancedCard(AppConstants.Labels.sectionUpdateRecovery) {
+            VStack(alignment: .leading, spacing: 12) {
+                Text(AppConstants.Labels.updateRecoveryHelp)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                if !controller.backups.isEmpty {
+                    Grid(alignment: .leading, horizontalSpacing: 20, verticalSpacing: 10) {
+                        settingRow(AppConstants.Labels.rollbackBackup) {
+                            Picker("", selection: $controller.selectedBackupPath) {
+                                ForEach(controller.backups) { backup in
+                                    Text("\(backup.name) (\(backup.sizeText))").tag(backup.path)
+                                }
+                            }
+                            .labelsHidden()
+                            .frame(maxWidth: 520)
+                        }
+                        if let selectedBackup = controller.selectedBackup {
+                            statusRow(AppConstants.Labels.selectedBackup) {
+                                Text(selectedBackup.path)
+                                    .font(.system(.body, design: .monospaced))
+                                    .lineLimit(2)
+                                    .truncationMode(.middle)
+                                    .textSelection(.enabled)
+                            }
+                            statusRow(AppConstants.Labels.backupSize, selectedBackup.sizeText)
+                        }
+                    }
+                } else if let latestBackup = controller.status.latestBackup {
+                    Text("\(AppConstants.Labels.latestBackup): \(latestBackup)")
+                        .font(.system(.body, design: .monospaced))
+                        .lineLimit(2)
+                        .truncationMode(.middle)
+                        .textSelection(.enabled)
+                }
+                HStack(spacing: 10) {
+                    Button(AppConstants.Actions.rollback) {
+                        showingRollbackConfirmation = true
+                    }
+                    .disabled(controller.isBusy || controller.selectedBackupPath.isEmpty)
+
+                    Button(AppConstants.Actions.deleteBackup, role: .destructive) {
+                        showingDeleteBackupConfirmation = true
+                    }
+                    .disabled(controller.isBusy || controller.selectedBackupPath.isEmpty)
+                }
+            }
+        }
     }
 
     private var diskSizeRange: ClosedRange<Int> {
@@ -564,6 +735,174 @@ struct ContentView: View {
             .frame(maxWidth: 900, alignment: .leading)
             .padding(16)
         }
+    }
+
+    private var infoPanel: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(AppConstants.Labels.infoSummary)
+                        .font(.headline)
+                    Text(AppConstants.Labels.infoDescription)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                productInfoCard
+                bundledServicesCard
+                runtimePathsCard
+            }
+            .frame(maxWidth: 960, alignment: .leading)
+            .padding(16)
+        }
+    }
+
+    private var dangerZonePanel: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(AppConstants.Labels.dangerZoneSummary)
+                        .font(.headline)
+                    Text(AppConstants.Labels.dangerZoneDescription)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                recoveryOperationsCard
+                updateRecoveryCard
+                runtimeReplacementCard
+                destructiveOperationsCard
+            }
+            .frame(maxWidth: 900, alignment: .leading)
+            .padding(16)
+        }
+    }
+
+    private var productInfoCard: some View {
+        advancedCard(AppConstants.Labels.sectionProductInfo) {
+            Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 10) {
+                statusRow(AppConstants.Labels.helperVersion, helperAppVersion)
+                statusRow(AppConstants.Labels.vitalServerVersion, AppConstants.Product.vitalServerVersion)
+                statusRow(AppConstants.Labels.installedRuntimeVersion, controller.status.runtimeVersion ?? AppConstants.StatusText.unknown)
+                statusRow(AppConstants.Labels.packageIdentifier, AppConstants.Product.packageIdentifier)
+            }
+        }
+    }
+
+    private var bundledServicesCard: some View {
+        advancedCard(AppConstants.Labels.sectionBundledServices) {
+            Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 10) {
+                GridRow {
+                    Text(AppConstants.Labels.serviceName)
+                        .fontWeight(.semibold)
+                    Text(AppConstants.Labels.serviceImage)
+                        .fontWeight(.semibold)
+                    Text(AppConstants.Labels.serviceVersion)
+                        .fontWeight(.semibold)
+                }
+                ForEach(bundledServices) { service in
+                    GridRow {
+                        Text(service.name)
+                            .foregroundStyle(.secondary)
+                        Text(service.image)
+                            .font(.system(.body, design: .monospaced))
+                            .textSelection(.enabled)
+                        Text(service.version)
+                            .fontWeight(.medium)
+                    }
+                }
+            }
+        }
+    }
+
+    private var runtimePathsCard: some View {
+        advancedCard(AppConstants.Labels.sectionRuntimePaths) {
+            Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 10) {
+                pathRow(AppConstants.Labels.appBundle, Bundle.main.bundlePath)
+                pathRow(AppConstants.Labels.runtimeHome, AppConstants.Paths.vmHome)
+                pathRow(AppConstants.Labels.dataDirectory, controller.settings.vitalFilesDirectory)
+                pathRow(AppConstants.Labels.backupDirectory, AppConstants.Paths.backups)
+            }
+        }
+    }
+
+    private var runtimeReplacementCard: some View {
+        advancedCard(AppConstants.Labels.sectionRuntimeReplacement) {
+            VStack(alignment: .leading, spacing: 12) {
+                Text(AppConstants.Labels.vmRootfsUpdatePlanned)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 10) {
+                    Button(AppConstants.Actions.vmRootfsUpdate) {}
+                        .disabled(true)
+                    Text(AppConstants.StatusText.planned)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    private var destructiveOperationsCard: some View {
+        advancedCard(AppConstants.Labels.sectionDestructiveOperations) {
+            VStack(alignment: .leading, spacing: 12) {
+                Text(AppConstants.Labels.destructiveOperationsHelp)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Menu(AppConstants.Actions.uninstall) {
+                    Button(AppConstants.Actions.standardUninstall, role: .destructive) {
+                        showingUninstallConfirmation = true
+                    }
+                    Button(AppConstants.Actions.cleanUninstall, role: .destructive) {
+                        showingCleanUninstallConfirmation = true
+                    }
+                }
+                .foregroundStyle(.red)
+                .disabled(controller.isBusy || !controller.status.runtimeInstalled)
+                .fixedSize()
+            }
+        }
+    }
+
+    private var helperAppVersion: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
+            ?? controller.status.runtimeVersion
+            ?? AppConstants.StatusText.unknown
+    }
+
+    private var bundledServices: [BundledServiceInfo] {
+        [
+            BundledServiceInfo(
+                name: AppConstants.Labels.vitalServer,
+                image: AppConstants.ServiceVersions.vitalServerImage,
+                version: AppConstants.Product.vitalServerVersion
+            ),
+            BundledServiceInfo(
+                name: AppConstants.Labels.redis,
+                image: AppConstants.ServiceVersions.redisImage,
+                version: "3.2.12"
+            ),
+            BundledServiceInfo(
+                name: AppConstants.Labels.redisUI,
+                image: AppConstants.ServiceVersions.redisUIImage,
+                version: "0.9.0"
+            ),
+            BundledServiceInfo(
+                name: AppConstants.Labels.swaggerUI,
+                image: AppConstants.ServiceVersions.swaggerUIImage,
+                version: "5.17.14"
+            ),
+            BundledServiceInfo(
+                name: "Guest edge proxy",
+                image: AppConstants.ServiceVersions.guestEdgeImage,
+                version: "1.24"
+            ),
+            BundledServiceInfo(
+                name: AppConstants.Labels.hostProxyService,
+                image: AppConstants.ServiceVersions.hostProxy,
+                version: "1.31.0"
+            ),
+        ]
     }
 
     private var diagnosticsCard: some View {
@@ -634,11 +973,73 @@ struct ContentView: View {
 
     private var networkOverridesCard: some View {
         advancedCard(AppConstants.Labels.sectionNetworkOverrides) {
-            settingPortField(AppConstants.Labels.proxyPort, value: $controller.settings.proxyPort)
-            settingHelp(AppConstants.Labels.proxyPortHelp)
-            settingTextField(AppConstants.Labels.publicHost, text: $controller.settings.publicHost)
-            settingPortField(AppConstants.Labels.publicPort, value: $controller.settings.publicPort)
-            applyActionRow
+            VStack(alignment: .leading, spacing: 14) {
+                Text(AppConstants.Labels.advancedNetworkHelp)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                networkSubsection(AppConstants.Labels.sectionMacExposure) {
+                    settingPortField(AppConstants.Labels.proxyPort, value: $controller.settings.proxyPort)
+                    settingHelp(AppConstants.Labels.proxyPortHelp)
+                }
+
+                networkSubsection(AppConstants.Labels.sectionAdvertisedURL) {
+                    settingTextField(AppConstants.Labels.publicHost, text: $controller.settings.publicHost)
+                    settingHelp(AppConstants.Labels.publicHostHelp)
+                    settingPortField(AppConstants.Labels.publicPort, value: $controller.settings.publicPort)
+                    settingHelp(AppConstants.Labels.publicPortHelp)
+                    settingRow(AppConstants.Labels.advertisedURLPreview) {
+                        Text(advertisedURLPreview)
+                            .font(.system(.body, design: .monospaced))
+                            .fontWeight(.medium)
+                            .textSelection(.enabled)
+                    }
+                }
+
+                networkSubsection(AppConstants.Labels.sectionPlannedNetworkFeatures) {
+                    plannedNetworkRow(AppConstants.Labels.mdnsName, value: AppConstants.StatusText.planned, help: AppConstants.Labels.mdnsHelp)
+                    plannedNetworkRow(AppConstants.Labels.bridgedNetworking, value: AppConstants.StatusText.planned, help: AppConstants.Labels.bridgedAdvancedHelp)
+                    plannedNetworkRow(AppConstants.Labels.httpsTermination, value: AppConstants.StatusText.planned, help: AppConstants.Labels.httpsTerminationHelp)
+                    plannedNetworkRow(AppConstants.Labels.staticVMAddress, value: AppConstants.StatusText.notAvailable, help: AppConstants.Labels.staticVMAddressHelp)
+                }
+
+                applyActionRow
+            }
+        }
+    }
+
+    private var advertisedURLPreview: String {
+        let host = controller.settings.publicHost.trimmingCharacters(in: .whitespacesAndNewlines)
+        let displayHost = host.isEmpty ? AppConstants.Labels.advertisedURLSameHost : host
+        return "http://\(displayHost):\(controller.settings.publicPort)/"
+    }
+
+    private func networkSubsection<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title)
+                .font(.subheadline)
+                .fontWeight(.semibold)
+            VStack(alignment: .leading, spacing: 10) {
+                content()
+            }
+        }
+        .padding(.top, 2)
+    }
+
+    private func plannedNetworkRow(_ label: String, value: String, help: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            settingRow(label) {
+                Text(value)
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color(nsColor: .quaternaryLabelColor).opacity(0.18))
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+            }
+            settingHelp(help)
         }
     }
 
@@ -681,23 +1082,27 @@ struct ContentView: View {
                     }
                 }
                 applyActionRow
-                Divider()
+            }
+        }
+    }
+
+    private var recoveryOperationsCard: some View {
+        advancedCard(AppConstants.Labels.sectionRecoveryOperations) {
+            VStack(alignment: .leading, spacing: 12) {
+                Text(AppConstants.Labels.recoveryOperationsHelp)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
                 HStack(spacing: 10) {
+                    Button(AppConstants.Actions.repairDatastore) {
+                        showingRepairDatastoreConfirmation = true
+                    }
+                    .disabled(controller.isBusy || !controller.status.runtimeInstalled)
+
                     Button(AppConstants.Actions.repairProxy) {
                         showingRepairProxyConfirmation = true
                     }
                     .disabled(controller.isBusy || !controller.status.runtimeInstalled)
-                    Menu(AppConstants.Actions.uninstall) {
-                        Button(AppConstants.Actions.standardUninstall, role: .destructive) {
-                            showingUninstallConfirmation = true
-                        }
-                        Button(AppConstants.Actions.cleanUninstall, role: .destructive) {
-                            showingCleanUninstallConfirmation = true
-                        }
-                    }
-                    .foregroundStyle(.red)
-                    .disabled(controller.isBusy || !controller.status.runtimeInstalled)
-                    .fixedSize()
                 }
             }
         }
@@ -808,7 +1213,7 @@ struct ContentView: View {
         guard let value, let code = Int(value) else {
             return false
         }
-        return code >= 200 && code < 400
+        return code >= 200 && code < 300
     }
 
     private func serviceReachabilityLabel(_ value: String?) -> String {
@@ -1005,12 +1410,21 @@ private struct HealthItem: Identifiable {
     let isHealthy: Bool
 }
 
+private struct BundledServiceInfo: Identifiable {
+    var id: String { name }
+    let name: String
+    let image: String
+    let version: String
+}
+
 private enum ManagerTab: CaseIterable, Identifiable {
     case status
     case settings
     case update
-    case advanced
     case log
+    case info
+    case advanced
+    case dangerZone
 
     var id: Self { self }
 
@@ -1022,10 +1436,14 @@ private enum ManagerTab: CaseIterable, Identifiable {
             return AppConstants.Labels.tabSettings
         case .update:
             return AppConstants.Labels.tabUpdate
-        case .advanced:
-            return AppConstants.Labels.tabAdvanced
         case .log:
             return AppConstants.Labels.tabLog
+        case .info:
+            return AppConstants.Labels.tabInfo
+        case .advanced:
+            return AppConstants.Labels.tabAdvanced
+        case .dangerZone:
+            return AppConstants.Labels.tabDangerZone
         }
     }
 }
