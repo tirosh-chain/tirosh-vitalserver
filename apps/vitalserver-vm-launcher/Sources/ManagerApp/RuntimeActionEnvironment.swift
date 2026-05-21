@@ -1,4 +1,6 @@
 import Foundation
+import RuntimeCore
+import RuntimeInfrastructure
 
 @MainActor
 protocol RuntimeActionEnvironment {
@@ -11,12 +13,18 @@ protocol RuntimeActionEnvironment {
 
 @MainActor
 struct SystemRuntimeActionEnvironment: RuntimeActionEnvironment {
+    private let fileStore: RuntimeFileStore
+
+    init(fileStore: RuntimeFileStore = LocalRuntimeFileStore()) {
+        self.fileStore = fileStore
+    }
+
     func isExecutable(atPath path: String) -> Bool {
-        FileManager.default.isExecutableFile(atPath: path)
+        fileStore.isExecutableFile(atPath: path)
     }
 
     func createDirectory(at url: URL) {
-        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        try? fileStore.createDirectory(at: url, withIntermediateDirectories: true)
     }
 
     func writeAdminPasswordFile(_ password: String) throws -> URL {
@@ -25,18 +33,16 @@ struct SystemRuntimeActionEnvironment: RuntimeActionEnvironment {
         guard let data = password.data(using: .utf8) else {
             throw RuntimeControllerError.invalidAdminPassword
         }
-        guard FileManager.default.createFile(
-            atPath: url.path,
-            contents: data,
-            attributes: [.posixPermissions: 0o600]
-        ) else {
+        do {
+            try fileStore.writeData(data, to: url, options: [], posixPermissions: 0o600)
+        } catch {
             throw RuntimeControllerError.adminPasswordFileCreateFailed
         }
         return url
     }
 
     func removeItem(at url: URL) {
-        try? FileManager.default.removeItem(at: url)
+        try? fileStore.removeItem(at: url)
     }
 
     func verifyBundle(launcher: String, bundlePath: String) async -> ProcessResult {

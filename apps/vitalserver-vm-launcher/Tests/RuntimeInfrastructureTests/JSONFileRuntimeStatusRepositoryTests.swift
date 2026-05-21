@@ -1,4 +1,5 @@
 import RuntimeCore
+import RuntimeInfrastructure
 import XCTest
 
 final class JSONFileRuntimeStatusRepositoryTests: XCTestCase {

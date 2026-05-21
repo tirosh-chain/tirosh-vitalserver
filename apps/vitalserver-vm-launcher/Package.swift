@@ -21,13 +21,17 @@ let package = Package(
         .target(
             name: "RuntimeCore"
         ),
-        .executableTarget(
-            name: "RuntimeOrchestrator",
+        .target(
+            name: "RuntimeInfrastructure",
             dependencies: ["RuntimeCore"]
         ),
         .executableTarget(
+            name: "RuntimeOrchestrator",
+            dependencies: ["RuntimeCore", "RuntimeInfrastructure"]
+        ),
+        .executableTarget(
             name: "ManagerApp",
-            dependencies: ["RuntimeCore"]
+            dependencies: ["RuntimeCore", "RuntimeInfrastructure"]
         ),
         .testTarget(
             name: "RuntimeCoreTests",
@@ -35,6 +39,14 @@ let package = Package(
             resources: [
                 .process("Fixtures")
             ]
+        ),
+        .testTarget(
+            name: "RuntimeInfrastructureTests",
+            dependencies: ["RuntimeCore", "RuntimeInfrastructure"]
+        ),
+        .testTarget(
+            name: "RuntimeOrchestratorTests",
+            dependencies: ["RuntimeCore", "RuntimeOrchestrator"]
         ),
         .testTarget(
             name: "ManagerAppTests",

@@ -1,6 +1,7 @@
 import CryptoKit
 import Foundation
 import RuntimeCore
+import RuntimeInfrastructure
 
 struct RuntimeLifecycle {
     let paths: LauncherPaths
@@ -159,7 +160,10 @@ struct RuntimeLifecycle {
 
     func install() throws {
         let defaultVitalFilesDirectory = installedPaths.vitalFilesDirectory.path
-        let settings = try InstallSettings.load(defaultVitalFilesDirectory: defaultVitalFilesDirectory)
+        let settings = try InstallSettings.load(
+            defaultVitalFilesDirectory: defaultVitalFilesDirectory,
+            fileStore: fileStore
+        )
         log("runtime install started home=\(paths.home.path)")
         try writeRuntimeStatus(.installing, operation: "install", message: "runtime install started")
         do {
@@ -319,7 +323,7 @@ struct RuntimeLifecycle {
 
         var config: VMRuntimeConfig
         if fileExists(paths.config) {
-            config = try VMRuntimeConfig.load(from: paths.config)
+            config = try VMRuntimeConfig.load(from: paths.config, fileStore: fileStore)
         } else {
             config = VMRuntimeConfig.default(paths: installedPaths)
         }
@@ -534,9 +538,9 @@ struct RuntimeLifecycle {
     func configure(arguments: [String]) throws {
         var remaining = arguments
         var restart = false
-        var vmConfig = try VMRuntimeConfig.load(from: paths.config)
+        var vmConfig = try VMRuntimeConfig.load(from: paths.config, fileStore: fileStore)
         let runtimeConfigURL = installedPaths.guestRuntimeConfig
-        var guestConfig = try GuestRuntimeConfigDocument.load(from: runtimeConfigURL)
+        var guestConfig = try GuestRuntimeConfigDocument.load(from: runtimeConfigURL, fileStore: fileStore)
 
         while !remaining.isEmpty {
             let key = remaining.removeFirst()
@@ -982,12 +986,12 @@ struct RuntimeLifecycle {
     }
 
     private func loadManifest(_ url: URL) throws -> UpdateBundleManifest {
-        let data = try Data(contentsOf: url)
+        let data = try fileStore.readData(url)
         return try JSONDecoder().decode(UpdateBundleManifest.self, from: data)
     }
 
     private func loadChecksums(_ url: URL) throws -> [String: String] {
-        let text = try String(contentsOf: url, encoding: .utf8)
+        let text = try fileStore.readUTF8Text(url)
         var checksums: [String: String] = [:]
         for line in text.split(separator: "\n") {
             let parts = line.split(maxSplits: 1, whereSeparator: { $0 == " " || $0 == "\t" })
@@ -1011,7 +1015,7 @@ struct RuntimeLifecycle {
     }
 
     private func sha256(_ url: URL) throws -> String {
-        let data = try Data(contentsOf: url)
+        let data = try fileStore.readData(url)
         let digest = SHA256.hash(data: data)
         return digest.map { String(format: "%02x", $0) }.joined()
     }
@@ -1025,7 +1029,7 @@ struct RuntimeLifecycle {
             "checksum started key=\(fileVerification.checksumKey) path=\(url.path) expectedSize=\(formatBytes(bundleItemSize(fileVerification.expectedSize)))"
         )
         let actualDigest = try sha256(url)
-        let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? -1
+        let size = Int(try fileSize(url))
         do {
             try UpdateBundleVerifier.verifyDigest(
                 checksumKey: fileVerification.checksumKey,
@@ -1305,7 +1309,7 @@ struct RuntimeLifecycle {
         guard directoryExists(source) else {
             return
         }
-        let tools = try fileStore.contentsOfDirectory(at: source, includingPropertiesForKeys: nil, options: [])
+        let tools = try fileStore.contentsOfDirectory(at: source, skipsHiddenFiles: false)
         for tool in tools {
             let destination = URL(fileURLWithPath: "/usr/local/bin").appendingPathComponent(tool.lastPathComponent)
             if fileExists(destination) {
@@ -1317,18 +1321,14 @@ struct RuntimeLifecycle {
     }
 
     private func latestBackup() -> URL? {
-        guard let contents = try? fileStore.contentsOfDirectory(
+        guard let directories = try? fileStore.childDirectories(
             at: backupsDirectory,
-            includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.skipsHiddenFiles]
+            nameContains: "-before-",
+            skipsHiddenFiles: true
         ) else {
             return nil
         }
-        return contents
-            .filter { url in
-                let values = try? url.resourceValues(forKeys: [.isDirectoryKey])
-                return values?.isDirectory == true && url.lastPathComponent.contains("-before-")
-            }
+        return directories
             .sorted { $0.lastPathComponent < $1.lastPathComponent }
             .last
     }
@@ -1339,19 +1339,14 @@ struct RuntimeLifecycle {
     }
 
     private func pruneOldDirectories(in directory: URL, keep: Int, requiredNameFragment: String) throws {
-        guard let contents = try? fileStore.contentsOfDirectory(
+        guard let matchingDirectories = try? fileStore.childDirectories(
             at: directory,
-            includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.skipsHiddenFiles]
+            nameContains: requiredNameFragment,
+            skipsHiddenFiles: true
         ) else {
             return
         }
-        let directories = contents
-            .filter { url in
-                let values = try? url.resourceValues(forKeys: [.isDirectoryKey])
-                return values?.isDirectory == true && url.lastPathComponent.contains(requiredNameFragment)
-            }
-            .sorted { $0.lastPathComponent < $1.lastPathComponent }
+        let directories = matchingDirectories.sorted { $0.lastPathComponent < $1.lastPathComponent }
 
         for directory in directories.dropLast(keep) {
             try fileStore.removeItem(at: directory)
@@ -1680,16 +1675,15 @@ struct RuntimeLifecycle {
     }
 
     private func availableBytes(at url: URL) throws -> UInt64 {
-        let attributes = try fileStore.attributesOfFileSystem(forPath: url.path)
-        guard let value = attributes[.systemFreeSize] as? NSNumber else {
+        let attributes = try fileStore.fileSystemAttributes(forPath: url.path)
+        guard attributes.freeBytes > 0 else {
             throw LauncherError.missingArgument("could not determine free space for \(url.path)")
         }
-        return value.uint64Value
+        return attributes.freeBytes
     }
 
     private func fileSize(_ url: URL) throws -> UInt64 {
-        let values = try url.resourceValues(forKeys: [.fileSizeKey])
-        return UInt64(values.fileSize ?? 0)
+        try fileStore.fileSize(url)
     }
 
     private func resizeVMDiskIfNeeded(diskGiB: Int) throws {
@@ -1711,22 +1705,7 @@ struct RuntimeLifecycle {
     }
 
     private func directorySize(_ url: URL) throws -> UInt64 {
-        guard let enumerator = fileStore.enumerator(
-            at: url,
-            includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey],
-            options: [.skipsHiddenFiles]
-        ) else {
-            throw LauncherError.missingFile(url.path)
-        }
-
-        var total: UInt64 = 0
-        for case let fileURL as URL in enumerator {
-            let values = try fileURL.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
-            if values.isRegularFile == true {
-                total += UInt64(values.fileSize ?? 0)
-            }
-        }
-        return total
+        try fileStore.recursiveRegularFileSize(at: url, skipsHiddenFiles: true)
     }
 
     private func formatBytes(_ bytes: UInt64) -> String {

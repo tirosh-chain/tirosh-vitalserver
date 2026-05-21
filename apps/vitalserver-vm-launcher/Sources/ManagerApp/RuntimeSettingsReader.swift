@@ -1,4 +1,6 @@
 import Foundation
+import RuntimeCore
+import RuntimeInfrastructure
 
 @MainActor
 protocol RuntimeSettingsReading {
@@ -15,11 +17,22 @@ struct RuntimeSettingsPaths {
 struct SystemRuntimeSettingsReader: RuntimeSettingsReading {
     var paths = RuntimeSettingsPaths()
     var statusReader = SystemRuntimeStatusReader(paths: RuntimePaths())
+    private var fileStore: RuntimeFileStore = LocalRuntimeFileStore()
+
+    init(
+        paths: RuntimeSettingsPaths = RuntimeSettingsPaths(),
+        statusReader: SystemRuntimeStatusReader? = nil,
+        fileStore: RuntimeFileStore = LocalRuntimeFileStore()
+    ) {
+        self.paths = paths
+        self.statusReader = statusReader ?? SystemRuntimeStatusReader(paths: RuntimePaths(), fileStore: fileStore)
+        self.fileStore = fileStore
+    }
 
     func load() -> RuntimeSettings {
         var settings = RuntimeSettings()
 
-        if let vmConfig = VMConfigDocument.load(path: paths.vmConfig) {
+        if let vmConfig = VMConfigDocument.load(path: paths.vmConfig, fileStore: fileStore) {
             settings.cpuCount = vmConfig.cpuCount
             settings.memoryGiB = max(Int(vmConfig.memoryMiB / 1024), 1)
             settings.networkMode = AppConstants.Values.networkShared
@@ -33,7 +46,7 @@ struct SystemRuntimeSettingsReader: RuntimeSettingsReading {
             settings.diskGiB = diskGiB
             settings.minimumDiskGiB = diskGiB
         }
-        if let guestConfig = GuestRuntimeConfig.load(path: paths.guestRuntimeConfig) {
+        if let guestConfig = GuestRuntimeConfig.load(path: paths.guestRuntimeConfig, fileStore: fileStore) {
             settings.publicHost = guestConfig.publicHost
             settings.publicPort = guestConfig.publicPort
         }
@@ -68,12 +81,11 @@ struct SystemRuntimeSettingsReader: RuntimeSettingsReading {
     }
 
     private func diskSizeGiB(path: String) -> Int? {
-        guard let attributes = try? FileManager.default.attributesOfItem(atPath: path),
-              let size = attributes[.size] as? NSNumber else {
+        guard let size = try? fileStore.fileSize(URL(fileURLWithPath: path)) else {
             return nil
         }
         let bytesPerGiB = 1024 * 1024 * 1024
-        return max(Int((size.int64Value + Int64(bytesPerGiB - 1)) / Int64(bytesPerGiB)), 1)
+        return max(Int((size + UInt64(bytesPerGiB - 1)) / UInt64(bytesPerGiB)), 1)
     }
 }
 
@@ -83,8 +95,8 @@ private struct VMConfigDocument: Decodable {
     let network: NetworkDocument
     let vitalFilesDirectory: SharedDirectoryDocument?
 
-    static func load(path: String) -> VMConfigDocument? {
-        guard let data = FileManager.default.contents(atPath: path) else {
+    static func load(path: String, fileStore: RuntimeFileReading) -> VMConfigDocument? {
+        guard let data = try? fileStore.readData(URL(fileURLWithPath: path)) else {
             return nil
         }
         return try? JSONDecoder().decode(VMConfigDocument.self, from: data)
@@ -104,8 +116,8 @@ private struct GuestRuntimeConfig: Decodable {
     let publicHost: String
     let publicPort: Int
 
-    static func load(path: String) -> GuestRuntimeConfig? {
-        guard let data = FileManager.default.contents(atPath: path) else {
+    static func load(path: String, fileStore: RuntimeFileReading) -> GuestRuntimeConfig? {
+        guard let data = try? fileStore.readData(URL(fileURLWithPath: path)) else {
             return nil
         }
         return try? JSONDecoder().decode(GuestRuntimeConfig.self, from: data)

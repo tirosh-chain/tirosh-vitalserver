@@ -1,5 +1,5 @@
 import Foundation
-import RuntimeCore
+import RuntimeInfrastructure
 import XCTest
 
 final class InstalledRuntimePathsTests: XCTestCase {

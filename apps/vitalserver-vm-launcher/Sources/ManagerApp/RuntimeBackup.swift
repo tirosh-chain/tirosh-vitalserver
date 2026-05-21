@@ -1,4 +1,6 @@
 import Foundation
+import RuntimeCore
+import RuntimeInfrastructure
 
 struct RuntimeBackup: Identifiable, Hashable {
     let path: String
@@ -13,25 +15,27 @@ struct RuntimeBackup: Identifiable, Hashable {
         return Self.formatBytes(sizeBytes)
     }
 
-    static func loadAll(latestBackupPath: String? = nil) -> [RuntimeBackup] {
+    static func loadAll(
+        latestBackupPath: String? = nil,
+        fileStore: RuntimeFileStore = LocalRuntimeFileStore()
+    ) -> [RuntimeBackup] {
         let directory = URL(fileURLWithPath: AppConstants.Paths.backups)
-        let contents = (try? FileManager.default.contentsOfDirectory(
+        let discovered = ((try? fileStore.childDirectories(
             at: directory,
-            includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.skipsHiddenFiles]
-        )) ?? []
-        let discovered = contents
-            .filter { url in
-                let values = try? url.resourceValues(forKeys: [.isDirectoryKey])
-                return values?.isDirectory == true && url.lastPathComponent.contains("-before-")
-            }
-            .map { RuntimeBackup(path: $0.path, sizeBytes: directorySize($0)) }
+            nameContains: "-before-",
+            skipsHiddenFiles: true
+        )) ?? [])
+        .map { RuntimeBackup(path: $0.path, sizeBytes: directorySize($0, fileStore: fileStore)) }
 
-        let merged = discovered + latestBackup(latestBackupPath, excluding: discovered)
+        let merged = discovered + latestBackup(latestBackupPath, excluding: discovered, fileStore: fileStore)
         return merged.sorted { $0.name > $1.name }
     }
 
-    private static func latestBackup(_ path: String?, excluding backups: [RuntimeBackup]) -> [RuntimeBackup] {
+    private static func latestBackup(
+        _ path: String?,
+        excluding backups: [RuntimeBackup],
+        fileStore: RuntimeFileStore
+    ) -> [RuntimeBackup] {
         guard let path, !path.isEmpty else {
             return []
         }
@@ -42,27 +46,11 @@ struct RuntimeBackup: Identifiable, Hashable {
         guard url.lastPathComponent.contains("-before-") else {
             return []
         }
-        return [RuntimeBackup(path: path, sizeBytes: directorySize(url))]
+        return [RuntimeBackup(path: path, sizeBytes: directorySize(url, fileStore: fileStore))]
     }
 
-    private static func directorySize(_ url: URL) -> UInt64? {
-        guard let enumerator = FileManager.default.enumerator(
-            at: url,
-            includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey],
-            options: [.skipsHiddenFiles]
-        ) else {
-            return nil
-        }
-
-        var total: UInt64 = 0
-        for case let fileURL as URL in enumerator {
-            guard let values = try? fileURL.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]),
-                  values.isRegularFile == true else {
-                continue
-            }
-            total += UInt64(values.fileSize ?? 0)
-        }
-        return total
+    private static func directorySize(_ url: URL, fileStore: RuntimeFileStore) -> UInt64? {
+        try? fileStore.recursiveRegularFileSize(at: url, skipsHiddenFiles: true)
     }
 
     private static func formatBytes(_ bytes: UInt64) -> String {

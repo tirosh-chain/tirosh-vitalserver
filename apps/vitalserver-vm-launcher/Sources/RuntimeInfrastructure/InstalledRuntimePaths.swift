@@ -1,4 +1,5 @@
 import Foundation
+import RuntimeCore
 
 public struct InstalledRuntimePaths: Equatable, Sendable {
     public static let defaultProductRoot = URL(fileURLWithPath: "/Library/Application Support/TiroshVitalServer")

@@ -1,8 +1,15 @@
 import Foundation
+import RuntimeCore
+import RuntimeInfrastructure
 import Virtualization
 
 final class VMConfigurationFactory {
     private var retainedSerialInputPipes: [Pipe] = []
+    private let fileStore: RuntimeFileReading
+
+    init(fileStore: RuntimeFileReading = LocalRuntimeFileStore()) {
+        self.fileStore = fileStore
+    }
 
     // Build only the Virtualization.framework object graph here.
     func build(from config: VMRuntimeConfig) throws -> VZVirtualMachineConfiguration {
@@ -45,7 +52,7 @@ final class VMConfigurationFactory {
 
         if let cloudInitPath = config.cloudInitPath,
            !cloudInitPath.isEmpty,
-           FileManager.default.fileExists(atPath: cloudInitPath) {
+           fileStore.fileExists(URL(fileURLWithPath: cloudInitPath)) {
             let attachment = try VZDiskImageStorageDeviceAttachment(
                 url: URL(fileURLWithPath: cloudInitPath),
                 readOnly: true

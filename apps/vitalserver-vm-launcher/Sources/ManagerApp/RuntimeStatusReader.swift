@@ -1,5 +1,6 @@
 import Foundation
 import RuntimeCore
+import RuntimeInfrastructure
 
 @MainActor
 protocol RuntimeStatusReading {
@@ -12,6 +13,20 @@ protocol RuntimeStatusReading {
 struct SystemRuntimeStatusReader: RuntimeStatusReading {
     let paths: RuntimePaths
     var commandLogPath = AppConstants.Paths.commandLogFile
+    private let fileStore: RuntimeFileStore
+    private let storageUsageProvider: RuntimeStorageUsageProviding
+
+    init(
+        paths: RuntimePaths,
+        commandLogPath: String = AppConstants.Paths.commandLogFile,
+        fileStore: RuntimeFileStore = LocalRuntimeFileStore(),
+        storageUsageProvider: RuntimeStorageUsageProviding? = nil
+    ) {
+        self.paths = paths
+        self.commandLogPath = commandLogPath
+        self.fileStore = fileStore
+        self.storageUsageProvider = storageUsageProvider ?? LocalRuntimeStorageUsageProvider(fileStore: fileStore)
+    }
 
     func loadStatus(settings: RuntimeSettings) -> RuntimeStatus {
         withDataStorageUsage(loadBaseStatus(), settings: settings)
@@ -35,7 +50,7 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading {
         let document = statusRepository.load()
         let guestState = guestRuntimeStateDocument(paths.runtimeState)
         return RuntimeStatus(
-            runtimeInstalled: FileManager.default.isExecutableFile(atPath: paths.launcher),
+            runtimeInstalled: fileStore.isExecutableFile(atPath: paths.launcher),
             vmServiceLoaded: loaded(document?.vmService) ?? launchdLoaded(AppConstants.Launchd.vmService),
             proxyServiceLoaded: loaded(document?.proxyService) ?? launchdLoaded(AppConstants.Launchd.proxyService),
             watchdogServiceLoaded: loaded(document?.watchdogService) ?? launchdLoaded(AppConstants.Launchd.watchdogService),
@@ -61,8 +76,9 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading {
     }
 
     func legacyCommandProgressLine() -> String? {
-        guard FileManager.default.fileExists(atPath: commandLogPath),
-              let content = try? String(contentsOfFile: commandLogPath, encoding: .utf8)
+        let url = URL(fileURLWithPath: commandLogPath)
+        guard fileStore.fileExists(url),
+              let content = try? fileStore.readUTF8Text(url)
         else {
             return nil
         }
@@ -80,46 +96,12 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading {
 
     private func withDataStorageUsage(_ status: RuntimeStatus, settings: RuntimeSettings) -> RuntimeStatus {
         var next = status
-        next.dataStorage = storageUsage(for: settings.vitalFilesDirectory)
+        next.dataStorage = storageUsageProvider.storageUsage(for: settings.vitalFilesDirectory)
         return next
     }
 
-    private func storageUsage(for path: String) -> ResourceUsage? {
-        guard let volumeURL = existingStorageURL(for: path),
-              let values = try? volumeURL.resourceValues(forKeys: [
-                .volumeAvailableCapacityForImportantUsageKey,
-                .volumeAvailableCapacityKey,
-                .volumeTotalCapacityKey,
-            ]),
-              let total = values.volumeTotalCapacity,
-              total > 0 else {
-            return nil
-        }
-
-        let available = values.volumeAvailableCapacityForImportantUsage
-            ?? values.volumeAvailableCapacity.map(Int64.init)
-            ?? 0
-        return ResourceUsage(
-            usedBytes: max(Int64(total) - available, 0),
-            totalBytes: Int64(total)
-        )
-    }
-
-    private func existingStorageURL(for path: String) -> URL? {
-        var url = URL(fileURLWithPath: path)
-        let fileManager = FileManager.default
-        while !fileManager.fileExists(atPath: url.path) {
-            let parent = url.deletingLastPathComponent()
-            guard parent.path != url.path else {
-                return nil
-            }
-            url = parent
-        }
-        return url
-    }
-
     private func guestRuntimeStateDocument(_ path: String) -> GuestRuntimeStateDocument? {
-        guard let data = FileManager.default.contents(atPath: path) else {
+        guard let data = try? fileStore.readData(URL(fileURLWithPath: path)) else {
             return nil
         }
         return try? JSONDecoder().decode(GuestRuntimeStateDocument.self, from: data)
@@ -140,7 +122,7 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading {
     }
 
     private func readTrimmed(_ path: String) -> String? {
-        guard let value = try? String(contentsOfFile: path, encoding: .utf8)
+        guard let value = try? fileStore.readUTF8Text(URL(fileURLWithPath: path))
             .trimmingCharacters(in: .whitespacesAndNewlines),
             !value.isEmpty
         else {
@@ -150,7 +132,7 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading {
     }
 
     private func proxyPort(_ plistPath: String) -> Int {
-        guard let data = FileManager.default.contents(atPath: plistPath),
+        guard let data = try? fileStore.readData(URL(fileURLWithPath: plistPath)),
               let plist = try? PropertyListSerialization.propertyList(
                 from: data,
                 options: [],
@@ -166,6 +148,7 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading {
         }
         return port
     }
+
 }
 
 struct LegacyCommandProgressParser {

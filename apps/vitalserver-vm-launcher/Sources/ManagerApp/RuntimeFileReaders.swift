@@ -1,4 +1,6 @@
 import Foundation
+import RuntimeCore
+import RuntimeInfrastructure
 
 protocol RuntimeManagerFileReading {
     func updateBundleSummary(url: URL) -> String
@@ -9,9 +11,15 @@ protocol RuntimeManagerFileReading {
 }
 
 struct SystemRuntimeManagerFileReader: RuntimeManagerFileReading {
+    private let fileStore: RuntimeFileStore
+
+    init(fileStore: RuntimeFileStore = LocalRuntimeFileStore()) {
+        self.fileStore = fileStore
+    }
+
     func updateBundleSummary(url: URL) -> String {
         let manifestURL = url.appendingPathComponent("manifest.json")
-        guard let data = FileManager.default.contents(atPath: manifestURL.path),
+        guard let data = try? fileStore.readData(manifestURL),
               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             return "Missing or invalid manifest.json"
         }
@@ -27,7 +35,7 @@ struct SystemRuntimeManagerFileReader: RuntimeManagerFileReading {
     }
 
     func backups(latestBackupPath: String?) -> [RuntimeBackup] {
-        RuntimeBackup.loadAll(latestBackupPath: latestBackupPath)
+        RuntimeBackup.loadAll(latestBackupPath: latestBackupPath, fileStore: fileStore)
     }
 
     func logText(sourceID: String, helperMessage: String, lineLimit: Int) -> String {
@@ -66,36 +74,31 @@ struct SystemRuntimeManagerFileReader: RuntimeManagerFileReading {
     }
 
     func preferredLogsPath() -> String {
-        if FileManager.default.fileExists(atPath: AppConstants.Paths.runtimeLogs) {
+        if fileStore.directoryExists(URL(fileURLWithPath: AppConstants.Paths.runtimeLogs)) {
             return AppConstants.Paths.runtimeLogs
         }
         return AppConstants.Paths.installLog
     }
 
     func vitalFileFolders(root: String) -> [VitalFileFolder] {
-        guard let entries = try? FileManager.default.contentsOfDirectory(atPath: root) else {
+        let rootURL = URL(fileURLWithPath: root)
+        guard let entries = try? fileStore.contentsOfDirectory(at: rootURL, skipsHiddenFiles: false) else {
             return []
         }
         return entries
-            .map { entry in
-                (name: entry, path: (root as NSString).appendingPathComponent(entry))
-            }
-            .filter { item in
-                var isDirectory: ObjCBool = false
-                return FileManager.default.fileExists(atPath: item.path, isDirectory: &isDirectory)
-                    && isDirectory.boolValue
-            }
+            .filter { fileStore.directoryExists($0) }
             .sorted { lhs, rhs in
-                lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+                lhs.lastPathComponent.localizedStandardCompare(rhs.lastPathComponent) == .orderedAscending
             }
             .map { item in
-                VitalFileFolder(name: item.name, path: item.path)
+                VitalFileFolder(name: item.lastPathComponent, path: item.path)
             }
     }
 
     private func logFile(path: String, lineLimit: Int) -> String {
-        guard FileManager.default.fileExists(atPath: path),
-              let content = try? String(contentsOfFile: path, encoding: .utf8) else {
+        let url = URL(fileURLWithPath: path)
+        guard fileStore.fileExists(url),
+              let content = try? fileStore.readUTF8Text(url) else {
             return AppConstants.StatusText.noLogData
         }
         let body = tail(content, lineLimit: lineLimit)

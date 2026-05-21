@@ -808,14 +808,6 @@ public struct GuestRuntimeStateDocument: Codable, Equatable {
         self.systemDisk = systemDisk
     }
 
-    public static func load(from url: URL) -> GuestRuntimeStateDocument? {
-        guard FileManager.default.fileExists(atPath: url.path),
-              let data = try? Data(contentsOf: url)
-        else {
-            return nil
-        }
-        return try? JSONDecoder().decode(GuestRuntimeStateDocument.self, from: data)
-    }
 }
 
 public enum RuntimeStatusLevel: Codable, Equatable, Sendable {

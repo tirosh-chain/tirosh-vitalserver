@@ -1,5 +1,6 @@
 import Foundation
 import RuntimeCore
+import RuntimeInfrastructure
 
 struct VMRuntimeConfig: Codable {
     var cpuCount: Int
@@ -47,19 +48,18 @@ struct VMRuntimeConfig: Codable {
         )
     }
 
-    static func load(from url: URL) throws -> VMRuntimeConfig {
-        guard FileManager.default.fileExists(atPath: url.path) else {
+    static func load(from url: URL, fileStore: RuntimeFileReading) throws -> VMRuntimeConfig {
+        guard fileStore.fileExists(url) else {
             throw LauncherError.missingConfig(url)
         }
-        let data = try Data(contentsOf: url)
+        let data = try fileStore.readData(url)
         return try JSONDecoder().decode(VMRuntimeConfig.self, from: data)
     }
 
     // Validate before touching Virtualization.framework so errors stay readable.
-    static func validateBootFiles(_ config: VMRuntimeConfig) throws {
-        let fileManager = FileManager.default
+    static func validateBootFiles(_ config: VMRuntimeConfig, fileStore: RuntimeFileReading) throws {
         for path in [config.kernelPath, config.initialRamdiskPath, config.diskPath].compactMap({ $0 }) {
-            guard fileManager.fileExists(atPath: path) else {
+            guard fileStore.fileExists(URL(fileURLWithPath: path)) else {
                 throw LauncherError.missingFile(path)
             }
         }

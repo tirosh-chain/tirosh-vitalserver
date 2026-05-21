@@ -1,21 +1,32 @@
 import Foundation
+import RuntimeCore
+import RuntimeInfrastructure
 
 enum ProcessState {
     // The PoC launcher is a foreground process, so a pid file is enough for now.
-    static func writeCurrentPid(pidFile: URL) throws {
-        try FileManager.default.createDirectory(
+    static func writeCurrentPid(
+        pidFile: URL,
+        fileStore: RuntimeFileWriting = LocalRuntimeFileStore()
+    ) throws {
+        try fileStore.createDirectory(
             at: pidFile.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
-        try "\(getpid())\n".write(to: pidFile, atomically: true, encoding: .utf8)
+        try fileStore.writeData(Data("\(getpid())\n".utf8), to: pidFile, options: .atomic)
     }
 
-    static func removePidFile(_ pidFile: URL) {
-        try? FileManager.default.removeItem(at: pidFile)
+    static func removePidFile(
+        _ pidFile: URL,
+        fileStore: RuntimeFileWriting = LocalRuntimeFileStore()
+    ) {
+        try? fileStore.removeItem(at: pidFile)
     }
 
-    static func status(pidFile: URL) throws {
-        guard let pid = readPid(pidFile) else {
+    static func status(
+        pidFile: URL,
+        fileStore: RuntimeFileReading & RuntimeFileWriting = LocalRuntimeFileStore()
+    ) throws {
+        guard let pid = readPid(pidFile, fileStore: fileStore) else {
             print("stopped")
             return
         }
@@ -24,12 +35,15 @@ enum ProcessState {
             print("running: pid \(pid)")
         } else {
             print("stale pid file: \(pidFile.path)")
-            removePidFile(pidFile)
+            removePidFile(pidFile, fileStore: fileStore)
         }
     }
 
-    static func stop(pidFile: URL) throws {
-        guard let pid = readPid(pidFile) else {
+    static func stop(
+        pidFile: URL,
+        fileStore: RuntimeFileReading & RuntimeFileWriting = LocalRuntimeFileStore()
+    ) throws {
+        guard let pid = readPid(pidFile, fileStore: fileStore) else {
             print("already stopped")
             return
         }
@@ -38,13 +52,13 @@ enum ProcessState {
             print("sent SIGTERM to pid \(pid)")
         } else {
             print("failed to stop pid \(pid)")
-            removePidFile(pidFile)
+            removePidFile(pidFile, fileStore: fileStore)
         }
     }
 
-    private static func readPid(_ pidFile: URL) -> pid_t? {
+    private static func readPid(_ pidFile: URL, fileStore: RuntimeFileReading) -> pid_t? {
         guard
-            let data = try? Data(contentsOf: pidFile),
+            let data = try? fileStore.readData(pidFile),
             let text = String(data: data, encoding: .utf8),
             let pid = pid_t(text.trimmingCharacters(in: .whitespacesAndNewlines))
         else {

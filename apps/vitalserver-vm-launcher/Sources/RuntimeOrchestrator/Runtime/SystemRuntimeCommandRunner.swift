@@ -1,7 +1,14 @@
 import Foundation
 import RuntimeCore
+import RuntimeInfrastructure
 
 struct SystemRuntimeCommandRunner: RuntimeCommandRunner {
+    private let fileStore: RuntimeFileWriting
+
+    init(fileStore: RuntimeFileWriting = LocalRuntimeFileStore()) {
+        self.fileStore = fileStore
+    }
+
     func run(_ executable: String, arguments: [String]) -> RuntimeProcessResult {
         let process = Process()
         let stdout = Pipe()
@@ -33,9 +40,9 @@ struct SystemRuntimeCommandRunner: RuntimeCommandRunner {
     func runWritingOutput(_ executable: String, arguments: [String], output: URL) -> RuntimeProcessResult {
         let process = Process()
         let stderr = Pipe()
-        FileManager.default.createFile(atPath: output.path, contents: nil)
 
         do {
+            try fileStore.writeData(Data(), to: output, options: [])
             let outputHandle = try FileHandle(forWritingTo: output)
             defer {
                 try? outputHandle.close()

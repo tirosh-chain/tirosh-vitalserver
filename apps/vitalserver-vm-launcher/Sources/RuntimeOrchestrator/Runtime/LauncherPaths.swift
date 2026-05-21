@@ -1,5 +1,5 @@
 import Foundation
-import RuntimeCore
+import RuntimeInfrastructure
 
 struct LauncherPaths {
     let home: URL

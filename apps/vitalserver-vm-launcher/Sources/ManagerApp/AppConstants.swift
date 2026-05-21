@@ -1,5 +1,5 @@
 import Foundation
-import RuntimeCore
+import RuntimeInfrastructure
 
 enum AppConstants {
     enum Product {

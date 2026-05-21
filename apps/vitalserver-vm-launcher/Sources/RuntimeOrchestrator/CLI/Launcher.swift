@@ -1,4 +1,6 @@
 import Foundation
+import RuntimeCore
+import RuntimeInfrastructure
 import Virtualization
 
 struct Launcher {
@@ -16,9 +18,9 @@ struct Launcher {
         case .start:
             try start(paths: paths)
         case .status:
-            try ProcessState.status(pidFile: paths.pidFile)
+            try ProcessState.status(pidFile: paths.pidFile, fileStore: LocalRuntimeFileStore())
         case .stop:
-            try ProcessState.stop(pidFile: paths.pidFile)
+            try ProcessState.stop(pidFile: paths.pidFile, fileStore: LocalRuntimeFileStore())
         case .network:
             try configureNetwork(paths: paths, arguments: Array(arguments.dropFirst()))
         case .interfaces:
@@ -40,43 +42,43 @@ struct Launcher {
 
     // Initialize the runtime directory without requiring VM entitlements.
     func initialize(paths: LauncherPaths) throws {
-        let fileManager = FileManager.default
+        let fileStore = LocalRuntimeFileStore()
         let installedPaths = paths.installed
-        try fileManager.createDirectory(
+        try fileStore.createDirectory(
             at: installedPaths.runtimeDirectory,
             withIntermediateDirectories: true
         )
-        try fileManager.createDirectory(
+        try fileStore.createDirectory(
             at: installedPaths.vitalFilesDirectory,
             withIntermediateDirectories: true
         )
-        try fileManager.createDirectory(
+        try fileStore.createDirectory(
             at: installedPaths.vrReleaseDirectory,
             withIntermediateDirectories: true
         )
-        try fileManager.createDirectory(
+        try fileStore.createDirectory(
             at: installedPaths.hostRunDirectory,
             withIntermediateDirectories: true
         )
-        try fileManager.createDirectory(
+        try fileStore.createDirectory(
             at: installedPaths.logsDirectory,
             withIntermediateDirectories: true
         )
 
-        if !fileManager.fileExists(atPath: paths.config.path) {
+        if !fileStore.fileExists(paths.config) {
             var config = VMRuntimeConfig.default(paths: installedPaths)
             VMRuntimeConfig.ensureRuntimeDefaults(&config, paths: installedPaths)
             let data = try JSONEncoder.pretty.encode(config)
-            try data.write(to: paths.config)
+            try fileStore.writeData(data, to: paths.config, options: [])
             print("created \(paths.config.path)")
         } else {
-            var config = try VMRuntimeConfig.load(from: paths.config)
+            var config = try VMRuntimeConfig.load(from: paths.config, fileStore: fileStore)
             let previous = config
             VMRuntimeConfig.ensureRuntimeDefaults(&config, paths: installedPaths)
             if config.network.macAddress != previous.network.macAddress
                 || config.cloudInitPath != previous.cloudInitPath {
                 let data = try JSONEncoder.pretty.encode(config)
-                try data.write(to: paths.config)
+                try fileStore.writeData(data, to: paths.config, options: [])
                 print("updated \(paths.config.path) with missing runtime defaults")
             } else {
                 print("exists \(paths.config.path)")
@@ -89,12 +91,12 @@ struct Launcher {
 
     // Remove disposable VM runtime state while preserving host-bound data.
     func clean(paths: LauncherPaths) throws {
-        try ProcessState.stop(pidFile: paths.pidFile)
+        let fileStore = LocalRuntimeFileStore()
+        try ProcessState.stop(pidFile: paths.pidFile, fileStore: fileStore)
 
-        let fileManager = FileManager.default
         for url in paths.cleanableRuntimePaths {
-            if fileManager.fileExists(atPath: url.path) {
-                try fileManager.removeItem(at: url)
+            if fileStore.fileExists(url) || fileStore.directoryExists(url) {
+                try fileStore.removeItem(at: url)
                 print("removed \(url.path)")
             }
         }
@@ -104,15 +106,16 @@ struct Launcher {
 
     // Build the VM configuration, start it, then keep the process alive.
     func start(paths: LauncherPaths) throws {
-        let config = try VMRuntimeConfig.load(from: paths.config)
-        try VMRuntimeConfig.validateBootFiles(config)
-        try removeStaleRuntimeState(paths: paths)
-        try ProcessState.writeCurrentPid(pidFile: paths.pidFile)
+        let fileStore = LocalRuntimeFileStore()
+        let config = try VMRuntimeConfig.load(from: paths.config, fileStore: fileStore)
+        try VMRuntimeConfig.validateBootFiles(config, fileStore: fileStore)
+        try removeStaleRuntimeState(paths: paths, fileStore: fileStore)
+        try ProcessState.writeCurrentPid(pidFile: paths.pidFile, fileStore: fileStore)
 
-        let configurationFactory = VMConfigurationFactory()
+        let configurationFactory = VMConfigurationFactory(fileStore: fileStore)
         let vmConfiguration = try configurationFactory.build(from: config)
         let virtualMachine = VZVirtualMachine(configuration: vmConfiguration)
-        let delegate = VirtualMachineDelegate(pidFile: paths.pidFile)
+        let delegate = VirtualMachineDelegate(pidFile: paths.pidFile, fileStore: fileStore)
         virtualMachine.delegate = delegate
 
         print("starting vitalserver VM")
@@ -121,7 +124,7 @@ struct Launcher {
             case .success:
                 print("vitalserver VM started")
             case let .failure(error):
-                ProcessState.removePidFile(paths.pidFile)
+                ProcessState.removePidFile(paths.pidFile, fileStore: fileStore)
                 fputs("failed to start VM: \(error)\n", stderr)
                 Foundation.exit(1)
             }
@@ -133,10 +136,13 @@ struct Launcher {
         _ = delegate
     }
 
-    private func removeStaleRuntimeState(paths: LauncherPaths) throws {
+    private func removeStaleRuntimeState(
+        paths: LauncherPaths,
+        fileStore: RuntimeFileReading & RuntimeFileWriting
+    ) throws {
         for url in [paths.installed.runtimeState, paths.installed.vmIPFile] {
-            if FileManager.default.fileExists(atPath: url.path) {
-                try FileManager.default.removeItem(at: url)
+            if fileStore.fileExists(url) {
+                try fileStore.removeItem(at: url)
                 print("removed stale runtime state: \(url.path)")
             }
         }
@@ -162,7 +168,8 @@ struct Launcher {
             throw LauncherError.missingArgument("network mode must be `shared` or `bridged`")
         }
 
-        var config = try VMRuntimeConfig.load(from: paths.config)
+        let fileStore = LocalRuntimeFileStore()
+        var config = try VMRuntimeConfig.load(from: paths.config, fileStore: fileStore)
         config.network.mode = mode
 
         switch mode {
@@ -175,7 +182,7 @@ struct Launcher {
 
         VMRuntimeConfig.ensureRuntimeDefaults(&config, paths: paths.installed)
         let data = try JSONEncoder.pretty.encode(config)
-        try data.write(to: paths.config)
+        try fileStore.writeData(data, to: paths.config, options: [])
 
         switch mode {
         case .shared:
@@ -188,7 +195,8 @@ struct Launcher {
     }
 
     func configureRuntime(paths: LauncherPaths, arguments: [String]) throws {
-        var config = try VMRuntimeConfig.load(from: paths.config)
+        let fileStore = LocalRuntimeFileStore()
+        var config = try VMRuntimeConfig.load(from: paths.config, fileStore: fileStore)
         var remaining = arguments
 
         while !remaining.isEmpty {
@@ -258,7 +266,7 @@ struct Launcher {
 
         VMRuntimeConfig.ensureRuntimeDefaults(&config, paths: paths.installed)
         let data = try JSONEncoder.pretty.encode(config)
-        try data.write(to: paths.config)
+        try fileStore.writeData(data, to: paths.config, options: [])
         print("updated \(paths.config.path)")
     }
 

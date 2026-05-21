@@ -30,11 +30,11 @@ struct GuestRuntimeConfigDocument: Codable {
     var redisUiPort: Int
     var swaggerUiPort: Int
 
-    static func load(from url: URL) throws -> GuestRuntimeConfigDocument {
-        guard FileManager.default.fileExists(atPath: url.path) else {
+    static func load(from url: URL, fileStore: RuntimeFileReading) throws -> GuestRuntimeConfigDocument {
+        guard fileStore.fileExists(url) else {
             return GuestRuntimeConfigDocument.default
         }
-        let data = try Data(contentsOf: url)
+        let data = try fileStore.readData(url)
         return try JSONDecoder().decode(GuestRuntimeConfigDocument.self, from: data)
     }
 
@@ -82,16 +82,17 @@ struct InstallSettings {
 
     static func load(
         path: String = defaultSettingsPath,
-        defaultVitalFilesDirectory: String
+        defaultVitalFilesDirectory: String,
+        fileStore: RuntimeFileReading
     ) throws -> InstallSettings {
         var settings = InstallSettings(
             vitalFilesDirectory: defaultVitalFilesDirectory
         )
         let url = URL(fileURLWithPath: path)
-        guard FileManager.default.fileExists(atPath: url.path) else {
+        guard fileStore.fileExists(url) else {
             return settings
         }
-        let data = try Data(contentsOf: url)
+        let data = try fileStore.readData(url)
         let document = try JSONDecoder().decode(InstallSettingsDocument.self, from: data)
         settings.apply(document: document)
         return settings
