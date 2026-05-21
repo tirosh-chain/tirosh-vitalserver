@@ -87,6 +87,9 @@ struct ContentView: View {
         .task {
             await pollStatus()
         }
+        .task {
+            await pollLogs()
+        }
     }
 
     private var header: some View {
@@ -541,26 +544,130 @@ struct ContentView: View {
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                settingsSection(AppConstants.Labels.sectionAdvancedConfiguration) {
-                    settingPortField(AppConstants.Labels.proxyPort, value: $controller.settings.proxyPort)
-                    settingTextField(AppConstants.Labels.publicHost, text: $controller.settings.publicHost)
-                    settingPortField(AppConstants.Labels.publicPort, value: $controller.settings.publicPort)
-                    Button(AppConstants.Actions.applySettings) {
-                        if controller.prepareApplySettings() {
-                            showingApplySettingsConfirmation = true
-                        }
+                diagnosticsCard
+                serviceHealthCard
+                networkOverridesCard
+                adminOperationsCard
+            }
+            .frame(maxWidth: 900, alignment: .leading)
+            .padding(16)
+        }
+    }
+
+    private var diagnosticsCard: some View {
+        advancedCard(AppConstants.Labels.sectionDiagnostics) {
+            Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 10) {
+                statusRow(AppConstants.Labels.runtimeState) { statusBadge }
+                statusRow(AppConstants.Labels.operation, controller.status.operation ?? AppConstants.StatusText.unknown)
+                statusRow(AppConstants.Labels.runtimeVersion, controller.status.runtimeVersion ?? AppConstants.StatusText.unknown)
+                statusRow(AppConstants.Labels.updatedAt, controller.status.updatedAt ?? AppConstants.StatusText.unknown)
+                statusRow(AppConstants.Labels.vmIP, controller.status.vmIP ?? AppConstants.StatusText.waiting)
+                if !controller.status.failureReasons.isEmpty {
+                    statusRow(AppConstants.Labels.failureReasons) {
+                        Text(controller.status.failureReasons.joined(separator: ", "))
+                            .fontWeight(.medium)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
-                    .disabled(controller.isBusy || !controller.status.runtimeInstalled)
-                }
-                advancedStatusGrid
-                VStack(alignment: .leading, spacing: 10) {
-                    Text(AppConstants.Labels.sectionOperations)
-                        .font(.headline)
-                    actionBar
                 }
             }
-            .frame(maxWidth: 760, alignment: .leading)
-            .padding(16)
+        }
+    }
+
+    private var serviceHealthCard: some View {
+        advancedCard(AppConstants.Labels.sectionServiceHealth) {
+            Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 10) {
+                serviceStateRow(
+                    AppConstants.Labels.managerRuntime,
+                    isHealthy: controller.status.runtimeInstalled,
+                    value: controller.status.runtimeInstalled ? AppConstants.StatusText.installed : AppConstants.StatusText.notInstalled
+                )
+                serviceStateRow(
+                    AppConstants.Labels.vmService,
+                    isHealthy: controller.status.vmServiceLoaded,
+                    value: controller.status.vmServiceLoaded ? AppConstants.StatusText.running : AppConstants.StatusText.notLoaded
+                )
+                serviceStateRow(
+                    AppConstants.Labels.proxyService,
+                    isHealthy: controller.status.proxyServiceLoaded,
+                    value: controller.status.proxyServiceLoaded ? AppConstants.StatusText.running : AppConstants.StatusText.notLoaded
+                )
+                serviceStateRow(
+                    AppConstants.Labels.watchdogService,
+                    isHealthy: controller.status.watchdogServiceLoaded,
+                    value: controller.status.watchdogServiceLoaded ? AppConstants.StatusText.running : AppConstants.StatusText.notLoaded
+                )
+                httpStateRow(AppConstants.Labels.vitalServerApp, value: controller.status.guestHTTP)
+                httpStateRow(AppConstants.Labels.hostProxyService, value: controller.status.hostProxyHTTP)
+                httpStateRow(AppConstants.Labels.redisUI, value: controller.status.redisUIHTTP)
+                httpStateRow(AppConstants.Labels.swaggerUI, value: controller.status.swaggerUIHTTP)
+            }
+        }
+    }
+
+    private var networkOverridesCard: some View {
+        advancedCard(AppConstants.Labels.sectionNetworkOverrides) {
+            settingPortField(AppConstants.Labels.proxyPort, value: $controller.settings.proxyPort)
+            settingHelp(AppConstants.Labels.proxyPortHelp)
+            settingTextField(AppConstants.Labels.publicHost, text: $controller.settings.publicHost)
+            settingPortField(AppConstants.Labels.publicPort, value: $controller.settings.publicPort)
+            Button(AppConstants.Actions.applySettings) {
+                if controller.prepareApplySettings() {
+                    showingApplySettingsConfirmation = true
+                }
+            }
+            .disabled(controller.isBusy || !controller.status.runtimeInstalled)
+        }
+    }
+
+    private var adminOperationsCard: some View {
+        advancedCard(AppConstants.Labels.sectionAdminOperations) {
+            actionBar
+        }
+    }
+
+    private func advancedCard<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(title)
+                .font(.headline)
+            content()
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(nsColor: .controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func serviceStateRow(_ label: String, isHealthy: Bool, value: String) -> some View {
+        GridRow {
+            Text(label)
+                .foregroundStyle(.secondary)
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(isHealthy ? Color.green : Color.orange)
+                    .frame(width: 9, height: 9)
+                Text(value)
+                    .fontWeight(.medium)
+            }
+        }
+    }
+
+    private func httpStateRow(_ label: String, value: String?) -> some View {
+        let healthy = isSuccessfulHTTPStatus(value)
+        return GridRow {
+            Text(label)
+                .foregroundStyle(.secondary)
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(healthy ? Color.green : Color.orange)
+                    .frame(width: 9, height: 9)
+                Text(serviceReachabilityLabel(value))
+                    .fontWeight(.medium)
+                if let value {
+                    Text("HTTP \(value)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
         }
     }
 
@@ -713,6 +820,15 @@ struct ContentView: View {
                 Text(AppConstants.Labels.log)
                     .font(.headline)
                 Spacer()
+                Picker(AppConstants.Labels.logSource, selection: $controller.selectedLogSource) {
+                    ForEach(controller.availableLogSources()) { source in
+                        Text(source.title).tag(source.id)
+                    }
+                }
+                .frame(width: 210)
+                .onChange(of: controller.selectedLogSource) { _ in
+                    controller.refreshLogs()
+                }
                 Picker(AppConstants.Labels.logLines, selection: $controller.logLineLimit) {
                     ForEach(controller.availableLogLineLimits(), id: \.self) { limit in
                         Text("\(limit)").tag(limit)
@@ -722,6 +838,8 @@ struct ContentView: View {
                 .onChange(of: controller.logLineLimit) { _ in
                     controller.refreshLogs()
                 }
+                Toggle(AppConstants.Labels.logStreaming, isOn: $controller.logStreaming)
+                    .toggleStyle(.checkbox)
                 Button(AppConstants.Actions.refresh) {
                     controller.refreshLogs()
                 }
@@ -753,6 +871,15 @@ struct ContentView: View {
                 await controller.refreshHealthStatus()
             }
             try? await Task.sleep(nanoseconds: 5_000_000_000)
+        }
+    }
+
+    private func pollLogs() async {
+        while !Task.isCancelled {
+            if controller.logStreaming {
+                controller.refreshLogs()
+            }
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
         }
     }
 }

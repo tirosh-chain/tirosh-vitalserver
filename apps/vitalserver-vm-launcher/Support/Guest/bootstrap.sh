@@ -138,16 +138,19 @@ install_guest_runtime_files() {
   install -m 0755 "${DEPLOY_DIR}/bin/tirosh-vitalserver-compose" /usr/local/bin/tirosh-vitalserver-compose
   install -m 0755 "${DEPLOY_DIR}/bin/tirosh-vitalserver-health" /usr/local/bin/tirosh-vitalserver-health
   install -m 0755 "${DEPLOY_DIR}/bin/tirosh-vitalserver-diagnostics" /usr/local/bin/tirosh-vitalserver-diagnostics
+  install -m 0755 "${DEPLOY_DIR}/bin/tirosh-vitalserver-container-logs" /usr/local/bin/tirosh-vitalserver-container-logs
   install -m 0755 "${DEPLOY_DIR}/bin/tirosh-vitalserver-redis-backup" /usr/local/bin/tirosh-vitalserver-redis-backup
 
   install -m 0644 "${DEPLOY_DIR}/systemd/tirosh-runtime-state.service" /etc/systemd/system/tirosh-runtime-state.service
   install -m 0644 "${DEPLOY_DIR}/systemd/tirosh-vitalserver-compose.service" /etc/systemd/system/tirosh-vitalserver-compose.service
+  install -m 0644 "${DEPLOY_DIR}/systemd/tirosh-vitalserver-container-logs.service" /etc/systemd/system/tirosh-vitalserver-container-logs.service
   install -m 0644 "${DEPLOY_DIR}/systemd/tirosh-vitalserver-redis-backup.service" /etc/systemd/system/tirosh-vitalserver-redis-backup.service
   install -m 0644 "${DEPLOY_DIR}/systemd/tirosh-vitalserver-redis-backup.timer" /etc/systemd/system/tirosh-vitalserver-redis-backup.timer
 
   systemctl daemon-reload
   systemctl enable tirosh-runtime-state.service
   systemctl enable tirosh-vitalserver-compose.service
+  systemctl enable --now tirosh-vitalserver-container-logs.service
   systemctl enable --now tirosh-vitalserver-redis-backup.timer
 }
 

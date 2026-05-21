@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ACTION="${1:-watch}"
+MOUNT_TAG="${TIROSH_SHARE_TAG:-tirosh}"
+MOUNT_POINT="${TIROSH_SHARE_MOUNT:-/mnt/tirosh}"
+DEPLOY_DIR="${TIROSH_DEPLOY_DIR:-${MOUNT_POINT}/deploy}"
+RUNTIME_DIR="${MOUNT_POINT}/run"
+LOG_FILE="${RUNTIME_DIR}/container-logs.log"
+INTERVAL_SECONDS="${TIROSH_CONTAINER_LOG_INTERVAL:-5}"
+TAIL_LINES="${TIROSH_CONTAINER_LOG_LINES:-1000}"
+
+mount_runtime_share() {
+  mkdir -p "${MOUNT_POINT}"
+  if ! mountpoint -q "${MOUNT_POINT}"; then
+    mount -t virtiofs "${MOUNT_TAG}" "${MOUNT_POINT}"
+  fi
+  mkdir -p "${RUNTIME_DIR}"
+}
+
+write_logs() {
+  local temporary="${LOG_FILE}.tmp"
+
+  {
+    printf "updated_at=%s\n" "$(date -Iseconds)"
+    printf "source=docker compose logs --tail=%s\n\n" "${TAIL_LINES}"
+    docker compose \
+      --project-name vitalserver \
+      -f "${DEPLOY_DIR}/compose.yaml" \
+      logs --no-color --tail="${TAIL_LINES}" 2>&1 || true
+  } > "${temporary}"
+  mv "${temporary}" "${LOG_FILE}"
+}
+
+mount_runtime_share
+
+case "${ACTION}" in
+  once)
+    write_logs
+    ;;
+  watch)
+    while true; do
+      write_logs
+      sleep "${INTERVAL_SECONDS}"
+    done
+    ;;
+  *)
+    printf "usage: tirosh-vitalserver-container-logs [watch|once]\n" >&2
+    exit 2
+    ;;
+esac

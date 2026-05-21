@@ -9,7 +9,7 @@ hostnamectl || true
 uptime || true
 df -h / "${MOUNT_POINT}" 2>/dev/null || true
 printf "\n== services ==\n"
-systemctl --no-pager --full status docker tirosh-vitalserver-compose.service tirosh-runtime-state.service || true
+systemctl --no-pager --full status docker tirosh-vitalserver-compose.service tirosh-runtime-state.service tirosh-vitalserver-container-logs.service || true
 printf "\n== compose ps ==\n"
 docker compose --project-name vitalserver -f "${DEPLOY_DIR}/compose.yaml" ps || true
 printf "\n== compose logs ==\n"

@@ -48,6 +48,7 @@ enum AppConstants {
         static let proxyService = "Proxy service"
         static let watchdogService = "Watchdog service"
         static let proxyPort = "Host proxy port"
+        static let proxyPortHelp = "Mac port used to expose VitalServer to browsers and VRecorder devices."
         static let vmIP = "VM IP"
         static let guestHTTP = "Guest HTTP"
         static let hostProxy = "Host proxy"
@@ -56,8 +57,14 @@ enum AppConstants {
         static let failureReasons = "Failure reasons"
         static let log = "Log"
         static let logLines = "Lines"
+        static let logSource = "Source"
+        static let logStreaming = "Stream"
         static let advancedSummary = "Advanced runtime details"
         static let advancedDescription = "Diagnostics, service internals, proxy repair, update rollback, and uninstall tools for administrators."
+        static let sectionDiagnostics = "Diagnostics"
+        static let sectionServiceHealth = "Service health"
+        static let sectionNetworkOverrides = "Network overrides"
+        static let sectionAdminOperations = "Admin operations"
         static let menuVitalFiles = "Vital Files"
         static let menuRuntimeServices = "Runtime Services"
         static let noVitalFileFolders = "No vital file folders"
@@ -177,6 +184,7 @@ enum AppConstants {
         static let notLoaded = "Not loaded"
         static let waiting = "Waiting"
         static let notChecked = "Not checked"
+        static let noLogData = "No log data for this source yet."
         static let unknown = "Unknown"
         static let failed = "failed"
         static let done = "Done"
@@ -219,6 +227,15 @@ enum AppConstants {
         }
     }
 
+    enum Notifications {
+        static let needsAttentionTitle = "VitalServer needs attention"
+        static let criticalTitle = "VitalServer is critical"
+        static let recoveredTitle = "VitalServer recovered"
+        static let needsAttentionBody = "Open VitalServer Helper to review runtime health details."
+        static let criticalBody = "VitalServer runtime requires administrator attention."
+        static let recoveredBody = "All monitored runtime services are healthy again."
+    }
+
     enum Paths {
         static let vmHome = "/Library/Application Support/TiroshVitalServer/vm"
         static let launcher = "/usr/local/bin/vitalserver-vm"
@@ -228,6 +245,7 @@ enum AppConstants {
         static let runtimeStatus = "/Library/Application Support/TiroshVitalServer/status/runtime-status.json"
         static let installLog = "/Library/Application Support/TiroshVitalServer/logs/install.log"
         static let runtimeLogs = "/Library/Application Support/TiroshVitalServer/vm/logs"
+        static let containerLogs = "/Library/Application Support/TiroshVitalServer/vm/data/run/container-logs.log"
         static let backups = "/Library/Application Support/TiroshVitalServer/backups"
         static let vmConfig = "/Library/Application Support/TiroshVitalServer/vm/runtime/vm-config.json"
         static let vmDisk = "/Library/Application Support/TiroshVitalServer/vm/runtime/vm-disk.img"

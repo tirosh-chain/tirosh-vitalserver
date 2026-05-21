@@ -14,10 +14,27 @@ final class RuntimeController: ObservableObject {
     @Published var message = AppConstants.StatusText.ready
     @Published var logText = AppConstants.StatusText.ready
     @Published var logLineLimit = 500
+    @Published var selectedLogSource = LogSourceID.helperMessage.rawValue
+    @Published var logStreaming = true
     @Published var isBusy = false
 
     private let runtime = RuntimePaths()
+    private let healthNotifications = HealthNotificationCenter()
     private let logLineLimitOptions = [100, 500, 1000]
+    private let logSources: [LogSourceOption] = [
+        LogSourceOption(id: LogSourceID.helperMessage.rawValue, title: "Helper message"),
+        LogSourceOption(id: LogSourceID.install.rawValue, title: "Install log"),
+        LogSourceOption(id: LogSourceID.command.rawValue, title: "Command log"),
+        LogSourceOption(id: LogSourceID.launcher.rawValue, title: "VM launcher"),
+        LogSourceOption(id: LogSourceID.proxyOutput.rawValue, title: "Host proxy output"),
+        LogSourceOption(id: LogSourceID.proxyError.rawValue, title: "Host proxy error"),
+        LogSourceOption(id: LogSourceID.containers.rawValue, title: "Containers"),
+    ]
+    private var healthNotificationBaseline: HealthNotificationState?
+
+    init() {
+        healthNotifications.configure()
+    }
 
     var selectedBundleConfirmation: String {
         [
@@ -54,6 +71,7 @@ final class RuntimeController: ObservableObject {
         if let displayMessage = status.displayMessage {
             message = displayMessage
         }
+        handleHealthNotificationTransition(status)
         refreshLogs()
     }
 
@@ -62,6 +80,7 @@ final class RuntimeController: ObservableObject {
         if let displayMessage = status.displayMessage {
             message = displayMessage
         }
+        handleHealthNotificationTransition(status)
         refreshLogs()
     }
 
@@ -75,6 +94,7 @@ final class RuntimeController: ObservableObject {
         } else {
             message = AppConstants.StatusText.healthCheckCompleted
         }
+        handleHealthNotificationTransition(status)
     }
 
     func uninstallRuntime(clean: Bool = false) async {
@@ -295,19 +315,13 @@ final class RuntimeController: ObservableObject {
         logLineLimitOptions
     }
 
+    func availableLogSources() -> [LogSourceOption] {
+        logSources
+    }
+
     func refreshLogs() {
         let limit = max(logLineLimit, 1)
-        let sections = [
-            logSection(title: "Helper message", body: message),
-            logFileSection(title: "Install log", path: AppConstants.Paths.installLog, lineLimit: limit),
-            logFileSection(title: "Command log", path: AppConstants.Paths.commandLogFile, lineLimit: limit),
-            logFileSection(
-                title: "VM launcher log",
-                path: (AppConstants.Paths.runtimeLogs as NSString).appendingPathComponent("launcher.log"),
-                lineLimit: limit
-            ),
-        ].filter { !$0.isEmpty }
-        logText = sections.isEmpty ? AppConstants.StatusText.notChecked : sections.joined(separator: "\n\n")
+        logText = selectedLogText(lineLimit: limit)
     }
 
     func openVitalFilesDirectory() {
@@ -580,20 +594,48 @@ final class RuntimeController: ObservableObject {
         return "\(title)\n\n\(output)"
     }
 
-    private func logFileSection(title: String, path: String, lineLimit: Int) -> String {
-        guard FileManager.default.fileExists(atPath: path),
-              let content = try? String(contentsOfFile: path, encoding: .utf8) else {
-            return ""
+    private func selectedLogText(lineLimit: Int) -> String {
+        guard let sourceID = LogSourceID(rawValue: selectedLogSource) else {
+            return AppConstants.StatusText.noLogData
         }
-        return logSection(title: title, body: tail(content, lineLimit: lineLimit))
+        switch sourceID {
+        case .helperMessage:
+            return message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? AppConstants.StatusText.noLogData
+                : message
+        case .install:
+            return logFile(path: AppConstants.Paths.installLog, lineLimit: lineLimit)
+        case .command:
+            return logFile(path: AppConstants.Paths.commandLogFile, lineLimit: lineLimit)
+        case .launcher:
+            return logFile(
+                path: (AppConstants.Paths.runtimeLogs as NSString).appendingPathComponent("launcher.log"),
+                lineLimit: lineLimit
+            )
+        case .proxyOutput:
+            return logFile(
+                path: (AppConstants.Paths.runtimeLogs as NSString).appendingPathComponent("proxy.out.log"),
+                lineLimit: lineLimit
+            )
+        case .proxyError:
+            return logFile(
+                path: (AppConstants.Paths.runtimeLogs as NSString).appendingPathComponent("proxy.err.log"),
+                lineLimit: lineLimit
+            )
+        case .containers:
+            return logFile(path: AppConstants.Paths.containerLogs, lineLimit: lineLimit)
+        }
     }
 
-    private func logSection(title: String, body: String) -> String {
-        let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
-            return ""
+    private func logFile(path: String, lineLimit: Int) -> String {
+        guard FileManager.default.fileExists(atPath: path),
+              let content = try? String(contentsOfFile: path, encoding: .utf8) else {
+            return AppConstants.StatusText.noLogData
         }
-        return "== \(title) ==\n\(trimmed)"
+        let body = tail(content, lineLimit: lineLimit)
+        return body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? AppConstants.StatusText.noLogData
+            : body
     }
 
     private func tail(_ content: String, lineLimit: Int) -> String {
@@ -606,12 +648,83 @@ final class RuntimeController: ObservableObject {
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"")
     }
+
+    private func handleHealthNotificationTransition(_ status: RuntimeStatus) {
+        let next = HealthNotificationState(status: status)
+        guard let previous = healthNotificationBaseline else {
+            healthNotificationBaseline = next
+            return
+        }
+        guard previous != next else {
+            return
+        }
+        healthNotificationBaseline = next
+
+        switch next {
+        case .critical:
+            healthNotifications.notify(
+                title: AppConstants.Notifications.criticalTitle,
+                body: status.displayMessage ?? AppConstants.Notifications.criticalBody
+            )
+        case .needsAttention:
+            healthNotifications.notify(
+                title: AppConstants.Notifications.needsAttentionTitle,
+                body: status.displayMessage ?? AppConstants.Notifications.needsAttentionBody
+            )
+        case .healthy where previous == .critical || previous == .needsAttention:
+            healthNotifications.notify(
+                title: AppConstants.Notifications.recoveredTitle,
+                body: AppConstants.Notifications.recoveredBody
+            )
+        default:
+            break
+        }
+    }
 }
 
 struct VitalFileFolder: Identifiable {
     var id: String { path }
     let name: String
     let path: String
+}
+
+struct LogSourceOption: Identifiable {
+    let id: String
+    let title: String
+}
+
+private enum LogSourceID: String {
+    case helperMessage
+    case install
+    case command
+    case launcher
+    case proxyOutput
+    case proxyError
+    case containers
+}
+
+private enum HealthNotificationState: Equatable {
+    case healthy
+    case needsAttention
+    case critical
+    case starting
+    case notInstalled
+
+    init(status: RuntimeStatus) {
+        if status.isReady {
+            self = .healthy
+        } else if !status.runtimeInstalled {
+            self = .notInstalled
+        } else if status.runtimeState == AppConstants.Values.stateCritical {
+            self = .critical
+        } else if status.runtimeState == AppConstants.Values.stateDegraded
+            || status.runtimeState == AppConstants.Values.stateRecovering
+            || !status.failureReasons.isEmpty {
+            self = .needsAttention
+        } else {
+            self = .starting
+        }
+    }
 }
 
 private enum RuntimeControllerError: LocalizedError {
