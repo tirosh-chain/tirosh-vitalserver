@@ -15,8 +15,8 @@ PoC와 패키징 과정에서 확인한 문제, 원인, 조치 방법을 모았�
 | nginx `502 Bad Gateway` | [nginx가 `502 Bad Gateway`를 반환](#nginx가-502-bad-gateway를-반환) |
 | watchdog이 `host-proxy-http-502`를 표시 | [watchdog이 host proxy 502를 복구하지 못함](#watchdog이-host-proxy-502를-복구하지-못함) |
 | VM IP가 계속 `Waiting` | [설치된 runtime binary에 virtualization entitlement가 없음](#설치된-runtime-binary에-virtualization-entitlement가-없음) |
-| pkg 설치 후 Manager app이 안 보임 | [pkg 설치 후 `/Applications`에 Manager app이 없음](#pkg-설치-후-applications에-manager-app이-없음) |
-| Manager app이 없어 GUI 삭제가 안 됨 | [Manager app 없이 설치물을 제거해야 함](#manager-app-없이-설치물을-제거해야-함) |
+| pkg 설치 후 Helper app이 안 보임 | [pkg 설치 후 `/Applications`에 Helper app이 없음](#pkg-설치-후-applications에-manager-app이-없음) |
+| Helper app이 없어 GUI 삭제가 안 됨 | [Helper app 없이 설치물을 제거해야 함](#manager-app-없이-설치물을-제거해야-함) |
 | app container health가 오래 starting | [app container가 오래 `health: starting` 상태](#app-container가-오래-health-starting-상태) |
 | Ubuntu arm64 `flash-kernel` 실패 | [Ubuntu arm64 cloud image에서 `flash-kernel`이 실패](#ubuntu-arm64-cloud-image에서-flash-kernel이-실패) |
 | stale pid file | [`make vm-status`가 stale pid file을 표시](#make-vm-status가-stale-pid-file을-표시) |
@@ -261,7 +261,7 @@ sudo lsof -nP -iTCP:80 -sTCP:LISTEN
 
 port 80을 점유한 기존 nginx 또는 다른 web server를 중지한 뒤 proxy LaunchDaemon을 다시 시작합니다.
 
-Manager app이 열리는 상태라면 `Repair Proxy` 버튼을 사용할 수 있습니다. 이 버튼은 관리자 승인을 받은 뒤 configured proxy port를 점유한 `nginx` listener를 종료하고 `com.tirosh.vitalserver-proxy`를 다시 시작합니다. `nginx`가 아닌 프로세스가 port를 점유한 경우에는 자동 종료하지 않고 로그에 표시합니다.
+Helper app이 열리는 상태라면 `Repair Proxy` 버튼을 사용할 수 있습니다. 이 버튼은 관리자 승인을 받은 뒤 configured proxy port를 점유한 `nginx` listener를 종료하고 `com.tirosh.vitalserver-proxy`를 다시 시작합니다. `nginx`가 아닌 프로세스가 port를 점유한 경우에는 자동 종료하지 않고 로그에 표시합니다.
 
 ```sh
 sudo launchctl kickstart -k system/com.tirosh.vitalserver-proxy
@@ -309,12 +309,12 @@ cat "/Library/Application Support/TiroshVitalServer/vm/logs/launcher.err.log"
 
 `make vm-pkg`는 package root에 binary를 복사하기 직전에 다시 signing하고 entitlement를 검증합니다. 기존에 설치된 잘못된 package는 다시 빌드한 package로 재설치해야 합니다.
 
-### pkg 설치 후 `/Applications`에 Manager app이 없음
+### pkg 설치 후 `/Applications`에 Helper app이 없음
 
 증상:
 
 ```sh
-ls "/Applications/Tirosh VitalServer Manager.app"
+ls "/Applications/VitalServer Helper.app"
 ```
 
 결과가 `No such file or directory`입니다.
@@ -322,30 +322,30 @@ ls "/Applications/Tirosh VitalServer Manager.app"
 확인:
 
 ```sh
-pkgutil --files com.tirosh.vitalserver.vm | grep "Tirosh VitalServer Manager.app"
-pkgutil --payload-files dist/TiroshVitalServerVM-0.1.0.pkg | grep "Tirosh VitalServer Manager.app"
+pkgutil --files com.tirosh.vitalserver.vm | grep "VitalServer Helper.app"
+pkgutil --payload-files dist/TiroshVitalServerVM-0.1.0.pkg | grep "VitalServer Helper.app"
 ```
 
 원인:
 
-payload에는 app bundle이 있어도 macOS Installer가 bundle을 relocatable component로 취급하면 `/Applications`가 아닌 이전 위치를 참고할 수 있습니다. 제품 package에서는 Manager app이 반드시 `/Applications`에 설치되어야 하므로 relocation을 꺼야 합니다.
+payload에는 app bundle이 있어도 macOS Installer가 bundle을 relocatable component로 취급하면 `/Applications`가 아닌 이전 위치를 참고할 수 있습니다. 제품 package에서는 Helper app이 반드시 `/Applications`에 설치되어야 하므로 relocation을 꺼야 합니다.
 
 조치:
 
 `make vm-pkg`는 `Support/Packaging/components.plist`를 `pkgbuild --component-plist`에 넘깁니다. 여기서 `BundleIsRelocatable=false`를 명시합니다.
 
 ```text
-Applications/Tirosh VitalServer Manager.app
+Applications/VitalServer Helper.app
   BundleIsRelocatable = false
 ```
 
-`postinstall`도 `/Applications/Tirosh VitalServer Manager.app`이 없으면 실패하도록 검증합니다. 이 증상이 보이면 최신 package를 다시 빌드하고 재설치합니다.
+`postinstall`도 `/Applications/VitalServer Helper.app`이 없으면 실패하도록 검증합니다. 이 증상이 보이면 최신 package를 다시 빌드하고 재설치합니다.
 
-### Manager app 없이 설치물을 제거해야 함
+### Helper app 없이 설치물을 제거해야 함
 
 증상:
 
-`/Applications/Tirosh VitalServer Manager.app`이 없어서 Manager app의 Uninstall 버튼을 사용할 수 없습니다. 하지만 package receipt, LaunchDaemon, runtime files는 남아 있을 수 있습니다.
+`/Applications/VitalServer Helper.app`이 없어서 Helper app의 Uninstall 버튼을 사용할 수 없습니다. 하지만 package receipt, LaunchDaemon, runtime files는 남아 있을 수 있습니다.
 
 확인:
 
@@ -381,7 +381,7 @@ make vm-pkg-uninstall-dev
 pkgutil --pkgs | grep com.tirosh.vitalserver.vm
 ls -l /usr/local/bin/tirosh-vitalserver-uninstall /usr/local/bin/vitalserver-vm
 ls -ld "/Library/Application Support/TiroshVitalServer"
-ls -ld "/Applications/Tirosh VitalServer Manager.app"
+ls -ld "/Applications/VitalServer Helper.app"
 ```
 
 정상 로그:

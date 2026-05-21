@@ -3,7 +3,7 @@ enum Constants {
 
     enum Product {
         static let identifier = "TiroshVitalServer"
-        static let managerAppName = "Tirosh VitalServer Manager.app"
+        static let managerAppName = "VitalServer Helper.app"
         static let managerAppPath = "/Applications/\(managerAppName)"
     }
 

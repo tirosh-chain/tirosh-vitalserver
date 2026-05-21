@@ -4,13 +4,13 @@
 <plist version="1.0">
 <dict>
   <key>CFBundleExecutable</key>
-  <string>Tirosh VitalServer Manager</string>
+  <string>VitalServer Helper</string>
   <key>CFBundleIdentifier</key>
   <string>com.tirosh.vitalserver.app</string>
   <key>CFBundleName</key>
-  <string>Tirosh VitalServer Manager</string>
+  <string>VitalServer Helper</string>
   <key>CFBundleDisplayName</key>
-  <string>Tirosh VitalServer Manager</string>
+  <string>VitalServer Helper</string>
   <key>CFBundleIconFile</key>
   <string>AppIcon</string>
   <key>CFBundlePackageType</key>

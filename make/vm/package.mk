@@ -156,7 +156,7 @@ vm-dmg-release: vm-dmg
 vm-update-artifacts: vm-pkg-stage
 	rm -rf "$(VM_UPDATE_ARTIFACT_DIR)"
 	@mkdir -p "$(VM_UPDATE_ARTIFACT_DIR)"
-	tar -czf "$(VM_UPDATE_APP_BUNDLE_ARCHIVE)" -C "$(VM_PKG_ROOT)$(VM_INSTALL_APPLICATIONS_DIR)" "Tirosh VitalServer Manager.app"
+	tar -czf "$(VM_UPDATE_APP_BUNDLE_ARCHIVE)" -C "$(VM_PKG_ROOT)$(VM_INSTALL_APPLICATIONS_DIR)" "VitalServer Helper.app"
 	tar -czf "$(VM_UPDATE_RUNTIME_TOOLS_ARCHIVE)" -C "$(VM_PKG_ROOT)/usr/local/bin" vitalserver-vm vitalserver-proxy-run tirosh-vitalserver-uninstall
 	tar -czf "$(VM_UPDATE_NGINX_BUNDLE_ARCHIVE)" -C "$(VM_PKG_ROOT)$(VM_INSTALL_PREFIX)" nginx
 	tar -czf "$(VM_UPDATE_GUEST_DEPLOY_ARCHIVE)" -C "$(VM_PKG_ROOT)$(VM_INSTALL_HOME)/data" deploy

@@ -41,7 +41,7 @@ dist/TiroshVitalServer-0.1.0.dmg
 설치 후 구조:
 
 ```text
-/Applications/Tirosh VitalServer Manager.app
+/Applications/VitalServer Helper.app
 /usr/local/bin/vitalserver-vm
 /usr/local/bin/vitalserver-proxy-run
 /usr/local/bin/tirosh-vitalserver-uninstall
@@ -117,7 +117,7 @@ make vm-dmg
   -> make vm-pkg
     -> make vm-pkg-stage
       -> make vm-sign              # unsigned 기준: ad-hoc sign
-      -> make vm-app               # Manager.app 생성
+      -> make vm-app               # Helper.app 생성
       -> make vm-golden-rootfs     # clean VM disk -> rootfs-base.raw.gz
       -> make vm-nginx-bundle      # pinned nginx -> self-contained bundle
       -> make vm-docker-images     # air-gapped Docker image tar.gz
@@ -131,7 +131,7 @@ make vm-dmg
 |---|---|---|
 | target dependency 연결 | `make/vm/package.mk` | 개발자가 실행할 명령과 산출물 경로를 한 곳에서 노출 |
 | Ubuntu/cloud-init/rootfs/nginx/Docker/update bundle 생성 | `packages/vm-build` Python package | build-machine 전용 작업이고 입력/출력 검증과 unit test가 필요 |
-| Swift binary와 Manager app build/sign | SwiftPM, `codesign`, Make target | macOS toolchain과 app bundle 조립이 필요 |
+| Swift binary와 Helper app build/sign | SwiftPM, `codesign`, Make target | macOS toolchain과 app bundle 조립이 필요 |
 | PKG root staging | Make + filesystem tools | payload 배치가 명령형이고 `pkgbuild` 입력 구조와 1:1 대응 |
 | 설치 후 provisioning | Swift `RuntimeLifecycle` | target Mac 상태, launchd, backup/rollback, health를 하나의 runtime source of truth로 관리 |
 
@@ -144,7 +144,7 @@ make vm-dmg
 | nginx artifact cache | `.artifacts/nginx/macos/bin/nginx` | repository에 commit하지 않는 pinned build input |
 | package work dir | `.tmp/vitalserver-vm-pkg/` | PKG staging, rootfs cache, nginx bundle, Docker bundle |
 | package root | `.tmp/vitalserver-vm-pkg/root/` | `pkgbuild --root` 입력 |
-| app bundle staging | `.tmp/Tirosh VitalServer Manager.app` | `/Applications` payload로 들어갈 app |
+| app bundle staging | `.tmp/VitalServer Helper.app` | `/Applications` payload로 들어갈 app |
 | golden VM home | `.tmp/vitalserver-vm-golden/` | package용 clean rootfs를 만들기 위한 임시 VM home |
 | DMG staging | `.tmp/vitalserver-vm-dmg/` | DMG root에 들어갈 파일 배치 |
 | PKG output | `dist/TiroshVitalServerVM-<version>.pkg` | installer payload |
@@ -163,7 +163,7 @@ DMG root에는 `Install Tirosh VitalServer.pkg`만 둡니다. 사용자는 pkg�
 4. PKG postinstall 실행
 5. Swift runtime install이 runtime instance provision
 6. launchd VM/proxy/watchdog service 등록 및 정책 적용
-7. Manager.app 또는 CLI로 status/health 확인
+7. Helper.app 또는 CLI로 status/health 확인
 ```
 
 실제 코드 호출은 아래처럼 이어집니다.
@@ -171,7 +171,7 @@ DMG root에는 `Install Tirosh VitalServer.pkg`만 둡니다. 사용자는 pkg�
 ```text
 Install Tirosh VitalServer.pkg
   -> payload copy
-    -> /Applications/Tirosh VitalServer Manager.app
+    -> /Applications/VitalServer Helper.app
     -> /usr/local/bin/vitalserver-vm
     -> /usr/local/bin/vitalserver-proxy-run
     -> /Library/Application Support/TiroshVitalServer/vm/runtime/rootfs-base.raw.gz
@@ -197,15 +197,15 @@ Install Tirosh VitalServer.pkg
 
 VM service가 시작되면 `vitalserver-vm start`가 `vm-config.json`을 읽어 Apple Virtualization VM을 띄웁니다. guest cloud-init은 `seed.iso`의 `runcmd`로 `/mnt/tirosh/deploy/bootstrap.sh`를 실행합니다. guest bootstrap은 Docker image bundle을 load하고 Compose stack 안의 edge nginx container를 구성한 뒤 `/mnt/tirosh/run/runtime-state.json`에 VM IP와 guest HTTP readiness를 기록합니다. proxy service의 `vitalserver-proxy-run`은 이 runtime state를 기다렸다가 host nginx config를 렌더링하고 nginx를 시작 또는 reload합니다.
 
-설치 시 설정값은 MDM 또는 고급 설치 wrapper가 `installer` 실행 전에 `/private/tmp/tirosh-vitalserver-install.json`에 쓸 수 있습니다. 이 파일은 partial JSON이며 `postinstall` 이후 삭제됩니다. 일반 사용자 설치는 기본값으로 진행하고, 설치 후 Manager app의 Settings에서 runtime 설정을 변경합니다.
+설치 시 설정값은 MDM 또는 고급 설치 wrapper가 `installer` 실행 전에 `/private/tmp/tirosh-vitalserver-install.json`에 쓸 수 있습니다. 이 파일은 partial JSON이며 `postinstall` 이후 삭제됩니다. 일반 사용자 설치는 기본값으로 진행하고, 설치 후 Helper app의 Settings에서 runtime 설정을 변경합니다.
 
-Uninstall 로직은 Manager app에 중복 구현하지 않고, 설치된
-`/usr/local/bin/tirosh-vitalserver-uninstall`을 관리자 권한으로 호출합니다. Manager app을 열 수 없는 깨진 설치 상태에서는 같은 command를 Terminal 또는 MDM/Jamf에서 root로 실행합니다.
+Uninstall 로직은 Helper app에 중복 구현하지 않고, 설치된
+`/usr/local/bin/tirosh-vitalserver-uninstall`을 관리자 권한으로 호출합니다. Helper app을 열 수 없는 깨진 설치 상태에서는 같은 command를 Terminal 또는 MDM/Jamf에서 root로 실행합니다.
 
-기본 Uninstall은 Manager app, LaunchDaemon, runtime tools, VM disk, logs, package receipt를 제거하지만 `.vital` 파일 경로와 backups는 보존합니다. Clean Uninstall은 `--clean`을 전달해 backups와 설정된 vital files directory까지 삭제합니다.
+기본 Uninstall은 Helper app, LaunchDaemon, runtime tools, VM disk, logs, package receipt를 제거하지만 `.vital` 파일 경로와 backups는 보존합니다. Clean Uninstall은 `--clean`을 전달해 backups와 설정된 vital files directory까지 삭제합니다.
 
 ```text
-Tirosh VitalServer Manager.app
+VitalServer Helper.app
   운영 중:
     Status
     Settings
@@ -312,7 +312,7 @@ external client
   -> VitalServer container :18080
 ```
 
-`proxyPort`는 설치 설정과 LaunchDaemon environment로 전달됩니다. Runtime CLI와 Manager app은 설치된 proxy LaunchDaemon plist에서 `VITALSERVER_PROXY_PORT`를 읽어 health/open URL에 반영합니다.
+`proxyPort`는 설치 설정과 LaunchDaemon environment로 전달됩니다. Runtime CLI와 Helper app은 설치된 proxy LaunchDaemon plist에서 `VITALSERVER_PROXY_PORT`를 읽어 health/open URL에 반영합니다.
 
 ```text
 install settings JSON
@@ -320,7 +320,7 @@ install settings JSON
   -> proxy LaunchDaemon EnvironmentVariables:VITALSERVER_PROXY_PORT
   -> vitalserver-proxy-run
   -> RuntimeLifecycle status/health
-  -> Manager app health/open URL
+  -> Helper app health/open URL
 ```
 
 ### Update Bundle 계약
@@ -376,7 +376,7 @@ update에서 rootfs base를 교체해도 기존 `vm-disk.img` 내부 OS와 appli
 sudo tirosh-vitalserver-uninstall
 ```
 
-이 명령은 VM/proxy LaunchDaemon을 unload하고, package가 설치한 runtime 파일과 Manager app을 제거합니다. 기본 모드는 `.vital` 파일 경로와 backups를 보존합니다. 완전 삭제가 필요하면 `sudo tirosh-vitalserver-uninstall --clean`을 사용합니다. GUI 제품에서는 Manager app의 “Uninstall”과 “Clean Uninstall”이 같은 backend command를 호출합니다.
+이 명령은 VM/proxy LaunchDaemon을 unload하고, package가 설치한 runtime 파일과 Helper app을 제거합니다. 기본 모드는 `.vital` 파일 경로와 backups를 보존합니다. 완전 삭제가 필요하면 `sudo tirosh-vitalserver-uninstall --clean`을 사용합니다. GUI 제품에서는 Helper app의 “Uninstall”과 “Clean Uninstall”이 같은 backend command를 호출합니다.
 
 ### nginx release artifact
 
@@ -467,7 +467,7 @@ make vm-update-bundle-verify
 
 `make vm-update-artifacts`는 package staging root를 기준으로 `app-bundle.tar.gz`,
 `runtime-tools.tar.gz`, `nginx-bundle.tar.gz`, `guest-deploy.tar.gz`를 자동 생성합니다.
-`make vm-update-bundle`은 이 artifact들을 기본 포함하므로 Manager app, runtime tools, host nginx,
+`make vm-update-bundle`은 이 artifact들을 기본 포함하므로 Helper app, runtime tools, host nginx,
 guest deploy bundle까지 같은 online/offline bundle 계약으로 배포할 수 있습니다.
 
 마이그레이션 실행 파일을 bundle에 포함하려면:
@@ -512,7 +512,7 @@ sudo vitalserver-vm runtime rollback
 | type | artifact name | 적용 대상 |
 |---|---|---|
 | `rootfs-base` | `rootfs-base.raw.gz` | 이후 provisioning 기준 rootfs base |
-| `app-bundle` | `app-bundle.tar.gz` | `/Applications/Tirosh VitalServer Manager.app` |
+| `app-bundle` | `app-bundle.tar.gz` | `/Applications/VitalServer Helper.app` |
 | `runtime-tools` | `runtime-tools.tar.gz` | `/usr/local/bin` runtime tools |
 | `nginx-bundle` | `nginx-bundle.tar.gz` | host nginx bundle |
 | `guest-deploy` | `guest-deploy.tar.gz` | VM shared deploy bundle |
@@ -534,7 +534,7 @@ sudo vitalserver-vm runtime configure \
   --restart
 ```
 
-이 command는 `vm-config.json`, deploy `runtime-config.json`, proxy LaunchDaemon plist, launchd enable/disable 정책을 갱신하고 `--restart`가 있으면 VM/proxy/watchdog을 kickstart합니다. Manager app의 Settings tab도 이 command를 호출합니다. Manager app의 admin password 입력은 기존 값을 표시하지 않고, 운영자용 admin password reset을 선택했을 때만 `/private/tmp` 아래 0600 임시 파일을 만들고 `--admin-password-file`을 전달합니다. CLI의 `--admin-password`는 개발/수동 복구용으로 남기지만, 운영 UI에서는 argv/log 노출을 줄이기 위해 file 입력을 사용합니다.
+이 command는 `vm-config.json`, deploy `runtime-config.json`, proxy LaunchDaemon plist, launchd enable/disable 정책을 갱신하고 `--restart`가 있으면 VM/proxy/watchdog을 kickstart합니다. Helper app의 Settings tab도 이 command를 호출합니다. Helper app의 admin password 입력은 기존 값을 표시하지 않고, 운영자용 admin password reset을 선택했을 때만 `/private/tmp` 아래 0600 임시 파일을 만들고 `--admin-password-file`을 전달합니다. CLI의 `--admin-password`는 개발/수동 복구용으로 남기지만, 운영 UI에서는 argv/log 노출을 줄이기 위해 file 입력을 사용합니다.
 
 admin password reset은 VitalServer 본체의 사용자 계정 기능을 확장하거나 수정하는 기능이 아닙니다. VitalServer UI의 비밀번호 변경은 현재 비밀번호를 아는 사용자가 본인 계정을 변경하는 흐름이고, Manager의 reset은 설치/운영 관리자가 `admin` 계정을 복구하거나 초기화하기 위한 패키징 레벨의 유지보수 기능입니다. 위험도가 높은 설정이므로 향후 운영 정책에 따라 Manager UI에서 제거하고 CLI 또는 recovery flow로만 남길 수 있습니다. deploy `runtime-config.json`은 admin reset 값을 포함하므로 install/configure 직후 0600 권한으로 제한합니다.
 

@@ -4,7 +4,7 @@
 <array>
 	<dict>
 		<key>RootRelativeBundlePath</key>
-		<string>Applications/Tirosh VitalServer Manager.app</string>
+		<string>Applications/VitalServer Helper.app</string>
 		<key>BundleIsRelocatable</key>
 		<false/>
 		<key>BundleIsVersionChecked</key>

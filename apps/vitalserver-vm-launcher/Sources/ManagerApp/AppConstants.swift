@@ -1,6 +1,7 @@
 enum AppConstants {
     enum Product {
-        static let displayName = "Tirosh VitalServer Manager"
+        static let displayName = "VitalServer Helper"
+        static let poweredBy = "powered by Tirosh"
         static let subtitle = "Manage the dedicated Mac runtime"
         static let defaultProxyPort = 80
         static func vitalServerURL(proxyPort: Int) -> String {
@@ -32,7 +33,7 @@ enum AppConstants {
         static let dataDirectory = "Data directory"
         static let overallHealth = "Overall health"
         static let healthDetails = "Health details"
-        static let managerRuntime = "Manager runtime"
+        static let managerRuntime = "Helper runtime"
         static let vmIPAddress = "VM IP"
         static let vitalServerApp = "VitalServer app"
         static let hostProxyService = "Host proxy"
@@ -173,7 +174,7 @@ enum AppConstants {
         static let uninstallRunning = "Removing runtime..."
         static let uninstallCompleted = "Runtime removal completed."
         static let cleanUninstallCompleted = "Runtime and preserved data removal completed."
-        static let applicationWillQuit = "The Manager app will quit now."
+        static let applicationWillQuit = "The Helper app will quit now."
         static let proxyRepairPreparing = "Preparing host proxy repair..."
         static let proxyRepairRunning = "Repairing host proxy..."
         static let proxyRepairCompleted = "Host proxy repair completed."
@@ -192,8 +193,8 @@ enum AppConstants {
         static let commandCancelled = "Command was cancelled or failed."
         static let latestBackupFallback = "Latest backup"
         static let repairProxyConfirmation = "Stops nginx listeners on the configured proxy port, then restarts the host proxy service. Other process types are reported but not stopped automatically."
-        static let standardUninstallConfirmation = "Removes the Manager app, runtime services, tools, VM disk, logs, and package receipt. Vital files and backups are preserved."
-        static let cleanUninstallConfirmation = "Removes the Manager app, runtime services, tools, VM disk, logs, backups, and configured vital files directory."
+        static let standardUninstallConfirmation = "Removes the Helper app, runtime services, tools, VM disk, logs, and package receipt. Vital files and backups are preserved."
+        static let cleanUninstallConfirmation = "Removes the Helper app, runtime services, tools, VM disk, logs, backups, and configured vital files directory."
         static let bridgedModeUnavailable = "Bridged mode is not available in this build."
         static let diskDecreaseUnavailable = "Disk size can only be increased."
         static let vitalFilesDirectoryRequired = "Vital files directory must be an absolute path."

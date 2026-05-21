@@ -93,6 +93,9 @@ struct ContentView: View {
             Text(AppConstants.Product.displayName)
                 .font(.title)
                 .fontWeight(.semibold)
+            Text(AppConstants.Product.poweredBy)
+                .font(.caption)
+                .foregroundStyle(.secondary)
             Text(AppConstants.Product.subtitle)
                 .foregroundStyle(.secondary)
         }

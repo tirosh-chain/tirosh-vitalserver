@@ -5,7 +5,7 @@ uninstall_log="/private/tmp/tirosh-vitalserver-uninstall.log"
 exec > >(tee -a "${uninstall_log}") 2>&1
 
 product_root="/Library/Application Support/TiroshVitalServer"
-manager_app="/Applications/Tirosh VitalServer Manager.app"
+manager_app="/Applications/VitalServer Helper.app"
 vm_config="${product_root}/vm/runtime/vm-config.json"
 default_vital_files="${product_root}/vm/data/vital-files"
 clean=false

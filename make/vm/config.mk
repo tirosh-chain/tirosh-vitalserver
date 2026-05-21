@@ -45,7 +45,7 @@ VM_PKG_IDENTIFIER := com.tirosh.vitalserver.vm
 VM_INSTALL_PREFIX := /Library/Application Support/TiroshVitalServer
 VM_INSTALL_HOME := $(VM_INSTALL_PREFIX)/vm
 VM_INSTALL_APPLICATIONS_DIR := /Applications
-VM_INSTALL_APP_BUNDLE := $(VM_INSTALL_APPLICATIONS_DIR)/Tirosh VitalServer Manager.app
+VM_INSTALL_APP_BUNDLE := $(VM_INSTALL_APPLICATIONS_DIR)/VitalServer Helper.app
 VM_INSTALL_BIN := /usr/local/bin/vitalserver-vm
 VM_INSTALL_PROXY_RUN := /usr/local/bin/vitalserver-proxy-run
 VM_INSTALL_UNINSTALL := /usr/local/bin/tirosh-vitalserver-uninstall
@@ -76,7 +76,7 @@ VM_UPDATE_NGINX_BUNDLE ?= $(VM_UPDATE_NGINX_BUNDLE_ARCHIVE)
 VM_UPDATE_GUEST_DEPLOY ?= $(VM_UPDATE_GUEST_DEPLOY_ARCHIVE)
 
 # App artifacts.
-VM_APP_NAME := Tirosh VitalServer Manager
+VM_APP_NAME := VitalServer Helper
 VM_APP_BUNDLE := .tmp/$(VM_APP_NAME).app
 VM_DMG_STAGING := .tmp/vitalserver-vm-dmg
 VM_DMG_OUTPUT := $(VM_DIST_DIR)/TiroshVitalServer-$(VM_PKG_VERSION).dmg

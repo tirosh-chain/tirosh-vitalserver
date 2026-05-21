@@ -121,7 +121,7 @@ dist/TiroshVitalServer-0.1.0.dmg
 
 | 항목 | 설치 위치 |
 |---|---|
-| control app | `/Applications/Tirosh VitalServer Manager.app` |
+| control app | `/Applications/VitalServer Helper.app` |
 | VM launcher and runtime lifecycle CLI | `/usr/local/bin/vitalserver-vm` |
 | host proxy runner | `/usr/local/bin/vitalserver-proxy-run` |
 | uninstaller | `/usr/local/bin/tirosh-vitalserver-uninstall` |
@@ -156,7 +156,7 @@ shared/NAT mode에서는 VM IP가 부팅 후에 결정되므로, `vitalserver-pr
 | guest `bootstrap.sh` | `runtime-config.json`, `bin/*`, `systemd/*`, Docker image bundle | Docker Compose stack, edge nginx container, guest systemd service, diagnostics, Redis backup timer |
 | update bundle | `manifest.json`, `checksums.txt`, `signature`, `rootfs-base.raw.gz`, migrations | verified/staged bundle, rootfs-base backup/replacement, migrations |
 
-`runtime-status.json`은 Manager app, watchdog, 운영 CLI가 공유하는 운영 상태 파일입니다. `runtime install`, `health`, `watchdog`, `apply-bundle`, `rollback`이 이 파일을 갱신하며, 상태 값은 `installing`, `updating`, `recovering`, `healthy`, `degraded`, `critical` 중 하나입니다.
+`runtime-status.json`은 Helper app, watchdog, 운영 CLI가 공유하는 운영 상태 파일입니다. `runtime install`, `health`, `watchdog`, `apply-bundle`, `rollback`이 이 파일을 갱신하며, 상태 값은 `installing`, `updating`, `recovering`, `healthy`, `degraded`, `critical` 중 하나입니다.
 
 설치/업데이트 경로는 적용 전에 free-space preflight를 수행합니다. 설치 로그와 runtime launchd/proxy/watchdog 로그는 10 MiB 기준으로 최대 5개까지 rotation하며, guest bootstrap은 Docker image bundle을 load한 뒤 dangling image cleanup을 수행합니다. Guest에는 `tirosh-vitalserver-health`, `tirosh-vitalserver-diagnostics`, `tirosh-vitalserver-redis-backup.timer`를 설치해 현장 진단과 Redis volume 백업을 같은 계약으로 운용합니다.
 
@@ -170,7 +170,7 @@ shared/NAT mode에서는 VM IP가 부팅 후에 결정되므로, `vitalserver-pr
 | PKG wrapper | `Support/Packaging/postinstall` | install log 연결 후 `vitalserver-vm runtime install` 호출 |
 | launchd proxy | `Support/Packaging/proxy-run` | VM IP 감시, host nginx config render/reload |
 | Guest | `Support/Guest/bootstrap.sh` | Docker Compose bootstrap, edge nginx container, compose systemd service, runtime state marker, diagnostics, Redis backup timer |
-| Manager app | `Sources/ManagerApp` | 설치 후 runtime-status/settings/update/rollback/health/open/uninstall UI |
+| Helper app | `Sources/ManagerApp` | 설치 후 runtime-status/settings/update/rollback/health/open/uninstall UI |
 
 DMG build/install 흐름은 아래입니다.
 
@@ -201,7 +201,7 @@ Install Tirosh VitalServer.pkg
 | type | artifact name | 적용 대상 |
 |---|---|---|
 | `rootfs-base` | `rootfs-base.raw.gz` | 이후 provisioning 기준 rootfs base |
-| `app-bundle` | `app-bundle.tar.gz` | `/Applications/Tirosh VitalServer Manager.app` |
+| `app-bundle` | `app-bundle.tar.gz` | `/Applications/VitalServer Helper.app` |
 | `runtime-tools` | `runtime-tools.tar.gz` | `/usr/local/bin` runtime tools |
 | `nginx-bundle` | `nginx-bundle.tar.gz` | host nginx bundle |
 | `guest-deploy` | `guest-deploy.tar.gz` | VM shared deploy bundle |
@@ -210,7 +210,7 @@ Install Tirosh VitalServer.pkg
 
 `rootfs-base.raw.gz`는 immutable base artifact이고, 설치된 `vm-disk.img`는 mutable runtime instance입니다. 따라서 update에서 rootfs base를 교체해도 이미 실행 중인 `vm-disk.img` 내부 OS/runtime이 자동으로 교체되지는 않습니다. 설치된 VM 내부 변경은 migration이나 별도 guest update contract로 처리해야 합니다.
 
-기본 host proxy port는 80입니다. 설치 설정에서 다른 `proxyPort`를 지정하면 LaunchDaemon environment에 저장되고, runtime CLI와 Manager app은 설치된 plist에서 port를 읽어 health/open URL에 반영합니다.
+기본 host proxy port는 80입니다. 설치 설정에서 다른 `proxyPort`를 지정하면 LaunchDaemon environment에 저장되고, runtime CLI와 Helper app은 설치된 plist에서 port를 읽어 health/open URL에 반영합니다.
 
 설치 시 설정값은 installer 실행 전에 `/private/tmp/tirosh-vitalserver-install.json`에 partial JSON으로 씁니다. 누락된 값은 기본값을 사용합니다.
 
@@ -319,14 +319,14 @@ make vm-nginx-bundle
 
 ```sh
 make vm-app
-open ".tmp/Tirosh VitalServer Manager.app"
+open ".tmp/VitalServer Helper.app"
 ```
 
 App bundle은 가벼운 관리 UI만 포함합니다. Runtime package, rootfs, VM disk는 app Resources에 넣지 않습니다.
 
 ```text
-Tirosh VitalServer Manager.app
-  Contents/MacOS/Tirosh VitalServer Manager
+VitalServer Helper.app
+  Contents/MacOS/VitalServer Helper
   Contents/Info.plist
   Contents/Resources/AppIcon.icns
 ```
@@ -343,11 +343,11 @@ Tirosh VitalServer Manager.app
 | Uninstall | 설치된 `/usr/local/bin/tirosh-vitalserver-uninstall` 실행 |
 | Clean Uninstall | 설치된 `/usr/local/bin/tirosh-vitalserver-uninstall --clean` 실행 |
 
-Uninstall의 주 진입점은 Manager app입니다. Manager app을 열 수 없는 깨진 설치 상태에서는
+Uninstall의 주 진입점은 Helper app입니다. Helper app을 열 수 없는 깨진 설치 상태에서는
 `sudo /usr/local/bin/tirosh-vitalserver-uninstall`을 fallback으로 실행합니다. MDM/Jamf 배포에서도
 같은 uninstaller를 root로 실행합니다.
 
-기본 Uninstall은 Manager app, LaunchDaemon, runtime tools, VM disk, logs, package receipt를 제거하지만
+기본 Uninstall은 Helper app, LaunchDaemon, runtime tools, VM disk, logs, package receipt를 제거하지만
 `.vital` 파일 경로와 backups는 보존합니다. Clean Uninstall은 backups와 설정된 vital files directory까지
 삭제합니다.
 
