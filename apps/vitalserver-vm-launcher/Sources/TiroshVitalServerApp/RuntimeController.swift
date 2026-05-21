@@ -236,7 +236,7 @@ final class RuntimeController: ObservableObject {
             return false
         }
         if settings.changeAdminPassword, settings.adminPassword.isEmpty {
-            message = "New admin password must not be empty."
+            message = "Admin password reset value must not be empty."
             return false
         }
         return true

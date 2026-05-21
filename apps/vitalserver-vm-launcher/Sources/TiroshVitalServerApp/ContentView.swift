@@ -160,7 +160,7 @@ struct ContentView: View {
                 labeledValue("Public port", "\(controller.settings.publicPort)")
             }
             Toggle("Start on boot", isOn: $controller.settings.startOnBoot)
-            Toggle("Change admin password", isOn: $controller.settings.changeAdminPassword)
+            Toggle("Reset admin password", isOn: $controller.settings.changeAdminPassword)
             if controller.settings.changeAdminPassword {
                 SecureField("New admin password", text: $controller.settings.adminPassword)
             }

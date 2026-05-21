@@ -559,7 +559,7 @@ Fallback:
 | `networkMode` | `shared` | `shared` 또는 `bridged` |
 | `proxyPort` | 80 | 1-65535, LaunchDaemon plist에 저장하고 Runtime CLI/Manager가 해당 값을 읽음 |
 | `vitalFilesDirectory` | `/Library/Application Support/TiroshVitalServer/vm/data/vital-files` | absolute path |
-| `adminPassword` | `admin` | empty가 아니면 적용 |
+| `adminPassword` | `admin` | admin 계정 reset 값. empty가 아니면 guest runtime에 적용 |
 | `vmHostname` | `tirosh-vitalserver` | hostname-safe 문자열 |
 | `publicHost` | empty | single-line 문자열 |
 | `publicPort` | 80 | 1-65535 |
@@ -825,7 +825,9 @@ sudo vitalserver-vm runtime configure \
   --restart
 ```
 
-이 command는 `vm-config.json`, deploy `runtime-config.json`, proxy LaunchDaemon plist, launchd enable/disable 정책을 갱신하고 `--restart`가 있으면 VM/proxy/watchdog을 kickstart합니다. Manager app의 Settings tab도 이 command를 호출합니다. Manager app의 admin password 입력은 기존 값을 표시하지 않고, 변경할 때만 `--admin-password`를 전달합니다.
+이 command는 `vm-config.json`, deploy `runtime-config.json`, proxy LaunchDaemon plist, launchd enable/disable 정책을 갱신하고 `--restart`가 있으면 VM/proxy/watchdog을 kickstart합니다. Manager app의 Settings tab도 이 command를 호출합니다. Manager app의 admin password 입력은 기존 값을 표시하지 않고, 운영자용 admin password reset을 선택했을 때만 `--admin-password`를 전달합니다.
+
+admin password reset은 VitalServer 본체의 사용자 계정 기능을 확장하거나 수정하는 기능이 아닙니다. VitalServer UI의 비밀번호 변경은 현재 비밀번호를 아는 사용자가 본인 계정을 변경하는 흐름이고, Manager의 reset은 설치/운영 관리자가 `admin` 계정을 복구하거나 초기화하기 위한 패키징 레벨의 유지보수 기능입니다. 위험도가 높은 설정이므로 향후 운영 정책에 따라 Manager UI에서 제거하고 CLI 또는 recovery flow로만 남길 수 있습니다.
 
 설치 후 Manager에서 바로 변경하는 범위와 별도 기능으로 분리해야 하는 범위는 아래처럼 구분합니다.
 
@@ -834,7 +836,7 @@ sudo vitalserver-vm runtime configure \
 | CPU, memory, network, bridged interface | `vm-config.json` 갱신 후 restart |
 | proxy port | proxy LaunchDaemon environment 갱신 후 restart |
 | Vital files directory | VM shared directory와 guest runtime config 갱신 후 restart |
-| public host/port, admin password | guest `runtime-config.json` 갱신 후 restart |
+| public host/port, admin password reset | guest `runtime-config.json` 갱신 후 restart |
 | start on boot | `launchctl enable/disable system/<label>`로 VM/proxy/watchdog 정책 갱신 |
 | disk size | 별도 resize/migration flow 필요 |
 | VM hostname | `seed.iso`/guest hostname 재생성 또는 guest migration flow 필요 |
