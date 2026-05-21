@@ -102,6 +102,14 @@ enum Constants {
         static func proxyHealthURL(port: Int) -> String {
             "http://127.0.0.1:\(port)/"
         }
+
+        static func redisUIHealthURL(port: Int) -> String {
+            "http://127.0.0.1:\(port)/redis-ui/"
+        }
+
+        static func swaggerUIHealthURL(port: Int) -> String {
+            "http://127.0.0.1:\(port)/swagger/"
+        }
     }
 
     enum Bundle {

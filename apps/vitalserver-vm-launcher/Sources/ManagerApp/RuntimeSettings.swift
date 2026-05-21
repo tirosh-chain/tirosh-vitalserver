@@ -4,10 +4,11 @@ struct RuntimeSettings: Codable {
     var cpuCount = 8
     var memoryGiB = 8
     var diskGiB = 64
+    var minimumDiskGiB = 4
     var networkMode = AppConstants.Values.networkShared
     var bridgedInterface = ""
     var proxyPort = AppConstants.Product.defaultProxyPort
-    var vitalFilesDirectory = "/Library/Application Support/TiroshVitalServer/vm/data/vital-files"
+    var vitalFilesDirectory = "\(AppConstants.Paths.vmHome)/data/vital-files"
     var publicHost = ""
     var publicPort = 80
     var adminPassword = ""
@@ -35,6 +36,7 @@ struct RuntimeSettings: Codable {
 
         if let diskGiB = diskSizeGiB(path: AppConstants.Paths.vmDisk) {
             settings.diskGiB = diskGiB
+            settings.minimumDiskGiB = diskGiB
         }
         if let guestConfig = GuestRuntimeConfig.load(path: AppConstants.Paths.guestRuntimeConfig) {
             settings.publicHost = guestConfig.publicHost

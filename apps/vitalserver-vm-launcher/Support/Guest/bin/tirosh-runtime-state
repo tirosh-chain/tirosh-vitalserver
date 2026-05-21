@@ -5,10 +5,49 @@ MOUNT_TAG="${TIROSH_SHARE_TAG:-tirosh}"
 MOUNT_POINT="${TIROSH_SHARE_MOUNT:-/mnt/tirosh}"
 RUNTIME_DIR="${MOUNT_POINT}/run"
 RUNTIME_STATE_FILE="${RUNTIME_DIR}/runtime-state.json"
+INTERVAL_SECONDS="${TIROSH_RUNTIME_STATE_INTERVAL:-5}"
 
-mkdir -p "${MOUNT_POINT}"
-if ! mountpoint -q "${MOUNT_POINT}"; then
-  mount -t virtiofs "${MOUNT_TAG}" "${MOUNT_POINT}"
-fi
+mount_runtime_share() {
+  mkdir -p "${MOUNT_POINT}"
+  if ! mountpoint -q "${MOUNT_POINT}"; then
+    mount -t virtiofs "${MOUNT_TAG}" "${MOUNT_POINT}"
+  fi
+}
 
-exec /usr/local/bin/tirosh-write-runtime-state "${RUNTIME_STATE_FILE}" "${1:-}"
+http_status() {
+  local url="$1"
+
+  curl -sS -I -o /dev/null -w '%{http_code}' --max-time 5 "${url}" 2>/dev/null \
+    || printf "failed"
+}
+
+write_current_state() {
+  local guest_http redis_ui_http swagger_ui_http
+
+  guest_http="$(http_status "http://127.0.0.1/")"
+  redis_ui_http="$(http_status "http://127.0.0.1/redis-ui/")"
+  swagger_ui_http="$(http_status "http://127.0.0.1/swagger/")"
+  /usr/local/bin/tirosh-write-runtime-state \
+    "${RUNTIME_STATE_FILE}" \
+    "${guest_http}" \
+    "${redis_ui_http}" \
+    "${swagger_ui_http}"
+}
+
+mount_runtime_share
+
+case "${1:-watch}" in
+  once)
+    write_current_state
+    ;;
+  watch)
+    while true; do
+      write_current_state
+      sleep "${INTERVAL_SECONDS}"
+    done
+    ;;
+  *)
+    printf "usage: tirosh-runtime-state [watch|once]\n" >&2
+    exit 2
+    ;;
+esac

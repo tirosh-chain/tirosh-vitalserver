@@ -12,9 +12,12 @@ final class RuntimeController: ObservableObject {
     @Published var backups = RuntimeBackup.loadAll()
     @Published var selectedBackupPath = ""
     @Published var message = AppConstants.StatusText.ready
+    @Published var logText = AppConstants.StatusText.ready
+    @Published var logLineLimit = 500
     @Published var isBusy = false
 
     private let runtime = RuntimePaths()
+    private let logLineLimitOptions = [100, 500, 1000]
 
     var selectedBundleConfirmation: String {
         [
@@ -51,6 +54,7 @@ final class RuntimeController: ObservableObject {
         if let displayMessage = status.displayMessage {
             message = displayMessage
         }
+        refreshLogs()
     }
 
     func refreshHealthStatus() async {
@@ -58,6 +62,7 @@ final class RuntimeController: ObservableObject {
         if let displayMessage = status.displayMessage {
             message = displayMessage
         }
+        refreshLogs()
     }
 
     func healthCheck() async {
@@ -137,6 +142,7 @@ final class RuntimeController: ObservableObject {
         if didSave {
             settings.adminPassword = ""
             settings.changeAdminPassword = false
+            await waitForAppliedSettings()
         }
         await refreshHealthStatus()
     }
@@ -283,6 +289,25 @@ final class RuntimeController: ObservableObject {
         } else {
             openFolder(AppConstants.Paths.installLog)
         }
+    }
+
+    func availableLogLineLimits() -> [Int] {
+        logLineLimitOptions
+    }
+
+    func refreshLogs() {
+        let limit = max(logLineLimit, 1)
+        let sections = [
+            logSection(title: "Helper message", body: message),
+            logFileSection(title: "Install log", path: AppConstants.Paths.installLog, lineLimit: limit),
+            logFileSection(title: "Command log", path: AppConstants.Paths.commandLogFile, lineLimit: limit),
+            logFileSection(
+                title: "VM launcher log",
+                path: (AppConstants.Paths.runtimeLogs as NSString).appendingPathComponent("launcher.log"),
+                lineLimit: limit
+            ),
+        ].filter { !$0.isEmpty }
+        logText = sections.isEmpty ? AppConstants.StatusText.notChecked : sections.joined(separator: "\n\n")
     }
 
     func openVitalFilesDirectory() {
@@ -432,6 +457,8 @@ final class RuntimeController: ObservableObject {
             next.guestHTTP = await httpStatus(url: AppConstants.Product.guestHealthURL(vmIP: vmIP))
         }
         next.hostProxyHTTP = await httpStatus(url: AppConstants.Product.hostProxyHealthURL(proxyPort: next.proxyPort))
+        next.redisUIHTTP = await httpStatus(url: AppConstants.Product.redisUIURL(proxyPort: next.proxyPort))
+        next.swaggerUIHTTP = await httpStatus(url: AppConstants.Product.swaggerURL(proxyPort: next.proxyPort))
 
         return next
     }
@@ -467,7 +494,25 @@ final class RuntimeController: ObservableObject {
     }
 
     private func shellCommand(executable: String, arguments: [String]) -> String {
-        ([executable] + arguments).map(shellQuote).joined(separator: " ")
+        var parts: [String] = []
+        if executable == runtime.launcher {
+            parts.append(shellQuote(AppConstants.Commands.env))
+            parts.append("\(AppConstants.Environment.vmHome)=\(shellQuote(AppConstants.Paths.vmHome))")
+        }
+        parts += ([executable] + arguments).map(shellQuote)
+        return parts.joined(separator: " ")
+    }
+
+    private func waitForAppliedSettings() async {
+        for _ in 0..<12 {
+            settings = RuntimeSettings.load()
+            status = await loadHealthStatus()
+            refreshLogs()
+            if status.isReady || !settings.restartAfterSave {
+                return
+            }
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+        }
     }
 
     private func proxyRepairCommand(proxyPort: Int) -> String {
@@ -533,6 +578,27 @@ final class RuntimeController: ObservableObject {
             return title
         }
         return "\(title)\n\n\(output)"
+    }
+
+    private func logFileSection(title: String, path: String, lineLimit: Int) -> String {
+        guard FileManager.default.fileExists(atPath: path),
+              let content = try? String(contentsOfFile: path, encoding: .utf8) else {
+            return ""
+        }
+        return logSection(title: title, body: tail(content, lineLimit: lineLimit))
+    }
+
+    private func logSection(title: String, body: String) -> String {
+        let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return ""
+        }
+        return "== \(title) ==\n\(trimmed)"
+    }
+
+    private func tail(_ content: String, lineLimit: Int) -> String {
+        let lines = content.split(separator: "\n", omittingEmptySubsequences: false)
+        return lines.suffix(lineLimit).joined(separator: "\n")
     }
 
     private func appleScriptEscaped(_ value: String) -> String {

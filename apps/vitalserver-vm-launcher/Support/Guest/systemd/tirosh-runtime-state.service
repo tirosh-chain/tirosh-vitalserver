@@ -4,8 +4,10 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-Type=oneshot
-ExecStart=/usr/local/bin/tirosh-runtime-state
+Type=simple
+ExecStart=/usr/local/bin/tirosh-runtime-state watch
+Restart=always
+RestartSec=5
 
 [Install]
 WantedBy=multi-user.target

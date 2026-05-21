@@ -38,7 +38,7 @@ require_deploy_bundle() {
 }
 
 write_runtime_state() {
-  /usr/local/bin/tirosh-write-runtime-state "${RUNTIME_STATE_FILE}" "${1:-}"
+  /usr/local/bin/tirosh-runtime-state once
 }
 
 expand_root_filesystem() {
@@ -188,7 +188,7 @@ wait_for_vitalserver_edge() {
 
     if [ "${http_status}" -eq 0 ] && [ "${code}" -ge 200 ] && [ "${code}" -lt 400 ]; then
       printf "VitalServer edge is ready: %s\n" "${code}"
-      write_runtime_state "${code}"
+      write_runtime_state
       return
     fi
 
@@ -241,6 +241,6 @@ docker compose \
   up -d "${compose_build_args[@]}"
 
 wait_for_vitalserver_edge
-write_runtime_state "200"
+systemctl restart tirosh-runtime-state.service
 
 printf "VitalServer edge is ready on this VM at port 80.\n"

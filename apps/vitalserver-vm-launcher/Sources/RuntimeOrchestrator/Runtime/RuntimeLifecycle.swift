@@ -1513,6 +1513,8 @@ struct RuntimeLifecycle {
         let vmIP = guestState?.vmIP ?? readTrimmed(vmIPFile)
         let proxyPort = installedProxyPort()
         let hostProxyHTTP = httpStatus(Constants.Runtime.proxyHealthURL(port: proxyPort))
+        let redisUIHTTP = httpStatus(Constants.Runtime.redisUIHealthURL(port: proxyPort))
+        let swaggerUIHTTP = httpStatus(Constants.Runtime.swaggerUIHealthURL(port: proxyPort))
         let guestHTTP = guestHTTPStatus(guestState: guestState, vmIP: vmIP)
         var failureReasons: [String] = []
 
@@ -1541,6 +1543,12 @@ struct RuntimeLifecycle {
             failureReasons.append("host-proxy-http-\(hostProxyHTTP)")
             failureReasons.append(contentsOf: proxyPortFailureReasons(port: proxyPort))
         }
+        if !isSuccessfulHTTPStatus(redisUIHTTP) {
+            failureReasons.append("redis-ui-http-\(redisUIHTTP)")
+        }
+        if !isSuccessfulHTTPStatus(swaggerUIHTTP) {
+            failureReasons.append("swagger-ui-http-\(swaggerUIHTTP)")
+        }
         if !isSuccessfulHTTPStatus(guestHTTP) {
             failureReasons.append("guest-http-\(guestHTTP)")
         }
@@ -1557,6 +1565,8 @@ struct RuntimeLifecycle {
             proxyPort: proxyPort,
             hostProxyHTTP: hostProxyHTTP,
             guestHTTP: guestHTTP,
+            redisUIHTTP: redisUIHTTP,
+            swaggerUIHTTP: swaggerUIHTTP,
             failureReasons: failureReasons
         )
     }
@@ -1596,6 +1606,8 @@ struct RuntimeLifecycle {
             proxyPort: snapshot.proxyPort,
             hostProxyHTTP: snapshot.hostProxyHTTP,
             guestHTTP: snapshot.guestHTTP,
+            redisUIHTTP: snapshot.redisUIHTTP,
+            swaggerUIHTTP: snapshot.swaggerUIHTTP,
             rootfsBase: snapshot.rootfsBase,
             vmDisk: snapshot.vmDisk,
             failureReasons: snapshot.failureReasons,

@@ -26,6 +26,7 @@ enum AppConstants {
         static let tabSettings = "Settings"
         static let tabUpdate = "Update"
         static let tabAdvanced = "Advanced"
+        static let tabLog = "Log"
         static let runtime = "Runtime"
         static let runtimeState = "Runtime state"
         static let vitalServer = "VitalServer"
@@ -37,6 +38,8 @@ enum AppConstants {
         static let vmIPAddress = "VM IP"
         static let vitalServerApp = "VitalServer app"
         static let hostProxyService = "Host proxy"
+        static let redisUI = "Redis UI"
+        static let swaggerUI = "Swagger UI"
         static let watchdog = "Watchdog"
         static let operation = "Operation"
         static let runtimeVersion = "Runtime version"
@@ -48,8 +51,11 @@ enum AppConstants {
         static let vmIP = "VM IP"
         static let guestHTTP = "Guest HTTP"
         static let hostProxy = "Host proxy"
+        static let redisUIHTTP = "Redis UI HTTP"
+        static let swaggerUIHTTP = "Swagger UI HTTP"
         static let failureReasons = "Failure reasons"
         static let log = "Log"
+        static let logLines = "Lines"
         static let advancedSummary = "Advanced runtime details"
         static let advancedDescription = "Diagnostics, service internals, proxy repair, update rollback, and uninstall tools for administrators."
         static let menuVitalFiles = "Vital Files"
@@ -73,7 +79,9 @@ enum AppConstants {
         static let publicHost = "Public host"
         static let publicPort = "Public URL port"
         static let vitalFilesDirectory = "Vital files directory"
-        static let diskIncreaseOnlyHelp = "Disk size can only be increased after installation."
+        static func diskIncreaseOnlyHelp(_ minimumGiB: Int) -> String {
+            "Disk size can only be increased after installation. Current minimum is \(minimumGiB) GB."
+        }
         static let startOnBoot = "Start on boot"
         static let restartServicesAfterSave = "Restart services after save"
         static let resetAdminPassword = "Reset admin password"
@@ -119,6 +127,10 @@ enum AppConstants {
         static let optionRestart = "--restart"
     }
 
+    enum Environment {
+        static let vmHome = "VITALSERVER_VM_HOME"
+    }
+
     enum Actions {
         static let healthCheck = "Health Check"
         static let open = "Open"
@@ -132,7 +144,7 @@ enum AppConstants {
         static let standardUninstall = "Uninstall..."
         static let cleanUninstall = "Clean Uninstall..."
         static let refresh = "Refresh"
-        static let applySettings = "Apply Settings"
+        static let applySettings = "Apply"
         static let chooseDirectory = "Choose..."
         static let chooseBundle = "Choose Bundle"
         static let verifyBundle = "Verify"
@@ -141,6 +153,7 @@ enum AppConstants {
         static let openLogs = "Open Logs"
         static let startUpdate = "Start Update"
         static let startRollback = "Start Rollback"
+        static let ok = "OK"
         static let cancel = "Cancel"
         static let continueAction = "Continue"
         static let back = "Back"
@@ -207,6 +220,7 @@ enum AppConstants {
     }
 
     enum Paths {
+        static let vmHome = "/Library/Application Support/TiroshVitalServer/vm"
         static let launcher = "/usr/local/bin/vitalserver-vm"
         static let uninstaller = "/usr/local/bin/tirosh-vitalserver-uninstall"
         static let vmIPFile = "/Library/Application Support/TiroshVitalServer/vm/data/run/vm-ip"
@@ -231,6 +245,7 @@ enum AppConstants {
 
     enum Commands {
         static let osascript = "/usr/bin/osascript"
+        static let env = "/usr/bin/env"
         static let curl = "/usr/bin/curl"
         static let launchctl = "/bin/launchctl"
         static let lsof = "/usr/sbin/lsof"

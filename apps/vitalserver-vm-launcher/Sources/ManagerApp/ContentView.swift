@@ -25,16 +25,17 @@ struct ContentView: View {
                     updatePanel
                 case .advanced:
                     advancedPanel
+                case .log:
+                    logPanel
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            logPanel
         }
         .padding(24)
         .frame(minWidth: 900, minHeight: 700)
         .alert(AppConstants.Actions.applySettings, isPresented: $showingApplySettingsConfirmation) {
             Button(AppConstants.Actions.cancel, role: .cancel) {}
-            Button(AppConstants.Actions.applySettings) {
+            Button(AppConstants.Actions.ok) {
                 Task { await controller.applySettings() }
             }
         } message: {
@@ -214,6 +215,16 @@ struct ContentView: View {
                 isHealthy: controller.status.proxyServiceLoaded && isSuccessfulHTTPStatus(controller.status.hostProxyHTTP)
             ),
             HealthItem(
+                label: AppConstants.Labels.redisUI,
+                value: serviceReachabilityLabel(controller.status.redisUIHTTP),
+                isHealthy: isSuccessfulHTTPStatus(controller.status.redisUIHTTP)
+            ),
+            HealthItem(
+                label: AppConstants.Labels.swaggerUI,
+                value: serviceReachabilityLabel(controller.status.swaggerUIHTTP),
+                isHealthy: isSuccessfulHTTPStatus(controller.status.swaggerUIHTTP)
+            ),
+            HealthItem(
                 label: AppConstants.Labels.watchdog,
                 value: controller.status.watchdogServiceLoaded ? AppConstants.StatusText.running : AppConstants.StatusText.notLoaded,
                 isHealthy: controller.status.watchdogServiceLoaded
@@ -259,6 +270,8 @@ struct ContentView: View {
             statusRow(AppConstants.Labels.vmIP, controller.status.vmIP ?? AppConstants.StatusText.waiting)
             statusRow(AppConstants.Labels.guestHTTP, controller.status.guestHTTP ?? AppConstants.StatusText.notChecked)
             statusRow(AppConstants.Labels.hostProxy, controller.status.hostProxyHTTP ?? AppConstants.StatusText.notChecked)
+            statusRow(AppConstants.Labels.redisUIHTTP, controller.status.redisUIHTTP ?? AppConstants.StatusText.notChecked)
+            statusRow(AppConstants.Labels.swaggerUIHTTP, controller.status.swaggerUIHTTP ?? AppConstants.StatusText.notChecked)
             if !controller.status.failureReasons.isEmpty {
                 statusRow(AppConstants.Labels.failureReasons, controller.status.failureReasons.joined(separator: ", "))
             }
@@ -363,8 +376,14 @@ struct ContentView: View {
                 settingsSection(AppConstants.Labels.sectionVM) {
                     settingSlider(AppConstants.Labels.cpu, value: $controller.settings.cpuCount, range: 7...64, suffix: AppConstants.Labels.unitVCPU)
                     settingSlider(AppConstants.Labels.memory, value: $controller.settings.memoryGiB, range: 4...64, step: 4, suffix: AppConstants.Labels.unitGiB)
-                    settingSlider(AppConstants.Labels.disk, value: $controller.settings.diskGiB, range: 4...512, step: 4, suffix: AppConstants.Labels.unitGiB)
-                    settingWarning(AppConstants.Labels.diskIncreaseOnlyHelp)
+                    settingSlider(
+                        AppConstants.Labels.disk,
+                        value: $controller.settings.diskGiB,
+                        range: diskSizeRange,
+                        step: 4,
+                        suffix: AppConstants.Labels.unitGiB
+                    )
+                    settingWarning(AppConstants.Labels.diskIncreaseOnlyHelp(controller.settings.minimumDiskGiB))
                 }
                 settingsSection(AppConstants.Labels.sectionNetwork) {
                     settingRow(AppConstants.Labels.mode) {
@@ -505,6 +524,11 @@ struct ContentView: View {
             }
         }
         .padding(16)
+    }
+
+    private var diskSizeRange: ClosedRange<Int> {
+        let minimum = controller.settings.minimumDiskGiB
+        return minimum...max(minimum, 512)
     }
 
     private var advancedPanel: some View {
@@ -685,15 +709,29 @@ struct ContentView: View {
 
     private var logPanel: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(AppConstants.Labels.log)
-                .font(.headline)
+            HStack {
+                Text(AppConstants.Labels.log)
+                    .font(.headline)
+                Spacer()
+                Picker(AppConstants.Labels.logLines, selection: $controller.logLineLimit) {
+                    ForEach(controller.availableLogLineLimits(), id: \.self) { limit in
+                        Text("\(limit)").tag(limit)
+                    }
+                }
+                .frame(width: 150)
+                .onChange(of: controller.logLineLimit) { _ in
+                    controller.refreshLogs()
+                }
+                Button(AppConstants.Actions.refresh) {
+                    controller.refreshLogs()
+                }
+            }
             ScrollView {
-                Text(controller.message)
+                Text(controller.logText)
                     .font(.system(.body, design: .monospaced))
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .textSelection(.enabled)
             }
-            .frame(minHeight: 120)
             .padding(12)
             .background(Color(nsColor: .textBackgroundColor))
             .clipShape(RoundedRectangle(cornerRadius: 8))
@@ -731,6 +769,7 @@ private enum ManagerTab: CaseIterable, Identifiable {
     case settings
     case update
     case advanced
+    case log
 
     var id: Self { self }
 
@@ -744,6 +783,8 @@ private enum ManagerTab: CaseIterable, Identifiable {
             return AppConstants.Labels.tabUpdate
         case .advanced:
             return AppConstants.Labels.tabAdvanced
+        case .log:
+            return AppConstants.Labels.tabLog
         }
     }
 }

@@ -33,13 +33,25 @@ def boot_id() -> str | None:
     return path.read_text(encoding="utf-8").strip()
 
 
+def optional_arg(index: int) -> str | None:
+    if len(sys.argv) <= index:
+        return None
+    value = sys.argv[index]
+    return value if value else None
+
+
 def main() -> int:
-    if len(sys.argv) < 2 or len(sys.argv) > 3:
-        print("usage: tirosh-write-runtime-state <runtime-state.json> [guest-http]", file=sys.stderr)
+    if len(sys.argv) < 2 or len(sys.argv) > 5:
+        print(
+            "usage: tirosh-write-runtime-state <runtime-state.json> [guest-http] [redis-ui-http] [swagger-ui-http]",
+            file=sys.stderr,
+        )
         return 2
 
     state_path = Path(sys.argv[1])
-    guest_http = sys.argv[2] if len(sys.argv) == 3 and sys.argv[2] else None
+    guest_http = optional_arg(2)
+    redis_ui_http = optional_arg(3)
+    swagger_ui_http = optional_arg(4)
     state_path.parent.mkdir(parents=True, exist_ok=True)
     state_path.write_text(
         json.dumps(
@@ -48,6 +60,8 @@ def main() -> int:
                 "vmIP": first_non_loopback_ip(),
                 "bootID": boot_id(),
                 "guestHTTP": guest_http,
+                "redisUIHTTP": redis_ui_http,
+                "swaggerUIHTTP": swagger_ui_http,
                 "updatedAt": datetime.now(timezone.utc).isoformat(),
             },
             indent=2,

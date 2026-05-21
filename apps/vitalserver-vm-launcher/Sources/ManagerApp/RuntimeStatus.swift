@@ -14,6 +14,8 @@ struct RuntimeStatus {
     var vmIP: String?
     var guestHTTP: String?
     var hostProxyHTTP: String?
+    var redisUIHTTP: String?
+    var swaggerUIHTTP: String?
     var proxyPort = AppConstants.Product.defaultProxyPort
     var failureReasons: [String] = []
 
@@ -26,6 +28,8 @@ struct RuntimeStatus {
             && vmIP != nil
             && isSuccessfulHTTPStatus(guestHTTP)
             && isSuccessfulHTTPStatus(hostProxyHTTP)
+            && isSuccessfulHTTPStatus(redisUIHTTP)
+            && isSuccessfulHTTPStatus(swaggerUIHTTP)
     }
 
     var displayMessage: String? {
@@ -56,6 +60,8 @@ struct RuntimeStatus {
             vmIP: document?.vmIP ?? guestState?.vmIP ?? readTrimmed(paths.vmIPFile),
             guestHTTP: document?.guestHTTP,
             hostProxyHTTP: document?.hostProxyHTTP,
+            redisUIHTTP: document?.redisUIHTTP ?? guestState?.redisUIHTTP,
+            swaggerUIHTTP: document?.swaggerUIHTTP ?? guestState?.swaggerUIHTTP,
             proxyPort: document?.proxyPort ?? proxyPort(paths.proxyLaunchDaemon),
             failureReasons: document?.failureReasons ?? []
         )
@@ -136,6 +142,8 @@ struct RuntimePaths {
 
 private struct GuestRuntimeStateDocument: Decodable {
     let vmIP: String
+    let redisUIHTTP: String?
+    let swaggerUIHTTP: String?
 }
 
 private struct RuntimeStatusDocument: Decodable {
@@ -151,6 +159,8 @@ private struct RuntimeStatusDocument: Decodable {
     let proxyPort: Int
     let hostProxyHTTP: String
     let guestHTTP: String
+    let redisUIHTTP: String?
+    let swaggerUIHTTP: String?
     let failureReasons: [String]
     let latestBackup: String?
 }

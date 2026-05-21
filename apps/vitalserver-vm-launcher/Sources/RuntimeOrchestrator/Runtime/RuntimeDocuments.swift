@@ -41,6 +41,8 @@ struct RuntimeHealthSnapshot {
     let proxyPort: Int
     let hostProxyHTTP: String
     let guestHTTP: String
+    let redisUIHTTP: String
+    let swaggerUIHTTP: String
     let failureReasons: [String]
 
     var isHealthy: Bool {
@@ -53,6 +55,8 @@ struct GuestRuntimeStateDocument: Decodable {
     let updatedAt: String?
     let bootID: String?
     let guestHTTP: String?
+    let redisUIHTTP: String?
+    let swaggerUIHTTP: String?
 
     static func load(from url: URL) -> GuestRuntimeStateDocument? {
         guard FileManager.default.fileExists(atPath: url.path),
@@ -89,6 +93,8 @@ struct RuntimeStatusDocument: Encodable {
     let proxyPort: Int
     let hostProxyHTTP: String
     let guestHTTP: String
+    let redisUIHTTP: String
+    let swaggerUIHTTP: String
     let rootfsBase: String
     let vmDisk: String
     let failureReasons: [String]
