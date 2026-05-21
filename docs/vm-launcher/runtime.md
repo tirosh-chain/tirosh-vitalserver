@@ -175,13 +175,12 @@ sudo /mnt/tirosh/deploy/bootstrap.sh
 bootstrap 순서:
 
 1. VirtioFS 공유 디렉터리를 `/mnt/tirosh`에 mount
-2. network time sync 대기
-3. `docker.io`, `docker-compose-plugin` 설치
-4. Apple Silicon Linux guest에서 `linux/amd64` container 실행을 위해 `qemu-user-static`, `binfmt-support` 설치
-5. `Support/Guest/bin`, `Support/Guest/systemd` 파일을 guest OS에 설치
-6. bundled Docker image를 load하고 dangling image cleanup 수행
-7. `docker compose up -d --build`로 VitalServer/Redis/UI/edge nginx 실행
-8. runtime state에 VM IP와 guest HTTP readiness 기록
+2. air-gapped rootfs에 Docker/Compose/qemu-user-static/binfmt/avahi/growpart가 준비됐는지 확인
+3. 준비물이 없으면 `apt-get`을 시도하지 않고 실패 처리
+4. `Support/Guest/bin`, `Support/Guest/systemd` 파일을 guest OS에 설치
+5. bundled Docker image를 load하고 dangling image cleanup 수행
+6. `docker compose up -d --build`로 VitalServer/Redis/UI/edge nginx 실행
+7. runtime state에 VM IP와 guest HTTP readiness 기록
 
 ## macOS Data Sharing
 

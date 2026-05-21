@@ -41,45 +41,6 @@ write_runtime_state() {
   /usr/local/bin/tirosh-write-runtime-state "${RUNTIME_STATE_FILE}" "${1:-}"
 }
 
-wait_for_network_time() {
-  timedatectl set-ntp true >/dev/null 2>&1 || true
-  systemctl restart systemd-timesyncd >/dev/null 2>&1 || true
-
-  for _ in $(seq 1 60); do
-    if [ "$(timedatectl show -p NTPSynchronized --value 2>/dev/null)" = "yes" ]; then
-      return
-    fi
-    sleep 1
-  done
-
-  printf "warning: network time is not synchronized yet\n" >&2
-}
-
-disable_flash_kernel_hook() {
-  local hook="/etc/initramfs/post-update.d/flash-kernel"
-
-  if [ -x "${hook}" ]; then
-    # Ubuntu arm64 cloud images may include flash-kernel, but Apple
-    # Virtualization boots the kernel/initrd supplied by macOS. The guest-side
-    # flash-kernel hook can fail with "Unsupported platform" and block apt.
-    chmod -x "${hook}"
-  fi
-}
-
-remove_flash_kernel_package() {
-  if dpkg-query -W flash-kernel >/dev/null 2>&1; then
-    apt-get purge -y flash-kernel \
-      || dpkg --purge --force-all flash-kernel \
-      || true
-  fi
-}
-
-repair_package_state() {
-  if ! dpkg --configure -a; then
-    apt-get -f install -y
-  fi
-}
-
 expand_root_filesystem() {
   local root_source parent_device partition_number filesystem_type
 
@@ -158,26 +119,16 @@ runtime_packages_ready() {
     && qemu_user_ready
 }
 
-install_runtime_packages() {
-  wait_for_network_time
-  disable_flash_kernel_hook
-  remove_flash_kernel_package
-  repair_package_state
-
-  apt-get update
-  apt-get install -y \
-    avahi-daemon \
-    binfmt-support \
-    ca-certificates \
-    cloud-guest-utils \
-    curl \
-    docker.io \
-    qemu-user-static
-
-  if ! docker compose version >/dev/null 2>&1; then
-    apt-get install -y docker-compose-v2 \
-      || apt-get install -y docker-compose-plugin
+require_runtime_packages() {
+  if runtime_packages_ready; then
+    printf "Runtime packages are available in the air-gapped rootfs.\n"
+    return
   fi
+
+  printf "error: missing runtime package in air-gapped rootfs\n" >&2
+  printf "The target bootstrap never runs apt-get. Rebuild the package rootfs with make vm-golden-rootfs.\n" >&2
+  printf "Required commands/services: curl, docker, docker compose, avahi-daemon, growpart, qemu-user-static on arm64.\n" >&2
+  exit 1
 }
 
 install_guest_runtime_files() {
@@ -263,17 +214,7 @@ require_deploy_bundle
 
 export DEBIAN_FRONTEND=noninteractive
 expand_root_filesystem
-
-if runtime_packages_ready; then
-  printf "Runtime packages are already available; skipping apt install.\n"
-else
-  install_runtime_packages
-fi
-
-if ! docker compose version >/dev/null 2>&1; then
-  printf "error: Docker Compose v2 is not available\n" >&2
-  exit 1
-fi
+require_runtime_packages
 
 install_guest_runtime_files
 write_runtime_state

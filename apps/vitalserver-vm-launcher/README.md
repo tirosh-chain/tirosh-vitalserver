@@ -280,7 +280,7 @@ make vm-golden-rootfs
 make vm-pkg
 ```
 
-`make vm-pkg`도 `vm-golden-rootfs`를 dependency로 실행하므로, package payload에는 `.tmp/vitalserver-vm-pkg/rootfs-base.raw.gz`가 들어갑니다. 기본 package용 rootfs는 4GB입니다. 반복 개발 중에는 기존 golden rootfs cache를 재사용합니다. release 검증처럼 clean rootfs를 반드시 다시 만들려면 `make vm-pkg-release` 또는 `make vm-dmg-release`를 사용합니다. 설치된 VM은 부팅 시 필요한 guest package가 이미 있으면 `apt-get` 단계를 건너뜁니다.
+`make vm-pkg`도 `vm-golden-rootfs`를 dependency로 실행하므로, package payload에는 `.tmp/vitalserver-vm-pkg/rootfs-base.raw.gz`가 들어갑니다. 기본 package용 rootfs는 4GB입니다. 반복 개발 중에는 기존 golden rootfs cache를 재사용합니다. release 검증처럼 clean rootfs를 반드시 다시 만들려면 `make vm-pkg-release` 또는 `make vm-dmg-release`를 사용합니다. 설치된 VM은 target Mac에서 `apt-get`을 실행하지 않습니다. 필요한 guest package는 golden rootfs에 미리 포함되어야 합니다.
 
 설치 테스트:
 
