@@ -16,7 +16,8 @@ final class RuntimeSettingsReaderTests: XCTestCase {
           "cpuCount": 4,
           "memoryMiB": 6144,
           "network": { "mode": "shared", "bridgedInterface": "en0" },
-          "vitalFilesDirectory": { "hostPath": "/Volumes/Vital Files" }
+          "vitalFilesDirectory": { "hostPath": "/Volumes/Vital Files" },
+          "autoRecoveryEnabled": false
         }
         """.write(to: vmConfig, atomically: true, encoding: .utf8)
         FileManager.default.createFile(atPath: vmDisk.path, contents: Data([0]))
@@ -78,6 +79,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         XCTAssertEqual(settings.publicHost, "example.test")
         XCTAssertEqual(settings.publicPort, 8080)
         XCTAssertEqual(settings.proxyPort, 19090)
+        XCTAssertFalse(settings.autoRecoveryEnabled)
     }
 
     func testConfigureArgumentsReflectSettings() {
@@ -90,6 +92,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         settings.publicHost = "public.test"
         settings.publicPort = 8080
         settings.startOnBoot = false
+        settings.autoRecoveryEnabled = false
         settings.restartAfterSave = true
 
         let arguments = settings.configureArguments(adminPasswordFile: "/tmp/password")
@@ -100,6 +103,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         XCTAssertTrue(arguments.contains(AppConstants.RuntimeCommand.optionRestart))
         XCTAssertEqual(value(after: AppConstants.RuntimeCommand.optionProxyPort, in: arguments), "18080")
         XCTAssertEqual(value(after: AppConstants.RuntimeCommand.optionStartOnBoot, in: arguments), "false")
+        XCTAssertEqual(value(after: AppConstants.RuntimeCommand.optionAutoRecovery, in: arguments), "false")
     }
 
     private func value(after marker: String, in arguments: [String]) -> String? {

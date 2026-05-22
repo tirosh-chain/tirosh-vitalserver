@@ -486,6 +486,10 @@ struct ContentView: View {
                 settingsSection(AppConstants.Labels.sectionOperations) {
                     settingToggle(AppConstants.Labels.startOnBoot, isOn: $controller.settings.startOnBoot)
                         .disabled(!controller.settings.startOnBootConfigurable)
+                    VStack(alignment: .leading, spacing: 4) {
+                        settingToggle(AppConstants.Labels.automaticRecovery, isOn: $controller.settings.autoRecoveryEnabled)
+                        settingHelp(AppConstants.Labels.automaticRecoveryHelp)
+                    }
                     settingToggle(AppConstants.Labels.restartServicesAfterSave, isOn: $controller.settings.restartAfterSave)
                 }
                 applyActionRow

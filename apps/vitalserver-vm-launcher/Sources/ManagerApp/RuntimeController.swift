@@ -78,6 +78,7 @@ final class RuntimeController: ObservableObject {
             "Network mode: \(settings.networkMode)",
             "Disk size: \(settings.diskGiB) GiB",
             "Vital files directory: \(settings.vitalFilesDirectory)",
+            "Automatic recovery: \(settings.autoRecoveryEnabled ? AppConstants.Values.boolTrue : AppConstants.Values.boolFalse)",
             "Restart services: \(settings.restartAfterSave ? AppConstants.Values.boolTrue : AppConstants.Values.boolFalse)",
         ].joined(separator: "\n")
     }

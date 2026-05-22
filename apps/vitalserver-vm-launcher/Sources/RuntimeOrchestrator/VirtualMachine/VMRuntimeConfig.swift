@@ -13,6 +13,7 @@ struct VMRuntimeConfig: Codable {
     var network: NetworkConfig
     var sharedDirectory: SharedDirectoryConfig?
     var vitalFilesDirectory: SharedDirectoryConfig?
+    var autoRecoveryEnabled: Bool? = nil
 
     // The default boot asset names match the Linux kernel/initrd style used by
     // Apple's Linux VM sample and keep the first PoC explicit.
@@ -44,7 +45,8 @@ struct VMRuntimeConfig: Codable {
                 tag: Constants.Defaults.vitalFilesDirectoryTag,
                 guestMountPath: Constants.Defaults.vitalFilesDirectoryGuestMountPath,
                 readOnly: false
-            )
+            ),
+            autoRecoveryEnabled: true
         )
     }
 
@@ -83,6 +85,9 @@ struct VMRuntimeConfig: Codable {
                 guestMountPath: Constants.Defaults.vitalFilesDirectoryGuestMountPath,
                 readOnly: false
             )
+        }
+        if config.autoRecoveryEnabled == nil {
+            config.autoRecoveryEnabled = true
         }
     }
 

@@ -521,19 +521,44 @@ struct RuntimeLifecycle {
         log("watchdog detected unhealthy runtime reasons=\(reasons)")
         try writeRuntimeStatus(.recovering, operation: .watchdog, message: "watchdog recovery started: \(reasons)")
 
-        if !fileStore.isExecutableFile(atPath: Constants.InstallPaths.vmBin)
-            || !fileStore.isExecutableFile(atPath: Constants.InstallPaths.proxyRun)
-            || !fileExists(rootfsBase)
-            || !fileExists(vmDisk) {
+        let proxyLivenessHTTP = httpProber.statusCode(url: Constants.Runtime.proxyLivenessURL(port: initial.proxyPort))
+        let recoveryPlan = RuntimeRecoveryPlanner.plan(RuntimeRecoveryInput(
+            vmExecutable: initial.vmExecutable,
+            proxyExecutable: initial.proxyExecutable,
+            rootfsBase: initial.rootfsBase,
+            vmDisk: initial.vmDisk,
+            vmService: initial.vmService,
+            proxyService: initial.proxyService,
+            vmIP: initial.vmIP,
+            guestHTTP: initial.guestHTTP,
+            hostProxyReadinessHTTP: initial.hostProxyHTTP,
+            hostProxyLivenessHTTP: proxyLivenessHTTP
+        ))
+        log(
+            "watchdog recovery plan vm=\(recoveryPlan.restartVM) proxy=\(recoveryPlan.restartProxy) "
+                + "hostProxyHealth=\(proxyLivenessHTTP) hostProxyReady=\(initial.hostProxyHTTP) guestReady=\(initial.guestHTTP)"
+        )
+
+        guard automaticRecoveryEnabled() else {
+            try writeRuntimeStatus(
+                .degraded,
+                operation: .watchdog,
+                message: "watchdog detected unhealthy runtime; automatic recovery is disabled: \(reasons)"
+            )
+            print("watchdog: recovery disabled")
+            return
+        }
+
+        if !recoveryPlan.canRecover {
             try writeRuntimeStatus(.critical, operation: .watchdog, message: "watchdog cannot recover missing installed artifacts: \(reasons)")
             print("watchdog: critical")
             return
         }
 
-        if initial.vmService != "loaded" || initial.vmIP == nil || !isSuccessfulHTTPStatus(initial.guestHTTP) {
+        if recoveryPlan.restartVM {
             restartLaunchdService(Constants.Launchd.vmService)
         }
-        if initial.proxyService != "loaded" || !isSuccessfulHTTPStatus(initial.hostProxyHTTP) {
+        if recoveryPlan.restartProxy {
             restartLaunchdService(Constants.Launchd.proxyService)
         }
 
@@ -550,6 +575,13 @@ struct RuntimeLifecycle {
             )
             print("watchdog: critical")
         }
+    }
+
+    private func automaticRecoveryEnabled() -> Bool {
+        guard let config = try? VMRuntimeConfig.load(from: paths.config, fileStore: fileStore) else {
+            return true
+        }
+        return config.autoRecoveryEnabled ?? true
     }
 
     func configure(arguments: [String]) throws {
@@ -661,6 +693,11 @@ struct RuntimeLifecycle {
                     throw LauncherError.missingArgument("--start-on-boot must be true or false")
                 }
                 try setStartOnBoot(enabled)
+            case .autoRecovery:
+                guard let enabled = RuntimeBooleanParser.parse(value) else {
+                    throw LauncherError.missingArgument("--auto-recovery must be true or false")
+                }
+                vmConfig.autoRecoveryEnabled = enabled
             case .restart:
                 restart = true
             default:

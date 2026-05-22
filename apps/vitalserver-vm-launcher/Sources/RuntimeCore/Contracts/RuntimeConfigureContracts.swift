@@ -11,6 +11,7 @@ public enum RuntimeConfigureOption: Equatable, Sendable {
     case adminPassword
     case adminPasswordFile
     case startOnBoot
+    case autoRecovery
     case restart
     case unknown(String)
 
@@ -40,6 +41,8 @@ public enum RuntimeConfigureOption: Equatable, Sendable {
             self = .adminPasswordFile
         case "--start-on-boot":
             self = .startOnBoot
+        case "--auto-recovery":
+            self = .autoRecovery
         case "--restart":
             self = .restart
         default:
@@ -73,6 +76,8 @@ public enum RuntimeConfigureOption: Equatable, Sendable {
             return "--admin-password-file"
         case .startOnBoot:
             return "--start-on-boot"
+        case .autoRecovery:
+            return "--auto-recovery"
         case .restart:
             return "--restart"
         case .unknown(let value):

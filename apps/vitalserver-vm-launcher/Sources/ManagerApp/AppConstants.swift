@@ -171,6 +171,8 @@ enum AppConstants {
             "Disk size can only be increased after installation. Current minimum is \(minimumGiB) GiB."
         }
         static let startOnBoot = "Start on boot"
+        static let automaticRecovery = "Enable automatic recovery"
+        static let automaticRecoveryHelp = "Automatically restarts the VM or network proxy when VitalServer is not ready. Disable only for troubleshooting."
         static let restartServicesAfterSave = "Restart services after save"
         static let resetAdminPassword = "Reset admin password"
         static let newAdminPassword = "New admin password"
@@ -229,6 +231,7 @@ enum AppConstants {
         static let optionPublicHost = "--public-host"
         static let optionPublicPort = "--public-port"
         static let optionStartOnBoot = "--start-on-boot"
+        static let optionAutoRecovery = "--auto-recovery"
         static let optionBridgedInterface = "--bridged-interface"
         static let optionAdminPasswordFile = "--admin-password-file"
         static let optionRestart = "--restart"

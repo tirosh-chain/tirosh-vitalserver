@@ -15,6 +15,7 @@ struct RuntimeSettings: Codable {
     var changeAdminPassword = false
     var startOnBoot = true
     var startOnBootConfigurable = true
+    var autoRecoveryEnabled = true
     var restartAfterSave = true
 
     @MainActor
@@ -49,6 +50,10 @@ struct RuntimeSettings: Codable {
                 startOnBoot ? AppConstants.Values.boolTrue : AppConstants.Values.boolFalse,
             ]
         }
+        arguments += [
+            AppConstants.RuntimeCommand.optionAutoRecovery,
+            autoRecoveryEnabled ? AppConstants.Values.boolTrue : AppConstants.Values.boolFalse,
+        ]
         if networkMode == AppConstants.Values.networkBridged, !bridgedInterface.isEmpty {
             arguments += [AppConstants.RuntimeCommand.optionBridgedInterface, bridgedInterface]
         }

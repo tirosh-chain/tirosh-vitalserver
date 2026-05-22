@@ -15,6 +15,7 @@ final class RuntimeConfigureContractsTests: XCTestCase {
         XCTAssertEqual(RuntimeConfigureOption(rawValue: "--admin-password"), .adminPassword)
         XCTAssertEqual(RuntimeConfigureOption(rawValue: "--admin-password-file"), .adminPasswordFile)
         XCTAssertEqual(RuntimeConfigureOption(rawValue: "--start-on-boot"), .startOnBoot)
+        XCTAssertEqual(RuntimeConfigureOption(rawValue: "--auto-recovery"), .autoRecovery)
         XCTAssertEqual(RuntimeConfigureOption(rawValue: "--restart"), .restart)
         XCTAssertEqual(RuntimeConfigureOption(rawValue: "--future"), .unknown("--future"))
     }
