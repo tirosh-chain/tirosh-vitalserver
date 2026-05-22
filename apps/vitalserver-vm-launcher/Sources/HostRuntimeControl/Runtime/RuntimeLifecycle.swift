@@ -693,57 +693,28 @@ struct RuntimeLifecycle {
     }
 
     private func waitForHealth(restartVM: Bool, restartProxy: Bool, restartWatchdog: Bool) throws {
-        guard restartVM || restartProxy || restartWatchdog else {
-            log("runtime services were not running before apply; skipping health wait")
-            return
-        }
-
-        log("waiting for runtime health timeoutSeconds=\(Constants.Runtime.waitTimeoutSeconds)")
-        let maxAttempts = Int(ceil(Constants.Runtime.waitTimeoutSeconds / 3.0))
-        let waitResult = RuntimeHealthWaiter.wait(
-            configuration: RuntimeHealthWaitConfiguration(maxAttempts: maxAttempts, progressEveryAttempts: 5),
-            observe: {
-                RuntimeHealthWaitObservation(
-                    vmServiceRequired: restartVM,
-                    proxyServiceRequired: restartProxy,
-                    watchdogServiceRequired: restartWatchdog,
-                    vmServiceLoaded: isLaunchdLoaded(Constants.Launchd.vmService),
-                    proxyServiceLoaded: isLaunchdLoaded(Constants.Launchd.proxyService),
-                    watchdogServiceLoaded: isLaunchdLoaded(Constants.Launchd.watchdogService),
-                    snapshot: runtimeHealthSnapshot()
-                )
-            },
-            onProgress: { reasons in
-                let reasonText = reasonText(reasons)
-                log("waiting for runtime health reasons=\(reasonText)")
-                try? writeRuntimeStatus(
-                    .recovering,
-                    operation: .health,
-                    message: "waiting for runtime health: \(reasonText)"
-                )
-            },
-            sleep: {
-                sleeper.sleep(forTimeInterval: 3)
-            }
-        )
-
-        switch waitResult {
-        case .healthy:
-            let snapshot = runtimeHealthSnapshot()
-            log("runtime health ok hostProxyHTTP=\(snapshot.hostProxyHTTP)")
-        case .failedEarly(let reason):
-            log("runtime health failed early reason=\(reason.rawValue)")
-            throw LauncherError.runtimeHealthFailed
-        case .timedOut:
-            throw LauncherError.runtimeHealthFailed
-        }
+        try runtimeHealthWaitRunner().wait(for: RuntimeServiceRestartPolicy(
+            restartVM: restartVM,
+            restartProxy: restartProxy,
+            restartWatchdog: restartWatchdog
+        ))
     }
 
     private func waitForHealth(_ policy: RuntimeServiceRestartPolicy) throws {
-        try waitForHealth(
-            restartVM: policy.restartVM,
-            restartProxy: policy.restartProxy,
-            restartWatchdog: policy.restartWatchdog
+        try runtimeHealthWaitRunner().wait(for: policy)
+    }
+
+    private func runtimeHealthWaitRunner() -> RuntimeHealthWaitRunner {
+        RuntimeHealthWaitRunner(
+            isLaunchdLoaded: isLaunchdLoaded,
+            healthSnapshot: runtimeHealthSnapshot,
+            writeStatus: { status, operation, message in
+                try writeRuntimeStatus(status, operation: operation, message: message)
+            },
+            sleep: {
+                sleeper.sleep(forTimeInterval: 3)
+            },
+            log: log
         )
     }
 
@@ -786,7 +757,7 @@ struct RuntimeLifecycle {
     }
 
     private func reasonText(_ reasons: [RuntimeFailureReason]) -> String {
-        reasons.isEmpty ? "unknown" : reasons.map(\.rawValue).joined(separator: ", ")
+        RuntimeFailureReasonText.describe(reasons)
     }
 
     private func rotateRuntimeLogs() throws {
