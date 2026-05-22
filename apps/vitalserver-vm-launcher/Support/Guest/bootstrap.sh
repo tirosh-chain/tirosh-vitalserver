@@ -275,7 +275,6 @@ install_guest_runtime_files
 write_runtime_state
 
 systemctl enable --now docker
-systemctl enable --now binfmt-support >/dev/null 2>&1 || true
 hostnamectl set-hostname "${TIROSH_GUEST_HOSTNAME:-tirosh-vitalserver}"
 systemctl enable --now avahi-daemon
 

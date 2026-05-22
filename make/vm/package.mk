@@ -13,7 +13,8 @@ vm-airgap-rootfs: vm-download vm-stage
 	@printf "Air-gapped rootfs is prepared: %s\n" "$(VM_DISK_IMAGE)"
 
 vm-golden-rootfs:
-	@if [ "$(VM_RECREATE_GOLDEN_ROOTFS)" = "false" ] \
+	@set -e; \
+	if [ "$(VM_RECREATE_GOLDEN_ROOTFS)" = "false" ] \
 		&& [ -s "$(VM_PKG_ROOTFS_CACHE)" ] \
 		&& [ -s "$(VM_GOLDEN_RUNTIME_DIR)/Image" ] \
 		&& [ -s "$(VM_GOLDEN_RUNTIME_DIR)/initrd.img" ]; then \
@@ -22,6 +23,10 @@ vm-golden-rootfs:
 		$(MAKE) vm-airgap-rootfs \
 			VM_HOME="$(abspath $(VM_GOLDEN_HOME))" \
 			VM_RECREATE_ROOTFS="$(VM_RECREATE_GOLDEN_ROOTFS)"; \
+		test -s "$(VM_GOLDEN_HOME)/data/run/rootfs-ready" || { \
+			printf "missing air-gapped rootfs marker after prepare: %s\n" "$(VM_GOLDEN_HOME)/data/run/rootfs-ready" >&2; \
+			exit 1; \
+		}; \
 		$(VM_BUILD_RUNNER) rootfs-base \
 			--source "$(VM_GOLDEN_DISK_IMAGE)" \
 			--output "$(VM_PKG_ROOTFS_CACHE)" \

@@ -50,13 +50,11 @@ install_runtime_packages() {
   apt-get update
   apt-get install -y \
     avahi-daemon \
-    binfmt-support \
     ca-certificates \
     cloud-guest-utils \
     curl \
     docker.io \
-    python3-minimal \
-    qemu-user-static
+    python3-minimal
 
   if ! docker compose version >/dev/null 2>&1; then
     apt-get install -y docker-compose-v2 \
@@ -70,7 +68,6 @@ install_runtime_packages() {
 install_runtime_packages
 systemctl enable docker
 systemctl enable avahi-daemon
-systemctl enable binfmt-support >/dev/null 2>&1 || true
 
 {
   printf "ready_at=%s\n" "$(date -Iseconds)"
