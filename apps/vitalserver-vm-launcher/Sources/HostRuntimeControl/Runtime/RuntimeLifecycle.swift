@@ -901,38 +901,20 @@ struct RuntimeLifecycle {
         try serviceController.setStartOnBoot(enabled)
     }
 
+    private func runtimeCommandExecutor() -> RuntimeCommandExecutor {
+        RuntimeCommandExecutor(commandRunner: commandRunner, log: log)
+    }
+
     private func runProcess(_ executable: String, arguments: [String]) -> RuntimeProcessResult {
-        commandRunner.run(executable, arguments: arguments)
+        runtimeCommandExecutor().run(executable, arguments)
     }
 
     private func runRequired(_ executable: String, arguments: [String]) throws {
-        log("command started executable=\(executable) arguments=\(arguments.joined(separator: " "))")
-        let result = runProcess(executable, arguments: arguments)
-        guard result.exitCode == 0 else {
-            let stderr = result.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !stderr.isEmpty {
-                log("command stderr executable=\(executable) stderr=\(stderr)")
-            }
-            log("command failed executable=\(executable) exitCode=\(result.exitCode)")
-            throw LauncherError.missingArgument(
-                "command failed: \(([executable] + arguments).joined(separator: " "))"
-            )
-        }
-        log("command completed executable=\(executable)")
+        try runtimeCommandExecutor().runRequired(executable, arguments)
     }
 
     private func runProcessToFile(_ executable: String, arguments: [String], output: URL) throws {
-        let result = commandRunner.runWritingOutput(executable, arguments: arguments, output: output)
-        guard result.exitCode == 0 else {
-            let stderrText = result.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !stderrText.isEmpty {
-                log("command stderr executable=\(executable) stderr=\(stderrText)")
-            }
-            log("command failed executable=\(executable) exitCode=\(result.exitCode)")
-            throw LauncherError.missingArgument(
-                "command failed: \(([executable] + arguments).joined(separator: " "))"
-            )
-        }
+        try runtimeCommandExecutor().runWritingOutput(executable, arguments, output: output)
     }
 
     private func fileExists(_ url: URL) -> Bool {
