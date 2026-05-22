@@ -30,7 +30,9 @@ VM_PKG_VERSION ?= $(VM_PRODUCT_VERSION)
 VM_UPDATE_BUNDLE_VERSION ?= $(VM_PKG_VERSION)
 VM_UPDATE_MIN_UPDATER_VERSION ?= $(VM_RELEASE_MIN_UPDATER_VERSION)
 VM_UPDATE_REQUIRES_TWO_PHASE_UPDATE ?= false
-VM_UPDATE_MIGRATIONS ?= $(VM_LAUNCHER_DIR)/Support/Build/migrations/001-refresh-cloud-init-seed
+VM_UPDATE_MIGRATIONS ?= \
+	$(VM_LAUNCHER_DIR)/Support/Build/migrations/001-refresh-cloud-init-seed \
+	$(VM_LAUNCHER_DIR)/Support/Build/migrations/002-migrate-runtime-logs
 VM_NGINX_SOURCE_BIN ?= /opt/homebrew/opt/nginx/bin/nginx
 VM_NGINX_BIN ?=
 VM_NGINX_EXPECTED_VERSION ?= $(VM_RELEASE_HOST_PROXY_IMAGE)

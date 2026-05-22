@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+product_root="/Library/Application Support/TiroshVitalServer"
+vm_home="${VITALSERVER_VM_HOME:-${product_root}/vm}"
+legacy_logs="${vm_home}/logs"
+central_logs="${product_root}/logs/runtime"
+timestamp="$(date -u +"%Y%m%dT%H%M%SZ")"
+
+[ -d "${legacy_logs}" ] || exit 0
+
+mkdir -p "${central_logs}"
+
+unique_destination() {
+  local name="$1"
+  local destination="${central_logs}/${name}"
+  local index
+
+  if [ ! -e "${destination}" ]; then
+    printf "%s\n" "${destination}"
+    return 0
+  fi
+
+  destination="${central_logs}/legacy-${name}.${timestamp}"
+  if [ ! -e "${destination}" ]; then
+    printf "%s\n" "${destination}"
+    return 0
+  fi
+
+  for index in $(seq 1 999); do
+    destination="${central_logs}/legacy-${name}.${timestamp}.${index}"
+    if [ ! -e "${destination}" ]; then
+      printf "%s\n" "${destination}"
+      return 0
+    fi
+  done
+
+  printf "%s\n" "${central_logs}/legacy-${name}.${timestamp}.$$"
+}
+
+find "${legacy_logs}" -mindepth 1 -maxdepth 1 -type f -print0 | while IFS= read -r -d '' file; do
+  name="$(basename "${file}")"
+  destination="$(unique_destination "${name}")"
+  mv "${file}" "${destination}"
+done
+
+rmdir "${legacy_logs}" 2>/dev/null || true
+printf "runtime logs migrated from %s to %s\n" "${legacy_logs}" "${central_logs}"
