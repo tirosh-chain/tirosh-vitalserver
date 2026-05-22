@@ -25,6 +25,7 @@ final class RuntimeController: ObservableObject {
     private let healthNotificationCoordinator: RuntimeHealthNotificationCoordinator
     private let nativeShell: any RuntimeNativeShell
     private let backupSelectionPolicy = RuntimeBackupSelectionPolicy()
+    private let processMessageFormatter = RuntimeProcessMessageFormatter()
     private let settingsValidator = RuntimeSettingsValidator()
     private let logLineLimitOptions = [100, 500, 1000]
     private let logSources: [LogSourceOption] = [
@@ -266,14 +267,14 @@ final class RuntimeController: ObservableObject {
         }
         if result.exitCode == 0 {
             selectedBundleVerified = true
-            selectedBundleVerification = messageWithLog(
+            selectedBundleVerification = processMessageFormatter.message(
                 title: AppConstants.StatusText.updateBundleVerified,
                 result: result
             )
             message = selectedBundleVerification
         } else {
             selectedBundleVerified = false
-            selectedBundleVerification = messageWithLog(
+            selectedBundleVerification = processMessageFormatter.message(
                 title: AppConstants.StatusText.updateBundleVerificationFailed,
                 result: result
             )
@@ -572,11 +573,11 @@ final class RuntimeController: ObservableObject {
             return false
         }
         if result.exitCode == 0 {
-            message = messageWithLog(title: successMessage, result: result)
+            message = processMessageFormatter.message(title: successMessage, result: result)
             operationDetail = successMessage
             return true
         } else {
-            message = messageWithLog(
+            message = processMessageFormatter.message(
                 title: result.summary.isEmpty ? AppConstants.StatusText.commandCancelled : result.summary,
                 result: result
             )
@@ -609,14 +610,6 @@ final class RuntimeController: ObservableObject {
             }
             try? await Task.sleep(nanoseconds: 2_000_000_000)
         }
-    }
-
-    private func messageWithLog(title: String, result: ProcessResult) -> String {
-        let output = result.summary.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !output.isEmpty, output != AppConstants.StatusText.done else {
-            return title
-        }
-        return "\(title)\n\n\(output)"
     }
 
 }
