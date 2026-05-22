@@ -24,8 +24,8 @@ VM_RELEASE_REDIS_UI_VERSION := $(call VM_RELEASE_VALUE,data["services"]["redisUI
 VM_RELEASE_SWAGGER_UI_VERSION := $(call VM_RELEASE_VALUE,data["services"]["swaggerUI"]["version"])
 VM_RELEASE_GUEST_EDGE_VERSION := $(call VM_RELEASE_VALUE,data["services"]["guestEdge"]["version"])
 VM_RELEASE_HOST_PROXY_VERSION := $(call VM_RELEASE_VALUE,data["services"]["hostProxy"]["version"])
-VM_GENERATED_VERSION_SWIFT := $(VM_LAUNCHER_DIR)/Sources/RuntimeOrchestrator/Runtime/GeneratedVersion.swift
-VM_GENERATED_RELEASE_SWIFT := $(VM_LAUNCHER_DIR)/Sources/ManagerApp/GeneratedRelease.swift
+VM_GENERATED_VERSION_SWIFT := $(VM_LAUNCHER_DIR)/Sources/HostRuntimeControl/Runtime/GeneratedVersion.swift
+VM_GENERATED_RELEASE_SWIFT := $(VM_LAUNCHER_DIR)/Sources/VitalServerHelperApp/GeneratedRelease.swift
 VM_PKG_VERSION ?= $(VM_PRODUCT_VERSION)
 VM_UPDATE_BUNDLE_VERSION ?= $(VM_PKG_VERSION)
 VM_UPDATE_MIN_UPDATER_VERSION ?= $(VM_RELEASE_MIN_UPDATER_VERSION)
@@ -42,7 +42,7 @@ VM_BRIDGED_CODESIGN_IDENTITY ?= $(VM_CODESIGN_IDENTITY)
 
 # Build toolchain.
 VM_LAUNCHER_BIN := $(VM_LAUNCHER_DIR)/.build/release/vitalserver-vm
-VM_APP_BIN := $(VM_LAUNCHER_DIR)/.build/release/TiroshVitalServerApp
+VM_APP_BIN := $(VM_LAUNCHER_DIR)/.build/release/VitalServerHelper
 VM_LAUNCHER_ENTITLEMENTS := $(VM_LAUNCHER_DIR)/Entitlements.shared.plist
 VM_LAUNCHER_BRIDGED_ENTITLEMENTS := $(VM_LAUNCHER_DIR)/Entitlements.plist
 VM_APP_INFO_PLIST = $(VM_APP_BUNDLE)/Contents/Info.plist

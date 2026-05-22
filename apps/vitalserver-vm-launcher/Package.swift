@@ -3,18 +3,18 @@
 import PackageDescription
 
 let package = Package(
-    name: "TiroshVitalServerRuntime",
+    name: "TiroshVitalServerHelper",
     platforms: [
         .macOS(.v13)
     ],
     products: [
         .executable(
             name: "vitalserver-vm",
-            targets: ["RuntimeOrchestrator"]
+            targets: ["HostRuntimeControl"]
         ),
         .executable(
-            name: "TiroshVitalServerApp",
-            targets: ["ManagerApp"]
+            name: "VitalServerHelper",
+            targets: ["VitalServerHelperApp"]
         )
     ],
     targets: [
@@ -22,16 +22,16 @@ let package = Package(
             name: "RuntimeCore"
         ),
         .target(
-            name: "RuntimeInfrastructure",
+            name: "HostRuntimeInfrastructure",
             dependencies: ["RuntimeCore"]
         ),
         .executableTarget(
-            name: "RuntimeOrchestrator",
-            dependencies: ["RuntimeCore", "RuntimeInfrastructure"]
+            name: "HostRuntimeControl",
+            dependencies: ["RuntimeCore", "HostRuntimeInfrastructure"]
         ),
         .executableTarget(
-            name: "ManagerApp",
-            dependencies: ["RuntimeCore", "RuntimeInfrastructure"]
+            name: "VitalServerHelperApp",
+            dependencies: ["RuntimeCore", "HostRuntimeInfrastructure"]
         ),
         .testTarget(
             name: "RuntimeCoreTests",
@@ -41,16 +41,16 @@ let package = Package(
             ]
         ),
         .testTarget(
-            name: "RuntimeInfrastructureTests",
-            dependencies: ["RuntimeCore", "RuntimeInfrastructure"]
+            name: "HostRuntimeInfrastructureTests",
+            dependencies: ["RuntimeCore", "HostRuntimeInfrastructure"]
         ),
         .testTarget(
-            name: "RuntimeOrchestratorTests",
-            dependencies: ["RuntimeCore", "RuntimeOrchestrator"]
+            name: "HostRuntimeControlTests",
+            dependencies: ["RuntimeCore", "HostRuntimeControl"]
         ),
         .testTarget(
-            name: "ManagerAppTests",
-            dependencies: ["ManagerApp"]
+            name: "VitalServerHelperAppTests",
+            dependencies: ["VitalServerHelperApp"]
         )
     ]
 )

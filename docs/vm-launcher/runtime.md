@@ -17,7 +17,7 @@ runtime 단계의 source of truth는 Swift CLI인 `vitalserver-vm`입니다. She
 
 | 책임 | 구현 |
 |---|---|
-| VM start/stop/status/network | Swift `Sources/RuntimeOrchestrator` |
+| VM start/stop/status/network | Swift `Sources/HostRuntimeControl` |
 | install/status/health/configure/update/rollback/watchdog | Swift `RuntimeLifecycle` |
 | runtime 상태 파일 | `/Library/Application Support/TiroshVitalServer/status/runtime-status.json` |
 | host proxy runner | `Support/Packaging/proxy-run`, nginx start/reload loop |

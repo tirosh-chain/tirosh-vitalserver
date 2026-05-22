@@ -223,8 +223,8 @@ Update bundle manifest는 `helperVersion`, `targetPlatforms`, `minUpdaterVersion
 |---|---|
 | Make | target orchestration, artifact path, developer wrapper |
 | Python `packages/vm-build` | Ubuntu asset, golden rootfs, nginx bundle, Docker image bundle, update bundle 생성/검증 |
-| Swift `RuntimeOrchestrator` | VM lifecycle, runtime install/configure/health/watchdog/update/rollback |
-| Swift `ManagerApp` | Helper app UI |
+| Swift `HostRuntimeControl` | VM lifecycle, runtime install/configure/health/watchdog/update/rollback |
+| Swift `VitalServerHelperApp` | Helper app UI |
 | Packaging shell | `postinstall`, `proxy-run`, uninstall entrypoint |
 | Guest support | cloud-init 이후 Docker Compose bootstrap, guest state 기록, diagnostics |
 

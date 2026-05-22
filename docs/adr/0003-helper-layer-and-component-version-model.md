@@ -8,7 +8,7 @@ Accepted, implementation in progress
 
 VitalServer Helper의 update 대상을 정의하고 각 대상에 version을 매기기 시작하면서 `runtime`이라는 이름이 애매해졌다. 어떤 문맥에서는 macOS helper CLI를 뜻하고, 어떤 문맥에서는 VM 실행 환경을 뜻하고, 또 다른 문맥에서는 guest service stack이나 watchdog/recovery까지 포함한다.
 
-이 모호함은 코드에서도 드러나기 시작했다. `RuntimeOrchestrator` 안에는 update apply/rollback, watchdog/recovery, VM lifecycle, install/configure, service control, repair, log 관련 책임이 함께 들어 있다. 파일 단위 usecase runner는 분리되고 있지만, 이름과 version model은 아직 이 책임들을 하나의 runtime처럼 다루고 있다.
+이 모호함은 코드에서도 드러나기 시작했다. `HostRuntimeControl` 안에는 update apply/rollback, watchdog/recovery, VM lifecycle, install/configure, service control, repair, log 관련 책임이 함께 들어 있다. 파일 단위 usecase runner는 분리되고 있지만, 이름과 version model은 아직 이 책임들을 하나의 runtime처럼 다루고 있다.
 
 또한 platform별 구현이 다르다. Helper UI는 Web/PWA primary로 공통화할 수 있지만 native shell, Runtime Control API implementation, Updater, Supervisor, VM Driver는 macOS/Windows별로 달라질 수 있다. Service Stack과 VitalServer service는 guest/service 쪽 책임이다. Supervisor는 host/platform-aware 정책이고, VM Driver는 platform-specific provider다. 이 책임들을 한 단위로 설명하면 update target, support 진단, About UI, release metadata가 불명확해진다.
 

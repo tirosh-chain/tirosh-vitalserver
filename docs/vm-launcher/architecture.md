@@ -389,7 +389,7 @@ open ".tmp/VitalServer Helper.app"
 설치된 target Mac에서 운영 중인 Helper product는 실행 관점에서 세 계층으로 봅니다.
 
 ```text
-[ManagerApp]
+[VitalServerHelperApp]
 사용자 화면, 설정 입력, 버튼 액션
         |
         | CLI command
@@ -418,16 +418,16 @@ health/evaluator/waiter 판단, runtime-status.json 갱신
         |
         | status JSON, command/install/container logs
         v
-[ManagerApp]
+[VitalServerHelperApp]
 Status/Settings/Update/Logs UI에 표시
 ```
 
-`RuntimeCore`는 별도 실행 계층이 아니라 `ManagerApp`과 `RuntimeOrchestrator`가 import하는 공유 계약/정책 라이브러리입니다. JSON schema, enum, evaluator, operation plan, port protocol을 담고, macOS process 실행이나 SwiftUI 화면 같은 adapter 책임은 갖지 않습니다.
+`RuntimeCore`는 별도 실행 계층이 아니라 `VitalServerHelperApp`과 `HostRuntimeControl`이 import하는 공유 계약/정책 라이브러리입니다. JSON schema, enum, evaluator, operation plan, port protocol을 담고, macOS process 실행이나 SwiftUI 화면 같은 adapter 책임은 갖지 않습니다.
 
-현재 ManagerApp 내부 경계는 아래처럼 둡니다. 이 구조는 전환기 SwiftUI app 안에서 ADR 0002의 `RuntimeClient` boundary를 구현한 모양입니다.
+현재 VitalServerHelperApp 내부 경계는 아래처럼 둡니다. 이 구조는 전환기 SwiftUI app 안에서 ADR 0002의 `RuntimeClient` boundary를 구현한 모양입니다.
 
 ```text
-[ContentView / ManagerApplication]
+[ContentView / VitalServerHelperApplication]
 SwiftUI 화면, binding, 버튼 액션
         |
         | user intent / view state binding
@@ -462,8 +462,8 @@ UI 상태, capability guard, usecase orchestration, 화면 메시지 변환
 
 | 계층 | 역할 | 주요 코드 | 책임 |
 |---|---|---|---|
-| `ManagerApp` | 운영 UI | `Sources/ManagerApp/*` | 사용자 입력 수집, CLI 호출, status/log/settings 표시 |
-| `RuntimeOrchestrator` | local control backend | `Sources/RuntimeOrchestrator/*` | Updater/Supervisor/VM Driver 구현. VM 시작/중지, 설치/설정/업데이트/롤백, launchd/nginx/health 제어 |
+| `VitalServerHelperApp` | 운영 UI | `Sources/VitalServerHelperApp/*` | 사용자 입력 수집, CLI 호출, status/log/settings 표시 |
+| `HostRuntimeControl` | local control backend | `Sources/HostRuntimeControl/*` | Updater/Supervisor/VM Driver 구현. VM 시작/중지, 설치/설정/업데이트/롤백, launchd/nginx/health 제어 |
 | `Guest VM` | Linux 실행 환경 | `Support/Guest/*` | bootstrap, Docker image load, Compose stack 실행, update activation, datastore repair |
 | `RuntimeCore` | 공유 계약/정책 | `Sources/RuntimeCore/*` | DTO/enum/file names, health/guest evaluator, operation plan, repository/clock/command/file port |
 
@@ -471,8 +471,8 @@ UI 상태, capability guard, usecase orchestration, 화면 메시지 변환
 
 | 방향 | 방식 | 입력 | 출력 |
 |---|---|---|---|
-| `ManagerApp -> Local control` | CLI 실행 | `install`, `start`, `stop`, `runtime configure`, `apply-bundle`, `rollback` 명령과 CPU/RAM/disk/network/proxy/admin 설정 | command exit code, command log |
-| `Local control -> ManagerApp` | host file read | `runtime-status.json`, install/runtime/container logs, backup/update bundle metadata | UI status, progress, failure reason, log view |
+| `VitalServerHelperApp -> Local control` | CLI 실행 | `install`, `start`, `stop`, `runtime configure`, `apply-bundle`, `rollback` 명령과 CPU/RAM/disk/network/proxy/admin 설정 | command exit code, command log |
+| `Local control -> VitalServerHelperApp` | host file read | `runtime-status.json`, install/runtime/container logs, backup/update bundle metadata | UI status, progress, failure reason, log view |
 | `Local control -> Guest VM` | shared directory file contract | `runtime-config.json`, cloud-init/bootstrap files, update/repair request JSON, deploy bundle files | guest 작업 시작 조건 |
 | `Guest VM -> Local control` | shared directory file contract | `runtime-state.json`, bootstrap/update/repair result JSON, guest logs | health 판단, waiter completion, rollback/update result |
 
@@ -525,11 +525,11 @@ Shell
 | build orchestration | `make/vm.mk`, `make/vm/config.mk` | target dependency, 중간/최종 산출물 경로, unsigned build 변수, install test wrapper | manifest 해석, disk/rootfs 세부 처리 |
 | build config | `apps/vitalserver-vm-launcher/Support/Build/vm-build.toml` | Ubuntu/rootfs/Docker image/nginx bundle pinned input 값 | 설치 시 사용자 설정 |
 | Python build package | `packages/vm-build/src/tirosh_vitalserver/vm_build/*.py` | Ubuntu asset 준비, cloud-init ISO 생성, rootfs 압축, nginx bundle, Docker image bundle, update bundle 생성/검증, plist/template rendering | 설치 후 runtime 상태 변경 |
-| Local control entry | `Sources/RuntimeOrchestrator/CLI/Launcher.swift`, `Command.swift` | `vitalserver-vm` command routing, VM start/stop/status/network/runtime command 연결 | package staging, DMG 생성 |
-| Local control lifecycle | `Sources/RuntimeOrchestrator/Runtime/RuntimeLifecycle.swift` | `runtime install/status/health/verify-bundle/stage-bundle/apply-bundle/rollback`, install settings 적용, VM disk 생성, launchd load, backup/rollback | DMG/PKG 파일 생성 |
+| Local control entry | `Sources/HostRuntimeControl/CLI/Launcher.swift`, `Command.swift` | `vitalserver-vm` command routing, VM start/stop/status/network/runtime command 연결 | package staging, DMG 생성 |
+| Local control lifecycle | `Sources/HostRuntimeControl/Runtime/RuntimeLifecycle.swift` | `runtime install/status/health/verify-bundle/stage-bundle/apply-bundle/rollback`, install settings 적용, VM disk 생성, launchd load, backup/rollback | DMG/PKG 파일 생성 |
 | Swift paths/constants | `LauncherPaths.swift`, `Constants.swift` | 설치/runtime 경로, artifact 이름, launchd/service 이름, command path | runtime 동작 정책 결정 |
 | VM configuration | `VirtualMachine/VMRuntimeConfig.swift`, `VMConfigurationFactory.swift` | `vm-config.json` schema, Apple Virtualization configuration 생성 | install settings 파일 읽기 |
-| Helper app | `Sources/ManagerApp/*` | 설치 후 Status/Settings/Update/Logs/About/Advanced/Danger Zone UI | rootfs, VM disk, privileged provisioning 포함 |
+| Helper app | `Sources/VitalServerHelperApp/*` | 설치 후 Status/Settings/Update/Logs/About/Advanced/Danger Zone UI | rootfs, VM disk, privileged provisioning 포함 |
 | PKG scripts | `Support/Packaging/preinstall`, `postinstall`, `proxy-run`, `uninstall` | installer/launchd/uninstall entrypoint wrapper | 복잡한 provisioning 로직 |
 | guest bootstrap | `Support/Guest/bootstrap.sh`, `bin/*`, `systemd/*`, `prepare-airgap-rootfs.sh`, `compose.yaml` | Linux guest 내부 Docker/Compose 구성, edge nginx container, Docker image load, runtime state 기록 | macOS launchd/proxy 관리 |
 
@@ -542,6 +542,6 @@ Shell은 의도적으로 얇게 유지합니다. `postinstall`은 로그를 열�
 | Ubuntu image URL, rootfs 압축, cloud-init ISO, Docker image bundle, nginx bundle | Python `packages/vm-build` |
 | PKG/DMG target dependency, 산출물 경로, 개발용 install wrapper | `make/vm/*.mk` |
 | 설치 후 VM disk 생성, launchd load, runtime config, health, update/rollback | Swift `RuntimeLifecycle` |
-| VM start/stop/network mode와 Apple Virtualization config | Swift `RuntimeOrchestrator` |
+| VM start/stop/network mode와 Apple Virtualization config | Swift `HostRuntimeControl` |
 | Linux guest 내부 Docker Compose, edge nginx container, systemd entrypoint 구성 | `Support/Guest/*.sh`, guest config |
 | installer/launchd가 호출하는 command 연결 | `Support/Packaging/*.sh` |
