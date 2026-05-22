@@ -16,6 +16,216 @@ VitalServer Helper의 update bundle이 무엇을 바꾸고, 무엇을 보존하�
 | `bootstrap.sh` 수정은 update bundle로 반영되나? | 된다. `guest-deploy.tar.gz`에 포함되고 기본 migration/activation 경로로 반영된다 |
 | 실패 시 자동 rollback하나? | apply 중 health check 실패 시 managed backup으로 rollback을 시도한다 |
 
+## Update 안정성 기준
+
+Update 계약의 목표는 “어떤 설치본에서 어떤 update bundle을 적용하더라도, 실패 원인을 명확히 남기고 재시도/rollback 가능한 상태를 유지하는 것”입니다. Update는 runtime 자체를 바꾸는 기능이므로 일반 기능보다 더 보수적으로 설계합니다.
+
+### 핵심 원칙
+
+| 원칙 | 기준 |
+|---|---|
+| update protocol은 후방 호환 | `manifest.json`, `activate-update.request`, `runtime-version.json`, status/result JSON은 새 reader가 예전 형식을 읽을 수 있어야 한다 |
+| updater는 보수적으로 변경 | update를 수행하는 host runtime tool과 guest activation script는 일반 runtime보다 더 강한 호환성 기준을 적용한다 |
+| request 필드는 늘릴 때 기본값 제공 | 새 필드를 추가해도 기존 설치본이 만든 request를 처리할 수 있어야 한다 |
+| 모르는 필드는 무시 | reader는 알 수 없는 JSON field 때문에 실패하면 안 된다 |
+| 실패는 상태 파일과 로그에 남김 | 실패 단계, reason code, 사람이 읽을 수 있는 message를 남긴다 |
+| 재실행 가능 | 같은 bundle을 다시 적용해도 중간 산출물 때문에 더 망가지면 안 된다 |
+| rollback 가능 | 운영 데이터는 보존하고 교체 가능한 artifact만 managed backup으로 되돌린다 |
+
+### Update Protocol 계약
+
+아래 파일은 update 호환성의 public contract로 취급합니다.
+
+| 파일 | 생산자 | 소비자 | 호환성 기준 |
+|---|---|---|---|
+| `manifest.json` | build tool | host updater | `schemaVersion`, `version`, artifact 목록은 필수. 새 필드는 optional로 추가 |
+| `checksums.txt` | build tool | host verifier | artifact path와 sha256/size 검증 기준 |
+| `activate-update.request` | host updater | guest activation script | `requestId`가 없어도 legacy request로 처리 가능해야 함 |
+| `activate-update-result.json` | guest activation script | host updater/Helper UI | `status`, `message`, `updatedAt`은 항상 기록 |
+| `runtime-status.json` | host updater/watchdog | Helper UI | operation/step/status는 enum 계약으로 유지 |
+| `runtime-version.json` | installer/updater | Helper UI/updater | 현재 runtime/app/guest version 표시와 rollback 판단 기준 |
+
+호환성을 위해 host updater가 아래처럼 최소 필드만 가진 request를 만들더라도 guest activation script는 처리할 수 있어야 합니다.
+
+```json
+{
+  "operation": "activate-update",
+  "requestedAt": "2026-05-22T00:00:00Z",
+  "version": "1.2.3"
+}
+```
+
+게스트 activation script는 이 request를 실패시키지 말고 legacy request로 처리해야 합니다.
+
+```text
+requestId missing
+  -> generate legacy request id
+  -> continue activation
+  -> write result with generated requestId
+```
+
+반대로 host updater는 `requestId`를 기대하고 기다리므로, result의 `requestId`가 다를 수 있는 legacy case도 명시적으로 처리합니다.
+
+| 상황 | 처리 |
+|---|---|
+| host request에 `requestId` 있음 | result의 `requestId`가 일치해야 completed로 인정 |
+| host request에 `requestId` 없음 | guest가 생성한 legacy `requestId`를 허용하고, `version`/`operation`/`status` 중심으로 판단 |
+| result에 `schemaVersion` 없음 | legacy result로 읽고 status/message를 우선 사용 |
+| result status가 `failed` | 즉시 실패 처리하고 message를 Helper UI와 command log에 노출 |
+
+### Manifest Compatibility
+
+update bundle manifest에는 updater 호환성 판단을 위한 필드를 둡니다.
+
+```json
+{
+  "schemaVersion": 2,
+  "product": "com.tirosh.vitalserver",
+  "version": "1.2.3",
+  "runtimeVersion": "1.2.3",
+  "minUpdaterVersion": "1.1.0",
+  "requiresGuestActivation": true,
+  "requiresTwoPhaseUpdate": false
+}
+```
+
+필드 의미:
+
+| 필드 | 의미 |
+|---|---|
+| `minUpdaterVersion` | 이 bundle을 직접 적용할 수 있는 최소 host updater/runtime-tools 버전 |
+| `requiresGuestActivation` | `guest-deploy` 교체 후 VM 내부 activation이 필요한지 |
+| `requiresTwoPhaseUpdate` | updater 자체를 먼저 갱신해야 하는 bridge update가 필요한지 |
+
+Reader는 이 필드들의 누락을 허용해야 합니다. 새 필드는 optional로 추가하고, 기본값을 통해 오래된 bundle도 읽을 수 있어야 합니다.
+
+### Two-Phase Update 기준
+
+update system 자체가 바뀌는 경우에는 runtime payload와 updater payload를 한 번에 섞어 처리하지 않습니다.
+
+```text
+Phase 1: updater compatibility layer 갱신
+  - runtime-tools
+  - guest activation script
+  - status/result parser
+  - update UI 표시 개선
+
+Phase 2: runtime payload 갱신
+  - guest-deploy
+  - Docker image bundle
+  - nginx bundle
+  - rootfs-base
+  - migrations
+```
+
+적용 기준:
+
+| 변경 내용 | 단일 bundle 가능 여부 | 비고 |
+|---|---|---|
+| Helper UI만 변경 | 가능 | app bundle 교체 후 app 재실행 필요 |
+| runtime-tools CLI만 변경 | 가능하지만 주의 | 현재 실행 중인 updater는 중간에 바뀌지 않음 |
+| guest activation request/result 계약 변경 | bridge bundle 권장 | 구버전 host/guest 조합을 고려 |
+| Docker image bundle 변경 | 가능 | guest activation 필수 |
+| rootfs-base 변경 | 가능 | 기존 `vm-disk.img`에는 자동 전개되지 않음 |
+| mutable VM disk 교체 | 일반 update 금지 | Danger Zone의 별도 rootfs replacement 대상 |
+
+### Bridge Bundle 기준
+
+아래 상황에서는 일반 update bundle 대신 bridge bundle을 먼저 제공합니다.
+
+| 상황 | bridge bundle에 포함할 것 |
+|---|---|
+| host updater가 새 manifest를 읽지 못함 | `runtime-tools.tar.gz`, Helper app |
+| guest activation script 계약이 바뀜 | `guest-deploy.tar.gz`, cloud-init seed refresh migration |
+| result/status parser 계약이 바뀜 | `runtime-tools.tar.gz`, Helper app |
+| update progress 표시 방식이 바뀜 | Helper app, runtime-tools |
+
+Bridge bundle은 가능한 작게 유지합니다.
+
+```text
+bridge bundle:
+  - app-bundle.tar.gz
+  - runtime-tools.tar.gz
+  - guest-deploy.tar.gz
+  - migrations/
+
+일반적으로 제외:
+  - rootfs-base.raw.gz
+  - 대용량 Docker image bundle
+```
+
+### Idempotency 기준
+
+update 단계는 중간 실패 후 재실행이 가능해야 합니다. 이를 위해 단계별 marker 또는 result를 남깁니다.
+
+| 단계 | marker/log 기준 |
+|---|---|
+| verification completed | command log |
+| bundle staged | staged bundle path |
+| backup created | `backups/<timestamp>-before-<version>` |
+| artifacts replaced | runtime progress step |
+| guest activation requested | `activate-update.request` |
+| guest activation completed | `activate-update-result.json` status `completed` |
+| health passed | `runtime-status.json` state `healthy` |
+| update committed | `runtime-version.json` version 갱신 |
+
+재실행 시에는 아래를 지켜야 합니다.
+
+- 이미 staged된 같은 bundle은 검증 후 재사용할 수 있다.
+- 이미 존재하는 backup은 덮어쓰지 않고 새 backup을 만들거나 명시적으로 재사용한다.
+- stale `activate-update-result.json`은 request id 또는 timestamp로 구분한다.
+- stale `activate-update.request`는 새 요청 전 제거하거나 새 request id로 덮어쓴다.
+- rollback 중에도 운영 데이터 경로는 삭제하지 않는다.
+
+### Backward-Compatible Guest Activation
+
+게스트 activation script는 update 안정성에서 가장 보수적으로 다룹니다.
+
+필수 동작:
+
+| 케이스 | 동작 |
+|---|---|
+| `python3` 없음 | 실패하되 명확한 message와 result 기록. 단, 제품 rootfs에는 `python3`를 필수 포함 |
+| `requestId` 없음 | legacy id를 생성하고 계속 진행 |
+| `version` 없음 | `unknown`으로 기록하고 계속 진행 |
+| request JSON 파싱 실패 | failed result와 log 기록 |
+| Docker image bundle 없음 | image load는 skip 가능하되 compose recreate는 정책에 따라 진행 |
+| compose 실패 | failed result와 container log 확인 안내 |
+
+구현 기준:
+
+```text
+activation request reader:
+  - requestId optional
+  - version optional
+  - schemaVersion optional
+  - operation optional but recommended
+
+activation result writer:
+  - schemaVersion always written
+  - requestId always written, generated if needed
+  - status always written
+  - message always written
+  - updatedAt always written
+```
+
+### Release Gate
+
+update bundle을 배포 후보로 보려면 아래를 통과해야 합니다.
+
+| 항목 | 기준 |
+|---|---|
+| fresh install | clean machine 또는 clean runtime home에서 설치 성공 |
+| same-version apply | 같은 version bundle을 적용해도 깨지지 않음 |
+| previous-version apply | 직전 버전 설치본에서 최신 bundle 적용 성공 |
+| legacy request apply | `requestId` 없는 activation request도 guest가 처리 |
+| guest activation | Docker image load와 compose recreate가 수행됨 |
+| health wait | VitalServer, Redis, network access가 ready |
+| rollback | 의도적 실패 bundle에서 managed backup rollback 성공 |
+| logs | Update 탭/Logs 탭에서 현재 단계와 실패 이유를 확인 가능 |
+
+Release gate를 통과하지 못한 bundle은 현장 전달 대상이 아닙니다. 특히 update system 자체가 바뀌는 release는 이전 설치본에서 직접 적용하는 테스트를 반드시 포함합니다.
+
 ## Update Bundle 구조
 
 일반 update bundle은 설치 파일 전체가 아니라 교체 가능한 artifact 묶음입니다.
@@ -120,7 +330,7 @@ Helper app은 update 중 Command log를 1초 단위로 갱신합니다. Update �
 
 ## Guest-Side Activation
 
-현재 update 계약에서 가장 조심해야 하는 부분입니다.
+Guest-side activation은 update 계약에서 가장 조심해야 하는 부분입니다.
 
 `guest-deploy.tar.gz`는 host shared directory의 deploy bundle을 교체합니다. 하지만 VM 내부에서 아래 작업이 자동으로 보장되는 것은 아닙니다.
 
@@ -153,7 +363,7 @@ guest-side health 재검증
 
 호스트 update command는 이 result가 `completed`가 될 때까지 기다린 뒤 runtime health check로 넘어갑니다.
 
-현재 방향은 아래입니다.
+표준 흐름은 아래입니다.
 
 ```text
 host apply-bundle
@@ -170,9 +380,9 @@ host apply-bundle
 
 이 단계가 없으면 host에는 새 `guest-deploy`가 보이지만, VM Docker daemon은 이전 image/cache를 그대로 사용할 수 있습니다.
 
-## 0.1.3 실패 분석
+## 실패 패턴: Guest Activation 누락
 
-이번 0.1.3 update는 bundle 검증과 artifact 교체까지는 통과했습니다.
+Bundle 검증과 host-side artifact 교체가 통과했더라도, guest-side activation이 빠지면 VM 내부 Docker daemon은 이전 image/cache를 계속 사용할 수 있습니다.
 
 ```text
 bundle verified
@@ -185,13 +395,13 @@ start-runtime-services completed
 wait-runtime-health started
 ```
 
-실패 지점은 runtime health wait입니다.
+이 경우 실패 지점은 보통 runtime health wait입니다.
 
 ```text
 step=wait-runtime-health status=failed error=runtime health check failed
 ```
 
-runtime status에는 아래 failure reason이 남았습니다.
+runtime status에는 아래와 같은 failure reason이 남을 수 있습니다.
 
 ```text
 host-proxy-http-502
@@ -201,7 +411,7 @@ swagger-ui-http-502
 guest-http-000failed
 ```
 
-VM container log에는 Redis가 아래처럼 반복 실패했습니다.
+VM container log에는 Redis나 다른 container가 아래처럼 반복 실패할 수 있습니다.
 
 ```text
 redis-1 | exec /usr/local/bin/docker-entrypoint.sh: exec format error
@@ -212,31 +422,31 @@ redis-1 | exec /usr/local/bin/docker-entrypoint.sh: exec format error
 | 관찰 | 의미 |
 |---|---|
 | `exec format error` | guest CPU architecture와 container image architecture가 맞지 않음 |
-| 0.1.3 bundle 내부 Docker image config | `redis`, `vitalserver`, `nginx`, `redis-commander`, `swagger-ui` 모두 `arm64`로 확인됨 |
-| installed `guest-deploy` | 새 compose와 새 image bundle은 host shared directory에 배치됨 |
-| `bootstrap.log` | 최초 설치 때 image load만 기록. update 후 새 image load가 수행됐다는 로그가 없음 |
-| `run-migrations: no migrations` | guest-side activation 단계가 없었음 |
+| bundle 내부 Docker image config는 정상 | bundle은 올바르지만 VM 내부 Docker daemon에 load되지 않았을 수 있음 |
+| installed `guest-deploy`는 교체됨 | 새 compose와 새 image bundle은 host shared directory에 배치됨 |
+| `bootstrap.log`에 최초 설치 기록만 있음 | update 후 새 image load가 수행되지 않았을 수 있음 |
+| guest activation log가 없음 | Docker image load/compose recreate 단계가 실행되지 않았을 수 있음 |
 
-따라서 0.1.3의 핵심 원인은 “새 bundle에 arm64 image가 없었다”가 아니라, **새 Docker image bundle을 VM 내부 Docker daemon에 load/recreate하는 update 단계가 빠진 것**입니다. 이전 잘못된 image cache가 남아 있으면 compose는 계속 그 image를 사용할 수 있고, Redis는 `exec format error`로 재시작 루프에 빠집니다.
+이 패턴의 핵심은 “새 bundle에 올바른 image가 없었다”가 아니라, **새 Docker image bundle을 VM 내부 Docker daemon에 load/recreate하는 update 단계가 빠진 것**입니다. 이전 잘못된 image cache가 남아 있으면 compose는 계속 그 image를 사용할 수 있고, Redis 같은 서비스는 `exec format error`로 재시작 루프에 빠집니다.
 
-부가적으로 rollback도 실패했습니다.
+부가적으로 rollback이 실패할 수도 있습니다.
 
 ```text
 rollback-restore-update-artifacts failed
 NSPOSIXErrorDomain Code=24 "Too many open files"
 ```
 
-즉 health wait 실패 후 managed backup으로 돌아가려 했지만, app bundle 복원 중 file descriptor 한계에 걸렸습니다. 이 경우 runtime은 `critical` 상태로 남을 수 있습니다.
+즉 health wait 실패 후 managed backup으로 돌아가려 했지만, app bundle 복원 중 file descriptor 한계에 걸릴 수 있습니다. 이 경우 runtime은 `critical` 상태로 남을 수 있습니다.
 
-정리하면 0.1.3 실패는 세 가지가 겹친 상태입니다.
+이 실패 패턴은 보통 세 가지가 겹칩니다.
 
 1. guest Docker image activation 부재로 Redis가 wrong-arch image를 계속 실행
 2. port 80에 이전 nginx listener가 남아 host proxy health가 502 또는 port-in-use로 실패
 3. rollback 복원 중 `Too many open files`로 rollback 자체도 실패
 
-## 0.1.4에서 반영해야 하는 보강
+## 필수 보강 항목
 
-0.1.4에서는 update flow에 아래 보강을 포함합니다.
+Update flow는 아래 보강을 포함해야 합니다.
 
 | 항목 | 이유 |
 |---|---|
@@ -245,13 +455,13 @@ NSPOSIXErrorDomain Code=24 "Too many open files"
 | qemu preflight 제거 | arm64 image로 운영하므로 `qemu-x86_64-static`은 runtime 필수 조건이 아님 |
 | image architecture preflight | bundle의 image config가 guest architecture와 맞는지 verify 단계에서 표시 |
 | stale/wrong image cleanup | 동일 tag의 wrong-arch image가 남아도 새 image를 확실히 사용하게 함 |
-| rollback copy 안정화 | app bundle 복원 시 `Too many open files`를 피하도록 tar/ditto 기반 atomic restore 검토 |
+| rollback copy 안정화 | app bundle 복원 시 `Too many open files`를 피하도록 tar/ditto 기반 atomic restore 사용 |
 | proxy port preflight | apply 전 port 80을 점유한 stale nginx를 감지하고 중단 또는 repair 안내 |
 | health reason 정규화 | `guest-http-000failed`, `host-proxy-http-`처럼 빈 code가 나오지 않게 표현 정리 |
 
-## 0.1.4 update에서 다시 실패하는 경우
+## 실패 패턴: Mutable VM Disk의 OS Package 누락
 
-0.1.4 bundle은 0.1.3에서 빠졌던 guest activation 보강을 포함하지만, 기존 설치본의 `vm-disk.img`가 이미 air-gapped runtime package를 갖고 있지 않은 경우에는 VM 내부 bootstrap 단계에서 실패할 수 있습니다.
+Update bundle에 guest activation 보강이 포함되어 있어도, 기존 설치본의 `vm-disk.img`가 air-gapped runtime package를 갖고 있지 않은 경우에는 VM 내부 bootstrap 단계에서 실패할 수 있습니다.
 
 대표 로그:
 
@@ -278,7 +488,7 @@ Required commands/services: curl, docker, docker compose, avahi-daemon, growpart
 2. Danger Zone에 VM/rootfs replacement 기능을 추가해 `vm-disk.img`를 새 rootfs에서 재생성하고, Redis/Vital files 같은 운영 데이터를 별도로 보존/복원합니다.
 3. 현장용 offline OS package bundle을 별도로 만들어 guest migration에서 설치합니다. 완전 air-gapped 제품에서는 이 방식도 artifact 검증과 rollback 정책이 필요합니다.
 
-단순히 같은 bundle을 다시 적용하면 같은 bootstrap 실패가 반복됩니다.
+단순히 같은 bundle을 다시 적용하면 같은 bootstrap 실패가 반복됩니다. mutable VM disk의 OS package 상태가 원인인 경우에는 일반 update bundle이 아니라 재설치, rootfs replacement, 또는 별도 offline OS package migration이 필요합니다.
 
 ## 확인해야 할 로그
 
@@ -321,4 +531,4 @@ Update 실패 시 가장 중요한 것은 운영 데이터 보존입니다.
 5. Docker image architecture 문제가 있으면 guest-side activation 또는 재설치가 필요할 수 있습니다.
 6. 재설치를 선택하더라도 `.vital` 파일 경로와 backups 보존 여부를 먼저 확인합니다.
 
-현재 0.1.3 실패 상태에서는 단순히 `Apply Bundle`을 다시 누르는 것보다, guest Docker image activation 보강이 들어간 다음 bundle을 적용하거나, clean하지 않은 재설치/복구 절차를 별도로 수행하는 편이 안전합니다.
+같은 실패가 반복되는 경우에는 `Apply Bundle`을 계속 누르기보다, guest activation 로그와 container log를 먼저 확인한 뒤 원인에 맞는 recovery 절차를 선택합니다.
