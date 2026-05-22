@@ -122,72 +122,38 @@ struct RuntimeLifecycle {
     }
 
     func run(arguments: [String]) throws {
-        guard let command = arguments.first else {
-            printUsage()
-            return
-        }
-
-        switch command {
-        case "install":
+        switch try RuntimeLifecycleCommand.parse(arguments) {
+        case .install:
             try install()
-        case "status":
+        case .status:
             printStatus()
-        case "health":
+        case .health:
             try health()
-        case "watchdog":
+        case .watchdog:
             try watchdog()
-        case "configure":
-            try configure(arguments: Array(arguments.dropFirst()))
-        case "verify-bundle":
-            guard let bundlePath = arguments.dropFirst().first else {
-                throw LauncherError.missingArgument("usage: vitalserver-vm runtime verify-bundle <bundle.tar.gz>")
-            }
-            try verifyBundle(URL(fileURLWithPath: bundlePath))
-        case "stage-bundle":
-            guard let bundlePath = arguments.dropFirst().first else {
-                throw LauncherError.missingArgument("usage: vitalserver-vm runtime stage-bundle <bundle.tar.gz>")
-            }
-            _ = try stageBundle(URL(fileURLWithPath: bundlePath))
-        case "apply-bundle":
-            guard let bundlePath = arguments.dropFirst().first else {
-                throw LauncherError.missingArgument("usage: vitalserver-vm runtime apply-bundle <bundle.tar.gz>")
-            }
-            try applyBundle(URL(fileURLWithPath: bundlePath))
-        case "rollback":
-            let backupPath = arguments.dropFirst().first
-            try rollback(backupPath.map { URL(fileURLWithPath: $0) })
-        case "repair-datastore":
+        case .configure(let arguments):
+            try configure(arguments: arguments)
+        case .verifyBundle(let bundleURL):
+            try verifyBundle(bundleURL)
+        case .stageBundle(let bundleURL):
+            _ = try stageBundle(bundleURL)
+        case .applyBundle(let bundleURL):
+            try applyBundle(bundleURL)
+        case .rollback(let backupURL):
+            try rollback(backupURL)
+        case .repairDatastore:
             try repairDatastore()
-        case "start-services":
+        case .startServices:
             try startServices()
-        case "stop-services":
+        case .stopServices:
             try stopServices()
-        case "-h", "--help", "help":
+        case .help:
             printUsage()
-        default:
-            throw LauncherError.unsupportedCommand("runtime \(command)")
         }
     }
 
     func printUsage() {
-        print(
-            """
-            Usage:
-              vitalserver-vm runtime install
-              vitalserver-vm runtime status
-              vitalserver-vm runtime health
-              vitalserver-vm runtime watchdog
-              vitalserver-vm runtime configure [--cpu <count>] [--memory-gib <gib>] [--disk-gib <gib>] [--network shared|bridged] [--bridged-interface <id>] [--proxy-port <port>] [--vital-files-dir <path>] [--public-host <host>] [--public-port <port>] [--admin-password <password>] [--start-on-boot true|false] [--restart]
-              vitalserver-vm runtime configure [--admin-password-file <path>] [--restart]
-              vitalserver-vm runtime verify-bundle <bundle.tar.gz>
-              vitalserver-vm runtime stage-bundle <bundle.tar.gz>
-              vitalserver-vm runtime apply-bundle <bundle.tar.gz>
-              vitalserver-vm runtime rollback [backup-dir]
-              vitalserver-vm runtime repair-datastore
-              vitalserver-vm runtime start-services
-              vitalserver-vm runtime stop-services
-            """
-        )
+        print(RuntimeLifecycleCommand.usage)
     }
 
     func install() throws {
