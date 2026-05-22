@@ -26,6 +26,7 @@ final class RuntimeController: ObservableObject {
     private let nativeShell: any RuntimeNativeShell
     private let backupSelectionPolicy = RuntimeBackupSelectionPolicy()
     private let processMessageFormatter = RuntimeProcessMessageFormatter()
+    private let presentationFormatter = RuntimePresentationFormatter()
     private let settingsValidator = RuntimeSettingsValidator()
     private let logLineLimitOptions = [100, 500, 1000]
     private let logSources: [LogSourceOption] = [
@@ -74,12 +75,7 @@ final class RuntimeController: ObservableObject {
     }
 
     var selectedBundleConfirmation: String {
-        [
-            AppConstants.StatusText.updateBundleConfirmation,
-            selectedBundlePath,
-        ]
-        .filter { !$0.isEmpty }
-        .joined(separator: "\n\n")
+        presentationFormatter.selectedBundleConfirmation(bundlePath: selectedBundlePath)
     }
 
     var selectedBundlePath: String {
@@ -91,17 +87,7 @@ final class RuntimeController: ObservableObject {
     }
 
     var applySettingsConfirmation: String {
-        [
-            AppConstants.StatusText.applySettingsConfirmation,
-            "Proxy port: \(settings.proxyPort)",
-            "Public host: \(settings.publicHost.isEmpty ? "(same host)" : settings.publicHost)",
-            "Public port: \(settings.publicPort)",
-            "Network mode: \(settings.networkMode)",
-            "Disk size: \(settings.diskGiB) GiB",
-            "Vital files directory: \(settings.vitalFilesDirectory)",
-            "Automatic recovery: \(settings.autoRecoveryEnabled ? AppConstants.Values.boolTrue : AppConstants.Values.boolFalse)",
-            "Restart services: \(settings.restartAfterSave ? AppConstants.Values.boolTrue : AppConstants.Values.boolFalse)",
-        ].joined(separator: "\n")
+        presentationFormatter.applySettingsConfirmation(settings: settings)
     }
 
     func refresh() async {
@@ -402,7 +388,7 @@ final class RuntimeController: ObservableObject {
             message = AppConstants.StatusText.logExportUnavailable
             return
         }
-        let defaultName = "vitalserver-logs-\(logExportTimestamp()).zip"
+        let defaultName = presentationFormatter.logExportDefaultName()
         guard let destination = nativeShell.chooseLogExportDestination(
             defaultName: defaultName,
             prompt: AppConstants.Actions.exportLogs
@@ -486,15 +472,6 @@ final class RuntimeController: ObservableObject {
 
     private func relaunchHelper() {
         nativeShell.relaunchHelper()
-    }
-
-    private func logExportTimestamp() -> String {
-        let formatter = DateFormatter()
-        formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = .current
-        formatter.dateFormat = "yyyyMMdd-HHmmss"
-        return formatter.string(from: Date())
     }
 
     private func validateSettings() -> Bool {
