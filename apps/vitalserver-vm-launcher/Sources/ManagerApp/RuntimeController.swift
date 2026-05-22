@@ -20,6 +20,7 @@ final class RuntimeController: ObservableObject {
     @Published var selectedLogSource = LogSourceID.helperMessage.rawValue
     @Published var logStreaming = true
     @Published var isBusy = false
+    @Published var releaseInfo = RuntimeReleaseInfo.generated
 
     private let runtimeClient: any RuntimeClient
     private let healthNotifications = HealthNotificationCenter()
@@ -59,6 +60,10 @@ final class RuntimeController: ObservableObject {
         backups.first { $0.path == selectedBackupPath }
     }
 
+    var capabilities: RuntimeClientCapabilities {
+        runtimeClient.capabilities
+    }
+
     var selectedBundleConfirmation: String {
         [
             AppConstants.StatusText.updateBundleConfirmation,
@@ -85,6 +90,7 @@ final class RuntimeController: ObservableObject {
     func refresh() async {
         settings = runtimeClient.loadSettings()
         status = runtimeClient.loadStatus(settings: settings)
+        await refreshReleaseInfo()
         refreshBackupList()
         if let displayMessage = status.displayMessage {
             message = displayMessage
@@ -116,6 +122,10 @@ final class RuntimeController: ObservableObject {
     }
 
     func uninstallRuntime(clean: Bool = false) async {
+        guard runtimeClient.capabilities.canUninstallRuntime else {
+            message = AppConstants.StatusText.actionUnavailable
+            return
+        }
         let didUninstall = await runClientAction(
             preparingMessage: AppConstants.StatusText.uninstallPreparing,
             waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
@@ -137,6 +147,10 @@ final class RuntimeController: ObservableObject {
     }
 
     func applySettings() async {
+        guard canApplySettingsForCurrentConnection else {
+            message = AppConstants.StatusText.actionUnavailable
+            return
+        }
         guard validateSettings() else {
             return
         }
@@ -157,6 +171,10 @@ final class RuntimeController: ObservableObject {
     }
 
     func chooseVitalFilesDirectory() {
+        guard runtimeClient.capabilities.canOpenLocalFiles else {
+            message = AppConstants.StatusText.actionUnavailable
+            return
+        }
         let panel = NSOpenPanel()
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
@@ -170,6 +188,10 @@ final class RuntimeController: ObservableObject {
     }
 
     func chooseUpdateBundle() async {
+        guard runtimeClient.capabilities.canApplyBundle else {
+            message = AppConstants.StatusText.actionUnavailable
+            return
+        }
         let panel = NSOpenPanel()
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
@@ -185,6 +207,10 @@ final class RuntimeController: ObservableObject {
     }
 
     func applySelectedBundle() async {
+        guard runtimeClient.capabilities.canApplyBundle else {
+            message = AppConstants.StatusText.actionUnavailable
+            return
+        }
         guard !selectedBundlePath.isEmpty else {
             message = AppConstants.StatusText.missingBundle
             return
@@ -210,6 +236,10 @@ final class RuntimeController: ObservableObject {
     }
 
     func verifySelectedBundle() async {
+        guard runtimeClient.capabilities.canApplyBundle else {
+            message = AppConstants.StatusText.actionUnavailable
+            return
+        }
         guard !selectedBundlePath.isEmpty else {
             selectedBundleVerification = ""
             selectedBundleVerified = false
@@ -248,6 +278,10 @@ final class RuntimeController: ObservableObject {
     }
 
     func rollbackRuntime() async {
+        guard runtimeClient.capabilities.canRollback else {
+            message = AppConstants.StatusText.actionUnavailable
+            return
+        }
         guard !selectedBackupPath.isEmpty else {
             message = AppConstants.StatusText.missingBackup
             return
@@ -265,6 +299,10 @@ final class RuntimeController: ObservableObject {
     }
 
     func deleteSelectedBackup() async {
+        guard runtimeClient.capabilities.canRollback else {
+            message = AppConstants.StatusText.actionUnavailable
+            return
+        }
         guard !selectedBackupPath.isEmpty else {
             message = AppConstants.StatusText.missingBackup
             return
@@ -288,6 +326,10 @@ final class RuntimeController: ObservableObject {
     }
 
     func repairProxyPort() async {
+        guard runtimeClient.capabilities.canControlRuntimeServices else {
+            message = AppConstants.StatusText.actionUnavailable
+            return
+        }
         let proxyPort = status.proxyPort
         _ = await runClientAction(
             preparingMessage: AppConstants.StatusText.proxyRepairPreparing,
@@ -300,6 +342,10 @@ final class RuntimeController: ObservableObject {
     }
 
     func repairDatastore() async {
+        guard runtimeClient.capabilities.canControlRuntimeServices else {
+            message = AppConstants.StatusText.actionUnavailable
+            return
+        }
         _ = await runClientAction(
             preparingMessage: AppConstants.StatusText.datastoreRepairPreparing,
             waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
@@ -311,6 +357,10 @@ final class RuntimeController: ObservableObject {
     }
 
     func startRuntimeServices() async {
+        guard runtimeClient.capabilities.canControlRuntimeServices else {
+            message = AppConstants.StatusText.actionUnavailable
+            return
+        }
         _ = await runClientAction(
             preparingMessage: AppConstants.StatusText.runtimeServicesStartPreparing,
             waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
@@ -322,6 +372,10 @@ final class RuntimeController: ObservableObject {
     }
 
     func stopRuntimeServices() async {
+        guard runtimeClient.capabilities.canControlRuntimeServices else {
+            message = AppConstants.StatusText.actionUnavailable
+            return
+        }
         _ = await runClientAction(
             preparingMessage: AppConstants.StatusText.runtimeServicesStopPreparing,
             waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
@@ -333,10 +387,18 @@ final class RuntimeController: ObservableObject {
     }
 
     func openLogs() {
+        guard runtimeClient.capabilities.canOpenLocalFiles else {
+            message = AppConstants.StatusText.actionUnavailable
+            return
+        }
         openFolder(runtimeClient.preferredLogsPath())
     }
 
     func exportLogs() async {
+        guard runtimeClient.capabilities.canExportLogs else {
+            message = AppConstants.StatusText.logExportUnavailable
+            return
+        }
         let panel = NSSavePanel()
         panel.canCreateDirectories = true
         panel.allowedContentTypes = [.zip]
@@ -351,9 +413,8 @@ final class RuntimeController: ObservableObject {
         message = AppConstants.StatusText.logExportPreparing
 
         do {
-            _ = runtimeClient.preferredLogsPath()
-            try await createLogArchive(at: destination)
-            message = "\(AppConstants.StatusText.logExportCompleted)\n\n\(destination.path)"
+            let result = try await runtimeClient.exportLogs(to: destination)
+            message = "\(AppConstants.StatusText.logExportCompleted)\n\n\(result.destination.path)"
         } catch {
             message = "\(AppConstants.StatusText.logExportFailed)\n\n\(error.localizedDescription)"
         }
@@ -383,6 +444,10 @@ final class RuntimeController: ObservableObject {
     }
 
     func openVitalFilesDirectory() {
+        guard runtimeClient.capabilities.canOpenLocalFiles else {
+            message = AppConstants.StatusText.actionUnavailable
+            return
+        }
         openFolder(settings.vitalFilesDirectory)
     }
 
@@ -423,49 +488,6 @@ final class RuntimeController: ObservableObject {
         process.arguments = ["-c", RuntimeCommandFactory.relaunchHelperCommand()]
         try? process.run()
         NSApplication.shared.terminate(nil)
-    }
-
-    private func createLogArchive(at destination: URL) async throws {
-        let fileManager = FileManager.default
-        let stagingRoot = fileManager.temporaryDirectory
-            .appendingPathComponent("vitalserver-log-export-\(UUID().uuidString)", isDirectory: true)
-        try fileManager.createDirectory(at: stagingRoot, withIntermediateDirectories: true)
-        defer {
-            try? fileManager.removeItem(at: stagingRoot)
-        }
-
-        let bundleRoot = stagingRoot.appendingPathComponent("vitalserver-logs", isDirectory: true)
-        try copyLogItem(
-            from: URL(fileURLWithPath: AppConstants.Paths.productLogs),
-            to: bundleRoot
-        )
-        if !fileManager.fileExists(atPath: bundleRoot.path) {
-            try fileManager.createDirectory(at: bundleRoot, withIntermediateDirectories: true)
-        }
-
-        let temporaryArchive = stagingRoot.appendingPathComponent(destination.lastPathComponent)
-        let result = await ProcessRunner.run(
-            AppConstants.Commands.ditto,
-            arguments: ["-c", "-k", "--sequesterRsrc", "--keepParent", bundleRoot.path, temporaryArchive.path]
-        )
-        guard result.exitCode == 0 else {
-            throw RuntimeControllerError.logExportFailed(result.summary)
-        }
-        if fileManager.fileExists(atPath: destination.path) {
-            try fileManager.removeItem(at: destination)
-        }
-        try fileManager.moveItem(at: temporaryArchive, to: destination)
-    }
-
-    private func copyLogItem(from source: URL, to destination: URL) throws {
-        let fileManager = FileManager.default
-        guard fileManager.fileExists(atPath: source.path) else {
-            return
-        }
-        if fileManager.fileExists(atPath: destination.path) {
-            try fileManager.removeItem(at: destination)
-        }
-        try fileManager.copyItem(at: source, to: destination)
     }
 
     private func logExportTimestamp() -> String {
@@ -519,6 +541,22 @@ final class RuntimeController: ObservableObject {
         } else if backups.isEmpty {
             selectedBackupPath = ""
         }
+    }
+
+    private func refreshReleaseInfo() async {
+        guard runtimeClient.capabilities.canViewReleaseMetadata else {
+            return
+        }
+        if let loaded = try? await runtimeClient.loadReleaseInfo() {
+            releaseInfo = loaded
+        }
+    }
+
+    private var canApplySettingsForCurrentConnection: Bool {
+        runtimeClient.capabilities.canEditVMResources
+            || runtimeClient.capabilities.canEditNetworkExposure
+            || runtimeClient.capabilities.canOpenLocalFiles
+            || runtimeClient.capabilities.canResetAdminPassword
     }
 
     private func isManagedBackupPath(_ path: String) -> Bool {
@@ -703,7 +741,6 @@ private enum HealthNotificationState: Equatable {
 enum RuntimeControllerError: LocalizedError {
     case invalidAdminPassword
     case adminPasswordFileCreateFailed
-    case logExportFailed(String)
 
     var errorDescription: String? {
         switch self {
@@ -711,9 +748,6 @@ enum RuntimeControllerError: LocalizedError {
             return "Admin password reset value is invalid."
         case .adminPasswordFileCreateFailed:
             return "Could not prepare admin password reset file."
-        case .logExportFailed(let output):
-            let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
-            return trimmed.isEmpty ? "Could not create log archive." : trimmed
         }
     }
 }

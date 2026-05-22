@@ -10,6 +10,65 @@ struct RuntimeClientCapabilities: Equatable {
     var canResetAdminPassword = true
     var canOpenLocalFiles = true
     var canStreamLogs = true
+    var canControlRuntimeServices = true
+    var canExportLogs = true
+    var canViewReleaseMetadata = true
+}
+
+struct RuntimeLogExportResult: Equatable {
+    let destination: URL
+}
+
+struct RuntimeReleaseInfo: Equatable {
+    let helperVersion: String
+    let minimumUpdaterVersion: String
+    let vitalServerVersion: String
+    let services: [RuntimeBundledServiceInfo]
+
+    static let generated = RuntimeReleaseInfo(
+        helperVersion: GeneratedRelease.helperVersion,
+        minimumUpdaterVersion: GeneratedRelease.minUpdaterVersion,
+        vitalServerVersion: GeneratedRelease.vitalServerVersion,
+        services: [
+            RuntimeBundledServiceInfo(
+                name: AppConstants.Labels.vitalServer,
+                image: GeneratedRelease.vitalServerImage,
+                version: GeneratedRelease.vitalServerVersion
+            ),
+            RuntimeBundledServiceInfo(
+                name: AppConstants.Labels.redis,
+                image: GeneratedRelease.redisImage,
+                version: GeneratedRelease.redisVersion
+            ),
+            RuntimeBundledServiceInfo(
+                name: AppConstants.Labels.redisUI,
+                image: GeneratedRelease.redisUIImage,
+                version: GeneratedRelease.redisUIVersion
+            ),
+            RuntimeBundledServiceInfo(
+                name: AppConstants.Labels.swaggerUI,
+                image: GeneratedRelease.swaggerUIImage,
+                version: GeneratedRelease.swaggerUIVersion
+            ),
+            RuntimeBundledServiceInfo(
+                name: AppConstants.Labels.guestEdgeProxy,
+                image: GeneratedRelease.guestEdgeImage,
+                version: GeneratedRelease.guestEdgeVersion
+            ),
+            RuntimeBundledServiceInfo(
+                name: AppConstants.Labels.hostProxyService,
+                image: GeneratedRelease.hostProxyImage,
+                version: GeneratedRelease.hostProxyVersion
+            ),
+        ]
+    )
+}
+
+struct RuntimeBundledServiceInfo: Equatable, Identifiable {
+    var id: String { name }
+    let name: String
+    let image: String
+    let version: String
 }
 
 @MainActor
@@ -36,6 +95,8 @@ protocol RuntimeClient {
     func repairDatastore() async throws -> ProcessResult
     func startRuntimeServices() async throws -> ProcessResult
     func stopRuntimeServices() async throws -> ProcessResult
+    func exportLogs(to destination: URL) async throws -> RuntimeLogExportResult
+    func loadReleaseInfo() async throws -> RuntimeReleaseInfo
 }
 
 @MainActor
@@ -47,19 +108,22 @@ struct LocalRuntimeClient: RuntimeClient {
     private let settingsReader: RuntimeSettingsReading
     private let privilegedCommandRunner: PrivilegedCommandRunning
     private let actionEnvironment: RuntimeActionEnvironment
+    private let logExporter: RuntimeLogExporting
 
     init(
         statusReader: RuntimeStatusReading = SystemRuntimeStatusReader(paths: RuntimePaths()),
         fileReader: RuntimeManagerFileReading = SystemRuntimeManagerFileReader(),
         settingsReader: RuntimeSettingsReading = SystemRuntimeSettingsReader(),
         privilegedCommandRunner: PrivilegedCommandRunning = SystemPrivilegedCommandRunner(),
-        actionEnvironment: RuntimeActionEnvironment = SystemRuntimeActionEnvironment()
+        actionEnvironment: RuntimeActionEnvironment = SystemRuntimeActionEnvironment(),
+        logExporter: RuntimeLogExporting = LocalRuntimeLogExporter()
     ) {
         self.statusReader = statusReader
         self.fileReader = fileReader
         self.settingsReader = settingsReader
         self.privilegedCommandRunner = privilegedCommandRunner
         self.actionEnvironment = actionEnvironment
+        self.logExporter = logExporter
     }
 
     func loadSettings() -> RuntimeSettings {
@@ -186,6 +250,14 @@ struct LocalRuntimeClient: RuntimeClient {
         return await runPrivileged(RuntimeCommandFactory.runtimeServicesCommand(action: .stop))
     }
 
+    func exportLogs(to destination: URL) async throws -> RuntimeLogExportResult {
+        return try await logExporter.exportLogs(to: destination)
+    }
+
+    func loadReleaseInfo() async throws -> RuntimeReleaseInfo {
+        RuntimeReleaseInfo.generated
+    }
+
     private func ensureLauncherIsAvailable() throws {
         guard actionEnvironment.isExecutable(atPath: AppConstants.Paths.launcher) else {
             throw RuntimeClientError.missingLauncher
@@ -200,6 +272,7 @@ struct LocalRuntimeClient: RuntimeClient {
 enum RuntimeClientError: LocalizedError {
     case missingLauncher
     case missingUninstaller
+    case logExportFailed(String)
 
     var errorDescription: String? {
         switch self {
@@ -207,6 +280,9 @@ enum RuntimeClientError: LocalizedError {
             return AppConstants.StatusText.missingLauncher
         case .missingUninstaller:
             return AppConstants.StatusText.missingUninstaller
+        case .logExportFailed(let output):
+            let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? AppConstants.StatusText.logExportFailed : trimmed
         }
     }
 }

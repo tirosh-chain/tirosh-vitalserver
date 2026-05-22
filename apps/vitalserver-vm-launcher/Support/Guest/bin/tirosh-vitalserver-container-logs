@@ -9,6 +9,8 @@ RUNTIME_DIR="${MOUNT_POINT}/run"
 LOG_FILE="${RUNTIME_DIR}/container-logs.log"
 INTERVAL_SECONDS="${TIROSH_CONTAINER_LOG_INTERVAL:-5}"
 TAIL_LINES="${TIROSH_CONTAINER_LOG_LINES:-1000}"
+MAX_BYTES="${TIROSH_CONTAINER_LOG_MAX_BYTES:-10485760}"
+RETAINED_FILES="${TIROSH_CONTAINER_LOG_RETAINED_FILES:-5}"
 
 mount_runtime_share() {
   mkdir -p "${MOUNT_POINT}"
@@ -18,31 +20,77 @@ mount_runtime_share() {
   mkdir -p "${RUNTIME_DIR}"
 }
 
-write_logs() {
-  local temporary="${LOG_FILE}.tmp"
-
+append_marker() {
+  rotate_logs
   {
+    printf "\n== container log collector ==\n"
     printf "updated_at=%s\n" "$(date -Iseconds)"
-    printf "source=docker compose logs --tail=%s\n\n" "${TAIL_LINES}"
-    docker compose \
+    printf "source=%s\n" "$1"
+  } >> "${LOG_FILE}"
+}
+
+append_line() {
+  rotate_logs
+  printf "%s\n" "$1" >> "${LOG_FILE}"
+}
+
+rotate_logs() {
+  if [[ ! -f "${LOG_FILE}" ]]; then
+    return
+  fi
+
+  local size
+  size="$(wc -c < "${LOG_FILE}" | tr -d ' ')"
+  if [[ "${size}" -lt "${MAX_BYTES}" ]]; then
+    return
+  fi
+
+  local index
+  for ((index = RETAINED_FILES - 1; index >= 1; index--)); do
+    if [[ -f "${LOG_FILE}.${index}" ]]; then
+      mv "${LOG_FILE}.${index}" "${LOG_FILE}.$((index + 1))"
+    fi
+  done
+  mv "${LOG_FILE}" "${LOG_FILE}.1"
+}
+
+write_snapshot() {
+  append_marker "docker compose logs --tail=${TAIL_LINES}"
+
+  if ! docker compose \
+    --project-name vitalserver \
+    -f "${DEPLOY_DIR}/compose.yaml" \
+    logs --no-color --tail="${TAIL_LINES}" 2>&1 | while IFS= read -r line; do
+      append_line "${line}"
+    done; then
+    append_line "collector_error_at=$(date -Iseconds)"
+  fi
+}
+
+watch_logs() {
+  while true; do
+    append_marker "docker compose logs --follow --tail=${TAIL_LINES}"
+    if ! docker compose \
       --project-name vitalserver \
       -f "${DEPLOY_DIR}/compose.yaml" \
-      logs --no-color --tail="${TAIL_LINES}" 2>&1 || true
-  } > "${temporary}"
-  mv "${temporary}" "${LOG_FILE}"
+      logs --no-color --follow --tail="${TAIL_LINES}" 2>&1 | while IFS= read -r line; do
+        append_line "${line}"
+      done; then
+      append_line "collector_error_at=$(date -Iseconds)"
+    fi
+    append_line "collector_reconnect_at=$(date -Iseconds)"
+    sleep "${INTERVAL_SECONDS}"
+  done
 }
 
 mount_runtime_share
 
 case "${ACTION}" in
   once)
-    write_logs
+    write_snapshot
     ;;
   watch)
-    while true; do
-      write_logs
-      sleep "${INTERVAL_SECONDS}"
-    done
+    watch_logs
     ;;
   *)
     printf "usage: tirosh-vitalserver-container-logs [watch|once]\n" >&2

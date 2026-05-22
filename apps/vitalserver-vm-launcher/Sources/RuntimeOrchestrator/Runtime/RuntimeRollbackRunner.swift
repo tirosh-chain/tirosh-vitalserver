@@ -1,0 +1,33 @@
+import Foundation
+import RuntimeCore
+
+struct RuntimeRollbackRunner {
+    var preparePreflight: (URL?) throws -> RollbackPreflightContext
+    var executeStep: (RuntimeWorkflowStep, RollbackPreflightContext) throws -> Void
+    var writeStatus: (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void
+    var writeProgress: (RuntimeStepExecutionEvent) throws -> Void
+    var vmDiskPath: () -> String
+    var log: (String) -> Void
+
+    func run(requestedBackup: URL?) throws {
+        let preflight = try preparePreflight(requestedBackup)
+        log("rollback started backup=\(preflight.backup.path)")
+        try writeStatus(.recovering, .rollback, "rollback started")
+
+        try RuntimeOperationPlanRunner.run(
+            plan: RuntimeOperationPlans.rollback,
+            status: .recovering,
+            execute: { step in
+                try executeStep(step, preflight)
+            },
+            publish: { event in
+                log("step=\(event.step.rawValue) status=\(event.stepStatus.rawValue)")
+                try? writeProgress(event)
+            }
+        )
+
+        try writeStatus(.healthy, .rollback, "rollback completed")
+        log("rollback restored backup=\(preflight.backup.path)")
+        log("mutable VM disk preserved path=\(vmDiskPath())")
+    }
+}

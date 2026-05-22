@@ -191,56 +191,78 @@ struct RuntimeLifecycle {
     }
 
     func install() throws {
-        let defaultVitalFilesDirectory = installedPaths.vitalFilesDirectory.path
-        let settings = try InstallSettings.load(
-            defaultVitalFilesDirectory: defaultVitalFilesDirectory,
-            fileStore: fileStore
-        )
-        log("runtime install started home=\(paths.home.path)")
-        try writeRuntimeStatus(.installing, operation: .install, message: "runtime install started")
-        do {
-            try runPlan(RuntimeOperationPlans.install, status: .installing) { step in
-                try executeInstallStep(step, settings: settings)
-            }
-            try writeRuntimeStatus(.healthy, operation: .install, message: "runtime install completed")
-            log("runtime install completed home=\(paths.home.path)")
-        } catch {
-            try? writeRuntimeStatus(.critical, operation: .install, message: "runtime install failed: \(error)")
-            throw error
-        }
+        try runtimeInstallRunner().run()
     }
 
-    private func executeInstallStep(_ step: RuntimeWorkflowStep, settings: InstallSettings) throws {
-        switch step {
-        case .loadInstallSettings:
-            log("install settings loaded")
-        case .prepareInstallDirectories:
-            try prepareInstallDirectories(settings)
-        case .rotateRuntimeLogs:
-            try rotateRuntimeLogs()
-        case .configureGuestRuntimeConfig:
-            try configureDeployEnvironment(settings)
-        case .prepareInstalledExecutables:
-            try prepareInstalledExecutables()
-        case .provisionVMDisk:
-            try provisionVMDisk(settings)
-        case .configureVMRuntime:
-            try configureInstalledVMRuntime(settings)
-        case .createCloudInitSeed:
-            try createCloudInitSeed(settings)
-        case .writeInstallRuntimeVersion:
-            try writeInstalledRuntimeVersion()
-        case .configureInstalledPermissions:
-            try configureInstalledPermissions(settings)
-        case .startInstalledServices:
-            try startInstalledServices(settings)
-        case .applyStartOnBootPolicy:
-            try applyStartOnBootPolicy(settings)
-        case .cleanupInstallSettings:
-            try cleanupInstallSettings()
-        default:
-            throw LauncherError.unsupportedCommand("install step \(step.rawValue)")
-        }
+    private func runtimeInstallRunner() -> RuntimeInstallRunner {
+        RuntimeInstallRunner(
+            loadSettings: {
+                try InstallSettings.load(
+                    defaultVitalFilesDirectory: installedPaths.vitalFilesDirectory.path,
+                    fileStore: fileStore
+                )
+            },
+            executeStep: { step, settings in
+                try runtimeInstallStepExecutor().execute(step, settings: settings)
+            },
+            writeStatus: { status, operation, message in
+                try writeRuntimeStatus(status, operation: operation, message: message)
+            },
+            writeProgress: { event in
+                try writeRuntimeProgress(
+                    event.status,
+                    operation: event.operation,
+                    step: event.step,
+                    stepStatus: event.stepStatus,
+                    phase: event.phase,
+                    message: event.message
+                )
+            },
+            runtimeHomePath: { paths.home.path },
+            log: log
+        )
+    }
+
+    private func runtimeInstallStepExecutor() -> RuntimeInstallStepExecutor {
+        RuntimeInstallStepExecutor(
+            prepareInstallDirectories: { settings in
+                try prepareInstallDirectories(settings)
+            },
+            rotateRuntimeLogs: {
+                try rotateRuntimeLogs()
+            },
+            configureDeployEnvironment: { settings in
+                try configureDeployEnvironment(settings)
+            },
+            prepareInstalledExecutables: {
+                try prepareInstalledExecutables()
+            },
+            provisionVMDisk: { settings in
+                try provisionVMDisk(settings)
+            },
+            configureInstalledVMRuntime: { settings in
+                try configureInstalledVMRuntime(settings)
+            },
+            createCloudInitSeed: { settings in
+                try createCloudInitSeed(settings)
+            },
+            writeInstalledRuntimeVersion: {
+                try writeInstalledRuntimeVersion()
+            },
+            configureInstalledPermissions: { settings in
+                try configureInstalledPermissions(settings)
+            },
+            startInstalledServices: { settings in
+                try startInstalledServices(settings)
+            },
+            applyStartOnBootPolicy: { settings in
+                try applyStartOnBootPolicy(settings)
+            },
+            cleanupInstallSettings: {
+                try cleanupInstallSettings()
+            },
+            log: log
+        )
     }
 
     func printStatus() {
@@ -836,59 +858,94 @@ struct RuntimeLifecycle {
     }
 
     func repairDatastore() throws {
-        log("datastore repair requested")
-        try fileStore.createDirectory(at: guestRunDirectory, withIntermediateDirectories: true)
-        try? guestGateway.removeDatastoreRepairResult()
-        try writeRuntimeStatus(.recovering, operation: .repairDatastore, message: "datastore repair requested")
-        let requestId = UUID().uuidString
+        try runtimeDatastoreRepairRunner().run()
+    }
 
-        try guestGateway.writeDatastoreRepairRequest(requestId: requestId, requestedAt: isoTimestamp())
-
-        if !isLaunchdLoaded(Constants.Launchd.vmService) {
-            startLaunchdService(Constants.Launchd.vmService)
-        } else {
-            restartLaunchdService(Constants.Launchd.vmService)
-        }
-
-        try waitForDatastoreRepairResult(requestId: requestId)
-        restartLaunchdService(Constants.Launchd.proxyService)
-        restartLaunchdService(Constants.Launchd.watchdogService)
-        try waitForHealth(restartVM: true, restartProxy: true, restartWatchdog: true)
-        try writeRuntimeStatus(.healthy, operation: .repairDatastore, message: "datastore repair completed")
-        log("datastore repair completed")
+    private func runtimeDatastoreRepairRunner() -> RuntimeDatastoreRepairRunner {
+        RuntimeDatastoreRepairRunner(
+            prepareGuestRunDirectory: {
+                try fileStore.createDirectory(at: guestRunDirectory, withIntermediateDirectories: true)
+            },
+            removePreviousResult: {
+                try guestGateway.removeDatastoreRepairResult()
+            },
+            writeRequest: { requestID, requestedAt in
+                try guestGateway.writeDatastoreRepairRequest(requestId: requestID, requestedAt: requestedAt)
+            },
+            isVMServiceLoaded: {
+                isLaunchdLoaded(Constants.Launchd.vmService)
+            },
+            startVMService: {
+                startLaunchdService(Constants.Launchd.vmService)
+            },
+            restartVMService: {
+                restartLaunchdService(Constants.Launchd.vmService)
+            },
+            waitForResult: { requestID in
+                try waitForDatastoreRepairResult(requestId: requestID)
+            },
+            restartProxyService: {
+                restartLaunchdService(Constants.Launchd.proxyService)
+            },
+            restartWatchdogService: {
+                restartLaunchdService(Constants.Launchd.watchdogService)
+            },
+            waitForHealth: waitForHealth,
+            writeStatus: { status, operation, message in
+                try writeRuntimeStatus(status, operation: operation, message: message)
+            },
+            makeRequestID: {
+                UUID().uuidString
+            },
+            timestamp: isoTimestamp,
+            log: log
+        )
     }
 
     func startServices() throws {
-        log("runtime services start requested")
-        try writeRuntimeStatus(.recovering, operation: .startServices, message: "runtime services start requested")
-        try startRuntimeServices(restartVM: true, restartProxy: true, restartWatchdog: true)
-        try waitForHealth(restartVM: true, restartProxy: true, restartWatchdog: true)
-        try writeRuntimeStatus(.healthy, operation: .startServices, message: "runtime services started")
-        log("runtime services started")
+        try runtimeServiceControlRunner().startAll()
     }
 
     func stopServices() throws {
-        log("runtime services stop requested")
-        try stopRuntimeServices()
-        try writeRuntimeStatus(.degraded, operation: .stopServices, message: "runtime services stopped")
-        log("runtime services stopped")
+        try runtimeServiceControlRunner().stopAll()
+    }
+
+    private func runtimeServiceControlRunner() -> RuntimeServiceControlRunner {
+        RuntimeServiceControlRunner(
+            startRuntimeServices: startRuntimeServices,
+            stopRuntimeServices: stopRuntimeServices,
+            waitForHealth: waitForHealth,
+            writeStatus: { status, operation, message in
+                try writeRuntimeStatus(status, operation: operation, message: message)
+            },
+            log: log
+        )
     }
 
     func rollback(_ requestedBackup: URL?) throws {
-        let preflight = try prepareRollbackPreflight(requestedBackup)
-        log("rollback started backup=\(preflight.backup.path)")
-        try writeRuntimeStatus(.recovering, operation: .rollback, message: "rollback started")
+        try runtimeRollbackRunner().run(requestedBackup: requestedBackup)
+    }
 
-        try runPlan(RuntimeOperationPlans.rollback, status: .recovering) { step in
-            try executeRollbackStep(
-                step,
-                preflight: preflight
-            )
-        }
-
-        try writeRuntimeStatus(.healthy, operation: .rollback, message: "rollback completed")
-        log("rollback restored backup=\(preflight.backup.path)")
-        log("mutable VM disk preserved path=\(vmDisk.path)")
+    private func runtimeRollbackRunner() -> RuntimeRollbackRunner {
+        RuntimeRollbackRunner(
+            preparePreflight: prepareRollbackPreflight,
+            executeStep: executeRollbackStep,
+            writeStatus: { status, operation, message in
+                try writeRuntimeStatus(status, operation: operation, message: message)
+            },
+            writeProgress: { event in
+                try writeRuntimeProgress(
+                    event.status,
+                    operation: event.operation,
+                    step: event.step,
+                    stepStatus: event.stepStatus,
+                    phase: event.phase,
+                    message: event.message
+                )
+            },
+            vmDiskPath: { vmDisk.path },
+            log: log
+        )
     }
 
     private func prepareRollbackPreflight(_ requestedBackup: URL?) throws -> RollbackPreflightContext {
@@ -1437,29 +1494,6 @@ struct RuntimeLifecycle {
 
     private func log(_ message: String) {
         print("[\(isoTimestamp())] \(message)")
-    }
-
-    private func runPlan(
-        _ plan: RuntimeOperationPlan,
-        status: RuntimeStatusLevel,
-        execute: (RuntimeWorkflowStep) throws -> Void
-    ) throws {
-        try RuntimeOperationPlanRunner.run(
-            plan: plan,
-            status: status,
-            execute: execute,
-            publish: { event in
-                log("step=\(event.step.rawValue) status=\(event.stepStatus.rawValue)")
-                try? writeRuntimeProgress(
-                    event.status,
-                    operation: event.operation,
-                    step: event.step,
-                    stepStatus: event.stepStatus,
-                    phase: event.phase,
-                    message: event.message
-                )
-            }
-        )
     }
 
     private func backupTimestamp() -> String {

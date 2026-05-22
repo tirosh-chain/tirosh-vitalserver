@@ -67,10 +67,27 @@ final class RuntimeFileReaderTests: XCTestCase {
         )
     }
 
+    func testLogTextRefreshesLogCollectionBeforeReading() throws {
+        let collector = FakeRuntimeLogCollector()
+        let reader = SystemRuntimeManagerFileReader(logCollector: collector)
+
+        _ = reader.logText(sourceID: LogSourceID.helperMessage.rawValue, helperMessage: "Ready", lineLimit: 10)
+
+        XCTAssertEqual(collector.refreshCount, 1)
+    }
+
     private func temporaryDirectory() throws -> URL {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("RuntimeFileReaderTests-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         return directory
+    }
+}
+
+private final class FakeRuntimeLogCollector: RuntimeLogCollecting {
+    var refreshCount = 0
+
+    func refreshLogCollection() {
+        refreshCount += 1
     }
 }

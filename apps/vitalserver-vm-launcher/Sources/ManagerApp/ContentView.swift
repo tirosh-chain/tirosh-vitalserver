@@ -195,6 +195,7 @@ struct ContentView: View {
                     linkButton(controller.settings.vitalFilesDirectory) {
                         controller.openVitalFilesDirectory()
                     }
+                    .disabled(!controller.capabilities.canOpenLocalFiles)
                 }
             }
             Divider()
@@ -480,6 +481,7 @@ struct ContentView: View {
                         range: AppConstants.SettingsLimits.minimumCPUCount...AppConstants.SettingsLimits.maximumCPUCount,
                         suffix: AppConstants.Labels.unitVCPU
                     )
+                    .disabled(!controller.capabilities.canEditVMResources)
                     settingSlider(
                         AppConstants.Labels.memory,
                         value: $controller.settings.memoryGiB,
@@ -487,6 +489,7 @@ struct ContentView: View {
                         step: AppConstants.SettingsLimits.memoryStepGiB,
                         suffix: AppConstants.Labels.unitGiB
                     )
+                    .disabled(!controller.capabilities.canEditVMResources)
                     settingHelp(AppConstants.Labels.memoryAllocationHelp)
                     settingSlider(
                         AppConstants.Labels.disk,
@@ -495,6 +498,7 @@ struct ContentView: View {
                         step: AppConstants.SettingsLimits.diskStepGiB,
                         suffix: AppConstants.Labels.unitGiB
                     )
+                    .disabled(!controller.capabilities.canEditVMResources)
                     settingWarning(AppConstants.Labels.diskIncreaseOnlyHelp(controller.settings.minimumDiskGiB))
                 }
                 settingsSection(AppConstants.Labels.sectionNetwork) {
@@ -508,12 +512,17 @@ struct ContentView: View {
                 }
                 settingsSection(AppConstants.Labels.sectionOperations) {
                     settingToggle(AppConstants.Labels.startOnBoot, isOn: $controller.settings.startOnBoot)
-                        .disabled(!controller.settings.startOnBootConfigurable)
+                        .disabled(
+                            !controller.settings.startOnBootConfigurable
+                                || !controller.capabilities.canControlRuntimeServices
+                        )
                     VStack(alignment: .leading, spacing: 4) {
                         settingToggle(AppConstants.Labels.automaticRecovery, isOn: $controller.settings.autoRecoveryEnabled)
+                            .disabled(!controller.capabilities.canControlRuntimeServices)
                         settingHelp(AppConstants.Labels.automaticRecoveryHelp)
                     }
                     settingToggle(AppConstants.Labels.restartServicesAfterSave, isOn: $controller.settings.restartAfterSave)
+                        .disabled(!controller.capabilities.canControlRuntimeServices)
                 }
                 applyActionRow
             }
@@ -609,7 +618,7 @@ struct ContentView: View {
                 Button(AppConstants.Actions.chooseBundle) {
                     Task { await controller.chooseUpdateBundle() }
                 }
-                .disabled(controller.isBusy)
+                .disabled(controller.isBusy || !controller.capabilities.canApplyBundle)
             }
         }
     }
@@ -634,7 +643,11 @@ struct ContentView: View {
                 Button(AppConstants.Actions.verifyBundle) {
                     Task { await controller.verifySelectedBundle() }
                 }
-                .disabled(controller.isBusy || controller.selectedBundlePath.isEmpty)
+                .disabled(
+                    controller.isBusy
+                        || controller.selectedBundlePath.isEmpty
+                        || !controller.capabilities.canApplyBundle
+                )
             }
         }
     }
@@ -667,6 +680,7 @@ struct ContentView: View {
                     || controller.selectedBundlePath.isEmpty
                     || !controller.selectedBundleVerified
                     || !controller.status.runtimeInstalled
+                    || !controller.capabilities.canApplyBundle
             )
 
             if controller.isBusy {
@@ -735,12 +749,20 @@ struct ContentView: View {
                     Button(AppConstants.Actions.rollback) {
                         showingRollbackConfirmation = true
                     }
-                    .disabled(controller.isBusy || controller.selectedBackupPath.isEmpty)
+                    .disabled(
+                        controller.isBusy
+                            || controller.selectedBackupPath.isEmpty
+                            || !controller.capabilities.canRollback
+                    )
 
                     Button(AppConstants.Actions.deleteBackup, role: .destructive) {
                         showingDeleteBackupConfirmation = true
                     }
-                    .disabled(controller.isBusy || controller.selectedBackupPath.isEmpty)
+                    .disabled(
+                        controller.isBusy
+                            || controller.selectedBackupPath.isEmpty
+                            || !controller.capabilities.canRollback
+                    )
                 }
             }
         }
@@ -749,6 +771,13 @@ struct ContentView: View {
     private var diskSizeRange: ClosedRange<Int> {
         let minimum = controller.settings.minimumDiskGiB
         return minimum...max(minimum, AppConstants.SettingsLimits.maximumDiskGiB)
+    }
+
+    private var canApplySettingsForCurrentConnection: Bool {
+        controller.capabilities.canEditVMResources
+            || controller.capabilities.canEditNetworkExposure
+            || controller.capabilities.canOpenLocalFiles
+            || controller.capabilities.canResetAdminPassword
     }
 
     private var advancedPanel: some View {
@@ -814,7 +843,7 @@ struct ContentView: View {
         advancedCard(AppConstants.Labels.sectionProductInfo) {
             Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 10) {
                 statusRow(AppConstants.Labels.helperVersion, helperAppVersion)
-                statusRow(AppConstants.Labels.vitalServerVersion, AppConstants.Product.vitalServerVersion)
+                statusRow(AppConstants.Labels.vitalServerVersion, controller.releaseInfo.vitalServerVersion)
                 statusRow(AppConstants.Labels.installedRuntimeVersion, controller.status.runtimeVersion ?? AppConstants.StatusText.unknown)
                 statusRow(AppConstants.Labels.packageIdentifier, AppConstants.Product.packageIdentifier)
             }
@@ -892,7 +921,11 @@ struct ContentView: View {
                     }
                 }
                 .foregroundStyle(.red)
-                .disabled(controller.isBusy || !controller.status.runtimeInstalled)
+                .disabled(
+                    controller.isBusy
+                        || !controller.status.runtimeInstalled
+                        || !controller.capabilities.canUninstallRuntime
+                )
                 .fixedSize()
             }
         }
@@ -900,43 +933,11 @@ struct ContentView: View {
 
     private var helperAppVersion: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
-            ?? controller.status.runtimeVersion
-            ?? AppConstants.StatusText.unknown
+            ?? controller.releaseInfo.helperVersion
     }
 
-    private var bundledServices: [BundledServiceInfo] {
-        [
-            BundledServiceInfo(
-                name: AppConstants.Labels.vitalServer,
-                image: AppConstants.ServiceVersions.vitalServerImage,
-                version: AppConstants.Product.vitalServerVersion
-            ),
-            BundledServiceInfo(
-                name: AppConstants.Labels.redis,
-                image: AppConstants.ServiceVersions.redisImage,
-                version: AppConstants.ServiceVersions.redisVersion
-            ),
-            BundledServiceInfo(
-                name: AppConstants.Labels.redisUI,
-                image: AppConstants.ServiceVersions.redisUIImage,
-                version: AppConstants.ServiceVersions.redisUIVersion
-            ),
-            BundledServiceInfo(
-                name: AppConstants.Labels.swaggerUI,
-                image: AppConstants.ServiceVersions.swaggerUIImage,
-                version: AppConstants.ServiceVersions.swaggerUIVersion
-            ),
-            BundledServiceInfo(
-                name: "Guest edge proxy",
-                image: AppConstants.ServiceVersions.guestEdgeImage,
-                version: AppConstants.ServiceVersions.guestEdgeVersion
-            ),
-            BundledServiceInfo(
-                name: AppConstants.Labels.hostProxyService,
-                image: AppConstants.ServiceVersions.hostProxy,
-                version: AppConstants.ServiceVersions.hostProxyVersion
-            ),
-        ]
+    private var bundledServices: [RuntimeBundledServiceInfo] {
+        controller.releaseInfo.services
     }
 
     private var diagnosticsCard: some View {
@@ -1084,7 +1085,7 @@ struct ContentView: View {
                     showingApplySettingsConfirmation = true
                 }
             }
-            .disabled(controller.isBusy || !controller.status.runtimeInstalled)
+            .disabled(controller.isBusy || !controller.status.runtimeInstalled || !canApplySettingsForCurrentConnection)
 
             if controller.isBusy {
                 ProgressView()
@@ -1107,6 +1108,7 @@ struct ContentView: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 settingToggle(AppConstants.Labels.resetAdminPassword, isOn: $controller.settings.changeAdminPassword)
+                    .disabled(!controller.capabilities.canResetAdminPassword)
                 if controller.settings.changeAdminPassword {
                     settingRow(AppConstants.Labels.newAdminPassword) {
                         SecureField("", text: $controller.settings.adminPassword)
@@ -1126,12 +1128,20 @@ struct ContentView: View {
                         Button(AppConstants.Actions.startRuntimeServices) {
                             showingStartServicesConfirmation = true
                         }
-                        .disabled(controller.isBusy || !controller.status.runtimeInstalled)
+                        .disabled(
+                            controller.isBusy
+                                || !controller.status.runtimeInstalled
+                                || !controller.capabilities.canControlRuntimeServices
+                        )
 
                         Button(AppConstants.Actions.stopRuntimeServices) {
                             showingStopServicesConfirmation = true
                         }
-                        .disabled(controller.isBusy || !controller.status.runtimeInstalled)
+                        .disabled(
+                            controller.isBusy
+                                || !controller.status.runtimeInstalled
+                                || !controller.capabilities.canControlRuntimeServices
+                        )
                     }
                 }
             }
@@ -1382,10 +1392,11 @@ struct ContentView: View {
                     .labelsHidden()
                     .textFieldStyle(.roundedBorder)
                     .frame(maxWidth: 440)
+                    .disabled(!controller.capabilities.canOpenLocalFiles)
                 Button(AppConstants.Actions.chooseDirectory) {
                     controller.chooseVitalFilesDirectory()
                 }
-                .disabled(controller.isBusy)
+                .disabled(controller.isBusy || !controller.capabilities.canOpenLocalFiles)
             }
         }
     }
@@ -1437,7 +1448,7 @@ struct ContentView: View {
                 Button(AppConstants.Actions.exportLogs) {
                     Task { await controller.exportLogs() }
                 }
-                .disabled(controller.isBusy)
+                .disabled(controller.isBusy || !controller.capabilities.canExportLogs)
             }
             ScrollView {
                 Text(controller.logText)
@@ -1482,13 +1493,6 @@ private struct HealthItem: Identifiable {
     let label: String
     let value: String
     let isHealthy: Bool
-}
-
-private struct BundledServiceInfo: Identifiable {
-    var id: String { name }
-    let name: String
-    let image: String
-    let version: String
 }
 
 private enum ManagerTab: CaseIterable, Identifiable {
