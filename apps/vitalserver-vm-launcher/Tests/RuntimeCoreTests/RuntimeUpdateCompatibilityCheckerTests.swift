@@ -44,6 +44,19 @@ final class RuntimeUpdateCompatibilityCheckerTests: XCTestCase {
         )
     }
 
+    func testRejectsUnsupportedTargetPlatform() {
+        XCTAssertThrowsError(try RuntimeUpdateCompatibilityChecker.check(
+            manifest: manifest(targetPlatforms: ["macos-arm64"]),
+            currentUpdaterVersion: "1.2.3",
+            currentPlatform: "windows-x64"
+        )) { error in
+            XCTAssertEqual(error as? RuntimeUpdateCompatibilityError, .unsupportedPlatform(
+                currentPlatform: "windows-x64",
+                targetPlatforms: ["macos-arm64"]
+            ))
+        }
+    }
+
     func testRequiresGuestActivationFlagToMatchGuestDeployArtifact() {
         XCTAssertThrowsError(try RuntimeUpdateCompatibilityChecker.check(
             manifest: manifest(
@@ -73,15 +86,17 @@ final class RuntimeUpdateCompatibilityCheckerTests: XCTestCase {
 
     private func manifest(
         minUpdaterVersion: String? = "1.2.0",
+        targetPlatforms: [String] = [],
         requiresGuestActivation: Bool = false,
         requiresTwoPhaseUpdate: Bool = false,
         artifacts: [UpdateBundleArtifact] = []
     ) -> UpdateBundleManifest {
         UpdateBundleManifest(
             schemaVersion: 2,
-            product: "TiroshVitalServer",
-            version: "1.2.3",
-            runtimeVersion: "1.2.3",
+            product: "com.tirosh.vitalserver",
+            helperVersion: "1.2.3",
+            targetPlatforms: targetPlatforms,
+            components: ["updater": "1.2.3"],
             minUpdaterVersion: minUpdaterVersion,
             requiresGuestActivation: requiresGuestActivation,
             requiresTwoPhaseUpdate: requiresTwoPhaseUpdate,

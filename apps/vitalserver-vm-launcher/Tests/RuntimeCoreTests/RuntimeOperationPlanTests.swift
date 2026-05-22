@@ -38,6 +38,24 @@ final class RuntimeOperationPlanTests: XCTestCase {
         ])
     }
 
+    func testApplyBundlePlanCanSkipRootfsReplacement() {
+        let plan = RuntimeOperationPlans.applyBundle(updatesRootfsBase: false)
+
+        XCTAssertEqual(plan.operation, .applyBundle)
+        XCTAssertTrue(plan.isValid)
+        XCTAssertFalse(plan.steps.contains(.replaceRootfsBase))
+        XCTAssertEqual(plan.steps.map(\.rawValue), [
+            "stop-runtime-services",
+            "replace-update-artifacts",
+            "run-migrations",
+            "refresh-cloud-init-seed",
+            "write-runtime-version",
+            "start-runtime-services",
+            "activate-guest-update",
+            "wait-runtime-health",
+        ])
+    }
+
     func testRollbackPlanStepOrder() {
         XCTAssertEqual(RuntimeOperationPlans.rollback.operation, .rollback)
         XCTAssertTrue(RuntimeOperationPlans.rollback.isValid)
@@ -49,6 +67,14 @@ final class RuntimeOperationPlanTests: XCTestCase {
             "rollback-start-runtime-services",
             "rollback-wait-runtime-health",
         ])
+    }
+
+    func testRollbackPlanCanSkipRootfsRestore() {
+        let plan = RuntimeOperationPlans.rollback(restoresRootfsBase: false)
+
+        XCTAssertEqual(plan.operation, .rollback)
+        XCTAssertTrue(plan.isValid)
+        XCTAssertFalse(plan.steps.contains(.rollbackRestoreRootfsBase))
     }
 
     func testWorkflowStepUnknownRoundTrips() throws {

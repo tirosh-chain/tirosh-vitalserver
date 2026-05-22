@@ -26,30 +26,32 @@ v1 기본값은 `shared/NAT VM + macOS host proxy`입니다. 이 구조는 Docke
 |---|---|
 | Status | 사용자가 가장 먼저 보는 운영 상태. VitalServer URL, data directory, overall health, 핵심 service health 표시 |
 | Settings | 일반 운영 설정. CPU, memory, disk 증가, shared/NAT network, vital files directory, start-on-boot |
-| Update | 현장 update bundle 검증/적용. air-gapped와 online update가 같은 bundle 계약을 사용 |
+| Update | Product Update bundle 검증/적용. air-gapped와 online update가 같은 bundle 계약을 사용 |
 | Logs | Helper/install/command/VM/container log를 선택해서 확인 |
-| About | Helper, VitalServer, container image, runtime version 같은 제품 정보 |
+| About | Helper, Updater, Supervisor, VM Driver, Service Stack, VM Image, VitalServer version 같은 제품 정보 |
 | Advanced | 네트워크 override, recovery operation, admin operation, 내부 진단 |
-| Danger Zone | uninstall, clean uninstall, 향후 VM/rootfs 교체처럼 되돌리기 어려운 작업 |
+| Danger Zone | uninstall, clean uninstall, VM Image Update처럼 되돌리기 어려운 작업 |
 
 ## 사용자 시나리오 지도
 
 | 시나리오 | 사용자가 보는 것 | 개발/운영자가 쓰는 것 | 세부 문서 |
 |---|---|---|---|
 | 신규 현장 설치 | `TiroshVitalServer-<version>.dmg` 안의 installer package | `make vm-dmg` 또는 `make vm-dmg-release` | [Packaging and Update](packaging.md) |
-| 폐쇄망 현장 업데이트 | offline update bundle directory | `make vm-update-bundle`, Helper app Update 탭 | [Packaging and Update](packaging.md) |
+| 폐쇄망 Product Update | offline product update bundle tarball | `make vm-update-bundle`, Helper app Update 탭 | [Packaging and Update](packaging.md) |
+| VM Image Update | offline VM image update bundle tarball | `make vm-rootfs-update-bundle`, Danger Zone | [Packaging and Update](packaging.md), [Update](update.md) |
 | 온라인 업데이트 | 같은 update bundle 계약, download source만 온라인 | release hardening 대상 | [Packaging and Update](packaging.md) |
 | 설치 후 상태 확인 | `/Applications/VitalServer Helper.app` Status 탭 | `make vm-installed-health`, `vitalserver-vm runtime health` | [Runtime](runtime.md), [Troubleshooting](troubleshooting.md) |
 | 운영 설정 변경 | Helper app Settings/Advanced 탭 | `vitalserver-vm runtime configure ... --restart` | [Runtime](runtime.md) |
 | 장애 대응 | Helper app Status/Logs/Advanced/Danger Zone, uninstaller | watchdog log, runtime status, troubleshooting guide | [Troubleshooting](troubleshooting.md) |
 | 개발 VM PoC | package 없이 VM/proxy 직접 실행 | `make vm-up`, `make vm-health`, `make vm-down` | [Runtime](runtime.md) |
-| 구조 판단/리뷰 | 왜 host proxy인지, 책임이 어디인지 | ADR, architecture 문서 | [Architecture](architecture.md), [ADR 0001](../adr/0001-macos-host-proxy-for-vrecorder-ip.md) |
+| 구조 판단/리뷰 | 왜 host proxy인지, 책임이 어디인지 | ADR, architecture 문서 | [Architecture](architecture.md), [ADR 0001](../adr/0001-macos-host-proxy-for-vrecorder-ip.md), [ADR 0002](../adr/0002-vitalserver-helper-layered-runtime-refactor.md) |
 
 ## 문서 지도
 
 | 문서 | 먼저 볼 때 |
 |---|---|
 | [Architecture](architecture.md) | shared/NAT + host proxy 선택 이유, 단일 노드 가용성, build/runtime/GUI 책임 경계를 볼 때 |
+| [ADR 0002](../adr/0002-vitalserver-helper-layered-runtime-refactor.md) | Helper UI, Updater, Supervisor, VM Driver, Service Stack, VM Image layer와 리팩터링 순서를 볼 때 |
 | [Packaging and Update](packaging.md) | `make vm-pkg`, `make vm-dmg`, update bundle, install settings, release artifact 흐름을 볼 때 |
 | [Update](update.md) | bundle 적용 과정, 보존/변경되는 항목, guest-side activation, rollback 실패 조건을 볼 때 |
 | [Runtime](runtime.md) | VM boot asset, cloud-init, guest bootstrap, data sharing, network mode, identity/signing 정책을 볼 때 |
@@ -85,10 +87,36 @@ make vm-update-bundle-verify
 생성 위치:
 
 ```text
-dist/update-bundles/update-bundle-<version>/
+dist/update-bundles/update-bundle-<version>.tar.gz
 ```
 
-일반 update bundle은 Helper app, runtime tools, host nginx bundle, guest deploy bundle 같은 artifact를 `.tar.gz`로 묶습니다. 현재 기본 target은 호환성을 위해 `rootfs-base.raw.gz`도 함께 만들 수 있지만, 이미 설치된 현장의 mutable `vm-disk.img`를 자동 교체하지는 않습니다. `guest-deploy` 변경은 기본 migration과 guest activation 경로를 통해 VM 내부에 반영됩니다. Docker image bundle과 rootfs base는 base OS/package 또는 container image 갱신이 있을 때만 의미가 큽니다.
+Product Update bundle은 Helper UI, Updater, Supervisor/VM Driver tools, host nginx bundle, Service Stack/guest deploy 같은 artifact를 `.tar.gz`로 묶습니다. 기본 `make vm-update-bundle`은 rootfs를 포함하지 않는 `product-update` bundle을 만듭니다. `guest-deploy` 변경은 기본 migration과 guest activation 경로를 통해 VM 내부에 반영됩니다. VM Image/rootfs 자체를 바꿔야 하는 경우에만 `make vm-rootfs-update-bundle`을 사용하며, 이 흐름은 Danger Zone의 `vm-image-update` 대상입니다. VM Image bundle도 기존 mutable `vm-disk.img`를 자동 교체하지 않습니다.
+
+## 레이어와 버전 모델
+
+`VitalServer Helper`는 최상위 product release입니다. 플랫폼별 UI/VM provider 구현은 같은 Helper release 아래의 variant로 취급하고, 실제 변경 범위는 component version으로 설명합니다. 각 layer는 platform 종속성과 책임이 다르므로 version label과 bundle manifest도 이 경계를 드러내야 합니다.
+
+| Layer | Platform dependency | 책임 | Manifest key |
+|---|---|---|---|
+| VitalServer Helper | cross-platform product umbrella | 최상위 관리 제품/클라이언트 패키지, support/release note 기준 | `helperVersion` |
+| Helper UI | platform-specific | macOS/iPadOS/Windows 등 사용자 인터페이스 | `components.helperUI` |
+| Updater | host/platform-specific | product update bundle 검증/적용/rollback, manifest compatibility gate | `components.updater`, `minUpdaterVersion` |
+| Supervisor | host/platform-aware | health/watchdog/recovery, service state loop, auto-recovery suppression | `components.supervisor` |
+| VM Driver | platform-specific | macOS Apple Virtualization, Windows provider 등 VM lifecycle provider | `components.vmDriver` |
+| Service Stack | mostly guest/service-specific | guest deploy assets, compose, container image bundle, service activation 단위 | `components.serviceStack` |
+| VM Image | guest OS/image-specific | Linux guest OS/base rootfs/kernel/initrd class artifact | `components.vmImage` |
+| VitalServer service | service-specific | VM 안에서 실행되는 VitalServer app/container | `components.vitalServer` |
+
+Bundle manifest는 이 모델을 그대로 반영합니다. `helperVersion`은 최상위 release를 가리키고, `targetPlatforms`는 적용 가능한 platform variant를 제한하며, 하위 version은 `components` map에 기록합니다. 예를 들어 macOS 전용 VM Driver 변경은 `targetPlatforms: ["macos-arm64"]`와 `components.vmDriver`로 표현하고, Service Stack 변경은 platform과 독립적인 `components.serviceStack`으로 표현합니다.
+
+Update bundle kind는 의도적으로 두 개만 둡니다.
+
+| bundleKind | UI 위치 | 포함 범위 |
+|---|---|---|
+| `product-update` | Update 탭 | Helper UI, Updater, Supervisor, VM Driver, Service Stack, 개별 service/container, host proxy, migrations |
+| `vm-image-update` | Danger Zone | VM Image/rootfs/base OS/kernel/initrd class artifact |
+
+Hotfix, service-only update, updater bridge update는 별도 bundle kind를 만들지 않고 `product-update`의 channel, changed components, `requiresTwoPhaseUpdate` 같은 metadata로 표현합니다.
 
 ### 개발용 설치 테스트
 
@@ -112,7 +140,7 @@ make vm-down
 |---|---|---|
 | DMG | `dist/TiroshVitalServer-<version>.dmg` | 현장 전달용 설치 매체 |
 | PKG | `dist/TiroshVitalServerVM-<version>.pkg` | 실제 macOS Installer payload |
-| Update bundle | `dist/update-bundles/update-bundle-<version>/` | 설치 후 offline/online 업데이트 입력 |
+| Product Update bundle | `dist/update-bundles/update-bundle-<version>.tar.gz` | 설치 후 offline/online Product Update 입력 |
 | Helper app | `.tmp/VitalServer Helper.app` 또는 `/Applications/VitalServer Helper.app` | 설치 후 운영 UI |
 | Golden rootfs | `.tmp/vitalserver-vm-pkg/rootfs-base.raw.gz` | air-gapped 설치용 immutable rootfs base |
 | Docker image bundle | `.tmp/vitalserver-vm-pkg/docker-images/vitalserver-images.tar.gz` | guest가 registry 없이 container를 시작하기 위한 image bundle |
@@ -123,7 +151,9 @@ make vm-down
 |---|---|---|
 | Make | `make/vm/*.mk` | target dependency, 산출물 경로, 개발용 실행/설치 wrapper |
 | Build | Python `packages/vm-build` | Ubuntu asset, cloud-init, rootfs, nginx bundle, Docker image bundle, update bundle |
-| Runtime | Swift `vitalserver-vm` | VM lifecycle, install, health, configure, update, rollback, watchdog |
+| Updater | Swift `vitalserver-vm` | bundle verify/apply/rollback, manifest compatibility, migration, guest activation 조율 |
+| Supervisor | Swift `vitalserver-vm` | health/watchdog/recovery, service state 판단 |
+| VM Driver | Swift `vitalserver-vm` | platform-specific VM lifecycle/provider layer |
 | Helper UI | Swift `VitalServer Helper.app` | 사용자가 보는 Status/Settings/Update/Logs/About/Advanced/Danger Zone UI |
 | Installer/launchd | Shell wrapper | `postinstall`, `proxy-run`, uninstall entrypoint 연결 |
 | Guest | Shell + Compose | Linux guest Docker Compose stack, edge nginx container, VM runtime state 기록 |

@@ -76,7 +76,7 @@ def main() -> int:
         help="build an update bundle manifest and checksums",
     )
     update_bundle.add_argument("--version", required=True)
-    update_bundle.add_argument("--runtime-version", required=True)
+    update_bundle.add_argument("--runtime-version")
     update_bundle.add_argument("--min-updater-version")
     update_bundle.add_argument("--requires-guest-activation", type=parse_bool)
     update_bundle.add_argument(
@@ -84,8 +84,17 @@ def main() -> int:
         type=parse_bool,
         default=False,
     )
+    update_bundle.add_argument("--bundle-kind", choices=["product-update", "vm-image-update"], default="product-update")
+    update_bundle.add_argument("--helper-version")
+    update_bundle.add_argument("--target-platform", action="append", default=[])
+    update_bundle.add_argument(
+        "--component",
+        action="append",
+        default=[],
+        help="component version as key=value, e.g. vmDriver=0.2.0+macos.1",
+    )
     update_bundle.add_argument("--output-dir", type=Path, required=True)
-    update_bundle.add_argument("--rootfs-base", type=Path, required=True)
+    update_bundle.add_argument("--rootfs-base", type=Path)
     update_bundle.add_argument("--app-bundle", type=Path)
     update_bundle.add_argument("--runtime-tools", type=Path)
     update_bundle.add_argument("--nginx-bundle", type=Path)
@@ -96,7 +105,7 @@ def main() -> int:
         "verify-update-bundle",
         help="verify an update bundle manifest and checksums",
     )
-    verify_update_bundle.add_argument("bundle_dir", type=Path)
+    verify_update_bundle.add_argument("bundle_path", type=Path)
 
     render_template = subparsers.add_parser(
         "render-template",

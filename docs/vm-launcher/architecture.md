@@ -259,14 +259,14 @@ rollback success    -> healthy
 ## GUI와 Package
 
 제품 설치 책임은 `.pkg`에 둡니다. `.dmg`가 필요하면 installer 전달 매체로만 사용하고, DMG root에는
-단일 `Install Tirosh VitalServer.pkg`를 둡니다. PKG가 Helper app과 runtime을 함께 설치하고,
+단일 `Install Tirosh VitalServer.pkg`를 둡니다. PKG가 Helper app과 local control components를 함께 설치하고,
 Helper app은 설치 이후 상태 확인과 운영 작업을 담당합니다.
 
 단일 PKG를 기본 배포물로 선택한 이유는 설치 대상이 self-contained app 하나가 아니기 때문입니다.
-이 제품은 `/Applications`에 Helper app을 놓는 것 외에도 `/usr/local/bin` runtime tools,
+이 제품은 `/Applications`에 Helper app을 놓는 것 외에도 `/usr/local/bin` Updater/Supervisor/VM Driver tools,
 `/Library/LaunchDaemons` system services, `/Library/Application Support/TiroshVitalServer` 아래의
-VM/runtime asset, host nginx bundle, Docker image bundle을 설치하고 `postinstall`에서 VM disk,
-cloud-init seed, runtime config, launchd 상태를 provision합니다. 이런 system-wide 설치는 macOS
+VM Image/runtime asset, host nginx bundle, Docker image bundle을 설치하고 `postinstall`에서 VM disk,
+cloud-init seed, component config, launchd 상태를 provision합니다. 이런 system-wide 설치는 macOS
 Installer가 권한 상승, receipt, MDM/Jamf 배포, CLI 설치(`installer -pkg ... -target /`)를 다룰 수
 있는 `.pkg`가 더 맞습니다.
 
@@ -281,8 +281,8 @@ host proxy를 부팅 시 자동 실행해야 하므로 `.app`만으로 배포하
 TiroshVitalServer.dmg
   -> Install Tirosh VitalServer.pkg
       -> /Applications/VitalServer Helper.app
-      -> /Library/Application Support/TiroshVitalServer runtime
-      -> /usr/local/bin runtime tools
+      -> /Library/Application Support/TiroshVitalServer runtime data
+      -> /usr/local/bin Updater/Supervisor/VM Driver tools
       -> LaunchDaemons
       -> postinstall runtime provisioning
 ```
@@ -294,8 +294,8 @@ TiroshVitalServer.dmg
 | VitalServer container/runtime 설정 | deploy `runtime-config.json` |
 | 서비스 자동 실행 | LaunchDaemon plist |
 
-Helper app은 설치 이후 상태 확인, 설정 변경, offline/online update bundle 적용,
-rollback, 로그 조회, 제거 진입점을 제공하는 UI로 봅니다. VM runtime artifact와 privileged provisioning은 installer pkg가 담당합니다.
+Helper app은 설치 이후 상태 확인, 설정 변경, offline/online Product Update bundle 적용,
+rollback, 로그 조회, 제거 진입점을 제공하는 UI로 봅니다. VM Image와 privileged provisioning은 installer pkg가 담당합니다.
 설정 변경은 Helper app이 직접 JSON/plist를 수정하지 않고 `vitalserver-vm runtime configure ... --restart`를
 administrator privilege로 호출합니다.
 
@@ -305,7 +305,7 @@ administrator privilege로 호출합니다.
 |---|---|
 | `Install Tirosh VitalServer.pkg` | 파일 배치, 권한 설정, LaunchDaemon 설치, 최초 runtime provisioning |
 | `VitalServer Helper.app` | 설치 후 Status/Settings/Update/Logs/About/Advanced/Danger Zone 진입점 |
-| `/usr/local/bin/vitalserver-vm` | VM lifecycle, health, configure, update, rollback backend |
+| `/usr/local/bin/vitalserver-vm` | 현재 local control binary. Updater, Supervisor, VM Driver 명령을 제공 |
 | `/usr/local/bin/tirosh-vitalserver-uninstall` | 제거 source of truth, Helper/Terminal/MDM 공통 backend |
 
 현재 개발용 app bundle은 `make vm-app`으로 생성합니다.
@@ -323,7 +323,7 @@ open ".tmp/VitalServer Helper.app"
 
 ## Runtime 계층과 통신 계약
 
-설치된 target Mac에서 운영 중인 runtime은 실행 관점에서 세 계층으로 봅니다.
+설치된 target Mac에서 운영 중인 Helper product는 실행 관점에서 세 계층으로 봅니다.
 
 ```text
 [ManagerApp]
@@ -332,8 +332,8 @@ open ".tmp/VitalServer Helper.app"
         | CLI command
         | /usr/local/bin/vitalserver-vm ...
         v
-[RuntimeOrchestrator]
-VM lifecycle, install, configure, health, update, rollback
+[Local Control Components]
+Updater, Supervisor, VM Driver, install/configure/update/rollback
         |
         | VirtioFS shared directory
         | JSON config/request, scripts, bundle files
@@ -350,7 +350,7 @@ runtime-state.json, result JSON, guest logs
         |
         | VirtioFS shared directory
         v
-[RuntimeOrchestrator]
+[Local Control Components]
 health/evaluator/waiter 판단, runtime-status.json 갱신
         |
         | status JSON, command/install/container logs
@@ -364,7 +364,7 @@ Status/Settings/Update/Logs UI에 표시
 | 계층 | 역할 | 주요 코드 | 책임 |
 |---|---|---|---|
 | `ManagerApp` | 운영 UI | `Sources/ManagerApp/*` | 사용자 입력 수집, CLI 호출, status/log/settings 표시 |
-| `RuntimeOrchestrator` | runtime backend | `Sources/RuntimeOrchestrator/*` | VM 시작/중지, 설치/설정/업데이트/롤백, launchd/nginx/health 제어 |
+| `RuntimeOrchestrator` | local control backend | `Sources/RuntimeOrchestrator/*` | Updater/Supervisor/VM Driver 구현. VM 시작/중지, 설치/설정/업데이트/롤백, launchd/nginx/health 제어 |
 | `Guest VM` | Linux 실행 환경 | `Support/Guest/*` | bootstrap, Docker image load, Compose stack 실행, update activation, datastore repair |
 | `RuntimeCore` | 공유 계약/정책 | `Sources/RuntimeCore/*` | DTO/enum/file names, health/guest evaluator, operation plan, repository/clock/command/file port |
 
@@ -372,10 +372,10 @@ Status/Settings/Update/Logs UI에 표시
 
 | 방향 | 방식 | 입력 | 출력 |
 |---|---|---|---|
-| `ManagerApp -> RuntimeOrchestrator` | CLI 실행 | `install`, `start`, `stop`, `runtime configure`, `apply-bundle`, `rollback` 명령과 CPU/RAM/disk/network/proxy/admin 설정 | command exit code, command log |
-| `RuntimeOrchestrator -> ManagerApp` | host file read | `runtime-status.json`, install/runtime/container logs, backup/update bundle metadata | UI status, progress, failure reason, log view |
-| `RuntimeOrchestrator -> Guest VM` | shared directory file contract | `runtime-config.json`, cloud-init/bootstrap files, update/repair request JSON, deploy bundle files | guest 작업 시작 조건 |
-| `Guest VM -> RuntimeOrchestrator` | shared directory file contract | `runtime-state.json`, bootstrap/update/repair result JSON, guest logs | health 판단, waiter completion, rollback/update result |
+| `ManagerApp -> Local control` | CLI 실행 | `install`, `start`, `stop`, `runtime configure`, `apply-bundle`, `rollback` 명령과 CPU/RAM/disk/network/proxy/admin 설정 | command exit code, command log |
+| `Local control -> ManagerApp` | host file read | `runtime-status.json`, install/runtime/container logs, backup/update bundle metadata | UI status, progress, failure reason, log view |
+| `Local control -> Guest VM` | shared directory file contract | `runtime-config.json`, cloud-init/bootstrap files, update/repair request JSON, deploy bundle files | guest 작업 시작 조건 |
+| `Guest VM -> Local control` | shared directory file contract | `runtime-state.json`, bootstrap/update/repair result JSON, guest logs | health 판단, waiter completion, rollback/update result |
 
 이 구조에서 파일 기반 계약은 모든 계층에 쓰는 범용 통신 방식이 아닙니다. Swift module 사이에서는 `public` API와 protocol을 import해서 호출하고, 파일 기반 JSON은 process/VM 경계를 넘는 계약에만 사용합니다. 특히 guest VM은 bootstrap 초기에 HTTP service가 아직 없을 수 있으므로, shared directory의 request/result JSON이 update와 repair의 안정적인 최소 계약입니다.
 
@@ -391,7 +391,7 @@ Python build package
   -> build-machine 전용 artifact 생성
   -> Ubuntu/rootfs/cloud-init/nginx/Docker/update bundle 처리
 
-Swift runtime lifecycle
+Swift local control components
   -> target Mac 설치 후 운영 source of truth
   -> install/status/health/configure/update/rollback 처리
 
@@ -399,7 +399,22 @@ Shell
   -> installer, launchd, guest bootstrap의 얇은 entrypoint
 ```
 
-이렇게 나누는 이유는 build-time과 runtime의 실패 방식이 다르기 때문입니다. Build 단계는 네트워크, Docker registry, Ubuntu image, bundle 검증처럼 반복 가능한 artifact 생성 문제가 많고 Python으로 테스트하기 쉽습니다. Runtime 단계는 `/Library/Application Support`, launchd, Apple Virtualization, backup/rollback, 관리자 권한이 얽히므로 설치된 Mac에서 하나의 Swift CLI가 상태 전이를 책임지는 편이 안전합니다.
+이렇게 나누는 이유는 build-time과 installed product runtime의 실패 방식이 다르기 때문입니다. Build 단계는 네트워크, Docker registry, Ubuntu image, bundle 검증처럼 반복 가능한 artifact 생성 문제가 많고 Python으로 테스트하기 쉽습니다. 설치 후 운영 단계는 `/Library/Application Support`, launchd, Apple Virtualization, backup/rollback, 관리자 권한이 얽히므로 설치된 Mac에서 Swift local control components가 상태 전이를 책임지는 편이 안전합니다.
+
+사용자-facing 책임과 version model은 Helper UI, Updater, Supervisor, VM Driver, Service Stack, VM Image, VitalServer로 나눕니다. 현재 Swift `vitalserver-vm` binary가 여러 역할을 한 번에 담고 있더라도, 문서와 bundle manifest는 이 component 경계를 기준으로 변경 범위와 compatibility를 표현합니다.
+
+제품 layer의 platform dependency와 책임은 아래처럼 둡니다. 이 표는 코드 배치보다 상위의 product contract입니다.
+
+| Layer | Platform dependency | 책임 |
+|---|---|---|
+| VitalServer Helper | cross-platform product umbrella | 최상위 관리 제품/클라이언트 패키지, release/support 기준 |
+| Helper UI | platform-specific | macOS/iPadOS/Windows 등 사용자 인터페이스 |
+| Updater | host/platform-specific | bundle verify/apply/rollback, compatibility gate, migration 조율 |
+| Supervisor | host/platform-aware | health/watchdog/recovery, service state loop, update 중 recovery suppression |
+| VM Driver | platform-specific | VM provider별 lifecycle. macOS는 Apple Virtualization/launchd, Windows는 별도 provider |
+| Service Stack | mostly guest/service-specific | guest deploy assets, compose, container image bundle, service activation |
+| VM Image | guest OS/image-specific | Linux guest OS/base rootfs/kernel/initrd class artifact |
+| VitalServer service | service-specific | VM 안에서 실행되는 VitalServer app/container |
 
 현재 구현의 책임 경계는 아래처럼 둡니다. 이 표가 코드 배치의 기준입니다.
 
@@ -408,9 +423,9 @@ Shell
 | build orchestration | `make/vm.mk`, `make/vm/config.mk` | target dependency, 중간/최종 산출물 경로, unsigned build 변수, install test wrapper | manifest 해석, disk/rootfs 세부 처리 |
 | build config | `apps/vitalserver-vm-launcher/Support/Build/vm-build.toml` | Ubuntu/rootfs/Docker image/nginx bundle pinned input 값 | 설치 시 사용자 설정 |
 | Python build package | `packages/vm-build/src/tirosh_vitalserver/vm_build/*.py` | Ubuntu asset 준비, cloud-init ISO 생성, rootfs 압축, nginx bundle, Docker image bundle, update bundle 생성/검증, plist/template rendering | 설치 후 runtime 상태 변경 |
-| Runtime orchestrator entry | `Sources/RuntimeOrchestrator/CLI/Launcher.swift`, `Command.swift` | `vitalserver-vm` command routing, VM start/stop/status/network/runtime command 연결 | package staging, DMG 생성 |
-| Runtime lifecycle | `Sources/RuntimeOrchestrator/Runtime/RuntimeLifecycle.swift` | `runtime install/status/health/verify-bundle/stage-bundle/apply-bundle/rollback`, install settings 적용, VM disk 생성, launchd load, backup/rollback | DMG/PKG 파일 생성 |
-| Swift runtime paths/constants | `LauncherPaths.swift`, `Constants.swift` | 설치/runtime 경로, artifact 이름, launchd/service 이름, command path | runtime 동작 정책 결정 |
+| Local control entry | `Sources/RuntimeOrchestrator/CLI/Launcher.swift`, `Command.swift` | `vitalserver-vm` command routing, VM start/stop/status/network/runtime command 연결 | package staging, DMG 생성 |
+| Local control lifecycle | `Sources/RuntimeOrchestrator/Runtime/RuntimeLifecycle.swift` | `runtime install/status/health/verify-bundle/stage-bundle/apply-bundle/rollback`, install settings 적용, VM disk 생성, launchd load, backup/rollback | DMG/PKG 파일 생성 |
+| Swift paths/constants | `LauncherPaths.swift`, `Constants.swift` | 설치/runtime 경로, artifact 이름, launchd/service 이름, command path | runtime 동작 정책 결정 |
 | VM configuration | `VirtualMachine/VMRuntimeConfig.swift`, `VMConfigurationFactory.swift` | `vm-config.json` schema, Apple Virtualization configuration 생성 | install settings 파일 읽기 |
 | Helper app | `Sources/ManagerApp/*` | 설치 후 Status/Settings/Update/Logs/About/Advanced/Danger Zone UI | rootfs, VM disk, privileged provisioning 포함 |
 | PKG scripts | `Support/Packaging/preinstall`, `postinstall`, `proxy-run`, `uninstall` | installer/launchd/uninstall entrypoint wrapper | 복잡한 provisioning 로직 |

@@ -136,7 +136,7 @@ enum AppConstants {
         static let onlineUpdate = "Online update"
         static let onlineUpdateUnavailable = "Online update is planned for connected sites. Use an offline bundle for this build."
         static let selectedBundle = "Selected bundle"
-        static let updateSourceHelp = "Air-gapped sites receive an update-bundle directory through USB, local file share, or hospital-managed storage."
+        static let updateSourceHelp = "Air-gapped sites receive an update-bundle .tar.gz file through USB, local file share, or hospital-managed storage."
         static let bundleVerificationHelp = "Verify checksums before applying. Signature verification is currently reserved by the bundle contract."
         static let applyUpdateHelp = "Applies the verified bundle and may restart VitalServer services. VM/rootfs level changes are treated as administrator-level updates."
         static let menuVitalFiles = "Vital Files"

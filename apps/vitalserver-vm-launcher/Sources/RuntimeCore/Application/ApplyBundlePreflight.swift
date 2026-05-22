@@ -19,14 +19,17 @@ public struct RuntimeServiceRestartPolicy: Equatable, Sendable {
 public struct ApplyBundlePreflightContext: Equatable, Sendable {
     public let stagedBundle: URL
     public let manifest: UpdateBundleManifest
-    public let stagedRootfs: URL
+    public let stagedRootfs: URL?
     public let backup: URL
     public let restartPolicy: RuntimeServiceRestartPolicy
+    public var updatesRootfsBase: Bool {
+        stagedRootfs != nil
+    }
 
     public init(
         stagedBundle: URL,
         manifest: UpdateBundleManifest,
-        stagedRootfs: URL,
+        stagedRootfs: URL?,
         backup: URL,
         restartPolicy: RuntimeServiceRestartPolicy
     ) {

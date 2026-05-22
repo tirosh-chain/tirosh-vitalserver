@@ -22,6 +22,7 @@
 |---|---|
 | [VitalServer 제품화 전략](vitalserver-productization.md) | 저장소의 목표, upstream 동작, 제품화 기준, 아직 비어 있는 영역 |
 | [ADR 0001](adr/0001-macos-host-proxy-for-vrecorder-ip.md) | macOS host proxy로 VRecorder 원 IP를 보존하기로 한 결정 |
+| [ADR 0002](adr/0002-vitalserver-helper-layered-runtime-refactor.md) | VitalServer Helper layer, update/version model, refactor 순서 결정 |
 
 ### VRecorder와 데이터
 
@@ -50,6 +51,7 @@ VM runtime 문서는 [VitalServer VM Launcher](vitalserver-vm-launcher.md)를 �
 | [Update](vm-launcher/update.md) | update bundle 적용 과정, 보존/변경 범위, guest-side activation, rollback 계약 |
 | [Runtime](vm-launcher/runtime.md) | boot asset, cloud-init, guest bootstrap, network/identity/signing 정책 |
 | [Troubleshooting](vm-launcher/troubleshooting.md) | PoC와 패키징 중 확인한 증상과 조치 |
+| [ADR 0002](adr/0002-vitalserver-helper-layered-runtime-refactor.md) | Helper UI, Updater, Supervisor, VM Driver, Service Stack, VM Image layer와 코드 리팩터링 순서 |
 
 ### 개발 운영
 

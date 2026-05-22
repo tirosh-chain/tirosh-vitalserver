@@ -5,10 +5,14 @@ final class UpdateBundleContractsTests: XCTestCase {
     func testDecodesKnownArtifactTypesAsEnumValues() throws {
         let manifest = try JSONDecoder().decode(UpdateBundleManifest.self, from: Data("""
         {
-          "schemaVersion": 1,
-          "product": "TiroshVitalServer",
-          "version": "1.2.3",
-          "runtimeVersion": "4.5.6",
+          "schemaVersion": 2,
+          "product": "com.tirosh.vitalserver",
+          "bundleKind": "product-update",
+          "helperVersion": "1.2.3",
+          "targetPlatforms": ["macos-arm64"],
+          "components": {
+            "updater": "4.5.6"
+          },
           "minUpdaterVersion": "1.2.0",
           "requiresGuestActivation": true,
           "requiresTwoPhaseUpdate": false,
@@ -24,6 +28,7 @@ final class UpdateBundleContractsTests: XCTestCase {
         """.utf8))
 
         XCTAssertEqual(manifest.version, "1.2.3")
+        XCTAssertEqual(manifest.runtimeVersion, "4.5.6")
         XCTAssertEqual(manifest.minUpdaterVersion, "1.2.0")
         XCTAssertTrue(manifest.requiresGuestActivation)
         XCTAssertFalse(manifest.requiresTwoPhaseUpdate)
@@ -31,8 +36,8 @@ final class UpdateBundleContractsTests: XCTestCase {
         XCTAssertEqual(manifest.migrations.first?.name, "001.sh")
     }
 
-    func testManifestCompatibilityFieldsDefaultForOlderDocuments() throws {
-        let manifest = try JSONDecoder().decode(UpdateBundleManifest.self, from: Data("""
+    func testManifestRequiresLayeredVersionFields() {
+        XCTAssertThrowsError(try JSONDecoder().decode(UpdateBundleManifest.self, from: Data("""
         {
           "schemaVersion": 2,
           "product": "TiroshVitalServer",
@@ -42,11 +47,94 @@ final class UpdateBundleContractsTests: XCTestCase {
           "artifacts": [],
           "migrations": []
         }
+        """.utf8)))
+    }
+
+    func testManifestCompatibilityFieldsDefaultForNewDocuments() throws {
+        let manifest = try JSONDecoder().decode(UpdateBundleManifest.self, from: Data("""
+        {
+          "schemaVersion": 2,
+          "product": "com.tirosh.vitalserver",
+          "bundleKind": "product-update",
+          "helperVersion": "1.2.3",
+          "targetPlatforms": [],
+          "components": {
+            "updater": "4.5.6"
+          },
+          "createdAt": "2026-05-21T12:00:00Z",
+          "artifacts": [],
+          "migrations": []
+        }
         """.utf8))
 
+        XCTAssertEqual(manifest.bundleKind, .productUpdate)
+        XCTAssertEqual(manifest.version, "1.2.3")
+        XCTAssertEqual(manifest.runtimeVersion, "4.5.6")
+        XCTAssertEqual(manifest.helperVersion, "1.2.3")
+        XCTAssertEqual(manifest.targetPlatforms, [])
+        XCTAssertEqual(manifest.components, ["updater": "4.5.6"])
         XCTAssertNil(manifest.minUpdaterVersion)
         XCTAssertFalse(manifest.requiresGuestActivation)
         XCTAssertFalse(manifest.requiresTwoPhaseUpdate)
+    }
+
+    func testDecodesLayeredManifestShape() throws {
+        let manifest = try JSONDecoder().decode(UpdateBundleManifest.self, from: Data("""
+        {
+          "schemaVersion": 2,
+          "product": "com.tirosh.vitalserver",
+          "bundleKind": "product-update",
+          "helperVersion": "0.2.0",
+          "targetPlatforms": ["macos-arm64"],
+          "minUpdaterVersion": "0.1.6",
+          "components": {
+            "helperUI": "0.2.0+macos.1",
+            "updater": "0.2.0",
+            "supervisor": "0.2.0",
+            "vmDriver": "0.2.0+macos.1",
+            "serviceStack": "2.3.4-stack.1",
+            "vitalServer": "2.3.4"
+          },
+          "requiresGuestActivation": true,
+          "requiresTwoPhaseUpdate": false,
+          "createdAt": "2026-05-22T00:00:00Z",
+          "artifacts": [],
+          "migrations": []
+        }
+        """.utf8))
+
+        XCTAssertEqual(manifest.bundleKind, .productUpdate)
+        XCTAssertEqual(manifest.version, "0.2.0")
+        XCTAssertEqual(manifest.runtimeVersion, "0.2.0")
+        XCTAssertEqual(manifest.helperVersion, "0.2.0")
+        XCTAssertEqual(manifest.targetPlatforms, ["macos-arm64"])
+        XCTAssertEqual(manifest.components["vmDriver"], "0.2.0+macos.1")
+        XCTAssertEqual(manifest.components["serviceStack"], "2.3.4-stack.1")
+        XCTAssertEqual(manifest.minUpdaterVersion, "0.1.6")
+    }
+
+    func testUnknownBundleKindRoundTrips() throws {
+        let manifest = try JSONDecoder().decode(UpdateBundleManifest.self, from: Data("""
+        {
+          "schemaVersion": 2,
+          "product": "com.tirosh.vitalserver",
+          "bundleKind": "future-kind",
+          "helperVersion": "0.2.0",
+          "targetPlatforms": ["macos-arm64"],
+          "components": {
+            "updater": "0.2.0"
+          },
+          "createdAt": "2026-05-22T00:00:00Z",
+          "artifacts": [],
+          "migrations": []
+        }
+        """.utf8))
+
+        XCTAssertEqual(manifest.bundleKind, .unknown("future-kind"))
+
+        let encoded = try JSONEncoder().encode(manifest)
+        let decoded = try JSONDecoder().decode(UpdateBundleManifest.self, from: encoded)
+        XCTAssertEqual(decoded.bundleKind, .unknown("future-kind"))
     }
 
     func testUnknownArtifactTypeRoundTrips() throws {

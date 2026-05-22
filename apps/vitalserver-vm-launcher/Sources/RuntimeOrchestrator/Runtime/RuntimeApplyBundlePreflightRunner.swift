@@ -22,18 +22,27 @@ struct RuntimeApplyBundlePreflightRunner {
         )
         try checkCompatibility(manifest)
 
-        let stagedRootfs = stagedBundle.appendingPathComponent(Constants.Artifacts.rootfsBase)
-        guard fileExists(stagedRootfs) else {
-            throw LauncherError.missingFile(stagedRootfs.path)
+        let stagedRootfs = manifest.artifacts.contains { $0.type == .rootfsBase }
+            ? stagedBundle.appendingPathComponent(Constants.Artifacts.rootfsBase)
+            : nil
+        var requiredBytes = Constants.Runtime.updateFreeSpaceMarginBytes
+        if let stagedRootfs {
+            guard fileExists(stagedRootfs) else {
+                throw LauncherError.missingFile(stagedRootfs.path)
+            }
+            let installedRootfsSize = try fileSize(rootfsBase)
+            let incomingRootfsSize = try fileSize(stagedRootfs)
+            requiredBytes += installedRootfsSize + incomingRootfsSize
+            log(
+                "bundle apply storage preflight installedRootfs=\(formatBytes(installedRootfsSize)) incomingRootfs=\(formatBytes(incomingRootfsSize))"
+            )
+        } else {
+            log("bundle apply storage preflight rootfsBase=unchanged")
         }
-
         try createDirectory(backupsDirectory, true)
-        log(
-            "bundle apply storage preflight installedRootfs=\(formatBytes(try fileSize(rootfsBase))) incomingRootfs=\(formatBytes(try fileSize(stagedRootfs)))"
-        )
         try requireFreeSpace(
             backupsDirectory,
-            (try fileSize(rootfsBase)) + (try fileSize(stagedRootfs)) + Constants.Runtime.updateFreeSpaceMarginBytes,
+            requiredBytes,
             .applyBundle
         )
 

@@ -34,6 +34,15 @@ final class RuntimeFileReaderTests: XCTestCase {
         )
     }
 
+    func testUpdateBundleSummaryReportsArchiveInput() {
+        let archive = URL(fileURLWithPath: "/tmp/update-bundle-1.2.3.tar.gz")
+
+        XCTAssertEqual(
+            SystemRuntimeManagerFileReader().updateBundleSummary(url: archive),
+            "Archive: update-bundle-1.2.3.tar.gz\nVerify to inspect manifest and checksums."
+        )
+    }
+
     func testVitalFileFoldersReturnsSortedDirectoriesOnly() throws {
         let directory = try temporaryDirectory()
         try FileManager.default.createDirectory(

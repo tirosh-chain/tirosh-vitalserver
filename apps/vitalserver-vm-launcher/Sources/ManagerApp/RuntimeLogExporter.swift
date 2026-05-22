@@ -1,4 +1,5 @@
 import Foundation
+import RuntimeCore
 
 @MainActor
 protocol RuntimeLogExporting {
@@ -9,13 +10,25 @@ protocol RuntimeLogExporting {
 struct LocalRuntimeLogExporter: RuntimeLogExporting {
     private let fileManager: FileManager
     private let logCollector: RuntimeLogCollecting
+    private let productLogsDirectory: URL
+    private let fallbackLogItems: [RuntimeLogExportFallback]
+    private let rotatedFallbackSets: [RuntimeLogExportRotatedFallbackSet]
+    private let archiveRunner: (String, [String]) async -> ProcessResult
 
     init(
         fileManager: FileManager = .default,
-        logCollector: RuntimeLogCollecting = LocalRuntimeLogCollector()
+        logCollector: RuntimeLogCollecting = LocalRuntimeLogCollector(),
+        productLogsDirectory: URL = URL(fileURLWithPath: AppConstants.Paths.productLogs),
+        fallbackLogItems: [RuntimeLogExportFallback] = RuntimeLogExportFallback.defaultItems(),
+        rotatedFallbackSets: [RuntimeLogExportRotatedFallbackSet] = RuntimeLogExportRotatedFallbackSet.defaultSets(),
+        archiveRunner: @escaping (String, [String]) async -> ProcessResult = ProcessRunner.run
     ) {
         self.fileManager = fileManager
         self.logCollector = logCollector
+        self.productLogsDirectory = productLogsDirectory
+        self.fallbackLogItems = fallbackLogItems
+        self.rotatedFallbackSets = rotatedFallbackSets
+        self.archiveRunner = archiveRunner
     }
 
     func exportLogs(to destination: URL) async throws -> RuntimeLogExportResult {
@@ -30,17 +43,18 @@ struct LocalRuntimeLogExporter: RuntimeLogExporting {
 
         let bundleRoot = stagingRoot.appendingPathComponent("vitalserver-logs", isDirectory: true)
         try copyLogItem(
-            from: URL(fileURLWithPath: AppConstants.Paths.productLogs),
+            from: productLogsDirectory,
             to: bundleRoot
         )
         if !fileManager.fileExists(atPath: bundleRoot.path) {
             try fileManager.createDirectory(at: bundleRoot, withIntermediateDirectories: true)
         }
+        try copyFallbackLogs(to: bundleRoot)
 
         let temporaryArchive = stagingRoot.appendingPathComponent(destination.lastPathComponent)
-        let result = await ProcessRunner.run(
+        let result = await archiveRunner(
             AppConstants.Commands.ditto,
-            arguments: ["-c", "-k", "--sequesterRsrc", "--keepParent", bundleRoot.path, temporaryArchive.path]
+            ["-c", "-k", "--sequesterRsrc", "--keepParent", bundleRoot.path, temporaryArchive.path]
         )
         guard result.exitCode == 0 else {
             throw RuntimeClientError.logExportFailed(result.summary)
@@ -60,5 +74,105 @@ struct LocalRuntimeLogExporter: RuntimeLogExporting {
             try fileManager.removeItem(at: destination)
         }
         try fileManager.copyItem(at: source, to: destination)
+    }
+
+    private func copyFallbackLogs(to bundleRoot: URL) throws {
+        for item in fallbackLogItems {
+            try copyFallbackLog(item, to: bundleRoot)
+        }
+        for set in rotatedFallbackSets {
+            try copyRotatedFallbackLogs(set, to: bundleRoot)
+        }
+    }
+
+    private func copyFallbackLog(_ item: RuntimeLogExportFallback, to bundleRoot: URL) throws {
+        guard fileManager.fileExists(atPath: item.source.path) else {
+            return
+        }
+        let destination = bundleRoot.appendingPathComponent(item.relativeDestination)
+        guard !fileManager.fileExists(atPath: destination.path) else {
+            return
+        }
+        try fileManager.createDirectory(
+            at: destination.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try fileManager.copyItem(at: item.source, to: destination)
+    }
+
+    private func copyRotatedFallbackLogs(_ set: RuntimeLogExportRotatedFallbackSet, to bundleRoot: URL) throws {
+        guard fileManager.fileExists(atPath: set.sourceDirectory.path) else {
+            return
+        }
+        let entries = try fileManager.contentsOfDirectory(
+            at: set.sourceDirectory,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        )
+        for source in entries where source.lastPathComponent.hasPrefix(set.sourceFilePrefix) {
+            let suffix = String(source.lastPathComponent.dropFirst(set.sourceFilePrefix.count))
+            guard !suffix.isEmpty else {
+                continue
+            }
+            let destination = bundleRoot
+                .appendingPathComponent(set.relativeDestinationDirectory)
+                .appendingPathComponent("\(set.destinationFilePrefix)\(suffix)")
+            guard !fileManager.fileExists(atPath: destination.path) else {
+                continue
+            }
+            try fileManager.createDirectory(
+                at: destination.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            try fileManager.copyItem(at: source, to: destination)
+        }
+    }
+}
+
+struct RuntimeLogExportFallback {
+    let source: URL
+    let relativeDestination: String
+
+    static func defaultItems() -> [RuntimeLogExportFallback] {
+        [
+            RuntimeLogExportFallback(
+                source: URL(fileURLWithPath: AppConstants.Paths.bootstrapLogSource),
+                relativeDestination: "guest/\(RuntimeFileNames.bootstrapLog)"
+            ),
+            RuntimeLogExportFallback(
+                source: URL(fileURLWithPath: AppConstants.Paths.containerLogSource),
+                relativeDestination: "guest/container-logs.log"
+            ),
+            RuntimeLogExportFallback(
+                source: URL(fileURLWithPath: AppConstants.Paths.updateActivationLogSource),
+                relativeDestination: "guest/\(RuntimeFileNames.updateActivationLog)"
+            ),
+            RuntimeLogExportFallback(
+                source: URL(fileURLWithPath: AppConstants.Paths.datastoreRepairLogSource),
+                relativeDestination: "guest/\(RuntimeFileNames.datastoreRepairLog)"
+            ),
+            RuntimeLogExportFallback(
+                source: URL(fileURLWithPath: AppConstants.Paths.commandLogFile),
+                relativeDestination: "command.log"
+            ),
+        ]
+    }
+}
+
+struct RuntimeLogExportRotatedFallbackSet {
+    let sourceDirectory: URL
+    let sourceFilePrefix: String
+    let relativeDestinationDirectory: String
+    let destinationFilePrefix: String
+
+    static func defaultSets() -> [RuntimeLogExportRotatedFallbackSet] {
+        [
+            RuntimeLogExportRotatedFallbackSet(
+                sourceDirectory: URL(fileURLWithPath: AppConstants.Paths.guestRunDirectory),
+                sourceFilePrefix: "container-logs.log.",
+                relativeDestinationDirectory: "guest",
+                destinationFilePrefix: "container-logs.log."
+            ),
+        ]
     }
 }

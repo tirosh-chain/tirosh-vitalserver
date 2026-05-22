@@ -21,21 +21,37 @@
 | 신규 설치 | `dist/TiroshVitalServer-<version>.dmg` | `make vm-dmg` | DMG 안의 `Install Tirosh VitalServer.pkg` 실행 |
 | 신규 설치 release 검증 | `dist/TiroshVitalServer-<version>.dmg` | `make vm-dmg-release` | clean golden rootfs부터 다시 만든 설치물 사용 |
 | `.pkg` 직접 배포 | `dist/TiroshVitalServerVM-<version>.pkg` | `make vm-pkg` | `sudo installer -pkg ... -target /` |
-| air-gapped 업데이트 | `dist/update-bundles/update-bundle-<version>/` | `make vm-update-bundle` | Helper app Update 탭 또는 `vitalserver-vm runtime apply-bundle` |
-| bundle 검증 | update bundle directory | `make vm-update-bundle-verify` | 전달 전 manifest/checksum 검증 |
+| air-gapped Product Update | `dist/update-bundles/update-bundle-<version>.tar.gz` | `make vm-update-bundle` | Helper app Update 탭 또는 `vitalserver-vm runtime apply-bundle` |
+| VM Image Update | `dist/update-bundles/update-bundle-<version>.tar.gz` | `make vm-rootfs-update-bundle` | rootfs-base 교체가 필요한 경우에만 사용 |
+| bundle 검증 | update bundle tarball | `make vm-update-bundle-verify` | 전달 전 manifest/checksum 검증 |
 | 개발 설치 테스트 | installed runtime | `make vm-pkg-install` | 현재 Mac에 설치 후 `make vm-installed-health` |
 
-사용자에게 “bundle”로 제공하는 대상은 두 가지입니다. 신규 설치는 `.dmg`/`.pkg`이고, 이미 설치된 현장 업데이트는 `update-bundle-<version>/` directory입니다. air-gapped 환경에서는 update bundle directory를 tarball로 묶어 USB나 폐쇄망 파일 서버로 전달합니다. 적용 과정과 보존/변경 범위는 [Update](update.md)에 따로 정리합니다.
+사용자에게 “bundle”로 제공하는 대상은 두 가지입니다. 신규 설치는 `.dmg`/`.pkg`이고, 이미 설치된 현장 업데이트는 `update-bundle-<version>.tar.gz` tarball입니다. air-gapped 환경에서는 이 파일을 USB나 폐쇄망 파일 서버로 전달합니다. 적용 과정과 보존/변경 범위는 [Update](update.md)에 따로 정리합니다.
 
 ## 버전 source of truth
 
-package, DMG, update bundle, Swift runtime version은 아래 파일을 기준으로 관리합니다.
+package, DMG, update bundle, Helper product/component version은 아래 파일을 기준으로 관리합니다.
 
 ```text
 apps/vitalserver-vm-launcher/release.json
 ```
 
-`make vm-build`는 이 값을 Swift `GeneratedVersion.swift`와 Helper app의 `GeneratedRelease.swift`에 반영하고, `make vm-app`은 app bundle `Info.plist`의 `CFBundleShortVersionString`에 같은 helper version을 씁니다. `make vm-pkg`와 `make vm-update-bundle`은 기본적으로 이 값을 `VM_PKG_VERSION`, `VM_UPDATE_BUNDLE_VERSION`, `VM_UPDATE_MIN_UPDATER_VERSION`으로 사용합니다. 특별한 검증이 아니라면 버전과 update compatibility 변경은 이 파일 하나에서 관리합니다.
+`VitalServer Helper`는 최상위 product release입니다. platform별 build는 같은 Helper release 아래의 variant이며, 세부 변경 범위는 Helper UI, Updater, Supervisor, VM Driver, Service Stack, VM Image, VitalServer component version으로 설명합니다.
+
+`make vm-build`는 이 값을 Swift `GeneratedVersion.swift`와 Helper app의 `GeneratedRelease.swift`에 반영하고, `make vm-app`은 app bundle `Info.plist`의 `CFBundleShortVersionString`에 같은 helper version을 씁니다. `make vm-pkg`, `make vm-update-bundle`, `make vm-rootfs-update-bundle`은 기본적으로 이 값을 `VM_PKG_VERSION`, `VM_UPDATE_BUNDLE_VERSION`, `VM_UPDATE_MIN_UPDATER_VERSION`으로 사용합니다. 특별한 검증이 아니라면 버전과 update compatibility 변경은 이 파일 하나에서 관리합니다.
+
+Update bundle manifest는 `helperVersion`, `targetPlatforms`, `minUpdaterVersion`, `components`를 기준으로 작성합니다. `components`에는 `helperUI`, `updater`, `supervisor`, `vmDriver`, `serviceStack`, `vmImage`, `vitalServer`처럼 실제 변경 범위를 드러내는 version을 넣습니다. platform-specific artifact는 `targetPlatforms`와 component version suffix로 제한하고, 공통 Service Stack이나 VM Image는 같은 Helper release 아래에서 platform 간 공유할 수 있습니다.
+
+Layer별 platform dependency도 manifest 설계 기준입니다. Helper UI와 VM Driver는 platform-specific이고, Updater는 host/platform-specific compatibility gate이며, Supervisor는 host/platform-aware health/recovery loop입니다. Service Stack은 guest/service-specific 실행 세트이고, VM Image는 Linux guest OS image artifact입니다.
+
+Update bundle kind는 두 개로 제한합니다.
+
+| bundleKind | 생성 target | UI 위치 | 포함 범위 |
+|---|---|---|---|
+| `product-update` | `make vm-update-bundle` | Update 탭 | Helper UI, Updater, Supervisor, VM Driver, Service Stack, 개별 service/container, host proxy, migrations |
+| `vm-image-update` | `make vm-rootfs-update-bundle` | Danger Zone | VM Image/rootfs/base OS/kernel/initrd class artifact |
+
+Hotfix, service-only update, updater bridge update는 별도 kind가 아니라 `product-update` metadata로 표현합니다.
 
 ## Package 구성
 
@@ -259,7 +275,7 @@ VM service가 시작되면 `vitalserver-vm start`가 `vm-config.json`을 읽어 
 Uninstall 로직은 Helper app에 중복 구현하지 않고, 설치된
 `/usr/local/bin/tirosh-vitalserver-uninstall`을 관리자 권한으로 호출합니다. Helper app을 열 수 없는 깨진 설치 상태에서는 같은 command를 Terminal 또는 MDM/Jamf에서 root로 실행합니다.
 
-기본 Uninstall은 Helper app, LaunchDaemon, runtime tools, VM disk, logs, package receipt를 제거하지만 `.vital` 파일 경로와 backups는 보존합니다. Clean Uninstall은 `--clean`을 전달해 backups와 설정된 vital files directory까지 삭제합니다.
+기본 Uninstall은 Helper app, LaunchDaemon, Updater/Supervisor/VM Driver tools, VM disk, logs, package receipt를 제거하지만 `.vital` 파일 경로와 backups는 보존합니다. Clean Uninstall은 `--clean`을 전달해 backups와 설정된 vital files directory까지 삭제합니다.
 
 ```text
 VitalServer Helper.app
@@ -294,8 +310,8 @@ Fallback:
 | watchdog | launchd | `vitalserver-vm runtime watchdog` | runtime files, launchd state, guest runtime state, HTTP health | runtime status update, VM/proxy kickstart |
 | host proxy | launchd | `vitalserver-proxy-run` | `vm/data/run/runtime-state.json`, legacy `vm-ip`, proxy template, nginx binary | rendered host nginx config, nginx process |
 | guest bootstrap | cloud-init | `bootstrap.sh`, `bin/*`, `systemd/*` | VirtioFS mounts, `runtime-config.json`, Docker bundle | Docker Compose stack, edge nginx container, runtime state marker |
-| update verification | operator/Helper | `vitalserver-vm runtime verify-bundle` | bundle directory | manifest/checksum validation |
-| update apply | operator/Helper | `vitalserver-vm runtime apply-bundle` | verified bundle directory | staged bundle, backup, rootfs-base replacement, migrations, health check |
+| update verification | operator/Helper | `vitalserver-vm runtime verify-bundle` | bundle tarball | manifest/checksum validation |
+| update apply | operator/Helper | `vitalserver-vm runtime apply-bundle` | verified bundle tarball | staged bundle, backup, artifact replacement, migrations, health check |
 
 이 표가 현재 source of truth입니다. Shell은 installer/launchd wrapper로 제한하고, manifest parsing, checksum 검증, backup, rollback 정책은 Swift runtime lifecycle command가 담당합니다.
 
@@ -386,9 +402,9 @@ install settings JSON
 
 | artifact type | 생성 여부 | Swift verify | Swift apply |
 |---|---:|---:|---:|
-| `rootfs-base` | 기본 target에서 포함 | 예 | `rootfs-base.raw.gz` 교체 |
+| `rootfs-base` | `vm-rootfs-update-bundle`에서만 포함 | 예 | `rootfs-base.raw.gz` 교체 |
 | `app-bundle` | 기본 포함 | 예 | `/Applications/VitalServer Helper.app` 교체 |
-| `runtime-tools` | 기본 포함 | 예 | `/usr/local/bin` runtime CLI/runner 교체 |
+| `runtime-tools` | 기본 포함 | 예 | `/usr/local/bin` Updater/Supervisor/VM Driver tools 교체 |
 | `nginx-bundle` | 기본 포함 | 예 | host nginx bundle 교체 |
 | `guest-deploy` | 기본 포함 | 예 | VM shared deploy bundle 교체 |
 | `migration` | optional | 예 | executable이면 순차 실행 |
@@ -400,7 +416,8 @@ verify bundle
 stage bundle
 backup managed artifacts/runtime-version
 stop services
-replace app/runtime-tools/nginx/guest-deploy/rootfs-base artifacts
+replace app/runtime-tools/nginx/guest-deploy artifacts
+replace rootfs-base only when the bundle includes rootfs-base
 run executable migrations
 write runtime-version.json
 restart services if previously running
@@ -521,31 +538,38 @@ VM_RECREATE_GOLDEN_ROOTFS=true make vm-pkg
 
 ## Update Bundle
 
-온라인/오프라인 업데이트는 같은 bundle directory를 입력으로 사용합니다.
+온라인/오프라인 업데이트는 같은 bundle tarball을 입력으로 사용합니다.
 
 ```sh
 make vm-update-bundle
 make vm-update-bundle-verify
 ```
 
-`make vm-update-artifacts`는 package staging root를 기준으로 `app-bundle.tar.gz`,
+VM Image/rootfs/base OS까지 포함하는 업데이트는 별도 target을 사용합니다. 이 bundle은 `vm-image-update`로 취급하고 Danger Zone에서 다룹니다.
+
+```sh
+make vm-rootfs-update-bundle
+make vm-update-bundle-verify
+```
+
+`make vm-update-artifacts`는 Product Update artifact staging을 기준으로 `app-bundle.tar.gz`,
 `runtime-tools.tar.gz`, `nginx-bundle.tar.gz`, `guest-deploy.tar.gz`를 자동 생성합니다.
-`make vm-update-bundle`은 이 artifact들을 기본 포함하므로 Helper app, runtime tools, host nginx,
-guest deploy bundle까지 같은 online/offline bundle 계약으로 배포할 수 있습니다.
+`make vm-update-bundle`은 이 artifact들을 기본 포함하므로 Helper UI, Updater/Supervisor/VM Driver tools, host nginx,
+Service Stack/guest deploy bundle까지 같은 online/offline Product Update 계약으로 배포할 수 있습니다.
 
 update bundle도 압축이 필요합니다. 다만 압축 대상은 update artifact 단위입니다. 일반적인 현장 업데이트는 작은 `.tar.gz` artifact를 교체하는 흐름이고, 무거운 `rootfs-base.raw.gz`를 매번 다시 압축하거나 배포하는 흐름이 아닙니다.
 
-| artifact | 압축 파일 | 일반 업데이트 포함 여부 | 비고 |
+| artifact | 압축 파일 | Product Update 포함 여부 | 비고 |
 |---|---|---|---|
-| Helper app | `app-bundle.tar.gz` | 기본 포함 | `/Applications/VitalServer Helper.app` 교체 |
-| runtime tools | `runtime-tools.tar.gz` | 기본 포함 | `/usr/local/bin` runtime CLI/runner 교체 |
+| Helper UI | `app-bundle.tar.gz` | 기본 포함 | `/Applications/VitalServer Helper.app` 교체 |
+| Updater/Supervisor/VM Driver tools | `runtime-tools.tar.gz` | 기본 포함 | `/usr/local/bin` local control tools 교체 |
 | host nginx bundle | `nginx-bundle.tar.gz` | 기본 포함 | host proxy binary/dylib 교체 |
-| guest deploy bundle | `guest-deploy.tar.gz` | 기본 포함 | VM shared deploy script/config 교체 |
+| Service Stack / guest deploy bundle | `guest-deploy.tar.gz` | 기본 포함 | VM shared deploy script/config, compose, container image bundle 교체 |
 | migration | executable files | 기본 포함 | cloud-init seed refresh 등 설치된 VM/runtime 상태 변경 |
 | Docker images | `vitalserver-images.tar.gz` | 필요 시 포함 | container image 갱신이 있을 때만 무겁게 포함 |
-| rootfs base | `rootfs-base.raw.gz` | major/runtime base 변경 시 포함 | 신규 설치 또는 base OS/package 변경용. 기존 `vm-disk.img`를 자동 교체하지 않음 |
+| VM Image / rootfs base | `rootfs-base.raw.gz` | `vm-rootfs-update-bundle`에서만 포함 | 신규 설치 또는 base OS/package 변경용. 기존 `vm-disk.img`를 자동 교체하지 않음 |
 
-따라서 “bundle을 만든다”는 것은 보통 작은 runtime artifact를 압축해 묶는다는 뜻입니다. rootfs나 Docker image 갱신이 없는 일반 update bundle은 package build보다 훨씬 가벼워야 합니다.
+따라서 “bundle을 만든다”는 것은 보통 작은 product artifact를 압축해 묶는다는 뜻입니다. rootfs나 Docker image 갱신이 없는 Product Update bundle은 package build보다 훨씬 가벼워야 합니다.
 
 기본 update bundle에는 `apps/vitalserver-vm-launcher/Support/Build/migrations/001-refresh-cloud-init-seed`가 포함됩니다. 구버전 Helper가 bundle을 적용해도 이 migration은 실행되므로, 새 `guest-deploy/bootstrap.sh`가 다음 VM 부팅에서 실행될 수 있습니다.
 
@@ -558,17 +582,24 @@ VM_UPDATE_MIGRATIONS="release/migrations/001-example" make vm-update-bundle
 생성물:
 
 ```text
-dist/update-bundles/update-bundle-<version>/
+dist/update-bundles/update-bundle-<version>.tar.gz
+```
+
+tarball 내부 구조:
+
+```text
+update-bundle-<version>/
   manifest.json
   checksums.txt
   signature
-  rootfs-base.raw.gz
   app-bundle.tar.gz
   runtime-tools.tar.gz
   nginx-bundle.tar.gz
   guest-deploy.tar.gz
   migrations/
 ```
+
+`make vm-rootfs-update-bundle`로 만든 bundle에는 위 목록에 `rootfs-base.raw.gz`가 추가됩니다.
 
 `manifest.json`은 `schemaVersion: 2`를 사용합니다. `artifacts`와 `migrations`는 모두
 `checksums.txt`와 manifest 자체의 sha256/size 값으로 검증됩니다.
@@ -578,9 +609,9 @@ dist/update-bundles/update-bundle-<version>/
 설치된 Mac mini/Mac Studio에서는 Swift runtime lifecycle command가 bundle을 검증하고 적용합니다.
 
 ```sh
-/usr/local/bin/vitalserver-vm runtime verify-bundle /path/to/update-bundle-<version>
-sudo /usr/local/bin/vitalserver-vm runtime stage-bundle /path/to/update-bundle-<version>
-sudo /usr/local/bin/vitalserver-vm runtime apply-bundle /path/to/update-bundle-<version>
+/usr/local/bin/vitalserver-vm runtime verify-bundle /path/to/update-bundle-<version>.tar.gz
+sudo /usr/local/bin/vitalserver-vm runtime stage-bundle /path/to/update-bundle-<version>.tar.gz
+sudo /usr/local/bin/vitalserver-vm runtime apply-bundle /path/to/update-bundle-<version>.tar.gz
 sudo /usr/local/bin/vitalserver-vm runtime rollback
 ```
 
@@ -590,9 +621,9 @@ sudo /usr/local/bin/vitalserver-vm runtime rollback
 
 | type | artifact name | 적용 대상 |
 |---|---|---|
-| `rootfs-base` | `rootfs-base.raw.gz` | 이후 provisioning 기준 rootfs base |
+| `rootfs-base` | `rootfs-base.raw.gz` | `vm-image-update` bundle에 포함된 경우에만 이후 provisioning 기준 rootfs base 교체 |
 | `app-bundle` | `app-bundle.tar.gz` | `/Applications/VitalServer Helper.app` |
-| `runtime-tools` | `runtime-tools.tar.gz` | `/usr/local/bin` runtime tools |
+| `runtime-tools` | `runtime-tools.tar.gz` | `/usr/local/bin` Updater/Supervisor/VM Driver tools |
 | `nginx-bundle` | `nginx-bundle.tar.gz` | host nginx bundle |
 | `guest-deploy` | `guest-deploy.tar.gz` | VM shared deploy bundle |
 

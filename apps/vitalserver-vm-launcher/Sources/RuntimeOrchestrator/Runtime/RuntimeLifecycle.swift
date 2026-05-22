@@ -140,17 +140,17 @@ struct RuntimeLifecycle {
             try configure(arguments: Array(arguments.dropFirst()))
         case "verify-bundle":
             guard let bundlePath = arguments.dropFirst().first else {
-                throw LauncherError.missingArgument("usage: vitalserver-vm runtime verify-bundle <bundle-dir>")
+                throw LauncherError.missingArgument("usage: vitalserver-vm runtime verify-bundle <bundle.tar.gz>")
             }
             try verifyBundle(URL(fileURLWithPath: bundlePath))
         case "stage-bundle":
             guard let bundlePath = arguments.dropFirst().first else {
-                throw LauncherError.missingArgument("usage: vitalserver-vm runtime stage-bundle <bundle-dir>")
+                throw LauncherError.missingArgument("usage: vitalserver-vm runtime stage-bundle <bundle.tar.gz>")
             }
             _ = try stageBundle(URL(fileURLWithPath: bundlePath))
         case "apply-bundle":
             guard let bundlePath = arguments.dropFirst().first else {
-                throw LauncherError.missingArgument("usage: vitalserver-vm runtime apply-bundle <bundle-dir>")
+                throw LauncherError.missingArgument("usage: vitalserver-vm runtime apply-bundle <bundle.tar.gz>")
             }
             try applyBundle(URL(fileURLWithPath: bundlePath))
         case "rollback":
@@ -179,9 +179,9 @@ struct RuntimeLifecycle {
               vitalserver-vm runtime watchdog
               vitalserver-vm runtime configure [--cpu <count>] [--memory-gib <gib>] [--disk-gib <gib>] [--network shared|bridged] [--bridged-interface <id>] [--proxy-port <port>] [--vital-files-dir <path>] [--public-host <host>] [--public-port <port>] [--admin-password <password>] [--start-on-boot true|false] [--restart]
               vitalserver-vm runtime configure [--admin-password-file <path>] [--restart]
-              vitalserver-vm runtime verify-bundle <bundle-dir>
-              vitalserver-vm runtime stage-bundle <bundle-dir>
-              vitalserver-vm runtime apply-bundle <bundle-dir>
+              vitalserver-vm runtime verify-bundle <bundle.tar.gz>
+              vitalserver-vm runtime stage-bundle <bundle.tar.gz>
+              vitalserver-vm runtime apply-bundle <bundle.tar.gz>
               vitalserver-vm runtime rollback [backup-dir]
               vitalserver-vm runtime repair-datastore
               vitalserver-vm runtime start-services
@@ -226,7 +226,7 @@ struct RuntimeLifecycle {
     private func runtimeInstallStepExecutor() -> RuntimeInstallStepExecutor {
         RuntimeInstallStepExecutor(
             prepareInstallDirectories: { settings in
-                try prepareInstallDirectories(settings)
+                try runtimeInstallDirectoryPreparer().prepare(settings: settings)
             },
             rotateRuntimeLogs: {
                 try rotateRuntimeLogs()
@@ -265,6 +265,24 @@ struct RuntimeLifecycle {
         )
     }
 
+    private func runtimeInstallDirectoryPreparer() -> RuntimeInstallDirectoryPreparer {
+        RuntimeInstallDirectoryPreparer(
+            installedPaths: installedPaths,
+            fileStore: fileStore,
+            now: { clock.now }
+        )
+    }
+
+    private func runtimeGuestConfigWriter() -> RuntimeGuestConfigWriter {
+        RuntimeGuestConfigWriter(
+            installedPaths: installedPaths,
+            fileStore: fileStore,
+            restrictSecretFile: { url in
+                try restrictSecretFile(url)
+            }
+        )
+    }
+
     func printStatus() {
         print("Tirosh VitalServer runtime")
         print("  product root: \(productRoot.path)")
@@ -286,86 +304,8 @@ struct RuntimeLifecycle {
         print("  host proxy HTTP: \(httpProber.statusCode(url: Constants.Runtime.proxyHealthURL(port: proxyPort)))")
     }
 
-    private func prepareInstallDirectories(_ settings: InstallSettings) throws {
-        let directories = [
-            installedPaths.runtimeDirectory,
-            URL(fileURLWithPath: settings.vitalFilesDirectory),
-            installedPaths.deployDirectory,
-            installedPaths.guestRunDirectory,
-            installedPaths.vrReleaseDirectory,
-            installedPaths.productLogsDirectory,
-            installedPaths.centralRuntimeLogsDirectory,
-            installedPaths.centralGuestLogsDirectory,
-            installedPaths.logArchiveDirectory,
-            installedPaths.hostRunDirectory,
-            statusDirectory,
-            installedPaths.nginxLogsDirectory,
-        ]
-        for directory in directories {
-            try fileStore.createDirectory(at: directory, withIntermediateDirectories: true)
-        }
-        try migrateLegacyRuntimeLogsToCentral()
-    }
-
-    private func migrateLegacyRuntimeLogsToCentral() throws {
-        let legacyDirectory = installedPaths.logsDirectory
-        guard legacyDirectory != logsDirectory,
-              fileStore.directoryExists(legacyDirectory)
-        else {
-            return
-        }
-
-        let entries = (try? fileStore.contentsOfDirectory(at: legacyDirectory, skipsHiddenFiles: false)) ?? []
-        for entry in entries where fileStore.fileExists(entry) {
-            let destination = uniqueLogMigrationURL(
-                logsDirectory.appendingPathComponent(entry.lastPathComponent)
-            )
-            try fileStore.moveItem(at: entry, to: destination)
-        }
-
-        if ((try? fileStore.contentsOfDirectory(at: legacyDirectory, skipsHiddenFiles: false)) ?? []).isEmpty {
-            try fileStore.removeItem(at: legacyDirectory)
-        }
-    }
-
-    private func uniqueLogMigrationURL(_ url: URL) -> URL {
-        guard fileStore.fileExists(url) else {
-            return url
-        }
-        let timestamp = Int(clock.now.timeIntervalSince1970)
-        let migrated = url.deletingLastPathComponent()
-            .appendingPathComponent("legacy-\(url.lastPathComponent).\(timestamp)")
-        guard fileStore.fileExists(migrated) else {
-            return migrated
-        }
-        for index in 1...999 {
-            let candidate = url.deletingLastPathComponent()
-                .appendingPathComponent("legacy-\(url.lastPathComponent).\(timestamp).\(index)")
-            if !fileStore.fileExists(candidate) {
-                return candidate
-            }
-        }
-        return url.deletingLastPathComponent()
-            .appendingPathComponent("legacy-\(url.lastPathComponent).\(timestamp).\(UUID().uuidString)")
-    }
-
     private func configureDeployEnvironment(_ settings: InstallSettings) throws {
-        let runtimeConfig = installedPaths.guestRuntimeConfig
-        let document = GuestRuntimeConfigDocument(
-            vitalserverHttpPort: Constants.Guest.vitalserverHTTPPort,
-            redisHost: Constants.Guest.redisHost,
-            redisPort: Constants.Guest.redisPort,
-            trustProxy: true,
-            publicHost: settings.publicHost,
-            publicPort: settings.publicPort,
-            adminPassword: settings.adminPassword ?? Constants.Guest.defaultAdminPassword,
-            vitalFilesDirectory: Constants.Defaults.vitalFilesDirectoryGuestMountPath,
-            redisUiPort: Constants.Guest.redisUIPort,
-            swaggerUiPort: Constants.Guest.swaggerUIPort
-        )
-        let data = try JSONEncoder.pretty.encode(document)
-        try fileStore.writeData(data, to: runtimeConfig, options: .atomic)
-        try restrictSecretFile(runtimeConfig)
+        try runtimeGuestConfigWriter().writeInstallConfig(settings: settings)
     }
 
     private func prepareInstalledExecutables() throws {
@@ -679,6 +619,12 @@ struct RuntimeLifecycle {
 
     func verifyBundle(_ bundleURL: URL) throws {
         log("bundle verification started path=\(bundleURL.path)")
+        let materialized = try materializeBundleInput(bundleURL)
+        defer { materialized.cleanup?() }
+        try verifyBundleDirectory(materialized.bundleURL, sourceURL: bundleURL)
+    }
+
+    private func verifyBundleDirectory(_ bundleURL: URL, sourceURL: URL) throws {
         let manifestURL = bundleURL.appendingPathComponent(Constants.Bundle.manifest)
         let checksumsURL = bundleURL.appendingPathComponent(Constants.Bundle.checksums)
         let signatureURL = bundleURL.appendingPathComponent(Constants.Bundle.signature)
@@ -730,17 +676,19 @@ struct RuntimeLifecycle {
             )
         }
 
-        log("bundle verification completed path=\(bundleURL.path)")
-        print("bundle verified: \(bundleURL.path)")
+        log("bundle verification completed path=\(sourceURL.path)")
+        print("bundle verified: \(sourceURL.path)")
     }
 
     @discardableResult
     func stageBundle(_ bundleURL: URL) throws -> URL {
         log("bundle stage started source=\(bundleURL.path)")
-        try verifyBundle(bundleURL)
-        let manifest = try loadManifest(bundleURL.appendingPathComponent(Constants.Bundle.manifest))
+        let materialized = try materializeBundleInput(bundleURL)
+        defer { materialized.cleanup?() }
+        try verifyBundleDirectory(materialized.bundleURL, sourceURL: bundleURL)
+        let manifest = try loadManifest(materialized.bundleURL.appendingPathComponent(Constants.Bundle.manifest))
         let destination = bundlesDirectory.appendingPathComponent("update-bundle-\(manifest.version)")
-        let bundleSize = try directorySize(bundleURL)
+        let bundleSize = try directorySize(materialized.bundleURL)
 
         try fileStore.createDirectory(at: bundlesDirectory, withIntermediateDirectories: true)
         if fileExists(destination) || directoryExists(destination) {
@@ -749,13 +697,13 @@ struct RuntimeLifecycle {
         }
         try requireFreeSpace(
             at: bundlesDirectory,
-            minimumBytes: bundleSize + Constants.Runtime.updateFreeSpaceMarginBytes,
+            minimumBytes: bundleSize + compressedBundleSize(bundleURL) + Constants.Runtime.updateFreeSpaceMarginBytes,
             operation: .stageBundle
         )
         log(
-            "copying bundle to managed storage source=\(bundleURL.path) destination=\(destination.path) size=\(formatBytes(bundleSize))"
+            "copying bundle to managed storage source=\(materialized.bundleURL.path) destination=\(destination.path) size=\(formatBytes(bundleSize))"
         )
-        try fileStore.copyItem(at: bundleURL, to: destination)
+        try fileStore.copyItem(at: materialized.bundleURL, to: destination)
         log("bundle stage completed destination=\(destination.path)")
         print("bundle staged: \(destination.path)")
         return destination
@@ -764,6 +712,109 @@ struct RuntimeLifecycle {
     func applyBundle(_ bundleURL: URL) throws {
         try runtimeApplyBundleRunner().run(bundleURL: bundleURL)
         log("mutable VM disk preserved path=\(vmDisk.path)")
+    }
+
+    private struct MaterializedBundleInput {
+        let bundleURL: URL
+        let cleanup: (() -> Void)?
+    }
+
+    private func materializeBundleInput(_ bundleURL: URL) throws -> MaterializedBundleInput {
+        if directoryExists(bundleURL) {
+            return MaterializedBundleInput(bundleURL: bundleURL, cleanup: nil)
+        }
+        guard fileExists(bundleURL), isUpdateBundleArchive(bundleURL) else {
+            throw LauncherError.missingFile(bundleURL.path)
+        }
+
+        let temporaryRoot = fileStore.temporaryDirectory
+            .appendingPathComponent("tirosh-update-bundle-\(UUID().uuidString)", isDirectory: true)
+        try fileStore.createDirectory(at: temporaryRoot, withIntermediateDirectories: true)
+        let extractedBundle = try extractBundleArchive(bundleURL, to: temporaryRoot)
+        return MaterializedBundleInput(
+            bundleURL: extractedBundle,
+            cleanup: { try? fileStore.removeItem(at: temporaryRoot) }
+        )
+    }
+
+    private func extractBundleArchive(_ archiveURL: URL, to temporaryRoot: URL) throws -> URL {
+        let listResult = runProcess(Constants.Commands.tar, arguments: ["-tzf", archiveURL.path])
+        guard listResult.exitCode == 0 else {
+            let stderr = listResult.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !stderr.isEmpty {
+                log("bundle archive list failed stderr=\(stderr)")
+            }
+            throw LauncherError.bundleVerificationFailed("invalid update bundle archive: \(archiveURL.path)")
+        }
+
+        let rootName = try validateBundleArchiveEntries(listResult.stdout)
+        try validateBundleArchiveEntryTypes(archiveURL)
+        try runRequired(Constants.Commands.tar, arguments: ["-xzf", archiveURL.path, "-C", temporaryRoot.path])
+        let extractedBundle = temporaryRoot.appendingPathComponent(rootName, isDirectory: true)
+        guard directoryExists(extractedBundle) else {
+            throw LauncherError.missingFile(extractedBundle.path)
+        }
+        log("bundle archive extracted source=\(archiveURL.path) destination=\(extractedBundle.path)")
+        return extractedBundle
+    }
+
+    private func validateBundleArchiveEntries(_ output: String) throws -> String {
+        let entries = output.split(whereSeparator: \.isNewline).map(String.init)
+        guard !entries.isEmpty else {
+            throw LauncherError.bundleVerificationFailed("empty update bundle archive")
+        }
+
+        var rootName: String?
+        for entry in entries {
+            guard !entry.hasPrefix("/"), !entry.contains("\\") else {
+                throw LauncherError.bundleVerificationFailed("unsafe update bundle archive path: \(entry)")
+            }
+            let components = entry
+                .split(separator: "/", omittingEmptySubsequences: true)
+                .map(String.init)
+            guard !components.isEmpty,
+                  !components.contains("."),
+                  !components.contains("..") else {
+                throw LauncherError.bundleVerificationFailed("unsafe update bundle archive path: \(entry)")
+            }
+            if let existingRoot = rootName {
+                guard existingRoot == components[0] else {
+                    throw LauncherError.bundleVerificationFailed("update bundle archive must contain a single root directory")
+                }
+            } else {
+                rootName = components[0]
+            }
+        }
+
+        guard let rootName else {
+            throw LauncherError.bundleVerificationFailed("empty update bundle archive")
+        }
+        return rootName
+    }
+
+    private func validateBundleArchiveEntryTypes(_ archiveURL: URL) throws {
+        let result = runProcess(Constants.Commands.tar, arguments: ["-tvzf", archiveURL.path])
+        guard result.exitCode == 0 else {
+            throw LauncherError.bundleVerificationFailed("invalid update bundle archive: \(archiveURL.path)")
+        }
+        for line in result.stdout.split(whereSeparator: \.isNewline) {
+            guard let entryType = line.first else {
+                continue
+            }
+            if entryType == "l" || entryType == "h" {
+                throw LauncherError.bundleVerificationFailed(
+                    "update bundle archive must not contain links: \(archiveURL.lastPathComponent)"
+                )
+            }
+        }
+    }
+
+    private func isUpdateBundleArchive(_ url: URL) -> Bool {
+        url.lastPathComponent.hasSuffix(".tar.gz") || url.lastPathComponent.hasSuffix(".tgz")
+    }
+
+    private func compressedBundleSize(_ url: URL) throws -> UInt64 {
+        fileExists(url) ? try fileSize(url) : 0
     }
 
     private func runtimeApplyBundleRunner() -> RuntimeApplyBundleRunner {
@@ -811,7 +862,8 @@ struct RuntimeLifecycle {
             checkCompatibility: { manifest in
                 try RuntimeUpdateCompatibilityChecker.check(
                     manifest: manifest,
-                    currentUpdaterVersion: Constants.launcherVersion
+                    currentUpdaterVersion: Constants.launcherVersion,
+                    currentPlatform: Constants.Platform.current
                 )
             },
             serviceRestartPolicy: {

@@ -24,11 +24,15 @@ struct RuntimeApplyBundleStepExecutor {
         case .stopRuntimeServices:
             try stopRuntimeServices()
         case .replaceRootfsBase:
+            guard let stagedRootfs = preflight.stagedRootfs else {
+                log("rootfs-base replacement skipped; bundle does not include rootfs-base")
+                return
+            }
             try createDirectory(rootfsBase.deletingLastPathComponent(), true)
             log(
-                "replacing rootfs-base source=\(preflight.stagedRootfs.path) destination=\(rootfsBase.path) size=\(formatBytes(try fileSize(preflight.stagedRootfs)))"
+                "replacing rootfs-base source=\(stagedRootfs.path) destination=\(rootfsBase.path) size=\(formatBytes(try fileSize(stagedRootfs)))"
             )
-            try replaceFile(preflight.stagedRootfs, rootfsBase)
+            try replaceFile(stagedRootfs, rootfsBase)
             log("rootfs-base replaced destination=\(rootfsBase.path)")
         case .replaceUpdateArtifacts:
             try replaceUpdateArtifacts(preflight.manifest.artifacts, preflight.stagedBundle)

@@ -19,7 +19,7 @@ final class RuntimeVersionStoreTests: XCTestCase {
 
         XCTAssertEqual(createdDirectories, ["/product/vm/runtime:true"])
         let document = try XCTUnwrap(writtenFiles["/product/vm/runtime/runtime-version.json"])
-        XCTAssertTrue(document.contains(#""product" : "TiroshVitalServer""#))
+        XCTAssertTrue(document.contains(#""product" : "com.tirosh.vitalserver""#))
         XCTAssertTrue(document.contains(#""runtimeVersion" : "0.1.4""#))
         XCTAssertTrue(document.contains(#""installedAt" : "2026-05-22T01:02:03Z""#))
         XCTAssertTrue(document.contains(#""rootfsBase" : "rootfs-base.raw.gz""#))

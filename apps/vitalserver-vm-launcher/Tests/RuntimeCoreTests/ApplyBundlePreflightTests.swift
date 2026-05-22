@@ -18,10 +18,11 @@ final class ApplyBundlePreflightTests: XCTestCase {
 
     func testPreflightContextCarriesPreparedInputsForApplyAndRollback() {
         let manifest = UpdateBundleManifest(
-            schemaVersion: 1,
-            product: "TiroshVitalServer",
-            version: "1.2.3",
-            runtimeVersion: "4.5.6",
+            schemaVersion: 2,
+            product: "com.tirosh.vitalserver",
+            helperVersion: "1.2.3",
+            targetPlatforms: ["macos-arm64"],
+            components: ["updater": "4.5.6"],
             createdAt: "2026-05-21T12:00:00Z",
             artifacts: [
                 UpdateBundleArtifact(
@@ -47,7 +48,8 @@ final class ApplyBundlePreflightTests: XCTestCase {
         )
 
         XCTAssertEqual(context.manifest.version, "1.2.3")
-        XCTAssertEqual(context.stagedRootfs.lastPathComponent, "rootfs-base.raw.gz")
+        XCTAssertEqual(context.stagedRootfs?.lastPathComponent, "rootfs-base.raw.gz")
+        XCTAssertTrue(context.updatesRootfsBase)
         XCTAssertTrue(context.restartPolicy.restartVM)
         XCTAssertTrue(context.restartPolicy.restartWatchdog)
     }

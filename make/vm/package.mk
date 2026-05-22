@@ -1,4 +1,4 @@
-.PHONY: vm-nginx-artifact vm-nginx-bundle vm-docker-images vm-pkg-stage vm-pkg vm-pkg-release vm-app vm-dmg vm-dmg-release vm-pkg-clean vm-pkg-install vm-pkg-uninstall-dev vm-update-artifacts vm-update-bundle vm-update-bundle-verify
+.PHONY: vm-nginx-artifact vm-nginx-bundle vm-docker-images vm-pkg-stage vm-pkg vm-pkg-release vm-app vm-dmg vm-dmg-release vm-pkg-clean vm-pkg-install vm-pkg-uninstall-dev vm-update-artifacts vm-update-bundle vm-rootfs-update-bundle vm-update-bundle-verify
 .PHONY: vm-airgap-rootfs vm-golden-rootfs
 
 vm-airgap-rootfs: vm-download vm-stage
@@ -164,30 +164,53 @@ vm-dmg: vm-pkg
 vm-dmg-release: VM_RECREATE_GOLDEN_ROOTFS := true
 vm-dmg-release: vm-dmg
 
-vm-update-artifacts: vm-pkg-stage
+vm-update-artifacts: vm-sign vm-app vm-nginx-bundle vm-docker-images
 	rm -rf "$(VM_UPDATE_ARTIFACT_DIR)"
-	@mkdir -p "$(VM_UPDATE_ARTIFACT_DIR)"
-	tar -czf "$(VM_UPDATE_APP_BUNDLE_ARCHIVE)" -C "$(VM_PKG_ROOT)$(VM_INSTALL_APPLICATIONS_DIR)" "VitalServer Helper.app"
-	tar -czf "$(VM_UPDATE_RUNTIME_TOOLS_ARCHIVE)" -C "$(VM_PKG_ROOT)/usr/local/bin" vitalserver-vm vitalserver-proxy-run tirosh-vitalserver-uninstall
-	tar -czf "$(VM_UPDATE_NGINX_BUNDLE_ARCHIVE)" -C "$(VM_PKG_ROOT)$(VM_INSTALL_PREFIX)" nginx
-	tar -czf "$(VM_UPDATE_GUEST_DEPLOY_ARCHIVE)" -C "$(VM_PKG_ROOT)$(VM_INSTALL_HOME)/data" deploy
+	@mkdir -p "$(VM_UPDATE_ARTIFACT_DIR)/runtime-tools" "$(VM_UPDATE_ARTIFACT_DIR)/deploy"
+	tar -czf "$(VM_UPDATE_APP_BUNDLE_ARCHIVE)" -C ".tmp" "$(VM_APP_NAME).app"
+	install -m 0755 "$(VM_LAUNCHER_BIN)" "$(VM_UPDATE_ARTIFACT_DIR)/runtime-tools/vitalserver-vm"
+	install -m 0755 "$(VM_PACKAGING_DIR)/proxy-run" "$(VM_UPDATE_ARTIFACT_DIR)/runtime-tools/vitalserver-proxy-run"
+	install -m 0755 "$(VM_PACKAGING_DIR)/uninstall" "$(VM_UPDATE_ARTIFACT_DIR)/runtime-tools/tirosh-vitalserver-uninstall"
+	tar -czf "$(VM_UPDATE_RUNTIME_TOOLS_ARCHIVE)" -C "$(VM_UPDATE_ARTIFACT_DIR)/runtime-tools" vitalserver-vm vitalserver-proxy-run tirosh-vitalserver-uninstall
+	tar -czf "$(VM_UPDATE_NGINX_BUNDLE_ARCHIVE)" -C "$(VM_PKG_NGINX_BUNDLE_DIR)" nginx
+	rsync -a $(VM_RSYNC_EXCLUDES) "$(VM_GUEST_DIR)/" "$(VM_UPDATE_ARTIFACT_DIR)/deploy/"
+	@mkdir -p "$(VM_UPDATE_ARTIFACT_DIR)/deploy/apps/vitalserver" "$(VM_UPDATE_ARTIFACT_DIR)/deploy/vendor/vitalserver" "$(VM_UPDATE_ARTIFACT_DIR)/deploy/docs" "$(VM_UPDATE_ARTIFACT_DIR)/deploy/docker-images"
+	rsync -a --delete $(VM_RSYNC_EXCLUDES) apps/vitalserver/docker "$(VM_UPDATE_ARTIFACT_DIR)/deploy/apps/vitalserver/"
+	rsync -a --delete $(VM_RSYNC_EXCLUDES) apps/vitalserver/runtime "$(VM_UPDATE_ARTIFACT_DIR)/deploy/apps/vitalserver/"
+	rsync -a --delete $(VM_RSYNC_EXCLUDES) vendor/vitalserver/vitalserver-old "$(VM_UPDATE_ARTIFACT_DIR)/deploy/vendor/vitalserver/"
+	install -m 0644 docs/openapi.yaml "$(VM_UPDATE_ARTIFACT_DIR)/deploy/docs/openapi.yaml"
+	install -m 0644 "$(VM_DOCKER_IMAGE_BUNDLE)" "$(VM_UPDATE_ARTIFACT_DIR)/deploy/docker-images/vitalserver-images.tar.gz"
+	tar -czf "$(VM_UPDATE_GUEST_DEPLOY_ARCHIVE)" -C "$(VM_UPDATE_ARTIFACT_DIR)" deploy
 	@printf "VM update artifacts are ready: %s\n" "$(VM_UPDATE_ARTIFACT_DIR)"
 
-vm-update-bundle: vm-pkg vm-update-artifacts
+vm-update-bundle: vm-update-artifacts
 	$(VM_BUILD_RUNNER) update-bundle \
 		--version "$(VM_UPDATE_BUNDLE_VERSION)" \
-		--runtime-version "$(VM_PKG_VERSION)" \
+		--helper-version "$(VM_PKG_VERSION)" \
+		--bundle-kind "$(VM_UPDATE_BUNDLE_KIND)" \
+		--target-platform "$(VM_UPDATE_TARGET_PLATFORM)" \
 		--min-updater-version "$(VM_UPDATE_MIN_UPDATER_VERSION)" \
+		--component "helperUI=$(VM_PKG_VERSION)+macos.1" \
+		--component "updater=$(VM_PKG_VERSION)" \
+		--component "supervisor=$(VM_PKG_VERSION)" \
+		--component "vmDriver=$(VM_PKG_VERSION)+macos.1" \
+		--component "serviceStack=$(VM_RELEASE_VITALSERVER_VERSION)-stack.1" \
+		--component "vitalServer=$(VM_RELEASE_VITALSERVER_VERSION)" \
 		--requires-guest-activation "$(if $(VM_UPDATE_GUEST_DEPLOY),true,false)" \
 		--requires-two-phase-update "$(VM_UPDATE_REQUIRES_TWO_PHASE_UPDATE)" \
 		--output-dir "$(VM_UPDATE_BUNDLE_DIR)" \
-		--rootfs-base "$(VM_PKG_ROOTFS_CACHE)" \
+		$(if $(VM_UPDATE_ROOTFS_BASE),--rootfs-base "$(VM_UPDATE_ROOTFS_BASE)") \
 		$(if $(VM_UPDATE_APP_BUNDLE),--app-bundle "$(VM_UPDATE_APP_BUNDLE)") \
 		$(if $(VM_UPDATE_RUNTIME_TOOLS),--runtime-tools "$(VM_UPDATE_RUNTIME_TOOLS)") \
 		$(if $(VM_UPDATE_NGINX_BUNDLE),--nginx-bundle "$(VM_UPDATE_NGINX_BUNDLE)") \
 		$(if $(VM_UPDATE_GUEST_DEPLOY),--guest-deploy "$(VM_UPDATE_GUEST_DEPLOY)") \
 		$(foreach migration,$(VM_UPDATE_MIGRATIONS),--migration "$(migration)")
 	@printf "VM update bundle is ready: %s\n" "$(VM_UPDATE_BUNDLE_PATH)"
+
+vm-rootfs-update-bundle: VM_UPDATE_ROOTFS_BASE := $(VM_PKG_ROOTFS_CACHE)
+vm-rootfs-update-bundle: VM_UPDATE_BUNDLE_KIND := vm-image-update
+vm-rootfs-update-bundle: VM_UPDATE_REQUIRES_TWO_PHASE_UPDATE := true
+vm-rootfs-update-bundle: vm-golden-rootfs vm-update-bundle
 
 vm-update-bundle-verify:
 	$(VM_BUILD_RUNNER) verify-update-bundle "$(VM_UPDATE_BUNDLE_PATH)"

@@ -10,7 +10,10 @@ final class RuntimeApplyBundleStepExecutorTests: XCTestCase {
         let rootfsBase = URL(fileURLWithPath: "/runtime/rootfs-base.raw.gz")
         let artifact = UpdateBundleArtifact(name: "app.tar.gz", type: .appBundle, sha256: "abc", size: 10)
         let migration = UpdateBundleMigration(name: "001-test", sha256: "def", size: 20)
-        let manifest = manifest(version: "1.2.3", artifacts: [artifact], migrations: [migration])
+        let manifest = manifest(version: "1.2.3", artifacts: [
+            UpdateBundleArtifact(name: Constants.Artifacts.rootfsBase, type: .rootfsBase, sha256: "root", size: 1),
+            artifact,
+        ], migrations: [migration])
         let policy = RuntimeServiceRestartPolicy(restartVM: true, restartProxy: false, restartWatchdog: true)
         let preflight = ApplyBundlePreflightContext(
             stagedBundle: stagedBundle,
@@ -57,7 +60,7 @@ final class RuntimeApplyBundleStepExecutorTests: XCTestCase {
             log: { _ in }
         )
 
-        for step in RuntimeOperationPlans.applyBundle.steps {
+        for step in RuntimeOperationPlans.applyBundle(updatesRootfsBase: true).steps {
             try executor.execute(step, preflight: preflight, rootfsBase: rootfsBase)
         }
 
@@ -66,7 +69,7 @@ final class RuntimeApplyBundleStepExecutorTests: XCTestCase {
             "mkdir:/runtime:true",
             "size:rootfs-base.raw.gz",
             "replace:rootfs-base.raw.gz:rootfs-base.raw.gz",
-            "artifacts:1:update-bundle-1.2.3",
+            "artifacts:2:update-bundle-1.2.3",
             "migrations:1:update-bundle-1.2.3",
             "cloud-init:1.2.3",
             "version:1.2.3:update-bundle-1.2.3",
@@ -74,6 +77,36 @@ final class RuntimeApplyBundleStepExecutorTests: XCTestCase {
             "activate:1.2.3",
             "wait:true:false:true",
         ])
+    }
+
+    func testRootfsReplacementStepSkipsWhenBundleDoesNotIncludeRootfs() throws {
+        let executor = RuntimeApplyBundleStepExecutor(
+            stopRuntimeServices: {},
+            createDirectory: { _, _ in XCTFail("should not create rootfs directory") },
+            fileSize: { _ in XCTFail("should not read rootfs size"); return 0 },
+            replaceFile: { _, _ in XCTFail("should not replace rootfs") },
+            replaceUpdateArtifacts: { _, _ in },
+            runMigrations: { _, _ in },
+            refreshCloudInitSeedIfNeeded: { _ in },
+            writeRuntimeVersion: { _, _ in },
+            startRuntimeServices: { _ in },
+            activateGuestUpdateIfNeeded: { _ in },
+            waitForHealth: { _ in },
+            log: { _ in }
+        )
+        let preflight = ApplyBundlePreflightContext(
+            stagedBundle: URL(fileURLWithPath: "/staged"),
+            manifest: manifest(version: "1.2.3"),
+            stagedRootfs: nil,
+            backup: URL(fileURLWithPath: "/backup"),
+            restartPolicy: RuntimeServiceRestartPolicy(restartVM: false, restartProxy: false, restartWatchdog: false)
+        )
+
+        try executor.execute(
+            .replaceRootfsBase,
+            preflight: preflight,
+            rootfsBase: URL(fileURLWithPath: "/runtime/rootfs-base.raw.gz")
+        )
     }
 
     func testRejectsNonApplyBundleStep() {
@@ -114,8 +147,9 @@ final class RuntimeApplyBundleStepExecutorTests: XCTestCase {
         UpdateBundleManifest(
             schemaVersion: 2,
             product: Constants.Product.identifier,
-            version: version,
-            runtimeVersion: version,
+            helperVersion: version,
+            targetPlatforms: ["macos-arm64"],
+            components: ["updater": version],
             createdAt: "2026-05-22T00:00:00Z",
             artifacts: artifacts,
             migrations: migrations

@@ -291,6 +291,25 @@ public enum RuntimeOperationPlans {
         ]
     )
 
+    public static func applyBundle(updatesRootfsBase: Bool) -> RuntimeOperationPlan {
+        try! RuntimeOperationPlan(
+            operation: .applyBundle,
+            steps: [
+                .stopRuntimeServices,
+            ]
+                + (updatesRootfsBase ? [.replaceRootfsBase] : [])
+                + [
+                    .replaceUpdateArtifacts,
+                    .runMigrations,
+                    .refreshCloudInitSeed,
+                    .writeRuntimeVersion,
+                    .startRuntimeServices,
+                    .activateGuestUpdate,
+                    .waitRuntimeHealth,
+                ]
+        )
+    }
+
     public static let rollback = try! RuntimeOperationPlan(
         operation: .rollback,
         steps: [
@@ -302,4 +321,20 @@ public enum RuntimeOperationPlans {
             .rollbackWaitRuntimeHealth,
         ]
     )
+
+    public static func rollback(restoresRootfsBase: Bool) -> RuntimeOperationPlan {
+        try! RuntimeOperationPlan(
+            operation: .rollback,
+            steps: [
+                .rollbackStopRuntimeServices,
+            ]
+                + (restoresRootfsBase ? [.rollbackRestoreRootfsBase] : [])
+                + [
+                    .rollbackRestoreRuntimeVersion,
+                    .rollbackRestoreUpdateArtifacts,
+                    .rollbackStartRuntimeServices,
+                    .rollbackWaitRuntimeHealth,
+                ]
+        )
+    }
 }

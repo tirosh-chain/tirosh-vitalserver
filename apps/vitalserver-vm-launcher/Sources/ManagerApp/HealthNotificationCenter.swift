@@ -1,7 +1,12 @@
 import Foundation
 import UserNotifications
 
-final class HealthNotificationCenter: NSObject, UNUserNotificationCenterDelegate {
+protocol HealthNotifying {
+    func configure()
+    func notify(title: String, body: String)
+}
+
+final class HealthNotificationCenter: NSObject, HealthNotifying, UNUserNotificationCenterDelegate {
     private let center = UNUserNotificationCenter.current()
 
     func configure() {

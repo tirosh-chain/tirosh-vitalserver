@@ -34,7 +34,7 @@ struct RuntimeApplyBundleRunner {
 
         do {
             try RuntimeOperationPlanRunner.run(
-                plan: RuntimeOperationPlans.applyBundle,
+                plan: RuntimeOperationPlans.applyBundle(updatesRootfsBase: preflight.updatesRootfsBase),
                 status: .updating,
                 execute: { step in
                     try executeStep(step, preflight)

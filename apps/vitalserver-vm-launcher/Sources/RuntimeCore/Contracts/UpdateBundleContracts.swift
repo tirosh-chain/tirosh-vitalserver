@@ -1,8 +1,10 @@
 public struct UpdateBundleManifest: Codable, Equatable, Sendable {
     public let schemaVersion: Int
     public let product: String
-    public let version: String
-    public let runtimeVersion: String
+    public let bundleKind: UpdateBundleKind
+    public let helperVersion: String
+    public let targetPlatforms: [String]
+    public let components: [String: String]
     public let minUpdaterVersion: String?
     public let requiresGuestActivation: Bool
     public let requiresTwoPhaseUpdate: Bool
@@ -13,8 +15,10 @@ public struct UpdateBundleManifest: Codable, Equatable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case schemaVersion
         case product
-        case version
-        case runtimeVersion
+        case bundleKind
+        case helperVersion
+        case targetPlatforms
+        case components
         case minUpdaterVersion
         case requiresGuestActivation
         case requiresTwoPhaseUpdate
@@ -26,8 +30,10 @@ public struct UpdateBundleManifest: Codable, Equatable, Sendable {
     public init(
         schemaVersion: Int,
         product: String,
-        version: String,
-        runtimeVersion: String,
+        bundleKind: UpdateBundleKind = .productUpdate,
+        helperVersion: String,
+        targetPlatforms: [String],
+        components: [String: String],
         minUpdaterVersion: String? = nil,
         requiresGuestActivation: Bool = false,
         requiresTwoPhaseUpdate: Bool = false,
@@ -37,8 +43,10 @@ public struct UpdateBundleManifest: Codable, Equatable, Sendable {
     ) {
         self.schemaVersion = schemaVersion
         self.product = product
-        self.version = version
-        self.runtimeVersion = runtimeVersion
+        self.bundleKind = bundleKind
+        self.helperVersion = helperVersion
+        self.targetPlatforms = targetPlatforms
+        self.components = components
         self.minUpdaterVersion = minUpdaterVersion
         self.requiresGuestActivation = requiresGuestActivation
         self.requiresTwoPhaseUpdate = requiresTwoPhaseUpdate
@@ -52,8 +60,10 @@ public struct UpdateBundleManifest: Codable, Equatable, Sendable {
         self.init(
             schemaVersion: try container.decode(Int.self, forKey: .schemaVersion),
             product: try container.decode(String.self, forKey: .product),
-            version: try container.decode(String.self, forKey: .version),
-            runtimeVersion: try container.decode(String.self, forKey: .runtimeVersion),
+            bundleKind: try container.decode(UpdateBundleKind.self, forKey: .bundleKind),
+            helperVersion: try container.decode(String.self, forKey: .helperVersion),
+            targetPlatforms: try container.decode([String].self, forKey: .targetPlatforms),
+            components: try container.decode([String: String].self, forKey: .components),
             minUpdaterVersion: try container.decodeIfPresent(String.self, forKey: .minUpdaterVersion),
             requiresGuestActivation: try container.decodeIfPresent(Bool.self, forKey: .requiresGuestActivation) ?? false,
             requiresTwoPhaseUpdate: try container.decodeIfPresent(Bool.self, forKey: .requiresTwoPhaseUpdate) ?? false,
@@ -62,6 +72,62 @@ public struct UpdateBundleManifest: Codable, Equatable, Sendable {
             migrations: try container.decode([UpdateBundleMigration].self, forKey: .migrations)
         )
     }
+
+    public var version: String {
+        helperVersion
+    }
+
+    public var runtimeVersion: String {
+        components[UpdateBundleComponentKey.updater.rawValue] ?? helperVersion
+    }
+}
+
+public enum UpdateBundleKind: Codable, Equatable, Sendable {
+    case productUpdate
+    case vmImageUpdate
+    case unknown(String)
+
+    public init(rawValue: String) {
+        switch rawValue {
+        case "product-update":
+            self = .productUpdate
+        case "vm-image-update":
+            self = .vmImageUpdate
+        default:
+            self = .unknown(rawValue)
+        }
+    }
+
+    public var rawValue: String {
+        switch self {
+        case .productUpdate:
+            return "product-update"
+        case .vmImageUpdate:
+            return "vm-image-update"
+        case .unknown(let value):
+            return value
+        }
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        self.init(rawValue: try container.decode(String.self))
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
+}
+
+public enum UpdateBundleComponentKey: String, CaseIterable, Sendable {
+    case helperUI
+    case updater
+    case supervisor
+    case vmDriver
+    case serviceStack
+    case vmImage
+    case vitalServer
 }
 
 public struct UpdateBundleArtifact: Codable, Equatable, Sendable {

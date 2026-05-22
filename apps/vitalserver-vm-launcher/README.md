@@ -26,9 +26,9 @@ Browser / VRecorder
 | Settings | CPU, memory, disk 증가, shared/NAT network, vital files directory, start-on-boot 같은 운영 설정 |
 | Update | offline/online 공통 update bundle 검증과 적용 |
 | Logs | Helper, install, command, VM/container log를 필터링해 확인 |
-| About | Helper, VitalServer, container image, runtime version 확인 |
+| About | Helper, Updater, Supervisor, VM Driver, Service Stack, VM Image, VitalServer version 확인 |
 | Advanced | 네트워크 override, service diagnostics, admin password reset, recovery operation |
-| Danger Zone | uninstall, clean uninstall, 향후 VM/rootfs 교체처럼 파괴적인 작업 |
+| Danger Zone | uninstall, clean uninstall, VM Image Update처럼 파괴적인 작업 |
 
 ## 먼저 볼 것
 
@@ -79,38 +79,42 @@ make vm-dmg-release
 
 ### 2. 이미 설치된 현장에 offline update bundle 제공
 
-업데이트 입력 단위는 bundle directory입니다.
+업데이트 입력 단위는 bundle tarball입니다.
 
 ```sh
 make vm-update-bundle
 make vm-update-bundle-verify
 ```
 
+기본 `vm-update-bundle`은 `product-update`용입니다. Helper UI, Updater/Supervisor/VM Driver tools,
+host nginx bundle, Service Stack/guest deploy bundle, migrations만 포함하고 `rootfs-base.raw.gz`는
+포함하지 않습니다.
+
+VM Image/rootfs 자체를 교체해야 하는 드문 업데이트는 별도 target을 사용합니다. 이 흐름은 `vm-image-update`이며 Danger Zone 대상입니다.
+
+```sh
+make vm-rootfs-update-bundle
+make vm-update-bundle-verify
+```
+
 생성 위치:
 
 ```text
-dist/update-bundles/update-bundle-<version>/
+dist/update-bundles/update-bundle-<version>.tar.gz
 ```
 
-USB나 폐쇄망 파일 서버로 전달하려면 directory를 압축해서 옮깁니다.
+현장에서는 Helper app의 Update 탭에서 bundle tarball을 선택하거나, CLI로 검증/적용합니다.
 
 ```sh
-cd dist/update-bundles
-tar -czf update-bundle-<version>.tar.gz update-bundle-<version>
-```
-
-현장에서는 Helper app의 Update 탭에서 bundle directory를 선택하거나, CLI로 검증/적용합니다.
-
-```sh
-/usr/local/bin/vitalserver-vm runtime verify-bundle /path/to/update-bundle-<version>
-sudo /usr/local/bin/vitalserver-vm runtime apply-bundle /path/to/update-bundle-<version>
+/usr/local/bin/vitalserver-vm runtime verify-bundle /path/to/update-bundle-<version>.tar.gz
+sudo /usr/local/bin/vitalserver-vm runtime apply-bundle /path/to/update-bundle-<version>.tar.gz
 ```
 
 `apply-bundle`은 mutable `vm-disk.img`를 보존하고 replaceable artifact만 교체합니다. 적용 전 backup을 만들고 health check 실패 시 rollback합니다.
 
-update bundle 생성 시에도 artifact 압축은 필요합니다. 기본 bundle은 Helper app, runtime tools, host nginx bundle, guest deploy bundle을 각각 `.tar.gz`로 묶습니다. 이 압축은 rootfs 전체를 매번 다시 만드는 것보다 훨씬 가볍습니다.
+update bundle 생성 시에도 artifact 압축은 필요합니다. 기본 Product Update bundle은 Helper UI, Updater/Supervisor/VM Driver tools, host nginx bundle, Service Stack/guest deploy bundle을 각각 `.tar.gz`로 묶습니다. 이 압축은 rootfs 전체를 매번 다시 만드는 것보다 훨씬 가볍고, 기본 bundle에는 rootfs를 넣지 않습니다.
 
-`rootfs-base.raw.gz`는 신규 설치나 큰 runtime 변경용 artifact입니다. 기본 update bundle target은 호환성을 위해 이 파일을 만들 수 있지만, 이미 설치된 현장의 mutable `vm-disk.img`를 자동 교체하지 않습니다. 실제 현장 업데이트의 핵심은 `app-bundle`, `runtime-tools`, `nginx-bundle`, `guest-deploy`, 기본 migration입니다.
+`rootfs-base.raw.gz`는 신규 설치나 VM Image 변경용 artifact입니다. 일반 Product Update의 핵심은 `app-bundle`, `runtime-tools`, `nginx-bundle`, `guest-deploy`, 기본 migration입니다. rootfs 변경이 필요한 경우에만 `make vm-rootfs-update-bundle`을 사용합니다.
 
 `guest-deploy`에 들어간 `bootstrap.sh`, compose, guest systemd, Docker image bundle 수정은 update bundle에 포함됩니다. 적용 시 기본 migration이 cloud-init seed를 갱신하고, 새 runtime은 guest activation request를 통해 VM 내부에서 Docker image load와 compose recreate를 수행합니다.
 
@@ -169,13 +173,17 @@ VM_COMPRESSION_THREADS=8 make vm-pkg
 
 ## 버전 관리
 
-VM launcher/package/update bundle 버전은 아래 파일을 기준으로 관리합니다.
+VitalServer Helper product/component 버전은 아래 파일을 기준으로 관리합니다.
 
 ```text
 apps/vitalserver-vm-launcher/release.json
 ```
 
-`make vm-build`, `make vm-pkg`, `make vm-update-bundle`은 이 값을 읽어 Swift runtime version, app bundle version, package version, update bundle version, update compatibility, bundled service version 표시에 반영합니다. 버전을 올릴 때는 이 파일을 수정합니다.
+`VitalServer Helper`는 최상위 product release입니다. 플랫폼별 UI/VM provider 구현은 같은 Helper release 아래의 variant로 보고, 세부 변경 범위는 Helper UI, Updater, Supervisor, VM Driver, Service Stack, VM Image, VitalServer component version으로 설명합니다.
+
+Update bundle manifest는 `helperVersion`, `targetPlatforms`, `minUpdaterVersion`, `components`를 기준으로 해석합니다. `components` map은 `helperUI`, `updater`, `supervisor`, `vmDriver`, `serviceStack`, `vmImage`, `vitalServer`처럼 실제 변경된 계층을 드러냅니다. Helper UI와 VM Driver는 platform-specific이고, Updater/Supervisor는 host platform에 붙어 있으며, Service Stack과 VM Image는 guest/service 쪽 책임으로 구분합니다.
+
+`make vm-build`, `make vm-pkg`, `make vm-update-bundle`은 이 값을 읽어 app bundle version, package version, update bundle version, update compatibility, bundled service version 표시에 반영합니다. 버전을 올릴 때는 이 파일을 수정합니다.
 
 ## 주요 명령
 
@@ -186,7 +194,8 @@ apps/vitalserver-vm-launcher/release.json
 | `make vm-dmg` | 전달용 `.dmg` 생성 |
 | `make vm-pkg-release` | clean golden rootfs로 `.pkg` 재생성 |
 | `make vm-dmg-release` | clean golden rootfs로 `.dmg` 재생성 |
-| `make vm-update-bundle` | offline/online 공통 update bundle 생성 |
+| `make vm-update-bundle` | offline/online 공통 Product Update bundle 생성 |
+| `make vm-rootfs-update-bundle` | rootfs-base까지 포함하는 VM Image Update bundle 생성 |
 | `make vm-update-bundle-verify` | update bundle checksum/manifest 검증 |
 | `make vm-pkg-install` | 현재 Mac에 개발용 package 설치 |
 | `make vm-installed-health` | 설치된 launchd VM/proxy 상태 확인 |

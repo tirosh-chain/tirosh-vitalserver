@@ -124,8 +124,9 @@ final class RuntimeGuestActivationRunnerTests: XCTestCase {
         UpdateBundleManifest(
             schemaVersion: 2,
             product: Constants.Product.identifier,
-            version: "1.2.3",
-            runtimeVersion: "1.2.3",
+            helperVersion: "1.2.3",
+            targetPlatforms: ["macos-arm64"],
+            components: ["updater": "1.2.3"],
             createdAt: "2026-05-22T00:00:00Z",
             artifacts: artifacts.map {
                 UpdateBundleArtifact(name: "\($0.rawValue).tar.gz", type: $0, sha256: "sha256", size: 1)

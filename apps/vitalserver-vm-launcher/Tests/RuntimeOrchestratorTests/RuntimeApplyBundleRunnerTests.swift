@@ -9,7 +9,7 @@ final class RuntimeApplyBundleRunnerTests: XCTestCase {
 
         try harness.runner.run(bundleURL: harness.inputBundle)
 
-        XCTAssertEqual(harness.executedSteps, RuntimeOperationPlans.applyBundle.steps)
+        XCTAssertEqual(harness.executedSteps, RuntimeOperationPlans.applyBundle(updatesRootfsBase: false).steps)
         XCTAssertEqual(harness.statuses.last?.level, .healthy)
         XCTAssertEqual(harness.statuses.last?.operation, .applyBundle)
         XCTAssertEqual(harness.statuses.last?.message, "bundle applied: 0.1.4")
@@ -61,15 +61,16 @@ private final class ApplyBundleHarness {
     let preflight = ApplyBundlePreflightContext(
         stagedBundle: URL(fileURLWithPath: "/tmp/staged-bundle"),
         manifest: UpdateBundleManifest(
-            schemaVersion: 1,
-            product: "tirosh-vitalserver",
-            version: "0.1.4",
-            runtimeVersion: "0.1.4",
+            schemaVersion: 2,
+            product: "com.tirosh.vitalserver",
+            helperVersion: "0.1.4",
+            targetPlatforms: ["macos-arm64"],
+            components: ["updater": "0.1.4"],
             createdAt: "2026-05-22T00:00:00Z",
             artifacts: [],
             migrations: []
         ),
-        stagedRootfs: URL(fileURLWithPath: "/tmp/staged-rootfs.raw.gz"),
+        stagedRootfs: nil,
         backup: URL(fileURLWithPath: "/tmp/backup"),
         restartPolicy: RuntimeServiceRestartPolicy(
             restartVM: true,

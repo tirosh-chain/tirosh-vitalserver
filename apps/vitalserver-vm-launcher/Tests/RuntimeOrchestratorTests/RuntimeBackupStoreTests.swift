@@ -89,7 +89,7 @@ final class RuntimeBackupStoreTests: XCTestCase {
 
         let manifestPath = "/product/backups/20260522T010203Z-before-0.1.4/backup-manifest.json"
         let manifest = try XCTUnwrap(writtenFiles[manifestPath])
-        XCTAssertTrue(manifest.contains(#""product" : "TiroshVitalServer""#))
+        XCTAssertTrue(manifest.contains(#""product" : "com.tirosh.vitalserver""#))
         XCTAssertTrue(manifest.contains(#""createdAt" : "2026-05-22T01:02:03Z""#))
         XCTAssertTrue(manifest.contains(#""reason" : "before-0.1.4""#))
         XCTAssertTrue(manifest.contains(#""vmDiskPreserved" : true"#))

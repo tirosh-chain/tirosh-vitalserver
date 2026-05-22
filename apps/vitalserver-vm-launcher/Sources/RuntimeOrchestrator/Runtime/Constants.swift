@@ -2,9 +2,13 @@ import RuntimeCore
 
 enum Constants {
     enum Product {
-        static let identifier = "TiroshVitalServer"
+        static let identifier = "com.tirosh.vitalserver"
         static let managerAppName = "VitalServer Helper.app"
         static let managerAppPath = "/Applications/\(managerAppName)"
+    }
+
+    enum Platform {
+        static let current = "macos-arm64"
     }
 
     enum Environment {

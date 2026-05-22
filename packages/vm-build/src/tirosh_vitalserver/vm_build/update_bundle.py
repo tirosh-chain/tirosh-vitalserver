@@ -3,6 +3,8 @@ from __future__ import annotations
 import hashlib
 import json
 import shutil
+import tarfile
+import tempfile
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -18,103 +20,122 @@ class ArtifactInput:
 
 def run_build_update_bundle(args: Any) -> int:
     output_dir = args.output_dir
-    bundle_dir = output_dir / f"update-bundle-{args.version}"
+    bundle_name = f"update-bundle-{args.version}"
+    bundle_archive = output_dir / f"{bundle_name}.tar.gz"
+    helper_version = args.helper_version or args.version
+    components = component_versions(args.component, helper_version)
 
-    if bundle_dir.exists():
-        shutil.rmtree(bundle_dir)
-    bundle_dir.mkdir(parents=True)
-    (bundle_dir / "migrations").mkdir()
+    output_dir.mkdir(parents=True, exist_ok=True)
+    if bundle_archive.exists():
+        bundle_archive.unlink()
 
-    artifacts = [
-        ArtifactInput(args.rootfs_base, "rootfs-base.raw.gz", "rootfs-base"),
-    ]
-    optional_artifacts = [
-        (args.app_bundle, "app-bundle.tar.gz", "app-bundle"),
-        (args.runtime_tools, "runtime-tools.tar.gz", "runtime-tools"),
-        (args.nginx_bundle, "nginx-bundle.tar.gz", "nginx-bundle"),
-        (args.guest_deploy, "guest-deploy.tar.gz", "guest-deploy"),
-    ]
-    for source, name, kind in optional_artifacts:
-        if source is not None:
-            artifacts.append(ArtifactInput(source, name, kind))
+    with tempfile.TemporaryDirectory(prefix=f"{bundle_name}-") as staging:
+        bundle_dir = Path(staging) / bundle_name
+        bundle_dir.mkdir(parents=True)
+        (bundle_dir / "migrations").mkdir()
 
-    artifact_entries = []
-    checksum_lines = []
-    for artifact in artifacts:
-        if not artifact.source.is_file():
-            raise SystemExit(f"missing artifact: {artifact.source}")
+        artifacts = []
+        if args.rootfs_base is not None:
+            artifacts.append(ArtifactInput(args.rootfs_base, "rootfs-base.raw.gz", "rootfs-base"))
+        optional_artifacts = [
+            (args.app_bundle, "app-bundle.tar.gz", "app-bundle"),
+            (args.runtime_tools, "runtime-tools.tar.gz", "runtime-tools"),
+            (args.nginx_bundle, "nginx-bundle.tar.gz", "nginx-bundle"),
+            (args.guest_deploy, "guest-deploy.tar.gz", "guest-deploy"),
+        ]
+        for source, name, kind in optional_artifacts:
+            if source is not None:
+                artifacts.append(ArtifactInput(source, name, kind))
 
-        destination = bundle_dir / artifact.name
-        shutil.copy2(artifact.source, destination)
-        digest = sha256_file(destination)
-        size = destination.stat().st_size
-        artifact_entries.append(
-            {
-                "name": artifact.name,
-                "type": artifact.kind,
-                "sha256": digest,
-                "size": size,
-            }
+        artifact_entries = []
+        checksum_lines = []
+        for artifact in artifacts:
+            if not artifact.source.is_file():
+                raise SystemExit(f"missing artifact: {artifact.source}")
+
+            destination = bundle_dir / artifact.name
+            shutil.copy2(artifact.source, destination)
+            digest = sha256_file(destination)
+            size = destination.stat().st_size
+            artifact_entries.append(
+                {
+                    "name": artifact.name,
+                    "type": artifact.kind,
+                    "sha256": digest,
+                    "size": size,
+                }
+            )
+            checksum_lines.append(f"{digest}  {artifact.name}\n")
+
+        migration_entries = []
+        seen_migrations: set[str] = set()
+        for migration in args.migration:
+            if not migration.is_file():
+                raise SystemExit(f"missing migration: {migration}")
+            if migration.name in seen_migrations:
+                raise SystemExit(f"duplicate migration name: {migration.name}")
+            if not is_safe_bundle_name(migration.name):
+                raise SystemExit(f"invalid migration name: {migration.name}")
+            seen_migrations.add(migration.name)
+
+            destination = bundle_dir / "migrations" / migration.name
+            shutil.copy2(migration, destination)
+            digest = sha256_file(destination)
+            size = destination.stat().st_size
+            migration_entries.append(
+                {
+                    "name": migration.name,
+                    "sha256": digest,
+                    "size": size,
+                }
+            )
+            checksum_lines.append(f"{digest}  migrations/{migration.name}\n")
+
+        manifest = {
+            "schemaVersion": 2,
+            "product": "com.tirosh.vitalserver",
+            "bundleKind": args.bundle_kind,
+            "helperVersion": helper_version,
+            "targetPlatforms": args.target_platform,
+            "components": components,
+            "minUpdaterVersion": args.min_updater_version or args.runtime_version or helper_version,
+            "requiresGuestActivation": (
+                args.requires_guest_activation
+                if args.requires_guest_activation is not None
+                else args.guest_deploy is not None
+            ),
+            "requiresTwoPhaseUpdate": args.requires_two_phase_update,
+            "createdAt": datetime.now(UTC).replace(microsecond=0).isoformat(),
+            "artifacts": artifact_entries,
+            "migrations": migration_entries,
+        }
+
+        (bundle_dir / "manifest.json").write_text(
+            json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
         )
-        checksum_lines.append(f"{digest}  {artifact.name}\n")
-
-    migration_entries = []
-    seen_migrations: set[str] = set()
-    for migration in args.migration:
-        if not migration.is_file():
-            raise SystemExit(f"missing migration: {migration}")
-        if migration.name in seen_migrations:
-            raise SystemExit(f"duplicate migration name: {migration.name}")
-        if not is_safe_bundle_name(migration.name):
-            raise SystemExit(f"invalid migration name: {migration.name}")
-        seen_migrations.add(migration.name)
-
-        destination = bundle_dir / "migrations" / migration.name
-        shutil.copy2(migration, destination)
-        digest = sha256_file(destination)
-        size = destination.stat().st_size
-        migration_entries.append(
-            {
-                "name": migration.name,
-                "sha256": digest,
-                "size": size,
-            }
+        (bundle_dir / "checksums.txt").write_text("".join(checksum_lines), encoding="utf-8")
+        (bundle_dir / "signature").write_text(
+            "unsigned\n",
+            encoding="utf-8",
         )
-        checksum_lines.append(f"{digest}  migrations/{migration.name}\n")
 
-    manifest = {
-        "schemaVersion": 2,
-        "product": "TiroshVitalServer",
-        "version": args.version,
-        "runtimeVersion": args.runtime_version,
-        "minUpdaterVersion": args.min_updater_version or args.runtime_version,
-        "requiresGuestActivation": (
-            args.requires_guest_activation
-            if args.requires_guest_activation is not None
-            else args.guest_deploy is not None
-        ),
-        "requiresTwoPhaseUpdate": args.requires_two_phase_update,
-        "createdAt": datetime.now(UTC).replace(microsecond=0).isoformat(),
-        "artifacts": artifact_entries,
-        "migrations": migration_entries,
-    }
+        with tarfile.open(bundle_archive, "w:gz") as archive:
+            archive.add(bundle_dir, arcname=bundle_name)
 
-    (bundle_dir / "manifest.json").write_text(
-        json.dumps(manifest, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
-    (bundle_dir / "checksums.txt").write_text("".join(checksum_lines), encoding="utf-8")
-    (bundle_dir / "signature").write_text(
-        "unsigned\n",
-        encoding="utf-8",
-    )
-
-    print(f"update bundle is ready: {bundle_dir}")
+    print(f"update bundle is ready: {bundle_archive}")
     return 0
 
 
 def run_verify_update_bundle(args: Any) -> int:
-    bundle_dir = args.bundle_dir
+    with materialized_bundle(args.bundle_path) as bundle_dir:
+        verify_bundle_directory(bundle_dir)
+
+    print(f"update bundle verified: {args.bundle_path}")
+    return 0
+
+
+def verify_bundle_directory(bundle_dir: Path) -> None:
     manifest_path = bundle_dir / "manifest.json"
     checksums_path = bundle_dir / "checksums.txt"
     signature_path = bundle_dir / "signature"
@@ -159,9 +180,6 @@ def run_verify_update_bundle(args: Any) -> int:
             checksum_map=checksum_map,
         )
 
-    print(f"update bundle verified: {bundle_dir}")
-    return 0
-
 
 def verify_entry(
     *,
@@ -193,12 +211,67 @@ def verify_entry(
         )
 
 
+class materialized_bundle:
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self._temporary: tempfile.TemporaryDirectory[str] | None = None
+
+    def __enter__(self) -> Path:
+        if self.path.is_dir():
+            return self.path
+        if not self.path.is_file():
+            raise SystemExit(f"missing update bundle: {self.path}")
+        if not is_update_bundle_archive(self.path):
+            raise SystemExit(f"update bundle must be a .tar.gz archive: {self.path}")
+
+        self._temporary = tempfile.TemporaryDirectory(prefix="update-bundle-verify-")
+        temporary = Path(self._temporary.name)
+        with tarfile.open(self.path, "r:gz") as archive:
+            root_name = validated_archive_root(archive)
+            archive.extractall(temporary)
+        return temporary / root_name
+
+    def __exit__(self, *args: object) -> None:
+        if self._temporary is not None:
+            self._temporary.cleanup()
+
+
+def validated_archive_root(archive: tarfile.TarFile) -> str:
+    root_name: str | None = None
+    members = archive.getmembers()
+    if not members:
+        raise SystemExit("empty update bundle archive")
+    for member in members:
+        name = member.name
+        if member.issym() or member.islnk() or not (member.isfile() or member.isdir()):
+            raise SystemExit(f"unsafe archive entry type: {name}")
+        if name.startswith("/") or "\\" in name:
+            raise SystemExit(f"unsafe archive path: {name}")
+        parts = [part for part in Path(name).parts if part not in {"", "."}]
+        if not parts or any(part == ".." for part in parts):
+            raise SystemExit(f"unsafe archive path: {name}")
+        if root_name is None:
+            root_name = parts[0]
+        elif root_name != parts[0]:
+            raise SystemExit("update bundle archive must contain a single root directory")
+    if root_name is None:
+        raise SystemExit("empty update bundle archive")
+    return root_name
+
+
+def is_update_bundle_archive(path: Path) -> bool:
+    name = path.name
+    return name.endswith(".tar.gz") or name.endswith(".tgz")
+
+
 def validate_manifest(manifest: dict[str, Any]) -> None:
     required = {
         "schemaVersion": int,
         "product": str,
-        "version": str,
-        "runtimeVersion": str,
+        "bundleKind": str,
+        "helperVersion": str,
+        "targetPlatforms": list,
+        "components": dict,
         "minUpdaterVersion": str,
         "requiresGuestActivation": bool,
         "requiresTwoPhaseUpdate": bool,
@@ -214,8 +287,18 @@ def validate_manifest(manifest: dict[str, Any]) -> None:
 
     if manifest["schemaVersion"] != 2:
         raise SystemExit(f"unsupported schemaVersion: {manifest['schemaVersion']}")
-    if manifest["product"] != "TiroshVitalServer":
+    if manifest["product"] != "com.tirosh.vitalserver":
         raise SystemExit(f"unsupported product: {manifest['product']}")
+    if manifest["bundleKind"] not in {"product-update", "vm-image-update"}:
+        raise SystemExit(f"unsupported bundleKind: {manifest['bundleKind']}")
+    for platform in manifest["targetPlatforms"]:
+        if not isinstance(platform, str) or not platform:
+            raise SystemExit("targetPlatforms entries must be non-empty strings")
+    for key, value in manifest["components"].items():
+        if not isinstance(key, str) or not key:
+            raise SystemExit("components keys must be non-empty strings")
+        if not isinstance(value, str) or not value:
+            raise SystemExit(f"component version must be a non-empty string: {key}")
 
     for artifact in manifest["artifacts"]:
         if not isinstance(artifact, dict):
@@ -263,6 +346,23 @@ def load_checksums(path: Path) -> dict[str, str]:
 def is_safe_bundle_name(name: str) -> bool:
     path = Path(name)
     return name not in {"", ".", ".."} and path.name == name
+
+
+def component_versions(entries: list[str], helper_version: str) -> dict[str, str]:
+    components = {
+        "helperUI": helper_version,
+        "updater": helper_version,
+        "supervisor": helper_version,
+        "vmDriver": helper_version,
+    }
+    for entry in entries:
+        if "=" not in entry:
+            raise SystemExit(f"component must be key=value: {entry}")
+        key, value = entry.split("=", 1)
+        if not key or not value:
+            raise SystemExit(f"component must be key=value: {entry}")
+        components[key] = value
+    return components
 
 
 def sha256_file(path: Path) -> str:

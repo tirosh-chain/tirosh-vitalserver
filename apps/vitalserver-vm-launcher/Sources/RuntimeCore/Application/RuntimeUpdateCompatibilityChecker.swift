@@ -3,6 +3,7 @@ import Foundation
 public enum RuntimeUpdateCompatibilityError: Error, Equatable, CustomStringConvertible {
     case updaterTooOld(currentVersion: String, minimumVersion: String)
     case twoPhaseUpdateRequired
+    case unsupportedPlatform(currentPlatform: String, targetPlatforms: [String])
     case guestActivationRequirementMismatch(requiresGuestActivation: Bool, hasGuestDeployArtifact: Bool)
 
     public var description: String {
@@ -11,6 +12,8 @@ public enum RuntimeUpdateCompatibilityError: Error, Equatable, CustomStringConve
             return "update bundle requires updater \(minimumVersion) or newer; current updater is \(currentVersion)"
         case .twoPhaseUpdateRequired:
             return "update bundle requires a bridge/two-phase update"
+        case let .unsupportedPlatform(currentPlatform, targetPlatforms):
+            return "update bundle targets \(targetPlatforms.joined(separator: ", ")); current platform is \(currentPlatform)"
         case let .guestActivationRequirementMismatch(requiresGuestActivation, hasGuestDeployArtifact):
             return "update bundle guest activation flag mismatch: requiresGuestActivation=\(requiresGuestActivation), hasGuestDeployArtifact=\(hasGuestDeployArtifact)"
         }
@@ -21,6 +24,7 @@ public enum RuntimeUpdateCompatibilityChecker {
     public static func check(
         manifest: UpdateBundleManifest,
         currentUpdaterVersion: String,
+        currentPlatform: String? = nil,
         allowTwoPhaseUpdate: Bool = false
     ) throws {
         if let minimumVersion = manifest.minUpdaterVersion,
@@ -33,6 +37,15 @@ public enum RuntimeUpdateCompatibilityChecker {
 
         if manifest.requiresTwoPhaseUpdate, !allowTwoPhaseUpdate {
             throw RuntimeUpdateCompatibilityError.twoPhaseUpdateRequired
+        }
+
+        if let currentPlatform,
+           !manifest.targetPlatforms.isEmpty,
+           !manifest.targetPlatforms.contains(currentPlatform) {
+            throw RuntimeUpdateCompatibilityError.unsupportedPlatform(
+                currentPlatform: currentPlatform,
+                targetPlatforms: manifest.targetPlatforms
+            )
         }
 
         let hasGuestDeployArtifact = manifest.artifacts.contains { $0.type == .guestDeploy }

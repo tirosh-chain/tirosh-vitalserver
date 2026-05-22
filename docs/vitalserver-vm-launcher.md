@@ -10,6 +10,7 @@
 |---|---|
 | [VM Launcher Overview](vm-launcher/overview.md) | VM runtime 문서군 전체 지도와 사용자 시나리오 |
 | [Architecture](vm-launcher/architecture.md) | 제품 구조, shared/NAT + host nginx 선택 이유, 단일 노드 가용성 범위, 책임 경계 확인 |
+| [ADR 0002](adr/0002-vitalserver-helper-layered-runtime-refactor.md) | Helper layer, update/version model, 리팩터링 순서 결정 확인 |
 | [Packaging and Update](vm-launcher/packaging.md) | `make vm-pkg`, `make vm-dmg`, PKG 설치 흐름, install settings, update bundle 계약 확인 |
 | [Update](vm-launcher/update.md) | update bundle 적용 과정, 보존/변경 범위, guest-side activation, rollback 계약 확인 |
 | [Runtime](vm-launcher/runtime.md) | VM boot asset, cloud-init, guest bootstrap, data sharing, network mode, identity/signing 정책 확인 |
@@ -41,10 +42,17 @@ bridged mode는 Apple `com.apple.vm.networking` restricted entitlement 승인이
 make vm-dmg
 ```
 
-이미 설치된 현장에 업데이트 bundle을 제공할 때:
+이미 설치된 현장에 Product Update bundle을 제공할 때:
 
 ```sh
 make vm-update-bundle
+make vm-update-bundle-verify
+```
+
+VM Image/rootfs 자체를 교체하는 특수 bundle이 필요할 때:
+
+```sh
+make vm-rootfs-update-bundle
 make vm-update-bundle-verify
 ```
 

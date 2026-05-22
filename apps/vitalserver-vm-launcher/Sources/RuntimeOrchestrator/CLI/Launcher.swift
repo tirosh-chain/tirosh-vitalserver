@@ -315,9 +315,9 @@ struct Launcher {
               vitalserver-vm runtime status
               vitalserver-vm runtime health
               vitalserver-vm runtime watchdog
-              vitalserver-vm runtime verify-bundle <bundle-dir>
-              vitalserver-vm runtime stage-bundle <bundle-dir>
-              vitalserver-vm runtime apply-bundle <bundle-dir>
+              vitalserver-vm runtime verify-bundle <bundle.tar.gz>
+              vitalserver-vm runtime stage-bundle <bundle.tar.gz>
+              vitalserver-vm runtime apply-bundle <bundle.tar.gz>
               vitalserver-vm runtime rollback [backup-dir]
               vitalserver-vm clean
               vitalserver-vm version

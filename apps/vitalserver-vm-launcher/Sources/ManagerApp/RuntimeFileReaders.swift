@@ -23,6 +23,9 @@ struct SystemRuntimeManagerFileReader: RuntimeManagerFileReading {
     }
 
     func updateBundleSummary(url: URL) -> String {
+        if url.lastPathComponent.hasSuffix(".tar.gz") || url.lastPathComponent.hasSuffix(".tgz") {
+            return "Archive: \(url.lastPathComponent)\nVerify to inspect manifest and checksums."
+        }
         let manifestURL = url.appendingPathComponent("manifest.json")
         guard let data = try? fileStore.readData(manifestURL),
               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {

@@ -23,7 +23,7 @@ final class RuntimeController: ObservableObject {
     @Published var releaseInfo = RuntimeReleaseInfo.generated
 
     private let runtimeClient: any RuntimeClient
-    private let healthNotifications = HealthNotificationCenter()
+    private let healthNotifications: any HealthNotifying
     private let logLineLimitOptions = [100, 500, 1000]
     private let logSources: [LogSourceOption] = [
         LogSourceOption(id: LogSourceID.helperMessage.rawValue, title: "Helper message"),
@@ -43,7 +43,8 @@ final class RuntimeController: ObservableObject {
         fileReader: RuntimeManagerFileReading = SystemRuntimeManagerFileReader(),
         settingsReader: RuntimeSettingsReading = SystemRuntimeSettingsReader(),
         actionEnvironment: RuntimeActionEnvironment = SystemRuntimeActionEnvironment(),
-        runtimeClient: (any RuntimeClient)? = nil
+        runtimeClient: (any RuntimeClient)? = nil,
+        healthNotifications: (any HealthNotifying)? = nil
     ) {
         self.runtimeClient = runtimeClient ?? LocalRuntimeClient(
             statusReader: statusReader,
@@ -52,8 +53,9 @@ final class RuntimeController: ObservableObject {
             privilegedCommandRunner: privilegedCommandRunner,
             actionEnvironment: actionEnvironment
         )
+        self.healthNotifications = healthNotifications ?? HealthNotificationCenter()
         self.settings = self.runtimeClient.loadSettings()
-        healthNotifications.configure()
+        self.healthNotifications.configure()
     }
 
     var selectedBackup: RuntimeBackup? {
@@ -193,9 +195,14 @@ final class RuntimeController: ObservableObject {
             return
         }
         let panel = NSOpenPanel()
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = [
+            UTType(filenameExtension: "tar.gz"),
+            UTType(filenameExtension: "tgz"),
+            .gzip,
+        ].compactMap { $0 }
         panel.prompt = AppConstants.Actions.chooseBundle
         if panel.runModal() == .OK, let url = panel.url {
             selectedBundlePath = url.path

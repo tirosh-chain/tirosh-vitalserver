@@ -6,10 +6,12 @@ VitalServer Helper의 update bundle이 무엇을 바꾸고, 무엇을 보존하�
 
 | 질문 | 답 |
 |---|---|
-| update 입력 단위는? | `dist/update-bundles/update-bundle-<version>/` directory |
-| 현장 적용 UI는? | Helper app의 Update 탭 |
+| update 입력 단위는? | `dist/update-bundles/update-bundle-<version>.tar.gz` tarball |
+| 현장 적용 UI는? | Product Update는 Helper app의 Update 탭, VM Image Update는 Danger Zone |
 | CLI backend는? | `/usr/local/bin/vitalserver-vm runtime apply-bundle` |
 | 검증 기준은? | `manifest.json`, `checksums.txt`, artifact sha256/size |
+| Product Update bundle에 rootfs가 들어가나? | 아니다. `make vm-update-bundle`은 rootfs를 제외한다 |
+| rootfs 포함 bundle은 언제 쓰나? | VM Image/rootfs 자체를 교체해야 할 때 `make vm-rootfs-update-bundle`을 사용한다 |
 | mutable VM disk는 교체하나? | 기본적으로 교체하지 않는다 |
 | Redis/Vital files 데이터는 보존하나? | 보존 대상이다 |
 | Docker image bundle만 바꾸면 container가 자동 갱신되나? | update 단계에서 guest-side activation을 실행해야 한다 |
@@ -19,7 +21,35 @@ VitalServer Helper의 update bundle이 무엇을 바꾸고, 무엇을 보존하�
 
 ## Update 안정성 기준
 
-Update 계약의 목표는 “어떤 설치본에서 어떤 update bundle을 적용하더라도, 실패 원인을 명확히 남기고 재시도/rollback 가능한 상태를 유지하는 것”입니다. Update는 runtime 자체를 바꾸는 기능이므로 일반 기능보다 더 보수적으로 설계합니다.
+Update 계약의 목표는 “어떤 설치본에서 어떤 update bundle을 적용하더라도, 실패 원인을 명확히 남기고 재시도/rollback 가능한 상태를 유지하는 것”입니다. Product Update는 설치된 Helper product의 구성 요소를 바꾸고, VM Image Update는 Linux guest OS/base image급 artifact를 바꿉니다. 두 흐름은 위험도와 UI 위치가 다르므로 bundle kind로 구분합니다.
+
+### Bundle Kind
+
+bundle kind는 의도적으로 두 개만 둡니다.
+
+| bundleKind | UI 위치 | 포함 범위 |
+|---|---|---|
+| `product-update` | Update 탭 | Helper UI, Updater, Supervisor, VM Driver, Service Stack, 개별 service/container, host proxy, migrations |
+| `vm-image-update` | Danger Zone | VM Image/rootfs/base OS/kernel/initrd class artifact |
+
+Hotfix, service-only update, updater bridge update는 별도 kind를 만들지 않고 `product-update`의 channel, changed components, `requiresTwoPhaseUpdate` 같은 metadata로 표현합니다.
+
+### Layer And Version Model
+
+`VitalServer Helper`는 최상위 product release입니다. platform별 build는 같은 Helper release 아래의 variant이며, 세부 변경 범위는 component version으로 기록합니다. 각 layer는 platform 종속성과 책임이 다르므로 manifest와 UI에서도 이 경계를 유지합니다.
+
+| Layer | Platform dependency | 책임 | Manifest key |
+|---|---|---|---|
+| VitalServer Helper | cross-platform product umbrella | 최상위 관리 제품/클라이언트 패키지, support/release note 기준 | `helperVersion` |
+| Helper UI | platform-specific | macOS/iPadOS/Windows 등 사용자 인터페이스 | `components.helperUI` |
+| Updater | host/platform-specific | product update bundle 검증/적용/rollback, manifest compatibility gate | `components.updater`, `minUpdaterVersion` |
+| Supervisor | host/platform-aware | health/watchdog/recovery, service state loop, auto-recovery suppression | `components.supervisor` |
+| VM Driver | platform-specific | macOS Apple Virtualization, Windows provider 등 VM lifecycle provider | `components.vmDriver` |
+| Service Stack | mostly guest/service-specific | guest deploy assets, compose, container image bundle, service activation 단위 | `components.serviceStack` |
+| VM Image | guest OS/image-specific | Linux guest OS/base rootfs/kernel/initrd class artifact | `components.vmImage` |
+| VitalServer service | service-specific | VM 안에서 실행되는 VitalServer app/container | `components.vitalServer` |
+
+Manifest에서는 최상위 product version과 component version을 분리합니다. `helperVersion`은 support/release note 기준이고, 실제로 바뀐 하위 계층은 `components`에 기록합니다. platform별로 다르게 적용되는 bundle은 `targetPlatforms`로 제한합니다.
 
 ### 핵심 원칙
 
@@ -40,12 +70,12 @@ Update 계약의 목표는 “어떤 설치본에서 어떤 update bundle을 적
 
 | 파일 | 생산자 | 소비자 | 호환성 기준 |
 |---|---|---|---|
-| `manifest.json` | build tool | host updater | `schemaVersion`, `version`, artifact 목록, compatibility field를 포함 |
+| `manifest.json` | build tool | host Updater | `schemaVersion`, `version`, artifact 목록, compatibility field를 포함 |
 | `checksums.txt` | build tool | host verifier | artifact path와 sha256/size 검증 기준 |
-| `activate-update.request` | host updater | guest activation script | `requestId`, `requestedAt`, `operation`, `version`은 baseline 필수 |
-| `activate-update-result.json` | guest activation script | host updater/Helper UI | `requestId`, `status`, `message`, `updatedAt`은 항상 기록 |
-| `runtime-status.json` | host updater/watchdog | Helper UI | operation/step/status는 enum 계약으로 유지 |
-| `runtime-version.json` | installer/updater | Helper UI/updater | 현재 runtime/app/guest version 표시와 rollback 판단 기준 |
+| `activate-update.request` | host Updater | guest activation script | `requestId`, `requestedAt`, `operation`, `version`은 baseline 필수 |
+| `activate-update-result.json` | guest activation script | host Updater/Helper UI | `requestId`, `status`, `message`, `updatedAt`은 항상 기록 |
+| `runtime-status.json` | host Updater/Supervisor | Helper UI | operation/step/status는 enum 계약으로 유지 |
+| `runtime-version.json` | installer/Updater | Helper UI/Updater | 현재 installed component version 표시와 rollback 판단 기준 |
 
 현재 baseline에서 host updater는 아래 형식의 request를 씁니다.
 
@@ -74,9 +104,18 @@ update bundle manifest에는 updater 호환성 판단을 위한 필드를 둡니
 {
   "schemaVersion": 2,
   "product": "com.tirosh.vitalserver",
-  "version": "1.2.3",
-  "runtimeVersion": "1.2.3",
-  "minUpdaterVersion": "1.1.0",
+  "bundleKind": "product-update",
+  "helperVersion": "0.2.0",
+  "targetPlatforms": ["macos-arm64"],
+  "minUpdaterVersion": "0.1.6",
+  "components": {
+    "helperUI": "0.2.0+macos.1",
+    "updater": "0.2.0",
+    "supervisor": "0.2.0",
+    "vmDriver": "0.2.0+macos.1",
+    "serviceStack": "2.3.4-stack.1",
+    "vitalServer": "2.3.4"
+  },
   "requiresGuestActivation": true,
   "requiresTwoPhaseUpdate": false
 }
@@ -86,7 +125,11 @@ update bundle manifest에는 updater 호환성 판단을 위한 필드를 둡니
 
 | 필드 | 의미 |
 |---|---|
-| `minUpdaterVersion` | 이 bundle을 직접 적용할 수 있는 최소 host updater/runtime-tools 버전 |
+| `bundleKind` | `product-update` 또는 `vm-image-update` |
+| `helperVersion` | 최상위 VitalServer Helper product release version |
+| `targetPlatforms` | 이 bundle을 적용할 수 있는 platform/build variant. 예: `macos-arm64` |
+| `minUpdaterVersion` | 이 bundle을 직접 적용할 수 있는 최소 Updater version |
+| `components` | bundle이 제공하거나 변경하는 component version map |
 | `requiresGuestActivation` | `guest-deploy` 교체 후 VM 내부 activation이 필요한지 |
 | `requiresTwoPhaseUpdate` | updater 자체를 먼저 갱신해야 하는 bridge update가 필요한지 |
 
@@ -96,18 +139,26 @@ Reader는 이 필드들의 누락을 허용해야 합니다. 새 필드는 optio
 
 update system 자체가 바뀌는 경우에는 runtime payload와 updater payload를 한 번에 섞어 처리하지 않습니다.
 
+| 개념 | 의미 |
+|---|---|
+| Product Update | Helper/Updater/Supervisor/VM Driver/Service Stack/service 변경 |
+| VM Image Update | Linux guest OS/rootfs/base image 변경 |
+| Two-phase Update | 기존 Updater가 새 Product Update를 바로 이해하지 못할 때, Updater를 먼저 올리고 본 update를 나중에 적용 |
+
+여기서 two-phase update는 VM Image Update와 Product Update를 같이 묶는다는 뜻이 아닙니다. Two-phase는 Product Update 내부에서 기존 설치본의 Updater가 새 update 계약을 이해하지 못할 때, Updater compatibility layer를 먼저 올리고 그 다음 실제 Product Update payload를 적용하는 절차입니다. VM Image/rootfs/base OS 변경은 별도의 `vm-image-update` 흐름이며 Danger Zone 대상입니다.
+
 ```text
 Phase 1: updater compatibility layer 갱신
-  - runtime-tools
+  - updater/runtime-tools
   - guest activation script
   - status/result parser
   - update UI 표시 개선
 
 Phase 2: runtime payload 갱신
+  - Supervisor/VM Driver tools
   - guest-deploy
-  - Docker image bundle
+  - Service Stack / Docker image bundle
   - nginx bundle
-  - rootfs-base
   - migrations
 ```
 
@@ -116,19 +167,21 @@ Phase 2: runtime payload 갱신
 | 변경 내용 | 단일 bundle 가능 여부 | 비고 |
 |---|---|---|
 | Helper UI만 변경 | 가능 | app bundle 교체 후 app 재실행 필요 |
-| runtime-tools CLI만 변경 | 가능하지만 주의 | 현재 실행 중인 updater는 중간에 바뀌지 않음 |
+| Updater/runtime-tools CLI만 변경 | 가능하지만 주의 | 현재 실행 중인 updater는 중간에 바뀌지 않음 |
+| Supervisor/VM Driver만 변경 | 가능 | platform별 component version으로 변경 범위를 표시 |
+| Service Stack 변경 | 가능 | guest activation 필수 |
 | guest activation request/result 계약 변경 | bridge bundle 권장 | 구버전 host/guest 조합을 고려 |
 | Docker image bundle 변경 | 가능 | guest activation 필수 |
-| rootfs-base 변경 | 가능 | 기존 `vm-disk.img`에는 자동 전개되지 않음 |
-| mutable VM disk 교체 | 일반 update 금지 | Danger Zone의 별도 rootfs replacement 대상 |
+| rootfs-base 변경 | 별도 `vm-image-update` bundle | 기존 `vm-disk.img`에는 자동 전개되지 않음 |
+| mutable VM disk 교체 | Product Update 금지 | Danger Zone의 별도 VM Image replacement 대상 |
 
 ### Bridge Bundle 기준
 
-아래 상황에서는 일반 update bundle 대신 bridge bundle을 먼저 제공합니다.
+아래 상황에서는 일반 Product Update bundle 대신 bridge/two-phase Product Update bundle을 먼저 제공합니다.
 
 | 상황 | bridge bundle에 포함할 것 |
 |---|---|
-| host updater가 새 manifest를 읽지 못함 | `runtime-tools.tar.gz`, Helper app |
+| host Updater가 새 manifest를 읽지 못함 | `runtime-tools.tar.gz`, Helper app |
 | guest activation script 계약이 바뀜 | `guest-deploy.tar.gz`, cloud-init seed refresh migration |
 | result/status parser 계약이 바뀜 | `runtime-tools.tar.gz`, Helper app |
 | update progress 표시 방식이 바뀜 | Helper app, runtime-tools |
@@ -221,14 +274,19 @@ Release gate를 통과하지 못한 bundle은 현장 전달 대상이 아닙니�
 
 ## Update Bundle 구조
 
-일반 update bundle은 설치 파일 전체가 아니라 교체 가능한 artifact 묶음입니다.
+Product Update bundle은 설치 파일 전체가 아니라 교체 가능한 artifact 묶음입니다.
 
 ```text
-dist/update-bundles/update-bundle-<version>/
+dist/update-bundles/update-bundle-<version>.tar.gz
+```
+
+tarball 내부 구조:
+
+```text
+update-bundle-<version>/
   manifest.json
   checksums.txt
   signature
-  rootfs-base.raw.gz
   app-bundle.tar.gz
   runtime-tools.tar.gz
   nginx-bundle.tar.gz
@@ -236,15 +294,19 @@ dist/update-bundles/update-bundle-<version>/
   migrations/
 ```
 
+`rootfs-base.raw.gz`는 Product Update bundle에 포함하지 않습니다. VM Image/rootfs를
+바꾸는 경우에만 `make vm-rootfs-update-bundle`로 별도 bundle을 만들며, 이때 manifest에
+`rootfs-base` artifact가 추가됩니다.
+
 각 artifact의 의미는 아래와 같습니다.
 
 | artifact | 대상 | 적용 결과 |
 |---|---|---|
 | `app-bundle.tar.gz` | `/Applications/VitalServer Helper.app` | Helper UI 교체. 적용 중 실행 중인 app과 충돌할 수 있어 재실행이 필요 |
-| `runtime-tools.tar.gz` | `/usr/local/bin` | `vitalserver-vm`, `vitalserver-proxy-run`, uninstall CLI 교체 |
+| `runtime-tools.tar.gz` | `/usr/local/bin` | Updater/Supervisor/VM Driver tools, `vitalserver-proxy-run`, uninstall CLI 교체 |
 | `nginx-bundle.tar.gz` | `/Library/Application Support/TiroshVitalServer/nginx` | macOS host proxy binary/config asset 교체 |
 | `guest-deploy.tar.gz` | `/Library/Application Support/TiroshVitalServer/vm/data/deploy` | VM 안에서 참조하는 Compose, guest bin/systemd, nginx config, Docker image bundle 교체 |
-| `rootfs-base.raw.gz` | `/Library/Application Support/TiroshVitalServer/vm/runtime/rootfs-base.raw.gz` | 이후 provisioning 기준 base artifact 교체. 기존 `vm-disk.img`에는 자동 전개하지 않음 |
+| `rootfs-base.raw.gz` | `/Library/Application Support/TiroshVitalServer/vm/runtime/rootfs-base.raw.gz` | `vm-image-update` bundle에만 포함. 이후 provisioning 기준 base artifact 교체. 기존 `vm-disk.img`에는 자동 전개하지 않음 |
 | `migrations/*` | host runtime command | 설치된 runtime 상태를 바꾸는 executable migration. 기본 bundle에는 cloud-init seed refresh migration이 포함됨 |
 
 중요한 구분은 `rootfs-base.raw.gz`와 `vm-disk.img`입니다.
@@ -254,9 +316,9 @@ rootfs-base.raw.gz = immutable base artifact
 vm-disk.img        = installed mutable VM instance
 ```
 
-update에서 `rootfs-base.raw.gz`를 교체해도 이미 생성된 `vm-disk.img` 내부 OS/package는 자동으로 바뀌지 않습니다. 이미 설치된 VM 내부를 바꾸려면 migration이나 guest-side activation 단계가 필요합니다.
+rootfs update에서 `rootfs-base.raw.gz`를 교체해도 이미 생성된 `vm-disk.img` 내부 OS/package는 자동으로 바뀌지 않습니다. 이미 설치된 VM 내부를 바꾸려면 migration이나 guest-side activation 단계가 필요합니다.
 
-따라서 기존 `vm-disk.img` 자체가 Docker, Docker Compose, Avahi, growpart 같은 runtime package를 가지고 있지 않다면 일반 update bundle만으로는 복구할 수 없습니다. 이 경우에는 새 package로 재설치하거나, 별도의 VM/rootfs replacement 흐름을 사용해야 합니다. 이 흐름은 운영 데이터 보존 정책이 더 민감하므로 일반 Update 탭이 아니라 Danger Zone 대상입니다.
+따라서 기존 `vm-disk.img` 자체가 Docker, Docker Compose, Avahi, growpart 같은 runtime package를 가지고 있지 않다면 Product Update bundle만으로는 복구할 수 없습니다. 이 경우에는 새 package로 재설치하거나, 별도의 VM Image replacement 흐름을 사용해야 합니다. 이 흐름은 운영 데이터 보존 정책이 더 민감하므로 Update 탭이 아니라 Danger Zone 대상입니다.
 
 ## Rootfs 변경 기준
 
@@ -287,7 +349,7 @@ rootfs는 Linux VM의 OS base입니다. 변경 기준은 “Mac host나 guest de
 | 변경 | 반영 artifact |
 |---|---|
 | Helper app UI 변경 | `app-bundle.tar.gz` |
-| RuntimeOrchestrator Swift CLI 변경 | `runtime-tools.tar.gz` |
+| Updater/Supervisor/VM Driver Swift CLI 변경 | `runtime-tools.tar.gz` |
 | host nginx binary/config 변경 | `nginx-bundle.tar.gz` |
 | `compose.yaml` 변경 | `guest-deploy.tar.gz` |
 | guest `bootstrap.sh`, `bin/*`, `systemd/*`, `nginx/*.conf` 변경 | `guest-deploy.tar.gz` |
@@ -310,11 +372,11 @@ Ubuntu / apt / Docker daemon / OS service 변경
   -> rootfs 필요
 ```
 
-rootfs 변경을 포함한 update bundle은 `rootfs-base.raw.gz`를 교체하지만, 이미 설치된 mutable `vm-disk.img`를 자동 교체하지 않습니다. 따라서 기존 설치본의 OS package 상태까지 바꿔야 하는 경우에는 일반 update가 아니라 fresh install, VM/rootfs replacement, 또는 offline OS package migration 정책을 함께 설계해야 합니다.
+VM Image Update bundle은 `rootfs-base.raw.gz`를 교체하지만, 이미 설치된 mutable `vm-disk.img`를 자동 교체하지 않습니다. 따라서 기존 설치본의 OS package 상태까지 바꿔야 하는 경우에는 Product Update가 아니라 fresh install, VM Image replacement, 또는 offline OS package migration 정책을 함께 설계해야 합니다.
 
 ## 보존되는 것과 바뀌는 것
 
-기본 update는 운영 데이터 보존을 우선합니다.
+기본 Product Update는 운영 데이터 보존을 우선합니다.
 
 | 구분 | 경로/대상 | update 기본 정책 |
 |---|---|---|
@@ -365,7 +427,7 @@ Helper app의 Update 탭과 CLI는 같은 Swift runtime lifecycle을 사용합�
 | preflight | stage/apply/backup에 필요한 여유 공간 확인 |
 | backup | rollback 가능한 artifact를 `backups/` 아래에 저장 |
 | stop services | VM/proxy/watchdog launchd service 중지 |
-| replace | app/runtime-tools/nginx/guest-deploy/rootfs-base 교체 |
+| replace | app/runtime-tools/nginx/guest-deploy 교체. rootfs-base는 bundle에 포함된 경우에만 교체 |
 | migrations | executable migration을 순서대로 실행 |
 | cloud-init refresh | `guest-deploy`가 바뀐 경우 새 instance-id로 seed를 갱신해 bootstrap 재실행을 유도 |
 | restart | 이전에 runtime이 running 상태였으면 VM/proxy/watchdog 재시작 |
@@ -383,7 +445,7 @@ Update와 watchdog은 같은 runtime 자원을 만집니다.
 update:
   stop/start VM service
   stop/start proxy service
-  replace runtime tools
+  replace Updater/Supervisor/VM Driver tools
   replace guest deploy
   request guest activation
   wait for runtime readiness
@@ -490,7 +552,6 @@ Bundle 검증과 host-side artifact 교체가 통과했더라도, guest-side act
 bundle verified
 bundle staged
 backup created
-replace-rootfs-base completed
 replace-update-artifacts completed
 run-migrations: no migrations
 start-runtime-services completed
@@ -573,24 +634,24 @@ The target bootstrap never runs apt-get. Rebuild the package rootfs with make vm
 Required commands/services: curl, docker, docker compose, avahi-daemon, growpart.
 ```
 
-이 메시지는 update bundle의 `rootfs-base.raw.gz`가 잘못 교체됐다는 뜻이 아닙니다. 이미 설치되어 사용 중인 mutable disk인 `vm-disk.img` 안에 필요한 OS package가 없다는 뜻입니다.
+이 메시지는 Product Update bundle에 rootfs가 빠졌거나, VM Image Update bundle의 `rootfs-base.raw.gz`가 잘못 교체됐다는 뜻이 아닙니다. 이미 설치되어 사용 중인 mutable disk인 `vm-disk.img` 안에 필요한 OS package가 없다는 뜻입니다.
 
 중요한 제약:
 
 | 항목 | 설명 |
 |---|---|
-| `rootfs-base.raw.gz` | update로 교체됨. 새 설치 또는 VM disk 재생성 기준 |
-| `vm-disk.img` | 운영 중인 mutable disk. 일반 update에서는 보존됨 |
+| `rootfs-base.raw.gz` | VM Image Update bundle에서만 교체됨. 새 설치 또는 VM disk 재생성 기준 |
+| `vm-disk.img` | 운영 중인 mutable disk. Product Update에서는 보존됨 |
 | guest deploy | update로 교체됨. VM 안에서 bootstrap/activation이 실행되어야 반영됨 |
 | OS package | 기존 `vm-disk.img` 안에 없으면 일반 guest deploy update만으로 추가할 수 없음 |
 
 이 상태에서 가능한 선택지는 아래입니다.
 
 1. 새 package로 재설치한다. `.vital` 저장 경로와 backup 보존 여부를 먼저 확인합니다.
-2. Danger Zone에 VM/rootfs replacement 기능을 추가해 `vm-disk.img`를 새 rootfs에서 재생성하고, Redis/Vital files 같은 운영 데이터를 별도로 보존/복원합니다.
+2. Danger Zone에 VM Image replacement 기능을 추가해 `vm-disk.img`를 새 rootfs에서 재생성하고, Redis/Vital files 같은 운영 데이터를 별도로 보존/복원합니다.
 3. 현장용 offline OS package bundle을 별도로 만들어 guest migration에서 설치합니다. 완전 air-gapped 제품에서는 이 방식도 artifact 검증과 rollback 정책이 필요합니다.
 
-단순히 같은 bundle을 다시 적용하면 같은 bootstrap 실패가 반복됩니다. mutable VM disk의 OS package 상태가 원인인 경우에는 일반 update bundle이 아니라 재설치, rootfs replacement, 또는 별도 offline OS package migration이 필요합니다.
+단순히 같은 bundle을 다시 적용하면 같은 bootstrap 실패가 반복됩니다. mutable VM disk의 OS package 상태가 원인인 경우에는 Product Update bundle이 아니라 재설치, VM Image replacement, 또는 별도 offline OS package migration이 필요합니다.
 
 ## 확인해야 할 로그
 
@@ -607,15 +668,18 @@ cat "/Library/Application Support/TiroshVitalServer/vm/data/run/runtime-state.js
 bundle 자체를 확인할 때:
 
 ```sh
-cat dist/update-bundles/update-bundle-<version>/manifest.json
-tar -tzf dist/update-bundles/update-bundle-<version>/guest-deploy.tar.gz | grep docker-images
+tar -xOf dist/update-bundles/update-bundle-<version>.tar.gz \
+  update-bundle-<version>/manifest.json
+tar -xOf dist/update-bundles/update-bundle-<version>.tar.gz \
+  update-bundle-<version>/guest-deploy.tar.gz | tar -tzf - | grep docker-images
 ```
 
 Docker image bundle architecture를 확인할 때:
 
 ```sh
-tar -xOf dist/update-bundles/update-bundle-<version>/guest-deploy.tar.gz \
-  deploy/docker-images/vitalserver-images.tar.gz > /tmp/vitalserver-images.tar.gz
+tar -xOf dist/update-bundles/update-bundle-<version>.tar.gz \
+  update-bundle-<version>/guest-deploy.tar.gz > /tmp/guest-deploy.tar.gz
+tar -xOf /tmp/guest-deploy.tar.gz deploy/docker-images/vitalserver-images.tar.gz > /tmp/vitalserver-images.tar.gz
 
 tar -xOf /tmp/vitalserver-images.tar.gz manifest.json
 ```
