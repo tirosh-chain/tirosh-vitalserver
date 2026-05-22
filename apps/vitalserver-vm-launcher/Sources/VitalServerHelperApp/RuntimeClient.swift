@@ -1,30 +1,6 @@
 import Foundation
 
-struct RuntimeClientCapabilities: Equatable {
-    var canInstallRuntime = true
-    var canUninstallRuntime = true
-    var canApplyBundle = true
-    var canRollback = true
-    var canEditVMResources = true
-    var canEditNetworkExposure = true
-    var canResetAdminPassword = true
-    var canOpenLocalFiles = true
-    var canStreamLogs = true
-    var canControlRuntimeServices = true
-    var canExportLogs = true
-    var canViewReleaseMetadata = true
-}
-
-struct RuntimeLogExportResult: Equatable {
-    let destination: URL
-}
-
-struct RuntimeReleaseInfo: Equatable {
-    let helperVersion: String
-    let minimumUpdaterVersion: String
-    let vitalServerVersion: String
-    let services: [RuntimeBundledServiceInfo]
-
+extension RuntimeReleaseInfo {
     static let generated = RuntimeReleaseInfo(
         helperVersion: GeneratedRelease.helperVersion,
         minimumUpdaterVersion: GeneratedRelease.minUpdaterVersion,
@@ -62,41 +38,6 @@ struct RuntimeReleaseInfo: Equatable {
             ),
         ]
     )
-}
-
-struct RuntimeBundledServiceInfo: Equatable, Identifiable {
-    var id: String { name }
-    let name: String
-    let image: String
-    let version: String
-}
-
-@MainActor
-protocol RuntimeClient {
-    var capabilities: RuntimeClientCapabilities { get }
-
-    func loadSettings() -> RuntimeSettings
-    func loadStatus(settings: RuntimeSettings) -> RuntimeStatus
-    func loadHealthStatus(settings: RuntimeSettings) async -> RuntimeStatus
-    func loadBackups(latestBackupPath: String?) -> [RuntimeBackup]
-    func updateBundleSummary(url: URL) -> String
-    func logText(sourceID: LogSourceID, helperMessage: String, lineLimit: Int) -> String
-    func preferredLogsPath() -> String
-    func vitalFileFolders(root: String) -> [VitalFileFolder]
-    func legacyCommandProgressLine() -> String?
-    func createDirectory(at url: URL)
-    func verifyUpdateBundle(url: URL) async throws -> ProcessResult
-    func uninstallRuntime(clean: Bool) async throws -> ProcessResult
-    func applySettings(_ settings: RuntimeSettings) async throws -> ProcessResult
-    func applyUpdateBundle(url: URL) async throws -> ProcessResult
-    func rollbackRuntime(backupURL: URL) async throws -> ProcessResult
-    func deleteBackup(url: URL) async throws -> ProcessResult
-    func repairProxy(proxyPort: Int) async throws -> ProcessResult
-    func repairDatastore() async throws -> ProcessResult
-    func startRuntimeServices() async throws -> ProcessResult
-    func stopRuntimeServices() async throws -> ProcessResult
-    func exportLogs(to destination: URL) async throws -> RuntimeLogExportResult
-    func loadReleaseInfo() async throws -> RuntimeReleaseInfo
 }
 
 @MainActor

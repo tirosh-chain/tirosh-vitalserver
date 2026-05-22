@@ -591,12 +591,6 @@ final class RuntimeController: ObservableObject {
 
 }
 
-struct VitalFileFolder: Identifiable {
-    var id: String { path }
-    let name: String
-    let path: String
-}
-
 enum RuntimeControllerError: LocalizedError {
     case invalidAdminPassword
     case adminPasswordFileCreateFailed

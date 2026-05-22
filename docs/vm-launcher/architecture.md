@@ -462,7 +462,8 @@ UI 상태, capability guard, usecase orchestration, 화면 메시지 변환
 
 | 계층 | 역할 | 주요 코드 | 책임 |
 |---|---|---|---|
-| `VitalServerHelperApp` | 운영 UI | `Sources/VitalServerHelperApp/*` | 사용자 입력 수집, CLI 호출, status/log/settings 표시 |
+| `VitalServerHelperApp` | 운영 UI와 local adapter | `Sources/VitalServerHelperApp/*` | SwiftUI 화면, native shell, local file/process adapter, RuntimeControl 구현 연결 |
+| `RuntimeControl` | UI-usecase 입출력 계약 | `Sources/RuntimeControl/*` | `RuntimeClient` protocol, status/settings/backup/log/release DTO, command result와 닫힌 선택지 enum |
 | `HostRuntimeControl` | local control backend | `Sources/HostRuntimeControl/*` | Updater/Supervisor/VM Driver 구현. VM 시작/중지, 설치/설정/업데이트/롤백, launchd/nginx/health 제어 |
 | `Guest VM` | Linux 실행 환경 | `Support/Guest/*` | bootstrap, Docker image load, Compose stack 실행, update activation, datastore repair |
 | `RuntimeCore` | 공유 계약/정책 | `Sources/RuntimeCore/*` | DTO/enum/file names, health/guest evaluator, operation plan, repository/clock/command/file port |
