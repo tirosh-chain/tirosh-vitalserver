@@ -4,6 +4,7 @@ import XCTest
 final class RuntimeOperationPlanTests: XCTestCase {
     func testInstallPlanStepOrder() {
         XCTAssertEqual(RuntimeOperationPlans.install.operation, .install)
+        XCTAssertTrue(RuntimeOperationPlans.install.isValid)
         XCTAssertEqual(RuntimeOperationPlans.install.steps.map(\.rawValue), [
             "load-install-settings",
             "prepare-install-directories",
@@ -23,6 +24,7 @@ final class RuntimeOperationPlanTests: XCTestCase {
 
     func testApplyBundlePlanStepOrder() {
         XCTAssertEqual(RuntimeOperationPlans.applyBundle.operation, .applyBundle)
+        XCTAssertTrue(RuntimeOperationPlans.applyBundle.isValid)
         XCTAssertEqual(RuntimeOperationPlans.applyBundle.steps.map(\.rawValue), [
             "stop-runtime-services",
             "replace-rootfs-base",
@@ -38,6 +40,7 @@ final class RuntimeOperationPlanTests: XCTestCase {
 
     func testRollbackPlanStepOrder() {
         XCTAssertEqual(RuntimeOperationPlans.rollback.operation, .rollback)
+        XCTAssertTrue(RuntimeOperationPlans.rollback.isValid)
         XCTAssertEqual(RuntimeOperationPlans.rollback.steps.map(\.rawValue), [
             "rollback-stop-runtime-services",
             "rollback-restore-rootfs-base",
@@ -56,5 +59,33 @@ final class RuntimeOperationPlanTests: XCTestCase {
         let encoded = try JSONEncoder().encode(decoded)
         let roundTripped = try JSONDecoder().decode(RuntimeWorkflowStep.self, from: encoded)
         XCTAssertEqual(roundTripped.rawValue, "future-step")
+    }
+
+    func testWorkflowStepsExposeOwningOperation() {
+        XCTAssertEqual(RuntimeWorkflowStep.loadInstallSettings.operation, .install)
+        XCTAssertEqual(RuntimeWorkflowStep.stopRuntimeServices.operation, .applyBundle)
+        XCTAssertEqual(RuntimeWorkflowStep.rollbackRestoreRootfsBase.operation, .rollback)
+        XCTAssertNil(RuntimeWorkflowStep.unknown("future-step").operation)
+    }
+
+    func testPlanCreationRejectsStepsThatDoNotBelongToOperation() {
+        XCTAssertThrowsError(try RuntimeOperationPlan(
+            operation: .install,
+            steps: [.loadInstallSettings, .replaceRootfsBase, .unknown("future-step")]
+        )) { error in
+            XCTAssertEqual(error as? RuntimeOperationPlanValidationError, RuntimeOperationPlanValidationError(
+                operation: .install,
+                invalidSteps: [.replaceRootfsBase, .unknown("future-step")]
+            ))
+        }
+    }
+
+    func testPlanCanReportInvalidStepsBeforeConstruction() {
+        let invalidSteps = RuntimeOperationPlan.invalidSteps(
+            operation: .install,
+            steps: [.loadInstallSettings, .replaceRootfsBase, .unknown("future-step")]
+        )
+
+        XCTAssertEqual(invalidSteps, [.replaceRootfsBase, .unknown("future-step")])
     }
 }

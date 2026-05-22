@@ -3,7 +3,7 @@ import XCTest
 
 final class RuntimeOperationPlanRunnerTests: XCTestCase {
     func testRunsEveryStepAndPublishesStartedThenCompleted() throws {
-        let plan = RuntimeOperationPlan(
+        let plan = try RuntimeOperationPlan(
             operation: .applyBundle,
             steps: [.stopRuntimeServices, .replaceRootfsBase]
         )
@@ -33,7 +33,7 @@ final class RuntimeOperationPlanRunnerTests: XCTestCase {
     }
 
     func testStopsOnFailureAndPublishesFailedEvent() {
-        let plan = RuntimeOperationPlan(
+        let plan = try! RuntimeOperationPlan(
             operation: .rollback,
             steps: [.rollbackStopRuntimeServices, .rollbackRestoreRootfsBase, .rollbackWaitRuntimeHealth]
         )
@@ -57,6 +57,18 @@ final class RuntimeOperationPlanRunnerTests: XCTestCase {
         XCTAssertEqual(events.last?.step, .rollbackRestoreRootfsBase)
         XCTAssertEqual(events.last?.phase, .failed)
         XCTAssertEqual(events.last?.message, "step failed: rollback-restore-rootfs-base: failed")
+    }
+
+    func testRejectsPlanContainingStepsFromAnotherOperationBeforeExecution() {
+        XCTAssertThrowsError(try RuntimeOperationPlan(
+            operation: .install,
+            steps: [.loadInstallSettings, .replaceRootfsBase]
+        )) { error in
+            XCTAssertEqual(error as? RuntimeOperationPlanValidationError, RuntimeOperationPlanValidationError(
+                operation: .install,
+                invalidSteps: [.replaceRootfsBase]
+            ))
+        }
     }
 }
 

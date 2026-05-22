@@ -6,7 +6,7 @@ final class RuntimeStatusDocumentBuilderTests: XCTestCase {
         let progress = RuntimeProgressDocument(
             operation: .applyBundle,
             phase: .running,
-            step: "activate-guest-update",
+            step: .activateGuestUpdate,
             stepStatus: .started,
             message: "Waiting for VM update activation",
             reasonCodes: ["guest-activation-pending"],

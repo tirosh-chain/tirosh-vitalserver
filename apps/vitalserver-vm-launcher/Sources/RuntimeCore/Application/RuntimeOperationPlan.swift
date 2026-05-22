@@ -155,6 +155,48 @@ public enum RuntimeWorkflowStep: Codable, Equatable, Sendable {
         }
     }
 
+    public var operation: RuntimeOperation? {
+        switch self {
+        case .loadInstallSettings,
+             .prepareInstallDirectories,
+             .rotateRuntimeLogs,
+             .configureGuestRuntimeConfig,
+             .prepareInstalledExecutables,
+             .provisionVMDisk,
+             .configureVMRuntime,
+             .createCloudInitSeed,
+             .writeInstallRuntimeVersion,
+             .configureInstalledPermissions,
+             .startInstalledServices,
+             .applyStartOnBootPolicy,
+             .cleanupInstallSettings:
+            return .install
+        case .stopRuntimeServices,
+             .replaceRootfsBase,
+             .replaceUpdateArtifacts,
+             .runMigrations,
+             .refreshCloudInitSeed,
+             .writeRuntimeVersion,
+             .startRuntimeServices,
+             .activateGuestUpdate,
+             .waitRuntimeHealth:
+            return .applyBundle
+        case .rollbackStopRuntimeServices,
+             .rollbackRestoreRootfsBase,
+             .rollbackRestoreRuntimeVersion,
+             .rollbackRestoreUpdateArtifacts,
+             .rollbackStartRuntimeServices,
+             .rollbackWaitRuntimeHealth:
+            return .rollback
+        case .unknown:
+            return nil
+        }
+    }
+
+    public func belongs(to operation: RuntimeOperation) -> Bool {
+        self.operation == operation
+    }
+
     public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         self.init(rawValue: try container.decode(String.self))
@@ -170,14 +212,52 @@ public struct RuntimeOperationPlan: Equatable, Sendable {
     public let operation: RuntimeOperation
     public let steps: [RuntimeWorkflowStep]
 
-    public init(operation: RuntimeOperation, steps: [RuntimeWorkflowStep]) {
+    public init(operation: RuntimeOperation, steps: [RuntimeWorkflowStep]) throws {
+        let invalidSteps = Self.invalidSteps(operation: operation, steps: steps)
+        guard invalidSteps.isEmpty else {
+            throw RuntimeOperationPlanValidationError(
+                operation: operation,
+                invalidSteps: invalidSteps
+            )
+        }
+
         self.operation = operation
         self.steps = steps
+    }
+
+    public var invalidSteps: [RuntimeWorkflowStep] {
+        Self.invalidSteps(operation: operation, steps: steps)
+    }
+
+    public var isValid: Bool {
+        invalidSteps.isEmpty
+    }
+
+    public static func invalidSteps(
+        operation: RuntimeOperation,
+        steps: [RuntimeWorkflowStep]
+    ) -> [RuntimeWorkflowStep] {
+        steps.filter { !$0.belongs(to: operation) }
+    }
+}
+
+public struct RuntimeOperationPlanValidationError: Error, Equatable, Sendable, CustomStringConvertible {
+    public let operation: RuntimeOperation
+    public let invalidSteps: [RuntimeWorkflowStep]
+
+    public init(operation: RuntimeOperation, invalidSteps: [RuntimeWorkflowStep]) {
+        self.operation = operation
+        self.invalidSteps = invalidSteps
+    }
+
+    public var description: String {
+        let stepNames = invalidSteps.map(\.rawValue).joined(separator: ", ")
+        return "invalid steps for \(operation.rawValue): \(stepNames)"
     }
 }
 
 public enum RuntimeOperationPlans {
-    public static let install = RuntimeOperationPlan(
+    public static let install = try! RuntimeOperationPlan(
         operation: .install,
         steps: [
             .loadInstallSettings,
@@ -196,7 +276,7 @@ public enum RuntimeOperationPlans {
         ]
     )
 
-    public static let applyBundle = RuntimeOperationPlan(
+    public static let applyBundle = try! RuntimeOperationPlan(
         operation: .applyBundle,
         steps: [
             .stopRuntimeServices,
@@ -211,7 +291,7 @@ public enum RuntimeOperationPlans {
         ]
     )
 
-    public static let rollback = RuntimeOperationPlan(
+    public static let rollback = try! RuntimeOperationPlan(
         operation: .rollback,
         steps: [
             .rollbackStopRuntimeServices,

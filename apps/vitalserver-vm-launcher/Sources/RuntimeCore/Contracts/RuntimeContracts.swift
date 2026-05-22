@@ -393,7 +393,7 @@ public struct ResourceUsage: Codable, Equatable {
 public struct RuntimeProgressDocument: Codable, Equatable {
     public let operation: RuntimeOperation
     public let phase: RuntimeProgressPhase
-    public let step: String?
+    public let step: RuntimeWorkflowStep?
     public let stepStatus: RuntimeProgressStepStatus?
     public let message: String
     public let reasonCodes: [String]
@@ -403,7 +403,7 @@ public struct RuntimeProgressDocument: Codable, Equatable {
     public init(
         operation: RuntimeOperation,
         phase: RuntimeProgressPhase,
-        step: String?,
+        step: RuntimeWorkflowStep?,
         stepStatus: RuntimeProgressStepStatus?,
         message: String,
         reasonCodes: [String],
@@ -433,7 +433,7 @@ public struct RuntimeProgressDocument: Codable, Equatable {
         self.init(
             operation: RuntimeOperation(rawValue: operation),
             phase: RuntimeProgressPhase(rawValue: phase),
-            step: step,
+            step: step.map(RuntimeWorkflowStep.init(rawValue:)),
             stepStatus: stepStatus.map(RuntimeProgressStepStatus.init(rawValue:)),
             message: message,
             reasonCodes: reasonCodes,

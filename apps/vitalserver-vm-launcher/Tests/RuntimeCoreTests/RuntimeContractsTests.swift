@@ -20,7 +20,7 @@ final class RuntimeContractsTests: XCTestCase {
         XCTAssertEqual(document.schemaVersion, 2)
         XCTAssertEqual(document.status, .updating)
         XCTAssertEqual(document.progress?.operation, .applyBundle)
-        XCTAssertEqual(document.progress?.step, "activate-guest-update")
+        XCTAssertEqual(document.progress?.step, .activateGuestUpdate)
         XCTAssertEqual(document.progress?.stepStatus, .started)
         XCTAssertEqual(document.progress?.reasonCodes, ["guest-activation-pending"])
     }

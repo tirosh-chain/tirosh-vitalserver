@@ -30,6 +30,14 @@ public enum RuntimeOperationPlanRunner {
         execute: (RuntimeWorkflowStep) throws -> Void,
         publish: (RuntimeStepExecutionEvent) -> Void
     ) throws {
+        let invalidSteps = plan.invalidSteps
+        guard invalidSteps.isEmpty else {
+            throw RuntimeOperationPlanValidationError(
+                operation: plan.operation,
+                invalidSteps: invalidSteps
+            )
+        }
+
         for step in plan.steps {
             publish(event(
                 plan: plan,

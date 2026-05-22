@@ -87,6 +87,10 @@ struct RuntimeStatus {
             .capitalized
     }
 
+    private func humanizeStepName(_ step: RuntimeWorkflowStep) -> String {
+        humanizeStepName(step.rawValue)
+    }
+
     private func isSuccessfulHTTPStatus(_ value: String?) -> Bool {
         guard let value, let code = Int(value) else {
             return false
