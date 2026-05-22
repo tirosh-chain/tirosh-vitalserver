@@ -208,21 +208,19 @@ struct RuntimeLifecycle {
     }
 
     func health() throws {
-        printStatus()
-        let snapshot = runtimeHealthSnapshot()
-        let failed = !snapshot.isHealthy
+        try runtimeHealthCheckRunner().run()
+    }
 
-        if failed {
-            try? writeRuntimeStatus(
-                .degraded,
-                operation: .health,
-                message: "runtime health check failed: \(reasonText(snapshot.failureReasons))"
-            )
-            print("health: failed")
-            throw LauncherError.runtimeHealthFailed
-        }
-        try writeRuntimeStatus(.healthy, operation: .health, message: "runtime health check passed")
-        print("health: ok")
+    private func runtimeHealthCheckRunner() -> RuntimeHealthCheckRunner {
+        RuntimeHealthCheckRunner(
+            printStatus: printStatus,
+            healthSnapshot: runtimeHealthSnapshot,
+            writeStatus: { status, operation, message in
+                try writeRuntimeStatus(status, operation: operation, message: message)
+            },
+            reasonText: reasonText,
+            printLine: { line in print(line) }
+        )
     }
 
     func watchdog() throws {
