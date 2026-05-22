@@ -44,14 +44,16 @@ v1 기본값은 `shared/NAT VM + macOS host proxy`입니다. 이 구조는 Docke
 | 운영 설정 변경 | Helper app Settings/Advanced 탭 | `vitalserver-vm runtime configure ... --restart` | [Runtime](runtime.md) |
 | 장애 대응 | Helper app Status/Logs/Advanced/Danger Zone, uninstaller | watchdog log, runtime status, troubleshooting guide | [Troubleshooting](troubleshooting.md) |
 | 개발 VM PoC | package 없이 VM/proxy 직접 실행 | `make vm-up`, `make vm-health`, `make vm-down` | [Runtime](runtime.md) |
-| 구조 판단/리뷰 | 왜 host proxy인지, 책임이 어디인지 | ADR, architecture 문서 | [Architecture](architecture.md), [ADR 0001](../adr/0001-macos-host-proxy-for-vrecorder-ip.md), [ADR 0002](../adr/0002-vitalserver-helper-layered-runtime-refactor.md) |
+| 구조 판단/리뷰 | 왜 host proxy인지, 책임이 어디인지 | ADR, architecture 문서 | [Architecture](architecture.md), [ADR 0001](../adr/0001-macos-host-proxy-for-vrecorder-ip.md), [ADR 0002](../adr/0002-helper-client-boundary-for-local-and-remote-runtime.md), [ADR 0003](../adr/0003-helper-layer-and-component-version-model.md), [ADR 0004](../adr/0004-product-update-and-vm-image-update-contract.md) |
 
 ## 문서 지도
 
 | 문서 | 먼저 볼 때 |
 |---|---|
 | [Architecture](architecture.md) | shared/NAT + host proxy 선택 이유, 단일 노드 가용성, build/runtime/GUI 책임 경계를 볼 때 |
-| [ADR 0002](../adr/0002-vitalserver-helper-layered-runtime-refactor.md) | Helper UI, Updater, Supervisor, VM Driver, Service Stack, VM Image layer와 리팩터링 순서를 볼 때 |
+| [ADR 0002](../adr/0002-helper-client-boundary-for-local-and-remote-runtime.md) | Helper UI와 local/remote runtime implementation 사이의 client boundary를 볼 때 |
+| [ADR 0003](../adr/0003-helper-layer-and-component-version-model.md) | Helper UI, Updater, Supervisor, VM Driver, Service Stack, VM Image layer와 version model을 볼 때 |
+| [ADR 0004](../adr/0004-product-update-and-vm-image-update-contract.md) | Product Update, VM Image Update, two-phase Product Update 계약을 볼 때 |
 | [Packaging and Update](packaging.md) | `make vm-pkg`, `make vm-dmg`, update bundle, install settings, release artifact 흐름을 볼 때 |
 | [Update](update.md) | bundle 적용 과정, 보존/변경되는 항목, guest-side activation, rollback 실패 조건을 볼 때 |
 | [Runtime](runtime.md) | VM boot asset, cloud-init, guest bootstrap, data sharing, network mode, identity/signing 정책을 볼 때 |
