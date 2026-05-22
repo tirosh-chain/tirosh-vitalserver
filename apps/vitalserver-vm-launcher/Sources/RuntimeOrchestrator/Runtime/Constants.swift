@@ -108,6 +108,7 @@ enum Constants {
         static let datastoreRepairWaitTimeoutSeconds = 300.0
         static let updateActivationWaitTimeoutSeconds = 600.0
         static let watchdogRecoveryWaitSeconds = 20.0
+        static let watchdogManagedOperationGraceSeconds = 1_800.0
         static let freeSpaceMarginBytes: UInt64 = 4 * 1024 * 1024 * 1024
         static let updateFreeSpaceMarginBytes: UInt64 = 2 * 1024 * 1024 * 1024
         static let logRotationMaxBytes: UInt64 = 10 * 1024 * 1024

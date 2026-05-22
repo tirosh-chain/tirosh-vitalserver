@@ -189,6 +189,16 @@ Single-node self-healing runtime
 
 이 파일은 `vitalserver-vm runtime install`, `health`, `watchdog`, `apply-bundle`, `rollback`이 갱신합니다. Helper app, watchdog, 운영 CLI는 같은 파일을 읽어 상태를 판단합니다.
 
+`runtime-status.json`은 update/watchdog coordination에도 사용합니다. update와 rollback은 VM/proxy/watchdog launchd service를 직접 stop/start하므로, 이 구간에서 watchdog auto-recovery가 동시에 실행되면 같은 자원을 두 process가 재시작하는 경쟁 상태가 됩니다. 따라서 watchdog은 상태 문서가 아래 operation을 진행 중이라고 판단하면 recovery를 건너뜁니다.
+
+| status | operation | 의미 |
+|---|---|---|
+| `updating` | `apply-bundle` | host artifact 교체, migration, service restart 진행 중 |
+| `recovering` | `activate-guest-update` | guest Docker image load/compose recreate 진행 중 |
+| `recovering` | `rollback` | managed backup 복원 진행 중 |
+
+이 guard는 stale 상태를 영구적으로 믿지 않습니다. 상태 파일의 `updatedAt`이 grace timeout보다 오래되면 watchdog은 update process가 더 이상 살아 있지 않은 것으로 보고 일반 recovery로 돌아갑니다.
+
 상태 값은 아래로 제한합니다.
 
 | status | 의미 |

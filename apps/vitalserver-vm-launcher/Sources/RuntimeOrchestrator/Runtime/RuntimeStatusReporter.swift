@@ -20,6 +20,10 @@ struct RuntimeStatusReporter {
         repository.load()?.status.rawValue ?? "unknown"
     }
 
+    func loadStatus() -> RuntimeStatusDocument? {
+        repository.load()
+    }
+
     func writeStatus(
         _ status: RuntimeStatusLevel,
         operation: RuntimeOperation,

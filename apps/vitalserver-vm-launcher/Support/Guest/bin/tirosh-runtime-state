@@ -24,7 +24,7 @@ http_status() {
 write_current_state() {
   local guest_http redis_ui_http swagger_ui_http
 
-  guest_http="$(http_status "http://127.0.0.1/")"
+  guest_http="$(http_status "http://127.0.0.1/ready")"
   redis_ui_http="$(http_status "http://127.0.0.1/redis-ui/")"
   swagger_ui_http="$(http_status "http://127.0.0.1/swagger/")"
   /usr/local/bin/tirosh-write-runtime-state \

@@ -288,6 +288,32 @@ make vm-proxy-start
 
 host nginx는 trust boundary입니다. client가 보낸 forwarding header를 신뢰하지 않고, `$remote_addr`를 기준으로 `X-Forwarded-For`, `X-Real-IP`, `X-Client-IP`, `Forwarded`를 다시 설정합니다.
 
+## Health Endpoints
+
+runtime health는 사용자 화면, watchdog, update wait가 같이 사용하는 계약입니다. 제품 runtime은 liveness와 readiness를 분리합니다.
+
+| endpoint | 의미 | 사용처 |
+|---|---|---|
+| `/health` | proxy/nginx process가 살아 있고 요청을 받을 수 있음 | liveness 확인, proxy 자체 장애 판단 |
+| `/ready` | VitalServer stack이 사용자 요청을 처리할 준비가 됨 | watchdog recovery 판단, update health wait, Helper status |
+
+단일 Mac runtime이라 Kubernetes처럼 traffic routing이나 scale-out을 하지는 않지만, `/health`와 `/ready`를 분리해야 장애 판단이 안정적입니다.
+
+```text
+/health failure
+  -> 해당 process가 죽었거나 listen하지 않음
+  -> proxy restart 대상
+
+/ready failure
+  -> process는 살아 있지만 upstream/app/guest가 아직 준비되지 않음
+  -> update 중이면 대기
+  -> 일반 운영 중이면 watchdog recovery 대상
+```
+
+guest runtime state writer도 VitalServer 상태를 `/ready` 기준으로 기록합니다. `/`는 VitalServer app이 정상이어도 login 또는 UI route로 `302` redirect를 반환할 수 있으므로 readiness source가 아닙니다.
+
+watchdog auto-recovery는 update/rollback과 동시에 실행되면 안 됩니다. `runtime-status.json`이 `apply-bundle`, `activate-guest-update`, `rollback` 진행 중임을 나타내면 watchdog은 recovery를 건너뜁니다. 상태가 오래 갱신되지 않아 stale로 판단되면 watchdog은 다시 일반 recovery 정책으로 돌아갑니다.
+
 ## DHCP Reservation
 
 static IP를 기본값으로 두지 않습니다. 병원/회사망은 subnet이 제각각이고, 임의 static IP는 충돌을 만들 수 있습니다.

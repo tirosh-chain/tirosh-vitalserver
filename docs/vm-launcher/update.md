@@ -15,6 +15,7 @@ VitalServer Helper의 update bundle이 무엇을 바꾸고, 무엇을 보존하�
 | Docker image bundle만 바꾸면 container가 자동 갱신되나? | update 단계에서 guest-side activation을 실행해야 한다 |
 | `bootstrap.sh` 수정은 update bundle로 반영되나? | 된다. `guest-deploy.tar.gz`에 포함되고 기본 migration/activation 경로로 반영된다 |
 | 실패 시 자동 rollback하나? | apply 중 health check 실패 시 managed backup으로 rollback을 시도한다 |
+| update 중 watchdog이 복구를 시도하나? | 안 한다. `apply-bundle`, `activate-guest-update`, `rollback` 진행 중에는 watchdog auto-recovery를 suppress한다 |
 
 ## Update 안정성 기준
 
@@ -31,6 +32,7 @@ Update 계약의 목표는 “어떤 설치본에서 어떤 update bundle을 적
 | 실패는 상태 파일과 로그에 남김 | 실패 단계, reason code, 사람이 읽을 수 있는 message를 남긴다 |
 | 재실행 가능 | 같은 bundle을 다시 적용해도 중간 산출물 때문에 더 망가지면 안 된다 |
 | rollback 가능 | 운영 데이터는 보존하고 교체 가능한 artifact만 managed backup으로 되돌린다 |
+| update는 runtime 독점 구간 | update/rollback 중 watchdog은 runtime을 재시작하지 않는다 |
 
 ### Update Protocol 계약
 
@@ -372,6 +374,61 @@ Helper app의 Update 탭과 CLI는 같은 Swift runtime lifecycle을 사용합�
 | rollback | health wait 실패 또는 migration 실패 시 backup 복원 시도 |
 
 Helper app은 update 중 Command log를 1초 단위로 갱신합니다. Update 탭에서는 현재 단계와 command log tail을 함께 보여주며, 상세 로그는 Logs 탭의 `Command log`, `Update activation`, `Containers` source에서 확인합니다.
+
+## Watchdog Coordination
+
+Update와 watchdog은 같은 runtime 자원을 만집니다.
+
+```text
+update:
+  stop/start VM service
+  stop/start proxy service
+  replace runtime tools
+  replace guest deploy
+  request guest activation
+  wait for runtime readiness
+
+watchdog:
+  read runtime health
+  restart VM service
+  restart proxy service
+  write runtime status
+```
+
+따라서 update가 진행 중인 동안 watchdog이 auto-recovery를 실행하면 경쟁 상태가 생깁니다. 대표적인 실패 흐름은 아래입니다.
+
+```text
+apply-bundle starts
+  -> VM/proxy/watchdog stopped
+  -> artifacts replaced
+  -> VM/proxy/watchdog restarted
+  -> guest activation still running
+watchdog wakes up
+  -> guest readiness is not ready yet
+  -> VM/proxy restart
+  -> apply-bundle waits for health against a moving target
+```
+
+정책은 명확합니다.
+
+| runtime-status 상태 | operation | watchdog 동작 |
+|---|---|---|
+| `updating` | `apply-bundle` | auto-recovery skip |
+| `recovering` | `activate-guest-update` | auto-recovery skip |
+| `recovering` | `rollback` | auto-recovery skip |
+| `healthy` / `degraded` / `critical` | any | 일반 health/recovery 정책 적용 |
+
+skip은 영구 정지가 아닙니다. 상태 파일이 오래 방치된 경우를 대비해 grace timeout을 둡니다. 이 timeout이 지나면 watchdog은 stale update 상태로 보고 일반 recovery 정책으로 돌아갑니다.
+
+이 정책의 기준 파일은 `runtime-status.json`입니다. Helper UI와 watchdog은 같은 상태 문서를 읽어 update 중인지 판단합니다. update command는 단계별 progress를 이 파일에 기록해야 하며, watchdog은 이 진행 상태를 runtime lock처럼 사용합니다.
+
+중요한 세부 기준:
+
+- update/rollback process가 명시적으로 VM/proxy/watchdog lifecycle을 소유한다.
+- watchdog은 update/rollback 중 VM/proxy를 재시작하지 않는다.
+- update가 실패하면 apply flow가 rollback을 먼저 시도한다.
+- rollback까지 실패하거나 상태가 stale이면 watchdog이 다시 복구 책임을 가진다.
+- guest readiness는 `/ready` endpoint 기준으로 기록한다. `/`는 VitalServer app redirect 때문에 readiness source로 쓰지 않는다.
 
 ## Guest-Side Activation
 
