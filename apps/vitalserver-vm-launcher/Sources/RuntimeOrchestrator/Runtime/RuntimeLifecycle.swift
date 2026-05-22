@@ -443,16 +443,7 @@ struct RuntimeLifecycle {
     }
 
     private func writeInstalledRuntimeVersion() throws {
-        let document = InstalledRuntimeVersionDocument(
-            product: Constants.Product.identifier,
-            runtimeVersion: Constants.launcherVersion,
-            installedAt: isoTimestamp(),
-            rootfsBase: Constants.Artifacts.rootfsBase,
-            vmDisk: Constants.BootAssets.disk
-        )
-        let data = try JSONEncoder.pretty.encode(document)
-        try fileStore.createDirectory(at: runtimeVersion.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try fileStore.writeData(data, to: runtimeVersion, options: [])
+        try runtimeVersionStore().writeInstalledVersion(version: Constants.launcherVersion)
     }
 
     private func configureInstalledPermissions(_ settings: InstallSettings) throws {
@@ -1132,6 +1123,19 @@ struct RuntimeLifecycle {
         )
     }
 
+    private func runtimeVersionStore() -> RuntimeVersionStore {
+        RuntimeVersionStore(
+            versionFile: runtimeVersion,
+            timestamp: isoTimestamp,
+            fileExists: fileExists,
+            createDirectory: { url, withIntermediateDirectories in
+                try fileStore.createDirectory(at: url, withIntermediateDirectories: withIntermediateDirectories)
+            },
+            readData: { url in try fileStore.readData(url) },
+            writeData: { data, url in try fileStore.writeData(data, to: url, options: []) }
+        )
+    }
+
     private func pruneOldRuntimeArtifacts() throws {
         try pruneOldDirectories(in: backupsDirectory, keep: Constants.Runtime.backupKeepCount, requiredNameFragment: "-before-")
         try pruneOldDirectories(in: bundlesDirectory, keep: Constants.Runtime.stagedBundleKeepCount, requiredNameFragment: "update-bundle-")
@@ -1175,16 +1179,7 @@ struct RuntimeLifecycle {
     }
 
     private func writeRuntimeVersion(version: String, bundle: URL) throws {
-        let document = RuntimeVersionDocument(
-            product: Constants.Product.identifier,
-            runtimeVersion: version,
-            appliedAt: isoTimestamp(),
-            bundle: bundle.lastPathComponent,
-            rootfsBase: Constants.Artifacts.rootfsBase,
-            vmDisk: Constants.BootAssets.disk
-        )
-        let data = try JSONEncoder.pretty.encode(document)
-        try fileStore.writeData(data, to: runtimeVersion, options: [])
+        try runtimeVersionStore().writeAppliedVersion(version: version, bundle: bundle)
     }
 
     private func isLaunchdLoaded(_ label: String) -> Bool {
@@ -1509,14 +1504,7 @@ struct RuntimeLifecycle {
     }
 
     private func runtimeVersionValue() -> String {
-        guard fileExists(runtimeVersion),
-              let data = try? fileStore.readData(runtimeVersion),
-              let document = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let version = document["runtimeVersion"] as? String
-        else {
-            return "unknown"
-        }
-        return version
+        runtimeVersionStore().readVersionValue(default: "unknown")
     }
 
     private func runtimeStatusValue() -> String {
