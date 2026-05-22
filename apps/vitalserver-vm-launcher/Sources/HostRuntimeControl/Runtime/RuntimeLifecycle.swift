@@ -410,7 +410,7 @@ struct RuntimeLifecycle {
                 restartLaunchdService(Constants.Launchd.vmService)
             },
             waitForResult: { request in
-                try waitForDatastoreRepairResult(requestId: request.id)
+                try runtimeDatastoreRepairResultWaiter().wait(for: request)
             },
             restartProxyService: {
                 restartLaunchdService(Constants.Launchd.proxyService)
@@ -718,42 +718,19 @@ struct RuntimeLifecycle {
         )
     }
 
-    private func waitForDatastoreRepairResult(requestId: String) throws {
-        log("waiting for datastore repair result timeoutSeconds=\(Constants.Runtime.datastoreRepairWaitTimeoutSeconds)")
-        let maxAttempts = Int(ceil(Constants.Runtime.datastoreRepairWaitTimeoutSeconds / 3.0))
-        let waitResult = DatastoreRepairWaiter.wait(
-            expectedRequestId: requestId,
-            configuration: DatastoreRepairWaitConfiguration(
-                maxAttempts: maxAttempts,
-                progressEveryAttempts: 5
-            ),
-            loadResult: { guestGateway.loadDatastoreRepairResult() },
-            onProgress: { message in
-                log(message)
-                try? writeRuntimeStatus(
-                    .recovering,
-                    operation: .repairDatastore,
-                    message: message
-                )
+    private func runtimeDatastoreRepairResultWaiter() -> RuntimeDatastoreRepairResultWaiter {
+        RuntimeDatastoreRepairResultWaiter(
+            loadResult: {
+                guestGateway.loadDatastoreRepairResult()
             },
-            onStale: { message in
-                log("datastore repair result stale message=\(message)")
+            writeStatus: { status, operation, message in
+                try writeRuntimeStatus(status, operation: operation, message: message)
             },
             sleep: {
                 sleeper.sleep(forTimeInterval: 3)
-            }
+            },
+            log: log
         )
-
-        switch waitResult {
-        case .completed(let message):
-            log("datastore repair guest result completed message=\(message)")
-            return
-        case .failed(let message):
-            log("datastore repair guest result failed message=\(message)")
-            throw LauncherError.runtimeHealthFailed
-        case .timedOut:
-            throw LauncherError.runtimeHealthFailed
-        }
     }
 
     private func reasonText(_ reasons: [RuntimeFailureReason]) -> String {
