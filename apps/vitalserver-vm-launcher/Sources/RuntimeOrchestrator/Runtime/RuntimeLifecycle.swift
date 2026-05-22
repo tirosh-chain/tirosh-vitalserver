@@ -1057,22 +1057,11 @@ struct RuntimeLifecycle {
     }
 
     private func runMigrations(_ migrations: [UpdateBundleMigration], stagedBundle: URL) throws {
-        guard !migrations.isEmpty else {
-            log("no migrations to run")
-            return
-        }
-
-        let migrationDirectory = stagedBundle.appendingPathComponent("migrations")
-        for migration in migrations {
-            let migrationURL = migrationDirectory.appendingPathComponent(migration.name)
-            guard fileStore.isExecutableFile(atPath: migrationURL.path) else {
-                throw LauncherError.bundleVerificationFailed(
-                    "migration is not executable: \(migration.name)"
-                )
-            }
-            log("running migration name=\(migration.name) path=\(migrationURL.path)")
-            try runRequired(migrationURL.path, arguments: [])
-        }
+        try RuntimeMigrationRunner(
+            isExecutableFile: { path in fileStore.isExecutableFile(atPath: path) },
+            runRequired: { path, arguments in try runRequired(path, arguments: arguments) },
+            log: log
+        ).run(migrations, stagedBundle: stagedBundle)
     }
 
     private func replaceUpdateArtifacts(_ artifacts: [UpdateBundleArtifact], stagedBundle: URL) throws {
