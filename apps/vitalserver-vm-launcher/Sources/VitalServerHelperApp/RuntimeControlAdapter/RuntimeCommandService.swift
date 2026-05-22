@@ -10,7 +10,7 @@ struct SystemPrivilegedCommandRunner: PrivilegedCommandRunning {
     func run(shellCommand: String) async -> ProcessResult {
         let loggedCommand = RuntimeCommandFactory.commandWithLog(shellCommand)
         let script = #"do shell script "\#(RuntimeCommandFactory.appleScriptEscaped(loggedCommand))" with administrator privileges"#
-        return await ProcessRunner.run(AppConstants.Commands.osascript, arguments: ["-e", script])
+        return await ProcessRunner.run(RuntimeAdapterConstants.Commands.osascript, arguments: ["-e", script])
     }
 }
 
@@ -21,9 +21,9 @@ enum RuntimeCommandFactory {
 
     static func shellCommand(executable: String, arguments: [String]) -> String {
         var parts: [String] = []
-        if executable == AppConstants.Paths.launcher {
-            parts.append(shellQuote(AppConstants.Commands.env))
-            parts.append("\(AppConstants.Environment.vmHome)=\(shellQuote(AppConstants.Paths.vmHome))")
+        if executable == RuntimeAdapterConstants.Paths.launcher {
+            parts.append(shellQuote(RuntimeAdapterConstants.Commands.env))
+            parts.append("\(RuntimeAdapterConstants.Environment.vmHome)=\(shellQuote(RuntimeAdapterConstants.Paths.vmHome))")
         }
         parts += ([executable] + arguments).map(shellQuote)
         return parts.joined(separator: " ")
@@ -34,7 +34,7 @@ enum RuntimeCommandFactory {
     }
 
     static func deleteBackupCommand(url: URL) -> String {
-        shellCommand(executable: AppConstants.Commands.rm, arguments: ["-rf", "--", url.path])
+        shellCommand(executable: RuntimeAdapterConstants.Commands.rm, arguments: ["-rf", "--", url.path])
     }
 
     static func proxyRepairCommand(proxyPort: Int) -> String {
@@ -42,15 +42,15 @@ enum RuntimeCommandFactory {
         set -euo pipefail
         port=\(proxyPort)
         echo "Checking TCP port ${port}..."
-        if [ ! -x \(shellQuote(AppConstants.Commands.lsof)) ]; then
+        if [ ! -x \(shellQuote(RuntimeAdapterConstants.Commands.lsof)) ]; then
           echo "lsof is not available"
           exit 1
         fi
         expected_nginx_pid=""
-        if [ -s \(shellQuote(AppConstants.Paths.proxyNginxPid)) ]; then
-          expected_nginx_pid="$(cat \(shellQuote(AppConstants.Paths.proxyNginxPid)) 2>/dev/null || true)"
+        if [ -s \(shellQuote(RuntimeAdapterConstants.Paths.proxyNginxPid)) ]; then
+          expected_nginx_pid="$(cat \(shellQuote(RuntimeAdapterConstants.Paths.proxyNginxPid)) 2>/dev/null || true)"
         fi
-        listeners="$(\(shellQuote(AppConstants.Commands.lsof)) -nP -iTCP:${port} -sTCP:LISTEN 2>/dev/null || true)"
+        listeners="$(\(shellQuote(RuntimeAdapterConstants.Commands.lsof)) -nP -iTCP:${port} -sTCP:LISTEN 2>/dev/null || true)"
         if [ -n "${listeners}" ]; then
           printf "%s\\n" "${listeners}"
         else
@@ -74,9 +74,9 @@ enum RuntimeCommandFactory {
           exit 2
         fi
         echo "Restarting host proxy service..."
-        \(shellQuote(AppConstants.Commands.launchctl)) kickstart -k system/\(AppConstants.Launchd.proxyService)
+        \(shellQuote(RuntimeAdapterConstants.Commands.launchctl)) kickstart -k system/\(RuntimeAdapterConstants.Launchd.proxyService)
         sleep 2
-        \(shellQuote(AppConstants.Commands.launchctl)) print system/\(AppConstants.Launchd.proxyService) >/dev/null
+        \(shellQuote(RuntimeAdapterConstants.Commands.launchctl)) print system/\(RuntimeAdapterConstants.Launchd.proxyService) >/dev/null
         echo "Host proxy service restarted."
         """
         return "/bin/bash -lc \(shellQuote(script))"
@@ -84,9 +84,9 @@ enum RuntimeCommandFactory {
 
     static func runtimeServicesCommand(action: RuntimeServicesAction) -> String {
         shellCommand(
-            executable: AppConstants.Paths.launcher,
+            executable: RuntimeAdapterConstants.Paths.launcher,
             arguments: [
-                AppConstants.RuntimeCommand.runtime,
+                RuntimeAdapterConstants.RuntimeCommand.runtime,
                 action.runtimeCommand,
             ]
         )
@@ -94,13 +94,13 @@ enum RuntimeCommandFactory {
 
     static func relaunchHelperCommand() -> String {
         [
-            shellCommand(executable: AppConstants.Commands.sleep, arguments: ["1"]),
-            shellCommand(executable: AppConstants.Commands.open, arguments: ["-n", AppConstants.Paths.managerApp]),
+            shellCommand(executable: RuntimeAdapterConstants.Commands.sleep, arguments: ["1"]),
+            shellCommand(executable: RuntimeAdapterConstants.Commands.open, arguments: ["-n", RuntimeAdapterConstants.Paths.managerApp]),
         ].joined(separator: " && ")
     }
 
     static func commandWithLog(_ shellCommand: String) -> String {
-        let logFile = shellQuote(AppConstants.Paths.commandLogFile)
+        let logFile = shellQuote(RuntimeAdapterConstants.Paths.commandLogFile)
         let script = [
             "rm -f \(logFile)",
             "{ \(shellCommand); } > \(logFile) 2>&1",
@@ -125,9 +125,9 @@ enum RuntimeServicesAction {
     var runtimeCommand: String {
         switch self {
         case .start:
-            return AppConstants.RuntimeCommand.startServices
+            return RuntimeAdapterConstants.RuntimeCommand.startServices
         case .stop:
-            return AppConstants.RuntimeCommand.stopServices
+            return RuntimeAdapterConstants.RuntimeCommand.stopServices
         }
     }
 }

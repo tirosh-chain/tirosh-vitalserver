@@ -9,7 +9,7 @@ struct RuntimeBackupSelectionPolicy {
         return backups.first?.url
     }
 
-    func isManagedBackupURL(_ url: URL, backupsRoot: URL = URL(fileURLWithPath: AppConstants.Paths.backups)) -> Bool {
+    func isManagedBackupURL(_ url: URL, backupsRoot: URL) -> Bool {
         let backupURL = url.standardizedFileURL
         let backupsRootURL = backupsRoot.standardizedFileURL
         guard backupURL.lastPathComponent.contains("-before-") else {

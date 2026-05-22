@@ -8,9 +8,9 @@ protocol RuntimeSettingsReading {
 }
 
 struct RuntimeSettingsPaths {
-    var vmConfig = AppConstants.Paths.vmConfig
-    var vmDisk = AppConstants.Paths.vmDisk
-    var guestRuntimeConfig = AppConstants.Paths.guestRuntimeConfig
+    var vmConfig = RuntimeAdapterConstants.Paths.vmConfig
+    var vmDisk = RuntimeAdapterConstants.Paths.vmDisk
+    var guestRuntimeConfig = RuntimeAdapterConstants.Paths.guestRuntimeConfig
 }
 
 @MainActor
@@ -64,7 +64,7 @@ struct SystemRuntimeSettingsReader: RuntimeSettingsReading {
 
     private func startOnBootEnabled() -> Bool? {
         let result = ProcessRunner.runSync(
-            AppConstants.Commands.launchctl,
+            RuntimeAdapterConstants.Commands.launchctl,
             arguments: ["print-disabled", "system"]
         )
         guard result.exitCode == 0 else {
@@ -72,9 +72,9 @@ struct SystemRuntimeSettingsReader: RuntimeSettingsReading {
         }
         let output = result.stdout
         for label in [
-            AppConstants.Launchd.vmService,
-            AppConstants.Launchd.proxyService,
-            AppConstants.Launchd.watchdogService,
+            RuntimeAdapterConstants.Launchd.vmService,
+            RuntimeAdapterConstants.Launchd.proxyService,
+            RuntimeAdapterConstants.Launchd.watchdogService,
         ] where output.contains("\"\(label)\" => true") {
             return false
         }

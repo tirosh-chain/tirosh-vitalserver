@@ -18,7 +18,7 @@ struct LocalRuntimeLogExporter: RuntimeLogExporting {
     init(
         fileManager: FileManager = .default,
         logCollector: RuntimeLogCollecting = LocalRuntimeLogCollector(),
-        productLogsDirectory: URL = URL(fileURLWithPath: AppConstants.Paths.productLogs),
+        productLogsDirectory: URL = URL(fileURLWithPath: RuntimeAdapterConstants.Paths.productLogs),
         fallbackLogItems: [RuntimeLogExportFallback] = RuntimeLogExportFallback.defaultItems(),
         rotatedFallbackSets: [RuntimeLogExportRotatedFallbackSet] = RuntimeLogExportRotatedFallbackSet.defaultSets(),
         archiveRunner: @escaping (String, [String]) async -> ProcessResult = ProcessRunner.run
@@ -53,7 +53,7 @@ struct LocalRuntimeLogExporter: RuntimeLogExporting {
 
         let temporaryArchive = stagingRoot.appendingPathComponent(destination.lastPathComponent)
         let result = await archiveRunner(
-            AppConstants.Commands.ditto,
+            RuntimeAdapterConstants.Commands.ditto,
             ["-c", "-k", "--sequesterRsrc", "--keepParent", bundleRoot.path, temporaryArchive.path]
         )
         guard result.exitCode == 0 else {
@@ -136,23 +136,23 @@ struct RuntimeLogExportFallback {
     static func defaultItems() -> [RuntimeLogExportFallback] {
         [
             RuntimeLogExportFallback(
-                source: URL(fileURLWithPath: AppConstants.Paths.bootstrapLogSource),
+                source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.bootstrapLogSource),
                 relativeDestination: "guest/\(RuntimeFileNames.bootstrapLog)"
             ),
             RuntimeLogExportFallback(
-                source: URL(fileURLWithPath: AppConstants.Paths.containerLogSource),
+                source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.containerLogSource),
                 relativeDestination: "guest/container-logs.log"
             ),
             RuntimeLogExportFallback(
-                source: URL(fileURLWithPath: AppConstants.Paths.updateActivationLogSource),
+                source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.updateActivationLogSource),
                 relativeDestination: "guest/\(RuntimeFileNames.updateActivationLog)"
             ),
             RuntimeLogExportFallback(
-                source: URL(fileURLWithPath: AppConstants.Paths.datastoreRepairLogSource),
+                source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.datastoreRepairLogSource),
                 relativeDestination: "guest/\(RuntimeFileNames.datastoreRepairLog)"
             ),
             RuntimeLogExportFallback(
-                source: URL(fileURLWithPath: AppConstants.Paths.commandLogFile),
+                source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.commandLogFile),
                 relativeDestination: "command.log"
             ),
         ]
@@ -168,7 +168,7 @@ struct RuntimeLogExportRotatedFallbackSet {
     static func defaultSets() -> [RuntimeLogExportRotatedFallbackSet] {
         [
             RuntimeLogExportRotatedFallbackSet(
-                sourceDirectory: URL(fileURLWithPath: AppConstants.Paths.guestRunDirectory),
+                sourceDirectory: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.guestRunDirectory),
                 sourceFilePrefix: "container-logs.log.",
                 relativeDestinationDirectory: "guest",
                 destinationFilePrefix: "container-logs.log."

@@ -5,10 +5,10 @@ import XCTest
 final class RuntimeCommandFactoryTests: XCTestCase {
     func testShellCommandQuotesArgumentsAndInjectsVMHomeForLauncher() {
         let command = RuntimeCommandFactory.shellCommand(
-            executable: AppConstants.Paths.launcher,
+            executable: RuntimeAdapterConstants.Paths.launcher,
             arguments: [
-                AppConstants.RuntimeCommand.runtime,
-                AppConstants.RuntimeCommand.applyBundle,
+                RuntimeAdapterConstants.RuntimeCommand.runtime,
+                RuntimeAdapterConstants.RuntimeCommand.applyBundle,
                 "/tmp/bundle with 'quote'",
             ]
         )

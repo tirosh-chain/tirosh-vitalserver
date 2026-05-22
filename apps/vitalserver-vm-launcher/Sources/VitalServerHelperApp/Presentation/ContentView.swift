@@ -880,9 +880,9 @@ struct ContentView: View {
         advancedCard(AppConstants.Labels.sectionRuntimePaths) {
             Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 10) {
                 pathRow(AppConstants.Labels.appBundle, Bundle.main.bundlePath)
-                pathRow(AppConstants.Labels.runtimeHome, AppConstants.Paths.vmHome)
+                pathRow(AppConstants.Labels.runtimeHome, controller.installationInfo.runtimeHomePath)
                 pathRow(AppConstants.Labels.dataDirectory, controller.settings.vitalFilesDirectory)
-                pathRow(AppConstants.Labels.backupDirectory, AppConstants.Paths.backups)
+                pathRow(AppConstants.Labels.backupDirectory, controller.installationInfo.backupsPath)
             }
         }
     }

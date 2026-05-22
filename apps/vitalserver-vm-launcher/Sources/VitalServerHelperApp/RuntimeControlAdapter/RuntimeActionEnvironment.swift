@@ -49,8 +49,8 @@ struct SystemRuntimeActionEnvironment: RuntimeActionEnvironment {
         await ProcessRunner.run(
             launcher,
             arguments: [
-                AppConstants.RuntimeCommand.runtime,
-                AppConstants.RuntimeCommand.verifyBundle,
+                RuntimeAdapterConstants.RuntimeCommand.runtime,
+                RuntimeAdapterConstants.RuntimeCommand.verifyBundle,
                 bundleURL.path,
             ]
         )

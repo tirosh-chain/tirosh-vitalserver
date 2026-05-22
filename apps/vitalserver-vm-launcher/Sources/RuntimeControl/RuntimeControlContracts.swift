@@ -412,6 +412,16 @@ public struct RuntimeBundledServiceInfo: Equatable, Identifiable, Sendable {
     }
 }
 
+public struct RuntimeInstallationInfo: Equatable, Sendable {
+    public let runtimeHomePath: String
+    public let backupsPath: String
+
+    public init(runtimeHomePath: String = "", backupsPath: String = "") {
+        self.runtimeHomePath = runtimeHomePath
+        self.backupsPath = backupsPath
+    }
+}
+
 @MainActor
 public protocol RuntimeClient {
     var capabilities: RuntimeClientCapabilities { get }
@@ -438,6 +448,7 @@ public protocol RuntimeClient {
     func stopRuntimeServices() async throws -> ProcessResult
     func exportLogs(to destination: URL) async throws -> RuntimeLogExportResult
     func loadReleaseInfo() async throws -> RuntimeReleaseInfo
+    func loadInstallationInfo() -> RuntimeInstallationInfo
 }
 
 private enum RuntimeControlDefaults {

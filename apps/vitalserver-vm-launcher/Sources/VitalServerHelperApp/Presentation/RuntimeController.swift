@@ -19,6 +19,7 @@ final class RuntimeController: ObservableObject {
     @Published var logStreaming = true
     @Published var isBusy = false
     @Published var releaseInfo = RuntimeReleaseInfo.generated
+    @Published var installationInfo = RuntimeInstallationInfo()
 
     private let runtimeClient: any RuntimeClient
     private let healthNotifications: any HealthNotifying
@@ -60,6 +61,7 @@ final class RuntimeController: ObservableObject {
         self.healthNotificationCoordinator = RuntimeHealthNotificationCoordinator(notifier: self.healthNotifications)
         self.nativeShell = nativeShell ?? SystemRuntimeNativeShell()
         self.settings = self.runtimeClient.loadSettings()
+        self.installationInfo = self.runtimeClient.loadInstallationInfo()
         self.healthNotifications.configure()
     }
 
@@ -297,7 +299,10 @@ final class RuntimeController: ObservableObject {
             message = AppConstants.StatusText.missingBackup
             return
         }
-        guard backupSelectionPolicy.isManagedBackupURL(backupURL) else {
+        guard backupSelectionPolicy.isManagedBackupURL(
+            backupURL,
+            backupsRoot: URL(fileURLWithPath: installationInfo.backupsPath)
+        ) else {
             message = AppConstants.StatusText.invalidBackup
             return
         }

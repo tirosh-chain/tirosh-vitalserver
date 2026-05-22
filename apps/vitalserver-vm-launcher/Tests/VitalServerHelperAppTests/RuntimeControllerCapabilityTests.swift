@@ -282,6 +282,10 @@ private final class FakeRuntimeClient: RuntimeClient {
         )
     }
 
+    func loadInstallationInfo() -> RuntimeInstallationInfo {
+        RuntimeInstallationInfo(runtimeHomePath: "/runtime", backupsPath: "/backups")
+    }
+
     private func success() -> ProcessResult {
         ProcessResult(exitCode: 0, stdout: "", stderr: "")
     }

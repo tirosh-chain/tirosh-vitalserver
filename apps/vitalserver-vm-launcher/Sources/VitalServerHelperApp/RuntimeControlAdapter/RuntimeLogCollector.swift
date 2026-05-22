@@ -19,7 +19,7 @@ struct LocalRuntimeLogCollector: RuntimeLogCollecting {
         fileStore: RuntimeFileStore = LocalRuntimeFileStore(),
         copies: [RuntimeLogCopy] = RuntimeLogCopy.defaultCopies(),
         rotatedCopySets: [RuntimeRotatedLogCopySet] = RuntimeRotatedLogCopySet.defaultSets(),
-        archiveDirectory: URL = URL(fileURLWithPath: AppConstants.Paths.logArchive),
+        archiveDirectory: URL = URL(fileURLWithPath: RuntimeAdapterConstants.Paths.logArchive),
         maxCentralLogBytes: UInt64 = 10 * 1024 * 1024,
         calendar: Calendar = .current,
         now: @escaping () -> Date = Date.init
@@ -174,9 +174,9 @@ struct RuntimeLogCopy {
             "watchdog.err.log",
         ].map { fileName in
             RuntimeLogCopy(
-                source: URL(fileURLWithPath: AppConstants.Paths.runtimeLogSources)
+                source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.runtimeLogSources)
                     .appendingPathComponent(fileName),
-                destination: URL(fileURLWithPath: AppConstants.Paths.runtimeLogs)
+                destination: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.runtimeLogs)
                     .appendingPathComponent(fileName),
                 archivePrefix: "runtime-\(fileName)"
             )
@@ -184,28 +184,28 @@ struct RuntimeLogCopy {
 
         let guestFiles = [
             RuntimeLogCopy(
-                source: URL(fileURLWithPath: AppConstants.Paths.bootstrapLogSource),
-                destination: URL(fileURLWithPath: AppConstants.Paths.bootstrapLog),
+                source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.bootstrapLogSource),
+                destination: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.bootstrapLog),
                 archivePrefix: "guest-bootstrap.log"
             ),
             RuntimeLogCopy(
-                source: URL(fileURLWithPath: AppConstants.Paths.containerLogSource),
-                destination: URL(fileURLWithPath: AppConstants.Paths.containerLogs),
+                source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.containerLogSource),
+                destination: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.containerLogs),
                 archivePrefix: "guest-container-logs.log"
             ),
             RuntimeLogCopy(
-                source: URL(fileURLWithPath: AppConstants.Paths.updateActivationLogSource),
-                destination: URL(fileURLWithPath: AppConstants.Paths.updateActivationLog),
+                source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.updateActivationLogSource),
+                destination: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.updateActivationLog),
                 archivePrefix: "guest-activate-update.log"
             ),
             RuntimeLogCopy(
-                source: URL(fileURLWithPath: AppConstants.Paths.datastoreRepairLogSource),
-                destination: URL(fileURLWithPath: AppConstants.Paths.datastoreRepairLog),
+                source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.datastoreRepairLogSource),
+                destination: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.datastoreRepairLog),
                 archivePrefix: "guest-repair-datastore.log"
             ),
             RuntimeLogCopy(
-                source: URL(fileURLWithPath: AppConstants.Paths.commandLogFile),
-                destination: URL(fileURLWithPath: AppConstants.Paths.commandLog),
+                source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.commandLogFile),
+                destination: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.commandLog),
                 archivePrefix: "command.log"
             ),
         ]
@@ -224,9 +224,9 @@ struct RuntimeRotatedLogCopySet {
     static func defaultSets() -> [RuntimeRotatedLogCopySet] {
         [
             RuntimeRotatedLogCopySet(
-                sourceDirectory: URL(fileURLWithPath: AppConstants.Paths.guestRunDirectory),
+                sourceDirectory: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.guestRunDirectory),
                 sourceFilePrefix: "container-logs.log.",
-                destinationDirectory: URL(fileURLWithPath: AppConstants.Paths.guestLogs),
+                destinationDirectory: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.guestLogs),
                 destinationFilePrefix: "container-logs.log.",
                 archivePrefix: "guest-container-logs.log."
             ),

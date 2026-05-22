@@ -54,52 +54,52 @@ struct SystemRuntimeManagerFileReader: RuntimeManagerFileReading {
                 ? AppConstants.StatusText.noLogData
                 : helperMessage
         case .install:
-            return logFile(path: AppConstants.Paths.installLog, lineLimit: lineLimit)
+            return logFile(path: RuntimeAdapterConstants.Paths.installLog, lineLimit: lineLimit)
         case .command:
             return logFile(
-                path: AppConstants.Paths.commandLog,
+                path: RuntimeAdapterConstants.Paths.commandLog,
                 lineLimit: lineLimit,
-                fallbackPath: AppConstants.Paths.commandLogFile
+                fallbackPath: RuntimeAdapterConstants.Paths.commandLogFile
             )
         case .launcher:
             return logFile(
-                path: (AppConstants.Paths.runtimeLogs as NSString).appendingPathComponent("launcher.log"),
+                path: (RuntimeAdapterConstants.Paths.runtimeLogs as NSString).appendingPathComponent("launcher.log"),
                 lineLimit: lineLimit,
-                fallbackPath: (AppConstants.Paths.runtimeLogSources as NSString).appendingPathComponent("launcher.log")
+                fallbackPath: (RuntimeAdapterConstants.Paths.runtimeLogSources as NSString).appendingPathComponent("launcher.log")
             )
         case .proxyOutput:
             return logFile(
-                path: (AppConstants.Paths.runtimeLogs as NSString).appendingPathComponent("proxy.out.log"),
+                path: (RuntimeAdapterConstants.Paths.runtimeLogs as NSString).appendingPathComponent("proxy.out.log"),
                 lineLimit: lineLimit,
-                fallbackPath: (AppConstants.Paths.runtimeLogSources as NSString).appendingPathComponent("proxy.out.log")
+                fallbackPath: (RuntimeAdapterConstants.Paths.runtimeLogSources as NSString).appendingPathComponent("proxy.out.log")
             )
         case .proxyError:
             return logFile(
-                path: (AppConstants.Paths.runtimeLogs as NSString).appendingPathComponent("proxy.err.log"),
+                path: (RuntimeAdapterConstants.Paths.runtimeLogs as NSString).appendingPathComponent("proxy.err.log"),
                 lineLimit: lineLimit,
-                fallbackPath: (AppConstants.Paths.runtimeLogSources as NSString).appendingPathComponent("proxy.err.log")
+                fallbackPath: (RuntimeAdapterConstants.Paths.runtimeLogSources as NSString).appendingPathComponent("proxy.err.log")
             )
         case .updateActivation:
             return logFile(
-                path: AppConstants.Paths.updateActivationLog,
+                path: RuntimeAdapterConstants.Paths.updateActivationLog,
                 lineLimit: lineLimit,
-                fallbackPath: AppConstants.Paths.updateActivationLogSource
+                fallbackPath: RuntimeAdapterConstants.Paths.updateActivationLogSource
             )
         case .containers:
             return logFile(
-                path: AppConstants.Paths.containerLogs,
+                path: RuntimeAdapterConstants.Paths.containerLogs,
                 lineLimit: lineLimit,
-                fallbackPath: AppConstants.Paths.containerLogSource
+                fallbackPath: RuntimeAdapterConstants.Paths.containerLogSource
             )
         }
     }
 
     func preferredLogsPath() -> String {
         logCollector.refreshLogCollection()
-        if fileStore.directoryExists(URL(fileURLWithPath: AppConstants.Paths.productLogs)) {
-            return AppConstants.Paths.productLogs
+        if fileStore.directoryExists(URL(fileURLWithPath: RuntimeAdapterConstants.Paths.productLogs)) {
+            return RuntimeAdapterConstants.Paths.productLogs
         }
-        return AppConstants.Paths.installLog
+        return RuntimeAdapterConstants.Paths.installLog
     }
 
     func vitalFileFolders(root: String) -> [VitalFileFolder] {

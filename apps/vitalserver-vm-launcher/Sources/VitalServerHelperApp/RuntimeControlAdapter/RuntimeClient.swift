@@ -109,15 +109,15 @@ struct LocalRuntimeClient: RuntimeClient {
 
     func verifyUpdateBundle(url: URL) async throws -> ProcessResult {
         try ensureLauncherIsAvailable()
-        return await actionEnvironment.verifyBundle(launcher: AppConstants.Paths.launcher, bundleURL: url)
+        return await actionEnvironment.verifyBundle(launcher: RuntimeAdapterConstants.Paths.launcher, bundleURL: url)
     }
 
     func uninstallRuntime(clean: Bool) async throws -> ProcessResult {
-        guard actionEnvironment.isExecutable(atPath: AppConstants.Paths.uninstaller) else {
+        guard actionEnvironment.isExecutable(atPath: RuntimeAdapterConstants.Paths.uninstaller) else {
             throw RuntimeClientError.missingUninstaller
         }
         return await runPrivileged(RuntimeCommandFactory.uninstallCommand(
-            uninstaller: AppConstants.Paths.uninstaller,
+            uninstaller: RuntimeAdapterConstants.Paths.uninstaller,
             clean: clean
         ))
     }
@@ -134,7 +134,7 @@ struct LocalRuntimeClient: RuntimeClient {
             }
         }
         return await runPrivileged(RuntimeCommandFactory.shellCommand(
-            executable: AppConstants.Paths.launcher,
+            executable: RuntimeAdapterConstants.Paths.launcher,
             arguments: settings.configureArguments(adminPasswordFile: adminPasswordFile?.path)
         ))
     }
@@ -142,10 +142,10 @@ struct LocalRuntimeClient: RuntimeClient {
     func applyUpdateBundle(url: URL) async throws -> ProcessResult {
         try ensureLauncherIsAvailable()
         return await runPrivileged(RuntimeCommandFactory.shellCommand(
-            executable: AppConstants.Paths.launcher,
+            executable: RuntimeAdapterConstants.Paths.launcher,
             arguments: [
-                AppConstants.RuntimeCommand.runtime,
-                AppConstants.RuntimeCommand.applyBundle,
+                RuntimeAdapterConstants.RuntimeCommand.runtime,
+                RuntimeAdapterConstants.RuntimeCommand.applyBundle,
                 url.path,
             ]
         ))
@@ -154,10 +154,10 @@ struct LocalRuntimeClient: RuntimeClient {
     func rollbackRuntime(backupURL: URL) async throws -> ProcessResult {
         try ensureLauncherIsAvailable()
         return await runPrivileged(RuntimeCommandFactory.shellCommand(
-            executable: AppConstants.Paths.launcher,
+            executable: RuntimeAdapterConstants.Paths.launcher,
             arguments: [
-                AppConstants.RuntimeCommand.runtime,
-                AppConstants.RuntimeCommand.rollback,
+                RuntimeAdapterConstants.RuntimeCommand.runtime,
+                RuntimeAdapterConstants.RuntimeCommand.rollback,
                 backupURL.path,
             ]
         ))
@@ -174,10 +174,10 @@ struct LocalRuntimeClient: RuntimeClient {
     func repairDatastore() async throws -> ProcessResult {
         try ensureLauncherIsAvailable()
         return await runPrivileged(RuntimeCommandFactory.shellCommand(
-            executable: AppConstants.Paths.launcher,
+            executable: RuntimeAdapterConstants.Paths.launcher,
             arguments: [
-                AppConstants.RuntimeCommand.runtime,
-                AppConstants.RuntimeCommand.repairDatastore,
+                RuntimeAdapterConstants.RuntimeCommand.runtime,
+                RuntimeAdapterConstants.RuntimeCommand.repairDatastore,
             ]
         ))
     }
@@ -200,8 +200,15 @@ struct LocalRuntimeClient: RuntimeClient {
         RuntimeReleaseInfo.generated
     }
 
+    func loadInstallationInfo() -> RuntimeInstallationInfo {
+        RuntimeInstallationInfo(
+            runtimeHomePath: RuntimeAdapterConstants.Paths.vmHome,
+            backupsPath: RuntimeAdapterConstants.Paths.backups
+        )
+    }
+
     private func ensureLauncherIsAvailable() throws {
-        guard actionEnvironment.isExecutable(atPath: AppConstants.Paths.launcher) else {
+        guard actionEnvironment.isExecutable(atPath: RuntimeAdapterConstants.Paths.launcher) else {
             throw RuntimeClientError.missingLauncher
         }
     }

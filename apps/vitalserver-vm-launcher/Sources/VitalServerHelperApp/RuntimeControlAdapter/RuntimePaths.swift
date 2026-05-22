@@ -10,12 +10,12 @@ struct RuntimePaths {
     let proxyLaunchDaemon: String
 
     init(
-        launcher: String = AppConstants.Paths.launcher,
-        uninstaller: String = AppConstants.Paths.uninstaller,
-        vmIPFile: String = AppConstants.Paths.vmIPFile,
-        runtimeState: String = AppConstants.Paths.runtimeState,
-        runtimeStatus: String = AppConstants.Paths.runtimeStatus,
-        proxyLaunchDaemon: String = AppConstants.Paths.proxyLaunchDaemon
+        launcher: String = RuntimeAdapterConstants.Paths.launcher,
+        uninstaller: String = RuntimeAdapterConstants.Paths.uninstaller,
+        vmIPFile: String = RuntimeAdapterConstants.Paths.vmIPFile,
+        runtimeState: String = RuntimeAdapterConstants.Paths.runtimeState,
+        runtimeStatus: String = RuntimeAdapterConstants.Paths.runtimeStatus,
+        proxyLaunchDaemon: String = RuntimeAdapterConstants.Paths.proxyLaunchDaemon
     ) {
         self.launcher = launcher
         self.uninstaller = uninstaller

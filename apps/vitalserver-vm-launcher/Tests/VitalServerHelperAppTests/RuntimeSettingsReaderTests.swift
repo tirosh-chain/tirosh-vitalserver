@@ -97,13 +97,13 @@ final class RuntimeSettingsReaderTests: XCTestCase {
 
         let arguments = settings.configureArguments(adminPasswordFile: "/tmp/password")
 
-        XCTAssertEqual(arguments.first, AppConstants.RuntimeCommand.runtime)
-        XCTAssertTrue(arguments.contains(AppConstants.RuntimeCommand.optionAdminPasswordFile))
+        XCTAssertEqual(arguments.first, RuntimeAdapterConstants.RuntimeCommand.runtime)
+        XCTAssertTrue(arguments.contains(RuntimeAdapterConstants.RuntimeCommand.optionAdminPasswordFile))
         XCTAssertTrue(arguments.contains("/tmp/password"))
-        XCTAssertTrue(arguments.contains(AppConstants.RuntimeCommand.optionRestart))
-        XCTAssertEqual(value(after: AppConstants.RuntimeCommand.optionProxyPort, in: arguments), "18080")
-        XCTAssertEqual(value(after: AppConstants.RuntimeCommand.optionStartOnBoot, in: arguments), "false")
-        XCTAssertEqual(value(after: AppConstants.RuntimeCommand.optionAutoRecovery, in: arguments), "false")
+        XCTAssertTrue(arguments.contains(RuntimeAdapterConstants.RuntimeCommand.optionRestart))
+        XCTAssertEqual(value(after: RuntimeAdapterConstants.RuntimeCommand.optionProxyPort, in: arguments), "18080")
+        XCTAssertEqual(value(after: RuntimeAdapterConstants.RuntimeCommand.optionStartOnBoot, in: arguments), "false")
+        XCTAssertEqual(value(after: RuntimeAdapterConstants.RuntimeCommand.optionAutoRecovery, in: arguments), "false")
     }
 
     private func value(after marker: String, in arguments: [String]) -> String? {

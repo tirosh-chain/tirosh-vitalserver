@@ -67,7 +67,7 @@ struct SystemRuntimeNativeShell: RuntimeNativeShell {
 
     func relaunchHelper() {
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: AppConstants.Commands.shell)
+        process.executableURL = URL(fileURLWithPath: NativeShellConstants.Commands.shell)
         process.arguments = ["-c", RuntimeCommandFactory.relaunchHelperCommand()]
         try? process.run()
         terminate()

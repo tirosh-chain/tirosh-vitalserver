@@ -12,13 +12,13 @@ protocol RuntimeStatusReading {
 @MainActor
 struct SystemRuntimeStatusReader: RuntimeStatusReading {
     let paths: RuntimePaths
-    var commandLogPath = AppConstants.Paths.commandLogFile
+    var commandLogPath = RuntimeAdapterConstants.Paths.commandLogFile
     private let fileStore: RuntimeFileStore
     private let storageUsageProvider: RuntimeStorageUsageProviding
 
     init(
         paths: RuntimePaths,
-        commandLogPath: String = AppConstants.Paths.commandLogFile,
+        commandLogPath: String = RuntimeAdapterConstants.Paths.commandLogFile,
         fileStore: RuntimeFileStore = LocalRuntimeFileStore(),
         storageUsageProvider: RuntimeStorageUsageProviding? = nil
     ) {
@@ -51,9 +51,9 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading {
         let guestState = guestRuntimeStateDocument(paths.runtimeState)
         return RuntimeStatus(
             runtimeInstalled: fileStore.isExecutableFile(atPath: paths.launcher),
-            vmServiceLoaded: loaded(document?.vmService) ?? launchdLoaded(AppConstants.Launchd.vmService),
-            proxyServiceLoaded: loaded(document?.proxyService) ?? launchdLoaded(AppConstants.Launchd.proxyService),
-            watchdogServiceLoaded: loaded(document?.watchdogService) ?? launchdLoaded(AppConstants.Launchd.watchdogService),
+            vmServiceLoaded: loaded(document?.vmService) ?? launchdLoaded(RuntimeAdapterConstants.Launchd.vmService),
+            proxyServiceLoaded: loaded(document?.proxyService) ?? launchdLoaded(RuntimeAdapterConstants.Launchd.proxyService),
+            watchdogServiceLoaded: loaded(document?.watchdogService) ?? launchdLoaded(RuntimeAdapterConstants.Launchd.watchdogService),
             runtimeState: document?.status.rawValue,
             operation: document?.operation.rawValue,
             statusMessage: document?.message,
@@ -87,7 +87,7 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading {
 
     private func httpStatus(url: String) async -> String {
         let result = await ProcessRunner.run(
-            AppConstants.Commands.curl,
+            RuntimeAdapterConstants.Commands.curl,
             arguments: ["-sS", "-L", "-o", "/dev/null", "-w", "%{http_code}", "--max-time", "5", url]
         )
         let code = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -116,7 +116,7 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading {
 
     private func launchdLoaded(_ label: String) -> Bool {
         ProcessRunner.runSync(
-            AppConstants.Commands.launchctl,
+            RuntimeAdapterConstants.Commands.launchctl,
             arguments: ["print", "system/\(label)"]
         ).exitCode == 0
     }

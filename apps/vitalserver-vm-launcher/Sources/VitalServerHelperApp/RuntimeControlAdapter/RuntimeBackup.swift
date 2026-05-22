@@ -7,7 +7,7 @@ extension RuntimeBackup {
         latestBackupPath: String? = nil,
         fileStore: RuntimeFileStore = LocalRuntimeFileStore()
     ) -> [RuntimeBackup] {
-        let directory = URL(fileURLWithPath: AppConstants.Paths.backups)
+        let directory = URL(fileURLWithPath: RuntimeAdapterConstants.Paths.backups)
         let discovered = ((try? fileStore.childDirectories(
             at: directory,
             nameContains: "-before-",
