@@ -35,7 +35,7 @@ struct SystemRuntimeSettingsReader: RuntimeSettingsReading {
         if let vmConfig = VMConfigDocument.load(path: paths.vmConfig, fileStore: fileStore) {
             settings.cpuCount = vmConfig.cpuCount
             settings.memoryGiB = max(Int(vmConfig.memoryMiB / 1024), 1)
-            settings.networkMode = AppConstants.Values.networkShared
+            settings.networkMode = RuntimeNetworkMode.shared
             settings.bridgedInterface = vmConfig.network.bridgedInterface ?? ""
             if let vitalFilesDirectory = vmConfig.vitalFilesDirectory?.hostPath {
                 settings.vitalFilesDirectory = vitalFilesDirectory

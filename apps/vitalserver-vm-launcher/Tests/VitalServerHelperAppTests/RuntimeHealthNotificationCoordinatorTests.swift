@@ -65,14 +65,14 @@ final class RuntimeHealthNotificationCoordinatorTests: XCTestCase {
     private func startingStatus() -> RuntimeStatus {
         var status = RuntimeStatus()
         status.runtimeInstalled = true
-        status.runtimeState = AppConstants.Values.stateInstalling
+        status.runtimeState = RuntimeState.installing
         return status
     }
 
     private func criticalStatus(message: String?) -> RuntimeStatus {
         var status = RuntimeStatus()
         status.runtimeInstalled = true
-        status.runtimeState = AppConstants.Values.stateCritical
+        status.runtimeState = RuntimeState.critical
         status.statusMessage = message
         return status
     }
@@ -80,7 +80,7 @@ final class RuntimeHealthNotificationCoordinatorTests: XCTestCase {
     private func degradedStatus(message: String?) -> RuntimeStatus {
         var status = RuntimeStatus()
         status.runtimeInstalled = true
-        status.runtimeState = AppConstants.Values.stateDegraded
+        status.runtimeState = RuntimeState.degraded
         status.statusMessage = message
         return status
     }
@@ -91,7 +91,7 @@ final class RuntimeHealthNotificationCoordinatorTests: XCTestCase {
         status.vmServiceLoaded = true
         status.proxyServiceLoaded = true
         status.watchdogServiceLoaded = true
-        status.runtimeState = AppConstants.Values.stateHealthy
+        status.runtimeState = RuntimeState.healthy
         status.vmIP = "192.0.2.10"
         status.guestHTTP = "200"
         status.hostProxyHTTP = "200"

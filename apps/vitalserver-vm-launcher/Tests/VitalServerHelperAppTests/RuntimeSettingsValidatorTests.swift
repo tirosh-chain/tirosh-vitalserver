@@ -10,7 +10,7 @@ final class RuntimeSettingsValidatorTests: XCTestCase {
 
     func testRejectsBridgedNetworkMode() {
         var settings = validSettings()
-        settings.networkMode = AppConstants.Values.networkBridged
+        settings.networkMode = RuntimeNetworkMode.bridged
 
         XCTAssertEqual(
             validator.validate(settings, installedSettings: installedSettings()),
@@ -88,7 +88,7 @@ final class RuntimeSettingsValidatorTests: XCTestCase {
         settings.proxyPort = 18080
         settings.publicPort = 80
         settings.vitalFilesDirectory = "/Users/test/Vital Files"
-        settings.networkMode = AppConstants.Values.networkShared
+        settings.networkMode = RuntimeNetworkMode.shared
         settings.changeAdminPassword = false
         settings.adminPassword = ""
         return settings

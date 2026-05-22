@@ -51,10 +51,10 @@ enum RuntimeHealthNotificationState: Equatable {
             self = .healthy
         } else if !status.runtimeInstalled {
             self = .notInstalled
-        } else if status.runtimeState == AppConstants.Values.stateCritical {
+        } else if status.runtimeState == .critical {
             self = .critical
-        } else if status.runtimeState == AppConstants.Values.stateDegraded
-            || status.runtimeState == AppConstants.Values.stateRecovering
+        } else if status.runtimeState == .degraded
+            || status.runtimeState == .recovering
             || !status.failureReasons.isEmpty {
             self = .needsAttention
         } else {

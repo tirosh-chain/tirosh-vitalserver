@@ -54,7 +54,7 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading {
             vmServiceLoaded: loaded(document?.vmService) ?? launchdLoaded(RuntimeAdapterConstants.Launchd.vmService),
             proxyServiceLoaded: loaded(document?.proxyService) ?? launchdLoaded(RuntimeAdapterConstants.Launchd.proxyService),
             watchdogServiceLoaded: loaded(document?.watchdogService) ?? launchdLoaded(RuntimeAdapterConstants.Launchd.watchdogService),
-            runtimeState: document?.status.rawValue,
+            runtimeState: document.map { RuntimeState(rawValue: $0.status.rawValue) },
             operation: document?.operation.rawValue,
             statusMessage: document?.message,
             updatedAt: document?.updatedAt,

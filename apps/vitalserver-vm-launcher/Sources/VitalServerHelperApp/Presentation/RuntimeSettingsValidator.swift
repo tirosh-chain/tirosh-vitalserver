@@ -2,7 +2,7 @@ import Foundation
 
 struct RuntimeSettingsValidator {
     func validate(_ settings: RuntimeSettings, installedSettings: RuntimeSettings) -> RuntimeSettingsValidationResult {
-        if settings.networkMode == AppConstants.Values.networkBridged {
+        if settings.networkMode == RuntimeNetworkMode.bridged {
             return .invalid(AppConstants.StatusText.bridgedModeUnavailable)
         }
         if settings.diskGiB < installedSettings.diskGiB {

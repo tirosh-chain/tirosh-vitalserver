@@ -23,7 +23,7 @@ final class RuntimePresentationFormatterTests: XCTestCase {
         settings.proxyPort = 18080
         settings.publicHost = ""
         settings.publicPort = 443
-        settings.networkMode = AppConstants.Values.networkShared
+        settings.networkMode = RuntimeNetworkMode.shared
         settings.diskGiB = 128
         settings.vitalFilesDirectory = "/Users/test/Vital Files"
         settings.autoRecoveryEnabled = false

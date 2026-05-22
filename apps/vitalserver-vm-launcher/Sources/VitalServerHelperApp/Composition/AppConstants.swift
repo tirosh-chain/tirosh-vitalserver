@@ -210,14 +210,6 @@ enum AppConstants {
     }
 
     enum Values {
-        static let networkShared = "shared"
-        static let networkBridged = "bridged"
-        static let stateHealthy = "healthy"
-        static let stateInstalling = "installing"
-        static let stateUpdating = "updating"
-        static let stateRecovering = "recovering"
-        static let stateDegraded = "degraded"
-        static let stateCritical = "critical"
         static let launchdLoaded = "loaded"
         static let boolTrue = "true"
         static let boolFalse = "false"

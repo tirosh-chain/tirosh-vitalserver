@@ -254,9 +254,9 @@ struct ContentView: View {
             return AppConstants.StatusText.notInstalled
         }
         switch controller.status.runtimeState {
-        case AppConstants.Values.stateCritical:
+        case .some(.critical):
             return AppConstants.StatusText.critical
-        case AppConstants.Values.stateDegraded, AppConstants.Values.stateRecovering:
+        case .some(.degraded), .some(.recovering):
             return AppConstants.StatusText.needsAttention
         default:
             return AppConstants.StatusText.starting
@@ -271,9 +271,9 @@ struct ContentView: View {
             return .red
         }
         switch controller.status.runtimeState {
-        case AppConstants.Values.stateCritical:
+        case .some(.critical):
             return .red
-        case AppConstants.Values.stateDegraded, AppConstants.Values.stateRecovering:
+        case .some(.degraded), .some(.recovering):
             return .orange
         default:
             return .orange
@@ -565,7 +565,7 @@ struct ContentView: View {
     }
 
     private var networkModeHelp: String {
-        controller.settings.networkMode == AppConstants.Values.networkShared
+        controller.settings.networkMode == RuntimeNetworkMode.shared
             ? AppConstants.Labels.sharedNetworkHelp
             : AppConstants.Labels.bridgedNetworkHelp
     }
@@ -1265,7 +1265,7 @@ struct ContentView: View {
     }
 
     private var statusBadge: some View {
-        Text(controller.status.runtimeState ?? AppConstants.StatusText.unknown)
+        Text(controller.status.runtimeState?.rawValue ?? AppConstants.StatusText.unknown)
             .font(.headline)
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
@@ -1276,13 +1276,13 @@ struct ContentView: View {
 
     private var statusColor: Color {
         switch controller.status.runtimeState {
-        case AppConstants.Values.stateHealthy:
+        case .some(.healthy):
             return .green
-        case AppConstants.Values.stateInstalling, AppConstants.Values.stateUpdating, AppConstants.Values.stateRecovering:
+        case .some(.installing), .some(.updating), .some(.recovering):
             return .orange
-        case AppConstants.Values.stateDegraded:
+        case .some(.degraded):
             return .yellow
-        case AppConstants.Values.stateCritical:
+        case .some(.critical):
             return .red
         default:
             return .gray

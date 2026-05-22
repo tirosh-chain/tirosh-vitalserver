@@ -16,7 +16,7 @@ struct RuntimePresentationFormatter {
             "Proxy port: \(settings.proxyPort)",
             "Public host: \(settings.publicHost.isEmpty ? "(same host)" : settings.publicHost)",
             "Public port: \(settings.publicPort)",
-            "Network mode: \(settings.networkMode)",
+            "Network mode: \(settings.networkMode.rawValue)",
             "Disk size: \(settings.diskGiB) GiB",
             "Vital files directory: \(settings.vitalFilesDirectory)",
             "Automatic recovery: \(settings.autoRecoveryEnabled ? AppConstants.Values.boolTrue : AppConstants.Values.boolFalse)",

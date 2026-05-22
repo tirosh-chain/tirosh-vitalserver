@@ -44,12 +44,75 @@ public struct RuntimeClientCapabilities: Equatable, Sendable {
     }
 }
 
+public enum RuntimeNetworkMode: String, Codable, Equatable, Sendable {
+    case shared
+    case bridged
+}
+
+public enum RuntimeState: Codable, Equatable, Sendable {
+    case installing
+    case updating
+    case recovering
+    case healthy
+    case degraded
+    case critical
+    case unknown(String)
+
+    public init(rawValue: String) {
+        switch rawValue {
+        case "installing":
+            self = .installing
+        case "updating":
+            self = .updating
+        case "recovering":
+            self = .recovering
+        case "healthy":
+            self = .healthy
+        case "degraded":
+            self = .degraded
+        case "critical":
+            self = .critical
+        default:
+            self = .unknown(rawValue)
+        }
+    }
+
+    public var rawValue: String {
+        switch self {
+        case .installing:
+            return "installing"
+        case .updating:
+            return "updating"
+        case .recovering:
+            return "recovering"
+        case .healthy:
+            return "healthy"
+        case .degraded:
+            return "degraded"
+        case .critical:
+            return "critical"
+        case .unknown(let value):
+            return value
+        }
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        self.init(rawValue: try container.decode(String.self))
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
+}
+
 public struct RuntimeSettings: Codable, Equatable, Sendable {
     public var cpuCount: Int
     public var memoryGiB: Int
     public var diskGiB: Int
     public var minimumDiskGiB: Int
-    public var networkMode: String
+    public var networkMode: RuntimeNetworkMode
     public var bridgedInterface: String
     public var proxyPort: Int
     public var vitalFilesDirectory: String
@@ -67,7 +130,7 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
         memoryGiB: Int = 8,
         diskGiB: Int = 32,
         minimumDiskGiB: Int = 4,
-        networkMode: String = "shared",
+        networkMode: RuntimeNetworkMode = .shared,
         bridgedInterface: String = "",
         proxyPort: Int = 80,
         vitalFilesDirectory: String = "/Users/Shared/TiroshVitalServer/vital-files",
@@ -109,7 +172,7 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
             RuntimeControlDefaults.optionDiskGiB,
             String(diskGiB),
             RuntimeControlDefaults.optionNetwork,
-            networkMode,
+            networkMode.rawValue,
             RuntimeControlDefaults.optionProxyPort,
             String(proxyPort),
             RuntimeControlDefaults.optionVitalFilesDirectory,
@@ -129,7 +192,7 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
             RuntimeControlDefaults.optionAutoRecovery,
             autoRecoveryEnabled ? RuntimeControlDefaults.boolTrue : RuntimeControlDefaults.boolFalse,
         ]
-        if networkMode == RuntimeControlDefaults.networkBridged, !bridgedInterface.isEmpty {
+        if networkMode == .bridged, !bridgedInterface.isEmpty {
             arguments += [RuntimeControlDefaults.optionBridgedInterface, bridgedInterface]
         }
         if let adminPasswordFile {
@@ -147,7 +210,7 @@ public struct RuntimeStatus {
     public var vmServiceLoaded: Bool
     public var proxyServiceLoaded: Bool
     public var watchdogServiceLoaded: Bool
-    public var runtimeState: String?
+    public var runtimeState: RuntimeState?
     public var operation: String?
     public var statusMessage: String?
     public var updatedAt: String?
@@ -171,7 +234,7 @@ public struct RuntimeStatus {
         vmServiceLoaded: Bool = false,
         proxyServiceLoaded: Bool = false,
         watchdogServiceLoaded: Bool = false,
-        runtimeState: String? = nil,
+        runtimeState: RuntimeState? = nil,
         operation: String? = nil,
         statusMessage: String? = nil,
         updatedAt: String? = nil,
@@ -219,7 +282,7 @@ public struct RuntimeStatus {
             && vmServiceLoaded
             && proxyServiceLoaded
             && watchdogServiceLoaded
-            && runtimeState == RuntimeControlDefaults.stateHealthy
+            && runtimeState == .healthy
             && vmIP != nil
             && isSuccessfulHTTPStatus(guestHTTP)
             && isSuccessfulHTTPStatus(hostProxyHTTP)
@@ -456,9 +519,6 @@ private enum RuntimeControlDefaults {
     static let defaultDiskGiB = 32
     static let minimumDiskGiB = 4
     static let vitalFilesDirectory = "/Users/Shared/TiroshVitalServer/vital-files"
-    static let networkShared = "shared"
-    static let networkBridged = "bridged"
-    static let stateHealthy = "healthy"
     static let boolTrue = "true"
     static let boolFalse = "false"
     static let runtime = "runtime"

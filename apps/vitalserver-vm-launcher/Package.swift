@@ -45,6 +45,10 @@ let package = Package(
             ]
         ),
         .testTarget(
+            name: "RuntimeControlTests",
+            dependencies: ["RuntimeControl"]
+        ),
+        .testTarget(
             name: "HostRuntimeInfrastructureTests",
             dependencies: ["RuntimeCore", "HostRuntimeInfrastructure"]
         ),
