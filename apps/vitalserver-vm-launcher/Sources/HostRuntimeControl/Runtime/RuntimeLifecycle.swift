@@ -28,49 +28,28 @@ struct RuntimeLifecycle {
         guestGateway: RuntimeGuestGateway? = nil,
         fileStore: RuntimeFileStore = LocalRuntimeFileStore()
     ) {
+        let composition = RuntimeLifecycleComposition.resolve(
+            paths: paths,
+            clock: clock,
+            commandRunner: commandRunner,
+            httpProber: httpProber,
+            serviceManager: serviceManager,
+            runtimeStatusRepository: runtimeStatusRepository,
+            guestGateway: guestGateway,
+            fileStore: fileStore
+        )
         self.paths = paths
         self.installedPaths = paths.installed
         self.clock = clock
         self.sleeper = sleeper
         self.commandRunner = commandRunner
-        let resolvedHTTPProber = httpProber ?? CurlRuntimeHTTPProber(commandRunner: commandRunner)
-        let resolvedServiceManager = serviceManager ?? LaunchdRuntimeServiceManager(commandRunner: commandRunner)
-        self.httpProber = resolvedHTTPProber
-        self.serviceManager = resolvedServiceManager
+        self.httpProber = composition.httpProber
+        self.serviceManager = composition.serviceManager
         self.fileStore = fileStore
-        self.statusReporter = RuntimeStatusReporter(
-            repository: runtimeStatusRepository ?? JSONFileRuntimeStatusRepository(url: installedPaths.runtimeStatus),
-            productRoot: installedPaths.productRoot,
-            runtimeHome: installedPaths.runtimeHome
-        )
-        let guestRunDirectory = installedPaths.guestRunDirectory
-        let resolvedGuestGateway = guestGateway ?? JSONFileRuntimeGuestGateway(
-            runtimeStateURL: guestRunDirectory.appendingPathComponent(Constants.Runtime.runtimeStateFile),
-            bootstrapResultURL: guestRunDirectory.appendingPathComponent(Constants.Runtime.bootstrapResultFile),
-            updateActivationRequestURL: guestRunDirectory.appendingPathComponent(Constants.Runtime.updateActivationRequestFile),
-            updateActivationResultURL: guestRunDirectory.appendingPathComponent(Constants.Runtime.updateActivationResultFile),
-            datastoreRepairRequestURL: guestRunDirectory.appendingPathComponent(Constants.Runtime.datastoreRepairRequestFile),
-            datastoreRepairResultURL: guestRunDirectory.appendingPathComponent(Constants.Runtime.datastoreRepairResultFile)
-        )
-        self.guestGateway = resolvedGuestGateway
-        let resolvedHealthChecker = RuntimeHealthChecker(
-            installedPaths: installedPaths,
-            fileStore: fileStore,
-            serviceManager: resolvedServiceManager,
-            commandRunner: commandRunner,
-            httpProber: resolvedHTTPProber,
-            guestGateway: resolvedGuestGateway
-        )
-        self.healthChecker = resolvedHealthChecker
-        self.serviceController = RuntimeServiceController(
-            serviceManager: resolvedServiceManager,
-            isLoaded: { label in
-                resolvedHealthChecker.isLaunchdLoaded(label)
-            },
-            log: { message in
-                print("[\(ISO8601DateFormatter().string(from: clock.now))] \(message)")
-            }
-        )
+        self.statusReporter = composition.statusReporter
+        self.guestGateway = composition.guestGateway
+        self.healthChecker = composition.healthChecker
+        self.serviceController = composition.serviceController
     }
 
     private var productRoot: URL {
