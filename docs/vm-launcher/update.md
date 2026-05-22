@@ -29,7 +29,7 @@ bundle kind는 의도적으로 두 개만 둡니다.
 
 | bundleKind | UI 위치 | 포함 범위 |
 |---|---|---|
-| `product-update` | Update 탭 | Helper UI, Updater, Supervisor, VM Driver, Service Stack, 개별 service/container, host proxy, migrations |
+| `product-update` | Update 탭 | Helper UI, Native Shell, Runtime Control API, Updater, Supervisor, VM Driver, Service Stack, 개별 service/container, host proxy, migrations |
 | `vm-image-update` | Danger Zone | VM Image/rootfs/base OS/kernel/initrd class artifact |
 
 Hotfix, service-only update, updater bridge update는 별도 kind를 만들지 않고 `product-update`의 channel, changed components, `requiresTwoPhaseUpdate` 같은 metadata로 표현합니다.
@@ -41,7 +41,9 @@ Hotfix, service-only update, updater bridge update는 별도 kind를 만들지 �
 | Layer | Platform dependency | 책임 | Manifest key |
 |---|---|---|---|
 | VitalServer Helper | cross-platform product umbrella | 최상위 관리 제품/클라이언트 패키지, support/release note 기준 | `helperVersion` |
-| Helper UI | platform-specific | macOS/iPadOS/Windows 등 사용자 인터페이스 | `components.helperUI` |
+| Helper UI | cross-platform Web/PWA primary | iPhone/Android/iPad/desktop browser와 native shell wrapper에서 쓰는 product UI | `components.helperUI` |
+| Native Shell | platform-specific | install/bootstrap/pairing/recovery/native picker/tray/menu | `components.nativeShell` |
+| Runtime Control API | common API contract, platform-specific host implementation | auth/session/pairing, capability, status/log/update/settings/admin endpoint, progress/log streaming | `components.runtimeControl` |
 | Updater | host/platform-specific | product update bundle 검증/적용/rollback, manifest compatibility gate | `components.updater`, `minUpdaterVersion` |
 | Supervisor | host/platform-aware | health/watchdog/recovery, service state loop, auto-recovery suppression | `components.supervisor` |
 | VM Driver | platform-specific | macOS Apple Virtualization, Windows provider 등 VM lifecycle provider | `components.vmDriver` |
@@ -110,6 +112,8 @@ update bundle manifest에는 updater 호환성 판단을 위한 필드를 둡니
   "minUpdaterVersion": "0.1.6",
   "components": {
     "helperUI": "0.2.0+macos.1",
+    "nativeShell": "0.2.0+macos.1",
+    "runtimeControl": "0.2.0+macos.1",
     "updater": "0.2.0",
     "supervisor": "0.2.0",
     "vmDriver": "0.2.0+macos.1",
@@ -133,7 +137,7 @@ update bundle manifest에는 updater 호환성 판단을 위한 필드를 둡니
 | `requiresGuestActivation` | `guest-deploy` 교체 후 VM 내부 activation이 필요한지 |
 | `requiresTwoPhaseUpdate` | updater 자체를 먼저 갱신해야 하는 bridge update가 필요한지 |
 
-Reader는 이 필드들의 누락을 허용해야 합니다. 새 필드는 optional로 추가하고, 기본값을 통해 오래된 bundle도 읽을 수 있어야 합니다.
+Reader는 required contract field 누락을 실패로 처리합니다. 새 필드는 가능한 optional metadata로 추가하고, required field/schema major version을 바꾸는 경우에는 기존 Updater가 읽을 수 있는 bridge/two-phase Product Update를 먼저 제공해야 합니다.
 
 ### Two-Phase Update 기준
 
@@ -141,7 +145,7 @@ update system 자체가 바뀌는 경우에는 runtime payload와 updater payloa
 
 | 개념 | 의미 |
 |---|---|
-| Product Update | Helper/Updater/Supervisor/VM Driver/Service Stack/service 변경 |
+| Product Update | Helper UI/Native Shell/Runtime Control API/Updater/Supervisor/VM Driver/Service Stack/service 변경 |
 | VM Image Update | Linux guest OS/rootfs/base image 변경 |
 | Two-phase Update | 기존 Updater가 새 Product Update를 바로 이해하지 못할 때, Updater를 먼저 올리고 본 update를 나중에 적용 |
 

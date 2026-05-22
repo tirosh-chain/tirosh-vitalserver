@@ -1,6 +1,6 @@
 # VitalServer VM Launcher Architecture
 
-제품 구조와 책임 경계를 정리합니다. shared/NAT + host nginx를 v1 기본값으로 두는 이유, 단일 노드에서 보장할 수 있는 범위, GUI/PKG/runtime의 책임을 다룹니다.
+제품 구조와 책임 경계를 정리합니다. shared/NAT + host nginx를 v1 기본값으로 두는 이유, 단일 노드에서 보장할 수 있는 범위, Web/PWA UI, native shell, package, host runtime의 책임을 다룹니다.
 
 ## 이 문서에서 바로 알아야 할 것
 
@@ -16,6 +16,69 @@
 ## 목표
 
 Mac mini 또는 Mac Studio에서 Linux VM을 직접 실행하고, VM 내부에서 VitalServer stack을 운영합니다.
+
+장기 제품 아키텍처는 `Web/PWA UI + platform-specific host runtime + Linux guest appliance`입니다. UI는 iPhone, Android, iPad, desktop browser, macOS/Windows shell에서 같은 product workflow를 제공하고, host-specific 실행은 Runtime Control API 뒤에 둡니다.
+
+```text
+Web/PWA Helper UI
+  - iPhone / Android / iPad / desktop browser
+  - optional macOS/Windows native shell wrapper
+        |
+        v
+RuntimeClient contract
+        |
+        +-- HttpRuntimeClient
+        |     local Runtime Control API
+        |     remote VitalServer control server
+        |
+        +-- LocalRuntimeClient
+              transition adapter for current macOS native app
+```
+
+Host runtime은 platform별로 구현하되 UI에는 같은 API contract를 제공합니다.
+
+```text
+Runtime Control API
+  - auth/session/pairing
+  - capability negotiation
+  - status/settings/logs/update/admin endpoints
+  - progress/log streaming
+  - dangerous operation confirmation
+        |
+        v
+Host-native runtime components
+  - Updater
+  - Supervisor
+  - VM Driver
+  - Service control
+  - Log collector
+        |
+        v
+Linux guest
+  - Service Stack
+  - VitalServer service
+  - VM Image/rootfs
+```
+
+핵심 원칙:
+
+- UI는 Web/PWA를 primary implementation으로 둔다.
+- macOS/Windows native app은 product UI가 아니라 local runtime host/native shell 역할을 맡는다.
+- platform-specific 실행 로직은 Runtime Control API와 host-native runtime component 내부에 격리한다.
+- platform 차이는 capability와 component version으로 노출한다.
+- Web/PWA는 host operation을 직접 실행하지 않는다.
+
+Platform별 차이는 아래처럼 격리합니다.
+
+| Layer | macOS | Windows | 공통 계약 |
+|---|---|---|---|
+| Web/PWA Helper UI | browser/PWA/native shell wrapper | browser/PWA/native shell wrapper | 동일 product UI |
+| Runtime Control API | local macOS service | local Windows service | HTTP/SSE API, auth/session, capability, result/reason model |
+| Native shell | menu bar app, pkg, recovery, native panels | tray app, installer, recovery, native dialogs | bootstrap, pairing, recovery entrypoint |
+| Updater | macOS file/service/update flow | Windows file/service/update flow | Product/VM Image update manifest contract |
+| Supervisor | launchd/process/network health | Windows Service/process/network health | health/status/recovery model |
+| VM Driver | Apple Virtualization provider | Hyper-V, WSL2, VirtualBox, or other provider | VM lifecycle capability model |
+| Service Stack | Linux guest compose/container assets | Linux guest compose/container assets | guest activation and service stack contract |
 
 v1 기본 구조는 아래와 같습니다.
 
@@ -259,8 +322,8 @@ rollback success    -> healthy
 ## GUI와 Package
 
 제품 설치 책임은 `.pkg`에 둡니다. `.dmg`가 필요하면 installer 전달 매체로만 사용하고, DMG root에는
-단일 `Install Tirosh VitalServer.pkg`를 둡니다. PKG가 Helper app과 local control components를 함께 설치하고,
-Helper app은 설치 이후 상태 확인과 운영 작업을 담당합니다.
+단일 `Install Tirosh VitalServer.pkg`를 둡니다. PKG가 Helper app/native shell과 host control components를 함께 설치하고,
+Helper UI는 설치 이후 상태 확인과 운영 작업을 담당합니다. 장기적으로 이 UI는 Web/PWA primary implementation으로 이동하고 native app은 local runtime host/shell 역할에 집중합니다.
 
 단일 PKG를 기본 배포물로 선택한 이유는 설치 대상이 self-contained app 하나가 아니기 때문입니다.
 이 제품은 `/Applications`에 Helper app을 놓는 것 외에도 `/usr/local/bin` Updater/Supervisor/VM Driver tools,
@@ -391,24 +454,27 @@ Python build package
   -> build-machine 전용 artifact 생성
   -> Ubuntu/rootfs/cloud-init/nginx/Docker/update bundle 처리
 
-Swift local control components
-  -> target Mac 설치 후 운영 source of truth
+Host-native runtime components
+  -> target host 설치 후 운영 source of truth
   -> install/status/health/configure/update/rollback 처리
+  -> macOS는 현재 Swift local control components가 담당
 
 Shell
   -> installer, launchd, guest bootstrap의 얇은 entrypoint
 ```
 
-이렇게 나누는 이유는 build-time과 installed product runtime의 실패 방식이 다르기 때문입니다. Build 단계는 네트워크, Docker registry, Ubuntu image, bundle 검증처럼 반복 가능한 artifact 생성 문제가 많고 Python으로 테스트하기 쉽습니다. 설치 후 운영 단계는 `/Library/Application Support`, launchd, Apple Virtualization, backup/rollback, 관리자 권한이 얽히므로 설치된 Mac에서 Swift local control components가 상태 전이를 책임지는 편이 안전합니다.
+이렇게 나누는 이유는 build-time과 installed product runtime의 실패 방식이 다르기 때문입니다. Build 단계는 네트워크, Docker registry, Ubuntu image, bundle 검증처럼 반복 가능한 artifact 생성 문제가 많고 Python으로 테스트하기 쉽습니다. 설치 후 운영 단계는 host filesystem, service manager, VM provider, backup/rollback, 관리자 권한이 얽히므로 설치된 host에서 platform-specific runtime component가 상태 전이를 책임지는 편이 안전합니다.
 
-사용자-facing 책임과 version model은 Helper UI, Updater, Supervisor, VM Driver, Service Stack, VM Image, VitalServer로 나눕니다. 현재 Swift `vitalserver-vm` binary가 여러 역할을 한 번에 담고 있더라도, 문서와 bundle manifest는 이 component 경계를 기준으로 변경 범위와 compatibility를 표현합니다.
+사용자-facing 책임과 version model은 Helper UI, Native Shell, Runtime Control API, Updater, Supervisor, VM Driver, Service Stack, VM Image, VitalServer로 나눕니다. 현재 Swift `vitalserver-vm` binary가 여러 역할을 한 번에 담고 있더라도, 문서와 bundle manifest는 이 component 경계를 기준으로 변경 범위와 compatibility를 표현합니다.
 
 제품 layer의 platform dependency와 책임은 아래처럼 둡니다. 이 표는 코드 배치보다 상위의 product contract입니다.
 
 | Layer | Platform dependency | 책임 |
 |---|---|---|
 | VitalServer Helper | cross-platform product umbrella | 최상위 관리 제품/클라이언트 패키지, release/support 기준 |
-| Helper UI | platform-specific | macOS/iPadOS/Windows 등 사용자 인터페이스 |
+| Helper UI | cross-platform Web/PWA primary | iPhone/Android/iPad/desktop browser와 native shell wrapper에서 쓰는 product UI |
+| Native Shell | platform-specific | install/bootstrap/pairing/recovery/native picker/tray/menu |
+| Runtime Control API | common API contract, platform-specific host implementation | auth/session/pairing, capability, status/log/update/settings/admin endpoint, progress/log streaming |
 | Updater | host/platform-specific | bundle verify/apply/rollback, compatibility gate, migration 조율 |
 | Supervisor | host/platform-aware | health/watchdog/recovery, service state loop, update 중 recovery suppression |
 | VM Driver | platform-specific | VM provider별 lifecycle. macOS는 Apple Virtualization/launchd, Windows는 별도 provider |

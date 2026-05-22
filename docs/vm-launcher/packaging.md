@@ -36,7 +36,7 @@ package, DMG, update bundle, Helper product/component version은 아래 파일�
 apps/vitalserver-vm-launcher/release.json
 ```
 
-`VitalServer Helper`는 최상위 product release입니다. platform별 build는 같은 Helper release 아래의 variant이며, 세부 변경 범위는 Helper UI, Updater, Supervisor, VM Driver, Service Stack, VM Image, VitalServer component version으로 설명합니다.
+`VitalServer Helper`는 최상위 product release입니다. platform별 build는 같은 Helper release 아래의 variant이며, 세부 변경 범위는 Helper UI, Native Shell, Runtime Control API, Updater, Supervisor, VM Driver, Service Stack, VM Image, VitalServer component version으로 설명합니다.
 
 `make vm-build`는 이 값을 Swift `GeneratedVersion.swift`와 Helper app의 `GeneratedRelease.swift`에 반영하고, `make vm-app`은 app bundle `Info.plist`의 `CFBundleShortVersionString`에 같은 helper version을 씁니다. `make vm-pkg`, `make vm-update-bundle`, `make vm-rootfs-update-bundle`은 기본적으로 이 값을 `VM_PKG_VERSION`, `VM_UPDATE_BUNDLE_VERSION`, `VM_UPDATE_MIN_UPDATER_VERSION`으로 사용합니다. 특별한 검증이 아니라면 버전과 update compatibility 변경은 이 파일 하나에서 관리합니다.
 
@@ -48,7 +48,7 @@ Update bundle kind는 두 개로 제한합니다.
 
 | bundleKind | 생성 target | UI 위치 | 포함 범위 |
 |---|---|---|---|
-| `product-update` | `make vm-update-bundle` | Update 탭 | Helper UI, Updater, Supervisor, VM Driver, Service Stack, 개별 service/container, host proxy, migrations |
+| `product-update` | `make vm-update-bundle` | Update 탭 | Helper UI, Native Shell, Runtime Control API, Updater, Supervisor, VM Driver, Service Stack, 개별 service/container, host proxy, migrations |
 | `vm-image-update` | `make vm-rootfs-update-bundle` | Danger Zone | VM Image/rootfs/base OS/kernel/initrd class artifact |
 
 Hotfix, service-only update, updater bridge update는 별도 kind가 아니라 `product-update` metadata로 표현합니다.
@@ -554,7 +554,7 @@ make vm-update-bundle-verify
 
 `make vm-update-artifacts`는 Product Update artifact staging을 기준으로 `app-bundle.tar.gz`,
 `runtime-tools.tar.gz`, `nginx-bundle.tar.gz`, `guest-deploy.tar.gz`를 자동 생성합니다.
-`make vm-update-bundle`은 이 artifact들을 기본 포함하므로 Helper UI, Updater/Supervisor/VM Driver tools, host nginx,
+`make vm-update-bundle`은 이 artifact들을 기본 포함하므로 Helper UI, Native Shell, Runtime Control API, Updater/Supervisor/VM Driver tools, host nginx,
 Service Stack/guest deploy bundle까지 같은 online/offline Product Update 계약으로 배포할 수 있습니다.
 
 update bundle도 압축이 필요합니다. 다만 압축 대상은 update artifact 단위입니다. 일반적인 현장 업데이트는 작은 `.tar.gz` artifact를 교체하는 흐름이고, 무거운 `rootfs-base.raw.gz`를 매번 다시 압축하거나 배포하는 흐름이 아닙니다.

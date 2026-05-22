@@ -10,7 +10,7 @@ VitalServer Helper의 update 대상을 정의하고 각 대상에 version을 매
 
 이 모호함은 코드에서도 드러나기 시작했다. `RuntimeOrchestrator` 안에는 update apply/rollback, watchdog/recovery, VM lifecycle, install/configure, service control, repair, log 관련 책임이 함께 들어 있다. 파일 단위 usecase runner는 분리되고 있지만, 이름과 version model은 아직 이 책임들을 하나의 runtime처럼 다루고 있다.
 
-또한 platform별 구현이 다르다. Helper UI와 VM Driver는 macOS/iPadOS/Windows별로 달라질 수 있고, Service Stack과 VitalServer service는 guest/service 쪽 책임이다. Supervisor는 host/platform-aware 정책이고, VM Driver는 platform-specific provider다. 이 책임들을 한 단위로 설명하면 update target, support 진단, About UI, release metadata가 불명확해진다.
+또한 platform별 구현이 다르다. Helper UI는 Web/PWA primary로 공통화할 수 있지만 native shell, Runtime Control API implementation, Updater, Supervisor, VM Driver는 macOS/Windows별로 달라질 수 있다. Service Stack과 VitalServer service는 guest/service 쪽 책임이다. Supervisor는 host/platform-aware 정책이고, VM Driver는 platform-specific provider다. 이 책임들을 한 단위로 설명하면 update target, support 진단, About UI, release metadata가 불명확해진다.
 
 ADR 0002의 RuntimeClient boundary도 같은 vocabulary를 필요로 하지만, 이 ADR의 직접적인 출발점은 update 대상별 version을 정의하는 과정에서 드러난 `runtime` 책임 과다와 코드 구조의 모호함이다. Update 계약 자체는 별도 결정인 ADR 0004에서 다룬다.
 
@@ -21,7 +21,9 @@ VitalServer Helper를 최상위 product/release train으로 보고, 아래 compo
 | Layer | Platform dependency | 책임 | Version key |
 | --- | --- | --- | --- |
 | VitalServer Helper | cross-platform product umbrella | 최상위 관리 제품/클라이언트 패키지, release/support 기준 | `helperVersion` |
-| Helper UI | platform-specific | macOS/iPadOS/Windows 등 사용자 인터페이스 | `components.helperUI` |
+| Helper UI | cross-platform Web/PWA primary | iPhone/Android/iPad/desktop browser와 native shell wrapper에서 쓰는 product UI | `components.helperUI` |
+| Native Shell | platform-specific | install/bootstrap/pairing/recovery/native picker/tray/menu | `components.nativeShell` |
+| Runtime Control API | common API contract, platform-specific host implementation | auth/session/pairing, capability negotiation, status/log/update/settings/admin endpoint, progress/log streaming | `components.runtimeControl` |
 | Updater | host/platform-specific | product update bundle verify/apply/rollback, manifest compatibility gate, migration/guest activation 조율 | `components.updater` |
 | Supervisor | host/platform-aware | health/watchdog/recovery, service state loop, update/rollback 중 recovery suppression | `components.supervisor` |
 | VM Driver | platform-specific | macOS Apple Virtualization, Windows provider 등 VM lifecycle provider | `components.vmDriver` |
@@ -39,6 +41,8 @@ VitalServer Helper를 최상위 product/release train으로 보고, 아래 compo
   "platform": "macos-arm64",
   "components": {
     "helperUI": "0.2.0+macos.1",
+    "nativeShell": "0.2.0+macos.1",
+    "runtimeControl": "0.2.0+macos.1",
     "updater": "0.2.0",
     "supervisor": "0.2.0",
     "vmDriver": "0.2.0+macos.1",
@@ -60,7 +64,7 @@ VitalServer Helper를 최상위 product/release train으로 보고, 아래 compo
 | `runtimeVersion` 하나만 유지 | 어떤 책임이 바뀌었는지 support/UI/release metadata에서 설명할 수 없다 |
 | Helper version과 모든 component version을 항상 동일하게 유지 | UI-only, service-only, VM-driver-only 변경의 범위가 숨겨진다 |
 | VM Image version을 Helper version과 항상 같이 올리기 | Service Stack이나 UI만 바뀌는 release도 VM Image 변경처럼 보인다. bundle 크기와 운영 위험도도 커진다 |
-| platform 구분 없이 공통 component version만 사용 | Helper UI와 VM Driver는 platform-specific이므로 잘못된 artifact 적용 위험이 있다 |
+| platform 구분 없이 공통 component version만 사용 | native shell, Runtime Control API implementation, VM Driver는 platform-specific이므로 잘못된 artifact 적용 위험이 있다 |
 
 ## 결과
 
@@ -68,7 +72,7 @@ VitalServer Helper를 최상위 product/release train으로 보고, 아래 compo
 
 - About UI와 support log에서 실제 변경 layer를 설명할 수 있다.
 - release note, support metadata, update bundle manifest가 같은 component vocabulary를 재사용할 수 있다.
-- Updater/Supervisor/VM Driver/Service Stack/VM Image 책임이 문서와 코드 구조에서 일치하기 쉬워진다.
+- Native Shell/Runtime Control API/Updater/Supervisor/VM Driver/Service Stack/VM Image 책임이 문서와 코드 구조에서 일치하기 쉬워진다.
 - platform-specific build와 common service artifact를 같은 Helper release 아래에서 구분할 수 있다.
 
 감수하는 것:

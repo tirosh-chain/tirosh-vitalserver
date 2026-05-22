@@ -48,13 +48,13 @@ VM runtime 문서는 [VitalServer VM Launcher](vitalserver-vm-launcher.md)를 �
 |---|---|
 | [VitalServer VM Launcher](vitalserver-vm-launcher.md) | VM runtime 문서군의 빠른 지도 |
 | [VM Launcher Overview](vm-launcher/overview.md) | VM runtime 세부 문서의 한눈에 보기와 사용자 시나리오 |
-| [Architecture](vm-launcher/architecture.md) | 제품 구조, 단일 노드 가용성, GUI/PKG/runtime 책임 경계 |
+| [Architecture](vm-launcher/architecture.md) | 제품 구조, 단일 노드 가용성, Web/PWA UI/native shell/host runtime 책임 경계 |
 | [Packaging and Update](vm-launcher/packaging.md) | PKG/DMG 빌드, 설치 흐름, install settings, update bundle 계약 |
 | [Update](vm-launcher/update.md) | update bundle 적용 과정, 보존/변경 범위, guest-side activation, rollback 계약 |
 | [Runtime](vm-launcher/runtime.md) | boot asset, cloud-init, guest bootstrap, network/identity/signing 정책 |
 | [Troubleshooting](vm-launcher/troubleshooting.md) | PoC와 패키징 중 확인한 증상과 조치 |
 | [ADR 0002](adr/0002-helper-client-boundary-for-local-and-remote-runtime.md) | Web/PWA Helper UI, macOS native shell, local/remote RuntimeClient boundary |
-| [ADR 0003](adr/0003-helper-layer-and-component-version-model.md) | Helper UI, Updater, Supervisor, VM Driver, Service Stack, VM Image layer와 version model |
+| [ADR 0003](adr/0003-helper-layer-and-component-version-model.md) | Helper UI, Native Shell, Runtime Control API, Updater, Supervisor, VM Driver, Service Stack, VM Image layer와 version model |
 | [ADR 0004](adr/0004-product-update-and-vm-image-update-contract.md) | Product Update, VM Image Update, two-phase Product Update 구분 |
 
 ### 개발 운영

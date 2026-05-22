@@ -26,7 +26,7 @@ VitalServer Helper는 현장에 설치된 뒤에도 offline/online update bundle
 
 검토 중 아래 위험이 드러났다.
 
-- `runtimeVersion` 하나로 Helper UI, Updater, Supervisor, VM Driver, Service Stack, VM Image 변경을 모두 표현하면 어떤 변경이 update compatibility에 영향을 주는지 알 수 없다.
+- `runtimeVersion` 하나로 Helper UI, Native Shell, Runtime Control API, Updater, Supervisor, VM Driver, Service Stack, VM Image 변경을 모두 표현하면 어떤 변경이 update compatibility에 영향을 주는지 알 수 없다.
 - rootfs/base OS 변경을 일반 update bundle에 섞으면 mutable `vm-disk.img`가 보존되는 기존 설치본에서 “rootfs가 바뀌었는데 왜 OS package가 안 바뀌는가” 같은 오해와 실패가 생긴다.
 - Updater 자체가 바뀌는 update와 service/container만 바뀌는 update를 같은 위험도로 보면 bridge/two-phase update가 필요한 시점을 놓칠 수 있다.
 - platform-specific VM provider 변경을 공통 update처럼 배포하면 macOS/Windows variant가 서로 다른 artifact를 잘못 적용할 수 있다.
@@ -46,7 +46,7 @@ Update compatibility의 source of truth는 Updater version이다.
 
 | 개념 | 의미 |
 | --- | --- |
-| Product Update | Helper/Updater/Supervisor/VM Driver/Service Stack/service 변경 |
+| Product Update | Helper UI/Native Shell/Runtime Control API/Updater/Supervisor/VM Driver/Service Stack/service 변경 |
 | VM Image Update | Linux guest OS/rootfs/base image 변경 |
 | Two-phase Update | 기존 Updater가 새 Product Update를 바로 이해하지 못할 때, Updater를 먼저 올리고 본 update를 나중에 적용 |
 
@@ -54,7 +54,7 @@ Update bundle kind는 두 개만 둔다.
 
 | bundleKind | UI 위치 | 포함 범위 |
 | --- | --- | --- |
-| `product-update` | Update 탭 | Helper UI, Updater, Supervisor, VM Driver, Service Stack, 개별 service/container, host proxy, migrations |
+| `product-update` | Update 탭 | Helper UI, Native Shell, Runtime Control API, Updater, Supervisor, VM Driver, Service Stack, 개별 service/container, host proxy, migrations |
 | `vm-image-update` | Danger Zone | VM Image/rootfs/base OS/kernel/initrd class artifact |
 
 Hotfix, service-only update, updater bridge update는 새 bundle kind를 만들지 않고 `product-update`의 metadata로 표현한다. 예시는 `channel`, changed component versions, `requiresTwoPhaseUpdate`이다.
@@ -79,6 +79,8 @@ Bundle manifest는 ADR 0003의 component vocabulary를 재사용한다.
   "minUpdaterVersion": "0.1.6",
   "components": {
     "helperUI": "0.2.0+macos.1",
+    "nativeShell": "0.2.0+macos.1",
+    "runtimeControl": "0.2.0+macos.1",
     "updater": "0.2.0",
     "supervisor": "0.2.0",
     "vmDriver": "0.2.0+macos.1",
@@ -110,7 +112,7 @@ Product Update는 mutable VM disk를 암묵적으로 교체하지 않는다. Ser
 | bundle kind를 hotfix, service-stack, updater-bridge 등으로 많이 나누기 | kind가 늘수록 updater가 알아야 할 분기가 늘어난다. 대부분은 `product-update` metadata로 표현 가능하다 |
 | `runtimeVersion` 하나로 update compatibility 판단 | 어떤 component 변경이 compatibility gate인지 알 수 없다 |
 | VM Image Update를 Update 탭에서 처리 | OS image급 변경은 운영 데이터 보존/재생성 정책이 필요하므로 일반 Product Update와 같은 UX로 다루면 위험하다 |
-| platform 구분 없이 공통 bundle만 사용 | VM Driver와 Helper UI는 platform-specific이므로 잘못된 artifact 적용 위험이 있다 |
+| platform 구분 없이 공통 bundle만 사용 | Native Shell, Runtime Control API implementation, VM Driver는 platform-specific이므로 잘못된 artifact 적용 위험이 있다 |
 
 ## 결과
 
