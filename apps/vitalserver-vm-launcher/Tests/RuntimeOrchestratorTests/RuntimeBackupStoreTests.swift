@@ -4,6 +4,36 @@ import RuntimeCore
 import XCTest
 
 final class RuntimeBackupStoreTests: XCTestCase {
+    func testManagedBackupArtifactPolicyMapsUpdateArtifactsAndDestinations() {
+        let paths = makePaths()
+        let backup = URL(fileURLWithPath: "/backup")
+
+        XCTAssertEqual(
+            RuntimeManagedBackupArtifact.allCases.map(\.updateArtifactType),
+            [.appBundle, .nginxBundle, .guestDeploy, .runtimeTools]
+        )
+        XCTAssertEqual(
+            RuntimeManagedBackupArtifact.directoryArtifacts.map(\.updateArtifactType),
+            [.appBundle, .nginxBundle, .guestDeploy]
+        )
+        XCTAssertEqual(RuntimeManagedBackupArtifact.appBundle.source(in: paths), paths.managerApp)
+        XCTAssertEqual(RuntimeManagedBackupArtifact.nginxBundle.source(in: paths), paths.nginxBundle)
+        XCTAssertEqual(RuntimeManagedBackupArtifact.guestDeploy.source(in: paths), paths.guestDeploy)
+        XCTAssertEqual(RuntimeManagedBackupArtifact.runtimeTools.source(in: paths), paths.runtimeTools)
+        XCTAssertEqual(
+            RuntimeManagedBackupArtifact.guestDeploy.backupPath(in: backup).path,
+            "/backup/guest-deploy"
+        )
+        XCTAssertEqual(
+            RuntimeManagedBackupArtifact.nginxBundle.restoreDestination(
+                managerAppPath: paths.managerApp,
+                nginxDirectory: paths.nginxBundle,
+                deployDirectory: paths.guestDeploy
+            ),
+            paths.nginxBundle
+        )
+    }
+
     func testCreateBackupCopiesManagedArtifactsAndWritesManifest() throws {
         var createdDirectories: [String] = []
         var copiedItems: [String] = []

@@ -11,6 +11,66 @@ struct RuntimeBackupStorePaths {
     var runtimeTools: URL
 }
 
+enum RuntimeManagedBackupArtifact: CaseIterable {
+    case appBundle
+    case nginxBundle
+    case guestDeploy
+    case runtimeTools
+
+    static let directoryArtifacts: [RuntimeManagedBackupArtifact] = [
+        .appBundle,
+        .nginxBundle,
+        .guestDeploy,
+    ]
+
+    var updateArtifactType: UpdateBundleArtifactType {
+        switch self {
+        case .appBundle:
+            return .appBundle
+        case .nginxBundle:
+            return .nginxBundle
+        case .guestDeploy:
+            return .guestDeploy
+        case .runtimeTools:
+            return .runtimeTools
+        }
+    }
+
+    func source(in paths: RuntimeBackupStorePaths) -> URL {
+        switch self {
+        case .appBundle:
+            return paths.managerApp
+        case .nginxBundle:
+            return paths.nginxBundle
+        case .guestDeploy:
+            return paths.guestDeploy
+        case .runtimeTools:
+            return paths.runtimeTools
+        }
+    }
+
+    func backupPath(in backup: URL) -> URL {
+        backup.appendingPathComponent(updateArtifactType.rawValue)
+    }
+
+    func restoreDestination(
+        managerAppPath: URL,
+        nginxDirectory: URL,
+        deployDirectory: URL
+    ) -> URL {
+        switch self {
+        case .appBundle:
+            return managerAppPath
+        case .nginxBundle:
+            return nginxDirectory
+        case .guestDeploy:
+            return deployDirectory
+        case .runtimeTools:
+            return URL(fileURLWithPath: Constants.InstallPaths.vmBin).deletingLastPathComponent()
+        }
+    }
+}
+
 struct RuntimeBackupStore {
     var paths: RuntimeBackupStorePaths
     var timestamp: () -> String
@@ -39,10 +99,10 @@ struct RuntimeBackupStore {
             try copyItem(paths.runtimeVersion, backup.appendingPathComponent(Constants.Artifacts.runtimeVersion))
         }
 
-        try backupPathIfExists(paths.managerApp, to: backup.appendingPathComponent(UpdateBundleArtifactType.appBundle.rawValue))
-        try backupPathIfExists(paths.nginxBundle, to: backup.appendingPathComponent(UpdateBundleArtifactType.nginxBundle.rawValue))
-        try backupPathIfExists(paths.guestDeploy, to: backup.appendingPathComponent(UpdateBundleArtifactType.guestDeploy.rawValue))
-        try backupRuntimeTools(to: backup.appendingPathComponent(UpdateBundleArtifactType.runtimeTools.rawValue))
+        for artifact in RuntimeManagedBackupArtifact.directoryArtifacts {
+            try backupPathIfExists(artifact.source(in: paths), to: artifact.backupPath(in: backup))
+        }
+        try backupRuntimeTools(to: RuntimeManagedBackupArtifact.runtimeTools.backupPath(in: backup))
 
         let manifest = BackupManifest(
             product: Constants.Product.identifier,

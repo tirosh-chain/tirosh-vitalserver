@@ -32,20 +32,18 @@ struct RuntimeRollbackStepExecutor {
                 try writeRuntimeVersion("rolled-back", preflight.backup)
             }
         case .rollbackRestoreUpdateArtifacts:
-            try restoreBackupPathIfExists(
-                preflight.backup.appendingPathComponent(UpdateBundleArtifactType.appBundle.rawValue),
-                managerAppPath
-            )
-            try restoreBackupPathIfExists(
-                preflight.backup.appendingPathComponent(UpdateBundleArtifactType.nginxBundle.rawValue),
-                nginxDirectory
-            )
-            try restoreBackupPathIfExists(
-                preflight.backup.appendingPathComponent(UpdateBundleArtifactType.guestDeploy.rawValue),
-                deployDirectory
-            )
+            for artifact in RuntimeManagedBackupArtifact.directoryArtifacts {
+                try restoreBackupPathIfExists(
+                    artifact.backupPath(in: preflight.backup),
+                    artifact.restoreDestination(
+                        managerAppPath: managerAppPath,
+                        nginxDirectory: nginxDirectory,
+                        deployDirectory: deployDirectory
+                    )
+                )
+            }
             try restoreRuntimeToolsIfExists(
-                preflight.backup.appendingPathComponent(UpdateBundleArtifactType.runtimeTools.rawValue)
+                RuntimeManagedBackupArtifact.runtimeTools.backupPath(in: preflight.backup)
             )
         case .rollbackStartRuntimeServices:
             try startRuntimeServices(preflight.restartPolicy)
