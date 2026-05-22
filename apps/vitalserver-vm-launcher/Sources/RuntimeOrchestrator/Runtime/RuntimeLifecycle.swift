@@ -927,27 +927,19 @@ struct RuntimeLifecycle {
     }
 
     private func prepareRollbackPreflight(_ requestedBackup: URL?) throws -> RollbackPreflightContext {
-        let backup = try requestedBackup ?? requireLatestBackup()
-        let backupRootfs = backup.appendingPathComponent(Constants.Artifacts.rootfsBase)
-        let backupVersion = backup.appendingPathComponent(Constants.Artifacts.runtimeVersion)
-        guard directoryExists(backup) else {
-            throw LauncherError.missingFile(backup.path)
-        }
-        guard fileExists(backupRootfs) else {
-            throw LauncherError.missingFile(backupRootfs.path)
-        }
-
-        let restartPolicy = RuntimeServiceRestartPolicy(
-            restartVM: isLaunchdLoaded(Constants.Launchd.vmService),
-            restartProxy: isLaunchdLoaded(Constants.Launchd.proxyService),
-            restartWatchdog: isLaunchdLoaded(Constants.Launchd.watchdogService)
-        )
-        return RollbackPreflightContext(
-            backup: backup,
-            backupRootfs: backupRootfs,
-            backupVersion: backupVersion,
-            restartPolicy: restartPolicy
-        )
+        try RuntimeRollbackPreflightRunner(
+            requireLatestBackup: requireLatestBackup,
+            directoryExists: directoryExists,
+            fileExists: fileExists,
+            serviceRestartPolicy: {
+                RuntimeServiceRestartPolicy(
+                    restartVM: isLaunchdLoaded(Constants.Launchd.vmService),
+                    restartProxy: isLaunchdLoaded(Constants.Launchd.proxyService),
+                    restartWatchdog: isLaunchdLoaded(Constants.Launchd.watchdogService)
+                )
+            },
+            log: log
+        ).prepare(requestedBackup: requestedBackup)
     }
 
     private func executeRollbackStep(
