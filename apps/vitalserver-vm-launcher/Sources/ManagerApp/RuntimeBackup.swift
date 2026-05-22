@@ -3,11 +3,12 @@ import RuntimeCore
 import RuntimeInfrastructure
 
 struct RuntimeBackup: Identifiable, Hashable {
-    let path: String
+    let url: URL
     let sizeBytes: UInt64?
 
     var id: String { path }
-    var name: String { URL(fileURLWithPath: path).lastPathComponent }
+    var path: String { url.path }
+    var name: String { url.lastPathComponent }
     var sizeText: String {
         guard let sizeBytes else {
             return AppConstants.StatusText.unknown
@@ -25,7 +26,7 @@ struct RuntimeBackup: Identifiable, Hashable {
             nameContains: "-before-",
             skipsHiddenFiles: true
         )) ?? [])
-        .map { RuntimeBackup(path: $0.path, sizeBytes: directorySize($0, fileStore: fileStore)) }
+        .map { RuntimeBackup(url: $0, sizeBytes: directorySize($0, fileStore: fileStore)) }
 
         let merged = discovered + latestBackup(latestBackupPath, excluding: discovered, fileStore: fileStore)
         return merged.sorted { $0.name > $1.name }
@@ -39,14 +40,14 @@ struct RuntimeBackup: Identifiable, Hashable {
         guard let path, !path.isEmpty else {
             return []
         }
-        guard !backups.contains(where: { $0.path == path }) else {
+        let url = URL(fileURLWithPath: path)
+        guard !backups.contains(where: { $0.url == url }) else {
             return []
         }
-        let url = URL(fileURLWithPath: path)
         guard url.lastPathComponent.contains("-before-") else {
             return []
         }
-        return [RuntimeBackup(path: path, sizeBytes: directorySize(url, fileStore: fileStore))]
+        return [RuntimeBackup(url: url, sizeBytes: directorySize(url, fileStore: fileStore))]
     }
 
     private static func directorySize(_ url: URL, fileStore: RuntimeFileStore) -> UInt64? {

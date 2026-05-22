@@ -67,11 +67,11 @@ final class RuntimeFileReaderTests: XCTestCase {
         let reader = SystemRuntimeManagerFileReader()
 
         XCTAssertEqual(
-            reader.logText(sourceID: LogSourceID.helperMessage.rawValue, helperMessage: "  \n", lineLimit: 10),
+            reader.logText(sourceID: .helperMessage, helperMessage: "  \n", lineLimit: 10),
             AppConstants.StatusText.noLogData
         )
         XCTAssertEqual(
-            reader.logText(sourceID: LogSourceID.helperMessage.rawValue, helperMessage: "Ready", lineLimit: 10),
+            reader.logText(sourceID: .helperMessage, helperMessage: "Ready", lineLimit: 10),
             "Ready"
         )
     }
@@ -80,7 +80,7 @@ final class RuntimeFileReaderTests: XCTestCase {
         let collector = FakeRuntimeLogCollector()
         let reader = SystemRuntimeManagerFileReader(logCollector: collector)
 
-        _ = reader.logText(sourceID: LogSourceID.helperMessage.rawValue, helperMessage: "Ready", lineLimit: 10)
+        _ = reader.logText(sourceID: .helperMessage, helperMessage: "Ready", lineLimit: 10)
 
         XCTAssertEqual(collector.refreshCount, 1)
     }

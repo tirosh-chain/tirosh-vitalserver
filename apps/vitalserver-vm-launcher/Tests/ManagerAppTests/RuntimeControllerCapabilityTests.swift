@@ -6,11 +6,18 @@ import XCTest
 final class RuntimeControllerCapabilityTests: XCTestCase {
     func testRestrictedClientPreventsLocalOnlyOperations() async {
         let client = FakeRuntimeClient(capabilities: .restricted)
-        let controller = RuntimeController(runtimeClient: client, healthNotifications: NoopHealthNotifications())
-        controller.selectedBundlePath = "/bundle"
+        let nativeShell = FakeRuntimeNativeShell()
+        let controller = RuntimeController(
+            runtimeClient: client,
+            healthNotifications: NoopHealthNotifications(),
+            nativeShell: nativeShell
+        )
+        controller.selectedBundleURL = URL(fileURLWithPath: "/bundle")
         controller.selectedBundleVerified = true
-        controller.selectedBackupPath = "/backup"
+        controller.selectedBackupURL = URL(fileURLWithPath: "/backup")
 
+        controller.chooseVitalFilesDirectory()
+        await controller.chooseUpdateBundle()
         await controller.applySettings()
         await controller.verifySelectedBundle()
         await controller.applySelectedBundle()
@@ -35,6 +42,11 @@ final class RuntimeControllerCapabilityTests: XCTestCase {
         XCTAssertEqual(client.stopRuntimeServicesCount, 0)
         XCTAssertEqual(client.exportLogsCount, 0)
         XCTAssertEqual(client.preferredLogsPathCount, 0)
+        XCTAssertEqual(client.createDirectoryURLs, [])
+        XCTAssertEqual(nativeShell.chooseDirectoryCount, 0)
+        XCTAssertEqual(nativeShell.chooseUpdateBundleCount, 0)
+        XCTAssertEqual(nativeShell.chooseLogExportDestinationCount, 0)
+        XCTAssertEqual(nativeShell.openedFileURLs, [])
         XCTAssertEqual(controller.message, AppConstants.StatusText.actionUnavailable)
     }
 
@@ -51,6 +63,64 @@ final class RuntimeControllerCapabilityTests: XCTestCase {
         XCTAssertEqual(client.loadStatusCount, 1)
         XCTAssertEqual(client.loadBackupsCount, 1)
         XCTAssertEqual(controller.releaseInfo, .generated)
+    }
+
+    func testNativeShellProvidesDirectorySelectionWithoutLeakingPanelDetailsToController() {
+        let client = FakeRuntimeClient(capabilities: RuntimeClientCapabilities())
+        let nativeShell = FakeRuntimeNativeShell()
+        nativeShell.directoryURL = URL(fileURLWithPath: "/Users/test/Vital Files")
+        let controller = RuntimeController(
+            runtimeClient: client,
+            healthNotifications: NoopHealthNotifications(),
+            nativeShell: nativeShell
+        )
+
+        controller.chooseVitalFilesDirectory()
+
+        XCTAssertEqual(nativeShell.chooseDirectoryPrompts, [AppConstants.Actions.chooseDirectory])
+        XCTAssertEqual(client.createDirectoryURLs, [URL(fileURLWithPath: "/Users/test/Vital Files")])
+        XCTAssertEqual(controller.settings.vitalFilesDirectory, "/Users/test/Vital Files")
+    }
+
+    func testNativeShellProvidesUpdateBundleURLAndClientVerifiesSelectedBundle() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeClientCapabilities())
+        let nativeShell = FakeRuntimeNativeShell()
+        let bundleURL = URL(fileURLWithPath: "/tmp/update-bundle.tar.gz")
+        nativeShell.updateBundleURL = bundleURL
+        let controller = RuntimeController(
+            runtimeClient: client,
+            healthNotifications: NoopHealthNotifications(),
+            nativeShell: nativeShell
+        )
+
+        await controller.chooseUpdateBundle()
+
+        XCTAssertEqual(nativeShell.chooseUpdateBundlePrompts, [AppConstants.Actions.chooseBundle])
+        XCTAssertEqual(controller.selectedBundleURL, bundleURL)
+        XCTAssertEqual(controller.selectedBundleSummary, "bundle: /tmp/update-bundle.tar.gz")
+        XCTAssertEqual(client.verifiedBundleURLs, [bundleURL])
+        XCTAssertTrue(controller.selectedBundleVerified)
+    }
+
+    func testOpenAndExportOperationsUseNativeShellBoundary() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeClientCapabilities())
+        let nativeShell = FakeRuntimeNativeShell()
+        let exportURL = URL(fileURLWithPath: "/tmp/vitalserver-logs.zip")
+        nativeShell.logExportDestinationURL = exportURL
+        let controller = RuntimeController(
+            runtimeClient: client,
+            healthNotifications: NoopHealthNotifications(),
+            nativeShell: nativeShell
+        )
+
+        controller.openLogs()
+        controller.openVitalServer()
+        await controller.exportLogs()
+
+        XCTAssertEqual(nativeShell.openedFileURLs, [URL(fileURLWithPath: "/logs")])
+        XCTAssertEqual(nativeShell.openedWebURLs, [URL(string: AppConstants.Product.vitalServerURL(proxyPort: controller.status.proxyPort))])
+        XCTAssertEqual(nativeShell.chooseLogExportDestinationPrompts, [AppConstants.Actions.exportLogs])
+        XCTAssertEqual(client.exportLogDestinationURLs, [exportURL])
     }
 }
 
@@ -95,6 +165,9 @@ private final class FakeRuntimeClient: RuntimeClient {
     var exportLogsCount = 0
     var loadReleaseInfoCount = 0
     var preferredLogsPathCount = 0
+    var createDirectoryURLs: [URL] = []
+    var verifiedBundleURLs: [URL] = []
+    var exportLogDestinationURLs: [URL] = []
 
     init(capabilities: RuntimeClientCapabilities) {
         self.capabilities = capabilities
@@ -119,10 +192,10 @@ private final class FakeRuntimeClient: RuntimeClient {
     }
 
     func updateBundleSummary(url: URL) -> String {
-        "bundle"
+        "bundle: \(url.path)"
     }
 
-    func logText(sourceID: String, helperMessage: String, lineLimit: Int) -> String {
+    func logText(sourceID: LogSourceID, helperMessage: String, lineLimit: Int) -> String {
         helperMessage
     }
 
@@ -139,10 +212,13 @@ private final class FakeRuntimeClient: RuntimeClient {
         nil
     }
 
-    func createDirectory(at url: URL) {}
+    func createDirectory(at url: URL) {
+        createDirectoryURLs.append(url)
+    }
 
-    func verifyUpdateBundle(path: String) async throws -> ProcessResult {
+    func verifyUpdateBundle(url: URL) async throws -> ProcessResult {
         verifyUpdateBundleCount += 1
+        verifiedBundleURLs.append(url)
         return success()
     }
 
@@ -155,17 +231,17 @@ private final class FakeRuntimeClient: RuntimeClient {
         return success()
     }
 
-    func applyUpdateBundle(path: String) async throws -> ProcessResult {
+    func applyUpdateBundle(url: URL) async throws -> ProcessResult {
         applyUpdateBundleCount += 1
         return success()
     }
 
-    func rollbackRuntime(backupPath: String) async throws -> ProcessResult {
+    func rollbackRuntime(backupURL: URL) async throws -> ProcessResult {
         rollbackRuntimeCount += 1
         return success()
     }
 
-    func deleteBackup(path: String) async throws -> ProcessResult {
+    func deleteBackup(url: URL) async throws -> ProcessResult {
         deleteBackupCount += 1
         return success()
     }
@@ -192,6 +268,7 @@ private final class FakeRuntimeClient: RuntimeClient {
 
     func exportLogs(to destination: URL) async throws -> RuntimeLogExportResult {
         exportLogsCount += 1
+        exportLogDestinationURLs.append(destination)
         return RuntimeLogExportResult(destination: destination)
     }
 
@@ -207,5 +284,62 @@ private final class FakeRuntimeClient: RuntimeClient {
 
     private func success() -> ProcessResult {
         ProcessResult(exitCode: 0, stdout: "", stderr: "")
+    }
+}
+
+@MainActor
+private final class FakeRuntimeNativeShell: RuntimeNativeShell {
+    var directoryURL: URL?
+    var updateBundleURL: URL?
+    var logExportDestinationURL: URL?
+    var chooseDirectoryPrompts: [String] = []
+    var chooseUpdateBundlePrompts: [String] = []
+    var chooseLogExportDestinationPrompts: [String] = []
+    var openedFileURLs: [URL] = []
+    var openedWebURLs: [URL] = []
+    var relaunchHelperCount = 0
+    var terminateCount = 0
+
+    var chooseDirectoryCount: Int {
+        chooseDirectoryPrompts.count
+    }
+
+    var chooseUpdateBundleCount: Int {
+        chooseUpdateBundlePrompts.count
+    }
+
+    var chooseLogExportDestinationCount: Int {
+        chooseLogExportDestinationPrompts.count
+    }
+
+    func chooseDirectory(prompt: String) -> URL? {
+        chooseDirectoryPrompts.append(prompt)
+        return directoryURL
+    }
+
+    func chooseUpdateBundle(prompt: String) -> URL? {
+        chooseUpdateBundlePrompts.append(prompt)
+        return updateBundleURL
+    }
+
+    func chooseLogExportDestination(defaultName: String, prompt: String) -> URL? {
+        chooseLogExportDestinationPrompts.append(prompt)
+        return logExportDestinationURL
+    }
+
+    func openFileURL(_ url: URL) {
+        openedFileURLs.append(url)
+    }
+
+    func openWebURL(_ url: URL) {
+        openedWebURLs.append(url)
+    }
+
+    func relaunchHelper() {
+        relaunchHelperCount += 1
+    }
+
+    func terminate() {
+        terminateCount += 1
     }
 }

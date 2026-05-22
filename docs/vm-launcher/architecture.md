@@ -424,6 +424,30 @@ Status/Settings/Update/Logs UI에 표시
 
 `RuntimeCore`는 별도 실행 계층이 아니라 `ManagerApp`과 `RuntimeOrchestrator`가 import하는 공유 계약/정책 라이브러리입니다. JSON schema, enum, evaluator, operation plan, port protocol을 담고, macOS process 실행이나 SwiftUI 화면 같은 adapter 책임은 갖지 않습니다.
 
+현재 ManagerApp 내부 경계는 아래처럼 둡니다. 이 구조는 전환기 SwiftUI app 안에서 ADR 0002의 `RuntimeClient` boundary를 구현한 모양입니다.
+
+```text
+[ContentView / ManagerApplication]
+SwiftUI 화면, binding, 버튼 액션
+        |
+        | user intent / view state binding
+        v
+[RuntimeController]
+UI 상태, capability guard, usecase orchestration, 화면 메시지 변환
+        |
+        +-- RuntimeClient
+        |     status/settings/log/backup/release read model
+        |     install/configure/update/rollback/service command usecase
+        |
+        +-- RuntimeNativeShell
+        |     directory/bundle/save panel, file/web open, relaunch/terminate
+        |
+        +-- HealthNotifying
+              host notification adapter
+```
+
+`RuntimeController`는 SwiftUI의 view model 역할을 맡지만, macOS API나 command 세부 구현을 직접 소유하지 않습니다. macOS native concern은 `RuntimeNativeShell` 뒤에 두고, local runtime operation은 `RuntimeClient` 뒤에 둡니다. UI에서 선택한 update bundle과 backup은 내부 계약에서 `URL`로 유지하고, 화면 표시가 필요할 때만 path string으로 변환합니다. Log source처럼 닫힌 선택지는 raw string 대신 enum 계약으로 유지합니다.
+
 | 계층 | 역할 | 주요 코드 | 책임 |
 |---|---|---|---|
 | `ManagerApp` | 운영 UI | `Sources/ManagerApp/*` | 사용자 입력 수집, CLI 호출, status/log/settings 표시 |

@@ -33,8 +33,8 @@ enum RuntimeCommandFactory {
         ([uninstaller] + (clean ? ["--clean"] : [])).map(shellQuote).joined(separator: " ")
     }
 
-    static func deleteBackupCommand(path: String) -> String {
-        shellCommand(executable: AppConstants.Commands.rm, arguments: ["-rf", "--", path])
+    static func deleteBackupCommand(url: URL) -> String {
+        shellCommand(executable: AppConstants.Commands.rm, arguments: ["-rf", "--", url.path])
     }
 
     static func proxyRepairCommand(proxyPort: Int) -> String {

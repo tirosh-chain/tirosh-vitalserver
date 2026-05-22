@@ -719,9 +719,9 @@ struct ContentView: View {
                 if !controller.backups.isEmpty {
                     Grid(alignment: .leading, horizontalSpacing: 20, verticalSpacing: 10) {
                         settingRow(AppConstants.Labels.rollbackBackup) {
-                            Picker("", selection: $controller.selectedBackupPath) {
+                            Picker("", selection: $controller.selectedBackupURL) {
                                 ForEach(controller.backups) { backup in
-                                    Text("\(backup.name) (\(backup.sizeText))").tag(backup.path)
+                                    Text("\(backup.name) (\(backup.sizeText))").tag(Optional(backup.url))
                                 }
                             }
                             .labelsHidden()

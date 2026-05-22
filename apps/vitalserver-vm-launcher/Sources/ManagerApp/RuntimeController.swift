@@ -1,39 +1,38 @@
-import AppKit
 import Foundation
 import RuntimeCore
-import UniformTypeIdentifiers
 
 @MainActor
 final class RuntimeController: ObservableObject {
     @Published var status = RuntimeStatus()
     @Published var settings = RuntimeSettings()
-    @Published var selectedBundlePath = ""
+    @Published var selectedBundleURL: URL?
     @Published var selectedBundleSummary = ""
     @Published var selectedBundleVerification = ""
     @Published var selectedBundleVerified = false
     @Published var backups: [RuntimeBackup] = []
-    @Published var selectedBackupPath = ""
+    @Published var selectedBackupURL: URL?
     @Published var message = AppConstants.StatusText.ready
     @Published var operationDetail = ""
     @Published var logText = AppConstants.StatusText.ready
     @Published var logLineLimit = 500
-    @Published var selectedLogSource = LogSourceID.helperMessage.rawValue
+    @Published var selectedLogSource = LogSourceID.helperMessage
     @Published var logStreaming = true
     @Published var isBusy = false
     @Published var releaseInfo = RuntimeReleaseInfo.generated
 
     private let runtimeClient: any RuntimeClient
     private let healthNotifications: any HealthNotifying
+    private let nativeShell: any RuntimeNativeShell
     private let logLineLimitOptions = [100, 500, 1000]
     private let logSources: [LogSourceOption] = [
-        LogSourceOption(id: LogSourceID.helperMessage.rawValue, title: "Helper message"),
-        LogSourceOption(id: LogSourceID.install.rawValue, title: "Install log"),
-        LogSourceOption(id: LogSourceID.command.rawValue, title: "Command log"),
-        LogSourceOption(id: LogSourceID.launcher.rawValue, title: "VM launcher"),
-        LogSourceOption(id: LogSourceID.proxyOutput.rawValue, title: "Host proxy output"),
-        LogSourceOption(id: LogSourceID.proxyError.rawValue, title: "Host proxy error"),
-        LogSourceOption(id: LogSourceID.updateActivation.rawValue, title: "Update activation"),
-        LogSourceOption(id: LogSourceID.containers.rawValue, title: "Containers"),
+        LogSourceOption(id: .helperMessage, title: "Helper message"),
+        LogSourceOption(id: .install, title: "Install log"),
+        LogSourceOption(id: .command, title: "Command log"),
+        LogSourceOption(id: .launcher, title: "VM launcher"),
+        LogSourceOption(id: .proxyOutput, title: "Host proxy output"),
+        LogSourceOption(id: .proxyError, title: "Host proxy error"),
+        LogSourceOption(id: .updateActivation, title: "Update activation"),
+        LogSourceOption(id: .containers, title: "Containers"),
     ]
     private var healthNotificationBaseline: HealthNotificationState?
 
@@ -44,7 +43,8 @@ final class RuntimeController: ObservableObject {
         settingsReader: RuntimeSettingsReading = SystemRuntimeSettingsReader(),
         actionEnvironment: RuntimeActionEnvironment = SystemRuntimeActionEnvironment(),
         runtimeClient: (any RuntimeClient)? = nil,
-        healthNotifications: (any HealthNotifying)? = nil
+        healthNotifications: (any HealthNotifying)? = nil,
+        nativeShell: (any RuntimeNativeShell)? = nil
     ) {
         self.runtimeClient = runtimeClient ?? LocalRuntimeClient(
             statusReader: statusReader,
@@ -54,12 +54,16 @@ final class RuntimeController: ObservableObject {
             actionEnvironment: actionEnvironment
         )
         self.healthNotifications = healthNotifications ?? HealthNotificationCenter()
+        self.nativeShell = nativeShell ?? SystemRuntimeNativeShell()
         self.settings = self.runtimeClient.loadSettings()
         self.healthNotifications.configure()
     }
 
     var selectedBackup: RuntimeBackup? {
-        backups.first { $0.path == selectedBackupPath }
+        guard let selectedBackupURL else {
+            return nil
+        }
+        return backups.first { $0.url == selectedBackupURL }
     }
 
     var capabilities: RuntimeClientCapabilities {
@@ -73,6 +77,14 @@ final class RuntimeController: ObservableObject {
         ]
         .filter { !$0.isEmpty }
         .joined(separator: "\n\n")
+    }
+
+    var selectedBundlePath: String {
+        selectedBundleURL?.path ?? ""
+    }
+
+    var selectedBackupPath: String {
+        selectedBackupURL?.path ?? ""
     }
 
     var applySettingsConfirmation: String {
@@ -177,13 +189,7 @@ final class RuntimeController: ObservableObject {
             message = AppConstants.StatusText.actionUnavailable
             return
         }
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.canCreateDirectories = true
-        panel.allowsMultipleSelection = false
-        panel.prompt = AppConstants.Actions.chooseDirectory
-        if panel.runModal() == .OK, let url = panel.url {
+        if let url = nativeShell.chooseDirectory(prompt: AppConstants.Actions.chooseDirectory) {
             runtimeClient.createDirectory(at: url)
             settings.vitalFilesDirectory = url.path
         }
@@ -194,18 +200,8 @@ final class RuntimeController: ObservableObject {
             message = AppConstants.StatusText.actionUnavailable
             return
         }
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = true
-        panel.canChooseDirectories = false
-        panel.allowsMultipleSelection = false
-        panel.allowedContentTypes = [
-            UTType(filenameExtension: "tar.gz"),
-            UTType(filenameExtension: "tgz"),
-            .gzip,
-        ].compactMap { $0 }
-        panel.prompt = AppConstants.Actions.chooseBundle
-        if panel.runModal() == .OK, let url = panel.url {
-            selectedBundlePath = url.path
+        if let url = nativeShell.chooseUpdateBundle(prompt: AppConstants.Actions.chooseBundle) {
+            selectedBundleURL = url
             selectedBundleSummary = runtimeClient.updateBundleSummary(url: url)
             selectedBundleVerified = false
             selectedBundleVerification = AppConstants.StatusText.updateBundleVerifying
@@ -218,7 +214,7 @@ final class RuntimeController: ObservableObject {
             message = AppConstants.StatusText.actionUnavailable
             return
         }
-        guard !selectedBundlePath.isEmpty else {
+        guard let bundleURL = selectedBundleURL else {
             message = AppConstants.StatusText.missingBundle
             return
         }
@@ -226,13 +222,12 @@ final class RuntimeController: ObservableObject {
             message = AppConstants.StatusText.updateBundleNotVerified
             return
         }
-        let bundlePath = selectedBundlePath
         let didApply = await runClientAction(
             preparingMessage: AppConstants.StatusText.updateBundlePreparing,
             waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
             runningMessage: AppConstants.StatusText.updateBundleApplying,
             successMessage: AppConstants.StatusText.updateBundleApplied,
-            action: { try await self.runtimeClient.applyUpdateBundle(path: bundlePath) }
+            action: { try await self.runtimeClient.applyUpdateBundle(url: bundleURL) }
         )
         if didApply {
             message = AppConstants.StatusText.updateBundleAppliedRelaunching
@@ -247,7 +242,7 @@ final class RuntimeController: ObservableObject {
             message = AppConstants.StatusText.actionUnavailable
             return
         }
-        guard !selectedBundlePath.isEmpty else {
+        guard let bundleURL = selectedBundleURL else {
             selectedBundleVerification = ""
             selectedBundleVerified = false
             message = AppConstants.StatusText.missingBundle
@@ -260,7 +255,7 @@ final class RuntimeController: ObservableObject {
         message = AppConstants.StatusText.updateBundleVerifying
         let result: ProcessResult
         do {
-            result = try await runtimeClient.verifyUpdateBundle(path: selectedBundlePath)
+            result = try await runtimeClient.verifyUpdateBundle(url: bundleURL)
         } catch {
             selectedBundleVerification = error.localizedDescription
             selectedBundleVerified = false
@@ -289,17 +284,16 @@ final class RuntimeController: ObservableObject {
             message = AppConstants.StatusText.actionUnavailable
             return
         }
-        guard !selectedBackupPath.isEmpty else {
+        guard let backupURL = selectedBackupURL else {
             message = AppConstants.StatusText.missingBackup
             return
         }
-        let backupPath = selectedBackupPath
         _ = await runClientAction(
             preparingMessage: AppConstants.StatusText.rollbackPreparing,
             waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
             runningMessage: AppConstants.StatusText.rollbackRunning,
             successMessage: AppConstants.StatusText.rollbackCompleted,
-            action: { try await self.runtimeClient.rollbackRuntime(backupPath: backupPath) }
+            action: { try await self.runtimeClient.rollbackRuntime(backupURL: backupURL) }
         )
         await refresh()
         await refreshHealthStatus()
@@ -310,24 +304,23 @@ final class RuntimeController: ObservableObject {
             message = AppConstants.StatusText.actionUnavailable
             return
         }
-        guard !selectedBackupPath.isEmpty else {
+        guard let backupURL = selectedBackupURL else {
             message = AppConstants.StatusText.missingBackup
             return
         }
-        guard isManagedBackupPath(selectedBackupPath) else {
+        guard isManagedBackupURL(backupURL) else {
             message = AppConstants.StatusText.invalidBackup
             return
         }
-        let backupPath = selectedBackupPath
         let didDelete = await runClientAction(
             preparingMessage: AppConstants.StatusText.backupDeletePreparing,
             waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
             runningMessage: AppConstants.StatusText.backupDeleteRunning,
             successMessage: AppConstants.StatusText.backupDeleted,
-            action: { try await self.runtimeClient.deleteBackup(path: backupPath) }
+            action: { try await self.runtimeClient.deleteBackup(url: backupURL) }
         )
         if didDelete {
-            selectedBackupPath = ""
+            selectedBackupURL = nil
             await refresh()
         }
     }
@@ -406,12 +399,11 @@ final class RuntimeController: ObservableObject {
             message = AppConstants.StatusText.logExportUnavailable
             return
         }
-        let panel = NSSavePanel()
-        panel.canCreateDirectories = true
-        panel.allowedContentTypes = [.zip]
-        panel.nameFieldStringValue = "vitalserver-logs-\(logExportTimestamp()).zip"
-        panel.prompt = AppConstants.Actions.exportLogs
-        guard panel.runModal() == .OK, let destination = panel.url else {
+        let defaultName = "vitalserver-logs-\(logExportTimestamp()).zip"
+        guard let destination = nativeShell.chooseLogExportDestination(
+            defaultName: defaultName,
+            prompt: AppConstants.Actions.exportLogs
+        ) else {
             return
         }
 
@@ -459,7 +451,7 @@ final class RuntimeController: ObservableObject {
     }
 
     func openFolder(_ path: String) {
-        NSWorkspace.shared.open(URL(fileURLWithPath: path))
+        nativeShell.openFileURL(URL(fileURLWithPath: path))
     }
 
     func vitalFileFolders() -> [VitalFileFolder] {
@@ -486,15 +478,11 @@ final class RuntimeController: ObservableObject {
         guard let url = URL(string: rawURL) else {
             return
         }
-        NSWorkspace.shared.open(url)
+        nativeShell.openWebURL(url)
     }
 
     private func relaunchHelper() {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: AppConstants.Commands.shell)
-        process.arguments = ["-c", RuntimeCommandFactory.relaunchHelperCommand()]
-        try? process.run()
-        NSApplication.shared.terminate(nil)
+        nativeShell.relaunchHelper()
     }
 
     private func logExportTimestamp() -> String {
@@ -542,11 +530,14 @@ final class RuntimeController: ObservableObject {
 
     private func refreshBackupList() {
         backups = runtimeClient.loadBackups(latestBackupPath: status.latestBackup)
-        let backupPaths = Set(backups.map(\.path))
-        if let latest = backups.first, selectedBackupPath.isEmpty || !backupPaths.contains(selectedBackupPath) {
-            selectedBackupPath = latest.path
+        let backupURLs = Set(backups.map(\.url))
+        if let selectedBackupURL, backupURLs.contains(selectedBackupURL) {
+            return
+        }
+        if let latest = backups.first {
+            selectedBackupURL = latest.url
         } else if backups.isEmpty {
-            selectedBackupPath = ""
+            selectedBackupURL = nil
         }
     }
 
@@ -566,8 +557,8 @@ final class RuntimeController: ObservableObject {
             || runtimeClient.capabilities.canResetAdminPassword
     }
 
-    private func isManagedBackupPath(_ path: String) -> Bool {
-        let backupURL = URL(fileURLWithPath: path).standardizedFileURL
+    private func isManagedBackupURL(_ url: URL) -> Bool {
+        let backupURL = url.standardizedFileURL
         let backupsURL = URL(fileURLWithPath: AppConstants.Paths.backups).standardizedFileURL
         guard backupURL.lastPathComponent.contains("-before-") else {
             return false
@@ -594,7 +585,7 @@ final class RuntimeController: ObservableObject {
         message = waitingMessage
         operationDetail = waitingMessage
 
-        selectedLogSource = LogSourceID.command.rawValue
+        selectedLogSource = .command
         refreshLogs()
         message = runningMessage
         operationDetail = runningMessage
@@ -643,7 +634,7 @@ final class RuntimeController: ObservableObject {
             AppConstants.StatusText.applicationWillQuit,
         ].joined(separator: "\n\n")
         try? await Task.sleep(nanoseconds: 800_000_000)
-        NSApplication.shared.terminate(nil)
+        nativeShell.terminate()
     }
 
     private func waitForAppliedSettings() async {
@@ -703,22 +694,6 @@ struct VitalFileFolder: Identifiable {
     var id: String { path }
     let name: String
     let path: String
-}
-
-struct LogSourceOption: Identifiable {
-    let id: String
-    let title: String
-}
-
-enum LogSourceID: String {
-    case helperMessage
-    case install
-    case command
-    case launcher
-    case proxyOutput
-    case proxyError
-    case updateActivation
-    case containers
 }
 
 private enum HealthNotificationState: Equatable {

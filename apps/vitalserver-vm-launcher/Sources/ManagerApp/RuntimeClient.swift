@@ -80,17 +80,17 @@ protocol RuntimeClient {
     func loadHealthStatus(settings: RuntimeSettings) async -> RuntimeStatus
     func loadBackups(latestBackupPath: String?) -> [RuntimeBackup]
     func updateBundleSummary(url: URL) -> String
-    func logText(sourceID: String, helperMessage: String, lineLimit: Int) -> String
+    func logText(sourceID: LogSourceID, helperMessage: String, lineLimit: Int) -> String
     func preferredLogsPath() -> String
     func vitalFileFolders(root: String) -> [VitalFileFolder]
     func legacyCommandProgressLine() -> String?
     func createDirectory(at url: URL)
-    func verifyUpdateBundle(path: String) async throws -> ProcessResult
+    func verifyUpdateBundle(url: URL) async throws -> ProcessResult
     func uninstallRuntime(clean: Bool) async throws -> ProcessResult
     func applySettings(_ settings: RuntimeSettings) async throws -> ProcessResult
-    func applyUpdateBundle(path: String) async throws -> ProcessResult
-    func rollbackRuntime(backupPath: String) async throws -> ProcessResult
-    func deleteBackup(path: String) async throws -> ProcessResult
+    func applyUpdateBundle(url: URL) async throws -> ProcessResult
+    func rollbackRuntime(backupURL: URL) async throws -> ProcessResult
+    func deleteBackup(url: URL) async throws -> ProcessResult
     func repairProxy(proxyPort: Int) async throws -> ProcessResult
     func repairDatastore() async throws -> ProcessResult
     func startRuntimeServices() async throws -> ProcessResult
@@ -146,7 +146,7 @@ struct LocalRuntimeClient: RuntimeClient {
         fileReader.updateBundleSummary(url: url)
     }
 
-    func logText(sourceID: String, helperMessage: String, lineLimit: Int) -> String {
+    func logText(sourceID: LogSourceID, helperMessage: String, lineLimit: Int) -> String {
         fileReader.logText(sourceID: sourceID, helperMessage: helperMessage, lineLimit: lineLimit)
     }
 
@@ -166,9 +166,9 @@ struct LocalRuntimeClient: RuntimeClient {
         actionEnvironment.createDirectory(at: url)
     }
 
-    func verifyUpdateBundle(path: String) async throws -> ProcessResult {
+    func verifyUpdateBundle(url: URL) async throws -> ProcessResult {
         try ensureLauncherIsAvailable()
-        return await actionEnvironment.verifyBundle(launcher: AppConstants.Paths.launcher, bundlePath: path)
+        return await actionEnvironment.verifyBundle(launcher: AppConstants.Paths.launcher, bundleURL: url)
     }
 
     func uninstallRuntime(clean: Bool) async throws -> ProcessResult {
@@ -198,31 +198,32 @@ struct LocalRuntimeClient: RuntimeClient {
         ))
     }
 
-    func applyUpdateBundle(path: String) async throws -> ProcessResult {
+    func applyUpdateBundle(url: URL) async throws -> ProcessResult {
         try ensureLauncherIsAvailable()
         return await runPrivileged(RuntimeCommandFactory.shellCommand(
             executable: AppConstants.Paths.launcher,
             arguments: [
                 AppConstants.RuntimeCommand.runtime,
                 AppConstants.RuntimeCommand.applyBundle,
-                path,
+                url.path,
             ]
         ))
     }
 
-    func rollbackRuntime(backupPath: String) async throws -> ProcessResult {
+    func rollbackRuntime(backupURL: URL) async throws -> ProcessResult {
         try ensureLauncherIsAvailable()
         return await runPrivileged(RuntimeCommandFactory.shellCommand(
             executable: AppConstants.Paths.launcher,
             arguments: [
                 AppConstants.RuntimeCommand.runtime,
                 AppConstants.RuntimeCommand.rollback,
-            ] + (backupPath.isEmpty ? [] : [backupPath])
+                backupURL.path,
+            ]
         ))
     }
 
-    func deleteBackup(path: String) async throws -> ProcessResult {
-        await runPrivileged(RuntimeCommandFactory.deleteBackupCommand(path: path))
+    func deleteBackup(url: URL) async throws -> ProcessResult {
+        await runPrivileged(RuntimeCommandFactory.deleteBackupCommand(url: url))
     }
 
     func repairProxy(proxyPort: Int) async throws -> ProcessResult {

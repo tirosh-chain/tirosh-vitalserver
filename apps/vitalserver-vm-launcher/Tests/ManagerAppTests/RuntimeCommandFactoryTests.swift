@@ -19,7 +19,7 @@ final class RuntimeCommandFactoryTests: XCTestCase {
     }
 
     func testDeleteBackupCommandUsesSafeArgumentBoundary() {
-        let command = RuntimeCommandFactory.deleteBackupCommand(path: "/tmp/backup before")
+        let command = RuntimeCommandFactory.deleteBackupCommand(url: URL(fileURLWithPath: "/tmp/backup before"))
 
         XCTAssertEqual(command, "'/bin/rm' '-rf' '--' '/tmp/backup before'")
     }

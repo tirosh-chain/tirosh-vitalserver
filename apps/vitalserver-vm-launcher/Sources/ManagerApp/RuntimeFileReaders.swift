@@ -5,7 +5,7 @@ import RuntimeInfrastructure
 protocol RuntimeManagerFileReading {
     func updateBundleSummary(url: URL) -> String
     func backups(latestBackupPath: String?) -> [RuntimeBackup]
-    func logText(sourceID: String, helperMessage: String, lineLimit: Int) -> String
+    func logText(sourceID: LogSourceID, helperMessage: String, lineLimit: Int) -> String
     func preferredLogsPath() -> String
     func vitalFileFolders(root: String) -> [VitalFileFolder]
 }
@@ -46,10 +46,7 @@ struct SystemRuntimeManagerFileReader: RuntimeManagerFileReading {
         RuntimeBackup.loadAll(latestBackupPath: latestBackupPath, fileStore: fileStore)
     }
 
-    func logText(sourceID: String, helperMessage: String, lineLimit: Int) -> String {
-        guard let sourceID = LogSourceID(rawValue: sourceID) else {
-            return AppConstants.StatusText.noLogData
-        }
+    func logText(sourceID: LogSourceID, helperMessage: String, lineLimit: Int) -> String {
         logCollector.refreshLogCollection()
         switch sourceID {
         case .helperMessage:

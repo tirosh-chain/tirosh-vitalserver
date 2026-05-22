@@ -8,7 +8,7 @@ protocol RuntimeActionEnvironment {
     func createDirectory(at url: URL)
     func writeAdminPasswordFile(_ password: String) throws -> URL
     func removeItem(at url: URL)
-    func verifyBundle(launcher: String, bundlePath: String) async -> ProcessResult
+    func verifyBundle(launcher: String, bundleURL: URL) async -> ProcessResult
 }
 
 @MainActor
@@ -45,13 +45,13 @@ struct SystemRuntimeActionEnvironment: RuntimeActionEnvironment {
         try? fileStore.removeItem(at: url)
     }
 
-    func verifyBundle(launcher: String, bundlePath: String) async -> ProcessResult {
+    func verifyBundle(launcher: String, bundleURL: URL) async -> ProcessResult {
         await ProcessRunner.run(
             launcher,
             arguments: [
                 AppConstants.RuntimeCommand.runtime,
                 AppConstants.RuntimeCommand.verifyBundle,
-                bundlePath,
+                bundleURL.path,
             ]
         )
     }

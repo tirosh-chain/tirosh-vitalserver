@@ -102,6 +102,17 @@ Local-only 기능은 암묵적으로 호출하지 않고 capability로 노출한
 
 `NSOpenPanel`, `NSSavePanel`, `NSWorkspace` 같은 native UI concern은 macOS shell/controller code에 남긴다. 파일 복사, archive 생성, launchd, installed paths, privileged command execution은 local adapter/usecase 뒤에 둔다.
 
+현재 SwiftUI 전환기 구현에서는 이 경계를 다음 코드 계약으로 맞춘다.
+
+| 코드 계약 | 책임 |
+| --- | --- |
+| `RuntimeController` | UI 상태, capability guard, usecase orchestration, 화면 메시지 변환 |
+| `RuntimeClient` | UI가 호출하는 local/remote runtime operation contract. status/settings/log/backup/release read model과 install/configure/update/rollback/service command를 제공 |
+| `LocalRuntimeClient` | macOS local adapter. file reader, settings/status reader, privileged command runner, action environment를 조합 |
+| `RuntimeNativeShell` | macOS native picker/save panel, file/web open, helper relaunch/terminate 같은 shell concern |
+
+이 구현에서 `RuntimeController`는 `AppKit`을 직접 import하지 않는다. update bundle, log export destination, backup 선택값처럼 local file을 가리키는 값은 내부 계약에서 `URL`로 전달하고, CLI argument나 화면 표시가 필요한 boundary에서만 path string으로 변환한다. Log source처럼 닫힌 선택지는 raw string이 아니라 enum 계약으로 다룬다.
+
 Local web mode와 Remote mode는 같은 `RuntimeClient` contract를 HTTP/SSE adapter로 구현한다. Runtime Control API는 최소한 아래 contract를 가져야 한다.
 
 - auth/session 또는 pairing token
