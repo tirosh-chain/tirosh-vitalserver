@@ -10,7 +10,7 @@
 |---|---|
 | [VM Launcher Overview](vm-launcher/overview.md) | VM runtime 문서군 전체 지도와 사용자 시나리오 |
 | [Architecture](vm-launcher/architecture.md) | 제품 구조, shared/NAT + host nginx 선택 이유, 단일 노드 가용성 범위, 책임 경계 확인 |
-| [ADR 0002](adr/0002-helper-client-boundary-for-local-and-remote-runtime.md) | Helper UI와 local/remote runtime implementation 사이의 client boundary 확인 |
+| [ADR 0002](adr/0002-helper-client-boundary-for-local-and-remote-runtime.md) | Web/PWA Helper UI, macOS native shell, local/remote RuntimeClient boundary 확인 |
 | [ADR 0003](adr/0003-helper-layer-and-component-version-model.md) | Helper layer와 component version model 확인 |
 | [ADR 0004](adr/0004-product-update-and-vm-image-update-contract.md) | Product Update, VM Image Update, two-phase Product Update 계약 확인 |
 | [Packaging and Update](vm-launcher/packaging.md) | `make vm-pkg`, `make vm-dmg`, PKG 설치 흐름, install settings, update bundle 계약 확인 |
