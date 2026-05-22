@@ -2,15 +2,15 @@ import Foundation
 import RuntimeCore
 
 struct RuntimeRollbackRunner {
-    var preparePreflight: (URL?) throws -> RollbackPreflightContext
+    var preparePreflight: (RuntimeRollbackCommand) throws -> RollbackPreflightContext
     var executeStep: (RuntimeWorkflowStep, RollbackPreflightContext) throws -> Void
     var writeStatus: (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void
     var writeProgress: (RuntimeStepExecutionEvent) throws -> Void
     var vmDiskPath: () -> String
     var log: (String) -> Void
 
-    func run(requestedBackup: URL?) throws {
-        let preflight = try preparePreflight(requestedBackup)
+    func run(_ command: RuntimeRollbackCommand) throws {
+        let preflight = try preparePreflight(command)
         log("rollback started backup=\(preflight.backup.path)")
         try writeStatus(.recovering, .rollback, "rollback started")
 

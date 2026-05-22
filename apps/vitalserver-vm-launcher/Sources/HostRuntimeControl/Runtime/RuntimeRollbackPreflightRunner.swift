@@ -8,8 +8,8 @@ struct RuntimeRollbackPreflightRunner {
     var serviceRestartPolicy: () -> RuntimeServiceRestartPolicy
     var log: (String) -> Void
 
-    func prepare(requestedBackup: URL?) throws -> RollbackPreflightContext {
-        let backup = try requestedBackup ?? requireLatestBackup()
+    func prepare(_ command: RuntimeRollbackCommand) throws -> RollbackPreflightContext {
+        let backup = try backupURL(for: command)
         let backupRootfs = backup.appendingPathComponent(Constants.Artifacts.rootfsBase)
         let backupVersion = backup.appendingPathComponent(Constants.Artifacts.runtimeVersion)
 
@@ -31,5 +31,14 @@ struct RuntimeRollbackPreflightRunner {
             backupVersion: backupVersion,
             restartPolicy: restartPolicy
         )
+    }
+
+    private func backupURL(for command: RuntimeRollbackCommand) throws -> URL {
+        switch command {
+        case .latestBackup:
+            return try requireLatestBackup()
+        case .specificBackup(let url):
+            return url
+        }
     }
 }

@@ -107,8 +107,8 @@ struct RuntimeLifecycle {
             _ = try stageBundle(bundleURL)
         case .applyBundle(let bundleURL):
             try applyBundle(bundleURL)
-        case .rollback(let backupURL):
-            try rollback(backupURL)
+        case .rollback(let command):
+            try rollback(command)
         case .repairDatastore:
             try repairDatastore()
         case .startServices:
@@ -349,7 +349,9 @@ struct RuntimeLifecycle {
                 fileStore: fileStore,
                 runtimeHealthSnapshot: runtimeHealthSnapshot,
                 rotateRuntimeLogs: rotateRuntimeLogs,
-                rollback: rollback,
+                rollback: { backup in
+                    try rollback(backup.map(RuntimeRollbackCommand.specificBackup) ?? .latestBackup)
+                },
                 startRuntimeServices: startRuntimeServices,
                 stopRuntimeServices: stopRuntimeServices,
                 isLaunchdLoaded: isLaunchdLoaded,
@@ -450,8 +452,8 @@ struct RuntimeLifecycle {
         )
     }
 
-    func rollback(_ requestedBackup: URL?) throws {
-        try runtimeRollbackRunner().run(requestedBackup: requestedBackup)
+    func rollback(_ command: RuntimeRollbackCommand) throws {
+        try runtimeRollbackRunner().run(command)
     }
 
     private func runtimeRollbackRunner() -> RuntimeRollbackRunner {
@@ -476,7 +478,7 @@ struct RuntimeLifecycle {
         )
     }
 
-    private func prepareRollbackPreflight(_ requestedBackup: URL?) throws -> RollbackPreflightContext {
+    private func prepareRollbackPreflight(_ command: RuntimeRollbackCommand) throws -> RollbackPreflightContext {
         try RuntimeRollbackPreflightRunner(
             requireLatestBackup: { try backupStore().requireLatestBackup() },
             directoryExists: directoryExists,
@@ -489,7 +491,7 @@ struct RuntimeLifecycle {
                 )
             },
             log: log
-        ).prepare(requestedBackup: requestedBackup)
+        ).prepare(command)
     }
 
     private func executeRollbackStep(

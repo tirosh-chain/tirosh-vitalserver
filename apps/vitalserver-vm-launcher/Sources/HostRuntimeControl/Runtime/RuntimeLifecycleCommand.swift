@@ -10,7 +10,7 @@ enum RuntimeLifecycleCommand: Equatable {
     case verifyBundle(URL)
     case stageBundle(URL)
     case applyBundle(URL)
-    case rollback(URL?)
+    case rollback(RuntimeRollbackCommand)
     case repairDatastore
     case startServices
     case stopServices
@@ -49,7 +49,7 @@ enum RuntimeLifecycleCommand: Equatable {
                 usage: "usage: vitalserver-vm runtime apply-bundle <bundle.tar.gz>"
             ))
         case "rollback":
-            return .rollback(remaining.first.map { URL(fileURLWithPath: $0) })
+            return .rollback(parseRollbackCommand(remaining))
         case "repair-datastore":
             return .repairDatastore
         case "start-services":
@@ -85,6 +85,13 @@ enum RuntimeLifecycleCommand: Equatable {
             throw LauncherError.missingArgument(usage)
         }
         return URL(fileURLWithPath: bundlePath)
+    }
+
+    private static func parseRollbackCommand(_ arguments: [String]) -> RuntimeRollbackCommand {
+        guard let backupPath = arguments.first else {
+            return .latestBackup
+        }
+        return .specificBackup(URL(fileURLWithPath: backupPath))
     }
 
     private static func parseConfigureCommand(_ arguments: [String]) throws -> RuntimeConfigureCommand {

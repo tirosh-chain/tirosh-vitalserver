@@ -29,7 +29,7 @@ final class RuntimeRollbackPreflightRunnerTests: XCTestCase {
             log: { _ in events.append("log") }
         )
 
-        let context = try runner.prepare(requestedBackup: requestedBackup)
+        let context = try runner.prepare(.specificBackup(requestedBackup))
 
         XCTAssertEqual(context.backup, requestedBackup)
         XCTAssertEqual(context.backupRootfs, backupRootfs)
@@ -72,7 +72,7 @@ final class RuntimeRollbackPreflightRunnerTests: XCTestCase {
             log: { _ in events.append("log") }
         )
 
-        let context = try runner.prepare(requestedBackup: nil)
+        let context = try runner.prepare(.latestBackup)
 
         XCTAssertEqual(context.backup, latestBackup)
         XCTAssertEqual(context.restartPolicy, RuntimeServiceRestartPolicy(
@@ -105,7 +105,7 @@ final class RuntimeRollbackPreflightRunnerTests: XCTestCase {
             log: { _ in XCTFail("missing backup directory should stop before logging") }
         )
 
-        XCTAssertThrowsError(try runner.prepare(requestedBackup: requestedBackup)) { error in
+        XCTAssertThrowsError(try runner.prepare(.specificBackup(requestedBackup))) { error in
             XCTAssertEqual(String(describing: error), String(describing: LauncherError.missingFile(requestedBackup.path)))
         }
     }
@@ -124,7 +124,7 @@ final class RuntimeRollbackPreflightRunnerTests: XCTestCase {
             log: { _ in XCTFail("missing rootfs should stop before logging") }
         )
 
-        XCTAssertThrowsError(try runner.prepare(requestedBackup: requestedBackup)) { error in
+        XCTAssertThrowsError(try runner.prepare(.specificBackup(requestedBackup))) { error in
             XCTAssertEqual(String(describing: error), String(describing: LauncherError.missingFile(missingRootfs.path)))
         }
     }

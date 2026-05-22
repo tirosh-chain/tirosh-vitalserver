@@ -7,9 +7,9 @@ final class RuntimeRollbackRunnerTests: XCTestCase {
     func testRunExecutesRollbackPlanAndWritesHealthyStatus() throws {
         let harness = RollbackHarness()
 
-        try harness.runner.run(requestedBackup: harness.requestedBackup)
+        try harness.runner.run(.specificBackup(harness.requestedBackup))
 
-        XCTAssertEqual(harness.requestedBackupSeen, harness.requestedBackup)
+        XCTAssertEqual(harness.commandSeen, .specificBackup(harness.requestedBackup))
         XCTAssertEqual(harness.executedSteps, RuntimeOperationPlans.rollback.steps)
         XCTAssertEqual(
             harness.progressEvents.filter { $0.stepStatus == .started }.map(\.step),
@@ -32,7 +32,7 @@ final class RuntimeRollbackRunnerTests: XCTestCase {
         let harness = RollbackHarness()
         harness.preflightError = TestRollbackError.preflight
 
-        XCTAssertThrowsError(try harness.runner.run(requestedBackup: harness.requestedBackup))
+        XCTAssertThrowsError(try harness.runner.run(.specificBackup(harness.requestedBackup)))
 
         XCTAssertTrue(harness.executedSteps.isEmpty)
         XCTAssertTrue(harness.statuses.isEmpty)
@@ -42,7 +42,7 @@ final class RuntimeRollbackRunnerTests: XCTestCase {
         let harness = RollbackHarness()
         harness.stepError = TestRollbackError.step
 
-        XCTAssertThrowsError(try harness.runner.run(requestedBackup: harness.requestedBackup))
+        XCTAssertThrowsError(try harness.runner.run(.specificBackup(harness.requestedBackup)))
 
         XCTAssertEqual(harness.executedSteps, [.rollbackStopRuntimeServices])
         XCTAssertEqual(harness.progressEvents.last?.step, .rollbackStopRuntimeServices)
@@ -64,7 +64,7 @@ private final class RollbackHarness {
         )
     )
 
-    var requestedBackupSeen: URL?
+    var commandSeen: RuntimeRollbackCommand?
     var statuses: [(level: RuntimeStatusLevel, operation: RuntimeOperation, message: String)] = []
     var progressEvents: [RuntimeStepExecutionEvent] = []
     var executedSteps: [RuntimeWorkflowStep] = []
@@ -74,8 +74,8 @@ private final class RollbackHarness {
 
     var runner: RuntimeRollbackRunner {
         RuntimeRollbackRunner(
-            preparePreflight: { requestedBackup in
-                self.requestedBackupSeen = requestedBackup
+            preparePreflight: { command in
+                self.commandSeen = command
                 if let preflightError = self.preflightError {
                     throw preflightError
                 }

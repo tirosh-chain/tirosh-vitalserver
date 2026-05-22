@@ -55,10 +55,10 @@ final class RuntimeLifecycleCommandTests: XCTestCase {
     }
 
     func testParsesOptionalRollbackPath() throws {
-        XCTAssertEqual(try RuntimeLifecycleCommand.parse(["rollback"]), .rollback(nil))
+        XCTAssertEqual(try RuntimeLifecycleCommand.parse(["rollback"]), .rollback(.latestBackup))
         XCTAssertEqual(
             try RuntimeLifecycleCommand.parse(["rollback", "/backups/latest"]),
-            .rollback(URL(fileURLWithPath: "/backups/latest"))
+            .rollback(.specificBackup(URL(fileURLWithPath: "/backups/latest")))
         )
     }
 
