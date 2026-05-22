@@ -61,10 +61,6 @@ struct RuntimeLifecycle {
         installedPaths.backupsDirectory
     }
 
-    private var statusDirectory: URL {
-        installedPaths.statusDirectory
-    }
-
     private var logsDirectory: URL {
         installedPaths.centralRuntimeLogsDirectory
     }
@@ -91,10 +87,6 @@ struct RuntimeLifecycle {
 
     private var guestRunDirectory: URL {
         installedPaths.guestRunDirectory
-    }
-
-    private var guestBootstrapLog: URL {
-        installedPaths.bootstrapLog
     }
 
     func run(arguments: [String]) throws {
@@ -138,40 +130,43 @@ struct RuntimeLifecycle {
 
     private func runtimeInstallWorkflow() -> RuntimeInstallWorkflow {
         RuntimeInstallWorkflow(
-            paths: paths,
-            installedPaths: installedPaths,
-            fileStore: fileStore,
-            now: { clock.now },
-            productRoot: productRoot,
-            logsDirectory: logsDirectory,
-            rootfsBase: rootfsBase,
-            vmDisk: vmDisk,
-            writeRuntimeStatus: { status, operation, message in
-                try writeRuntimeStatus(status, operation: operation, message: message)
-            },
-            writeRuntimeProgress: { event in
-                try writeRuntimeProgress(
-                    event.status,
-                    operation: event.operation,
-                    step: event.step,
-                    stepStatus: event.stepStatus,
-                    phase: event.phase,
-                    message: event.message
-                )
-            },
-            rotateRuntimeLogs: rotateRuntimeLogs,
-            requireFreeSpace: { url, minimumBytes, operation in
-                try requireFreeSpace(at: url, minimumBytes: minimumBytes, operation: operation)
-            },
-            runRequired: runRequired,
-            runProcessToFile: runProcessToFile,
-            writeInstalledRuntimeVersion: {
-                try runtimeVersionStore().writeInstalledVersion(version: Constants.launcherVersion)
-            },
-            setStartOnBoot: setStartOnBoot,
-            startLaunchdService: startLaunchdService,
-            restrictSecretFile: restrictSecretFile,
-            log: log
+            context: RuntimeInstallWorkflowContext(
+                paths: paths,
+                installedPaths: installedPaths,
+                productRoot: productRoot,
+                rootfsBase: rootfsBase,
+                vmDisk: vmDisk
+            ),
+            operations: RuntimeInstallWorkflowOperations(
+                fileStore: fileStore,
+                now: { clock.now },
+                writeRuntimeStatus: { status, operation, message in
+                    try writeRuntimeStatus(status, operation: operation, message: message)
+                },
+                writeRuntimeProgress: { event in
+                    try writeRuntimeProgress(
+                        event.status,
+                        operation: event.operation,
+                        step: event.step,
+                        stepStatus: event.stepStatus,
+                        phase: event.phase,
+                        message: event.message
+                    )
+                },
+                rotateRuntimeLogs: rotateRuntimeLogs,
+                requireFreeSpace: { url, minimumBytes, operation in
+                    try requireFreeSpace(at: url, minimumBytes: minimumBytes, operation: operation)
+                },
+                runRequired: runRequired,
+                runProcessToFile: runProcessToFile,
+                writeInstalledRuntimeVersion: {
+                    try runtimeVersionStore().writeInstalledVersion(version: Constants.launcherVersion)
+                },
+                setStartOnBoot: setStartOnBoot,
+                startLaunchdService: startLaunchdService,
+                restrictSecretFile: restrictSecretFile,
+                log: log
+            )
         )
     }
 
@@ -342,47 +337,51 @@ struct RuntimeLifecycle {
 
     private func runtimeBundleWorkflow() -> RuntimeBundleWorkflow {
         RuntimeBundleWorkflow(
-            installedPaths: installedPaths,
-            bundlesDirectory: bundlesDirectory,
-            backupsDirectory: backupsDirectory,
-            logsDirectory: logsDirectory,
-            rootfsBase: rootfsBase,
-            vmDisk: vmDisk,
-            fileStore: fileStore,
-            runtimeHealthSnapshot: runtimeHealthSnapshot,
-            rotateRuntimeLogs: rotateRuntimeLogs,
-            rollback: rollback,
-            startRuntimeServices: startRuntimeServices,
-            stopRuntimeServices: stopRuntimeServices,
-            isLaunchdLoaded: isLaunchdLoaded,
-            createBackup: { reason in try backupStore().createBackup(reason: reason) },
-            writeRuntimeStatus: { status, operation, message in
-                try writeRuntimeStatus(status, operation: operation, message: message)
-            },
-            writeRuntimeProgress: { event in
-                try writeRuntimeProgress(
-                    event.status,
-                    operation: event.operation,
-                    step: event.step,
-                    stepStatus: event.stepStatus,
-                    phase: event.phase,
-                    message: event.message
-                )
-            },
-            pruneOldRuntimeArtifacts: pruneOldRuntimeArtifacts,
-            reasonText: reasonText,
-            requireFreeSpace: { url, minimumBytes, operation in
-                try requireFreeSpace(at: url, minimumBytes: minimumBytes, operation: operation)
-            },
-            runProcess: runProcess,
-            runRequired: runRequired,
-            runProcessToFile: runProcessToFile,
-            replaceFile: { source, destination in try replaceFile(from: source, to: destination) },
-            writeRuntimeVersion: { version, bundle in try writeRuntimeVersion(version: version, bundle: bundle) },
-            refreshCloudInitSeedIfNeeded: refreshCloudInitSeedIfNeeded,
-            activateGuestUpdateIfNeeded: activateGuestUpdateIfNeeded,
-            waitForHealth: waitForHealth,
-            log: log
+            context: RuntimeBundleWorkflowContext(
+                installedPaths: installedPaths,
+                bundlesDirectory: bundlesDirectory,
+                backupsDirectory: backupsDirectory,
+                logsDirectory: logsDirectory,
+                rootfsBase: rootfsBase,
+                vmDisk: vmDisk
+            ),
+            operations: RuntimeBundleWorkflowOperations(
+                fileStore: fileStore,
+                runtimeHealthSnapshot: runtimeHealthSnapshot,
+                rotateRuntimeLogs: rotateRuntimeLogs,
+                rollback: rollback,
+                startRuntimeServices: startRuntimeServices,
+                stopRuntimeServices: stopRuntimeServices,
+                isLaunchdLoaded: isLaunchdLoaded,
+                createBackup: { reason in try backupStore().createBackup(reason: reason) },
+                writeRuntimeStatus: { status, operation, message in
+                    try writeRuntimeStatus(status, operation: operation, message: message)
+                },
+                writeRuntimeProgress: { event in
+                    try writeRuntimeProgress(
+                        event.status,
+                        operation: event.operation,
+                        step: event.step,
+                        stepStatus: event.stepStatus,
+                        phase: event.phase,
+                        message: event.message
+                    )
+                },
+                pruneOldRuntimeArtifacts: pruneOldRuntimeArtifacts,
+                reasonText: reasonText,
+                requireFreeSpace: { url, minimumBytes, operation in
+                    try requireFreeSpace(at: url, minimumBytes: minimumBytes, operation: operation)
+                },
+                runProcess: runProcess,
+                runRequired: runRequired,
+                runProcessToFile: runProcessToFile,
+                replaceFile: { source, destination in try replaceFile(from: source, to: destination) },
+                writeRuntimeVersion: { version, bundle in try writeRuntimeVersion(version: version, bundle: bundle) },
+                refreshCloudInitSeedIfNeeded: refreshCloudInitSeedIfNeeded,
+                activateGuestUpdateIfNeeded: activateGuestUpdateIfNeeded,
+                waitForHealth: waitForHealth,
+                log: log
+            )
         )
     }
 

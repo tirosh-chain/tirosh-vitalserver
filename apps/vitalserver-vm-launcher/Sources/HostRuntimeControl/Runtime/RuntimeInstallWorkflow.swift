@@ -2,15 +2,17 @@ import Foundation
 import HostRuntimeInfrastructure
 import RuntimeCore
 
-struct RuntimeInstallWorkflow {
+struct RuntimeInstallWorkflowContext {
     let paths: LauncherPaths
     let installedPaths: InstalledRuntimePaths
-    let fileStore: RuntimeFileStore
-    let now: () -> Date
     let productRoot: URL
-    let logsDirectory: URL
     let rootfsBase: URL
     let vmDisk: URL
+}
+
+struct RuntimeInstallWorkflowOperations {
+    let fileStore: RuntimeFileStore
+    let now: () -> Date
     let writeRuntimeStatus: (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void
     let writeRuntimeProgress: (RuntimeStepExecutionEvent) throws -> Void
     let rotateRuntimeLogs: () throws -> Void
@@ -22,6 +24,11 @@ struct RuntimeInstallWorkflow {
     let startLaunchdService: (String) -> Void
     let restrictSecretFile: (URL) throws -> Void
     let log: (String) -> Void
+}
+
+struct RuntimeInstallWorkflow {
+    let context: RuntimeInstallWorkflowContext
+    let operations: RuntimeInstallWorkflowOperations
 
     func install() throws {
         try runtimeInstallRunner().run()
@@ -31,17 +38,17 @@ struct RuntimeInstallWorkflow {
         RuntimeInstallRunner(
             loadSettings: {
                 try InstallSettings.load(
-                    defaultVitalFilesDirectory: installedPaths.vitalFilesDirectory.path,
-                    fileStore: fileStore
+                    defaultVitalFilesDirectory: context.installedPaths.vitalFilesDirectory.path,
+                    fileStore: operations.fileStore
                 )
             },
             executeStep: { step, settings in
                 try runtimeInstallStepExecutor().execute(step, settings: settings)
             },
-            writeStatus: writeRuntimeStatus,
-            writeProgress: writeRuntimeProgress,
-            runtimeHomePath: { paths.home.path },
-            log: log
+            writeStatus: operations.writeRuntimeStatus,
+            writeProgress: operations.writeRuntimeProgress,
+            runtimeHomePath: { context.paths.home.path },
+            log: operations.log
         )
     }
 
@@ -50,7 +57,7 @@ struct RuntimeInstallWorkflow {
             prepareInstallDirectories: { settings in
                 try runtimeInstallDirectoryPreparer().prepare(settings: settings)
             },
-            rotateRuntimeLogs: rotateRuntimeLogs,
+            rotateRuntimeLogs: operations.rotateRuntimeLogs,
             configureDeployEnvironment: { settings in
                 try configureDeployEnvironment(settings)
             },
@@ -66,7 +73,7 @@ struct RuntimeInstallWorkflow {
             createCloudInitSeed: { settings in
                 try createCloudInitSeed(settings)
             },
-            writeInstalledRuntimeVersion: writeInstalledRuntimeVersion,
+            writeInstalledRuntimeVersion: operations.writeInstalledRuntimeVersion,
             configureInstalledPermissions: { settings in
                 try configureInstalledPermissions(settings)
             },
@@ -79,23 +86,23 @@ struct RuntimeInstallWorkflow {
             cleanupInstallSettings: {
                 try cleanupInstallSettings()
             },
-            log: log
+            log: operations.log
         )
     }
 
     private func runtimeInstallDirectoryPreparer() -> RuntimeInstallDirectoryPreparer {
         RuntimeInstallDirectoryPreparer(
-            installedPaths: installedPaths,
-            fileStore: fileStore,
-            now: now
+            installedPaths: context.installedPaths,
+            fileStore: operations.fileStore,
+            now: operations.now
         )
     }
 
     private func runtimeGuestConfigWriter() -> RuntimeGuestConfigWriter {
         RuntimeGuestConfigWriter(
-            installedPaths: installedPaths,
-            fileStore: fileStore,
-            restrictSecretFile: restrictSecretFile
+            installedPaths: context.installedPaths,
+            fileStore: operations.fileStore,
+            restrictSecretFile: operations.restrictSecretFile
         )
     }
 
@@ -107,60 +114,60 @@ struct RuntimeInstallWorkflow {
         for path in [
             Constants.InstallPaths.vmBin,
             Constants.InstallPaths.proxyRun,
-            installedPaths.nginxExecutable.path,
+            context.installedPaths.nginxExecutable.path,
         ] {
-            try runRequired(Constants.Commands.chmod, ["0755", path])
+            try operations.runRequired(Constants.Commands.chmod, ["0755", path])
         }
     }
 
     private func provisionVMDisk(_ settings: InstallSettings) throws {
-        if !fileExists(vmDisk), fileExists(rootfsBase) {
-            try requireFreeSpace(
-                vmDisk.deletingLastPathComponent(),
-                (try fileSize(rootfsBase) * 6) + Constants.Runtime.freeSpaceMarginBytes,
+        if !fileExists(context.vmDisk), fileExists(context.rootfsBase) {
+            try operations.requireFreeSpace(
+                context.vmDisk.deletingLastPathComponent(),
+                (try fileSize(context.rootfsBase) * 6) + Constants.Runtime.freeSpaceMarginBytes,
                 "provision-vm-disk"
             )
-            let temporary = vmDisk.deletingLastPathComponent().appendingPathComponent(".\(vmDisk.lastPathComponent).tmp")
+            let temporary = context.vmDisk.deletingLastPathComponent().appendingPathComponent(".\(context.vmDisk.lastPathComponent).tmp")
             if fileExists(temporary) {
-                try fileStore.removeItem(at: temporary)
+                try operations.fileStore.removeItem(at: temporary)
             }
-            try runProcessToFile(
+            try operations.runProcessToFile(
                 Constants.Commands.gunzip,
-                ["-c", rootfsBase.path],
+                ["-c", context.rootfsBase.path],
                 temporary
             )
-            try fileStore.moveItem(at: temporary, to: vmDisk)
-            log("created vm disk path=\(vmDisk.path) source=\(rootfsBase.lastPathComponent)")
+            try operations.fileStore.moveItem(at: temporary, to: context.vmDisk)
+            operations.log("created vm disk path=\(context.vmDisk.path) source=\(context.rootfsBase.lastPathComponent)")
         }
-        guard fileExists(vmDisk) else {
-            throw LauncherError.missingFile(rootfsBase.path)
+        guard fileExists(context.vmDisk) else {
+            throw LauncherError.missingFile(context.rootfsBase.path)
         }
-        try runRequired(Constants.Commands.truncate, ["-s", "\(settings.diskGiB)G", vmDisk.path])
+        try operations.runRequired(Constants.Commands.truncate, ["-s", "\(settings.diskGiB)G", context.vmDisk.path])
     }
 
     private func configureInstalledVMRuntime(_ settings: InstallSettings) throws {
-        try fileStore.createDirectory(
-            at: installedPaths.runtimeDirectory,
+        try operations.fileStore.createDirectory(
+            at: context.installedPaths.runtimeDirectory,
             withIntermediateDirectories: true
         )
-        try fileStore.createDirectory(
-            at: installedPaths.vitalFilesDirectory,
+        try operations.fileStore.createDirectory(
+            at: context.installedPaths.vitalFilesDirectory,
             withIntermediateDirectories: true
         )
-        try fileStore.createDirectory(
-            at: installedPaths.vrReleaseDirectory,
+        try operations.fileStore.createDirectory(
+            at: context.installedPaths.vrReleaseDirectory,
             withIntermediateDirectories: true
         )
-        try fileStore.createDirectory(
-            at: installedPaths.hostRunDirectory,
+        try operations.fileStore.createDirectory(
+            at: context.installedPaths.hostRunDirectory,
             withIntermediateDirectories: true
         )
 
         var config: VMRuntimeConfig
-        if fileExists(paths.config) {
-            config = try VMRuntimeConfig.load(from: paths.config, fileStore: fileStore)
+        if fileExists(context.paths.config) {
+            config = try VMRuntimeConfig.load(from: context.paths.config, fileStore: operations.fileStore)
         } else {
-            config = VMRuntimeConfig.default(paths: installedPaths)
+            config = VMRuntimeConfig.default(paths: context.installedPaths)
         }
         config.cpuCount = settings.cpuCount
         config.memoryMiB = UInt64(settings.memoryGiB * 1024)
@@ -169,7 +176,7 @@ struct RuntimeInstallWorkflow {
             config.network.bridgedInterface = nil
         }
         config.sharedDirectory = SharedDirectoryConfig(
-            hostPath: installedPaths.dataDirectory.path,
+            hostPath: context.installedPaths.dataDirectory.path,
             tag: Constants.Defaults.sharedDirectoryTag,
             guestMountPath: Constants.Defaults.sharedDirectoryGuestMountPath,
             readOnly: false
@@ -180,24 +187,24 @@ struct RuntimeInstallWorkflow {
             guestMountPath: Constants.Defaults.vitalFilesDirectoryGuestMountPath,
             readOnly: false
         )
-        VMRuntimeConfig.ensureRuntimeDefaults(&config, paths: installedPaths)
+        VMRuntimeConfig.ensureRuntimeDefaults(&config, paths: context.installedPaths)
         let encoded = try JSONEncoder.pretty.encode(config)
-        try fileStore.createDirectory(at: paths.config.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try fileStore.writeData(encoded, to: paths.config, options: [])
+        try operations.fileStore.createDirectory(at: context.paths.config.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try operations.fileStore.writeData(encoded, to: context.paths.config, options: [])
     }
 
     private func createCloudInitSeed(_ settings: InstallSettings) throws {
         try RuntimeCloudInitSeedWriter(
-            installedPaths: installedPaths,
-            fileStore: fileStore,
-            runRequired: runRequired
+            installedPaths: context.installedPaths,
+            fileStore: operations.fileStore,
+            runRequired: operations.runRequired
         ).create(hostname: settings.vmHostname)
     }
 
     private func configureInstalledPermissions(_ settings: InstallSettings) throws {
-        try runRequired(Constants.Commands.chown, ["-R", "root:wheel", paths.home.path])
-        try runRequired(Constants.Commands.chown, ["-R", "root:wheel", "\(productRoot.path)/nginx"])
-        try runRequired(
+        try operations.runRequired(Constants.Commands.chown, ["-R", "root:wheel", context.paths.home.path])
+        try operations.runRequired(Constants.Commands.chown, ["-R", "root:wheel", "\(context.productRoot.path)/nginx"])
+        try operations.runRequired(
             Constants.Commands.plistBuddy,
             [
                 "-c",
@@ -210,29 +217,29 @@ struct RuntimeInstallWorkflow {
             launchDaemonPlist(Constants.Launchd.proxyService),
             launchDaemonPlist(Constants.Launchd.watchdogService),
         ] {
-            try runRequired(Constants.Commands.chmod, ["0644", plist])
-            try runRequired(Constants.Commands.chown, ["root:wheel", plist])
+            try operations.runRequired(Constants.Commands.chmod, ["0644", plist])
+            try operations.runRequired(Constants.Commands.chown, ["root:wheel", plist])
         }
     }
 
     private func startInstalledServices(_ settings: InstallSettings) throws {
         guard settings.startAfterInstall else {
-            log("start after install disabled")
+            operations.log("start after install disabled")
             return
         }
-        startLaunchdService(Constants.Launchd.vmService)
-        startLaunchdService(Constants.Launchd.proxyService)
-        startLaunchdService(Constants.Launchd.watchdogService)
+        operations.startLaunchdService(Constants.Launchd.vmService)
+        operations.startLaunchdService(Constants.Launchd.proxyService)
+        operations.startLaunchdService(Constants.Launchd.watchdogService)
     }
 
     private func applyStartOnBootPolicy(_ settings: InstallSettings) throws {
-        try setStartOnBoot(settings.startOnBoot)
+        try operations.setStartOnBoot(settings.startOnBoot)
     }
 
     private func cleanupInstallSettings() throws {
         let settingsFile = URL(fileURLWithPath: InstallSettings.defaultSettingsPath)
         if fileExists(settingsFile) {
-            try fileStore.removeItem(at: settingsFile)
+            try operations.fileStore.removeItem(at: settingsFile)
         }
     }
 
@@ -241,14 +248,14 @@ struct RuntimeInstallWorkflow {
     }
 
     private func fileExists(_ url: URL) -> Bool {
-        fileStore.fileExists(url)
+        operations.fileStore.fileExists(url)
     }
 
     private func directoryExists(_ url: URL) -> Bool {
-        fileStore.directoryExists(url)
+        operations.fileStore.directoryExists(url)
     }
 
     private func fileSize(_ url: URL) throws -> UInt64 {
-        try fileStore.fileSize(url)
+        try operations.fileStore.fileSize(url)
     }
 }
