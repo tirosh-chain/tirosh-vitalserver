@@ -55,7 +55,7 @@ final class RuntimeGuestActivationRunnerTests: XCTestCase {
             events: events,
             vmServiceLoaded: true,
             loadResult: {
-                result(status: .completed, requestId: "request-1", message: "done")
+                self.result(status: .completed, requestId: "request-1", message: "done")
             }
         )
 
@@ -70,7 +70,7 @@ final class RuntimeGuestActivationRunnerTests: XCTestCase {
         let runner = makeRunner(
             events: events,
             loadResult: {
-                result(status: .failed, requestId: "request-1", message: "compose failed")
+                self.result(status: .failed, requestId: "request-1", message: "compose failed")
             }
         )
 

@@ -856,7 +856,7 @@ struct RuntimeLifecycle {
                     restartWatchdog: isLaunchdLoaded(Constants.Launchd.watchdogService)
                 )
             },
-            createBackup: { reason in try createBackup(reason: reason) },
+            createBackup: { reason in try backupStore().createBackup(reason: reason) },
             directorySize: directorySize,
             log: log
         ).prepare(
@@ -934,7 +934,7 @@ struct RuntimeLifecycle {
 
     private func prepareRollbackPreflight(_ requestedBackup: URL?) throws -> RollbackPreflightContext {
         try RuntimeRollbackPreflightRunner(
-            requireLatestBackup: requireLatestBackup,
+            requireLatestBackup: { try backupStore().requireLatestBackup() },
             directoryExists: directoryExists,
             fileExists: fileExists,
             serviceRestartPolicy: {
@@ -958,9 +958,9 @@ struct RuntimeLifecycle {
             fileExists: fileExists,
             writeRuntimeVersion: { version, bundle in try writeRuntimeVersion(version: version, bundle: bundle) },
             restoreBackupPathIfExists: { source, destination in
-                try restoreBackupPathIfExists(source, to: destination)
+                try backupStore().restoreBackupPathIfExists(source, to: destination)
             },
-            restoreRuntimeToolsIfExists: restoreRuntimeToolsIfExists,
+            restoreRuntimeToolsIfExists: { source in try backupStore().restoreRuntimeToolsIfExists(source) },
             startRuntimeServices: startRuntimeServices,
             waitForHealth: waitForHealth
         )
@@ -1098,109 +1098,38 @@ struct RuntimeLifecycle {
         )
     }
 
-    private func createBackup(reason: String) throws -> URL {
-        let timestamp = backupTimestamp()
-        let backup = backupsDirectory.appendingPathComponent("\(timestamp)-\(reason)")
-        try fileStore.createDirectory(at: backup, withIntermediateDirectories: true)
-
-        if fileExists(rootfsBase) {
-            log("backup rootfs-base source=\(rootfsBase.path)")
-            try fileStore.copyItem(
-                at: rootfsBase,
-                to: backup.appendingPathComponent(Constants.Artifacts.rootfsBase)
-            )
-        }
-        if fileExists(runtimeVersion) {
-            log("backup runtime-version source=\(runtimeVersion.path)")
-            try fileStore.copyItem(
-                at: runtimeVersion,
-                to: backup.appendingPathComponent(Constants.Artifacts.runtimeVersion)
-            )
-        }
-        try backupPathIfExists(
-            URL(fileURLWithPath: Constants.Product.managerAppPath),
-            to: backup.appendingPathComponent(UpdateBundleArtifactType.appBundle.rawValue)
-        )
-        try backupPathIfExists(
-            installedPaths.nginxDirectory,
-            to: backup.appendingPathComponent(UpdateBundleArtifactType.nginxBundle.rawValue)
-        )
-        try backupPathIfExists(
-            installedPaths.deployDirectory,
-            to: backup.appendingPathComponent(UpdateBundleArtifactType.guestDeploy.rawValue)
-        )
-        try backupRuntimeTools(to: backup.appendingPathComponent(UpdateBundleArtifactType.runtimeTools.rawValue))
-
-        let manifest = BackupManifest(
-            product: Constants.Product.identifier,
-            createdAt: isoTimestamp(),
-            reason: reason,
-            rootfsBase: Constants.Artifacts.rootfsBase,
-            vmDisk: Constants.BootAssets.disk,
-            vmDiskPreserved: true
-        )
-        let data = try JSONEncoder.pretty.encode(manifest)
-        try fileStore.writeData(data, to: backup.appendingPathComponent(Constants.Artifacts.backupManifest), options: [])
-        return backup
-    }
-
-    private func backupPathIfExists(_ source: URL, to destination: URL) throws {
-        guard fileExists(source) || directoryExists(source) else {
-            return
-        }
-        try fileStore.copyItem(at: source, to: destination)
-    }
-
-    private func restoreBackupPathIfExists(_ source: URL, to destination: URL) throws {
-        guard fileExists(source) || directoryExists(source) else {
-            return
-        }
-        if fileExists(destination) || directoryExists(destination) {
-            try fileStore.removeItem(at: destination)
-        }
-        try fileStore.copyItem(at: source, to: destination)
-    }
-
-    private func backupRuntimeTools(to destination: URL) throws {
-        try fileStore.createDirectory(at: destination, withIntermediateDirectories: true)
-        for path in [
-            Constants.InstallPaths.vmBin,
-            Constants.InstallPaths.proxyRun,
-            Constants.InstallPaths.uninstall,
-        ] {
-            let source = URL(fileURLWithPath: path)
-            if fileExists(source) {
-                try fileStore.copyItem(at: source, to: destination.appendingPathComponent(source.lastPathComponent))
-            }
-        }
-    }
-
-    private func restoreRuntimeToolsIfExists(_ source: URL) throws {
-        guard directoryExists(source) else {
-            return
-        }
-        let tools = try fileStore.contentsOfDirectory(at: source, skipsHiddenFiles: false)
-        for tool in tools {
-            let destination = URL(fileURLWithPath: "/usr/local/bin").appendingPathComponent(tool.lastPathComponent)
-            if fileExists(destination) {
-                try fileStore.removeItem(at: destination)
-            }
-            try fileStore.copyItem(at: tool, to: destination)
-            try runRequired(Constants.Commands.chmod, arguments: ["0755", destination.path])
-        }
-    }
-
     private func latestBackup() -> URL? {
-        guard let directories = try? fileStore.childDirectories(
-            at: backupsDirectory,
-            nameContains: "-before-",
-            skipsHiddenFiles: true
-        ) else {
-            return nil
-        }
-        return directories
-            .sorted { $0.lastPathComponent < $1.lastPathComponent }
-            .last
+        backupStore().latestBackup()
+    }
+
+    private func backupStore() -> RuntimeBackupStore {
+        RuntimeBackupStore(
+            paths: RuntimeBackupStorePaths(
+                backupsDirectory: backupsDirectory,
+                rootfsBase: rootfsBase,
+                runtimeVersion: runtimeVersion,
+                managerApp: URL(fileURLWithPath: Constants.Product.managerAppPath),
+                nginxBundle: installedPaths.nginxDirectory,
+                guestDeploy: installedPaths.deployDirectory,
+                runtimeTools: URL(fileURLWithPath: "/usr/local/bin")
+            ),
+            timestamp: backupTimestamp,
+            isoTimestamp: isoTimestamp,
+            fileExists: fileExists,
+            directoryExists: directoryExists,
+            createDirectory: { url, withIntermediateDirectories in
+                try fileStore.createDirectory(at: url, withIntermediateDirectories: withIntermediateDirectories)
+            },
+            copyItem: { source, destination in try fileStore.copyItem(at: source, to: destination) },
+            removeItem: { url in try fileStore.removeItem(at: url) },
+            writeData: { data, url in try fileStore.writeData(data, to: url, options: []) },
+            contentsOfDirectory: { url in try fileStore.contentsOfDirectory(at: url, skipsHiddenFiles: false) },
+            childDirectories: { url, fragment in
+                try fileStore.childDirectories(at: url, nameContains: fragment, skipsHiddenFiles: true)
+            },
+            chmodExecutable: { url in try runRequired(Constants.Commands.chmod, arguments: ["0755", url.path]) },
+            log: log
+        )
     }
 
     private func pruneOldRuntimeArtifacts() throws {
@@ -1222,13 +1151,6 @@ struct RuntimeLifecycle {
             try fileStore.removeItem(at: directory)
             log("pruned runtime artifact path=\(directory.path)")
         }
-    }
-
-    private func requireLatestBackup() throws -> URL {
-        guard let backup = latestBackup() else {
-            throw LauncherError.missingArgument("no backups available")
-        }
-        return backup
     }
 
     private func replaceFile(from source: URL, to destination: URL) throws {
