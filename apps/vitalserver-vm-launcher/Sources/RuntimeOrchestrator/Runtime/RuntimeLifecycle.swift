@@ -1421,28 +1421,43 @@ struct RuntimeLifecycle {
     }
 
     private func activateGuestUpdateIfNeeded(_ manifest: UpdateBundleManifest) throws {
-        guard manifest.artifacts.contains(where: { $0.type == .guestDeploy }) else {
-            log("guest update activation not required")
-            return
-        }
-
-        log("guest update activation requested version=\(manifest.version)")
-        try fileStore.createDirectory(at: guestRunDirectory, withIntermediateDirectories: true)
-        try? guestGateway.removeUpdateActivationResult()
-        let requestId = UUID().uuidString
-
-        try guestGateway.writeUpdateActivationRequest(
-            requestId: requestId,
-            requestedAt: isoTimestamp(),
-            version: manifest.version
-        )
-
-        if !isLaunchdLoaded(Constants.Launchd.vmService) {
-            startLaunchdService(Constants.Launchd.vmService)
-        }
-
-        try waitForGuestUpdateActivationResult(requestId: requestId)
-        log("guest update activation completed version=\(manifest.version)")
+        try RuntimeGuestActivationRunner(
+            createRunDirectory: {
+                try fileStore.createDirectory(at: guestRunDirectory, withIntermediateDirectories: true)
+            },
+            removePreviousResult: {
+                try guestGateway.removeUpdateActivationResult()
+            },
+            requestID: { UUID().uuidString },
+            timestamp: isoTimestamp,
+            writeRequest: { requestId, requestedAt, version in
+                try guestGateway.writeUpdateActivationRequest(
+                    requestId: requestId,
+                    requestedAt: requestedAt,
+                    version: version
+                )
+            },
+            isVMServiceLoaded: {
+                isLaunchdLoaded(Constants.Launchd.vmService)
+            },
+            startVMService: {
+                startLaunchdService(Constants.Launchd.vmService)
+            },
+            loadResult: {
+                guestGateway.loadUpdateActivationResult()
+            },
+            reportProgress: { message in
+                try? writeRuntimeStatus(
+                    .recovering,
+                    operation: .activateGuestUpdate,
+                    message: message
+                )
+            },
+            sleep: {
+                sleeper.sleep(forTimeInterval: 3)
+            },
+            log: log
+        ).activateIfNeeded(manifest: manifest)
     }
 
     private func waitForHealth(restartVM: Bool, restartProxy: Bool, restartWatchdog: Bool) throws {
@@ -1498,44 +1513,6 @@ struct RuntimeLifecycle {
             restartProxy: policy.restartProxy,
             restartWatchdog: policy.restartWatchdog
         )
-    }
-
-    private func waitForGuestUpdateActivationResult(requestId: String) throws {
-        log("waiting for guest update activation result timeoutSeconds=\(Constants.Runtime.updateActivationWaitTimeoutSeconds)")
-        let maxAttempts = Int(ceil(Constants.Runtime.updateActivationWaitTimeoutSeconds / 3.0))
-        let waitResult = GuestActivationWaiter.wait(
-            expectedRequestId: requestId,
-            configuration: GuestActivationWaitConfiguration(
-                maxAttempts: maxAttempts,
-                progressEveryAttempts: 5
-            ),
-            loadResult: { guestGateway.loadUpdateActivationResult() },
-            onProgress: { message in
-                log(message)
-                try? writeRuntimeStatus(
-                    .recovering,
-                    operation: .activateGuestUpdate,
-                    message: message
-                )
-            },
-            onStale: { message in
-                log("guest update activation result stale message=\(message)")
-            },
-            sleep: {
-                sleeper.sleep(forTimeInterval: 3)
-            }
-        )
-
-        switch waitResult {
-        case .completed(let message):
-            log("guest update activation result completed message=\(message)")
-            return
-        case .failed(let message):
-            log("guest update activation result failed message=\(message)")
-            throw LauncherError.runtimeHealthFailed
-        case .timedOut:
-            throw LauncherError.runtimeHealthFailed
-        }
     }
 
     private func waitForDatastoreRepairResult(requestId: String) throws {
