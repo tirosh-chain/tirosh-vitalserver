@@ -15,15 +15,26 @@ final class RuntimeLifecycleCommandTests: XCTestCase {
         XCTAssertEqual(try RuntimeLifecycleCommand.parse(["--help"]), .help)
     }
 
-    func testParsesConfigureArgumentsWithoutInterpretingThem() throws {
+    func testParsesConfigureArgumentsIntoTypedCommand() throws {
         let command = try RuntimeLifecycleCommand.parse([
             "configure",
             "--cpu",
             "8",
+            "--network",
+            "shared",
+            "--start-on-boot",
+            "false",
             "--restart",
         ])
 
-        XCTAssertEqual(command, .configure(["--cpu", "8", "--restart"]))
+        XCTAssertEqual(command, .configure(RuntimeConfigureCommand(
+            changes: [
+                .cpu(8),
+                .network(.shared),
+                .startOnBoot(false),
+            ],
+            restart: true
+        )))
     }
 
     func testParsesBundleCommands() throws {
@@ -63,6 +74,21 @@ final class RuntimeLifecycleCommandTests: XCTestCase {
         assertMissingArgument(
             try RuntimeLifecycleCommand.parse(["apply-bundle"]),
             expectedMessage: "usage: vitalserver-vm runtime apply-bundle <bundle.tar.gz>"
+        )
+    }
+
+    func testConfigureRejectsMissingValueAndInvalidClosedChoice() {
+        assertMissingArgument(
+            try RuntimeLifecycleCommand.parse(["configure", "--cpu"]),
+            expectedMessage: "missing value for --cpu"
+        )
+        assertMissingArgument(
+            try RuntimeLifecycleCommand.parse(["configure", "--network", "host"]),
+            expectedMessage: "--network must be `shared` or `bridged`"
+        )
+        assertMissingArgument(
+            try RuntimeLifecycleCommand.parse(["configure", "--start-on-boot", "sometimes"]),
+            expectedMessage: "--start-on-boot must be true or false"
         )
     }
 

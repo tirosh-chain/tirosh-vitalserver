@@ -36,25 +36,13 @@ struct RuntimeConfigureRunner {
         self.log = log
     }
 
-    func configure(arguments: [String]) throws -> RuntimeConfigureResult {
-        var remaining = arguments
-        var restart = false
+    func configure(_ command: RuntimeConfigureCommand) throws -> RuntimeConfigureResult {
         var vmConfig = try VMRuntimeConfig.load(from: configURL, fileStore: fileStore)
         let runtimeConfigURL = installedPaths.guestRuntimeConfig
         var guestConfig = try GuestRuntimeConfigDocument.load(from: runtimeConfigURL, fileStore: fileStore)
 
-        while !remaining.isEmpty {
-            let key = remaining.removeFirst()
-            let option = RuntimeConfigureOption(rawValue: key)
-            if option == .restart {
-                restart = true
-                continue
-            }
-            guard let value = remaining.first else {
-                throw LauncherError.missingArgument("missing value for \(key)")
-            }
-            remaining.removeFirst()
-            try apply(option: option, value: value, vmConfig: &vmConfig, guestConfig: &guestConfig)
+        for change in command.changes {
+            try apply(change, vmConfig: &vmConfig, guestConfig: &guestConfig)
         }
 
         try validate(vmConfig)
@@ -62,33 +50,30 @@ struct RuntimeConfigureRunner {
         try fileStore.writeData(try JSONEncoder.pretty.encode(vmConfig), to: configURL, options: .atomic)
         try fileStore.writeData(try JSONEncoder.pretty.encode(guestConfig), to: runtimeConfigURL, options: .atomic)
         try actions.restrictSecretFile(runtimeConfigURL)
-        log("runtime configuration updated restart=\(restart)")
+        log("runtime configuration updated restart=\(command.restart)")
 
-        if restart {
+        if command.restart {
             try actions.restartRuntimeServices()
         }
-        return RuntimeConfigureResult(restart: restart)
+        return RuntimeConfigureResult(restart: command.restart)
     }
 
     private func apply(
-        option: RuntimeConfigureOption,
-        value: String,
+        _ change: RuntimeConfigureChange,
         vmConfig: inout VMRuntimeConfig,
         guestConfig: inout GuestRuntimeConfigDocument
     ) throws {
-        switch option {
-        case .cpu:
-            guard let cpu = Int(value),
-                  cpu >= Constants.Defaults.minimumCPUCount,
+        switch change {
+        case .cpu(let cpu):
+            guard cpu >= Constants.Defaults.minimumCPUCount,
                   cpu <= Constants.Defaults.maximumCPUCount else {
                 throw LauncherError.missingArgument(
                     "--cpu must be between \(Constants.Defaults.minimumCPUCount) and \(Constants.Defaults.maximumCPUCount)"
                 )
             }
             vmConfig.cpuCount = cpu
-        case .memoryGiB:
-            guard let memoryGiB = UInt64(value),
-                  stride(
+        case .memoryGiB(let memoryGiB):
+            guard stride(
                     from: Constants.Defaults.minimumMemoryGiB,
                     through: Constants.Defaults.maximumMemoryGiB,
                     by: Constants.Defaults.memoryStepGiB
@@ -98,9 +83,8 @@ struct RuntimeConfigureRunner {
                 )
             }
             vmConfig.memoryMiB = memoryGiB * 1024
-        case .diskGiB:
-            guard let diskGiB = Int(value),
-                  stride(
+        case .diskGiB(let diskGiB):
+            guard stride(
                     from: Constants.Defaults.minimumDiskGiB,
                     through: Constants.Defaults.maximumDiskGiB,
                     by: Constants.Defaults.diskStepGiB
@@ -110,71 +94,55 @@ struct RuntimeConfigureRunner {
                 )
             }
             try actions.resizeVMDiskIfNeeded(diskGiB)
-        case .network:
-            guard let mode = NetworkMode(rawValue: value) else {
-                throw LauncherError.missingArgument("--network must be `shared` or `bridged`")
-            }
+        case .network(let mode):
             vmConfig.network.mode = mode
             if mode == .shared {
                 vmConfig.network.bridgedInterface = nil
             }
-        case .bridgedInterface:
+        case .bridgedInterface(let value):
             guard RuntimeTextValidator.isSingleLine(value), !value.isEmpty else {
                 throw LauncherError.missingArgument("--bridged-interface must not be empty or contain newlines")
             }
             vmConfig.network.bridgedInterface = value
-        case .proxyPort:
-            guard let port = Int(value), (1...65_535).contains(port) else {
+        case .proxyPort(let port):
+            guard (1...65_535).contains(port) else {
                 throw LauncherError.missingArgument("--proxy-port must be between 1 and 65535")
             }
             try actions.setInstalledProxyPort(port)
-        case .vitalFilesDirectory:
-            guard value.hasPrefix("/") else {
-                throw LauncherError.missingArgument("--vital-files-dir must be an absolute path")
-            }
-            try fileStore.createDirectory(at: URL(fileURLWithPath: value), withIntermediateDirectories: true)
+        case .vitalFilesDirectory(let url):
+            try fileStore.createDirectory(at: url, withIntermediateDirectories: true)
             vmConfig.vitalFilesDirectory = SharedDirectoryConfig(
-                hostPath: value,
+                hostPath: url.path,
                 tag: Constants.Defaults.vitalFilesDirectoryTag,
                 guestMountPath: Constants.Defaults.vitalFilesDirectoryGuestMountPath,
                 readOnly: false
             )
             guestConfig.vitalFilesDirectory = Constants.Defaults.vitalFilesDirectoryGuestMountPath
-        case .publicHost:
+        case .publicHost(let value):
             guard RuntimeTextValidator.isSingleLine(value) else {
                 throw LauncherError.missingArgument("--public-host must not contain newlines")
             }
             guestConfig.publicHost = value
-        case .publicPort:
-            guard let port = Int(value), (1...65_535).contains(port) else {
+        case .publicPort(let port):
+            guard (1...65_535).contains(port) else {
                 throw LauncherError.missingArgument("--public-port must be between 1 and 65535")
             }
             guestConfig.publicPort = port
-        case .adminPassword:
+        case .adminPassword(let value):
             guard !value.isEmpty, RuntimeTextValidator.isSingleLine(value) else {
                 throw LauncherError.missingArgument("--admin-password must not be empty or contain newlines")
             }
             guestConfig.adminPassword = value
-        case .adminPasswordFile:
-            let password = try actions.readSecretFile(URL(fileURLWithPath: value))
+        case .adminPasswordFile(let url):
+            let password = try actions.readSecretFile(url)
             guard !password.isEmpty, RuntimeTextValidator.isSingleLine(password) else {
                 throw LauncherError.missingArgument("--admin-password-file must contain a non-empty single-line password")
             }
             guestConfig.adminPassword = password
-        case .startOnBoot:
-            guard let enabled = RuntimeBooleanParser.parse(value) else {
-                throw LauncherError.missingArgument("--start-on-boot must be true or false")
-            }
+        case .startOnBoot(let enabled):
             try actions.setStartOnBoot(enabled)
-        case .autoRecovery:
-            guard let enabled = RuntimeBooleanParser.parse(value) else {
-                throw LauncherError.missingArgument("--auto-recovery must be true or false")
-            }
+        case .autoRecovery(let enabled):
             vmConfig.autoRecoveryEnabled = enabled
-        case .restart:
-            break
-        case .unknown(let key):
-            throw LauncherError.missingArgument("unsupported runtime configure option: \(key)")
         }
     }
 

@@ -99,8 +99,8 @@ struct RuntimeLifecycle {
             try health()
         case .watchdog:
             try watchdog()
-        case .configure(let arguments):
-            try configure(arguments: arguments)
+        case .configure(let command):
+            try configure(command)
         case .verifyBundle(let bundleURL):
             try verifyBundle(bundleURL)
         case .stageBundle(let bundleURL):
@@ -311,8 +311,8 @@ struct RuntimeLifecycle {
         )
     }
 
-    func configure(arguments: [String]) throws {
-        let result = try runtimeConfigureRunner().configure(arguments: arguments)
+    func configure(_ command: RuntimeConfigureCommand) throws {
+        let result = try runtimeConfigureRunner().configure(command)
         try writeRuntimeStatus(.degraded, operation: .configure, message: "runtime configuration updated")
 
         guard result.restart else {

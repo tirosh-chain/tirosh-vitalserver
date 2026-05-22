@@ -8,20 +8,22 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
     func testConfigureUpdatesRuntimeDocumentsAndRunsRequestedActions() throws {
         let harness = try Harness()
 
-        let result = try harness.runner.configure(arguments: [
-            "--cpu", "8",
-            "--memory-gib", "12",
-            "--disk-gib", "96",
-            "--network", "shared",
-            "--proxy-port", "18080",
-            "--vital-files-dir", "/data/vital-files",
-            "--public-host", "vitalserver.local",
-            "--public-port", "8080",
-            "--admin-password-file", "/tmp/admin-password",
-            "--start-on-boot", "false",
-            "--auto-recovery", "false",
-            "--restart",
-        ])
+        let result = try harness.runner.configure(RuntimeConfigureCommand(
+            changes: [
+                .cpu(8),
+                .memoryGiB(12),
+                .diskGiB(96),
+                .network(.shared),
+                .proxyPort(18080),
+                .vitalFilesDirectory(URL(fileURLWithPath: "/data/vital-files")),
+                .publicHost("vitalserver.local"),
+                .publicPort(8080),
+                .adminPasswordFile(URL(fileURLWithPath: "/tmp/admin-password")),
+                .startOnBoot(false),
+                .autoRecovery(false),
+            ],
+            restart: true
+        ))
 
         XCTAssertTrue(result.restart)
         XCTAssertEqual(harness.resizedDisks, [96])
@@ -49,9 +51,9 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
     func testConfigureWithoutRestartDoesNotRestartServices() throws {
         let harness = try Harness()
 
-        let result = try harness.runner.configure(arguments: [
-            "--auto-recovery", "false",
-        ])
+        let result = try harness.runner.configure(RuntimeConfigureCommand(
+            changes: [.autoRecovery(false)]
+        ))
 
         XCTAssertFalse(result.restart)
         XCTAssertEqual(harness.restartCount, 0)
@@ -62,9 +64,9 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
     func testConfigureRejectsBridgedModeWithoutInterface() throws {
         let harness = try Harness()
 
-        XCTAssertThrowsError(try harness.runner.configure(arguments: [
-            "--network", "bridged",
-        ])) { error in
+        XCTAssertThrowsError(try harness.runner.configure(RuntimeConfigureCommand(
+            changes: [.network(.bridged)]
+        ))) { error in
             guard case LauncherError.missingArgument(let message) = error else {
                 return XCTFail("expected missingArgument, got \(error)")
             }
