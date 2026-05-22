@@ -6,7 +6,7 @@ struct RuntimeGuestActivationRunner {
     var removePreviousResult: () throws -> Void
     var requestID: () -> String
     var timestamp: () -> String
-    var writeRequest: (String, String, String) throws -> Void
+    var writeRequest: (RuntimeGuestActivationRequest) throws -> Void
     var isVMServiceLoaded: () -> Bool
     var startVMService: () -> Void
     var loadResult: () -> GuestUpdateActivationResultDocument?
@@ -23,22 +23,26 @@ struct RuntimeGuestActivationRunner {
         log("guest update activation requested version=\(manifest.version)")
         try createRunDirectory()
         try? removePreviousResult()
-        let requestId = requestID()
-        try writeRequest(requestId, timestamp(), manifest.version)
+        let request = RuntimeGuestActivationRequest(
+            id: requestID(),
+            requestedAt: timestamp(),
+            version: manifest.version
+        )
+        try writeRequest(request)
 
         if !isVMServiceLoaded() {
             startVMService()
         }
 
-        try waitForActivationResult(requestId: requestId)
+        try waitForActivationResult(request)
         log("guest update activation completed version=\(manifest.version)")
     }
 
-    private func waitForActivationResult(requestId: String) throws {
+    private func waitForActivationResult(_ request: RuntimeGuestActivationRequest) throws {
         log("waiting for guest update activation result timeoutSeconds=\(Constants.Runtime.updateActivationWaitTimeoutSeconds)")
         let maxAttempts = Int(ceil(Constants.Runtime.updateActivationWaitTimeoutSeconds / 3.0))
         let waitResult = GuestActivationWaiter.wait(
-            expectedRequestId: requestId,
+            expectedRequestId: request.id,
             configuration: GuestActivationWaitConfiguration(
                 maxAttempts: maxAttempts,
                 progressEveryAttempts: 5

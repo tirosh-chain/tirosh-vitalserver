@@ -662,11 +662,11 @@ struct RuntimeLifecycle {
             },
             requestID: { UUID().uuidString },
             timestamp: isoTimestamp,
-            writeRequest: { requestId, requestedAt, version in
+            writeRequest: { request in
                 try guestGateway.writeUpdateActivationRequest(
-                    requestId: requestId,
-                    requestedAt: requestedAt,
-                    version: version
+                    requestId: request.id,
+                    requestedAt: request.requestedAt,
+                    version: request.version
                 )
             },
             isVMServiceLoaded: {

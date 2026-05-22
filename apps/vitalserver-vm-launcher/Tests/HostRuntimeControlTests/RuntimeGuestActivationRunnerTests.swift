@@ -98,8 +98,8 @@ final class RuntimeGuestActivationRunnerTests: XCTestCase {
             timestamp: {
                 "2026-05-22T00:00:00Z"
             },
-            writeRequest: { requestId, requestedAt, version in
-                events.append("write-request:\(requestId):\(requestedAt):\(version)")
+            writeRequest: { request in
+                events.append("write-request:\(request.id):\(request.requestedAt):\(request.version)")
             },
             isVMServiceLoaded: {
                 vmServiceLoaded
