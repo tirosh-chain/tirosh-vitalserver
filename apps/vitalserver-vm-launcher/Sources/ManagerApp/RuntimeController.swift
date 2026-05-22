@@ -22,7 +22,9 @@ final class RuntimeController: ObservableObject {
 
     private let runtimeClient: any RuntimeClient
     private let healthNotifications: any HealthNotifying
+    private let healthNotificationCoordinator: RuntimeHealthNotificationCoordinator
     private let nativeShell: any RuntimeNativeShell
+    private let settingsValidator = RuntimeSettingsValidator()
     private let logLineLimitOptions = [100, 500, 1000]
     private let logSources: [LogSourceOption] = [
         LogSourceOption(id: .helperMessage, title: "Helper message"),
@@ -34,8 +36,6 @@ final class RuntimeController: ObservableObject {
         LogSourceOption(id: .updateActivation, title: "Update activation"),
         LogSourceOption(id: .containers, title: "Containers"),
     ]
-    private var healthNotificationBaseline: HealthNotificationState?
-
     init(
         statusReader: RuntimeStatusReading = SystemRuntimeStatusReader(paths: RuntimePaths()),
         privilegedCommandRunner: PrivilegedCommandRunning = SystemPrivilegedCommandRunner(),
@@ -54,6 +54,7 @@ final class RuntimeController: ObservableObject {
             actionEnvironment: actionEnvironment
         )
         self.healthNotifications = healthNotifications ?? HealthNotificationCenter()
+        self.healthNotificationCoordinator = RuntimeHealthNotificationCoordinator(notifier: self.healthNotifications)
         self.nativeShell = nativeShell ?? SystemRuntimeNativeShell()
         self.settings = self.runtimeClient.loadSettings()
         self.healthNotifications.configure()
@@ -109,7 +110,7 @@ final class RuntimeController: ObservableObject {
         if let displayMessage = status.displayMessage {
             message = displayMessage
         }
-        handleHealthNotificationTransition(status)
+        healthNotificationCoordinator.handleTransition(to: status)
         refreshLogsIfLive()
     }
 
@@ -118,7 +119,7 @@ final class RuntimeController: ObservableObject {
         if let displayMessage = status.displayMessage {
             message = displayMessage
         }
-        handleHealthNotificationTransition(status)
+        healthNotificationCoordinator.handleTransition(to: status)
         refreshLogsIfLive()
     }
 
@@ -132,7 +133,7 @@ final class RuntimeController: ObservableObject {
         } else {
             message = AppConstants.StatusText.healthCheckCompleted
         }
-        handleHealthNotificationTransition(status)
+        healthNotificationCoordinator.handleTransition(to: status)
     }
 
     func uninstallRuntime(clean: Bool = false) async {
@@ -495,37 +496,11 @@ final class RuntimeController: ObservableObject {
     }
 
     private func validateSettings() -> Bool {
-        if settings.networkMode == AppConstants.Values.networkBridged {
-            message = AppConstants.StatusText.bridgedModeUnavailable
-            return false
+        let result = settingsValidator.validate(settings, installedSettings: runtimeClient.loadSettings())
+        if case .invalid(let validationMessage) = result {
+            message = validationMessage
         }
-        let installedDiskGiB = runtimeClient.loadSettings().diskGiB
-        if settings.diskGiB < installedDiskGiB {
-            message = AppConstants.StatusText.diskDecreaseUnavailable
-            return false
-        }
-        if !(1...65_535).contains(settings.proxyPort) || !(1...65_535).contains(settings.publicPort) {
-            message = AppConstants.StatusText.invalidPort
-            return false
-        }
-        if settings.vitalFilesDirectory.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            || !settings.vitalFilesDirectory.hasPrefix("/") {
-            message = AppConstants.StatusText.vitalFilesDirectoryRequired
-            return false
-        }
-        if settings.changeAdminPassword, settings.adminPassword.isEmpty {
-            message = AppConstants.StatusText.adminPasswordRequired
-            return false
-        }
-        if settings.changeAdminPassword, !isLineSafe(settings.adminPassword) {
-            message = AppConstants.StatusText.adminPasswordNewline
-            return false
-        }
-        return true
-    }
-
-    private func isLineSafe(_ value: String) -> Bool {
-        !value.contains("\n") && !value.contains("\r")
+        return result.isValid
     }
 
     private func refreshBackupList() {
@@ -657,67 +632,12 @@ final class RuntimeController: ObservableObject {
         return "\(title)\n\n\(output)"
     }
 
-    private func handleHealthNotificationTransition(_ status: RuntimeStatus) {
-        let next = HealthNotificationState(status: status)
-        guard let previous = healthNotificationBaseline else {
-            healthNotificationBaseline = next
-            return
-        }
-        guard previous != next else {
-            return
-        }
-        healthNotificationBaseline = next
-
-        switch next {
-        case .critical:
-            healthNotifications.notify(
-                title: AppConstants.Notifications.criticalTitle,
-                body: status.displayMessage ?? AppConstants.Notifications.criticalBody
-            )
-        case .needsAttention:
-            healthNotifications.notify(
-                title: AppConstants.Notifications.needsAttentionTitle,
-                body: status.displayMessage ?? AppConstants.Notifications.needsAttentionBody
-            )
-        case .healthy where previous == .critical || previous == .needsAttention:
-            healthNotifications.notify(
-                title: AppConstants.Notifications.recoveredTitle,
-                body: AppConstants.Notifications.recoveredBody
-            )
-        default:
-            break
-        }
-    }
 }
 
 struct VitalFileFolder: Identifiable {
     var id: String { path }
     let name: String
     let path: String
-}
-
-private enum HealthNotificationState: Equatable {
-    case healthy
-    case needsAttention
-    case critical
-    case starting
-    case notInstalled
-
-    init(status: RuntimeStatus) {
-        if status.isReady {
-            self = .healthy
-        } else if !status.runtimeInstalled {
-            self = .notInstalled
-        } else if status.runtimeState == AppConstants.Values.stateCritical {
-            self = .critical
-        } else if status.runtimeState == AppConstants.Values.stateDegraded
-            || status.runtimeState == AppConstants.Values.stateRecovering
-            || !status.failureReasons.isEmpty {
-            self = .needsAttention
-        } else {
-            self = .starting
-        }
-    }
 }
 
 enum RuntimeControllerError: LocalizedError {

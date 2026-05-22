@@ -442,11 +442,14 @@ UI 상태, capability guard, usecase orchestration, 화면 메시지 변환
         +-- RuntimeNativeShell
         |     directory/bundle/save panel, file/web open, relaunch/terminate
         |
-        +-- HealthNotifying
-              host notification adapter
+        +-- RuntimeSettingsValidator
+        |     settings apply precondition policy
+        |
+        +-- RuntimeHealthNotificationCoordinator
+              health transition policy over HealthNotifying adapter
 ```
 
-`RuntimeController`는 SwiftUI의 view model 역할을 맡지만, macOS API나 command 세부 구현을 직접 소유하지 않습니다. macOS native concern은 `RuntimeNativeShell` 뒤에 두고, local runtime operation은 `RuntimeClient` 뒤에 둡니다. UI에서 선택한 update bundle과 backup은 내부 계약에서 `URL`로 유지하고, 화면 표시가 필요할 때만 path string으로 변환합니다. Log source처럼 닫힌 선택지는 raw string 대신 enum 계약으로 유지합니다.
+`RuntimeController`는 SwiftUI의 view model 역할을 맡지만, macOS API나 command 세부 구현을 직접 소유하지 않습니다. macOS native concern은 `RuntimeNativeShell` 뒤에 두고, local runtime operation은 `RuntimeClient` 뒤에 둡니다. 설정 적용 전 검증과 health notification 전이처럼 재사용 가능한 정책은 controller 밖의 작은 객체에 둡니다. UI에서 선택한 update bundle과 backup은 내부 계약에서 `URL`로 유지하고, 화면 표시가 필요할 때만 path string으로 변환합니다. Log source처럼 닫힌 선택지는 raw string 대신 enum 계약으로 유지합니다.
 
 | 계층 | 역할 | 주요 코드 | 책임 |
 |---|---|---|---|
