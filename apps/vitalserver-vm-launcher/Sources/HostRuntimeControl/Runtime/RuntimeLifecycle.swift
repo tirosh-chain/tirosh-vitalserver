@@ -229,24 +229,32 @@ struct RuntimeLifecycle {
     }
 
     func printStatus() {
-        print("Tirosh VitalServer runtime")
-        print("  product root: \(productRoot.path)")
-        print("  runtime dir: \(installedPaths.runtimeDirectory.path)")
-        print("  latest backup: \(latestBackup()?.path ?? "none")")
-        print("  status file: \(fileState(url: runtimeStatus))")
-        print("  status: \(runtimeStatusValue())")
-        print("  launcher: \(fileState(path: Constants.InstallPaths.vmBin))")
-        print("  proxy runner: \(fileState(path: Constants.InstallPaths.proxyRun))")
-        print("  rootfs base: \(fileState(url: rootfsBase))")
-        print("  vm disk: \(fileState(url: vmDisk))")
-        print("  version: \(runtimeVersionValue())")
-        print("  VM service: \(launchdState(Constants.Launchd.vmService))")
-        print("  proxy service: \(launchdState(Constants.Launchd.proxyService))")
-        print("  watchdog service: \(launchdState(Constants.Launchd.watchdogService))")
-        print("  VM IP: \(guestRuntimeState()?.vmIP ?? readTrimmed(vmIPFile) ?? "waiting")")
-        let proxyPort = installedProxyPort()
-        print("  proxy port: \(proxyPort)")
-        print("  host proxy HTTP: \(httpProber.statusCode(url: Constants.Runtime.proxyHealthURL(port: proxyPort)))")
+        runtimeStatusPrinter().printStatus()
+    }
+
+    private func runtimeStatusPrinter() -> RuntimeStatusPrinter {
+        RuntimeStatusPrinter(
+            productRoot: productRoot,
+            runtimeDirectory: installedPaths.runtimeDirectory,
+            runtimeStatus: runtimeStatus,
+            rootfsBase: rootfsBase,
+            vmDisk: vmDisk,
+            latestBackupPath: { latestBackup()?.path },
+            runtimeStatusValue: runtimeStatusValue,
+            runtimeVersionValue: runtimeVersionValue,
+            vmIP: { healthChecker.guestRuntimeState()?.vmIP ?? healthChecker.readTrimmed(vmIPFile) ?? "waiting" },
+            installedProxyPort: healthChecker.installedProxyPort,
+            hostProxyHTTP: { port in
+                httpProber.statusCode(url: Constants.Runtime.proxyHealthURL(port: port))
+            },
+            isExecutableFile: { path in
+                fileStore.isExecutableFile(atPath: path)
+            },
+            fileExists: fileExists,
+            serviceState: { label in
+                healthChecker.launchdState(label)
+            }
+        )
     }
 
     private func configureDeployEnvironment(_ settings: InstallSettings) throws {
@@ -1556,22 +1564,6 @@ struct RuntimeLifecycle {
         )
     }
 
-    private func fileState(path: String) -> String {
-        healthChecker.fileState(path: path)
-    }
-
-    private func fileState(url: URL) -> String {
-        healthChecker.fileState(url: url)
-    }
-
-    private func launchdState(_ label: String) -> String {
-        healthChecker.launchdState(label)
-    }
-
-    private func installedProxyPort() -> Int {
-        healthChecker.installedProxyPort()
-    }
-
     private func setInstalledProxyPort(_ port: Int) throws {
         try runRequired(
             Constants.Commands.plistBuddy,
@@ -1600,10 +1592,6 @@ struct RuntimeLifecycle {
 
     private func setStartOnBoot(_ enabled: Bool) throws {
         try serviceController.setStartOnBoot(enabled)
-    }
-
-    private func guestRuntimeState() -> GuestRuntimeStateDocument? {
-        healthChecker.guestRuntimeState()
     }
 
     private func runProcess(_ executable: String, arguments: [String]) -> RuntimeProcessResult {
@@ -1645,10 +1633,6 @@ struct RuntimeLifecycle {
             return false
         }
         return code >= 200 && code < 300
-    }
-
-    private func readTrimmed(_ url: URL) -> String? {
-        healthChecker.readTrimmed(url)
     }
 
     private func fileExists(_ url: URL) -> Bool {
