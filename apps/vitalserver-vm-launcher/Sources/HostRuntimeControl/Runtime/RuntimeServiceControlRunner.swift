@@ -3,11 +3,19 @@ import RuntimeCore
 struct RuntimeServiceControlRunner {
     var startRuntimeServices: (RuntimeServiceRestartPolicy) throws -> Void
     var stopRuntimeServices: () throws -> Void
-    var waitForHealth: (RuntimeServiceRestartPolicy) throws -> Void
     var writeStatus: (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void
     var log: (String) -> Void
 
-    func startAll() throws {
+    func run(_ command: RuntimeServiceControlCommand) throws {
+        switch command {
+        case .startAll:
+            try startAll()
+        case .stopAll:
+            try stopAll()
+        }
+    }
+
+    private func startAll() throws {
         let policy = RuntimeServiceRestartPolicy(
             restartVM: true,
             restartProxy: true,
@@ -20,7 +28,7 @@ struct RuntimeServiceControlRunner {
         log("runtime services start dispatched")
     }
 
-    func stopAll() throws {
+    private func stopAll() throws {
         log("runtime services stop requested")
         try stopRuntimeServices()
         try writeStatus(.degraded, .stopServices, "runtime services stopped")

@@ -6,7 +6,7 @@ final class RuntimeServiceControlRunnerTests: XCTestCase {
     func testStartAllStartsServicesWithoutWaitingForHealth() throws {
         let harness = ServiceControlHarness()
 
-        try harness.runner.startAll()
+        try harness.runner.run(.startAll)
 
         XCTAssertEqual(harness.events, [
             "log:runtime services start requested",
@@ -20,7 +20,7 @@ final class RuntimeServiceControlRunnerTests: XCTestCase {
     func testStopAllStopsServicesAndWritesDegradedStatus() throws {
         let harness = ServiceControlHarness()
 
-        try harness.runner.stopAll()
+        try harness.runner.run(.stopAll)
 
         XCTAssertEqual(harness.events, [
             "log:runtime services stop requested",
@@ -34,7 +34,7 @@ final class RuntimeServiceControlRunnerTests: XCTestCase {
         let harness = ServiceControlHarness()
         harness.startError = TestServiceControlError.start
 
-        XCTAssertThrowsError(try harness.runner.startAll())
+        XCTAssertThrowsError(try harness.runner.run(.startAll))
 
         XCTAssertEqual(harness.events, [
             "log:runtime services start requested",
@@ -58,9 +58,6 @@ private final class ServiceControlHarness {
             },
             stopRuntimeServices: {
                 self.events.append("stop")
-            },
-            waitForHealth: { policy in
-                self.events.append("wait:\(policy.restartVM):\(policy.restartProxy):\(policy.restartWatchdog)")
             },
             writeStatus: { status, operation, message in
                 self.events.append("status:\(status.rawValue):\(operation.rawValue):\(message)")

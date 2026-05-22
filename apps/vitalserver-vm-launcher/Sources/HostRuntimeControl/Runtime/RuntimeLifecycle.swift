@@ -433,18 +433,17 @@ struct RuntimeLifecycle {
     }
 
     func startServices() throws {
-        try runtimeServiceControlRunner().startAll()
+        try runtimeServiceControlRunner().run(.startAll)
     }
 
     func stopServices() throws {
-        try runtimeServiceControlRunner().stopAll()
+        try runtimeServiceControlRunner().run(.stopAll)
     }
 
     private func runtimeServiceControlRunner() -> RuntimeServiceControlRunner {
         RuntimeServiceControlRunner(
             startRuntimeServices: startRuntimeServices,
             stopRuntimeServices: stopRuntimeServices,
-            waitForHealth: waitForHealth,
             writeStatus: { status, operation, message in
                 try writeRuntimeStatus(status, operation: operation, message: message)
             },
