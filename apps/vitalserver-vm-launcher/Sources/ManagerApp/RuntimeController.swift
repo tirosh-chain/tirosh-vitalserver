@@ -24,6 +24,7 @@ final class RuntimeController: ObservableObject {
     private let healthNotifications: any HealthNotifying
     private let healthNotificationCoordinator: RuntimeHealthNotificationCoordinator
     private let nativeShell: any RuntimeNativeShell
+    private let backupSelectionPolicy = RuntimeBackupSelectionPolicy()
     private let settingsValidator = RuntimeSettingsValidator()
     private let logLineLimitOptions = [100, 500, 1000]
     private let logSources: [LogSourceOption] = [
@@ -309,7 +310,7 @@ final class RuntimeController: ObservableObject {
             message = AppConstants.StatusText.missingBackup
             return
         }
-        guard isManagedBackupURL(backupURL) else {
+        guard backupSelectionPolicy.isManagedBackupURL(backupURL) else {
             message = AppConstants.StatusText.invalidBackup
             return
         }
@@ -505,15 +506,10 @@ final class RuntimeController: ObservableObject {
 
     private func refreshBackupList() {
         backups = runtimeClient.loadBackups(latestBackupPath: status.latestBackup)
-        let backupURLs = Set(backups.map(\.url))
-        if let selectedBackupURL, backupURLs.contains(selectedBackupURL) {
-            return
-        }
-        if let latest = backups.first {
-            selectedBackupURL = latest.url
-        } else if backups.isEmpty {
-            selectedBackupURL = nil
-        }
+        selectedBackupURL = backupSelectionPolicy.selectedBackupURL(
+            from: backups,
+            currentSelection: selectedBackupURL
+        )
     }
 
     private func refreshReleaseInfo() async {
@@ -530,15 +526,6 @@ final class RuntimeController: ObservableObject {
             || runtimeClient.capabilities.canEditNetworkExposure
             || runtimeClient.capabilities.canOpenLocalFiles
             || runtimeClient.capabilities.canResetAdminPassword
-    }
-
-    private func isManagedBackupURL(_ url: URL) -> Bool {
-        let backupURL = url.standardizedFileURL
-        let backupsURL = URL(fileURLWithPath: AppConstants.Paths.backups).standardizedFileURL
-        guard backupURL.lastPathComponent.contains("-before-") else {
-            return false
-        }
-        return backupURL.path.hasPrefix(backupsURL.path + "/")
     }
 
     private func runClientAction(
