@@ -424,7 +424,7 @@ Status/Settings/Update/Logs UI에 표시
 
 `RuntimeCore`는 별도 실행 계층이 아니라 `VitalServerHelperApp`과 `HostRuntimeControl`이 import하는 공유 계약/정책 라이브러리입니다. JSON schema, enum, evaluator, operation plan, port protocol을 담고, macOS process 실행이나 SwiftUI 화면 같은 adapter 책임은 갖지 않습니다.
 
-현재 VitalServerHelperApp 내부 경계는 아래처럼 둡니다. 이 구조는 전환기 SwiftUI app 안에서 ADR 0002의 `RuntimeClient` boundary를 구현한 모양입니다.
+현재 VitalServerHelperApp 내부 경계는 아래처럼 둡니다. 이 구조는 전환기 SwiftUI app 안에서 ADR 0002의 `RuntimeClient` boundary를 구현한 모양입니다. 코드 배치도 같은 경계를 드러내도록 `Composition`, `Presentation`, `RuntimeControlAdapter`, `NativeShell` 하위 디렉터리로 나눕니다.
 
 ```text
 [ContentView / VitalServerHelperApplication]
@@ -462,7 +462,7 @@ UI 상태, capability guard, usecase orchestration, 화면 메시지 변환
 
 | 계층 | 역할 | 주요 코드 | 책임 |
 |---|---|---|---|
-| `VitalServerHelperApp` | 운영 UI와 local adapter | `Sources/VitalServerHelperApp/*` | SwiftUI 화면, native shell, local file/process adapter, RuntimeControl 구현 연결 |
+| `VitalServerHelperApp` | 운영 UI와 local adapter | `Sources/VitalServerHelperApp/{Composition,Presentation,RuntimeControlAdapter,NativeShell}/*` | SwiftUI 화면, native shell, local file/process adapter, RuntimeControl 구현 연결 |
 | `RuntimeControl` | UI-usecase 입출력 계약 | `Sources/RuntimeControl/*` | `RuntimeClient` protocol, status/settings/backup/log/release DTO, command result와 닫힌 선택지 enum |
 | `HostRuntimeControl` | local control backend | `Sources/HostRuntimeControl/*` | Updater/Supervisor/VM Driver 구현. VM 시작/중지, 설치/설정/업데이트/롤백, launchd/nginx/health 제어 |
 | `Guest VM` | Linux 실행 환경 | `Support/Guest/*` | bootstrap, Docker image load, Compose stack 실행, update activation, datastore repair |
