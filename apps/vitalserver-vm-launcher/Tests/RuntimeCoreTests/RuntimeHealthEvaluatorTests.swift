@@ -31,7 +31,7 @@ final class RuntimeHealthEvaluatorTests: XCTestCase {
         ])
     }
 
-    func testHTTPFailuresIncludeProxyPortAndBootstrapReasons() {
+    func testReadinessFailuresIncludeProxyPortAndBootstrapReasons() {
         let snapshot = RuntimeHealthEvaluator.evaluate(healthyInput(
             hostProxyHTTP: "502",
             guestHTTP: "bootstrap-pending",
@@ -44,11 +44,21 @@ final class RuntimeHealthEvaluatorTests: XCTestCase {
         XCTAssertEqual(snapshot.failureReasons, [
             .hostProxyHTTP("502"),
             .proxyPortInUse(port: 80, listeners: "nginx-1234"),
-            .redisUIHTTP("failed"),
-            .swaggerUIHTTP("404"),
             .guestHTTP("bootstrap-pending"),
             .guestBootstrapMissingRuntimePackages,
         ])
+    }
+
+    func testAuxiliaryUIFailuresDoNotTriggerRuntimeRecovery() {
+        let snapshot = RuntimeHealthEvaluator.evaluate(healthyInput(
+            redisUIHTTP: "failed",
+            swaggerUIHTTP: "500"
+        ))
+
+        XCTAssertTrue(snapshot.isHealthy)
+        XCTAssertEqual(snapshot.redisUIHTTP, "failed")
+        XCTAssertEqual(snapshot.swaggerUIHTTP, "500")
+        XCTAssertEqual(snapshot.failureReasons, [])
     }
 
     func testBootstrapReasonIsIgnoredWhenGuestHTTPIsHealthy() {

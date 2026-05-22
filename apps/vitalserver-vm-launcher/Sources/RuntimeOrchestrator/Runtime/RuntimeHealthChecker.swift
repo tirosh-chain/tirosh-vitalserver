@@ -124,7 +124,7 @@ struct RuntimeHealthChecker {
             return "bootstrap-pending"
         }
         if let vmIP {
-            return httpProber.statusCode(url: "http://\(vmIP)/check")
+            return httpProber.statusCode(url: "http://\(vmIP)\(Constants.Runtime.readinessPath)")
         }
         return "missing-vm-ip"
     }

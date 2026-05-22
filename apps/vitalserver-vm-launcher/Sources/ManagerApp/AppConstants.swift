@@ -19,11 +19,14 @@ enum AppConstants {
         static func swaggerURL(proxyPort: Int) -> String {
             "http://127.0.0.1:\(proxyPort)/swagger/"
         }
+        static func hostProxyLivenessURL(proxyPort: Int) -> String {
+            "http://127.0.0.1:\(proxyPort)/health"
+        }
         static func hostProxyHealthURL(proxyPort: Int) -> String {
-            "http://127.0.0.1:\(proxyPort)/check"
+            "http://127.0.0.1:\(proxyPort)/ready"
         }
         static func guestHealthURL(vmIP: String) -> String {
-            "http://\(vmIP)/check"
+            "http://\(vmIP)/ready"
         }
     }
 

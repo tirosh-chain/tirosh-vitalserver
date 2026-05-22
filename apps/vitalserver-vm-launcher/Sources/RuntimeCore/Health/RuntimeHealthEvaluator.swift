@@ -81,12 +81,6 @@ public enum RuntimeHealthEvaluator {
             failureReasons.append(.hostProxyHTTP(input.hostProxyHTTP))
             failureReasons.append(contentsOf: input.proxyPortFailureReasons)
         }
-        if !isSuccessfulHTTPStatus(input.redisUIHTTP) {
-            failureReasons.append(.redisUIHTTP(input.redisUIHTTP))
-        }
-        if !isSuccessfulHTTPStatus(input.swaggerUIHTTP) {
-            failureReasons.append(.swaggerUIHTTP(input.swaggerUIHTTP))
-        }
         if !isSuccessfulHTTPStatus(input.guestHTTP) {
             failureReasons.append(.guestHTTP(input.guestHTTP))
             if let guestBootstrapFailureReason = input.guestBootstrapFailureReason {

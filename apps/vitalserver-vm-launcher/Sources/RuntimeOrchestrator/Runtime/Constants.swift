@@ -114,9 +114,15 @@ enum Constants {
         static let logRotationKeepCount = 5
         static let backupKeepCount = 5
         static let stagedBundleKeepCount = 3
+        static let livenessPath = "/health"
+        static let readinessPath = "/ready"
+
+        static func proxyLivenessURL(port: Int) -> String {
+            "http://127.0.0.1:\(port)\(livenessPath)"
+        }
 
         static func proxyHealthURL(port: Int) -> String {
-            "http://127.0.0.1:\(port)/check"
+            "http://127.0.0.1:\(port)\(readinessPath)"
         }
 
         static func redisUIHealthURL(port: Int) -> String {

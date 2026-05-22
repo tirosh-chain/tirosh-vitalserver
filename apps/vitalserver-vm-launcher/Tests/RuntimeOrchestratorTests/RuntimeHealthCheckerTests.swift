@@ -49,6 +49,7 @@ final class RuntimeHealthCheckerTests: XCTestCase {
         let snapshot = checker.snapshot()
 
         XCTAssertTrue(snapshot.isHealthy)
+        XCTAssertTrue(httpProber.requestedURLs.contains("http://127.0.0.1:8080/ready"))
         XCTAssertEqual(snapshot.vmIP, "192.168.64.2")
         XCTAssertEqual(snapshot.proxyPort, 8080)
         XCTAssertEqual(snapshot.hostProxyHTTP, "200")
@@ -57,12 +58,17 @@ final class RuntimeHealthCheckerTests: XCTestCase {
     }
 
     func testSnapshotFallsBackToMissingStateAndDefaultProxyPort() {
+        let installedPaths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
+        let fileStore = RuntimeFileStoreSpy()
+        fileStore.files[installedPaths.vmIPFile] = Data("192.168.64.3\n".utf8)
+        let httpProber = RuntimeHTTPProberSpy()
+        httpProber.statuses["http://192.168.64.3/ready"] = "200"
         let checker = RuntimeHealthChecker(
-            installedPaths: InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product")),
-            fileStore: RuntimeFileStoreSpy(),
+            installedPaths: installedPaths,
+            fileStore: fileStore,
             serviceManager: RuntimeServiceManagerSpy(),
             commandRunner: RuntimeCommandRunnerSpy(),
-            httpProber: RuntimeHTTPProberSpy(),
+            httpProber: httpProber,
             guestGateway: RuntimeGuestGatewaySpy()
         )
 
@@ -70,7 +76,8 @@ final class RuntimeHealthCheckerTests: XCTestCase {
 
         XCTAssertFalse(snapshot.isHealthy)
         XCTAssertEqual(snapshot.proxyPort, InstallSettings.defaultProxyPort)
-        XCTAssertEqual(snapshot.guestHTTP, "missing-vm-ip")
+        XCTAssertEqual(snapshot.guestHTTP, "200")
+        XCTAssertTrue(httpProber.requestedURLs.contains("http://192.168.64.3/ready"))
         XCTAssertTrue(snapshot.failureReasons.contains(.missingVMBin))
         XCTAssertTrue(snapshot.failureReasons.contains(.missingRootfsBase))
     }
@@ -90,9 +97,11 @@ private final class RuntimeCommandRunnerSpy: RuntimeCommandRunner {
 
 private final class RuntimeHTTPProberSpy: RuntimeHTTPProber {
     var statuses: [String: String] = [:]
+    var requestedURLs: [String] = []
 
     func statusCode(url: String) -> String {
-        statuses[url] ?? "failed"
+        requestedURLs.append(url)
+        return statuses[url] ?? "failed"
     }
 }
 

@@ -86,7 +86,7 @@ services:
       test:
         - CMD-SHELL
         - >-
-          node -e "require('http').get('http://127.0.0.1/check', r => process.exit(r.statusCode < 500 ? 0 : 1)).on('error', () => process.exit(1))"
+          node -e "require('http').get('http://127.0.0.1/check', r => process.exit(r.statusCode >= 200 && r.statusCode < 300 ? 0 : 1)).on('error', () => process.exit(1))"
       interval: 10s
       timeout: 5s
       retries: 30
@@ -101,6 +101,14 @@ services:
       - "8081"
     environment:
       REDIS_HOSTS: "local:redis:6379"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          node -e "require('http').get('http://127.0.0.1:8081/', r => process.exit(r.statusCode >= 200 && r.statusCode < 500 ? 0 : 1)).on('error', () => process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 30
     restart: unless-stopped
 
   swagger-ui:
@@ -115,6 +123,11 @@ services:
         source: /mnt/tirosh/deploy/docs/openapi.yaml
         target: /usr/share/nginx/html/openapi.yaml
         read_only: true
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:8080/swagger/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
     restart: unless-stopped
 
   edge:
@@ -123,9 +136,9 @@ services:
       app:
         condition: service_healthy
       redis-ui:
-        condition: service_started
+        condition: service_healthy
       swagger-ui:
-        condition: service_started
+        condition: service_healthy
     ports:
       - "80:80"
     volumes:
@@ -134,7 +147,7 @@ services:
         target: /etc/nginx/conf.d/default.conf
         read_only: true
     healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1/check || exit 1"]
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1/ready || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 30

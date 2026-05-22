@@ -34,8 +34,6 @@ struct RuntimeStatus {
             && vmIP != nil
             && isSuccessfulHTTPStatus(guestHTTP)
             && isSuccessfulHTTPStatus(hostProxyHTTP)
-            && isSuccessfulHTTPStatus(redisUIHTTP)
-            && isSuccessfulHTTPStatus(swaggerUIHTTP)
     }
 
     var displayMessage: String? {

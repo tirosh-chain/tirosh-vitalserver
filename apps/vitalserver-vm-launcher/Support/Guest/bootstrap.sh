@@ -231,11 +231,11 @@ cleanup_docker_cache() {
 wait_for_vitalserver_edge() {
   local deadline code http_status
 
-  printf "Waiting for VitalServer edge: http://127.0.0.1/check\n"
+  printf "Waiting for VitalServer edge readiness: http://127.0.0.1/ready\n"
   deadline=$(( "$(date +%s)" + 600 ))
 
   while [ "$(date +%s)" -lt "${deadline}" ]; do
-    code="$(curl -sS -L -o /dev/null -w '%{http_code}' --max-time 5 "http://127.0.0.1/check" 2>/dev/null)" \
+    code="$(curl -sS -L -o /dev/null -w '%{http_code}' --max-time 5 "http://127.0.0.1/ready" 2>/dev/null)" \
       && http_status=0 \
       || http_status=$?
 
