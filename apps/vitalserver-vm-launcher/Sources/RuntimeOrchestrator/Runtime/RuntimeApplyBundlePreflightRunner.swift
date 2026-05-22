@@ -8,6 +8,7 @@ struct RuntimeApplyBundlePreflightRunner {
     var createDirectory: (URL, Bool) throws -> Void
     var fileSize: (URL) throws -> UInt64
     var requireFreeSpace: (URL, UInt64, RuntimeOperation) throws -> Void
+    var checkCompatibility: (UpdateBundleManifest) throws -> Void
     var serviceRestartPolicy: () -> RuntimeServiceRestartPolicy
     var createBackup: (String) throws -> URL
     var directorySize: (URL) throws -> UInt64
@@ -19,6 +20,7 @@ struct RuntimeApplyBundlePreflightRunner {
         log(
             "bundle apply manifest version=\(manifest.version) runtimeVersion=\(manifest.runtimeVersion) artifacts=\(manifest.artifacts.count) migrations=\(manifest.migrations.count)"
         )
+        try checkCompatibility(manifest)
 
         let stagedRootfs = stagedBundle.appendingPathComponent(Constants.Artifacts.rootfsBase)
         guard fileExists(stagedRootfs) else {

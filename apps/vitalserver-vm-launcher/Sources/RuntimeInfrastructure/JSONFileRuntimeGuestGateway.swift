@@ -39,7 +39,7 @@ public struct JSONFileRuntimeGuestGateway: RuntimeGuestGateway {
 
     public func writeUpdateActivationRequest(requestId: String, requestedAt: String, version: String) throws {
         try write(
-            UpdateActivationRequestDocument(
+            GuestUpdateActivationRequestDocument(
                 requestId: requestId,
                 requestedAt: requestedAt,
                 version: version
@@ -91,14 +91,6 @@ public struct JSONFileRuntimeGuestGateway: RuntimeGuestGateway {
         }
         try FileManager.default.removeItem(at: url)
     }
-}
-
-private struct UpdateActivationRequestDocument: Encodable {
-    let schemaVersion = 2
-    let requestId: String
-    let requestedAt: String
-    let operation = "activate-update"
-    let version: String
 }
 
 private struct DatastoreRepairRequestDocument: Encodable {

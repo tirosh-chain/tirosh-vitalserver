@@ -843,6 +843,12 @@ struct RuntimeLifecycle {
             requireFreeSpace: { url, minimumBytes, operation in
                 try requireFreeSpace(at: url, minimumBytes: minimumBytes, operation: operation)
             },
+            checkCompatibility: { manifest in
+                try RuntimeUpdateCompatibilityChecker.check(
+                    manifest: manifest,
+                    currentUpdaterVersion: Constants.launcherVersion
+                )
+            },
             serviceRestartPolicy: {
                 RuntimeServiceRestartPolicy(
                     restartVM: isLaunchdLoaded(Constants.Launchd.vmService),

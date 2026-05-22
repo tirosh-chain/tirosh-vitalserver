@@ -24,9 +24,9 @@ Update 계약의 목표는 “어떤 설치본에서 어떤 update bundle을 적
 
 | 원칙 | 기준 |
 |---|---|
-| update protocol은 후방 호환 | `manifest.json`, `activate-update.request`, `runtime-version.json`, status/result JSON은 새 reader가 예전 형식을 읽을 수 있어야 한다 |
+| update protocol은 baseline 계약 유지 | `manifest.json`, `activate-update.request`, `runtime-version.json`, status/result JSON은 지금 정의한 필수 필드와 확장 규칙을 유지한다 |
 | updater는 보수적으로 변경 | update를 수행하는 host runtime tool과 guest activation script는 일반 runtime보다 더 강한 호환성 기준을 적용한다 |
-| request 필드는 늘릴 때 기본값 제공 | 새 필드를 추가해도 기존 설치본이 만든 request를 처리할 수 있어야 한다 |
+| request 필드는 신중히 확장 | 새 필드는 optional 또는 기본값을 가져야 하고, 필수 필드 추가는 bridge/two-phase update 대상이다 |
 | 모르는 필드는 무시 | reader는 알 수 없는 JSON field 때문에 실패하면 안 된다 |
 | 실패는 상태 파일과 로그에 남김 | 실패 단계, reason code, 사람이 읽을 수 있는 message를 남긴다 |
 | 재실행 가능 | 같은 bundle을 다시 적용해도 중간 산출물 때문에 더 망가지면 안 된다 |
@@ -38,39 +38,30 @@ Update 계약의 목표는 “어떤 설치본에서 어떤 update bundle을 적
 
 | 파일 | 생산자 | 소비자 | 호환성 기준 |
 |---|---|---|---|
-| `manifest.json` | build tool | host updater | `schemaVersion`, `version`, artifact 목록은 필수. 새 필드는 optional로 추가 |
+| `manifest.json` | build tool | host updater | `schemaVersion`, `version`, artifact 목록, compatibility field를 포함 |
 | `checksums.txt` | build tool | host verifier | artifact path와 sha256/size 검증 기준 |
-| `activate-update.request` | host updater | guest activation script | `requestId`가 없어도 legacy request로 처리 가능해야 함 |
-| `activate-update-result.json` | guest activation script | host updater/Helper UI | `status`, `message`, `updatedAt`은 항상 기록 |
+| `activate-update.request` | host updater | guest activation script | `requestId`, `requestedAt`, `operation`, `version`은 baseline 필수 |
+| `activate-update-result.json` | guest activation script | host updater/Helper UI | `requestId`, `status`, `message`, `updatedAt`은 항상 기록 |
 | `runtime-status.json` | host updater/watchdog | Helper UI | operation/step/status는 enum 계약으로 유지 |
 | `runtime-version.json` | installer/updater | Helper UI/updater | 현재 runtime/app/guest version 표시와 rollback 판단 기준 |
 
-호환성을 위해 host updater가 아래처럼 최소 필드만 가진 request를 만들더라도 guest activation script는 처리할 수 있어야 합니다.
+현재 baseline에서 host updater는 아래 형식의 request를 씁니다.
 
 ```json
 {
   "operation": "activate-update",
+  "requestId": "2DD1A7A8-1C51-4D6B-8DF1-89C62B7F63B3",
+  "schemaVersion": 2,
   "requestedAt": "2026-05-22T00:00:00Z",
   "version": "1.2.3"
 }
 ```
 
-게스트 activation script는 이 request를 실패시키지 말고 legacy request로 처리해야 합니다.
-
-```text
-requestId missing
-  -> generate legacy request id
-  -> continue activation
-  -> write result with generated requestId
-```
-
-반대로 host updater는 `requestId`를 기대하고 기다리므로, result의 `requestId`가 다를 수 있는 legacy case도 명시적으로 처리합니다.
-
 | 상황 | 처리 |
 |---|---|
 | host request에 `requestId` 있음 | result의 `requestId`가 일치해야 completed로 인정 |
-| host request에 `requestId` 없음 | guest가 생성한 legacy `requestId`를 허용하고, `version`/`operation`/`status` 중심으로 판단 |
-| result에 `schemaVersion` 없음 | legacy result로 읽고 status/message를 우선 사용 |
+| host request에 `requestId` 없음 | baseline 계약 위반으로 실패 |
+| result에 `requestId` 없음 | baseline 계약 위반으로 stale/failed 처리 |
 | result status가 `failed` | 즉시 실패 처리하고 message를 Helper UI와 command log에 노출 |
 
 ### Manifest Compatibility
@@ -177,7 +168,7 @@ update 단계는 중간 실패 후 재실행이 가능해야 합니다. 이를 �
 - stale `activate-update.request`는 새 요청 전 제거하거나 새 request id로 덮어쓴다.
 - rollback 중에도 운영 데이터 경로는 삭제하지 않는다.
 
-### Backward-Compatible Guest Activation
+### Guest Activation Baseline
 
 게스트 activation script는 update 안정성에서 가장 보수적으로 다룹니다.
 
@@ -186,8 +177,8 @@ update 단계는 중간 실패 후 재실행이 가능해야 합니다. 이를 �
 | 케이스 | 동작 |
 |---|---|
 | `python3` 없음 | 실패하되 명확한 message와 result 기록. 단, 제품 rootfs에는 `python3`를 필수 포함 |
-| `requestId` 없음 | legacy id를 생성하고 계속 진행 |
-| `version` 없음 | `unknown`으로 기록하고 계속 진행 |
+| `requestId` 없음 | baseline 계약 위반으로 failed result 기록 |
+| `version` 없음 | baseline 계약 위반으로 failed result 기록 |
 | request JSON 파싱 실패 | failed result와 log 기록 |
 | Docker image bundle 없음 | image load는 skip 가능하되 compose recreate는 정책에 따라 진행 |
 | compose 실패 | failed result와 container log 확인 안내 |
@@ -196,14 +187,14 @@ update 단계는 중간 실패 후 재실행이 가능해야 합니다. 이를 �
 
 ```text
 activation request reader:
-  - requestId optional
-  - version optional
-  - schemaVersion optional
-  - operation optional but recommended
+  - requestId required
+  - version required
+  - schemaVersion required
+  - operation required
 
 activation result writer:
   - schemaVersion always written
-  - requestId always written, generated if needed
+  - requestId always written from request
   - status always written
   - message always written
   - updatedAt always written
@@ -218,7 +209,7 @@ update bundle을 배포 후보로 보려면 아래를 통과해야 합니다.
 | fresh install | clean machine 또는 clean runtime home에서 설치 성공 |
 | same-version apply | 같은 version bundle을 적용해도 깨지지 않음 |
 | previous-version apply | 직전 버전 설치본에서 최신 bundle 적용 성공 |
-| legacy request apply | `requestId` 없는 activation request도 guest가 처리 |
+| invalid request apply | `requestId` 없는 activation request는 명확한 실패 result를 남김 |
 | guest activation | Docker image load와 compose recreate가 수행됨 |
 | health wait | VitalServer, Redis, network access가 ready |
 | rollback | 의도적 실패 bundle에서 managed backup rollback 성공 |
@@ -264,6 +255,60 @@ vm-disk.img        = installed mutable VM instance
 update에서 `rootfs-base.raw.gz`를 교체해도 이미 생성된 `vm-disk.img` 내부 OS/package는 자동으로 바뀌지 않습니다. 이미 설치된 VM 내부를 바꾸려면 migration이나 guest-side activation 단계가 필요합니다.
 
 따라서 기존 `vm-disk.img` 자체가 Docker, Docker Compose, Avahi, growpart 같은 runtime package를 가지고 있지 않다면 일반 update bundle만으로는 복구할 수 없습니다. 이 경우에는 새 package로 재설치하거나, 별도의 VM/rootfs replacement 흐름을 사용해야 합니다. 이 흐름은 운영 데이터 보존 정책이 더 민감하므로 일반 Update 탭이 아니라 Danger Zone 대상입니다.
+
+## Rootfs 변경 기준
+
+rootfs는 Linux VM의 OS base입니다. 변경 기준은 “Mac host나 guest deploy 파일이 바뀌었는가”가 아니라, “VM 내부 OS package 또는 boot/runtime base가 바뀌었는가”입니다.
+
+### Rootfs 변경이 필요한 경우
+
+아래 변경은 새 `rootfs-base.raw.gz`를 만들어야 합니다.
+
+| 변경 | 이유 |
+|---|---|
+| Ubuntu cloud image 변경 | VM OS base 자체가 바뀜 |
+| boot asset 변경 | `Image`, `initrd.img`와 rootfs 조합을 다시 검증해야 함 |
+| apt package 목록 변경 | 기존 mutable `vm-disk.img`에는 새 package가 자동 설치되지 않음 |
+| Docker/Compose OS package 변경 | Docker daemon/compose plugin은 VM OS package에 속함 |
+| Avahi/mDNS OS package 변경 | guest network discovery service는 VM OS package에 속함 |
+| `cloud-guest-utils`, `growpart` 등 filesystem package 변경 | disk grow/bootstrap preflight에 직접 영향 |
+| systemd 기본 service enable 정책 변경 | 새 base image의 기본 부팅 상태에 반영해야 함 |
+| 보안 패치가 필요한 OS package 반영 | base image를 새로 준비해야 함 |
+| air-gapped rootfs 준비 방식 변경 | 설치 시점에 이미 준비된 OS 상태가 달라짐 |
+
+예를 들어 `prepare-airgap-rootfs.sh`에서 `docker.io`, `python3-minimal`, `avahi-daemon` 같은 package를 추가/제거했다면 rootfs 변경 대상입니다.
+
+### Rootfs 변경이 필요 없는 경우
+
+아래 변경은 일반적으로 rootfs를 새로 만들 필요가 없습니다.
+
+| 변경 | 반영 artifact |
+|---|---|
+| Helper app UI 변경 | `app-bundle.tar.gz` |
+| RuntimeOrchestrator Swift CLI 변경 | `runtime-tools.tar.gz` |
+| host nginx binary/config 변경 | `nginx-bundle.tar.gz` |
+| `compose.yaml` 변경 | `guest-deploy.tar.gz` |
+| guest `bootstrap.sh`, `bin/*`, `systemd/*`, `nginx/*.conf` 변경 | `guest-deploy.tar.gz` |
+| VitalServer container image 변경 | `guest-deploy.tar.gz` 안의 Docker image bundle |
+| OpenAPI/Swagger static file 변경 | `guest-deploy.tar.gz` |
+| update/rollback host 로직 변경 | `runtime-tools.tar.gz` |
+
+이 경우 update bundle 적용 후 guest-side activation이 Docker image load, compose recreate, guest file activation을 수행해야 합니다.
+
+### 판단 규칙
+
+```text
+Mac app / host runtime / guest deploy 변경
+  -> rootfs 불필요
+
+container image / compose / guest script 변경
+  -> rootfs 불필요, guest activation 필요
+
+Ubuntu / apt / Docker daemon / OS service 변경
+  -> rootfs 필요
+```
+
+rootfs 변경을 포함한 update bundle은 `rootfs-base.raw.gz`를 교체하지만, 이미 설치된 mutable `vm-disk.img`를 자동 교체하지 않습니다. 따라서 기존 설치본의 OS package 상태까지 바꿔야 하는 경우에는 일반 update가 아니라 fresh install, VM/rootfs replacement, 또는 offline OS package migration 정책을 함께 설계해야 합니다.
 
 ## 보존되는 것과 바뀌는 것
 

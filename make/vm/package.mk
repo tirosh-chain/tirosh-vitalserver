@@ -174,6 +174,9 @@ vm-update-bundle: vm-pkg vm-update-artifacts
 	$(VM_BUILD_RUNNER) update-bundle \
 		--version "$(VM_UPDATE_BUNDLE_VERSION)" \
 		--runtime-version "$(VM_PKG_VERSION)" \
+		--min-updater-version "$(VM_UPDATE_MIN_UPDATER_VERSION)" \
+		--requires-guest-activation "$(if $(VM_UPDATE_GUEST_DEPLOY),true,false)" \
+		--requires-two-phase-update "$(VM_UPDATE_REQUIRES_TWO_PHASE_UPDATE)" \
 		--output-dir "$(VM_UPDATE_BUNDLE_DIR)" \
 		--rootfs-base "$(VM_PKG_ROOTFS_CACHE)" \
 		$(if $(VM_UPDATE_APP_BUNDLE),--app-bundle "$(VM_UPDATE_APP_BUNDLE)") \

@@ -87,6 +87,13 @@ def run_build_update_bundle(args: Any) -> int:
         "product": "TiroshVitalServer",
         "version": args.version,
         "runtimeVersion": args.runtime_version,
+        "minUpdaterVersion": args.min_updater_version or args.runtime_version,
+        "requiresGuestActivation": (
+            args.requires_guest_activation
+            if args.requires_guest_activation is not None
+            else args.guest_deploy is not None
+        ),
+        "requiresTwoPhaseUpdate": args.requires_two_phase_update,
         "createdAt": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "artifacts": artifact_entries,
         "migrations": migration_entries,
@@ -192,6 +199,9 @@ def validate_manifest(manifest: dict[str, Any]) -> None:
         "product": str,
         "version": str,
         "runtimeVersion": str,
+        "minUpdaterVersion": str,
+        "requiresGuestActivation": bool,
+        "requiresTwoPhaseUpdate": bool,
         "createdAt": str,
         "artifacts": list,
         "migrations": list,

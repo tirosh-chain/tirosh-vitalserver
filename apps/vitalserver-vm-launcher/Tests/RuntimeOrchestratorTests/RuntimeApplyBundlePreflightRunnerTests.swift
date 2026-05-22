@@ -42,6 +42,9 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
             requireFreeSpace: { url, bytes, operation in
                 requiredSpace = (url, bytes, operation)
             },
+            checkCompatibility: { manifest in
+                events.append("compatibility:\(manifest.version)")
+            },
             serviceRestartPolicy: {
                 events.append("policy")
                 return RuntimeServiceRestartPolicy(restartVM: true, restartProxy: false, restartWatchdog: true)
@@ -78,6 +81,7 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
         XCTAssertEqual(events, [
             "stage:/incoming/bundle",
             "manifest:manifest.json",
+            "compatibility:1.2.3",
             "mkdir:/product/backups:true",
             "policy",
             "backup:before-1.2.3",
@@ -94,6 +98,7 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
             createDirectory: { _, _ in XCTFail("should not create backup directory") },
             fileSize: { _ in 0 },
             requireFreeSpace: { _, _, _ in },
+            checkCompatibility: { _ in },
             serviceRestartPolicy: {
                 RuntimeServiceRestartPolicy(restartVM: false, restartProxy: false, restartWatchdog: false)
             },
@@ -119,6 +124,7 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
             product: Constants.Product.identifier,
             version: version,
             runtimeVersion: version,
+            requiresGuestActivation: false,
             createdAt: "2026-05-22T00:00:00Z",
             artifacts: [],
             migrations: []

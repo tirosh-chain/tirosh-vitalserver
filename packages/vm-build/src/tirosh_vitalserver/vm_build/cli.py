@@ -77,6 +77,13 @@ def main() -> int:
     )
     update_bundle.add_argument("--version", required=True)
     update_bundle.add_argument("--runtime-version", required=True)
+    update_bundle.add_argument("--min-updater-version")
+    update_bundle.add_argument("--requires-guest-activation", type=parse_bool)
+    update_bundle.add_argument(
+        "--requires-two-phase-update",
+        type=parse_bool,
+        default=False,
+    )
     update_bundle.add_argument("--output-dir", type=Path, required=True)
     update_bundle.add_argument("--rootfs-base", type=Path, required=True)
     update_bundle.add_argument("--app-bundle", type=Path)

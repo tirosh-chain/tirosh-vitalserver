@@ -3,15 +3,34 @@ public struct UpdateBundleManifest: Codable, Equatable, Sendable {
     public let product: String
     public let version: String
     public let runtimeVersion: String
+    public let minUpdaterVersion: String?
+    public let requiresGuestActivation: Bool
+    public let requiresTwoPhaseUpdate: Bool
     public let createdAt: String
     public let artifacts: [UpdateBundleArtifact]
     public let migrations: [UpdateBundleMigration]
+
+    private enum CodingKeys: String, CodingKey {
+        case schemaVersion
+        case product
+        case version
+        case runtimeVersion
+        case minUpdaterVersion
+        case requiresGuestActivation
+        case requiresTwoPhaseUpdate
+        case createdAt
+        case artifacts
+        case migrations
+    }
 
     public init(
         schemaVersion: Int,
         product: String,
         version: String,
         runtimeVersion: String,
+        minUpdaterVersion: String? = nil,
+        requiresGuestActivation: Bool = false,
+        requiresTwoPhaseUpdate: Bool = false,
         createdAt: String,
         artifacts: [UpdateBundleArtifact],
         migrations: [UpdateBundleMigration]
@@ -20,9 +39,28 @@ public struct UpdateBundleManifest: Codable, Equatable, Sendable {
         self.product = product
         self.version = version
         self.runtimeVersion = runtimeVersion
+        self.minUpdaterVersion = minUpdaterVersion
+        self.requiresGuestActivation = requiresGuestActivation
+        self.requiresTwoPhaseUpdate = requiresTwoPhaseUpdate
         self.createdAt = createdAt
         self.artifacts = artifacts
         self.migrations = migrations
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            schemaVersion: try container.decode(Int.self, forKey: .schemaVersion),
+            product: try container.decode(String.self, forKey: .product),
+            version: try container.decode(String.self, forKey: .version),
+            runtimeVersion: try container.decode(String.self, forKey: .runtimeVersion),
+            minUpdaterVersion: try container.decodeIfPresent(String.self, forKey: .minUpdaterVersion),
+            requiresGuestActivation: try container.decodeIfPresent(Bool.self, forKey: .requiresGuestActivation) ?? false,
+            requiresTwoPhaseUpdate: try container.decodeIfPresent(Bool.self, forKey: .requiresTwoPhaseUpdate) ?? false,
+            createdAt: try container.decode(String.self, forKey: .createdAt),
+            artifacts: try container.decode([UpdateBundleArtifact].self, forKey: .artifacts),
+            migrations: try container.decode([UpdateBundleMigration].self, forKey: .migrations)
+        )
     }
 }
 

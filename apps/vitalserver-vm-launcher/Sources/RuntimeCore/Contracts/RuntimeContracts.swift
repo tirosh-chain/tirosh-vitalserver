@@ -504,6 +504,56 @@ public struct GuestUpdateActivationResultDocument: Codable, Equatable {
     }
 }
 
+public struct GuestUpdateActivationRequestDocument: Codable, Equatable {
+    public let schemaVersion: Int
+    public let requestId: String
+    public let requestedAt: String
+    public let operation: RuntimeOperation
+    public let version: String
+
+    private enum CodingKeys: String, CodingKey {
+        case schemaVersion
+        case requestId
+        case requestedAt
+        case operation
+        case version
+    }
+
+    public init(
+        schemaVersion: Int = 2,
+        requestId: String,
+        requestedAt: String,
+        operation: RuntimeOperation = .activateGuestUpdate,
+        version: String
+    ) {
+        self.schemaVersion = schemaVersion
+        self.requestId = requestId
+        self.requestedAt = requestedAt
+        self.operation = operation
+        self.version = version
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            schemaVersion: try container.decode(Int.self, forKey: .schemaVersion),
+            requestId: try container.decode(String.self, forKey: .requestId),
+            requestedAt: try container.decode(String.self, forKey: .requestedAt),
+            operation: try container.decode(RuntimeOperation.self, forKey: .operation),
+            version: try container.decode(String.self, forKey: .version)
+        )
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(schemaVersion, forKey: .schemaVersion)
+        try container.encode(requestId, forKey: .requestId)
+        try container.encode(requestedAt, forKey: .requestedAt)
+        try container.encode("activate-update", forKey: .operation)
+        try container.encode(version, forKey: .version)
+    }
+}
+
 public struct DatastoreRepairResultDocument: Codable, Equatable {
     public let schemaVersion: Int?
     public let requestId: String?
