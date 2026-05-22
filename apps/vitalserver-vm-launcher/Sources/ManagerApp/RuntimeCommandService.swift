@@ -82,6 +82,16 @@ enum RuntimeCommandFactory {
         return "/bin/bash -lc \(shellQuote(script))"
     }
 
+    static func runtimeServicesCommand(action: RuntimeServicesAction) -> String {
+        shellCommand(
+            executable: AppConstants.Paths.launcher,
+            arguments: [
+                AppConstants.RuntimeCommand.runtime,
+                action.runtimeCommand,
+            ]
+        )
+    }
+
     static func relaunchHelperCommand() -> String {
         [
             shellCommand(executable: AppConstants.Commands.sleep, arguments: ["1"]),
@@ -105,5 +115,19 @@ enum RuntimeCommandFactory {
         value
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"")
+    }
+}
+
+enum RuntimeServicesAction {
+    case start
+    case stop
+
+    var runtimeCommand: String {
+        switch self {
+        case .start:
+            return AppConstants.RuntimeCommand.startServices
+        case .stop:
+            return AppConstants.RuntimeCommand.stopServices
+        }
     }
 }

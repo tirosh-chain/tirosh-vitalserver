@@ -30,9 +30,9 @@
   <integer>30</integer>
 
   <key>StandardOutPath</key>
-  <string>${VITALSERVER_VM_HOME}/logs/launchd.out.log</string>
+  <string>${VITALSERVER_RUNTIME_LOGS}/launchd.out.log</string>
 
   <key>StandardErrorPath</key>
-  <string>${VITALSERVER_VM_HOME}/logs/launchd.err.log</string>
+  <string>${VITALSERVER_RUNTIME_LOGS}/launchd.err.log</string>
 </dict>
 </plist>

@@ -53,12 +53,32 @@ public struct InstalledRuntimePaths: Equatable, Sendable {
         runtimeHome.appendingPathComponent("logs")
     }
 
+    public var productLogsDirectory: URL {
+        productRoot.appendingPathComponent("logs")
+    }
+
+    public var centralRuntimeLogsDirectory: URL {
+        productLogsDirectory.appendingPathComponent("runtime")
+    }
+
+    public var centralGuestLogsDirectory: URL {
+        productLogsDirectory.appendingPathComponent("guest")
+    }
+
+    public var logArchiveDirectory: URL {
+        productLogsDirectory.appendingPathComponent("archive")
+    }
+
     public var statusDirectory: URL {
         productRoot.appendingPathComponent("status")
     }
 
     public var installLog: URL {
-        productRoot.appendingPathComponent("logs/install.log")
+        productLogsDirectory.appendingPathComponent("install.log")
+    }
+
+    public var centralCommandLog: URL {
+        productLogsDirectory.appendingPathComponent("command.log")
     }
 
     public var backupsDirectory: URL {
@@ -109,8 +129,24 @@ public struct InstalledRuntimePaths: Equatable, Sendable {
         guestRunDirectory.appendingPathComponent(RuntimeFileNames.updateActivationLog)
     }
 
+    public var centralBootstrapLog: URL {
+        centralGuestLogsDirectory.appendingPathComponent(RuntimeFileNames.bootstrapLog)
+    }
+
+    public var centralUpdateActivationLog: URL {
+        centralGuestLogsDirectory.appendingPathComponent(RuntimeFileNames.updateActivationLog)
+    }
+
+    public var centralDatastoreRepairLog: URL {
+        centralGuestLogsDirectory.appendingPathComponent(RuntimeFileNames.datastoreRepairLog)
+    }
+
     public var containerLogs: URL {
         guestRunDirectory.appendingPathComponent("container-logs.log")
+    }
+
+    public var centralContainerLogs: URL {
+        centralGuestLogsDirectory.appendingPathComponent("container-logs.log")
     }
 
     public var pidFile: URL {

@@ -105,12 +105,14 @@ vm-pkg-stage: vm-sign vm-app vm-golden-rootfs vm-nginx-bundle vm-docker-images
 		--template "$(VM_LAUNCHER_DIR)/launchd/com.tirosh.vitalserver-vm.plist.template" \
 		--output "$(VM_PKG_ROOT)/Library/LaunchDaemons/com.tirosh.vitalserver-vm.plist" \
 		--var "VITALSERVER_VM_BIN=$(VM_INSTALL_BIN)" \
-		--var "VITALSERVER_VM_HOME=$(VM_INSTALL_HOME)"
+		--var "VITALSERVER_VM_HOME=$(VM_INSTALL_HOME)" \
+		--var "VITALSERVER_RUNTIME_LOGS=$(VM_INSTALL_RUNTIME_LOGS)"
 	$(VM_BUILD_RUNNER) render-template \
 		--template "$(VM_LAUNCHER_DIR)/launchd/com.tirosh.vitalserver-proxy.plist.template" \
 		--output "$(VM_PKG_ROOT)/Library/LaunchDaemons/com.tirosh.vitalserver-proxy.plist" \
 		--var "VITALSERVER_PROXY_RUN=$(VM_INSTALL_PROXY_RUN)" \
 		--var "VITALSERVER_VM_HOME=$(VM_INSTALL_HOME)" \
+		--var "VITALSERVER_RUNTIME_LOGS=$(VM_INSTALL_RUNTIME_LOGS)" \
 		--var "VITALSERVER_NGINX_PREFIX=$(VM_INSTALL_NGINX_PREFIX)" \
 		--var "VITALSERVER_NGINX_BIN=$(VM_INSTALL_NGINX_BIN)" \
 		--var "VITALSERVER_PROXY_PORT=$(VITALSERVER_PROXY_PORT)"
@@ -118,7 +120,8 @@ vm-pkg-stage: vm-sign vm-app vm-golden-rootfs vm-nginx-bundle vm-docker-images
 		--template "$(VM_LAUNCHER_DIR)/launchd/com.tirosh.vitalserver-watchdog.plist.template" \
 		--output "$(VM_PKG_ROOT)/Library/LaunchDaemons/com.tirosh.vitalserver-watchdog.plist" \
 		--var "VITALSERVER_VM_BIN=$(VM_INSTALL_BIN)" \
-		--var "VITALSERVER_VM_HOME=$(VM_INSTALL_HOME)"
+		--var "VITALSERVER_VM_HOME=$(VM_INSTALL_HOME)" \
+		--var "VITALSERVER_RUNTIME_LOGS=$(VM_INSTALL_RUNTIME_LOGS)"
 	install -m 0755 "$(VM_PACKAGING_DIR)/preinstall" "$(VM_PKG_SCRIPTS)/preinstall"
 	install -m 0755 "$(VM_PACKAGING_DIR)/postinstall" "$(VM_PKG_SCRIPTS)/postinstall"
 	find "$(VM_PKG_ROOT)" "$(VM_PKG_SCRIPTS)" -name '._*' -delete

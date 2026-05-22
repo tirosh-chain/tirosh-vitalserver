@@ -42,4 +42,12 @@ final class RuntimeCommandFactoryTests: XCTestCase {
         XCTAssertTrue(command.contains("port=18080"))
         XCTAssertTrue(command.contains("kickstart -k system/com.tirosh.vitalserver-proxy"))
     }
+
+    func testRuntimeServicesCommandsUseLauncherRuntimeSubcommands() {
+        let startCommand = RuntimeCommandFactory.runtimeServicesCommand(action: .start)
+        let stopCommand = RuntimeCommandFactory.runtimeServicesCommand(action: .stop)
+
+        XCTAssertTrue(startCommand.contains("'runtime' 'start-services'"))
+        XCTAssertTrue(stopCommand.contains("'runtime' 'stop-services'"))
+    }
 }

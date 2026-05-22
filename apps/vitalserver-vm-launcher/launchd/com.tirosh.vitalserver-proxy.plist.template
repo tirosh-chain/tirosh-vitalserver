@@ -33,9 +33,9 @@
   <integer>30</integer>
 
   <key>StandardOutPath</key>
-  <string>${VITALSERVER_VM_HOME}/logs/proxy.out.log</string>
+  <string>${VITALSERVER_RUNTIME_LOGS}/proxy.out.log</string>
 
   <key>StandardErrorPath</key>
-  <string>${VITALSERVER_VM_HOME}/logs/proxy.err.log</string>
+  <string>${VITALSERVER_RUNTIME_LOGS}/proxy.err.log</string>
 </dict>
 </plist>

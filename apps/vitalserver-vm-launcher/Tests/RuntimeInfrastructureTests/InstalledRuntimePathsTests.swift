@@ -15,10 +15,16 @@ final class InstalledRuntimePathsTests: XCTestCase {
         XCTAssertEqual(paths.nginxDirectory.path, "/Library/Application Support/TiroshVitalServer/nginx")
         XCTAssertEqual(paths.nginxLogsDirectory.path, "/Library/Application Support/TiroshVitalServer/nginx/logs")
         XCTAssertEqual(paths.nginxExecutable.path, "/Library/Application Support/TiroshVitalServer/nginx/sbin/nginx")
+        XCTAssertEqual(paths.productLogsDirectory.path, "/Library/Application Support/TiroshVitalServer/logs")
+        XCTAssertEqual(paths.centralRuntimeLogsDirectory.path, "/Library/Application Support/TiroshVitalServer/logs/runtime")
+        XCTAssertEqual(paths.centralGuestLogsDirectory.path, "/Library/Application Support/TiroshVitalServer/logs/guest")
+        XCTAssertEqual(paths.logArchiveDirectory.path, "/Library/Application Support/TiroshVitalServer/logs/archive")
         XCTAssertEqual(paths.vmIPFile.path, "/Library/Application Support/TiroshVitalServer/vm/data/run/vm-ip")
         XCTAssertEqual(paths.runtimeState.path, "/Library/Application Support/TiroshVitalServer/vm/data/run/runtime-state.json")
         XCTAssertEqual(paths.updateActivationLog.path, "/Library/Application Support/TiroshVitalServer/vm/data/run/activate-update.log")
+        XCTAssertEqual(paths.centralUpdateActivationLog.path, "/Library/Application Support/TiroshVitalServer/logs/guest/activate-update.log")
         XCTAssertEqual(paths.managerCommandLog.path, "/private/tmp/tirosh-vitalserver-manager-command.log")
+        XCTAssertEqual(paths.centralCommandLog.path, "/Library/Application Support/TiroshVitalServer/logs/command.log")
     }
 
     func testRuntimeHomeInitializerDerivesProductRoot() {

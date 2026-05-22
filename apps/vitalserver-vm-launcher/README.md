@@ -172,10 +172,10 @@ VM_COMPRESSION_THREADS=8 make vm-pkg
 VM launcher/package/update bundle 버전은 아래 파일을 기준으로 관리합니다.
 
 ```text
-apps/vitalserver-vm-launcher/VERSION
+apps/vitalserver-vm-launcher/release.json
 ```
 
-`make vm-build`, `make vm-pkg`, `make vm-update-bundle`은 이 값을 읽어 Swift runtime version, app bundle version, package version, update bundle version에 반영합니다. 버전을 올릴 때는 이 파일만 수정합니다.
+`make vm-build`, `make vm-pkg`, `make vm-update-bundle`은 이 값을 읽어 Swift runtime version, app bundle version, package version, update bundle version, update compatibility, bundled service version 표시에 반영합니다. 버전을 올릴 때는 이 파일을 수정합니다.
 
 ## 주요 명령
 

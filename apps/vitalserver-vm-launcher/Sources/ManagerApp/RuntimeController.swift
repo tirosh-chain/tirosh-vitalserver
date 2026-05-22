@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import RuntimeCore
+import UniformTypeIdentifiers
 
 @MainActor
 final class RuntimeController: ObservableObject {
@@ -20,12 +21,7 @@ final class RuntimeController: ObservableObject {
     @Published var logStreaming = true
     @Published var isBusy = false
 
-    private let runtime = RuntimePaths()
-    private let statusReader: RuntimeStatusReading
-    private let privilegedCommandRunner: PrivilegedCommandRunning
-    private let fileReader: RuntimeManagerFileReading
-    private let settingsReader: RuntimeSettingsReading
-    private let actionEnvironment: RuntimeActionEnvironment
+    private let runtimeClient: any RuntimeClient
     private let healthNotifications = HealthNotificationCenter()
     private let logLineLimitOptions = [100, 500, 1000]
     private let logSources: [LogSourceOption] = [
@@ -45,14 +41,17 @@ final class RuntimeController: ObservableObject {
         privilegedCommandRunner: PrivilegedCommandRunning = SystemPrivilegedCommandRunner(),
         fileReader: RuntimeManagerFileReading = SystemRuntimeManagerFileReader(),
         settingsReader: RuntimeSettingsReading = SystemRuntimeSettingsReader(),
-        actionEnvironment: RuntimeActionEnvironment = SystemRuntimeActionEnvironment()
+        actionEnvironment: RuntimeActionEnvironment = SystemRuntimeActionEnvironment(),
+        runtimeClient: (any RuntimeClient)? = nil
     ) {
-        self.statusReader = statusReader
-        self.privilegedCommandRunner = privilegedCommandRunner
-        self.fileReader = fileReader
-        self.settingsReader = settingsReader
-        self.actionEnvironment = actionEnvironment
-        self.settings = settingsReader.load()
+        self.runtimeClient = runtimeClient ?? LocalRuntimeClient(
+            statusReader: statusReader,
+            fileReader: fileReader,
+            settingsReader: settingsReader,
+            privilegedCommandRunner: privilegedCommandRunner,
+            actionEnvironment: actionEnvironment
+        )
+        self.settings = self.runtimeClient.loadSettings()
         healthNotifications.configure()
     }
 
@@ -84,8 +83,8 @@ final class RuntimeController: ObservableObject {
     }
 
     func refresh() async {
-        settings = settingsReader.load()
-        status = statusReader.loadStatus(settings: settings)
+        settings = runtimeClient.loadSettings()
+        status = runtimeClient.loadStatus(settings: settings)
         refreshBackupList()
         if let displayMessage = status.displayMessage {
             message = displayMessage
@@ -95,7 +94,7 @@ final class RuntimeController: ObservableObject {
     }
 
     func refreshHealthStatus() async {
-        status = await statusReader.loadHealthStatus(settings: settings)
+        status = await runtimeClient.loadHealthStatus(settings: settings)
         if let displayMessage = status.displayMessage {
             message = displayMessage
         }
@@ -107,7 +106,7 @@ final class RuntimeController: ObservableObject {
         isBusy = true
         defer { isBusy = false }
 
-        status = await statusReader.loadHealthStatus(settings: settings)
+        status = await runtimeClient.loadHealthStatus(settings: settings)
         if let displayMessage = status.displayMessage {
             message = "\(AppConstants.StatusText.healthCheckCompleted)\n\n\(displayMessage)"
         } else {
@@ -117,22 +116,14 @@ final class RuntimeController: ObservableObject {
     }
 
     func uninstallRuntime(clean: Bool = false) async {
-        let command: String
-        if actionEnvironment.isExecutable(atPath: runtime.uninstaller) {
-            command = RuntimeCommandFactory.uninstallCommand(uninstaller: runtime.uninstaller, clean: clean)
-        } else {
-            message = AppConstants.StatusText.missingUninstaller
-            return
-        }
-
-        let didUninstall = await runPrivileged(
-            shellCommand: command,
+        let didUninstall = await runClientAction(
             preparingMessage: AppConstants.StatusText.uninstallPreparing,
             waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
             runningMessage: AppConstants.StatusText.uninstallRunning,
             successMessage: clean
                 ? AppConstants.StatusText.cleanUninstallCompleted
-                : AppConstants.StatusText.uninstallCompleted
+                : AppConstants.StatusText.uninstallCompleted,
+            action: { try await self.runtimeClient.uninstallRuntime(clean: clean) }
         )
         if didUninstall {
             await quitAfterSuccessfulUninstall()
@@ -146,37 +137,16 @@ final class RuntimeController: ObservableObject {
     }
 
     func applySettings() async {
-        guard actionEnvironment.isExecutable(atPath: runtime.launcher) else {
-            message = AppConstants.StatusText.missingLauncher
-            return
-        }
         guard validateSettings() else {
             return
         }
-        var adminPasswordFile: URL?
-        if settings.changeAdminPassword {
-            do {
-                adminPasswordFile = try actionEnvironment.writeAdminPasswordFile(settings.adminPassword)
-            } catch {
-                message = error.localizedDescription
-                return
-            }
-        }
-        defer {
-            if let adminPasswordFile {
-                actionEnvironment.removeItem(at: adminPasswordFile)
-            }
-        }
-        let command = RuntimeCommandFactory.shellCommand(
-            executable: runtime.launcher,
-            arguments: settings.configureArguments(adminPasswordFile: adminPasswordFile?.path)
-        )
-        let didSave = await runPrivileged(
-            shellCommand: command,
+        let settingsToApply = settings
+        let didSave = await runClientAction(
             preparingMessage: AppConstants.StatusText.settingsApplyPreparing,
             waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
             runningMessage: AppConstants.StatusText.settingsApplyRunning,
-            successMessage: AppConstants.StatusText.settingsApplied
+            successMessage: AppConstants.StatusText.settingsApplied,
+            action: { try await self.runtimeClient.applySettings(settingsToApply) }
         )
         if didSave {
             settings.adminPassword = ""
@@ -194,7 +164,7 @@ final class RuntimeController: ObservableObject {
         panel.allowsMultipleSelection = false
         panel.prompt = AppConstants.Actions.chooseDirectory
         if panel.runModal() == .OK, let url = panel.url {
-            actionEnvironment.createDirectory(at: url)
+            runtimeClient.createDirectory(at: url)
             settings.vitalFilesDirectory = url.path
         }
     }
@@ -207,7 +177,7 @@ final class RuntimeController: ObservableObject {
         panel.prompt = AppConstants.Actions.chooseBundle
         if panel.runModal() == .OK, let url = panel.url {
             selectedBundlePath = url.path
-            selectedBundleSummary = fileReader.updateBundleSummary(url: url)
+            selectedBundleSummary = runtimeClient.updateBundleSummary(url: url)
             selectedBundleVerified = false
             selectedBundleVerification = AppConstants.StatusText.updateBundleVerifying
             await verifySelectedBundle()
@@ -223,24 +193,13 @@ final class RuntimeController: ObservableObject {
             message = AppConstants.StatusText.updateBundleNotVerified
             return
         }
-        guard actionEnvironment.isExecutable(atPath: runtime.launcher) else {
-            message = AppConstants.StatusText.missingLauncher
-            return
-        }
-        let command = RuntimeCommandFactory.shellCommand(
-            executable: runtime.launcher,
-            arguments: [
-                AppConstants.RuntimeCommand.runtime,
-                AppConstants.RuntimeCommand.applyBundle,
-                selectedBundlePath,
-            ]
-        )
-        let didApply = await runPrivileged(
-            shellCommand: command,
+        let bundlePath = selectedBundlePath
+        let didApply = await runClientAction(
             preparingMessage: AppConstants.StatusText.updateBundlePreparing,
             waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
             runningMessage: AppConstants.StatusText.updateBundleApplying,
-            successMessage: AppConstants.StatusText.updateBundleApplied
+            successMessage: AppConstants.StatusText.updateBundleApplied,
+            action: { try await self.runtimeClient.applyUpdateBundle(path: bundlePath) }
         )
         if didApply {
             message = AppConstants.StatusText.updateBundleAppliedRelaunching
@@ -257,18 +216,20 @@ final class RuntimeController: ObservableObject {
             message = AppConstants.StatusText.missingBundle
             return
         }
-        guard actionEnvironment.isExecutable(atPath: runtime.launcher) else {
-            selectedBundleVerification = AppConstants.StatusText.missingLauncher
-            selectedBundleVerified = false
-            message = AppConstants.StatusText.missingLauncher
-            return
-        }
 
         isBusy = true
         defer { isBusy = false }
 
         message = AppConstants.StatusText.updateBundleVerifying
-        let result = await actionEnvironment.verifyBundle(launcher: runtime.launcher, bundlePath: selectedBundlePath)
+        let result: ProcessResult
+        do {
+            result = try await runtimeClient.verifyUpdateBundle(path: selectedBundlePath)
+        } catch {
+            selectedBundleVerification = error.localizedDescription
+            selectedBundleVerified = false
+            message = error.localizedDescription
+            return
+        }
         if result.exitCode == 0 {
             selectedBundleVerified = true
             selectedBundleVerification = messageWithLog(
@@ -291,23 +252,13 @@ final class RuntimeController: ObservableObject {
             message = AppConstants.StatusText.missingBackup
             return
         }
-        guard actionEnvironment.isExecutable(atPath: runtime.launcher) else {
-            message = AppConstants.StatusText.missingLauncher
-            return
-        }
-        let command = RuntimeCommandFactory.shellCommand(
-            executable: runtime.launcher,
-            arguments: [
-                AppConstants.RuntimeCommand.runtime,
-                AppConstants.RuntimeCommand.rollback,
-            ] + (selectedBackupPath.isEmpty ? [] : [selectedBackupPath])
-        )
-        _ = await runPrivileged(
-            shellCommand: command,
+        let backupPath = selectedBackupPath
+        _ = await runClientAction(
             preparingMessage: AppConstants.StatusText.rollbackPreparing,
             waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
             runningMessage: AppConstants.StatusText.rollbackRunning,
-            successMessage: AppConstants.StatusText.rollbackCompleted
+            successMessage: AppConstants.StatusText.rollbackCompleted,
+            action: { try await self.runtimeClient.rollbackRuntime(backupPath: backupPath) }
         )
         await refresh()
         await refreshHealthStatus()
@@ -322,13 +273,13 @@ final class RuntimeController: ObservableObject {
             message = AppConstants.StatusText.invalidBackup
             return
         }
-        let command = RuntimeCommandFactory.deleteBackupCommand(path: selectedBackupPath)
-        let didDelete = await runPrivileged(
-            shellCommand: command,
+        let backupPath = selectedBackupPath
+        let didDelete = await runClientAction(
             preparingMessage: AppConstants.StatusText.backupDeletePreparing,
             waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
             runningMessage: AppConstants.StatusText.backupDeleteRunning,
-            successMessage: AppConstants.StatusText.backupDeleted
+            successMessage: AppConstants.StatusText.backupDeleted,
+            action: { try await self.runtimeClient.deleteBackup(path: backupPath) }
         )
         if didDelete {
             selectedBackupPath = ""
@@ -338,41 +289,74 @@ final class RuntimeController: ObservableObject {
 
     func repairProxyPort() async {
         let proxyPort = status.proxyPort
-        let command = RuntimeCommandFactory.proxyRepairCommand(proxyPort: proxyPort)
-        _ = await runPrivileged(
-            shellCommand: command,
+        _ = await runClientAction(
             preparingMessage: AppConstants.StatusText.proxyRepairPreparing,
             waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
             runningMessage: AppConstants.StatusText.proxyRepairRunning,
-            successMessage: AppConstants.StatusText.proxyRepairCompleted
+            successMessage: AppConstants.StatusText.proxyRepairCompleted,
+            action: { try await self.runtimeClient.repairProxy(proxyPort: proxyPort) }
         )
         await refreshHealthStatus()
     }
 
     func repairDatastore() async {
-        guard actionEnvironment.isExecutable(atPath: runtime.launcher) else {
-            message = AppConstants.StatusText.missingLauncher
-            return
-        }
-        let command = RuntimeCommandFactory.shellCommand(
-            executable: runtime.launcher,
-            arguments: [
-                AppConstants.RuntimeCommand.runtime,
-                AppConstants.RuntimeCommand.repairDatastore,
-            ]
-        )
-        _ = await runPrivileged(
-            shellCommand: command,
+        _ = await runClientAction(
             preparingMessage: AppConstants.StatusText.datastoreRepairPreparing,
             waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
             runningMessage: AppConstants.StatusText.datastoreRepairRunning,
-            successMessage: AppConstants.StatusText.datastoreRepairCompleted
+            successMessage: AppConstants.StatusText.datastoreRepairCompleted,
+            action: { try await self.runtimeClient.repairDatastore() }
         )
         await refreshHealthStatus()
     }
 
+    func startRuntimeServices() async {
+        _ = await runClientAction(
+            preparingMessage: AppConstants.StatusText.runtimeServicesStartPreparing,
+            waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
+            runningMessage: AppConstants.StatusText.runtimeServicesStartRunning,
+            successMessage: AppConstants.StatusText.runtimeServicesStarted,
+            action: { try await self.runtimeClient.startRuntimeServices() }
+        )
+        await refreshHealthStatus()
+    }
+
+    func stopRuntimeServices() async {
+        _ = await runClientAction(
+            preparingMessage: AppConstants.StatusText.runtimeServicesStopPreparing,
+            waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
+            runningMessage: AppConstants.StatusText.runtimeServicesStopRunning,
+            successMessage: AppConstants.StatusText.runtimeServicesStopped,
+            action: { try await self.runtimeClient.stopRuntimeServices() }
+        )
+        await refresh()
+    }
+
     func openLogs() {
-        openFolder(fileReader.preferredLogsPath())
+        openFolder(runtimeClient.preferredLogsPath())
+    }
+
+    func exportLogs() async {
+        let panel = NSSavePanel()
+        panel.canCreateDirectories = true
+        panel.allowedContentTypes = [.zip]
+        panel.nameFieldStringValue = "vitalserver-logs-\(logExportTimestamp()).zip"
+        panel.prompt = AppConstants.Actions.exportLogs
+        guard panel.runModal() == .OK, let destination = panel.url else {
+            return
+        }
+
+        isBusy = true
+        defer { isBusy = false }
+        message = AppConstants.StatusText.logExportPreparing
+
+        do {
+            _ = runtimeClient.preferredLogsPath()
+            try await createLogArchive(at: destination)
+            message = "\(AppConstants.StatusText.logExportCompleted)\n\n\(destination.path)"
+        } catch {
+            message = "\(AppConstants.StatusText.logExportFailed)\n\n\(error.localizedDescription)"
+        }
     }
 
     func availableLogLineLimits() -> [Int] {
@@ -385,7 +369,7 @@ final class RuntimeController: ObservableObject {
 
     func refreshLogs() {
         let limit = max(logLineLimit, 1)
-        logText = fileReader.logText(
+        logText = runtimeClient.logText(
             sourceID: selectedLogSource,
             helperMessage: message,
             lineLimit: limit
@@ -407,7 +391,7 @@ final class RuntimeController: ObservableObject {
     }
 
     func vitalFileFolders() -> [VitalFileFolder] {
-        fileReader.vitalFileFolders(root: settings.vitalFilesDirectory)
+        runtimeClient.vitalFileFolders(root: settings.vitalFilesDirectory)
     }
 
     func openVitalServer() {
@@ -441,12 +425,64 @@ final class RuntimeController: ObservableObject {
         NSApplication.shared.terminate(nil)
     }
 
+    private func createLogArchive(at destination: URL) async throws {
+        let fileManager = FileManager.default
+        let stagingRoot = fileManager.temporaryDirectory
+            .appendingPathComponent("vitalserver-log-export-\(UUID().uuidString)", isDirectory: true)
+        try fileManager.createDirectory(at: stagingRoot, withIntermediateDirectories: true)
+        defer {
+            try? fileManager.removeItem(at: stagingRoot)
+        }
+
+        let bundleRoot = stagingRoot.appendingPathComponent("vitalserver-logs", isDirectory: true)
+        try copyLogItem(
+            from: URL(fileURLWithPath: AppConstants.Paths.productLogs),
+            to: bundleRoot
+        )
+        if !fileManager.fileExists(atPath: bundleRoot.path) {
+            try fileManager.createDirectory(at: bundleRoot, withIntermediateDirectories: true)
+        }
+
+        let temporaryArchive = stagingRoot.appendingPathComponent(destination.lastPathComponent)
+        let result = await ProcessRunner.run(
+            AppConstants.Commands.ditto,
+            arguments: ["-c", "-k", "--sequesterRsrc", "--keepParent", bundleRoot.path, temporaryArchive.path]
+        )
+        guard result.exitCode == 0 else {
+            throw RuntimeControllerError.logExportFailed(result.summary)
+        }
+        if fileManager.fileExists(atPath: destination.path) {
+            try fileManager.removeItem(at: destination)
+        }
+        try fileManager.moveItem(at: temporaryArchive, to: destination)
+    }
+
+    private func copyLogItem(from source: URL, to destination: URL) throws {
+        let fileManager = FileManager.default
+        guard fileManager.fileExists(atPath: source.path) else {
+            return
+        }
+        if fileManager.fileExists(atPath: destination.path) {
+            try fileManager.removeItem(at: destination)
+        }
+        try fileManager.copyItem(at: source, to: destination)
+    }
+
+    private func logExportTimestamp() -> String {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = .current
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        return formatter.string(from: Date())
+    }
+
     private func validateSettings() -> Bool {
         if settings.networkMode == AppConstants.Values.networkBridged {
             message = AppConstants.StatusText.bridgedModeUnavailable
             return false
         }
-        let installedDiskGiB = settingsReader.load().diskGiB
+        let installedDiskGiB = runtimeClient.loadSettings().diskGiB
         if settings.diskGiB < installedDiskGiB {
             message = AppConstants.StatusText.diskDecreaseUnavailable
             return false
@@ -476,7 +512,7 @@ final class RuntimeController: ObservableObject {
     }
 
     private func refreshBackupList() {
-        backups = fileReader.backups(latestBackupPath: status.latestBackup)
+        backups = runtimeClient.loadBackups(latestBackupPath: status.latestBackup)
         let backupPaths = Set(backups.map(\.path))
         if let latest = backups.first, selectedBackupPath.isEmpty || !backupPaths.contains(selectedBackupPath) {
             selectedBackupPath = latest.path
@@ -494,12 +530,12 @@ final class RuntimeController: ObservableObject {
         return backupURL.path.hasPrefix(backupsURL.path + "/")
     }
 
-    private func runPrivileged(
-        shellCommand: String,
+    private func runClientAction(
         preparingMessage: String,
         waitingMessage: String,
         runningMessage: String,
-        successMessage: String
+        successMessage: String,
+        action: @escaping () async throws -> ProcessResult
     ) async -> Bool {
         isBusy = true
         defer {
@@ -529,7 +565,14 @@ final class RuntimeController: ObservableObject {
             refreshLogs()
         }
 
-        let result = await privilegedCommandRunner.run(shellCommand: shellCommand)
+        let result: ProcessResult
+        do {
+            result = try await action()
+        } catch {
+            message = error.localizedDescription
+            operationDetail = error.localizedDescription
+            return false
+        }
         if result.exitCode == 0 {
             message = messageWithLog(title: successMessage, result: result)
             operationDetail = successMessage
@@ -545,8 +588,8 @@ final class RuntimeController: ObservableObject {
     }
 
     private func refreshOperationDetail(fallback: String) {
-        status = statusReader.loadStatus(settings: settings)
-        operationDetail = status.progressDisplayMessage ?? statusReader.legacyCommandProgressLine() ?? fallback
+        status = runtimeClient.loadStatus(settings: settings)
+        operationDetail = status.progressDisplayMessage ?? runtimeClient.legacyCommandProgressLine() ?? fallback
     }
 
     private func quitAfterSuccessfulUninstall() async {
@@ -560,8 +603,8 @@ final class RuntimeController: ObservableObject {
 
     private func waitForAppliedSettings() async {
         for _ in 0..<12 {
-            settings = settingsReader.load()
-            status = await statusReader.loadHealthStatus(settings: settings)
+            settings = runtimeClient.loadSettings()
+            status = await runtimeClient.loadHealthStatus(settings: settings)
             refreshLogsIfLive()
             if status.isReady || !settings.restartAfterSave {
                 return
@@ -660,6 +703,7 @@ private enum HealthNotificationState: Equatable {
 enum RuntimeControllerError: LocalizedError {
     case invalidAdminPassword
     case adminPasswordFileCreateFailed
+    case logExportFailed(String)
 
     var errorDescription: String? {
         switch self {
@@ -667,6 +711,9 @@ enum RuntimeControllerError: LocalizedError {
             return "Admin password reset value is invalid."
         case .adminPasswordFileCreateFailed:
             return "Could not prepare admin password reset file."
+        case .logExportFailed(let output):
+            let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? "Could not create log archive." : trimmed
         }
     }
 }

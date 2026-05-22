@@ -29,9 +29,9 @@
   <integer>60</integer>
 
   <key>StandardOutPath</key>
-  <string>${VITALSERVER_VM_HOME}/logs/watchdog.out.log</string>
+  <string>${VITALSERVER_RUNTIME_LOGS}/watchdog.out.log</string>
 
   <key>StandardErrorPath</key>
-  <string>${VITALSERVER_VM_HOME}/logs/watchdog.err.log</string>
+  <string>${VITALSERVER_RUNTIME_LOGS}/watchdog.err.log</string>
 </dict>
 </plist>

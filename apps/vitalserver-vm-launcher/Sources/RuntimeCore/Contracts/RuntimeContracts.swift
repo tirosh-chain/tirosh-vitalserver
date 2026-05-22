@@ -13,6 +13,8 @@ public enum RuntimeOperation: Codable, Equatable, Sendable {
     case rollback
     case repairDatastore
     case repairProxy
+    case startServices
+    case stopServices
     case uninstall
     case unknown(String)
 
@@ -42,6 +44,10 @@ public enum RuntimeOperation: Codable, Equatable, Sendable {
             self = .repairDatastore
         case "repair-proxy":
             self = .repairProxy
+        case "start-services":
+            self = .startServices
+        case "stop-services":
+            self = .stopServices
         case "uninstall":
             self = .uninstall
         default:
@@ -75,6 +81,10 @@ public enum RuntimeOperation: Codable, Equatable, Sendable {
             return "repair-datastore"
         case .repairProxy:
             return "repair-proxy"
+        case .startServices:
+            return "start-services"
+        case .stopServices:
+            return "stop-services"
         case .uninstall:
             return "uninstall"
         case .unknown(let value):

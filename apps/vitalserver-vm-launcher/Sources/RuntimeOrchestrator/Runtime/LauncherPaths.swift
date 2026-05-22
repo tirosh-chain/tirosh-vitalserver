@@ -29,6 +29,7 @@ struct LauncherPaths {
     var cleanableRuntimePaths: [URL] {
         [
             installed.runtimeDirectory,
+            installed.centralRuntimeLogsDirectory,
             installed.logsDirectory,
             installed.hostRunDirectory,
         ]

@@ -61,7 +61,7 @@ struct Launcher {
             withIntermediateDirectories: true
         )
         try fileStore.createDirectory(
-            at: installedPaths.logsDirectory,
+            at: installedPaths.centralRuntimeLogsDirectory,
             withIntermediateDirectories: true
         )
 

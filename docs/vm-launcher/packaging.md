@@ -32,10 +32,10 @@
 package, DMG, update bundle, Swift runtime version은 아래 파일을 기준으로 관리합니다.
 
 ```text
-apps/vitalserver-vm-launcher/VERSION
+apps/vitalserver-vm-launcher/release.json
 ```
 
-`make vm-build`는 이 값을 Swift `GeneratedVersion.swift`에 반영하고, `make vm-app`은 app bundle `Info.plist`의 `CFBundleShortVersionString`에 같은 값을 씁니다. `make vm-pkg`와 `make vm-update-bundle`은 기본적으로 이 값을 `VM_PKG_VERSION`, `VM_UPDATE_BUNDLE_VERSION`으로 사용합니다. 특별한 검증이 아니라면 버전 변경은 이 파일 하나만 수정합니다.
+`make vm-build`는 이 값을 Swift `GeneratedVersion.swift`와 Helper app의 `GeneratedRelease.swift`에 반영하고, `make vm-app`은 app bundle `Info.plist`의 `CFBundleShortVersionString`에 같은 helper version을 씁니다. `make vm-pkg`와 `make vm-update-bundle`은 기본적으로 이 값을 `VM_PKG_VERSION`, `VM_UPDATE_BUNDLE_VERSION`, `VM_UPDATE_MIN_UPDATER_VERSION`으로 사용합니다. 특별한 검증이 아니라면 버전과 update compatibility 변경은 이 파일 하나에서 관리합니다.
 
 ## Package 구성
 

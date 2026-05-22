@@ -90,7 +90,7 @@ struct RuntimeLifecycle {
     }
 
     private var logsDirectory: URL {
-        installedPaths.logsDirectory
+        installedPaths.centralRuntimeLogsDirectory
     }
 
     private var runtimeStatus: URL {
@@ -158,6 +158,10 @@ struct RuntimeLifecycle {
             try rollback(backupPath.map { URL(fileURLWithPath: $0) })
         case "repair-datastore":
             try repairDatastore()
+        case "start-services":
+            try startServices()
+        case "stop-services":
+            try stopServices()
         case "-h", "--help", "help":
             printUsage()
         default:
@@ -180,6 +184,8 @@ struct RuntimeLifecycle {
               vitalserver-vm runtime apply-bundle <bundle-dir>
               vitalserver-vm runtime rollback [backup-dir]
               vitalserver-vm runtime repair-datastore
+              vitalserver-vm runtime start-services
+              vitalserver-vm runtime stop-services
             """
         )
     }
@@ -265,7 +271,10 @@ struct RuntimeLifecycle {
             installedPaths.deployDirectory,
             installedPaths.guestRunDirectory,
             installedPaths.vrReleaseDirectory,
-            installedPaths.logsDirectory,
+            installedPaths.productLogsDirectory,
+            installedPaths.centralRuntimeLogsDirectory,
+            installedPaths.centralGuestLogsDirectory,
+            installedPaths.logArchiveDirectory,
             installedPaths.hostRunDirectory,
             statusDirectory,
             installedPaths.nginxLogsDirectory,
@@ -273,6 +282,49 @@ struct RuntimeLifecycle {
         for directory in directories {
             try fileStore.createDirectory(at: directory, withIntermediateDirectories: true)
         }
+        try migrateLegacyRuntimeLogsToCentral()
+    }
+
+    private func migrateLegacyRuntimeLogsToCentral() throws {
+        let legacyDirectory = installedPaths.logsDirectory
+        guard legacyDirectory != logsDirectory,
+              fileStore.directoryExists(legacyDirectory)
+        else {
+            return
+        }
+
+        let entries = (try? fileStore.contentsOfDirectory(at: legacyDirectory, skipsHiddenFiles: false)) ?? []
+        for entry in entries where fileStore.fileExists(entry) {
+            let destination = uniqueLogMigrationURL(
+                logsDirectory.appendingPathComponent(entry.lastPathComponent)
+            )
+            try fileStore.moveItem(at: entry, to: destination)
+        }
+
+        if ((try? fileStore.contentsOfDirectory(at: legacyDirectory, skipsHiddenFiles: false)) ?? []).isEmpty {
+            try fileStore.removeItem(at: legacyDirectory)
+        }
+    }
+
+    private func uniqueLogMigrationURL(_ url: URL) -> URL {
+        guard fileStore.fileExists(url) else {
+            return url
+        }
+        let timestamp = Int(clock.now.timeIntervalSince1970)
+        let migrated = url.deletingLastPathComponent()
+            .appendingPathComponent("legacy-\(url.lastPathComponent).\(timestamp)")
+        guard fileStore.fileExists(migrated) else {
+            return migrated
+        }
+        for index in 1...999 {
+            let candidate = url.deletingLastPathComponent()
+                .appendingPathComponent("legacy-\(url.lastPathComponent).\(timestamp).\(index)")
+            if !fileStore.fileExists(candidate) {
+                return candidate
+            }
+        }
+        return url.deletingLastPathComponent()
+            .appendingPathComponent("legacy-\(url.lastPathComponent).\(timestamp).\(UUID().uuidString)")
     }
 
     private func configureDeployEnvironment(_ settings: InstallSettings) throws {
@@ -507,80 +559,7 @@ struct RuntimeLifecycle {
     }
 
     func watchdog() throws {
-        try? fileStore.createDirectory(at: logsDirectory, withIntermediateDirectories: true)
-        try? rotateRuntimeLogs()
-
-        if let activeOperation = runtimeManagedOperationGuard().activeOperation() {
-            log("watchdog skipped during active runtime operation operation=\(activeOperation.rawValue)")
-            print("watchdog: skipped active operation")
-            return
-        }
-
-        let initial = runtimeHealthSnapshot()
-        guard !initial.isHealthy else {
-            try writeRuntimeStatus(.healthy, operation: .watchdog, message: "runtime watchdog passed")
-            print("watchdog: ok")
-            return
-        }
-
-        let reasons = reasonText(initial.failureReasons)
-        log("watchdog detected unhealthy runtime reasons=\(reasons)")
-        try writeRuntimeStatus(.recovering, operation: .watchdog, message: "watchdog recovery started: \(reasons)")
-
-        let proxyLivenessHTTP = httpProber.statusCode(url: Constants.Runtime.proxyLivenessURL(port: initial.proxyPort))
-        let recoveryPlan = RuntimeRecoveryPlanner.plan(RuntimeRecoveryInput(
-            vmExecutable: initial.vmExecutable,
-            proxyExecutable: initial.proxyExecutable,
-            rootfsBase: initial.rootfsBase,
-            vmDisk: initial.vmDisk,
-            vmService: initial.vmService,
-            proxyService: initial.proxyService,
-            vmIP: initial.vmIP,
-            guestHTTP: initial.guestHTTP,
-            hostProxyReadinessHTTP: initial.hostProxyHTTP,
-            hostProxyLivenessHTTP: proxyLivenessHTTP
-        ))
-        log(
-            "watchdog recovery plan vm=\(recoveryPlan.restartVM) proxy=\(recoveryPlan.restartProxy) "
-                + "hostProxyHealth=\(proxyLivenessHTTP) hostProxyReady=\(initial.hostProxyHTTP) guestReady=\(initial.guestHTTP)"
-        )
-
-        guard automaticRecoveryEnabled() else {
-            try writeRuntimeStatus(
-                .degraded,
-                operation: .watchdog,
-                message: "watchdog detected unhealthy runtime; automatic recovery is disabled: \(reasons)"
-            )
-            print("watchdog: recovery disabled")
-            return
-        }
-
-        if !recoveryPlan.canRecover {
-            try writeRuntimeStatus(.critical, operation: .watchdog, message: "watchdog cannot recover missing installed artifacts: \(reasons)")
-            print("watchdog: critical")
-            return
-        }
-
-        if recoveryPlan.restartVM {
-            restartLaunchdService(Constants.Launchd.vmService)
-        }
-        if recoveryPlan.restartProxy {
-            restartLaunchdService(Constants.Launchd.proxyService)
-        }
-
-        sleeper.sleep(forTimeInterval: Constants.Runtime.watchdogRecoveryWaitSeconds)
-        let recovered = runtimeHealthSnapshot()
-        if recovered.isHealthy {
-            try writeRuntimeStatus(.healthy, operation: .watchdog, message: "watchdog recovery completed")
-            print("watchdog: recovered")
-        } else {
-            try writeRuntimeStatus(
-                .critical,
-                operation: .watchdog,
-                message: "watchdog recovery failed: \(reasonText(recovered.failureReasons))"
-            )
-            print("watchdog: critical")
-        }
+        try runtimeWatchdogRunner().run()
     }
 
     private func automaticRecoveryEnabled() -> Bool {
@@ -595,6 +574,39 @@ struct RuntimeLifecycle {
             statusReporter: statusReporter,
             now: { clock.now },
             graceSeconds: Constants.Runtime.watchdogManagedOperationGraceSeconds,
+            log: log
+        )
+    }
+
+    private func runtimeWatchdogRunner() -> RuntimeWatchdogRunner {
+        RuntimeWatchdogRunner(
+            actions: RuntimeWatchdogActions(
+                prepareLogs: {
+                    try? fileStore.createDirectory(at: logsDirectory, withIntermediateDirectories: true)
+                    try? rotateRuntimeLogs()
+                },
+                activeManagedOperation: {
+                    runtimeManagedOperationGuard().activeOperation()
+                },
+                healthSnapshot: {
+                    runtimeHealthSnapshot()
+                },
+                proxyLivenessHTTP: { port in
+                    httpProber.statusCode(url: Constants.Runtime.proxyLivenessURL(port: port))
+                },
+                automaticRecoveryEnabled: {
+                    automaticRecoveryEnabled()
+                },
+                restartService: { label in
+                    restartLaunchdService(label)
+                },
+                sleep: { interval in
+                    sleeper.sleep(forTimeInterval: interval)
+                },
+                writeStatus: { status, operation, message in
+                    try writeRuntimeStatus(status, operation: operation, message: message)
+                }
+            ),
             log: log
         )
     }
@@ -728,51 +740,38 @@ struct RuntimeLifecycle {
     }
 
     func applyBundle(_ bundleURL: URL) throws {
-        log("bundle apply started input=\(bundleURL.path)")
-        try? fileStore.createDirectory(at: logsDirectory, withIntermediateDirectories: true)
-        try? rotateRuntimeLogs()
-        try writeRuntimeStatus(.updating, operation: .applyBundle, message: "bundle apply started")
-
-        let initialHealth = runtimeHealthSnapshot()
-        if !initialHealth.isHealthy {
-            log("bundle apply preflight warning runtime unhealthy reasons=\(reasonText(initialHealth.failureReasons))")
-        }
-
-        let preflight: ApplyBundlePreflightContext
-
-        do {
-            preflight = try prepareApplyBundlePreflight(bundleURL)
-        } catch {
-            try? writeRuntimeStatus(.critical, operation: .applyBundle, message: "bundle apply preflight failed: \(error)")
-            throw error
-        }
-
-        do {
-            try runPlan(RuntimeOperationPlans.applyBundle, status: .updating) { step in
-                try executeApplyBundleStep(
-                    step,
-                    preflight: preflight
-                )
-            }
-        } catch {
-            log("bundle apply failed; rolling back error=\(error)")
-            try? writeRuntimeStatus(.recovering, operation: .applyBundle, message: "bundle apply failed; rolling back: \(error)")
-            do {
-                try rollback(preflight.backup)
-                try startRuntimeServices(preflight.restartPolicy)
-                try? writeRuntimeStatus(.degraded, operation: .applyBundle, message: "bundle apply failed; rollback completed: \(error)")
-            } catch {
-                log("bundle apply rollback failed error=\(error)")
-                try? startRuntimeServices(preflight.restartPolicy)
-                try? writeRuntimeStatus(.critical, operation: .applyBundle, message: "bundle apply failed and rollback failed: \(error)")
-            }
-            throw error
-        }
-
-        try writeRuntimeStatus(.healthy, operation: .applyBundle, message: "bundle applied: \(preflight.manifest.version)")
-        try pruneOldRuntimeArtifacts()
-        log("bundle applied path=\(preflight.stagedBundle.path)")
+        try runtimeApplyBundleRunner().run(bundleURL: bundleURL)
         log("mutable VM disk preserved path=\(vmDisk.path)")
+    }
+
+    private func runtimeApplyBundleRunner() -> RuntimeApplyBundleRunner {
+        RuntimeApplyBundleRunner(
+            prepareLogs: {
+                try? fileStore.createDirectory(at: logsDirectory, withIntermediateDirectories: true)
+                try? rotateRuntimeLogs()
+            },
+            initialHealthSnapshot: runtimeHealthSnapshot,
+            preparePreflight: prepareApplyBundlePreflight,
+            executeStep: executeApplyBundleStep,
+            rollback: rollback,
+            startRuntimeServices: startRuntimeServices,
+            writeStatus: { status, operation, message in
+                try writeRuntimeStatus(status, operation: operation, message: message)
+            },
+            writeProgress: { event in
+                try writeRuntimeProgress(
+                    event.status,
+                    operation: event.operation,
+                    step: event.step,
+                    stepStatus: event.stepStatus,
+                    phase: event.phase,
+                    message: event.message
+                )
+            },
+            pruneOldRuntimeArtifacts: pruneOldRuntimeArtifacts,
+            reasonText: reasonText,
+            log: log
+        )
     }
 
     private func prepareApplyBundlePreflight(_ bundleURL: URL) throws -> ApplyBundlePreflightContext {
@@ -857,6 +856,22 @@ struct RuntimeLifecycle {
         try waitForHealth(restartVM: true, restartProxy: true, restartWatchdog: true)
         try writeRuntimeStatus(.healthy, operation: .repairDatastore, message: "datastore repair completed")
         log("datastore repair completed")
+    }
+
+    func startServices() throws {
+        log("runtime services start requested")
+        try writeRuntimeStatus(.recovering, operation: .startServices, message: "runtime services start requested")
+        try startRuntimeServices(restartVM: true, restartProxy: true, restartWatchdog: true)
+        try waitForHealth(restartVM: true, restartProxy: true, restartWatchdog: true)
+        try writeRuntimeStatus(.healthy, operation: .startServices, message: "runtime services started")
+        log("runtime services started")
+    }
+
+    func stopServices() throws {
+        log("runtime services stop requested")
+        try stopRuntimeServices()
+        try writeRuntimeStatus(.degraded, operation: .stopServices, message: "runtime services stopped")
+        log("runtime services stopped")
     }
 
     func rollback(_ requestedBackup: URL?) throws {

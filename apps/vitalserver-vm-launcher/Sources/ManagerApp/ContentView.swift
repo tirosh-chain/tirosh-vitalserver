@@ -9,6 +9,8 @@ struct ContentView: View {
     @State private var showingDeleteBackupConfirmation = false
     @State private var showingRepairProxyConfirmation = false
     @State private var showingRepairDatastoreConfirmation = false
+    @State private var showingStartServicesConfirmation = false
+    @State private var showingStopServicesConfirmation = false
     @State private var showingUninstallConfirmation = false
     @State private var showingCleanUninstallConfirmation = false
     @State private var showingApplySettingsConfirmation = false
@@ -92,6 +94,22 @@ struct ContentView: View {
             }
         } message: {
             Text(AppConstants.StatusText.repairDatastoreConfirmation)
+        }
+        .alert(AppConstants.Actions.startRuntimeServices, isPresented: $showingStartServicesConfirmation) {
+            Button(AppConstants.Actions.cancel, role: .cancel) {}
+            Button(AppConstants.Actions.startRuntimeServices) {
+                Task { await controller.startRuntimeServices() }
+            }
+        } message: {
+            Text(AppConstants.StatusText.startRuntimeServicesConfirmation)
+        }
+        .alert(AppConstants.Actions.stopRuntimeServices, isPresented: $showingStopServicesConfirmation) {
+            Button(AppConstants.Actions.cancel, role: .cancel) {}
+            Button(AppConstants.Actions.stopRuntimeServices, role: .destructive) {
+                Task { await controller.stopRuntimeServices() }
+            }
+        } message: {
+            Text(AppConstants.StatusText.stopRuntimeServicesConfirmation)
         }
         .alert(AppConstants.Actions.standardUninstall, isPresented: $showingUninstallConfirmation) {
             Button(AppConstants.Actions.cancel, role: .cancel) {}
@@ -220,6 +238,10 @@ struct ContentView: View {
                     usage: controller.status.dataStorage
                 )
             }
+            Text(AppConstants.Labels.resourceUsageHelp)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -465,6 +487,7 @@ struct ContentView: View {
                         step: AppConstants.SettingsLimits.memoryStepGiB,
                         suffix: AppConstants.Labels.unitGiB
                     )
+                    settingHelp(AppConstants.Labels.memoryAllocationHelp)
                     settingSlider(
                         AppConstants.Labels.disk,
                         value: $controller.settings.diskGiB,
@@ -891,27 +914,27 @@ struct ContentView: View {
             BundledServiceInfo(
                 name: AppConstants.Labels.redis,
                 image: AppConstants.ServiceVersions.redisImage,
-                version: "3.2.12"
+                version: AppConstants.ServiceVersions.redisVersion
             ),
             BundledServiceInfo(
                 name: AppConstants.Labels.redisUI,
                 image: AppConstants.ServiceVersions.redisUIImage,
-                version: "0.9.0"
+                version: AppConstants.ServiceVersions.redisUIVersion
             ),
             BundledServiceInfo(
                 name: AppConstants.Labels.swaggerUI,
                 image: AppConstants.ServiceVersions.swaggerUIImage,
-                version: "5.17.14"
+                version: AppConstants.ServiceVersions.swaggerUIVersion
             ),
             BundledServiceInfo(
                 name: "Guest edge proxy",
                 image: AppConstants.ServiceVersions.guestEdgeImage,
-                version: "1.24"
+                version: AppConstants.ServiceVersions.guestEdgeVersion
             ),
             BundledServiceInfo(
                 name: AppConstants.Labels.hostProxyService,
                 image: AppConstants.ServiceVersions.hostProxy,
-                version: "1.31.0"
+                version: AppConstants.ServiceVersions.hostProxyVersion
             ),
         ]
     }
@@ -1093,6 +1116,24 @@ struct ContentView: View {
                     }
                 }
                 applyActionRow
+                Divider()
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(AppConstants.Labels.runtimeServiceControlHelp)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    HStack(spacing: 10) {
+                        Button(AppConstants.Actions.startRuntimeServices) {
+                            showingStartServicesConfirmation = true
+                        }
+                        .disabled(controller.isBusy || !controller.status.runtimeInstalled)
+
+                        Button(AppConstants.Actions.stopRuntimeServices) {
+                            showingStopServicesConfirmation = true
+                        }
+                        .disabled(controller.isBusy || !controller.status.runtimeInstalled)
+                    }
+                }
             }
         }
     }
@@ -1393,6 +1434,10 @@ struct ContentView: View {
                 Button(AppConstants.Actions.openLogs) {
                     controller.openLogs()
                 }
+                Button(AppConstants.Actions.exportLogs) {
+                    Task { await controller.exportLogs() }
+                }
+                .disabled(controller.isBusy)
             }
             ScrollView {
                 Text(controller.logText)

@@ -25,6 +25,13 @@ final class RuntimeContractsTests: XCTestCase {
         XCTAssertEqual(document.progress?.reasonCodes, ["guest-activation-pending"])
     }
 
+    func testRuntimeServiceOperationsRoundTrip() throws {
+        XCTAssertEqual(RuntimeOperation(rawValue: "start-services"), .startServices)
+        XCTAssertEqual(RuntimeOperation.startServices.rawValue, "start-services")
+        XCTAssertEqual(RuntimeOperation(rawValue: "stop-services"), .stopServices)
+        XCTAssertEqual(RuntimeOperation.stopServices.rawValue, "stop-services")
+    }
+
     func testDecodesGuestRuntimeState() throws {
         let document = try decodeFixture(GuestRuntimeStateDocument.self, named: "runtime-state-ready")
 

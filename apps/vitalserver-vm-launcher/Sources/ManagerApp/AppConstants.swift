@@ -1,4 +1,5 @@
 import Foundation
+import RuntimeCore
 import RuntimeInfrastructure
 
 enum AppConstants {
@@ -8,7 +9,7 @@ enum AppConstants {
         static let tiroshName = "Tirosh"
         static let tiroshURL = "https://www.tirosh.ai/"
         static let packageIdentifier = "com.tirosh.vitalserver.vm"
-        static let vitalServerVersion = "2.3.4"
+        static let vitalServerVersion = GeneratedRelease.vitalServerVersion
         static let defaultProxyPort = 80
         static func vitalServerURL(proxyPort: Int) -> String {
             "http://127.0.0.1:\(proxyPort)/"
@@ -43,12 +44,17 @@ enum AppConstants {
     }
 
     enum ServiceVersions {
-        static let vitalServerImage = "vitalserver:2.3.4"
-        static let redisImage = "redis:3.2.12-alpine"
-        static let redisUIImage = "ghcr.io/joeferner/redis-commander:0.9.0"
-        static let swaggerUIImage = "swaggerapi/swagger-ui:v5.17.14"
-        static let guestEdgeImage = "nginx:1.24-alpine"
-        static let hostProxy = "nginx/1.31.0"
+        static let vitalServerImage = GeneratedRelease.vitalServerImage
+        static let redisImage = GeneratedRelease.redisImage
+        static let redisUIImage = GeneratedRelease.redisUIImage
+        static let swaggerUIImage = GeneratedRelease.swaggerUIImage
+        static let guestEdgeImage = GeneratedRelease.guestEdgeImage
+        static let hostProxy = GeneratedRelease.hostProxyImage
+        static let redisVersion = GeneratedRelease.redisVersion
+        static let redisUIVersion = GeneratedRelease.redisUIVersion
+        static let swaggerUIVersion = GeneratedRelease.swaggerUIVersion
+        static let guestEdgeVersion = GeneratedRelease.guestEdgeVersion
+        static let hostProxyVersion = GeneratedRelease.hostProxyVersion
     }
 
     enum Labels {
@@ -67,7 +73,8 @@ enum AppConstants {
         static let overallHealth = "Overall health"
         static let resourceUsage = "Resource usage"
         static let cpuUsage = "CPU"
-        static let memoryUsage = "Memory"
+        static let memoryUsage = "Memory available to VM"
+        static let resourceUsageHelp = "Memory usage is reported by the Linux guest. It can be slightly lower than the configured allocation because the guest OS reserves memory for kernel and device overhead."
         static let systemDiskUsage = "VM disk"
         static let dataStorageUsage = "Data storage"
         static let healthDetails = "Health details"
@@ -117,6 +124,7 @@ enum AppConstants {
         static let sectionRecoveryOperations = "Recovery operations"
         static let sectionUpdateRecovery = "Update recovery"
         static let adminOperationsHelp = "Use these actions only when administering the installed runtime. Password changes are applied with the same runtime configuration flow as Settings."
+        static let runtimeServiceControlHelp = "Starts or stops the VM, host proxy, and watchdog together. Use Stop for planned maintenance, then Start to bring VitalServer back online."
         static let recoveryOperationsHelp = "Use repair actions when the runtime is installed but unhealthy after update, rollback, or unexpected shutdown."
         static let updateRecoveryHelp = "Use rollback only when an update leaves the runtime unhealthy. Rollback restores the latest managed backup and restarts runtime services."
         static let sectionUpdateSource = "Update source"
@@ -139,7 +147,8 @@ enum AppConstants {
         static let sectionOperations = "Operations"
         static let sectionAdvancedConfiguration = "Advanced configuration"
         static let cpu = "CPU"
-        static let memory = "Memory"
+        static let memory = "Memory allocation"
+        static let memoryAllocationHelp = "Amount of memory assigned to the VM. The Linux guest may report a slightly lower usable total in Status."
         static let disk = "Disk"
         static let mode = "Mode"
         static let shared = "Shared"
@@ -222,6 +231,8 @@ enum AppConstants {
         static let verifyBundle = "verify-bundle"
         static let rollback = "rollback"
         static let repairDatastore = "repair-datastore"
+        static let startServices = "start-services"
+        static let stopServices = "stop-services"
         static let optionCPU = "--cpu"
         static let optionMemoryGiB = "--memory-gib"
         static let optionDiskGiB = "--disk-gib"
@@ -264,6 +275,9 @@ enum AppConstants {
         static let rollback = "Rollback"
         static let deleteBackup = "Delete Backup"
         static let openLogs = "Open Logs"
+        static let exportLogs = "Export Logs"
+        static let startRuntimeServices = "Start Runtime Services"
+        static let stopRuntimeServices = "Stop Runtime Services"
         static let startUpdate = "Start Update"
         static let startRollback = "Start Rollback"
         static let ok = "OK"
@@ -310,6 +324,15 @@ enum AppConstants {
         static let datastoreRepairPreparing = "Preparing data store repair..."
         static let datastoreRepairRunning = "Repairing data store..."
         static let datastoreRepairCompleted = "Data store repair completed."
+        static let logExportPreparing = "Preparing log export..."
+        static let logExportCompleted = "Logs exported."
+        static let logExportFailed = "Log export failed."
+        static let runtimeServicesStartPreparing = "Preparing runtime service start..."
+        static let runtimeServicesStartRunning = "Starting runtime services..."
+        static let runtimeServicesStarted = "Runtime services started."
+        static let runtimeServicesStopPreparing = "Preparing runtime service stop..."
+        static let runtimeServicesStopRunning = "Stopping runtime services..."
+        static let runtimeServicesStopped = "Runtime services stopped."
         static let settingsApplyPreparing = "Preparing runtime settings..."
         static let settingsApplyRunning = "Applying runtime settings..."
         static let settingsApplied = "Runtime settings applied."
@@ -337,6 +360,8 @@ enum AppConstants {
         static let latestBackupFallback = "Latest backup"
         static let repairProxyConfirmation = "Stops nginx listeners on the configured proxy port, then restarts the host proxy service. Other process types are reported but not stopped automatically."
         static let repairDatastoreConfirmation = "Checks and repairs the Redis append-only file inside the VM, then restarts VitalServer containers and host services. Redis creates a timestamped backup before fixing a damaged AOF file."
+        static let startRuntimeServicesConfirmation = "Starts the VM, host proxy, and watchdog services, then waits for VitalServer to become healthy."
+        static let stopRuntimeServicesConfirmation = "Stops the watchdog, host proxy, and VM services. VitalServer will be unavailable until runtime services are started again."
         static let standardUninstallConfirmation = "Removes the Helper app, runtime services, tools, VM disk, logs, and package receipt. Vital files and backups are preserved."
         static let cleanUninstallConfirmation = "Removes the Helper app, runtime services, tools, VM disk, logs, backups, and configured vital files directory."
         static let deleteBackupConfirmation = "Delete the selected managed backup? This cannot be undone."
@@ -371,9 +396,23 @@ enum AppConstants {
         static let runtimeStatus = installed.runtimeStatus.path
         static let managerApp = installed.managerApp.path
         static let installLog = installed.installLog.path
-        static let runtimeLogs = installed.logsDirectory.path
-        static let containerLogs = installed.containerLogs.path
-        static let updateActivationLog = installed.updateActivationLog.path
+        static let productLogs = installed.productLogsDirectory.path
+        static let runtimeLogs = installed.centralRuntimeLogsDirectory.path
+        static let runtimeLogSources = installed.logsDirectory.path
+        static let guestLogs = installed.centralGuestLogsDirectory.path
+        static let guestRunDirectory = installed.guestRunDirectory.path
+        static let logArchive = installed.logArchiveDirectory.path
+        static let commandLog = installed.centralCommandLog.path
+        static let containerLogs = installed.centralContainerLogs.path
+        static let containerLogSource = installed.containerLogs.path
+        static let updateActivationLog = installed.centralUpdateActivationLog.path
+        static let updateActivationLogSource = installed.updateActivationLog.path
+        static let bootstrapLog = installed.centralBootstrapLog.path
+        static let bootstrapLogSource = installed.bootstrapLog.path
+        static let datastoreRepairLog = installed.centralDatastoreRepairLog.path
+        static let datastoreRepairLogSource = installed.guestRunDirectory
+            .appendingPathComponent(RuntimeFileNames.datastoreRepairLog)
+            .path
         static let vitalFiles = installed.vitalFilesDirectory.path
         static let backups = installed.backupsDirectory.path
         static let vmConfig = installed.vmConfig.path
@@ -400,5 +439,6 @@ enum AppConstants {
         static let launchctl = "/bin/launchctl"
         static let lsof = "/usr/sbin/lsof"
         static let rm = "/bin/rm"
+        static let ditto = "/usr/bin/ditto"
     }
 }
