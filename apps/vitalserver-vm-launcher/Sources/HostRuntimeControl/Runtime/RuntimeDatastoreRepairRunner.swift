@@ -4,11 +4,11 @@ import RuntimeCore
 struct RuntimeDatastoreRepairRunner {
     var prepareGuestRunDirectory: () throws -> Void
     var removePreviousResult: () throws -> Void
-    var writeRequest: (String, String) throws -> Void
+    var writeRequest: (RuntimeDatastoreRepairRequest) throws -> Void
     var isVMServiceLoaded: () -> Bool
     var startVMService: () -> Void
     var restartVMService: () -> Void
-    var waitForResult: (String) throws -> Void
+    var waitForResult: (RuntimeDatastoreRepairRequest) throws -> Void
     var restartProxyService: () -> Void
     var restartWatchdogService: () -> Void
     var waitForHealth: (RuntimeServiceRestartPolicy) throws -> Void
@@ -23,8 +23,8 @@ struct RuntimeDatastoreRepairRunner {
         try? removePreviousResult()
         try writeStatus(.recovering, .repairDatastore, "datastore repair requested")
 
-        let requestID = makeRequestID()
-        try writeRequest(requestID, timestamp())
+        let request = RuntimeDatastoreRepairRequest(id: makeRequestID(), requestedAt: timestamp())
+        try writeRequest(request)
 
         if isVMServiceLoaded() {
             restartVMService()
@@ -32,7 +32,7 @@ struct RuntimeDatastoreRepairRunner {
             startVMService()
         }
 
-        try waitForResult(requestID)
+        try waitForResult(request)
         restartProxyService()
         restartWatchdogService()
         try waitForHealth(RuntimeServiceRestartPolicy(

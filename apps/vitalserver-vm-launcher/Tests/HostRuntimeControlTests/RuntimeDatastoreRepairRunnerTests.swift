@@ -74,8 +74,8 @@ private final class DatastoreRepairHarness {
                     throw removeResultError
                 }
             },
-            writeRequest: { requestID, requestedAt in
-                self.events.append("request:\(requestID):\(requestedAt)")
+            writeRequest: { request in
+                self.events.append("request:\(request.id):\(request.requestedAt)")
             },
             isVMServiceLoaded: {
                 self.vmLoaded
@@ -86,8 +86,8 @@ private final class DatastoreRepairHarness {
             restartVMService: {
                 self.events.append("restart-vm")
             },
-            waitForResult: { requestID in
-                self.events.append("wait-result:\(requestID)")
+            waitForResult: { request in
+                self.events.append("wait-result:\(request.id)")
                 if let waitResultError = self.waitResultError {
                     throw waitResultError
                 }

@@ -397,8 +397,8 @@ struct RuntimeLifecycle {
             removePreviousResult: {
                 try guestGateway.removeDatastoreRepairResult()
             },
-            writeRequest: { requestID, requestedAt in
-                try guestGateway.writeDatastoreRepairRequest(requestId: requestID, requestedAt: requestedAt)
+            writeRequest: { request in
+                try guestGateway.writeDatastoreRepairRequest(requestId: request.id, requestedAt: request.requestedAt)
             },
             isVMServiceLoaded: {
                 isLaunchdLoaded(Constants.Launchd.vmService)
@@ -409,8 +409,8 @@ struct RuntimeLifecycle {
             restartVMService: {
                 restartLaunchdService(Constants.Launchd.vmService)
             },
-            waitForResult: { requestID in
-                try waitForDatastoreRepairResult(requestId: requestID)
+            waitForResult: { request in
+                try waitForDatastoreRepairResult(requestId: request.id)
             },
             restartProxyService: {
                 restartLaunchdService(Constants.Launchd.proxyService)
