@@ -59,7 +59,7 @@ function rewriteRedisCreateClientArgs(args) {
   const next = [...args];
 
   if (next.length === 0) {
-    return [{ host: redisHost, port: redisPort }];
+    return [rewriteRedisOptions({ host: redisHost, port: redisPort })];
   }
 
   if (typeof next[0] === "object" && next[0] !== null) {
