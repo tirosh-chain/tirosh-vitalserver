@@ -22,7 +22,7 @@
 |---|---|
 | [VitalServer 제품화 전략](vitalserver-productization.md) | 저장소의 목표, upstream 동작, 제품화 기준, 아직 비어 있는 영역 |
 | [ADR 0001](adr/0001-macos-host-proxy-for-vrecorder-ip.md) | macOS host proxy로 VRecorder 원 IP를 보존하기로 한 결정 |
-| [ADR 0002](adr/0002-helper-client-boundary-for-local-and-remote-runtime.md) | Web/PWA primary UI와 local/remote RuntimeClient boundary 결정 |
+| [ADR 0002](adr/0002-helper-client-boundary-for-local-and-remote-runtime.md) | Web/PWA primary UI와 local/remote RuntimeControlClient boundary 결정 |
 | [ADR 0003](adr/0003-helper-layer-and-component-version-model.md) | VitalServer Helper layer와 component version model 결정 |
 | [ADR 0004](adr/0004-product-update-and-vm-image-update-contract.md) | Product Update와 VM Image Update 계약 결정 |
 
@@ -53,7 +53,7 @@ VM runtime 문서는 [VitalServer macOS Runtime](vitalserver-macos-runtime.md)�
 | [Update](macos-runtime/update.md) | update bundle 적용 과정, 보존/변경 범위, guest-side activation, rollback 계약 |
 | [Runtime](macos-runtime/runtime.md) | boot asset, cloud-init, guest bootstrap, network/identity/signing 정책 |
 | [Troubleshooting](macos-runtime/troubleshooting.md) | PoC와 패키징 중 확인한 증상과 조치 |
-| [ADR 0002](adr/0002-helper-client-boundary-for-local-and-remote-runtime.md) | Web/PWA Helper UI, macOS native shell, local/remote RuntimeClient boundary |
+| [ADR 0002](adr/0002-helper-client-boundary-for-local-and-remote-runtime.md) | Web/PWA Helper UI, macOS native shell, local/remote RuntimeControlClient boundary |
 | [ADR 0003](adr/0003-helper-layer-and-component-version-model.md) | Helper UI, Native Shell, Runtime Control API, Updater, Supervisor, VM Driver, Service Stack, VM Image layer와 version model |
 | [ADR 0004](adr/0004-product-update-and-vm-image-update-contract.md) | Product Update, VM Image Update, two-phase Product Update 구분 |
 

@@ -19,9 +19,9 @@ struct Launcher {
         case .start:
             try start(paths: paths)
         case .status:
-            try ProcessState.status(pidFile: paths.pidFile, fileStore: LocalRuntimeFileStore())
+            try ProcessState.status(pidFile: paths.pidFile, fileStore: SystemRuntimeFileStore())
         case .stop:
-            try ProcessState.stop(pidFile: paths.pidFile, fileStore: LocalRuntimeFileStore())
+            try ProcessState.stop(pidFile: paths.pidFile, fileStore: SystemRuntimeFileStore())
         case .network:
             try configureNetwork(paths: paths, arguments: Array(arguments.dropFirst()))
         case .interfaces:
@@ -43,7 +43,7 @@ struct Launcher {
 
     // Initialize the runtime directory without requiring VM entitlements.
     func initialize(paths: LauncherPaths) throws {
-        let fileStore = LocalRuntimeFileStore()
+        let fileStore = SystemRuntimeFileStore()
         let installedPaths = paths.installed
         try fileStore.createDirectory(
             at: installedPaths.runtimeDirectory,
@@ -92,7 +92,7 @@ struct Launcher {
 
     // Remove disposable VM runtime state while preserving host-bound data.
     func clean(paths: LauncherPaths) throws {
-        let fileStore = LocalRuntimeFileStore()
+        let fileStore = SystemRuntimeFileStore()
         try ProcessState.stop(pidFile: paths.pidFile, fileStore: fileStore)
 
         for url in paths.cleanableRuntimePaths {
@@ -107,7 +107,7 @@ struct Launcher {
 
     // Build the VM configuration, start it, then keep the process alive.
     func start(paths: LauncherPaths) throws {
-        let fileStore = LocalRuntimeFileStore()
+        let fileStore = SystemRuntimeFileStore()
         let config = try VMRuntimeConfig.load(from: paths.config, fileStore: fileStore)
         try VMRuntimeConfig.validateBootFiles(config, fileStore: fileStore)
         try removeStaleRuntimeState(paths: paths, fileStore: fileStore)
@@ -169,7 +169,7 @@ struct Launcher {
             throw LauncherError.missingArgument("network mode must be `shared` or `bridged`")
         }
 
-        let fileStore = LocalRuntimeFileStore()
+        let fileStore = SystemRuntimeFileStore()
         var config = try VMRuntimeConfig.load(from: paths.config, fileStore: fileStore)
         config.network.mode = mode
 
@@ -196,7 +196,7 @@ struct Launcher {
     }
 
     func configureRuntime(paths: LauncherPaths, arguments: [String]) throws {
-        let fileStore = LocalRuntimeFileStore()
+        let fileStore = SystemRuntimeFileStore()
         var config = try VMRuntimeConfig.load(from: paths.config, fileStore: fileStore)
         var remaining = arguments
 

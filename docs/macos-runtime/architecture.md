@@ -25,13 +25,13 @@ Web/PWA Helper UI
   - optional macOS/Windows native shell wrapper
         |
         v
-RuntimeClient contract
+RuntimeControlClient contract
         |
         +-- HttpRuntimeClient
         |     local Runtime Control API
         |     remote VitalServer control server
         |
-        +-- LocalRuntimeClient
+        +-- MacHostRuntimeClient
               transition adapter for current macOS native app
 ```
 
@@ -74,20 +74,20 @@ Linux guest
 
 ### As-is
 
-현재 macOS Helper app은 SwiftUI presentation, native shell, composition을 담고 있습니다. `LocalManagement`는 별도 SwiftPM target이며, `MacManagerApp` 안에서는 composition 파일만 adapter를 import합니다. 다만 아직 같은 Helper app process 안에서 `LocalRuntimeClient`가 host file, privileged command, `vitalserver-vm` CLI를 직접 호출합니다.
+현재 macOS Helper app은 SwiftUI presentation, native shell, composition을 담고 있습니다. `MacHostRuntimeAdapter`는 별도 SwiftPM target이며, `MacRuntimeControlApp` 안에서는 composition 파일만 adapter를 import합니다. 다만 아직 같은 Helper app process 안에서 `MacHostRuntimeClient`가 host file, privileged command, `vitalserver-vm` CLI를 직접 호출합니다.
 
 ```text
-MacManagerApp
+MacRuntimeControlApp
   - SwiftUI UI
-  - Managementler
+  - RuntimeViewModel
   - NativeShell
   - app composition
         |
-        | RuntimeClient protocol
-        | composition-only LocalRuntimeClient wiring
+        | RuntimeControlClient protocol
+        | composition-only MacHostRuntimeClient wiring
         v
-LocalManagement
-  - LocalRuntimeClient
+MacHostRuntimeAdapter
+  - MacHostRuntimeClient
   - status/settings/log/backup file readers
   - privileged command runner
   - vitalserver-vm CLI command factory
@@ -110,10 +110,10 @@ Guest VM
 
 | Target | 현재 책임 | 전환기 성격 |
 |---|---|---|
-| `MacManagerApp` | SwiftUI 화면, view model, app composition, native shell | presentation/native shell은 adapter 세부 구현을 모름. composition만 local adapter를 조립 |
-| `Management` | UI/usecase 입출력 계약, `RuntimeClient`, DTO, enum | 최종 API/client/server가 공유할 계약의 시작점 |
+| `MacRuntimeControlApp` | SwiftUI 화면, view model, app composition, native shell | presentation/native shell은 adapter 세부 구현을 모름. composition만 local adapter를 조립 |
+| `RuntimeControl` | UI/usecase 입출력 계약, `RuntimeControlClient`, DTO, enum | 최종 API/client/server가 공유할 계약의 시작점 |
 | `Contracts` | runtime status/progress/health/guest request/result/update bundle/file name 계약 | PWA/API/server/host runtime이 공유할 schema와 enum의 독립 target |
-| `LocalManagement` | `Management`의 macOS local 구현, file/process/CLI adapter | 외부 public surface는 `LocalRuntimeClient` facade 중심. 나중에 Runtime Control API server 쪽 adapter로 이동하거나 축소 가능 |
+| `MacHostRuntimeAdapter` | `RuntimeControl`의 macOS local 구현, file/process/CLI adapter | 외부 public surface는 `MacHostRuntimeClient` facade 중심. 나중에 Runtime Control API server 쪽 adapter로 이동하거나 축소 가능 |
 | `HostCLI` | `vitalserver-vm` CLI와 runtime workflow 실행 | 현재 host runtime source of truth |
 | `Core` | evaluator, operation plan, health/recovery policy, port protocol | `Contracts`에 의존하는 순수 도메인/워크플로 정책 |
 | `HostInfrastructure` | installed path, file store, JSON repository/gateway | host filesystem/shared directory 구현 |
@@ -122,14 +122,14 @@ As-is의 계층 간 통신은 아래처럼 섞여 있습니다.
 
 | 방향 | 현재 방식 | 비고 |
 |---|---|---|
-| Helper UI -> local runtime | `RuntimeClient` protocol 호출 | 좋은 경계. PWA/API에서도 유지할 usecase contract |
-| `LocalRuntimeClient` -> host runtime | CLI command, host file read, privileged process | 전환기 adapter 책임 |
+| Helper UI -> local runtime | `RuntimeControlClient` protocol 호출 | 좋은 경계. PWA/API에서도 유지할 usecase contract |
+| `MacHostRuntimeClient` -> host runtime | CLI command, host file read, privileged process | 전환기 adapter 책임 |
 | Host runtime -> Helper UI | `runtime-status.json`, logs, backup metadata file read | API server가 생기면 endpoint/read model로 감쌀 대상 |
 | Host runtime <-> Guest VM | shared directory JSON, logs, deploy files | 최종 구조에서도 유지할 VM/process boundary |
 
 ### To-be
 
-최종 구조에서는 product UI가 host operation을 직접 실행하지 않습니다. UI는 `Management` 계약을 HTTP/SSE API 또는 client SDK로 사용하고, host-specific 실행은 platform별 Runtime Control service가 처리합니다.
+최종 구조에서는 product UI가 host operation을 직접 실행하지 않습니다. UI는 `RuntimeControl` 계약을 HTTP/SSE API 또는 client SDK로 사용하고, host-specific 실행은 platform별 Runtime Control service가 처리합니다.
 
 ```text
 Helper UI
@@ -182,7 +182,7 @@ Host Runtime Application
         v
 Guest VM contract
 
-Management
+RuntimeControl
   -> UI/client/server가 공유하는 API DTO와 usecase contract
 
 Contracts
@@ -198,10 +198,10 @@ Core
 |---|---|---|
 | Helper UI | product workflow, 화면 상태, 사용자 입력 | SwiftUI transition UI는 Web/PWA primary로 대체 가능해야 함 |
 | Native Shell | install/bootstrap/pairing/recovery/native picker | product UI 로직을 소유하지 않음 |
-| Runtime Control API | auth/session, capability, status/settings/log/update/admin endpoint, progress/log streaming | `RuntimeClient` local 호출을 HTTP/SSE boundary로 노출 |
-| Runtime Control Client | UI가 local/remote runtime에 붙는 client | `LocalRuntimeClient` 대신 `HttpRuntimeClient`가 primary가 됨 |
+| Runtime Control API | auth/session, capability, status/settings/log/update/admin endpoint, progress/log streaming | `RuntimeControlClient` local 호출을 HTTP/SSE boundary로 노출 |
+| Runtime Control Client | UI가 local/remote runtime에 붙는 client | `MacHostRuntimeClient` 대신 `HttpRuntimeClient`가 primary가 됨 |
 | Host Runtime Application | install/configure/update/rollback/watchdog/service usecase | 현재 `HostCLI` CLI workflow를 service/usecase 중심으로 재배치 |
-| Runtime Adapter/Infrastructure | file/process/launchd/VM provider/guest gateway 구현 | 현재 `LocalManagement`와 `HostInfrastructure` 책임을 API server/usecase 아래로 정렬 |
+| Runtime Adapter/Infrastructure | file/process/launchd/VM provider/guest gateway 구현 | 현재 `MacHostRuntimeAdapter`와 `HostInfrastructure` 책임을 API server/usecase 아래로 정렬 |
 | Runtime Contracts | typed status, reason, manifest, guest request/result, file names | PWA/API/server/host runtime이 공유하는 schema/enum으로 유지 |
 | Runtime Core | evaluator, operation plan, recovery policy, testable ports | 순수 정책과 workflow로 유지 |
 | Guest Appliance | Linux service stack, activation/repair 실행 | shared JSON/file contract 유지 |
@@ -220,13 +220,13 @@ PWA 착수 직전까지 현재 branch가 보장해야 하는 compatibility basel
 
 | Baseline | 현재 상태 |
 |---|---|
-| UI/usecase 계약 | `Management`의 `RuntimeClient`, DTO, enum을 기준으로 고정 |
+| UI/usecase 계약 | `RuntimeControl`의 `RuntimeControlClient`, DTO, enum을 기준으로 고정 |
 | Runtime schema 계약 | `Contracts` target으로 분리해 status/progress/health/update bundle/guest request-result 계약을 독립 |
-| SwiftUI presentation 의존성 | `Management`만 직접 사용하고, local adapter 구현은 import하지 않음 |
+| SwiftUI presentation 의존성 | `RuntimeControl`만 직접 사용하고, local adapter 구현은 import하지 않음 |
 | Native shell 의존성 | AppKit/native picker/open/terminate만 담당하고, runtime command factory를 import하지 않음 |
-| Local adapter 공개면 | `LocalManagement` 외부 public surface는 `LocalRuntimeClient` facade 중심으로 제한 |
+| Local adapter 공개면 | `MacHostRuntimeAdapter` 외부 public surface는 `MacHostRuntimeClient` facade 중심으로 제한 |
 | Adapter 내부 구현 | command factory, status/settings/file/log reader, privileged runner는 internal 구현 세부로 유지 |
-| API 전환 지점 | `Managementler` 또는 future PWA client는 `RuntimeClient` 계약만 보고, `LocalRuntimeClient`는 composition에서 교체 가능 |
+| API 전환 지점 | `RuntimeViewModel` 또는 future PWA client는 `RuntimeControlClient` 계약만 보고, `MacHostRuntimeClient`는 composition에서 교체 가능 |
 | 후속 이슈 | Runtime Control API/server/client skeleton은 #30에서 진행 |
 
 Repository layout 기준은 아래처럼 둡니다.
@@ -562,7 +562,7 @@ open ".tmp/VitalServer Helper.app"
 설치된 target Mac에서 운영 중인 Helper product는 실행 관점에서 세 계층으로 봅니다.
 
 ```text
-[MacManagerApp]
+[MacRuntimeControlApp]
 사용자 화면, 설정 입력, 버튼 액션
         |
         | CLI command
@@ -591,24 +591,24 @@ health/evaluator/waiter 판단, runtime-status.json 갱신
         |
         | status JSON, command/install/container logs
         v
-[MacManagerApp]
+[MacRuntimeControlApp]
 Status/Settings/Update/Logs UI에 표시
 ```
 
-`Contracts`와 `Core`는 별도 실행 계층이 아니라 `LocalManagement`와 `HostCLI`이 import하는 공유 라이브러리입니다. `Contracts`는 JSON schema, enum, file name, guest request/result, update bundle manifest처럼 PWA/API/server/host runtime이 함께 알아야 하는 계약을 담습니다. `Core`는 그 계약 위의 evaluator, operation plan, recovery policy, port protocol을 담고, macOS process 실행이나 SwiftUI 화면 같은 adapter 책임은 갖지 않습니다.
+`Contracts`와 `Core`는 별도 실행 계층이 아니라 `MacHostRuntimeAdapter`와 `HostCLI`이 import하는 공유 라이브러리입니다. `Contracts`는 JSON schema, enum, file name, guest request/result, update bundle manifest처럼 PWA/API/server/host runtime이 함께 알아야 하는 계약을 담습니다. `Core`는 그 계약 위의 evaluator, operation plan, recovery policy, port protocol을 담고, macOS process 실행이나 SwiftUI 화면 같은 adapter 책임은 갖지 않습니다.
 
-현재 Helper app 경계는 아래처럼 둡니다. 이 구조는 전환기 SwiftUI app 안에서 ADR 0002의 `RuntimeClient` boundary를 구현한 모양입니다. 코드 배치도 같은 경계를 드러내도록 SwiftPM target을 나눕니다. `MacManagerApp`은 composition/presentation/native shell을 담고, `LocalManagement`는 local file/process/CLI adapter를 담습니다. presentation/native shell은 adapter target을 import하지 않고, composition에서만 `LocalRuntimeClient`를 조립합니다.
+현재 Helper app 경계는 아래처럼 둡니다. 이 구조는 전환기 SwiftUI app 안에서 ADR 0002의 `RuntimeControlClient` boundary를 구현한 모양입니다. 코드 배치도 같은 경계를 드러내도록 SwiftPM target을 나눕니다. `MacRuntimeControlApp`은 composition/presentation/native shell을 담고, `MacHostRuntimeAdapter`는 local file/process/CLI adapter를 담습니다. presentation/native shell은 adapter target을 import하지 않고, composition에서만 `MacHostRuntimeClient`를 조립합니다.
 
 ```text
-[ContentView / MacManagerApplication]
+[ContentView / MacRuntimeControlApplication]
 SwiftUI 화면, binding, 버튼 액션
         |
         | user intent / view state binding
         v
-[Managementler]
+[RuntimeViewModel]
 UI 상태, capability guard, usecase orchestration, 화면 메시지 변환
         |
-        +-- RuntimeClient protocol
+        +-- RuntimeControlClient protocol
         |     status/settings/log/backup/release read model
         |     install/configure/update/rollback/service command usecase
         |
@@ -622,7 +622,7 @@ UI 상태, capability guard, usecase orchestration, 화면 메시지 변환
         |     backup selection retention and managed-delete guard
         |
         +-- RuntimeProcessMessageFormatter
-        |     ProcessResult to user-facing message contract
+        |     RuntimeCommandResult to user-facing message contract
         |
         +-- RuntimePresentationFormatter
         |     confirmation text and UI filename formatting
@@ -632,18 +632,18 @@ UI 상태, capability guard, usecase orchestration, 화면 메시지 변환
 
 [Composition]
         |
-        +-- LocalRuntimeClient (LocalManagement target)
+        +-- MacHostRuntimeClient (MacHostRuntimeAdapter target)
               host file read, privileged CLI command, log export
 ```
 
-`Managementler`는 SwiftUI의 view model 역할을 맡지만, macOS API나 command 세부 구현을 직접 소유하지 않습니다. macOS native concern은 `RuntimeNativeShell` 뒤에 두고, local runtime operation은 `RuntimeClient` 뒤에 둡니다. 설정 적용 전 검증, backup 선택/삭제 guard, process result message formatting, confirmation/export name formatting, health notification 전이처럼 재사용 가능한 정책은 controller 밖의 작은 객체에 둡니다. UI에서 선택한 update bundle과 backup은 내부 계약에서 `URL`로 유지하고, 화면 표시가 필요할 때만 path string으로 변환합니다. Log source처럼 닫힌 선택지는 raw string 대신 enum 계약으로 유지합니다.
+`RuntimeViewModel`는 SwiftUI의 view model 역할을 맡지만, macOS API나 command 세부 구현을 직접 소유하지 않습니다. macOS native concern은 `RuntimeNativeShell` 뒤에 두고, local runtime operation은 `RuntimeControlClient` 뒤에 둡니다. 설정 적용 전 검증, backup 선택/삭제 guard, process result message formatting, confirmation/export name formatting, health notification 전이처럼 재사용 가능한 정책은 viewModel 밖의 작은 객체에 둡니다. UI에서 선택한 update bundle과 backup은 내부 계약에서 `URL`로 유지하고, 화면 표시가 필요할 때만 path string으로 변환합니다. Log source처럼 닫힌 선택지는 raw string 대신 enum 계약으로 유지합니다.
 
 | 계층 | 역할 | 주요 코드 | 책임 |
 |---|---|---|---|
-| `MacManagerApp` | 운영 UI와 app composition | `Sources/MacManagerApp/{Composition,Presentation,NativeShell}/*` | SwiftUI 화면, view model 조립, native shell, Management 구현 주입 |
-| `Management` | UI-usecase 입출력 계약 | `Sources/Management/*` | `RuntimeClient` protocol, status/settings/backup/log/release DTO, command result와 닫힌 선택지 enum |
+| `MacRuntimeControlApp` | 운영 UI와 app composition | `Sources/MacRuntimeControlApp/{Composition,Presentation,NativeShell}/*` | SwiftUI 화면, view model 조립, native shell, RuntimeControl 구현 주입 |
+| `RuntimeControl` | UI-usecase 입출력 계약 | `Sources/RuntimeControl/*` | `RuntimeControlClient` protocol, status/settings/backup/log/release DTO, command result와 닫힌 선택지 enum |
 | `Contracts` | runtime schema 계약 | `Sources/Contracts/*` | status/progress/health/guest request-result/update bundle/file names, PWA/API/server/host runtime 공유 대상 |
-| `LocalManagement` | local runtime adapter | `Sources/LocalManagement/*` | `Management` 구현체, host file/log read, privileged command 실행, `vitalserver-vm` CLI command 조립 |
+| `MacHostRuntimeAdapter` | local runtime adapter | `Sources/MacHostRuntimeAdapter/*` | `RuntimeControl` 구현체, host file/log read, privileged command 실행, `vitalserver-vm` CLI command 조립 |
 | `HostCLI` | local control backend | `Sources/HostCLI/*` | Updater/Supervisor/VM Driver 구현. VM 시작/중지, 설치/설정/업데이트/롤백, launchd/nginx/health 제어 |
 | `Guest VM` | Linux 실행 환경 | `Support/Guest/*` | bootstrap, Docker image load, Compose stack 실행, update activation, datastore repair |
 | `Core` | 공유 정책/workflow | `Sources/Core/*` | health/guest evaluator, operation plan, recovery policy, repository/clock/command/file port |
@@ -652,8 +652,8 @@ UI 상태, capability guard, usecase orchestration, 화면 메시지 변환
 
 | 방향 | 방식 | 입력 | 출력 |
 |---|---|---|---|
-| `MacManagerApp -> Local control` | CLI 실행 | `install`, `start`, `stop`, `runtime configure`, `apply-bundle`, `rollback` 명령과 CPU/RAM/disk/network/proxy/admin 설정 | command exit code, command log |
-| `Local control -> MacManagerApp` | host file read | `runtime-status.json`, install/runtime/container logs, backup/update bundle metadata | UI status, progress, failure reason, log view |
+| `MacRuntimeControlApp -> Local control` | CLI 실행 | `install`, `start`, `stop`, `runtime configure`, `apply-bundle`, `rollback` 명령과 CPU/RAM/disk/network/proxy/admin 설정 | command exit code, command log |
+| `Local control -> MacRuntimeControlApp` | host file read | `runtime-status.json`, install/runtime/container logs, backup/update bundle metadata | UI status, progress, failure reason, log view |
 | `Local control -> Guest VM` | shared directory file contract | `runtime-config.json`, cloud-init/bootstrap files, update/repair request JSON, deploy bundle files | guest 작업 시작 조건 |
 | `Guest VM -> Local control` | shared directory file contract | `runtime-state.json`, bootstrap/update/repair result JSON, guest logs | health 판단, waiter completion, rollback/update result |
 
@@ -713,8 +713,8 @@ Shell
 | Local control host services | `RuntimeServiceController.swift`, `RuntimeStorageMaintenance.swift`, `RuntimeStatusWriter.swift`, `RuntimeCommandExecutor.swift`, `RuntimeHealthChecker.swift` | launchd service 제어, free-space/file replacement/artifact pruning, status document 작성, shell command 실행, host/guest health snapshot 수집 | product update policy 결정 |
 | Swift paths/constants | `LauncherPaths.swift`, `Constants.swift` | 설치/runtime 경로, artifact 이름, launchd/service 이름, command path | runtime 동작 정책 결정 |
 | VM configuration | `VirtualMachine/VMRuntimeConfig.swift`, `VMConfigurationFactory.swift` | `vm-config.json` schema, Apple Virtualization configuration 생성 | install settings 파일 읽기 |
-| Helper app | `Sources/MacManagerApp/*` | 설치 후 Status/Settings/Update/Logs/About/Advanced/Danger Zone UI, app composition, native shell | rootfs, VM disk, privileged provisioning 포함 |
-| Helper runtime adapter | `Sources/LocalManagement/*` | `RuntimeClient` local 구현, 상태/설정/log/backup file read, privileged command 조립/실행, log export | SwiftUI presentation, host runtime workflow 내부 단계 |
+| Helper app | `Sources/MacRuntimeControlApp/*` | 설치 후 Status/Settings/Update/Logs/About/Advanced/Danger Zone UI, app composition, native shell | rootfs, VM disk, privileged provisioning 포함 |
+| Helper runtime adapter | `Sources/MacHostRuntimeAdapter/*` | `RuntimeControlClient` local 구현, 상태/설정/log/backup file read, privileged command 조립/실행, log export | SwiftUI presentation, host runtime workflow 내부 단계 |
 | PKG scripts | `Support/Packaging/preinstall`, `postinstall`, `proxy-run`, `uninstall` | installer/launchd/uninstall entrypoint wrapper | 복잡한 provisioning 로직 |
 | guest bootstrap | `Support/Guest/bootstrap.sh`, `bin/*`, `systemd/*`, `prepare-airgap-rootfs.sh`, `compose.yaml` | Linux guest 내부 Docker/Compose 구성, edge nginx container, Docker image load, runtime state 기록 | macOS launchd/proxy 관리 |
 

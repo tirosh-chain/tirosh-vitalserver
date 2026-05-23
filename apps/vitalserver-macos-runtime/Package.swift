@@ -14,7 +14,7 @@ let package = Package(
         ),
         .executable(
             name: "VitalServerHelper",
-            targets: ["MacManagerApp"]
+            targets: ["MacRuntimeControlApp"]
         )
     ],
     targets: [
@@ -26,7 +26,7 @@ let package = Package(
             dependencies: ["Contracts"]
         ),
         .target(
-            name: "Management",
+            name: "RuntimeControl",
             dependencies: ["Contracts"]
         ),
         .target(
@@ -34,16 +34,16 @@ let package = Package(
             dependencies: ["Contracts", "Core"]
         ),
         .target(
-            name: "LocalManagement",
-            dependencies: ["Contracts", "Management", "Core", "HostInfrastructure"]
+            name: "MacHostRuntimeAdapter",
+            dependencies: ["Contracts", "RuntimeControl", "Core", "HostInfrastructure"]
         ),
         .executableTarget(
             name: "HostCLI",
             dependencies: ["Contracts", "Core", "HostInfrastructure"]
         ),
         .executableTarget(
-            name: "MacManagerApp",
-            dependencies: ["Contracts", "Management", "LocalManagement"]
+            name: "MacRuntimeControlApp",
+            dependencies: ["Contracts", "RuntimeControl", "MacHostRuntimeAdapter"]
         ),
         .testTarget(
             name: "ContractsTests",
@@ -57,8 +57,8 @@ let package = Package(
             dependencies: ["Contracts", "Core"]
         ),
         .testTarget(
-            name: "ManagementTests",
-            dependencies: ["Contracts", "Management"]
+            name: "RuntimeControlTests",
+            dependencies: ["Contracts", "RuntimeControl"]
         ),
         .testTarget(
             name: "HostInfrastructureTests",
@@ -69,8 +69,8 @@ let package = Package(
             dependencies: ["Contracts", "Core", "HostCLI"]
         ),
         .testTarget(
-            name: "MacManagerAppTests",
-            dependencies: ["Contracts", "Management", "LocalManagement", "MacManagerApp"]
+            name: "MacRuntimeControlAppTests",
+            dependencies: ["Contracts", "RuntimeControl", "MacHostRuntimeAdapter", "MacRuntimeControlApp"]
         )
     ]
 )

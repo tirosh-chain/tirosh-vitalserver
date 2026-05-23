@@ -25,7 +25,7 @@ struct RuntimeLifecycle {
         serviceManager: RuntimeServiceManager? = nil,
         runtimeStatusRepository: RuntimeStatusRepository? = nil,
         guestGateway: RuntimeGuestGateway? = nil,
-        fileStore: RuntimeFileStore = LocalRuntimeFileStore()
+        fileStore: RuntimeFileStore = SystemRuntimeFileStore()
     ) {
         let composition = RuntimeLifecycleComposition.resolve(
             paths: paths,

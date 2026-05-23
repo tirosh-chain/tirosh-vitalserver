@@ -12,7 +12,7 @@ VitalServer Helper의 update 대상을 정의하고 각 대상에 version을 매
 
 또한 platform별 구현이 다르다. Helper UI는 Web/PWA primary로 공통화할 수 있지만 native shell, Runtime Control API implementation, Updater, Supervisor, VM Driver는 macOS/Windows별로 달라질 수 있다. Service Stack과 VitalServer service는 guest/service 쪽 책임이다. Supervisor는 host/platform-aware 정책이고, VM Driver는 platform-specific provider다. 이 책임들을 한 단위로 설명하면 update target, support 진단, About UI, release metadata가 불명확해진다.
 
-ADR 0002의 RuntimeClient boundary도 같은 vocabulary를 필요로 하지만, 이 ADR의 직접적인 출발점은 update 대상별 version을 정의하는 과정에서 드러난 `runtime` 책임 과다와 코드 구조의 모호함이다. Update 계약 자체는 별도 결정인 ADR 0004에서 다룬다.
+ADR 0002의 RuntimeControlClient boundary도 같은 vocabulary를 필요로 하지만, 이 ADR의 직접적인 출발점은 update 대상별 version을 정의하는 과정에서 드러난 `runtime` 책임 과다와 코드 구조의 모호함이다. Update 계약 자체는 별도 결정인 ADR 0004에서 다룬다.
 
 ## 결정
 

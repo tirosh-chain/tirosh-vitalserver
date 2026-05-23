@@ -8,7 +8,7 @@ final class VMConfigurationFactory {
     private var retainedSerialInputPipes: [Pipe] = []
     private let fileStore: RuntimeFileReading
 
-    init(fileStore: RuntimeFileReading = LocalRuntimeFileStore()) {
+    init(fileStore: RuntimeFileReading = SystemRuntimeFileStore()) {
         self.fileStore = fileStore
     }
 

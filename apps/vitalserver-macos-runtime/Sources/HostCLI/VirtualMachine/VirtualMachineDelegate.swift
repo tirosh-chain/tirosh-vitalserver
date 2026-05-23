@@ -8,7 +8,7 @@ final class VirtualMachineDelegate: NSObject, VZVirtualMachineDelegate {
     let pidFile: URL
     private let fileStore: RuntimeFileWriting
 
-    init(pidFile: URL, fileStore: RuntimeFileWriting = LocalRuntimeFileStore()) {
+    init(pidFile: URL, fileStore: RuntimeFileWriting = SystemRuntimeFileStore()) {
         self.pidFile = pidFile
         self.fileStore = fileStore
     }

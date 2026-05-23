@@ -30,16 +30,16 @@ Windows 지원을 고려하면 이 결론은 더 강해진다. Windows는 instal
 
 ## 결정
 
-Helper product UI는 local files, launchd, privileged CLI, macOS-only API에 직접 의존하지 않는다. UI는 `RuntimeClient` boundary에 의존한다.
+Helper product UI는 local files, launchd, privileged CLI, macOS-only API에 직접 의존하지 않는다. UI는 `RuntimeControlClient` boundary에 의존한다.
 
 ```text
 Web/PWA Helper UI
   Status / Settings / Update / Info / Logs / Advanced / Danger Zone
         |
         v
-RuntimeClient
+RuntimeControlClient
         |
-        +-- LocalRuntimeClient
+        +-- MacHostRuntimeClient
         |     in-process macOS adapter for current native app transition
         |     launchd, installed files, privileged commands, local logs
         |
@@ -62,16 +62,16 @@ Windows native shell
   - does not own a separate product UI
 ```
 
-Web/PWA UI는 product UI의 primary cross-platform implementation이다. macOS SwiftUI 화면은 전환 기간 동안 유지할 수 있지만, 새 product workflow는 `RuntimeClient` contract 뒤에 둔다. 같은 workflow를 Web/PWA, macOS shell, future native wrappers가 재사용할 수 있어야 한다.
+Web/PWA UI는 product UI의 primary cross-platform implementation이다. macOS SwiftUI 화면은 전환 기간 동안 유지할 수 있지만, 새 product workflow는 `RuntimeControlClient` contract 뒤에 둔다. 같은 workflow를 Web/PWA, macOS shell, future native wrappers가 재사용할 수 있어야 한다.
 
 책임 경계는 아래와 같다.
 
 | Layer | 책임 | 하지 않는 것 |
 | --- | --- | --- |
 | Web/PWA Helper UI | 화면, user interaction, status/log/update/settings UX, API client, capability 기반 enable/disable | launchd 제어, VM 제어, privileged file operation, update apply 직접 실행 |
-| RuntimeClient | UI가 사용하는 typed client contract, local/remote capability model, progress/log stream abstraction | 특정 OS API 호출 |
+| RuntimeControlClient | UI가 사용하는 typed client contract, local/remote capability model, progress/log stream abstraction | 특정 OS API 호출 |
 | HttpRuntimeClient | local/remote Runtime Control API 호출, SSE progress/log streaming, auth/session 처리 | host operation 직접 실행 |
-| LocalRuntimeClient | 전환 기간 동안 macOS native app에서 local adapter 호출 | Web/PWA portability 보장 없이 UI workflow를 소유 |
+| MacHostRuntimeClient | 전환 기간 동안 macOS native app에서 local adapter 호출 | Web/PWA portability 보장 없이 UI workflow를 소유 |
 | Runtime Control API | auth/session, pairing, capability negotiation, status/log/update/settings/admin operation endpoint | UI rendering |
 | macOS native shell | macOS install/recovery/native picker/local host bootstrap | 장기 product UI logic 소유 |
 | Windows native shell | Windows install/service/tray/recovery/local host bootstrap | 장기 product UI logic 소유 |
@@ -100,20 +100,20 @@ Local-only 기능은 암묵적으로 호출하지 않고 capability로 노출한
 - admin password reset
 - VM resource settings
 
-`NSOpenPanel`, `NSSavePanel`, `NSWorkspace` 같은 native UI concern은 macOS shell/controller code에 남긴다. 파일 복사, archive 생성, launchd, installed paths, privileged command execution은 local adapter/usecase 뒤에 둔다.
+`NSOpenPanel`, `NSSavePanel`, `NSWorkspace` 같은 native UI concern은 macOS shell/viewModel code에 남긴다. 파일 복사, archive 생성, launchd, installed paths, privileged command execution은 local adapter/usecase 뒤에 둔다.
 
 현재 SwiftUI 전환기 구현에서는 이 경계를 다음 코드 계약으로 맞춘다.
 
 | 코드 계약 | 책임 |
 | --- | --- |
-| `Managementler` | UI 상태, capability guard, usecase orchestration, 화면 메시지 변환 |
-| `RuntimeClient` | UI가 호출하는 local/remote runtime operation contract. status/settings/log/backup/release read model과 install/configure/update/rollback/service command를 제공 |
-| `LocalRuntimeClient` | macOS local adapter. file reader, settings/status reader, privileged command runner, action environment를 조합 |
+| `RuntimeViewModel` | UI 상태, capability guard, usecase orchestration, 화면 메시지 변환 |
+| `RuntimeControlClient` | UI가 호출하는 local/remote runtime operation contract. status/settings/log/backup/release read model과 install/configure/update/rollback/service command를 제공 |
+| `MacHostRuntimeClient` | macOS local adapter. file reader, settings/status reader, privileged command runner, action environment를 조합 |
 | `RuntimeNativeShell` | macOS native picker/save panel, file/web open, helper relaunch/terminate 같은 shell concern |
 
-이 구현에서 `Managementler`는 `AppKit`을 직접 import하지 않는다. update bundle, log export destination, backup 선택값처럼 local file을 가리키는 값은 내부 계약에서 `URL`로 전달하고, CLI argument나 화면 표시가 필요한 boundary에서만 path string으로 변환한다. Log source처럼 닫힌 선택지는 raw string이 아니라 enum 계약으로 다룬다.
+이 구현에서 `RuntimeViewModel`는 `AppKit`을 직접 import하지 않는다. update bundle, log export destination, backup 선택값처럼 local file을 가리키는 값은 내부 계약에서 `URL`로 전달하고, CLI argument나 화면 표시가 필요한 boundary에서만 path string으로 변환한다. Log source처럼 닫힌 선택지는 raw string이 아니라 enum 계약으로 다룬다.
 
-Local web mode와 Remote mode는 같은 `RuntimeClient` contract를 HTTP/SSE adapter로 구현한다. Runtime Control API는 최소한 아래 contract를 가져야 한다.
+Local web mode와 Remote mode는 같은 `RuntimeControlClient` contract를 HTTP/SSE adapter로 구현한다. Runtime Control API는 최소한 아래 contract를 가져야 한다.
 
 - auth/session 또는 pairing token
 - capability negotiation
@@ -150,7 +150,7 @@ Local web mode에서 mobile browser가 local host에 접근하는 방식은 배�
 
 감수하는 것:
 
-- `RuntimeClient` contract가 커질 수 있으므로 capability와 model 정리가 필요하다.
+- `RuntimeControlClient` contract가 커질 수 있으므로 capability와 model 정리가 필요하다.
 - Runtime Control API는 auth, pairing, capability, dangerous operation confirmation을 포함해야 한다.
 - Local web mode는 network reachability, local TLS, pairing UX를 별도로 설계해야 한다.
 - 전환 기간에는 SwiftUI UI와 Web/PWA UI가 일부 공존할 수 있다.

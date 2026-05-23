@@ -225,10 +225,10 @@ Update bundle manifest는 `helperVersion`, `targetPlatforms`, `minUpdaterVersion
 | Make | target orchestration, artifact path, developer wrapper |
 | Python `packages/vm-build` | Ubuntu asset, golden rootfs, nginx bundle, Docker image bundle, update bundle 생성/검증 |
 | Swift `HostCLI` | VM lifecycle, runtime install/configure/health/watchdog/update/rollback |
-| Swift `Management` | Helper UI가 보는 runtime usecase 입출력 계약 |
+| Swift `RuntimeControl` | Helper UI가 보는 runtime usecase 입출력 계약 |
 | Swift `Contracts` | PWA/API/server/host runtime이 공유할 status/progress/update/guest JSON 계약 |
-| Swift `LocalManagement` | `Management`의 macOS local file/process/CLI 구현 |
-| Swift `MacManagerApp` | Helper app UI, presentation, native shell, composition |
+| Swift `MacHostRuntimeAdapter` | `RuntimeControl`의 macOS local file/process/CLI 구현 |
+| Swift `MacRuntimeControlApp` | Helper app UI, presentation, native shell, composition |
 | Packaging shell | `postinstall`, `proxy-run`, uninstall entrypoint |
 | Guest support | cloud-init 이후 Docker Compose bootstrap, guest state 기록, diagnostics |
 

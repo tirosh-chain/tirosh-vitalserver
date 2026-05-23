@@ -31,7 +31,7 @@ final class RuntimeInstallDirectoryPreparerTests: XCTestCase {
 
     func testPrepareMigratesLegacyRuntimeLogsToCentralDirectory() throws {
         let temporaryRoot = try makeTemporaryDirectory()
-        let fileStore = LocalRuntimeFileStore()
+        let fileStore = SystemRuntimeFileStore()
         let paths = InstalledRuntimePaths(productRoot: temporaryRoot.appendingPathComponent("product"))
         let legacyLog = paths.logsDirectory.appendingPathComponent("launcher.log")
         let centralLog = paths.centralRuntimeLogsDirectory.appendingPathComponent("launcher.log")
@@ -54,7 +54,7 @@ final class RuntimeInstallDirectoryPreparerTests: XCTestCase {
 
     func testPreparePreservesExistingCentralLogByUsingTimestampedLegacyName() throws {
         let temporaryRoot = try makeTemporaryDirectory()
-        let fileStore = LocalRuntimeFileStore()
+        let fileStore = SystemRuntimeFileStore()
         let paths = InstalledRuntimePaths(productRoot: temporaryRoot.appendingPathComponent("product"))
         let legacyLog = paths.logsDirectory.appendingPathComponent("launcher.log")
         let centralLog = paths.centralRuntimeLogsDirectory.appendingPathComponent("launcher.log")

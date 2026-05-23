@@ -6,7 +6,7 @@ import HostInfrastructure
 struct SystemRuntimeCommandRunner: RuntimeCommandRunner {
     private let fileStore: RuntimeFileWriting
 
-    init(fileStore: RuntimeFileWriting = LocalRuntimeFileStore()) {
+    init(fileStore: RuntimeFileWriting = SystemRuntimeFileStore()) {
         self.fileStore = fileStore
     }
 

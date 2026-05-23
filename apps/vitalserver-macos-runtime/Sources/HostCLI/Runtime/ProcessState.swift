@@ -7,7 +7,7 @@ enum ProcessState {
     // The PoC launcher is a foreground process, so a pid file is enough for now.
     static func writeCurrentPid(
         pidFile: URL,
-        fileStore: RuntimeFileWriting = LocalRuntimeFileStore()
+        fileStore: RuntimeFileWriting = SystemRuntimeFileStore()
     ) throws {
         try fileStore.createDirectory(
             at: pidFile.deletingLastPathComponent(),
@@ -18,14 +18,14 @@ enum ProcessState {
 
     static func removePidFile(
         _ pidFile: URL,
-        fileStore: RuntimeFileWriting = LocalRuntimeFileStore()
+        fileStore: RuntimeFileWriting = SystemRuntimeFileStore()
     ) {
         try? fileStore.removeItem(at: pidFile)
     }
 
     static func status(
         pidFile: URL,
-        fileStore: RuntimeFileReading & RuntimeFileWriting = LocalRuntimeFileStore()
+        fileStore: RuntimeFileReading & RuntimeFileWriting = SystemRuntimeFileStore()
     ) throws {
         guard let pid = readPid(pidFile, fileStore: fileStore) else {
             print("stopped")
@@ -42,7 +42,7 @@ enum ProcessState {
 
     static func stop(
         pidFile: URL,
-        fileStore: RuntimeFileReading & RuntimeFileWriting = LocalRuntimeFileStore()
+        fileStore: RuntimeFileReading & RuntimeFileWriting = SystemRuntimeFileStore()
     ) throws {
         guard let pid = readPid(pidFile, fileStore: fileStore) else {
             print("already stopped")
