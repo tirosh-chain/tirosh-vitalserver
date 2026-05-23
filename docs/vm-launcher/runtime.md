@@ -13,12 +13,14 @@ VM이 실제로 어떻게 준비되고 실행되는지 정리합니다. boot ass
 | `.vital` 파일은 어디에 두나? | macOS shared directory |
 | VM IP `192.168.64.x`는 정상인가? | shared/NAT mode에서는 정상 |
 
-runtime 단계의 source of truth는 Swift CLI인 `vitalserver-vm`입니다. Shell script는 launchd나 installer가 호출하기 쉬운 wrapper로만 남기고, 설치 후 상태 전이와 복구 정책은 Swift `RuntimeLifecycle`에 둡니다.
+runtime 단계의 source of truth는 Swift CLI인 `vitalserver-vm`입니다. Shell script는 launchd나 installer가 호출하기 쉬운 wrapper로만 남기고, 설치 후 상태 전이와 복구 정책은 Swift HostRuntimeControl layer에 둡니다. `RuntimeLifecycle`은 CLI command를 typed workflow/runner로 연결하는 facade이고, 실제 install/update/rollback/guest activation/repair 단계는 `Runtime*Workflow`와 focused runner가 담당합니다.
 
 | 책임 | 구현 |
 |---|---|
 | VM start/stop/status/network | Swift `Sources/HostRuntimeControl` |
-| install/status/health/configure/update/rollback/watchdog | Swift `RuntimeLifecycle` |
+| install/status/health/configure/update/rollback/watchdog | Swift `RuntimeLifecycle` facade, `Runtime*Workflow`, focused runner |
+| runtime 상태/progress/health 계약 | Swift `RuntimeCore` contracts, typed enum 상태값 |
+| guest update activation/datastore repair request-result | shared directory JSON contract, `RuntimeGuestGateway` port |
 | runtime 상태 파일 | `/Library/Application Support/TiroshVitalServer/status/runtime-status.json` |
 | host proxy runner | `Support/Packaging/proxy-run`, nginx start/reload loop |
 | Linux guest 내부 구성 | `Support/Guest/bootstrap.sh`, `prepare-airgap-rootfs.sh`, `compose.yaml` |

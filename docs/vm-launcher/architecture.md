@@ -527,7 +527,10 @@ Shell
 | build config | `apps/vitalserver-vm-launcher/Support/Build/vm-build.toml` | Ubuntu/rootfs/Docker image/nginx bundle pinned input 값 | 설치 시 사용자 설정 |
 | Python build package | `packages/vm-build/src/tirosh_vitalserver/vm_build/*.py` | Ubuntu asset 준비, cloud-init ISO 생성, rootfs 압축, nginx bundle, Docker image bundle, update bundle 생성/검증, plist/template rendering | 설치 후 runtime 상태 변경 |
 | Local control entry | `Sources/HostRuntimeControl/CLI/Launcher.swift`, `Command.swift` | `vitalserver-vm` command routing, VM start/stop/status/network/runtime command 연결 | package staging, DMG 생성 |
-| Local control lifecycle | `Sources/HostRuntimeControl/Runtime/RuntimeLifecycle.swift` | `runtime install/status/health/verify-bundle/stage-bundle/apply-bundle/rollback`, install settings 적용, VM disk 생성, launchd load, backup/rollback | DMG/PKG 파일 생성 |
+| Local control lifecycle facade | `Sources/HostRuntimeControl/Runtime/RuntimeLifecycle.swift` | `runtime install/status/health/verify-bundle/stage-bundle/apply-bundle/rollback/repair-datastore/start-services/stop-services` command를 typed workflow와 runner로 연결 | workflow 내부 단계 구현, DMG/PKG 파일 생성 |
+| Local control workflows | `RuntimeInstallWorkflow.swift`, `RuntimeBundleWorkflow.swift`, `RuntimeRollbackWorkflow.swift`, `RuntimeGuestActivationWorkflow.swift`, `RuntimeDatastoreRepairWorkflow.swift` | install/update/rollback/guest activation/datastore repair의 단계 조율, progress/status 기록 경계 | CLI argument parsing, Helper UI presentation |
+| Local control contracts | `Sources/RuntimeCore/Contracts/*.swift`, `Sources/RuntimeCore/Ports/*.swift` | runtime status/progress/health/guest request/result/update bundle/port 계약, 닫힌 상태값 enum | host filesystem이나 launchd 직접 호출 |
+| Local control host services | `RuntimeServiceController.swift`, `RuntimeStorageMaintenance.swift`, `RuntimeStatusWriter.swift`, `RuntimeCommandExecutor.swift`, `RuntimeHealthChecker.swift` | launchd service 제어, free-space/file replacement/artifact pruning, status document 작성, shell command 실행, host/guest health snapshot 수집 | product update policy 결정 |
 | Swift paths/constants | `LauncherPaths.swift`, `Constants.swift` | 설치/runtime 경로, artifact 이름, launchd/service 이름, command path | runtime 동작 정책 결정 |
 | VM configuration | `VirtualMachine/VMRuntimeConfig.swift`, `VMConfigurationFactory.swift` | `vm-config.json` schema, Apple Virtualization configuration 생성 | install settings 파일 읽기 |
 | Helper app | `Sources/VitalServerHelperApp/*` | 설치 후 Status/Settings/Update/Logs/About/Advanced/Danger Zone UI | rootfs, VM disk, privileged provisioning 포함 |
@@ -542,7 +545,7 @@ Shell은 의도적으로 얇게 유지합니다. `postinstall`은 로그를 열�
 |---|---|
 | Ubuntu image URL, rootfs 압축, cloud-init ISO, Docker image bundle, nginx bundle | Python `packages/vm-build` |
 | PKG/DMG target dependency, 산출물 경로, 개발용 install wrapper | `make/vm/*.mk` |
-| 설치 후 VM disk 생성, launchd load, runtime config, health, update/rollback | Swift `RuntimeLifecycle` |
+| 설치 후 VM disk 생성, launchd load, runtime config, health, update/rollback | Swift `RuntimeLifecycle` facade와 `Runtime*Workflow`/runner |
 | VM start/stop/network mode와 Apple Virtualization config | Swift `HostRuntimeControl` |
 | Linux guest 내부 Docker Compose, edge nginx container, systemd entrypoint 구성 | `Support/Guest/*.sh`, guest config |
 | installer/launchd가 호출하는 command 연결 | `Support/Packaging/*.sh` |

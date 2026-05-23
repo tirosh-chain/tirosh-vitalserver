@@ -399,47 +399,55 @@ struct RuntimeLifecycle {
     }
 
     func repairDatastore() throws {
-        try runtimeDatastoreRepairRunner().run()
+        try runtimeDatastoreRepairWorkflow().repair()
     }
 
-    private func runtimeDatastoreRepairRunner() -> RuntimeDatastoreRepairRunner {
-        RuntimeDatastoreRepairRunner(
-            prepareGuestRunDirectory: {
-                try fileStore.createDirectory(at: guestRunDirectory, withIntermediateDirectories: true)
-            },
-            removePreviousResult: {
-                try guestGateway.removeDatastoreRepairResult()
-            },
-            writeRequest: { request in
-                try guestGateway.writeDatastoreRepairRequest(request)
-            },
-            isVMServiceLoaded: {
-                isLaunchdLoaded(.vm)
-            },
-            startVMService: {
-                startLaunchdService(.vm)
-            },
-            restartVMService: {
-                restartLaunchdService(.vm)
-            },
-            waitForResult: { request in
-                try runtimeDatastoreRepairResultWaiter().wait(for: request)
-            },
-            restartProxyService: {
-                restartLaunchdService(.proxy)
-            },
-            restartWatchdogService: {
-                restartLaunchdService(.watchdog)
-            },
-            waitForHealth: waitForHealth,
-            writeStatus: { status, operation, message in
-                try writeRuntimeStatus(status, operation: operation, message: message)
-            },
-            makeRequestID: {
-                UUID().uuidString
-            },
-            timestamp: isoTimestamp,
-            log: log
+    private func runtimeDatastoreRepairWorkflow() -> RuntimeDatastoreRepairWorkflow {
+        RuntimeDatastoreRepairWorkflow(
+            context: RuntimeDatastoreRepairWorkflowContext(
+                guestRunDirectory: guestRunDirectory
+            ),
+            operations: RuntimeDatastoreRepairWorkflowOperations(
+                createDirectory: { url, withIntermediateDirectories in
+                    try fileStore.createDirectory(at: url, withIntermediateDirectories: withIntermediateDirectories)
+                },
+                removePreviousResult: {
+                    try guestGateway.removeDatastoreRepairResult()
+                },
+                writeRequest: { request in
+                    try guestGateway.writeDatastoreRepairRequest(request)
+                },
+                isVMServiceLoaded: {
+                    isLaunchdLoaded(.vm)
+                },
+                startVMService: {
+                    startLaunchdService(.vm)
+                },
+                restartVMService: {
+                    restartLaunchdService(.vm)
+                },
+                loadResult: {
+                    guestGateway.loadDatastoreRepairResult()
+                },
+                restartProxyService: {
+                    restartLaunchdService(.proxy)
+                },
+                restartWatchdogService: {
+                    restartLaunchdService(.watchdog)
+                },
+                waitForHealth: waitForHealth,
+                writeStatus: { status, operation, message in
+                    try writeRuntimeStatus(status, operation: operation, message: message)
+                },
+                requestID: {
+                    UUID().uuidString
+                },
+                timestamp: isoTimestamp,
+                sleep: {
+                    sleeper.sleep(forTimeInterval: 3)
+                },
+                log: log
+            )
         )
     }
 
@@ -657,21 +665,6 @@ struct RuntimeLifecycle {
         RuntimeHealthWaitRunner(
             isLaunchdLoaded: isLaunchdLoaded,
             healthSnapshot: runtimeHealthSnapshot,
-            writeStatus: { status, operation, message in
-                try writeRuntimeStatus(status, operation: operation, message: message)
-            },
-            sleep: {
-                sleeper.sleep(forTimeInterval: 3)
-            },
-            log: log
-        )
-    }
-
-    private func runtimeDatastoreRepairResultWaiter() -> RuntimeDatastoreRepairResultWaiter {
-        RuntimeDatastoreRepairResultWaiter(
-            loadResult: {
-                guestGateway.loadDatastoreRepairResult()
-            },
             writeStatus: { status, operation, message in
                 try writeRuntimeStatus(status, operation: operation, message: message)
             },
