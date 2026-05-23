@@ -7,6 +7,28 @@ public enum RuntimeControlHTTPWireCodecError: Error, Equatable {
 }
 
 public enum RuntimeControlHTTPWireCodec {
+    public static func requestIsComplete(_ data: Data) throws -> Bool {
+        guard let raw = String(data: data, encoding: .utf8) else {
+            throw RuntimeControlHTTPWireCodecError.invalidRequest
+        }
+        guard let headerRange = raw.range(of: "\r\n\r\n") else {
+            return false
+        }
+
+        let headerText = String(raw[..<headerRange.lowerBound])
+        let lines = headerText.components(separatedBy: "\r\n")
+        let headers = try decodeHeaders(Array(lines.dropFirst()))
+        guard let contentLengthValue = headerValue("Content-Length", in: headers) else {
+            return true
+        }
+        guard let contentLength = Int(contentLengthValue), contentLength >= 0 else {
+            throw RuntimeControlHTTPWireCodecError.invalidContentLength(contentLengthValue)
+        }
+
+        let bodyText = String(raw[headerRange.upperBound...])
+        return Data(bodyText.utf8).count >= contentLength
+    }
+
     public static func decodeRequest(_ data: Data) throws -> RuntimeControlHTTPRequest {
         guard let raw = String(data: data, encoding: .utf8) else {
             throw RuntimeControlHTTPWireCodecError.invalidRequest

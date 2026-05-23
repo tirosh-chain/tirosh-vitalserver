@@ -302,6 +302,27 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertEqual(request.body, Data("{\"a\":1}".utf8))
     }
 
+    func testWireCodecReportsIncompleteRequestsBeforeDecoding() throws {
+        let partialHeader = Data("GET /runtime/status HTTP/1.1\r\nHost: 127.0.0.1".utf8)
+        XCTAssertFalse(try RuntimeControlHTTPWireCodec.requestIsComplete(partialHeader))
+
+        let partialBody = [
+            "PUT /runtime/settings HTTP/1.1",
+            "Content-Length: 7",
+            "",
+            "{\"a\"",
+        ].joined(separator: "\r\n")
+        XCTAssertFalse(try RuntimeControlHTTPWireCodec.requestIsComplete(Data(partialBody.utf8)))
+
+        let completeBody = [
+            "PUT /runtime/settings HTTP/1.1",
+            "Content-Length: 7",
+            "",
+            "{\"a\":1}",
+        ].joined(separator: "\r\n")
+        XCTAssertTrue(try RuntimeControlHTTPWireCodec.requestIsComplete(Data(completeBody.utf8)))
+    }
+
     func testWireCodecEncodesHTTPResponses() throws {
         let response = RuntimeControlHTTPResponse(
             status: .ok,

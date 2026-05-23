@@ -22,6 +22,7 @@ public final class RuntimeControlLocalHTTPServer: @unchecked Sendable {
     private let queue: DispatchQueue
     private var listener: NWListener?
     private var connections: [ObjectIdentifier: NWConnection] = [:]
+    private var requestBuffers: [ObjectIdentifier: Data] = [:]
 
     public var activePort: UInt16? {
         listener?.port?.rawValue
@@ -66,6 +67,7 @@ public final class RuntimeControlLocalHTTPServer: @unchecked Sendable {
             connection.cancel()
         }
         connections.removeAll()
+        requestBuffers.removeAll()
     }
 
     private func accept(_ connection: NWConnection) {
@@ -74,6 +76,7 @@ public final class RuntimeControlLocalHTTPServer: @unchecked Sendable {
         connection.stateUpdateHandler = { [weak self] state in
             if case .cancelled = state {
                 self?.connections.removeValue(forKey: id)
+                self?.requestBuffers.removeValue(forKey: id)
             }
         }
         connection.start(queue: queue)
@@ -87,7 +90,7 @@ public final class RuntimeControlLocalHTTPServer: @unchecked Sendable {
                 return
             }
             if let data, !data.isEmpty {
-                self.respond(to: data, on: connection)
+                self.buffer(data, from: connection)
                 return
             }
             if isComplete || error != nil {
@@ -95,6 +98,25 @@ public final class RuntimeControlLocalHTTPServer: @unchecked Sendable {
                 return
             }
             self.receive(from: connection)
+        }
+    }
+
+    private func buffer(_ data: Data, from connection: NWConnection) {
+        let id = ObjectIdentifier(connection)
+        var buffered = requestBuffers[id] ?? Data()
+        buffered.append(data)
+
+        do {
+            guard try RuntimeControlHTTPWireCodec.requestIsComplete(buffered) else {
+                requestBuffers[id] = buffered
+                receive(from: connection)
+                return
+            }
+            requestBuffers.removeValue(forKey: id)
+            respond(to: buffered, on: connection)
+        } catch {
+            requestBuffers.removeValue(forKey: id)
+            send(RuntimeControlHTTPWireCodec.badRequestResponse(message: "Invalid HTTP request."), on: connection)
         }
     }
 

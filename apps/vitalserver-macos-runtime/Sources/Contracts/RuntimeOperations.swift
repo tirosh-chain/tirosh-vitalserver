@@ -102,4 +102,3 @@ public enum RuntimeOperation: Codable, Equatable, Sendable {
         try container.encode(rawValue)
     }
 }
-

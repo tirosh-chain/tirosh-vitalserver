@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from argparse import Namespace
+from argparse import ArgumentParser, Namespace
 from pathlib import Path
 
 from .compression import compression_threads, gzip_file
@@ -30,7 +30,7 @@ def run_rootfs_base(args: Namespace) -> int:
     return 0
 
 
-def add_rootfs_base_arguments(parser) -> None:
+def add_rootfs_base_arguments(parser: ArgumentParser) -> None:
     parser.add_argument("--source", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--force", type=parse_bool, default=False)

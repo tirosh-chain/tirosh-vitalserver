@@ -36,7 +36,9 @@ def run_build_update_bundle(args: Any) -> int:
 
         artifacts = []
         if args.rootfs_base is not None:
-            artifacts.append(ArtifactInput(args.rootfs_base, "rootfs-base.raw.gz", "rootfs-base"))
+            artifacts.append(
+                ArtifactInput(args.rootfs_base, "rootfs-base.raw.gz", "rootfs-base")
+            )
         optional_artifacts = [
             (args.app_bundle, "app-bundle.tar.gz", "app-bundle"),
             (args.runtime_tools, "runtime-tools.tar.gz", "runtime-tools"),
@@ -98,7 +100,9 @@ def run_build_update_bundle(args: Any) -> int:
             "helperVersion": helper_version,
             "targetPlatforms": args.target_platform,
             "components": components,
-            "minUpdaterVersion": args.min_updater_version or args.runtime_version or helper_version,
+            "minUpdaterVersion": (
+                args.min_updater_version or args.runtime_version or helper_version
+            ),
             "requiresGuestActivation": (
                 args.requires_guest_activation
                 if args.requires_guest_activation is not None
@@ -114,7 +118,10 @@ def run_build_update_bundle(args: Any) -> int:
             json.dumps(manifest, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
-        (bundle_dir / "checksums.txt").write_text("".join(checksum_lines), encoding="utf-8")
+        (bundle_dir / "checksums.txt").write_text(
+            "".join(checksum_lines),
+            encoding="utf-8",
+        )
         (bundle_dir / "signature").write_text(
             "unsigned\n",
             encoding="utf-8",
@@ -253,7 +260,9 @@ def validated_archive_root(archive: tarfile.TarFile) -> str:
         if root_name is None:
             root_name = parts[0]
         elif root_name != parts[0]:
-            raise SystemExit("update bundle archive must contain a single root directory")
+            raise SystemExit(
+                "update bundle archive must contain a single root directory"
+            )
     if root_name is None:
         raise SystemExit("empty update bundle archive")
     return root_name

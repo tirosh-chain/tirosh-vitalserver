@@ -84,7 +84,11 @@ def main() -> int:
         type=parse_bool,
         default=False,
     )
-    update_bundle.add_argument("--bundle-kind", choices=["product-update", "vm-image-update"], default="product-update")
+    update_bundle.add_argument(
+        "--bundle-kind",
+        choices=["product-update", "vm-image-update"],
+        default="product-update",
+    )
     update_bundle.add_argument("--helper-version")
     update_bundle.add_argument("--target-platform", action="append", default=[])
     update_bundle.add_argument(

@@ -52,4 +52,3 @@ public struct RuntimeHealthSnapshot: Equatable {
         failureReasons.isEmpty
     }
 }
-

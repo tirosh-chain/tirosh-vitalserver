@@ -3,13 +3,14 @@ from __future__ import annotations
 import shutil
 import subprocess
 import uuid
+from argparse import Namespace
 from pathlib import Path
 
 from .config import load_config, optional_bool, optional_string, section
 from .process import require_tool
 
 
-def run_cloud_init(args) -> int:
+def run_cloud_init(args: Namespace) -> int:
     config = load_config(args.config)
     runtime_config = section(config, "runtime")
     cloud_config = section(config, "cloud_init")

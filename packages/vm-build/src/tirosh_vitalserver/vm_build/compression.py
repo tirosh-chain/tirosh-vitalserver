@@ -73,12 +73,13 @@ def gzip_command(command: Sequence[str], output: Path, *, threads: int) -> None:
             mode="wb",
         ) as gzip_output:
             process = subprocess.Popen(command, stdout=subprocess.PIPE)
-            assert process.stdout is not None
+            stdout = process.stdout
+            assert stdout is not None
             try:
-                for chunk in iter(lambda: process.stdout.read(1024 * 1024), b""):
+                for chunk in iter(lambda: stdout.read(1024 * 1024), b""):
                     gzip_output.write(chunk)
             finally:
-                process.stdout.close()
+                stdout.close()
             status = process.wait()
             if status != 0:
                 temporary.unlink(missing_ok=True)
