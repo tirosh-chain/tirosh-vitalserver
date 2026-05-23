@@ -67,15 +67,36 @@ proxy-run:
 	fi
 
 proxy-stop:
-	@if [ -f "$(PROXY_RUNTIME_DIR)/logs/nginx.pid" ]; then \
-		pid="$$(cat "$(PROXY_RUNTIME_DIR)/logs/nginx.pid")"; \
-		if [ -n "$$pid" ] && { kill -0 "$$pid" >/dev/null 2>&1 || ps -p "$$pid" >/dev/null 2>&1; }; then \
-			$(NGINX_CMD) -p "$(CURDIR)/$(PROXY_RUNTIME_DIR)" -c "$(CURDIR)/$(PROXY_CONFIG)" -s quit; \
+	@pid_file="$(PROXY_RUNTIME_DIR)/logs/nginx.pid"; \
+	nginx_args='-p "$(CURDIR)/$(PROXY_RUNTIME_DIR)" -c "$(CURDIR)/$(PROXY_CONFIG)"'; \
+	if [ -f "$$pid_file" ]; then \
+		pid="$$(cat "$$pid_file")"; \
+	else \
+		pid=""; \
+	fi; \
+	if [ -n "$$pid" ] && kill -0 "$$pid" >/dev/null 2>&1; then \
+		$(NGINX_CMD) -p "$(CURDIR)/$(PROXY_RUNTIME_DIR)" -c "$(CURDIR)/$(PROXY_CONFIG)" -s quit; \
+		printf "nginx proxy stop requested: pid %s\n" "$$pid"; \
+	elif [ -f "$(PROXY_CONFIG)" ]; then \
+		if [ -n "$$pid" ]; then \
+			printf "nginx proxy pid file is stale: %s\n" "$$pid"; \
 		else \
-			printf "nginx proxy is already stopped\n"; \
+			printf "nginx proxy pid file is missing; trying config-based stop\n"; \
+		fi; \
+		if $(NGINX_CMD) -p "$(CURDIR)/$(PROXY_RUNTIME_DIR)" -c "$(CURDIR)/$(PROXY_CONFIG)" -s quit >/tmp/tirosh-vitalserver-nginx-stop.log 2>&1; then \
+			printf "nginx proxy stop requested with %s\n" "$$nginx_args"; \
+		else \
+			if command -v lsof >/dev/null 2>&1 && lsof -nP -iTCP:"$(VITALSERVER_PROXY_PORT)" -sTCP:LISTEN 2>/dev/null | awk 'NR>1 {print $$1}' | grep -qx nginx; then \
+				cat /tmp/tirosh-vitalserver-nginx-stop.log; \
+				printf "warn: nginx is still listening on port %s; try running this in an interactive terminal:\n" "$(VITALSERVER_PROXY_PORT)"; \
+				printf "  %s -p %s -c %s -s quit\n" "$(NGINX_CMD)" "$(CURDIR)/$(PROXY_RUNTIME_DIR)" "$(CURDIR)/$(PROXY_CONFIG)"; \
+				exit 1; \
+			else \
+				printf "nginx proxy is already stopped\n"; \
+			fi; \
 		fi; \
 	else \
-		printf "nginx proxy is already stopped\n"; \
+		printf "nginx proxy is already stopped: missing %s and %s\n" "$$pid_file" "$(PROXY_CONFIG)"; \
 	fi; \
 	if command -v lsof >/dev/null 2>&1; then \
 		listeners="$$(lsof -nP -iTCP:"$(VITALSERVER_PROXY_PORT)" -sTCP:LISTEN 2>/dev/null | awk 'NR>1 {print $$1 "/" $$2}' | sort -u | paste -sd, -)"; \
@@ -105,7 +126,8 @@ proxy-reload: proxy-test
 	$(NGINX_CMD) -p "$(CURDIR)/$(PROXY_RUNTIME_DIR)" -c "$(CURDIR)/$(PROXY_CONFIG)" -s reload
 
 proxy-status:
-	@if [ -f "$(PROXY_RUNTIME_DIR)/logs/nginx.pid" ]; then \
+	@backend_url="http://$(VITALSERVER_BIND_HOST):$(VITALSERVER_HTTP_PORT)/check"; \
+	if [ -f "$(PROXY_RUNTIME_DIR)/logs/nginx.pid" ]; then \
 		pid="$$(cat "$(PROXY_RUNTIME_DIR)/logs/nginx.pid")"; \
 		if [ -z "$$pid" ]; then \
 			printf "nginx proxy is not running: empty pid file %s/logs/nginx.pid\n" "$(PROXY_RUNTIME_DIR)"; \
@@ -116,6 +138,32 @@ proxy-status:
 		fi; \
 	else \
 		printf "nginx proxy is not running: missing %s/logs/nginx.pid\n" "$(PROXY_RUNTIME_DIR)"; \
+	fi; \
+	if command -v pgrep >/dev/null 2>&1; then \
+		matches="$$(pgrep -f "$(CURDIR)/$(PROXY_CONFIG)" 2>/dev/null | paste -sd, -)"; \
+		if [ -n "$$matches" ]; then \
+			printf "nginx proxy process matches config: %s\n" "$$matches"; \
+		fi; \
+	fi; \
+	if command -v lsof >/dev/null 2>&1; then \
+		listeners="$$(lsof -nP -iTCP:"$(VITALSERVER_PROXY_PORT)" -sTCP:LISTEN 2>/dev/null | awk 'NR>1 {print $$1 "/" $$2}' | sort -u | paste -sd, -)"; \
+		if [ -n "$$listeners" ]; then \
+			printf "proxy port %s listeners: %s\n" "$(VITALSERVER_PROXY_PORT)" "$$listeners"; \
+		else \
+			printf "proxy port %s has no listener\n" "$(VITALSERVER_PROXY_PORT)"; \
+		fi; \
+	else \
+		printf "optional missing: lsof; skipping proxy port listener check\n"; \
+	fi; \
+	if command -v curl >/dev/null 2>&1; then \
+		if curl -fsS --max-time 2 "$$backend_url" >/dev/null 2>&1; then \
+			printf "backend is reachable: %s\n" "$$backend_url"; \
+		else \
+			printf "backend is not reachable: %s\n" "$$backend_url"; \
+			printf "hint: run 'docker compose ps' and check that app publishes %s:%s\n" "$(VITALSERVER_BIND_HOST)" "$(VITALSERVER_HTTP_PORT)"; \
+		fi; \
+	else \
+		printf "optional missing: curl; skipping backend health check\n"; \
 	fi
 
 proxy-plist:
