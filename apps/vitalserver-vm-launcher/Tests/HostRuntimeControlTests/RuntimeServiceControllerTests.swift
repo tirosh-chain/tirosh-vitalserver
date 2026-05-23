@@ -92,8 +92,8 @@ private final class ServiceControllerServiceManagerSpy: RuntimeServiceManager {
     var setEnabledLabels: [String] = []
     var setEnabledResults: [RuntimeManagedService: RuntimeProcessResult] = [:]
 
-    func state(service: RuntimeManagedService) -> String {
-        "not-loaded"
+    func state(service: RuntimeManagedService) -> RuntimeServiceState {
+        .notLoaded
     }
 
     func start(service: RuntimeManagedService, plist: String) {

@@ -3,11 +3,11 @@ import Foundation
 public struct RuntimeHealthInput: Equatable {
     public let vmExecutable: Bool
     public let proxyExecutable: Bool
-    public let rootfsBase: String
-    public let vmDisk: String
-    public let vmService: String
-    public let proxyService: String
-    public let watchdogService: String
+    public let rootfsBase: RuntimeFileState
+    public let vmDisk: RuntimeFileState
+    public let vmService: RuntimeServiceState
+    public let proxyService: RuntimeServiceState
+    public let watchdogService: RuntimeServiceState
     public let vmIP: String?
     public let proxyPort: Int
     public let hostProxyHTTP: String
@@ -20,11 +20,11 @@ public struct RuntimeHealthInput: Equatable {
     public init(
         vmExecutable: Bool,
         proxyExecutable: Bool,
-        rootfsBase: String,
-        vmDisk: String,
-        vmService: String,
-        proxyService: String,
-        watchdogService: String,
+        rootfsBase: RuntimeFileState,
+        vmDisk: RuntimeFileState,
+        vmService: RuntimeServiceState,
+        proxyService: RuntimeServiceState,
+        watchdogService: RuntimeServiceState,
         vmIP: String?,
         proxyPort: Int,
         hostProxyHTTP: String,
@@ -62,20 +62,20 @@ public enum RuntimeHealthEvaluator {
         if !input.proxyExecutable {
             failureReasons.append(.missingProxyRunner)
         }
-        if input.rootfsBase != "present" {
+        if input.rootfsBase != .present {
             failureReasons.append(.missingRootfsBase)
         }
-        if input.vmDisk != "present" {
+        if input.vmDisk != .present {
             failureReasons.append(.missingVMDisk)
         }
-        if input.vmService != "loaded" {
-            failureReasons.append(.vmService(input.vmService))
+        if input.vmService != .loaded {
+            failureReasons.append(.vmService(input.vmService.rawValue))
         }
-        if input.proxyService != "loaded" {
-            failureReasons.append(.proxyService(input.proxyService))
+        if input.proxyService != .loaded {
+            failureReasons.append(.proxyService(input.proxyService.rawValue))
         }
-        if input.watchdogService != "loaded" {
-            failureReasons.append(.watchdogService(input.watchdogService))
+        if input.watchdogService != .loaded {
+            failureReasons.append(.watchdogService(input.watchdogService.rawValue))
         }
         if !isSuccessfulHTTPStatus(input.hostProxyHTTP) {
             failureReasons.append(.hostProxyHTTP(input.hostProxyHTTP))

@@ -37,12 +37,12 @@ public struct JSONFileRuntimeGuestGateway: RuntimeGuestGateway {
         try removeFileIfPresent(updateActivationResultURL)
     }
 
-    public func writeUpdateActivationRequest(requestId: String, requestedAt: String, version: String) throws {
+    public func writeUpdateActivationRequest(_ request: RuntimeGuestActivationRequest) throws {
         try write(
             GuestUpdateActivationRequestDocument(
-                requestId: requestId,
-                requestedAt: requestedAt,
-                version: version
+                requestId: request.id,
+                requestedAt: request.requestedAt,
+                version: request.version
             ),
             to: updateActivationRequestURL
         )
@@ -56,11 +56,11 @@ public struct JSONFileRuntimeGuestGateway: RuntimeGuestGateway {
         try removeFileIfPresent(datastoreRepairResultURL)
     }
 
-    public func writeDatastoreRepairRequest(requestId: String, requestedAt: String) throws {
+    public func writeDatastoreRepairRequest(_ request: RuntimeDatastoreRepairRequest) throws {
         try write(
             DatastoreRepairRequestDocument(
-                requestId: requestId,
-                requestedAt: requestedAt
+                requestId: request.id,
+                requestedAt: request.requestedAt
             ),
             to: datastoreRepairRequestURL
         )

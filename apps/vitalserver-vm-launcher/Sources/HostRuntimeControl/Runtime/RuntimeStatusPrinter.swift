@@ -15,7 +15,7 @@ struct RuntimeStatusPrinter {
     let hostProxyHTTP: (Int) -> String
     let isExecutableFile: (String) -> Bool
     let fileExists: (URL) -> Bool
-    let serviceState: (RuntimeManagedService) -> String
+    let serviceState: (RuntimeManagedService) -> RuntimeServiceState
     let printLine: (String) -> Void
 
     init(
@@ -32,7 +32,7 @@ struct RuntimeStatusPrinter {
         hostProxyHTTP: @escaping (Int) -> String,
         isExecutableFile: @escaping (String) -> Bool,
         fileExists: @escaping (URL) -> Bool,
-        serviceState: @escaping (RuntimeManagedService) -> String,
+        serviceState: @escaping (RuntimeManagedService) -> RuntimeServiceState,
         printLine: @escaping (String) -> Void = { print($0) }
     ) {
         self.productRoot = productRoot
@@ -64,9 +64,9 @@ struct RuntimeStatusPrinter {
         printLine("  rootfs base: \(fileState(url: rootfsBase))")
         printLine("  vm disk: \(fileState(url: vmDisk))")
         printLine("  version: \(runtimeVersionValue())")
-        printLine("  VM service: \(serviceState(.vm))")
-        printLine("  proxy service: \(serviceState(.proxy))")
-        printLine("  watchdog service: \(serviceState(.watchdog))")
+        printLine("  VM service: \(serviceState(.vm).rawValue)")
+        printLine("  proxy service: \(serviceState(.proxy).rawValue)")
+        printLine("  watchdog service: \(serviceState(.watchdog).rawValue)")
         printLine("  VM IP: \(vmIP())")
         let proxyPort = installedProxyPort()
         printLine("  proxy port: \(proxyPort)")
@@ -75,15 +75,15 @@ struct RuntimeStatusPrinter {
 
     private func fileState(path: String) -> String {
         if isExecutableFile(path) {
-            return "executable"
+            return RuntimeFileState.executable.rawValue
         }
         if fileExists(URL(fileURLWithPath: path)) {
-            return "present"
+            return RuntimeFileState.present.rawValue
         }
-        return "missing"
+        return RuntimeFileState.missing.rawValue
     }
 
     private func fileState(url: URL) -> String {
-        fileExists(url) ? "present" : "missing"
+        (fileExists(url) ? RuntimeFileState.present : RuntimeFileState.missing).rawValue
     }
 }

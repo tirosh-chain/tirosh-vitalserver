@@ -21,9 +21,9 @@ final class RuntimeHealthCheckerTests: XCTestCase {
         )
         let serviceManager = RuntimeServiceManagerSpy()
         serviceManager.states = [
-            .vm: "loaded",
-            .proxy: "loaded",
-            .watchdog: "loaded",
+            .vm: .loaded,
+            .proxy: .loaded,
+            .watchdog: .loaded,
         ]
         let httpProber = RuntimeHTTPProberSpy()
         httpProber.statuses[Constants.Runtime.proxyHealthURL(port: 8080)] = "200"
@@ -53,8 +53,8 @@ final class RuntimeHealthCheckerTests: XCTestCase {
         XCTAssertEqual(snapshot.vmIP, "192.168.64.2")
         XCTAssertEqual(snapshot.proxyPort, 8080)
         XCTAssertEqual(snapshot.hostProxyHTTP, "200")
-        XCTAssertEqual(snapshot.rootfsBase, "present")
-        XCTAssertEqual(snapshot.vmDisk, "present")
+        XCTAssertEqual(snapshot.rootfsBase, .present)
+        XCTAssertEqual(snapshot.vmDisk, .present)
     }
 
     func testSnapshotFallsBackToMissingStateAndDefaultProxyPort() {
@@ -106,10 +106,10 @@ private final class RuntimeHTTPProberSpy: RuntimeHTTPProber {
 }
 
 private final class RuntimeServiceManagerSpy: RuntimeServiceManager {
-    var states: [RuntimeManagedService: String] = [:]
+    var states: [RuntimeManagedService: RuntimeServiceState] = [:]
 
-    func state(service: RuntimeManagedService) -> String {
-        states[service] ?? "not-loaded"
+    func state(service: RuntimeManagedService) -> RuntimeServiceState {
+        states[service] ?? .notLoaded
     }
 
     func start(service: RuntimeManagedService, plist: String) {}
@@ -134,9 +134,9 @@ private final class RuntimeGuestGatewaySpy: RuntimeGuestGateway {
     }
 
     func removeUpdateActivationResult() throws {}
-    func writeUpdateActivationRequest(requestId: String, requestedAt: String, version: String) throws {}
+    func writeUpdateActivationRequest(_ request: RuntimeGuestActivationRequest) throws {}
     func loadUpdateActivationResult() -> GuestUpdateActivationResultDocument? { nil }
     func removeDatastoreRepairResult() throws {}
-    func writeDatastoreRepairRequest(requestId: String, requestedAt: String) throws {}
+    func writeDatastoreRepairRequest(_ request: RuntimeDatastoreRepairRequest) throws {}
     func loadDatastoreRepairResult() -> DatastoreRepairResultDocument? { nil }
 }

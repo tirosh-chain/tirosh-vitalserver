@@ -785,11 +785,11 @@ public enum RuntimeFailureReason: Codable, Equatable {
 public struct RuntimeHealthSnapshot: Equatable {
     public let vmExecutable: Bool
     public let proxyExecutable: Bool
-    public let rootfsBase: String
-    public let vmDisk: String
-    public let vmService: String
-    public let proxyService: String
-    public let watchdogService: String
+    public let rootfsBase: RuntimeFileState
+    public let vmDisk: RuntimeFileState
+    public let vmService: RuntimeServiceState
+    public let proxyService: RuntimeServiceState
+    public let watchdogService: RuntimeServiceState
     public let vmIP: String?
     public let proxyPort: Int
     public let hostProxyHTTP: String
@@ -801,11 +801,11 @@ public struct RuntimeHealthSnapshot: Equatable {
     public init(
         vmExecutable: Bool,
         proxyExecutable: Bool,
-        rootfsBase: String,
-        vmDisk: String,
-        vmService: String,
-        proxyService: String,
-        watchdogService: String,
+        rootfsBase: RuntimeFileState,
+        vmDisk: RuntimeFileState,
+        vmService: RuntimeServiceState,
+        proxyService: RuntimeServiceState,
+        watchdogService: RuntimeServiceState,
         vmIP: String?,
         proxyPort: Int,
         hostProxyHTTP: String,
@@ -938,17 +938,17 @@ public struct RuntimeStatusDocument: Codable, Equatable {
     public let productRoot: String
     public let runtimeHome: String
     public let runtimeVersion: String
-    public let vmService: String
-    public let proxyService: String
-    public let watchdogService: String
+    public let vmService: RuntimeServiceState
+    public let proxyService: RuntimeServiceState
+    public let watchdogService: RuntimeServiceState
     public let vmIP: String?
     public let proxyPort: Int
     public let hostProxyHTTP: String
     public let guestHTTP: String
     public let redisUIHTTP: String?
     public let swaggerUIHTTP: String?
-    public let rootfsBase: String
-    public let vmDisk: String
+    public let rootfsBase: RuntimeFileState
+    public let vmDisk: RuntimeFileState
     public let failureReasons: [RuntimeFailureReason]
     public let latestBackup: String?
     public let progress: RuntimeProgressDocument?
@@ -963,17 +963,17 @@ public struct RuntimeStatusDocument: Codable, Equatable {
         productRoot: String,
         runtimeHome: String,
         runtimeVersion: String,
-        vmService: String,
-        proxyService: String,
-        watchdogService: String,
+        vmService: RuntimeServiceState,
+        proxyService: RuntimeServiceState,
+        watchdogService: RuntimeServiceState,
         vmIP: String?,
         proxyPort: Int,
         hostProxyHTTP: String,
         guestHTTP: String,
         redisUIHTTP: String?,
         swaggerUIHTTP: String?,
-        rootfsBase: String,
-        vmDisk: String,
+        rootfsBase: RuntimeFileState,
+        vmDisk: RuntimeFileState,
         failureReasons: [RuntimeFailureReason],
         latestBackup: String?,
         progress: RuntimeProgressDocument? = nil
@@ -1013,17 +1013,17 @@ public struct RuntimeStatusDocument: Codable, Equatable {
         productRoot: String,
         runtimeHome: String,
         runtimeVersion: String,
-        vmService: String,
-        proxyService: String,
-        watchdogService: String,
+        vmService: RuntimeServiceState,
+        proxyService: RuntimeServiceState,
+        watchdogService: RuntimeServiceState,
         vmIP: String?,
         proxyPort: Int,
         hostProxyHTTP: String,
         guestHTTP: String,
         redisUIHTTP: String?,
         swaggerUIHTTP: String?,
-        rootfsBase: String,
-        vmDisk: String,
+        rootfsBase: RuntimeFileState,
+        vmDisk: RuntimeFileState,
         failureReasons: [RuntimeFailureReason],
         latestBackup: String?,
         progress: RuntimeProgressDocument? = nil

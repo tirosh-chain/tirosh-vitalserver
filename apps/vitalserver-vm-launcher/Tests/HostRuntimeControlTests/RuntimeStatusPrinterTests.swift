@@ -28,7 +28,7 @@ final class RuntimeStatusPrinterTests: XCTestCase {
             hostProxyHTTP: { port in "200@\(port)" },
             isExecutableFile: { executablePaths.contains($0) },
             fileExists: { existingFiles.contains($0) },
-            serviceState: { service in "\(service.label):loaded" },
+            serviceState: { _ in .loaded },
             printLine: { lines.append($0) }
         )
 
@@ -46,9 +46,9 @@ final class RuntimeStatusPrinterTests: XCTestCase {
             "  rootfs base: present",
             "  vm disk: missing",
             "  version: 2026.05.23",
-            "  VM service: \(RuntimeManagedService.vm.label):loaded",
-            "  proxy service: \(RuntimeManagedService.proxy.label):loaded",
-            "  watchdog service: \(RuntimeManagedService.watchdog.label):loaded",
+            "  VM service: loaded",
+            "  proxy service: loaded",
+            "  watchdog service: loaded",
             "  VM IP: 192.168.64.20",
             "  proxy port: 18080",
             "  host proxy HTTP: 200@18080",
@@ -71,7 +71,7 @@ final class RuntimeStatusPrinterTests: XCTestCase {
             hostProxyHTTP: { _ in "000" },
             isExecutableFile: { _ in false },
             fileExists: { _ in false },
-            serviceState: { _ in "not loaded" },
+            serviceState: { _ in .notLoaded },
             printLine: { lines.append($0) }
         )
 

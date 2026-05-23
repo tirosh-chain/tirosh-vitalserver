@@ -62,24 +62,24 @@ struct RuntimeHealthChecker {
     }
 
     func isLaunchdLoaded(_ service: RuntimeManagedService) -> Bool {
-        launchdState(service) == "loaded"
+        launchdState(service).isLoaded
     }
 
-    func fileState(path: String) -> String {
+    func fileState(path: String) -> RuntimeFileState {
         if fileStore.isExecutableFile(atPath: path) {
-            return "executable"
+            return .executable
         }
         if fileStore.fileExists(URL(fileURLWithPath: path)) {
-            return "present"
+            return .present
         }
-        return "missing"
+        return .missing
     }
 
-    func fileState(url: URL) -> String {
-        fileStore.fileExists(url) ? "present" : "missing"
+    func fileState(url: URL) -> RuntimeFileState {
+        fileStore.fileExists(url) ? .present : .missing
     }
 
-    func launchdState(_ service: RuntimeManagedService) -> String {
+    func launchdState(_ service: RuntimeManagedService) -> RuntimeServiceState {
         serviceManager.state(service: service)
     }
 

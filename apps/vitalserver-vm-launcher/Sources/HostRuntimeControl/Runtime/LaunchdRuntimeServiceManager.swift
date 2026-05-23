@@ -8,12 +8,12 @@ struct LaunchdRuntimeServiceManager: RuntimeServiceManager {
         self.commandRunner = commandRunner
     }
 
-    func state(service: RuntimeManagedService) -> String {
+    func state(service: RuntimeManagedService) -> RuntimeServiceState {
         let result = commandRunner.run(
             Constants.Commands.launchctl,
             arguments: ["print", "system/\(service.label)"]
         )
-        return result.exitCode == 0 ? "loaded" : "not loaded"
+        return result.exitCode == 0 ? .loaded : .notLoaded
     }
 
     func start(service: RuntimeManagedService, plist: String) {

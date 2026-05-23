@@ -129,12 +129,16 @@ final class RuntimeContractsTests: XCTestCase {
 
         XCTAssertEqual(document.status.rawValue, "paused")
         XCTAssertEqual(document.operation.rawValue, "future-operation")
+        XCTAssertEqual(document.vmService, .loaded)
+        XCTAssertEqual(document.rootfsBase, .present)
         XCTAssertEqual(document.progress?.phase.rawValue, "future-phase")
         XCTAssertEqual(document.progress?.stepStatus?.rawValue, "future-step-status")
 
         let encoded = try JSONEncoder().encode(document)
         let roundTripped = try JSONDecoder().decode(RuntimeStatusDocument.self, from: encoded)
         XCTAssertEqual(roundTripped.status.rawValue, "paused")
+        XCTAssertEqual(roundTripped.vmService.rawValue, "loaded")
+        XCTAssertEqual(roundTripped.rootfsBase.rawValue, "present")
         XCTAssertEqual(roundTripped.progress?.phase.rawValue, "future-phase")
     }
 

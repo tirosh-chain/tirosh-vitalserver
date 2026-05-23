@@ -33,9 +33,9 @@ final class RuntimeStatusDocumentBuilderTests: XCTestCase {
         XCTAssertEqual(document.status, .updating)
         XCTAssertEqual(document.operation, .applyBundle)
         XCTAssertEqual(document.runtimeVersion, "0.1.4")
-        XCTAssertEqual(document.vmService, "loaded")
-        XCTAssertEqual(document.proxyService, "loaded")
-        XCTAssertEqual(document.watchdogService, "loaded")
+        XCTAssertEqual(document.vmService, .loaded)
+        XCTAssertEqual(document.proxyService, .loaded)
+        XCTAssertEqual(document.watchdogService, .loaded)
         XCTAssertEqual(document.vmIP, "192.168.64.2")
         XCTAssertEqual(document.proxyPort, 80)
         XCTAssertEqual(document.hostProxyHTTP, "200")
@@ -70,11 +70,11 @@ final class RuntimeStatusDocumentBuilderTests: XCTestCase {
         RuntimeHealthSnapshot(
             vmExecutable: true,
             proxyExecutable: true,
-            rootfsBase: "present",
-            vmDisk: "present",
-            vmService: "loaded",
-            proxyService: "loaded",
-            watchdogService: "loaded",
+            rootfsBase: .present,
+            vmDisk: .present,
+            vmService: .loaded,
+            proxyService: .loaded,
+            watchdogService: .loaded,
             vmIP: "192.168.64.2",
             proxyPort: 80,
             hostProxyHTTP: "200",

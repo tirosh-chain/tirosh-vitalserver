@@ -210,7 +210,6 @@ enum AppConstants {
     }
 
     enum Values {
-        static let launchdLoaded = "loaded"
         static let boolTrue = "true"
         static let boolFalse = "false"
     }

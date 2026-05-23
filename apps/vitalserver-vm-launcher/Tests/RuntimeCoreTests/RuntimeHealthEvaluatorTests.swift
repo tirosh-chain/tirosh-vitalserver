@@ -13,11 +13,11 @@ final class RuntimeHealthEvaluatorTests: XCTestCase {
         let snapshot = RuntimeHealthEvaluator.evaluate(healthyInput(
             vmExecutable: false,
             proxyExecutable: false,
-            rootfsBase: "missing",
-            vmDisk: "missing",
-            vmService: "not loaded",
-            proxyService: "not loaded",
-            watchdogService: "not loaded"
+            rootfsBase: .missing,
+            vmDisk: .missing,
+            vmService: .notLoaded,
+            proxyService: .notLoaded,
+            watchdogService: .notLoaded
         ))
 
         XCTAssertEqual(snapshot.failureReasons, [
@@ -74,11 +74,11 @@ final class RuntimeHealthEvaluatorTests: XCTestCase {
     private func healthyInput(
         vmExecutable: Bool = true,
         proxyExecutable: Bool = true,
-        rootfsBase: String = "present",
-        vmDisk: String = "present",
-        vmService: String = "loaded",
-        proxyService: String = "loaded",
-        watchdogService: String = "loaded",
+        rootfsBase: RuntimeFileState = .present,
+        vmDisk: RuntimeFileState = .present,
+        vmService: RuntimeServiceState = .loaded,
+        proxyService: RuntimeServiceState = .loaded,
+        watchdogService: RuntimeServiceState = .loaded,
         vmIP: String? = "192.168.64.2",
         proxyPort: Int = 80,
         hostProxyHTTP: String = "200",

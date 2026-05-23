@@ -155,7 +155,11 @@ struct RuntimeLifecycle {
                 },
                 rotateRuntimeLogs: rotateRuntimeLogs,
                 requireFreeSpace: { url, minimumBytes, operation in
-                    try requireFreeSpace(at: url, minimumBytes: minimumBytes, operation: operation)
+                    try storageMaintenance().requireFreeSpace(
+                        at: url,
+                        minimumBytes: minimumBytes,
+                        operation: operation
+                    )
                 },
                 runRequired: runRequired,
                 runProcessToFile: runProcessToFile,
@@ -367,15 +371,24 @@ struct RuntimeLifecycle {
                         message: event.message
                     )
                 },
-                pruneOldRuntimeArtifacts: pruneOldRuntimeArtifacts,
+                pruneOldRuntimeArtifacts: {
+                    try storageMaintenance().pruneOldRuntimeArtifacts(
+                        backupsDirectory: backupsDirectory,
+                        bundlesDirectory: bundlesDirectory
+                    )
+                },
                 reasonText: reasonText,
                 requireFreeSpace: { url, minimumBytes, operation in
-                    try requireFreeSpace(at: url, minimumBytes: minimumBytes, operation: operation)
+                    try storageMaintenance().requireFreeSpace(
+                        at: url,
+                        minimumBytes: minimumBytes,
+                        operation: operation.rawValue
+                    )
                 },
                 runProcess: runProcess,
                 runRequired: runRequired,
                 runProcessToFile: runProcessToFile,
-                replaceFile: { source, destination in try replaceFile(from: source, to: destination) },
+                replaceFile: { source, destination in try storageMaintenance().replaceFile(from: source, to: destination) },
                 writeRuntimeVersion: { version, bundle in try writeRuntimeVersion(version: version, bundle: bundle) },
                 refreshCloudInitSeedIfNeeded: refreshCloudInitSeedIfNeeded,
                 activateGuestUpdateIfNeeded: activateGuestUpdateIfNeeded,
@@ -398,7 +411,7 @@ struct RuntimeLifecycle {
                 try guestGateway.removeDatastoreRepairResult()
             },
             writeRequest: { request in
-                try guestGateway.writeDatastoreRepairRequest(requestId: request.id, requestedAt: request.requestedAt)
+                try guestGateway.writeDatastoreRepairRequest(request)
             },
             isVMServiceLoaded: {
                 isLaunchdLoaded(.vm)
@@ -450,71 +463,48 @@ struct RuntimeLifecycle {
     }
 
     func rollback(_ command: RuntimeRollbackCommand) throws {
-        try runtimeRollbackRunner().run(command)
+        try runtimeRollbackWorkflow().rollback(command)
     }
 
-    private func runtimeRollbackRunner() -> RuntimeRollbackRunner {
-        RuntimeRollbackRunner(
-            preparePreflight: prepareRollbackPreflight,
-            executeStep: executeRollbackStep,
-            writeStatus: { status, operation, message in
-                try writeRuntimeStatus(status, operation: operation, message: message)
-            },
-            writeProgress: { event in
-                try writeRuntimeProgress(
-                    event.status,
-                    operation: event.operation,
-                    step: event.step,
-                    stepStatus: event.stepStatus,
-                    phase: event.phase,
-                    message: event.message
-                )
-            },
-            vmDiskPath: { vmDisk.path },
-            log: log
-        )
-    }
-
-    private func prepareRollbackPreflight(_ command: RuntimeRollbackCommand) throws -> RollbackPreflightContext {
-        try RuntimeRollbackPreflightRunner(
-            requireLatestBackup: { try backupStore().requireLatestBackup() },
-            directoryExists: directoryExists,
-            fileExists: fileExists,
-            serviceRestartPolicy: {
-                RuntimeServiceRestartPolicy(
-                    restartVM: isLaunchdLoaded(.vm),
-                    restartProxy: isLaunchdLoaded(.proxy),
-                    restartWatchdog: isLaunchdLoaded(.watchdog)
-                )
-            },
-            log: log
-        ).prepare(command)
-    }
-
-    private func executeRollbackStep(
-        _ step: RuntimeWorkflowStep,
-        preflight: RollbackPreflightContext
-    ) throws {
-        let executor = RuntimeRollbackStepExecutor(
-            stopRuntimeServices: stopRuntimeServices,
-            replaceFile: { source, destination in try replaceFile(from: source, to: destination) },
-            fileExists: fileExists,
-            writeRuntimeVersion: { version, bundle in try writeRuntimeVersion(version: version, bundle: bundle) },
-            restoreBackupPathIfExists: { source, destination in
-                try backupStore().restoreBackupPathIfExists(source, to: destination)
-            },
-            restoreRuntimeToolsIfExists: { source in try backupStore().restoreRuntimeToolsIfExists(source) },
-            startRuntimeServices: startRuntimeServices,
-            waitForHealth: waitForHealth
-        )
-        try executor.execute(
-            step,
-            preflight: preflight,
-            rootfsBase: rootfsBase,
-            runtimeVersion: runtimeVersion,
-            managerAppPath: URL(fileURLWithPath: Constants.Product.managerAppPath),
-            nginxDirectory: installedPaths.nginxDirectory,
-            deployDirectory: installedPaths.deployDirectory
+    private func runtimeRollbackWorkflow() -> RuntimeRollbackWorkflow {
+        RuntimeRollbackWorkflow(
+            context: RuntimeRollbackWorkflowContext(
+                rootfsBase: rootfsBase,
+                runtimeVersion: runtimeVersion,
+                vmDisk: vmDisk,
+                managerAppPath: URL(fileURLWithPath: Constants.Product.managerAppPath),
+                nginxDirectory: installedPaths.nginxDirectory,
+                deployDirectory: installedPaths.deployDirectory
+            ),
+            operations: RuntimeRollbackWorkflowOperations(
+                requireLatestBackup: { try backupStore().requireLatestBackup() },
+                directoryExists: directoryExists,
+                fileExists: fileExists,
+                isLaunchdLoaded: isLaunchdLoaded,
+                stopRuntimeServices: stopRuntimeServices,
+                startRuntimeServices: startRuntimeServices,
+                waitForHealth: waitForHealth,
+                replaceFile: { source, destination in try storageMaintenance().replaceFile(from: source, to: destination) },
+                writeRuntimeVersion: { version, bundle in try writeRuntimeVersion(version: version, bundle: bundle) },
+                restoreBackupPathIfExists: { source, destination in
+                    try backupStore().restoreBackupPathIfExists(source, to: destination)
+                },
+                restoreRuntimeToolsIfExists: { source in try backupStore().restoreRuntimeToolsIfExists(source) },
+                writeStatus: { status, operation, message in
+                    try writeRuntimeStatus(status, operation: operation, message: message)
+                },
+                writeProgress: { event in
+                    try writeRuntimeProgress(
+                        event.status,
+                        operation: event.operation,
+                        step: event.step,
+                        stepStatus: event.stepStatus,
+                        phase: event.phase,
+                        message: event.message
+                    )
+                },
+                log: log
+            )
         )
     }
 
@@ -565,48 +555,6 @@ struct RuntimeLifecycle {
         )
     }
 
-    private func pruneOldRuntimeArtifacts() throws {
-        try pruneOldDirectories(in: backupsDirectory, keep: Constants.Runtime.backupKeepCount, requiredNameFragment: "-before-")
-        try pruneOldDirectories(in: bundlesDirectory, keep: Constants.Runtime.stagedBundleKeepCount, requiredNameFragment: "update-bundle-")
-    }
-
-    private func pruneOldDirectories(in directory: URL, keep: Int, requiredNameFragment: String) throws {
-        guard let matchingDirectories = try? fileStore.childDirectories(
-            at: directory,
-            nameContains: requiredNameFragment,
-            skipsHiddenFiles: true
-        ) else {
-            return
-        }
-        let directories = matchingDirectories.sorted { $0.lastPathComponent < $1.lastPathComponent }
-
-        for directory in directories.dropLast(keep) {
-            try fileStore.removeItem(at: directory)
-            log("pruned runtime artifact path=\(directory.path)")
-        }
-    }
-
-    private func replaceFile(from source: URL, to destination: URL) throws {
-        try fileStore.createDirectory(
-            at: destination.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
-        let temporary = destination.deletingLastPathComponent()
-            .appendingPathComponent(".\(destination.lastPathComponent).tmp")
-        log(
-            "file replacement started source=\(source.path) destination=\(destination.path) temporary=\(temporary.path) size=\(formatBytes(try fileSize(source)))"
-        )
-        if fileExists(temporary) {
-            try fileStore.removeItem(at: temporary)
-        }
-        try fileStore.copyItem(at: source, to: temporary)
-        if fileExists(destination) {
-            try fileStore.removeItem(at: destination)
-        }
-        try fileStore.moveItem(at: temporary, to: destination)
-        log("file replacement completed destination=\(destination.path)")
-    }
-
     private func writeRuntimeVersion(version: String, bundle: URL) throws {
         try runtimeVersionStore().writeAppliedVersion(version: version, bundle: bundle)
     }
@@ -653,43 +601,44 @@ struct RuntimeLifecycle {
     }
 
     private func activateGuestUpdateIfNeeded(_ manifest: UpdateBundleManifest) throws {
-        try RuntimeGuestActivationRunner(
-            createRunDirectory: {
-                try fileStore.createDirectory(at: guestRunDirectory, withIntermediateDirectories: true)
-            },
-            removePreviousResult: {
-                try guestGateway.removeUpdateActivationResult()
-            },
-            requestID: { UUID().uuidString },
-            timestamp: isoTimestamp,
-            writeRequest: { request in
-                try guestGateway.writeUpdateActivationRequest(
-                    requestId: request.id,
-                    requestedAt: request.requestedAt,
-                    version: request.version
-                )
-            },
-            isVMServiceLoaded: {
-                isLaunchdLoaded(.vm)
-            },
-            startVMService: {
-                startLaunchdService(.vm)
-            },
-            loadResult: {
-                guestGateway.loadUpdateActivationResult()
-            },
-            reportProgress: { message in
-                try? writeRuntimeStatus(
-                    .recovering,
-                    operation: .activateGuestUpdate,
-                    message: message
-                )
-            },
-            sleep: {
-                sleeper.sleep(forTimeInterval: 3)
-            },
-            log: log
-        ).activateIfNeeded(manifest: manifest)
+        try runtimeGuestActivationWorkflow().activateIfNeeded(manifest: manifest)
+    }
+
+    private func runtimeGuestActivationWorkflow() -> RuntimeGuestActivationWorkflow {
+        RuntimeGuestActivationWorkflow(
+            context: RuntimeGuestActivationWorkflowContext(
+                guestRunDirectory: guestRunDirectory
+            ),
+            operations: RuntimeGuestActivationWorkflowOperations(
+                createDirectory: { url, withIntermediateDirectories in
+                    try fileStore.createDirectory(at: url, withIntermediateDirectories: withIntermediateDirectories)
+                },
+                removePreviousResult: {
+                    try guestGateway.removeUpdateActivationResult()
+                },
+                writeRequest: { request in
+                    try guestGateway.writeUpdateActivationRequest(request)
+                },
+                isVMServiceLoaded: {
+                    isLaunchdLoaded(.vm)
+                },
+                startVMService: {
+                    startLaunchdService(.vm)
+                },
+                loadResult: {
+                    guestGateway.loadUpdateActivationResult()
+                },
+                writeStatus: { status, operation, message in
+                    try writeRuntimeStatus(status, operation: operation, message: message)
+                },
+                requestID: { UUID().uuidString },
+                timestamp: isoTimestamp,
+                sleep: {
+                    sleeper.sleep(forTimeInterval: 3)
+                },
+                log: log
+            )
+        )
     }
 
     private func waitForHealth(restartVM: Bool, restartProxy: Bool, restartWatchdog: Bool) throws {
@@ -745,30 +694,6 @@ struct RuntimeLifecycle {
         ).rotate()
     }
 
-    private func requireFreeSpace(at url: URL, minimumBytes: UInt64, operation: String) throws {
-        let available = try availableBytes(at: url)
-        guard available >= minimumBytes else {
-            throw LauncherError.insufficientFreeSpace(
-                operation: operation,
-                required: minimumBytes,
-                available: available
-            )
-        }
-        log("free-space preflight passed operation=\(operation) required=\(formatBytes(minimumBytes)) available=\(formatBytes(available))")
-    }
-
-    private func requireFreeSpace(at url: URL, minimumBytes: UInt64, operation: RuntimeOperation) throws {
-        try requireFreeSpace(at: url, minimumBytes: minimumBytes, operation: operation.rawValue)
-    }
-
-    private func availableBytes(at url: URL) throws -> UInt64 {
-        let attributes = try fileStore.fileSystemAttributes(forPath: url.path)
-        guard attributes.freeBytes > 0 else {
-            throw LauncherError.missingArgument("could not determine free space for \(url.path)")
-        }
-        return attributes.freeBytes
-    }
-
     private func fileSize(_ url: URL) throws -> UInt64 {
         try fileStore.fileSize(url)
     }
@@ -800,6 +725,10 @@ struct RuntimeLifecycle {
         return String(format: "%.1f MiB", max(mib, 0))
     }
 
+    private func storageMaintenance() -> RuntimeStorageMaintenance {
+        RuntimeStorageMaintenance(fileStore: fileStore, log: log)
+    }
+
     private func isoTimestamp() -> String {
         ISO8601DateFormatter().string(from: clock.now)
     }
@@ -829,20 +758,26 @@ struct RuntimeLifecycle {
         healthChecker.snapshot()
     }
 
+    private func runtimeStatusWriter() -> RuntimeStatusWriter {
+        RuntimeStatusWriter(
+            reporter: statusReporter,
+            timestamp: isoTimestamp,
+            runtimeVersion: runtimeVersionValue,
+            healthSnapshot: runtimeHealthSnapshot,
+            latestBackup: latestBackup
+        )
+    }
+
     private func writeRuntimeStatus(
         _ status: RuntimeStatusLevel,
         operation: RuntimeOperation,
         message: String,
         progress: RuntimeProgressDocument? = nil
     ) throws {
-        try statusReporter.writeStatus(
+        try runtimeStatusWriter().writeStatus(
             status,
             operation: operation,
             message: message,
-            updatedAt: isoTimestamp(),
-            runtimeVersion: runtimeVersionValue(),
-            healthSnapshot: runtimeHealthSnapshot(),
-            latestBackup: latestBackup(),
             progress: progress
         )
     }
@@ -856,18 +791,14 @@ struct RuntimeLifecycle {
         message: String,
         reasonCodes: [String] = []
     ) throws {
-        try statusReporter.writeProgress(
+        try runtimeStatusWriter().writeProgress(
             status,
             operation: operation,
             step: step,
             stepStatus: stepStatus,
             phase: phase,
             message: message,
-            reasonCodes: reasonCodes,
-            updatedAt: isoTimestamp(),
-            runtimeVersion: runtimeVersionValue(),
-            healthSnapshot: runtimeHealthSnapshot(),
-            latestBackup: latestBackup()
+            reasonCodes: reasonCodes
         )
     }
 

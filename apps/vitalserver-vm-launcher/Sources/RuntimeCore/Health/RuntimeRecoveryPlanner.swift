@@ -1,10 +1,10 @@
 public struct RuntimeRecoveryInput: Equatable {
     public let vmExecutable: Bool
     public let proxyExecutable: Bool
-    public let rootfsBase: String
-    public let vmDisk: String
-    public let vmService: String
-    public let proxyService: String
+    public let rootfsBase: RuntimeFileState
+    public let vmDisk: RuntimeFileState
+    public let vmService: RuntimeServiceState
+    public let proxyService: RuntimeServiceState
     public let vmIP: String?
     public let guestHTTP: String
     public let hostProxyReadinessHTTP: String
@@ -13,10 +13,10 @@ public struct RuntimeRecoveryInput: Equatable {
     public init(
         vmExecutable: Bool,
         proxyExecutable: Bool,
-        rootfsBase: String,
-        vmDisk: String,
-        vmService: String,
-        proxyService: String,
+        rootfsBase: RuntimeFileState,
+        vmDisk: RuntimeFileState,
+        vmService: RuntimeServiceState,
+        proxyService: RuntimeServiceState,
         vmIP: String?,
         guestHTTP: String,
         hostProxyReadinessHTTP: String,
@@ -51,8 +51,8 @@ public enum RuntimeRecoveryPlanner {
     public static func plan(_ input: RuntimeRecoveryInput) -> RuntimeRecoveryPlan {
         guard input.vmExecutable,
               input.proxyExecutable,
-              input.rootfsBase == "present",
-              input.vmDisk == "present" else {
+              input.rootfsBase == .present,
+              input.vmDisk == .present else {
             return RuntimeRecoveryPlan(canRecover: false, restartVM: false, restartProxy: false)
         }
 
@@ -60,11 +60,11 @@ public enum RuntimeRecoveryPlanner {
         let hostProxyReady = isSuccessfulHTTPStatus(input.hostProxyReadinessHTTP)
         let hostProxyAlive = isSuccessfulHTTPStatus(input.hostProxyLivenessHTTP)
 
-        let restartVM = input.vmService != "loaded"
+        let restartVM = input.vmService != .loaded
             || input.vmIP == nil
             || !guestReady
 
-        let restartProxy = input.proxyService != "loaded"
+        let restartProxy = input.proxyService != .loaded
             || !hostProxyAlive
             || (!hostProxyReady && guestReady)
 

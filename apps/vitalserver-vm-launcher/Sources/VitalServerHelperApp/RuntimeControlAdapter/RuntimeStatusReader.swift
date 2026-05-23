@@ -51,9 +51,9 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading {
         let guestState = guestRuntimeStateDocument(paths.runtimeState)
         return RuntimeStatus(
             runtimeInstalled: fileStore.isExecutableFile(atPath: paths.launcher),
-            vmServiceLoaded: loaded(document?.vmService) ?? launchdLoaded(RuntimeManagedService.vm.label),
-            proxyServiceLoaded: loaded(document?.proxyService) ?? launchdLoaded(RuntimeManagedService.proxy.label),
-            watchdogServiceLoaded: loaded(document?.watchdogService) ?? launchdLoaded(RuntimeManagedService.watchdog.label),
+            vmServiceLoaded: loaded(document?.vmService) ?? launchdLoaded(.vm),
+            proxyServiceLoaded: loaded(document?.proxyService) ?? launchdLoaded(.proxy),
+            watchdogServiceLoaded: loaded(document?.watchdogService) ?? launchdLoaded(.watchdog),
             runtimeState: document.map { RuntimeState(rawValue: $0.status.rawValue) },
             operation: document?.operation.rawValue,
             statusMessage: document?.message,
@@ -107,17 +107,17 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading {
         return try? JSONDecoder().decode(GuestRuntimeStateDocument.self, from: data)
     }
 
-    private func loaded(_ value: String?) -> Bool? {
+    private func loaded(_ value: RuntimeServiceState?) -> Bool? {
         guard let value else {
             return nil
         }
-        return value == AppConstants.Values.launchdLoaded
+        return value.isLoaded
     }
 
-    private func launchdLoaded(_ label: String) -> Bool {
+    private func launchdLoaded(_ service: RuntimeManagedService) -> Bool {
         ProcessRunner.runSync(
             RuntimeAdapterConstants.Commands.launchctl,
-            arguments: ["print", "system/\(label)"]
+            arguments: ["print", "system/\(service.label)"]
         ).exitCode == 0
     }
 

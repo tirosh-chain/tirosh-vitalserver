@@ -6,11 +6,11 @@ final class JSONFileRuntimeGuestGatewayTests: XCTestCase {
     func testWritesUpdateActivationRequestAndLoadsResult() throws {
         let harness = try GuestGatewayHarness()
 
-        try harness.gateway.writeUpdateActivationRequest(
-            requestId: "request-1",
+        try harness.gateway.writeUpdateActivationRequest(RuntimeGuestActivationRequest(
+            id: "request-1",
             requestedAt: "2026-05-21T12:33:57Z",
             version: "0.1.4"
-        )
+        ))
         try harness.writeJSON(
             """
             {
@@ -43,10 +43,10 @@ final class JSONFileRuntimeGuestGatewayTests: XCTestCase {
     func testWritesDatastoreRepairRequestAndLoadsResult() throws {
         let harness = try GuestGatewayHarness()
 
-        try harness.gateway.writeDatastoreRepairRequest(
-            requestId: "repair-1",
+        try harness.gateway.writeDatastoreRepairRequest(RuntimeDatastoreRepairRequest(
+            id: "repair-1",
             requestedAt: "2026-05-21T12:33:57Z"
-        )
+        ))
         try harness.writeJSON(
             """
             {
