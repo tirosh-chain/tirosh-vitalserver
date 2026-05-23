@@ -149,9 +149,13 @@ LaunchDaemon으로 실행해 외부 장비와 브라우저가 proxy port로만 �
 ├── Makefile
 ├── pyproject.toml
 ├── apps/
-│   └── vitalserver/           # upstream VitalServer를 감싼 제품 실행 app
-│       ├── docker/            # Docker 배포 target
-│       └── runtime/           # 공통 실행 shim
+│   ├── vitalserver/           # upstream VitalServer를 감싼 제품 실행 app
+│   │   ├── docker/            # Docker 배포 target
+│   │   └── runtime/           # 공통 실행 shim
+│   └── vitalserver-macos-runtime/
+│       ├── Sources/           # macOS Helper app, runtime CLI, RuntimeControl/Contracts 계약/adapter
+│       ├── Support/           # app/packaging/guest/build assets
+│       └── Tests/
 ├── config/
 │   └── testkit.toml
 ├── docs/
@@ -160,7 +164,8 @@ LaunchDaemon으로 실행해 외부 장비와 브라우저가 proxy port로만 �
 │   └── swagger-ui/           # Swagger UI reverse proxy 설정
 ├── make/                     # Makefile target group
 ├── packages/
-│   └── vitalserver-testkit/   # 운영 검증과 데이터 전송 검증용 Python 도구
+│   ├── vitalserver-testkit/   # 운영 검증과 데이터 전송 검증용 Python 도구
+│   └── vm-build/              # build-machine 전용 VM/rootfs/bundle 생성 Python 도구
 ├── scripts/
 └── vendor/
     └── vitalserver/           # git submodule: tirosh-chain/vitalserver
@@ -242,15 +247,17 @@ Release workflow도 이전 `testkit-v*` tag 이후 testkit 관련 변경이 있�
 build하고 release asset을 업로드합니다. Release note는 monorepo 전체 changelog가 아니라
 `vitalserver-testkit` package 기준의 간단한 설치 안내만 남깁니다.
 
-관련 문서는 `docs/` 아래에 둡니다. 전체 문서 구조는 `docs/index.md`를 기준으로 봅니다.
+관련 문서는 `docs/` 아래에 둡니다. 전체 문서 구조와 읽는 순서는 [문서 지도](docs/index.md)를 기준으로 봅니다.
 
-- `docs/index.md`: 문서 지도와 작성 기준
-- `docs/branching.md`: branch와 package tag 운영 기준
-- `docs/vitalserver-productization.md`: VitalServer 제품화 맥락과 API/payload 배경
-- `docs/vrecorder.md`: VRecorder 접속 흐름과 Web Monitoring 상태 표시 기준
-- `docs/testkit-usage.md`: testkit 실행 방법과 결과 해석
-- `docs/redis-data-model.md`: Redis key 구조와 relay 설계 메모
-- `docs/openapi.yaml`: upstream VitalServer route에서 추출한 OpenAPI 문서
+자주 보는 진입점은 아래입니다.
+
+- [VitalServer 제품화 전략](docs/vitalserver-productization.md): 제품화 맥락과 API/payload 배경
+- [Branch 운영 기준](docs/branching.md): branch와 package tag 운영 기준
+- [Vital Recorder](docs/vrecorder.md): VRecorder 접속 흐름과 Web Monitoring 상태 표시 기준
+- [Testkit 사용법](docs/testkit-usage.md): testkit 실행 방법과 결과 해석
+- [Redis 데이터 구조](docs/redis-data-model.md): Redis key 구조와 relay 설계 메모
+- [OpenAPI 문서](docs/openapi.yaml): upstream VitalServer route에서 추출한 OpenAPI 문서
+- [VitalServer macOS Runtime](docs/vitalserver-macos-runtime.md): Mac mini VM runtime 문서군
 
 ## Submodule 관리
 

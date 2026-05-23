@@ -1,0 +1,13 @@
+[Unit]
+Description=Write Tirosh VitalServer container logs to shared runtime directory
+After=docker.service tirosh-vitalserver-compose.service tirosh-runtime-state.service
+Requires=docker.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/tirosh-vitalserver-container-logs watch
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

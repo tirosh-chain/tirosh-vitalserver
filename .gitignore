@@ -1,5 +1,8 @@
 # macOS
 .DS_Store
+._*
+.AppleDouble
+.LSOverride
 
 # Local environment files
 .env
@@ -12,9 +15,29 @@ docker-compose.override.yml
 
 # Logs and temporary files
 *.log
+tmp.txt
+.artifacts/
 .tmp/
+dist/
 tmp/
 temp/
+.build/
+
+# Swift / Xcode
+.swiftpm/
+DerivedData/
+
+# VM images and local VM runtime
+*.qcow2
+*.raw
+*.iso
+.tirosh/
+apps/vitalserver-vm-launcher/images/
+apps/vitalserver-vm-launcher/data/
+
+# macOS packaging artifacts
+*.dmg
+*.pkg
 
 # IDE and editor files
 .idea/

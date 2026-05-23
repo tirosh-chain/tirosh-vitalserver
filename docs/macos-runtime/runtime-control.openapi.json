@@ -1,0 +1,809 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Tirosh VitalServer Runtime Control API",
+    "version": "0.1.0",
+    "description": "Local Runtime Control API contract for the macOS helper transition path and upcoming PWA client."
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:18321",
+      "description": "macOS Helper local loopback server"
+    }
+  ],
+  "security": [
+    {
+      "runtimeControlToken": []
+    }
+  ],
+  "paths": {
+    "/runtime/capabilities": {
+      "get": {
+        "operationId": "getRuntimeCapabilities",
+        "summary": "Read Runtime Control capabilities",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "readOnlyLocal",
+        "x-runtime-control-access": "browserSafe",
+        "responses": {
+          "200": {
+            "description": "Runtime Control capabilities",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeControlCapabilities"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/runtime/status": {
+      "get": {
+        "operationId": "getRuntimeStatus",
+        "summary": "Read runtime status",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "readOnlyLocal",
+        "x-runtime-control-access": "browserSafe",
+        "responses": {
+          "200": {
+            "description": "Runtime status read model",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeStatus"
+                }
+              },
+              "examples": {
+                "healthy": {
+                  "$ref": "#/components/examples/RuntimeStatusHealthy"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/runtime/health": {
+      "post": {
+        "operationId": "refreshRuntimeHealth",
+        "summary": "Refresh and read runtime health",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "readOnlyLocal",
+        "x-runtime-control-access": "browserSafe",
+        "responses": {
+          "200": {
+            "description": "Refreshed runtime status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeStatus"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/runtime/settings": {
+      "get": {
+        "operationId": "getRuntimeSettings",
+        "summary": "Read current runtime settings",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "readOnlyLocal",
+        "x-runtime-control-access": "browserSafe",
+        "responses": {
+          "200": {
+            "description": "Runtime settings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeSettings"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      },
+      "put": {
+        "operationId": "applyRuntimeSettings",
+        "summary": "Apply runtime settings",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "planned",
+        "x-runtime-control-access": "localServerMediated",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeApplySettingsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/CommandResult"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          }
+        }
+      }
+    },
+    "/runtime/release": {
+      "get": {
+        "operationId": "getRuntimeRelease",
+        "summary": "Read helper and bundled release metadata",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "readOnlyLocal",
+        "x-runtime-control-access": "browserSafe",
+        "responses": {
+          "200": {
+            "description": "Release metadata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeReleaseInfo"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/runtime/install": {
+      "get": {
+        "operationId": "getRuntimeInstallInfo",
+        "summary": "Read installed runtime path metadata",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "readOnlyLocal",
+        "x-runtime-control-access": "browserSafe",
+        "responses": {
+          "200": {
+            "description": "Install metadata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeInstallInfo"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/runtime/services/start": {
+      "post": {
+        "operationId": "startRuntimeServices",
+        "summary": "Start runtime services",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "planned",
+        "x-runtime-control-access": "localServerMediated",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/CommandResult"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          }
+        }
+      }
+    },
+    "/runtime/services/stop": {
+      "post": {
+        "operationId": "stopRuntimeServices",
+        "summary": "Stop runtime services",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "planned",
+        "x-runtime-control-access": "localServerMediated",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/CommandResult"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          }
+        }
+      }
+    },
+    "/runtime/services/repair-proxy": {
+      "post": {
+        "operationId": "repairRuntimeProxy",
+        "summary": "Repair host proxy service",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "planned",
+        "x-runtime-control-access": "localServerMediated",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeRepairProxyRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/CommandResult"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          }
+        }
+      }
+    },
+    "/runtime/services/repair-datastore": {
+      "post": {
+        "operationId": "repairRuntimeDatastore",
+        "summary": "Repair datastore",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "planned",
+        "x-runtime-control-access": "localServerMediated",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/CommandResult"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          }
+        }
+      }
+    },
+    "/runtime/uninstall": {
+      "post": {
+        "operationId": "uninstallRuntime",
+        "summary": "Uninstall runtime",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "planned",
+        "x-runtime-control-access": "localServerMediated",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeUninstallRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/CommandResult"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          }
+        }
+      }
+    },
+    "/host/backups": {
+      "get": {
+        "operationId": "listHostBackups",
+        "summary": "List local host backups",
+        "x-runtime-control-scope": "hostAffordance",
+        "x-runtime-control-implementation": "planned",
+        "x-runtime-control-access": "localServerMediated",
+        "responses": {
+          "200": {
+            "description": "Local backup list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RuntimeBackup"
+                  }
+                }
+              }
+            }
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteHostBackup",
+        "summary": "Delete selected local backup",
+        "x-runtime-control-scope": "hostAffordance",
+        "x-runtime-control-implementation": "planned",
+        "x-runtime-control-access": "localServerMediated",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeBackupRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/CommandResult"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          }
+        }
+      }
+    },
+    "/host/logs/read": {
+      "post": {
+        "operationId": "readHostLogText",
+        "summary": "Read local log text",
+        "x-runtime-control-scope": "hostAffordance",
+        "x-runtime-control-implementation": "planned",
+        "x-runtime-control-access": "localServerMediated",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeLogTextRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Log text",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeLogTextResponse"
+                }
+              }
+            }
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          }
+        }
+      }
+    },
+    "/host/logs/export": {
+      "post": {
+        "operationId": "exportHostLogs",
+        "summary": "Export local logs",
+        "x-runtime-control-scope": "hostAffordance",
+        "x-runtime-control-implementation": "planned",
+        "x-runtime-control-access": "nativeShellOnly",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeExportLogsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Log export result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeLogExportResult"
+                }
+              }
+            }
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          }
+        }
+      }
+    },
+    "/host/update-bundles/summary": {
+      "post": {
+        "operationId": "summarizeHostUpdateBundle",
+        "summary": "Summarize selected update bundle",
+        "x-runtime-control-scope": "hostAffordance",
+        "x-runtime-control-implementation": "planned",
+        "x-runtime-control-access": "localServerMediated",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeUpdateBundleRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Update bundle summary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeUpdateBundleSummaryResponse"
+                }
+              }
+            }
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          }
+        }
+      }
+    },
+    "/host/update-bundles/verify": {
+      "post": {
+        "operationId": "verifyHostUpdateBundle",
+        "summary": "Verify selected update bundle",
+        "x-runtime-control-scope": "hostAffordance",
+        "x-runtime-control-implementation": "planned",
+        "x-runtime-control-access": "localServerMediated",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeUpdateBundleRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/CommandResult"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          }
+        }
+      }
+    },
+    "/host/update-bundles/apply": {
+      "post": {
+        "operationId": "applyHostUpdateBundle",
+        "summary": "Apply selected update bundle",
+        "x-runtime-control-scope": "hostAffordance",
+        "x-runtime-control-implementation": "planned",
+        "x-runtime-control-access": "localServerMediated",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeUpdateBundleRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/CommandResult"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          }
+        }
+      }
+    },
+    "/host/backups/rollback": {
+      "post": {
+        "operationId": "rollbackHostBackup",
+        "summary": "Rollback selected local backup",
+        "x-runtime-control-scope": "hostAffordance",
+        "x-runtime-control-implementation": "planned",
+        "x-runtime-control-access": "localServerMediated",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeBackupRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/CommandResult"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "runtimeControlToken": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Runtime-Control-Token"
+      }
+    },
+    "responses": {
+      "CommandResult": {
+        "description": "Command execution result",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/RuntimeControlCommandResponse"
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "Missing or invalid Runtime Control token",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/RuntimeControlErrorResponse"
+            }
+          }
+        }
+      },
+      "NotImplemented": {
+        "description": "Endpoint exists in the contract but is not implemented by the current local read-only server",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/RuntimeControlErrorResponse"
+            }
+          }
+        }
+      }
+    },
+    "examples": {
+      "RuntimeStatusHealthy": {
+        "value": {
+          "runtimeInstalled": true,
+          "vmServiceLoaded": true,
+          "proxyServiceLoaded": true,
+          "watchdogServiceLoaded": true,
+          "runtimeState": "healthy",
+          "statusMessage": "ready",
+          "runtimeVersion": "0.1.5",
+          "proxyPort": 80,
+          "failureReasons": []
+        }
+      }
+    },
+    "schemas": {
+      "RuntimeControlCapabilities": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "canInstallRuntime": { "type": "boolean" },
+          "canUninstallRuntime": { "type": "boolean" },
+          "canApplyBundle": { "type": "boolean" },
+          "canRollback": { "type": "boolean" },
+          "canEditVMResources": { "type": "boolean" },
+          "canEditNetworkExposure": { "type": "boolean" },
+          "canResetAdminPassword": { "type": "boolean" },
+          "canOpenLocalFiles": { "type": "boolean" },
+          "canStreamLogs": { "type": "boolean" },
+          "canControlRuntimeServices": { "type": "boolean" },
+          "canExportLogs": { "type": "boolean" },
+          "canViewReleaseMetadata": { "type": "boolean" }
+        }
+      },
+      "RuntimeStatus": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "runtimeInstalled": { "type": "boolean" },
+          "vmServiceLoaded": { "type": "boolean" },
+          "proxyServiceLoaded": { "type": "boolean" },
+          "watchdogServiceLoaded": { "type": "boolean" },
+          "runtimeState": { "$ref": "#/components/schemas/RuntimeState" },
+          "operation": { "type": ["string", "null"] },
+          "statusMessage": { "type": ["string", "null"] },
+          "updatedAt": { "type": ["string", "null"] },
+          "runtimeVersion": { "type": ["string", "null"] },
+          "latestBackup": { "type": ["string", "null"] },
+          "vmIP": { "type": ["string", "null"] },
+          "guestHTTP": { "type": ["string", "null"] },
+          "hostProxyHTTP": { "type": ["string", "null"] },
+          "redisUIHTTP": { "type": ["string", "null"] },
+          "swaggerUIHTTP": { "type": ["string", "null"] },
+          "cpuUsagePercent": { "type": ["number", "null"] },
+          "memory": { "$ref": "#/components/schemas/ResourceUsage" },
+          "systemDisk": { "$ref": "#/components/schemas/ResourceUsage" },
+          "dataStorage": { "$ref": "#/components/schemas/ResourceUsage" },
+          "proxyPort": { "type": "integer" },
+          "failureReasons": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      },
+      "RuntimeState": {
+        "type": "string",
+        "enum": ["installing", "updating", "recovering", "healthy", "degraded", "critical"]
+      },
+      "ResourceUsage": {
+        "type": ["object", "null"],
+        "additionalProperties": true
+      },
+      "RuntimeSettings": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "cpuCount": { "type": "integer" },
+          "memoryGiB": { "type": "integer" },
+          "diskGiB": { "type": "integer" },
+          "minimumDiskGiB": { "type": "integer" },
+          "networkMode": { "type": "string", "enum": ["shared", "bridged"] },
+          "bridgedInterface": { "type": "string" },
+          "proxyPort": { "type": "integer" },
+          "vitalFilesDirectory": { "type": "string" },
+          "publicHost": { "type": "string" },
+          "publicPort": { "type": "integer" },
+          "adminPassword": { "type": "string" },
+          "changeAdminPassword": { "type": "boolean" },
+          "startOnBoot": { "type": "boolean" },
+          "startOnBootConfigurable": { "type": "boolean" },
+          "autoRecoveryEnabled": { "type": "boolean" },
+          "restartAfterSave": { "type": "boolean" }
+        }
+      },
+      "RuntimeReleaseInfo": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "helperVersion": { "type": "string" },
+          "minimumUpdaterVersion": { "type": "string" },
+          "vitalServerVersion": { "type": "string" },
+          "services": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/RuntimeBundledServiceInfo" }
+          }
+        }
+      },
+      "RuntimeBundledServiceInfo": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "image": { "type": "string" },
+          "version": { "type": "string" }
+        }
+      },
+      "RuntimeInstallInfo": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "runtimeHomePath": { "type": "string" },
+          "backupsPath": { "type": "string" }
+        }
+      },
+      "RuntimeControlCommandResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "result": { "$ref": "#/components/schemas/RuntimeCommandResult" }
+        }
+      },
+      "RuntimeCommandResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "exitCode": { "type": "integer" },
+          "stdout": { "type": "string" },
+          "stderr": { "type": "string" }
+        }
+      },
+      "RuntimeControlErrorResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "code": { "$ref": "#/components/schemas/RuntimeControlAPIErrorCode" },
+          "message": { "type": "string" }
+        }
+      },
+      "RuntimeControlAPIErrorCode": {
+        "type": "string",
+        "enum": ["badRequest", "routeNotFound", "methodNotAllowed", "unauthorized", "endpointNotImplemented", "handlerFailed"]
+      },
+      "RuntimeControlFileReference": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": { "type": "string", "enum": ["localPath", "uploadedArtifact", "remoteURL"] },
+          "value": { "type": "string" }
+        }
+      },
+      "RuntimeApplySettingsRequest": {
+        "type": "object",
+        "properties": {
+          "settings": { "$ref": "#/components/schemas/RuntimeSettings" }
+        }
+      },
+      "RuntimeRepairProxyRequest": {
+        "type": "object",
+        "properties": {
+          "proxyPort": { "type": "integer" }
+        }
+      },
+      "RuntimeUninstallRequest": {
+        "type": "object",
+        "properties": {
+          "clean": { "type": "boolean" }
+        }
+      },
+      "RuntimeBackup": {
+        "type": "object",
+        "properties": {
+          "path": { "type": "string" },
+          "sizeBytes": { "type": ["integer", "null"] }
+        }
+      },
+      "RuntimeBackupRequest": {
+        "type": "object",
+        "properties": {
+          "backup": { "$ref": "#/components/schemas/RuntimeControlFileReference" }
+        }
+      },
+      "RuntimeLogTextRequest": {
+        "type": "object",
+        "properties": {
+          "source": { "type": "string" },
+          "helperMessage": { "type": "string" },
+          "lineLimit": { "type": "integer" }
+        }
+      },
+      "RuntimeLogTextResponse": {
+        "type": "object",
+        "properties": {
+          "text": { "type": "string" }
+        }
+      },
+      "RuntimeLogExportResult": {
+        "type": "object",
+        "properties": {
+          "destination": { "type": "string", "format": "uri" }
+        }
+      },
+      "RuntimeExportLogsRequest": {
+        "type": "object",
+        "properties": {
+          "destination": { "$ref": "#/components/schemas/RuntimeControlFileReference" }
+        }
+      },
+      "RuntimeUpdateBundleRequest": {
+        "type": "object",
+        "properties": {
+          "bundle": { "$ref": "#/components/schemas/RuntimeControlFileReference" }
+        }
+      },
+      "RuntimeUpdateBundleSummaryResponse": {
+        "type": "object",
+        "properties": {
+          "summary": { "type": "string" }
+        }
+      }
+    }
+  }
+}

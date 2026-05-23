@@ -1,8 +1,8 @@
 # Render with:
-#   VITALSERVER_PROXY_PORT=80 VITALSERVER_HTTP_PORT=18080 make proxy-config
+#   VITALSERVER_PROXY_PORT=80 PROXY_UPSTREAM=127.0.0.1:18080 make proxy-config
 #
-# The proxy must run on the macOS host, not inside Docker. It preserves the
-# VR device source IP before macOS container runtime port forwarding rewrites it.
+# The proxy must run on the macOS host. It preserves the VR device source IP
+# before the request enters Docker, OrbStack, or the Linux VM shared/NAT network.
 
 worker_processes 1;
 pid logs/nginx.pid;
@@ -24,8 +24,25 @@ http {
         listen ${VITALSERVER_PROXY_PORT};
         server_name _;
 
+        location = /health {
+            access_log off;
+            default_type text/plain;
+            return 204;
+        }
+
+        location = /ready {
+            proxy_pass http://${PROXY_UPSTREAM}/ready;
+            proxy_http_version 1.1;
+
+            proxy_set_header Host $host;
+            proxy_set_header X-Forwarded-For $remote_addr;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Client-IP $remote_addr;
+            proxy_set_header Forwarded "for=$remote_addr;proto=$scheme;host=$host";
+        }
+
         location / {
-            proxy_pass http://127.0.0.1:${VITALSERVER_HTTP_PORT};
+            proxy_pass http://${PROXY_UPSTREAM};
             proxy_http_version 1.1;
 
             proxy_set_header Host $host;

@@ -1,0 +1,154 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+vm_home="${VITALSERVER_VM_HOME:-/Library/Application Support/TiroshVitalServer/vm}"
+nginx_prefix="${VITALSERVER_NGINX_PREFIX:-/Library/Application Support/TiroshVitalServer/nginx}"
+nginx_bin="${VITALSERVER_NGINX_BIN:-${nginx_prefix}/sbin/nginx}"
+proxy_port="${VITALSERVER_PROXY_PORT:-80}"
+
+state_file="${vm_home}/data/run/runtime-state.json"
+legacy_ip_file="${vm_home}/data/run/vm-ip"
+template="${vm_home}/Support/Proxy/vitalserver.conf.template"
+config="${nginx_prefix}/vitalserver.conf"
+pid_file="${nginx_prefix}/logs/nginx.pid"
+
+mkdir -p "${nginx_prefix}/logs"
+
+nginx_is_running() {
+  [ -s "${pid_file}" ] && kill -0 "$(cat "${pid_file}")" >/dev/null 2>&1
+}
+
+stop_nginx() {
+  if nginx_is_running; then
+    "${nginx_bin}" -p "${nginx_prefix}" -c "${config}" -s quit >/dev/null 2>&1 || true
+  fi
+}
+
+render_config() {
+  local upstream="$1"
+
+  sed \
+    -e "s|\${VITALSERVER_PROXY_PORT}|${proxy_port}|g" \
+    -e "s|\${PROXY_UPSTREAM}|${upstream}|g" \
+    "${template}" > "${config}"
+}
+
+apply_config() {
+  local upstream="$1"
+
+  render_config "${upstream}"
+  "${nginx_bin}" -p "${nginx_prefix}" -c "${config}" -t
+
+  if nginx_is_running; then
+    "${nginx_bin}" -p "${nginx_prefix}" -c "${config}" -s reload
+    printf "reloaded proxy: http://localhost:%s -> http://%s\n" "${proxy_port}" "${upstream}"
+  else
+    if command -v lsof >/dev/null 2>&1; then
+      listeners="$(lsof -nP -iTCP:"${proxy_port}" -sTCP:LISTEN 2>/dev/null | awk 'NR>1 {print $1 "/" $2}' | sort -u | paste -sd, - || true)"
+      if [ -n "${listeners}" ]; then
+        printf "proxy port %s is already used by: %s\n" "${proxy_port}" "${listeners}" >&2
+      fi
+    fi
+    "${nginx_bin}" -p "${nginx_prefix}" -c "${config}"
+    printf "started proxy: http://localhost:%s -> http://%s\n" "${proxy_port}" "${upstream}"
+  fi
+}
+
+read_state_value() {
+  local key="$1"
+  local value=""
+
+  if [ -s "${state_file}" ] && [ -x /usr/bin/plutil ]; then
+    value="$(/usr/bin/plutil -extract "${key}" raw -o - "${state_file}" 2>/dev/null || true)"
+  fi
+  if [ -z "${value}" ] && [ -s "${state_file}" ]; then
+    value="$(sed -n "s/.*\"${key}\"[[:space:]]*:[[:space:]]*\"\\([^\"]*\\)\".*/\\1/p" "${state_file}" | head -n 1)"
+  fi
+
+  printf "%s" "${value}" | tr -d '[:space:]'
+}
+
+read_vm_ip() {
+  local value=""
+
+  value="$(read_state_value vmIP)"
+  if [ -z "${value}" ] && [ -s "${legacy_ip_file}" ]; then
+    value="$(cat "${legacy_ip_file}" | tr -d '[:space:]')"
+  fi
+
+  printf "%s" "${value}"
+}
+
+read_guest_http() {
+  read_state_value guestHTTP
+}
+
+successful_http_status() {
+  local value="$1"
+
+  case "${value}" in
+    2* | 3*)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+upstream_ready() {
+  local upstream="$1"
+
+  command -v curl >/dev/null 2>&1 \
+    && curl -fsS -I --max-time 3 "http://${upstream}/" >/dev/null 2>&1
+}
+
+trap stop_nginx EXIT INT TERM
+
+last_upstream=""
+last_wait_message=""
+while true; do
+  vm_ip="$(read_vm_ip)"
+  if [ -n "${vm_ip}" ]; then
+    upstream="${vm_ip}:80"
+    guest_http="$(read_guest_http)"
+
+    if ! successful_http_status "${guest_http}"; then
+      if nginx_is_running; then
+        printf "VM runtime bootstrap is not ready; stopping proxy upstream=%s guestHTTP=%s\n" "${upstream}" "${guest_http:-missing}" >&2
+        stop_nginx
+      fi
+      wait_key="bootstrap:${upstream}:${guest_http:-missing}"
+      if [ "${last_wait_message}" != "${wait_key}" ]; then
+        printf "waiting for VM runtime bootstrap: upstream=http://%s/ guestHTTP=%s\n" "${upstream}" "${guest_http:-missing}" >&2
+        last_wait_message="${wait_key}"
+      fi
+      last_upstream=""
+    elif upstream_ready "${upstream}"; then
+      if [ "${upstream}" != "${last_upstream}" ] || ! nginx_is_running; then
+        apply_config "${upstream}"
+        last_upstream="${upstream}"
+      fi
+      last_wait_message=""
+    else
+      if nginx_is_running; then
+        printf "VM upstream is not ready; stopping proxy upstream=%s\n" "${upstream}" >&2
+        stop_nginx
+      fi
+      if [ "${last_wait_message}" != "${upstream}" ]; then
+        printf "waiting for VM upstream readiness: http://%s/\n" "${upstream}" >&2
+        last_wait_message="${upstream}"
+      fi
+      last_upstream=""
+    fi
+  elif nginx_is_running; then
+    printf "VM runtime state is missing; stopping proxy with stale upstream: %s\n" "${state_file}" >&2
+    stop_nginx
+    last_upstream=""
+  elif [ "${last_wait_message}" != "missing-state" ]; then
+    printf "waiting for VM runtime state: %s\n" "${state_file}" >&2
+    last_wait_message="missing-state"
+  fi
+
+  sleep "${VITALSERVER_PROXY_RELOAD_INTERVAL:-2}"
+done

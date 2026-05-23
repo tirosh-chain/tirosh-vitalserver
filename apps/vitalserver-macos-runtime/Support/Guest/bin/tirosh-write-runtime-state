@@ -1,0 +1,138 @@
+#!/usr/bin/env python3
+import json
+import os
+import socket
+import subprocess
+import sys
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+
+
+def first_non_loopback_ip() -> str:
+    try:
+        output = subprocess.check_output(["hostname", "-I"], stderr=subprocess.DEVNULL, text=True)
+        for candidate in output.split():
+            if not candidate.startswith(("127.", "169.254.")):
+                return candidate
+    except Exception:
+        pass
+
+    try:
+        for candidate in socket.gethostbyname_ex(socket.gethostname())[2]:
+            if not candidate.startswith(("127.", "169.254.")):
+                return candidate
+    except socket.gaierror:
+        pass
+
+    return ""
+
+
+def boot_id() -> str | None:
+    path = Path("/proc/sys/kernel/random/boot_id")
+    if not path.is_file():
+        return None
+    return path.read_text(encoding="utf-8").strip()
+
+
+def optional_arg(index: int) -> str | None:
+    if len(sys.argv) <= index:
+        return None
+    value = sys.argv[index]
+    return value if value else None
+
+
+def read_proc_stat() -> tuple[int, int] | None:
+    try:
+        fields = Path("/proc/stat").read_text(encoding="utf-8").splitlines()[0].split()[1:]
+        values = [int(value) for value in fields]
+    except Exception:
+        return None
+
+    idle = values[3] + (values[4] if len(values) > 4 else 0)
+    total = sum(values)
+    return idle, total
+
+
+def cpu_usage_percent() -> float | None:
+    first = read_proc_stat()
+    if first is None:
+        return None
+    time.sleep(0.1)
+    second = read_proc_stat()
+    if second is None:
+        return None
+
+    idle_delta = second[0] - first[0]
+    total_delta = second[1] - first[1]
+    if total_delta <= 0:
+        return None
+    return round(max(0.0, min(100.0, (1.0 - (idle_delta / total_delta)) * 100.0)), 1)
+
+
+def memory_usage() -> dict[str, int] | None:
+    values: dict[str, int] = {}
+    try:
+        for line in Path("/proc/meminfo").read_text(encoding="utf-8").splitlines():
+            key, raw_value = line.split(":", 1)
+            values[key] = int(raw_value.strip().split()[0]) * 1024
+    except Exception:
+        return None
+
+    total = values.get("MemTotal")
+    available = values.get("MemAvailable")
+    if total is None or available is None:
+        return None
+    return {"usedBytes": max(total - available, 0), "totalBytes": total}
+
+
+def disk_usage(path: str) -> dict[str, int] | None:
+    try:
+        stats = os.statvfs(path)
+    except OSError:
+        return None
+
+    total = stats.f_frsize * stats.f_blocks
+    available = stats.f_frsize * stats.f_bavail
+    return {"usedBytes": max(total - available, 0), "totalBytes": total}
+
+
+def main() -> int:
+    if len(sys.argv) < 2 or len(sys.argv) > 5:
+        print(
+            "usage: tirosh-write-runtime-state <runtime-state.json> [guest-http] [redis-ui-http] [swagger-ui-http]",
+            file=sys.stderr,
+        )
+        return 2
+
+    state_path = Path(sys.argv[1])
+    guest_http = optional_arg(2)
+    redis_ui_http = optional_arg(3)
+    swagger_ui_http = optional_arg(4)
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "vmIP": first_non_loopback_ip(),
+                "bootID": boot_id(),
+                "cpuUsagePercent": cpu_usage_percent(),
+                "guestHTTP": guest_http,
+                "memory": memory_usage(),
+                "redisUIHTTP": redis_ui_http,
+                "systemDisk": disk_usage("/"),
+                "swaggerUIHTTP": swagger_ui_http,
+                "updatedAt": datetime.now(timezone.utc).isoformat(),
+                "vitalFilesDisk": disk_usage("/mnt/tirosh-vital-files"),
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

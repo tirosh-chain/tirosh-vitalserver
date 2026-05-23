@@ -1,0 +1,117 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+MOUNT_TAG="${TIROSH_SHARE_TAG:-tirosh}"
+MOUNT_POINT="${TIROSH_SHARE_MOUNT:-/mnt/tirosh}"
+DEPLOY_DIR="${TIROSH_DEPLOY_DIR:-${MOUNT_POINT}/deploy}"
+RUNTIME_DIR="${MOUNT_POINT}/run"
+REQUEST_FILE="${RUNTIME_DIR}/activate-update.request"
+RESULT_FILE="${RUNTIME_DIR}/activate-update-result.json"
+LOG_FILE="${RUNTIME_DIR}/activate-update.log"
+PROJECT_NAME="vitalserver"
+REQUEST_ID=""
+REQUEST_VERSION=""
+
+mount_runtime_share() {
+  mkdir -p "${MOUNT_POINT}"
+  if ! mountpoint -q "${MOUNT_POINT}"; then
+    mount -t virtiofs "${MOUNT_TAG}" "${MOUNT_POINT}"
+  fi
+  mkdir -p "${RUNTIME_DIR}"
+}
+
+write_result() {
+  local status="$1"
+  local message="$2"
+  local updated_at
+
+  updated_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  cat > "${RESULT_FILE}" <<EOF
+{
+  "operation" : "activate-update",
+  "requestId" : "${REQUEST_ID}",
+  "schemaVersion" : 2,
+  "message" : "${message}",
+  "status" : "${status}",
+  "updatedAt" : "${updated_at}"
+}
+EOF
+}
+
+load_request_metadata() {
+  if ! command -v python3 >/dev/null 2>&1; then
+    printf "error: python3 is required to read activation request metadata\n" >&2
+    return 1
+  fi
+
+  REQUEST_ID="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("requestId", ""))' "${REQUEST_FILE}")"
+  REQUEST_VERSION="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("version", ""))' "${REQUEST_FILE}")"
+  if [ -z "${REQUEST_ID}" ]; then
+    printf "error: activation request is missing requestId\n" >&2
+    return 1
+  fi
+}
+
+load_bundled_docker_images() {
+  local image_dir="${DEPLOY_DIR}/docker-images"
+  local loaded=0
+
+  if [ ! -d "${image_dir}" ]; then
+    printf "docker image bundle directory is missing: %s\n" "${image_dir}"
+    return
+  fi
+
+  for image_bundle in "${image_dir}"/*.tar "${image_dir}"/*.tar.gz "${image_dir}"/*.tgz; do
+    [ -e "${image_bundle}" ] || continue
+    printf "Loading Docker image bundle: %s\n" "${image_bundle}"
+    docker load -i "${image_bundle}"
+    loaded=1
+  done
+
+  if [ "${loaded}" -eq 0 ]; then
+    printf "No Docker image bundles found under %s\n" "${image_dir}"
+  else
+    printf "Bundled Docker images are loaded.\n"
+  fi
+}
+
+activate_runtime() {
+  eval "$(/usr/local/bin/tirosh-runtime-env "${DEPLOY_DIR}/runtime-config.json")"
+  load_bundled_docker_images
+
+  docker compose --project-name "${PROJECT_NAME}" -f "${DEPLOY_DIR}/compose.yaml" down --remove-orphans
+  /usr/local/bin/tirosh-vitalserver-compose up
+  /usr/local/bin/tirosh-runtime-state once || true
+}
+
+main() {
+  mount_runtime_share
+  : > "${LOG_FILE}"
+  exec > >(tee -a "${LOG_FILE}") 2>&1
+
+  printf "guest update activation started\n"
+  if [ ! -f "${REQUEST_FILE}" ]; then
+    printf "request file is missing; exiting\n"
+    write_result "skipped" "request file is missing"
+    return
+  fi
+  if ! load_request_metadata; then
+    write_result "failed" "Activation request metadata is invalid."
+    return 1
+  fi
+
+  printf "guest update activation requestId=%s version=%s\n" "${REQUEST_ID}" "${REQUEST_VERSION:-unknown}"
+  write_result "running" "Guest update activation started."
+
+  if activate_runtime; then
+    rm -f "${REQUEST_FILE}"
+    write_result "completed" "Guest Docker images loaded and VitalServer services recreated."
+    printf "guest update activation completed\n"
+  else
+    write_result "failed" "Guest update activation failed. See activate-update.log."
+    printf "guest update activation failed\n" >&2
+    return 1
+  fi
+}
+
+main "$@"

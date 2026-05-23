@@ -49,9 +49,9 @@ doctor:
 	fi
 	@mkdir -p "$(PROXY_RUNTIME_DIR)/logs"
 	@VITALSERVER_PROXY_PORT="$(VITALSERVER_PROXY_PORT)" \
-	VITALSERVER_HTTP_PORT="$(VITALSERVER_HTTP_PORT)" \
+	PROXY_UPSTREAM="$(PROXY_UPSTREAM)" \
 	PROXY_CONFIG="$(PROXY_CONFIG)" \
-	"$(PYTHON)" -c 'import os, pathlib; p=pathlib.Path("infra/macos-nginx/vitalserver.conf.template"); s=p.read_text(); pathlib.Path(os.environ["PROXY_CONFIG"]).write_text(s.replace("$${VITALSERVER_PROXY_PORT}", os.environ["VITALSERVER_PROXY_PORT"]).replace("$${VITALSERVER_HTTP_PORT}", os.environ["VITALSERVER_HTTP_PORT"]))'
+	"$(PYTHON)" -c 'import os, pathlib; p=pathlib.Path("infra/macos-nginx/vitalserver.conf.template"); s=p.read_text(); pathlib.Path(os.environ["PROXY_CONFIG"]).write_text(s.replace("$${VITALSERVER_PROXY_PORT}", os.environ["VITALSERVER_PROXY_PORT"]).replace("$${PROXY_UPSTREAM}", os.environ["PROXY_UPSTREAM"]))'
 	@"$(NGINX_BIN)" -t -p "$(CURDIR)/$(PROXY_RUNTIME_DIR)" -c "$(CURDIR)/$(PROXY_CONFIG)" >"$(PROXY_RUNTIME_DIR)/logs/nginx-test.log" 2>&1 || { \
 		cat "$(PROXY_RUNTIME_DIR)/logs/nginx-test.log"; \
 		printf "error: nginx proxy config is invalid\n"; \

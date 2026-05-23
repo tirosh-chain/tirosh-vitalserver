@@ -7,8 +7,8 @@ macOS에서 Docker나 OrbStack으로 container port를 직접 publish하면 Vita
 ```text
 VRecorder / Browser
   -> macOS host nginx public port
-  -> Docker backend 127.0.0.1:18080
-  -> VitalServer container :80
+  -> backend 127.0.0.1:18080 or VM shared/NAT IP:80
+  -> VitalServer :80
 ```
 
 ## Backend 환경
@@ -29,6 +29,12 @@ VITALSERVER_PUBLIC_PORT=
 
 외부 VRecorder 장비와 브라우저는 Docker backend port가 아니라 macOS host proxy port로 접속해야
 합니다.
+
+VM shared/NAT mode에서는 backend upstream을 VM endpoint로 바꿉니다.
+
+```sh
+VM_PROXY_UPSTREAM=<vm-ip>:80 make vm-proxy-start
+```
 
 ## nginx config 렌더링
 
@@ -64,8 +70,36 @@ make proxy-start
 make proxy-status
 make proxy-reload
 make proxy-stop
+make proxy-stop-orphans  # pid file 없이 남은 nginx listener 정리
 make proxy-clean
 ```
+
+`make proxy-status`는 nginx pid file뿐 아니라 proxy port listener와 Docker backend
+`/check` 응답도 함께 확인합니다. `make proxy-stop`은 pid file이 없거나 stale이어도 repository
+config 기준으로 nginx stop을 한 번 더 시도합니다.
+
+## 502 Bad Gateway 확인
+
+nginx 화면에서 `502 Bad Gateway`가 보이면 proxy는 요청을 받았지만 Docker backend에 연결하지
+못한 상태입니다. nginx error log에는 보통 아래와 같은 메시지가 남습니다.
+
+```text
+connect() failed (61: Connection refused) while connecting to upstream
+upstream: "http://127.0.0.1:18080/..."
+```
+
+이때는 아래 순서로 확인합니다.
+
+```sh
+make proxy-status
+docker compose ps
+curl -sv http://127.0.0.1:18080/check
+tail -80 .tmp/macos-nginx/logs/error.log
+```
+
+`proxy-status`에서 backend가 reachable하지 않다고 나오면 `make up` 또는 `docker compose up -d`로
+backend를 먼저 살립니다. proxy port가 nginx가 아닌 다른 process에 잡혀 있으면 해당 process를
+중지하거나 `VITALSERVER_PROXY_PORT`를 바꿔 실행합니다.
 
 ## launchd plist 렌더링
 
@@ -74,5 +108,6 @@ make proxy-plist \
   > /Library/LaunchDaemons/com.tirosh.vitalserver-proxy.plist
 ```
 
-설치형 배포에서는 nginx binary, 렌더링된 nginx config, LaunchDaemon plist, Docker `.env`를 함께
-제공해야 합니다. 그래야 container backend와 native proxy가 같은 port 계약을 유지합니다.
+설치형 배포에서는 nginx binary, 렌더링된 nginx config, LaunchDaemon plist,
+VM deploy `runtime-config.json`을 함께 제공합니다. 그래야 container backend와 native proxy가 같은
+port 계약을 유지합니다.

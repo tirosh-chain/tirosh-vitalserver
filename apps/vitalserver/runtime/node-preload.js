@@ -5,7 +5,7 @@ const moduleLoader = require("module");
 const redis = require("redis");
 
 const realCpus = os.cpus.bind(os);
-const minCpus = Number.parseInt(process.env.VITALSERVER_MIN_CPUS || "6", 10);
+const minCpus = Number.parseInt(process.env.VITALSERVER_MIN_CPUS || "8", 10);
 const adminPassword = process.env.VITALSERVER_ADMIN_PASSWORD || "admin";
 const publicHost = process.env.VITALSERVER_PUBLIC_HOST || "";
 const publicPort = process.env.VITALSERVER_PUBLIC_PORT || "";
@@ -27,8 +27,10 @@ os.cpus = function patchedCpus() {
   return Array.from({ length: minCpus }, () => template);
 };
 
-const realRedisSet = redis.RedisClient.prototype.set;
 const realModuleLoad = moduleLoader._load;
+const adminUserKey = "users:admin";
+const redisRetryBaseMs = 500;
+const redisRetryMaxMs = 5000;
 
 function shouldRewriteRedisHost(host) {
   return !host || host === "0.0.0.0" || host === "127.0.0.1" || host === "localhost";
@@ -46,6 +48,9 @@ function rewriteRedisOptions(options) {
   if (!next.port || Number.parseInt(next.port, 10) === 6379) {
     next.port = redisPort;
   }
+  if (typeof next.retry_strategy !== "function") {
+    next.retry_strategy = redisRetryStrategy;
+  }
 
   return next;
 }
@@ -54,7 +59,7 @@ function rewriteRedisCreateClientArgs(args) {
   const next = [...args];
 
   if (next.length === 0) {
-    return [{ host: redisHost, port: redisPort }];
+    return [rewriteRedisOptions({ host: redisHost, port: redisPort })];
   }
 
   if (typeof next[0] === "object" && next[0] !== null) {
@@ -67,7 +72,80 @@ function rewriteRedisCreateClientArgs(args) {
     next[1] = redisHost;
   }
 
+  if (typeof next[0] === "number") {
+    if (typeof next[2] === "object" && next[2] !== null) {
+      next[2] = rewriteRedisOptions(next[2]);
+    } else {
+      next[2] = rewriteRedisOptions({});
+    }
+  }
+
   return next;
+}
+
+function redisRetryStrategy(options) {
+  const delay = Math.min(
+    redisRetryBaseMs + (options.attempt || 0) * redisRetryBaseMs,
+    redisRetryMaxMs
+  );
+
+  if (options.error) {
+    console.error(
+      `[tirosh] redis reconnect scheduled code=${options.error.code || "unknown"} delay_ms=${delay}`
+    );
+  }
+
+  return delay;
+}
+
+function attachRedisErrorHandler(client) {
+  if (!client || client.__tiroshRedisErrorHandlerAttached) {
+    return client;
+  }
+
+  client.on("error", (error) => {
+    console.error("[tirosh] redis client error:", error.message);
+  });
+  client.on("reconnecting", (info) => {
+    const delay = info && info.delay ? info.delay : "unknown";
+    const attempt = info && info.attempt ? info.attempt : "unknown";
+    console.error(`[tirosh] redis reconnecting attempt=${attempt} delay_ms=${delay}`);
+  });
+
+  Object.defineProperty(client, "__tiroshRedisErrorHandlerAttached", {
+    value: true,
+    enumerable: false,
+  });
+
+  return client;
+}
+
+function patchRedisSet(redisModule) {
+  if (
+    !redisModule ||
+    !redisModule.RedisClient ||
+    !redisModule.RedisClient.prototype ||
+    redisModule.RedisClient.prototype.__tiroshRedisSetPatched
+  ) {
+    return;
+  }
+
+  const moduleRedisSet = redisModule.RedisClient.prototype.set;
+  redisModule.RedisClient.prototype.set = function patchedRedisSet(key, value, ...rest) {
+    if (key === adminUserKey && typeof value === "string") {
+      try {
+        value = JSON.stringify(withConfiguredAdminPassword(JSON.parse(value)));
+      } catch (error) {
+        // Keep the upstream value if it is not the expected JSON payload.
+      }
+    }
+
+    return moduleRedisSet.call(this, key, value, ...rest);
+  };
+  Object.defineProperty(redisModule.RedisClient.prototype, "__tiroshRedisSetPatched", {
+    value: true,
+    enumerable: false,
+  });
 }
 
 function patchRedisModule(redisModule) {
@@ -77,8 +155,9 @@ function patchRedisModule(redisModule) {
 
   const realCreateClient = redisModule.createClient.bind(redisModule);
   redisModule.createClient = function patchedCreateClient(...args) {
-    return realCreateClient(...rewriteRedisCreateClientArgs(args));
+    return attachRedisErrorHandler(realCreateClient(...rewriteRedisCreateClientArgs(args)));
   };
+  patchRedisSet(redisModule);
   Object.defineProperty(redisModule, "__tiroshRedisPatched", {
     value: true,
     enumerable: false,
@@ -89,21 +168,73 @@ function patchRedisModule(redisModule) {
 
 patchRedisModule(redis);
 
-redis.RedisClient.prototype.set = function patchedRedisSet(key, value, ...rest) {
-  if (key === "users:admin" && typeof value === "string") {
-    try {
-      const user = JSON.parse(value);
-      if (user && user.id === "admin") {
-        user.password = adminPassword;
-        value = JSON.stringify(user);
-      }
-    } catch (error) {
-      // Keep the upstream value if it is not the expected JSON payload.
+function withConfiguredAdminPassword(user) {
+  if (user && user.id === "admin") {
+    user.password = adminPassword;
+  }
+  return user;
+}
+
+function syncConfiguredAdminPassword() {
+  const client = redis.createClient(redisPort, redisHost);
+  let completed = false;
+
+  function close() {
+    if (!completed) {
+      completed = true;
+      client.quit();
     }
   }
 
-  return realRedisSet.call(this, key, value, ...rest);
-};
+  client.on("ready", () => {
+    client.get(adminUserKey, (getError, value) => {
+      if (getError) {
+        console.error("[tirosh] failed to read admin user:", getError.message);
+        close();
+        return;
+      }
+
+      let user;
+      try {
+        user = value ? JSON.parse(value) : null;
+      } catch (error) {
+        console.error("[tirosh] failed to parse admin user:", error.message);
+        close();
+        return;
+      }
+
+      if (!user || user.id !== "admin") {
+        user = {
+          id: "admin",
+          password: adminPassword,
+          name: "admin",
+          email: "",
+          admin_yn: "Y",
+        };
+      } else {
+        user = withConfiguredAdminPassword(user);
+      }
+
+      client.sadd("users", "admin", () => {
+        client.set(adminUserKey, JSON.stringify(user), (setError) => {
+          if (setError) {
+            console.error("[tirosh] failed to sync admin password:", setError.message);
+          } else {
+            console.log("[tirosh] admin password synced");
+          }
+          close();
+        });
+      });
+    });
+  });
+
+  client.on("error", (error) => {
+    console.error("[tirosh] admin password sync redis error:", error.message);
+    close();
+  });
+}
+
+setTimeout(syncConfiguredAdminPassword, 1000);
 
 moduleLoader._load = function patchedModuleLoad(request, parent, isMain) {
   const exported = realModuleLoad.call(this, request, parent, isMain);
