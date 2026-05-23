@@ -153,7 +153,7 @@ LaunchDaemon으로 실행해 외부 장비와 브라우저가 proxy port로만 �
 │   │   ├── docker/            # Docker 배포 target
 │   │   └── runtime/           # 공통 실행 shim
 │   └── vitalserver-macos-runtime/
-│       ├── Sources/           # macOS Helper app, runtime CLI, RuntimeControl/RuntimeContracts 계약/adapter
+│       ├── Sources/           # macOS Helper app, runtime CLI, Management/Contracts 계약/adapter
 │       ├── Support/           # app/packaging/guest/build assets
 │       └── Tests/
 ├── config/

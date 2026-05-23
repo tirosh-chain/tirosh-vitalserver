@@ -707,7 +707,7 @@ make vm-status
 ## Code Structure
 
 ```text
-Sources/HostRuntimeControl/
+Sources/HostCLI/
   main.swift
 
   CLI/

@@ -1,0 +1,143 @@
+import Foundation
+import Management
+@testable import LocalManagement
+@testable import MacManagerApp
+import XCTest
+
+@MainActor
+final class RuntimeLogExporterTests: XCTestCase {
+    func testExportRefreshesCollectionAndIncludesFallbackGuestLogs() async throws {
+        let root = try temporaryDirectory()
+        let guestRun = root.appendingPathComponent("vm/data/run", isDirectory: true)
+        let productLogs = root.appendingPathComponent("product/logs", isDirectory: true)
+        let destination = root.appendingPathComponent("export.zip")
+        try FileManager.default.createDirectory(at: guestRun, withIntermediateDirectories: true)
+        try "bootstrap".write(
+            to: guestRun.appendingPathComponent("bootstrap.log"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try "containers".write(
+            to: guestRun.appendingPathComponent("container-logs.log"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try "rotated".write(
+            to: guestRun.appendingPathComponent("container-logs.log.1"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let collector = FakeRuntimeLogCollectorForExport()
+        var archivedBootstrapLog: String?
+        var archivedContainerLog: String?
+        var archivedRotatedContainerLog: String?
+        let exporter = LocalRuntimeLogExporter(
+            logCollector: collector,
+            productLogsDirectory: productLogs,
+            fallbackLogItems: [
+                RuntimeLogExportFallback(
+                    source: guestRun.appendingPathComponent("bootstrap.log"),
+                    relativeDestination: "guest/bootstrap.log"
+                ),
+                RuntimeLogExportFallback(
+                    source: guestRun.appendingPathComponent("container-logs.log"),
+                    relativeDestination: "guest/container-logs.log"
+                ),
+            ],
+            rotatedFallbackSets: [
+                RuntimeLogExportRotatedFallbackSet(
+                    sourceDirectory: guestRun,
+                    sourceFilePrefix: "container-logs.log.",
+                    relativeDestinationDirectory: "guest",
+                    destinationFilePrefix: "container-logs.log."
+                ),
+            ],
+            archiveRunner: { _, arguments in
+                let bundleRoot = URL(fileURLWithPath: arguments[4])
+                let temporaryArchive = URL(fileURLWithPath: arguments[5])
+                archivedBootstrapLog = try? String(
+                    contentsOf: bundleRoot.appendingPathComponent("guest/bootstrap.log")
+                )
+                archivedContainerLog = try? String(
+                    contentsOf: bundleRoot.appendingPathComponent("guest/container-logs.log")
+                )
+                archivedRotatedContainerLog = try? String(
+                    contentsOf: bundleRoot.appendingPathComponent("guest/container-logs.log.1")
+                )
+                try? "archive".write(to: temporaryArchive, atomically: true, encoding: .utf8)
+                return ProcessResult(exitCode: 0, stdout: "", stderr: "")
+            }
+        )
+
+        let result = try await exporter.exportLogs(to: destination)
+
+        XCTAssertEqual(result.destination, destination)
+        XCTAssertEqual(collector.refreshCount, 1)
+        XCTAssertEqual(try String(contentsOf: destination), "archive")
+        XCTAssertEqual(archivedBootstrapLog, "bootstrap")
+        XCTAssertEqual(archivedContainerLog, "containers")
+        XCTAssertEqual(archivedRotatedContainerLog, "rotated")
+    }
+
+    func testExportDoesNotOverwriteCentralLogsWithFallbackSource() async throws {
+        let root = try temporaryDirectory()
+        let guestRun = root.appendingPathComponent("vm/data/run", isDirectory: true)
+        let productLogs = root.appendingPathComponent("product/logs", isDirectory: true)
+        let centralGuestLogs = productLogs.appendingPathComponent("guest", isDirectory: true)
+        let destination = root.appendingPathComponent("export.zip")
+        try FileManager.default.createDirectory(at: guestRun, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: centralGuestLogs, withIntermediateDirectories: true)
+        try "source".write(
+            to: guestRun.appendingPathComponent("bootstrap.log"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try "central".write(
+            to: centralGuestLogs.appendingPathComponent("bootstrap.log"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        var archivedBootstrapLog: String?
+        let exporter = LocalRuntimeLogExporter(
+            logCollector: FakeRuntimeLogCollectorForExport(),
+            productLogsDirectory: productLogs,
+            fallbackLogItems: [
+                RuntimeLogExportFallback(
+                    source: guestRun.appendingPathComponent("bootstrap.log"),
+                    relativeDestination: "guest/bootstrap.log"
+                ),
+            ],
+            rotatedFallbackSets: [],
+            archiveRunner: { _, arguments in
+                let bundleRoot = URL(fileURLWithPath: arguments[4])
+                let temporaryArchive = URL(fileURLWithPath: arguments[5])
+                archivedBootstrapLog = try? String(
+                    contentsOf: bundleRoot.appendingPathComponent("guest/bootstrap.log")
+                )
+                try? "archive".write(to: temporaryArchive, atomically: true, encoding: .utf8)
+                return ProcessResult(exitCode: 0, stdout: "", stderr: "")
+            }
+        )
+
+        _ = try await exporter.exportLogs(to: destination)
+
+        XCTAssertEqual(archivedBootstrapLog, "central")
+    }
+
+    private func temporaryDirectory() throws -> URL {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("RuntimeLogExporterTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory
+    }
+}
+
+private final class FakeRuntimeLogCollectorForExport: RuntimeLogCollecting {
+    private(set) var refreshCount = 0
+
+    func refreshLogCollection() {
+        refreshCount += 1
+    }
+}

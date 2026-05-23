@@ -10,67 +10,67 @@ let package = Package(
     products: [
         .executable(
             name: "vitalserver-vm",
-            targets: ["HostRuntimeControl"]
+            targets: ["HostCLI"]
         ),
         .executable(
             name: "VitalServerHelper",
-            targets: ["VitalServerHelperApp"]
+            targets: ["MacManagerApp"]
         )
     ],
     targets: [
         .target(
-            name: "RuntimeContracts"
+            name: "Contracts"
         ),
         .target(
-            name: "RuntimeCore",
-            dependencies: ["RuntimeContracts"]
+            name: "Core",
+            dependencies: ["Contracts"]
         ),
         .target(
-            name: "RuntimeControl",
-            dependencies: ["RuntimeContracts"]
+            name: "Management",
+            dependencies: ["Contracts"]
         ),
         .target(
-            name: "HostRuntimeInfrastructure",
-            dependencies: ["RuntimeContracts", "RuntimeCore"]
+            name: "HostInfrastructure",
+            dependencies: ["Contracts", "Core"]
         ),
         .target(
-            name: "RuntimeControlAdapter",
-            dependencies: ["RuntimeContracts", "RuntimeControl", "RuntimeCore", "HostRuntimeInfrastructure"]
+            name: "LocalManagement",
+            dependencies: ["Contracts", "Management", "Core", "HostInfrastructure"]
         ),
         .executableTarget(
-            name: "HostRuntimeControl",
-            dependencies: ["RuntimeContracts", "RuntimeCore", "HostRuntimeInfrastructure"]
+            name: "HostCLI",
+            dependencies: ["Contracts", "Core", "HostInfrastructure"]
         ),
         .executableTarget(
-            name: "VitalServerHelperApp",
-            dependencies: ["RuntimeContracts", "RuntimeControl", "RuntimeCore", "RuntimeControlAdapter"]
+            name: "MacManagerApp",
+            dependencies: ["Contracts", "Management", "LocalManagement"]
         ),
         .testTarget(
-            name: "RuntimeContractsTests",
-            dependencies: ["RuntimeContracts"],
+            name: "ContractsTests",
+            dependencies: ["Contracts"],
             resources: [
                 .process("Fixtures")
             ]
         ),
         .testTarget(
-            name: "RuntimeCoreTests",
-            dependencies: ["RuntimeContracts", "RuntimeCore"]
+            name: "CoreTests",
+            dependencies: ["Contracts", "Core"]
         ),
         .testTarget(
-            name: "RuntimeControlTests",
-            dependencies: ["RuntimeContracts", "RuntimeControl"]
+            name: "ManagementTests",
+            dependencies: ["Contracts", "Management"]
         ),
         .testTarget(
-            name: "HostRuntimeInfrastructureTests",
-            dependencies: ["RuntimeContracts", "RuntimeCore", "HostRuntimeInfrastructure"]
+            name: "HostInfrastructureTests",
+            dependencies: ["Contracts", "Core", "HostInfrastructure"]
         ),
         .testTarget(
-            name: "HostRuntimeControlTests",
-            dependencies: ["RuntimeContracts", "RuntimeCore", "HostRuntimeControl"]
+            name: "HostCLITests",
+            dependencies: ["Contracts", "Core", "HostCLI"]
         ),
         .testTarget(
-            name: "VitalServerHelperAppTests",
-            dependencies: ["RuntimeContracts", "RuntimeControl", "RuntimeControlAdapter", "VitalServerHelperApp"]
+            name: "MacManagerAppTests",
+            dependencies: ["Contracts", "Management", "LocalManagement", "MacManagerApp"]
         )
     ]
 )
