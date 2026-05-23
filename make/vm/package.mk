@@ -172,7 +172,9 @@ vm-update-artifacts: vm-sign vm-app vm-nginx-bundle vm-docker-images
 	install -m 0755 "$(VM_PACKAGING_DIR)/proxy-run" "$(VM_UPDATE_ARTIFACT_DIR)/runtime-tools/vitalserver-proxy-run"
 	install -m 0755 "$(VM_PACKAGING_DIR)/uninstall" "$(VM_UPDATE_ARTIFACT_DIR)/runtime-tools/tirosh-vitalserver-uninstall"
 	tar -czf "$(VM_UPDATE_RUNTIME_TOOLS_ARCHIVE)" -C "$(VM_UPDATE_ARTIFACT_DIR)/runtime-tools" vitalserver-vm vitalserver-proxy-run tirosh-vitalserver-uninstall
-	tar -czf "$(VM_UPDATE_NGINX_BUNDLE_ARCHIVE)" -C "$(VM_PKG_NGINX_BUNDLE_DIR)" nginx
+	@mkdir -p "$(VM_UPDATE_ARTIFACT_DIR)/nginx"
+	rsync -a --delete "$(VM_PKG_NGINX_BUNDLE_DIR)/" "$(VM_UPDATE_ARTIFACT_DIR)/nginx/"
+	tar -czf "$(VM_UPDATE_NGINX_BUNDLE_ARCHIVE)" -C "$(VM_UPDATE_ARTIFACT_DIR)" nginx
 	rsync -a $(VM_RSYNC_EXCLUDES) "$(VM_GUEST_DIR)/" "$(VM_UPDATE_ARTIFACT_DIR)/deploy/"
 	@mkdir -p "$(VM_UPDATE_ARTIFACT_DIR)/deploy/apps/vitalserver" "$(VM_UPDATE_ARTIFACT_DIR)/deploy/vendor/vitalserver" "$(VM_UPDATE_ARTIFACT_DIR)/deploy/docs" "$(VM_UPDATE_ARTIFACT_DIR)/deploy/docker-images"
 	rsync -a --delete $(VM_RSYNC_EXCLUDES) apps/vitalserver/docker "$(VM_UPDATE_ARTIFACT_DIR)/deploy/apps/vitalserver/"
