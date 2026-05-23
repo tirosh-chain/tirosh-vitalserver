@@ -224,7 +224,9 @@ Update bundle manifest는 `helperVersion`, `targetPlatforms`, `minUpdaterVersion
 | Make | target orchestration, artifact path, developer wrapper |
 | Python `packages/vm-build` | Ubuntu asset, golden rootfs, nginx bundle, Docker image bundle, update bundle 생성/검증 |
 | Swift `HostRuntimeControl` | VM lifecycle, runtime install/configure/health/watchdog/update/rollback |
-| Swift `VitalServerHelperApp` | Helper app UI |
+| Swift `RuntimeControl` | Helper UI가 보는 runtime usecase 입출력 계약 |
+| Swift `RuntimeControlAdapter` | `RuntimeControl`의 macOS local file/process/CLI 구현 |
+| Swift `VitalServerHelperApp` | Helper app UI, presentation, native shell, composition |
 | Packaging shell | `postinstall`, `proxy-run`, uninstall entrypoint |
 | Guest support | cloud-init 이후 Docker Compose bootstrap, guest state 기록, diagnostics |
 
@@ -233,7 +235,7 @@ Update bundle manifest는 `helperVersion`, `targetPlatforms`, `minUpdaterVersion
 | 문서 | 볼 때 |
 |---|---|
 | [VM Launcher Overview](../../docs/vm-launcher/overview.md) | 문서군 전체 지도와 시나리오 |
-| [Architecture](../../docs/vm-launcher/architecture.md) | 구조와 책임 경계 |
+| [Architecture](../../docs/vm-launcher/architecture.md) | As-is/To-be 구조와 책임 경계 |
 | [Packaging and Update](../../docs/vm-launcher/packaging.md) | PKG/DMG/update bundle 계약 |
 | [Runtime](../../docs/vm-launcher/runtime.md) | VM boot, cloud-init, guest bootstrap, network/identity |
 | [Troubleshooting](../../docs/vm-launcher/troubleshooting.md) | 502, stale pid, disk full, install cleanup 등 |

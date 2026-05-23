@@ -1,22 +1,23 @@
 import Foundation
+import RuntimeControl
 import RuntimeCore
 import HostRuntimeInfrastructure
 
 @MainActor
-protocol RuntimeStatusReading {
+public protocol RuntimeStatusReading {
     func loadStatus(settings: RuntimeSettings) -> RuntimeStatus
     func loadHealthStatus(settings: RuntimeSettings) async -> RuntimeStatus
     func legacyCommandProgressLine() -> String?
 }
 
 @MainActor
-struct SystemRuntimeStatusReader: RuntimeStatusReading {
-    let paths: RuntimePaths
-    var commandLogPath = RuntimeAdapterConstants.Paths.commandLogFile
+public struct SystemRuntimeStatusReader: RuntimeStatusReading {
+    public let paths: RuntimePaths
+    public var commandLogPath = RuntimeAdapterConstants.Paths.commandLogFile
     private let fileStore: RuntimeFileStore
     private let storageUsageProvider: RuntimeStorageUsageProviding
 
-    init(
+    public init(
         paths: RuntimePaths,
         commandLogPath: String = RuntimeAdapterConstants.Paths.commandLogFile,
         fileStore: RuntimeFileStore = LocalRuntimeFileStore(),
@@ -28,24 +29,24 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading {
         self.storageUsageProvider = storageUsageProvider ?? LocalRuntimeStorageUsageProvider(fileStore: fileStore)
     }
 
-    func loadStatus(settings: RuntimeSettings) -> RuntimeStatus {
+    public func loadStatus(settings: RuntimeSettings) -> RuntimeStatus {
         withDataStorageUsage(loadBaseStatus(), settings: settings)
     }
 
-    func loadHealthStatus(settings: RuntimeSettings) async -> RuntimeStatus {
+    public func loadHealthStatus(settings: RuntimeSettings) async -> RuntimeStatus {
         var next = loadBaseStatus()
 
         if let vmIP = next.vmIP {
-            next.guestHTTP = await httpStatus(url: AppConstants.Product.guestHealthURL(vmIP: vmIP))
+            next.guestHTTP = await httpStatus(url: RuntimeAdapterConstants.Product.guestHealthURL(vmIP: vmIP))
         }
-        next.hostProxyHTTP = await httpStatus(url: AppConstants.Product.hostProxyHealthURL(proxyPort: next.proxyPort))
-        next.redisUIHTTP = await httpStatus(url: AppConstants.Product.redisUIURL(proxyPort: next.proxyPort))
-        next.swaggerUIHTTP = await httpStatus(url: AppConstants.Product.swaggerURL(proxyPort: next.proxyPort))
+        next.hostProxyHTTP = await httpStatus(url: RuntimeAdapterConstants.Product.hostProxyHealthURL(proxyPort: next.proxyPort))
+        next.redisUIHTTP = await httpStatus(url: RuntimeAdapterConstants.Product.redisUIURL(proxyPort: next.proxyPort))
+        next.swaggerUIHTTP = await httpStatus(url: RuntimeAdapterConstants.Product.swaggerURL(proxyPort: next.proxyPort))
 
         return withDataStorageUsage(next, settings: settings)
     }
 
-    func loadBaseStatus() -> RuntimeStatus {
+    public func loadBaseStatus() -> RuntimeStatus {
         let statusRepository = JSONFileRuntimeStatusRepository(url: URL(fileURLWithPath: paths.runtimeStatus))
         let document = statusRepository.load()
         let guestState = guestRuntimeStateDocument(paths.runtimeState)
@@ -75,7 +76,7 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading {
         )
     }
 
-    func legacyCommandProgressLine() -> String? {
+    public func legacyCommandProgressLine() -> String? {
         let url = URL(fileURLWithPath: commandLogPath)
         guard fileStore.fileExists(url),
               let content = try? fileStore.readUTF8Text(url)
@@ -91,7 +92,7 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading {
             arguments: ["-sS", "-L", "-o", "/dev/null", "-w", "%{http_code}", "--max-time", "5", url]
         )
         let code = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
-        return result.exitCode == 0 && !code.isEmpty ? code : AppConstants.StatusText.failed
+        return result.exitCode == 0 && !code.isEmpty ? code : RuntimeAdapterConstants.StatusText.failed
     }
 
     private func withDataStorageUsage(_ status: RuntimeStatus, settings: RuntimeSettings) -> RuntimeStatus {
@@ -144,15 +145,15 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading {
               let port = Int(rawPort),
               (1...65_535).contains(port)
         else {
-            return AppConstants.Product.defaultProxyPort
+            return RuntimeAdapterConstants.Product.defaultProxyPort
         }
         return port
     }
 
 }
 
-struct LegacyCommandProgressParser {
-    static func progressMessage(from content: String) -> String? {
+public struct LegacyCommandProgressParser {
+    public static func progressMessage(from content: String) -> String? {
         let lines = content
             .split(separator: "\n", omittingEmptySubsequences: false)
             .map(String.init)

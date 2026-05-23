@@ -1,26 +1,29 @@
 import Foundation
+import RuntimeControl
 import RuntimeCore
 
 @MainActor
-protocol PrivilegedCommandRunning {
+public protocol PrivilegedCommandRunning {
     func run(shellCommand: String) async -> ProcessResult
 }
 
 @MainActor
-struct SystemPrivilegedCommandRunner: PrivilegedCommandRunning {
-    func run(shellCommand: String) async -> ProcessResult {
+public struct SystemPrivilegedCommandRunner: PrivilegedCommandRunning {
+    public init() {}
+
+    public func run(shellCommand: String) async -> ProcessResult {
         let loggedCommand = RuntimeCommandFactory.commandWithLog(shellCommand)
         let script = #"do shell script "\#(RuntimeCommandFactory.appleScriptEscaped(loggedCommand))" with administrator privileges"#
         return await ProcessRunner.run(RuntimeAdapterConstants.Commands.osascript, arguments: ["-e", script])
     }
 }
 
-enum RuntimeCommandFactory {
-    static func shellQuote(_ value: String) -> String {
+public enum RuntimeCommandFactory {
+    public static func shellQuote(_ value: String) -> String {
         "'\(value.replacingOccurrences(of: "'", with: "'\\''"))'"
     }
 
-    static func shellCommand(executable: String, arguments: [String]) -> String {
+    public static func shellCommand(executable: String, arguments: [String]) -> String {
         var parts: [String] = []
         if executable == RuntimeAdapterConstants.Paths.launcher {
             parts.append(shellQuote(RuntimeAdapterConstants.Commands.env))
@@ -30,15 +33,15 @@ enum RuntimeCommandFactory {
         return parts.joined(separator: " ")
     }
 
-    static func uninstallCommand(uninstaller: String, clean: Bool) -> String {
+    public static func uninstallCommand(uninstaller: String, clean: Bool) -> String {
         ([uninstaller] + (clean ? ["--clean"] : [])).map(shellQuote).joined(separator: " ")
     }
 
-    static func deleteBackupCommand(url: URL) -> String {
+    public static func deleteBackupCommand(url: URL) -> String {
         shellCommand(executable: RuntimeAdapterConstants.Commands.rm, arguments: ["-rf", "--", url.path])
     }
 
-    static func proxyRepairCommand(proxyPort: Int) -> String {
+    public static func proxyRepairCommand(proxyPort: Int) -> String {
         let script = """
         set -euo pipefail
         port=\(proxyPort)
@@ -83,7 +86,7 @@ enum RuntimeCommandFactory {
         return "/bin/bash -lc \(shellQuote(script))"
     }
 
-    static func runtimeServicesCommand(action: RuntimeServicesAction) -> String {
+    public static func runtimeServicesCommand(action: RuntimeServicesAction) -> String {
         shellCommand(
             executable: RuntimeAdapterConstants.Paths.launcher,
             arguments: [
@@ -93,14 +96,14 @@ enum RuntimeCommandFactory {
         )
     }
 
-    static func relaunchHelperCommand() -> String {
+    public static func relaunchHelperCommand() -> String {
         [
             shellCommand(executable: RuntimeAdapterConstants.Commands.sleep, arguments: ["1"]),
             shellCommand(executable: RuntimeAdapterConstants.Commands.open, arguments: ["-n", RuntimeAdapterConstants.Paths.managerApp]),
         ].joined(separator: " && ")
     }
 
-    static func commandWithLog(_ shellCommand: String) -> String {
+    public static func commandWithLog(_ shellCommand: String) -> String {
         let logFile = shellQuote(RuntimeAdapterConstants.Paths.commandLogFile)
         let script = [
             "rm -f \(logFile)",
@@ -112,18 +115,18 @@ enum RuntimeCommandFactory {
         return "/bin/bash -lc \(shellQuote(script))"
     }
 
-    static func appleScriptEscaped(_ value: String) -> String {
+    public static func appleScriptEscaped(_ value: String) -> String {
         value
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"")
     }
 }
 
-enum RuntimeServicesAction {
+public enum RuntimeServicesAction {
     case start
     case stop
 
-    var runtimeCommand: String {
+    public var runtimeCommand: String {
         switch self {
         case .start:
             return RuntimeAdapterConstants.RuntimeCommand.startServices

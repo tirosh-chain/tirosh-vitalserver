@@ -1,12 +1,13 @@
 import Foundation
+import RuntimeControl
 import RuntimeCore
 import HostRuntimeInfrastructure
 
-protocol RuntimeLogCollecting {
+public protocol RuntimeLogCollecting {
     func refreshLogCollection()
 }
 
-struct LocalRuntimeLogCollector: RuntimeLogCollecting {
+public struct LocalRuntimeLogCollector: RuntimeLogCollecting {
     private let fileStore: RuntimeFileStore
     private let copies: [RuntimeLogCopy]
     private let rotatedCopySets: [RuntimeRotatedLogCopySet]
@@ -15,7 +16,7 @@ struct LocalRuntimeLogCollector: RuntimeLogCollecting {
     private let calendar: Calendar
     private let now: () -> Date
 
-    init(
+    public init(
         fileStore: RuntimeFileStore = LocalRuntimeFileStore(),
         copies: [RuntimeLogCopy] = RuntimeLogCopy.defaultCopies(),
         rotatedCopySets: [RuntimeRotatedLogCopySet] = RuntimeRotatedLogCopySet.defaultSets(),
@@ -33,7 +34,7 @@ struct LocalRuntimeLogCollector: RuntimeLogCollecting {
         self.now = now
     }
 
-    func refreshLogCollection() {
+    public func refreshLogCollection() {
         for item in copies {
             copyIntoCentralLogs(item)
         }
@@ -158,12 +159,18 @@ struct LocalRuntimeLogCollector: RuntimeLogCollecting {
     }
 }
 
-struct RuntimeLogCopy {
-    let source: URL
-    let destination: URL
-    let archivePrefix: String
+public struct RuntimeLogCopy {
+    public let source: URL
+    public let destination: URL
+    public let archivePrefix: String
 
-    static func defaultCopies() -> [RuntimeLogCopy] {
+    public init(source: URL, destination: URL, archivePrefix: String) {
+        self.source = source
+        self.destination = destination
+        self.archivePrefix = archivePrefix
+    }
+
+    public static func defaultCopies() -> [RuntimeLogCopy] {
         let runtimeFiles = [
             "launcher.log",
             "launchd.out.log",
@@ -214,14 +221,28 @@ struct RuntimeLogCopy {
     }
 }
 
-struct RuntimeRotatedLogCopySet {
-    let sourceDirectory: URL
-    let sourceFilePrefix: String
-    let destinationDirectory: URL
-    let destinationFilePrefix: String
-    let archivePrefix: String
+public struct RuntimeRotatedLogCopySet {
+    public let sourceDirectory: URL
+    public let sourceFilePrefix: String
+    public let destinationDirectory: URL
+    public let destinationFilePrefix: String
+    public let archivePrefix: String
 
-    static func defaultSets() -> [RuntimeRotatedLogCopySet] {
+    public init(
+        sourceDirectory: URL,
+        sourceFilePrefix: String,
+        destinationDirectory: URL,
+        destinationFilePrefix: String,
+        archivePrefix: String
+    ) {
+        self.sourceDirectory = sourceDirectory
+        self.sourceFilePrefix = sourceFilePrefix
+        self.destinationDirectory = destinationDirectory
+        self.destinationFilePrefix = destinationFilePrefix
+        self.archivePrefix = archivePrefix
+    }
+
+    public static func defaultSets() -> [RuntimeRotatedLogCopySet] {
         [
             RuntimeRotatedLogCopySet(
                 sourceDirectory: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.guestRunDirectory),

@@ -65,7 +65,7 @@ v1 기본값은 `shared/NAT VM + macOS host proxy`입니다. 이 구조는 Docke
 
 | 문서 | 먼저 볼 때 |
 |---|---|
-| [Architecture](architecture.md) | shared/NAT + host proxy 선택 이유, 단일 노드 가용성, Web/PWA UI/native shell/host runtime 책임 경계를 볼 때 |
+| [Architecture](architecture.md) | As-is/To-be 구조, shared/NAT + host proxy 선택 이유, 단일 노드 가용성, Web/PWA UI/native shell/host runtime 책임 경계를 볼 때 |
 | [ADR 0002](../adr/0002-helper-client-boundary-for-local-and-remote-runtime.md) | Web/PWA Helper UI, macOS native shell, local/remote RuntimeClient boundary를 볼 때 |
 | [ADR 0003](../adr/0003-helper-layer-and-component-version-model.md) | Helper UI, Native Shell, Runtime Control API, Updater, Supervisor, VM Driver, Service Stack, VM Image layer와 version model을 볼 때 |
 | [ADR 0004](../adr/0004-product-update-and-vm-image-update-contract.md) | Product Update, VM Image Update, two-phase Product Update 계약을 볼 때 |

@@ -1,4 +1,5 @@
 import Foundation
+@testable import RuntimeControlAdapter
 @testable import VitalServerHelperApp
 import XCTest
 

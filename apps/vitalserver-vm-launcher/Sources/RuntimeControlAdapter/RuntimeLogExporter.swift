@@ -1,13 +1,14 @@
 import Foundation
+import RuntimeControl
 import RuntimeCore
 
 @MainActor
-protocol RuntimeLogExporting {
+public protocol RuntimeLogExporting {
     func exportLogs(to destination: URL) async throws -> RuntimeLogExportResult
 }
 
 @MainActor
-struct LocalRuntimeLogExporter: RuntimeLogExporting {
+public struct LocalRuntimeLogExporter: RuntimeLogExporting {
     private let fileManager: FileManager
     private let logCollector: RuntimeLogCollecting
     private let productLogsDirectory: URL
@@ -15,7 +16,7 @@ struct LocalRuntimeLogExporter: RuntimeLogExporting {
     private let rotatedFallbackSets: [RuntimeLogExportRotatedFallbackSet]
     private let archiveRunner: (String, [String]) async -> ProcessResult
 
-    init(
+    public init(
         fileManager: FileManager = .default,
         logCollector: RuntimeLogCollecting = LocalRuntimeLogCollector(),
         productLogsDirectory: URL = URL(fileURLWithPath: RuntimeAdapterConstants.Paths.productLogs),
@@ -31,7 +32,7 @@ struct LocalRuntimeLogExporter: RuntimeLogExporting {
         self.archiveRunner = archiveRunner
     }
 
-    func exportLogs(to destination: URL) async throws -> RuntimeLogExportResult {
+    public func exportLogs(to destination: URL) async throws -> RuntimeLogExportResult {
         logCollector.refreshLogCollection()
 
         let stagingRoot = fileManager.temporaryDirectory
@@ -129,11 +130,16 @@ struct LocalRuntimeLogExporter: RuntimeLogExporting {
     }
 }
 
-struct RuntimeLogExportFallback {
-    let source: URL
-    let relativeDestination: String
+public struct RuntimeLogExportFallback {
+    public let source: URL
+    public let relativeDestination: String
 
-    static func defaultItems() -> [RuntimeLogExportFallback] {
+    public init(source: URL, relativeDestination: String) {
+        self.source = source
+        self.relativeDestination = relativeDestination
+    }
+
+    public static func defaultItems() -> [RuntimeLogExportFallback] {
         [
             RuntimeLogExportFallback(
                 source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.bootstrapLogSource),
@@ -159,13 +165,25 @@ struct RuntimeLogExportFallback {
     }
 }
 
-struct RuntimeLogExportRotatedFallbackSet {
-    let sourceDirectory: URL
-    let sourceFilePrefix: String
-    let relativeDestinationDirectory: String
-    let destinationFilePrefix: String
+public struct RuntimeLogExportRotatedFallbackSet {
+    public let sourceDirectory: URL
+    public let sourceFilePrefix: String
+    public let relativeDestinationDirectory: String
+    public let destinationFilePrefix: String
 
-    static func defaultSets() -> [RuntimeLogExportRotatedFallbackSet] {
+    public init(
+        sourceDirectory: URL,
+        sourceFilePrefix: String,
+        relativeDestinationDirectory: String,
+        destinationFilePrefix: String
+    ) {
+        self.sourceDirectory = sourceDirectory
+        self.sourceFilePrefix = sourceFilePrefix
+        self.relativeDestinationDirectory = relativeDestinationDirectory
+        self.destinationFilePrefix = destinationFilePrefix
+    }
+
+    public static func defaultSets() -> [RuntimeLogExportRotatedFallbackSet] {
         [
             RuntimeLogExportRotatedFallbackSet(
                 sourceDirectory: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.guestRunDirectory),

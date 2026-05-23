@@ -1,4 +1,5 @@
 import AppKit
+import RuntimeControlAdapter
 import Foundation
 import UniformTypeIdentifiers
 

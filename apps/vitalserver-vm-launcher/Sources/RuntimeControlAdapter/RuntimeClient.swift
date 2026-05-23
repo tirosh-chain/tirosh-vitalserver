@@ -1,49 +1,11 @@
 import Foundation
-
-extension RuntimeReleaseInfo {
-    static let generated = RuntimeReleaseInfo(
-        helperVersion: GeneratedRelease.helperVersion,
-        minimumUpdaterVersion: GeneratedRelease.minUpdaterVersion,
-        vitalServerVersion: GeneratedRelease.vitalServerVersion,
-        services: [
-            RuntimeBundledServiceInfo(
-                name: AppConstants.Labels.vitalServer,
-                image: GeneratedRelease.vitalServerImage,
-                version: GeneratedRelease.vitalServerVersion
-            ),
-            RuntimeBundledServiceInfo(
-                name: AppConstants.Labels.redis,
-                image: GeneratedRelease.redisImage,
-                version: GeneratedRelease.redisVersion
-            ),
-            RuntimeBundledServiceInfo(
-                name: AppConstants.Labels.redisUI,
-                image: GeneratedRelease.redisUIImage,
-                version: GeneratedRelease.redisUIVersion
-            ),
-            RuntimeBundledServiceInfo(
-                name: AppConstants.Labels.swaggerUI,
-                image: GeneratedRelease.swaggerUIImage,
-                version: GeneratedRelease.swaggerUIVersion
-            ),
-            RuntimeBundledServiceInfo(
-                name: AppConstants.Labels.guestEdgeProxy,
-                image: GeneratedRelease.guestEdgeImage,
-                version: GeneratedRelease.guestEdgeVersion
-            ),
-            RuntimeBundledServiceInfo(
-                name: AppConstants.Labels.hostProxyService,
-                image: GeneratedRelease.hostProxyImage,
-                version: GeneratedRelease.hostProxyVersion
-            ),
-        ]
-    )
-}
+import RuntimeControl
 
 @MainActor
-struct LocalRuntimeClient: RuntimeClient {
-    let capabilities = RuntimeClientCapabilities()
+public struct LocalRuntimeClient: RuntimeClient {
+    public let capabilities = RuntimeClientCapabilities()
 
+    private let releaseInfo: RuntimeReleaseInfo
     private let statusReader: RuntimeStatusReading
     private let fileReader: RuntimeManagerFileReading
     private let settingsReader: RuntimeSettingsReading
@@ -51,7 +13,8 @@ struct LocalRuntimeClient: RuntimeClient {
     private let actionEnvironment: RuntimeActionEnvironment
     private let logExporter: RuntimeLogExporting
 
-    init(
+    public init(
+        releaseInfo: RuntimeReleaseInfo,
         statusReader: RuntimeStatusReading = SystemRuntimeStatusReader(paths: RuntimePaths()),
         fileReader: RuntimeManagerFileReading = SystemRuntimeManagerFileReader(),
         settingsReader: RuntimeSettingsReading = SystemRuntimeSettingsReader(),
@@ -59,6 +22,7 @@ struct LocalRuntimeClient: RuntimeClient {
         actionEnvironment: RuntimeActionEnvironment = SystemRuntimeActionEnvironment(),
         logExporter: RuntimeLogExporting = LocalRuntimeLogExporter()
     ) {
+        self.releaseInfo = releaseInfo
         self.statusReader = statusReader
         self.fileReader = fileReader
         self.settingsReader = settingsReader
@@ -67,52 +31,52 @@ struct LocalRuntimeClient: RuntimeClient {
         self.logExporter = logExporter
     }
 
-    func loadSettings() -> RuntimeSettings {
+    public func loadSettings() -> RuntimeSettings {
         settingsReader.load()
     }
 
-    func loadStatus(settings: RuntimeSettings) -> RuntimeStatus {
+    public func loadStatus(settings: RuntimeSettings) -> RuntimeStatus {
         statusReader.loadStatus(settings: settings)
     }
 
-    func loadHealthStatus(settings: RuntimeSettings) async -> RuntimeStatus {
+    public func loadHealthStatus(settings: RuntimeSettings) async -> RuntimeStatus {
         await statusReader.loadHealthStatus(settings: settings)
     }
 
-    func loadBackups(latestBackupPath: String?) -> [RuntimeBackup] {
+    public func loadBackups(latestBackupPath: String?) -> [RuntimeBackup] {
         fileReader.backups(latestBackupPath: latestBackupPath)
     }
 
-    func updateBundleSummary(url: URL) -> String {
+    public func updateBundleSummary(url: URL) -> String {
         fileReader.updateBundleSummary(url: url)
     }
 
-    func logText(sourceID: LogSourceID, helperMessage: String, lineLimit: Int) -> String {
+    public func logText(sourceID: LogSourceID, helperMessage: String, lineLimit: Int) -> String {
         fileReader.logText(sourceID: sourceID, helperMessage: helperMessage, lineLimit: lineLimit)
     }
 
-    func preferredLogsPath() -> String {
+    public func preferredLogsPath() -> String {
         fileReader.preferredLogsPath()
     }
 
-    func vitalFileFolders(root: String) -> [VitalFileFolder] {
+    public func vitalFileFolders(root: String) -> [VitalFileFolder] {
         fileReader.vitalFileFolders(root: root)
     }
 
-    func legacyCommandProgressLine() -> String? {
+    public func legacyCommandProgressLine() -> String? {
         statusReader.legacyCommandProgressLine()
     }
 
-    func createDirectory(at url: URL) {
+    public func createDirectory(at url: URL) {
         actionEnvironment.createDirectory(at: url)
     }
 
-    func verifyUpdateBundle(url: URL) async throws -> ProcessResult {
+    public func verifyUpdateBundle(url: URL) async throws -> ProcessResult {
         try ensureLauncherIsAvailable()
         return await actionEnvironment.verifyBundle(launcher: RuntimeAdapterConstants.Paths.launcher, bundleURL: url)
     }
 
-    func uninstallRuntime(clean: Bool) async throws -> ProcessResult {
+    public func uninstallRuntime(clean: Bool) async throws -> ProcessResult {
         guard actionEnvironment.isExecutable(atPath: RuntimeAdapterConstants.Paths.uninstaller) else {
             throw RuntimeClientError.missingUninstaller
         }
@@ -122,7 +86,7 @@ struct LocalRuntimeClient: RuntimeClient {
         ))
     }
 
-    func applySettings(_ settings: RuntimeSettings) async throws -> ProcessResult {
+    public func applySettings(_ settings: RuntimeSettings) async throws -> ProcessResult {
         try ensureLauncherIsAvailable()
         var adminPasswordFile: URL?
         if settings.changeAdminPassword {
@@ -139,7 +103,7 @@ struct LocalRuntimeClient: RuntimeClient {
         ))
     }
 
-    func applyUpdateBundle(url: URL) async throws -> ProcessResult {
+    public func applyUpdateBundle(url: URL) async throws -> ProcessResult {
         try ensureLauncherIsAvailable()
         return await runPrivileged(RuntimeCommandFactory.shellCommand(
             executable: RuntimeAdapterConstants.Paths.launcher,
@@ -151,7 +115,7 @@ struct LocalRuntimeClient: RuntimeClient {
         ))
     }
 
-    func rollbackRuntime(backupURL: URL) async throws -> ProcessResult {
+    public func rollbackRuntime(backupURL: URL) async throws -> ProcessResult {
         try ensureLauncherIsAvailable()
         return await runPrivileged(RuntimeCommandFactory.shellCommand(
             executable: RuntimeAdapterConstants.Paths.launcher,
@@ -163,15 +127,15 @@ struct LocalRuntimeClient: RuntimeClient {
         ))
     }
 
-    func deleteBackup(url: URL) async throws -> ProcessResult {
+    public func deleteBackup(url: URL) async throws -> ProcessResult {
         await runPrivileged(RuntimeCommandFactory.deleteBackupCommand(url: url))
     }
 
-    func repairProxy(proxyPort: Int) async throws -> ProcessResult {
+    public func repairProxy(proxyPort: Int) async throws -> ProcessResult {
         await runPrivileged(RuntimeCommandFactory.proxyRepairCommand(proxyPort: proxyPort))
     }
 
-    func repairDatastore() async throws -> ProcessResult {
+    public func repairDatastore() async throws -> ProcessResult {
         try ensureLauncherIsAvailable()
         return await runPrivileged(RuntimeCommandFactory.shellCommand(
             executable: RuntimeAdapterConstants.Paths.launcher,
@@ -182,25 +146,25 @@ struct LocalRuntimeClient: RuntimeClient {
         ))
     }
 
-    func startRuntimeServices() async throws -> ProcessResult {
+    public func startRuntimeServices() async throws -> ProcessResult {
         try ensureLauncherIsAvailable()
         return await runPrivileged(RuntimeCommandFactory.runtimeServicesCommand(action: .start))
     }
 
-    func stopRuntimeServices() async throws -> ProcessResult {
+    public func stopRuntimeServices() async throws -> ProcessResult {
         try ensureLauncherIsAvailable()
         return await runPrivileged(RuntimeCommandFactory.runtimeServicesCommand(action: .stop))
     }
 
-    func exportLogs(to destination: URL) async throws -> RuntimeLogExportResult {
+    public func exportLogs(to destination: URL) async throws -> RuntimeLogExportResult {
         return try await logExporter.exportLogs(to: destination)
     }
 
-    func loadReleaseInfo() async throws -> RuntimeReleaseInfo {
-        RuntimeReleaseInfo.generated
+    public func loadReleaseInfo() async throws -> RuntimeReleaseInfo {
+        releaseInfo
     }
 
-    func loadInstallationInfo() -> RuntimeInstallationInfo {
+    public func loadInstallationInfo() -> RuntimeInstallationInfo {
         RuntimeInstallationInfo(
             runtimeHomePath: RuntimeAdapterConstants.Paths.vmHome,
             backupsPath: RuntimeAdapterConstants.Paths.backups
@@ -218,20 +182,20 @@ struct LocalRuntimeClient: RuntimeClient {
     }
 }
 
-enum RuntimeClientError: LocalizedError {
+public enum RuntimeClientError: LocalizedError {
     case missingLauncher
     case missingUninstaller
     case logExportFailed(String)
 
-    var errorDescription: String? {
+    public var errorDescription: String? {
         switch self {
         case .missingLauncher:
-            return AppConstants.StatusText.missingLauncher
+            return RuntimeAdapterConstants.StatusText.missingLauncher
         case .missingUninstaller:
-            return AppConstants.StatusText.missingUninstaller
+            return RuntimeAdapterConstants.StatusText.missingUninstaller
         case .logExportFailed(let output):
             let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
-            return trimmed.isEmpty ? AppConstants.StatusText.logExportFailed : trimmed
+            return trimmed.isEmpty ? RuntimeAdapterConstants.StatusText.logExportFailed : trimmed
         }
     }
 }

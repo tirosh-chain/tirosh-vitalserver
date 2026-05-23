@@ -1,5 +1,6 @@
 import Foundation
 import RuntimeCore
+import RuntimeControlAdapter
 
 @MainActor
 final class RuntimeController: ObservableObject {
@@ -51,6 +52,7 @@ final class RuntimeController: ObservableObject {
         nativeShell: (any RuntimeNativeShell)? = nil
     ) {
         self.runtimeClient = runtimeClient ?? LocalRuntimeClient(
+            releaseInfo: .generated,
             statusReader: statusReader,
             fileReader: fileReader,
             settingsReader: settingsReader,

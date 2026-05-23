@@ -1,4 +1,5 @@
 import XCTest
+@testable import RuntimeControlAdapter
 @testable import VitalServerHelperApp
 
 final class LegacyCommandProgressParserTests: XCTestCase {

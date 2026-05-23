@@ -1,9 +1,10 @@
 import Foundation
+import RuntimeControl
 import RuntimeCore
 import HostRuntimeInfrastructure
 
 extension RuntimeBackup {
-    static func loadAll(
+    public static func loadAll(
         latestBackupPath: String? = nil,
         fileStore: RuntimeFileStore = LocalRuntimeFileStore()
     ) -> [RuntimeBackup] {

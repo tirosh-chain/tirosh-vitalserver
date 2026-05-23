@@ -1,8 +1,9 @@
 import Foundation
+import RuntimeControl
 import RuntimeCore
 import HostRuntimeInfrastructure
 
-protocol RuntimeManagerFileReading {
+public protocol RuntimeManagerFileReading {
     func updateBundleSummary(url: URL) -> String
     func backups(latestBackupPath: String?) -> [RuntimeBackup]
     func logText(sourceID: LogSourceID, helperMessage: String, lineLimit: Int) -> String
@@ -10,11 +11,11 @@ protocol RuntimeManagerFileReading {
     func vitalFileFolders(root: String) -> [VitalFileFolder]
 }
 
-struct SystemRuntimeManagerFileReader: RuntimeManagerFileReading {
+public struct SystemRuntimeManagerFileReader: RuntimeManagerFileReading {
     private let fileStore: RuntimeFileStore
     private let logCollector: RuntimeLogCollecting
 
-    init(
+    public init(
         fileStore: RuntimeFileStore = LocalRuntimeFileStore(),
         logCollector: RuntimeLogCollecting = LocalRuntimeLogCollector()
     ) {
@@ -22,7 +23,7 @@ struct SystemRuntimeManagerFileReader: RuntimeManagerFileReading {
         self.logCollector = logCollector
     }
 
-    func updateBundleSummary(url: URL) -> String {
+    public func updateBundleSummary(url: URL) -> String {
         if url.lastPathComponent.hasSuffix(".tar.gz") || url.lastPathComponent.hasSuffix(".tgz") {
             return "Archive: \(url.lastPathComponent)\nVerify to inspect manifest and checksums."
         }
@@ -42,16 +43,16 @@ struct SystemRuntimeManagerFileReader: RuntimeManagerFileReading {
         return "Version: \(version)\nArtifacts:\n\(artifacts)"
     }
 
-    func backups(latestBackupPath: String?) -> [RuntimeBackup] {
+    public func backups(latestBackupPath: String?) -> [RuntimeBackup] {
         RuntimeBackup.loadAll(latestBackupPath: latestBackupPath, fileStore: fileStore)
     }
 
-    func logText(sourceID: LogSourceID, helperMessage: String, lineLimit: Int) -> String {
+    public func logText(sourceID: LogSourceID, helperMessage: String, lineLimit: Int) -> String {
         logCollector.refreshLogCollection()
         switch sourceID {
         case .helperMessage:
             return helperMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                ? AppConstants.StatusText.noLogData
+                ? RuntimeAdapterConstants.StatusText.noLogData
                 : helperMessage
         case .install:
             return logFile(path: RuntimeAdapterConstants.Paths.installLog, lineLimit: lineLimit)
@@ -94,7 +95,7 @@ struct SystemRuntimeManagerFileReader: RuntimeManagerFileReading {
         }
     }
 
-    func preferredLogsPath() -> String {
+    public func preferredLogsPath() -> String {
         logCollector.refreshLogCollection()
         if fileStore.directoryExists(URL(fileURLWithPath: RuntimeAdapterConstants.Paths.productLogs)) {
             return RuntimeAdapterConstants.Paths.productLogs
@@ -102,7 +103,7 @@ struct SystemRuntimeManagerFileReader: RuntimeManagerFileReading {
         return RuntimeAdapterConstants.Paths.installLog
     }
 
-    func vitalFileFolders(root: String) -> [VitalFileFolder] {
+    public func vitalFileFolders(root: String) -> [VitalFileFolder] {
         let rootURL = URL(fileURLWithPath: root)
         guard let entries = try? fileStore.contentsOfDirectory(at: rootURL, skipsHiddenFiles: false) else {
             return []
@@ -125,18 +126,18 @@ struct SystemRuntimeManagerFileReader: RuntimeManagerFileReading {
         } else if let fallbackPath {
             let fallbackURL = URL(fileURLWithPath: fallbackPath)
             guard fileStore.fileExists(fallbackURL) else {
-                return AppConstants.StatusText.noLogData
+                return RuntimeAdapterConstants.StatusText.noLogData
             }
             readableURL = fallbackURL
         } else {
-            return AppConstants.StatusText.noLogData
+            return RuntimeAdapterConstants.StatusText.noLogData
         }
         guard let content = try? fileStore.readUTF8Text(readableURL) else {
-            return AppConstants.StatusText.noLogData
+            return RuntimeAdapterConstants.StatusText.noLogData
         }
         let body = tail(content, lineLimit: lineLimit)
         return body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? AppConstants.StatusText.noLogData
+            ? RuntimeAdapterConstants.StatusText.noLogData
             : body
     }
 

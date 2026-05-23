@@ -1,25 +1,36 @@
 import Foundation
+import RuntimeControl
 import RuntimeCore
 import HostRuntimeInfrastructure
 
 @MainActor
-protocol RuntimeSettingsReading {
+public protocol RuntimeSettingsReading {
     func load() -> RuntimeSettings
 }
 
-struct RuntimeSettingsPaths {
-    var vmConfig = RuntimeAdapterConstants.Paths.vmConfig
-    var vmDisk = RuntimeAdapterConstants.Paths.vmDisk
-    var guestRuntimeConfig = RuntimeAdapterConstants.Paths.guestRuntimeConfig
+public struct RuntimeSettingsPaths {
+    public var vmConfig = RuntimeAdapterConstants.Paths.vmConfig
+    public var vmDisk = RuntimeAdapterConstants.Paths.vmDisk
+    public var guestRuntimeConfig = RuntimeAdapterConstants.Paths.guestRuntimeConfig
+
+    public init(
+        vmConfig: String = RuntimeAdapterConstants.Paths.vmConfig,
+        vmDisk: String = RuntimeAdapterConstants.Paths.vmDisk,
+        guestRuntimeConfig: String = RuntimeAdapterConstants.Paths.guestRuntimeConfig
+    ) {
+        self.vmConfig = vmConfig
+        self.vmDisk = vmDisk
+        self.guestRuntimeConfig = guestRuntimeConfig
+    }
 }
 
 @MainActor
-struct SystemRuntimeSettingsReader: RuntimeSettingsReading {
-    var paths = RuntimeSettingsPaths()
-    var statusReader = SystemRuntimeStatusReader(paths: RuntimePaths())
+public struct SystemRuntimeSettingsReader: RuntimeSettingsReading {
+    public var paths = RuntimeSettingsPaths()
+    public var statusReader = SystemRuntimeStatusReader(paths: RuntimePaths())
     private var fileStore: RuntimeFileStore = LocalRuntimeFileStore()
 
-    init(
+    public init(
         paths: RuntimeSettingsPaths = RuntimeSettingsPaths(),
         statusReader: SystemRuntimeStatusReader? = nil,
         fileStore: RuntimeFileStore = LocalRuntimeFileStore()
@@ -29,7 +40,7 @@ struct SystemRuntimeSettingsReader: RuntimeSettingsReading {
         self.fileStore = fileStore
     }
 
-    func load() -> RuntimeSettings {
+    public func load() -> RuntimeSettings {
         var settings = RuntimeSettings()
 
         if let vmConfig = VMConfigDocument.load(path: paths.vmConfig, fileStore: fileStore) {

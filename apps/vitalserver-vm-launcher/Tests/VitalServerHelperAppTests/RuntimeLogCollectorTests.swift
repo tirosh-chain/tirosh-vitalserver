@@ -1,5 +1,6 @@
 import Foundation
 import HostRuntimeInfrastructure
+@testable import RuntimeControlAdapter
 @testable import VitalServerHelperApp
 import XCTest
 

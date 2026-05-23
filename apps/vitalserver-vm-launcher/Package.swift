@@ -29,13 +29,17 @@ let package = Package(
             name: "HostRuntimeInfrastructure",
             dependencies: ["RuntimeCore"]
         ),
+        .target(
+            name: "RuntimeControlAdapter",
+            dependencies: ["RuntimeControl", "RuntimeCore", "HostRuntimeInfrastructure"]
+        ),
         .executableTarget(
             name: "HostRuntimeControl",
             dependencies: ["RuntimeCore", "HostRuntimeInfrastructure"]
         ),
         .executableTarget(
             name: "VitalServerHelperApp",
-            dependencies: ["RuntimeControl", "RuntimeCore", "HostRuntimeInfrastructure"]
+            dependencies: ["RuntimeControl", "RuntimeCore", "RuntimeControlAdapter"]
         ),
         .testTarget(
             name: "RuntimeCoreTests",
@@ -58,7 +62,7 @@ let package = Package(
         ),
         .testTarget(
             name: "VitalServerHelperAppTests",
-            dependencies: ["RuntimeControl", "VitalServerHelperApp"]
+            dependencies: ["RuntimeControl", "RuntimeControlAdapter", "VitalServerHelperApp"]
         )
     ]
 )

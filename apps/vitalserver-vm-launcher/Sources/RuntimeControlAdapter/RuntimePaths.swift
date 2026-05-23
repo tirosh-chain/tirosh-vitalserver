@@ -1,15 +1,16 @@
 import Foundation
+import RuntimeControl
 import RuntimeCore
 
-struct RuntimePaths {
-    let launcher: String
-    let uninstaller: String
-    let vmIPFile: String
-    let runtimeState: String
-    let runtimeStatus: String
-    let proxyLaunchDaemon: String
+public struct RuntimePaths {
+    public let launcher: String
+    public let uninstaller: String
+    public let vmIPFile: String
+    public let runtimeState: String
+    public let runtimeStatus: String
+    public let proxyLaunchDaemon: String
 
-    init(
+    public init(
         launcher: String = RuntimeAdapterConstants.Paths.launcher,
         uninstaller: String = RuntimeAdapterConstants.Paths.uninstaller,
         vmIPFile: String = RuntimeAdapterConstants.Paths.vmIPFile,

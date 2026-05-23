@@ -1,13 +1,14 @@
 import Foundation
+import RuntimeControl
 
-enum ProcessRunner {
-    static func run(_ executable: String, arguments: [String]) async -> ProcessResult {
+public enum ProcessRunner {
+    public static func run(_ executable: String, arguments: [String]) async -> ProcessResult {
         await Task.detached {
             runSync(executable, arguments: arguments)
         }.value
     }
 
-    static func runSync(_ executable: String, arguments: [String]) -> ProcessResult {
+    public static func runSync(_ executable: String, arguments: [String]) -> ProcessResult {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = arguments
