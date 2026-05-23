@@ -1,4 +1,5 @@
 import Foundation
+import RuntimeCore
 
 @MainActor
 protocol PrivilegedCommandRunning {
@@ -74,9 +75,9 @@ enum RuntimeCommandFactory {
           exit 2
         fi
         echo "Restarting host proxy service..."
-        \(shellQuote(RuntimeAdapterConstants.Commands.launchctl)) kickstart -k system/\(RuntimeAdapterConstants.Launchd.proxyService)
+        \(shellQuote(RuntimeAdapterConstants.Commands.launchctl)) kickstart -k system/\(RuntimeManagedService.proxy.label)
         sleep 2
-        \(shellQuote(RuntimeAdapterConstants.Commands.launchctl)) print system/\(RuntimeAdapterConstants.Launchd.proxyService) >/dev/null
+        \(shellQuote(RuntimeAdapterConstants.Commands.launchctl)) print system/\(RuntimeManagedService.proxy.label) >/dev/null
         echo "Host proxy service restarted."
         """
         return "/bin/bash -lc \(shellQuote(script))"

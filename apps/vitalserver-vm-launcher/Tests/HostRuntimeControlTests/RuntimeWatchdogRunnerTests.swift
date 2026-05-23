@@ -10,7 +10,7 @@ final class RuntimeWatchdogRunnerTests: XCTestCase {
 
         XCTAssertEqual(harness.prepareLogCalls, 1)
         XCTAssertEqual(harness.healthCalls, 0)
-        XCTAssertTrue(harness.restartedLabels.isEmpty)
+        XCTAssertTrue(harness.restartedServices.isEmpty)
         XCTAssertTrue(harness.writtenStatuses.isEmpty)
     }
 
@@ -23,7 +23,7 @@ final class RuntimeWatchdogRunnerTests: XCTestCase {
 
         XCTAssertEqual(harness.healthCalls, 1)
         XCTAssertEqual(harness.writtenStatuses.map(\.status), [.healthy])
-        XCTAssertTrue(harness.restartedLabels.isEmpty)
+        XCTAssertTrue(harness.restartedServices.isEmpty)
         XCTAssertEqual(harness.sleepCalls, [])
     }
 
@@ -38,7 +38,7 @@ final class RuntimeWatchdogRunnerTests: XCTestCase {
         try harness.runner.run()
 
         XCTAssertEqual(harness.writtenStatuses.map(\.status), [.recovering, .degraded])
-        XCTAssertTrue(harness.restartedLabels.isEmpty)
+        XCTAssertTrue(harness.restartedServices.isEmpty)
     }
 
     func testGuestReadinessFailureRestartsOnlyVMWhenProxyIsAlive() throws {
@@ -54,7 +54,7 @@ final class RuntimeWatchdogRunnerTests: XCTestCase {
         try harness.runner.run()
 
         XCTAssertEqual(harness.proxyLivenessPorts, [80])
-        XCTAssertEqual(harness.restartedLabels, [Constants.Launchd.vmService])
+        XCTAssertEqual(harness.restartedServices, [.vm])
         XCTAssertEqual(harness.sleepCalls, [Constants.Runtime.watchdogRecoveryWaitSeconds])
         XCTAssertEqual(harness.writtenStatuses.map(\.status), [.recovering, .healthy])
     }
@@ -70,7 +70,7 @@ final class RuntimeWatchdogRunnerTests: XCTestCase {
         try harness.runner.run()
 
         XCTAssertEqual(harness.writtenStatuses.map(\.status), [.recovering, .critical])
-        XCTAssertTrue(harness.restartedLabels.isEmpty)
+        XCTAssertTrue(harness.restartedServices.isEmpty)
     }
 }
 
@@ -78,7 +78,7 @@ private final class WatchdogHarness {
     var prepareLogCalls = 0
     var healthCalls = 0
     var proxyLivenessPorts: [Int] = []
-    var restartedLabels: [String] = []
+    var restartedServices: [RuntimeManagedService] = []
     var sleepCalls: [TimeInterval] = []
     var writtenStatuses: [(status: RuntimeStatusLevel, operation: RuntimeOperation, message: String)] = []
     var logs: [String] = []
@@ -118,7 +118,7 @@ private final class WatchdogHarness {
                     self.automaticRecoveryEnabled
                 },
                 restartService: { label in
-                    self.restartedLabels.append(label)
+                    self.restartedServices.append(label)
                 },
                 sleep: { interval in
                     self.sleepCalls.append(interval)

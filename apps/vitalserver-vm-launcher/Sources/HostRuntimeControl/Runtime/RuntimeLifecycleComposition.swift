@@ -39,8 +39,8 @@ struct RuntimeLifecycleComposition {
         )
         let serviceController = RuntimeServiceController(
             serviceManager: resolvedServiceManager,
-            isLoaded: { label in
-                healthChecker.isLaunchdLoaded(label)
+            isLoaded: { service in
+                healthChecker.isLaunchdLoaded(service)
             },
             log: { message in
                 print("[\(ISO8601DateFormatter().string(from: clock.now))] \(message)")

@@ -21,9 +21,9 @@ final class RuntimeHealthCheckerTests: XCTestCase {
         )
         let serviceManager = RuntimeServiceManagerSpy()
         serviceManager.states = [
-            Constants.Launchd.vmService: "loaded",
-            Constants.Launchd.proxyService: "loaded",
-            Constants.Launchd.watchdogService: "loaded",
+            .vm: "loaded",
+            .proxy: "loaded",
+            .watchdog: "loaded",
         ]
         let httpProber = RuntimeHTTPProberSpy()
         httpProber.statuses[Constants.Runtime.proxyHealthURL(port: 8080)] = "200"
@@ -106,17 +106,17 @@ private final class RuntimeHTTPProberSpy: RuntimeHTTPProber {
 }
 
 private final class RuntimeServiceManagerSpy: RuntimeServiceManager {
-    var states: [String: String] = [:]
+    var states: [RuntimeManagedService: String] = [:]
 
-    func state(label: String) -> String {
-        states[label] ?? "not-loaded"
+    func state(service: RuntimeManagedService) -> String {
+        states[service] ?? "not-loaded"
     }
 
-    func start(label: String, plist: String) {}
-    func restart(label: String) {}
-    func stop(label: String) {}
+    func start(service: RuntimeManagedService, plist: String) {}
+    func restart(service: RuntimeManagedService) {}
+    func stop(service: RuntimeManagedService) {}
 
-    func setEnabled(label: String, enabled: Bool) -> RuntimeProcessResult {
+    func setEnabled(service: RuntimeManagedService, enabled: Bool) -> RuntimeProcessResult {
         RuntimeProcessResult(exitCode: 0, stdout: "", stderr: "")
     }
 }

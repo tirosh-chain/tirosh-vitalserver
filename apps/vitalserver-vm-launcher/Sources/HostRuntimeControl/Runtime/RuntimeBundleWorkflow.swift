@@ -19,7 +19,7 @@ struct RuntimeBundleWorkflowOperations {
     let rollback: (URL?) throws -> Void
     let startRuntimeServices: (RuntimeServiceRestartPolicy) throws -> Void
     let stopRuntimeServices: () throws -> Void
-    let isLaunchdLoaded: (String) -> Bool
+    let isLaunchdLoaded: (RuntimeManagedService) -> Bool
     let createBackup: (String) throws -> URL
     let writeRuntimeStatus: (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void
     let writeRuntimeProgress: (RuntimeStepExecutionEvent) throws -> Void
@@ -281,9 +281,9 @@ struct RuntimeBundleWorkflow {
             },
             serviceRestartPolicy: {
                 RuntimeServiceRestartPolicy(
-                    restartVM: operations.isLaunchdLoaded(Constants.Launchd.vmService),
-                    restartProxy: operations.isLaunchdLoaded(Constants.Launchd.proxyService),
-                    restartWatchdog: operations.isLaunchdLoaded(Constants.Launchd.watchdogService)
+                    restartVM: operations.isLaunchdLoaded(.vm),
+                    restartProxy: operations.isLaunchdLoaded(.proxy),
+                    restartWatchdog: operations.isLaunchdLoaded(.watchdog)
                 )
             },
             createBackup: operations.createBackup,

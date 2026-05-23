@@ -7,7 +7,7 @@ struct RuntimeWatchdogActions {
     let healthSnapshot: () -> RuntimeHealthSnapshot
     let proxyLivenessHTTP: (Int) -> String
     let automaticRecoveryEnabled: () -> Bool
-    let restartService: (String) -> Void
+    let restartService: (RuntimeManagedService) -> Void
     let sleep: (TimeInterval) -> Void
     let writeStatus: (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void
 }
@@ -83,10 +83,10 @@ struct RuntimeWatchdogRunner {
         }
 
         if recoveryPlan.restartVM {
-            actions.restartService(Constants.Launchd.vmService)
+            actions.restartService(.vm)
         }
         if recoveryPlan.restartProxy {
-            actions.restartService(Constants.Launchd.proxyService)
+            actions.restartService(.proxy)
         }
 
         actions.sleep(Constants.Runtime.watchdogRecoveryWaitSeconds)

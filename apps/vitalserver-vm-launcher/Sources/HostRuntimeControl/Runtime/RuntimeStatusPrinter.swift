@@ -1,4 +1,5 @@
 import Foundation
+import RuntimeCore
 
 struct RuntimeStatusPrinter {
     let productRoot: URL
@@ -14,7 +15,7 @@ struct RuntimeStatusPrinter {
     let hostProxyHTTP: (Int) -> String
     let isExecutableFile: (String) -> Bool
     let fileExists: (URL) -> Bool
-    let serviceState: (String) -> String
+    let serviceState: (RuntimeManagedService) -> String
     let printLine: (String) -> Void
 
     init(
@@ -31,7 +32,7 @@ struct RuntimeStatusPrinter {
         hostProxyHTTP: @escaping (Int) -> String,
         isExecutableFile: @escaping (String) -> Bool,
         fileExists: @escaping (URL) -> Bool,
-        serviceState: @escaping (String) -> String,
+        serviceState: @escaping (RuntimeManagedService) -> String,
         printLine: @escaping (String) -> Void = { print($0) }
     ) {
         self.productRoot = productRoot
@@ -63,9 +64,9 @@ struct RuntimeStatusPrinter {
         printLine("  rootfs base: \(fileState(url: rootfsBase))")
         printLine("  vm disk: \(fileState(url: vmDisk))")
         printLine("  version: \(runtimeVersionValue())")
-        printLine("  VM service: \(serviceState(Constants.Launchd.vmService))")
-        printLine("  proxy service: \(serviceState(Constants.Launchd.proxyService))")
-        printLine("  watchdog service: \(serviceState(Constants.Launchd.watchdogService))")
+        printLine("  VM service: \(serviceState(.vm))")
+        printLine("  proxy service: \(serviceState(.proxy))")
+        printLine("  watchdog service: \(serviceState(.watchdog))")
         printLine("  VM IP: \(vmIP())")
         let proxyPort = installedProxyPort()
         printLine("  proxy port: \(proxyPort)")

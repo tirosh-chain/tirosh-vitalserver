@@ -69,12 +69,6 @@ enum RuntimeAdapterConstants {
         static let commandLogFile = installed.managerCommandLog.path
     }
 
-    enum Launchd {
-        static let vmService = "com.tirosh.vitalserver-vm"
-        static let proxyService = "com.tirosh.vitalserver-proxy"
-        static let watchdogService = "com.tirosh.vitalserver-watchdog"
-    }
-
     enum Commands {
         static let osascript = "/usr/bin/osascript"
         static let env = "/usr/bin/env"

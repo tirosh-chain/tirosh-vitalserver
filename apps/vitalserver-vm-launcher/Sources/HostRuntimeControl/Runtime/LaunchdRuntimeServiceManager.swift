@@ -8,15 +8,15 @@ struct LaunchdRuntimeServiceManager: RuntimeServiceManager {
         self.commandRunner = commandRunner
     }
 
-    func state(label: String) -> String {
+    func state(service: RuntimeManagedService) -> String {
         let result = commandRunner.run(
             Constants.Commands.launchctl,
-            arguments: ["print", "system/\(label)"]
+            arguments: ["print", "system/\(service.label)"]
         )
         return result.exitCode == 0 ? "loaded" : "not loaded"
     }
 
-    func start(label: String, plist: String) {
+    func start(service: RuntimeManagedService, plist: String) {
         let bootstrap = commandRunner.run(
             Constants.Commands.launchctl,
             arguments: ["bootstrap", "system", plist]
@@ -24,30 +24,30 @@ struct LaunchdRuntimeServiceManager: RuntimeServiceManager {
         if bootstrap.exitCode != 0 {
             _ = commandRunner.run(
                 Constants.Commands.launchctl,
-                arguments: ["kickstart", "-k", "system/\(label)"]
+                arguments: ["kickstart", "-k", "system/\(service.label)"]
             )
         }
     }
 
-    func restart(label: String) {
+    func restart(service: RuntimeManagedService) {
         _ = commandRunner.run(
             Constants.Commands.launchctl,
-            arguments: ["kickstart", "-k", "system/\(label)"]
+            arguments: ["kickstart", "-k", "system/\(service.label)"]
         )
     }
 
-    func stop(label: String) {
+    func stop(service: RuntimeManagedService) {
         _ = commandRunner.run(
             Constants.Commands.launchctl,
-            arguments: ["bootout", "system/\(label)"]
+            arguments: ["bootout", "system/\(service.label)"]
         )
     }
 
-    func setEnabled(label: String, enabled: Bool) -> RuntimeProcessResult {
+    func setEnabled(service: RuntimeManagedService, enabled: Bool) -> RuntimeProcessResult {
         let action = enabled ? "enable" : "disable"
         return commandRunner.run(
             Constants.Commands.launchctl,
-            arguments: [action, "system/\(label)"]
+            arguments: [action, "system/\(service.label)"]
         )
     }
 }

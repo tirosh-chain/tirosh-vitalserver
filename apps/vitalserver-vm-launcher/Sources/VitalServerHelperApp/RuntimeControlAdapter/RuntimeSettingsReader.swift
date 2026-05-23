@@ -72,9 +72,9 @@ struct SystemRuntimeSettingsReader: RuntimeSettingsReading {
         }
         let output = result.stdout
         for label in [
-            RuntimeAdapterConstants.Launchd.vmService,
-            RuntimeAdapterConstants.Launchd.proxyService,
-            RuntimeAdapterConstants.Launchd.watchdogService,
+            RuntimeManagedService.vm.label,
+            RuntimeManagedService.proxy.label,
+            RuntimeManagedService.watchdog.label,
         ] where output.contains("\"\(label)\" => true") {
             return false
         }

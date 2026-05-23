@@ -3,12 +3,12 @@ import RuntimeCore
 
 struct RuntimeServiceController {
     private let serviceManager: RuntimeServiceManager
-    private let isLoaded: (String) -> Bool
+    private let isLoaded: (RuntimeManagedService) -> Bool
     private let log: (String) -> Void
 
     init(
         serviceManager: RuntimeServiceManager,
-        isLoaded: @escaping (String) -> Bool,
+        isLoaded: @escaping (RuntimeManagedService) -> Bool,
         log: @escaping (String) -> Void
     ) {
         self.serviceManager = serviceManager
@@ -18,9 +18,9 @@ struct RuntimeServiceController {
 
     func stopRuntimeServices() {
         log("stopping runtime services")
-        stopIfLoaded(Constants.Launchd.watchdogService)
-        stopIfLoaded(Constants.Launchd.proxyService)
-        stopIfLoaded(Constants.Launchd.vmService)
+        for service in RuntimeManagedService.stopOrder {
+            stopIfLoaded(service)
+        }
     }
 
     func startRuntimeServices(_ policy: RuntimeServiceRestartPolicy) {
@@ -37,36 +37,34 @@ struct RuntimeServiceController {
         restartWatchdog: Bool
     ) {
         if restartVM {
-            log("starting VM service label=\(Constants.Launchd.vmService)")
-            startLaunchdService(Constants.Launchd.vmService)
+            startLaunchdService(.vm)
         }
         if restartProxy {
-            log("starting proxy service label=\(Constants.Launchd.proxyService)")
-            startLaunchdService(Constants.Launchd.proxyService)
+            startLaunchdService(.proxy)
         }
         if restartWatchdog {
-            log("starting watchdog service label=\(Constants.Launchd.watchdogService)")
-            startLaunchdService(Constants.Launchd.watchdogService)
+            startLaunchdService(.watchdog)
         }
     }
 
-    func startLaunchdService(_ label: String) {
-        let plist = launchDaemonPlist(label)
-        log("launchd bootstrap label=\(label) plist=\(plist)")
-        serviceManager.start(label: label, plist: plist)
+    func startLaunchdService(_ service: RuntimeManagedService) {
+        let plist = service.launchDaemonPlist
+        log("starting \(service.displayName) service label=\(service.label)")
+        log("launchd bootstrap label=\(service.label) plist=\(plist)")
+        serviceManager.start(service: service, plist: plist)
     }
 
-    func restartLaunchdService(_ label: String) {
-        log("launchd restart label=\(label)")
-        serviceManager.restart(label: label)
-        if !isLoaded(label) {
-            startLaunchdService(label)
+    func restartLaunchdService(_ service: RuntimeManagedService) {
+        log("launchd restart label=\(service.label)")
+        serviceManager.restart(service: service)
+        if !isLoaded(service) {
+            startLaunchdService(service)
         }
     }
 
     func setStartOnBoot(_ enabled: Bool) throws {
-        for label in Constants.Launchd.runtimeServices {
-            let result = serviceManager.setEnabled(label: label, enabled: enabled)
+        for service in RuntimeManagedService.startOrder {
+            let result = serviceManager.setEnabled(service: service, enabled: enabled)
             guard result.exitCode == 0 else {
                 let stderr = result.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
                 if !stderr.isEmpty {
@@ -74,19 +72,15 @@ struct RuntimeServiceController {
                 }
                 log("command failed executable=\(Constants.Commands.launchctl) exitCode=\(result.exitCode)")
                 throw LauncherError.missingArgument(
-                    "command failed: \(Constants.Commands.launchctl) \(enabled ? "enable" : "disable") system/\(label)"
+                    "command failed: \(Constants.Commands.launchctl) \(enabled ? "enable" : "disable") system/\(service.label)"
                 )
             }
         }
     }
 
-    private func stopIfLoaded(_ label: String) {
-        if isLoaded(label) {
-            serviceManager.stop(label: label)
+    private func stopIfLoaded(_ service: RuntimeManagedService) {
+        if isLoaded(service) {
+            serviceManager.stop(service: service)
         }
-    }
-
-    private func launchDaemonPlist(_ label: String) -> String {
-        "\(Constants.InstallPaths.launchDaemons)/\(label).plist"
     }
 }

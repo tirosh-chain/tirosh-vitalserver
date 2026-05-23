@@ -53,9 +53,9 @@ private final class HealthWaitHarness {
     var snapshots: [RuntimeHealthSnapshot]
     var events: [String] = []
     var loadedServices = Set([
-        Constants.Launchd.vmService,
-        Constants.Launchd.proxyService,
-        Constants.Launchd.watchdogService,
+        RuntimeManagedService.vm,
+        RuntimeManagedService.proxy,
+        RuntimeManagedService.watchdog,
     ])
 
     init(snapshots: [RuntimeHealthSnapshot]) {
@@ -64,8 +64,8 @@ private final class HealthWaitHarness {
 
     var runner: RuntimeHealthWaitRunner {
         RuntimeHealthWaitRunner(
-            isLaunchdLoaded: { label in
-                self.loadedServices.contains(label)
+            isLaunchdLoaded: { service in
+                self.loadedServices.contains(service)
             },
             healthSnapshot: {
                 if self.snapshots.count > 1 {

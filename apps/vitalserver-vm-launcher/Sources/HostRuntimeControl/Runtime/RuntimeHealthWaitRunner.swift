@@ -2,7 +2,7 @@ import Foundation
 import RuntimeCore
 
 struct RuntimeHealthWaitRunner {
-    var isLaunchdLoaded: (String) -> Bool
+    var isLaunchdLoaded: (RuntimeManagedService) -> Bool
     var healthSnapshot: () -> RuntimeHealthSnapshot
     var writeStatus: (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void
     var sleep: () -> Void
@@ -23,9 +23,9 @@ struct RuntimeHealthWaitRunner {
                     vmServiceRequired: policy.restartVM,
                     proxyServiceRequired: policy.restartProxy,
                     watchdogServiceRequired: policy.restartWatchdog,
-                    vmServiceLoaded: isLaunchdLoaded(Constants.Launchd.vmService),
-                    proxyServiceLoaded: isLaunchdLoaded(Constants.Launchd.proxyService),
-                    watchdogServiceLoaded: isLaunchdLoaded(Constants.Launchd.watchdogService),
+                    vmServiceLoaded: isLaunchdLoaded(.vm),
+                    proxyServiceLoaded: isLaunchdLoaded(.proxy),
+                    watchdogServiceLoaded: isLaunchdLoaded(.watchdog),
                     snapshot: healthSnapshot()
                 )
             },

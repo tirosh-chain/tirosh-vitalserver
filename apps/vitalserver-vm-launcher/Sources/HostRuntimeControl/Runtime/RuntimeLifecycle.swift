@@ -262,8 +262,8 @@ struct RuntimeLifecycle {
                 automaticRecoveryEnabled: {
                     automaticRecoveryEnabled()
                 },
-                restartService: { label in
-                    restartLaunchdService(label)
+                restartService: { service in
+                    restartLaunchdService(service)
                 },
                 sleep: { interval in
                     sleeper.sleep(forTimeInterval: interval)
@@ -298,9 +298,9 @@ struct RuntimeLifecycle {
                     try setStartOnBoot(enabled)
                 },
                 restartRuntimeServices: {
-                    restartLaunchdService(Constants.Launchd.vmService)
-                    restartLaunchdService(Constants.Launchd.proxyService)
-                    restartLaunchdService(Constants.Launchd.watchdogService)
+                    restartLaunchdService(.vm)
+                    restartLaunchdService(.proxy)
+                    restartLaunchdService(.watchdog)
                 }
             ),
             log: { message in
@@ -401,22 +401,22 @@ struct RuntimeLifecycle {
                 try guestGateway.writeDatastoreRepairRequest(requestId: request.id, requestedAt: request.requestedAt)
             },
             isVMServiceLoaded: {
-                isLaunchdLoaded(Constants.Launchd.vmService)
+                isLaunchdLoaded(.vm)
             },
             startVMService: {
-                startLaunchdService(Constants.Launchd.vmService)
+                startLaunchdService(.vm)
             },
             restartVMService: {
-                restartLaunchdService(Constants.Launchd.vmService)
+                restartLaunchdService(.vm)
             },
             waitForResult: { request in
                 try runtimeDatastoreRepairResultWaiter().wait(for: request)
             },
             restartProxyService: {
-                restartLaunchdService(Constants.Launchd.proxyService)
+                restartLaunchdService(.proxy)
             },
             restartWatchdogService: {
-                restartLaunchdService(Constants.Launchd.watchdogService)
+                restartLaunchdService(.watchdog)
             },
             waitForHealth: waitForHealth,
             writeStatus: { status, operation, message in
@@ -482,9 +482,9 @@ struct RuntimeLifecycle {
             fileExists: fileExists,
             serviceRestartPolicy: {
                 RuntimeServiceRestartPolicy(
-                    restartVM: isLaunchdLoaded(Constants.Launchd.vmService),
-                    restartProxy: isLaunchdLoaded(Constants.Launchd.proxyService),
-                    restartWatchdog: isLaunchdLoaded(Constants.Launchd.watchdogService)
+                    restartVM: isLaunchdLoaded(.vm),
+                    restartProxy: isLaunchdLoaded(.proxy),
+                    restartWatchdog: isLaunchdLoaded(.watchdog)
                 )
             },
             log: log
@@ -611,8 +611,8 @@ struct RuntimeLifecycle {
         try runtimeVersionStore().writeAppliedVersion(version: version, bundle: bundle)
     }
 
-    private func isLaunchdLoaded(_ label: String) -> Bool {
-        healthChecker.isLaunchdLoaded(label)
+    private func isLaunchdLoaded(_ service: RuntimeManagedService) -> Bool {
+        healthChecker.isLaunchdLoaded(service)
     }
 
     private func stopRuntimeServices() throws {
@@ -631,16 +631,16 @@ struct RuntimeLifecycle {
         serviceController.startRuntimeServices(policy)
     }
 
-    private func startLaunchdService(_ label: String) {
-        serviceController.startLaunchdService(label)
+    private func startLaunchdService(_ service: RuntimeManagedService) {
+        serviceController.startLaunchdService(service)
     }
 
-    private func restartLaunchdService(_ label: String) {
-        serviceController.restartLaunchdService(label)
+    private func restartLaunchdService(_ service: RuntimeManagedService) {
+        serviceController.restartLaunchdService(service)
     }
 
-    private func launchDaemonPlist(_ label: String) -> String {
-        "\(Constants.InstallPaths.launchDaemons)/\(label).plist"
+    private func launchDaemonPlist(_ service: RuntimeManagedService) -> String {
+        service.launchDaemonPlist
     }
 
     private func refreshCloudInitSeedIfNeeded(_ manifest: UpdateBundleManifest) throws {
@@ -670,10 +670,10 @@ struct RuntimeLifecycle {
                 )
             },
             isVMServiceLoaded: {
-                isLaunchdLoaded(Constants.Launchd.vmService)
+                isLaunchdLoaded(.vm)
             },
             startVMService: {
-                startLaunchdService(Constants.Launchd.vmService)
+                startLaunchdService(.vm)
             },
             loadResult: {
                 guestGateway.loadUpdateActivationResult()
@@ -877,7 +877,7 @@ struct RuntimeLifecycle {
             arguments: [
                 "-c",
                 "Set :EnvironmentVariables:VITALSERVER_PROXY_PORT \(port)",
-                launchDaemonPlist(Constants.Launchd.proxyService),
+                launchDaemonPlist(.proxy),
             ]
         )
     }

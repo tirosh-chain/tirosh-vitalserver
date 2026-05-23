@@ -6,9 +6,9 @@ final class RuntimeServiceControllerTests: XCTestCase {
     func testStopsLoadedRuntimeServicesInDependencyOrder() {
         let serviceManager = ServiceControllerServiceManagerSpy()
         let loaded = Set([
-            Constants.Launchd.vmService,
-            Constants.Launchd.proxyService,
-            Constants.Launchd.watchdogService,
+            RuntimeManagedService.vm,
+            RuntimeManagedService.proxy,
+            RuntimeManagedService.watchdog,
         ])
         let controller = RuntimeServiceController(
             serviceManager: serviceManager,
@@ -19,9 +19,9 @@ final class RuntimeServiceControllerTests: XCTestCase {
         controller.stopRuntimeServices()
 
         XCTAssertEqual(serviceManager.stoppedLabels, [
-            Constants.Launchd.watchdogService,
-            Constants.Launchd.proxyService,
-            Constants.Launchd.vmService,
+            RuntimeManagedService.watchdog.label,
+            RuntimeManagedService.proxy.label,
+            RuntimeManagedService.vm.label,
         ])
     }
 
@@ -40,12 +40,12 @@ final class RuntimeServiceControllerTests: XCTestCase {
         ))
 
         XCTAssertEqual(serviceManager.startedLabels, [
-            Constants.Launchd.vmService,
-            Constants.Launchd.watchdogService,
+            RuntimeManagedService.vm.label,
+            RuntimeManagedService.watchdog.label,
         ])
         XCTAssertEqual(serviceManager.startedPlists, [
-            "\(Constants.InstallPaths.launchDaemons)/\(Constants.Launchd.vmService).plist",
-            "\(Constants.InstallPaths.launchDaemons)/\(Constants.Launchd.watchdogService).plist",
+            RuntimeManagedService.vm.launchDaemonPlist,
+            RuntimeManagedService.watchdog.launchDaemonPlist,
         ])
     }
 
@@ -57,15 +57,15 @@ final class RuntimeServiceControllerTests: XCTestCase {
             log: { _ in }
         )
 
-        controller.restartLaunchdService(Constants.Launchd.vmService)
+        controller.restartLaunchdService(.vm)
 
-        XCTAssertEqual(serviceManager.restartedLabels, [Constants.Launchd.vmService])
-        XCTAssertEqual(serviceManager.startedLabels, [Constants.Launchd.vmService])
+        XCTAssertEqual(serviceManager.restartedLabels, [RuntimeManagedService.vm.label])
+        XCTAssertEqual(serviceManager.startedLabels, [RuntimeManagedService.vm.label])
     }
 
     func testSetStartOnBootStopsAtFirstFailure() {
         let serviceManager = ServiceControllerServiceManagerSpy()
-        serviceManager.setEnabledResults[Constants.Launchd.proxyService] = RuntimeProcessResult(
+        serviceManager.setEnabledResults[.proxy] = RuntimeProcessResult(
             exitCode: 1,
             stdout: "",
             stderr: "denied"
@@ -78,8 +78,8 @@ final class RuntimeServiceControllerTests: XCTestCase {
 
         XCTAssertThrowsError(try controller.setStartOnBoot(true))
         XCTAssertEqual(serviceManager.setEnabledLabels, [
-            Constants.Launchd.vmService,
-            Constants.Launchd.proxyService,
+            RuntimeManagedService.vm.label,
+            RuntimeManagedService.proxy.label,
         ])
     }
 }
@@ -90,27 +90,27 @@ private final class ServiceControllerServiceManagerSpy: RuntimeServiceManager {
     var startedPlists: [String] = []
     var restartedLabels: [String] = []
     var setEnabledLabels: [String] = []
-    var setEnabledResults: [String: RuntimeProcessResult] = [:]
+    var setEnabledResults: [RuntimeManagedService: RuntimeProcessResult] = [:]
 
-    func state(label: String) -> String {
+    func state(service: RuntimeManagedService) -> String {
         "not-loaded"
     }
 
-    func start(label: String, plist: String) {
-        startedLabels.append(label)
+    func start(service: RuntimeManagedService, plist: String) {
+        startedLabels.append(service.label)
         startedPlists.append(plist)
     }
 
-    func restart(label: String) {
-        restartedLabels.append(label)
+    func restart(service: RuntimeManagedService) {
+        restartedLabels.append(service.label)
     }
 
-    func stop(label: String) {
-        stoppedLabels.append(label)
+    func stop(service: RuntimeManagedService) {
+        stoppedLabels.append(service.label)
     }
 
-    func setEnabled(label: String, enabled: Bool) -> RuntimeProcessResult {
-        setEnabledLabels.append(label)
-        return setEnabledResults[label] ?? RuntimeProcessResult(exitCode: 0, stdout: "", stderr: "")
+    func setEnabled(service: RuntimeManagedService, enabled: Bool) -> RuntimeProcessResult {
+        setEnabledLabels.append(service.label)
+        return setEnabledResults[service] ?? RuntimeProcessResult(exitCode: 0, stdout: "", stderr: "")
     }
 }

@@ -1,4 +1,5 @@
 import Foundation
+import RuntimeCore
 @testable import HostRuntimeControl
 import XCTest
 
@@ -27,7 +28,7 @@ final class RuntimeStatusPrinterTests: XCTestCase {
             hostProxyHTTP: { port in "200@\(port)" },
             isExecutableFile: { executablePaths.contains($0) },
             fileExists: { existingFiles.contains($0) },
-            serviceState: { label in "\(label):loaded" },
+            serviceState: { service in "\(service.label):loaded" },
             printLine: { lines.append($0) }
         )
 
@@ -45,9 +46,9 @@ final class RuntimeStatusPrinterTests: XCTestCase {
             "  rootfs base: present",
             "  vm disk: missing",
             "  version: 2026.05.23",
-            "  VM service: \(Constants.Launchd.vmService):loaded",
-            "  proxy service: \(Constants.Launchd.proxyService):loaded",
-            "  watchdog service: \(Constants.Launchd.watchdogService):loaded",
+            "  VM service: \(RuntimeManagedService.vm.label):loaded",
+            "  proxy service: \(RuntimeManagedService.proxy.label):loaded",
+            "  watchdog service: \(RuntimeManagedService.watchdog.label):loaded",
             "  VM IP: 192.168.64.20",
             "  proxy port: 18080",
             "  host proxy HTTP: 200@18080",

@@ -21,7 +21,7 @@ struct RuntimeInstallWorkflowOperations {
     let runProcessToFile: (String, [String], URL) throws -> Void
     let writeInstalledRuntimeVersion: () throws -> Void
     let setStartOnBoot: (Bool) throws -> Void
-    let startLaunchdService: (String) -> Void
+    let startLaunchdService: (RuntimeManagedService) -> Void
     let restrictSecretFile: (URL) throws -> Void
     let log: (String) -> Void
 }
@@ -209,13 +209,13 @@ struct RuntimeInstallWorkflow {
             [
                 "-c",
                 "Set :EnvironmentVariables:VITALSERVER_PROXY_PORT \(settings.proxyPort)",
-                launchDaemonPlist(Constants.Launchd.proxyService),
+                RuntimeManagedService.proxy.launchDaemonPlist,
             ]
         )
         for plist in [
-            launchDaemonPlist(Constants.Launchd.vmService),
-            launchDaemonPlist(Constants.Launchd.proxyService),
-            launchDaemonPlist(Constants.Launchd.watchdogService),
+            RuntimeManagedService.vm.launchDaemonPlist,
+            RuntimeManagedService.proxy.launchDaemonPlist,
+            RuntimeManagedService.watchdog.launchDaemonPlist,
         ] {
             try operations.runRequired(Constants.Commands.chmod, ["0644", plist])
             try operations.runRequired(Constants.Commands.chown, ["root:wheel", plist])
@@ -227,9 +227,9 @@ struct RuntimeInstallWorkflow {
             operations.log("start after install disabled")
             return
         }
-        operations.startLaunchdService(Constants.Launchd.vmService)
-        operations.startLaunchdService(Constants.Launchd.proxyService)
-        operations.startLaunchdService(Constants.Launchd.watchdogService)
+        for service in RuntimeManagedService.startOrder {
+            operations.startLaunchdService(service)
+        }
     }
 
     private func applyStartOnBootPolicy(_ settings: InstallSettings) throws {
@@ -241,10 +241,6 @@ struct RuntimeInstallWorkflow {
         if fileExists(settingsFile) {
             try operations.fileStore.removeItem(at: settingsFile)
         }
-    }
-
-    private func launchDaemonPlist(_ label: String) -> String {
-        "\(Constants.InstallPaths.launchDaemons)/\(label).plist"
     }
 
     private func fileExists(_ url: URL) -> Bool {

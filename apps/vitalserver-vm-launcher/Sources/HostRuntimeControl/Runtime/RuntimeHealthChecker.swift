@@ -47,9 +47,9 @@ struct RuntimeHealthChecker {
             proxyExecutable: fileStore.isExecutableFile(atPath: Constants.InstallPaths.proxyRun),
             rootfsBase: fileState(url: rootfsBase),
             vmDisk: fileState(url: vmDisk),
-            vmService: launchdState(Constants.Launchd.vmService),
-            proxyService: launchdState(Constants.Launchd.proxyService),
-            watchdogService: launchdState(Constants.Launchd.watchdogService),
+            vmService: launchdState(.vm),
+            proxyService: launchdState(.proxy),
+            watchdogService: launchdState(.watchdog),
             vmIP: vmIP,
             proxyPort: proxyPort,
             hostProxyHTTP: hostProxyHTTP,
@@ -61,8 +61,8 @@ struct RuntimeHealthChecker {
         ))
     }
 
-    func isLaunchdLoaded(_ label: String) -> Bool {
-        launchdState(label) == "loaded"
+    func isLaunchdLoaded(_ service: RuntimeManagedService) -> Bool {
+        launchdState(service) == "loaded"
     }
 
     func fileState(path: String) -> String {
@@ -79,8 +79,8 @@ struct RuntimeHealthChecker {
         fileStore.fileExists(url) ? "present" : "missing"
     }
 
-    func launchdState(_ label: String) -> String {
-        serviceManager.state(label: label)
+    func launchdState(_ service: RuntimeManagedService) -> String {
+        serviceManager.state(service: service)
     }
 
     func installedProxyPort() -> Int {
@@ -89,7 +89,7 @@ struct RuntimeHealthChecker {
             arguments: [
                 "-c",
                 "Print :EnvironmentVariables:VITALSERVER_PROXY_PORT",
-                "\(Constants.InstallPaths.launchDaemons)/\(Constants.Launchd.proxyService).plist",
+                RuntimeManagedService.proxy.launchDaemonPlist,
             ]
         )
         let value = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)

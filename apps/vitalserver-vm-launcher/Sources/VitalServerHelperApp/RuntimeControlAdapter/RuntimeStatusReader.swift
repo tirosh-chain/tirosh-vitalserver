@@ -51,9 +51,9 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading {
         let guestState = guestRuntimeStateDocument(paths.runtimeState)
         return RuntimeStatus(
             runtimeInstalled: fileStore.isExecutableFile(atPath: paths.launcher),
-            vmServiceLoaded: loaded(document?.vmService) ?? launchdLoaded(RuntimeAdapterConstants.Launchd.vmService),
-            proxyServiceLoaded: loaded(document?.proxyService) ?? launchdLoaded(RuntimeAdapterConstants.Launchd.proxyService),
-            watchdogServiceLoaded: loaded(document?.watchdogService) ?? launchdLoaded(RuntimeAdapterConstants.Launchd.watchdogService),
+            vmServiceLoaded: loaded(document?.vmService) ?? launchdLoaded(RuntimeManagedService.vm.label),
+            proxyServiceLoaded: loaded(document?.proxyService) ?? launchdLoaded(RuntimeManagedService.proxy.label),
+            watchdogServiceLoaded: loaded(document?.watchdogService) ?? launchdLoaded(RuntimeManagedService.watchdog.label),
             runtimeState: document.map { RuntimeState(rawValue: $0.status.rawValue) },
             operation: document?.operation.rawValue,
             statusMessage: document?.message,

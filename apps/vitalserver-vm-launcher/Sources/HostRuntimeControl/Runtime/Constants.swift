@@ -90,13 +90,6 @@ enum Constants {
         static let defaultAdminPassword = "admin"
     }
 
-    enum Launchd {
-        static let vmService = "com.tirosh.vitalserver-vm"
-        static let proxyService = "com.tirosh.vitalserver-proxy"
-        static let watchdogService = "com.tirosh.vitalserver-watchdog"
-        static let runtimeServices = [vmService, proxyService, watchdogService]
-    }
-
     enum Runtime {
         static let vmIPFile = RuntimeFileNames.vmIP
         static let runtimeStateFile = RuntimeFileNames.runtimeState
