@@ -2,17 +2,17 @@ import SwiftUI
 
 @main
 struct MacRuntimeControlApplication: App {
-    @StateObject private var viewModel = RuntimeViewModel.live()
+    @StateObject private var environment = MacRuntimeControlEnvironment.live()
 
     var body: some Scene {
         WindowGroup {
             ContentView()
-                .environmentObject(viewModel)
+                .environmentObject(environment.viewModel)
                 .frame(minWidth: 560, minHeight: 420)
         }
         .windowStyle(.titleBar)
         .commands {
-            MacRuntimeControlCommands(viewModel: viewModel)
+            MacRuntimeControlCommands(viewModel: environment.viewModel)
         }
     }
 }

@@ -1,14 +1,40 @@
 # Runtime Control API
 
-Runtime Control API는 PWA, native shell, remote control client가 공유할 runtime control boundary입니다. 현재 branch는 실제 HTTP server/client를 포함하지 않고, Swift `RuntimeControlAPI` target에 route/DTO skeleton을 둡니다. 이 문서는 PWA 착수 직전 기준으로 어떤 계약이 고정됐고, 무엇이 다음 이슈에서 구현될지 정리합니다.
+Runtime Control API는 PWA, native shell, remote control client가 공유할 runtime control boundary입니다. 현재 branch는 Swift `RuntimeControlAPI` target에 route/DTO, transport-independent router, macOS local loopback HTTP server skeleton을 둡니다. 이 문서는 PWA 착수 직전 기준으로 어떤 계약이 고정됐고, 무엇이 다음 단계에서 구현될지 정리합니다.
+
+OpenAPI contract는 [`runtime-control.openapi.json`](./runtime-control.openapi.json)에 둡니다. Swift test는 `RuntimeControlAPIEndpoint`와 OpenAPI path/method parity를 검증합니다.
 
 ## Target
 
 | Target | 책임 |
 |---|---|
 | `RuntimeControl` | UI/usecase 관점의 typed protocol, DTO, enum, result model |
-| `RuntimeControlAPI` | HTTP transport 관점의 route, request/response DTO, file reference abstraction |
+| `RuntimeControlAPI` | HTTP transport 관점의 route, request/response DTO, file reference abstraction, read-only router, local HTTP server skeleton |
 | `MacHostRuntimeAdapter` | 현재 macOS local 구현. `RuntimeControlClient`와 `RuntimeHostClient`를 구현 |
+
+## Local Server
+
+macOS Helper app composition은 read-only Runtime Control API server를 조립합니다.
+
+| 항목 | 값 |
+|---|---|
+| Base URL | `http://127.0.0.1:18321` |
+| Interface | loopback only |
+| Auth header | `X-Runtime-Control-Token` |
+| Transitional dev token | `vitalserver-helper-dev` |
+
+현재 local server는 아래 endpoint만 구현합니다.
+
+| Method | Path |
+|---|---|
+| `GET` | `/runtime/capabilities` |
+| `GET` | `/runtime/status` |
+| `POST` | `/runtime/health` |
+| `GET` | `/runtime/settings` |
+| `GET` | `/runtime/release` |
+| `GET` | `/runtime/install` |
+
+나머지 route는 계약에는 있지만 현재 read-only router에서 `501 endpointNotImplemented`를 반환합니다.
 
 ## Route Scope
 
@@ -49,6 +75,18 @@ Runtime Control API는 PWA, native shell, remote control client가 공유할 run
 | `POST` | `/host/backups/rollback` | rollback selected backup |
 | `DELETE` | `/host/backups` | delete selected backup |
 
+## Client Access Classification
+
+`RuntimeControlAPIEndpoint`는 scope와 별도로 client access를 갖습니다. OpenAPI의 `x-runtime-control-access` 값은 Swift enum과 parity test로 검증합니다.
+
+| Access | 의미 | 현재 route |
+|---|---|---|
+| `browserSafe` | 브라우저/PWA가 local Runtime Control server에 직접 호출 가능한 read-only runtime control | `GET /runtime/capabilities`, `GET /runtime/status`, `POST /runtime/health`, `GET /runtime/settings`, `GET /runtime/release`, `GET /runtime/install` |
+| `localServerMediated` | 브라우저가 직접 host resource를 만지지 않고 local server가 권한/파일/프로세스 작업을 중재해야 함 | runtime write/admin routes, backups list/delete/rollback, log read, update bundle summary/verify/apply |
+| `nativeShellOnly` | 브라우저 endpoint만으로는 UX나 보안 경계가 충분하지 않아 native shell mediation이 필요함 | `POST /host/logs/export` |
+
+Portable `/runtime/*` route는 `RuntimeControlFileReference`를 사용하지 않습니다. 파일, update bundle, backup, log export destination처럼 host resource를 가리키는 값은 `/host/*` affordance에서만 `RuntimeControlFileReference`로 표현합니다.
+
 ## File Reference
 
 PWA는 host local path를 직접 다룰 수 없습니다. 그래서 update bundle, backup, log export destination처럼 파일을 가리키는 값은 `RuntimeControlFileReference`로 표현합니다.
@@ -61,12 +99,12 @@ PWA는 host local path를 직접 다룰 수 없습니다. 그래서 update bundl
 
 ## Next Issue
 
-다음 Runtime Control API 이슈에서는 아래를 구현합니다.
+다음 Runtime Control API 단계에서는 아래를 구현합니다.
 
 | 항목 | 내용 |
 |---|---|
-| HTTP server adapter | `RuntimeControlAPI` route를 실제 local host service로 노출 |
 | HTTP client adapter | PWA/native shell이 사용할 generated/manual client |
-| auth/session | local pairing token, remote session, capability negotiation |
+| auth/session | 현재 dev token을 local pairing token, remote session, capability negotiation으로 교체 |
 | streaming | progress/log SSE 또는 동등한 event stream |
-| OpenAPI export | `RuntimeControlAPI` skeleton에서 OpenAPI 문서 생성 또는 수동 동기화 |
+| OpenAPI export | 현재 수동 OpenAPI 문서를 generated 또는 schema-test 강화 방식으로 전환 |
+| host affordance | `/host/*` route를 browser-safe/local-server-mediated/native-shell-only로 분류 |

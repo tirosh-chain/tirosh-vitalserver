@@ -29,6 +29,11 @@ enum AppConstants {
         }
     }
 
+    enum RuntimeControlAPI {
+        static let port: UInt16 = 18321
+        static let developmentToken = "vitalserver-helper-dev"
+    }
+
     enum SettingsLimits {
         static let minimumCPUCount = 7
         static let maximumCPUCount = 64

@@ -1,7 +1,7 @@
 import Foundation
 import RuntimeControl
 
-public enum RuntimeControlHTTPMethod: String, Codable, Equatable, Sendable {
+public enum RuntimeControlHTTPMethod: String, CaseIterable, Codable, Equatable, Sendable {
     case get = "GET"
     case post = "POST"
     case put = "PUT"
@@ -11,6 +11,21 @@ public enum RuntimeControlHTTPMethod: String, Codable, Equatable, Sendable {
 public enum RuntimeControlAPIScope: String, Codable, Equatable, Sendable {
     case runtimeControl
     case hostAffordance
+}
+
+public enum RuntimeControlAPIClientAccess: String, Codable, Equatable, Sendable {
+    case browserSafe
+    case localServerMediated
+    case nativeShellOnly
+}
+
+public enum RuntimeControlAPIErrorCode: String, Codable, Equatable, Sendable {
+    case badRequest
+    case routeNotFound
+    case methodNotAllowed
+    case unauthorized
+    case endpointNotImplemented
+    case handlerFailed
 }
 
 public struct RuntimeControlAPIRoute: Codable, Equatable, Sendable {
@@ -93,6 +108,55 @@ public enum RuntimeControlAPIEndpoint: String, CaseIterable, Codable, Equatable,
     }
 }
 
+public extension RuntimeControlAPIEndpoint {
+    var clientAccess: RuntimeControlAPIClientAccess {
+        switch self {
+        case .capabilities,
+             .status,
+             .health,
+             .settings,
+             .release,
+             .installInfo:
+            return .browserSafe
+        case .exportLogs:
+            return .nativeShellOnly
+        case .applySettings,
+             .startServices,
+             .stopServices,
+             .repairProxy,
+             .repairDatastore,
+             .uninstall,
+             .backups,
+             .logText,
+             .updateBundleSummary,
+             .verifyUpdateBundle,
+             .applyUpdateBundle,
+             .rollbackBackup,
+             .deleteBackup:
+            return .localServerMediated
+        }
+    }
+
+    static func matching(method: RuntimeControlHTTPMethod, path: String) -> RuntimeControlAPIEndpoint? {
+        allCases.first { endpoint in
+            endpoint.route.method == method && endpoint.route.path == normalizedPath(path)
+        }
+    }
+
+    static func matching(path: String) -> RuntimeControlAPIEndpoint? {
+        allCases.first { endpoint in
+            endpoint.route.path == normalizedPath(path)
+        }
+    }
+
+    private static func normalizedPath(_ path: String) -> String {
+        guard let queryIndex = path.firstIndex(of: "?") else {
+            return path
+        }
+        return String(path[..<queryIndex])
+    }
+}
+
 public enum RuntimeControlFileReferenceKind: String, Codable, Equatable, Sendable {
     case localPath
     case uploadedArtifact
@@ -110,10 +174,10 @@ public struct RuntimeControlFileReference: Codable, Equatable, Sendable {
 }
 
 public struct RuntimeControlErrorResponse: Codable, Equatable, Sendable {
-    public let code: String
+    public let code: RuntimeControlAPIErrorCode
     public let message: String
 
-    public init(code: String, message: String) {
+    public init(code: RuntimeControlAPIErrorCode, message: String) {
         self.code = code
         self.message = message
     }

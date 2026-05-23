@@ -112,7 +112,7 @@ Guest VM
 |---|---|---|
 | `MacRuntimeControlApp` | SwiftUI 화면, view model, app composition, native shell | presentation/native shell은 adapter 세부 구현을 모름. composition만 local adapter를 조립 |
 | `RuntimeControl` | UI/usecase 입출력 계약, `RuntimeControlClient`, `RuntimeHostClient`, DTO, enum | 최종 API/client/server가 공유할 계약의 시작점과, 전환기 SwiftUI가 쓰는 local host affordance 계약 |
-| `RuntimeControlAPI` | HTTP route/DTO skeleton, file reference abstraction, command response/error shape | PWA/API server/client가 공유할 transport contract. 실제 server/client 구현은 후속 단계 |
+| `RuntimeControlAPI` | HTTP route/DTO, transport-independent router, local loopback HTTP server, file reference abstraction, command response/error shape | PWA/API server/client가 공유할 transport contract. read-only `/runtime/*` API는 macOS app composition에서 실행 가능 |
 | `Contracts` | runtime status/progress/health/guest request/result/update bundle/file name 계약 | PWA/API/server/host runtime이 공유할 schema와 enum의 독립 target |
 | `MacHostRuntimeAdapter` | `RuntimeControl`의 macOS local 구현, file/process/CLI adapter | 외부 public surface는 `MacHostRuntimeClient` facade 중심. 나중에 Runtime Control API server 쪽 adapter로 이동하거나 축소 가능 |
 | `HostCLI` | `vitalserver-vm` CLI와 runtime workflow 실행 | 현재 host runtime source of truth |
@@ -228,9 +228,10 @@ PWA 착수 직전까지 현재 branch가 보장해야 하는 compatibility basel
 | Native shell 의존성 | AppKit/native picker/open/terminate만 담당하고, runtime command factory를 import하지 않음 |
 | Local adapter 공개면 | `MacHostRuntimeAdapter` 외부 public surface는 `MacHostRuntimeClient` facade 중심으로 제한 |
 | Adapter 내부 구현 | command factory, status/settings/file/log reader, privileged runner는 internal 구현 세부로 유지 |
-| API 전환 지점 | future PWA client는 `RuntimeControlClient`에 해당하는 HTTP/SSE contract를 보고, 현재 SwiftUI 전환기만 `RuntimeHostClient`로 local host affordance를 같이 사용 |
-| API route/DTO skeleton | `RuntimeControlAPI` target이 `/runtime/*` runtime control route와 `/host/*` local host affordance route를 분리해 고정 |
-| 후속 이슈 | 실제 HTTP server/client adapter, auth/pairing, SSE streaming, OpenAPI export는 #30에서 진행 |
+| API 전환 지점 | PWA client는 `RuntimeControlClient`에 해당하는 HTTP/SSE contract를 보고, 현재 SwiftUI 전환기만 `RuntimeHostClient`로 local host affordance를 같이 사용 |
+| API route/DTO/server | `RuntimeControlAPI` target이 `/runtime/*` runtime control route와 `/host/*` local host affordance route를 분리하고, read-only `/runtime/*`는 local loopback HTTP server로 제공 |
+| OpenAPI 계약 | `docs/macos-runtime/runtime-control.openapi.json`이 Swift endpoint enum과 method/path/access parity test로 검증됨 |
+| 후속 이슈 | write/admin endpoint 구현, auth/pairing 강화, SSE progress/log streaming, generated client는 PWA/API 구현 단계에서 진행 |
 
 Repository layout 기준은 아래처럼 둡니다.
 
@@ -674,7 +675,7 @@ UI 상태, capability guard, usecase orchestration, 화면 메시지 변환
 |---|---|---|
 | `Contracts` | PWA/API/server/host runtime이 함께 알아야 하는 JSON schema, enum, file name 계약 | `RuntimeStatusDocument`, `RuntimeWorkflowStep`, update bundle manifest |
 | `RuntimeControl` | UI/usecase 관점의 typed client/read model/result 계약 | `RuntimeControlClient`, `RuntimeHostClient`, `RuntimeCommandResult`, `RuntimeLogSource` |
-| `RuntimeControlAPI` | HTTP transport 관점의 route/DTO 계약 | `/runtime/status`, `/runtime/settings`, `/host/update-bundles/verify`, `RuntimeControlFileReference` |
+| `RuntimeControlAPI` | HTTP transport 관점의 route/DTO/router/local server 계약 | `/runtime/status`, `/runtime/settings`, `/host/update-bundles/verify`, `RuntimeControlAPIRouter`, `RuntimeControlLocalHTTPServer`, `RuntimeControlFileReference` |
 | `Core` | host OS나 SwiftUI를 모르는 evaluator, policy, workflow plan, port protocol | health evaluator, recovery planner, operation plan |
 | `HostInfrastructure` | 특정 product workflow보다 일반적인 host filesystem/shared-directory 구현 | `SystemRuntimeFileStore`, `JSONFileRuntimeStatusRepository` |
 | `MacHost*` | macOS host에서만 의미가 있는 local adapter 구현 | `MacHostRuntimeClient`, `MacHostRuntimeLogCollector`, `MacHostRuntimeLogExporter` |
@@ -682,6 +683,8 @@ UI 상태, capability guard, usecase orchestration, 화면 메시지 변환
 | `System*` | Foundation/FileManager/Process 같은 system API를 감싼 일반 구현. macOS UI나 launchd 정책을 뜻하지 않음 | `SystemRuntimeFileStore`, `SystemRuntimeCommandRunner` |
 
 Host마다 달라질 가능성이 높은 것은 이름에 host/platform 맥락을 드러냅니다. 예를 들어 macOS의 launchd, AppKit panel, local file/log export, privileged CLI 실행은 `MacHost*`, `MacRuntimeControlApp`, `RuntimeNativeShell` 쪽에 둡니다. 반대로 PWA, Runtime Control API server, macOS/Windows host runtime이 모두 재사용해야 하는 상태/진행/update/guest request-result 계약은 `Contracts`와 `RuntimeControl`에 둡니다.
+
+`MacRuntimeControlEnvironment`는 현재 macOS app composition root입니다. `MacHostRuntimeClient -> RuntimeControlClientAPIReadHandler -> RuntimeControlAPIRouter -> RuntimeControlLocalHTTPServer`로 read-only Runtime Control API를 조립하고, 같은 `MacHostRuntimeClient`를 SwiftUI `RuntimeViewModel`에도 주입합니다. 이로써 UI 경로와 HTTP 경로가 같은 usecase/read model 계약을 공유합니다.
 
 `RuntimeHostClient`는 현재 SwiftUI 전환기에서 필요한 local host affordance 경계입니다. PWA 진입 시 이 계약을 그대로 browser client에 노출한다는 뜻이 아닙니다. PWA는 `RuntimeControlClient`에 해당하는 HTTP/SSE API를 우선 사용하고, local file 선택, log export destination, pairing/native shell 같은 기능은 native shell 또는 Runtime Control API의 별도 endpoint로 재배치합니다.
 

@@ -47,7 +47,7 @@ let package = Package(
         ),
         .executableTarget(
             name: "MacRuntimeControlApp",
-            dependencies: ["Contracts", "RuntimeControl", "MacHostRuntimeAdapter"]
+            dependencies: ["Contracts", "RuntimeControl", "RuntimeControlAPI", "MacHostRuntimeAdapter"]
         ),
         .testTarget(
             name: "ContractsTests",

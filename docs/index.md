@@ -49,7 +49,7 @@ VM runtime 문서는 [VitalServer macOS Runtime](vitalserver-macos-runtime.md)�
 | [VitalServer macOS Runtime](vitalserver-macos-runtime.md) | VM runtime 문서군의 빠른 지도 |
 | [macOS Runtime Overview](macos-runtime/overview.md) | VM runtime 세부 문서의 한눈에 보기와 사용자 시나리오 |
 | [Architecture](macos-runtime/architecture.md) | 제품 구조, 단일 노드 가용성, Web/PWA UI/native shell/host runtime 책임 경계 |
-| [Runtime Control API](macos-runtime/runtime-control-api.md) | PWA 직전 Runtime Control route/DTO skeleton과 server/client 후속 경계 |
+| [Runtime Control API](macos-runtime/runtime-control-api.md) | PWA 직전 Runtime Control API 계약, OpenAPI, local read-only server 경계 |
 | [Packaging and Update](macos-runtime/packaging.md) | PKG/DMG 빌드, 설치 흐름, install settings, update bundle 계약 |
 | [Update](macos-runtime/update.md) | update bundle 적용 과정, 보존/변경 범위, guest-side activation, rollback 계약 |
 | [Runtime](macos-runtime/runtime.md) | boot asset, cloud-init, guest bootstrap, network/identity/signing 정책 |

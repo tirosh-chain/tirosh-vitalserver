@@ -226,7 +226,7 @@ Update bundle manifest는 `helperVersion`, `targetPlatforms`, `minUpdaterVersion
 | Python `packages/vm-build` | Ubuntu asset, golden rootfs, nginx bundle, Docker image bundle, update bundle 생성/검증 |
 | Swift `HostCLI` | VM lifecycle, runtime install/configure/health/watchdog/update/rollback |
 | Swift `RuntimeControl` | Helper UI가 보는 runtime usecase 입출력 계약. remote-capable `RuntimeControlClient`와 전환기 local affordance용 `RuntimeHostClient`를 분리 |
-| Swift `RuntimeControlAPI` | PWA/API server/client가 공유할 HTTP route/DTO skeleton. `/runtime/*`와 `/host/*` 경계를 분리 |
+| Swift `RuntimeControlAPI` | PWA/API server/client가 공유할 HTTP route/DTO/router/local loopback server. `/runtime/*`와 `/host/*` 경계를 분리 |
 | Swift `Contracts` | PWA/API/server/host runtime이 공유할 status/progress/update/guest JSON 계약 |
 | Swift `MacHostRuntimeAdapter` | `RuntimeControl`의 macOS local file/process/CLI 구현 |
 | Swift `MacRuntimeControlApp` | Helper app UI, presentation, native shell, composition |
@@ -241,7 +241,7 @@ Update bundle manifest는 `helperVersion`, `targetPlatforms`, `minUpdaterVersion
 |---|---|
 | [macOS Runtime Overview](../../docs/macos-runtime/overview.md) | 문서군 전체 지도와 시나리오 |
 | [Architecture](../../docs/macos-runtime/architecture.md) | As-is/To-be 구조와 책임 경계 |
-| [Runtime Control API](../../docs/macos-runtime/runtime-control-api.md) | PWA 직전 route/DTO skeleton과 API 후속 경계 |
+| [Runtime Control API](../../docs/macos-runtime/runtime-control-api.md) | PWA 직전 Runtime Control API 계약, OpenAPI, local read-only server 경계 |
 | [Packaging and Update](../../docs/macos-runtime/packaging.md) | PKG/DMG/update bundle 계약 |
 | [Runtime](../../docs/macos-runtime/runtime.md) | VM boot, cloud-init, guest bootstrap, network/identity |
 | [Troubleshooting](../../docs/macos-runtime/troubleshooting.md) | 502, stale pid, disk full, install cleanup 등 |
