@@ -111,15 +111,17 @@ VR 장비 / 브라우저
   -> VitalServer container :80
 ```
 
-예시 `.env`:
+설치형 VM에서는 아래 값을 deploy `runtime-config.json`으로 관리합니다.
 
-```env
-VITALSERVER_PROXY_PORT=80
-VITALSERVER_BIND_HOST=127.0.0.1
-VITALSERVER_HTTP_PORT=18080
-VITALSERVER_REDIS_HOST=redis
-VITALSERVER_REDIS_PORT=6379
-VITALSERVER_TRUST_PROXY=1
+```json
+{
+  "vitalserverHttpPort": 18080,
+  "redisHost": "redis",
+  "redisPort": 6379,
+  "trustProxy": true,
+  "publicHost": "",
+  "publicPort": 80
+}
 ```
 
 이 구성에서 Docker backend는 macOS host loopback에만 열고, 외부 장비와 브라우저는 host
@@ -162,8 +164,8 @@ LaunchDaemon plist는 아래 명령으로 렌더링합니다.
 make proxy-plist
 ```
 
-설치 패키지는 nginx config, launchd plist, Docker `.env`를 함께 생성해 container backend와
-native proxy가 같은 port 계약을 사용하도록 유지합니다.
+설치 패키지는 nginx config, launchd plist, deploy `runtime-config.json`을 함께 생성해 container
+backend와 native proxy가 같은 port 계약을 사용하도록 유지합니다.
 
 ## 데이터 흐름
 
@@ -202,7 +204,7 @@ Redis에 저장되는 핵심 key는 아래입니다.
 ### 실행
 
 - `make up`으로 깨끗한 환경에서 재현 가능하게 실행됩니다.
-- 포트, 관리자 비밀번호, Swagger 포트는 `.env`로 조정할 수 있습니다.
+- 제품 VM의 포트, 관리자 비밀번호, Swagger 포트는 deploy `runtime-config.json`으로 조정합니다.
 - 일회성 override는 `make VITALSERVER_PROXY_PORT=8080 up`처럼 Make 변수로 넘깁니다.
 - VitalServer fork submodule은 명시적으로 고정하고, 변경 시 submodule commit을 리뷰합니다.
 

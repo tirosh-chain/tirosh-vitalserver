@@ -1,0 +1,8 @@
+[Unit]
+Description=Back up Tirosh VitalServer Redis volume
+After=docker.service tirosh-vitalserver-compose.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/tirosh-vitalserver-redis-backup

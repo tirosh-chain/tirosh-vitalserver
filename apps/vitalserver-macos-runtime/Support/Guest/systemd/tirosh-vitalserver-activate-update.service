@@ -1,0 +1,8 @@
+[Unit]
+Description=Activate Tirosh VitalServer guest update
+After=docker.service tirosh-runtime-state.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/tirosh-vitalserver-activate-update

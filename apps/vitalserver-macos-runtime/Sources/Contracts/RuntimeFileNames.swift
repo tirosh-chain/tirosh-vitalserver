@@ -1,0 +1,14 @@
+public enum RuntimeFileNames {
+    public static let runtimeStatus = "runtime-status.json"
+    public static let vmIP = "vm-ip"
+    public static let runtimeState = "runtime-state.json"
+    public static let bootstrapLog = "bootstrap.log"
+    public static let bootstrapResult = "bootstrap-result.json"
+    public static let datastoreRepairRequest = "repair-datastore.request"
+    public static let datastoreRepairResult = "repair-datastore-result.json"
+    public static let datastoreRepairLog = "repair-datastore.log"
+    public static let updateActivationRequest = "activate-update.request"
+    public static let updateActivationResult = "activate-update-result.json"
+    public static let updateActivationLog = "activate-update.log"
+    public static let managerCommandLog = "tirosh-vitalserver-manager-command.log"
+}

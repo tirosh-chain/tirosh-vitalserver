@@ -1,0 +1,41 @@
+# Build-machine settings for local VM artifact preparation.
+
+[ubuntu]
+release = "noble"
+version = "24.04"
+base_url = "https://cloud-images.ubuntu.com/releases/noble/release"
+arch = "auto"
+kernel_suffix = "vmlinuz-generic"
+initrd_suffix = "initrd-generic"
+
+[runtime]
+disk_image_name = "vm-disk.img"
+rootfs_size = "4G"
+runtime_dir = "~/.tirosh/vitalserver-vm/runtime"
+
+[cloud_init]
+seed_directory_name = "cloud-init-seed"
+seed_iso_name = "seed.iso"
+hostname = "tirosh-vitalserver"
+username = "ubuntu"
+password = "ubuntu"
+ssh_key_path = "~/.ssh/id_ed25519.pub"
+run_bootstrap = true
+share_tag = "tirosh"
+share_mount = "/mnt/tirosh"
+bootstrap_script = "/mnt/tirosh/deploy/bootstrap.sh"
+
+[docker_images]
+platform = "linux/arm64"
+bundle_path = ".tmp/vitalserver-vm-pkg/docker-images/vitalserver-images.tar.gz"
+images = [
+  "vitalserver:2.3.4",
+  "redis:3.2.12-alpine",
+  "ghcr.io/joeferner/redis-commander:0.9.0",
+  "swaggerapi/swagger-ui:v5.17.14",
+  "nginx:1.24-alpine",
+]
+
+[nginx]
+binary_path = ".artifacts/nginx/macos/bin/nginx"
+expected_version = "nginx/1.31.0"

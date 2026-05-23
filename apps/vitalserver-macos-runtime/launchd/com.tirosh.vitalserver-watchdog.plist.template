@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.tirosh.vitalserver-watchdog</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>${VITALSERVER_VM_BIN}</string>
+    <string>runtime</string>
+    <string>watchdog</string>
+  </array>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>VITALSERVER_VM_HOME</key>
+    <string>${VITALSERVER_VM_HOME}</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>StartInterval</key>
+  <integer>60</integer>
+
+  <key>ThrottleInterval</key>
+  <integer>60</integer>
+
+  <key>StandardOutPath</key>
+  <string>${VITALSERVER_RUNTIME_LOGS}/watchdog.out.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>${VITALSERVER_RUNTIME_LOGS}/watchdog.err.log</string>
+</dict>
+</plist>

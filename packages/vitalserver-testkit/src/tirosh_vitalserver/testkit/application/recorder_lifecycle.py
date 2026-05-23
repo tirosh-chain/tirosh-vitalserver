@@ -63,4 +63,3 @@ def management_event_handler(
         state.record_management_event(event_name, payload)
 
     return handler
-

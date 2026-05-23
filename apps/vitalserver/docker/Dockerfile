@@ -10,7 +10,7 @@ RUN mkdir -p vital_files service/tmp_files service/vr_release logs \
 
 ENV NODE_ENV=production
 ENV NODE_OPTIONS="--require /opt/vitalserver/runtime/node-preload.js"
-ENV VITALSERVER_MIN_CPUS=6
+ENV VITALSERVER_MIN_CPUS=8
 
 EXPOSE 80
 

@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+product_root="/Library/Application Support/TiroshVitalServer"
+vm_home="${product_root}/vm"
+install_log="${product_root}/logs/install.log"
+vm_bin="/usr/local/bin/vitalserver-vm"
+manager_app="/Applications/VitalServer Helper.app"
+max_log_bytes=$((10 * 1024 * 1024))
+keep_log_count=5
+
+mkdir -p "$(dirname "${install_log}")"
+
+rotate_install_log() {
+  [ -f "${install_log}" ] || return 0
+  [ "$(stat -f%z "${install_log}")" -lt "${max_log_bytes}" ] && return 0
+
+  local index source destination
+  for ((index = keep_log_count - 1; index >= 1; index--)); do
+    source="${install_log}.${index}"
+    destination="${install_log}.$((index + 1))"
+    [ -f "${destination}" ] && rm -f "${destination}"
+    [ -f "${source}" ] && mv "${source}" "${destination}"
+  done
+  mv "${install_log}" "${install_log}.1"
+}
+
+rotate_install_log
+exec > >(tee -a "${install_log}") 2>&1
+
+log() {
+  printf "[%s] %s\n" "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" "$*"
+}
+
+on_error() {
+  local status="$?"
+  log "postinstall failed status=${status} command=${BASH_COMMAND}"
+  exit "${status}"
+}
+
+trap on_error ERR
+
+log "Tirosh VitalServer postinstall started"
+if [ ! -d "${manager_app}" ]; then
+  log "helper app missing path=${manager_app}"
+  exit 1
+fi
+VITALSERVER_VM_HOME="${vm_home}" "${vm_bin}" runtime install
+log "Tirosh VitalServer postinstall completed"

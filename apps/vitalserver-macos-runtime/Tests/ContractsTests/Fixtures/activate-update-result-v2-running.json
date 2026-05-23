@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 2,
+  "requestId": "4A3D7063-5E81-4BA1-9E74-74E44347F6E5",
+  "operation": "activate-update",
+  "status": "running",
+  "message": "Loading Docker image bundle",
+  "step": "load-docker-images",
+  "reasonCodes": [],
+  "updatedAt": "2026-05-21T12:33:57Z"
+}

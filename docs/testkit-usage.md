@@ -66,7 +66,8 @@ poll_interval_seconds = 1
 
 [recorder]
 recorders = 5
-# payload = "path/to/recorder-payload.json"  # 실제 payload를 재현해야 할 때만 지정
+# 실제 payload를 재현해야 할 때만 지정합니다.
+# payload = "path/to/recorder-payload.json"
 
 [transfer]
 concurrency = 10

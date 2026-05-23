@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.tirosh.vitalserver-proxy</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>${VITALSERVER_PROXY_RUN}</string>
+  </array>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>VITALSERVER_VM_HOME</key>
+    <string>${VITALSERVER_VM_HOME}</string>
+    <key>VITALSERVER_NGINX_PREFIX</key>
+    <string>${VITALSERVER_NGINX_PREFIX}</string>
+    <key>VITALSERVER_NGINX_BIN</key>
+    <string>${VITALSERVER_NGINX_BIN}</string>
+    <key>VITALSERVER_PROXY_PORT</key>
+    <string>${VITALSERVER_PROXY_PORT}</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>ThrottleInterval</key>
+  <integer>30</integer>
+
+  <key>StandardOutPath</key>
+  <string>${VITALSERVER_RUNTIME_LOGS}/proxy.out.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>${VITALSERVER_RUNTIME_LOGS}/proxy.err.log</string>
+</dict>
+</plist>
