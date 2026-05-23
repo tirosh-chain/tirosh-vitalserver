@@ -1,5 +1,5 @@
 # User-facing knobs.
-VM_LAUNCHER_DIR := apps/vitalserver-vm-launcher
+VM_MACOS_RUNTIME_DIR := apps/vitalserver-macos-runtime
 VM_HOME ?= $(HOME)/.tirosh/vitalserver-vm
 VM_ROOTFS_SIZE ?= 4G
 VM_RECREATE_ROOTFS ?= false
@@ -7,7 +7,7 @@ VM_RECREATE_GOLDEN_ROOTFS ?= false
 VM_COMPRESSION_THREADS ?= $(shell sysctl -n hw.ncpu 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)
 VM_WAIT_TIMEOUT ?= 300
 VM_HTTP_WAIT_TIMEOUT ?= 600
-VM_RELEASE_FILE := $(VM_LAUNCHER_DIR)/release.json
+VM_RELEASE_FILE := $(VM_MACOS_RUNTIME_DIR)/release.json
 VM_RELEASE_JSON = import json; data=json.load(open("$(VM_RELEASE_FILE)"))
 VM_RELEASE_VALUE = $(strip $(shell python3 -c '$(VM_RELEASE_JSON); print($(1))' 2>/dev/null))
 VM_PRODUCT_VERSION := $(call VM_RELEASE_VALUE,data["helperVersion"])
@@ -24,15 +24,15 @@ VM_RELEASE_REDIS_UI_VERSION := $(call VM_RELEASE_VALUE,data["services"]["redisUI
 VM_RELEASE_SWAGGER_UI_VERSION := $(call VM_RELEASE_VALUE,data["services"]["swaggerUI"]["version"])
 VM_RELEASE_GUEST_EDGE_VERSION := $(call VM_RELEASE_VALUE,data["services"]["guestEdge"]["version"])
 VM_RELEASE_HOST_PROXY_VERSION := $(call VM_RELEASE_VALUE,data["services"]["hostProxy"]["version"])
-VM_GENERATED_VERSION_SWIFT := $(VM_LAUNCHER_DIR)/Sources/HostRuntimeControl/Runtime/GeneratedVersion.swift
-VM_GENERATED_RELEASE_SWIFT := $(VM_LAUNCHER_DIR)/Sources/VitalServerHelperApp/GeneratedRelease.swift
+VM_GENERATED_VERSION_SWIFT := $(VM_MACOS_RUNTIME_DIR)/Sources/HostRuntimeControl/Runtime/GeneratedVersion.swift
+VM_GENERATED_RELEASE_SWIFT := $(VM_MACOS_RUNTIME_DIR)/Sources/VitalServerHelperApp/GeneratedRelease.swift
 VM_PKG_VERSION ?= $(VM_PRODUCT_VERSION)
 VM_UPDATE_BUNDLE_VERSION ?= $(VM_PKG_VERSION)
 VM_UPDATE_MIN_UPDATER_VERSION ?= $(VM_RELEASE_MIN_UPDATER_VERSION)
 VM_UPDATE_REQUIRES_TWO_PHASE_UPDATE ?= false
 VM_UPDATE_MIGRATIONS ?= \
-	$(VM_LAUNCHER_DIR)/Support/Build/migrations/001-refresh-cloud-init-seed \
-	$(VM_LAUNCHER_DIR)/Support/Build/migrations/002-migrate-runtime-logs
+	$(VM_MACOS_RUNTIME_DIR)/Support/Build/migrations/001-refresh-cloud-init-seed \
+	$(VM_MACOS_RUNTIME_DIR)/Support/Build/migrations/002-migrate-runtime-logs
 VM_NGINX_SOURCE_BIN ?= /opt/homebrew/opt/nginx/bin/nginx
 VM_NGINX_BIN ?=
 VM_NGINX_EXPECTED_VERSION ?= $(VM_RELEASE_HOST_PROXY_IMAGE)
@@ -41,15 +41,15 @@ VM_CODESIGN_IDENTITY ?= -
 VM_BRIDGED_CODESIGN_IDENTITY ?= $(VM_CODESIGN_IDENTITY)
 
 # Build toolchain.
-VM_LAUNCHER_BIN := $(VM_LAUNCHER_DIR)/.build/release/vitalserver-vm
-VM_APP_BIN := $(VM_LAUNCHER_DIR)/.build/release/VitalServerHelper
-VM_LAUNCHER_ENTITLEMENTS := $(VM_LAUNCHER_DIR)/Entitlements.shared.plist
-VM_LAUNCHER_BRIDGED_ENTITLEMENTS := $(VM_LAUNCHER_DIR)/Entitlements.plist
+VM_RUNTIME_CLI_BIN := $(VM_MACOS_RUNTIME_DIR)/.build/release/vitalserver-vm
+VM_APP_BIN := $(VM_MACOS_RUNTIME_DIR)/.build/release/VitalServerHelper
+VM_RUNTIME_CLI_ENTITLEMENTS := $(VM_MACOS_RUNTIME_DIR)/Entitlements.shared.plist
+VM_RUNTIME_CLI_BRIDGED_ENTITLEMENTS := $(VM_MACOS_RUNTIME_DIR)/Entitlements.plist
 VM_APP_INFO_PLIST = $(VM_APP_BUNDLE)/Contents/Info.plist
 VM_SDKROOT := $(firstword $(wildcard /Library/Developer/CommandLineTools/SDKs/MacOSX15.4.sdk) $(shell xcrun --sdk macosx --show-sdk-path 2>/dev/null))
 VM_CLANG_MODULE_CACHE := $(CURDIR)/.tmp/clang-module-cache
 VM_BUILD_RUNNER := $(UV) run --project packages/vm-build vitalserver-vm-build
-VM_BUILD_CONFIG := $(VM_LAUNCHER_DIR)/Support/Build/vm-build.toml
+VM_BUILD_CONFIG := $(VM_MACOS_RUNTIME_DIR)/Support/Build/vm-build.toml
 VM_NGINX_ARTIFACT_BIN := .artifacts/nginx/macos/bin/nginx
 
 # Local runtime paths.
@@ -61,8 +61,8 @@ VM_IP_FILE := $(VM_RUN_DIR)/vm-ip
 VM_ROOTFS_READY_FILE := $(VM_RUN_DIR)/rootfs-ready
 
 # Source directories.
-VM_GUEST_DIR := $(VM_LAUNCHER_DIR)/Support/Guest
-VM_PACKAGING_DIR := $(VM_LAUNCHER_DIR)/Support/Packaging
+VM_GUEST_DIR := $(VM_MACOS_RUNTIME_DIR)/Support/Guest
+VM_PACKAGING_DIR := $(VM_MACOS_RUNTIME_DIR)/Support/Packaging
 VM_RSYNC_EXCLUDES := --exclude .DS_Store --exclude '._*' --exclude __pycache__
 
 # Product/install constants.

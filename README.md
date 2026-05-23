@@ -149,9 +149,13 @@ LaunchDaemon으로 실행해 외부 장비와 브라우저가 proxy port로만 �
 ├── Makefile
 ├── pyproject.toml
 ├── apps/
-│   └── vitalserver/           # upstream VitalServer를 감싼 제품 실행 app
-│       ├── docker/            # Docker 배포 target
-│       └── runtime/           # 공통 실행 shim
+│   ├── vitalserver/           # upstream VitalServer를 감싼 제품 실행 app
+│   │   ├── docker/            # Docker 배포 target
+│   │   └── runtime/           # 공통 실행 shim
+│   └── vitalserver-macos-runtime/
+│       ├── Sources/           # macOS Helper app, runtime CLI, RuntimeControl/RuntimeContracts 계약/adapter
+│       ├── Support/           # app/packaging/guest/build assets
+│       └── Tests/
 ├── config/
 │   └── testkit.toml
 ├── docs/
@@ -160,7 +164,8 @@ LaunchDaemon으로 실행해 외부 장비와 브라우저가 proxy port로만 �
 │   └── swagger-ui/           # Swagger UI reverse proxy 설정
 ├── make/                     # Makefile target group
 ├── packages/
-│   └── vitalserver-testkit/   # 운영 검증과 데이터 전송 검증용 Python 도구
+│   ├── vitalserver-testkit/   # 운영 검증과 데이터 전송 검증용 Python 도구
+│   └── vm-build/              # build-machine 전용 VM/rootfs/bundle 생성 Python 도구
 ├── scripts/
 └── vendor/
     └── vitalserver/           # git submodule: tirosh-chain/vitalserver
@@ -249,7 +254,7 @@ build하고 release asset을 업로드합니다. Release note는 monorepo 전체
 - [VitalServer 제품화 전략](docs/vitalserver-productization.md): 제품화 맥락과 API/payload 배경
 - [Vital Recorder](docs/vrecorder.md): VRecorder 접속 흐름과 Web Monitoring 상태 표시 기준
 - [Testkit 사용법](docs/testkit-usage.md): testkit 실행 방법과 결과 해석
-- [VitalServer VM Launcher](docs/vitalserver-vm-launcher.md): Mac mini VM runtime 문서군
+- [VitalServer macOS Runtime](docs/vitalserver-macos-runtime.md): Mac mini VM runtime 문서군
 
 ## Submodule 관리
 

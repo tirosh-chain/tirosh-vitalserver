@@ -1,0 +1,71 @@
+import RuntimeCore
+import RuntimeContracts
+import HostRuntimeInfrastructure
+import XCTest
+
+final class JSONFileRuntimeStatusRepositoryTests: XCTestCase {
+    func testSaveAndLoadRuntimeStatusDocument() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let url = directory.appendingPathComponent(RuntimeFileNames.runtimeStatus)
+        let repository = JSONFileRuntimeStatusRepository(url: url)
+
+        try repository.save(document(message: "runtime health check passed"))
+
+        let loaded = try XCTUnwrap(repository.load())
+        XCTAssertEqual(loaded.schemaVersion, 2)
+        XCTAssertEqual(loaded.status, .healthy)
+        XCTAssertEqual(loaded.operation, .health)
+        XCTAssertEqual(loaded.message, "runtime health check passed")
+        XCTAssertEqual(loaded.failureReasons, [])
+        XCTAssertEqual(loaded.progress?.phase, .completed)
+
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    func testLoadReturnsNilWhenStatusFileIsMissing() {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathComponent(RuntimeFileNames.runtimeStatus)
+        let repository = JSONFileRuntimeStatusRepository(url: url)
+
+        XCTAssertNil(repository.load())
+    }
+
+    private func document(message: String) -> RuntimeStatusDocument {
+        RuntimeStatusDocument(
+            schemaVersion: 2,
+            product: "TiroshVitalServer",
+            status: .healthy,
+            operation: .health,
+            message: message,
+            updatedAt: "2026-05-21T12:33:57Z",
+            productRoot: "/Library/Application Support/TiroshVitalServer",
+            runtimeHome: "/Library/Application Support/TiroshVitalServer/vm",
+            runtimeVersion: "0.1.4",
+            vmService: .loaded,
+            proxyService: .loaded,
+            watchdogService: .loaded,
+            vmIP: "192.168.64.2",
+            proxyPort: 80,
+            hostProxyHTTP: "200",
+            guestHTTP: "200",
+            redisUIHTTP: "200",
+            swaggerUIHTTP: "200",
+            rootfsBase: .present,
+            vmDisk: .present,
+            failureReasons: [],
+            latestBackup: nil,
+            progress: RuntimeProgressDocument(
+                operation: .health,
+                phase: .completed,
+                step: nil,
+                stepStatus: .completed,
+                message: message,
+                reasonCodes: [],
+                startedAt: nil,
+                updatedAt: "2026-05-21T12:33:57Z"
+            )
+        )
+    }
+}

@@ -3,13 +3,13 @@
 
 vm-version-source:
 	@test -s "$(VM_RELEASE_FILE)" || { printf "missing release manifest: %s\n" "$(VM_RELEASE_FILE)" >&2; exit 1; }
-	@python3 "$(VM_LAUNCHER_DIR)/Support/Build/sync-release.py" "$(VM_LAUNCHER_DIR)"
+	@python3 "$(VM_MACOS_RUNTIME_DIR)/Support/Build/sync-release.py" "$(VM_MACOS_RUNTIME_DIR)"
 
 vm-build: vm-version-source
-	cd "$(VM_LAUNCHER_DIR)" && env SDKROOT="$(VM_SDKROOT)" CLANG_MODULE_CACHE_PATH="$(VM_CLANG_MODULE_CACHE)" swift build -c release
+	cd "$(VM_MACOS_RUNTIME_DIR)" && env SDKROOT="$(VM_SDKROOT)" CLANG_MODULE_CACHE_PATH="$(VM_CLANG_MODULE_CACHE)" swift build -c release
 
 vm-sign: vm-build
-	codesign --force --sign "$(VM_CODESIGN_IDENTITY)" --entitlements "$(VM_LAUNCHER_ENTITLEMENTS)" "$(VM_LAUNCHER_BIN)"
+	codesign --force --sign "$(VM_CODESIGN_IDENTITY)" --entitlements "$(VM_RUNTIME_CLI_ENTITLEMENTS)" "$(VM_RUNTIME_CLI_BIN)"
 
 vm-bridged-preflight:
 	@if [ "$(VM_BRIDGED_CODESIGN_IDENTITY)" = "-" ]; then \
@@ -21,10 +21,10 @@ vm-bridged-preflight:
 	fi
 
 vm-sign-bridged: vm-build vm-bridged-preflight
-	codesign --force --sign "$(VM_BRIDGED_CODESIGN_IDENTITY)" --entitlements "$(VM_LAUNCHER_BRIDGED_ENTITLEMENTS)" "$(VM_LAUNCHER_BIN)"
+	codesign --force --sign "$(VM_BRIDGED_CODESIGN_IDENTITY)" --entitlements "$(VM_RUNTIME_CLI_BRIDGED_ENTITLEMENTS)" "$(VM_RUNTIME_CLI_BIN)"
 
 vm-init: vm-build
-	VITALSERVER_VM_HOME="$(VM_HOME)" "$(VM_LAUNCHER_BIN)" init
+	VITALSERVER_VM_HOME="$(VM_HOME)" "$(VM_RUNTIME_CLI_BIN)" init
 
 vm-download:
 	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" ubuntu \
@@ -58,25 +58,25 @@ vm-stage: vm-init
 	@printf "cloud-init will run /mnt/tirosh/deploy/bootstrap.sh on first boot\n"
 
 vm-start: vm-sign
-	VITALSERVER_VM_HOME="$(VM_HOME)" "$(VM_LAUNCHER_BIN)" start
+	VITALSERVER_VM_HOME="$(VM_HOME)" "$(VM_RUNTIME_CLI_BIN)" start
 
 vm-start-detached: vm-sign
 	@mkdir -p "$(VM_HOME)/logs" "$(VM_RUN_DIR)"
 	@if [ -f "$(VM_HOME)/run/vitalserver-vm.pid" ] && kill -0 "$$(cat "$(VM_HOME)/run/vitalserver-vm.pid")" >/dev/null 2>&1; then \
 		printf "VM is already running: pid %s\n" "$$(cat "$(VM_HOME)/run/vitalserver-vm.pid")"; \
 	else \
-		VITALSERVER_VM_HOME="$(VM_HOME)" VITALSERVER_VM_DETACHED=1 nohup "$(VM_LAUNCHER_BIN)" start >"$(VM_HOME)/logs/launcher.log" 2>&1 & \
+		VITALSERVER_VM_HOME="$(VM_HOME)" VITALSERVER_VM_DETACHED=1 nohup "$(VM_RUNTIME_CLI_BIN)" start >"$(VM_HOME)/logs/launcher.log" 2>&1 & \
 		printf "VM launcher started in background. Logs: %s\n" "$(VM_HOME)/logs/launcher.log"; \
 	fi
 
 vm-start-bridged: vm-sign-bridged
-	VITALSERVER_VM_HOME="$(VM_HOME)" "$(VM_LAUNCHER_BIN)" start
+	VITALSERVER_VM_HOME="$(VM_HOME)" "$(VM_RUNTIME_CLI_BIN)" start
 
 vm-stop:
-	VITALSERVER_VM_HOME="$(VM_HOME)" "$(VM_LAUNCHER_BIN)" stop
+	VITALSERVER_VM_HOME="$(VM_HOME)" "$(VM_RUNTIME_CLI_BIN)" stop
 
 vm-status:
-	VITALSERVER_VM_HOME="$(VM_HOME)" "$(VM_LAUNCHER_BIN)" status
+	VITALSERVER_VM_HOME="$(VM_HOME)" "$(VM_RUNTIME_CLI_BIN)" status
 
 vm-ip:
 	@if [ -s "$(VM_IP_FILE)" ]; then \
@@ -153,14 +153,14 @@ vm-health:
 	vm_ip=""; \
 	printf "VM health\n"; \
 	printf "  home: %s\n" "$(VM_HOME)"; \
-	if [ -x "$(VM_LAUNCHER_BIN)" ]; then \
+	if [ -x "$(VM_RUNTIME_CLI_BIN)" ]; then \
 		printf "\nVM process:\n"; \
-		if ! VITALSERVER_VM_HOME="$(VM_HOME)" "$(VM_LAUNCHER_BIN)" status; then \
+		if ! VITALSERVER_VM_HOME="$(VM_HOME)" "$(VM_RUNTIME_CLI_BIN)" status; then \
 			status=1; \
 		fi; \
 	else \
 		printf "\nVM process:\n"; \
-		printf "  missing launcher binary: %s\n" "$(VM_LAUNCHER_BIN)" >&2; \
+		printf "  missing launcher binary: %s\n" "$(VM_RUNTIME_CLI_BIN)" >&2; \
 		printf "  run: make vm-build\n" >&2; \
 		status=1; \
 	fi; \
@@ -207,14 +207,14 @@ vm-health:
 	exit $$status
 
 vm-interfaces: vm-sign-bridged
-	"$(VM_LAUNCHER_BIN)" interfaces
+	"$(VM_RUNTIME_CLI_BIN)" interfaces
 
 vm-network-shared: vm-build
-	VITALSERVER_VM_HOME="$(VM_HOME)" "$(VM_LAUNCHER_BIN)" network shared
+	VITALSERVER_VM_HOME="$(VM_HOME)" "$(VM_RUNTIME_CLI_BIN)" network shared
 
 vm-network-bridged: vm-sign-bridged
 	@test -n "$(VM_BRIDGED_INTERFACE)" || { printf "Set VM_BRIDGED_INTERFACE. Run: make vm-interfaces\n" >&2; exit 1; }
-	VITALSERVER_VM_HOME="$(VM_HOME)" "$(VM_LAUNCHER_BIN)" network bridged "$(VM_BRIDGED_INTERFACE)"
+	VITALSERVER_VM_HOME="$(VM_HOME)" "$(VM_RUNTIME_CLI_BIN)" network bridged "$(VM_BRIDGED_INTERFACE)"
 
 vm-clean: vm-build
-	VITALSERVER_VM_HOME="$(VM_HOME)" "$(VM_LAUNCHER_BIN)" clean
+	VITALSERVER_VM_HOME="$(VM_HOME)" "$(VM_RUNTIME_CLI_BIN)" clean

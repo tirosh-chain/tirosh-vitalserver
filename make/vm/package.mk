@@ -3,7 +3,7 @@
 
 vm-airgap-rootfs: vm-download vm-stage
 	@rm -f "$(VM_ROOTFS_READY_FILE)"
-	@VITALSERVER_VM_HOME="$(VM_HOME)" "$(VM_LAUNCHER_BIN)" stop >/dev/null 2>&1 || true
+	@VITALSERVER_VM_HOME="$(VM_HOME)" "$(VM_RUNTIME_CLI_BIN)" stop >/dev/null 2>&1 || true
 	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" cloud-init \
 		--runtime-dir "$(VM_RUNTIME_DIR)" \
 		--bootstrap-script "/mnt/tirosh/deploy/prepare-airgap-rootfs.sh"
@@ -56,13 +56,13 @@ vm-docker-images:
 		--compression-threads "$(VM_COMPRESSION_THREADS)"
 
 vm-app: vm-version-source
-	cd "$(VM_LAUNCHER_DIR)" && env SDKROOT="$(VM_SDKROOT)" CLANG_MODULE_CACHE_PATH="$(VM_CLANG_MODULE_CACHE)" swift build -c release --product VitalServerHelper
+	cd "$(VM_MACOS_RUNTIME_DIR)" && env SDKROOT="$(VM_SDKROOT)" CLANG_MODULE_CACHE_PATH="$(VM_CLANG_MODULE_CACHE)" swift build -c release --product VitalServerHelper
 	rm -rf "$(VM_APP_BUNDLE)"
 	@mkdir -p "$(VM_APP_BUNDLE)/Contents/MacOS" "$(VM_APP_BUNDLE)/Contents/Resources"
 	install -m 0755 "$(VM_APP_BIN)" "$(VM_APP_BUNDLE)/Contents/MacOS/$(VM_APP_NAME)"
-	install -m 0644 "$(VM_LAUNCHER_DIR)/Support/App/Info.plist" "$(VM_APP_INFO_PLIST)"
+	install -m 0644 "$(VM_MACOS_RUNTIME_DIR)/Support/App/Info.plist" "$(VM_APP_INFO_PLIST)"
 	/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $(VM_PRODUCT_VERSION)" "$(VM_APP_INFO_PLIST)"
-	install -m 0644 "$(VM_LAUNCHER_DIR)/Support/App/AppIcon.icns" "$(VM_APP_BUNDLE)/Contents/Resources/AppIcon.icns"
+	install -m 0644 "$(VM_MACOS_RUNTIME_DIR)/Support/App/AppIcon.icns" "$(VM_APP_BUNDLE)/Contents/Resources/AppIcon.icns"
 	codesign --force --sign "$(VM_CODESIGN_IDENTITY)" "$(VM_APP_BUNDLE)"
 	@printf "VM control app is ready: %s\n" "$(VM_APP_BUNDLE)"
 
@@ -80,8 +80,8 @@ vm-pkg-stage: vm-sign vm-app vm-golden-rootfs vm-nginx-bundle vm-docker-images
 		"$(VM_PKG_ROOT)$(VM_INSTALL_NGINX_PREFIX)" \
 		"$(VM_PKG_ROOT)/Library/LaunchDaemons" \
 		"$(VM_PKG_SCRIPTS)"
-	codesign --force --sign "$(VM_CODESIGN_IDENTITY)" --entitlements "$(VM_LAUNCHER_ENTITLEMENTS)" "$(VM_LAUNCHER_BIN)"
-	install -m 0755 "$(VM_LAUNCHER_BIN)" "$(VM_PKG_ROOT)$(VM_INSTALL_BIN)"
+	codesign --force --sign "$(VM_CODESIGN_IDENTITY)" --entitlements "$(VM_RUNTIME_CLI_ENTITLEMENTS)" "$(VM_RUNTIME_CLI_BIN)"
+	install -m 0755 "$(VM_RUNTIME_CLI_BIN)" "$(VM_PKG_ROOT)$(VM_INSTALL_BIN)"
 	@codesign -d --entitlements :- "$(VM_PKG_ROOT)$(VM_INSTALL_BIN)" 2>&1 | grep -q "com.apple.security.virtualization" || { \
 		printf "packaged vitalserver-vm is missing virtualization entitlement: %s\n" "$(VM_PKG_ROOT)$(VM_INSTALL_BIN)" >&2; \
 		exit 1; \
@@ -102,13 +102,13 @@ vm-pkg-stage: vm-sign vm-app vm-golden-rootfs vm-nginx-bundle vm-docker-images
 	install -m 0644 docs/openapi.yaml "$(VM_PKG_ROOT)$(VM_INSTALL_HOME)/data/deploy/docs/openapi.yaml"
 	install -m 0644 "$(VM_DOCKER_IMAGE_BUNDLE)" "$(VM_PKG_ROOT)$(VM_INSTALL_HOME)/data/deploy/docker-images/vitalserver-images.tar.gz"
 	$(VM_BUILD_RUNNER) render-template \
-		--template "$(VM_LAUNCHER_DIR)/launchd/com.tirosh.vitalserver-vm.plist.template" \
+		--template "$(VM_MACOS_RUNTIME_DIR)/launchd/com.tirosh.vitalserver-vm.plist.template" \
 		--output "$(VM_PKG_ROOT)/Library/LaunchDaemons/com.tirosh.vitalserver-vm.plist" \
 		--var "VITALSERVER_VM_BIN=$(VM_INSTALL_BIN)" \
 		--var "VITALSERVER_VM_HOME=$(VM_INSTALL_HOME)" \
 		--var "VITALSERVER_RUNTIME_LOGS=$(VM_INSTALL_RUNTIME_LOGS)"
 	$(VM_BUILD_RUNNER) render-template \
-		--template "$(VM_LAUNCHER_DIR)/launchd/com.tirosh.vitalserver-proxy.plist.template" \
+		--template "$(VM_MACOS_RUNTIME_DIR)/launchd/com.tirosh.vitalserver-proxy.plist.template" \
 		--output "$(VM_PKG_ROOT)/Library/LaunchDaemons/com.tirosh.vitalserver-proxy.plist" \
 		--var "VITALSERVER_PROXY_RUN=$(VM_INSTALL_PROXY_RUN)" \
 		--var "VITALSERVER_VM_HOME=$(VM_INSTALL_HOME)" \
@@ -117,7 +117,7 @@ vm-pkg-stage: vm-sign vm-app vm-golden-rootfs vm-nginx-bundle vm-docker-images
 		--var "VITALSERVER_NGINX_BIN=$(VM_INSTALL_NGINX_BIN)" \
 		--var "VITALSERVER_PROXY_PORT=$(VITALSERVER_PROXY_PORT)"
 	$(VM_BUILD_RUNNER) render-template \
-		--template "$(VM_LAUNCHER_DIR)/launchd/com.tirosh.vitalserver-watchdog.plist.template" \
+		--template "$(VM_MACOS_RUNTIME_DIR)/launchd/com.tirosh.vitalserver-watchdog.plist.template" \
 		--output "$(VM_PKG_ROOT)/Library/LaunchDaemons/com.tirosh.vitalserver-watchdog.plist" \
 		--var "VITALSERVER_VM_BIN=$(VM_INSTALL_BIN)" \
 		--var "VITALSERVER_VM_HOME=$(VM_INSTALL_HOME)" \
@@ -168,7 +168,7 @@ vm-update-artifacts: vm-sign vm-app vm-nginx-bundle vm-docker-images
 	rm -rf "$(VM_UPDATE_ARTIFACT_DIR)"
 	@mkdir -p "$(VM_UPDATE_ARTIFACT_DIR)/runtime-tools" "$(VM_UPDATE_ARTIFACT_DIR)/deploy"
 	tar -czf "$(VM_UPDATE_APP_BUNDLE_ARCHIVE)" -C ".tmp" "$(VM_APP_NAME).app"
-	install -m 0755 "$(VM_LAUNCHER_BIN)" "$(VM_UPDATE_ARTIFACT_DIR)/runtime-tools/vitalserver-vm"
+	install -m 0755 "$(VM_RUNTIME_CLI_BIN)" "$(VM_UPDATE_ARTIFACT_DIR)/runtime-tools/vitalserver-vm"
 	install -m 0755 "$(VM_PACKAGING_DIR)/proxy-run" "$(VM_UPDATE_ARTIFACT_DIR)/runtime-tools/vitalserver-proxy-run"
 	install -m 0755 "$(VM_PACKAGING_DIR)/uninstall" "$(VM_UPDATE_ARTIFACT_DIR)/runtime-tools/tirosh-vitalserver-uninstall"
 	tar -czf "$(VM_UPDATE_RUNTIME_TOOLS_ARCHIVE)" -C "$(VM_UPDATE_ARTIFACT_DIR)/runtime-tools" vitalserver-vm vitalserver-proxy-run tirosh-vitalserver-uninstall

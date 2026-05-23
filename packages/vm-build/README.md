@@ -33,7 +33,7 @@ Build the pinned nginx bundle declared in `vm-build.toml`. The default input is 
 make vm-nginx-artifact
 
 uv run --project packages/vm-build vitalserver-vm-build \
-  --config apps/vitalserver-vm-launcher/Support/Build/vm-build.toml \
+  --config apps/vitalserver-macos-runtime/Support/Build/vm-build.toml \
   nginx-bundle \
   --bundle-dir .tmp/vitalserver-vm-pkg/nginx-bundle
 ```
