@@ -1,0 +1,204 @@
+import Foundation
+import RuntimeControl
+
+public enum RuntimeControlHTTPMethod: String, Codable, Equatable, Sendable {
+    case get = "GET"
+    case post = "POST"
+    case put = "PUT"
+    case delete = "DELETE"
+}
+
+public enum RuntimeControlAPIScope: String, Codable, Equatable, Sendable {
+    case runtimeControl
+    case hostAffordance
+}
+
+public struct RuntimeControlAPIRoute: Codable, Equatable, Sendable {
+    public let method: RuntimeControlHTTPMethod
+    public let path: String
+    public let scope: RuntimeControlAPIScope
+
+    public init(method: RuntimeControlHTTPMethod, path: String, scope: RuntimeControlAPIScope) {
+        self.method = method
+        self.path = path
+        self.scope = scope
+    }
+}
+
+public enum RuntimeControlAPIEndpoint: String, CaseIterable, Codable, Equatable, Sendable {
+    case capabilities
+    case status
+    case health
+    case settings
+    case applySettings
+    case release
+    case installInfo
+    case startServices
+    case stopServices
+    case repairProxy
+    case repairDatastore
+    case uninstall
+    case backups
+    case logText
+    case updateBundleSummary
+    case verifyUpdateBundle
+    case applyUpdateBundle
+    case rollbackBackup
+    case deleteBackup
+    case exportLogs
+
+    public var route: RuntimeControlAPIRoute {
+        switch self {
+        case .capabilities:
+            return .init(method: .get, path: "/runtime/capabilities", scope: .runtimeControl)
+        case .status:
+            return .init(method: .get, path: "/runtime/status", scope: .runtimeControl)
+        case .health:
+            return .init(method: .post, path: "/runtime/health", scope: .runtimeControl)
+        case .settings:
+            return .init(method: .get, path: "/runtime/settings", scope: .runtimeControl)
+        case .applySettings:
+            return .init(method: .put, path: "/runtime/settings", scope: .runtimeControl)
+        case .release:
+            return .init(method: .get, path: "/runtime/release", scope: .runtimeControl)
+        case .installInfo:
+            return .init(method: .get, path: "/runtime/install", scope: .runtimeControl)
+        case .startServices:
+            return .init(method: .post, path: "/runtime/services/start", scope: .runtimeControl)
+        case .stopServices:
+            return .init(method: .post, path: "/runtime/services/stop", scope: .runtimeControl)
+        case .repairProxy:
+            return .init(method: .post, path: "/runtime/services/repair-proxy", scope: .runtimeControl)
+        case .repairDatastore:
+            return .init(method: .post, path: "/runtime/services/repair-datastore", scope: .runtimeControl)
+        case .uninstall:
+            return .init(method: .post, path: "/runtime/uninstall", scope: .runtimeControl)
+        case .backups:
+            return .init(method: .get, path: "/host/backups", scope: .hostAffordance)
+        case .logText:
+            return .init(method: .post, path: "/host/logs/read", scope: .hostAffordance)
+        case .updateBundleSummary:
+            return .init(method: .post, path: "/host/update-bundles/summary", scope: .hostAffordance)
+        case .verifyUpdateBundle:
+            return .init(method: .post, path: "/host/update-bundles/verify", scope: .hostAffordance)
+        case .applyUpdateBundle:
+            return .init(method: .post, path: "/host/update-bundles/apply", scope: .hostAffordance)
+        case .rollbackBackup:
+            return .init(method: .post, path: "/host/backups/rollback", scope: .hostAffordance)
+        case .deleteBackup:
+            return .init(method: .delete, path: "/host/backups", scope: .hostAffordance)
+        case .exportLogs:
+            return .init(method: .post, path: "/host/logs/export", scope: .hostAffordance)
+        }
+    }
+}
+
+public enum RuntimeControlFileReferenceKind: String, Codable, Equatable, Sendable {
+    case localPath
+    case uploadedArtifact
+    case remoteURL
+}
+
+public struct RuntimeControlFileReference: Codable, Equatable, Sendable {
+    public let kind: RuntimeControlFileReferenceKind
+    public let value: String
+
+    public init(kind: RuntimeControlFileReferenceKind, value: String) {
+        self.kind = kind
+        self.value = value
+    }
+}
+
+public struct RuntimeControlErrorResponse: Codable, Equatable, Sendable {
+    public let code: String
+    public let message: String
+
+    public init(code: String, message: String) {
+        self.code = code
+        self.message = message
+    }
+}
+
+public struct RuntimeControlCommandResponse: Codable, Equatable, Sendable {
+    public let result: RuntimeCommandResult
+
+    public init(result: RuntimeCommandResult) {
+        self.result = result
+    }
+}
+
+public struct RuntimeApplySettingsRequest: Codable, Equatable, Sendable {
+    public let settings: RuntimeSettings
+
+    public init(settings: RuntimeSettings) {
+        self.settings = settings
+    }
+}
+
+public struct RuntimeRepairProxyRequest: Codable, Equatable, Sendable {
+    public let proxyPort: Int
+
+    public init(proxyPort: Int) {
+        self.proxyPort = proxyPort
+    }
+}
+
+public struct RuntimeUninstallRequest: Codable, Equatable, Sendable {
+    public let clean: Bool
+
+    public init(clean: Bool) {
+        self.clean = clean
+    }
+}
+
+public struct RuntimeLogTextRequest: Codable, Equatable, Sendable {
+    public let source: RuntimeLogSource
+    public let helperMessage: String
+    public let lineLimit: Int
+
+    public init(source: RuntimeLogSource, helperMessage: String, lineLimit: Int) {
+        self.source = source
+        self.helperMessage = helperMessage
+        self.lineLimit = lineLimit
+    }
+}
+
+public struct RuntimeLogTextResponse: Codable, Equatable, Sendable {
+    public let text: String
+
+    public init(text: String) {
+        self.text = text
+    }
+}
+
+public struct RuntimeUpdateBundleRequest: Codable, Equatable, Sendable {
+    public let bundle: RuntimeControlFileReference
+
+    public init(bundle: RuntimeControlFileReference) {
+        self.bundle = bundle
+    }
+}
+
+public struct RuntimeUpdateBundleSummaryResponse: Codable, Equatable, Sendable {
+    public let summary: String
+
+    public init(summary: String) {
+        self.summary = summary
+    }
+}
+
+public struct RuntimeBackupRequest: Codable, Equatable, Sendable {
+    public let backup: RuntimeControlFileReference
+
+    public init(backup: RuntimeControlFileReference) {
+        self.backup = backup
+    }
+}
+
+public struct RuntimeExportLogsRequest: Codable, Equatable, Sendable {
+    public let destination: RuntimeControlFileReference
+
+    public init(destination: RuntimeControlFileReference) {
+        self.destination = destination
+    }
+}

@@ -1,6 +1,6 @@
 import Foundation
 
-public struct RuntimeBackup: Identifiable, Hashable, Sendable {
+public struct RuntimeBackup: Codable, Identifiable, Hashable, Sendable {
     public let path: String
     public let sizeBytes: UInt64?
 
@@ -13,7 +13,7 @@ public struct RuntimeBackup: Identifiable, Hashable, Sendable {
     public var name: String { URL(fileURLWithPath: path).lastPathComponent }
 }
 
-public enum RuntimeLogSource: String, Hashable, Sendable {
+public enum RuntimeLogSource: String, Codable, Hashable, Sendable {
     case helperMessage
     case install
     case command
@@ -24,7 +24,7 @@ public enum RuntimeLogSource: String, Hashable, Sendable {
     case containers
 }
 
-public struct RuntimeLogSourceOption: Identifiable, Sendable {
+public struct RuntimeLogSourceOption: Codable, Identifiable, Sendable {
     public let id: RuntimeLogSource
     public let title: String
 
@@ -34,7 +34,7 @@ public struct RuntimeLogSourceOption: Identifiable, Sendable {
     }
 }
 
-public struct VitalFilesFolder: Identifiable, Sendable {
+public struct VitalFilesFolder: Codable, Identifiable, Sendable {
     public var id: String { path }
     public let name: String
     public let path: String
@@ -45,7 +45,7 @@ public struct VitalFilesFolder: Identifiable, Sendable {
     }
 }
 
-public struct RuntimeCommandResult: Sendable {
+public struct RuntimeCommandResult: Codable, Equatable, Sendable {
     public let exitCode: Int32
     public let stdout: String
     public let stderr: String
@@ -57,7 +57,7 @@ public struct RuntimeCommandResult: Sendable {
     }
 }
 
-public struct RuntimeLogExportResult: Equatable, Sendable {
+public struct RuntimeLogExportResult: Codable, Equatable, Sendable {
     public let destination: URL
 
     public init(destination: URL) {
@@ -65,7 +65,7 @@ public struct RuntimeLogExportResult: Equatable, Sendable {
     }
 }
 
-public struct RuntimeReleaseInfo: Equatable, Sendable {
+public struct RuntimeReleaseInfo: Codable, Equatable, Sendable {
     public let helperVersion: String
     public let minimumUpdaterVersion: String
     public let vitalServerVersion: String
@@ -84,7 +84,7 @@ public struct RuntimeReleaseInfo: Equatable, Sendable {
     }
 }
 
-public struct RuntimeBundledServiceInfo: Equatable, Identifiable, Sendable {
+public struct RuntimeBundledServiceInfo: Codable, Equatable, Identifiable, Sendable {
     public var id: String { name }
     public let name: String
     public let image: String
@@ -97,7 +97,7 @@ public struct RuntimeBundledServiceInfo: Equatable, Identifiable, Sendable {
     }
 }
 
-public struct RuntimeInstallInfo: Equatable, Sendable {
+public struct RuntimeInstallInfo: Codable, Equatable, Sendable {
     public let runtimeHomePath: String
     public let backupsPath: String
 

@@ -225,12 +225,15 @@ Update bundle manifest는 `helperVersion`, `targetPlatforms`, `minUpdaterVersion
 | Make | target orchestration, artifact path, developer wrapper |
 | Python `packages/vm-build` | Ubuntu asset, golden rootfs, nginx bundle, Docker image bundle, update bundle 생성/검증 |
 | Swift `HostCLI` | VM lifecycle, runtime install/configure/health/watchdog/update/rollback |
-| Swift `RuntimeControl` | Helper UI가 보는 runtime usecase 입출력 계약 |
+| Swift `RuntimeControl` | Helper UI가 보는 runtime usecase 입출력 계약. remote-capable `RuntimeControlClient`와 전환기 local affordance용 `RuntimeHostClient`를 분리 |
+| Swift `RuntimeControlAPI` | PWA/API server/client가 공유할 HTTP route/DTO skeleton. `/runtime/*`와 `/host/*` 경계를 분리 |
 | Swift `Contracts` | PWA/API/server/host runtime이 공유할 status/progress/update/guest JSON 계약 |
 | Swift `MacHostRuntimeAdapter` | `RuntimeControl`의 macOS local file/process/CLI 구현 |
 | Swift `MacRuntimeControlApp` | Helper app UI, presentation, native shell, composition |
 | Packaging shell | `postinstall`, `proxy-run`, uninstall entrypoint |
 | Guest support | cloud-init 이후 Docker Compose bootstrap, guest state 기록, diagnostics |
+
+네이밍은 platform 종속성과 재사용 가능성을 기준으로 둡니다. `MacHost*`는 macOS host adapter, `MacRuntimeControlApp`은 SwiftUI/native shell transition app, `System*`은 Foundation/FileManager/Process 기반의 일반 system adapter, `Contracts`/`RuntimeControl`/`RuntimeControlAPI`는 PWA/API/server/host runtime이 공유할 계약을 뜻합니다.
 
 ## 문서
 
@@ -238,6 +241,7 @@ Update bundle manifest는 `helperVersion`, `targetPlatforms`, `minUpdaterVersion
 |---|---|
 | [macOS Runtime Overview](../../docs/macos-runtime/overview.md) | 문서군 전체 지도와 시나리오 |
 | [Architecture](../../docs/macos-runtime/architecture.md) | As-is/To-be 구조와 책임 경계 |
+| [Runtime Control API](../../docs/macos-runtime/runtime-control-api.md) | PWA 직전 route/DTO skeleton과 API 후속 경계 |
 | [Packaging and Update](../../docs/macos-runtime/packaging.md) | PKG/DMG/update bundle 계약 |
 | [Runtime](../../docs/macos-runtime/runtime.md) | VM boot, cloud-init, guest bootstrap, network/identity |
 | [Troubleshooting](../../docs/macos-runtime/troubleshooting.md) | 502, stale pid, disk full, install cleanup 등 |

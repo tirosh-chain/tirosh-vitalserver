@@ -107,11 +107,13 @@ Local-only 기능은 암묵적으로 호출하지 않고 capability로 노출한
 | 코드 계약 | 책임 |
 | --- | --- |
 | `RuntimeViewModel` | UI 상태, capability guard, usecase orchestration, 화면 메시지 변환 |
-| `RuntimeControlClient` | UI가 호출하는 local/remote runtime operation contract. status/settings/log/backup/release read model과 install/configure/update/rollback/service command를 제공 |
-| `MacHostRuntimeClient` | macOS local adapter. file reader, settings/status reader, privileged command runner, action environment를 조합 |
+| `RuntimeControlClient` | UI가 호출하는 local/remote runtime operation contract. status/settings/release/install read model과 configure/repair/service/uninstall command를 제공 |
+| `RuntimeHostClient` | SwiftUI 전환기에서 필요한 local host affordance contract. backup/log/update-bundle file read, local log export, bundle verify/apply, rollback/delete 같은 host-local 작업을 제공 |
+| `RuntimeControlAPI` | PWA/API server/client가 공유할 HTTP route/DTO skeleton. `/runtime/*` runtime control route와 `/host/*` local host affordance route를 구분 |
+| `MacHostRuntimeClient` | macOS local adapter. `RuntimeControlClient`와 `RuntimeHostClient`를 구현하고 file reader, settings/status reader, privileged command runner, action environment를 조합 |
 | `RuntimeNativeShell` | macOS native picker/save panel, file/web open, helper relaunch/terminate 같은 shell concern |
 
-이 구현에서 `RuntimeViewModel`는 `AppKit`을 직접 import하지 않는다. update bundle, log export destination, backup 선택값처럼 local file을 가리키는 값은 내부 계약에서 `URL`로 전달하고, CLI argument나 화면 표시가 필요한 boundary에서만 path string으로 변환한다. Log source처럼 닫힌 선택지는 raw string이 아니라 enum 계약으로 다룬다.
+이 구현에서 `RuntimeViewModel`는 `AppKit`을 직접 import하지 않는다. update bundle과 log export destination은 `URL`로 전달하고, backup read model과 선택 상태는 PWA/API로 직렬화하기 쉬운 path string으로 유지한다. CLI argument나 화면 표시가 필요한 boundary에서만 URL/path 변환을 수행한다. Log source처럼 닫힌 선택지는 raw string이 아니라 enum 계약으로 다룬다.
 
 Local web mode와 Remote mode는 같은 `RuntimeControlClient` contract를 HTTP/SSE adapter로 구현한다. Runtime Control API는 최소한 아래 contract를 가져야 한다.
 
@@ -122,6 +124,10 @@ Local web mode와 Remote mode는 같은 `RuntimeControlClient` contract를 HTTP/
 - progress/log streaming
 - dangerous operation confirmation
 - audit/debug에 필요한 result and reason model
+
+`RuntimeHostClient`는 browser/PWA가 그대로 구현할 계약이 아니라, 현재 SwiftUI transition app이 local host 기능을 잃지 않도록 분리한 임시 경계다. PWA에서는 local file 선택, log export destination, pairing/native shell 같은 기능이 native shell 또는 Runtime Control API endpoint로 재배치된다.
+
+현재 branch는 이 API를 실행하는 HTTP server/client를 포함하지 않고, route/DTO skeleton만 `RuntimeControlAPI` target에 둔다. 실제 auth/session, pairing token, SSE progress/log stream, OpenAPI export는 후속 Runtime Control API 이슈에서 구현한다.
 
 Local web mode에서 mobile browser가 local host에 접근하는 방식은 배포 환경별로 다를 수 있다. Same LAN, QR/pairing token, reverse tunnel, remote management server 중 하나를 사용할 수 있지만, UI는 그 transport 세부에 의존하지 않는다.
 

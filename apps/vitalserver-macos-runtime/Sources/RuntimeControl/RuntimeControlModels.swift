@@ -1,7 +1,7 @@
 import Foundation
 import Contracts
 
-public struct RuntimeControlCapabilities: Equatable, Sendable {
+public struct RuntimeControlCapabilities: Codable, Equatable, Sendable {
     public var canInstallRuntime: Bool
     public var canUninstallRuntime: Bool
     public var canApplyBundle: Bool

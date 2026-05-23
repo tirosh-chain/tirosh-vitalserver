@@ -1,0 +1,72 @@
+# Runtime Control API
+
+Runtime Control API는 PWA, native shell, remote control client가 공유할 runtime control boundary입니다. 현재 branch는 실제 HTTP server/client를 포함하지 않고, Swift `RuntimeControlAPI` target에 route/DTO skeleton을 둡니다. 이 문서는 PWA 착수 직전 기준으로 어떤 계약이 고정됐고, 무엇이 다음 이슈에서 구현될지 정리합니다.
+
+## Target
+
+| Target | 책임 |
+|---|---|
+| `RuntimeControl` | UI/usecase 관점의 typed protocol, DTO, enum, result model |
+| `RuntimeControlAPI` | HTTP transport 관점의 route, request/response DTO, file reference abstraction |
+| `MacHostRuntimeAdapter` | 현재 macOS local 구현. `RuntimeControlClient`와 `RuntimeHostClient`를 구현 |
+
+## Route Scope
+
+`RuntimeControlAPI`는 route를 두 scope로 나눕니다.
+
+| Scope | Prefix | 의미 | PWA에서의 해석 |
+|---|---|---|---|
+| `runtimeControl` | `/runtime/*` | local/remote runtime control usecase | PWA가 우선 의존할 API surface |
+| `hostAffordance` | `/host/*` | local file/log/update-bundle affordance | browser가 직접 수행하지 않고 native shell 또는 server endpoint로 재배치 |
+
+## Runtime Routes
+
+| Method | Path | 계약 |
+|---|---|---|
+| `GET` | `/runtime/capabilities` | capability negotiation |
+| `GET` | `/runtime/status` | runtime status read model |
+| `POST` | `/runtime/health` | active health refresh |
+| `GET` | `/runtime/settings` | current runtime settings |
+| `PUT` | `/runtime/settings` | apply runtime settings |
+| `GET` | `/runtime/release` | helper/release/component metadata |
+| `GET` | `/runtime/install` | installed runtime paths and install metadata |
+| `POST` | `/runtime/services/start` | start runtime services |
+| `POST` | `/runtime/services/stop` | stop runtime services |
+| `POST` | `/runtime/services/repair-proxy` | repair host proxy |
+| `POST` | `/runtime/services/repair-datastore` | repair datastore |
+| `POST` | `/runtime/uninstall` | uninstall runtime |
+
+## Host Affordance Routes
+
+| Method | Path | 계약 |
+|---|---|---|
+| `GET` | `/host/backups` | list local backups |
+| `POST` | `/host/logs/read` | read selected log text |
+| `POST` | `/host/logs/export` | export local logs |
+| `POST` | `/host/update-bundles/summary` | inspect selected update bundle |
+| `POST` | `/host/update-bundles/verify` | verify selected update bundle |
+| `POST` | `/host/update-bundles/apply` | apply selected update bundle |
+| `POST` | `/host/backups/rollback` | rollback selected backup |
+| `DELETE` | `/host/backups` | delete selected backup |
+
+## File Reference
+
+PWA는 host local path를 직접 다룰 수 없습니다. 그래서 update bundle, backup, log export destination처럼 파일을 가리키는 값은 `RuntimeControlFileReference`로 표현합니다.
+
+| Kind | 의미 |
+|---|---|
+| `localPath` | macOS SwiftUI/native shell 전환기에서 쓰는 local file path |
+| `uploadedArtifact` | PWA/API server에 업로드된 artifact id |
+| `remoteURL` | server가 가져올 수 있는 remote URL |
+
+## Next Issue
+
+다음 Runtime Control API 이슈에서는 아래를 구현합니다.
+
+| 항목 | 내용 |
+|---|---|
+| HTTP server adapter | `RuntimeControlAPI` route를 실제 local host service로 노출 |
+| HTTP client adapter | PWA/native shell이 사용할 generated/manual client |
+| auth/session | local pairing token, remote session, capability negotiation |
+| streaming | progress/log SSE 또는 동등한 event stream |
+| OpenAPI export | `RuntimeControlAPI` skeleton에서 OpenAPI 문서 생성 또는 수동 동기화 |
