@@ -1,0 +1,189 @@
+# Runtime observability model
+
+이 문서는 macOS VM runtime의 status, event, log 수집 책임을 정리합니다. 목표는
+`runtime-status.json`, `runtime-events.jsonl`, container logs, audit proxy event가 서로 다른 용도로
+존재하더라도 제품 관점에서 어디를 믿고, 어디를 API로 노출할지 명확하게 만드는 것입니다.
+
+## 현재 관찰된 파편화
+
+Host Swift runtime 쪽은 타입과 계약이 비교적 명확합니다.
+
+| 데이터 | 작성자 | 소비자 | 성격 |
+|---|---|---|---|
+| `status/runtime-status.json` | HostCLI workflow, watchdog | Helper UI, Runtime Control API, watchdog guard | 최신 상태 스냅샷 |
+| `status/runtime-events.jsonl` | watchdog 관측 경로 | Runtime Control API | 상태 전이 이력 |
+| `logs/command.log`, `logs/runtime/*` | HostCLI, launchd | Helper Logs, export logs | 진단용 raw log |
+
+Guest/container 쪽은 목적이 다른 자료가 병렬로 있습니다.
+
+| 데이터 | 작성자 | 소비자 | 성격 |
+|---|---|---|---|
+| `vm/data/run/runtime-state.json` | guest `tirosh-runtime-state` | host `RuntimeHealthChecker`, Helper status | guest health/resource 스냅샷 |
+| `vm/data/run/container-logs.log` | guest `tirosh-vitalserver-container-logs` | Helper Logs, export logs | `docker compose logs --follow` 수집본 |
+| `/var/log/vitalserver-audit/audit-events.log` | `vitalserver-audit-proxy` | guest/operator diagnostics | command audit 원본 파일 로그 |
+| audit proxy stdout | `vitalserver-audit-proxy` | container log collector | collector 호환 raw event log |
+| Redis List `vitalserver:audit_events` | `vitalserver-audit-proxy` | 운영 조회/디버깅 | Redis 3.2 호환 보조 조회 sink |
+| `/audit-proxy/status` | `vitalserver-audit-proxy` | watchdog 후보, operator | audit proxy runtime counters |
+
+파편화의 핵심은 container 쪽 raw log/event가 여러 sink에 흩어져 있고, 어떤 자료가 제품 API의 canonical
+source인지 명확하지 않다는 점입니다.
+
+## 책임 원칙
+
+### 각 app/container
+
+각 app과 container는 자기 상태와 raw event만 기록합니다.
+
+- `vitalserver-audit-proxy`는 command audit event를 생성합니다.
+- guest `tirosh-runtime-state`는 guest HTTP/resource snapshot을 생성합니다.
+- compose service와 container는 stdout/stderr에 raw log를 남깁니다.
+- upstream VitalServer app은 제품 runtime event를 직접 알 필요가 없습니다.
+
+각 app은 제품 전체 상태를 판단하지 않습니다.
+
+### Guest collectors
+
+Guest collector는 수집만 담당합니다.
+
+- `tirosh-vitalserver-container-logs`는 `docker compose logs --follow`를 공유 디렉터리로 복사합니다.
+- collector는 로그를 해석하거나 status/event로 승격하지 않습니다.
+- `container-logs.log`는 진단용 raw log로 유지합니다.
+
+### Host watchdog
+
+Watchdog은 관측, 정규화, 판단의 중심입니다.
+
+Watchdog 관측 대상:
+
+- VM/proxy/watchdog launchd state
+- VM IP
+- guest `runtime-state.json`
+- guest HTTP readiness
+- host proxy readiness/liveness
+- Redis UI / Swagger UI HTTP status
+- rootfs/vm disk file state
+- bootstrap result/log failure reason
+- proxy port listener conflict
+- active managed operation guard
+- audit proxy health/status
+
+Watchdog은 raw source를 제품 관점 status/event로 정규화합니다.
+
+- 최신 상태는 `runtime-status.json`에 반영합니다.
+- 상태 전이와 주요 관측 결과는 `runtime-events.jsonl`에 append-only로 기록합니다.
+- 자동 복구 판단도 watchdog에서 수행합니다.
+
+### Runtime Control API
+
+Runtime Control API는 정규화된 결과를 노출합니다.
+
+- `GET /runtime/status`: 최신 runtime read model
+- `GET /runtime/events`: watchdog이 정규화한 최근 event history
+- raw log 조회는 `/host/logs/read` 계열 host affordance로 유지합니다.
+
+Container raw log나 Redis audit list를 API의 canonical source로 직접 노출하지 않습니다. 필요하면 별도
+audit 조회 endpoint를 만들되, `runtime-events`와 같은 operational event stream과 분리합니다.
+
+## Target flow
+
+```text
+containers
+  -> stdout/stderr
+  -> raw audit file
+  -> Redis audit list
+  -> guest runtime-state.json
+
+guest collectors
+  -> container-logs.log
+
+host watchdog
+  -> observe guest state, host services, HTTP endpoints, audit proxy status
+  -> normalize product status/events
+  -> runtime-status.json
+  -> runtime-events.jsonl
+
+Runtime Control API
+  -> /runtime/status
+  -> /runtime/events
+  -> /host/logs/read
+```
+
+## Canonical source policy
+
+| 질문 | Canonical source |
+|---|---|
+| 현재 runtime이 정상인가? | `runtime-status.json`, API `/runtime/status` |
+| 언제 상태가 바뀌었나? | `runtime-events.jsonl`, API `/runtime/events` |
+| guest service가 살아 있나? | watchdog이 읽은 `runtime-state.json` + HTTP probe 결과 |
+| container가 무슨 로그를 냈나? | `container-logs.log` |
+| VRecorder command가 어떤 흐름으로 전달됐나? | audit proxy event log / Redis List |
+| 장애 원인을 제품 상태로 볼 수 있나? | watchdog이 정규화한 `failureReasons`와 runtime event |
+
+## Event taxonomy
+
+Runtime event와 command audit event는 분리합니다.
+
+| 종류 | 목적 | 예 |
+|---|---|---|
+| runtime operational event | 제품 runtime 상태 전이와 복구 판단 추적 | `status-changed`, `progress-updated`, `watchdog-observation` |
+| command audit event | VRecorder/Web Monitoring command 추적 | `join_vr`, `send_data`, `req_cmd`, `command_dispatch` |
+| raw log | 사람이 보는 진단 정보 | compose logs, launchd logs, proxy logs |
+
+Runtime operational event는 watchdog이 생성합니다. Command audit event는 audit proxy가 생성하고 watchdog은
+필요한 경우 요약 상태만 관측합니다.
+
+## 정리 단계
+
+### 1단계: 현재 책임 고정
+
+- `RuntimeStatusReporter`는 최신 status/progress 문서만 기록합니다.
+- watchdog이 `runtime-events.jsonl`을 기록합니다.
+- `GET /runtime/events`는 정규화된 runtime event만 반환합니다.
+- audit proxy는 raw audit event를 계속 파일/stdout/Redis에 남깁니다.
+
+### 2단계: container observation 모델 추가
+
+Swift 쪽에 `RuntimeContainerObservation` 같은 read model을 추가합니다.
+
+포함 후보:
+
+- `runtime-state.json` updated age
+- `container-logs.log` exists/updated age
+- audit proxy `/audit-proxy/status`
+- compose service health summary
+- Redis audit write failure count
+- audit file/stdout write failure count
+
+이 모델은 watchdog의 관측 입력입니다. Helper UI에 그대로 노출하기보다는 `runtime-status`와
+`runtime-events`로 정규화합니다.
+
+### 3단계: audit proxy status를 watchdog 관측 대상에 편입
+
+watchdog이 host proxy를 통해 `/audit-proxy/status`를 읽고 아래를 판단합니다.
+
+- audit proxy process가 요청을 받고 있는지
+- Socket.IO parse failure가 급증하는지
+- Redis/file/stdout audit write failure가 발생하는지
+- active WebSocket 수가 비정상적으로 고정되어 있는지
+
+장애로 판단되면 `failureReasons`와 `runtime-events.jsonl`에 제품 용어로 기록합니다.
+
+### 4단계: API 확장 여부 결정
+
+기본 API는 runtime operational event만 제공합니다.
+
+필요하면 아래 endpoint를 별도로 검토합니다.
+
+- `GET /runtime/audit-events`
+- `GET /runtime/container-observations`
+- `GET /runtime/log-sources`
+
+단, raw audit event와 raw container log를 `/runtime/events`에 섞지 않습니다.
+
+## 유지보수 기준
+
+- 새 container나 sidecar를 추가하면 먼저 “raw 상태를 어디에 남길지”를 정합니다.
+- 제품 상태 판단은 watchdog으로 올립니다.
+- API는 raw source가 아니라 정규화된 read model을 기본으로 제공합니다.
+- raw log는 export/debug 대상이고, operational event는 API/자동화 대상입니다.
+- 같은 event를 여러 sink에 남길 수는 있지만, canonical source와 sink 목적을 문서에 명시합니다.
