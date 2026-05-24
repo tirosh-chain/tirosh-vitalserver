@@ -23,6 +23,10 @@ function loadConfig(env) {
         path: env.VITALSERVER_AUDIT_LOG_PATH || "/var/log/vitalserver-audit/audit-events.log",
         format: logFormatEnv(env, "VITALSERVER_AUDIT_LOG_FORMAT", "json"),
       },
+      stdout: {
+        enabled: env.VITALSERVER_AUDIT_STDOUT_ENABLED !== "0",
+        format: logFormatEnv(env, "VITALSERVER_AUDIT_STDOUT_FORMAT", logFormatEnv(env, "VITALSERVER_AUDIT_LOG_FORMAT", "json")),
+      },
     },
     clientIp: {
       trustProxy: /^(1|true|yes)$/i.test(env.VITALSERVER_TRUST_PROXY || "1"),

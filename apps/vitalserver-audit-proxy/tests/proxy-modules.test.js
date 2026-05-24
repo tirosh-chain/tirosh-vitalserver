@@ -8,6 +8,7 @@ const { createSocketIoAuditService } = require("../src/application/socketio-audi
 const { auditEventTypes } = require("../src/domain/audit-event-contracts");
 const { formatAuditLogLine } = require("../src/infrastructure/file/audit-log-format");
 const { createClientIpSelector } = require("../src/infrastructure/http/client-ip");
+const { createAuditStdoutWriter } = require("../src/infrastructure/process/audit-stdout-writer");
 
 test("client ip selector trusts forwarded headers only when enabled", () => {
   const req = {
@@ -134,6 +135,19 @@ test("audit file formatter supports json and logfmt", () => {
     formatAuditLogLine(event, "logfmt"),
     'command_job=restart_vr event_type=req_cmd message="hello world" payload="{\\"vrcode\\":\\"VR_A\\"}" schema_version=1\n'
   );
+});
+
+test("audit stdout writer emits collector-compatible lines", () => {
+  const writes = [];
+  const writer = createAuditStdoutWriter(
+    { enabled: true, format: "logfmt" },
+    { auditStdoutWriteFailures: 0 },
+    { write: (line, callback) => { writes.push(line); callback(); } }
+  );
+
+  writer.write({ event_type: "join_vr", vrcode: "VR_A" });
+
+  assert.deepStrictEqual(writes, ["event_type=join_vr vrcode=VR_A\n"]);
 });
 
 function contextFor(vrcode) {

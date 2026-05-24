@@ -8,6 +8,7 @@ function createMetrics() {
     socketIoParseFailures: 0,
     auditWriteFailures: 0,
     auditFileWriteFailures: 0,
+    auditStdoutWriteFailures: 0,
     redisIpWriteFailures: 0,
   };
 }
@@ -20,6 +21,7 @@ function metricsSnapshot(metrics) {
     socketIoParseFailures: metrics.socketIoParseFailures,
     auditWriteFailures: metrics.auditWriteFailures,
     auditFileWriteFailures: metrics.auditFileWriteFailures,
+    auditStdoutWriteFailures: metrics.auditStdoutWriteFailures,
     redisIpWriteFailures: metrics.redisIpWriteFailures,
   };
 }
