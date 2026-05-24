@@ -9,6 +9,7 @@
 |---|---|
 | 제품 전체 맥락을 잡기 | [VitalServer 제품화 전략](vitalserver-productization.md) |
 | VRecorder가 VitalServer에 어떻게 붙는지 보기 | [Vital Recorder](vrecorder.md) |
+| command audit event 계약 확인하기 | [VitalServer command audit](vitalserver-command-audit.md) |
 | testkit으로 검증 실행하기 | [Testkit 사용법](testkit-usage.md) |
 | Redis key와 relay 근거 보기 | [Redis 데이터 구조](redis-data-model.md) |
 | Mac mini VM runtime/package 이해하기 | [VitalServer macOS Runtime](vitalserver-macos-runtime.md) |
@@ -31,6 +32,7 @@
 | 문서 | 역할 |
 |---|---|
 | [Vital Recorder](vrecorder.md) | Socket.IO 접속 흐름, VRecorder 식별 기준, Web Monitoring 상태 표시 기준 |
+| [VitalServer command audit](vitalserver-command-audit.md) | audit proxy 기반 `join_vr`, `send_data`, `req_cmd`, dispatch event 계약 |
 | [Redis 데이터 구조](redis-data-model.md) | VitalServer가 Redis에 저장하는 key 구조와 relay 설계 메모 |
 | [OpenAPI 문서](openapi.yaml) | upstream VitalServer route에서 추출한 Swagger/OpenAPI spec |
 

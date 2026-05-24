@@ -30,6 +30,7 @@ platform = "linux/arm64"
 bundle_path = ".tmp/vitalserver-vm-pkg/docker-images/vitalserver-images.tar.gz"
 images = [
   "vitalserver:2.3.4",
+  "vitalserver-audit-proxy:0.1.0",
   "redis:3.2.12-alpine",
   "ghcr.io/joeferner/redis-commander:0.9.0",
   "swaggerapi/swagger-ui:v5.17.14",

@@ -24,6 +24,7 @@ def run_docker_images(args: Namespace) -> int:
     )
     images = required_string_list(docker_config, "images")
     app_image = images[0]
+    audit_proxy_image = "vitalserver-audit-proxy:0.1.0"
 
     require_tool("docker")
     bundle_path.parent.mkdir(parents=True, exist_ok=True)
@@ -33,6 +34,8 @@ def run_docker_images(args: Namespace) -> int:
     print(f"Bundle: {bundle_path}")
 
     for image in images[1:]:
+        if image == audit_proxy_image:
+            continue
         run(["docker", "pull", "--platform", build_platform, image])
 
     run(
@@ -50,6 +53,22 @@ def run_docker_images(args: Namespace) -> int:
             str(root),
         ]
     )
+    if audit_proxy_image in images:
+        run(
+            [
+                "docker",
+                "buildx",
+                "build",
+                "--platform",
+                build_platform,
+                "--load",
+                "-t",
+                audit_proxy_image,
+                "-f",
+                str(root / "apps/vitalserver-audit-proxy/Dockerfile"),
+                str(root),
+            ]
+        )
 
     threads = compression_threads(args.compression_threads)
     gzip_command(["docker", "save", *images], bundle_path, threads=threads)

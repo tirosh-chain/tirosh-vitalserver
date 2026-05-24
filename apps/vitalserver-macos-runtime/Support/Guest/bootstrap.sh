@@ -289,6 +289,12 @@ if ! docker image inspect vitalserver:2.3.4 >/dev/null 2>&1; then
     -f "${DEPLOY_DIR}/compose.yaml" \
     build app
 fi
+if ! docker image inspect vitalserver-audit-proxy:0.1.0 >/dev/null 2>&1; then
+  docker compose \
+    --project-name vitalserver \
+    -f "${DEPLOY_DIR}/compose.yaml" \
+    build audit-proxy
+fi
 
 eval "$(/usr/local/bin/tirosh-runtime-env "${DEPLOY_DIR}/runtime-config.json")"
 /usr/local/bin/tirosh-vitalserver-compose up
