@@ -1,6 +1,6 @@
 "use strict";
 
-const { mask } = require("./redaction");
+const { mask } = require("../../domain/redaction-policy");
 
 function createAuditRecorder(config, redis, metrics) {
   return {

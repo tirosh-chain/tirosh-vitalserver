@@ -1,7 +1,7 @@
 "use strict";
 
 const { loadConfig } = require("./src/config");
-const { createAuditProxyServer } = require("./src/proxy-server");
+const { createAuditProxyServer } = require("./src/infrastructure/http/proxy-server");
 
 const config = loadConfig(process.env);
 const server = createAuditProxyServer(config);

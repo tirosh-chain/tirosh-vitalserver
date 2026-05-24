@@ -3,23 +3,25 @@
 const http = require("http");
 const net = require("net");
 const crypto = require("crypto");
-const { auditEventTypes } = require("./audit-events");
-const { createAuditRecorder } = require("./audit-recorder");
+const { auditEventTypes } = require("../../domain/audit-event-contracts");
+const { createSocketIoAuditService } = require("../../application/socketio-audit-service");
+const { createMetrics, metricsSnapshot } = require("../../observability/metrics");
+const { createAuditRecorder } = require("../redis/audit-recorder");
+const { createRedisClient } = require("../redis/client");
+const { createVrIdentityStore } = require("../redis/vr-identity-store");
 const { createBodyMirror } = require("./body-mirror");
 const { createClientIpSelector } = require("./client-ip");
-const { createMetrics, metricsSnapshot } = require("./metrics");
-const { createRedisClient } = require("./redis-client");
-const { createSocketIoAuditor } = require("./socketio-auditor");
 const { createWebSocketParser } = require("./websocket-parser");
 
 function createAuditProxyServer(config) {
   const metrics = createMetrics();
   const redis = createRedisClient(config.redis);
   const audit = createAuditRecorder(config.audit, redis, metrics);
+  const vrIdentityStore = createVrIdentityStore(redis, metrics);
   const clientIp = createClientIpSelector(config.clientIp);
-  const socketIoAuditor = createSocketIoAuditor({ audit, redis, metrics, config });
+  const socketIoAudit = createSocketIoAuditService({ audit, vrIdentityStore, metrics, config });
 
-  const dependencies = { audit, clientIp, config, metrics, socketIoAuditor };
+  const dependencies = { audit, clientIp, config, metrics, socketIoAudit };
   const server = http.createServer((req, res) => proxyHttp(req, res, dependencies));
   server.on("upgrade", (req, socket, head) => proxyUpgrade(req, socket, head, dependencies));
   return server;
@@ -42,10 +44,10 @@ function proxyHttp(req, res, dependencies) {
   dependencies.metrics.httpRequests += 1;
 
   const requestMirror = createBodyMirror(dependencies.config.audit.maxBodyBytes, (body, truncated) => {
-    dependencies.socketIoAuditor.inspect(body.toString("utf8"), "client", context, { truncated });
+    dependencies.socketIoAudit.inspect(body.toString("utf8"), "client", context, { truncated });
   });
   const responseMirror = createBodyMirror(dependencies.config.audit.maxBodyBytes, (body, truncated) => {
-    dependencies.socketIoAuditor.inspect(body.toString("utf8"), "server", context, { truncated });
+    dependencies.socketIoAudit.inspect(body.toString("utf8"), "server", context, { truncated });
   });
 
   const upstream = createUpstreamRequest(req, res, context, responseMirror, dependencies);
@@ -114,10 +116,10 @@ function proxyUpgrade(req, socket, head, dependencies) {
   );
 
   const clientParser = createWebSocketParser((message) => {
-    dependencies.socketIoAuditor.inspect(message, "client", context);
+    dependencies.socketIoAudit.inspect(message, "client", context);
   });
   const serverParser = createWebSocketParser((message) => {
-    dependencies.socketIoAuditor.inspect(message, "server", context);
+    dependencies.socketIoAudit.inspect(message, "server", context);
   });
   if (head && head.length > 0) clientParser.push(head);
   observeServerFramesAfterHandshake(upstream, serverParser);

@@ -3,9 +3,9 @@
 const assert = require("assert");
 const test = require("node:test");
 const zlib = require("zlib");
-const { auditEventTypes } = require("../src/audit-events");
-const { createClientIpSelector } = require("../src/client-ip");
-const { createSocketIoAuditor } = require("../src/socketio-auditor");
+const { createSocketIoAuditService } = require("../src/application/socketio-audit-service");
+const { auditEventTypes } = require("../src/domain/audit-event-contracts");
+const { createClientIpSelector } = require("../src/infrastructure/http/client-ip");
 
 test("client ip selector trusts forwarded headers only when enabled", () => {
   const req = {
@@ -31,9 +31,9 @@ test("client ip selector trusts forwarded headers only when enabled", () => {
 test("socket.io auditor records join_vr and rewrites redis ip", async () => {
   const records = [];
   const commands = [];
-  const auditor = createSocketIoAuditor({
+  const auditor = createSocketIoAuditService({
     audit: { record: (eventType, fields) => records.push({ eventType, fields }) },
-    redis: { command: (args, callback) => { commands.push(args); if (callback) callback(); } },
+    vrIdentityStore: { setRecorderIp: (vrcode, selectedIp) => commands.push(["SET", `ip_${vrcode}`, selectedIp]) },
     metrics: metrics(),
     config: { vitalServer: { ipWriteDelayMs: 0 } },
   });
@@ -50,9 +50,9 @@ test("socket.io auditor records join_vr and rewrites redis ip", async () => {
 
 test("socket.io auditor summarizes send_data payload", () => {
   const records = [];
-  const auditor = createSocketIoAuditor({
+  const auditor = createSocketIoAuditService({
     audit: { record: (eventType, fields) => records.push({ eventType, fields }) },
-    redis: { command: () => {} },
+    vrIdentityStore: { setRecorderIp: () => {} },
     metrics: metrics(),
     config: { vitalServer: { ipWriteDelayMs: 0 } },
   });
@@ -78,9 +78,9 @@ test("socket.io auditor summarizes send_data payload", () => {
 
 test("socket.io auditor correlates req_cmd and dispatch", () => {
   const records = [];
-  const auditor = createSocketIoAuditor({
+  const auditor = createSocketIoAuditService({
     audit: { record: (eventType, fields) => records.push({ eventType, fields }) },
-    redis: { command: () => {} },
+    vrIdentityStore: { setRecorderIp: () => {} },
     metrics: metrics(),
     config: { vitalServer: { ipWriteDelayMs: 0 } },
   });

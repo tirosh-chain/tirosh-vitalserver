@@ -51,8 +51,15 @@ Redis는 현재 `3.2.12`로 pin되어 있으므로 Redis Stream 대신 Redis Lis
 
 ## Event schema
 
-코드 기준 event 계약은 `apps/vitalserver-audit-proxy/src/audit-events.js`에 모읍니다. 새 audit event를
+코드 기준 event 계약은 `apps/vitalserver-audit-proxy/src/domain/audit-event-contracts.js`에 모읍니다. 새 audit event를
 추가할 때는 먼저 이 파일에 event type, Socket.IO event name, JSDoc payload contract를 추가합니다.
+
+Audit proxy 코드는 작은 DDD 경계로 구성합니다.
+
+- `src/domain`: VitalServer Socket.IO event 이름, audit event 계약, command payload 해석, `send_data` 요약 규칙
+- `src/application`: Socket.IO audit 유스케이스와 도메인 흐름
+- `src/infrastructure`: HTTP/WebSocket proxy, Redis audit sink, Redis VRecorder identity store
+- `src/observability`: runtime metric 수집과 status snapshot
 
 공통 필드:
 
