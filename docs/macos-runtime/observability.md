@@ -1,8 +1,9 @@
 # Runtime observability model
 
-이 문서는 macOS VM runtime의 status, event, log 수집 책임을 정리합니다. 목표는
-`runtime-status.json`, `runtime-events.jsonl`, container logs, audit proxy event가 서로 다른 용도로
-존재하더라도 제품 관점에서 어디를 믿고, 어디를 API로 노출할지 명확하게 만드는 것입니다.
+이 문서는 macOS VM runtime의 status, event, log, index 수집 책임을 정리합니다. 목표는
+`runtime-status.json`, `runtime-events.jsonl`, SQLite read model, container logs, audit proxy event가
+서로 다른 용도로 존재하더라도 제품 관점에서 어디를 믿고, 어디를 API로 노출할지 명확하게 만드는
+것입니다.
 
 ## 현재 관찰된 파편화
 
@@ -12,6 +13,7 @@ Host Swift runtime 쪽은 타입과 계약이 비교적 명확합니다.
 |---|---|---|---|
 | `status/runtime-status.json` | HostCLI workflow, watchdog | Helper UI, Runtime Control API, watchdog guard | 최신 상태 스냅샷 |
 | `status/runtime-events.jsonl` | watchdog 관측 경로 | Runtime Control API | 상태 전이 이력 |
+| `status/runtime-observability.sqlite` | host observability indexer | Runtime Control API | 조회용 read model/index |
 | `logs/command.log`, `logs/runtime/*` | HostCLI, launchd | Helper Logs, export logs | 진단용 raw log |
 
 Guest/container 쪽은 목적이 다른 자료가 병렬로 있습니다.
@@ -71,6 +73,7 @@ Watchdog은 raw source를 제품 관점 status/event로 정규화합니다.
 
 - 최신 상태는 `runtime-status.json`에 반영합니다.
 - 상태 전이와 주요 관측 결과는 `runtime-events.jsonl`에 append-only로 기록합니다.
+- 조회가 필요한 event/index row는 SQLite read model에도 best-effort로 반영합니다.
 - 자동 복구 판단도 watchdog에서 수행합니다.
 
 ### Runtime Control API
@@ -78,7 +81,7 @@ Watchdog은 raw source를 제품 관점 status/event로 정규화합니다.
 Runtime Control API는 정규화된 결과를 노출합니다.
 
 - `GET /runtime/status`: 최신 runtime read model
-- `GET /runtime/events`: watchdog이 정규화한 최근 event history
+- `GET /runtime/events`: SQLite read model을 우선 사용하고, 불가능하면 JSONL에서 읽은 최근 event history
   - `limit`: 1-500, 기본 100
   - `type`: event type filter
   - `since`: ISO-8601 timestamp lower bound
@@ -86,6 +89,16 @@ Runtime Control API는 정규화된 결과를 노출합니다.
 
 Container raw log나 Redis audit list를 API의 canonical source로 직접 노출하지 않습니다. 필요하면 별도
 audit 조회 endpoint를 만들되, `runtime-events`와 같은 operational event stream과 분리합니다.
+
+### SQLite read model
+
+SQLite는 raw log의 대체물이 아니라 API 조회용 index/read model입니다.
+
+- raw log와 JSONL은 사람이 읽고 재구축할 수 있는 append-only source로 유지합니다.
+- SQLite는 `limit`, `type`, `since`, cursor pagination 같은 조회를 빠르게 처리합니다.
+- SQLite write 실패는 runtime 실패로 보지 않습니다. warning event 또는 diagnostics 대상으로만 둡니다.
+- SQLite 파일은 삭제 가능해야 하고, raw log/JSONL에서 재구축할 수 있어야 합니다.
+- local runtime 특성상 WAL mode를 사용하고, schema migration을 명시적으로 관리합니다.
 
 ## Target flow
 
@@ -104,10 +117,11 @@ host watchdog
   -> normalize product status/events
   -> runtime-status.json
   -> runtime-events.jsonl
+  -> runtime-observability.sqlite
 
 Runtime Control API
   -> /runtime/status
-  -> /runtime/events
+  -> /runtime/events via SQLite first, JSONL fallback
   -> /host/logs/read
 ```
 
@@ -116,7 +130,7 @@ Runtime Control API
 | 질문 | Canonical source |
 |---|---|
 | 현재 runtime이 정상인가? | `runtime-status.json`, API `/runtime/status` |
-| 언제 상태가 바뀌었나? | `runtime-events.jsonl`, API `/runtime/events` |
+| 언제 상태가 바뀌었나? | `runtime-observability.sqlite`, fallback `runtime-events.jsonl`, API `/runtime/events` |
 | guest service가 살아 있나? | watchdog이 읽은 `runtime-state.json` + HTTP probe 결과 |
 | container가 무슨 로그를 냈나? | `container-logs.log` |
 | VRecorder command가 어떤 흐름으로 전달됐나? | audit proxy event log / Redis List |
@@ -151,6 +165,58 @@ Runtime operational event type은 API와 JSONL의 public contract입니다.
 | `runtime-command-failed` | host runtime | host command 실패 종료 |
 
 새 이벤트는 raw source 이름이 아니라 제품 운영 의미를 기준으로 추가합니다.
+
+## SQLite schema plan
+
+초기 SQLite schema는 조회 가치가 있는 metadata와 원본 payload를 함께 보관합니다. 큰 raw log body를
+무조건 DB에 복사하지 않고, 필요하면 raw file 위치와 offset을 index합니다.
+
+```sql
+runtime_events (
+  id text primary key,
+  timestamp text not null,
+  source text not null,
+  event_type text not null,
+  status text,
+  previous_status text,
+  operation text,
+  message text,
+  runtime_version text,
+  payload_json text not null
+);
+
+runtime_observations (
+  id text primary key,
+  timestamp text not null,
+  kind text not null,
+  status text,
+  payload_json text not null
+);
+
+container_log_index (
+  id integer primary key autoincrement,
+  timestamp text,
+  service text,
+  level text,
+  message text,
+  raw_file text not null,
+  raw_offset integer,
+  raw_length integer
+);
+
+audit_event_index (
+  id text primary key,
+  timestamp text not null,
+  event_type text not null,
+  command text,
+  request_id text,
+  recorder_id text,
+  payload_json text not null
+);
+```
+
+초기 구현은 `runtime_events`부터 시작합니다. `container_log_index`와 `audit_event_index`는 raw log
+retention/rotation 정책이 정리된 뒤 ingest합니다.
 
 ## 정리 단계
 
@@ -205,6 +271,17 @@ watchdog이 host proxy를 통해 `/audit-proxy/status`를 읽습니다.
 
 ### 4단계: API 확장 여부 결정
 
+SQLite read model을 도입합니다.
+
+- `HostInfrastructure`에 `SQLiteRuntimeObservabilityStore`를 추가합니다.
+- `RuntimeEventRepository`는 JSONL append를 canonical source로 유지하고 SQLite append를 best-effort로
+  수행하는 composite repository로 확장합니다.
+- `/runtime/events` read path는 SQLite를 우선 사용하고 실패 시 기존 JSONL repository로 fallback합니다.
+- schema version/migration table을 추가합니다.
+- DB 손상 또는 삭제 시 runtime 동작은 계속되고, 다음 watchdog/event write부터 index를 재생성합니다.
+
+### 5단계: API 확장 여부 결정
+
 기본 API는 runtime operational event만 제공합니다.
 
 필요하면 아래 endpoint를 별도로 검토합니다.
@@ -219,6 +296,6 @@ watchdog이 host proxy를 통해 `/audit-proxy/status`를 읽습니다.
 
 - 새 container나 sidecar를 추가하면 먼저 “raw 상태를 어디에 남길지”를 정합니다.
 - 제품 상태 판단은 watchdog으로 올립니다.
-- API는 raw source가 아니라 정규화된 read model을 기본으로 제공합니다.
+- API는 raw source가 아니라 SQLite/JSONL 기반 정규화 read model을 기본으로 제공합니다.
 - raw log는 export/debug 대상이고, operational event는 API/자동화 대상입니다.
 - 같은 event를 여러 sink에 남길 수는 있지만, canonical source와 sink 목적을 문서에 명시합니다.

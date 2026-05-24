@@ -37,7 +37,8 @@ macOS Helper app composition은 read-only Runtime Control API server를 조립�
 
 나머지 route는 계약에는 있지만 현재 read-only router에서 `501 endpointNotImplemented`를 반환합니다.
 
-`GET /runtime/events`는 운영 이력 조회용 query parameter를 지원합니다.
+`GET /runtime/events`는 운영 이력 조회용 query parameter를 지원합니다. 목표 구현은 SQLite read model을
+우선 조회하고, DB가 없거나 손상된 경우 기존 `runtime-events.jsonl` fallback으로 응답하는 것입니다.
 
 | Query | Meaning |
 |---|---|
@@ -113,6 +114,9 @@ PWA는 host local path를 직접 다룰 수 없습니다. 그래서 update bundl
 
 | 항목 | 내용 |
 |---|---|
+| observability SQLite read model | `/runtime/events` query/pagination을 위해 `runtime-observability.sqlite` 우선 조회 추가 |
+| JSONL fallback | SQLite unavailable 시 기존 `runtime-events.jsonl` 조회로 degrade |
+| schema migration | SQLite schema version과 migration runner 추가 |
 | HTTP client adapter | PWA/native shell이 사용할 generated/manual client |
 | auth/session | 현재 dev token을 local pairing token, remote session, capability negotiation으로 교체 |
 | streaming | progress/log SSE 또는 동등한 event stream |

@@ -13,7 +13,7 @@
 | testkit으로 검증 실행하기 | [Testkit 사용법](testkit-usage.md) |
 | Redis key와 relay 근거 보기 | [Redis 데이터 구조](redis-data-model.md) |
 | Mac mini VM runtime/package 이해하기 | [VitalServer macOS Runtime](vitalserver-macos-runtime.md) |
-| runtime status/event/log 수집 책임 보기 | [Runtime observability model](macos-runtime/observability.md) |
+| runtime status/event/log/index 수집 책임 보기 | [Runtime observability model](macos-runtime/observability.md) |
 | branch와 tag 운영 기준 보기 | [Branch 운영 기준](branching.md) |
 
 ## 문서군
@@ -53,7 +53,7 @@ VM runtime 문서는 [VitalServer macOS Runtime](vitalserver-macos-runtime.md)�
 | [macOS Runtime Overview](macos-runtime/overview.md) | VM runtime 세부 문서의 한눈에 보기와 사용자 시나리오 |
 | [Architecture](macos-runtime/architecture.md) | 제품 구조, 단일 노드 가용성, Web/PWA UI/native shell/host runtime 책임 경계 |
 | [Runtime Control API](macos-runtime/runtime-control-api.md) | PWA 직전 Runtime Control API 계약, OpenAPI, local read-only server 경계 |
-| [Runtime observability model](macos-runtime/observability.md) | runtime status/event/log 수집 책임, watchdog 중심 정규화 기준 |
+| [Runtime observability model](macos-runtime/observability.md) | runtime status/event/log/index 수집 책임, watchdog 중심 정규화와 SQLite read model 기준 |
 | [Packaging and Update](macos-runtime/packaging.md) | PKG/DMG 빌드, 설치 흐름, install settings, update bundle 계약 |
 | [Update](macos-runtime/update.md) | update bundle 적용 과정, 보존/변경 범위, guest-side activation, rollback 계약 |
 | [Runtime](macos-runtime/runtime.md) | boot asset, cloud-init, guest bootstrap, network/identity/signing 정책 |
