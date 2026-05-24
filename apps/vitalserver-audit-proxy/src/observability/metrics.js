@@ -2,6 +2,7 @@
 
 function createMetrics() {
   return {
+    startedAt: new Date().toISOString(),
     activeWebSockets: 0,
     activeRecorderConnections: 0,
     recorders: new Map(),
@@ -17,6 +18,8 @@ function createMetrics() {
 
 function metricsSnapshot(metrics) {
   return {
+    startedAt: metrics.startedAt,
+    uptimeSeconds: uptimeSeconds(metrics.startedAt),
     activeWebSockets: metrics.activeWebSockets,
     activeRecorderConnections: metrics.activeRecorderConnections,
     recorders: Array.from(metrics.recorders.entries())
@@ -35,6 +38,12 @@ function metricsSnapshot(metrics) {
     auditStdoutWriteFailures: metrics.auditStdoutWriteFailures,
     redisIpWriteFailures: metrics.redisIpWriteFailures,
   };
+}
+
+function uptimeSeconds(startedAt) {
+  const started = Date.parse(startedAt);
+  if (!Number.isFinite(started)) return 0;
+  return Math.max(0, Math.floor((Date.now() - started) / 1000));
 }
 
 function recordRecorderJoin(metrics, context, vrcode, selectedIp) {

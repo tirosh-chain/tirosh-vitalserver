@@ -185,7 +185,6 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
     public var proxyPort: Int
     public var failureReasons: [RuntimeFailureReason]
     public var progress: RuntimeProgressDocument?
-    public var containerObservation: RuntimeContainerObservation?
 
     public init(
         runtimeInstalled: Bool = false,
@@ -209,8 +208,7 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
         dataStorage: ResourceUsage? = nil,
         proxyPort: Int = 80,
         failureReasons: [RuntimeFailureReason] = [],
-        progress: RuntimeProgressDocument? = nil,
-        containerObservation: RuntimeContainerObservation? = nil
+        progress: RuntimeProgressDocument? = nil
     ) {
         self.runtimeInstalled = runtimeInstalled
         self.vmServiceLoaded = vmServiceLoaded
@@ -234,7 +232,6 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
         self.proxyPort = proxyPort
         self.failureReasons = failureReasons
         self.progress = progress
-        self.containerObservation = containerObservation
     }
 
     public var isReady: Bool {

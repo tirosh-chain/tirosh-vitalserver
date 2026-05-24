@@ -32,6 +32,8 @@ components:
       type: object
       additionalProperties: false
       required:
+        - startedAt
+        - uptimeSeconds
         - activeWebSockets
         - activeRecorderConnections
         - recorders
@@ -43,6 +45,12 @@ components:
         - auditStdoutWriteFailures
         - redisIpWriteFailures
       properties:
+        startedAt:
+          type: string
+          description: Audit proxy process start timestamp.
+        uptimeSeconds:
+          type: integer
+          minimum: 0
         activeWebSockets:
           type: integer
           minimum: 0

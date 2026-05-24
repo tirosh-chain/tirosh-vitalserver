@@ -702,10 +702,6 @@
           "failureReasons": {
             "type": "array",
             "items": { "type": "string" }
-          },
-          "containerObservation": {
-            "type": ["object", "null"],
-            "additionalProperties": true
           }
         }
       },

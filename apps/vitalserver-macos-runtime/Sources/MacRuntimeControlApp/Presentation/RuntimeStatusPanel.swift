@@ -28,6 +28,8 @@ struct RuntimeStatusPanel: View {
             Divider()
             recorderSection
             Divider()
+            moduleUptimeSection
+            Divider()
             resourceUsageSection
             Divider()
             DisclosureGroup(AppConstants.Labels.healthDetails, isExpanded: $showingHealthDetails) {
@@ -43,6 +45,32 @@ struct RuntimeStatusPanel: View {
         .background(Color(nsColor: .controlBackgroundColor))
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .frame(maxWidth: 760, alignment: .leading)
+    }
+
+    private var moduleUptimeSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(AppConstants.Labels.moduleUptime)
+                .font(.headline)
+            Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 10) {
+                if let auditProxy = viewModel.containerObservation?.auditProxyStatus {
+                    moduleRow(
+                        AppConstants.Labels.auditProxy,
+                        state: serviceReachabilityLabel(viewModel.containerObservation?.auditProxyHTTP),
+                        uptimeSeconds: auditProxy.uptimeSeconds
+                    )
+                }
+                ForEach(composeServices, id: \.service) { service in
+                    moduleRow(
+                        service.service,
+                        state: service.health ?? service.state ?? AppConstants.StatusText.unknown,
+                        uptimeSeconds: service.uptimeSeconds
+                    )
+                }
+                if composeServices.isEmpty && viewModel.containerObservation?.auditProxyStatus == nil {
+                    statusRow(AppConstants.Labels.moduleUptime, AppConstants.StatusText.notChecked)
+                }
+            }
+        }
     }
 
     private var recorderSection: some View {
@@ -169,19 +197,23 @@ struct RuntimeStatusPanel: View {
     }
 
     private var activeRecorderConnectionText: String {
-        let count = viewModel.status.containerObservation?.auditProxyStatus?.activeRecorderConnections ?? 0
+        let count = viewModel.containerObservation?.auditProxyStatus?.activeRecorderConnections ?? 0
         return "\(count)"
     }
 
     private var knownRecorderText: String {
-        let count = viewModel.status.containerObservation?.auditProxyStatus?.recorders.count ?? 0
+        let count = viewModel.containerObservation?.auditProxyStatus?.recorders.count ?? 0
         return "\(count)"
     }
 
     private var latestRecorder: RuntimeRecorderConnectionObservation? {
-        viewModel.status.containerObservation?.auditProxyStatus?.recorders
+        viewModel.containerObservation?.auditProxyStatus?.recorders
             .sorted { ($0.lastSeenAt ?? "") > ($1.lastSeenAt ?? "") }
             .first
+    }
+
+    private var composeServices: [RuntimeContainerServiceObservation] {
+        viewModel.containerObservation?.composeServices ?? []
     }
 
     private var vitalServerAvailability: String {
@@ -206,6 +238,17 @@ struct RuntimeStatusPanel: View {
             Text(label)
                 .foregroundStyle(.secondary)
             content()
+        }
+    }
+
+    private func moduleRow(_ label: String, state: String, uptimeSeconds: Int?) -> some View {
+        statusRow(label) {
+            HStack(spacing: 8) {
+                Text(state)
+                    .fontWeight(.medium)
+                Text(formatUptime(uptimeSeconds))
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 
@@ -286,6 +329,22 @@ struct RuntimeStatusPanel: View {
             return AppConstants.StatusText.needsRepair
         }
         return AppConstants.StatusText.waiting
+    }
+
+    private func formatUptime(_ seconds: Int?) -> String {
+        guard let seconds else {
+            return AppConstants.StatusText.unknown
+        }
+        let days = seconds / 86_400
+        let hours = (seconds % 86_400) / 3_600
+        let minutes = (seconds % 3_600) / 60
+        if days > 0 {
+            return "\(days)d \(hours)h"
+        }
+        if hours > 0 {
+            return "\(hours)h \(minutes)m"
+        }
+        return "\(minutes)m"
     }
 }
 

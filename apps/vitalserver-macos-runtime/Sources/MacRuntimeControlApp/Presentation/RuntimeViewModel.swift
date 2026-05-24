@@ -22,6 +22,7 @@ final class RuntimeViewModel: ObservableObject {
     @Published var releaseInfo = RuntimeReleaseInfo.generated
     @Published var installationInfo = RuntimeInstallInfo()
     @Published var runtimeEvents = RuntimeEventHistory(events: [])
+    @Published var containerObservation: RuntimeContainerObservation?
 
     let controlClient: any RuntimeControlClient
     let hostClient: any RuntimeHostClient
@@ -104,6 +105,7 @@ final class RuntimeViewModel: ObservableObject {
 
     func refreshRuntimeEvents(limit: Int = 100) {
         runtimeEvents = controlClient.loadRuntimeEvents(limit: limit)
+        containerObservation = runtimeEvents.events.first { $0.containerObservation != nil }?.containerObservation
     }
 
     func uninstallRuntime(clean: Bool = false) async {

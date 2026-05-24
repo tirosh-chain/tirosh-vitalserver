@@ -1,6 +1,8 @@
 import Foundation
 
 public struct RuntimeAuditProxyStatusDocument: Codable, Equatable, Sendable {
+    public let startedAt: String?
+    public let uptimeSeconds: Int?
     public let activeWebSockets: Int
     public let activeRecorderConnections: Int
     public let recorders: [RuntimeRecorderConnectionObservation]
@@ -13,6 +15,8 @@ public struct RuntimeAuditProxyStatusDocument: Codable, Equatable, Sendable {
     public let redisIpWriteFailures: Int
 
     public init(
+        startedAt: String? = nil,
+        uptimeSeconds: Int? = nil,
         activeWebSockets: Int = 0,
         activeRecorderConnections: Int = 0,
         recorders: [RuntimeRecorderConnectionObservation] = [],
@@ -24,6 +28,8 @@ public struct RuntimeAuditProxyStatusDocument: Codable, Equatable, Sendable {
         auditStdoutWriteFailures: Int = 0,
         redisIpWriteFailures: Int = 0
     ) {
+        self.startedAt = startedAt
+        self.uptimeSeconds = uptimeSeconds
         self.activeWebSockets = activeWebSockets
         self.activeRecorderConnections = activeRecorderConnections
         self.recorders = recorders
@@ -37,6 +43,8 @@ public struct RuntimeAuditProxyStatusDocument: Codable, Equatable, Sendable {
     }
 
     enum CodingKeys: String, CodingKey {
+        case startedAt
+        case uptimeSeconds
         case activeWebSockets
         case activeRecorderConnections
         case recorders
@@ -51,6 +59,8 @@ public struct RuntimeAuditProxyStatusDocument: Codable, Equatable, Sendable {
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.startedAt = try container.decodeIfPresent(String.self, forKey: .startedAt)
+        self.uptimeSeconds = try container.decodeIfPresent(Int.self, forKey: .uptimeSeconds)
         self.activeWebSockets = try container.decodeIfPresent(Int.self, forKey: .activeWebSockets) ?? 0
         self.activeRecorderConnections = try container.decodeIfPresent(Int.self, forKey: .activeRecorderConnections) ?? 0
         self.recorders = try container.decodeIfPresent([RuntimeRecorderConnectionObservation].self, forKey: .recorders) ?? []
@@ -61,6 +71,22 @@ public struct RuntimeAuditProxyStatusDocument: Codable, Equatable, Sendable {
         self.auditFileWriteFailures = try container.decodeIfPresent(Int.self, forKey: .auditFileWriteFailures) ?? 0
         self.auditStdoutWriteFailures = try container.decodeIfPresent(Int.self, forKey: .auditStdoutWriteFailures) ?? 0
         self.redisIpWriteFailures = try container.decodeIfPresent(Int.self, forKey: .redisIpWriteFailures) ?? 0
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(startedAt, forKey: .startedAt)
+        try container.encodeIfPresent(uptimeSeconds, forKey: .uptimeSeconds)
+        try container.encode(activeWebSockets, forKey: .activeWebSockets)
+        try container.encode(activeRecorderConnections, forKey: .activeRecorderConnections)
+        try container.encode(recorders, forKey: .recorders)
+        try container.encode(httpRequests, forKey: .httpRequests)
+        try container.encode(socketIoEventsSeen, forKey: .socketIoEventsSeen)
+        try container.encode(socketIoParseFailures, forKey: .socketIoParseFailures)
+        try container.encode(auditWriteFailures, forKey: .auditWriteFailures)
+        try container.encode(auditFileWriteFailures, forKey: .auditFileWriteFailures)
+        try container.encode(auditStdoutWriteFailures, forKey: .auditStdoutWriteFailures)
+        try container.encode(redisIpWriteFailures, forKey: .redisIpWriteFailures)
     }
 }
 
@@ -89,19 +115,25 @@ public struct RuntimeContainerServiceObservation: Codable, Equatable, Sendable {
     public let state: String?
     public let health: String?
     public let exitCode: Int?
+    public let startedAt: String?
+    public let uptimeSeconds: Int?
 
     public init(
         service: String,
         name: String? = nil,
         state: String? = nil,
         health: String? = nil,
-        exitCode: Int? = nil
+        exitCode: Int? = nil,
+        startedAt: String? = nil,
+        uptimeSeconds: Int? = nil
     ) {
         self.service = service
         self.name = name
         self.state = state
         self.health = health
         self.exitCode = exitCode
+        self.startedAt = startedAt
+        self.uptimeSeconds = uptimeSeconds
     }
 }
 

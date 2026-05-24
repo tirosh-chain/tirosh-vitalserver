@@ -75,8 +75,7 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading {
             dataStorage: nil,
             proxyPort: document?.proxyPort ?? proxyPort(paths.proxyLaunchDaemon),
             failureReasons: document?.failureReasons ?? [],
-            progress: document?.progress,
-            containerObservation: document?.containerObservation
+            progress: document?.progress
         )
     }
 

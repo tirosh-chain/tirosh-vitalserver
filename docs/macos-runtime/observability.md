@@ -314,3 +314,5 @@ SQLite read model을 도입합니다.
 - Helper Status 화면은 현재 runtime snapshot을 보여주고, Events 화면은 `RuntimeEventHistory` 기반의
   status/event history를 보여줍니다. VRecorder 접속 수와 recorder별 snapshot은 audit proxy
   `/audit-proxy/status`에서 수집해 `containerObservation.auditProxyStatus`로 전달합니다.
+- Module uptime은 audit proxy process start time과 guest `docker inspect .State.StartedAt`에서
+  계산한 container uptime을 사용합니다. 값이 없으면 unknown으로 표시하고 recovery 판단에는 쓰지 않습니다.

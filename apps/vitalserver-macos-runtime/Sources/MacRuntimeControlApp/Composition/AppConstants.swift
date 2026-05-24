@@ -95,6 +95,8 @@ enum AppConstants {
         static let activeRecorderConnections = "Active recorder connections"
         static let knownRecorders = "Known recorders"
         static let latestRecorder = "Latest recorder"
+        static let moduleUptime = "Module uptime"
+        static let auditProxy = "Audit proxy"
         static let operation = "Operation"
         static let runtimeVersion = "Runtime version"
         static let updatedAt = "Updated at"
