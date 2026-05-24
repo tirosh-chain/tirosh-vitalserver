@@ -44,10 +44,15 @@ Audit 실패는 VitalServer 기능 실패로 전파하지 않습니다.
 | `VITALSERVER_AUDIT_ENABLED` | `1` | `0`이면 audit write 비활성화 |
 | `VITALSERVER_AUDIT_REDIS_LIST` | `vitalserver:audit_events` | audit event Redis List key |
 | `VITALSERVER_AUDIT_REDIS_MAXLEN` | `10000` | Redis List 유지 길이 |
+| `VITALSERVER_AUDIT_FILE_ENABLED` | `1` | `0`이면 audit file log 비활성화 |
+| `VITALSERVER_AUDIT_LOG_PATH` | `/var/log/vitalserver-audit/audit-events.log` | append-only audit log path |
+| `VITALSERVER_AUDIT_LOG_FORMAT` | `json` | `json` 또는 `logfmt` |
 | `AUDIT_PROXY_IP_WRITE_DELAY_MS` | `250` | upstream `join_vr` 처리 뒤 `ip_<vrcode>` 보정 write 지연 |
 | `AUDIT_PROXY_UPSTREAM_TIMEOUT_MS` | `30000` | upstream VitalServer 응답 대기 timeout |
 
-Redis는 현재 `3.2.12`로 pin되어 있으므로 Redis Stream 대신 Redis List를 사용합니다.
+Audit event는 기본적으로 파일 로그와 Redis List에 함께 기록합니다. 파일 로그는 Docker named volume
+`audit-logs`에 저장되므로 컨테이너 재시작 후에도 유지됩니다. Redis는 현재 `3.2.12`로 pin되어 있으므로
+Redis Stream 대신 Redis List를 보조 조회 sink로 사용합니다.
 
 ## Event schema
 
@@ -144,6 +149,13 @@ npm --prefix apps/vitalserver-audit-proxy test
 
 ```sh
 docker compose exec redis redis-cli LRANGE vitalserver:audit_events -10 -1
+```
+
+파일 audit log:
+
+```sh
+docker compose exec audit-proxy tail -n 20 /var/log/vitalserver-audit/audit-events.log
+VITALSERVER_AUDIT_LOG_FORMAT=logfmt docker compose up -d audit-proxy
 ```
 
 proxy 상태:

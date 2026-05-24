@@ -113,7 +113,14 @@ services:
       VITALSERVER_AUDIT_ENABLED: "${VITALSERVER_AUDIT_ENABLED:-1}"
       VITALSERVER_AUDIT_REDIS_LIST: "${VITALSERVER_AUDIT_REDIS_LIST:-vitalserver:audit_events}"
       VITALSERVER_AUDIT_REDIS_MAXLEN: "${VITALSERVER_AUDIT_REDIS_MAXLEN:-10000}"
+      VITALSERVER_AUDIT_FILE_ENABLED: "${VITALSERVER_AUDIT_FILE_ENABLED:-1}"
+      VITALSERVER_AUDIT_LOG_PATH: "${VITALSERVER_AUDIT_LOG_PATH:-/var/log/vitalserver-audit/audit-events.log}"
+      VITALSERVER_AUDIT_LOG_FORMAT: "${VITALSERVER_AUDIT_LOG_FORMAT:-json}"
       AUDIT_PROXY_UPSTREAM_TIMEOUT_MS: "${AUDIT_PROXY_UPSTREAM_TIMEOUT_MS:-30000}"
+    volumes:
+      - type: volume
+        source: audit-logs
+        target: /var/log/vitalserver-audit
     healthcheck:
       test:
         - CMD-SHELL
@@ -188,3 +195,4 @@ services:
 volumes:
   redis-data:
   vital-tmp-files:
+  audit-logs:

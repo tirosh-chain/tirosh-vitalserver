@@ -18,6 +18,11 @@ function loadConfig(env) {
       listKey: env.VITALSERVER_AUDIT_REDIS_LIST || "vitalserver:audit_events",
       maxLen: numberEnv(env, "VITALSERVER_AUDIT_REDIS_MAXLEN", 10000),
       maxBodyBytes: numberEnv(env, "AUDIT_PROXY_MAX_BODY_BYTES", 5 * 1024 * 1024),
+      log: {
+        enabled: env.VITALSERVER_AUDIT_FILE_ENABLED !== "0",
+        path: env.VITALSERVER_AUDIT_LOG_PATH || "/var/log/vitalserver-audit/audit-events.log",
+        format: logFormatEnv(env, "VITALSERVER_AUDIT_LOG_FORMAT", "json"),
+      },
     },
     clientIp: {
       trustProxy: /^(1|true|yes)$/i.test(env.VITALSERVER_TRUST_PROXY || "1"),
@@ -31,6 +36,10 @@ function loadConfig(env) {
 function numberEnv(env, name, fallback) {
   const value = Number.parseInt(env[name] || "", 10);
   return Number.isFinite(value) ? value : fallback;
+}
+
+function logFormatEnv(env, name, fallback) {
+  return env[name] === "logfmt" ? "logfmt" : fallback;
 }
 
 module.exports = { loadConfig };

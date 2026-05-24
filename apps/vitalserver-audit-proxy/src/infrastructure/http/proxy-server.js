@@ -3,10 +3,12 @@
 const http = require("http");
 const net = require("net");
 const crypto = require("crypto");
+const { createAuditRecorder } = require("../../application/audit-recorder");
 const { auditEventTypes } = require("../../domain/audit-event-contracts");
 const { createSocketIoAuditService } = require("../../application/socketio-audit-service");
 const { createMetrics, metricsSnapshot } = require("../../observability/metrics");
-const { createAuditRecorder } = require("../redis/audit-recorder");
+const { createAuditLogWriter } = require("../file/audit-log-writer");
+const { createRedisAuditEventStore } = require("../redis/audit-event-store");
 const { createRedisClient } = require("../redis/client");
 const { createVrIdentityStore } = require("../redis/vr-identity-store");
 const { createBodyMirror } = require("./body-mirror");
@@ -16,7 +18,9 @@ const { createWebSocketParser } = require("./websocket-parser");
 function createAuditProxyServer(config) {
   const metrics = createMetrics();
   const redis = createRedisClient(config.redis);
-  const audit = createAuditRecorder(config.audit, redis, metrics);
+  const auditLog = createAuditLogWriter(config.audit.log, metrics);
+  const redisAudit = createRedisAuditEventStore(config.audit, redis, metrics);
+  const audit = createAuditRecorder(config.audit, [auditLog, redisAudit]);
   const vrIdentityStore = createVrIdentityStore(redis, metrics);
   const clientIp = createClientIpSelector(config.clientIp);
   const socketIoAudit = createSocketIoAuditService({ audit, vrIdentityStore, metrics, config });
