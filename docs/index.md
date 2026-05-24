@@ -36,6 +36,7 @@
 | [VitalServer command audit](vitalserver-command-audit.md) | audit proxy 기반 `join_vr`, `send_data`, `req_cmd`, dispatch event 계약 |
 | [Redis 데이터 구조](redis-data-model.md) | VitalServer가 Redis에 저장하는 key 구조와 relay 설계 메모 |
 | [OpenAPI 문서](openapi.yaml) | upstream VitalServer route에서 추출한 Swagger/OpenAPI spec |
+| [Audit Proxy OpenAPI](openapi/audit-proxy.openapi.yaml) | audit proxy sidecar 운영 endpoint spec |
 
 ### Testkit
 
@@ -86,7 +87,8 @@ Swagger UI로 API를 확인할 때는 root에서 아래 명령을 실행합니�
 make swagger
 ```
 
-이후 `http://localhost:8082`에서 [OpenAPI 문서](openapi.yaml)를 볼 수 있습니다.
+이후 `http://localhost:8082`에서 Swagger UI를 열면 VitalServer, Runtime Control API, Audit Proxy API
+spec을 선택해서 볼 수 있습니다. 기존 단일 문서 경로인 [OpenAPI 문서](openapi.yaml)도 유지합니다.
 
 ## 작성 기준
 

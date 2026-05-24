@@ -158,8 +158,18 @@ services:
       - "8080"
     environment:
       BASE_URL: "/swagger"
-      URL: "/swagger/openapi.yaml"
+      URLS: >-
+        [
+          {"name":"VitalServer","url":"/swagger/docs/openapi.yaml"},
+          {"name":"Runtime Control API","url":"/swagger/docs/macos-runtime/runtime-control.openapi.json"},
+          {"name":"Audit Proxy","url":"/swagger/docs/openapi/audit-proxy.openapi.yaml"}
+        ]
+      URLS_PRIMARY_NAME: "VitalServer"
     volumes:
+      - type: bind
+        source: /mnt/tirosh/deploy/docs
+        target: /usr/share/nginx/html/docs
+        read_only: true
       - type: bind
         source: /mnt/tirosh/deploy/docs/openapi.yaml
         target: /usr/share/nginx/html/openapi.yaml

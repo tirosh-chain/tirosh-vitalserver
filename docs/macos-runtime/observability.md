@@ -308,3 +308,6 @@ SQLite read model을 도입합니다.
 - API는 raw source가 아니라 SQLite/JSONL 기반 정규화 read model을 기본으로 제공합니다.
 - raw log는 export/debug 대상이고, operational event는 API/자동화 대상입니다.
 - 같은 event를 여러 sink에 남길 수는 있지만, canonical source와 sink 목적을 문서에 명시합니다.
+- Swagger UI는 단일 화면에서 VitalServer, Runtime Control API, Audit Proxy API spec을 선택하는
+  multi-spec catalog로 제공합니다. Audit Proxy spec은 raw proxy traffic이 아니라
+  `/audit-proxy/health`, `/audit-proxy/status` 같은 sidecar 운영 endpoint만 문서화합니다.

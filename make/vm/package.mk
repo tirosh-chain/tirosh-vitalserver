@@ -95,12 +95,14 @@ vm-pkg-stage: vm-sign vm-app vm-golden-rootfs vm-nginx-bundle vm-docker-images
 	install -m 0644 "$(VM_PKG_ROOTFS_CACHE)" "$(VM_PKG_ROOT)$(VM_INSTALL_HOME)/runtime/rootfs-base.raw.gz"
 	install -m 0644 "infra/macos-nginx/vitalserver.conf.template" "$(VM_PKG_ROOT)$(VM_INSTALL_HOME)/Support/Proxy/vitalserver.conf.template"
 	rsync -a $(VM_RSYNC_EXCLUDES) "$(VM_GUEST_DIR)/" "$(VM_PKG_ROOT)$(VM_INSTALL_HOME)/data/deploy/"
-	@mkdir -p "$(VM_PKG_ROOT)$(VM_INSTALL_HOME)/data/deploy/apps/vitalserver" "$(VM_PKG_ROOT)$(VM_INSTALL_HOME)/data/deploy/apps/vitalserver-audit-proxy" "$(VM_PKG_ROOT)$(VM_INSTALL_HOME)/data/deploy/vendor/vitalserver" "$(VM_PKG_ROOT)$(VM_INSTALL_HOME)/data/deploy/docs" "$(VM_PKG_ROOT)$(VM_INSTALL_HOME)/data/deploy/docker-images"
+	@mkdir -p "$(VM_PKG_ROOT)$(VM_INSTALL_HOME)/data/deploy/apps/vitalserver" "$(VM_PKG_ROOT)$(VM_INSTALL_HOME)/data/deploy/apps/vitalserver-audit-proxy" "$(VM_PKG_ROOT)$(VM_INSTALL_HOME)/data/deploy/vendor/vitalserver" "$(VM_PKG_ROOT)$(VM_INSTALL_HOME)/data/deploy/docs/openapi" "$(VM_PKG_ROOT)$(VM_INSTALL_HOME)/data/deploy/docs/macos-runtime" "$(VM_PKG_ROOT)$(VM_INSTALL_HOME)/data/deploy/docker-images"
 	rsync -a --delete $(VM_RSYNC_EXCLUDES) apps/vitalserver/docker "$(VM_PKG_ROOT)$(VM_INSTALL_HOME)/data/deploy/apps/vitalserver/"
 	rsync -a --delete $(VM_RSYNC_EXCLUDES) apps/vitalserver/runtime "$(VM_PKG_ROOT)$(VM_INSTALL_HOME)/data/deploy/apps/vitalserver/"
 	rsync -a --delete $(VM_RSYNC_EXCLUDES) apps/vitalserver-audit-proxy/ "$(VM_PKG_ROOT)$(VM_INSTALL_HOME)/data/deploy/apps/vitalserver-audit-proxy/"
 	rsync -a --delete $(VM_RSYNC_EXCLUDES) vendor/vitalserver/vitalserver-old "$(VM_PKG_ROOT)$(VM_INSTALL_HOME)/data/deploy/vendor/vitalserver/"
 	install -m 0644 docs/openapi.yaml "$(VM_PKG_ROOT)$(VM_INSTALL_HOME)/data/deploy/docs/openapi.yaml"
+	install -m 0644 docs/openapi/audit-proxy.openapi.yaml "$(VM_PKG_ROOT)$(VM_INSTALL_HOME)/data/deploy/docs/openapi/audit-proxy.openapi.yaml"
+	install -m 0644 docs/macos-runtime/runtime-control.openapi.json "$(VM_PKG_ROOT)$(VM_INSTALL_HOME)/data/deploy/docs/macos-runtime/runtime-control.openapi.json"
 	install -m 0644 "$(VM_DOCKER_IMAGE_BUNDLE)" "$(VM_PKG_ROOT)$(VM_INSTALL_HOME)/data/deploy/docker-images/vitalserver-images.tar.gz"
 	$(VM_BUILD_RUNNER) render-template \
 		--template "$(VM_MACOS_RUNTIME_DIR)/launchd/com.tirosh.vitalserver-vm.plist.template" \
@@ -177,12 +179,14 @@ vm-update-artifacts: vm-sign vm-app vm-nginx-bundle vm-docker-images
 	rsync -a --delete "$(VM_PKG_NGINX_BUNDLE_DIR)/" "$(VM_UPDATE_ARTIFACT_DIR)/nginx/"
 	tar -czf "$(VM_UPDATE_NGINX_BUNDLE_ARCHIVE)" -C "$(VM_UPDATE_ARTIFACT_DIR)" nginx
 	rsync -a $(VM_RSYNC_EXCLUDES) "$(VM_GUEST_DIR)/" "$(VM_UPDATE_ARTIFACT_DIR)/deploy/"
-	@mkdir -p "$(VM_UPDATE_ARTIFACT_DIR)/deploy/apps/vitalserver" "$(VM_UPDATE_ARTIFACT_DIR)/deploy/apps/vitalserver-audit-proxy" "$(VM_UPDATE_ARTIFACT_DIR)/deploy/vendor/vitalserver" "$(VM_UPDATE_ARTIFACT_DIR)/deploy/docs" "$(VM_UPDATE_ARTIFACT_DIR)/deploy/docker-images"
+	@mkdir -p "$(VM_UPDATE_ARTIFACT_DIR)/deploy/apps/vitalserver" "$(VM_UPDATE_ARTIFACT_DIR)/deploy/apps/vitalserver-audit-proxy" "$(VM_UPDATE_ARTIFACT_DIR)/deploy/vendor/vitalserver" "$(VM_UPDATE_ARTIFACT_DIR)/deploy/docs/openapi" "$(VM_UPDATE_ARTIFACT_DIR)/deploy/docs/macos-runtime" "$(VM_UPDATE_ARTIFACT_DIR)/deploy/docker-images"
 	rsync -a --delete $(VM_RSYNC_EXCLUDES) apps/vitalserver/docker "$(VM_UPDATE_ARTIFACT_DIR)/deploy/apps/vitalserver/"
 	rsync -a --delete $(VM_RSYNC_EXCLUDES) apps/vitalserver/runtime "$(VM_UPDATE_ARTIFACT_DIR)/deploy/apps/vitalserver/"
 	rsync -a --delete $(VM_RSYNC_EXCLUDES) apps/vitalserver-audit-proxy/ "$(VM_UPDATE_ARTIFACT_DIR)/deploy/apps/vitalserver-audit-proxy/"
 	rsync -a --delete $(VM_RSYNC_EXCLUDES) vendor/vitalserver/vitalserver-old "$(VM_UPDATE_ARTIFACT_DIR)/deploy/vendor/vitalserver/"
 	install -m 0644 docs/openapi.yaml "$(VM_UPDATE_ARTIFACT_DIR)/deploy/docs/openapi.yaml"
+	install -m 0644 docs/openapi/audit-proxy.openapi.yaml "$(VM_UPDATE_ARTIFACT_DIR)/deploy/docs/openapi/audit-proxy.openapi.yaml"
+	install -m 0644 docs/macos-runtime/runtime-control.openapi.json "$(VM_UPDATE_ARTIFACT_DIR)/deploy/docs/macos-runtime/runtime-control.openapi.json"
 	install -m 0644 "$(VM_DOCKER_IMAGE_BUNDLE)" "$(VM_UPDATE_ARTIFACT_DIR)/deploy/docker-images/vitalserver-images.tar.gz"
 	tar -czf "$(VM_UPDATE_GUEST_DEPLOY_ARCHIVE)" -C "$(VM_UPDATE_ARTIFACT_DIR)" deploy
 	@printf "VM update artifacts are ready: %s\n" "$(VM_UPDATE_ARTIFACT_DIR)"

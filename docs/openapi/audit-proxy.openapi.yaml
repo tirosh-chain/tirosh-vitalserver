@@ -1,0 +1,67 @@
+openapi: 3.0.3
+info:
+  title: VitalServer Audit Proxy API
+  version: 0.1.0
+  description: Operational endpoints exposed by the VitalServer audit proxy sidecar.
+servers:
+  - url: /
+paths:
+  /audit-proxy/health:
+    get:
+      operationId: getAuditProxyHealth
+      summary: Check audit proxy liveness
+      description: Returns 204 when the audit proxy process can serve local health checks.
+      responses:
+        "204":
+          description: Audit proxy is alive.
+  /audit-proxy/status:
+    get:
+      operationId: getAuditProxyStatus
+      summary: Read audit proxy counters
+      description: Returns in-memory counters for proxy traffic, Socket.IO parsing, and audit sink failures.
+      responses:
+        "200":
+          description: Audit proxy status counters.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditProxyStatus"
+components:
+  schemas:
+    AuditProxyStatus:
+      type: object
+      additionalProperties: false
+      required:
+        - activeWebSockets
+        - httpRequests
+        - socketIoEventsSeen
+        - socketIoParseFailures
+        - auditWriteFailures
+        - auditFileWriteFailures
+        - auditStdoutWriteFailures
+        - redisIpWriteFailures
+      properties:
+        activeWebSockets:
+          type: integer
+          minimum: 0
+        httpRequests:
+          type: integer
+          minimum: 0
+        socketIoEventsSeen:
+          type: integer
+          minimum: 0
+        socketIoParseFailures:
+          type: integer
+          minimum: 0
+        auditWriteFailures:
+          type: integer
+          minimum: 0
+        auditFileWriteFailures:
+          type: integer
+          minimum: 0
+        auditStdoutWriteFailures:
+          type: integer
+          minimum: 0
+        redisIpWriteFailures:
+          type: integer
+          minimum: 0
