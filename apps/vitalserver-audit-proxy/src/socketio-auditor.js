@@ -1,8 +1,13 @@
 "use strict";
 
 const zlib = require("zlib");
+const {
+  auditEventTypes,
+  clientSocketEvents,
+  serverDispatchEventNames,
+} = require("./audit-events");
 
-const dispatchEvents = new Set(["update", "del_bed", "restart", "reboot", "add_event", "edit_bed", "edit_conf"]);
+const dispatchEvents = new Set(serverDispatchEventNames);
 
 function createSocketIoAuditor({ audit, redis, metrics, config }) {
   return {
@@ -33,13 +38,13 @@ function inspectSocketIoPacket(packet, direction, context, options, dependencies
   const event = data[0];
   const payload = data[1];
 
-  if (direction === "client" && event === "join_vr") {
+  if (direction === "client" && event === clientSocketEvents.JOIN_VR) {
     recordJoinVr(payload, context, options, dependencies);
     return;
   }
 
-  if (direction === "client" && event === "send_data") {
-    dependencies.audit.record("send_data", {
+  if (direction === "client" && event === clientSocketEvents.SEND_DATA) {
+    dependencies.audit.record(auditEventTypes.SEND_DATA, {
       request_id: context.request_id,
       connection_id: context.connection_id,
       vrcode: context.joined_vrcode || undefined,
@@ -49,13 +54,13 @@ function inspectSocketIoPacket(packet, direction, context, options, dependencies
     return;
   }
 
-  if (direction === "client" && event === "req_cmd") {
+  if (direction === "client" && event === clientSocketEvents.REQ_CMD) {
     const command = {
       job: commandJob(payload),
       target_vrcode: targetVrcode(payload),
     };
     context.last_command = command;
-    dependencies.audit.record("req_cmd", {
+    dependencies.audit.record(auditEventTypes.REQ_CMD, {
       request_id: context.request_id,
       connection_id: context.connection_id,
       command_job: command.job,
@@ -67,7 +72,7 @@ function inspectSocketIoPacket(packet, direction, context, options, dependencies
   }
 
   if (direction === "server" && dispatchEvents.has(event)) {
-    dependencies.audit.record("command_dispatch", {
+    dependencies.audit.record(auditEventTypes.COMMAND_DISPATCH, {
       request_id: context.request_id,
       connection_id: context.connection_id,
       target_vrcode: context.joined_vrcode || undefined,
@@ -82,7 +87,7 @@ function inspectSocketIoPacket(packet, direction, context, options, dependencies
 function recordJoinVr(payload, context, options, { audit, redis, metrics, config }) {
   const vrcode = String(payload || "");
   context.joined_vrcode = vrcode;
-  audit.record("join_vr", {
+  audit.record(auditEventTypes.JOIN_VR, {
     request_id: context.request_id,
     connection_id: context.connection_id,
     vrcode,

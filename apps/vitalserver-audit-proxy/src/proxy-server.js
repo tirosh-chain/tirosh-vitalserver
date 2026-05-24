@@ -3,6 +3,7 @@
 const http = require("http");
 const net = require("net");
 const crypto = require("crypto");
+const { auditEventTypes } = require("./audit-events");
 const { createAuditRecorder } = require("./audit-recorder");
 const { createBodyMirror } = require("./body-mirror");
 const { createClientIpSelector } = require("./client-ip");
@@ -57,7 +58,7 @@ function proxyHttp(req, res, dependencies) {
     upstream.end();
   });
   req.on("error", (error) => {
-    dependencies.audit.record("proxy_error", {
+    dependencies.audit.record(auditEventTypes.PROXY_ERROR, {
       request_id: context.request_id,
       message: error.message,
       side: "client-request",
@@ -90,7 +91,7 @@ function createUpstreamRequest(req, res, context, responseMirror, { audit, confi
   );
   upstream.setTimeout(config.upstream.timeoutMs, () => upstream.destroy(new Error("upstream timeout")));
   upstream.on("error", (error) => {
-    audit.record("proxy_error", { request_id: context.request_id, message: error.message });
+    audit.record(auditEventTypes.PROXY_ERROR, { request_id: context.request_id, message: error.message });
     if (!res.headersSent) {
       res.writeHead(502, { "content-type": "text/plain" });
     }

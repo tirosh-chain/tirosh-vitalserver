@@ -3,6 +3,7 @@
 const assert = require("assert");
 const test = require("node:test");
 const zlib = require("zlib");
+const { auditEventTypes } = require("../src/audit-events");
 const { createClientIpSelector } = require("../src/client-ip");
 const { createSocketIoAuditor } = require("../src/socketio-auditor");
 
@@ -42,7 +43,7 @@ test("socket.io auditor records join_vr and rewrites redis ip", async () => {
   await new Promise((resolve) => setTimeout(resolve, 5));
 
   assert.strictEqual(context.joined_vrcode, "VR_A");
-  assert.strictEqual(records[0].eventType, "join_vr");
+  assert.strictEqual(records[0].eventType, auditEventTypes.JOIN_VR);
   assert.strictEqual(records[0].fields.vrcode, "VR_A");
   assert.deepStrictEqual(commands[0], ["SET", "ip_VR_A", "172.31.0.152"]);
 });
@@ -65,7 +66,7 @@ test("socket.io auditor summarizes send_data payload", () => {
 
   auditor.inspect(`42["send_data",${JSON.stringify(payload)}]`, "client", context);
 
-  assert.strictEqual(records[0].eventType, "send_data");
+  assert.strictEqual(records[0].eventType, auditEventTypes.SEND_DATA);
   assert.deepStrictEqual(records[0].fields.payload_summary, {
     payload_type: "string",
     bytes: Buffer.byteLength(payload),
@@ -89,9 +90,9 @@ test("socket.io auditor correlates req_cmd and dispatch", () => {
   auditor.inspect('42["req_cmd","job=restart_vr&vrcode=VR_A"]', "client", context);
   auditor.inspect('42["restart"]', "server", context);
 
-  assert.strictEqual(records[0].eventType, "req_cmd");
+  assert.strictEqual(records[0].eventType, auditEventTypes.REQ_CMD);
   assert.strictEqual(records[0].fields.command_job, "restart_vr");
-  assert.strictEqual(records[1].eventType, "command_dispatch");
+  assert.strictEqual(records[1].eventType, auditEventTypes.COMMAND_DISPATCH);
   assert.strictEqual(records[1].fields.command_job, "restart_vr");
   assert.strictEqual(records[1].fields.target_vrcode, "VR_A");
 });
