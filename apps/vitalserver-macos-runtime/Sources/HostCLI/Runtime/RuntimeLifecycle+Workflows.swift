@@ -135,8 +135,16 @@ extension RuntimeLifecycle {
                 sleep: { interval in
                     sleeper.sleep(forTimeInterval: interval)
                 },
-                writeStatus: { status, operation, message in
+                writeObservedStatus: { status, operation, message, snapshot in
+                    let previousStatus = statusReporter.loadStatus()?.status
                     try writeRuntimeStatus(status, operation: operation, message: message)
+                    try recordRuntimeEvent(
+                        status,
+                        previousStatus: previousStatus,
+                        operation: operation,
+                        message: message,
+                        healthSnapshot: snapshot
+                    )
                 }
             ),
             log: log

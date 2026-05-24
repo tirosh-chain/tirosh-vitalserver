@@ -1,6 +1,7 @@
 import Foundation
 import Core
 import Contracts
+import HostInfrastructure
 
 extension RuntimeLifecycle {
     func latestBackup() -> URL? {
@@ -173,6 +174,29 @@ extension RuntimeLifecycle {
 
     func runtimeStatusValue() -> String {
         statusReporter.statusValue()
+    }
+
+    func recordRuntimeEvent(
+        _ status: RuntimeStatusLevel,
+        previousStatus: RuntimeStatusLevel?,
+        operation: RuntimeOperation,
+        message: String,
+        healthSnapshot: RuntimeHealthSnapshot
+    ) throws {
+        let event = RuntimeEventDocument(
+            id: UUID().uuidString,
+            eventType: .statusChanged,
+            timestamp: isoTimestamp(),
+            product: Constants.Product.identifier,
+            status: status,
+            previousStatus: previousStatus,
+            operation: operation,
+            message: message,
+            runtimeVersion: runtimeVersionValue(),
+            failureReasons: healthSnapshot.failureReasons,
+            progress: nil
+        )
+        try JSONLRuntimeEventRepository(url: installedPaths.runtimeEvents).append(event)
     }
 
     func runtimeHealthSnapshot() -> RuntimeHealthSnapshot {

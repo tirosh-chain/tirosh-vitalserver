@@ -5,15 +5,12 @@ import Contracts
 import XCTest
 
 final class RuntimeStatusReporterTests: XCTestCase {
-    func testWritesStatusDocumentAndRuntimeEvent() throws {
+    func testWritesStatusDocumentThroughRepository() throws {
         let repository = RuntimeStatusRepositorySpy()
-        let eventRepository = RuntimeEventRepositorySpy()
         let reporter = RuntimeStatusReporter(
             repository: repository,
-            eventRepository: eventRepository,
             productRoot: URL(fileURLWithPath: "/product"),
-            runtimeHome: URL(fileURLWithPath: "/product/vm"),
-            eventID: { "event-1" }
+            runtimeHome: URL(fileURLWithPath: "/product/vm")
         )
 
         try reporter.writeStatus(
@@ -33,26 +30,14 @@ final class RuntimeStatusReporterTests: XCTestCase {
         XCTAssertEqual(document.runtimeHome, "/product/vm")
         XCTAssertEqual(document.runtimeVersion, "0.1.0")
         XCTAssertEqual(document.latestBackup, "/product/backups/latest")
-
-        let event = try XCTUnwrap(eventRepository.events.first)
-        XCTAssertEqual(event.id, "event-1")
-        XCTAssertEqual(event.eventType, .statusChanged)
-        XCTAssertEqual(event.status, .healthy)
-        XCTAssertNil(event.previousStatus)
-        XCTAssertEqual(event.operation, .health)
-        XCTAssertEqual(event.message, "runtime health check passed")
     }
 
-    func testWritesProgressAsTypedWorkflowStepAndRuntimeEvent() throws {
+    func testWritesProgressAsTypedWorkflowStep() throws {
         let repository = RuntimeStatusRepositorySpy()
-        repository.loaded = statusDocument(status: .healthy)
-        let eventRepository = RuntimeEventRepositorySpy()
         let reporter = RuntimeStatusReporter(
             repository: repository,
-            eventRepository: eventRepository,
             productRoot: URL(fileURLWithPath: "/product"),
-            runtimeHome: URL(fileURLWithPath: "/product/vm"),
-            eventID: { "event-2" }
+            runtimeHome: URL(fileURLWithPath: "/product/vm")
         )
 
         try reporter.writeProgress(
@@ -73,61 +58,15 @@ final class RuntimeStatusReporterTests: XCTestCase {
         XCTAssertEqual(progress.step, .activateGuestUpdate)
         XCTAssertEqual(progress.stepStatus, .started)
         XCTAssertEqual(progress.phase, .running)
-
-        let event = try XCTUnwrap(eventRepository.events.first)
-        XCTAssertEqual(event.id, "event-2")
-        XCTAssertEqual(event.eventType, .progressUpdated)
-        XCTAssertEqual(event.status, .updating)
-        XCTAssertEqual(event.previousStatus, .healthy)
-        XCTAssertEqual(event.progress?.step, .activateGuestUpdate)
     }
 
     func testStatusValueReadsRepositoryStatus() {
         let repository = RuntimeStatusRepositorySpy()
-        repository.loaded = statusDocument(
+        repository.loaded = RuntimeStatusDocument(
+            product: "TiroshVitalServer",
             status: .degraded,
             operation: .watchdog,
             message: "watchdog recovery failed",
-            failureReasons: [.hostProxyHTTP("failed")]
-        )
-
-        let reporter = RuntimeStatusReporter(
-            repository: repository,
-            productRoot: URL(fileURLWithPath: "/product"),
-            runtimeHome: URL(fileURLWithPath: "/product/vm")
-        )
-
-        XCTAssertEqual(reporter.statusValue(), "degraded")
-    }
-
-    func testRecentEventsReadEventRepository() {
-        let repository = RuntimeStatusRepositorySpy()
-        let eventRepository = RuntimeEventRepositorySpy()
-        eventRepository.events = [
-            runtimeEvent(id: "event-1", status: .healthy),
-            runtimeEvent(id: "event-2", status: .degraded),
-        ]
-        let reporter = RuntimeStatusReporter(
-            repository: repository,
-            eventRepository: eventRepository,
-            productRoot: URL(fileURLWithPath: "/product"),
-            runtimeHome: URL(fileURLWithPath: "/product/vm")
-        )
-
-        XCTAssertEqual(reporter.recentEvents(limit: 1).map(\.id), ["event-2"])
-    }
-
-    private func statusDocument(
-        status: RuntimeStatusLevel,
-        operation: RuntimeOperation = .health,
-        message: String = "message",
-        failureReasons: [RuntimeFailureReason] = []
-    ) -> RuntimeStatusDocument {
-        RuntimeStatusDocument(
-            product: "TiroshVitalServer",
-            status: status,
-            operation: operation,
-            message: message,
             updatedAt: "2026-05-22T00:00:00Z",
             productRoot: "/product",
             runtimeHome: "/product/vm",
@@ -143,25 +82,17 @@ final class RuntimeStatusReporterTests: XCTestCase {
             swaggerUIHTTP: nil,
             rootfsBase: .present,
             vmDisk: .present,
-            failureReasons: failureReasons,
+            failureReasons: [.hostProxyHTTP("failed")],
             latestBackup: nil
         )
-    }
 
-    private func runtimeEvent(id: String, status: RuntimeStatusLevel) -> RuntimeEventDocument {
-        RuntimeEventDocument(
-            id: id,
-            eventType: .statusChanged,
-            timestamp: "2026-05-22T00:00:00Z",
-            product: "TiroshVitalServer",
-            status: status,
-            previousStatus: nil,
-            operation: .health,
-            message: "message",
-            runtimeVersion: "0.1.0",
-            failureReasons: [],
-            progress: nil
+        let reporter = RuntimeStatusReporter(
+            repository: repository,
+            productRoot: URL(fileURLWithPath: "/product"),
+            runtimeHome: URL(fileURLWithPath: "/product/vm")
         )
+
+        XCTAssertEqual(reporter.statusValue(), "degraded")
     }
 
     private func healthSnapshot() -> RuntimeHealthSnapshot {
@@ -194,17 +125,5 @@ private final class RuntimeStatusRepositorySpy: RuntimeStatusRepository {
 
     func save(_ document: RuntimeStatusDocument) throws {
         saved = document
-    }
-}
-
-private final class RuntimeEventRepositorySpy: RuntimeEventRepository {
-    var events: [RuntimeEventDocument] = []
-
-    func append(_ event: RuntimeEventDocument) throws {
-        events.append(event)
-    }
-
-    func recent(limit: Int) -> [RuntimeEventDocument] {
-        Array(events.suffix(limit))
     }
 }

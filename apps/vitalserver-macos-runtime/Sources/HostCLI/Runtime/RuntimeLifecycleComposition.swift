@@ -26,7 +26,6 @@ struct RuntimeLifecycleComposition {
         let resolvedServiceManager = serviceManager ?? LaunchdRuntimeServiceManager(commandRunner: commandRunner)
         let statusReporter = RuntimeStatusReporter(
             repository: runtimeStatusRepository ?? JSONFileRuntimeStatusRepository(url: installedPaths.runtimeStatus),
-            eventRepository: JSONLRuntimeEventRepository(url: installedPaths.runtimeEvents),
             productRoot: installedPaths.productRoot,
             runtimeHome: installedPaths.runtimeHome
         )

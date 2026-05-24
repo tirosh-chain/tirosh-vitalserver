@@ -4,23 +4,17 @@ import Contracts
 
 struct RuntimeStatusReporter {
     private let repository: RuntimeStatusRepository
-    private let eventRepository: RuntimeEventRepository?
     private let productRoot: URL
     private let runtimeHome: URL
-    private let eventID: () -> String
 
     init(
         repository: RuntimeStatusRepository,
-        eventRepository: RuntimeEventRepository? = nil,
         productRoot: URL,
-        runtimeHome: URL,
-        eventID: @escaping () -> String = { UUID().uuidString }
+        runtimeHome: URL
     ) {
         self.repository = repository
-        self.eventRepository = eventRepository
         self.productRoot = productRoot
         self.runtimeHome = runtimeHome
-        self.eventID = eventID
     }
 
     func statusValue() -> String {
@@ -29,10 +23,6 @@ struct RuntimeStatusReporter {
 
     func loadStatus() -> RuntimeStatusDocument? {
         repository.load()
-    }
-
-    func recentEvents(limit: Int) -> [RuntimeEventDocument] {
-        eventRepository?.recent(limit: limit) ?? []
     }
 
     func writeStatus(
@@ -45,7 +35,6 @@ struct RuntimeStatusReporter {
         latestBackup: URL?,
         progress: RuntimeProgressDocument? = nil
     ) throws {
-        let previous = repository.load()
         let document = RuntimeStatusDocumentBuilder.build(RuntimeStatusDocumentInput(
             product: Constants.Product.identifier,
             status: status,
@@ -60,19 +49,6 @@ struct RuntimeStatusReporter {
             progress: progress
         ))
         try repository.save(document)
-        try eventRepository?.append(RuntimeEventDocument(
-            id: eventID(),
-            eventType: progress == nil ? .statusChanged : .progressUpdated,
-            timestamp: updatedAt,
-            product: document.product,
-            status: document.status,
-            previousStatus: previous?.status,
-            operation: document.operation,
-            message: document.message,
-            runtimeVersion: document.runtimeVersion,
-            failureReasons: document.failureReasons,
-            progress: document.progress
-        ))
     }
 
     func writeProgress(
