@@ -221,21 +221,35 @@ public extension RuntimeControlHTTPRequest {
             limit = RuntimeEventQuery.defaultLimit
         }
 
+        let before: RuntimeEventCursor?
+        if let rawCursor = queryValue(named: "cursor") {
+            guard let decodedCursor = RuntimeEventCursorWireCodec.decode(rawCursor) else {
+                throw RuntimeControlHTTPQueryError.invalidCursor(rawCursor)
+            }
+            before = decodedCursor
+        } else {
+            before = nil
+        }
+
         return RuntimeEventQuery(
             limit: limit,
             eventType: queryValue(named: "type").map(RuntimeEventType.init(rawValue:)),
-            since: queryValue(named: "since")
+            since: queryValue(named: "since"),
+            before: before
         )
     }
 }
 
 public enum RuntimeControlHTTPQueryError: LocalizedError, Equatable {
     case invalidLimit(String)
+    case invalidCursor(String)
 
     public var errorDescription: String? {
         switch self {
         case .invalidLimit(let value):
             return "Invalid runtime event limit: \(value)"
+        case .invalidCursor(let value):
+            return "Invalid runtime event cursor: \(value)"
         }
     }
 }

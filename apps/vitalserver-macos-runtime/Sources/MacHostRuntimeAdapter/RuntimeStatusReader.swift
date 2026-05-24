@@ -88,8 +88,10 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading {
             primary: JSONLRuntimeEventRepository(url: URL(fileURLWithPath: paths.runtimeEvents)),
             secondary: SQLiteRuntimeEventRepository(url: URL(fileURLWithPath: paths.runtimeObservabilityDB))
         )
+        let page = repository.query(query)
         return RuntimeEventHistory(
-            events: repository.query(query).events
+            events: page.events,
+            nextCursor: page.nextCursor.map(RuntimeEventCursorWireCodec.encode)
         )
     }
 

@@ -45,9 +45,11 @@ macOS Helper app composition은 read-only Runtime Control API server를 조립�
 | `limit` | 반환할 event 수. 1-500, 기본 100 |
 | `type` | `status-changed`, `health-observed`, `audit-proxy-observed` 같은 runtime event type |
 | `since` | ISO-8601 timestamp lower bound |
+| `cursor` | 이전 응답의 `nextCursor` 값을 그대로 전달하는 opaque pagination cursor |
 
 내부 구현은 `RuntimeEventQuery` read model query로 변환되어 SQLite에 pushdown됩니다. Cursor는
-`timestamp + id` 기준으로 모델링되어 있으며, wire contract 노출은 별도 API revision에서 확정합니다.
+내부적으로 `timestamp + id` 기준이며, API에는 opaque string으로만 노출합니다. Client는 cursor 값을
+해석하지 않고 다음 페이지 조회 시 `cursor=<nextCursor>`로 다시 전달해야 합니다.
 
 ## Route Scope
 
@@ -119,7 +121,7 @@ PWA는 host local path를 직접 다룰 수 없습니다. 그래서 update bundl
 |---|---|
 | observability SQLite read model | `/runtime/events` query를 위해 `runtime-observability.sqlite` 우선 조회 추가 |
 | JSONL fallback | SQLite unavailable 시 기존 `runtime-events.jsonl` 조회로 degrade |
-| cursor wire contract | 내부 `RuntimeEventCursor(timestamp, id)`를 API response/query contract로 노출할지 결정 |
+| event push subscription | polling 없이 event stream을 받기 위한 SSE/WebSocket 또는 native bridge contract |
 | schema migration | SQLite schema version과 migration runner 확장 |
 | HTTP client adapter | PWA/native shell이 사용할 generated/manual client |
 | auth/session | 현재 dev token을 local pairing token, remote session, capability negotiation으로 교체 |

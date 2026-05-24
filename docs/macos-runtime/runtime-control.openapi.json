@@ -95,6 +95,15 @@
             "in": "query",
             "required": false,
             "schema": { "type": "string", "description": "Inclusive ISO-8601 timestamp lower bound." }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Opaque pagination cursor returned as nextCursor by the previous response."
+            }
           }
         ],
         "responses": {
@@ -703,6 +712,10 @@
           "events": {
             "type": "array",
             "items": { "$ref": "#/components/schemas/RuntimeEventDocument" }
+          },
+          "nextCursor": {
+            "type": ["string", "null"],
+            "description": "Opaque pagination cursor for the next page. Omitted or null when there is no next page."
           }
         }
       },

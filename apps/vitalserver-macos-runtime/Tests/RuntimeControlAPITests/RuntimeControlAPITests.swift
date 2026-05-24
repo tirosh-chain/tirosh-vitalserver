@@ -247,10 +247,38 @@ final class RuntimeControlAPITests: XCTestCase {
     }
 
     @MainActor
+    func testRuntimeEventsEndpointAcceptsCursor() async throws {
+        let client = FakeRuntimeControlClient()
+        let router = RuntimeControlAPIRouter(handler: RuntimeControlClientAPIReadHandler(client: client))
+        let cursor = RuntimeEventCursor(timestamp: "2026-05-24T00:01:00Z", id: "event-2")
+        let wireCursor = RuntimeEventCursorWireCodec.encode(cursor)
+
+        let response = await router.route(.init(method: .get, path: "/runtime/events?limit=2&cursor=\(wireCursor)"))
+        let history = try decode(RuntimeEventHistory.self, from: response)
+
+        XCTAssertEqual(response.status, .ok)
+        XCTAssertEqual(history.nextCursor, RuntimeEventCursorWireCodec.encode(cursor))
+        XCTAssertEqual(client.eventQueries, [
+            RuntimeEventQuery(limit: 2, before: cursor),
+        ])
+    }
+
+    @MainActor
     func testRuntimeEventsEndpointRejectsInvalidLimit() async throws {
         let router = RuntimeControlAPIRouter(handler: StubRuntimeControlAPIReadHandler())
 
         let response = await router.route(.init(method: .get, path: "/runtime/events?limit=zero"))
+        let error = try decodeError(from: response)
+
+        XCTAssertEqual(response.status, .badRequest)
+        XCTAssertEqual(error.code, .badRequest)
+    }
+
+    @MainActor
+    func testRuntimeEventsEndpointRejectsInvalidCursor() async throws {
+        let router = RuntimeControlAPIRouter(handler: StubRuntimeControlAPIReadHandler())
+
+        let response = await router.route(.init(method: .get, path: "/runtime/events?cursor=not-a-cursor"))
         let error = try decodeError(from: response)
 
         XCTAssertEqual(response.status, .badRequest)
@@ -649,7 +677,10 @@ private final class FakeRuntimeControlClient: RuntimeControlClient {
             }
             return event.timestamp >= since
         }
-        return RuntimeEventHistory(events: Array(events.suffix(query.limit)))
+        return RuntimeEventHistory(
+            events: Array(events.suffix(query.limit)),
+            nextCursor: query.before.map(RuntimeEventCursorWireCodec.encode)
+        )
     }
 
     func uninstallRuntime(clean: Bool) async throws -> RuntimeCommandResult {
