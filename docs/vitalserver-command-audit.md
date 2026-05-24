@@ -45,6 +45,7 @@ Audit 실패는 VitalServer 기능 실패로 전파하지 않습니다.
 | `VITALSERVER_AUDIT_REDIS_LIST` | `vitalserver:audit_events` | audit event Redis List key |
 | `VITALSERVER_AUDIT_REDIS_MAXLEN` | `10000` | Redis List 유지 길이 |
 | `AUDIT_PROXY_IP_WRITE_DELAY_MS` | `250` | upstream `join_vr` 처리 뒤 `ip_<vrcode>` 보정 write 지연 |
+| `AUDIT_PROXY_UPSTREAM_TIMEOUT_MS` | `30000` | upstream VitalServer 응답 대기 timeout |
 
 Redis는 현재 `3.2.12`로 pin되어 있으므로 Redis Stream 대신 Redis List를 사용합니다.
 
@@ -77,14 +78,19 @@ Redis는 현재 `3.2.12`로 pin되어 있으므로 Redis Stream 대신 Redis Lis
 
 ### `send_data`
 
-`send_data` payload는 compressed/binary string이므로 1차 구현에서는 payload size 중심으로 기록합니다.
+`send_data` payload는 compressed/binary string입니다. Proxy는 원본 body를 streaming으로 upstream에
+전달하면서 audit용 mirror buffer만 별도로 보관합니다. 가능한 경우 payload를 inflate해서 `vrcode`,
+`version`, `rooms_count`를 기록하고, decode에 실패하면 size와 decode error만 기록합니다.
 
 ```json
 {
   "event_type": "send_data",
   "payload_summary": {
     "payload_type": "string",
-    "bytes": 12345
+    "bytes": 12345,
+    "vrcode": "VR001",
+    "version": "2.3.4",
+    "rooms_count": 4
   }
 }
 ```
@@ -128,6 +134,9 @@ proxy 상태:
 ```sh
 curl http://localhost:18080/audit-proxy/status
 ```
+
+`/audit-proxy/status`는 현재 WebSocket 수, 관측한 Socket.IO event 수, parse 실패 수, Redis write 실패
+수를 반환합니다.
 
 ## 제품 관점 판단
 

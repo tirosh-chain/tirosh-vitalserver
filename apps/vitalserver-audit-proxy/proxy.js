@@ -3,6 +3,7 @@
 const http = require("http");
 const net = require("net");
 const crypto = require("crypto");
+const zlib = require("zlib");
 
 const listenPort = numberEnv("AUDIT_PROXY_PORT", 8080);
 const upstreamHost = process.env.AUDIT_PROXY_UPSTREAM_HOST || "app";
@@ -15,11 +16,15 @@ const auditMaxLen = numberEnv("VITALSERVER_AUDIT_REDIS_MAXLEN", 10000);
 const trustProxy = /^(1|true|yes)$/i.test(process.env.VITALSERVER_TRUST_PROXY || "1");
 const ipWriteDelayMs = numberEnv("AUDIT_PROXY_IP_WRITE_DELAY_MS", 250);
 const maxBodyBytes = numberEnv("AUDIT_PROXY_MAX_BODY_BYTES", 5 * 1024 * 1024);
+const upstreamTimeoutMs = numberEnv("AUDIT_PROXY_UPSTREAM_TIMEOUT_MS", 30000);
 const sensitiveKeyPattern = /(password|passwd|pw|token|secret|authorization|cookie|session|key)/i;
 
 let auditWriteFailures = 0;
 let redisIpWriteFailures = 0;
 let activeWebSockets = 0;
+let httpRequests = 0;
+let socketIoEventsSeen = 0;
+let socketIoParseFailures = 0;
 
 function numberEnv(name, fallback) {
   const value = Number.parseInt(process.env[name] || "", 10);
@@ -147,9 +152,12 @@ function writeVrIp(vrcode, ipInfo) {
 function requestContext(req) {
   return {
     request_id: crypto.randomUUID(),
+    connection_id: crypto.randomUUID(),
     method: req.method,
     url: req.url,
     ip: selectedIp(req),
+    joined_vrcode: null,
+    last_command: null,
   };
 }
 
@@ -160,48 +168,85 @@ function proxyHttp(req, res) {
     return;
   }
   if (req.url === "/audit-proxy/status") {
-    const body = JSON.stringify({ activeWebSockets, auditWriteFailures, redisIpWriteFailures });
+    const body = JSON.stringify({
+      activeWebSockets,
+      httpRequests,
+      socketIoEventsSeen,
+      socketIoParseFailures,
+      auditWriteFailures,
+      redisIpWriteFailures,
+    });
     res.writeHead(200, { "content-type": "application/json", "content-length": Buffer.byteLength(body) });
     res.end(body);
     return;
   }
 
   const context = requestContext(req);
-  const chunks = [];
-  let size = 0;
+  httpRequests += 1;
+
+  const requestMirror = createBodyMirror((body, truncated) => {
+    inspectEngineIoPayload(body.toString("utf8"), "client", context, { truncated });
+  });
+  const responseMirror = createBodyMirror((body, truncated) => {
+    inspectEngineIoPayload(body.toString("utf8"), "server", context, { truncated });
+  });
+  const headers = { ...req.headers, host: req.headers.host || upstreamHost };
+  const upstream = http.request(
+    { host: upstreamHost, port: upstreamPort, method: req.method, path: req.url, headers },
+    (upstreamRes) => {
+      res.writeHead(upstreamRes.statusCode || 502, upstreamRes.headers);
+      upstreamRes.on("data", (chunk) => {
+        responseMirror.push(chunk);
+        res.write(chunk);
+      });
+      upstreamRes.on("end", () => {
+        responseMirror.end();
+        res.end();
+      });
+    }
+  );
+  upstream.setTimeout(upstreamTimeoutMs, () => upstream.destroy(new Error("upstream timeout")));
+  upstream.on("error", (error) => {
+    audit("proxy_error", { request_id: context.request_id, message: error.message });
+    if (!res.headersSent) {
+      res.writeHead(502, { "content-type": "text/plain" });
+    }
+    res.end("upstream error\n");
+  });
   req.on("data", (chunk) => {
-    size += chunk.length;
-    if (size <= maxBodyBytes) chunks.push(chunk);
+    requestMirror.push(chunk);
+    upstream.write(chunk);
   });
   req.on("end", () => {
-    const body = Buffer.concat(chunks);
-    inspectEngineIoPayload(body.toString("utf8"), "client", context);
-    const headers = { ...req.headers, host: req.headers.host || upstreamHost };
-    const upstream = http.request(
-      { host: upstreamHost, port: upstreamPort, method: req.method, path: req.url, headers },
-      (upstreamRes) => {
-        const responseChunks = [];
-        let responseSize = 0;
-        upstreamRes.on("data", (chunk) => {
-          responseSize += chunk.length;
-          if (responseSize <= maxBodyBytes) responseChunks.push(chunk);
-          res.write(chunk);
-        });
-        upstreamRes.on("end", () => {
-          inspectEngineIoPayload(Buffer.concat(responseChunks).toString("utf8"), "server", context);
-          res.end();
-        });
-        res.writeHead(upstreamRes.statusCode || 502, upstreamRes.headers);
-      }
-    );
-    upstream.on("error", (error) => {
-      res.writeHead(502, { "content-type": "text/plain" });
-      res.end("upstream error\n");
-      audit("proxy_error", { request_id: context.request_id, message: error.message });
-    });
-    if (body.length > 0) upstream.write(body);
+    requestMirror.end();
     upstream.end();
   });
+  req.on("error", (error) => {
+    audit("proxy_error", { request_id: context.request_id, message: error.message, side: "client-request" });
+    upstream.destroy(error);
+  });
+}
+
+function createBodyMirror(onEnd) {
+  const chunks = [];
+  let size = 0;
+  let truncated = false;
+  return {
+    push(chunk) {
+      size += chunk.length;
+      if (size <= maxBodyBytes) {
+        chunks.push(chunk);
+        return;
+      }
+      truncated = true;
+      const already = chunks.reduce((total, item) => total + item.length, 0);
+      const remaining = Math.max(0, maxBodyBytes - already);
+      if (remaining > 0) chunks.push(chunk.slice(0, remaining));
+    },
+    end() {
+      onEnd(Buffer.concat(chunks), truncated);
+    },
+  };
 }
 
 function proxyUpgrade(req, socket, head) {
@@ -215,6 +260,7 @@ function proxyUpgrade(req, socket, head) {
   });
   const clientParser = createWebSocketParser((message) => inspectEngineIoPayload(message, "client", context));
   const serverParser = createWebSocketParser((message) => inspectEngineIoPayload(message, "server", context));
+  if (head && head.length > 0) clientParser.push(head);
   let serverHandshake = Buffer.alloc(0);
   let serverHandshakeDone = false;
   socket.on("data", (chunk) => clientParser.push(chunk));
@@ -292,10 +338,10 @@ function createWebSocketParser(onText) {
   };
 }
 
-function inspectEngineIoPayload(payload, direction, context) {
+function inspectEngineIoPayload(payload, direction, context, options = {}) {
   if (!payload || typeof payload !== "string") return;
   for (const packet of splitEngineIoPayload(payload)) {
-    inspectSocketIoPacket(packet, direction, context);
+    inspectSocketIoPacket(packet, direction, context, options);
   }
 }
 
@@ -317,7 +363,7 @@ function splitEngineIoPayload(payload) {
   return packets;
 }
 
-function inspectSocketIoPacket(packet, direction, context) {
+function inspectSocketIoPacket(packet, direction, context, options = {}) {
   if (!packet.startsWith("42")) return;
   const start = packet.indexOf("[");
   if (start < 0) return;
@@ -325,29 +371,51 @@ function inspectSocketIoPacket(packet, direction, context) {
   try {
     data = JSON.parse(packet.slice(start));
   } catch {
+    socketIoParseFailures += 1;
     return;
   }
   if (!Array.isArray(data) || typeof data[0] !== "string") return;
+  socketIoEventsSeen += 1;
   const event = data[0];
   const payload = data[1];
 
   if (direction === "client" && event === "join_vr") {
     const vrcode = String(payload || "");
-    audit("join_vr", { request_id: context.request_id, vrcode, ...context.ip });
+    context.joined_vrcode = vrcode;
+    audit("join_vr", {
+      request_id: context.request_id,
+      connection_id: context.connection_id,
+      vrcode,
+      truncated: Boolean(options.truncated),
+      ...context.ip,
+    });
     writeVrIp(vrcode, context.ip);
     return;
   }
 
   if (direction === "client" && event === "send_data") {
-    audit("send_data", { request_id: context.request_id, payload_summary: summarizeSendData(payload) });
+    audit("send_data", {
+      request_id: context.request_id,
+      connection_id: context.connection_id,
+      vrcode: context.joined_vrcode || undefined,
+      truncated: Boolean(options.truncated),
+      payload_summary: summarizeSendData(payload),
+    });
     return;
   }
 
   if (direction === "client" && event === "req_cmd") {
+    const command = {
+      job: commandJob(payload),
+      target_vrcode: targetVrcode(payload),
+    };
+    context.last_command = command;
     audit("req_cmd", {
       request_id: context.request_id,
-      command_job: commandJob(payload),
-      target_vrcode: targetVrcode(payload),
+      connection_id: context.connection_id,
+      command_job: command.job,
+      target_vrcode: command.target_vrcode,
+      truncated: Boolean(options.truncated),
       payload,
     });
     return;
@@ -356,7 +424,11 @@ function inspectSocketIoPacket(packet, direction, context) {
   if (direction === "server" && isDispatchEvent(event)) {
     audit("command_dispatch", {
       request_id: context.request_id,
+      connection_id: context.connection_id,
+      target_vrcode: context.joined_vrcode || undefined,
+      command_job: context.last_command ? context.last_command.job : undefined,
       dispatch_event: event,
+      truncated: Boolean(options.truncated),
       payload,
     });
   }
@@ -379,14 +451,30 @@ function parseMaybeQuery(value) {
   for (const part of value.split("&")) {
     const [rawKey, rawValue = ""] = part.split("=");
     if (!rawKey) continue;
-    out[decodeURIComponent(rawKey.replace(/\+/g, " "))] = decodeURIComponent(rawValue.replace(/\+/g, " "));
+    try {
+      out[decodeURIComponent(rawKey.replace(/\+/g, " "))] = decodeURIComponent(rawValue.replace(/\+/g, " "));
+    } catch {
+      out[rawKey] = rawValue;
+    }
   }
   return out;
 }
 
 function summarizeSendData(payload) {
   if (typeof payload !== "string") return { payload_type: typeof payload };
-  return { payload_type: "string", bytes: Buffer.byteLength(payload) };
+  const summary = { payload_type: "string", bytes: Buffer.byteLength(payload) };
+  try {
+    const decoded = zlib.inflateSync(Buffer.from(payload, "binary")).toString();
+    const document = JSON.parse(decoded.replace("/[\0-\u001f\u007f]/u", "").replace("nan", '""'));
+    summary.vrcode = document.vrcode;
+    summary.version = document.ver;
+    summary.rooms_count = document.rooms && typeof document.rooms === "object"
+      ? Object.keys(document.rooms).length
+      : 0;
+  } catch (error) {
+    summary.decode_error = error.message;
+  }
+  return summary;
 }
 
 function isDispatchEvent(event) {
