@@ -1,4 +1,5 @@
 import Contracts
+import Core
 import RuntimeControl
 import RuntimeControlAPI
 import XCTest
@@ -211,7 +212,7 @@ final class RuntimeControlAPITests: XCTestCase {
         let capabilities = try await handler.loadCapabilities()
         let settings = try await handler.loadSettings()
         let status = try await handler.loadStatus()
-        let events = try await handler.loadEvents()
+        let events = try await handler.loadEvents(query: RuntimeEventQuery())
         let health = try await handler.loadHealthStatus()
         let release = try await handler.loadReleaseInfo()
         let installInfo = try await handler.loadInstallInfo()
@@ -240,7 +241,9 @@ final class RuntimeControlAPITests: XCTestCase {
         let history = try decode(RuntimeEventHistory.self, from: response)
 
         XCTAssertEqual(history.events.map(\.id), ["event-3"])
-        XCTAssertEqual(client.eventLimits, [RuntimeControlEventQuery.maximumLimit])
+        XCTAssertEqual(client.eventQueries, [
+            RuntimeEventQuery(limit: 1, eventType: .auditProxyObserved, since: "2026-05-24T00:01:00Z"),
+        ])
     }
 
     @MainActor
@@ -522,7 +525,7 @@ private struct StubRuntimeControlAPIReadHandler: RuntimeControlAPIReadHandler {
         )
     }
 
-    func loadEvents() async throws -> RuntimeEventHistory {
+    func loadEvents(query: RuntimeEventQuery) async throws -> RuntimeEventHistory {
         RuntimeEventHistory(events: [
             RuntimeEventDocument(
                 id: "event-1",
@@ -569,7 +572,7 @@ private final class FakeRuntimeControlClient: RuntimeControlClient {
     var loadSettingsCount = 0
     var statusSettings: [RuntimeSettings] = []
     var healthSettings: [RuntimeSettings] = []
-    var eventLimits: [Int] = []
+    var eventQueries: [RuntimeEventQuery] = []
 
     func loadSettings() -> RuntimeSettings {
         loadSettingsCount += 1
@@ -587,8 +590,12 @@ private final class FakeRuntimeControlClient: RuntimeControlClient {
     }
 
     func loadRuntimeEvents(limit: Int) -> RuntimeEventHistory {
-        eventLimits.append(limit)
-        return RuntimeEventHistory(events: [
+        loadRuntimeEvents(query: RuntimeEventQuery(limit: limit))
+    }
+
+    func loadRuntimeEvents(query: RuntimeEventQuery) -> RuntimeEventHistory {
+        eventQueries.append(query)
+        let events = [
             RuntimeEventDocument(
                 id: "event-1",
                 eventType: .statusChanged,
@@ -631,7 +638,18 @@ private final class FakeRuntimeControlClient: RuntimeControlClient {
                 containerObservation: nil,
                 progress: nil
             ),
-        ])
+        ].filter { event in
+            guard let eventType = query.eventType else {
+                return true
+            }
+            return event.eventType == eventType
+        }.filter { event in
+            guard let since = query.since else {
+                return true
+            }
+            return event.timestamp >= since
+        }
+        return RuntimeEventHistory(events: Array(events.suffix(query.limit)))
     }
 
     func uninstallRuntime(clean: Bool) async throws -> RuntimeCommandResult {

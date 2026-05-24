@@ -1,4 +1,5 @@
 import Contracts
+import Core
 import HostInfrastructure
 import XCTest
 
@@ -33,6 +34,25 @@ final class SQLiteRuntimeObservabilityStoreTests: XCTestCase {
         )
 
         XCTAssertEqual(events.map(\.id), ["event-3"])
+    }
+
+    func testQueriesRuntimeEventsWithCursor() throws {
+        let harness = try SQLiteStoreHarness()
+        defer {
+            harness.cleanup()
+        }
+
+        try harness.store.append(event(id: "event-1", timestamp: "2026-05-24T00:00:00Z", type: .statusChanged))
+        try harness.store.append(event(id: "event-2", timestamp: "2026-05-24T00:01:00Z", type: .auditProxyObserved))
+        try harness.store.append(event(id: "event-3", timestamp: "2026-05-24T00:02:00Z", type: .containerObserved))
+
+        let firstPage = harness.store.query(RuntimeEventQuery(limit: 2))
+        let secondPage = harness.store.query(RuntimeEventQuery(limit: 2, before: firstPage.nextCursor))
+
+        XCTAssertEqual(firstPage.events.map(\.id), ["event-2", "event-3"])
+        XCTAssertEqual(firstPage.nextCursor, RuntimeEventCursor(timestamp: "2026-05-24T00:01:00Z", id: "event-2"))
+        XCTAssertEqual(secondPage.events.map(\.id), ["event-1"])
+        XCTAssertNil(secondPage.nextCursor)
     }
 
     func testCompositeRepositoryFallsBackToJSONLWhenSQLiteIsEmpty() throws {

@@ -27,11 +27,11 @@ let package = Package(
         ),
         .target(
             name: "RuntimeControl",
-            dependencies: ["Contracts"]
+            dependencies: ["Contracts", "Core"]
         ),
         .target(
             name: "RuntimeControlAPI",
-            dependencies: ["RuntimeControl"]
+            dependencies: ["RuntimeControl", "Core"]
         ),
         .target(
             name: "HostInfrastructure",
@@ -65,11 +65,11 @@ let package = Package(
         ),
         .testTarget(
             name: "RuntimeControlTests",
-            dependencies: ["Contracts", "RuntimeControl"]
+            dependencies: ["Contracts", "Core", "RuntimeControl"]
         ),
         .testTarget(
             name: "RuntimeControlAPITests",
-            dependencies: ["RuntimeControl", "RuntimeControlAPI"]
+            dependencies: ["Core", "RuntimeControl", "RuntimeControlAPI"]
         ),
         .testTarget(
             name: "HostInfrastructureTests",

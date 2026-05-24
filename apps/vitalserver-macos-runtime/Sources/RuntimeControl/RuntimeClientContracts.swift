@@ -1,4 +1,5 @@
 import Foundation
+import Core
 
 @MainActor
 public protocol RuntimeControlClient {
@@ -8,6 +9,7 @@ public protocol RuntimeControlClient {
     func loadStatus(settings: RuntimeSettings) -> RuntimeStatus
     func loadHealthStatus(settings: RuntimeSettings) async -> RuntimeStatus
     func loadRuntimeEvents(limit: Int) -> RuntimeEventHistory
+    func loadRuntimeEvents(query: RuntimeEventQuery) -> RuntimeEventHistory
     func uninstallRuntime(clean: Bool) async throws -> RuntimeCommandResult
     func applySettings(_ settings: RuntimeSettings) async throws -> RuntimeCommandResult
     func repairProxy(proxyPort: Int) async throws -> RuntimeCommandResult

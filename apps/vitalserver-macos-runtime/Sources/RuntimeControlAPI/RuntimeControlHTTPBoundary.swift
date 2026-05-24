@@ -1,5 +1,7 @@
 import Foundation
 import RuntimeControl
+import Core
+import Contracts
 
 public enum RuntimeControlHTTPStatus: Int, Codable, Equatable, Sendable {
     case ok = 200
@@ -50,7 +52,7 @@ public struct RuntimeControlHTTPResponse: Equatable, Sendable {
 public protocol RuntimeControlAPIReadHandler {
     func loadCapabilities() async throws -> RuntimeControlCapabilities
     func loadStatus() async throws -> RuntimeStatus
-    func loadEvents() async throws -> RuntimeEventHistory
+    func loadEvents(query: RuntimeEventQuery) async throws -> RuntimeEventHistory
     func loadHealthStatus() async throws -> RuntimeStatus
     func loadSettings() async throws -> RuntimeSettings
     func loadReleaseInfo() async throws -> RuntimeReleaseInfo
@@ -103,8 +105,7 @@ public struct RuntimeControlAPIRouter {
                 return try await jsonResponse(handler.loadStatus())
             case .events:
                 let query = try request.runtimeEventQuery()
-                let history = try await handler.loadEvents()
-                return try jsonResponse(filterEvents(history, query: query))
+                return try await jsonResponse(handler.loadEvents(query: query))
             case .health:
                 return try await jsonResponse(handler.loadHealthStatus())
             case .settings:
@@ -154,27 +155,6 @@ public struct RuntimeControlAPIRouter {
             headers: ["Content-Type": "application/json"],
             body: try JSONEncoder().encode(value)
         )
-    }
-
-    private func filterEvents(
-        _ history: RuntimeEventHistory,
-        query: RuntimeControlEventQuery
-    ) -> RuntimeEventHistory {
-        let filtered = history.events
-            .filter { event in
-                guard let eventType = query.eventType else {
-                    return true
-                }
-                return event.eventType.rawValue == eventType
-            }
-            .filter { event in
-                guard let since = query.since else {
-                    return true
-                }
-                return event.timestamp >= since
-            }
-            .suffix(query.limit)
-        return RuntimeEventHistory(events: Array(filtered))
     }
 
     private func errorResponse(
@@ -230,7 +210,7 @@ public extension RuntimeControlHTTPRequest {
         }
     }
 
-    func runtimeEventQuery() throws -> RuntimeControlEventQuery {
+    func runtimeEventQuery() throws -> RuntimeEventQuery {
         let limit: Int
         if let rawLimit = queryValue(named: "limit") {
             guard let parsedLimit = Int(rawLimit), parsedLimit > 0 else {
@@ -238,12 +218,12 @@ public extension RuntimeControlHTTPRequest {
             }
             limit = parsedLimit
         } else {
-            limit = RuntimeControlEventQuery.defaultLimit
+            limit = RuntimeEventQuery.defaultLimit
         }
 
-        return RuntimeControlEventQuery(
+        return RuntimeEventQuery(
             limit: limit,
-            eventType: queryValue(named: "type"),
+            eventType: queryValue(named: "type").map(RuntimeEventType.init(rawValue:)),
             since: queryValue(named: "since")
         )
     }

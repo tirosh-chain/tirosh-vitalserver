@@ -96,6 +96,8 @@ SQLite는 raw log의 대체물이 아니라 API 조회용 index/read model입니
 
 - raw log와 JSONL은 사람이 읽고 재구축할 수 있는 append-only source로 유지합니다.
 - SQLite는 `limit`, `type`, `since`, cursor pagination 같은 조회를 빠르게 처리합니다.
+- Runtime event write port와 history read port는 분리합니다. Write는 append-only recording이고, read는
+  `RuntimeEventQuery`/`RuntimeEventPage` 기반 read model 조회입니다.
 - SQLite write 실패는 runtime 실패로 보지 않습니다. warning event 또는 diagnostics 대상으로만 둡니다.
 - SQLite 파일은 삭제 가능해야 하고, raw log/JSONL에서 재구축할 수 있어야 합니다.
 - local runtime 특성상 WAL mode를 사용하고, schema migration을 명시적으로 관리합니다.
@@ -277,6 +279,8 @@ SQLite read model을 도입합니다.
 - `RuntimeEventRepository`는 JSONL append를 canonical source로 유지하고 SQLite append를 best-effort로
   수행하는 composite repository로 확장했습니다.
 - `/runtime/events` read path는 SQLite를 우선 사용하고 실패 시 기존 JSONL repository로 fallback합니다.
+- `RuntimeEventQuery`, `RuntimeEventCursor`, `RuntimeEventPage`를 Core boundary에 두고 SQLite query로
+  `limit`, `type`, `since`, cursor 조건을 pushdown합니다.
 - schema version/migration table을 추가했습니다.
 - DB 손상 또는 삭제 시 runtime 동작은 계속되고, `/runtime/events` 조회 시 JSONL에서 SQLite index를
   best-effort로 재구축합니다. 깨진 JSONL line은 건너뜁니다.

@@ -1,4 +1,5 @@
 import RuntimeControl
+import Core
 
 @MainActor
 public struct RuntimeControlClientAPIReadHandler: RuntimeControlAPIReadHandler {
@@ -17,8 +18,8 @@ public struct RuntimeControlClientAPIReadHandler: RuntimeControlAPIReadHandler {
         return client.loadStatus(settings: settings)
     }
 
-    public func loadEvents() async throws -> RuntimeEventHistory {
-        client.loadRuntimeEvents(limit: RuntimeControlEventQuery.maximumLimit)
+    public func loadEvents(query: RuntimeEventQuery) async throws -> RuntimeEventHistory {
+        client.loadRuntimeEvents(query: query)
     }
 
     public func loadHealthStatus() async throws -> RuntimeStatus {

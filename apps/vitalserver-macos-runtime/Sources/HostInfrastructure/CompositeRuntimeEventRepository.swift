@@ -1,7 +1,7 @@
 import Contracts
 import Core
 
-public struct CompositeRuntimeEventRepository: RuntimeEventRepository {
+public struct CompositeRuntimeEventRepository: RuntimeEventRepository, RuntimeEventHistoryReading {
     private let primary: JSONLRuntimeEventRepository
     private let secondary: SQLiteRuntimeEventRepository
 
@@ -16,21 +16,25 @@ public struct CompositeRuntimeEventRepository: RuntimeEventRepository {
     }
 
     public func recent(limit: Int) -> [RuntimeEventDocument] {
-        let secondaryEvents = secondary.recent(limit: limit)
-        if !secondaryEvents.isEmpty {
-            return secondaryEvents
+        query(RuntimeEventQuery(limit: limit)).events
+    }
+
+    public func query(_ query: RuntimeEventQuery) -> RuntimeEventPage {
+        let secondaryPage = secondary.query(query)
+        if !secondaryPage.events.isEmpty {
+            return secondaryPage
         }
 
         let primaryEvents = primary.all()
         guard !primaryEvents.isEmpty else {
-            return []
+            return RuntimeEventPage(events: [])
         }
 
         try? secondary.rebuild(from: primaryEvents)
-        let rebuiltEvents = secondary.recent(limit: limit)
-        if !rebuiltEvents.isEmpty {
-            return rebuiltEvents
+        let rebuiltPage = secondary.query(query)
+        if !rebuiltPage.events.isEmpty {
+            return rebuiltPage
         }
-        return Array(primaryEvents.suffix(limit))
+        return primary.query(query)
     }
 }

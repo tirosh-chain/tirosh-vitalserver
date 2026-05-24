@@ -9,6 +9,7 @@ protocol RuntimeStatusReading {
     func loadStatus(settings: RuntimeSettings) -> RuntimeStatus
     func loadHealthStatus(settings: RuntimeSettings) async -> RuntimeStatus
     func loadRuntimeEvents(limit: Int) -> RuntimeEventHistory
+    func loadRuntimeEvents(query: RuntimeEventQuery) -> RuntimeEventHistory
     func legacyCommandProgressLine() -> String?
 }
 
@@ -79,12 +80,16 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading {
     }
 
     func loadRuntimeEvents(limit: Int) -> RuntimeEventHistory {
+        loadRuntimeEvents(query: RuntimeEventQuery(limit: limit))
+    }
+
+    func loadRuntimeEvents(query: RuntimeEventQuery) -> RuntimeEventHistory {
         let repository = CompositeRuntimeEventRepository(
             primary: JSONLRuntimeEventRepository(url: URL(fileURLWithPath: paths.runtimeEvents)),
             secondary: SQLiteRuntimeEventRepository(url: URL(fileURLWithPath: paths.runtimeObservabilityDB))
         )
         return RuntimeEventHistory(
-            events: repository.recent(limit: limit)
+            events: repository.query(query).events
         )
     }
 

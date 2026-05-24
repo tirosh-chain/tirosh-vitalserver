@@ -1,6 +1,7 @@
 import Foundation
 import SQLite3
 import Contracts
+import Core
 
 public enum SQLiteRuntimeObservabilityStoreError: Error, Equatable {
     case openFailed(String)
@@ -107,8 +108,12 @@ public struct SQLiteRuntimeObservabilityStore {
     }
 
     public func recent(limit: Int, eventType: RuntimeEventType?, since: String?) -> [RuntimeEventDocument] {
-        guard limit > 0 else {
-            return []
+        query(RuntimeEventQuery(limit: limit, eventType: eventType, since: since)).events
+    }
+
+    public func query(_ query: RuntimeEventQuery) -> RuntimeEventPage {
+        guard query.limit > 0 else {
+            return RuntimeEventPage(events: [])
         }
         do {
             try initialize()
@@ -116,19 +121,25 @@ public struct SQLiteRuntimeObservabilityStore {
                 var predicates: [String] = []
                 var bindings: [SQLiteBinding] = []
 
-                if let eventType {
+                if let eventType = query.eventType {
                     predicates.append("event_type = ?")
                     bindings.append(.text(eventType.rawValue))
                 }
-                if let since {
+                if let since = query.since {
                     predicates.append("timestamp >= ?")
                     bindings.append(.text(since))
                 }
+                if let before = query.before {
+                    predicates.append("(timestamp < ? OR (timestamp = ? AND id < ?))")
+                    bindings.append(.text(before.timestamp))
+                    bindings.append(.text(before.timestamp))
+                    bindings.append(.text(before.id))
+                }
 
                 let whereClause = predicates.isEmpty ? "" : "WHERE \(predicates.joined(separator: " AND "))"
-                bindings.append(.int(limit))
+                bindings.append(.int(query.limit + 1))
 
-                return Array(try queryEvents(
+                let events = try queryEvents(
                     db,
                     sql: """
                     SELECT payload_json
@@ -138,11 +149,21 @@ public struct SQLiteRuntimeObservabilityStore {
                     LIMIT ?
                     """,
                     bindings: bindings
-                ).reversed())
+                )
+                let hasMore = events.count > query.limit
+                let pageEvents = Array(events.prefix(query.limit).reversed())
+                return RuntimeEventPage(events: pageEvents, nextCursor: nextCursor(for: pageEvents, hasMore: hasMore))
             }
         } catch {
-            return []
+            return RuntimeEventPage(events: [])
         }
+    }
+
+    private func nextCursor(for events: [RuntimeEventDocument], hasMore: Bool) -> RuntimeEventCursor? {
+        guard hasMore, let first = events.first else {
+            return nil
+        }
+        return RuntimeEventCursor(timestamp: first.timestamp, id: first.id)
     }
 
     private func queryEvents(

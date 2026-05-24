@@ -35,6 +35,31 @@ public struct JSONLRuntimeEventRepository: RuntimeEventRepository {
         return Array(all().suffix(limit))
     }
 
+    public func query(_ query: RuntimeEventQuery) -> RuntimeEventPage {
+        let filtered = all()
+            .filter { event in
+                guard let eventType = query.eventType else {
+                    return true
+                }
+                return event.eventType == eventType
+            }
+            .filter { event in
+                guard let since = query.since else {
+                    return true
+                }
+                return event.timestamp >= since
+            }
+            .filter { event in
+                guard let before = query.before else {
+                    return true
+                }
+                return event.timestamp < before.timestamp
+                    || (event.timestamp == before.timestamp && event.id < before.id)
+            }
+        let pageEvents = Array(filtered.suffix(query.limit))
+        return RuntimeEventPage(events: pageEvents, nextCursor: nextCursor(for: pageEvents, hasMore: filtered.count > pageEvents.count))
+    }
+
     public func all() -> [RuntimeEventDocument] {
         guard let data = try? Data(contentsOf: url),
               let text = String(data: data, encoding: .utf8)
@@ -47,5 +72,12 @@ public struct JSONLRuntimeEventRepository: RuntimeEventRepository {
             .compactMap { line in
                 try? decoder.decode(RuntimeEventDocument.self, from: Data(line.utf8))
             }
+    }
+
+    private func nextCursor(for events: [RuntimeEventDocument], hasMore: Bool) -> RuntimeEventCursor? {
+        guard hasMore, let first = events.first else {
+            return nil
+        }
+        return RuntimeEventCursor(timestamp: first.timestamp, id: first.id)
     }
 }

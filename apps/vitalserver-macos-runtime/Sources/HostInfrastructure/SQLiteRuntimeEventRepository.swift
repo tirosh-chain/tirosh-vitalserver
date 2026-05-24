@@ -21,6 +21,10 @@ public struct SQLiteRuntimeEventRepository: RuntimeEventRepository {
         store.recent(limit: limit)
     }
 
+    public func query(_ query: RuntimeEventQuery) -> RuntimeEventPage {
+        store.query(query)
+    }
+
     public func rebuild(from events: [RuntimeEventDocument]) throws {
         try store.rebuild(from: events)
     }

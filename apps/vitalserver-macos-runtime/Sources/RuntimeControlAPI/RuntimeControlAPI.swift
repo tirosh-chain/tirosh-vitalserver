@@ -1,5 +1,6 @@
 import Foundation
 import RuntimeControl
+import Core
 
 public enum RuntimeControlHTTPMethod: String, CaseIterable, Codable, Equatable, Sendable {
     case get = "GET"
@@ -192,21 +193,6 @@ public struct RuntimeControlCommandResponse: Codable, Equatable, Sendable {
 
     public init(result: RuntimeCommandResult) {
         self.result = result
-    }
-}
-
-public struct RuntimeControlEventQuery: Equatable, Sendable {
-    public static let defaultLimit = 100
-    public static let maximumLimit = 500
-
-    public let limit: Int
-    public let eventType: String?
-    public let since: String?
-
-    public init(limit: Int = defaultLimit, eventType: String? = nil, since: String? = nil) {
-        self.limit = min(max(limit, 1), Self.maximumLimit)
-        self.eventType = eventType
-        self.since = since
     }
 }
 
