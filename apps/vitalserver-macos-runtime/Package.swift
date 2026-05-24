@@ -35,7 +35,10 @@ let package = Package(
         ),
         .target(
             name: "HostInfrastructure",
-            dependencies: ["Contracts", "Core"]
+            dependencies: ["Contracts", "Core"],
+            linkerSettings: [
+                .linkedLibrary("sqlite3")
+            ]
         ),
         .target(
             name: "MacHostRuntimeAdapter",

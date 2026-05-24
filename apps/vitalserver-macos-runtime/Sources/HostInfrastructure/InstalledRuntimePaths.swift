@@ -118,6 +118,10 @@ public struct InstalledRuntimePaths: Equatable, Sendable {
         statusDirectory.appendingPathComponent(RuntimeFileNames.runtimeEvents)
     }
 
+    public var runtimeObservabilityDB: URL {
+        statusDirectory.appendingPathComponent(RuntimeFileNames.runtimeObservabilityDB)
+    }
+
     public var vmIPFile: URL {
         guestRunDirectory.appendingPathComponent(RuntimeFileNames.vmIP)
     }

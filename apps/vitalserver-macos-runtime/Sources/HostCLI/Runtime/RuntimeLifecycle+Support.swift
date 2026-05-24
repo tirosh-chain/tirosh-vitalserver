@@ -197,7 +197,10 @@ extension RuntimeLifecycle {
             containerObservation: healthSnapshot.containerObservation,
             progress: nil
         )
-        try JSONLRuntimeEventRepository(url: installedPaths.runtimeEvents).append(event)
+        try CompositeRuntimeEventRepository(
+            primary: JSONLRuntimeEventRepository(url: installedPaths.runtimeEvents),
+            secondary: SQLiteRuntimeEventRepository(url: installedPaths.runtimeObservabilityDB)
+        ).append(event)
     }
 
     func runtimeHealthSnapshot() -> RuntimeHealthSnapshot {

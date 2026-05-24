@@ -1,6 +1,7 @@
 public enum RuntimeFileNames {
     public static let runtimeStatus = "runtime-status.json"
     public static let runtimeEvents = "runtime-events.jsonl"
+    public static let runtimeObservabilityDB = "runtime-observability.sqlite"
     public static let vmIP = "vm-ip"
     public static let runtimeState = "runtime-state.json"
     public static let bootstrapLog = "bootstrap.log"

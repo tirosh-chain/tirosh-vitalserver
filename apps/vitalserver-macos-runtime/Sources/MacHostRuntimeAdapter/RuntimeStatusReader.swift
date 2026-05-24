@@ -79,8 +79,12 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading {
     }
 
     func loadRuntimeEvents(limit: Int) -> RuntimeEventHistory {
-        RuntimeEventHistory(
-            events: JSONLRuntimeEventRepository(url: URL(fileURLWithPath: paths.runtimeEvents)).recent(limit: limit)
+        let repository = CompositeRuntimeEventRepository(
+            primary: JSONLRuntimeEventRepository(url: URL(fileURLWithPath: paths.runtimeEvents)),
+            secondary: SQLiteRuntimeEventRepository(url: URL(fileURLWithPath: paths.runtimeObservabilityDB))
+        )
+        return RuntimeEventHistory(
+            events: repository.recent(limit: limit)
         )
     }
 

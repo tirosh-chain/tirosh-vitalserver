@@ -5,6 +5,7 @@ final class RuntimeFileNamesTests: XCTestCase {
     func testRuntimeFileNamesRemainStableForHostAndGuestContracts() {
         XCTAssertEqual(RuntimeFileNames.runtimeStatus, "runtime-status.json")
         XCTAssertEqual(RuntimeFileNames.runtimeEvents, "runtime-events.jsonl")
+        XCTAssertEqual(RuntimeFileNames.runtimeObservabilityDB, "runtime-observability.sqlite")
         XCTAssertEqual(RuntimeFileNames.vmIP, "vm-ip")
         XCTAssertEqual(RuntimeFileNames.runtimeState, "runtime-state.json")
         XCTAssertEqual(RuntimeFileNames.bootstrapLog, "bootstrap.log")

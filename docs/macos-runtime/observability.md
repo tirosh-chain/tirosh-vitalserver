@@ -215,7 +215,7 @@ audit_event_index (
 );
 ```
 
-초기 구현은 `runtime_events`부터 시작합니다. `container_log_index`와 `audit_event_index`는 raw log
+초기 구현은 `runtime_events`부터 시작했습니다. `container_log_index`와 `audit_event_index`는 raw log
 retention/rotation 정책이 정리된 뒤 ingest합니다.
 
 ## 정리 단계
@@ -273,11 +273,11 @@ watchdog이 host proxy를 통해 `/audit-proxy/status`를 읽습니다.
 
 SQLite read model을 도입합니다.
 
-- `HostInfrastructure`에 `SQLiteRuntimeObservabilityStore`를 추가합니다.
+- `HostInfrastructure`에 `SQLiteRuntimeObservabilityStore`를 추가했습니다.
 - `RuntimeEventRepository`는 JSONL append를 canonical source로 유지하고 SQLite append를 best-effort로
-  수행하는 composite repository로 확장합니다.
+  수행하는 composite repository로 확장했습니다.
 - `/runtime/events` read path는 SQLite를 우선 사용하고 실패 시 기존 JSONL repository로 fallback합니다.
-- schema version/migration table을 추가합니다.
+- schema version/migration table을 추가했습니다.
 - DB 손상 또는 삭제 시 runtime 동작은 계속되고, 다음 watchdog/event write부터 index를 재생성합니다.
 
 ### 5단계: API 확장 여부 결정
