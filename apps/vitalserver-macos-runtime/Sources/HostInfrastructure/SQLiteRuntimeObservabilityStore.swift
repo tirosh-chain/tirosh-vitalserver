@@ -61,40 +61,25 @@ public struct SQLiteRuntimeObservabilityStore {
 
     public func append(_ event: RuntimeEventDocument) throws {
         try initialize()
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys]
-        let payload = String(decoding: try encoder.encode(event), as: UTF8.self)
-
         try withDatabase { db in
-            try execute(
-                db,
-                sql: """
-                INSERT OR REPLACE INTO runtime_events(
-                  id,
-                  timestamp,
-                  source,
-                  event_type,
-                  status,
-                  previous_status,
-                  operation,
-                  message,
-                  runtime_version,
-                  payload_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                bindings: [
-                    .text(event.id),
-                    .text(event.timestamp),
-                    .text(event.source),
-                    .text(event.eventType.rawValue),
-                    .text(event.status.rawValue),
-                    .optionalText(event.previousStatus?.rawValue),
-                    .text(event.operation.rawValue),
-                    .text(event.message),
-                    .text(event.runtimeVersion),
-                    .text(payload),
-                ]
-            )
+            try insert(event, db: db)
+        }
+    }
+
+    public func rebuild(from events: [RuntimeEventDocument]) throws {
+        try removeDatabaseFiles()
+        try initialize()
+        try withDatabase { db in
+            try execute(db, sql: "BEGIN IMMEDIATE TRANSACTION")
+            do {
+                for event in events {
+                    try insert(event, db: db)
+                }
+                try execute(db, sql: "COMMIT")
+            } catch {
+                try? execute(db, sql: "ROLLBACK")
+                throw error
+            }
         }
     }
 
@@ -194,6 +179,52 @@ public struct SQLiteRuntimeObservabilityStore {
                 throw SQLiteRuntimeObservabilityStoreError.decodeFailed(payload)
             }
             events.append(event)
+        }
+    }
+
+    private func insert(_ event: RuntimeEventDocument, db: OpaquePointer) throws {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let payload = String(decoding: try encoder.encode(event), as: UTF8.self)
+
+        try execute(
+            db,
+            sql: """
+            INSERT OR REPLACE INTO runtime_events(
+              id,
+              timestamp,
+              source,
+              event_type,
+              status,
+              previous_status,
+              operation,
+              message,
+              runtime_version,
+              payload_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            bindings: [
+                .text(event.id),
+                .text(event.timestamp),
+                .text(event.source),
+                .text(event.eventType.rawValue),
+                .text(event.status.rawValue),
+                .optionalText(event.previousStatus?.rawValue),
+                .text(event.operation.rawValue),
+                .text(event.message),
+                .text(event.runtimeVersion),
+                .text(payload),
+            ]
+        )
+    }
+
+    private func removeDatabaseFiles() throws {
+        let fileManager = FileManager.default
+        for path in [url.path, "\(url.path)-wal", "\(url.path)-shm"] {
+            guard fileManager.fileExists(atPath: path) else {
+                continue
+            }
+            try fileManager.removeItem(atPath: path)
         }
     }
 

@@ -65,6 +65,49 @@ final class SQLiteRuntimeObservabilityStoreTests: XCTestCase {
         XCTAssertEqual(repository.recent(limit: 10).map(\.id), ["event-1"])
     }
 
+    func testCompositeRepositoryRebuildsSQLiteFromJSONLWhenDatabaseIsCorrupt() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let jsonl = JSONLRuntimeEventRepository(url: directory.appendingPathComponent("events.jsonl"))
+        let sqliteURL = directory.appendingPathComponent("events.sqlite")
+        let sqlite = SQLiteRuntimeEventRepository(url: sqliteURL)
+        let repository = CompositeRuntimeEventRepository(primary: jsonl, secondary: sqlite)
+
+        try jsonl.append(event(id: "event-1", timestamp: "2026-05-24T00:00:00Z", type: .statusChanged))
+        try Data("not a sqlite database".utf8).write(to: sqliteURL)
+
+        XCTAssertEqual(repository.recent(limit: 10).map(\.id), ["event-1"])
+        XCTAssertEqual(sqlite.recent(limit: 10).map(\.id), ["event-1"])
+    }
+
+    func testCompositeRepositoryRebuildSkipsBrokenJSONLLines() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let jsonlURL = directory.appendingPathComponent("events.jsonl")
+        let jsonl = JSONLRuntimeEventRepository(url: jsonlURL)
+        let sqlite = SQLiteRuntimeEventRepository(url: directory.appendingPathComponent("events.sqlite"))
+        let repository = CompositeRuntimeEventRepository(primary: jsonl, secondary: sqlite)
+
+        try jsonl.append(event(id: "event-1", timestamp: "2026-05-24T00:00:00Z", type: .statusChanged))
+        let handle = try FileHandle(forWritingTo: jsonlURL)
+        defer {
+            try? handle.close()
+        }
+        try handle.seekToEnd()
+        handle.write(Data("{broken json}\n".utf8))
+        try jsonl.append(event(id: "event-2", timestamp: "2026-05-24T00:01:00Z", type: .containerObserved))
+
+        XCTAssertEqual(repository.recent(limit: 10).map(\.id), ["event-1", "event-2"])
+    }
+
     private func event(id: String, timestamp: String, type: RuntimeEventType) -> RuntimeEventDocument {
         RuntimeEventDocument(
             id: id,

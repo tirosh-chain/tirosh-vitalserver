@@ -20,4 +20,8 @@ public struct SQLiteRuntimeEventRepository: RuntimeEventRepository {
     public func recent(limit: Int) -> [RuntimeEventDocument] {
         store.recent(limit: limit)
     }
+
+    public func rebuild(from events: [RuntimeEventDocument]) throws {
+        try store.rebuild(from: events)
+    }
 }

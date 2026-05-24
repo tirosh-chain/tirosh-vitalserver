@@ -278,7 +278,8 @@ SQLite read model을 도입합니다.
   수행하는 composite repository로 확장했습니다.
 - `/runtime/events` read path는 SQLite를 우선 사용하고 실패 시 기존 JSONL repository로 fallback합니다.
 - schema version/migration table을 추가했습니다.
-- DB 손상 또는 삭제 시 runtime 동작은 계속되고, 다음 watchdog/event write부터 index를 재생성합니다.
+- DB 손상 또는 삭제 시 runtime 동작은 계속되고, `/runtime/events` 조회 시 JSONL에서 SQLite index를
+  best-effort로 재구축합니다. 깨진 JSONL line은 건너뜁니다.
 
 ### 5단계: API 확장 여부 결정
 

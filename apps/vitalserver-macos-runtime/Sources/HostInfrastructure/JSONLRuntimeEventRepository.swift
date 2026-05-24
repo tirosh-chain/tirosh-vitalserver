@@ -28,17 +28,22 @@ public struct JSONLRuntimeEventRepository: RuntimeEventRepository {
     }
 
     public func recent(limit: Int) -> [RuntimeEventDocument] {
-        guard limit > 0,
-              let data = try? Data(contentsOf: url),
+        guard limit > 0 else {
+            return []
+        }
+
+        return Array(all().suffix(limit))
+    }
+
+    public func all() -> [RuntimeEventDocument] {
+        guard let data = try? Data(contentsOf: url),
               let text = String(data: data, encoding: .utf8)
         else {
             return []
         }
-
         let decoder = JSONDecoder()
         return text
             .split(separator: "\n")
-            .suffix(limit)
             .compactMap { line in
                 try? decoder.decode(RuntimeEventDocument.self, from: Data(line.utf8))
             }

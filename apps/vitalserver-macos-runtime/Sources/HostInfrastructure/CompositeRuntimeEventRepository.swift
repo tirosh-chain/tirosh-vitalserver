@@ -2,10 +2,10 @@ import Contracts
 import Core
 
 public struct CompositeRuntimeEventRepository: RuntimeEventRepository {
-    private let primary: any RuntimeEventRepository
-    private let secondary: any RuntimeEventRepository
+    private let primary: JSONLRuntimeEventRepository
+    private let secondary: SQLiteRuntimeEventRepository
 
-    public init(primary: any RuntimeEventRepository, secondary: any RuntimeEventRepository) {
+    public init(primary: JSONLRuntimeEventRepository, secondary: SQLiteRuntimeEventRepository) {
         self.primary = primary
         self.secondary = secondary
     }
@@ -20,6 +20,17 @@ public struct CompositeRuntimeEventRepository: RuntimeEventRepository {
         if !secondaryEvents.isEmpty {
             return secondaryEvents
         }
-        return primary.recent(limit: limit)
+
+        let primaryEvents = primary.all()
+        guard !primaryEvents.isEmpty else {
+            return []
+        }
+
+        try? secondary.rebuild(from: primaryEvents)
+        let rebuiltEvents = secondary.recent(limit: limit)
+        if !rebuiltEvents.isEmpty {
+            return rebuiltEvents
+        }
+        return Array(primaryEvents.suffix(limit))
     }
 }
