@@ -42,6 +42,7 @@ struct RuntimeHealthChecker {
         let hostProxyHTTP = httpProber.statusCode(url: Constants.Runtime.proxyHealthURL(port: proxyPort))
         let redisUIHTTP = httpProber.statusCode(url: Constants.Runtime.redisUIHealthURL(port: proxyPort))
         let swaggerUIHTTP = httpProber.statusCode(url: Constants.Runtime.swaggerUIHealthURL(port: proxyPort))
+        let containerObservation = containerObservation(proxyPort: proxyPort)
 
         return RuntimeHealthEvaluator.evaluate(RuntimeHealthInput(
             vmExecutable: fileStore.isExecutableFile(atPath: Constants.InstallPaths.vmBin),
@@ -57,6 +58,7 @@ struct RuntimeHealthChecker {
             guestHTTP: guestHTTPStatus(guestState: guestState, vmIP: vmIP),
             redisUIHTTP: redisUIHTTP,
             swaggerUIHTTP: swaggerUIHTTP,
+            containerObservation: containerObservation,
             proxyPortFailureReasons: proxyPortFailureReasons(port: proxyPort),
             guestBootstrapFailureReason: guestBootstrapFailureReason()
         ))
@@ -184,5 +186,29 @@ struct RuntimeHealthChecker {
 
     private func readInstalledProxyNginxPID() -> String? {
         readTrimmed(installedPaths.proxyNginxPID)
+    }
+
+    private func containerObservation(proxyPort: Int) -> RuntimeContainerObservation {
+        let auditProxyStatus = auditProxyStatus(port: proxyPort)
+        let containerLogsBytes = try? fileStore.fileSize(installedPaths.containerLogs)
+        return RuntimeContainerObservation(
+            auditProxyHTTP: auditProxyStatus.httpStatus,
+            auditProxyStatus: auditProxyStatus.document,
+            containerLogsPresent: fileStore.fileExists(installedPaths.containerLogs),
+            containerLogsBytes: containerLogsBytes
+        )
+    }
+
+    private func auditProxyStatus(port: Int) -> (httpStatus: String, document: RuntimeAuditProxyStatusDocument?) {
+        let result = commandRunner.run(
+            Constants.Commands.curl,
+            arguments: ["-fsS", "--max-time", "5", Constants.Runtime.auditProxyStatusURL(port: port)]
+        )
+        guard result.exitCode == 0,
+              let data = result.stdout.data(using: .utf8),
+              let document = try? JSONDecoder().decode(RuntimeAuditProxyStatusDocument.self, from: data) else {
+            return ("failed", nil)
+        }
+        return ("200", document)
     }
 }

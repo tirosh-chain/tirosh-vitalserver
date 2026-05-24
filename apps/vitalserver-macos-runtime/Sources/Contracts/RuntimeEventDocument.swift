@@ -51,6 +51,7 @@ public struct RuntimeEventDocument: Codable, Equatable, Sendable {
     public let message: String
     public let runtimeVersion: String
     public let failureReasons: [RuntimeFailureReason]
+    public let containerObservation: RuntimeContainerObservation?
     public let progress: RuntimeProgressDocument?
 
     public init(
@@ -66,6 +67,7 @@ public struct RuntimeEventDocument: Codable, Equatable, Sendable {
         message: String,
         runtimeVersion: String,
         failureReasons: [RuntimeFailureReason],
+        containerObservation: RuntimeContainerObservation? = nil,
         progress: RuntimeProgressDocument?
     ) {
         self.schemaVersion = schemaVersion
@@ -80,6 +82,7 @@ public struct RuntimeEventDocument: Codable, Equatable, Sendable {
         self.message = message
         self.runtimeVersion = runtimeVersion
         self.failureReasons = failureReasons
+        self.containerObservation = containerObservation
         self.progress = progress
     }
 }

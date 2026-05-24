@@ -62,6 +62,32 @@ final class RuntimeHealthEvaluatorTests: XCTestCase {
         XCTAssertEqual(snapshot.failureReasons, [])
     }
 
+    func testAuditProxyStatusFailureProducesTypedReason() {
+        let snapshot = RuntimeHealthEvaluator.evaluate(healthyInput(
+            containerObservation: RuntimeContainerObservation(
+                auditProxyHTTP: "failed",
+                auditProxyStatus: nil,
+                containerLogsPresent: true,
+                containerLogsBytes: 1024
+            )
+        ))
+
+        XCTAssertEqual(snapshot.failureReasons, [.auditProxyHTTP("failed")])
+    }
+
+    func testAuditProxyCountersAreObservedWithoutTriggeringRecovery() {
+        let observation = RuntimeContainerObservation(
+            auditProxyHTTP: "200",
+            auditProxyStatus: RuntimeAuditProxyStatusDocument(auditWriteFailures: 2),
+            containerLogsPresent: true,
+            containerLogsBytes: 2048
+        )
+        let snapshot = RuntimeHealthEvaluator.evaluate(healthyInput(containerObservation: observation))
+
+        XCTAssertTrue(snapshot.isHealthy)
+        XCTAssertEqual(snapshot.containerObservation, observation)
+    }
+
     func testBootstrapReasonIsIgnoredWhenGuestHTTPIsHealthy() {
         let snapshot = RuntimeHealthEvaluator.evaluate(healthyInput(
             guestHTTP: "200",
@@ -86,6 +112,7 @@ final class RuntimeHealthEvaluatorTests: XCTestCase {
         guestHTTP: String = "200",
         redisUIHTTP: String = "200",
         swaggerUIHTTP: String = "200",
+        containerObservation: RuntimeContainerObservation? = nil,
         proxyPortFailureReasons: [RuntimeFailureReason] = [],
         guestBootstrapFailureReason: RuntimeFailureReason? = nil
     ) -> RuntimeHealthInput {
@@ -103,6 +130,7 @@ final class RuntimeHealthEvaluatorTests: XCTestCase {
             guestHTTP: guestHTTP,
             redisUIHTTP: redisUIHTTP,
             swaggerUIHTTP: swaggerUIHTTP,
+            containerObservation: containerObservation,
             proxyPortFailureReasons: proxyPortFailureReasons,
             guestBootstrapFailureReason: guestBootstrapFailureReason
         )

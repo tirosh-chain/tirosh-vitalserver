@@ -509,6 +509,7 @@ private struct StubRuntimeControlAPIReadHandler: RuntimeControlAPIReadHandler {
                 message: "ready",
                 runtimeVersion: "1.2.3",
                 failureReasons: [],
+                containerObservation: nil,
                 progress: nil
             ),
         ])
@@ -571,6 +572,7 @@ private final class FakeRuntimeControlClient: RuntimeControlClient {
                 message: "ready",
                 runtimeVersion: "1.2.3",
                 failureReasons: [],
+                containerObservation: nil,
                 progress: nil
             ),
         ])

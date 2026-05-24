@@ -14,6 +14,7 @@ public struct RuntimeHealthSnapshot: Equatable {
     public let guestHTTP: String
     public let redisUIHTTP: String
     public let swaggerUIHTTP: String
+    public let containerObservation: RuntimeContainerObservation?
     public let failureReasons: [RuntimeFailureReason]
 
     public init(
@@ -30,6 +31,7 @@ public struct RuntimeHealthSnapshot: Equatable {
         guestHTTP: String,
         redisUIHTTP: String,
         swaggerUIHTTP: String,
+        containerObservation: RuntimeContainerObservation? = nil,
         failureReasons: [RuntimeFailureReason]
     ) {
         self.vmExecutable = vmExecutable
@@ -45,6 +47,7 @@ public struct RuntimeHealthSnapshot: Equatable {
         self.guestHTTP = guestHTTP
         self.redisUIHTTP = redisUIHTTP
         self.swaggerUIHTTP = swaggerUIHTTP
+        self.containerObservation = containerObservation
         self.failureReasons = failureReasons
     }
 

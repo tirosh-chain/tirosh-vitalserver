@@ -194,6 +194,7 @@ extension RuntimeLifecycle {
             message: message,
             runtimeVersion: runtimeVersionValue(),
             failureReasons: healthSnapshot.failureReasons,
+            containerObservation: healthSnapshot.containerObservation,
             progress: nil
         )
         try JSONLRuntimeEventRepository(url: installedPaths.runtimeEvents).append(event)

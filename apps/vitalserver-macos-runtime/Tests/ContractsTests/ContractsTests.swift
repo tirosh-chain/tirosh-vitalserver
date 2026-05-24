@@ -148,6 +148,7 @@ final class ContractsTests: XCTestCase {
           "missing-vm-bin",
           "vm-service-not loaded",
           "host-proxy-http-502",
+          "audit-proxy-http-failed",
           "proxy-port-80-in-use-by-nginx-1234",
           "guest-bootstrap-missing-runtime-packages",
           "future-reason"
@@ -158,9 +159,10 @@ final class ContractsTests: XCTestCase {
         XCTAssertEqual(reasons[0], .missingVMBin)
         XCTAssertEqual(reasons[1], .vmService("not loaded"))
         XCTAssertEqual(reasons[2], .hostProxyHTTP("502"))
-        XCTAssertEqual(reasons[3], .proxyPortInUse(port: 80, listeners: "nginx-1234"))
-        XCTAssertEqual(reasons[4], .guestBootstrapMissingRuntimePackages)
-        XCTAssertEqual(reasons[5], .unknown("future-reason"))
+        XCTAssertEqual(reasons[3], .auditProxyHTTP("failed"))
+        XCTAssertEqual(reasons[4], .proxyPortInUse(port: 80, listeners: "nginx-1234"))
+        XCTAssertEqual(reasons[5], .guestBootstrapMissingRuntimePackages)
+        XCTAssertEqual(reasons[6], .unknown("future-reason"))
 
         let encoded = try JSONEncoder().encode(reasons)
         let roundTripped = try JSONDecoder().decode([RuntimeFailureReason].self, from: encoded)
@@ -168,6 +170,7 @@ final class ContractsTests: XCTestCase {
             "missing-vm-bin",
             "vm-service-not loaded",
             "host-proxy-http-502",
+            "audit-proxy-http-failed",
             "proxy-port-80-in-use-by-nginx-1234",
             "guest-bootstrap-missing-runtime-packages",
             "future-reason",

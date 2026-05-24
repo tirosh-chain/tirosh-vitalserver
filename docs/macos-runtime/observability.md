@@ -143,25 +143,36 @@ Runtime operational event는 watchdog이 생성합니다. Command audit event는
 
 ### 2단계: container observation 모델 추가
 
-Swift 쪽에 `RuntimeContainerObservation` 같은 read model을 추가합니다.
+Swift 쪽에 `RuntimeContainerObservation` read model을 추가합니다.
 
-포함 후보:
+현재 포함 항목:
 
-- `runtime-state.json` updated age
-- `container-logs.log` exists/updated age
-- audit proxy `/audit-proxy/status`
-- compose service health summary
-- Redis audit write failure count
-- audit file/stdout write failure count
+- audit proxy `/audit-proxy/status` HTTP 관측 결과
+- audit proxy `/audit-proxy/status` counter snapshot
+- `container-logs.log` 존재 여부
+- `container-logs.log` byte size
 
 이 모델은 watchdog의 관측 입력입니다. Helper UI에 그대로 노출하기보다는 `runtime-status`와
-`runtime-events`로 정규화합니다.
+`runtime-events`로 정규화합니다. 현재는 audit proxy status endpoint 접근 실패만
+`audit-proxy-http-<status>` failure reason으로 승격합니다. audit write failure counter는 관측값으로
+보존하지만 즉시 runtime recovery 실패로 판단하지 않습니다.
+
+남은 후보:
+
+- `runtime-state.json` updated age
+- `container-logs.log` updated age
+- compose service health summary
 
 ### 3단계: audit proxy status를 watchdog 관측 대상에 편입
 
-watchdog이 host proxy를 통해 `/audit-proxy/status`를 읽고 아래를 판단합니다.
+watchdog이 host proxy를 통해 `/audit-proxy/status`를 읽습니다.
 
-- audit proxy process가 요청을 받고 있는지
+현재 판단:
+
+- `/audit-proxy/status`를 읽을 수 없으면 `audit-proxy-http-failed` failure reason 기록
+
+향후 판단 후보:
+
 - Socket.IO parse failure가 급증하는지
 - Redis/file/stdout audit write failure가 발생하는지
 - active WebSocket 수가 비정상적으로 고정되어 있는지

@@ -131,6 +131,10 @@ enum Constants {
         static func swaggerUIHealthURL(port: Int) -> String {
             "http://127.0.0.1:\(port)/swagger/"
         }
+
+        static func auditProxyStatusURL(port: Int) -> String {
+            "http://127.0.0.1:\(port)/audit-proxy/status"
+        }
     }
 
     enum Bundle {
