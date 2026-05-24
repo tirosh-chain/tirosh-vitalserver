@@ -123,6 +123,13 @@ Redis는 현재 `3.2.12`로 pin되어 있으므로 Redis Stream 대신 Redis Lis
 
 ## 운영 확인
 
+로컬 문법/단위 테스트:
+
+```sh
+npm --prefix apps/vitalserver-audit-proxy run check
+npm --prefix apps/vitalserver-audit-proxy test
+```
+
 최근 audit event:
 
 ```sh

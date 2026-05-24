@@ -9,4 +9,4 @@ ENV AUDIT_PROXY_PORT=8080
 
 EXPOSE 8080
 
-CMD ["node", "proxy.js"]
+CMD ["npm", "start"]
