@@ -28,8 +28,6 @@ struct RuntimeStatusPanel: View {
             Divider()
             recorderSection
             Divider()
-            moduleUptimeSection
-            Divider()
             resourceUsageSection
             Divider()
             DisclosureGroup(AppConstants.Labels.healthDetails, isExpanded: $showingHealthDetails) {
@@ -45,32 +43,6 @@ struct RuntimeStatusPanel: View {
         .background(Color(nsColor: .controlBackgroundColor))
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .frame(maxWidth: 760, alignment: .leading)
-    }
-
-    private var moduleUptimeSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(AppConstants.Labels.moduleUptime)
-                .font(.headline)
-            Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 10) {
-                if let auditProxy = viewModel.containerObservation?.auditProxyStatus {
-                    moduleRow(
-                        AppConstants.Labels.auditProxy,
-                        state: serviceReachabilityLabel(viewModel.containerObservation?.auditProxyHTTP),
-                        uptimeSeconds: auditProxy.uptimeSeconds
-                    )
-                }
-                ForEach(composeServices, id: \.service) { service in
-                    moduleRow(
-                        service.service,
-                        state: service.health ?? service.state ?? AppConstants.StatusText.unknown,
-                        uptimeSeconds: service.uptimeSeconds
-                    )
-                }
-                if composeServices.isEmpty && viewModel.containerObservation?.auditProxyStatus == nil {
-                    statusRow(AppConstants.Labels.moduleUptime, AppConstants.StatusText.notChecked)
-                }
-            }
-        }
     }
 
     private var recorderSection: some View {
@@ -158,6 +130,7 @@ struct RuntimeStatusPanel: View {
                 .frame(width: 11, height: 11)
             Text(overallHealthLabel)
                 .fontWeight(.medium)
+            uptimeSuffix(vitalServerUptimeSeconds)
         }
     }
 
@@ -166,32 +139,38 @@ struct RuntimeStatusPanel: View {
             HealthItem(
                 label: AppConstants.Labels.managerRuntime,
                 value: viewModel.status.runtimeInstalled ? AppConstants.StatusText.ready : AppConstants.StatusText.notInstalled,
-                isHealthy: viewModel.status.runtimeInstalled
+                isHealthy: viewModel.status.runtimeInstalled,
+                uptimeSeconds: nil
             ),
             HealthItem(
                 label: AppConstants.Labels.vmIPAddress,
                 value: viewModel.status.vmIP ?? AppConstants.StatusText.waiting,
-                isHealthy: viewModel.status.vmServiceLoaded && viewModel.status.vmIP != nil
+                isHealthy: viewModel.status.vmServiceLoaded && viewModel.status.vmIP != nil,
+                uptimeSeconds: nil
             ),
             HealthItem(
                 label: AppConstants.Labels.vitalServerApp,
                 value: serviceReachabilityLabel(viewModel.status.guestHTTP),
-                isHealthy: isSuccessfulHTTPStatus(viewModel.status.guestHTTP)
+                isHealthy: isSuccessfulHTTPStatus(viewModel.status.guestHTTP),
+                uptimeSeconds: vitalServerUptimeSeconds
             ),
             HealthItem(
                 label: AppConstants.Labels.hostProxyService,
                 value: serviceReachabilityLabel(viewModel.status.hostProxyHTTP),
-                isHealthy: viewModel.status.proxyServiceLoaded && isSuccessfulHTTPStatus(viewModel.status.hostProxyHTTP)
+                isHealthy: viewModel.status.proxyServiceLoaded && isSuccessfulHTTPStatus(viewModel.status.hostProxyHTTP),
+                uptimeSeconds: edgeUptimeSeconds
             ),
             HealthItem(
                 label: AppConstants.Labels.redis,
                 value: serviceReachabilityLabel(viewModel.status.redisUIHTTP),
-                isHealthy: isSuccessfulHTTPStatus(viewModel.status.redisUIHTTP)
+                isHealthy: isSuccessfulHTTPStatus(viewModel.status.redisUIHTTP),
+                uptimeSeconds: serviceUptimeSeconds("redis")
             ),
             HealthItem(
                 label: AppConstants.Labels.watchdog,
                 value: viewModel.status.watchdogServiceLoaded ? AppConstants.StatusText.running : AppConstants.StatusText.notLoaded,
-                isHealthy: viewModel.status.watchdogServiceLoaded
+                isHealthy: viewModel.status.watchdogServiceLoaded,
+                uptimeSeconds: nil
             ),
         ]
     }
@@ -216,6 +195,14 @@ struct RuntimeStatusPanel: View {
         viewModel.containerObservation?.composeServices ?? []
     }
 
+    private var vitalServerUptimeSeconds: Int? {
+        serviceUptimeSeconds("app")
+    }
+
+    private var edgeUptimeSeconds: Int? {
+        serviceUptimeSeconds("edge")
+    }
+
     private var vitalServerAvailability: String {
         if isSuccessfulHTTPStatus(viewModel.status.hostProxyHTTP) {
             return AppConstants.StatusText.available
@@ -228,8 +215,7 @@ struct RuntimeStatusPanel: View {
 
     private func statusRow(_ label: String, _ value: String) -> some View {
         statusRow(label) {
-            Text(value)
-                .fontWeight(.medium)
+            statusValue(value, uptimeSeconds: label == AppConstants.Labels.vitalServer ? vitalServerUptimeSeconds : nil)
         }
     }
 
@@ -238,17 +224,6 @@ struct RuntimeStatusPanel: View {
             Text(label)
                 .foregroundStyle(.secondary)
             content()
-        }
-    }
-
-    private func moduleRow(_ label: String, state: String, uptimeSeconds: Int?) -> some View {
-        statusRow(label) {
-            HStack(spacing: 8) {
-                Text(state)
-                    .fontWeight(.medium)
-                Text(formatUptime(uptimeSeconds))
-                    .foregroundStyle(.secondary)
-            }
         }
     }
 
@@ -272,7 +247,24 @@ struct RuntimeStatusPanel: View {
                     .frame(width: 9, height: 9)
                 Text(item.value)
                     .fontWeight(.medium)
+                uptimeSuffix(item.uptimeSeconds)
             }
+        }
+    }
+
+    private func statusValue(_ value: String, uptimeSeconds: Int?) -> some View {
+        HStack(spacing: 8) {
+            Text(value)
+                .fontWeight(.medium)
+            uptimeSuffix(uptimeSeconds)
+        }
+    }
+
+    @ViewBuilder
+    private func uptimeSuffix(_ seconds: Int?) -> some View {
+        if let uptime = formatUptime(seconds) {
+            Text("(uptime: \(uptime))")
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -331,20 +323,22 @@ struct RuntimeStatusPanel: View {
         return AppConstants.StatusText.waiting
     }
 
-    private func formatUptime(_ seconds: Int?) -> String {
+    private func serviceUptimeSeconds(_ service: String) -> Int? {
+        composeServices.first { $0.service == service }?.uptimeSeconds
+    }
+
+    private func formatUptime(_ seconds: Int?) -> String? {
         guard let seconds else {
-            return AppConstants.StatusText.unknown
+            return nil
         }
         let days = seconds / 86_400
         let hours = (seconds % 86_400) / 3_600
         let minutes = (seconds % 3_600) / 60
+        let remainingSeconds = seconds % 60
         if days > 0 {
-            return "\(days)d \(hours)h"
+            return "\(days)d \(hours)h \(minutes)m \(remainingSeconds)s"
         }
-        if hours > 0 {
-            return "\(hours)h \(minutes)m"
-        }
-        return "\(minutes)m"
+        return "\(hours)h \(minutes)m \(remainingSeconds)s"
     }
 }
 
@@ -353,4 +347,5 @@ private struct HealthItem: Identifiable {
     let label: String
     let value: String
     let isHealthy: Bool
+    let uptimeSeconds: Int?
 }

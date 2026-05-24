@@ -702,6 +702,12 @@
           "failureReasons": {
             "type": "array",
             "items": { "type": "string" }
+          },
+          "containerObservation": {
+            "oneOf": [
+              { "$ref": "#/components/schemas/RuntimeContainerObservation" },
+              { "type": "null" }
+            ]
           }
         }
       },
@@ -739,8 +745,10 @@
             "items": { "type": "string" }
           },
           "containerObservation": {
-            "type": ["object", "null"],
-            "additionalProperties": true
+            "oneOf": [
+              { "$ref": "#/components/schemas/RuntimeContainerObservation" },
+              { "type": "null" }
+            ]
           },
           "progress": {
             "type": ["object", "null"],
@@ -762,6 +770,72 @@
           "runtime-command-completed",
           "runtime-command-failed"
         ]
+      },
+      "RuntimeContainerObservation": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "auditProxyHTTP": { "type": "string" },
+          "auditProxyStatus": {
+            "oneOf": [
+              { "$ref": "#/components/schemas/RuntimeAuditProxyStatusDocument" },
+              { "type": "null" }
+            ]
+          },
+          "runtimeStateUpdatedAt": { "type": ["string", "null"] },
+          "runtimeStateFileUpdatedAt": { "type": ["string", "null"] },
+          "containerLogsPresent": { "type": "boolean" },
+          "containerLogsBytes": { "type": ["integer", "null"], "minimum": 0 },
+          "containerLogsUpdatedAt": { "type": ["string", "null"] },
+          "composeServices": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/RuntimeContainerServiceObservation" }
+          }
+        }
+      },
+      "RuntimeAuditProxyStatusDocument": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "startedAt": { "type": ["string", "null"] },
+          "uptimeSeconds": { "type": ["integer", "null"], "minimum": 0 },
+          "activeWebSockets": { "type": "integer", "minimum": 0 },
+          "activeRecorderConnections": { "type": "integer", "minimum": 0 },
+          "recorders": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/RuntimeRecorderConnectionObservation" }
+          },
+          "httpRequests": { "type": "integer", "minimum": 0 },
+          "socketIoEventsSeen": { "type": "integer", "minimum": 0 },
+          "socketIoParseFailures": { "type": "integer", "minimum": 0 },
+          "auditWriteFailures": { "type": "integer", "minimum": 0 },
+          "auditFileWriteFailures": { "type": "integer", "minimum": 0 },
+          "auditStdoutWriteFailures": { "type": "integer", "minimum": 0 },
+          "redisIpWriteFailures": { "type": "integer", "minimum": 0 }
+        }
+      },
+      "RuntimeRecorderConnectionObservation": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "vrcode": { "type": "string" },
+          "activeConnections": { "type": "integer", "minimum": 0 },
+          "selectedIp": { "type": ["string", "null"] },
+          "lastSeenAt": { "type": ["string", "null"] }
+        }
+      },
+      "RuntimeContainerServiceObservation": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "service": { "type": "string" },
+          "name": { "type": ["string", "null"] },
+          "state": { "type": ["string", "null"] },
+          "health": { "type": ["string", "null"] },
+          "exitCode": { "type": ["integer", "null"] },
+          "startedAt": { "type": ["string", "null"] },
+          "uptimeSeconds": { "type": ["integer", "null"], "minimum": 0 }
+        }
       },
       "RuntimeState": {
         "type": "string",

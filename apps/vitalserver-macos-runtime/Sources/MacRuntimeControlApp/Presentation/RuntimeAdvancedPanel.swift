@@ -72,21 +72,25 @@ struct RuntimeAdvancedPanel: View {
                 httpStateRow(
                     AppConstants.Labels.vitalServerApp,
                     value: viewModel.status.guestHTTP,
+                    uptimeSeconds: serviceUptimeSeconds("app"),
                     action: viewModel.openVitalServer
                 )
                 httpStateRow(
                     AppConstants.Labels.hostProxyService,
                     value: viewModel.status.hostProxyHTTP,
+                    uptimeSeconds: serviceUptimeSeconds("edge"),
                     action: viewModel.openVitalServer
                 )
                 httpStateRow(
                     AppConstants.Labels.redisUI,
                     value: viewModel.status.redisUIHTTP,
+                    uptimeSeconds: serviceUptimeSeconds("redis-ui"),
                     action: viewModel.openRedisUI
                 )
                 httpStateRow(
                     AppConstants.Labels.swaggerUI,
                     value: viewModel.status.swaggerUIHTTP,
+                    uptimeSeconds: serviceUptimeSeconds("swagger-ui"),
                     action: viewModel.openSwagger
                 )
             }
@@ -298,6 +302,7 @@ struct RuntimeAdvancedPanel: View {
         _ label: String,
         isHealthy: Bool,
         value: String,
+        uptimeSeconds: Int? = nil,
         action: (() -> Void)? = nil
     ) -> some View {
         GridRow {
@@ -308,6 +313,7 @@ struct RuntimeAdvancedPanel: View {
                     .frame(width: 9, height: 9)
                 Text(value)
                     .fontWeight(.medium)
+                uptimeSuffix(uptimeSeconds)
             }
         }
     }
@@ -315,6 +321,7 @@ struct RuntimeAdvancedPanel: View {
     private func httpStateRow(
         _ label: String,
         value: String?,
+        uptimeSeconds: Int? = nil,
         action: (() -> Void)? = nil
     ) -> some View {
         let healthy = isSuccessfulHTTPStatus(value)
@@ -326,6 +333,7 @@ struct RuntimeAdvancedPanel: View {
                     .frame(width: 9, height: 9)
                 Text(serviceReachabilityLabel(value))
                     .fontWeight(.medium)
+                uptimeSuffix(uptimeSeconds)
                 if let value {
                     Text("HTTP \(value)")
                         .font(.caption)
@@ -373,6 +381,32 @@ struct RuntimeAdvancedPanel: View {
             return AppConstants.StatusText.needsRepair
         }
         return AppConstants.StatusText.waiting
+    }
+
+    private func serviceUptimeSeconds(_ service: String) -> Int? {
+        viewModel.containerObservation?.composeServices.first { $0.service == service }?.uptimeSeconds
+    }
+
+    @ViewBuilder
+    private func uptimeSuffix(_ seconds: Int?) -> some View {
+        if let uptime = formatUptime(seconds) {
+            Text("(uptime: \(uptime))")
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func formatUptime(_ seconds: Int?) -> String? {
+        guard let seconds else {
+            return nil
+        }
+        let days = seconds / 86_400
+        let hours = (seconds % 86_400) / 3_600
+        let minutes = (seconds % 3_600) / 60
+        let remainingSeconds = seconds % 60
+        if days > 0 {
+            return "\(days)d \(hours)h \(minutes)m \(remainingSeconds)s"
+        }
+        return "\(hours)h \(minutes)m \(remainingSeconds)s"
     }
 
     private func settingHelp(_ text: String) -> some View {

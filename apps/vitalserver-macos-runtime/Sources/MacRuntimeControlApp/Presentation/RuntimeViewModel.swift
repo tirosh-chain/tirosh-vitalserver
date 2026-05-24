@@ -105,7 +105,8 @@ final class RuntimeViewModel: ObservableObject {
 
     func refreshRuntimeEvents(limit: Int = 100) {
         runtimeEvents = controlClient.loadRuntimeEvents(limit: limit)
-        containerObservation = runtimeEvents.events.first { $0.containerObservation != nil }?.containerObservation
+        containerObservation = status.containerObservation
+            ?? runtimeEvents.events.first { $0.containerObservation != nil }?.containerObservation
     }
 
     func uninstallRuntime(clean: Bool = false) async {
