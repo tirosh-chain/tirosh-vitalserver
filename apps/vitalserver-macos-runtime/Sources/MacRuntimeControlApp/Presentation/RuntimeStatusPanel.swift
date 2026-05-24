@@ -5,6 +5,7 @@ import SwiftUI
 struct RuntimeStatusPanel: View {
     @ObservedObject var viewModel: RuntimeViewModel
     @Binding var showingHealthDetails: Bool
+    private let displayPolicy = RuntimeStatusDisplayPolicy()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -12,7 +13,7 @@ struct RuntimeStatusPanel: View {
                 statusRow(AppConstants.Labels.overallHealth) {
                     healthStatusValue
                 }
-                statusRow(AppConstants.Labels.vitalServer, vitalServerAvailability)
+                statusRow(GeneratedRelease.vitalServerName, vitalServerAvailability)
                 statusRow(AppConstants.Labels.vitalServerURL) {
                     linkButton(AppConstants.Product.vitalServerURL(proxyPort: viewModel.status.proxyPort)) {
                         viewModel.openVitalServer()
@@ -50,10 +51,10 @@ struct RuntimeStatusPanel: View {
             Text(AppConstants.Labels.vitalRecorder)
                 .font(.headline)
             Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 10) {
-                statusRow(AppConstants.Labels.activeRecorderConnections, activeRecorderConnectionText)
-                statusRow(AppConstants.Labels.knownRecorders, knownRecorderText)
-                if let latest = latestRecorder {
-                    statusRow(AppConstants.Labels.latestRecorder, "\(latest.vrcode) \(latest.selectedIp ?? AppConstants.StatusText.unknown)")
+                statusRow(AppConstants.Labels.activeRecorderConnections, recorderSummary.activeConnections)
+                statusRow(AppConstants.Labels.knownRecorders, recorderSummary.knownRecorders)
+                if let latestRecorder = recorderSummary.latestRecorder {
+                    statusRow(AppConstants.Labels.latestRecorder, latestRecorder)
                 }
             }
         }
@@ -89,38 +90,12 @@ struct RuntimeStatusPanel: View {
         }
     }
 
-    private var overallHealthLabel: String {
-        if viewModel.status.isReady {
-            return AppConstants.StatusText.healthy
-        }
-        if !viewModel.status.runtimeInstalled {
-            return AppConstants.StatusText.notInstalled
-        }
-        switch viewModel.status.runtimeState {
-        case .some(.critical):
-            return AppConstants.StatusText.critical
-        case .some(.degraded), .some(.recovering):
-            return AppConstants.StatusText.needsAttention
-        default:
-            return AppConstants.StatusText.starting
-        }
+    private var overallHealthValue: RuntimeStatusDisplayPolicy.StatusValue {
+        displayPolicy.overallHealth(status: viewModel.status, observation: viewModel.containerObservation)
     }
 
     private var overallHealthColor: Color {
-        if viewModel.status.isReady {
-            return .green
-        }
-        if !viewModel.status.runtimeInstalled {
-            return .red
-        }
-        switch viewModel.status.runtimeState {
-        case .some(.critical):
-            return .red
-        case .some(.degraded), .some(.recovering):
-            return .orange
-        default:
-            return .orange
-        }
+        statusColor(overallHealthValue.severity)
     }
 
     private var healthStatusValue: some View {
@@ -128,94 +103,34 @@ struct RuntimeStatusPanel: View {
             Circle()
                 .fill(overallHealthColor)
                 .frame(width: 11, height: 11)
-            Text(overallHealthLabel)
+            Text(overallHealthValue.text)
                 .fontWeight(.medium)
-            uptimeSuffix(vitalServerUptimeSeconds)
+            uptimeSuffix(overallHealthValue.uptimeText)
         }
     }
 
-    private var healthItems: [HealthItem] {
-        [
-            HealthItem(
-                label: AppConstants.Labels.managerRuntime,
-                value: viewModel.status.runtimeInstalled ? AppConstants.StatusText.ready : AppConstants.StatusText.notInstalled,
-                isHealthy: viewModel.status.runtimeInstalled,
-                uptimeSeconds: nil
-            ),
-            HealthItem(
-                label: AppConstants.Labels.vmIPAddress,
-                value: viewModel.status.vmIP ?? AppConstants.StatusText.waiting,
-                isHealthy: viewModel.status.vmServiceLoaded && viewModel.status.vmIP != nil,
-                uptimeSeconds: nil
-            ),
-            HealthItem(
-                label: AppConstants.Labels.vitalServerApp,
-                value: serviceReachabilityLabel(viewModel.status.guestHTTP),
-                isHealthy: isSuccessfulHTTPStatus(viewModel.status.guestHTTP),
-                uptimeSeconds: vitalServerUptimeSeconds
-            ),
-            HealthItem(
-                label: AppConstants.Labels.hostProxyService,
-                value: serviceReachabilityLabel(viewModel.status.hostProxyHTTP),
-                isHealthy: viewModel.status.proxyServiceLoaded && isSuccessfulHTTPStatus(viewModel.status.hostProxyHTTP),
-                uptimeSeconds: edgeUptimeSeconds
-            ),
-            HealthItem(
-                label: AppConstants.Labels.redis,
-                value: serviceReachabilityLabel(viewModel.status.redisUIHTTP),
-                isHealthy: isSuccessfulHTTPStatus(viewModel.status.redisUIHTTP),
-                uptimeSeconds: serviceUptimeSeconds("redis")
-            ),
-            HealthItem(
-                label: AppConstants.Labels.watchdog,
-                value: viewModel.status.watchdogServiceLoaded ? AppConstants.StatusText.running : AppConstants.StatusText.notLoaded,
-                isHealthy: viewModel.status.watchdogServiceLoaded,
-                uptimeSeconds: nil
-            ),
-        ]
+    private var healthItems: [RuntimeStatusDisplayPolicy.HealthItem] {
+        displayPolicy.healthDetails(status: viewModel.status, observation: viewModel.containerObservation)
     }
 
-    private var activeRecorderConnectionText: String {
-        let count = viewModel.containerObservation?.auditProxyStatus?.activeRecorderConnections ?? 0
-        return "\(count)"
+    private var recorderSummary: RuntimeStatusDisplayPolicy.RecorderSummary {
+        displayPolicy.recorderSummary(observation: viewModel.containerObservation)
     }
 
-    private var knownRecorderText: String {
-        let count = viewModel.containerObservation?.auditProxyStatus?.recorders.count ?? 0
-        return "\(count)"
-    }
-
-    private var latestRecorder: RuntimeRecorderConnectionObservation? {
-        viewModel.containerObservation?.auditProxyStatus?.recorders
-            .sorted { ($0.lastSeenAt ?? "") > ($1.lastSeenAt ?? "") }
-            .first
-    }
-
-    private var composeServices: [RuntimeContainerServiceObservation] {
-        viewModel.containerObservation?.composeServices ?? []
-    }
-
-    private var vitalServerUptimeSeconds: Int? {
-        serviceUptimeSeconds("app")
-    }
-
-    private var edgeUptimeSeconds: Int? {
-        serviceUptimeSeconds("edge")
-    }
-
-    private var vitalServerAvailability: String {
-        if isSuccessfulHTTPStatus(viewModel.status.hostProxyHTTP) {
-            return AppConstants.StatusText.available
-        }
-        if viewModel.status.runtimeInstalled {
-            return AppConstants.StatusText.waiting
-        }
-        return AppConstants.StatusText.unavailable
+    private var vitalServerAvailability: RuntimeStatusDisplayPolicy.StatusValue {
+        displayPolicy.vitalServerAvailability(status: viewModel.status, observation: viewModel.containerObservation)
     }
 
     private func statusRow(_ label: String, _ value: String) -> some View {
         statusRow(label) {
-            statusValue(value, uptimeSeconds: label == AppConstants.Labels.vitalServer ? vitalServerUptimeSeconds : nil)
+            Text(value)
+                .fontWeight(.medium)
+        }
+    }
+
+    private func statusRow(_ label: String, _ value: RuntimeStatusDisplayPolicy.StatusValue) -> some View {
+        statusRow(label) {
+            statusValue(value)
         }
     }
 
@@ -237,32 +152,32 @@ struct RuntimeStatusPanel: View {
         .buttonStyle(.link)
     }
 
-    private func healthRow(_ item: HealthItem) -> some View {
+    private func healthRow(_ item: RuntimeStatusDisplayPolicy.HealthItem) -> some View {
         GridRow {
             Text(item.label)
                 .foregroundStyle(.secondary)
             HStack(spacing: 8) {
                 Circle()
-                    .fill(item.isHealthy ? Color.green : Color.orange)
+                    .fill(statusColor(item.value.severity))
                     .frame(width: 9, height: 9)
-                Text(item.value)
+                Text(item.value.text)
                     .fontWeight(.medium)
-                uptimeSuffix(item.uptimeSeconds)
+                uptimeSuffix(item.value.uptimeText)
             }
         }
     }
 
-    private func statusValue(_ value: String, uptimeSeconds: Int?) -> some View {
+    private func statusValue(_ value: RuntimeStatusDisplayPolicy.StatusValue) -> some View {
         HStack(spacing: 8) {
-            Text(value)
+            Text(value.text)
                 .fontWeight(.medium)
-            uptimeSuffix(uptimeSeconds)
+            uptimeSuffix(value.uptimeText)
         }
     }
 
     @ViewBuilder
-    private func uptimeSuffix(_ seconds: Int?) -> some View {
-        if let uptime = formatUptime(seconds) {
+    private func uptimeSuffix(_ uptime: String?) -> some View {
+        if let uptime {
             Text("(uptime: \(uptime))")
                 .foregroundStyle(.secondary)
         }
@@ -306,46 +221,16 @@ struct RuntimeStatusPanel: View {
         return String(format: "%.1f MiB", max(mib, 0))
     }
 
-    private func isSuccessfulHTTPStatus(_ value: String?) -> Bool {
-        guard let value, let code = Int(value) else {
-            return false
+    private func statusColor(_ severity: RuntimeStatusDisplayPolicy.Severity) -> Color {
+        switch severity {
+        case .healthy:
+            return .green
+        case .warning:
+            return .orange
+        case .critical:
+            return .red
+        case .neutral:
+            return .gray
         }
-        return code >= 200 && code < 300
     }
-
-    private func serviceReachabilityLabel(_ value: String?) -> String {
-        if isSuccessfulHTTPStatus(value) {
-            return AppConstants.StatusText.reachable
-        }
-        if value == AppConstants.StatusText.failed {
-            return AppConstants.StatusText.needsRepair
-        }
-        return AppConstants.StatusText.waiting
-    }
-
-    private func serviceUptimeSeconds(_ service: String) -> Int? {
-        composeServices.first { $0.service == service }?.uptimeSeconds
-    }
-
-    private func formatUptime(_ seconds: Int?) -> String? {
-        guard let seconds else {
-            return nil
-        }
-        let days = seconds / 86_400
-        let hours = (seconds % 86_400) / 3_600
-        let minutes = (seconds % 3_600) / 60
-        let remainingSeconds = seconds % 60
-        if days > 0 {
-            return "\(days)d \(hours)h \(minutes)m \(remainingSeconds)s"
-        }
-        return "\(hours)h \(minutes)m \(remainingSeconds)s"
-    }
-}
-
-private struct HealthItem: Identifiable {
-    var id: String { label }
-    let label: String
-    let value: String
-    let isHealthy: Bool
-    let uptimeSeconds: Int?
 }

@@ -314,5 +314,9 @@ SQLite read model을 도입합니다.
 - Helper Status 화면은 현재 runtime snapshot을 보여주고, Events 화면은 `RuntimeEventHistory` 기반의
   status/event history를 보여줍니다. VRecorder 접속 수와 recorder별 snapshot은 audit proxy
   `/audit-proxy/status`에서 수집해 `containerObservation.auditProxyStatus`로 전달합니다.
-- Module uptime은 audit proxy process start time과 guest `docker inspect .State.StartedAt`에서
-  계산한 container uptime을 사용합니다. 값이 없으면 unknown으로 표시하고 recovery 판단에는 쓰지 않습니다.
+- Helper UI의 상태 문구, severity, service 행 구성, HTTP 상태 표시, uptime formatting은 SwiftUI view가
+  아니라 `RuntimeStatusDisplayPolicy`와 `RuntimeEventDisplayPolicy`가 소유합니다. View는 policy output을
+  렌더링만 하며, 새 상태/행/표시 규칙을 추가할 때는 먼저 해당 policy를 수정합니다.
+- Service uptime은 audit proxy process start time과 guest `docker inspect .State.StartedAt`에서
+  계산한 uptime을 사용하며, Helper Status/Advanced 화면의 상태 값 옆에 inline으로 표시합니다.
+  값이 없으면 표시하지 않고 recovery 판단에는 쓰지 않습니다.

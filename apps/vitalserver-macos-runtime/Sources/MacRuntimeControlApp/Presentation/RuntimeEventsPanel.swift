@@ -1,9 +1,8 @@
-import Contracts
-import RuntimeControl
 import SwiftUI
 
 struct RuntimeEventsPanel: View {
     @ObservedObject var viewModel: RuntimeViewModel
+    private let displayPolicy = RuntimeEventDisplayPolicy()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -17,8 +16,8 @@ struct RuntimeEventsPanel: View {
             }
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 8) {
-                    ForEach(viewModel.runtimeEvents.events, id: \.id) { event in
-                        eventRow(event)
+                    ForEach(eventItems) { item in
+                        eventRow(item)
                     }
                     if viewModel.runtimeEvents.events.isEmpty {
                         Text(AppConstants.StatusText.noRuntimeEvents)
@@ -33,28 +32,32 @@ struct RuntimeEventsPanel: View {
         }
     }
 
-    private func eventRow(_ event: RuntimeEventDocument) -> some View {
+    private var eventItems: [RuntimeEventDisplayPolicy.EventItem] {
+        viewModel.runtimeEvents.events.map(displayPolicy.item)
+    }
+
+    private func eventRow(_ item: RuntimeEventDisplayPolicy.EventItem) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 8) {
-                Text(event.timestamp)
+                Text(item.timestamp)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Text(event.eventType.rawValue)
+                Text(item.eventType)
                     .font(.caption)
                     .fontWeight(.semibold)
-                Text(event.status.rawValue)
+                Text(item.status)
                     .font(.caption)
-                    .foregroundStyle(statusColor(event.status))
+                    .foregroundStyle(statusColor(item.statusSeverity))
                 Spacer()
-                Text(event.operation.rawValue)
+                Text(item.operation)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            Text(event.message)
+            Text(item.message)
                 .font(.body)
                 .fixedSize(horizontal: false, vertical: true)
-            if let observation = event.containerObservation?.auditProxyStatus {
-                Text("\(AppConstants.Labels.activeRecorderConnections): \(observation.activeRecorderConnections), \(AppConstants.Labels.knownRecorders): \(observation.recorders.count)")
+            if let detailText = item.detailText {
+                Text(detailText)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -64,15 +67,15 @@ struct RuntimeEventsPanel: View {
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
-    private func statusColor(_ status: RuntimeStatusLevel) -> Color {
-        switch status {
+    private func statusColor(_ severity: RuntimeEventDisplayPolicy.Severity) -> Color {
+        switch severity {
         case .healthy:
             return .green
         case .critical:
             return .red
-        case .degraded, .recovering:
+        case .warning:
             return .orange
-        default:
+        case .neutral:
             return .secondary
         }
     }

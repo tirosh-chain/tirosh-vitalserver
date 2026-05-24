@@ -183,7 +183,7 @@ apps/vitalserver-macos-runtime/release.json
 
 Update bundle manifest는 `helperVersion`, `targetPlatforms`, `minUpdaterVersion`, `components`를 기준으로 해석합니다. `components` map은 `helperUI`, `updater`, `supervisor`, `vmDriver`, `serviceStack`, `vmImage`, `vitalServer`처럼 실제 변경된 계층을 드러냅니다. Helper UI와 VM Driver는 platform-specific이고, Updater/Supervisor는 host platform에 붙어 있으며, Service Stack과 VM Image는 guest/service 쪽 책임으로 구분합니다.
 
-`make vm-build`, `make vm-pkg`, `make vm-update-bundle`은 이 값을 읽어 app bundle version, package version, update bundle version, update compatibility, bundled service version 표시에 반영합니다. 버전을 올릴 때는 이 파일을 수정합니다.
+`make vm-build`, `make vm-pkg`, `make vm-update-bundle`은 이 값을 읽어 app bundle version, package version, update bundle version, update compatibility, bundled service image/version/name 표시에 반영합니다. 버전이나 Helper UI의 service 표시명을 바꿀 때는 이 파일을 수정합니다.
 
 ## 주요 명령
 

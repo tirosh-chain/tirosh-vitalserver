@@ -38,7 +38,7 @@ apps/vitalserver-macos-runtime/release.json
 
 `VitalServer Helper`는 최상위 product release입니다. platform별 build는 같은 Helper release 아래의 variant이며, 세부 변경 범위는 Helper UI, Native Shell, Runtime Control API, Updater, Supervisor, VM Driver, Service Stack, VM Image, VitalServer component version으로 설명합니다.
 
-`make vm-build`는 이 값을 Swift `GeneratedVersion.swift`와 Helper app의 `GeneratedRelease.swift`에 반영하고, `make vm-app`은 app bundle `Info.plist`의 `CFBundleShortVersionString`에 같은 helper version을 씁니다. `make vm-pkg`, `make vm-update-bundle`, `make vm-rootfs-update-bundle`은 기본적으로 이 값을 `VM_PKG_VERSION`, `VM_UPDATE_BUNDLE_VERSION`, `VM_UPDATE_MIN_UPDATER_VERSION`으로 사용합니다. 특별한 검증이 아니라면 버전과 update compatibility 변경은 이 파일 하나에서 관리합니다.
+`make vm-build`는 이 값을 Swift `GeneratedVersion.swift`와 Helper app의 `GeneratedRelease.swift`에 반영하고, `make vm-app`은 app bundle `Info.plist`의 `CFBundleShortVersionString`에 같은 helper version을 씁니다. `make vm-pkg`, `make vm-update-bundle`, `make vm-rootfs-update-bundle`은 기본적으로 이 값을 `VM_PKG_VERSION`, `VM_UPDATE_BUNDLE_VERSION`, `VM_UPDATE_MIN_UPDATER_VERSION`으로 사용합니다. `services.*.displayName`은 Helper UI의 service 표시명 source of truth입니다. 특별한 검증이 아니라면 버전, 표시명, image, update compatibility 변경은 이 파일 하나에서 관리합니다.
 
 Update bundle manifest는 `helperVersion`, `targetPlatforms`, `minUpdaterVersion`, `components`를 기준으로 작성합니다. `components`에는 `helperUI`, `updater`, `supervisor`, `vmDriver`, `serviceStack`, `vmImage`, `vitalServer`처럼 실제 변경 범위를 드러내는 version을 넣습니다. platform-specific artifact는 `targetPlatforms`와 component version suffix로 제한하고, 공통 Service Stack이나 VM Image는 같은 Helper release 아래에서 platform 간 공유할 수 있습니다.
 

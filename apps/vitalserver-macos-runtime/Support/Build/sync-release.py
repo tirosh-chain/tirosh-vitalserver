@@ -12,6 +12,16 @@ def require_service(release, key):
         raise SystemExit(f"missing release service field: {key}.{error}") from error
 
 
+def require_field(mapping, path):
+    try:
+        value = mapping
+        for key in path.split("."):
+            value = value[key]
+        return value
+    except KeyError as error:
+        raise SystemExit(f"missing release field: {path}") from error
+
+
 def write_if_changed(path, content):
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.exists() and path.read_text(encoding="utf-8") == content:
@@ -42,6 +52,13 @@ def sync_swift(root, release):
     swagger_ui = require_service(release, "swaggerUI")
     guest_edge = require_service(release, "guestEdge")
     host_proxy = require_service(release, "hostProxy")
+    vitalserver_name = require_field(release, "services.vitalServer.displayName")
+    audit_proxy_name = require_field(release, "services.auditProxy.displayName")
+    redis_name = require_field(release, "services.redis.displayName")
+    redis_ui_name = require_field(release, "services.redisUI.displayName")
+    swagger_ui_name = require_field(release, "services.swaggerUI.displayName")
+    guest_edge_name = require_field(release, "services.guestEdge.displayName")
+    host_proxy_name = require_field(release, "services.hostProxy.displayName")
 
     write_if_changed(
         root / "Sources/HostCLI/Runtime/GeneratedVersion.swift",
@@ -62,6 +79,13 @@ enum GeneratedRelease {{
     static let helperVersion = "{helper_version}"
     static let minUpdaterVersion = "{min_updater_version}"
     static let vitalServerVersion = "{release["vitalServerVersion"]}"
+    static let vitalServerName = "{vitalserver_name}"
+    static let auditProxyName = "{audit_proxy_name}"
+    static let redisName = "{redis_name}"
+    static let redisUIName = "{redis_ui_name}"
+    static let swaggerUIName = "{swagger_ui_name}"
+    static let guestEdgeName = "{guest_edge_name}"
+    static let hostProxyName = "{host_proxy_name}"
     static let vitalServerImage = "{vitalserver["image"]}"
     static let auditProxyImage = "{audit_proxy["image"]}"
     static let redisImage = "{redis["image"]}"

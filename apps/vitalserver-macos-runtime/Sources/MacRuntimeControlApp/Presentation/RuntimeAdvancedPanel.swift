@@ -6,6 +6,7 @@ struct RuntimeAdvancedPanel: View {
     @Binding var showingStartServicesConfirmation: Bool
     @Binding var showingStopServicesConfirmation: Bool
     @Binding var hoveredServiceLink: String?
+    private let displayPolicy = RuntimeStatusDisplayPolicy()
 
     var body: some View {
         ScrollView {
@@ -49,52 +50,15 @@ struct RuntimeAdvancedPanel: View {
     private var serviceHealthCard: some View {
         advancedCard(AppConstants.Labels.sectionServiceHealth) {
             Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 10) {
-                serviceStateRow(
-                    AppConstants.Labels.managerRuntime,
-                    isHealthy: viewModel.status.runtimeInstalled,
-                    value: viewModel.status.runtimeInstalled ? AppConstants.StatusText.installed : AppConstants.StatusText.notInstalled
-                )
-                serviceStateRow(
-                    AppConstants.Labels.vmService,
-                    isHealthy: viewModel.status.vmServiceLoaded,
-                    value: viewModel.status.vmServiceLoaded ? AppConstants.StatusText.running : AppConstants.StatusText.notLoaded
-                )
-                serviceStateRow(
-                    AppConstants.Labels.proxyService,
-                    isHealthy: viewModel.status.proxyServiceLoaded,
-                    value: viewModel.status.proxyServiceLoaded ? AppConstants.StatusText.running : AppConstants.StatusText.notLoaded
-                )
-                serviceStateRow(
-                    AppConstants.Labels.watchdogService,
-                    isHealthy: viewModel.status.watchdogServiceLoaded,
-                    value: viewModel.status.watchdogServiceLoaded ? AppConstants.StatusText.running : AppConstants.StatusText.notLoaded
-                )
-                httpStateRow(
-                    AppConstants.Labels.vitalServerApp,
-                    value: viewModel.status.guestHTTP,
-                    uptimeSeconds: serviceUptimeSeconds("app"),
-                    action: viewModel.openVitalServer
-                )
-                httpStateRow(
-                    AppConstants.Labels.hostProxyService,
-                    value: viewModel.status.hostProxyHTTP,
-                    uptimeSeconds: serviceUptimeSeconds("edge"),
-                    action: viewModel.openVitalServer
-                )
-                httpStateRow(
-                    AppConstants.Labels.redisUI,
-                    value: viewModel.status.redisUIHTTP,
-                    uptimeSeconds: serviceUptimeSeconds("redis-ui"),
-                    action: viewModel.openRedisUI
-                )
-                httpStateRow(
-                    AppConstants.Labels.swaggerUI,
-                    value: viewModel.status.swaggerUIHTTP,
-                    uptimeSeconds: serviceUptimeSeconds("swagger-ui"),
-                    action: viewModel.openSwagger
-                )
+                ForEach(serviceHealthItems) { item in
+                    serviceHealthRow(item)
+                }
             }
         }
+    }
+
+    private var serviceHealthItems: [RuntimeStatusDisplayPolicy.ServiceHealthItem] {
+        displayPolicy.advancedServiceHealth(status: viewModel.status, observation: viewModel.containerObservation)
     }
 
     private var networkOverridesCard: some View {
@@ -298,48 +262,36 @@ struct RuntimeAdvancedPanel: View {
         }
     }
 
-    private func serviceStateRow(
-        _ label: String,
-        isHealthy: Bool,
-        value: String,
-        uptimeSeconds: Int? = nil,
-        action: (() -> Void)? = nil
-    ) -> some View {
+    private func serviceHealthRow(_ item: RuntimeStatusDisplayPolicy.ServiceHealthItem) -> some View {
         GridRow {
-            serviceName(label, action: action)
+            serviceName(item.label, action: serviceAction(item.action))
             HStack(spacing: 8) {
                 Circle()
-                    .fill(isHealthy ? Color.green : Color.orange)
+                    .fill(statusColor(item.value.severity))
                     .frame(width: 9, height: 9)
-                Text(value)
+                Text(item.value.text)
                     .fontWeight(.medium)
-                uptimeSuffix(uptimeSeconds)
-            }
-        }
-    }
-
-    private func httpStateRow(
-        _ label: String,
-        value: String?,
-        uptimeSeconds: Int? = nil,
-        action: (() -> Void)? = nil
-    ) -> some View {
-        let healthy = isSuccessfulHTTPStatus(value)
-        return GridRow {
-            serviceName(label, action: action)
-            HStack(spacing: 8) {
-                Circle()
-                    .fill(healthy ? Color.green : Color.orange)
-                    .frame(width: 9, height: 9)
-                Text(serviceReachabilityLabel(value))
-                    .fontWeight(.medium)
-                uptimeSuffix(uptimeSeconds)
-                if let value {
+                uptimeSuffix(item.value.uptimeText)
+                if let value = item.httpStatus {
                     Text("HTTP \(value)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
+        }
+    }
+
+    private func serviceAction(_ action: RuntimeStatusDisplayPolicy.ServiceAction?) -> (() -> Void)? {
+        guard let action else {
+            return nil
+        }
+        switch action {
+        case .openVitalServer:
+            return viewModel.openVitalServer
+        case .openRedisUI:
+            return viewModel.openRedisUI
+        case .openSwagger:
+            return viewModel.openSwagger
         }
     }
 
@@ -366,47 +318,25 @@ struct RuntimeAdvancedPanel: View {
         }
     }
 
-    private func isSuccessfulHTTPStatus(_ value: String?) -> Bool {
-        guard let value, let code = Int(value) else {
-            return false
-        }
-        return code >= 200 && code < 300
-    }
-
-    private func serviceReachabilityLabel(_ value: String?) -> String {
-        if isSuccessfulHTTPStatus(value) {
-            return AppConstants.StatusText.reachable
-        }
-        if value == AppConstants.StatusText.failed {
-            return AppConstants.StatusText.needsRepair
-        }
-        return AppConstants.StatusText.waiting
-    }
-
-    private func serviceUptimeSeconds(_ service: String) -> Int? {
-        viewModel.containerObservation?.composeServices.first { $0.service == service }?.uptimeSeconds
-    }
-
     @ViewBuilder
-    private func uptimeSuffix(_ seconds: Int?) -> some View {
-        if let uptime = formatUptime(seconds) {
+    private func uptimeSuffix(_ uptime: String?) -> some View {
+        if let uptime {
             Text("(uptime: \(uptime))")
                 .foregroundStyle(.secondary)
         }
     }
 
-    private func formatUptime(_ seconds: Int?) -> String? {
-        guard let seconds else {
-            return nil
+    private func statusColor(_ severity: RuntimeStatusDisplayPolicy.Severity) -> Color {
+        switch severity {
+        case .healthy:
+            return .green
+        case .warning:
+            return .orange
+        case .critical:
+            return .red
+        case .neutral:
+            return .gray
         }
-        let days = seconds / 86_400
-        let hours = (seconds % 86_400) / 3_600
-        let minutes = (seconds % 3_600) / 60
-        let remainingSeconds = seconds % 60
-        if days > 0 {
-            return "\(days)d \(hours)h \(minutes)m \(remainingSeconds)s"
-        }
-        return "\(hours)h \(minutes)m \(remainingSeconds)s"
     }
 
     private func settingHelp(_ text: String) -> some View {

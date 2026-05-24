@@ -41,13 +41,13 @@ private struct MacRuntimeControlCommands: Commands {
         }
         CommandGroup(after: .toolbar) {
             Divider()
-            Button(AppConstants.Actions.openVitalServer) {
+            Button(GeneratedRelease.vitalServerName) {
                 viewModel.openVitalServer()
             }
-            Button(AppConstants.Actions.openRedisUI) {
+            Button(GeneratedRelease.redisUIName) {
                 viewModel.openRedisUI()
             }
-            Button(AppConstants.Actions.openSwagger) {
+            Button(GeneratedRelease.swaggerUIName) {
                 viewModel.openSwagger()
             }
         }
