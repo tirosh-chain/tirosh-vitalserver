@@ -17,6 +17,10 @@ public struct RuntimeControlClientAPIReadHandler: RuntimeControlAPIReadHandler {
         return client.loadStatus(settings: settings)
     }
 
+    public func loadEvents() async throws -> RuntimeEventHistory {
+        client.loadRuntimeEvents(limit: 100)
+    }
+
     public func loadHealthStatus() async throws -> RuntimeStatus {
         let settings = client.loadSettings()
         return await client.loadHealthStatus(settings: settings)

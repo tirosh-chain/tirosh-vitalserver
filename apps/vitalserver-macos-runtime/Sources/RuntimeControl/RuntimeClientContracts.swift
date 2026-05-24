@@ -7,6 +7,7 @@ public protocol RuntimeControlClient {
     func loadSettings() -> RuntimeSettings
     func loadStatus(settings: RuntimeSettings) -> RuntimeStatus
     func loadHealthStatus(settings: RuntimeSettings) async -> RuntimeStatus
+    func loadRuntimeEvents(limit: Int) -> RuntimeEventHistory
     func uninstallRuntime(clean: Bool) async throws -> RuntimeCommandResult
     func applySettings(_ settings: RuntimeSettings) async throws -> RuntimeCommandResult
     func repairProxy(proxyPort: Int) async throws -> RuntimeCommandResult

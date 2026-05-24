@@ -72,6 +72,7 @@ enum RuntimeAdapterConstants {
         static let vmIPFile = installed.vmIPFile.path
         static let runtimeState = installed.runtimeState.path
         static let runtimeStatus = installed.runtimeStatus.path
+        static let runtimeEvents = installed.runtimeEvents.path
         static let managerApp = installed.managerApp.path
         static let installLog = installed.installLog.path
         static let productLogs = installed.productLogsDirectory.path

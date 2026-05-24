@@ -50,6 +50,7 @@ public struct RuntimeControlHTTPResponse: Equatable, Sendable {
 public protocol RuntimeControlAPIReadHandler {
     func loadCapabilities() async throws -> RuntimeControlCapabilities
     func loadStatus() async throws -> RuntimeStatus
+    func loadEvents() async throws -> RuntimeEventHistory
     func loadHealthStatus() async throws -> RuntimeStatus
     func loadSettings() async throws -> RuntimeSettings
     func loadReleaseInfo() async throws -> RuntimeReleaseInfo
@@ -100,6 +101,8 @@ public struct RuntimeControlAPIRouter {
                 return try await jsonResponse(handler.loadCapabilities())
             case .status:
                 return try await jsonResponse(handler.loadStatus())
+            case .events:
+                return try await jsonResponse(handler.loadEvents())
             case .health:
                 return try await jsonResponse(handler.loadHealthStatus())
             case .settings:

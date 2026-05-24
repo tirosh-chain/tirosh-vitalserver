@@ -1,3 +1,4 @@
+import Contracts
 import RuntimeControl
 import RuntimeControlAPI
 import XCTest
@@ -156,12 +157,17 @@ final class RuntimeControlAPITests: XCTestCase {
             RuntimeInstallInfo.self,
             from: router.route(.init(method: .get, path: "/runtime/install"))
         )
+        let events = try await decode(
+            RuntimeEventHistory.self,
+            from: router.route(.init(method: .get, path: "/runtime/events"))
+        )
 
         XCTAssertTrue(capabilities.canControlRuntimeServices)
         XCTAssertEqual(settings.cpuCount, 4)
         XCTAssertEqual(health.statusMessage, "healthy")
         XCTAssertEqual(release.helperVersion, "0.1.0")
         XCTAssertEqual(installInfo.runtimeHomePath, "/runtime/home")
+        XCTAssertEqual(events.events.map(\.id), ["event-1"])
     }
 
     @MainActor
@@ -205,6 +211,7 @@ final class RuntimeControlAPITests: XCTestCase {
         let capabilities = try await handler.loadCapabilities()
         let settings = try await handler.loadSettings()
         let status = try await handler.loadStatus()
+        let events = try await handler.loadEvents()
         let health = try await handler.loadHealthStatus()
         let release = try await handler.loadReleaseInfo()
         let installInfo = try await handler.loadInstallInfo()
@@ -212,6 +219,7 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertFalse(capabilities.canOpenLocalFiles)
         XCTAssertEqual(settings.cpuCount, 6)
         XCTAssertEqual(status.statusMessage, "status with 6 CPUs")
+        XCTAssertEqual(events.events.map(\.id), ["event-1"])
         XCTAssertEqual(health.statusMessage, "health with 6 CPUs")
         XCTAssertEqual(release.helperVersion, "0.2.0")
         XCTAssertEqual(installInfo.backupsPath, "/backups")
@@ -488,6 +496,24 @@ private struct StubRuntimeControlAPIReadHandler: RuntimeControlAPIReadHandler {
         )
     }
 
+    func loadEvents() async throws -> RuntimeEventHistory {
+        RuntimeEventHistory(events: [
+            RuntimeEventDocument(
+                id: "event-1",
+                eventType: .statusChanged,
+                timestamp: "2026-05-24T00:00:00Z",
+                product: "TiroshVitalServer",
+                status: .healthy,
+                previousStatus: nil,
+                operation: .health,
+                message: "ready",
+                runtimeVersion: "1.2.3",
+                failureReasons: [],
+                progress: nil
+            ),
+        ])
+    }
+
     func loadHealthStatus() async throws -> RuntimeStatus {
         RuntimeStatus(runtimeInstalled: true, runtimeState: .healthy, statusMessage: "healthy")
     }
@@ -530,6 +556,24 @@ private final class FakeRuntimeControlClient: RuntimeControlClient {
     func loadHealthStatus(settings: RuntimeSettings) async -> RuntimeStatus {
         healthSettings.append(settings)
         return RuntimeStatus(statusMessage: "health with \(settings.cpuCount) CPUs")
+    }
+
+    func loadRuntimeEvents(limit: Int) -> RuntimeEventHistory {
+        RuntimeEventHistory(events: [
+            RuntimeEventDocument(
+                id: "event-1",
+                eventType: .statusChanged,
+                timestamp: "2026-05-24T00:00:00Z",
+                product: "TiroshVitalServer",
+                status: .healthy,
+                previousStatus: nil,
+                operation: .health,
+                message: "ready",
+                runtimeVersion: "1.2.3",
+                failureReasons: [],
+                progress: nil
+            ),
+        ])
     }
 
     func uninstallRuntime(clean: Bool) async throws -> RuntimeCommandResult {

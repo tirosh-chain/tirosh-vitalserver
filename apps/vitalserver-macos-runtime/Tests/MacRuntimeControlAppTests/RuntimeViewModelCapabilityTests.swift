@@ -212,6 +212,10 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
         RuntimeStatus()
     }
 
+    func loadRuntimeEvents(limit: Int) -> RuntimeEventHistory {
+        RuntimeEventHistory(events: [])
+    }
+
     func loadBackups(latestBackupPath: String?) -> [RuntimeBackup] {
         loadBackupsCount += 1
         return []

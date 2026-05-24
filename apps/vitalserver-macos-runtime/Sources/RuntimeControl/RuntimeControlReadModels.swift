@@ -1,3 +1,4 @@
+import Contracts
 import Foundation
 
 public struct RuntimeBackup: Codable, Identifiable, Hashable, Sendable {
@@ -104,5 +105,13 @@ public struct RuntimeInstallInfo: Codable, Equatable, Sendable {
     public init(runtimeHomePath: String = "", backupsPath: String = "") {
         self.runtimeHomePath = runtimeHomePath
         self.backupsPath = backupsPath
+    }
+}
+
+public struct RuntimeEventHistory: Codable, Equatable, Sendable {
+    public let events: [RuntimeEventDocument]
+
+    public init(events: [RuntimeEventDocument]) {
+        self.events = events
     }
 }

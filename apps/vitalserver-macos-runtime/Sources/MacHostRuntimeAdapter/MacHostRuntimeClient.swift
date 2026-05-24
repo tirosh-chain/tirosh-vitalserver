@@ -57,6 +57,10 @@ public struct MacHostRuntimeClient: RuntimeControlClient, RuntimeHostClient {
         await statusReader.loadHealthStatus(settings: settings)
     }
 
+    public func loadRuntimeEvents(limit: Int) -> RuntimeEventHistory {
+        statusReader.loadRuntimeEvents(limit: limit)
+    }
+
     public func loadBackups(latestBackupPath: String?) -> [RuntimeBackup] {
         fileReader.backups(latestBackupPath: latestBackupPath)
     }

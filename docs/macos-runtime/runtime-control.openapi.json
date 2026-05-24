@@ -70,6 +70,30 @@
         }
       }
     },
+    "/runtime/events": {
+      "get": {
+        "operationId": "getRuntimeEvents",
+        "summary": "Read runtime status and progress event history",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "readOnlyLocal",
+        "x-runtime-control-access": "browserSafe",
+        "responses": {
+          "200": {
+            "description": "Recent runtime event history",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeEventHistory"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
     "/runtime/health": {
       "post": {
         "operationId": "refreshRuntimeHealth",
@@ -636,6 +660,41 @@
           "failureReasons": {
             "type": "array",
             "items": { "type": "string" }
+          }
+        }
+      },
+      "RuntimeEventHistory": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "events": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/RuntimeEventDocument" }
+          }
+        }
+      },
+      "RuntimeEventDocument": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "schemaVersion": { "type": "integer" },
+          "id": { "type": "string" },
+          "source": { "type": "string" },
+          "eventType": { "type": "string", "enum": ["status-changed", "progress-updated"] },
+          "timestamp": { "type": "string" },
+          "product": { "type": "string" },
+          "status": { "$ref": "#/components/schemas/RuntimeState" },
+          "previousStatus": { "type": ["string", "null"] },
+          "operation": { "type": "string" },
+          "message": { "type": "string" },
+          "runtimeVersion": { "type": "string" },
+          "failureReasons": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "progress": {
+            "type": ["object", "null"],
+            "additionalProperties": true
           }
         }
       },

@@ -29,6 +29,7 @@ macOS Helper app composition은 read-only Runtime Control API server를 조립�
 |---|---|
 | `GET` | `/runtime/capabilities` |
 | `GET` | `/runtime/status` |
+| `GET` | `/runtime/events` |
 | `POST` | `/runtime/health` |
 | `GET` | `/runtime/settings` |
 | `GET` | `/runtime/release` |
@@ -51,6 +52,7 @@ macOS Helper app composition은 read-only Runtime Control API server를 조립�
 |---|---|---|
 | `GET` | `/runtime/capabilities` | capability negotiation |
 | `GET` | `/runtime/status` | runtime status read model |
+| `GET` | `/runtime/events` | runtime status/progress event history |
 | `POST` | `/runtime/health` | active health refresh |
 | `GET` | `/runtime/settings` | current runtime settings |
 | `PUT` | `/runtime/settings` | apply runtime settings |
@@ -81,7 +83,7 @@ macOS Helper app composition은 read-only Runtime Control API server를 조립�
 
 | Access | 의미 | 현재 route |
 |---|---|---|
-| `browserSafe` | 브라우저/PWA가 local Runtime Control server에 직접 호출 가능한 read-only runtime control | `GET /runtime/capabilities`, `GET /runtime/status`, `POST /runtime/health`, `GET /runtime/settings`, `GET /runtime/release`, `GET /runtime/install` |
+| `browserSafe` | 브라우저/PWA가 local Runtime Control server에 직접 호출 가능한 read-only runtime control | `GET /runtime/capabilities`, `GET /runtime/status`, `GET /runtime/events`, `POST /runtime/health`, `GET /runtime/settings`, `GET /runtime/release`, `GET /runtime/install` |
 | `localServerMediated` | 브라우저가 직접 host resource를 만지지 않고 local server가 권한/파일/프로세스 작업을 중재해야 함 | runtime write/admin routes, backups list/delete/rollback, log read, update bundle summary/verify/apply |
 | `nativeShellOnly` | 브라우저 endpoint만으로는 UX나 보안 경계가 충분하지 않아 native shell mediation이 필요함 | `POST /host/logs/export` |
 

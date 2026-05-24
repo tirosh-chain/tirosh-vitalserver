@@ -8,6 +8,7 @@ import HostInfrastructure
 protocol RuntimeStatusReading {
     func loadStatus(settings: RuntimeSettings) -> RuntimeStatus
     func loadHealthStatus(settings: RuntimeSettings) async -> RuntimeStatus
+    func loadRuntimeEvents(limit: Int) -> RuntimeEventHistory
     func legacyCommandProgressLine() -> String?
 }
 
@@ -74,6 +75,12 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading {
             proxyPort: document?.proxyPort ?? proxyPort(paths.proxyLaunchDaemon),
             failureReasons: document?.failureReasons ?? [],
             progress: document?.progress
+        )
+    }
+
+    func loadRuntimeEvents(limit: Int) -> RuntimeEventHistory {
+        RuntimeEventHistory(
+            events: JSONLRuntimeEventRepository(url: URL(fileURLWithPath: paths.runtimeEvents)).recent(limit: limit)
         )
     }
 

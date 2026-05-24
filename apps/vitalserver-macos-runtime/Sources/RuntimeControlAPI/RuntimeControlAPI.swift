@@ -43,6 +43,7 @@ public struct RuntimeControlAPIRoute: Codable, Equatable, Sendable {
 public enum RuntimeControlAPIEndpoint: String, CaseIterable, Codable, Equatable, Sendable {
     case capabilities
     case status
+    case events
     case health
     case settings
     case applySettings
@@ -68,6 +69,8 @@ public enum RuntimeControlAPIEndpoint: String, CaseIterable, Codable, Equatable,
             return .init(method: .get, path: "/runtime/capabilities", scope: .runtimeControl)
         case .status:
             return .init(method: .get, path: "/runtime/status", scope: .runtimeControl)
+        case .events:
+            return .init(method: .get, path: "/runtime/events", scope: .runtimeControl)
         case .health:
             return .init(method: .post, path: "/runtime/health", scope: .runtimeControl)
         case .settings:
@@ -113,6 +116,7 @@ public extension RuntimeControlAPIEndpoint {
         switch self {
         case .capabilities,
              .status,
+             .events,
              .health,
              .settings,
              .release,
