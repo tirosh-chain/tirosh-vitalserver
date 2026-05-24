@@ -33,6 +33,8 @@ components:
       additionalProperties: false
       required:
         - activeWebSockets
+        - activeRecorderConnections
+        - recorders
         - httpRequests
         - socketIoEventsSeen
         - socketIoParseFailures
@@ -44,6 +46,13 @@ components:
         activeWebSockets:
           type: integer
           minimum: 0
+        activeRecorderConnections:
+          type: integer
+          minimum: 0
+        recorders:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecorderConnection"
         httpRequests:
           type: integer
           minimum: 0
@@ -65,3 +74,21 @@ components:
         redisIpWriteFailures:
           type: integer
           minimum: 0
+    RecorderConnection:
+      type: object
+      additionalProperties: false
+      required:
+        - vrcode
+        - activeConnections
+      properties:
+        vrcode:
+          type: string
+        activeConnections:
+          type: integer
+          minimum: 0
+        selectedIp:
+          type: string
+          nullable: true
+        lastSeenAt:
+          type: string
+          nullable: true

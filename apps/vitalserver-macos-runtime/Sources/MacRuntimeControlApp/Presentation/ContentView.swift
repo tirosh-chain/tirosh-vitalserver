@@ -40,6 +40,8 @@ struct ContentView: View {
                         viewModel: viewModel,
                         showingUpdateConfirmation: $showingUpdateConfirmation
                     )
+                case .events:
+                    RuntimeEventsPanel(viewModel: viewModel)
                 case .advanced:
                     RuntimeAdvancedPanel(
                         viewModel: viewModel,

@@ -9,6 +9,11 @@ const { auditEventTypes } = require("../src/domain/audit-event-contracts");
 const { formatAuditLogLine } = require("../src/infrastructure/file/audit-log-format");
 const { createClientIpSelector } = require("../src/infrastructure/http/client-ip");
 const { createAuditStdoutWriter } = require("../src/infrastructure/process/audit-stdout-writer");
+const {
+  createMetrics,
+  metricsSnapshot,
+  recordRecorderDisconnect,
+} = require("../src/observability/metrics");
 
 test("client ip selector trusts forwarded headers only when enabled", () => {
   const req = {
@@ -34,10 +39,11 @@ test("client ip selector trusts forwarded headers only when enabled", () => {
 test("socket.io auditor records join_vr and rewrites redis ip", async () => {
   const records = [];
   const commands = [];
+  const metricState = metrics();
   const auditor = createSocketIoAuditService({
     audit: { record: (eventType, fields) => records.push({ eventType, fields }) },
     vrIdentityStore: { setRecorderIp: (vrcode, selectedIp) => commands.push(["SET", `ip_${vrcode}`, selectedIp]) },
-    metrics: metrics(),
+    metrics: metricState,
     config: { vitalServer: { ipWriteDelayMs: 0 } },
   });
   const context = contextFor("VR_A");
@@ -49,6 +55,28 @@ test("socket.io auditor records join_vr and rewrites redis ip", async () => {
   assert.strictEqual(records[0].eventType, auditEventTypes.JOIN_VR);
   assert.strictEqual(records[0].fields.vrcode, "VR_A");
   assert.deepStrictEqual(commands[0], ["SET", "ip_VR_A", "172.31.0.152"]);
+  assert.strictEqual(metricsSnapshot(metricState).activeRecorderConnections, 1);
+  assert.strictEqual(metricsSnapshot(metricState).recorders[0].vrcode, "VR_A");
+});
+
+test("recorder metrics track active joins and disconnects", () => {
+  const metricState = metrics();
+  const context = contextFor();
+  const auditor = createSocketIoAuditService({
+    audit: { record: () => {} },
+    vrIdentityStore: { setRecorderIp: () => {} },
+    metrics: metricState,
+    config: { vitalServer: { ipWriteDelayMs: 0 } },
+  });
+
+  auditor.inspect('42["join_vr","VR_A"]', "client", context);
+  assert.strictEqual(metricsSnapshot(metricState).activeRecorderConnections, 1);
+
+  recordRecorderDisconnect(metricState, context);
+  const snapshot = metricsSnapshot(metricState);
+
+  assert.strictEqual(snapshot.activeRecorderConnections, 0);
+  assert.strictEqual(snapshot.recorders[0].activeConnections, 0);
 });
 
 test("socket.io auditor summarizes send_data payload", () => {
@@ -166,9 +194,5 @@ function contextFor(vrcode) {
 }
 
 function metrics() {
-  return {
-    socketIoEventsSeen: 0,
-    socketIoParseFailures: 0,
-    redisIpWriteFailures: 0,
-  };
+  return createMetrics();
 }

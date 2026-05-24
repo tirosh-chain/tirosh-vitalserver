@@ -2,6 +2,8 @@ import Foundation
 
 public struct RuntimeAuditProxyStatusDocument: Codable, Equatable, Sendable {
     public let activeWebSockets: Int
+    public let activeRecorderConnections: Int
+    public let recorders: [RuntimeRecorderConnectionObservation]
     public let httpRequests: Int
     public let socketIoEventsSeen: Int
     public let socketIoParseFailures: Int
@@ -12,6 +14,8 @@ public struct RuntimeAuditProxyStatusDocument: Codable, Equatable, Sendable {
 
     public init(
         activeWebSockets: Int = 0,
+        activeRecorderConnections: Int = 0,
+        recorders: [RuntimeRecorderConnectionObservation] = [],
         httpRequests: Int = 0,
         socketIoEventsSeen: Int = 0,
         socketIoParseFailures: Int = 0,
@@ -21,6 +25,8 @@ public struct RuntimeAuditProxyStatusDocument: Codable, Equatable, Sendable {
         redisIpWriteFailures: Int = 0
     ) {
         self.activeWebSockets = activeWebSockets
+        self.activeRecorderConnections = activeRecorderConnections
+        self.recorders = recorders
         self.httpRequests = httpRequests
         self.socketIoEventsSeen = socketIoEventsSeen
         self.socketIoParseFailures = socketIoParseFailures
@@ -28,6 +34,52 @@ public struct RuntimeAuditProxyStatusDocument: Codable, Equatable, Sendable {
         self.auditFileWriteFailures = auditFileWriteFailures
         self.auditStdoutWriteFailures = auditStdoutWriteFailures
         self.redisIpWriteFailures = redisIpWriteFailures
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case activeWebSockets
+        case activeRecorderConnections
+        case recorders
+        case httpRequests
+        case socketIoEventsSeen
+        case socketIoParseFailures
+        case auditWriteFailures
+        case auditFileWriteFailures
+        case auditStdoutWriteFailures
+        case redisIpWriteFailures
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.activeWebSockets = try container.decodeIfPresent(Int.self, forKey: .activeWebSockets) ?? 0
+        self.activeRecorderConnections = try container.decodeIfPresent(Int.self, forKey: .activeRecorderConnections) ?? 0
+        self.recorders = try container.decodeIfPresent([RuntimeRecorderConnectionObservation].self, forKey: .recorders) ?? []
+        self.httpRequests = try container.decodeIfPresent(Int.self, forKey: .httpRequests) ?? 0
+        self.socketIoEventsSeen = try container.decodeIfPresent(Int.self, forKey: .socketIoEventsSeen) ?? 0
+        self.socketIoParseFailures = try container.decodeIfPresent(Int.self, forKey: .socketIoParseFailures) ?? 0
+        self.auditWriteFailures = try container.decodeIfPresent(Int.self, forKey: .auditWriteFailures) ?? 0
+        self.auditFileWriteFailures = try container.decodeIfPresent(Int.self, forKey: .auditFileWriteFailures) ?? 0
+        self.auditStdoutWriteFailures = try container.decodeIfPresent(Int.self, forKey: .auditStdoutWriteFailures) ?? 0
+        self.redisIpWriteFailures = try container.decodeIfPresent(Int.self, forKey: .redisIpWriteFailures) ?? 0
+    }
+}
+
+public struct RuntimeRecorderConnectionObservation: Codable, Equatable, Sendable {
+    public let vrcode: String
+    public let activeConnections: Int
+    public let selectedIp: String?
+    public let lastSeenAt: String?
+
+    public init(
+        vrcode: String,
+        activeConnections: Int,
+        selectedIp: String? = nil,
+        lastSeenAt: String? = nil
+    ) {
+        self.vrcode = vrcode
+        self.activeConnections = activeConnections
+        self.selectedIp = selectedIp
+        self.lastSeenAt = lastSeenAt
     }
 }
 

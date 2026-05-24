@@ -6,7 +6,7 @@ const crypto = require("crypto");
 const { createAuditRecorder } = require("../../application/audit-recorder");
 const { auditEventTypes } = require("../../domain/audit-event-contracts");
 const { createSocketIoAuditService } = require("../../application/socketio-audit-service");
-const { createMetrics, metricsSnapshot } = require("../../observability/metrics");
+const { createMetrics, metricsSnapshot, recordRecorderDisconnect } = require("../../observability/metrics");
 const { createAuditLogWriter } = require("../file/audit-log-writer");
 const { createAuditStdoutWriter } = require("../process/audit-stdout-writer");
 const { createRedisAuditEventStore } = require("../redis/audit-event-store");
@@ -130,7 +130,7 @@ function proxyUpgrade(req, socket, head, dependencies) {
   if (head && head.length > 0) clientParser.push(head);
   observeServerFramesAfterHandshake(upstream, serverParser);
   socket.on("data", (chunk) => clientParser.push(chunk));
-  closeSocketsTogether(socket, upstream, dependencies.metrics);
+  closeSocketsTogether(socket, upstream, dependencies.metrics, context);
 }
 
 function createRequestContext(req, clientIp) {
@@ -142,6 +142,7 @@ function createRequestContext(req, clientIp) {
     ip: clientIp.select(req),
     joined_vrcode: null,
     last_command: null,
+    metrics_vrcode: null,
   };
 }
 
@@ -172,12 +173,13 @@ function observeServerFramesAfterHandshake(upstream, serverParser) {
   });
 }
 
-function closeSocketsTogether(client, upstream, metrics) {
+function closeSocketsTogether(client, upstream, metrics, context) {
   let closed = false;
   const close = () => {
     if (closed) return;
     closed = true;
     metrics.activeWebSockets = Math.max(0, metrics.activeWebSockets - 1);
+    recordRecorderDisconnect(metrics, context);
     client.destroy();
     upstream.destroy();
   };

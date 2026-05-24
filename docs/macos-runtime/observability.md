@@ -311,3 +311,6 @@ SQLite read model을 도입합니다.
 - Swagger UI는 단일 화면에서 VitalServer, Runtime Control API, Audit Proxy API spec을 선택하는
   multi-spec catalog로 제공합니다. Audit Proxy spec은 raw proxy traffic이 아니라
   `/audit-proxy/health`, `/audit-proxy/status` 같은 sidecar 운영 endpoint만 문서화합니다.
+- Helper Status 화면은 현재 runtime snapshot을 보여주고, Events 화면은 `RuntimeEventHistory` 기반의
+  status/event history를 보여줍니다. VRecorder 접속 수와 recorder별 snapshot은 audit proxy
+  `/audit-proxy/status`에서 수집해 `containerObservation.auditProxyStatus`로 전달합니다.

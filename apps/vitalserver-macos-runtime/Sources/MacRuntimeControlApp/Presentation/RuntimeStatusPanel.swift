@@ -26,6 +26,8 @@ struct RuntimeStatusPanel: View {
                 }
             }
             Divider()
+            recorderSection
+            Divider()
             resourceUsageSection
             Divider()
             DisclosureGroup(AppConstants.Labels.healthDetails, isExpanded: $showingHealthDetails) {
@@ -41,6 +43,20 @@ struct RuntimeStatusPanel: View {
         .background(Color(nsColor: .controlBackgroundColor))
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .frame(maxWidth: 760, alignment: .leading)
+    }
+
+    private var recorderSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(AppConstants.Labels.vitalRecorder)
+                .font(.headline)
+            Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 10) {
+                statusRow(AppConstants.Labels.activeRecorderConnections, activeRecorderConnectionText)
+                statusRow(AppConstants.Labels.knownRecorders, knownRecorderText)
+                if let latest = latestRecorder {
+                    statusRow(AppConstants.Labels.latestRecorder, "\(latest.vrcode) \(latest.selectedIp ?? AppConstants.StatusText.unknown)")
+                }
+            }
+        }
     }
 
     private var resourceUsageSection: some View {
@@ -150,6 +166,22 @@ struct RuntimeStatusPanel: View {
                 isHealthy: viewModel.status.watchdogServiceLoaded
             ),
         ]
+    }
+
+    private var activeRecorderConnectionText: String {
+        let count = viewModel.status.containerObservation?.auditProxyStatus?.activeRecorderConnections ?? 0
+        return "\(count)"
+    }
+
+    private var knownRecorderText: String {
+        let count = viewModel.status.containerObservation?.auditProxyStatus?.recorders.count ?? 0
+        return "\(count)"
+    }
+
+    private var latestRecorder: RuntimeRecorderConnectionObservation? {
+        viewModel.status.containerObservation?.auditProxyStatus?.recorders
+            .sorted { ($0.lastSeenAt ?? "") > ($1.lastSeenAt ?? "") }
+            .first
     }
 
     private var vitalServerAvailability: String {

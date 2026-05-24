@@ -4,6 +4,7 @@ enum RuntimeSection: CaseIterable, Identifiable {
     case status
     case settings
     case update
+    case events
     case log
     case info
     case advanced
@@ -19,6 +20,8 @@ enum RuntimeSection: CaseIterable, Identifiable {
             return AppConstants.Labels.sectionSettings
         case .update:
             return AppConstants.Labels.sectionUpdate
+        case .events:
+            return AppConstants.Labels.sectionEvents
         case .log:
             return AppConstants.Labels.sectionLog
         case .info:

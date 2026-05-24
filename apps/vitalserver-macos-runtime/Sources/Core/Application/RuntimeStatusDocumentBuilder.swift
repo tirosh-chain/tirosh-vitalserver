@@ -64,7 +64,8 @@ public enum RuntimeStatusDocumentBuilder {
             vmDisk: input.healthSnapshot.vmDisk,
             failureReasons: input.healthSnapshot.failureReasons,
             latestBackup: input.latestBackup,
-            progress: input.progress
+            progress: input.progress,
+            containerObservation: input.healthSnapshot.containerObservation
         )
     }
 }

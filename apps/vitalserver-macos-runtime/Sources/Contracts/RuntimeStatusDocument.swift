@@ -82,6 +82,7 @@ public struct RuntimeStatusDocument: Codable, Equatable, Sendable {
     public let failureReasons: [RuntimeFailureReason]
     public let latestBackup: String?
     public let progress: RuntimeProgressDocument?
+    public let containerObservation: RuntimeContainerObservation?
 
     public init(
         schemaVersion: Int? = nil,
@@ -106,7 +107,8 @@ public struct RuntimeStatusDocument: Codable, Equatable, Sendable {
         vmDisk: RuntimeFileState,
         failureReasons: [RuntimeFailureReason],
         latestBackup: String?,
-        progress: RuntimeProgressDocument? = nil
+        progress: RuntimeProgressDocument? = nil,
+        containerObservation: RuntimeContainerObservation? = nil
     ) {
         self.schemaVersion = schemaVersion
         self.product = product
@@ -131,6 +133,7 @@ public struct RuntimeStatusDocument: Codable, Equatable, Sendable {
         self.failureReasons = failureReasons
         self.latestBackup = latestBackup
         self.progress = progress
+        self.containerObservation = containerObservation
     }
 
     public init(
@@ -156,7 +159,8 @@ public struct RuntimeStatusDocument: Codable, Equatable, Sendable {
         vmDisk: RuntimeFileState,
         failureReasons: [RuntimeFailureReason],
         latestBackup: String?,
-        progress: RuntimeProgressDocument? = nil
+        progress: RuntimeProgressDocument? = nil,
+        containerObservation: RuntimeContainerObservation? = nil
     ) {
         self.init(
             schemaVersion: schemaVersion,
@@ -181,7 +185,8 @@ public struct RuntimeStatusDocument: Codable, Equatable, Sendable {
             vmDisk: vmDisk,
             failureReasons: failureReasons,
             latestBackup: latestBackup,
-            progress: progress
+            progress: progress,
+            containerObservation: containerObservation
         )
     }
 }

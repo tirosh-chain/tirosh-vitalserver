@@ -8,6 +8,7 @@ const {
   clientSocketEvents,
   serverDispatchEventNames,
 } = require("../domain/audit-event-contracts");
+const { recordRecorderJoin } = require("../observability/metrics");
 
 const dispatchEvents = new Set(serverDispatchEventNames);
 
@@ -83,9 +84,10 @@ function inspectSocketIoPacket(packet, direction, context, options, dependencies
   }
 }
 
-function recordJoinVr(payload, context, options, { audit, vrIdentityStore, config }) {
+function recordJoinVr(payload, context, options, { audit, vrIdentityStore, metrics, config }) {
   const vrcode = String(payload || "");
   context.joined_vrcode = vrcode;
+  recordRecorderJoin(metrics, context, vrcode, context.ip && context.ip.selected_ip);
   audit.record(auditEventTypes.JOIN_VR, {
     request_id: context.request_id,
     connection_id: context.connection_id,

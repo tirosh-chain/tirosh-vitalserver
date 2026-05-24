@@ -21,6 +21,7 @@ final class RuntimeViewModel: ObservableObject {
     @Published var isBusy = false
     @Published var releaseInfo = RuntimeReleaseInfo.generated
     @Published var installationInfo = RuntimeInstallInfo()
+    @Published var runtimeEvents = RuntimeEventHistory(events: [])
 
     let controlClient: any RuntimeControlClient
     let hostClient: any RuntimeHostClient
@@ -69,6 +70,7 @@ final class RuntimeViewModel: ObservableObject {
         status = controlClient.loadStatus(settings: settings)
         await refreshReleaseInfo()
         refreshBackupList()
+        refreshRuntimeEvents()
         if let displayMessage = presentationFormatter.statusDisplayMessage(status) {
             message = displayMessage
         }
@@ -78,6 +80,7 @@ final class RuntimeViewModel: ObservableObject {
 
     func refreshHealthStatus() async {
         status = await controlClient.loadHealthStatus(settings: settings)
+        refreshRuntimeEvents()
         if let displayMessage = presentationFormatter.statusDisplayMessage(status) {
             message = displayMessage
         }
@@ -90,12 +93,17 @@ final class RuntimeViewModel: ObservableObject {
         defer { isBusy = false }
 
         status = await controlClient.loadHealthStatus(settings: settings)
+        refreshRuntimeEvents()
         if let displayMessage = presentationFormatter.statusDisplayMessage(status) {
             message = "\(AppConstants.StatusText.healthCheckCompleted)\n\n\(displayMessage)"
         } else {
             message = AppConstants.StatusText.healthCheckCompleted
         }
         healthNotificationCoordinator.handleTransition(to: status)
+    }
+
+    func refreshRuntimeEvents(limit: Int = 100) {
+        runtimeEvents = controlClient.loadRuntimeEvents(limit: limit)
     }
 
     func uninstallRuntime(clean: Bool = false) async {
