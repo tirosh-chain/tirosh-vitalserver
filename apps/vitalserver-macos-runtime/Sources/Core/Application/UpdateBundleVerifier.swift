@@ -42,7 +42,7 @@ public enum UpdateBundleVerifier {
         manifest: UpdateBundleManifest,
         expectedProduct: String
     ) throws -> UpdateBundleVerificationPlan {
-        guard manifest.schemaVersion == 2 else {
+        guard manifest.schemaVersion == 3 else {
             throw UpdateBundleVerificationError.unsupportedSchema(manifest.schemaVersion)
         }
         guard manifest.product == expectedProduct else {

@@ -37,6 +37,19 @@ final class RuntimeUpdateCompatibilityCheckerTests: XCTestCase {
         }
     }
 
+    func testRejectsMismatchedBundleChannel() {
+        XCTAssertThrowsError(try RuntimeUpdateCompatibilityChecker.check(
+            manifest: manifest(channel: .dev),
+            currentUpdaterVersion: "1.2.3",
+            currentChannel: .stable
+        )) { error in
+            XCTAssertEqual(error as? RuntimeUpdateCompatibilityError, .unsupportedChannel(
+                currentChannel: .stable,
+                bundleChannel: .dev
+            ))
+        }
+    }
+
     func testAllowsTwoPhaseUpdateWhenExplicitlyAllowed() throws {
         try RuntimeUpdateCompatibilityChecker.check(
             manifest: manifest(requiresTwoPhaseUpdate: true),
@@ -87,15 +100,18 @@ final class RuntimeUpdateCompatibilityCheckerTests: XCTestCase {
 
     private func manifest(
         minUpdaterVersion: String? = "1.2.0",
+        channel: UpdateBundleChannel = .stable,
         targetPlatforms: [String] = [],
         requiresGuestActivation: Bool = false,
         requiresTwoPhaseUpdate: Bool = false,
         artifacts: [UpdateBundleArtifact] = []
     ) -> UpdateBundleManifest {
         UpdateBundleManifest(
-            schemaVersion: 2,
+            schemaVersion: 3,
             product: "com.tirosh.vitalserver",
+            channel: channel,
             helperVersion: "1.2.3",
+            releaseLabel: "1.2.3",
             targetPlatforms: targetPlatforms,
             components: ["updater": "1.2.3"],
             minUpdaterVersion: minUpdaterVersion,

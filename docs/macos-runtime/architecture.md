@@ -231,7 +231,7 @@ PWA 착수 직전까지 현재 branch가 보장해야 하는 compatibility basel
 | API 전환 지점 | PWA client는 `RuntimeControlClient`에 해당하는 HTTP/SSE contract를 보고, 현재 SwiftUI 전환기만 `RuntimeHostClient`로 local host affordance를 같이 사용 |
 | API route/DTO/server | `RuntimeControlAPI` target이 `/runtime/*` runtime control route와 `/host/*` local host affordance route를 분리하고, read-only `/runtime/*`는 local loopback HTTP server로 제공 |
 | OpenAPI 계약 | `docs/macos-runtime/runtime-control.openapi.json`이 Swift endpoint enum과 method/path/access parity test로 검증됨 |
-| 후속 이슈 | write/admin endpoint 구현, auth/pairing 강화, SSE progress/log streaming, generated client는 PWA/API 구현 단계에서 진행 |
+| 후속 이슈 | write/admin endpoint 구현, auth/pairing 강화, progress client adapter, generated client는 PWA/API 구현 단계에서 진행 |
 
 Repository layout 기준은 아래처럼 둡니다.
 
@@ -684,7 +684,7 @@ UI 상태, capability guard, usecase orchestration, 화면 메시지 변환
 
 Host마다 달라질 가능성이 높은 것은 이름에 host/platform 맥락을 드러냅니다. 예를 들어 macOS의 launchd, AppKit panel, local file/log export, privileged CLI 실행은 `MacHost*`, `MacRuntimeControlApp`, `RuntimeNativeShell` 쪽에 둡니다. 반대로 PWA, Runtime Control API server, macOS/Windows host runtime이 모두 재사용해야 하는 상태/진행/update/guest request-result 계약은 `Contracts`와 `RuntimeControl`에 둡니다.
 
-`MacRuntimeControlEnvironment`는 현재 macOS app composition root입니다. `MacHostRuntimeClient -> RuntimeControlClientAPIReadHandler -> RuntimeControlAPIRouter -> RuntimeControlLocalHTTPServer`로 read-only Runtime Control API를 조립하고, 같은 `MacHostRuntimeClient`를 SwiftUI `RuntimeViewModel`에도 주입합니다. 이로써 UI 경로와 HTTP 경로가 같은 usecase/read model 계약을 공유합니다.
+`MacRuntimeControlEnvironment`는 현재 macOS app composition root입니다. Dev profile에서는 `MacHostRuntimeClient -> RuntimeControlClientAPIReadHandler -> RuntimeControlAPIRouter -> RuntimeControlLocalHTTPServer`로 read-only Runtime Control API를 조립하고, 같은 `MacHostRuntimeClient`를 SwiftUI `RuntimeViewModel`에도 주입합니다. Stable profile은 pairing/session token 기반 auth 정책이 들어가기 전까지 local API server를 시작하지 않습니다. 이 경계는 UI 경로와 HTTP 경로가 같은 usecase/read model 계약을 공유하도록 유지합니다.
 
 `RuntimeHostClient`는 현재 SwiftUI 전환기에서 필요한 local host affordance 경계입니다. PWA 진입 시 이 계약을 그대로 browser client에 노출한다는 뜻이 아닙니다. PWA는 `RuntimeControlClient`에 해당하는 HTTP/SSE API를 우선 사용하고, local file 선택, log export destination, pairing/native shell 같은 기능은 native shell 또는 Runtime Control API의 별도 endpoint로 재배치합니다.
 

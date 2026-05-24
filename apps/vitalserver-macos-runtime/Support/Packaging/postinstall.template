@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-product_root="/Library/Application Support/TiroshVitalServer"
-vm_home="${product_root}/vm"
-install_log="${product_root}/logs/install.log"
-vm_bin="/usr/local/bin/vitalserver-vm"
-manager_app="/Applications/VitalServer Helper.app"
+product_root="${PRODUCT_ROOT}"
+vm_home="${VM_HOME}"
+install_log="${INSTALL_LOG}"
+vm_bin="${VM_BIN}"
+manager_app="${MANAGER_APP}"
 max_log_bytes=$((10 * 1024 * 1024))
 keep_log_count=5
 

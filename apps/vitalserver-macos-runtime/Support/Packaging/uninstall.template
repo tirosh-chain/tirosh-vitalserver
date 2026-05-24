@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-uninstall_log="/private/tmp/tirosh-vitalserver-uninstall.log"
+uninstall_log="${UNINSTALL_LOG}"
 exec > >(tee -a "${uninstall_log}") 2>&1
 
-product_root="/Library/Application Support/TiroshVitalServer"
-manager_app="/Applications/VitalServer Helper.app"
+product_root="${PRODUCT_ROOT}"
+manager_app="${MANAGER_APP}"
 vm_config="${product_root}/vm/runtime/vm-config.json"
 default_vital_files="${product_root}/vm/data/vital-files"
 clean=false
@@ -126,16 +126,16 @@ log "step=stop-launchd-services status=completed"
 
 log "step=remove-plists-and-tools status=started"
 rm -f \
-  /Library/LaunchDaemons/com.tirosh.vitalserver-watchdog.plist \
-  /Library/LaunchDaemons/com.tirosh.vitalserver-vm.plist \
-  /Library/LaunchDaemons/com.tirosh.vitalserver-proxy.plist \
-  /usr/local/bin/vitalserver-vm \
-  /usr/local/bin/vitalserver-proxy-run
+  "${LAUNCH_DAEMONS_DIR}/com.tirosh.vitalserver-watchdog.plist" \
+  "${LAUNCH_DAEMONS_DIR}/com.tirosh.vitalserver-vm.plist" \
+  "${LAUNCH_DAEMONS_DIR}/com.tirosh.vitalserver-proxy.plist" \
+  "${VM_BIN}" \
+  "${PROXY_RUN}"
 log "step=remove-plists-and-tools status=completed"
 
 if [ "${clean}" = false ]; then
   log "step=preserve-user-data status=started"
-  preserve_root="$(mktemp -d "/private/tmp/tirosh-vitalserver-preserve.XXXXXX")"
+  preserve_root="$(mktemp -d "${PRESERVE_TMP_TEMPLATE}")"
   preserve_path "${product_root}/backups" "${preserve_root}" "backups"
   if [ "${vital_files_dir}" = "${default_vital_files}" ]; then
     preserve_path "${default_vital_files}" "${preserve_root}" "vital-files"
@@ -160,11 +160,11 @@ if [ "${clean}" = false ]; then
 fi
 
 log "step=forget-package-receipt status=started"
-pkgutil --forget com.tirosh.vitalserver.vm >/dev/null 2>&1 || true
+pkgutil --forget "${PACKAGE_IDENTIFIER}" >/dev/null 2>&1 || true
 log "step=forget-package-receipt status=completed"
 
 log "step=remove-uninstaller status=started"
-rm -f /usr/local/bin/tirosh-vitalserver-uninstall
+rm -f "${UNINSTALL}"
 log "step=remove-uninstaller status=completed"
 
 log "uninstall completed log=${uninstall_log}"

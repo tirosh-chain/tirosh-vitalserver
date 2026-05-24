@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-vm_home="${VITALSERVER_VM_HOME:-/Library/Application Support/TiroshVitalServer/vm}"
-nginx_prefix="${VITALSERVER_NGINX_PREFIX:-/Library/Application Support/TiroshVitalServer/nginx}"
+vm_home="${VITALSERVER_VM_HOME:-${VM_HOME}}"
+nginx_prefix="${VITALSERVER_NGINX_PREFIX:-${NGINX_PREFIX}}"
 nginx_bin="${VITALSERVER_NGINX_BIN:-${nginx_prefix}/sbin/nginx}"
 proxy_port="${VITALSERVER_PROXY_PORT:-80}"
 

@@ -46,6 +46,8 @@ Example with update migrations:
 uv run --project packages/vm-build vitalserver-vm-build update-bundle \
   --version 0.1.1 \
   --helper-version 0.1.1 \
+  --release-label 0.1.1 \
+  --channel stable \
   --bundle-kind product-update \
   --target-platform macos-arm64 \
   --component helperUI=0.1.1+macos.1 \
@@ -62,8 +64,15 @@ uv run --project packages/vm-build vitalserver-vm-build update-bundle \
   --migration release/migrations/001-example
 ```
 
-The command writes `dist/update-bundles/update-bundle-<version>.tar.gz`.
+By default the command writes
+`dist/update-bundles/update-bundle-<channel>-<bundleKind>-<version>.tar.gz`.
+Make passes an explicit bundle name so product-update and vm-image-update
+artifacts cannot overwrite each other for the same release label.
 `verify-update-bundle` accepts that tarball directly.
+
+`manifest.json` uses `schemaVersion: 3`. `channel`, `helperVersion`, and
+`releaseLabel` are required. `helperVersion` should remain package-safe numeric
+version text; `releaseLabel` is the artifact identity used for dev/stable labels.
 
 Update bundle contract:
 

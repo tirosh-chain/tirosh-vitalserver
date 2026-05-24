@@ -35,6 +35,10 @@ extension RuntimeViewModel {
         openRuntimeURL(AppConstants.Product.tiroshURL)
     }
 
+    func openRuntimeControlDevConsole() {
+        openRuntimeURL(AppConstants.RuntimeControlAPI.devConsoleURL)
+    }
+
     private func openRuntimeURL(_ rawURL: String) {
         guard let url = URL(string: rawURL) else {
             return

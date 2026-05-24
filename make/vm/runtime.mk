@@ -3,7 +3,7 @@
 
 vm-version-source:
 	@test -s "$(VM_RELEASE_FILE)" || { printf "missing release manifest: %s\n" "$(VM_RELEASE_FILE)" >&2; exit 1; }
-	@python3 "$(VM_MACOS_RUNTIME_DIR)/Support/Build/sync-release.py" "$(VM_MACOS_RUNTIME_DIR)"
+	@python3 "$(VM_MACOS_RUNTIME_DIR)/Support/Build/sync-release.py" "$(VM_MACOS_RUNTIME_DIR)" "$(abspath $(VM_RELEASE_FILE))"
 
 vm-build: vm-version-source
 	cd "$(VM_MACOS_RUNTIME_DIR)" && env SDKROOT="$(VM_SDKROOT)" CLANG_MODULE_CACHE_PATH="$(VM_CLANG_MODULE_CACHE)" swift build -c release

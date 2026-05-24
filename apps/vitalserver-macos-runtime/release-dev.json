@@ -1,11 +1,11 @@
 {
-  "channel": "stable",
-  "helperVersion": "0.1.6",
-  "releaseLabel": "0.1.6",
-  "minUpdaterVersion": "0.1.4",
+  "channel": "dev",
+  "helperVersion": "0.1.7",
+  "releaseLabel": "0.1.7-dev",
+  "minUpdaterVersion": "0.1.7",
   "distribution": {
-    "profile": "stable",
-    "audience": "production"
+    "profile": "dev",
+    "audience": "internal"
   },
   "bundle": {
     "optionalContainerServices": []

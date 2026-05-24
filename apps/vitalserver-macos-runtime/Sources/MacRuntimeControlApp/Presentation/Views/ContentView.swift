@@ -42,6 +42,8 @@ struct ContentView: View {
                     )
                 case .events:
                     RuntimeEventsPanel(viewModel: viewModel)
+                case .test:
+                    RuntimeTestPanel(viewModel: viewModel)
                 case .advanced:
                     RuntimeAdvancedPanel(
                         viewModel: viewModel,
@@ -195,13 +197,13 @@ struct ContentView: View {
 
     private var sectionSelector: some View {
         Picker("", selection: $selectedSection) {
-            ForEach(RuntimeSection.allCases) { section in
+            ForEach(RuntimeSection.visibleSections()) { section in
                 Text(section.title).tag(section)
             }
         }
         .pickerStyle(.segmented)
         .labelsHidden()
-        .frame(width: 640)
+        .frame(width: 760)
         .frame(maxWidth: .infinity, alignment: .center)
     }
 

@@ -3,6 +3,10 @@
 
 enum GeneratedRelease {
     static let helperVersion = "0.1.6"
+    static let channel = "stable"
+    static let releaseLabel = "0.1.6"
+    static let testEnabled = false
+    static let testkitContainerIncluded = false
     static let minUpdaterVersion = "0.1.4"
     static let vitalServerVersion = "2.3.4"
     static let vitalServerName = "VitalServer"

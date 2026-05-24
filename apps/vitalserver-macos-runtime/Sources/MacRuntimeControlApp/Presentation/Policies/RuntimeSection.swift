@@ -5,12 +5,19 @@ enum RuntimeSection: CaseIterable, Identifiable {
     case settings
     case update
     case events
+    case test
     case log
     case info
     case advanced
     case dangerZone
 
     var id: Self { self }
+
+    static func visibleSections(testEnabled: Bool = GeneratedRelease.testEnabled) -> [RuntimeSection] {
+        allCases.filter { section in
+            section != .test || testEnabled
+        }
+    }
 
     var title: String {
         switch self {
@@ -22,6 +29,8 @@ enum RuntimeSection: CaseIterable, Identifiable {
             return AppConstants.Labels.sectionUpdate
         case .events:
             return AppConstants.Labels.sectionEvents
+        case .test:
+            return AppConstants.Labels.sectionTest
         case .log:
             return AppConstants.Labels.sectionLog
         case .info:

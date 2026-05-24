@@ -105,7 +105,7 @@ make vm-update-bundle-verify
 생성 위치:
 
 ```text
-dist/update-bundles/update-bundle-<version>.tar.gz
+dist/update-bundles/update-bundle-<channel>-<kind>-<releaseLabel>.tar.gz
 ```
 
 Product Update bundle은 Helper UI, Native Shell, Runtime Control API, Updater, Supervisor/VM Driver tools, host nginx bundle, Service Stack/guest deploy 같은 artifact를 `.tar.gz`로 묶습니다. 기본 `make vm-update-bundle`은 rootfs를 포함하지 않는 `product-update` bundle을 만듭니다. `guest-deploy` 변경은 기본 migration과 guest activation 경로를 통해 VM 내부에 반영됩니다. VM Image/rootfs 자체를 바꿔야 하는 경우에만 `make vm-rootfs-update-bundle`을 사용하며, 이 흐름은 Danger Zone의 `vm-image-update` 대상입니다. VM Image bundle도 기존 mutable `vm-disk.img`를 자동 교체하지 않습니다.
@@ -171,7 +171,7 @@ make vm-down
 |---|---|---|
 | DMG | `dist/TiroshVitalServer-<version>.dmg` | 현장 전달용 설치 매체 |
 | PKG | `dist/TiroshVitalServerVM-<version>.pkg` | 실제 macOS Installer payload |
-| Product Update bundle | `dist/update-bundles/update-bundle-<version>.tar.gz` | 설치 후 offline/online Product Update 입력 |
+| Product Update bundle | `dist/update-bundles/update-bundle-<channel>-product-update-<releaseLabel>.tar.gz` | 설치 후 offline/online Product Update 입력 |
 | Helper app | `.tmp/VitalServer Helper.app` 또는 `/Applications/VitalServer Helper.app` | 설치 후 운영 UI |
 | Golden rootfs | `.tmp/vitalserver-vm-pkg/rootfs-base.raw.gz` | air-gapped 설치용 immutable rootfs base |
 | Docker image bundle | `.tmp/vitalserver-vm-pkg/docker-images/vitalserver-images.tar.gz` | guest가 registry 없이 container를 시작하기 위한 image bundle |

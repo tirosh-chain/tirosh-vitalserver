@@ -28,6 +28,9 @@ bootstrap_script = "/mnt/tirosh/deploy/bootstrap.sh"
 [docker_images]
 platform = "linux/arm64"
 bundle_path = ".tmp/vitalserver-vm-pkg/docker-images/vitalserver-images.tar.gz"
+app_dockerfile = "apps/vitalserver/docker/Dockerfile"
+audit_proxy_image = "vitalserver-audit-proxy:0.1.0"
+audit_proxy_dockerfile = "apps/vitalserver-audit-proxy/Dockerfile"
 images = [
   "vitalserver:2.3.4",
   "vitalserver-audit-proxy:0.1.0",
@@ -40,3 +43,81 @@ images = [
 [nginx]
 binary_path = ".artifacts/nginx/macos/bin/nginx"
 expected_version = "nginx/1.31.0"
+non_system_dylib_prefixes = ["/opt/", "/usr/local/"]
+
+[workspace]
+runtime_dir = "apps/vitalserver-macos-runtime"
+build_dir = ".tmp/vitalserver-vm-pkg"
+dist_dir = "dist"
+clang_module_cache = ".tmp/clang-module-cache"
+
+[app]
+name = "VitalServer Helper"
+helper_product_name = "VitalServerHelper"
+bundle_dir = ".tmp/VitalServer Helper.app"
+
+[release]
+target_platform = "macos-arm64"
+
+[package]
+identifier = "com.tirosh.vitalserver.vm"
+
+[package.install]
+prefix = "/Library/Application Support/TiroshVitalServer"
+applications_dir = "/Applications"
+launch_daemons_dir = "/Library/LaunchDaemons"
+bin = "/usr/local/bin/vitalserver-vm"
+proxy_run = "/usr/local/bin/vitalserver-proxy-run"
+uninstall = "/usr/local/bin/tirosh-vitalserver-uninstall"
+settings_path = "/private/tmp/tirosh-vitalserver-install.json"
+uninstall_log = "/private/tmp/tirosh-vitalserver-uninstall.log"
+preserve_tmp_template = "/private/tmp/tirosh-vitalserver-preserve.XXXXXX"
+
+[package.outputs]
+pkg_name_template = "TiroshVitalServerVM-{releaseLabel}.pkg"
+dmg_name_template = "TiroshVitalServer-{releaseLabel}.dmg"
+dmg_pkg_name = "Install Tirosh VitalServer.pkg"
+dmg_staging_dir = ".tmp/vitalserver-vm-dmg"
+
+[launchd.vm]
+template = "com.tirosh.vitalserver-vm.plist.template"
+output = "com.tirosh.vitalserver-vm.plist"
+
+[launchd.proxy]
+template = "com.tirosh.vitalserver-proxy.plist.template"
+output = "com.tirosh.vitalserver-proxy.plist"
+
+[launchd.watchdog]
+template = "com.tirosh.vitalserver-watchdog.plist.template"
+output = "com.tirosh.vitalserver-watchdog.plist"
+
+[guest_deploy]
+docker_image_bundle_destination = "docker-images/vitalserver-images.tar.gz"
+
+[[guest_deploy.paths]]
+source = "apps/vitalserver/docker"
+destination = "apps/vitalserver/docker"
+
+[[guest_deploy.paths]]
+source = "apps/vitalserver/runtime"
+destination = "apps/vitalserver/runtime"
+
+[[guest_deploy.paths]]
+source = "apps/vitalserver-audit-proxy"
+destination = "apps/vitalserver-audit-proxy"
+
+[[guest_deploy.paths]]
+source = "vendor/vitalserver/vitalserver-old"
+destination = "vendor/vitalserver/vitalserver-old"
+
+[[guest_deploy.files]]
+source = "docs/openapi.yaml"
+destination = "docs/openapi.yaml"
+
+[[guest_deploy.files]]
+source = "docs/openapi/audit-proxy.openapi.yaml"
+destination = "docs/openapi/audit-proxy.openapi.yaml"
+
+[[guest_deploy.files]]
+source = "docs/macos-runtime/runtime-control.openapi.json"
+destination = "docs/macos-runtime/runtime-control.openapi.json"

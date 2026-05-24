@@ -277,6 +277,7 @@ struct RuntimeBundleWorkflow {
                 try RuntimeUpdateCompatibilityChecker.check(
                     manifest: manifest,
                     currentUpdaterVersion: Constants.launcherVersion,
+                    currentChannel: Constants.launcherChannel,
                     currentPlatform: Constants.Platform.current
                 )
             },

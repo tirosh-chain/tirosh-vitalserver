@@ -1,12 +1,15 @@
+import Foundation
 import RuntimeControl
 import Core
 
 @MainActor
 public struct RuntimeControlClientAPIReadHandler: RuntimeControlAPIReadHandler {
     private let client: any RuntimeControlClient
+    private let hostClient: (any RuntimeHostClient)?
 
-    public init(client: any RuntimeControlClient) {
+    public init(client: any RuntimeControlClient, hostClient: (any RuntimeHostClient)? = nil) {
         self.client = client
+        self.hostClient = hostClient
     }
 
     public func loadCapabilities() async throws -> RuntimeControlCapabilities {
@@ -37,5 +40,29 @@ public struct RuntimeControlClientAPIReadHandler: RuntimeControlAPIReadHandler {
 
     public func loadInstallInfo() async throws -> RuntimeInstallInfo {
         client.loadInstallInfo()
+    }
+
+    public func loadLogText(request: RuntimeLogTextRequest) async throws -> RuntimeLogTextResponse {
+        guard let hostClient else {
+            throw RuntimeControlAPIReadHandlerError.hostAffordanceUnavailable
+        }
+        return RuntimeLogTextResponse(
+            text: hostClient.logText(
+                sourceID: request.source,
+                helperMessage: request.helperMessage,
+                lineLimit: request.lineLimit
+            )
+        )
+    }
+}
+
+public enum RuntimeControlAPIReadHandlerError: LocalizedError, Equatable {
+    case hostAffordanceUnavailable
+
+    public var errorDescription: String? {
+        switch self {
+        case .hostAffordanceUnavailable:
+            return "Host affordance client is unavailable."
+        }
     }
 }

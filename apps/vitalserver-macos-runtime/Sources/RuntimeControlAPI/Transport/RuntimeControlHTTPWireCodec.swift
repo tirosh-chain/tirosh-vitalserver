@@ -77,6 +77,21 @@ public enum RuntimeControlHTTPWireCodec {
         return data
     }
 
+    public static func encodeStreamHeader(status: RuntimeControlHTTPStatus, headers: [String: String]) -> Data {
+        var streamHeaders = headers
+        streamHeaders["Connection"] = "keep-alive"
+
+        var head = "HTTP/1.1 \(status.rawValue) \(reasonPhrase(for: status))\r\n"
+        for key in streamHeaders.keys.sorted() {
+            guard let value = streamHeaders[key] else {
+                continue
+            }
+            head += "\(key): \(value)\r\n"
+        }
+        head += "\r\n"
+        return Data(head.utf8)
+    }
+
     public static func badRequestResponse(message: String) -> RuntimeControlHTTPResponse {
         let error = RuntimeControlErrorResponse(code: .badRequest, message: message)
         return RuntimeControlHTTPResponse(

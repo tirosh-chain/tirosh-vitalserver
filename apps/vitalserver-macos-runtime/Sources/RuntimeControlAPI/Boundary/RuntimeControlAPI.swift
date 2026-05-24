@@ -44,7 +44,9 @@ public struct RuntimeControlAPIRoute: Codable, Equatable, Sendable {
 public enum RuntimeControlAPIEndpoint: String, CaseIterable, Codable, Equatable, Sendable {
     case capabilities
     case status
+    case statusStream
     case events
+    case eventStream
     case health
     case settings
     case applySettings
@@ -57,6 +59,7 @@ public enum RuntimeControlAPIEndpoint: String, CaseIterable, Codable, Equatable,
     case uninstall
     case backups
     case logText
+    case logStream
     case updateBundleSummary
     case verifyUpdateBundle
     case applyUpdateBundle
@@ -70,8 +73,12 @@ public enum RuntimeControlAPIEndpoint: String, CaseIterable, Codable, Equatable,
             return .init(method: .get, path: "/runtime/capabilities", scope: .runtimeControl)
         case .status:
             return .init(method: .get, path: "/runtime/status", scope: .runtimeControl)
+        case .statusStream:
+            return .init(method: .get, path: "/runtime/status/stream", scope: .runtimeControl)
         case .events:
             return .init(method: .get, path: "/runtime/events", scope: .runtimeControl)
+        case .eventStream:
+            return .init(method: .get, path: "/runtime/events/stream", scope: .runtimeControl)
         case .health:
             return .init(method: .post, path: "/runtime/health", scope: .runtimeControl)
         case .settings:
@@ -96,6 +103,8 @@ public enum RuntimeControlAPIEndpoint: String, CaseIterable, Codable, Equatable,
             return .init(method: .get, path: "/host/backups", scope: .hostAffordance)
         case .logText:
             return .init(method: .post, path: "/host/logs/read", scope: .hostAffordance)
+        case .logStream:
+            return .init(method: .get, path: "/host/logs/stream", scope: .hostAffordance)
         case .updateBundleSummary:
             return .init(method: .post, path: "/host/update-bundles/summary", scope: .hostAffordance)
         case .verifyUpdateBundle:
@@ -117,7 +126,9 @@ public extension RuntimeControlAPIEndpoint {
         switch self {
         case .capabilities,
              .status,
+             .statusStream,
              .events,
+             .eventStream,
              .health,
              .settings,
              .release,
@@ -133,6 +144,7 @@ public extension RuntimeControlAPIEndpoint {
              .uninstall,
              .backups,
              .logText,
+             .logStream,
              .updateBundleSummary,
              .verifyUpdateBundle,
              .applyUpdateBundle,

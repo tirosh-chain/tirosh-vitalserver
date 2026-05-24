@@ -7,12 +7,12 @@ public enum RuntimeControlLocalHTTPServerError: Error, Equatable {
 }
 
 public struct RuntimeControlLocalHTTPServerConfiguration: Equatable, Sendable {
-    public let host: String
     public let port: UInt16
+    public let servesDevConsole: Bool
 
-    public init(host: String = "127.0.0.1", port: UInt16) {
-        self.host = host
+    public init(port: UInt16, servesDevConsole: Bool = false) {
         self.port = port
+        self.servesDevConsole = servesDevConsole
     }
 }
 
@@ -20,12 +20,16 @@ public final class RuntimeControlLocalHTTPServer: @unchecked Sendable {
     private let configuration: RuntimeControlLocalHTTPServerConfiguration
     private let router: RuntimeControlAPIRouter
     private let queue: DispatchQueue
+    private let queueKey = DispatchSpecificKey<Void>()
     private var listener: NWListener?
     private var connections: [ObjectIdentifier: NWConnection] = [:]
     private var requestBuffers: [ObjectIdentifier: Data] = [:]
+    private var streamTasks: [ObjectIdentifier: Task<Void, Never>] = [:]
 
     public var activePort: UInt16? {
-        listener?.port?.rawValue
+        syncOnQueue {
+            listener?.port?.rawValue
+        }
     }
 
     @MainActor
@@ -37,6 +41,7 @@ public final class RuntimeControlLocalHTTPServer: @unchecked Sendable {
         self.configuration = configuration
         self.router = router
         self.queue = queue
+        self.queue.setSpecific(key: queueKey, value: ())
     }
 
     public func start() throws {
@@ -56,18 +61,37 @@ public final class RuntimeControlLocalHTTPServer: @unchecked Sendable {
         listener.newConnectionHandler = { [weak self] connection in
             self?.accept(connection)
         }
+        syncOnQueue {
+            self.listener = listener
+        }
         listener.start(queue: queue)
-        self.listener = listener
     }
 
     public func stop() {
+        syncOnQueue {
+            stopLocked()
+        }
+    }
+
+    private func stopLocked() {
         listener?.cancel()
         listener = nil
         for connection in connections.values {
             connection.cancel()
         }
+        for task in streamTasks.values {
+            task.cancel()
+        }
         connections.removeAll()
         requestBuffers.removeAll()
+        streamTasks.removeAll()
+    }
+
+    private func syncOnQueue<T>(_ work: () -> T) -> T {
+        if DispatchQueue.getSpecific(key: queueKey) != nil {
+            return work()
+        }
+        return queue.sync(execute: work)
     }
 
     private func accept(_ connection: NWConnection) {
@@ -77,6 +101,7 @@ public final class RuntimeControlLocalHTTPServer: @unchecked Sendable {
             if case .cancelled = state {
                 self?.connections.removeValue(forKey: id)
                 self?.requestBuffers.removeValue(forKey: id)
+                self?.streamTasks.removeValue(forKey: id)?.cancel()
             }
         }
         connection.start(queue: queue)
@@ -129,11 +154,62 @@ public final class RuntimeControlLocalHTTPServer: @unchecked Sendable {
             return
         }
 
+        if configuration.servesDevConsole,
+           let devConsoleResponse = RuntimeControlDevConsoleDocument.response(for: request) {
+            send(devConsoleResponse, on: connection)
+            return
+        }
+
         Task { @MainActor [router] in
-            let response = await router.route(request)
-            let encoded = RuntimeControlHTTPWireCodec.encodeResponse(response)
-            connection.send(content: encoded, completion: .contentProcessed { _ in
+            switch await router.routeResult(request) {
+            case .response(let response):
+                self.queue.async {
+                    let encoded = RuntimeControlHTTPWireCodec.encodeResponse(response)
+                    connection.send(content: encoded, completion: .contentProcessed { _ in
+                        connection.cancel()
+                    })
+                }
+            case .stream(let stream):
+                self.queue.async {
+                    self.startStream(stream, on: connection)
+                }
+            }
+        }
+    }
+
+    private func startStream(_ stream: RuntimeControlHTTPStreamResponse, on connection: NWConnection) {
+        let id = ObjectIdentifier(connection)
+        let task = Task { [weak self] in
+            guard let self else {
                 connection.cancel()
+                return
+            }
+            let head = RuntimeControlHTTPWireCodec.encodeStreamHeader(status: stream.status, headers: stream.headers)
+            guard await self.sendData(head, on: connection) else {
+                connection.cancel()
+                return
+            }
+            do {
+                for try await event in stream.events {
+                    guard !Task.isCancelled else {
+                        break
+                    }
+                    guard await self.sendData(RuntimeControlServerSentEventCodec.encode(event), on: connection) else {
+                        break
+                    }
+                }
+            } catch {
+                _ = await self.sendData(Data(": stream-error\n\n".utf8), on: connection)
+            }
+            connection.cancel()
+        }
+        streamTasks[id] = task
+    }
+
+    private func sendData(_ data: Data, on connection: NWConnection) async -> Bool {
+        await withCheckedContinuation { continuation in
+            connection.send(content: data, completion: .contentProcessed { error in
+                continuation.resume(returning: error == nil)
             })
         }
     }

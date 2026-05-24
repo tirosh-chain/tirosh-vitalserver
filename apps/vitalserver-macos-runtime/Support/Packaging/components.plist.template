@@ -4,7 +4,7 @@
 <array>
 	<dict>
 		<key>RootRelativeBundlePath</key>
-		<string>Applications/VitalServer Helper.app</string>
+		<string>${APP_BUNDLE_ROOT_RELATIVE}</string>
 		<key>BundleIsRelocatable</key>
 		<false/>
 		<key>BundleIsVersionChecked</key>

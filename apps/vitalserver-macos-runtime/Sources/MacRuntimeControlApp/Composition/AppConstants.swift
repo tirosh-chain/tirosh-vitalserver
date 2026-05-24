@@ -32,6 +32,9 @@ enum AppConstants {
     enum RuntimeControlAPI {
         static let port: UInt16 = 18321
         static let developmentToken = "vitalserver-helper-dev"
+        static var devConsoleURL: String {
+            "http://127.0.0.1:\(port)/dev/runtime-control"
+        }
     }
 
     enum SettingsLimits {
@@ -65,6 +68,7 @@ enum AppConstants {
         static let sectionSettings = "Settings"
         static let sectionUpdate = "Update"
         static let sectionEvents = "Events"
+        static let sectionTest = "Test"
         static let sectionAdvanced = "Advanced"
         static let sectionInfo = "About"
         static let sectionDangerZone = "Danger Zone"
@@ -110,6 +114,12 @@ enum AppConstants {
         static let logPaused = "Paused"
         static let advancedSummary = "Advanced runtime details"
         static let advancedDescription = "Diagnostics, service internals, proxy repair, update rollback, and uninstall tools for administrators."
+        static let testSummary = "Test"
+        static let testDescription = "Browser-based runtime checks for development and verification builds."
+        static let sectionBrowserChecks = "Browser"
+        static let runtimeControlConsole = "Runtime Control console"
+        static let runtimeControlConsoleHelp = "Opens the local browser console for Runtime Control API status, event streams, and log streams."
+        static let testkitService = "Testkit API container"
         static let infoSummary = "Runtime information"
         static let infoDescription = "Installed versions, bundled services, and deployment details for support and maintenance."
         static let dangerZoneSummary = "Danger Zone"
@@ -201,6 +211,7 @@ enum AppConstants {
         static let serviceName = "Service"
         static let serviceImage = "Image"
         static let serviceVersion = "Version"
+        static let serviceBundled = "Bundled"
         static let vmRootfsUpdatePlanned = "VM/rootfs bundle update is planned for this area. Use offline bundle updates for regular application/runtime updates."
         static let destructiveOperationsHelp = "Uninstall removes installed services and runtime files. Choose clean uninstall only when preserved data can also be removed."
         static let appBundlePath = "App bundle path"

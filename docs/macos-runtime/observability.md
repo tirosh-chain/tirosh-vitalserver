@@ -81,11 +81,14 @@ Watchdog은 raw source를 제품 관점 status/event로 정규화합니다.
 Runtime Control API는 정규화된 결과를 노출합니다.
 
 - `GET /runtime/status`: 최신 runtime read model
+- `GET /runtime/status/stream`: long-lived SSE status snapshot stream
 - `GET /runtime/events`: SQLite read model을 우선 사용하고, 불가능하면 JSONL에서 읽은 최근 event history
   - `limit`: 1-500, 기본 100
   - `type`: event type filter
   - `since`: ISO-8601 timestamp lower bound
+- `GET /runtime/events/stream`: long-lived SSE runtime event stream. `Last-Event-ID`로 reconnect cursor를 전달할 수 있음
 - raw log 조회는 `/host/logs/read` 계열 host affordance로 유지합니다.
+- `GET /host/logs/stream`: long-lived SSE host log text stream. product runtime event stream과는 별도 host affordance입니다.
 
 Container raw log나 Redis audit list를 API의 canonical source로 직접 노출하지 않습니다. 필요하면 별도
 audit 조회 endpoint를 만들되, `runtime-events`와 같은 operational event stream과 분리합니다.
