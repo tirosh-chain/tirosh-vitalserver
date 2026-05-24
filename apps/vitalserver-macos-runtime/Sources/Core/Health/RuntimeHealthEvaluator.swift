@@ -15,6 +15,7 @@ public struct RuntimeHealthInput: Equatable {
     public let guestHTTP: String
     public let redisUIHTTP: String
     public let swaggerUIHTTP: String
+    public let containerObservation: RuntimeContainerObservation?
     public let proxyPortFailureReasons: [RuntimeFailureReason]
     public let guestBootstrapFailureReason: RuntimeFailureReason?
 
@@ -32,6 +33,7 @@ public struct RuntimeHealthInput: Equatable {
         guestHTTP: String,
         redisUIHTTP: String,
         swaggerUIHTTP: String,
+        containerObservation: RuntimeContainerObservation? = nil,
         proxyPortFailureReasons: [RuntimeFailureReason] = [],
         guestBootstrapFailureReason: RuntimeFailureReason? = nil
     ) {
@@ -48,6 +50,7 @@ public struct RuntimeHealthInput: Equatable {
         self.guestHTTP = guestHTTP
         self.redisUIHTTP = redisUIHTTP
         self.swaggerUIHTTP = swaggerUIHTTP
+        self.containerObservation = containerObservation
         self.proxyPortFailureReasons = proxyPortFailureReasons
         self.guestBootstrapFailureReason = guestBootstrapFailureReason
     }
@@ -88,6 +91,10 @@ public enum RuntimeHealthEvaluator {
                 failureReasons.append(guestBootstrapFailureReason)
             }
         }
+        if let containerObservation = input.containerObservation,
+           !isSuccessfulHTTPStatus(containerObservation.auditProxyHTTP) {
+            failureReasons.append(.auditProxyHTTP(containerObservation.auditProxyHTTP))
+        }
 
         return RuntimeHealthSnapshot(
             vmExecutable: input.vmExecutable,
@@ -103,6 +110,7 @@ public enum RuntimeHealthEvaluator {
             guestHTTP: input.guestHTTP,
             redisUIHTTP: input.redisUIHTTP,
             swaggerUIHTTP: input.swaggerUIHTTP,
+            containerObservation: input.containerObservation,
             failureReasons: failureReasons
         )
     }

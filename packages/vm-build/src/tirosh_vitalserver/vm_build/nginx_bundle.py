@@ -5,7 +5,7 @@ import subprocess
 from argparse import Namespace
 from pathlib import Path
 
-from .config import load_config, section
+from .config import load_config, required_string_list, section
 
 
 def run_nginx_bundle(args: Namespace) -> int:
@@ -14,6 +14,9 @@ def run_nginx_bundle(args: Namespace) -> int:
 
     binary = resolve_binary(args.binary or nginx_config.get("binary_path"))
     expected_version = args.expected_version or nginx_config.get("expected_version")
+    dylib_prefixes = tuple(
+        required_string_list(nginx_config, "non_system_dylib_prefixes")
+    )
     bundle_dir = args.bundle_dir
 
     if expected_version:
@@ -32,7 +35,7 @@ def run_nginx_bundle(args: Namespace) -> int:
     shutil.copy2(binary, bundled_nginx)
     bundled_nginx.chmod(0o755)
 
-    source_dylibs = non_system_dylibs(binary)
+    source_dylibs = non_system_dylibs(binary, dylib_prefixes)
     for dylib in source_dylibs:
         destination = bundle_lib / dylib.name
         shutil.copy2(dylib, destination)
@@ -42,6 +45,7 @@ def run_nginx_bundle(args: Namespace) -> int:
         bundled_nginx=bundled_nginx,
         bundle_lib=bundle_lib,
         source_dylibs=source_dylibs,
+        dylib_prefixes=dylib_prefixes,
     )
     sign_bundle(bundled_nginx, bundle_lib)
 
@@ -78,11 +82,11 @@ def validate_version(binary: Path, expected_version: str) -> None:
         )
 
 
-def non_system_dylibs(binary: Path) -> list[Path]:
+def non_system_dylibs(binary: Path, prefixes: tuple[str, ...]) -> list[Path]:
     dylibs = []
     for line in otool_load_paths(binary).splitlines()[1:]:
         path = line.strip().split(maxsplit=1)[0]
-        if path.startswith(("/opt/", "/usr/local/")):
+        if path.startswith(prefixes):
             dylibs.append(Path(path))
     return sorted(set(dylibs))
 
@@ -96,6 +100,7 @@ def rewrite_load_paths(
     bundled_nginx: Path,
     bundle_lib: Path,
     source_dylibs: list[Path],
+    dylib_prefixes: tuple[str, ...],
 ) -> None:
     for dylib in source_dylibs:
         name = dylib.name
@@ -119,7 +124,7 @@ def rewrite_load_paths(
             allow_failure=True,
         )
 
-        for nested in non_system_dylibs(bundled_dylib):
+        for nested in non_system_dylibs(bundled_dylib, dylib_prefixes):
             run(
                 [
                     "install_name_tool",

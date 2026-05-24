@@ -89,7 +89,7 @@ repair_appendonly_file() {
 
 restart_runtime_compose() {
   eval "$(/usr/local/bin/tirosh-runtime-env "${DEPLOY_DIR}/runtime-config.json")"
-  docker compose --project-name "${PROJECT_NAME}" -f "${DEPLOY_DIR}/compose.yaml" stop app redis-ui edge redis || true
+  docker compose --project-name "${PROJECT_NAME}" -f "${DEPLOY_DIR}/compose.yaml" stop app audit-proxy redis-ui edge redis || true
   repair_appendonly_file
   /usr/local/bin/tirosh-vitalserver-compose up
   /usr/local/bin/tirosh-runtime-state once || true

@@ -123,9 +123,10 @@ final class RuntimeGuestActivationRunnerTests: XCTestCase {
 
     private func manifest(artifacts: [UpdateBundleArtifactType]) -> UpdateBundleManifest {
         UpdateBundleManifest(
-            schemaVersion: 2,
+            schemaVersion: 3,
             product: Constants.Product.identifier,
             helperVersion: "1.2.3",
+            releaseLabel: "1.2.3",
             targetPlatforms: ["macos-arm64"],
             components: ["updater": "1.2.3"],
             createdAt: "2026-05-22T00:00:00Z",

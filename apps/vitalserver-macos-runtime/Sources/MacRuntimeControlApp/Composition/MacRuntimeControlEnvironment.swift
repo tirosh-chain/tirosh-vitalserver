@@ -5,17 +5,17 @@ import RuntimeControlAPI
 @MainActor
 final class MacRuntimeControlEnvironment: ObservableObject {
     let viewModel: RuntimeViewModel
-    private let apiServer: RuntimeControlLocalHTTPServer
+    private let apiServer: RuntimeControlLocalHTTPServer?
     private(set) var apiServerError: Error?
 
-    init(viewModel: RuntimeViewModel, apiServer: RuntimeControlLocalHTTPServer) {
+    init(viewModel: RuntimeViewModel, apiServer: RuntimeControlLocalHTTPServer?) {
         self.viewModel = viewModel
         self.apiServer = apiServer
         startAPIServer()
     }
 
     deinit {
-        apiServer.stop()
+        apiServer?.stop()
     }
 
     static func live() -> MacRuntimeControlEnvironment {
@@ -26,19 +26,35 @@ final class MacRuntimeControlEnvironment: ObservableObject {
             healthNotifications: HealthNotificationCenter(),
             nativeShell: SystemRuntimeNativeShell()
         )
-        let apiHandler = RuntimeControlClientAPIReadHandler(client: client)
+        let apiServer = shouldStartDevelopmentAPIServer()
+            ? makeDevelopmentAPIServer(client: client)
+            : nil
+        return MacRuntimeControlEnvironment(viewModel: viewModel, apiServer: apiServer)
+    }
+
+    static func shouldStartDevelopmentAPIServer(testEnabled: Bool = GeneratedRelease.testEnabled) -> Bool {
+        testEnabled
+    }
+
+    private static func makeDevelopmentAPIServer(client: MacHostRuntimeClient) -> RuntimeControlLocalHTTPServer {
+        let apiHandler = RuntimeControlClientAPIReadHandler(client: client, hostClient: client)
         let apiRouter = RuntimeControlAPIRouter(
             handler: apiHandler,
             authorization: RuntimeControlAPIAuthorization(token: AppConstants.RuntimeControlAPI.developmentToken)
         )
-        let apiServer = RuntimeControlLocalHTTPServer(
-            configuration: RuntimeControlLocalHTTPServerConfiguration(port: AppConstants.RuntimeControlAPI.port),
+        return RuntimeControlLocalHTTPServer(
+            configuration: RuntimeControlLocalHTTPServerConfiguration(
+                port: AppConstants.RuntimeControlAPI.port,
+                servesDevConsole: true
+            ),
             router: apiRouter
         )
-        return MacRuntimeControlEnvironment(viewModel: viewModel, apiServer: apiServer)
     }
 
     private func startAPIServer() {
+        guard let apiServer else {
+            return
+        }
         do {
             try apiServer.start()
         } catch {

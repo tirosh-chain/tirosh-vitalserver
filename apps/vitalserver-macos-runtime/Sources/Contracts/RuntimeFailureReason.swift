@@ -12,6 +12,7 @@ public enum RuntimeFailureReason: Codable, Equatable, Sendable {
     case redisUIHTTP(String)
     case swaggerUIHTTP(String)
     case guestHTTP(String)
+    case auditProxyHTTP(String)
     case proxyPortInUse(port: Int, listeners: String)
     case guestBootstrapMissingRuntimePackages
     case guestBootstrapFailed
@@ -46,6 +47,8 @@ public enum RuntimeFailureReason: Codable, Equatable, Sendable {
                 self = .swaggerUIHTTP(String(rawValue.dropFirst("swagger-ui-http-".count)))
             } else if rawValue.hasPrefix("guest-http-") {
                 self = .guestHTTP(String(rawValue.dropFirst("guest-http-".count)))
+            } else if rawValue.hasPrefix("audit-proxy-http-") {
+                self = .auditProxyHTTP(String(rawValue.dropFirst("audit-proxy-http-".count)))
             } else if let parsed = RuntimeFailureReason.parseProxyPortInUse(rawValue) {
                 self = parsed
             } else {
@@ -78,6 +81,8 @@ public enum RuntimeFailureReason: Codable, Equatable, Sendable {
             return "swagger-ui-http-\(status)"
         case .guestHTTP(let status):
             return "guest-http-\(status)"
+        case .auditProxyHTTP(let status):
+            return "audit-proxy-http-\(status)"
         case .proxyPortInUse(let port, let listeners):
             return "proxy-port-\(port)-in-use-by-\(listeners)"
         case .guestBootstrapMissingRuntimePackages:

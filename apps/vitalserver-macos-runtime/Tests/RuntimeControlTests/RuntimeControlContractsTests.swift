@@ -1,4 +1,5 @@
 import RuntimeControl
+import Core
 import XCTest
 
 final class RuntimeControlContractsTests: XCTestCase {
@@ -33,5 +34,26 @@ final class RuntimeControlContractsTests: XCTestCase {
 
         XCTAssertEqual(decoded.operation, .applyBundle)
         XCTAssertTrue(decoded.isReady)
+    }
+
+    func testRuntimeEventCursorWireCodecRoundTripsOpaqueCursor() {
+        let cursor = RuntimeEventCursor(timestamp: "2026-05-24T00:01:00Z", id: "event-2")
+
+        let encoded = RuntimeEventCursorWireCodec.encode(cursor)
+        let decoded = RuntimeEventCursorWireCodec.decode(encoded)
+
+        XCTAssertFalse(encoded.contains("+"))
+        XCTAssertFalse(encoded.contains("/"))
+        XCTAssertFalse(encoded.contains("="))
+        XCTAssertEqual(decoded, cursor)
+    }
+
+    func testRuntimeEventHistoryIncludesOptionalNextCursor() throws {
+        let history = RuntimeEventHistory(events: [], nextCursor: "opaque-cursor")
+
+        let encoded = try JSONEncoder().encode(history)
+        let decoded = try JSONDecoder().decode(RuntimeEventHistory.self, from: encoded)
+
+        XCTAssertEqual(decoded.nextCursor, "opaque-cursor")
     }
 }

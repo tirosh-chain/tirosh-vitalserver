@@ -8,6 +8,8 @@ import HostInfrastructure
 protocol RuntimeStatusReading {
     func loadStatus(settings: RuntimeSettings) -> RuntimeStatus
     func loadHealthStatus(settings: RuntimeSettings) async -> RuntimeStatus
+    func loadRuntimeEvents(limit: Int) -> RuntimeEventHistory
+    func loadRuntimeEvents(query: RuntimeEventQuery) -> RuntimeEventHistory
     func legacyCommandProgressLine() -> String?
 }
 
@@ -73,7 +75,24 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading {
             dataStorage: nil,
             proxyPort: document?.proxyPort ?? proxyPort(paths.proxyLaunchDaemon),
             failureReasons: document?.failureReasons ?? [],
-            progress: document?.progress
+            progress: document?.progress,
+            containerObservation: document?.containerObservation
+        )
+    }
+
+    func loadRuntimeEvents(limit: Int) -> RuntimeEventHistory {
+        loadRuntimeEvents(query: RuntimeEventQuery(limit: limit))
+    }
+
+    func loadRuntimeEvents(query: RuntimeEventQuery) -> RuntimeEventHistory {
+        let repository = CompositeRuntimeEventRepository(
+            primary: JSONLRuntimeEventRepository(url: URL(fileURLWithPath: paths.runtimeEvents)),
+            secondary: SQLiteRuntimeEventRepository(url: URL(fileURLWithPath: paths.runtimeObservabilityDB))
+        )
+        let page = repository.query(query)
+        return RuntimeEventHistory(
+            events: page.events,
+            nextCursor: page.nextCursor.map(RuntimeEventCursorWireCodec.encode)
         )
     }
 

@@ -6,8 +6,13 @@ server {
     index index.html;
 
     location = /openapi.yaml {
-        alias /usr/share/nginx/html/openapi.yaml;
+        alias /usr/share/nginx/html/docs/openapi.yaml;
         default_type text/yaml;
+        add_header Cache-Control "no-cache";
+    }
+
+    location /docs/ {
+        alias /usr/share/nginx/html/docs/;
         add_header Cache-Control "no-cache";
     }
 

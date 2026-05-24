@@ -32,6 +32,9 @@ enum AppConstants {
     enum RuntimeControlAPI {
         static let port: UInt16 = 18321
         static let developmentToken = "vitalserver-helper-dev"
+        static var devConsoleURL: String {
+            "http://127.0.0.1:\(port)/dev/runtime-control"
+        }
     }
 
     enum SettingsLimits {
@@ -64,13 +67,14 @@ enum AppConstants {
         static let sectionStatus = "Status"
         static let sectionSettings = "Settings"
         static let sectionUpdate = "Update"
+        static let sectionEvents = "Events"
+        static let sectionTest = "Test"
         static let sectionAdvanced = "Advanced"
         static let sectionInfo = "About"
         static let sectionDangerZone = "Danger Zone"
         static let sectionLog = "Logs"
         static let runtime = "Runtime"
         static let runtimeState = "Runtime state"
-        static let vitalServer = "VitalServer"
         static let vitalServerURL = "VitalServer URL"
         static let dataDirectory = "Data directory"
         static let overallHealth = "Overall health"
@@ -83,13 +87,11 @@ enum AppConstants {
         static let healthDetails = "Health details"
         static let managerRuntime = "Helper runtime"
         static let vmIPAddress = "VM IP"
-        static let vitalServerApp = "VitalServer"
-        static let hostProxyService = "Network access"
-        static let redis = "Redis"
-        static let redisUI = "Redis UI"
-        static let swaggerUI = "Swagger UI"
-        static let guestEdgeProxy = "Guest edge proxy"
         static let watchdog = "Watchdog"
+        static let vitalRecorder = "Vital Recorder"
+        static let activeRecorderConnections = "Active recorder connections"
+        static let knownRecorders = "Known recorders"
+        static let latestRecorder = "Latest recorder"
         static let operation = "Operation"
         static let runtimeVersion = "Runtime version"
         static let updatedAt = "Updated at"
@@ -112,6 +114,12 @@ enum AppConstants {
         static let logPaused = "Paused"
         static let advancedSummary = "Advanced runtime details"
         static let advancedDescription = "Diagnostics, service internals, proxy repair, update rollback, and uninstall tools for administrators."
+        static let testSummary = "Test"
+        static let testDescription = "Browser-based runtime checks for development and verification builds."
+        static let sectionBrowserChecks = "Browser"
+        static let runtimeControlConsole = "Runtime Control console"
+        static let runtimeControlConsoleHelp = "Opens the local browser console for Runtime Control API status, event streams, and log streams."
+        static let testkitService = "Testkit API container"
         static let infoSummary = "Runtime information"
         static let infoDescription = "Installed versions, bundled services, and deployment details for support and maintenance."
         static let dangerZoneSummary = "Danger Zone"
@@ -203,6 +211,7 @@ enum AppConstants {
         static let serviceName = "Service"
         static let serviceImage = "Image"
         static let serviceVersion = "Version"
+        static let serviceBundled = "Bundled"
         static let vmRootfsUpdatePlanned = "VM/rootfs bundle update is planned for this area. Use offline bundle updates for regular application/runtime updates."
         static let destructiveOperationsHelp = "Uninstall removes installed services and runtime files. Choose clean uninstall only when preserved data can also be removed."
         static let appBundlePath = "App bundle path"
@@ -222,10 +231,8 @@ enum AppConstants {
     enum Actions {
         static let healthCheck = "Health Check"
         static let open = "Open"
-        static let openVitalServer = "VitalServer"
-        static let openRedisUI = "Redis UI"
-        static let openSwagger = "Swagger"
         static let openVitalFilesDirectory = "Open Vital Files Directory"
+        static let refresh = "Refresh"
         static let repairProxy = "Repair Proxy"
         static let repairProxyPort = "Repair Proxy Port"
         static let repairDatastore = "Repair Data Store"
@@ -233,7 +240,6 @@ enum AppConstants {
         static let standardUninstall = "Uninstall..."
         static let cleanUninstall = "Clean Uninstall..."
         static let vmRootfsUpdate = "VM/rootfs Update"
-        static let refresh = "Refresh"
         static let applySettings = "Apply"
         static let chooseDirectory = "Choose..."
         static let chooseBundle = "Choose Bundle"
@@ -256,6 +262,7 @@ enum AppConstants {
 
     enum StatusText {
         static let ready = "Ready"
+        static let noRuntimeEvents = "No runtime events"
         static let available = "Available"
         static let unavailable = "Unavailable"
         static let healthy = "Healthy"

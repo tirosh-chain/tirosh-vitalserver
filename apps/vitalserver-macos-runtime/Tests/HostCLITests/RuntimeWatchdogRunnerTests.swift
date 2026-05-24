@@ -24,6 +24,7 @@ final class RuntimeWatchdogRunnerTests: XCTestCase {
 
         XCTAssertEqual(harness.healthCalls, 1)
         XCTAssertEqual(harness.writtenStatuses.map(\.status), [.healthy])
+        XCTAssertEqual(harness.observedStatuses.map(\.status), [.healthy])
         XCTAssertTrue(harness.restartedServices.isEmpty)
         XCTAssertEqual(harness.sleepCalls, [])
     }
@@ -39,6 +40,8 @@ final class RuntimeWatchdogRunnerTests: XCTestCase {
         try harness.runner.run()
 
         XCTAssertEqual(harness.writtenStatuses.map(\.status), [.recovering, .degraded])
+        XCTAssertEqual(harness.observedStatuses.map(\.status), [.recovering, .degraded])
+        XCTAssertEqual(harness.observedStatuses.last?.snapshot.failureReasons, [.guestHTTP("503")])
         XCTAssertTrue(harness.restartedServices.isEmpty)
     }
 
@@ -58,6 +61,7 @@ final class RuntimeWatchdogRunnerTests: XCTestCase {
         XCTAssertEqual(harness.restartedServices, [.vm])
         XCTAssertEqual(harness.sleepCalls, [Constants.Runtime.watchdogRecoveryWaitSeconds])
         XCTAssertEqual(harness.writtenStatuses.map(\.status), [.recovering, .healthy])
+        XCTAssertEqual(harness.observedStatuses.map(\.status), [.recovering, .healthy])
     }
 
     func testMissingInstalledArtifactWritesCriticalWithoutRestart() throws {
@@ -82,6 +86,9 @@ private final class WatchdogHarness {
     var restartedServices: [RuntimeManagedService] = []
     var sleepCalls: [TimeInterval] = []
     var writtenStatuses: [(status: RuntimeStatusLevel, operation: RuntimeOperation, message: String)] = []
+    var observedStatuses: [
+        (status: RuntimeStatusLevel, operation: RuntimeOperation, message: String, snapshot: RuntimeHealthSnapshot)
+    ] = []
     var logs: [String] = []
 
     private let activeOperation: RuntimeOperation?
@@ -124,8 +131,9 @@ private final class WatchdogHarness {
                 sleep: { interval in
                     self.sleepCalls.append(interval)
                 },
-                writeStatus: { status, operation, message in
+                writeObservedStatus: { status, operation, message, snapshot in
                     self.writtenStatuses.append((status, operation, message))
+                    self.observedStatuses.append((status, operation, message, snapshot))
                 }
             ),
             log: { message in

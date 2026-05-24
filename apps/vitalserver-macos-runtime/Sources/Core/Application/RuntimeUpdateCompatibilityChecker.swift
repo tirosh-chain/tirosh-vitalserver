@@ -3,6 +3,7 @@ import Foundation
 
 public enum RuntimeUpdateCompatibilityError: Error, Equatable, CustomStringConvertible {
     case updaterTooOld(currentVersion: String, minimumVersion: String)
+    case unsupportedChannel(currentChannel: UpdateBundleChannel, bundleChannel: UpdateBundleChannel)
     case twoPhaseUpdateRequired
     case unsupportedPlatform(currentPlatform: String, targetPlatforms: [String])
     case guestActivationRequirementMismatch(requiresGuestActivation: Bool, hasGuestDeployArtifact: Bool)
@@ -11,6 +12,8 @@ public enum RuntimeUpdateCompatibilityError: Error, Equatable, CustomStringConve
         switch self {
         case let .updaterTooOld(currentVersion, minimumVersion):
             return "update bundle requires updater \(minimumVersion) or newer; current updater is \(currentVersion)"
+        case let .unsupportedChannel(currentChannel, bundleChannel):
+            return "update bundle channel \(bundleChannel.rawValue) is not compatible with installed channel \(currentChannel.rawValue)"
         case .twoPhaseUpdateRequired:
             return "update bundle requires a bridge/two-phase update"
         case let .unsupportedPlatform(currentPlatform, targetPlatforms):
@@ -25,6 +28,7 @@ public enum RuntimeUpdateCompatibilityChecker {
     public static func check(
         manifest: UpdateBundleManifest,
         currentUpdaterVersion: String,
+        currentChannel: UpdateBundleChannel = .stable,
         currentPlatform: String? = nil,
         allowTwoPhaseUpdate: Bool = false
     ) throws {
@@ -33,6 +37,13 @@ public enum RuntimeUpdateCompatibilityChecker {
             throw RuntimeUpdateCompatibilityError.updaterTooOld(
                 currentVersion: currentUpdaterVersion,
                 minimumVersion: minimumVersion
+            )
+        }
+
+        if manifest.channel != currentChannel {
+            throw RuntimeUpdateCompatibilityError.unsupportedChannel(
+                currentChannel: currentChannel,
+                bundleChannel: manifest.channel
             )
         }
 

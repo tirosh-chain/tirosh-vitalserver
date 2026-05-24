@@ -41,6 +41,39 @@ final class ContractsTests: XCTestCase {
         XCTAssertEqual(document.systemDisk?.percent, 31.25)
     }
 
+    func testDecodesGuestRuntimeStateContainerServices() throws {
+        let json = """
+        {
+          "schemaVersion": 1,
+          "vmIP": "192.168.64.2",
+          "guestHTTP": "200",
+          "redisUIHTTP": "200",
+          "swaggerUIHTTP": "200",
+          "updatedAt": "2026-05-24T00:00:00Z",
+          "containerServices": [
+            {
+              "service": "audit-proxy",
+              "name": "vitalserver-audit-proxy-1",
+              "state": "running",
+              "health": "healthy",
+              "exitCode": 0
+            }
+          ]
+        }
+        """
+        let document = try JSONDecoder().decode(GuestRuntimeStateDocument.self, from: Data(json.utf8))
+
+        XCTAssertEqual(document.containerServices, [
+            RuntimeContainerServiceObservation(
+                service: "audit-proxy",
+                name: "vitalserver-audit-proxy-1",
+                state: "running",
+                health: "healthy",
+                exitCode: 0
+            ),
+        ])
+    }
+
     func testDecodesActivationResultV1() throws {
         let document = try decodeFixture(
             GuestUpdateActivationResultDocument.self,
@@ -148,6 +181,7 @@ final class ContractsTests: XCTestCase {
           "missing-vm-bin",
           "vm-service-not loaded",
           "host-proxy-http-502",
+          "audit-proxy-http-failed",
           "proxy-port-80-in-use-by-nginx-1234",
           "guest-bootstrap-missing-runtime-packages",
           "future-reason"
@@ -158,9 +192,10 @@ final class ContractsTests: XCTestCase {
         XCTAssertEqual(reasons[0], .missingVMBin)
         XCTAssertEqual(reasons[1], .vmService("not loaded"))
         XCTAssertEqual(reasons[2], .hostProxyHTTP("502"))
-        XCTAssertEqual(reasons[3], .proxyPortInUse(port: 80, listeners: "nginx-1234"))
-        XCTAssertEqual(reasons[4], .guestBootstrapMissingRuntimePackages)
-        XCTAssertEqual(reasons[5], .unknown("future-reason"))
+        XCTAssertEqual(reasons[3], .auditProxyHTTP("failed"))
+        XCTAssertEqual(reasons[4], .proxyPortInUse(port: 80, listeners: "nginx-1234"))
+        XCTAssertEqual(reasons[5], .guestBootstrapMissingRuntimePackages)
+        XCTAssertEqual(reasons[6], .unknown("future-reason"))
 
         let encoded = try JSONEncoder().encode(reasons)
         let roundTripped = try JSONDecoder().decode([RuntimeFailureReason].self, from: encoded)
@@ -168,10 +203,44 @@ final class ContractsTests: XCTestCase {
             "missing-vm-bin",
             "vm-service-not loaded",
             "host-proxy-http-502",
+            "audit-proxy-http-failed",
             "proxy-port-80-in-use-by-nginx-1234",
             "guest-bootstrap-missing-runtime-packages",
             "future-reason",
         ])
+    }
+
+    func testRuntimeEventTypeDefinesOperationalTaxonomyAndPreservesUnknownValues() throws {
+        let knownTypes: [RuntimeEventType] = [
+            .statusChanged,
+            .progressUpdated,
+            .healthObserved,
+            .recoveryTriggered,
+            .recoveryCompleted,
+            .containerObserved,
+            .auditProxyObserved,
+            .runtimeCommandStarted,
+            .runtimeCommandCompleted,
+            .runtimeCommandFailed,
+        ]
+
+        XCTAssertEqual(knownTypes.map(\.rawValue), [
+            "status-changed",
+            "progress-updated",
+            "health-observed",
+            "recovery-triggered",
+            "recovery-completed",
+            "container-observed",
+            "audit-proxy-observed",
+            "runtime-command-started",
+            "runtime-command-completed",
+            "runtime-command-failed",
+        ])
+
+        let encoded = try JSONEncoder().encode(RuntimeEventType.unknown("vendor-event"))
+        let decoded = try JSONDecoder().decode(RuntimeEventType.self, from: encoded)
+
+        XCTAssertEqual(decoded, .unknown("vendor-event"))
     }
 
     private func decodeFixture<T: Decodable>(_ type: T.Type, named name: String) throws -> T {

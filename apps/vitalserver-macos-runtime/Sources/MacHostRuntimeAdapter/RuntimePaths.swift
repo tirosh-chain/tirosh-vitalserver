@@ -9,6 +9,8 @@ struct RuntimePaths {
     let vmIPFile: String
     let runtimeState: String
     let runtimeStatus: String
+    let runtimeEvents: String
+    let runtimeObservabilityDB: String
     let proxyLaunchDaemon: String
 
     init(
@@ -17,6 +19,8 @@ struct RuntimePaths {
         vmIPFile: String = RuntimeAdapterConstants.Paths.vmIPFile,
         runtimeState: String = RuntimeAdapterConstants.Paths.runtimeState,
         runtimeStatus: String = RuntimeAdapterConstants.Paths.runtimeStatus,
+        runtimeEvents: String = RuntimeAdapterConstants.Paths.runtimeEvents,
+        runtimeObservabilityDB: String = RuntimeAdapterConstants.Paths.runtimeObservabilityDB,
         proxyLaunchDaemon: String = RuntimeAdapterConstants.Paths.proxyLaunchDaemon
     ) {
         self.launcher = launcher
@@ -24,6 +28,8 @@ struct RuntimePaths {
         self.vmIPFile = vmIPFile
         self.runtimeState = runtimeState
         self.runtimeStatus = runtimeStatus
+        self.runtimeEvents = runtimeEvents
+        self.runtimeObservabilityDB = runtimeObservabilityDB
         self.proxyLaunchDaemon = proxyLaunchDaemon
     }
 }

@@ -87,12 +87,13 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
             restartWatchdog: true
         ))
         XCTAssertEqual(requiredSpace?.url, backupsDirectory)
-        XCTAssertEqual(requiredSpace?.bytes, 30 + Constants.Runtime.updateFreeSpaceMarginBytes)
+        XCTAssertEqual(requiredSpace?.bytes, 60 + Constants.Runtime.updateFreeSpaceMarginBytes)
         XCTAssertEqual(requiredSpace?.operation, .applyBundle)
         XCTAssertEqual(events, [
             "stage:/incoming/bundle",
             "manifest:manifest.json",
             "compatibility:1.2.3",
+            "du:/managed/update-bundle-1.2.3",
             "mkdir:/product/backups:true",
             "policy",
             "backup:before-1.2.3",
@@ -137,7 +138,7 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
 
         XCTAssertNil(context.stagedRootfs)
         XCTAssertFalse(context.updatesRootfsBase)
-        XCTAssertEqual(requiredSpace, Constants.Runtime.updateFreeSpaceMarginBytes)
+        XCTAssertEqual(requiredSpace, 10 + Constants.Runtime.updateFreeSpaceMarginBytes)
     }
 
     func testPrepareFailsWhenStagedRootfsIsMissing() {
@@ -186,9 +187,10 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
         artifacts: [UpdateBundleArtifact] = []
     ) -> UpdateBundleManifest {
         UpdateBundleManifest(
-            schemaVersion: 2,
+            schemaVersion: 3,
             product: Constants.Product.identifier,
             helperVersion: version,
+            releaseLabel: version,
             targetPlatforms: ["macos-arm64"],
             components: ["updater": version],
             requiresGuestActivation: false,

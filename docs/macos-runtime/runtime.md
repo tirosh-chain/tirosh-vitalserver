@@ -22,7 +22,7 @@ runtime 단계의 source of truth는 Swift CLI인 `vitalserver-vm`입니다. She
 | runtime 상태/progress/health 계약 | Swift `Core` contracts, typed enum 상태값 |
 | guest update activation/datastore repair request-result | shared directory JSON contract, `RuntimeGuestGateway` port |
 | runtime 상태 파일 | `/Library/Application Support/TiroshVitalServer/status/runtime-status.json` |
-| host proxy runner | `Support/Packaging/proxy-run`, nginx start/reload loop |
+| host proxy runner | `Support/Packaging/proxy-run.template`에서 생성, nginx start/reload loop |
 | Linux guest 내부 구성 | `Support/Guest/bootstrap.sh`, `prepare-airgap-rootfs.sh`, `compose.yaml` |
 
 반대로 Ubuntu image 다운로드, cloud-init ISO 생성, Docker image bundle, nginx bundle 같은 build-machine 작업은 runtime 책임이 아니며 Python `packages/vm-build`가 담당합니다.

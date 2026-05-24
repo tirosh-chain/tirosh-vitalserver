@@ -3,7 +3,7 @@
 
 vm-version-source:
 	@test -s "$(VM_RELEASE_FILE)" || { printf "missing release manifest: %s\n" "$(VM_RELEASE_FILE)" >&2; exit 1; }
-	@python3 "$(VM_MACOS_RUNTIME_DIR)/Support/Build/sync-release.py" "$(VM_MACOS_RUNTIME_DIR)"
+	@python3 "$(VM_MACOS_RUNTIME_DIR)/Support/Build/sync-release.py" "$(VM_MACOS_RUNTIME_DIR)" "$(abspath $(VM_RELEASE_FILE))"
 
 vm-build: vm-version-source
 	cd "$(VM_MACOS_RUNTIME_DIR)" && env SDKROOT="$(VM_SDKROOT)" CLANG_MODULE_CACHE_PATH="$(VM_CLANG_MODULE_CACHE)" swift build -c release
@@ -50,11 +50,14 @@ vm-stage: vm-init
 	@printf "Staging Linux guest deployment bundle into %s\n" "$(VM_DEPLOY_DIR)"
 	@mkdir -p "$(VM_DEPLOY_DIR)" "$(VM_HOME)/data/vital-files" "$(VM_HOME)/data/vr-release" "$(VM_RUN_DIR)"
 	rsync -a $(VM_RSYNC_EXCLUDES) "$(VM_GUEST_DIR)/" "$(VM_DEPLOY_DIR)/"
-	@mkdir -p "$(VM_DEPLOY_DIR)/apps/vitalserver" "$(VM_DEPLOY_DIR)/vendor/vitalserver" "$(VM_DEPLOY_DIR)/docs"
+	@mkdir -p "$(VM_DEPLOY_DIR)/apps/vitalserver" "$(VM_DEPLOY_DIR)/apps/vitalserver-audit-proxy" "$(VM_DEPLOY_DIR)/vendor/vitalserver" "$(VM_DEPLOY_DIR)/docs/openapi" "$(VM_DEPLOY_DIR)/docs/macos-runtime"
 	rsync -a --delete $(VM_RSYNC_EXCLUDES) apps/vitalserver/docker "$(VM_DEPLOY_DIR)/apps/vitalserver/"
 	rsync -a --delete $(VM_RSYNC_EXCLUDES) apps/vitalserver/runtime "$(VM_DEPLOY_DIR)/apps/vitalserver/"
+	rsync -a --delete $(VM_RSYNC_EXCLUDES) apps/vitalserver-audit-proxy/ "$(VM_DEPLOY_DIR)/apps/vitalserver-audit-proxy/"
 	rsync -a --delete $(VM_RSYNC_EXCLUDES) vendor/vitalserver/vitalserver-old "$(VM_DEPLOY_DIR)/vendor/vitalserver/"
 	install -m 0644 docs/openapi.yaml "$(VM_DEPLOY_DIR)/docs/openapi.yaml"
+	install -m 0644 docs/openapi/audit-proxy.openapi.yaml "$(VM_DEPLOY_DIR)/docs/openapi/audit-proxy.openapi.yaml"
+	install -m 0644 docs/macos-runtime/runtime-control.openapi.json "$(VM_DEPLOY_DIR)/docs/macos-runtime/runtime-control.openapi.json"
 	@printf "cloud-init will run /mnt/tirosh/deploy/bootstrap.sh on first boot\n"
 
 vm-start: vm-sign

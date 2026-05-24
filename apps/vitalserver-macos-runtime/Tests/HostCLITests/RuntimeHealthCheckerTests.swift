@@ -13,11 +13,19 @@ final class RuntimeHealthCheckerTests: XCTestCase {
         fileStore.files[URL(fileURLWithPath: Constants.InstallPaths.proxyRun)] = Data()
         fileStore.files[installedPaths.runtimeDirectory.appendingPathComponent(Constants.Artifacts.rootfsBase)] = Data()
         fileStore.files[installedPaths.runtimeDirectory.appendingPathComponent(Constants.BootAssets.disk)] = Data()
+        fileStore.files[installedPaths.containerLogs] = Data("container logs".utf8)
+        fileStore.modificationDates[installedPaths.runtimeState] = Date(timeIntervalSince1970: 1_800_000_000)
+        fileStore.modificationDates[installedPaths.containerLogs] = Date(timeIntervalSince1970: 1_800_000_060)
 
         let commandRunner = RuntimeCommandRunnerSpy()
         commandRunner.results[Constants.Commands.plistBuddy] = RuntimeProcessResult(
             exitCode: 0,
             stdout: "8080\n",
+            stderr: ""
+        )
+        commandRunner.results[Constants.Commands.curl] = RuntimeProcessResult(
+            exitCode: 0,
+            stdout: #"{"activeWebSockets":1,"auditFileWriteFailures":0,"auditStdoutWriteFailures":0,"auditWriteFailures":0,"httpRequests":2,"redisIpWriteFailures":0,"socketIoEventsSeen":3,"socketIoParseFailures":0}"#,
             stderr: ""
         )
         let serviceManager = RuntimeServiceManagerSpy()
@@ -33,9 +41,19 @@ final class RuntimeHealthCheckerTests: XCTestCase {
         let guestGateway = RuntimeGuestGatewaySpy()
         guestGateway.runtimeState = GuestRuntimeStateDocument(
             vmIP: "192.168.64.2",
+            updatedAt: "2026-05-24T00:00:00Z",
             guestHTTP: "200",
             redisUIHTTP: "200",
-            swaggerUIHTTP: "200"
+            swaggerUIHTTP: "200",
+            containerServices: [
+                RuntimeContainerServiceObservation(
+                    service: "audit-proxy",
+                    name: "vitalserver-audit-proxy-1",
+                    state: "running",
+                    health: "healthy",
+                    exitCode: 0
+                ),
+            ]
         )
 
         let checker = RuntimeHealthChecker(
@@ -51,6 +69,14 @@ final class RuntimeHealthCheckerTests: XCTestCase {
 
         XCTAssertTrue(snapshot.isHealthy)
         XCTAssertTrue(httpProber.requestedURLs.contains("http://127.0.0.1:8080/ready"))
+        XCTAssertEqual(snapshot.containerObservation?.auditProxyHTTP, "200")
+        XCTAssertEqual(snapshot.containerObservation?.auditProxyStatus?.socketIoEventsSeen, 3)
+        XCTAssertEqual(snapshot.containerObservation?.runtimeStateUpdatedAt, "2026-05-24T00:00:00Z")
+        XCTAssertEqual(snapshot.containerObservation?.runtimeStateFileUpdatedAt, "2027-01-15T08:00:00Z")
+        XCTAssertEqual(snapshot.containerObservation?.containerLogsPresent, true)
+        XCTAssertEqual(snapshot.containerObservation?.containerLogsBytes, 14)
+        XCTAssertEqual(snapshot.containerObservation?.containerLogsUpdatedAt, "2027-01-15T08:01:00Z")
+        XCTAssertEqual(snapshot.containerObservation?.composeServices.map(\.service), ["audit-proxy"])
         XCTAssertEqual(snapshot.vmIP, "192.168.64.2")
         XCTAssertEqual(snapshot.proxyPort, 8080)
         XCTAssertEqual(snapshot.hostProxyHTTP, "200")
@@ -81,6 +107,44 @@ final class RuntimeHealthCheckerTests: XCTestCase {
         XCTAssertTrue(httpProber.requestedURLs.contains("http://192.168.64.3/ready"))
         XCTAssertTrue(snapshot.failureReasons.contains(.missingVMBin))
         XCTAssertTrue(snapshot.failureReasons.contains(.missingRootfsBase))
+    }
+
+    func testSnapshotReportsAuditProxyStatusFailure() {
+        let installedPaths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
+        let fileStore = RuntimeFileStoreSpy()
+        fileStore.files[URL(fileURLWithPath: Constants.InstallPaths.vmBin)] = Data()
+        fileStore.files[URL(fileURLWithPath: Constants.InstallPaths.proxyRun)] = Data()
+        fileStore.files[installedPaths.runtimeDirectory.appendingPathComponent(Constants.Artifacts.rootfsBase)] = Data()
+        fileStore.files[installedPaths.runtimeDirectory.appendingPathComponent(Constants.BootAssets.disk)] = Data()
+        let commandRunner = RuntimeCommandRunnerSpy()
+        commandRunner.results[Constants.Commands.plistBuddy] = RuntimeProcessResult(exitCode: 0, stdout: "80\n", stderr: "")
+        commandRunner.results[Constants.Commands.curl] = RuntimeProcessResult(exitCode: 7, stdout: "", stderr: "failed")
+        let serviceManager = RuntimeServiceManagerSpy()
+        serviceManager.states = [.vm: .loaded, .proxy: .loaded, .watchdog: .loaded]
+        let httpProber = RuntimeHTTPProberSpy()
+        httpProber.statuses[Constants.Runtime.proxyHealthURL(port: 80)] = "200"
+        httpProber.statuses[Constants.Runtime.redisUIHealthURL(port: 80)] = "200"
+        httpProber.statuses[Constants.Runtime.swaggerUIHealthURL(port: 80)] = "200"
+        let guestGateway = RuntimeGuestGatewaySpy()
+        guestGateway.runtimeState = GuestRuntimeStateDocument(
+            vmIP: "192.168.64.2",
+            guestHTTP: "200",
+            redisUIHTTP: "200",
+            swaggerUIHTTP: "200"
+        )
+        let checker = RuntimeHealthChecker(
+            installedPaths: installedPaths,
+            fileStore: fileStore,
+            serviceManager: serviceManager,
+            commandRunner: commandRunner,
+            httpProber: httpProber,
+            guestGateway: guestGateway
+        )
+
+        let snapshot = checker.snapshot()
+
+        XCTAssertEqual(snapshot.containerObservation?.auditProxyHTTP, "failed")
+        XCTAssertTrue(snapshot.failureReasons.contains(.auditProxyHTTP("failed")))
     }
 }
 

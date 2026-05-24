@@ -8,32 +8,37 @@ extension RuntimeReleaseInfo {
         vitalServerVersion: GeneratedRelease.vitalServerVersion,
         services: [
             RuntimeBundledServiceInfo(
-                name: AppConstants.Labels.vitalServer,
+                name: GeneratedRelease.vitalServerName,
                 image: GeneratedRelease.vitalServerImage,
                 version: GeneratedRelease.vitalServerVersion
             ),
             RuntimeBundledServiceInfo(
-                name: AppConstants.Labels.redis,
+                name: GeneratedRelease.auditProxyName,
+                image: GeneratedRelease.auditProxyImage,
+                version: GeneratedRelease.auditProxyVersion
+            ),
+            RuntimeBundledServiceInfo(
+                name: GeneratedRelease.redisName,
                 image: GeneratedRelease.redisImage,
                 version: GeneratedRelease.redisVersion
             ),
             RuntimeBundledServiceInfo(
-                name: AppConstants.Labels.redisUI,
+                name: GeneratedRelease.redisUIName,
                 image: GeneratedRelease.redisUIImage,
                 version: GeneratedRelease.redisUIVersion
             ),
             RuntimeBundledServiceInfo(
-                name: AppConstants.Labels.swaggerUI,
+                name: GeneratedRelease.swaggerUIName,
                 image: GeneratedRelease.swaggerUIImage,
                 version: GeneratedRelease.swaggerUIVersion
             ),
             RuntimeBundledServiceInfo(
-                name: AppConstants.Labels.guestEdgeProxy,
+                name: GeneratedRelease.guestEdgeName,
                 image: GeneratedRelease.guestEdgeImage,
                 version: GeneratedRelease.guestEdgeVersion
             ),
             RuntimeBundledServiceInfo(
-                name: AppConstants.Labels.hostProxyService,
+                name: GeneratedRelease.hostProxyName,
                 image: GeneratedRelease.hostProxyImage,
                 version: GeneratedRelease.hostProxyVersion
             ),

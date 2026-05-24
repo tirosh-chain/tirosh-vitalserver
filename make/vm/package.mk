@@ -1,4 +1,4 @@
-.PHONY: vm-nginx-artifact vm-nginx-bundle vm-docker-images vm-pkg-stage vm-pkg vm-pkg-release vm-app vm-dmg vm-dmg-release vm-pkg-clean vm-pkg-install vm-pkg-uninstall-dev vm-update-artifacts vm-update-bundle vm-rootfs-update-bundle vm-update-bundle-verify
+.PHONY: vm-nginx-artifact vm-nginx-bundle vm-docker-images vm-pkg vm-pkg-release vm-app vm-dmg vm-dmg-release vm-pkg-clean vm-pkg-install vm-pkg-uninstall-dev vm-update-bundle vm-rootfs-update-bundle vm-update-bundle-verify vm-rootfs-update-bundle-verify
 .PHONY: vm-airgap-rootfs vm-golden-rootfs
 
 vm-airgap-rootfs: vm-download vm-stage
@@ -66,146 +66,57 @@ vm-app: vm-version-source
 	codesign --force --sign "$(VM_CODESIGN_IDENTITY)" "$(VM_APP_BUNDLE)"
 	@printf "VM control app is ready: %s\n" "$(VM_APP_BUNDLE)"
 
-vm-pkg-stage: vm-sign vm-app vm-golden-rootfs vm-nginx-bundle vm-docker-images
-	@test -s "$(VM_GOLDEN_RUNTIME_DIR)/Image" || { printf "missing %s\n" "$(VM_GOLDEN_RUNTIME_DIR)/Image" >&2; exit 1; }
-	@test -s "$(VM_GOLDEN_RUNTIME_DIR)/initrd.img" || { printf "missing %s\n" "$(VM_GOLDEN_RUNTIME_DIR)/initrd.img" >&2; exit 1; }
-	@test -s "$(VM_PKG_ROOTFS_CACHE)" || { printf "missing %s\n" "$(VM_PKG_ROOTFS_CACHE)" >&2; exit 1; }
-	rm -rf "$(VM_PKG_ROOT)" "$(VM_PKG_SCRIPTS)"
-	@mkdir -p \
-		"$(VM_PKG_ROOT)$(VM_INSTALL_APPLICATIONS_DIR)" \
-		"$(VM_PKG_ROOT)/usr/local/bin" \
-		"$(VM_PKG_ROOT)$(VM_INSTALL_HOME)/runtime" \
-		"$(VM_PKG_ROOT)$(VM_INSTALL_HOME)/data/deploy" \
-		"$(VM_PKG_ROOT)$(VM_INSTALL_HOME)/Support/Proxy" \
-		"$(VM_PKG_ROOT)$(VM_INSTALL_NGINX_PREFIX)" \
-		"$(VM_PKG_ROOT)/Library/LaunchDaemons" \
-		"$(VM_PKG_SCRIPTS)"
-	codesign --force --sign "$(VM_CODESIGN_IDENTITY)" --entitlements "$(VM_RUNTIME_CLI_ENTITLEMENTS)" "$(VM_RUNTIME_CLI_BIN)"
-	install -m 0755 "$(VM_RUNTIME_CLI_BIN)" "$(VM_PKG_ROOT)$(VM_INSTALL_BIN)"
-	@codesign -d --entitlements :- "$(VM_PKG_ROOT)$(VM_INSTALL_BIN)" 2>&1 | grep -q "com.apple.security.virtualization" || { \
-		printf "packaged vitalserver-vm is missing virtualization entitlement: %s\n" "$(VM_PKG_ROOT)$(VM_INSTALL_BIN)" >&2; \
-		exit 1; \
-	}
-	install -m 0755 "$(VM_PACKAGING_DIR)/proxy-run" "$(VM_PKG_ROOT)$(VM_INSTALL_PROXY_RUN)"
-	install -m 0755 "$(VM_PACKAGING_DIR)/uninstall" "$(VM_PKG_ROOT)$(VM_INSTALL_UNINSTALL)"
-	rsync -a --delete "$(VM_APP_BUNDLE)/" "$(VM_PKG_ROOT)$(VM_INSTALL_APP_BUNDLE)/"
-	rsync -a "$(VM_PKG_NGINX_BUNDLE_DIR)/" "$(VM_PKG_ROOT)$(VM_INSTALL_NGINX_PREFIX)/"
-	install -m 0644 "$(VM_GOLDEN_RUNTIME_DIR)/Image" "$(VM_PKG_ROOT)$(VM_INSTALL_HOME)/runtime/Image"
-	install -m 0644 "$(VM_GOLDEN_RUNTIME_DIR)/initrd.img" "$(VM_PKG_ROOT)$(VM_INSTALL_HOME)/runtime/initrd.img"
-	install -m 0644 "$(VM_PKG_ROOTFS_CACHE)" "$(VM_PKG_ROOT)$(VM_INSTALL_HOME)/runtime/rootfs-base.raw.gz"
-	install -m 0644 "infra/macos-nginx/vitalserver.conf.template" "$(VM_PKG_ROOT)$(VM_INSTALL_HOME)/Support/Proxy/vitalserver.conf.template"
-	rsync -a $(VM_RSYNC_EXCLUDES) "$(VM_GUEST_DIR)/" "$(VM_PKG_ROOT)$(VM_INSTALL_HOME)/data/deploy/"
-	@mkdir -p "$(VM_PKG_ROOT)$(VM_INSTALL_HOME)/data/deploy/apps/vitalserver" "$(VM_PKG_ROOT)$(VM_INSTALL_HOME)/data/deploy/vendor/vitalserver" "$(VM_PKG_ROOT)$(VM_INSTALL_HOME)/data/deploy/docs" "$(VM_PKG_ROOT)$(VM_INSTALL_HOME)/data/deploy/docker-images"
-	rsync -a --delete $(VM_RSYNC_EXCLUDES) apps/vitalserver/docker "$(VM_PKG_ROOT)$(VM_INSTALL_HOME)/data/deploy/apps/vitalserver/"
-	rsync -a --delete $(VM_RSYNC_EXCLUDES) apps/vitalserver/runtime "$(VM_PKG_ROOT)$(VM_INSTALL_HOME)/data/deploy/apps/vitalserver/"
-	rsync -a --delete $(VM_RSYNC_EXCLUDES) vendor/vitalserver/vitalserver-old "$(VM_PKG_ROOT)$(VM_INSTALL_HOME)/data/deploy/vendor/vitalserver/"
-	install -m 0644 docs/openapi.yaml "$(VM_PKG_ROOT)$(VM_INSTALL_HOME)/data/deploy/docs/openapi.yaml"
-	install -m 0644 "$(VM_DOCKER_IMAGE_BUNDLE)" "$(VM_PKG_ROOT)$(VM_INSTALL_HOME)/data/deploy/docker-images/vitalserver-images.tar.gz"
-	$(VM_BUILD_RUNNER) render-template \
-		--template "$(VM_MACOS_RUNTIME_DIR)/launchd/com.tirosh.vitalserver-vm.plist.template" \
-		--output "$(VM_PKG_ROOT)/Library/LaunchDaemons/com.tirosh.vitalserver-vm.plist" \
-		--var "VITALSERVER_VM_BIN=$(VM_INSTALL_BIN)" \
-		--var "VITALSERVER_VM_HOME=$(VM_INSTALL_HOME)" \
-		--var "VITALSERVER_RUNTIME_LOGS=$(VM_INSTALL_RUNTIME_LOGS)"
-	$(VM_BUILD_RUNNER) render-template \
-		--template "$(VM_MACOS_RUNTIME_DIR)/launchd/com.tirosh.vitalserver-proxy.plist.template" \
-		--output "$(VM_PKG_ROOT)/Library/LaunchDaemons/com.tirosh.vitalserver-proxy.plist" \
-		--var "VITALSERVER_PROXY_RUN=$(VM_INSTALL_PROXY_RUN)" \
-		--var "VITALSERVER_VM_HOME=$(VM_INSTALL_HOME)" \
-		--var "VITALSERVER_RUNTIME_LOGS=$(VM_INSTALL_RUNTIME_LOGS)" \
-		--var "VITALSERVER_NGINX_PREFIX=$(VM_INSTALL_NGINX_PREFIX)" \
-		--var "VITALSERVER_NGINX_BIN=$(VM_INSTALL_NGINX_BIN)" \
-		--var "VITALSERVER_PROXY_PORT=$(VITALSERVER_PROXY_PORT)"
-	$(VM_BUILD_RUNNER) render-template \
-		--template "$(VM_MACOS_RUNTIME_DIR)/launchd/com.tirosh.vitalserver-watchdog.plist.template" \
-		--output "$(VM_PKG_ROOT)/Library/LaunchDaemons/com.tirosh.vitalserver-watchdog.plist" \
-		--var "VITALSERVER_VM_BIN=$(VM_INSTALL_BIN)" \
-		--var "VITALSERVER_VM_HOME=$(VM_INSTALL_HOME)" \
-		--var "VITALSERVER_RUNTIME_LOGS=$(VM_INSTALL_RUNTIME_LOGS)"
-	install -m 0755 "$(VM_PACKAGING_DIR)/preinstall" "$(VM_PKG_SCRIPTS)/preinstall"
-	install -m 0755 "$(VM_PACKAGING_DIR)/postinstall" "$(VM_PKG_SCRIPTS)/postinstall"
-	find "$(VM_PKG_ROOT)" "$(VM_PKG_SCRIPTS)" -name '._*' -delete
-	@xattr -rc "$(VM_PKG_ROOT)" 2>/dev/null || true
-	@printf "VM package staging root is ready: %s\n" "$(VM_PKG_ROOT)"
-
-vm-pkg: vm-pkg-stage
-	@mkdir -p "$(dir $(VM_PKG_OUTPUT))"
-	COPYFILE_DISABLE=1 pkgbuild \
-		--root "$(VM_PKG_ROOT)" \
-		--component-plist "$(VM_PKG_COMPONENT_PLIST)" \
-		--scripts "$(VM_PKG_SCRIPTS)" \
-		--filter '\.DS_Store$$' \
-		--filter '/CVS$$' \
-		--filter '/\.svn$$' \
-		--filter '.*\._.*' \
-		--identifier "$(VM_PKG_IDENTIFIER)" \
-		--version "$(VM_PKG_VERSION)" \
-		--install-location "/" \
-		"$(VM_PKG_OUTPUT)"
+vm-pkg: vm-golden-rootfs
+	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" release-pkg \
+		--release-file "$(VM_RELEASE_FILE)" \
+		--output "$(VM_PKG_OUTPUT)" \
+		--rootfs-base "$(VM_PKG_ROOTFS_CACHE)" \
+		--golden-runtime-dir "$(VM_GOLDEN_RUNTIME_DIR)" \
+		--proxy-port "$(VITALSERVER_PROXY_PORT)" \
+		--compression-threads "$(VM_COMPRESSION_THREADS)" \
+		--clang-module-cache "$(VM_CLANG_MODULE_CACHE)" \
+		--codesign-identity "$(VM_CODESIGN_IDENTITY)" \
+		$(if $(VM_SDKROOT),--sdkroot "$(VM_SDKROOT)") \
+		$(if $(VM_NGINX_BIN),--nginx-binary "$(VM_NGINX_BIN)") \
+		$(if $(VM_NGINX_EXPECTED_VERSION),--nginx-expected-version "$(VM_NGINX_EXPECTED_VERSION)")
 	@printf "VM package is ready: %s\n" "$(VM_PKG_OUTPUT)"
 
 vm-pkg-release: VM_RECREATE_GOLDEN_ROOTFS := true
 vm-pkg-release: vm-pkg
 
-vm-dmg: vm-pkg
-	rm -rf "$(VM_DMG_STAGING)"
-	@mkdir -p "$(VM_DMG_STAGING)"
-	install -m 0644 "$(VM_PKG_OUTPUT)" "$(VM_DMG_STAGING)/Install Tirosh VitalServer.pkg"
-	rm -f "$(VM_DMG_OUTPUT)"
-	@mkdir -p "$(dir $(VM_DMG_OUTPUT))"
-	hdiutil create \
-		-volname "$(VM_APP_NAME)" \
-		-srcfolder "$(VM_DMG_STAGING)" \
-		-ov \
-		-format UDZO \
-		"$(VM_DMG_OUTPUT)"
+vm-dmg: vm-golden-rootfs
+	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" release-dmg \
+		--release-file "$(VM_RELEASE_FILE)" \
+		--output "$(VM_DMG_OUTPUT)" \
+		--rootfs-base "$(VM_PKG_ROOTFS_CACHE)" \
+		--golden-runtime-dir "$(VM_GOLDEN_RUNTIME_DIR)" \
+		--proxy-port "$(VITALSERVER_PROXY_PORT)" \
+		--compression-threads "$(VM_COMPRESSION_THREADS)" \
+		--clang-module-cache "$(VM_CLANG_MODULE_CACHE)" \
+		--codesign-identity "$(VM_CODESIGN_IDENTITY)" \
+		$(if $(VM_SDKROOT),--sdkroot "$(VM_SDKROOT)") \
+		$(if $(VM_NGINX_BIN),--nginx-binary "$(VM_NGINX_BIN)") \
+		$(if $(VM_NGINX_EXPECTED_VERSION),--nginx-expected-version "$(VM_NGINX_EXPECTED_VERSION)")
 	@printf "VM control app dmg is ready: %s\n" "$(VM_DMG_OUTPUT)"
 
 vm-dmg-release: VM_RECREATE_GOLDEN_ROOTFS := true
 vm-dmg-release: vm-dmg
 
-vm-update-artifacts: vm-sign vm-app vm-nginx-bundle vm-docker-images
-	rm -rf "$(VM_UPDATE_ARTIFACT_DIR)"
-	@mkdir -p "$(VM_UPDATE_ARTIFACT_DIR)/runtime-tools" "$(VM_UPDATE_ARTIFACT_DIR)/deploy"
-	tar -czf "$(VM_UPDATE_APP_BUNDLE_ARCHIVE)" -C ".tmp" "$(VM_APP_NAME).app"
-	install -m 0755 "$(VM_RUNTIME_CLI_BIN)" "$(VM_UPDATE_ARTIFACT_DIR)/runtime-tools/vitalserver-vm"
-	install -m 0755 "$(VM_PACKAGING_DIR)/proxy-run" "$(VM_UPDATE_ARTIFACT_DIR)/runtime-tools/vitalserver-proxy-run"
-	install -m 0755 "$(VM_PACKAGING_DIR)/uninstall" "$(VM_UPDATE_ARTIFACT_DIR)/runtime-tools/tirosh-vitalserver-uninstall"
-	tar -czf "$(VM_UPDATE_RUNTIME_TOOLS_ARCHIVE)" -C "$(VM_UPDATE_ARTIFACT_DIR)/runtime-tools" vitalserver-vm vitalserver-proxy-run tirosh-vitalserver-uninstall
-	@mkdir -p "$(VM_UPDATE_ARTIFACT_DIR)/nginx"
-	rsync -a --delete "$(VM_PKG_NGINX_BUNDLE_DIR)/" "$(VM_UPDATE_ARTIFACT_DIR)/nginx/"
-	tar -czf "$(VM_UPDATE_NGINX_BUNDLE_ARCHIVE)" -C "$(VM_UPDATE_ARTIFACT_DIR)" nginx
-	rsync -a $(VM_RSYNC_EXCLUDES) "$(VM_GUEST_DIR)/" "$(VM_UPDATE_ARTIFACT_DIR)/deploy/"
-	@mkdir -p "$(VM_UPDATE_ARTIFACT_DIR)/deploy/apps/vitalserver" "$(VM_UPDATE_ARTIFACT_DIR)/deploy/vendor/vitalserver" "$(VM_UPDATE_ARTIFACT_DIR)/deploy/docs" "$(VM_UPDATE_ARTIFACT_DIR)/deploy/docker-images"
-	rsync -a --delete $(VM_RSYNC_EXCLUDES) apps/vitalserver/docker "$(VM_UPDATE_ARTIFACT_DIR)/deploy/apps/vitalserver/"
-	rsync -a --delete $(VM_RSYNC_EXCLUDES) apps/vitalserver/runtime "$(VM_UPDATE_ARTIFACT_DIR)/deploy/apps/vitalserver/"
-	rsync -a --delete $(VM_RSYNC_EXCLUDES) vendor/vitalserver/vitalserver-old "$(VM_UPDATE_ARTIFACT_DIR)/deploy/vendor/vitalserver/"
-	install -m 0644 docs/openapi.yaml "$(VM_UPDATE_ARTIFACT_DIR)/deploy/docs/openapi.yaml"
-	install -m 0644 "$(VM_DOCKER_IMAGE_BUNDLE)" "$(VM_UPDATE_ARTIFACT_DIR)/deploy/docker-images/vitalserver-images.tar.gz"
-	tar -czf "$(VM_UPDATE_GUEST_DEPLOY_ARCHIVE)" -C "$(VM_UPDATE_ARTIFACT_DIR)" deploy
-	@printf "VM update artifacts are ready: %s\n" "$(VM_UPDATE_ARTIFACT_DIR)"
-
-vm-update-bundle: vm-update-artifacts
-	$(VM_BUILD_RUNNER) update-bundle \
-		--version "$(VM_UPDATE_BUNDLE_VERSION)" \
-		--helper-version "$(VM_PKG_VERSION)" \
+vm-update-bundle:
+	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" release-update-bundle \
+		--release-file "$(VM_RELEASE_FILE)" \
+		--bundle-name "$(VM_UPDATE_BUNDLE_NAME)" \
 		--bundle-kind "$(VM_UPDATE_BUNDLE_KIND)" \
 		--target-platform "$(VM_UPDATE_TARGET_PLATFORM)" \
-		--min-updater-version "$(VM_UPDATE_MIN_UPDATER_VERSION)" \
-		--component "helperUI=$(VM_PKG_VERSION)+macos.1" \
-		--component "updater=$(VM_PKG_VERSION)" \
-		--component "supervisor=$(VM_PKG_VERSION)" \
-		--component "vmDriver=$(VM_PKG_VERSION)+macos.1" \
-		--component "serviceStack=$(VM_RELEASE_VITALSERVER_VERSION)-stack.1" \
-		--component "vitalServer=$(VM_RELEASE_VITALSERVER_VERSION)" \
-		--requires-guest-activation "$(if $(VM_UPDATE_GUEST_DEPLOY),true,false)" \
 		--requires-two-phase-update "$(VM_UPDATE_REQUIRES_TWO_PHASE_UPDATE)" \
 		--output-dir "$(VM_UPDATE_BUNDLE_DIR)" \
+		--compression-threads "$(VM_COMPRESSION_THREADS)" \
+		--clang-module-cache "$(VM_CLANG_MODULE_CACHE)" \
+		--codesign-identity "$(VM_CODESIGN_IDENTITY)" \
+		$(if $(VM_SDKROOT),--sdkroot "$(VM_SDKROOT)") \
+		$(if $(VM_NGINX_BIN),--nginx-binary "$(VM_NGINX_BIN)") \
+		$(if $(VM_NGINX_EXPECTED_VERSION),--nginx-expected-version "$(VM_NGINX_EXPECTED_VERSION)") \
 		$(if $(VM_UPDATE_ROOTFS_BASE),--rootfs-base "$(VM_UPDATE_ROOTFS_BASE)") \
-		$(if $(VM_UPDATE_APP_BUNDLE),--app-bundle "$(VM_UPDATE_APP_BUNDLE)") \
-		$(if $(VM_UPDATE_RUNTIME_TOOLS),--runtime-tools "$(VM_UPDATE_RUNTIME_TOOLS)") \
-		$(if $(VM_UPDATE_NGINX_BUNDLE),--nginx-bundle "$(VM_UPDATE_NGINX_BUNDLE)") \
-		$(if $(VM_UPDATE_GUEST_DEPLOY),--guest-deploy "$(VM_UPDATE_GUEST_DEPLOY)") \
 		$(foreach migration,$(VM_UPDATE_MIGRATIONS),--migration "$(migration)")
 	@printf "VM update bundle is ready: %s\n" "$(VM_UPDATE_BUNDLE_PATH)"
 
@@ -216,6 +127,9 @@ vm-rootfs-update-bundle: vm-golden-rootfs vm-update-bundle
 
 vm-update-bundle-verify:
 	$(VM_BUILD_RUNNER) verify-update-bundle "$(VM_UPDATE_BUNDLE_PATH)"
+
+vm-rootfs-update-bundle-verify: VM_UPDATE_BUNDLE_KIND := vm-image-update
+vm-rootfs-update-bundle-verify: vm-update-bundle-verify
 
 vm-pkg-clean:
 	rm -rf "$(VM_PKG_BUILD_DIR)" "$(VM_PKG_OUTPUT)" "$(VM_APP_BUNDLE)" "$(VM_DMG_OUTPUT)"

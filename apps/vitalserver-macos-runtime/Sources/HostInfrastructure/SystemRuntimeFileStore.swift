@@ -38,6 +38,11 @@ public struct SystemRuntimeFileStore: RuntimeFileStore {
         return UInt64(values.fileSize ?? 0)
     }
 
+    public func modificationDate(_ url: URL) throws -> Date {
+        let values = try url.resourceValues(forKeys: [.contentModificationDateKey])
+        return values.contentModificationDate ?? Date(timeIntervalSince1970: 0)
+    }
+
     public func writeData(_ data: Data, to url: URL, options: Data.WritingOptions = []) throws {
         try data.write(to: url, options: options)
     }

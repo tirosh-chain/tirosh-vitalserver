@@ -1,4 +1,5 @@
 import Foundation
+import Core
 import RuntimeControl
 @testable import MacRuntimeControlApp
 import XCTest
@@ -210,6 +211,14 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
 
     func loadHealthStatus(settings: RuntimeSettings) async -> RuntimeStatus {
         RuntimeStatus()
+    }
+
+    func loadRuntimeEvents(limit: Int) -> RuntimeEventHistory {
+        RuntimeEventHistory(events: [])
+    }
+
+    func loadRuntimeEvents(query: RuntimeEventQuery) -> RuntimeEventHistory {
+        RuntimeEventHistory(events: [])
     }
 
     func loadBackups(latestBackupPath: String?) -> [RuntimeBackup] {

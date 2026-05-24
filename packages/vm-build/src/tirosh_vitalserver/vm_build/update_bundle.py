@@ -10,6 +10,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+PRODUCT_ID = "com.tirosh.vitalserver"
+SUPPORTED_BUNDLE_KINDS = {"product-update", "vm-image-update"}
+SUPPORTED_CHANNELS = {"stable", "dev"}
+
 
 @dataclass(frozen=True)
 class ArtifactInput:
@@ -20,9 +24,15 @@ class ArtifactInput:
 
 def run_build_update_bundle(args: Any) -> int:
     output_dir = args.output_dir
-    bundle_name = f"update-bundle-{args.version}"
+    bundle_name = (
+        args.bundle_name
+        or f"update-bundle-{args.channel}-{args.bundle_kind}-{args.version}"
+    )
+    if not is_safe_bundle_name(bundle_name):
+        raise SystemExit(f"invalid bundle name: {bundle_name}")
     bundle_archive = output_dir / f"{bundle_name}.tar.gz"
     helper_version = args.helper_version or args.version
+    release_label = args.release_label or args.version
     components = component_versions(args.component, helper_version)
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -94,10 +104,12 @@ def run_build_update_bundle(args: Any) -> int:
             checksum_lines.append(f"{digest}  migrations/{migration.name}\n")
 
         manifest = {
-            "schemaVersion": 2,
-            "product": "com.tirosh.vitalserver",
+            "schemaVersion": 3,
+            "product": PRODUCT_ID,
             "bundleKind": args.bundle_kind,
+            "channel": args.channel,
             "helperVersion": helper_version,
+            "releaseLabel": release_label,
             "targetPlatforms": args.target_platform,
             "components": components,
             "minUpdaterVersion": (
@@ -278,7 +290,9 @@ def validate_manifest(manifest: dict[str, Any]) -> None:
         "schemaVersion": int,
         "product": str,
         "bundleKind": str,
+        "channel": str,
         "helperVersion": str,
+        "releaseLabel": str,
         "targetPlatforms": list,
         "components": dict,
         "minUpdaterVersion": str,
@@ -294,12 +308,16 @@ def validate_manifest(manifest: dict[str, Any]) -> None:
         if not isinstance(manifest[key], expected_type):
             raise SystemExit(f"manifest key has wrong type: {key}")
 
-    if manifest["schemaVersion"] != 2:
+    if manifest["schemaVersion"] != 3:
         raise SystemExit(f"unsupported schemaVersion: {manifest['schemaVersion']}")
-    if manifest["product"] != "com.tirosh.vitalserver":
+    if manifest["product"] != PRODUCT_ID:
         raise SystemExit(f"unsupported product: {manifest['product']}")
-    if manifest["bundleKind"] not in {"product-update", "vm-image-update"}:
+    if manifest["bundleKind"] not in SUPPORTED_BUNDLE_KINDS:
         raise SystemExit(f"unsupported bundleKind: {manifest['bundleKind']}")
+    if manifest["channel"] not in SUPPORTED_CHANNELS:
+        raise SystemExit(f"unsupported channel: {manifest['channel']}")
+    if not manifest["releaseLabel"]:
+        raise SystemExit("releaseLabel must be non-empty")
     for platform in manifest["targetPlatforms"]:
         if not isinstance(platform, str) or not platform:
             raise SystemExit("targetPlatforms entries must be non-empty strings")

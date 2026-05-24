@@ -1,5 +1,6 @@
 import Foundation
 import RuntimeControl
+import Core
 
 @MainActor
 public struct MacHostRuntimeClient: RuntimeControlClient, RuntimeHostClient {
@@ -55,6 +56,14 @@ public struct MacHostRuntimeClient: RuntimeControlClient, RuntimeHostClient {
 
     public func loadHealthStatus(settings: RuntimeSettings) async -> RuntimeStatus {
         await statusReader.loadHealthStatus(settings: settings)
+    }
+
+    public func loadRuntimeEvents(limit: Int) -> RuntimeEventHistory {
+        statusReader.loadRuntimeEvents(limit: limit)
+    }
+
+    public func loadRuntimeEvents(query: RuntimeEventQuery) -> RuntimeEventHistory {
+        statusReader.loadRuntimeEvents(query: query)
     }
 
     public func loadBackups(latestBackupPath: String?) -> [RuntimeBackup] {

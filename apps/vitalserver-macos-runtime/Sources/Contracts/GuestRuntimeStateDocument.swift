@@ -10,6 +10,7 @@ public struct GuestRuntimeStateDocument: Codable, Equatable, Sendable {
     public let cpuUsagePercent: Double?
     public let memory: ResourceUsage?
     public let systemDisk: ResourceUsage?
+    public let containerServices: [RuntimeContainerServiceObservation]?
 
     public init(
         vmIP: String?,
@@ -20,7 +21,8 @@ public struct GuestRuntimeStateDocument: Codable, Equatable, Sendable {
         swaggerUIHTTP: String?,
         cpuUsagePercent: Double? = nil,
         memory: ResourceUsage? = nil,
-        systemDisk: ResourceUsage? = nil
+        systemDisk: ResourceUsage? = nil,
+        containerServices: [RuntimeContainerServiceObservation]? = nil
     ) {
         self.vmIP = vmIP
         self.updatedAt = updatedAt
@@ -31,6 +33,7 @@ public struct GuestRuntimeStateDocument: Codable, Equatable, Sendable {
         self.cpuUsagePercent = cpuUsagePercent
         self.memory = memory
         self.systemDisk = systemDisk
+        self.containerServices = containerServices
     }
 
 }

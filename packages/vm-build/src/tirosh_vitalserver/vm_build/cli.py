@@ -7,6 +7,7 @@ from .cloud_init import run_cloud_init
 from .config import default_config_path, parse_bool
 from .docker_images import run_docker_images
 from .nginx_bundle import run_nginx_bundle
+from .release import run_release_dmg, run_release_pkg, run_release_update_bundle
 from .render_template import run_render_template
 from .rootfs_base import add_rootfs_base_arguments, run_rootfs_base
 from .ubuntu import run_ubuntu
@@ -77,6 +78,9 @@ def main() -> int:
     )
     update_bundle.add_argument("--version", required=True)
     update_bundle.add_argument("--runtime-version")
+    update_bundle.add_argument("--bundle-name")
+    update_bundle.add_argument("--channel", choices=["stable", "dev"], default="stable")
+    update_bundle.add_argument("--release-label")
     update_bundle.add_argument("--min-updater-version")
     update_bundle.add_argument("--requires-guest-activation", type=parse_bool)
     update_bundle.add_argument(
@@ -105,6 +109,53 @@ def main() -> int:
     update_bundle.add_argument("--guest-deploy", type=Path)
     update_bundle.add_argument("--migration", action="append", type=Path, default=[])
 
+    release_update_bundle = subparsers.add_parser(
+        "release-update-bundle",
+        help="build a release update bundle from release.json",
+    )
+    release_update_bundle.add_argument("--release-file", type=Path, required=True)
+    release_update_bundle.add_argument("--bundle-name")
+    release_update_bundle.add_argument(
+        "--bundle-kind",
+        choices=["product-update", "vm-image-update"],
+        default="product-update",
+    )
+    release_update_bundle.add_argument("--target-platform")
+    release_update_bundle.add_argument("--output-dir", type=Path, required=True)
+    release_update_bundle.add_argument("--rootfs-base", type=Path)
+    release_update_bundle.add_argument(
+        "--migration",
+        action="append",
+        type=Path,
+        default=[],
+    )
+    release_update_bundle.add_argument(
+        "--requires-two-phase-update",
+        type=parse_bool,
+        default=False,
+    )
+    release_update_bundle.add_argument("--compression-threads", type=int)
+    release_update_bundle.add_argument("--sdkroot")
+    release_update_bundle.add_argument(
+        "--clang-module-cache",
+    )
+    release_update_bundle.add_argument("--codesign-identity", default="-")
+    release_update_bundle.add_argument("--nginx-binary")
+    release_update_bundle.add_argument("--nginx-expected-version")
+    release_update_bundle.add_argument("--docker-platform")
+
+    release_pkg = subparsers.add_parser(
+        "release-pkg",
+        help="build a macOS runtime pkg from release.json",
+    )
+    add_release_package_arguments(release_pkg)
+
+    release_dmg = subparsers.add_parser(
+        "release-dmg",
+        help="build a macOS runtime dmg from release.json",
+    )
+    add_release_package_arguments(release_dmg)
+
     verify_update_bundle = subparsers.add_parser(
         "verify-update-bundle",
         help="verify an update bundle manifest and checksums",
@@ -132,9 +183,30 @@ def main() -> int:
         return run_cloud_init(args)
     if args.command == "update-bundle":
         return run_build_update_bundle(args)
+    if args.command == "release-update-bundle":
+        return run_release_update_bundle(args)
+    if args.command == "release-pkg":
+        return run_release_pkg(args)
+    if args.command == "release-dmg":
+        return run_release_dmg(args)
     if args.command == "verify-update-bundle":
         return run_verify_update_bundle(args)
     if args.command == "render-template":
         return run_render_template(args)
     parser.error(f"unsupported command: {args.command}")
     return 2
+
+
+def add_release_package_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--release-file", type=Path, required=True)
+    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--rootfs-base", type=Path, required=True)
+    parser.add_argument("--golden-runtime-dir", type=Path, required=True)
+    parser.add_argument("--proxy-port", required=True)
+    parser.add_argument("--compression-threads", type=int)
+    parser.add_argument("--sdkroot")
+    parser.add_argument("--clang-module-cache")
+    parser.add_argument("--codesign-identity", default="-")
+    parser.add_argument("--nginx-binary")
+    parser.add_argument("--nginx-expected-version")
+    parser.add_argument("--docker-platform")

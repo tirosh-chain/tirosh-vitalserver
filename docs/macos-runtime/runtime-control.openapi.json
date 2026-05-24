@@ -70,6 +70,140 @@
         }
       }
     },
+    "/runtime/status/stream": {
+      "get": {
+        "operationId": "streamRuntimeStatus",
+        "summary": "Subscribe to runtime status updates",
+        "description": "Long-lived SSE stream for runtime status updates. The local router keeps the connection open, emits a runtime-status frame when the RuntimeStatus payload changes, and sends heartbeat comments while idle.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "readOnlyLocal",
+        "x-runtime-control-access": "browserSafe",
+        "responses": {
+          "200": {
+            "description": "Runtime status SSE stream.",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string",
+                  "description": "Long-lived SSE frames with id runtime-status, event runtime-status, and data as a JSON-encoded RuntimeStatus."
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/runtime/events": {
+      "get": {
+        "operationId": "getRuntimeEvents",
+        "summary": "Read runtime status and progress event history",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "readOnlyLocal",
+        "x-runtime-control-access": "browserSafe",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "minimum": 1, "maximum": 500, "default": 100 }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "schema": { "$ref": "#/components/schemas/RuntimeEventType" }
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "description": "Inclusive ISO-8601 timestamp lower bound." }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Opaque pagination cursor returned as nextCursor by the previous response."
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Recent runtime event history",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeEventHistory"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/runtime/events/stream": {
+      "get": {
+        "operationId": "streamRuntimeEvents",
+        "summary": "Subscribe to runtime status and progress events",
+        "description": "Long-lived SSE stream for runtime event updates. Each data frame carries one RuntimeEventDocument JSON object. The local router keeps the connection open, emits undelivered events, and sends heartbeat comments while idle.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "readOnlyLocal",
+        "x-runtime-control-access": "browserSafe",
+        "parameters": [
+          {
+            "name": "Last-Event-ID",
+            "in": "header",
+            "required": false,
+            "schema": { "type": "string" },
+            "description": "Optional SSE resume marker. Clients should pass the latest received event id when reconnecting."
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "schema": { "$ref": "#/components/schemas/RuntimeEventType" }
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "description": "Inclusive ISO-8601 timestamp lower bound for initial catch-up." }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Runtime event SSE stream. Event names match RuntimeEventType values.",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string",
+                  "description": "SSE frames with id, event, and data fields. data is a JSON-encoded RuntimeEventDocument."
+                },
+                "examples": {
+                  "statusChanged": {
+                    "value": "id: event-1\nevent: status-changed\ndata: {\"id\":\"event-1\",\"eventType\":\"status-changed\",\"timestamp\":\"2026-05-24T00:00:00Z\",\"product\":\"TiroshVitalServer\",\"status\":\"healthy\",\"operation\":\"health\",\"message\":\"ready\"}\n\n"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
     "/runtime/health": {
       "post": {
         "operationId": "refreshRuntimeHealth",
@@ -385,6 +519,55 @@
         }
       }
     },
+    "/host/logs/stream": {
+      "get": {
+        "operationId": "streamHostLogText",
+        "summary": "Subscribe to local log text updates",
+        "description": "Long-lived SSE stream for host log text updates. The local router keeps the connection open, emits a runtime-log frame when the selected log text changes, and sends heartbeat comments while idle.",
+        "x-runtime-control-scope": "hostAffordance",
+        "x-runtime-control-implementation": "readOnlyLocal",
+        "x-runtime-control-access": "localServerMediated",
+        "parameters": [
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "schema": { "$ref": "#/components/schemas/RuntimeLogSource" }
+          },
+          {
+            "name": "lineLimit",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "minimum": 1, "default": 200 }
+          },
+          {
+            "name": "helperMessage",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Host log text SSE stream.",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string",
+                  "description": "SSE frame with event runtime-log and data as a JSON-encoded RuntimeLogTextResponse."
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
     "/host/logs/export": {
       "post": {
         "operationId": "exportHostLogs",
@@ -564,6 +747,16 @@
           }
         }
       },
+      "BadRequest": {
+        "description": "Invalid request parameter or body",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/RuntimeControlErrorResponse"
+            }
+          }
+        }
+      },
       "NotImplemented": {
         "description": "Endpoint exists in the contract but is not implemented by the current local read-only server",
         "content": {
@@ -636,7 +829,139 @@
           "failureReasons": {
             "type": "array",
             "items": { "type": "string" }
+          },
+          "containerObservation": {
+            "oneOf": [
+              { "$ref": "#/components/schemas/RuntimeContainerObservation" },
+              { "type": "null" }
+            ]
           }
+        }
+      },
+      "RuntimeEventHistory": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "events": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/RuntimeEventDocument" }
+          },
+          "nextCursor": {
+            "type": ["string", "null"],
+            "description": "Opaque pagination cursor for the next page. Omitted or null when there is no next page."
+          }
+        }
+      },
+      "RuntimeEventDocument": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "schemaVersion": { "type": "integer" },
+          "id": { "type": "string" },
+          "source": { "type": "string" },
+          "eventType": { "$ref": "#/components/schemas/RuntimeEventType" },
+          "timestamp": { "type": "string" },
+          "product": { "type": "string" },
+          "status": { "$ref": "#/components/schemas/RuntimeState" },
+          "previousStatus": { "type": ["string", "null"] },
+          "operation": { "type": "string" },
+          "message": { "type": "string" },
+          "runtimeVersion": { "type": "string" },
+          "failureReasons": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "containerObservation": {
+            "oneOf": [
+              { "$ref": "#/components/schemas/RuntimeContainerObservation" },
+              { "type": "null" }
+            ]
+          },
+          "progress": {
+            "type": ["object", "null"],
+            "additionalProperties": true
+          }
+        }
+      },
+      "RuntimeEventType": {
+        "type": "string",
+        "enum": [
+          "status-changed",
+          "progress-updated",
+          "health-observed",
+          "recovery-triggered",
+          "recovery-completed",
+          "container-observed",
+          "audit-proxy-observed",
+          "runtime-command-started",
+          "runtime-command-completed",
+          "runtime-command-failed"
+        ]
+      },
+      "RuntimeContainerObservation": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "auditProxyHTTP": { "type": "string" },
+          "auditProxyStatus": {
+            "oneOf": [
+              { "$ref": "#/components/schemas/RuntimeAuditProxyStatusDocument" },
+              { "type": "null" }
+            ]
+          },
+          "runtimeStateUpdatedAt": { "type": ["string", "null"] },
+          "runtimeStateFileUpdatedAt": { "type": ["string", "null"] },
+          "containerLogsPresent": { "type": "boolean" },
+          "containerLogsBytes": { "type": ["integer", "null"], "minimum": 0 },
+          "containerLogsUpdatedAt": { "type": ["string", "null"] },
+          "composeServices": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/RuntimeContainerServiceObservation" }
+          }
+        }
+      },
+      "RuntimeAuditProxyStatusDocument": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "startedAt": { "type": ["string", "null"] },
+          "uptimeSeconds": { "type": ["integer", "null"], "minimum": 0 },
+          "activeWebSockets": { "type": "integer", "minimum": 0 },
+          "activeRecorderConnections": { "type": "integer", "minimum": 0 },
+          "recorders": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/RuntimeRecorderConnectionObservation" }
+          },
+          "httpRequests": { "type": "integer", "minimum": 0 },
+          "socketIoEventsSeen": { "type": "integer", "minimum": 0 },
+          "socketIoParseFailures": { "type": "integer", "minimum": 0 },
+          "auditWriteFailures": { "type": "integer", "minimum": 0 },
+          "auditFileWriteFailures": { "type": "integer", "minimum": 0 },
+          "auditStdoutWriteFailures": { "type": "integer", "minimum": 0 },
+          "redisIpWriteFailures": { "type": "integer", "minimum": 0 }
+        }
+      },
+      "RuntimeRecorderConnectionObservation": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "vrcode": { "type": "string" },
+          "activeConnections": { "type": "integer", "minimum": 0 },
+          "selectedIp": { "type": ["string", "null"] },
+          "lastSeenAt": { "type": ["string", "null"] }
+        }
+      },
+      "RuntimeContainerServiceObservation": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "service": { "type": "string" },
+          "name": { "type": ["string", "null"] },
+          "state": { "type": ["string", "null"] },
+          "health": { "type": ["string", "null"] },
+          "exitCode": { "type": ["integer", "null"] },
+          "startedAt": { "type": ["string", "null"] },
+          "uptimeSeconds": { "type": ["integer", "null"], "minimum": 0 }
         }
       },
       "RuntimeState": {
@@ -769,10 +1094,23 @@
       "RuntimeLogTextRequest": {
         "type": "object",
         "properties": {
-          "source": { "type": "string" },
+          "source": { "$ref": "#/components/schemas/RuntimeLogSource" },
           "helperMessage": { "type": "string" },
           "lineLimit": { "type": "integer" }
         }
+      },
+      "RuntimeLogSource": {
+        "type": "string",
+        "enum": [
+          "helperMessage",
+          "install",
+          "command",
+          "launcher",
+          "proxyOutput",
+          "proxyError",
+          "updateActivation",
+          "containers"
+        ]
       },
       "RuntimeLogTextResponse": {
         "type": "object",

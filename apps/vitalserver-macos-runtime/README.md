@@ -25,6 +25,8 @@ Browser / VRecorder
 | Status | VitalServer URL, data directory, 전체 health와 주요 서비스 상태 확인 |
 | Settings | CPU, memory, disk 증가, shared/NAT network, vital files directory, start-on-boot 같은 운영 설정 |
 | Update | offline/online 공통 update bundle 검증과 적용 |
+| Events | runtime event timeline 확인 |
+| Test | dev profile 빌드에서만 Runtime Control browser console과 Testkit API 상태 확인 |
 | Logs | Helper, install, command, VM/container log를 필터링해 확인 |
 | About | Helper, Updater, Supervisor, VM Driver, Service Stack, VM Image, VitalServer version 확인 |
 | Advanced | 네트워크 override, service diagnostics, admin password reset, recovery operation |
@@ -94,20 +96,20 @@ VM Image/rootfs 자체를 교체해야 하는 드문 업데이트는 별도 targ
 
 ```sh
 make vm-rootfs-update-bundle
-make vm-update-bundle-verify
+make vm-rootfs-update-bundle-verify
 ```
 
 생성 위치:
 
 ```text
-dist/update-bundles/update-bundle-<version>.tar.gz
+dist/update-bundles/update-bundle-<channel>-<kind>-<releaseLabel>.tar.gz
 ```
 
 현장에서는 Helper app의 Update 탭에서 bundle tarball을 선택하거나, CLI로 검증/적용합니다.
 
 ```sh
-/usr/local/bin/vitalserver-vm runtime verify-bundle /path/to/update-bundle-<version>.tar.gz
-sudo /usr/local/bin/vitalserver-vm runtime apply-bundle /path/to/update-bundle-<version>.tar.gz
+/usr/local/bin/vitalserver-vm runtime verify-bundle /path/to/update-bundle-<channel>-<kind>-<releaseLabel>.tar.gz
+sudo /usr/local/bin/vitalserver-vm runtime apply-bundle /path/to/update-bundle-<channel>-<kind>-<releaseLabel>.tar.gz
 ```
 
 `apply-bundle`은 mutable `vm-disk.img`를 보존하고 replaceable artifact만 교체합니다. 적용 전 backup을 만들고 health check 실패 시 rollback합니다.
@@ -177,13 +179,18 @@ VitalServer Helper product/component 버전은 아래 파일을 기준으로 관
 
 ```text
 apps/vitalserver-macos-runtime/release.json
+apps/vitalserver-macos-runtime/release-dev.json
 ```
+
+`release.json`은 stable channel SoT이고, `release-dev.json`은 내부 dev channel SoT입니다. 기본 make target은 stable 파일을 읽습니다. dev artifact를 만들 때는 `VM_RELEASE_FILE=apps/vitalserver-macos-runtime/release-dev.json`을 넘깁니다. Manifest field 정책과 dev/test exposure 정책은 [packaging 문서](../../docs/macos-runtime/packaging.md#버전-source-of-truth)를 기준으로 관리합니다.
 
 `VitalServer Helper`는 최상위 product release입니다. 플랫폼별 UI/VM provider 구현은 같은 Helper release 아래의 variant로 보고, 세부 변경 범위는 Helper UI, Updater, Supervisor, VM Driver, Service Stack, VM Image, VitalServer component version으로 설명합니다.
 
-Update bundle manifest는 `helperVersion`, `targetPlatforms`, `minUpdaterVersion`, `components`를 기준으로 해석합니다. `components` map은 `helperUI`, `updater`, `supervisor`, `vmDriver`, `serviceStack`, `vmImage`, `vitalServer`처럼 실제 변경된 계층을 드러냅니다. Helper UI와 VM Driver는 platform-specific이고, Updater/Supervisor는 host platform에 붙어 있으며, Service Stack과 VM Image는 guest/service 쪽 책임으로 구분합니다.
+Update bundle manifest는 `schemaVersion: 3`, `channel`, `helperVersion`, `releaseLabel`, `targetPlatforms`, `minUpdaterVersion`, `components`를 기준으로 해석합니다. 설치된 updater channel과 bundle channel이 다르면 apply preflight에서 거부합니다. `helperVersion`은 Apple/package-safe numeric version이고, `releaseLabel`은 `0.1.7-dev`처럼 artifact, staging, backup, installed version 표시에 쓰는 identity입니다.
 
-`make vm-build`, `make vm-pkg`, `make vm-update-bundle`은 이 값을 읽어 app bundle version, package version, update bundle version, update compatibility, bundled service version 표시에 반영합니다. 버전을 올릴 때는 이 파일을 수정합니다.
+`components` map은 `helperUI`, `updater`, `supervisor`, `vmDriver`, `serviceStack`, `vmImage`, `vitalServer`처럼 실제 변경된 계층을 드러냅니다. Helper UI와 VM Driver는 platform-specific이고, Updater/Supervisor는 host platform에 붙어 있으며, Service Stack과 VM Image는 guest/service 쪽 책임으로 구분합니다.
+
+`make vm-build`, `make vm-pkg`, `make vm-update-bundle`은 이 값을 읽어 app bundle version, package version, update bundle version, update compatibility, bundled service image/version/name 표시에 반영합니다. 버전, Helper UI의 service 표시명, 배포 profile, optional container service 포함 정책을 바꿀 때는 이 파일을 수정합니다.
 
 ## 주요 명령
 
@@ -196,7 +203,8 @@ Update bundle manifest는 `helperVersion`, `targetPlatforms`, `minUpdaterVersion
 | `make vm-dmg-release` | clean golden rootfs로 `.dmg` 재생성 |
 | `make vm-update-bundle` | offline/online 공통 Product Update bundle 생성 |
 | `make vm-rootfs-update-bundle` | rootfs-base까지 포함하는 VM Image Update bundle 생성 |
-| `make vm-update-bundle-verify` | update bundle checksum/manifest 검증 |
+| `make vm-update-bundle-verify` | product update bundle checksum/manifest 검증 |
+| `make vm-rootfs-update-bundle-verify` | VM image/rootfs update bundle checksum/manifest 검증 |
 | `make vm-pkg-install` | 현재 Mac에 개발용 package 설치 |
 | `make vm-installed-health` | 설치된 launchd VM/proxy 상태 확인 |
 | `make vm-pkg-uninstall-dev` | 개발용 설치물 제거 |

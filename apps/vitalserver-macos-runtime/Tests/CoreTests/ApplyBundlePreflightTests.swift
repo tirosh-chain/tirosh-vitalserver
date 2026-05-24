@@ -19,9 +19,10 @@ final class ApplyBundlePreflightTests: XCTestCase {
 
     func testPreflightContextCarriesPreparedInputsForApplyAndRollback() {
         let manifest = UpdateBundleManifest(
-            schemaVersion: 2,
+            schemaVersion: 3,
             product: "com.tirosh.vitalserver",
             helperVersion: "1.2.3",
+            releaseLabel: "1.2.3",
             targetPlatforms: ["macos-arm64"],
             components: ["updater": "4.5.6"],
             createdAt: "2026-05-21T12:00:00Z",
