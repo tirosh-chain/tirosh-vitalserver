@@ -17,8 +17,26 @@ public struct RuntimeControlClientAPIReadHandler: RuntimeControlAPIReadHandler {
         return client.loadStatus(settings: settings)
     }
 
-    public func loadEvents() async throws -> RuntimeEventHistory {
-        client.loadRuntimeEvents(limit: 100)
+    public func loadEvents(query: RuntimeControlEventQuery) async throws -> RuntimeEventHistory {
+        let scanLimit = query.eventType == nil && query.since == nil
+            ? query.limit
+            : RuntimeControlEventQuery.maximumLimit
+        let history = client.loadRuntimeEvents(limit: scanLimit)
+        let filtered = history.events
+            .filter { event in
+                guard let eventType = query.eventType else {
+                    return true
+                }
+                return event.eventType.rawValue == eventType
+            }
+            .filter { event in
+                guard let since = query.since else {
+                    return true
+                }
+                return event.timestamp >= since
+            }
+            .suffix(query.limit)
+        return RuntimeEventHistory(events: Array(filtered))
     }
 
     public func loadHealthStatus() async throws -> RuntimeStatus {

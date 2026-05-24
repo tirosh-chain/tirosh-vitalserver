@@ -3,6 +3,14 @@ import Foundation
 public enum RuntimeEventType: Codable, Equatable, Sendable {
     case statusChanged
     case progressUpdated
+    case healthObserved
+    case recoveryTriggered
+    case recoveryCompleted
+    case containerObserved
+    case auditProxyObserved
+    case runtimeCommandStarted
+    case runtimeCommandCompleted
+    case runtimeCommandFailed
     case unknown(String)
 
     public init(rawValue: String) {
@@ -11,6 +19,22 @@ public enum RuntimeEventType: Codable, Equatable, Sendable {
             self = .statusChanged
         case "progress-updated":
             self = .progressUpdated
+        case "health-observed":
+            self = .healthObserved
+        case "recovery-triggered":
+            self = .recoveryTriggered
+        case "recovery-completed":
+            self = .recoveryCompleted
+        case "container-observed":
+            self = .containerObserved
+        case "audit-proxy-observed":
+            self = .auditProxyObserved
+        case "runtime-command-started":
+            self = .runtimeCommandStarted
+        case "runtime-command-completed":
+            self = .runtimeCommandCompleted
+        case "runtime-command-failed":
+            self = .runtimeCommandFailed
         default:
             self = .unknown(rawValue)
         }
@@ -22,6 +46,22 @@ public enum RuntimeEventType: Codable, Equatable, Sendable {
             return "status-changed"
         case .progressUpdated:
             return "progress-updated"
+        case .healthObserved:
+            return "health-observed"
+        case .recoveryTriggered:
+            return "recovery-triggered"
+        case .recoveryCompleted:
+            return "recovery-completed"
+        case .containerObserved:
+            return "container-observed"
+        case .auditProxyObserved:
+            return "audit-proxy-observed"
+        case .runtimeCommandStarted:
+            return "runtime-command-started"
+        case .runtimeCommandCompleted:
+            return "runtime-command-completed"
+        case .runtimeCommandFailed:
+            return "runtime-command-failed"
         case .unknown(let value):
             return value
         }

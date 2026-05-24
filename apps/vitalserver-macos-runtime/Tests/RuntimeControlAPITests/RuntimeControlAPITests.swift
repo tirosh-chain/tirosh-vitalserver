@@ -211,7 +211,7 @@ final class RuntimeControlAPITests: XCTestCase {
         let capabilities = try await handler.loadCapabilities()
         let settings = try await handler.loadSettings()
         let status = try await handler.loadStatus()
-        let events = try await handler.loadEvents()
+        let events = try await handler.loadEvents(query: RuntimeControlEventQuery())
         let health = try await handler.loadHealthStatus()
         let release = try await handler.loadReleaseInfo()
         let installInfo = try await handler.loadInstallInfo()
@@ -219,13 +219,39 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertFalse(capabilities.canOpenLocalFiles)
         XCTAssertEqual(settings.cpuCount, 6)
         XCTAssertEqual(status.statusMessage, "status with 6 CPUs")
-        XCTAssertEqual(events.events.map(\.id), ["event-1"])
+        XCTAssertEqual(events.events.map(\.id), ["event-1", "event-2", "event-3"])
         XCTAssertEqual(health.statusMessage, "health with 6 CPUs")
         XCTAssertEqual(release.helperVersion, "0.2.0")
         XCTAssertEqual(installInfo.backupsPath, "/backups")
         XCTAssertEqual(client.loadSettingsCount, 3)
         XCTAssertEqual(client.statusSettings, [RuntimeSettings(cpuCount: 6, memoryGiB: 10)])
         XCTAssertEqual(client.healthSettings, [RuntimeSettings(cpuCount: 6, memoryGiB: 10)])
+    }
+
+    @MainActor
+    func testRuntimeEventsEndpointAcceptsQueryFilters() async throws {
+        let client = FakeRuntimeControlClient()
+        let router = RuntimeControlAPIRouter(handler: RuntimeControlClientAPIReadHandler(client: client))
+
+        let response = await router.route(.init(
+            method: .get,
+            path: "/runtime/events?limit=1&type=audit-proxy-observed&since=2026-05-24T00:01:00Z"
+        ))
+        let history = try decode(RuntimeEventHistory.self, from: response)
+
+        XCTAssertEqual(history.events.map(\.id), ["event-3"])
+        XCTAssertEqual(client.eventLimits, [RuntimeControlEventQuery.maximumLimit])
+    }
+
+    @MainActor
+    func testRuntimeEventsEndpointRejectsInvalidLimit() async throws {
+        let router = RuntimeControlAPIRouter(handler: StubRuntimeControlAPIReadHandler())
+
+        let response = await router.route(.init(method: .get, path: "/runtime/events?limit=zero"))
+        let error = try decodeError(from: response)
+
+        XCTAssertEqual(response.status, .badRequest)
+        XCTAssertEqual(error.code, .badRequest)
     }
 
     @MainActor
@@ -496,7 +522,7 @@ private struct StubRuntimeControlAPIReadHandler: RuntimeControlAPIReadHandler {
         )
     }
 
-    func loadEvents() async throws -> RuntimeEventHistory {
+    func loadEvents(query: RuntimeControlEventQuery) async throws -> RuntimeEventHistory {
         RuntimeEventHistory(events: [
             RuntimeEventDocument(
                 id: "event-1",
@@ -543,6 +569,7 @@ private final class FakeRuntimeControlClient: RuntimeControlClient {
     var loadSettingsCount = 0
     var statusSettings: [RuntimeSettings] = []
     var healthSettings: [RuntimeSettings] = []
+    var eventLimits: [Int] = []
 
     func loadSettings() -> RuntimeSettings {
         loadSettingsCount += 1
@@ -560,7 +587,8 @@ private final class FakeRuntimeControlClient: RuntimeControlClient {
     }
 
     func loadRuntimeEvents(limit: Int) -> RuntimeEventHistory {
-        RuntimeEventHistory(events: [
+        eventLimits.append(limit)
+        return RuntimeEventHistory(events: [
             RuntimeEventDocument(
                 id: "event-1",
                 eventType: .statusChanged,
@@ -570,6 +598,34 @@ private final class FakeRuntimeControlClient: RuntimeControlClient {
                 previousStatus: nil,
                 operation: .health,
                 message: "ready",
+                runtimeVersion: "1.2.3",
+                failureReasons: [],
+                containerObservation: nil,
+                progress: nil
+            ),
+            RuntimeEventDocument(
+                id: "event-2",
+                eventType: .containerObserved,
+                timestamp: "2026-05-24T00:01:00Z",
+                product: "TiroshVitalServer",
+                status: .healthy,
+                previousStatus: nil,
+                operation: .health,
+                message: "container observed",
+                runtimeVersion: "1.2.3",
+                failureReasons: [],
+                containerObservation: nil,
+                progress: nil
+            ),
+            RuntimeEventDocument(
+                id: "event-3",
+                eventType: .auditProxyObserved,
+                timestamp: "2026-05-24T00:02:00Z",
+                product: "TiroshVitalServer",
+                status: .healthy,
+                previousStatus: nil,
+                operation: .health,
+                message: "audit proxy observed",
                 runtimeVersion: "1.2.3",
                 failureReasons: [],
                 containerObservation: nil,

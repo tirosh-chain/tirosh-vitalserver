@@ -177,6 +177,39 @@ final class ContractsTests: XCTestCase {
         ])
     }
 
+    func testRuntimeEventTypeDefinesOperationalTaxonomyAndPreservesUnknownValues() throws {
+        let knownTypes: [RuntimeEventType] = [
+            .statusChanged,
+            .progressUpdated,
+            .healthObserved,
+            .recoveryTriggered,
+            .recoveryCompleted,
+            .containerObserved,
+            .auditProxyObserved,
+            .runtimeCommandStarted,
+            .runtimeCommandCompleted,
+            .runtimeCommandFailed,
+        ]
+
+        XCTAssertEqual(knownTypes.map(\.rawValue), [
+            "status-changed",
+            "progress-updated",
+            "health-observed",
+            "recovery-triggered",
+            "recovery-completed",
+            "container-observed",
+            "audit-proxy-observed",
+            "runtime-command-started",
+            "runtime-command-completed",
+            "runtime-command-failed",
+        ])
+
+        let encoded = try JSONEncoder().encode(RuntimeEventType.unknown("vendor-event"))
+        let decoded = try JSONDecoder().decode(RuntimeEventType.self, from: encoded)
+
+        XCTAssertEqual(decoded, .unknown("vendor-event"))
+    }
+
     private func decodeFixture<T: Decodable>(_ type: T.Type, named name: String) throws -> T {
         let url = try XCTUnwrap(Bundle.module.url(forResource: name, withExtension: "json"))
         let data = try Data(contentsOf: url)

@@ -79,6 +79,9 @@ Runtime Control API는 정규화된 결과를 노출합니다.
 
 - `GET /runtime/status`: 최신 runtime read model
 - `GET /runtime/events`: watchdog이 정규화한 최근 event history
+  - `limit`: 1-500, 기본 100
+  - `type`: event type filter
+  - `since`: ISO-8601 timestamp lower bound
 - raw log 조회는 `/host/logs/read` 계열 host affordance로 유지합니다.
 
 Container raw log나 Redis audit list를 API의 canonical source로 직접 노출하지 않습니다. 필요하면 별도
@@ -125,12 +128,29 @@ Runtime event와 command audit event는 분리합니다.
 
 | 종류 | 목적 | 예 |
 |---|---|---|
-| runtime operational event | 제품 runtime 상태 전이와 복구 판단 추적 | `status-changed`, `progress-updated`, `watchdog-observation` |
+| runtime operational event | 제품 runtime 상태 전이와 복구 판단 추적 | `status-changed`, `progress-updated`, `health-observed` |
 | command audit event | VRecorder/Web Monitoring command 추적 | `join_vr`, `send_data`, `req_cmd`, `command_dispatch` |
 | raw log | 사람이 보는 진단 정보 | compose logs, launchd logs, proxy logs |
 
 Runtime operational event는 watchdog이 생성합니다. Command audit event는 audit proxy가 생성하고 watchdog은
 필요한 경우 요약 상태만 관측합니다.
+
+Runtime operational event type은 API와 JSONL의 public contract입니다.
+
+| Event type | Owner | Meaning |
+|---|---|---|
+| `status-changed` | watchdog | runtime 상태가 이전 관측값과 달라짐 |
+| `progress-updated` | host runtime | install/update/rollback 같은 workflow 진행 상태 변경 |
+| `health-observed` | watchdog | health snapshot이 수집됨 |
+| `container-observed` | watchdog | container log/status 관측값이 수집됨 |
+| `audit-proxy-observed` | watchdog | audit proxy status/counter 관측값이 수집됨 |
+| `recovery-triggered` | watchdog | recovery policy가 복구 작업을 시작함 |
+| `recovery-completed` | watchdog | recovery 작업 후 runtime이 다시 관측됨 |
+| `runtime-command-started` | host runtime | start/stop/configure/update 등 host command 시작 |
+| `runtime-command-completed` | host runtime | host command 성공 종료 |
+| `runtime-command-failed` | host runtime | host command 실패 종료 |
+
+새 이벤트는 raw source 이름이 아니라 제품 운영 의미를 기준으로 추가합니다.
 
 ## 정리 단계
 

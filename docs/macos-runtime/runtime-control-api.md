@@ -37,6 +37,14 @@ macOS Helper app composition은 read-only Runtime Control API server를 조립�
 
 나머지 route는 계약에는 있지만 현재 read-only router에서 `501 endpointNotImplemented`를 반환합니다.
 
+`GET /runtime/events`는 운영 이력 조회용 query parameter를 지원합니다.
+
+| Query | Meaning |
+|---|---|
+| `limit` | 반환할 event 수. 1-500, 기본 100 |
+| `type` | `status-changed`, `health-observed`, `audit-proxy-observed` 같은 runtime event type |
+| `since` | ISO-8601 timestamp lower bound |
+
 ## Route Scope
 
 `RuntimeControlAPI`는 route를 두 scope로 나눕니다.

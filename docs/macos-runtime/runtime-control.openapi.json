@@ -77,6 +77,26 @@
         "x-runtime-control-scope": "runtimeControl",
         "x-runtime-control-implementation": "readOnlyLocal",
         "x-runtime-control-access": "browserSafe",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "minimum": 1, "maximum": 500, "default": 100 }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "schema": { "$ref": "#/components/schemas/RuntimeEventType" }
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "description": "Inclusive ISO-8601 timestamp lower bound." }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Recent runtime event history",
@@ -87,6 +107,9 @@
                 }
               }
             }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
@@ -588,6 +611,16 @@
           }
         }
       },
+      "BadRequest": {
+        "description": "Invalid request parameter or body",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/RuntimeControlErrorResponse"
+            }
+          }
+        }
+      },
       "NotImplemented": {
         "description": "Endpoint exists in the contract but is not implemented by the current local read-only server",
         "content": {
@@ -680,7 +713,7 @@
           "schemaVersion": { "type": "integer" },
           "id": { "type": "string" },
           "source": { "type": "string" },
-          "eventType": { "type": "string", "enum": ["status-changed", "progress-updated"] },
+          "eventType": { "$ref": "#/components/schemas/RuntimeEventType" },
           "timestamp": { "type": "string" },
           "product": { "type": "string" },
           "status": { "$ref": "#/components/schemas/RuntimeState" },
@@ -701,6 +734,21 @@
             "additionalProperties": true
           }
         }
+      },
+      "RuntimeEventType": {
+        "type": "string",
+        "enum": [
+          "status-changed",
+          "progress-updated",
+          "health-observed",
+          "recovery-triggered",
+          "recovery-completed",
+          "container-observed",
+          "audit-proxy-observed",
+          "runtime-command-started",
+          "runtime-command-completed",
+          "runtime-command-failed"
+        ]
       },
       "RuntimeState": {
         "type": "string",

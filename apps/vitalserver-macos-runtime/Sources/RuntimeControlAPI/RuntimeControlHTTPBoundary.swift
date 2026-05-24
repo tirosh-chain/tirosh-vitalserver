@@ -50,7 +50,7 @@ public struct RuntimeControlHTTPResponse: Equatable, Sendable {
 public protocol RuntimeControlAPIReadHandler {
     func loadCapabilities() async throws -> RuntimeControlCapabilities
     func loadStatus() async throws -> RuntimeStatus
-    func loadEvents() async throws -> RuntimeEventHistory
+    func loadEvents(query: RuntimeControlEventQuery) async throws -> RuntimeEventHistory
     func loadHealthStatus() async throws -> RuntimeStatus
     func loadSettings() async throws -> RuntimeSettings
     func loadReleaseInfo() async throws -> RuntimeReleaseInfo
@@ -80,7 +80,7 @@ public struct RuntimeControlAPIRouter {
         }
 
         if let endpoint = RuntimeControlAPIEndpoint.matching(method: request.method, path: request.path) {
-            return await route(endpoint)
+            return await route(endpoint, request: request)
         }
 
         guard RuntimeControlAPIEndpoint.matching(path: request.path) != nil else {
@@ -94,7 +94,7 @@ public struct RuntimeControlAPIRouter {
         )
     }
 
-    private func route(_ endpoint: RuntimeControlAPIEndpoint) async -> RuntimeControlHTTPResponse {
+    private func route(_ endpoint: RuntimeControlAPIEndpoint, request: RuntimeControlHTTPRequest) async -> RuntimeControlHTTPResponse {
         do {
             switch endpoint {
             case .capabilities:
@@ -102,7 +102,7 @@ public struct RuntimeControlAPIRouter {
             case .status:
                 return try await jsonResponse(handler.loadStatus())
             case .events:
-                return try await jsonResponse(handler.loadEvents())
+                return try await jsonResponse(handler.loadEvents(query: try request.runtimeEventQuery()))
             case .health:
                 return try await jsonResponse(handler.loadHealthStatus())
             case .settings:
@@ -131,6 +131,12 @@ public struct RuntimeControlAPIRouter {
                     message: "Endpoint is not implemented by this router."
                 )
             }
+        } catch let queryError as RuntimeControlHTTPQueryError {
+            return errorResponse(
+                status: .badRequest,
+                code: .badRequest,
+                message: queryError.localizedDescription
+            )
         } catch {
             return errorResponse(
                 status: .internalServerError,
@@ -181,5 +187,52 @@ public extension RuntimeControlHTTPRequest {
         headers.first { key, _ in
             key.caseInsensitiveCompare(name) == .orderedSame
         }?.value
+    }
+
+    func queryValue(named name: String) -> String? {
+        queryParameters.first { key, _ in
+            key.caseInsensitiveCompare(name) == .orderedSame
+        }?.value
+    }
+
+    var queryParameters: [String: String] {
+        guard let components = URLComponents(string: path), let queryItems = components.queryItems else {
+            return [:]
+        }
+        return queryItems.reduce(into: [:]) { result, item in
+            guard let value = item.value else {
+                return
+            }
+            result[item.name] = value
+        }
+    }
+
+    func runtimeEventQuery() throws -> RuntimeControlEventQuery {
+        let limit: Int
+        if let rawLimit = queryValue(named: "limit") {
+            guard let parsedLimit = Int(rawLimit), parsedLimit > 0 else {
+                throw RuntimeControlHTTPQueryError.invalidLimit(rawLimit)
+            }
+            limit = parsedLimit
+        } else {
+            limit = RuntimeControlEventQuery.defaultLimit
+        }
+
+        return RuntimeControlEventQuery(
+            limit: limit,
+            eventType: queryValue(named: "type"),
+            since: queryValue(named: "since")
+        )
+    }
+}
+
+public enum RuntimeControlHTTPQueryError: LocalizedError, Equatable {
+    case invalidLimit(String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .invalidLimit(let value):
+            return "Invalid runtime event limit: \(value)"
+        }
     }
 }

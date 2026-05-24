@@ -195,6 +195,21 @@ public struct RuntimeControlCommandResponse: Codable, Equatable, Sendable {
     }
 }
 
+public struct RuntimeControlEventQuery: Equatable, Sendable {
+    public static let defaultLimit = 100
+    public static let maximumLimit = 500
+
+    public let limit: Int
+    public let eventType: String?
+    public let since: String?
+
+    public init(limit: Int = defaultLimit, eventType: String? = nil, since: String? = nil) {
+        self.limit = min(max(limit, 1), Self.maximumLimit)
+        self.eventType = eventType
+        self.since = since
+    }
+}
+
 public struct RuntimeApplySettingsRequest: Codable, Equatable, Sendable {
     public let settings: RuntimeSettings
 
