@@ -12,6 +12,7 @@ public protocol RuntimeFileReading {
     func readData(_ url: URL) throws -> Data
     func readUTF8Text(_ url: URL) throws -> String
     func fileSize(_ url: URL) throws -> UInt64
+    func modificationDate(_ url: URL) throws -> Date
 }
 
 public protocol RuntimeFileWriting {

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
 import json
 import os
 import socket
@@ -7,6 +9,9 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+
+DEPLOY_DIR = Path(os.environ.get("TIROSH_DEPLOY_DIR", "/mnt/tirosh/deploy"))
+PROJECT_NAME = os.environ.get("TIROSH_COMPOSE_PROJECT", "vitalserver")
 
 
 def first_non_loopback_ip() -> str:
@@ -97,6 +102,65 @@ def disk_usage(path: str) -> dict[str, int] | None:
     return {"usedBytes": max(total - available, 0), "totalBytes": total}
 
 
+def compose_services() -> list[dict[str, object]]:
+    compose_path = DEPLOY_DIR / "compose.yaml"
+    if not compose_path.is_file():
+        return []
+
+    command = [
+        "docker",
+        "compose",
+        "--project-name",
+        PROJECT_NAME,
+        "-f",
+        str(compose_path),
+        "ps",
+        "--format",
+        "json",
+    ]
+    try:
+        output = subprocess.check_output(command, stderr=subprocess.DEVNULL, text=True)
+    except Exception:
+        return []
+
+    documents: list[dict[str, object]] = []
+    try:
+        parsed = json.loads(output)
+        if isinstance(parsed, list):
+            documents = [item for item in parsed if isinstance(item, dict)]
+        elif isinstance(parsed, dict):
+            documents = [parsed]
+    except json.JSONDecodeError:
+        for line in output.splitlines():
+            try:
+                parsed_line = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(parsed_line, dict):
+                documents.append(parsed_line)
+
+    services: list[dict[str, object]] = []
+    for item in documents:
+        service = str(item.get("Service") or item.get("Name") or "")
+        if not service:
+            continue
+        exit_code = item.get("ExitCode")
+        try:
+            normalized_exit_code = int(exit_code) if exit_code not in (None, "") else None
+        except (TypeError, ValueError):
+            normalized_exit_code = None
+        services.append(
+            {
+                "exitCode": normalized_exit_code,
+                "health": item.get("Health"),
+                "name": item.get("Name"),
+                "service": service,
+                "state": item.get("State"),
+            }
+        )
+    return services
+
+
 def main() -> int:
     if len(sys.argv) < 2 or len(sys.argv) > 5:
         print(
@@ -116,6 +180,7 @@ def main() -> int:
                 "schemaVersion": 1,
                 "vmIP": first_non_loopback_ip(),
                 "bootID": boot_id(),
+                "containerServices": compose_services(),
                 "cpuUsagePercent": cpu_usage_percent(),
                 "guestHTTP": guest_http,
                 "memory": memory_usage(),

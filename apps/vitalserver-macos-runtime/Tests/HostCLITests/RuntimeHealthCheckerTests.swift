@@ -13,6 +13,9 @@ final class RuntimeHealthCheckerTests: XCTestCase {
         fileStore.files[URL(fileURLWithPath: Constants.InstallPaths.proxyRun)] = Data()
         fileStore.files[installedPaths.runtimeDirectory.appendingPathComponent(Constants.Artifacts.rootfsBase)] = Data()
         fileStore.files[installedPaths.runtimeDirectory.appendingPathComponent(Constants.BootAssets.disk)] = Data()
+        fileStore.files[installedPaths.containerLogs] = Data("container logs".utf8)
+        fileStore.modificationDates[installedPaths.runtimeState] = Date(timeIntervalSince1970: 1_800_000_000)
+        fileStore.modificationDates[installedPaths.containerLogs] = Date(timeIntervalSince1970: 1_800_000_060)
 
         let commandRunner = RuntimeCommandRunnerSpy()
         commandRunner.results[Constants.Commands.plistBuddy] = RuntimeProcessResult(
@@ -38,9 +41,19 @@ final class RuntimeHealthCheckerTests: XCTestCase {
         let guestGateway = RuntimeGuestGatewaySpy()
         guestGateway.runtimeState = GuestRuntimeStateDocument(
             vmIP: "192.168.64.2",
+            updatedAt: "2026-05-24T00:00:00Z",
             guestHTTP: "200",
             redisUIHTTP: "200",
-            swaggerUIHTTP: "200"
+            swaggerUIHTTP: "200",
+            containerServices: [
+                RuntimeContainerServiceObservation(
+                    service: "audit-proxy",
+                    name: "vitalserver-audit-proxy-1",
+                    state: "running",
+                    health: "healthy",
+                    exitCode: 0
+                ),
+            ]
         )
 
         let checker = RuntimeHealthChecker(
@@ -58,6 +71,12 @@ final class RuntimeHealthCheckerTests: XCTestCase {
         XCTAssertTrue(httpProber.requestedURLs.contains("http://127.0.0.1:8080/ready"))
         XCTAssertEqual(snapshot.containerObservation?.auditProxyHTTP, "200")
         XCTAssertEqual(snapshot.containerObservation?.auditProxyStatus?.socketIoEventsSeen, 3)
+        XCTAssertEqual(snapshot.containerObservation?.runtimeStateUpdatedAt, "2026-05-24T00:00:00Z")
+        XCTAssertEqual(snapshot.containerObservation?.runtimeStateFileUpdatedAt, "2027-01-15T08:00:00Z")
+        XCTAssertEqual(snapshot.containerObservation?.containerLogsPresent, true)
+        XCTAssertEqual(snapshot.containerObservation?.containerLogsBytes, 14)
+        XCTAssertEqual(snapshot.containerObservation?.containerLogsUpdatedAt, "2027-01-15T08:01:00Z")
+        XCTAssertEqual(snapshot.containerObservation?.composeServices.map(\.service), ["audit-proxy"])
         XCTAssertEqual(snapshot.vmIP, "192.168.64.2")
         XCTAssertEqual(snapshot.proxyPort, 8080)
         XCTAssertEqual(snapshot.hostProxyHTTP, "200")

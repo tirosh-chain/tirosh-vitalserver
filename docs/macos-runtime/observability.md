@@ -169,8 +169,12 @@ Swift 쪽에 `RuntimeContainerObservation` read model을 추가합니다.
 
 - audit proxy `/audit-proxy/status` HTTP 관측 결과
 - audit proxy `/audit-proxy/status` counter snapshot
+- `runtime-state.json` 내부 `updatedAt`
+- `runtime-state.json` 파일 수정 시각
 - `container-logs.log` 존재 여부
 - `container-logs.log` byte size
+- `container-logs.log` 파일 수정 시각
+- guest `docker compose ps --format json`에서 정규화한 compose service summary
 
 이 모델은 watchdog의 관측 입력입니다. Helper UI에 그대로 노출하기보다는 `runtime-status`와
 `runtime-events`로 정규화합니다. 현재는 audit proxy status endpoint 접근 실패만
@@ -179,9 +183,9 @@ Swift 쪽에 `RuntimeContainerObservation` read model을 추가합니다.
 
 남은 후보:
 
-- `runtime-state.json` updated age
-- `container-logs.log` updated age
-- compose service health summary
+- `runtime-state.json` updated age를 failure policy에 반영
+- `container-logs.log` updated age를 warning policy에 반영
+- compose service health summary를 recovery trigger와 연결
 
 ### 3단계: audit proxy status를 watchdog 관측 대상에 편입
 

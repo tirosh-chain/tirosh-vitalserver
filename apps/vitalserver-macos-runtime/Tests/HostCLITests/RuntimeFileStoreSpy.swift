@@ -5,6 +5,7 @@ import Contracts
 final class RuntimeFileStoreSpy: RuntimeFileStore {
     var temporaryDirectory = URL(fileURLWithPath: "/tmp")
     var files: [URL: Data] = [:]
+    var modificationDates: [URL: Date] = [:]
     var directories: Set<URL> = []
     var removed: [URL] = []
 
@@ -33,6 +34,13 @@ final class RuntimeFileStoreSpy: RuntimeFileStore {
 
     func fileSize(_ url: URL) throws -> UInt64 {
         UInt64(try readData(url).count)
+    }
+
+    func modificationDate(_ url: URL) throws -> Date {
+        guard let date = modificationDates[url] else {
+            throw CocoaError(.fileReadNoSuchFile, userInfo: [NSFilePathErrorKey: url.path])
+        }
+        return date
     }
 
     func writeData(_ data: Data, to url: URL, options: Data.WritingOptions) throws {

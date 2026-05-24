@@ -211,7 +211,7 @@ final class RuntimeControlAPITests: XCTestCase {
         let capabilities = try await handler.loadCapabilities()
         let settings = try await handler.loadSettings()
         let status = try await handler.loadStatus()
-        let events = try await handler.loadEvents(query: RuntimeControlEventQuery())
+        let events = try await handler.loadEvents()
         let health = try await handler.loadHealthStatus()
         let release = try await handler.loadReleaseInfo()
         let installInfo = try await handler.loadInstallInfo()
@@ -522,7 +522,7 @@ private struct StubRuntimeControlAPIReadHandler: RuntimeControlAPIReadHandler {
         )
     }
 
-    func loadEvents(query: RuntimeControlEventQuery) async throws -> RuntimeEventHistory {
+    func loadEvents() async throws -> RuntimeEventHistory {
         RuntimeEventHistory(events: [
             RuntimeEventDocument(
                 id: "event-1",

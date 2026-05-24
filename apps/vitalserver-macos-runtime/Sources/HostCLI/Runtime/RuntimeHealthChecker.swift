@@ -42,7 +42,7 @@ struct RuntimeHealthChecker {
         let hostProxyHTTP = httpProber.statusCode(url: Constants.Runtime.proxyHealthURL(port: proxyPort))
         let redisUIHTTP = httpProber.statusCode(url: Constants.Runtime.redisUIHealthURL(port: proxyPort))
         let swaggerUIHTTP = httpProber.statusCode(url: Constants.Runtime.swaggerUIHealthURL(port: proxyPort))
-        let containerObservation = containerObservation(proxyPort: proxyPort)
+        let containerObservation = containerObservation(proxyPort: proxyPort, guestState: guestState)
 
         return RuntimeHealthEvaluator.evaluate(RuntimeHealthInput(
             vmExecutable: fileStore.isExecutableFile(atPath: Constants.InstallPaths.vmBin),
@@ -188,15 +188,26 @@ struct RuntimeHealthChecker {
         readTrimmed(installedPaths.proxyNginxPID)
     }
 
-    private func containerObservation(proxyPort: Int) -> RuntimeContainerObservation {
+    private func containerObservation(proxyPort: Int, guestState: GuestRuntimeStateDocument?) -> RuntimeContainerObservation {
         let auditProxyStatus = auditProxyStatus(port: proxyPort)
         let containerLogsBytes = try? fileStore.fileSize(installedPaths.containerLogs)
         return RuntimeContainerObservation(
             auditProxyHTTP: auditProxyStatus.httpStatus,
             auditProxyStatus: auditProxyStatus.document,
+            runtimeStateUpdatedAt: guestState?.updatedAt,
+            runtimeStateFileUpdatedAt: fileModifiedAt(installedPaths.runtimeState),
             containerLogsPresent: fileStore.fileExists(installedPaths.containerLogs),
-            containerLogsBytes: containerLogsBytes
+            containerLogsBytes: containerLogsBytes,
+            containerLogsUpdatedAt: fileModifiedAt(installedPaths.containerLogs),
+            composeServices: guestState?.containerServices ?? []
         )
+    }
+
+    private func fileModifiedAt(_ url: URL) -> String? {
+        guard let date = try? fileStore.modificationDate(url) else {
+            return nil
+        }
+        return ISO8601DateFormatter().string(from: date)
     }
 
     private func auditProxyStatus(port: Int) -> (httpStatus: String, document: RuntimeAuditProxyStatusDocument?) {

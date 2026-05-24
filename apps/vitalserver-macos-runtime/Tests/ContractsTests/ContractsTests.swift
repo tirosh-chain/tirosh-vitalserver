@@ -41,6 +41,39 @@ final class ContractsTests: XCTestCase {
         XCTAssertEqual(document.systemDisk?.percent, 31.25)
     }
 
+    func testDecodesGuestRuntimeStateContainerServices() throws {
+        let json = """
+        {
+          "schemaVersion": 1,
+          "vmIP": "192.168.64.2",
+          "guestHTTP": "200",
+          "redisUIHTTP": "200",
+          "swaggerUIHTTP": "200",
+          "updatedAt": "2026-05-24T00:00:00Z",
+          "containerServices": [
+            {
+              "service": "audit-proxy",
+              "name": "vitalserver-audit-proxy-1",
+              "state": "running",
+              "health": "healthy",
+              "exitCode": 0
+            }
+          ]
+        }
+        """
+        let document = try JSONDecoder().decode(GuestRuntimeStateDocument.self, from: Data(json.utf8))
+
+        XCTAssertEqual(document.containerServices, [
+            RuntimeContainerServiceObservation(
+                service: "audit-proxy",
+                name: "vitalserver-audit-proxy-1",
+                state: "running",
+                health: "healthy",
+                exitCode: 0
+            ),
+        ])
+    }
+
     func testDecodesActivationResultV1() throws {
         let document = try decodeFixture(
             GuestUpdateActivationResultDocument.self,
