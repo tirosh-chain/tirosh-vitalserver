@@ -82,7 +82,7 @@ vm-nginx-bundle: $(if $(VM_NGINX_BIN),,vm-nginx-artifact)
 
 vm-docker-images:
 	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" docker-images \
-		--bundle-path "$(call VM_TOML_VALUE,docker_images.bundle_path)" \
+		--bundle-path "$(call VM_TOML_VALUE,guest.docker_images.bundle_path)" \
 		--compression-threads "$(VM_COMPRESSION_THREADS)"
 
 vm-require-release-branch:

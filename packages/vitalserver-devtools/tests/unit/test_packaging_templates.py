@@ -3,15 +3,17 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from tirosh_vitalserver.devtools.config.macos.release_settings import (
-    load_macos_release_settings,
-    settings_install_app_bundle,
-)
-from tirosh_vitalserver.devtools.release.macos.installer_templates import (
+from tirosh_vitalserver.devtools.adapters.macos_release.installer_templates import (
     render_packaging_executable,
     render_packaging_template,
 )
-from tirosh_vitalserver.devtools.toolchain.workspace_paths import repo_root
+from tirosh_vitalserver.devtools.adapters.toolchain.workspace_paths import repo_root
+from tirosh_vitalserver.devtools.config.macos.release_settings import (
+    load_macos_release_settings,
+)
+from tirosh_vitalserver.devtools.core.macos_release.install_paths import (
+    settings_install_app_bundle,
+)
 
 
 def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:

@@ -1,24 +1,20 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
 from pathlib import Path
 
-
-@dataclass(frozen=True)
-class ReleaseManifest:
-    channel: str
-    helper_version: str
-    release_label: str
-    minimum_updater_version: str
-    vitalserver_version: str
-    target_platform: str
+from tirosh_vitalserver.devtools.core.release_manifest import ReleaseManifest
 
 
 def load_release_manifest(path: Path) -> ReleaseManifest:
     if not path.is_file():
         raise SystemExit(f"error: missing release manifest: {path}")
-    release = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        release = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise SystemExit(f"error: invalid release manifest {path}: {exc}") from exc
+    if not isinstance(release, dict):
+        raise SystemExit(f"error: release manifest must be a JSON object: {path}")
     return ReleaseManifest(
         channel=required_release_string(release, "channel"),
         helper_version=required_release_string(release, "helperVersion"),

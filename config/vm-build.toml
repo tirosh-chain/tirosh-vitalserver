@@ -2,7 +2,7 @@
 # This file is not installed as product runtime config.
 
 [workspace]
-runtime_dir = "apps/vitalserver-macos-runtime"
+macos_runtime_source_dir = "apps/vitalserver-macos-runtime"
 build_dir = ".tmp/vitalserver-vm-pkg"
 dist_dir = "dist"
 clang_module_cache = ".tmp/clang-module-cache"
@@ -10,6 +10,7 @@ clang_module_cache = ".tmp/clang-module-cache"
 [macos.app]
 name = "VitalServer Helper"
 helper_product_name = "VitalServerHelper"
+runtime_cli_product_name = "vitalserver-vm"
 bundle_dir = ".tmp/VitalServer Helper.app"
 
 [macos.package]
@@ -45,7 +46,12 @@ installed_plist = "com.tirosh.vitalserver-proxy.plist"
 template_file = "com.tirosh.vitalserver-watchdog.plist.template"
 installed_plist = "com.tirosh.vitalserver-watchdog.plist"
 
-[ubuntu]
+[macos.host_proxy.nginx]
+binary_path = ".artifacts/nginx/macos/bin/nginx"
+expected_version = "nginx/1.31.0"
+non_system_dylib_prefixes = ["/opt/", "/usr/local/"]
+
+[guest.ubuntu]
 release = "noble"
 version = "24.04"
 base_url = "https://cloud-images.ubuntu.com/releases/noble/release"
@@ -53,12 +59,12 @@ arch = "auto"
 kernel_suffix = "vmlinuz-generic"
 initrd_suffix = "initrd-generic"
 
-[runtime]
+[guest.runtime]
 disk_image_name = "vm-disk.img"
 rootfs_size = "4G"
 runtime_dir = "~/.tirosh/vitalserver-vm/runtime"
 
-[cloud_init]
+[guest.cloud_init]
 seed_directory_name = "cloud-init-seed"
 seed_iso_name = "seed.iso"
 hostname = "tirosh-vitalserver"
@@ -70,7 +76,7 @@ share_tag = "tirosh"
 share_mount = "/mnt/tirosh"
 bootstrap_script = "/mnt/tirosh/deploy/bootstrap.sh"
 
-[docker_images]
+[guest.docker_images]
 platform = "linux/arm64"
 bundle_path = ".tmp/vitalserver-vm-pkg/docker-images/vitalserver-images.tar.gz"
 app_dockerfile = "apps/vitalserver/docker/Dockerfile"
@@ -88,12 +94,7 @@ images = [
   "nginx:1.24-alpine",
 ]
 
-[nginx]
-binary_path = ".artifacts/nginx/macos/bin/nginx"
-expected_version = "nginx/1.31.0"
-non_system_dylib_prefixes = ["/opt/", "/usr/local/"]
-
-[guest_deploy]
+[guest.deploy]
 docker_image_bundle_destination = "docker-images/vitalserver-images.tar.gz"
 include = [
   "apps/vitalserver/docker",

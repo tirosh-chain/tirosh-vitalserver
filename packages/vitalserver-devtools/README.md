@@ -49,27 +49,26 @@ Source layout:
 
 ```text
 devtools/
-  cli.py        command-line adapter
-  config/       config and release manifest adapters
-    macos/      macOS release settings from vm-build.toml
-  guest_image/  Ubuntu image, cloud-init seed, and rootfs base builders
-  guest_services/ Docker image bundle for guest services
-  host_proxy/   local nginx proxy and release nginx bundle tooling
-  update_bundle/ update bundle contract, archive, and verification logic
-  release/      release use cases grouped by target platform
-    macos/      macOS app, installer, and release artifact orchestration
-  toolchain/    shell, path, gzip, and token-template helpers
+  cli.py          command-line adapter
+  application/    usecase inputs and workflow orchestration
+    usecases/     command workflows grouped by domain
+  adapters/       filesystem, subprocess, platform, and archive operations
+    macos_release/ macOS app, runtime, installer, and release artifact tooling
+  config/         TOML and release manifest loaders
+    macos/        macOS release settings from vm-build.toml
+  core/           pure plans, validation, and platform value objects
 ```
 
-The package keeps CLI parsing at the edge, config parsing in adapters, and
+The package keeps CLI parsing at the edge, config parsing in `config/`, and
 workflow orchestration in use-case packages. Shared shell/filesystem primitives
-stay in `toolchain/`; platform-specific release staging stays under
-`release/<platform>/`.
+stay under `adapters/toolchain/`; reusable domain rules and plans stay under
+`core/`.
 
-Most packaging inputs are declared in
-`config/vm-build.toml`. Keep Docker image
-names, local Dockerfile paths, and guest deploy `include` entries in that TOML
-file instead of adding new literals to Make targets.
+Most packaging inputs are declared in `config/vm-build.toml`. Host installer and
+proxy bundle settings live under `[macos.*]`; Linux VM image, cloud-init, Docker
+image, and deploy settings live under `[guest.*]`. Keep Docker image names,
+local Dockerfile paths, and guest deploy `include` entries in that TOML file
+instead of adding new literals to Make targets.
 
 `docker-images` builds local images such as `vitalserver`,
 `vitalserver-audit-proxy`, and `vitaldb-observer`, pulls external images, and

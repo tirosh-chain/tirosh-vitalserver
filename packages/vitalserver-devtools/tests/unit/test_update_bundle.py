@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import json
 import tarfile
-from argparse import Namespace
 from pathlib import Path
 
-from tirosh_vitalserver.devtools.update_bundle import (
-    run_build_update_bundle,
-    run_verify_update_bundle,
+from tirosh_vitalserver.devtools.adapters.update_bundle import (
+    BuildUpdateBundleInput,
+    build_bundle,
+    verify_bundle,
 )
 
 
@@ -16,8 +16,8 @@ def test_update_bundle_builds_and_verifies_tarball(tmp_path: Path) -> None:
     app_bundle.write_bytes(b"app")
 
     output_dir = tmp_path / "dist"
-    run_build_update_bundle(
-        Namespace(
+    build_bundle(
+        BuildUpdateBundleInput(
             version="1.2.3",
             runtime_version=None,
             bundle_name=None,
@@ -54,7 +54,7 @@ def test_update_bundle_builds_and_verifies_tarball(tmp_path: Path) -> None:
     assert manifest["releaseLabel"] == "1.2.3"
     assert manifest["targetPlatform"] == "macos-arm64"
 
-    run_verify_update_bundle(Namespace(bundle_path=archive))
+    verify_bundle(archive)
 
 
 def test_update_bundle_uses_explicit_safe_bundle_name(tmp_path: Path) -> None:
@@ -62,8 +62,8 @@ def test_update_bundle_uses_explicit_safe_bundle_name(tmp_path: Path) -> None:
     app_bundle.write_bytes(b"app")
 
     output_dir = tmp_path / "dist"
-    run_build_update_bundle(
-        Namespace(
+    build_bundle(
+        BuildUpdateBundleInput(
             version="1.2.3",
             runtime_version=None,
             bundle_name="custom-update-bundle",

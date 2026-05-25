@@ -11,7 +11,7 @@ NGINX_PREFIX ?= /Library/Application Support/TiroshVitalServer/nginx
 
 PROXY_ARGS = \
 	--runtime-dir "$(PROXY_RUNTIME_DIR)" \
-	--config "$(PROXY_CONFIG)" \
+	--proxy-config "$(PROXY_CONFIG)" \
 	--port "$(VITALSERVER_PROXY_PORT)" \
 	--bind-host "$(VITALSERVER_BIND_HOST)" \
 	--http-port "$(VITALSERVER_HTTP_PORT)" \

@@ -1,18 +1,18 @@
 from __future__ import annotations
 
 import tomllib
-from argparse import Namespace
 from pathlib import Path
 from typing import Any
 
 DEFAULT_CONFIG_PATH = "config/vm-build.toml"
+TomlTable = dict[str, Any]
 
 
 def default_config_path() -> Path:
     return Path(DEFAULT_CONFIG_PATH)
 
 
-def load_build_toml(path: Path) -> dict[str, dict[str, Any]]:
+def load_build_toml(path: Path) -> TomlTable:
     if not path.is_file():
         raise SystemExit(f"error: missing build config: {path}")
     try:
@@ -25,63 +25,79 @@ def load_build_toml(path: Path) -> dict[str, dict[str, Any]]:
     return config
 
 
-def run_config_value(args: Namespace) -> int:
-    value: object = load_build_toml(args.config)
-    for key in args.key.split("."):
-        if not isinstance(value, dict) or key not in value:
-            raise SystemExit(f"error: missing config value: {args.key}")
-        value = value[key]
-    if isinstance(value, bool):
-        print("true" if value else "false")
-    elif isinstance(value, int | float | str):
-        print(value)
-    else:
-        raise SystemExit(f"error: config value is not scalar: {args.key}")
-    return 0
-
-
-def optional_bool(config: dict[str, Any], key: str, default: bool) -> bool:
+def optional_bool(
+    config: TomlTable,
+    key: str,
+    default: bool,
+    *,
+    path: str | None = None,
+) -> bool:
     value = config.get(key, default)
     if not isinstance(value, bool):
-        raise SystemExit(f"error: invalid boolean config value: {key}")
+        raise SystemExit(
+            f"error: invalid boolean config value: {config_key(path, key)}"
+        )
     return value
 
 
-def parse_bool(value: str) -> bool:
-    if value == "true":
-        return True
-    if value == "false":
-        return False
-    raise SystemExit(f"error: expected true or false, got: {value}")
-
-
-def section(config: dict[str, Any], name: str) -> dict[str, Any]:
+def section(config: TomlTable, name: str, *, path: str | None = None) -> TomlTable:
     value = config.get(name)
     if not isinstance(value, dict):
-        raise SystemExit(f"error: missing [{name}] in build config")
+        raise SystemExit(f"error: missing [{config_key(path, name)}] in build config")
     return value
 
 
-def required_string(config: dict[str, Any], key: str) -> str:
+def nested_section(
+    config: TomlTable,
+    path: str,
+    *,
+    parent_path: str | None = None,
+) -> TomlTable:
+    value = config
+    current_path = parent_path or ""
+    for name in path.split("."):
+        value = section(value, name, path=current_path or None)
+        current_path = config_key(current_path or None, name)
+    return value
+
+
+def required_string(config: TomlTable, key: str, *, path: str | None = None) -> str:
     value = config.get(key)
     if not isinstance(value, str) or not value:
-        raise SystemExit(f"error: missing string config value: {key}")
+        raise SystemExit(f"error: missing string config value: {config_key(path, key)}")
     return value
 
 
-def optional_string(config: dict[str, Any], key: str, default: str) -> str:
+def optional_string(
+    config: TomlTable,
+    key: str,
+    default: str,
+    *,
+    path: str | None = None,
+) -> str:
     value = config.get(key, default)
     if not isinstance(value, str) or not value:
-        raise SystemExit(f"error: invalid string config value: {key}")
+        raise SystemExit(f"error: invalid string config value: {config_key(path, key)}")
     return value
 
 
-def required_string_list(config: dict[str, Any], key: str) -> list[str]:
+def required_string_list(
+    config: TomlTable,
+    key: str,
+    *,
+    path: str | None = None,
+) -> list[str]:
     value = config.get(key)
     if (
         not isinstance(value, list)
         or not value
         or not all(isinstance(item, str) and item for item in value)
     ):
-        raise SystemExit(f"error: missing string list config value: {key}")
+        raise SystemExit(
+            f"error: missing string list config value: {config_key(path, key)}"
+        )
     return value
+
+
+def config_key(path: str | None, key: str) -> str:
+    return f"{path}.{key}" if path else key
