@@ -39,6 +39,7 @@ final class ContractsTests: XCTestCase {
         XCTAssertEqual(document.bootID, "7b6a6afd-64f8-4dd5-91f1-6dcbf58f8f7d")
         XCTAssertEqual(document.memory?.percent, 25.0)
         XCTAssertEqual(document.systemDisk?.percent, 31.25)
+        XCTAssertEqual(document.vitalFilesDisk?.percent, 25.0)
     }
 
     func testDecodesGuestRuntimeStateContainerServices() throws {
@@ -182,6 +183,8 @@ final class ContractsTests: XCTestCase {
           "vm-service-not loaded",
           "host-proxy-http-502",
           "audit-proxy-http-failed",
+          "container-service-app-state-unhealthy",
+          "vitaldb-anomaly-duplicate-ip-subject-10.0.0.10",
           "proxy-port-80-in-use-by-nginx-1234",
           "guest-bootstrap-missing-runtime-packages",
           "future-reason"
@@ -193,9 +196,11 @@ final class ContractsTests: XCTestCase {
         XCTAssertEqual(reasons[1], .vmService("not loaded"))
         XCTAssertEqual(reasons[2], .hostProxyHTTP("502"))
         XCTAssertEqual(reasons[3], .auditProxyHTTP("failed"))
-        XCTAssertEqual(reasons[4], .proxyPortInUse(port: 80, listeners: "nginx-1234"))
-        XCTAssertEqual(reasons[5], .guestBootstrapMissingRuntimePackages)
-        XCTAssertEqual(reasons[6], .unknown("future-reason"))
+        XCTAssertEqual(reasons[4], .containerService(service: "app", state: "unhealthy"))
+        XCTAssertEqual(reasons[5], .vitalDBAnomaly(kind: "duplicate-ip", subject: "10.0.0.10"))
+        XCTAssertEqual(reasons[6], .proxyPortInUse(port: 80, listeners: "nginx-1234"))
+        XCTAssertEqual(reasons[7], .guestBootstrapMissingRuntimePackages)
+        XCTAssertEqual(reasons[8], .unknown("future-reason"))
 
         let encoded = try JSONEncoder().encode(reasons)
         let roundTripped = try JSONDecoder().decode([RuntimeFailureReason].self, from: encoded)
@@ -204,6 +209,8 @@ final class ContractsTests: XCTestCase {
             "vm-service-not loaded",
             "host-proxy-http-502",
             "audit-proxy-http-failed",
+            "container-service-app-state-unhealthy",
+            "vitaldb-anomaly-duplicate-ip-subject-10.0.0.10",
             "proxy-port-80-in-use-by-nginx-1234",
             "guest-bootstrap-missing-runtime-packages",
             "future-reason",

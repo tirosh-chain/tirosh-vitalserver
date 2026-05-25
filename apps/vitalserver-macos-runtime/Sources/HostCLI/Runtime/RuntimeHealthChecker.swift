@@ -59,6 +59,7 @@ struct RuntimeHealthChecker {
             redisUIHTTP: redisUIHTTP,
             swaggerUIHTTP: swaggerUIHTTP,
             containerObservation: containerObservation,
+            vitalDBObservation: guestState?.vitalDBObservation,
             proxyPortFailureReasons: proxyPortFailureReasons(port: proxyPort),
             guestBootstrapFailureReason: guestBootstrapFailureReason()
         ))

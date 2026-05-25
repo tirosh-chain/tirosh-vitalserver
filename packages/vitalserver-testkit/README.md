@@ -217,9 +217,22 @@ make testkit-stream
 TESTKIT_CONFIG=config/load-test.toml make testkit-load
 ```
 
+`scripts/test_vitalserver.py`는 설치된 `vitalserver-testkit` command를 우선 사용하고, 없으면
+현재 Python interpreter의 module 실행으로 fallback합니다. 필요하면 `TESTKIT_CLI`로 명시적인 command
+prefix를 지정할 수 있습니다.
+
+```sh
+TESTKIT_CLI="uv run vitalserver-testkit" make testkit-smoke
+```
+
+dev profile macOS Helper의 Test 탭은 Runtime Control browser console과 Testkit API 상태를 확인하는
+용도입니다. Testkit 컨테이너/API가 package에 포함될지는 release manifest의 optional container service
+정책으로 결정하고, Test 탭의 route와 API contract는 Test 탭/API 구현이 소유합니다.
+
 ## 관련 문서
 
 - [문서 지도](../../docs/index.md): 문서 지도와 작성 기준
 - [Testkit 사용법](../../docs/testkit-usage.md): CLI 사용법과 결과 해석
 - [VitalServer 제품화 전략](../../docs/vitalserver-productization.md): 제품화 맥락
 - [Redis 데이터 구조](../../docs/redis-data-model.md): Redis key 구조와 relay 설계 메모
+- [Runtime observability model](../../docs/macos-runtime/observability.md): 관측 SoT와 Runtime Control API 노출 기준

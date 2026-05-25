@@ -46,6 +46,11 @@ make proxy-config \
 생성된 config는 client가 직접 보낸 forwarding header를 그대로 믿지 않고, macOS host nginx가 본
 `$remote_addr`로 `X-Forwarded-For`, `X-Real-IP`, `X-Client-IP`, `Forwarded`를 덮어씁니다.
 
+proxy/access log는 운영 진단용 raw log입니다. VitalDB observation의 최종 SoT는 이 로그가 아니라
+watchdog/runtime observability SQLite입니다. `vitaldb-observer`는 필요할 때 access JSONL log를 읽어
+proxy connection snapshot을 계산할 수 있지만, Runtime Control API는 watchdog이 저장한 read model을
+노출합니다.
+
 ## Homebrew nginx로 로컬 PoC
 
 로컬 검증에서는 Homebrew nginx를 설치하고 일반 stack을 실행합니다. `make up`은 Docker backend를

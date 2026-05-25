@@ -108,19 +108,29 @@
             "name": "limit",
             "in": "query",
             "required": false,
-            "schema": { "type": "integer", "minimum": 1, "maximum": 500, "default": 100 }
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500,
+              "default": 100
+            }
           },
           {
             "name": "type",
             "in": "query",
             "required": false,
-            "schema": { "$ref": "#/components/schemas/RuntimeEventType" }
+            "schema": {
+              "$ref": "#/components/schemas/RuntimeEventType"
+            }
           },
           {
             "name": "since",
             "in": "query",
             "required": false,
-            "schema": { "type": "string", "description": "Inclusive ISO-8601 timestamp lower bound." }
+            "schema": {
+              "type": "string",
+              "description": "Inclusive ISO-8601 timestamp lower bound."
+            }
           },
           {
             "name": "cursor",
@@ -165,20 +175,27 @@
             "name": "Last-Event-ID",
             "in": "header",
             "required": false,
-            "schema": { "type": "string" },
+            "schema": {
+              "type": "string"
+            },
             "description": "Optional SSE resume marker. Clients should pass the latest received event id when reconnecting."
           },
           {
             "name": "type",
             "in": "query",
             "required": false,
-            "schema": { "$ref": "#/components/schemas/RuntimeEventType" }
+            "schema": {
+              "$ref": "#/components/schemas/RuntimeEventType"
+            }
           },
           {
             "name": "since",
             "in": "query",
             "required": false,
-            "schema": { "type": "string", "description": "Inclusive ISO-8601 timestamp lower bound for initial catch-up." }
+            "schema": {
+              "type": "string",
+              "description": "Inclusive ISO-8601 timestamp lower bound for initial catch-up."
+            }
           }
         ],
         "responses": {
@@ -532,19 +549,27 @@
             "name": "source",
             "in": "query",
             "required": false,
-            "schema": { "$ref": "#/components/schemas/RuntimeLogSource" }
+            "schema": {
+              "$ref": "#/components/schemas/RuntimeLogSource"
+            }
           },
           {
             "name": "lineLimit",
             "in": "query",
             "required": false,
-            "schema": { "type": "integer", "minimum": 1, "default": 200 }
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 200
+            }
           },
           {
             "name": "helperMessage",
             "in": "query",
             "required": false,
-            "schema": { "type": "string" }
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -716,6 +741,63 @@
           }
         }
       }
+    },
+    "/vitaldb/observations/latest": {
+      "get": {
+        "operationId": "getLatestVitalDBObservation",
+        "summary": "Read latest VitalDB observation snapshot",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "readOnlyLocal",
+        "x-runtime-control-access": "browserSafe",
+        "responses": {
+          "200": {
+            "description": "Latest VitalDB observation snapshot, or null when unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/VitalDBObservationDocument"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/vitaldb/observations/stream": {
+      "get": {
+        "operationId": "streamVitalDBObservations",
+        "summary": "Subscribe to VitalDB observation updates",
+        "description": "Long-lived SSE stream for latest VitalDB observation snapshot changes.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "readOnlyLocal",
+        "x-runtime-control-access": "browserSafe",
+        "responses": {
+          "200": {
+            "description": "VitalDB observation SSE stream.",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string",
+                  "description": "SSE frames with event=vitaldb-observed."
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -788,52 +870,165 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "canInstallRuntime": { "type": "boolean" },
-          "canUninstallRuntime": { "type": "boolean" },
-          "canApplyBundle": { "type": "boolean" },
-          "canRollback": { "type": "boolean" },
-          "canEditVMResources": { "type": "boolean" },
-          "canEditNetworkExposure": { "type": "boolean" },
-          "canResetAdminPassword": { "type": "boolean" },
-          "canOpenLocalFiles": { "type": "boolean" },
-          "canStreamLogs": { "type": "boolean" },
-          "canControlRuntimeServices": { "type": "boolean" },
-          "canExportLogs": { "type": "boolean" },
-          "canViewReleaseMetadata": { "type": "boolean" }
+          "canInstallRuntime": {
+            "type": "boolean"
+          },
+          "canUninstallRuntime": {
+            "type": "boolean"
+          },
+          "canApplyBundle": {
+            "type": "boolean"
+          },
+          "canRollback": {
+            "type": "boolean"
+          },
+          "canEditVMResources": {
+            "type": "boolean"
+          },
+          "canEditNetworkExposure": {
+            "type": "boolean"
+          },
+          "canResetAdminPassword": {
+            "type": "boolean"
+          },
+          "canOpenLocalFiles": {
+            "type": "boolean"
+          },
+          "canStreamLogs": {
+            "type": "boolean"
+          },
+          "canControlRuntimeServices": {
+            "type": "boolean"
+          },
+          "canExportLogs": {
+            "type": "boolean"
+          },
+          "canViewReleaseMetadata": {
+            "type": "boolean"
+          }
         }
       },
       "RuntimeStatus": {
         "type": "object",
         "additionalProperties": true,
         "properties": {
-          "runtimeInstalled": { "type": "boolean" },
-          "vmServiceLoaded": { "type": "boolean" },
-          "proxyServiceLoaded": { "type": "boolean" },
-          "watchdogServiceLoaded": { "type": "boolean" },
-          "runtimeState": { "$ref": "#/components/schemas/RuntimeState" },
-          "operation": { "type": ["string", "null"] },
-          "statusMessage": { "type": ["string", "null"] },
-          "updatedAt": { "type": ["string", "null"] },
-          "runtimeVersion": { "type": ["string", "null"] },
-          "latestBackup": { "type": ["string", "null"] },
-          "vmIP": { "type": ["string", "null"] },
-          "guestHTTP": { "type": ["string", "null"] },
-          "hostProxyHTTP": { "type": ["string", "null"] },
-          "redisUIHTTP": { "type": ["string", "null"] },
-          "swaggerUIHTTP": { "type": ["string", "null"] },
-          "cpuUsagePercent": { "type": ["number", "null"] },
-          "memory": { "$ref": "#/components/schemas/ResourceUsage" },
-          "systemDisk": { "$ref": "#/components/schemas/ResourceUsage" },
-          "dataStorage": { "$ref": "#/components/schemas/ResourceUsage" },
-          "proxyPort": { "type": "integer" },
+          "runtimeInstalled": {
+            "type": "boolean"
+          },
+          "vmServiceLoaded": {
+            "type": "boolean"
+          },
+          "proxyServiceLoaded": {
+            "type": "boolean"
+          },
+          "watchdogServiceLoaded": {
+            "type": "boolean"
+          },
+          "runtimeState": {
+            "$ref": "#/components/schemas/RuntimeState"
+          },
+          "operation": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "statusMessage": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "updatedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "runtimeVersion": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "latestBackup": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "vmIP": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "guestHTTP": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "hostProxyHTTP": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "redisUIHTTP": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "swaggerUIHTTP": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "cpuUsagePercent": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "memory": {
+            "$ref": "#/components/schemas/ResourceUsage"
+          },
+          "systemDisk": {
+            "$ref": "#/components/schemas/ResourceUsage"
+          },
+          "dataStorage": {
+            "$ref": "#/components/schemas/ResourceUsage"
+          },
+          "proxyPort": {
+            "type": "integer"
+          },
           "failureReasons": {
             "type": "array",
-            "items": { "type": "string" }
+            "items": {
+              "type": "string"
+            }
           },
           "containerObservation": {
             "oneOf": [
-              { "$ref": "#/components/schemas/RuntimeContainerObservation" },
-              { "type": "null" }
+              {
+                "$ref": "#/components/schemas/RuntimeContainerObservation"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "vitalDBObservation": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/VitalDBObservationDocument"
+              },
+              {
+                "type": "null"
+              }
             ]
           }
         }
@@ -844,10 +1039,15 @@
         "properties": {
           "events": {
             "type": "array",
-            "items": { "$ref": "#/components/schemas/RuntimeEventDocument" }
+            "items": {
+              "$ref": "#/components/schemas/RuntimeEventDocument"
+            }
           },
           "nextCursor": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "description": "Opaque pagination cursor for the next page. Omitted or null when there is no next page."
           }
         }
@@ -856,30 +1056,74 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "schemaVersion": { "type": "integer" },
-          "id": { "type": "string" },
-          "source": { "type": "string" },
-          "eventType": { "$ref": "#/components/schemas/RuntimeEventType" },
-          "timestamp": { "type": "string" },
-          "product": { "type": "string" },
-          "status": { "$ref": "#/components/schemas/RuntimeState" },
-          "previousStatus": { "type": ["string", "null"] },
-          "operation": { "type": "string" },
-          "message": { "type": "string" },
-          "runtimeVersion": { "type": "string" },
+          "schemaVersion": {
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "eventType": {
+            "$ref": "#/components/schemas/RuntimeEventType"
+          },
+          "timestamp": {
+            "type": "string"
+          },
+          "product": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RuntimeState"
+          },
+          "previousStatus": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "operation": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "runtimeVersion": {
+            "type": "string"
+          },
           "failureReasons": {
             "type": "array",
-            "items": { "type": "string" }
+            "items": {
+              "type": "string"
+            }
           },
           "containerObservation": {
             "oneOf": [
-              { "$ref": "#/components/schemas/RuntimeContainerObservation" },
-              { "type": "null" }
+              {
+                "$ref": "#/components/schemas/RuntimeContainerObservation"
+              },
+              {
+                "type": "null"
+              }
             ]
           },
           "progress": {
-            "type": ["object", "null"],
+            "type": [
+              "object",
+              "null"
+            ],
             "additionalProperties": true
+          },
+          "vitalDBObservation": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/VitalDBObservationDocument"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         }
       },
@@ -893,6 +1137,9 @@
           "recovery-completed",
           "container-observed",
           "audit-proxy-observed",
+          "vitaldb-observed",
+          "vitaldb-observer-unhealthy",
+          "vitaldb-anomaly-detected",
           "runtime-command-started",
           "runtime-command-completed",
           "runtime-command-failed"
@@ -902,21 +1149,52 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "auditProxyHTTP": { "type": "string" },
+          "auditProxyHTTP": {
+            "type": "string"
+          },
           "auditProxyStatus": {
             "oneOf": [
-              { "$ref": "#/components/schemas/RuntimeAuditProxyStatusDocument" },
-              { "type": "null" }
+              {
+                "$ref": "#/components/schemas/RuntimeAuditProxyStatusDocument"
+              },
+              {
+                "type": "null"
+              }
             ]
           },
-          "runtimeStateUpdatedAt": { "type": ["string", "null"] },
-          "runtimeStateFileUpdatedAt": { "type": ["string", "null"] },
-          "containerLogsPresent": { "type": "boolean" },
-          "containerLogsBytes": { "type": ["integer", "null"], "minimum": 0 },
-          "containerLogsUpdatedAt": { "type": ["string", "null"] },
+          "runtimeStateUpdatedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "runtimeStateFileUpdatedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "containerLogsPresent": {
+            "type": "boolean"
+          },
+          "containerLogsBytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "containerLogsUpdatedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "composeServices": {
             "type": "array",
-            "items": { "$ref": "#/components/schemas/RuntimeContainerServiceObservation" }
+            "items": {
+              "$ref": "#/components/schemas/RuntimeContainerServiceObservation"
+            }
           }
         }
       },
@@ -924,86 +1202,228 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "startedAt": { "type": ["string", "null"] },
-          "uptimeSeconds": { "type": ["integer", "null"], "minimum": 0 },
-          "activeWebSockets": { "type": "integer", "minimum": 0 },
-          "activeRecorderConnections": { "type": "integer", "minimum": 0 },
+          "startedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "uptimeSeconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "activeWebSockets": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "activeRecorderConnections": {
+            "type": "integer",
+            "minimum": 0
+          },
           "recorders": {
             "type": "array",
-            "items": { "$ref": "#/components/schemas/RuntimeRecorderConnectionObservation" }
+            "items": {
+              "$ref": "#/components/schemas/RuntimeRecorderConnectionObservation"
+            }
           },
-          "httpRequests": { "type": "integer", "minimum": 0 },
-          "socketIoEventsSeen": { "type": "integer", "minimum": 0 },
-          "socketIoParseFailures": { "type": "integer", "minimum": 0 },
-          "auditWriteFailures": { "type": "integer", "minimum": 0 },
-          "auditFileWriteFailures": { "type": "integer", "minimum": 0 },
-          "auditStdoutWriteFailures": { "type": "integer", "minimum": 0 },
-          "redisIpWriteFailures": { "type": "integer", "minimum": 0 }
+          "httpRequests": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "socketIoEventsSeen": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "socketIoParseFailures": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "auditWriteFailures": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "auditFileWriteFailures": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "auditStdoutWriteFailures": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "redisIpWriteFailures": {
+            "type": "integer",
+            "minimum": 0
+          }
         }
       },
       "RuntimeRecorderConnectionObservation": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "vrcode": { "type": "string" },
-          "activeConnections": { "type": "integer", "minimum": 0 },
-          "selectedIp": { "type": ["string", "null"] },
-          "lastSeenAt": { "type": ["string", "null"] }
+          "vrcode": {
+            "type": "string"
+          },
+          "activeConnections": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "selectedIp": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastSeenAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
         }
       },
       "RuntimeContainerServiceObservation": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "service": { "type": "string" },
-          "name": { "type": ["string", "null"] },
-          "state": { "type": ["string", "null"] },
-          "health": { "type": ["string", "null"] },
-          "exitCode": { "type": ["integer", "null"] },
-          "startedAt": { "type": ["string", "null"] },
-          "uptimeSeconds": { "type": ["integer", "null"], "minimum": 0 }
+          "service": {
+            "type": "string"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "state": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "health": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "exitCode": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "startedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "uptimeSeconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          }
         }
       },
       "RuntimeState": {
         "type": "string",
-        "enum": ["installing", "updating", "recovering", "healthy", "degraded", "critical"]
+        "enum": [
+          "installing",
+          "updating",
+          "recovering",
+          "healthy",
+          "degraded",
+          "critical"
+        ]
       },
       "ResourceUsage": {
-        "type": ["object", "null"],
+        "type": [
+          "object",
+          "null"
+        ],
         "additionalProperties": true
       },
       "RuntimeSettings": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "cpuCount": { "type": "integer" },
-          "memoryGiB": { "type": "integer" },
-          "diskGiB": { "type": "integer" },
-          "minimumDiskGiB": { "type": "integer" },
-          "networkMode": { "type": "string", "enum": ["shared", "bridged"] },
-          "bridgedInterface": { "type": "string" },
-          "proxyPort": { "type": "integer" },
-          "vitalFilesDirectory": { "type": "string" },
-          "publicHost": { "type": "string" },
-          "publicPort": { "type": "integer" },
-          "adminPassword": { "type": "string" },
-          "changeAdminPassword": { "type": "boolean" },
-          "startOnBoot": { "type": "boolean" },
-          "startOnBootConfigurable": { "type": "boolean" },
-          "autoRecoveryEnabled": { "type": "boolean" },
-          "restartAfterSave": { "type": "boolean" }
+          "cpuCount": {
+            "type": "integer"
+          },
+          "memoryGiB": {
+            "type": "integer"
+          },
+          "diskGiB": {
+            "type": "integer"
+          },
+          "minimumDiskGiB": {
+            "type": "integer"
+          },
+          "networkMode": {
+            "type": "string",
+            "enum": [
+              "shared",
+              "bridged"
+            ]
+          },
+          "bridgedInterface": {
+            "type": "string"
+          },
+          "proxyPort": {
+            "type": "integer"
+          },
+          "vitalFilesDirectory": {
+            "type": "string"
+          },
+          "publicHost": {
+            "type": "string"
+          },
+          "publicPort": {
+            "type": "integer"
+          },
+          "adminPassword": {
+            "type": "string"
+          },
+          "changeAdminPassword": {
+            "type": "boolean"
+          },
+          "startOnBoot": {
+            "type": "boolean"
+          },
+          "startOnBootConfigurable": {
+            "type": "boolean"
+          },
+          "autoRecoveryEnabled": {
+            "type": "boolean"
+          },
+          "restartAfterSave": {
+            "type": "boolean"
+          }
         }
       },
       "RuntimeReleaseInfo": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "helperVersion": { "type": "string" },
-          "minimumUpdaterVersion": { "type": "string" },
-          "vitalServerVersion": { "type": "string" },
+          "helperVersion": {
+            "type": "string"
+          },
+          "minimumUpdaterVersion": {
+            "type": "string"
+          },
+          "vitalServerVersion": {
+            "type": "string"
+          },
           "services": {
             "type": "array",
-            "items": { "$ref": "#/components/schemas/RuntimeBundledServiceInfo" }
+            "items": {
+              "$ref": "#/components/schemas/RuntimeBundledServiceInfo"
+            }
           }
         }
       },
@@ -1011,92 +1431,151 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "name": { "type": "string" },
-          "image": { "type": "string" },
-          "version": { "type": "string" }
+          "name": {
+            "type": "string"
+          },
+          "image": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
         }
       },
       "RuntimeInstallInfo": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "runtimeHomePath": { "type": "string" },
-          "backupsPath": { "type": "string" }
+          "runtimeHomePath": {
+            "type": "string"
+          },
+          "backupsPath": {
+            "type": "string"
+          }
         }
       },
       "RuntimeControlCommandResponse": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "result": { "$ref": "#/components/schemas/RuntimeCommandResult" }
+          "result": {
+            "$ref": "#/components/schemas/RuntimeCommandResult"
+          }
         }
       },
       "RuntimeCommandResult": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "exitCode": { "type": "integer" },
-          "stdout": { "type": "string" },
-          "stderr": { "type": "string" }
+          "exitCode": {
+            "type": "integer"
+          },
+          "stdout": {
+            "type": "string"
+          },
+          "stderr": {
+            "type": "string"
+          }
         }
       },
       "RuntimeControlErrorResponse": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "code": { "$ref": "#/components/schemas/RuntimeControlAPIErrorCode" },
-          "message": { "type": "string" }
+          "code": {
+            "$ref": "#/components/schemas/RuntimeControlAPIErrorCode"
+          },
+          "message": {
+            "type": "string"
+          }
         }
       },
       "RuntimeControlAPIErrorCode": {
         "type": "string",
-        "enum": ["badRequest", "routeNotFound", "methodNotAllowed", "unauthorized", "endpointNotImplemented", "handlerFailed"]
+        "enum": [
+          "badRequest",
+          "routeNotFound",
+          "methodNotAllowed",
+          "unauthorized",
+          "endpointNotImplemented",
+          "handlerFailed"
+        ]
       },
       "RuntimeControlFileReference": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "kind": { "type": "string", "enum": ["localPath", "uploadedArtifact", "remoteURL"] },
-          "value": { "type": "string" }
+          "kind": {
+            "type": "string",
+            "enum": [
+              "localPath",
+              "uploadedArtifact",
+              "remoteURL"
+            ]
+          },
+          "value": {
+            "type": "string"
+          }
         }
       },
       "RuntimeApplySettingsRequest": {
         "type": "object",
         "properties": {
-          "settings": { "$ref": "#/components/schemas/RuntimeSettings" }
+          "settings": {
+            "$ref": "#/components/schemas/RuntimeSettings"
+          }
         }
       },
       "RuntimeRepairProxyRequest": {
         "type": "object",
         "properties": {
-          "proxyPort": { "type": "integer" }
+          "proxyPort": {
+            "type": "integer"
+          }
         }
       },
       "RuntimeUninstallRequest": {
         "type": "object",
         "properties": {
-          "clean": { "type": "boolean" }
+          "clean": {
+            "type": "boolean"
+          }
         }
       },
       "RuntimeBackup": {
         "type": "object",
         "properties": {
-          "path": { "type": "string" },
-          "sizeBytes": { "type": ["integer", "null"] }
+          "path": {
+            "type": "string"
+          },
+          "sizeBytes": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
         }
       },
       "RuntimeBackupRequest": {
         "type": "object",
         "properties": {
-          "backup": { "$ref": "#/components/schemas/RuntimeControlFileReference" }
+          "backup": {
+            "$ref": "#/components/schemas/RuntimeControlFileReference"
+          }
         }
       },
       "RuntimeLogTextRequest": {
         "type": "object",
         "properties": {
-          "source": { "$ref": "#/components/schemas/RuntimeLogSource" },
-          "helperMessage": { "type": "string" },
-          "lineLimit": { "type": "integer" }
+          "source": {
+            "$ref": "#/components/schemas/RuntimeLogSource"
+          },
+          "helperMessage": {
+            "type": "string"
+          },
+          "lineLimit": {
+            "type": "integer"
+          }
         }
       },
       "RuntimeLogSource": {
@@ -1115,31 +1594,289 @@
       "RuntimeLogTextResponse": {
         "type": "object",
         "properties": {
-          "text": { "type": "string" }
+          "text": {
+            "type": "string"
+          }
         }
       },
       "RuntimeLogExportResult": {
         "type": "object",
         "properties": {
-          "destination": { "type": "string", "format": "uri" }
+          "destination": {
+            "type": "string",
+            "format": "uri"
+          }
         }
       },
       "RuntimeExportLogsRequest": {
         "type": "object",
         "properties": {
-          "destination": { "$ref": "#/components/schemas/RuntimeControlFileReference" }
+          "destination": {
+            "$ref": "#/components/schemas/RuntimeControlFileReference"
+          }
         }
       },
       "RuntimeUpdateBundleRequest": {
         "type": "object",
         "properties": {
-          "bundle": { "$ref": "#/components/schemas/RuntimeControlFileReference" }
+          "bundle": {
+            "$ref": "#/components/schemas/RuntimeControlFileReference"
+          }
         }
       },
       "RuntimeUpdateBundleSummaryResponse": {
         "type": "object",
         "properties": {
-          "summary": { "type": "string" }
+          "summary": {
+            "type": "string"
+          }
+        }
+      },
+      "VitalDBObservationDocument": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "schemaVersion",
+          "source",
+          "observedAt",
+          "ready",
+          "recorderOnlineThresholdSeconds",
+          "recorders",
+          "beds",
+          "devices",
+          "filters",
+          "proxyConnections",
+          "anomalies"
+        ],
+        "properties": {
+          "schemaVersion": {
+            "type": "integer"
+          },
+          "source": {
+            "type": "string"
+          },
+          "observedAt": {
+            "type": "string"
+          },
+          "ready": {
+            "type": "boolean"
+          },
+          "recorderOnlineThresholdSeconds": {
+            "type": "integer"
+          },
+          "recorders": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VitalDBRecorderObservation"
+            }
+          },
+          "beds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VitalDBBedObservation"
+            }
+          },
+          "devices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VitalDBRawBedScopedObservation"
+            }
+          },
+          "filters": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VitalDBRawBedScopedObservation"
+            }
+          },
+          "proxyConnections": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VitalDBProxyConnectionObservation"
+            }
+          },
+          "anomalies": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VitalDBAnomalyObservation"
+            }
+          }
+        }
+      },
+      "VitalDBRecorderObservation": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "vrcode": {
+            "type": "string"
+          },
+          "ip": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastSeenAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "info": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "config": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "online": {
+            "type": "boolean"
+          },
+          "stale": {
+            "type": "boolean"
+          }
+        }
+      },
+      "VitalDBBedObservation": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "bedID": {
+            "type": "string"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "vrcode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastSeenAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "patientConnected": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "online": {
+            "type": "boolean"
+          }
+        }
+      },
+      "VitalDBRawBedScopedObservation": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "bedID": {
+            "type": "string"
+          },
+          "rawValue": {
+            "type": "string"
+          }
+        }
+      },
+      "VitalDBProxyConnectionObservation": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "observedAt": {
+            "type": "string"
+          },
+          "remoteAddress": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "remotePort": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "requestURI": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "upstreamStatus": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "upstreamResponseTime": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "websocketHandshake": {
+            "type": "boolean"
+          }
+        }
+      },
+      "VitalDBAnomalyObservation": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "offline",
+              "duplicate-ip",
+              "backend-unavailable",
+              "stale-recorder",
+              "observer-unhealthy"
+            ]
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "info",
+              "warning",
+              "critical"
+            ]
+          },
+          "observedAt": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
         }
       }
     }

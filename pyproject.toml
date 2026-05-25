@@ -31,6 +31,7 @@ src = [
   "packages/vm-build/src",
   "packages/vitalserver-testkit/src",
   "packages/vitalserver-testkit/tests",
+  "apps/vitaldb-observer",
   "scripts",
 ]
 exclude = [
@@ -70,6 +71,7 @@ docstring-code-format = true
 [tool.ruff.lint.isort]
 known-first-party = [
   "tirosh_vitalserver",
+  "vitaldb_observer",
 ]
 
 [tool.mypy]
@@ -81,12 +83,14 @@ files = [
   "packages/vm-build/tests",
   "packages/vitalserver-testkit/src",
   "packages/vitalserver-testkit/tests",
+  "apps/vitaldb-observer",
   "scripts",
 ]
 ignore_missing_imports = true
 mypy_path = [
   "packages/vm-build/src",
   "packages/vitalserver-testkit/src",
+  "apps/vitaldb-observer",
 ]
 namespace_packages = true
 no_implicit_optional = true
@@ -102,8 +106,10 @@ pythonpath = [
   ".",
   "packages/vm-build/src",
   "packages/vitalserver-testkit/src",
+  "apps/vitaldb-observer",
 ]
 testpaths = [
   "packages/vm-build/tests",
   "packages/vitalserver-testkit/tests",
+  "apps/vitaldb-observer/tests",
 ]

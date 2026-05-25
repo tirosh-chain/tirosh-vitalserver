@@ -10,6 +10,7 @@ protocol RuntimeStatusReading {
     func loadHealthStatus(settings: RuntimeSettings) async -> RuntimeStatus
     func loadRuntimeEvents(limit: Int) -> RuntimeEventHistory
     func loadRuntimeEvents(query: RuntimeEventQuery) -> RuntimeEventHistory
+    func loadVitalDBObservation() -> VitalDBObservationDocument?
     func legacyCommandProgressLine() -> String?
 }
 
@@ -72,11 +73,12 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading {
             cpuUsagePercent: guestState?.cpuUsagePercent,
             memory: guestState?.memory,
             systemDisk: guestState?.systemDisk,
-            dataStorage: nil,
+            dataStorage: guestState?.vitalFilesDisk,
             proxyPort: document?.proxyPort ?? proxyPort(paths.proxyLaunchDaemon),
             failureReasons: document?.failureReasons ?? [],
             progress: document?.progress,
-            containerObservation: document?.containerObservation
+            containerObservation: document?.containerObservation,
+            vitalDBObservation: document?.vitalDBObservation
         )
     }
 
@@ -94,6 +96,12 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading {
             events: page.events,
             nextCursor: page.nextCursor.map(RuntimeEventCursorWireCodec.encode)
         )
+    }
+
+    func loadVitalDBObservation() -> VitalDBObservationDocument? {
+        SQLiteRuntimeObservabilityStore(
+            url: URL(fileURLWithPath: paths.runtimeObservabilityDB)
+        ).latestVitalDBObservation()
     }
 
     func legacyCommandProgressLine() -> String? {
@@ -117,7 +125,7 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading {
 
     private func withDataStorageUsage(_ status: RuntimeStatus, settings: RuntimeSettings) -> RuntimeStatus {
         var next = status
-        next.dataStorage = storageUsageProvider.storageUsage(for: settings.vitalFilesDirectory)
+        next.dataStorage = storageUsageProvider.storageUsage(for: settings.vitalFilesDirectory) ?? next.dataStorage
         return next
     }
 

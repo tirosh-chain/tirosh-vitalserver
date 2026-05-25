@@ -31,9 +31,12 @@ bundle_path = ".tmp/vitalserver-vm-pkg/docker-images/vitalserver-images.tar.gz"
 app_dockerfile = "apps/vitalserver/docker/Dockerfile"
 audit_proxy_image = "vitalserver-audit-proxy:0.1.0"
 audit_proxy_dockerfile = "apps/vitalserver-audit-proxy/Dockerfile"
+vitaldb_observer_image = "vitaldb-observer:0.1.0"
+vitaldb_observer_dockerfile = "apps/vitaldb-observer/Dockerfile"
 images = [
   "vitalserver:2.3.4",
   "vitalserver-audit-proxy:0.1.0",
+  "vitaldb-observer:0.1.0",
   "redis:3.2.12-alpine",
   "ghcr.io/joeferner/redis-commander:0.9.0",
   "swaggerapi/swagger-ui:v5.17.14",
@@ -107,6 +110,10 @@ source = "apps/vitalserver-audit-proxy"
 destination = "apps/vitalserver-audit-proxy"
 
 [[guest_deploy.paths]]
+source = "apps/vitaldb-observer"
+destination = "apps/vitaldb-observer"
+
+[[guest_deploy.paths]]
 source = "vendor/vitalserver/vitalserver-old"
 destination = "vendor/vitalserver/vitalserver-old"
 
@@ -117,6 +124,10 @@ destination = "docs/openapi.yaml"
 [[guest_deploy.files]]
 source = "docs/openapi/audit-proxy.openapi.yaml"
 destination = "docs/openapi/audit-proxy.openapi.yaml"
+
+[[guest_deploy.files]]
+source = "docs/openapi/vitaldb-observer.openapi.yaml"
+destination = "docs/openapi/vitaldb-observer.openapi.yaml"
 
 [[guest_deploy.files]]
 source = "docs/macos-runtime/runtime-control.openapi.json"

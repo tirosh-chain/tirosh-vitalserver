@@ -41,6 +41,9 @@ apps/vitalserver-macos-runtime/release-dev.json
 `release.json`은 stable channel, `release-dev.json`은 내부 dev channel SoT입니다. 기본 make target은 stable 파일을 읽고, dev artifact를 만들 때는 `VM_RELEASE_FILE=apps/vitalserver-macos-runtime/release-dev.json`을 넘깁니다.
 
 Release manifest는 build input이고, Test 탭/API 구현의 세부 contract는 소유하지 않습니다.
+Runtime 전체 SoT map은 [Runtime observability model](observability.md#source-of-truth-map)에
+정리합니다. Packaging 관점에서는 release manifest가 artifact identity와 service catalog를 소유하고,
+`vm-build.toml`이 build/deploy 경로와 Docker image bundle 구성을 소유합니다.
 
 | Field | Owner | 의미 |
 |---|---|---|
@@ -70,6 +73,27 @@ Update bundle kind는 두 개로 제한합니다.
 | `vm-image-update` | `make vm-rootfs-update-bundle` | Danger Zone | VM Image/rootfs/base OS/kernel/initrd class artifact |
 
 Hotfix, service-only update, updater bridge update는 별도 kind가 아니라 `product-update` metadata로 표현합니다.
+
+## Bundled observer services
+
+기본 Service Stack에는 VitalServer app, Redis, audit proxy, edge/nginx, Redis UI, Swagger UI와 함께
+`vitaldb-observer` container가 포함됩니다. `vitaldb-observer`는 Redis와 proxy/access log를 읽어
+recorder/bed/anomaly snapshot을 계산하지만, 자체 SQLite를 소유하지 않습니다. 최종 observation SoT는
+watchdog/runtime observability SQLite입니다.
+
+```text
+vitaldb-observer
+  -> /health
+  -> /ready
+  -> /api/v1/observations
+  -> guest runtime-state.json
+  -> watchdog
+  -> runtime-observability.sqlite
+  -> Runtime Control API /vitaldb/*
+```
+
+Docker image bundle과 guest deploy 대상은 `Support/Build/vm-build.toml`이 소유합니다. observer image,
+Dockerfile, deploy path를 변경할 때는 Makefile literal을 추가하지 말고 TOML 값을 수정합니다.
 
 ## Package 구성
 

@@ -1,4 +1,5 @@
 import Foundation
+import Contracts
 import RuntimeControl
 import Core
 
@@ -64,6 +65,10 @@ public struct MacHostRuntimeClient: RuntimeControlClient, RuntimeHostClient {
 
     public func loadRuntimeEvents(query: RuntimeEventQuery) -> RuntimeEventHistory {
         statusReader.loadRuntimeEvents(query: query)
+    }
+
+    public func loadVitalDBObservation() -> VitalDBObservationDocument? {
+        statusReader.loadVitalDBObservation()
     }
 
     public func loadBackups(latestBackupPath: String?) -> [RuntimeBackup] {

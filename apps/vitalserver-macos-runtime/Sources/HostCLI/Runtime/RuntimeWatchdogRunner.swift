@@ -56,7 +56,8 @@ struct RuntimeWatchdogRunner {
             vmIP: initial.vmIP,
             guestHTTP: initial.guestHTTP,
             hostProxyReadinessHTTP: initial.hostProxyHTTP,
-            hostProxyLivenessHTTP: proxyLivenessHTTP
+            hostProxyLivenessHTTP: proxyLivenessHTTP,
+            containerObservation: initial.containerObservation
         ))
         log(
             "watchdog recovery plan vm=\(recoveryPlan.restartVM) proxy=\(recoveryPlan.restartProxy) "

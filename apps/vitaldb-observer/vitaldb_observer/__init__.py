@@ -1,0 +1,1 @@
+"""VitalDB local observer service."""

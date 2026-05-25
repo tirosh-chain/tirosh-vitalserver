@@ -13,6 +13,8 @@ public enum RuntimeFailureReason: Codable, Equatable, Sendable {
     case swaggerUIHTTP(String)
     case guestHTTP(String)
     case auditProxyHTTP(String)
+    case containerService(service: String, state: String)
+    case vitalDBAnomaly(kind: String, subject: String)
     case proxyPortInUse(port: Int, listeners: String)
     case guestBootstrapMissingRuntimePackages
     case guestBootstrapFailed
@@ -49,6 +51,10 @@ public enum RuntimeFailureReason: Codable, Equatable, Sendable {
                 self = .guestHTTP(String(rawValue.dropFirst("guest-http-".count)))
             } else if rawValue.hasPrefix("audit-proxy-http-") {
                 self = .auditProxyHTTP(String(rawValue.dropFirst("audit-proxy-http-".count)))
+            } else if let parsed = RuntimeFailureReason.parseContainerService(rawValue) {
+                self = parsed
+            } else if let parsed = RuntimeFailureReason.parseVitalDBAnomaly(rawValue) {
+                self = parsed
             } else if let parsed = RuntimeFailureReason.parseProxyPortInUse(rawValue) {
                 self = parsed
             } else {
@@ -83,6 +89,10 @@ public enum RuntimeFailureReason: Codable, Equatable, Sendable {
             return "guest-http-\(status)"
         case .auditProxyHTTP(let status):
             return "audit-proxy-http-\(status)"
+        case .containerService(let service, let state):
+            return "container-service-\(service)-state-\(state)"
+        case .vitalDBAnomaly(let kind, let subject):
+            return "vitaldb-anomaly-\(kind)-subject-\(subject)"
         case .proxyPortInUse(let port, let listeners):
             return "proxy-port-\(port)-in-use-by-\(listeners)"
         case .guestBootstrapMissingRuntimePackages:
@@ -116,5 +126,27 @@ public enum RuntimeFailureReason: Codable, Equatable, Sendable {
             return nil
         }
         return .proxyPortInUse(port: port, listeners: String(rawValue[markerRange.upperBound...]))
+    }
+
+    private static func parseContainerService(_ rawValue: String) -> RuntimeFailureReason? {
+        let prefix = "container-service-"
+        let marker = "-state-"
+        guard rawValue.hasPrefix(prefix),
+              let markerRange = rawValue.range(of: marker) else {
+            return nil
+        }
+        let service = rawValue[rawValue.index(rawValue.startIndex, offsetBy: prefix.count)..<markerRange.lowerBound]
+        return .containerService(service: String(service), state: String(rawValue[markerRange.upperBound...]))
+    }
+
+    private static func parseVitalDBAnomaly(_ rawValue: String) -> RuntimeFailureReason? {
+        let prefix = "vitaldb-anomaly-"
+        let marker = "-subject-"
+        guard rawValue.hasPrefix(prefix),
+              let markerRange = rawValue.range(of: marker) else {
+            return nil
+        }
+        let kind = rawValue[rawValue.index(rawValue.startIndex, offsetBy: prefix.count)..<markerRange.lowerBound]
+        return .vitalDBAnomaly(kind: String(kind), subject: String(rawValue[markerRange.upperBound...]))
     }
 }

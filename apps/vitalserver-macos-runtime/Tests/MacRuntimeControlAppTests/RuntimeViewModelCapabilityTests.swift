@@ -1,4 +1,5 @@
 import Foundation
+import Contracts
 import Core
 import RuntimeControl
 @testable import MacRuntimeControlApp
@@ -219,6 +220,10 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
 
     func loadRuntimeEvents(query: RuntimeEventQuery) -> RuntimeEventHistory {
         RuntimeEventHistory(events: [])
+    }
+
+    func loadVitalDBObservation() -> VitalDBObservationDocument? {
+        nil
     }
 
     func loadBackups(latestBackupPath: String?) -> [RuntimeBackup] {

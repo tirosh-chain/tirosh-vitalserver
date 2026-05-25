@@ -33,6 +33,8 @@ Dev local server는 read-only runtime endpoint와 일부 host log endpoint를 �
 | `GET` | `/runtime/status/stream` |
 | `GET` | `/runtime/events` |
 | `GET` | `/runtime/events/stream` |
+| `GET` | `/vitaldb/observations/latest` |
+| `GET` | `/vitaldb/observations/stream` |
 | `POST` | `/runtime/health` |
 | `GET` | `/runtime/settings` |
 | `GET` | `/runtime/release` |
@@ -71,6 +73,15 @@ channel이며, command 전송용 양방향 WebSocket contract가 아닙니다.
 frame을 보냅니다. 각 frame의 `id` 값은 `runtime-log-<source>`, `data` 값은 JSON encoded
 `RuntimeLogTextResponse`입니다. Query는 `source`, `lineLimit`, `helperMessage`를 지원합니다.
 
+`GET /vitaldb/observations/latest`는 watchdog/runtime observability SQLite에 저장된 최신
+`VitalDBObservationDocument`를 반환합니다. 이 payload는 `vitaldb-observer` container가 계산한
+recorder/bed/device/filter/proxy/anomaly snapshot을 guest runtime-state 경로로 전달하고, watchdog이
+runtime observability SoT에 저장한 결과입니다.
+
+`GET /vitaldb/observations/stream`은 long-lived SSE 연결입니다. 서버는 최신 VitalDB observation payload가
+바뀔 때 `vitaldb-observed` frame을 보냅니다. 각 frame의 `id` 값은 `vitaldb-observation`, `data` 값은
+JSON encoded `VitalDBObservationDocument` 또는 `null`입니다.
+
 `distribution.profile`이 `dev`인 build에서는 macOS Helper가 실행 중일 때
 `http://127.0.0.1:18321/dev/runtime-control`에서 브라우저용 Runtime Control API console을 열 수 있습니다.
 Stable build는 local API server와 이 route를 제공하지 않습니다. 이 화면은 product PWA가 아니라 API/SSE
@@ -82,7 +93,7 @@ Stable build는 local API server와 이 route를 제공하지 않습니다. 이 
 
 | Scope | Prefix | 의미 | PWA에서의 해석 |
 |---|---|---|---|
-| `runtimeControl` | `/runtime/*` | local/remote runtime control usecase | PWA가 우선 의존할 API surface |
+| `runtimeControl` | `/runtime/*`, `/vitaldb/*` | local/remote runtime control usecase | PWA가 우선 의존할 API surface |
 | `hostAffordance` | `/host/*` | local file/log/update-bundle affordance | browser가 직접 수행하지 않고 native shell 또는 server endpoint로 재배치 |
 
 ## Runtime Routes
@@ -94,6 +105,8 @@ Stable build는 local API server와 이 route를 제공하지 않습니다. 이 
 | `GET` | `/runtime/status/stream` | SSE runtime status snapshot subscription |
 | `GET` | `/runtime/events` | runtime status/progress event history |
 | `GET` | `/runtime/events/stream` | SSE runtime status/progress event subscription |
+| `GET` | `/vitaldb/observations/latest` | latest VitalDB recorder/bed/anomaly observation snapshot |
+| `GET` | `/vitaldb/observations/stream` | SSE VitalDB observation snapshot subscription |
 | `POST` | `/runtime/health` | active health refresh |
 | `GET` | `/runtime/settings` | current runtime settings |
 | `PUT` | `/runtime/settings` | apply runtime settings |
@@ -125,7 +138,7 @@ Stable build는 local API server와 이 route를 제공하지 않습니다. 이 
 
 | Access | 의미 | 현재 route |
 |---|---|---|
-| `browserSafe` | 브라우저/PWA가 local Runtime Control server에 직접 호출 가능한 read-only runtime control | `GET /runtime/capabilities`, `GET /runtime/status`, `GET /runtime/status/stream`, `GET /runtime/events`, `GET /runtime/events/stream`, `POST /runtime/health`, `GET /runtime/settings`, `GET /runtime/release`, `GET /runtime/install` |
+| `browserSafe` | 브라우저/PWA가 local Runtime Control server에 직접 호출 가능한 read-only runtime control | `GET /runtime/capabilities`, `GET /runtime/status`, `GET /runtime/status/stream`, `GET /runtime/events`, `GET /runtime/events/stream`, `GET /vitaldb/observations/latest`, `GET /vitaldb/observations/stream`, `POST /runtime/health`, `GET /runtime/settings`, `GET /runtime/release`, `GET /runtime/install` |
 | `localServerMediated` | 브라우저가 직접 host resource를 만지지 않고 local server가 권한/파일/프로세스 작업을 중재해야 함 | runtime write/admin routes, backups list/delete/rollback, log read/stream, update bundle summary/verify/apply |
 | `nativeShellOnly` | 브라우저 endpoint만으로는 UX나 보안 경계가 충분하지 않아 native shell mediation이 필요함 | `POST /host/logs/export` |
 

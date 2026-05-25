@@ -88,6 +88,64 @@ final class RuntimeHealthEvaluatorTests: XCTestCase {
         XCTAssertEqual(snapshot.containerObservation, observation)
     }
 
+    func testCriticalContainerServiceFailureProducesTypedReason() {
+        let observation = RuntimeContainerObservation(
+            auditProxyHTTP: "200",
+            auditProxyStatus: nil,
+            containerLogsPresent: true,
+            containerLogsBytes: 2048,
+            composeServices: [
+                RuntimeContainerServiceObservation(
+                    service: "app",
+                    state: "running",
+                    health: "unhealthy"
+                ),
+                RuntimeContainerServiceObservation(
+                    service: "redis-ui",
+                    state: "exited",
+                    health: "unhealthy"
+                ),
+            ]
+        )
+        let snapshot = RuntimeHealthEvaluator.evaluate(healthyInput(containerObservation: observation))
+
+        XCTAssertEqual(snapshot.failureReasons, [
+            .containerService(service: "app", state: "unhealthy"),
+        ])
+    }
+
+    func testCriticalVitalDBAnomalyProducesTypedReason() {
+        let observation = VitalDBObservationDocument(
+            observedAt: "2026-05-25T00:00:00Z",
+            ready: true,
+            recorderOnlineThresholdSeconds: 120,
+            anomalies: [
+                VitalDBAnomalyObservation(
+                    id: "a1",
+                    kind: .backendUnavailable,
+                    severity: .critical,
+                    observedAt: "2026-05-25T00:00:00Z",
+                    subject: "/socket.io/?EIO=3&transport=websocket",
+                    message: "backend-unavailable"
+                ),
+                VitalDBAnomalyObservation(
+                    id: "a2",
+                    kind: .staleRecorder,
+                    severity: .warning,
+                    observedAt: "2026-05-25T00:00:00Z",
+                    subject: "VR_A",
+                    message: "stale-recorder"
+                ),
+            ]
+        )
+
+        let snapshot = RuntimeHealthEvaluator.evaluate(healthyInput(vitalDBObservation: observation))
+
+        XCTAssertEqual(snapshot.failureReasons, [
+            .vitalDBAnomaly(kind: "backend-unavailable", subject: "_socket.io__EIO_3_transport_websocket"),
+        ])
+    }
+
     func testBootstrapReasonIsIgnoredWhenGuestHTTPIsHealthy() {
         let snapshot = RuntimeHealthEvaluator.evaluate(healthyInput(
             guestHTTP: "200",
@@ -113,6 +171,7 @@ final class RuntimeHealthEvaluatorTests: XCTestCase {
         redisUIHTTP: String = "200",
         swaggerUIHTTP: String = "200",
         containerObservation: RuntimeContainerObservation? = nil,
+        vitalDBObservation: VitalDBObservationDocument? = nil,
         proxyPortFailureReasons: [RuntimeFailureReason] = [],
         guestBootstrapFailureReason: RuntimeFailureReason? = nil
     ) -> RuntimeHealthInput {
@@ -131,6 +190,7 @@ final class RuntimeHealthEvaluatorTests: XCTestCase {
             redisUIHTTP: redisUIHTTP,
             swaggerUIHTTP: swaggerUIHTTP,
             containerObservation: containerObservation,
+            vitalDBObservation: vitalDBObservation,
             proxyPortFailureReasons: proxyPortFailureReasons,
             guestBootstrapFailureReason: guestBootstrapFailureReason
         )

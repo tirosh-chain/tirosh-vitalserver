@@ -80,6 +80,7 @@ def sync_swift(root, release, release_file):
     )
     vitalserver = require_service(release, "vitalServer")
     audit_proxy = require_service(release, "auditProxy")
+    vitaldb_observer = require_service(release, "vitalDBObserver")
     redis = require_service(release, "redis")
     redis_ui = require_service(release, "redisUI")
     swagger_ui = require_service(release, "swaggerUI")
@@ -87,6 +88,7 @@ def sync_swift(root, release, release_file):
     host_proxy = require_service(release, "hostProxy")
     vitalserver_name = require_field(release, "services.vitalServer.displayName")
     audit_proxy_name = require_field(release, "services.auditProxy.displayName")
+    vitaldb_observer_name = require_field(release, "services.vitalDBObserver.displayName")
     redis_name = require_field(release, "services.redis.displayName")
     redis_ui_name = require_field(release, "services.redisUI.displayName")
     swagger_ui_name = require_field(release, "services.swaggerUI.displayName")
@@ -121,6 +123,7 @@ enum GeneratedRelease {{
     static let vitalServerVersion = {swift_string(release["vitalServerVersion"])}
     static let vitalServerName = {swift_string(vitalserver_name)}
     static let auditProxyName = {swift_string(audit_proxy_name)}
+    static let vitalDBObserverName = {swift_string(vitaldb_observer_name)}
     static let redisName = {swift_string(redis_name)}
     static let redisUIName = {swift_string(redis_ui_name)}
     static let swaggerUIName = {swift_string(swagger_ui_name)}
@@ -128,12 +131,14 @@ enum GeneratedRelease {{
     static let hostProxyName = {swift_string(host_proxy_name)}
     static let vitalServerImage = {swift_string(vitalserver["image"])}
     static let auditProxyImage = {swift_string(audit_proxy["image"])}
+    static let vitalDBObserverImage = {swift_string(vitaldb_observer["image"])}
     static let redisImage = {swift_string(redis["image"])}
     static let redisUIImage = {swift_string(redis_ui["image"])}
     static let swaggerUIImage = {swift_string(swagger_ui["image"])}
     static let guestEdgeImage = {swift_string(guest_edge["image"])}
     static let hostProxyImage = {swift_string(host_proxy["image"])}
     static let auditProxyVersion = {swift_string(audit_proxy["version"])}
+    static let vitalDBObserverVersion = {swift_string(vitaldb_observer["version"])}
     static let redisVersion = {swift_string(redis["version"])}
     static let redisUIVersion = {swift_string(redis_ui["version"])}
     static let swaggerUIVersion = {swift_string(swagger_ui["version"])}
@@ -149,6 +154,7 @@ def sync_compose(root, release):
     content = compose.read_text(encoding="utf-8")
     vitalserver = require_service(release, "vitalServer")
     audit_proxy = require_service(release, "auditProxy")
+    vitaldb_observer = require_service(release, "vitalDBObserver")
     redis = require_service(release, "redis")
     redis_ui = require_service(release, "redisUI")
     swagger_ui = require_service(release, "swaggerUI")
@@ -159,6 +165,7 @@ def sync_compose(root, release):
         r"image: vitalserver-audit-proxy:[^\n]+": (
             f"image: {audit_proxy['image']}"
         ),
+        r"image: vitaldb-observer:[^\n]+": f"image: {vitaldb_observer['image']}",
         r"image: ghcr\.io/joeferner/redis-commander:[^\n]+": (
             f"image: {redis_ui['image']}"
         ),
@@ -177,6 +184,7 @@ def sync_build_config(root, release):
     content = config.read_text(encoding="utf-8")
     vitalserver = require_service(release, "vitalServer")
     audit_proxy = require_service(release, "auditProxy")
+    vitaldb_observer = require_service(release, "vitalDBObserver")
     redis = require_service(release, "redis")
     redis_ui = require_service(release, "redisUI")
     swagger_ui = require_service(release, "swaggerUI")
@@ -185,8 +193,12 @@ def sync_build_config(root, release):
     replacements = {
         r'"vitalserver:[^"]+"': f'"{vitalserver["image"]}"',
         r'\n  "vitalserver-audit-proxy:[^"]+"': f'\n  "{audit_proxy["image"]}"',
+        r'\n  "vitaldb-observer:[^"]+"': f'\n  "{vitaldb_observer["image"]}"',
         r'audit_proxy_image = "vitalserver-audit-proxy:[^"]+"': (
             f'audit_proxy_image = "{audit_proxy["image"]}"'
+        ),
+        r'vitaldb_observer_image = "vitaldb-observer:[^"]+"': (
+            f'vitaldb_observer_image = "{vitaldb_observer["image"]}"'
         ),
         r'"redis:[^"]+"': f'"{redis["image"]}"',
         r'"ghcr\.io/joeferner/redis-commander:[^"]+"': (

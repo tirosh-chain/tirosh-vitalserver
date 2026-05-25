@@ -19,6 +19,15 @@ verify-update-bundle
 render-template
 ```
 
+Most packaging inputs are declared in
+`apps/vitalserver-macos-runtime/Support/Build/vm-build.toml`. Keep Docker image
+names, local Dockerfile paths, guest deploy paths, and OpenAPI deploy files in
+that TOML file instead of adding new literals to Make targets.
+
+`docker-images` builds local images such as `vitalserver`,
+`vitalserver-audit-proxy`, and `vitaldb-observer`, pulls external images, and
+writes the air-gapped Docker image bundle used by PKG/update packaging.
+
 Create an immutable rootfs base from a clean VM disk:
 
 ```sh

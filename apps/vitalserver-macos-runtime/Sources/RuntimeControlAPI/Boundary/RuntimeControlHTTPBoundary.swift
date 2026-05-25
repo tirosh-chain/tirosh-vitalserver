@@ -87,6 +87,7 @@ public protocol RuntimeControlAPIReadHandler {
     func loadCapabilities() async throws -> RuntimeControlCapabilities
     func loadStatus() async throws -> RuntimeStatus
     func loadEvents(query: RuntimeEventQuery) async throws -> RuntimeEventHistory
+    func loadVitalDBObservation() async throws -> VitalDBObservationDocument?
     func loadHealthStatus() async throws -> RuntimeStatus
     func loadSettings() async throws -> RuntimeSettings
     func loadReleaseInfo() async throws -> RuntimeReleaseInfo
@@ -165,6 +166,14 @@ public struct RuntimeControlAPIRouter {
             case .eventStream:
                 let query = try request.runtimeEventQuery()
                 return try await eventStreamResponse(handler.loadEvents(query: query))
+            case .vitalDBObservation:
+                return try await jsonResponse(handler.loadVitalDBObservation())
+            case .vitalDBObservationStream:
+                return try await eventStreamResponse(
+                    id: "vitaldb-observation",
+                    event: "vitaldb-observed",
+                    value: handler.loadVitalDBObservation()
+                )
             case .health:
                 return try await jsonResponse(handler.loadHealthStatus())
             case .settings:
@@ -252,6 +261,18 @@ public struct RuntimeControlAPIRouter {
                 return errorStreamResponse(queryError.localizedDescription)
             } catch {
                 return errorStreamResponse(error.localizedDescription)
+            }
+        case .vitalDBObservationStream:
+            return makeStream { [handler, streamConfiguration] continuation in
+                await pollSnapshot(
+                    id: "vitaldb-observation",
+                    event: "vitaldb-observed",
+                    interval: streamConfiguration.pollIntervalNanoseconds,
+                    heartbeatInterval: streamConfiguration.heartbeatIntervalNanoseconds,
+                    continuation: continuation
+                ) {
+                    try await handler.loadVitalDBObservation()
+                }
             }
         case .logStream:
             do {

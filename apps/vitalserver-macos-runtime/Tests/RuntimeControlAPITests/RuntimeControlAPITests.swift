@@ -19,7 +19,9 @@ final class RuntimeControlAPITests: XCTestCase {
             .filter { $0.scope == .runtimeControl }
 
         XCTAssertFalse(runtimeControlRoutes.isEmpty)
-        XCTAssertTrue(runtimeControlRoutes.allSatisfy { $0.path.hasPrefix("/runtime/") })
+        XCTAssertTrue(runtimeControlRoutes.allSatisfy {
+            $0.path.hasPrefix("/runtime/") || $0.path.hasPrefix("/vitaldb/")
+        })
     }
 
     func testHostAffordanceRoutesAreExplicitlySeparated() {
@@ -107,7 +109,12 @@ final class RuntimeControlAPITests: XCTestCase {
     func testRuntimeEventStreamOpenAPIUsesSSEMediaType() throws {
         let operations = try openAPIOperations()
 
-        for key in ["GET /runtime/status/stream", "GET /runtime/events/stream", "GET /host/logs/stream"] {
+        for key in [
+            "GET /runtime/status/stream",
+            "GET /runtime/events/stream",
+            "GET /vitaldb/observations/stream",
+            "GET /host/logs/stream",
+        ] {
             let operation = try XCTUnwrap(operations[key])
             let responses = try XCTUnwrap(operation["responses"] as? [String: Any])
             let okResponse = try XCTUnwrap(responses["200"] as? [String: Any])
@@ -235,6 +242,10 @@ final class RuntimeControlAPITests: XCTestCase {
             RuntimeEventHistory.self,
             from: router.route(.init(method: .get, path: "/runtime/events"))
         )
+        let vitalDBObservation = try await decode(
+            VitalDBObservationDocument?.self,
+            from: router.route(.init(method: .get, path: "/vitaldb/observations/latest"))
+        )
 
         XCTAssertTrue(capabilities.canControlRuntimeServices)
         XCTAssertEqual(settings.cpuCount, 4)
@@ -242,6 +253,7 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertEqual(release.helperVersion, "0.1.0")
         XCTAssertEqual(installInfo.runtimeHomePath, "/runtime/home")
         XCTAssertEqual(events.events.map(\.id), ["event-1"])
+        XCTAssertEqual(vitalDBObservation?.recorders.map(\.vrcode), ["VR_A"])
     }
 
     @MainActor
@@ -726,6 +738,21 @@ private struct StubRuntimeControlAPIReadHandler: RuntimeControlAPIReadHandler {
         ])
     }
 
+    func loadVitalDBObservation() async throws -> VitalDBObservationDocument? {
+        VitalDBObservationDocument(
+            observedAt: "2026-05-25T00:00:00Z",
+            ready: true,
+            recorderOnlineThresholdSeconds: 120,
+            recorders: [
+                VitalDBRecorderObservation(
+                    vrcode: "VR_A",
+                    ip: "10.0.0.10",
+                    online: true
+                ),
+            ]
+        )
+    }
+
     func loadHealthStatus() async throws -> RuntimeStatus {
         RuntimeStatus(runtimeInstalled: true, runtimeState: .healthy, statusMessage: "healthy")
     }
@@ -838,6 +865,14 @@ private final class FakeRuntimeControlClient: RuntimeControlClient {
         return RuntimeEventHistory(
             events: Array(events.suffix(query.limit)),
             nextCursor: query.before.map(RuntimeEventCursorWireCodec.encode)
+        )
+    }
+
+    func loadVitalDBObservation() -> VitalDBObservationDocument? {
+        VitalDBObservationDocument(
+            observedAt: "2026-05-25T00:00:00Z",
+            ready: true,
+            recorderOnlineThresholdSeconds: 120
         )
     }
 

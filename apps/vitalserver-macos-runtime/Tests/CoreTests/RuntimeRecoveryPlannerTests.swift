@@ -54,6 +54,28 @@ final class RuntimeRecoveryPlannerTests: XCTestCase {
         XCTAssertFalse(plan.restartProxy)
     }
 
+    func testCriticalContainerServiceFailureRestartsVM() {
+        let plan = RuntimeRecoveryPlanner.plan(input(
+            containerObservation: RuntimeContainerObservation(
+                auditProxyHTTP: "200",
+                auditProxyStatus: nil,
+                containerLogsPresent: true,
+                containerLogsBytes: 1024,
+                composeServices: [
+                    RuntimeContainerServiceObservation(
+                        service: "vitaldb-observer",
+                        state: "running",
+                        health: "unhealthy"
+                    ),
+                ]
+            )
+        ))
+
+        XCTAssertTrue(plan.canRecover)
+        XCTAssertTrue(plan.restartVM)
+        XCTAssertFalse(plan.restartProxy)
+    }
+
     private func input(
         vmExecutable: Bool = true,
         proxyExecutable: Bool = true,
@@ -64,7 +86,8 @@ final class RuntimeRecoveryPlannerTests: XCTestCase {
         vmIP: String? = "192.168.64.2",
         guestHTTP: String = "200",
         hostProxyReadinessHTTP: String = "200",
-        hostProxyLivenessHTTP: String = "204"
+        hostProxyLivenessHTTP: String = "204",
+        containerObservation: RuntimeContainerObservation? = nil
     ) -> RuntimeRecoveryInput {
         RuntimeRecoveryInput(
             vmExecutable: vmExecutable,
@@ -76,7 +99,8 @@ final class RuntimeRecoveryPlannerTests: XCTestCase {
             vmIP: vmIP,
             guestHTTP: guestHTTP,
             hostProxyReadinessHTTP: hostProxyReadinessHTTP,
-            hostProxyLivenessHTTP: hostProxyLivenessHTTP
+            hostProxyLivenessHTTP: hostProxyLivenessHTTP,
+            containerObservation: containerObservation
         )
     }
 }

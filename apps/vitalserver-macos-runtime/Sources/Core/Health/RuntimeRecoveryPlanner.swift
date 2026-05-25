@@ -10,6 +10,7 @@ public struct RuntimeRecoveryInput: Equatable {
     public let guestHTTP: String
     public let hostProxyReadinessHTTP: String
     public let hostProxyLivenessHTTP: String
+    public let containerObservation: RuntimeContainerObservation?
 
     public init(
         vmExecutable: Bool,
@@ -21,7 +22,8 @@ public struct RuntimeRecoveryInput: Equatable {
         vmIP: String?,
         guestHTTP: String,
         hostProxyReadinessHTTP: String,
-        hostProxyLivenessHTTP: String
+        hostProxyLivenessHTTP: String,
+        containerObservation: RuntimeContainerObservation? = nil
     ) {
         self.vmExecutable = vmExecutable
         self.proxyExecutable = proxyExecutable
@@ -33,6 +35,7 @@ public struct RuntimeRecoveryInput: Equatable {
         self.guestHTTP = guestHTTP
         self.hostProxyReadinessHTTP = hostProxyReadinessHTTP
         self.hostProxyLivenessHTTP = hostProxyLivenessHTTP
+        self.containerObservation = containerObservation
     }
 }
 
@@ -64,6 +67,7 @@ public enum RuntimeRecoveryPlanner {
         let restartVM = input.vmService != .loaded
             || input.vmIP == nil
             || !guestReady
+            || RuntimeObservationHealthPolicy.requiresVMRestart(containerObservation: input.containerObservation)
 
         let restartProxy = input.proxyService != .loaded
             || !hostProxyAlive

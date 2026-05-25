@@ -8,6 +8,9 @@ public enum RuntimeEventType: Codable, Equatable, Sendable {
     case recoveryCompleted
     case containerObserved
     case auditProxyObserved
+    case vitalDBObserved
+    case vitalDBObserverUnhealthy
+    case vitalDBAnomalyDetected
     case runtimeCommandStarted
     case runtimeCommandCompleted
     case runtimeCommandFailed
@@ -29,6 +32,12 @@ public enum RuntimeEventType: Codable, Equatable, Sendable {
             self = .containerObserved
         case "audit-proxy-observed":
             self = .auditProxyObserved
+        case "vitaldb-observed":
+            self = .vitalDBObserved
+        case "vitaldb-observer-unhealthy":
+            self = .vitalDBObserverUnhealthy
+        case "vitaldb-anomaly-detected":
+            self = .vitalDBAnomalyDetected
         case "runtime-command-started":
             self = .runtimeCommandStarted
         case "runtime-command-completed":
@@ -56,6 +65,12 @@ public enum RuntimeEventType: Codable, Equatable, Sendable {
             return "container-observed"
         case .auditProxyObserved:
             return "audit-proxy-observed"
+        case .vitalDBObserved:
+            return "vitaldb-observed"
+        case .vitalDBObserverUnhealthy:
+            return "vitaldb-observer-unhealthy"
+        case .vitalDBAnomalyDetected:
+            return "vitaldb-anomaly-detected"
         case .runtimeCommandStarted:
             return "runtime-command-started"
         case .runtimeCommandCompleted:
@@ -92,6 +107,7 @@ public struct RuntimeEventDocument: Codable, Equatable, Sendable {
     public let runtimeVersion: String
     public let failureReasons: [RuntimeFailureReason]
     public let containerObservation: RuntimeContainerObservation?
+    public let vitalDBObservation: VitalDBObservationDocument?
     public let progress: RuntimeProgressDocument?
 
     public init(
@@ -108,6 +124,7 @@ public struct RuntimeEventDocument: Codable, Equatable, Sendable {
         runtimeVersion: String,
         failureReasons: [RuntimeFailureReason],
         containerObservation: RuntimeContainerObservation? = nil,
+        vitalDBObservation: VitalDBObservationDocument? = nil,
         progress: RuntimeProgressDocument?
     ) {
         self.schemaVersion = schemaVersion
@@ -123,6 +140,7 @@ public struct RuntimeEventDocument: Codable, Equatable, Sendable {
         self.runtimeVersion = runtimeVersion
         self.failureReasons = failureReasons
         self.containerObservation = containerObservation
+        self.vitalDBObservation = vitalDBObservation
         self.progress = progress
     }
 }

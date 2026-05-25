@@ -1,6 +1,7 @@
 import Foundation
 import RuntimeControl
 import Core
+import Contracts
 
 @MainActor
 public struct RuntimeControlClientAPIReadHandler: RuntimeControlAPIReadHandler {
@@ -23,6 +24,10 @@ public struct RuntimeControlClientAPIReadHandler: RuntimeControlAPIReadHandler {
 
     public func loadEvents(query: RuntimeEventQuery) async throws -> RuntimeEventHistory {
         client.loadRuntimeEvents(query: query)
+    }
+
+    public func loadVitalDBObservation() async throws -> VitalDBObservationDocument? {
+        client.loadVitalDBObservation()
     }
 
     public func loadHealthStatus() async throws -> RuntimeStatus {

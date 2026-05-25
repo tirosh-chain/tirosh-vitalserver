@@ -12,6 +12,8 @@ Browser / VRecorder
               -> Docker Compose
                   - VitalServer
                   - Redis
+                  - Audit Proxy
+                  - VitalDB Observer
                   - Redis UI
                   - Swagger UI
 ```
@@ -46,6 +48,26 @@ Browser / VRecorder
 | VM을 직접 띄워 PoC를 확인하고 싶다 | `make vm-up` |
 
 세부 문서는 [macOS Runtime Overview](../../docs/macos-runtime/overview.md)를 진입점으로 봅니다.
+
+## 관측 SoT
+
+runtime 상태와 VitalDB 관측값은 아래 흐름으로 정규화합니다.
+
+```text
+vitaldb-observer
+  -> guest runtime-state.json
+  -> watchdog/runtime
+  -> runtime-status.json
+  -> runtime-events.jsonl
+  -> runtime-observability.sqlite
+  -> Runtime Control API /runtime/*, /vitaldb/*
+```
+
+`vitaldb-observer`는 Redis와 proxy/access log를 읽는 stateless collector입니다. 최종 observation
+source of truth는 watchdog/runtime이 관리하는 `runtime-observability.sqlite`입니다. UI와 Runtime
+Control API는 observer container를 직접 조회하지 않고 runtime read model을 기준으로 응답합니다.
+전체 owner map은 [Runtime observability model](../../docs/macos-runtime/observability.md#source-of-truth-map)을
+봅니다.
 
 ## 사용자 시나리오
 
@@ -238,6 +260,7 @@ Update bundle manifest는 `schemaVersion: 3`, `channel`, `helperVersion`, `relea
 | Swift `Contracts` | PWA/API/server/host runtime이 공유할 status/progress/update/guest JSON 계약 |
 | Swift `MacHostRuntimeAdapter` | `RuntimeControl`의 macOS local file/process/CLI 구현 |
 | Swift `MacRuntimeControlApp` | Helper app UI, presentation, native shell, composition |
+| `vitaldb-observer` | Redis/proxy source를 읽어 VitalDB recorder/bed/proxy/anomaly snapshot을 생산하는 stateless guest sidecar |
 | Packaging shell | `postinstall`, `proxy-run`, uninstall entrypoint |
 | Guest support | cloud-init 이후 Docker Compose bootstrap, guest state 기록, diagnostics |
 
@@ -250,6 +273,7 @@ Update bundle manifest는 `schemaVersion: 3`, `channel`, `helperVersion`, `relea
 | [macOS Runtime Overview](../../docs/macos-runtime/overview.md) | 문서군 전체 지도와 시나리오 |
 | [Architecture](../../docs/macos-runtime/architecture.md) | As-is/To-be 구조와 책임 경계 |
 | [Runtime Control API](../../docs/macos-runtime/runtime-control-api.md) | PWA 직전 Runtime Control API 계약, OpenAPI, local read-only server 경계 |
+| [Runtime Observability](../../docs/macos-runtime/observability.md) | runtime status/event/VitalDB observation SoT와 SQLite read model |
 | [Packaging and Update](../../docs/macos-runtime/packaging.md) | PKG/DMG/update bundle 계약 |
 | [Runtime](../../docs/macos-runtime/runtime.md) | VM boot, cloud-init, guest bootstrap, network/identity |
 | [Troubleshooting](../../docs/macos-runtime/troubleshooting.md) | 502, stale pid, disk full, install cleanup 등 |

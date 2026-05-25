@@ -16,6 +16,7 @@ public struct RuntimeHealthInput: Equatable {
     public let redisUIHTTP: String
     public let swaggerUIHTTP: String
     public let containerObservation: RuntimeContainerObservation?
+    public let vitalDBObservation: VitalDBObservationDocument?
     public let proxyPortFailureReasons: [RuntimeFailureReason]
     public let guestBootstrapFailureReason: RuntimeFailureReason?
 
@@ -34,6 +35,7 @@ public struct RuntimeHealthInput: Equatable {
         redisUIHTTP: String,
         swaggerUIHTTP: String,
         containerObservation: RuntimeContainerObservation? = nil,
+        vitalDBObservation: VitalDBObservationDocument? = nil,
         proxyPortFailureReasons: [RuntimeFailureReason] = [],
         guestBootstrapFailureReason: RuntimeFailureReason? = nil
     ) {
@@ -51,6 +53,7 @@ public struct RuntimeHealthInput: Equatable {
         self.redisUIHTTP = redisUIHTTP
         self.swaggerUIHTTP = swaggerUIHTTP
         self.containerObservation = containerObservation
+        self.vitalDBObservation = vitalDBObservation
         self.proxyPortFailureReasons = proxyPortFailureReasons
         self.guestBootstrapFailureReason = guestBootstrapFailureReason
     }
@@ -95,6 +98,10 @@ public enum RuntimeHealthEvaluator {
            !isSuccessfulHTTPStatus(containerObservation.auditProxyHTTP) {
             failureReasons.append(.auditProxyHTTP(containerObservation.auditProxyHTTP))
         }
+        failureReasons.append(contentsOf: RuntimeObservationHealthPolicy.failureReasons(
+            containerObservation: input.containerObservation,
+            vitalDBObservation: input.vitalDBObservation
+        ))
 
         return RuntimeHealthSnapshot(
             vmExecutable: input.vmExecutable,
@@ -111,6 +118,7 @@ public enum RuntimeHealthEvaluator {
             redisUIHTTP: input.redisUIHTTP,
             swaggerUIHTTP: input.swaggerUIHTTP,
             containerObservation: input.containerObservation,
+            vitalDBObservation: input.vitalDBObservation,
             failureReasons: failureReasons
         )
     }

@@ -35,6 +35,11 @@ def run_docker_images(args: Namespace) -> int:
         docker_config,
         "audit_proxy_dockerfile",
     )
+    vitaldb_observer_image = required_string(docker_config, "vitaldb_observer_image")
+    vitaldb_observer_dockerfile = root / required_string(
+        docker_config,
+        "vitaldb_observer_dockerfile",
+    )
 
     require_tool("docker")
     bundle_path.parent.mkdir(parents=True, exist_ok=True)
@@ -44,7 +49,7 @@ def run_docker_images(args: Namespace) -> int:
     print(f"Bundle: {bundle_path}")
 
     for image in images[1:]:
-        if image == audit_proxy_image:
+        if image in {audit_proxy_image, vitaldb_observer_image}:
             continue
         run(["docker", "pull", "--platform", build_platform, image])
 
@@ -76,6 +81,22 @@ def run_docker_images(args: Namespace) -> int:
                 audit_proxy_image,
                 "-f",
                 str(audit_proxy_dockerfile),
+                str(root),
+            ]
+        )
+    if vitaldb_observer_image in images:
+        run(
+            [
+                "docker",
+                "buildx",
+                "build",
+                "--platform",
+                build_platform,
+                "--load",
+                "-t",
+                vitaldb_observer_image,
+                "-f",
+                str(vitaldb_observer_dockerfile),
                 str(root),
             ]
         )

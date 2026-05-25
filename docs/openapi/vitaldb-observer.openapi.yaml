@@ -1,0 +1,184 @@
+openapi: 3.1.0
+info:
+  title: VitalDB Observer API
+  version: 0.1.0
+  description: Local stateless collector API for VitalDB recorder, bed, proxy, and anomaly observations.
+servers:
+  - url: http://127.0.0.1:18083
+paths:
+  /health:
+    get:
+      operationId: getObserverHealth
+      summary: Process liveness
+      responses:
+        "200":
+          description: Observer process is alive.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /ready:
+    get:
+      operationId: getObserverReadiness
+      summary: Redis readiness
+      responses:
+        "200":
+          description: Observer can read Redis.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ready, observedAt]
+                properties:
+                  ready:
+                    type: boolean
+                  observedAt:
+                    type: string
+        "503":
+          description: Observer cannot read Redis.
+  /api/v1/observations:
+    get:
+      operationId: getVitalDBObservations
+      summary: Latest VitalDB observation snapshot
+      responses:
+        "200":
+          description: Latest computed observation snapshot.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VitalDBObservationDocument"
+        "503":
+          description: Snapshot collection failed. Response body preserves the observation shape with ready=false.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VitalDBObservationDocument"
+components:
+  schemas:
+    VitalDBObservationDocument:
+      type: object
+      required:
+        - schemaVersion
+        - source
+        - observedAt
+        - ready
+        - recorderOnlineThresholdSeconds
+        - recorders
+        - beds
+        - devices
+        - filters
+        - proxyConnections
+        - anomalies
+      properties:
+        schemaVersion:
+          type: integer
+        source:
+          type: string
+        observedAt:
+          type: string
+        ready:
+          type: boolean
+        recorderOnlineThresholdSeconds:
+          type: integer
+        recorders:
+          type: array
+          items:
+            $ref: "#/components/schemas/VitalDBRecorderObservation"
+        beds:
+          type: array
+          items:
+            $ref: "#/components/schemas/VitalDBBedObservation"
+        devices:
+          type: array
+          items:
+            $ref: "#/components/schemas/VitalDBRawBedScopedObservation"
+        filters:
+          type: array
+          items:
+            $ref: "#/components/schemas/VitalDBRawBedScopedObservation"
+        proxyConnections:
+          type: array
+          items:
+            $ref: "#/components/schemas/VitalDBProxyConnectionObservation"
+        anomalies:
+          type: array
+          items:
+            $ref: "#/components/schemas/VitalDBAnomalyObservation"
+    VitalDBRecorderObservation:
+      type: object
+      properties:
+        vrcode:
+          type: string
+        ip:
+          type: [string, "null"]
+        lastSeenAt:
+          type: [string, "null"]
+        version:
+          type: [string, "null"]
+        info:
+          type: [string, "null"]
+        config:
+          type: [string, "null"]
+        online:
+          type: boolean
+        stale:
+          type: boolean
+    VitalDBBedObservation:
+      type: object
+      properties:
+        bedID:
+          type: string
+        name:
+          type: [string, "null"]
+        vrcode:
+          type: [string, "null"]
+        lastSeenAt:
+          type: [string, "null"]
+        patientConnected:
+          type: [boolean, "null"]
+        online:
+          type: boolean
+    VitalDBRawBedScopedObservation:
+      type: object
+      properties:
+        bedID:
+          type: string
+        rawValue:
+          type: string
+    VitalDBProxyConnectionObservation:
+      type: object
+      properties:
+        observedAt:
+          type: string
+        remoteAddress:
+          type: [string, "null"]
+        remotePort:
+          type: [string, "null"]
+        requestURI:
+          type: [string, "null"]
+        status:
+          type: [string, "null"]
+        upstreamStatus:
+          type: [string, "null"]
+        upstreamResponseTime:
+          type: [string, "null"]
+        websocketHandshake:
+          type: boolean
+    VitalDBAnomalyObservation:
+      type: object
+      properties:
+        id:
+          type: string
+        kind:
+          type: string
+          enum: [offline, duplicate-ip, backend-unavailable, stale-recorder, observer-unhealthy]
+        severity:
+          type: string
+          enum: [info, warning, critical]
+        observedAt:
+          type: string
+        subject:
+          type: string
+        message:
+          type: string

@@ -195,12 +195,18 @@ extension RuntimeLifecycle {
             runtimeVersion: runtimeVersionValue(),
             failureReasons: healthSnapshot.failureReasons,
             containerObservation: healthSnapshot.containerObservation,
+            vitalDBObservation: healthSnapshot.vitalDBObservation,
             progress: nil
         )
-        try CompositeRuntimeEventRepository(
+        let runtimeEventRepository = CompositeRuntimeEventRepository(
             primary: JSONLRuntimeEventRepository(url: installedPaths.runtimeEvents),
             secondary: SQLiteRuntimeEventRepository(url: installedPaths.runtimeObservabilityDB)
-        ).append(event)
+        )
+        try runtimeEventRepository.append(event)
+        if let vitalDBObservation = healthSnapshot.vitalDBObservation {
+            try? SQLiteRuntimeObservabilityStore(url: installedPaths.runtimeObservabilityDB)
+                .append(vitalDBObservation)
+        }
     }
 
     func runtimeHealthSnapshot() -> RuntimeHealthSnapshot {
