@@ -184,7 +184,7 @@ LaunchDaemon으로 실행해 외부 장비와 브라우저가 proxy port로만 �
 ├── make/                     # Makefile target group
 ├── packages/
 │   ├── vitalserver-testkit/   # 운영 검증과 데이터 전송 검증용 Python 도구
-│   └── vm-build/              # build-machine 전용 VM/rootfs/bundle 생성 Python 도구
+│   └── vitalserver-devtools/  # local build/proxy/runtime/package Python 도구
 ├── scripts/
 └── vendor/
     └── vitalserver/           # git submodule: tirosh-chain/vitalserver

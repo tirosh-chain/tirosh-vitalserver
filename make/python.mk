@@ -1,19 +1,19 @@
 .PHONY: lint format typecheck test build-testkit check
 
 lint: require-uv
-	$(UV) run ruff check .
+	$(DEVTOOLS_RUNNER) python-tool --uv "$(UV)" -- ruff check .
 
 format: require-uv
-	$(UV) run ruff format .
-	$(UV) run ruff check --fix .
+	$(DEVTOOLS_RUNNER) python-tool --uv "$(UV)" -- ruff format .
+	$(DEVTOOLS_RUNNER) python-tool --uv "$(UV)" -- ruff check --fix .
 
 typecheck: require-uv
-	$(UV) run mypy
+	$(DEVTOOLS_RUNNER) python-tool --uv "$(UV)" -- mypy
 
 test: require-uv
-	$(UV) run pytest
+	$(DEVTOOLS_RUNNER) python-tool --uv "$(UV)" -- pytest
 
 build-testkit:
-	$(UV) build --out-dir packages/vitalserver-testkit/dist --clear packages/vitalserver-testkit
+	$(DEVTOOLS_RUNNER) python-tool --uv "$(UV)" -- build --out-dir packages/vitalserver-testkit/dist --clear packages/vitalserver-testkit
 
 check: lint typecheck test

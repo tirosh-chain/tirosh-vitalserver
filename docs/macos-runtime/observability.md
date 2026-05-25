@@ -239,7 +239,7 @@ Runtime Control API
 |---|---|---|---|---|
 | Release metadata | `release.json` / `release-dev.json` | 개발자, release sync script | Swift generated release, vm-build, compose image sync | stable/dev release를 명시적으로 분리 |
 | Runtime service catalog | `release*.json` | release config | UI, Runtime Control API, packaging | 화면에 표시되는 service name/version/image 기준 |
-| VM/package build config | `vm-build.toml` | build config | `packages/vm-build` | Docker image, guest deploy path, bundle 구성 기준 |
+| VM/package build config | `vm-build.toml` | build config | `packages/vitalserver-devtools` | Docker image, guest deploy path, bundle 구성 기준 |
 | Runtime health snapshot | runtime evaluator 결과 | watchdog/runtime | Runtime Control API, UI | 현재 runtime 상태 판단 기준 |
 | Runtime event log | `runtime-observability.sqlite`, fallback `runtime-events.jsonl` | watchdog/runtime | Runtime Control API, diagnostics | 이벤트 조회와 이력 추적 기준 |
 | VitalDB observation latest/history | `runtime-observability.sqlite` | watchdog/runtime | Runtime Control API `/vitaldb/*`, UI/Test 탭 후보 | `vitaldb-observer`가 직접 SoT가 아님 |

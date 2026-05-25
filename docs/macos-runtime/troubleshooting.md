@@ -190,7 +190,7 @@ cloud-init은 `instance-id`를 기준으로 이미 처리한 instance인지 판�
 `make vm-cloud-init`은 기본적으로 새 instance-id를 생성합니다. 수동으로 지정하려면:
 
 ```sh
-uv run --project packages/vm-build vitalserver-vm-build \
+uv run --project packages/vitalserver-devtools vitalserver-devtools \
   --config config/vm-build.toml \
   cloud-init \
   --runtime-dir ~/.tirosh/vitalserver-vm/runtime \

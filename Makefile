@@ -3,6 +3,7 @@
 DOCKER_COMPOSE ?= docker compose
 UV ?= uv
 PYTHON ?= python3
+DEVTOOLS_RUNNER ?= $(if $(wildcard .venv/bin/vitalserver-devtools),.venv/bin/vitalserver-devtools,$(UV) run --project packages/vitalserver-devtools vitalserver-devtools)
 
 COMPOSE_ENV_FILE ?=
 TESTKIT_CONFIG ?= config/testkit.toml
@@ -21,13 +22,13 @@ VITALSERVER_REDIS_PORT ?= 6379
 VITALSERVER_TRUST_PROXY ?= 1
 
 COMPOSE := $(strip $(DOCKER_COMPOSE) $(if $(COMPOSE_ENV_FILE),--env-file $(COMPOSE_ENV_FILE),))
-TESTKIT_RUNNER ?= $(shell if command -v "$(UV)" >/dev/null 2>&1; then printf "%s" "$(UV) run python scripts/test_vitalserver.py"; else printf "%s" "$(PYTHON) scripts/test_vitalserver.py"; fi)
+TESTKIT_RUNNER ?= $(if $(wildcard .venv/bin/python),.venv/bin/python scripts/test_vitalserver.py,$(shell if command -v "$(UV)" >/dev/null 2>&1; then printf "%s" "$(UV) run python scripts/test_vitalserver.py"; else printf "%s" "$(PYTHON) scripts/test_vitalserver.py"; fi))
 TESTKIT := $(TESTKIT_RUNNER) --config $(TESTKIT_CONFIG)
 
 include make/submodule.mk
+include make/proxy.mk
 include make/env.mk
 include make/compose.mk
-include make/proxy.mk
 include make/testkit.mk
 include make/python.mk
 include make/vm.mk
@@ -86,16 +87,24 @@ help:
 help-runtime:
 	@printf "tirosh-vitalserver macOS runtime\n"
 	@printf "\n"
-	@printf "Package and update:\n"
-	@printf "  make vm-dmg          Build macOS control app dmg\n"
-	@printf "  make vm-pkg          Build VM runtime pkg\n"
-	@printf "  make vm-update-bundle Build product update bundle from release.json\n"
-	@printf "  make vm-update-bundle-verify Verify product update bundle\n"
-	@printf "  make vm-rootfs-update-bundle Build VM image/rootfs update bundle\n"
-	@printf "  make vm-rootfs-update-bundle-verify Verify VM image/rootfs update bundle\n"
+	@printf "Development artifacts (manifest: release-dev.json):\n"
+	@printf "  make vm-dmg-dev      Build development macOS control app dmg\n"
+	@printf "  make vm-pkg-dev      Build development VM runtime pkg\n"
+	@printf "  make vm-update-bundle-dev Build development product update bundle\n"
+	@printf "  make vm-update-bundle-verify-dev Verify development product update bundle\n"
+	@printf "  make vm-rootfs-update-bundle-dev Build development VM image/rootfs update bundle\n"
+	@printf "  make vm-rootfs-update-bundle-verify-dev Verify development VM image/rootfs update bundle\n"
+	@printf "\n"
+	@printf "Release artifacts (current branch must be main, manifest: release.json):\n"
+	@printf "  make vm-dmg-release  Build release dmg with fresh golden rootfs\n"
+	@printf "  make vm-pkg-release  Build release pkg with fresh golden rootfs\n"
+	@printf "  make vm-update-bundle-release Build release product update bundle\n"
+	@printf "  make vm-update-bundle-verify-release Verify release product update bundle\n"
+	@printf "  make vm-rootfs-update-bundle-release Build release VM image/rootfs update bundle with fresh golden rootfs\n"
+	@printf "  make vm-rootfs-update-bundle-verify-release Verify release VM image/rootfs update bundle\n"
 	@printf "\n"
 	@printf "Install test:\n"
-	@printf "  make vm-pkg-install  Install development VM runtime pkg with sudo\n"
+	@printf "  make vm-pkg-install  Install selected VM runtime pkg with sudo\n"
 	@printf "  make vm-installed-health  Check installed VM and host proxy\n"
 	@printf "  make vm-pkg-uninstall-dev  Remove development VM runtime install\n"
 	@printf "\n"
@@ -104,12 +113,8 @@ help-runtime:
 	@printf "  make vm-health       Check VM IP, guest HTTP, and host proxy reachability\n"
 	@printf "  make vm-down         Stop Linux VM PoC\n"
 	@printf "\n"
-	@printf "Release variants:\n"
-	@printf "  make vm-dmg-release  Build dmg with fresh golden rootfs\n"
-	@printf "  make vm-pkg-release  Build pkg with fresh golden rootfs\n"
-	@printf "\n"
 	@printf "Config:\n"
-	@printf "  VM_RELEASE_FILE=apps/vitalserver-macos-runtime/release-dev.json for dev VM artifacts\n"
+	@printf "  VM_RELEASE_BRANCH=main can override the release branch guard\n"
 	@printf "  VM_COMPRESSION_THREADS=<cpu-count> for faster pkg compression when pigz is installed\n"
 
 help-internal:
@@ -126,6 +131,7 @@ help-internal:
 	@printf "  make proxy-reload    Reload macOS host nginx proxy config\n"
 	@printf "\n"
 	@printf "VM internals:\n"
+	@printf "  make vm-require-release-branch Check current branch before release artifact builds\n"
 	@printf "  make vm-build        Build Apple Virtualization VM launcher\n"
 	@printf "  make vm-nginx-artifact Copy pinned nginx binary into local artifact cache\n"
 	@printf "  make vm-nginx-bundle Build self-contained nginx bundle for VM pkg\n"
@@ -152,6 +158,10 @@ help-internal:
 	@printf "  make vm-network-shared   Configure VM to use shared/NAT networking\n"
 	@printf "  make vm-network-bridged  Configure VM to use bridged networking\n"
 	@printf "  make vm-app          Build development macOS control app\n"
+	@printf "  make vm-dmg          Build dmg from VM_RELEASE_FILE without branch guard\n"
+	@printf "  make vm-pkg          Build pkg from VM_RELEASE_FILE without branch guard\n"
+	@printf "  make vm-update-bundle Build product update bundle from VM_RELEASE_FILE\n"
+	@printf "  make vm-rootfs-update-bundle Build VM image/rootfs update bundle from VM_RELEASE_FILE\n"
 	@printf "  make vm-pkg-clean    Remove VM runtime pkg build artifacts\n"
 	@printf "\n"
 	@printf "Repository:\n"
