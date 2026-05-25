@@ -127,7 +127,7 @@ Product Update bundle은 Helper UI, Native Shell, Runtime Control API, Updater, 
 | VM Image | guest OS/image-specific | Linux guest OS/base rootfs/kernel/initrd class artifact | `components.vmImage` |
 | VitalServer service | service-specific | VM 안에서 실행되는 VitalServer app/container | `components.vitalServer` |
 
-Bundle manifest는 이 모델을 그대로 반영합니다. `helperVersion`은 최상위 release를 가리키고, `targetPlatforms`는 적용 가능한 platform variant를 제한하며, 하위 version은 `components` map에 기록합니다. 예를 들어 macOS 전용 VM Driver 변경은 `targetPlatforms: ["macos-arm64"]`와 `components.vmDriver`로 표현하고, Service Stack 변경은 platform과 독립적인 `components.serviceStack`으로 표현합니다.
+Bundle manifest는 이 모델을 그대로 반영합니다. `helperVersion`은 최상위 release를 가리키고, `targetPlatform`은 적용 가능한 단일 platform variant를 제한하며, 하위 version은 `components` map에 기록합니다. 예를 들어 macOS 전용 VM Driver 변경은 `targetPlatform: "macos-arm64"`와 `components.vmDriver`로 표현하고, Service Stack 변경은 platform과 독립적인 `components.serviceStack`으로 표현합니다.
 
 Platform별 runtime 구현은 같은 Runtime Control API contract 뒤에 숨깁니다.
 

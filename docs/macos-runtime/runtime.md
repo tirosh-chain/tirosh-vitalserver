@@ -91,7 +91,7 @@ make vm-download
 설정 파일:
 
 ```text
-apps/vitalserver-macos-runtime/Support/Build/vm-build.toml
+config/vm-build.toml
 ```
 
 `make vm-download`는 build-machine 전용 Python package인
@@ -133,12 +133,12 @@ make vm-cloud-init
 | SSH public key | `~/.ssh/id_ed25519.pub`가 있으면 자동 포함 |
 | bootstrap | `/mnt/tirosh/deploy/bootstrap.sh` 자동 실행 |
 
-기본값은 `apps/vitalserver-macos-runtime/Support/Build/vm-build.toml`의 `[cloud_init]`에서 관리합니다.
+기본값은 `config/vm-build.toml`의 `[cloud_init]`에서 관리합니다.
 일회성 값을 바꾸려면 build CLI를 직접 호출합니다.
 
 ```sh
 uv run --project packages/vm-build vitalserver-vm-build \
-  --config apps/vitalserver-macos-runtime/Support/Build/vm-build.toml \
+  --config config/vm-build.toml \
   cloud-init \
   --runtime-dir ~/.tirosh/vitalserver-vm/runtime \
   --hostname tirosh-vitalserver \

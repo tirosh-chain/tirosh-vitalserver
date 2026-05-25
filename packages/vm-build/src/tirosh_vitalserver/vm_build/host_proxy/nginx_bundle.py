@@ -5,7 +5,11 @@ import subprocess
 from argparse import Namespace
 from pathlib import Path
 
-from .config import load_config, required_string_list, section
+from tirosh_vitalserver.vm_build.config.build_config import (
+    load_config,
+    required_string_list,
+    section,
+)
 
 
 def run_nginx_bundle(args: Namespace) -> int:

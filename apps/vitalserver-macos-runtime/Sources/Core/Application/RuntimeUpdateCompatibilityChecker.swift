@@ -5,7 +5,7 @@ public enum RuntimeUpdateCompatibilityError: Error, Equatable, CustomStringConve
     case updaterTooOld(currentVersion: String, minimumVersion: String)
     case unsupportedChannel(currentChannel: UpdateBundleChannel, bundleChannel: UpdateBundleChannel)
     case twoPhaseUpdateRequired
-    case unsupportedPlatform(currentPlatform: String, targetPlatforms: [String])
+    case unsupportedPlatform(currentPlatform: String, targetPlatform: String)
     case guestActivationRequirementMismatch(requiresGuestActivation: Bool, hasGuestDeployArtifact: Bool)
 
     public var description: String {
@@ -16,8 +16,8 @@ public enum RuntimeUpdateCompatibilityError: Error, Equatable, CustomStringConve
             return "update bundle channel \(bundleChannel.rawValue) is not compatible with installed channel \(currentChannel.rawValue)"
         case .twoPhaseUpdateRequired:
             return "update bundle requires a bridge/two-phase update"
-        case let .unsupportedPlatform(currentPlatform, targetPlatforms):
-            return "update bundle targets \(targetPlatforms.joined(separator: ", ")); current platform is \(currentPlatform)"
+        case let .unsupportedPlatform(currentPlatform, targetPlatform):
+            return "update bundle targets \(targetPlatform); current platform is \(currentPlatform)"
         case let .guestActivationRequirementMismatch(requiresGuestActivation, hasGuestDeployArtifact):
             return "update bundle guest activation flag mismatch: requiresGuestActivation=\(requiresGuestActivation), hasGuestDeployArtifact=\(hasGuestDeployArtifact)"
         }
@@ -52,11 +52,10 @@ public enum RuntimeUpdateCompatibilityChecker {
         }
 
         if let currentPlatform,
-           !manifest.targetPlatforms.isEmpty,
-           !manifest.targetPlatforms.contains(currentPlatform) {
+           manifest.targetPlatform != currentPlatform {
             throw RuntimeUpdateCompatibilityError.unsupportedPlatform(
                 currentPlatform: currentPlatform,
-                targetPlatforms: manifest.targetPlatforms
+                targetPlatform: manifest.targetPlatform
             )
         }
 

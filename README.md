@@ -102,7 +102,9 @@ uv가 설치된 개발 환경에서는 기존처럼 workspace source를 우선 �
 ## 자주 쓰는 명령
 
 ```sh
-make help            # 사용 가능한 명령 확인
+make help            # 자주 쓰는 명령 확인
+make help-runtime    # macOS runtime/package/update/VM 명령 확인
+make help-internal   # 저수준 build/debug/troubleshooting 명령 확인
 make doctor          # 로컬 도구와 submodule 상태 확인
 make bootstrap       # .env, submodule, proxy config, 선택적 Python workspace 준비
 make install-testkit-release  # uv 없이 release wheel 기반 testkit 설치
@@ -116,14 +118,14 @@ make clean           # proxy runtime, container, volume, orphan, local image 정
 make open            # VitalServer 브라우저 열기
 make swagger         # 기본 stack은 건드리지 않고 Swagger UI만 시작
 make swagger-down    # 기본 stack은 유지하고 Swagger UI만 중지
-make proxy-config    # macOS host nginx proxy config 출력
-make proxy-start     # macOS host nginx proxy만 수동 시작
-make proxy-stop      # macOS host nginx proxy만 수동 중지
-make proxy-status    # macOS host nginx proxy 상태 확인
 make app-build       # app image만 build
 make testkit-smoke   # simulator 기반 smoke scenario
 make check           # lint, typecheck, test 실행
 ```
+
+macOS runtime 설치물, offline update bundle, 개발 VM PoC 관련 명령은 `make help-runtime`에 모아 둡니다.
+proxy 세부 조작이나 VM 단계별 build/debug target은 일반 실행 경로가 아니므로 `make help-internal`에서
+확인합니다.
 
 Swagger UI는 아래 주소에서 볼 수 있습니다.
 

@@ -73,4 +73,4 @@ maintained separately at `docs/macos-runtime/runtime-control.openapi.json`.
 ```
 
 The container is included in the default service stack and in VM packaging via
-`apps/vitalserver-macos-runtime/Support/Build/vm-build.toml`.
+`config/vm-build.toml`.

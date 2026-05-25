@@ -60,13 +60,13 @@ final class RuntimeUpdateCompatibilityCheckerTests: XCTestCase {
 
     func testRejectsUnsupportedTargetPlatform() {
         XCTAssertThrowsError(try RuntimeUpdateCompatibilityChecker.check(
-            manifest: manifest(targetPlatforms: ["macos-arm64"]),
+            manifest: manifest(targetPlatform: "macos-arm64"),
             currentUpdaterVersion: "1.2.3",
             currentPlatform: "windows-x64"
         )) { error in
             XCTAssertEqual(error as? RuntimeUpdateCompatibilityError, .unsupportedPlatform(
                 currentPlatform: "windows-x64",
-                targetPlatforms: ["macos-arm64"]
+                targetPlatform: "macos-arm64"
             ))
         }
     }
@@ -101,7 +101,7 @@ final class RuntimeUpdateCompatibilityCheckerTests: XCTestCase {
     private func manifest(
         minUpdaterVersion: String? = "1.2.0",
         channel: UpdateBundleChannel = .stable,
-        targetPlatforms: [String] = [],
+        targetPlatform: String = "macos-arm64",
         requiresGuestActivation: Bool = false,
         requiresTwoPhaseUpdate: Bool = false,
         artifacts: [UpdateBundleArtifact] = []
@@ -112,7 +112,7 @@ final class RuntimeUpdateCompatibilityCheckerTests: XCTestCase {
             channel: channel,
             helperVersion: "1.2.3",
             releaseLabel: "1.2.3",
-            targetPlatforms: targetPlatforms,
+            targetPlatform: targetPlatform,
             components: ["updater": "1.2.3"],
             minUpdaterVersion: minUpdaterVersion,
             requiresGuestActivation: requiresGuestActivation,

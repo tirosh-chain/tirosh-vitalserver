@@ -4,7 +4,7 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
-DEFAULT_CONFIG_PATH = "apps/vitalserver-macos-runtime/Support/Build/vm-build.toml"
+DEFAULT_CONFIG_PATH = "config/vm-build.toml"
 
 
 def default_config_path() -> Path:

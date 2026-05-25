@@ -110,7 +110,7 @@ def run_build_update_bundle(args: Any) -> int:
             "channel": args.channel,
             "helperVersion": helper_version,
             "releaseLabel": release_label,
-            "targetPlatforms": args.target_platform,
+            "targetPlatform": args.target_platform,
             "components": components,
             "minUpdaterVersion": (
                 args.min_updater_version or args.runtime_version or helper_version
@@ -293,7 +293,7 @@ def validate_manifest(manifest: dict[str, Any]) -> None:
         "channel": str,
         "helperVersion": str,
         "releaseLabel": str,
-        "targetPlatforms": list,
+        "targetPlatform": str,
         "components": dict,
         "minUpdaterVersion": str,
         "requiresGuestActivation": bool,
@@ -318,9 +318,8 @@ def validate_manifest(manifest: dict[str, Any]) -> None:
         raise SystemExit(f"unsupported channel: {manifest['channel']}")
     if not manifest["releaseLabel"]:
         raise SystemExit("releaseLabel must be non-empty")
-    for platform in manifest["targetPlatforms"]:
-        if not isinstance(platform, str) or not platform:
-            raise SystemExit("targetPlatforms entries must be non-empty strings")
+    if not manifest["targetPlatform"]:
+        raise SystemExit("targetPlatform must be non-empty")
     for key, value in manifest["components"].items():
         if not isinstance(key, str) or not key:
             raise SystemExit("components keys must be non-empty strings")

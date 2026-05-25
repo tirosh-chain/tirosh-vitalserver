@@ -6,14 +6,18 @@ import shutil
 from argparse import Namespace
 from pathlib import Path
 
-from .config import (
+from tirosh_vitalserver.vm_build.config.build_config import (
     load_config,
     optional_bool,
     optional_string,
     required_string,
     section,
 )
-from .process import capture_json, require_tool, run
+from tirosh_vitalserver.vm_build.toolchain.shell_commands import (
+    capture_json,
+    require_tool,
+    run,
+)
 
 
 def run_ubuntu(args: Namespace) -> int:
@@ -65,9 +69,10 @@ def run_ubuntu(args: Namespace) -> int:
     download_once(f"{base_url}/unpacked/{initrd_name}", download_dir / initrd_name)
     download_once(f"{base_url}/{image_name}", download_dir / image_name)
 
-    with gzip.open(download_dir / kernel_name, "rb") as source, (
-        runtime_dir / "Image"
-    ).open("wb") as target:
+    with (
+        gzip.open(download_dir / kernel_name, "rb") as source,
+        (runtime_dir / "Image").open("wb") as target,
+    ):
         shutil.copyfileobj(source, target)
     shutil.copy2(download_dir / initrd_name, runtime_dir / "initrd.img")
 
@@ -97,6 +102,7 @@ def run_ubuntu(args: Namespace) -> int:
     print(f"  {runtime_dir / 'initrd.img'}")
     print(f"  {disk_image} ({rootfs_size} target)")
     return 0
+
 
 def resolve_arch(requested: str) -> str:
     if requested != "auto":

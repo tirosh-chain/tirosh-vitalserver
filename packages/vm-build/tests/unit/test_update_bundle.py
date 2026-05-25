@@ -26,7 +26,7 @@ def test_update_bundle_builds_and_verifies_tarball(tmp_path: Path) -> None:
             min_updater_version=None,
             bundle_kind="product-update",
             helper_version="1.2.3",
-            target_platform=["macos-arm64"],
+            target_platform="macos-arm64",
             component=["serviceStack=2.3.4-stack.1", "vitalServer=2.3.4"],
             requires_guest_activation=None,
             requires_two_phase_update=False,
@@ -52,6 +52,7 @@ def test_update_bundle_builds_and_verifies_tarball(tmp_path: Path) -> None:
     assert manifest["schemaVersion"] == 3
     assert manifest["channel"] == "stable"
     assert manifest["releaseLabel"] == "1.2.3"
+    assert manifest["targetPlatform"] == "macos-arm64"
 
     run_verify_update_bundle(Namespace(bundle_path=archive))
 
@@ -71,7 +72,7 @@ def test_update_bundle_uses_explicit_safe_bundle_name(tmp_path: Path) -> None:
             min_updater_version=None,
             bundle_kind="product-update",
             helper_version="1.2.3",
-            target_platform=["macos-arm64"],
+            target_platform="macos-arm64",
             component=[],
             requires_guest_activation=None,
             requires_two_phase_update=False,

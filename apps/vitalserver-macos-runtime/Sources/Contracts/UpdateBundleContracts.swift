@@ -5,7 +5,7 @@ public struct UpdateBundleManifest: Codable, Equatable, Sendable {
     public let channel: UpdateBundleChannel
     public let helperVersion: String
     public let releaseLabel: String
-    public let targetPlatforms: [String]
+    public let targetPlatform: String
     public let components: [String: String]
     public let minUpdaterVersion: String?
     public let requiresGuestActivation: Bool
@@ -21,7 +21,7 @@ public struct UpdateBundleManifest: Codable, Equatable, Sendable {
         case channel
         case helperVersion
         case releaseLabel
-        case targetPlatforms
+        case targetPlatform
         case components
         case minUpdaterVersion
         case requiresGuestActivation
@@ -38,7 +38,7 @@ public struct UpdateBundleManifest: Codable, Equatable, Sendable {
         channel: UpdateBundleChannel = .stable,
         helperVersion: String,
         releaseLabel: String,
-        targetPlatforms: [String],
+        targetPlatform: String,
         components: [String: String],
         minUpdaterVersion: String? = nil,
         requiresGuestActivation: Bool = false,
@@ -53,7 +53,7 @@ public struct UpdateBundleManifest: Codable, Equatable, Sendable {
         self.channel = channel
         self.helperVersion = helperVersion
         self.releaseLabel = releaseLabel
-        self.targetPlatforms = targetPlatforms
+        self.targetPlatform = targetPlatform
         self.components = components
         self.minUpdaterVersion = minUpdaterVersion
         self.requiresGuestActivation = requiresGuestActivation
@@ -72,7 +72,7 @@ public struct UpdateBundleManifest: Codable, Equatable, Sendable {
             channel: try container.decode(UpdateBundleChannel.self, forKey: .channel),
             helperVersion: try container.decode(String.self, forKey: .helperVersion),
             releaseLabel: try container.decode(String.self, forKey: .releaseLabel),
-            targetPlatforms: try container.decode([String].self, forKey: .targetPlatforms),
+            targetPlatform: try container.decode(String.self, forKey: .targetPlatform),
             components: try container.decode([String: String].self, forKey: .components),
             minUpdaterVersion: try container.decodeIfPresent(String.self, forKey: .minUpdaterVersion),
             requiresGuestActivation: try container.decodeIfPresent(Bool.self, forKey: .requiresGuestActivation) ?? false,

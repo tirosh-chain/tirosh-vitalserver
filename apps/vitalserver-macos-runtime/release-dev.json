@@ -3,6 +3,7 @@
   "helperVersion": "0.1.7",
   "releaseLabel": "0.1.7-dev",
   "minUpdaterVersion": "0.1.7",
+  "targetPlatform": "macos-arm64",
   "distribution": {
     "profile": "dev",
     "audience": "internal"

@@ -11,7 +11,7 @@ final class UpdateBundleContractsTests: XCTestCase {
           "channel": "stable",
           "helperVersion": "1.2.3",
           "releaseLabel": "1.2.3",
-          "targetPlatforms": ["macos-arm64"],
+          "targetPlatform": "macos-arm64",
           "components": {
             "updater": "4.5.6"
           },
@@ -61,7 +61,7 @@ final class UpdateBundleContractsTests: XCTestCase {
           "channel": "stable",
           "helperVersion": "1.2.3",
           "releaseLabel": "1.2.3",
-          "targetPlatforms": [],
+          "targetPlatform": "macos-arm64",
           "components": {
             "updater": "4.5.6"
           },
@@ -76,7 +76,7 @@ final class UpdateBundleContractsTests: XCTestCase {
         XCTAssertEqual(manifest.version, "1.2.3")
         XCTAssertEqual(manifest.runtimeVersion, "4.5.6")
         XCTAssertEqual(manifest.helperVersion, "1.2.3")
-        XCTAssertEqual(manifest.targetPlatforms, [])
+        XCTAssertEqual(manifest.targetPlatform, "macos-arm64")
         XCTAssertEqual(manifest.components, ["updater": "4.5.6"])
         XCTAssertNil(manifest.minUpdaterVersion)
         XCTAssertFalse(manifest.requiresGuestActivation)
@@ -92,7 +92,7 @@ final class UpdateBundleContractsTests: XCTestCase {
           "channel": "dev",
           "helperVersion": "0.2.0",
           "releaseLabel": "0.2.0-dev.1",
-          "targetPlatforms": ["macos-arm64"],
+          "targetPlatform": "macos-arm64",
           "minUpdaterVersion": "0.1.6",
           "components": {
             "helperUI": "0.2.0+macos.1",
@@ -115,7 +115,7 @@ final class UpdateBundleContractsTests: XCTestCase {
         XCTAssertEqual(manifest.version, "0.2.0-dev.1")
         XCTAssertEqual(manifest.runtimeVersion, "0.2.0")
         XCTAssertEqual(manifest.helperVersion, "0.2.0")
-        XCTAssertEqual(manifest.targetPlatforms, ["macos-arm64"])
+        XCTAssertEqual(manifest.targetPlatform, "macos-arm64")
         XCTAssertEqual(manifest.components["vmDriver"], "0.2.0+macos.1")
         XCTAssertEqual(manifest.components["serviceStack"], "2.3.4-stack.1")
         XCTAssertEqual(manifest.minUpdaterVersion, "0.1.6")
@@ -130,7 +130,7 @@ final class UpdateBundleContractsTests: XCTestCase {
           "channel": "stable",
           "helperVersion": "0.2.0",
           "releaseLabel": "0.2.0",
-          "targetPlatforms": ["macos-arm64"],
+          "targetPlatform": "macos-arm64",
           "components": {
             "updater": "0.2.0"
           },

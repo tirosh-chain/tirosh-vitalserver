@@ -50,6 +50,7 @@ Runtime 전체 SoT map은 [Runtime observability model](observability.md#source-
 | `channel` | release manifest | updater channel compatibility와 artifact routing. 설치된 updater channel과 bundle channel이 다르면 apply preflight에서 거부 |
 | `helperVersion` | release manifest | Apple/pkg-safe numeric Helper product version |
 | `releaseLabel` | release manifest | package/DMG/update bundle/staging/backup/installed version 표시에 쓰는 artifact identity |
+| `targetPlatform` | release manifest | 이 release artifact/update bundle을 적용할 수 있는 단일 platform variant |
 | `distribution.profile` | release manifest | stable/dev build profile. Test 탭과 local browser console은 `dev`에서만 노출 |
 | `distribution.audience` | release manifest | artifact의 intended audience 설명 |
 | `services.*` | release manifest | bundled service image, version, display name |
@@ -61,7 +62,7 @@ Runtime 전체 SoT map은 [Runtime observability model](observability.md#source-
 
 `make vm-build`는 이 값을 Swift `GeneratedVersion.swift`와 Helper app의 `GeneratedRelease.swift`에 반영하고, `make vm-app`은 app bundle `Info.plist`의 `CFBundleShortVersionString`에 같은 helper version을 씁니다. `make vm-pkg`, `make vm-update-bundle`, `make vm-rootfs-update-bundle`은 기본적으로 이 값을 `VM_PKG_VERSION`, `VM_UPDATE_BUNDLE_VERSION`, `VM_UPDATE_MIN_UPDATER_VERSION`으로 사용합니다. `services.*.displayName`은 Helper UI의 service 표시명 source of truth입니다. 특별한 검증이 아니라면 버전, 표시명, image, update compatibility, optional container service 포함 정책 변경은 이 파일 하나에서 관리합니다.
 
-Update bundle manifest는 `schemaVersion: 3`, `channel`, `helperVersion`, `releaseLabel`, `targetPlatforms`, `minUpdaterVersion`, `components`를 기준으로 작성합니다. `components`에는 `helperUI`, `updater`, `supervisor`, `vmDriver`, `serviceStack`, `vmImage`, `vitalServer`처럼 실제 변경 범위를 드러내는 version을 넣습니다. platform-specific artifact는 `targetPlatforms`와 component version suffix로 제한하고, 공통 Service Stack이나 VM Image는 같은 Helper release 아래에서 platform 간 공유할 수 있습니다.
+Update bundle manifest는 `schemaVersion: 3`, `channel`, `helperVersion`, `releaseLabel`, `targetPlatform`, `minUpdaterVersion`, `components`를 기준으로 작성합니다. `components`에는 `helperUI`, `updater`, `supervisor`, `vmDriver`, `serviceStack`, `vmImage`, `vitalServer`처럼 실제 변경 범위를 드러내는 version을 넣습니다. platform-specific artifact는 `targetPlatform`과 component version suffix로 제한하고, 공통 Service Stack이나 VM Image는 같은 Helper release 아래에서 platform 간 공유할 수 있습니다.
 
 Layer별 platform dependency도 manifest 설계 기준입니다. Helper UI와 VM Driver는 platform-specific이고, Updater는 host/platform-specific compatibility gate이며, Supervisor는 host/platform-aware health/recovery loop입니다. Service Stack은 guest/service-specific 실행 세트이고, VM Image는 Linux guest OS image artifact입니다.
 
@@ -92,8 +93,9 @@ vitaldb-observer
   -> Runtime Control API /vitaldb/*
 ```
 
-Docker image bundle과 guest deploy 대상은 `Support/Build/vm-build.toml`이 소유합니다. observer image,
-Dockerfile, deploy path를 변경할 때는 Makefile literal을 추가하지 말고 TOML 값을 수정합니다.
+Docker image bundle과 guest deploy 대상은 `config/vm-build.toml`이 소유합니다. observer image,
+Dockerfile, guest deploy `include` 항목을 변경할 때는 Makefile literal을 추가하지 말고 TOML 값을
+수정합니다.
 
 ## Package 구성
 
@@ -495,7 +497,7 @@ sudo tirosh-vitalserver-uninstall
 
 ### nginx release artifact
 
-`make vm-pkg`는 package에 넣을 macOS nginx bundle까지 포함해서 만듭니다. `make vm-nginx-bundle`은 기본적으로 build machine의 nginx를 release artifact cache로 복사한 뒤, `apps/vitalserver-macos-runtime/Support/Build/vm-build.toml`의 `[nginx]` 설정으로 bundle을 만듭니다. 기본 artifact 경로는 아래입니다.
+`make vm-pkg`는 package에 넣을 macOS nginx bundle까지 포함해서 만듭니다. `make vm-nginx-bundle`은 기본적으로 build machine의 nginx를 release artifact cache로 복사한 뒤, `config/vm-build.toml`의 `[nginx]` 설정으로 bundle을 만듭니다. 기본 artifact 경로는 아래입니다.
 
 ```text
 .artifacts/nginx/macos/bin/nginx

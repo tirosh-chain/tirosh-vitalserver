@@ -75,7 +75,7 @@ Bundle manifest는 ADR 0003의 component vocabulary를 재사용한다.
   "schemaVersion": 1,
   "bundleKind": "product-update",
   "helperVersion": "0.2.0",
-  "targetPlatforms": ["macos-arm64"],
+  "targetPlatform": "macos-arm64",
   "minUpdaterVersion": "0.1.6",
   "components": {
     "helperUI": "0.2.0+macos.1",
@@ -92,9 +92,9 @@ Bundle manifest는 ADR 0003의 component vocabulary를 재사용한다.
 
 Manifest compatibility rule은 아래와 같이 고정한다.
 
-- `schemaVersion`, `bundleKind`, `helperVersion`, `targetPlatforms`, `minUpdaterVersion`, artifact checksum은 required contract field다.
+- `schemaVersion`, `bundleKind`, `helperVersion`, `targetPlatform`, `minUpdaterVersion`, artifact checksum은 required contract field다.
 - Updater가 `bundleKind`를 모르면 reject한다.
-- `targetPlatforms`에 현재 platform이 없으면 reject한다.
+- `targetPlatform`이 현재 platform과 다르면 reject한다.
 - 현재 Updater version이 `minUpdaterVersion`보다 낮으면 직접 적용하지 않고 bridge/two-phase Product Update가 필요하다고 판단한다.
 - 알 수 없는 optional metadata는 ignore할 수 있어야 한다.
 - 알 수 없는 required field, required capability, schema major version은 reject한다.

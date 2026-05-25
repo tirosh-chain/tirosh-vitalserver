@@ -733,7 +733,7 @@ Shell
 | 영역 | 주요 파일 | 책임 | 책임 밖 |
 |---|---|---|---|
 | build orchestration | `make/vm.mk`, `make/vm/config.mk` | target dependency, 중간/최종 산출물 경로, unsigned build 변수, install test wrapper | manifest 해석, disk/rootfs 세부 처리 |
-| build config | `apps/vitalserver-macos-runtime/Support/Build/vm-build.toml` | Ubuntu/rootfs/Docker image/nginx bundle pinned input 값 | 설치 시 사용자 설정 |
+| build config | `config/vm-build.toml` | Ubuntu/rootfs/Docker image/nginx bundle pinned input 값 | 설치 시 사용자 설정 |
 | Python build package | `packages/vm-build/src/tirosh_vitalserver/vm_build/*.py` | Ubuntu asset 준비, cloud-init ISO 생성, rootfs 압축, nginx bundle, Docker image bundle, update bundle 생성/검증, plist/template rendering | 설치 후 runtime 상태 변경 |
 | Local control entry | `Sources/HostCLI/CLI/Launcher.swift`, `Command.swift` | `vitalserver-vm` command routing, VM start/stop/status/network/runtime command 연결 | package staging, DMG 생성 |
 | Local control lifecycle facade | `Sources/HostCLI/Runtime/RuntimeLifecycle.swift` | `runtime install/status/health/verify-bundle/stage-bundle/apply-bundle/rollback/repair-datastore/start-services/stop-services` command를 typed workflow와 runner로 연결 | workflow 내부 단계 구현, DMG/PKG 파일 생성 |

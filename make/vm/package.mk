@@ -107,7 +107,6 @@ vm-update-bundle:
 		--release-file "$(VM_RELEASE_FILE)" \
 		--bundle-name "$(VM_UPDATE_BUNDLE_NAME)" \
 		--bundle-kind "$(VM_UPDATE_BUNDLE_KIND)" \
-		--target-platform "$(VM_UPDATE_TARGET_PLATFORM)" \
 		--requires-two-phase-update "$(VM_UPDATE_REQUIRES_TWO_PHASE_UPDATE)" \
 		--output-dir "$(VM_UPDATE_BUNDLE_DIR)" \
 		--compression-threads "$(VM_COMPRESSION_THREADS)" \
@@ -116,6 +115,7 @@ vm-update-bundle:
 		$(if $(VM_SDKROOT),--sdkroot "$(VM_SDKROOT)") \
 		$(if $(VM_NGINX_BIN),--nginx-binary "$(VM_NGINX_BIN)") \
 		$(if $(VM_NGINX_EXPECTED_VERSION),--nginx-expected-version "$(VM_NGINX_EXPECTED_VERSION)") \
+		$(if $(VM_UPDATE_TARGET_PLATFORM),--target-platform "$(VM_UPDATE_TARGET_PLATFORM)") \
 		$(if $(VM_UPDATE_ROOTFS_BASE),--rootfs-base "$(VM_UPDATE_ROOTFS_BASE)") \
 		$(foreach migration,$(VM_UPDATE_MIGRATIONS),--migration "$(migration)")
 	@printf "VM update bundle is ready: %s\n" "$(VM_UPDATE_BUNDLE_PATH)"

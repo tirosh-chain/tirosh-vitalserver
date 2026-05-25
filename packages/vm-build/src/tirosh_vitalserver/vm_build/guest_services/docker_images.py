@@ -2,16 +2,19 @@ from __future__ import annotations
 
 from argparse import Namespace
 
-from .compression import compression_threads, gzip_command
-from .config import (
+from tirosh_vitalserver.vm_build.config.build_config import (
     load_config,
     optional_string,
     required_string,
     required_string_list,
     section,
 )
-from .paths import repo_root
-from .process import require_tool, run
+from tirosh_vitalserver.vm_build.toolchain.gzip_compression import (
+    compression_threads,
+    gzip_command,
+)
+from tirosh_vitalserver.vm_build.toolchain.shell_commands import require_tool, run
+from tirosh_vitalserver.vm_build.toolchain.workspace_paths import repo_root
 
 
 def run_docker_images(args: Namespace) -> int:

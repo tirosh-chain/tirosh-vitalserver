@@ -6,8 +6,13 @@ import uuid
 from argparse import Namespace
 from pathlib import Path
 
-from .config import load_config, optional_bool, optional_string, section
-from .process import require_tool
+from tirosh_vitalserver.vm_build.config.build_config import (
+    load_config,
+    optional_bool,
+    optional_string,
+    section,
+)
+from tirosh_vitalserver.vm_build.toolchain.shell_commands import require_tool
 
 
 def run_cloud_init(args: Namespace) -> int:
@@ -15,9 +20,12 @@ def run_cloud_init(args: Namespace) -> int:
     runtime_config = section(config, "runtime")
     cloud_config = section(config, "cloud_init")
 
-    runtime_dir = args.runtime_dir or Path(
-        optional_string(runtime_config, "runtime_dir", str(default_runtime_dir()))
-    ).expanduser()
+    runtime_dir = (
+        args.runtime_dir
+        or Path(
+            optional_string(runtime_config, "runtime_dir", str(default_runtime_dir()))
+        ).expanduser()
+    )
     seed_dir = args.seed_dir or runtime_dir / optional_string(
         cloud_config,
         "seed_directory_name",
@@ -36,13 +44,16 @@ def run_cloud_init(args: Namespace) -> int:
     instance_id = args.instance_id or generate_instance_id()
     username = args.username or optional_string(cloud_config, "username", "ubuntu")
     password = args.password or optional_string(cloud_config, "password", "ubuntu")
-    ssh_key_path = args.ssh_key or Path(
-        optional_string(
-            cloud_config,
-            "ssh_key_path",
-            str(Path.home() / ".ssh/id_ed25519.pub"),
-        )
-    ).expanduser()
+    ssh_key_path = (
+        args.ssh_key
+        or Path(
+            optional_string(
+                cloud_config,
+                "ssh_key_path",
+                str(Path.home() / ".ssh/id_ed25519.pub"),
+            )
+        ).expanduser()
+    )
     run_bootstrap = (
         args.run_bootstrap
         if args.run_bootstrap is not None

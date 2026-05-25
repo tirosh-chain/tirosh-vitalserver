@@ -37,10 +37,13 @@ def gzip_file(source: Path, output: Path, *, threads: int) -> None:
             )
     else:
         print("using Python gzip compression")
-        with source.open("rb") as source_file, gzip.open(
-            temporary,
-            "wb",
-        ) as output_file:
+        with (
+            source.open("rb") as source_file,
+            gzip.open(
+                temporary,
+                "wb",
+            ) as output_file,
+        ):
             shutil.copyfileobj(source_file, output_file)
     temporary.replace(output)
 
@@ -68,10 +71,13 @@ def gzip_command(command: Sequence[str], output: Path, *, threads: int) -> None:
             raise SystemExit(producer_status or compressor_status)
     else:
         print("using Python gzip compression")
-        with temporary.open("wb") as raw_output, gzip.GzipFile(
-            fileobj=raw_output,
-            mode="wb",
-        ) as gzip_output:
+        with (
+            temporary.open("wb") as raw_output,
+            gzip.GzipFile(
+                fileobj=raw_output,
+                mode="wb",
+            ) as gzip_output,
+        ):
             process = subprocess.Popen(command, stdout=subprocess.PIPE)
             stdout = process.stdout
             assert stdout is not None

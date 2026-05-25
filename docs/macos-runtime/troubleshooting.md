@@ -191,7 +191,7 @@ cloud-init은 `instance-id`를 기준으로 이미 처리한 instance인지 판�
 
 ```sh
 uv run --project packages/vm-build vitalserver-vm-build \
-  --config apps/vitalserver-macos-runtime/Support/Build/vm-build.toml \
+  --config config/vm-build.toml \
   cloud-init \
   --runtime-dir ~/.tirosh/vitalserver-vm/runtime \
   --instance-id tirosh-site-a-001

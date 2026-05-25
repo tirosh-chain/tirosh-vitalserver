@@ -208,11 +208,11 @@ apps/vitalserver-macos-runtime/release-dev.json
 
 `VitalServer Helper`는 최상위 product release입니다. 플랫폼별 UI/VM provider 구현은 같은 Helper release 아래의 variant로 보고, 세부 변경 범위는 Helper UI, Updater, Supervisor, VM Driver, Service Stack, VM Image, VitalServer component version으로 설명합니다.
 
-Update bundle manifest는 `schemaVersion: 3`, `channel`, `helperVersion`, `releaseLabel`, `targetPlatforms`, `minUpdaterVersion`, `components`를 기준으로 해석합니다. 설치된 updater channel과 bundle channel이 다르면 apply preflight에서 거부합니다. `helperVersion`은 Apple/package-safe numeric version이고, `releaseLabel`은 `0.1.7-dev`처럼 artifact, staging, backup, installed version 표시에 쓰는 identity입니다.
+Update bundle manifest는 `schemaVersion: 3`, `channel`, `helperVersion`, `releaseLabel`, `targetPlatform`, `minUpdaterVersion`, `components`를 기준으로 해석합니다. 설치된 updater channel과 bundle channel이 다르면 apply preflight에서 거부합니다. `helperVersion`은 Apple/package-safe numeric version이고, `releaseLabel`은 `0.1.7-dev`처럼 artifact, staging, backup, installed version 표시에 쓰는 identity입니다.
 
 `components` map은 `helperUI`, `updater`, `supervisor`, `vmDriver`, `serviceStack`, `vmImage`, `vitalServer`처럼 실제 변경된 계층을 드러냅니다. Helper UI와 VM Driver는 platform-specific이고, Updater/Supervisor는 host platform에 붙어 있으며, Service Stack과 VM Image는 guest/service 쪽 책임으로 구분합니다.
 
-`make vm-build`, `make vm-pkg`, `make vm-update-bundle`은 이 값을 읽어 app bundle version, package version, update bundle version, update compatibility, bundled service image/version/name 표시에 반영합니다. 버전, Helper UI의 service 표시명, 배포 profile, optional container service 포함 정책을 바꿀 때는 이 파일을 수정합니다.
+`make vm-build`, `make vm-pkg`, `make vm-update-bundle`은 이 값을 읽어 app bundle version, package version, update bundle version, target platform, update compatibility, bundled service image/version/name 표시에 반영합니다. 버전, target platform, Helper UI의 service 표시명, 배포 profile, optional container service 포함 정책을 바꿀 때는 이 파일을 수정합니다.
 
 ## 주요 명령
 

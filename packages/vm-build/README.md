@@ -15,14 +15,36 @@ docker-images
 rootfs-base
 nginx-bundle
 update-bundle
+release-update-bundle
+release-pkg
+release-dmg
 verify-update-bundle
 render-template
 ```
 
+Source layout:
+
+```text
+vm_build/
+  cli.py        command-line adapter
+  config/       config and release manifest adapters
+  guest_image/  Ubuntu image, cloud-init seed, and rootfs base builders
+  guest_services/ Docker image bundle for guest services
+  host_proxy/   nginx bundle for the macOS host proxy
+  update_bundle/ update bundle contract, archive, and verification logic
+  release/      release orchestration use cases
+  toolchain/    shell, path, gzip, and token-template helpers
+```
+
+The package keeps CLI parsing at the edge, config parsing in adapters, and
+workflow orchestration in use-case packages. Shared shell/filesystem primitives
+stay in `toolchain/`; release-specific filesystem staging stays inside
+`release/`.
+
 Most packaging inputs are declared in
-`apps/vitalserver-macos-runtime/Support/Build/vm-build.toml`. Keep Docker image
-names, local Dockerfile paths, guest deploy paths, and OpenAPI deploy files in
-that TOML file instead of adding new literals to Make targets.
+`config/vm-build.toml`. Keep Docker image
+names, local Dockerfile paths, and guest deploy `include` entries in that TOML
+file instead of adding new literals to Make targets.
 
 `docker-images` builds local images such as `vitalserver`,
 `vitalserver-audit-proxy`, and `vitaldb-observer`, pulls external images, and
@@ -42,7 +64,7 @@ Build the pinned nginx bundle declared in `vm-build.toml`. The default input is 
 make vm-nginx-artifact
 
 uv run --project packages/vm-build vitalserver-vm-build \
-  --config apps/vitalserver-macos-runtime/Support/Build/vm-build.toml \
+  --config config/vm-build.toml \
   nginx-bundle \
   --bundle-dir .tmp/vitalserver-vm-pkg/nginx-bundle
 ```

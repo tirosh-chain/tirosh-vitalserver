@@ -1,24 +1,22 @@
 from __future__ import annotations
 
 import os
-from argparse import Namespace
 
-from tirosh_vitalserver.vm_build.paths import repo_root
-from tirosh_vitalserver.vm_build.release import (
-    load_release_settings,
-    render_packaging_executable,
-    render_packaging_template,
+from tirosh_vitalserver.vm_build.config.release_settings import (
+    load_release_build_settings,
     settings_install_app_bundle,
 )
+from tirosh_vitalserver.vm_build.release import (
+    render_packaging_executable,
+    render_packaging_template,
+)
+from tirosh_vitalserver.vm_build.toolchain.workspace_paths import repo_root
 
 
 def test_packaging_templates_render_from_build_config(tmp_path) -> None:
     root = repo_root()
-    settings = load_release_settings(
-        Namespace(
-            config=root
-            / "apps/vitalserver-macos-runtime/Support/Build/vm-build.toml",
-        ),
+    settings = load_release_build_settings(
+        root / "config/vm-build.toml",
         root,
     )
     packaging = root / "apps/vitalserver-macos-runtime/Support/Packaging"

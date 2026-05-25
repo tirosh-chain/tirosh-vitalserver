@@ -57,6 +57,9 @@ def swift_string(value):
 def validate_release_policy(release):
     require_field(release, "channel")
     require_field(release, "releaseLabel")
+    target_platform = require_field(release, "targetPlatform")
+    if not isinstance(target_platform, str) or not target_platform:
+        raise SystemExit("release field must be a non-empty string: targetPlatform")
     require_field(release, "distribution.profile")
     require_field(release, "distribution.audience")
     optional_services = require_field(release, "bundle.optionalContainerServices")
@@ -180,7 +183,7 @@ def sync_compose(root, release):
 
 
 def sync_build_config(root, release):
-    config = root / "Support/Build/vm-build.toml"
+    config = root.parent.parent / "config/vm-build.toml"
     content = config.read_text(encoding="utf-8")
     vitalserver = require_service(release, "vitalServer")
     audit_proxy = require_service(release, "auditProxy")

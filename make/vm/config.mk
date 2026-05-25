@@ -54,7 +54,7 @@ VM_RUNTIME_CLI_BRIDGED_ENTITLEMENTS := $(VM_MACOS_RUNTIME_DIR)/Entitlements.plis
 VM_APP_INFO_PLIST = $(VM_APP_BUNDLE)/Contents/Info.plist
 VM_SDKROOT := $(firstword $(wildcard /Library/Developer/CommandLineTools/SDKs/MacOSX15.4.sdk) $(shell xcrun --sdk macosx --show-sdk-path 2>/dev/null))
 VM_BUILD_RUNNER := $(UV) run --project packages/vm-build vitalserver-vm-build
-VM_BUILD_CONFIG := $(VM_MACOS_RUNTIME_DIR)/Support/Build/vm-build.toml
+VM_BUILD_CONFIG ?= config/vm-build.toml
 VM_CONFIG_PYTHON ?= $(if $(wildcard .venv/bin/python),.venv/bin/python,$(UV) run --project packages/vm-build python)
 VM_TOML_VALUE = $(strip $(shell $(VM_CONFIG_PYTHON) -c 'import tomllib; value=tomllib.load(open("$(VM_BUILD_CONFIG)","rb"))$(foreach key,$(subst ., ,$(1)),["$(key)"]); print(value)'))
 VM_CLANG_MODULE_CACHE := $(CURDIR)/$(call VM_TOML_VALUE,workspace.clang_module_cache)
@@ -100,7 +100,7 @@ VM_PKG_ROOTFS_CACHE := $(VM_PKG_BUILD_DIR)/rootfs-base.raw.gz
 VM_DOCKER_IMAGE_BUNDLE := $(call VM_TOML_VALUE,docker_images.bundle_path)
 VM_UPDATE_BUNDLE_DIR := $(VM_DIST_DIR)/update-bundles
 VM_UPDATE_BUNDLE_KIND ?= product-update
-VM_UPDATE_TARGET_PLATFORM ?= $(call VM_TOML_VALUE,release.target_platform)
+VM_UPDATE_TARGET_PLATFORM ?=
 VM_UPDATE_BUNDLE_NAME ?= update-bundle-$(VM_UPDATE_CHANNEL)-$(VM_UPDATE_BUNDLE_KIND)-$(VM_UPDATE_BUNDLE_VERSION)
 VM_UPDATE_BUNDLE_PATH = $(VM_UPDATE_BUNDLE_DIR)/$(VM_UPDATE_BUNDLE_NAME).tar.gz
 VM_UPDATE_ROOTFS_BASE ?=
