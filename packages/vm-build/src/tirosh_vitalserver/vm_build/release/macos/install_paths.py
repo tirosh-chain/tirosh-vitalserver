@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from tirosh_vitalserver.vm_build.config.release_settings import (
+from tirosh_vitalserver.vm_build.config.macos.release_settings import (
     settings_install_app_bundle,
     settings_install_home,
     settings_install_nginx_prefix,
     settings_install_prefix,
     settings_install_runtime_logs,
 )
-from tirosh_vitalserver.vm_build.release.models import PackageContext
+from tirosh_vitalserver.vm_build.release.macos.models import PackageContext
 
 
 def package_install_value(context: PackageContext, key: str) -> str:

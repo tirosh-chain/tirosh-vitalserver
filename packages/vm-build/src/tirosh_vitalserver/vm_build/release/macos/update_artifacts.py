@@ -3,27 +3,27 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-from tirosh_vitalserver.vm_build.config.release_settings import (
-    ReleaseBuildSettings,
+from tirosh_vitalserver.vm_build.config.macos.release_settings import (
+    MacOSReleaseSettings,
     settings_install_value,
 )
-from tirosh_vitalserver.vm_build.release.artifact_files import (
+from tirosh_vitalserver.vm_build.release.macos.artifact_files import (
     copy_executable,
     copy_tree,
     install_file,
     tar_directory,
 )
-from tirosh_vitalserver.vm_build.release.installer_templates import (
+from tirosh_vitalserver.vm_build.release.macos.installer_templates import (
     render_packaging_executable,
 )
-from tirosh_vitalserver.vm_build.release.models import StagedUpdateArtifacts
+from tirosh_vitalserver.vm_build.release.macos.models import StagedUpdateArtifacts
 
 
 def stage_update_artifacts(
     *,
     root: Path,
     runtime_dir: Path,
-    settings: ReleaseBuildSettings,
+    settings: MacOSReleaseSettings,
     artifact_dir: Path,
     app_bundle: Path,
     runtime_cli: Path,
@@ -43,25 +43,25 @@ def stage_update_artifacts(
     packaging_dir = runtime_dir / "Support/Packaging"
     copy_executable(
         runtime_cli,
-        runtime_tools_dir / Path(settings_install_value(settings, "bin")).name,
+        runtime_tools_dir / Path(settings_install_value(settings, "vm_cli")).name,
     )
     render_packaging_executable(
         settings,
         packaging_dir / "proxy-run.template",
-        runtime_tools_dir / Path(settings_install_value(settings, "proxy_run")).name,
+        runtime_tools_dir / Path(settings_install_value(settings, "proxy_runner")).name,
     )
     render_packaging_executable(
         settings,
         packaging_dir / "uninstall.template",
-        runtime_tools_dir / Path(settings_install_value(settings, "uninstall")).name,
+        runtime_tools_dir / Path(settings_install_value(settings, "uninstaller")).name,
     )
     runtime_tools_archive = artifact_dir / "runtime-tools.tar.gz"
     tar_directory(
         runtime_tools_archive,
         runtime_tools_dir,
-        Path(settings_install_value(settings, "bin")).name,
-        Path(settings_install_value(settings, "proxy_run")).name,
-        Path(settings_install_value(settings, "uninstall")).name,
+        Path(settings_install_value(settings, "vm_cli")).name,
+        Path(settings_install_value(settings, "proxy_runner")).name,
+        Path(settings_install_value(settings, "uninstaller")).name,
     )
 
     nginx_dir = artifact_dir / "nginx"
@@ -84,7 +84,7 @@ def stage_update_artifacts(
 def stage_guest_deploy(
     root: Path,
     runtime_dir: Path,
-    settings: ReleaseBuildSettings,
+    settings: MacOSReleaseSettings,
     deploy_dir: Path,
     docker_bundle: Path,
 ) -> None:

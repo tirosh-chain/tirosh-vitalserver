@@ -4,15 +4,15 @@ from argparse import Namespace
 from pathlib import Path
 from xml.sax.saxutils import escape as xml_escape
 
-from tirosh_vitalserver.vm_build.config.release_settings import (
-    ReleaseBuildSettings,
+from tirosh_vitalserver.vm_build.config.macos.release_settings import (
+    MacOSReleaseSettings,
     settings_install_app_bundle,
     settings_install_home,
     settings_install_nginx_prefix,
     settings_install_prefix,
     settings_install_value,
 )
-from tirosh_vitalserver.vm_build.release.install_paths import (
+from tirosh_vitalserver.vm_build.release.macos.install_paths import (
     install_home,
     install_nginx_bin,
     install_nginx_prefix,
@@ -20,12 +20,12 @@ from tirosh_vitalserver.vm_build.release.install_paths import (
     package_install_value,
     package_path,
 )
-from tirosh_vitalserver.vm_build.release.models import PackageContext
+from tirosh_vitalserver.vm_build.release.macos.models import PackageContext
 from tirosh_vitalserver.vm_build.toolchain.token_template import run_render_template
 
 
 def render_packaging_executable(
-    settings: ReleaseBuildSettings,
+    settings: MacOSReleaseSettings,
     template: Path,
     destination: Path,
 ) -> None:
@@ -34,7 +34,7 @@ def render_packaging_executable(
 
 
 def render_packaging_template(
-    settings: ReleaseBuildSettings,
+    settings: MacOSReleaseSettings,
     template: Path,
     destination: Path,
     extra_values: dict[str, str] | None = None,
@@ -45,19 +45,21 @@ def render_packaging_template(
     render_template(template, destination, values)
 
 
-def packaging_template_values(settings: ReleaseBuildSettings) -> dict[str, str]:
+def packaging_template_values(settings: MacOSReleaseSettings) -> dict[str, str]:
     return {
         "PRODUCT_ROOT": shell_double_quoted_content(settings_install_prefix(settings)),
         "VM_HOME": shell_double_quoted_content(settings_install_home(settings)),
         "INSTALL_LOG": shell_double_quoted_content(
             f"{settings_install_prefix(settings)}/logs/install.log"
         ),
-        "VM_BIN": shell_double_quoted_content(settings_install_value(settings, "bin")),
+        "VM_BIN": shell_double_quoted_content(
+            settings_install_value(settings, "vm_cli")
+        ),
         "PROXY_RUN": shell_double_quoted_content(
-            settings_install_value(settings, "proxy_run")
+            settings_install_value(settings, "proxy_runner")
         ),
         "UNINSTALL": shell_double_quoted_content(
-            settings_install_value(settings, "uninstall")
+            settings_install_value(settings, "uninstaller")
         ),
         "MANAGER_APP": shell_double_quoted_content(
             settings_install_app_bundle(settings)
@@ -106,19 +108,19 @@ def render_launchd_templates(context: PackageContext) -> None:
     )
     templates = context.settings.launchd
     render_template(
-        launchd / templates.vm.template,
-        daemon_dir / templates.vm.output,
+        launchd / templates.vm.template_file,
+        daemon_dir / templates.vm.installed_plist,
         {
-            "VITALSERVER_VM_BIN": package_install_value(context, "bin"),
+            "VITALSERVER_VM_BIN": package_install_value(context, "vm_cli"),
             "VITALSERVER_VM_HOME": install_home(context),
             "VITALSERVER_RUNTIME_LOGS": install_runtime_logs(context),
         },
     )
     render_template(
-        launchd / templates.proxy.template,
-        daemon_dir / templates.proxy.output,
+        launchd / templates.proxy.template_file,
+        daemon_dir / templates.proxy.installed_plist,
         {
-            "VITALSERVER_PROXY_RUN": package_install_value(context, "proxy_run"),
+            "VITALSERVER_PROXY_RUN": package_install_value(context, "proxy_runner"),
             "VITALSERVER_VM_HOME": install_home(context),
             "VITALSERVER_RUNTIME_LOGS": install_runtime_logs(context),
             "VITALSERVER_NGINX_PREFIX": install_nginx_prefix(context),
@@ -127,10 +129,10 @@ def render_launchd_templates(context: PackageContext) -> None:
         },
     )
     render_template(
-        launchd / templates.watchdog.template,
-        daemon_dir / templates.watchdog.output,
+        launchd / templates.watchdog.template_file,
+        daemon_dir / templates.watchdog.installed_plist,
         {
-            "VITALSERVER_VM_BIN": package_install_value(context, "bin"),
+            "VITALSERVER_VM_BIN": package_install_value(context, "vm_cli"),
             "VITALSERVER_VM_HOME": install_home(context),
             "VITALSERVER_RUNTIME_LOGS": install_runtime_logs(context),
         },

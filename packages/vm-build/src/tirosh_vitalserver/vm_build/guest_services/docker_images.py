@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from argparse import Namespace
 
-from tirosh_vitalserver.vm_build.config.build_config import (
-    load_config,
+from tirosh_vitalserver.vm_build.config.build_toml import (
+    load_build_toml,
     optional_string,
     required_string,
     required_string_list,
@@ -19,7 +19,7 @@ from tirosh_vitalserver.vm_build.toolchain.workspace_paths import repo_root
 
 def run_docker_images(args: Namespace) -> int:
     root = repo_root()
-    config = load_config(args.config)
+    config = load_build_toml(args.config)
     docker_config = section(config, "docker_images")
     bundle_path = args.bundle_path or root / required_string(
         docker_config,

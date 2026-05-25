@@ -6,8 +6,8 @@ import uuid
 from argparse import Namespace
 from pathlib import Path
 
-from tirosh_vitalserver.vm_build.config.build_config import (
-    load_config,
+from tirosh_vitalserver.vm_build.config.build_toml import (
+    load_build_toml,
     optional_bool,
     optional_string,
     section,
@@ -16,7 +16,7 @@ from tirosh_vitalserver.vm_build.toolchain.shell_commands import require_tool
 
 
 def run_cloud_init(args: Namespace) -> int:
-    config = load_config(args.config)
+    config = load_build_toml(args.config)
     runtime_config = section(config, "runtime")
     cloud_config = section(config, "cloud_init")
 

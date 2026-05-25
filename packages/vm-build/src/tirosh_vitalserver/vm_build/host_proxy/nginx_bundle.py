@@ -5,15 +5,15 @@ import subprocess
 from argparse import Namespace
 from pathlib import Path
 
-from tirosh_vitalserver.vm_build.config.build_config import (
-    load_config,
+from tirosh_vitalserver.vm_build.config.build_toml import (
+    load_build_toml,
     required_string_list,
     section,
 )
 
 
 def run_nginx_bundle(args: Namespace) -> int:
-    config = load_config(args.config)
+    config = load_build_toml(args.config)
     nginx_config = section(config, "nginx")
 
     binary = resolve_binary(args.binary or nginx_config.get("binary_path"))

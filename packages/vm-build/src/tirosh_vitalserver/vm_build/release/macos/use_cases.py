@@ -2,30 +2,35 @@ from __future__ import annotations
 
 from argparse import Namespace
 
-from tirosh_vitalserver.vm_build.config.release_manifest import load_release_manifest
-from tirosh_vitalserver.vm_build.config.release_settings import (
-    load_release_build_settings,
+from tirosh_vitalserver.vm_build.config.macos.release_settings import (
+    load_macos_release_settings,
     resolve_path,
 )
+from tirosh_vitalserver.vm_build.config.release_manifest import load_release_manifest
 from tirosh_vitalserver.vm_build.guest_services.docker_images import run_docker_images
 from tirosh_vitalserver.vm_build.host_proxy.nginx_bundle import run_nginx_bundle
-from tirosh_vitalserver.vm_build.release.artifact_names import format_release_name
-from tirosh_vitalserver.vm_build.release.macos_installer import build_dmg, build_pkg
-from tirosh_vitalserver.vm_build.release.macos_runtime import (
+from tirosh_vitalserver.vm_build.release.macos.artifact_names import format_release_name
+from tirosh_vitalserver.vm_build.release.macos.installer_package import (
+    build_dmg,
+    build_pkg,
+)
+from tirosh_vitalserver.vm_build.release.macos.models import PackageContext
+from tirosh_vitalserver.vm_build.release.macos.runtime_app import (
     build_app_bundle,
     build_swift,
     sign_runtime_cli,
     sync_release,
 )
-from tirosh_vitalserver.vm_build.release.models import PackageContext
-from tirosh_vitalserver.vm_build.release.update_artifacts import stage_update_artifacts
+from tirosh_vitalserver.vm_build.release.macos.update_artifacts import (
+    stage_update_artifacts,
+)
 from tirosh_vitalserver.vm_build.toolchain.workspace_paths import repo_root
 from tirosh_vitalserver.vm_build.update_bundle import run_build_update_bundle
 
 
 def run_release_update_bundle(args: Namespace) -> int:
     root = repo_root()
-    settings = load_release_build_settings(args.config, root)
+    settings = load_macos_release_settings(args.config, root)
     runtime_dir = settings.runtime_dir
     release_file = resolve_path(root, args.release_file)
     release = load_release_manifest(release_file)
@@ -146,7 +151,7 @@ def run_release_dmg(args: Namespace) -> int:
 
 def prepare_package_context(args: Namespace) -> PackageContext:
     root = repo_root()
-    settings = load_release_build_settings(args.config, root)
+    settings = load_macos_release_settings(args.config, root)
     runtime_dir = settings.runtime_dir
     release_file = resolve_path(root, args.release_file)
     release = load_release_manifest(release_file)
@@ -155,12 +160,12 @@ def prepare_package_context(args: Namespace) -> PackageContext:
     dmg_output = pkg_output
     if pkg_output.suffix == ".dmg":
         pkg_output = settings.dist_dir / format_release_name(
-            settings.outputs.pkg_name_template,
+            settings.outputs.pkg_filename_template,
             release,
         )
     else:
         dmg_output = settings.dist_dir / format_release_name(
-            settings.outputs.dmg_name_template,
+            settings.outputs.dmg_filename_template,
             release,
         )
 

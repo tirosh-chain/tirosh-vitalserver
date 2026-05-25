@@ -3,7 +3,7 @@ from __future__ import annotations
 from argparse import ArgumentParser, Namespace
 from pathlib import Path
 
-from tirosh_vitalserver.vm_build.config.build_config import parse_bool
+from tirosh_vitalserver.vm_build.config.build_toml import parse_bool
 from tirosh_vitalserver.vm_build.toolchain.gzip_compression import (
     compression_threads,
     gzip_file,

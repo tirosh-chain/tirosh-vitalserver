@@ -6,8 +6,8 @@ import shutil
 from argparse import Namespace
 from pathlib import Path
 
-from tirosh_vitalserver.vm_build.config.build_config import (
-    load_config,
+from tirosh_vitalserver.vm_build.config.build_toml import (
+    load_build_toml,
     optional_bool,
     optional_string,
     required_string,
@@ -21,7 +21,7 @@ from tirosh_vitalserver.vm_build.toolchain.shell_commands import (
 
 
 def run_ubuntu(args: Namespace) -> int:
-    config = load_config(args.config)
+    config = load_build_toml(args.config)
     ubuntu_config = section(config, "ubuntu")
     runtime_config = section(config, "runtime")
 

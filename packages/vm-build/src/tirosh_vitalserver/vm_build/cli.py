@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from tirosh_vitalserver.vm_build.config.build_config import (
+from tirosh_vitalserver.vm_build.config.build_toml import (
     default_config_path,
     parse_bool,
 )

@@ -5,13 +5,13 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from tirosh_vitalserver.vm_build.release.artifact_files import (
+from tirosh_vitalserver.vm_build.release.macos.artifact_files import (
     copy_executable,
     copy_tree,
     install_file,
     remove_apple_double_files,
 )
-from tirosh_vitalserver.vm_build.release.install_paths import (
+from tirosh_vitalserver.vm_build.release.macos.install_paths import (
     install_app_bundle,
     install_home,
     install_nginx_prefix,
@@ -19,14 +19,16 @@ from tirosh_vitalserver.vm_build.release.install_paths import (
     package_output_value,
     package_path,
 )
-from tirosh_vitalserver.vm_build.release.installer_templates import (
+from tirosh_vitalserver.vm_build.release.macos.installer_templates import (
     plist_text,
     render_launchd_templates,
     render_packaging_executable,
     render_packaging_template,
 )
-from tirosh_vitalserver.vm_build.release.models import PackageContext
-from tirosh_vitalserver.vm_build.release.update_artifacts import stage_guest_deploy
+from tirosh_vitalserver.vm_build.release.macos.models import PackageContext
+from tirosh_vitalserver.vm_build.release.macos.update_artifacts import (
+    stage_guest_deploy,
+)
 from tirosh_vitalserver.vm_build.toolchain.shell_commands import run
 
 ROOTFS_BASE_NAME = "rootfs-base.raw.gz"
@@ -71,7 +73,7 @@ def build_dmg(context: PackageContext) -> None:
     staging.mkdir(parents=True)
     install_file(
         context.pkg_output,
-        staging / package_output_value(context, "dmg_pkg_name"),
+        staging / package_output_value(context, "dmg_installer_pkg_name"),
     )
     context.dmg_output.parent.mkdir(parents=True, exist_ok=True)
     if context.dmg_output.exists():
@@ -108,7 +110,7 @@ def stage_pkg_root(context: PackageContext) -> None:
         package_path(context, package_install_value(context, "applications_dir")),
         package_path(
             context,
-            Path(package_install_value(context, "bin")).parent.as_posix(),
+            Path(package_install_value(context, "vm_cli")).parent.as_posix(),
         ),
         package_path(context, f"{install_home(context)}/runtime"),
         package_path(context, f"{install_home(context)}/data/deploy"),
@@ -125,7 +127,7 @@ def stage_pkg_root(context: PackageContext) -> None:
 
     install_file(
         context.runtime_cli,
-        package_path(context, package_install_value(context, "bin")),
+        package_path(context, package_install_value(context, "vm_cli")),
     )
     run(
         [
@@ -135,23 +137,23 @@ def stage_pkg_root(context: PackageContext) -> None:
             "-",
             "--entitlements",
             str(context.runtime_dir / "Entitlements.shared.plist"),
-            str(package_path(context, package_install_value(context, "bin"))),
+            str(package_path(context, package_install_value(context, "vm_cli"))),
         ]
     )
     assert_virtualization_entitlement(
-        package_path(context, package_install_value(context, "bin"))
+        package_path(context, package_install_value(context, "vm_cli"))
     )
 
     packaging_dir = context.runtime_dir / "Support/Packaging"
     render_packaging_executable(
         context.settings,
         packaging_dir / "proxy-run.template",
-        package_path(context, package_install_value(context, "proxy_run")),
+        package_path(context, package_install_value(context, "proxy_runner")),
     )
     render_packaging_executable(
         context.settings,
         packaging_dir / "uninstall.template",
-        package_path(context, package_install_value(context, "uninstall")),
+        package_path(context, package_install_value(context, "uninstaller")),
     )
     copy_tree(context.app_bundle, package_path(context, install_app_bundle(context)))
     copy_tree(

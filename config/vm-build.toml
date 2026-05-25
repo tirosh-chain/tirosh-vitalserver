@@ -7,43 +7,43 @@ build_dir = ".tmp/vitalserver-vm-pkg"
 dist_dir = "dist"
 clang_module_cache = ".tmp/clang-module-cache"
 
-[app]
+[macos.app]
 name = "VitalServer Helper"
 helper_product_name = "VitalServerHelper"
 bundle_dir = ".tmp/VitalServer Helper.app"
 
-[package]
+[macos.package]
 identifier = "com.tirosh.vitalserver.vm"
 
-# Absolute install contract for files laid down on the target Mac.
-[package.install]
-prefix = "/Library/Application Support/TiroshVitalServer"
+# Filesystem contract for files laid down by the macOS installer.
+[macos.install]
+product_root = "/Library/Application Support/TiroshVitalServer"
 applications_dir = "/Applications"
 launch_daemons_dir = "/Library/LaunchDaemons"
-bin = "/usr/local/bin/vitalserver-vm"
-proxy_run = "/usr/local/bin/vitalserver-proxy-run"
-uninstall = "/usr/local/bin/tirosh-vitalserver-uninstall"
-settings_path = "/private/tmp/tirosh-vitalserver-install.json"
+vm_cli = "/usr/local/bin/vitalserver-vm"
+proxy_runner = "/usr/local/bin/vitalserver-proxy-run"
+uninstaller = "/usr/local/bin/tirosh-vitalserver-uninstall"
+install_settings_json = "/private/tmp/tirosh-vitalserver-install.json"
 uninstall_log = "/private/tmp/tirosh-vitalserver-uninstall.log"
 preserve_tmp_template = "/private/tmp/tirosh-vitalserver-preserve.XXXXXX"
 
-[package.outputs]
-pkg_name_template = "TiroshVitalServerVM-{releaseLabel}.pkg"
-dmg_name_template = "TiroshVitalServer-{releaseLabel}.dmg"
-dmg_pkg_name = "Install Tirosh VitalServer.pkg"
+[macos.package.outputs]
+pkg_filename_template = "TiroshVitalServerVM-{releaseLabel}.pkg"
+dmg_filename_template = "TiroshVitalServer-{releaseLabel}.dmg"
+dmg_installer_pkg_name = "Install Tirosh VitalServer.pkg"
 dmg_staging_dir = ".tmp/vitalserver-vm-dmg"
 
-[launchd.vm]
-template = "com.tirosh.vitalserver-vm.plist.template"
-output = "com.tirosh.vitalserver-vm.plist"
+[macos.launchd.vm]
+template_file = "com.tirosh.vitalserver-vm.plist.template"
+installed_plist = "com.tirosh.vitalserver-vm.plist"
 
-[launchd.proxy]
-template = "com.tirosh.vitalserver-proxy.plist.template"
-output = "com.tirosh.vitalserver-proxy.plist"
+[macos.launchd.proxy]
+template_file = "com.tirosh.vitalserver-proxy.plist.template"
+installed_plist = "com.tirosh.vitalserver-proxy.plist"
 
-[launchd.watchdog]
-template = "com.tirosh.vitalserver-watchdog.plist.template"
-output = "com.tirosh.vitalserver-watchdog.plist"
+[macos.launchd.watchdog]
+template_file = "com.tirosh.vitalserver-watchdog.plist.template"
+installed_plist = "com.tirosh.vitalserver-watchdog.plist"
 
 [ubuntu]
 release = "noble"

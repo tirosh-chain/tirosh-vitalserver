@@ -3,8 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from tirosh_vitalserver.vm_build.config.build_config import (
-    load_config,
+from tirosh_vitalserver.vm_build.config.build_toml import (
+    load_build_toml,
     required_string,
     section,
 )
@@ -17,41 +17,41 @@ RUNTIME_CLI_NAME = "vitalserver-vm"
 
 
 @dataclass(frozen=True)
-class PackageInstallConfig:
-    prefix: str
+class MacOSInstallConfig:
+    product_root: str
     applications_dir: str
     launch_daemons_dir: str
-    bin: str
-    proxy_run: str
-    uninstall: str
-    settings_path: str
+    vm_cli: str
+    proxy_runner: str
+    uninstaller: str
+    install_settings_json: str
     uninstall_log: str
     preserve_tmp_template: str
 
 
 @dataclass(frozen=True)
-class PackageOutputConfig:
-    pkg_name_template: str
-    dmg_name_template: str
-    dmg_pkg_name: str
+class MacOSPackageOutputConfig:
+    pkg_filename_template: str
+    dmg_filename_template: str
+    dmg_installer_pkg_name: str
     dmg_staging_dir: Path
 
 
 @dataclass(frozen=True)
-class LaunchdTemplateConfig:
-    template: str
-    output: str
+class MacOSLaunchdTemplateConfig:
+    template_file: str
+    installed_plist: str
 
 
 @dataclass(frozen=True)
-class LaunchdConfig:
-    vm: LaunchdTemplateConfig
-    proxy: LaunchdTemplateConfig
-    watchdog: LaunchdTemplateConfig
+class MacOSLaunchdConfig:
+    vm: MacOSLaunchdTemplateConfig
+    proxy: MacOSLaunchdTemplateConfig
+    watchdog: MacOSLaunchdTemplateConfig
 
 
 @dataclass(frozen=True)
-class ReleaseBuildSettings:
+class MacOSReleaseSettings:
     runtime_dir: Path
     helper_product_name: str
     app_name: str
@@ -68,10 +68,10 @@ class ReleaseBuildSettings:
     dmg_staging_dir: Path
     dist_dir: Path
     package_identifier: str
-    install: PackageInstallConfig
-    outputs: PackageOutputConfig
+    install: MacOSInstallConfig
+    outputs: MacOSPackageOutputConfig
     guest_deploy: GuestDeployConfig
-    launchd: LaunchdConfig
+    launchd: MacOSLaunchdConfig
 
 
 def resolve_path(root: Path, value: str | Path) -> Path:
@@ -79,22 +79,23 @@ def resolve_path(root: Path, value: str | Path) -> Path:
     return path if path.is_absolute() else root / path
 
 
-def load_release_build_settings(
+def load_macos_release_settings(
     config_path: Path,
     root: Path,
-) -> ReleaseBuildSettings:
-    config = load_config(config_path)
+) -> MacOSReleaseSettings:
+    config = load_build_toml(config_path)
     workspace = section(config, "workspace")
-    app = section(config, "app")
-    package = section(config, "package")
-    package_install = section(package, "install")
+    macos = section(config, "macos")
+    app = section(macos, "app")
+    package = section(macos, "package")
+    package_install = section(macos, "install")
     package_outputs = section(package, "outputs")
-    outputs = load_package_outputs(package_outputs, root)
+    outputs = load_macos_package_outputs(package_outputs, root)
     runtime_dir = resolve_path(root, required_string(workspace, "runtime_dir"))
     build_dir = resolve_path(root, required_string(workspace, "build_dir"))
     app_name = required_string(app, "name")
     helper_product_name = required_string(app, "helper_product_name")
-    return ReleaseBuildSettings(
+    return MacOSReleaseSettings(
         runtime_dir=runtime_dir,
         helper_product_name=helper_product_name,
         app_name=app_name,
@@ -120,79 +121,81 @@ def load_release_build_settings(
         dmg_staging_dir=outputs.dmg_staging_dir,
         dist_dir=resolve_path(root, required_string(workspace, "dist_dir")),
         package_identifier=required_string(package, "identifier"),
-        install=load_package_install(package_install),
+        install=load_macos_install(package_install),
         outputs=outputs,
         guest_deploy=load_guest_deploy_config(section(config, "guest_deploy")),
-        launchd=load_launchd_config(section(config, "launchd")),
+        launchd=load_macos_launchd(section(macos, "launchd")),
     )
 
 
-def load_package_install(config: dict[str, object]) -> PackageInstallConfig:
-    return PackageInstallConfig(
-        prefix=required_string(config, "prefix"),
+def load_macos_install(config: dict[str, object]) -> MacOSInstallConfig:
+    return MacOSInstallConfig(
+        product_root=required_string(config, "product_root"),
         applications_dir=required_string(config, "applications_dir"),
         launch_daemons_dir=required_string(config, "launch_daemons_dir"),
-        bin=required_string(config, "bin"),
-        proxy_run=required_string(config, "proxy_run"),
-        uninstall=required_string(config, "uninstall"),
-        settings_path=required_string(config, "settings_path"),
+        vm_cli=required_string(config, "vm_cli"),
+        proxy_runner=required_string(config, "proxy_runner"),
+        uninstaller=required_string(config, "uninstaller"),
+        install_settings_json=required_string(config, "install_settings_json"),
         uninstall_log=required_string(config, "uninstall_log"),
         preserve_tmp_template=required_string(config, "preserve_tmp_template"),
     )
 
 
-def load_package_outputs(
+def load_macos_package_outputs(
     config: dict[str, object],
     root: Path,
-) -> PackageOutputConfig:
-    return PackageOutputConfig(
-        pkg_name_template=required_string(config, "pkg_name_template"),
-        dmg_name_template=required_string(config, "dmg_name_template"),
-        dmg_pkg_name=required_string(config, "dmg_pkg_name"),
+) -> MacOSPackageOutputConfig:
+    return MacOSPackageOutputConfig(
+        pkg_filename_template=required_string(config, "pkg_filename_template"),
+        dmg_filename_template=required_string(config, "dmg_filename_template"),
+        dmg_installer_pkg_name=required_string(config, "dmg_installer_pkg_name"),
         dmg_staging_dir=resolve_path(root, required_string(config, "dmg_staging_dir")),
     )
 
 
-def load_launchd_config(config: dict[str, object]) -> LaunchdConfig:
-    return LaunchdConfig(
-        vm=load_launchd_template(section(config, "vm")),
-        proxy=load_launchd_template(section(config, "proxy")),
-        watchdog=load_launchd_template(section(config, "watchdog")),
+def load_macos_launchd(config: dict[str, object]) -> MacOSLaunchdConfig:
+    return MacOSLaunchdConfig(
+        vm=load_macos_launchd_template(section(config, "vm")),
+        proxy=load_macos_launchd_template(section(config, "proxy")),
+        watchdog=load_macos_launchd_template(section(config, "watchdog")),
     )
 
 
-def load_launchd_template(config: dict[str, object]) -> LaunchdTemplateConfig:
-    return LaunchdTemplateConfig(
-        template=required_string(config, "template"),
-        output=required_string(config, "output"),
+def load_macos_launchd_template(
+    config: dict[str, object],
+) -> MacOSLaunchdTemplateConfig:
+    return MacOSLaunchdTemplateConfig(
+        template_file=required_string(config, "template_file"),
+        installed_plist=required_string(config, "installed_plist"),
     )
 
 
-def settings_install_value(settings: ReleaseBuildSettings, key: str) -> str:
+def settings_install_value(settings: MacOSReleaseSettings, key: str) -> str:
     value = getattr(settings.install, key)
     if not isinstance(value, str) or not value:
         raise SystemExit(f"error: missing package install config value: {key}")
     return value
 
 
-def settings_install_prefix(settings: ReleaseBuildSettings) -> str:
-    return settings_install_value(settings, "prefix")
+def settings_install_prefix(settings: MacOSReleaseSettings) -> str:
+    return settings_install_value(settings, "product_root")
 
 
-def settings_install_home(settings: ReleaseBuildSettings) -> str:
+def settings_install_home(settings: MacOSReleaseSettings) -> str:
     return f"{settings_install_prefix(settings)}/vm"
 
 
-def settings_install_runtime_logs(settings: ReleaseBuildSettings) -> str:
+def settings_install_runtime_logs(settings: MacOSReleaseSettings) -> str:
     return f"{settings_install_prefix(settings)}/logs/runtime"
 
 
-def settings_install_app_bundle(settings: ReleaseBuildSettings) -> str:
+def settings_install_app_bundle(settings: MacOSReleaseSettings) -> str:
     return (
         f"{settings_install_value(settings, 'applications_dir')}/"
         f"{settings.app_name}.app"
     )
 
 
-def settings_install_nginx_prefix(settings: ReleaseBuildSettings) -> str:
+def settings_install_nginx_prefix(settings: MacOSReleaseSettings) -> str:
     return f"{settings_install_prefix(settings)}/nginx"

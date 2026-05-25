@@ -1,1 +1,1 @@
-"""Build configuration loading and validation."""
+"""Configuration readers for VM build domains."""

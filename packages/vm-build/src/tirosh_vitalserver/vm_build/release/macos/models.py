@@ -3,8 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from tirosh_vitalserver.vm_build.config.macos.release_settings import (
+    MacOSReleaseSettings,
+)
 from tirosh_vitalserver.vm_build.config.release_manifest import ReleaseManifest
-from tirosh_vitalserver.vm_build.config.release_settings import ReleaseBuildSettings
 
 
 @dataclass(frozen=True)
@@ -23,7 +25,7 @@ class PackageContext:
     rootfs_base: Path
     golden_runtime_dir: Path
     proxy_port: str
-    settings: ReleaseBuildSettings
+    settings: MacOSReleaseSettings
 
 
 @dataclass(frozen=True)

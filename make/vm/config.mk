@@ -74,19 +74,19 @@ VM_PACKAGING_DIR := $(VM_MACOS_RUNTIME_DIR)/Support/Packaging
 VM_RSYNC_EXCLUDES := --exclude .DS_Store --exclude '._*' --exclude __pycache__
 
 # Product/install constants.
-VM_PKG_IDENTIFIER := $(call VM_TOML_VALUE,package.identifier)
-VM_INSTALL_PREFIX := $(call VM_TOML_VALUE,package.install.prefix)
+VM_PKG_IDENTIFIER := $(call VM_TOML_VALUE,macos.package.identifier)
+VM_INSTALL_PREFIX := $(call VM_TOML_VALUE,macos.install.product_root)
 VM_INSTALL_HOME := $(VM_INSTALL_PREFIX)/vm
 VM_INSTALL_RUNTIME_LOGS := $(VM_INSTALL_PREFIX)/logs/runtime
-VM_INSTALL_APPLICATIONS_DIR := $(call VM_TOML_VALUE,package.install.applications_dir)
-VM_INSTALL_LAUNCH_DAEMONS_DIR := $(call VM_TOML_VALUE,package.install.launch_daemons_dir)
-VM_INSTALL_APP_BUNDLE := $(VM_INSTALL_APPLICATIONS_DIR)/$(call VM_TOML_VALUE,app.name).app
-VM_INSTALL_BIN := $(call VM_TOML_VALUE,package.install.bin)
-VM_INSTALL_PROXY_RUN := $(call VM_TOML_VALUE,package.install.proxy_run)
-VM_INSTALL_UNINSTALL := $(call VM_TOML_VALUE,package.install.uninstall)
+VM_INSTALL_APPLICATIONS_DIR := $(call VM_TOML_VALUE,macos.install.applications_dir)
+VM_INSTALL_LAUNCH_DAEMONS_DIR := $(call VM_TOML_VALUE,macos.install.launch_daemons_dir)
+VM_INSTALL_APP_BUNDLE := $(VM_INSTALL_APPLICATIONS_DIR)/$(call VM_TOML_VALUE,macos.app.name).app
+VM_INSTALL_BIN := $(call VM_TOML_VALUE,macos.install.vm_cli)
+VM_INSTALL_PROXY_RUN := $(call VM_TOML_VALUE,macos.install.proxy_runner)
+VM_INSTALL_UNINSTALL := $(call VM_TOML_VALUE,macos.install.uninstaller)
 VM_INSTALL_NGINX_PREFIX := $(VM_INSTALL_PREFIX)/nginx
 VM_INSTALL_NGINX_BIN := $(VM_INSTALL_NGINX_PREFIX)/sbin/nginx
-VM_INSTALL_SETTINGS_PATH := $(call VM_TOML_VALUE,package.install.settings_path)
+VM_INSTALL_SETTINGS_PATH := $(call VM_TOML_VALUE,macos.install.install_settings_json)
 
 # Package artifacts.
 VM_DIST_DIR := $(call VM_TOML_VALUE,workspace.dist_dir)
@@ -94,7 +94,7 @@ VM_PKG_BUILD_DIR := $(call VM_TOML_VALUE,workspace.build_dir)
 VM_PKG_ROOT := $(VM_PKG_BUILD_DIR)/root
 VM_PKG_SCRIPTS := $(VM_PKG_BUILD_DIR)/scripts
 VM_PKG_COMPONENT_PLIST := $(VM_PKG_BUILD_DIR)/components.plist
-VM_PKG_OUTPUT = $(VM_DIST_DIR)/$(subst {releaseLabel},$(VM_ARTIFACT_VERSION),$(call VM_TOML_VALUE,package.outputs.pkg_name_template))
+VM_PKG_OUTPUT = $(VM_DIST_DIR)/$(subst {releaseLabel},$(VM_ARTIFACT_VERSION),$(call VM_TOML_VALUE,macos.package.outputs.pkg_filename_template))
 VM_PKG_NGINX_BUNDLE_DIR := $(VM_PKG_BUILD_DIR)/nginx-bundle
 VM_PKG_ROOTFS_CACHE := $(VM_PKG_BUILD_DIR)/rootfs-base.raw.gz
 VM_DOCKER_IMAGE_BUNDLE := $(call VM_TOML_VALUE,docker_images.bundle_path)
@@ -106,10 +106,10 @@ VM_UPDATE_BUNDLE_PATH = $(VM_UPDATE_BUNDLE_DIR)/$(VM_UPDATE_BUNDLE_NAME).tar.gz
 VM_UPDATE_ROOTFS_BASE ?=
 
 # App artifacts.
-VM_APP_NAME := $(call VM_TOML_VALUE,app.name)
-VM_APP_BUNDLE := $(call VM_TOML_VALUE,app.bundle_dir)
-VM_DMG_STAGING := $(call VM_TOML_VALUE,package.outputs.dmg_staging_dir)
-VM_DMG_OUTPUT = $(VM_DIST_DIR)/$(subst {releaseLabel},$(VM_ARTIFACT_VERSION),$(call VM_TOML_VALUE,package.outputs.dmg_name_template))
+VM_APP_NAME := $(call VM_TOML_VALUE,macos.app.name)
+VM_APP_BUNDLE := $(call VM_TOML_VALUE,macos.app.bundle_dir)
+VM_DMG_STAGING := $(call VM_TOML_VALUE,macos.package.outputs.dmg_staging_dir)
+VM_DMG_OUTPUT = $(VM_DIST_DIR)/$(subst {releaseLabel},$(VM_ARTIFACT_VERSION),$(call VM_TOML_VALUE,macos.package.outputs.dmg_filename_template))
 VM_INSTALLED_IP_FILE := $(VM_INSTALL_HOME)/data/run/vm-ip
 
 # Golden rootfs build paths. Keep these separate from the developer VM home so

@@ -28,18 +28,20 @@ Source layout:
 vm_build/
   cli.py        command-line adapter
   config/       config and release manifest adapters
+    macos/      macOS release settings from vm-build.toml
   guest_image/  Ubuntu image, cloud-init seed, and rootfs base builders
   guest_services/ Docker image bundle for guest services
   host_proxy/   nginx bundle for the macOS host proxy
   update_bundle/ update bundle contract, archive, and verification logic
-  release/      release orchestration use cases
+  release/      release use cases grouped by target platform
+    macos/      macOS app, installer, and release artifact orchestration
   toolchain/    shell, path, gzip, and token-template helpers
 ```
 
 The package keeps CLI parsing at the edge, config parsing in adapters, and
 workflow orchestration in use-case packages. Shared shell/filesystem primitives
-stay in `toolchain/`; release-specific filesystem staging stays inside
-`release/`.
+stay in `toolchain/`; platform-specific release staging stays under
+`release/<platform>/`.
 
 Most packaging inputs are declared in
 `config/vm-build.toml`. Keep Docker image

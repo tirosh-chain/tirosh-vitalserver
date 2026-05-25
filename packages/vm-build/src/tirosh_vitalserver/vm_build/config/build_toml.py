@@ -11,7 +11,7 @@ def default_config_path() -> Path:
     return Path(DEFAULT_CONFIG_PATH)
 
 
-def load_config(path: Path) -> dict[str, dict[str, Any]]:
+def load_build_toml(path: Path) -> dict[str, dict[str, Any]]:
     if not path.is_file():
         raise SystemExit(f"error: missing build config: {path}")
     try:

@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import os
 
-from tirosh_vitalserver.vm_build.config.release_settings import (
-    load_release_build_settings,
+from tirosh_vitalserver.vm_build.config.macos.release_settings import (
+    load_macos_release_settings,
     settings_install_app_bundle,
 )
-from tirosh_vitalserver.vm_build.release import (
+from tirosh_vitalserver.vm_build.release.macos.installer_templates import (
     render_packaging_executable,
     render_packaging_template,
 )
@@ -15,7 +15,7 @@ from tirosh_vitalserver.vm_build.toolchain.workspace_paths import repo_root
 
 def test_packaging_templates_render_from_build_config(tmp_path) -> None:
     root = repo_root()
-    settings = load_release_build_settings(
+    settings = load_macos_release_settings(
         root / "config/vm-build.toml",
         root,
     )
