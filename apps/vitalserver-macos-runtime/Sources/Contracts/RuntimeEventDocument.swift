@@ -6,6 +6,8 @@ public enum RuntimeEventType: Codable, Equatable, Sendable {
     case healthObserved
     case recoveryTriggered
     case recoveryCompleted
+    case domainErrorObserved
+    case vmErrorObserved
     case containerObserved
     case auditProxyObserved
     case vitalDBObserved
@@ -28,6 +30,10 @@ public enum RuntimeEventType: Codable, Equatable, Sendable {
             self = .recoveryTriggered
         case "recovery-completed":
             self = .recoveryCompleted
+        case "domain-error-observed":
+            self = .domainErrorObserved
+        case "vm-error-observed":
+            self = .vmErrorObserved
         case "container-observed":
             self = .containerObserved
         case "audit-proxy-observed":
@@ -61,6 +67,10 @@ public enum RuntimeEventType: Codable, Equatable, Sendable {
             return "recovery-triggered"
         case .recoveryCompleted:
             return "recovery-completed"
+        case .domainErrorObserved:
+            return "domain-error-observed"
+        case .vmErrorObserved:
+            return "vm-error-observed"
         case .containerObserved:
             return "container-observed"
         case .auditProxyObserved:
@@ -108,9 +118,50 @@ public struct RuntimeEventDocument: Codable, Equatable, Sendable {
     public let vmState: RuntimeVMState?
     public let vmErrors: [RuntimeVMError]?
     public let failureReasons: [RuntimeFailureReason]
+    public let domainErrors: [RuntimeDomainError]?
     public let containerObservation: RuntimeContainerObservation?
     public let vitalDBObservation: VitalDBObservationDocument?
     public let progress: RuntimeProgressDocument?
+
+    public init(
+        schemaVersion: Int = 1,
+        id: String,
+        source: String = "host-runtime",
+        eventType: RuntimeEventType,
+        timestamp: String,
+        product: String,
+        status: RuntimeStatusLevel,
+        previousStatus: RuntimeStatusLevel?,
+        operation: RuntimeOperation,
+        message: String,
+        runtimeVersion: String,
+        vmState: RuntimeVMState? = nil,
+        vmErrors: [RuntimeVMError]? = nil,
+        failureReasons: [RuntimeFailureReason],
+        domainErrors: [RuntimeDomainError]? = nil,
+        containerObservation: RuntimeContainerObservation? = nil,
+        vitalDBObservation: VitalDBObservationDocument? = nil,
+        progress: RuntimeProgressDocument?
+    ) {
+        self.schemaVersion = schemaVersion
+        self.id = id
+        self.source = source
+        self.eventType = eventType
+        self.timestamp = timestamp
+        self.product = product
+        self.status = status
+        self.previousStatus = previousStatus
+        self.operation = operation
+        self.message = message
+        self.runtimeVersion = runtimeVersion
+        self.vmState = vmState
+        self.vmErrors = vmErrors
+        self.failureReasons = failureReasons
+        self.domainErrors = domainErrors ?? (failureReasons.isEmpty ? nil : failureReasons.map(RuntimeDomainError.init))
+        self.containerObservation = containerObservation
+        self.vitalDBObservation = vitalDBObservation
+        self.progress = progress
+    }
 
     public init(
         schemaVersion: Int = 1,
@@ -131,22 +182,25 @@ public struct RuntimeEventDocument: Codable, Equatable, Sendable {
         vitalDBObservation: VitalDBObservationDocument? = nil,
         progress: RuntimeProgressDocument?
     ) {
-        self.schemaVersion = schemaVersion
-        self.id = id
-        self.source = source
-        self.eventType = eventType
-        self.timestamp = timestamp
-        self.product = product
-        self.status = status
-        self.previousStatus = previousStatus
-        self.operation = operation
-        self.message = message
-        self.runtimeVersion = runtimeVersion
-        self.vmState = vmState
-        self.vmErrors = vmErrors
-        self.failureReasons = failureReasons
-        self.containerObservation = containerObservation
-        self.vitalDBObservation = vitalDBObservation
-        self.progress = progress
+        self.init(
+            schemaVersion: schemaVersion,
+            id: id,
+            source: source,
+            eventType: eventType,
+            timestamp: timestamp,
+            product: product,
+            status: status,
+            previousStatus: previousStatus,
+            operation: operation,
+            message: message,
+            runtimeVersion: runtimeVersion,
+            vmState: vmState,
+            vmErrors: vmErrors,
+            failureReasons: failureReasons,
+            domainErrors: nil,
+            containerObservation: containerObservation,
+            vitalDBObservation: vitalDBObservation,
+            progress: progress
+        )
     }
 }

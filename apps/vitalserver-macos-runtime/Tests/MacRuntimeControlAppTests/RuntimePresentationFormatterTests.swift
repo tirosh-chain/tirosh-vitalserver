@@ -74,7 +74,7 @@ final class RuntimePresentationFormatterTests: XCTestCase {
 
         XCTAssertEqual(
             formatter.statusDisplayMessage(status),
-            "runtime is degraded\nFailure reasons: host-proxy-http-503, guest-http-000"
+            "runtime is degraded\nFailure reasons: Host proxy HTTP 503 (Restart host proxy service), Guest HTTP 000 (Wait for guest readiness)"
         )
     }
 

@@ -60,6 +60,7 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading {
             vmServiceLoaded: next.vmServiceLoaded,
             vmIP: next.vmIP,
             guestHTTP: next.guestHTTP,
+            runtimeStatePresent: guestRuntimeStateDocument(paths.runtimeState) != nil,
             runtimeStateStale: next.failureReasons.contains(.guestRuntimeStateStale)
         )
 
@@ -77,6 +78,14 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading {
         let vmServiceLoaded = loaded(document?.vmService) ?? launchdLoaded(.vm)
         let vmIP = document?.vmIP ?? guestState?.vmIP ?? readTrimmed(paths.vmIPFile)
         let guestHTTP = document?.guestHTTP ?? guestState?.guestHTTP
+        let inferredVMErrors = inferredVMErrors(
+            runtimeInstalled: runtimeInstalled,
+            vmServiceLoaded: vmServiceLoaded,
+            vmIP: vmIP,
+            guestHTTP: guestHTTP,
+            runtimeStatePresent: guestState != nil,
+            runtimeStateStale: document?.failureReasons.contains(.guestRuntimeStateStale) ?? false
+        )
         return RuntimeStatus(
             runtimeInstalled: runtimeInstalled,
             vmServiceLoaded: vmServiceLoaded,
@@ -97,7 +106,7 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading {
                 vmIP: vmIP,
                 guestHTTP: guestHTTP
             ),
-            vmErrors: document?.vmErrors,
+            vmErrors: document?.vmErrors ?? inferredVMErrors,
             vmIP: vmIP,
             guestHTTP: guestHTTP,
             hostProxyHTTP: document?.hostProxyHTTP,
@@ -223,6 +232,7 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading {
         vmServiceLoaded: Bool,
         vmIP: String?,
         guestHTTP: String?,
+        runtimeStatePresent: Bool,
         runtimeStateStale: Bool
     ) -> [RuntimeVMError] {
         var errors: [RuntimeVMError] = []
@@ -234,6 +244,9 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading {
         }
         if vmIP == nil {
             errors.append(.missingIPAddress)
+        }
+        if !runtimeStatePresent {
+            errors.append(.runtimeStateMissing)
         }
         if let guestHTTP, !isSuccessfulHTTPStatus(guestHTTP), guestHTTP != "missing-vm-ip" {
             errors.append(.guestHTTP(guestHTTP))

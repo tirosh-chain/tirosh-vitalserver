@@ -270,6 +270,24 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         XCTAssertEqual(item(AppConstants.Labels.vmErrors, in: items)?.value.severity, .critical)
     }
 
+    func testHealthDetailsDisplayDomainFailureReasonsWhenPresent() {
+        let status = RuntimeStatus(
+            runtimeInstalled: true,
+            vmServiceLoaded: true,
+            proxyServiceLoaded: true,
+            watchdogServiceLoaded: true,
+            failureReasons: [.hostProxyHTTP("503"), .guestRuntimeStateStale]
+        )
+
+        let items = policy.healthDetails(status: status, observation: nil)
+
+        XCTAssertEqual(
+            item(AppConstants.Labels.failureReasons, in: items)?.value.text,
+            "Host proxy HTTP 503 (Restart host proxy service), Guest runtime state stale (Restart guest agent)"
+        )
+        XCTAssertEqual(item(AppConstants.Labels.failureReasons, in: items)?.value.severity, .critical)
+    }
+
     func testRecorderSummaryOwnsRecorderDisplayText() {
         let observation = RuntimeContainerObservation(
             auditProxyHTTP: "200",

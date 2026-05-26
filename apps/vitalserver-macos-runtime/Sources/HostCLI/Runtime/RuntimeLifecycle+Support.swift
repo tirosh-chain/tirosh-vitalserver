@@ -191,11 +191,12 @@ extension RuntimeLifecycle {
         previousStatus: RuntimeStatusLevel?,
         operation: RuntimeOperation,
         message: String,
-        healthSnapshot: RuntimeHealthSnapshot
+        healthSnapshot: RuntimeHealthSnapshot,
+        eventType: RuntimeEventType = .statusChanged
     ) throws {
         let event = RuntimeEventDocument(
             id: UUID().uuidString,
-            eventType: .statusChanged,
+            eventType: eventType,
             timestamp: isoTimestamp(),
             product: Constants.Product.identifier,
             status: status,
@@ -219,6 +220,16 @@ extension RuntimeLifecycle {
             try? SQLiteRuntimeObservabilityStore(url: installedPaths.runtimeObservabilityDB)
                 .append(vitalDBObservation)
         }
+    }
+
+    func domainEventType(for snapshot: RuntimeHealthSnapshot, defaultEventType: RuntimeEventType = .statusChanged) -> RuntimeEventType {
+        if !snapshot.vmErrors.isEmpty {
+            return .vmErrorObserved
+        }
+        if !snapshot.failureReasons.isEmpty {
+            return .domainErrorObserved
+        }
+        return defaultEventType
     }
 
     func runtimeHealthSnapshot() -> RuntimeHealthSnapshot {

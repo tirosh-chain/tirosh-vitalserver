@@ -1,10 +1,38 @@
+public enum RuntimeVMErrorCategory: String, Codable, Equatable, Sendable {
+    case installation
+    case lifecycle
+    case networking
+    case guestAgent
+    case guestBootstrap
+    case guestStorage
+    case configuration
+    case hostResources
+    case unknown
+}
+
+public enum RuntimeVMRecoveryAction: String, Codable, Equatable, Sendable {
+    case installRuntime
+    case restartVMService
+    case waitForGuest
+    case restartGuestAgent
+    case repairGuestBootstrap
+    case backupAndRecreateVM
+    case fixConfiguration
+    case freeHostResources
+    case inspectLogs
+}
+
 public enum RuntimeVMError: Codable, Equatable, Sendable {
     case missingExecutable
     case missingRootfsBase
     case missingDisk
     case serviceNotLoaded(String)
     case missingIPAddress
+    case runtimeStateMissing
     case runtimeStateStale
+    case launchFailed(String)
+    case invalidConfiguration(String)
+    case hostResourceUnavailable(String)
     case diskAttachmentInvalid
     case guestFilesystemError
     case guestFilesystemReadOnly
@@ -24,6 +52,8 @@ public enum RuntimeVMError: Codable, Equatable, Sendable {
             self = .missingDisk
         case "vm-missing-ip-address":
             self = .missingIPAddress
+        case "vm-runtime-state-missing":
+            self = .runtimeStateMissing
         case "vm-runtime-state-stale":
             self = .runtimeStateStale
         case "vm-disk-attachment-invalid":
@@ -41,6 +71,12 @@ public enum RuntimeVMError: Codable, Equatable, Sendable {
         default:
             if rawValue.hasPrefix("vm-service-state-") {
                 self = .serviceNotLoaded(String(rawValue.dropFirst("vm-service-state-".count)))
+            } else if rawValue.hasPrefix("vm-launch-failed-") {
+                self = .launchFailed(String(rawValue.dropFirst("vm-launch-failed-".count)))
+            } else if rawValue.hasPrefix("vm-invalid-configuration-") {
+                self = .invalidConfiguration(String(rawValue.dropFirst("vm-invalid-configuration-".count)))
+            } else if rawValue.hasPrefix("vm-host-resource-unavailable-") {
+                self = .hostResourceUnavailable(String(rawValue.dropFirst("vm-host-resource-unavailable-".count)))
             } else if rawValue.hasPrefix("vm-guest-http-") {
                 self = .guestHTTP(String(rawValue.dropFirst("vm-guest-http-".count)))
             } else {
@@ -61,8 +97,16 @@ public enum RuntimeVMError: Codable, Equatable, Sendable {
             "vm-service-state-\(state)"
         case .missingIPAddress:
             "vm-missing-ip-address"
+        case .runtimeStateMissing:
+            "vm-runtime-state-missing"
         case .runtimeStateStale:
             "vm-runtime-state-stale"
+        case .launchFailed(let reason):
+            "vm-launch-failed-\(reason)"
+        case .invalidConfiguration(let subject):
+            "vm-invalid-configuration-\(subject)"
+        case .hostResourceUnavailable(let subject):
+            "vm-host-resource-unavailable-\(subject)"
         case .diskAttachmentInvalid:
             "vm-disk-attachment-invalid"
         case .guestFilesystemError:
@@ -90,5 +134,59 @@ public enum RuntimeVMError: Codable, Equatable, Sendable {
     public func encode(to encoder: Encoder) throws {
         var container = encoder.singleValueContainer()
         try container.encode(rawValue)
+    }
+}
+
+public extension RuntimeVMError {
+    var category: RuntimeVMErrorCategory {
+        switch self {
+        case .missingExecutable, .missingRootfsBase, .missingDisk:
+            return .installation
+        case .serviceNotLoaded, .launchFailed:
+            return .lifecycle
+        case .missingIPAddress, .guestHTTP:
+            return .networking
+        case .runtimeStateMissing, .runtimeStateStale:
+            return .guestAgent
+        case .guestBootstrapMissingRuntimePackages, .guestBootstrapFailed:
+            return .guestBootstrap
+        case .diskAttachmentInvalid, .guestFilesystemError, .guestFilesystemReadOnly, .guestDiskIO:
+            return .guestStorage
+        case .invalidConfiguration:
+            return .configuration
+        case .hostResourceUnavailable:
+            return .hostResources
+        case .unknown:
+            return .unknown
+        }
+    }
+
+    var recoveryAction: RuntimeVMRecoveryAction {
+        switch self {
+        case .missingExecutable, .missingRootfsBase, .missingDisk:
+            return .installRuntime
+        case .serviceNotLoaded:
+            return .restartVMService
+        case .missingIPAddress, .guestHTTP:
+            return .waitForGuest
+        case .runtimeStateMissing, .runtimeStateStale:
+            return .restartGuestAgent
+        case .guestBootstrapMissingRuntimePackages, .guestBootstrapFailed:
+            return .repairGuestBootstrap
+        case .diskAttachmentInvalid, .guestFilesystemError, .guestFilesystemReadOnly, .guestDiskIO:
+            return .backupAndRecreateVM
+        case .launchFailed:
+            return .inspectLogs
+        case .invalidConfiguration:
+            return .fixConfiguration
+        case .hostResourceUnavailable:
+            return .freeHostResources
+        case .unknown:
+            return .inspectLogs
+        }
+    }
+
+    var requiresDataPreservationBeforeRecovery: Bool {
+        recoveryAction == .backupAndRecreateVM
     }
 }

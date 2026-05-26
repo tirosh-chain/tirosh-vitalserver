@@ -13,6 +13,7 @@ public struct RuntimeHealthInput: Equatable {
     public let proxyPort: Int
     public let hostProxyHTTP: String
     public let guestHTTP: String
+    public let guestRuntimeStatePresent: Bool
     public let guestRuntimeStateFresh: Bool
     public let redisUIHTTP: String
     public let swaggerUIHTTP: String
@@ -34,6 +35,7 @@ public struct RuntimeHealthInput: Equatable {
         proxyPort: Int,
         hostProxyHTTP: String,
         guestHTTP: String,
+        guestRuntimeStatePresent: Bool = true,
         guestRuntimeStateFresh: Bool = true,
         redisUIHTTP: String,
         swaggerUIHTTP: String,
@@ -54,6 +56,7 @@ public struct RuntimeHealthInput: Equatable {
         self.proxyPort = proxyPort
         self.hostProxyHTTP = hostProxyHTTP
         self.guestHTTP = guestHTTP
+        self.guestRuntimeStatePresent = guestRuntimeStatePresent
         self.guestRuntimeStateFresh = guestRuntimeStateFresh
         self.redisUIHTTP = redisUIHTTP
         self.swaggerUIHTTP = swaggerUIHTTP
@@ -138,6 +141,9 @@ public enum RuntimeHealthEvaluator {
         if input.vmIP == nil {
             errors.append(.missingIPAddress)
         }
+        if !input.guestRuntimeStatePresent {
+            errors.append(.runtimeStateMissing)
+        }
         if !isSuccessfulHTTPStatus(input.guestHTTP), input.guestHTTP != "missing-vm-ip" {
             errors.append(.guestHTTP(input.guestHTTP))
             if let guestBootstrapFailureReason = input.guestBootstrapFailureReason {
@@ -167,6 +173,12 @@ public enum RuntimeHealthEvaluator {
         }
         if errors.contains(.missingRootfsBase)
             || errors.contains(.missingDisk)
+            || errors.contains(where: { error in
+                if case .launchFailed = error {
+                    return true
+                }
+                return false
+            })
             || errors.contains(.diskAttachmentInvalid)
             || errors.contains(.guestFilesystemError)
             || errors.contains(.guestFilesystemReadOnly)
@@ -183,6 +195,9 @@ public enum RuntimeHealthEvaluator {
         }
         if errors.contains(.runtimeStateStale) {
             return .stale
+        }
+        if errors.contains(.runtimeStateMissing) {
+            return input.vmIP == nil ? .starting : .unreachable
         }
         if errors.contains(.missingIPAddress) {
             return .starting

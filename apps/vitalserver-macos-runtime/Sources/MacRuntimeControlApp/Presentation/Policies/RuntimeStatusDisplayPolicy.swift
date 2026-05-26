@@ -134,6 +134,16 @@ struct RuntimeStatusDisplayPolicy {
                 )
             ))
         }
+        if !status.failureReasons.isEmpty {
+            items.append(HealthItem(
+                label: AppConstants.Labels.failureReasons,
+                value: StatusValue(
+                    text: status.failureReasons.map(AppConstants.StatusText.domainError).joined(separator: ", "),
+                    severity: status.failureReasons.contains { $0.domainSeverity == .critical } ? .critical : .warning,
+                    uptimeText: nil
+                )
+            ))
+        }
         items.append(contentsOf: [
             HealthItem(
                 label: AppConstants.Labels.vmIPAddress,

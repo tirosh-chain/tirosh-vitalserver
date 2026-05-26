@@ -52,7 +52,7 @@ struct RuntimePresentationFormatter {
     }
 
     func failureReasonText(_ status: RuntimeStatus) -> String {
-        status.failureReasons.map(\.rawValue).joined(separator: ", ")
+        status.failureReasons.map(AppConstants.StatusText.domainError).joined(separator: ", ")
     }
 
     func runtimeStateText(_ state: RuntimeState?) -> String {

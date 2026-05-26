@@ -179,6 +179,20 @@ final class RuntimeHealthEvaluatorTests: XCTestCase {
         XCTAssertEqual(snapshot.vmErrors, [.runtimeStateStale])
     }
 
+    func testMissingGuestRuntimeStateIsObservableSeparatelyFromGuestHTTP() {
+        let snapshot = RuntimeHealthEvaluator.evaluate(healthyInput(
+            guestHTTP: "failed",
+            guestRuntimeStatePresent: false
+        ))
+
+        XCTAssertEqual(snapshot.vmState, .unreachable)
+        XCTAssertEqual(snapshot.vmErrors, [.runtimeStateMissing, .guestHTTP("failed")])
+        XCTAssertEqual(snapshot.failureReasons.map(\.rawValue), [
+            "vm-runtime-state-missing",
+            "guest-http-failed",
+        ])
+    }
+
     func testVMStateDefinesHostAndGuestFailureModes() {
         XCTAssertEqual(RuntimeHealthEvaluator.evaluate(healthyInput(vmExecutable: false)).vmState, .notInstalled)
         XCTAssertEqual(RuntimeHealthEvaluator.evaluate(healthyInput(vmDisk: .missing)).vmState, .failed)
@@ -190,12 +204,18 @@ final class RuntimeHealthEvaluatorTests: XCTestCase {
 
     func testDiagnosticVMErrorsMarkVMFailedAndRemainObservable() {
         let snapshot = RuntimeHealthEvaluator.evaluate(healthyInput(
-            vmDiagnosticErrors: [.diskAttachmentInvalid, .guestFilesystemReadOnly, .guestDiskIO]
+            vmDiagnosticErrors: [.launchFailed("virtualization"), .diskAttachmentInvalid, .guestFilesystemReadOnly, .guestDiskIO]
         ))
 
         XCTAssertEqual(snapshot.vmState, .failed)
-        XCTAssertEqual(snapshot.vmErrors, [.diskAttachmentInvalid, .guestFilesystemReadOnly, .guestDiskIO])
+        XCTAssertEqual(snapshot.vmErrors, [
+            .launchFailed("virtualization"),
+            .diskAttachmentInvalid,
+            .guestFilesystemReadOnly,
+            .guestDiskIO,
+        ])
         XCTAssertEqual(snapshot.failureReasons.map(\.rawValue), [
+            "vm-launch-failed-virtualization",
             "vm-disk-attachment-invalid",
             "vm-guest-filesystem-read-only",
             "vm-guest-disk-io-error",
@@ -214,6 +234,7 @@ final class RuntimeHealthEvaluatorTests: XCTestCase {
         proxyPort: Int = 80,
         hostProxyHTTP: String = "200",
         guestHTTP: String = "200",
+        guestRuntimeStatePresent: Bool = true,
         guestRuntimeStateFresh: Bool = true,
         redisUIHTTP: String = "200",
         swaggerUIHTTP: String = "200",
@@ -235,6 +256,7 @@ final class RuntimeHealthEvaluatorTests: XCTestCase {
             proxyPort: proxyPort,
             hostProxyHTTP: hostProxyHTTP,
             guestHTTP: guestHTTP,
+            guestRuntimeStatePresent: guestRuntimeStatePresent,
             guestRuntimeStateFresh: guestRuntimeStateFresh,
             redisUIHTTP: redisUIHTTP,
             swaggerUIHTTP: swaggerUIHTTP,

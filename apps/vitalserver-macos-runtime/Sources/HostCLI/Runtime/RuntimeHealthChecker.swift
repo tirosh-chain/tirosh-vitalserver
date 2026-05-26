@@ -62,6 +62,7 @@ struct RuntimeHealthChecker {
             proxyPort: proxyPort,
             hostProxyHTTP: hostProxyHTTP,
             guestHTTP: guestHTTP,
+            guestRuntimeStatePresent: loadedGuestState != nil,
             guestRuntimeStateFresh: guestRuntimeStateFresh,
             redisUIHTTP: redisUIHTTP,
             swaggerUIHTTP: swaggerUIHTTP,
@@ -222,6 +223,13 @@ struct RuntimeHealthChecker {
         var errors: [RuntimeVMError] = []
         if launchdErrorLog.localizedCaseInsensitiveContains("storage device attachment is invalid") {
             errors.append(.diskAttachmentInvalid)
+        }
+        if launchdErrorLog.localizedCaseInsensitiveContains("failed to start VM") {
+            errors.append(.launchFailed("virtualization"))
+        }
+        if launchdErrorLog.localizedCaseInsensitiveContains("not enough memory")
+            || launchdErrorLog.localizedCaseInsensitiveContains("insufficient memory") {
+            errors.append(.hostResourceUnavailable("memory"))
         }
         if launchdOutputLog.localizedCaseInsensitiveContains("EXT4-fs error")
             || launchdOutputLog.localizedCaseInsensitiveContains("Filesystem error recorded")

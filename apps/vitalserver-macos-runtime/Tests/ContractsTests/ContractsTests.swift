@@ -220,7 +220,11 @@ final class ContractsTests: XCTestCase {
             .missingDisk,
             .serviceNotLoaded("not loaded"),
             .missingIPAddress,
+            .runtimeStateMissing,
             .runtimeStateStale,
+            .launchFailed("virtualization"),
+            .invalidConfiguration("network"),
+            .hostResourceUnavailable("memory"),
             .diskAttachmentInvalid,
             .guestFilesystemError,
             .guestFilesystemReadOnly,
@@ -236,7 +240,11 @@ final class ContractsTests: XCTestCase {
             "vm-missing-disk",
             "vm-service-state-not loaded",
             "vm-missing-ip-address",
+            "vm-runtime-state-missing",
             "vm-runtime-state-stale",
+            "vm-launch-failed-virtualization",
+            "vm-invalid-configuration-network",
+            "vm-host-resource-unavailable-memory",
             "vm-disk-attachment-invalid",
             "vm-guest-filesystem-error",
             "vm-guest-filesystem-read-only",
@@ -250,6 +258,16 @@ final class ContractsTests: XCTestCase {
         let decoded = try JSONDecoder().decode(RuntimeVMError.self, from: encoded)
 
         XCTAssertEqual(decoded, .unknown("vm-future-error"))
+    }
+
+    func testRuntimeVMErrorDefinesCategoryAndRecoveryAction() {
+        XCTAssertEqual(RuntimeVMError.diskAttachmentInvalid.category, .guestStorage)
+        XCTAssertEqual(RuntimeVMError.diskAttachmentInvalid.recoveryAction, .backupAndRecreateVM)
+        XCTAssertTrue(RuntimeVMError.diskAttachmentInvalid.requiresDataPreservationBeforeRecovery)
+
+        XCTAssertEqual(RuntimeVMError.runtimeStateMissing.category, .guestAgent)
+        XCTAssertEqual(RuntimeVMError.runtimeStateMissing.recoveryAction, .restartGuestAgent)
+        XCTAssertFalse(RuntimeVMError.runtimeStateMissing.requiresDataPreservationBeforeRecovery)
     }
 
     func testRuntimeFailureReasonsDecodeAsTypedCodes() throws {
@@ -293,6 +311,41 @@ final class ContractsTests: XCTestCase {
         ])
     }
 
+    func testRuntimeFailureReasonsDefineDomainClassificationAndRecovery() {
+        XCTAssertEqual(RuntimeFailureReason.proxyPortInUse(port: 80, listeners: "nginx-1234").domainCategory, .hostProxy)
+        XCTAssertEqual(RuntimeFailureReason.proxyPortInUse(port: 80, listeners: "nginx-1234").recoveryAction, .freeProxyPort)
+        XCTAssertEqual(RuntimeFailureReason.proxyPortInUse(port: 80, listeners: "nginx-1234").domainSeverity, .critical)
+
+        XCTAssertEqual(RuntimeFailureReason.auditProxyHTTP("failed").domainCategory, .container)
+        XCTAssertEqual(RuntimeFailureReason.auditProxyHTTP("failed").recoveryAction, .restartContainerServices)
+
+        XCTAssertEqual(RuntimeFailureReason.vitalDBAnomaly(kind: "observer-unhealthy", subject: "vitaldb").domainCategory, .vitalDB)
+        XCTAssertEqual(
+            RuntimeFailureReason.vitalDBAnomaly(kind: "observer-unhealthy", subject: "vitaldb").recoveryAction,
+            .inspectVitalDBObservation
+        )
+
+        XCTAssertEqual(RuntimeFailureReason.unknown("vm-disk-attachment-invalid").domainCategory, .guestStorage)
+        XCTAssertEqual(RuntimeFailureReason.unknown("vm-disk-attachment-invalid").recoveryAction, .backupAndRecreateVM)
+        XCTAssertTrue(RuntimeFailureReason.unknown("vm-disk-attachment-invalid").requiresDataPreservationBeforeRecovery)
+
+        XCTAssertEqual(RuntimeFailureReason.redisUIHTTP("failed").domainSeverity, .warning)
+        XCTAssertEqual(RuntimeFailureReason.redisUIHTTP("failed").recoveryAction, .inspectLogs)
+    }
+
+    func testRuntimeDomainErrorDocumentOwnsCodeCategorySeverityAndRecoveryAction() throws {
+        let error = RuntimeDomainError(.guestBootstrapFailed)
+
+        XCTAssertEqual(error.code, .guestBootstrapFailed)
+        XCTAssertEqual(error.category, .guestBootstrap)
+        XCTAssertEqual(error.severity, .critical)
+        XCTAssertEqual(error.recoveryAction, .repairGuestBootstrap)
+
+        let encoded = try JSONEncoder().encode(error)
+        let decoded = try JSONDecoder().decode(RuntimeDomainError.self, from: encoded)
+        XCTAssertEqual(decoded, error)
+    }
+
     func testRuntimeEventTypeDefinesOperationalTaxonomyAndPreservesUnknownValues() throws {
         let knownTypes: [RuntimeEventType] = [
             .statusChanged,
@@ -300,6 +353,8 @@ final class ContractsTests: XCTestCase {
             .healthObserved,
             .recoveryTriggered,
             .recoveryCompleted,
+            .domainErrorObserved,
+            .vmErrorObserved,
             .containerObserved,
             .auditProxyObserved,
             .runtimeCommandStarted,
@@ -313,6 +368,8 @@ final class ContractsTests: XCTestCase {
             "health-observed",
             "recovery-triggered",
             "recovery-completed",
+            "domain-error-observed",
+            "vm-error-observed",
             "container-observed",
             "audit-proxy-observed",
             "runtime-command-started",

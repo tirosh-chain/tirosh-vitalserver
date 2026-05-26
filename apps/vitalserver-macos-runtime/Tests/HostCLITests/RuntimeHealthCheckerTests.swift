@@ -238,6 +238,7 @@ final class RuntimeHealthCheckerTests: XCTestCase {
         let snapshot = checker.snapshot()
 
         XCTAssertEqual(snapshot.vmState, .failed)
+        XCTAssertTrue(snapshot.vmErrors.contains(.launchFailed("virtualization")))
         XCTAssertTrue(snapshot.vmErrors.contains(.diskAttachmentInvalid))
         XCTAssertTrue(snapshot.vmErrors.contains(.guestFilesystemError))
         XCTAssertTrue(snapshot.vmErrors.contains(.guestFilesystemReadOnly))

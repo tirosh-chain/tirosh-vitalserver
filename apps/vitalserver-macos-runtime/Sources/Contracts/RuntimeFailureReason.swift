@@ -1,5 +1,60 @@
 import Foundation
 
+public enum RuntimeDomainErrorCategory: String, Codable, Equatable, Sendable {
+    case installation
+    case vmLifecycle
+    case hostProxy
+    case hostService
+    case guestNetworking
+    case guestAgent
+    case guestBootstrap
+    case guestStorage
+    case container
+    case vitalDB
+    case auxiliaryUI
+    case hostResources
+    case configuration
+    case observability
+    case unknown
+}
+
+public enum RuntimeDomainErrorSeverity: String, Codable, Equatable, Sendable {
+    case warning
+    case critical
+}
+
+public enum RuntimeDomainRecoveryAction: String, Codable, Equatable, Sendable {
+    case installRuntime
+    case restartVMService
+    case restartProxyService
+    case restartWatchdogService
+    case waitForGuest
+    case restartGuestAgent
+    case repairGuestBootstrap
+    case restartContainerServices
+    case repairProxyConfiguration
+    case freeProxyPort
+    case inspectVitalDBObservation
+    case backupAndRecreateVM
+    case fixConfiguration
+    case freeHostResources
+    case inspectLogs
+}
+
+public struct RuntimeDomainError: Codable, Equatable, Sendable {
+    public let code: RuntimeFailureReason
+    public let category: RuntimeDomainErrorCategory
+    public let severity: RuntimeDomainErrorSeverity
+    public let recoveryAction: RuntimeDomainRecoveryAction
+
+    public init(_ code: RuntimeFailureReason) {
+        self.code = code
+        self.category = code.domainCategory
+        self.severity = code.domainSeverity
+        self.recoveryAction = code.recoveryAction
+    }
+}
+
 public enum RuntimeFailureReason: Codable, Equatable, Sendable {
     case missingVMBin
     case missingProxyRunner
@@ -33,9 +88,12 @@ public enum RuntimeFailureReason: Codable, Equatable, Sendable {
             self = .vmService(state)
         case .missingIPAddress:
             self = .guestHTTP("missing-vm-ip")
+        case .runtimeStateMissing:
+            self = .unknown(vmError.rawValue)
         case .runtimeStateStale:
             self = .guestRuntimeStateStale
-        case .diskAttachmentInvalid, .guestFilesystemError, .guestFilesystemReadOnly, .guestDiskIO:
+        case .launchFailed, .invalidConfiguration, .hostResourceUnavailable,
+             .diskAttachmentInvalid, .guestFilesystemError, .guestFilesystemReadOnly, .guestDiskIO:
             self = .unknown(vmError.rawValue)
         case .guestHTTP(let status):
             self = .guestHTTP(status)
@@ -180,5 +238,146 @@ public enum RuntimeFailureReason: Codable, Equatable, Sendable {
         }
         let kind = rawValue[rawValue.index(rawValue.startIndex, offsetBy: prefix.count)..<markerRange.lowerBound]
         return .vitalDBAnomaly(kind: String(kind), subject: String(rawValue[markerRange.upperBound...]))
+    }
+}
+
+public extension RuntimeFailureReason {
+    var domainError: RuntimeDomainError {
+        RuntimeDomainError(self)
+    }
+
+    var domainCategory: RuntimeDomainErrorCategory {
+        if let vmError {
+            return RuntimeDomainErrorCategory(vmError.category)
+        }
+        switch self {
+        case .missingVMBin, .missingProxyRunner, .missingRootfsBase, .missingVMDisk:
+            return .installation
+        case .vmService:
+            return .vmLifecycle
+        case .proxyService, .hostProxyHTTP, .proxyPortInUse:
+            return .hostProxy
+        case .watchdogService:
+            return .observability
+        case .redisUIHTTP, .swaggerUIHTTP:
+            return .auxiliaryUI
+        case .guestHTTP:
+            return .guestNetworking
+        case .guestRuntimeStateStale:
+            return .guestAgent
+        case .guestBootstrapMissingRuntimePackages, .guestBootstrapFailed:
+            return .guestBootstrap
+        case .auditProxyHTTP, .containerService:
+            return .container
+        case .vitalDBAnomaly:
+            return .vitalDB
+        case .unknown:
+            return .unknown
+        }
+    }
+
+    var domainSeverity: RuntimeDomainErrorSeverity {
+        switch self {
+        case .redisUIHTTP, .swaggerUIHTTP, .watchdogService, .guestRuntimeStateStale:
+            return .warning
+        case .unknown(let value):
+            return value.hasPrefix("vm-") ? .critical : .warning
+        default:
+            return .critical
+        }
+    }
+
+    var recoveryAction: RuntimeDomainRecoveryAction {
+        if let vmError {
+            return RuntimeDomainRecoveryAction(vmError.recoveryAction)
+        }
+        switch self {
+        case .missingVMBin, .missingProxyRunner, .missingRootfsBase, .missingVMDisk:
+            return .installRuntime
+        case .vmService:
+            return .restartVMService
+        case .proxyService, .hostProxyHTTP:
+            return .restartProxyService
+        case .watchdogService:
+            return .restartWatchdogService
+        case .redisUIHTTP, .swaggerUIHTTP:
+            return .inspectLogs
+        case .guestHTTP:
+            return .waitForGuest
+        case .guestRuntimeStateStale:
+            return .restartGuestAgent
+        case .auditProxyHTTP, .containerService:
+            return .restartContainerServices
+        case .vitalDBAnomaly:
+            return .inspectVitalDBObservation
+        case .proxyPortInUse:
+            return .freeProxyPort
+        case .guestBootstrapMissingRuntimePackages, .guestBootstrapFailed:
+            return .repairGuestBootstrap
+        case .unknown:
+            return .inspectLogs
+        }
+    }
+
+    var requiresDataPreservationBeforeRecovery: Bool {
+        recoveryAction == .backupAndRecreateVM
+    }
+
+    private var vmError: RuntimeVMError? {
+        let parsed = RuntimeVMError(rawValue: rawValue)
+        if case .unknown(let value) = parsed {
+            return value.hasPrefix("vm-") ? parsed : nil
+        }
+        return parsed
+    }
+}
+
+private extension RuntimeDomainErrorCategory {
+    init(_ category: RuntimeVMErrorCategory) {
+        switch category {
+        case .installation:
+            self = .installation
+        case .lifecycle:
+            self = .vmLifecycle
+        case .networking:
+            self = .guestNetworking
+        case .guestAgent:
+            self = .guestAgent
+        case .guestBootstrap:
+            self = .guestBootstrap
+        case .guestStorage:
+            self = .guestStorage
+        case .configuration:
+            self = .configuration
+        case .hostResources:
+            self = .hostResources
+        case .unknown:
+            self = .unknown
+        }
+    }
+}
+
+private extension RuntimeDomainRecoveryAction {
+    init(_ action: RuntimeVMRecoveryAction) {
+        switch action {
+        case .installRuntime:
+            self = .installRuntime
+        case .restartVMService:
+            self = .restartVMService
+        case .waitForGuest:
+            self = .waitForGuest
+        case .restartGuestAgent:
+            self = .restartGuestAgent
+        case .repairGuestBootstrap:
+            self = .repairGuestBootstrap
+        case .backupAndRecreateVM:
+            self = .backupAndRecreateVM
+        case .fixConfiguration:
+            self = .fixConfiguration
+        case .freeHostResources:
+            self = .freeHostResources
+        case .inspectLogs:
+            self = .inspectLogs
+        }
     }
 }

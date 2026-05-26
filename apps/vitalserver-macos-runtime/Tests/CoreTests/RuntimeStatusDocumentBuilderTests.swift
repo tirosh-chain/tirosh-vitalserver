@@ -44,6 +44,7 @@ final class RuntimeStatusDocumentBuilderTests: XCTestCase {
         XCTAssertEqual(document.hostProxyHTTP, "200")
         XCTAssertEqual(document.guestHTTP, "failed")
         XCTAssertEqual(document.failureReasons, [.guestHTTP("failed")])
+        XCTAssertEqual(document.domainErrors, [RuntimeDomainError(.guestHTTP("failed"))])
         XCTAssertEqual(document.latestBackup, "/Library/Application Support/TiroshVitalServer/backups/backup")
         XCTAssertEqual(document.progress, progress)
     }
@@ -67,6 +68,7 @@ final class RuntimeStatusDocumentBuilderTests: XCTestCase {
         XCTAssertEqual(document.vmState, .running)
         XCTAssertEqual(document.vmErrors ?? [], [])
         XCTAssertEqual(document.failureReasons, [])
+        XCTAssertNil(document.domainErrors)
         XCTAssertNil(document.latestBackup)
         XCTAssertNil(document.progress)
     }

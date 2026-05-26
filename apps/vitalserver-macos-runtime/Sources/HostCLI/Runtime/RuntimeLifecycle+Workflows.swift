@@ -89,6 +89,17 @@ extension RuntimeLifecycle {
             writeStatus: { status, operation, message in
                 try writeRuntimeStatus(status, operation: operation, message: message)
             },
+            recordObservedEvent: { status, operation, message, snapshot in
+                let previousStatus = statusReporter.loadStatus()?.status
+                try recordRuntimeEvent(
+                    status,
+                    previousStatus: previousStatus,
+                    operation: operation,
+                    message: message,
+                    healthSnapshot: snapshot,
+                    eventType: domainEventType(for: snapshot, defaultEventType: .healthObserved)
+                )
+            },
             reasonText: reasonText,
             printLine: { line in print(line) }
         )
@@ -144,7 +155,8 @@ extension RuntimeLifecycle {
                         previousStatus: previousStatus,
                         operation: operation,
                         message: message,
-                        healthSnapshot: snapshot
+                        healthSnapshot: snapshot,
+                        eventType: domainEventType(for: snapshot)
                     )
                 }
             ),

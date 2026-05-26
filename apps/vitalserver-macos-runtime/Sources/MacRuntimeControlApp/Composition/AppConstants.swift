@@ -477,8 +477,16 @@ enum AppConstants {
                 return "VM service \(titleCasedStatus(state))"
             case .missingIPAddress:
                 return "Missing VM IP"
+            case .runtimeStateMissing:
+                return "Guest runtime state missing"
             case .runtimeStateStale:
                 return "Guest runtime state stale"
+            case .launchFailed(let reason):
+                return "VM launch failed (\(titleCasedStatus(reason)))"
+            case .invalidConfiguration(let subject):
+                return "Invalid VM configuration (\(titleCasedStatus(subject)))"
+            case .hostResourceUnavailable(let subject):
+                return "Host resource unavailable (\(titleCasedStatus(subject)))"
             case .diskAttachmentInvalid:
                 return "VM disk attachment invalid"
             case .guestFilesystemError:
@@ -496,6 +504,88 @@ enum AppConstants {
             case .unknown(let rawValue):
                 return titleCasedStatus(rawValue)
             }
+        }
+
+        static func failureReason(_ value: RuntimeFailureReason) -> String {
+            switch value {
+            case .missingVMBin:
+                return "Missing VM executable"
+            case .missingProxyRunner:
+                return "Missing host proxy runner"
+            case .missingRootfsBase:
+                return "Missing rootfs base"
+            case .missingVMDisk:
+                return "Missing VM disk"
+            case .vmService(let state):
+                return "VM service \(titleCasedStatus(state))"
+            case .proxyService(let state):
+                return "Host proxy service \(titleCasedStatus(state))"
+            case .watchdogService(let state):
+                return "Watchdog service \(titleCasedStatus(state))"
+            case .hostProxyHTTP(let status):
+                return "Host proxy HTTP \(status)"
+            case .redisUIHTTP(let status):
+                return "Redis UI HTTP \(status)"
+            case .swaggerUIHTTP(let status):
+                return "Swagger UI HTTP \(status)"
+            case .guestHTTP(let status):
+                return "Guest HTTP \(status)"
+            case .guestRuntimeStateStale:
+                return "Guest runtime state stale"
+            case .auditProxyHTTP(let status):
+                return "Audit proxy HTTP \(status)"
+            case .containerService(let service, let state):
+                return "Container \(service) \(titleCasedStatus(state))"
+            case .vitalDBAnomaly(let kind, let subject):
+                return "VitalDB anomaly \(titleCasedStatus(kind)) on \(subject)"
+            case .proxyPortInUse(let port, let listeners):
+                return "Host proxy port \(port) in use by \(listeners)"
+            case .guestBootstrapMissingRuntimePackages:
+                return "Guest bootstrap missing runtime packages"
+            case .guestBootstrapFailed:
+                return "Guest bootstrap failed"
+            case .unknown(let rawValue):
+                return titleCasedStatus(rawValue)
+            }
+        }
+
+        static func domainRecoveryAction(_ value: RuntimeDomainRecoveryAction) -> String {
+            switch value {
+            case .installRuntime:
+                return "Install runtime"
+            case .restartVMService:
+                return "Restart VM service"
+            case .restartProxyService:
+                return "Restart host proxy service"
+            case .restartWatchdogService:
+                return "Restart watchdog service"
+            case .waitForGuest:
+                return "Wait for guest readiness"
+            case .restartGuestAgent:
+                return "Restart guest agent"
+            case .repairGuestBootstrap:
+                return "Repair guest bootstrap"
+            case .restartContainerServices:
+                return "Restart container services"
+            case .repairProxyConfiguration:
+                return "Repair proxy configuration"
+            case .freeProxyPort:
+                return "Free host proxy port"
+            case .inspectVitalDBObservation:
+                return "Inspect VitalDB observation"
+            case .backupAndRecreateVM:
+                return "Back up data and recreate VM"
+            case .fixConfiguration:
+                return "Fix configuration"
+            case .freeHostResources:
+                return "Free host resources"
+            case .inspectLogs:
+                return "Inspect logs"
+            }
+        }
+
+        static func domainError(_ value: RuntimeFailureReason) -> String {
+            "\(failureReason(value)) (\(domainRecoveryAction(value.recoveryAction)))"
         }
 
         static func reachability(httpStatus: String?) -> String {
