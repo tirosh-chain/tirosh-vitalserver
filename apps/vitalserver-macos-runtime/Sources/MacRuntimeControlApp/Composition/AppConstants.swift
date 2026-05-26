@@ -93,6 +93,8 @@ enum AppConstants {
         static let runtimeState = "Runtime state"
         static let vitalServerURL = "VitalServer URL"
         static let dataDirectory = "Data directory"
+        static let actionNeeded = "Action needed"
+        static let recommendedAction = "Recommended action"
         static let overallHealth = "Overall health"
         static let resourceUsage = "Resource usage"
         static let cpuUsage = "CPU"
@@ -301,6 +303,7 @@ enum AppConstants {
         static let createRedisBackup = "Create Redis Backup"
         static let restoreRedisBackup = "Restore Redis Backup"
         static let deleteBackup = "Delete Backup"
+        static let checkRecorders = "Check Recorders"
         static let openBackups = "Open Backups"
         static let openLogs = "Open Logs"
         static let exportLogs = "Export Logs"
@@ -318,6 +321,9 @@ enum AppConstants {
 
     enum StatusText {
         static let ready = "Ready"
+        static let vitalServerUnavailable = "VitalServer is unavailable"
+        static let vitalServerNeedsAttention = "VitalServer needs attention"
+        static let runtimeNotInstalled = "Runtime is not installed"
         static let noRuntimeEvents = "No runtime events"
         static let noVitalRecorderObservations = "No Vital Recorder observations"
         static let noBedObservations = "No bed observations"

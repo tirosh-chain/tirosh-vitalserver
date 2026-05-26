@@ -20,7 +20,6 @@ struct ContentView: View {
     @State private var showingStatusRuntimeDetails = false
     @State private var showingStatusRecorderDetails = false
     @State private var showingStatusResourceUsage = false
-    @State private var showingHealthDetails = false
     @State private var selectedSection = RuntimeSection.status
     @State private var hoveredServiceLink: String?
     @State private var isHoveringVitalDBIcon = false
@@ -36,8 +35,7 @@ struct ContentView: View {
                         viewModel: viewModel,
                         showingRuntimeDetails: $showingStatusRuntimeDetails,
                         showingRecorderDetails: $showingStatusRecorderDetails,
-                        showingResourceUsage: $showingStatusResourceUsage,
-                        showingHealthDetails: $showingHealthDetails
+                        showingResourceUsage: $showingStatusResourceUsage
                     )
                 case .recorders:
                     RuntimeRecordersPanel(viewModel: viewModel)

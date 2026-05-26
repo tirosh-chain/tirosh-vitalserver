@@ -68,6 +68,60 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         XCTAssertNil(value.uptimeText)
     }
 
+    func testActionNeededIsHiddenWhenRuntimeIsReady() {
+        let status = RuntimeStatus(
+            runtimeInstalled: true,
+            vmServiceLoaded: true,
+            proxyServiceLoaded: true,
+            guestLogSyncServiceLoaded: true,
+            watchdogServiceLoaded: true,
+            runtimeState: .healthy,
+            vmIP: "192.168.64.10",
+            guestHTTP: "200",
+            hostProxyHTTP: "200"
+        )
+
+        XCTAssertNil(policy.actionNeeded(status: status))
+    }
+
+    func testActionNeededUsesSimpleUserFacingRuntimeRepairAction() {
+        let status = RuntimeStatus(
+            runtimeInstalled: true,
+            vmServiceLoaded: true,
+            proxyServiceLoaded: true,
+            watchdogServiceLoaded: true,
+            runtimeState: .degraded,
+            guestHTTP: "failed",
+            hostProxyHTTP: "failed",
+            failureReasons: [.guestRuntimeStateStale]
+        )
+
+        let item = policy.actionNeeded(status: status)
+
+        XCTAssertEqual(item?.title, AppConstants.StatusText.vitalServerUnavailable)
+        XCTAssertEqual(item?.recommendedAction, AppConstants.Actions.repairRuntimeServices)
+        XCTAssertEqual(item?.severity, .warning)
+    }
+
+    func testActionNeededPrefersProxyRepairForProxyPortConflict() {
+        let status = RuntimeStatus(
+            runtimeInstalled: true,
+            vmServiceLoaded: true,
+            proxyServiceLoaded: true,
+            watchdogServiceLoaded: true,
+            runtimeState: .degraded,
+            guestHTTP: "200",
+            hostProxyHTTP: "failed",
+            failureReasons: [.proxyPortInUse(port: 80, listeners: "nginx-1234")]
+        )
+
+        let item = policy.actionNeeded(status: status)
+
+        XCTAssertEqual(item?.title, AppConstants.StatusText.vitalServerUnavailable)
+        XCTAssertEqual(item?.recommendedAction, AppConstants.Actions.repairProxy)
+        XCTAssertEqual(item?.severity, .critical)
+    }
+
     func testStatusDisplayTextIsStandardizedAcrossSummaryAndDetails() {
         let status = RuntimeStatus(
             runtimeInstalled: true,

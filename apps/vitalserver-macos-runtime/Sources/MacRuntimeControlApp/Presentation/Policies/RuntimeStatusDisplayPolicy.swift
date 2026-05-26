@@ -28,6 +28,12 @@ struct RuntimeStatusDisplayPolicy {
         let value: StatusValue
     }
 
+    struct ActionNeededItem: Equatable {
+        let title: String
+        let recommendedAction: String
+        let severity: Severity
+    }
+
     struct ServiceHealthItem: Equatable, Identifiable {
         var id: String { label }
         let label: String
@@ -107,6 +113,37 @@ struct RuntimeStatusDisplayPolicy {
             severity: isSuccessfulHTTPStatus(status.hostProxyHTTP) ? .healthy : .warning,
             uptimeText: vitalServerUptimeText(status: status, observation: observation, now: now)
         )
+    }
+
+    func actionNeeded(status: RuntimeStatus) -> ActionNeededItem? {
+        if status.isReady || isManagedOperationInProgress(status.runtimeState) {
+            return nil
+        }
+        if !status.runtimeInstalled {
+            return ActionNeededItem(
+                title: AppConstants.StatusText.runtimeNotInstalled,
+                recommendedAction: AppConstants.Actions.install,
+                severity: .critical
+            )
+        }
+
+        let primaryReason = status.failureReasons.first { $0.domainSeverity == .critical }
+            ?? status.failureReasons.first
+        if let primaryReason {
+            return ActionNeededItem(
+                title: userFacingProblemTitle(status),
+                recommendedAction: userFacingAction(for: primaryReason.recoveryAction),
+                severity: primaryReason.domainSeverity == .critical ? .critical : .warning
+            )
+        }
+        if !status.vmServiceLoaded || !status.proxyServiceLoaded || !isSuccessfulHTTPStatus(status.guestHTTP) || !isSuccessfulHTTPStatus(status.hostProxyHTTP) {
+            return ActionNeededItem(
+                title: userFacingProblemTitle(status),
+                recommendedAction: AppConstants.Actions.repairRuntimeServices,
+                severity: .warning
+            )
+        }
+        return nil
     }
 
     func healthDetails(status: RuntimeStatus, observation: RuntimeContainerObservation?, now: Date = Date()) -> [HealthItem] {
@@ -314,6 +351,39 @@ struct RuntimeStatusDisplayPolicy {
             severity: isSuccessfulHTTPStatus(status) ? .healthy : .warning,
             uptimeText: uptimeText
         )
+    }
+
+    private func isManagedOperationInProgress(_ state: RuntimeState?) -> Bool {
+        state == .installing || state == .updating || state == .recovering
+    }
+
+    private func userFacingProblemTitle(_ status: RuntimeStatus) -> String {
+        if !isSuccessfulHTTPStatus(status.guestHTTP) || !isSuccessfulHTTPStatus(status.hostProxyHTTP) {
+            return AppConstants.StatusText.vitalServerUnavailable
+        }
+        return AppConstants.StatusText.vitalServerNeedsAttention
+    }
+
+    private func userFacingAction(for action: RuntimeDomainRecoveryAction) -> String {
+        switch action {
+        case .installRuntime:
+            return AppConstants.Actions.install
+        case .restartProxyService, .repairProxyConfiguration, .freeProxyPort:
+            return AppConstants.Actions.repairProxy
+        case .inspectVitalDBObservation:
+            return AppConstants.Actions.checkRecorders
+        case .restartVMService,
+             .restartWatchdogService,
+             .waitForGuest,
+             .restartGuestAgent,
+             .repairGuestBootstrap,
+             .restartContainerServices,
+             .backupAndRecreateVM,
+             .fixConfiguration,
+             .freeHostResources,
+             .inspectLogs:
+            return AppConstants.Actions.repairRuntimeServices
+        }
     }
 
     private func uptimeText(for service: ComposeService, observation: RuntimeContainerObservation?, now: Date) -> String? {

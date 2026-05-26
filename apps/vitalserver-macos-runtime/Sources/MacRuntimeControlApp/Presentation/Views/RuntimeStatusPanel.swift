@@ -8,7 +8,6 @@ struct RuntimeStatusPanel: View {
     @Binding var showingRuntimeDetails: Bool
     @Binding var showingRecorderDetails: Bool
     @Binding var showingResourceUsage: Bool
-    @Binding var showingHealthDetails: Bool
     @State private var uptimeNow = Date()
     private let displayPolicy = RuntimeStatusDisplayPolicy()
 
@@ -16,13 +15,15 @@ struct RuntimeStatusPanel: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 runtimeSummarySection
+                if let actionNeededItem {
+                    Divider()
+                    actionNeededSection(actionNeededItem)
+                }
                 Divider()
                 recorderSummarySection
                 Divider()
                 RuntimeDisclosureSection(AppConstants.Labels.runtimeDetails, isExpanded: $showingRuntimeDetails) {
                     Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 10) {
-                        statusRow(AppConstants.Labels.vmState, vmStateValue)
-                        statusRow(AppConstants.Labels.vmIPAddress, viewModel.status.vmIP ?? AppConstants.StatusText.waiting)
                         statusRow(AppConstants.Labels.dataDirectory) {
                             linkButton(viewModel.settings.vitalFilesDirectory) {
                                 viewModel.openVitalFilesDirectory()
@@ -45,13 +46,6 @@ struct RuntimeStatusPanel: View {
                 }
                 RuntimeDisclosureSection(AppConstants.Labels.resourceUsage, isExpanded: $showingResourceUsage) {
                     resourceUsageSection
-                }
-                RuntimeDisclosureSection(AppConstants.Labels.healthDetails, isExpanded: $showingHealthDetails) {
-                    Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 10) {
-                        ForEach(healthItems) { item in
-                            healthRow(item)
-                        }
-                    }
                 }
             }
             .padding(16)
@@ -139,10 +133,6 @@ struct RuntimeStatusPanel: View {
         }
     }
 
-    private var healthItems: [RuntimeStatusDisplayPolicy.HealthItem] {
-        displayPolicy.healthDetails(status: viewModel.status, observation: viewModel.containerObservation, now: uptimeNow)
-    }
-
     private var recorderSummary: RuntimeStatusDisplayPolicy.RecorderSummary {
         displayPolicy.recorderSummary(status: viewModel.status, observation: viewModel.containerObservation)
     }
@@ -151,8 +141,27 @@ struct RuntimeStatusPanel: View {
         displayPolicy.vitalServerAvailability(status: viewModel.status, observation: viewModel.containerObservation, now: uptimeNow)
     }
 
-    private var vmStateValue: RuntimeStatusDisplayPolicy.StatusValue {
-        displayPolicy.vmStateValue(viewModel.status.vmState, runtimeInstalled: viewModel.status.runtimeInstalled)
+    private var actionNeededItem: RuntimeStatusDisplayPolicy.ActionNeededItem? {
+        displayPolicy.actionNeeded(status: viewModel.status)
+    }
+
+    private func actionNeededSection(_ item: RuntimeStatusDisplayPolicy.ActionNeededItem) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(AppConstants.Labels.actionNeeded)
+                .font(.headline)
+            Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 10) {
+                statusRow(AppConstants.Labels.overallHealth) {
+                    HStack(spacing: 8) {
+                        Circle()
+                            .fill(statusColor(item.severity))
+                            .frame(width: 11, height: 11)
+                        Text(item.title)
+                            .fontWeight(.medium)
+                    }
+                }
+                statusRow(AppConstants.Labels.recommendedAction, item.recommendedAction)
+            }
+        }
     }
 
     private func statusRow(_ label: String, _ value: String) -> some View {
@@ -189,21 +198,6 @@ struct RuntimeStatusPanel: View {
                 NSCursor.pointingHand.set()
             } else {
                 NSCursor.arrow.set()
-            }
-        }
-    }
-
-    private func healthRow(_ item: RuntimeStatusDisplayPolicy.HealthItem) -> some View {
-        GridRow {
-            Text(item.label)
-                .foregroundStyle(.secondary)
-            HStack(spacing: 8) {
-                Circle()
-                    .fill(statusColor(item.value.severity))
-                    .frame(width: 9, height: 9)
-                Text(item.value.text)
-                    .fontWeight(.medium)
-                uptimeSuffix(item.value.uptimeText)
             }
         }
     }
