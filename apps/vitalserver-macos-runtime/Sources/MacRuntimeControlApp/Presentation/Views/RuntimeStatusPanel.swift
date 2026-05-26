@@ -5,44 +5,60 @@ import SwiftUI
 
 struct RuntimeStatusPanel: View {
     @ObservedObject var viewModel: RuntimeViewModel
+    @Binding var showingRuntimeDetails: Bool
+    @Binding var showingRecorderDetails: Bool
+    @Binding var showingResourceUsage: Bool
     @Binding var showingHealthDetails: Bool
     @State private var uptimeNow = Date()
     private let displayPolicy = RuntimeStatusDisplayPolicy()
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 12) {
-                statusRow(AppConstants.Labels.overallHealth) {
-                    healthStatusValue
-                }
-                statusRow(GeneratedRelease.vitalServerName, vitalServerAvailability)
-                statusRow(AppConstants.Labels.vitalServerURL) {
-                    linkButton(AppConstants.Product.vitalServerURL(proxyPort: viewModel.status.proxyPort)) {
-                        viewModel.openVitalServer()
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                runtimeSummarySection
+                Divider()
+                recorderSummarySection
+                Divider()
+                DisclosureGroup(AppConstants.Labels.runtimeDetails, isExpanded: $showingRuntimeDetails) {
+                    Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 10) {
+                        statusRow(AppConstants.Labels.dataDirectory) {
+                            linkButton(viewModel.settings.vitalFilesDirectory) {
+                                viewModel.openVitalFilesDirectory()
+                            }
+                            .disabled(!viewModel.capabilities.canOpenLocalFiles)
+                        }
                     }
+                    .padding(.top, 8)
                 }
-                statusRow(AppConstants.Labels.dataDirectory) {
-                    linkButton(viewModel.settings.vitalFilesDirectory) {
-                        viewModel.openVitalFilesDirectory()
+                DisclosureGroup(AppConstants.Labels.recorderDetails, isExpanded: $showingRecorderDetails) {
+                    Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 10) {
+                        statusRow(AppConstants.Labels.knownRecorders, recorderSummary.knownRecorders)
+                        statusRow(AppConstants.Labels.knownBeds, recorderSummary.knownBeds)
+                        if let latestRecorder = recorderSummary.latestRecorder {
+                            statusRow(AppConstants.Labels.latestRecorder, latestRecorder)
+                        }
+                        if let observedAt = recorderSummary.observedAt {
+                            statusRow(AppConstants.Labels.recorderObservation, observedAt)
+                        }
                     }
-                    .disabled(!viewModel.capabilities.canOpenLocalFiles)
+                    .padding(.top, 8)
+                }
+                DisclosureGroup(AppConstants.Labels.resourceUsage, isExpanded: $showingResourceUsage) {
+                    resourceUsageSection
+                        .padding(.top, 8)
+                }
+                DisclosureGroup(AppConstants.Labels.healthDetails, isExpanded: $showingHealthDetails) {
+                    Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 10) {
+                        ForEach(healthItems) { item in
+                            healthRow(item)
+                        }
+                    }
+                    .padding(.top, 8)
                 }
             }
-            Divider()
-            recorderSection
-            Divider()
-            resourceUsageSection
-            Divider()
-            DisclosureGroup(AppConstants.Labels.healthDetails, isExpanded: $showingHealthDetails) {
-                Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 10) {
-                    ForEach(healthItems) { item in
-                        healthRow(item)
-                    }
-                }
-                .padding(.top, 8)
-            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(16)
         .background(Color(nsColor: .controlBackgroundColor))
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .frame(maxWidth: 760, alignment: .leading)
@@ -51,31 +67,35 @@ struct RuntimeStatusPanel: View {
         }
     }
 
-    private var recorderSection: some View {
+    private var runtimeSummarySection: some View {
+        Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 12) {
+            statusRow(AppConstants.Labels.overallHealth) {
+                healthStatusValue
+            }
+            statusRow(GeneratedRelease.vitalServerName, vitalServerAvailability)
+            statusRow(AppConstants.Labels.vitalServerURL) {
+                linkButton(AppConstants.Product.vitalServerURL(proxyPort: viewModel.status.proxyPort)) {
+                    viewModel.openVitalServer()
+                }
+            }
+        }
+    }
+
+    private var recorderSummarySection: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(AppConstants.Labels.vitalRecorder)
                 .font(.headline)
             Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 10) {
                 statusRow(AppConstants.Labels.activeRecorderConnections, recorderSummary.activeConnections)
-                statusRow(AppConstants.Labels.knownRecorders, recorderSummary.knownRecorders)
                 statusRow(AppConstants.Labels.onlineRecorders, recorderSummary.onlineRecorders)
                 statusRow(AppConstants.Labels.staleRecorders, recorderSummary.staleRecorders)
-                statusRow(AppConstants.Labels.knownBeds, recorderSummary.knownBeds)
                 statusRow(AppConstants.Labels.recorderAnomalies, recorderSummary.anomalies)
-                if let latestRecorder = recorderSummary.latestRecorder {
-                    statusRow(AppConstants.Labels.latestRecorder, latestRecorder)
-                }
-                if let observedAt = recorderSummary.observedAt {
-                    statusRow(AppConstants.Labels.recorderObservation, observedAt)
-                }
             }
         }
     }
 
     private var resourceUsageSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(AppConstants.Labels.resourceUsage)
-                .font(.headline)
             Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 10) {
                 resourceRow(
                     AppConstants.Labels.cpuUsage,

@@ -3,7 +3,8 @@ import SwiftUI
 
 struct RuntimeObservabilityPanel: View {
     @ObservedObject var viewModel: RuntimeViewModel
-    @State private var showingRuntimeEvents = true
+    @State private var showingRecorderAnomalies = false
+    @State private var showingRuntimeEvents = false
 
     private let eventDisplayPolicy = RuntimeEventDisplayPolicy()
 
@@ -50,10 +51,16 @@ struct RuntimeObservabilityPanel: View {
             if anomalyRows.isEmpty {
                 emptyObservation(AppConstants.StatusText.noRecorderAnomalies)
             } else {
-                VStack(alignment: .leading, spacing: 8) {
-                    ForEach(Array(anomalyRows.enumerated()), id: \.offset) { _, anomaly in
-                        anomalyRow(anomaly)
+                DisclosureGroup(isExpanded: $showingRecorderAnomalies) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(Array(anomalyRows.enumerated()), id: \.offset) { _, anomaly in
+                            anomalyRow(anomaly)
+                        }
                     }
+                    .padding(.top, 8)
+                } label: {
+                    Text("\(anomalyRows.count) anomalies")
+                        .foregroundStyle(.secondary)
                 }
             }
         }

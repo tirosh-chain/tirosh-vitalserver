@@ -9,37 +9,45 @@ struct RuntimeRecordersPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             header
-            HStack(alignment: .top, spacing: 14) {
-                recorderList
-                    .frame(minWidth: 520, maxWidth: .infinity, alignment: .topLeading)
-                recorderDetails
-                    .frame(minWidth: 300, maxWidth: 380, alignment: .topLeading)
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: 14) {
+                    recorderList
+                        .frame(minWidth: 460, maxWidth: .infinity, alignment: .topLeading)
+                    recorderDetails
+                        .frame(minWidth: 260, maxWidth: 360, alignment: .topLeading)
+                }
+                VStack(alignment: .leading, spacing: 14) {
+                    recorderList
+                    recorderDetails
+                }
             }
         }
     }
 
     private var header: some View {
-        HStack {
-            Text(AppConstants.Labels.sectionRecorders)
-                .font(.headline)
-            Spacer()
-            TextField(AppConstants.Labels.recorderSearch, text: $searchText)
-                .textFieldStyle(.roundedBorder)
-                .frame(width: 220)
-            Button(AppConstants.Actions.refresh) {
-                viewModel.refreshVitalRecorders()
+        ViewThatFits(in: .horizontal) {
+            HStack {
+                Text(AppConstants.Labels.sectionRecorders)
+                    .font(.headline)
+                Spacer()
+                recorderSearchField
+                refreshButton
+            }
+            VStack(alignment: .leading, spacing: 8) {
+                Text(AppConstants.Labels.sectionRecorders)
+                    .font(.headline)
+                HStack {
+                    recorderSearchField
+                    refreshButton
+                    Spacer()
+                }
             }
         }
     }
 
     private var recorderList: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 18) {
-                summaryMetric(AppConstants.Labels.knownRecorders, "\(viewModel.vitalRecorders.recorders.count)")
-                summaryMetric(AppConstants.Labels.onlineRecorders, "\(count(.online))")
-                summaryMetric(AppConstants.Labels.staleRecorders, "\(count(.stale))")
-                summaryMetric(AppConstants.Labels.recorderAnomalies, "\(viewModel.vitalRecorders.recorders.reduce(0) { $0 + $1.currentAnomalyCount })")
-            }
+            summaryMetrics
             if filteredRecorders.isEmpty {
                 Text(AppConstants.StatusText.noVitalRecorderObservations)
                     .foregroundStyle(.secondary)
@@ -48,7 +56,7 @@ struct RuntimeRecordersPanel: View {
                     .background(Color(nsColor: .controlBackgroundColor))
                     .clipShape(RoundedRectangle(cornerRadius: 8))
             } else {
-                ScrollView {
+                ScrollView([.horizontal, .vertical]) {
                     LazyVStack(alignment: .leading, spacing: 0) {
                         recorderHeaderRow
                         ForEach(filteredRecorders) { recorder in
@@ -56,9 +64,11 @@ struct RuntimeRecordersPanel: View {
                             recorderRow(recorder)
                         }
                     }
+                    .frame(minWidth: 710, alignment: .leading)
                     .background(Color(nsColor: .textBackgroundColor))
                     .clipShape(RoundedRectangle(cornerRadius: 8))
                 }
+                .frame(minHeight: 220)
             }
         }
     }
@@ -93,6 +103,39 @@ struct RuntimeRecordersPanel: View {
                     .clipShape(RoundedRectangle(cornerRadius: 8))
             }
         }
+    }
+
+    private var recorderSearchField: some View {
+        TextField(AppConstants.Labels.recorderSearch, text: $searchText)
+            .textFieldStyle(.roundedBorder)
+            .frame(width: 220)
+    }
+
+    private var refreshButton: some View {
+        Button(AppConstants.Actions.refresh) {
+            viewModel.refreshVitalRecorders()
+        }
+    }
+
+    private var summaryMetrics: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 18) {
+                summaryMetric(AppConstants.Labels.knownRecorders, "\(viewModel.vitalRecorders.recorders.count)")
+                summaryMetric(AppConstants.Labels.onlineRecorders, "\(count(.online))")
+                summaryMetric(AppConstants.Labels.staleRecorders, "\(count(.stale))")
+                summaryMetric(AppConstants.Labels.recorderAnomalies, "\(viewModel.vitalRecorders.recorders.reduce(0) { $0 + $1.currentAnomalyCount })")
+            }
+            LazyVGrid(columns: summaryColumns, alignment: .leading, spacing: 8) {
+                summaryMetric(AppConstants.Labels.knownRecorders, "\(viewModel.vitalRecorders.recorders.count)")
+                summaryMetric(AppConstants.Labels.onlineRecorders, "\(count(.online))")
+                summaryMetric(AppConstants.Labels.staleRecorders, "\(count(.stale))")
+                summaryMetric(AppConstants.Labels.recorderAnomalies, "\(viewModel.vitalRecorders.recorders.reduce(0) { $0 + $1.currentAnomalyCount })")
+            }
+        }
+    }
+
+    private var summaryColumns: [GridItem] {
+        [GridItem(.adaptive(minimum: 120), spacing: 12)]
     }
 
     private var filteredRecorders: [RuntimeVitalRecorderRecord] {

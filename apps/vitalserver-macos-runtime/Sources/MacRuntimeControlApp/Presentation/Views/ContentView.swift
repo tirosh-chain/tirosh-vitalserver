@@ -17,6 +17,9 @@ struct ContentView: View {
     @State private var showingUninstallConfirmation = false
     @State private var showingCleanUninstallConfirmation = false
     @State private var showingApplySettingsConfirmation = false
+    @State private var showingStatusRuntimeDetails = false
+    @State private var showingStatusRecorderDetails = false
+    @State private var showingStatusResourceUsage = false
     @State private var showingHealthDetails = false
     @State private var selectedSection = RuntimeSection.status
     @State private var hoveredServiceLink: String?
@@ -31,6 +34,9 @@ struct ContentView: View {
                 case .status:
                     RuntimeStatusPanel(
                         viewModel: viewModel,
+                        showingRuntimeDetails: $showingStatusRuntimeDetails,
+                        showingRecorderDetails: $showingStatusRecorderDetails,
+                        showingResourceUsage: $showingStatusResourceUsage,
                         showingHealthDetails: $showingHealthDetails
                     )
                 case .recorders:
@@ -76,8 +82,8 @@ struct ContentView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
-        .padding(24)
-        .frame(minWidth: 900, minHeight: 700)
+        .padding(18)
+        .frame(minWidth: 720, minHeight: 560)
         .alert(AppConstants.Actions.applySettings, isPresented: $showingApplySettingsConfirmation) {
             Button(AppConstants.Actions.cancel, role: .cancel) {}
             Button(AppConstants.Actions.ok) {
@@ -245,14 +251,16 @@ struct ContentView: View {
     }
 
     private var sectionSelector: some View {
-        Picker("", selection: $selectedSection) {
-            ForEach(RuntimeSection.visibleSections()) { section in
-                Text(section.title).tag(section)
+        ScrollView(.horizontal, showsIndicators: false) {
+            Picker("", selection: $selectedSection) {
+                ForEach(RuntimeSection.visibleSections()) { section in
+                    Text(section.title).tag(section)
+                }
             }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(minWidth: 720, maxWidth: 760)
         }
-        .pickerStyle(.segmented)
-        .labelsHidden()
-        .frame(width: 760)
         .frame(maxWidth: .infinity, alignment: .center)
     }
 

@@ -11,6 +11,10 @@ struct RuntimeAdvancedPanel: View {
     @Binding var showingStopServicesConfirmation: Bool
     @Binding var hoveredServiceLink: String?
     @State private var uptimeNow = Date()
+    @State private var showingServiceHealth = true
+    @State private var showingRecoveryOperations = false
+    @State private var showingNetworkOverrides = false
+    @State private var showingAdminOperations = false
     private let displayPolicy = RuntimeStatusDisplayPolicy()
 
     var body: some View {
@@ -60,7 +64,7 @@ struct RuntimeAdvancedPanel: View {
     }
 
     private var serviceHealthCard: some View {
-        advancedCard(AppConstants.Labels.sectionServiceHealth) {
+        advancedDisclosureCard(AppConstants.Labels.sectionServiceHealth, isExpanded: $showingServiceHealth) {
             Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 10) {
                 ForEach(serviceHealthItems) { item in
                     serviceHealthRow(item)
@@ -74,7 +78,7 @@ struct RuntimeAdvancedPanel: View {
     }
 
     private var recoveryOperationsCard: some View {
-        advancedCard(AppConstants.Labels.sectionRecoveryOperations) {
+        advancedDisclosureCard(AppConstants.Labels.sectionRecoveryOperations, isExpanded: $showingRecoveryOperations) {
             VStack(alignment: .leading, spacing: 16) {
                 Text(AppConstants.Labels.recoveryOperationsHelp)
                     .font(.caption)
@@ -200,7 +204,7 @@ struct RuntimeAdvancedPanel: View {
     }
 
     private var networkOverridesCard: some View {
-        advancedCard(AppConstants.Labels.sectionNetworkOverrides) {
+        advancedDisclosureCard(AppConstants.Labels.sectionNetworkOverrides, isExpanded: $showingNetworkOverrides) {
             VStack(alignment: .leading, spacing: 14) {
                 Text(AppConstants.Labels.advancedNetworkHelp)
                     .font(.caption)
@@ -240,7 +244,7 @@ struct RuntimeAdvancedPanel: View {
     }
 
     private var adminOperationsCard: some View {
-        advancedCard(AppConstants.Labels.sectionAdminOperations) {
+        advancedDisclosureCard(AppConstants.Labels.sectionAdminOperations, isExpanded: $showingAdminOperations) {
             VStack(alignment: .leading, spacing: 12) {
                 Text(AppConstants.Labels.adminOperationsHelp)
                     .font(.caption)
@@ -356,6 +360,23 @@ struct RuntimeAdvancedPanel: View {
         default:
             return .gray
         }
+    }
+
+    private func advancedDisclosureCard<Content: View>(
+        _ title: String,
+        isExpanded: Binding<Bool>,
+        @ViewBuilder content: @escaping () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            DisclosureGroup(title, isExpanded: isExpanded) {
+                content()
+                    .padding(.top, 8)
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(nsColor: .controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
     private func advancedCard<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
