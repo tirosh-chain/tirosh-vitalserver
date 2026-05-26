@@ -92,12 +92,12 @@ enum RuntimeAdapterConstants {
         static let bootstrapLog = installed.centralBootstrapLog.path
         static let bootstrapLogSource = installed.bootstrapLog.path
         static let datastoreRepairLog = installed.centralDatastoreRepairLog.path
-        static let datastoreRepairLogSource = installed.guestRunDirectory
-            .appendingPathComponent(RuntimeFileNames.datastoreRepairLog)
-            .path
+        static let datastoreRepairLogSource = installed.datastoreRepairLog.path
+        static let redisBackupLog = installed.centralRedisBackupLog.path
+        static let redisBackupLogSource = installed.redisBackupLog.path
         static let vitalFiles = installed.vitalFilesDirectory.path
         static let backups = installed.backupsDirectory.path
-        static let redisBackups = installed.backupsDirectory.appendingPathComponent("redis").path
+        static let redisBackups = installed.redisBackupsDirectory.path
         static let vmConfig = installed.vmConfig.path
         static let vmDisk = installed.vmDisk.path
         static let guestRuntimeConfig = installed.guestRuntimeConfig.path

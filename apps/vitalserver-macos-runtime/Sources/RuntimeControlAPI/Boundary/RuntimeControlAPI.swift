@@ -58,8 +58,11 @@ public enum RuntimeControlAPIEndpoint: String, CaseIterable, Codable, Equatable,
     case stopServices
     case repairProxy
     case repairDatastore
+    case createRedisBackup
     case uninstall
     case backups
+    case redisBackups
+    case restoreRedisBackup
     case logText
     case logStream
     case updateBundleSummary
@@ -103,10 +106,16 @@ public enum RuntimeControlAPIEndpoint: String, CaseIterable, Codable, Equatable,
             return .init(method: .post, path: "/runtime/services/repair-proxy", scope: .runtimeControl)
         case .repairDatastore:
             return .init(method: .post, path: "/runtime/services/repair-datastore", scope: .runtimeControl)
+        case .createRedisBackup:
+            return .init(method: .post, path: "/runtime/redis/backups", scope: .runtimeControl)
         case .uninstall:
             return .init(method: .post, path: "/runtime/uninstall", scope: .runtimeControl)
         case .backups:
             return .init(method: .get, path: "/host/backups", scope: .hostAffordance)
+        case .redisBackups:
+            return .init(method: .get, path: "/host/backups/redis", scope: .hostAffordance)
+        case .restoreRedisBackup:
+            return .init(method: .post, path: "/host/backups/redis/restore", scope: .hostAffordance)
         case .logText:
             return .init(method: .post, path: "/host/logs/read", scope: .hostAffordance)
         case .logStream:
@@ -149,8 +158,11 @@ public extension RuntimeControlAPIEndpoint {
              .stopServices,
              .repairProxy,
              .repairDatastore,
+             .createRedisBackup,
              .uninstall,
              .backups,
+             .redisBackups,
+             .restoreRedisBackup,
              .logText,
              .logStream,
              .updateBundleSummary,

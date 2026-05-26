@@ -423,6 +423,24 @@
         }
       }
     },
+    "/runtime/redis/backups": {
+      "post": {
+        "operationId": "createRedisBackup",
+        "summary": "Create Redis backup",
+        "description": "Requests a recoverable Redis backup from the runtime guest and returns the command result.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "localCommand",
+        "x-runtime-control-access": "localServerMediated",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/CommandResult"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
     "/runtime/uninstall": {
       "post": {
         "operationId": "uninstallRuntime",
@@ -479,6 +497,60 @@
       "delete": {
         "operationId": "deleteHostBackup",
         "summary": "Delete selected local backup",
+        "x-runtime-control-scope": "hostAffordance",
+        "x-runtime-control-implementation": "planned",
+        "x-runtime-control-access": "localServerMediated",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeBackupRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/CommandResult"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          }
+        }
+      }
+    },
+    "/host/backups/redis": {
+      "get": {
+        "operationId": "listRedisBackups",
+        "summary": "List local Redis backups",
+        "x-runtime-control-scope": "hostAffordance",
+        "x-runtime-control-implementation": "planned",
+        "x-runtime-control-access": "localServerMediated",
+        "responses": {
+          "200": {
+            "description": "Local Redis backup list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RuntimeBackup"
+                  }
+                }
+              }
+            }
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          }
+        }
+      }
+    },
+    "/host/backups/redis/restore": {
+      "post": {
+        "operationId": "restoreRedisBackup",
+        "summary": "Restore selected Redis backup",
         "x-runtime-control-scope": "hostAffordance",
         "x-runtime-control-implementation": "planned",
         "x-runtime-control-access": "localServerMediated",
@@ -1450,6 +1522,9 @@
             "type": "string"
           },
           "backupsPath": {
+            "type": "string"
+          },
+          "redisBackupsPath": {
             "type": "string"
           }
         }

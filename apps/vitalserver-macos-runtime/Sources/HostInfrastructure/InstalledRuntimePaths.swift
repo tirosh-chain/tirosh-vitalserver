@@ -86,6 +86,10 @@ public struct InstalledRuntimePaths: Equatable, Sendable {
         productRoot.appendingPathComponent("backups")
     }
 
+    public var redisBackupsDirectory: URL {
+        dataDirectory.appendingPathComponent("backups/redis")
+    }
+
     public var bundlesDirectory: URL {
         productRoot.appendingPathComponent("bundles")
     }
@@ -138,6 +142,10 @@ public struct InstalledRuntimePaths: Equatable, Sendable {
         guestRunDirectory.appendingPathComponent(RuntimeFileNames.updateActivationLog)
     }
 
+    public var datastoreRepairLog: URL {
+        guestRunDirectory.appendingPathComponent(RuntimeFileNames.datastoreRepairLog)
+    }
+
     public var centralBootstrapLog: URL {
         centralGuestLogsDirectory.appendingPathComponent(RuntimeFileNames.bootstrapLog)
     }
@@ -148,6 +156,14 @@ public struct InstalledRuntimePaths: Equatable, Sendable {
 
     public var centralDatastoreRepairLog: URL {
         centralGuestLogsDirectory.appendingPathComponent(RuntimeFileNames.datastoreRepairLog)
+    }
+
+    public var redisBackupLog: URL {
+        guestRunDirectory.appendingPathComponent(RuntimeFileNames.redisBackupLog)
+    }
+
+    public var centralRedisBackupLog: URL {
+        centralGuestLogsDirectory.appendingPathComponent(RuntimeFileNames.redisBackupLog)
     }
 
     public var containerLogs: URL {

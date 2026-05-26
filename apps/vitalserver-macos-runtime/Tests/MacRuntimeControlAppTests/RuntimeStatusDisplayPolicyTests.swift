@@ -31,11 +31,11 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
 
         let items = policy.healthDetails(status: status, observation: observation)
 
-        XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: items)?.value.uptimeText, "1h 1m 1s")
-        XCTAssertEqual(item(GeneratedRelease.hostProxyName, in: items)?.value.uptimeText, "0h 1m 0s")
+        XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: items)?.value.uptimeText, "01:01:01")
+        XCTAssertEqual(item(GeneratedRelease.hostProxyName, in: items)?.value.uptimeText, "00:01:00")
         XCTAssertEqual(item(GeneratedRelease.redisName, in: items)?.value.text, "healthy")
         XCTAssertEqual(item(GeneratedRelease.redisName, in: items)?.value.severity, .healthy)
-        XCTAssertEqual(item(GeneratedRelease.redisName, in: items)?.value.uptimeText, "0h 0m 5s")
+        XCTAssertEqual(item(GeneratedRelease.redisName, in: items)?.value.uptimeText, "00:00:05")
     }
 
     func testOverallHealthDoesNotDisplayUptime() {
@@ -92,7 +92,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
 
         let items = policy.healthDetails(status: status, observation: observation, now: now)
 
-        XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: items)?.value.uptimeText, "0h 0m 4s")
+        XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: items)?.value.uptimeText, "00:00:04")
     }
 
     func testUptimeFallsBackToObservedAtWhenStartedAtIsMissing() {
@@ -119,7 +119,32 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
 
         let items = policy.healthDetails(status: status, observation: observation, now: now)
 
-        XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: items)?.value.uptimeText, "0h 0m 15s")
+        XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: items)?.value.uptimeText, "00:00:15")
+    }
+
+    func testUptimeDisplaysDaysBeforeClockDuration() {
+        let status = RuntimeStatus(
+            runtimeInstalled: true,
+            vmServiceLoaded: true,
+            proxyServiceLoaded: true,
+            watchdogServiceLoaded: true,
+            runtimeState: .healthy,
+            guestHTTP: "200",
+            hostProxyHTTP: "200"
+        )
+        let observation = RuntimeContainerObservation(
+            auditProxyHTTP: "200",
+            auditProxyStatus: nil,
+            containerLogsPresent: true,
+            containerLogsBytes: 1,
+            composeServices: [
+                RuntimeContainerServiceObservation(service: "app", uptimeSeconds: 183_845),
+            ]
+        )
+
+        let items = policy.healthDetails(status: status, observation: observation)
+
+        XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: items)?.value.uptimeText, "2d 03:04:05")
     }
 
     func testAdvancedServiceHealthOwnsLabelsActionsAndHTTPStatusDisplay() {
@@ -149,7 +174,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         let items = policy.advancedServiceHealth(status: status, observation: observation)
 
         XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: items)?.action, .openVitalServer)
-        XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: items)?.value.uptimeText, "0h 0m 1s")
+        XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: items)?.value.uptimeText, "00:00:01")
         XCTAssertEqual(item(GeneratedRelease.hostProxyName, in: items)?.value.text, AppConstants.StatusText.waiting)
         XCTAssertEqual(item(GeneratedRelease.hostProxyName, in: items)?.httpStatus, "503")
         XCTAssertEqual(item(GeneratedRelease.redisUIName, in: items)?.action, .openRedisUI)

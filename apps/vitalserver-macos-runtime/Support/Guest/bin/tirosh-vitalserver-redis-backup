@@ -7,10 +7,25 @@ RUNTIME_DIR="${TIROSH_RUNTIME_DIR:-${MOUNT_POINT}/run}"
 BACKUP_DIR="${MOUNT_POINT}/backups/redis"
 REQUEST_FILE="${RUNTIME_DIR}/redis-backup.request"
 RESULT_FILE="${RUNTIME_DIR}/redis-backup-result.json"
+LOG_FILE="${RUNTIME_DIR}/redis-backup.log"
+PROJECT_NAME="${TIROSH_COMPOSE_PROJECT_NAME:-vitalserver}"
+COMPOSE_FILE="${DEPLOY_DIR}/compose.yaml"
+REDIS_VOLUME="${PROJECT_NAME}_redis-data"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 REQUEST_ID=""
 ARCHIVE="${BACKUP_DIR}/redis-${STAMP}.tar.gz"
 RETENTION_COUNT=30
+
+mount_runtime_share() {
+  mkdir -p "${MOUNT_POINT}"
+  if ! mountpoint -q "${MOUNT_POINT}"; then
+    mount -t virtiofs "${TIROSH_SHARE_TAG:-tirosh}" "${MOUNT_POINT}"
+  fi
+}
+
+log() {
+  printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*"
+}
 
 read_retention_count() {
   local value
@@ -83,9 +98,11 @@ PY
 
 on_error() {
   local status="$?"
+  local command="${BASH_COMMAND:-unknown}"
   trap - ERR
+  log "status=failed exit=${status} command=${command}"
   if [ -n "${REQUEST_ID}" ]; then
-    write_result "failed" "Redis backup failed."
+    write_result "failed" "Redis backup failed at: ${command}"
     rm -f "${REQUEST_FILE}"
   fi
   exit "${status}"
@@ -93,18 +110,32 @@ on_error() {
 
 trap on_error ERR
 
+mount_runtime_share
+mkdir -p "${RUNTIME_DIR}"
+touch "${LOG_FILE}"
+exec >>"${LOG_FILE}" 2>&1
+log "status=started archive=${ARCHIVE}"
 mkdir -p "${BACKUP_DIR}"
 read_request_id
 read_retention_count
+log "request_id=${REQUEST_ID:-none} retention=${RETENTION_COUNT} project=${PROJECT_NAME} volume=${REDIS_VOLUME}"
 if [ -n "${REQUEST_ID}" ]; then
   write_result "running" "Redis backup is running."
 fi
-docker compose --project-name vitalserver -f "${DEPLOY_DIR}/compose.yaml" exec -T redis redis-cli SAVE >/dev/null
-tar -C /var/lib/docker/volumes/vitalserver_redis-data/_data -czf "${ARCHIVE}" .
+log "step=redis-save status=started"
+docker compose --project-name "${PROJECT_NAME}" -f "${COMPOSE_FILE}" exec -T redis redis-cli SAVE >/dev/null
+log "step=redis-save status=completed"
+redis_volume_mount="$(docker volume inspect -f '{{ .Mountpoint }}' "${REDIS_VOLUME}")"
+log "redis_volume_mount=${redis_volume_mount}"
+test -d "${redis_volume_mount}"
+log "step=archive status=started"
+tar -C "${redis_volume_mount}" -czf "${ARCHIVE}" .
 test -s "${ARCHIVE}"
 tar -tzf "${ARCHIVE}" >/dev/null
+log "step=archive status=completed archive=${ARCHIVE}"
 find "${BACKUP_DIR}" -name 'redis-*.tar.gz' -type f | sort | head -n -"${RETENTION_COUNT}" | xargs -r rm -f
 if [ -n "${REQUEST_ID}" ]; then
   write_result "completed" "Redis backup completed."
   rm -f "${REQUEST_FILE}"
 fi
+log "status=completed"

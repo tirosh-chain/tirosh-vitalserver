@@ -332,10 +332,11 @@ struct RuntimeStatusDisplayPolicy {
         let hours = (seconds % 86_400) / 3_600
         let minutes = (seconds % 3_600) / 60
         let remainingSeconds = seconds % 60
+        let clock = String(format: "%02d:%02d:%02d", hours, minutes, remainingSeconds)
         if days > 0 {
-            return "\(days)d \(hours)h \(minutes)m \(remainingSeconds)s"
+            return "\(days)d \(clock)"
         }
-        return "\(hours)h \(minutes)m \(remainingSeconds)s"
+        return clock
     }
 
     private func parseISODate(_ value: String) -> Date? {

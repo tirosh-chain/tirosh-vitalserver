@@ -15,6 +15,8 @@ struct RuntimeInstallDirectoryPreparer {
             installedPaths.deployDirectory,
             installedPaths.guestRunDirectory,
             installedPaths.vrReleaseDirectory,
+            installedPaths.backupsDirectory,
+            installedPaths.redisBackupsDirectory,
             installedPaths.productLogsDirectory,
             installedPaths.centralRuntimeLogsDirectory,
             installedPaths.centralGuestLogsDirectory,

@@ -59,6 +59,10 @@ public struct RuntimeControlClientAPIReadHandler: RuntimeControlAPIReadHandler {
             )
         )
     }
+
+    public func createRedisBackup() async throws -> RuntimeControlCommandResponse {
+        RuntimeControlCommandResponse(result: try await client.createRedisBackup())
+    }
 }
 
 public enum RuntimeControlAPIReadHandlerError: LocalizedError, Equatable {

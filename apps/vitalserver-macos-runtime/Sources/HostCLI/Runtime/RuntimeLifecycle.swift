@@ -136,6 +136,7 @@ struct RuntimeLifecycle {
     }
 
     func health() throws {
+        try? collectGuestLogs()
         try runtimeHealthCheckRunner().run()
     }
 
@@ -174,6 +175,10 @@ struct RuntimeLifecycle {
     func createRedisBackup() throws {
         log("redis backup requested")
         try fileStore.createDirectory(at: guestRunDirectory, withIntermediateDirectories: true)
+        try fileStore.createDirectory(
+            at: installedPaths.redisBackupsDirectory,
+            withIntermediateDirectories: true
+        )
 
         let resultURL = guestRunDirectory.appendingPathComponent(Constants.Runtime.redisBackupResultFile)
         if fileStore.fileExists(resultURL) {
@@ -232,6 +237,10 @@ struct RuntimeLifecycle {
             return nil
         }
         return try? JSONDecoder().decode(RedisBackupResultDocument.self, from: data)
+    }
+
+    func collectGuestLogs() throws {
+        try RuntimeGuestLogCollector(installedPaths: installedPaths, fileStore: fileStore).collect()
     }
 
     func startServices() throws {

@@ -290,6 +290,18 @@ final class RuntimeControlAPITests: XCTestCase {
     }
 
     @MainActor
+    func testRouterCreatesRedisBackupThroughRuntimeControlClientHandler() async throws {
+        let client = FakeRuntimeControlClient()
+        let router = RuntimeControlAPIRouter(handler: RuntimeControlClientAPIReadHandler(client: client))
+
+        let response = await router.route(.init(method: .post, path: "/runtime/redis/backups"))
+        let commandResponse = try decode(RuntimeControlCommandResponse.self, from: response)
+
+        XCTAssertEqual(commandResponse.result.stdout, "redis backup created")
+        XCTAssertEqual(client.createRedisBackupCount, 1)
+    }
+
+    @MainActor
     func testRuntimeControlClientReadHandlerAdaptsClientReads() async throws {
         let client = FakeRuntimeControlClient()
         let handler = RuntimeControlClientAPIReadHandler(client: client)
@@ -309,7 +321,7 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertEqual(health.statusMessage, "health with 6 CPUs")
         XCTAssertEqual(release.helperVersion, "0.2.0")
         XCTAssertEqual(installInfo.backupsPath, "/backups")
-        XCTAssertEqual(installInfo.redisBackupsPath, "/backups/redis")
+        XCTAssertEqual(installInfo.redisBackupsPath, "/runtime/data/backups/redis")
         XCTAssertEqual(client.loadSettingsCount, 3)
         XCTAssertEqual(client.statusSettings, [RuntimeSettings(cpuCount: 6, memoryGiB: 10)])
         XCTAssertEqual(client.healthSettings, [RuntimeSettings(cpuCount: 6, memoryGiB: 10)])
@@ -779,12 +791,17 @@ private struct StubRuntimeControlAPIReadHandler: RuntimeControlAPIReadHandler {
     func loadLogText(request: RuntimeLogTextRequest) async throws -> RuntimeLogTextResponse {
         RuntimeLogTextResponse(text: "\(request.source.rawValue) log tail \(request.lineLimit)")
     }
+
+    func createRedisBackup() async throws -> RuntimeControlCommandResponse {
+        RuntimeControlCommandResponse(result: RuntimeCommandResult(exitCode: 0, stdout: "redis backup created", stderr: ""))
+    }
 }
 
 @MainActor
 private final class FakeRuntimeControlClient: RuntimeControlClient {
     var capabilities = RuntimeControlCapabilities(canOpenLocalFiles: false)
     var loadSettingsCount = 0
+    var createRedisBackupCount = 0
     var statusSettings: [RuntimeSettings] = []
     var healthSettings: [RuntimeSettings] = []
     var eventQueries: [RuntimeEventQuery] = []
@@ -895,7 +912,8 @@ private final class FakeRuntimeControlClient: RuntimeControlClient {
     }
 
     func createRedisBackup() async throws -> RuntimeCommandResult {
-        RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "")
+        createRedisBackupCount += 1
+        return RuntimeCommandResult(exitCode: 0, stdout: "redis backup created", stderr: "")
     }
 
     func startRuntimeServices() async throws -> RuntimeCommandResult {
@@ -916,6 +934,10 @@ private final class FakeRuntimeControlClient: RuntimeControlClient {
     }
 
     func loadInstallInfo() -> RuntimeInstallInfo {
-        RuntimeInstallInfo(runtimeHomePath: "/runtime", backupsPath: "/backups")
+        RuntimeInstallInfo(
+            runtimeHomePath: "/runtime",
+            backupsPath: "/backups",
+            redisBackupsPath: "/runtime/data/backups/redis"
+        )
     }
 }

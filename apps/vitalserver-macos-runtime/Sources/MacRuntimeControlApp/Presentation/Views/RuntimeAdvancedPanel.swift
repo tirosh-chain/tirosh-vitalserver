@@ -461,7 +461,7 @@ struct RuntimeAdvancedPanel: View {
     @ViewBuilder
     private func uptimeSuffix(_ uptime: String?) -> some View {
         if let uptime {
-            Text("uptime: \(uptime)")
+            Text(uptime)
                 .foregroundStyle(.secondary)
         }
     }

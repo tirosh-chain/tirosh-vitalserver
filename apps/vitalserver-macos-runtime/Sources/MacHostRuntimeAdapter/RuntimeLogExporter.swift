@@ -174,6 +174,10 @@ struct RuntimeLogExportFallback {
                 relativeDestination: "guest/\(RuntimeFileNames.datastoreRepairLog)"
             ),
             RuntimeLogExportFallback(
+                source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.redisBackupLogSource),
+                relativeDestination: "guest/\(RuntimeFileNames.redisBackupLog)"
+            ),
+            RuntimeLogExportFallback(
                 source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.commandLogFile),
                 relativeDestination: "command.log"
             ),

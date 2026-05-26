@@ -116,6 +116,7 @@ extension RuntimeLifecycle {
                 prepareLogs: {
                     try? fileStore.createDirectory(at: logsDirectory, withIntermediateDirectories: true)
                     try? rotateRuntimeLogs()
+                    try? collectGuestLogs()
                 },
                 activeManagedOperation: {
                     runtimeManagedOperationGuard().activeOperation()

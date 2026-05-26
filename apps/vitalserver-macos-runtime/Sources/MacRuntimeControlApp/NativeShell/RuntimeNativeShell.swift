@@ -77,7 +77,11 @@ struct SystemRuntimeNativeShell: RuntimeNativeShell {
     }
 
     func createDirectory(_ url: URL) throws {
-        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        do {
+            try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        } catch {
+            try createDirectoryWithAdministratorPrivileges(url)
+        }
     }
 
     func openFileURL(_ url: URL) {
@@ -98,5 +102,27 @@ struct SystemRuntimeNativeShell: RuntimeNativeShell {
 
     func terminate() {
         NSApplication.shared.terminate(nil)
+    }
+
+    private func createDirectoryWithAdministratorPrivileges(_ url: URL) throws {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        process.arguments = [
+            "-e",
+            "do shell script \(appleScriptString("/bin/mkdir -p -- \(shellQuoted(url.path))")) with administrator privileges",
+        ]
+        try process.run()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else {
+            throw CocoaError(.fileWriteNoPermission)
+        }
+    }
+
+    private func shellQuoted(_ value: String) -> String {
+        "'\(value.replacingOccurrences(of: "'", with: "'\\''"))'"
+    }
+
+    private func appleScriptString(_ value: String) -> String {
+        "\"\(value.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\""))\""
     }
 }

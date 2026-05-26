@@ -329,6 +329,11 @@ struct RuntimeLogCopy {
                 archivePrefix: "guest-repair-datastore.log"
             ),
             RuntimeLogCopy(
+                source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.redisBackupLogSource),
+                destination: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.redisBackupLog),
+                archivePrefix: "guest-redis-backup.log"
+            ),
+            RuntimeLogCopy(
                 source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.commandLogFile),
                 destination: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.commandLog),
                 archivePrefix: "command.log"

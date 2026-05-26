@@ -15,6 +15,7 @@ final class RuntimeFileNamesTests: XCTestCase {
         XCTAssertEqual(RuntimeFileNames.datastoreRepairLog, "repair-datastore.log")
         XCTAssertEqual(RuntimeFileNames.redisBackupRequest, "redis-backup.request")
         XCTAssertEqual(RuntimeFileNames.redisBackupResult, "redis-backup-result.json")
+        XCTAssertEqual(RuntimeFileNames.redisBackupLog, "redis-backup.log")
         XCTAssertEqual(RuntimeFileNames.updateActivationRequest, "activate-update.request")
         XCTAssertEqual(RuntimeFileNames.updateActivationResult, "activate-update-result.json")
         XCTAssertEqual(RuntimeFileNames.updateActivationLog, "activate-update.log")
