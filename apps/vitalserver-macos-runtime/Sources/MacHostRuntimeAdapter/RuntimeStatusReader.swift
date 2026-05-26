@@ -112,9 +112,14 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading {
     }
 
     func loadVitalDBRecorders() -> RuntimeVitalRecorderHistory {
-        RuntimeVitalRecorderHistory(observations: SQLiteRuntimeObservabilityStore(
+        var observations = SQLiteRuntimeObservabilityStore(
             url: URL(fileURLWithPath: paths.runtimeObservabilityDB)
-        ).vitalDBObservations())
+        ).vitalDBObservations()
+        if let latestStatusObservation = loadBaseStatus().vitalDBObservation,
+           !observations.contains(where: { $0.observedAt == latestStatusObservation.observedAt }) {
+            observations.append(latestStatusObservation)
+        }
+        return RuntimeVitalRecorderHistory(observations: observations)
     }
 
     func legacyCommandProgressLine() -> String? {

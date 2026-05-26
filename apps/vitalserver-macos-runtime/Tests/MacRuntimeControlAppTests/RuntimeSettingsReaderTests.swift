@@ -119,6 +119,72 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         XCTAssertEqual(value(after: RuntimeAdapterConstants.RuntimeCommand.optionPreventSystemSleep, in: arguments), "false")
     }
 
+    func testStatusReaderUsesStatusObservationForVitalRecordersWhenSQLiteIsEmpty() throws {
+        let directory = try temporaryDirectory()
+        let runtimeStatus = directory.appendingPathComponent(RuntimeFileNames.runtimeStatus)
+        try """
+        {
+          "schemaVersion": 2,
+          "product": "TiroshVitalServer",
+          "status": "healthy",
+          "operation": "health",
+          "message": "ok",
+          "updatedAt": "2026-05-26T00:01:00Z",
+          "productRoot": "/tmp/product",
+          "runtimeHome": "/tmp/vm",
+          "runtimeVersion": "1.0.0",
+          "vmService": "loaded",
+          "proxyService": "loaded",
+          "watchdogService": "loaded",
+          "proxyPort": 19090,
+          "hostProxyHTTP": "200",
+          "guestHTTP": "200",
+          "rootfsBase": "present",
+          "vmDisk": "present",
+          "failureReasons": [],
+          "vitalDBObservation": {
+            "schemaVersion": 1,
+            "source": "vitaldb-observer",
+            "observedAt": "2026-05-26T00:01:00Z",
+            "ready": true,
+            "recorderOnlineThresholdSeconds": 60,
+            "recorders": [
+              {
+                "vrcode": "VR_STATUS",
+                "ip": "192.168.64.10",
+                "lastSeenAt": "2026-05-26T00:01:00Z",
+                "online": true,
+                "stale": false
+              }
+            ],
+            "beds": [],
+            "devices": [],
+            "filters": [],
+            "proxyConnections": [],
+            "anomalies": []
+          }
+        }
+        """.write(to: runtimeStatus, atomically: true, encoding: .utf8)
+
+        let reader = SystemRuntimeStatusReader(
+            paths: RuntimePaths(
+                launcher: directory.appendingPathComponent("launcher").path,
+                uninstaller: directory.appendingPathComponent("uninstaller").path,
+                vmIPFile: directory.appendingPathComponent(RuntimeFileNames.vmIP).path,
+                runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
+                runtimeStatus: runtimeStatus.path,
+                runtimeObservabilityDB: directory.appendingPathComponent(RuntimeFileNames.runtimeObservabilityDB).path,
+                proxyLaunchDaemon: directory.appendingPathComponent("proxy.plist").path
+            )
+        )
+
+        let history = reader.loadVitalDBRecorders()
+
+        XCTAssertEqual(history.updatedAt, "2026-05-26T00:01:00Z")
+        XCTAssertEqual(history.recorders.map(\.vrcode), ["VR_STATUS"])
+        XCTAssertEqual(history.recorders.first?.status, .online)
+    }
+
     private func value(after marker: String, in arguments: [String]) -> String? {
         guard let index = arguments.firstIndex(of: marker),
               arguments.indices.contains(arguments.index(after: index)) else {

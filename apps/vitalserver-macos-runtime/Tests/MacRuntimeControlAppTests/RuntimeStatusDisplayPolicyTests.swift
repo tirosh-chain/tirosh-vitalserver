@@ -275,6 +275,12 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
                     online: true
                 ),
                 VitalDBRecorderObservation(
+                    vrcode: "VR_OBSERVED",
+                    ip: "192.168.64.19",
+                    lastSeenAt: "2026-05-24T01:59:00Z",
+                    online: true
+                ),
+                VitalDBRecorderObservation(
                     vrcode: "VR_STALE",
                     ip: "192.168.64.21",
                     lastSeenAt: "2026-05-24T00:00:00Z",

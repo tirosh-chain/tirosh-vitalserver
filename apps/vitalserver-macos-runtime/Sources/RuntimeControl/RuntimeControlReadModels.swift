@@ -229,7 +229,7 @@ public struct RuntimeVitalRecorderHistory: Codable, Equatable, Sendable {
                 observation.beds.compactMap { bed in bed.vrcode.map { ($0, bed) } },
                 uniquingKeysWith: { _, latest in latest }
             )
-            for recorder in observation.recorders {
+            for recorder in uniqueRecordersByVrcode(observation.recorders) {
                 var builder = builders[recorder.vrcode] ?? RecorderBuilder(vrcode: recorder.vrcode)
                 builder.observe(recorder: recorder, bed: bedsByRecorder[recorder.vrcode], observedAt: observation.observedAt)
                 builders[recorder.vrcode] = builder
@@ -237,7 +237,7 @@ public struct RuntimeVitalRecorderHistory: Codable, Equatable, Sendable {
         }
 
         let latestRecorders = Dictionary(
-            latestObservation.recorders.map { ($0.vrcode, $0) },
+            uniqueRecordersByVrcode(latestObservation.recorders).map { ($0.vrcode, $0) },
             uniquingKeysWith: { _, latest in latest }
         )
         let latestBedsByRecorder = Dictionary(
@@ -309,15 +309,16 @@ public struct RuntimeVitalRecorderSummary: Codable, Equatable, Sendable {
         let activeConnections = status.containerObservation?.auditProxyStatus?.activeRecorderConnections ?? 0
 
         if let observation {
-            let latest = observation.recorders
+            let recorders = uniqueRecordersByVrcode(observation.recorders)
+            let latest = recorders
                 .sorted { ($0.lastSeenAt ?? "") > ($1.lastSeenAt ?? "") }
                 .first
             self.init(
                 source: .vitalDBObservation,
                 activeConnections: activeConnections,
-                knownRecorders: observation.recorders.count,
-                onlineRecorders: observation.recorders.filter(\.online).count,
-                staleRecorders: observation.recorders.filter(\.stale).count,
+                knownRecorders: recorders.count,
+                onlineRecorders: recorders.filter(\.online).count,
+                staleRecorders: recorders.filter(\.stale).count,
                 knownBeds: observation.beds.count,
                 recorderAnomalies: observation.anomalies.count,
                 observedAt: observation.observedAt,
@@ -333,13 +334,14 @@ public struct RuntimeVitalRecorderSummary: Codable, Equatable, Sendable {
             return
         }
 
-        let latest = connectionRecorders
+        let uniqueConnections = uniqueConnectionsByVrcode(connectionRecorders)
+        let latest = uniqueConnections
             .sorted { ($0.lastSeenAt ?? "") > ($1.lastSeenAt ?? "") }
             .first
         self.init(
-            source: connectionRecorders.isEmpty ? .unavailable : .auditProxy,
+            source: uniqueConnections.isEmpty ? .unavailable : .auditProxy,
             activeConnections: activeConnections,
-            knownRecorders: connectionRecorders.count,
+            knownRecorders: uniqueConnections.count,
             onlineRecorders: 0,
             staleRecorders: 0,
             knownBeds: 0,
@@ -355,6 +357,59 @@ public struct RuntimeVitalRecorderSummary: Codable, Equatable, Sendable {
             }
         )
     }
+}
+
+private func uniqueRecordersByVrcode(_ recorders: [VitalDBRecorderObservation]) -> [VitalDBRecorderObservation] {
+    Dictionary(
+        recorders.map { ($0.vrcode, $0) },
+        uniquingKeysWith: preferredRecorder
+    )
+    .values
+    .sorted { $0.vrcode < $1.vrcode }
+}
+
+private func uniqueConnectionsByVrcode(
+    _ recorders: [RuntimeRecorderConnectionObservation]
+) -> [RuntimeRecorderConnectionObservation] {
+    Dictionary(
+        recorders.map { ($0.vrcode, $0) },
+        uniquingKeysWith: preferredConnection
+    )
+    .values
+    .sorted { $0.vrcode < $1.vrcode }
+}
+
+private func preferredRecorder(
+    _ current: VitalDBRecorderObservation,
+    _ candidate: VitalDBRecorderObservation
+) -> VitalDBRecorderObservation {
+    let currentLastSeenAt = current.lastSeenAt ?? ""
+    let candidateLastSeenAt = candidate.lastSeenAt ?? ""
+    if candidateLastSeenAt != currentLastSeenAt {
+        return candidateLastSeenAt > currentLastSeenAt ? candidate : current
+    }
+    if candidate.online != current.online {
+        return candidate.online ? candidate : current
+    }
+    if candidate.stale != current.stale {
+        return candidate.stale ? current : candidate
+    }
+    return candidate
+}
+
+private func preferredConnection(
+    _ current: RuntimeRecorderConnectionObservation,
+    _ candidate: RuntimeRecorderConnectionObservation
+) -> RuntimeRecorderConnectionObservation {
+    let currentLastSeenAt = current.lastSeenAt ?? ""
+    let candidateLastSeenAt = candidate.lastSeenAt ?? ""
+    if candidateLastSeenAt != currentLastSeenAt {
+        return candidateLastSeenAt > currentLastSeenAt ? candidate : current
+    }
+    if candidate.activeConnections != current.activeConnections {
+        return candidate.activeConnections > current.activeConnections ? candidate : current
+    }
+    return candidate
 }
 
 private struct RecorderBuilder {

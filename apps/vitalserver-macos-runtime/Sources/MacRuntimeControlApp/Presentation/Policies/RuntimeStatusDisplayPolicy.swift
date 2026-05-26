@@ -225,26 +225,18 @@ struct RuntimeStatusDisplayPolicy {
     }
 
     func recorderSummary(status: RuntimeStatus, observation: RuntimeContainerObservation?) -> RecorderSummary {
-        let connectionRecorders = observation?.auditProxyStatus?.recorders ?? []
-        let observedRecorders = status.vitalDBObservation?.recorders ?? []
-        let latestObserved = observedRecorders
-            .sorted { ($0.lastSeenAt ?? "") > ($1.lastSeenAt ?? "") }
-            .first
-        let latestConnected = connectionRecorders
-            .sorted { ($0.lastSeenAt ?? "") > ($1.lastSeenAt ?? "") }
-            .first
-        let onlineCount = observedRecorders.filter(\.online).count
-        let staleCount = observedRecorders.filter(\.stale).count
+        var status = status
+        status.containerObservation = observation
+        let summary = RuntimeVitalRecorderSummary(status: status)
         return RecorderSummary(
-            activeConnections: "\(observation?.auditProxyStatus?.activeRecorderConnections ?? 0)",
-            knownRecorders: "\(observedRecorders.isEmpty ? connectionRecorders.count : observedRecorders.count)",
-            onlineRecorders: "\(onlineCount)",
-            staleRecorders: "\(staleCount)",
-            knownBeds: "\(status.vitalDBObservation?.beds.count ?? 0)",
-            anomalies: "\(status.vitalDBObservation?.anomalies.count ?? 0)",
-            latestRecorder: latestObserved.map { "\($0.vrcode) \($0.ip ?? AppConstants.StatusText.unknown)" }
-                ?? latestConnected.map { "\($0.vrcode) \($0.selectedIp ?? AppConstants.StatusText.unknown)" },
-            observedAt: status.vitalDBObservation?.observedAt
+            activeConnections: "\(summary.activeConnections)",
+            knownRecorders: "\(summary.knownRecorders)",
+            onlineRecorders: "\(summary.onlineRecorders)",
+            staleRecorders: "\(summary.staleRecorders)",
+            knownBeds: "\(summary.knownBeds)",
+            anomalies: "\(summary.recorderAnomalies)",
+            latestRecorder: summary.latestRecorder.map { "\($0.vrcode) \($0.ip ?? AppConstants.StatusText.unknown)" },
+            observedAt: summary.observedAt
         )
     }
 

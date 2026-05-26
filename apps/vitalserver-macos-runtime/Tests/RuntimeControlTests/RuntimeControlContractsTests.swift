@@ -95,6 +95,13 @@ final class RuntimeControlContractsTests: XCTestCase {
                     version: "1.0.1",
                     online: true
                 ),
+                .init(
+                    vrcode: "VR_A",
+                    ip: "192.168.64.9",
+                    lastSeenAt: "2026-05-26T00:00:30Z",
+                    version: "1.0.0",
+                    online: true
+                ),
             ],
             beds: [
                 .init(bedID: "bed-a", name: "OR A Updated", vrcode: "VR_A", patientConnected: false, online: true),
@@ -126,5 +133,42 @@ final class RuntimeControlContractsTests: XCTestCase {
         XCTAssertEqual(history.recorders[1].status, RuntimeVitalRecorderStatus.offline)
         XCTAssertEqual(history.recorders[1].bedName, "OR B")
         XCTAssertEqual(history.recorders[1].observationCount, 1)
+    }
+
+    func testVitalRecorderSummaryCountsUniqueVrcodes() {
+        let observation = VitalDBObservationDocument(
+            observedAt: "2026-05-26T00:01:00Z",
+            ready: true,
+            recorderOnlineThresholdSeconds: 60,
+            recorders: [
+                .init(
+                    vrcode: "VR_A",
+                    ip: "192.168.64.10",
+                    lastSeenAt: "2026-05-26T00:01:00Z",
+                    online: true
+                ),
+                .init(
+                    vrcode: "VR_A",
+                    ip: "192.168.64.11",
+                    lastSeenAt: "2026-05-26T00:00:30Z",
+                    online: true
+                ),
+                .init(
+                    vrcode: "VR_B",
+                    ip: "192.168.64.12",
+                    lastSeenAt: "2026-05-26T00:00:00Z",
+                    online: false,
+                    stale: true
+                ),
+            ]
+        )
+
+        let summary = RuntimeVitalRecorderSummary(status: RuntimeStatus(vitalDBObservation: observation))
+
+        XCTAssertEqual(summary.knownRecorders, 2)
+        XCTAssertEqual(summary.onlineRecorders, 1)
+        XCTAssertEqual(summary.staleRecorders, 1)
+        XCTAssertEqual(summary.latestRecorder?.vrcode, "VR_A")
+        XCTAssertEqual(summary.latestRecorder?.ip, "192.168.64.10")
     }
 }
