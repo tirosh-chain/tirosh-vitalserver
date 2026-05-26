@@ -12,6 +12,7 @@ public enum RuntimeFailureReason: Codable, Equatable, Sendable {
     case redisUIHTTP(String)
     case swaggerUIHTTP(String)
     case guestHTTP(String)
+    case guestRuntimeStateStale
     case auditProxyHTTP(String)
     case containerService(service: String, state: String)
     case vitalDBAnomaly(kind: String, subject: String)
@@ -19,6 +20,33 @@ public enum RuntimeFailureReason: Codable, Equatable, Sendable {
     case guestBootstrapMissingRuntimePackages
     case guestBootstrapFailed
     case unknown(String)
+
+    public init(vmError: RuntimeVMError) {
+        switch vmError {
+        case .missingExecutable:
+            self = .missingVMBin
+        case .missingRootfsBase:
+            self = .missingRootfsBase
+        case .missingDisk:
+            self = .missingVMDisk
+        case .serviceNotLoaded(let state):
+            self = .vmService(state)
+        case .missingIPAddress:
+            self = .guestHTTP("missing-vm-ip")
+        case .runtimeStateStale:
+            self = .guestRuntimeStateStale
+        case .diskAttachmentInvalid, .guestFilesystemError, .guestFilesystemReadOnly, .guestDiskIO:
+            self = .unknown(vmError.rawValue)
+        case .guestHTTP(let status):
+            self = .guestHTTP(status)
+        case .guestBootstrapMissingRuntimePackages:
+            self = .guestBootstrapMissingRuntimePackages
+        case .guestBootstrapFailed:
+            self = .guestBootstrapFailed
+        case .unknown(let value):
+            self = .unknown(value)
+        }
+    }
 
     public init(rawValue: String) {
         switch rawValue {
@@ -34,6 +62,8 @@ public enum RuntimeFailureReason: Codable, Equatable, Sendable {
             self = .guestBootstrapMissingRuntimePackages
         case "guest-bootstrap-failed":
             self = .guestBootstrapFailed
+        case "guest-runtime-state-stale":
+            self = .guestRuntimeStateStale
         default:
             if rawValue.hasPrefix("vm-service-") {
                 self = .vmService(String(rawValue.dropFirst("vm-service-".count)))
@@ -87,6 +117,8 @@ public enum RuntimeFailureReason: Codable, Equatable, Sendable {
             return "swagger-ui-http-\(status)"
         case .guestHTTP(let status):
             return "guest-http-\(status)"
+        case .guestRuntimeStateStale:
+            return "guest-runtime-state-stale"
         case .auditProxyHTTP(let status):
             return "audit-proxy-http-\(status)"
         case .containerService(let service, let state):

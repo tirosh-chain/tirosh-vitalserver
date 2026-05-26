@@ -203,6 +203,8 @@ extension RuntimeLifecycle {
             operation: operation,
             message: message,
             runtimeVersion: runtimeVersionValue(),
+            vmState: healthSnapshot.vmState,
+            vmErrors: healthSnapshot.vmErrors,
             failureReasons: healthSnapshot.failureReasons,
             containerObservation: healthSnapshot.containerObservation,
             vitalDBObservation: healthSnapshot.vitalDBObservation,

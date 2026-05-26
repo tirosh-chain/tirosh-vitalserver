@@ -252,8 +252,11 @@ public enum RuntimeControlDevConsoleDocument {
             <option value="install">install</option>
             <option value="command">command</option>
             <option value="launcher">launcher</option>
+            <option value="vmLaunchOutput">vmLaunchOutput</option>
+            <option value="vmLaunchError">vmLaunchError</option>
             <option value="proxyOutput">proxyOutput</option>
             <option value="proxyError">proxyError</option>
+            <option value="watchdog">watchdog</option>
             <option value="updateActivation">updateActivation</option>
             <option value="containers" selected>containers</option>
           </select>

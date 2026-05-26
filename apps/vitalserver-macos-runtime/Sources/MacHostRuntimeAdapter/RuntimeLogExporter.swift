@@ -181,6 +181,50 @@ struct RuntimeLogExportFallback {
                 source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.commandLogFile),
                 relativeDestination: "command.log"
             ),
+            RuntimeLogExportFallback(
+                source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.runtimeStatus),
+                relativeDestination: "diagnostics/status/\(RuntimeFileNames.runtimeStatus)"
+            ),
+            RuntimeLogExportFallback(
+                source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.runtimeEvents),
+                relativeDestination: "diagnostics/status/\(RuntimeFileNames.runtimeEvents)"
+            ),
+            RuntimeLogExportFallback(
+                source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.runtimeObservabilityDB),
+                relativeDestination: "diagnostics/status/\(RuntimeFileNames.runtimeObservabilityDB)"
+            ),
+            RuntimeLogExportFallback(
+                source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.runtimeState),
+                relativeDestination: "diagnostics/guest/\(RuntimeFileNames.runtimeState)"
+            ),
+            RuntimeLogExportFallback(
+                source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.vmIPFile),
+                relativeDestination: "diagnostics/guest/\(RuntimeFileNames.vmIP)"
+            ),
+            RuntimeLogExportFallback(
+                source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.vmConfig),
+                relativeDestination: "diagnostics/runtime/vm-config.json"
+            ),
+            RuntimeLogExportFallback(
+                source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.runtimeVersion),
+                relativeDestination: "diagnostics/runtime/runtime-version.json"
+            ),
+            RuntimeLogExportFallback(
+                source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.guestRuntimeConfig),
+                relativeDestination: "diagnostics/guest/runtime-config.json"
+            ),
+            RuntimeLogExportFallback(
+                source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.proxyLaunchDaemon),
+                relativeDestination: "diagnostics/host/com.tirosh.vitalserver-proxy.plist"
+            ),
+            RuntimeLogExportFallback(
+                source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.proxyNginxConfig),
+                relativeDestination: "diagnostics/host/vitalserver-nginx.conf"
+            ),
+            RuntimeLogExportFallback(
+                source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.proxyNginxPid),
+                relativeDestination: "diagnostics/host/nginx.pid"
+            ),
         ]
     }
 }

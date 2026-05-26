@@ -23,6 +23,8 @@ final class RuntimeControlContractsTests: XCTestCase {
             watchdogServiceLoaded: true,
             runtimeState: .healthy,
             operation: .applyBundle,
+            vmState: .running,
+            vmErrors: [],
             vmIP: "192.168.64.2",
             guestHTTP: "200",
             hostProxyHTTP: "200"
@@ -34,6 +36,8 @@ final class RuntimeControlContractsTests: XCTestCase {
         let decoded = try JSONDecoder().decode(RuntimeStatus.self, from: encoded)
 
         XCTAssertEqual(decoded.operation, .applyBundle)
+        XCTAssertEqual(decoded.vmState, .running)
+        XCTAssertEqual(decoded.vmErrors ?? [], [])
         XCTAssertTrue(decoded.isReady)
     }
 

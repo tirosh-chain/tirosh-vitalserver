@@ -21,6 +21,8 @@ struct RuntimeStatusPanel: View {
                 Divider()
                 RuntimeDisclosureSection(AppConstants.Labels.runtimeDetails, isExpanded: $showingRuntimeDetails) {
                     Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 10) {
+                        statusRow(AppConstants.Labels.vmState, vmStateValue)
+                        statusRow(AppConstants.Labels.vmIPAddress, viewModel.status.vmIP ?? AppConstants.StatusText.waiting)
                         statusRow(AppConstants.Labels.dataDirectory) {
                             linkButton(viewModel.settings.vitalFilesDirectory) {
                                 viewModel.openVitalFilesDirectory()
@@ -147,6 +149,10 @@ struct RuntimeStatusPanel: View {
 
     private var vitalServerAvailability: RuntimeStatusDisplayPolicy.StatusValue {
         displayPolicy.vitalServerAvailability(status: viewModel.status, observation: viewModel.containerObservation, now: uptimeNow)
+    }
+
+    private var vmStateValue: RuntimeStatusDisplayPolicy.StatusValue {
+        displayPolicy.vmStateValue(viewModel.status.vmState, runtimeInstalled: viewModel.status.runtimeInstalled)
     }
 
     private func statusRow(_ label: String, _ value: String) -> some View {

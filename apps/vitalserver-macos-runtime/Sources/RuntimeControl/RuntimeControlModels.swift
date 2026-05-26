@@ -182,6 +182,8 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
     public var startedAt: String?
     public var runtimeVersion: String?
     public var latestBackup: String?
+    public var vmState: RuntimeVMState?
+    public var vmErrors: [RuntimeVMError]?
     public var vmIP: String?
     public var guestHTTP: String?
     public var hostProxyHTTP: String?
@@ -211,6 +213,8 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
         startedAt: String? = nil,
         runtimeVersion: String? = nil,
         latestBackup: String? = nil,
+        vmState: RuntimeVMState? = nil,
+        vmErrors: [RuntimeVMError]? = nil,
         vmIP: String? = nil,
         guestHTTP: String? = nil,
         hostProxyHTTP: String? = nil,
@@ -239,6 +243,8 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
         self.startedAt = startedAt
         self.runtimeVersion = runtimeVersion
         self.latestBackup = latestBackup
+        self.vmState = vmState
+        self.vmErrors = vmErrors
         self.vmIP = vmIP
         self.guestHTTP = guestHTTP
         self.hostProxyHTTP = hostProxyHTTP

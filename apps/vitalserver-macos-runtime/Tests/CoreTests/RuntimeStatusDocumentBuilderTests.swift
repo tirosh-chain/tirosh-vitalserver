@@ -37,6 +37,8 @@ final class RuntimeStatusDocumentBuilderTests: XCTestCase {
         XCTAssertEqual(document.vmService, .loaded)
         XCTAssertEqual(document.proxyService, .loaded)
         XCTAssertEqual(document.watchdogService, .loaded)
+        XCTAssertEqual(document.vmState, .unreachable)
+        XCTAssertEqual(document.vmErrors ?? [], [.guestHTTP("failed")])
         XCTAssertEqual(document.vmIP, "192.168.64.2")
         XCTAssertEqual(document.proxyPort, 80)
         XCTAssertEqual(document.hostProxyHTTP, "200")
@@ -62,6 +64,8 @@ final class RuntimeStatusDocumentBuilderTests: XCTestCase {
 
         XCTAssertEqual(document.status, .healthy)
         XCTAssertEqual(document.operation, .health)
+        XCTAssertEqual(document.vmState, .running)
+        XCTAssertEqual(document.vmErrors ?? [], [])
         XCTAssertEqual(document.failureReasons, [])
         XCTAssertNil(document.latestBackup)
         XCTAssertNil(document.progress)
@@ -76,6 +80,8 @@ final class RuntimeStatusDocumentBuilderTests: XCTestCase {
             vmService: .loaded,
             proxyService: .loaded,
             watchdogService: .loaded,
+            vmState: failureReasons.isEmpty ? .running : .unreachable,
+            vmErrors: failureReasons.isEmpty ? [] : [.guestHTTP("failed")],
             vmIP: "192.168.64.2",
             proxyPort: 80,
             hostProxyHTTP: "200",

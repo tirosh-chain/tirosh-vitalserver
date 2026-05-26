@@ -110,7 +110,7 @@ struct RuntimeStatusDisplayPolicy {
     }
 
     func healthDetails(status: RuntimeStatus, observation: RuntimeContainerObservation?, now: Date = Date()) -> [HealthItem] {
-        [
+        var items = [
             HealthItem(
                 label: AppConstants.Labels.runtimeInstallation,
                 value: StatusValue(
@@ -119,6 +119,22 @@ struct RuntimeStatusDisplayPolicy {
                     uptimeText: nil
                 )
             ),
+            HealthItem(
+                label: AppConstants.Labels.vmState,
+                value: vmStateValue(status.vmState, runtimeInstalled: status.runtimeInstalled)
+            ),
+        ]
+        if let vmErrors = status.vmErrors, !vmErrors.isEmpty {
+            items.append(HealthItem(
+                label: AppConstants.Labels.vmErrors,
+                value: StatusValue(
+                    text: vmErrors.map(AppConstants.StatusText.vmError).joined(separator: ", "),
+                    severity: .critical,
+                    uptimeText: nil
+                )
+            ))
+        }
+        items.append(contentsOf: [
             HealthItem(
                 label: AppConstants.Labels.vmIPAddress,
                 value: StatusValue(
@@ -155,7 +171,8 @@ struct RuntimeStatusDisplayPolicy {
                     uptimeText: nil
                 )
             ),
-        ]
+        ])
+        return items
     }
 
     func advancedServiceHealth(status: RuntimeStatus, observation: RuntimeContainerObservation?, now: Date = Date()) -> [ServiceHealthItem] {
@@ -358,6 +375,28 @@ struct RuntimeStatusDisplayPolicy {
 
     private func serviceReachabilityLabel(_ value: String?) -> String {
         AppConstants.StatusText.reachability(httpStatus: value)
+    }
+
+    func vmStateValue(_ value: RuntimeVMState?, runtimeInstalled: Bool) -> StatusValue {
+        let resolvedValue = value ?? (runtimeInstalled ? nil : .notInstalled)
+        return StatusValue(
+            text: AppConstants.StatusText.vmState(resolvedValue),
+            severity: vmStateSeverity(resolvedValue),
+            uptimeText: nil
+        )
+    }
+
+    private func vmStateSeverity(_ value: RuntimeVMState?) -> Severity {
+        switch value {
+        case .running:
+            return .healthy
+        case .starting, .stale:
+            return .warning
+        case .notInstalled, .stopped, .unreachable, .failed:
+            return .critical
+        case .unknown, nil:
+            return .neutral
+        }
     }
 
     private func formatUptime(_ seconds: Int?, startedAt: String?, observedAt: String?, now: Date) -> String? {

@@ -34,6 +34,12 @@ struct RuntimeEventDisplayPolicy {
 
     private func detailText(for event: RuntimeEventDocument) -> String? {
         var details: [String] = []
+        if let vmState = event.vmState {
+            details.append("\(AppConstants.Labels.vmState): \(AppConstants.StatusText.vmState(vmState))")
+        }
+        if let vmErrors = event.vmErrors, !vmErrors.isEmpty {
+            details.append("\(AppConstants.Labels.vmErrors): \(vmErrors.map(AppConstants.StatusText.vmError).joined(separator: ", "))")
+        }
         if let observation = event.containerObservation?.auditProxyStatus {
             details.append("\(AppConstants.Labels.activeRecorderConnections): \(observation.activeRecorderConnections)")
             details.append("\(AppConstants.Labels.knownRecorders): \(observation.recorders.count)")

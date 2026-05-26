@@ -20,8 +20,11 @@ public enum RuntimeLogSource: String, Codable, Hashable, Sendable {
     case install
     case command
     case launcher
+    case vmLaunchOutput
+    case vmLaunchError
     case proxyOutput
     case proxyError
+    case watchdog
     case updateActivation
     case containers
 }

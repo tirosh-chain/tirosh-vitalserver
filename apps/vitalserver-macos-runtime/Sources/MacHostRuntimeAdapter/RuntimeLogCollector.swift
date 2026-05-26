@@ -191,10 +191,16 @@ struct MacHostRuntimeLogCollector: RuntimeLogCollecting {
             return item.destination.path == RuntimeAdapterConstants.Paths.commandLog
         case .launcher:
             return item.destination.lastPathComponent == "launcher.log"
+        case .vmLaunchOutput:
+            return item.destination.lastPathComponent == "launchd.out.log"
+        case .vmLaunchError:
+            return item.destination.lastPathComponent == "launchd.err.log"
         case .proxyOutput:
             return item.destination.lastPathComponent == "proxy.out.log"
         case .proxyError:
             return item.destination.lastPathComponent == "proxy.err.log"
+        case .watchdog:
+            return item.destination.lastPathComponent == "watchdog.out.log"
         case .updateActivation:
             return item.destination.path == RuntimeAdapterConstants.Paths.updateActivationLog
         case .containers:

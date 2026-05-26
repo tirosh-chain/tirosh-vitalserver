@@ -47,6 +47,21 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading {
         next.hostProxyHTTP = await httpStatus(url: RuntimeAdapterConstants.Product.hostProxyHealthURL(proxyPort: next.proxyPort))
         next.redisUIHTTP = await httpStatus(url: RuntimeAdapterConstants.Product.redisUIURL(proxyPort: next.proxyPort))
         next.swaggerUIHTTP = await httpStatus(url: RuntimeAdapterConstants.Product.swaggerURL(proxyPort: next.proxyPort))
+        next.vmState = next.failureReasons.contains(.guestRuntimeStateStale)
+            ? .stale
+            : inferredVMState(
+                runtimeInstalled: next.runtimeInstalled,
+                vmServiceLoaded: next.vmServiceLoaded,
+                vmIP: next.vmIP,
+                guestHTTP: next.guestHTTP
+            )
+        next.vmErrors = inferredVMErrors(
+            runtimeInstalled: next.runtimeInstalled,
+            vmServiceLoaded: next.vmServiceLoaded,
+            vmIP: next.vmIP,
+            guestHTTP: next.guestHTTP,
+            runtimeStateStale: next.failureReasons.contains(.guestRuntimeStateStale)
+        )
 
         return withDataStorageUsage(next, settings: settings)
     }
@@ -58,9 +73,13 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading {
         let containerObservation = document?.containerObservation
         let startedAt = containerObservation?.composeServices.first { $0.service == "app" }?.startedAt
             ?? guestState?.containerServices?.first { $0.service == "app" }?.startedAt
+        let runtimeInstalled = fileStore.isExecutableFile(atPath: paths.launcher)
+        let vmServiceLoaded = loaded(document?.vmService) ?? launchdLoaded(.vm)
+        let vmIP = document?.vmIP ?? guestState?.vmIP ?? readTrimmed(paths.vmIPFile)
+        let guestHTTP = document?.guestHTTP ?? guestState?.guestHTTP
         return RuntimeStatus(
-            runtimeInstalled: fileStore.isExecutableFile(atPath: paths.launcher),
-            vmServiceLoaded: loaded(document?.vmService) ?? launchdLoaded(.vm),
+            runtimeInstalled: runtimeInstalled,
+            vmServiceLoaded: vmServiceLoaded,
             proxyServiceLoaded: loaded(document?.proxyService) ?? launchdLoaded(.proxy),
             guestLogSyncServiceLoaded: launchdLoaded(.guestLogSync),
             sleepPreventionServiceLoaded: launchdLoaded(.sleepPrevention),
@@ -72,8 +91,15 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading {
             startedAt: startedAt,
             runtimeVersion: document?.runtimeVersion,
             latestBackup: document?.latestBackup,
-            vmIP: document?.vmIP ?? guestState?.vmIP ?? readTrimmed(paths.vmIPFile),
-            guestHTTP: document?.guestHTTP ?? guestState?.guestHTTP,
+            vmState: document?.vmState ?? inferredVMState(
+                runtimeInstalled: runtimeInstalled,
+                vmServiceLoaded: vmServiceLoaded,
+                vmIP: vmIP,
+                guestHTTP: guestHTTP
+            ),
+            vmErrors: document?.vmErrors,
+            vmIP: vmIP,
+            guestHTTP: guestHTTP,
             hostProxyHTTP: document?.hostProxyHTTP,
             redisUIHTTP: document?.redisUIHTTP ?? guestState?.redisUIHTTP,
             swaggerUIHTTP: document?.swaggerUIHTTP ?? guestState?.swaggerUIHTTP,
@@ -159,6 +185,63 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading {
             return nil
         }
         return value.isLoaded
+    }
+
+    private func inferredVMState(
+        runtimeInstalled: Bool,
+        vmServiceLoaded: Bool,
+        vmIP: String?,
+        guestHTTP: String?
+    ) -> RuntimeVMState {
+        if !runtimeInstalled {
+            return .notInstalled
+        }
+        if !vmServiceLoaded {
+            return .stopped
+        }
+        guard vmIP != nil else {
+            return .starting
+        }
+        if isSuccessfulHTTPStatus(guestHTTP) {
+            return .running
+        }
+        if guestHTTP == "bootstrap-pending" || guestHTTP == "missing-vm-ip" || guestHTTP == nil {
+            return .starting
+        }
+        return .unreachable
+    }
+
+    private func isSuccessfulHTTPStatus(_ value: String?) -> Bool {
+        guard let value, let code = Int(value) else {
+            return false
+        }
+        return code >= 200 && code < 300
+    }
+
+    private func inferredVMErrors(
+        runtimeInstalled: Bool,
+        vmServiceLoaded: Bool,
+        vmIP: String?,
+        guestHTTP: String?,
+        runtimeStateStale: Bool
+    ) -> [RuntimeVMError] {
+        var errors: [RuntimeVMError] = []
+        if !runtimeInstalled {
+            errors.append(.missingExecutable)
+        }
+        if !vmServiceLoaded {
+            errors.append(.serviceNotLoaded(RuntimeServiceState.notLoaded.rawValue))
+        }
+        if vmIP == nil {
+            errors.append(.missingIPAddress)
+        }
+        if let guestHTTP, !isSuccessfulHTTPStatus(guestHTTP), guestHTTP != "missing-vm-ip" {
+            errors.append(.guestHTTP(guestHTTP))
+        }
+        if runtimeStateStale {
+            errors.append(.runtimeStateStale)
+        }
+        return errors
     }
 
     private func launchdLoaded(_ service: RuntimeManagedService) -> Bool {

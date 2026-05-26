@@ -104,7 +104,9 @@ enum RuntimeAdapterConstants {
         static let vmConfig = installed.vmConfig.path
         static let vmDisk = installed.vmDisk.path
         static let guestRuntimeConfig = installed.guestRuntimeConfig.path
+        static let runtimeVersion = installed.runtimeDirectory.appendingPathComponent("runtime-version.json").path
         static let proxyNginxPid = installed.proxyNginxPID.path
+        static let proxyNginxConfig = installed.nginxDirectory.appendingPathComponent("vitalserver.conf").path
         static let proxyNginxAccessLog = installed.nginxLogsDirectory.appendingPathComponent("access.log").path
         static let proxyNginxErrorLog = installed.nginxLogsDirectory.appendingPathComponent("error.log").path
         static let proxyLaunchDaemon = installed.proxyLaunchDaemon.path

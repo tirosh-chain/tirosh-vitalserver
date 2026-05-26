@@ -76,6 +76,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             guestLogSyncServiceLoaded: true,
             watchdogServiceLoaded: true,
             runtimeState: .healthy,
+            vmState: .running,
             guestHTTP: "200",
             hostProxyHTTP: "200"
         )
@@ -94,6 +95,8 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
 
         XCTAssertEqual(summary.text, AppConstants.StatusText.reachable)
         XCTAssertEqual(item(AppConstants.Labels.runtimeInstallation, in: details)?.value.text, AppConstants.StatusText.installed)
+        XCTAssertEqual(item(AppConstants.Labels.vmState, in: details)?.value.text, AppConstants.StatusText.running)
+        XCTAssertEqual(item(AppConstants.Labels.vmState, in: details)?.value.severity, .healthy)
         XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: details)?.value.text, AppConstants.StatusText.reachable)
         XCTAssertEqual(item(GeneratedRelease.hostProxyName, in: details)?.value.text, AppConstants.StatusText.reachable)
         XCTAssertEqual(item(GeneratedRelease.redisName, in: details)?.value.text, AppConstants.StatusText.healthy)
@@ -237,6 +240,34 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         XCTAssertEqual(item(AppConstants.Labels.vmService, in: serviceHealth)?.value.text, AppConstants.StatusText.stopped)
         XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: serviceHealth)?.value.text, AppConstants.StatusText.unreachable)
         XCTAssertEqual(item(GeneratedRelease.hostProxyName, in: serviceHealth)?.value.text, AppConstants.StatusText.waiting)
+    }
+
+    func testVMStateDisplayMapsRuntimeStatesToOperatorSeverity() {
+        XCTAssertEqual(policy.vmStateValue(.running, runtimeInstalled: true).text, AppConstants.StatusText.running)
+        XCTAssertEqual(policy.vmStateValue(.running, runtimeInstalled: true).severity, .healthy)
+        XCTAssertEqual(policy.vmStateValue(.starting, runtimeInstalled: true).severity, .warning)
+        XCTAssertEqual(policy.vmStateValue(.stale, runtimeInstalled: true).severity, .warning)
+        XCTAssertEqual(policy.vmStateValue(.unreachable, runtimeInstalled: true).severity, .critical)
+        XCTAssertEqual(policy.vmStateValue(nil, runtimeInstalled: false).text, AppConstants.StatusText.notInstalled)
+    }
+
+    func testHealthDetailsDisplayVMErrorsWhenPresent() {
+        let status = RuntimeStatus(
+            runtimeInstalled: true,
+            vmServiceLoaded: true,
+            proxyServiceLoaded: true,
+            watchdogServiceLoaded: true,
+            vmState: .stale,
+            vmErrors: [.runtimeStateStale, .diskAttachmentInvalid, .guestDiskIO, .guestHTTP("failed")]
+        )
+
+        let items = policy.healthDetails(status: status, observation: nil)
+
+        XCTAssertEqual(
+            item(AppConstants.Labels.vmErrors, in: items)?.value.text,
+            "Guest runtime state stale, VM disk attachment invalid, Guest disk I/O error, Guest HTTP failed"
+        )
+        XCTAssertEqual(item(AppConstants.Labels.vmErrors, in: items)?.value.severity, .critical)
     }
 
     func testRecorderSummaryOwnsRecorderDisplayText() {

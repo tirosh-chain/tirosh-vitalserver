@@ -10,6 +10,9 @@ final class RuntimeLogCollectorTests: XCTestCase {
 
         XCTAssertTrue(destinations.contains("proxy-nginx.access.log"))
         XCTAssertTrue(destinations.contains("proxy-nginx.error.log"))
+        XCTAssertTrue(destinations.contains("launchd.out.log"))
+        XCTAssertTrue(destinations.contains("launchd.err.log"))
+        XCTAssertTrue(destinations.contains("watchdog.out.log"))
     }
 
     func testRefreshCopiesSourceLogToCentralDestination() throws {
@@ -204,6 +207,41 @@ final class RuntimeLogCollectorTests: XCTestCase {
 
         XCTAssertEqual(try String(contentsOf: launcherDestination), "launcher")
         XCTAssertFalse(FileManager.default.fileExists(atPath: proxyDestination.path))
+    }
+
+    func testTargetedRefreshCopiesVMDiagnosticLogSources() throws {
+        let root = try temporaryDirectory()
+        let sourceDirectory = root.appendingPathComponent("sources")
+        let destinationDirectory = root.appendingPathComponent("central")
+        try FileManager.default.createDirectory(at: sourceDirectory, withIntermediateDirectories: true)
+        let launchOutputSource = sourceDirectory.appendingPathComponent("launchd.out.log")
+        let launchErrorSource = sourceDirectory.appendingPathComponent("launchd.err.log")
+        let watchdogSource = sourceDirectory.appendingPathComponent("watchdog.out.log")
+        let launchOutputDestination = destinationDirectory.appendingPathComponent("launchd.out.log")
+        let launchErrorDestination = destinationDirectory.appendingPathComponent("launchd.err.log")
+        let watchdogDestination = destinationDirectory.appendingPathComponent("watchdog.out.log")
+        try "launch output".write(to: launchOutputSource, atomically: true, encoding: .utf8)
+        try "launch error".write(to: launchErrorSource, atomically: true, encoding: .utf8)
+        try "watchdog".write(to: watchdogSource, atomically: true, encoding: .utf8)
+
+        let collector = MacHostRuntimeLogCollector(
+            fileStore: SystemRuntimeFileStore(),
+            copies: [
+                RuntimeLogCopy(source: launchOutputSource, destination: launchOutputDestination, archivePrefix: "launchd.out.log"),
+                RuntimeLogCopy(source: launchErrorSource, destination: launchErrorDestination, archivePrefix: "launchd.err.log"),
+                RuntimeLogCopy(source: watchdogSource, destination: watchdogDestination, archivePrefix: "watchdog.out.log"),
+            ],
+            archiveDirectory: root.appendingPathComponent("archive"),
+            now: { Date(timeIntervalSince1970: 1_800_000_000) }
+        )
+
+        collector.refreshLogCollection(sourceID: .vmLaunchOutput)
+        collector.refreshLogCollection(sourceID: .vmLaunchError)
+        collector.refreshLogCollection(sourceID: .watchdog)
+
+        XCTAssertEqual(try String(contentsOf: launchOutputDestination), "launch output")
+        XCTAssertEqual(try String(contentsOf: launchErrorDestination), "launch error")
+        XCTAssertEqual(try String(contentsOf: watchdogDestination), "watchdog")
     }
 
     private func temporaryDirectory() throws -> URL {

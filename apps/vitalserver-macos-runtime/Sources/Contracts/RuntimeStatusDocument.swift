@@ -71,6 +71,8 @@ public struct RuntimeStatusDocument: Codable, Equatable, Sendable {
     public let vmService: RuntimeServiceState
     public let proxyService: RuntimeServiceState
     public let watchdogService: RuntimeServiceState
+    public let vmState: RuntimeVMState?
+    public let vmErrors: [RuntimeVMError]?
     public let vmIP: String?
     public let proxyPort: Int
     public let hostProxyHTTP: String
@@ -98,6 +100,8 @@ public struct RuntimeStatusDocument: Codable, Equatable, Sendable {
         vmService: RuntimeServiceState,
         proxyService: RuntimeServiceState,
         watchdogService: RuntimeServiceState,
+        vmState: RuntimeVMState? = nil,
+        vmErrors: [RuntimeVMError]? = nil,
         vmIP: String?,
         proxyPort: Int,
         hostProxyHTTP: String,
@@ -124,6 +128,8 @@ public struct RuntimeStatusDocument: Codable, Equatable, Sendable {
         self.vmService = vmService
         self.proxyService = proxyService
         self.watchdogService = watchdogService
+        self.vmState = vmState
+        self.vmErrors = vmErrors
         self.vmIP = vmIP
         self.proxyPort = proxyPort
         self.hostProxyHTTP = hostProxyHTTP
@@ -152,6 +158,8 @@ public struct RuntimeStatusDocument: Codable, Equatable, Sendable {
         vmService: RuntimeServiceState,
         proxyService: RuntimeServiceState,
         watchdogService: RuntimeServiceState,
+        vmState: RuntimeVMState? = nil,
+        vmErrors: [RuntimeVMError]? = nil,
         vmIP: String?,
         proxyPort: Int,
         hostProxyHTTP: String,
@@ -179,6 +187,8 @@ public struct RuntimeStatusDocument: Codable, Equatable, Sendable {
             vmService: vmService,
             proxyService: proxyService,
             watchdogService: watchdogService,
+            vmState: vmState,
+            vmErrors: vmErrors,
             vmIP: vmIP,
             proxyPort: proxyPort,
             hostProxyHTTP: hostProxyHTTP,

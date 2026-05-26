@@ -1,4 +1,5 @@
 import Foundation
+import Contracts
 import RuntimeControl
 @testable import MacHostRuntimeAdapter
 @testable import MacRuntimeControlApp
@@ -6,6 +7,21 @@ import XCTest
 
 @MainActor
 final class RuntimeLogExporterTests: XCTestCase {
+    func testDefaultExportFallbacksIncludeDiagnosticStateFiles() {
+        let destinations = Set(RuntimeLogExportFallback.defaultItems().map(\.relativeDestination))
+
+        XCTAssertTrue(destinations.contains("diagnostics/status/\(RuntimeFileNames.runtimeStatus)"))
+        XCTAssertTrue(destinations.contains("diagnostics/status/\(RuntimeFileNames.runtimeEvents)"))
+        XCTAssertTrue(destinations.contains("diagnostics/status/\(RuntimeFileNames.runtimeObservabilityDB)"))
+        XCTAssertTrue(destinations.contains("diagnostics/guest/\(RuntimeFileNames.runtimeState)"))
+        XCTAssertTrue(destinations.contains("diagnostics/guest/\(RuntimeFileNames.vmIP)"))
+        XCTAssertTrue(destinations.contains("diagnostics/runtime/vm-config.json"))
+        XCTAssertTrue(destinations.contains("diagnostics/runtime/runtime-version.json"))
+        XCTAssertTrue(destinations.contains("diagnostics/guest/runtime-config.json"))
+        XCTAssertTrue(destinations.contains("diagnostics/host/com.tirosh.vitalserver-proxy.plist"))
+        XCTAssertTrue(destinations.contains("diagnostics/host/vitalserver-nginx.conf"))
+    }
+
     func testExportRefreshesCollectionAndIncludesFallbackGuestLogs() async throws {
         let root = try temporaryDirectory()
         let guestRun = root.appendingPathComponent("vm/data/run", isDirectory: true)

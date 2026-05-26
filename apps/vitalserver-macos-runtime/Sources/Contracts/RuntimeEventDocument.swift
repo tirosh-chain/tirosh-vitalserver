@@ -105,6 +105,8 @@ public struct RuntimeEventDocument: Codable, Equatable, Sendable {
     public let operation: RuntimeOperation
     public let message: String
     public let runtimeVersion: String
+    public let vmState: RuntimeVMState?
+    public let vmErrors: [RuntimeVMError]?
     public let failureReasons: [RuntimeFailureReason]
     public let containerObservation: RuntimeContainerObservation?
     public let vitalDBObservation: VitalDBObservationDocument?
@@ -122,6 +124,8 @@ public struct RuntimeEventDocument: Codable, Equatable, Sendable {
         operation: RuntimeOperation,
         message: String,
         runtimeVersion: String,
+        vmState: RuntimeVMState? = nil,
+        vmErrors: [RuntimeVMError]? = nil,
         failureReasons: [RuntimeFailureReason],
         containerObservation: RuntimeContainerObservation? = nil,
         vitalDBObservation: VitalDBObservationDocument? = nil,
@@ -138,6 +142,8 @@ public struct RuntimeEventDocument: Codable, Equatable, Sendable {
         self.operation = operation
         self.message = message
         self.runtimeVersion = runtimeVersion
+        self.vmState = vmState
+        self.vmErrors = vmErrors
         self.failureReasons = failureReasons
         self.containerObservation = containerObservation
         self.vitalDBObservation = vitalDBObservation

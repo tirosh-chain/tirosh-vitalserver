@@ -16,6 +16,8 @@ final class RuntimeEventDisplayPolicyTests: XCTestCase {
             operation: .watchdog,
             message: "audit proxy observed",
             runtimeVersion: "0.1.6",
+            vmState: .stale,
+            vmErrors: [.runtimeStateStale],
             failureReasons: [],
             containerObservation: RuntimeContainerObservation(
                 auditProxyHTTP: "200",
@@ -39,6 +41,9 @@ final class RuntimeEventDisplayPolicyTests: XCTestCase {
         XCTAssertEqual(item.status, "degraded")
         XCTAssertEqual(item.statusSeverity, .warning)
         XCTAssertEqual(item.operation, "watchdog")
-        XCTAssertEqual(item.detailText, "Active recorder connections: 3, Known recorders: 2")
+        XCTAssertEqual(
+            item.detailText,
+            "VM state: Stale, VM errors: Guest runtime state stale, Active recorder connections: 3, Known recorders: 2"
+        )
     }
 }

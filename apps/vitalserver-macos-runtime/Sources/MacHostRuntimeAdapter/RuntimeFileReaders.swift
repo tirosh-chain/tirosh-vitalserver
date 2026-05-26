@@ -90,6 +90,18 @@ struct SystemRuntimeHostFileReader: RuntimeHostFileReading {
                 lineLimit: lineLimit,
                 fallbackPath: (RuntimeAdapterConstants.Paths.runtimeLogSources as NSString).appendingPathComponent("launcher.log")
             )
+        case .vmLaunchOutput:
+            return logFile(
+                path: (RuntimeAdapterConstants.Paths.runtimeLogs as NSString).appendingPathComponent("launchd.out.log"),
+                lineLimit: lineLimit,
+                fallbackPath: (RuntimeAdapterConstants.Paths.runtimeLogSources as NSString).appendingPathComponent("launchd.out.log")
+            )
+        case .vmLaunchError:
+            return logFile(
+                path: (RuntimeAdapterConstants.Paths.runtimeLogs as NSString).appendingPathComponent("launchd.err.log"),
+                lineLimit: lineLimit,
+                fallbackPath: (RuntimeAdapterConstants.Paths.runtimeLogSources as NSString).appendingPathComponent("launchd.err.log")
+            )
         case .proxyOutput:
             return logFile(
                 path: (RuntimeAdapterConstants.Paths.runtimeLogs as NSString).appendingPathComponent("proxy.out.log"),
@@ -101,6 +113,12 @@ struct SystemRuntimeHostFileReader: RuntimeHostFileReading {
                 path: (RuntimeAdapterConstants.Paths.runtimeLogs as NSString).appendingPathComponent("proxy.err.log"),
                 lineLimit: lineLimit,
                 fallbackPath: (RuntimeAdapterConstants.Paths.runtimeLogSources as NSString).appendingPathComponent("proxy.err.log")
+            )
+        case .watchdog:
+            return logFile(
+                path: (RuntimeAdapterConstants.Paths.runtimeLogs as NSString).appendingPathComponent("watchdog.out.log"),
+                lineLimit: lineLimit,
+                fallbackPath: (RuntimeAdapterConstants.Paths.runtimeLogSources as NSString).appendingPathComponent("watchdog.out.log")
             )
         case .updateActivation:
             return logFile(

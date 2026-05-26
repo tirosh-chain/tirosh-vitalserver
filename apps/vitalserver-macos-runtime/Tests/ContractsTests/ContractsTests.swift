@@ -10,6 +10,8 @@ final class ContractsTests: XCTestCase {
         XCTAssertEqual(document.status, .healthy)
         XCTAssertEqual(document.operation, .health)
         XCTAssertEqual(document.proxyPort, 80)
+        XCTAssertNil(document.vmState)
+        XCTAssertNil(document.vmErrors)
         XCTAssertEqual(document.failureReasons, [])
         XCTAssertNil(document.progress)
     }
@@ -139,6 +141,8 @@ final class ContractsTests: XCTestCase {
           "vmService": "loaded",
           "proxyService": "loaded",
           "watchdogService": "loaded",
+          "vmState": "hibernating",
+          "vmErrors": ["vm-runtime-state-stale", "vm-service-state-paused"],
           "vmIP": null,
           "proxyPort": 80,
           "hostProxyHTTP": "failed",
@@ -166,6 +170,8 @@ final class ContractsTests: XCTestCase {
         XCTAssertEqual(document.status.rawValue, "paused")
         XCTAssertEqual(document.operation.rawValue, "future-operation")
         XCTAssertEqual(document.vmService, .loaded)
+        XCTAssertEqual(document.vmState?.rawValue, "hibernating")
+        XCTAssertEqual(document.vmErrors ?? [], [.runtimeStateStale, .serviceNotLoaded("paused")])
         XCTAssertEqual(document.rootfsBase, .present)
         XCTAssertEqual(document.progress?.phase.rawValue, "future-phase")
         XCTAssertEqual(document.progress?.stepStatus?.rawValue, "future-step-status")
@@ -174,8 +180,76 @@ final class ContractsTests: XCTestCase {
         let roundTripped = try JSONDecoder().decode(RuntimeStatusDocument.self, from: encoded)
         XCTAssertEqual(roundTripped.status.rawValue, "paused")
         XCTAssertEqual(roundTripped.vmService.rawValue, "loaded")
+        XCTAssertEqual(roundTripped.vmState?.rawValue, "hibernating")
+        XCTAssertEqual(roundTripped.vmErrors ?? [], [.runtimeStateStale, .serviceNotLoaded("paused")])
         XCTAssertEqual(roundTripped.rootfsBase.rawValue, "present")
         XCTAssertEqual(roundTripped.progress?.phase.rawValue, "future-phase")
+    }
+
+    func testRuntimeVMStateDefinesObservedStatesAndPreservesUnknownValues() throws {
+        let states: [RuntimeVMState] = [
+            .notInstalled,
+            .stopped,
+            .starting,
+            .running,
+            .stale,
+            .unreachable,
+            .failed,
+        ]
+
+        XCTAssertEqual(states.map(\.rawValue), [
+            "not-installed",
+            "stopped",
+            "starting",
+            "running",
+            "stale",
+            "unreachable",
+            "failed",
+        ])
+
+        let encoded = try JSONEncoder().encode(RuntimeVMState.unknown("hibernating"))
+        let decoded = try JSONDecoder().decode(RuntimeVMState.self, from: encoded)
+
+        XCTAssertEqual(decoded, .unknown("hibernating"))
+    }
+
+    func testRuntimeVMErrorDefinesObservedErrorsAndPreservesUnknownValues() throws {
+        let errors: [RuntimeVMError] = [
+            .missingExecutable,
+            .missingRootfsBase,
+            .missingDisk,
+            .serviceNotLoaded("not loaded"),
+            .missingIPAddress,
+            .runtimeStateStale,
+            .diskAttachmentInvalid,
+            .guestFilesystemError,
+            .guestFilesystemReadOnly,
+            .guestDiskIO,
+            .guestHTTP("failed"),
+            .guestBootstrapMissingRuntimePackages,
+            .guestBootstrapFailed,
+        ]
+
+        XCTAssertEqual(errors.map(\.rawValue), [
+            "vm-missing-executable",
+            "vm-missing-rootfs-base",
+            "vm-missing-disk",
+            "vm-service-state-not loaded",
+            "vm-missing-ip-address",
+            "vm-runtime-state-stale",
+            "vm-disk-attachment-invalid",
+            "vm-guest-filesystem-error",
+            "vm-guest-filesystem-read-only",
+            "vm-guest-disk-io-error",
+            "vm-guest-http-failed",
+            "vm-guest-bootstrap-missing-runtime-packages",
+            "vm-guest-bootstrap-failed",
+        ])
+
+        let encoded = try JSONEncoder().encode(RuntimeVMError.unknown("vm-future-error"))
+        let decoded = try JSONDecoder().decode(RuntimeVMError.self, from: encoded)
+
+        XCTAssertEqual(decoded, .unknown("vm-future-error"))
     }
 
     func testRuntimeFailureReasonsDecodeAsTypedCodes() throws {

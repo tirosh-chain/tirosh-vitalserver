@@ -1,4 +1,5 @@
 import Foundation
+import Contracts
 
 enum AppConstants {
     enum Product {
@@ -101,7 +102,9 @@ enum AppConstants {
         static let dataStorageUsage = "Data storage"
         static let healthDetails = "Health details"
         static let runtimeInstallation = "Runtime installation"
+        static let vmState = "VM state"
         static let vmIPAddress = "VM IP"
+        static let vmErrors = "VM errors"
         static let watchdog = "Watchdog"
         static let vitalDBObserver = "VitalDB Observer"
         static let vitalRecorder = "Vital Recorder"
@@ -436,6 +439,63 @@ enum AppConstants {
 
         static func launchdState(loaded: Bool) -> String {
             loaded ? running : stopped
+        }
+
+        static func vmState(_ value: RuntimeVMState?) -> String {
+            guard let value else {
+                return unknown
+            }
+            switch value {
+            case .notInstalled:
+                return notInstalled
+            case .stopped:
+                return stopped
+            case .starting:
+                return starting
+            case .running:
+                return running
+            case .stale:
+                return stale
+            case .unreachable:
+                return unreachable
+            case .failed:
+                return failed
+            case .unknown(let rawValue):
+                return titleCasedStatus(rawValue)
+            }
+        }
+
+        static func vmError(_ value: RuntimeVMError) -> String {
+            switch value {
+            case .missingExecutable:
+                return "Missing VM executable"
+            case .missingRootfsBase:
+                return "Missing rootfs base"
+            case .missingDisk:
+                return "Missing VM disk"
+            case .serviceNotLoaded(let state):
+                return "VM service \(titleCasedStatus(state))"
+            case .missingIPAddress:
+                return "Missing VM IP"
+            case .runtimeStateStale:
+                return "Guest runtime state stale"
+            case .diskAttachmentInvalid:
+                return "VM disk attachment invalid"
+            case .guestFilesystemError:
+                return "Guest filesystem error"
+            case .guestFilesystemReadOnly:
+                return "Guest filesystem read-only"
+            case .guestDiskIO:
+                return "Guest disk I/O error"
+            case .guestHTTP(let status):
+                return "Guest HTTP \(status)"
+            case .guestBootstrapMissingRuntimePackages:
+                return "Guest bootstrap missing runtime packages"
+            case .guestBootstrapFailed:
+                return "Guest bootstrap failed"
+            case .unknown(let rawValue):
+                return titleCasedStatus(rawValue)
+            }
         }
 
         static func reachability(httpStatus: String?) -> String {
