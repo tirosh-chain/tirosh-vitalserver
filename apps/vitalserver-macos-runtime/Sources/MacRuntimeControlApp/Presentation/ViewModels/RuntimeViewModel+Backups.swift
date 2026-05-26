@@ -33,6 +33,7 @@ extension RuntimeViewModel {
             waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
             runningMessage: AppConstants.StatusText.redisBackupRunning,
             successMessage: AppConstants.StatusText.redisBackupCompleted,
+            refreshCommandLog: false,
             action: { try await self.controlClient.createRedisBackup() }
         )
         if didCreateBackup {

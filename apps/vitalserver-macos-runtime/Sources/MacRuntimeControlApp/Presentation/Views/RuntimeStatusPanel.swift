@@ -1,5 +1,6 @@
 import RuntimeControl
 import Contracts
+import AppKit
 import SwiftUI
 
 struct RuntimeStatusPanel: View {
@@ -154,6 +155,13 @@ struct RuntimeStatusPanel: View {
                 .truncationMode(.middle)
         }
         .buttonStyle(.link)
+        .onHover { isHovering in
+            if isHovering {
+                NSCursor.pointingHand.set()
+            } else {
+                NSCursor.arrow.set()
+            }
+        }
     }
 
     private func healthRow(_ item: RuntimeStatusDisplayPolicy.HealthItem) -> some View {

@@ -19,6 +19,7 @@ struct ContentView: View {
     @State private var showingHealthDetails = false
     @State private var selectedSection = RuntimeSection.status
     @State private var hoveredServiceLink: String?
+    @State private var isHoveringVitalDBIcon = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -178,9 +179,28 @@ struct ContentView: View {
                         .interpolation(.high)
                         .scaledToFit()
                         .frame(width: 36, height: 36)
+                        .padding(4)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(isHoveringVitalDBIcon ? Color.accentColor.opacity(0.10) : Color.clear)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(isHoveringVitalDBIcon ? Color.accentColor.opacity(0.35) : Color.clear, lineWidth: 1)
+                        )
+                        .scaleEffect(isHoveringVitalDBIcon ? 1.04 : 1)
                         .accessibilityLabel(AppConstants.Product.vitalDBName)
                 }
                 .buttonStyle(.plain)
+                .contentShape(Rectangle())
+                .onHover { isHovering in
+                    isHoveringVitalDBIcon = isHovering
+                    if isHovering {
+                        NSCursor.pointingHand.set()
+                    } else {
+                        NSCursor.arrow.set()
+                    }
+                }
                 .help(AppConstants.Product.vitalDBURL)
             }
             VStack(alignment: .leading, spacing: 6) {
@@ -226,16 +246,16 @@ struct ContentView: View {
 
     private func pollStatus() async {
         while !Task.isCancelled {
-            if !viewModel.isBusy {
-                await viewModel.refreshHealthStatus()
-            }
+            await viewModel.refreshHealthStatus()
             try? await Task.sleep(nanoseconds: 5_000_000_000)
         }
     }
 
     private func pollLogs() async {
         while !Task.isCancelled {
-            await viewModel.refreshLogsIfLive()
+            if selectedSection == .log {
+                await viewModel.refreshLogsIfLive()
+            }
             try? await Task.sleep(nanoseconds: 1_000_000_000)
         }
     }

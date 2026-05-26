@@ -13,7 +13,7 @@ protocol RuntimeHostFileReading {
 }
 
 struct SystemRuntimeHostFileReader: RuntimeHostFileReading {
-    private static let logTailReadByteLimit: UInt64 = 512 * 1024
+    private static let logTailReadByteLimit: UInt64 = 128 * 1024
 
     private let fileStore: RuntimeFileStore
     private let logCollector: RuntimeLogCollecting

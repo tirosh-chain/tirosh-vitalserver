@@ -54,11 +54,14 @@ extension RuntimeViewModel {
         let limit = max(logLineLimit, 1)
         let sourceID = selectedLogSource
         let helperMessage = message
-        logText = await hostClient.loadLogText(
+        let nextLogText = await hostClient.loadLogText(
             sourceID: sourceID,
             helperMessage: helperMessage,
             lineLimit: limit
         )
+        if nextLogText != logText {
+            logText = nextLogText
+        }
     }
 
     func refreshLogsIfLive() async {

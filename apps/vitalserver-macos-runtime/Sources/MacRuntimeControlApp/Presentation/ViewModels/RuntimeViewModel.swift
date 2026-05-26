@@ -78,7 +78,6 @@ final class RuntimeViewModel: ObservableObject {
             message = displayMessage
         }
         healthNotificationCoordinator.handleTransition(to: status)
-        await refreshLogsIfLive()
     }
 
     func refreshHealthStatus() async {
@@ -88,7 +87,6 @@ final class RuntimeViewModel: ObservableObject {
             message = displayMessage
         }
         healthNotificationCoordinator.handleTransition(to: status)
-        await refreshLogsIfLive()
     }
 
     func healthCheck() async {
@@ -273,6 +271,7 @@ final class RuntimeViewModel: ObservableObject {
         waitingMessage: String,
         runningMessage: String,
         successMessage: String,
+        refreshCommandLog: Bool = true,
         action: @escaping () async throws -> RuntimeCommandResult
     ) async -> Bool {
         isBusy = true
@@ -287,21 +286,27 @@ final class RuntimeViewModel: ObservableObject {
         message = waitingMessage
         operationDetail = waitingMessage
 
-        selectedLogSource = .command
-        await refreshLogs()
+        if refreshCommandLog {
+            selectedLogSource = .command
+            await refreshLogs()
+        }
         message = runningMessage
         operationDetail = runningMessage
-        let logRefreshTask = Task { @MainActor in
-            while !Task.isCancelled {
-                await refreshLogs()
-                refreshOperationDetail(fallback: runningMessage)
-                try? await Task.sleep(nanoseconds: 1_000_000_000)
+        let logRefreshTask = refreshCommandLog
+            ? Task { @MainActor in
+                while !Task.isCancelled {
+                    await refreshLogs()
+                    refreshOperationDetail(fallback: runningMessage)
+                    try? await Task.sleep(nanoseconds: 1_000_000_000)
+                }
             }
-        }
+            : nil
         defer {
-            logRefreshTask.cancel()
-            Task { @MainActor in
-                await refreshLogs()
+            logRefreshTask?.cancel()
+            if refreshCommandLog {
+                Task { @MainActor in
+                    await refreshLogs()
+                }
             }
         }
 

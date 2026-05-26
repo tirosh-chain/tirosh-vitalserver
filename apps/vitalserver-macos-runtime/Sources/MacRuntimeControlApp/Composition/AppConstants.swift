@@ -160,7 +160,7 @@ enum AppConstants {
         static let sectionApplyUpdate = "Apply update"
         static let updateProgressLog = "Update progress"
         static let offlineBundle = "Offline bundle"
-        static let onlineUpdate = "Online update"
+        static let onlineUpdate = "Check for Updates"
         static let onlineUpdateUnavailable = "Online update is planned for connected sites. Use an offline bundle for this build."
         static let selectedBundle = "Selected bundle"
         static let updateSourceHelp = "Air-gapped sites receive an update-bundle .tar.gz file through USB, local file share, or hospital-managed storage."
