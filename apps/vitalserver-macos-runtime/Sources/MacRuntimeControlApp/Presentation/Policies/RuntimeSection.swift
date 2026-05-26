@@ -3,13 +3,13 @@ import Foundation
 enum RuntimeSection: CaseIterable, Identifiable {
     case status
     case recorders
+    case observability
+    case log
     case settings
     case update
-    case observability
-    case test
-    case log
     case info
     case advanced
+    case test
     case dangerZone
 
     var id: Self { self }

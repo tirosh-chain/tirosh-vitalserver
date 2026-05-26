@@ -368,9 +368,8 @@ struct RuntimeAdvancedPanel: View {
         @ViewBuilder content: @escaping () -> Content
     ) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            DisclosureGroup(title, isExpanded: isExpanded) {
+            RuntimeDisclosureSection(title, isExpanded: isExpanded) {
                 content()
-                    .padding(.top, 8)
             }
         }
         .padding(16)

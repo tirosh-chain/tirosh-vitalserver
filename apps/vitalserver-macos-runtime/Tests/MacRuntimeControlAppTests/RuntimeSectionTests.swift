@@ -6,27 +6,27 @@ final class RuntimeSectionTests: XCTestCase {
         XCTAssertEqual(RuntimeSection.visibleSections(testEnabled: false).map(\.title), [
             AppConstants.Labels.sectionStatus,
             AppConstants.Labels.sectionRecorders,
-            AppConstants.Labels.sectionSettings,
-            AppConstants.Labels.sectionUpdate,
             AppConstants.Labels.sectionObservability,
             AppConstants.Labels.sectionLog,
+            AppConstants.Labels.sectionSettings,
+            AppConstants.Labels.sectionUpdate,
             AppConstants.Labels.sectionInfo,
             AppConstants.Labels.sectionAdvanced,
             AppConstants.Labels.sectionDangerZone,
         ])
     }
 
-    func testTestkitRuntimeSectionsIncludeTestTabAfterObservability() {
+    func testTestkitRuntimeSectionsIncludeTestTabBeforeDangerZone() {
         XCTAssertEqual(RuntimeSection.visibleSections(testEnabled: true).map(\.title), [
             AppConstants.Labels.sectionStatus,
             AppConstants.Labels.sectionRecorders,
+            AppConstants.Labels.sectionObservability,
+            AppConstants.Labels.sectionLog,
             AppConstants.Labels.sectionSettings,
             AppConstants.Labels.sectionUpdate,
-            AppConstants.Labels.sectionObservability,
-            AppConstants.Labels.sectionTest,
-            AppConstants.Labels.sectionLog,
             AppConstants.Labels.sectionInfo,
             AppConstants.Labels.sectionAdvanced,
+            AppConstants.Labels.sectionTest,
             AppConstants.Labels.sectionDangerZone,
         ])
     }

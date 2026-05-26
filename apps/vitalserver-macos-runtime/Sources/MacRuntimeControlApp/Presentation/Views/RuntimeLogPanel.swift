@@ -23,7 +23,9 @@ struct RuntimeLogPanel: View {
             HStack(spacing: 12) {
                 title
                 Spacer()
-                logControls
+                sourceControl
+                linesControl
+                liveControl
                 logActions
             }
             VStack(alignment: .leading, spacing: 8) {
@@ -33,9 +35,21 @@ struct RuntimeLogPanel: View {
                     logActions
                 }
                 HStack(spacing: 12) {
-                    logControls
+                    sourceControl
+                    linesControl
+                    liveControl
                     Spacer()
                 }
+            }
+            VStack(alignment: .leading, spacing: 8) {
+                title
+                sourceControl
+                HStack(spacing: 12) {
+                    linesControl
+                    liveControl
+                    Spacer()
+                }
+                logActions
             }
         }
     }
@@ -45,28 +59,54 @@ struct RuntimeLogPanel: View {
             .font(.headline)
     }
 
-    private var logControls: some View {
-        HStack(spacing: 12) {
-            Picker(AppConstants.Labels.logSource, selection: $viewModel.selectedLogSource) {
+    private var sourceControl: some View {
+        HStack(spacing: 8) {
+            Text(AppConstants.Labels.logSource)
+                .fontWeight(.medium)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+            Picker("", selection: $viewModel.selectedLogSource) {
                 ForEach(viewModel.availableLogSources()) { source in
                     Text(source.title).tag(source.id)
                 }
             }
             .frame(width: 210)
+            .labelsHidden()
             .onChange(of: viewModel.selectedLogSource) { _ in
                 Task { await viewModel.refreshLogs() }
             }
-            Picker(AppConstants.Labels.logLines, selection: $viewModel.logLineLimit) {
+        }
+        .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private var linesControl: some View {
+        HStack(spacing: 8) {
+            Text(AppConstants.Labels.logLines)
+                .fontWeight(.medium)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+            Picker("", selection: $viewModel.logLineLimit) {
                 ForEach(viewModel.availableLogLineLimits(), id: \.self) { limit in
                     Text("\(limit)").tag(limit)
                 }
             }
             .frame(width: 120)
+            .labelsHidden()
             .onChange(of: viewModel.logLineLimit) { _ in
                 Task { await viewModel.refreshLogs() }
             }
+        }
+        .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private var liveControl: some View {
+        HStack(spacing: 6) {
             Toggle(AppConstants.Labels.logStreaming, isOn: $viewModel.logStreaming)
                 .toggleStyle(.checkbox)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
                 .onChange(of: viewModel.logStreaming) { isLive in
                     if isLive {
                         Task { await viewModel.refreshLogs() }
@@ -75,7 +115,10 @@ struct RuntimeLogPanel: View {
             Text(viewModel.logStreaming ? AppConstants.Labels.logLive : AppConstants.Labels.logPaused)
                 .font(.caption)
                 .foregroundStyle(viewModel.logStreaming ? .green : .secondary)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
         }
+        .fixedSize(horizontal: true, vertical: false)
     }
 
     private var logActions: some View {
@@ -88,5 +131,6 @@ struct RuntimeLogPanel: View {
             }
             .disabled(viewModel.isBusy || !viewModel.capabilities.canExportLogs)
         }
+        .fixedSize(horizontal: true, vertical: false)
     }
 }

@@ -41,6 +41,10 @@ struct ContentView: View {
                     )
                 case .recorders:
                     RuntimeRecordersPanel(viewModel: viewModel)
+                case .observability:
+                    RuntimeObservabilityPanel(viewModel: viewModel)
+                case .log:
+                    RuntimeLogPanel(viewModel: viewModel)
                 case .settings:
                     RuntimeSettingsPanel(
                         viewModel: viewModel,
@@ -51,10 +55,8 @@ struct ContentView: View {
                         viewModel: viewModel,
                         showingUpdateConfirmation: $showingUpdateConfirmation
                     )
-                case .observability:
-                    RuntimeObservabilityPanel(viewModel: viewModel)
-                case .test:
-                    RuntimeTestPanel(viewModel: viewModel)
+                case .info:
+                    RuntimeInfoPanel(viewModel: viewModel)
                 case .advanced:
                     RuntimeAdvancedPanel(
                         viewModel: viewModel,
@@ -67,8 +69,8 @@ struct ContentView: View {
                         showingStopServicesConfirmation: $showingStopServicesConfirmation,
                         hoveredServiceLink: $hoveredServiceLink
                     )
-                case .info:
-                    RuntimeInfoPanel(viewModel: viewModel)
+                case .test:
+                    RuntimeTestPanel(viewModel: viewModel)
                 case .dangerZone:
                     RuntimeDangerZonePanel(
                         viewModel: viewModel,
@@ -76,8 +78,6 @@ struct ContentView: View {
                         showingUninstallConfirmation: $showingUninstallConfirmation,
                         showingCleanUninstallConfirmation: $showingCleanUninstallConfirmation
                     )
-                case .log:
-                    RuntimeLogPanel(viewModel: viewModel)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)

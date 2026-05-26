@@ -19,7 +19,7 @@ struct RuntimeStatusPanel: View {
                 Divider()
                 recorderSummarySection
                 Divider()
-                DisclosureGroup(AppConstants.Labels.runtimeDetails, isExpanded: $showingRuntimeDetails) {
+                RuntimeDisclosureSection(AppConstants.Labels.runtimeDetails, isExpanded: $showingRuntimeDetails) {
                     Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 10) {
                         statusRow(AppConstants.Labels.dataDirectory) {
                             linkButton(viewModel.settings.vitalFilesDirectory) {
@@ -28,9 +28,8 @@ struct RuntimeStatusPanel: View {
                             .disabled(!viewModel.capabilities.canOpenLocalFiles)
                         }
                     }
-                    .padding(.top, 8)
                 }
-                DisclosureGroup(AppConstants.Labels.recorderDetails, isExpanded: $showingRecorderDetails) {
+                RuntimeDisclosureSection(AppConstants.Labels.recorderDetails, isExpanded: $showingRecorderDetails) {
                     Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 10) {
                         statusRow(AppConstants.Labels.knownRecorders, recorderSummary.knownRecorders)
                         statusRow(AppConstants.Labels.knownBeds, recorderSummary.knownBeds)
@@ -41,19 +40,16 @@ struct RuntimeStatusPanel: View {
                             statusRow(AppConstants.Labels.recorderObservation, observedAt)
                         }
                     }
-                    .padding(.top, 8)
                 }
-                DisclosureGroup(AppConstants.Labels.resourceUsage, isExpanded: $showingResourceUsage) {
+                RuntimeDisclosureSection(AppConstants.Labels.resourceUsage, isExpanded: $showingResourceUsage) {
                     resourceUsageSection
-                        .padding(.top, 8)
                 }
-                DisclosureGroup(AppConstants.Labels.healthDetails, isExpanded: $showingHealthDetails) {
+                RuntimeDisclosureSection(AppConstants.Labels.healthDetails, isExpanded: $showingHealthDetails) {
                     Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 10) {
                         ForEach(healthItems) { item in
                             healthRow(item)
                         }
                     }
-                    .padding(.top, 8)
                 }
             }
             .padding(16)

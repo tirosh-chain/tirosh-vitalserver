@@ -51,16 +51,15 @@ struct RuntimeObservabilityPanel: View {
             if anomalyRows.isEmpty {
                 emptyObservation(AppConstants.StatusText.noRecorderAnomalies)
             } else {
-                DisclosureGroup(isExpanded: $showingRecorderAnomalies) {
+                RuntimeDisclosureSection(isExpanded: $showingRecorderAnomalies) {
+                    Text("\(anomalyRows.count) anomalies")
+                        .foregroundStyle(.secondary)
+                } content: {
                     VStack(alignment: .leading, spacing: 8) {
                         ForEach(Array(anomalyRows.enumerated()), id: \.offset) { _, anomaly in
                             anomalyRow(anomaly)
                         }
                     }
-                    .padding(.top, 8)
-                } label: {
-                    Text("\(anomalyRows.count) anomalies")
-                        .foregroundStyle(.secondary)
                 }
             }
         }
@@ -68,19 +67,22 @@ struct RuntimeObservabilityPanel: View {
 
     private var runtimeEventsSection: some View {
         observationSection(AppConstants.Labels.runtimeEvents) {
-            DisclosureGroup(isExpanded: $showingRuntimeEvents) {
-                LazyVStack(alignment: .leading, spacing: 8) {
-                    ForEach(eventItems) { item in
-                        eventRow(item)
-                    }
-                    if viewModel.runtimeEvents.events.isEmpty {
-                        emptyObservation(AppConstants.StatusText.noRuntimeEvents)
-                    }
-                }
-                .padding(.top, 8)
-            } label: {
+            RuntimeDisclosureSection(isExpanded: $showingRuntimeEvents) {
                 Text("\(viewModel.runtimeEvents.events.count) events")
                     .foregroundStyle(.secondary)
+            } content: {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 8) {
+                        ForEach(eventItems) { item in
+                            eventRow(item)
+                        }
+                        if viewModel.runtimeEvents.events.isEmpty {
+                            emptyObservation(AppConstants.StatusText.noRuntimeEvents)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(maxHeight: 260)
             }
         }
     }
