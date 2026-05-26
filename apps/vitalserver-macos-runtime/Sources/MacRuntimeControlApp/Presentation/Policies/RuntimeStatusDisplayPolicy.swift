@@ -39,13 +39,19 @@ struct RuntimeStatusDisplayPolicy {
     struct RecorderSummary: Equatable {
         let activeConnections: String
         let knownRecorders: String
+        let onlineRecorders: String
+        let staleRecorders: String
+        let knownBeds: String
+        let anomalies: String
         let latestRecorder: String?
+        let observedAt: String?
     }
 
     private enum ComposeService: String {
         case vitalServer = "app"
         case networkAccess = "edge"
         case redis = "redis"
+        case vitalDBObserver = "vitaldb-observer"
         case redisUI = "redis-ui"
         case swaggerUI = "swagger-ui"
     }
@@ -138,6 +144,10 @@ struct RuntimeStatusDisplayPolicy {
                 value: composeValue(for: .redis, observation: observation, now: now)
             ),
             HealthItem(
+                label: AppConstants.Labels.vitalDBObserver,
+                value: composeValue(for: .vitalDBObserver, observation: observation, now: now)
+            ),
+            HealthItem(
                 label: AppConstants.Labels.watchdog,
                 value: StatusValue(
                     text: AppConstants.StatusText.launchdState(loaded: status.watchdogServiceLoaded),
@@ -171,6 +181,12 @@ struct RuntimeStatusDisplayPolicy {
                 value: AppConstants.StatusText.launchdState(loaded: status.guestLogSyncServiceLoaded)
             ),
             serviceStateItem(
+                AppConstants.Labels.sleepPreventionService,
+                isHealthy: status.sleepPreventionServiceLoaded == true,
+                value: status.sleepPreventionServiceLoaded.map(AppConstants.StatusText.launchdState(loaded:))
+                    ?? AppConstants.StatusText.unavailable
+            ),
+            serviceStateItem(
                 AppConstants.Labels.watchdogService,
                 isHealthy: status.watchdogServiceLoaded,
                 value: AppConstants.StatusText.launchdState(loaded: status.watchdogServiceLoaded)
@@ -187,6 +203,12 @@ struct RuntimeStatusDisplayPolicy {
                 uptimeText: uptimeText(for: .networkAccess, observation: observation, now: now),
                 action: .openVitalServer
             ),
+            composeServiceItem(
+                AppConstants.Labels.vitalDBObserver,
+                service: .vitalDBObserver,
+                observation: observation,
+                now: now
+            ),
             httpServiceItem(
                 GeneratedRelease.redisUIName,
                 httpStatus: status.redisUIHTTP,
@@ -202,15 +224,27 @@ struct RuntimeStatusDisplayPolicy {
         ]
     }
 
-    func recorderSummary(observation: RuntimeContainerObservation?) -> RecorderSummary {
-        let recorders = observation?.auditProxyStatus?.recorders ?? []
-        let latest = recorders
+    func recorderSummary(status: RuntimeStatus, observation: RuntimeContainerObservation?) -> RecorderSummary {
+        let connectionRecorders = observation?.auditProxyStatus?.recorders ?? []
+        let observedRecorders = status.vitalDBObservation?.recorders ?? []
+        let latestObserved = observedRecorders
             .sorted { ($0.lastSeenAt ?? "") > ($1.lastSeenAt ?? "") }
             .first
+        let latestConnected = connectionRecorders
+            .sorted { ($0.lastSeenAt ?? "") > ($1.lastSeenAt ?? "") }
+            .first
+        let onlineCount = observedRecorders.filter(\.online).count
+        let staleCount = observedRecorders.filter(\.stale).count
         return RecorderSummary(
             activeConnections: "\(observation?.auditProxyStatus?.activeRecorderConnections ?? 0)",
-            knownRecorders: "\(recorders.count)",
-            latestRecorder: latest.map { "\($0.vrcode) \($0.selectedIp ?? AppConstants.StatusText.unknown)" }
+            knownRecorders: "\(observedRecorders.isEmpty ? connectionRecorders.count : observedRecorders.count)",
+            onlineRecorders: "\(onlineCount)",
+            staleRecorders: "\(staleCount)",
+            knownBeds: "\(status.vitalDBObservation?.beds.count ?? 0)",
+            anomalies: "\(status.vitalDBObservation?.anomalies.count ?? 0)",
+            latestRecorder: latestObserved.map { "\($0.vrcode) \($0.ip ?? AppConstants.StatusText.unknown)" }
+                ?? latestConnected.map { "\($0.vrcode) \($0.selectedIp ?? AppConstants.StatusText.unknown)" },
+            observedAt: status.vitalDBObservation?.observedAt
         )
     }
 
@@ -238,6 +272,20 @@ struct RuntimeStatusDisplayPolicy {
             value: httpValue(httpStatus, uptimeText: uptimeText),
             httpStatus: httpStatus,
             action: action
+        )
+    }
+
+    private func composeServiceItem(
+        _ label: String,
+        service: ComposeService,
+        observation: RuntimeContainerObservation?,
+        now: Date
+    ) -> ServiceHealthItem {
+        ServiceHealthItem(
+            label: label,
+            value: composeValue(for: service, observation: observation, now: now),
+            httpStatus: nil,
+            action: nil
         )
     }
 

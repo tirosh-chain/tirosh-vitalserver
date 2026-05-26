@@ -33,10 +33,19 @@ struct RuntimeEventDisplayPolicy {
     }
 
     private func detailText(for event: RuntimeEventDocument) -> String? {
-        guard let observation = event.containerObservation?.auditProxyStatus else {
-            return nil
+        var details: [String] = []
+        if let observation = event.containerObservation?.auditProxyStatus {
+            details.append("\(AppConstants.Labels.activeRecorderConnections): \(observation.activeRecorderConnections)")
+            details.append("\(AppConstants.Labels.knownRecorders): \(observation.recorders.count)")
         }
-        return "\(AppConstants.Labels.activeRecorderConnections): \(observation.activeRecorderConnections), \(AppConstants.Labels.knownRecorders): \(observation.recorders.count)"
+        if let observation = event.vitalDBObservation {
+            let onlineCount = observation.recorders.filter(\.online).count
+            let staleCount = observation.recorders.filter(\.stale).count
+            details.append("\(AppConstants.Labels.onlineRecorders): \(onlineCount)")
+            details.append("\(AppConstants.Labels.staleRecorders): \(staleCount)")
+            details.append("\(AppConstants.Labels.recorderAnomalies): \(observation.anomalies.count)")
+        }
+        return details.isEmpty ? nil : details.joined(separator: ", ")
     }
 
     private func severity(for status: RuntimeStatusLevel) -> Severity {

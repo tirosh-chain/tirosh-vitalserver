@@ -41,6 +41,57 @@
         }
       }
     },
+    "/runtime/overview": {
+      "get": {
+        "operationId": "getRuntimeOverview",
+        "summary": "Read PWA runtime overview",
+        "description": "Aggregated read model for PWA status screens. It combines the same status, settings, release, install, and Vital Recorder observation data used by the native status UI.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "readOnlyLocal",
+        "x-runtime-control-access": "browserSafe",
+        "responses": {
+          "200": {
+            "description": "PWA runtime overview read model",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeControlOverview"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/runtime/overview/stream": {
+      "get": {
+        "operationId": "streamRuntimeOverview",
+        "summary": "Subscribe to PWA runtime overview updates",
+        "description": "Long-lived SSE stream for the aggregated PWA runtime overview. The local router emits a runtime-overview frame when the RuntimeControlOverview payload changes and heartbeat comments while idle.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "readOnlyLocal",
+        "x-runtime-control-access": "browserSafe",
+        "responses": {
+          "200": {
+            "description": "PWA runtime overview SSE stream.",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string",
+                  "description": "Long-lived SSE frames with id runtime-overview, event runtime-overview, and data as a JSON-encoded RuntimeControlOverview."
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
     "/runtime/status": {
       "get": {
         "operationId": "getRuntimeStatus",
@@ -870,6 +921,72 @@
           }
         }
       }
+    },
+    "/vitaldb/recorders": {
+      "get": {
+        "operationId": "getVitalDBRecorders",
+        "summary": "Read Vital Recorder history by vrcode",
+        "description": "Aggregated VRecorder history derived from stored VitalDB observation snapshots. vrcode is the recorder identity key.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "readOnlyLocal",
+        "x-runtime-control-access": "browserSafe",
+        "responses": {
+          "200": {
+            "description": "Vital Recorder history",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeVitalRecorderHistory"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/vitaldb/recorders/{vrcode}": {
+      "get": {
+        "operationId": "getVitalDBRecorder",
+        "summary": "Read one Vital Recorder by vrcode",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "readOnlyLocal",
+        "x-runtime-control-access": "browserSafe",
+        "parameters": [
+          {
+            "name": "vrcode",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Vital Recorder record, or null when no recorder has been observed for the requested vrcode.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/RuntimeVitalRecorderRecord"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -929,6 +1046,7 @@
           "vmServiceLoaded": true,
           "proxyServiceLoaded": true,
           "guestLogSyncServiceLoaded": true,
+          "sleepPreventionServiceLoaded": true,
           "watchdogServiceLoaded": true,
           "runtimeState": "healthy",
           "statusMessage": "ready",
@@ -946,6 +1064,228 @@
       }
     },
     "schemas": {
+      "RuntimeControlOverview": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Aggregated PWA read model aligned with the native runtime status UI.",
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/RuntimeStatus"
+          },
+          "settings": {
+            "$ref": "#/components/schemas/RuntimeSettings"
+          },
+          "release": {
+            "$ref": "#/components/schemas/RuntimeReleaseInfo"
+          },
+          "install": {
+            "$ref": "#/components/schemas/RuntimeInstallInfo"
+          },
+          "vitalDBObservation": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/VitalDBObservationDocument"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "vitalRecorder": {
+            "$ref": "#/components/schemas/RuntimeVitalRecorderSummary"
+          }
+        }
+      },
+      "RuntimeVitalRecorderSummary": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "PWA-friendly Vital Recorder summary derived from VitalDB observation first, then audit-proxy recorder connections as fallback.",
+        "properties": {
+          "source": {
+            "$ref": "#/components/schemas/RuntimeVitalRecorderSummarySource"
+          },
+          "activeConnections": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "knownRecorders": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "onlineRecorders": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "staleRecorders": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "knownBeds": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "recorderAnomalies": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "observedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "latestRecorder": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RuntimeVitalRecorderReference"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "RuntimeVitalRecorderReference": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "vrcode": {
+            "type": "string"
+          },
+          "ip": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastSeenAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "$ref": "#/components/schemas/RuntimeVitalRecorderSummarySource"
+          }
+        }
+      },
+      "RuntimeVitalRecorderSummarySource": {
+        "type": "string",
+        "enum": [
+          "vitalDBObservation",
+          "auditProxy",
+          "unavailable"
+        ]
+      },
+      "RuntimeVitalRecorderHistory": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Aggregated history of VRecorders keyed by vrcode.",
+        "properties": {
+          "updatedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "recorders": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeVitalRecorderRecord"
+            }
+          }
+        }
+      },
+      "RuntimeVitalRecorderRecord": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "vrcode": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RuntimeVitalRecorderStatus"
+          },
+          "lastIP": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "bedID": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "bedName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "patientConnected": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "firstSeenAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastSeenAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "observationCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "currentAnomalyCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "latestAnomalySeverity": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/VitalDBAnomalySeverity"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "RuntimeVitalRecorderStatus": {
+        "type": "string",
+        "enum": [
+          "online",
+          "stale",
+          "offline",
+          "unknown"
+        ]
+      },
+      "VitalDBAnomalySeverity": {
+        "type": "string",
+        "enum": [
+          "info",
+          "warning",
+          "critical"
+        ]
+      },
       "RuntimeControlCapabilities": {
         "type": "object",
         "additionalProperties": false,
@@ -1004,6 +1344,13 @@
           "guestLogSyncServiceLoaded": {
             "type": "boolean",
             "description": "Whether the host guest-log-sync launchd service is loaded. This service keeps guest/container logs copied into the local logs directory."
+          },
+          "sleepPreventionServiceLoaded": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Whether the host sleep-prevention launchd service is loaded. When enabled, it prevents idle system sleep so VRecorder TCP streams, the host proxy, and the VM stay online."
           },
           "watchdogServiceLoaded": {
             "type": "boolean"

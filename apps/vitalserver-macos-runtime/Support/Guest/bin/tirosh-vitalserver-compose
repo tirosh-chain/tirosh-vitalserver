@@ -61,7 +61,7 @@ wait_for_app() {
 start_ordered() {
   compose up -d redis
   wait_for_redis
-  compose up -d app audit-proxy redis-ui swagger-ui
+  compose up -d app audit-proxy vitaldb-observer redis-ui swagger-ui
   wait_for_app
   compose up -d edge
 }

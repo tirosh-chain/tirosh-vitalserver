@@ -2,9 +2,10 @@ import Foundation
 
 enum RuntimeSection: CaseIterable, Identifiable {
     case status
+    case recorders
     case settings
     case update
-    case events
+    case observability
     case test
     case log
     case info
@@ -23,12 +24,14 @@ enum RuntimeSection: CaseIterable, Identifiable {
         switch self {
         case .status:
             return AppConstants.Labels.sectionStatus
+        case .recorders:
+            return AppConstants.Labels.sectionRecorders
         case .settings:
             return AppConstants.Labels.sectionSettings
         case .update:
             return AppConstants.Labels.sectionUpdate
-        case .events:
-            return AppConstants.Labels.sectionEvents
+        case .observability:
+            return AppConstants.Labels.sectionObservability
         case .test:
             return AppConstants.Labels.sectionTest
         case .log:

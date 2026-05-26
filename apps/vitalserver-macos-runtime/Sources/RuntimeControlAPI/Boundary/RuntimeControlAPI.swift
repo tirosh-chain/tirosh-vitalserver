@@ -43,12 +43,16 @@ public struct RuntimeControlAPIRoute: Codable, Equatable, Sendable {
 
 public enum RuntimeControlAPIEndpoint: String, CaseIterable, Codable, Equatable, Sendable {
     case capabilities
+    case overview
+    case overviewStream
     case status
     case statusStream
     case events
     case eventStream
     case vitalDBObservation
     case vitalDBObservationStream
+    case vitalDBRecorders
+    case vitalDBRecorder
     case health
     case settings
     case applySettings
@@ -76,6 +80,10 @@ public enum RuntimeControlAPIEndpoint: String, CaseIterable, Codable, Equatable,
         switch self {
         case .capabilities:
             return .init(method: .get, path: "/runtime/capabilities", scope: .runtimeControl)
+        case .overview:
+            return .init(method: .get, path: "/runtime/overview", scope: .runtimeControl)
+        case .overviewStream:
+            return .init(method: .get, path: "/runtime/overview/stream", scope: .runtimeControl)
         case .status:
             return .init(method: .get, path: "/runtime/status", scope: .runtimeControl)
         case .statusStream:
@@ -88,6 +96,10 @@ public enum RuntimeControlAPIEndpoint: String, CaseIterable, Codable, Equatable,
             return .init(method: .get, path: "/vitaldb/observations/latest", scope: .runtimeControl)
         case .vitalDBObservationStream:
             return .init(method: .get, path: "/vitaldb/observations/stream", scope: .runtimeControl)
+        case .vitalDBRecorders:
+            return .init(method: .get, path: "/vitaldb/recorders", scope: .runtimeControl)
+        case .vitalDBRecorder:
+            return .init(method: .get, path: "/vitaldb/recorders/{vrcode}", scope: .runtimeControl)
         case .health:
             return .init(method: .post, path: "/runtime/health", scope: .runtimeControl)
         case .settings:
@@ -140,12 +152,16 @@ public extension RuntimeControlAPIEndpoint {
     var clientAccess: RuntimeControlAPIClientAccess {
         switch self {
         case .capabilities,
+             .overview,
+             .overviewStream,
              .status,
              .statusStream,
              .events,
              .eventStream,
              .vitalDBObservation,
              .vitalDBObservationStream,
+             .vitalDBRecorders,
+             .vitalDBRecorder,
              .health,
              .settings,
              .release,
@@ -176,13 +192,26 @@ public extension RuntimeControlAPIEndpoint {
 
     static func matching(method: RuntimeControlHTTPMethod, path: String) -> RuntimeControlAPIEndpoint? {
         allCases.first { endpoint in
-            endpoint.route.method == method && endpoint.route.path == normalizedPath(path)
+            endpoint.route.method == method && endpoint.matches(path: normalizedPath(path))
         }
     }
 
     static func matching(path: String) -> RuntimeControlAPIEndpoint? {
         allCases.first { endpoint in
-            endpoint.route.path == normalizedPath(path)
+            endpoint.matches(path: normalizedPath(path))
+        }
+    }
+
+    private func matches(path: String) -> Bool {
+        switch self {
+        case .vitalDBRecorder:
+            let components = path.split(separator: "/", omittingEmptySubsequences: true)
+            return components.count == 3
+                && components[0] == "vitaldb"
+                && components[1] == "recorders"
+                && !components[2].isEmpty
+        default:
+            return route.path == path
         }
     }
 
@@ -191,6 +220,10 @@ public extension RuntimeControlAPIEndpoint {
             return path
         }
         return String(path[..<queryIndex])
+    }
+
+    static func normalizedPathForRequest(_ path: String) -> String {
+        normalizedPath(path)
     }
 }
 

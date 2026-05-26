@@ -200,6 +200,30 @@ public struct SQLiteRuntimeObservabilityStore {
         }
     }
 
+    public func vitalDBObservations(limit: Int = 1000) -> [VitalDBObservationDocument] {
+        guard limit > 0 else {
+            return []
+        }
+        do {
+            try initialize()
+            return try withDatabase { db in
+                let observations = try queryVitalDBObservations(
+                    db,
+                    sql: """
+                    SELECT payload_json
+                    FROM vitaldb_observation_snapshots
+                    ORDER BY observed_at DESC
+                    LIMIT ?
+                    """,
+                    bindings: [.int(limit)]
+                )
+                return Array(observations.reversed())
+            }
+        } catch {
+            return []
+        }
+    }
+
     private func nextCursor(for events: [RuntimeEventDocument], hasMore: Bool) -> RuntimeEventCursor? {
         guard hasMore, let first = events.first else {
             return nil

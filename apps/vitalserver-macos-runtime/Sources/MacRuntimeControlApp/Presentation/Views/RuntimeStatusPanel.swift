@@ -58,8 +58,15 @@ struct RuntimeStatusPanel: View {
             Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 10) {
                 statusRow(AppConstants.Labels.activeRecorderConnections, recorderSummary.activeConnections)
                 statusRow(AppConstants.Labels.knownRecorders, recorderSummary.knownRecorders)
+                statusRow(AppConstants.Labels.onlineRecorders, recorderSummary.onlineRecorders)
+                statusRow(AppConstants.Labels.staleRecorders, recorderSummary.staleRecorders)
+                statusRow(AppConstants.Labels.knownBeds, recorderSummary.knownBeds)
+                statusRow(AppConstants.Labels.recorderAnomalies, recorderSummary.anomalies)
                 if let latestRecorder = recorderSummary.latestRecorder {
                     statusRow(AppConstants.Labels.latestRecorder, latestRecorder)
+                }
+                if let observedAt = recorderSummary.observedAt {
+                    statusRow(AppConstants.Labels.recorderObservation, observedAt)
                 }
             }
         }
@@ -119,7 +126,7 @@ struct RuntimeStatusPanel: View {
     }
 
     private var recorderSummary: RuntimeStatusDisplayPolicy.RecorderSummary {
-        displayPolicy.recorderSummary(observation: viewModel.containerObservation)
+        displayPolicy.recorderSummary(status: viewModel.status, observation: viewModel.containerObservation)
     }
 
     private var vitalServerAvailability: RuntimeStatusDisplayPolicy.StatusValue {

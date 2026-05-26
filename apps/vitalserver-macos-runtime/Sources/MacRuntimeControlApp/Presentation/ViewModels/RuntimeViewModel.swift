@@ -25,6 +25,7 @@ final class RuntimeViewModel: ObservableObject {
     @Published var releaseInfo = RuntimeReleaseInfo.generated
     @Published var installationInfo = RuntimeInstallInfo()
     @Published var runtimeEvents = RuntimeEventHistory(events: [])
+    @Published var vitalRecorders = RuntimeVitalRecorderHistory()
     @Published var containerObservation: RuntimeContainerObservation?
 
     let controlClient: any RuntimeControlClient
@@ -78,6 +79,7 @@ final class RuntimeViewModel: ObservableObject {
         await refreshReleaseInfo()
         refreshBackupList()
         refreshRuntimeEvents()
+        refreshVitalRecorders()
         if let displayMessage = presentationFormatter.statusDisplayMessage(status) {
             message = displayMessage
         }
@@ -87,6 +89,7 @@ final class RuntimeViewModel: ObservableObject {
     func refreshHealthStatus() async {
         status = await controlClient.loadHealthStatus(settings: settings)
         refreshRuntimeEvents()
+        refreshVitalRecorders()
         if let displayMessage = presentationFormatter.statusDisplayMessage(status) {
             message = displayMessage
         }
@@ -99,6 +102,7 @@ final class RuntimeViewModel: ObservableObject {
 
         status = await controlClient.loadHealthStatus(settings: settings)
         refreshRuntimeEvents()
+        refreshVitalRecorders()
         if let displayMessage = presentationFormatter.statusDisplayMessage(status) {
             message = "\(AppConstants.StatusText.healthCheckCompleted)\n\n\(displayMessage)"
         } else {
@@ -111,6 +115,10 @@ final class RuntimeViewModel: ObservableObject {
         runtimeEvents = controlClient.loadRuntimeEvents(limit: limit)
         containerObservation = status.containerObservation
             ?? runtimeEvents.events.first { $0.containerObservation != nil }?.containerObservation
+    }
+
+    func refreshVitalRecorders() {
+        vitalRecorders = controlClient.loadVitalDBRecorders()
     }
 
     func uninstallRuntime(clean: Bool = false) async {

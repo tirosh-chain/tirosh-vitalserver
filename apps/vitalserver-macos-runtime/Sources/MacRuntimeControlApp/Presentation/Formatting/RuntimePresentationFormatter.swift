@@ -35,7 +35,7 @@ struct RuntimePresentationFormatter {
             "Vital files directory: \(settings.vitalFilesDirectory)",
             "Redis backup retention: \(settings.redisBackupRetentionCount) archives",
             "Automatic recovery: \(settings.autoRecoveryEnabled ? AppConstants.Values.boolTrue : AppConstants.Values.boolFalse)",
-            "Prevent Mac sleep: \(settings.preventSystemSleep ? AppConstants.Values.boolTrue : AppConstants.Values.boolFalse)",
+            "\(AppConstants.Labels.preventSystemSleep): \(settings.preventSystemSleep ? AppConstants.Values.boolTrue : AppConstants.Values.boolFalse)",
             "Restart services: \(settings.restartAfterSave ? AppConstants.Values.boolTrue : AppConstants.Values.boolFalse)",
         ].joined(separator: "\n")
     }

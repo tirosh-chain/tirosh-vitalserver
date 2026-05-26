@@ -232,6 +232,10 @@ public enum RuntimeControlDevConsoleDocument {
         <div id="statusMetrics"></div>
       </section>
       <section>
+        <h2>PWA Overview</h2>
+        <div id="overviewMetrics"></div>
+      </section>
+      <section>
         <h2>Runtime Info</h2>
         <div id="installMetrics"></div>
       </section>
@@ -270,8 +274,23 @@ public enum RuntimeControlDevConsoleDocument {
           <h2>Release</h2>
           <div id="releaseMetrics"></div>
         </section>
+        <section>
+          <h2>VitalDB Observation</h2>
+          <div id="vitalDBMetrics"></div>
+        </section>
+        <section>
+          <h2>Vital Recorders</h2>
+          <div id="recorderMetrics"></div>
+        </section>
       </div>
       <div class="grid">
+      <section>
+        <div class="stream-head">
+          <h2>Overview Stream</h2>
+          <span class="stream-state"><span id="overviewDot" class="status-dot"></span><span id="overviewState">closed</span></span>
+        </div>
+        <pre id="overviewStream"></pre>
+      </section>
       <section>
         <div class="stream-head">
           <h2>Status Stream</h2>
@@ -285,6 +304,13 @@ public enum RuntimeControlDevConsoleDocument {
           <span class="stream-state"><span id="eventDot" class="status-dot"></span><span id="eventState">closed</span></span>
         </div>
         <pre id="eventStream"></pre>
+      </section>
+      <section>
+        <div class="stream-head">
+          <h2>VitalDB Stream</h2>
+          <span class="stream-state"><span id="vitalDBDot" class="status-dot"></span><span id="vitalDBState">closed</span></span>
+        </div>
+        <pre id="vitalDBStream"></pre>
       </section>
       <section>
         <div class="stream-head">
@@ -321,22 +347,53 @@ public enum RuntimeControlDevConsoleDocument {
     }
 
     async function refreshStatus() {
-      const [status, settings, install, release, backups, redisBackups] = await Promise.all([
+      const [overview, status, settings, install, release, vitalDBObservation, vitalRecorders, backups, redisBackups] = await Promise.all([
+        getJSON("/runtime/overview"),
         getJSON("/runtime/status"),
         getJSON("/runtime/settings"),
         getJSON("/runtime/install"),
         getJSON("/runtime/release"),
+        getJSON("/vitaldb/observations/latest"),
+        getJSON("/vitaldb/recorders"),
         getJSON("/host/backups"),
         getJSON("/host/backups/redis")
       ]);
       latestStatus = status;
       latestSettings = settings || {};
+      renderOverview(overview);
       renderStatus(latestStatus, latestSettings);
       renderInstall(install);
       renderSettings(settings);
       renderRelease(release);
+      renderVitalDBObservation(vitalDBObservation || status.vitalDBObservation);
+      renderVitalRecorders(vitalRecorders);
       renderBackups(backups, redisBackups);
       append("statusStream", "snapshot", status);
+    }
+
+    function renderOverview(overview) {
+      if (!overview) {
+        $("overviewMetrics").innerHTML = emptyText("No overview");
+        return;
+      }
+      const recorder = overview.vitalRecorder || {};
+      const latest = recorder.latestRecorder;
+      const values = [
+        ["runtime", overview.status && overview.status.runtimeState],
+        ["VitalServer", overview.status && serviceText(overview.status.hostProxyHTTP)],
+        ["runtime version", overview.status && overview.status.runtimeVersion],
+        ["proxy port", overview.settings && overview.settings.proxyPort],
+        ["recorder source", recorder.source],
+        ["active connections", recorder.activeConnections],
+        ["known recorders", recorder.knownRecorders],
+        ["online recorders", recorder.onlineRecorders],
+        ["stale recorders", recorder.staleRecorders],
+        ["known beds", recorder.knownBeds],
+        ["recorder anomalies", recorder.recorderAnomalies],
+        ["observation updated", formatDate(recorder.observedAt)],
+        ["latest recorder", latest ? `${latest.vrcode || "-"} ${latest.ip || "-"}` : null]
+      ];
+      $("overviewMetrics").innerHTML = metricsHTML(values);
     }
 
     function renderStatus(status, settings = {}) {
@@ -361,6 +418,7 @@ public enum RuntimeControlDevConsoleDocument {
         ["Redis UI HTTP", status.redisUIHTTP],
         ["Swagger HTTP", status.swaggerUIHTTP],
         ["guest log sync service", status.guestLogSyncServiceLoaded ? "running" : "stopped"],
+        ["sleep prevention service", status.sleepPreventionServiceLoaded === true ? "running" : status.sleepPreventionServiceLoaded === false ? "stopped" : "unavailable"],
         ["CPU", formatPercent(status.cpuUsagePercent)],
         ["memory", formatUsage(status.memory)],
         ["VM disk", formatUsage(status.systemDisk)],
@@ -420,6 +478,51 @@ public enum RuntimeControlDevConsoleDocument {
       $("backupMetrics").innerHTML = `${metricsHTML(values)}<div class="subtle">Rollback</div>${rollbackList}<div class="subtle">Redis</div>${redisList}`;
     }
 
+    function renderVitalDBObservation(observation) {
+      if (!observation) {
+        $("vitalDBMetrics").innerHTML = emptyText("No VitalDB observation");
+        return;
+      }
+      const recorders = observation.recorders || [];
+      const anomalies = observation.anomalies || [];
+      const values = [
+        ["ready", observation.ready],
+        ["observed", formatDate(observation.observedAt)],
+        ["recorders", recorders.length],
+        ["online", recorders.filter((recorder) => recorder.online === true).length],
+        ["stale", recorders.filter((recorder) => recorder.stale === true).length],
+        ["beds", (observation.beds || []).length],
+        ["anomalies", anomalies.length]
+      ];
+      const recorderList = recorders.slice(0, 8).map((recorder) => (
+        `<div class="list-item"><strong>${escapeHtml(recorder.vrcode || "-")} · ${escapeHtml(recorder.online ? "online" : recorder.stale ? "stale" : "offline")}</strong><span>${escapeHtml(recorder.ip || "-")} · ${escapeHtml(formatDate(recorder.lastSeenAt))}</span></div>`
+      )).join("");
+      const anomalyList = anomalies.slice(0, 5).map((anomaly) => (
+        `<div class="list-item"><strong>${escapeHtml(anomaly.severity || "-")} · ${escapeHtml(anomaly.kind || "-")}</strong><span>${escapeHtml(anomaly.subject || "-")} · ${escapeHtml(anomaly.message || "-")}</span></div>`
+      )).join("");
+      $("vitalDBMetrics").innerHTML = `${metricsHTML(values)}<div class="subtle">Recorders</div><div class="list">${recorderList || emptyText("No recorders")}</div><div class="subtle">Anomalies</div><div class="list">${anomalyList || emptyText("No anomalies")}</div>`;
+    }
+
+    function renderVitalRecorders(history) {
+      if (!history) {
+        $("recorderMetrics").innerHTML = emptyText("No recorder history");
+        return;
+      }
+      const recorders = history.recorders || [];
+      const values = [
+        ["updated", formatDate(history.updatedAt)],
+        ["recorders", recorders.length],
+        ["online", recorders.filter((recorder) => recorder.status === "online").length],
+        ["stale", recorders.filter((recorder) => recorder.status === "stale").length],
+        ["offline", recorders.filter((recorder) => recorder.status === "offline").length],
+        ["anomalies", recorders.reduce((total, recorder) => total + (recorder.currentAnomalyCount || 0), 0)]
+      ];
+      const recorderList = recorders.slice(0, 12).map((recorder) => (
+        `<div class="list-item"><strong>${escapeHtml(recorder.vrcode || "-")} · ${escapeHtml(recorder.status || "-")}</strong><span>${escapeHtml(recorder.lastIP || "-")} · ${escapeHtml(recorder.bedName || recorder.bedID || "-")} · ${escapeHtml(formatDate(recorder.lastSeenAt))}</span></div>`
+      )).join("");
+      $("recorderMetrics").innerHTML = `${metricsHTML(values)}<div class="subtle">Recorder history</div><div class="list">${recorderList || emptyText("No recorders")}</div>`;
+    }
+
     function metricsHTML(values) {
       return values.map(([key, value]) => (
         `<div class="metric"><span>${escapeHtml(key)}</span><strong>${escapeHtml(displayValue(value))}</strong></div>`
@@ -440,8 +543,10 @@ public enum RuntimeControlDevConsoleDocument {
     }
 
     function connectAll() {
+      connectStream("overview", "/runtime/overview/stream", "overviewStream", "overviewState", "overviewDot");
       connectStream("status", "/runtime/status/stream", "statusStream", "statusState", "statusDot");
       connectStream("events", "/runtime/events/stream?limit=50", "eventStream", "eventState", "eventDot");
+      connectStream("vitaldb", "/vitaldb/observations/stream", "vitalDBStream", "vitalDBState", "vitalDBDot");
       connectStream("logs", `/host/logs/stream?source=${encodeURIComponent($("logSource").value)}&lineLimit=${encodeURIComponent($("lineLimit").value)}`, "logStream", "logState", "logDot");
     }
 
@@ -450,8 +555,10 @@ public enum RuntimeControlDevConsoleDocument {
         controller.abort();
       }
       streams.clear();
+      setState("overviewState", "overviewDot", "closed");
       setState("statusState", "statusDot", "closed");
       setState("eventState", "eventDot", "closed");
+      setState("vitalDBState", "vitalDBDot", "closed");
       setState("logState", "logDot", "closed");
     }
 
@@ -524,6 +631,21 @@ public enum RuntimeControlDevConsoleDocument {
         try {
           latestStatus = JSON.parse(parsed.data);
           renderStatus(latestStatus, latestSettings);
+        } catch (_) {}
+      }
+      if (outputId === "overviewStream" && parsed.data) {
+        try {
+          const overview = JSON.parse(parsed.data);
+          latestStatus = overview.status || latestStatus;
+          latestSettings = overview.settings || latestSettings;
+          renderOverview(overview);
+          renderStatus(latestStatus, latestSettings);
+          renderVitalDBObservation(overview.vitalDBObservation || (overview.status && overview.status.vitalDBObservation));
+        } catch (_) {}
+      }
+      if (outputId === "vitalDBStream" && parsed.data) {
+        try {
+          renderVitalDBObservation(JSON.parse(parsed.data));
         } catch (_) {}
       }
     }

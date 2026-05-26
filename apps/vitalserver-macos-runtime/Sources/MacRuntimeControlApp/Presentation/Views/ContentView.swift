@@ -33,6 +33,8 @@ struct ContentView: View {
                         viewModel: viewModel,
                         showingHealthDetails: $showingHealthDetails
                     )
+                case .recorders:
+                    RuntimeRecordersPanel(viewModel: viewModel)
                 case .settings:
                     RuntimeSettingsPanel(
                         viewModel: viewModel,
@@ -43,8 +45,8 @@ struct ContentView: View {
                         viewModel: viewModel,
                         showingUpdateConfirmation: $showingUpdateConfirmation
                     )
-                case .events:
-                    RuntimeEventsPanel(viewModel: viewModel)
+                case .observability:
+                    RuntimeObservabilityPanel(viewModel: viewModel)
                 case .test:
                     RuntimeTestPanel(viewModel: viewModel)
                 case .advanced:

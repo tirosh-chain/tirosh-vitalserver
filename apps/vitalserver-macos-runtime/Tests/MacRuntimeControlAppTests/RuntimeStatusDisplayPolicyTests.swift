@@ -12,6 +12,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             vmServiceLoaded: true,
             proxyServiceLoaded: true,
             guestLogSyncServiceLoaded: true,
+            sleepPreventionServiceLoaded: true,
             watchdogServiceLoaded: true,
             runtimeState: .healthy,
             guestHTTP: "200",
@@ -186,6 +187,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             vmServiceLoaded: true,
             proxyServiceLoaded: true,
             guestLogSyncServiceLoaded: true,
+            sleepPreventionServiceLoaded: true,
             watchdogServiceLoaded: true,
             guestHTTP: "200",
             hostProxyHTTP: "503",
@@ -212,6 +214,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         XCTAssertEqual(item(GeneratedRelease.hostProxyName, in: items)?.value.text, AppConstants.StatusText.waiting)
         XCTAssertEqual(item(GeneratedRelease.hostProxyName, in: items)?.httpStatus, "503")
         XCTAssertEqual(item(AppConstants.Labels.guestLogSyncService, in: items)?.value.text, AppConstants.StatusText.running)
+        XCTAssertEqual(item(AppConstants.Labels.sleepPreventionService, in: items)?.value.text, AppConstants.StatusText.running)
         XCTAssertEqual(item(GeneratedRelease.redisUIName, in: items)?.action, .openRedisUI)
         XCTAssertEqual(item(GeneratedRelease.swaggerUIName, in: items)?.action, .openSwagger)
     }
@@ -260,11 +263,50 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             containerLogsBytes: 1
         )
 
-        let summary = policy.recorderSummary(observation: observation)
+        let status = RuntimeStatus(vitalDBObservation: VitalDBObservationDocument(
+            observedAt: "2026-05-24T02:00:00Z",
+            ready: true,
+            recorderOnlineThresholdSeconds: 120,
+            recorders: [
+                VitalDBRecorderObservation(
+                    vrcode: "VR_OBSERVED",
+                    ip: "192.168.64.20",
+                    lastSeenAt: "2026-05-24T02:00:00Z",
+                    online: true
+                ),
+                VitalDBRecorderObservation(
+                    vrcode: "VR_STALE",
+                    ip: "192.168.64.21",
+                    lastSeenAt: "2026-05-24T00:00:00Z",
+                    online: false,
+                    stale: true
+                ),
+            ],
+            beds: [
+                VitalDBBedObservation(bedID: "bed-1", online: true),
+            ],
+            anomalies: [
+                VitalDBAnomalyObservation(
+                    id: "stale-recorder:VR_STALE",
+                    kind: .staleRecorder,
+                    severity: .warning,
+                    observedAt: "2026-05-24T02:00:00Z",
+                    subject: "VR_STALE",
+                    message: "recorder is stale"
+                ),
+            ]
+        ))
+
+        let summary = policy.recorderSummary(status: status, observation: observation)
 
         XCTAssertEqual(summary.activeConnections, "2")
         XCTAssertEqual(summary.knownRecorders, "2")
-        XCTAssertEqual(summary.latestRecorder, "VR_NEW 192.168.64.10")
+        XCTAssertEqual(summary.onlineRecorders, "1")
+        XCTAssertEqual(summary.staleRecorders, "1")
+        XCTAssertEqual(summary.knownBeds, "1")
+        XCTAssertEqual(summary.anomalies, "1")
+        XCTAssertEqual(summary.latestRecorder, "VR_OBSERVED 192.168.64.20")
+        XCTAssertEqual(summary.observedAt, "2026-05-24T02:00:00Z")
     }
 
     private func item(

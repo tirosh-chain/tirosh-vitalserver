@@ -5,9 +5,10 @@ final class RuntimeSectionTests: XCTestCase {
     func testStableRuntimeSectionsHideTestTab() {
         XCTAssertEqual(RuntimeSection.visibleSections(testEnabled: false).map(\.title), [
             AppConstants.Labels.sectionStatus,
+            AppConstants.Labels.sectionRecorders,
             AppConstants.Labels.sectionSettings,
             AppConstants.Labels.sectionUpdate,
-            AppConstants.Labels.sectionEvents,
+            AppConstants.Labels.sectionObservability,
             AppConstants.Labels.sectionLog,
             AppConstants.Labels.sectionInfo,
             AppConstants.Labels.sectionAdvanced,
@@ -15,12 +16,13 @@ final class RuntimeSectionTests: XCTestCase {
         ])
     }
 
-    func testTestkitRuntimeSectionsIncludeTestTabAfterEvents() {
+    func testTestkitRuntimeSectionsIncludeTestTabAfterObservability() {
         XCTAssertEqual(RuntimeSection.visibleSections(testEnabled: true).map(\.title), [
             AppConstants.Labels.sectionStatus,
+            AppConstants.Labels.sectionRecorders,
             AppConstants.Labels.sectionSettings,
             AppConstants.Labels.sectionUpdate,
-            AppConstants.Labels.sectionEvents,
+            AppConstants.Labels.sectionObservability,
             AppConstants.Labels.sectionTest,
             AppConstants.Labels.sectionLog,
             AppConstants.Labels.sectionInfo,

@@ -356,6 +356,10 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
         nil
     }
 
+    func loadVitalDBRecorders() -> RuntimeVitalRecorderHistory {
+        RuntimeVitalRecorderHistory()
+    }
+
     func loadBackups(latestBackupPath: String?) -> [RuntimeBackup] {
         loadBackupsCount += 1
         return []

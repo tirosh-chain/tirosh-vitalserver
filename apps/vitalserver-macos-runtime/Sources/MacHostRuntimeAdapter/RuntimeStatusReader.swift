@@ -11,6 +11,7 @@ protocol RuntimeStatusReading {
     func loadRuntimeEvents(limit: Int) -> RuntimeEventHistory
     func loadRuntimeEvents(query: RuntimeEventQuery) -> RuntimeEventHistory
     func loadVitalDBObservation() -> VitalDBObservationDocument?
+    func loadVitalDBRecorders() -> RuntimeVitalRecorderHistory
     func legacyCommandProgressLine() -> String?
 }
 
@@ -62,6 +63,7 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading {
             vmServiceLoaded: loaded(document?.vmService) ?? launchdLoaded(.vm),
             proxyServiceLoaded: loaded(document?.proxyService) ?? launchdLoaded(.proxy),
             guestLogSyncServiceLoaded: launchdLoaded(.guestLogSync),
+            sleepPreventionServiceLoaded: launchdLoaded(.sleepPrevention),
             watchdogServiceLoaded: loaded(document?.watchdogService) ?? launchdLoaded(.watchdog),
             runtimeState: document.map { RuntimeState(rawValue: $0.status.rawValue) },
             operation: document?.operation,
@@ -107,6 +109,12 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading {
         SQLiteRuntimeObservabilityStore(
             url: URL(fileURLWithPath: paths.runtimeObservabilityDB)
         ).latestVitalDBObservation()
+    }
+
+    func loadVitalDBRecorders() -> RuntimeVitalRecorderHistory {
+        RuntimeVitalRecorderHistory(observations: SQLiteRuntimeObservabilityStore(
+            url: URL(fileURLWithPath: paths.runtimeObservabilityDB)
+        ).vitalDBObservations())
     }
 
     func legacyCommandProgressLine() -> String? {

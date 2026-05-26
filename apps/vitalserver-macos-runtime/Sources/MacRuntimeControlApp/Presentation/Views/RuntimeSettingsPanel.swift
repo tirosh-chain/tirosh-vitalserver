@@ -132,6 +132,7 @@ struct RuntimeSettingsPanel: View {
             || viewModel.capabilities.canEditNetworkExposure
             || viewModel.capabilities.canOpenLocalFiles
             || viewModel.capabilities.canResetAdminPassword
+            || viewModel.capabilities.canControlRuntimeServices
     }
 
     private var applyActionRow: some View {

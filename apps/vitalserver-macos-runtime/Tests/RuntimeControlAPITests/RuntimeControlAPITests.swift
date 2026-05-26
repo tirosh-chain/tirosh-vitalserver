@@ -116,6 +116,7 @@ final class RuntimeControlAPITests: XCTestCase {
         let operations = try openAPIOperations()
 
         for key in [
+            "GET /runtime/overview/stream",
             "GET /runtime/status/stream",
             "GET /runtime/events/stream",
             "GET /vitaldb/observations/stream",
@@ -206,6 +207,22 @@ final class RuntimeControlAPITests: XCTestCase {
     }
 
     @MainActor
+    func testRuntimeOverviewStreamReturnsPWAReadModelSSEFrame() async throws {
+        let router = RuntimeControlAPIRouter(handler: StubRuntimeControlAPIReadHandler())
+
+        let stream = try await streamResponse(from: router.routeResult(.init(method: .get, path: "/runtime/overview/stream")))
+        let event = try await firstStreamEvent(stream)
+        let text = try XCTUnwrap(String(data: RuntimeControlServerSentEventCodec.encode(event), encoding: .utf8))
+
+        XCTAssertEqual(stream.status, .ok)
+        XCTAssertEqual(stream.headers["Content-Type"], "text/event-stream")
+        XCTAssertTrue(text.contains("id: runtime-overview"))
+        XCTAssertTrue(text.contains("event: runtime-overview"))
+        XCTAssertTrue(text.contains("\"vitalRecorder\""))
+        XCTAssertTrue(text.contains("\"knownRecorders\":1"))
+    }
+
+    @MainActor
     func testHostLogStreamReturnsSSEFrameFromLogText() async throws {
         let router = RuntimeControlAPIRouter(handler: StubRuntimeControlAPIReadHandler())
 
@@ -227,6 +244,10 @@ final class RuntimeControlAPITests: XCTestCase {
         let capabilities = try await decode(
             RuntimeControlCapabilities.self,
             from: router.route(.init(method: .get, path: "/runtime/capabilities"))
+        )
+        let overview = try await decode(
+            RuntimeControlOverview.self,
+            from: router.route(.init(method: .get, path: "/runtime/overview"))
         )
         let settings = try await decode(
             RuntimeSettings.self,
@@ -252,14 +273,28 @@ final class RuntimeControlAPITests: XCTestCase {
             VitalDBObservationDocument?.self,
             from: router.route(.init(method: .get, path: "/vitaldb/observations/latest"))
         )
+        let vitalRecorders = try await decode(
+            RuntimeVitalRecorderHistory.self,
+            from: router.route(.init(method: .get, path: "/vitaldb/recorders"))
+        )
+        let vitalRecorder = try await decode(
+            RuntimeVitalRecorderRecord?.self,
+            from: router.route(.init(method: .get, path: "/vitaldb/recorders/VR_A"))
+        )
 
         XCTAssertTrue(capabilities.canControlRuntimeServices)
+        XCTAssertEqual(overview.status.runtimeVersion, "1.2.3")
+        XCTAssertEqual(overview.vitalRecorder.knownRecorders, 1)
+        XCTAssertEqual(overview.vitalRecorder.onlineRecorders, 1)
+        XCTAssertEqual(overview.vitalRecorder.latestRecorder?.vrcode, "VR_A")
         XCTAssertEqual(settings.cpuCount, 4)
         XCTAssertEqual(health.statusMessage, "healthy")
         XCTAssertEqual(release.helperVersion, "0.1.0")
         XCTAssertEqual(installInfo.runtimeHomePath, "/runtime/home")
         XCTAssertEqual(events.events.map(\.id), ["event-1"])
         XCTAssertEqual(vitalDBObservation?.recorders.map(\.vrcode), ["VR_A"])
+        XCTAssertEqual(vitalRecorders.recorders.map(\.vrcode), ["VR_A"])
+        XCTAssertEqual(vitalRecorder?.vrcode, "VR_A")
     }
 
     @MainActor
@@ -542,8 +577,11 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertEqual(response.status, .ok)
         XCTAssertEqual(response.headers["Content-Type"], "text/html; charset=utf-8")
         XCTAssertTrue(html.contains("Runtime Control API Console"))
+        XCTAssertTrue(html.contains("/runtime/overview"))
+        XCTAssertTrue(html.contains("/runtime/overview/stream"))
         XCTAssertTrue(html.contains("/runtime/status/stream"))
         XCTAssertTrue(html.contains("/runtime/events/stream"))
+        XCTAssertTrue(html.contains("/vitaldb/recorders"))
         XCTAssertTrue(html.contains("/host/logs/stream"))
         XCTAssertTrue(html.contains(#"<option value="containers" selected>containers</option>"#))
     }
@@ -796,6 +834,10 @@ private struct StubRuntimeControlAPIReadHandler: RuntimeControlAPIReadHandler {
         )
     }
 
+    func loadVitalDBRecorders() async throws -> RuntimeVitalRecorderHistory {
+        RuntimeVitalRecorderHistory(observations: [try await loadVitalDBObservation()].compactMap { $0 })
+    }
+
     func loadHealthStatus() async throws -> RuntimeStatus {
         RuntimeStatus(runtimeInstalled: true, runtimeState: .healthy, statusMessage: "healthy")
     }
@@ -936,6 +978,10 @@ private final class FakeRuntimeControlClient: RuntimeControlClient, RuntimeHostC
             ready: true,
             recorderOnlineThresholdSeconds: 120
         )
+    }
+
+    func loadVitalDBRecorders() -> RuntimeVitalRecorderHistory {
+        RuntimeVitalRecorderHistory(observations: [loadVitalDBObservation()].compactMap { $0 })
     }
 
     func loadBackups(latestBackupPath: String?) -> [RuntimeBackup] {

@@ -71,6 +71,10 @@ public struct MacHostRuntimeClient: RuntimeControlClient, RuntimeHostClient {
         statusReader.loadVitalDBObservation()
     }
 
+    public func loadVitalDBRecorders() -> RuntimeVitalRecorderHistory {
+        statusReader.loadVitalDBRecorders()
+    }
+
     public func loadBackups(latestBackupPath: String?) -> [RuntimeBackup] {
         fileReader.backups(latestBackupPath: latestBackupPath)
     }
