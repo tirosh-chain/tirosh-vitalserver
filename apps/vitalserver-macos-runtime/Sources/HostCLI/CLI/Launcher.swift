@@ -315,6 +315,7 @@ struct Launcher {
               vitalserver-vm runtime install
               vitalserver-vm runtime status
               vitalserver-vm runtime health
+              vitalserver-vm runtime guest-log-sync
               vitalserver-vm runtime watchdog
               vitalserver-vm runtime verify-bundle <bundle.tar.gz>
               vitalserver-vm runtime stage-bundle <bundle.tar.gz>

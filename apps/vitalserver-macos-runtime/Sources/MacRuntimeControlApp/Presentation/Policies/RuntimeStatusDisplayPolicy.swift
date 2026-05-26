@@ -99,7 +99,7 @@ struct RuntimeStatusDisplayPolicy {
         return StatusValue(
             text: text,
             severity: isSuccessfulHTTPStatus(status.hostProxyHTTP) ? .healthy : .warning,
-            uptimeText: uptimeText(for: .vitalServer, observation: observation, now: now)
+            uptimeText: vitalServerUptimeText(status: status, observation: observation, now: now)
         )
     }
 
@@ -252,6 +252,15 @@ struct RuntimeStatusDisplayPolicy {
             observedAt: observation?.runtimeStateUpdatedAt ?? observation?.runtimeStateFileUpdatedAt,
             now: now
         )
+    }
+
+    private func vitalServerUptimeText(
+        status: RuntimeStatus,
+        observation: RuntimeContainerObservation?,
+        now: Date
+    ) -> String? {
+        uptimeText(for: .vitalServer, observation: observation, now: now)
+            ?? formatUptime(nil, startedAt: status.startedAt, observedAt: nil, now: now)
     }
 
     private func composeValue(for service: ComposeService, observation: RuntimeContainerObservation?, now: Date) -> StatusValue {

@@ -295,6 +295,8 @@ struct RuntimeLogCopy {
             "launchd.err.log",
             "proxy.out.log",
             "proxy.err.log",
+            "guest-log-sync.out.log",
+            "guest-log-sync.err.log",
             "watchdog.out.log",
             "watchdog.err.log",
         ].map { fileName in

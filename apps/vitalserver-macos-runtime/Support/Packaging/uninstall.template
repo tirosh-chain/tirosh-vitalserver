@@ -48,6 +48,7 @@ done
 
 labels=(
   "com.tirosh.vitalserver-watchdog"
+  "com.tirosh.vitalserver-guest-log-sync"
   "com.tirosh.vitalserver-proxy"
   "com.tirosh.vitalserver-vm"
 )
@@ -211,6 +212,7 @@ log "step=stop-launchd-services status=completed"
 log "step=remove-plists-and-tools status=started"
 rm -f \
   "${LAUNCH_DAEMONS_DIR}/com.tirosh.vitalserver-watchdog.plist" \
+  "${LAUNCH_DAEMONS_DIR}/com.tirosh.vitalserver-guest-log-sync.plist" \
   "${LAUNCH_DAEMONS_DIR}/com.tirosh.vitalserver-vm.plist" \
   "${LAUNCH_DAEMONS_DIR}/com.tirosh.vitalserver-proxy.plist" \
   "${VM_BIN}" \

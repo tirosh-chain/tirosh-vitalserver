@@ -155,6 +155,10 @@ def load_macos_launchd(config: TomlTable) -> MacOSLaunchdConfig:
             nested_section(config, "proxy", parent_path="macos.launchd"),
             path="macos.launchd.proxy",
         ),
+        guest_log_sync=load_macos_launchd_template(
+            nested_section(config, "guest_log_sync", parent_path="macos.launchd"),
+            path="macos.launchd.guest_log_sync",
+        ),
         watchdog=load_macos_launchd_template(
             nested_section(config, "watchdog", parent_path="macos.launchd"),
             path="macos.launchd.watchdog",

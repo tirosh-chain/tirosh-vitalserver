@@ -54,6 +54,9 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading {
         let statusRepository = JSONFileRuntimeStatusRepository(url: URL(fileURLWithPath: paths.runtimeStatus))
         let document = statusRepository.load()
         let guestState = guestRuntimeStateDocument(paths.runtimeState)
+        let containerObservation = document?.containerObservation
+        let startedAt = containerObservation?.composeServices.first { $0.service == "app" }?.startedAt
+            ?? guestState?.containerServices?.first { $0.service == "app" }?.startedAt
         return RuntimeStatus(
             runtimeInstalled: fileStore.isExecutableFile(atPath: paths.launcher),
             vmServiceLoaded: loaded(document?.vmService) ?? launchdLoaded(.vm),
@@ -63,6 +66,7 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading {
             operation: document?.operation,
             statusMessage: document?.message,
             updatedAt: document?.updatedAt,
+            startedAt: startedAt,
             runtimeVersion: document?.runtimeVersion,
             latestBackup: document?.latestBackup,
             vmIP: document?.vmIP ?? guestState?.vmIP ?? readTrimmed(paths.vmIPFile),
@@ -77,7 +81,7 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading {
             proxyPort: document?.proxyPort ?? proxyPort(paths.proxyLaunchDaemon),
             failureReasons: document?.failureReasons ?? [],
             progress: document?.progress,
-            containerObservation: document?.containerObservation,
+            containerObservation: containerObservation,
             vitalDBObservation: document?.vitalDBObservation
         )
     }

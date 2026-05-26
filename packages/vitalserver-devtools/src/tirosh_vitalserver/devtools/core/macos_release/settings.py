@@ -37,6 +37,7 @@ class MacOSLaunchdTemplateConfig:
 class MacOSLaunchdConfig:
     vm: MacOSLaunchdTemplateConfig
     proxy: MacOSLaunchdTemplateConfig
+    guest_log_sync: MacOSLaunchdTemplateConfig
     watchdog: MacOSLaunchdTemplateConfig
 
 

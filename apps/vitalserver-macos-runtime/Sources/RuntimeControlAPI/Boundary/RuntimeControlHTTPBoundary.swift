@@ -93,6 +93,8 @@ public protocol RuntimeControlAPIReadHandler {
     func loadReleaseInfo() async throws -> RuntimeReleaseInfo
     func loadInstallInfo() async throws -> RuntimeInstallInfo
     func loadLogText(request: RuntimeLogTextRequest) async throws -> RuntimeLogTextResponse
+    func loadBackups() async throws -> [RuntimeBackup]
+    func loadRedisBackups() async throws -> [RuntimeBackup]
     func createRedisBackup() async throws -> RuntimeControlCommandResponse
 }
 
@@ -193,6 +195,10 @@ public struct RuntimeControlAPIRouter {
                     event: "runtime-log",
                     value: handler.loadLogText(request: logRequest)
                 )
+            case .backups:
+                return try await jsonResponse(handler.loadBackups())
+            case .redisBackups:
+                return try await jsonResponse(handler.loadRedisBackups())
             case .createRedisBackup:
                 return try await jsonResponse(handler.createRedisBackup())
             case .applySettings,
@@ -201,8 +207,6 @@ public struct RuntimeControlAPIRouter {
                  .repairProxy,
                  .repairDatastore,
                  .uninstall,
-                 .backups,
-                 .redisBackups,
                  .restoreRedisBackup,
                  .updateBundleSummary,
                  .verifyUpdateBundle,

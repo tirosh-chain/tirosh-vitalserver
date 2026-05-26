@@ -7,6 +7,7 @@ import Contracts
 enum RuntimeAdapterConstants {
     enum Product {
         static let defaultProxyPort = 80
+        static let packageIdentifier = "com.tirosh.vitalserver.vm"
 
         static func redisUIURL(proxyPort: Int) -> String {
             "http://127.0.0.1:\(proxyPort)/redis-ui/"

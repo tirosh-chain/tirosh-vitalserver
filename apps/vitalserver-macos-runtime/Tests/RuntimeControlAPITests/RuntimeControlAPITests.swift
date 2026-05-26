@@ -302,6 +302,26 @@ final class RuntimeControlAPITests: XCTestCase {
     }
 
     @MainActor
+    func testRouterServesBackupListsThroughRuntimeControlClientHandler() async throws {
+        let client = FakeRuntimeControlClient()
+        let router = RuntimeControlAPIRouter(handler: RuntimeControlClientAPIReadHandler(client: client, hostClient: client))
+
+        let backups = try await decode(
+            [RuntimeBackup].self,
+            from: router.route(.init(method: .get, path: "/host/backups"))
+        )
+        let redisBackups = try await decode(
+            [RuntimeBackup].self,
+            from: router.route(.init(method: .get, path: "/host/backups/redis"))
+        )
+
+        XCTAssertEqual(backups.map(\.path), ["/backups/rollback"])
+        XCTAssertEqual(redisBackups.map(\.path), ["/runtime/data/backups/redis/redis-1.tar.gz"])
+        XCTAssertEqual(client.backupLatestPaths, ["latest-backup"])
+        XCTAssertEqual(client.loadRedisBackupsCount, 1)
+    }
+
+    @MainActor
     func testRuntimeControlClientReadHandlerAdaptsClientReads() async throws {
         let client = FakeRuntimeControlClient()
         let handler = RuntimeControlClientAPIReadHandler(client: client)
@@ -320,6 +340,8 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertEqual(events.events.map(\.id), ["event-1", "event-2", "event-3"])
         XCTAssertEqual(health.statusMessage, "health with 6 CPUs")
         XCTAssertEqual(release.helperVersion, "0.2.0")
+        XCTAssertEqual(installInfo.appBundlePath, "/Applications/VitalServer Helper.app")
+        XCTAssertEqual(installInfo.packageIdentifier, "com.tirosh.vitalserver.vm")
         XCTAssertEqual(installInfo.backupsPath, "/backups")
         XCTAssertEqual(installInfo.redisBackupsPath, "/runtime/data/backups/redis")
         XCTAssertEqual(client.loadSettingsCount, 3)
@@ -792,19 +814,29 @@ private struct StubRuntimeControlAPIReadHandler: RuntimeControlAPIReadHandler {
         RuntimeLogTextResponse(text: "\(request.source.rawValue) log tail \(request.lineLimit)")
     }
 
+    func loadBackups() async throws -> [RuntimeBackup] {
+        [RuntimeBackup(path: "/backups/rollback", sizeBytes: 1024)]
+    }
+
+    func loadRedisBackups() async throws -> [RuntimeBackup] {
+        [RuntimeBackup(path: "/runtime/data/backups/redis/redis-1.tar.gz", sizeBytes: 512)]
+    }
+
     func createRedisBackup() async throws -> RuntimeControlCommandResponse {
         RuntimeControlCommandResponse(result: RuntimeCommandResult(exitCode: 0, stdout: "redis backup created", stderr: ""))
     }
 }
 
 @MainActor
-private final class FakeRuntimeControlClient: RuntimeControlClient {
+private final class FakeRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
     var capabilities = RuntimeControlCapabilities(canOpenLocalFiles: false)
     var loadSettingsCount = 0
     var createRedisBackupCount = 0
+    var loadRedisBackupsCount = 0
     var statusSettings: [RuntimeSettings] = []
     var healthSettings: [RuntimeSettings] = []
     var eventQueries: [RuntimeEventQuery] = []
+    var backupLatestPaths: [String?] = []
 
     func loadSettings() -> RuntimeSettings {
         loadSettingsCount += 1
@@ -813,7 +845,7 @@ private final class FakeRuntimeControlClient: RuntimeControlClient {
 
     func loadStatus(settings: RuntimeSettings) -> RuntimeStatus {
         statusSettings.append(settings)
-        return RuntimeStatus(statusMessage: "status with \(settings.cpuCount) CPUs")
+        return RuntimeStatus(statusMessage: "status with \(settings.cpuCount) CPUs", latestBackup: "latest-backup")
     }
 
     func loadHealthStatus(settings: RuntimeSettings) async -> RuntimeStatus {
@@ -895,6 +927,46 @@ private final class FakeRuntimeControlClient: RuntimeControlClient {
         )
     }
 
+    func loadBackups(latestBackupPath: String?) -> [RuntimeBackup] {
+        backupLatestPaths.append(latestBackupPath)
+        return [RuntimeBackup(path: "/backups/rollback", sizeBytes: 1024)]
+    }
+
+    func loadRedisBackups() -> [RuntimeBackup] {
+        loadRedisBackupsCount += 1
+        return [RuntimeBackup(path: "/runtime/data/backups/redis/redis-1.tar.gz", sizeBytes: 512)]
+    }
+
+    func updateBundleSummary(url: URL) -> String {
+        "bundle"
+    }
+
+    func logText(sourceID: RuntimeLogSource, helperMessage: String, lineLimit: Int) -> String {
+        helperMessage
+    }
+
+    func loadLogText(sourceID: RuntimeLogSource, helperMessage: String, lineLimit: Int) async -> String {
+        helperMessage
+    }
+
+    func preferredLogsPath() -> String {
+        "/logs"
+    }
+
+    func vitalFileFolders(root: String) -> [VitalFilesFolder] {
+        []
+    }
+
+    func legacyCommandProgressLine() -> String? {
+        nil
+    }
+
+    func createDirectory(at url: URL) {}
+
+    func verifyUpdateBundle(url: URL) async throws -> RuntimeCommandResult {
+        RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "")
+    }
+
     func uninstallRuntime(clean: Bool) async throws -> RuntimeCommandResult {
         RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "")
     }
@@ -935,9 +1007,27 @@ private final class FakeRuntimeControlClient: RuntimeControlClient {
 
     func loadInstallInfo() -> RuntimeInstallInfo {
         RuntimeInstallInfo(
+            appBundlePath: "/Applications/VitalServer Helper.app",
+            packageIdentifier: "com.tirosh.vitalserver.vm",
             runtimeHomePath: "/runtime",
             backupsPath: "/backups",
             redisBackupsPath: "/runtime/data/backups/redis"
         )
+    }
+
+    func applyUpdateBundle(url: URL) async throws -> RuntimeCommandResult {
+        RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "")
+    }
+
+    func rollbackRuntime(backupURL: URL) async throws -> RuntimeCommandResult {
+        RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "")
+    }
+
+    func deleteBackup(url: URL) async throws -> RuntimeCommandResult {
+        RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "")
+    }
+
+    func exportLogs(to destination: URL) async throws -> RuntimeLogExportResult {
+        RuntimeLogExportResult(destination: destination)
     }
 }

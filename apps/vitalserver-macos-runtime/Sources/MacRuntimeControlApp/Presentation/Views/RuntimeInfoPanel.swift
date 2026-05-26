@@ -29,7 +29,7 @@ struct RuntimeInfoPanel: View {
                 statusRow(AppConstants.Labels.helperVersion, helperAppVersion)
                 statusRow(AppConstants.Labels.vitalServerVersion, viewModel.releaseInfo.vitalServerVersion)
                 statusRow(AppConstants.Labels.installedRuntimeVersion, viewModel.status.runtimeVersion ?? AppConstants.StatusText.unknown)
-                statusRow(AppConstants.Labels.packageIdentifier, AppConstants.Product.packageIdentifier)
+                statusRow(AppConstants.Labels.packageIdentifier, viewModel.installationInfo.packageIdentifier)
             }
         }
     }
@@ -63,7 +63,7 @@ struct RuntimeInfoPanel: View {
     private var runtimePathsCard: some View {
         infoCard(AppConstants.Labels.sectionRuntimePaths) {
             Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 10) {
-                pathRow(AppConstants.Labels.appBundle, Bundle.main.bundlePath)
+                pathRow(AppConstants.Labels.appBundle, viewModel.installationInfo.appBundlePath)
                 pathRow(AppConstants.Labels.runtimeHome, viewModel.installationInfo.runtimeHomePath)
                 pathRow(AppConstants.Labels.dataDirectory, viewModel.settings.vitalFilesDirectory)
                 pathRow(AppConstants.Labels.backupDirectory, viewModel.installationInfo.backupsPath)

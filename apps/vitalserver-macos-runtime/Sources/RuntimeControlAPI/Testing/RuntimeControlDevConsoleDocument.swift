@@ -79,6 +79,11 @@ public enum RuntimeControlDevConsoleDocument {
       grid-template-columns: repeat(3, minmax(220px, 1fr));
       gap: 14px;
     }
+    .read-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(260px, 1fr));
+      gap: 14px;
+    }
     label {
       display: grid;
       gap: 5px;
@@ -128,6 +133,35 @@ public enum RuntimeControlDevConsoleDocument {
     }
     .metric:last-child { border-bottom: 0; }
     .metric span:first-child { color: var(--muted); }
+    .metric strong {
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+    .list {
+      display: grid;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .list-item {
+      border: 1px solid #edf0f2;
+      border-radius: 6px;
+      padding: 8px;
+      min-width: 0;
+    }
+    .list-item strong {
+      display: block;
+      overflow-wrap: anywhere;
+    }
+    .list-item span {
+      color: var(--muted);
+      font-size: 12px;
+      overflow-wrap: anywhere;
+    }
+    .subtle {
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 8px;
+    }
     .status-dot {
       display: inline-block;
       width: 10px;
@@ -166,7 +200,7 @@ public enum RuntimeControlDevConsoleDocument {
       overflow-wrap: anywhere;
     }
     @media (max-width: 980px) {
-      main, .grid { grid-template-columns: 1fr; }
+      main, .grid, .read-grid { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -198,6 +232,14 @@ public enum RuntimeControlDevConsoleDocument {
         <div id="statusMetrics"></div>
       </section>
       <section>
+        <h2>Runtime Info</h2>
+        <div id="installMetrics"></div>
+      </section>
+      <section>
+        <h2>Backups</h2>
+        <div id="backupMetrics"></div>
+      </section>
+      <section>
         <h2>Log Source</h2>
         <label>
           Source
@@ -218,7 +260,18 @@ public enum RuntimeControlDevConsoleDocument {
         </label>
       </section>
     </div>
-    <div class="grid">
+    <div class="stack">
+      <div class="read-grid">
+        <section>
+          <h2>Settings</h2>
+          <div id="settingsMetrics"></div>
+        </section>
+        <section>
+          <h2>Release</h2>
+          <div id="releaseMetrics"></div>
+        </section>
+      </div>
+      <div class="grid">
       <section>
         <div class="stream-head">
           <h2>Status Stream</h2>
@@ -240,10 +293,13 @@ public enum RuntimeControlDevConsoleDocument {
         </div>
         <pre id="logStream"></pre>
       </section>
+      </div>
     </div>
   </main>
   <script>
     const streams = new Map();
+    let latestStatus = null;
+    let latestSettings = {};
     const $ = (id) => document.getElementById(id);
     $("baseUrl").value = window.location.origin;
 
@@ -255,29 +311,130 @@ public enum RuntimeControlDevConsoleDocument {
       return new URL(path, $("baseUrl").value).toString();
     }
 
-    async function refreshStatus() {
-      const response = await fetch(endpoint("/runtime/status"), { headers: headers() });
+    async function getJSON(path) {
+      const response = await fetch(endpoint(path), { headers: headers() });
       const text = await response.text();
       if (!response.ok) {
         throw new Error(text || `HTTP ${response.status}`);
       }
-      const status = JSON.parse(text);
-      renderStatus(status);
+      return text ? JSON.parse(text) : null;
+    }
+
+    async function refreshStatus() {
+      const [status, settings, install, release, backups, redisBackups] = await Promise.all([
+        getJSON("/runtime/status"),
+        getJSON("/runtime/settings"),
+        getJSON("/runtime/install"),
+        getJSON("/runtime/release"),
+        getJSON("/host/backups"),
+        getJSON("/host/backups/redis")
+      ]);
+      latestStatus = status;
+      latestSettings = settings || {};
+      renderStatus(latestStatus, latestSettings);
+      renderInstall(install);
+      renderSettings(settings);
+      renderRelease(release);
+      renderBackups(backups, redisBackups);
       append("statusStream", "snapshot", status);
     }
 
-    function renderStatus(status) {
+    function renderStatus(status, settings = {}) {
+      const vitalServerURL = `http://127.0.0.1:${status.proxyPort || 80}/`;
+      const redisUIURL = `http://127.0.0.1:${status.proxyPort || 80}/redis-ui/`;
+      const swaggerURL = `http://127.0.0.1:${status.proxyPort || 80}/swagger/`;
       const values = [
-        ["state", status.runtimeState],
+        ["overall health", status.runtimeState],
         ["operation", status.operation],
-        ["version", status.runtimeVersion],
-        ["updated", status.updatedAt],
-        ["url", status.vitalServerURL],
-        ["vm", status.vm?.ipAddress || status.vmIP || ""]
+        ["message", status.statusMessage],
+        ["VitalServer", serviceText(status.hostProxyHTTP)],
+        ["started", formatDate(status.startedAt)],
+        ["uptime", formatUptime(status.startedAt)],
+        ["VitalServer URL", vitalServerURL],
+        ["Redis UI URL", redisUIURL],
+        ["Swagger URL", swaggerURL],
+        ["data directory", settings.vitalFilesDirectory],
+        ["runtime version", status.runtimeVersion],
+        ["VM IP", status.vmIP],
+        ["guest HTTP", status.guestHTTP],
+        ["host proxy HTTP", status.hostProxyHTTP],
+        ["Redis UI HTTP", status.redisUIHTTP],
+        ["Swagger HTTP", status.swaggerUIHTTP],
+        ["CPU", formatPercent(status.cpuUsagePercent)],
+        ["memory", formatUsage(status.memory)],
+        ["VM disk", formatUsage(status.systemDisk)],
+        ["data storage", formatUsage(status.dataStorage)],
+        ["updated", formatDate(status.updatedAt)]
       ];
-      $("statusMetrics").innerHTML = values.map(([key, value]) => (
-        `<div class="metric"><span>${escapeHtml(key)}</span><strong>${escapeHtml(String(value || "-"))}</strong></div>`
+      $("statusMetrics").innerHTML = metricsHTML(values);
+    }
+
+    function renderInstall(install) {
+      const values = [
+        ["app bundle", install.appBundlePath],
+        ["package identifier", install.packageIdentifier],
+        ["runtime home", install.runtimeHomePath],
+        ["rollback backups", install.backupsPath],
+        ["Redis backups", install.redisBackupsPath]
+      ];
+      $("installMetrics").innerHTML = metricsHTML(values);
+    }
+
+    function renderSettings(settings) {
+      const values = [
+        ["CPU", settings.cpuCount],
+        ["memory", `${settings.memoryGiB || "-"} GiB`],
+        ["disk", `${settings.diskGiB || "-"} GiB`],
+        ["network", settings.networkMode],
+        ["proxy port", settings.proxyPort],
+        ["public host", settings.publicHost],
+        ["public port", settings.publicPort],
+        ["start on boot", settings.startOnBoot],
+        ["auto recovery", settings.autoRecoveryEnabled],
+        ["Redis backups", settings.redisBackupRetentionCount]
+      ];
+      $("settingsMetrics").innerHTML = metricsHTML(values);
+    }
+
+    function renderRelease(release) {
+      const values = [
+        ["helper version", release.helperVersion],
+        ["minimum updater", release.minimumUpdaterVersion],
+        ["VitalServer version", release.vitalServerVersion]
+      ];
+      const services = (release.services || []).map((service) => (
+        `<div class="list-item"><strong>${escapeHtml(service.name || "-")}</strong><span>${escapeHtml(service.image || "-")} · ${escapeHtml(service.version || "-")}</span></div>`
       )).join("");
+      $("releaseMetrics").innerHTML = `${metricsHTML(values)}<div class="list">${services || emptyText("No services")}</div>`;
+    }
+
+    function renderBackups(backups = [], redisBackups = []) {
+      const values = [
+        ["rollback backups", backups.length],
+        ["Redis backups", redisBackups.length]
+      ];
+      const rollbackList = listBackups(backups, "No rollback backups");
+      const redisList = listBackups(redisBackups, "No Redis backups");
+      $("backupMetrics").innerHTML = `${metricsHTML(values)}<div class="subtle">Rollback</div>${rollbackList}<div class="subtle">Redis</div>${redisList}`;
+    }
+
+    function metricsHTML(values) {
+      return values.map(([key, value]) => (
+        `<div class="metric"><span>${escapeHtml(key)}</span><strong>${escapeHtml(displayValue(value))}</strong></div>`
+      )).join("");
+    }
+
+    function listBackups(backups, emptyLabel) {
+      if (!backups || backups.length === 0) {
+        return emptyText(emptyLabel);
+      }
+      return `<div class="list">${backups.map((backup) => (
+        `<div class="list-item"><strong>${escapeHtml(fileName(backup.path))}</strong><span>${escapeHtml(formatBytes(backup.sizeBytes))} · ${escapeHtml(backup.path || "-")}</span></div>`
+      )).join("")}</div>`;
+    }
+
+    function emptyText(label) {
+      return `<div class="subtle">${escapeHtml(label)}</div>`;
     }
 
     function connectAll() {
@@ -362,7 +519,10 @@ public enum RuntimeControlDevConsoleDocument {
       }
       append(outputId, parsed.event || "message", { id: parsed.id, comment: parsed.comment, data });
       if (outputId === "statusStream" && parsed.data) {
-        try { renderStatus(JSON.parse(parsed.data)); } catch (_) {}
+        try {
+          latestStatus = JSON.parse(parsed.data);
+          renderStatus(latestStatus, latestSettings);
+        } catch (_) {}
       }
     }
 
@@ -377,8 +537,78 @@ public enum RuntimeControlDevConsoleDocument {
       $(dotId).className = `status-dot ${state === "open" ? "open" : state === "error" ? "error" : state === "connecting" ? "idle" : ""}`;
     }
 
+    function displayValue(value) {
+      if (value === undefined || value === null || value === "") {
+        return "-";
+      }
+      if (typeof value === "boolean") {
+        return value ? "true" : "false";
+      }
+      return String(value);
+    }
+
+    function serviceText(httpStatus) {
+      const code = Number(httpStatus);
+      if (Number.isInteger(code) && code >= 200 && code < 300) {
+        return "Available";
+      }
+      if (httpStatus === "failed") {
+        return "Needs repair";
+      }
+      return "Waiting";
+    }
+
+    function formatDate(value) {
+      if (!value) return "-";
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return value;
+      return date.toLocaleString();
+    }
+
+    function formatUptime(startedAt) {
+      if (!startedAt) return "-";
+      const started = new Date(startedAt);
+      if (Number.isNaN(started.getTime())) return "-";
+      const seconds = Math.max(Math.floor((Date.now() - started.getTime()) / 1000), 0);
+      const days = Math.floor(seconds / 86400);
+      const hours = Math.floor((seconds % 86400) / 3600);
+      const minutes = Math.floor((seconds % 3600) / 60);
+      const remainingSeconds = seconds % 60;
+      const clock = [hours, minutes, remainingSeconds].map((value) => String(value).padStart(2, "0")).join(":");
+      return days > 0 ? `${days}d ${clock}` : clock;
+    }
+
+    function formatPercent(value) {
+      if (value === undefined || value === null) return "-";
+      return `${Number(value).toFixed(1)}%`;
+    }
+
+    function formatUsage(value) {
+      if (!value || value.usedBytes === undefined || value.totalBytes === undefined) {
+        return "-";
+      }
+      return `${formatBytes(value.usedBytes)} / ${formatBytes(value.totalBytes)}`;
+    }
+
+    function formatBytes(value) {
+      if (value === undefined || value === null) return "-";
+      const units = ["B", "KiB", "MiB", "GiB", "TiB"];
+      let size = Number(value);
+      let unit = 0;
+      while (size >= 1024 && unit < units.length - 1) {
+        size /= 1024;
+        unit += 1;
+      }
+      return `${size >= 10 || unit === 0 ? size.toFixed(0) : size.toFixed(1)} ${units[unit]}`;
+    }
+
+    function fileName(path) {
+      if (!path) return "-";
+      return String(path).split("/").filter(Boolean).pop() || path;
+    }
+
     function escapeHtml(value) {
-      return value.replace(/[&<>"']/g, (char) => ({
+      return String(value).replace(/[&<>"']/g, (char) => ({
         "&": "&amp;",
         "<": "&lt;",
         ">": "&gt;",
@@ -398,7 +628,12 @@ public enum RuntimeControlDevConsoleDocument {
 
     $("logSource").addEventListener("change", reconnectLogs);
     $("lineLimit").addEventListener("change", reconnectLogs);
-    setInterval(() => { $("clock").textContent = new Date().toLocaleString(); }, 1000);
+    setInterval(() => {
+      $("clock").textContent = new Date().toLocaleString();
+      if (latestStatus) {
+        renderStatus(latestStatus, latestSettings);
+      }
+    }, 1000);
     refreshStatus().catch((error) => append("statusStream", "error", { message: error.message }));
   </script>
 </body>

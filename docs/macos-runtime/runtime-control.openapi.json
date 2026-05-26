@@ -473,7 +473,7 @@
         "operationId": "listHostBackups",
         "summary": "List local host backups",
         "x-runtime-control-scope": "hostAffordance",
-        "x-runtime-control-implementation": "planned",
+        "x-runtime-control-implementation": "readOnlyLocal",
         "x-runtime-control-access": "localServerMediated",
         "responses": {
           "200": {
@@ -489,8 +489,8 @@
               }
             }
           },
-          "501": {
-            "$ref": "#/components/responses/NotImplemented"
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           }
         }
       },
@@ -525,7 +525,7 @@
         "operationId": "listRedisBackups",
         "summary": "List local Redis backups",
         "x-runtime-control-scope": "hostAffordance",
-        "x-runtime-control-implementation": "planned",
+        "x-runtime-control-implementation": "readOnlyLocal",
         "x-runtime-control-access": "localServerMediated",
         "responses": {
           "200": {
@@ -541,8 +541,8 @@
               }
             }
           },
-          "501": {
-            "$ref": "#/components/responses/NotImplemented"
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           }
         }
       }
@@ -931,7 +931,14 @@
           "watchdogServiceLoaded": true,
           "runtimeState": "healthy",
           "statusMessage": "ready",
+          "updatedAt": "2026-05-26T04:35:35Z",
+          "startedAt": "2026-05-26T04:01:01Z",
           "runtimeVersion": "0.1.5",
+          "vmIP": "192.168.64.33",
+          "guestHTTP": "200",
+          "hostProxyHTTP": "200",
+          "redisUIHTTP": "200",
+          "swaggerUIHTTP": "200",
           "proxyPort": 80,
           "failureReasons": []
         }
@@ -1017,6 +1024,13 @@
               "null"
             ]
           },
+          "startedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "ISO-8601 UTC timestamp for the representative VitalServer runtime start time. Clients should derive live uptime from this value."
+          },
           "runtimeVersion": {
             "type": [
               "string",
@@ -1082,6 +1096,13 @@
             "items": {
               "type": "string"
             }
+          },
+          "progress": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": true
           },
           "containerObservation": {
             "oneOf": [
@@ -1518,6 +1539,12 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
+          "appBundlePath": {
+            "type": "string"
+          },
+          "packageIdentifier": {
+            "type": "string"
+          },
           "runtimeHomePath": {
             "type": "string"
           },

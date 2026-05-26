@@ -75,6 +75,10 @@ public struct MacHostRuntimeClient: RuntimeControlClient, RuntimeHostClient {
         fileReader.backups(latestBackupPath: latestBackupPath)
     }
 
+    public func loadRedisBackups() -> [RuntimeBackup] {
+        RuntimeBackup.loadRedisBackups()
+    }
+
     public func updateBundleSummary(url: URL) -> String {
         fileReader.updateBundleSummary(url: url)
     }
@@ -218,6 +222,8 @@ public struct MacHostRuntimeClient: RuntimeControlClient, RuntimeHostClient {
 
     public func loadInstallInfo() -> RuntimeInstallInfo {
         RuntimeInstallInfo(
+            appBundlePath: Bundle.main.bundlePath,
+            packageIdentifier: RuntimeAdapterConstants.Product.packageIdentifier,
             runtimeHomePath: RuntimeAdapterConstants.Paths.vmHome,
             backupsPath: RuntimeAdapterConstants.Paths.backups,
             redisBackupsPath: RuntimeAdapterConstants.Paths.redisBackups

@@ -130,6 +130,15 @@ def render_launchd_templates(context: PackageContext) -> None:
         },
     )
     render_template(
+        launchd / templates.guest_log_sync.template_file,
+        daemon_dir / templates.guest_log_sync.installed_plist,
+        {
+            "VITALSERVER_VM_BIN": package_install_value(context, "vm_cli"),
+            "VITALSERVER_VM_HOME": install_home(context),
+            "VITALSERVER_RUNTIME_LOGS": install_runtime_logs(context),
+        },
+    )
+    render_template(
         launchd / templates.watchdog.template_file,
         daemon_dir / templates.watchdog.installed_plist,
         {

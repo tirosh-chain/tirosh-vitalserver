@@ -56,6 +56,11 @@ struct SystemRuntimeHostFileReader: RuntimeHostFileReading {
             return helperMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 ? RuntimeAdapterConstants.StatusText.noLogData
                 : helperMessage
+        case .containers:
+            if !fileStore.fileExists(URL(fileURLWithPath: RuntimeAdapterConstants.Paths.containerLogs)) {
+                logCollector.refreshLogCollection(sourceID: sourceID)
+            }
+            return logFile(sourceID: sourceID, lineLimit: lineLimit)
         default:
             logCollector.refreshLogCollection(sourceID: sourceID)
             return logFile(sourceID: sourceID, lineLimit: lineLimit)

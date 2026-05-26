@@ -100,11 +100,21 @@ public struct RuntimeBundledServiceInfo: Codable, Equatable, Identifiable, Senda
 }
 
 public struct RuntimeInstallInfo: Codable, Equatable, Sendable {
+    public let appBundlePath: String
+    public let packageIdentifier: String
     public let runtimeHomePath: String
     public let backupsPath: String
     public let redisBackupsPath: String
 
-    public init(runtimeHomePath: String = "", backupsPath: String = "", redisBackupsPath: String? = nil) {
+    public init(
+        appBundlePath: String = "",
+        packageIdentifier: String = "",
+        runtimeHomePath: String = "",
+        backupsPath: String = "",
+        redisBackupsPath: String? = nil
+    ) {
+        self.appBundlePath = appBundlePath
+        self.packageIdentifier = packageIdentifier
         self.runtimeHomePath = runtimeHomePath
         self.backupsPath = backupsPath
         self.redisBackupsPath = redisBackupsPath ?? URL(fileURLWithPath: backupsPath).appendingPathComponent("redis").path

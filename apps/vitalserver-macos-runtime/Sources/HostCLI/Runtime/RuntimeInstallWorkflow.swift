@@ -216,6 +216,7 @@ struct RuntimeInstallWorkflow {
         for plist in [
             RuntimeManagedService.vm.launchDaemonPlist,
             RuntimeManagedService.proxy.launchDaemonPlist,
+            RuntimeManagedService.guestLogSync.launchDaemonPlist,
             RuntimeManagedService.watchdog.launchDaemonPlist,
         ] {
             try operations.runRequired(Constants.Commands.chmod, ["0644", plist])

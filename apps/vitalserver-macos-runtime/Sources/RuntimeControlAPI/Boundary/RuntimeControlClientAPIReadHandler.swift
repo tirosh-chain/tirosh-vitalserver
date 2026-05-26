@@ -60,6 +60,22 @@ public struct RuntimeControlClientAPIReadHandler: RuntimeControlAPIReadHandler {
         )
     }
 
+    public func loadBackups() async throws -> [RuntimeBackup] {
+        guard let hostClient else {
+            throw RuntimeControlAPIReadHandlerError.hostAffordanceUnavailable
+        }
+        let settings = client.loadSettings()
+        let status = client.loadStatus(settings: settings)
+        return hostClient.loadBackups(latestBackupPath: status.latestBackup)
+    }
+
+    public func loadRedisBackups() async throws -> [RuntimeBackup] {
+        guard let hostClient else {
+            throw RuntimeControlAPIReadHandlerError.hostAffordanceUnavailable
+        }
+        return hostClient.loadRedisBackups()
+    }
+
     public func createRedisBackup() async throws -> RuntimeControlCommandResponse {
         RuntimeControlCommandResponse(result: try await client.createRedisBackup())
     }

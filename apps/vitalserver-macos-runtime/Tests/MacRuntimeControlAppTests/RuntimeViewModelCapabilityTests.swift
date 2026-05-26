@@ -284,6 +284,10 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
         return []
     }
 
+    func loadRedisBackups() -> [RuntimeBackup] {
+        []
+    }
+
     func updateBundleSummary(url: URL) -> String {
         "bundle: \(url.path)"
     }

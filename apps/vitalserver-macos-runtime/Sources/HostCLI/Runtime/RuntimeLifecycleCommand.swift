@@ -6,6 +6,7 @@ enum RuntimeLifecycleCommand: Equatable {
     case install
     case status
     case health
+    case guestLogSync
     case watchdog
     case configure(RuntimeConfigureCommand)
     case verifyBundle(URL)
@@ -31,6 +32,8 @@ enum RuntimeLifecycleCommand: Equatable {
             return .status
         case "health":
             return .health
+        case "guest-log-sync":
+            return .guestLogSync
         case "watchdog":
             return .watchdog
         case "configure":
@@ -72,6 +75,7 @@ enum RuntimeLifecycleCommand: Equatable {
       vitalserver-vm runtime install
       vitalserver-vm runtime status
       vitalserver-vm runtime health
+      vitalserver-vm runtime guest-log-sync
       vitalserver-vm runtime watchdog
       vitalserver-vm runtime configure [--cpu <count>] [--memory-gib <gib>] [--disk-gib <gib>] [--network shared|bridged] [--bridged-interface <id>] [--proxy-port <port>] [--vital-files-dir <path>] [--public-host <host>] [--public-port <port>] [--admin-password <password>] [--start-on-boot true|false] [--redis-backup-retention <count>] [--restart]
       vitalserver-vm runtime configure [--admin-password-file <path>] [--restart]

@@ -42,6 +42,10 @@ installed_plist = "com.tirosh.vitalserver-vm.plist"
 template_file = "com.tirosh.vitalserver-proxy.plist.template"
 installed_plist = "com.tirosh.vitalserver-proxy.plist"
 
+[macos.launchd.guest_log_sync]
+template_file = "com.tirosh.vitalserver-guest-log-sync.plist.template"
+installed_plist = "com.tirosh.vitalserver-guest-log-sync.plist"
+
 [macos.launchd.watchdog]
 template_file = "com.tirosh.vitalserver-watchdog.plist.template"
 installed_plist = "com.tirosh.vitalserver-watchdog.plist"

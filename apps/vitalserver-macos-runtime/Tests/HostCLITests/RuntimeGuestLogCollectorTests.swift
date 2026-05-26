@@ -53,4 +53,27 @@ final class RuntimeGuestLogCollectorTests: XCTestCase {
         )
         XCTAssertEqual(try String(contentsOf: paths.centralRedisBackupLog, encoding: .utf8), "redis\n")
     }
+
+    func testCollectArchivesCentralLogWhenSourceWasRotatedOrRecreated() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("RuntimeGuestLogCollectorTests-\(UUID().uuidString)")
+        defer {
+            try? FileManager.default.removeItem(at: root)
+        }
+        let paths = InstalledRuntimePaths(productRoot: root)
+        let fileStore = SystemRuntimeFileStore()
+        try fileStore.createDirectory(at: paths.guestRunDirectory, withIntermediateDirectories: true)
+        try fileStore.createDirectory(at: paths.centralGuestLogsDirectory, withIntermediateDirectories: true)
+        try Data("new\n".utf8).write(to: paths.containerLogs)
+        try Data("old\nlonger\n".utf8).write(to: paths.centralContainerLogs)
+
+        try RuntimeGuestLogCollector(installedPaths: paths, fileStore: fileStore).collect()
+
+        XCTAssertEqual(try String(contentsOf: paths.centralContainerLogs, encoding: .utf8), "new\n")
+        let archiveEntries = try fileStore.contentsOfDirectory(
+            at: paths.logArchiveDirectory.appendingPathComponent("guest"),
+            skipsHiddenFiles: true
+        )
+        XCTAssertTrue(archiveEntries.contains { $0.lastPathComponent.hasPrefix("container-logs.log.") })
+    }
 }

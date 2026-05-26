@@ -48,6 +48,7 @@ def installed_status(config: Path) -> int:
     for label, service in [
         ("launchd vm", "system/com.tirosh.vitalserver-vm"),
         ("launchd proxy", "system/com.tirosh.vitalserver-proxy"),
+        ("launchd guest log sync", "system/com.tirosh.vitalserver-guest-log-sync"),
         ("launchd watchdog", "system/com.tirosh.vitalserver-watchdog"),
     ]:
         if launchd_loaded(service):

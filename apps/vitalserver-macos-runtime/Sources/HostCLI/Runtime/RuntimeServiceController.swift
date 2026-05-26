@@ -39,6 +39,7 @@ struct RuntimeServiceController {
     ) {
         if restartVM {
             startLaunchdService(.vm)
+            startLaunchdService(.guestLogSync)
         }
         if restartProxy {
             startLaunchdService(.proxy)

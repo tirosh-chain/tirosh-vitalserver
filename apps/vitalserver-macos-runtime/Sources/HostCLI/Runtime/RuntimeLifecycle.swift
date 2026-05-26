@@ -98,6 +98,8 @@ struct RuntimeLifecycle {
             printStatus()
         case .health:
             try health()
+        case .guestLogSync:
+            guestLogSync()
         case .watchdog:
             try watchdog()
         case .configure(let command):
@@ -138,6 +140,18 @@ struct RuntimeLifecycle {
     func health() throws {
         try? collectGuestLogs()
         try runtimeHealthCheckRunner().run()
+    }
+
+    func guestLogSync() {
+        log("guest log sync started")
+        while true {
+            do {
+                try collectGuestLogs()
+            } catch {
+                log("guest log sync failed error=\(error.localizedDescription)")
+            }
+            sleeper.sleep(forTimeInterval: Constants.Runtime.guestLogSyncIntervalSeconds)
+        }
     }
 
     func watchdog() throws {

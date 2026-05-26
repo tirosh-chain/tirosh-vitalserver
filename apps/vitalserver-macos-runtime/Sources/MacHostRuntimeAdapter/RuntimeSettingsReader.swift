@@ -89,6 +89,7 @@ struct SystemRuntimeSettingsReader: RuntimeSettingsReading {
         for label in [
             RuntimeManagedService.vm.label,
             RuntimeManagedService.proxy.label,
+            RuntimeManagedService.guestLogSync.label,
             RuntimeManagedService.watchdog.label,
         ] where output.contains("\"\(label)\" => true") {
             return false
