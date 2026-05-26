@@ -48,6 +48,7 @@ from tirosh_vitalserver.devtools.core.macos_release.install_paths import (
 from tirosh_vitalserver.devtools.core.macos_release.models import PackageContext
 from tirosh_vitalserver.devtools.core.macos_release.release_plans import (
     default_pkg_output,
+    host_proxy_expected_version,
     package_clean_plan,
     package_outputs,
 )
@@ -152,7 +153,10 @@ def prepare_package_context(input: ReleasePackageInput) -> PackageContext:
             config=input.config,
             bundle_dir=settings.nginx_bundle,
             binary=input.nginx_binary,
-            expected_version=input.nginx_expected_version,
+            expected_version=host_proxy_expected_version(
+                release=release,
+                explicit_version=input.nginx_expected_version,
+            ),
         )
     )
     build_docker_image_bundle_from_config(

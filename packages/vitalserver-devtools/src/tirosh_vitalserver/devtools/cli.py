@@ -134,6 +134,7 @@ def main() -> int:
     nginx_bundle.add_argument("--bundle-dir", required=True, type=Path)
     nginx_bundle.add_argument("--binary")
     nginx_bundle.add_argument("--expected-version")
+    nginx_bundle.add_argument("--release-file", type=Path)
     nginx_bundle.set_defaults(
         handler=lambda args: host_proxy_usecases.build_nginx(
             nginx_bundle_input(args)
@@ -781,6 +782,7 @@ def nginx_bundle_input(
         bundle_dir=args.bundle_dir,
         binary=args.binary,
         expected_version=args.expected_version,
+        release_file=args.release_file,
     )
 
 

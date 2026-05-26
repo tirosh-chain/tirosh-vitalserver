@@ -82,7 +82,7 @@ uv run --project packages/vitalserver-devtools vitalserver-devtools rootfs-base 
   --output .tmp/vitalserver-vm-pkg/rootfs-base.raw.gz
 ```
 
-Build the pinned nginx bundle declared in `vm-build.toml`. The default input is the local release artifact cache at `.artifacts/nginx/macos/bin/nginx`; create that artifact from the pinned local source before bundling:
+Build the nginx bundle declared by the selected release manifest. The default input is the local artifact cache at `.artifacts/nginx/macos/bin/nginx`; if the cache is missing or does not match `services.hostProxy.image`, devtools refreshes it from `source_binary_path` before bundling:
 
 ```sh
 make vm-nginx-artifact
@@ -90,10 +90,11 @@ make vm-nginx-artifact
 uv run --project packages/vitalserver-devtools vitalserver-devtools \
   --config config/vm-build.toml \
   nginx-bundle \
-  --bundle-dir .tmp/vitalserver-vm-pkg/nginx-bundle
+  --bundle-dir .tmp/vitalserver-vm-pkg/nginx-bundle \
+  --release-file apps/vitalserver-macos-runtime/release-dev.json
 ```
 
-The artifact cache is not committed. The bundle command validates the binary against the pinned `expected_version` and copies non-system dylibs into the package bundle.
+The artifact cache is not committed. The bundle command validates the binary against `services.hostProxy.image` from the release manifest and copies non-system dylibs into the package bundle.
 
 Example with update migrations:
 

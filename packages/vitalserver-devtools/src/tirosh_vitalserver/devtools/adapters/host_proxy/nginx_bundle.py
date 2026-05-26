@@ -9,8 +9,12 @@ from tirosh_vitalserver.devtools.core.host_proxy import NginxBundleConfig
 
 
 def run_nginx_bundle(input: NginxBundleInput, config: NginxBundleConfig) -> int:
-    binary = resolve_binary(input.binary or config.binary_path)
     expected_version = input.expected_version or config.expected_version
+    binary = resolve_bundle_binary(
+        input_binary=input.binary,
+        config=config,
+        expected_version=expected_version,
+    )
     dylib_prefixes = config.non_system_dylib_prefixes
     bundle_dir = input.bundle_dir
 
@@ -50,6 +54,42 @@ def run_nginx_bundle(input: NginxBundleInput, config: NginxBundleConfig) -> int:
     return 0
 
 
+def resolve_bundle_binary(
+    *,
+    input_binary: str | None,
+    config: NginxBundleConfig,
+    expected_version: str | None,
+) -> Path:
+    if input_binary:
+        return resolve_binary(input_binary)
+    if not expected_version or not config.source_binary_path:
+        return resolve_binary(config.binary_path)
+
+    binary = resolve_cached_binary(config.binary_path)
+    if binary and version_matches(binary, expected_version):
+        return binary
+
+    source = resolve_binary(config.source_binary_path)
+    validate_version(source, expected_version)
+    config.binary_path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, config.binary_path)
+    config.binary_path.chmod(0o755)
+    print(
+        "refreshed nginx artifact cache: "
+        f"{config.binary_path} ({expected_version})"
+    )
+    return config.binary_path.resolve()
+
+
+def resolve_cached_binary(value: str | Path | None) -> Path | None:
+    if value is None or value == "":
+        return None
+    path = Path(value).expanduser()
+    if path.is_file() and path.stat().st_mode & 0o111:
+        return path.resolve()
+    return None
+
+
 def resolve_binary(value: str | Path | None) -> Path:
     if value is None or value == "":
         raise SystemExit(
@@ -65,19 +105,27 @@ def resolve_binary(value: str | Path | None) -> Path:
     raise SystemExit(f"error: nginx binary not found: {value}")
 
 
+def version_matches(binary: Path, expected_version: str) -> bool:
+    return expected_version in nginx_version_text(binary)
+
+
 def validate_version(binary: Path, expected_version: str) -> None:
+    version_text = nginx_version_text(binary)
+    if expected_version not in version_text:
+        raise SystemExit(
+            "error: nginx version mismatch: "
+            f"expected {expected_version!r}, got {version_text!r}"
+        )
+
+
+def nginx_version_text(binary: Path) -> str:
     result = subprocess.run(
         [str(binary), "-v"],
         check=False,
         text=True,
         capture_output=True,
     )
-    version_text = f"{result.stdout}{result.stderr}".strip()
-    if expected_version not in version_text:
-        raise SystemExit(
-            "error: nginx version mismatch: "
-            f"expected {expected_version!r}, got {version_text!r}"
-        )
+    return f"{result.stdout}{result.stderr}".strip()
 
 
 def non_system_dylibs(binary: Path, prefixes: tuple[str, ...]) -> list[Path]:

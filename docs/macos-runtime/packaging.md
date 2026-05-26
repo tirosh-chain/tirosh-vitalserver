@@ -516,7 +516,7 @@ make vm-nginx-bundle
 VM_NGINX_SOURCE_BIN=/path/to/nginx make vm-nginx-artifact
 ```
 
-build tooling은 이 binary의 `nginx -v` 출력이 pinned `expected_version`과 맞는지 확인한 뒤, 실행 파일과 비시스템 dylib를 package 내부로 복사합니다. 현재 pinned version은 `nginx/1.31.0`입니다.
+build tooling은 이 binary의 `nginx -v` 출력이 선택된 release manifest의 `services.hostProxy.image`와 맞는지 확인한 뒤, 실행 파일과 비시스템 dylib를 package 내부로 복사합니다. artifact cache가 없거나 release manifest와 맞지 않으면 `source_binary_path`에서 캐시를 다시 채웁니다.
 
 ```text
 nginx/sbin/nginx

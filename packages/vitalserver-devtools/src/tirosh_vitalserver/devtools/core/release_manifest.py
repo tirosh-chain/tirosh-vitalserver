@@ -11,3 +11,4 @@ class ReleaseManifest:
     minimum_updater_version: str
     vitalserver_version: str
     target_platform: str
+    host_proxy_image: str | None = None

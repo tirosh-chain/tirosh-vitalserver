@@ -215,7 +215,7 @@ help-devtools:
 	@printf "\n"
 	@printf "Build:\n"
 	@printf "  make devtools-build          Build Apple Virtualization runtime launcher\n"
-	@printf "  make devtools-nginx-artifact Copy pinned nginx binary into local artifact cache\n"
+	@printf "  make devtools-nginx-artifact Copy source nginx binary into local artifact cache\n"
 	@printf "  make devtools-nginx-bundle   Build self-contained nginx bundle for dist pkg\n"
 	@printf "  make devtools-docker-images  Build Docker image bundle for air-gapped dist pkg\n"
 	@printf "  make devtools-sign           Ad-hoc sign runtime launcher with shared networking entitlement\n"

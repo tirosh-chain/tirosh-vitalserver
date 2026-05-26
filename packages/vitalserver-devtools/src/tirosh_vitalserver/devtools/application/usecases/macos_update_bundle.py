@@ -40,6 +40,7 @@ from tirosh_vitalserver.devtools.config.release_manifest import load_release_man
 from tirosh_vitalserver.devtools.core.guest_services import guest_deploy_plan
 from tirosh_vitalserver.devtools.core.macos_release.release_plans import (
     default_update_migrations,
+    host_proxy_expected_version,
     release_update_bundle_name,
     release_update_components,
     require_rootfs_for_update,
@@ -90,7 +91,10 @@ def build_update_bundle(input: ReleaseUpdateBundleInput) -> int:
             config=input.config,
             bundle_dir=settings.nginx_bundle,
             binary=input.nginx_binary,
-            expected_version=input.nginx_expected_version,
+            expected_version=host_proxy_expected_version(
+                release=release,
+                explicit_version=input.nginx_expected_version,
+            ),
         )
     )
     build_docker_image_bundle_from_config(

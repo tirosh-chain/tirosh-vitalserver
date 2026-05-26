@@ -78,7 +78,8 @@ vm-nginx-artifact:
 vm-nginx-bundle: $(if $(VM_NGINX_BIN),,vm-nginx-artifact)
 	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" nginx-bundle \
 		--bundle-dir "$(VM_PKG_BUILD_DIR)/nginx-bundle" \
-		--binary "$(VM_NGINX_BIN)"
+		--binary "$(VM_NGINX_BIN)" \
+		--release-file "$(VM_RELEASE_FILE)"
 
 vm-docker-images:
 	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" docker-images \

@@ -32,6 +32,7 @@ class NginxBundleInput:
     bundle_dir: Path
     binary: str | None
     expected_version: str | None
+    release_file: Path | None = None
 
 
 @dataclass(frozen=True)

@@ -21,6 +21,11 @@ from tirosh_vitalserver.devtools.application.inputs import (
     NginxBundleInput,
 )
 from tirosh_vitalserver.devtools.config.host_proxy import load_nginx_bundle_config
+from tirosh_vitalserver.devtools.config.paths import resolve_path
+from tirosh_vitalserver.devtools.config.release_manifest import load_release_manifest
+from tirosh_vitalserver.devtools.core.macos_release.release_plans import (
+    host_proxy_expected_version,
+)
 
 
 def render_config(input: HostProxyInput) -> int:
@@ -70,4 +75,19 @@ def render_launchd_plist(input: HostProxyInput) -> int:
 def build_nginx(input: NginxBundleInput) -> int:
     root = repo_root()
     config = load_config(input.config)
+    expected_version = input.expected_version
+    if expected_version is None and input.release_file:
+        release_file = resolve_path(root, input.release_file)
+        release = load_release_manifest(release_file)
+        expected_version = host_proxy_expected_version(
+            release=release,
+            explicit_version=None,
+        )
+        input = NginxBundleInput(
+            config=input.config,
+            bundle_dir=input.bundle_dir,
+            binary=input.binary,
+            expected_version=expected_version,
+            release_file=input.release_file,
+        )
     return build_nginx_bundle(input, load_nginx_bundle_config(config, root))

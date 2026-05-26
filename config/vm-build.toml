@@ -56,7 +56,7 @@ installed_plist = "com.tirosh.vitalserver-watchdog.plist"
 
 [macos.host_proxy.nginx]
 binary_path = ".artifacts/nginx/macos/bin/nginx"
-expected_version = "nginx/1.31.1"
+source_binary_path = "/opt/homebrew/opt/nginx/bin/nginx"
 non_system_dylib_prefixes = ["/opt/", "/usr/local/"]
 
 [guest.ubuntu]

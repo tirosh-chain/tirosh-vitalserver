@@ -8,7 +8,8 @@ from xml.sax.saxutils import escape as xml_escape
 @dataclass(frozen=True)
 class NginxBundleConfig:
     binary_path: Path
-    expected_version: str
+    source_binary_path: Path | None
+    expected_version: str | None
     non_system_dylib_prefixes: tuple[str, ...]
 
 

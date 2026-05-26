@@ -59,6 +59,18 @@ def release_update_components(
     ]
 
 
+def host_proxy_expected_version(
+    *,
+    release: ReleaseManifest,
+    explicit_version: str | None,
+) -> str:
+    if explicit_version:
+        return explicit_version
+    if release.host_proxy_image:
+        return release.host_proxy_image
+    raise DomainError("error: missing release field: services.hostProxy.image")
+
+
 def require_rootfs_for_update(bundle_kind: str, rootfs_base: Path | None) -> None:
     if bundle_kind == "vm-image-update" and rootfs_base is None:
         raise DomainError("error: --rootfs-base is required for vm-image-update")

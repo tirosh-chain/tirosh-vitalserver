@@ -42,6 +42,19 @@ def replace(pattern, replacement, content):
     return next_content
 
 
+def replace_optional(pattern, replacement, content):
+    next_content, count = re.subn(
+        pattern,
+        replacement,
+        content,
+        count=1,
+        flags=re.MULTILINE,
+    )
+    if count > 1:
+        raise SystemExit(f"release sync pattern matched too many times: {pattern}")
+    return next_content
+
+
 def swift_string(value):
     escaped = (
         str(value)
@@ -199,7 +212,6 @@ def sync_build_config(root, release):
     redis_ui = require_service(release, "redisUI")
     swagger_ui = require_service(release, "swaggerUI")
     guest_edge = require_service(release, "guestEdge")
-    host_proxy = require_service(release, "hostProxy")
     replacements = {
         r'"vitalserver:[^"]+"': f'"{vitalserver["image"]}"',
         r'\n  "vitalserver-audit-proxy:[^"]+"': f'\n  "{audit_proxy["image"]}"',
@@ -216,12 +228,14 @@ def sync_build_config(root, release):
         ),
         r'"swaggerapi/swagger-ui:[^"]+"': f'"{swagger_ui["image"]}"',
         r'"nginx:[^"]+"': f'"{guest_edge["image"]}"',
-        r'expected_version = "nginx/[^"]+"': (
-            f'expected_version = "{host_proxy["image"]}"'
-        ),
     }
     for pattern, replacement in replacements.items():
         content = replace(pattern, replacement, content)
+    content = replace_optional(
+        r'\nexpected_version = "nginx/[^"]+"',
+        "",
+        content,
+    )
     write_if_changed(config, content)
 
 
