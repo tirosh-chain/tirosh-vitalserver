@@ -14,7 +14,7 @@ from tirosh_vitalserver.devtools.core.update_bundle import is_safe_bundle_name
 DEFAULT_UPDATE_MIGRATIONS = (
     "001-refresh-cloud-init-seed",
     "002-migrate-runtime-logs",
-    "003-install-sleep-prevention-service",
+    "003-install-host-launchd-services",
 )
 
 
