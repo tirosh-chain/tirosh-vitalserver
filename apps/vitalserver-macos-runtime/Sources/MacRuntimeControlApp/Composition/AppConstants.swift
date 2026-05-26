@@ -3,7 +3,7 @@ import Foundation
 enum AppConstants {
     enum Product {
         static let displayName = "VitalServer Helper"
-        static let poweredByPrefix = "powered by"
+        static let poweredByPrefix = "Powered by"
         static let tiroshName = "Tirosh"
         static let tiroshURL = "https://www.tirosh.ai/"
         static let packageIdentifier = "com.tirosh.vitalserver.vm"
@@ -40,6 +40,14 @@ enum AppConstants {
     enum SettingsLimits {
         static let minimumCPUCount = 7
         static let maximumCPUCount = 64
+        static let minimumSystemCPUCountForDynamicLimit = 8
+        static var maximumAllowedCPUCount: Int {
+            let systemCPUCount = ProcessInfo.processInfo.processorCount
+            guard systemCPUCount >= minimumSystemCPUCountForDynamicLimit else {
+                return minimumCPUCount
+            }
+            return min(maximumCPUCount, systemCPUCount)
+        }
         static let defaultDiskGiB = 32
         static let minimumDiskGiB = 4
         static let maximumDiskGiB = 512
@@ -47,6 +55,9 @@ enum AppConstants {
         static let minimumMemoryGiB = 4
         static let maximumMemoryGiB = 64
         static let memoryStepGiB = 4
+        static let minimumRedisBackupRetentionCount = 1
+        static let maximumRedisBackupRetentionCount = 30
+        static let redisBackupRetentionStep = 1
     }
 
     enum ServiceVersions {
@@ -113,7 +124,7 @@ enum AppConstants {
         static let logLive = "Live"
         static let logPaused = "Paused"
         static let advancedSummary = "Advanced runtime details"
-        static let advancedDescription = "Diagnostics, service internals, proxy repair, update rollback, and uninstall tools for administrators."
+        static let advancedDescription = "Diagnostics, service internals, repair actions, update rollback, and administrator operations."
         static let testSummary = "Test"
         static let testDescription = "Browser-based runtime checks for development and verification builds."
         static let sectionBrowserChecks = "Browser"
@@ -123,7 +134,7 @@ enum AppConstants {
         static let infoSummary = "Runtime information"
         static let infoDescription = "Installed versions, bundled services, and deployment details for support and maintenance."
         static let dangerZoneSummary = "Danger Zone"
-        static let dangerZoneDescription = "Operations here can restart, roll back, replace, or remove runtime components. Use them only when you understand the impact."
+        static let dangerZoneDescription = "Operations here delete recovery assets or remove runtime components. Use them only when you understand the impact."
         static let sectionProductInfo = "Product"
         static let sectionBundledServices = "Bundled services"
         static let sectionRuntimePaths = "Runtime paths"
@@ -134,11 +145,14 @@ enum AppConstants {
         static let sectionNetworkOverrides = "Advanced network"
         static let sectionAdminOperations = "Admin operations"
         static let sectionRecoveryOperations = "Recovery operations"
+        static let sectionRuntimeRepair = "Runtime repair"
         static let sectionUpdateRecovery = "Update recovery"
+        static let sectionRedisDataRecovery = "Redis data recovery"
         static let adminOperationsHelp = "Use these actions only when administering the installed runtime. Password changes are applied with the same runtime configuration flow as Settings."
         static let runtimeServiceControlHelp = "Starts or stops the VM, host proxy, and watchdog together. Use Stop for planned maintenance, then Start to bring VitalServer back online."
-        static let recoveryOperationsHelp = "Use repair actions when the runtime is installed but unhealthy after update, rollback, or unexpected shutdown."
+        static let recoveryOperationsHelp = "Use these actions when the runtime is installed but unhealthy after update, rollback, or unexpected shutdown."
         static let updateRecoveryHelp = "Use rollback only when an update leaves the runtime unhealthy. Rollback restores the latest managed backup and restarts runtime services."
+        static let redisDataRecoveryHelp = "Restore Redis data from a verified Redis backup archive. This is separate from update rollback and replaces the current Redis data."
         static let sectionUpdateSource = "Update source"
         static let sectionBundleVerification = "Bundle verification"
         static let sectionApplyUpdate = "Apply update"
@@ -156,6 +170,7 @@ enum AppConstants {
         static let sectionVM = "VM"
         static let sectionNetwork = "Network"
         static let sectionStorage = "Storage"
+        static let sectionRedisData = "Redis data"
         static let sectionOperations = "Operations"
         static let sectionAdvancedConfiguration = "Advanced configuration"
         static let cpu = "CPU"
@@ -176,6 +191,8 @@ enum AppConstants {
         static let publicHostHelp = "Optional host name or IP written into VitalServer runtime config. Leave empty when devices should use the same host they connected to."
         static let publicPort = "Advertised port"
         static let publicPortHelp = "Port that VitalServer should advertise to clients. In most shared/NAT installs this should match the Mac listen port."
+        static let redisBackupRetention = "Redis backups"
+        static let redisBackupRetentionHelp = "Number of Redis backup archives to keep in Vital files backups, up to 30. Older archives are pruned after a new verified backup is created."
         static let advertisedURLPreview = "Advertised URL preview"
         static let advertisedURLSameHost = "(same host)"
         static let advancedNetworkHelp = "These settings change how VitalServer is exposed outside the VM. Use them when the Mac is behind a hospital network policy, reverse proxy, or fixed endpoint."
@@ -246,7 +263,10 @@ enum AppConstants {
         static let verifyBundle = "Verify"
         static let applyBundle = "Apply Bundle"
         static let rollback = "Rollback"
+        static let createRedisBackup = "Create Redis Backup"
+        static let restoreRedisBackup = "Restore Redis Backup"
         static let deleteBackup = "Delete Backup"
+        static let openBackups = "Open Backups"
         static let openLogs = "Open Logs"
         static let exportLogs = "Export Logs"
         static let startRuntimeServices = "Start Runtime Services"
@@ -328,6 +348,9 @@ enum AppConstants {
         static let backupDeleted = "Backup deleted."
         static let backupDeletePreparing = "Preparing backup deletion..."
         static let backupDeleteRunning = "Deleting backup..."
+        static let redisBackupPreparing = "Preparing Redis backup..."
+        static let redisBackupRunning = "Creating Redis backup..."
+        static let redisBackupCompleted = "Redis backup completed."
         static let missingBackup = "Choose a backup first."
         static let invalidBackup = "Selected backup is outside the managed backup directory."
         static let missingLauncher = "Missing runtime launcher"
@@ -335,16 +358,17 @@ enum AppConstants {
         static let commandCancelled = "Command was cancelled or failed."
         static let latestBackupFallback = "Latest backup"
         static let repairProxyConfirmation = "Stops nginx listeners on the configured proxy port, then restarts the host proxy service. Other process types are reported but not stopped automatically."
-        static let repairDatastoreConfirmation = "Checks and repairs the Redis append-only file inside the VM, then restarts VitalServer containers and host services. Redis creates a timestamped backup before fixing a damaged AOF file."
+        static let repairDatastoreConfirmation = "Checks and repairs the Redis append-only file inside the VM, then restarts VitalServer containers and host services. Redis creates a timestamped backup before fixing a damaged AOF file. Repair can truncate the corrupted tail of the AOF; use Redis backups for full data recovery."
         static let startRuntimeServicesConfirmation = "Starts the VM, host proxy, and watchdog services, then waits for VitalServer to become healthy."
         static let stopRuntimeServicesConfirmation = "Stops the watchdog, host proxy, and VM services. VitalServer will be unavailable until runtime services are started again."
-        static let standardUninstallConfirmation = "Removes the Helper app, runtime services, tools, VM disk, logs, and package receipt. Vital files and backups are preserved."
-        static let cleanUninstallConfirmation = "Removes the Helper app, runtime services, tools, VM disk, logs, backups, and configured vital files directory."
+        static let standardUninstallConfirmation = "Creates a best-effort Redis backup, then removes the Helper app, runtime services, tools, VM disk, and package receipt. Logs, backups, Redis backups, and Vital files are preserved."
+        static let cleanUninstallConfirmation = "Removes the Helper app, runtime services, tools, VM disk, logs, backups, Redis backups, package receipt, and configured Vital files directory."
         static let deleteBackupConfirmation = "Delete the selected managed backup? This cannot be undone."
         static let bridgedModeUnavailable = "Bridged mode is not available in this build."
         static let diskDecreaseUnavailable = "Disk size can only be increased."
         static let vitalFilesDirectoryRequired = "Vital files directory must be an absolute path."
         static let invalidPort = "Port must be between 1 and 65535."
+        static let invalidRedisBackupRetention = "Redis backups must be between 1 and 30 archives."
         static let adminPasswordRequired = "Admin password reset value must not be empty."
         static let adminPasswordNewline = "Admin password reset value must not contain newlines."
         static func commandFailed(exitCode: Int32) -> String {

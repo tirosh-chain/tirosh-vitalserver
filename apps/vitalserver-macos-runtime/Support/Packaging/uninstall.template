@@ -8,6 +8,10 @@ product_root="${PRODUCT_ROOT}"
 manager_app="${MANAGER_APP}"
 vm_config="${product_root}/vm/runtime/vm-config.json"
 default_vital_files="${product_root}/vm/data/vital-files"
+vm_home="${product_root}/vm"
+guest_run_dir="${vm_home}/data/run"
+redis_backup_request="${guest_run_dir}/redis-backup.request"
+redis_backup_result="${guest_run_dir}/redis-backup-result.json"
 clean=false
 
 log() {
@@ -107,12 +111,92 @@ restore_preserved_paths() {
   rm -rf "${preserve_root}"
 }
 
+request_redis_backup() {
+  local request_id deadline status archive
+  if [ ! -d "${guest_run_dir}" ]; then
+    log "step=create-redis-backup status=skipped reason=guest-run-directory-missing"
+    return 1
+  fi
+
+  request_id="uninstall-$(date -u +"%Y%m%dT%H%M%SZ")-$$"
+  rm -f "${redis_backup_result}"
+  /usr/bin/python3 - "${redis_backup_request}" "${request_id}" <<'PY'
+import json
+import sys
+from datetime import datetime, timezone
+
+path, request_id = sys.argv[1], sys.argv[2]
+with open(path, "w", encoding="utf-8") as handle:
+    json.dump({
+        "operation": "redis-backup",
+        "requestId": request_id,
+        "requestedAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+    }, handle)
+    handle.write("\n")
+PY
+
+  deadline=$(( $(date +%s) + 120 ))
+  while [ "$(date +%s)" -lt "${deadline}" ]; do
+    if [ -f "${redis_backup_result}" ]; then
+      status="$(/usr/bin/python3 - "${redis_backup_result}" "${request_id}" <<'PY'
+import json
+import sys
+
+try:
+    with open(sys.argv[1], encoding="utf-8") as handle:
+        data = json.load(handle)
+    if data.get("requestId") != sys.argv[2]:
+        print("stale")
+    else:
+        print(data.get("status", "unknown"))
+except Exception:
+    print("unknown")
+PY
+)"
+      case "${status}" in
+        completed)
+          archive="$(/usr/bin/python3 - "${redis_backup_result}" <<'PY'
+import json
+import sys
+
+try:
+    with open(sys.argv[1], encoding="utf-8") as handle:
+        print(json.load(handle).get("archive", ""))
+except Exception:
+    pass
+PY
+)"
+          log "step=create-redis-backup status=completed archive=${archive:-unknown}"
+          return 0
+          ;;
+        failed)
+          log "step=create-redis-backup status=skipped reason=backup-command-failed"
+          return 1
+          ;;
+      esac
+    fi
+    sleep 2
+  done
+
+  log "step=create-redis-backup status=skipped reason=timeout"
+  return 1
+}
+
 vital_files_dir="$(configured_vital_files_dir)"
 if [ -z "${vital_files_dir}" ]; then
   vital_files_dir="${default_vital_files}"
 fi
 
 log "uninstall started clean=${clean}"
+
+if [ "${clean}" = false ]; then
+  log "step=create-redis-backup status=started"
+  if ! request_redis_backup; then
+    log "standard uninstall aborted because Redis backup did not complete. Use --clean only when deleting Redis backups is intentional."
+    exit 1
+  fi
+fi
+
 log "step=stop-launchd-services status=started"
 for label in "${labels[@]}"; do
   if launchctl print "system/${label}" >/dev/null 2>&1; then
@@ -136,6 +220,7 @@ log "step=remove-plists-and-tools status=completed"
 if [ "${clean}" = false ]; then
   log "step=preserve-user-data status=started"
   preserve_root="$(mktemp -d "${PRESERVE_TMP_TEMPLATE}")"
+  preserve_path "${product_root}/logs" "${preserve_root}" "logs"
   preserve_path "${product_root}/backups" "${preserve_root}" "backups"
   if [ "${vital_files_dir}" = "${default_vital_files}" ]; then
     preserve_path "${default_vital_files}" "${preserve_root}" "vital-files"

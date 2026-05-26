@@ -16,6 +16,7 @@ public protocol RuntimeControlClient {
     func applySettings(_ settings: RuntimeSettings) async throws -> RuntimeCommandResult
     func repairProxy(proxyPort: Int) async throws -> RuntimeCommandResult
     func repairDatastore() async throws -> RuntimeCommandResult
+    func createRedisBackup() async throws -> RuntimeCommandResult
     func startRuntimeServices() async throws -> RuntimeCommandResult
     func stopRuntimeServices() async throws -> RuntimeCommandResult
     func loadReleaseInfo() async throws -> RuntimeReleaseInfo
@@ -27,6 +28,7 @@ public protocol RuntimeHostClient {
     func loadBackups(latestBackupPath: String?) -> [RuntimeBackup]
     func updateBundleSummary(url: URL) -> String
     func logText(sourceID: RuntimeLogSource, helperMessage: String, lineLimit: Int) -> String
+    func loadLogText(sourceID: RuntimeLogSource, helperMessage: String, lineLimit: Int) async -> String
     func preferredLogsPath() -> String
     func vitalFileFolders(root: String) -> [VitalFilesFolder]
     func legacyCommandProgressLine() -> String?

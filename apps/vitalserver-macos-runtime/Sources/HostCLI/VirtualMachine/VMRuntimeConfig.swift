@@ -22,7 +22,7 @@ struct VMRuntimeConfig: Codable {
         return VMRuntimeConfig(
             cpuCount: min(
                 max(ProcessInfo.processInfo.processorCount / 2, Constants.Defaults.minimumCPUCount),
-                Constants.Defaults.maximumCPUCount
+                Constants.Defaults.maximumAllowedCPUCount
             ),
             memoryMiB: Constants.Defaults.memoryMiB,
             kernelPath: paths.runtimeDirectory.appendingPathComponent(Constants.BootAssets.kernel).path,

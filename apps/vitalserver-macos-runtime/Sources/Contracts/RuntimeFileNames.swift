@@ -9,6 +9,8 @@ public enum RuntimeFileNames {
     public static let datastoreRepairRequest = "repair-datastore.request"
     public static let datastoreRepairResult = "repair-datastore-result.json"
     public static let datastoreRepairLog = "repair-datastore.log"
+    public static let redisBackupRequest = "redis-backup.request"
+    public static let redisBackupResult = "redis-backup-result.json"
     public static let updateActivationRequest = "activate-update.request"
     public static let updateActivationResult = "activate-update-result.json"
     public static let updateActivationLog = "activate-update.log"

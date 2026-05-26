@@ -83,6 +83,16 @@ public struct MacHostRuntimeClient: RuntimeControlClient, RuntimeHostClient {
         fileReader.logText(sourceID: sourceID, helperMessage: helperMessage, lineLimit: lineLimit)
     }
 
+    public func loadLogText(sourceID: RuntimeLogSource, helperMessage: String, lineLimit: Int) async -> String {
+        await Task.detached(priority: .utility) {
+            SystemRuntimeHostFileReader().logText(
+                sourceID: sourceID,
+                helperMessage: helperMessage,
+                lineLimit: lineLimit
+            )
+        }.value
+    }
+
     public func preferredLogsPath() -> String {
         fileReader.preferredLogsPath()
     }
@@ -177,6 +187,17 @@ public struct MacHostRuntimeClient: RuntimeControlClient, RuntimeHostClient {
         ))
     }
 
+    public func createRedisBackup() async throws -> RuntimeCommandResult {
+        try ensureLauncherIsAvailable()
+        return await runPrivileged(RuntimeCommandFactory.shellCommand(
+            executable: RuntimeAdapterConstants.Paths.launcher,
+            arguments: [
+                RuntimeAdapterConstants.RuntimeCommand.runtime,
+                RuntimeAdapterConstants.RuntimeCommand.redisBackup,
+            ]
+        ))
+    }
+
     public func startRuntimeServices() async throws -> RuntimeCommandResult {
         try ensureLauncherIsAvailable()
         return await runPrivileged(RuntimeCommandFactory.runtimeServicesCommand(action: .start))
@@ -198,7 +219,8 @@ public struct MacHostRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     public func loadInstallInfo() -> RuntimeInstallInfo {
         RuntimeInstallInfo(
             runtimeHomePath: RuntimeAdapterConstants.Paths.vmHome,
-            backupsPath: RuntimeAdapterConstants.Paths.backups
+            backupsPath: RuntimeAdapterConstants.Paths.backups,
+            redisBackupsPath: RuntimeAdapterConstants.Paths.redisBackups
         )
     }
 

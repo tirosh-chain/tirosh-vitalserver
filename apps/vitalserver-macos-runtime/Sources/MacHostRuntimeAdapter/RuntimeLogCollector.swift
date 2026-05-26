@@ -6,9 +6,19 @@ import HostInfrastructure
 
 protocol RuntimeLogCollecting {
     func refreshLogCollection()
+    func refreshLogCollection(sourceID: RuntimeLogSource)
+}
+
+extension RuntimeLogCollecting {
+    func refreshLogCollection(sourceID: RuntimeLogSource) {
+        refreshLogCollection()
+    }
 }
 
 struct MacHostRuntimeLogCollector: RuntimeLogCollecting {
+    private static let appendValidationByteLimit: UInt64 = 64 * 1024
+    private static let appendChunkByteLimit = 256 * 1024
+
     private let fileStore: RuntimeFileStore
     private let copies: [RuntimeLogCopy]
     private let rotatedCopySets: [RuntimeRotatedLogCopySet]
@@ -44,6 +54,21 @@ struct MacHostRuntimeLogCollector: RuntimeLogCollecting {
         }
     }
 
+    func refreshLogCollection(sourceID: RuntimeLogSource) {
+        guard sourceID != .helperMessage else {
+            return
+        }
+        for item in copies where shouldRefresh(item, for: sourceID) {
+            copyIntoCentralLogs(item)
+        }
+        guard sourceID == .containers else {
+            return
+        }
+        for set in rotatedCopySets {
+            copyRotatedLogs(set)
+        }
+    }
+
     private func copyIntoCentralLogs(_ item: RuntimeLogCopy) {
         guard fileStore.fileExists(item.source),
               shouldRefreshCopy(from: item.source, to: item.destination)
@@ -57,14 +82,15 @@ struct MacHostRuntimeLogCollector: RuntimeLogCollecting {
             )
             if fileStore.fileExists(item.destination), shouldRotateCentralLog(item.destination) {
                 try archiveCentralLog(item.destination, prefix: item.archivePrefix)
+            } else if canAppendCopy(from: item.source, to: item.destination) {
+                try appendNewLogBytes(from: item.source, to: item.destination)
+                try touch(item.destination)
+                return
             } else if fileStore.fileExists(item.destination) {
                 try fileStore.removeItem(at: item.destination)
             }
             try fileStore.copyItem(at: item.source, to: item.destination)
-            try FileManager.default.setAttributes(
-                [.modificationDate: now()],
-                ofItemAtPath: item.destination.path
-            )
+            try touch(item.destination)
         } catch {
             return
         }
@@ -153,6 +179,97 @@ struct MacHostRuntimeLogCollector: RuntimeLogCollecting {
         }
         return url.deletingLastPathComponent()
             .appendingPathComponent("\(url.lastPathComponent).\(UUID().uuidString)")
+    }
+
+    private func shouldRefresh(_ item: RuntimeLogCopy, for sourceID: RuntimeLogSource) -> Bool {
+        switch sourceID {
+        case .helperMessage:
+            return false
+        case .install:
+            return item.destination.path == RuntimeAdapterConstants.Paths.installLog
+        case .command:
+            return item.destination.path == RuntimeAdapterConstants.Paths.commandLog
+        case .launcher:
+            return item.destination.lastPathComponent == "launcher.log"
+        case .proxyOutput:
+            return item.destination.lastPathComponent == "proxy.out.log"
+        case .proxyError:
+            return item.destination.lastPathComponent == "proxy.err.log"
+        case .updateActivation:
+            return item.destination.path == RuntimeAdapterConstants.Paths.updateActivationLog
+        case .containers:
+            return item.destination.path == RuntimeAdapterConstants.Paths.containerLogs
+        }
+    }
+
+    private func canAppendCopy(from source: URL, to destination: URL) -> Bool {
+        guard fileStore.fileExists(destination),
+              let sourceSize = try? fileStore.fileSize(source),
+              let destinationSize = try? fileStore.fileSize(destination)
+        else {
+            return false
+        }
+        return sourceSize > destinationSize && sourceMatchesDestinationTail(
+            source: source,
+            destination: destination,
+            destinationSize: destinationSize
+        )
+    }
+
+    private func sourceMatchesDestinationTail(
+        source: URL,
+        destination: URL,
+        destinationSize: UInt64
+    ) -> Bool {
+        let length = min(destinationSize, Self.appendValidationByteLimit)
+        let offset = destinationSize - length
+        guard let sourceData = readData(source, offset: offset, length: length),
+              let destinationData = readData(destination, offset: offset, length: length)
+        else {
+            return false
+        }
+        return sourceData == destinationData
+    }
+
+    private func readData(_ url: URL, offset: UInt64, length: UInt64) -> Data? {
+        guard let handle = try? FileHandle(forReadingFrom: url) else {
+            return nil
+        }
+        defer {
+            try? handle.close()
+        }
+        do {
+            try handle.seek(toOffset: offset)
+            return try handle.read(upToCount: Int(length))
+        } catch {
+            return nil
+        }
+    }
+
+    private func appendNewLogBytes(from source: URL, to destination: URL) throws {
+        let offset = try fileStore.fileSize(destination)
+        let sourceHandle = try FileHandle(forReadingFrom: source)
+        defer {
+            try? sourceHandle.close()
+        }
+        try sourceHandle.seek(toOffset: offset)
+        guard let data = try sourceHandle.read(upToCount: Self.appendChunkByteLimit), !data.isEmpty else {
+            return
+        }
+
+        let destinationHandle = try FileHandle(forWritingTo: destination)
+        defer {
+            try? destinationHandle.close()
+        }
+        try destinationHandle.seekToEnd()
+        try destinationHandle.write(contentsOf: data)
+    }
+
+    private func touch(_ url: URL) throws {
+        try FileManager.default.setAttributes(
+            [.modificationDate: now()],
+            ofItemAtPath: url.path
+        )
     }
 
     private func modificationDate(_ url: URL) -> Date? {

@@ -12,6 +12,10 @@ struct RuntimeSettingsValidator {
         if !(1...65_535).contains(settings.proxyPort) || !(1...65_535).contains(settings.publicPort) {
             return .invalid(AppConstants.StatusText.invalidPort)
         }
+        if !(AppConstants.SettingsLimits.minimumRedisBackupRetentionCount...AppConstants.SettingsLimits.maximumRedisBackupRetentionCount)
+            .contains(settings.redisBackupRetentionCount) {
+            return .invalid(AppConstants.StatusText.invalidRedisBackupRetention)
+        }
         if settings.vitalFilesDirectory.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             || !settings.vitalFilesDirectory.hasPrefix("/") {
             return .invalid(AppConstants.StatusText.vitalFilesDirectoryRequired)

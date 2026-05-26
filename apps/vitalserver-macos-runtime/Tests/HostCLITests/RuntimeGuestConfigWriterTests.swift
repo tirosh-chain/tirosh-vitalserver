@@ -31,6 +31,7 @@ final class RuntimeGuestConfigWriterTests: XCTestCase {
         XCTAssertEqual(document.publicPort, 8080)
         XCTAssertEqual(document.adminPassword, "custom-secret")
         XCTAssertEqual(document.vitalFilesDirectory, Constants.Defaults.vitalFilesDirectoryGuestMountPath)
+        XCTAssertEqual(document.redisBackupRetentionCount, Constants.Defaults.redisBackupRetentionCount)
         XCTAssertEqual(restricted, [paths.guestRuntimeConfig])
     }
 

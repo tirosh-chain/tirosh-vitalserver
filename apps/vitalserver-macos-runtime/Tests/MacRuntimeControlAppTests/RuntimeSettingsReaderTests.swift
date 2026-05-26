@@ -26,7 +26,8 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         try """
         {
           "publicHost": "example.test",
-          "publicPort": 8080
+          "publicPort": 8080,
+          "redisBackupRetentionCount": 31
         }
         """.write(to: guestConfig, atomically: true, encoding: .utf8)
         try """
@@ -80,6 +81,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         XCTAssertEqual(settings.vitalFilesDirectory, "/Volumes/Vital Files")
         XCTAssertEqual(settings.publicHost, "example.test")
         XCTAssertEqual(settings.publicPort, 8080)
+        XCTAssertEqual(settings.redisBackupRetentionCount, 30)
         XCTAssertEqual(settings.proxyPort, 19090)
         XCTAssertFalse(settings.autoRecoveryEnabled)
     }
@@ -93,6 +95,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         settings.vitalFilesDirectory = "/data/vital"
         settings.publicHost = "public.test"
         settings.publicPort = 8080
+        settings.redisBackupRetentionCount = 20
         settings.startOnBoot = false
         settings.autoRecoveryEnabled = false
         settings.restartAfterSave = true
@@ -107,6 +110,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         XCTAssertTrue(arguments.contains("/tmp/password"))
         XCTAssertTrue(arguments.contains(RuntimeAdapterConstants.RuntimeCommand.optionRestart))
         XCTAssertEqual(value(after: RuntimeAdapterConstants.RuntimeCommand.optionProxyPort, in: arguments), "18080")
+        XCTAssertEqual(value(after: RuntimeAdapterConstants.RuntimeCommand.optionRedisBackupRetention, in: arguments), "20")
         XCTAssertEqual(value(after: RuntimeAdapterConstants.RuntimeCommand.optionStartOnBoot, in: arguments), "false")
         XCTAssertEqual(value(after: RuntimeAdapterConstants.RuntimeCommand.optionAutoRecovery, in: arguments), "false")
     }

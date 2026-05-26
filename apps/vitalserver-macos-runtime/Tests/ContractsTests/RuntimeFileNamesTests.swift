@@ -13,6 +13,8 @@ final class RuntimeFileNamesTests: XCTestCase {
         XCTAssertEqual(RuntimeFileNames.datastoreRepairRequest, "repair-datastore.request")
         XCTAssertEqual(RuntimeFileNames.datastoreRepairResult, "repair-datastore-result.json")
         XCTAssertEqual(RuntimeFileNames.datastoreRepairLog, "repair-datastore.log")
+        XCTAssertEqual(RuntimeFileNames.redisBackupRequest, "redis-backup.request")
+        XCTAssertEqual(RuntimeFileNames.redisBackupResult, "redis-backup-result.json")
         XCTAssertEqual(RuntimeFileNames.updateActivationRequest, "activate-update.request")
         XCTAssertEqual(RuntimeFileNames.updateActivationResult, "activate-update-result.json")
         XCTAssertEqual(RuntimeFileNames.updateActivationLog, "activate-update.log")

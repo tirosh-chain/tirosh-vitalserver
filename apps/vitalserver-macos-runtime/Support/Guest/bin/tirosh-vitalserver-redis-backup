@@ -3,10 +3,108 @@ set -euo pipefail
 
 MOUNT_POINT="${TIROSH_SHARE_MOUNT:-/mnt/tirosh}"
 DEPLOY_DIR="${TIROSH_DEPLOY_DIR:-${MOUNT_POINT}/deploy}"
+RUNTIME_DIR="${TIROSH_RUNTIME_DIR:-${MOUNT_POINT}/run}"
 BACKUP_DIR="${MOUNT_POINT}/backups/redis"
+REQUEST_FILE="${RUNTIME_DIR}/redis-backup.request"
+RESULT_FILE="${RUNTIME_DIR}/redis-backup-result.json"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+REQUEST_ID=""
+ARCHIVE="${BACKUP_DIR}/redis-${STAMP}.tar.gz"
+RETENTION_COUNT=30
+
+read_retention_count() {
+  local value
+  value="$(python3 - "${DEPLOY_DIR}/runtime-config.json" <<'PY'
+import json
+import sys
+
+try:
+    with open(sys.argv[1], encoding="utf-8") as handle:
+        value = json.load(handle).get("redisBackupRetentionCount", 30)
+    print(value if isinstance(value, int) else 30)
+except Exception:
+    print(30)
+PY
+)"
+  case "${value}" in
+    ''|*[!0-9]*)
+      RETENTION_COUNT=30
+      ;;
+    *)
+      if [ "${value}" -lt 1 ]; then
+        RETENTION_COUNT=1
+      elif [ "${value}" -gt 30 ]; then
+        RETENTION_COUNT=30
+      else
+        RETENTION_COUNT="${value}"
+      fi
+      ;;
+  esac
+}
+
+read_request_id() {
+  [ -f "${REQUEST_FILE}" ] || return 0
+  REQUEST_ID="$(python3 - "${REQUEST_FILE}" <<'PY'
+import json
+import sys
+
+try:
+    with open(sys.argv[1], encoding="utf-8") as handle:
+        value = json.load(handle).get("requestId", "")
+    if isinstance(value, str):
+        print(value)
+except Exception:
+    pass
+PY
+)"
+}
+
+write_result() {
+  local status="$1"
+  local message="$2"
+  python3 - "${RESULT_FILE}" "${REQUEST_ID}" "${status}" "${message}" "${ARCHIVE}" <<'PY'
+import json
+import sys
+from datetime import datetime, timezone
+
+path, request_id, status, message, archive = sys.argv[1:6]
+with open(path, "w", encoding="utf-8") as handle:
+    json.dump({
+        "operation": "redis-backup",
+        "requestId": request_id,
+        "status": status,
+        "message": message,
+        "archive": archive,
+        "updatedAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+    }, handle)
+    handle.write("\n")
+PY
+}
+
+on_error() {
+  local status="$?"
+  trap - ERR
+  if [ -n "${REQUEST_ID}" ]; then
+    write_result "failed" "Redis backup failed."
+    rm -f "${REQUEST_FILE}"
+  fi
+  exit "${status}"
+}
+
+trap on_error ERR
 
 mkdir -p "${BACKUP_DIR}"
+read_request_id
+read_retention_count
+if [ -n "${REQUEST_ID}" ]; then
+  write_result "running" "Redis backup is running."
+fi
 docker compose --project-name vitalserver -f "${DEPLOY_DIR}/compose.yaml" exec -T redis redis-cli SAVE >/dev/null
-tar -C /var/lib/docker/volumes/vitalserver_redis-data/_data -czf "${BACKUP_DIR}/redis-${STAMP}.tar.gz" .
-find "${BACKUP_DIR}" -name 'redis-*.tar.gz' -type f | sort | head -n -7 | xargs -r rm -f
+tar -C /var/lib/docker/volumes/vitalserver_redis-data/_data -czf "${ARCHIVE}" .
+test -s "${ARCHIVE}"
+tar -tzf "${ARCHIVE}" >/dev/null
+find "${BACKUP_DIR}" -name 'redis-*.tar.gz' -type f | sort | head -n -"${RETENTION_COUNT}" | xargs -r rm -f
+if [ -n "${REQUEST_ID}" ]; then
+  write_result "completed" "Redis backup completed."
+  rm -f "${REQUEST_FILE}"
+fi

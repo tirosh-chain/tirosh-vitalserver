@@ -12,6 +12,7 @@ enum RuntimeLifecycleCommand: Equatable {
     case stageBundle(URL)
     case applyBundle(URL)
     case rollback(RuntimeRollbackCommand)
+    case redisBackup
     case repairDatastore
     case startServices
     case stopServices
@@ -51,6 +52,8 @@ enum RuntimeLifecycleCommand: Equatable {
             ))
         case "rollback":
             return .rollback(parseRollbackCommand(remaining))
+        case "redis-backup":
+            return .redisBackup
         case "repair-datastore":
             return .repairDatastore
         case "start-services":
@@ -70,12 +73,13 @@ enum RuntimeLifecycleCommand: Equatable {
       vitalserver-vm runtime status
       vitalserver-vm runtime health
       vitalserver-vm runtime watchdog
-      vitalserver-vm runtime configure [--cpu <count>] [--memory-gib <gib>] [--disk-gib <gib>] [--network shared|bridged] [--bridged-interface <id>] [--proxy-port <port>] [--vital-files-dir <path>] [--public-host <host>] [--public-port <port>] [--admin-password <password>] [--start-on-boot true|false] [--restart]
+      vitalserver-vm runtime configure [--cpu <count>] [--memory-gib <gib>] [--disk-gib <gib>] [--network shared|bridged] [--bridged-interface <id>] [--proxy-port <port>] [--vital-files-dir <path>] [--public-host <host>] [--public-port <port>] [--admin-password <password>] [--start-on-boot true|false] [--redis-backup-retention <count>] [--restart]
       vitalserver-vm runtime configure [--admin-password-file <path>] [--restart]
       vitalserver-vm runtime verify-bundle <bundle.tar.gz>
       vitalserver-vm runtime stage-bundle <bundle.tar.gz>
       vitalserver-vm runtime apply-bundle <bundle.tar.gz>
       vitalserver-vm runtime rollback [backup-dir]
+      vitalserver-vm runtime redis-backup
       vitalserver-vm runtime repair-datastore
       vitalserver-vm runtime start-services
       vitalserver-vm runtime stop-services
@@ -176,6 +180,11 @@ enum RuntimeLifecycleCommand: Equatable {
                 throw LauncherError.missingArgument("--auto-recovery must be true or false")
             }
             return .autoRecovery(enabled)
+        case .redisBackupRetention:
+            guard let count = Int(value) else {
+                throw LauncherError.missingArgument("--redis-backup-retention must be an integer")
+            }
+            return .redisBackupRetention(count)
         case .restart:
             throw LauncherError.missingArgument("--restart does not accept a value")
         case .unknown(let key):

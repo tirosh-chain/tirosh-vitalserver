@@ -28,8 +28,67 @@ struct GuestRuntimeConfigDocument: Codable {
     var publicPort: Int
     var adminPassword: String
     var vitalFilesDirectory: String
+    var redisBackupRetentionCount: Int
     var redisUiPort: Int
     var swaggerUiPort: Int
+
+    enum CodingKeys: String, CodingKey {
+        case vitalserverHttpPort
+        case redisHost
+        case redisPort
+        case trustProxy
+        case publicHost
+        case publicPort
+        case adminPassword
+        case vitalFilesDirectory
+        case redisBackupRetentionCount
+        case redisUiPort
+        case swaggerUiPort
+    }
+
+    init(
+        vitalserverHttpPort: Int,
+        redisHost: String,
+        redisPort: Int,
+        trustProxy: Bool,
+        publicHost: String,
+        publicPort: Int,
+        adminPassword: String,
+        vitalFilesDirectory: String,
+        redisBackupRetentionCount: Int,
+        redisUiPort: Int,
+        swaggerUiPort: Int
+    ) {
+        self.vitalserverHttpPort = vitalserverHttpPort
+        self.redisHost = redisHost
+        self.redisPort = redisPort
+        self.trustProxy = trustProxy
+        self.publicHost = publicHost
+        self.publicPort = publicPort
+        self.adminPassword = adminPassword
+        self.vitalFilesDirectory = vitalFilesDirectory
+        self.redisBackupRetentionCount = redisBackupRetentionCount
+        self.redisUiPort = redisUiPort
+        self.swaggerUiPort = swaggerUiPort
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.vitalserverHttpPort = try container.decode(Int.self, forKey: .vitalserverHttpPort)
+        self.redisHost = try container.decode(String.self, forKey: .redisHost)
+        self.redisPort = try container.decode(Int.self, forKey: .redisPort)
+        self.trustProxy = try container.decode(Bool.self, forKey: .trustProxy)
+        self.publicHost = try container.decode(String.self, forKey: .publicHost)
+        self.publicPort = try container.decode(Int.self, forKey: .publicPort)
+        self.adminPassword = try container.decode(String.self, forKey: .adminPassword)
+        self.vitalFilesDirectory = try container.decode(String.self, forKey: .vitalFilesDirectory)
+        self.redisBackupRetentionCount = try container.decodeIfPresent(
+            Int.self,
+            forKey: .redisBackupRetentionCount
+        ) ?? Constants.Defaults.redisBackupRetentionCount
+        self.redisUiPort = try container.decode(Int.self, forKey: .redisUiPort)
+        self.swaggerUiPort = try container.decode(Int.self, forKey: .swaggerUiPort)
+    }
 
     static func load(from url: URL, fileStore: RuntimeFileReading) throws -> GuestRuntimeConfigDocument {
         guard fileStore.fileExists(url) else {
@@ -49,6 +108,7 @@ struct GuestRuntimeConfigDocument: Codable {
             publicPort: Constants.Guest.publicPort,
             adminPassword: Constants.Guest.defaultAdminPassword,
             vitalFilesDirectory: Constants.Defaults.vitalFilesDirectoryGuestMountPath,
+            redisBackupRetentionCount: Constants.Defaults.redisBackupRetentionCount,
             redisUiPort: Constants.Guest.redisUIPort,
             swaggerUiPort: Constants.Guest.swaggerUIPort
         )
@@ -102,7 +162,7 @@ struct InstallSettings {
     private mutating func apply(document: InstallSettingsDocument) {
         if let requestedCPUCount = document.cpuCount,
            requestedCPUCount >= Constants.Defaults.minimumCPUCount,
-           requestedCPUCount <= Constants.Defaults.maximumCPUCount {
+           requestedCPUCount <= Constants.Defaults.maximumAllowedCPUCount {
             cpuCount = requestedCPUCount
         }
         if let requestedMemoryGiB = document.memoryGiB,

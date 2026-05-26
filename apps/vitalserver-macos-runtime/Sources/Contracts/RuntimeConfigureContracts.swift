@@ -12,6 +12,7 @@ public enum RuntimeConfigureOption: Equatable, Sendable {
     case adminPasswordFile
     case startOnBoot
     case autoRecovery
+    case redisBackupRetention
     case restart
     case unknown(String)
 
@@ -43,6 +44,8 @@ public enum RuntimeConfigureOption: Equatable, Sendable {
             self = .startOnBoot
         case "--auto-recovery":
             self = .autoRecovery
+        case "--redis-backup-retention":
+            self = .redisBackupRetention
         case "--restart":
             self = .restart
         default:
@@ -78,6 +81,8 @@ public enum RuntimeConfigureOption: Equatable, Sendable {
             return "--start-on-boot"
         case .autoRecovery:
             return "--auto-recovery"
+        case .redisBackupRetention:
+            return "--redis-backup-retention"
         case .restart:
             return "--restart"
         case .unknown(let value):

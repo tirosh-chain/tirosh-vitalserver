@@ -8,10 +8,11 @@ import XCTest
 final class RuntimeConfigureRunnerTests: XCTestCase {
     func testConfigureUpdatesRuntimeDocumentsAndRunsRequestedActions() throws {
         let harness = try Harness()
+        let cpuCount = Constants.Defaults.minimumCPUCount
 
         let result = try harness.runner.configure(RuntimeConfigureCommand(
             changes: [
-                .cpu(8),
+                .cpu(cpuCount),
                 .memoryGiB(12),
                 .diskGiB(96),
                 .network(.shared),
@@ -22,6 +23,7 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
                 .adminPasswordFile(URL(fileURLWithPath: "/tmp/admin-password")),
                 .startOnBoot(false),
                 .autoRecovery(false),
+                .redisBackupRetention(20),
             ],
             restart: true
         ))
@@ -35,7 +37,7 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
         XCTAssertTrue(harness.fileStore.directories.contains(URL(fileURLWithPath: "/data/vital-files")))
 
         let vmConfig = try VMRuntimeConfig.load(from: harness.vmConfigURL, fileStore: harness.fileStore)
-        XCTAssertEqual(vmConfig.cpuCount, 8)
+        XCTAssertEqual(vmConfig.cpuCount, cpuCount)
         XCTAssertEqual(vmConfig.memoryMiB, 12 * 1024)
         XCTAssertEqual(vmConfig.network.mode, .shared)
         XCTAssertNil(vmConfig.network.bridgedInterface)
@@ -47,6 +49,7 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
         XCTAssertEqual(guestConfig.publicPort, 8080)
         XCTAssertEqual(guestConfig.adminPassword, "secret")
         XCTAssertEqual(guestConfig.vitalFilesDirectory, Constants.Defaults.vitalFilesDirectoryGuestMountPath)
+        XCTAssertEqual(guestConfig.redisBackupRetentionCount, 20)
     }
 
     func testConfigureWithoutRestartDoesNotRestartServices() throws {
@@ -72,6 +75,19 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
                 return XCTFail("expected missingArgument, got \(error)")
             }
             XCTAssertEqual(message, "--bridged-interface is required when --network bridged")
+        }
+    }
+
+    func testConfigureRejectsInvalidRedisBackupRetention() throws {
+        let harness = try Harness()
+
+        XCTAssertThrowsError(try harness.runner.configure(RuntimeConfigureCommand(
+            changes: [.redisBackupRetention(0)]
+        ))) { error in
+            guard case LauncherError.missingArgument(let message) = error else {
+                return XCTFail("expected missingArgument, got \(error)")
+            }
+            XCTAssertEqual(message, "--redis-backup-retention must be between 1 and 30")
         }
     }
 

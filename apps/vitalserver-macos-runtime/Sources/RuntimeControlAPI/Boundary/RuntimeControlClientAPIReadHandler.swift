@@ -52,7 +52,7 @@ public struct RuntimeControlClientAPIReadHandler: RuntimeControlAPIReadHandler {
             throw RuntimeControlAPIReadHandlerError.hostAffordanceUnavailable
         }
         return RuntimeLogTextResponse(
-            text: hostClient.logText(
+            text: await hostClient.loadLogText(
                 sourceID: request.source,
                 helperMessage: request.helperMessage,
                 lineLimit: request.lineLimit

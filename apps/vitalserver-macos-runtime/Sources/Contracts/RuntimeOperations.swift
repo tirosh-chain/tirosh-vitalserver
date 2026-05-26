@@ -11,6 +11,7 @@ public enum RuntimeOperation: Codable, Equatable, Sendable {
     case applyBundle
     case activateGuestUpdate
     case rollback
+    case redisBackup
     case repairDatastore
     case repairProxy
     case startServices
@@ -40,6 +41,8 @@ public enum RuntimeOperation: Codable, Equatable, Sendable {
             self = .activateGuestUpdate
         case "rollback":
             self = .rollback
+        case "redis-backup":
+            self = .redisBackup
         case "repair-datastore":
             self = .repairDatastore
         case "repair-proxy":
@@ -77,6 +80,8 @@ public enum RuntimeOperation: Codable, Equatable, Sendable {
             return "activate-guest-update"
         case .rollback:
             return "rollback"
+        case .redisBackup:
+            return "redis-backup"
         case .repairDatastore:
             return "repair-datastore"
         case .repairProxy:

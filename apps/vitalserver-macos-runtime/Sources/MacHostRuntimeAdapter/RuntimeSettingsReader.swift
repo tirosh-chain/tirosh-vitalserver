@@ -62,6 +62,9 @@ struct SystemRuntimeSettingsReader: RuntimeSettingsReading {
         if let guestConfig = GuestRuntimeConfig.load(path: paths.guestRuntimeConfig, fileStore: fileStore) {
             settings.publicHost = guestConfig.publicHost
             settings.publicPort = guestConfig.publicPort
+            if let redisBackupRetentionCount = guestConfig.redisBackupRetentionCount {
+                settings.redisBackupRetentionCount = min(max(redisBackupRetentionCount, 1), 30)
+            }
         }
 
         settings.proxyPort = statusReader.loadBaseStatus().proxyPort
@@ -129,6 +132,7 @@ private struct SharedDirectoryDocument: Decodable {
 private struct GuestRuntimeConfig: Decodable {
     let publicHost: String
     let publicPort: Int
+    let redisBackupRetentionCount: Int?
 
     static func load(path: String, fileStore: RuntimeFileReading) -> GuestRuntimeConfig? {
         guard let data = try? fileStore.readData(URL(fileURLWithPath: path)) else {

@@ -309,6 +309,7 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertEqual(health.statusMessage, "health with 6 CPUs")
         XCTAssertEqual(release.helperVersion, "0.2.0")
         XCTAssertEqual(installInfo.backupsPath, "/backups")
+        XCTAssertEqual(installInfo.redisBackupsPath, "/backups/redis")
         XCTAssertEqual(client.loadSettingsCount, 3)
         XCTAssertEqual(client.statusSettings, [RuntimeSettings(cpuCount: 6, memoryGiB: 10)])
         XCTAssertEqual(client.healthSettings, [RuntimeSettings(cpuCount: 6, memoryGiB: 10)])
@@ -504,6 +505,7 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertTrue(html.contains("/runtime/status/stream"))
         XCTAssertTrue(html.contains("/runtime/events/stream"))
         XCTAssertTrue(html.contains("/host/logs/stream"))
+        XCTAssertTrue(html.contains(#"<option value="containers" selected>containers</option>"#))
     }
 
     @MainActor
@@ -889,6 +891,10 @@ private final class FakeRuntimeControlClient: RuntimeControlClient {
     }
 
     func repairDatastore() async throws -> RuntimeCommandResult {
+        RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "")
+    }
+
+    func createRedisBackup() async throws -> RuntimeCommandResult {
         RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "")
     }
 

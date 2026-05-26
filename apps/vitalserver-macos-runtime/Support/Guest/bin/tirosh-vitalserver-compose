@@ -27,7 +27,7 @@ compose() {
 wait_for_redis() {
   local deadline
 
-  deadline=$(( "$(date +%s)" + 120 ))
+  deadline=$(( $(date +%s) + 120 ))
   while [ "$(date +%s)" -lt "${deadline}" ]; do
     if compose exec -T redis redis-cli ping 2>/dev/null | grep -q PONG; then
       return
@@ -44,7 +44,7 @@ wait_for_redis() {
 wait_for_app() {
   local deadline
 
-  deadline=$(( "$(date +%s)" + 180 ))
+  deadline=$(( $(date +%s) + 180 ))
   while [ "$(date +%s)" -lt "${deadline}" ]; do
     if compose exec -T app node -e "require('http').get('http://127.0.0.1/check', r => process.exit(r.statusCode >= 200 && r.statusCode < 300 ? 0 : 1)).on('error', () => process.exit(1))" >/dev/null 2>&1; then
       return

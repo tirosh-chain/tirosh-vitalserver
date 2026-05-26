@@ -3,6 +3,40 @@ import RuntimeControl
 
 @MainActor
 extension RuntimeViewModel {
+    func openBackups() {
+        guard controlClient.capabilities.canOpenLocalFiles else {
+            message = AppConstants.StatusText.actionUnavailable
+            return
+        }
+        openFolder(installationInfo.backupsPath)
+    }
+
+    func openRedisBackups() {
+        guard controlClient.capabilities.canOpenLocalFiles else {
+            message = AppConstants.StatusText.actionUnavailable
+            return
+        }
+        openFolder(installationInfo.redisBackupsPath)
+    }
+
+    func createRedisBackup() async {
+        guard controlClient.capabilities.canControlRuntimeServices else {
+            message = AppConstants.StatusText.actionUnavailable
+            return
+        }
+        let didCreateBackup = await runClientAction(
+            preparingMessage: AppConstants.StatusText.redisBackupPreparing,
+            waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
+            runningMessage: AppConstants.StatusText.redisBackupRunning,
+            successMessage: AppConstants.StatusText.redisBackupCompleted,
+            action: { try await self.controlClient.createRedisBackup() }
+        )
+        if didCreateBackup {
+            await refresh()
+            await refreshHealthStatus()
+        }
+    }
+
     var selectedBackup: RuntimeBackup? {
         guard !selectedBackupPath.isEmpty else {
             return nil

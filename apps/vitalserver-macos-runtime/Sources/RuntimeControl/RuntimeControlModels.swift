@@ -123,6 +123,7 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
     public var startOnBoot: Bool
     public var startOnBootConfigurable: Bool
     public var autoRecoveryEnabled: Bool
+    public var redisBackupRetentionCount: Int
     public var restartAfterSave: Bool
 
     public init(
@@ -141,6 +142,7 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
         startOnBoot: Bool = true,
         startOnBootConfigurable: Bool = true,
         autoRecoveryEnabled: Bool = true,
+        redisBackupRetentionCount: Int = 30,
         restartAfterSave: Bool = true
     ) {
         self.cpuCount = cpuCount
@@ -158,6 +160,7 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
         self.startOnBoot = startOnBoot
         self.startOnBootConfigurable = startOnBootConfigurable
         self.autoRecoveryEnabled = autoRecoveryEnabled
+        self.redisBackupRetentionCount = redisBackupRetentionCount
         self.restartAfterSave = restartAfterSave
     }
 }

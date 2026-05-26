@@ -28,6 +28,7 @@ final class RuntimePresentationFormatterTests: XCTestCase {
         settings.networkMode = RuntimeNetworkMode.shared
         settings.diskGiB = 128
         settings.vitalFilesDirectory = "/Users/test/Vital Files"
+        settings.redisBackupRetentionCount = 20
         settings.autoRecoveryEnabled = false
         settings.restartAfterSave = true
 
@@ -39,6 +40,7 @@ final class RuntimePresentationFormatterTests: XCTestCase {
         XCTAssertTrue(confirmation.contains("Network mode: shared"))
         XCTAssertTrue(confirmation.contains("Disk size: 128 GiB"))
         XCTAssertTrue(confirmation.contains("Vital files directory: /Users/test/Vital Files"))
+        XCTAssertTrue(confirmation.contains("Redis backup retention: 20 archives"))
         XCTAssertTrue(confirmation.contains("Automatic recovery: false"))
         XCTAssertTrue(confirmation.contains("Restart services: true"))
     }
@@ -88,5 +90,21 @@ final class RuntimePresentationFormatterTests: XCTestCase {
         let status = RuntimeStatus(progress: progress)
 
         XCTAssertEqual(formatter.progressDisplayMessage(status), "Running: Replace Rootfs Base")
+    }
+
+    func testSystemTimeTextFormatsISO8601TimestampInRequestedTimeZone() {
+        let timeZone = TimeZone(identifier: "Asia/Seoul")!
+
+        XCTAssertEqual(
+            formatter.systemTimeText("2026-05-21T12:00:00Z", timeZone: timeZone),
+            "2026-05-21 21:00:00 GMT+9"
+        )
+    }
+
+    func testSystemTimeTextKeepsUnparseableTimestamp() {
+        XCTAssertEqual(
+            formatter.systemTimeText("not-a-date", timeZone: TimeZone(secondsFromGMT: 0)!),
+            "not-a-date"
+        )
     }
 }

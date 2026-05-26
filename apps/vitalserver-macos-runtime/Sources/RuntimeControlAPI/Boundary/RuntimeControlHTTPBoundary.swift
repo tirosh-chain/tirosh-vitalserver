@@ -384,7 +384,7 @@ public struct RuntimeControlAPIRouter {
 }
 
 @MainActor
-private func pollSnapshot<T: Encodable>(
+private func pollSnapshot<T: Encodable & Sendable>(
     id: String,
     event: String,
     interval: UInt64,
@@ -397,7 +397,9 @@ private func pollSnapshot<T: Encodable>(
     do {
         while !Task.isCancelled {
             let value = try await load()
-            let payload = try JSONEncoder().encode(value)
+            let payload = try await Task.detached(priority: .utility) {
+                try JSONEncoder().encode(value)
+            }.value
             if payload != previousPayload {
                 previousPayload = payload
                 lastHeartbeat = Date()

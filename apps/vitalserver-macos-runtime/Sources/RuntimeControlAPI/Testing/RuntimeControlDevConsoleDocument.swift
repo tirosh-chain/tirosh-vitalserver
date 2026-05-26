@@ -209,7 +209,7 @@ public enum RuntimeControlDevConsoleDocument {
             <option value="proxyOutput">proxyOutput</option>
             <option value="proxyError">proxyError</option>
             <option value="updateActivation">updateActivation</option>
-            <option value="containers">containers</option>
+            <option value="containers" selected>containers</option>
           </select>
         </label>
         <label>
@@ -356,6 +356,10 @@ public enum RuntimeControlDevConsoleDocument {
       try {
         data = JSON.parse(parsed.data);
       } catch (_) {}
+      if (outputId === "logStream" && data && typeof data.text === "string") {
+        $(outputId).textContent = `[${new Date().toLocaleTimeString()}] ${parsed.event || "runtime-log"}\n${data.text}\n`;
+        return;
+      }
       append(outputId, parsed.event || "message", { id: parsed.id, comment: parsed.comment, data });
       if (outputId === "statusStream" && parsed.data) {
         try { renderStatus(JSON.parse(parsed.data)); } catch (_) {}
@@ -386,7 +390,14 @@ public enum RuntimeControlDevConsoleDocument {
     $("refresh").addEventListener("click", () => refreshStatus().catch((error) => append("statusStream", "error", { message: error.message })));
     $("connectAll").addEventListener("click", connectAll);
     $("disconnectAll").addEventListener("click", disconnectAll);
-    $("logSource").addEventListener("change", () => streams.has("logs") && connectStream("logs", `/host/logs/stream?source=${encodeURIComponent($("logSource").value)}&lineLimit=${encodeURIComponent($("lineLimit").value)}`, "logStream", "logState", "logDot"));
+    function reconnectLogs() {
+      if (streams.has("logs")) {
+        connectStream("logs", `/host/logs/stream?source=${encodeURIComponent($("logSource").value)}&lineLimit=${encodeURIComponent($("lineLimit").value)}`, "logStream", "logState", "logDot");
+      }
+    }
+
+    $("logSource").addEventListener("change", reconnectLogs);
+    $("lineLimit").addEventListener("change", reconnectLogs);
     setInterval(() => { $("clock").textContent = new Date().toLocaleString(); }, 1000);
     refreshStatus().catch((error) => append("statusStream", "error", { message: error.message }));
   </script>

@@ -62,6 +62,8 @@ enum RuntimeCommandFactory {
             settings.publicHost,
             RuntimeAdapterConstants.RuntimeCommand.optionPublicPort,
             String(settings.publicPort),
+            RuntimeAdapterConstants.RuntimeCommand.optionRedisBackupRetention,
+            String(settings.redisBackupRetentionCount),
         ]
         if settings.startOnBootConfigurable {
             arguments += [

@@ -5,6 +5,7 @@ import SwiftUI
 struct RuntimeStatusPanel: View {
     @ObservedObject var viewModel: RuntimeViewModel
     @Binding var showingHealthDetails: Bool
+    @State private var uptimeNow = Date()
     private let displayPolicy = RuntimeStatusDisplayPolicy()
 
     var body: some View {
@@ -44,6 +45,9 @@ struct RuntimeStatusPanel: View {
         .background(Color(nsColor: .controlBackgroundColor))
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .frame(maxWidth: 760, alignment: .leading)
+        .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { date in
+            uptimeNow = date
+        }
     }
 
     private var recorderSection: some View {
@@ -91,7 +95,7 @@ struct RuntimeStatusPanel: View {
     }
 
     private var overallHealthValue: RuntimeStatusDisplayPolicy.StatusValue {
-        displayPolicy.overallHealth(status: viewModel.status, observation: viewModel.containerObservation)
+        displayPolicy.overallHealth(status: viewModel.status, observation: viewModel.containerObservation, now: uptimeNow)
     }
 
     private var overallHealthColor: Color {
@@ -110,7 +114,7 @@ struct RuntimeStatusPanel: View {
     }
 
     private var healthItems: [RuntimeStatusDisplayPolicy.HealthItem] {
-        displayPolicy.healthDetails(status: viewModel.status, observation: viewModel.containerObservation)
+        displayPolicy.healthDetails(status: viewModel.status, observation: viewModel.containerObservation, now: uptimeNow)
     }
 
     private var recorderSummary: RuntimeStatusDisplayPolicy.RecorderSummary {
@@ -118,7 +122,7 @@ struct RuntimeStatusPanel: View {
     }
 
     private var vitalServerAvailability: RuntimeStatusDisplayPolicy.StatusValue {
-        displayPolicy.vitalServerAvailability(status: viewModel.status, observation: viewModel.containerObservation)
+        displayPolicy.vitalServerAvailability(status: viewModel.status, observation: viewModel.containerObservation, now: uptimeNow)
     }
 
     private func statusRow(_ label: String, _ value: String) -> some View {
@@ -178,7 +182,7 @@ struct RuntimeStatusPanel: View {
     @ViewBuilder
     private func uptimeSuffix(_ uptime: String?) -> some View {
         if let uptime {
-            Text("(uptime: \(uptime))")
+            Text("uptime: \(uptime)")
                 .foregroundStyle(.secondary)
         }
     }

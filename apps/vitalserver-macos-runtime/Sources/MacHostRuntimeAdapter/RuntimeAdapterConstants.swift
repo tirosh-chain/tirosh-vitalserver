@@ -39,6 +39,7 @@ enum RuntimeAdapterConstants {
         static let applyBundle = "apply-bundle"
         static let verifyBundle = "verify-bundle"
         static let rollback = "rollback"
+        static let redisBackup = "redis-backup"
         static let repairDatastore = "repair-datastore"
         static let startServices = "start-services"
         static let stopServices = "stop-services"
@@ -54,6 +55,7 @@ enum RuntimeAdapterConstants {
         static let optionPublicPort = "--public-port"
         static let optionStartOnBoot = "--start-on-boot"
         static let optionAutoRecovery = "--auto-recovery"
+        static let optionRedisBackupRetention = "--redis-backup-retention"
         static let optionBridgedInterface = "--bridged-interface"
         static let optionAdminPasswordFile = "--admin-password-file"
         static let optionRestart = "--restart"
@@ -95,6 +97,7 @@ enum RuntimeAdapterConstants {
             .path
         static let vitalFiles = installed.vitalFilesDirectory.path
         static let backups = installed.backupsDirectory.path
+        static let redisBackups = installed.backupsDirectory.appendingPathComponent("redis").path
         static let vmConfig = installed.vmConfig.path
         static let vmDisk = installed.vmDisk.path
         static let guestRuntimeConfig = installed.guestRuntimeConfig.path

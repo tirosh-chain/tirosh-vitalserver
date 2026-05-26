@@ -48,6 +48,9 @@ struct ContentView: View {
                     RuntimeAdvancedPanel(
                         viewModel: viewModel,
                         showingApplySettingsConfirmation: $showingApplySettingsConfirmation,
+                        showingRollbackConfirmation: $showingRollbackConfirmation,
+                        showingRepairProxyConfirmation: $showingRepairProxyConfirmation,
+                        showingRepairDatastoreConfirmation: $showingRepairDatastoreConfirmation,
                         showingStartServicesConfirmation: $showingStartServicesConfirmation,
                         showingStopServicesConfirmation: $showingStopServicesConfirmation,
                         hoveredServiceLink: $hoveredServiceLink
@@ -57,10 +60,7 @@ struct ContentView: View {
                 case .dangerZone:
                     RuntimeDangerZonePanel(
                         viewModel: viewModel,
-                        showingRollbackConfirmation: $showingRollbackConfirmation,
                         showingDeleteBackupConfirmation: $showingDeleteBackupConfirmation,
-                        showingRepairProxyConfirmation: $showingRepairProxyConfirmation,
-                        showingRepairDatastoreConfirmation: $showingRepairDatastoreConfirmation,
                         showingUninstallConfirmation: $showingUninstallConfirmation,
                         showingCleanUninstallConfirmation: $showingCleanUninstallConfirmation
                     )
@@ -218,7 +218,7 @@ struct ContentView: View {
 
     private func pollLogs() async {
         while !Task.isCancelled {
-            viewModel.refreshLogsIfLive()
+            await viewModel.refreshLogsIfLive()
             try? await Task.sleep(nanoseconds: 1_000_000_000)
         }
     }

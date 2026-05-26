@@ -16,7 +16,7 @@ struct RuntimeLogPanel: View {
                 }
                 .frame(width: 210)
                 .onChange(of: viewModel.selectedLogSource) { _ in
-                    viewModel.refreshLogs()
+                    Task { await viewModel.refreshLogs() }
                 }
                 Picker(AppConstants.Labels.logLines, selection: $viewModel.logLineLimit) {
                     ForEach(viewModel.availableLogLineLimits(), id: \.self) { limit in
@@ -25,13 +25,13 @@ struct RuntimeLogPanel: View {
                 }
                 .frame(width: 150)
                 .onChange(of: viewModel.logLineLimit) { _ in
-                    viewModel.refreshLogs()
+                    Task { await viewModel.refreshLogs() }
                 }
                 Toggle(AppConstants.Labels.logStreaming, isOn: $viewModel.logStreaming)
                     .toggleStyle(.checkbox)
                     .onChange(of: viewModel.logStreaming) { isLive in
                         if isLive {
-                            viewModel.refreshLogs()
+                            Task { await viewModel.refreshLogs() }
                         }
                     }
                 Text(viewModel.logStreaming ? AppConstants.Labels.logLive : AppConstants.Labels.logPaused)

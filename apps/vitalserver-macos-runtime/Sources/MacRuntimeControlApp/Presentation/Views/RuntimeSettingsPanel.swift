@@ -1,3 +1,4 @@
+import Foundation
 import RuntimeControl
 import SwiftUI
 
@@ -12,7 +13,7 @@ struct RuntimeSettingsPanel: View {
                     settingSlider(
                         AppConstants.Labels.cpu,
                         value: $viewModel.settings.cpuCount,
-                        range: AppConstants.SettingsLimits.minimumCPUCount...AppConstants.SettingsLimits.maximumCPUCount,
+                        range: cpuCountRange,
                         suffix: AppConstants.Labels.unitVCPU
                     )
                     .disabled(!viewModel.capabilities.canEditVMResources)
@@ -44,6 +45,23 @@ struct RuntimeSettingsPanel: View {
                 settingsSection(AppConstants.Labels.sectionStorage) {
                     settingDirectoryField(AppConstants.Labels.vitalFilesDirectory, text: $viewModel.settings.vitalFilesDirectory)
                 }
+                settingsSection(AppConstants.Labels.sectionRedisData) {
+                    settingRow(AppConstants.Labels.redisBackupRetention) {
+                        HStack(spacing: 12) {
+                            settingSliderControl(
+                                value: $viewModel.settings.redisBackupRetentionCount,
+                                range: AppConstants.SettingsLimits.minimumRedisBackupRetentionCount...AppConstants.SettingsLimits.maximumRedisBackupRetentionCount,
+                                step: AppConstants.SettingsLimits.redisBackupRetentionStep,
+                                suffix: "archives"
+                            )
+                            Button(AppConstants.Actions.openBackups) {
+                                viewModel.openRedisBackups()
+                            }
+                            .disabled(!viewModel.capabilities.canOpenLocalFiles)
+                        }
+                    }
+                    settingHelp(AppConstants.Labels.redisBackupRetentionHelp)
+                }
                 settingsSection(AppConstants.Labels.sectionOperations) {
                     settingToggle(AppConstants.Labels.startOnBoot, isOn: $viewModel.settings.startOnBoot)
                         .disabled(
@@ -62,6 +80,12 @@ struct RuntimeSettingsPanel: View {
             }
             .frame(maxWidth: 760, alignment: .leading)
             .padding(16)
+        }
+        .onAppear {
+            clampCPUCountToSystemLimit()
+        }
+        .onChange(of: viewModel.settings.cpuCount) { _ in
+            clampCPUCountToSystemLimit()
         }
     }
 
@@ -93,6 +117,11 @@ struct RuntimeSettingsPanel: View {
         return minimum...max(minimum, AppConstants.SettingsLimits.maximumDiskGiB)
     }
 
+    private var cpuCountRange: ClosedRange<Int> {
+        let minimum = AppConstants.SettingsLimits.minimumCPUCount
+        return minimum...AppConstants.SettingsLimits.maximumAllowedCPUCount
+    }
+
     private var canApplySettingsForCurrentConnection: Bool {
         viewModel.capabilities.canEditVMResources
             || viewModel.capabilities.canEditNetworkExposure
@@ -119,6 +148,13 @@ struct RuntimeSettingsPanel: View {
             }
 
             Spacer()
+        }
+    }
+
+    private func clampCPUCountToSystemLimit() {
+        let clampedCPUCount = min(max(viewModel.settings.cpuCount, cpuCountRange.lowerBound), cpuCountRange.upperBound)
+        if viewModel.settings.cpuCount != clampedCPUCount {
+            viewModel.settings.cpuCount = clampedCPUCount
         }
     }
 
@@ -166,20 +202,29 @@ struct RuntimeSettingsPanel: View {
         suffix: String = ""
     ) -> some View {
         settingRow(label) {
-            HStack(spacing: 12) {
-                Slider(
-                    value: Binding(
-                        get: { Double(value.wrappedValue) },
-                        set: { value.wrappedValue = Int($0) }
-                    ),
-                    in: Double(range.lowerBound)...Double(range.upperBound),
-                    step: Double(step)
-                )
-                .frame(width: 260)
-                Text(suffix.isEmpty ? "\(value.wrappedValue)" : "\(value.wrappedValue) \(suffix)")
-                    .fontWeight(.medium)
-                    .frame(width: 90, alignment: .leading)
-            }
+            settingSliderControl(value: value, range: range, step: step, suffix: suffix)
+        }
+    }
+
+    private func settingSliderControl(
+        value: Binding<Int>,
+        range: ClosedRange<Int>,
+        step: Int = 1,
+        suffix: String = ""
+    ) -> some View {
+        HStack(spacing: 12) {
+            Slider(
+                value: Binding(
+                    get: { Double(value.wrappedValue) },
+                    set: { value.wrappedValue = Int($0) }
+                ),
+                in: Double(range.lowerBound)...Double(range.upperBound),
+                step: Double(step)
+            )
+            .frame(width: 260)
+            Text(suffix.isEmpty ? "\(value.wrappedValue)" : "\(value.wrappedValue) \(suffix)")
+                .fontWeight(.medium)
+                .frame(width: 90, alignment: .leading)
         }
     }
 

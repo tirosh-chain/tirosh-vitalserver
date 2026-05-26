@@ -211,9 +211,9 @@ struct Launcher {
             case "--cpu":
                 guard let cpu = Int(value),
                       cpu >= Constants.Defaults.minimumCPUCount,
-                      cpu <= Constants.Defaults.maximumCPUCount else {
+                      cpu <= Constants.Defaults.maximumAllowedCPUCount else {
                     throw LauncherError.missingArgument(
-                        "--cpu must be between \(Constants.Defaults.minimumCPUCount) and \(Constants.Defaults.maximumCPUCount)"
+                        "--cpu must be between \(Constants.Defaults.minimumCPUCount) and \(Constants.Defaults.maximumAllowedCPUCount)"
                     )
                 }
                 config.cpuCount = cpu

@@ -110,6 +110,8 @@ struct RuntimeLifecycle {
             try applyBundle(bundleURL)
         case .rollback(let command):
             try rollback(command)
+        case .redisBackup:
+            try createRedisBackup()
         case .repairDatastore:
             try repairDatastore()
         case .startServices:
@@ -169,6 +171,69 @@ struct RuntimeLifecycle {
         try runtimeDatastoreRepairWorkflow().repair()
     }
 
+    func createRedisBackup() throws {
+        log("redis backup requested")
+        try fileStore.createDirectory(at: guestRunDirectory, withIntermediateDirectories: true)
+
+        let resultURL = guestRunDirectory.appendingPathComponent(Constants.Runtime.redisBackupResultFile)
+        if fileStore.fileExists(resultURL) {
+            try fileStore.removeItem(at: resultURL)
+        }
+
+        try writeRuntimeStatus(.recovering, operation: .redisBackup, message: "redis backup requested")
+
+        let requestID = UUID().uuidString
+        let requestedAt = isoTimestamp()
+        let requestURL = guestRunDirectory.appendingPathComponent(Constants.Runtime.redisBackupRequestFile)
+        let request = RedisBackupRequestDocument(requestId: requestID, requestedAt: requestedAt)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        try fileStore.writeData(try encoder.encode(request), to: requestURL, options: .atomic)
+
+        if !isLaunchdLoaded(.vm) {
+            startLaunchdService(.vm)
+        }
+
+        let maxAttempts = Int(ceil(Constants.Runtime.redisBackupWaitTimeoutSeconds / 3.0))
+        for attempt in 0..<maxAttempts {
+            if let result = loadRedisBackupResult(from: resultURL) {
+                if let resultRequestId = result.requestId, resultRequestId != requestID {
+                    log("stale redis backup result ignored")
+                } else if result.status == .completed {
+                    let message = result.message ?? "Redis backup completed."
+                    try writeRuntimeStatus(.healthy, operation: .redisBackup, message: message)
+                    print(message)
+                    if let archive = result.archive, !archive.isEmpty {
+                        print("archive: \(archive)")
+                    }
+                    log("redis backup completed")
+                    return
+                } else if result.status == .failed {
+                    let message = result.message ?? "Redis backup failed."
+                    try writeRuntimeStatus(.degraded, operation: .redisBackup, message: message)
+                    throw LauncherError.runtimeOperationFailed(message)
+                } else if attempt % 10 == 0 {
+                    log(result.message ?? "waiting for redis backup")
+                }
+            } else if attempt % 10 == 0 {
+                log("waiting for redis backup guest worker")
+            }
+            if attempt < maxAttempts - 1 {
+                sleeper.sleep(forTimeInterval: 3)
+            }
+        }
+
+        try writeRuntimeStatus(.degraded, operation: .redisBackup, message: "redis backup timed out")
+        throw LauncherError.runtimeOperationFailed("redis backup timed out")
+    }
+
+    private func loadRedisBackupResult(from url: URL) -> RedisBackupResultDocument? {
+        guard let data = try? fileStore.readData(url) else {
+            return nil
+        }
+        return try? JSONDecoder().decode(RedisBackupResultDocument.self, from: data)
+    }
+
     func startServices() throws {
         try runtimeServiceControlRunner().run(.startAll)
     }
@@ -194,4 +259,18 @@ struct RuntimeLifecycle {
         try runtimeGuestActivationWorkflow().activateIfNeeded(manifest: manifest)
     }
 
+}
+
+private struct RedisBackupRequestDocument: Encodable {
+    let schemaVersion = 2
+    let requestId: String
+    let requestedAt: String
+    let operation = RuntimeOperation.redisBackup.rawValue
+}
+
+private struct RedisBackupResultDocument: Decodable {
+    let requestId: String?
+    let status: DatastoreRepairStatus
+    let message: String?
+    let archive: String?
 }

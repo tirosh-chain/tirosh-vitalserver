@@ -44,18 +44,26 @@ extension RuntimeViewModel {
         RuntimeLogOptions.sources
     }
 
-    func refreshLogs() {
+    func refreshLogs() async {
+        guard !isRefreshingLogs else {
+            return
+        }
+        isRefreshingLogs = true
+        defer { isRefreshingLogs = false }
+
         let limit = max(logLineLimit, 1)
-        logText = hostClient.logText(
-            sourceID: selectedLogSource,
-            helperMessage: message,
+        let sourceID = selectedLogSource
+        let helperMessage = message
+        logText = await hostClient.loadLogText(
+            sourceID: sourceID,
+            helperMessage: helperMessage,
             lineLimit: limit
         )
     }
 
-    func refreshLogsIfLive() {
+    func refreshLogsIfLive() async {
         if logStreaming {
-            refreshLogs()
+            await refreshLogs()
         }
     }
 }

@@ -24,4 +24,5 @@ enum RuntimeConfigureChange: Equatable {
     case adminPasswordFile(URL)
     case startOnBoot(Bool)
     case autoRecovery(Bool)
+    case redisBackupRetention(Int)
 }

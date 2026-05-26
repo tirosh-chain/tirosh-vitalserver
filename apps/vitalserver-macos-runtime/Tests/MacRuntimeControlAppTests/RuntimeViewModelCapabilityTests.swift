@@ -29,10 +29,13 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         await viewModel.deleteSelectedBackup()
         await viewModel.repairProxyPort()
         await viewModel.repairDatastore()
+        await viewModel.createRedisBackup()
         await viewModel.startRuntimeServices()
         await viewModel.stopRuntimeServices()
         await viewModel.exportLogs()
         viewModel.openLogs()
+        viewModel.openBackups()
+        viewModel.openRedisBackups()
         viewModel.openVitalFilesDirectory()
 
         XCTAssertEqual(client.applySettingsCount, 0)
@@ -42,6 +45,7 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertEqual(client.deleteBackupCount, 0)
         XCTAssertEqual(client.repairProxyCount, 0)
         XCTAssertEqual(client.repairDatastoreCount, 0)
+        XCTAssertEqual(client.createRedisBackupCount, 0)
         XCTAssertEqual(client.startRuntimeServicesCount, 0)
         XCTAssertEqual(client.stopRuntimeServicesCount, 0)
         XCTAssertEqual(client.exportLogsCount, 0)
@@ -121,10 +125,16 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         )
 
         viewModel.openLogs()
+        viewModel.openBackups()
+        viewModel.openRedisBackups()
         viewModel.openVitalServer()
         await viewModel.exportLogs()
 
-        XCTAssertEqual(nativeShell.openedFileURLs, [URL(fileURLWithPath: "/logs")])
+        XCTAssertEqual(nativeShell.openedFileURLs, [
+            URL(fileURLWithPath: "/logs"),
+            URL(fileURLWithPath: "/backups"),
+            URL(fileURLWithPath: "/backups/redis"),
+        ])
         XCTAssertEqual(nativeShell.openedWebURLs, [URL(string: AppConstants.Product.vitalServerURL(proxyPort: viewModel.status.proxyPort))])
         XCTAssertEqual(nativeShell.chooseLogExportDestinationPrompts, [AppConstants.Actions.exportLogs])
         XCTAssertEqual(client.exportLogDestinationURLs, [exportURL])
@@ -188,6 +198,7 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     var deleteBackupCount = 0
     var repairProxyCount = 0
     var repairDatastoreCount = 0
+    var createRedisBackupCount = 0
     var startRuntimeServicesCount = 0
     var stopRuntimeServicesCount = 0
     var exportLogsCount = 0
@@ -237,6 +248,10 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
 
     func logText(sourceID: RuntimeLogSource, helperMessage: String, lineLimit: Int) -> String {
         helperMessage
+    }
+
+    func loadLogText(sourceID: RuntimeLogSource, helperMessage: String, lineLimit: Int) async -> String {
+        logText(sourceID: sourceID, helperMessage: helperMessage, lineLimit: lineLimit)
     }
 
     func preferredLogsPath() -> String {
@@ -293,6 +308,11 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
 
     func repairDatastore() async throws -> RuntimeCommandResult {
         repairDatastoreCount += 1
+        return success()
+    }
+
+    func createRedisBackup() async throws -> RuntimeCommandResult {
+        createRedisBackupCount += 1
         return success()
     }
 

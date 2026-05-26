@@ -19,6 +19,7 @@ final class RuntimeViewModel: ObservableObject {
     @Published var selectedLogSource = RuntimeLogSource.helperMessage
     @Published var logStreaming = true
     @Published var isBusy = false
+    var isRefreshingLogs = false
     @Published var releaseInfo = RuntimeReleaseInfo.generated
     @Published var installationInfo = RuntimeInstallInfo()
     @Published var runtimeEvents = RuntimeEventHistory(events: [])
@@ -76,7 +77,7 @@ final class RuntimeViewModel: ObservableObject {
             message = displayMessage
         }
         healthNotificationCoordinator.handleTransition(to: status)
-        refreshLogsIfLive()
+        await refreshLogsIfLive()
     }
 
     func refreshHealthStatus() async {
@@ -86,7 +87,7 @@ final class RuntimeViewModel: ObservableObject {
             message = displayMessage
         }
         healthNotificationCoordinator.handleTransition(to: status)
-        refreshLogsIfLive()
+        await refreshLogsIfLive()
     }
 
     func healthCheck() async {
@@ -286,19 +287,21 @@ final class RuntimeViewModel: ObservableObject {
         operationDetail = waitingMessage
 
         selectedLogSource = .command
-        refreshLogs()
+        await refreshLogs()
         message = runningMessage
         operationDetail = runningMessage
         let logRefreshTask = Task { @MainActor in
             while !Task.isCancelled {
-                refreshLogs()
+                await refreshLogs()
                 refreshOperationDetail(fallback: runningMessage)
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
             }
         }
         defer {
             logRefreshTask.cancel()
-            refreshLogs()
+            Task { @MainActor in
+                await refreshLogs()
+            }
         }
 
         let result: RuntimeCommandResult
@@ -342,7 +345,7 @@ final class RuntimeViewModel: ObservableObject {
         for _ in 0..<12 {
             settings = controlClient.loadSettings()
             status = await controlClient.loadHealthStatus(settings: settings)
-            refreshLogsIfLive()
+            await refreshLogsIfLive()
             if status.isReady || !settings.restartAfterSave {
                 return
             }

@@ -1,3 +1,4 @@
+import Foundation
 import Contracts
 import RuntimeControl
 
@@ -49,12 +50,12 @@ struct RuntimeStatusDisplayPolicy {
         case swaggerUI = "swagger-ui"
     }
 
-    func overallHealth(status: RuntimeStatus, observation: RuntimeContainerObservation?) -> StatusValue {
+    func overallHealth(status: RuntimeStatus, observation: RuntimeContainerObservation?, now: Date = Date()) -> StatusValue {
         if status.isReady {
             return StatusValue(
                 text: AppConstants.StatusText.healthy,
                 severity: .healthy,
-                uptimeText: uptimeText(for: .vitalServer, observation: observation)
+                uptimeText: nil
             )
         }
         if !status.runtimeInstalled {
@@ -69,24 +70,24 @@ struct RuntimeStatusDisplayPolicy {
             return StatusValue(
                 text: AppConstants.StatusText.critical,
                 severity: .critical,
-                uptimeText: uptimeText(for: .vitalServer, observation: observation)
+                uptimeText: nil
             )
         case .some(.degraded), .some(.recovering):
             return StatusValue(
                 text: AppConstants.StatusText.needsAttention,
                 severity: .warning,
-                uptimeText: uptimeText(for: .vitalServer, observation: observation)
+                uptimeText: nil
             )
         default:
             return StatusValue(
                 text: AppConstants.StatusText.starting,
                 severity: .warning,
-                uptimeText: uptimeText(for: .vitalServer, observation: observation)
+                uptimeText: nil
             )
         }
     }
 
-    func vitalServerAvailability(status: RuntimeStatus, observation: RuntimeContainerObservation?) -> StatusValue {
+    func vitalServerAvailability(status: RuntimeStatus, observation: RuntimeContainerObservation?, now: Date = Date()) -> StatusValue {
         let text: String
         if isSuccessfulHTTPStatus(status.hostProxyHTTP) {
             text = AppConstants.StatusText.available
@@ -98,11 +99,11 @@ struct RuntimeStatusDisplayPolicy {
         return StatusValue(
             text: text,
             severity: isSuccessfulHTTPStatus(status.hostProxyHTTP) ? .healthy : .warning,
-            uptimeText: uptimeText(for: .vitalServer, observation: observation)
+            uptimeText: uptimeText(for: .vitalServer, observation: observation, now: now)
         )
     }
 
-    func healthDetails(status: RuntimeStatus, observation: RuntimeContainerObservation?) -> [HealthItem] {
+    func healthDetails(status: RuntimeStatus, observation: RuntimeContainerObservation?, now: Date = Date()) -> [HealthItem] {
         [
             HealthItem(
                 label: AppConstants.Labels.managerRuntime,
@@ -122,19 +123,19 @@ struct RuntimeStatusDisplayPolicy {
             ),
             HealthItem(
                 label: GeneratedRelease.vitalServerName,
-                value: httpValue(status.guestHTTP, uptimeText: uptimeText(for: .vitalServer, observation: observation))
+                value: httpValue(status.guestHTTP, uptimeText: uptimeText(for: .vitalServer, observation: observation, now: now))
             ),
             HealthItem(
                 label: GeneratedRelease.hostProxyName,
                 value: StatusValue(
                     text: serviceReachabilityLabel(status.hostProxyHTTP),
                     severity: status.proxyServiceLoaded && isSuccessfulHTTPStatus(status.hostProxyHTTP) ? .healthy : .warning,
-                    uptimeText: uptimeText(for: .networkAccess, observation: observation)
+                    uptimeText: uptimeText(for: .networkAccess, observation: observation, now: now)
                 )
             ),
             HealthItem(
                 label: GeneratedRelease.redisName,
-                value: composeValue(for: .redis, observation: observation)
+                value: composeValue(for: .redis, observation: observation, now: now)
             ),
             HealthItem(
                 label: AppConstants.Labels.watchdog,
@@ -147,7 +148,7 @@ struct RuntimeStatusDisplayPolicy {
         ]
     }
 
-    func advancedServiceHealth(status: RuntimeStatus, observation: RuntimeContainerObservation?) -> [ServiceHealthItem] {
+    func advancedServiceHealth(status: RuntimeStatus, observation: RuntimeContainerObservation?, now: Date = Date()) -> [ServiceHealthItem] {
         [
             serviceStateItem(
                 AppConstants.Labels.managerRuntime,
@@ -172,25 +173,25 @@ struct RuntimeStatusDisplayPolicy {
             httpServiceItem(
                 GeneratedRelease.vitalServerName,
                 httpStatus: status.guestHTTP,
-                uptimeText: uptimeText(for: .vitalServer, observation: observation),
+                uptimeText: uptimeText(for: .vitalServer, observation: observation, now: now),
                 action: .openVitalServer
             ),
             httpServiceItem(
                 GeneratedRelease.hostProxyName,
                 httpStatus: status.hostProxyHTTP,
-                uptimeText: uptimeText(for: .networkAccess, observation: observation),
+                uptimeText: uptimeText(for: .networkAccess, observation: observation, now: now),
                 action: .openVitalServer
             ),
             httpServiceItem(
                 GeneratedRelease.redisUIName,
                 httpStatus: status.redisUIHTTP,
-                uptimeText: uptimeText(for: .redisUI, observation: observation),
+                uptimeText: uptimeText(for: .redisUI, observation: observation, now: now),
                 action: .openRedisUI
             ),
             httpServiceItem(
                 GeneratedRelease.swaggerUIName,
                 httpStatus: status.swaggerUIHTTP,
-                uptimeText: uptimeText(for: .swaggerUI, observation: observation),
+                uptimeText: uptimeText(for: .swaggerUI, observation: observation, now: now),
                 action: .openSwagger
             ),
         ]
@@ -243,16 +244,27 @@ struct RuntimeStatusDisplayPolicy {
         )
     }
 
-    private func uptimeText(for service: ComposeService, observation: RuntimeContainerObservation?) -> String? {
-        formatUptime(composeObservation(for: service, observation: observation)?.uptimeSeconds)
+    private func uptimeText(for service: ComposeService, observation: RuntimeContainerObservation?, now: Date) -> String? {
+        let serviceObservation = composeObservation(for: service, observation: observation)
+        return formatUptime(
+            serviceObservation?.uptimeSeconds,
+            startedAt: serviceObservation?.startedAt,
+            observedAt: observation?.runtimeStateUpdatedAt ?? observation?.runtimeStateFileUpdatedAt,
+            now: now
+        )
     }
 
-    private func composeValue(for service: ComposeService, observation: RuntimeContainerObservation?) -> StatusValue {
+    private func composeValue(for service: ComposeService, observation: RuntimeContainerObservation?, now: Date) -> StatusValue {
         let serviceObservation = composeObservation(for: service, observation: observation)
         return StatusValue(
             text: composeStatusText(serviceObservation),
             severity: composeSeverity(serviceObservation),
-            uptimeText: formatUptime(serviceObservation?.uptimeSeconds)
+            uptimeText: formatUptime(
+                serviceObservation?.uptimeSeconds,
+                startedAt: serviceObservation?.startedAt,
+                observedAt: observation?.runtimeStateUpdatedAt ?? observation?.runtimeStateFileUpdatedAt,
+                now: now
+            )
         )
     }
 
@@ -300,8 +312,20 @@ struct RuntimeStatusDisplayPolicy {
         return AppConstants.StatusText.waiting
     }
 
-    private func formatUptime(_ seconds: Int?) -> String? {
-        guard let seconds else {
+    private func formatUptime(_ seconds: Int?, startedAt: String?, observedAt: String?, now: Date) -> String? {
+        let liveSeconds = startedAt.flatMap { value in
+            parseISODate(value).map { startedAt in
+                max(Int(now.timeIntervalSince(startedAt)), 0)
+            }
+        }
+        let observedSeconds = seconds.flatMap { seconds in
+            observedAt.flatMap { value in
+                parseISODate(value).map { observedAt in
+                    seconds + max(Int(now.timeIntervalSince(observedAt)), 0)
+                }
+            }
+        }
+        guard let seconds = liveSeconds ?? observedSeconds ?? seconds else {
             return nil
         }
         let days = seconds / 86_400
@@ -312,5 +336,33 @@ struct RuntimeStatusDisplayPolicy {
             return "\(days)d \(hours)h \(minutes)m \(remainingSeconds)s"
         }
         return "\(hours)h \(minutes)m \(remainingSeconds)s"
+    }
+
+    private func parseISODate(_ value: String) -> Date? {
+        let formatter = ISO8601DateFormatter()
+        if let date = formatter.date(from: value) {
+            return date
+        }
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = formatter.date(from: value) {
+            return date
+        }
+        guard let normalized = normalizedFractionalISODate(value), normalized != value else {
+            return nil
+        }
+        return formatter.date(from: normalized) ?? ISO8601DateFormatter().date(from: normalized)
+    }
+
+    private func normalizedFractionalISODate(_ value: String) -> String? {
+        guard let dotIndex = value.firstIndex(of: ".") else {
+            return nil
+        }
+        let suffixStart = value[value.index(after: dotIndex)...]
+        let fractionEnd = suffixStart.firstIndex { !$0.isNumber } ?? value.endIndex
+        let fraction = value[value.index(after: dotIndex)..<fractionEnd]
+        guard fraction.count > 3 else {
+            return nil
+        }
+        return String(value[..<value.index(after: dotIndex)] + fraction.prefix(3) + value[fractionEnd...])
     }
 }
