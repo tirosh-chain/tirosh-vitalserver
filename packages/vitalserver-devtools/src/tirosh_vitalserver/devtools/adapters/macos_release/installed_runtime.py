@@ -57,6 +57,14 @@ def installed_status(config: Path) -> int:
             print(f"  {label}: not loaded")
             status = 1
 
+    for label, service in [
+        ("launchd sleep prevention", "system/com.tirosh.vitalserver-sleep-prevention"),
+    ]:
+        if launchd_loaded(service):
+            print(f"  {label}: loaded")
+        else:
+            print(f"  {label}: not loaded (optional)")
+
     if ip_file.is_file() and ip_file.stat().st_size > 0:
         print(f"  vm ip: {ip_file.read_text().strip()}")
     else:

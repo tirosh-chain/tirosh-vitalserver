@@ -140,6 +140,7 @@ struct InstallSettings {
     var publicPort = Constants.Guest.publicPort
     var startAfterInstall = true
     var startOnBoot = true
+    var preventSystemSleep = true
 
     static func load(
         path: String = defaultSettingsPath,
@@ -218,6 +219,9 @@ struct InstallSettings {
         if let requestedStartOnBoot = document.startOnBoot {
             startOnBoot = requestedStartOnBoot
         }
+        if let requestedPreventSystemSleep = document.preventSystemSleep {
+            preventSystemSleep = requestedPreventSystemSleep
+        }
     }
 
     private func isLineSafe(_ value: String) -> Bool {
@@ -248,4 +252,5 @@ private struct InstallSettingsDocument: Decodable {
     let publicPort: Int?
     let startAfterInstall: Bool?
     let startOnBoot: Bool?
+    let preventSystemSleep: Bool?
 }

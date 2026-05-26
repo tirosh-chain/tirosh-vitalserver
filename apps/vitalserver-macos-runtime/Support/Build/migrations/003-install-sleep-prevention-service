@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+product_root="/Library/Application Support/TiroshVitalServer"
+vm_home="${VITALSERVER_VM_HOME:-${product_root}/vm}"
+runtime_logs="${product_root}/logs/runtime"
+vm_config="${vm_home}/config.json"
+launch_daemons="/Library/LaunchDaemons"
+label="com.tirosh.vitalserver-sleep-prevention"
+plist="${launch_daemons}/${label}.plist"
+prevent_system_sleep="true"
+
+mkdir -p "${runtime_logs}"
+
+cat > "${plist}" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>${label}</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/caffeinate</string>
+    <string>-i</string>
+    <string>-s</string>
+  </array>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>${runtime_logs}/sleep-prevention.out.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>${runtime_logs}/sleep-prevention.err.log</string>
+</dict>
+</plist>
+PLIST
+
+chmod 0644 "${plist}"
+chown root:wheel "${plist}"
+
+if [ -f "${vm_config}" ] && grep -Eq '"preventSystemSleep"[[:space:]]*:[[:space:]]*false' "${vm_config}"; then
+  prevent_system_sleep="false"
+fi
+
+if [ "${prevent_system_sleep}" = "true" ]; then
+  launchctl enable "system/${label}" 2>/dev/null || true
+  launchctl bootstrap system "${plist}" 2>/dev/null || launchctl kickstart -k "system/${label}" 2>/dev/null || true
+  printf "sleep prevention service installed and enabled: %s\n" "${plist}"
+else
+  launchctl disable "system/${label}" 2>/dev/null || true
+  printf "sleep prevention service installed but disabled by config: %s\n" "${plist}"
+fi

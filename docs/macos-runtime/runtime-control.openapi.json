@@ -1499,6 +1499,12 @@
           "autoRecoveryEnabled": {
             "type": "boolean"
           },
+          "preventSystemSleep": {
+            "type": "boolean"
+          },
+          "redisBackupRetentionCount": {
+            "type": "integer"
+          },
           "restartAfterSave": {
             "type": "boolean"
           }

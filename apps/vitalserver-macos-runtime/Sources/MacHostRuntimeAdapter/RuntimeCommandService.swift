@@ -78,6 +78,10 @@ enum RuntimeCommandFactory {
             settings.autoRecoveryEnabled
                 ? RuntimeAdapterConstants.RuntimeCommand.boolTrue
                 : RuntimeAdapterConstants.RuntimeCommand.boolFalse,
+            RuntimeAdapterConstants.RuntimeCommand.optionPreventSystemSleep,
+            settings.preventSystemSleep
+                ? RuntimeAdapterConstants.RuntimeCommand.boolTrue
+                : RuntimeAdapterConstants.RuntimeCommand.boolFalse,
         ]
         if settings.networkMode == .bridged, !settings.bridgedInterface.isEmpty {
             arguments += [RuntimeAdapterConstants.RuntimeCommand.optionBridgedInterface, settings.bridgedInterface]
@@ -166,6 +170,7 @@ enum RuntimeCommandFactory {
 }
 
 enum RuntimeServicesAction {
+    case repair
     case start
     case stop
 
@@ -175,6 +180,8 @@ enum RuntimeServicesAction {
             return RuntimeAdapterConstants.RuntimeCommand.startServices
         case .stop:
             return RuntimeAdapterConstants.RuntimeCommand.stopServices
+        case .repair:
+            return RuntimeAdapterConstants.RuntimeCommand.repairServices
         }
     }
 }

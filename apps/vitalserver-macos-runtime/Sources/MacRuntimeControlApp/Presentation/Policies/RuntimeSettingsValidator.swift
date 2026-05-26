@@ -2,6 +2,8 @@ import Foundation
 import RuntimeControl
 
 struct RuntimeSettingsValidator {
+    private let vitalFilesDirectoryPolicy = RuntimeVitalFilesDirectoryPolicy()
+
     func validate(_ settings: RuntimeSettings, installedSettings: RuntimeSettings) -> RuntimeSettingsValidationResult {
         if settings.networkMode == RuntimeNetworkMode.bridged {
             return .invalid(AppConstants.StatusText.bridgedModeUnavailable)
@@ -16,9 +18,8 @@ struct RuntimeSettingsValidator {
             .contains(settings.redisBackupRetentionCount) {
             return .invalid(AppConstants.StatusText.invalidRedisBackupRetention)
         }
-        if settings.vitalFilesDirectory.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            || !settings.vitalFilesDirectory.hasPrefix("/") {
-            return .invalid(AppConstants.StatusText.vitalFilesDirectoryRequired)
+        if let message = vitalFilesDirectoryPolicy.validationMessage(for: settings.vitalFilesDirectory) {
+            return .invalid(message)
         }
         if settings.changeAdminPassword, settings.adminPassword.isEmpty {
             return .invalid(AppConstants.StatusText.adminPasswordRequired)

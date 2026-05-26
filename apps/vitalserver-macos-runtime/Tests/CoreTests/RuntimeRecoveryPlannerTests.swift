@@ -11,7 +11,7 @@ final class RuntimeRecoveryPlannerTests: XCTestCase {
         XCTAssertFalse(plan.restartProxy)
     }
 
-    func testGuestReadinessFailureRestartsOnlyVMWhenProxyIsAlive() {
+    func testGuestReadinessFailureRestartsVMAndProxyAfterWakeTransitions() {
         let plan = RuntimeRecoveryPlanner.plan(input(
             guestHTTP: "503",
             hostProxyReadinessHTTP: "502",
@@ -20,7 +20,7 @@ final class RuntimeRecoveryPlannerTests: XCTestCase {
 
         XCTAssertTrue(plan.canRecover)
         XCTAssertTrue(plan.restartVM)
-        XCTAssertFalse(plan.restartProxy)
+        XCTAssertTrue(plan.restartProxy)
     }
 
     func testProxyLivenessFailureRestartsProxy() {
@@ -51,7 +51,7 @@ final class RuntimeRecoveryPlannerTests: XCTestCase {
 
         XCTAssertTrue(plan.canRecover)
         XCTAssertTrue(plan.restartVM)
-        XCTAssertFalse(plan.restartProxy)
+        XCTAssertTrue(plan.restartProxy)
     }
 
     func testCriticalContainerServiceFailureRestartsVM() {
@@ -73,7 +73,7 @@ final class RuntimeRecoveryPlannerTests: XCTestCase {
 
         XCTAssertTrue(plan.canRecover)
         XCTAssertTrue(plan.restartVM)
-        XCTAssertFalse(plan.restartProxy)
+        XCTAssertTrue(plan.restartProxy)
     }
 
     private func input(

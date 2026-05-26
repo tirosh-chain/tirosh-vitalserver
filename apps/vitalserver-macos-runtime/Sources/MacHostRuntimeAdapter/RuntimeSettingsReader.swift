@@ -53,6 +53,7 @@ struct SystemRuntimeSettingsReader: RuntimeSettingsReading {
                 settings.vitalFilesDirectory = vitalFilesDirectory
             }
             settings.autoRecoveryEnabled = vmConfig.autoRecoveryEnabled ?? true
+            settings.preventSystemSleep = vmConfig.preventSystemSleep ?? true
         }
 
         if let diskGiB = diskSizeGiB(path: paths.vmDisk) {
@@ -112,6 +113,7 @@ private struct VMConfigDocument: Decodable {
     let network: NetworkDocument
     let vitalFilesDirectory: SharedDirectoryDocument?
     let autoRecoveryEnabled: Bool?
+    let preventSystemSleep: Bool?
 
     static func load(path: String, fileStore: RuntimeFileReading) -> VMConfigDocument? {
         guard let data = try? fileStore.readData(URL(fileURLWithPath: path)) else {

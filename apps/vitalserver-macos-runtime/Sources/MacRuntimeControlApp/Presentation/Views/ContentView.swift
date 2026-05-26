@@ -11,6 +11,7 @@ struct ContentView: View {
     @State private var showingDeleteBackupConfirmation = false
     @State private var showingRepairProxyConfirmation = false
     @State private var showingRepairDatastoreConfirmation = false
+    @State private var showingRepairRuntimeServicesConfirmation = false
     @State private var showingStartServicesConfirmation = false
     @State private var showingStopServicesConfirmation = false
     @State private var showingUninstallConfirmation = false
@@ -53,6 +54,7 @@ struct ContentView: View {
                         showingRollbackConfirmation: $showingRollbackConfirmation,
                         showingRepairProxyConfirmation: $showingRepairProxyConfirmation,
                         showingRepairDatastoreConfirmation: $showingRepairDatastoreConfirmation,
+                        showingRepairRuntimeServicesConfirmation: $showingRepairRuntimeServicesConfirmation,
                         showingStartServicesConfirmation: $showingStartServicesConfirmation,
                         showingStopServicesConfirmation: $showingStopServicesConfirmation,
                         hoveredServiceLink: $hoveredServiceLink
@@ -124,6 +126,14 @@ struct ContentView: View {
             }
         } message: {
             Text(AppConstants.StatusText.repairDatastoreConfirmation)
+        }
+        .alert(AppConstants.Actions.repairRuntimeServices, isPresented: $showingRepairRuntimeServicesConfirmation) {
+            Button(AppConstants.Actions.cancel, role: .cancel) {}
+            Button(AppConstants.Actions.repairRuntimeServices, role: .destructive) {
+                Task { await viewModel.repairRuntimeServices() }
+            }
+        } message: {
+            Text(AppConstants.StatusText.repairRuntimeServicesConfirmation)
         }
         .alert(AppConstants.Actions.startRuntimeServices, isPresented: $showingStartServicesConfirmation) {
             Button(AppConstants.Actions.cancel, role: .cancel) {}

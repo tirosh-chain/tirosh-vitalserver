@@ -20,11 +20,13 @@ protocol RuntimeNativeShell {
 struct SystemRuntimeNativeShell: RuntimeNativeShell {
     func chooseDirectory(prompt: String) -> URL? {
         let panel = NSOpenPanel()
+        let delegate = VitalFilesDirectoryOpenPanelDelegate()
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
         panel.canCreateDirectories = true
         panel.allowsMultipleSelection = false
         panel.prompt = prompt
+        panel.delegate = delegate
         guard panel.runModal() == .OK else {
             return nil
         }
@@ -124,5 +126,23 @@ struct SystemRuntimeNativeShell: RuntimeNativeShell {
 
     private func appleScriptString(_ value: String) -> String {
         "\"\(value.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\""))\""
+    }
+}
+
+private final class VitalFilesDirectoryOpenPanelDelegate: NSObject, NSOpenSavePanelDelegate {
+    private let policy = RuntimeVitalFilesDirectoryPolicy()
+
+    func panel(_ sender: Any, shouldEnable url: URL) -> Bool {
+        policy.isAllowed(url)
+    }
+
+    func panel(_ sender: Any, validate url: URL) throws {
+        if let message = policy.validationMessage(for: url) {
+            throw NSError(
+                domain: "TiroshVitalServer.VitalFilesDirectory",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: message]
+            )
+        }
     }
 }

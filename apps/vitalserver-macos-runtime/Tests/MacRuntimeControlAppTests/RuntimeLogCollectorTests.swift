@@ -5,6 +5,13 @@ import HostInfrastructure
 import XCTest
 
 final class RuntimeLogCollectorTests: XCTestCase {
+    func testDefaultCopiesIncludeProxyNginxLogs() {
+        let destinations = Set(RuntimeLogCopy.defaultCopies().map { $0.destination.lastPathComponent })
+
+        XCTAssertTrue(destinations.contains("proxy-nginx.access.log"))
+        XCTAssertTrue(destinations.contains("proxy-nginx.error.log"))
+    }
+
     func testRefreshCopiesSourceLogToCentralDestination() throws {
         let root = try temporaryDirectory()
         let source = root.appendingPathComponent("source.log")

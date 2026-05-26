@@ -64,6 +64,9 @@ extension RuntimeLifecycle {
     }
 
     func startRuntimeServices(restartVM: Bool, restartProxy: Bool, restartWatchdog: Bool) throws {
+        if restartVM, preventSystemSleepEnabled() {
+            startLaunchdService(.sleepPrevention)
+        }
         serviceController.startRuntimeServices(
             restartVM: restartVM,
             restartProxy: restartProxy,
@@ -72,6 +75,9 @@ extension RuntimeLifecycle {
     }
 
     func startRuntimeServices(_ policy: RuntimeServiceRestartPolicy) throws {
+        if policy.restartVM, preventSystemSleepEnabled() {
+            startLaunchdService(.sleepPrevention)
+        }
         serviceController.startRuntimeServices(policy)
     }
 
@@ -81,6 +87,10 @@ extension RuntimeLifecycle {
 
     func restartLaunchdService(_ service: RuntimeManagedService) {
         serviceController.restartLaunchdService(service)
+    }
+
+    func stopLaunchdService(_ service: RuntimeManagedService) {
+        serviceController.stopLaunchdService(service)
     }
 
     func launchDaemonPlist(_ service: RuntimeManagedService) -> String {
@@ -285,6 +295,32 @@ extension RuntimeLifecycle {
 
     func setStartOnBoot(_ enabled: Bool) throws {
         try serviceController.setStartOnBoot(enabled)
+    }
+
+    func setSystemSleepPrevention(_ enabled: Bool) throws {
+        let plist = URL(fileURLWithPath: RuntimeManagedService.sleepPrevention.launchDaemonPlist)
+        guard fileExists(plist) else {
+            log("system sleep prevention service is not installed; setting recorded only")
+            return
+        }
+        let action = enabled ? "enable" : "disable"
+        try runRequired(Constants.Commands.launchctl, arguments: [
+            action,
+            "system/\(RuntimeManagedService.sleepPrevention.label)",
+        ])
+        if enabled {
+            startLaunchdService(.sleepPrevention)
+        } else {
+            stopLaunchdService(.sleepPrevention)
+        }
+        log("system sleep prevention \(enabled ? "enabled" : "disabled")")
+    }
+
+    func preventSystemSleepEnabled() -> Bool {
+        guard let config = try? VMRuntimeConfig.load(from: paths.config, fileStore: fileStore) else {
+            return true
+        }
+        return config.preventSystemSleep ?? true
     }
 
     func runtimeCommandExecutor() -> RuntimeCommandExecutor {

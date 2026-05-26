@@ -16,6 +16,7 @@ public protocol RuntimeControlClient {
     func applySettings(_ settings: RuntimeSettings) async throws -> RuntimeCommandResult
     func repairProxy(proxyPort: Int) async throws -> RuntimeCommandResult
     func repairDatastore() async throws -> RuntimeCommandResult
+    func repairRuntimeServices() async throws -> RuntimeCommandResult
     func createRedisBackup() async throws -> RuntimeCommandResult
     func startRuntimeServices() async throws -> RuntimeCommandResult
     func stopRuntimeServices() async throws -> RuntimeCommandResult

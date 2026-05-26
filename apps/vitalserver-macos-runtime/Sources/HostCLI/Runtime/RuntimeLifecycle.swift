@@ -116,6 +116,8 @@ struct RuntimeLifecycle {
             try createRedisBackup()
         case .repairDatastore:
             try repairDatastore()
+        case .repairServices:
+            try repairServices()
         case .startServices:
             try startServices()
         case .stopServices:
@@ -259,6 +261,10 @@ struct RuntimeLifecycle {
 
     func startServices() throws {
         try runtimeServiceControlRunner().run(.startAll)
+    }
+
+    func repairServices() throws {
+        try runtimeServiceControlRunner().run(.repairAll)
     }
 
     func stopServices() throws {

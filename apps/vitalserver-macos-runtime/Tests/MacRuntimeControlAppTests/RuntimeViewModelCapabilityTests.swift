@@ -29,6 +29,7 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         await viewModel.deleteSelectedBackup()
         await viewModel.repairProxyPort()
         await viewModel.repairDatastore()
+        await viewModel.repairRuntimeServices()
         await viewModel.createRedisBackup()
         await viewModel.startRuntimeServices()
         await viewModel.stopRuntimeServices()
@@ -45,6 +46,7 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertEqual(client.deleteBackupCount, 0)
         XCTAssertEqual(client.repairProxyCount, 0)
         XCTAssertEqual(client.repairDatastoreCount, 0)
+        XCTAssertEqual(client.repairRuntimeServicesCount, 0)
         XCTAssertEqual(client.createRedisBackupCount, 0)
         XCTAssertEqual(client.startRuntimeServicesCount, 0)
         XCTAssertEqual(client.stopRuntimeServicesCount, 0)
@@ -89,6 +91,79 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertEqual(nativeShell.chooseDirectoryPrompts, [AppConstants.Actions.chooseDirectory])
         XCTAssertEqual(client.createDirectoryURLs, [URL(fileURLWithPath: "/Users/test/Vital Files")])
         XCTAssertEqual(viewModel.settings.vitalFilesDirectory, "/Users/test/Vital Files")
+    }
+
+    func testProtectedVitalFilesDirectorySelectionIsRejected() {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let nativeShell = FakeRuntimeNativeShell()
+        nativeShell.directoryURL = URL(fileURLWithPath: "/Users/test/Desktop/Vital Files")
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications(),
+            nativeShell: nativeShell
+        )
+        let previousDirectory = viewModel.settings.vitalFilesDirectory
+
+        viewModel.chooseVitalFilesDirectory()
+
+        XCTAssertEqual(nativeShell.chooseDirectoryPrompts, [AppConstants.Actions.chooseDirectory])
+        XCTAssertEqual(client.createDirectoryURLs, [])
+        XCTAssertEqual(viewModel.settings.vitalFilesDirectory, previousDirectory)
+        XCTAssertEqual(viewModel.message, AppConstants.StatusText.vitalFilesDirectoryProtected)
+    }
+
+    func testAdvertisedURLDefaultsFollowHostProxyPortUntilCustomOverrideIsEnabled() {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        var initialSettings = RuntimeSettings()
+        initialSettings.proxyPort = 8080
+        initialSettings.publicHost = ""
+        initialSettings.publicPort = 8080
+        client.settings = initialSettings
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+
+        XCTAssertFalse(viewModel.useCustomAdvertisedURL)
+
+        viewModel.settings.proxyPort = 18080
+        viewModel.syncAdvertisedURLWithProxyIfNeeded()
+
+        XCTAssertEqual(viewModel.settings.publicHost, "")
+        XCTAssertEqual(viewModel.settings.publicPort, 18080)
+
+        viewModel.setCustomAdvertisedURL(true)
+        viewModel.settings.publicHost = "hospital.example"
+        viewModel.settings.publicPort = 443
+        viewModel.settings.proxyPort = 8080
+        viewModel.syncAdvertisedURLWithProxyIfNeeded()
+
+        XCTAssertEqual(viewModel.settings.publicHost, "hospital.example")
+        XCTAssertEqual(viewModel.settings.publicPort, 443)
+    }
+
+    func testDisablingCustomAdvertisedURLClearsOverride() {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        var initialSettings = RuntimeSettings()
+        initialSettings.proxyPort = 8080
+        initialSettings.publicHost = "hospital.example"
+        initialSettings.publicPort = 443
+        client.settings = initialSettings
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+
+        XCTAssertTrue(viewModel.useCustomAdvertisedURL)
+
+        viewModel.setCustomAdvertisedURL(false)
+
+        XCTAssertFalse(viewModel.useCustomAdvertisedURL)
+        XCTAssertEqual(viewModel.settings.publicHost, "")
+        XCTAssertEqual(viewModel.settings.publicPort, 8080)
     }
 
     func testNativeShellProvidesUpdateBundleURLAndClientVerifiesSelectedBundle() async {
@@ -240,6 +315,7 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     var deleteBackupCount = 0
     var repairProxyCount = 0
     var repairDatastoreCount = 0
+    var repairRuntimeServicesCount = 0
     var createRedisBackupCount = 0
     var startRuntimeServicesCount = 0
     var stopRuntimeServicesCount = 0
@@ -249,13 +325,14 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     var createDirectoryURLs: [URL] = []
     var verifiedBundleURLs: [URL] = []
     var exportLogDestinationURLs: [URL] = []
+    var settings = RuntimeSettings()
 
     init(capabilities: RuntimeControlCapabilities) {
         self.capabilities = capabilities
     }
 
     func loadSettings() -> RuntimeSettings {
-        RuntimeSettings()
+        settings
     }
 
     func loadStatus(settings: RuntimeSettings) -> RuntimeStatus {
@@ -354,6 +431,11 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
 
     func repairDatastore() async throws -> RuntimeCommandResult {
         repairDatastoreCount += 1
+        return success()
+    }
+
+    func repairRuntimeServices() async throws -> RuntimeCommandResult {
+        repairRuntimeServicesCount += 1
         return success()
     }
 

@@ -994,6 +994,10 @@ private final class FakeRuntimeControlClient: RuntimeControlClient, RuntimeHostC
         RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "")
     }
 
+    func repairRuntimeServices() async throws -> RuntimeCommandResult {
+        RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "")
+    }
+
     func createRedisBackup() async throws -> RuntimeCommandResult {
         createRedisBackupCount += 1
         return RuntimeCommandResult(exitCode: 0, stdout: "redis backup created", stderr: "")

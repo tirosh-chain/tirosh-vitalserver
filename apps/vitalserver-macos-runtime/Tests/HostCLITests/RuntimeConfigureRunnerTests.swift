@@ -23,6 +23,7 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
                 .adminPasswordFile(URL(fileURLWithPath: "/tmp/admin-password")),
                 .startOnBoot(false),
                 .autoRecovery(false),
+                .preventSystemSleep(false),
                 .redisBackupRetention(20),
             ],
             restart: true
@@ -32,6 +33,7 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
         XCTAssertEqual(harness.resizedDisks, [96])
         XCTAssertEqual(harness.proxyPorts, [18080])
         XCTAssertEqual(harness.startOnBootValues, [false])
+        XCTAssertEqual(harness.systemSleepPreventionValues, [false])
         XCTAssertEqual(harness.restrictedFiles, [harness.paths.guestRuntimeConfig])
         XCTAssertEqual(harness.restartCount, 1)
         XCTAssertTrue(harness.fileStore.directories.contains(URL(fileURLWithPath: "/data/vital-files")))
@@ -43,6 +45,7 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
         XCTAssertNil(vmConfig.network.bridgedInterface)
         XCTAssertEqual(vmConfig.vitalFilesDirectory?.hostPath, "/data/vital-files")
         XCTAssertEqual(vmConfig.autoRecoveryEnabled, false)
+        XCTAssertEqual(vmConfig.preventSystemSleep, false)
 
         let guestConfig = try GuestRuntimeConfigDocument.load(from: harness.paths.guestRuntimeConfig, fileStore: harness.fileStore)
         XCTAssertEqual(guestConfig.publicHost, "vitalserver.local")
@@ -99,6 +102,7 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
         var proxyPorts: [Int] = []
         var restrictedFiles: [URL] = []
         var startOnBootValues: [Bool] = []
+        var systemSleepPreventionValues: [Bool] = []
         var restartCount = 0
         var runner: RuntimeConfigureRunner!
 
@@ -143,6 +147,9 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
                     },
                     setStartOnBoot: { [weak self] enabled in
                         self?.startOnBootValues.append(enabled)
+                    },
+                    setSystemSleepPrevention: { [weak self] enabled in
+                        self?.systemSleepPreventionValues.append(enabled)
                     },
                     restartRuntimeServices: { [weak self] in
                         self?.restartCount += 1

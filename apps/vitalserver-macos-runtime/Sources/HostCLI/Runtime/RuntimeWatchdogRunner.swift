@@ -88,6 +88,7 @@ struct RuntimeWatchdogRunner {
 
         if recoveryPlan.restartVM {
             actions.restartService(.vm)
+            actions.restartService(.guestLogSync)
         }
         if recoveryPlan.restartProxy {
             actions.restartService(.proxy)

@@ -69,7 +69,8 @@ public enum RuntimeRecoveryPlanner {
             || !guestReady
             || RuntimeObservationHealthPolicy.requiresVMRestart(containerObservation: input.containerObservation)
 
-        let restartProxy = input.proxyService != .loaded
+        let restartProxy = restartVM
+            || input.proxyService != .loaded
             || !hostProxyAlive
             || (!hostProxyReady && guestReady)
 

@@ -64,6 +64,10 @@ struct RuntimeServiceController {
         }
     }
 
+    func stopLaunchdService(_ service: RuntimeManagedService) {
+        stopIfLoaded(service)
+    }
+
     func setStartOnBoot(_ enabled: Bool) throws {
         for service in RuntimeManagedService.startOrder {
             let result = serviceManager.setEnabled(service: service, enabled: enabled)

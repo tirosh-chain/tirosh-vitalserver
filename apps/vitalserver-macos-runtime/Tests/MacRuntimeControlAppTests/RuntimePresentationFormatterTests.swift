@@ -30,6 +30,7 @@ final class RuntimePresentationFormatterTests: XCTestCase {
         settings.vitalFilesDirectory = "/Users/test/Vital Files"
         settings.redisBackupRetentionCount = 20
         settings.autoRecoveryEnabled = false
+        settings.preventSystemSleep = false
         settings.restartAfterSave = true
 
         let confirmation = formatter.applySettingsConfirmation(settings: settings)
@@ -42,6 +43,7 @@ final class RuntimePresentationFormatterTests: XCTestCase {
         XCTAssertTrue(confirmation.contains("Vital files directory: /Users/test/Vital Files"))
         XCTAssertTrue(confirmation.contains("Redis backup retention: 20 archives"))
         XCTAssertTrue(confirmation.contains("Automatic recovery: false"))
+        XCTAssertTrue(confirmation.contains("Prevent Mac sleep: false"))
         XCTAssertTrue(confirmation.contains("Restart services: true"))
     }
 

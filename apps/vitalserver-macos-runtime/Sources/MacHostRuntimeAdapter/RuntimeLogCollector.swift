@@ -297,6 +297,8 @@ struct RuntimeLogCopy {
             "proxy.err.log",
             "guest-log-sync.out.log",
             "guest-log-sync.err.log",
+            "sleep-prevention.out.log",
+            "sleep-prevention.err.log",
             "watchdog.out.log",
             "watchdog.err.log",
         ].map { fileName in
@@ -308,6 +310,21 @@ struct RuntimeLogCopy {
                 archivePrefix: "runtime-\(fileName)"
             )
         }
+
+        let proxyNginxFiles = [
+            RuntimeLogCopy(
+                source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.proxyNginxAccessLog),
+                destination: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.runtimeLogs)
+                    .appendingPathComponent("proxy-nginx.access.log"),
+                archivePrefix: "runtime-proxy-nginx.access.log"
+            ),
+            RuntimeLogCopy(
+                source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.proxyNginxErrorLog),
+                destination: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.runtimeLogs)
+                    .appendingPathComponent("proxy-nginx.error.log"),
+                archivePrefix: "runtime-proxy-nginx.error.log"
+            ),
+        ]
 
         let guestFiles = [
             RuntimeLogCopy(
@@ -342,7 +359,7 @@ struct RuntimeLogCopy {
             ),
         ]
 
-        return runtimeFiles + guestFiles
+        return runtimeFiles + proxyNginxFiles + guestFiles
     }
 }
 

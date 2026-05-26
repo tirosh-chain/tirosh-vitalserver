@@ -42,6 +42,7 @@ enum RuntimeAdapterConstants {
         static let rollback = "rollback"
         static let redisBackup = "redis-backup"
         static let repairDatastore = "repair-datastore"
+        static let repairServices = "repair-services"
         static let startServices = "start-services"
         static let stopServices = "stop-services"
         static let boolTrue = "true"
@@ -56,6 +57,7 @@ enum RuntimeAdapterConstants {
         static let optionPublicPort = "--public-port"
         static let optionStartOnBoot = "--start-on-boot"
         static let optionAutoRecovery = "--auto-recovery"
+        static let optionPreventSystemSleep = "--prevent-system-sleep"
         static let optionRedisBackupRetention = "--redis-backup-retention"
         static let optionBridgedInterface = "--bridged-interface"
         static let optionAdminPasswordFile = "--admin-password-file"
@@ -103,6 +105,8 @@ enum RuntimeAdapterConstants {
         static let vmDisk = installed.vmDisk.path
         static let guestRuntimeConfig = installed.guestRuntimeConfig.path
         static let proxyNginxPid = installed.proxyNginxPID.path
+        static let proxyNginxAccessLog = installed.nginxLogsDirectory.appendingPathComponent("access.log").path
+        static let proxyNginxErrorLog = installed.nginxLogsDirectory.appendingPathComponent("error.log").path
         static let proxyLaunchDaemon = installed.proxyLaunchDaemon.path
         static let commandLogFile = installed.managerCommandLog.path
     }

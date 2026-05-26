@@ -9,6 +9,7 @@ struct RuntimeConfigureActions {
     var readSecretFile: (URL) throws -> String
     var restrictSecretFile: (URL) throws -> Void
     var setStartOnBoot: (Bool) throws -> Void
+    var setSystemSleepPrevention: (Bool) throws -> Void
     var restartRuntimeServices: () throws -> Void
 }
 
@@ -144,6 +145,9 @@ struct RuntimeConfigureRunner {
             try actions.setStartOnBoot(enabled)
         case .autoRecovery(let enabled):
             vmConfig.autoRecoveryEnabled = enabled
+        case .preventSystemSleep(let enabled):
+            vmConfig.preventSystemSleep = enabled
+            try actions.setSystemSleepPrevention(enabled)
         case .redisBackupRetention(let count):
             guard (1...Constants.Defaults.maximumRedisBackupRetentionCount).contains(count) else {
                 throw LauncherError.missingArgument(

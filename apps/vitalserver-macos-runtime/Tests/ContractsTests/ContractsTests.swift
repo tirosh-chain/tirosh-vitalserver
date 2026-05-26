@@ -30,6 +30,8 @@ final class ContractsTests: XCTestCase {
         XCTAssertEqual(RuntimeOperation.startServices.rawValue, "start-services")
         XCTAssertEqual(RuntimeOperation(rawValue: "stop-services"), .stopServices)
         XCTAssertEqual(RuntimeOperation.stopServices.rawValue, "stop-services")
+        XCTAssertEqual(RuntimeOperation(rawValue: "repair-services"), .repairServices)
+        XCTAssertEqual(RuntimeOperation.repairServices.rawValue, "repair-services")
     }
 
     func testDecodesGuestRuntimeState() throws {

@@ -45,7 +45,7 @@ final class RuntimeWatchdogRunnerTests: XCTestCase {
         XCTAssertTrue(harness.restartedServices.isEmpty)
     }
 
-    func testGuestReadinessFailureRestartsOnlyVMWhenProxyIsAlive() throws {
+    func testGuestReadinessFailureRestartsVMGuestLogSyncAndProxy() throws {
         let harness = WatchdogHarness(snapshots: [
             healthSnapshot(
                 hostProxyHTTP: "502",
@@ -58,7 +58,7 @@ final class RuntimeWatchdogRunnerTests: XCTestCase {
         try harness.runner.run()
 
         XCTAssertEqual(harness.proxyLivenessPorts, [80])
-        XCTAssertEqual(harness.restartedServices, [.vm])
+        XCTAssertEqual(harness.restartedServices, [.vm, .guestLogSync, .proxy])
         XCTAssertEqual(harness.sleepCalls, [Constants.Runtime.watchdogRecoveryWaitSeconds])
         XCTAssertEqual(harness.writtenStatuses.map(\.status), [.recovering, .healthy])
         XCTAssertEqual(harness.observedStatuses.map(\.status), [.recovering, .healthy])

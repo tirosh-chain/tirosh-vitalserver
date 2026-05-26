@@ -139,6 +139,13 @@ def render_launchd_templates(context: PackageContext) -> None:
         },
     )
     render_template(
+        launchd / templates.sleep_prevention.template_file,
+        daemon_dir / templates.sleep_prevention.installed_plist,
+        {
+            "VITALSERVER_RUNTIME_LOGS": install_runtime_logs(context),
+        },
+    )
+    render_template(
         launchd / templates.watchdog.template_file,
         daemon_dir / templates.watchdog.installed_plist,
         {

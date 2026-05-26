@@ -73,6 +73,11 @@ struct RuntimeSettingsPanel: View {
                             .disabled(!viewModel.capabilities.canControlRuntimeServices)
                         settingHelp(AppConstants.Labels.automaticRecoveryHelp)
                     }
+                    VStack(alignment: .leading, spacing: 4) {
+                        settingToggle(AppConstants.Labels.preventSystemSleep, isOn: $viewModel.settings.preventSystemSleep)
+                            .disabled(!viewModel.capabilities.canControlRuntimeServices)
+                        settingHelp(AppConstants.Labels.preventSystemSleepHelp)
+                    }
                     settingToggle(AppConstants.Labels.restartServicesAfterSave, isOn: $viewModel.settings.restartAfterSave)
                         .disabled(!viewModel.capabilities.canControlRuntimeServices)
                 }

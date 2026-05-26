@@ -19,7 +19,8 @@ final class RuntimeSettingsReaderTests: XCTestCase {
           "memoryMiB": 6144,
           "network": { "mode": "shared", "bridgedInterface": "en0" },
           "vitalFilesDirectory": { "hostPath": "/Volumes/Vital Files" },
-          "autoRecoveryEnabled": false
+          "autoRecoveryEnabled": false,
+          "preventSystemSleep": false
         }
         """.write(to: vmConfig, atomically: true, encoding: .utf8)
         FileManager.default.createFile(atPath: vmDisk.path, contents: Data([0]))
@@ -84,6 +85,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         XCTAssertEqual(settings.redisBackupRetentionCount, 30)
         XCTAssertEqual(settings.proxyPort, 19090)
         XCTAssertFalse(settings.autoRecoveryEnabled)
+        XCTAssertFalse(settings.preventSystemSleep)
     }
 
     func testConfigureArgumentsReflectSettings() {
@@ -98,6 +100,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         settings.redisBackupRetentionCount = 20
         settings.startOnBoot = false
         settings.autoRecoveryEnabled = false
+        settings.preventSystemSleep = false
         settings.restartAfterSave = true
 
         let arguments = RuntimeCommandFactory.configureRuntimeArguments(
@@ -113,6 +116,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         XCTAssertEqual(value(after: RuntimeAdapterConstants.RuntimeCommand.optionRedisBackupRetention, in: arguments), "20")
         XCTAssertEqual(value(after: RuntimeAdapterConstants.RuntimeCommand.optionStartOnBoot, in: arguments), "false")
         XCTAssertEqual(value(after: RuntimeAdapterConstants.RuntimeCommand.optionAutoRecovery, in: arguments), "false")
+        XCTAssertEqual(value(after: RuntimeAdapterConstants.RuntimeCommand.optionPreventSystemSleep, in: arguments), "false")
     }
 
     private func value(after marker: String, in arguments: [String]) -> String? {

@@ -159,6 +159,10 @@ def load_macos_launchd(config: TomlTable) -> MacOSLaunchdConfig:
             nested_section(config, "guest_log_sync", parent_path="macos.launchd"),
             path="macos.launchd.guest_log_sync",
         ),
+        sleep_prevention=load_macos_launchd_template(
+            nested_section(config, "sleep_prevention", parent_path="macos.launchd"),
+            path="macos.launchd.sleep_prevention",
+        ),
         watchdog=load_macos_launchd_template(
             nested_section(config, "watchdog", parent_path="macos.launchd"),
             path="macos.launchd.watchdog",

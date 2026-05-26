@@ -18,6 +18,7 @@ final class RuntimeViewModel: ObservableObject {
     @Published var logLineLimit = 500
     @Published var selectedLogSource = RuntimeLogSource.helperMessage
     @Published var logStreaming = true
+    @Published var useCustomAdvertisedURL = false
     @Published var isBusy = false
     @Published var isCreatingRedisBackup = false
     var isRefreshingLogs = false
@@ -35,6 +36,7 @@ final class RuntimeViewModel: ObservableObject {
     let processMessageFormatter = RuntimeProcessMessageFormatter()
     let presentationFormatter = RuntimePresentationFormatter()
     private let settingsValidator = RuntimeSettingsValidator()
+    private let vitalFilesDirectoryPolicy = RuntimeVitalFilesDirectoryPolicy()
 
     init(
         controlClient: any RuntimeControlClient,
@@ -47,7 +49,9 @@ final class RuntimeViewModel: ObservableObject {
         self.healthNotifications = healthNotifications
         self.healthNotificationCoordinator = RuntimeHealthNotificationCoordinator(notifier: self.healthNotifications)
         self.nativeShell = nativeShell
-        self.settings = self.controlClient.loadSettings()
+        let initialSettings = self.controlClient.loadSettings()
+        self.settings = initialSettings
+        self.useCustomAdvertisedURL = Self.usesCustomAdvertisedURL(initialSettings)
         self.installationInfo = self.controlClient.loadInstallInfo()
         self.healthNotifications.configure()
     }
@@ -69,7 +73,7 @@ final class RuntimeViewModel: ObservableObject {
     }
 
     func refresh() async {
-        settings = controlClient.loadSettings()
+        loadRuntimeSettings()
         status = controlClient.loadStatus(settings: settings)
         await refreshReleaseInfo()
         refreshBackupList()
@@ -131,7 +135,8 @@ final class RuntimeViewModel: ObservableObject {
     }
 
     func prepareApplySettings() -> Bool {
-        validateSettings()
+        normalizeAdvertisedURLSettings()
+        return validateSettings()
     }
 
     func applySettings() async {
@@ -139,6 +144,7 @@ final class RuntimeViewModel: ObservableObject {
             message = AppConstants.StatusText.actionUnavailable
             return
         }
+        normalizeAdvertisedURLSettings()
         guard validateSettings() else {
             return
         }
@@ -164,9 +170,22 @@ final class RuntimeViewModel: ObservableObject {
             return
         }
         if let url = nativeShell.chooseDirectory(prompt: AppConstants.Actions.chooseDirectory) {
+            if let validationMessage = vitalFilesDirectoryPolicy.validationMessage(for: url) {
+                message = validationMessage
+                return
+            }
             hostClient.createDirectory(at: url)
             settings.vitalFilesDirectory = url.path
         }
+    }
+
+    func setCustomAdvertisedURL(_ enabled: Bool) {
+        useCustomAdvertisedURL = enabled
+        normalizeAdvertisedURLSettings()
+    }
+
+    func syncAdvertisedURLWithProxyIfNeeded() {
+        normalizeAdvertisedURLSettings()
     }
 
     func repairProxyPort() async {
@@ -196,6 +215,21 @@ final class RuntimeViewModel: ObservableObject {
             runningMessage: AppConstants.StatusText.datastoreRepairRunning,
             successMessage: AppConstants.StatusText.datastoreRepairCompleted,
             action: { try await self.controlClient.repairDatastore() }
+        )
+        await refreshHealthStatus()
+    }
+
+    func repairRuntimeServices() async {
+        guard controlClient.capabilities.canControlRuntimeServices else {
+            message = AppConstants.StatusText.actionUnavailable
+            return
+        }
+        _ = await runClientAction(
+            preparingMessage: AppConstants.StatusText.runtimeServicesRepairPreparing,
+            waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
+            runningMessage: AppConstants.StatusText.runtimeServicesRepairRunning,
+            successMessage: AppConstants.StatusText.runtimeServicesRepaired,
+            action: { try await self.controlClient.repairRuntimeServices() }
         )
         await refreshHealthStatus()
     }
@@ -240,6 +274,25 @@ final class RuntimeViewModel: ObservableObject {
             message = validationMessage
         }
         return result.isValid
+    }
+
+    private func loadRuntimeSettings() {
+        let nextSettings = controlClient.loadSettings()
+        settings = nextSettings
+        useCustomAdvertisedURL = Self.usesCustomAdvertisedURL(nextSettings)
+    }
+
+    private func normalizeAdvertisedURLSettings() {
+        guard !useCustomAdvertisedURL else {
+            return
+        }
+        settings.publicHost = ""
+        settings.publicPort = settings.proxyPort
+    }
+
+    private static func usesCustomAdvertisedURL(_ settings: RuntimeSettings) -> Bool {
+        !settings.publicHost.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || settings.publicPort != settings.proxyPort
     }
 
     func refreshBackupList() {
@@ -349,7 +402,7 @@ final class RuntimeViewModel: ObservableObject {
 
     private func waitForAppliedSettings() async {
         for _ in 0..<12 {
-            settings = controlClient.loadSettings()
+            loadRuntimeSettings()
             status = await controlClient.loadHealthStatus(settings: settings)
             await refreshLogsIfLive()
             if status.isReady || !settings.restartAfterSave {

@@ -191,6 +191,11 @@ public struct MacHostRuntimeClient: RuntimeControlClient, RuntimeHostClient {
         ))
     }
 
+    public func repairRuntimeServices() async throws -> RuntimeCommandResult {
+        try ensureLauncherIsAvailable()
+        return await runPrivileged(RuntimeCommandFactory.runtimeServicesCommand(action: .repair))
+    }
+
     public func createRedisBackup() async throws -> RuntimeCommandResult {
         try ensureLauncherIsAvailable()
         return await runPrivileged(RuntimeCommandFactory.shellCommand(

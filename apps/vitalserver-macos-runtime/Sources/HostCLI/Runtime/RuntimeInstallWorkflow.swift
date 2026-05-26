@@ -188,6 +188,7 @@ struct RuntimeInstallWorkflow {
             guestMountPath: Constants.Defaults.vitalFilesDirectoryGuestMountPath,
             readOnly: false
         )
+        config.preventSystemSleep = settings.preventSystemSleep
         VMRuntimeConfig.ensureRuntimeDefaults(&config, paths: context.installedPaths)
         let encoded = try JSONEncoder.pretty.encode(config)
         try operations.fileStore.createDirectory(at: context.paths.config.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -217,6 +218,7 @@ struct RuntimeInstallWorkflow {
             RuntimeManagedService.vm.launchDaemonPlist,
             RuntimeManagedService.proxy.launchDaemonPlist,
             RuntimeManagedService.guestLogSync.launchDaemonPlist,
+            RuntimeManagedService.sleepPrevention.launchDaemonPlist,
             RuntimeManagedService.watchdog.launchDaemonPlist,
         ] {
             try operations.runRequired(Constants.Commands.chmod, ["0644", plist])
@@ -229,6 +231,9 @@ struct RuntimeInstallWorkflow {
             operations.log("start after install disabled")
             return
         }
+        if settings.preventSystemSleep {
+            operations.startLaunchdService(.sleepPrevention)
+        }
         for service in RuntimeManagedService.startOrder {
             operations.startLaunchdService(service)
         }
@@ -236,6 +241,8 @@ struct RuntimeInstallWorkflow {
 
     private func applyStartOnBootPolicy(_ settings: InstallSettings) throws {
         try operations.setStartOnBoot(settings.startOnBoot)
+        let action = settings.preventSystemSleep && settings.startOnBoot ? "enable" : "disable"
+        try operations.runRequired(Constants.Commands.launchctl, [action, "system/\(RuntimeManagedService.sleepPrevention.label)"])
     }
 
     private func cleanupInstallSettings() throws {

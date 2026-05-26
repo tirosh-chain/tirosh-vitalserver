@@ -16,6 +16,8 @@ struct RuntimeLogRotator {
             "proxy.err.log",
             "guest-log-sync.out.log",
             "guest-log-sync.err.log",
+            "sleep-prevention.out.log",
+            "sleep-prevention.err.log",
             "watchdog.out.log",
             "watchdog.err.log",
         ]

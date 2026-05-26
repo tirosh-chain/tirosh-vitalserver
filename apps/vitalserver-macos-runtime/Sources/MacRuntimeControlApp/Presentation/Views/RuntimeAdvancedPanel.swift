@@ -6,6 +6,7 @@ struct RuntimeAdvancedPanel: View {
     @Binding var showingRollbackConfirmation: Bool
     @Binding var showingRepairProxyConfirmation: Bool
     @Binding var showingRepairDatastoreConfirmation: Bool
+    @Binding var showingRepairRuntimeServicesConfirmation: Bool
     @Binding var showingStartServicesConfirmation: Bool
     @Binding var showingStopServicesConfirmation: Bool
     @Binding var hoveredServiceLink: String?
@@ -33,6 +34,9 @@ struct RuntimeAdvancedPanel: View {
         }
         .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { date in
             uptimeNow = date
+        }
+        .onChange(of: viewModel.settings.proxyPort) { _ in
+            viewModel.syncAdvertisedURLWithProxyIfNeeded()
         }
     }
 
@@ -175,6 +179,11 @@ struct RuntimeAdvancedPanel: View {
 
                 recoverySubsection(AppConstants.Labels.sectionRuntimeRepair) {
                     HStack(spacing: 10) {
+                        Button(AppConstants.Actions.repairRuntimeServices) {
+                            showingRepairRuntimeServicesConfirmation = true
+                        }
+                        .disabled(viewModel.isBusy || !viewModel.status.runtimeInstalled)
+
                         Button(AppConstants.Actions.repairDatastore) {
                             showingRepairDatastoreConfirmation = true
                         }
@@ -203,16 +212,18 @@ struct RuntimeAdvancedPanel: View {
                     settingHelp(AppConstants.Labels.proxyPortHelp)
                 }
 
-                networkSubsection(AppConstants.Labels.sectionAdvertisedURL) {
-                    settingTextField(AppConstants.Labels.publicHost, text: $viewModel.settings.publicHost)
-                    settingHelp(AppConstants.Labels.publicHostHelp)
-                    settingPortField(AppConstants.Labels.publicPort, value: $viewModel.settings.publicPort)
-                    settingHelp(AppConstants.Labels.publicPortHelp)
-                    settingRow(AppConstants.Labels.advertisedURLPreview) {
-                        Text(advertisedURLPreview)
-                            .font(.system(.body, design: .monospaced))
-                            .fontWeight(.medium)
-                            .textSelection(.enabled)
+                networkSubsection(AppConstants.Labels.sectionAdvertisedURLOverride) {
+                    settingToggle(AppConstants.Labels.customAdvertisedURL, isOn: customAdvertisedURLBinding)
+                    settingHelp(AppConstants.Labels.customAdvertisedURLHelp)
+                    if viewModel.useCustomAdvertisedURL {
+                        settingTextField(AppConstants.Labels.publicHost, text: $viewModel.settings.publicHost)
+                        settingHelp(AppConstants.Labels.publicHostHelp)
+                        settingPortField(AppConstants.Labels.publicPort, value: $viewModel.settings.publicPort)
+                        settingHelp(AppConstants.Labels.publicPortHelp)
+                        advertisedURLPreviewRow(AppConstants.Labels.advertisedURLPreview, value: advertisedURLPreview)
+                    } else {
+                        advertisedURLPreviewRow(AppConstants.Labels.defaultAdvertisedURL, value: defaultAdvertisedURLPreview)
+                        settingHelp(AppConstants.Labels.defaultAdvertisedURLHelp)
                     }
                 }
 
@@ -280,6 +291,17 @@ struct RuntimeAdvancedPanel: View {
         let host = viewModel.settings.publicHost.trimmingCharacters(in: .whitespacesAndNewlines)
         let displayHost = host.isEmpty ? AppConstants.Labels.advertisedURLSameHost : host
         return "http://\(displayHost):\(viewModel.settings.publicPort)/"
+    }
+
+    private var defaultAdvertisedURLPreview: String {
+        "http://\(AppConstants.Labels.advertisedURLSameHost):\(viewModel.settings.proxyPort)/"
+    }
+
+    private var customAdvertisedURLBinding: Binding<Bool> {
+        Binding(
+            get: { viewModel.useCustomAdvertisedURL },
+            set: { viewModel.setCustomAdvertisedURL($0) }
+        )
     }
 
     private var canApplySettingsForCurrentConnection: Bool {
@@ -399,6 +421,15 @@ struct RuntimeAdvancedPanel: View {
                     .clipShape(RoundedRectangle(cornerRadius: 6))
             }
             settingHelp(help)
+        }
+    }
+
+    private func advertisedURLPreviewRow(_ label: String, value: String) -> some View {
+        settingRow(label) {
+            Text(value)
+                .font(.system(.body, design: .monospaced))
+                .fontWeight(.medium)
+                .textSelection(.enabled)
         }
     }
 

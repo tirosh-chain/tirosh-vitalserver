@@ -392,6 +392,7 @@ public enum RuntimeControlDevConsoleDocument {
         ["public port", settings.publicPort],
         ["start on boot", settings.startOnBoot],
         ["auto recovery", settings.autoRecoveryEnabled],
+        ["prevent Mac sleep", settings.preventSystemSleep],
         ["Redis backups", settings.redisBackupRetentionCount]
       ];
       $("settingsMetrics").innerHTML = metricsHTML(values);

@@ -173,8 +173,12 @@ extension RuntimeLifecycle {
                 setStartOnBoot: { enabled in
                     try setStartOnBoot(enabled)
                 },
+                setSystemSleepPrevention: { enabled in
+                    try setSystemSleepPrevention(enabled)
+                },
                 restartRuntimeServices: {
                     restartLaunchdService(.vm)
+                    restartLaunchdService(.guestLogSync)
                     restartLaunchdService(.proxy)
                     restartLaunchdService(.watchdog)
                 }

@@ -15,6 +15,7 @@ enum RuntimeLifecycleCommand: Equatable {
     case rollback(RuntimeRollbackCommand)
     case redisBackup
     case repairDatastore
+    case repairServices
     case startServices
     case stopServices
     case help
@@ -59,6 +60,8 @@ enum RuntimeLifecycleCommand: Equatable {
             return .redisBackup
         case "repair-datastore":
             return .repairDatastore
+        case "repair-services":
+            return .repairServices
         case "start-services":
             return .startServices
         case "stop-services":
@@ -77,7 +80,7 @@ enum RuntimeLifecycleCommand: Equatable {
       vitalserver-vm runtime health
       vitalserver-vm runtime guest-log-sync
       vitalserver-vm runtime watchdog
-      vitalserver-vm runtime configure [--cpu <count>] [--memory-gib <gib>] [--disk-gib <gib>] [--network shared|bridged] [--bridged-interface <id>] [--proxy-port <port>] [--vital-files-dir <path>] [--public-host <host>] [--public-port <port>] [--admin-password <password>] [--start-on-boot true|false] [--redis-backup-retention <count>] [--restart]
+      vitalserver-vm runtime configure [--cpu <count>] [--memory-gib <gib>] [--disk-gib <gib>] [--network shared|bridged] [--bridged-interface <id>] [--proxy-port <port>] [--vital-files-dir <path>] [--public-host <host>] [--public-port <port>] [--admin-password <password>] [--start-on-boot true|false] [--auto-recovery true|false] [--prevent-system-sleep true|false] [--redis-backup-retention <count>] [--restart]
       vitalserver-vm runtime configure [--admin-password-file <path>] [--restart]
       vitalserver-vm runtime verify-bundle <bundle.tar.gz>
       vitalserver-vm runtime stage-bundle <bundle.tar.gz>
@@ -85,6 +88,7 @@ enum RuntimeLifecycleCommand: Equatable {
       vitalserver-vm runtime rollback [backup-dir]
       vitalserver-vm runtime redis-backup
       vitalserver-vm runtime repair-datastore
+      vitalserver-vm runtime repair-services
       vitalserver-vm runtime start-services
       vitalserver-vm runtime stop-services
     """
@@ -184,6 +188,11 @@ enum RuntimeLifecycleCommand: Equatable {
                 throw LauncherError.missingArgument("--auto-recovery must be true or false")
             }
             return .autoRecovery(enabled)
+        case .preventSystemSleep:
+            guard let enabled = RuntimeBooleanParser.parse(value) else {
+                throw LauncherError.missingArgument("--prevent-system-sleep must be true or false")
+            }
+            return .preventSystemSleep(enabled)
         case .redisBackupRetention:
             guard let count = Int(value) else {
                 throw LauncherError.missingArgument("--redis-backup-retention must be an integer")
