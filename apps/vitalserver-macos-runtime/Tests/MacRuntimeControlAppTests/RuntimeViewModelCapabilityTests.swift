@@ -128,6 +128,7 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         viewModel.openBackups()
         viewModel.openRedisBackups()
         viewModel.openVitalServer()
+        viewModel.openVitalDBWebsite()
         await viewModel.exportLogs()
 
         XCTAssertEqual(nativeShell.openedFileURLs, [
@@ -135,9 +136,50 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
             URL(fileURLWithPath: "/backups"),
             URL(fileURLWithPath: "/backups/redis"),
         ])
-        XCTAssertEqual(nativeShell.openedWebURLs, [URL(string: AppConstants.Product.vitalServerURL(proxyPort: viewModel.status.proxyPort))])
+        XCTAssertEqual(nativeShell.openedWebURLs, [
+            URL(string: AppConstants.Product.vitalServerURL(proxyPort: viewModel.status.proxyPort)),
+            URL(string: AppConstants.Product.vitalDBURL),
+        ])
         XCTAssertEqual(nativeShell.chooseLogExportDestinationPrompts, [AppConstants.Actions.exportLogs])
         XCTAssertEqual(client.exportLogDestinationURLs, [exportURL])
+    }
+
+    func testOpenFolderPromptsToCreateMissingDirectoryBeforeOpening() {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let nativeShell = FakeRuntimeNativeShell()
+        nativeShell.existingDirectories = ["/logs"]
+        nativeShell.confirmCreateDirectoryResponses = [true]
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications(),
+            nativeShell: nativeShell
+        )
+
+        viewModel.openBackups()
+
+        XCTAssertEqual(nativeShell.confirmCreateDirectoryPaths, ["/backups"])
+        XCTAssertEqual(nativeShell.createdDirectoryURLs, [URL(fileURLWithPath: "/backups")])
+        XCTAssertEqual(nativeShell.openedFileURLs, [URL(fileURLWithPath: "/backups")])
+    }
+
+    func testOpenFolderStopsWhenMissingDirectoryCreationIsCancelled() {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let nativeShell = FakeRuntimeNativeShell()
+        nativeShell.existingDirectories = []
+        nativeShell.confirmCreateDirectoryResponses = [false]
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications(),
+            nativeShell: nativeShell
+        )
+
+        viewModel.openFolder("/missing")
+
+        XCTAssertEqual(nativeShell.confirmCreateDirectoryPaths, ["/missing"])
+        XCTAssertTrue(nativeShell.createdDirectoryURLs.isEmpty)
+        XCTAssertTrue(nativeShell.openedFileURLs.isEmpty)
     }
 
     func testViewModelCanUseSeparateControlAndHostClients() async {
@@ -361,6 +403,10 @@ private final class FakeRuntimeNativeShell: RuntimeNativeShell {
     var chooseLogExportDestinationPrompts: [String] = []
     var openedFileURLs: [URL] = []
     var openedWebURLs: [URL] = []
+    var existingDirectories: Set<String>?
+    var confirmCreateDirectoryResponses: [Bool] = []
+    var confirmCreateDirectoryPaths: [String] = []
+    var createdDirectoryURLs: [URL] = []
     var relaunchHelperCount = 0
     var terminateCount = 0
 
@@ -389,6 +435,20 @@ private final class FakeRuntimeNativeShell: RuntimeNativeShell {
     func chooseLogExportDestination(defaultName: String, prompt: String) -> URL? {
         chooseLogExportDestinationPrompts.append(prompt)
         return logExportDestinationURL
+    }
+
+    func directoryExists(_ url: URL) -> Bool {
+        existingDirectories?.contains(url.path) ?? true
+    }
+
+    func confirmCreateDirectory(path: String) -> Bool {
+        confirmCreateDirectoryPaths.append(path)
+        return confirmCreateDirectoryResponses.isEmpty ? false : confirmCreateDirectoryResponses.removeFirst()
+    }
+
+    func createDirectory(_ url: URL) throws {
+        createdDirectoryURLs.append(url)
+        existingDirectories?.insert(url.path)
     }
 
     func openFileURL(_ url: URL) {

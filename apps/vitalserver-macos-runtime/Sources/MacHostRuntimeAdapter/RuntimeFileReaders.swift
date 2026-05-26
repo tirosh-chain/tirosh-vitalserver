@@ -109,10 +109,7 @@ struct SystemRuntimeHostFileReader: RuntimeHostFileReading {
 
     func preferredLogsPath() -> String {
         logCollector.refreshLogCollection()
-        if fileStore.directoryExists(URL(fileURLWithPath: RuntimeAdapterConstants.Paths.productLogs)) {
-            return RuntimeAdapterConstants.Paths.productLogs
-        }
-        return RuntimeAdapterConstants.Paths.installLog
+        return RuntimeAdapterConstants.Paths.productLogs
     }
 
     func vitalFileFolders(root: String) -> [VitalFilesFolder] {

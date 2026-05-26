@@ -12,7 +12,21 @@ extension RuntimeViewModel {
     }
 
     func openFolder(_ path: String) {
-        nativeShell.openFileURL(URL(fileURLWithPath: path))
+        let url = URL(fileURLWithPath: path)
+        guard nativeShell.directoryExists(url) else {
+            guard nativeShell.confirmCreateDirectory(path: path) else {
+                return
+            }
+            do {
+                try nativeShell.createDirectory(url)
+            } catch {
+                message = AppConstants.StatusText.folderCreateFailed(error.localizedDescription)
+                return
+            }
+            nativeShell.openFileURL(url)
+            return
+        }
+        nativeShell.openFileURL(url)
     }
 
     func vitalFileFolders() -> [VitalFilesFolder] {
@@ -33,6 +47,10 @@ extension RuntimeViewModel {
 
     func openTiroshWebsite() {
         openRuntimeURL(AppConstants.Product.tiroshURL)
+    }
+
+    func openVitalDBWebsite() {
+        openRuntimeURL(AppConstants.Product.vitalDBURL)
     }
 
     func openRuntimeControlDevConsole() {

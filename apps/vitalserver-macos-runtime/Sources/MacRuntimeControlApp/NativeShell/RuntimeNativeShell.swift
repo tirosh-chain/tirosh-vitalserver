@@ -7,6 +7,9 @@ protocol RuntimeNativeShell {
     func chooseDirectory(prompt: String) -> URL?
     func chooseUpdateBundle(prompt: String) -> URL?
     func chooseLogExportDestination(defaultName: String, prompt: String) -> URL?
+    func directoryExists(_ url: URL) -> Bool
+    func confirmCreateDirectory(path: String) -> Bool
+    func createDirectory(_ url: URL) throws
     func openFileURL(_ url: URL)
     func openWebURL(_ url: URL)
     func relaunchHelper()
@@ -55,6 +58,26 @@ struct SystemRuntimeNativeShell: RuntimeNativeShell {
             return nil
         }
         return panel.url
+    }
+
+    func directoryExists(_ url: URL) -> Bool {
+        var isDirectory: ObjCBool = false
+        return FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory)
+            && isDirectory.boolValue
+    }
+
+    func confirmCreateDirectory(path: String) -> Bool {
+        let alert = NSAlert()
+        alert.messageText = AppConstants.StatusText.folderMissingTitle
+        alert.informativeText = AppConstants.StatusText.folderMissingCreateQuestion(path: path)
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: AppConstants.Actions.createFolder)
+        alert.addButton(withTitle: AppConstants.Actions.cancel)
+        return alert.runModal() == .alertFirstButtonReturn
+    }
+
+    func createDirectory(_ url: URL) throws {
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     }
 
     func openFileURL(_ url: URL) {

@@ -24,6 +24,10 @@ extension RuntimeViewModel {
             message = AppConstants.StatusText.actionUnavailable
             return
         }
+        isCreatingRedisBackup = true
+        defer {
+            isCreatingRedisBackup = false
+        }
         let didCreateBackup = await runClientAction(
             preparingMessage: AppConstants.StatusText.redisBackupPreparing,
             waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,

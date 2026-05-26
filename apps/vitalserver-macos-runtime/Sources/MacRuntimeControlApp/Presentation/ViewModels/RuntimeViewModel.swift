@@ -19,6 +19,7 @@ final class RuntimeViewModel: ObservableObject {
     @Published var selectedLogSource = RuntimeLogSource.helperMessage
     @Published var logStreaming = true
     @Published var isBusy = false
+    @Published var isCreatingRedisBackup = false
     var isRefreshingLogs = false
     @Published var releaseInfo = RuntimeReleaseInfo.generated
     @Published var installationInfo = RuntimeInstallInfo()

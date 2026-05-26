@@ -158,6 +158,17 @@ struct RuntimeAdvancedPanel: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
+                    if viewModel.isCreatingRedisBackup {
+                        HStack(spacing: 8) {
+                            ProgressView()
+                                .controlSize(.small)
+                            Text(viewModel.operationDetail.isEmpty ? viewModel.message : viewModel.operationDetail)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                        }
+                    }
                 }
 
                 Divider()

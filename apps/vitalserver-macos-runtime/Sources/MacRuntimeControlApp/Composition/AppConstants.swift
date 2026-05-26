@@ -3,6 +3,8 @@ import Foundation
 enum AppConstants {
     enum Product {
         static let displayName = "VitalServer Helper"
+        static let vitalDBName = "VitalDB"
+        static let vitalDBURL = "https://vitaldb.net"
         static let poweredByPrefix = "Powered by"
         static let tiroshName = "Tirosh"
         static let tiroshURL = "https://www.tirosh.ai/"
@@ -275,6 +277,7 @@ enum AppConstants {
         static let startRollback = "Start Rollback"
         static let ok = "OK"
         static let cancel = "Cancel"
+        static let createFolder = "Create Folder"
         static let continueAction = "Continue"
         static let back = "Back"
         static let install = "Install"
@@ -351,6 +354,13 @@ enum AppConstants {
         static let redisBackupPreparing = "Preparing Redis backup..."
         static let redisBackupRunning = "Creating Redis backup..."
         static let redisBackupCompleted = "Redis backup completed."
+        static let folderMissingTitle = "Folder does not exist"
+        static func folderMissingCreateQuestion(path: String) -> String {
+            "The folder does not exist:\n\n\(path)\n\nCreate it now?"
+        }
+        static func folderCreateFailed(_ message: String) -> String {
+            "Could not create folder: \(message)"
+        }
         static let missingBackup = "Choose a backup first."
         static let invalidBackup = "Selected backup is outside the managed backup directory."
         static let missingLauncher = "Missing runtime launcher"

@@ -8,6 +8,7 @@ from tirosh_vitalserver.devtools.adapters.toolchain.shell_commands import run
 
 APP_ICON_NAME = "AppIcon.icns"
 APP_INFO_PLIST_NAME = "Info.plist"
+APP_BRAND_IMAGE_NAME = "vitaldb.png"
 
 
 def sync_release(root: Path, runtime_dir: Path, release_file: Path) -> None:
@@ -78,7 +79,8 @@ def build_app_bundle(
 ) -> None:
     info_plist_source = runtime_dir / "Support/App" / APP_INFO_PLIST_NAME
     icon_source = runtime_dir / "Support/App" / APP_ICON_NAME
-    for required in [helper_bin, info_plist_source, icon_source]:
+    brand_image_source = runtime_dir / "Support/App" / APP_BRAND_IMAGE_NAME
+    for required in [helper_bin, info_plist_source, icon_source, brand_image_source]:
         if not required.is_file():
             raise SystemExit(f"error: missing app bundle input: {required}")
 
@@ -106,4 +108,5 @@ def build_app_bundle(
         ]
     )
     shutil.copy2(icon_source, resources / APP_ICON_NAME)
+    shutil.copy2(brand_image_source, resources / APP_BRAND_IMAGE_NAME)
     run(["codesign", "--force", "--sign", codesign_identity, str(app_bundle)], cwd=root)

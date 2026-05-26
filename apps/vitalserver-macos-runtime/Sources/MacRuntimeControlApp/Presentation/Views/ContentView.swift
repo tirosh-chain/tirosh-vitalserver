@@ -1,6 +1,7 @@
 import Foundation
 import RuntimeControl
 import Contracts
+import AppKit
 import SwiftUI
 
 struct ContentView: View {
@@ -167,31 +168,47 @@ struct ContentView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(AppConstants.Product.displayName)
-                .font(.title)
-                .fontWeight(.semibold)
-            HStack(spacing: 4) {
-                Text(AppConstants.Product.poweredByPrefix)
-                    .foregroundStyle(.secondary)
+        HStack(alignment: .top, spacing: 12) {
+            if let brandImage = RuntimeHeaderBrandAsset.image {
                 Button {
-                    viewModel.openTiroshWebsite()
+                    viewModel.openVitalDBWebsite()
                 } label: {
-                    Text(AppConstants.Product.tiroshName)
-                        .underline()
-                        .foregroundStyle(
-                            hoveredServiceLink == AppConstants.Product.tiroshName
-                                ? Color.accentColor
-                                : Color.secondary
-                        )
+                    Image(nsImage: brandImage)
+                        .resizable()
+                        .interpolation(.high)
+                        .scaledToFit()
+                        .frame(width: 36, height: 36)
+                        .accessibilityLabel(AppConstants.Product.vitalDBName)
                 }
                 .buttonStyle(.plain)
-                .onHover { isHovering in
-                    hoveredServiceLink = isHovering ? AppConstants.Product.tiroshName : nil
-                }
-                .help(AppConstants.Product.tiroshURL)
+                .help(AppConstants.Product.vitalDBURL)
             }
-            .font(.caption)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(AppConstants.Product.displayName)
+                    .font(.title)
+                    .fontWeight(.semibold)
+                HStack(spacing: 4) {
+                    Text(AppConstants.Product.poweredByPrefix)
+                        .foregroundStyle(.secondary)
+                    Button {
+                        viewModel.openTiroshWebsite()
+                    } label: {
+                        Text(AppConstants.Product.tiroshName)
+                            .underline()
+                            .foregroundStyle(
+                                hoveredServiceLink == AppConstants.Product.tiroshName
+                                    ? Color.accentColor
+                                    : Color.secondary
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .onHover { isHovering in
+                        hoveredServiceLink = isHovering ? AppConstants.Product.tiroshName : nil
+                    }
+                    .help(AppConstants.Product.tiroshURL)
+                }
+                .font(.caption)
+            }
         }
     }
 
@@ -221,5 +238,24 @@ struct ContentView: View {
             await viewModel.refreshLogsIfLive()
             try? await Task.sleep(nanoseconds: 1_000_000_000)
         }
+    }
+}
+
+private enum RuntimeHeaderBrandAsset {
+    @MainActor
+    static var image: NSImage? {
+        loadImage()
+    }
+
+    private static func loadImage() -> NSImage? {
+        if let bundledURL = Bundle.main.url(forResource: "vitaldb", withExtension: "png"),
+           let image = NSImage(contentsOf: bundledURL) {
+            return image
+        }
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .appendingPathComponent("../../../../Support/App/vitaldb.png")
+            .standardizedFileURL
+        return NSImage(contentsOf: sourceURL)
     }
 }
