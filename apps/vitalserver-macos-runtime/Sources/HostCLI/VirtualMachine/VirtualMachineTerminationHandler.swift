@@ -64,12 +64,12 @@ final class VirtualMachineTerminationHandler {
         }
 
         fputs("forcing vitalserver VM stop\n", stderr)
-        virtualMachine.stop { [pidFile, fileStore] error in
+        virtualMachine.stop { [pidFile] error in
             if let error {
                 fputs("failed to stop VM: \(error)\n", stderr)
                 Foundation.exit(1)
             }
-            ProcessState.removePidFile(pidFile, fileStore: fileStore)
+            ProcessState.removePidFile(pidFile, fileStore: SystemRuntimeFileStore())
             Foundation.exit(0)
         }
     }
