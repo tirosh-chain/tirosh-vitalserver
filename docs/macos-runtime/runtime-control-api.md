@@ -24,7 +24,7 @@ macOS Helper app composition은 `distribution.profile=dev` build에서만 read-o
 | Auth header | `X-Runtime-Control-Token` |
 | Dev-only transitional token | `vitalserver-helper-dev` |
 
-Dev local server는 read-only runtime endpoint와 일부 host log endpoint를 구현합니다.
+Dev local server는 read-only runtime endpoint, Redis backup 생성/조회, rollback backup 조회, 일부 host log endpoint를 구현합니다.
 
 | Method | Path |
 |---|---|
@@ -39,10 +39,29 @@ Dev local server는 read-only runtime endpoint와 일부 host log endpoint를 �
 | `GET` | `/runtime/settings` |
 | `GET` | `/runtime/release` |
 | `GET` | `/runtime/install` |
+| `POST` | `/runtime/redis/backups` |
+| `GET` | `/host/backups` |
+| `GET` | `/host/backups/redis` |
 | `POST` | `/host/logs/read` |
 | `GET` | `/host/logs/stream` |
 
 나머지 write/admin/host affordance route는 계약에는 있지만 현재 router에서 `501 endpointNotImplemented`를 반환합니다.
+
+## Status Vocabulary
+
+Runtime Control API는 wire payload에서 `runtimeInstalled`, `runtimeState`, `operation`, HTTP probe status처럼 도메인별 raw 값을 그대로 전달합니다. SwiftUI/PWA 표시 계층은 이 raw 값을 그대로 노출하지 않고 shared presentation vocabulary로 변환합니다.
+
+| UI label | Source of truth | Display vocabulary |
+|---|---|---|
+| Runtime installation | `RuntimeStatus.runtimeInstalled` | `Installed`, `Not Installed` |
+| Runtime state | `RuntimeStatus.runtimeState` | `Installing`, `Updating`, `Recovering`, `Healthy`, `Degraded`, `Critical`, `Unknown` |
+| VM/proxy/watchdog/guest log sync service | launchd loaded flags | `Running`, `Stopped` |
+| VitalServer/Network access/Redis UI/Swagger UI | HTTP probe fields | `Reachable`, `Unreachable`, `Waiting` |
+| Redis container health | guest compose observation | `Healthy`, `Unhealthy`, `Starting`, `Running`, `Stopped` |
+| Command/progress step | `RuntimeProgressDocument` | `Waiting`, `Running`, `Done`, `Failed`, `Skipped` |
+| Planned or unsupported feature | capability/build profile | `Planned`, `Not Available` |
+
+`Runtime installation` replaces the older UI wording `Helper runtime`. The value describes whether the installed VitalServer runtime components exist on the Mac, not whether the Helper app process itself is running.
 
 `GET /runtime/events`는 운영 이력 조회용 query parameter를 지원합니다. 목표 구현은 SQLite read model을
 우선 조회하고, DB가 없거나 손상된 경우 기존 `runtime-events.jsonl` fallback으로 응답하는 것입니다.
@@ -116,6 +135,7 @@ Stable build는 local API server와 이 route를 제공하지 않습니다. 이 
 | `POST` | `/runtime/services/stop` | stop runtime services |
 | `POST` | `/runtime/services/repair-proxy` | repair host proxy |
 | `POST` | `/runtime/services/repair-datastore` | repair datastore |
+| `POST` | `/runtime/redis/backups` | create recoverable Redis backup |
 | `POST` | `/runtime/uninstall` | uninstall runtime |
 
 ## Host Affordance Routes
@@ -123,6 +143,8 @@ Stable build는 local API server와 이 route를 제공하지 않습니다. 이 
 | Method | Path | 계약 |
 |---|---|---|
 | `GET` | `/host/backups` | list local backups |
+| `GET` | `/host/backups/redis` | list local Redis backups |
+| `POST` | `/host/backups/redis/restore` | restore selected Redis backup, planned |
 | `POST` | `/host/logs/read` | read selected log text |
 | `GET` | `/host/logs/stream` | SSE host log text snapshot subscription |
 | `POST` | `/host/logs/export` | export local logs |
@@ -139,7 +161,7 @@ Stable build는 local API server와 이 route를 제공하지 않습니다. 이 
 | Access | 의미 | 현재 route |
 |---|---|---|
 | `browserSafe` | 브라우저/PWA가 local Runtime Control server에 직접 호출 가능한 read-only runtime control | `GET /runtime/capabilities`, `GET /runtime/status`, `GET /runtime/status/stream`, `GET /runtime/events`, `GET /runtime/events/stream`, `GET /vitaldb/observations/latest`, `GET /vitaldb/observations/stream`, `POST /runtime/health`, `GET /runtime/settings`, `GET /runtime/release`, `GET /runtime/install` |
-| `localServerMediated` | 브라우저가 직접 host resource를 만지지 않고 local server가 권한/파일/프로세스 작업을 중재해야 함 | runtime write/admin routes, backups list/delete/rollback, log read/stream, update bundle summary/verify/apply |
+| `localServerMediated` | 브라우저가 직접 host resource를 만지지 않고 local server가 권한/파일/프로세스 작업을 중재해야 함 | runtime write/admin routes, Redis backup create/list/restore, backups list/delete/rollback, log read/stream, update bundle summary/verify/apply |
 | `nativeShellOnly` | 브라우저 endpoint만으로는 UX나 보안 경계가 충분하지 않아 native shell mediation이 필요함 | `POST /host/logs/export` |
 
 Portable `/runtime/*` route는 `RuntimeControlFileReference`를 사용하지 않습니다. 파일, update bundle, backup, log export destination처럼 host resource를 가리키는 값은 `/host/*` affordance에서만 `RuntimeControlFileReference`로 표현합니다.

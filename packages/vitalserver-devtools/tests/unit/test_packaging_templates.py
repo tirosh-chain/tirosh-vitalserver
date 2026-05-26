@@ -59,8 +59,10 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
         path.read_text(encoding="utf-8")
         for path in [postinstall, proxy_run, uninstall, components]
     )
+    uninstall_text = uninstall.read_text(encoding="utf-8")
     assert "${PRODUCT_ROOT}" not in rendered
     assert "/Library/Application Support/TiroshVitalServer" in rendered
+    assert 'preserve_path "${vm_home}/data/backups/redis"' in uninstall_text
     assert "Applications/VitalServer Helper.app" in components.read_text(
         encoding="utf-8"
     )

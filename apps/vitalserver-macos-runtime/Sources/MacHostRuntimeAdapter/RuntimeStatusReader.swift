@@ -61,6 +61,7 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading {
             runtimeInstalled: fileStore.isExecutableFile(atPath: paths.launcher),
             vmServiceLoaded: loaded(document?.vmService) ?? launchdLoaded(.vm),
             proxyServiceLoaded: loaded(document?.proxyService) ?? launchdLoaded(.proxy),
+            guestLogSyncServiceLoaded: launchdLoaded(.guestLogSync),
             watchdogServiceLoaded: loaded(document?.watchdogService) ?? launchdLoaded(.watchdog),
             runtimeState: document.map { RuntimeState(rawValue: $0.status.rawValue) },
             operation: document?.operation,

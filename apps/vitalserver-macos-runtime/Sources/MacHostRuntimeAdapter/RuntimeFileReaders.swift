@@ -7,6 +7,7 @@ import HostInfrastructure
 protocol RuntimeHostFileReading {
     func updateBundleSummary(url: URL) -> String
     func backups(latestBackupPath: String?) -> [RuntimeBackup]
+    func redisBackups() -> [RuntimeBackup]
     func logText(sourceID: RuntimeLogSource, helperMessage: String, lineLimit: Int) -> String
     func preferredLogsPath() -> String
     func vitalFileFolders(root: String) -> [VitalFilesFolder]
@@ -48,6 +49,10 @@ struct SystemRuntimeHostFileReader: RuntimeHostFileReading {
 
     func backups(latestBackupPath: String?) -> [RuntimeBackup] {
         RuntimeBackup.loadAll(latestBackupPath: latestBackupPath, fileStore: fileStore)
+    }
+
+    func redisBackups() -> [RuntimeBackup] {
+        RuntimeBackup.loadRedisBackups(fileStore: fileStore)
     }
 
     func logText(sourceID: RuntimeLogSource, helperMessage: String, lineLimit: Int) -> String {

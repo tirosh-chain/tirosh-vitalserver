@@ -40,7 +40,7 @@ struct RuntimeAdvancedPanel: View {
         advancedCard(AppConstants.Labels.sectionDiagnostics) {
             Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 10) {
                 statusRow(AppConstants.Labels.runtimeState) { statusBadge }
-                statusRow(AppConstants.Labels.operation, viewModel.status.operation?.rawValue ?? AppConstants.StatusText.unknown)
+                statusRow(AppConstants.Labels.operation, viewModel.presentationFormatter.operationText(viewModel.status.operation))
                 statusRow(AppConstants.Labels.runtimeVersion, viewModel.status.runtimeVersion ?? AppConstants.StatusText.unknown)
                 statusRow(AppConstants.Labels.updatedAt, viewModel.presentationFormatter.systemTimeText(viewModel.status.updatedAt))
                 statusRow(AppConstants.Labels.vmIP, viewModel.status.vmIP ?? AppConstants.StatusText.waiting)
@@ -312,7 +312,7 @@ struct RuntimeAdvancedPanel: View {
     }
 
     private var statusBadge: some View {
-        Text(viewModel.status.runtimeState?.rawValue ?? AppConstants.StatusText.unknown)
+        Text(viewModel.presentationFormatter.runtimeStateText(viewModel.status.runtimeState))
             .font(.headline)
             .padding(.horizontal, 10)
             .padding(.vertical, 5)

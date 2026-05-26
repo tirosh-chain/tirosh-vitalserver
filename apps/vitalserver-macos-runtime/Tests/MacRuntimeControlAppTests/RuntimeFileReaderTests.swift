@@ -77,11 +77,11 @@ final class RuntimeFileReaderTests: XCTestCase {
         )
     }
 
-    func testFileLogTextRefreshesLogCollectionBeforeReading() throws {
+    func testNonContainerFileLogTextRefreshesLogCollectionBeforeReading() throws {
         let collector = FakeRuntimeLogCollector()
         let reader = SystemRuntimeHostFileReader(logCollector: collector)
 
-        _ = reader.logText(sourceID: .containers, helperMessage: "Ready", lineLimit: 10)
+        _ = reader.logText(sourceID: .launcher, helperMessage: "Ready", lineLimit: 10)
 
         XCTAssertEqual(collector.refreshCount, 1)
     }

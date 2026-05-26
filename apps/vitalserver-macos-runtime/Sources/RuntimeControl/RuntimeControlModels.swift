@@ -169,6 +169,7 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
     public var runtimeInstalled: Bool
     public var vmServiceLoaded: Bool
     public var proxyServiceLoaded: Bool
+    public var guestLogSyncServiceLoaded: Bool
     public var watchdogServiceLoaded: Bool
     public var runtimeState: RuntimeState?
     public var operation: RuntimeOperation?
@@ -196,6 +197,7 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
         runtimeInstalled: Bool = false,
         vmServiceLoaded: Bool = false,
         proxyServiceLoaded: Bool = false,
+        guestLogSyncServiceLoaded: Bool = false,
         watchdogServiceLoaded: Bool = false,
         runtimeState: RuntimeState? = nil,
         operation: RuntimeOperation? = nil,
@@ -222,6 +224,7 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
         self.runtimeInstalled = runtimeInstalled
         self.vmServiceLoaded = vmServiceLoaded
         self.proxyServiceLoaded = proxyServiceLoaded
+        self.guestLogSyncServiceLoaded = guestLogSyncServiceLoaded
         self.watchdogServiceLoaded = watchdogServiceLoaded
         self.runtimeState = runtimeState
         self.operation = operation

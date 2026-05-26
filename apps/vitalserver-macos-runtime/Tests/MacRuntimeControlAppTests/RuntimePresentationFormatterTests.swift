@@ -92,6 +92,15 @@ final class RuntimePresentationFormatterTests: XCTestCase {
         XCTAssertEqual(formatter.progressDisplayMessage(status), "Running: Replace Rootfs Base")
     }
 
+    func testRuntimeStateAndOperationTextUseStandardDisplayVocabulary() {
+        XCTAssertEqual(formatter.runtimeStateText(.healthy), AppConstants.StatusText.healthy)
+        XCTAssertEqual(formatter.runtimeStateText(.degraded), AppConstants.StatusText.degraded)
+        XCTAssertEqual(formatter.runtimeStateText(.unknown("needs-admin-review")), "Needs Admin Review")
+        XCTAssertEqual(formatter.operationText(.redisBackup), "Redis Backup")
+        XCTAssertEqual(formatter.operationText(.applyBundle), "Apply Bundle")
+        XCTAssertEqual(formatter.operationText(.unknown("custom-op")), "Custom Op")
+    }
+
     func testSystemTimeTextFormatsISO8601TimestampInRequestedTimeZone() {
         let timeZone = TimeZone(identifier: "Asia/Seoul")!
 

@@ -13,7 +13,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 DEPLOY_DIR = Path(os.environ.get("TIROSH_DEPLOY_DIR", "/mnt/tirosh/deploy"))
-PROJECT_NAME = os.environ.get("TIROSH_COMPOSE_PROJECT", "vitalserver")
+PROJECT_NAME = os.environ.get(
+    "TIROSH_COMPOSE_PROJECT_NAME",
+    os.environ.get("TIROSH_COMPOSE_PROJECT", "vitalserver"),
+)
 VITALDB_OBSERVER_URL = os.environ.get(
     "VITALDB_OBSERVER_URL",
     "http://127.0.0.1:18084/api/v1/observations",

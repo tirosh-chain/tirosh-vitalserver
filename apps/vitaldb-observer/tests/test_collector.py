@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
 
 from vitaldb_observer.collector import VitalDBCollector
@@ -23,7 +24,7 @@ class FakeRedis:
     def smembers(self, key: str) -> list[str]:
         return self.sets.get(key, [])
 
-    def keys(self, pattern: str) -> list[str]:
+    def scan(self, pattern: str) -> list[str]:
         if pattern.endswith("*"):
             prefix = pattern[:-1]
             return sorted(key for key in self.values if key.startswith(prefix))
@@ -31,6 +32,7 @@ class FakeRedis:
 
 
 def test_collector_builds_observation_from_redis_and_access_log(tmp_path: Path) -> None:
+    now = str(time.time() - 1)
     access_log = tmp_path / "access.jsonl"
     access_log.write_text(
         json.dumps(
@@ -52,11 +54,11 @@ def test_collector_builds_observation_from_redis_and_access_log(tmp_path: Path) 
         redis_client=FakeRedis(
             values={
                 "ip_VR_A": "10.0.0.10",
-                "utime_VR_A": "9999999999",
+                "utime_VR_A": now,
                 "vrver_VR_A": "1.0.0",
                 "info_VR_A": "OR-1",
                 "beds:bed-1": json.dumps({"name": "Bed 1", "vrcode": "VR_A"}),
-                "utime_bed-1": "9999999999",
+                "utime_bed-1": now,
                 "devs_bed-1": "device-json",
                 "filts_bed-1": "filter-json",
             },
@@ -77,13 +79,14 @@ def test_collector_builds_observation_from_redis_and_access_log(tmp_path: Path) 
 
 
 def test_collector_detects_duplicate_ip() -> None:
+    now = str(time.time() - 1)
     collector = VitalDBCollector(
         redis_client=FakeRedis(
             values={
                 "ip_VR_A": "10.0.0.10",
                 "ip_VR_B": "10.0.0.10",
-                "utime_VR_A": "9999999999",
-                "utime_VR_B": "9999999999",
+                "utime_VR_A": now,
+                "utime_VR_B": now,
             }
         ),
         settings=_settings(),
@@ -92,6 +95,43 @@ def test_collector_detects_duplicate_ip() -> None:
     document = collector.collect().as_json()
 
     assert [anomaly["kind"] for anomaly in document["anomalies"]] == ["duplicate-ip"]
+
+
+def test_collector_reads_recent_access_log_tail_only(tmp_path: Path) -> None:
+    access_log = tmp_path / "access.jsonl"
+    stale_line = json.dumps({"request_uri": "/old"})
+    current_line = json.dumps({"request_uri": "/socket.io/?EIO=3"})
+    access_log.write_text(
+        (stale_line + "\n") * 40000 + current_line + "\n",
+        encoding="utf-8",
+    )
+    collector = VitalDBCollector(
+        redis_client=FakeRedis(values={}),
+        settings=_settings(access_log),
+    )
+
+    document = collector.collect().as_json()
+
+    proxy_connections = document["proxyConnections"]
+    assert len(proxy_connections) < 40001
+    assert proxy_connections[-1]["requestURI"] == "/socket.io/?EIO=3"
+
+
+def test_collector_treats_future_recorder_timestamp_as_stale() -> None:
+    collector = VitalDBCollector(
+        redis_client=FakeRedis(
+            values={
+                "ip_VR_A": "10.0.0.10",
+                "utime_VR_A": "9999999999",
+            }
+        ),
+        settings=_settings(),
+    )
+
+    document = collector.collect().as_json()
+
+    assert document["recorders"][0]["online"] is False
+    assert document["recorders"][0]["stale"] is True
 
 
 def _settings(access_log: Path | None = None) -> ObserverSettings:

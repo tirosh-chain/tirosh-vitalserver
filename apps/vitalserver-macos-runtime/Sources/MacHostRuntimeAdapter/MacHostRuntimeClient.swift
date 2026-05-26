@@ -76,7 +76,7 @@ public struct MacHostRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     }
 
     public func loadRedisBackups() -> [RuntimeBackup] {
-        RuntimeBackup.loadRedisBackups()
+        fileReader.redisBackups()
     }
 
     public func updateBundleSummary(url: URL) -> String {

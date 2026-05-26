@@ -117,7 +117,7 @@ public struct RuntimeInstallInfo: Codable, Equatable, Sendable {
         self.packageIdentifier = packageIdentifier
         self.runtimeHomePath = runtimeHomePath
         self.backupsPath = backupsPath
-        self.redisBackupsPath = redisBackupsPath ?? URL(fileURLWithPath: backupsPath).appendingPathComponent("redis").path
+        self.redisBackupsPath = redisBackupsPath ?? ""
     }
 }
 

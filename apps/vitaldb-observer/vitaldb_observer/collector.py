@@ -17,12 +17,14 @@ from .model import (
 )
 from .time import redis_unix_time_to_iso, utc_now_iso
 
+_ACCESS_LOG_TAIL_BYTES = 256 * 1024
+
 
 class RedisReader(Protocol):
     def ping(self) -> bool: ...
     def get(self, key: str) -> str | None: ...
     def smembers(self, key: str) -> list[str]: ...
-    def keys(self, pattern: str) -> list[str]: ...
+    def scan(self, pattern: str) -> list[str]: ...
 
 
 class VitalDBCollector:
@@ -60,12 +62,12 @@ class VitalDBCollector:
     def _recorders(self, observed_at: str) -> list[RecorderObservation]:
         vrcodes = {
             key.removeprefix("ip_")
-            for key in self._redis.keys("ip_*")
+            for key in self._redis.scan("ip_*")
             if key.removeprefix("ip_")
         }
         vrcodes.update(
             key.removeprefix("utime_")
-            for key in self._redis.keys("utime_*")
+            for key in self._redis.scan("utime_*")
             if key.removeprefix("utime_")
         )
         recorders = [
@@ -99,7 +101,7 @@ class VitalDBCollector:
         bed_ids = set(self._redis.smembers("beds"))
         bed_ids.update(
             key.removeprefix("beds:")
-            for key in self._redis.keys("beds:*")
+            for key in self._redis.scan("beds:*")
             if key.removeprefix("beds:")
         )
         return [self._bed(bed_id, observed_at) for bed_id in sorted(bed_ids)]
@@ -126,7 +128,7 @@ class VitalDBCollector:
     ) -> list[RawBedScopedObservation]:
         observations: list[RawBedScopedObservation] = []
         keys = {f"{prefix}{bed_id}" for bed_id in bed_ids}
-        keys.update(self._redis.keys(f"{prefix}*"))
+        keys.update(self._redis.scan(f"{prefix}*"))
         for key in sorted(keys):
             raw_value = self._empty_to_none(self._redis.get(key))
             if raw_value is None:
@@ -145,7 +147,7 @@ class VitalDBCollector:
         log_path = Path(path)
         if not log_path.exists():
             return []
-        lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
+        lines = _tail_lines(log_path, _ACCESS_LOG_TAIL_BYTES)
         return [
             _proxy_connection_from_json(line)
             for line in lines[-self._settings.access_log_limit :]
@@ -238,7 +240,17 @@ def _is_recent(
         ).timestamp()
     except ValueError:
         return False
-    return observed - timestamp <= threshold_seconds
+    age_seconds = observed - timestamp
+    return 0 <= age_seconds <= threshold_seconds
+
+
+def _tail_lines(path: Path, max_bytes: int) -> list[str]:
+    size = path.stat().st_size
+    with path.open("rb") as handle:
+        if size > max_bytes:
+            handle.seek(-max_bytes, 2)
+        data = handle.read()
+    return data.decode("utf-8", errors="replace").splitlines()
 
 
 def _bed_name(raw_value: str | None) -> str | None:

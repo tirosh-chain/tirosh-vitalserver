@@ -90,7 +90,7 @@ struct RuntimeStatusDisplayPolicy {
     func vitalServerAvailability(status: RuntimeStatus, observation: RuntimeContainerObservation?, now: Date = Date()) -> StatusValue {
         let text: String
         if isSuccessfulHTTPStatus(status.hostProxyHTTP) {
-            text = AppConstants.StatusText.available
+            text = AppConstants.StatusText.reachable
         } else if status.runtimeInstalled {
             text = AppConstants.StatusText.waiting
         } else {
@@ -106,9 +106,9 @@ struct RuntimeStatusDisplayPolicy {
     func healthDetails(status: RuntimeStatus, observation: RuntimeContainerObservation?, now: Date = Date()) -> [HealthItem] {
         [
             HealthItem(
-                label: AppConstants.Labels.managerRuntime,
+                label: AppConstants.Labels.runtimeInstallation,
                 value: StatusValue(
-                    text: status.runtimeInstalled ? AppConstants.StatusText.ready : AppConstants.StatusText.notInstalled,
+                    text: AppConstants.StatusText.installState(installed: status.runtimeInstalled),
                     severity: status.runtimeInstalled ? .healthy : .warning,
                     uptimeText: nil
                 )
@@ -140,7 +140,7 @@ struct RuntimeStatusDisplayPolicy {
             HealthItem(
                 label: AppConstants.Labels.watchdog,
                 value: StatusValue(
-                    text: status.watchdogServiceLoaded ? AppConstants.StatusText.running : AppConstants.StatusText.notLoaded,
+                    text: AppConstants.StatusText.launchdState(loaded: status.watchdogServiceLoaded),
                     severity: status.watchdogServiceLoaded ? .healthy : .warning,
                     uptimeText: nil
                 )
@@ -151,24 +151,29 @@ struct RuntimeStatusDisplayPolicy {
     func advancedServiceHealth(status: RuntimeStatus, observation: RuntimeContainerObservation?, now: Date = Date()) -> [ServiceHealthItem] {
         [
             serviceStateItem(
-                AppConstants.Labels.managerRuntime,
+                AppConstants.Labels.runtimeInstallation,
                 isHealthy: status.runtimeInstalled,
-                value: status.runtimeInstalled ? AppConstants.StatusText.installed : AppConstants.StatusText.notInstalled
+                value: AppConstants.StatusText.installState(installed: status.runtimeInstalled)
             ),
             serviceStateItem(
                 AppConstants.Labels.vmService,
                 isHealthy: status.vmServiceLoaded,
-                value: status.vmServiceLoaded ? AppConstants.StatusText.running : AppConstants.StatusText.notLoaded
+                value: AppConstants.StatusText.launchdState(loaded: status.vmServiceLoaded)
             ),
             serviceStateItem(
                 AppConstants.Labels.proxyService,
                 isHealthy: status.proxyServiceLoaded,
-                value: status.proxyServiceLoaded ? AppConstants.StatusText.running : AppConstants.StatusText.notLoaded
+                value: AppConstants.StatusText.launchdState(loaded: status.proxyServiceLoaded)
+            ),
+            serviceStateItem(
+                AppConstants.Labels.guestLogSyncService,
+                isHealthy: status.guestLogSyncServiceLoaded,
+                value: AppConstants.StatusText.launchdState(loaded: status.guestLogSyncServiceLoaded)
             ),
             serviceStateItem(
                 AppConstants.Labels.watchdogService,
                 isHealthy: status.watchdogServiceLoaded,
-                value: status.watchdogServiceLoaded ? AppConstants.StatusText.running : AppConstants.StatusText.notLoaded
+                value: AppConstants.StatusText.launchdState(loaded: status.watchdogServiceLoaded)
             ),
             httpServiceItem(
                 GeneratedRelease.vitalServerName,
@@ -286,10 +291,10 @@ struct RuntimeStatusDisplayPolicy {
 
     private func composeStatusText(_ observation: RuntimeContainerServiceObservation?) -> String {
         if let health = observation?.health, !health.isEmpty {
-            return health
+            return AppConstants.StatusText.containerHealth(health)
         }
         if let state = observation?.state, !state.isEmpty {
-            return state
+            return AppConstants.StatusText.containerState(state)
         }
         return AppConstants.StatusText.waiting
     }
@@ -312,13 +317,7 @@ struct RuntimeStatusDisplayPolicy {
     }
 
     private func serviceReachabilityLabel(_ value: String?) -> String {
-        if isSuccessfulHTTPStatus(value) {
-            return AppConstants.StatusText.reachable
-        }
-        if value == AppConstants.StatusText.failed {
-            return AppConstants.StatusText.needsRepair
-        }
-        return AppConstants.StatusText.waiting
+        AppConstants.StatusText.reachability(httpStatus: value)
     }
 
     private func formatUptime(_ seconds: Int?, startedAt: String?, observedAt: String?, now: Date) -> String? {

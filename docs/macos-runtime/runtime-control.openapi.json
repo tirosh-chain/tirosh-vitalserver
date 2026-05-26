@@ -928,6 +928,7 @@
           "runtimeInstalled": true,
           "vmServiceLoaded": true,
           "proxyServiceLoaded": true,
+          "guestLogSyncServiceLoaded": true,
           "watchdogServiceLoaded": true,
           "runtimeState": "healthy",
           "statusMessage": "ready",
@@ -999,6 +1000,10 @@
           },
           "proxyServiceLoaded": {
             "type": "boolean"
+          },
+          "guestLogSyncServiceLoaded": {
+            "type": "boolean",
+            "description": "Whether the host guest-log-sync launchd service is loaded. This service keeps guest/container logs copied into the local logs directory."
           },
           "watchdogServiceLoaded": {
             "type": "boolean"

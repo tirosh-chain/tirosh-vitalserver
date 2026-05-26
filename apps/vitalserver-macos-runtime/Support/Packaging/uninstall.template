@@ -224,6 +224,7 @@ if [ "${clean}" = false ]; then
   preserve_root="$(mktemp -d "${PRESERVE_TMP_TEMPLATE}")"
   preserve_path "${product_root}/logs" "${preserve_root}" "logs"
   preserve_path "${product_root}/backups" "${preserve_root}" "backups"
+  preserve_path "${vm_home}/data/backups/redis" "${preserve_root}" "redis-backups"
   if [ "${vital_files_dir}" = "${default_vital_files}" ]; then
     preserve_path "${default_vital_files}" "${preserve_root}" "vital-files"
   else

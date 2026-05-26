@@ -360,6 +360,7 @@ public enum RuntimeControlDevConsoleDocument {
         ["host proxy HTTP", status.hostProxyHTTP],
         ["Redis UI HTTP", status.redisUIHTTP],
         ["Swagger HTTP", status.swaggerUIHTTP],
+        ["guest log sync service", status.guestLogSyncServiceLoaded ? "running" : "stopped"],
         ["CPU", formatPercent(status.cpuUsagePercent)],
         ["memory", formatUsage(status.memory)],
         ["VM disk", formatUsage(status.systemDisk)],
@@ -550,10 +551,10 @@ public enum RuntimeControlDevConsoleDocument {
     function serviceText(httpStatus) {
       const code = Number(httpStatus);
       if (Number.isInteger(code) && code >= 200 && code < 300) {
-        return "Available";
+        return "Reachable";
       }
       if (httpStatus === "failed") {
-        return "Needs repair";
+        return "Unreachable";
       }
       return "Waiting";
     }

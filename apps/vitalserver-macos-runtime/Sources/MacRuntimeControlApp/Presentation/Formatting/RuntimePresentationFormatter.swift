@@ -54,6 +54,14 @@ struct RuntimePresentationFormatter {
         status.failureReasons.map(\.rawValue).joined(separator: ", ")
     }
 
+    func runtimeStateText(_ state: RuntimeState?) -> String {
+        AppConstants.StatusText.runtimeLifecycle(state?.rawValue)
+    }
+
+    func operationText(_ operation: RuntimeOperation?) -> String {
+        AppConstants.StatusText.operation(operation?.rawValue)
+    }
+
     func progressDisplayMessage(_ status: RuntimeStatus) -> String? {
         guard let progress = status.progress else {
             return nil
@@ -106,20 +114,7 @@ struct RuntimePresentationFormatter {
     }
 
     private func stepStatusDisplayName(_ status: RuntimeProgressStepStatus) -> String {
-        switch status {
-        case .pending:
-            return AppConstants.StatusText.waiting
-        case .started:
-            return AppConstants.StatusText.running
-        case .completed:
-            return AppConstants.StatusText.done
-        case .failed:
-            return AppConstants.StatusText.failed.capitalized
-        case .skipped:
-            return "Skipped"
-        case .unknown(let value):
-            return value.capitalized
-        }
+        AppConstants.StatusText.progressStepStatus(status.rawValue)
     }
 
     private func humanizeStepName(_ step: String) -> String {

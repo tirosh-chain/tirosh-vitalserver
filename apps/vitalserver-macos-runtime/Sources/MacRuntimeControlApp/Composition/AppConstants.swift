@@ -98,7 +98,7 @@ enum AppConstants {
         static let systemDiskUsage = "VM disk"
         static let dataStorageUsage = "Data storage"
         static let healthDetails = "Health details"
-        static let managerRuntime = "Helper runtime"
+        static let runtimeInstallation = "Runtime installation"
         static let vmIPAddress = "VM IP"
         static let watchdog = "Watchdog"
         static let vitalRecorder = "Vital Recorder"
@@ -110,6 +110,7 @@ enum AppConstants {
         static let updatedAt = "Updated at"
         static let vmService = "VM service"
         static let proxyService = "Proxy service"
+        static let guestLogSyncService = "Guest log sync service"
         static let watchdogService = "Watchdog service"
         static let proxyPort = "Mac listen port"
         static let proxyPortHelp = "Port opened on this Mac. Browsers and VRecorder devices connect to this port first, then the Helper forwards traffic into the VM."
@@ -286,26 +287,30 @@ enum AppConstants {
     enum StatusText {
         static let ready = "Ready"
         static let noRuntimeEvents = "No runtime events"
-        static let available = "Available"
         static let unavailable = "Unavailable"
         static let healthy = "Healthy"
+        static let unhealthy = "Unhealthy"
         static let starting = "Starting"
+        static let installing = "Installing"
+        static let updating = "Updating"
+        static let recovering = "Recovering"
+        static let degraded = "Degraded"
         static let needsAttention = "Needs attention"
         static let critical = "Critical"
         static let running = "Running"
+        static let stopped = "Stopped"
         static let reachable = "Reachable"
-        static let needsRepair = "Needs repair"
+        static let unreachable = "Unreachable"
         static let installed = "Installed"
-        static let notInstalled = "Not installed"
-        static let loaded = "Loaded"
-        static let notLoaded = "Not loaded"
+        static let notInstalled = "Not Installed"
         static let waiting = "Waiting"
         static let notChecked = "Not checked"
         static let planned = "Planned"
-        static let notAvailable = "Not available"
+        static let notAvailable = "Not Available"
         static let noLogData = "No log data for this source yet."
         static let unknown = "Unknown"
-        static let failed = "failed"
+        static let failed = "Failed"
+        static let skipped = "Skipped"
         static let done = "Done"
         static let actionUnavailable = "This action is not available for the current runtime connection."
         static let healthCheckCompleted = "Health check completed"
@@ -371,7 +376,7 @@ enum AppConstants {
         static let repairDatastoreConfirmation = "Checks and repairs the Redis append-only file inside the VM, then restarts VitalServer containers and host services. Redis creates a timestamped backup before fixing a damaged AOF file. Repair can truncate the corrupted tail of the AOF; use Redis backups for full data recovery."
         static let startRuntimeServicesConfirmation = "Starts the VM, host proxy, and watchdog services, then waits for VitalServer to become healthy."
         static let stopRuntimeServicesConfirmation = "Stops the watchdog, host proxy, and VM services. VitalServer will be unavailable until runtime services are started again."
-        static let standardUninstallConfirmation = "Creates a best-effort Redis backup, then removes the Helper app, runtime services, tools, VM disk, and package receipt. Logs, backups, Redis backups, and Vital files are preserved."
+        static let standardUninstallConfirmation = "Creates a Redis backup first, then removes the Helper app, runtime services, tools, VM disk, and package receipt. Logs, backups, Redis backups, and Vital files are preserved. If Redis backup creation fails, uninstall is stopped."
         static let cleanUninstallConfirmation = "Removes the Helper app, runtime services, tools, VM disk, logs, backups, Redis backups, package receipt, and configured Vital files directory."
         static let deleteBackupConfirmation = "Delete the selected managed backup? This cannot be undone."
         static let bridgedModeUnavailable = "Bridged mode is not available in this build."
@@ -383,6 +388,152 @@ enum AppConstants {
         static let adminPasswordNewline = "Admin password reset value must not contain newlines."
         static func commandFailed(exitCode: Int32) -> String {
             "Command failed with exit code \(exitCode)"
+        }
+
+        static func installState(installed isInstalled: Bool) -> String {
+            isInstalled ? installed : notInstalled
+        }
+
+        static func launchdState(loaded: Bool) -> String {
+            loaded ? running : stopped
+        }
+
+        static func reachability(httpStatus: String?) -> String {
+            guard let httpStatus, !httpStatus.isEmpty else {
+                return waiting
+            }
+            if successfulHTTPStatus(httpStatus) {
+                return reachable
+            }
+            if httpStatus == "failed" {
+                return unreachable
+            }
+            return waiting
+        }
+
+        static func runtimeLifecycle(_ rawValue: String?) -> String {
+            guard let rawValue, !rawValue.isEmpty else {
+                return unknown
+            }
+            switch rawValue.lowercased() {
+            case "installing":
+                return installing
+            case "updating":
+                return updating
+            case "recovering":
+                return recovering
+            case "healthy":
+                return healthy
+            case "degraded":
+                return degraded
+            case "critical":
+                return critical
+            default:
+                return titleCasedStatus(rawValue)
+            }
+        }
+
+        static func operation(_ rawValue: String?) -> String {
+            guard let rawValue, !rawValue.isEmpty else {
+                return unknown
+            }
+            switch rawValue {
+            case "install":
+                return "Install"
+            case "status":
+                return "Status"
+            case "health":
+                return "Health Check"
+            case "watchdog":
+                return "Watchdog"
+            case "configure":
+                return "Configure"
+            case "verify-bundle":
+                return "Verify Bundle"
+            case "stage-bundle":
+                return "Stage Bundle"
+            case "apply-bundle":
+                return "Apply Bundle"
+            case "activate-guest-update", "activate-update":
+                return "Activate Guest Update"
+            case "rollback":
+                return "Rollback"
+            case "redis-backup":
+                return "Redis Backup"
+            case "repair-datastore":
+                return "Repair Data Store"
+            case "repair-proxy":
+                return "Repair Proxy"
+            case "start-services":
+                return "Start Runtime Services"
+            case "stop-services":
+                return "Stop Runtime Services"
+            case "uninstall":
+                return "Uninstall"
+            default:
+                return titleCasedStatus(rawValue)
+            }
+        }
+
+        static func progressStepStatus(_ rawValue: String) -> String {
+            switch rawValue.lowercased() {
+            case "pending":
+                return waiting
+            case "started":
+                return running
+            case "completed":
+                return done
+            case "failed":
+                return failed
+            case "skipped":
+                return skipped
+            default:
+                return titleCasedStatus(rawValue)
+            }
+        }
+
+        static func containerHealth(_ rawValue: String?) -> String {
+            guard let rawValue, !rawValue.isEmpty else {
+                return waiting
+            }
+            switch rawValue.lowercased() {
+            case "healthy":
+                return healthy
+            case "unhealthy":
+                return unhealthy
+            case "starting":
+                return starting
+            default:
+                return titleCasedStatus(rawValue)
+            }
+        }
+
+        static func containerState(_ rawValue: String?) -> String {
+            guard let rawValue, !rawValue.isEmpty else {
+                return waiting
+            }
+            switch rawValue.lowercased() {
+            case "running":
+                return running
+            case "exited", "dead", "paused", "stopped":
+                return stopped
+            default:
+                return titleCasedStatus(rawValue)
+            }
+        }
+
+        private static func successfulHTTPStatus(_ value: String) -> Bool {
+            guard let code = Int(value) else {
+                return false
+            }
+            return code >= 200 && code < 300
+        }
+
+        private static func titleCasedStatus(_ value: String) -> String {
+            value
+                .replacingOccurrences(of: "-", with: " ")
+                .replacingOccurrences(of: "_", with: " ")
+                .capitalized
         }
     }
 

@@ -315,7 +315,7 @@ VM service가 시작되면 `vitalserver-vm start`가 `vm-config.json`을 읽어 
 Uninstall 로직은 Helper app에 중복 구현하지 않고, 설치된
 `/usr/local/bin/tirosh-vitalserver-uninstall`을 관리자 권한으로 호출합니다. Helper app을 열 수 없는 깨진 설치 상태에서는 같은 command를 Terminal 또는 MDM/Jamf에서 root로 실행합니다.
 
-기본 Uninstall은 Helper app, LaunchDaemon, Updater/Supervisor/VM Driver tools, VM disk, logs, package receipt를 제거하지만 `.vital` 파일 경로와 backups는 보존합니다. Clean Uninstall은 `--clean`을 전달해 backups와 설정된 vital files directory까지 삭제합니다.
+기본 Uninstall은 먼저 VM 안의 Redis volume에서 복구 가능한 Redis backup을 생성합니다. 이 backup이 완료되지 않으면 제거를 중단합니다. 이후 Helper app, LaunchDaemon, Updater/Supervisor/VM Driver tools, VM disk, package receipt를 제거하지만 `.vital` 파일 경로, logs, rollback backups, Redis backups는 보존합니다. Clean Uninstall은 `--clean`을 전달해 Redis backup 생성과 보존 단계를 건너뛰고 VM 영역, logs, backups, Redis backups, 설정된 vital files directory까지 삭제합니다.
 
 ```text
 VitalServer Helper.app
@@ -494,7 +494,7 @@ update에서 rootfs base를 교체해도 기존 `vm-disk.img` 내부 OS와 appli
 sudo tirosh-vitalserver-uninstall
 ```
 
-이 명령은 VM/proxy LaunchDaemon을 unload하고, package가 설치한 runtime 파일과 Helper app을 제거합니다. 기본 모드는 `.vital` 파일 경로와 backups를 보존합니다. 완전 삭제가 필요하면 `sudo tirosh-vitalserver-uninstall --clean`을 사용합니다. GUI 제품에서는 Helper app의 “Uninstall”과 “Clean Uninstall”이 같은 backend command를 호출합니다.
+이 명령은 Redis backup을 생성한 뒤 VM/proxy/guest-log-sync/watchdog LaunchDaemon을 unload하고, package가 설치한 runtime 파일과 Helper app을 제거합니다. 기본 모드는 `.vital` 파일 경로, logs, rollback backups, Redis backups를 보존합니다. 완전 삭제가 필요하면 `sudo tirosh-vitalserver-uninstall --clean`을 사용합니다. Clean Uninstall은 Redis backup 보존 없이 VM 영역과 backup 영역까지 제거합니다. GUI 제품에서는 Helper app의 “Uninstall”과 “Clean Uninstall”이 같은 backend command를 호출합니다.
 
 ### nginx release artifact
 

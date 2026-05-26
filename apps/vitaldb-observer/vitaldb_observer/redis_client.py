@@ -37,11 +37,22 @@ class RedisClient:
             return []
         return sorted(item for item in value if isinstance(item, str))
 
-    def keys(self, pattern: str) -> list[str]:
-        value = self.command("KEYS", pattern)
-        if not isinstance(value, list):
-            return []
-        return sorted(item for item in value if isinstance(item, str))
+    def scan(self, pattern: str, count: int = 1000) -> list[str]:
+        cursor = "0"
+        seen_cursors: set[str] = set()
+        keys: set[str] = set()
+        while cursor not in seen_cursors:
+            seen_cursors.add(cursor)
+            value = self.command("SCAN", cursor, "MATCH", pattern, "COUNT", str(count))
+            if not isinstance(value, list) or len(value) != 2:
+                return sorted(keys)
+            next_cursor, page = value
+            if isinstance(page, list):
+                keys.update(item for item in page if isinstance(item, str))
+            cursor = str(next_cursor)
+            if cursor == "0":
+                break
+        return sorted(keys)
 
     def command(self, *parts: str) -> Any:
         with socket.create_connection(

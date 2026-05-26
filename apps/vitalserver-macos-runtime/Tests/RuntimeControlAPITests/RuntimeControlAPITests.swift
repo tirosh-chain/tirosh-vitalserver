@@ -67,6 +67,12 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertEqual(decoded, response)
     }
 
+    func testRuntimeInstallInfoDoesNotInferRedisBackupPathFromRollbackBackupPath() {
+        let installInfo = RuntimeInstallInfo(backupsPath: "/rollback/backups")
+
+        XCTAssertEqual(installInfo.redisBackupsPath, "")
+    }
+
     func testEndpointMatchingIgnoresQueryString() {
         XCTAssertEqual(
             RuntimeControlAPIEndpoint.matching(method: .get, path: "/runtime/status?refresh=false"),
@@ -748,6 +754,7 @@ private struct StubRuntimeControlAPIReadHandler: RuntimeControlAPIReadHandler {
             runtimeInstalled: true,
             vmServiceLoaded: true,
             proxyServiceLoaded: true,
+            guestLogSyncServiceLoaded: true,
             watchdogServiceLoaded: true,
             runtimeState: .healthy,
             statusMessage: "ready",
@@ -807,7 +814,11 @@ private struct StubRuntimeControlAPIReadHandler: RuntimeControlAPIReadHandler {
     }
 
     func loadInstallInfo() async throws -> RuntimeInstallInfo {
-        RuntimeInstallInfo(runtimeHomePath: "/runtime/home", backupsPath: "/runtime/backups")
+        RuntimeInstallInfo(
+            runtimeHomePath: "/runtime/home",
+            backupsPath: "/runtime/backups",
+            redisBackupsPath: "/runtime/home/data/backups/redis"
+        )
     }
 
     func loadLogText(request: RuntimeLogTextRequest) async throws -> RuntimeLogTextResponse {

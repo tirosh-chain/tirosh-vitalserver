@@ -134,7 +134,7 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertEqual(nativeShell.openedFileURLs, [
             URL(fileURLWithPath: "/logs"),
             URL(fileURLWithPath: "/backups"),
-            URL(fileURLWithPath: "/backups/redis"),
+            URL(fileURLWithPath: "/runtime/data/backups/redis"),
         ])
         XCTAssertEqual(nativeShell.openedWebURLs, [
             URL(string: AppConstants.Product.vitalServerURL(proxyPort: viewModel.status.proxyPort)),
@@ -389,7 +389,11 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     }
 
     func loadInstallInfo() -> RuntimeInstallInfo {
-        RuntimeInstallInfo(runtimeHomePath: "/runtime", backupsPath: "/backups")
+        RuntimeInstallInfo(
+            runtimeHomePath: "/runtime",
+            backupsPath: "/backups",
+            redisBackupsPath: "/runtime/data/backups/redis"
+        )
     }
 
     private func success() -> RuntimeCommandResult {

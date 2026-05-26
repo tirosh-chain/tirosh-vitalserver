@@ -743,7 +743,7 @@ Shell
 | Swift paths/constants | `LauncherPaths.swift`, `Constants.swift` | 설치/runtime 경로, artifact 이름, launchd/service 이름, command path | runtime 동작 정책 결정 |
 | VM configuration | `VirtualMachine/VMRuntimeConfig.swift`, `VMConfigurationFactory.swift` | `vm-config.json` schema, Apple Virtualization configuration 생성 | install settings 파일 읽기 |
 | Helper app | `Sources/MacRuntimeControlApp/*` | 설치 후 Status/Settings/Update/Logs/About/Advanced/Danger Zone UI, app composition, native shell | rootfs, VM disk, privileged provisioning 포함 |
-| Helper runtime adapter | `Sources/MacHostRuntimeAdapter/*` | `RuntimeControlClient` local 구현, 상태/설정/log/backup file read, privileged command 조립/실행, log export | SwiftUI presentation, host runtime workflow 내부 단계 |
+| Host runtime adapter | `Sources/MacHostRuntimeAdapter/*` | `RuntimeControlClient` local 구현, 상태/설정/log/backup file read, privileged command 조립/실행, log export | SwiftUI presentation, host runtime workflow 내부 단계 |
 | PKG scripts | `Support/Packaging/preinstall`, `postinstall`, `proxy-run`, `uninstall` | installer/launchd/uninstall entrypoint wrapper | 복잡한 provisioning 로직 |
 | guest bootstrap | `Support/Guest/bootstrap.sh`, `bin/*`, `systemd/*`, `prepare-airgap-rootfs.sh`, `compose.yaml` | Linux guest 내부 Docker/Compose 구성, edge nginx container, Docker image load, runtime state 기록 | macOS launchd/proxy 관리 |
 
