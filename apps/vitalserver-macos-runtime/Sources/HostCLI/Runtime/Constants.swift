@@ -118,7 +118,7 @@ enum Constants {
         static let waitTimeoutSeconds = 600.0
         static let datastoreRepairWaitTimeoutSeconds = 300.0
         static let redisBackupWaitTimeoutSeconds = 300.0
-        static let updateActivationWaitTimeoutSeconds = 600.0
+        static let updateActivationWaitTimeoutSeconds = 180.0
         static let watchdogRecoveryWaitSeconds = 20.0
         static let watchdogManagedOperationGraceSeconds = 1_800.0
         static let guestLogSyncIntervalSeconds = 1.0

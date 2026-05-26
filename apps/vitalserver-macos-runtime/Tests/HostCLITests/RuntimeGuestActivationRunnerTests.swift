@@ -40,7 +40,7 @@ final class RuntimeGuestActivationRunnerTests: XCTestCase {
             "remove-result",
             "write-request:request-1:2026-05-22T00:00:00Z:1.2.3",
             "start-vm",
-            "log:waiting for guest update activation result timeoutSeconds=600.0",
+            "log:waiting for guest update activation result timeoutSeconds=180.0",
             "log:waiting for guest update activation worker",
             "progress:waiting for guest update activation worker",
             "sleep",

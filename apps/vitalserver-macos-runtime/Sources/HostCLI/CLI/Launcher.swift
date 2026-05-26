@@ -117,7 +117,13 @@ struct Launcher {
         let vmConfiguration = try configurationFactory.build(from: config)
         let virtualMachine = VZVirtualMachine(configuration: vmConfiguration)
         let delegate = VirtualMachineDelegate(pidFile: paths.pidFile, fileStore: fileStore)
+        let terminationHandler = VirtualMachineTerminationHandler(
+            virtualMachine: virtualMachine,
+            pidFile: paths.pidFile,
+            fileStore: fileStore
+        )
         virtualMachine.delegate = delegate
+        terminationHandler.start()
 
         print("starting vitalserver VM")
         virtualMachine.start { result in
@@ -135,6 +141,7 @@ struct Launcher {
         RunLoop.main.run()
         _ = configurationFactory
         _ = delegate
+        _ = terminationHandler
     }
 
     private func removeStaleRuntimeState(
