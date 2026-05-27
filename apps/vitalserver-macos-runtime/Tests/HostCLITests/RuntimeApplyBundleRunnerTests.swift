@@ -66,7 +66,7 @@ private final class ApplyBundleHarness {
             product: "com.tirosh.vitalserver",
             helperVersion: "0.1.4",
             releaseLabel: "0.1.4",
-            targetPlatforms: ["macos-arm64"],
+            targetPlatform: "macos-arm64",
             components: ["updater": "0.1.4"],
             createdAt: "2026-05-22T00:00:00Z",
             artifacts: [],

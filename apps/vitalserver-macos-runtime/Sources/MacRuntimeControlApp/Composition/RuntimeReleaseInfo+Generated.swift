@@ -18,6 +18,11 @@ extension RuntimeReleaseInfo {
                 version: GeneratedRelease.auditProxyVersion
             ),
             RuntimeBundledServiceInfo(
+                name: GeneratedRelease.vitalDBObserverName,
+                image: GeneratedRelease.vitalDBObserverImage,
+                version: GeneratedRelease.vitalDBObserverVersion
+            ),
+            RuntimeBundledServiceInfo(
                 name: GeneratedRelease.redisName,
                 image: GeneratedRelease.redisImage,
                 version: GeneratedRelease.redisVersion

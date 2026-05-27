@@ -2,10 +2,7 @@ import SwiftUI
 
 struct RuntimeDangerZonePanel: View {
     @ObservedObject var viewModel: RuntimeViewModel
-    @Binding var showingRollbackConfirmation: Bool
     @Binding var showingDeleteBackupConfirmation: Bool
-    @Binding var showingRepairProxyConfirmation: Bool
-    @Binding var showingRepairDatastoreConfirmation: Bool
     @Binding var showingUninstallConfirmation: Bool
     @Binding var showingCleanUninstallConfirmation: Bool
 
@@ -19,9 +16,7 @@ struct RuntimeDangerZonePanel: View {
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                recoveryOperationsCard
-                updateRecoveryCard
-                runtimeReplacementCard
+                backupDeletionCard
                 destructiveOperationsCard
             }
             .frame(maxWidth: 900, alignment: .leading)
@@ -29,10 +24,10 @@ struct RuntimeDangerZonePanel: View {
         }
     }
 
-    private var updateRecoveryCard: some View {
-        advancedCard(AppConstants.Labels.sectionUpdateRecovery) {
+    private var backupDeletionCard: some View {
+        advancedCard(AppConstants.Actions.deleteBackup) {
             VStack(alignment: .leading, spacing: 12) {
-                Text(AppConstants.Labels.updateRecoveryHelp)
+                Text(AppConstants.StatusText.deleteBackupConfirmation)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -69,43 +64,14 @@ struct RuntimeDangerZonePanel: View {
                         .truncationMode(.middle)
                         .textSelection(.enabled)
                 }
-                HStack(spacing: 10) {
-                    Button(AppConstants.Actions.rollback) {
-                        showingRollbackConfirmation = true
-                    }
-                    .disabled(
-                        viewModel.isBusy
-                            || viewModel.selectedBackupPath.isEmpty
-                            || !viewModel.capabilities.canRollback
-                    )
-
-                    Button(AppConstants.Actions.deleteBackup, role: .destructive) {
-                        showingDeleteBackupConfirmation = true
-                    }
-                    .disabled(
-                        viewModel.isBusy
-                            || viewModel.selectedBackupPath.isEmpty
-                            || !viewModel.capabilities.canRollback
-                    )
+                Button(AppConstants.Actions.deleteBackup, role: .destructive) {
+                    showingDeleteBackupConfirmation = true
                 }
-            }
-        }
-    }
-
-    private var runtimeReplacementCard: some View {
-        advancedCard(AppConstants.Labels.sectionRuntimeReplacement) {
-            VStack(alignment: .leading, spacing: 12) {
-                Text(AppConstants.Labels.vmRootfsUpdatePlanned)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                HStack(spacing: 10) {
-                    Button(AppConstants.Actions.vmRootfsUpdate) {}
-                        .disabled(true)
-                    Text(AppConstants.StatusText.planned)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                .disabled(
+                    viewModel.isBusy
+                        || viewModel.selectedBackupPath.isEmpty
+                        || !viewModel.capabilities.canRollback
+                )
             }
         }
     }
@@ -132,28 +98,6 @@ struct RuntimeDangerZonePanel: View {
                         || !viewModel.capabilities.canUninstallRuntime
                 )
                 .fixedSize()
-            }
-        }
-    }
-
-    private var recoveryOperationsCard: some View {
-        advancedCard(AppConstants.Labels.sectionRecoveryOperations) {
-            VStack(alignment: .leading, spacing: 12) {
-                Text(AppConstants.Labels.recoveryOperationsHelp)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                HStack(spacing: 10) {
-                    Button(AppConstants.Actions.repairDatastore) {
-                        showingRepairDatastoreConfirmation = true
-                    }
-                    .disabled(viewModel.isBusy || !viewModel.status.runtimeInstalled)
-
-                    Button(AppConstants.Actions.repairProxy) {
-                        showingRepairProxyConfirmation = true
-                    }
-                    .disabled(viewModel.isBusy || !viewModel.status.runtimeInstalled)
-                }
             }
         }
     }

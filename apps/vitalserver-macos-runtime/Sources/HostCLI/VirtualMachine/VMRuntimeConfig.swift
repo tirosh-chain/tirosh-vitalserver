@@ -15,6 +15,7 @@ struct VMRuntimeConfig: Codable {
     var sharedDirectory: SharedDirectoryConfig?
     var vitalFilesDirectory: SharedDirectoryConfig?
     var autoRecoveryEnabled: Bool? = nil
+    var preventSystemSleep: Bool? = nil
 
     // The default boot asset names match the Linux kernel/initrd style used by
     // Apple's Linux VM sample and keep the first PoC explicit.
@@ -22,7 +23,7 @@ struct VMRuntimeConfig: Codable {
         return VMRuntimeConfig(
             cpuCount: min(
                 max(ProcessInfo.processInfo.processorCount / 2, Constants.Defaults.minimumCPUCount),
-                Constants.Defaults.maximumCPUCount
+                Constants.Defaults.maximumAllowedCPUCount
             ),
             memoryMiB: Constants.Defaults.memoryMiB,
             kernelPath: paths.runtimeDirectory.appendingPathComponent(Constants.BootAssets.kernel).path,
@@ -47,7 +48,8 @@ struct VMRuntimeConfig: Codable {
                 guestMountPath: Constants.Defaults.vitalFilesDirectoryGuestMountPath,
                 readOnly: false
             ),
-            autoRecoveryEnabled: true
+            autoRecoveryEnabled: true,
+            preventSystemSleep: true
         )
     }
 
@@ -89,6 +91,9 @@ struct VMRuntimeConfig: Codable {
         }
         if config.autoRecoveryEnabled == nil {
             config.autoRecoveryEnabled = true
+        }
+        if config.preventSystemSleep == nil {
+            config.preventSystemSleep = true
         }
     }
 

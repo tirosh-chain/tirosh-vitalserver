@@ -190,6 +190,7 @@ install_guest_runtime_files() {
   install -m 0644 "${DEPLOY_DIR}/systemd/tirosh-vitalserver-container-logs.service" /etc/systemd/system/tirosh-vitalserver-container-logs.service
   install -m 0644 "${DEPLOY_DIR}/systemd/tirosh-vitalserver-redis-backup.service" /etc/systemd/system/tirosh-vitalserver-redis-backup.service
   install -m 0644 "${DEPLOY_DIR}/systemd/tirosh-vitalserver-redis-backup.timer" /etc/systemd/system/tirosh-vitalserver-redis-backup.timer
+  install -m 0644 "${DEPLOY_DIR}/systemd/tirosh-vitalserver-redis-backup.path" /etc/systemd/system/tirosh-vitalserver-redis-backup.path
   install -m 0644 "${DEPLOY_DIR}/systemd/tirosh-vitalserver-repair-datastore.service" /etc/systemd/system/tirosh-vitalserver-repair-datastore.service
   install -m 0644 "${DEPLOY_DIR}/systemd/tirosh-vitalserver-repair-datastore.path" /etc/systemd/system/tirosh-vitalserver-repair-datastore.path
   install -m 0644 "${DEPLOY_DIR}/systemd/tirosh-vitalserver-activate-update.service" /etc/systemd/system/tirosh-vitalserver-activate-update.service
@@ -200,6 +201,7 @@ install_guest_runtime_files() {
   systemctl enable tirosh-vitalserver-compose.service
   systemctl enable --now tirosh-vitalserver-container-logs.service
   systemctl enable --now tirosh-vitalserver-redis-backup.timer
+  systemctl enable --now tirosh-vitalserver-redis-backup.path
   systemctl enable --now tirosh-vitalserver-repair-datastore.path
   systemctl enable --now tirosh-vitalserver-activate-update.path
 }
@@ -232,7 +234,7 @@ wait_for_vitalserver_edge() {
   local deadline code http_status
 
   printf "Waiting for VitalServer edge readiness: http://127.0.0.1/ready\n"
-  deadline=$(( "$(date +%s)" + 600 ))
+  deadline=$(( $(date +%s) + 600 ))
 
   while [ "$(date +%s)" -lt "${deadline}" ]; do
     code="$(curl -sS -L -o /dev/null -w '%{http_code}' --max-time 5 "http://127.0.0.1/ready" 2>/dev/null)" \

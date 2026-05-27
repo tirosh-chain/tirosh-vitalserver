@@ -53,6 +53,8 @@ VITALSERVER_TRUST_PROXY=1
 
 외부 장비와 브라우저는 macOS host nginx의 public port로 접속합니다.
 
-Compose stack은 repository root의 `compose.yaml`에서 관리합니다.
+Compose stack은 repository root의 `compose.yaml`에서 관리합니다. 이 wrapper app은 VitalServer 실행
+단위만 소유하고, command audit은 `vitalserver-audit-proxy`, Redis/proxy 기반 runtime 관측은
+`vitaldb-observer`가 sidecar로 처리합니다.
 
 제품화 전체 맥락은 repository root의 `README.md`와 `docs/index.md`를 기준으로 봅니다.

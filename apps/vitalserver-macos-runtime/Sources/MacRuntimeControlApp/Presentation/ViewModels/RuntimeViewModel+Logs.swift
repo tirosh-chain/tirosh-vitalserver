@@ -44,18 +44,29 @@ extension RuntimeViewModel {
         RuntimeLogOptions.sources
     }
 
-    func refreshLogs() {
+    func refreshLogs() async {
+        guard !isRefreshingLogs else {
+            return
+        }
+        isRefreshingLogs = true
+        defer { isRefreshingLogs = false }
+
         let limit = max(logLineLimit, 1)
-        logText = hostClient.logText(
-            sourceID: selectedLogSource,
-            helperMessage: message,
+        let sourceID = selectedLogSource
+        let helperMessage = message
+        let nextLogText = await hostClient.loadLogText(
+            sourceID: sourceID,
+            helperMessage: helperMessage,
             lineLimit: limit
         )
+        if nextLogText != logText {
+            logText = nextLogText
+        }
     }
 
-    func refreshLogsIfLive() {
+    func refreshLogsIfLive() async {
         if logStreaming {
-            refreshLogs()
+            await refreshLogs()
         }
     }
 }
@@ -68,8 +79,11 @@ private enum RuntimeLogOptions {
         RuntimeLogSourceOption(id: .install, title: "Install log"),
         RuntimeLogSourceOption(id: .command, title: "Command log"),
         RuntimeLogSourceOption(id: .launcher, title: "VM launcher"),
+        RuntimeLogSourceOption(id: .vmLaunchOutput, title: "VM launch output"),
+        RuntimeLogSourceOption(id: .vmLaunchError, title: "VM launch error"),
         RuntimeLogSourceOption(id: .proxyOutput, title: "Host proxy output"),
         RuntimeLogSourceOption(id: .proxyError, title: "Host proxy error"),
+        RuntimeLogSourceOption(id: .watchdog, title: "Watchdog"),
         RuntimeLogSourceOption(id: .updateActivation, title: "Update activation"),
         RuntimeLogSourceOption(id: .containers, title: "Containers"),
     ]

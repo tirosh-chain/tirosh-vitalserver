@@ -77,13 +77,22 @@ final class RuntimeFileReaderTests: XCTestCase {
         )
     }
 
-    func testLogTextRefreshesLogCollectionBeforeReading() throws {
+    func testNonContainerFileLogTextRefreshesLogCollectionBeforeReading() throws {
+        let collector = FakeRuntimeLogCollector()
+        let reader = SystemRuntimeHostFileReader(logCollector: collector)
+
+        _ = reader.logText(sourceID: .launcher, helperMessage: "Ready", lineLimit: 10)
+
+        XCTAssertEqual(collector.refreshCount, 1)
+    }
+
+    func testHelperMessageLogTextDoesNotRefreshLogCollection() throws {
         let collector = FakeRuntimeLogCollector()
         let reader = SystemRuntimeHostFileReader(logCollector: collector)
 
         _ = reader.logText(sourceID: .helperMessage, helperMessage: "Ready", lineLimit: 10)
 
-        XCTAssertEqual(collector.refreshCount, 1)
+        XCTAssertEqual(collector.refreshCount, 0)
     }
 
     private func temporaryDirectory() throws -> URL {
@@ -94,7 +103,7 @@ final class RuntimeFileReaderTests: XCTestCase {
     }
 }
 
-private final class FakeRuntimeLogCollector: RuntimeLogCollecting {
+private final class FakeRuntimeLogCollector: RuntimeLogCollecting, @unchecked Sendable {
     var refreshCount = 0
 
     func refreshLogCollection() {

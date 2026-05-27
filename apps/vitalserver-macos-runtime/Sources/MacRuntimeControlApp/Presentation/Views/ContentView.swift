@@ -1,6 +1,7 @@
 import Foundation
 import RuntimeControl
 import Contracts
+import AppKit
 import SwiftUI
 
 struct ContentView: View {
@@ -10,14 +11,17 @@ struct ContentView: View {
     @State private var showingDeleteBackupConfirmation = false
     @State private var showingRepairProxyConfirmation = false
     @State private var showingRepairDatastoreConfirmation = false
+    @State private var showingRepairRuntimeServicesConfirmation = false
     @State private var showingStartServicesConfirmation = false
     @State private var showingStopServicesConfirmation = false
     @State private var showingUninstallConfirmation = false
     @State private var showingCleanUninstallConfirmation = false
     @State private var showingApplySettingsConfirmation = false
-    @State private var showingHealthDetails = false
+    @State private var showingStatusRecorderDetails = false
+    @State private var showingStatusResourceUsage = false
     @State private var selectedSection = RuntimeSection.status
     @State private var hoveredServiceLink: String?
+    @State private var isHoveringVitalDBIcon = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -28,8 +32,15 @@ struct ContentView: View {
                 case .status:
                     RuntimeStatusPanel(
                         viewModel: viewModel,
-                        showingHealthDetails: $showingHealthDetails
+                        showingRecorderDetails: $showingStatusRecorderDetails,
+                        showingResourceUsage: $showingStatusResourceUsage
                     )
+                case .recorders:
+                    RuntimeRecordersPanel(viewModel: viewModel)
+                case .observability:
+                    RuntimeObservabilityPanel(viewModel: viewModel)
+                case .log:
+                    RuntimeLogPanel(viewModel: viewModel)
                 case .settings:
                     RuntimeSettingsPanel(
                         viewModel: viewModel,
@@ -40,38 +51,35 @@ struct ContentView: View {
                         viewModel: viewModel,
                         showingUpdateConfirmation: $showingUpdateConfirmation
                     )
-                case .events:
-                    RuntimeEventsPanel(viewModel: viewModel)
-                case .test:
-                    RuntimeTestPanel(viewModel: viewModel)
+                case .info:
+                    RuntimeInfoPanel(viewModel: viewModel)
                 case .advanced:
                     RuntimeAdvancedPanel(
                         viewModel: viewModel,
                         showingApplySettingsConfirmation: $showingApplySettingsConfirmation,
+                        showingRollbackConfirmation: $showingRollbackConfirmation,
+                        showingRepairProxyConfirmation: $showingRepairProxyConfirmation,
+                        showingRepairDatastoreConfirmation: $showingRepairDatastoreConfirmation,
+                        showingRepairRuntimeServicesConfirmation: $showingRepairRuntimeServicesConfirmation,
                         showingStartServicesConfirmation: $showingStartServicesConfirmation,
                         showingStopServicesConfirmation: $showingStopServicesConfirmation,
                         hoveredServiceLink: $hoveredServiceLink
                     )
-                case .info:
-                    RuntimeInfoPanel(viewModel: viewModel)
+                case .test:
+                    RuntimeTestPanel(viewModel: viewModel)
                 case .dangerZone:
                     RuntimeDangerZonePanel(
                         viewModel: viewModel,
-                        showingRollbackConfirmation: $showingRollbackConfirmation,
                         showingDeleteBackupConfirmation: $showingDeleteBackupConfirmation,
-                        showingRepairProxyConfirmation: $showingRepairProxyConfirmation,
-                        showingRepairDatastoreConfirmation: $showingRepairDatastoreConfirmation,
                         showingUninstallConfirmation: $showingUninstallConfirmation,
                         showingCleanUninstallConfirmation: $showingCleanUninstallConfirmation
                     )
-                case .log:
-                    RuntimeLogPanel(viewModel: viewModel)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
-        .padding(24)
-        .frame(minWidth: 900, minHeight: 700)
+        .padding(18)
+        .frame(minWidth: 720, minHeight: 560)
         .alert(AppConstants.Actions.applySettings, isPresented: $showingApplySettingsConfirmation) {
             Button(AppConstants.Actions.cancel, role: .cancel) {}
             Button(AppConstants.Actions.ok) {
@@ -123,6 +131,14 @@ struct ContentView: View {
         } message: {
             Text(AppConstants.StatusText.repairDatastoreConfirmation)
         }
+        .alert(AppConstants.Actions.repairRuntimeServices, isPresented: $showingRepairRuntimeServicesConfirmation) {
+            Button(AppConstants.Actions.cancel, role: .cancel) {}
+            Button(AppConstants.Actions.repairRuntimeServices, role: .destructive) {
+                Task { await viewModel.repairRuntimeServices() }
+            }
+        } message: {
+            Text(AppConstants.StatusText.repairRuntimeServicesConfirmation)
+        }
         .alert(AppConstants.Actions.startRuntimeServices, isPresented: $showingStartServicesConfirmation) {
             Button(AppConstants.Actions.cancel, role: .cancel) {}
             Button(AppConstants.Actions.startRuntimeServices) {
@@ -164,62 +180,203 @@ struct ContentView: View {
         .task {
             await pollLogs()
         }
+        .task(id: selectedSection) {
+            await pollSelectedSection()
+        }
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(AppConstants.Product.displayName)
-                .font(.title)
-                .fontWeight(.semibold)
-            HStack(spacing: 4) {
-                Text(AppConstants.Product.poweredByPrefix)
-                    .foregroundStyle(.secondary)
+        HStack(alignment: .top, spacing: 12) {
+            if let brandImage = RuntimeHeaderBrandAsset.image {
                 Button {
-                    viewModel.openTiroshWebsite()
+                    viewModel.openVitalDBWebsite()
                 } label: {
-                    Text(AppConstants.Product.tiroshName)
-                        .underline()
-                        .foregroundStyle(
-                            hoveredServiceLink == AppConstants.Product.tiroshName
-                                ? Color.accentColor
-                                : Color.secondary
+                    Image(nsImage: brandImage)
+                        .resizable()
+                        .interpolation(.high)
+                        .scaledToFit()
+                        .frame(width: 36, height: 36)
+                        .padding(4)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(isHoveringVitalDBIcon ? Color.accentColor.opacity(0.10) : Color.clear)
                         )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(isHoveringVitalDBIcon ? Color.accentColor.opacity(0.35) : Color.clear, lineWidth: 1)
+                        )
+                        .scaleEffect(isHoveringVitalDBIcon ? 1.04 : 1)
+                        .accessibilityLabel(AppConstants.Product.vitalDBName)
                 }
                 .buttonStyle(.plain)
+                .contentShape(Rectangle())
                 .onHover { isHovering in
-                    hoveredServiceLink = isHovering ? AppConstants.Product.tiroshName : nil
+                    isHoveringVitalDBIcon = isHovering
+                    if isHovering {
+                        NSCursor.pointingHand.set()
+                    } else {
+                        NSCursor.arrow.set()
+                    }
                 }
-                .help(AppConstants.Product.tiroshURL)
+                .help(AppConstants.Product.vitalDBURL)
             }
-            .font(.caption)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(AppConstants.Product.displayName)
+                    .font(.title)
+                    .fontWeight(.semibold)
+                HStack(spacing: 4) {
+                    Text(AppConstants.Product.poweredByPrefix)
+                        .foregroundStyle(.secondary)
+                    Button {
+                        viewModel.openTiroshWebsite()
+                    } label: {
+                        Text(AppConstants.Product.tiroshName)
+                            .underline()
+                            .foregroundStyle(
+                                hoveredServiceLink == AppConstants.Product.tiroshName
+                                    ? Color.accentColor
+                                    : Color.secondary
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .onHover { isHovering in
+                        hoveredServiceLink = isHovering ? AppConstants.Product.tiroshName : nil
+                    }
+                    .help(AppConstants.Product.tiroshURL)
+                }
+                .font(.caption)
+            }
         }
     }
 
     private var sectionSelector: some View {
-        Picker("", selection: $selectedSection) {
-            ForEach(RuntimeSection.visibleSections()) { section in
-                Text(section.title).tag(section)
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 10) {
+                HStack(spacing: 4) {
+                    ForEach(RuntimeSection.primarySections()) { section in
+                        sectionButton(section)
+                    }
+                }
+                .padding(3)
+                .background(Color(nsColor: .controlColor))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+
+                HStack(spacing: 6) {
+                    ForEach(RuntimeSection.utilitySections()) { section in
+                        sectionButton(section)
+                    }
+                    overflowSectionMenu
+                }
             }
+            .frame(maxWidth: .infinity, alignment: .center)
         }
-        .pickerStyle(.segmented)
-        .labelsHidden()
-        .frame(width: 760)
         .frame(maxWidth: .infinity, alignment: .center)
+    }
+
+    private func sectionButton(_ section: RuntimeSection) -> some View {
+        Button {
+            selectedSection = section
+        } label: {
+            Text(section.title)
+                .font(.system(size: 13, weight: selectedSection == section ? .semibold : .regular))
+                .lineLimit(1)
+                .padding(.horizontal, 13)
+                .padding(.vertical, 6)
+                .frame(minWidth: 66)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(selectedSection == section ? Color.primary : Color.secondary)
+        .background(sectionButtonBackground(isSelected: selectedSection == section))
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+    }
+
+    private var overflowSectionMenu: some View {
+        Menu {
+            ForEach(RuntimeSection.overflowSections()) { section in
+                Button {
+                    selectedSection = section
+                } label: {
+                    Text(section.title)
+                }
+            }
+        } label: {
+            Text(AppConstants.Labels.sectionMore)
+                .font(.system(
+                    size: 13,
+                    weight: RuntimeSection.sectionIsInOverflow(selectedSection) ? .semibold : .regular
+                ))
+                .lineLimit(1)
+                .padding(.horizontal, 13)
+                .padding(.vertical, 6)
+                .frame(minWidth: 66)
+                .contentShape(Rectangle())
+        }
+        .menuStyle(.borderlessButton)
+        .buttonStyle(.plain)
+        .foregroundStyle(RuntimeSection.sectionIsInOverflow(selectedSection) ? Color.primary : Color.secondary)
+        .background(sectionButtonBackground(isSelected: RuntimeSection.sectionIsInOverflow(selectedSection)))
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+    }
+
+    private func sectionButtonBackground(isSelected: Bool) -> some View {
+        RoundedRectangle(cornerRadius: 6)
+            .fill(isSelected ? Color(nsColor: .controlBackgroundColor) : Color.clear)
+            .shadow(color: isSelected ? Color.black.opacity(0.10) : Color.clear, radius: 1, y: 1)
     }
 
     private func pollStatus() async {
         while !Task.isCancelled {
-            if !viewModel.isBusy {
-                await viewModel.refreshHealthStatus()
-            }
+            await viewModel.refreshHealthStatus()
             try? await Task.sleep(nanoseconds: 5_000_000_000)
         }
     }
 
     private func pollLogs() async {
         while !Task.isCancelled {
-            viewModel.refreshLogsIfLive()
+            if selectedSection == .log {
+                await viewModel.refreshLogsIfLive()
+            } else if selectedSection == .update, viewModel.shouldShowUpdateProgress {
+                await viewModel.refreshLogsIfLive()
+            }
             try? await Task.sleep(nanoseconds: 1_000_000_000)
         }
+    }
+
+    private func pollSelectedSection() async {
+        while !Task.isCancelled {
+            await refreshSelectedSection()
+            try? await Task.sleep(nanoseconds: 5_000_000_000)
+        }
+    }
+
+    private func refreshSelectedSection() async {
+        switch selectedSection {
+        case .recorders:
+            await viewModel.refreshVitalRecorders()
+        case .observability:
+            await viewModel.refreshRuntimeEvents()
+        default:
+            break
+        }
+    }
+}
+
+private enum RuntimeHeaderBrandAsset {
+    @MainActor
+    static var image: NSImage? {
+        loadImage()
+    }
+
+    private static func loadImage() -> NSImage? {
+        if let bundledURL = Bundle.main.url(forResource: "vitaldb", withExtension: "png"),
+           let image = NSImage(contentsOf: bundledURL) {
+            return image
+        }
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .appendingPathComponent("../../../../Support/App/vitaldb.png")
+            .standardizedFileURL
+        return NSImage(contentsOf: sourceURL)
     }
 }

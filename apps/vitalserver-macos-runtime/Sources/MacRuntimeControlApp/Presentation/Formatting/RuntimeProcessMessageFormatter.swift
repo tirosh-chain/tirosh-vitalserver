@@ -20,6 +20,9 @@ struct RuntimeProcessMessageFormatter {
         guard !output.isEmpty, output != AppConstants.StatusText.done else {
             return title
         }
+        if output == title || output.hasPrefix("\(title)\n") {
+            return output
+        }
         return "\(title)\n\n\(output)"
     }
 }

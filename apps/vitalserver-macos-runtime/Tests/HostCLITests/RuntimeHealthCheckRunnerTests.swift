@@ -25,6 +25,20 @@ final class RuntimeHealthCheckRunnerTests: XCTestCase {
         XCTAssertEqual(harness.events, [
             "print-status",
             "status:degraded:health:runtime health check failed: vm-service-not-loaded",
+            "event:degraded:health:runtime VM errors observed: vm-service-state-not-loaded",
+            "print:health: failed",
+        ])
+    }
+
+    func testRunRecordsDomainErrorEventWhenUnhealthyReasonIsNotVMError() {
+        let harness = HealthCheckHarness(snapshot: healthSnapshot(reasons: [.auditProxyHTTP("failed")]))
+
+        XCTAssertThrowsError(try harness.runner.run())
+
+        XCTAssertEqual(harness.events, [
+            "print-status",
+            "status:degraded:health:runtime health check failed: audit-proxy-http-failed",
+            "event:degraded:health:runtime domain errors observed: audit-proxy-http-failed",
             "print:health: failed",
         ])
     }
@@ -49,6 +63,9 @@ private final class HealthCheckHarness {
             writeStatus: { status, operation, message in
                 self.events.append("status:\(status.rawValue):\(operation.rawValue):\(message)")
             },
+            recordObservedEvent: { status, operation, message, _ in
+                self.events.append("event:\(status.rawValue):\(operation.rawValue):\(message)")
+            },
             reasonText: { reasons in
                 reasons.map(\.rawValue).joined(separator: ",")
             },
@@ -68,6 +85,12 @@ private func healthSnapshot(reasons: [RuntimeFailureReason]) -> RuntimeHealthSna
         vmService: .loaded,
         proxyService: .loaded,
         watchdogService: .loaded,
+        vmErrors: reasons.compactMap { reason in
+            if case .vmService(let state) = reason {
+                return .serviceNotLoaded(state)
+            }
+            return nil
+        },
         vmIP: "192.168.64.2",
         proxyPort: 18080,
         hostProxyHTTP: "200",

@@ -43,10 +43,16 @@ public struct RuntimeControlAPIRoute: Codable, Equatable, Sendable {
 
 public enum RuntimeControlAPIEndpoint: String, CaseIterable, Codable, Equatable, Sendable {
     case capabilities
+    case overview
+    case overviewStream
     case status
     case statusStream
     case events
     case eventStream
+    case vitalDBObservation
+    case vitalDBObservationStream
+    case vitalDBRecorders
+    case vitalDBRecorder
     case health
     case settings
     case applySettings
@@ -56,8 +62,11 @@ public enum RuntimeControlAPIEndpoint: String, CaseIterable, Codable, Equatable,
     case stopServices
     case repairProxy
     case repairDatastore
+    case createRedisBackup
     case uninstall
     case backups
+    case redisBackups
+    case restoreRedisBackup
     case logText
     case logStream
     case updateBundleSummary
@@ -71,6 +80,10 @@ public enum RuntimeControlAPIEndpoint: String, CaseIterable, Codable, Equatable,
         switch self {
         case .capabilities:
             return .init(method: .get, path: "/runtime/capabilities", scope: .runtimeControl)
+        case .overview:
+            return .init(method: .get, path: "/runtime/overview", scope: .runtimeControl)
+        case .overviewStream:
+            return .init(method: .get, path: "/runtime/overview/stream", scope: .runtimeControl)
         case .status:
             return .init(method: .get, path: "/runtime/status", scope: .runtimeControl)
         case .statusStream:
@@ -79,6 +92,14 @@ public enum RuntimeControlAPIEndpoint: String, CaseIterable, Codable, Equatable,
             return .init(method: .get, path: "/runtime/events", scope: .runtimeControl)
         case .eventStream:
             return .init(method: .get, path: "/runtime/events/stream", scope: .runtimeControl)
+        case .vitalDBObservation:
+            return .init(method: .get, path: "/vitaldb/observations/latest", scope: .runtimeControl)
+        case .vitalDBObservationStream:
+            return .init(method: .get, path: "/vitaldb/observations/stream", scope: .runtimeControl)
+        case .vitalDBRecorders:
+            return .init(method: .get, path: "/vitaldb/recorders", scope: .runtimeControl)
+        case .vitalDBRecorder:
+            return .init(method: .get, path: "/vitaldb/recorders/{vrcode}", scope: .runtimeControl)
         case .health:
             return .init(method: .post, path: "/runtime/health", scope: .runtimeControl)
         case .settings:
@@ -97,10 +118,16 @@ public enum RuntimeControlAPIEndpoint: String, CaseIterable, Codable, Equatable,
             return .init(method: .post, path: "/runtime/services/repair-proxy", scope: .runtimeControl)
         case .repairDatastore:
             return .init(method: .post, path: "/runtime/services/repair-datastore", scope: .runtimeControl)
+        case .createRedisBackup:
+            return .init(method: .post, path: "/runtime/redis/backups", scope: .runtimeControl)
         case .uninstall:
             return .init(method: .post, path: "/runtime/uninstall", scope: .runtimeControl)
         case .backups:
             return .init(method: .get, path: "/host/backups", scope: .hostAffordance)
+        case .redisBackups:
+            return .init(method: .get, path: "/host/backups/redis", scope: .hostAffordance)
+        case .restoreRedisBackup:
+            return .init(method: .post, path: "/host/backups/redis/restore", scope: .hostAffordance)
         case .logText:
             return .init(method: .post, path: "/host/logs/read", scope: .hostAffordance)
         case .logStream:
@@ -125,10 +152,16 @@ public extension RuntimeControlAPIEndpoint {
     var clientAccess: RuntimeControlAPIClientAccess {
         switch self {
         case .capabilities,
+             .overview,
+             .overviewStream,
              .status,
              .statusStream,
              .events,
              .eventStream,
+             .vitalDBObservation,
+             .vitalDBObservationStream,
+             .vitalDBRecorders,
+             .vitalDBRecorder,
              .health,
              .settings,
              .release,
@@ -141,8 +174,11 @@ public extension RuntimeControlAPIEndpoint {
              .stopServices,
              .repairProxy,
              .repairDatastore,
+             .createRedisBackup,
              .uninstall,
              .backups,
+             .redisBackups,
+             .restoreRedisBackup,
              .logText,
              .logStream,
              .updateBundleSummary,
@@ -156,13 +192,26 @@ public extension RuntimeControlAPIEndpoint {
 
     static func matching(method: RuntimeControlHTTPMethod, path: String) -> RuntimeControlAPIEndpoint? {
         allCases.first { endpoint in
-            endpoint.route.method == method && endpoint.route.path == normalizedPath(path)
+            endpoint.route.method == method && endpoint.matches(path: normalizedPath(path))
         }
     }
 
     static func matching(path: String) -> RuntimeControlAPIEndpoint? {
         allCases.first { endpoint in
-            endpoint.route.path == normalizedPath(path)
+            endpoint.matches(path: normalizedPath(path))
+        }
+    }
+
+    private func matches(path: String) -> Bool {
+        switch self {
+        case .vitalDBRecorder:
+            let components = path.split(separator: "/", omittingEmptySubsequences: true)
+            return components.count == 3
+                && components[0] == "vitaldb"
+                && components[1] == "recorders"
+                && !components[2].isEmpty
+        default:
+            return route.path == path
         }
     }
 
@@ -171,6 +220,10 @@ public extension RuntimeControlAPIEndpoint {
             return path
         }
         return String(path[..<queryIndex])
+    }
+
+    static func normalizedPathForRequest(_ path: String) -> String {
+        normalizedPath(path)
     }
 }
 

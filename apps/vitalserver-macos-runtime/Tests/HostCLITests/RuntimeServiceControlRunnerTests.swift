@@ -18,6 +18,21 @@ final class RuntimeServiceControlRunnerTests: XCTestCase {
         ])
     }
 
+    func testRepairAllRestartsServicesWithoutWaitingForHealth() throws {
+        let harness = ServiceControlHarness()
+
+        try harness.runner.run(.repairAll)
+
+        XCTAssertEqual(harness.events, [
+            "log:runtime services repair requested",
+            "status:recovering:repair-services:runtime services repair requested",
+            "stop",
+            "start:true:true:true",
+            "status:recovering:repair-services:runtime services repair dispatched",
+            "log:runtime services repair dispatched",
+        ])
+    }
+
     func testStopAllStopsServicesAndWritesDegradedStatus() throws {
         let harness = ServiceControlHarness()
 

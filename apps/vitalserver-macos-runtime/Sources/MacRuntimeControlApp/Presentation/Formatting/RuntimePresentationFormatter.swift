@@ -33,7 +33,9 @@ struct RuntimePresentationFormatter {
             "Network mode: \(settings.networkMode.rawValue)",
             "Disk size: \(settings.diskGiB) GiB",
             "Vital files directory: \(settings.vitalFilesDirectory)",
+            "Redis backup retention: \(settings.redisBackupRetentionCount) archives",
             "Automatic recovery: \(settings.autoRecoveryEnabled ? AppConstants.Values.boolTrue : AppConstants.Values.boolFalse)",
+            "\(AppConstants.Labels.preventSystemSleep): \(settings.preventSystemSleep ? AppConstants.Values.boolTrue : AppConstants.Values.boolFalse)",
             "Restart services: \(settings.restartAfterSave ? AppConstants.Values.boolTrue : AppConstants.Values.boolFalse)",
         ].joined(separator: "\n")
     }
@@ -50,7 +52,15 @@ struct RuntimePresentationFormatter {
     }
 
     func failureReasonText(_ status: RuntimeStatus) -> String {
-        status.failureReasons.map(\.rawValue).joined(separator: ", ")
+        status.failureReasons.map(AppConstants.StatusText.domainError).joined(separator: ", ")
+    }
+
+    func runtimeStateText(_ state: RuntimeState?) -> String {
+        AppConstants.StatusText.runtimeLifecycle(state?.rawValue)
+    }
+
+    func operationText(_ operation: RuntimeOperation?) -> String {
+        AppConstants.StatusText.operation(operation?.rawValue)
     }
 
     func progressDisplayMessage(_ status: RuntimeStatus) -> String? {
@@ -64,8 +74,54 @@ struct RuntimePresentationFormatter {
         return progress.message.isEmpty ? nil : progress.message
     }
 
+    func updateOperationInProgress(_ status: RuntimeStatus) -> Bool {
+        RuntimeActiveOperationPolicy.isUpdateInProgress(status)
+    }
+
+    func updateOperationDisplayMessage(_ status: RuntimeStatus) -> String? {
+        guard updateOperationInProgress(status) else {
+            return nil
+        }
+        if let progressMessage = progressDisplayMessage(status) {
+            return progressMessage
+        }
+        if let statusMessage = status.statusMessage, !statusMessage.isEmpty {
+            return statusMessage
+        }
+        if let operation = status.operation {
+            return "\(operationText(operation)) in progress"
+        }
+        return AppConstants.StatusText.updateBundleApplying
+    }
+
+    func systemTimeText(_ timestamp: String?, timeZone: TimeZone = .current) -> String {
+        guard let timestamp, !timestamp.isEmpty else {
+            return AppConstants.StatusText.unknown
+        }
+        guard let date = iso8601Date(timestamp) else {
+            return timestamp
+        }
+
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = timeZone
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss XXX"
+        return formatter.string(from: date)
+    }
+
     func logExportDefaultName(date: Date = Date()) -> String {
         "vitalserver-logs-\(logExportTimestamp(date: date)).zip"
+    }
+
+    private func iso8601Date(_ timestamp: String) -> Date? {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = formatter.date(from: timestamp) {
+            return date
+        }
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.date(from: timestamp)
     }
 
     private func logExportTimestamp(date: Date) -> String {
@@ -78,20 +134,7 @@ struct RuntimePresentationFormatter {
     }
 
     private func stepStatusDisplayName(_ status: RuntimeProgressStepStatus) -> String {
-        switch status {
-        case .pending:
-            return AppConstants.StatusText.waiting
-        case .started:
-            return AppConstants.StatusText.running
-        case .completed:
-            return AppConstants.StatusText.done
-        case .failed:
-            return AppConstants.StatusText.failed.capitalized
-        case .skipped:
-            return "Skipped"
-        case .unknown(let value):
-            return value.capitalized
-        }
+        AppConstants.StatusText.progressStepStatus(status.rawValue)
     }
 
     private func humanizeStepName(_ step: String) -> String {

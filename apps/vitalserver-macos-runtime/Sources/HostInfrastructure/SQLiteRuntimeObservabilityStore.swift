@@ -12,7 +12,7 @@ public enum SQLiteRuntimeObservabilityStoreError: Error, Equatable {
 }
 
 public struct SQLiteRuntimeObservabilityStore {
-    public static let schemaVersion = 1
+    public static let schemaVersion = 2
 
     public let url: URL
 
@@ -51,6 +51,19 @@ public struct SQLiteRuntimeObservabilityStore {
             try execute(db, sql: """
             CREATE INDEX IF NOT EXISTS idx_runtime_events_event_type_timestamp
               ON runtime_events(event_type, timestamp)
+            """)
+            try execute(db, sql: """
+            CREATE TABLE IF NOT EXISTS vitaldb_observation_snapshots (
+              observed_at text primary key,
+              ready integer not null,
+              recorder_count integer not null,
+              anomaly_count integer not null,
+              payload_json text not null
+            )
+            """)
+            try execute(db, sql: """
+            CREATE INDEX IF NOT EXISTS idx_vitaldb_observation_snapshots_observed_at
+              ON vitaldb_observation_snapshots(observed_at)
             """)
             try execute(
                 db,
@@ -159,6 +172,58 @@ public struct SQLiteRuntimeObservabilityStore {
         }
     }
 
+    public func append(_ observation: VitalDBObservationDocument) throws {
+        try initialize()
+        try withDatabase { db in
+            try insert(observation, db: db)
+        }
+    }
+
+    public func latestVitalDBObservation() -> VitalDBObservationDocument? {
+        do {
+            try initialize()
+            return try withDatabase { db in
+                let observations = try queryVitalDBObservations(
+                    db,
+                    sql: """
+                    SELECT payload_json
+                    FROM vitaldb_observation_snapshots
+                    ORDER BY observed_at DESC
+                    LIMIT 1
+                    """,
+                    bindings: []
+                )
+                return observations.first
+            }
+        } catch {
+            return nil
+        }
+    }
+
+    public func vitalDBObservations(limit: Int = 1000) -> [VitalDBObservationDocument] {
+        guard limit > 0 else {
+            return []
+        }
+        do {
+            try initialize()
+            return try withDatabase { db in
+                let observations = try queryVitalDBObservations(
+                    db,
+                    sql: """
+                    SELECT payload_json
+                    FROM vitaldb_observation_snapshots
+                    ORDER BY observed_at DESC
+                    LIMIT ?
+                    """,
+                    bindings: [.int(limit)]
+                )
+                return Array(observations.reversed())
+            }
+        } catch {
+            return []
+        }
+    }
+
     private func nextCursor(for events: [RuntimeEventDocument], hasMore: Bool) -> RuntimeEventCursor? {
         guard hasMore, let first = events.first else {
             return nil
@@ -237,6 +302,69 @@ public struct SQLiteRuntimeObservabilityStore {
                 .text(payload),
             ]
         )
+    }
+
+    private func insert(_ observation: VitalDBObservationDocument, db: OpaquePointer) throws {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let payload = String(decoding: try encoder.encode(observation), as: UTF8.self)
+
+        try execute(
+            db,
+            sql: """
+            INSERT OR REPLACE INTO vitaldb_observation_snapshots(
+              observed_at,
+              ready,
+              recorder_count,
+              anomaly_count,
+              payload_json
+            ) VALUES (?, ?, ?, ?, ?)
+            """,
+            bindings: [
+                .text(observation.observedAt),
+                .int(observation.ready ? 1 : 0),
+                .int(observation.recorders.count),
+                .int(observation.anomalies.count),
+                .text(payload),
+            ]
+        )
+    }
+
+    private func queryVitalDBObservations(
+        _ db: OpaquePointer,
+        sql: String,
+        bindings: [SQLiteBinding]
+    ) throws -> [VitalDBObservationDocument] {
+        let decoder = JSONDecoder()
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
+            throw SQLiteRuntimeObservabilityStoreError.prepareFailed(errorMessage(db))
+        }
+        defer {
+            sqlite3_finalize(statement)
+        }
+
+        try bind(bindings, to: statement, db: db)
+
+        var observations: [VitalDBObservationDocument] = []
+        while true {
+            let result = sqlite3_step(statement)
+            if result == SQLITE_DONE {
+                return observations
+            }
+            guard result == SQLITE_ROW else {
+                throw SQLiteRuntimeObservabilityStoreError.stepFailed(errorMessage(db))
+            }
+            guard let rawPayload = sqlite3_column_text(statement, 0) else {
+                continue
+            }
+            let payload = String(cString: rawPayload)
+            guard let data = payload.data(using: .utf8),
+                  let observation = try? decoder.decode(VitalDBObservationDocument.self, from: data) else {
+                throw SQLiteRuntimeObservabilityStoreError.decodeFailed(payload)
+            }
+            observations.append(observation)
+        }
     }
 
     private func removeDatabaseFiles() throws {

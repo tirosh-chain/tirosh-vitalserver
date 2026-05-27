@@ -102,6 +102,34 @@ services:
       retries: 30
     restart: unless-stopped
 
+  vitaldb-observer:
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: apps/vitaldb-observer/Dockerfile
+    image: vitaldb-observer:0.1.0
+    depends_on:
+      redis:
+        condition: service_healthy
+      audit-proxy:
+        condition: service_healthy
+    ports:
+      - "${VITALDB_OBSERVER_BIND_HOST:-127.0.0.1}:${VITALDB_OBSERVER_PORT:-18083}:8080"
+    environment:
+      VITALDB_OBSERVER_HOST: "${VITALDB_OBSERVER_HOST:-0.0.0.0}"
+      VITALDB_OBSERVER_REDIS_HOST: "${VITALDB_OBSERVER_REDIS_HOST:-redis}"
+      VITALDB_OBSERVER_REDIS_PORT: "${VITALDB_OBSERVER_REDIS_PORT:-6379}"
+      VITALDB_OBSERVER_RECORDER_ONLINE_THRESHOLD_SECONDS: "${VITALDB_OBSERVER_RECORDER_ONLINE_THRESHOLD_SECONDS:-120}"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8080/ready', timeout=3).status == 200 else 1)"
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
   redis-ui:
     image: rediscommander/redis-commander:latest
     platform: linux/amd64
@@ -128,7 +156,8 @@ services:
         [
           {"name":"VitalServer","url":"/docs/openapi.yaml"},
           {"name":"Runtime Control API","url":"/docs/macos-runtime/runtime-control.openapi.json"},
-          {"name":"Audit Proxy","url":"/docs/openapi/audit-proxy.openapi.yaml"}
+          {"name":"Audit Proxy","url":"/docs/openapi/audit-proxy.openapi.yaml"},
+          {"name":"VitalDB Observer","url":"/docs/openapi/vitaldb-observer.openapi.yaml"}
         ]
       URLS_PRIMARY_NAME: "VitalServer"
     ports:

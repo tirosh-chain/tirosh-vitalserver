@@ -110,10 +110,14 @@ Local-only 기능은 암묵적으로 호출하지 않고 capability로 노출한
 | `RuntimeControlClient` | UI가 호출하는 local/remote runtime operation contract. status/settings/release/install read model과 configure/repair/service/uninstall command를 제공 |
 | `RuntimeHostClient` | SwiftUI 전환기에서 필요한 local host affordance contract. backup/log/update-bundle file read, local log export, bundle verify/apply, rollback/delete 같은 host-local 작업을 제공 |
 | `RuntimeControlAPI` | PWA/API server/client가 공유할 HTTP route/DTO/router/local server 계약. `/runtime/*` runtime control route와 `/host/*` local host affordance route를 구분 |
-| `MacHostRuntimeClient` | macOS local adapter. `RuntimeControlClient`와 `RuntimeHostClient`를 구현하고 file reader, settings/status reader, privileged command runner, action environment를 조합 |
+| `MacHostRuntimeClient` | macOS local adapter facade. `RuntimeControlClient`와 `RuntimeHostClient`를 구현하되 read-only 작업은 `MacHostRuntimeReadWorker`, write/admin 작업은 `MacHostRuntimeCommandWorker`로 위임 |
+| `MacHostRuntimeReadWorker` | status/settings/health/events/recorders/backups/log progress/release info 같은 read-only host snapshot owner |
+| `MacHostRuntimeCommandWorker` | update verify/apply, settings apply, Redis backup, rollback/delete backup, repair, service start/stop, uninstall, log export 같은 host mutation과 privileged command owner |
 | `RuntimeNativeShell` | macOS native picker/save panel, file/web open, helper relaunch/terminate 같은 shell concern |
 
 이 구현에서 `RuntimeViewModel`는 `AppKit`을 직접 import하지 않는다. update bundle과 log export destination은 `URL`로 전달하고, backup read model과 선택 상태는 PWA/API로 직렬화하기 쉬운 path string으로 유지한다. CLI argument나 화면 표시가 필요한 boundary에서만 URL/path 변환을 수행한다. Log source처럼 닫힌 선택지는 raw string이 아니라 enum 계약으로 다룬다.
+
+`RuntimeViewModel`은 `MainActor`에서 UI 상태 publish와 capability guard만 담당한다. 오래 걸리는 disk/SQLite/log read는 `MacHostRuntimeReadWorker`, 관리자 권한이나 host mutation을 동반하는 command는 `MacHostRuntimeCommandWorker`가 담당한다. 특히 Update, Redis backup, rollback, repair 같은 중요한 작업은 read worker와 섞지 않는다.
 
 Local web mode와 Remote mode는 같은 `RuntimeControlClient` contract를 HTTP/SSE adapter로 구현한다. Runtime Control API는 최소한 아래 contract를 가져야 한다.
 

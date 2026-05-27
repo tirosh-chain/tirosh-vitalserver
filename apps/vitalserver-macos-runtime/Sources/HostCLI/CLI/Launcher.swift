@@ -117,7 +117,13 @@ struct Launcher {
         let vmConfiguration = try configurationFactory.build(from: config)
         let virtualMachine = VZVirtualMachine(configuration: vmConfiguration)
         let delegate = VirtualMachineDelegate(pidFile: paths.pidFile, fileStore: fileStore)
+        let terminationHandler = VirtualMachineTerminationHandler(
+            virtualMachine: virtualMachine,
+            pidFile: paths.pidFile,
+            fileStore: fileStore
+        )
         virtualMachine.delegate = delegate
+        terminationHandler.start()
 
         print("starting vitalserver VM")
         virtualMachine.start { result in
@@ -135,6 +141,7 @@ struct Launcher {
         RunLoop.main.run()
         _ = configurationFactory
         _ = delegate
+        _ = terminationHandler
     }
 
     private func removeStaleRuntimeState(
@@ -211,9 +218,9 @@ struct Launcher {
             case "--cpu":
                 guard let cpu = Int(value),
                       cpu >= Constants.Defaults.minimumCPUCount,
-                      cpu <= Constants.Defaults.maximumCPUCount else {
+                      cpu <= Constants.Defaults.maximumAllowedCPUCount else {
                     throw LauncherError.missingArgument(
-                        "--cpu must be between \(Constants.Defaults.minimumCPUCount) and \(Constants.Defaults.maximumCPUCount)"
+                        "--cpu must be between \(Constants.Defaults.minimumCPUCount) and \(Constants.Defaults.maximumAllowedCPUCount)"
                     )
                 }
                 config.cpuCount = cpu
@@ -315,6 +322,7 @@ struct Launcher {
               vitalserver-vm runtime install
               vitalserver-vm runtime status
               vitalserver-vm runtime health
+              vitalserver-vm runtime guest-log-sync
               vitalserver-vm runtime watchdog
               vitalserver-vm runtime verify-bundle <bundle.tar.gz>
               vitalserver-vm runtime stage-bundle <bundle.tar.gz>

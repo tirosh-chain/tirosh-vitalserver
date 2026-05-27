@@ -1,0 +1,9 @@
+[Unit]
+Description=Watch for Tirosh VitalServer Redis backup requests
+
+[Path]
+PathExists=/mnt/tirosh/run/redis-backup.request
+Unit=tirosh-vitalserver-redis-backup.service
+
+[Install]
+WantedBy=multi-user.target

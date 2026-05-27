@@ -51,7 +51,7 @@ Hotfix, service-only update, updater bridge update는 별도 kind를 만들지 �
 | VM Image | guest OS/image-specific | Linux guest OS/base rootfs/kernel/initrd class artifact | `components.vmImage` |
 | VitalServer service | service-specific | VM 안에서 실행되는 VitalServer app/container | `components.vitalServer` |
 
-Manifest에서는 최상위 product version과 component version을 분리합니다. `helperVersion`은 support/release note 기준이고, 실제로 바뀐 하위 계층은 `components`에 기록합니다. platform별로 다르게 적용되는 bundle은 `targetPlatforms`로 제한합니다.
+Manifest에서는 최상위 product version과 component version을 분리합니다. `helperVersion`은 support/release note 기준이고, 실제로 바뀐 하위 계층은 `components`에 기록합니다. platform별로 다르게 적용되는 bundle은 `targetPlatform`으로 제한합니다.
 
 ### 핵심 원칙
 
@@ -110,7 +110,7 @@ update bundle manifest에는 updater 호환성 판단을 위한 필드를 둡니
   "channel": "stable",
   "helperVersion": "0.2.0",
   "releaseLabel": "0.2.0",
-  "targetPlatforms": ["macos-arm64"],
+  "targetPlatform": "macos-arm64",
   "minUpdaterVersion": "0.1.6",
   "components": {
     "helperUI": "0.2.0+macos.1",
@@ -137,7 +137,7 @@ update bundle manifest에는 updater 호환성 판단을 위한 필드를 둡니
 | `channel` | `stable`, `dev` 같은 update channel. 설치된 updater channel과 다르면 preflight에서 거부 |
 | `helperVersion` | 최상위 VitalServer Helper product release version. package-safe numeric version |
 | `releaseLabel` | artifact/staging/backup/installed version 표시에 쓰는 release identity. 예: `0.2.0`, `0.2.0-dev` |
-| `targetPlatforms` | 이 bundle을 적용할 수 있는 platform/build variant. 예: `macos-arm64` |
+| `targetPlatform` | 이 bundle을 적용할 수 있는 단일 platform/build variant. 예: `macos-arm64` |
 | `minUpdaterVersion` | 이 bundle을 직접 적용할 수 있는 최소 Updater version |
 | `components` | bundle이 제공하거나 변경하는 component version map |
 | `requiresGuestActivation` | `guest-deploy` 교체 후 VM 내부 activation이 필요한지 |

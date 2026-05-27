@@ -13,9 +13,13 @@ public struct RuntimeHealthInput: Equatable {
     public let proxyPort: Int
     public let hostProxyHTTP: String
     public let guestHTTP: String
+    public let guestRuntimeStatePresent: Bool
+    public let guestRuntimeStateFresh: Bool
     public let redisUIHTTP: String
     public let swaggerUIHTTP: String
     public let containerObservation: RuntimeContainerObservation?
+    public let vitalDBObservation: VitalDBObservationDocument?
+    public let vmDiagnosticErrors: [RuntimeVMError]
     public let proxyPortFailureReasons: [RuntimeFailureReason]
     public let guestBootstrapFailureReason: RuntimeFailureReason?
 
@@ -31,9 +35,13 @@ public struct RuntimeHealthInput: Equatable {
         proxyPort: Int,
         hostProxyHTTP: String,
         guestHTTP: String,
+        guestRuntimeStatePresent: Bool = true,
+        guestRuntimeStateFresh: Bool = true,
         redisUIHTTP: String,
         swaggerUIHTTP: String,
         containerObservation: RuntimeContainerObservation? = nil,
+        vitalDBObservation: VitalDBObservationDocument? = nil,
+        vmDiagnosticErrors: [RuntimeVMError] = [],
         proxyPortFailureReasons: [RuntimeFailureReason] = [],
         guestBootstrapFailureReason: RuntimeFailureReason? = nil
     ) {
@@ -48,9 +56,13 @@ public struct RuntimeHealthInput: Equatable {
         self.proxyPort = proxyPort
         self.hostProxyHTTP = hostProxyHTTP
         self.guestHTTP = guestHTTP
+        self.guestRuntimeStatePresent = guestRuntimeStatePresent
+        self.guestRuntimeStateFresh = guestRuntimeStateFresh
         self.redisUIHTTP = redisUIHTTP
         self.swaggerUIHTTP = swaggerUIHTTP
         self.containerObservation = containerObservation
+        self.vitalDBObservation = vitalDBObservation
+        self.vmDiagnosticErrors = vmDiagnosticErrors
         self.proxyPortFailureReasons = proxyPortFailureReasons
         self.guestBootstrapFailureReason = guestBootstrapFailureReason
     }
@@ -58,22 +70,11 @@ public struct RuntimeHealthInput: Equatable {
 
 public enum RuntimeHealthEvaluator {
     public static func evaluate(_ input: RuntimeHealthInput) -> RuntimeHealthSnapshot {
-        var failureReasons: [RuntimeFailureReason] = []
+        let vmErrors = evaluateVMErrors(input)
+        var failureReasons = vmErrors.map(RuntimeFailureReason.init(vmError:))
 
-        if !input.vmExecutable {
-            failureReasons.append(.missingVMBin)
-        }
         if !input.proxyExecutable {
             failureReasons.append(.missingProxyRunner)
-        }
-        if input.rootfsBase != .present {
-            failureReasons.append(.missingRootfsBase)
-        }
-        if input.vmDisk != .present {
-            failureReasons.append(.missingVMDisk)
-        }
-        if input.vmService != .loaded {
-            failureReasons.append(.vmService(input.vmService.rawValue))
         }
         if input.proxyService != .loaded {
             failureReasons.append(.proxyService(input.proxyService.rawValue))
@@ -85,16 +86,14 @@ public enum RuntimeHealthEvaluator {
             failureReasons.append(.hostProxyHTTP(input.hostProxyHTTP))
             failureReasons.append(contentsOf: input.proxyPortFailureReasons)
         }
-        if !isSuccessfulHTTPStatus(input.guestHTTP) {
-            failureReasons.append(.guestHTTP(input.guestHTTP))
-            if let guestBootstrapFailureReason = input.guestBootstrapFailureReason {
-                failureReasons.append(guestBootstrapFailureReason)
-            }
-        }
         if let containerObservation = input.containerObservation,
            !isSuccessfulHTTPStatus(containerObservation.auditProxyHTTP) {
             failureReasons.append(.auditProxyHTTP(containerObservation.auditProxyHTTP))
         }
+        failureReasons.append(contentsOf: RuntimeObservationHealthPolicy.failureReasons(
+            containerObservation: input.containerObservation,
+            vitalDBObservation: input.vitalDBObservation
+        ))
 
         return RuntimeHealthSnapshot(
             vmExecutable: input.vmExecutable,
@@ -104,6 +103,8 @@ public enum RuntimeHealthEvaluator {
             vmService: input.vmService,
             proxyService: input.proxyService,
             watchdogService: input.watchdogService,
+            vmState: vmState(input, errors: vmErrors),
+            vmErrors: vmErrors,
             vmIP: input.vmIP,
             proxyPort: input.proxyPort,
             hostProxyHTTP: input.hostProxyHTTP,
@@ -111,6 +112,7 @@ public enum RuntimeHealthEvaluator {
             redisUIHTTP: input.redisUIHTTP,
             swaggerUIHTTP: input.swaggerUIHTTP,
             containerObservation: input.containerObservation,
+            vitalDBObservation: input.vitalDBObservation,
             failureReasons: failureReasons
         )
     }
@@ -120,5 +122,105 @@ public enum RuntimeHealthEvaluator {
             return false
         }
         return code >= 200 && code < 300
+    }
+
+    private static func evaluateVMErrors(_ input: RuntimeHealthInput) -> [RuntimeVMError] {
+        var errors: [RuntimeVMError] = []
+        if !input.vmExecutable {
+            errors.append(.missingExecutable)
+        }
+        if input.rootfsBase != .present {
+            errors.append(.missingRootfsBase)
+        }
+        if input.vmDisk != .present {
+            errors.append(.missingDisk)
+        }
+        if input.vmService != .loaded {
+            errors.append(.serviceNotLoaded(input.vmService.rawValue))
+        }
+        if input.vmIP == nil {
+            errors.append(.missingIPAddress)
+        }
+        if !input.guestRuntimeStatePresent {
+            errors.append(.runtimeStateMissing)
+        }
+        if !isSuccessfulHTTPStatus(input.guestHTTP), input.guestHTTP != "missing-vm-ip" {
+            errors.append(.guestHTTP(input.guestHTTP))
+            if let guestBootstrapFailureReason = input.guestBootstrapFailureReason {
+                errors.append(vmError(for: guestBootstrapFailureReason))
+            }
+        }
+        if !input.guestRuntimeStateFresh {
+            errors.append(.runtimeStateStale)
+        }
+        return uniqueErrors(errors + input.vmDiagnosticErrors)
+    }
+
+    private static func vmError(for failureReason: RuntimeFailureReason) -> RuntimeVMError {
+        switch failureReason {
+        case .guestBootstrapMissingRuntimePackages:
+            return .guestBootstrapMissingRuntimePackages
+        case .guestBootstrapFailed:
+            return .guestBootstrapFailed
+        default:
+            return .unknown(failureReason.rawValue)
+        }
+    }
+
+    private static func vmState(_ input: RuntimeHealthInput, errors: [RuntimeVMError]) -> RuntimeVMState {
+        if errors.contains(.missingExecutable) {
+            return .notInstalled
+        }
+        if errors.contains(.missingRootfsBase)
+            || errors.contains(.missingDisk)
+            || errors.contains(where: { error in
+                if case .launchFailed = error {
+                    return true
+                }
+                return false
+            })
+            || errors.contains(.diskAttachmentInvalid)
+            || errors.contains(.guestFilesystemError)
+            || errors.contains(.guestFilesystemReadOnly)
+            || errors.contains(.guestDiskIO) {
+            return .failed
+        }
+        if errors.contains(where: { error in
+            if case .serviceNotLoaded = error {
+                return true
+            }
+            return false
+        }) {
+            return .stopped
+        }
+        if errors.contains(.runtimeStateStale) {
+            return .stale
+        }
+        if errors.contains(.runtimeStateMissing) {
+            return input.vmIP == nil ? .starting : .unreachable
+        }
+        if errors.contains(.missingIPAddress) {
+            return .starting
+        }
+        if !errors.contains(where: { error in
+            if case .guestHTTP = error {
+                return true
+            }
+            return false
+        }) {
+            return .running
+        }
+        if input.guestHTTP == "bootstrap-pending" || input.guestHTTP == "missing-vm-ip" {
+            return .starting
+        }
+        return .unreachable
+    }
+
+    private static func uniqueErrors(_ errors: [RuntimeVMError]) -> [RuntimeVMError] {
+        var result: [RuntimeVMError] = []
+        for error in errors where !result.contains(error) {
+            result.append(error)
+        }
+        return result
     }
 }

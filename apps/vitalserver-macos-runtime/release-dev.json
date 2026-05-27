@@ -3,6 +3,7 @@
   "helperVersion": "0.1.7",
   "releaseLabel": "0.1.7-dev",
   "minUpdaterVersion": "0.1.7",
+  "targetPlatform": "macos-arm64",
   "distribution": {
     "profile": "dev",
     "audience": "internal"
@@ -20,6 +21,11 @@
     "auditProxy": {
       "displayName": "Audit proxy",
       "image": "vitalserver-audit-proxy:0.1.0",
+      "version": "0.1.0"
+    },
+    "vitalDBObserver": {
+      "displayName": "VitalDB observer",
+      "image": "vitaldb-observer:0.1.0",
       "version": "0.1.0"
     },
     "redis": {
@@ -44,8 +50,8 @@
     },
     "hostProxy": {
       "displayName": "Network access",
-      "image": "nginx/1.31.0",
-      "version": "1.31.0"
+      "image": "nginx/1.31.1",
+      "version": "1.31.1"
     }
   }
 }

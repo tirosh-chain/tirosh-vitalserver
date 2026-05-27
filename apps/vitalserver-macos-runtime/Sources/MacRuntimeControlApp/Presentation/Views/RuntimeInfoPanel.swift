@@ -3,6 +3,8 @@ import SwiftUI
 
 struct RuntimeInfoPanel: View {
     @ObservedObject var viewModel: RuntimeViewModel
+    @State private var showingBundledServices = false
+    @State private var showingRuntimePaths = false
 
     var body: some View {
         ScrollView {
@@ -29,13 +31,13 @@ struct RuntimeInfoPanel: View {
                 statusRow(AppConstants.Labels.helperVersion, helperAppVersion)
                 statusRow(AppConstants.Labels.vitalServerVersion, viewModel.releaseInfo.vitalServerVersion)
                 statusRow(AppConstants.Labels.installedRuntimeVersion, viewModel.status.runtimeVersion ?? AppConstants.StatusText.unknown)
-                statusRow(AppConstants.Labels.packageIdentifier, AppConstants.Product.packageIdentifier)
+                statusRow(AppConstants.Labels.packageIdentifier, viewModel.installationInfo.packageIdentifier)
             }
         }
     }
 
     private var bundledServicesCard: some View {
-        infoCard(AppConstants.Labels.sectionBundledServices) {
+        infoDisclosureCard(AppConstants.Labels.sectionBundledServices, isExpanded: $showingBundledServices) {
             Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 10) {
                 GridRow {
                     Text(AppConstants.Labels.serviceName)
@@ -51,6 +53,8 @@ struct RuntimeInfoPanel: View {
                             .foregroundStyle(.secondary)
                         Text(service.image)
                             .font(.system(.body, design: .monospaced))
+                            .lineLimit(1)
+                            .truncationMode(.middle)
                             .textSelection(.enabled)
                         Text(service.version)
                             .fontWeight(.medium)
@@ -61,9 +65,9 @@ struct RuntimeInfoPanel: View {
     }
 
     private var runtimePathsCard: some View {
-        infoCard(AppConstants.Labels.sectionRuntimePaths) {
+        infoDisclosureCard(AppConstants.Labels.sectionRuntimePaths, isExpanded: $showingRuntimePaths) {
             Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 10) {
-                pathRow(AppConstants.Labels.appBundle, Bundle.main.bundlePath)
+                pathRow(AppConstants.Labels.appBundle, viewModel.installationInfo.appBundlePath)
                 pathRow(AppConstants.Labels.runtimeHome, viewModel.installationInfo.runtimeHomePath)
                 pathRow(AppConstants.Labels.dataDirectory, viewModel.settings.vitalFilesDirectory)
                 pathRow(AppConstants.Labels.backupDirectory, viewModel.installationInfo.backupsPath)
@@ -78,6 +82,22 @@ struct RuntimeInfoPanel: View {
 
     private var bundledServices: [RuntimeBundledServiceInfo] {
         viewModel.releaseInfo.services
+    }
+
+    private func infoDisclosureCard<Content: View>(
+        _ title: String,
+        isExpanded: Binding<Bool>,
+        @ViewBuilder content: @escaping () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            RuntimeDisclosureSection(title, isExpanded: isExpanded) {
+                content()
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(nsColor: .controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
     private func infoCard<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {

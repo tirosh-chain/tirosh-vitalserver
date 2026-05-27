@@ -8,8 +8,11 @@ final class RuntimeLifecycleCommandTests: XCTestCase {
         XCTAssertEqual(try RuntimeLifecycleCommand.parse(["install"]), .install)
         XCTAssertEqual(try RuntimeLifecycleCommand.parse(["status"]), .status)
         XCTAssertEqual(try RuntimeLifecycleCommand.parse(["health"]), .health)
+        XCTAssertEqual(try RuntimeLifecycleCommand.parse(["guest-log-sync"]), .guestLogSync)
         XCTAssertEqual(try RuntimeLifecycleCommand.parse(["watchdog"]), .watchdog)
+        XCTAssertEqual(try RuntimeLifecycleCommand.parse(["redis-backup"]), .redisBackup)
         XCTAssertEqual(try RuntimeLifecycleCommand.parse(["repair-datastore"]), .repairDatastore)
+        XCTAssertEqual(try RuntimeLifecycleCommand.parse(["repair-services"]), .repairServices)
         XCTAssertEqual(try RuntimeLifecycleCommand.parse(["start-services"]), .startServices)
         XCTAssertEqual(try RuntimeLifecycleCommand.parse(["stop-services"]), .stopServices)
         XCTAssertEqual(try RuntimeLifecycleCommand.parse(["--help"]), .help)
@@ -104,6 +107,8 @@ final class RuntimeLifecycleCommandTests: XCTestCase {
     func testUsageListsRuntimeCommands() {
         XCTAssertTrue(RuntimeLifecycleCommand.usage.contains("vitalserver-vm runtime install"))
         XCTAssertTrue(RuntimeLifecycleCommand.usage.contains("vitalserver-vm runtime apply-bundle <bundle.tar.gz>"))
+        XCTAssertTrue(RuntimeLifecycleCommand.usage.contains("vitalserver-vm runtime redis-backup"))
+        XCTAssertTrue(RuntimeLifecycleCommand.usage.contains("vitalserver-vm runtime repair-services"))
         XCTAssertTrue(RuntimeLifecycleCommand.usage.contains("vitalserver-vm runtime stop-services"))
     }
 

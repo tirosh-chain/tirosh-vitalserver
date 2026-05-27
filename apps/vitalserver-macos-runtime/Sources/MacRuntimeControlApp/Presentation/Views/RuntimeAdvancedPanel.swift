@@ -3,9 +3,18 @@ import SwiftUI
 struct RuntimeAdvancedPanel: View {
     @ObservedObject var viewModel: RuntimeViewModel
     @Binding var showingApplySettingsConfirmation: Bool
+    @Binding var showingRollbackConfirmation: Bool
+    @Binding var showingRepairProxyConfirmation: Bool
+    @Binding var showingRepairDatastoreConfirmation: Bool
+    @Binding var showingRepairRuntimeServicesConfirmation: Bool
     @Binding var showingStartServicesConfirmation: Bool
     @Binding var showingStopServicesConfirmation: Bool
     @Binding var hoveredServiceLink: String?
+    @State private var uptimeNow = Date()
+    @State private var showingServiceHealth = true
+    @State private var showingRecoveryOperations = false
+    @State private var showingNetworkOverrides = false
+    @State private var showingAdminOperations = false
     private let displayPolicy = RuntimeStatusDisplayPolicy()
 
     var body: some View {
@@ -20,11 +29,18 @@ struct RuntimeAdvancedPanel: View {
                 }
                 diagnosticsCard
                 serviceHealthCard
+                recoveryOperationsCard
                 networkOverridesCard
                 adminOperationsCard
             }
             .frame(maxWidth: 900, alignment: .leading)
             .padding(16)
+        }
+        .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { date in
+            uptimeNow = date
+        }
+        .onChange(of: viewModel.settings.proxyPort) { _ in
+            viewModel.syncAdvertisedURLWithProxyIfNeeded()
         }
     }
 
@@ -32,9 +48,9 @@ struct RuntimeAdvancedPanel: View {
         advancedCard(AppConstants.Labels.sectionDiagnostics) {
             Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 10) {
                 statusRow(AppConstants.Labels.runtimeState) { statusBadge }
-                statusRow(AppConstants.Labels.operation, viewModel.status.operation?.rawValue ?? AppConstants.StatusText.unknown)
+                statusRow(AppConstants.Labels.operation, viewModel.presentationFormatter.operationText(viewModel.status.operation))
                 statusRow(AppConstants.Labels.runtimeVersion, viewModel.status.runtimeVersion ?? AppConstants.StatusText.unknown)
-                statusRow(AppConstants.Labels.updatedAt, viewModel.status.updatedAt ?? AppConstants.StatusText.unknown)
+                statusRow(AppConstants.Labels.updatedAt, viewModel.presentationFormatter.systemTimeText(viewModel.status.updatedAt))
                 statusRow(AppConstants.Labels.vmIP, viewModel.status.vmIP ?? AppConstants.StatusText.waiting)
                 if !viewModel.status.failureReasons.isEmpty {
                     statusRow(AppConstants.Labels.failureReasons) {
@@ -48,7 +64,7 @@ struct RuntimeAdvancedPanel: View {
     }
 
     private var serviceHealthCard: some View {
-        advancedCard(AppConstants.Labels.sectionServiceHealth) {
+        advancedDisclosureCard(AppConstants.Labels.sectionServiceHealth, isExpanded: $showingServiceHealth) {
             Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 10) {
                 ForEach(serviceHealthItems) { item in
                     serviceHealthRow(item)
@@ -58,11 +74,137 @@ struct RuntimeAdvancedPanel: View {
     }
 
     private var serviceHealthItems: [RuntimeStatusDisplayPolicy.ServiceHealthItem] {
-        displayPolicy.advancedServiceHealth(status: viewModel.status, observation: viewModel.containerObservation)
+        displayPolicy.advancedServiceHealth(status: viewModel.status, observation: viewModel.containerObservation, now: uptimeNow)
+    }
+
+    private var recoveryOperationsCard: some View {
+        advancedDisclosureCard(AppConstants.Labels.sectionRecoveryOperations, isExpanded: $showingRecoveryOperations) {
+            VStack(alignment: .leading, spacing: 16) {
+                Text(AppConstants.Labels.recoveryOperationsHelp)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                recoverySubsection(AppConstants.Labels.sectionUpdateRecovery) {
+                    Text(AppConstants.Labels.updateRecoveryHelp)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if !viewModel.backups.isEmpty {
+                        Grid(alignment: .leading, horizontalSpacing: 20, verticalSpacing: 10) {
+                            settingRow(AppConstants.Labels.rollbackBackup) {
+                                Picker("", selection: $viewModel.selectedBackupPath) {
+                                    ForEach(viewModel.backups) { backup in
+                                        Text("\(backup.name) (\(viewModel.presentationFormatter.backupSizeText(backup)))")
+                                            .tag(backup.path)
+                                    }
+                                }
+                                .labelsHidden()
+                                .frame(maxWidth: 520)
+                            }
+                            if let selectedBackup = viewModel.selectedBackup {
+                                statusRow(AppConstants.Labels.selectedBackup) {
+                                    Text(selectedBackup.path)
+                                        .font(.system(.body, design: .monospaced))
+                                        .lineLimit(2)
+                                        .truncationMode(.middle)
+                                        .textSelection(.enabled)
+                                }
+                                statusRow(
+                                    AppConstants.Labels.backupSize,
+                                    viewModel.presentationFormatter.backupSizeText(selectedBackup)
+                                )
+                            }
+                        }
+                    } else if let latestBackup = viewModel.status.latestBackup {
+                        Text("\(AppConstants.Labels.latestBackup): \(latestBackup)")
+                            .font(.system(.body, design: .monospaced))
+                            .lineLimit(2)
+                            .truncationMode(.middle)
+                            .textSelection(.enabled)
+                    }
+                    HStack(spacing: 10) {
+                        Button(AppConstants.Actions.rollback) {
+                            showingRollbackConfirmation = true
+                        }
+                        .disabled(
+                            viewModel.isBusy
+                                || viewModel.selectedBackupPath.isEmpty
+                                || !viewModel.capabilities.canRollback
+                        )
+
+                        Button(AppConstants.Actions.openBackups) {
+                            viewModel.openBackups()
+                        }
+                        .disabled(!viewModel.capabilities.canOpenLocalFiles)
+                    }
+                }
+
+                Divider()
+
+                recoverySubsection(AppConstants.Labels.sectionRedisDataRecovery) {
+                    Text(AppConstants.Labels.redisDataRecoveryHelp)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    HStack(spacing: 10) {
+                        Button(AppConstants.Actions.createRedisBackup) {
+                            Task { await viewModel.createRedisBackup() }
+                        }
+                        .disabled(
+                            viewModel.isBusy
+                                || !viewModel.status.runtimeInstalled
+                                || !viewModel.capabilities.canControlRuntimeServices
+                        )
+                        Button(AppConstants.Actions.restoreRedisBackup) {}
+                            .disabled(true)
+                        Button(AppConstants.Actions.openBackups) {
+                            viewModel.openRedisBackups()
+                        }
+                        .disabled(!viewModel.capabilities.canOpenLocalFiles)
+                        Text(AppConstants.StatusText.planned)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    if viewModel.isCreatingRedisBackup {
+                        HStack(spacing: 8) {
+                            ProgressView()
+                                .controlSize(.small)
+                            Text(viewModel.operationDetail.isEmpty ? viewModel.message : viewModel.operationDetail)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                        }
+                    }
+                }
+
+                Divider()
+
+                recoverySubsection(AppConstants.Labels.sectionRuntimeRepair) {
+                    HStack(spacing: 10) {
+                        Button(AppConstants.Actions.repairRuntimeServices) {
+                            showingRepairRuntimeServicesConfirmation = true
+                        }
+                        .disabled(viewModel.isBusy || !viewModel.status.runtimeInstalled)
+
+                        Button(AppConstants.Actions.repairDatastore) {
+                            showingRepairDatastoreConfirmation = true
+                        }
+                        .disabled(viewModel.isBusy || !viewModel.status.runtimeInstalled)
+
+                        Button(AppConstants.Actions.repairProxy) {
+                            showingRepairProxyConfirmation = true
+                        }
+                        .disabled(viewModel.isBusy || !viewModel.status.runtimeInstalled)
+                    }
+                }
+            }
+        }
     }
 
     private var networkOverridesCard: some View {
-        advancedCard(AppConstants.Labels.sectionNetworkOverrides) {
+        advancedDisclosureCard(AppConstants.Labels.sectionNetworkOverrides, isExpanded: $showingNetworkOverrides) {
             VStack(alignment: .leading, spacing: 14) {
                 Text(AppConstants.Labels.advancedNetworkHelp)
                     .font(.caption)
@@ -74,16 +216,18 @@ struct RuntimeAdvancedPanel: View {
                     settingHelp(AppConstants.Labels.proxyPortHelp)
                 }
 
-                networkSubsection(AppConstants.Labels.sectionAdvertisedURL) {
-                    settingTextField(AppConstants.Labels.publicHost, text: $viewModel.settings.publicHost)
-                    settingHelp(AppConstants.Labels.publicHostHelp)
-                    settingPortField(AppConstants.Labels.publicPort, value: $viewModel.settings.publicPort)
-                    settingHelp(AppConstants.Labels.publicPortHelp)
-                    settingRow(AppConstants.Labels.advertisedURLPreview) {
-                        Text(advertisedURLPreview)
-                            .font(.system(.body, design: .monospaced))
-                            .fontWeight(.medium)
-                            .textSelection(.enabled)
+                networkSubsection(AppConstants.Labels.sectionAdvertisedURLOverride) {
+                    settingToggle(AppConstants.Labels.customAdvertisedURL, isOn: customAdvertisedURLBinding)
+                    settingHelp(AppConstants.Labels.customAdvertisedURLHelp)
+                    if viewModel.useCustomAdvertisedURL {
+                        settingTextField(AppConstants.Labels.publicHost, text: $viewModel.settings.publicHost)
+                        settingHelp(AppConstants.Labels.publicHostHelp)
+                        settingPortField(AppConstants.Labels.publicPort, value: $viewModel.settings.publicPort)
+                        settingHelp(AppConstants.Labels.publicPortHelp)
+                        advertisedURLPreviewRow(AppConstants.Labels.advertisedURLPreview, value: advertisedURLPreview)
+                    } else {
+                        advertisedURLPreviewRow(AppConstants.Labels.defaultAdvertisedURL, value: defaultAdvertisedURLPreview)
+                        settingHelp(AppConstants.Labels.defaultAdvertisedURLHelp)
                     }
                 }
 
@@ -100,7 +244,7 @@ struct RuntimeAdvancedPanel: View {
     }
 
     private var adminOperationsCard: some View {
-        advancedCard(AppConstants.Labels.sectionAdminOperations) {
+        advancedDisclosureCard(AppConstants.Labels.sectionAdminOperations, isExpanded: $showingAdminOperations) {
             VStack(alignment: .leading, spacing: 12) {
                 Text(AppConstants.Labels.adminOperationsHelp)
                     .font(.caption)
@@ -153,6 +297,17 @@ struct RuntimeAdvancedPanel: View {
         return "http://\(displayHost):\(viewModel.settings.publicPort)/"
     }
 
+    private var defaultAdvertisedURLPreview: String {
+        "http://\(AppConstants.Labels.advertisedURLSameHost):\(viewModel.settings.proxyPort)/"
+    }
+
+    private var customAdvertisedURLBinding: Binding<Bool> {
+        Binding(
+            get: { viewModel.useCustomAdvertisedURL },
+            set: { viewModel.setCustomAdvertisedURL($0) }
+        )
+    }
+
     private var canApplySettingsForCurrentConnection: Bool {
         viewModel.capabilities.canEditVMResources
             || viewModel.capabilities.canEditNetworkExposure
@@ -183,7 +338,7 @@ struct RuntimeAdvancedPanel: View {
     }
 
     private var statusBadge: some View {
-        Text(viewModel.status.runtimeState?.rawValue ?? AppConstants.StatusText.unknown)
+        Text(viewModel.presentationFormatter.runtimeStateText(viewModel.status.runtimeState))
             .font(.headline)
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
@@ -205,6 +360,22 @@ struct RuntimeAdvancedPanel: View {
         default:
             return .gray
         }
+    }
+
+    private func advancedDisclosureCard<Content: View>(
+        _ title: String,
+        isExpanded: Binding<Bool>,
+        @ViewBuilder content: @escaping () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            RuntimeDisclosureSection(title, isExpanded: isExpanded) {
+                content()
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(nsColor: .controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
     private func advancedCard<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
@@ -246,6 +417,17 @@ struct RuntimeAdvancedPanel: View {
         .padding(.top, 2)
     }
 
+    private func recoverySubsection<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title)
+                .font(.subheadline)
+                .fontWeight(.semibold)
+            VStack(alignment: .leading, spacing: 10) {
+                content()
+            }
+        }
+    }
+
     private func plannedNetworkRow(_ label: String, value: String, help: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             settingRow(label) {
@@ -259,6 +441,15 @@ struct RuntimeAdvancedPanel: View {
                     .clipShape(RoundedRectangle(cornerRadius: 6))
             }
             settingHelp(help)
+        }
+    }
+
+    private func advertisedURLPreviewRow(_ label: String, value: String) -> some View {
+        settingRow(label) {
+            Text(value)
+                .font(.system(.body, design: .monospaced))
+                .fontWeight(.medium)
+                .textSelection(.enabled)
         }
     }
 
@@ -321,7 +512,7 @@ struct RuntimeAdvancedPanel: View {
     @ViewBuilder
     private func uptimeSuffix(_ uptime: String?) -> some View {
         if let uptime {
-            Text("(uptime: \(uptime))")
+            Text(uptime)
                 .foregroundStyle(.secondary)
         }
     }

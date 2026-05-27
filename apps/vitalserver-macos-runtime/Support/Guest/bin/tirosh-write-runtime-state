@@ -7,11 +7,20 @@ import socket
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
 DEPLOY_DIR = Path(os.environ.get("TIROSH_DEPLOY_DIR", "/mnt/tirosh/deploy"))
-PROJECT_NAME = os.environ.get("TIROSH_COMPOSE_PROJECT", "vitalserver")
+PROJECT_NAME = os.environ.get(
+    "TIROSH_COMPOSE_PROJECT_NAME",
+    os.environ.get("TIROSH_COMPOSE_PROJECT", "vitalserver"),
+)
+VITALDB_OBSERVER_URL = os.environ.get(
+    "VITALDB_OBSERVER_URL",
+    "http://127.0.0.1:18084/api/v1/observations",
+)
 
 
 def first_non_loopback_ip() -> str:
@@ -100,6 +109,23 @@ def disk_usage(path: str) -> dict[str, int] | None:
     total = stats.f_frsize * stats.f_blocks
     available = stats.f_frsize * stats.f_bavail
     return {"usedBytes": max(total - available, 0), "totalBytes": total}
+
+
+def vitaldb_observation() -> dict[str, object] | None:
+    try:
+        with urllib.request.urlopen(
+            VITALDB_OBSERVER_URL,
+            timeout=5,
+        ) as response:
+            payload = response.read().decode("utf-8")
+    except (OSError, urllib.error.URLError):
+        return None
+
+    try:
+        value = json.loads(payload)
+    except json.JSONDecodeError:
+        return None
+    return value if isinstance(value, dict) else None
 
 
 def compose_services() -> list[dict[str, object]]:
@@ -220,6 +246,7 @@ def main() -> int:
                 "swaggerUIHTTP": swagger_ui_http,
                 "updatedAt": datetime.now(timezone.utc).isoformat(),
                 "vitalFilesDisk": disk_usage("/mnt/tirosh-vital-files"),
+                "vitalDBObservation": vitaldb_observation(),
             },
             indent=2,
             sort_keys=True,

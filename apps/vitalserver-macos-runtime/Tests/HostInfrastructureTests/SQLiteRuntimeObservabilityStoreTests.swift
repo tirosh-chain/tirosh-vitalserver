@@ -128,6 +128,56 @@ final class SQLiteRuntimeObservabilityStoreTests: XCTestCase {
         XCTAssertEqual(repository.recent(limit: 10).map(\.id), ["event-1", "event-2"])
     }
 
+    func testStoresAndLoadsLatestVitalDBObservation() throws {
+        let harness = try SQLiteStoreHarness()
+        defer {
+            harness.cleanup()
+        }
+        let older = VitalDBObservationDocument(
+            observedAt: "2026-05-25T00:00:00Z",
+            ready: true,
+            recorderOnlineThresholdSeconds: 120
+        )
+        let newer = VitalDBObservationDocument(
+            observedAt: "2026-05-25T00:01:00Z",
+            ready: true,
+            recorderOnlineThresholdSeconds: 120,
+            recorders: [
+                VitalDBRecorderObservation(vrcode: "VR_A", ip: "10.0.0.10", online: true),
+            ]
+        )
+
+        try harness.store.append(older)
+        try harness.store.append(newer)
+
+        XCTAssertEqual(harness.store.latestVitalDBObservation(), newer)
+    }
+
+    func testLoadsVitalDBObservationsInChronologicalOrder() throws {
+        let harness = try SQLiteStoreHarness()
+        defer {
+            harness.cleanup()
+        }
+        let older = VitalDBObservationDocument(
+            observedAt: "2026-05-25T00:00:00Z",
+            ready: true,
+            recorderOnlineThresholdSeconds: 120
+        )
+        let newer = VitalDBObservationDocument(
+            observedAt: "2026-05-25T00:01:00Z",
+            ready: true,
+            recorderOnlineThresholdSeconds: 120
+        )
+
+        try harness.store.append(newer)
+        try harness.store.append(older)
+
+        XCTAssertEqual(harness.store.vitalDBObservations().map(\.observedAt), [
+            "2026-05-25T00:00:00Z",
+            "2026-05-25T00:01:00Z",
+        ])
+    }
+
     private func event(id: String, timestamp: String, type: RuntimeEventType) -> RuntimeEventDocument {
         RuntimeEventDocument(
             id: id,

@@ -11,6 +11,8 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             runtimeInstalled: true,
             vmServiceLoaded: true,
             proxyServiceLoaded: true,
+            guestLogSyncServiceLoaded: true,
+            sleepPreventionServiceLoaded: true,
             watchdogServiceLoaded: true,
             runtimeState: .healthy,
             guestHTTP: "200",
@@ -31,11 +33,230 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
 
         let items = policy.healthDetails(status: status, observation: observation)
 
-        XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: items)?.value.uptimeText, "1h 1m 1s")
-        XCTAssertEqual(item(GeneratedRelease.hostProxyName, in: items)?.value.uptimeText, "0h 1m 0s")
-        XCTAssertEqual(item(GeneratedRelease.redisName, in: items)?.value.text, "healthy")
+        XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: items)?.value.uptimeText, "01:01:01")
+        XCTAssertEqual(item(GeneratedRelease.hostProxyName, in: items)?.value.uptimeText, "00:01:00")
+        XCTAssertEqual(item(GeneratedRelease.redisName, in: items)?.value.text, AppConstants.StatusText.healthy)
         XCTAssertEqual(item(GeneratedRelease.redisName, in: items)?.value.severity, .healthy)
-        XCTAssertEqual(item(GeneratedRelease.redisName, in: items)?.value.uptimeText, "0h 0m 5s")
+        XCTAssertEqual(item(GeneratedRelease.redisName, in: items)?.value.uptimeText, "00:00:05")
+    }
+
+    func testOverallHealthDoesNotDisplayUptime() {
+        let status = RuntimeStatus(
+            runtimeInstalled: true,
+            vmServiceLoaded: true,
+            proxyServiceLoaded: true,
+            guestLogSyncServiceLoaded: true,
+            watchdogServiceLoaded: true,
+            runtimeState: .healthy,
+            vmIP: "192.168.64.10",
+            guestHTTP: "200",
+            hostProxyHTTP: "200"
+        )
+        let observation = RuntimeContainerObservation(
+            auditProxyHTTP: "200",
+            auditProxyStatus: nil,
+            containerLogsPresent: true,
+            containerLogsBytes: 1,
+            composeServices: [
+                RuntimeContainerServiceObservation(service: "app", uptimeSeconds: 3_661),
+            ]
+        )
+
+        let value = policy.overallHealth(status: status, observation: observation)
+
+        XCTAssertEqual(value.text, AppConstants.StatusText.healthy)
+        XCTAssertNil(value.uptimeText)
+    }
+
+    func testUpdateOperationTakesPriorityOverTransientProxyFailures() {
+        let status = RuntimeStatus(
+            runtimeInstalled: true,
+            vmServiceLoaded: true,
+            proxyServiceLoaded: false,
+            watchdogServiceLoaded: true,
+            runtimeState: .updating,
+            operation: .applyBundle,
+            guestHTTP: "000failed",
+            hostProxyHTTP: nil
+        )
+
+        let overall = policy.overallHealth(status: status, observation: nil)
+        let vitalServer = policy.vitalServerAvailability(status: status, observation: nil)
+
+        XCTAssertEqual(overall.text, AppConstants.StatusText.updating)
+        XCTAssertEqual(overall.severity, .warning)
+        XCTAssertEqual(vitalServer.text, AppConstants.StatusText.updating)
+        XCTAssertEqual(vitalServer.severity, .warning)
+    }
+
+    func testActionNeededIsHiddenWhenRuntimeIsReady() {
+        let status = RuntimeStatus(
+            runtimeInstalled: true,
+            vmServiceLoaded: true,
+            proxyServiceLoaded: true,
+            guestLogSyncServiceLoaded: true,
+            watchdogServiceLoaded: true,
+            runtimeState: .healthy,
+            vmIP: "192.168.64.10",
+            guestHTTP: "200",
+            hostProxyHTTP: "200"
+        )
+
+        XCTAssertNil(policy.actionNeeded(status: status))
+    }
+
+    func testActionNeededUsesSimpleUserFacingRuntimeRepairAction() {
+        let status = RuntimeStatus(
+            runtimeInstalled: true,
+            vmServiceLoaded: true,
+            proxyServiceLoaded: true,
+            watchdogServiceLoaded: true,
+            runtimeState: .degraded,
+            guestHTTP: "failed",
+            hostProxyHTTP: "failed",
+            failureReasons: [.guestRuntimeStateStale]
+        )
+
+        let item = policy.actionNeeded(status: status)
+
+        XCTAssertEqual(item?.title, AppConstants.StatusText.vitalServerUnavailable)
+        XCTAssertEqual(item?.recommendedAction, AppConstants.Actions.repairRuntimeServices)
+        XCTAssertEqual(item?.severity, .warning)
+    }
+
+    func testActionNeededPrefersProxyRepairForProxyPortConflict() {
+        let status = RuntimeStatus(
+            runtimeInstalled: true,
+            vmServiceLoaded: true,
+            proxyServiceLoaded: true,
+            watchdogServiceLoaded: true,
+            runtimeState: .degraded,
+            guestHTTP: "200",
+            hostProxyHTTP: "failed",
+            failureReasons: [.proxyPortInUse(port: 80, listeners: "nginx-1234")]
+        )
+
+        let item = policy.actionNeeded(status: status)
+
+        XCTAssertEqual(item?.title, AppConstants.StatusText.vitalServerUnavailable)
+        XCTAssertEqual(item?.recommendedAction, AppConstants.Actions.repairProxy)
+        XCTAssertEqual(item?.severity, .critical)
+    }
+
+    func testStatusDisplayTextIsStandardizedAcrossSummaryAndDetails() {
+        let status = RuntimeStatus(
+            runtimeInstalled: true,
+            vmServiceLoaded: true,
+            proxyServiceLoaded: true,
+            guestLogSyncServiceLoaded: true,
+            watchdogServiceLoaded: true,
+            runtimeState: .healthy,
+            vmState: .running,
+            guestHTTP: "200",
+            hostProxyHTTP: "200"
+        )
+        let observation = RuntimeContainerObservation(
+            auditProxyHTTP: "200",
+            auditProxyStatus: nil,
+            containerLogsPresent: true,
+            containerLogsBytes: 1,
+            composeServices: [
+                RuntimeContainerServiceObservation(service: "redis", state: "running", health: "healthy"),
+            ]
+        )
+
+        let summary = policy.vitalServerAvailability(status: status, observation: observation)
+        let details = policy.healthDetails(status: status, observation: observation)
+
+        XCTAssertEqual(summary.text, AppConstants.StatusText.reachable)
+        XCTAssertEqual(item(AppConstants.Labels.runtimeInstallation, in: details)?.value.text, AppConstants.StatusText.installed)
+        XCTAssertEqual(item(AppConstants.Labels.vmState, in: details)?.value.text, AppConstants.StatusText.running)
+        XCTAssertEqual(item(AppConstants.Labels.vmState, in: details)?.value.severity, .healthy)
+        XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: details)?.value.text, AppConstants.StatusText.reachable)
+        XCTAssertEqual(item(GeneratedRelease.hostProxyName, in: details)?.value.text, AppConstants.StatusText.reachable)
+        XCTAssertEqual(item(GeneratedRelease.redisName, in: details)?.value.text, AppConstants.StatusText.healthy)
+    }
+
+    func testUptimeUsesDockerStartedAtWithNanosecondFraction() {
+        let status = RuntimeStatus(
+            runtimeInstalled: true,
+            vmServiceLoaded: true,
+            proxyServiceLoaded: true,
+            watchdogServiceLoaded: true,
+            runtimeState: .healthy,
+            guestHTTP: "200",
+            hostProxyHTTP: "200"
+        )
+        let observation = RuntimeContainerObservation(
+            auditProxyHTTP: "200",
+            auditProxyStatus: nil,
+            containerLogsPresent: true,
+            containerLogsBytes: 1,
+            composeServices: [
+                RuntimeContainerServiceObservation(
+                    service: "app",
+                    startedAt: "2026-05-26T04:35:35.123456789Z",
+                    uptimeSeconds: 1
+                ),
+            ]
+        )
+        let now = ISO8601DateFormatter().date(from: "2026-05-26T04:35:40Z")!
+
+        let items = policy.healthDetails(status: status, observation: observation, now: now)
+
+        XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: items)?.value.uptimeText, "00:00:04")
+    }
+
+    func testUptimeFallsBackToObservedAtWhenStartedAtIsMissing() {
+        let status = RuntimeStatus(
+            runtimeInstalled: true,
+            vmServiceLoaded: true,
+            proxyServiceLoaded: true,
+            watchdogServiceLoaded: true,
+            runtimeState: .healthy,
+            guestHTTP: "200",
+            hostProxyHTTP: "200"
+        )
+        let observation = RuntimeContainerObservation(
+            auditProxyHTTP: "200",
+            auditProxyStatus: nil,
+            runtimeStateUpdatedAt: "2026-05-26T04:35:35Z",
+            containerLogsPresent: true,
+            containerLogsBytes: 1,
+            composeServices: [
+                RuntimeContainerServiceObservation(service: "app", uptimeSeconds: 10),
+            ]
+        )
+        let now = ISO8601DateFormatter().date(from: "2026-05-26T04:35:40Z")!
+
+        let items = policy.healthDetails(status: status, observation: observation, now: now)
+
+        XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: items)?.value.uptimeText, "00:00:15")
+    }
+
+    func testUptimeDisplaysDaysBeforeClockDuration() {
+        let status = RuntimeStatus(
+            runtimeInstalled: true,
+            vmServiceLoaded: true,
+            proxyServiceLoaded: true,
+            watchdogServiceLoaded: true,
+            runtimeState: .healthy,
+            guestHTTP: "200",
+            hostProxyHTTP: "200"
+        )
+        let observation = RuntimeContainerObservation(
+            auditProxyHTTP: "200",
+            auditProxyStatus: nil,
+            containerLogsPresent: true,
+            containerLogsBytes: 1,
+            composeServices: [
+                RuntimeContainerServiceObservation(service: "app", uptimeSeconds: 183_845),
+            ]
+        )
+
+        let items = policy.healthDetails(status: status, observation: observation)
+
+        XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: items)?.value.uptimeText, "2d 03:04:05")
     }
 
     func testAdvancedServiceHealthOwnsLabelsActionsAndHTTPStatusDisplay() {
@@ -43,6 +264,8 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             runtimeInstalled: true,
             vmServiceLoaded: true,
             proxyServiceLoaded: true,
+            guestLogSyncServiceLoaded: true,
+            sleepPreventionServiceLoaded: true,
             watchdogServiceLoaded: true,
             guestHTTP: "200",
             hostProxyHTTP: "503",
@@ -65,11 +288,79 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         let items = policy.advancedServiceHealth(status: status, observation: observation)
 
         XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: items)?.action, .openVitalServer)
-        XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: items)?.value.uptimeText, "0h 0m 1s")
+        XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: items)?.value.uptimeText, "00:00:01")
         XCTAssertEqual(item(GeneratedRelease.hostProxyName, in: items)?.value.text, AppConstants.StatusText.waiting)
         XCTAssertEqual(item(GeneratedRelease.hostProxyName, in: items)?.httpStatus, "503")
+        XCTAssertEqual(item(AppConstants.Labels.guestLogSyncService, in: items)?.value.text, AppConstants.StatusText.running)
+        XCTAssertEqual(item(AppConstants.Labels.sleepPreventionService, in: items)?.value.text, AppConstants.StatusText.running)
         XCTAssertEqual(item(GeneratedRelease.redisUIName, in: items)?.action, .openRedisUI)
         XCTAssertEqual(item(GeneratedRelease.swaggerUIName, in: items)?.action, .openSwagger)
+    }
+
+    func testServiceAndReachabilityFallbacksUseReducedStatusVocabulary() {
+        let status = RuntimeStatus(
+            runtimeInstalled: true,
+            vmServiceLoaded: false,
+            proxyServiceLoaded: false,
+            guestLogSyncServiceLoaded: false,
+            watchdogServiceLoaded: false,
+            guestHTTP: "failed",
+            hostProxyHTTP: nil
+        )
+
+        let healthDetails = policy.healthDetails(status: status, observation: nil)
+        let serviceHealth = policy.advancedServiceHealth(status: status, observation: nil)
+
+        XCTAssertEqual(item(AppConstants.Labels.watchdog, in: healthDetails)?.value.text, AppConstants.StatusText.stopped)
+        XCTAssertEqual(item(AppConstants.Labels.vmService, in: serviceHealth)?.value.text, AppConstants.StatusText.stopped)
+        XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: serviceHealth)?.value.text, AppConstants.StatusText.unreachable)
+        XCTAssertEqual(item(GeneratedRelease.hostProxyName, in: serviceHealth)?.value.text, AppConstants.StatusText.waiting)
+    }
+
+    func testVMStateDisplayMapsRuntimeStatesToOperatorSeverity() {
+        XCTAssertEqual(policy.vmStateValue(.running, runtimeInstalled: true).text, AppConstants.StatusText.running)
+        XCTAssertEqual(policy.vmStateValue(.running, runtimeInstalled: true).severity, .healthy)
+        XCTAssertEqual(policy.vmStateValue(.starting, runtimeInstalled: true).severity, .warning)
+        XCTAssertEqual(policy.vmStateValue(.stale, runtimeInstalled: true).severity, .warning)
+        XCTAssertEqual(policy.vmStateValue(.unreachable, runtimeInstalled: true).severity, .critical)
+        XCTAssertEqual(policy.vmStateValue(nil, runtimeInstalled: false).text, AppConstants.StatusText.notInstalled)
+    }
+
+    func testHealthDetailsDisplayVMErrorsWhenPresent() {
+        let status = RuntimeStatus(
+            runtimeInstalled: true,
+            vmServiceLoaded: true,
+            proxyServiceLoaded: true,
+            watchdogServiceLoaded: true,
+            vmState: .stale,
+            vmErrors: [.runtimeStateStale, .diskAttachmentInvalid, .guestDiskIO, .guestHTTP("failed")]
+        )
+
+        let items = policy.healthDetails(status: status, observation: nil)
+
+        XCTAssertEqual(
+            item(AppConstants.Labels.vmErrors, in: items)?.value.text,
+            "Guest runtime state stale, VM disk attachment invalid, Guest disk I/O error, Guest HTTP failed"
+        )
+        XCTAssertEqual(item(AppConstants.Labels.vmErrors, in: items)?.value.severity, .critical)
+    }
+
+    func testHealthDetailsDisplayDomainFailureReasonsWhenPresent() {
+        let status = RuntimeStatus(
+            runtimeInstalled: true,
+            vmServiceLoaded: true,
+            proxyServiceLoaded: true,
+            watchdogServiceLoaded: true,
+            failureReasons: [.hostProxyHTTP("503"), .guestRuntimeStateStale]
+        )
+
+        let items = policy.healthDetails(status: status, observation: nil)
+
+        XCTAssertEqual(
+            item(AppConstants.Labels.failureReasons, in: items)?.value.text,
+            "Host proxy HTTP 503 (Restart host proxy service), Guest runtime state stale (Restart guest agent)"
+        )
+        XCTAssertEqual(item(AppConstants.Labels.failureReasons, in: items)?.value.severity, .critical)
     }
 
     func testRecorderSummaryOwnsRecorderDisplayText() {
@@ -96,11 +387,56 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             containerLogsBytes: 1
         )
 
-        let summary = policy.recorderSummary(observation: observation)
+        let status = RuntimeStatus(vitalDBObservation: VitalDBObservationDocument(
+            observedAt: "2026-05-24T02:00:00Z",
+            ready: true,
+            recorderOnlineThresholdSeconds: 120,
+            recorders: [
+                VitalDBRecorderObservation(
+                    vrcode: "VR_OBSERVED",
+                    ip: "192.168.64.20",
+                    lastSeenAt: "2026-05-24T02:00:00Z",
+                    online: true
+                ),
+                VitalDBRecorderObservation(
+                    vrcode: "VR_OBSERVED",
+                    ip: "192.168.64.19",
+                    lastSeenAt: "2026-05-24T01:59:00Z",
+                    online: true
+                ),
+                VitalDBRecorderObservation(
+                    vrcode: "VR_STALE",
+                    ip: "192.168.64.21",
+                    lastSeenAt: "2026-05-24T00:00:00Z",
+                    online: false,
+                    stale: true
+                ),
+            ],
+            beds: [
+                VitalDBBedObservation(bedID: "bed-1", online: true),
+            ],
+            anomalies: [
+                VitalDBAnomalyObservation(
+                    id: "stale-recorder:VR_STALE",
+                    kind: .staleRecorder,
+                    severity: .warning,
+                    observedAt: "2026-05-24T02:00:00Z",
+                    subject: "VR_STALE",
+                    message: "recorder is stale"
+                ),
+            ]
+        ))
+
+        let summary = policy.recorderSummary(status: status, observation: observation)
 
         XCTAssertEqual(summary.activeConnections, "2")
         XCTAssertEqual(summary.knownRecorders, "2")
-        XCTAssertEqual(summary.latestRecorder, "VR_NEW 192.168.64.10")
+        XCTAssertEqual(summary.onlineRecorders, "1")
+        XCTAssertEqual(summary.staleRecorders, "1")
+        XCTAssertEqual(summary.knownBeds, "1")
+        XCTAssertEqual(summary.anomalies, "1")
+        XCTAssertEqual(summary.latestRecorder, "VR_OBSERVED 192.168.64.20")
+        XCTAssertEqual(summary.observedAt, "2026-05-24T02:00:00Z")
     }
 
     private func item(

@@ -9,6 +9,7 @@ final class RuntimeReleaseInfoGeneratedTests: XCTestCase {
         XCTAssertEqual(services.map(\.name), [
             GeneratedRelease.vitalServerName,
             GeneratedRelease.auditProxyName,
+            GeneratedRelease.vitalDBObserverName,
             GeneratedRelease.redisName,
             GeneratedRelease.redisUIName,
             GeneratedRelease.swaggerUIName,

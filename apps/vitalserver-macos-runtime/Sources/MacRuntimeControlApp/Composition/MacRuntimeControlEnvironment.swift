@@ -1,5 +1,6 @@
 import Foundation
 import MacHostRuntimeAdapter
+import RuntimeControl
 import RuntimeControlAPI
 
 @MainActor
@@ -19,15 +20,19 @@ final class MacRuntimeControlEnvironment: ObservableObject {
     }
 
     static func live() -> MacRuntimeControlEnvironment {
-        let client = MacHostRuntimeClient(releaseInfo: .generated)
+        let readWorker = MacHostRuntimeReadWorker(releaseInfo: .generated)
+        let commandWorker = MacHostRuntimeCommandWorker()
+        let client = MacHostRuntimeClient(releaseInfo: .generated, commandWorker: commandWorker)
         let viewModel = RuntimeViewModel(
             controlClient: client,
             hostClient: client,
+            readWorker: readWorker,
+            initialSettings: RuntimeSettings(),
             healthNotifications: HealthNotificationCenter(),
             nativeShell: SystemRuntimeNativeShell()
         )
         let apiServer = shouldStartDevelopmentAPIServer()
-            ? makeDevelopmentAPIServer(client: client)
+            ? makeDevelopmentAPIServer(client: client, readWorker: readWorker)
             : nil
         return MacRuntimeControlEnvironment(viewModel: viewModel, apiServer: apiServer)
     }
@@ -36,8 +41,15 @@ final class MacRuntimeControlEnvironment: ObservableObject {
         testEnabled
     }
 
-    private static func makeDevelopmentAPIServer(client: MacHostRuntimeClient) -> RuntimeControlLocalHTTPServer {
-        let apiHandler = RuntimeControlClientAPIReadHandler(client: client, hostClient: client)
+    private static func makeDevelopmentAPIServer(
+        client: MacHostRuntimeClient,
+        readWorker: MacHostRuntimeReadWorker
+    ) -> RuntimeControlLocalHTTPServer {
+        let apiHandler = MacRuntimeControlAPIHandler(
+            commandClient: client,
+            hostClient: client,
+            readWorker: readWorker
+        )
         let apiRouter = RuntimeControlAPIRouter(
             handler: apiHandler,
             authorization: RuntimeControlAPIAuthorization(token: AppConstants.RuntimeControlAPI.developmentToken)

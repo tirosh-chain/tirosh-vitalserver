@@ -14,13 +14,43 @@ pid_file="${nginx_prefix}/logs/nginx.pid"
 
 mkdir -p "${nginx_prefix}/logs"
 
+timestamp() {
+  date -u +"%Y-%m-%dT%H:%M:%SZ"
+}
+
+log_out() {
+  printf "[%s] %s\n" "$(timestamp)" "$*"
+}
+
+log_err() {
+  printf "[%s] %s\n" "$(timestamp)" "$*" >&2
+}
+
 nginx_is_running() {
   [ -s "${pid_file}" ] && kill -0 "$(cat "${pid_file}")" >/dev/null 2>&1
 }
 
 stop_nginx() {
-  if nginx_is_running; then
+  local pid=""
+
+  if [ -s "${pid_file}" ]; then
+    pid="$(cat "${pid_file}" 2>/dev/null || true)"
+  fi
+  if [ -n "${pid}" ] && kill -0 "${pid}" >/dev/null 2>&1; then
     "${nginx_bin}" -p "${nginx_prefix}" -c "${config}" -s quit >/dev/null 2>&1 || true
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+      if ! kill -0 "${pid}" >/dev/null 2>&1; then
+        break
+      fi
+      sleep 0.2
+    done
+    if kill -0 "${pid}" >/dev/null 2>&1; then
+      log_err "nginx did not stop gracefully; sending TERM pid=${pid}"
+      kill -TERM "${pid}" >/dev/null 2>&1 || true
+    fi
+  fi
+  if ! nginx_is_running; then
+    rm -f "${pid_file}"
   fi
 }
 
@@ -41,16 +71,16 @@ apply_config() {
 
   if nginx_is_running; then
     "${nginx_bin}" -p "${nginx_prefix}" -c "${config}" -s reload
-    printf "reloaded proxy: http://localhost:%s -> http://%s\n" "${proxy_port}" "${upstream}"
+    log_out "reloaded proxy: http://localhost:${proxy_port} -> http://${upstream}"
   else
     if command -v lsof >/dev/null 2>&1; then
       listeners="$(lsof -nP -iTCP:"${proxy_port}" -sTCP:LISTEN 2>/dev/null | awk 'NR>1 {print $1 "/" $2}' | sort -u | paste -sd, - || true)"
       if [ -n "${listeners}" ]; then
-        printf "proxy port %s is already used by: %s\n" "${proxy_port}" "${listeners}" >&2
+        log_err "proxy port ${proxy_port} is already used by: ${listeners}"
       fi
     fi
     "${nginx_bin}" -p "${nginx_prefix}" -c "${config}"
-    printf "started proxy: http://localhost:%s -> http://%s\n" "${proxy_port}" "${upstream}"
+    log_out "started proxy: http://localhost:${proxy_port} -> http://${upstream}"
   fi
 }
 
@@ -103,6 +133,11 @@ upstream_ready() {
     && curl -fsS -I --max-time 3 "http://${upstream}/" >/dev/null 2>&1
 }
 
+proxy_ready() {
+  command -v curl >/dev/null 2>&1 \
+    && curl -fsS -I --max-time 3 "http://127.0.0.1:${proxy_port}/ready" >/dev/null 2>&1
+}
+
 trap stop_nginx EXIT INT TERM
 
 last_upstream=""
@@ -115,12 +150,12 @@ while true; do
 
     if ! successful_http_status "${guest_http}"; then
       if nginx_is_running; then
-        printf "VM runtime bootstrap is not ready; stopping proxy upstream=%s guestHTTP=%s\n" "${upstream}" "${guest_http:-missing}" >&2
+        log_err "VM runtime bootstrap is not ready; stopping proxy upstream=${upstream} guestHTTP=${guest_http:-missing}"
         stop_nginx
       fi
       wait_key="bootstrap:${upstream}:${guest_http:-missing}"
       if [ "${last_wait_message}" != "${wait_key}" ]; then
-        printf "waiting for VM runtime bootstrap: upstream=http://%s/ guestHTTP=%s\n" "${upstream}" "${guest_http:-missing}" >&2
+        log_err "waiting for VM runtime bootstrap: upstream=http://${upstream}/ guestHTTP=${guest_http:-missing}"
         last_wait_message="${wait_key}"
       fi
       last_upstream=""
@@ -129,24 +164,31 @@ while true; do
         apply_config "${upstream}"
         last_upstream="${upstream}"
       fi
-      last_wait_message=""
+      if proxy_ready; then
+        last_wait_message=""
+      else
+        log_err "host proxy readiness failed after nginx configuration; restarting nginx upstream=${upstream}"
+        stop_nginx
+        last_upstream=""
+        last_wait_message="proxy-readiness:${upstream}"
+      fi
     else
       if nginx_is_running; then
-        printf "VM upstream is not ready; stopping proxy upstream=%s\n" "${upstream}" >&2
+        log_err "VM upstream is not ready; stopping proxy upstream=${upstream}"
         stop_nginx
       fi
       if [ "${last_wait_message}" != "${upstream}" ]; then
-        printf "waiting for VM upstream readiness: http://%s/\n" "${upstream}" >&2
+        log_err "waiting for VM upstream readiness: http://${upstream}/"
         last_wait_message="${upstream}"
       fi
       last_upstream=""
     fi
   elif nginx_is_running; then
-    printf "VM runtime state is missing; stopping proxy with stale upstream: %s\n" "${state_file}" >&2
+    log_err "VM runtime state is missing; stopping proxy with stale upstream: ${state_file}"
     stop_nginx
     last_upstream=""
   elif [ "${last_wait_message}" != "missing-state" ]; then
-    printf "waiting for VM runtime state: %s\n" "${state_file}" >&2
+    log_err "waiting for VM runtime state: ${state_file}"
     last_wait_message="missing-state"
   fi
 

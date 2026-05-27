@@ -46,4 +46,17 @@ final class RuntimeProcessMessageFormatterTests: XCTestCase {
             "Command failed\n\nfailed"
         )
     }
+
+    func testDoesNotDuplicateTitleWhenProcessOutputStartsWithSameTitle() {
+        let result = RuntimeCommandResult(
+            exitCode: 0,
+            stdout: "Redis backup completed.\narchive: /backups/redis.tar.gz\n",
+            stderr: ""
+        )
+
+        XCTAssertEqual(
+            formatter.message(title: "Redis backup completed.", result: result),
+            "Redis backup completed.\narchive: /backups/redis.tar.gz"
+        )
+    }
 }

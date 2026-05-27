@@ -24,10 +24,10 @@ struct RuntimeManagedOperationGuard {
         guard let status = statusReporter.loadStatus() else {
             return nil
         }
-        guard status.status == .updating || status.status == .recovering else {
+        guard status.status == .installing || status.status == .updating || status.status == .recovering else {
             return nil
         }
-        guard [.applyBundle, .activateGuestUpdate, .rollback].contains(status.operation) else {
+        guard [.install, .applyBundle, .activateGuestUpdate, .rollback].contains(status.operation) else {
             return nil
         }
         guard let updatedAt = ISO8601DateFormatter().date(from: status.updatedAt) else {

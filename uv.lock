@@ -10,7 +10,7 @@ resolution-markers = [
 members = [
     "tirosh-vitalserver",
     "tirosh-vitalserver-testkit",
-    "tirosh-vitalserver-vm-build",
+    "tirosh-vitalserver-devtools",
 ]
 
 [[package]]
@@ -428,7 +428,7 @@ source = { virtual = "." }
 dependencies = [
     { name = "pydantic-settings" },
     { name = "tirosh-vitalserver-testkit" },
-    { name = "tirosh-vitalserver-vm-build" },
+    { name = "tirosh-vitalserver-devtools" },
 ]
 
 [package.dev-dependencies]
@@ -442,7 +442,7 @@ dev = [
 requires-dist = [
     { name = "pydantic-settings", specifier = ">=2.14.1" },
     { name = "tirosh-vitalserver-testkit", editable = "packages/vitalserver-testkit" },
-    { name = "tirosh-vitalserver-vm-build", editable = "packages/vm-build" },
+    { name = "tirosh-vitalserver-devtools", editable = "packages/vitalserver-devtools" },
 ]
 
 [package.metadata.requires-dev]
@@ -468,9 +468,9 @@ requires-dist = [
 ]
 
 [[package]]
-name = "tirosh-vitalserver-vm-build"
+name = "tirosh-vitalserver-devtools"
 version = "0.1.0"
-source = { editable = "packages/vm-build" }
+source = { editable = "packages/vitalserver-devtools" }
 
 [[package]]
 name = "typing-extensions"

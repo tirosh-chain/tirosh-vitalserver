@@ -1,4 +1,5 @@
 import Foundation
+import Contracts
 import RuntimeControl
 @testable import MacHostRuntimeAdapter
 @testable import MacRuntimeControlApp
@@ -6,6 +7,21 @@ import XCTest
 
 @MainActor
 final class RuntimeLogExporterTests: XCTestCase {
+    func testDefaultExportFallbacksIncludeDiagnosticStateFiles() {
+        let destinations = Set(RuntimeLogExportFallback.defaultItems().map(\.relativeDestination))
+
+        XCTAssertTrue(destinations.contains("diagnostics/status/\(RuntimeFileNames.runtimeStatus)"))
+        XCTAssertTrue(destinations.contains("diagnostics/status/\(RuntimeFileNames.runtimeEvents)"))
+        XCTAssertTrue(destinations.contains("diagnostics/status/\(RuntimeFileNames.runtimeObservabilityDB)"))
+        XCTAssertTrue(destinations.contains("diagnostics/guest/\(RuntimeFileNames.runtimeState)"))
+        XCTAssertTrue(destinations.contains("diagnostics/guest/\(RuntimeFileNames.vmIP)"))
+        XCTAssertTrue(destinations.contains("diagnostics/runtime/vm-config.json"))
+        XCTAssertTrue(destinations.contains("diagnostics/runtime/runtime-version.json"))
+        XCTAssertTrue(destinations.contains("diagnostics/guest/runtime-config.json"))
+        XCTAssertTrue(destinations.contains("diagnostics/host/com.tirosh.vitalserver-proxy.plist"))
+        XCTAssertTrue(destinations.contains("diagnostics/host/vitalserver-nginx.conf"))
+    }
+
     func testExportRefreshesCollectionAndIncludesFallbackGuestLogs() async throws {
         let root = try temporaryDirectory()
         let guestRun = root.appendingPathComponent("vm/data/run", isDirectory: true)
@@ -32,6 +48,7 @@ final class RuntimeLogExporterTests: XCTestCase {
         var archivedBootstrapLog: String?
         var archivedContainerLog: String?
         var archivedRotatedContainerLog: String?
+        var archivedManifest: RuntimeLogExportManifest?
         let exporter = MacHostRuntimeLogExporter(
             logCollector: collector,
             productLogsDirectory: productLogs,
@@ -65,6 +82,11 @@ final class RuntimeLogExporterTests: XCTestCase {
                 archivedRotatedContainerLog = try? String(
                     contentsOf: bundleRoot.appendingPathComponent("guest/container-logs.log.1")
                 )
+                if let manifestData = try? Data(
+                    contentsOf: bundleRoot.appendingPathComponent("diagnostics/export-manifest.json")
+                ) {
+                    archivedManifest = try? JSONDecoder().decode(RuntimeLogExportManifest.self, from: manifestData)
+                }
                 try? "archive".write(to: temporaryArchive, atomically: true, encoding: .utf8)
                 return RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "")
             }
@@ -78,6 +100,8 @@ final class RuntimeLogExporterTests: XCTestCase {
         XCTAssertEqual(archivedBootstrapLog, "bootstrap")
         XCTAssertEqual(archivedContainerLog, "containers")
         XCTAssertEqual(archivedRotatedContainerLog, "rotated")
+        XCTAssertEqual(archivedManifest?.fallbackItems.count, 2)
+        XCTAssertEqual(archivedManifest?.fallbackItems.map(\.included), [true, true])
     }
 
     func testExportDoesNotOverwriteCentralLogsWithFallbackSource() async throws {
@@ -134,7 +158,7 @@ final class RuntimeLogExporterTests: XCTestCase {
     }
 }
 
-private final class FakeRuntimeLogCollectorForExport: RuntimeLogCollecting {
+private final class FakeRuntimeLogCollectorForExport: RuntimeLogCollecting, @unchecked Sendable {
     private(set) var refreshCount = 0
 
     func refreshLogCollection() {

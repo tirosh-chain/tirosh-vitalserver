@@ -1,6 +1,7 @@
 import Foundation
 import RuntimeControl
 import Core
+import Contracts
 
 @MainActor
 public struct RuntimeControlClientAPIReadHandler: RuntimeControlAPIReadHandler {
@@ -25,6 +26,14 @@ public struct RuntimeControlClientAPIReadHandler: RuntimeControlAPIReadHandler {
         client.loadRuntimeEvents(query: query)
     }
 
+    public func loadVitalDBObservation() async throws -> VitalDBObservationDocument? {
+        client.loadVitalDBObservation()
+    }
+
+    public func loadVitalDBRecorders() async throws -> RuntimeVitalRecorderHistory {
+        client.loadVitalDBRecorders()
+    }
+
     public func loadHealthStatus() async throws -> RuntimeStatus {
         let settings = client.loadSettings()
         return await client.loadHealthStatus(settings: settings)
@@ -47,12 +56,32 @@ public struct RuntimeControlClientAPIReadHandler: RuntimeControlAPIReadHandler {
             throw RuntimeControlAPIReadHandlerError.hostAffordanceUnavailable
         }
         return RuntimeLogTextResponse(
-            text: hostClient.logText(
+            text: await hostClient.loadLogText(
                 sourceID: request.source,
                 helperMessage: request.helperMessage,
                 lineLimit: request.lineLimit
             )
         )
+    }
+
+    public func loadBackups() async throws -> [RuntimeBackup] {
+        guard let hostClient else {
+            throw RuntimeControlAPIReadHandlerError.hostAffordanceUnavailable
+        }
+        let settings = client.loadSettings()
+        let status = client.loadStatus(settings: settings)
+        return hostClient.loadBackups(latestBackupPath: status.latestBackup)
+    }
+
+    public func loadRedisBackups() async throws -> [RuntimeBackup] {
+        guard let hostClient else {
+            throw RuntimeControlAPIReadHandlerError.hostAffordanceUnavailable
+        }
+        return hostClient.loadRedisBackups()
+    }
+
+    public func createRedisBackup() async throws -> RuntimeControlCommandResponse {
+        RuntimeControlCommandResponse(result: try await client.createRedisBackup())
     }
 }
 

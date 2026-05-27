@@ -52,7 +52,7 @@ struct RuntimeUpdatePanel: View {
                 Button(AppConstants.Actions.chooseBundle) {
                     Task { await viewModel.chooseUpdateBundle() }
                 }
-                .disabled(viewModel.isBusy || !viewModel.capabilities.canApplyBundle)
+                .disabled(viewModel.shouldShowUpdateProgress || !viewModel.capabilities.canApplyBundle)
             }
         }
     }
@@ -78,7 +78,7 @@ struct RuntimeUpdatePanel: View {
                     Task { await viewModel.verifySelectedBundle() }
                 }
                 .disabled(
-                    viewModel.isBusy
+                    viewModel.shouldShowUpdateProgress
                         || viewModel.selectedBundlePath.isEmpty
                         || !viewModel.capabilities.canApplyBundle
                 )
@@ -94,7 +94,7 @@ struct RuntimeUpdatePanel: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 applyBundleActionRow
-                if viewModel.isBusy {
+                if viewModel.shouldShowUpdateProgress {
                     Text(AppConstants.Labels.updateProgressLog)
                         .font(.caption)
                         .fontWeight(.medium)
@@ -110,17 +110,17 @@ struct RuntimeUpdatePanel: View {
                 showingUpdateConfirmation = true
             }
             .disabled(
-                viewModel.isBusy
+                viewModel.shouldShowUpdateProgress
                     || viewModel.selectedBundlePath.isEmpty
                     || !viewModel.selectedBundleVerified
                     || !viewModel.status.runtimeInstalled
                     || !viewModel.capabilities.canApplyBundle
             )
 
-            if viewModel.isBusy {
+            if viewModel.shouldShowUpdateProgress {
                 ProgressView()
                     .controlSize(.small)
-                Text(viewModel.operationDetail.isEmpty ? viewModel.message : viewModel.operationDetail)
+                Text(viewModel.updateProgressMessage)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.tail)

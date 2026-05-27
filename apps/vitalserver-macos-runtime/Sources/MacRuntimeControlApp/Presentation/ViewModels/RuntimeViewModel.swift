@@ -1,4 +1,5 @@
 import Foundation
+import MacHostRuntimeAdapter
 import RuntimeControl
 import Contracts
 
@@ -18,14 +19,19 @@ final class RuntimeViewModel: ObservableObject {
     @Published var logLineLimit = 500
     @Published var selectedLogSource = RuntimeLogSource.helperMessage
     @Published var logStreaming = true
+    @Published var useCustomAdvertisedURL = false
     @Published var isBusy = false
+    @Published var isCreatingRedisBackup = false
+    var isRefreshingLogs = false
     @Published var releaseInfo = RuntimeReleaseInfo.generated
     @Published var installationInfo = RuntimeInstallInfo()
     @Published var runtimeEvents = RuntimeEventHistory(events: [])
+    @Published var vitalRecorders = RuntimeVitalRecorderHistory()
     @Published var containerObservation: RuntimeContainerObservation?
 
     let controlClient: any RuntimeControlClient
     let hostClient: any RuntimeHostClient
+    private let readWorker: MacHostRuntimeReadWorker?
     private let healthNotifications: any HealthNotifying
     private let healthNotificationCoordinator: RuntimeHealthNotificationCoordinator
     let nativeShell: any RuntimeNativeShell
@@ -33,19 +39,25 @@ final class RuntimeViewModel: ObservableObject {
     let processMessageFormatter = RuntimeProcessMessageFormatter()
     let presentationFormatter = RuntimePresentationFormatter()
     private let settingsValidator = RuntimeSettingsValidator()
+    private let vitalFilesDirectoryPolicy = RuntimeVitalFilesDirectoryPolicy()
 
     init(
         controlClient: any RuntimeControlClient,
         hostClient: any RuntimeHostClient,
+        readWorker: MacHostRuntimeReadWorker? = nil,
+        initialSettings: RuntimeSettings? = nil,
         healthNotifications: any HealthNotifying = HealthNotificationCenter(),
         nativeShell: any RuntimeNativeShell = SystemRuntimeNativeShell()
     ) {
         self.controlClient = controlClient
         self.hostClient = hostClient
+        self.readWorker = readWorker
         self.healthNotifications = healthNotifications
         self.healthNotificationCoordinator = RuntimeHealthNotificationCoordinator(notifier: self.healthNotifications)
         self.nativeShell = nativeShell
-        self.settings = self.controlClient.loadSettings()
+        let initialSettings = initialSettings ?? self.controlClient.loadSettings()
+        self.settings = initialSettings
+        self.useCustomAdvertisedURL = Self.usesCustomAdvertisedURL(initialSettings)
         self.installationInfo = self.controlClient.loadInstallInfo()
         self.healthNotifications.configure()
     }
@@ -66,35 +78,47 @@ final class RuntimeViewModel: ObservableObject {
         presentationFormatter.applySettingsConfirmation(settings: settings)
     }
 
+    var shouldShowUpdateProgress: Bool {
+        isBusy || presentationFormatter.updateOperationInProgress(status)
+    }
+
+    var updateProgressMessage: String {
+        if isBusy {
+            return operationDetail.isEmpty ? message : operationDetail
+        }
+        return presentationFormatter.updateOperationDisplayMessage(status) ?? message
+    }
+
     func refresh() async {
-        settings = controlClient.loadSettings()
-        status = controlClient.loadStatus(settings: settings)
+        await loadRuntimeSettings()
+        status = await loadStatusSnapshot(settings: settings)
         await refreshReleaseInfo()
-        refreshBackupList()
-        refreshRuntimeEvents()
+        await refreshBackupList()
+        await refreshRuntimeEvents()
+        await refreshVitalRecorders()
         if let displayMessage = presentationFormatter.statusDisplayMessage(status) {
             message = displayMessage
         }
+        synchronizeFileBackedOperationPresentation()
         healthNotificationCoordinator.handleTransition(to: status)
-        refreshLogsIfLive()
     }
 
     func refreshHealthStatus() async {
-        status = await controlClient.loadHealthStatus(settings: settings)
-        refreshRuntimeEvents()
+        status = await loadHealthStatusSnapshot(settings: settings)
         if let displayMessage = presentationFormatter.statusDisplayMessage(status) {
             message = displayMessage
         }
+        synchronizeFileBackedOperationPresentation()
         healthNotificationCoordinator.handleTransition(to: status)
-        refreshLogsIfLive()
     }
 
     func healthCheck() async {
         isBusy = true
         defer { isBusy = false }
 
-        status = await controlClient.loadHealthStatus(settings: settings)
-        refreshRuntimeEvents()
+        status = await loadHealthStatusSnapshot(settings: settings)
+        await refreshRuntimeEvents()
+        await refreshVitalRecorders()
         if let displayMessage = presentationFormatter.statusDisplayMessage(status) {
             message = "\(AppConstants.StatusText.healthCheckCompleted)\n\n\(displayMessage)"
         } else {
@@ -103,10 +127,14 @@ final class RuntimeViewModel: ObservableObject {
         healthNotificationCoordinator.handleTransition(to: status)
     }
 
-    func refreshRuntimeEvents(limit: Int = 100) {
-        runtimeEvents = controlClient.loadRuntimeEvents(limit: limit)
+    func refreshRuntimeEvents(limit: Int = 100) async {
+        runtimeEvents = await loadRuntimeEventsSnapshot(limit: limit)
         containerObservation = status.containerObservation
             ?? runtimeEvents.events.first { $0.containerObservation != nil }?.containerObservation
+    }
+
+    func refreshVitalRecorders() async {
+        vitalRecorders = await loadVitalRecordersSnapshot()
     }
 
     func uninstallRuntime(clean: Bool = false) async {
@@ -131,7 +159,8 @@ final class RuntimeViewModel: ObservableObject {
     }
 
     func prepareApplySettings() -> Bool {
-        validateSettings()
+        normalizeAdvertisedURLSettings()
+        return validateSettings()
     }
 
     func applySettings() async {
@@ -139,6 +168,7 @@ final class RuntimeViewModel: ObservableObject {
             message = AppConstants.StatusText.actionUnavailable
             return
         }
+        normalizeAdvertisedURLSettings()
         guard validateSettings() else {
             return
         }
@@ -164,9 +194,27 @@ final class RuntimeViewModel: ObservableObject {
             return
         }
         if let url = nativeShell.chooseDirectory(prompt: AppConstants.Actions.chooseDirectory) {
-            hostClient.createDirectory(at: url)
+            if let validationMessage = vitalFilesDirectoryPolicy.validationMessage(for: url) {
+                message = validationMessage
+                return
+            }
+            do {
+                try nativeShell.createDirectory(url)
+            } catch {
+                message = AppConstants.StatusText.folderCreateFailed(error.localizedDescription)
+                return
+            }
             settings.vitalFilesDirectory = url.path
         }
+    }
+
+    func setCustomAdvertisedURL(_ enabled: Bool) {
+        useCustomAdvertisedURL = enabled
+        normalizeAdvertisedURLSettings()
+    }
+
+    func syncAdvertisedURLWithProxyIfNeeded() {
+        normalizeAdvertisedURLSettings()
     }
 
     func repairProxyPort() async {
@@ -196,6 +244,21 @@ final class RuntimeViewModel: ObservableObject {
             runningMessage: AppConstants.StatusText.datastoreRepairRunning,
             successMessage: AppConstants.StatusText.datastoreRepairCompleted,
             action: { try await self.controlClient.repairDatastore() }
+        )
+        await refreshHealthStatus()
+    }
+
+    func repairRuntimeServices() async {
+        guard controlClient.capabilities.canControlRuntimeServices else {
+            message = AppConstants.StatusText.actionUnavailable
+            return
+        }
+        _ = await runClientAction(
+            preparingMessage: AppConstants.StatusText.runtimeServicesRepairPreparing,
+            waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
+            runningMessage: AppConstants.StatusText.runtimeServicesRepairRunning,
+            successMessage: AppConstants.StatusText.runtimeServicesRepaired,
+            action: { try await self.controlClient.repairRuntimeServices() }
         )
         await refreshHealthStatus()
     }
@@ -242,8 +305,27 @@ final class RuntimeViewModel: ObservableObject {
         return result.isValid
     }
 
-    func refreshBackupList() {
-        backups = hostClient.loadBackups(latestBackupPath: status.latestBackup)
+    private func loadRuntimeSettings() async {
+        let nextSettings = await loadSettingsSnapshot()
+        settings = nextSettings
+        useCustomAdvertisedURL = Self.usesCustomAdvertisedURL(nextSettings)
+    }
+
+    private func normalizeAdvertisedURLSettings() {
+        guard !useCustomAdvertisedURL else {
+            return
+        }
+        settings.publicHost = ""
+        settings.publicPort = settings.proxyPort
+    }
+
+    private static func usesCustomAdvertisedURL(_ settings: RuntimeSettings) -> Bool {
+        !settings.publicHost.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || settings.publicPort != settings.proxyPort
+    }
+
+    func refreshBackupList() async {
+        backups = await loadBackupsSnapshot(latestBackupPath: status.latestBackup)
         selectedBackupPath = backupSelectionPolicy.selectedBackupPath(
             from: backups,
             currentSelection: selectedBackupPath
@@ -271,6 +353,7 @@ final class RuntimeViewModel: ObservableObject {
         waitingMessage: String,
         runningMessage: String,
         successMessage: String,
+        refreshCommandLog: Bool = true,
         action: @escaping () async throws -> RuntimeCommandResult
     ) async -> Bool {
         isBusy = true
@@ -285,20 +368,28 @@ final class RuntimeViewModel: ObservableObject {
         message = waitingMessage
         operationDetail = waitingMessage
 
-        selectedLogSource = .command
-        refreshLogs()
+        if refreshCommandLog {
+            selectedLogSource = .command
+            await refreshLogs()
+        }
         message = runningMessage
         operationDetail = runningMessage
-        let logRefreshTask = Task { @MainActor in
-            while !Task.isCancelled {
-                refreshLogs()
-                refreshOperationDetail(fallback: runningMessage)
-                try? await Task.sleep(nanoseconds: 1_000_000_000)
+        let logRefreshTask = refreshCommandLog
+            ? Task { @MainActor in
+                while !Task.isCancelled {
+                    await refreshLogs()
+                    await refreshOperationDetail(fallback: runningMessage)
+                    try? await Task.sleep(nanoseconds: 1_000_000_000)
+                }
             }
-        }
+            : nil
         defer {
-            logRefreshTask.cancel()
-            refreshLogs()
+            logRefreshTask?.cancel()
+            if refreshCommandLog {
+                Task { @MainActor in
+                    await refreshLogs()
+                }
+            }
         }
 
         let result: RuntimeCommandResult
@@ -324,9 +415,23 @@ final class RuntimeViewModel: ObservableObject {
         }
     }
 
-    private func refreshOperationDetail(fallback: String) {
-        status = controlClient.loadStatus(settings: settings)
-        operationDetail = presentationFormatter.progressDisplayMessage(status) ?? hostClient.legacyCommandProgressLine() ?? fallback
+    private func refreshOperationDetail(fallback: String) async {
+        status = await loadStatusSnapshot(settings: settings)
+        if let progressMessage = presentationFormatter.progressDisplayMessage(status) {
+            operationDetail = progressMessage
+            return
+        }
+        operationDetail = await legacyCommandProgressLineSnapshot() ?? fallback
+    }
+
+    private func synchronizeFileBackedOperationPresentation() {
+        guard !isBusy,
+              let updateMessage = presentationFormatter.updateOperationDisplayMessage(status) else {
+            return
+        }
+        selectedLogSource = .command
+        message = updateMessage
+        operationDetail = updateMessage
     }
 
     private func quitAfterSuccessfulUninstall() async {
@@ -340,14 +445,63 @@ final class RuntimeViewModel: ObservableObject {
 
     private func waitForAppliedSettings() async {
         for _ in 0..<12 {
-            settings = controlClient.loadSettings()
-            status = await controlClient.loadHealthStatus(settings: settings)
-            refreshLogsIfLive()
+            await loadRuntimeSettings()
+            status = await loadHealthStatusSnapshot(settings: settings)
+            await refreshLogsIfLive()
             if status.isReady || !settings.restartAfterSave {
                 return
             }
             try? await Task.sleep(nanoseconds: 2_000_000_000)
         }
+    }
+
+    private func loadSettingsSnapshot() async -> RuntimeSettings {
+        if let readWorker {
+            return await readWorker.loadSettings()
+        }
+        return controlClient.loadSettings()
+    }
+
+    private func loadStatusSnapshot(settings: RuntimeSettings) async -> RuntimeStatus {
+        if let readWorker {
+            return await readWorker.loadStatus(settings: settings)
+        }
+        return controlClient.loadStatus(settings: settings)
+    }
+
+    private func loadHealthStatusSnapshot(settings: RuntimeSettings) async -> RuntimeStatus {
+        if let readWorker {
+            return await readWorker.loadHealthStatus(settings: settings)
+        }
+        return await controlClient.loadHealthStatus(settings: settings)
+    }
+
+    private func loadRuntimeEventsSnapshot(limit: Int) async -> RuntimeEventHistory {
+        if let readWorker {
+            return await readWorker.loadRuntimeEvents(limit: limit)
+        }
+        return controlClient.loadRuntimeEvents(limit: limit)
+    }
+
+    private func loadVitalRecordersSnapshot() async -> RuntimeVitalRecorderHistory {
+        if let readWorker {
+            return await readWorker.loadVitalDBRecorders()
+        }
+        return controlClient.loadVitalDBRecorders()
+    }
+
+    private func loadBackupsSnapshot(latestBackupPath: String?) async -> [RuntimeBackup] {
+        if let readWorker {
+            return await readWorker.loadBackups(latestBackupPath: latestBackupPath)
+        }
+        return hostClient.loadBackups(latestBackupPath: latestBackupPath)
+    }
+
+    private func legacyCommandProgressLineSnapshot() async -> String? {
+        if let readWorker {
+            return await readWorker.legacyCommandProgressLine()
+        }
+        return hostClient.legacyCommandProgressLine()
     }
 
 }

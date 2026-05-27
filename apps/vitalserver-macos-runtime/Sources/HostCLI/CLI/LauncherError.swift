@@ -9,6 +9,7 @@ enum LauncherError: Error, CustomStringConvertible {
     case noBridgedInterfaces
     case invalidMacAddress(String)
     case runtimeHealthFailed
+    case runtimeOperationFailed(String)
     case bundleVerificationFailed(String)
     case insufficientFreeSpace(operation: String, required: UInt64, available: UInt64)
 
@@ -30,6 +31,8 @@ enum LauncherError: Error, CustomStringConvertible {
             return "invalid MAC address: \(value)"
         case .runtimeHealthFailed:
             return "runtime health check failed"
+        case let .runtimeOperationFailed(message):
+            return message
         case let .bundleVerificationFailed(message):
             return "bundle verification failed: \(message)"
         case let .insufficientFreeSpace(operation, required, available):

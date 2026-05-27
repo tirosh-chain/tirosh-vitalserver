@@ -24,23 +24,50 @@ macOS Helper app composition은 `distribution.profile=dev` build에서만 read-o
 | Auth header | `X-Runtime-Control-Token` |
 | Dev-only transitional token | `vitalserver-helper-dev` |
 
-Dev local server는 read-only runtime endpoint와 일부 host log endpoint를 구현합니다.
+Dev local server는 read-only runtime endpoint, PWA overview, Redis backup 생성/조회, rollback backup 조회, 일부 host log endpoint를 구현합니다.
 
 | Method | Path |
 |---|---|
 | `GET` | `/runtime/capabilities` |
+| `GET` | `/runtime/overview` |
+| `GET` | `/runtime/overview/stream` |
 | `GET` | `/runtime/status` |
 | `GET` | `/runtime/status/stream` |
 | `GET` | `/runtime/events` |
 | `GET` | `/runtime/events/stream` |
+| `GET` | `/vitaldb/observations/latest` |
+| `GET` | `/vitaldb/observations/stream` |
+| `GET` | `/vitaldb/recorders` |
+| `GET` | `/vitaldb/recorders/{vrcode}` |
 | `POST` | `/runtime/health` |
 | `GET` | `/runtime/settings` |
 | `GET` | `/runtime/release` |
 | `GET` | `/runtime/install` |
+| `POST` | `/runtime/redis/backups` |
+| `GET` | `/host/backups` |
+| `GET` | `/host/backups/redis` |
 | `POST` | `/host/logs/read` |
 | `GET` | `/host/logs/stream` |
 
 나머지 write/admin/host affordance route는 계약에는 있지만 현재 router에서 `501 endpointNotImplemented`를 반환합니다.
+
+## Status Vocabulary
+
+Runtime Control API는 wire payload에서 `runtimeInstalled`, `runtimeState`, `operation`, HTTP probe status처럼 도메인별 raw 값을 그대로 전달합니다. SwiftUI/PWA 표시 계층은 이 raw 값을 그대로 노출하지 않고 shared presentation vocabulary로 변환합니다.
+
+| UI label | Source of truth | Display vocabulary |
+|---|---|---|
+| Runtime installation | `RuntimeStatus.runtimeInstalled` | `Installed`, `Not Installed` |
+| Runtime state | `RuntimeStatus.runtimeState` | `Installing`, `Updating`, `Recovering`, `Healthy`, `Degraded`, `Critical`, `Unknown` |
+| VM/proxy/watchdog/guest log sync/sleep prevention service | launchd loaded flags | `Running`, `Stopped` |
+| VitalServer/Network access/Redis UI/Swagger UI | HTTP probe fields | `Reachable`, `Unreachable`, `Waiting` |
+| Redis container health | guest compose observation | `Healthy`, `Unhealthy`, `Starting`, `Running`, `Stopped` |
+| Command/progress step | `RuntimeProgressDocument` | `Waiting`, `Running`, `Done`, `Failed`, `Skipped` |
+| Planned or unsupported feature | capability/build profile | `Planned`, `Not Available` |
+
+`Runtime installation` replaces the older UI wording `Helper runtime`. The value describes whether the installed VitalServer runtime components exist on the Mac, not whether the Helper app process itself is running.
+
+`RuntimeStatus.sleepPreventionServiceLoaded` reports the optional host launchd service that keeps the Mac awake while VitalServer is running. It prevents idle system sleep so the host proxy, VM, and VRecorder TCP streams remain online, but it cannot prevent manual Sleep, lid close, shutdown, or managed power-policy sleep.
 
 `GET /runtime/events`는 운영 이력 조회용 query parameter를 지원합니다. 목표 구현은 SQLite read model을
 우선 조회하고, DB가 없거나 손상된 경우 기존 `runtime-events.jsonl` fallback으로 응답하는 것입니다.
@@ -60,6 +87,22 @@ Dev local server는 read-only runtime endpoint와 일부 host log endpoint를 �
 `runtime-status` frame을 보냅니다. 각 frame의 `id` 값은 `runtime-status`, `data` 값은 JSON encoded
 `RuntimeStatus`입니다. 변경이 없으면 heartbeat comment를 보냅니다.
 
+`RuntimeStatus.dataDirectoryStats`는 configured Vital files directory의 visible regular file count와
+recursive size를 제공합니다. UI는 이를 Data directory path 옆의 보조 정보로 표시하며, volume-level
+capacity 정보는 기존 `dataStorage`를 계속 사용합니다.
+
+`GET /runtime/overview`는 PWA status 화면용 aggregated read model입니다. 기존 raw endpoint의 SoT는 그대로
+유지하면서 `RuntimeStatus`, `RuntimeSettings`, `RuntimeReleaseInfo`, `RuntimeInstallInfo`, 최신
+`VitalDBObservationDocument`, 그리고 native Status 탭의 `Vital Recorder` 섹션과 같은 성격의
+`RuntimeVitalRecorderSummary`를 한 payload로 제공합니다. `RuntimeVitalRecorderSummary`는
+`vitalDBObservation`을 우선 SoT로 쓰고, observer snapshot이 아직 없을 때만 audit-proxy recorder connection을
+fallback으로 사용합니다.
+
+`GET /runtime/overview/stream`은 long-lived SSE 연결입니다. 서버는 overview payload가 바뀔 때
+`runtime-overview` frame을 보냅니다. 각 frame의 `id` 값은 `runtime-overview`, `data` 값은 JSON encoded
+`RuntimeControlOverview`입니다. PWA는 초기 화면을 `/runtime/overview`로 채우고 이후 이 stream으로 상태를
+갱신할 수 있습니다.
+
 `GET /runtime/events/stream`은 client polling 없이 runtime event를 받기 위한 SSE contract입니다. 연결은
 `Accept: text/event-stream`을 사용하고, 각 SSE frame의 `event` 값은 `RuntimeEventType`, `id` 값은
 `RuntimeEventDocument.id`, `data` 값은 JSON encoded `RuntimeEventDocument`입니다. 서버는 연결을 유지하고
@@ -70,6 +113,27 @@ channel이며, command 전송용 양방향 WebSocket contract가 아닙니다.
 `GET /host/logs/stream`은 long-lived SSE 연결입니다. 서버는 선택한 host log text가 바뀔 때 `runtime-log`
 frame을 보냅니다. 각 frame의 `id` 값은 `runtime-log-<source>`, `data` 값은 JSON encoded
 `RuntimeLogTextResponse`입니다. Query는 `source`, `lineLimit`, `helperMessage`를 지원합니다.
+
+`GET /vitaldb/observations/latest`는 watchdog/runtime observability SQLite에 저장된 최신
+`VitalDBObservationDocument`를 반환합니다. 이 payload는 `vitaldb-observer` container가 계산한
+recorder/bed/device/filter/proxy/anomaly snapshot과 최근 `send_data` 활동량 summary를 guest runtime-state
+경로로 전달하고, watchdog이 runtime observability SoT에 저장한 결과입니다. `recorders[].activity`는
+audit proxy Redis List에서 계산한 windowed metric이며 message count, byte count, room count, first/last
+activity, 초당 message/byte rate를 포함합니다.
+
+`GET /vitaldb/observations/stream`은 long-lived SSE 연결입니다. 서버는 최신 VitalDB observation payload가
+바뀔 때 `vitaldb-observed` frame을 보냅니다. 각 frame의 `id` 값은 `vitaldb-observation`, `data` 값은
+JSON encoded `VitalDBObservationDocument` 또는 `null`입니다.
+
+`GET /vitaldb/recorders`는 runtime observability SQLite에 저장된 VitalDB observation snapshot들을
+`vrcode` 기준으로 집계한 `RuntimeVitalRecorderHistory`를 반환합니다. `vrcode`는 recorder identity key이며,
+IP는 마지막 관측 주소일 뿐 identity로 쓰지 않습니다. 이 read model은 접속했었던 VRecorder 목록, last IP,
+version, bed, first/last seen, latest status, current anomaly count, `activityTimeline`을 PWA/SwiftUI가
+바로 표시할 수 있게 정리한 결과입니다. `activityTimeline`은 snapshot history에서 vrcode별
+`recorders[].activity`를 시간순으로 모은 chart-friendly sample list입니다.
+
+`GET /vitaldb/recorders/{vrcode}`는 같은 history read model에서 특정 `vrcode`의 recorder record 하나를
+반환합니다. 관측 이력이 없으면 `null`을 반환합니다.
 
 `distribution.profile`이 `dev`인 build에서는 macOS Helper가 실행 중일 때
 `http://127.0.0.1:18321/dev/runtime-control`에서 브라우저용 Runtime Control API console을 열 수 있습니다.
@@ -82,7 +146,7 @@ Stable build는 local API server와 이 route를 제공하지 않습니다. 이 
 
 | Scope | Prefix | 의미 | PWA에서의 해석 |
 |---|---|---|---|
-| `runtimeControl` | `/runtime/*` | local/remote runtime control usecase | PWA가 우선 의존할 API surface |
+| `runtimeControl` | `/runtime/*`, `/vitaldb/*` | local/remote runtime control usecase | PWA가 우선 의존할 API surface |
 | `hostAffordance` | `/host/*` | local file/log/update-bundle affordance | browser가 직접 수행하지 않고 native shell 또는 server endpoint로 재배치 |
 
 ## Runtime Routes
@@ -90,10 +154,16 @@ Stable build는 local API server와 이 route를 제공하지 않습니다. 이 
 | Method | Path | 계약 |
 |---|---|---|
 | `GET` | `/runtime/capabilities` | capability negotiation |
+| `GET` | `/runtime/overview` | PWA status screen aggregate read model |
+| `GET` | `/runtime/overview/stream` | SSE PWA status screen aggregate subscription |
 | `GET` | `/runtime/status` | runtime status read model |
 | `GET` | `/runtime/status/stream` | SSE runtime status snapshot subscription |
 | `GET` | `/runtime/events` | runtime status/progress event history |
 | `GET` | `/runtime/events/stream` | SSE runtime status/progress event subscription |
+| `GET` | `/vitaldb/observations/latest` | latest VitalDB recorder/bed/anomaly observation snapshot |
+| `GET` | `/vitaldb/observations/stream` | SSE VitalDB observation snapshot subscription |
+| `GET` | `/vitaldb/recorders` | VRecorder history aggregated by vrcode |
+| `GET` | `/vitaldb/recorders/{vrcode}` | one VRecorder history record by vrcode |
 | `POST` | `/runtime/health` | active health refresh |
 | `GET` | `/runtime/settings` | current runtime settings |
 | `PUT` | `/runtime/settings` | apply runtime settings |
@@ -103,6 +173,7 @@ Stable build는 local API server와 이 route를 제공하지 않습니다. 이 
 | `POST` | `/runtime/services/stop` | stop runtime services |
 | `POST` | `/runtime/services/repair-proxy` | repair host proxy |
 | `POST` | `/runtime/services/repair-datastore` | repair datastore |
+| `POST` | `/runtime/redis/backups` | create recoverable Redis backup |
 | `POST` | `/runtime/uninstall` | uninstall runtime |
 
 ## Host Affordance Routes
@@ -110,6 +181,8 @@ Stable build는 local API server와 이 route를 제공하지 않습니다. 이 
 | Method | Path | 계약 |
 |---|---|---|
 | `GET` | `/host/backups` | list local backups |
+| `GET` | `/host/backups/redis` | list local Redis backups |
+| `POST` | `/host/backups/redis/restore` | restore selected Redis backup, planned |
 | `POST` | `/host/logs/read` | read selected log text |
 | `GET` | `/host/logs/stream` | SSE host log text snapshot subscription |
 | `POST` | `/host/logs/export` | export local logs |
@@ -125,8 +198,8 @@ Stable build는 local API server와 이 route를 제공하지 않습니다. 이 
 
 | Access | 의미 | 현재 route |
 |---|---|---|
-| `browserSafe` | 브라우저/PWA가 local Runtime Control server에 직접 호출 가능한 read-only runtime control | `GET /runtime/capabilities`, `GET /runtime/status`, `GET /runtime/status/stream`, `GET /runtime/events`, `GET /runtime/events/stream`, `POST /runtime/health`, `GET /runtime/settings`, `GET /runtime/release`, `GET /runtime/install` |
-| `localServerMediated` | 브라우저가 직접 host resource를 만지지 않고 local server가 권한/파일/프로세스 작업을 중재해야 함 | runtime write/admin routes, backups list/delete/rollback, log read/stream, update bundle summary/verify/apply |
+| `browserSafe` | 브라우저/PWA가 local Runtime Control server에 직접 호출 가능한 read-only runtime control | `GET /runtime/capabilities`, `GET /runtime/overview`, `GET /runtime/overview/stream`, `GET /runtime/status`, `GET /runtime/status/stream`, `GET /runtime/events`, `GET /runtime/events/stream`, `GET /vitaldb/observations/latest`, `GET /vitaldb/observations/stream`, `GET /vitaldb/recorders`, `GET /vitaldb/recorders/{vrcode}`, `POST /runtime/health`, `GET /runtime/settings`, `GET /runtime/release`, `GET /runtime/install` |
+| `localServerMediated` | 브라우저가 직접 host resource를 만지지 않고 local server가 권한/파일/프로세스 작업을 중재해야 함 | runtime write/admin routes, Redis backup create/list/restore, backups list/delete/rollback, log read/stream, update bundle summary/verify/apply |
 | `nativeShellOnly` | 브라우저 endpoint만으로는 UX나 보안 경계가 충분하지 않아 native shell mediation이 필요함 | `POST /host/logs/export` |
 
 Portable `/runtime/*` route는 `RuntimeControlFileReference`를 사용하지 않습니다. 파일, update bundle, backup, log export destination처럼 host resource를 가리키는 값은 `/host/*` affordance에서만 `RuntimeControlFileReference`로 표현합니다.

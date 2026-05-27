@@ -19,7 +19,9 @@ final class RuntimeControlAPITests: XCTestCase {
             .filter { $0.scope == .runtimeControl }
 
         XCTAssertFalse(runtimeControlRoutes.isEmpty)
-        XCTAssertTrue(runtimeControlRoutes.allSatisfy { $0.path.hasPrefix("/runtime/") })
+        XCTAssertTrue(runtimeControlRoutes.allSatisfy {
+            $0.path.hasPrefix("/runtime/") || $0.path.hasPrefix("/vitaldb/")
+        })
     }
 
     func testHostAffordanceRoutesAreExplicitlySeparated() {
@@ -65,6 +67,12 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertEqual(decoded, response)
     }
 
+    func testRuntimeInstallInfoDoesNotInferRedisBackupPathFromRollbackBackupPath() {
+        let installInfo = RuntimeInstallInfo(backupsPath: "/rollback/backups")
+
+        XCTAssertEqual(installInfo.redisBackupsPath, "")
+    }
+
     func testEndpointMatchingIgnoresQueryString() {
         XCTAssertEqual(
             RuntimeControlAPIEndpoint.matching(method: .get, path: "/runtime/status?refresh=false"),
@@ -107,7 +115,13 @@ final class RuntimeControlAPITests: XCTestCase {
     func testRuntimeEventStreamOpenAPIUsesSSEMediaType() throws {
         let operations = try openAPIOperations()
 
-        for key in ["GET /runtime/status/stream", "GET /runtime/events/stream", "GET /host/logs/stream"] {
+        for key in [
+            "GET /runtime/overview/stream",
+            "GET /runtime/status/stream",
+            "GET /runtime/events/stream",
+            "GET /vitaldb/observations/stream",
+            "GET /host/logs/stream",
+        ] {
             let operation = try XCTUnwrap(operations[key])
             let responses = try XCTUnwrap(operation["responses"] as? [String: Any])
             let okResponse = try XCTUnwrap(responses["200"] as? [String: Any])
@@ -193,6 +207,22 @@ final class RuntimeControlAPITests: XCTestCase {
     }
 
     @MainActor
+    func testRuntimeOverviewStreamReturnsPWAReadModelSSEFrame() async throws {
+        let router = RuntimeControlAPIRouter(handler: StubRuntimeControlAPIReadHandler())
+
+        let stream = try await streamResponse(from: router.routeResult(.init(method: .get, path: "/runtime/overview/stream")))
+        let event = try await firstStreamEvent(stream)
+        let text = try XCTUnwrap(String(data: RuntimeControlServerSentEventCodec.encode(event), encoding: .utf8))
+
+        XCTAssertEqual(stream.status, .ok)
+        XCTAssertEqual(stream.headers["Content-Type"], "text/event-stream")
+        XCTAssertTrue(text.contains("id: runtime-overview"))
+        XCTAssertTrue(text.contains("event: runtime-overview"))
+        XCTAssertTrue(text.contains("\"vitalRecorder\""))
+        XCTAssertTrue(text.contains("\"knownRecorders\":1"))
+    }
+
+    @MainActor
     func testHostLogStreamReturnsSSEFrameFromLogText() async throws {
         let router = RuntimeControlAPIRouter(handler: StubRuntimeControlAPIReadHandler())
 
@@ -215,6 +245,10 @@ final class RuntimeControlAPITests: XCTestCase {
             RuntimeControlCapabilities.self,
             from: router.route(.init(method: .get, path: "/runtime/capabilities"))
         )
+        let overview = try await decode(
+            RuntimeControlOverview.self,
+            from: router.route(.init(method: .get, path: "/runtime/overview"))
+        )
         let settings = try await decode(
             RuntimeSettings.self,
             from: router.route(.init(method: .get, path: "/runtime/settings"))
@@ -235,13 +269,34 @@ final class RuntimeControlAPITests: XCTestCase {
             RuntimeEventHistory.self,
             from: router.route(.init(method: .get, path: "/runtime/events"))
         )
+        let vitalDBObservation = try await decode(
+            VitalDBObservationDocument?.self,
+            from: router.route(.init(method: .get, path: "/vitaldb/observations/latest"))
+        )
+        let vitalRecorders = try await decode(
+            RuntimeVitalRecorderHistory.self,
+            from: router.route(.init(method: .get, path: "/vitaldb/recorders"))
+        )
+        let vitalRecorder = try await decode(
+            RuntimeVitalRecorderRecord?.self,
+            from: router.route(.init(method: .get, path: "/vitaldb/recorders/VR_A"))
+        )
 
         XCTAssertTrue(capabilities.canControlRuntimeServices)
+        XCTAssertEqual(overview.status.runtimeVersion, "1.2.3")
+        XCTAssertEqual(overview.vitalRecorder.knownRecorders, 1)
+        XCTAssertEqual(overview.vitalRecorder.onlineRecorders, 1)
+        XCTAssertEqual(overview.vitalRecorder.latestRecorder?.vrcode, "VR_A")
         XCTAssertEqual(settings.cpuCount, 4)
         XCTAssertEqual(health.statusMessage, "healthy")
         XCTAssertEqual(release.helperVersion, "0.1.0")
         XCTAssertEqual(installInfo.runtimeHomePath, "/runtime/home")
         XCTAssertEqual(events.events.map(\.id), ["event-1"])
+        XCTAssertEqual(vitalDBObservation?.recorders.map(\.vrcode), ["VR_A"])
+        XCTAssertEqual(vitalRecorders.recorders.map(\.vrcode), ["VR_A"])
+        XCTAssertEqual(vitalRecorders.recorders.first?.activityTimeline.first?.messageCount, 3)
+        XCTAssertEqual(vitalRecorder?.vrcode, "VR_A")
+        XCTAssertEqual(vitalRecorder?.activityTimeline.first?.byteCount, 2048)
     }
 
     @MainActor
@@ -278,6 +333,38 @@ final class RuntimeControlAPITests: XCTestCase {
     }
 
     @MainActor
+    func testRouterCreatesRedisBackupThroughRuntimeControlClientHandler() async throws {
+        let client = FakeRuntimeControlClient()
+        let router = RuntimeControlAPIRouter(handler: RuntimeControlClientAPIReadHandler(client: client))
+
+        let response = await router.route(.init(method: .post, path: "/runtime/redis/backups"))
+        let commandResponse = try decode(RuntimeControlCommandResponse.self, from: response)
+
+        XCTAssertEqual(commandResponse.result.stdout, "redis backup created")
+        XCTAssertEqual(client.createRedisBackupCount, 1)
+    }
+
+    @MainActor
+    func testRouterServesBackupListsThroughRuntimeControlClientHandler() async throws {
+        let client = FakeRuntimeControlClient()
+        let router = RuntimeControlAPIRouter(handler: RuntimeControlClientAPIReadHandler(client: client, hostClient: client))
+
+        let backups = try await decode(
+            [RuntimeBackup].self,
+            from: router.route(.init(method: .get, path: "/host/backups"))
+        )
+        let redisBackups = try await decode(
+            [RuntimeBackup].self,
+            from: router.route(.init(method: .get, path: "/host/backups/redis"))
+        )
+
+        XCTAssertEqual(backups.map(\.path), ["/backups/rollback"])
+        XCTAssertEqual(redisBackups.map(\.path), ["/runtime/data/backups/redis/redis-1.tar.gz"])
+        XCTAssertEqual(client.backupLatestPaths, ["latest-backup"])
+        XCTAssertEqual(client.loadRedisBackupsCount, 1)
+    }
+
+    @MainActor
     func testRuntimeControlClientReadHandlerAdaptsClientReads() async throws {
         let client = FakeRuntimeControlClient()
         let handler = RuntimeControlClientAPIReadHandler(client: client)
@@ -296,7 +383,10 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertEqual(events.events.map(\.id), ["event-1", "event-2", "event-3"])
         XCTAssertEqual(health.statusMessage, "health with 6 CPUs")
         XCTAssertEqual(release.helperVersion, "0.2.0")
+        XCTAssertEqual(installInfo.appBundlePath, "/Applications/VitalServer Helper.app")
+        XCTAssertEqual(installInfo.packageIdentifier, "com.tirosh.vitalserver.vm")
         XCTAssertEqual(installInfo.backupsPath, "/backups")
+        XCTAssertEqual(installInfo.redisBackupsPath, "/runtime/data/backups/redis")
         XCTAssertEqual(client.loadSettingsCount, 3)
         XCTAssertEqual(client.statusSettings, [RuntimeSettings(cpuCount: 6, memoryGiB: 10)])
         XCTAssertEqual(client.healthSettings, [RuntimeSettings(cpuCount: 6, memoryGiB: 10)])
@@ -489,9 +579,13 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertEqual(response.status, .ok)
         XCTAssertEqual(response.headers["Content-Type"], "text/html; charset=utf-8")
         XCTAssertTrue(html.contains("Runtime Control API Console"))
+        XCTAssertTrue(html.contains("/runtime/overview"))
+        XCTAssertTrue(html.contains("/runtime/overview/stream"))
         XCTAssertTrue(html.contains("/runtime/status/stream"))
         XCTAssertTrue(html.contains("/runtime/events/stream"))
+        XCTAssertTrue(html.contains("/vitaldb/recorders"))
         XCTAssertTrue(html.contains("/host/logs/stream"))
+        XCTAssertTrue(html.contains(#"<option value="containers" selected>containers</option>"#))
     }
 
     @MainActor
@@ -700,6 +794,7 @@ private struct StubRuntimeControlAPIReadHandler: RuntimeControlAPIReadHandler {
             runtimeInstalled: true,
             vmServiceLoaded: true,
             proxyServiceLoaded: true,
+            guestLogSyncServiceLoaded: true,
             watchdogServiceLoaded: true,
             runtimeState: .healthy,
             statusMessage: "ready",
@@ -726,6 +821,33 @@ private struct StubRuntimeControlAPIReadHandler: RuntimeControlAPIReadHandler {
         ])
     }
 
+    func loadVitalDBObservation() async throws -> VitalDBObservationDocument? {
+        VitalDBObservationDocument(
+            observedAt: "2026-05-25T00:00:00Z",
+            ready: true,
+            recorderOnlineThresholdSeconds: 120,
+            recorders: [
+                VitalDBRecorderObservation(
+                    vrcode: "VR_A",
+                    ip: "10.0.0.10",
+                    online: true,
+                    activity: VitalDBRecorderActivityObservation(
+                        windowSeconds: 300,
+                        messageCount: 3,
+                        byteCount: 2048,
+                        roomCount: 1,
+                        messagesPerSecond: 0.01,
+                        bytesPerSecond: 6.8
+                    )
+                ),
+            ]
+        )
+    }
+
+    func loadVitalDBRecorders() async throws -> RuntimeVitalRecorderHistory {
+        RuntimeVitalRecorderHistory(observations: [try await loadVitalDBObservation()].compactMap { $0 })
+    }
+
     func loadHealthStatus() async throws -> RuntimeStatus {
         RuntimeStatus(runtimeInstalled: true, runtimeState: .healthy, statusMessage: "healthy")
     }
@@ -744,21 +866,40 @@ private struct StubRuntimeControlAPIReadHandler: RuntimeControlAPIReadHandler {
     }
 
     func loadInstallInfo() async throws -> RuntimeInstallInfo {
-        RuntimeInstallInfo(runtimeHomePath: "/runtime/home", backupsPath: "/runtime/backups")
+        RuntimeInstallInfo(
+            runtimeHomePath: "/runtime/home",
+            backupsPath: "/runtime/backups",
+            redisBackupsPath: "/runtime/home/data/backups/redis"
+        )
     }
 
     func loadLogText(request: RuntimeLogTextRequest) async throws -> RuntimeLogTextResponse {
         RuntimeLogTextResponse(text: "\(request.source.rawValue) log tail \(request.lineLimit)")
     }
+
+    func loadBackups() async throws -> [RuntimeBackup] {
+        [RuntimeBackup(path: "/backups/rollback", sizeBytes: 1024)]
+    }
+
+    func loadRedisBackups() async throws -> [RuntimeBackup] {
+        [RuntimeBackup(path: "/runtime/data/backups/redis/redis-1.tar.gz", sizeBytes: 512)]
+    }
+
+    func createRedisBackup() async throws -> RuntimeControlCommandResponse {
+        RuntimeControlCommandResponse(result: RuntimeCommandResult(exitCode: 0, stdout: "redis backup created", stderr: ""))
+    }
 }
 
 @MainActor
-private final class FakeRuntimeControlClient: RuntimeControlClient {
+private final class FakeRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
     var capabilities = RuntimeControlCapabilities(canOpenLocalFiles: false)
     var loadSettingsCount = 0
+    var createRedisBackupCount = 0
+    var loadRedisBackupsCount = 0
     var statusSettings: [RuntimeSettings] = []
     var healthSettings: [RuntimeSettings] = []
     var eventQueries: [RuntimeEventQuery] = []
+    var backupLatestPaths: [String?] = []
 
     func loadSettings() -> RuntimeSettings {
         loadSettingsCount += 1
@@ -767,7 +908,7 @@ private final class FakeRuntimeControlClient: RuntimeControlClient {
 
     func loadStatus(settings: RuntimeSettings) -> RuntimeStatus {
         statusSettings.append(settings)
-        return RuntimeStatus(statusMessage: "status with \(settings.cpuCount) CPUs")
+        return RuntimeStatus(statusMessage: "status with \(settings.cpuCount) CPUs", latestBackup: "latest-backup")
     }
 
     func loadHealthStatus(settings: RuntimeSettings) async -> RuntimeStatus {
@@ -841,6 +982,58 @@ private final class FakeRuntimeControlClient: RuntimeControlClient {
         )
     }
 
+    func loadVitalDBObservation() -> VitalDBObservationDocument? {
+        VitalDBObservationDocument(
+            observedAt: "2026-05-25T00:00:00Z",
+            ready: true,
+            recorderOnlineThresholdSeconds: 120
+        )
+    }
+
+    func loadVitalDBRecorders() -> RuntimeVitalRecorderHistory {
+        RuntimeVitalRecorderHistory(observations: [loadVitalDBObservation()].compactMap { $0 })
+    }
+
+    func loadBackups(latestBackupPath: String?) -> [RuntimeBackup] {
+        backupLatestPaths.append(latestBackupPath)
+        return [RuntimeBackup(path: "/backups/rollback", sizeBytes: 1024)]
+    }
+
+    func loadRedisBackups() -> [RuntimeBackup] {
+        loadRedisBackupsCount += 1
+        return [RuntimeBackup(path: "/runtime/data/backups/redis/redis-1.tar.gz", sizeBytes: 512)]
+    }
+
+    func updateBundleSummary(url: URL) -> String {
+        "bundle"
+    }
+
+    func logText(sourceID: RuntimeLogSource, helperMessage: String, lineLimit: Int) -> String {
+        helperMessage
+    }
+
+    func loadLogText(sourceID: RuntimeLogSource, helperMessage: String, lineLimit: Int) async -> String {
+        helperMessage
+    }
+
+    func preferredLogsPath() -> String {
+        "/logs"
+    }
+
+    func vitalFileFolders(root: String) -> [VitalFilesFolder] {
+        []
+    }
+
+    func legacyCommandProgressLine() -> String? {
+        nil
+    }
+
+    func createDirectory(at url: URL) {}
+
+    func verifyUpdateBundle(url: URL) async throws -> RuntimeCommandResult {
+        RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "")
+    }
+
     func uninstallRuntime(clean: Bool) async throws -> RuntimeCommandResult {
         RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "")
     }
@@ -855,6 +1048,15 @@ private final class FakeRuntimeControlClient: RuntimeControlClient {
 
     func repairDatastore() async throws -> RuntimeCommandResult {
         RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "")
+    }
+
+    func repairRuntimeServices() async throws -> RuntimeCommandResult {
+        RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "")
+    }
+
+    func createRedisBackup() async throws -> RuntimeCommandResult {
+        createRedisBackupCount += 1
+        return RuntimeCommandResult(exitCode: 0, stdout: "redis backup created", stderr: "")
     }
 
     func startRuntimeServices() async throws -> RuntimeCommandResult {
@@ -875,6 +1077,28 @@ private final class FakeRuntimeControlClient: RuntimeControlClient {
     }
 
     func loadInstallInfo() -> RuntimeInstallInfo {
-        RuntimeInstallInfo(runtimeHomePath: "/runtime", backupsPath: "/backups")
+        RuntimeInstallInfo(
+            appBundlePath: "/Applications/VitalServer Helper.app",
+            packageIdentifier: "com.tirosh.vitalserver.vm",
+            runtimeHomePath: "/runtime",
+            backupsPath: "/backups",
+            redisBackupsPath: "/runtime/data/backups/redis"
+        )
+    }
+
+    func applyUpdateBundle(url: URL) async throws -> RuntimeCommandResult {
+        RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "")
+    }
+
+    func rollbackRuntime(backupURL: URL) async throws -> RuntimeCommandResult {
+        RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "")
+    }
+
+    func deleteBackup(url: URL) async throws -> RuntimeCommandResult {
+        RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "")
+    }
+
+    func exportLogs(to destination: URL) async throws -> RuntimeLogExportResult {
+        RuntimeLogExportResult(destination: destination)
     }
 }

@@ -87,11 +87,16 @@ public protocol RuntimeControlAPIReadHandler {
     func loadCapabilities() async throws -> RuntimeControlCapabilities
     func loadStatus() async throws -> RuntimeStatus
     func loadEvents(query: RuntimeEventQuery) async throws -> RuntimeEventHistory
+    func loadVitalDBObservation() async throws -> VitalDBObservationDocument?
+    func loadVitalDBRecorders() async throws -> RuntimeVitalRecorderHistory
     func loadHealthStatus() async throws -> RuntimeStatus
     func loadSettings() async throws -> RuntimeSettings
     func loadReleaseInfo() async throws -> RuntimeReleaseInfo
     func loadInstallInfo() async throws -> RuntimeInstallInfo
     func loadLogText(request: RuntimeLogTextRequest) async throws -> RuntimeLogTextResponse
+    func loadBackups() async throws -> [RuntimeBackup]
+    func loadRedisBackups() async throws -> [RuntimeBackup]
+    func createRedisBackup() async throws -> RuntimeControlCommandResponse
 }
 
 @MainActor
@@ -151,6 +156,14 @@ public struct RuntimeControlAPIRouter {
             switch endpoint {
             case .capabilities:
                 return try await jsonResponse(handler.loadCapabilities())
+            case .overview:
+                return try await jsonResponse(loadOverview())
+            case .overviewStream:
+                return try await eventStreamResponse(
+                    id: "runtime-overview",
+                    event: "runtime-overview",
+                    value: loadOverview()
+                )
             case .status:
                 return try await jsonResponse(handler.loadStatus())
             case .statusStream:
@@ -165,6 +178,20 @@ public struct RuntimeControlAPIRouter {
             case .eventStream:
                 let query = try request.runtimeEventQuery()
                 return try await eventStreamResponse(handler.loadEvents(query: query))
+            case .vitalDBObservation:
+                return try await jsonResponse(handler.loadVitalDBObservation())
+            case .vitalDBObservationStream:
+                return try await eventStreamResponse(
+                    id: "vitaldb-observation",
+                    event: "vitaldb-observed",
+                    value: handler.loadVitalDBObservation()
+                )
+            case .vitalDBRecorders:
+                return try await jsonResponse(handler.loadVitalDBRecorders())
+            case .vitalDBRecorder:
+                let vrcode = try request.vitalDBRecorderCode()
+                let recorder = try await handler.loadVitalDBRecorders().recorders.first { $0.vrcode == vrcode }
+                return try jsonResponse(recorder)
             case .health:
                 return try await jsonResponse(handler.loadHealthStatus())
             case .settings:
@@ -183,13 +210,19 @@ public struct RuntimeControlAPIRouter {
                     event: "runtime-log",
                     value: handler.loadLogText(request: logRequest)
                 )
+            case .backups:
+                return try await jsonResponse(handler.loadBackups())
+            case .redisBackups:
+                return try await jsonResponse(handler.loadRedisBackups())
+            case .createRedisBackup:
+                return try await jsonResponse(handler.createRedisBackup())
             case .applySettings,
                  .startServices,
                  .stopServices,
                  .repairProxy,
                  .repairDatastore,
                  .uninstall,
-                 .backups,
+                 .restoreRedisBackup,
                  .updateBundleSummary,
                  .verifyUpdateBundle,
                  .applyUpdateBundle,
@@ -222,6 +255,18 @@ public struct RuntimeControlAPIRouter {
         request: RuntimeControlHTTPRequest
     ) -> RuntimeControlHTTPStreamResponse? {
         switch endpoint {
+        case .overviewStream:
+            return makeStream { [handler, streamConfiguration] continuation in
+                await pollSnapshot(
+                    id: "runtime-overview",
+                    event: "runtime-overview",
+                    interval: streamConfiguration.pollIntervalNanoseconds,
+                    heartbeatInterval: streamConfiguration.heartbeatIntervalNanoseconds,
+                    continuation: continuation
+                ) {
+                    try await makeOverview(handler: handler)
+                }
+            }
         case .statusStream:
             return makeStream { [handler, streamConfiguration] continuation in
                 await pollSnapshot(
@@ -253,6 +298,22 @@ public struct RuntimeControlAPIRouter {
             } catch {
                 return errorStreamResponse(error.localizedDescription)
             }
+        case .vitalDBObservationStream:
+            return makeStream { [handler, streamConfiguration] continuation in
+                await pollSnapshot(
+                    id: "vitaldb-observation",
+                    event: "vitaldb-observed",
+                    interval: streamConfiguration.pollIntervalNanoseconds,
+                    heartbeatInterval: streamConfiguration.heartbeatIntervalNanoseconds,
+                    continuation: continuation
+                ) {
+                    try await handler.loadVitalDBObservation()
+                }
+            }
+        case .vitalDBRecorders:
+            return nil
+        case .vitalDBRecorder:
+            return nil
         case .logStream:
             do {
                 let logRequest = try request.runtimeLogTextRequest()
@@ -275,6 +336,10 @@ public struct RuntimeControlAPIRouter {
         default:
             return nil
         }
+    }
+
+    private func loadOverview() async throws -> RuntimeControlOverview {
+        try await makeOverview(handler: handler)
     }
 
     private func jsonResponse<T: Encodable>(_ value: T) throws -> RuntimeControlHTTPResponse {
@@ -363,7 +428,7 @@ public struct RuntimeControlAPIRouter {
 }
 
 @MainActor
-private func pollSnapshot<T: Encodable>(
+private func pollSnapshot<T: Encodable & Sendable>(
     id: String,
     event: String,
     interval: UInt64,
@@ -376,7 +441,9 @@ private func pollSnapshot<T: Encodable>(
     do {
         while !Task.isCancelled {
             let value = try await load()
-            let payload = try JSONEncoder().encode(value)
+            let payload = try await Task.detached(priority: .utility) {
+                try JSONEncoder().encode(value)
+            }.value
             if payload != previousPayload {
                 previousPayload = payload
                 lastHeartbeat = Date()
@@ -607,12 +674,42 @@ public extension RuntimeControlHTTPRequest {
             throw RuntimeControlHTTPQueryError.invalidBody
         }
     }
+
+    func vitalDBRecorderCode() throws -> String {
+        let components = RuntimeControlAPIEndpoint
+            .normalizedPathForRequest(path)
+            .split(separator: "/", omittingEmptySubsequences: true)
+        guard components.count == 3,
+              components[0] == "vitaldb",
+              components[1] == "recorders",
+              let decoded = String(components[2]).removingPercentEncoding,
+              !decoded.isEmpty
+        else {
+            throw RuntimeControlHTTPQueryError.invalidPathParameter("vrcode")
+        }
+        return decoded
+    }
+}
+
+@MainActor
+private func makeOverview(handler: any RuntimeControlAPIReadHandler) async throws -> RuntimeControlOverview {
+    var status = try await handler.loadStatus()
+    let vitalDBObservation = try await handler.loadVitalDBObservation()
+    status.vitalDBObservation = vitalDBObservation ?? status.vitalDBObservation
+    return try await RuntimeControlOverview(
+        status: status,
+        settings: handler.loadSettings(),
+        release: handler.loadReleaseInfo(),
+        install: handler.loadInstallInfo(),
+        vitalDBObservation: vitalDBObservation
+    )
 }
 
 public enum RuntimeControlHTTPQueryError: LocalizedError, Equatable {
     case invalidLimit(String)
     case invalidCursor(String)
     case invalidLogSource(String)
+    case invalidPathParameter(String)
     case missingBody
     case invalidBody
 
@@ -624,6 +721,8 @@ public enum RuntimeControlHTTPQueryError: LocalizedError, Equatable {
             return "Invalid runtime event cursor: \(value)"
         case .invalidLogSource(let value):
             return "Invalid runtime log source: \(value)"
+        case .invalidPathParameter(let name):
+            return "Invalid path parameter: \(name)"
         case .missingBody:
             return "Missing request body."
         case .invalidBody:

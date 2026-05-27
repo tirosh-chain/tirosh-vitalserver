@@ -54,6 +54,8 @@ public enum RuntimeStatusDocumentBuilder {
             vmService: input.healthSnapshot.vmService,
             proxyService: input.healthSnapshot.proxyService,
             watchdogService: input.healthSnapshot.watchdogService,
+            vmState: input.healthSnapshot.vmState,
+            vmErrors: input.healthSnapshot.vmErrors,
             vmIP: input.healthSnapshot.vmIP,
             proxyPort: input.healthSnapshot.proxyPort,
             hostProxyHTTP: input.healthSnapshot.hostProxyHTTP,
@@ -65,7 +67,8 @@ public enum RuntimeStatusDocumentBuilder {
             failureReasons: input.healthSnapshot.failureReasons,
             latestBackup: input.latestBackup,
             progress: input.progress,
-            containerObservation: input.healthSnapshot.containerObservation
+            containerObservation: input.healthSnapshot.containerObservation,
+            vitalDBObservation: input.healthSnapshot.vitalDBObservation
         )
     }
 }

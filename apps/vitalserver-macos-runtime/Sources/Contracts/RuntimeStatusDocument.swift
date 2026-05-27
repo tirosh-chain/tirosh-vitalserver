@@ -71,6 +71,8 @@ public struct RuntimeStatusDocument: Codable, Equatable, Sendable {
     public let vmService: RuntimeServiceState
     public let proxyService: RuntimeServiceState
     public let watchdogService: RuntimeServiceState
+    public let vmState: RuntimeVMState?
+    public let vmErrors: [RuntimeVMError]?
     public let vmIP: String?
     public let proxyPort: Int
     public let hostProxyHTTP: String
@@ -80,9 +82,11 @@ public struct RuntimeStatusDocument: Codable, Equatable, Sendable {
     public let rootfsBase: RuntimeFileState
     public let vmDisk: RuntimeFileState
     public let failureReasons: [RuntimeFailureReason]
+    public let domainErrors: [RuntimeDomainError]?
     public let latestBackup: String?
     public let progress: RuntimeProgressDocument?
     public let containerObservation: RuntimeContainerObservation?
+    public let vitalDBObservation: VitalDBObservationDocument?
 
     public init(
         schemaVersion: Int? = nil,
@@ -97,6 +101,8 @@ public struct RuntimeStatusDocument: Codable, Equatable, Sendable {
         vmService: RuntimeServiceState,
         proxyService: RuntimeServiceState,
         watchdogService: RuntimeServiceState,
+        vmState: RuntimeVMState? = nil,
+        vmErrors: [RuntimeVMError]? = nil,
         vmIP: String?,
         proxyPort: Int,
         hostProxyHTTP: String,
@@ -106,9 +112,11 @@ public struct RuntimeStatusDocument: Codable, Equatable, Sendable {
         rootfsBase: RuntimeFileState,
         vmDisk: RuntimeFileState,
         failureReasons: [RuntimeFailureReason],
+        domainErrors: [RuntimeDomainError]? = nil,
         latestBackup: String?,
         progress: RuntimeProgressDocument? = nil,
-        containerObservation: RuntimeContainerObservation? = nil
+        containerObservation: RuntimeContainerObservation? = nil,
+        vitalDBObservation: VitalDBObservationDocument? = nil
     ) {
         self.schemaVersion = schemaVersion
         self.product = product
@@ -122,6 +130,8 @@ public struct RuntimeStatusDocument: Codable, Equatable, Sendable {
         self.vmService = vmService
         self.proxyService = proxyService
         self.watchdogService = watchdogService
+        self.vmState = vmState
+        self.vmErrors = vmErrors
         self.vmIP = vmIP
         self.proxyPort = proxyPort
         self.hostProxyHTTP = hostProxyHTTP
@@ -131,9 +141,72 @@ public struct RuntimeStatusDocument: Codable, Equatable, Sendable {
         self.rootfsBase = rootfsBase
         self.vmDisk = vmDisk
         self.failureReasons = failureReasons
+        self.domainErrors = domainErrors ?? (failureReasons.isEmpty ? nil : failureReasons.map(RuntimeDomainError.init))
         self.latestBackup = latestBackup
         self.progress = progress
         self.containerObservation = containerObservation
+        self.vitalDBObservation = vitalDBObservation
+    }
+
+    public init(
+        schemaVersion: Int? = nil,
+        product: String,
+        status: RuntimeStatusLevel,
+        operation: RuntimeOperation,
+        message: String,
+        updatedAt: String,
+        productRoot: String,
+        runtimeHome: String,
+        runtimeVersion: String,
+        vmService: RuntimeServiceState,
+        proxyService: RuntimeServiceState,
+        watchdogService: RuntimeServiceState,
+        vmState: RuntimeVMState? = nil,
+        vmErrors: [RuntimeVMError]? = nil,
+        vmIP: String?,
+        proxyPort: Int,
+        hostProxyHTTP: String,
+        guestHTTP: String,
+        redisUIHTTP: String?,
+        swaggerUIHTTP: String?,
+        rootfsBase: RuntimeFileState,
+        vmDisk: RuntimeFileState,
+        failureReasons: [RuntimeFailureReason],
+        latestBackup: String?,
+        progress: RuntimeProgressDocument? = nil,
+        containerObservation: RuntimeContainerObservation? = nil,
+        vitalDBObservation: VitalDBObservationDocument? = nil
+    ) {
+        self.init(
+            schemaVersion: schemaVersion,
+            product: product,
+            status: status,
+            operation: operation,
+            message: message,
+            updatedAt: updatedAt,
+            productRoot: productRoot,
+            runtimeHome: runtimeHome,
+            runtimeVersion: runtimeVersion,
+            vmService: vmService,
+            proxyService: proxyService,
+            watchdogService: watchdogService,
+            vmState: vmState,
+            vmErrors: vmErrors,
+            vmIP: vmIP,
+            proxyPort: proxyPort,
+            hostProxyHTTP: hostProxyHTTP,
+            guestHTTP: guestHTTP,
+            redisUIHTTP: redisUIHTTP,
+            swaggerUIHTTP: swaggerUIHTTP,
+            rootfsBase: rootfsBase,
+            vmDisk: vmDisk,
+            failureReasons: failureReasons,
+            domainErrors: nil,
+            latestBackup: latestBackup,
+            progress: progress,
+            containerObservation: containerObservation,
+            vitalDBObservation: vitalDBObservation
+        )
     }
 
     public init(
@@ -149,6 +222,8 @@ public struct RuntimeStatusDocument: Codable, Equatable, Sendable {
         vmService: RuntimeServiceState,
         proxyService: RuntimeServiceState,
         watchdogService: RuntimeServiceState,
+        vmState: RuntimeVMState? = nil,
+        vmErrors: [RuntimeVMError]? = nil,
         vmIP: String?,
         proxyPort: Int,
         hostProxyHTTP: String,
@@ -158,9 +233,11 @@ public struct RuntimeStatusDocument: Codable, Equatable, Sendable {
         rootfsBase: RuntimeFileState,
         vmDisk: RuntimeFileState,
         failureReasons: [RuntimeFailureReason],
+        domainErrors: [RuntimeDomainError]? = nil,
         latestBackup: String?,
         progress: RuntimeProgressDocument? = nil,
-        containerObservation: RuntimeContainerObservation? = nil
+        containerObservation: RuntimeContainerObservation? = nil,
+        vitalDBObservation: VitalDBObservationDocument? = nil
     ) {
         self.init(
             schemaVersion: schemaVersion,
@@ -175,6 +252,8 @@ public struct RuntimeStatusDocument: Codable, Equatable, Sendable {
             vmService: vmService,
             proxyService: proxyService,
             watchdogService: watchdogService,
+            vmState: vmState,
+            vmErrors: vmErrors,
             vmIP: vmIP,
             proxyPort: proxyPort,
             hostProxyHTTP: hostProxyHTTP,
@@ -184,9 +263,72 @@ public struct RuntimeStatusDocument: Codable, Equatable, Sendable {
             rootfsBase: rootfsBase,
             vmDisk: vmDisk,
             failureReasons: failureReasons,
+            domainErrors: domainErrors,
             latestBackup: latestBackup,
             progress: progress,
-            containerObservation: containerObservation
+            containerObservation: containerObservation,
+            vitalDBObservation: vitalDBObservation
+        )
+    }
+
+    public init(
+        schemaVersion: Int? = nil,
+        product: String,
+        status: RuntimeStatusLevel,
+        operation: String,
+        message: String,
+        updatedAt: String,
+        productRoot: String,
+        runtimeHome: String,
+        runtimeVersion: String,
+        vmService: RuntimeServiceState,
+        proxyService: RuntimeServiceState,
+        watchdogService: RuntimeServiceState,
+        vmState: RuntimeVMState? = nil,
+        vmErrors: [RuntimeVMError]? = nil,
+        vmIP: String?,
+        proxyPort: Int,
+        hostProxyHTTP: String,
+        guestHTTP: String,
+        redisUIHTTP: String?,
+        swaggerUIHTTP: String?,
+        rootfsBase: RuntimeFileState,
+        vmDisk: RuntimeFileState,
+        failureReasons: [RuntimeFailureReason],
+        latestBackup: String?,
+        progress: RuntimeProgressDocument? = nil,
+        containerObservation: RuntimeContainerObservation? = nil,
+        vitalDBObservation: VitalDBObservationDocument? = nil
+    ) {
+        self.init(
+            schemaVersion: schemaVersion,
+            product: product,
+            status: status,
+            operation: operation,
+            message: message,
+            updatedAt: updatedAt,
+            productRoot: productRoot,
+            runtimeHome: runtimeHome,
+            runtimeVersion: runtimeVersion,
+            vmService: vmService,
+            proxyService: proxyService,
+            watchdogService: watchdogService,
+            vmState: vmState,
+            vmErrors: vmErrors,
+            vmIP: vmIP,
+            proxyPort: proxyPort,
+            hostProxyHTTP: hostProxyHTTP,
+            guestHTTP: guestHTTP,
+            redisUIHTTP: redisUIHTTP,
+            swaggerUIHTTP: swaggerUIHTTP,
+            rootfsBase: rootfsBase,
+            vmDisk: vmDisk,
+            failureReasons: failureReasons,
+            domainErrors: nil,
+            latestBackup: latestBackup,
+            progress: progress,
+            containerObservation: containerObservation,
+            vitalDBObservation: vitalDBObservation
         )
     }
 }

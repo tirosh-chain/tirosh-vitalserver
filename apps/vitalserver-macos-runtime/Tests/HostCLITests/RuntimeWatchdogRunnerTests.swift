@@ -13,6 +13,7 @@ final class RuntimeWatchdogRunnerTests: XCTestCase {
         XCTAssertEqual(harness.healthCalls, 0)
         XCTAssertTrue(harness.restartedServices.isEmpty)
         XCTAssertTrue(harness.writtenStatuses.isEmpty)
+        XCTAssertEqual(harness.lifecycleEvents.map(\.eventType), [.watchdogSkipped])
     }
 
     func testHealthyRuntimeWritesHealthyStatusWithoutRecovery() throws {
@@ -45,7 +46,7 @@ final class RuntimeWatchdogRunnerTests: XCTestCase {
         XCTAssertTrue(harness.restartedServices.isEmpty)
     }
 
-    func testGuestReadinessFailureRestartsOnlyVMWhenProxyIsAlive() throws {
+    func testGuestReadinessFailureRestartsVMGuestLogSyncAndProxy() throws {
         let harness = WatchdogHarness(snapshots: [
             healthSnapshot(
                 hostProxyHTTP: "502",
@@ -58,10 +59,15 @@ final class RuntimeWatchdogRunnerTests: XCTestCase {
         try harness.runner.run()
 
         XCTAssertEqual(harness.proxyLivenessPorts, [80])
-        XCTAssertEqual(harness.restartedServices, [.vm])
+        XCTAssertEqual(harness.restartedServices, [.vm, .guestLogSync, .proxy])
         XCTAssertEqual(harness.sleepCalls, [Constants.Runtime.watchdogRecoveryWaitSeconds])
         XCTAssertEqual(harness.writtenStatuses.map(\.status), [.recovering, .healthy])
         XCTAssertEqual(harness.observedStatuses.map(\.status), [.recovering, .healthy])
+        XCTAssertEqual(harness.observedEvents.map(\.eventType), [
+            .recoveryPlanned,
+            .serviceRestartDispatched,
+            .serviceRestartDispatched,
+        ])
     }
 
     func testMissingInstalledArtifactWritesCriticalWithoutRestart() throws {
@@ -89,6 +95,16 @@ private final class WatchdogHarness {
     var observedStatuses: [
         (status: RuntimeStatusLevel, operation: RuntimeOperation, message: String, snapshot: RuntimeHealthSnapshot)
     ] = []
+    var observedEvents: [
+        (
+            status: RuntimeStatusLevel,
+            operation: RuntimeOperation,
+            message: String,
+            snapshot: RuntimeHealthSnapshot,
+            eventType: RuntimeEventType
+        )
+    ] = []
+    var lifecycleEvents: [(operation: RuntimeOperation, message: String, eventType: RuntimeEventType)] = []
     var logs: [String] = []
 
     private let activeOperation: RuntimeOperation?
@@ -134,6 +150,12 @@ private final class WatchdogHarness {
                 writeObservedStatus: { status, operation, message, snapshot in
                     self.writtenStatuses.append((status, operation, message))
                     self.observedStatuses.append((status, operation, message, snapshot))
+                },
+                recordObservedEvent: { status, operation, message, snapshot, eventType in
+                    self.observedEvents.append((status, operation, message, snapshot, eventType))
+                },
+                recordLifecycleEvent: { operation, message, eventType in
+                    self.lifecycleEvents.append((operation, message, eventType))
                 }
             ),
             log: { message in

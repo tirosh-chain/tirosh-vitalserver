@@ -2,77 +2,61 @@
 .PHONY: open
 .PHONY: swagger swagger-down
 
+COMPOSE_ARGS = \
+	--compose "$(COMPOSE)" \
+	--bind-host "$(VITALSERVER_BIND_HOST)" \
+	--http-port "$(VITALSERVER_HTTP_PORT)" \
+	--redis-host "$(VITALSERVER_REDIS_HOST)" \
+	--redis-port "$(VITALSERVER_REDIS_PORT)" \
+	--trust-proxy "$(VITALSERVER_TRUST_PROXY)"
+
 build: init
-	$(COMPOSE) build
+	$(DEVTOOLS_RUNNER) compose $(COMPOSE_ARGS) -- build
 
 app-build: init
-	$(COMPOSE) build app
+	$(DEVTOOLS_RUNNER) compose $(COMPOSE_ARGS) -- build app
 
 app-rebuild: init
-	$(COMPOSE) build app
-	VITALSERVER_BIND_HOST="$(VITALSERVER_BIND_HOST)" \
-	VITALSERVER_HTTP_PORT="$(VITALSERVER_HTTP_PORT)" \
-	VITALSERVER_REDIS_HOST="$(VITALSERVER_REDIS_HOST)" \
-	VITALSERVER_REDIS_PORT="$(VITALSERVER_REDIS_PORT)" \
-	VITALSERVER_TRUST_PROXY="$(VITALSERVER_TRUST_PROXY)" \
-	$(COMPOSE) up -d --no-deps --force-recreate app
+	$(DEVTOOLS_RUNNER) compose $(COMPOSE_ARGS) -- build app
+	$(DEVTOOLS_RUNNER) compose $(COMPOSE_ARGS) -- up -d --no-deps --force-recreate app
 
 up: init proxy-test
-	VITALSERVER_BIND_HOST="$(VITALSERVER_BIND_HOST)" \
-	VITALSERVER_HTTP_PORT="$(VITALSERVER_HTTP_PORT)" \
-	VITALSERVER_REDIS_HOST="$(VITALSERVER_REDIS_HOST)" \
-	VITALSERVER_REDIS_PORT="$(VITALSERVER_REDIS_PORT)" \
-	VITALSERVER_TRUST_PROXY="$(VITALSERVER_TRUST_PROXY)" \
-	$(COMPOSE) up -d
+	$(DEVTOOLS_RUNNER) compose $(COMPOSE_ARGS) -- up -d
 	$(MAKE) proxy-run
 
 down:
 	$(MAKE) proxy-stop
-	$(COMPOSE) down
+	$(DEVTOOLS_RUNNER) compose $(COMPOSE_ARGS) -- down
 
 restart: down
 	$(MAKE) up
 
 logs:
-	$(COMPOSE) logs -f
+	$(DEVTOOLS_RUNNER) compose $(COMPOSE_ARGS) -- logs -f
 
 ps:
-	$(COMPOSE) ps
+	$(DEVTOOLS_RUNNER) compose $(COMPOSE_ARGS) -- ps
 
 open:
-	@port="$(VITALSERVER_PROXY_PORT)"; \
-	if [ -n "$${VITALSERVER_URL:-}" ]; then \
-		url="$$VITALSERVER_URL"; \
-	elif [ "$$port" = "80" ]; then \
-		url="http://localhost"; \
-	else \
-		url="http://localhost:$$port"; \
-	fi; \
-	printf "VitalServer: %s\n" "$$url"; \
-	"$(PYTHON)" -m webbrowser -t "$$url"
+	$(DEVTOOLS_RUNNER) open --port "$(VITALSERVER_PROXY_PORT)"
 
 shell:
-	$(COMPOSE) exec app sh
+	$(DEVTOOLS_RUNNER) compose $(COMPOSE_ARGS) -- exec app sh
 
 config:
-	VITALSERVER_BIND_HOST="$(VITALSERVER_BIND_HOST)" \
-	VITALSERVER_HTTP_PORT="$(VITALSERVER_HTTP_PORT)" \
-	VITALSERVER_REDIS_HOST="$(VITALSERVER_REDIS_HOST)" \
-	VITALSERVER_REDIS_PORT="$(VITALSERVER_REDIS_PORT)" \
-	VITALSERVER_TRUST_PROXY="$(VITALSERVER_TRUST_PROXY)" \
-	$(COMPOSE) config
+	$(DEVTOOLS_RUNNER) compose $(COMPOSE_ARGS) -- config
 
 clean-volumes:
 	$(MAKE) proxy-stop
-	$(COMPOSE) down --volumes
+	$(DEVTOOLS_RUNNER) compose $(COMPOSE_ARGS) -- down --volumes
 
 clean:
 	$(MAKE) proxy-clean
-	$(COMPOSE) down --volumes --remove-orphans --rmi local
+	$(DEVTOOLS_RUNNER) compose $(COMPOSE_ARGS) -- down --volumes --remove-orphans --rmi local
 
 swagger:
-	$(COMPOSE) --profile swagger up -d --no-deps swagger-ui
+	$(DEVTOOLS_RUNNER) compose $(COMPOSE_ARGS) -- --profile swagger up -d --no-deps swagger-ui
 	@printf "Swagger UI: http://localhost:$${SWAGGER_UI_PORT:-8082}\n"
 
 swagger-down:
-	$(COMPOSE) --profile swagger stop swagger-ui
+	$(DEVTOOLS_RUNNER) compose $(COMPOSE_ARGS) -- --profile swagger stop swagger-ui

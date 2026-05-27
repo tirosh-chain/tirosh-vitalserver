@@ -5,28 +5,49 @@ final class RuntimeSectionTests: XCTestCase {
     func testStableRuntimeSectionsHideTestTab() {
         XCTAssertEqual(RuntimeSection.visibleSections(testEnabled: false).map(\.title), [
             AppConstants.Labels.sectionStatus,
+            AppConstants.Labels.sectionRecorders,
+            AppConstants.Labels.sectionObservability,
+            AppConstants.Labels.sectionLog,
             AppConstants.Labels.sectionSettings,
             AppConstants.Labels.sectionUpdate,
-            AppConstants.Labels.sectionEvents,
-            AppConstants.Labels.sectionLog,
             AppConstants.Labels.sectionInfo,
             AppConstants.Labels.sectionAdvanced,
             AppConstants.Labels.sectionDangerZone,
         ])
     }
 
-    func testTestkitRuntimeSectionsIncludeTestTabAfterEvents() {
+    func testTestkitRuntimeSectionsIncludeTestTabBeforeDangerZone() {
         XCTAssertEqual(RuntimeSection.visibleSections(testEnabled: true).map(\.title), [
             AppConstants.Labels.sectionStatus,
+            AppConstants.Labels.sectionRecorders,
+            AppConstants.Labels.sectionObservability,
+            AppConstants.Labels.sectionLog,
             AppConstants.Labels.sectionSettings,
             AppConstants.Labels.sectionUpdate,
-            AppConstants.Labels.sectionEvents,
-            AppConstants.Labels.sectionTest,
-            AppConstants.Labels.sectionLog,
             AppConstants.Labels.sectionInfo,
             AppConstants.Labels.sectionAdvanced,
+            AppConstants.Labels.sectionTest,
             AppConstants.Labels.sectionDangerZone,
         ])
+    }
+
+    func testRuntimeSectionsExposePrimaryUtilityAndOverflowGroups() {
+        XCTAssertEqual(RuntimeSection.primarySections(testEnabled: true), [
+            .status,
+            .recorders,
+            .observability,
+            .log,
+            .settings,
+            .update,
+        ])
+        XCTAssertEqual(RuntimeSection.utilitySections(testEnabled: true), [.advanced])
+        XCTAssertEqual(RuntimeSection.overflowSections(testEnabled: true), [.info, .test, .dangerZone])
+    }
+
+    func testStableRuntimeSectionOverflowHidesTestTab() {
+        XCTAssertEqual(RuntimeSection.overflowSections(testEnabled: false), [.info, .dangerZone])
+        XCTAssertTrue(RuntimeSection.sectionIsInOverflow(.dangerZone, testEnabled: false))
+        XCTAssertFalse(RuntimeSection.sectionIsInOverflow(.advanced, testEnabled: false))
     }
 
     func testRuntimeControlDevConsoleURLUsesLocalAPI() {

@@ -3,8 +3,10 @@ set -euo pipefail
 
 labels=(
   "com.tirosh.vitalserver-watchdog"
+  "com.tirosh.vitalserver-guest-log-sync"
   "com.tirosh.vitalserver-proxy"
   "com.tirosh.vitalserver-vm"
+  "com.tirosh.vitalserver-sleep-prevention"
 )
 
 for label in "${labels[@]}"; do
