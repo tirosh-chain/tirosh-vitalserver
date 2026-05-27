@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import threading
 import uuid
 
@@ -13,6 +14,7 @@ from tirosh_vitalserver.testkit.application.recorder_session.models import (
 from tirosh_vitalserver.testkit.application.recorder_session.session import (
     VirtualRecorderSession,
 )
+from tirosh_vitalserver.testkit.observability import emit_testkit_event
 
 
 class VirtualRecorderSessionManager:
@@ -39,6 +41,17 @@ class VirtualRecorderSessionManager:
         with self._lock:
             self._sessions[session_id] = session
 
+        emit_testkit_event(
+            "session.created",
+            session_id=session_id,
+            target_url=request.target_url,
+            recorders=request.recorders,
+            vrcode=request.vrcode,
+            interval_seconds=request.interval_seconds,
+            duration_seconds=request.duration_seconds,
+            max_messages=request.max_messages,
+            default_scenario=request.default_scenario.value,
+        )
         session.start()
 
         return session.snapshot()
@@ -63,8 +76,14 @@ class VirtualRecorderSessionManager:
 
         session = self._session(session_id)
         if session is None:
+            emit_testkit_event(
+                "session.stop.missing",
+                level=logging.WARNING,
+                session_id=session_id,
+            )
             return None
 
+        emit_testkit_event("session.stop.requested", session_id=session_id)
         session.stop()
 
         return session.snapshot()

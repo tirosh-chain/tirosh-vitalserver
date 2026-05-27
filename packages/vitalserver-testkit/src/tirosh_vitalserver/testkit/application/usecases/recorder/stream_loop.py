@@ -24,6 +24,7 @@ from tirosh_vitalserver.testkit.domain.signal import (
     DEFAULT_SIGNAL_PROFILE,
     SignalProfile,
 )
+from tirosh_vitalserver.testkit.observability import emit_testkit_event
 from tirosh_vitalserver.testkit.types.json import JsonValue
 
 
@@ -53,11 +54,26 @@ def stream_realtime_payload(
     started = time.perf_counter()
     messages_sent = 0
     bytes_sent = 0
+    vrcode = runtime_state.vrcode if runtime_state is not None else None
 
     try:
+        emit_testkit_event(
+            "stream.starting",
+            target_url=base_url,
+            vrcode=vrcode,
+            interval_seconds=interval_seconds,
+            duration_seconds=duration_seconds,
+            max_messages=max_messages,
+            generate_frames=generate_frames,
+        )
         client = connector(base_url, timeout=timeout)
         if runtime_state is not None:
             register_vrecorder_lifecycle(client, state=runtime_state)
+        emit_testkit_event(
+            "stream.connected",
+            target_url=base_url,
+            vrcode=vrcode,
+        )
 
         try:
             while should_continue_stream(
@@ -98,6 +114,15 @@ def stream_realtime_payload(
             if client.connected:
                 client.disconnect()
     except Exception as exc:
+        emit_testkit_event(
+            "stream.failed",
+            target_url=base_url,
+            vrcode=vrcode,
+            messages_sent=messages_sent,
+            bytes_sent=bytes_sent,
+            elapsed_seconds=round(time.perf_counter() - started, 3),
+            error=str(exc),
+        )
         return RealtimeStreamResult(
             messages_sent=messages_sent,
             bytes_sent=bytes_sent,
@@ -105,6 +130,14 @@ def stream_realtime_payload(
             error=str(exc),
         )
 
+    emit_testkit_event(
+        "stream.completed",
+        target_url=base_url,
+        vrcode=vrcode,
+        messages_sent=messages_sent,
+        bytes_sent=bytes_sent,
+        elapsed_seconds=round(time.perf_counter() - started, 3),
+    )
     return RealtimeStreamResult(
         messages_sent=messages_sent,
         bytes_sent=bytes_sent,

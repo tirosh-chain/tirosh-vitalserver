@@ -9,6 +9,10 @@ from tirosh_vitalserver.testkit.adapters.inbound.cli.common import (
 )
 from tirosh_vitalserver.testkit.adapters.outbound.vitalserver import VitalServerClient
 from tirosh_vitalserver.testkit.application.usecases import wait_for_server
+from tirosh_vitalserver.testkit.observability import (
+    configure_testkit_logging,
+    emit_testkit_event,
+)
 
 
 def add_server_parsers(
@@ -56,6 +60,12 @@ def add_server_parsers(
         choices=["critical", "error", "warning", "info", "debug", "trace"],
         help="Uvicorn log level",
     )
+    serve_parser.add_argument(
+        "--event-log-format",
+        default=None,
+        choices=["json", "logfmt"],
+        help="Structured TestKit event log format. Defaults to VITALSERVER_TESTKIT_LOG_FORMAT or json.",
+    )
     serve_parser.set_defaults(command=run_serve)
 
 
@@ -78,6 +88,14 @@ def run_health(args: argparse.Namespace) -> int:
 
 def run_serve(args: argparse.Namespace) -> int:
     """Run the FastAPI TestKit server."""
+
+    configure_testkit_logging(format_name=args.event_log_format)
+    emit_testkit_event(
+        "server.starting",
+        host=args.host,
+        port=args.port,
+        uvicorn_log_level=args.log_level,
+    )
 
     try:
         import uvicorn

@@ -21,7 +21,7 @@ struct RuntimeTestPanel: View {
             .padding(16)
         }
         .task {
-            await viewModel.refreshTestKitStatus()
+            await refreshTestKitStatusLoop()
         }
     }
 
@@ -50,6 +50,14 @@ struct RuntimeTestPanel: View {
                         Text(displayName(viewModel.testKitStatus.state))
                             .fontWeight(.medium)
                     }
+                    if !viewModel.testKitActionMessage.isEmpty {
+                        statusRow(AppConstants.Labels.operation) {
+                            Text(viewModel.testKitActionMessage)
+                                .fontWeight(.medium)
+                                .foregroundStyle(actionMessageColor)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
                     statusRow(AppConstants.Labels.serviceName) {
                         Text(viewModel.testKitStatus.serviceName ?? AppConstants.Values.empty)
                             .fontWeight(.medium)
@@ -64,22 +72,32 @@ struct RuntimeTestPanel: View {
                         Text(String(viewModel.testKitStatus.sessions.count))
                             .fontWeight(.medium)
                     }
-                    statusRow(AppConstants.Labels.session) {
-                        selectedSessionPicker
-                    }
                     statusRow(AppConstants.Labels.recorders) {
-                        Text(String(viewModel.selectedTestKitSession?.recorders.count ?? 0))
+                        Text(String(totalRecorders))
                         .fontWeight(.medium)
                     }
                     statusRow(AppConstants.Labels.messages) {
-                        Text(String(viewModel.selectedTestKitSession?.messagesSent ?? 0))
+                        Text(String(totalMessages))
                             .fontWeight(.medium)
+                    }
+                    if let lastError = visibleLastError,
+                       !lastError.isEmpty {
+                        statusRow(AppConstants.Labels.lastError) {
+                            Text(lastError)
+                                .fontWeight(.medium)
+                                .foregroundStyle(.red)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
                     statusRow(AppConstants.Labels.target) {
                         Text(viewModel.testKitStatus.recorderTargetURL ?? AppConstants.Values.empty)
                             .fontWeight(.medium)
                     }
                 }
+
+                Divider()
+
+                sessionList
 
                 Divider()
 
@@ -105,7 +123,10 @@ struct RuntimeTestPanel: View {
 
                 HStack(spacing: 8) {
                     Button(AppConstants.Actions.refresh) {
-                        Task { await viewModel.refreshTestKitStatus() }
+                        Task {
+                            await viewModel.refreshTestKitStatus()
+                            viewModel.testKitActionMessage = RuntimeTestPanelText.refreshedStatus
+                        }
                     }
                     .disabled(viewModel.isRunningTestKitAction)
 
@@ -113,11 +134,6 @@ struct RuntimeTestPanel: View {
                         Task { await viewModel.startVirtualRecorderSession() }
                     }
                     .disabled(!viewModel.testKitCanStart)
-
-                    Button(AppConstants.Actions.stop) {
-                        Task { await viewModel.stopVirtualRecorderSession() }
-                    }
-                    .disabled(!viewModel.testKitCanStop)
 
                     if viewModel.isRunningTestKitAction {
                         ProgressView()
@@ -158,24 +174,94 @@ struct RuntimeTestPanel: View {
         .buttonStyle(.link)
     }
 
-    private var selectedSessionPicker: some View {
-        Picker(AppConstants.Labels.session, selection: $viewModel.selectedTestKitSessionID) {
+    private var sessionList: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(AppConstants.Labels.sessions)
+                .font(.subheadline)
+                .fontWeight(.semibold)
             if viewModel.testKitStatus.sessions.isEmpty {
-                Text(AppConstants.Values.empty).tag("")
-            }
-            ForEach(viewModel.testKitStatus.sessions, id: \.id) { session in
-                Text(sessionLabel(session)).tag(session.id)
+                Text(AppConstants.Values.empty)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(viewModel.testKitStatus.sessions, id: \.id) { session in
+                    sessionRow(session)
+                }
             }
         }
-        .labelsHidden()
-        .pickerStyle(.menu)
-        .frame(maxWidth: 360, alignment: .leading)
-        .disabled(viewModel.testKitStatus.sessions.isEmpty || viewModel.isRunningTestKitAction)
     }
 
-    private func sessionLabel(_ session: RuntimeTestKitSession) -> String {
+    private func sessionRow(_ session: RuntimeTestKitSession) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(sessionTitle(session))
+                    .fontWeight(.medium)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Text(sessionDetail(session))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+            Spacer(minLength: 12)
+            Button(AppConstants.Actions.stop) {
+                Task { await viewModel.stopVirtualRecorderSession(sessionID: session.id) }
+            }
+            .disabled(viewModel.isRunningTestKitAction || !sessionIsStoppable(session))
+        }
+        .padding(.vertical, 4)
+    }
+
+    private var totalRecorders: Int {
+        viewModel.testKitStatus.sessions.reduce(0) { total, session in
+            total + session.recorders.count
+        }
+    }
+
+    private var totalMessages: Int {
+        viewModel.testKitStatus.sessions.reduce(0) { total, session in
+            total + session.messagesSent
+        }
+    }
+
+    private var visibleLastError: String? {
+        if let selectedError = viewModel.selectedTestKitSession?.lastError, !selectedError.isEmpty {
+            return selectedError
+        }
+        if let failedError = viewModel.testKitStatus.sessions.first(where: { $0.lastError?.isEmpty == false })?.lastError {
+            return failedError
+        }
+        return viewModel.testKitStatus.lastError
+    }
+
+    private var actionMessageColor: Color {
+        let message = viewModel.testKitActionMessage.lowercased()
+        if message.contains("error")
+            || message.contains("failed")
+            || message.contains("unavailable")
+            || message.contains("not reachable") {
+            return .red
+        }
+        return .secondary
+    }
+
+    private func sessionTitle(_ session: RuntimeTestKitSession) -> String {
         let recorder = session.recorders.first?.vrcode ?? session.vrcode ?? session.id
         return "\(recorder) · \(displayName(session.state))"
+    }
+
+    private func sessionDetail(_ session: RuntimeTestKitSession) -> String {
+        [
+            "\(AppConstants.Labels.messages): \(session.messagesSent)",
+            "\(AppConstants.Labels.bytes): \(session.bytesSent)",
+            "\(AppConstants.Labels.recorders): \(session.recorders.count)",
+            session.lastError.map { "\(AppConstants.Labels.lastError): \($0)" }
+        ]
+        .compactMap { $0 }
+        .joined(separator: " · ")
+    }
+
+    private func sessionIsStoppable(_ session: RuntimeTestKitSession) -> Bool {
+        !["stopped", "failed"].contains(session.state.lowercased())
     }
 
     private func displayName(_ state: RuntimeTestKitState) -> String {
@@ -197,5 +283,13 @@ struct RuntimeTestPanel: View {
                 word.prefix(1).uppercased() + word.dropFirst()
             }
             .joined(separator: " ")
+    }
+
+    private func refreshTestKitStatusLoop() async {
+        await viewModel.refreshTestKitStatus()
+        while !Task.isCancelled {
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            await viewModel.refreshTestKitStatus()
+        }
     }
 }

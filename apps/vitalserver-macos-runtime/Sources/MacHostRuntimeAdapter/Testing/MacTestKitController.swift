@@ -7,6 +7,7 @@ public final class MacTestKitController: RuntimeTestKitControlling {
     private let statusProvider: () async -> RuntimeStatus
     private var activeSessionID: String?
     private var lastError: String?
+    private let requestTimeout: TimeInterval = 5
 
     public init(configuration: MacTestKitControllerConfiguration = MacTestKitControllerConfiguration()) {
         let statusReader = SystemRuntimeStatusReader(paths: RuntimePaths())
@@ -39,20 +40,30 @@ public final class MacTestKitController: RuntimeTestKitControlling {
             )
         }
 
+        let healthy = await testKitAPIIsHealthy(apiBaseURL: apiBaseURL)
+        guard healthy else {
+            return RuntimeTestKitStatus(
+                enabled: true,
+                state: .failed,
+                serviceName: configuration.serviceName,
+                apiBaseURL: apiBaseURL,
+                recorderTargetURL: configuration.recorderTargetURL,
+                lastError: lastError ?? "TestKit container API is not reachable."
+            )
+        }
+
         let sessions = await loadSessions(apiBaseURL: apiBaseURL)
         let activeSession = preferredActiveSession(from: sessions)
-        let healthy = await testKitAPIIsHealthy(apiBaseURL: apiBaseURL)
-        let state: RuntimeTestKitState = healthy ? .running : .failed
 
         return RuntimeTestKitStatus(
             enabled: true,
-            state: state,
+            state: .running,
             serviceName: configuration.serviceName,
             apiBaseURL: apiBaseURL,
             recorderTargetURL: configuration.recorderTargetURL,
             activeSession: activeSession,
             sessions: sessions,
-            lastError: healthy ? lastError : (lastError ?? "TestKit container API is not reachable.")
+            lastError: lastError
         )
     }
 
@@ -60,14 +71,14 @@ public final class MacTestKitController: RuntimeTestKitControlling {
         let apiBaseURL = try await requireAPIBaseURL()
         try await ensureAPIAvailable(apiBaseURL: apiBaseURL)
 
-        let apiRequest = TestKitStartSessionRequest(
+        let requestBody = TestKitStartSessionRequest(
             runtimeRequest: request,
             targetURL: configuration.recorderTargetURL
         )
-        var urlRequest = URLRequest(url: apiURL(apiBaseURL: apiBaseURL, path: "/sessions"))
+        var urlRequest = apiRequest(apiBaseURL: apiBaseURL, path: "/sessions")
         urlRequest.httpMethod = "POST"
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        urlRequest.httpBody = try JSONEncoder().encode(apiRequest)
+        urlRequest.httpBody = try JSONEncoder().encode(requestBody)
 
         let session = try await decode(RuntimeTestKitSession.self, from: urlRequest)
         activeSessionID = session.id
@@ -83,7 +94,7 @@ public final class MacTestKitController: RuntimeTestKitControlling {
             return nil
         }
 
-        var urlRequest = URLRequest(url: apiURL(apiBaseURL: apiBaseURL, path: "/sessions/\(selectedSessionID)/stop"))
+        var urlRequest = apiRequest(apiBaseURL: apiBaseURL, path: "/sessions/\(selectedSessionID)/stop")
         urlRequest.httpMethod = "POST"
 
         let session = try await decode(RuntimeTestKitSession.self, from: urlRequest)
@@ -119,7 +130,7 @@ public final class MacTestKitController: RuntimeTestKitControlling {
 
     private func loadSessions(apiBaseURL: String) async -> [RuntimeTestKitSession] {
         do {
-            var urlRequest = URLRequest(url: apiURL(apiBaseURL: apiBaseURL, path: "/sessions"))
+            var urlRequest = apiRequest(apiBaseURL: apiBaseURL, path: "/sessions")
             urlRequest.httpMethod = "GET"
             let response = try await decode(TestKitSessionsResponse.self, from: urlRequest)
             return response.sessions
@@ -138,7 +149,7 @@ public final class MacTestKitController: RuntimeTestKitControlling {
 
     private func testKitAPIIsHealthy(apiBaseURL: String) async -> Bool {
         do {
-            var request = URLRequest(url: apiURL(apiBaseURL: apiBaseURL, path: "/health"))
+            var request = apiRequest(apiBaseURL: apiBaseURL, path: "/health")
             request.httpMethod = "GET"
             let (_, response) = try await URLSession.shared.data(for: request)
             return (response as? HTTPURLResponse)?.statusCode == 200
@@ -161,6 +172,13 @@ public final class MacTestKitController: RuntimeTestKitControlling {
 
     private func apiURL(apiBaseURL: String, path: String) -> URL {
         URL(string: "\(apiBaseURL)\(path)")!
+    }
+
+    private func apiRequest(apiBaseURL: String, path: String) -> URLRequest {
+        URLRequest(
+            url: apiURL(apiBaseURL: apiBaseURL, path: path),
+            timeoutInterval: requestTimeout
+        )
     }
 }
 

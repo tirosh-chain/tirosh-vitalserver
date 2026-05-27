@@ -258,6 +258,8 @@ enum AppConstants {
         static let session = "Session"
         static let sessions = "Sessions"
         static let messages = "Messages"
+        static let bytes = "Bytes"
+        static let lastError = "Last error"
         static let target = "Target"
         static let scenario = "Scenario"
         static let signal = "Signal"

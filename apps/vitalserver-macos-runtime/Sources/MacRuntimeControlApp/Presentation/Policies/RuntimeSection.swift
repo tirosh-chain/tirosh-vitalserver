@@ -31,7 +31,7 @@ enum RuntimeSection: CaseIterable, Identifiable {
     }
 
     static func overflowSections(testEnabled: Bool = GeneratedRelease.testEnabled) -> [RuntimeSection] {
-        [.info, .test, .dangerZone]
+        [.info, .dangerZone, .test]
             .filter { visibleSections(testEnabled: testEnabled).contains($0) }
     }
 

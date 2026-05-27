@@ -35,6 +35,7 @@ extension RuntimeViewModel {
     func refreshTestKitStatus() async {
         guard let testKitController else {
             testKitStatus = RuntimeTestKitStatus(enabled: false, state: .disabled)
+            testKitActionMessage = RuntimeTestPanelText.testKitUnavailable
             return
         }
         applyTestKitStatus(await testKitController.loadTestKitStatus())
@@ -43,38 +44,57 @@ extension RuntimeViewModel {
     func startVirtualRecorderSession() async {
         guard let testKitController else {
             message = RuntimeTestPanelText.testKitUnavailable
+            testKitActionMessage = RuntimeTestPanelText.testKitUnavailable
             return
         }
         isRunningTestKitAction = true
         defer { isRunningTestKitAction = false }
 
+        testKitActionMessage = RuntimeTestPanelText.startingSession
+        message = RuntimeTestPanelText.startingSession
         do {
             let session = try await testKitController.startVirtualRecorders(testKitStartRequest())
             selectedTestKitSessionID = session.id
             applyTestKitStatus(await testKitController.loadTestKitStatus())
-            message = RuntimeTestPanelText.startedSession(session.id)
+            testKitVrcode = Self.generatedTestKitVrcode()
+            let startedMessage = RuntimeTestPanelText.startedSession(session.id)
+            testKitActionMessage = startedMessage
+            message = startedMessage
         } catch {
             applyTestKitStatus(await testKitController.loadTestKitStatus())
-            message = error.localizedDescription
+            let errorMessage = error.localizedDescription
+            testKitActionMessage = errorMessage
+            message = errorMessage
         }
     }
 
     func stopVirtualRecorderSession() async {
+        await stopVirtualRecorderSession(sessionID: selectedTestKitSession?.id)
+    }
+
+    func stopVirtualRecorderSession(sessionID: String?) async {
         guard let testKitController else {
             message = RuntimeTestPanelText.testKitUnavailable
+            testKitActionMessage = RuntimeTestPanelText.testKitUnavailable
             return
         }
         isRunningTestKitAction = true
         defer { isRunningTestKitAction = false }
 
+        testKitActionMessage = RuntimeTestPanelText.stoppingSession
+        message = RuntimeTestPanelText.stoppingSession
         do {
-            let session = try await testKitController.stopVirtualRecorders(sessionID: selectedTestKitSession?.id)
+            let session = try await testKitController.stopVirtualRecorders(sessionID: sessionID)
             applyTestKitStatus(await testKitController.loadTestKitStatus())
-            message = session.map { RuntimeTestPanelText.stoppedSession($0.id) }
+            let stoppedMessage = session.map { RuntimeTestPanelText.stoppedSession($0.id) }
                 ?? RuntimeTestPanelText.noActiveSession
+            testKitActionMessage = stoppedMessage
+            message = stoppedMessage
         } catch {
             applyTestKitStatus(await testKitController.loadTestKitStatus())
-            message = error.localizedDescription
+            let errorMessage = error.localizedDescription
+            testKitActionMessage = errorMessage
+            message = errorMessage
         }
     }
 
@@ -95,6 +115,14 @@ extension RuntimeViewModel {
     private var normalizedTestKitVrcode: String? {
         let trimmed = testKitVrcode.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
+    }
+
+    static func generatedTestKitVrcode() -> String {
+        let suffix = UUID().uuidString
+            .replacingOccurrences(of: "-", with: "")
+            .prefix(8)
+            .uppercased()
+        return "VR_\(suffix)"
     }
 
     private func applyTestKitStatus(_ status: RuntimeTestKitStatus) {

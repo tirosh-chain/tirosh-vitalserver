@@ -26,6 +26,7 @@ from tirosh_vitalserver.testkit.domain.recorder.simulator.templates import (
     build_simulated_recorder_payload,
 )
 from tirosh_vitalserver.testkit.domain.signal import profile_for_scenario
+from tirosh_vitalserver.testkit.observability import emit_testkit_event
 
 
 class VirtualRecorderSession:
@@ -61,6 +62,13 @@ class VirtualRecorderSession:
     def start(self) -> None:
         """Start the background streaming thread."""
 
+        emit_testkit_event(
+            "session.starting",
+            session_id=self._session_id,
+            target_url=self._request.target_url,
+            recorders=self._request.recorders,
+            vrcode=self._request.vrcode,
+        )
         self._thread.start()
 
     def stop(self) -> None:
@@ -74,6 +82,12 @@ class VirtualRecorderSession:
                 return
             self._state = VirtualRecorderSessionState.STOPPING
             self._stop_event.set()
+        emit_testkit_event(
+            "session.stopping",
+            session_id=self._session_id,
+            target_url=self._request.target_url,
+            vrcode=self._request.vrcode,
+        )
 
     def wait(self, timeout: float | None = None) -> bool:
         """Wait for the session thread to stop."""
@@ -113,6 +127,13 @@ class VirtualRecorderSession:
         with self._lock:
             self._state = VirtualRecorderSessionState.RUNNING
             self._started_at = time.time()
+        emit_testkit_event(
+            "session.running",
+            session_id=self._session_id,
+            target_url=self._request.target_url,
+            recorders=self._request.recorders,
+            vrcode=self._request.vrcode,
+        )
 
         try:
             results = self._stream_recorders()
@@ -127,11 +148,31 @@ class VirtualRecorderSession:
                     else VirtualRecorderSessionState.STOPPED
                 )
                 self._stopped_at = time.time()
+            emit_testkit_event(
+                "session.failed" if error else "session.completed",
+                session_id=self._session_id,
+                state=self._state.value,
+                target_url=self._request.target_url,
+                recorders=self._request.recorders,
+                vrcode=self._request.vrcode,
+                messages_sent=sum(result.messages_sent for result in results),
+                bytes_sent=sum(result.bytes_sent for result in results),
+                error=error,
+            )
         except Exception as exc:
             with self._lock:
                 self._error = str(exc)
                 self._state = VirtualRecorderSessionState.FAILED
                 self._stopped_at = time.time()
+            emit_testkit_event(
+                "session.failed",
+                session_id=self._session_id,
+                state=VirtualRecorderSessionState.FAILED.value,
+                target_url=self._request.target_url,
+                recorders=self._request.recorders,
+                vrcode=self._request.vrcode,
+                error=str(exc),
+            )
 
     def _stream_recorders(self) -> tuple[RealtimeStreamResult, ...]:
         request = self._request

@@ -76,6 +76,7 @@ cat > "${sleep_prevention_plist}" <<PLIST
     <string>/usr/bin/caffeinate</string>
     <string>-i</string>
     <string>-s</string>
+    <string>-m</string>
   </array>
 
   <key>RunAtLoad</key>

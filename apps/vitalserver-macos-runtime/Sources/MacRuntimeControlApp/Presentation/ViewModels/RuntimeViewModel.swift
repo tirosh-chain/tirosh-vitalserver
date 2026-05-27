@@ -30,10 +30,11 @@ final class RuntimeViewModel: ObservableObject {
     @Published var containerObservation: RuntimeContainerObservation?
     @Published var testKitStatus = RuntimeTestKitStatus(enabled: false, state: .disabled)
     @Published var selectedTestKitSessionID = ""
-    @Published var testKitVrcode = ""
+    @Published var testKitVrcode = RuntimeViewModel.generatedTestKitVrcode()
     @Published var testKitScenario = RuntimeTestKitScenario.normal
     @Published var testKitSignalProfile = RuntimeTestKitSignalProfile.normal
     @Published var isRunningTestKitAction = false
+    @Published var testKitActionMessage = ""
 
     let controlClient: any RuntimeControlClient
     let hostClient: any RuntimeHostClient
@@ -388,7 +389,7 @@ final class RuntimeViewModel: ObservableObject {
                 while !Task.isCancelled {
                     await refreshLogs()
                     await refreshOperationDetail(fallback: runningMessage)
-                    try? await Task.sleep(nanoseconds: 1_000_000_000)
+                    try? await Task.sleep(nanoseconds: 2_000_000_000)
                 }
             }
             : nil

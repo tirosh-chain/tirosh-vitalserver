@@ -7,6 +7,9 @@ enum RuntimeTestPanelText {
     static let testkitService = "TestKit virtual recorders"
     static let testKitUnavailable = "TestKit is unavailable for this build."
     static let noActiveSession = "No active TestKit session."
+    static let startingSession = "Starting virtual VRecorder..."
+    static let stoppingSession = "Stopping virtual VRecorder..."
+    static let refreshedStatus = "Refreshed TestKit status."
 
     static func startedSession(_ id: String) -> String {
         "Started TestKit session \(id)."
