@@ -77,10 +77,16 @@ GET  /sessions
 POST /sessions
 GET  /sessions/{id}
 POST /sessions/{id}/stop
+DELETE /sessions/{id}
+DELETE /sessions
 ```
 
 TestKit API는 시뮬레이터 실행 상태의 SoT이고, VitalServer가 실제로 인식한 recorder 상태의
 SoT는 `vitaldb-observer`와 Runtime Control API의 recorder 관측 결과입니다.
+생성했던 virtual VRecorder 목록은 `[sessions].state_path`에 저장합니다. 따라서 TestKit API
+process가 재시작되어도 이전 session의 target URL과 vrcode를 기준으로 삭제/reset을 다시
+요청할 수 있습니다. 실행 중이던 streaming thread 자체는 복구하지 않고, 재시작 이후에는
+남은 VitalServer recorder 등록을 정리하는 registry로 사용합니다.
 
 ## Simulated Signal Scenario
 

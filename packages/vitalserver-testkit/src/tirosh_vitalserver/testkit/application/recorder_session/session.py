@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import threading
 import time
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 
 from tirosh_vitalserver.testkit.application.ports import SocketIoConnectorPort
@@ -22,6 +23,9 @@ from tirosh_vitalserver.testkit.application.usecases.recorder.stream_loop import
 from tirosh_vitalserver.testkit.domain.recorder.payloads import (
     build_virtual_recorder_payloads,
 )
+from tirosh_vitalserver.testkit.domain.recorder.models import (
+    VirtualRecorderPayload,
+)
 from tirosh_vitalserver.testkit.domain.recorder.simulator.templates import (
     build_simulated_recorder_payload,
 )
@@ -38,10 +42,12 @@ class VirtualRecorderSession:
         session_id: str,
         request: VirtualRecorderSessionRequest,
         connector: SocketIoConnectorPort,
+        snapshot_handler: Callable[[VirtualRecorderSessionSnapshot], None] | None = None,
     ) -> None:
         self._session_id = session_id
         self._request = request
         self._connector = connector
+        self._snapshot_handler = snapshot_handler
         self._runtime_registry = RecorderRuntimeRegistry()
         self._stop_event = threading.Event()
         self._lock = threading.RLock()
@@ -51,6 +57,12 @@ class VirtualRecorderSession:
         self._stopped_at: float | None = None
         self._results: tuple[RealtimeStreamResult, ...] = ()
         self._error: str | None = None
+        self._virtual_payloads = self._build_virtual_payloads()
+        for virtual_payload in self._virtual_payloads:
+            self._runtime_registry.state_for(
+                vrcode=virtual_payload.vrcode,
+                base_url=request.target_url,
+            )
         self._thread = threading.Thread(target=self._run, daemon=True)
 
     @property
@@ -82,12 +94,14 @@ class VirtualRecorderSession:
                 return
             self._state = VirtualRecorderSessionState.STOPPING
             self._stop_event.set()
+            snapshot = self.snapshot()
         emit_testkit_event(
             "session.stopping",
             session_id=self._session_id,
             target_url=self._request.target_url,
             vrcode=self._request.vrcode,
         )
+        self._publish_snapshot(snapshot)
 
     def wait(self, timeout: float | None = None) -> bool:
         """Wait for the session thread to stop."""
@@ -123,10 +137,19 @@ class VirtualRecorderSession:
                 error=self._error,
             )
 
+    def _publish_snapshot(
+        self,
+        snapshot: VirtualRecorderSessionSnapshot | None = None,
+    ) -> None:
+        if self._snapshot_handler is None:
+            return
+        self._snapshot_handler(snapshot or self.snapshot())
+
     def _run(self) -> None:
         with self._lock:
             self._state = VirtualRecorderSessionState.RUNNING
             self._started_at = time.time()
+            snapshot = self.snapshot()
         emit_testkit_event(
             "session.running",
             session_id=self._session_id,
@@ -134,6 +157,7 @@ class VirtualRecorderSession:
             recorders=self._request.recorders,
             vrcode=self._request.vrcode,
         )
+        self._publish_snapshot(snapshot)
 
         try:
             results = self._stream_recorders()
@@ -148,6 +172,7 @@ class VirtualRecorderSession:
                     else VirtualRecorderSessionState.STOPPED
                 )
                 self._stopped_at = time.time()
+                snapshot = self.snapshot()
             emit_testkit_event(
                 "session.failed" if error else "session.completed",
                 session_id=self._session_id,
@@ -159,11 +184,13 @@ class VirtualRecorderSession:
                 bytes_sent=sum(result.bytes_sent for result in results),
                 error=error,
             )
+            self._publish_snapshot(snapshot)
         except Exception as exc:
             with self._lock:
                 self._error = str(exc)
                 self._state = VirtualRecorderSessionState.FAILED
                 self._stopped_at = time.time()
+                snapshot = self.snapshot()
             emit_testkit_event(
                 "session.failed",
                 session_id=self._session_id,
@@ -173,16 +200,10 @@ class VirtualRecorderSession:
                 vrcode=self._request.vrcode,
                 error=str(exc),
             )
+            self._publish_snapshot(snapshot)
 
     def _stream_recorders(self) -> tuple[RealtimeStreamResult, ...]:
         request = self._request
-        payload = build_simulated_recorder_payload()
-        virtual_payloads = build_virtual_recorder_payloads(
-            payload,
-            count=request.recorders,
-            vrcode=request.vrcode,
-            version=request.version,
-        )
         duration_seconds = (
             request.duration_seconds
             if request.duration_seconds is not None and request.duration_seconds > 0
@@ -190,7 +211,7 @@ class VirtualRecorderSession:
         )
         signal_profile = profile_for_scenario(request.default_scenario)
 
-        with ThreadPoolExecutor(max_workers=len(virtual_payloads)) as executor:
+        with ThreadPoolExecutor(max_workers=len(self._virtual_payloads)) as executor:
             futures = [
                 executor.submit(
                     stream_realtime_payload,
@@ -209,10 +230,19 @@ class VirtualRecorderSession:
                     ),
                     connector=self._connector,
                 )
-                for virtual_payload in virtual_payloads
+                for virtual_payload in self._virtual_payloads
             ]
 
             return tuple(future.result() for future in futures)
+
+    def _build_virtual_payloads(self) -> tuple[VirtualRecorderPayload, ...]:
+        request = self._request
+        return build_virtual_recorder_payloads(
+            build_simulated_recorder_payload(),
+            count=request.recorders,
+            vrcode=request.vrcode,
+            version=request.version,
+        )
 
 
 def first_result_error(results: tuple[RealtimeStreamResult, ...]) -> str | None:

@@ -4,6 +4,7 @@ from tests.support import fake_socketio_connector
 from tirosh_vitalserver.testkit.application.recorder_session import (
     VirtualRecorderSessionManager,
     VirtualRecorderSessionRequest,
+    VirtualRecorderSessionSnapshot,
     VirtualRecorderSessionState,
     session_snapshot_to_document,
 )
@@ -93,6 +94,50 @@ def test_virtual_recorder_session_can_be_deleted() -> None:
     ]
 
 
+def test_stored_virtual_recorder_session_can_be_deleted_after_restart() -> None:
+    session_store = InMemorySessionStore()
+    recorder_management = FakeRecorderManagement()
+    manager = VirtualRecorderSessionManager(
+        connector=fake_socketio_connector,
+        recorder_management=recorder_management,
+        session_store=session_store,
+    )
+    snapshot = manager.start_session(
+        VirtualRecorderSessionRequest(
+            target_url="http://example.test",
+            vrcode="VR_RESTART",
+            recorders=2,
+            interval_seconds=0.1,
+            max_messages=1,
+            shift_time=False,
+        )
+    )
+
+    assert manager.wait_session(snapshot.session_id, timeout=5)
+
+    restarted_manager = VirtualRecorderSessionManager(
+        connector=fake_socketio_connector,
+        recorder_management=recorder_management,
+        session_store=session_store,
+    )
+    stored = restarted_manager.get_session(snapshot.session_id)
+
+    assert stored is not None
+    assert [recorder.vrcode for recorder in stored.recorders] == [
+        "VR_RESTART-001",
+        "VR_RESTART-002",
+    ]
+
+    deleted = restarted_manager.delete_session(snapshot.session_id)
+
+    assert deleted is not None
+    assert restarted_manager.get_session(snapshot.session_id) is None
+    assert recorder_management.deleted == [
+        ("http://example.test", "VR_RESTART-001"),
+        ("http://example.test", "VR_RESTART-002"),
+    ]
+
+
 def test_virtual_recorder_sessions_can_be_reset() -> None:
     manager = VirtualRecorderSessionManager(connector=fake_socketio_connector)
     first = manager.start_session(
@@ -131,3 +176,20 @@ class FakeRecorderManagement:
         timeout: float = 5.0,
     ) -> None:
         self.deleted.append((base_url, vrcode))
+
+
+class InMemorySessionStore:
+    def __init__(self) -> None:
+        self.sessions: dict[str, VirtualRecorderSessionSnapshot] = {}
+
+    def load_sessions(self) -> tuple[VirtualRecorderSessionSnapshot, ...]:
+        return tuple(self.sessions.values())
+
+    def save_session(self, snapshot: VirtualRecorderSessionSnapshot) -> None:
+        self.sessions[snapshot.session_id] = snapshot
+
+    def delete_session(self, session_id: str) -> None:
+        self.sessions.pop(session_id, None)
+
+    def delete_all_sessions(self) -> None:
+        self.sessions.clear()

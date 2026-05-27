@@ -14,6 +14,9 @@ timeout = 60
 wait_seconds = 60
 poll_interval_seconds = 1
 
+[sessions]
+state_path = "/var/lib/vitalserver-testkit/sessions.json"
+
 [logging]
 version = 1
 disable_existing_loggers = false

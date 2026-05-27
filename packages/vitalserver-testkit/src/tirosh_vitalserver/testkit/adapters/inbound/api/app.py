@@ -10,6 +10,9 @@ from tirosh_vitalserver.testkit.adapters.outbound.recorder import (
     SocketIoRecorderManagementClient,
     connect_socketio,
 )
+from tirosh_vitalserver.testkit.application.recorder_session.store import (
+    VirtualRecorderSessionStorePort,
+)
 from tirosh_vitalserver.testkit.application.recorder_session import (
     VirtualRecorderSessionManager,
     session_snapshot_to_document,
@@ -20,6 +23,7 @@ from tirosh_vitalserver.testkit.schemas.testkit_api import StartVirtualRecorders
 
 def create_testkit_app(
     manager: VirtualRecorderSessionManager | None = None,
+    session_store: VirtualRecorderSessionStorePort | None = None,
 ) -> FastAPI:
     """Build the TestKit FastAPI application."""
 
@@ -30,6 +34,7 @@ def create_testkit_app(
     session_manager = manager or VirtualRecorderSessionManager(
         connector=connect_socketio,
         recorder_management=SocketIoRecorderManagementClient(),
+        session_store=session_store,
     )
 
     def get_manager() -> VirtualRecorderSessionManager:

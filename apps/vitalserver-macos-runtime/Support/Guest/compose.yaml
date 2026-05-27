@@ -176,6 +176,10 @@ services:
         condition: service_healthy
     ports:
       - "18322:18322"
+    volumes:
+      - type: volume
+        source: testkit-state
+        target: /var/lib/vitalserver-testkit
     command:
       - vitalserver-testkit
       - serve
@@ -275,3 +279,4 @@ volumes:
   vital-tmp-files:
   audit-logs:
   edge-logs:
+  testkit-state:

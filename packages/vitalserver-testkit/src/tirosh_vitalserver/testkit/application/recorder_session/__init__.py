@@ -15,6 +15,9 @@ from tirosh_vitalserver.testkit.application.recorder_session.models import (
 from tirosh_vitalserver.testkit.application.recorder_session.session import (
     VirtualRecorderSession,
 )
+from tirosh_vitalserver.testkit.application.recorder_session.store import (
+    VirtualRecorderSessionStorePort,
+)
 
 __all__ = [
     "VirtualRecorderSession",
@@ -22,6 +25,7 @@ __all__ = [
     "VirtualRecorderSessionRequest",
     "VirtualRecorderSessionSnapshot",
     "VirtualRecorderSessionState",
+    "VirtualRecorderSessionStorePort",
     "recorder_snapshot_to_document",
     "session_snapshot_to_document",
 ]

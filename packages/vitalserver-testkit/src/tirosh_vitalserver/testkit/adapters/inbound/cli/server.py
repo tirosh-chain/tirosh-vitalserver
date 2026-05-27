@@ -9,9 +9,15 @@ from tirosh_vitalserver.testkit.adapters.inbound.cli.common import (
     add_common_server_args,
 )
 from tirosh_vitalserver.testkit.adapters.outbound.vitalserver import VitalServerClient
+from tirosh_vitalserver.testkit.adapters.outbound.session_store import (
+    JsonFileVirtualRecorderSessionStore,
+)
 from tirosh_vitalserver.testkit.application.usecases import wait_for_server
 from tirosh_vitalserver.testkit.configuration.logging_config import (
     configure_testkit_logging,
+)
+from tirosh_vitalserver.testkit.configuration.session_config import (
+    load_session_state_path,
 )
 from tirosh_vitalserver.testkit.observability import (
     emit_testkit_event,
@@ -111,8 +117,16 @@ def run_serve(args: argparse.Namespace) -> int:
         create_testkit_app,
     )
 
+    session_state_path = load_session_state_path(args.config)
+    emit_testkit_event(
+        "session_store.configured",
+        state_path=str(session_state_path),
+    )
+
     uvicorn.run(
-        create_testkit_app(),
+        create_testkit_app(
+            session_store=JsonFileVirtualRecorderSessionStore(session_state_path),
+        ),
         host=args.host,
         port=args.port,
         log_level=args.log_level,
