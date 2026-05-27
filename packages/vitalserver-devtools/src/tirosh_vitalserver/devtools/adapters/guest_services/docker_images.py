@@ -49,6 +49,13 @@ def build_docker_image_bundle(
             dockerfile=plan.vitaldb_observer_dockerfile,
             context=plan.build_context,
         )
+    if plan.testkit_image in plan.images:
+        run_docker_build(
+            platform=plan.platform,
+            image=plan.testkit_image,
+            dockerfile=plan.testkit_dockerfile,
+            context=plan.build_context,
+        )
 
     threads = compression_threads(compression_threads_value)
     gzip_command(["docker", "save", *plan.images], bundle_path, threads=threads)

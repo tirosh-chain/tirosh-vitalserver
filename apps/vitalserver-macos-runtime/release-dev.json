@@ -9,7 +9,7 @@
     "audience": "internal"
   },
   "bundle": {
-    "optionalContainerServices": []
+    "optionalContainerServices": ["testkit"]
   },
   "vitalServerVersion": "2.3.4",
   "services": {
@@ -27,6 +27,11 @@
       "displayName": "VitalDB observer",
       "image": "vitaldb-observer:0.1.0",
       "version": "0.1.0"
+    },
+    "testkit": {
+      "displayName": "TestKit",
+      "image": "vitalserver-testkit:0.1.1",
+      "version": "0.1.1"
     },
     "redis": {
       "displayName": "Redis",

@@ -92,10 +92,13 @@ audit_proxy_image = "vitalserver-audit-proxy:0.1.0"
 audit_proxy_dockerfile = "apps/vitalserver-audit-proxy/Dockerfile"
 vitaldb_observer_image = "vitaldb-observer:0.1.0"
 vitaldb_observer_dockerfile = "apps/vitaldb-observer/Dockerfile"
+testkit_image = "vitalserver-testkit:0.1.1"
+testkit_dockerfile = "packages/vitalserver-testkit/Dockerfile"
 images = [
   "vitalserver:2.3.4",
   "vitalserver-audit-proxy:0.1.0",
   "vitaldb-observer:0.1.0",
+  "vitalserver-testkit:0.1.1",
   "redis:3.2.12-alpine",
   "ghcr.io/joeferner/redis-commander:0.9.0",
   "swaggerapi/swagger-ui:v5.17.14",
@@ -109,6 +112,7 @@ include = [
   "apps/vitalserver/runtime",
   "apps/vitalserver-audit-proxy",
   "apps/vitaldb-observer",
+  "packages/vitalserver-testkit",
   "vendor/vitalserver/vitalserver-old",
   "docs/openapi.yaml",
   "docs/openapi/audit-proxy.openapi.yaml",

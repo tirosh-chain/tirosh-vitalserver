@@ -8,4 +8,5 @@ extension Constants {
     static let launcherChannel = UpdateBundleChannel(
         rawValue: "dev"
     )
+    static let testkitContainerIncluded = true
 }

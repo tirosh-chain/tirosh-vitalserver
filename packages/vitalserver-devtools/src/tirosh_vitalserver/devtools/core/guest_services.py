@@ -38,6 +38,8 @@ class DockerImagePlan:
     audit_proxy_dockerfile: Path
     vitaldb_observer_image: str
     vitaldb_observer_dockerfile: Path
+    testkit_image: str
+    testkit_dockerfile: Path
 
 
 @dataclass(frozen=True)
@@ -50,6 +52,8 @@ class DockerImagesConfig:
     audit_proxy_dockerfile: str
     vitaldb_observer_image: str
     vitaldb_observer_dockerfile: str
+    testkit_image: str
+    testkit_dockerfile: str
 
 
 def guest_deploy_plan(
@@ -91,11 +95,13 @@ def docker_image_plan(
     audit_proxy_dockerfile: str,
     vitaldb_observer_image: str,
     vitaldb_observer_dockerfile: str,
+    testkit_image: str,
+    testkit_dockerfile: str,
 ) -> DockerImagePlan:
     if not images:
         raise DomainError("error: guest.docker_images.images must not be empty")
     app_image = images[0]
-    local_build_images = {audit_proxy_image, vitaldb_observer_image}
+    local_build_images = {audit_proxy_image, vitaldb_observer_image, testkit_image}
     return DockerImagePlan(
         build_context=root,
         platform=platform,
@@ -107,4 +113,6 @@ def docker_image_plan(
         audit_proxy_dockerfile=root / audit_proxy_dockerfile,
         vitaldb_observer_image=vitaldb_observer_image,
         vitaldb_observer_dockerfile=root / vitaldb_observer_dockerfile,
+        testkit_image=testkit_image,
+        testkit_dockerfile=root / testkit_dockerfile,
     )

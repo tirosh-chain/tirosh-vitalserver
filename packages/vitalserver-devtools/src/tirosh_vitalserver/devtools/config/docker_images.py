@@ -44,4 +44,14 @@ def load_docker_images_config(config: TomlTable, root: Path) -> DockerImagesConf
             "vitaldb_observer_dockerfile",
             path=path,
         ),
+        testkit_image=required_string(
+            docker_images,
+            "testkit_image",
+            path=path,
+        ),
+        testkit_dockerfile=required_string(
+            docker_images,
+            "testkit_dockerfile",
+            path=path,
+        ),
     )

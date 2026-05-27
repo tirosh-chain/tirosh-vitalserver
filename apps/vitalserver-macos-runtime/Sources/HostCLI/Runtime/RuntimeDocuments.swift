@@ -31,6 +31,7 @@ struct GuestRuntimeConfigDocument: Codable {
     var redisBackupRetentionCount: Int
     var redisUiPort: Int
     var swaggerUiPort: Int
+    var testkitEnabled: Bool
 
     enum CodingKeys: String, CodingKey {
         case vitalserverHttpPort
@@ -44,6 +45,7 @@ struct GuestRuntimeConfigDocument: Codable {
         case redisBackupRetentionCount
         case redisUiPort
         case swaggerUiPort
+        case testkitEnabled
     }
 
     init(
@@ -57,7 +59,8 @@ struct GuestRuntimeConfigDocument: Codable {
         vitalFilesDirectory: String,
         redisBackupRetentionCount: Int,
         redisUiPort: Int,
-        swaggerUiPort: Int
+        swaggerUiPort: Int,
+        testkitEnabled: Bool
     ) {
         self.vitalserverHttpPort = vitalserverHttpPort
         self.redisHost = redisHost
@@ -70,6 +73,7 @@ struct GuestRuntimeConfigDocument: Codable {
         self.redisBackupRetentionCount = redisBackupRetentionCount
         self.redisUiPort = redisUiPort
         self.swaggerUiPort = swaggerUiPort
+        self.testkitEnabled = testkitEnabled
     }
 
     init(from decoder: Decoder) throws {
@@ -88,6 +92,10 @@ struct GuestRuntimeConfigDocument: Codable {
         ) ?? Constants.Defaults.redisBackupRetentionCount
         self.redisUiPort = try container.decode(Int.self, forKey: .redisUiPort)
         self.swaggerUiPort = try container.decode(Int.self, forKey: .swaggerUiPort)
+        self.testkitEnabled = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .testkitEnabled
+        ) ?? Constants.testkitContainerIncluded
     }
 
     static func load(from url: URL, fileStore: RuntimeFileReading) throws -> GuestRuntimeConfigDocument {
@@ -110,7 +118,8 @@ struct GuestRuntimeConfigDocument: Codable {
             vitalFilesDirectory: Constants.Defaults.vitalFilesDirectoryGuestMountPath,
             redisBackupRetentionCount: Constants.Defaults.redisBackupRetentionCount,
             redisUiPort: Constants.Guest.redisUIPort,
-            swaggerUiPort: Constants.Guest.swaggerUIPort
+            swaggerUiPort: Constants.Guest.swaggerUIPort,
+            testkitEnabled: Constants.testkitContainerIncluded
         )
     }
 }

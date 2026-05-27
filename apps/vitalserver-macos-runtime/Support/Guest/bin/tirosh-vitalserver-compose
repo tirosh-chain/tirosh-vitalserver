@@ -64,6 +64,9 @@ start_ordered() {
   compose up -d app audit-proxy vitaldb-observer redis-ui swagger-ui
   wait_for_app
   compose up -d edge
+  if [ "${TIROSH_TESTKIT_ENABLED:-0}" = "1" ]; then
+    compose up -d testkit
+  fi
 }
 
 case "${ACTION}" in
