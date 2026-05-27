@@ -34,6 +34,10 @@ public struct RuntimeControlClientAPIReadHandler: RuntimeControlAPIReadHandler {
         client.loadVitalDBRecorders()
     }
 
+    public func loadVitalDBRelationships() async throws -> RuntimeVitalRelationshipHistory {
+        client.loadVitalDBRelationships()
+    }
+
     public func loadHealthStatus() async throws -> RuntimeStatus {
         let settings = client.loadSettings()
         return await client.loadHealthStatus(settings: settings)

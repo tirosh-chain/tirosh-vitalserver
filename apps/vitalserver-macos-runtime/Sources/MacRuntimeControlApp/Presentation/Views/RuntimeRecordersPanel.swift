@@ -71,6 +71,7 @@ struct RuntimeRecordersPanel: View {
                 selectedRecorderSummary(recorder)
                 recorderActivity(recorder)
                 recorderMetadata(recorder)
+                recorderRelationshipHistory(recorder)
             } else {
                 Text("Select a VRecorder to view activity.")
                     .foregroundStyle(.secondary)
@@ -102,12 +103,14 @@ struct RuntimeRecordersPanel: View {
                 summaryMetric(AppConstants.Labels.knownRecorders, "\(viewModel.vitalRecorders.recorders.count)")
                 summaryMetric(AppConstants.Labels.onlineRecorders, "\(count(.online))")
                 summaryMetric(AppConstants.Labels.staleRecorders, "\(count(.stale))")
+                summaryMetric("Assignments", "\(viewModel.vitalRelationships.assignments.count)")
                 summaryMetric(AppConstants.Labels.recorderAnomalies, "\(viewModel.vitalRecorders.recorders.reduce(0) { $0 + $1.currentAnomalyCount })")
             }
             LazyVGrid(columns: summaryColumns, alignment: .leading, spacing: 8) {
                 summaryMetric(AppConstants.Labels.knownRecorders, "\(viewModel.vitalRecorders.recorders.count)")
                 summaryMetric(AppConstants.Labels.onlineRecorders, "\(count(.online))")
                 summaryMetric(AppConstants.Labels.staleRecorders, "\(count(.stale))")
+                summaryMetric("Assignments", "\(viewModel.vitalRelationships.assignments.count)")
                 summaryMetric(AppConstants.Labels.recorderAnomalies, "\(viewModel.vitalRecorders.recorders.reduce(0) { $0 + $1.currentAnomalyCount })")
             }
         }
@@ -274,6 +277,76 @@ struct RuntimeRecordersPanel: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(nsColor: .controlBackgroundColor))
         .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func recorderRelationshipHistory(_ recorder: RuntimeVitalRecorderRecord) -> some View {
+        let assignments = viewModel.vitalRelationships.assignments
+            .filter { $0.vrcode == recorder.vrcode }
+            .prefix(8)
+        let events = viewModel.vitalRelationships.events
+            .filter { $0.vrcode == recorder.vrcode || $0.previousVrcode == recorder.vrcode }
+            .prefix(8)
+
+        return VStack(alignment: .leading, spacing: 10) {
+            Text("Relationship history")
+                .font(.subheadline)
+                .fontWeight(.semibold)
+            if assignments.isEmpty, events.isEmpty {
+                Text("No recorder relationship history has been observed.")
+                    .foregroundStyle(.secondary)
+                    .padding(.vertical, 8)
+            } else {
+                if !assignments.isEmpty {
+                    relationshipSubsection("Assignments")
+                    ForEach(Array(assignments)) { assignment in
+                        relationshipRow(
+                            title: assignment.bedName ?? assignment.bedID,
+                            detail: "\(viewModel.presentationFormatter.systemTimeText(assignment.startedAt)) - \(viewModel.presentationFormatter.systemTimeText(assignment.endedAt))",
+                            trailing: assignment.status.rawValue.capitalized
+                        )
+                    }
+                }
+                if !events.isEmpty {
+                    relationshipSubsection("Events")
+                    ForEach(Array(events)) { event in
+                        relationshipRow(
+                            title: "\(event.severity.rawValue.capitalized) · \(event.eventType.rawValue)",
+                            detail: event.message,
+                            trailing: viewModel.presentationFormatter.systemTimeText(event.observedAt)
+                        )
+                    }
+                }
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(nsColor: .controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func relationshipSubsection(_ title: String) -> some View {
+        Text(title)
+            .font(.caption)
+            .fontWeight(.semibold)
+            .foregroundStyle(.secondary)
+    }
+
+    private func relationshipRow(title: String, detail: String, trailing: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            Text(title)
+                .fontWeight(.semibold)
+                .lineLimit(1)
+                .frame(minWidth: 120, alignment: .leading)
+            Text(detail)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Spacer()
+            Text(trailing)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        .font(.caption)
     }
 
     private func activityMetric(_ label: String, _ value: String) -> some View {

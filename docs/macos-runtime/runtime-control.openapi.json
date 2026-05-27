@@ -987,6 +987,31 @@
           }
         }
       }
+    },
+    "/vitaldb/relationships": {
+      "get": {
+        "operationId": "getVitalDBRelationships",
+        "summary": "Read Vital Recorder and bed relationship history",
+        "description": "Derived read model for bed-to-VRecorder assignments and relationship anomalies. Raw VitalDB observation snapshots remain the source of truth.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "readOnlyLocal",
+        "x-runtime-control-access": "browserSafe",
+        "responses": {
+          "200": {
+            "description": "Vital Recorder relationship history",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeVitalRelationshipHistory"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1397,6 +1422,146 @@
           "stale",
           "offline",
           "unknown"
+        ]
+      },
+      "RuntimeVitalRelationshipHistory": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Derived assignment and relationship event history between VitalDB beds and VRecorders.",
+        "properties": {
+          "assignments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeVitalBedAssignmentRecord"
+            }
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeVitalRelationshipEventRecord"
+            }
+          }
+        }
+      },
+      "RuntimeVitalBedAssignmentRecord": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "assignmentID": {
+            "type": "string"
+          },
+          "bedID": {
+            "type": "string"
+          },
+          "bedName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "vrcode": {
+            "type": "string"
+          },
+          "startedAt": {
+            "type": "string"
+          },
+          "endedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastSeenAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastObservedAt": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RuntimeVitalBedStatus"
+          },
+          "patientConnected": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "observationCount": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "RuntimeVitalRelationshipEventRecord": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "eventID": {
+            "type": "string"
+          },
+          "observedAt": {
+            "type": "string"
+          },
+          "eventType": {
+            "$ref": "#/components/schemas/RuntimeVitalRelationshipEventType"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/RuntimeVitalRelationshipSeverity"
+          },
+          "bedID": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "bedName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "vrcode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previousVrcode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previousBedID": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "RuntimeVitalRelationshipEventType": {
+        "type": "string",
+        "enum": [
+          "handoff",
+          "duplicateAssignment",
+          "unlinkedBed",
+          "unlinkedRecorder",
+          "staleLink"
+        ]
+      },
+      "RuntimeVitalRelationshipSeverity": {
+        "type": "string",
+        "enum": [
+          "info",
+          "warning",
+          "critical"
         ]
       },
       "VitalDBAnomalySeverity": {

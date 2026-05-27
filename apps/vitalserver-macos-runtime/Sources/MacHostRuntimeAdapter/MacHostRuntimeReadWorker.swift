@@ -62,6 +62,10 @@ public actor MacHostRuntimeReadWorker {
         statusReader.loadVitalDBRecorders()
     }
 
+    public func loadVitalDBRelationships() -> RuntimeVitalRelationshipHistory {
+        statusReader.loadVitalDBRelationships()
+    }
+
     public func loadBackups(latestBackupPath: String?) -> [RuntimeBackup] {
         fileReader.backups(latestBackupPath: latestBackupPath)
     }

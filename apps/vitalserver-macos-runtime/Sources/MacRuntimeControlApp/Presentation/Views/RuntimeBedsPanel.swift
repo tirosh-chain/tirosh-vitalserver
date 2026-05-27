@@ -83,6 +83,7 @@ struct RuntimeBedsPanel: View {
             if let bed = selectedBed {
                 selectedBedSummary(bed)
                 bedMetadata(bed)
+                bedRelationshipHistory(bed)
             } else {
                 Text(AppConstants.StatusText.selectBed)
                     .foregroundStyle(.secondary)
@@ -100,12 +101,14 @@ struct RuntimeBedsPanel: View {
                 summaryMetric(AppConstants.Labels.knownBeds, "\(viewModel.vitalRecorders.beds.count)")
                 summaryMetric(AppConstants.Labels.onlineBeds, "\(count(.online))")
                 summaryMetric(AppConstants.Labels.staleBeds, "\(count(.stale))")
+                summaryMetric("Assignments", "\(viewModel.vitalRelationships.assignments.count)")
                 summaryMetric(AppConstants.Labels.bedAnomalies, "\(viewModel.vitalRecorders.beds.reduce(0) { $0 + $1.currentAnomalyCount })")
             }
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), spacing: 12)], alignment: .leading, spacing: 8) {
                 summaryMetric(AppConstants.Labels.knownBeds, "\(viewModel.vitalRecorders.beds.count)")
                 summaryMetric(AppConstants.Labels.onlineBeds, "\(count(.online))")
                 summaryMetric(AppConstants.Labels.staleBeds, "\(count(.stale))")
+                summaryMetric("Assignments", "\(viewModel.vitalRelationships.assignments.count)")
                 summaryMetric(AppConstants.Labels.bedAnomalies, "\(viewModel.vitalRecorders.beds.reduce(0) { $0 + $1.currentAnomalyCount })")
             }
         }
@@ -218,6 +221,76 @@ struct RuntimeBedsPanel: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(nsColor: .controlBackgroundColor))
         .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func bedRelationshipHistory(_ bed: RuntimeVitalBedRecord) -> some View {
+        let assignments = viewModel.vitalRelationships.assignments
+            .filter { $0.bedID == bed.bedID }
+            .prefix(8)
+        let events = viewModel.vitalRelationships.events
+            .filter { $0.bedID == bed.bedID }
+            .prefix(8)
+
+        return VStack(alignment: .leading, spacing: 10) {
+            Text("Relationship history")
+                .font(.subheadline)
+                .fontWeight(.semibold)
+            if assignments.isEmpty, events.isEmpty {
+                Text("No bed relationship history has been observed.")
+                    .foregroundStyle(.secondary)
+                    .padding(.vertical, 8)
+            } else {
+                if !assignments.isEmpty {
+                    relationshipSubsection("Assignments")
+                    ForEach(Array(assignments)) { assignment in
+                        relationshipRow(
+                            title: assignment.vrcode,
+                            detail: "\(viewModel.presentationFormatter.systemTimeText(assignment.startedAt)) - \(viewModel.presentationFormatter.systemTimeText(assignment.endedAt))",
+                            trailing: assignment.status.rawValue.capitalized
+                        )
+                    }
+                }
+                if !events.isEmpty {
+                    relationshipSubsection("Events")
+                    ForEach(Array(events)) { event in
+                        relationshipRow(
+                            title: "\(event.severity.rawValue.capitalized) · \(event.eventType.rawValue)",
+                            detail: event.message,
+                            trailing: viewModel.presentationFormatter.systemTimeText(event.observedAt)
+                        )
+                    }
+                }
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(nsColor: .controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func relationshipSubsection(_ title: String) -> some View {
+        Text(title)
+            .font(.caption)
+            .fontWeight(.semibold)
+            .foregroundStyle(.secondary)
+    }
+
+    private func relationshipRow(title: String, detail: String, trailing: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            Text(title)
+                .fontWeight(.semibold)
+                .lineLimit(1)
+                .frame(minWidth: 120, alignment: .leading)
+            Text(detail)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Spacer()
+            Text(trailing)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        .font(.caption)
     }
 
     private func summaryMetric(_ label: String, _ value: String) -> some View {

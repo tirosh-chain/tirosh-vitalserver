@@ -329,6 +329,33 @@ vitaldb_observation_snapshots (
   payload_json text not null
 );
 
+vitaldb_bed_assignments (
+  id text primary key,
+  bed_id text not null,
+  bed_name text,
+  vrcode text not null,
+  started_at text not null,
+  ended_at text,
+  last_seen_at text,
+  last_observed_at text not null,
+  status text not null,
+  patient_connected integer,
+  observation_count integer not null
+);
+
+vitaldb_relationship_events (
+  id text primary key,
+  observed_at text not null,
+  event_type text not null,
+  severity text not null,
+  bed_id text,
+  bed_name text,
+  vrcode text,
+  previous_vrcode text,
+  previous_bed_id text,
+  message text not null
+);
+
 runtime_observations (
   id text primary key,
   timestamp text not null,
@@ -359,7 +386,11 @@ audit_event_index (
 );
 ```
 
-초기 구현은 `runtime_events`와 `vitaldb_observation_snapshots`부터 시작했습니다.
+초기 구현은 `runtime_events`, `vitaldb_observation_snapshots`,
+`vitaldb_bed_assignments`, `vitaldb_relationship_events`부터 시작했습니다.
+Bed/VRecorder 관계 read model은 observation snapshot append 시점에 projection합니다. 원본 snapshot은
+canonical source로 유지하고, assignment/event table은 삭제 후 snapshot history에서 다시 만들 수 있는
+derived read model입니다.
 `container_log_index`와 `audit_event_index`는 raw log retention/rotation 정책이 정리된 뒤 ingest합니다.
 
 ## VitalDB observer policy
@@ -373,6 +404,7 @@ audit_event_index (
 | recorder/bed/anomaly 계산 | `vitaldb-observer` |
 | collection/readiness diagnostic stdout 로그 | `vitaldb-observer` |
 | observation history/read model 저장 | watchdog/runtime observability SQLite |
+| bed/VRecorder assignment projection | watchdog/runtime observability SQLite |
 | Helper/PWA 조회 API | Runtime Control API |
 
 이 구조는 수집/계산 장애를 traffic path와 watchdog core loop에서 분리하면서도, 제품이 보는 최종 관측

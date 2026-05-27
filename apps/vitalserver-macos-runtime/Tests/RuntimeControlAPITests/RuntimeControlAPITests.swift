@@ -293,6 +293,10 @@ final class RuntimeControlAPITests: XCTestCase {
             RuntimeVitalRecorderRecord?.self,
             from: router.route(.init(method: .get, path: "/vitaldb/recorders/VR_A"))
         )
+        let vitalRelationships = try await decode(
+            RuntimeVitalRelationshipHistory.self,
+            from: router.route(.init(method: .get, path: "/vitaldb/relationships"))
+        )
 
         XCTAssertTrue(capabilities.canControlRuntimeServices)
         XCTAssertEqual(overview.status.runtimeVersion, "1.2.3")
@@ -309,6 +313,8 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertEqual(vitalRecorders.recorders.first?.activityTimeline.first?.messageCount, 3)
         XCTAssertEqual(vitalRecorder?.vrcode, "VR_A")
         XCTAssertEqual(vitalRecorder?.activityTimeline.first?.byteCount, 2048)
+        XCTAssertEqual(vitalRelationships.assignments.map(\.vrcode), ["VR_A"])
+        XCTAssertEqual(vitalRelationships.events.first?.eventType, .handoff)
     }
 
     @MainActor
@@ -860,6 +866,40 @@ private struct StubRuntimeControlAPIReadHandler: RuntimeControlAPIReadHandler {
         RuntimeVitalRecorderHistory(observations: [try await loadVitalDBObservation()].compactMap { $0 })
     }
 
+    func loadVitalDBRelationships() async throws -> RuntimeVitalRelationshipHistory {
+        RuntimeVitalRelationshipHistory(
+            assignments: [
+                RuntimeVitalBedAssignmentRecord(
+                    assignmentID: "bed-a:VR_A:2026-05-25T00:00:00Z",
+                    bedID: "bed-a",
+                    bedName: "Bed A",
+                    vrcode: "VR_A",
+                    startedAt: "2026-05-25T00:00:00Z",
+                    endedAt: nil,
+                    lastSeenAt: "2026-05-25T00:00:00Z",
+                    lastObservedAt: "2026-05-25T00:00:00Z",
+                    status: .online,
+                    patientConnected: true,
+                    observationCount: 1
+                ),
+            ],
+            events: [
+                RuntimeVitalRelationshipEventRecord(
+                    eventID: "2026-05-25T00:00:00Z:handoff:bed-a:VR_A",
+                    observedAt: "2026-05-25T00:00:00Z",
+                    eventType: .handoff,
+                    severity: .info,
+                    bedID: "bed-a",
+                    bedName: "Bed A",
+                    vrcode: "VR_A",
+                    previousVrcode: nil,
+                    previousBedID: nil,
+                    message: "Bed bed-a is linked to VRecorder VR_A."
+                ),
+            ]
+        )
+    }
+
     func loadHealthStatus() async throws -> RuntimeStatus {
         RuntimeStatus(runtimeInstalled: true, runtimeState: .healthy, statusMessage: "healthy")
     }
@@ -1004,6 +1044,27 @@ private final class FakeRuntimeControlClient: RuntimeControlClient, RuntimeHostC
 
     func loadVitalDBRecorders() -> RuntimeVitalRecorderHistory {
         RuntimeVitalRecorderHistory(observations: [loadVitalDBObservation()].compactMap { $0 })
+    }
+
+    func loadVitalDBRelationships() -> RuntimeVitalRelationshipHistory {
+        RuntimeVitalRelationshipHistory(
+            assignments: [
+                RuntimeVitalBedAssignmentRecord(
+                    assignmentID: "bed-a:VR_A:2026-05-25T00:00:00Z",
+                    bedID: "bed-a",
+                    bedName: "Bed A",
+                    vrcode: "VR_A",
+                    startedAt: "2026-05-25T00:00:00Z",
+                    endedAt: nil,
+                    lastSeenAt: "2026-05-25T00:00:00Z",
+                    lastObservedAt: "2026-05-25T00:00:00Z",
+                    status: .online,
+                    patientConnected: true,
+                    observationCount: 1
+                ),
+            ],
+            events: []
+        )
     }
 
     func loadBackups(latestBackupPath: String?) -> [RuntimeBackup] {

@@ -11,6 +11,7 @@ protocol RuntimeStatusReading: Sendable {
     func loadRuntimeEvents(query: RuntimeEventQuery) -> RuntimeEventHistory
     func loadVitalDBObservation() -> VitalDBObservationDocument?
     func loadVitalDBRecorders() -> RuntimeVitalRecorderHistory
+    func loadVitalDBRelationships() -> RuntimeVitalRelationshipHistory
     func legacyCommandProgressLine() -> String?
 }
 
@@ -173,6 +174,14 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
             observations.append(latestStatusObservation)
         }
         return RuntimeVitalRecorderHistory(observations: observations)
+    }
+
+    func loadVitalDBRelationships() -> RuntimeVitalRelationshipHistory {
+        let store = SQLiteRuntimeObservabilityStore(url: URL(fileURLWithPath: paths.runtimeObservabilityDB))
+        return RuntimeVitalRelationshipHistory(
+            assignments: store.vitalDBBedAssignments().map(RuntimeVitalBedAssignmentRecord.init),
+            events: store.vitalDBRelationshipEvents().map(RuntimeVitalRelationshipEventRecord.init)
+        )
     }
 
     func legacyCommandProgressLine() -> String? {
@@ -435,5 +444,40 @@ struct LegacyCommandProgressParser {
         step
             .replacingOccurrences(of: "-", with: " ")
             .capitalized
+    }
+}
+
+private extension RuntimeVitalBedAssignmentRecord {
+    init(_ record: VitalDBBedAssignmentRecord) {
+        self.init(
+            assignmentID: record.id,
+            bedID: record.bedID,
+            bedName: record.bedName,
+            vrcode: record.vrcode,
+            startedAt: record.startedAt,
+            endedAt: record.endedAt,
+            lastSeenAt: record.lastSeenAt,
+            lastObservedAt: record.lastObservedAt,
+            status: RuntimeVitalBedStatus(rawValue: record.status) ?? .unknown,
+            patientConnected: record.patientConnected,
+            observationCount: record.observationCount
+        )
+    }
+}
+
+private extension RuntimeVitalRelationshipEventRecord {
+    init(_ record: VitalDBRelationshipEventRecord) {
+        self.init(
+            eventID: record.id,
+            observedAt: record.observedAt,
+            eventType: RuntimeVitalRelationshipEventType(rawValue: record.eventType.rawValue) ?? .staleLink,
+            severity: RuntimeVitalRelationshipSeverity(rawValue: record.severity.rawValue) ?? .warning,
+            bedID: record.bedID,
+            bedName: record.bedName,
+            vrcode: record.vrcode,
+            previousVrcode: record.previousVrcode,
+            previousBedID: record.previousBedID,
+            message: record.message
+        )
     }
 }

@@ -42,6 +42,10 @@ struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
         await readWorker.loadVitalDBRecorders()
     }
 
+    func loadVitalDBRelationships() async throws -> RuntimeVitalRelationshipHistory {
+        await readWorker.loadVitalDBRelationships()
+    }
+
     func loadHealthStatus() async throws -> RuntimeStatus {
         let settings = await readWorker.loadSettings()
         return await readWorker.loadHealthStatus(settings: settings)

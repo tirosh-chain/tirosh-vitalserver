@@ -13,6 +13,7 @@ public protocol RuntimeControlClient {
     func loadRuntimeEvents(query: RuntimeEventQuery) -> RuntimeEventHistory
     func loadVitalDBObservation() -> VitalDBObservationDocument?
     func loadVitalDBRecorders() -> RuntimeVitalRecorderHistory
+    func loadVitalDBRelationships() -> RuntimeVitalRelationshipHistory
     func uninstallRuntime(clean: Bool) async throws -> RuntimeCommandResult
     func applySettings(_ settings: RuntimeSettings) async throws -> RuntimeCommandResult
     func repairProxy(proxyPort: Int) async throws -> RuntimeCommandResult

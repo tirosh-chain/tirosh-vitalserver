@@ -404,7 +404,7 @@ public enum RuntimeControlDevConsoleDocument {
     }
 
     async function refreshStatus() {
-      const [overview, status, settings, install, release, vitalDBObservation, vitalRecorders, backups, redisBackups, runtimeEvents, testKitStatus] = await Promise.all([
+      const [overview, status, settings, install, release, vitalDBObservation, vitalRecorders, vitalRelationships, backups, redisBackups, runtimeEvents, testKitStatus] = await Promise.all([
         getJSON("/runtime/overview"),
         getJSON("/runtime/status"),
         getJSON("/runtime/settings"),
@@ -412,6 +412,7 @@ public enum RuntimeControlDevConsoleDocument {
         getJSON("/runtime/release"),
         getJSON("/vitaldb/observations/latest"),
         getJSON("/vitaldb/recorders"),
+        getJSON("/vitaldb/relationships"),
         getJSON("/host/backups"),
         getJSON("/host/backups/redis"),
         getJSON("/runtime/events?limit=50"),
@@ -427,7 +428,7 @@ public enum RuntimeControlDevConsoleDocument {
       renderSettings(settings);
       renderRelease(release);
       renderVitalDBObservation(vitalDBObservation || status.vitalDBObservation);
-      renderVitalRecorders(vitalRecorders);
+      renderVitalRecorders(vitalRecorders, vitalRelationships);
       renderObservability(latestStatus, vitalDBObservation || status.vitalDBObservation);
       renderRuntimeEvents();
       renderBackups(backups, redisBackups);
@@ -586,17 +587,21 @@ public enum RuntimeControlDevConsoleDocument {
       $("vitalDBMetrics").innerHTML = `${metricsHTML(values)}<div class="subtle">Recorders</div><div class="list">${recorderList || emptyText("No recorders")}</div><div class="subtle">Anomalies</div><div class="list">${anomalyList || emptyText("No anomalies")}</div>`;
     }
 
-    function renderVitalRecorders(history) {
+    function renderVitalRecorders(history, relationships = null) {
       if (!history) {
         $("recorderMetrics").innerHTML = emptyText("No recorder history");
         return;
       }
       const recorders = history.recorders || [];
       const beds = history.beds || [];
+      const assignments = (relationships && relationships.assignments) || [];
+      const relationshipEvents = (relationships && relationships.events) || [];
       const values = [
         ["updated", formatDate(history.updatedAt)],
         ["recorders", recorders.length],
         ["beds", beds.length],
+        ["assignments", assignments.length],
+        ["relationship events", relationshipEvents.length],
         ["online", recorders.filter((recorder) => recorder.status === "online").length],
         ["stale", recorders.filter((recorder) => recorder.status === "stale").length],
         ["offline", recorders.filter((recorder) => recorder.status === "offline").length],
@@ -608,7 +613,13 @@ public enum RuntimeControlDevConsoleDocument {
       const bedList = beds.slice(0, 12).map((bed) => (
         `<div class="list-item"><strong>${escapeHtml(bed.name || bed.bedID || "-")} · ${escapeHtml(bed.status || "-")}</strong><span>${escapeHtml(bed.bedID || "-")} · ${escapeHtml(bed.vrcode || "-")} · ${escapeHtml(formatDate(bed.lastSeenAt))}</span></div>`
       )).join("");
-      $("recorderMetrics").innerHTML = `${metricsHTML(values)}<div class="subtle">Recorder history</div><div class="list">${recorderList || emptyText("No recorders")}</div><div class="subtle">Bed history</div><div class="list">${bedList || emptyText("No beds")}</div>`;
+      const assignmentList = assignments.slice(0, 12).map((assignment) => (
+        `<div class="list-item"><strong>${escapeHtml(assignment.bedName || assignment.bedID || "-")} · ${escapeHtml(assignment.vrcode || "-")}</strong><span>${escapeHtml(assignment.status || "-")} · ${escapeHtml(formatDate(assignment.startedAt))} - ${escapeHtml(formatDate(assignment.endedAt))}</span></div>`
+      )).join("");
+      const relationshipEventList = relationshipEvents.slice(0, 12).map((event) => (
+        `<div class="list-item"><strong>${escapeHtml(event.severity || "-")} · ${escapeHtml(event.eventType || "-")}</strong><span>${escapeHtml(event.message || "-")} · ${escapeHtml(formatDate(event.observedAt))}</span></div>`
+      )).join("");
+      $("recorderMetrics").innerHTML = `${metricsHTML(values)}<div class="subtle">Recorder history</div><div class="list">${recorderList || emptyText("No recorders")}</div><div class="subtle">Bed history</div><div class="list">${bedList || emptyText("No beds")}</div><div class="subtle">Assignments</div><div class="list">${assignmentList || emptyText("No assignments")}</div><div class="subtle">Relationship events</div><div class="list">${relationshipEventList || emptyText("No relationship events")}</div>`;
     }
 
     function renderObservability(status, observation) {

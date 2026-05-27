@@ -411,6 +411,112 @@ public struct RuntimeVitalRecorderHistory: Codable, Equatable, Sendable {
     }
 }
 
+public enum RuntimeVitalRelationshipEventType: String, Codable, Equatable, Sendable {
+    case handoff
+    case duplicateAssignment
+    case unlinkedBed
+    case unlinkedRecorder
+    case staleLink
+}
+
+public enum RuntimeVitalRelationshipSeverity: String, Codable, Equatable, Sendable {
+    case info
+    case warning
+    case critical
+}
+
+public struct RuntimeVitalBedAssignmentRecord: Codable, Equatable, Identifiable, Sendable {
+    public var id: String { assignmentID }
+    public let assignmentID: String
+    public let bedID: String
+    public let bedName: String?
+    public let vrcode: String
+    public let startedAt: String
+    public let endedAt: String?
+    public let lastSeenAt: String?
+    public let lastObservedAt: String
+    public let status: RuntimeVitalBedStatus
+    public let patientConnected: Bool?
+    public let observationCount: Int
+
+    public init(
+        assignmentID: String,
+        bedID: String,
+        bedName: String?,
+        vrcode: String,
+        startedAt: String,
+        endedAt: String?,
+        lastSeenAt: String?,
+        lastObservedAt: String,
+        status: RuntimeVitalBedStatus,
+        patientConnected: Bool?,
+        observationCount: Int
+    ) {
+        self.assignmentID = assignmentID
+        self.bedID = bedID
+        self.bedName = bedName
+        self.vrcode = vrcode
+        self.startedAt = startedAt
+        self.endedAt = endedAt
+        self.lastSeenAt = lastSeenAt
+        self.lastObservedAt = lastObservedAt
+        self.status = status
+        self.patientConnected = patientConnected
+        self.observationCount = observationCount
+    }
+}
+
+public struct RuntimeVitalRelationshipEventRecord: Codable, Equatable, Identifiable, Sendable {
+    public var id: String { eventID }
+    public let eventID: String
+    public let observedAt: String
+    public let eventType: RuntimeVitalRelationshipEventType
+    public let severity: RuntimeVitalRelationshipSeverity
+    public let bedID: String?
+    public let bedName: String?
+    public let vrcode: String?
+    public let previousVrcode: String?
+    public let previousBedID: String?
+    public let message: String
+
+    public init(
+        eventID: String,
+        observedAt: String,
+        eventType: RuntimeVitalRelationshipEventType,
+        severity: RuntimeVitalRelationshipSeverity,
+        bedID: String?,
+        bedName: String?,
+        vrcode: String?,
+        previousVrcode: String?,
+        previousBedID: String?,
+        message: String
+    ) {
+        self.eventID = eventID
+        self.observedAt = observedAt
+        self.eventType = eventType
+        self.severity = severity
+        self.bedID = bedID
+        self.bedName = bedName
+        self.vrcode = vrcode
+        self.previousVrcode = previousVrcode
+        self.previousBedID = previousBedID
+        self.message = message
+    }
+}
+
+public struct RuntimeVitalRelationshipHistory: Codable, Equatable, Sendable {
+    public let assignments: [RuntimeVitalBedAssignmentRecord]
+    public let events: [RuntimeVitalRelationshipEventRecord]
+
+    public init(
+        assignments: [RuntimeVitalBedAssignmentRecord] = [],
+        events: [RuntimeVitalRelationshipEventRecord] = []
+    ) {
+        self.assignments = assignments
+        self.events = events
+    }
+}
+
 public struct RuntimeVitalRecorderSummary: Codable, Equatable, Sendable {
     public let source: RuntimeVitalRecorderSummarySource
     public let activeConnections: Int

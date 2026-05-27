@@ -380,6 +380,10 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
         return RuntimeVitalRecorderHistory()
     }
 
+    func loadVitalDBRelationships() -> RuntimeVitalRelationshipHistory {
+        RuntimeVitalRelationshipHistory()
+    }
+
     func loadBackups(latestBackupPath: String?) -> [RuntimeBackup] {
         loadBackupsCount += 1
         return []

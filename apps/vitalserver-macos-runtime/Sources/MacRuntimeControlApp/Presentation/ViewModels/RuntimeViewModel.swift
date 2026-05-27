@@ -28,6 +28,7 @@ final class RuntimeViewModel: ObservableObject {
     @Published var installationInfo = RuntimeInstallInfo()
     @Published var runtimeEvents = RuntimeEventHistory(events: [])
     @Published var vitalRecorders = RuntimeVitalRecorderHistory()
+    @Published var vitalRelationships = RuntimeVitalRelationshipHistory()
     @Published var containerObservation: RuntimeContainerObservation?
     @Published var testKitStatus = RuntimeTestKitStatus(enabled: false, state: .disabled)
     @Published var selectedTestKitSessionID = ""
@@ -151,7 +152,11 @@ final class RuntimeViewModel: ObservableObject {
     }
 
     func refreshVitalRecorders() async {
-        vitalRecorders = await loadVitalRecordersSnapshot()
+        async let recorders = loadVitalRecordersSnapshot()
+        async let relationships = loadVitalRelationshipsSnapshot()
+        let snapshots = await (recorders, relationships)
+        vitalRecorders = snapshots.0
+        vitalRelationships = snapshots.1
     }
 
     func uninstallRuntime(clean: Bool = false) async {
@@ -505,6 +510,13 @@ final class RuntimeViewModel: ObservableObject {
             return await readWorker.loadVitalDBRecorders()
         }
         return controlClient.loadVitalDBRecorders()
+    }
+
+    private func loadVitalRelationshipsSnapshot() async -> RuntimeVitalRelationshipHistory {
+        if let readWorker {
+            return await readWorker.loadVitalDBRelationships()
+        }
+        return controlClient.loadVitalDBRelationships()
     }
 
     private func loadBackupsSnapshot(latestBackupPath: String?) async -> [RuntimeBackup] {

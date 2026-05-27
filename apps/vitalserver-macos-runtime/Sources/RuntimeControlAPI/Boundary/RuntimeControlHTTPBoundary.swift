@@ -89,6 +89,7 @@ public protocol RuntimeControlAPIReadHandler {
     func loadEvents(query: RuntimeEventQuery) async throws -> RuntimeEventHistory
     func loadVitalDBObservation() async throws -> VitalDBObservationDocument?
     func loadVitalDBRecorders() async throws -> RuntimeVitalRecorderHistory
+    func loadVitalDBRelationships() async throws -> RuntimeVitalRelationshipHistory
     func loadHealthStatus() async throws -> RuntimeStatus
     func loadSettings() async throws -> RuntimeSettings
     func loadReleaseInfo() async throws -> RuntimeReleaseInfo
@@ -192,6 +193,8 @@ public struct RuntimeControlAPIRouter {
                 let vrcode = try request.vitalDBRecorderCode()
                 let recorder = try await handler.loadVitalDBRecorders().recorders.first { $0.vrcode == vrcode }
                 return try jsonResponse(recorder)
+            case .vitalDBRelationships:
+                return try await jsonResponse(handler.loadVitalDBRelationships())
             case .health:
                 return try await jsonResponse(handler.loadHealthStatus())
             case .settings:
@@ -313,6 +316,8 @@ public struct RuntimeControlAPIRouter {
         case .vitalDBRecorders:
             return nil
         case .vitalDBRecorder:
+            return nil
+        case .vitalDBRelationships:
             return nil
         case .logStream:
             do {

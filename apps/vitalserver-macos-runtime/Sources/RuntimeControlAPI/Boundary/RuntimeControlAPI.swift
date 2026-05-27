@@ -53,6 +53,7 @@ public enum RuntimeControlAPIEndpoint: String, CaseIterable, Codable, Equatable,
     case vitalDBObservationStream
     case vitalDBRecorders
     case vitalDBRecorder
+    case vitalDBRelationships
     case health
     case settings
     case applySettings
@@ -100,6 +101,8 @@ public enum RuntimeControlAPIEndpoint: String, CaseIterable, Codable, Equatable,
             return .init(method: .get, path: "/vitaldb/recorders", scope: .runtimeControl)
         case .vitalDBRecorder:
             return .init(method: .get, path: "/vitaldb/recorders/{vrcode}", scope: .runtimeControl)
+        case .vitalDBRelationships:
+            return .init(method: .get, path: "/vitaldb/relationships", scope: .runtimeControl)
         case .health:
             return .init(method: .post, path: "/runtime/health", scope: .runtimeControl)
         case .settings:
@@ -162,6 +165,7 @@ public extension RuntimeControlAPIEndpoint {
              .vitalDBObservationStream,
              .vitalDBRecorders,
              .vitalDBRecorder,
+             .vitalDBRelationships,
              .health,
              .settings,
              .release,
