@@ -194,6 +194,7 @@ Runtime Control API
 | 범주 | Source | 수집 정보 | Output |
 |---|---|---|---|
 | Recorder | Redis `ip_*`, `utime_*`, `vrver_*`, `info_*`, `vrconf_*` | IP, last seen, version, info, config, online/stale | observation snapshot |
+| Recorder activity | Redis List `vitalserver:audit_events` | recent `send_data` message count, bytes, rooms, first/last activity, rates | observation snapshot |
 | Bed | Redis `beds`, `beds:*`, `utime_<bed>`, `ptcon_<bed>` | bed name, vrcode, last seen, patient connected | observation snapshot |
 | Device/filter | Redis `devs_*`, `filts_*` | raw device/filter value | observation snapshot |
 | Proxy connection | optional access JSONL | remote address, URI, status, websocket handshake | observation snapshot |

@@ -17,7 +17,6 @@ struct ContentView: View {
     @State private var showingUninstallConfirmation = false
     @State private var showingCleanUninstallConfirmation = false
     @State private var showingApplySettingsConfirmation = false
-    @State private var showingStatusRuntimeDetails = false
     @State private var showingStatusRecorderDetails = false
     @State private var showingStatusResourceUsage = false
     @State private var selectedSection = RuntimeSection.status
@@ -33,7 +32,6 @@ struct ContentView: View {
                 case .status:
                     RuntimeStatusPanel(
                         viewModel: viewModel,
-                        showingRuntimeDetails: $showingStatusRuntimeDetails,
                         showingRecorderDetails: $showingStatusRecorderDetails,
                         showingResourceUsage: $showingStatusResourceUsage
                     )
@@ -253,16 +251,78 @@ struct ContentView: View {
 
     private var sectionSelector: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            Picker("", selection: $selectedSection) {
-                ForEach(RuntimeSection.visibleSections()) { section in
-                    Text(section.title).tag(section)
+            HStack(spacing: 10) {
+                HStack(spacing: 4) {
+                    ForEach(RuntimeSection.primarySections()) { section in
+                        sectionButton(section)
+                    }
+                }
+                .padding(3)
+                .background(Color(nsColor: .controlColor))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+
+                HStack(spacing: 6) {
+                    ForEach(RuntimeSection.utilitySections()) { section in
+                        sectionButton(section)
+                    }
+                    overflowSectionMenu
                 }
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .frame(minWidth: 720, maxWidth: 760)
+            .frame(maxWidth: .infinity, alignment: .center)
         }
         .frame(maxWidth: .infinity, alignment: .center)
+    }
+
+    private func sectionButton(_ section: RuntimeSection) -> some View {
+        Button {
+            selectedSection = section
+        } label: {
+            Text(section.title)
+                .font(.system(size: 13, weight: selectedSection == section ? .semibold : .regular))
+                .lineLimit(1)
+                .padding(.horizontal, 13)
+                .padding(.vertical, 6)
+                .frame(minWidth: 66)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(selectedSection == section ? Color.primary : Color.secondary)
+        .background(sectionButtonBackground(isSelected: selectedSection == section))
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+    }
+
+    private var overflowSectionMenu: some View {
+        Menu {
+            ForEach(RuntimeSection.overflowSections()) { section in
+                Button {
+                    selectedSection = section
+                } label: {
+                    Text(section.title)
+                }
+            }
+        } label: {
+            Text(AppConstants.Labels.sectionMore)
+                .font(.system(
+                    size: 13,
+                    weight: RuntimeSection.sectionIsInOverflow(selectedSection) ? .semibold : .regular
+                ))
+                .lineLimit(1)
+                .padding(.horizontal, 13)
+                .padding(.vertical, 6)
+                .frame(minWidth: 66)
+                .contentShape(Rectangle())
+        }
+        .menuStyle(.borderlessButton)
+        .buttonStyle(.plain)
+        .foregroundStyle(RuntimeSection.sectionIsInOverflow(selectedSection) ? Color.primary : Color.secondary)
+        .background(sectionButtonBackground(isSelected: RuntimeSection.sectionIsInOverflow(selectedSection)))
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+    }
+
+    private func sectionButtonBackground(isSelected: Bool) -> some View {
+        RoundedRectangle(cornerRadius: 6)
+            .fill(isSelected ? Color(nsColor: .controlBackgroundColor) : Color.clear)
+            .shadow(color: isSelected ? Color.black.opacity(0.10) : Color.clear, radius: 1, y: 1)
     }
 
     private func pollStatus() async {
@@ -276,6 +336,8 @@ struct ContentView: View {
         while !Task.isCancelled {
             if selectedSection == .log {
                 await viewModel.refreshLogsIfLive()
+            } else if selectedSection == .update, viewModel.shouldShowUpdateProgress {
+                await viewModel.refreshLogsIfLive()
             }
             try? await Task.sleep(nanoseconds: 1_000_000_000)
         }
@@ -283,17 +345,17 @@ struct ContentView: View {
 
     private func pollSelectedSection() async {
         while !Task.isCancelled {
-            refreshSelectedSection()
+            await refreshSelectedSection()
             try? await Task.sleep(nanoseconds: 5_000_000_000)
         }
     }
 
-    private func refreshSelectedSection() {
+    private func refreshSelectedSection() async {
         switch selectedSection {
         case .recorders:
-            viewModel.refreshVitalRecorders()
+            await viewModel.refreshVitalRecorders()
         case .observability:
-            viewModel.refreshRuntimeEvents()
+            await viewModel.refreshRuntimeEvents()
         default:
             break
         }

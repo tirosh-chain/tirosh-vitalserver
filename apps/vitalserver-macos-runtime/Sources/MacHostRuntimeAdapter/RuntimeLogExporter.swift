@@ -3,13 +3,11 @@ import RuntimeControl
 import Core
 import Contracts
 
-@MainActor
-protocol RuntimeLogExporting {
+protocol RuntimeLogExporting: Sendable {
     func exportLogs(to destination: URL) async throws -> RuntimeLogExportResult
 }
 
-@MainActor
-struct MacHostRuntimeLogExporter: RuntimeLogExporting {
+struct MacHostRuntimeLogExporter: RuntimeLogExporting, @unchecked Sendable {
     private let fileManager: FileManager
     private let logCollector: RuntimeLogCollecting
     private let productLogsDirectory: URL

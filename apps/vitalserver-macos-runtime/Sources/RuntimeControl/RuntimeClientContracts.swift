@@ -35,7 +35,6 @@ public protocol RuntimeHostClient {
     func preferredLogsPath() -> String
     func vitalFileFolders(root: String) -> [VitalFilesFolder]
     func legacyCommandProgressLine() -> String?
-    func createDirectory(at url: URL)
     func verifyUpdateBundle(url: URL) async throws -> RuntimeCommandResult
     func applyUpdateBundle(url: URL) async throws -> RuntimeCommandResult
     func rollbackRuntime(backupURL: URL) async throws -> RuntimeCommandResult

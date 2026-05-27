@@ -68,6 +68,27 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         XCTAssertNil(value.uptimeText)
     }
 
+    func testUpdateOperationTakesPriorityOverTransientProxyFailures() {
+        let status = RuntimeStatus(
+            runtimeInstalled: true,
+            vmServiceLoaded: true,
+            proxyServiceLoaded: false,
+            watchdogServiceLoaded: true,
+            runtimeState: .updating,
+            operation: .applyBundle,
+            guestHTTP: "000failed",
+            hostProxyHTTP: nil
+        )
+
+        let overall = policy.overallHealth(status: status, observation: nil)
+        let vitalServer = policy.vitalServerAvailability(status: status, observation: nil)
+
+        XCTAssertEqual(overall.text, AppConstants.StatusText.updating)
+        XCTAssertEqual(overall.severity, .warning)
+        XCTAssertEqual(vitalServer.text, AppConstants.StatusText.updating)
+        XCTAssertEqual(vitalServer.severity, .warning)
+    }
+
     func testActionNeededIsHiddenWhenRuntimeIsReady() {
         let status = RuntimeStatus(
             runtimeInstalled: true,

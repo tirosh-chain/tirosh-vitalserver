@@ -87,6 +87,10 @@ Runtime Control API는 wire payload에서 `runtimeInstalled`, `runtimeState`, `o
 `runtime-status` frame을 보냅니다. 각 frame의 `id` 값은 `runtime-status`, `data` 값은 JSON encoded
 `RuntimeStatus`입니다. 변경이 없으면 heartbeat comment를 보냅니다.
 
+`RuntimeStatus.dataDirectoryStats`는 configured Vital files directory의 visible regular file count와
+recursive size를 제공합니다. UI는 이를 Data directory path 옆의 보조 정보로 표시하며, volume-level
+capacity 정보는 기존 `dataStorage`를 계속 사용합니다.
+
 `GET /runtime/overview`는 PWA status 화면용 aggregated read model입니다. 기존 raw endpoint의 SoT는 그대로
 유지하면서 `RuntimeStatus`, `RuntimeSettings`, `RuntimeReleaseInfo`, `RuntimeInstallInfo`, 최신
 `VitalDBObservationDocument`, 그리고 native Status 탭의 `Vital Recorder` 섹션과 같은 성격의
@@ -112,8 +116,10 @@ frame을 보냅니다. 각 frame의 `id` 값은 `runtime-log-<source>`, `data` �
 
 `GET /vitaldb/observations/latest`는 watchdog/runtime observability SQLite에 저장된 최신
 `VitalDBObservationDocument`를 반환합니다. 이 payload는 `vitaldb-observer` container가 계산한
-recorder/bed/device/filter/proxy/anomaly snapshot을 guest runtime-state 경로로 전달하고, watchdog이
-runtime observability SoT에 저장한 결과입니다.
+recorder/bed/device/filter/proxy/anomaly snapshot과 최근 `send_data` 활동량 summary를 guest runtime-state
+경로로 전달하고, watchdog이 runtime observability SoT에 저장한 결과입니다. `recorders[].activity`는
+audit proxy Redis List에서 계산한 windowed metric이며 message count, byte count, room count, first/last
+activity, 초당 message/byte rate를 포함합니다.
 
 `GET /vitaldb/observations/stream`은 long-lived SSE 연결입니다. 서버는 최신 VitalDB observation payload가
 바뀔 때 `vitaldb-observed` frame을 보냅니다. 각 frame의 `id` 값은 `vitaldb-observation`, `data` 값은
@@ -122,8 +128,9 @@ JSON encoded `VitalDBObservationDocument` 또는 `null`입니다.
 `GET /vitaldb/recorders`는 runtime observability SQLite에 저장된 VitalDB observation snapshot들을
 `vrcode` 기준으로 집계한 `RuntimeVitalRecorderHistory`를 반환합니다. `vrcode`는 recorder identity key이며,
 IP는 마지막 관측 주소일 뿐 identity로 쓰지 않습니다. 이 read model은 접속했었던 VRecorder 목록, last IP,
-version, bed, first/last seen, latest status, current anomaly count를 PWA/SwiftUI가 바로 표시할 수 있게
-정리한 결과입니다.
+version, bed, first/last seen, latest status, current anomaly count, `activityTimeline`을 PWA/SwiftUI가
+바로 표시할 수 있게 정리한 결과입니다. `activityTimeline`은 snapshot history에서 vrcode별
+`recorders[].activity`를 시간순으로 모은 chart-friendly sample list입니다.
 
 `GET /vitaldb/recorders/{vrcode}`는 같은 history read model에서 특정 `vrcode`의 recorder record 하나를
 반환합니다. 관측 이력이 없으면 `null`을 반환합니다.

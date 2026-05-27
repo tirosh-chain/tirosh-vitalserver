@@ -294,7 +294,9 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertEqual(events.events.map(\.id), ["event-1"])
         XCTAssertEqual(vitalDBObservation?.recorders.map(\.vrcode), ["VR_A"])
         XCTAssertEqual(vitalRecorders.recorders.map(\.vrcode), ["VR_A"])
+        XCTAssertEqual(vitalRecorders.recorders.first?.activityTimeline.first?.messageCount, 3)
         XCTAssertEqual(vitalRecorder?.vrcode, "VR_A")
+        XCTAssertEqual(vitalRecorder?.activityTimeline.first?.byteCount, 2048)
     }
 
     @MainActor
@@ -828,7 +830,15 @@ private struct StubRuntimeControlAPIReadHandler: RuntimeControlAPIReadHandler {
                 VitalDBRecorderObservation(
                     vrcode: "VR_A",
                     ip: "10.0.0.10",
-                    online: true
+                    online: true,
+                    activity: VitalDBRecorderActivityObservation(
+                        windowSeconds: 300,
+                        messageCount: 3,
+                        byteCount: 2048,
+                        roomCount: 1,
+                        messagesPerSecond: 0.01,
+                        bytesPerSecond: 6.8
+                    )
                 ),
             ]
         )

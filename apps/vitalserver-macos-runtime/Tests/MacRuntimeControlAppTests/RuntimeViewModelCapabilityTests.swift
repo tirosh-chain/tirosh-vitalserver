@@ -52,7 +52,7 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertEqual(client.stopRuntimeServicesCount, 0)
         XCTAssertEqual(client.exportLogsCount, 0)
         XCTAssertEqual(client.preferredLogsPathCount, 0)
-        XCTAssertEqual(client.createDirectoryURLs, [])
+        XCTAssertEqual(nativeShell.createdDirectoryURLs, [])
         XCTAssertEqual(nativeShell.chooseDirectoryCount, 0)
         XCTAssertEqual(nativeShell.chooseUpdateBundleCount, 0)
         XCTAssertEqual(nativeShell.chooseLogExportDestinationCount, 0)
@@ -89,7 +89,7 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         viewModel.chooseVitalFilesDirectory()
 
         XCTAssertEqual(nativeShell.chooseDirectoryPrompts, [AppConstants.Actions.chooseDirectory])
-        XCTAssertEqual(client.createDirectoryURLs, [URL(fileURLWithPath: "/Users/test/Vital Files")])
+        XCTAssertEqual(nativeShell.createdDirectoryURLs, [URL(fileURLWithPath: "/Users/test/Vital Files")])
         XCTAssertEqual(viewModel.settings.vitalFilesDirectory, "/Users/test/Vital Files")
     }
 
@@ -108,7 +108,7 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         viewModel.chooseVitalFilesDirectory()
 
         XCTAssertEqual(nativeShell.chooseDirectoryPrompts, [AppConstants.Actions.chooseDirectory])
-        XCTAssertEqual(client.createDirectoryURLs, [])
+        XCTAssertEqual(nativeShell.createdDirectoryURLs, [])
         XCTAssertEqual(viewModel.settings.vitalFilesDirectory, previousDirectory)
         XCTAssertEqual(viewModel.message, AppConstants.StatusText.vitalFilesDirectoryProtected)
     }
@@ -273,8 +273,7 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         await viewModel.refresh()
 
         XCTAssertEqual(controlClient.loadStatusCount, 1)
-        XCTAssertEqual(controlClient.createDirectoryURLs, [])
-        XCTAssertEqual(hostClient.createDirectoryURLs, [URL(fileURLWithPath: "/Users/test/Vital Files")])
+        XCTAssertEqual(nativeShell.createdDirectoryURLs, [URL(fileURLWithPath: "/Users/test/Vital Files")])
         XCTAssertEqual(hostClient.loadBackupsCount, 1)
     }
 
@@ -340,7 +339,6 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     var exportLogsCount = 0
     var loadReleaseInfoCount = 0
     var preferredLogsPathCount = 0
-    var createDirectoryURLs: [URL] = []
     var verifiedBundleURLs: [URL] = []
     var exportLogDestinationURLs: [URL] = []
     var settings = RuntimeSettings()
@@ -414,10 +412,6 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
 
     func legacyCommandProgressLine() -> String? {
         nil
-    }
-
-    func createDirectory(at url: URL) {
-        createDirectoryURLs.append(url)
     }
 
     func verifyUpdateBundle(url: URL) async throws -> RuntimeCommandResult {

@@ -20,6 +20,25 @@ enum RuntimeSection: CaseIterable, Identifiable {
         }
     }
 
+    static func primarySections(testEnabled: Bool = GeneratedRelease.testEnabled) -> [RuntimeSection] {
+        [.status, .recorders, .observability, .log, .settings, .update]
+            .filter { visibleSections(testEnabled: testEnabled).contains($0) }
+    }
+
+    static func utilitySections(testEnabled: Bool = GeneratedRelease.testEnabled) -> [RuntimeSection] {
+        [.advanced]
+            .filter { visibleSections(testEnabled: testEnabled).contains($0) }
+    }
+
+    static func overflowSections(testEnabled: Bool = GeneratedRelease.testEnabled) -> [RuntimeSection] {
+        [.info, .test, .dangerZone]
+            .filter { visibleSections(testEnabled: testEnabled).contains($0) }
+    }
+
+    static func sectionIsInOverflow(_ section: RuntimeSection, testEnabled: Bool = GeneratedRelease.testEnabled) -> Bool {
+        overflowSections(testEnabled: testEnabled).contains(section)
+    }
+
     var title: String {
         switch self {
         case .status:

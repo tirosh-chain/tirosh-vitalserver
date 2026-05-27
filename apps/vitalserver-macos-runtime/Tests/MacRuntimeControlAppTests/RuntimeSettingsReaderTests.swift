@@ -119,6 +119,31 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         XCTAssertEqual(value(after: RuntimeAdapterConstants.RuntimeCommand.optionPreventSystemSleep, in: arguments), "false")
     }
 
+    func testStatusReaderReportsDataDirectoryStats() throws {
+        let directory = try temporaryDirectory()
+        let dataDirectory = directory.appendingPathComponent("vital-files", isDirectory: true)
+        let nested = dataDirectory.appendingPathComponent("nested", isDirectory: true)
+        try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: true)
+        try Data(repeating: 1, count: 3).write(to: dataDirectory.appendingPathComponent("one.vital"))
+        try Data(repeating: 1, count: 5).write(to: nested.appendingPathComponent("two.vital"))
+        try Data(repeating: 1, count: 7).write(to: nested.appendingPathComponent(".hidden.vital"))
+
+        let reader = SystemRuntimeStatusReader(
+            paths: RuntimePaths(
+                launcher: directory.appendingPathComponent("launcher").path,
+                uninstaller: directory.appendingPathComponent("uninstaller").path,
+                vmIPFile: directory.appendingPathComponent(RuntimeFileNames.vmIP).path,
+                runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
+                runtimeStatus: directory.appendingPathComponent(RuntimeFileNames.runtimeStatus).path,
+                proxyLaunchDaemon: directory.appendingPathComponent("proxy.plist").path
+            )
+        )
+        let status = reader.loadStatus(settings: RuntimeSettings(vitalFilesDirectory: dataDirectory.path))
+
+        XCTAssertEqual(status.dataDirectoryStats?.fileCount, 2)
+        XCTAssertEqual(status.dataDirectoryStats?.sizeBytes, 8)
+    }
+
     func testStatusReaderUsesStatusObservationForVitalRecordersWhenSQLiteIsEmpty() throws {
         let directory = try temporaryDirectory()
         let runtimeStatus = directory.appendingPathComponent(RuntimeFileNames.runtimeStatus)
@@ -182,6 +207,104 @@ final class RuntimeSettingsReaderTests: XCTestCase {
 
         XCTAssertEqual(history.updatedAt, "2026-05-26T00:01:00Z")
         XCTAssertEqual(history.recorders.map(\.vrcode), ["VR_STATUS"])
+        XCTAssertEqual(history.recorders.first?.status, .online)
+    }
+
+    func testStatusReaderUsesFreshGuestObservationForVitalRecordersWhenStatusObservationIsStale() throws {
+        let directory = try temporaryDirectory()
+        let runtimeStatus = directory.appendingPathComponent(RuntimeFileNames.runtimeStatus)
+        let runtimeState = directory.appendingPathComponent(RuntimeFileNames.runtimeState)
+        try """
+        {
+          "schemaVersion": 2,
+          "product": "TiroshVitalServer",
+          "status": "healthy",
+          "operation": "watchdog",
+          "message": "ok",
+          "updatedAt": "2026-05-26T00:01:00Z",
+          "productRoot": "/tmp/product",
+          "runtimeHome": "/tmp/vm",
+          "runtimeVersion": "1.0.0",
+          "vmService": "loaded",
+          "proxyService": "loaded",
+          "watchdogService": "loaded",
+          "proxyPort": 19090,
+          "hostProxyHTTP": "200",
+          "guestHTTP": "200",
+          "rootfsBase": "present",
+          "vmDisk": "present",
+          "failureReasons": [],
+          "vitalDBObservation": {
+            "schemaVersion": 1,
+            "source": "vitaldb-observer",
+            "observedAt": "2026-05-26T00:01:00Z",
+            "ready": true,
+            "recorderOnlineThresholdSeconds": 60,
+            "recorders": [
+              {
+                "vrcode": "VR_STALE_STATUS",
+                "ip": "192.168.64.10",
+                "lastSeenAt": "2026-05-26T00:01:00Z",
+                "online": true,
+                "stale": false
+              }
+            ],
+            "beds": [],
+            "devices": [],
+            "filters": [],
+            "proxyConnections": [],
+            "anomalies": []
+          }
+        }
+        """.write(to: runtimeStatus, atomically: true, encoding: .utf8)
+        try """
+        {
+          "schemaVersion": 1,
+          "vmIP": "192.168.64.2",
+          "guestHTTP": "200",
+          "updatedAt": "2026-05-26T00:01:05Z",
+          "vitalDBObservation": {
+            "schemaVersion": 1,
+            "source": "vitaldb-observer",
+            "observedAt": "2026-05-26T00:01:05Z",
+            "ready": true,
+            "recorderOnlineThresholdSeconds": 60,
+            "recorders": [
+              {
+                "vrcode": "VR_FRESH_GUEST",
+                "ip": "192.168.64.11",
+                "lastSeenAt": "2026-05-26T00:01:05Z",
+                "online": true,
+                "stale": false
+              }
+            ],
+            "beds": [],
+            "devices": [],
+            "filters": [],
+            "proxyConnections": [],
+            "anomalies": []
+          }
+        }
+        """.write(to: runtimeState, atomically: true, encoding: .utf8)
+
+        let reader = SystemRuntimeStatusReader(
+            paths: RuntimePaths(
+                launcher: directory.appendingPathComponent("launcher").path,
+                uninstaller: directory.appendingPathComponent("uninstaller").path,
+                vmIPFile: directory.appendingPathComponent(RuntimeFileNames.vmIP).path,
+                runtimeState: runtimeState.path,
+                runtimeStatus: runtimeStatus.path,
+                runtimeObservabilityDB: directory.appendingPathComponent(RuntimeFileNames.runtimeObservabilityDB).path,
+                proxyLaunchDaemon: directory.appendingPathComponent("proxy.plist").path
+            )
+        )
+
+        let status = reader.loadStatus(settings: RuntimeSettings())
+        let history = reader.loadVitalDBRecorders()
+
+        XCTAssertEqual(status.vitalDBObservation?.observedAt, "2026-05-26T00:01:05Z")
+        XCTAssertEqual(history.updatedAt, "2026-05-26T00:01:05Z")
+        XCTAssertEqual(history.recorders.map(\.vrcode), ["VR_FRESH_GUEST"])
         XCTAssertEqual(history.recorders.first?.status, .online)
     }
 

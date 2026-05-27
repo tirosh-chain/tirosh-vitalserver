@@ -124,6 +124,36 @@ components:
           type: boolean
         stale:
           type: boolean
+        activity:
+          anyOf:
+            - $ref: "#/components/schemas/VitalDBRecorderActivityObservation"
+            - type: "null"
+    VitalDBRecorderActivityObservation:
+      type: object
+      description: Recent VRecorder send_data activity summarized from the audit proxy Redis list.
+      properties:
+        windowSeconds:
+          type: integer
+          minimum: 1
+        messageCount:
+          type: integer
+          minimum: 0
+        byteCount:
+          type: integer
+          minimum: 0
+        roomCount:
+          type: integer
+          minimum: 0
+        firstSeenAt:
+          type: [string, "null"]
+        lastSeenAt:
+          type: [string, "null"]
+        messagesPerSecond:
+          type: number
+          minimum: 0
+        bytesPerSecond:
+          type: number
+          minimum: 0
     VitalDBBedObservation:
       type: object
       properties:

@@ -31,6 +31,25 @@ final class RuntimeSectionTests: XCTestCase {
         ])
     }
 
+    func testRuntimeSectionsExposePrimaryUtilityAndOverflowGroups() {
+        XCTAssertEqual(RuntimeSection.primarySections(testEnabled: true), [
+            .status,
+            .recorders,
+            .observability,
+            .log,
+            .settings,
+            .update,
+        ])
+        XCTAssertEqual(RuntimeSection.utilitySections(testEnabled: true), [.advanced])
+        XCTAssertEqual(RuntimeSection.overflowSections(testEnabled: true), [.info, .test, .dangerZone])
+    }
+
+    func testStableRuntimeSectionOverflowHidesTestTab() {
+        XCTAssertEqual(RuntimeSection.overflowSections(testEnabled: false), [.info, .dangerZone])
+        XCTAssertTrue(RuntimeSection.sectionIsInOverflow(.dangerZone, testEnabled: false))
+        XCTAssertFalse(RuntimeSection.sectionIsInOverflow(.advanced, testEnabled: false))
+    }
+
     func testRuntimeControlDevConsoleURLUsesLocalAPI() {
         XCTAssertEqual(
             AppConstants.RuntimeControlAPI.devConsoleURL,

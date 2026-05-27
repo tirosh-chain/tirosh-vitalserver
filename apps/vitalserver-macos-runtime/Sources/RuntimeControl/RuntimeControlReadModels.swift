@@ -166,6 +166,35 @@ public enum RuntimeVitalRecorderStatus: String, Codable, Equatable, Sendable {
     case unknown
 }
 
+public struct RuntimeVitalRecorderActivityPoint: Codable, Equatable, Identifiable, Sendable {
+    public var id: String { observedAt }
+    public let observedAt: String
+    public let windowSeconds: Int
+    public let messageCount: Int
+    public let byteCount: Int
+    public let roomCount: Int
+    public let messagesPerSecond: Double
+    public let bytesPerSecond: Double
+
+    public init(
+        observedAt: String,
+        windowSeconds: Int,
+        messageCount: Int,
+        byteCount: Int,
+        roomCount: Int,
+        messagesPerSecond: Double,
+        bytesPerSecond: Double
+    ) {
+        self.observedAt = observedAt
+        self.windowSeconds = windowSeconds
+        self.messageCount = messageCount
+        self.byteCount = byteCount
+        self.roomCount = roomCount
+        self.messagesPerSecond = messagesPerSecond
+        self.bytesPerSecond = bytesPerSecond
+    }
+}
+
 public struct RuntimeVitalRecorderRecord: Codable, Equatable, Identifiable, Sendable {
     public var id: String { vrcode }
     public let vrcode: String
@@ -180,6 +209,7 @@ public struct RuntimeVitalRecorderRecord: Codable, Equatable, Identifiable, Send
     public let observationCount: Int
     public let currentAnomalyCount: Int
     public let latestAnomalySeverity: VitalDBAnomalySeverity?
+    public let activityTimeline: [RuntimeVitalRecorderActivityPoint]
 
     public init(
         vrcode: String,
@@ -195,6 +225,38 @@ public struct RuntimeVitalRecorderRecord: Codable, Equatable, Identifiable, Send
         currentAnomalyCount: Int,
         latestAnomalySeverity: VitalDBAnomalySeverity?
     ) {
+        self.init(
+            vrcode: vrcode,
+            status: status,
+            lastIP: lastIP,
+            version: version,
+            bedID: bedID,
+            bedName: bedName,
+            patientConnected: patientConnected,
+            firstSeenAt: firstSeenAt,
+            lastSeenAt: lastSeenAt,
+            observationCount: observationCount,
+            currentAnomalyCount: currentAnomalyCount,
+            latestAnomalySeverity: latestAnomalySeverity,
+            activityTimeline: []
+        )
+    }
+
+    public init(
+        vrcode: String,
+        status: RuntimeVitalRecorderStatus,
+        lastIP: String?,
+        version: String?,
+        bedID: String?,
+        bedName: String?,
+        patientConnected: Bool?,
+        firstSeenAt: String?,
+        lastSeenAt: String?,
+        observationCount: Int,
+        currentAnomalyCount: Int,
+        latestAnomalySeverity: VitalDBAnomalySeverity?,
+        activityTimeline: [RuntimeVitalRecorderActivityPoint]
+    ) {
         self.vrcode = vrcode
         self.status = status
         self.lastIP = lastIP
@@ -207,6 +269,7 @@ public struct RuntimeVitalRecorderRecord: Codable, Equatable, Identifiable, Send
         self.observationCount = observationCount
         self.currentAnomalyCount = currentAnomalyCount
         self.latestAnomalySeverity = latestAnomalySeverity
+        self.activityTimeline = activityTimeline
     }
 }
 
@@ -425,6 +488,7 @@ private struct RecorderBuilder {
     var firstSeenAt: String?
     var lastSeenAt: String?
     var observationCount = 0
+    var activityTimeline: [RuntimeVitalRecorderActivityPoint] = []
 
     mutating func observe(recorder: VitalDBRecorderObservation, bed: VitalDBBedObservation?, observedAt: String) {
         observationCount += 1
@@ -436,6 +500,19 @@ private struct RecorderBuilder {
         bedID = bed?.bedID ?? bedID
         bedName = bed?.name ?? bedName
         patientConnected = bed?.patientConnected ?? patientConnected
+        if let activity = recorder.activity {
+            activityTimeline.append(
+                RuntimeVitalRecorderActivityPoint(
+                    observedAt: observedAt,
+                    windowSeconds: activity.windowSeconds,
+                    messageCount: activity.messageCount,
+                    byteCount: activity.byteCount,
+                    roomCount: activity.roomCount,
+                    messagesPerSecond: activity.messagesPerSecond,
+                    bytesPerSecond: activity.bytesPerSecond
+                )
+            )
+        }
     }
 
     func record(
@@ -455,7 +532,8 @@ private struct RecorderBuilder {
             lastSeenAt: latestRecorder?.lastSeenAt ?? lastSeenAt,
             observationCount: observationCount,
             currentAnomalyCount: currentAnomalies.count,
-            latestAnomalySeverity: currentAnomalies.sorted { $0.observedAt > $1.observedAt }.first?.severity
+            latestAnomalySeverity: currentAnomalies.sorted { $0.observedAt > $1.observedAt }.first?.severity,
+            activityTimeline: activityTimeline.sorted { $0.observedAt < $1.observedAt }
         )
     }
 

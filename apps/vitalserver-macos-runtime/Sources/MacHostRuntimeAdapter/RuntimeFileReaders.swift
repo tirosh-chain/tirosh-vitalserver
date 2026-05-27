@@ -4,7 +4,7 @@ import Core
 import Contracts
 import HostInfrastructure
 
-protocol RuntimeHostFileReading {
+protocol RuntimeHostFileReading: Sendable {
     func updateBundleSummary(url: URL) -> String
     func backups(latestBackupPath: String?) -> [RuntimeBackup]
     func redisBackups() -> [RuntimeBackup]
@@ -13,7 +13,7 @@ protocol RuntimeHostFileReading {
     func vitalFileFolders(root: String) -> [VitalFilesFolder]
 }
 
-struct SystemRuntimeHostFileReader: RuntimeHostFileReading {
+struct SystemRuntimeHostFileReader: RuntimeHostFileReading, @unchecked Sendable {
     private static let logTailReadByteLimit: UInt64 = 128 * 1024
 
     private let fileStore: RuntimeFileStore

@@ -37,6 +37,12 @@ class RedisClient:
             return []
         return sorted(item for item in value if isinstance(item, str))
 
+    def lrange(self, key: str, start: int, stop: int) -> list[str]:
+        value = self.command("LRANGE", key, str(start), str(stop))
+        if not isinstance(value, list):
+            return []
+        return [item for item in value if isinstance(item, str)]
+
     def scan(self, pattern: str, count: int = 1000) -> list[str]:
         cursor = "0"
         seen_cursors: set[str] = set()

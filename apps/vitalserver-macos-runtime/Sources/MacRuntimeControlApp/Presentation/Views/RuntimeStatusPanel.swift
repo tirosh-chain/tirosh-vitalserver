@@ -5,7 +5,6 @@ import SwiftUI
 
 struct RuntimeStatusPanel: View {
     @ObservedObject var viewModel: RuntimeViewModel
-    @Binding var showingRuntimeDetails: Bool
     @Binding var showingRecorderDetails: Bool
     @Binding var showingResourceUsage: Bool
     @State private var uptimeNow = Date()
@@ -22,16 +21,6 @@ struct RuntimeStatusPanel: View {
                 Divider()
                 recorderSummarySection
                 Divider()
-                RuntimeDisclosureSection(AppConstants.Labels.runtimeDetails, isExpanded: $showingRuntimeDetails) {
-                    Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 10) {
-                        statusRow(AppConstants.Labels.dataDirectory) {
-                            linkButton(viewModel.settings.vitalFilesDirectory) {
-                                viewModel.openVitalFilesDirectory()
-                            }
-                            .disabled(!viewModel.capabilities.canOpenLocalFiles)
-                        }
-                    }
-                }
                 RuntimeDisclosureSection(AppConstants.Labels.recorderDetails, isExpanded: $showingRecorderDetails) {
                     Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 10) {
                         statusRow(AppConstants.Labels.knownRecorders, recorderSummary.knownRecorders)
@@ -40,7 +29,7 @@ struct RuntimeStatusPanel: View {
                             statusRow(AppConstants.Labels.latestRecorder, latestRecorder)
                         }
                         if let observedAt = recorderSummary.observedAt {
-                            statusRow(AppConstants.Labels.recorderObservation, observedAt)
+                            statusRow(AppConstants.Labels.recorderObservation, viewModel.presentationFormatter.systemTimeText(observedAt))
                         }
                     }
                 }
@@ -64,11 +53,11 @@ struct RuntimeStatusPanel: View {
             statusRow(AppConstants.Labels.overallHealth) {
                 healthStatusValue
             }
-            statusRow(GeneratedRelease.vitalServerName, vitalServerAvailability)
-            statusRow(AppConstants.Labels.vitalServerURL) {
-                linkButton(AppConstants.Product.vitalServerURL(proxyPort: viewModel.status.proxyPort)) {
-                    viewModel.openVitalServer()
-                }
+            statusRow(GeneratedRelease.vitalServerName) {
+                vitalServerStatusAndURL
+            }
+            statusRow(AppConstants.Labels.dataDirectory) {
+                dataDirectoryValue
             }
         }
     }
@@ -139,6 +128,55 @@ struct RuntimeStatusPanel: View {
 
     private var vitalServerAvailability: RuntimeStatusDisplayPolicy.StatusValue {
         displayPolicy.vitalServerAvailability(status: viewModel.status, observation: viewModel.containerObservation, now: uptimeNow)
+    }
+
+    private var vitalServerStatusAndURL: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 12) {
+                linkButton(AppConstants.Product.vitalServerURL(proxyPort: viewModel.status.proxyPort)) {
+                    viewModel.openVitalServer()
+                }
+                statusValue(vitalServerAvailability)
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                linkButton(AppConstants.Product.vitalServerURL(proxyPort: viewModel.status.proxyPort)) {
+                    viewModel.openVitalServer()
+                }
+                statusValue(vitalServerAvailability)
+            }
+        }
+    }
+
+    private var dataDirectoryValue: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 10) {
+                dataDirectoryLink
+                dataDirectoryStatsSuffix
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                dataDirectoryLink
+                dataDirectoryStatsSuffix
+            }
+        }
+    }
+
+    private var dataDirectoryLink: some View {
+        linkButton(viewModel.settings.vitalFilesDirectory) {
+            viewModel.openVitalFilesDirectory()
+        }
+        .disabled(!viewModel.capabilities.canOpenLocalFiles)
+    }
+
+    @ViewBuilder
+    private var dataDirectoryStatsSuffix: some View {
+        if let stats = viewModel.status.dataDirectoryStats {
+            Text("\(stats.fileCount) files · \(formatBytes(stats.sizeBytes))")
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+        } else {
+            Text(AppConstants.StatusText.notChecked)
+                .foregroundStyle(.secondary)
+        }
     }
 
     private var actionNeededItem: RuntimeStatusDisplayPolicy.ActionNeededItem? {
@@ -248,12 +286,19 @@ struct RuntimeStatusPanel: View {
     }
 
     private func formatBytes(_ bytes: Int64) -> String {
+        if bytes < 1_024 {
+            return "\(max(bytes, 0)) B"
+        }
+        let kib = Double(bytes) / 1_024
+        if kib < 1_024 {
+            return String(format: "%.1f KiB", kib)
+        }
         let gib = Double(bytes) / 1_073_741_824
         if gib >= 1 {
             return String(format: "%.1f GiB", gib)
         }
         let mib = Double(bytes) / 1_048_576
-        return String(format: "%.1f MiB", max(mib, 0))
+        return String(format: "%.1f MiB", mib)
     }
 
     private func statusColor(_ severity: RuntimeStatusDisplayPolicy.Severity) -> Color {

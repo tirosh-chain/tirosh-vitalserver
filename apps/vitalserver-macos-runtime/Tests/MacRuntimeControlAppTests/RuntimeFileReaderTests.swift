@@ -103,7 +103,7 @@ final class RuntimeFileReaderTests: XCTestCase {
     }
 }
 
-private final class FakeRuntimeLogCollector: RuntimeLogCollecting {
+private final class FakeRuntimeLogCollector: RuntimeLogCollecting, @unchecked Sendable {
     var refreshCount = 0
 
     func refreshLogCollection() {

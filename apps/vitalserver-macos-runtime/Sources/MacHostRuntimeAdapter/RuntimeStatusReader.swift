@@ -4,8 +4,7 @@ import Core
 import Contracts
 import HostInfrastructure
 
-@MainActor
-protocol RuntimeStatusReading {
+protocol RuntimeStatusReading: Sendable {
     func loadStatus(settings: RuntimeSettings) -> RuntimeStatus
     func loadHealthStatus(settings: RuntimeSettings) async -> RuntimeStatus
     func loadRuntimeEvents(limit: Int) -> RuntimeEventHistory
@@ -15,8 +14,7 @@ protocol RuntimeStatusReading {
     func legacyCommandProgressLine() -> String?
 }
 
-@MainActor
-struct SystemRuntimeStatusReader: RuntimeStatusReading {
+struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
     let paths: RuntimePaths
     var commandLogPath = RuntimeAdapterConstants.Paths.commandLogFile
     private let fileStore: RuntimeFileStore
@@ -35,7 +33,7 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading {
     }
 
     func loadStatus(settings: RuntimeSettings) -> RuntimeStatus {
-        withDataStorageUsage(loadBaseStatus(), settings: settings)
+        withDataDirectoryMetrics(loadBaseStatus(), settings: settings)
     }
 
     func loadHealthStatus(settings: RuntimeSettings) async -> RuntimeStatus {
@@ -64,7 +62,7 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading {
             runtimeStateStale: next.failureReasons.contains(.guestRuntimeStateStale)
         )
 
-        return withDataStorageUsage(next, settings: settings)
+        return withDataDirectoryMetrics(next, settings: settings)
     }
 
     func loadBaseStatus() -> RuntimeStatus {
@@ -86,6 +84,11 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading {
             runtimeStatePresent: guestState != nil,
             runtimeStateStale: document?.failureReasons.contains(.guestRuntimeStateStale) ?? false
         )
+        let vitalDBObservation = freshestVitalDBObservation(
+            document?.vitalDBObservation,
+            guestState?.vitalDBObservation
+        )
+
         return RuntimeStatus(
             runtimeInstalled: runtimeInstalled,
             vmServiceLoaded: vmServiceLoaded,
@@ -120,8 +123,23 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading {
             failureReasons: document?.failureReasons ?? [],
             progress: document?.progress,
             containerObservation: containerObservation,
-            vitalDBObservation: document?.vitalDBObservation
+            vitalDBObservation: vitalDBObservation
         )
+    }
+
+    private func freshestVitalDBObservation(
+        _ statusObservation: VitalDBObservationDocument?,
+        _ guestObservation: VitalDBObservationDocument?
+    ) -> VitalDBObservationDocument? {
+        guard let statusObservation else {
+            return guestObservation
+        }
+        guard let guestObservation else {
+            return statusObservation
+        }
+        return guestObservation.observedAt > statusObservation.observedAt
+            ? guestObservation
+            : statusObservation
     }
 
     func loadRuntimeEvents(limit: Int) -> RuntimeEventHistory {
@@ -176,10 +194,40 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading {
         return result.exitCode == 0 && !code.isEmpty ? code : RuntimeAdapterConstants.StatusText.failed
     }
 
-    private func withDataStorageUsage(_ status: RuntimeStatus, settings: RuntimeSettings) -> RuntimeStatus {
+    private func withDataDirectoryMetrics(_ status: RuntimeStatus, settings: RuntimeSettings) -> RuntimeStatus {
         var next = status
         next.dataStorage = storageUsageProvider.storageUsage(for: settings.vitalFilesDirectory) ?? next.dataStorage
+        next.dataDirectoryStats = dataDirectoryStats(for: settings.vitalFilesDirectory)
         return next
+    }
+
+    private func dataDirectoryStats(for path: String) -> RuntimeDataDirectoryStats? {
+        let root = URL(fileURLWithPath: path)
+        guard fileStore.directoryExists(root) else {
+            return nil
+        }
+        let stats = directoryStats(root)
+        return RuntimeDataDirectoryStats(fileCount: stats.fileCount, sizeBytes: Int64(stats.sizeBytes))
+    }
+
+    private func directoryStats(_ directory: URL) -> (fileCount: Int, sizeBytes: UInt64) {
+        guard let contents = try? fileStore.contentsOfDirectory(at: directory, skipsHiddenFiles: true) else {
+            return (0, 0)
+        }
+
+        var fileCount = 0
+        var sizeBytes: UInt64 = 0
+        for url in contents {
+            if fileStore.directoryExists(url) {
+                let nested = directoryStats(url)
+                fileCount += nested.fileCount
+                sizeBytes += nested.sizeBytes
+            } else if fileStore.fileExists(url) {
+                fileCount += 1
+                sizeBytes += (try? fileStore.fileSize(url)) ?? 0
+            }
+        }
+        return (fileCount, sizeBytes)
     }
 
     private func guestRuntimeStateDocument(_ path: String) -> GuestRuntimeStateDocument? {

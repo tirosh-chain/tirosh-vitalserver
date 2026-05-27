@@ -63,6 +63,13 @@ struct RuntimeStatusDisplayPolicy {
     }
 
     func overallHealth(status: RuntimeStatus, observation: RuntimeContainerObservation?, now: Date = Date()) -> StatusValue {
+        if RuntimeActiveOperationPolicy.isUpdateInProgress(status) {
+            return StatusValue(
+                text: AppConstants.StatusText.updating,
+                severity: .warning,
+                uptimeText: nil
+            )
+        }
         if status.isReady {
             return StatusValue(
                 text: AppConstants.StatusText.healthy,
@@ -103,6 +110,8 @@ struct RuntimeStatusDisplayPolicy {
         let text: String
         if isSuccessfulHTTPStatus(status.hostProxyHTTP) {
             text = AppConstants.StatusText.reachable
+        } else if RuntimeActiveOperationPolicy.isUpdateInProgress(status) {
+            text = AppConstants.StatusText.updating
         } else if status.runtimeInstalled {
             text = AppConstants.StatusText.waiting
         } else {

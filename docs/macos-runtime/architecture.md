@@ -667,6 +667,17 @@ UI 상태, capability guard, usecase orchestration, 화면 메시지 변환
 
 이 구조에서 파일 기반 계약은 모든 계층에 쓰는 범용 통신 방식이 아닙니다. Swift module 사이에서는 `public` API와 protocol을 import해서 호출하고, 파일 기반 JSON은 process/VM 경계를 넘는 계약에만 사용합니다. 특히 guest VM은 bootstrap 초기에 HTTP service가 아직 없을 수 있으므로, shared directory의 request/result JSON이 update와 repair의 안정적인 최소 계약입니다.
 
+Helper app 내부의 concurrency 경계는 아래처럼 둡니다.
+
+| Owner | 책임 | 포함하는 작업 | 포함하지 않는 작업 |
+|---|---|---|---|
+| `RuntimeViewModel` (`MainActor`) | UI state publish, capability guard, native shell interaction, command orchestration | `@Published` 상태 갱신, 선택/확인 dialog, worker 결과 반영 | disk/SQLite/log 대량 read, privileged command 실행 |
+| `MacHostRuntimeReadWorker` (`actor`) | read-only host snapshot | settings/status/health/events/recorders/backups/log progress/release info read | update apply, Redis backup, rollback, repair, service start/stop |
+| `MacHostRuntimeCommandWorker` (`actor`) | host mutation과 privileged command 실행 | update verify/apply, settings apply, Redis backup, rollback/delete backup, repair, start/stop services, uninstall, log export | UI state publish, 화면 메시지 결정, runtime status polling |
+| `RuntimeNativeShell` (`MainActor`) | macOS shell affordance | file picker, save panel, Finder/browser open, Helper relaunch, UI가 직접 선택한 폴더 생성 | runtime lifecycle command, update/rollback 정책 |
+
+중요한 운영 작업의 owner는 `MacHostRuntimeCommandWorker`입니다. Update, Redis backup, rollback, repair처럼 오래 걸리거나 관리자 권한을 요구하는 작업은 read worker와 섞지 않습니다. UI와 dev Runtime Control API는 같은 `MacHostRuntimeClient` facade를 통해 호출하지만, facade 내부에서는 read worker와 command worker가 분리되어야 합니다. 이 경계가 깨지면 업데이트 중 앱 재시작, UI 끊김, PWA/local UI 상태 차이를 추적하기 어려워집니다.
+
 ### Naming Rules
 
 리팩터링 중 이름은 platform 종속성과 재사용 가능성을 기준으로 정합니다. 이름이 계층 경계를 설명해야 하며, 단순 wrapper가 여러 단계로 겹쳐 호출 깊이를 늘리는 이름은 피합니다.
@@ -743,7 +754,7 @@ Shell
 | Swift paths/constants | `LauncherPaths.swift`, `Constants.swift` | 설치/runtime 경로, artifact 이름, launchd/service 이름, command path | runtime 동작 정책 결정 |
 | VM configuration | `VirtualMachine/VMRuntimeConfig.swift`, `VMConfigurationFactory.swift` | `vm-config.json` schema, Apple Virtualization configuration 생성 | install settings 파일 읽기 |
 | Helper app | `Sources/MacRuntimeControlApp/*` | 설치 후 Status/Settings/Update/Logs/About/Advanced/Danger Zone UI, app composition, native shell | rootfs, VM disk, privileged provisioning 포함 |
-| Host runtime adapter | `Sources/MacHostRuntimeAdapter/*` | `RuntimeControlClient` local 구현, 상태/설정/log/backup file read, privileged command 조립/실행, log export | SwiftUI presentation, host runtime workflow 내부 단계 |
+| Host runtime adapter | `Sources/MacHostRuntimeAdapter/*` | `RuntimeControlClient` local facade, read worker, command worker, host file/log read, privileged command 조립/실행, log export | SwiftUI presentation, host runtime workflow 내부 단계 |
 | PKG scripts | `Support/Packaging/preinstall`, `postinstall`, `proxy-run`, `uninstall` | installer/launchd/uninstall entrypoint wrapper | 복잡한 provisioning 로직 |
 | guest bootstrap | `Support/Guest/bootstrap.sh`, `bin/*`, `systemd/*`, `prepare-airgap-rootfs.sh`, `compose.yaml` | Linux guest 내부 Docker/Compose 구성, edge nginx container, Docker image load, runtime state 기록 | macOS launchd/proxy 관리 |
 

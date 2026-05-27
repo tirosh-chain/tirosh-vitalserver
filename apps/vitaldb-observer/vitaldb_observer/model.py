@@ -5,6 +5,30 @@ from typing import Any
 
 
 @dataclass(frozen=True)
+class RecorderActivityObservation:
+    window_seconds: int
+    message_count: int
+    byte_count: int
+    room_count: int
+    first_seen_at: str | None
+    last_seen_at: str | None
+    messages_per_second: float
+    bytes_per_second: float
+
+    def as_json(self) -> dict[str, Any]:
+        return {
+            "windowSeconds": self.window_seconds,
+            "messageCount": self.message_count,
+            "byteCount": self.byte_count,
+            "roomCount": self.room_count,
+            "firstSeenAt": self.first_seen_at,
+            "lastSeenAt": self.last_seen_at,
+            "messagesPerSecond": self.messages_per_second,
+            "bytesPerSecond": self.bytes_per_second,
+        }
+
+
+@dataclass(frozen=True)
 class RecorderObservation:
     vrcode: str
     ip: str | None
@@ -14,6 +38,7 @@ class RecorderObservation:
     config: str | None
     online: bool
     stale: bool
+    activity: RecorderActivityObservation | None = None
 
     def as_json(self) -> dict[str, Any]:
         return {
@@ -25,6 +50,7 @@ class RecorderObservation:
             "config": self.config,
             "online": self.online,
             "stale": self.stale,
+            "activity": self.activity.as_json() if self.activity else None,
         }
 
 

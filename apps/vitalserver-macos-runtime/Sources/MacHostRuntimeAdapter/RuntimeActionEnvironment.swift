@@ -4,8 +4,7 @@ import Core
 import Contracts
 import HostInfrastructure
 
-@MainActor
-protocol RuntimeActionEnvironment {
+protocol RuntimeActionEnvironment: Sendable {
     func isExecutable(atPath path: String) -> Bool
     func createDirectory(at url: URL)
     func writeAdminPasswordFile(_ password: String) throws -> URL
@@ -13,8 +12,7 @@ protocol RuntimeActionEnvironment {
     func verifyBundle(launcher: String, bundleURL: URL) async -> RuntimeCommandResult
 }
 
-@MainActor
-struct SystemRuntimeActionEnvironment: RuntimeActionEnvironment {
+struct SystemRuntimeActionEnvironment: RuntimeActionEnvironment, @unchecked Sendable {
     private let fileStore: RuntimeFileStore
 
     init(fileStore: RuntimeFileStore = SystemRuntimeFileStore()) {

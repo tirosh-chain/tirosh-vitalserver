@@ -11,6 +11,8 @@ class FakeRedisClient(RedisClient):
 
     def command(self, *parts: str) -> Any:
         self.commands.append(parts)
+        if parts[0] == "LRANGE":
+            return ["a", "b", 1]
         cursor = parts[1]
         if cursor == "0":
             return ["7", ["ip_A", "ip_B"]]
@@ -25,3 +27,10 @@ def test_scan_collects_unique_keys_without_keys_command() -> None:
         ("SCAN", "0", "MATCH", "ip_*", "COUNT", "2"),
         ("SCAN", "7", "MATCH", "ip_*", "COUNT", "2"),
     ]
+
+
+def test_lrange_filters_non_string_values() -> None:
+    client = FakeRedisClient()
+
+    assert client.lrange("events", -2, -1) == ["a", "b"]
+    assert client.commands == [("LRANGE", "events", "-2", "-1")]

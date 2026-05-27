@@ -88,6 +88,7 @@ enum AppConstants {
         static let sectionInfo = "About"
         static let sectionDangerZone = "Danger Zone"
         static let sectionLog = "Logs"
+        static let sectionMore = "More"
         static let runtime = "Runtime"
         static let runtimeDetails = "Runtime details"
         static let runtimeState = "Runtime state"

@@ -94,6 +94,48 @@ final class RuntimePresentationFormatterTests: XCTestCase {
         XCTAssertEqual(formatter.progressDisplayMessage(status), "Running: Replace Rootfs Base")
     }
 
+    func testUpdateOperationDisplayMessageRestoresFileBackedUpdateProgress() {
+        let progress = RuntimeProgressDocument(
+            operation: .applyBundle,
+            phase: .running,
+            step: .startRuntimeServices,
+            stepStatus: .started,
+            message: "starting runtime services",
+            reasonCodes: [],
+            startedAt: nil,
+            updatedAt: "2026-05-27T01:36:00Z"
+        )
+        let status = RuntimeStatus(
+            runtimeState: .updating,
+            operation: .applyBundle,
+            progress: progress
+        )
+
+        XCTAssertTrue(formatter.updateOperationInProgress(status))
+        XCTAssertEqual(formatter.updateOperationDisplayMessage(status), "Running: Start Runtime Services")
+    }
+
+    func testCompletedUpdateProgressIsNotRestoredAsActive() {
+        let progress = RuntimeProgressDocument(
+            operation: .activateGuestUpdate,
+            phase: .completed,
+            step: nil,
+            stepStatus: nil,
+            message: "completed",
+            reasonCodes: [],
+            startedAt: nil,
+            updatedAt: "2026-05-27T01:37:33Z"
+        )
+        let status = RuntimeStatus(
+            runtimeState: .healthy,
+            operation: .activateGuestUpdate,
+            progress: progress
+        )
+
+        XCTAssertFalse(formatter.updateOperationInProgress(status))
+        XCTAssertNil(formatter.updateOperationDisplayMessage(status))
+    }
+
     func testRuntimeStateAndOperationTextUseStandardDisplayVocabulary() {
         XCTAssertEqual(formatter.runtimeStateText(.healthy), AppConstants.StatusText.healthy)
         XCTAssertEqual(formatter.runtimeStateText(.degraded), AppConstants.StatusText.degraded)
@@ -108,7 +150,7 @@ final class RuntimePresentationFormatterTests: XCTestCase {
 
         XCTAssertEqual(
             formatter.systemTimeText("2026-05-21T12:00:00Z", timeZone: timeZone),
-            "2026-05-21 21:00:00 GMT+9"
+            "2026-05-21 21:00:00 +09:00"
         )
     }
 

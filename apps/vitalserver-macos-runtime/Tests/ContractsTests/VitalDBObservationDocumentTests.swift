@@ -15,7 +15,17 @@ final class VitalDBObservationDocumentTests: XCTestCase {
                     version: "1.0.0",
                     info: "OR",
                     config: "{}",
-                    online: true
+                    online: true,
+                    activity: VitalDBRecorderActivityObservation(
+                        windowSeconds: 300,
+                        messageCount: 12,
+                        byteCount: 4096,
+                        roomCount: 4,
+                        firstSeenAt: "2026-05-25T00:00:01Z",
+                        lastSeenAt: "2026-05-25T00:00:10Z",
+                        messagesPerSecond: 0.04,
+                        bytesPerSecond: 13.7
+                    )
                 ),
             ],
             anomalies: [
@@ -34,6 +44,7 @@ final class VitalDBObservationDocumentTests: XCTestCase {
         let decoded = try JSONDecoder().decode(VitalDBObservationDocument.self, from: encoded)
 
         XCTAssertEqual(decoded, document)
+        XCTAssertEqual(decoded.recorders.first?.activity?.byteCount, 4096)
         XCTAssertEqual(decoded.anomalies.first?.kind.rawValue, "duplicate-ip")
     }
 

@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime
+from dataclasses import dataclass
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -13,6 +14,7 @@ from .model import (
     ObservationDocument,
     ProxyConnectionObservation,
     RawBedScopedObservation,
+    RecorderActivityObservation,
     RecorderObservation,
 )
 from .time import redis_unix_time_to_iso, utc_now_iso
@@ -24,6 +26,7 @@ class RedisReader(Protocol):
     def ping(self) -> bool: ...
     def get(self, key: str) -> str | None: ...
     def smembers(self, key: str) -> list[str]: ...
+    def lrange(self, key: str, start: int, stop: int) -> list[str]: ...
     def scan(self, pattern: str) -> list[str]: ...
 
 
@@ -37,7 +40,8 @@ class VitalDBCollector:
 
     def collect(self) -> ObservationDocument:
         observed_at = utc_now_iso()
-        recorders = self._recorders(observed_at)
+        activity_by_vrcode = self._recorder_activity(observed_at)
+        recorders = self._recorders(observed_at, activity_by_vrcode)
         beds = self._beds(observed_at)
         devices = self._raw_bed_scoped(
             prefix="devs_", bed_ids=[bed.bed_id for bed in beds]
@@ -59,7 +63,11 @@ class VitalDBCollector:
             anomalies=anomalies,
         )
 
-    def _recorders(self, observed_at: str) -> list[RecorderObservation]:
+    def _recorders(
+        self,
+        observed_at: str,
+        activity_by_vrcode: dict[str, RecorderActivityObservation],
+    ) -> list[RecorderObservation]:
         vrcodes = {
             key.removeprefix("ip_")
             for key in self._redis.scan("ip_*")
@@ -70,16 +78,24 @@ class VitalDBCollector:
             for key in self._redis.scan("utime_*")
             if key.removeprefix("utime_")
         )
+        vrcodes.update(activity_by_vrcode)
         recorders = [
-            self._recorder(vrcode, observed_at)
+            self._recorder(vrcode, observed_at, activity_by_vrcode.get(vrcode))
             for vrcode in sorted(vrcodes)
             if not vrcode.startswith("bed")
         ]
         return [
-            recorder for recorder in recorders if recorder.ip or recorder.last_seen_at
+            recorder
+            for recorder in recorders
+            if recorder.ip or recorder.last_seen_at or recorder.activity
         ]
 
-    def _recorder(self, vrcode: str, observed_at: str) -> RecorderObservation:
+    def _recorder(
+        self,
+        vrcode: str,
+        observed_at: str,
+        activity: RecorderActivityObservation | None,
+    ) -> RecorderObservation:
         last_seen_raw = self._redis.get(f"utime_{vrcode}")
         online = _is_recent(
             last_seen_raw,
@@ -95,7 +111,50 @@ class VitalDBCollector:
             config=self._empty_to_none(self._redis.get(f"vrconf_{vrcode}")),
             online=online,
             stale=not online,
+            activity=activity,
         )
+
+    def _recorder_activity(
+        self,
+        observed_at: str,
+    ) -> dict[str, RecorderActivityObservation]:
+        if not self._settings.audit_redis_list or self._settings.audit_event_limit <= 0:
+            return {}
+        events = self._redis.lrange(
+            self._settings.audit_redis_list,
+            -self._settings.audit_event_limit,
+            -1,
+        )
+        window_seconds = max(self._settings.recorder_activity_window_seconds, 1)
+        window_started_at = _parse_iso(observed_at) - timedelta(seconds=window_seconds)
+        builders: dict[str, _ActivityBuilder] = {}
+        for raw_event in events:
+            parsed = _parse_audit_event(raw_event)
+            if parsed is None or parsed["event_type"] != "send_data":
+                continue
+            try:
+                event_time = _parse_iso(parsed["timestamp"])
+            except ValueError:
+                continue
+            if event_time < window_started_at:
+                continue
+            vrcode = parsed["vrcode"]
+            if not vrcode:
+                continue
+            builder = builders.setdefault(
+                vrcode,
+                _ActivityBuilder(window_seconds=window_seconds),
+            )
+            builder.observe(
+                timestamp=parsed["timestamp"],
+                byte_count=parsed["byte_count"],
+                room_count=parsed["room_count"],
+            )
+        return {
+            vrcode: builder.observation()
+            for vrcode, builder in builders.items()
+            if builder.message_count > 0
+        }
 
     def _beds(self, observed_at: str) -> list[BedObservation]:
         bed_ids = set(self._redis.smembers("beds"))
@@ -253,6 +312,67 @@ def _tail_lines(path: Path, max_bytes: int) -> list[str]:
     return data.decode("utf-8", errors="replace").splitlines()
 
 
+def _parse_audit_event(raw_value: str) -> dict[str, Any] | None:
+    try:
+        event = json.loads(raw_value)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(event, dict):
+        return None
+
+    payload_summary = event.get("payload_summary")
+    if not isinstance(payload_summary, dict):
+        payload_summary = {}
+
+    timestamp = _string_value(event, "ts") or _string_value(event, "observedAt")
+    vrcode = _string_value(payload_summary, "vrcode") or _string_value(event, "vrcode")
+    if timestamp is None or vrcode is None:
+        return None
+
+    return {
+        "event_type": _string_value(event, "event_type") or "",
+        "timestamp": timestamp,
+        "vrcode": vrcode,
+        "byte_count": _int_value(payload_summary, "bytes"),
+        "room_count": _int_value(payload_summary, "rooms_count"),
+    }
+
+
+def _parse_iso(value: str) -> datetime:
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+@dataclass
+class _ActivityBuilder:
+    window_seconds: int
+    message_count: int = 0
+    byte_count: int = 0
+    room_count: int = 0
+    first_seen_at: str | None = None
+    last_seen_at: str | None = None
+
+    def observe(self, timestamp: str, byte_count: int, room_count: int) -> None:
+        self.message_count += 1
+        self.byte_count += byte_count
+        self.room_count += room_count
+        if self.first_seen_at is None or timestamp < self.first_seen_at:
+            self.first_seen_at = timestamp
+        if self.last_seen_at is None or timestamp > self.last_seen_at:
+            self.last_seen_at = timestamp
+
+    def observation(self) -> RecorderActivityObservation:
+        return RecorderActivityObservation(
+            window_seconds=self.window_seconds,
+            message_count=self.message_count,
+            byte_count=self.byte_count,
+            room_count=self.room_count,
+            first_seen_at=self.first_seen_at,
+            last_seen_at=self.last_seen_at,
+            messages_per_second=round(self.message_count / self.window_seconds, 3),
+            bytes_per_second=round(self.byte_count / self.window_seconds, 1),
+        )
+
+
 def _bed_name(raw_value: str | None) -> str | None:
     data = _json_object(raw_value)
     if data:
@@ -293,6 +413,16 @@ def _string_value(data: dict[str, Any], key: str) -> str | None:
     if value is None:
         return None
     return str(value)
+
+
+def _int_value(data: dict[str, Any], key: str) -> int:
+    value = data.get(key)
+    if value in (None, ""):
+        return 0
+    try:
+        return max(int(str(value)), 0)
+    except (TypeError, ValueError):
+        return 0
 
 
 def _anomaly(

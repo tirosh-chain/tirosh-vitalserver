@@ -4,7 +4,7 @@ import Core
 import Contracts
 import HostInfrastructure
 
-protocol RuntimeLogCollecting {
+protocol RuntimeLogCollecting: Sendable {
     func refreshLogCollection()
     func refreshLogCollection(sourceID: RuntimeLogSource)
 }
@@ -15,7 +15,7 @@ extension RuntimeLogCollecting {
     }
 }
 
-struct MacHostRuntimeLogCollector: RuntimeLogCollecting {
+struct MacHostRuntimeLogCollector: RuntimeLogCollecting, @unchecked Sendable {
     private static let appendValidationByteLimit: UInt64 = 64 * 1024
     private static let appendChunkByteLimit = 256 * 1024
 

@@ -74,6 +74,26 @@ struct RuntimePresentationFormatter {
         return progress.message.isEmpty ? nil : progress.message
     }
 
+    func updateOperationInProgress(_ status: RuntimeStatus) -> Bool {
+        RuntimeActiveOperationPolicy.isUpdateInProgress(status)
+    }
+
+    func updateOperationDisplayMessage(_ status: RuntimeStatus) -> String? {
+        guard updateOperationInProgress(status) else {
+            return nil
+        }
+        if let progressMessage = progressDisplayMessage(status) {
+            return progressMessage
+        }
+        if let statusMessage = status.statusMessage, !statusMessage.isEmpty {
+            return statusMessage
+        }
+        if let operation = status.operation {
+            return "\(operationText(operation)) in progress"
+        }
+        return AppConstants.StatusText.updateBundleApplying
+    }
+
     func systemTimeText(_ timestamp: String?, timeZone: TimeZone = .current) -> String {
         guard let timestamp, !timestamp.isEmpty else {
             return AppConstants.StatusText.unknown
@@ -86,9 +106,8 @@ struct RuntimePresentationFormatter {
         formatter.calendar = Calendar(identifier: .gregorian)
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.timeZone = timeZone
-        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
-        let zoneText = timeZone.abbreviation(for: date) ?? timeZone.identifier
-        return "\(formatter.string(from: date)) \(zoneText)"
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss XXX"
+        return formatter.string(from: date)
     }
 
     func logExportDefaultName(date: Date = Date()) -> String {

@@ -26,8 +26,10 @@ struct RuntimeObservabilityPanel: View {
                 .font(.headline)
             Spacer()
             Button(AppConstants.Actions.refresh) {
-                viewModel.refreshRuntimeEvents()
-                viewModel.refreshVitalRecorders()
+                Task {
+                    await viewModel.refreshRuntimeEvents()
+                    await viewModel.refreshVitalRecorders()
+                }
             }
         }
     }
@@ -37,7 +39,7 @@ struct RuntimeObservabilityPanel: View {
             Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 10) {
                 metricRow(AppConstants.Labels.vitalDBObserver, observerStatus)
                 metricRow(AppConstants.Labels.guestLogSyncService, viewModel.status.guestLogSyncServiceLoaded ? AppConstants.StatusText.running : AppConstants.StatusText.stopped)
-                metricRow(AppConstants.Labels.recorderObservation, observation?.observedAt ?? AppConstants.StatusText.unknown)
+                metricRow(AppConstants.Labels.recorderObservation, observationTimeText(observation?.observedAt))
                 metricRow(AppConstants.Labels.knownRecorders, "\(observation?.recorders.count ?? 0)")
                 metricRow(AppConstants.Labels.knownBeds, "\(observation?.beds.count ?? 0)")
                 metricRow(AppConstants.Labels.recorderAnomalies, "\(observation?.anomalies.count ?? 0)")
@@ -106,6 +108,10 @@ struct RuntimeObservabilityPanel: View {
         viewModel.runtimeEvents.events.map(eventDisplayPolicy.item)
     }
 
+    private func observationTimeText(_ timestamp: String?) -> String {
+        viewModel.presentationFormatter.systemTimeText(timestamp)
+    }
+
     private func anomalyRow(_ anomaly: VitalDBAnomalyObservation) -> some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 8) {
@@ -120,7 +126,7 @@ struct RuntimeObservabilityPanel: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
-                Text(anomaly.observedAt)
+                Text(observationTimeText(anomaly.observedAt))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -136,7 +142,7 @@ struct RuntimeObservabilityPanel: View {
     private func eventRow(_ item: RuntimeEventDisplayPolicy.EventItem) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 8) {
-                Text(item.timestamp)
+                Text(observationTimeText(item.timestamp))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Text(item.eventType)

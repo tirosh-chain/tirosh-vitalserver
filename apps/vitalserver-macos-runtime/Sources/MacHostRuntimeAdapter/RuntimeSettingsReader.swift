@@ -4,8 +4,7 @@ import Core
 import Contracts
 import HostInfrastructure
 
-@MainActor
-protocol RuntimeSettingsReading {
+protocol RuntimeSettingsReading: Sendable {
     func load() -> RuntimeSettings
 }
 
@@ -25,8 +24,7 @@ struct RuntimeSettingsPaths {
     }
 }
 
-@MainActor
-struct SystemRuntimeSettingsReader: RuntimeSettingsReading {
+struct SystemRuntimeSettingsReader: RuntimeSettingsReading, @unchecked Sendable {
     var paths = RuntimeSettingsPaths()
     var statusReader = SystemRuntimeStatusReader(paths: RuntimePaths())
     private var fileStore: RuntimeFileStore = SystemRuntimeFileStore()

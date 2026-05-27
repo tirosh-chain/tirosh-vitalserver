@@ -12,9 +12,9 @@ struct RuntimeRecordersPanel: View {
             ViewThatFits(in: .horizontal) {
                 HStack(alignment: .top, spacing: 14) {
                     recorderList
-                        .frame(minWidth: 460, maxWidth: .infinity, alignment: .topLeading)
+                        .frame(minWidth: 520, maxWidth: .infinity, alignment: .topLeading)
                     recorderDetails
-                        .frame(minWidth: 260, maxWidth: 360, alignment: .topLeading)
+                        .frame(minWidth: 380, maxWidth: 560, alignment: .topLeading)
                 }
                 VStack(alignment: .leading, spacing: 14) {
                     recorderList
@@ -78,24 +78,11 @@ struct RuntimeRecordersPanel: View {
             Text(AppConstants.Labels.recorderDetails)
                 .font(.headline)
             if let recorder = selectedRecorder {
-                Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 9) {
-                    detailRow("VRecorder", recorder.vrcode)
-                    detailRow(AppConstants.Labels.recorderStatus, recorder.status.rawValue.capitalized)
-                    detailRow("IP", recorder.lastIP ?? AppConstants.StatusText.unknown)
-                    detailRow(AppConstants.Labels.recorderVersion, recorder.version ?? AppConstants.StatusText.unknown)
-                    detailRow(AppConstants.Labels.bed, recorder.bedName ?? recorder.bedID ?? AppConstants.StatusText.unknown)
-                    detailRow(AppConstants.Labels.patient, patientText(recorder.patientConnected))
-                    detailRow("First seen", recorder.firstSeenAt ?? AppConstants.StatusText.unknown)
-                    detailRow(AppConstants.Labels.recorderLastSeen, recorder.lastSeenAt ?? AppConstants.StatusText.unknown)
-                    detailRow(AppConstants.Labels.observations, "\(recorder.observationCount)")
-                    detailRow(AppConstants.Labels.recorderAnomalies, "\(recorder.currentAnomalyCount)")
-                }
-                .padding(12)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color(nsColor: .controlBackgroundColor))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+                selectedRecorderSummary(recorder)
+                recorderActivity(recorder)
+                recorderMetadata(recorder)
             } else {
-                Text(AppConstants.StatusText.noVitalRecorderObservations)
+                Text("Select a VRecorder to view activity.")
                     .foregroundStyle(.secondary)
                     .padding(12)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -113,7 +100,9 @@ struct RuntimeRecordersPanel: View {
 
     private var refreshButton: some View {
         Button(AppConstants.Actions.refresh) {
-            viewModel.refreshVitalRecorders()
+            Task {
+                await viewModel.refreshVitalRecorders()
+            }
         }
     }
 
@@ -161,7 +150,7 @@ struct RuntimeRecordersPanel: View {
            let recorder = viewModel.vitalRecorders.recorders.first(where: { $0.vrcode == selectedVrcode }) {
             return recorder
         }
-        return filteredRecorders.first
+        return nil
     }
 
     private var recorderHeaderRow: some View {
@@ -206,6 +195,103 @@ struct RuntimeRecordersPanel: View {
                 .foregroundStyle(.secondary)
             Text(value)
                 .font(.title3)
+                .fontWeight(.semibold)
+        }
+    }
+
+    private func selectedRecorderSummary(_ recorder: RuntimeVitalRecorderRecord) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Circle()
+                .fill(statusColor(recorder.status))
+                .frame(width: 9, height: 9)
+            Text(recorder.vrcode)
+                .font(.title3)
+                .fontWeight(.semibold)
+                .lineLimit(1)
+            Text(recorder.status.rawValue.capitalized)
+                .fontWeight(.semibold)
+                .foregroundStyle(statusColor(recorder.status))
+            Spacer()
+            Text(viewModel.presentationFormatter.systemTimeText(recorder.lastSeenAt))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(nsColor: .controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func recorderActivity(_ recorder: RuntimeVitalRecorderRecord) -> some View {
+        let latest = recorder.activityTimeline.last
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Activity")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                Spacer()
+                if let latest {
+                    Text("Last sample \(viewModel.presentationFormatter.systemTimeText(latest.observedAt))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+            }
+
+            if recorder.activityTimeline.isEmpty {
+                Text("No recent data activity has been observed for this VRecorder.")
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 18)
+            } else {
+                RecorderActivityChart(points: recorder.activityTimeline)
+                    .frame(height: 150)
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 18) {
+                        activityMetric("Data rate", latest.map { formatBytesPerSecond($0.bytesPerSecond) } ?? "-")
+                        activityMetric("Messages", latest.map { "\($0.messageCount)" } ?? "-")
+                        activityMetric("Rooms", latest.map { "\($0.roomCount)" } ?? "-")
+                    }
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 110), spacing: 12)], alignment: .leading, spacing: 8) {
+                        activityMetric("Data rate", latest.map { formatBytesPerSecond($0.bytesPerSecond) } ?? "-")
+                        activityMetric("Messages", latest.map { "\($0.messageCount)" } ?? "-")
+                        activityMetric("Rooms", latest.map { "\($0.roomCount)" } ?? "-")
+                    }
+                }
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(nsColor: .controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func recorderMetadata(_ recorder: RuntimeVitalRecorderRecord) -> some View {
+        Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 9) {
+            detailRow("IP", recorder.lastIP ?? AppConstants.StatusText.unknown)
+            detailRow(AppConstants.Labels.recorderVersion, recorder.version ?? AppConstants.StatusText.unknown)
+            detailRow(AppConstants.Labels.bed, recorder.bedName ?? recorder.bedID ?? AppConstants.StatusText.unknown)
+            detailRow(AppConstants.Labels.patient, patientText(recorder.patientConnected))
+            detailRow("First seen", viewModel.presentationFormatter.systemTimeText(recorder.firstSeenAt))
+            detailRow(AppConstants.Labels.recorderLastSeen, viewModel.presentationFormatter.systemTimeText(recorder.lastSeenAt))
+            detailRow(AppConstants.Labels.observations, "\(recorder.observationCount)")
+            detailRow(AppConstants.Labels.recorderAnomalies, "\(recorder.currentAnomalyCount)")
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(nsColor: .controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func activityMetric(_ label: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.callout)
                 .fontWeight(.semibold)
         }
     }
@@ -260,5 +346,94 @@ struct RuntimeRecordersPanel: View {
             return AppConstants.StatusText.unknown
         }
         return connected ? "Connected" : "Not connected"
+    }
+
+    private func formatBytesPerSecond(_ value: Double) -> String {
+        let boundedValue = max(value, 0)
+        if boundedValue < 1, boundedValue > 0 {
+            return String(format: "%.2f B/s", boundedValue)
+        }
+        let formatter = ByteCountFormatter()
+        formatter.allowedUnits = [.useBytes, .useKB, .useMB, .useGB]
+        formatter.countStyle = .binary
+        formatter.includesUnit = true
+        formatter.includesCount = true
+        return "\(formatter.string(fromByteCount: Int64(boundedValue.rounded())))/s"
+    }
+}
+
+private struct RecorderActivityChart: View {
+    let points: [RuntimeVitalRecorderActivityPoint]
+
+    var body: some View {
+        GeometryReader { proxy in
+            let plottedPoints = chartPoints(in: proxy.size)
+            ZStack {
+                chartGrid
+                activityPath(points: plottedPoints)
+                    .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
+                ForEach(Array(plottedPoints.enumerated()), id: \.offset) { _, point in
+                    Circle()
+                        .fill(Color.accentColor)
+                        .frame(width: 6, height: 6)
+                        .position(point)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .background(Color(nsColor: .textBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .overlay(alignment: .topLeading) {
+            Text("Data rate")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding(8)
+        }
+    }
+
+    private var chartGrid: some View {
+        GeometryReader { proxy in
+            Path { path in
+                let height = proxy.size.height
+                let width = proxy.size.width
+                for fraction in [0.25, 0.5, 0.75] {
+                    let y = height * fraction
+                    path.move(to: CGPoint(x: 0, y: y))
+                    path.addLine(to: CGPoint(x: width, y: y))
+                }
+            }
+            .stroke(Color.secondary.opacity(0.12), lineWidth: 1)
+        }
+    }
+
+    private func activityPath(points: [CGPoint]) -> Path {
+        Path { path in
+            guard let first = points.first else {
+                return
+            }
+            path.move(to: first)
+            for point in points.dropFirst() {
+                path.addLine(to: point)
+            }
+        }
+    }
+
+    private func chartPoints(in size: CGSize) -> [CGPoint] {
+        let inset = EdgeInsets(top: 28, leading: 12, bottom: 16, trailing: 12)
+        let width = max(size.width - inset.leading - inset.trailing, 1)
+        let height = max(size.height - inset.top - inset.bottom, 1)
+        let maxValue = max(points.map(\.bytesPerSecond).max() ?? 0, 1)
+
+        return points.enumerated().map { index, point in
+            let x: CGFloat
+            if points.count <= 1 {
+                x = inset.leading + width / 2
+            } else {
+                x = inset.leading + width * CGFloat(index) / CGFloat(points.count - 1)
+            }
+            let normalized = min(max(point.bytesPerSecond / maxValue, 0), 1)
+            let y = inset.top + height - height * CGFloat(normalized)
+            return CGPoint(x: x, y: y)
+        }
     }
 }

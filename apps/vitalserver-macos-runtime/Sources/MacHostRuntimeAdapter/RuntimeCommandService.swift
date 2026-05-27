@@ -3,12 +3,10 @@ import RuntimeControl
 import Core
 import Contracts
 
-@MainActor
-protocol PrivilegedCommandRunning {
+protocol PrivilegedCommandRunning: Sendable {
     func run(shellCommand: String) async -> RuntimeCommandResult
 }
 
-@MainActor
 struct SystemPrivilegedCommandRunner: PrivilegedCommandRunning {
     init() {}
 

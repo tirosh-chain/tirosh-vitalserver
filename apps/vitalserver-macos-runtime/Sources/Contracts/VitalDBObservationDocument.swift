@@ -105,6 +105,7 @@ public struct VitalDBRecorderObservation: Codable, Equatable, Sendable {
     public let config: String?
     public let online: Bool
     public let stale: Bool
+    public let activity: VitalDBRecorderActivityObservation?
 
     public init(
         vrcode: String,
@@ -116,6 +117,30 @@ public struct VitalDBRecorderObservation: Codable, Equatable, Sendable {
         online: Bool,
         stale: Bool = false
     ) {
+        self.init(
+            vrcode: vrcode,
+            ip: ip,
+            lastSeenAt: lastSeenAt,
+            version: version,
+            info: info,
+            config: config,
+            online: online,
+            stale: stale,
+            activity: nil
+        )
+    }
+
+    public init(
+        vrcode: String,
+        ip: String? = nil,
+        lastSeenAt: String? = nil,
+        version: String? = nil,
+        info: String? = nil,
+        config: String? = nil,
+        online: Bool,
+        stale: Bool = false,
+        activity: VitalDBRecorderActivityObservation?
+    ) {
         self.vrcode = vrcode
         self.ip = ip
         self.lastSeenAt = lastSeenAt
@@ -124,6 +149,38 @@ public struct VitalDBRecorderObservation: Codable, Equatable, Sendable {
         self.config = config
         self.online = online
         self.stale = stale
+        self.activity = activity
+    }
+}
+
+public struct VitalDBRecorderActivityObservation: Codable, Equatable, Sendable {
+    public let windowSeconds: Int
+    public let messageCount: Int
+    public let byteCount: Int
+    public let roomCount: Int
+    public let firstSeenAt: String?
+    public let lastSeenAt: String?
+    public let messagesPerSecond: Double
+    public let bytesPerSecond: Double
+
+    public init(
+        windowSeconds: Int,
+        messageCount: Int,
+        byteCount: Int,
+        roomCount: Int = 0,
+        firstSeenAt: String? = nil,
+        lastSeenAt: String? = nil,
+        messagesPerSecond: Double = 0,
+        bytesPerSecond: Double = 0
+    ) {
+        self.windowSeconds = windowSeconds
+        self.messageCount = messageCount
+        self.byteCount = byteCount
+        self.roomCount = roomCount
+        self.firstSeenAt = firstSeenAt
+        self.lastSeenAt = lastSeenAt
+        self.messagesPerSecond = messagesPerSecond
+        self.bytesPerSecond = bytesPerSecond
     }
 }
 

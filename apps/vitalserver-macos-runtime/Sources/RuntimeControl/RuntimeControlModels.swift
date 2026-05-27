@@ -168,6 +168,16 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
     }
 }
 
+public struct RuntimeDataDirectoryStats: Codable, Equatable, Sendable {
+    public let fileCount: Int
+    public let sizeBytes: Int64
+
+    public init(fileCount: Int, sizeBytes: Int64) {
+        self.fileCount = fileCount
+        self.sizeBytes = sizeBytes
+    }
+}
+
 public struct RuntimeStatus: Codable, Equatable, Sendable {
     public var runtimeInstalled: Bool
     public var vmServiceLoaded: Bool
@@ -193,6 +203,7 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
     public var memory: ResourceUsage?
     public var systemDisk: ResourceUsage?
     public var dataStorage: ResourceUsage?
+    public var dataDirectoryStats: RuntimeDataDirectoryStats?
     public var proxyPort: Int
     public var failureReasons: [RuntimeFailureReason]
     public var progress: RuntimeProgressDocument?
@@ -224,6 +235,7 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
         memory: ResourceUsage? = nil,
         systemDisk: ResourceUsage? = nil,
         dataStorage: ResourceUsage? = nil,
+        dataDirectoryStats: RuntimeDataDirectoryStats? = nil,
         proxyPort: Int = 80,
         failureReasons: [RuntimeFailureReason] = [],
         progress: RuntimeProgressDocument? = nil,
@@ -254,6 +266,7 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
         self.memory = memory
         self.systemDisk = systemDisk
         self.dataStorage = dataStorage
+        self.dataDirectoryStats = dataDirectoryStats
         self.proxyPort = proxyPort
         self.failureReasons = failureReasons
         self.progress = progress

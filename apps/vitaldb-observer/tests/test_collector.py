@@ -10,10 +10,14 @@ from vitaldb_observer.config import ObserverSettings
 
 class FakeRedis:
     def __init__(
-        self, values: dict[str, str], sets: dict[str, list[str]] | None = None
+        self,
+        values: dict[str, str],
+        sets: dict[str, list[str]] | None = None,
+        lists: dict[str, list[str]] | None = None,
     ) -> None:
         self.values = values
         self.sets = sets or {}
+        self.lists = lists or {}
 
     def ping(self) -> bool:
         return True
@@ -23,6 +27,14 @@ class FakeRedis:
 
     def smembers(self, key: str) -> list[str]:
         return self.sets.get(key, [])
+
+    def lrange(self, key: str, start: int, stop: int) -> list[str]:
+        values = self.lists.get(key, [])
+        if start < 0:
+            start = max(len(values) + start, 0)
+        if stop < 0:
+            stop = len(values) + stop
+        return values[start : stop + 1]
 
     def scan(self, pattern: str) -> list[str]:
         if pattern.endswith("*"):
@@ -76,6 +88,66 @@ def test_collector_builds_observation_from_redis_and_access_log(tmp_path: Path) 
     assert document["devices"][0]["rawValue"] == "device-json"
     assert document["filters"][0]["rawValue"] == "filter-json"
     assert document["proxyConnections"][0]["websocketHandshake"] is True
+
+
+def test_collector_summarizes_recorder_activity_from_audit_events() -> None:
+    now = time.time()
+    collector = VitalDBCollector(
+        redis_client=FakeRedis(
+            values={
+                "ip_VR_A": "10.0.0.10",
+                "utime_VR_A": str(now - 1),
+            },
+            lists={
+                "vitalserver:audit_events": [
+                    json.dumps(
+                        {
+                            "event_type": "send_data",
+                            "ts": _iso(now - 20),
+                            "payload_summary": {
+                                "vrcode": "VR_A",
+                                "bytes": 100,
+                                "rooms_count": 2,
+                            },
+                        }
+                    ),
+                    json.dumps(
+                        {
+                            "event_type": "send_data",
+                            "ts": _iso(now - 10),
+                            "payload_summary": {
+                                "vrcode": "VR_A",
+                                "bytes": 150,
+                                "rooms_count": 3,
+                            },
+                        }
+                    ),
+                    json.dumps(
+                        {
+                            "event_type": "send_data",
+                            "ts": _iso(now - 400),
+                            "payload_summary": {
+                                "vrcode": "VR_A",
+                                "bytes": 999,
+                                "rooms_count": 9,
+                            },
+                        }
+                    ),
+                ]
+            },
+        ),
+        settings=_settings(),
+    )
+
+    document = collector.collect().as_json()
+    activity = document["recorders"][0]["activity"]
+
+    assert activity["windowSeconds"] == 300
+    assert activity["messageCount"] == 2
+    assert activity["byteCount"] == 250
+    assert activity["roomCount"] == 5
+    assert activity["bytesPerSecond"] == 0.8
+    assert activity["messagesPerSecond"] == 0.007
 
 
 def test_collector_detects_duplicate_ip() -> None:
@@ -142,6 +214,13 @@ def _settings(access_log: Path | None = None) -> ObserverSettings:
         redis_port=6379,
         redis_timeout_seconds=1,
         recorder_online_threshold_seconds=120,
+        recorder_activity_window_seconds=300,
+        audit_redis_list="vitalserver:audit_events",
+        audit_event_limit=1000,
         access_log_path=str(access_log) if access_log else "",
         access_log_limit=20,
     )
+
+
+def _iso(timestamp: float) -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(timestamp))

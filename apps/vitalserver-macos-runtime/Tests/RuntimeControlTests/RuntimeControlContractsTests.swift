@@ -41,6 +41,18 @@ final class RuntimeControlContractsTests: XCTestCase {
         XCTAssertTrue(decoded.isReady)
     }
 
+    func testRuntimeStatusIncludesDataDirectoryStats() throws {
+        let status = RuntimeStatus(
+            dataDirectoryStats: RuntimeDataDirectoryStats(fileCount: 2, sizeBytes: 1024)
+        )
+
+        let encoded = try JSONEncoder().encode(status)
+        let decoded = try JSONDecoder().decode(RuntimeStatus.self, from: encoded)
+
+        XCTAssertEqual(decoded.dataDirectoryStats?.fileCount, 2)
+        XCTAssertEqual(decoded.dataDirectoryStats?.sizeBytes, 1024)
+    }
+
     func testRuntimeEventCursorWireCodecRoundTripsOpaqueCursor() {
         let cursor = RuntimeEventCursor(timestamp: "2026-05-24T00:01:00Z", id: "event-2")
 
@@ -73,7 +85,15 @@ final class RuntimeControlContractsTests: XCTestCase {
                     ip: "192.168.64.10",
                     lastSeenAt: "2026-05-26T00:00:00Z",
                     version: "1.0.0",
-                    online: true
+                    online: true,
+                    activity: VitalDBRecorderActivityObservation(
+                        windowSeconds: 300,
+                        messageCount: 2,
+                        byteCount: 1024,
+                        roomCount: 1,
+                        messagesPerSecond: 0.01,
+                        bytesPerSecond: 3.4
+                    )
                 ),
                 .init(
                     vrcode: "VR_B",
@@ -97,7 +117,15 @@ final class RuntimeControlContractsTests: XCTestCase {
                     ip: "192.168.64.12",
                     lastSeenAt: "2026-05-26T00:01:00Z",
                     version: "1.0.1",
-                    online: true
+                    online: true,
+                    activity: VitalDBRecorderActivityObservation(
+                        windowSeconds: 300,
+                        messageCount: 4,
+                        byteCount: 2048,
+                        roomCount: 2,
+                        messagesPerSecond: 0.02,
+                        bytesPerSecond: 6.8
+                    )
                 ),
                 .init(
                     vrcode: "VR_A",
@@ -134,6 +162,12 @@ final class RuntimeControlContractsTests: XCTestCase {
         XCTAssertEqual(history.recorders[0].observationCount, 2)
         XCTAssertEqual(history.recorders[0].currentAnomalyCount, 1)
         XCTAssertEqual(history.recorders[0].latestAnomalySeverity, VitalDBAnomalySeverity.warning)
+        XCTAssertEqual(history.recorders[0].activityTimeline.map(\.observedAt), [
+            "2026-05-26T00:00:00Z",
+            "2026-05-26T00:01:00Z",
+        ])
+        XCTAssertEqual(history.recorders[0].activityTimeline.last?.byteCount, 2048)
+        XCTAssertEqual(history.recorders[0].activityTimeline.last?.bytesPerSecond, 6.8)
         XCTAssertEqual(history.recorders[1].status, RuntimeVitalRecorderStatus.offline)
         XCTAssertEqual(history.recorders[1].bedName, "OR B")
         XCTAssertEqual(history.recorders[1].observationCount, 1)
