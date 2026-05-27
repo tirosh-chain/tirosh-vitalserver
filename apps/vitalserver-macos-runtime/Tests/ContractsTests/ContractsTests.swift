@@ -319,6 +319,13 @@ final class ContractsTests: XCTestCase {
         XCTAssertEqual(RuntimeFailureReason.auditProxyHTTP("failed").domainCategory, .container)
         XCTAssertEqual(RuntimeFailureReason.auditProxyHTTP("failed").recoveryAction, .restartContainerServices)
 
+        XCTAssertEqual(RuntimeFailureReason.vitalDBAnomaly(kind: "duplicate-ip", subject: "10.0.0.10").domainCategory, .vitalDB)
+        XCTAssertEqual(RuntimeFailureReason.vitalDBAnomaly(kind: "duplicate-ip", subject: "10.0.0.10").domainSeverity, .warning)
+        XCTAssertEqual(
+            RuntimeFailureReason.vitalDBAnomaly(kind: "duplicate-ip", subject: "10.0.0.10").recoveryAction,
+            .inspectVitalDBObservation
+        )
+
         XCTAssertEqual(RuntimeFailureReason.vitalDBAnomaly(kind: "observer-unhealthy", subject: "vitaldb").domainCategory, .vitalDB)
         XCTAssertEqual(
             RuntimeFailureReason.vitalDBAnomaly(kind: "observer-unhealthy", subject: "vitaldb").recoveryAction,

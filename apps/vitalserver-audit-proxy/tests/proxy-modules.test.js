@@ -100,10 +100,39 @@ test("socket.io auditor summarizes send_data payload", () => {
   assert.strictEqual(records[0].eventType, auditEventTypes.SEND_DATA);
   assert.deepStrictEqual(records[0].fields.payload_summary, {
     payload_type: "string",
-    bytes: Buffer.byteLength(payload),
+    bytes: Buffer.from(payload, "binary").length,
     vrcode: "VR_A",
     version: "2.3.4",
     rooms_count: 2,
+  });
+});
+
+test("socket.io auditor summarizes binary send_data attachments", () => {
+  const records = [];
+  const auditor = createSocketIoAuditService({
+    audit: { record: (eventType, fields) => records.push({ eventType, fields }) },
+    vrIdentityStore: { setRecorderIp: () => {} },
+    metrics: metrics(),
+    config: { vitalServer: { ipWriteDelayMs: 0 } },
+  });
+  const context = contextFor("VR_A");
+  context.joined_vrcode = "VR_A";
+  const payload = zlib.deflateSync(JSON.stringify({
+    vrcode: "VR_A",
+    ver: "2.3.4",
+    rooms: { a: {}, b: {}, c: {} },
+  }));
+
+  auditor.inspect('451-["send_data",{"_placeholder":true,"num":0}]', "client", context);
+  auditor.inspectBinary(payload, "client", context);
+
+  assert.strictEqual(records[0].eventType, auditEventTypes.SEND_DATA);
+  assert.deepStrictEqual(records[0].fields.payload_summary, {
+    payload_type: "buffer",
+    bytes: payload.length,
+    vrcode: "VR_A",
+    version: "2.3.4",
+    rooms_count: 3,
   });
 });
 

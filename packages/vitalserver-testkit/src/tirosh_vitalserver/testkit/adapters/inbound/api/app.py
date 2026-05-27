@@ -6,7 +6,10 @@ from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 
-from tirosh_vitalserver.testkit.adapters.outbound.recorder import connect_socketio
+from tirosh_vitalserver.testkit.adapters.outbound.recorder import (
+    SocketIoRecorderManagementClient,
+    connect_socketio,
+)
 from tirosh_vitalserver.testkit.application.recorder_session import (
     VirtualRecorderSessionManager,
     session_snapshot_to_document,
@@ -26,6 +29,7 @@ def create_testkit_app(
     )
     session_manager = manager or VirtualRecorderSessionManager(
         connector=connect_socketio,
+        recorder_management=SocketIoRecorderManagementClient(),
     )
 
     def get_manager() -> VirtualRecorderSessionManager:
@@ -69,6 +73,23 @@ def create_testkit_app(
             "sessions": [
                 session_snapshot_to_document(session)
                 for session in manager.list_sessions()
+            ]
+        }
+
+    @app.delete("/sessions")
+    def delete_sessions(
+        manager: Annotated[VirtualRecorderSessionManager, Depends(get_manager)],
+    ) -> dict[str, list[dict[str, Any]]]:
+        emit_testkit_event("api.sessions.reset.requested")
+        snapshots = manager.delete_all_sessions()
+        emit_testkit_event(
+            "api.sessions.reset.accepted",
+            deleted_sessions=len(snapshots),
+        )
+        return {
+            "sessions": [
+                session_snapshot_to_document(snapshot)
+                for snapshot in snapshots
             ]
         }
 
@@ -137,6 +158,28 @@ def create_testkit_app(
 
         emit_testkit_event(
             "api.session.stop.accepted",
+            session_id=snapshot.session_id,
+            state=snapshot.state.value,
+        )
+        return session_snapshot_to_document(snapshot)
+
+    @app.delete("/sessions/{session_id}")
+    def delete_session(
+        session_id: str,
+        manager: Annotated[VirtualRecorderSessionManager, Depends(get_manager)],
+    ) -> dict[str, Any]:
+        emit_testkit_event("api.session.delete.requested", session_id=session_id)
+        snapshot = manager.delete_session(session_id)
+        if snapshot is None:
+            emit_testkit_event(
+                "api.session.delete.missing",
+                level=logging.WARNING,
+                session_id=session_id,
+            )
+            raise HTTPException(status_code=404, detail="session not found")
+
+        emit_testkit_event(
+            "api.session.delete.accepted",
             session_id=snapshot.session_id,
             state=snapshot.state.value,
         )

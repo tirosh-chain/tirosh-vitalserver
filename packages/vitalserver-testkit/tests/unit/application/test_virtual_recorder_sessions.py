@@ -64,3 +64,70 @@ def test_virtual_recorder_session_can_stop() -> None:
 
     assert stopped is not None
     assert stopped.state == VirtualRecorderSessionState.STOPPED
+
+
+def test_virtual_recorder_session_can_be_deleted() -> None:
+    recorder_management = FakeRecorderManagement()
+    manager = VirtualRecorderSessionManager(
+        connector=fake_socketio_connector,
+        recorder_management=recorder_management,
+    )
+    snapshot = manager.start_session(
+        VirtualRecorderSessionRequest(
+            target_url="http://example.test",
+            vrcode="VR_TEST",
+            recorders=2,
+            interval_seconds=1,
+            shift_time=False,
+        )
+    )
+
+    deleted = manager.delete_session(snapshot.session_id)
+
+    assert deleted is not None
+    assert deleted.session_id == snapshot.session_id
+    assert manager.get_session(snapshot.session_id) is None
+    assert recorder_management.deleted == [
+        ("http://example.test", "VR_TEST-001"),
+        ("http://example.test", "VR_TEST-002"),
+    ]
+
+
+def test_virtual_recorder_sessions_can_be_reset() -> None:
+    manager = VirtualRecorderSessionManager(connector=fake_socketio_connector)
+    first = manager.start_session(
+        VirtualRecorderSessionRequest(
+            target_url="http://example.test",
+            interval_seconds=1,
+            shift_time=False,
+        )
+    )
+    second = manager.start_session(
+        VirtualRecorderSessionRequest(
+            target_url="http://example.test",
+            interval_seconds=1,
+            shift_time=False,
+        )
+    )
+
+    deleted = manager.delete_all_sessions()
+
+    assert {snapshot.session_id for snapshot in deleted} == {
+        first.session_id,
+        second.session_id,
+    }
+    assert manager.list_sessions() == ()
+
+
+class FakeRecorderManagement:
+    def __init__(self) -> None:
+        self.deleted: list[tuple[str, str]] = []
+
+    def delete_vrecorder(
+        self,
+        base_url: str,
+        vrcode: str,
+        *,
+        timeout: float = 5.0,
+    ) -> None:
+        self.deleted.append((base_url, vrcode))

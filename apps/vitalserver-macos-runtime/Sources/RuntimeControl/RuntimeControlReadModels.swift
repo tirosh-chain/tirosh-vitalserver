@@ -166,6 +166,13 @@ public enum RuntimeVitalRecorderStatus: String, Codable, Equatable, Sendable {
     case unknown
 }
 
+public enum RuntimeVitalBedStatus: String, Codable, Equatable, Sendable {
+    case online
+    case stale
+    case offline
+    case unknown
+}
+
 public struct RuntimeVitalRecorderActivityPoint: Codable, Equatable, Identifiable, Sendable {
     public var id: String { observedAt }
     public let observedAt: String
@@ -273,13 +280,57 @@ public struct RuntimeVitalRecorderRecord: Codable, Equatable, Identifiable, Send
     }
 }
 
+public struct RuntimeVitalBedRecord: Codable, Equatable, Identifiable, Sendable {
+    public var id: String { bedID }
+    public let bedID: String
+    public let name: String?
+    public let vrcode: String?
+    public let status: RuntimeVitalBedStatus
+    public let patientConnected: Bool?
+    public let firstSeenAt: String?
+    public let lastSeenAt: String?
+    public let observationCount: Int
+    public let currentAnomalyCount: Int
+    public let latestAnomalySeverity: VitalDBAnomalySeverity?
+
+    public init(
+        bedID: String,
+        name: String?,
+        vrcode: String?,
+        status: RuntimeVitalBedStatus,
+        patientConnected: Bool?,
+        firstSeenAt: String?,
+        lastSeenAt: String?,
+        observationCount: Int,
+        currentAnomalyCount: Int,
+        latestAnomalySeverity: VitalDBAnomalySeverity?
+    ) {
+        self.bedID = bedID
+        self.name = name
+        self.vrcode = vrcode
+        self.status = status
+        self.patientConnected = patientConnected
+        self.firstSeenAt = firstSeenAt
+        self.lastSeenAt = lastSeenAt
+        self.observationCount = observationCount
+        self.currentAnomalyCount = currentAnomalyCount
+        self.latestAnomalySeverity = latestAnomalySeverity
+    }
+}
+
 public struct RuntimeVitalRecorderHistory: Codable, Equatable, Sendable {
     public let updatedAt: String?
     public let recorders: [RuntimeVitalRecorderRecord]
+    public let beds: [RuntimeVitalBedRecord]
 
-    public init(updatedAt: String? = nil, recorders: [RuntimeVitalRecorderRecord] = []) {
+    public init(
+        updatedAt: String? = nil,
+        recorders: [RuntimeVitalRecorderRecord] = [],
+        beds: [RuntimeVitalBedRecord] = []
+    ) {
         self.updatedAt = updatedAt
         self.recorders = recorders
+        self.beds = beds
     }
 
     public init(observations: [VitalDBObservationDocument]) {
@@ -290,6 +341,7 @@ public struct RuntimeVitalRecorderHistory: Codable, Equatable, Sendable {
         }
 
         var builders: [String: RecorderBuilder] = [:]
+        var bedBuilders: [String: BedBuilder] = [:]
         for observation in ordered {
             let bedsByRecorder = Dictionary(
                 observation.beds.compactMap { bed in bed.vrcode.map { ($0, bed) } },
@@ -300,6 +352,11 @@ public struct RuntimeVitalRecorderHistory: Codable, Equatable, Sendable {
                 builder.observe(recorder: recorder, bed: bedsByRecorder[recorder.vrcode], observedAt: observation.observedAt)
                 builders[recorder.vrcode] = builder
             }
+            for bed in uniqueBedsByID(observation.beds) {
+                var builder = bedBuilders[bed.bedID] ?? BedBuilder(bedID: bed.bedID)
+                builder.observe(bed: bed, observedAt: observation.observedAt)
+                bedBuilders[bed.bedID] = builder
+            }
         }
 
         let latestRecorders = Dictionary(
@@ -308,6 +365,10 @@ public struct RuntimeVitalRecorderHistory: Codable, Equatable, Sendable {
         )
         let latestBedsByRecorder = Dictionary(
             latestObservation.beds.compactMap { bed in bed.vrcode.map { ($0, bed) } },
+            uniquingKeysWith: { _, latest in latest }
+        )
+        let latestBeds = Dictionary(
+            uniqueBedsByID(latestObservation.beds).map { ($0.bedID, $0) },
             uniquingKeysWith: { _, latest in latest }
         )
         let latestAnomaliesBySubject = Dictionary(grouping: latestObservation.anomalies, by: \.subject)
@@ -332,7 +393,21 @@ public struct RuntimeVitalRecorderHistory: Codable, Equatable, Sendable {
             return lhsLastSeen > rhsLastSeen
         }
 
-        self.init(updatedAt: latestObservation.observedAt, recorders: records)
+        let beds = bedBuilders.values.map { builder in
+            let latestBed = latestBeds[builder.bedID]
+            let anomalies = latestAnomaliesBySubject[builder.bedID] ?? []
+            return builder.record(latestBed: latestBed, currentAnomalies: anomalies)
+        }
+        .sorted { lhs, rhs in
+            let lhsLastSeen = lhs.lastSeenAt ?? ""
+            let rhsLastSeen = rhs.lastSeenAt ?? ""
+            if lhsLastSeen == rhsLastSeen {
+                return lhs.bedID < rhs.bedID
+            }
+            return lhsLastSeen > rhsLastSeen
+        }
+
+        self.init(updatedAt: latestObservation.observedAt, recorders: records, beds: beds)
     }
 }
 
@@ -434,6 +509,15 @@ private func uniqueRecordersByVrcode(_ recorders: [VitalDBRecorderObservation]) 
     .sorted { $0.vrcode < $1.vrcode }
 }
 
+private func uniqueBedsByID(_ beds: [VitalDBBedObservation]) -> [VitalDBBedObservation] {
+    Dictionary(
+        beds.map { ($0.bedID, $0) },
+        uniquingKeysWith: preferredBed
+    )
+    .values
+    .sorted { $0.bedID < $1.bedID }
+}
+
 private func uniqueConnectionsByVrcode(
     _ recorders: [RuntimeRecorderConnectionObservation]
 ) -> [RuntimeRecorderConnectionObservation] {
@@ -474,6 +558,21 @@ private func preferredConnection(
     }
     if candidate.activeConnections != current.activeConnections {
         return candidate.activeConnections > current.activeConnections ? candidate : current
+    }
+    return candidate
+}
+
+private func preferredBed(
+    _ current: VitalDBBedObservation,
+    _ candidate: VitalDBBedObservation
+) -> VitalDBBedObservation {
+    let currentLastSeenAt = current.lastSeenAt ?? ""
+    let candidateLastSeenAt = candidate.lastSeenAt ?? ""
+    if candidateLastSeenAt != currentLastSeenAt {
+        return candidateLastSeenAt > currentLastSeenAt ? candidate : current
+    }
+    if candidate.online != current.online {
+        return candidate.online ? candidate : current
     }
     return candidate
 }
@@ -548,6 +647,65 @@ private struct RecorderBuilder {
             return .stale
         }
         return .offline
+    }
+
+    private func minTimestamp(_ current: String?, _ next: String) -> String {
+        guard let current else {
+            return next
+        }
+        return Swift.min(current, next)
+    }
+
+    private func maxTimestamp(_ current: String?, _ next: String) -> String {
+        guard let current else {
+            return next
+        }
+        return Swift.max(current, next)
+    }
+}
+
+private struct BedBuilder {
+    let bedID: String
+    var name: String?
+    var vrcode: String?
+    var patientConnected: Bool?
+    var firstSeenAt: String?
+    var lastSeenAt: String?
+    var observationCount = 0
+
+    mutating func observe(bed: VitalDBBedObservation, observedAt: String) {
+        observationCount += 1
+        let seenAt = bed.lastSeenAt ?? observedAt
+        firstSeenAt = minTimestamp(firstSeenAt, seenAt)
+        lastSeenAt = maxTimestamp(lastSeenAt, seenAt)
+        name = bed.name ?? name
+        vrcode = bed.vrcode ?? vrcode
+        patientConnected = bed.patientConnected ?? patientConnected
+    }
+
+    func record(
+        latestBed: VitalDBBedObservation?,
+        currentAnomalies: [VitalDBAnomalyObservation]
+    ) -> RuntimeVitalBedRecord {
+        RuntimeVitalBedRecord(
+            bedID: bedID,
+            name: latestBed?.name ?? name,
+            vrcode: latestBed?.vrcode ?? vrcode,
+            status: status(latestBed),
+            patientConnected: latestBed?.patientConnected ?? patientConnected,
+            firstSeenAt: firstSeenAt,
+            lastSeenAt: latestBed?.lastSeenAt ?? lastSeenAt,
+            observationCount: observationCount,
+            currentAnomalyCount: currentAnomalies.count,
+            latestAnomalySeverity: currentAnomalies.sorted { $0.observedAt > $1.observedAt }.first?.severity
+        )
+    }
+
+    private func status(_ bed: VitalDBBedObservation?) -> RuntimeVitalBedStatus {
+        guard let bed else {
+            return .offline
+        }
+        return bed.online ? .online : .stale
     }
 
     private func minTimestamp(_ current: String?, _ next: String) -> String {

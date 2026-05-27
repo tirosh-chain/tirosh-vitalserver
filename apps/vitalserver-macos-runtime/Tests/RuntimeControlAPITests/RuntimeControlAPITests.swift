@@ -80,6 +80,18 @@ final class RuntimeControlAPITests: XCTestCase {
         )
     }
 
+    func testTestKitEndpointsIncludeManagementActions() {
+        XCTAssertEqual(
+            RuntimeTestKitAPIEndpoint.matching(method: .post, path: "/dev/testkit/virtual-recorders/delete"),
+            .deleteVirtualRecorders
+        )
+        XCTAssertEqual(
+            RuntimeTestKitAPIEndpoint.matching(method: .post, path: "/dev/testkit/virtual-recorders/reset"),
+            .resetVirtualRecorders
+        )
+        XCTAssertTrue(RuntimeTestKitAPIEndpoint.matches(path: "/dev/testkit/status"))
+    }
+
     func testOpenAPIRoutesMatchRuntimeControlAPIEndpoints() throws {
         let documentedRoutes = try openAPIRouteKeys()
         let endpointRoutes = Set(RuntimeControlAPIEndpoint.allCases.map { endpoint in

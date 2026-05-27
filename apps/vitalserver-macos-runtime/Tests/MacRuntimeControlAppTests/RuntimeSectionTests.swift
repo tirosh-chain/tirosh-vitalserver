@@ -41,7 +41,7 @@ final class RuntimeSectionTests: XCTestCase {
             .update,
         ])
         XCTAssertEqual(RuntimeSection.utilitySections(testEnabled: true), [.advanced])
-        XCTAssertEqual(RuntimeSection.overflowSections(testEnabled: true), [.info, .test, .dangerZone])
+        XCTAssertEqual(RuntimeSection.overflowSections(testEnabled: true), [.info, .dangerZone, .test])
     }
 
     func testStableRuntimeSectionOverflowHidesTestTab() {
@@ -52,7 +52,7 @@ final class RuntimeSectionTests: XCTestCase {
 
     func testRuntimeControlDevConsoleURLUsesLocalAPI() {
         XCTAssertEqual(
-            AppConstants.RuntimeControlAPI.devConsoleURL,
+            RuntimeDevelopmentAPIConstants.devConsoleURL,
             "http://127.0.0.1:18321/dev/runtime-control"
         )
     }

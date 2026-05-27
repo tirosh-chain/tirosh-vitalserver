@@ -44,6 +44,11 @@ public struct RuntimeTestKitAPIRouter {
             case .stopVirtualRecorders:
                 let stopRequest = try request.optionalDecodedBody(RuntimeTestKitStopRequest.self)
                 return try await jsonResponse(controller.stopVirtualRecorders(sessionID: stopRequest?.sessionID))
+            case .deleteVirtualRecorders:
+                let deleteRequest = try request.optionalDecodedBody(RuntimeTestKitDeleteRequest.self)
+                return try await jsonResponse(controller.deleteVirtualRecorders(sessionID: deleteRequest?.sessionID))
+            case .resetVirtualRecorders:
+                return try await jsonResponse(controller.resetVirtualRecorders())
             }
         } catch {
             return errorResponse(
@@ -80,12 +85,15 @@ public enum RuntimeTestKitAPIEndpoint: String, CaseIterable, Codable, Equatable,
     case status
     case startVirtualRecorders
     case stopVirtualRecorders
+    case deleteVirtualRecorders
+    case resetVirtualRecorders
 
     public var method: RuntimeControlHTTPMethod {
         switch self {
         case .status:
             return .get
-        case .startVirtualRecorders, .stopVirtualRecorders:
+        case .startVirtualRecorders, .stopVirtualRecorders,
+             .deleteVirtualRecorders, .resetVirtualRecorders:
             return .post
         }
     }
@@ -98,6 +106,10 @@ public enum RuntimeTestKitAPIEndpoint: String, CaseIterable, Codable, Equatable,
             return "/dev/testkit/virtual-recorders/start"
         case .stopVirtualRecorders:
             return "/dev/testkit/virtual-recorders/stop"
+        case .deleteVirtualRecorders:
+            return "/dev/testkit/virtual-recorders/delete"
+        case .resetVirtualRecorders:
+            return "/dev/testkit/virtual-recorders/reset"
         }
     }
 
@@ -124,6 +136,14 @@ public enum RuntimeTestKitAPIEndpoint: String, CaseIterable, Codable, Equatable,
 }
 
 public struct RuntimeTestKitStopRequest: Codable, Equatable, Sendable {
+    public let sessionID: String?
+
+    public init(sessionID: String? = nil) {
+        self.sessionID = sessionID
+    }
+}
+
+public struct RuntimeTestKitDeleteRequest: Codable, Equatable, Sendable {
     public let sessionID: String?
 
     public init(sessionID: String? = nil) {

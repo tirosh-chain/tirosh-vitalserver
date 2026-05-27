@@ -71,7 +71,7 @@ enum RuntimeObservationHealthPolicy {
             ))
         }
 
-        for anomaly in observation.anomalies where anomaly.severity == .critical {
+        for anomaly in observation.anomalies where isRuntimeCriticalVitalDBAnomaly(anomaly) {
             let reason = RuntimeFailureReason.vitalDBAnomaly(
                 kind: failureToken(anomaly.kind.rawValue),
                 subject: failureToken(anomaly.subject)
@@ -81,6 +81,20 @@ enum RuntimeObservationHealthPolicy {
             }
         }
         return reasons
+    }
+
+    private static func isRuntimeCriticalVitalDBAnomaly(
+        _ anomaly: VitalDBAnomalyObservation
+    ) -> Bool {
+        guard anomaly.severity == .critical else {
+            return false
+        }
+        switch anomaly.kind {
+        case .backendUnavailable, .observerUnhealthy:
+            return true
+        case .duplicateIP, .offline, .staleRecorder, .unknown:
+            return false
+        }
     }
 
     private static func normalizedState(_ value: String) -> String {

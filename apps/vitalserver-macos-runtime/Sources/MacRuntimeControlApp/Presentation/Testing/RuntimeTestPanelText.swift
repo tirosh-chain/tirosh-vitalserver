@@ -9,7 +9,12 @@ enum RuntimeTestPanelText {
     static let noActiveSession = "No active TestKit session."
     static let startingSession = "Starting virtual VRecorder..."
     static let stoppingSession = "Stopping virtual VRecorder..."
+    static let deletingSession = "Deleting virtual VRecorder session..."
+    static let resettingSessions = "Resetting virtual VRecorder sessions..."
     static let refreshedStatus = "Refreshed TestKit status."
+    static let sharedContainerIPWarning = """
+    Multiple virtual VRecorders in one TestKit container share the same source IP. Use this for traffic/load checks; use one container per VRecorder when IP uniqueness or Network Settings redirection must be tested.
+    """
 
     static func startedSession(_ id: String) -> String {
         "Started TestKit session \(id)."
@@ -17,5 +22,13 @@ enum RuntimeTestPanelText {
 
     static func stoppedSession(_ id: String) -> String {
         "Stopped TestKit session \(id)."
+    }
+
+    static func deletedSession(_ id: String) -> String {
+        "Deleted TestKit session \(id)."
+    }
+
+    static func resetSessions(_ count: Int) -> String {
+        "Reset \(count) TestKit sessions."
     }
 }

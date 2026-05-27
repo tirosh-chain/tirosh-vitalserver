@@ -272,6 +272,12 @@ enum AppConstants {
         static let scenario = "Scenario"
         static let signal = "Signal"
         static let recorders = "Recorders"
+        static let recorderCount = "VRecorders"
+        static let interval = "Interval"
+        static let duration = "Duration"
+        static let maxMessages = "Max messages"
+        static let shiftTime = "Shift time"
+        static let generateFrames = "Generate frames"
         static let vrcodeOptional = "VRecorder code (optional)"
         static let vmRootfsUpdatePlanned = "VM/rootfs bundle update is planned for this area. Use offline bundle updates for regular application/runtime updates."
         static let destructiveOperationsHelp = "Uninstall removes installed services and runtime files. Choose clean uninstall only when preserved data can also be removed."
@@ -288,6 +294,7 @@ enum AppConstants {
         static let boolTrue = "true"
         static let boolFalse = "false"
         static let empty = "-"
+        static let unlimited = "Unlimited"
     }
 
     enum Actions {
@@ -318,6 +325,8 @@ enum AppConstants {
         static let exportLogs = "Export Logs"
         static let start = "Start"
         static let stop = "Stop"
+        static let delete = "Delete"
+        static let reset = "Reset"
         static let startRuntimeServices = "Start Runtime Services"
         static let stopRuntimeServices = "Stop Runtime Services"
         static let startUpdate = "Start Update"

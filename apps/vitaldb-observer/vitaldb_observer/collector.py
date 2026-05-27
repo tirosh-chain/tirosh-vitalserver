@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import string
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -41,8 +42,15 @@ class VitalDBCollector:
     def collect(self) -> ObservationDocument:
         observed_at = utc_now_iso()
         activity_by_vrcode = self._recorder_activity(observed_at)
-        recorders = self._recorders(observed_at, activity_by_vrcode)
         beds = self._beds(observed_at)
+        registered_vrcodes = self._registered_vrcodes()
+        recorders = self._recorders(
+            observed_at,
+            activity_by_vrcode,
+            bed_ids={bed.bed_id for bed in beds},
+            registered_vrcodes=registered_vrcodes,
+            bed_vrcodes={bed.vrcode for bed in beds if bed.vrcode},
+        )
         devices = self._raw_bed_scoped(
             prefix="devs_", bed_ids=[bed.bed_id for bed in beds]
         )
@@ -67,28 +75,36 @@ class VitalDBCollector:
         self,
         observed_at: str,
         activity_by_vrcode: dict[str, RecorderActivityObservation],
+        *,
+        bed_ids: set[str],
+        registered_vrcodes: set[str],
+        bed_vrcodes: set[str],
     ) -> list[RecorderObservation]:
-        vrcodes = {
-            key.removeprefix("ip_")
-            for key in self._redis.scan("ip_*")
-            if key.removeprefix("ip_")
-        }
+        vrcodes = registered_vrcodes | bed_vrcodes
         vrcodes.update(
-            key.removeprefix("utime_")
-            for key in self._redis.scan("utime_*")
-            if key.removeprefix("utime_")
+            vrcode
+            for vrcode in activity_by_vrcode
+            if vrcode in registered_vrcodes or vrcode in bed_vrcodes
         )
-        vrcodes.update(activity_by_vrcode)
         recorders = [
             self._recorder(vrcode, observed_at, activity_by_vrcode.get(vrcode))
             for vrcode in sorted(vrcodes)
-            if not vrcode.startswith("bed")
+            if _is_recorder_identity(vrcode, bed_ids=bed_ids)
         ]
         return [
             recorder
             for recorder in recorders
             if recorder.ip or recorder.last_seen_at or recorder.activity
         ]
+
+    def _registered_vrcodes(self) -> set[str]:
+        vrcodes = set(self._redis.smembers("vrs"))
+        vrcodes.update(
+            key.removeprefix("vrs:")
+            for key in self._redis.scan("vrs:*")
+            if key.removeprefix("vrs:")
+        )
+        return vrcodes
 
     def _recorder(
         self,
@@ -235,7 +251,7 @@ class VitalDBCollector:
                 anomalies.append(
                     _anomaly(
                         "duplicate-ip",
-                        "critical",
+                        "warning",
                         observed_at,
                         ip,
                         ", ".join(sorted(vrcodes)),
@@ -320,21 +336,29 @@ def _parse_audit_event(raw_value: str) -> dict[str, Any] | None:
     if not isinstance(event, dict):
         return None
 
-    payload_summary = event.get("payload_summary")
+    payload_summary = event.get("payload_summary") or event.get("payloadSummary")
     if not isinstance(payload_summary, dict):
         payload_summary = {}
 
-    timestamp = _string_value(event, "ts") or _string_value(event, "observedAt")
+    timestamp = (
+        _string_value(event, "ts")
+        or _string_value(event, "observedAt")
+        or _string_value(event, "timestamp")
+    )
     vrcode = _string_value(payload_summary, "vrcode") or _string_value(event, "vrcode")
     if timestamp is None or vrcode is None:
         return None
 
     return {
-        "event_type": _string_value(event, "event_type") or "",
+        "event_type": _string_value(event, "event_type")
+        or _string_value(event, "eventType")
+        or "",
         "timestamp": timestamp,
         "vrcode": vrcode,
-        "byte_count": _int_value(payload_summary, "bytes"),
-        "room_count": _int_value(payload_summary, "rooms_count"),
+        "byte_count": _int_value(payload_summary, "bytes")
+        or _int_value(payload_summary, "byteCount"),
+        "room_count": _int_value(payload_summary, "rooms_count")
+        or _int_value(payload_summary, "roomsCount"),
     }
 
 
@@ -423,6 +447,21 @@ def _int_value(data: dict[str, Any], key: str) -> int:
         return max(int(str(value)), 0)
     except (TypeError, ValueError):
         return 0
+
+
+def _is_recorder_identity(value: str, *, bed_ids: set[str]) -> bool:
+    normalized = value.strip()
+    if not normalized:
+        return False
+    if normalized in bed_ids or normalized.startswith("bed"):
+        return False
+    return not _looks_like_sha1_bed_id(normalized)
+
+
+def _looks_like_sha1_bed_id(value: str) -> bool:
+    return len(value) == 40 and all(
+        character in string.hexdigits for character in value
+    )
 
 
 def _anomaly(

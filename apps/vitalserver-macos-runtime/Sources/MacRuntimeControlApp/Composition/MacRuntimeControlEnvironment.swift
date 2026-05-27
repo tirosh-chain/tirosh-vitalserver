@@ -48,6 +48,10 @@ final class MacRuntimeControlEnvironment: ObservableObject {
         return MacRuntimeControlEnvironment(viewModel: viewModel, apiServer: apiServer)
     }
 
+    static func shouldStartDevelopmentAPIServer(testEnabled: Bool) -> Bool {
+        testEnabled
+    }
+
     private func startAPIServer() {
         guard let apiServer else {
             return

@@ -37,3 +37,23 @@ def connect_socketio(base_url: str, *, timeout: float = 30.0) -> SocketIoClientP
     client.connect(base_url, transports=["websocket", "polling"])
 
     return client
+
+
+class SocketIoRecorderManagementClient:
+    """VitalServer recorder management operations over Socket.IO."""
+
+    def delete_vrecorder(
+        self,
+        base_url: str,
+        vrcode: str,
+        *,
+        timeout: float = 5.0,
+    ) -> None:
+        client = connect_socketio(base_url, timeout=timeout)
+
+        try:
+            client.emit("req_cmd", f"job=del_vr&vrcode={vrcode}")
+            client.sleep(0.05)
+        finally:
+            if client.connected:
+                client.disconnect()

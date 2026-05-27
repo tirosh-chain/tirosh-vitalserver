@@ -105,6 +105,38 @@ public final class MacTestKitController: RuntimeTestKitControlling {
         return session
     }
 
+    public func deleteVirtualRecorders(sessionID: String?) async throws -> RuntimeTestKitSession? {
+        let apiBaseURL = try await requireAPIBaseURL()
+        let selectedSessionID = sessionID ?? activeSessionID
+        guard let selectedSessionID else {
+            return nil
+        }
+
+        var urlRequest = apiRequest(apiBaseURL: apiBaseURL, path: "/sessions/\(selectedSessionID)")
+        urlRequest.httpMethod = "DELETE"
+
+        let session = try await decode(RuntimeTestKitSession.self, from: urlRequest)
+        if activeSessionID == selectedSessionID {
+            activeSessionID = nil
+        }
+        lastError = nil
+
+        return session
+    }
+
+    public func resetVirtualRecorders() async throws -> RuntimeTestKitStatus {
+        let apiBaseURL = try await requireAPIBaseURL()
+
+        var urlRequest = apiRequest(apiBaseURL: apiBaseURL, path: "/sessions")
+        urlRequest.httpMethod = "DELETE"
+        _ = try await decode(TestKitSessionsResponse.self, from: urlRequest)
+
+        activeSessionID = nil
+        lastError = nil
+
+        return await loadTestKitStatus()
+    }
+
     private func ensureAPIAvailable(apiBaseURL: String) async throws {
         guard await testKitAPIIsHealthy(apiBaseURL: apiBaseURL) else {
             lastError = "TestKit container API is not reachable at \(apiBaseURL)."
@@ -222,7 +254,7 @@ private struct TestKitStartSessionRequest: Encodable {
         targetURL: String
     ) {
         self.targetURL = targetURL
-        recorders = 1
+        recorders = runtimeRequest.recorders
         vrcode = runtimeRequest.vrcode
         version = runtimeRequest.version
         intervalSeconds = runtimeRequest.intervalSeconds

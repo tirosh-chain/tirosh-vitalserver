@@ -1,3 +1,4 @@
+import Foundation
 import SwiftUI
 import RuntimeControl
 
@@ -116,6 +117,51 @@ struct RuntimeTestPanel: View {
                     }
                     .pickerStyle(.menu)
 
+                    testKitIntegerStepper(
+                        AppConstants.Labels.recorderCount,
+                        value: $viewModel.testKitRecorderCount,
+                        range: 1...200,
+                        displayValue: String(viewModel.testKitRecorderCount)
+                    )
+
+                    if viewModel.testKitRecorderCount > 1 {
+                        Text(RuntimeTestPanelText.sharedContainerIPWarning)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    testKitDoubleStepper(
+                        AppConstants.Labels.interval,
+                        value: $viewModel.testKitIntervalSeconds,
+                        range: 0.1...60,
+                        step: 0.1,
+                        displayValue: secondsText(viewModel.testKitIntervalSeconds)
+                    )
+
+                    testKitDoubleStepper(
+                        AppConstants.Labels.duration,
+                        value: $viewModel.testKitDurationSeconds,
+                        range: 0...86_400,
+                        step: 10,
+                        displayValue: limitText(seconds: viewModel.testKitDurationSeconds)
+                    )
+
+                    testKitIntegerStepper(
+                        AppConstants.Labels.maxMessages,
+                        value: $viewModel.testKitMaxMessages,
+                        range: 0...1_000_000,
+                        step: 10,
+                        displayValue: viewModel.testKitMaxMessages > 0
+                            ? String(viewModel.testKitMaxMessages)
+                            : AppConstants.Values.unlimited
+                    )
+
+                    HStack(spacing: 16) {
+                        Toggle(AppConstants.Labels.shiftTime, isOn: $viewModel.testKitShiftTime)
+                        Toggle(AppConstants.Labels.generateFrames, isOn: $viewModel.testKitGenerateFrames)
+                    }
+
                     TextField(AppConstants.Labels.vrcodeOptional, text: $viewModel.testKitVrcode)
                         .textFieldStyle(.roundedBorder)
                 }
@@ -134,6 +180,11 @@ struct RuntimeTestPanel: View {
                         Task { await viewModel.startVirtualRecorderSession() }
                     }
                     .disabled(!viewModel.testKitCanStart)
+
+                    Button(AppConstants.Actions.reset) {
+                        Task { await viewModel.resetVirtualRecorderSessions() }
+                    }
+                    .disabled(viewModel.isRunningTestKitAction || viewModel.testKitStatus.sessions.isEmpty)
 
                     if viewModel.isRunningTestKitAction {
                         ProgressView()
@@ -174,6 +225,40 @@ struct RuntimeTestPanel: View {
         .buttonStyle(.link)
     }
 
+    private func testKitIntegerStepper(
+        _ label: String,
+        value: Binding<Int>,
+        range: ClosedRange<Int>,
+        step: Int = 1,
+        displayValue: String
+    ) -> some View {
+        HStack {
+            Text(label)
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 12)
+            Stepper(displayValue, value: value, in: range, step: step)
+                .monospacedDigit()
+                .frame(width: 180, alignment: .trailing)
+        }
+    }
+
+    private func testKitDoubleStepper(
+        _ label: String,
+        value: Binding<Double>,
+        range: ClosedRange<Double>,
+        step: Double,
+        displayValue: String
+    ) -> some View {
+        HStack {
+            Text(label)
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 12)
+            Stepper(displayValue, value: value, in: range, step: step)
+                .monospacedDigit()
+                .frame(width: 180, alignment: .trailing)
+        }
+    }
+
     private var sessionList: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(AppConstants.Labels.sessions)
@@ -207,6 +292,10 @@ struct RuntimeTestPanel: View {
                 Task { await viewModel.stopVirtualRecorderSession(sessionID: session.id) }
             }
             .disabled(viewModel.isRunningTestKitAction || !sessionIsStoppable(session))
+            Button(AppConstants.Actions.delete) {
+                Task { await viewModel.deleteVirtualRecorderSession(sessionID: session.id) }
+            }
+            .disabled(viewModel.isRunningTestKitAction)
         }
         .padding(.vertical, 4)
     }
@@ -253,7 +342,8 @@ struct RuntimeTestPanel: View {
         [
             "\(AppConstants.Labels.messages): \(session.messagesSent)",
             "\(AppConstants.Labels.bytes): \(session.bytesSent)",
-            "\(AppConstants.Labels.recorders): \(session.recorders.count)",
+            "\(AppConstants.Labels.recorders): \(session.recorders.count)/\(session.recordersRequested)",
+            "\(AppConstants.Labels.interval): \(secondsText(session.intervalSeconds))",
             session.lastError.map { "\(AppConstants.Labels.lastError): \($0)" }
         ]
         .compactMap { $0 }
@@ -283,6 +373,14 @@ struct RuntimeTestPanel: View {
                 word.prefix(1).uppercased() + word.dropFirst()
             }
             .joined(separator: " ")
+    }
+
+    private func secondsText(_ seconds: Double) -> String {
+        String(format: "%.1f s", seconds)
+    }
+
+    private func limitText(seconds: Double) -> String {
+        seconds > 0 ? secondsText(seconds) : AppConstants.Values.unlimited
     }
 
     private func refreshTestKitStatusLoop() async {

@@ -34,6 +34,12 @@ final class RuntimeViewModel: ObservableObject {
     @Published var testKitVrcode = RuntimeViewModel.generatedTestKitVrcode()
     @Published var testKitScenario = RuntimeTestKitScenario.normal
     @Published var testKitSignalProfile = RuntimeTestKitSignalProfile.normal
+    @Published var testKitRecorderCount = 1
+    @Published var testKitIntervalSeconds = 1.0
+    @Published var testKitDurationSeconds = 0.0
+    @Published var testKitMaxMessages = 0
+    @Published var testKitShiftTime = true
+    @Published var testKitGenerateFrames = true
     @Published var isRunningTestKitAction = false
     @Published var testKitActionMessage = ""
 

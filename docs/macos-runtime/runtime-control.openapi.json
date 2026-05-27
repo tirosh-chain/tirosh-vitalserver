@@ -1198,6 +1198,12 @@
             "items": {
               "$ref": "#/components/schemas/RuntimeVitalRecorderRecord"
             }
+          },
+          "beds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeVitalBedRecord"
+            }
           }
         }
       },
@@ -1315,6 +1321,76 @@
         }
       },
       "RuntimeVitalRecorderStatus": {
+        "type": "string",
+        "enum": [
+          "online",
+          "stale",
+          "offline",
+          "unknown"
+        ]
+      },
+      "RuntimeVitalBedRecord": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Aggregated history of one VitalDB bed keyed by bedID.",
+        "properties": {
+          "bedID": {
+            "type": "string"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "vrcode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/RuntimeVitalBedStatus"
+          },
+          "patientConnected": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "firstSeenAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastSeenAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "observationCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "currentAnomalyCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "latestAnomalySeverity": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/VitalDBAnomalySeverity"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "RuntimeVitalBedStatus": {
         "type": "string",
         "enum": [
           "online",

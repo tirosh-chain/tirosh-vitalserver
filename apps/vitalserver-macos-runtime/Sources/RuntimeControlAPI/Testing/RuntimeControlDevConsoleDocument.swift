@@ -320,6 +320,8 @@ public enum RuntimeControlDevConsoleDocument {
             <button id="refreshTestKit">Refresh TestKit</button>
             <button id="startTestKit">Start 1 recorder</button>
             <button id="stopTestKit">Stop</button>
+            <button id="deleteTestKit">Delete active</button>
+            <button id="resetTestKit">Reset</button>
           </div>
         </section>
       </div>
@@ -590,9 +592,11 @@ public enum RuntimeControlDevConsoleDocument {
         return;
       }
       const recorders = history.recorders || [];
+      const beds = history.beds || [];
       const values = [
         ["updated", formatDate(history.updatedAt)],
         ["recorders", recorders.length],
+        ["beds", beds.length],
         ["online", recorders.filter((recorder) => recorder.status === "online").length],
         ["stale", recorders.filter((recorder) => recorder.status === "stale").length],
         ["offline", recorders.filter((recorder) => recorder.status === "offline").length],
@@ -601,7 +605,10 @@ public enum RuntimeControlDevConsoleDocument {
       const recorderList = recorders.slice(0, 12).map((recorder) => (
         `<div class="list-item"><strong>${escapeHtml(recorder.vrcode || "-")} · ${escapeHtml(recorder.status || "-")}</strong><span>${escapeHtml(recorder.lastIP || "-")} · ${escapeHtml(recorder.bedName || recorder.bedID || "-")} · ${escapeHtml(formatDate(recorder.lastSeenAt))}</span></div>`
       )).join("");
-      $("recorderMetrics").innerHTML = `${metricsHTML(values)}<div class="subtle">Recorder history</div><div class="list">${recorderList || emptyText("No recorders")}</div>`;
+      const bedList = beds.slice(0, 12).map((bed) => (
+        `<div class="list-item"><strong>${escapeHtml(bed.name || bed.bedID || "-")} · ${escapeHtml(bed.status || "-")}</strong><span>${escapeHtml(bed.bedID || "-")} · ${escapeHtml(bed.vrcode || "-")} · ${escapeHtml(formatDate(bed.lastSeenAt))}</span></div>`
+      )).join("");
+      $("recorderMetrics").innerHTML = `${metricsHTML(values)}<div class="subtle">Recorder history</div><div class="list">${recorderList || emptyText("No recorders")}</div><div class="subtle">Bed history</div><div class="list">${bedList || emptyText("No beds")}</div>`;
     }
 
     function renderObservability(status, observation) {
@@ -687,6 +694,18 @@ public enum RuntimeControlDevConsoleDocument {
       const session = await postJSON("/dev/testkit/virtual-recorders/stop", null);
       await refreshTestKit();
       append("statusStream", "testkit-stopped", session || { stopped: false });
+    }
+
+    async function deleteTestKit() {
+      const session = await postJSON("/dev/testkit/virtual-recorders/delete", null);
+      await refreshTestKit();
+      append("statusStream", "testkit-deleted", session || { deleted: false });
+    }
+
+    async function resetTestKit() {
+      const status = await postJSON("/dev/testkit/virtual-recorders/reset", null);
+      renderTestKit(status);
+      append("statusStream", "testkit-reset", status);
     }
 
     function replaceRuntimeEvents(events = []) {
@@ -996,6 +1015,8 @@ public enum RuntimeControlDevConsoleDocument {
     $("refreshTestKit").addEventListener("click", () => refreshTestKit().catch((error) => append("statusStream", "testkit-error", { message: error.message })));
     $("startTestKit").addEventListener("click", () => startTestKit().catch((error) => append("statusStream", "testkit-error", { message: error.message })));
     $("stopTestKit").addEventListener("click", () => stopTestKit().catch((error) => append("statusStream", "testkit-error", { message: error.message })));
+    $("deleteTestKit").addEventListener("click", () => deleteTestKit().catch((error) => append("statusStream", "testkit-error", { message: error.message })));
+    $("resetTestKit").addEventListener("click", () => resetTestKit().catch((error) => append("statusStream", "testkit-error", { message: error.message })));
     $("connectAll").addEventListener("click", connectAll);
     $("disconnectAll").addEventListener("click", disconnectAll);
     function reconnectLogs() {

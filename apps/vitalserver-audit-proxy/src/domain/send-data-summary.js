@@ -3,11 +3,22 @@
 const zlib = require("zlib");
 
 function summarizeSendData(payload) {
-  if (typeof payload !== "string") return { payload_type: typeof payload };
-  const summary = { payload_type: "string", bytes: Buffer.byteLength(payload) };
+  const buffer = Buffer.isBuffer(payload)
+    ? payload
+    : typeof payload === "string"
+      ? Buffer.from(payload, "binary")
+      : null;
+  if (!buffer) return { payload_type: typeof payload };
+
+  const summary = {
+    payload_type: Buffer.isBuffer(payload) ? "buffer" : "string",
+    bytes: buffer.length,
+  };
   try {
-    const decoded = zlib.inflateSync(Buffer.from(payload, "binary")).toString();
-    const document = JSON.parse(decoded.replace("/[\0-\u001f\u007f]/u", "").replace("nan", '""'));
+    const decoded = zlib.inflateSync(buffer).toString();
+    const document = JSON.parse(
+      decoded.replace(/[\0-\u001f\u007f]/gu, "").replace(/\bnan\b/g, '""')
+    );
     summary.vrcode = document.vrcode;
     summary.version = document.ver;
     summary.rooms_count = document.rooms && typeof document.rooms === "object"

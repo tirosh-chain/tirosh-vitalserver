@@ -481,6 +481,8 @@ public extension RuntimeFailureReason {
              .vmPidFileStale, .httpProbeTimedOut, .httpProbeConnectionRefused,
              .vitalDBObservationStale:
             return .warning
+        case .vitalDBAnomaly(let kind, _):
+            return warningOnlyVitalDBAnomalyKinds.contains(kind) ? .warning : .critical
         case .unknown(let value):
             return value.hasPrefix("vm-") ? .critical : .warning
         default:
@@ -545,6 +547,10 @@ public extension RuntimeFailureReason {
             return value.hasPrefix("vm-") ? parsed : nil
         }
         return parsed
+    }
+
+    private var warningOnlyVitalDBAnomalyKinds: Set<String> {
+        ["duplicate-ip", "offline", "stale-recorder"]
     }
 }
 

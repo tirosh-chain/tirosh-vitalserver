@@ -70,6 +70,7 @@ struct RuntimeRecordersPanel: View {
                 }
                 .frame(minHeight: 220)
             }
+            bedObservations
         }
     }
 
@@ -110,12 +111,14 @@ struct RuntimeRecordersPanel: View {
         ViewThatFits(in: .horizontal) {
             HStack(spacing: 18) {
                 summaryMetric(AppConstants.Labels.knownRecorders, "\(viewModel.vitalRecorders.recorders.count)")
+                summaryMetric(AppConstants.Labels.knownBeds, "\(viewModel.vitalRecorders.beds.count)")
                 summaryMetric(AppConstants.Labels.onlineRecorders, "\(count(.online))")
                 summaryMetric(AppConstants.Labels.staleRecorders, "\(count(.stale))")
                 summaryMetric(AppConstants.Labels.recorderAnomalies, "\(viewModel.vitalRecorders.recorders.reduce(0) { $0 + $1.currentAnomalyCount })")
             }
             LazyVGrid(columns: summaryColumns, alignment: .leading, spacing: 8) {
                 summaryMetric(AppConstants.Labels.knownRecorders, "\(viewModel.vitalRecorders.recorders.count)")
+                summaryMetric(AppConstants.Labels.knownBeds, "\(viewModel.vitalRecorders.beds.count)")
                 summaryMetric(AppConstants.Labels.onlineRecorders, "\(count(.online))")
                 summaryMetric(AppConstants.Labels.staleRecorders, "\(count(.stale))")
                 summaryMetric(AppConstants.Labels.recorderAnomalies, "\(viewModel.vitalRecorders.recorders.reduce(0) { $0 + $1.currentAnomalyCount })")
@@ -150,7 +153,36 @@ struct RuntimeRecordersPanel: View {
            let recorder = viewModel.vitalRecorders.recorders.first(where: { $0.vrcode == selectedVrcode }) {
             return recorder
         }
-        return nil
+        return filteredRecorders.first
+    }
+
+    private var bedObservations: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(AppConstants.Labels.knownBeds)
+                .font(.subheadline)
+                .fontWeight(.semibold)
+            if viewModel.vitalRecorders.beds.isEmpty {
+                Text(AppConstants.StatusText.noBedObservations)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(12)
+                    .background(Color(nsColor: .controlBackgroundColor))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+            } else {
+                ScrollView(.horizontal) {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        bedHeaderRow
+                        ForEach(viewModel.vitalRecorders.beds) { bed in
+                            Divider()
+                            bedRow(bed)
+                        }
+                    }
+                    .frame(minWidth: 650, alignment: .leading)
+                    .background(Color(nsColor: .textBackgroundColor))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
+            }
+        }
     }
 
     private var recorderHeaderRow: some View {
@@ -161,6 +193,17 @@ struct RuntimeRecordersPanel: View {
             tableHeader(AppConstants.Labels.bed, minWidth: 120)
             tableHeader(AppConstants.Labels.recorderLastSeen, minWidth: 170)
             tableHeader(AppConstants.Labels.anomaly, minWidth: 70)
+        }
+        .padding(10)
+    }
+
+    private var bedHeaderRow: some View {
+        HStack(spacing: 12) {
+            tableHeader("Bed ID", minWidth: 160)
+            tableHeader("Name", minWidth: 120)
+            tableHeader("VRecorder", minWidth: 120)
+            tableHeader(AppConstants.Labels.recorderStatus, minWidth: 80)
+            tableHeader(AppConstants.Labels.recorderLastSeen, minWidth: 170)
         }
         .padding(10)
     }
@@ -186,6 +229,24 @@ struct RuntimeRecordersPanel: View {
             .background(selectedRecorder?.vrcode == recorder.vrcode ? Color.accentColor.opacity(0.10) : Color.clear)
         }
         .buttonStyle(.plain)
+    }
+
+    private func bedRow(_ bed: RuntimeVitalBedRecord) -> some View {
+        HStack(spacing: 12) {
+            tableValue(bed.bedID, minWidth: 160, weight: .semibold)
+            tableValue(bed.name ?? AppConstants.StatusText.unknown, minWidth: 120)
+            tableValue(bed.vrcode ?? AppConstants.StatusText.unknown, minWidth: 120)
+            Text(bed.status.rawValue.capitalized)
+                .font(.caption)
+                .fontWeight(.semibold)
+                .foregroundStyle(statusColor(bed.status))
+                .frame(minWidth: 80, alignment: .leading)
+            tableValue(
+                viewModel.presentationFormatter.systemTimeText(bed.lastSeenAt),
+                minWidth: 170
+            )
+        }
+        .padding(10)
     }
 
     private func summaryMetric(_ label: String, _ value: String) -> some View {
@@ -273,6 +334,7 @@ struct RuntimeRecordersPanel: View {
             detailRow("IP", recorder.lastIP ?? AppConstants.StatusText.unknown)
             detailRow(AppConstants.Labels.recorderVersion, recorder.version ?? AppConstants.StatusText.unknown)
             detailRow(AppConstants.Labels.bed, recorder.bedName ?? recorder.bedID ?? AppConstants.StatusText.unknown)
+            detailRow("Bed ID", linkedBed(for: recorder)?.bedID ?? recorder.bedID ?? AppConstants.StatusText.unknown)
             detailRow(AppConstants.Labels.patient, patientText(recorder.patientConnected))
             detailRow("First seen", viewModel.presentationFormatter.systemTimeText(recorder.firstSeenAt))
             detailRow(AppConstants.Labels.recorderLastSeen, viewModel.presentationFormatter.systemTimeText(recorder.lastSeenAt))
@@ -339,6 +401,27 @@ struct RuntimeRecordersPanel: View {
         case .unknown:
             return .secondary
         }
+    }
+
+    private func statusColor(_ status: RuntimeVitalBedStatus) -> Color {
+        switch status {
+        case .online:
+            return .green
+        case .stale:
+            return .orange
+        case .offline:
+            return .secondary
+        case .unknown:
+            return .secondary
+        }
+    }
+
+    private func linkedBed(for recorder: RuntimeVitalRecorderRecord) -> RuntimeVitalBedRecord? {
+        if let bedID = recorder.bedID,
+           let bed = viewModel.vitalRecorders.beds.first(where: { $0.bedID == bedID }) {
+            return bed
+        }
+        return viewModel.vitalRecorders.beds.first { $0.vrcode == recorder.vrcode }
     }
 
     private func patientText(_ connected: Bool?) -> String {

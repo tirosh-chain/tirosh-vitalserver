@@ -98,18 +98,87 @@ extension RuntimeViewModel {
         }
     }
 
+    func deleteVirtualRecorderSession(sessionID: String?) async {
+        guard let testKitController else {
+            message = RuntimeTestPanelText.testKitUnavailable
+            testKitActionMessage = RuntimeTestPanelText.testKitUnavailable
+            return
+        }
+        isRunningTestKitAction = true
+        defer { isRunningTestKitAction = false }
+
+        testKitActionMessage = RuntimeTestPanelText.deletingSession
+        message = RuntimeTestPanelText.deletingSession
+        do {
+            let session = try await testKitController.deleteVirtualRecorders(sessionID: sessionID)
+            applyTestKitStatus(await testKitController.loadTestKitStatus())
+            let deletedMessage = session.map { RuntimeTestPanelText.deletedSession($0.id) }
+                ?? RuntimeTestPanelText.noActiveSession
+            testKitActionMessage = deletedMessage
+            message = deletedMessage
+        } catch {
+            applyTestKitStatus(await testKitController.loadTestKitStatus())
+            let errorMessage = error.localizedDescription
+            testKitActionMessage = errorMessage
+            message = errorMessage
+        }
+    }
+
+    func resetVirtualRecorderSessions() async {
+        guard let testKitController else {
+            message = RuntimeTestPanelText.testKitUnavailable
+            testKitActionMessage = RuntimeTestPanelText.testKitUnavailable
+            return
+        }
+        let sessionCount = testKitStatus.sessions.count
+        isRunningTestKitAction = true
+        defer { isRunningTestKitAction = false }
+
+        testKitActionMessage = RuntimeTestPanelText.resettingSessions
+        message = RuntimeTestPanelText.resettingSessions
+        do {
+            applyTestKitStatus(try await testKitController.resetVirtualRecorders())
+            let resetMessage = RuntimeTestPanelText.resetSessions(sessionCount)
+            testKitActionMessage = resetMessage
+            message = resetMessage
+        } catch {
+            applyTestKitStatus(await testKitController.loadTestKitStatus())
+            let errorMessage = error.localizedDescription
+            testKitActionMessage = errorMessage
+            message = errorMessage
+        }
+    }
+
     private func testKitStartRequest() -> RuntimeTestKitVirtualRecorderStartRequest {
         RuntimeTestKitVirtualRecorderStartRequest(
             targetURL: AppConstants.Product.vitalServerURL(proxyPort: status.proxyPort),
             scenario: testKitScenario,
             signalProfile: testKitSignalProfile,
-            recorders: 1,
+            recorders: normalizedTestKitRecorderCount,
             vrcode: normalizedTestKitVrcode,
             version: "testkit",
-            intervalSeconds: 1,
-            shiftTime: true,
-            generateFrames: true
+            intervalSeconds: normalizedTestKitIntervalSeconds,
+            durationSeconds: normalizedTestKitDurationSeconds,
+            maxMessages: normalizedTestKitMaxMessages,
+            shiftTime: testKitShiftTime,
+            generateFrames: testKitGenerateFrames
         )
+    }
+
+    private var normalizedTestKitRecorderCount: Int {
+        min(max(testKitRecorderCount, 1), 200)
+    }
+
+    private var normalizedTestKitIntervalSeconds: Double {
+        min(max(testKitIntervalSeconds, 0.1), 60)
+    }
+
+    private var normalizedTestKitDurationSeconds: Double? {
+        testKitDurationSeconds > 0 ? min(testKitDurationSeconds, 86_400) : nil
+    }
+
+    private var normalizedTestKitMaxMessages: Int? {
+        testKitMaxMessages > 0 ? min(testKitMaxMessages, 1_000_000) : nil
     }
 
     private var normalizedTestKitVrcode: String? {
