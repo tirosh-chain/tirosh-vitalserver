@@ -49,7 +49,15 @@ enum AppConstants {
         static let diskStepGiB = 4
         static let minimumMemoryGiB = 4
         static let maximumMemoryGiB = 64
+        static let reservedHostMemoryGiB = 4
         static let memoryStepGiB = 4
+        static var maximumAllowedMemoryGiB: Int {
+            let physicalMemoryGiB = Int(ProcessInfo.processInfo.physicalMemory / 1_073_741_824)
+            let hostAwareMaximum = physicalMemoryGiB - reservedHostMemoryGiB
+            let cappedMaximum = min(maximumMemoryGiB, hostAwareMaximum)
+            let steppedMaximum = (cappedMaximum / memoryStepGiB) * memoryStepGiB
+            return max(minimumMemoryGiB, steppedMaximum)
+        }
         static let minimumRedisBackupRetentionCount = 1
         static let maximumRedisBackupRetentionCount = 30
         static let redisBackupRetentionStep = 1
@@ -191,7 +199,7 @@ enum AppConstants {
         static let sectionAdvancedConfiguration = "Advanced configuration"
         static let cpu = "CPU"
         static let memory = "Memory allocation"
-        static let memoryAllocationHelp = "Amount of memory assigned to the VM. The Linux guest may report a slightly lower usable total in Status."
+        static let memoryAllocationHelp = "Amount of memory assigned to the VM. The maximum is based on this Mac's memory while leaving memory for macOS. The Linux guest may report a slightly lower usable total in Status."
         static let disk = "Disk"
         static let mode = "Mode"
         static let shared = "Shared"

@@ -138,7 +138,7 @@ struct InstallSettings {
     static let defaultProxyPort = Constants.Guest.publicPort
 
     var cpuCount = 8
-    var memoryGiB = 8
+    var memoryGiB = Constants.Defaults.defaultMemoryGiB
     var diskGiB = Constants.Defaults.defaultDiskGiB
     var networkMode = NetworkMode.shared
     var proxyPort = defaultProxyPort
@@ -178,7 +178,7 @@ struct InstallSettings {
         if let requestedMemoryGiB = document.memoryGiB,
            stride(
             from: Constants.Defaults.minimumMemoryGiB,
-            through: Constants.Defaults.maximumMemoryGiB,
+            through: Constants.Defaults.maximumAllowedMemoryGiB,
             by: Constants.Defaults.memoryStepGiB
            ).contains(requestedMemoryGiB) {
             memoryGiB = requestedMemoryGiB

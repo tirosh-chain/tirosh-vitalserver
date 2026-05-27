@@ -225,8 +225,12 @@ struct Launcher {
                 }
                 config.cpuCount = cpu
             case "--memory-mib":
-                guard let memory = UInt64(value), memory >= 1024 else {
-                    throw LauncherError.missingArgument("--memory-mib must be at least 1024")
+                guard let memory = UInt64(value),
+                      memory >= UInt64(Constants.Defaults.minimumMemoryGiB * 1024),
+                      memory <= Constants.Defaults.maximumAllowedMemoryMiB else {
+                    throw LauncherError.missingArgument(
+                        "--memory-mib must be between \(Constants.Defaults.minimumMemoryGiB * 1024) and \(Constants.Defaults.maximumAllowedMemoryMiB)"
+                    )
                 }
                 config.memoryMiB = memory
             case "--network":

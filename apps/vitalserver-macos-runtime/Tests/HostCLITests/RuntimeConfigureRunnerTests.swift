@@ -9,11 +9,12 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
     func testConfigureUpdatesRuntimeDocumentsAndRunsRequestedActions() throws {
         let harness = try Harness()
         let cpuCount = Constants.Defaults.minimumCPUCount
+        let memoryGiB = Constants.Defaults.maximumAllowedMemoryGiB
 
         let result = try harness.runner.configure(RuntimeConfigureCommand(
             changes: [
                 .cpu(cpuCount),
-                .memoryGiB(12),
+                .memoryGiB(UInt64(memoryGiB)),
                 .diskGiB(96),
                 .network(.shared),
                 .proxyPort(18080),
@@ -40,7 +41,7 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
 
         let vmConfig = try VMRuntimeConfig.load(from: harness.vmConfigURL, fileStore: harness.fileStore)
         XCTAssertEqual(vmConfig.cpuCount, cpuCount)
-        XCTAssertEqual(vmConfig.memoryMiB, 12 * 1024)
+        XCTAssertEqual(vmConfig.memoryMiB, UInt64(memoryGiB * 1024))
         XCTAssertEqual(vmConfig.network.mode, .shared)
         XCTAssertNil(vmConfig.network.bridgedInterface)
         XCTAssertEqual(vmConfig.vitalFilesDirectory?.hostPath, "/data/vital-files")
