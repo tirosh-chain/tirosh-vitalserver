@@ -88,8 +88,6 @@ final class RuntimeViewModel: ObservableObject {
 
     func refreshHealthStatus() async {
         status = await controlClient.loadHealthStatus(settings: settings)
-        refreshRuntimeEvents()
-        refreshVitalRecorders()
         if let displayMessage = presentationFormatter.statusDisplayMessage(status) {
             message = displayMessage
         }

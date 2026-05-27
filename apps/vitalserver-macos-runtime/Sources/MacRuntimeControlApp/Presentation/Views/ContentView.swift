@@ -182,6 +182,9 @@ struct ContentView: View {
         .task {
             await pollLogs()
         }
+        .task(id: selectedSection) {
+            await pollSelectedSection()
+        }
     }
 
     private var header: some View {
@@ -275,6 +278,24 @@ struct ContentView: View {
                 await viewModel.refreshLogsIfLive()
             }
             try? await Task.sleep(nanoseconds: 1_000_000_000)
+        }
+    }
+
+    private func pollSelectedSection() async {
+        while !Task.isCancelled {
+            refreshSelectedSection()
+            try? await Task.sleep(nanoseconds: 5_000_000_000)
+        }
+    }
+
+    private func refreshSelectedSection() {
+        switch selectedSection {
+        case .recorders:
+            viewModel.refreshVitalRecorders()
+        case .observability:
+            viewModel.refreshRuntimeEvents()
+        default:
+            break
         }
     }
 }

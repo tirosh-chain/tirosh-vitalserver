@@ -277,6 +277,21 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertEqual(hostClient.createDirectoryURLs, [URL(fileURLWithPath: "/Users/test/Vital Files")])
         XCTAssertEqual(hostClient.loadBackupsCount, 1)
     }
+
+    func testHealthRefreshDoesNotLoadHeavyObservationHistories() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+
+        await viewModel.refreshHealthStatus()
+
+        XCTAssertEqual(client.loadHealthStatusCount, 1)
+        XCTAssertEqual(client.loadRuntimeEventsCount, 0)
+        XCTAssertEqual(client.loadVitalDBRecordersCount, 0)
+    }
 }
 
 private extension RuntimeControlCapabilities {
@@ -307,6 +322,9 @@ private struct NoopHealthNotifications: HealthNotifying {
 private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     let capabilities: RuntimeControlCapabilities
     var loadStatusCount = 0
+    var loadHealthStatusCount = 0
+    var loadRuntimeEventsCount = 0
+    var loadVitalDBRecordersCount = 0
     var loadBackupsCount = 0
     var verifyUpdateBundleCount = 0
     var applySettingsCount = 0
@@ -341,15 +359,18 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     }
 
     func loadHealthStatus(settings: RuntimeSettings) async -> RuntimeStatus {
-        RuntimeStatus()
+        loadHealthStatusCount += 1
+        return RuntimeStatus()
     }
 
     func loadRuntimeEvents(limit: Int) -> RuntimeEventHistory {
-        RuntimeEventHistory(events: [])
+        loadRuntimeEventsCount += 1
+        return RuntimeEventHistory(events: [])
     }
 
     func loadRuntimeEvents(query: RuntimeEventQuery) -> RuntimeEventHistory {
-        RuntimeEventHistory(events: [])
+        loadRuntimeEventsCount += 1
+        return RuntimeEventHistory(events: [])
     }
 
     func loadVitalDBObservation() -> VitalDBObservationDocument? {
@@ -357,7 +378,8 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     }
 
     func loadVitalDBRecorders() -> RuntimeVitalRecorderHistory {
-        RuntimeVitalRecorderHistory()
+        loadVitalDBRecordersCount += 1
+        return RuntimeVitalRecorderHistory()
     }
 
     func loadBackups(latestBackupPath: String?) -> [RuntimeBackup] {
