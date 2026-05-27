@@ -21,6 +21,7 @@ final class RuntimeViewModel: ObservableObject {
     @Published var logStreaming = true
     @Published var useCustomAdvertisedURL = false
     @Published var isBusy = false
+    @Published var isApplyingUpdateBundle = false
     @Published var isCreatingRedisBackup = false
     var isRefreshingLogs = false
     @Published var releaseInfo = RuntimeReleaseInfo.generated
@@ -89,11 +90,11 @@ final class RuntimeViewModel: ObservableObject {
     }
 
     var shouldShowUpdateProgress: Bool {
-        isBusy || presentationFormatter.updateOperationInProgress(status)
+        isApplyingUpdateBundle || presentationFormatter.updateOperationInProgress(status)
     }
 
     var updateProgressMessage: String {
-        if isBusy {
+        if isApplyingUpdateBundle {
             return operationDetail.isEmpty ? message : operationDetail
         }
         return presentationFormatter.updateOperationDisplayMessage(status) ?? message
