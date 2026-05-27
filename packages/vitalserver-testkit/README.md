@@ -58,6 +58,26 @@ uv run vitalserver-testkit stream-recorder \
 상태 페이지는 `join_vr` 전송 여부, 서버 `dt`, local IP, 마지막 `send_data` 시각, 전송 횟수,
 관리 이벤트 수신 이력을 보여줍니다. JSON으로는 `/status.json`을 조회합니다.
 
+Runtime Helper의 Test 탭 또는 PWA에서 TestKit을 제어할 때는 loopback FastAPI server를
+사용합니다.
+
+```sh
+uv run vitalserver-testkit serve --host 127.0.0.1 --port 18322
+```
+
+초기 API는 virtual VRecorder session의 시작/중지/상태 조회를 제공합니다.
+
+```text
+GET  /health
+GET  /sessions
+POST /sessions
+GET  /sessions/{id}
+POST /sessions/{id}/stop
+```
+
+TestKit API는 시뮬레이터 실행 상태의 SoT이고, VitalServer가 실제로 인식한 recorder 상태의
+SoT는 `vitaldb-observer`와 Runtime Control API의 recorder 관측 결과입니다.
+
 ## Simulated Signal Scenario
 
 testkit은 simulated recorder data를 만들 때 시나리오 이름을 `RecorderSignalScenario`로
@@ -140,6 +160,7 @@ src/tirosh_vitalserver/testkit/
     ports.py        # usecase가 요구하는 외부 시스템 계약
     recorder_lifecycle.py  # VRecorder Socket.IO lifecycle wiring
     recorder_runtime.py    # stream 상태와 status page snapshot
+    recorder_session/      # virtual VRecorder API session 상태/manager/document
     results.py      # usecase 실행 결과 value object
     metrics.py      # result/summary 계산 함수
     assertions.py   # 실패율 검증
@@ -151,6 +172,9 @@ src/tirosh_vitalserver/testkit/
   adapters/
     inbound/cli/    # argparse CLI
       recorder.py   # recorder command/parser adapter
+      server.py     # health, TestKit API server command
+    inbound/api/    # FastAPI app factory와 route wiring
+      app.py
     inbound/http/   # local HTTP endpoints exposed by the testkit
       recorder_status.py
     outbound/       # VitalServer HTTP, Socket.IO 구현체
@@ -169,6 +193,8 @@ domain   -> types
 
 `domain`은 `application`이나 `adapters`를 import하지 않습니다. Socket.IO, HTTP 같은 외부 구현체는
 `adapters/outbound`에 두고, `application/usecases`는 `ports.py`의 Protocol에만 의존합니다.
+FastAPI는 `adapters/inbound/api`에서 얇게 wiring하고, long-lived virtual VRecorder session
+상태는 `application/recorder_session`이 소유합니다.
 
 ## 테스트
 

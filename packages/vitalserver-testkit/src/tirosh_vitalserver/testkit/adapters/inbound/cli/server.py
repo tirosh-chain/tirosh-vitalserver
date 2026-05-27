@@ -34,6 +34,30 @@ def add_server_parsers(
 
     parser.set_defaults(command=run_health)
 
+    serve_parser = subparsers.add_parser(
+        "serve",
+        help="Run the TestKit API server",
+        description="Run the loopback TestKit API server for virtual VRecorders.",
+    )
+    serve_parser.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="Host/interface for the TestKit API server",
+    )
+    serve_parser.add_argument(
+        "--port",
+        type=int,
+        default=18322,
+        help="Port for the TestKit API server",
+    )
+    serve_parser.add_argument(
+        "--log-level",
+        default="info",
+        choices=["critical", "error", "warning", "info", "debug", "trace"],
+        help="Uvicorn log level",
+    )
+    serve_parser.set_defaults(command=run_serve)
+
 
 def run_health(args: argparse.Namespace) -> int:
     """Wait until the configured VitalServer health endpoint responds."""
@@ -48,5 +72,29 @@ def run_health(args: argparse.Namespace) -> int:
     )
 
     print(f"VitalServer is ready: {args.vitalserver_url}{args.path}")
+
+    return 0
+
+
+def run_serve(args: argparse.Namespace) -> int:
+    """Run the FastAPI TestKit server."""
+
+    try:
+        import uvicorn
+    except ModuleNotFoundError as exc:
+        raise RuntimeError(
+            "uvicorn is required to run the TestKit API server"
+        ) from exc
+
+    from tirosh_vitalserver.testkit.adapters.inbound.api import (
+        create_testkit_app,
+    )
+
+    uvicorn.run(
+        create_testkit_app(),
+        host=args.host,
+        port=args.port,
+        log_level=args.log_level,
+    )
 
     return 0

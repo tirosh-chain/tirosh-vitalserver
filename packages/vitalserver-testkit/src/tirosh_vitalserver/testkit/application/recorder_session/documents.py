@@ -1,0 +1,78 @@
+"""Public documents for virtual VRecorder sessions."""
+
+from __future__ import annotations
+
+from dataclasses import asdict
+from typing import Any
+
+from tirosh_vitalserver.testkit.application.recorder_runtime import (
+    RecorderRuntimeSnapshot,
+)
+from tirosh_vitalserver.testkit.application.recorder_session.models import (
+    VirtualRecorderSessionSnapshot,
+)
+
+
+def session_snapshot_to_document(
+    snapshot: VirtualRecorderSessionSnapshot,
+) -> dict[str, Any]:
+    """Convert a session snapshot into the public API document."""
+
+    request = snapshot.request
+
+    return {
+        "id": snapshot.session_id,
+        "state": snapshot.state.value,
+        "targetUrl": request.target_url,
+        "recordersRequested": request.recorders,
+        "vrcode": request.vrcode,
+        "version": request.version,
+        "intervalSeconds": request.interval_seconds,
+        "durationSeconds": request.duration_seconds,
+        "maxMessages": request.max_messages,
+        "shiftTime": request.shift_time,
+        "generateFrames": request.generate_frames,
+        "defaultScenario": request.default_scenario.value,
+        "createdAt": snapshot.created_at,
+        "startedAt": snapshot.started_at,
+        "stoppedAt": snapshot.stopped_at,
+        "messagesSent": snapshot.messages_sent,
+        "bytesSent": snapshot.bytes_sent,
+        "lastError": snapshot.error,
+        "recorders": [
+            recorder_snapshot_to_document(recorder)
+            for recorder in snapshot.recorders
+        ],
+    }
+
+
+def recorder_snapshot_to_document(
+    snapshot: RecorderRuntimeSnapshot,
+) -> dict[str, Any]:
+    """Convert a recorder runtime snapshot into a JSON-friendly document."""
+
+    data = asdict(snapshot)
+    data["management_events"] = [
+        {
+            "name": event.name,
+            "received_at": event.received_at,
+            "payload": event.payload,
+        }
+        for event in snapshot.management_events
+    ]
+
+    return snake_to_camel_document(data)
+
+
+def snake_to_camel_document(data: dict[str, Any]) -> dict[str, Any]:
+    """Convert one-level snake_case keys to lower camelCase."""
+
+    return {snake_to_camel(key): value for key, value in data.items()}
+
+
+def snake_to_camel(value: str) -> str:
+    """Convert a snake_case field name to lower camelCase."""
+
+    head, *tail = value.split("_")
+
+    return head + "".join(part.capitalize() for part in tail)

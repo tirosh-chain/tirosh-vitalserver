@@ -6,10 +6,12 @@ from tirosh_vitalserver.testkit.schemas.payloads import (
     RealtimeMessageDocument,
     RecorderPayloadDocument,
 )
+from tirosh_vitalserver.testkit.schemas.testkit_api import StartVirtualRecordersRequest
 
 __all__ = [
     "ExternalSchema",
     "HttpResponse",
     "RealtimeMessageDocument",
     "RecorderPayloadDocument",
+    "StartVirtualRecordersRequest",
 ]

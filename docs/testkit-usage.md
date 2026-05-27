@@ -193,6 +193,44 @@ print(f"bytes={transfer_total_bytes_sent(summary)}")
 - `shift_time`: 기본값은 `True`; `dt*` timestamp field를 현재 시간 근처로 shift
 - `--http`: Socket.IO 대신 HTTP JSON endpoint를 probe할 때 사용
 
+## TestKit API server
+
+Runtime Helper의 Test 탭과 PWA가 TestKit을 제어할 수 있도록 TestKit은 loopback FastAPI
+server를 제공한다. 이 server는 virtual VRecorder session의 시작/중지/상태 조회를 담당한다.
+
+```sh
+uv run vitalserver-testkit serve \
+  --host 127.0.0.1 \
+  --port 18322
+```
+
+초기 API는 session lifecycle에 집중한다.
+
+```text
+GET  /health
+GET  /sessions
+POST /sessions
+GET  /sessions/{id}
+POST /sessions/{id}/stop
+```
+
+예시 요청:
+
+```json
+{
+  "targetUrl": "http://127.0.0.1:80",
+  "recorders": 3,
+  "vrcode": "TEST_VR",
+  "intervalSeconds": 1,
+  "durationSeconds": 0,
+  "defaultScenario": "normal"
+}
+```
+
+TestKit API의 SoT는 “시뮬레이터가 무엇을 실행 중인지”이다. VitalServer가 실제로 recorder를
+인식했는지는 기존 `vitaldb-observer`와 Runtime Control API `/vitaldb/recorders` 결과를
+기준으로 판단한다.
+
 ## `.vital` 파일 업로드 검증
 
 파일 업로드 경로를 확인할 때 사용합니다. upstream 코드 기준 upload endpoint는
