@@ -9,18 +9,8 @@ struct RuntimeRecordersPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             header
-            ViewThatFits(in: .horizontal) {
-                HStack(alignment: .top, spacing: 14) {
-                    recorderList
-                        .frame(minWidth: 520, maxWidth: .infinity, alignment: .topLeading)
-                    recorderDetails
-                        .frame(minWidth: 380, maxWidth: 560, alignment: .topLeading)
-                }
-                VStack(alignment: .leading, spacing: 14) {
-                    recorderList
-                    recorderDetails
-                }
-            }
+            recorderList
+            recorderDetails
         }
     }
 
@@ -70,7 +60,6 @@ struct RuntimeRecordersPanel: View {
                 }
                 .frame(minHeight: 220)
             }
-            bedObservations
         }
     }
 
@@ -111,14 +100,12 @@ struct RuntimeRecordersPanel: View {
         ViewThatFits(in: .horizontal) {
             HStack(spacing: 18) {
                 summaryMetric(AppConstants.Labels.knownRecorders, "\(viewModel.vitalRecorders.recorders.count)")
-                summaryMetric(AppConstants.Labels.knownBeds, "\(viewModel.vitalRecorders.beds.count)")
                 summaryMetric(AppConstants.Labels.onlineRecorders, "\(count(.online))")
                 summaryMetric(AppConstants.Labels.staleRecorders, "\(count(.stale))")
                 summaryMetric(AppConstants.Labels.recorderAnomalies, "\(viewModel.vitalRecorders.recorders.reduce(0) { $0 + $1.currentAnomalyCount })")
             }
             LazyVGrid(columns: summaryColumns, alignment: .leading, spacing: 8) {
                 summaryMetric(AppConstants.Labels.knownRecorders, "\(viewModel.vitalRecorders.recorders.count)")
-                summaryMetric(AppConstants.Labels.knownBeds, "\(viewModel.vitalRecorders.beds.count)")
                 summaryMetric(AppConstants.Labels.onlineRecorders, "\(count(.online))")
                 summaryMetric(AppConstants.Labels.staleRecorders, "\(count(.stale))")
                 summaryMetric(AppConstants.Labels.recorderAnomalies, "\(viewModel.vitalRecorders.recorders.reduce(0) { $0 + $1.currentAnomalyCount })")
@@ -156,35 +143,6 @@ struct RuntimeRecordersPanel: View {
         return filteredRecorders.first
     }
 
-    private var bedObservations: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(AppConstants.Labels.knownBeds)
-                .font(.subheadline)
-                .fontWeight(.semibold)
-            if viewModel.vitalRecorders.beds.isEmpty {
-                Text(AppConstants.StatusText.noBedObservations)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(12)
-                    .background(Color(nsColor: .controlBackgroundColor))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-            } else {
-                ScrollView(.horizontal) {
-                    LazyVStack(alignment: .leading, spacing: 0) {
-                        bedHeaderRow
-                        ForEach(viewModel.vitalRecorders.beds) { bed in
-                            Divider()
-                            bedRow(bed)
-                        }
-                    }
-                    .frame(minWidth: 650, alignment: .leading)
-                    .background(Color(nsColor: .textBackgroundColor))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                }
-            }
-        }
-    }
-
     private var recorderHeaderRow: some View {
         HStack(spacing: 12) {
             tableHeader("VRecorder", minWidth: 120)
@@ -193,17 +151,6 @@ struct RuntimeRecordersPanel: View {
             tableHeader(AppConstants.Labels.bed, minWidth: 120)
             tableHeader(AppConstants.Labels.recorderLastSeen, minWidth: 170)
             tableHeader(AppConstants.Labels.anomaly, minWidth: 70)
-        }
-        .padding(10)
-    }
-
-    private var bedHeaderRow: some View {
-        HStack(spacing: 12) {
-            tableHeader("Bed ID", minWidth: 160)
-            tableHeader("Name", minWidth: 120)
-            tableHeader("VRecorder", minWidth: 120)
-            tableHeader(AppConstants.Labels.recorderStatus, minWidth: 80)
-            tableHeader(AppConstants.Labels.recorderLastSeen, minWidth: 170)
         }
         .padding(10)
     }
@@ -229,24 +176,6 @@ struct RuntimeRecordersPanel: View {
             .background(selectedRecorder?.vrcode == recorder.vrcode ? Color.accentColor.opacity(0.10) : Color.clear)
         }
         .buttonStyle(.plain)
-    }
-
-    private func bedRow(_ bed: RuntimeVitalBedRecord) -> some View {
-        HStack(spacing: 12) {
-            tableValue(bed.bedID, minWidth: 160, weight: .semibold)
-            tableValue(bed.name ?? AppConstants.StatusText.unknown, minWidth: 120)
-            tableValue(bed.vrcode ?? AppConstants.StatusText.unknown, minWidth: 120)
-            Text(bed.status.rawValue.capitalized)
-                .font(.caption)
-                .fontWeight(.semibold)
-                .foregroundStyle(statusColor(bed.status))
-                .frame(minWidth: 80, alignment: .leading)
-            tableValue(
-                viewModel.presentationFormatter.systemTimeText(bed.lastSeenAt),
-                minWidth: 170
-            )
-        }
-        .padding(10)
     }
 
     private func summaryMetric(_ label: String, _ value: String) -> some View {
@@ -391,19 +320,6 @@ struct RuntimeRecordersPanel: View {
     }
 
     private func statusColor(_ status: RuntimeVitalRecorderStatus) -> Color {
-        switch status {
-        case .online:
-            return .green
-        case .stale:
-            return .orange
-        case .offline:
-            return .secondary
-        case .unknown:
-            return .secondary
-        }
-    }
-
-    private func statusColor(_ status: RuntimeVitalBedStatus) -> Color {
         switch status {
         case .online:
             return .green

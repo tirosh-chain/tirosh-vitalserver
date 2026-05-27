@@ -27,54 +27,60 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 16) {
             header
             sectionSelector
-            Group {
-                switch selectedSection {
-                case .status:
-                    RuntimeStatusPanel(
-                        viewModel: viewModel,
-                        showingRecorderDetails: $showingStatusRecorderDetails,
-                        showingResourceUsage: $showingStatusResourceUsage
-                    )
-                case .recorders:
-                    RuntimeRecordersPanel(viewModel: viewModel)
-                case .observability:
-                    RuntimeObservabilityPanel(viewModel: viewModel)
-                case .log:
-                    RuntimeLogPanel(viewModel: viewModel)
-                case .settings:
-                    RuntimeSettingsPanel(
-                        viewModel: viewModel,
-                        showingApplySettingsConfirmation: $showingApplySettingsConfirmation
-                    )
-                case .update:
-                    RuntimeUpdatePanel(
-                        viewModel: viewModel,
-                        showingUpdateConfirmation: $showingUpdateConfirmation
-                    )
-                case .info:
-                    RuntimeInfoPanel(viewModel: viewModel)
-                case .advanced:
-                    RuntimeAdvancedPanel(
-                        viewModel: viewModel,
-                        showingApplySettingsConfirmation: $showingApplySettingsConfirmation,
-                        showingRollbackConfirmation: $showingRollbackConfirmation,
-                        showingRepairProxyConfirmation: $showingRepairProxyConfirmation,
-                        showingRepairDatastoreConfirmation: $showingRepairDatastoreConfirmation,
-                        showingRepairRuntimeServicesConfirmation: $showingRepairRuntimeServicesConfirmation,
-                        showingStartServicesConfirmation: $showingStartServicesConfirmation,
-                        showingStopServicesConfirmation: $showingStopServicesConfirmation,
-                        hoveredServiceLink: $hoveredServiceLink
-                    )
-                case .test:
-                    RuntimeTestPanel(viewModel: viewModel)
-                case .dangerZone:
-                    RuntimeDangerZonePanel(
-                        viewModel: viewModel,
-                        showingDeleteBackupConfirmation: $showingDeleteBackupConfirmation,
-                        showingUninstallConfirmation: $showingUninstallConfirmation,
-                        showingCleanUninstallConfirmation: $showingCleanUninstallConfirmation
-                    )
+            ScrollView(.vertical) {
+                Group {
+                    switch selectedSection {
+                    case .status:
+                        RuntimeStatusPanel(
+                            viewModel: viewModel,
+                            showingRecorderDetails: $showingStatusRecorderDetails,
+                            showingResourceUsage: $showingStatusResourceUsage
+                        )
+                    case .recorders:
+                        RuntimeRecordersPanel(viewModel: viewModel)
+                    case .beds:
+                        RuntimeBedsPanel(viewModel: viewModel)
+                    case .observability:
+                        RuntimeObservabilityPanel(viewModel: viewModel)
+                    case .log:
+                        RuntimeLogPanel(viewModel: viewModel)
+                    case .settings:
+                        RuntimeSettingsPanel(
+                            viewModel: viewModel,
+                            showingApplySettingsConfirmation: $showingApplySettingsConfirmation
+                        )
+                    case .update:
+                        RuntimeUpdatePanel(
+                            viewModel: viewModel,
+                            showingUpdateConfirmation: $showingUpdateConfirmation
+                        )
+                    case .info:
+                        RuntimeInfoPanel(viewModel: viewModel)
+                    case .advanced:
+                        RuntimeAdvancedPanel(
+                            viewModel: viewModel,
+                            showingApplySettingsConfirmation: $showingApplySettingsConfirmation,
+                            showingRollbackConfirmation: $showingRollbackConfirmation,
+                            showingRepairProxyConfirmation: $showingRepairProxyConfirmation,
+                            showingRepairDatastoreConfirmation: $showingRepairDatastoreConfirmation,
+                            showingRepairRuntimeServicesConfirmation: $showingRepairRuntimeServicesConfirmation,
+                            showingStartServicesConfirmation: $showingStartServicesConfirmation,
+                            showingStopServicesConfirmation: $showingStopServicesConfirmation,
+                            hoveredServiceLink: $hoveredServiceLink
+                        )
+                    case .test:
+                        RuntimeTestPanel(viewModel: viewModel)
+                    case .dangerZone:
+                        RuntimeDangerZonePanel(
+                            viewModel: viewModel,
+                            showingDeleteBackupConfirmation: $showingDeleteBackupConfirmation,
+                            showingUninstallConfirmation: $showingUninstallConfirmation,
+                            showingCleanUninstallConfirmation: $showingCleanUninstallConfirmation
+                        )
+                    }
                 }
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+                .padding(.bottom, 8)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
@@ -352,7 +358,7 @@ struct ContentView: View {
 
     private func refreshSelectedSection() async {
         switch selectedSection {
-        case .recorders:
+        case .recorders, .beds:
             await viewModel.refreshVitalRecorders()
         case .observability:
             await viewModel.refreshRuntimeEvents()

@@ -6,6 +6,7 @@ final class RuntimeSectionTests: XCTestCase {
         XCTAssertEqual(RuntimeSection.visibleSections(testEnabled: false).map(\.title), [
             AppConstants.Labels.sectionStatus,
             AppConstants.Labels.sectionRecorders,
+            AppConstants.Labels.sectionBeds,
             AppConstants.Labels.sectionObservability,
             AppConstants.Labels.sectionLog,
             AppConstants.Labels.sectionSettings,
@@ -20,6 +21,7 @@ final class RuntimeSectionTests: XCTestCase {
         XCTAssertEqual(RuntimeSection.visibleSections(testEnabled: true).map(\.title), [
             AppConstants.Labels.sectionStatus,
             AppConstants.Labels.sectionRecorders,
+            AppConstants.Labels.sectionBeds,
             AppConstants.Labels.sectionObservability,
             AppConstants.Labels.sectionLog,
             AppConstants.Labels.sectionSettings,
@@ -35,6 +37,7 @@ final class RuntimeSectionTests: XCTestCase {
         XCTAssertEqual(RuntimeSection.primarySections(testEnabled: true), [
             .status,
             .recorders,
+            .beds,
             .observability,
             .log,
             .settings,
