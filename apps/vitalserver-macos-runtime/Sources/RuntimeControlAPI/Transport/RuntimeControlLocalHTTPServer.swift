@@ -19,6 +19,7 @@ public struct RuntimeControlLocalHTTPServerConfiguration: Equatable, Sendable {
 public final class RuntimeControlLocalHTTPServer: @unchecked Sendable {
     private let configuration: RuntimeControlLocalHTTPServerConfiguration
     private let router: RuntimeControlAPIRouter
+    private let testKitRouter: RuntimeTestKitAPIRouter?
     private let queue: DispatchQueue
     private let queueKey = DispatchSpecificKey<Void>()
     private var listener: NWListener?
@@ -36,10 +37,12 @@ public final class RuntimeControlLocalHTTPServer: @unchecked Sendable {
     public init(
         configuration: RuntimeControlLocalHTTPServerConfiguration,
         router: RuntimeControlAPIRouter,
+        testKitRouter: RuntimeTestKitAPIRouter? = nil,
         queue: DispatchQueue = DispatchQueue(label: "tirosh.runtime-control.local-http")
     ) {
         self.configuration = configuration
         self.router = router
+        self.testKitRouter = testKitRouter
         self.queue = queue
         self.queue.setSpecific(key: queueKey, value: ())
     }
@@ -160,19 +163,29 @@ public final class RuntimeControlLocalHTTPServer: @unchecked Sendable {
             return
         }
 
-        Task { @MainActor [router] in
-            switch await router.routeResult(request) {
-            case .response(let response):
-                self.queue.async {
-                    let encoded = RuntimeControlHTTPWireCodec.encodeResponse(response)
-                    connection.send(content: encoded, completion: .contentProcessed { _ in
-                        connection.cancel()
-                    })
-                }
-            case .stream(let stream):
-                self.queue.async {
-                    self.startStream(stream, on: connection)
-                }
+        Task { @MainActor [router, testKitRouter] in
+            if let testKitRouter,
+               let result = await testKitRouter.routeResult(request) {
+                self.send(result, on: connection)
+                return
+            }
+            let result = await router.routeResult(request)
+            self.send(result, on: connection)
+        }
+    }
+
+    private func send(_ result: RuntimeControlHTTPRouteResult, on connection: NWConnection) {
+        switch result {
+        case .response(let response):
+            queue.async {
+                let encoded = RuntimeControlHTTPWireCodec.encodeResponse(response)
+                connection.send(content: encoded, completion: .contentProcessed { _ in
+                    connection.cancel()
+                })
+            }
+        case .stream(let stream):
+            queue.async {
+                self.startStream(stream, on: connection)
             }
         }
     }

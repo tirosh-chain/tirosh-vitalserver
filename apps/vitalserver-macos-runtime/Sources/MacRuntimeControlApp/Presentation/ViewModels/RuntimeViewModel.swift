@@ -28,9 +28,16 @@ final class RuntimeViewModel: ObservableObject {
     @Published var runtimeEvents = RuntimeEventHistory(events: [])
     @Published var vitalRecorders = RuntimeVitalRecorderHistory()
     @Published var containerObservation: RuntimeContainerObservation?
+    @Published var testKitStatus = RuntimeTestKitStatus(enabled: false, state: .disabled)
+    @Published var selectedTestKitSessionID = ""
+    @Published var testKitVrcode = ""
+    @Published var testKitScenario = RuntimeTestKitScenario.normal
+    @Published var testKitSignalProfile = RuntimeTestKitSignalProfile.normal
+    @Published var isRunningTestKitAction = false
 
     let controlClient: any RuntimeControlClient
     let hostClient: any RuntimeHostClient
+    let testKitController: (any RuntimeTestKitControlling)?
     private let readWorker: MacHostRuntimeReadWorker?
     private let healthNotifications: any HealthNotifying
     private let healthNotificationCoordinator: RuntimeHealthNotificationCoordinator
@@ -44,6 +51,7 @@ final class RuntimeViewModel: ObservableObject {
     init(
         controlClient: any RuntimeControlClient,
         hostClient: any RuntimeHostClient,
+        testKitController: (any RuntimeTestKitControlling)? = nil,
         readWorker: MacHostRuntimeReadWorker? = nil,
         initialSettings: RuntimeSettings? = nil,
         healthNotifications: any HealthNotifying = HealthNotificationCenter(),
@@ -51,6 +59,7 @@ final class RuntimeViewModel: ObservableObject {
     ) {
         self.controlClient = controlClient
         self.hostClient = hostClient
+        self.testKitController = testKitController
         self.readWorker = readWorker
         self.healthNotifications = healthNotifications
         self.healthNotificationCoordinator = RuntimeHealthNotificationCoordinator(notifier: self.healthNotifications)

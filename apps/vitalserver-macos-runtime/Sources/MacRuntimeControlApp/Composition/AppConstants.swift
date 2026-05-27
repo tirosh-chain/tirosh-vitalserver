@@ -32,14 +32,6 @@ enum AppConstants {
         }
     }
 
-    enum RuntimeControlAPI {
-        static let port: UInt16 = 18321
-        static let developmentToken = "vitalserver-helper-dev"
-        static var devConsoleURL: String {
-            "http://127.0.0.1:\(port)/dev/runtime-control"
-        }
-    }
-
     enum SettingsLimits {
         static let minimumCPUCount = 7
         static let maximumCPUCount = 64
@@ -155,12 +147,6 @@ enum AppConstants {
         static let logPaused = "Paused"
         static let advancedSummary = "Advanced runtime details"
         static let advancedDescription = "Diagnostics, service internals, repair actions, update rollback, and administrator operations."
-        static let testSummary = "Test"
-        static let testDescription = "Browser-based runtime checks for development and verification builds."
-        static let sectionBrowserChecks = "Browser"
-        static let runtimeControlConsole = "Runtime Control console"
-        static let runtimeControlConsoleHelp = "Opens the local browser console for Runtime Control API status, event streams, and log streams."
-        static let testkitService = "Testkit API container"
         static let infoSummary = "Runtime information"
         static let infoDescription = "Installed versions, bundled services, and deployment details for support and maintenance."
         static let dangerZoneSummary = "Danger Zone"
@@ -266,6 +252,17 @@ enum AppConstants {
         static let serviceImage = "Image"
         static let serviceVersion = "Version"
         static let serviceBundled = "Bundled"
+        static let enabled = "Enabled"
+        static let status = "Status"
+        static let url = "URL"
+        static let session = "Session"
+        static let sessions = "Sessions"
+        static let messages = "Messages"
+        static let target = "Target"
+        static let scenario = "Scenario"
+        static let signal = "Signal"
+        static let recorders = "Recorders"
+        static let vrcodeOptional = "VRecorder code (optional)"
         static let vmRootfsUpdatePlanned = "VM/rootfs bundle update is planned for this area. Use offline bundle updates for regular application/runtime updates."
         static let destructiveOperationsHelp = "Uninstall removes installed services and runtime files. Choose clean uninstall only when preserved data can also be removed."
         static let appBundlePath = "App bundle path"
@@ -280,6 +277,7 @@ enum AppConstants {
     enum Values {
         static let boolTrue = "true"
         static let boolFalse = "false"
+        static let empty = "-"
     }
 
     enum Actions {
@@ -308,6 +306,8 @@ enum AppConstants {
         static let openBackups = "Open Backups"
         static let openLogs = "Open Logs"
         static let exportLogs = "Export Logs"
+        static let start = "Start"
+        static let stop = "Stop"
         static let startRuntimeServices = "Start Runtime Services"
         static let stopRuntimeServices = "Stop Runtime Services"
         static let startUpdate = "Start Update"

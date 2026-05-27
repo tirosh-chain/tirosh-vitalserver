@@ -313,6 +313,15 @@ public enum RuntimeControlDevConsoleDocument {
           <h2>Runtime Events</h2>
           <div id="runtimeEventMetrics"></div>
         </section>
+        <section>
+          <h2>TestKit</h2>
+          <div id="testKitMetrics"></div>
+          <div class="actions">
+            <button id="refreshTestKit">Refresh TestKit</button>
+            <button id="startTestKit">Start 1 recorder</button>
+            <button id="stopTestKit">Stop</button>
+          </div>
+        </section>
       </div>
       <div class="grid">
       <section>
@@ -378,8 +387,22 @@ public enum RuntimeControlDevConsoleDocument {
       return text ? JSON.parse(text) : null;
     }
 
+    async function postJSON(path, body = null) {
+      const requestHeaders = { ...headers(), "Content-Type": "application/json" };
+      const response = await fetch(endpoint(path), {
+        method: "POST",
+        headers: requestHeaders,
+        body: body === null ? null : JSON.stringify(body)
+      });
+      const text = await response.text();
+      if (!response.ok) {
+        throw new Error(text || `HTTP ${response.status}`);
+      }
+      return text ? JSON.parse(text) : null;
+    }
+
     async function refreshStatus() {
-      const [overview, status, settings, install, release, vitalDBObservation, vitalRecorders, backups, redisBackups, runtimeEvents] = await Promise.all([
+      const [overview, status, settings, install, release, vitalDBObservation, vitalRecorders, backups, redisBackups, runtimeEvents, testKitStatus] = await Promise.all([
         getJSON("/runtime/overview"),
         getJSON("/runtime/status"),
         getJSON("/runtime/settings"),
@@ -389,7 +412,8 @@ public enum RuntimeControlDevConsoleDocument {
         getJSON("/vitaldb/recorders"),
         getJSON("/host/backups"),
         getJSON("/host/backups/redis"),
-        getJSON("/runtime/events?limit=50")
+        getJSON("/runtime/events?limit=50"),
+        getJSON("/dev/testkit/status")
       ]);
       latestStatus = status;
       latestSettings = settings || {};
@@ -405,6 +429,7 @@ public enum RuntimeControlDevConsoleDocument {
       renderObservability(latestStatus, vitalDBObservation || status.vitalDBObservation);
       renderRuntimeEvents();
       renderBackups(backups, redisBackups);
+      renderTestKit(testKitStatus);
       append("statusStream", "snapshot", status);
     }
 
@@ -601,6 +626,67 @@ public enum RuntimeControlDevConsoleDocument {
         `<div class="list-item"><strong>${escapeHtml(formatDate(event.timestamp))} · ${escapeHtml(event.eventType || "-")} · ${escapeHtml(event.status || "-")}</strong><span>${escapeHtml(event.operation || "-")} · ${escapeHtml(event.message || "-")}${eventDetails(event)}</span></div>`
       )).join("");
       $("runtimeEventMetrics").innerHTML = `<div class="event-list list">${rows}</div>`;
+    }
+
+    function renderTestKit(status) {
+      if (!status) {
+        $("testKitMetrics").innerHTML = emptyText("No TestKit status");
+        return;
+      }
+      const session = status.activeSession;
+      const sessions = status.sessions || [];
+      const values = [
+        ["enabled", status.enabled],
+        ["state", status.state],
+        ["service", status.serviceName],
+        ["API", status.apiBaseURL],
+        ["recorder target", status.recorderTargetURL],
+        ["started", formatDate(status.startedAt)],
+        ["sessions", sessions.length],
+        ["active session", session && session.id],
+        ["session state", session && session.state],
+        ["messages", session && session.messagesSent],
+        ["bytes", session && formatBytes(session.bytesSent)],
+        ["last error", status.lastError]
+      ];
+      const sessionList = sessions.slice(0, 16).map((candidate) => (
+        `<div class="list-item"><strong>${escapeHtml(candidate.id || "-")} · ${escapeHtml(candidate.state || "-")}</strong><span>${escapeHtml(testKitSessionRecorderText(candidate))} · ${escapeHtml(candidate.messagesSent || 0)} messages · ${escapeHtml(formatBytes(candidate.bytesSent || 0))}</span></div>`
+      )).join("");
+      $("testKitMetrics").innerHTML = `${metricsHTML(values)}<div class="subtle">Sessions</div><div class="list">${sessionList || emptyText("No virtual recorder sessions")}</div>`;
+    }
+
+    function testKitSessionRecorderText(session) {
+      const recorders = session.recorders || [];
+      if (recorders.length === 0) {
+        return session.vrcode || "no recorder";
+      }
+      return recorders.map((recorder) => `${recorder.vrcode || "-"} ${recorder.connected ? "connected" : "disconnected"}`).join(", ");
+    }
+
+    async function refreshTestKit() {
+      renderTestKit(await getJSON("/dev/testkit/status"));
+    }
+
+    async function startTestKit() {
+      const proxyPort = (latestStatus && latestStatus.proxyPort) || 80;
+      const session = await postJSON("/dev/testkit/virtual-recorders/start", {
+        targetUrl: `http://127.0.0.1:${proxyPort}/`,
+        scenario: "normal",
+        signalProfile: "normal",
+        recorders: 1,
+        version: "testkit",
+        intervalSeconds: 1,
+        shiftTime: true,
+        generateFrames: true
+      });
+      await refreshTestKit();
+      append("statusStream", "testkit-started", session);
+    }
+
+    async function stopTestKit() {
+      const session = await postJSON("/dev/testkit/virtual-recorders/stop", null);
+      await refreshTestKit();
+      append("statusStream", "testkit-stopped", session || { stopped: false });
     }
 
     function replaceRuntimeEvents(events = []) {
@@ -907,6 +993,9 @@ public enum RuntimeControlDevConsoleDocument {
     }
 
     $("refresh").addEventListener("click", () => refreshStatus().catch((error) => append("statusStream", "error", { message: error.message })));
+    $("refreshTestKit").addEventListener("click", () => refreshTestKit().catch((error) => append("statusStream", "testkit-error", { message: error.message })));
+    $("startTestKit").addEventListener("click", () => startTestKit().catch((error) => append("statusStream", "testkit-error", { message: error.message })));
+    $("stopTestKit").addEventListener("click", () => stopTestKit().catch((error) => append("statusStream", "testkit-error", { message: error.message })));
     $("connectAll").addEventListener("click", connectAll);
     $("disconnectAll").addEventListener("click", disconnectAll);
     function reconnectLogs() {
