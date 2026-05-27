@@ -167,10 +167,14 @@ testkit이 실제 VRecorder처럼 보이려면 아래를 만족해야 합니다.
 | Command 수신 | `update`, `restart`, `reboot`, `del_bed`, `add_event`, `edit_bed`, `edit_conf` 수신 |
 | Network Settings | testkit VM에서 HTTP 상태 페이지를 제공해 `http://<vr_ipaddr>` 접속 검증 |
 
-VM 또는 별도 장비에서 testkit을 실행할 때는 bridged network로 DHCP LAN IP를 받고, VitalServer
-public proxy 주소로 접속합니다. Network Settings를 눌렀을 때 열린 페이지가 testkit 상태
-페이지라면 VitalServer의 `join_vr` 처리, proxy IP 보존, Web Monitoring IP 전달이 함께
-검증된 것입니다.
+macOS runtime의 Test 탭에서는 guest compose 안의 `testkit` container가 virtual VRecorder를
+생성하고 `http://edge/`로 접속합니다. 이 경로는 Helper/TestKit 제어, VitalServer 수신,
+observer 반영을 검증하기 위한 내부 QA 경로입니다.
+
+VM 또는 별도 장비에서 실제 VRecorder network behavior까지 검증할 때는 testkit을 bridged
+network로 DHCP LAN IP를 받는 환경에서 실행하고, VitalServer public proxy 주소로 접속합니다.
+Network Settings를 눌렀을 때 열린 페이지가 testkit 상태 페이지라면 VitalServer의 `join_vr`
+처리, proxy IP 보존, Web Monitoring IP 전달이 함께 검증된 것입니다.
 
 예시:
 

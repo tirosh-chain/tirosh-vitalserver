@@ -195,14 +195,20 @@ print(f"bytes={transfer_total_bytes_sent(summary)}")
 
 ## TestKit API server
 
-Runtime Helper의 Test 탭과 PWA가 TestKit을 제어할 수 있도록 TestKit은 loopback FastAPI
-server를 제공한다. 이 server는 virtual VRecorder session의 시작/중지/상태 조회를 담당한다.
+Runtime Helper의 Test 탭과 PWA가 TestKit을 제어할 수 있도록 TestKit은 FastAPI server를
+제공한다. macOS runtime dev bundle에서는 TestKit을 guest Docker Compose의 `testkit`
+container로 포함하고, Helper는 VM IP의 `http://<vm-ip>:18322` API를 호출한다. 이 server는
+virtual VRecorder session의 시작/중지/상태 조회를 담당한다.
 
 ```sh
 uv run vitalserver-testkit serve \
   --host 127.0.0.1 \
   --port 18322
 ```
+
+위 명령은 local 개발용이다. 제품 runtime에서는 `vitalserver-testkit:0.1.1` container가
+`0.0.0.0:18322`로 API를 열고, 생성된 virtual VRecorder는 guest compose network 안에서
+`http://edge/`를 대상으로 접속한다.
 
 초기 API는 session lifecycle에 집중한다.
 
@@ -214,12 +220,16 @@ GET  /sessions/{id}
 POST /sessions/{id}/stop
 ```
 
+Helper Test 탭의 기본 모델은 “virtual VRecorder 1대 = TestKit session 1개”이다. 여러 대를
+동시에 실행할 때는 session을 여러 개 생성한다. Bulk 생성은 이후 API에서 여러 session을 한 번에
+생성하는 얇은 편의 기능으로 추가한다.
+
 예시 요청:
 
 ```json
 {
-  "targetUrl": "http://127.0.0.1:80",
-  "recorders": 3,
+  "targetUrl": "http://edge/",
+  "recorders": 1,
   "vrcode": "TEST_VR",
   "intervalSeconds": 1,
   "durationSeconds": 0,

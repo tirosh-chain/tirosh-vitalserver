@@ -58,14 +58,18 @@ uv run vitalserver-testkit stream-recorder \
 상태 페이지는 `join_vr` 전송 여부, 서버 `dt`, local IP, 마지막 `send_data` 시각, 전송 횟수,
 관리 이벤트 수신 이력을 보여줍니다. JSON으로는 `/status.json`을 조회합니다.
 
-Runtime Helper의 Test 탭 또는 PWA에서 TestKit을 제어할 때는 loopback FastAPI server를
-사용합니다.
+Runtime Helper의 Test 탭 또는 PWA에서 TestKit을 제어할 때는 macOS runtime guest compose
+안의 `testkit` container가 제공하는 FastAPI server를 사용합니다. Helper는 VM IP를 기준으로
+`http://<vm-ip>:18322`에 붙고, container 안의 virtual VRecorder는 compose 내부 edge proxy인
+`http://edge/`로 접속합니다.
 
 ```sh
-uv run vitalserver-testkit serve --host 127.0.0.1 --port 18322
+vitalserver-testkit serve --host 0.0.0.0 --port 18322
 ```
 
-초기 API는 virtual VRecorder session의 시작/중지/상태 조회를 제공합니다.
+local 개발 중에 TestKit API만 단독 확인할 때는 같은 command를 host loopback으로 실행할 수
+있지만, 제품 runtime에서는 container가 SoT입니다. 초기 API는 virtual VRecorder session의
+시작/중지/상태 조회를 제공합니다.
 
 ```text
 GET  /health
