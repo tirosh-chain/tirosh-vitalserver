@@ -10,7 +10,9 @@ from tirosh_vitalserver.testkit.application.recorder_runtime import (
     RecorderRuntimeSnapshot,
 )
 from tirosh_vitalserver.testkit.application.recorder_session.models import (
+    VirtualRecorderCleanupError,
     VirtualRecorderSessionRequest,
+    VirtualRecorderSessionScenario,
     VirtualRecorderSessionSnapshot,
     VirtualRecorderSessionState,
 )
@@ -36,6 +38,7 @@ def session_snapshot_to_record(
 
     data = asdict(snapshot)
     data["state"] = snapshot.state.value
+    data["request"]["scenario"] = snapshot.request.scenario.value
     data["request"]["default_scenario"] = snapshot.request.default_scenario.value
     data["recorders"] = [
         recorder_snapshot_to_record(recorder)
@@ -51,6 +54,9 @@ def session_snapshot_from_record(
     """Convert a persistent JSON record into a session snapshot."""
 
     request_data = dict(data["request"])
+    request_data["scenario"] = VirtualRecorderSessionScenario(
+        request_data.get("scenario", VirtualRecorderSessionScenario.NORMAL.value)
+    )
     request_data["default_scenario"] = RecorderSignalScenario(
         request_data.get("default_scenario", RecorderSignalScenario.NORMAL.value)
     )
@@ -69,6 +75,14 @@ def session_snapshot_from_record(
         messages_sent=int(data.get("messages_sent", 0)),
         bytes_sent=int(data.get("bytes_sent", 0)),
         error=data.get("error"),
+        cleanup_errors=tuple(
+            VirtualRecorderCleanupError(
+                vrcode=str(error["vrcode"]),
+                target_url=str(error["target_url"]),
+                error=str(error["error"]),
+            )
+            for error in data.get("cleanup_errors", [])
+        ),
     )
 
 

@@ -15,10 +15,14 @@ from tirosh_vitalserver.testkit.application.recorder_session.store import (
 )
 from tirosh_vitalserver.testkit.application.recorder_session import (
     VirtualRecorderSessionManager,
+    deletion_result_to_document,
     session_snapshot_to_document,
 )
 from tirosh_vitalserver.testkit.observability import emit_testkit_event
-from tirosh_vitalserver.testkit.schemas.testkit_api import StartVirtualRecordersRequest
+from tirosh_vitalserver.testkit.schemas.testkit_api import (
+    DeleteVirtualRecorderRequest,
+    StartVirtualRecordersRequest,
+)
 
 
 def create_testkit_app(
@@ -134,6 +138,42 @@ def create_testkit_app(
             vrcode=snapshot.request.vrcode,
         )
         return session_snapshot_to_document(snapshot)
+
+    @app.post("/recorders/delete")
+    def delete_vrecorder(
+        request: DeleteVirtualRecorderRequest,
+        manager: Annotated[VirtualRecorderSessionManager, Depends(get_manager)],
+    ) -> dict[str, Any]:
+        emit_testkit_event(
+            "api.vrecorder.delete.requested",
+            target_url=request.target_url,
+            vrcode=request.vrcode,
+        )
+        try:
+            result = manager.delete_vrecorder(
+                target_url=request.target_url,
+                vrcode=request.vrcode,
+            )
+        except ValueError as exc:
+            emit_testkit_event(
+                "api.vrecorder.delete.rejected",
+                level=logging.WARNING,
+                target_url=request.target_url,
+                vrcode=request.vrcode,
+                error=str(exc),
+            )
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            emit_testkit_event(
+                "api.vrecorder.delete.unavailable",
+                level=logging.WARNING,
+                target_url=request.target_url,
+                vrcode=request.vrcode,
+                error=str(exc),
+            )
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+        return deletion_result_to_document(result)
 
     @app.get("/sessions/{session_id}")
     def get_session(

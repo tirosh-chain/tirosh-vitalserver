@@ -5,13 +5,17 @@ from __future__ import annotations
 import logging
 import threading
 import uuid
+from dataclasses import replace
 
 from tirosh_vitalserver.testkit.application.ports import (
     RecorderManagementPort,
     SocketIoConnectorPort,
 )
 from tirosh_vitalserver.testkit.application.recorder_session.models import (
+    VirtualRecorderCleanupError,
+    VirtualRecorderDeletionResult,
     VirtualRecorderSessionRequest,
+    VirtualRecorderSessionScenario,
     VirtualRecorderSessionSnapshot,
 )
 from tirosh_vitalserver.testkit.application.recorder_session.session import (
@@ -20,6 +24,7 @@ from tirosh_vitalserver.testkit.application.recorder_session.session import (
 from tirosh_vitalserver.testkit.application.recorder_session.store import (
     VirtualRecorderSessionStorePort,
 )
+from tirosh_vitalserver.testkit.domain.signal import RecorderSignalScenario
 from tirosh_vitalserver.testkit.observability import emit_testkit_event
 
 
@@ -46,6 +51,7 @@ class VirtualRecorderSessionManager:
     ) -> VirtualRecorderSessionSnapshot:
         """Create and start a virtual recorder session."""
 
+        request = request_with_scenario_defaults(request)
         session_id = f"vrecorder-{uuid.uuid4()}"
         session = VirtualRecorderSession(
             session_id=session_id,
@@ -136,7 +142,11 @@ class VirtualRecorderSessionManager:
                 return None
 
             emit_testkit_event("session.delete.stored", session_id=session_id)
-            self._delete_vitalserver_recorders(snapshot)
+            cleanup_errors = self._delete_vitalserver_recorders(snapshot)
+            if cleanup_errors:
+                failed_snapshot = snapshot_with_cleanup_errors(snapshot, cleanup_errors)
+                self._save_snapshot(failed_snapshot)
+                return failed_snapshot
             self._delete_stored_snapshot(session_id)
             return snapshot
 
@@ -144,11 +154,23 @@ class VirtualRecorderSessionManager:
         session.stop()
         session.wait(timeout=2)
         snapshot = session.snapshot()
-        self._delete_vitalserver_recorders(snapshot)
+        cleanup_errors = self._delete_vitalserver_recorders(snapshot)
 
         with self._lock:
             if self._sessions.get(session_id) is session:
                 del self._sessions[session_id]
+
+        if cleanup_errors:
+            failed_snapshot = snapshot_with_cleanup_errors(snapshot, cleanup_errors)
+            self._save_snapshot(failed_snapshot)
+            emit_testkit_event(
+                "session.delete.cleanup_failed",
+                level=logging.WARNING,
+                session_id=session_id,
+                failed_recorders=len(cleanup_errors),
+            )
+            return failed_snapshot
+
         self._delete_stored_snapshot(session_id)
 
         emit_testkit_event(
@@ -163,10 +185,11 @@ class VirtualRecorderSessionManager:
     def _delete_vitalserver_recorders(
         self,
         snapshot: VirtualRecorderSessionSnapshot,
-    ) -> None:
+    ) -> tuple[VirtualRecorderCleanupError, ...]:
         if self._recorder_management is None:
-            return
+            return ()
 
+        errors: list[VirtualRecorderCleanupError] = []
         vrcodes = sorted({recorder.vrcode for recorder in snapshot.recorders})
         for vrcode in vrcodes:
             try:
@@ -181,6 +204,13 @@ class VirtualRecorderSessionManager:
                     vrcode=vrcode,
                 )
             except Exception as exc:
+                errors.append(
+                    VirtualRecorderCleanupError(
+                        vrcode=vrcode,
+                        target_url=snapshot.request.target_url,
+                        error=str(exc),
+                    )
+                )
                 emit_testkit_event(
                     "vrecorder.delete_from_vitalserver.failed",
                     level=logging.WARNING,
@@ -189,6 +219,7 @@ class VirtualRecorderSessionManager:
                     vrcode=vrcode,
                     error=str(exc),
                 )
+        return tuple(errors)
 
     def delete_all_sessions(self) -> tuple[VirtualRecorderSessionSnapshot, ...]:
         """Stop and remove every managed virtual recorder session."""
@@ -206,6 +237,52 @@ class VirtualRecorderSessionManager:
         emit_testkit_event("sessions.reset", deleted_sessions=len(deleted))
 
         return deleted
+
+    def delete_vrecorder(
+        self,
+        target_url: str,
+        vrcode: str,
+    ) -> VirtualRecorderDeletionResult:
+        """Delete one VitalServer VRecorder by vrcode, independent of sessions."""
+
+        normalized_vrcode = vrcode.strip()
+        if not normalized_vrcode:
+            raise ValueError("vrcode is required")
+        if self._recorder_management is None:
+            raise RuntimeError("recorder management is not configured")
+
+        emit_testkit_event(
+            "vrecorder.delete.requested",
+            target_url=target_url,
+            vrcode=normalized_vrcode,
+        )
+        try:
+            self._recorder_management.delete_vrecorder(target_url, normalized_vrcode)
+        except Exception as exc:
+            emit_testkit_event(
+                "vrecorder.delete.failed",
+                level=logging.WARNING,
+                target_url=target_url,
+                vrcode=normalized_vrcode,
+                error=str(exc),
+            )
+            return VirtualRecorderDeletionResult(
+                vrcode=normalized_vrcode,
+                target_url=target_url,
+                deleted=False,
+                error=str(exc),
+            )
+
+        emit_testkit_event(
+            "vrecorder.delete.accepted",
+            target_url=target_url,
+            vrcode=normalized_vrcode,
+        )
+        return VirtualRecorderDeletionResult(
+            vrcode=normalized_vrcode,
+            target_url=target_url,
+            deleted=True,
+        )
 
     def wait_session(self, session_id: str, timeout: float | None = None) -> bool:
         """Wait for one session to stop."""
@@ -275,3 +352,39 @@ def load_stored_sessions(
             error=str(exc),
         )
         return {}
+
+
+def request_with_scenario_defaults(
+    request: VirtualRecorderSessionRequest,
+) -> VirtualRecorderSessionRequest:
+    """Apply session-level scenario defaults without hiding explicit controls."""
+
+    match request.scenario:
+        case VirtualRecorderSessionScenario.NORMAL:
+            return request
+        case VirtualRecorderSessionScenario.MULTIPLE_RECORDERS:
+            return replace(request, recorders=max(request.recorders, 5))
+        case VirtualRecorderSessionScenario.BURST_TRAFFIC:
+            return replace(request, interval_seconds=min(request.interval_seconds, 0.1))
+        case VirtualRecorderSessionScenario.DISCONNECT_RECONNECT:
+            return replace(request, max_messages=request.max_messages or 3)
+        case VirtualRecorderSessionScenario.STALE_RECORDER:
+            return replace(request, max_messages=request.max_messages or 1)
+        case VirtualRecorderSessionScenario.SIGNAL_ANOMALY:
+            scenario = (
+                RecorderSignalScenario.ARTIFACT
+                if request.default_scenario == RecorderSignalScenario.NORMAL
+                else request.default_scenario
+            )
+            return replace(request, default_scenario=scenario)
+
+
+def snapshot_with_cleanup_errors(
+    snapshot: VirtualRecorderSessionSnapshot,
+    cleanup_errors: tuple[VirtualRecorderCleanupError, ...],
+) -> VirtualRecorderSessionSnapshot:
+    """Return a snapshot that preserves failed cleanup details for retry."""
+
+    failed = ", ".join(error.vrcode for error in cleanup_errors)
+    message = f"Failed to delete virtual VRecorder cleanup targets: {failed}"
+    return replace(snapshot, error=message, cleanup_errors=cleanup_errors)

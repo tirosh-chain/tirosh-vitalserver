@@ -102,6 +102,10 @@ struct RuntimeTestPanel: View {
 
                 Divider()
 
+                orphanCleanup
+
+                Divider()
+
                 VStack(alignment: .leading, spacing: 10) {
                     Picker(AppConstants.Labels.scenario, selection: $viewModel.testKitScenario) {
                         ForEach(RuntimeTestKitScenario.allCases, id: \.self) { scenario in
@@ -300,6 +304,32 @@ struct RuntimeTestPanel: View {
         .padding(.vertical, 4)
     }
 
+    private var orphanCleanup: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(RuntimeTestPanelText.orphanCleanup)
+                .font(.subheadline)
+                .fontWeight(.semibold)
+            Text(RuntimeTestPanelText.orphanCleanupDescription)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 8) {
+                TextField(AppConstants.Labels.orphanVrcode, text: $viewModel.testKitOrphanVrcode)
+                    .textFieldStyle(.roundedBorder)
+                Button(AppConstants.Actions.deleteVRecorder) {
+                    Task { await viewModel.deleteOrphanVirtualRecorder() }
+                }
+                .disabled(!canDeleteOrphanVRecorder)
+            }
+        }
+    }
+
+    private var canDeleteOrphanVRecorder: Bool {
+        viewModel.testKitStatus.enabled
+            && !viewModel.isRunningTestKitAction
+            && !viewModel.testKitOrphanVrcode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     private var totalRecorders: Int {
         viewModel.testKitStatus.sessions.reduce(0) { total, session in
             total + session.recorders.count
@@ -344,6 +374,7 @@ struct RuntimeTestPanel: View {
             "\(AppConstants.Labels.bytes): \(session.bytesSent)",
             "\(AppConstants.Labels.recorders): \(session.recorders.count)/\(session.recordersRequested)",
             "\(AppConstants.Labels.interval): \(secondsText(session.intervalSeconds))",
+            session.cleanupErrors.isEmpty ? nil : "Cleanup errors: \(session.cleanupErrors.count)",
             session.lastError.map { "\(AppConstants.Labels.lastError): \($0)" }
         ]
         .compactMap { $0 }

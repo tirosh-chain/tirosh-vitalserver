@@ -33,6 +33,7 @@ final class RuntimeViewModel: ObservableObject {
     @Published var testKitStatus = RuntimeTestKitStatus(enabled: false, state: .disabled)
     @Published var selectedTestKitSessionID = ""
     @Published var testKitVrcode = RuntimeViewModel.generatedTestKitVrcode()
+    @Published var testKitOrphanVrcode = ""
     @Published var testKitScenario = RuntimeTestKitScenario.normal
     @Published var testKitSignalProfile = RuntimeTestKitSignalProfile.normal
     @Published var testKitRecorderCount = 1

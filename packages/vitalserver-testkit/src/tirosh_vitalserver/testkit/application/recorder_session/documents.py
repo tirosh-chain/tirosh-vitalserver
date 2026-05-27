@@ -9,6 +9,7 @@ from tirosh_vitalserver.testkit.application.recorder_runtime import (
     RecorderRuntimeSnapshot,
 )
 from tirosh_vitalserver.testkit.application.recorder_session.models import (
+    VirtualRecorderDeletionResult,
     VirtualRecorderSessionSnapshot,
 )
 
@@ -32,6 +33,7 @@ def session_snapshot_to_document(
         "maxMessages": request.max_messages,
         "shiftTime": request.shift_time,
         "generateFrames": request.generate_frames,
+        "scenario": request.scenario.value,
         "defaultScenario": request.default_scenario.value,
         "createdAt": snapshot.created_at,
         "startedAt": snapshot.started_at,
@@ -39,10 +41,31 @@ def session_snapshot_to_document(
         "messagesSent": snapshot.messages_sent,
         "bytesSent": snapshot.bytes_sent,
         "lastError": snapshot.error,
+        "cleanupErrors": [
+            {
+                "vrcode": error.vrcode,
+                "targetUrl": error.target_url,
+                "error": error.error,
+            }
+            for error in snapshot.cleanup_errors
+        ],
         "recorders": [
             recorder_snapshot_to_document(recorder)
             for recorder in snapshot.recorders
         ],
+    }
+
+
+def deletion_result_to_document(
+    result: VirtualRecorderDeletionResult,
+) -> dict[str, Any]:
+    """Convert a direct VRecorder deletion result into API JSON."""
+
+    return {
+        "vrcode": result.vrcode,
+        "targetUrl": result.target_url,
+        "deleted": result.deleted,
+        "error": result.error,
     }
 
 

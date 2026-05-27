@@ -160,6 +160,7 @@ final class RuntimeControlContractsTests: XCTestCase {
         XCTAssertEqual(history.recorders[0].bedName, "OR A Updated")
         XCTAssertEqual(history.recorders[0].patientConnected, false)
         XCTAssertEqual(history.recorders[0].observationCount, 2)
+        XCTAssertEqual(history.recorders[0].presentInLatestObservation, true)
         XCTAssertEqual(history.recorders[0].currentAnomalyCount, 1)
         XCTAssertEqual(history.recorders[0].latestAnomalySeverity, VitalDBAnomalySeverity.warning)
         XCTAssertEqual(history.recorders[0].activityTimeline.map(\.observedAt), [
@@ -171,6 +172,7 @@ final class RuntimeControlContractsTests: XCTestCase {
         XCTAssertEqual(history.recorders[1].status, RuntimeVitalRecorderStatus.offline)
         XCTAssertEqual(history.recorders[1].bedName, "OR B")
         XCTAssertEqual(history.recorders[1].observationCount, 1)
+        XCTAssertEqual(history.recorders[1].presentInLatestObservation, false)
         XCTAssertEqual(history.beds.map(\.bedID), ["bed-a", "bed-b"])
         XCTAssertEqual(history.beds[0].name, "OR A Updated")
         XCTAssertEqual(history.beds[0].vrcode, "VR_A")

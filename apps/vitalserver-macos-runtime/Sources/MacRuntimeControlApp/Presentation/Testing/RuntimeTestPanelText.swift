@@ -12,6 +12,9 @@ enum RuntimeTestPanelText {
     static let deletingSession = "Deleting virtual VRecorder session..."
     static let resettingSessions = "Resetting virtual VRecorder sessions..."
     static let refreshedStatus = "Refreshed TestKit status."
+    static let orphanCleanup = "Orphan cleanup"
+    static let orphanCleanupDescription = "Delete a VRecorder that remains in VitalServer even when no TestKit session is available."
+    static let missingVrcode = "Enter a VRecorder code to delete."
     static let sharedContainerIPWarning = """
     Multiple virtual VRecorders in one TestKit container share the same source IP. Use this for traffic/load checks; use one container per VRecorder when IP uniqueness or Network Settings redirection must be tested.
     """
@@ -26,6 +29,18 @@ enum RuntimeTestPanelText {
 
     static func deletedSession(_ id: String) -> String {
         "Deleted TestKit session \(id)."
+    }
+
+    static func deletingVRecorder(_ vrcode: String) -> String {
+        "Deleting VRecorder \(vrcode)..."
+    }
+
+    static func deletedVRecorder(_ vrcode: String) -> String {
+        "Deleted VRecorder \(vrcode)."
+    }
+
+    static func failedVRecorderDeletion(_ vrcode: String, _ error: String?) -> String {
+        "Failed to delete VRecorder \(vrcode): \(error ?? "unknown error")"
     }
 
     static func resetSessions(_ count: Int) -> String {

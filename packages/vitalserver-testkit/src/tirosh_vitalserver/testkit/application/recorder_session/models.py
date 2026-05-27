@@ -21,6 +21,17 @@ class VirtualRecorderSessionState(StrEnum):
     FAILED = "failed"
 
 
+class VirtualRecorderSessionScenario(StrEnum):
+    """Session-level traffic/lifecycle scenario for virtual recorders."""
+
+    NORMAL = "normal"
+    MULTIPLE_RECORDERS = "multiple_recorders"
+    BURST_TRAFFIC = "burst_traffic"
+    DISCONNECT_RECONNECT = "disconnect_reconnect"
+    STALE_RECORDER = "stale_recorder"
+    SIGNAL_ANOMALY = "signal_anomaly"
+
+
 @dataclass(frozen=True)
 class VirtualRecorderSessionRequest:
     """Input contract for a virtual recorder streaming session."""
@@ -34,6 +45,7 @@ class VirtualRecorderSessionRequest:
     max_messages: int | None = None
     shift_time: bool = True
     generate_frames: bool = True
+    scenario: VirtualRecorderSessionScenario = VirtualRecorderSessionScenario.NORMAL
     default_scenario: RecorderSignalScenario = RecorderSignalScenario.NORMAL
 
     def __post_init__(self) -> None:
@@ -52,6 +64,25 @@ class VirtualRecorderSessionRequest:
 
 
 @dataclass(frozen=True)
+class VirtualRecorderCleanupError:
+    """One failed VitalServer cleanup operation for a virtual recorder."""
+
+    vrcode: str
+    target_url: str
+    error: str
+
+
+@dataclass(frozen=True)
+class VirtualRecorderDeletionResult:
+    """Result of a direct VitalServer VRecorder deletion request."""
+
+    vrcode: str
+    target_url: str
+    deleted: bool
+    error: str | None = None
+
+
+@dataclass(frozen=True)
 class VirtualRecorderSessionSnapshot:
     """Serializable session state for UI/API consumers."""
 
@@ -65,3 +96,4 @@ class VirtualRecorderSessionSnapshot:
     messages_sent: int
     bytes_sent: int
     error: str | None
+    cleanup_errors: tuple[VirtualRecorderCleanupError, ...] = ()

@@ -6,6 +6,7 @@ from pydantic import ConfigDict, Field
 
 from tirosh_vitalserver.testkit.application.recorder_session import (
     VirtualRecorderSessionRequest,
+    VirtualRecorderSessionScenario,
 )
 from tirosh_vitalserver.testkit.domain.signal import RecorderSignalScenario
 from tirosh_vitalserver.testkit.schemas.base import ExternalSchema
@@ -25,6 +26,7 @@ class StartVirtualRecordersRequest(ExternalSchema):
     max_messages: int | None = Field(default=None, alias="maxMessages")
     shift_time: bool = Field(default=True, alias="shiftTime")
     generate_frames: bool = Field(default=True, alias="generateFrames")
+    scenario: VirtualRecorderSessionScenario = VirtualRecorderSessionScenario.NORMAL
     default_scenario: RecorderSignalScenario = Field(
         default=RecorderSignalScenario.NORMAL,
         alias="defaultScenario",
@@ -43,5 +45,15 @@ class StartVirtualRecordersRequest(ExternalSchema):
             max_messages=self.max_messages,
             shift_time=self.shift_time,
             generate_frames=self.generate_frames,
+            scenario=self.scenario,
             default_scenario=self.default_scenario,
         )
+
+
+class DeleteVirtualRecorderRequest(ExternalSchema):
+    """Request body for deleting one VRecorder from VitalServer."""
+
+    model_config = ConfigDict(populate_by_name=True, strict=False)
+
+    target_url: str = Field(alias="targetUrl")
+    vrcode: str

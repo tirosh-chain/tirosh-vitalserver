@@ -124,6 +124,22 @@ public final class MacTestKitController: RuntimeTestKitControlling {
         return session
     }
 
+    public func deleteVirtualRecorder(vrcode: String) async throws -> RuntimeTestKitRecorderDeletion {
+        let apiBaseURL = try await requireAPIBaseURL()
+        let requestBody = TestKitDeleteRecorderRequest(
+            targetURL: configuration.recorderTargetURL,
+            vrcode: vrcode
+        )
+        var urlRequest = apiRequest(apiBaseURL: apiBaseURL, path: "/recorders/delete")
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        urlRequest.httpBody = try JSONEncoder().encode(requestBody)
+
+        let deletion = try await decode(RuntimeTestKitRecorderDeletion.self, from: urlRequest)
+        lastError = deletion.error
+        return deletion
+    }
+
     public func resetVirtualRecorders() async throws -> RuntimeTestKitStatus {
         let apiBaseURL = try await requireAPIBaseURL()
 
@@ -247,6 +263,7 @@ private struct TestKitStartSessionRequest: Encodable {
     let maxMessages: Int?
     let shiftTime: Bool
     let generateFrames: Bool
+    let scenario: String
     let defaultScenario: String
 
     init(
@@ -262,6 +279,7 @@ private struct TestKitStartSessionRequest: Encodable {
         maxMessages = runtimeRequest.maxMessages
         shiftTime = runtimeRequest.shiftTime
         generateFrames = runtimeRequest.generateFrames
+        scenario = runtimeRequest.scenario.rawValue
         defaultScenario = runtimeRequest.signalProfile.rawValue
     }
 
@@ -275,7 +293,18 @@ private struct TestKitStartSessionRequest: Encodable {
         case maxMessages
         case shiftTime
         case generateFrames
+        case scenario
         case defaultScenario
+    }
+}
+
+private struct TestKitDeleteRecorderRequest: Encodable {
+    let targetURL: String
+    let vrcode: String
+
+    enum CodingKeys: String, CodingKey {
+        case targetURL = "targetUrl"
+        case vrcode
     }
 }
 

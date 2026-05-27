@@ -216,6 +216,7 @@ public struct RuntimeVitalRecorderRecord: Codable, Equatable, Identifiable, Send
     public let observationCount: Int
     public let currentAnomalyCount: Int
     public let latestAnomalySeverity: VitalDBAnomalySeverity?
+    public let presentInLatestObservation: Bool
     public let activityTimeline: [RuntimeVitalRecorderActivityPoint]
 
     public init(
@@ -230,7 +231,8 @@ public struct RuntimeVitalRecorderRecord: Codable, Equatable, Identifiable, Send
         lastSeenAt: String?,
         observationCount: Int,
         currentAnomalyCount: Int,
-        latestAnomalySeverity: VitalDBAnomalySeverity?
+        latestAnomalySeverity: VitalDBAnomalySeverity?,
+        presentInLatestObservation: Bool = true
     ) {
         self.init(
             vrcode: vrcode,
@@ -245,6 +247,7 @@ public struct RuntimeVitalRecorderRecord: Codable, Equatable, Identifiable, Send
             observationCount: observationCount,
             currentAnomalyCount: currentAnomalyCount,
             latestAnomalySeverity: latestAnomalySeverity,
+            presentInLatestObservation: presentInLatestObservation,
             activityTimeline: []
         )
     }
@@ -262,6 +265,7 @@ public struct RuntimeVitalRecorderRecord: Codable, Equatable, Identifiable, Send
         observationCount: Int,
         currentAnomalyCount: Int,
         latestAnomalySeverity: VitalDBAnomalySeverity?,
+        presentInLatestObservation: Bool,
         activityTimeline: [RuntimeVitalRecorderActivityPoint]
     ) {
         self.vrcode = vrcode
@@ -276,6 +280,7 @@ public struct RuntimeVitalRecorderRecord: Codable, Equatable, Identifiable, Send
         self.observationCount = observationCount
         self.currentAnomalyCount = currentAnomalyCount
         self.latestAnomalySeverity = latestAnomalySeverity
+        self.presentInLatestObservation = presentInLatestObservation
         self.activityTimeline = activityTimeline
     }
 }
@@ -738,6 +743,7 @@ private struct RecorderBuilder {
             observationCount: observationCount,
             currentAnomalyCount: currentAnomalies.count,
             latestAnomalySeverity: currentAnomalies.sorted { $0.observedAt > $1.observedAt }.first?.severity,
+            presentInLatestObservation: latestRecorder != nil,
             activityTimeline: activityTimeline.sorted { $0.observedAt < $1.observedAt }
         )
     }

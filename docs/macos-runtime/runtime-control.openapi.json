@@ -988,6 +988,206 @@
         }
       }
     },
+    "/dev/testkit/status": {
+      "get": {
+        "operationId": "getDevTestKitStatus",
+        "summary": "Read TestKit virtual VRecorder status",
+        "description": "Development-only TestKit status used by the native Test tab and PWA console.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "testOnlyLocal",
+        "x-runtime-control-access": "browserSafe",
+        "responses": {
+          "200": {
+            "description": "TestKit status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeTestKitStatus"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/dev/testkit/virtual-recorders/start": {
+      "post": {
+        "operationId": "startDevTestKitVirtualRecorders",
+        "summary": "Start TestKit virtual VRecorders",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "testOnlyLocal",
+        "x-runtime-control-access": "operatorOnly",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeTestKitVirtualRecorderStartRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Started TestKit session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeTestKitSession"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/dev/testkit/virtual-recorders/stop": {
+      "post": {
+        "operationId": "stopDevTestKitVirtualRecorders",
+        "summary": "Stop a TestKit virtual VRecorder session",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "testOnlyLocal",
+        "x-runtime-control-access": "operatorOnly",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeTestKitSessionSelectionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Stopped TestKit session or null when no session was selected.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/RuntimeTestKitSession"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/dev/testkit/virtual-recorders/delete": {
+      "post": {
+        "operationId": "deleteDevTestKitVirtualRecorders",
+        "summary": "Delete a TestKit virtual VRecorder session and cleanup VitalServer recorder registrations",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "testOnlyLocal",
+        "x-runtime-control-access": "operatorOnly",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeTestKitSessionSelectionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Deleted TestKit session or a cleanup-failed session that remains retryable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/RuntimeTestKitSession"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/dev/testkit/virtual-recorders/delete-orphan": {
+      "post": {
+        "operationId": "deleteDevTestKitOrphanVRecorder",
+        "summary": "Delete one orphan VRecorder registration by vrcode",
+        "description": "Test-only cleanup route for VRecorders that remain in VitalServer without a managed TestKit session.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "testOnlyLocal",
+        "x-runtime-control-access": "operatorOnly",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeTestKitRecorderDeletionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Direct VRecorder deletion result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeTestKitRecorderDeletion"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/dev/testkit/virtual-recorders/reset": {
+      "post": {
+        "operationId": "resetDevTestKitVirtualRecorders",
+        "summary": "Reset all TestKit virtual VRecorder sessions",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "testOnlyLocal",
+        "x-runtime-control-access": "operatorOnly",
+        "responses": {
+          "200": {
+            "description": "Updated TestKit status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeTestKitStatus"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
     "/vitaldb/relationships": {
       "get": {
         "operationId": "getVitalDBRelationships",
@@ -1301,6 +1501,10 @@
                 "type": "null"
               }
             ]
+          },
+          "presentInLatestObservation": {
+            "type": "boolean",
+            "description": "True when this recorder is present in the latest VitalDB observation snapshot; false means it is historical."
           },
           "activityTimeline": {
             "type": "array",
@@ -2782,6 +2986,395 @@
           },
           "websocketHandshake": {
             "type": "boolean"
+          }
+        }
+      },
+      "RuntimeTestKitStatus": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "enabled",
+          "state",
+          "sessions"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "disabled",
+              "stopped",
+              "starting",
+              "running",
+              "stopping",
+              "failed"
+            ]
+          },
+          "serviceName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "apiBaseURL": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "recorderTargetURL": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "startedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "activeSession": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RuntimeTestKitSession"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sessions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeTestKitSession"
+            }
+          },
+          "lastError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "RuntimeTestKitVirtualRecorderStartRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "targetUrl",
+          "scenario",
+          "signalProfile",
+          "recorders",
+          "version",
+          "intervalSeconds",
+          "shiftTime",
+          "generateFrames"
+        ],
+        "properties": {
+          "targetUrl": {
+            "type": "string"
+          },
+          "scenario": {
+            "type": "string",
+            "enum": [
+              "normal",
+              "multiple_recorders",
+              "burst_traffic",
+              "disconnect_reconnect",
+              "stale_recorder",
+              "signal_anomaly"
+            ]
+          },
+          "signalProfile": {
+            "type": "string",
+            "enum": [
+              "normal",
+              "tachycardia",
+              "desaturation",
+              "artifact",
+              "device_disconnect"
+            ]
+          },
+          "recorders": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "vrcode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "version": {
+            "type": "string"
+          },
+          "intervalSeconds": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "durationSeconds": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "maxMessages": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "shiftTime": {
+            "type": "boolean"
+          },
+          "generateFrames": {
+            "type": "boolean"
+          }
+        }
+      },
+      "RuntimeTestKitSessionSelectionRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "sessionID": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "RuntimeTestKitRecorderDeletionRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "vrcode"
+        ],
+        "properties": {
+          "vrcode": {
+            "type": "string"
+          }
+        }
+      },
+      "RuntimeTestKitSession": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "state",
+          "targetUrl",
+          "recordersRequested",
+          "version",
+          "intervalSeconds",
+          "shiftTime",
+          "generateFrames",
+          "defaultScenario",
+          "messagesSent",
+          "bytesSent",
+          "cleanupErrors",
+          "recorders"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "targetUrl": {
+            "type": "string"
+          },
+          "recordersRequested": {
+            "type": "integer"
+          },
+          "vrcode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "version": {
+            "type": "string"
+          },
+          "intervalSeconds": {
+            "type": "number"
+          },
+          "durationSeconds": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "maxMessages": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "shiftTime": {
+            "type": "boolean"
+          },
+          "generateFrames": {
+            "type": "boolean"
+          },
+          "scenario": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "defaultScenario": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "startedAt": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "stoppedAt": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "messagesSent": {
+            "type": "integer"
+          },
+          "bytesSent": {
+            "type": "integer"
+          },
+          "lastError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "cleanupErrors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeTestKitCleanupError"
+            }
+          },
+          "recorders": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeTestKitRecorder"
+            }
+          }
+        }
+      },
+      "RuntimeTestKitCleanupError": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "vrcode",
+          "targetUrl",
+          "error"
+        ],
+        "properties": {
+          "vrcode": {
+            "type": "string"
+          },
+          "targetUrl": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "RuntimeTestKitRecorderDeletion": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "vrcode",
+          "targetUrl",
+          "deleted"
+        ],
+        "properties": {
+          "vrcode": {
+            "type": "string"
+          },
+          "targetUrl": {
+            "type": "string"
+          },
+          "deleted": {
+            "type": "boolean"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "RuntimeTestKitRecorder": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "vrcode",
+          "baseUrl",
+          "connected",
+          "joinSent",
+          "messagesSent",
+          "bytesSent"
+        ],
+        "properties": {
+          "vrcode": {
+            "type": "string"
+          },
+          "baseUrl": {
+            "type": "string"
+          },
+          "localIp": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "connected": {
+            "type": "boolean"
+          },
+          "joinSent": {
+            "type": "boolean"
+          },
+          "joinedAt": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "lastReconnectAt": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "lastSendDataAt": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "messagesSent": {
+            "type": "integer"
+          },
+          "bytesSent": {
+            "type": "integer"
           }
         }
       },

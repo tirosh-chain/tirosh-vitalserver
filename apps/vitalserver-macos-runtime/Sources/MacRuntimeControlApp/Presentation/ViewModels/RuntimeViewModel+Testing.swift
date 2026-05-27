@@ -149,6 +149,43 @@ extension RuntimeViewModel {
         }
     }
 
+    func deleteOrphanVirtualRecorder() async {
+        guard let testKitController else {
+            message = RuntimeTestPanelText.testKitUnavailable
+            testKitActionMessage = RuntimeTestPanelText.testKitUnavailable
+            return
+        }
+        let vrcode = normalizedTestKitOrphanVrcode
+        guard !vrcode.isEmpty else {
+            testKitActionMessage = RuntimeTestPanelText.missingVrcode
+            message = RuntimeTestPanelText.missingVrcode
+            return
+        }
+
+        isRunningTestKitAction = true
+        defer { isRunningTestKitAction = false }
+
+        testKitActionMessage = RuntimeTestPanelText.deletingVRecorder(vrcode)
+        message = RuntimeTestPanelText.deletingVRecorder(vrcode)
+        do {
+            let deletion = try await testKitController.deleteVirtualRecorder(vrcode: vrcode)
+            applyTestKitStatus(await testKitController.loadTestKitStatus())
+            let deletionMessage = deletion.deleted
+                ? RuntimeTestPanelText.deletedVRecorder(deletion.vrcode)
+                : RuntimeTestPanelText.failedVRecorderDeletion(deletion.vrcode, deletion.error)
+            testKitActionMessage = deletionMessage
+            message = deletionMessage
+            if deletion.deleted {
+                testKitOrphanVrcode = ""
+            }
+        } catch {
+            applyTestKitStatus(await testKitController.loadTestKitStatus())
+            let errorMessage = error.localizedDescription
+            testKitActionMessage = errorMessage
+            message = errorMessage
+        }
+    }
+
     private func testKitStartRequest() -> RuntimeTestKitVirtualRecorderStartRequest {
         RuntimeTestKitVirtualRecorderStartRequest(
             targetURL: AppConstants.Product.vitalServerURL(proxyPort: status.proxyPort),
@@ -184,6 +221,10 @@ extension RuntimeViewModel {
     private var normalizedTestKitVrcode: String? {
         let trimmed = testKitVrcode.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private var normalizedTestKitOrphanVrcode: String {
+        testKitOrphanVrcode.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     static func generatedTestKitVrcode() -> String {

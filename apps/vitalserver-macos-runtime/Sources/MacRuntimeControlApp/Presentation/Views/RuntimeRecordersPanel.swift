@@ -5,6 +5,7 @@ struct RuntimeRecordersPanel: View {
     @ObservedObject var viewModel: RuntimeViewModel
     @State private var searchText = ""
     @State private var selectedVrcode: String?
+    @State private var showingRecorderHistory = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -21,6 +22,8 @@ struct RuntimeRecordersPanel: View {
                     .font(.headline)
                 Spacer()
                 recorderSearchField
+                Toggle("History", isOn: $showingRecorderHistory)
+                    .toggleStyle(.switch)
                 refreshButton
             }
             VStack(alignment: .leading, spacing: 8) {
@@ -28,6 +31,8 @@ struct RuntimeRecordersPanel: View {
                     .font(.headline)
                 HStack {
                     recorderSearchField
+                    Toggle("History", isOn: $showingRecorderHistory)
+                        .toggleStyle(.switch)
                     refreshButton
                     Spacer()
                 }
@@ -101,17 +106,19 @@ struct RuntimeRecordersPanel: View {
         ViewThatFits(in: .horizontal) {
             HStack(spacing: 18) {
                 summaryMetric(AppConstants.Labels.knownRecorders, "\(viewModel.vitalRecorders.recorders.count)")
+                summaryMetric("Current", "\(currentRecorders.count)")
                 summaryMetric(AppConstants.Labels.onlineRecorders, "\(count(.online))")
                 summaryMetric(AppConstants.Labels.staleRecorders, "\(count(.stale))")
                 summaryMetric("Assignments", "\(viewModel.vitalRelationships.assignments.count)")
-                summaryMetric(AppConstants.Labels.recorderAnomalies, "\(viewModel.vitalRecorders.recorders.reduce(0) { $0 + $1.currentAnomalyCount })")
+                summaryMetric(AppConstants.Labels.recorderAnomalies, "\(currentRecorders.reduce(0) { $0 + $1.currentAnomalyCount })")
             }
             LazyVGrid(columns: summaryColumns, alignment: .leading, spacing: 8) {
                 summaryMetric(AppConstants.Labels.knownRecorders, "\(viewModel.vitalRecorders.recorders.count)")
+                summaryMetric("Current", "\(currentRecorders.count)")
                 summaryMetric(AppConstants.Labels.onlineRecorders, "\(count(.online))")
                 summaryMetric(AppConstants.Labels.staleRecorders, "\(count(.stale))")
                 summaryMetric("Assignments", "\(viewModel.vitalRelationships.assignments.count)")
-                summaryMetric(AppConstants.Labels.recorderAnomalies, "\(viewModel.vitalRecorders.recorders.reduce(0) { $0 + $1.currentAnomalyCount })")
+                summaryMetric(AppConstants.Labels.recorderAnomalies, "\(currentRecorders.reduce(0) { $0 + $1.currentAnomalyCount })")
             }
         }
     }
@@ -123,9 +130,9 @@ struct RuntimeRecordersPanel: View {
     private var filteredRecorders: [RuntimeVitalRecorderRecord] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !query.isEmpty else {
-            return viewModel.vitalRecorders.recorders
+            return visibleRecorders
         }
-        return viewModel.vitalRecorders.recorders.filter { recorder in
+        return visibleRecorders.filter { recorder in
             [
                 recorder.vrcode,
                 recorder.lastIP,
@@ -138,12 +145,20 @@ struct RuntimeRecordersPanel: View {
         }
     }
 
+    private var currentRecorders: [RuntimeVitalRecorderRecord] {
+        viewModel.vitalRecorders.recorders.filter(\.presentInLatestObservation)
+    }
+
+    private var visibleRecorders: [RuntimeVitalRecorderRecord] {
+        showingRecorderHistory ? viewModel.vitalRecorders.recorders : currentRecorders
+    }
+
     private var selectedRecorder: RuntimeVitalRecorderRecord? {
         if let selectedVrcode,
-           let recorder = viewModel.vitalRecorders.recorders.first(where: { $0.vrcode == selectedVrcode }) {
+           let recorder = visibleRecorders.first(where: { $0.vrcode == selectedVrcode }) {
             return recorder
         }
-        return filteredRecorders.first
+        return filteredRecorders.first ?? visibleRecorders.first
     }
 
     private var recorderHeaderRow: some View {
@@ -172,7 +187,7 @@ struct RuntimeRecordersPanel: View {
                 tableValue(recorder.lastIP ?? AppConstants.StatusText.unknown, minWidth: 120)
                 tableValue(recorder.bedName ?? recorder.bedID ?? AppConstants.StatusText.unknown, minWidth: 120)
                 tableValue(recorder.lastSeenAt ?? AppConstants.StatusText.unknown, minWidth: 170)
-                tableValue(recorder.currentAnomalyCount == 0 ? "-" : "\(recorder.currentAnomalyCount)", minWidth: 70)
+                tableValue(recorderAnomalyText(recorder), minWidth: 70)
             }
             .padding(10)
             .contentShape(Rectangle())
@@ -389,7 +404,14 @@ struct RuntimeRecordersPanel: View {
     }
 
     private func count(_ status: RuntimeVitalRecorderStatus) -> Int {
-        viewModel.vitalRecorders.recorders.filter { $0.status == status }.count
+        currentRecorders.filter { $0.status == status }.count
+    }
+
+    private func recorderAnomalyText(_ recorder: RuntimeVitalRecorderRecord) -> String {
+        if !recorder.presentInLatestObservation {
+            return "History"
+        }
+        return recorder.currentAnomalyCount == 0 ? "-" : "\(recorder.currentAnomalyCount)"
     }
 
     private func statusColor(_ status: RuntimeVitalRecorderStatus) -> Color {

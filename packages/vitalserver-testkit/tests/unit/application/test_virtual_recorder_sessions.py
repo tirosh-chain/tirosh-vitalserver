@@ -4,10 +4,12 @@ from tests.support import fake_socketio_connector
 from tirosh_vitalserver.testkit.application.recorder_session import (
     VirtualRecorderSessionManager,
     VirtualRecorderSessionRequest,
+    VirtualRecorderSessionScenario,
     VirtualRecorderSessionSnapshot,
     VirtualRecorderSessionState,
     session_snapshot_to_document,
 )
+from tirosh_vitalserver.testkit.domain.signal import RecorderSignalScenario
 
 
 def test_virtual_recorder_session_runs_to_completion() -> None:
@@ -94,6 +96,74 @@ def test_virtual_recorder_session_can_be_deleted() -> None:
     ]
 
 
+def test_virtual_recorder_can_delete_orphan_by_vrcode() -> None:
+    recorder_management = FakeRecorderManagement()
+    manager = VirtualRecorderSessionManager(
+        connector=fake_socketio_connector,
+        recorder_management=recorder_management,
+    )
+
+    result = manager.delete_vrecorder("http://example.test", " VR_ORPHAN ")
+
+    assert result.deleted is True
+    assert result.vrcode == "VR_ORPHAN"
+    assert result.error is None
+    assert recorder_management.deleted == [("http://example.test", "VR_ORPHAN")]
+
+
+def test_virtual_recorder_orphan_delete_reports_failure() -> None:
+    recorder_management = FakeRecorderManagement(failing_vrcodes={"VR_ORPHAN"})
+    manager = VirtualRecorderSessionManager(
+        connector=fake_socketio_connector,
+        recorder_management=recorder_management,
+    )
+
+    result = manager.delete_vrecorder("http://example.test", "VR_ORPHAN")
+
+    assert result.deleted is False
+    assert result.vrcode == "VR_ORPHAN"
+    assert "delete failed" in (result.error or "")
+
+
+def test_virtual_recorder_delete_keeps_session_when_cleanup_fails() -> None:
+    recorder_management = FakeRecorderManagement(failing_vrcodes={"VR_FAIL-002"})
+    manager = VirtualRecorderSessionManager(
+        connector=fake_socketio_connector,
+        recorder_management=recorder_management,
+    )
+    snapshot = manager.start_session(
+        VirtualRecorderSessionRequest(
+            target_url="http://example.test",
+            vrcode="VR_FAIL",
+            recorders=2,
+            interval_seconds=1,
+            shift_time=False,
+        )
+    )
+
+    deleted = manager.delete_session(snapshot.session_id)
+
+    assert deleted is not None
+    assert deleted.cleanup_errors[0].vrcode == "VR_FAIL-002"
+    assert manager.get_session(snapshot.session_id) == deleted
+
+
+def test_virtual_recorder_session_applies_session_scenario_defaults() -> None:
+    manager = VirtualRecorderSessionManager(connector=fake_socketio_connector)
+    snapshot = manager.start_session(
+        VirtualRecorderSessionRequest(
+            target_url="http://example.test",
+            scenario=VirtualRecorderSessionScenario.SIGNAL_ANOMALY,
+            interval_seconds=1,
+            max_messages=1,
+            shift_time=False,
+        )
+    )
+
+    assert snapshot.request.scenario == VirtualRecorderSessionScenario.SIGNAL_ANOMALY
+    assert snapshot.request.default_scenario == RecorderSignalScenario.ARTIFACT
+
+
 def test_stored_virtual_recorder_session_can_be_deleted_after_restart() -> None:
     session_store = InMemorySessionStore()
     recorder_management = FakeRecorderManagement()
@@ -165,8 +235,9 @@ def test_virtual_recorder_sessions_can_be_reset() -> None:
 
 
 class FakeRecorderManagement:
-    def __init__(self) -> None:
+    def __init__(self, failing_vrcodes: set[str] | None = None) -> None:
         self.deleted: list[tuple[str, str]] = []
+        self.failing_vrcodes = failing_vrcodes or set()
 
     def delete_vrecorder(
         self,
@@ -175,6 +246,8 @@ class FakeRecorderManagement:
         *,
         timeout: float = 5.0,
     ) -> None:
+        if vrcode in self.failing_vrcodes:
+            raise RuntimeError(f"delete failed: {vrcode}")
         self.deleted.append((base_url, vrcode))
 
 

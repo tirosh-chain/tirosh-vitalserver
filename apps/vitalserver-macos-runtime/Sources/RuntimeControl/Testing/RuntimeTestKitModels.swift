@@ -126,6 +126,7 @@ public struct RuntimeTestKitSession: Codable, Equatable, Sendable {
     public var maxMessages: Int?
     public var shiftTime: Bool
     public var generateFrames: Bool
+    public var scenario: String?
     public var defaultScenario: String
     public var createdAt: Double?
     public var startedAt: Double?
@@ -133,6 +134,7 @@ public struct RuntimeTestKitSession: Codable, Equatable, Sendable {
     public var messagesSent: Int
     public var bytesSent: Int
     public var lastError: String?
+    public var cleanupErrors: [RuntimeTestKitCleanupError]
     public var recorders: [RuntimeTestKitRecorder]
 
     public init(
@@ -147,6 +149,7 @@ public struct RuntimeTestKitSession: Codable, Equatable, Sendable {
         maxMessages: Int?,
         shiftTime: Bool,
         generateFrames: Bool,
+        scenario: String? = nil,
         defaultScenario: String,
         createdAt: Double?,
         startedAt: Double?,
@@ -154,6 +157,7 @@ public struct RuntimeTestKitSession: Codable, Equatable, Sendable {
         messagesSent: Int,
         bytesSent: Int,
         lastError: String?,
+        cleanupErrors: [RuntimeTestKitCleanupError] = [],
         recorders: [RuntimeTestKitRecorder]
     ) {
         self.id = id
@@ -167,6 +171,7 @@ public struct RuntimeTestKitSession: Codable, Equatable, Sendable {
         self.maxMessages = maxMessages
         self.shiftTime = shiftTime
         self.generateFrames = generateFrames
+        self.scenario = scenario
         self.defaultScenario = defaultScenario
         self.createdAt = createdAt
         self.startedAt = startedAt
@@ -174,7 +179,33 @@ public struct RuntimeTestKitSession: Codable, Equatable, Sendable {
         self.messagesSent = messagesSent
         self.bytesSent = bytesSent
         self.lastError = lastError
+        self.cleanupErrors = cleanupErrors
         self.recorders = recorders
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        state = try container.decode(String.self, forKey: .state)
+        targetURL = try container.decode(String.self, forKey: .targetURL)
+        recordersRequested = try container.decode(Int.self, forKey: .recordersRequested)
+        vrcode = try container.decodeIfPresent(String.self, forKey: .vrcode)
+        version = try container.decode(String.self, forKey: .version)
+        intervalSeconds = try container.decode(Double.self, forKey: .intervalSeconds)
+        durationSeconds = try container.decodeIfPresent(Double.self, forKey: .durationSeconds)
+        maxMessages = try container.decodeIfPresent(Int.self, forKey: .maxMessages)
+        shiftTime = try container.decode(Bool.self, forKey: .shiftTime)
+        generateFrames = try container.decode(Bool.self, forKey: .generateFrames)
+        scenario = try container.decodeIfPresent(String.self, forKey: .scenario)
+        defaultScenario = try container.decode(String.self, forKey: .defaultScenario)
+        createdAt = try container.decodeIfPresent(Double.self, forKey: .createdAt)
+        startedAt = try container.decodeIfPresent(Double.self, forKey: .startedAt)
+        stoppedAt = try container.decodeIfPresent(Double.self, forKey: .stoppedAt)
+        messagesSent = try container.decode(Int.self, forKey: .messagesSent)
+        bytesSent = try container.decode(Int.self, forKey: .bytesSent)
+        lastError = try container.decodeIfPresent(String.self, forKey: .lastError)
+        cleanupErrors = try container.decodeIfPresent([RuntimeTestKitCleanupError].self, forKey: .cleanupErrors) ?? []
+        recorders = try container.decode([RuntimeTestKitRecorder].self, forKey: .recorders)
     }
 
     enum CodingKeys: String, CodingKey {
@@ -189,6 +220,7 @@ public struct RuntimeTestKitSession: Codable, Equatable, Sendable {
         case maxMessages
         case shiftTime
         case generateFrames
+        case scenario
         case defaultScenario
         case createdAt
         case startedAt
@@ -196,7 +228,52 @@ public struct RuntimeTestKitSession: Codable, Equatable, Sendable {
         case messagesSent
         case bytesSent
         case lastError
+        case cleanupErrors
         case recorders
+    }
+}
+
+public struct RuntimeTestKitCleanupError: Codable, Equatable, Sendable {
+    public var vrcode: String
+    public var targetURL: String
+    public var error: String
+
+    public init(vrcode: String, targetURL: String, error: String) {
+        self.vrcode = vrcode
+        self.targetURL = targetURL
+        self.error = error
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case vrcode
+        case targetURL = "targetUrl"
+        case error
+    }
+}
+
+public struct RuntimeTestKitRecorderDeletion: Codable, Equatable, Sendable {
+    public var vrcode: String
+    public var targetURL: String
+    public var deleted: Bool
+    public var error: String?
+
+    public init(
+        vrcode: String,
+        targetURL: String,
+        deleted: Bool,
+        error: String? = nil
+    ) {
+        self.vrcode = vrcode
+        self.targetURL = targetURL
+        self.deleted = deleted
+        self.error = error
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case vrcode
+        case targetURL = "targetUrl"
+        case deleted
+        case error
     }
 }
 

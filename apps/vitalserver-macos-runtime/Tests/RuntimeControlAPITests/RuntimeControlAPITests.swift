@@ -86,6 +86,10 @@ final class RuntimeControlAPITests: XCTestCase {
             .deleteVirtualRecorders
         )
         XCTAssertEqual(
+            RuntimeTestKitAPIEndpoint.matching(method: .post, path: "/dev/testkit/virtual-recorders/delete-orphan"),
+            .deleteVirtualRecorder
+        )
+        XCTAssertEqual(
             RuntimeTestKitAPIEndpoint.matching(method: .post, path: "/dev/testkit/virtual-recorders/reset"),
             .resetVirtualRecorders
         )
@@ -94,8 +98,11 @@ final class RuntimeControlAPITests: XCTestCase {
 
     func testOpenAPIRoutesMatchRuntimeControlAPIEndpoints() throws {
         let documentedRoutes = try openAPIRouteKeys()
-        let endpointRoutes = Set(RuntimeControlAPIEndpoint.allCases.map { endpoint in
+        var endpointRoutes = Set(RuntimeControlAPIEndpoint.allCases.map { endpoint in
             "\(endpoint.route.method.rawValue) \(endpoint.route.path)"
+        })
+        endpointRoutes.formUnion(RuntimeTestKitAPIEndpoint.allCases.map { endpoint in
+            "\(endpoint.method.rawValue) \(endpoint.path)"
         })
 
         XCTAssertEqual(documentedRoutes, endpointRoutes)
@@ -121,6 +128,18 @@ final class RuntimeControlAPITests: XCTestCase {
 
             XCTAssertEqual(operation["x-runtime-control-scope"] as? String, endpoint.route.scope.rawValue)
             XCTAssertEqual(operation["x-runtime-control-access"] as? String, endpoint.clientAccess.rawValue)
+        }
+    }
+
+    func testOpenAPITestKitRoutesAreDocumentedAsTestOnly() throws {
+        let operations = try openAPIOperations()
+
+        for endpoint in RuntimeTestKitAPIEndpoint.allCases {
+            let key = "\(endpoint.method.rawValue) \(endpoint.path)"
+            let operation = try XCTUnwrap(operations[key])
+
+            XCTAssertEqual(operation["x-runtime-control-scope"] as? String, RuntimeControlAPIScope.runtimeControl.rawValue)
+            XCTAssertEqual(operation["x-runtime-control-implementation"] as? String, "testOnlyLocal")
         }
     }
 
