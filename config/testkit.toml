@@ -14,6 +14,24 @@ timeout = 60
 wait_seconds = 60
 poll_interval_seconds = 1
 
+[logging]
+version = 1
+disable_existing_loggers = false
+
+[logging.formatters.testkit]
+"()" = "tirosh_vitalserver.testkit.observability.TestKitEventFormatter"
+format_name = "json"
+
+[logging.handlers.stdout]
+class = "logging.StreamHandler"
+formatter = "testkit"
+stream = "ext://sys.stdout"
+
+[logging.loggers."tirosh_vitalserver.testkit"]
+handlers = ["stdout"]
+level = "INFO"
+propagate = false
+
 [recorder]
 # payload를 비워두면 testkit이 simulated recorder data를 생성한다.
 # 실제 장비 payload를 재현해야 할 때만 아래처럼 지정한다.

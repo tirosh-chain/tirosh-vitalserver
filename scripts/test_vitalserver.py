@@ -10,7 +10,7 @@ import signal
 import subprocess
 import sys
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict, TomlConfigSettingsSource
@@ -69,6 +69,7 @@ class VitalServerCheckConfig(BaseSettings):
     recorder: RecorderConfig = Field(default_factory=RecorderConfig)
     transfer: TransferConfig = Field(default_factory=TransferConfig)
     stream: StreamConfig = Field(default_factory=StreamConfig)
+    logging: dict[str, Any] = Field(default_factory=dict)
 
     @classmethod
     def from_toml(cls, path: Path) -> VitalServerCheckConfig:

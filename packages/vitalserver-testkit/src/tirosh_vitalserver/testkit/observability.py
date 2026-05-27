@@ -4,44 +4,11 @@ from __future__ import annotations
 
 import json
 import logging
-import os
-import sys
 from datetime import UTC, datetime
-from typing import Any, TextIO
+from typing import Any
 
 LOGGER_NAME = "tirosh_vitalserver.testkit"
 SERVICE_NAME = "testkit"
-
-
-def configure_testkit_logging(
-    *,
-    format_name: str | None = None,
-    level: str | int | None = None,
-    stream: TextIO | None = None,
-) -> None:
-    """Configure TestKit event logs for container stdout collection."""
-
-    resolved_format = (
-        format_name
-        or os.getenv("VITALSERVER_TESTKIT_LOG_FORMAT")
-        or os.getenv("TESTKIT_LOG_FORMAT")
-        or "json"
-    ).lower()
-    resolved_level = (
-        level
-        or os.getenv("VITALSERVER_TESTKIT_LOG_LEVEL")
-        or os.getenv("TESTKIT_LOG_LEVEL")
-        or "INFO"
-    )
-
-    logger = logging.getLogger(LOGGER_NAME)
-    logger.handlers.clear()
-    logger.propagate = False
-    logger.setLevel(resolved_level)
-
-    handler = logging.StreamHandler(stream or sys.stdout)
-    handler.setFormatter(TestKitEventFormatter(format_name=resolved_format))
-    logger.addHandler(handler)
 
 
 def emit_testkit_event(

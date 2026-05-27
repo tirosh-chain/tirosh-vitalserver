@@ -4,6 +4,7 @@ WORKDIR /opt/vitalserver-testkit
 
 COPY packages/vitalserver-testkit/pyproject.toml ./
 COPY packages/vitalserver-testkit/src ./src
+COPY config/testkit.toml ./config/testkit.toml
 
 RUN pip install --no-cache-dir .
 

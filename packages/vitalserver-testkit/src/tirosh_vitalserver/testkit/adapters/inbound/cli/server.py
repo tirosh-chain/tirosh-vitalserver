@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 
 from tirosh_vitalserver.testkit.adapters.inbound.cli.common import (
     add_common_server_args,
 )
 from tirosh_vitalserver.testkit.adapters.outbound.vitalserver import VitalServerClient
 from tirosh_vitalserver.testkit.application.usecases import wait_for_server
-from tirosh_vitalserver.testkit.observability import (
+from tirosh_vitalserver.testkit.configuration.logging_config import (
     configure_testkit_logging,
+)
+from tirosh_vitalserver.testkit.observability import (
     emit_testkit_event,
 )
 
@@ -44,6 +47,12 @@ def add_server_parsers(
         description="Run the loopback TestKit API server for virtual VRecorders.",
     )
     serve_parser.add_argument(
+        "--config",
+        type=Path,
+        default=Path("config/testkit.toml"),
+        help="TestKit TOML config path. Reads the [logging] dictConfig table.",
+    )
+    serve_parser.add_argument(
         "--host",
         default="127.0.0.1",
         help="Host/interface for the TestKit API server",
@@ -59,12 +68,6 @@ def add_server_parsers(
         default="info",
         choices=["critical", "error", "warning", "info", "debug", "trace"],
         help="Uvicorn log level",
-    )
-    serve_parser.add_argument(
-        "--event-log-format",
-        default=None,
-        choices=["json", "logfmt"],
-        help="Structured TestKit event log format. Defaults to VITALSERVER_TESTKIT_LOG_FORMAT or json.",
     )
     serve_parser.set_defaults(command=run_serve)
 
@@ -89,7 +92,7 @@ def run_health(args: argparse.Namespace) -> int:
 def run_serve(args: argparse.Namespace) -> int:
     """Run the FastAPI TestKit server."""
 
-    configure_testkit_logging(format_name=args.event_log_format)
+    configure_testkit_logging(config_path=args.config)
     emit_testkit_event(
         "server.starting",
         host=args.host,
