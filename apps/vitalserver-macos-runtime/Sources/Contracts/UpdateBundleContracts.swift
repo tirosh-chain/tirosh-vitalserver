@@ -2,8 +2,10 @@ public struct UpdateBundleManifest: Codable, Equatable, Sendable {
     public let schemaVersion: Int
     public let product: String
     public let bundleKind: UpdateBundleKind
+    public let channel: UpdateBundleChannel
     public let helperVersion: String
-    public let targetPlatforms: [String]
+    public let releaseLabel: String
+    public let targetPlatform: String
     public let components: [String: String]
     public let minUpdaterVersion: String?
     public let requiresGuestActivation: Bool
@@ -16,8 +18,10 @@ public struct UpdateBundleManifest: Codable, Equatable, Sendable {
         case schemaVersion
         case product
         case bundleKind
+        case channel
         case helperVersion
-        case targetPlatforms
+        case releaseLabel
+        case targetPlatform
         case components
         case minUpdaterVersion
         case requiresGuestActivation
@@ -31,8 +35,10 @@ public struct UpdateBundleManifest: Codable, Equatable, Sendable {
         schemaVersion: Int,
         product: String,
         bundleKind: UpdateBundleKind = .productUpdate,
+        channel: UpdateBundleChannel = .stable,
         helperVersion: String,
-        targetPlatforms: [String],
+        releaseLabel: String,
+        targetPlatform: String,
         components: [String: String],
         minUpdaterVersion: String? = nil,
         requiresGuestActivation: Bool = false,
@@ -44,8 +50,10 @@ public struct UpdateBundleManifest: Codable, Equatable, Sendable {
         self.schemaVersion = schemaVersion
         self.product = product
         self.bundleKind = bundleKind
+        self.channel = channel
         self.helperVersion = helperVersion
-        self.targetPlatforms = targetPlatforms
+        self.releaseLabel = releaseLabel
+        self.targetPlatform = targetPlatform
         self.components = components
         self.minUpdaterVersion = minUpdaterVersion
         self.requiresGuestActivation = requiresGuestActivation
@@ -61,8 +69,10 @@ public struct UpdateBundleManifest: Codable, Equatable, Sendable {
             schemaVersion: try container.decode(Int.self, forKey: .schemaVersion),
             product: try container.decode(String.self, forKey: .product),
             bundleKind: try container.decode(UpdateBundleKind.self, forKey: .bundleKind),
+            channel: try container.decode(UpdateBundleChannel.self, forKey: .channel),
             helperVersion: try container.decode(String.self, forKey: .helperVersion),
-            targetPlatforms: try container.decode([String].self, forKey: .targetPlatforms),
+            releaseLabel: try container.decode(String.self, forKey: .releaseLabel),
+            targetPlatform: try container.decode(String.self, forKey: .targetPlatform),
             components: try container.decode([String: String].self, forKey: .components),
             minUpdaterVersion: try container.decodeIfPresent(String.self, forKey: .minUpdaterVersion),
             requiresGuestActivation: try container.decodeIfPresent(Bool.self, forKey: .requiresGuestActivation) ?? false,
@@ -74,11 +84,49 @@ public struct UpdateBundleManifest: Codable, Equatable, Sendable {
     }
 
     public var version: String {
-        helperVersion
+        releaseLabel
     }
 
     public var runtimeVersion: String {
         components[UpdateBundleComponentKey.updater.rawValue] ?? helperVersion
+    }
+}
+
+public enum UpdateBundleChannel: Codable, Equatable, Sendable {
+    case stable
+    case dev
+    case unknown(String)
+
+    public init(rawValue: String) {
+        switch rawValue {
+        case "stable":
+            self = .stable
+        case "dev":
+            self = .dev
+        default:
+            self = .unknown(rawValue)
+        }
+    }
+
+    public var rawValue: String {
+        switch self {
+        case .stable:
+            return "stable"
+        case .dev:
+            return "dev"
+        case .unknown(let value):
+            return value
+        }
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        self.init(rawValue: try container.decode(String.self))
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
     }
 }
 

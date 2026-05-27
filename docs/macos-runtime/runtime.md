@@ -22,10 +22,10 @@ runtime 단계의 source of truth는 Swift CLI인 `vitalserver-vm`입니다. She
 | runtime 상태/progress/health 계약 | Swift `Core` contracts, typed enum 상태값 |
 | guest update activation/datastore repair request-result | shared directory JSON contract, `RuntimeGuestGateway` port |
 | runtime 상태 파일 | `/Library/Application Support/TiroshVitalServer/status/runtime-status.json` |
-| host proxy runner | `Support/Packaging/proxy-run`, nginx start/reload loop |
+| host proxy runner | `Support/Packaging/proxy-run.template`에서 생성, nginx start/reload loop |
 | Linux guest 내부 구성 | `Support/Guest/bootstrap.sh`, `prepare-airgap-rootfs.sh`, `compose.yaml` |
 
-반대로 Ubuntu image 다운로드, cloud-init ISO 생성, Docker image bundle, nginx bundle 같은 build-machine 작업은 runtime 책임이 아니며 Python `packages/vm-build`가 담당합니다.
+반대로 Ubuntu image 다운로드, cloud-init ISO 생성, Docker image bundle, nginx bundle 같은 build-machine 작업은 runtime 책임이 아니며 Python `packages/vitalserver-devtools`가 담당합니다.
 
 ## Runtime Directory
 
@@ -91,11 +91,11 @@ make vm-download
 설정 파일:
 
 ```text
-apps/vitalserver-macos-runtime/Support/Build/vm-build.toml
+config/vm-build.toml
 ```
 
 `make vm-download`는 build-machine 전용 Python package인
-`packages/vm-build`의 `vitalserver-vm-build ubuntu` CLI를 호출합니다.
+`packages/vitalserver-devtools`의 `vitalserver-devtools ubuntu` CLI를 호출합니다.
 
 | 항목 | 기본값 |
 |---|---|
@@ -133,12 +133,12 @@ make vm-cloud-init
 | SSH public key | `~/.ssh/id_ed25519.pub`가 있으면 자동 포함 |
 | bootstrap | `/mnt/tirosh/deploy/bootstrap.sh` 자동 실행 |
 
-기본값은 `apps/vitalserver-macos-runtime/Support/Build/vm-build.toml`의 `[cloud_init]`에서 관리합니다.
+기본값은 `config/vm-build.toml`의 `[cloud_init]`에서 관리합니다.
 일회성 값을 바꾸려면 build CLI를 직접 호출합니다.
 
 ```sh
-uv run --project packages/vm-build vitalserver-vm-build \
-  --config apps/vitalserver-macos-runtime/Support/Build/vm-build.toml \
+uv run --project packages/vitalserver-devtools vitalserver-devtools \
+  --config config/vm-build.toml \
   cloud-init \
   --runtime-dir ~/.tirosh/vitalserver-vm/runtime \
   --hostname tirosh-vitalserver \

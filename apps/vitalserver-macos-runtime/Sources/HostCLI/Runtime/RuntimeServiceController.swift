@@ -39,6 +39,7 @@ struct RuntimeServiceController {
     ) {
         if restartVM {
             startLaunchdService(.vm)
+            startLaunchdService(.guestLogSync)
         }
         if restartProxy {
             startLaunchdService(.proxy)
@@ -61,6 +62,10 @@ struct RuntimeServiceController {
         if !isLoaded(service) {
             startLaunchdService(service)
         }
+    }
+
+    func stopLaunchdService(_ service: RuntimeManagedService) {
+        stopIfLoaded(service)
     }
 
     func setStartOnBoot(_ enabled: Bool) throws {

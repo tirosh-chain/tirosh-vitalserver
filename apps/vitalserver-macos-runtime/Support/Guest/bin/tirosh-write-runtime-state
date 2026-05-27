@@ -1,12 +1,26 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
 import json
 import os
 import socket
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
+
+DEPLOY_DIR = Path(os.environ.get("TIROSH_DEPLOY_DIR", "/mnt/tirosh/deploy"))
+PROJECT_NAME = os.environ.get(
+    "TIROSH_COMPOSE_PROJECT_NAME",
+    os.environ.get("TIROSH_COMPOSE_PROJECT", "vitalserver"),
+)
+VITALDB_OBSERVER_URL = os.environ.get(
+    "VITALDB_OBSERVER_URL",
+    "http://127.0.0.1:18084/api/v1/observations",
+)
 
 
 def first_non_loopback_ip() -> str:
@@ -97,6 +111,113 @@ def disk_usage(path: str) -> dict[str, int] | None:
     return {"usedBytes": max(total - available, 0), "totalBytes": total}
 
 
+def vitaldb_observation() -> dict[str, object] | None:
+    try:
+        with urllib.request.urlopen(
+            VITALDB_OBSERVER_URL,
+            timeout=5,
+        ) as response:
+            payload = response.read().decode("utf-8")
+    except (OSError, urllib.error.URLError):
+        return None
+
+    try:
+        value = json.loads(payload)
+    except json.JSONDecodeError:
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def compose_services() -> list[dict[str, object]]:
+    compose_path = DEPLOY_DIR / "compose.yaml"
+    if not compose_path.is_file():
+        return []
+
+    command = [
+        "docker",
+        "compose",
+        "--project-name",
+        PROJECT_NAME,
+        "-f",
+        str(compose_path),
+        "ps",
+        "--format",
+        "json",
+    ]
+    try:
+        output = subprocess.check_output(command, stderr=subprocess.DEVNULL, text=True)
+    except Exception:
+        return []
+
+    documents: list[dict[str, object]] = []
+    try:
+        parsed = json.loads(output)
+        if isinstance(parsed, list):
+            documents = [item for item in parsed if isinstance(item, dict)]
+        elif isinstance(parsed, dict):
+            documents = [parsed]
+    except json.JSONDecodeError:
+        for line in output.splitlines():
+            try:
+                parsed_line = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(parsed_line, dict):
+                documents.append(parsed_line)
+
+    services: list[dict[str, object]] = []
+    now = datetime.now(timezone.utc)
+    for item in documents:
+        service = str(item.get("Service") or item.get("Name") or "")
+        if not service:
+            continue
+        exit_code = item.get("ExitCode")
+        try:
+            normalized_exit_code = int(exit_code) if exit_code not in (None, "") else None
+        except (TypeError, ValueError):
+            normalized_exit_code = None
+        started_at = container_started_at(item)
+        services.append(
+            {
+                "exitCode": normalized_exit_code,
+                "health": item.get("Health"),
+                "name": item.get("Name"),
+                "service": service,
+                "startedAt": started_at,
+                "state": item.get("State"),
+                "uptimeSeconds": uptime_seconds(started_at, now),
+            }
+        )
+    return services
+
+
+def container_started_at(item: dict[str, object]) -> str | None:
+    identifier = str(item.get("ID") or item.get("Name") or "")
+    if not identifier:
+        return None
+    try:
+        output = subprocess.check_output(
+            ["docker", "inspect", "--format", "{{.State.StartedAt}}", identifier],
+            stderr=subprocess.DEVNULL,
+            text=True,
+        ).strip()
+    except Exception:
+        return None
+    if not output or output.startswith("0001-01-01"):
+        return None
+    return output
+
+
+def uptime_seconds(started_at: str | None, now: datetime) -> int | None:
+    if not started_at:
+        return None
+    try:
+        started = datetime.fromisoformat(started_at.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return max(int((now - started).total_seconds()), 0)
+
+
 def main() -> int:
     if len(sys.argv) < 2 or len(sys.argv) > 5:
         print(
@@ -116,6 +237,7 @@ def main() -> int:
                 "schemaVersion": 1,
                 "vmIP": first_non_loopback_ip(),
                 "bootID": boot_id(),
+                "containerServices": compose_services(),
                 "cpuUsagePercent": cpu_usage_percent(),
                 "guestHTTP": guest_http,
                 "memory": memory_usage(),
@@ -124,6 +246,7 @@ def main() -> int:
                 "swaggerUIHTTP": swagger_ui_http,
                 "updatedAt": datetime.now(timezone.utc).isoformat(),
                 "vitalFilesDisk": disk_usage("/mnt/tirosh-vital-files"),
+                "vitalDBObservation": vitaldb_observation(),
             },
             indent=2,
             sort_keys=True,

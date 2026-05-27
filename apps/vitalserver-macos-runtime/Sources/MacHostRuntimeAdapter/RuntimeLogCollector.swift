@@ -4,11 +4,21 @@ import Core
 import Contracts
 import HostInfrastructure
 
-protocol RuntimeLogCollecting {
+protocol RuntimeLogCollecting: Sendable {
     func refreshLogCollection()
+    func refreshLogCollection(sourceID: RuntimeLogSource)
 }
 
-struct MacHostRuntimeLogCollector: RuntimeLogCollecting {
+extension RuntimeLogCollecting {
+    func refreshLogCollection(sourceID: RuntimeLogSource) {
+        refreshLogCollection()
+    }
+}
+
+struct MacHostRuntimeLogCollector: RuntimeLogCollecting, @unchecked Sendable {
+    private static let appendValidationByteLimit: UInt64 = 64 * 1024
+    private static let appendChunkByteLimit = 256 * 1024
+
     private let fileStore: RuntimeFileStore
     private let copies: [RuntimeLogCopy]
     private let rotatedCopySets: [RuntimeRotatedLogCopySet]
@@ -44,6 +54,21 @@ struct MacHostRuntimeLogCollector: RuntimeLogCollecting {
         }
     }
 
+    func refreshLogCollection(sourceID: RuntimeLogSource) {
+        guard sourceID != .helperMessage else {
+            return
+        }
+        for item in copies where shouldRefresh(item, for: sourceID) {
+            copyIntoCentralLogs(item)
+        }
+        guard sourceID == .containers else {
+            return
+        }
+        for set in rotatedCopySets {
+            copyRotatedLogs(set)
+        }
+    }
+
     private func copyIntoCentralLogs(_ item: RuntimeLogCopy) {
         guard fileStore.fileExists(item.source),
               shouldRefreshCopy(from: item.source, to: item.destination)
@@ -57,14 +82,15 @@ struct MacHostRuntimeLogCollector: RuntimeLogCollecting {
             )
             if fileStore.fileExists(item.destination), shouldRotateCentralLog(item.destination) {
                 try archiveCentralLog(item.destination, prefix: item.archivePrefix)
+            } else if canAppendCopy(from: item.source, to: item.destination) {
+                try appendNewLogBytes(from: item.source, to: item.destination)
+                try touch(item.destination)
+                return
             } else if fileStore.fileExists(item.destination) {
                 try fileStore.removeItem(at: item.destination)
             }
             try fileStore.copyItem(at: item.source, to: item.destination)
-            try FileManager.default.setAttributes(
-                [.modificationDate: now()],
-                ofItemAtPath: item.destination.path
-            )
+            try touch(item.destination)
         } catch {
             return
         }
@@ -155,6 +181,103 @@ struct MacHostRuntimeLogCollector: RuntimeLogCollecting {
             .appendingPathComponent("\(url.lastPathComponent).\(UUID().uuidString)")
     }
 
+    private func shouldRefresh(_ item: RuntimeLogCopy, for sourceID: RuntimeLogSource) -> Bool {
+        switch sourceID {
+        case .helperMessage:
+            return false
+        case .install:
+            return item.destination.path == RuntimeAdapterConstants.Paths.installLog
+        case .command:
+            return item.destination.path == RuntimeAdapterConstants.Paths.commandLog
+        case .launcher:
+            return item.destination.lastPathComponent == "launcher.log"
+        case .vmLaunchOutput:
+            return item.destination.lastPathComponent == "launchd.out.log"
+        case .vmLaunchError:
+            return item.destination.lastPathComponent == "launchd.err.log"
+        case .proxyOutput:
+            return item.destination.lastPathComponent == "proxy.out.log"
+        case .proxyError:
+            return item.destination.lastPathComponent == "proxy.err.log"
+        case .watchdog:
+            return item.destination.lastPathComponent == "watchdog.out.log"
+        case .updateActivation:
+            return item.destination.path == RuntimeAdapterConstants.Paths.updateActivationLog
+        case .containers:
+            return item.destination.path == RuntimeAdapterConstants.Paths.containerLogs
+        }
+    }
+
+    private func canAppendCopy(from source: URL, to destination: URL) -> Bool {
+        guard fileStore.fileExists(destination),
+              let sourceSize = try? fileStore.fileSize(source),
+              let destinationSize = try? fileStore.fileSize(destination)
+        else {
+            return false
+        }
+        return sourceSize > destinationSize && sourceMatchesDestinationTail(
+            source: source,
+            destination: destination,
+            destinationSize: destinationSize
+        )
+    }
+
+    private func sourceMatchesDestinationTail(
+        source: URL,
+        destination: URL,
+        destinationSize: UInt64
+    ) -> Bool {
+        let length = min(destinationSize, Self.appendValidationByteLimit)
+        let offset = destinationSize - length
+        guard let sourceData = readData(source, offset: offset, length: length),
+              let destinationData = readData(destination, offset: offset, length: length)
+        else {
+            return false
+        }
+        return sourceData == destinationData
+    }
+
+    private func readData(_ url: URL, offset: UInt64, length: UInt64) -> Data? {
+        guard let handle = try? FileHandle(forReadingFrom: url) else {
+            return nil
+        }
+        defer {
+            try? handle.close()
+        }
+        do {
+            try handle.seek(toOffset: offset)
+            return try handle.read(upToCount: Int(length))
+        } catch {
+            return nil
+        }
+    }
+
+    private func appendNewLogBytes(from source: URL, to destination: URL) throws {
+        let offset = try fileStore.fileSize(destination)
+        let sourceHandle = try FileHandle(forReadingFrom: source)
+        defer {
+            try? sourceHandle.close()
+        }
+        try sourceHandle.seek(toOffset: offset)
+        guard let data = try sourceHandle.read(upToCount: Self.appendChunkByteLimit), !data.isEmpty else {
+            return
+        }
+
+        let destinationHandle = try FileHandle(forWritingTo: destination)
+        defer {
+            try? destinationHandle.close()
+        }
+        try destinationHandle.seekToEnd()
+        try destinationHandle.write(contentsOf: data)
+    }
+
+    private func touch(_ url: URL) throws {
+        try FileManager.default.setAttributes(
+            [.modificationDate: now()],
+            ofItemAtPath: url.path
+        )
+    }
+
     private func modificationDate(_ url: URL) -> Date? {
         (try? FileManager.default.attributesOfItem(atPath: url.path)[.modificationDate]) as? Date
     }
@@ -178,6 +301,10 @@ struct RuntimeLogCopy {
             "launchd.err.log",
             "proxy.out.log",
             "proxy.err.log",
+            "guest-log-sync.out.log",
+            "guest-log-sync.err.log",
+            "sleep-prevention.out.log",
+            "sleep-prevention.err.log",
             "watchdog.out.log",
             "watchdog.err.log",
         ].map { fileName in
@@ -189,6 +316,21 @@ struct RuntimeLogCopy {
                 archivePrefix: "runtime-\(fileName)"
             )
         }
+
+        let proxyNginxFiles = [
+            RuntimeLogCopy(
+                source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.proxyNginxAccessLog),
+                destination: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.runtimeLogs)
+                    .appendingPathComponent("proxy-nginx.access.log"),
+                archivePrefix: "runtime-proxy-nginx.access.log"
+            ),
+            RuntimeLogCopy(
+                source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.proxyNginxErrorLog),
+                destination: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.runtimeLogs)
+                    .appendingPathComponent("proxy-nginx.error.log"),
+                archivePrefix: "runtime-proxy-nginx.error.log"
+            ),
+        ]
 
         let guestFiles = [
             RuntimeLogCopy(
@@ -212,13 +354,18 @@ struct RuntimeLogCopy {
                 archivePrefix: "guest-repair-datastore.log"
             ),
             RuntimeLogCopy(
+                source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.redisBackupLogSource),
+                destination: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.redisBackupLog),
+                archivePrefix: "guest-redis-backup.log"
+            ),
+            RuntimeLogCopy(
                 source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.commandLogFile),
                 destination: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.commandLog),
                 archivePrefix: "command.log"
             ),
         ]
 
-        return runtimeFiles + guestFiles
+        return runtimeFiles + proxyNginxFiles + guestFiles
     }
 }
 

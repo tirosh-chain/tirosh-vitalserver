@@ -9,9 +9,11 @@
 |---|---|
 | 제품 전체 맥락을 잡기 | [VitalServer 제품화 전략](vitalserver-productization.md) |
 | VRecorder가 VitalServer에 어떻게 붙는지 보기 | [Vital Recorder](vrecorder.md) |
+| command audit event 계약 확인하기 | [VitalServer command audit](vitalserver-command-audit.md) |
 | testkit으로 검증 실행하기 | [Testkit 사용법](testkit-usage.md) |
 | Redis key와 relay 근거 보기 | [Redis 데이터 구조](redis-data-model.md) |
 | Mac mini VM runtime/package 이해하기 | [VitalServer macOS Runtime](vitalserver-macos-runtime.md) |
+| runtime status/event/log/index 수집 책임 보기 | [Runtime observability model](macos-runtime/observability.md) |
 | branch와 tag 운영 기준 보기 | [Branch 운영 기준](branching.md) |
 
 ## 문서군
@@ -31,8 +33,10 @@
 | 문서 | 역할 |
 |---|---|
 | [Vital Recorder](vrecorder.md) | Socket.IO 접속 흐름, VRecorder 식별 기준, Web Monitoring 상태 표시 기준 |
+| [VitalServer command audit](vitalserver-command-audit.md) | audit proxy 기반 `join_vr`, `send_data`, `req_cmd`, dispatch event 계약 |
 | [Redis 데이터 구조](redis-data-model.md) | VitalServer가 Redis에 저장하는 key 구조와 relay 설계 메모 |
 | [OpenAPI 문서](openapi.yaml) | upstream VitalServer route에서 추출한 Swagger/OpenAPI spec |
+| [Audit Proxy OpenAPI](openapi/audit-proxy.openapi.yaml) | audit proxy sidecar 운영 endpoint spec |
 
 ### Testkit
 
@@ -50,6 +54,7 @@ VM runtime 문서는 [VitalServer macOS Runtime](vitalserver-macos-runtime.md)�
 | [macOS Runtime Overview](macos-runtime/overview.md) | VM runtime 세부 문서의 한눈에 보기와 사용자 시나리오 |
 | [Architecture](macos-runtime/architecture.md) | 제품 구조, 단일 노드 가용성, Web/PWA UI/native shell/host runtime 책임 경계 |
 | [Runtime Control API](macos-runtime/runtime-control-api.md) | PWA 직전 Runtime Control API 계약, OpenAPI, local read-only server 경계 |
+| [Runtime observability model](macos-runtime/observability.md) | runtime status/event/log/index 수집 책임, watchdog 중심 정규화와 SQLite read model 기준 |
 | [Packaging and Update](macos-runtime/packaging.md) | PKG/DMG 빌드, 설치 흐름, install settings, update bundle 계약 |
 | [Update](macos-runtime/update.md) | update bundle 적용 과정, 보존/변경 범위, guest-side activation, rollback 계약 |
 | [Runtime](macos-runtime/runtime.md) | boot asset, cloud-init, guest bootstrap, network/identity/signing 정책 |
@@ -82,7 +87,8 @@ Swagger UI로 API를 확인할 때는 root에서 아래 명령을 실행합니�
 make swagger
 ```
 
-이후 `http://localhost:8082`에서 [OpenAPI 문서](openapi.yaml)를 볼 수 있습니다.
+이후 `http://localhost:8082`에서 Swagger UI를 열면 VitalServer, Runtime Control API, Audit Proxy API
+spec을 선택해서 볼 수 있습니다. 기존 단일 문서 경로인 [OpenAPI 문서](openapi.yaml)도 유지합니다.
 
 ## 작성 기준
 

@@ -190,8 +190,8 @@ cloud-init은 `instance-id`를 기준으로 이미 처리한 instance인지 판�
 `make vm-cloud-init`은 기본적으로 새 instance-id를 생성합니다. 수동으로 지정하려면:
 
 ```sh
-uv run --project packages/vm-build vitalserver-vm-build \
-  --config apps/vitalserver-macos-runtime/Support/Build/vm-build.toml \
+uv run --project packages/vitalserver-devtools vitalserver-devtools \
+  --config config/vm-build.toml \
   cloud-init \
   --runtime-dir ~/.tirosh/vitalserver-vm/runtime \
   --instance-id tirosh-site-a-001
@@ -394,7 +394,8 @@ cat "/Library/Application Support/TiroshVitalServer/status/runtime-status.json"
 bundle 내부 image architecture 확인:
 
 ```sh
-tar -xOf dist/update-bundles/update-bundle-<version>/guest-deploy.tar.gz \
+tar -xOf dist/update-bundles/update-bundle-<channel>-<kind>-<releaseLabel>.tar.gz \
+  update-bundle-<channel>-<kind>-<releaseLabel>/guest-deploy.tar.gz | tar -xOzf - \
   deploy/docker-images/vitalserver-images.tar.gz > /tmp/vitalserver-images.tar.gz
 
 tar -xOf /tmp/vitalserver-images.tar.gz manifest.json
@@ -574,7 +575,7 @@ payload에는 app bundle이 있어도 macOS Installer가 bundle을 relocatable c
 
 조치:
 
-`make vm-pkg`는 `Support/Packaging/components.plist`를 `pkgbuild --component-plist`에 넘깁니다. 여기서 `BundleIsRelocatable=false`를 명시합니다.
+`make vm-pkg`는 `Support/Packaging/components.plist.template`을 `vm-build.toml` 값으로 렌더링한 뒤 `pkgbuild --component-plist`에 넘깁니다. 여기서 `BundleIsRelocatable=false`를 명시합니다.
 
 ```text
 Applications/VitalServer Helper.app

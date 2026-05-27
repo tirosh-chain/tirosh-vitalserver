@@ -3,6 +3,7 @@
 DOCKER_COMPOSE ?= docker compose
 UV ?= uv
 PYTHON ?= python3
+DEVTOOLS_RUNNER ?= $(if $(wildcard .venv/bin/vitalserver-devtools),.venv/bin/vitalserver-devtools,$(UV) run --project packages/vitalserver-devtools vitalserver-devtools)
 
 COMPOSE_ENV_FILE ?=
 TESTKIT_CONFIG ?= config/testkit.toml
@@ -21,33 +22,221 @@ VITALSERVER_REDIS_PORT ?= 6379
 VITALSERVER_TRUST_PROXY ?= 1
 
 COMPOSE := $(strip $(DOCKER_COMPOSE) $(if $(COMPOSE_ENV_FILE),--env-file $(COMPOSE_ENV_FILE),))
-TESTKIT_RUNNER ?= $(shell if command -v "$(UV)" >/dev/null 2>&1; then printf "%s" "$(UV) run python scripts/test_vitalserver.py"; else printf "%s" "$(PYTHON) scripts/test_vitalserver.py"; fi)
+TESTKIT_RUNNER ?= $(if $(wildcard .venv/bin/python),.venv/bin/python scripts/test_vitalserver.py,$(shell if command -v "$(UV)" >/dev/null 2>&1; then printf "%s" "$(UV) run python scripts/test_vitalserver.py"; else printf "%s" "$(PYTHON) scripts/test_vitalserver.py"; fi))
 TESTKIT := $(TESTKIT_RUNNER) --config $(TESTKIT_CONFIG)
 
 include make/submodule.mk
+include make/proxy.mk
 include make/env.mk
 include make/compose.mk
-include make/proxy.mk
 include make/testkit.mk
 include make/python.mk
 include make/vm.mk
 
-.PHONY: help
+.PHONY: \
+	dist-dmg-release dist-pkg-release dist-update-bundle-release \
+	dist-update-bundle-verify-release dist-image-update-bundle-release \
+	dist-image-update-bundle-verify-release dist-dmg-dev dist-pkg-dev \
+	dist-update-bundle-dev dist-update-bundle-verify-dev \
+	dist-image-update-bundle-dev dist-image-update-bundle-verify-dev \
+	dist-install-dev dist-installed-health dist-uninstall-dev \
+	runtime-up runtime-up-bridged runtime-down runtime-status runtime-health \
+	runtime-prepare runtime-ip runtime-proxy-start runtime-clean \
+	runtime-interfaces runtime-network-shared runtime-network-bridged \
+	devtools-version-source devtools-build devtools-nginx-artifact devtools-nginx-bundle \
+	devtools-docker-images devtools-sign devtools-sign-bridged devtools-bridged-preflight \
+	devtools-init devtools-download devtools-cloud-init devtools-stage \
+	devtools-airgap-rootfs devtools-golden-rootfs devtools-start devtools-start-detached \
+	devtools-wait-ip devtools-wait-http devtools-package-clean
+
+dist-dmg-release: vm-dmg-release
+dist-pkg-release: vm-pkg-release
+dist-update-bundle-release: vm-update-bundle-release
+dist-update-bundle-verify-release: vm-update-bundle-verify-release
+dist-image-update-bundle-release: vm-rootfs-update-bundle-release
+dist-image-update-bundle-verify-release: vm-rootfs-update-bundle-verify-release
+dist-dmg-dev: vm-dmg-dev
+dist-pkg-dev: vm-pkg-dev
+dist-update-bundle-dev: vm-update-bundle-dev
+dist-update-bundle-verify-dev: vm-update-bundle-verify-dev
+dist-image-update-bundle-dev: vm-rootfs-update-bundle-dev
+dist-image-update-bundle-verify-dev: vm-rootfs-update-bundle-verify-dev
+dist-install-dev: VM_RELEASE_FILE := $(VM_DEV_RELEASE_FILE)
+dist-install-dev: vm-pkg-install
+dist-installed-health: vm-installed-health
+dist-uninstall-dev: vm-pkg-uninstall-dev
+
+runtime-up: vm-up
+runtime-up-bridged: vm-up-bridged
+runtime-down: vm-down
+runtime-status: vm-status
+runtime-health: vm-health
+runtime-prepare: vm-prepare
+runtime-ip: vm-ip
+runtime-proxy-start: vm-proxy-start
+runtime-clean: vm-clean
+runtime-interfaces: vm-interfaces
+runtime-network-shared: vm-network-shared
+runtime-network-bridged: vm-network-bridged
+
+devtools-version-source: vm-version-source
+devtools-build: vm-build
+devtools-nginx-artifact: vm-nginx-artifact
+devtools-nginx-bundle: vm-nginx-bundle
+devtools-docker-images: vm-docker-images
+devtools-sign: vm-sign
+devtools-sign-bridged: vm-sign-bridged
+devtools-bridged-preflight: vm-bridged-preflight
+devtools-init: vm-init
+devtools-download: vm-download
+devtools-cloud-init: vm-cloud-init
+devtools-stage: vm-stage
+devtools-airgap-rootfs: vm-airgap-rootfs
+devtools-golden-rootfs: vm-golden-rootfs
+devtools-start: vm-start
+devtools-start-detached: vm-start-detached
+devtools-wait-ip: vm-wait-ip
+devtools-wait-http: vm-wait-http
+devtools-package-clean: vm-pkg-clean
+
+.PHONY: help help-run help-dist help-runtime help-devtools help-proxy help-dev help-all
 help:
 	@printf "tirosh-vitalserver\n"
 	@printf "\n"
-	@printf "Core:\n"
+	@printf "Common:\n"
+	@printf "  make doctor          Check local tools and repository setup\n"
+	@printf "  make bootstrap       Prepare .env, submodules, proxy config, and optional Python env\n"
 	@printf "  make up              Start VitalServer stack through macOS host proxy\n"
 	@printf "  make open            Open VitalServer in browser\n"
 	@printf "  make logs            Follow logs\n"
 	@printf "  make ps              Show container status\n"
-	@printf "  make restart         Restart proxy and stack\n"
 	@printf "  make down            Stop proxy and Compose stack, keep volumes\n"
-	@printf "  make app-rebuild     Rebuild and recreate the app container only\n"
+	@printf "  make testkit-smoke   Run bounded productization smoke scenario\n"
+	@printf "  make check           Run lint, typecheck, and test\n"
+	@printf "\n"
+	@printf "More help:\n"
+	@printf "  make help-run        App, Compose, Swagger, cleanup\n"
+	@printf "  make help-dist       Distribution package, install, update commands\n"
+	@printf "  make help-runtime    Direct local runtime lifecycle\n"
+	@printf "  make help-devtools   Low-level build and staging steps\n"
+	@printf "  make help-proxy      macOS host nginx proxy\n"
+	@printf "  make help-dev        Python/testkit development commands\n"
+	@printf "  make help-all        Full command list\n"
+	@printf "\n"
+	@printf "Config:\n"
+	@printf "  .env is loaded by make when present\n"
+	@printf "  COMPOSE_ENV_FILE=.env.local\n"
+
+help-run:
+	@printf "tirosh-vitalserver: run\n"
 	@printf "\n"
 	@printf "Setup:\n"
 	@printf "  make doctor          Check local tools and repository setup\n"
 	@printf "  make bootstrap       Prepare .env, submodules, proxy config, and optional Python env\n"
+	@printf "\n"
+	@printf "App:\n"
+	@printf "  make up              Start VitalServer stack through macOS host proxy\n"
+	@printf "  make open            Open VitalServer in browser\n"
+	@printf "  make logs            Follow logs\n"
+	@printf "  make ps              Show container status\n"
+	@printf "  make shell           Open a shell in the app container\n"
+	@printf "  make restart         Restart proxy and stack\n"
+	@printf "  make down            Stop proxy and Compose stack, keep volumes\n"
+	@printf "  make app-rebuild     Rebuild and recreate the app container only\n"
+	@printf "\n"
+	@printf "Verify:\n"
+	@printf "  make testkit-smoke   Run bounded productization smoke scenario\n"
+	@printf "  make testkit-verify  Send sample data and verify UI-visible state\n"
+	@printf "  make testkit-load    Run finite load scenario\n"
+	@printf "  make testkit-stream  Stream sample data until interrupted\n"
+	@printf "  make testkit-health  Check VitalServer health with testkit\n"
+	@printf "\n"
+	@printf "Tools:\n"
+	@printf "  make swagger         Start Swagger UI only\n"
+	@printf "  make swagger-down    Stop Swagger UI only, keep base stack\n"
+	@printf "  make app-build       Build the app image only\n"
+	@printf "  make config          Print resolved Docker Compose config\n"
+	@printf "  make clean-volumes   Stop proxy and Compose stack, remove volumes\n"
+	@printf "  make clean           Remove proxy runtime, containers, volumes, orphans, and local images\n"
+
+help-dist:
+	@printf "tirosh-vitalserver: dist\n"
+	@printf "\n"
+	@printf "Development artifacts:\n"
+	@printf "  make dist-dmg-dev      Build development installer dmg\n"
+	@printf "  make dist-pkg-dev      Build development pkg\n"
+	@printf "  make dist-update-bundle-dev        Build development product update bundle\n"
+	@printf "  make dist-update-bundle-verify-dev Verify development product update bundle\n"
+	@printf "  make dist-image-update-bundle-dev  Build development VM image/rootfs update bundle\n"
+	@printf "  make dist-image-update-bundle-verify-dev Verify development VM image/rootfs update bundle\n"
+	@printf "\n"
+	@printf "Release artifacts:\n"
+	@printf "  make dist-dmg-release      Build release installer dmg from clean golden rootfs\n"
+	@printf "  make dist-pkg-release      Build release pkg from clean golden rootfs\n"
+	@printf "  make dist-update-bundle-release        Build release product update bundle\n"
+	@printf "  make dist-update-bundle-verify-release Verify release product update bundle\n"
+	@printf "  make dist-image-update-bundle-release  Build release VM image/rootfs update bundle\n"
+	@printf "  make dist-image-update-bundle-verify-release Verify release VM image/rootfs update bundle\n"
+	@printf "\n"
+	@printf "Install test:\n"
+	@printf "  make dist-install-dev      Install the selected pkg on this Mac with sudo\n"
+	@printf "  make dist-installed-health Check installed runtime and host proxy\n"
+	@printf "  make dist-uninstall-dev    Remove development runtime install\n"
+	@printf "\n"
+	@printf "More help:\n"
+	@printf "  make help-runtime    Direct local runtime lifecycle and networking\n"
+	@printf "  make help-devtools   Low-level build and staging steps\n"
+	@printf "\n"
+	@printf "Config:\n"
+	@printf "  VM_RELEASE_BRANCH=main can override the release branch guard\n"
+	@printf "  VM_COMPRESSION_THREADS=<cpu-count> for faster pkg compression when pigz is installed\n"
+
+help-runtime:
+	@printf "tirosh-vitalserver: runtime\n"
+	@printf "\n"
+	@printf "Runtime:\n"
+	@printf "  make runtime-up           Prepare runtime, start it in background, then start host proxy\n"
+	@printf "  make runtime-up-bridged   Prepare and start local runtime on bridged LAN\n"
+	@printf "  make runtime-down         Stop local runtime\n"
+	@printf "  make runtime-status       Show local runtime process status\n"
+	@printf "  make runtime-health       Check runtime IP, guest HTTP, and host proxy reachability\n"
+	@printf "  make runtime-prepare      Download assets and stage guest deployment bundle\n"
+	@printf "  make runtime-ip           Show detected runtime IP\n"
+	@printf "  make runtime-proxy-start  Start host proxy for a runtime endpoint\n"
+	@printf "  make runtime-clean        Remove runtime state, keep shared data\n"
+	@printf "\n"
+	@printf "Networking:\n"
+	@printf "  make runtime-interfaces       List bridged network interfaces\n"
+	@printf "  make runtime-network-shared   Configure runtime to use shared/NAT networking\n"
+	@printf "  make runtime-network-bridged  Configure runtime to use bridged networking\n"
+
+help-devtools:
+	@printf "tirosh-vitalserver: devtools\n"
+	@printf "\n"
+	@printf "Build:\n"
+	@printf "  make devtools-build          Build Apple Virtualization runtime launcher\n"
+	@printf "  make devtools-nginx-artifact Copy source nginx binary into local artifact cache\n"
+	@printf "  make devtools-nginx-bundle   Build self-contained nginx bundle for dist pkg\n"
+	@printf "  make devtools-docker-images  Build Docker image bundle for air-gapped dist pkg\n"
+	@printf "  make devtools-sign           Ad-hoc sign runtime launcher with shared networking entitlement\n"
+	@printf "  make devtools-sign-bridged   Sign runtime launcher with bridged networking entitlement and real identity\n"
+	@printf "  make devtools-bridged-preflight Check bridged signing prerequisites\n"
+	@printf "  make devtools-init           Initialize local runtime config only\n"
+	@printf "  make devtools-download       Download Ubuntu boot assets only\n"
+	@printf "  make devtools-cloud-init     Create local cloud-init seed image only\n"
+	@printf "  make devtools-stage          Stage guest deployment bundle only\n"
+	@printf "  make devtools-airgap-rootfs  Prepare rootfs with guest packages for offline install\n"
+	@printf "  make devtools-start          Start runtime in foreground with serial console\n"
+	@printf "  make devtools-start-detached Start runtime in background\n"
+	@printf "  make devtools-wait-ip        Wait until guest writes its runtime IP\n"
+	@printf "  make devtools-wait-http      Wait until guest HTTP returns 2xx/3xx\n"
+	@printf "  make devtools-package-clean  Remove dist pkg build artifacts\n"
+	@printf "\n"
+	@printf "Config:\n"
+	@printf "  VM_COMPRESSION_THREADS=<cpu-count> for faster pkg compression when pigz is installed\n"
+
+help-proxy:
+	@printf "tirosh-vitalserver: proxy\n"
 	@printf "\n"
 	@printf "Proxy:\n"
 	@printf "  make proxy-status    Show macOS host nginx proxy status\n"
@@ -55,42 +244,17 @@ help:
 	@printf "  make proxy-plist     Render macOS launchd plist for host nginx proxy\n"
 	@printf "  make proxy-start     Start macOS host nginx proxy only\n"
 	@printf "  make proxy-stop      Stop macOS host nginx proxy only\n"
+	@printf "  make proxy-reload    Reload macOS host nginx proxy config\n"
 	@printf "  make proxy-stop-orphans  Stop nginx listeners left on the proxy port\n"
 	@printf "  make proxy-clean     Stop proxy and remove local proxy runtime files\n"
-	@printf "  make proxy-reload    Reload macOS host nginx proxy config\n"
 	@printf "\n"
-	@printf "VM PoC:\n"
-	@printf "  make vm-up           Prepare VM, start it in background, then start host proxy\n"
-	@printf "  make vm-up-bridged   Prepare and start Linux VM PoC on bridged LAN\n"
-	@printf "  make vm-down         Stop Linux VM PoC\n"
-	@printf "  make vm-status       Show Linux VM PoC process status\n"
-	@printf "  make vm-health       Check VM IP, guest HTTP, and host proxy reachability\n"
-	@printf "  make vm-prepare      Download Linux assets and stage guest deployment bundle\n"
-	@printf "  make vm-ip           Show detected VM IP\n"
-	@printf "  make vm-proxy-start  Start host proxy for a VM endpoint\n"
-	@printf "  make vm-clean        Remove VM runtime state, keep shared data\n"
-	@printf "  make vm-pkg          Build development VM runtime pkg\n"
-	@printf "  make vm-pkg-release  Build VM runtime pkg with fresh golden rootfs\n"
-	@printf "  make vm-app          Build development macOS control app\n"
-	@printf "  make vm-dmg          Build development macOS control app dmg\n"
-	@printf "  make vm-dmg-release  Build dmg with fresh golden rootfs\n"
-	@printf "  make vm-pkg-install  Install development VM runtime pkg with sudo\n"
-	@printf "  make vm-pkg-uninstall-dev  Remove development VM runtime install\n"
-	@printf "  make vm-installed-health  Check installed VM and host proxy\n"
-	@printf "\n"
-	@printf "Tools:\n"
-	@printf "  make swagger         Start Swagger UI only\n"
-	@printf "  make swagger-down    Stop Swagger UI only, keep base stack\n"
-	@printf "  make app-build       Build the app image only\n"
-	@printf "  make clean-volumes   Stop proxy and Compose stack, remove volumes\n"
-	@printf "  make clean           Remove proxy runtime, containers, volumes, orphans, and local images\n"
-	@printf "  make install-testkit-release  Install released testkit wheel without uv\n"
-	@printf "\n"
-	@printf "Verify:\n"
-	@printf "  make testkit-smoke   Run bounded productization smoke scenario\n"
-	@printf "  make testkit-verify  Send sample data and verify UI-visible state\n"
-	@printf "  make testkit-load    Run finite load scenario\n"
-	@printf "  make testkit-stream  Stream sample data until interrupted\n"
+	@printf "Config:\n"
+	@printf "  VITALSERVER_PROXY_PORT=%s\n" "$(VITALSERVER_PROXY_PORT)"
+	@printf "  VITALSERVER_BIND_HOST=%s\n" "$(VITALSERVER_BIND_HOST)"
+	@printf "  VITALSERVER_HTTP_PORT=%s\n" "$(VITALSERVER_HTTP_PORT)"
+
+help-dev:
+	@printf "tirosh-vitalserver: dev\n"
 	@printf "\n"
 	@printf "Develop:\n"
 	@printf "  make lint            Run Ruff checks\n"
@@ -99,35 +263,26 @@ help:
 	@printf "  make test            Run pytest\n"
 	@printf "  make build-testkit   Build vitalserver-testkit wheel and sdist\n"
 	@printf "  make check           Run lint, typecheck, and test\n"
-	@printf "  make vm-build        Build Apple Virtualization VM launcher\n"
-	@printf "  make vm-nginx-artifact Copy pinned nginx binary into local artifact cache\n"
-	@printf "  make vm-nginx-bundle Build self-contained nginx bundle for VM pkg\n"
-	@printf "  make vm-docker-images Build Docker image bundle for air-gapped VM pkg\n"
-	@printf "  make vm-sign         Ad-hoc sign VM launcher with shared networking entitlement\n"
-	@printf "  make vm-sign-bridged Sign VM launcher with bridged networking entitlement and real identity\n"
-	@printf "  make vm-bridged-preflight  Check bridged signing prerequisites\n"
-	@printf "  make vm-init         Initialize VM runtime config only\n"
-	@printf "  make vm-download     Download Ubuntu boot assets only\n"
-	@printf "  make vm-cloud-init   Create local cloud-init seed image only\n"
-	@printf "  make vm-stage        Stage guest deployment bundle only\n"
-	@printf "  make vm-airgap-rootfs Prepare rootfs with guest packages for offline install\n"
-	@printf "  make vm-start        Start VM in foreground with serial console\n"
-	@printf "  make vm-start-detached  Start VM in background\n"
-	@printf "  make vm-health       Check VM IP, guest HTTP, and host proxy reachability\n"
-	@printf "  make vm-wait-ip      Wait until guest writes its VM IP\n"
-	@printf "  make vm-wait-http    Wait until guest HTTP returns 2xx/3xx\n"
-	@printf "  make vm-proxy-start  Start host nginx for VM_PROXY_UPSTREAM=<vm-ip>:80\n"
-	@printf "  make vm-interfaces   List bridged network interfaces\n"
-	@printf "  make vm-network-shared   Configure VM to use shared/NAT networking\n"
-	@printf "  make vm-network-bridged  Configure VM to use bridged networking\n"
-	@printf "  make vm-pkg-stage    Stage VM runtime pkg payload\n"
-	@printf "  make vm-update-bundle Build update bundle manifest and checksums\n"
-	@printf "  make vm-update-bundle-verify Verify staged update bundle\n"
-	@printf "  make vm-pkg-clean    Remove VM runtime pkg build artifacts\n"
+	@printf "  make install-testkit-release Install released testkit wheel without uv\n"
+	@printf "\n"
+	@printf "Repository:\n"
+	@printf "  make init            Initialize git submodules\n"
+	@printf "  make update-submodule Update vendor/vitalserver submodule\n"
+	@printf "  make build           Build all Compose images\n"
 	@printf "\n"
 	@printf "Config:\n"
-	@printf "  .env is loaded by make when present\n"
-	@printf "  TESTKIT_CONFIG=config/testkit.toml\n"
-	@printf "  TESTKIT_VERSION=0.1.1\n"
-	@printf "  COMPOSE_ENV_FILE=.env.local\n"
-	@printf "  VM_COMPRESSION_THREADS=<cpu-count> for faster pkg compression when pigz is installed\n"
+	@printf "  TESTKIT_CONFIG=%s\n" "$(TESTKIT_CONFIG)"
+	@printf "  TESTKIT_VERSION=%s\n" "$(TESTKIT_VERSION)"
+
+help-all:
+	@$(MAKE) --no-print-directory help-run
+	@printf "\n"
+	@$(MAKE) --no-print-directory help-dist
+	@printf "\n"
+	@$(MAKE) --no-print-directory help-runtime
+	@printf "\n"
+	@$(MAKE) --no-print-directory help-devtools
+	@printf "\n"
+	@$(MAKE) --no-print-directory help-proxy
+	@printf "\n"
+	@$(MAKE) --no-print-directory help-dev

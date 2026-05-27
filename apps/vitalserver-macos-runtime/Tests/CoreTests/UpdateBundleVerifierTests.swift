@@ -105,7 +105,7 @@ final class UpdateBundleVerifierTests: XCTestCase {
     }
 
     private func manifest(
-        schemaVersion: Int = 2,
+        schemaVersion: Int = 3,
         product: String = "com.tirosh.vitalserver",
         artifacts: [UpdateBundleArtifact] = [
             UpdateBundleArtifact(name: "rootfs-base.raw.gz", type: .rootfsBase, sha256: "abc", size: 10),
@@ -116,7 +116,8 @@ final class UpdateBundleVerifierTests: XCTestCase {
             schemaVersion: schemaVersion,
             product: product,
             helperVersion: "1.2.3",
-            targetPlatforms: ["macos-arm64"],
+            releaseLabel: "1.2.3",
+            targetPlatform: "macos-arm64",
             components: ["updater": "4.5.6"],
             createdAt: "2026-05-21T12:00:00Z",
             artifacts: artifacts,

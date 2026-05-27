@@ -47,6 +47,16 @@ final class RuntimeSettingsValidatorTests: XCTestCase {
         )
     }
 
+    func testRejectsRedisBackupRetentionOutsideRange() {
+        var settings = validSettings()
+        settings.redisBackupRetentionCount = 31
+
+        XCTAssertEqual(
+            validator.validate(settings, installedSettings: installedSettings()),
+            .invalid(AppConstants.StatusText.invalidRedisBackupRetention)
+        )
+    }
+
     func testRejectsMissingOrRelativeVitalFilesDirectory() {
         var settings = validSettings()
         settings.vitalFilesDirectory = "   "
@@ -63,6 +73,25 @@ final class RuntimeSettingsValidatorTests: XCTestCase {
             validator.validate(settings, installedSettings: installedSettings()),
             .invalid(AppConstants.StatusText.vitalFilesDirectoryRequired)
         )
+    }
+
+    func testRejectsMacOSProtectedVitalFilesDirectories() {
+        for path in [
+            "/Users/test/Desktop",
+            "/Users/test/Desktop/Vital Files",
+            "/Users/test/Documents/Vital Files",
+            "/Users/test/Downloads/Vital Files",
+            "/Users/test/Library/Mobile Documents/com~apple~CloudDocs/Vital Files",
+        ] {
+            var settings = validSettings()
+            settings.vitalFilesDirectory = path
+
+            XCTAssertEqual(
+                validator.validate(settings, installedSettings: installedSettings()),
+                .invalid(AppConstants.StatusText.vitalFilesDirectoryProtected),
+                path
+            )
+        }
     }
 
     func testRejectsInvalidAdminPasswordResetValue() {

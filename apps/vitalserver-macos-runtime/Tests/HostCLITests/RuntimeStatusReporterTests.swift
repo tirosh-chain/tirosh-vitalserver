@@ -29,6 +29,8 @@ final class RuntimeStatusReporterTests: XCTestCase {
         XCTAssertEqual(document.productRoot, "/product")
         XCTAssertEqual(document.runtimeHome, "/product/vm")
         XCTAssertEqual(document.runtimeVersion, "0.1.0")
+        XCTAssertEqual(document.vmState, .running)
+        XCTAssertEqual(document.vmErrors ?? [], [])
         XCTAssertEqual(document.latestBackup, "/product/backups/latest")
     }
 
@@ -104,6 +106,8 @@ final class RuntimeStatusReporterTests: XCTestCase {
             vmService: .loaded,
             proxyService: .loaded,
             watchdogService: .loaded,
+            vmState: .running,
+            vmErrors: [],
             vmIP: "192.168.64.2",
             proxyPort: 80,
             hostProxyHTTP: "200",

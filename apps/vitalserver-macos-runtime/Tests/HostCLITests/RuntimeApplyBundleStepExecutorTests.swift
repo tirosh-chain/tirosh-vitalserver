@@ -146,10 +146,11 @@ final class RuntimeApplyBundleStepExecutorTests: XCTestCase {
         migrations: [UpdateBundleMigration] = []
     ) -> UpdateBundleManifest {
         UpdateBundleManifest(
-            schemaVersion: 2,
+            schemaVersion: 3,
             product: Constants.Product.identifier,
             helperVersion: version,
-            targetPlatforms: ["macos-arm64"],
+            releaseLabel: version,
+            targetPlatform: "macos-arm64",
             components: ["updater": version],
             createdAt: "2026-05-22T00:00:00Z",
             artifacts: artifacts,

@@ -62,10 +62,11 @@ private final class ApplyBundleHarness {
     let preflight = ApplyBundlePreflightContext(
         stagedBundle: URL(fileURLWithPath: "/tmp/staged-bundle"),
         manifest: UpdateBundleManifest(
-            schemaVersion: 2,
+            schemaVersion: 3,
             product: "com.tirosh.vitalserver",
             helperVersion: "0.1.4",
-            targetPlatforms: ["macos-arm64"],
+            releaseLabel: "0.1.4",
+            targetPlatform: "macos-arm64",
             components: ["updater": "0.1.4"],
             createdAt: "2026-05-22T00:00:00Z",
             artifacts: [],

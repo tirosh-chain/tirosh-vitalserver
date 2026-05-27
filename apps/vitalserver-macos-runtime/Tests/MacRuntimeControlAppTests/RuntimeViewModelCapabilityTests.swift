@@ -1,4 +1,6 @@
 import Foundation
+import Contracts
+import Core
 import RuntimeControl
 @testable import MacRuntimeControlApp
 import XCTest
@@ -27,10 +29,14 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         await viewModel.deleteSelectedBackup()
         await viewModel.repairProxyPort()
         await viewModel.repairDatastore()
+        await viewModel.repairRuntimeServices()
+        await viewModel.createRedisBackup()
         await viewModel.startRuntimeServices()
         await viewModel.stopRuntimeServices()
         await viewModel.exportLogs()
         viewModel.openLogs()
+        viewModel.openBackups()
+        viewModel.openRedisBackups()
         viewModel.openVitalFilesDirectory()
 
         XCTAssertEqual(client.applySettingsCount, 0)
@@ -40,11 +46,13 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertEqual(client.deleteBackupCount, 0)
         XCTAssertEqual(client.repairProxyCount, 0)
         XCTAssertEqual(client.repairDatastoreCount, 0)
+        XCTAssertEqual(client.repairRuntimeServicesCount, 0)
+        XCTAssertEqual(client.createRedisBackupCount, 0)
         XCTAssertEqual(client.startRuntimeServicesCount, 0)
         XCTAssertEqual(client.stopRuntimeServicesCount, 0)
         XCTAssertEqual(client.exportLogsCount, 0)
         XCTAssertEqual(client.preferredLogsPathCount, 0)
-        XCTAssertEqual(client.createDirectoryURLs, [])
+        XCTAssertEqual(nativeShell.createdDirectoryURLs, [])
         XCTAssertEqual(nativeShell.chooseDirectoryCount, 0)
         XCTAssertEqual(nativeShell.chooseUpdateBundleCount, 0)
         XCTAssertEqual(nativeShell.chooseLogExportDestinationCount, 0)
@@ -81,8 +89,81 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         viewModel.chooseVitalFilesDirectory()
 
         XCTAssertEqual(nativeShell.chooseDirectoryPrompts, [AppConstants.Actions.chooseDirectory])
-        XCTAssertEqual(client.createDirectoryURLs, [URL(fileURLWithPath: "/Users/test/Vital Files")])
+        XCTAssertEqual(nativeShell.createdDirectoryURLs, [URL(fileURLWithPath: "/Users/test/Vital Files")])
         XCTAssertEqual(viewModel.settings.vitalFilesDirectory, "/Users/test/Vital Files")
+    }
+
+    func testProtectedVitalFilesDirectorySelectionIsRejected() {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let nativeShell = FakeRuntimeNativeShell()
+        nativeShell.directoryURL = URL(fileURLWithPath: "/Users/test/Desktop/Vital Files")
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications(),
+            nativeShell: nativeShell
+        )
+        let previousDirectory = viewModel.settings.vitalFilesDirectory
+
+        viewModel.chooseVitalFilesDirectory()
+
+        XCTAssertEqual(nativeShell.chooseDirectoryPrompts, [AppConstants.Actions.chooseDirectory])
+        XCTAssertEqual(nativeShell.createdDirectoryURLs, [])
+        XCTAssertEqual(viewModel.settings.vitalFilesDirectory, previousDirectory)
+        XCTAssertEqual(viewModel.message, AppConstants.StatusText.vitalFilesDirectoryProtected)
+    }
+
+    func testAdvertisedURLDefaultsFollowHostProxyPortUntilCustomOverrideIsEnabled() {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        var initialSettings = RuntimeSettings()
+        initialSettings.proxyPort = 8080
+        initialSettings.publicHost = ""
+        initialSettings.publicPort = 8080
+        client.settings = initialSettings
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+
+        XCTAssertFalse(viewModel.useCustomAdvertisedURL)
+
+        viewModel.settings.proxyPort = 18080
+        viewModel.syncAdvertisedURLWithProxyIfNeeded()
+
+        XCTAssertEqual(viewModel.settings.publicHost, "")
+        XCTAssertEqual(viewModel.settings.publicPort, 18080)
+
+        viewModel.setCustomAdvertisedURL(true)
+        viewModel.settings.publicHost = "hospital.example"
+        viewModel.settings.publicPort = 443
+        viewModel.settings.proxyPort = 8080
+        viewModel.syncAdvertisedURLWithProxyIfNeeded()
+
+        XCTAssertEqual(viewModel.settings.publicHost, "hospital.example")
+        XCTAssertEqual(viewModel.settings.publicPort, 443)
+    }
+
+    func testDisablingCustomAdvertisedURLClearsOverride() {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        var initialSettings = RuntimeSettings()
+        initialSettings.proxyPort = 8080
+        initialSettings.publicHost = "hospital.example"
+        initialSettings.publicPort = 443
+        client.settings = initialSettings
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+
+        XCTAssertTrue(viewModel.useCustomAdvertisedURL)
+
+        viewModel.setCustomAdvertisedURL(false)
+
+        XCTAssertFalse(viewModel.useCustomAdvertisedURL)
+        XCTAssertEqual(viewModel.settings.publicHost, "")
+        XCTAssertEqual(viewModel.settings.publicPort, 8080)
     }
 
     func testNativeShellProvidesUpdateBundleURLAndClientVerifiesSelectedBundle() async {
@@ -119,13 +200,61 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         )
 
         viewModel.openLogs()
+        viewModel.openBackups()
+        viewModel.openRedisBackups()
         viewModel.openVitalServer()
+        viewModel.openVitalDBWebsite()
         await viewModel.exportLogs()
 
-        XCTAssertEqual(nativeShell.openedFileURLs, [URL(fileURLWithPath: "/logs")])
-        XCTAssertEqual(nativeShell.openedWebURLs, [URL(string: AppConstants.Product.vitalServerURL(proxyPort: viewModel.status.proxyPort))])
+        XCTAssertEqual(nativeShell.openedFileURLs, [
+            URL(fileURLWithPath: "/logs"),
+            URL(fileURLWithPath: "/backups"),
+            URL(fileURLWithPath: "/runtime/data/backups/redis"),
+        ])
+        XCTAssertEqual(nativeShell.openedWebURLs, [
+            URL(string: AppConstants.Product.vitalServerURL(proxyPort: viewModel.status.proxyPort)),
+            URL(string: AppConstants.Product.vitalDBURL),
+        ])
         XCTAssertEqual(nativeShell.chooseLogExportDestinationPrompts, [AppConstants.Actions.exportLogs])
         XCTAssertEqual(client.exportLogDestinationURLs, [exportURL])
+    }
+
+    func testOpenFolderPromptsToCreateMissingDirectoryBeforeOpening() {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let nativeShell = FakeRuntimeNativeShell()
+        nativeShell.existingDirectories = ["/logs"]
+        nativeShell.confirmCreateDirectoryResponses = [true]
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications(),
+            nativeShell: nativeShell
+        )
+
+        viewModel.openBackups()
+
+        XCTAssertEqual(nativeShell.confirmCreateDirectoryPaths, ["/backups"])
+        XCTAssertEqual(nativeShell.createdDirectoryURLs, [URL(fileURLWithPath: "/backups")])
+        XCTAssertEqual(nativeShell.openedFileURLs, [URL(fileURLWithPath: "/backups")])
+    }
+
+    func testOpenFolderStopsWhenMissingDirectoryCreationIsCancelled() {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let nativeShell = FakeRuntimeNativeShell()
+        nativeShell.existingDirectories = []
+        nativeShell.confirmCreateDirectoryResponses = [false]
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications(),
+            nativeShell: nativeShell
+        )
+
+        viewModel.openFolder("/missing")
+
+        XCTAssertEqual(nativeShell.confirmCreateDirectoryPaths, ["/missing"])
+        XCTAssertTrue(nativeShell.createdDirectoryURLs.isEmpty)
+        XCTAssertTrue(nativeShell.openedFileURLs.isEmpty)
     }
 
     func testViewModelCanUseSeparateControlAndHostClients() async {
@@ -144,9 +273,23 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         await viewModel.refresh()
 
         XCTAssertEqual(controlClient.loadStatusCount, 1)
-        XCTAssertEqual(controlClient.createDirectoryURLs, [])
-        XCTAssertEqual(hostClient.createDirectoryURLs, [URL(fileURLWithPath: "/Users/test/Vital Files")])
+        XCTAssertEqual(nativeShell.createdDirectoryURLs, [URL(fileURLWithPath: "/Users/test/Vital Files")])
         XCTAssertEqual(hostClient.loadBackupsCount, 1)
+    }
+
+    func testHealthRefreshDoesNotLoadHeavyObservationHistories() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+
+        await viewModel.refreshHealthStatus()
+
+        XCTAssertEqual(client.loadHealthStatusCount, 1)
+        XCTAssertEqual(client.loadRuntimeEventsCount, 0)
+        XCTAssertEqual(client.loadVitalDBRecordersCount, 0)
     }
 }
 
@@ -178,6 +321,9 @@ private struct NoopHealthNotifications: HealthNotifying {
 private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     let capabilities: RuntimeControlCapabilities
     var loadStatusCount = 0
+    var loadHealthStatusCount = 0
+    var loadRuntimeEventsCount = 0
+    var loadVitalDBRecordersCount = 0
     var loadBackupsCount = 0
     var verifyUpdateBundleCount = 0
     var applySettingsCount = 0
@@ -186,21 +332,23 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     var deleteBackupCount = 0
     var repairProxyCount = 0
     var repairDatastoreCount = 0
+    var repairRuntimeServicesCount = 0
+    var createRedisBackupCount = 0
     var startRuntimeServicesCount = 0
     var stopRuntimeServicesCount = 0
     var exportLogsCount = 0
     var loadReleaseInfoCount = 0
     var preferredLogsPathCount = 0
-    var createDirectoryURLs: [URL] = []
     var verifiedBundleURLs: [URL] = []
     var exportLogDestinationURLs: [URL] = []
+    var settings = RuntimeSettings()
 
     init(capabilities: RuntimeControlCapabilities) {
         self.capabilities = capabilities
     }
 
     func loadSettings() -> RuntimeSettings {
-        RuntimeSettings()
+        settings
     }
 
     func loadStatus(settings: RuntimeSettings) -> RuntimeStatus {
@@ -209,12 +357,36 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     }
 
     func loadHealthStatus(settings: RuntimeSettings) async -> RuntimeStatus {
-        RuntimeStatus()
+        loadHealthStatusCount += 1
+        return RuntimeStatus()
+    }
+
+    func loadRuntimeEvents(limit: Int) -> RuntimeEventHistory {
+        loadRuntimeEventsCount += 1
+        return RuntimeEventHistory(events: [])
+    }
+
+    func loadRuntimeEvents(query: RuntimeEventQuery) -> RuntimeEventHistory {
+        loadRuntimeEventsCount += 1
+        return RuntimeEventHistory(events: [])
+    }
+
+    func loadVitalDBObservation() -> VitalDBObservationDocument? {
+        nil
+    }
+
+    func loadVitalDBRecorders() -> RuntimeVitalRecorderHistory {
+        loadVitalDBRecordersCount += 1
+        return RuntimeVitalRecorderHistory()
     }
 
     func loadBackups(latestBackupPath: String?) -> [RuntimeBackup] {
         loadBackupsCount += 1
         return []
+    }
+
+    func loadRedisBackups() -> [RuntimeBackup] {
+        []
     }
 
     func updateBundleSummary(url: URL) -> String {
@@ -223,6 +395,10 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
 
     func logText(sourceID: RuntimeLogSource, helperMessage: String, lineLimit: Int) -> String {
         helperMessage
+    }
+
+    func loadLogText(sourceID: RuntimeLogSource, helperMessage: String, lineLimit: Int) async -> String {
+        logText(sourceID: sourceID, helperMessage: helperMessage, lineLimit: lineLimit)
     }
 
     func preferredLogsPath() -> String {
@@ -236,10 +412,6 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
 
     func legacyCommandProgressLine() -> String? {
         nil
-    }
-
-    func createDirectory(at url: URL) {
-        createDirectoryURLs.append(url)
     }
 
     func verifyUpdateBundle(url: URL) async throws -> RuntimeCommandResult {
@@ -282,6 +454,16 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
         return success()
     }
 
+    func repairRuntimeServices() async throws -> RuntimeCommandResult {
+        repairRuntimeServicesCount += 1
+        return success()
+    }
+
+    func createRedisBackup() async throws -> RuntimeCommandResult {
+        createRedisBackupCount += 1
+        return success()
+    }
+
     func startRuntimeServices() async throws -> RuntimeCommandResult {
         startRuntimeServicesCount += 1
         return success()
@@ -309,7 +491,11 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     }
 
     func loadInstallInfo() -> RuntimeInstallInfo {
-        RuntimeInstallInfo(runtimeHomePath: "/runtime", backupsPath: "/backups")
+        RuntimeInstallInfo(
+            runtimeHomePath: "/runtime",
+            backupsPath: "/backups",
+            redisBackupsPath: "/runtime/data/backups/redis"
+        )
     }
 
     private func success() -> RuntimeCommandResult {
@@ -327,6 +513,10 @@ private final class FakeRuntimeNativeShell: RuntimeNativeShell {
     var chooseLogExportDestinationPrompts: [String] = []
     var openedFileURLs: [URL] = []
     var openedWebURLs: [URL] = []
+    var existingDirectories: Set<String>?
+    var confirmCreateDirectoryResponses: [Bool] = []
+    var confirmCreateDirectoryPaths: [String] = []
+    var createdDirectoryURLs: [URL] = []
     var relaunchHelperCount = 0
     var terminateCount = 0
 
@@ -355,6 +545,20 @@ private final class FakeRuntimeNativeShell: RuntimeNativeShell {
     func chooseLogExportDestination(defaultName: String, prompt: String) -> URL? {
         chooseLogExportDestinationPrompts.append(prompt)
         return logExportDestinationURL
+    }
+
+    func directoryExists(_ url: URL) -> Bool {
+        existingDirectories?.contains(url.path) ?? true
+    }
+
+    func confirmCreateDirectory(path: String) -> Bool {
+        confirmCreateDirectoryPaths.append(path)
+        return confirmCreateDirectoryResponses.isEmpty ? false : confirmCreateDirectoryResponses.removeFirst()
+    }
+
+    func createDirectory(_ url: URL) throws {
+        createdDirectoryURLs.append(url)
+        existingDirectories?.insert(url.path)
     }
 
     func openFileURL(_ url: URL) {

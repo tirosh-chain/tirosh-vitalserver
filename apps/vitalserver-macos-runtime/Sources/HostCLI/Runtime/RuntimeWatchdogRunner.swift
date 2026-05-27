@@ -10,7 +10,9 @@ struct RuntimeWatchdogActions {
     let automaticRecoveryEnabled: () -> Bool
     let restartService: (RuntimeManagedService) -> Void
     let sleep: (TimeInterval) -> Void
-    let writeStatus: (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void
+    let writeObservedStatus: (RuntimeStatusLevel, RuntimeOperation, String, RuntimeHealthSnapshot) throws -> Void
+    let recordObservedEvent: (RuntimeStatusLevel, RuntimeOperation, String, RuntimeHealthSnapshot, RuntimeEventType) -> Void
+    let recordLifecycleEvent: (RuntimeOperation, String, RuntimeEventType) -> Void
 }
 
 struct RuntimeWatchdogRunner {
@@ -29,21 +31,23 @@ struct RuntimeWatchdogRunner {
         try actions.prepareLogs()
 
         if let activeOperation = actions.activeManagedOperation() {
-            log("watchdog skipped during active runtime operation operation=\(activeOperation.rawValue)")
+            let message = "watchdog skipped during active runtime operation operation=\(activeOperation.rawValue)"
+            log(message)
+            actions.recordLifecycleEvent(.watchdog, message, .watchdogSkipped)
             print("watchdog: skipped active operation")
             return
         }
 
         let initial = actions.healthSnapshot()
         guard !initial.isHealthy else {
-            try actions.writeStatus(.healthy, .watchdog, "runtime watchdog passed")
+            try actions.writeObservedStatus(.healthy, .watchdog, "runtime watchdog passed", initial)
             print("watchdog: ok")
             return
         }
 
         let reasons = reasonText(initial.failureReasons)
         log("watchdog detected unhealthy runtime reasons=\(reasons)")
-        try actions.writeStatus(.recovering, .watchdog, "watchdog recovery started: \(reasons)")
+        try actions.writeObservedStatus(.recovering, .watchdog, "watchdog recovery started: \(reasons)", initial)
 
         let proxyLivenessHTTP = actions.proxyLivenessHTTP(initial.proxyPort)
         let recoveryPlan = RuntimeRecoveryPlanner.plan(RuntimeRecoveryInput(
@@ -56,50 +60,76 @@ struct RuntimeWatchdogRunner {
             vmIP: initial.vmIP,
             guestHTTP: initial.guestHTTP,
             hostProxyReadinessHTTP: initial.hostProxyHTTP,
-            hostProxyLivenessHTTP: proxyLivenessHTTP
+            hostProxyLivenessHTTP: proxyLivenessHTTP,
+            containerObservation: initial.containerObservation
         ))
         log(
             "watchdog recovery plan vm=\(recoveryPlan.restartVM) proxy=\(recoveryPlan.restartProxy) "
                 + "hostProxyHealth=\(proxyLivenessHTTP) hostProxyReady=\(initial.hostProxyHTTP) guestReady=\(initial.guestHTTP)"
         )
+        actions.recordObservedEvent(
+            .recovering,
+            .watchdog,
+            "watchdog recovery planned vm=\(recoveryPlan.restartVM) proxy=\(recoveryPlan.restartProxy)",
+            initial,
+            .recoveryPlanned
+        )
 
         guard actions.automaticRecoveryEnabled() else {
-            try actions.writeStatus(
+            try actions.writeObservedStatus(
                 .degraded,
                 .watchdog,
-                "watchdog detected unhealthy runtime; automatic recovery is disabled: \(reasons)"
+                "watchdog detected unhealthy runtime; automatic recovery is disabled: \(reasons)",
+                initial
             )
             print("watchdog: recovery disabled")
             return
         }
 
         guard recoveryPlan.canRecover else {
-            try actions.writeStatus(
+            try actions.writeObservedStatus(
                 .critical,
                 .watchdog,
-                "watchdog cannot recover missing installed artifacts: \(reasons)"
+                "watchdog cannot recover missing installed artifacts: \(reasons)",
+                initial
             )
             print("watchdog: critical")
             return
         }
 
         if recoveryPlan.restartVM {
+            actions.recordObservedEvent(
+                .recovering,
+                .watchdog,
+                "watchdog restart dispatched services=vm,guest-log-sync",
+                initial,
+                .serviceRestartDispatched
+            )
             actions.restartService(.vm)
+            actions.restartService(.guestLogSync)
         }
         if recoveryPlan.restartProxy {
+            actions.recordObservedEvent(
+                .recovering,
+                .watchdog,
+                "watchdog restart dispatched services=proxy",
+                initial,
+                .serviceRestartDispatched
+            )
             actions.restartService(.proxy)
         }
 
         actions.sleep(Constants.Runtime.watchdogRecoveryWaitSeconds)
         let recovered = actions.healthSnapshot()
         if recovered.isHealthy {
-            try actions.writeStatus(.healthy, .watchdog, "watchdog recovery completed")
+            try actions.writeObservedStatus(.healthy, .watchdog, "watchdog recovery completed", recovered)
             print("watchdog: recovered")
         } else {
-            try actions.writeStatus(
+            try actions.writeObservedStatus(
                 .critical,
                 .watchdog,
-                "watchdog recovery failed: \(reasonText(recovered.failureReasons))"
+                "watchdog recovery failed: \(reasonText(recovered.failureReasons))",
+                recovered
             )
             print("watchdog: critical")
         }

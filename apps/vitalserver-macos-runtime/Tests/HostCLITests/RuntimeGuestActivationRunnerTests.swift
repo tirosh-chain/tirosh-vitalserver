@@ -40,7 +40,7 @@ final class RuntimeGuestActivationRunnerTests: XCTestCase {
             "remove-result",
             "write-request:request-1:2026-05-22T00:00:00Z:1.2.3",
             "start-vm",
-            "log:waiting for guest update activation result timeoutSeconds=600.0",
+            "log:waiting for guest update activation result timeoutSeconds=180.0",
             "log:waiting for guest update activation worker",
             "progress:waiting for guest update activation worker",
             "sleep",
@@ -123,10 +123,11 @@ final class RuntimeGuestActivationRunnerTests: XCTestCase {
 
     private func manifest(artifacts: [UpdateBundleArtifactType]) -> UpdateBundleManifest {
         UpdateBundleManifest(
-            schemaVersion: 2,
+            schemaVersion: 3,
             product: Constants.Product.identifier,
             helperVersion: "1.2.3",
-            targetPlatforms: ["macos-arm64"],
+            releaseLabel: "1.2.3",
+            targetPlatform: "macos-arm64",
             components: ["updater": "1.2.3"],
             createdAt: "2026-05-22T00:00:00Z",
             artifacts: artifacts.map {

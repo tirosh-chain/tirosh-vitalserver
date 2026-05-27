@@ -18,6 +18,7 @@ struct RuntimeGuestConfigWriter {
             publicPort: settings.publicPort,
             adminPassword: settings.adminPassword ?? Constants.Guest.defaultAdminPassword,
             vitalFilesDirectory: Constants.Defaults.vitalFilesDirectoryGuestMountPath,
+            redisBackupRetentionCount: Constants.Defaults.redisBackupRetentionCount,
             redisUiPort: Constants.Guest.redisUIPort,
             swaggerUiPort: Constants.Guest.swaggerUIPort
         )

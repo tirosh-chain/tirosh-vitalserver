@@ -70,7 +70,7 @@ Web/PWA UI는 product UI의 primary cross-platform implementation이다. macOS S
 | --- | --- | --- |
 | Web/PWA Helper UI | 화면, user interaction, status/log/update/settings UX, API client, capability 기반 enable/disable | launchd 제어, VM 제어, privileged file operation, update apply 직접 실행 |
 | RuntimeControlClient | UI가 사용하는 typed client contract, local/remote capability model, progress/log stream abstraction | 특정 OS API 호출 |
-| HttpRuntimeClient | local/remote Runtime Control API 호출, SSE progress/log streaming, auth/session 처리 | host operation 직접 실행 |
+| HttpRuntimeClient | local/remote Runtime Control API 호출, SSE status/event/log/progress stream 처리, auth/session 처리 | host operation 직접 실행 |
 | MacHostRuntimeClient | 전환 기간 동안 macOS native app에서 local adapter 호출 | Web/PWA portability 보장 없이 UI workflow를 소유 |
 | Runtime Control API | auth/session, pairing, capability negotiation, status/log/update/settings/admin operation endpoint | UI rendering |
 | macOS native shell | macOS install/recovery/native picker/local host bootstrap | 장기 product UI logic 소유 |
@@ -110,10 +110,14 @@ Local-only 기능은 암묵적으로 호출하지 않고 capability로 노출한
 | `RuntimeControlClient` | UI가 호출하는 local/remote runtime operation contract. status/settings/release/install read model과 configure/repair/service/uninstall command를 제공 |
 | `RuntimeHostClient` | SwiftUI 전환기에서 필요한 local host affordance contract. backup/log/update-bundle file read, local log export, bundle verify/apply, rollback/delete 같은 host-local 작업을 제공 |
 | `RuntimeControlAPI` | PWA/API server/client가 공유할 HTTP route/DTO/router/local server 계약. `/runtime/*` runtime control route와 `/host/*` local host affordance route를 구분 |
-| `MacHostRuntimeClient` | macOS local adapter. `RuntimeControlClient`와 `RuntimeHostClient`를 구현하고 file reader, settings/status reader, privileged command runner, action environment를 조합 |
+| `MacHostRuntimeClient` | macOS local adapter facade. `RuntimeControlClient`와 `RuntimeHostClient`를 구현하되 read-only 작업은 `MacHostRuntimeReadWorker`, write/admin 작업은 `MacHostRuntimeCommandWorker`로 위임 |
+| `MacHostRuntimeReadWorker` | status/settings/health/events/recorders/backups/log progress/release info 같은 read-only host snapshot owner |
+| `MacHostRuntimeCommandWorker` | update verify/apply, settings apply, Redis backup, rollback/delete backup, repair, service start/stop, uninstall, log export 같은 host mutation과 privileged command owner |
 | `RuntimeNativeShell` | macOS native picker/save panel, file/web open, helper relaunch/terminate 같은 shell concern |
 
 이 구현에서 `RuntimeViewModel`는 `AppKit`을 직접 import하지 않는다. update bundle과 log export destination은 `URL`로 전달하고, backup read model과 선택 상태는 PWA/API로 직렬화하기 쉬운 path string으로 유지한다. CLI argument나 화면 표시가 필요한 boundary에서만 URL/path 변환을 수행한다. Log source처럼 닫힌 선택지는 raw string이 아니라 enum 계약으로 다룬다.
+
+`RuntimeViewModel`은 `MainActor`에서 UI 상태 publish와 capability guard만 담당한다. 오래 걸리는 disk/SQLite/log read는 `MacHostRuntimeReadWorker`, 관리자 권한이나 host mutation을 동반하는 command는 `MacHostRuntimeCommandWorker`가 담당한다. 특히 Update, Redis backup, rollback, repair 같은 중요한 작업은 read worker와 섞지 않는다.
 
 Local web mode와 Remote mode는 같은 `RuntimeControlClient` contract를 HTTP/SSE adapter로 구현한다. Runtime Control API는 최소한 아래 contract를 가져야 한다.
 
@@ -127,7 +131,7 @@ Local web mode와 Remote mode는 같은 `RuntimeControlClient` contract를 HTTP/
 
 `RuntimeHostClient`는 browser/PWA가 그대로 구현할 계약이 아니라, 현재 SwiftUI transition app이 local host 기능을 잃지 않도록 분리한 임시 경계다. PWA에서는 local file 선택, log export destination, pairing/native shell 같은 기능이 native shell 또는 Runtime Control API endpoint로 재배치된다.
 
-현재 branch는 `RuntimeControlAPI` target에 route/DTO, transport-independent router, local loopback HTTP server skeleton, OpenAPI contract를 둔다. macOS app composition은 `MacHostRuntimeClient`를 `RuntimeControlClientAPIReadHandler`로 감싸 read-only `/runtime/*` endpoint를 제공한다. write/admin endpoint 구현, auth/session 강화, pairing token, SSE progress/log stream, generated client는 후속 Runtime Control API/PWA 이슈에서 구현한다.
+현재 branch는 `RuntimeControlAPI` target에 route/DTO, transport-independent router, local loopback HTTP server, OpenAPI contract를 둔다. macOS app composition은 dev profile에서만 `MacHostRuntimeClient`를 `RuntimeControlClientAPIReadHandler`로 감싸 read-only `/runtime/*` endpoint와 SSE status/event/log stream을 제공한다. Stable build는 Runtime Control local API server를 시작하지 않는다. write/admin endpoint 구현, auth/session 강화, pairing token, progress client adapter, generated client는 후속 Runtime Control API/PWA 이슈에서 구현한다.
 
 Local web mode에서 mobile browser가 local host에 접근하는 방식은 배포 환경별로 다를 수 있다. Same LAN, QR/pairing token, reverse tunnel, remote management server 중 하나를 사용할 수 있지만, UI는 그 transport 세부에 의존하지 않는다.
 

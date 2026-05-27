@@ -7,6 +7,7 @@ import Contracts
 enum RuntimeAdapterConstants {
     enum Product {
         static let defaultProxyPort = 80
+        static let packageIdentifier = "com.tirosh.vitalserver.vm"
 
         static func redisUIURL(proxyPort: Int) -> String {
             "http://127.0.0.1:\(proxyPort)/redis-ui/"
@@ -39,7 +40,9 @@ enum RuntimeAdapterConstants {
         static let applyBundle = "apply-bundle"
         static let verifyBundle = "verify-bundle"
         static let rollback = "rollback"
+        static let redisBackup = "redis-backup"
         static let repairDatastore = "repair-datastore"
+        static let repairServices = "repair-services"
         static let startServices = "start-services"
         static let stopServices = "stop-services"
         static let boolTrue = "true"
@@ -54,6 +57,8 @@ enum RuntimeAdapterConstants {
         static let optionPublicPort = "--public-port"
         static let optionStartOnBoot = "--start-on-boot"
         static let optionAutoRecovery = "--auto-recovery"
+        static let optionPreventSystemSleep = "--prevent-system-sleep"
+        static let optionRedisBackupRetention = "--redis-backup-retention"
         static let optionBridgedInterface = "--bridged-interface"
         static let optionAdminPasswordFile = "--admin-password-file"
         static let optionRestart = "--restart"
@@ -72,6 +77,8 @@ enum RuntimeAdapterConstants {
         static let vmIPFile = installed.vmIPFile.path
         static let runtimeState = installed.runtimeState.path
         static let runtimeStatus = installed.runtimeStatus.path
+        static let runtimeEvents = installed.runtimeEvents.path
+        static let runtimeObservabilityDB = installed.runtimeObservabilityDB.path
         static let managerApp = installed.managerApp.path
         static let installLog = installed.installLog.path
         static let productLogs = installed.productLogsDirectory.path
@@ -88,15 +95,20 @@ enum RuntimeAdapterConstants {
         static let bootstrapLog = installed.centralBootstrapLog.path
         static let bootstrapLogSource = installed.bootstrapLog.path
         static let datastoreRepairLog = installed.centralDatastoreRepairLog.path
-        static let datastoreRepairLogSource = installed.guestRunDirectory
-            .appendingPathComponent(RuntimeFileNames.datastoreRepairLog)
-            .path
+        static let datastoreRepairLogSource = installed.datastoreRepairLog.path
+        static let redisBackupLog = installed.centralRedisBackupLog.path
+        static let redisBackupLogSource = installed.redisBackupLog.path
         static let vitalFiles = installed.vitalFilesDirectory.path
         static let backups = installed.backupsDirectory.path
+        static let redisBackups = installed.redisBackupsDirectory.path
         static let vmConfig = installed.vmConfig.path
         static let vmDisk = installed.vmDisk.path
         static let guestRuntimeConfig = installed.guestRuntimeConfig.path
+        static let runtimeVersion = installed.runtimeDirectory.appendingPathComponent("runtime-version.json").path
         static let proxyNginxPid = installed.proxyNginxPID.path
+        static let proxyNginxConfig = installed.nginxDirectory.appendingPathComponent("vitalserver.conf").path
+        static let proxyNginxAccessLog = installed.nginxLogsDirectory.appendingPathComponent("access.log").path
+        static let proxyNginxErrorLog = installed.nginxLogsDirectory.appendingPathComponent("error.log").path
         static let proxyLaunchDaemon = installed.proxyLaunchDaemon.path
         static let commandLogFile = installed.managerCommandLog.path
     }

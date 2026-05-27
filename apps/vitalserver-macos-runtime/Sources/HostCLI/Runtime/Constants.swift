@@ -1,3 +1,4 @@
+import Foundation
 import Core
 import Contracts
 
@@ -52,6 +53,14 @@ enum Constants {
     enum Defaults {
         static let minimumCPUCount = 7
         static let maximumCPUCount = 64
+        static let minimumSystemCPUCountForDynamicLimit = 8
+        static var maximumAllowedCPUCount: Int {
+            let systemCPUCount = ProcessInfo.processInfo.processorCount
+            guard systemCPUCount >= minimumSystemCPUCountForDynamicLimit else {
+                return minimumCPUCount
+            }
+            return min(maximumCPUCount, systemCPUCount)
+        }
         static let defaultDiskGiB = 32
         static let minimumDiskGiB = 4
         static let maximumDiskGiB = 512
@@ -64,6 +73,8 @@ enum Constants {
         static let sharedDirectoryGuestMountPath = "/mnt/tirosh"
         static let vitalFilesDirectoryTag = "tirosh-vital-files"
         static let vitalFilesDirectoryGuestMountPath = "/mnt/tirosh-vital-files"
+        static let redisBackupRetentionCount = 30
+        static let maximumRedisBackupRetentionCount = 30
     }
 
     enum Network {
@@ -99,14 +110,19 @@ enum Constants {
         static let datastoreRepairRequestFile = RuntimeFileNames.datastoreRepairRequest
         static let datastoreRepairResultFile = RuntimeFileNames.datastoreRepairResult
         static let datastoreRepairLogFile = RuntimeFileNames.datastoreRepairLog
+        static let redisBackupRequestFile = RuntimeFileNames.redisBackupRequest
+        static let redisBackupResultFile = RuntimeFileNames.redisBackupResult
         static let updateActivationRequestFile = RuntimeFileNames.updateActivationRequest
         static let updateActivationResultFile = RuntimeFileNames.updateActivationResult
         static let updateActivationLogFile = RuntimeFileNames.updateActivationLog
         static let waitTimeoutSeconds = 600.0
         static let datastoreRepairWaitTimeoutSeconds = 300.0
-        static let updateActivationWaitTimeoutSeconds = 600.0
+        static let redisBackupWaitTimeoutSeconds = 300.0
+        static let updateActivationWaitTimeoutSeconds = 180.0
+        static let runtimeStateStaleAfterSeconds = 30.0
         static let watchdogRecoveryWaitSeconds = 20.0
         static let watchdogManagedOperationGraceSeconds = 1_800.0
+        static let guestLogSyncIntervalSeconds = 1.0
         static let freeSpaceMarginBytes: UInt64 = 4 * 1024 * 1024 * 1024
         static let updateFreeSpaceMarginBytes: UInt64 = 2 * 1024 * 1024 * 1024
         static let logRotationMaxBytes: UInt64 = 10 * 1024 * 1024
@@ -130,6 +146,10 @@ enum Constants {
 
         static func swaggerUIHealthURL(port: Int) -> String {
             "http://127.0.0.1:\(port)/swagger/"
+        }
+
+        static func auditProxyStatusURL(port: Int) -> String {
+            "http://127.0.0.1:\(port)/audit-proxy/status"
         }
     }
 

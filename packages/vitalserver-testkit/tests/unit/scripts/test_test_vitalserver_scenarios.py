@@ -110,6 +110,7 @@ def test_run_verify_omits_payload_argument_by_default(
     config = VitalServerCheckConfig()
     commands: list[tuple[str, ...]] = []
 
+    monkeypatch.setenv("TESTKIT_CLI", "vitalserver-testkit")
     monkeypatch.setattr(
         "scripts.test_vitalserver.run",
         lambda *args: commands.append(args),
@@ -129,6 +130,7 @@ def test_run_verify_inserts_configured_payload_argument(
     )
     commands: list[tuple[str, ...]] = []
 
+    monkeypatch.setenv("TESTKIT_CLI", "vitalserver-testkit")
     monkeypatch.setattr(
         "scripts.test_vitalserver.run",
         lambda *args: commands.append(args),
@@ -141,6 +143,27 @@ def test_run_verify_inserts_configured_payload_argument(
         "verify-recorder",
         "sample_data.json",
     )
+
+
+def test_run_verify_inserts_payload_after_fallback_module_subcommand(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = VitalServerCheckConfig.model_validate(
+        {"recorder": {"payload": "sample_data.json"}}
+    )
+    commands: list[tuple[str, ...]] = []
+
+    monkeypatch.delenv("TESTKIT_CLI", raising=False)
+    monkeypatch.setattr("scripts.test_vitalserver.shutil.which", lambda _: None)
+    monkeypatch.setattr(
+        "scripts.test_vitalserver.run",
+        lambda *args: commands.append(args),
+    )
+
+    run_verify(config)
+
+    subcommand_index = commands[0].index("verify-recorder")
+    assert commands[0][subcommand_index + 1] == "sample_data.json"
 
 
 def test_run_stream_passes_bed_scenario_overrides(

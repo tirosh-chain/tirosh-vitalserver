@@ -1,0 +1,57 @@
+{
+  "channel": "dev",
+  "helperVersion": "0.1.7",
+  "releaseLabel": "0.1.7-dev",
+  "minUpdaterVersion": "0.1.7",
+  "targetPlatform": "macos-arm64",
+  "distribution": {
+    "profile": "dev",
+    "audience": "internal"
+  },
+  "bundle": {
+    "optionalContainerServices": []
+  },
+  "vitalServerVersion": "2.3.4",
+  "services": {
+    "vitalServer": {
+      "displayName": "VitalServer",
+      "image": "vitalserver:2.3.4",
+      "version": "2.3.4"
+    },
+    "auditProxy": {
+      "displayName": "Audit proxy",
+      "image": "vitalserver-audit-proxy:0.1.0",
+      "version": "0.1.0"
+    },
+    "vitalDBObserver": {
+      "displayName": "VitalDB observer",
+      "image": "vitaldb-observer:0.1.0",
+      "version": "0.1.0"
+    },
+    "redis": {
+      "displayName": "Redis",
+      "image": "redis:3.2.12-alpine",
+      "version": "3.2.12"
+    },
+    "redisUI": {
+      "displayName": "Redis UI",
+      "image": "ghcr.io/joeferner/redis-commander:0.9.0",
+      "version": "0.9.0"
+    },
+    "swaggerUI": {
+      "displayName": "Swagger UI",
+      "image": "swaggerapi/swagger-ui:v5.17.14",
+      "version": "5.17.14"
+    },
+    "guestEdge": {
+      "displayName": "Guest edge proxy",
+      "image": "nginx:1.24-alpine",
+      "version": "1.24"
+    },
+    "hostProxy": {
+      "displayName": "Network access",
+      "image": "nginx/1.31.1",
+      "version": "1.31.1"
+    }
+  }
+}

@@ -8,12 +8,16 @@ public struct RuntimeHealthSnapshot: Equatable {
     public let vmService: RuntimeServiceState
     public let proxyService: RuntimeServiceState
     public let watchdogService: RuntimeServiceState
+    public let vmState: RuntimeVMState
+    public let vmErrors: [RuntimeVMError]
     public let vmIP: String?
     public let proxyPort: Int
     public let hostProxyHTTP: String
     public let guestHTTP: String
     public let redisUIHTTP: String
     public let swaggerUIHTTP: String
+    public let containerObservation: RuntimeContainerObservation?
+    public let vitalDBObservation: VitalDBObservationDocument?
     public let failureReasons: [RuntimeFailureReason]
 
     public init(
@@ -24,12 +28,16 @@ public struct RuntimeHealthSnapshot: Equatable {
         vmService: RuntimeServiceState,
         proxyService: RuntimeServiceState,
         watchdogService: RuntimeServiceState,
+        vmState: RuntimeVMState = .unknown("unknown"),
+        vmErrors: [RuntimeVMError] = [],
         vmIP: String?,
         proxyPort: Int,
         hostProxyHTTP: String,
         guestHTTP: String,
         redisUIHTTP: String,
         swaggerUIHTTP: String,
+        containerObservation: RuntimeContainerObservation? = nil,
+        vitalDBObservation: VitalDBObservationDocument? = nil,
         failureReasons: [RuntimeFailureReason]
     ) {
         self.vmExecutable = vmExecutable
@@ -39,12 +47,16 @@ public struct RuntimeHealthSnapshot: Equatable {
         self.vmService = vmService
         self.proxyService = proxyService
         self.watchdogService = watchdogService
+        self.vmState = vmState
+        self.vmErrors = vmErrors
         self.vmIP = vmIP
         self.proxyPort = proxyPort
         self.hostProxyHTTP = hostProxyHTTP
         self.guestHTTP = guestHTTP
         self.redisUIHTTP = redisUIHTTP
         self.swaggerUIHTTP = swaggerUIHTTP
+        self.containerObservation = containerObservation
+        self.vitalDBObservation = vitalDBObservation
         self.failureReasons = failureReasons
     }
 

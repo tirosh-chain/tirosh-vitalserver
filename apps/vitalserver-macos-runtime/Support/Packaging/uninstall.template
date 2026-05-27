@@ -1,0 +1,260 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+uninstall_log="${UNINSTALL_LOG}"
+exec > >(tee -a "${uninstall_log}") 2>&1
+
+product_root="${PRODUCT_ROOT}"
+manager_app="${MANAGER_APP}"
+vm_config="${product_root}/vm/runtime/vm-config.json"
+default_vital_files="${product_root}/vm/data/vital-files"
+vm_home="${product_root}/vm"
+guest_run_dir="${vm_home}/data/run"
+redis_backup_request="${guest_run_dir}/redis-backup.request"
+redis_backup_result="${guest_run_dir}/redis-backup-result.json"
+clean=false
+
+log() {
+  printf "[%s] %s\n" "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" "$*"
+}
+
+on_error() {
+  local status="$?"
+  log "uninstall failed status=${status} command=${BASH_COMMAND}"
+  exit "${status}"
+}
+
+trap on_error ERR
+
+if [ "$(id -u)" -ne 0 ]; then
+  log "This uninstaller must run as root."
+  log "Run: sudo tirosh-vitalserver-uninstall [--clean]"
+  exit 1
+fi
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --clean)
+      clean=true
+      ;;
+    *)
+      log "Unknown option: $1"
+      log "Usage: sudo tirosh-vitalserver-uninstall [--clean]"
+      exit 2
+      ;;
+  esac
+  shift
+done
+
+labels=(
+  "com.tirosh.vitalserver-watchdog"
+  "com.tirosh.vitalserver-guest-log-sync"
+  "com.tirosh.vitalserver-proxy"
+  "com.tirosh.vitalserver-vm"
+  "com.tirosh.vitalserver-sleep-prevention"
+)
+
+configured_vital_files_dir() {
+  [ -f "${vm_config}" ] || return 0
+  /usr/bin/python3 - "${vm_config}" <<'PY'
+import json
+import sys
+
+try:
+    with open(sys.argv[1], encoding="utf-8") as handle:
+        config = json.load(handle)
+    value = config.get("vitalFilesDirectory", {}).get("hostPath", "")
+    if isinstance(value, str) and value.startswith("/"):
+        print(value)
+except Exception:
+    pass
+PY
+}
+
+safe_rm_rf() {
+  local target="$1"
+  if [ -z "${target}" ] || [ "${target}" = "/" ]; then
+    log "refusing unsafe removal target=${target}"
+    return 1
+  fi
+  if [ -e "${target}" ] || [ -L "${target}" ]; then
+    rm -rf "${target}"
+  fi
+}
+
+preserve_path() {
+  local source="$1"
+  local preserve_root="$2"
+  local token="$3"
+  local destination="${preserve_root}/${token}"
+  if [ -e "${source}" ] || [ -L "${source}" ]; then
+    mkdir -p "${preserve_root}"
+    rm -rf "${destination}"
+    mv "${source}" "${destination}"
+    printf "%s\n" "${source}|${destination}" >>"${preserve_root}/manifest"
+    log "preserved source=${source}"
+  fi
+}
+
+restore_preserved_paths() {
+  local preserve_root="$1"
+  local manifest="${preserve_root}/manifest"
+  if [ ! -f "${manifest}" ]; then
+    rm -rf "${preserve_root}"
+    return 0
+  fi
+  while IFS='|' read -r source destination; do
+    [ -n "${source}" ] && [ -n "${destination}" ] || continue
+    mkdir -p "$(dirname "${source}")"
+    rm -rf "${source}"
+    mv "${destination}" "${source}"
+    log "restored preserved=${source}"
+  done <"${manifest}"
+  rm -rf "${preserve_root}"
+}
+
+request_redis_backup() {
+  local request_id deadline status archive
+  if [ ! -d "${guest_run_dir}" ]; then
+    log "step=create-redis-backup status=skipped reason=guest-run-directory-missing"
+    return 1
+  fi
+
+  request_id="uninstall-$(date -u +"%Y%m%dT%H%M%SZ")-$$"
+  rm -f "${redis_backup_result}"
+  /usr/bin/python3 - "${redis_backup_request}" "${request_id}" <<'PY'
+import json
+import sys
+from datetime import datetime, timezone
+
+path, request_id = sys.argv[1], sys.argv[2]
+with open(path, "w", encoding="utf-8") as handle:
+    json.dump({
+        "operation": "redis-backup",
+        "requestId": request_id,
+        "requestedAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+    }, handle)
+    handle.write("\n")
+PY
+
+  deadline=$(( $(date +%s) + 120 ))
+  while [ "$(date +%s)" -lt "${deadline}" ]; do
+    if [ -f "${redis_backup_result}" ]; then
+      status="$(/usr/bin/python3 - "${redis_backup_result}" "${request_id}" <<'PY'
+import json
+import sys
+
+try:
+    with open(sys.argv[1], encoding="utf-8") as handle:
+        data = json.load(handle)
+    if data.get("requestId") != sys.argv[2]:
+        print("stale")
+    else:
+        print(data.get("status", "unknown"))
+except Exception:
+    print("unknown")
+PY
+)"
+      case "${status}" in
+        completed)
+          archive="$(/usr/bin/python3 - "${redis_backup_result}" <<'PY'
+import json
+import sys
+
+try:
+    with open(sys.argv[1], encoding="utf-8") as handle:
+        print(json.load(handle).get("archive", ""))
+except Exception:
+    pass
+PY
+)"
+          log "step=create-redis-backup status=completed archive=${archive:-unknown}"
+          return 0
+          ;;
+        failed)
+          log "step=create-redis-backup status=skipped reason=backup-command-failed"
+          return 1
+          ;;
+      esac
+    fi
+    sleep 2
+  done
+
+  log "step=create-redis-backup status=skipped reason=timeout"
+  return 1
+}
+
+vital_files_dir="$(configured_vital_files_dir)"
+if [ -z "${vital_files_dir}" ]; then
+  vital_files_dir="${default_vital_files}"
+fi
+
+log "uninstall started clean=${clean}"
+
+if [ "${clean}" = false ]; then
+  log "step=create-redis-backup status=started"
+  if ! request_redis_backup; then
+    log "standard uninstall aborted because Redis backup did not complete. Use --clean only when deleting Redis backups is intentional."
+    exit 1
+  fi
+fi
+
+log "step=stop-launchd-services status=started"
+for label in "${labels[@]}"; do
+  if launchctl print "system/${label}" >/dev/null 2>&1; then
+    log "launchd unloading label=${label}"
+    launchctl bootout "system/${label}" >/dev/null 2>&1 || true
+  else
+    log "launchd not-loaded label=${label}"
+  fi
+done
+log "step=stop-launchd-services status=completed"
+
+log "step=remove-plists-and-tools status=started"
+rm -f \
+  "${LAUNCH_DAEMONS_DIR}/com.tirosh.vitalserver-watchdog.plist" \
+  "${LAUNCH_DAEMONS_DIR}/com.tirosh.vitalserver-guest-log-sync.plist" \
+  "${LAUNCH_DAEMONS_DIR}/com.tirosh.vitalserver-sleep-prevention.plist" \
+  "${LAUNCH_DAEMONS_DIR}/com.tirosh.vitalserver-vm.plist" \
+  "${LAUNCH_DAEMONS_DIR}/com.tirosh.vitalserver-proxy.plist" \
+  "${VM_BIN}" \
+  "${PROXY_RUN}"
+log "step=remove-plists-and-tools status=completed"
+
+if [ "${clean}" = false ]; then
+  log "step=preserve-user-data status=started"
+  preserve_root="$(mktemp -d "${PRESERVE_TMP_TEMPLATE}")"
+  preserve_path "${product_root}/logs" "${preserve_root}" "logs"
+  preserve_path "${product_root}/backups" "${preserve_root}" "backups"
+  preserve_path "${vm_home}/data/backups/redis" "${preserve_root}" "redis-backups"
+  if [ "${vital_files_dir}" = "${default_vital_files}" ]; then
+    preserve_path "${default_vital_files}" "${preserve_root}" "vital-files"
+  else
+    log "preserved external vital files directory=${vital_files_dir}"
+  fi
+  log "step=preserve-user-data status=completed"
+fi
+
+log "step=remove-installed-files status=started"
+safe_rm_rf "${manager_app}"
+safe_rm_rf "${product_root}"
+if [ "${clean}" = true ] && [ "${vital_files_dir}" != "${default_vital_files}" ]; then
+  safe_rm_rf "${vital_files_dir}"
+fi
+log "step=remove-installed-files status=completed"
+
+if [ "${clean}" = false ]; then
+  log "step=restore-preserved-user-data status=started"
+  restore_preserved_paths "${preserve_root}"
+  log "step=restore-preserved-user-data status=completed"
+fi
+
+log "step=forget-package-receipt status=started"
+pkgutil --forget "${PACKAGE_IDENTIFIER}" >/dev/null 2>&1 || true
+log "step=forget-package-receipt status=completed"
+
+log "step=remove-uninstaller status=started"
+rm -f "${UNINSTALL}"
+log "step=remove-uninstaller status=completed"
+
+log "uninstall completed log=${uninstall_log}"

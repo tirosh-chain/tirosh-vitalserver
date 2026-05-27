@@ -9,6 +9,7 @@ final class RuntimeServiceControllerTests: XCTestCase {
         let loaded = Set([
             RuntimeManagedService.vm,
             RuntimeManagedService.proxy,
+            RuntimeManagedService.guestLogSync,
             RuntimeManagedService.watchdog,
         ])
         let controller = RuntimeServiceController(
@@ -21,6 +22,7 @@ final class RuntimeServiceControllerTests: XCTestCase {
 
         XCTAssertEqual(serviceManager.stoppedLabels, [
             RuntimeManagedService.watchdog.label,
+            RuntimeManagedService.guestLogSync.label,
             RuntimeManagedService.proxy.label,
             RuntimeManagedService.vm.label,
         ])
@@ -42,10 +44,12 @@ final class RuntimeServiceControllerTests: XCTestCase {
 
         XCTAssertEqual(serviceManager.startedLabels, [
             RuntimeManagedService.vm.label,
+            RuntimeManagedService.guestLogSync.label,
             RuntimeManagedService.watchdog.label,
         ])
         XCTAssertEqual(serviceManager.startedPlists, [
             RuntimeManagedService.vm.launchDaemonPlist,
+            RuntimeManagedService.guestLogSync.launchDaemonPlist,
             RuntimeManagedService.watchdog.launchDaemonPlist,
         ])
     }

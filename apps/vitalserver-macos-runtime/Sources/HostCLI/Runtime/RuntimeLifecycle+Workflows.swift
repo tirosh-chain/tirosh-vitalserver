@@ -89,6 +89,17 @@ extension RuntimeLifecycle {
             writeStatus: { status, operation, message in
                 try writeRuntimeStatus(status, operation: operation, message: message)
             },
+            recordObservedEvent: { status, operation, message, snapshot in
+                let previousStatus = statusReporter.loadStatus()?.status
+                try recordRuntimeEvent(
+                    status,
+                    previousStatus: previousStatus,
+                    operation: operation,
+                    message: message,
+                    healthSnapshot: snapshot,
+                    eventType: domainEventType(for: snapshot, defaultEventType: .healthObserved)
+                )
+            },
             reasonText: reasonText,
             printLine: { line in print(line) }
         )
@@ -116,6 +127,7 @@ extension RuntimeLifecycle {
                 prepareLogs: {
                     try? fileStore.createDirectory(at: logsDirectory, withIntermediateDirectories: true)
                     try? rotateRuntimeLogs()
+                    try? collectGuestLogs()
                 },
                 activeManagedOperation: {
                     runtimeManagedOperationGuard().activeOperation()
@@ -135,8 +147,35 @@ extension RuntimeLifecycle {
                 sleep: { interval in
                     sleeper.sleep(forTimeInterval: interval)
                 },
-                writeStatus: { status, operation, message in
+                writeObservedStatus: { status, operation, message, snapshot in
+                    let previousStatus = statusReporter.loadStatus()?.status
                     try writeRuntimeStatus(status, operation: operation, message: message)
+                    recordRuntimeEventBestEffort(
+                        status,
+                        previousStatus: previousStatus,
+                        operation: operation,
+                        message: message,
+                        healthSnapshot: snapshot,
+                        eventType: domainEventType(for: snapshot)
+                    )
+                },
+                recordObservedEvent: { status, operation, message, snapshot, eventType in
+                    let previousStatus = statusReporter.loadStatus()?.status
+                    recordRuntimeEventBestEffort(
+                        status,
+                        previousStatus: previousStatus,
+                        operation: operation,
+                        message: message,
+                        healthSnapshot: snapshot,
+                        eventType: eventType
+                    )
+                },
+                recordLifecycleEvent: { operation, message, eventType in
+                    recordRuntimeLifecycleEventBestEffort(
+                        operation: operation,
+                        message: message,
+                        eventType: eventType
+                    )
                 }
             ),
             log: log
@@ -164,8 +203,12 @@ extension RuntimeLifecycle {
                 setStartOnBoot: { enabled in
                     try setStartOnBoot(enabled)
                 },
+                setSystemSleepPrevention: { enabled in
+                    try setSystemSleepPrevention(enabled)
+                },
                 restartRuntimeServices: {
                     restartLaunchdService(.vm)
+                    restartLaunchdService(.guestLogSync)
                     restartLaunchdService(.proxy)
                     restartLaunchdService(.watchdog)
                 }

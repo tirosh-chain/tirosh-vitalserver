@@ -37,6 +37,19 @@ final class RuntimeUpdateCompatibilityCheckerTests: XCTestCase {
         }
     }
 
+    func testRejectsMismatchedBundleChannel() {
+        XCTAssertThrowsError(try RuntimeUpdateCompatibilityChecker.check(
+            manifest: manifest(channel: .dev),
+            currentUpdaterVersion: "1.2.3",
+            currentChannel: .stable
+        )) { error in
+            XCTAssertEqual(error as? RuntimeUpdateCompatibilityError, .unsupportedChannel(
+                currentChannel: .stable,
+                bundleChannel: .dev
+            ))
+        }
+    }
+
     func testAllowsTwoPhaseUpdateWhenExplicitlyAllowed() throws {
         try RuntimeUpdateCompatibilityChecker.check(
             manifest: manifest(requiresTwoPhaseUpdate: true),
@@ -47,13 +60,13 @@ final class RuntimeUpdateCompatibilityCheckerTests: XCTestCase {
 
     func testRejectsUnsupportedTargetPlatform() {
         XCTAssertThrowsError(try RuntimeUpdateCompatibilityChecker.check(
-            manifest: manifest(targetPlatforms: ["macos-arm64"]),
+            manifest: manifest(targetPlatform: "macos-arm64"),
             currentUpdaterVersion: "1.2.3",
             currentPlatform: "windows-x64"
         )) { error in
             XCTAssertEqual(error as? RuntimeUpdateCompatibilityError, .unsupportedPlatform(
                 currentPlatform: "windows-x64",
-                targetPlatforms: ["macos-arm64"]
+                targetPlatform: "macos-arm64"
             ))
         }
     }
@@ -87,16 +100,19 @@ final class RuntimeUpdateCompatibilityCheckerTests: XCTestCase {
 
     private func manifest(
         minUpdaterVersion: String? = "1.2.0",
-        targetPlatforms: [String] = [],
+        channel: UpdateBundleChannel = .stable,
+        targetPlatform: String = "macos-arm64",
         requiresGuestActivation: Bool = false,
         requiresTwoPhaseUpdate: Bool = false,
         artifacts: [UpdateBundleArtifact] = []
     ) -> UpdateBundleManifest {
         UpdateBundleManifest(
-            schemaVersion: 2,
+            schemaVersion: 3,
             product: "com.tirosh.vitalserver",
+            channel: channel,
             helperVersion: "1.2.3",
-            targetPlatforms: targetPlatforms,
+            releaseLabel: "1.2.3",
+            targetPlatform: targetPlatform,
             components: ["updater": "1.2.3"],
             minUpdaterVersion: minUpdaterVersion,
             requiresGuestActivation: requiresGuestActivation,

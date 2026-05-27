@@ -16,6 +16,7 @@ final class RuntimeCommandExecutorTests: XCTestCase {
             "command started executable=/bin/tool arguments=--flag",
             "command completed executable=/bin/tool",
         ])
+        XCTAssertEqual(harness.events.map(\.type), [.runtimeCommandStarted, .runtimeCommandCompleted])
     }
 
     func testRunRequiredLogsStderrAndThrowsOnFailure() {
@@ -34,6 +35,7 @@ final class RuntimeCommandExecutorTests: XCTestCase {
             "command stderr executable=/bin/tool stderr=bad",
             "command failed executable=/bin/tool exitCode=2",
         ])
+        XCTAssertEqual(harness.events.map(\.type), [.runtimeCommandStarted, .runtimeCommandFailed])
     }
 
     func testRunWritingOutputThrowsOnFailure() {
@@ -48,15 +50,18 @@ final class RuntimeCommandExecutorTests: XCTestCase {
         ))
         XCTAssertEqual(runner.commands, ["write:/bin/tool --out /tmp/out"])
         XCTAssertEqual(harness.logs, [
+            "command started executable=/bin/tool arguments=--out output=/tmp/out",
             "command stderr executable=/bin/tool stderr=write failed",
             "command failed executable=/bin/tool exitCode=3",
         ])
+        XCTAssertEqual(harness.events.map(\.type), [.runtimeCommandStarted, .runtimeCommandFailed])
     }
 }
 
 private final class CommandExecutorHarness {
     let runner: CommandRunnerSpy
     var logs: [String] = []
+    var events: [(type: RuntimeEventType, executable: String, arguments: [String], result: RuntimeProcessResult?)] = []
 
     init(runner: CommandRunnerSpy) {
         self.runner = runner
@@ -67,6 +72,9 @@ private final class CommandExecutorHarness {
             commandRunner: runner,
             log: { message in
                 self.logs.append(message)
+            },
+            recordCommandEvent: { type, executable, arguments, result in
+                self.events.append((type, executable, arguments, result))
             }
         )
     }

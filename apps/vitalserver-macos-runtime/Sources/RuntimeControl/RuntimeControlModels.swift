@@ -123,6 +123,8 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
     public var startOnBoot: Bool
     public var startOnBootConfigurable: Bool
     public var autoRecoveryEnabled: Bool
+    public var preventSystemSleep: Bool
+    public var redisBackupRetentionCount: Int
     public var restartAfterSave: Bool
 
     public init(
@@ -141,6 +143,8 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
         startOnBoot: Bool = true,
         startOnBootConfigurable: Bool = true,
         autoRecoveryEnabled: Bool = true,
+        preventSystemSleep: Bool = true,
+        redisBackupRetentionCount: Int = 30,
         restartAfterSave: Bool = true
     ) {
         self.cpuCount = cpuCount
@@ -158,7 +162,19 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
         self.startOnBoot = startOnBoot
         self.startOnBootConfigurable = startOnBootConfigurable
         self.autoRecoveryEnabled = autoRecoveryEnabled
+        self.preventSystemSleep = preventSystemSleep
+        self.redisBackupRetentionCount = redisBackupRetentionCount
         self.restartAfterSave = restartAfterSave
+    }
+}
+
+public struct RuntimeDataDirectoryStats: Codable, Equatable, Sendable {
+    public let fileCount: Int
+    public let sizeBytes: Int64
+
+    public init(fileCount: Int, sizeBytes: Int64) {
+        self.fileCount = fileCount
+        self.sizeBytes = sizeBytes
     }
 }
 
@@ -166,13 +182,18 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
     public var runtimeInstalled: Bool
     public var vmServiceLoaded: Bool
     public var proxyServiceLoaded: Bool
+    public var guestLogSyncServiceLoaded: Bool
+    public var sleepPreventionServiceLoaded: Bool?
     public var watchdogServiceLoaded: Bool
     public var runtimeState: RuntimeState?
     public var operation: RuntimeOperation?
     public var statusMessage: String?
     public var updatedAt: String?
+    public var startedAt: String?
     public var runtimeVersion: String?
     public var latestBackup: String?
+    public var vmState: RuntimeVMState?
+    public var vmErrors: [RuntimeVMError]?
     public var vmIP: String?
     public var guestHTTP: String?
     public var hostProxyHTTP: String?
@@ -182,21 +203,29 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
     public var memory: ResourceUsage?
     public var systemDisk: ResourceUsage?
     public var dataStorage: ResourceUsage?
+    public var dataDirectoryStats: RuntimeDataDirectoryStats?
     public var proxyPort: Int
     public var failureReasons: [RuntimeFailureReason]
     public var progress: RuntimeProgressDocument?
+    public var containerObservation: RuntimeContainerObservation?
+    public var vitalDBObservation: VitalDBObservationDocument?
 
     public init(
         runtimeInstalled: Bool = false,
         vmServiceLoaded: Bool = false,
         proxyServiceLoaded: Bool = false,
+        guestLogSyncServiceLoaded: Bool = false,
+        sleepPreventionServiceLoaded: Bool? = nil,
         watchdogServiceLoaded: Bool = false,
         runtimeState: RuntimeState? = nil,
         operation: RuntimeOperation? = nil,
         statusMessage: String? = nil,
         updatedAt: String? = nil,
+        startedAt: String? = nil,
         runtimeVersion: String? = nil,
         latestBackup: String? = nil,
+        vmState: RuntimeVMState? = nil,
+        vmErrors: [RuntimeVMError]? = nil,
         vmIP: String? = nil,
         guestHTTP: String? = nil,
         hostProxyHTTP: String? = nil,
@@ -206,20 +235,28 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
         memory: ResourceUsage? = nil,
         systemDisk: ResourceUsage? = nil,
         dataStorage: ResourceUsage? = nil,
+        dataDirectoryStats: RuntimeDataDirectoryStats? = nil,
         proxyPort: Int = 80,
         failureReasons: [RuntimeFailureReason] = [],
-        progress: RuntimeProgressDocument? = nil
+        progress: RuntimeProgressDocument? = nil,
+        containerObservation: RuntimeContainerObservation? = nil,
+        vitalDBObservation: VitalDBObservationDocument? = nil
     ) {
         self.runtimeInstalled = runtimeInstalled
         self.vmServiceLoaded = vmServiceLoaded
         self.proxyServiceLoaded = proxyServiceLoaded
+        self.guestLogSyncServiceLoaded = guestLogSyncServiceLoaded
+        self.sleepPreventionServiceLoaded = sleepPreventionServiceLoaded
         self.watchdogServiceLoaded = watchdogServiceLoaded
         self.runtimeState = runtimeState
         self.operation = operation
         self.statusMessage = statusMessage
         self.updatedAt = updatedAt
+        self.startedAt = startedAt
         self.runtimeVersion = runtimeVersion
         self.latestBackup = latestBackup
+        self.vmState = vmState
+        self.vmErrors = vmErrors
         self.vmIP = vmIP
         self.guestHTTP = guestHTTP
         self.hostProxyHTTP = hostProxyHTTP
@@ -229,9 +266,12 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
         self.memory = memory
         self.systemDisk = systemDisk
         self.dataStorage = dataStorage
+        self.dataDirectoryStats = dataDirectoryStats
         self.proxyPort = proxyPort
         self.failureReasons = failureReasons
         self.progress = progress
+        self.containerObservation = containerObservation
+        self.vitalDBObservation = vitalDBObservation
     }
 
     public var isReady: Bool {

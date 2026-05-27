@@ -6,7 +6,7 @@ VitalServer Helper의 update bundle이 무엇을 바꾸고, 무엇을 보존하�
 
 | 질문 | 답 |
 |---|---|
-| update 입력 단위는? | `dist/update-bundles/update-bundle-<version>.tar.gz` tarball |
+| update 입력 단위는? | `dist/update-bundles/update-bundle-<channel>-<kind>-<releaseLabel>.tar.gz` tarball |
 | 현장 적용 UI는? | Product Update는 Helper app의 Update 탭, VM Image Update는 Danger Zone |
 | CLI backend는? | `/usr/local/bin/vitalserver-vm runtime apply-bundle` |
 | 검증 기준은? | `manifest.json`, `checksums.txt`, artifact sha256/size |
@@ -51,7 +51,7 @@ Hotfix, service-only update, updater bridge update는 별도 kind를 만들지 �
 | VM Image | guest OS/image-specific | Linux guest OS/base rootfs/kernel/initrd class artifact | `components.vmImage` |
 | VitalServer service | service-specific | VM 안에서 실행되는 VitalServer app/container | `components.vitalServer` |
 
-Manifest에서는 최상위 product version과 component version을 분리합니다. `helperVersion`은 support/release note 기준이고, 실제로 바뀐 하위 계층은 `components`에 기록합니다. platform별로 다르게 적용되는 bundle은 `targetPlatforms`로 제한합니다.
+Manifest에서는 최상위 product version과 component version을 분리합니다. `helperVersion`은 support/release note 기준이고, 실제로 바뀐 하위 계층은 `components`에 기록합니다. platform별로 다르게 적용되는 bundle은 `targetPlatform`으로 제한합니다.
 
 ### 핵심 원칙
 
@@ -59,7 +59,7 @@ Manifest에서는 최상위 product version과 component version을 분리합니
 |---|---|
 | update protocol은 baseline 계약 유지 | `manifest.json`, `activate-update.request`, `runtime-version.json`, status/result JSON은 지금 정의한 필수 필드와 확장 규칙을 유지한다 |
 | updater는 보수적으로 변경 | update를 수행하는 host runtime tool과 guest activation script는 일반 runtime보다 더 강한 호환성 기준을 적용한다 |
-| request 필드는 신중히 확장 | 새 필드는 optional 또는 기본값을 가져야 하고, 필수 필드 추가는 bridge/two-phase update 대상이다 |
+| request 필드는 신중히 확장 | 배포 이후 새 필드는 optional 또는 기본값을 가져야 하고, 필수 필드 추가는 bridge/two-phase update 대상이다 |
 | 모르는 필드는 무시 | reader는 알 수 없는 JSON field 때문에 실패하면 안 된다 |
 | 실패는 상태 파일과 로그에 남김 | 실패 단계, reason code, 사람이 읽을 수 있는 message를 남긴다 |
 | 재실행 가능 | 같은 bundle을 다시 적용해도 중간 산출물 때문에 더 망가지면 안 된다 |
@@ -72,7 +72,7 @@ Manifest에서는 최상위 product version과 component version을 분리합니
 
 | 파일 | 생산자 | 소비자 | 호환성 기준 |
 |---|---|---|---|
-| `manifest.json` | build tool | host Updater | `schemaVersion`, `version`, artifact 목록, compatibility field를 포함 |
+| `manifest.json` | build tool | host Updater | `schemaVersion`, `channel`, `helperVersion`, `releaseLabel`, artifact 목록, compatibility field를 포함 |
 | `checksums.txt` | build tool | host verifier | artifact path와 sha256/size 검증 기준 |
 | `activate-update.request` | host Updater | guest activation script | `requestId`, `requestedAt`, `operation`, `version`은 baseline 필수 |
 | `activate-update-result.json` | guest activation script | host Updater/Helper UI | `requestId`, `status`, `message`, `updatedAt`은 항상 기록 |
@@ -104,11 +104,13 @@ update bundle manifest에는 updater 호환성 판단을 위한 필드를 둡니
 
 ```json
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "product": "com.tirosh.vitalserver",
   "bundleKind": "product-update",
+  "channel": "stable",
   "helperVersion": "0.2.0",
-  "targetPlatforms": ["macos-arm64"],
+  "releaseLabel": "0.2.0",
+  "targetPlatform": "macos-arm64",
   "minUpdaterVersion": "0.1.6",
   "components": {
     "helperUI": "0.2.0+macos.1",
@@ -129,15 +131,19 @@ update bundle manifest에는 updater 호환성 판단을 위한 필드를 둡니
 
 | 필드 | 의미 |
 |---|---|
+| `schemaVersion` | manifest 문법과 required field set의 version. 현재 baseline은 `3` |
+| `product` | bundle이 대상으로 하는 product id. 현재 `com.tirosh.vitalserver` |
 | `bundleKind` | `product-update` 또는 `vm-image-update` |
-| `helperVersion` | 최상위 VitalServer Helper product release version |
-| `targetPlatforms` | 이 bundle을 적용할 수 있는 platform/build variant. 예: `macos-arm64` |
+| `channel` | `stable`, `dev` 같은 update channel. 설치된 updater channel과 다르면 preflight에서 거부 |
+| `helperVersion` | 최상위 VitalServer Helper product release version. package-safe numeric version |
+| `releaseLabel` | artifact/staging/backup/installed version 표시에 쓰는 release identity. 예: `0.2.0`, `0.2.0-dev` |
+| `targetPlatform` | 이 bundle을 적용할 수 있는 단일 platform/build variant. 예: `macos-arm64` |
 | `minUpdaterVersion` | 이 bundle을 직접 적용할 수 있는 최소 Updater version |
 | `components` | bundle이 제공하거나 변경하는 component version map |
 | `requiresGuestActivation` | `guest-deploy` 교체 후 VM 내부 activation이 필요한지 |
 | `requiresTwoPhaseUpdate` | updater 자체를 먼저 갱신해야 하는 bridge update가 필요한지 |
 
-Reader는 required contract field 누락을 실패로 처리합니다. 새 필드는 가능한 optional metadata로 추가하고, required field/schema major version을 바꾸는 경우에는 기존 Updater가 읽을 수 있는 bridge/two-phase Product Update를 먼저 제공해야 합니다.
+Reader는 required contract field 누락을 실패로 처리합니다. 새 필드는 가능한 optional metadata로 추가하고, required field/schema major version을 바꾸는 경우에는 기존 Updater가 읽을 수 있는 bridge/two-phase Product Update를 먼저 제공해야 합니다. Stable/dev artifact identity와 optional container 포함 정책은 `apps/vitalserver-macos-runtime/release.json` 및 `release-dev.json`을 SoT로 삼고, build tool이 manifest로 변환합니다.
 
 ### Two-Phase Update 기준
 
@@ -281,13 +287,13 @@ Release gate를 통과하지 못한 bundle은 현장 전달 대상이 아닙니�
 Product Update bundle은 설치 파일 전체가 아니라 교체 가능한 artifact 묶음입니다.
 
 ```text
-dist/update-bundles/update-bundle-<version>.tar.gz
+dist/update-bundles/update-bundle-<channel>-<kind>-<releaseLabel>.tar.gz
 ```
 
 tarball 내부 구조:
 
 ```text
-update-bundle-<version>/
+update-bundle-<channel>-<kind>-<releaseLabel>/
   manifest.json
   checksums.txt
   signature
@@ -672,17 +678,17 @@ cat "/Library/Application Support/TiroshVitalServer/vm/data/run/runtime-state.js
 bundle 자체를 확인할 때:
 
 ```sh
-tar -xOf dist/update-bundles/update-bundle-<version>.tar.gz \
-  update-bundle-<version>/manifest.json
-tar -xOf dist/update-bundles/update-bundle-<version>.tar.gz \
-  update-bundle-<version>/guest-deploy.tar.gz | tar -tzf - | grep docker-images
+tar -xOf dist/update-bundles/update-bundle-<channel>-<kind>-<releaseLabel>.tar.gz \
+  update-bundle-<channel>-<kind>-<releaseLabel>/manifest.json
+tar -xOf dist/update-bundles/update-bundle-<channel>-<kind>-<releaseLabel>.tar.gz \
+  update-bundle-<channel>-<kind>-<releaseLabel>/guest-deploy.tar.gz | tar -tzf - | grep docker-images
 ```
 
 Docker image bundle architecture를 확인할 때:
 
 ```sh
-tar -xOf dist/update-bundles/update-bundle-<version>.tar.gz \
-  update-bundle-<version>/guest-deploy.tar.gz > /tmp/guest-deploy.tar.gz
+tar -xOf dist/update-bundles/update-bundle-<channel>-<kind>-<releaseLabel>.tar.gz \
+  update-bundle-<channel>-<kind>-<releaseLabel>/guest-deploy.tar.gz > /tmp/guest-deploy.tar.gz
 tar -xOf /tmp/guest-deploy.tar.gz deploy/docker-images/vitalserver-images.tar.gz > /tmp/vitalserver-images.tar.gz
 
 tar -xOf /tmp/vitalserver-images.tar.gz manifest.json

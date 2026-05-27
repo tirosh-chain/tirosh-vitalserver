@@ -3,12 +3,10 @@ import RuntimeControl
 import Core
 import Contracts
 
-@MainActor
-protocol PrivilegedCommandRunning {
+protocol PrivilegedCommandRunning: Sendable {
     func run(shellCommand: String) async -> RuntimeCommandResult
 }
 
-@MainActor
 struct SystemPrivilegedCommandRunner: PrivilegedCommandRunning {
     init() {}
 
@@ -62,6 +60,8 @@ enum RuntimeCommandFactory {
             settings.publicHost,
             RuntimeAdapterConstants.RuntimeCommand.optionPublicPort,
             String(settings.publicPort),
+            RuntimeAdapterConstants.RuntimeCommand.optionRedisBackupRetention,
+            String(settings.redisBackupRetentionCount),
         ]
         if settings.startOnBootConfigurable {
             arguments += [
@@ -74,6 +74,10 @@ enum RuntimeCommandFactory {
         arguments += [
             RuntimeAdapterConstants.RuntimeCommand.optionAutoRecovery,
             settings.autoRecoveryEnabled
+                ? RuntimeAdapterConstants.RuntimeCommand.boolTrue
+                : RuntimeAdapterConstants.RuntimeCommand.boolFalse,
+            RuntimeAdapterConstants.RuntimeCommand.optionPreventSystemSleep,
+            settings.preventSystemSleep
                 ? RuntimeAdapterConstants.RuntimeCommand.boolTrue
                 : RuntimeAdapterConstants.RuntimeCommand.boolFalse,
         ]
@@ -164,6 +168,7 @@ enum RuntimeCommandFactory {
 }
 
 enum RuntimeServicesAction {
+    case repair
     case start
     case stop
 
@@ -173,6 +178,8 @@ enum RuntimeServicesAction {
             return RuntimeAdapterConstants.RuntimeCommand.startServices
         case .stop:
             return RuntimeAdapterConstants.RuntimeCommand.stopServices
+        case .repair:
+            return RuntimeAdapterConstants.RuntimeCommand.repairServices
         }
     }
 }

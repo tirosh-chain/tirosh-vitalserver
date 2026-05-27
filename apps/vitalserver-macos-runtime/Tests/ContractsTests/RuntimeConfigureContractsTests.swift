@@ -16,6 +16,8 @@ final class RuntimeConfigureContractsTests: XCTestCase {
         XCTAssertEqual(RuntimeConfigureOption(rawValue: "--admin-password-file"), .adminPasswordFile)
         XCTAssertEqual(RuntimeConfigureOption(rawValue: "--start-on-boot"), .startOnBoot)
         XCTAssertEqual(RuntimeConfigureOption(rawValue: "--auto-recovery"), .autoRecovery)
+        XCTAssertEqual(RuntimeConfigureOption(rawValue: "--prevent-system-sleep"), .preventSystemSleep)
+        XCTAssertEqual(RuntimeConfigureOption(rawValue: "--redis-backup-retention"), .redisBackupRetention)
         XCTAssertEqual(RuntimeConfigureOption(rawValue: "--restart"), .restart)
         XCTAssertEqual(RuntimeConfigureOption(rawValue: "--future"), .unknown("--future"))
     }

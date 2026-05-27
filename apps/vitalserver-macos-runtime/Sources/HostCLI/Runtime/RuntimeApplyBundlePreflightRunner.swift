@@ -26,7 +26,9 @@ struct RuntimeApplyBundlePreflightRunner {
         let stagedRootfs = manifest.artifacts.contains { $0.type == .rootfsBase }
             ? stagedBundle.appendingPathComponent(Constants.Artifacts.rootfsBase)
             : nil
-        var requiredBytes = Constants.Runtime.updateFreeSpaceMarginBytes
+        let stagedBundleSize = try directorySize(stagedBundle)
+        var requiredBytes = Constants.Runtime.updateFreeSpaceMarginBytes + stagedBundleSize
+        log("bundle apply storage preflight stagedBundle=\(formatBytes(stagedBundleSize))")
         if let stagedRootfs {
             guard fileExists(stagedRootfs) else {
                 throw LauncherError.missingFile(stagedRootfs.path)

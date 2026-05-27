@@ -5,7 +5,7 @@ description = "Production wrapper and validation workspace for upstream VitalSer
 requires-python = ">=3.14"
 dependencies = [
   "pydantic-settings>=2.14.1",
-  "tirosh-vitalserver-vm-build",
+  "tirosh-vitalserver-devtools",
   "tirosh-vitalserver-testkit",
 ]
 
@@ -18,19 +18,20 @@ dev = [
 
 [tool.uv.workspace]
 members = [
-  "packages/vm-build",
+  "packages/vitalserver-devtools",
   "packages/vitalserver-testkit",
 ]
 
 [tool.uv.sources]
-tirosh-vitalserver-vm-build = { workspace = true }
+tirosh-vitalserver-devtools = { workspace = true }
 tirosh-vitalserver-testkit = { workspace = true }
 
 [tool.ruff]
 src = [
-  "packages/vm-build/src",
+  "packages/vitalserver-devtools/src",
   "packages/vitalserver-testkit/src",
   "packages/vitalserver-testkit/tests",
+  "apps/vitaldb-observer",
   "scripts",
 ]
 exclude = [
@@ -70,6 +71,7 @@ docstring-code-format = true
 [tool.ruff.lint.isort]
 known-first-party = [
   "tirosh_vitalserver",
+  "vitaldb_observer",
 ]
 
 [tool.mypy]
@@ -77,16 +79,18 @@ check_untyped_defs = true
 disallow_untyped_defs = true
 explicit_package_bases = true
 files = [
-  "packages/vm-build/src",
-  "packages/vm-build/tests",
+  "packages/vitalserver-devtools/src",
+  "packages/vitalserver-devtools/tests",
   "packages/vitalserver-testkit/src",
   "packages/vitalserver-testkit/tests",
+  "apps/vitaldb-observer",
   "scripts",
 ]
 ignore_missing_imports = true
 mypy_path = [
-  "packages/vm-build/src",
+  "packages/vitalserver-devtools/src",
   "packages/vitalserver-testkit/src",
+  "apps/vitaldb-observer",
 ]
 namespace_packages = true
 no_implicit_optional = true
@@ -100,10 +104,12 @@ warn_unused_ignores = true
 addopts = "-ra -v"
 pythonpath = [
   ".",
-  "packages/vm-build/src",
+  "packages/vitalserver-devtools/src",
   "packages/vitalserver-testkit/src",
+  "apps/vitaldb-observer",
 ]
 testpaths = [
-  "packages/vm-build/tests",
+  "packages/vitalserver-devtools/tests",
   "packages/vitalserver-testkit/tests",
+  "apps/vitaldb-observer/tests",
 ]

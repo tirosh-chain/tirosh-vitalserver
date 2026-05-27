@@ -13,5 +13,9 @@
   "systemDisk": {
     "usedBytes": 10737418240,
     "totalBytes": 34359738368
+  },
+  "vitalFilesDisk": {
+    "usedBytes": 5368709120,
+    "totalBytes": 21474836480
   }
 }

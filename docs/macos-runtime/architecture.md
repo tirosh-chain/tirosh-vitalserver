@@ -231,7 +231,7 @@ PWA 착수 직전까지 현재 branch가 보장해야 하는 compatibility basel
 | API 전환 지점 | PWA client는 `RuntimeControlClient`에 해당하는 HTTP/SSE contract를 보고, 현재 SwiftUI 전환기만 `RuntimeHostClient`로 local host affordance를 같이 사용 |
 | API route/DTO/server | `RuntimeControlAPI` target이 `/runtime/*` runtime control route와 `/host/*` local host affordance route를 분리하고, read-only `/runtime/*`는 local loopback HTTP server로 제공 |
 | OpenAPI 계약 | `docs/macos-runtime/runtime-control.openapi.json`이 Swift endpoint enum과 method/path/access parity test로 검증됨 |
-| 후속 이슈 | write/admin endpoint 구현, auth/pairing 강화, SSE progress/log streaming, generated client는 PWA/API 구현 단계에서 진행 |
+| 후속 이슈 | write/admin endpoint 구현, auth/pairing 강화, progress client adapter, generated client는 PWA/API 구현 단계에서 진행 |
 
 Repository layout 기준은 아래처럼 둡니다.
 
@@ -239,11 +239,11 @@ Repository layout 기준은 아래처럼 둡니다.
 |---|---|---|
 | `apps/vitalserver` | VM/컨테이너 안에서 실행되는 VitalServer service wrapper와 runtime shim | macOS host runtime, package installer 정책 |
 | `apps/vitalserver-macos-runtime` | macOS runtime distribution. Swift Helper app, `vitalserver-vm` CLI, packaging scripts, launchd template, guest deploy assets, release metadata | build-machine 전용 rootfs/image 생성 로직, PWA product UI |
-| `packages/vm-build` | Python build-machine tooling. Ubuntu image, cloud-init, rootfs compression, nginx bundle, Docker image bundle, update bundle 생성/검증 | 설치 후 runtime 상태 전이, launchd/VM lifecycle 정책 |
+| `packages/vitalserver-devtools` | Python build-machine tooling. Ubuntu image, cloud-init, rootfs compression, nginx bundle, Docker image bundle, update bundle 생성/검증 | 설치 후 runtime 상태 전이, launchd/VM lifecycle 정책 |
 | `packages/vitalserver-testkit` | 운영/통합 검증용 testkit | 제품 runtime 구현 |
 | future `apps/vitalserver-helper-pwa` 또는 동등한 PWA app | Web/PWA primary Helper UI | host file/process/launchd 직접 호출 |
 
-`apps/vitalserver-macos-runtime`을 `packages`로 옮기지 않는 이유는 이 디렉터리가 재사용 라이브러리가 아니라 설치 가능한 macOS runtime product를 만들기 위한 distribution boundary이기 때문입니다. 반대로 `packages/vm-build`는 설치 대상에 포함되지 않는 build-machine 도구라 `packages`에 남깁니다.
+`apps/vitalserver-macos-runtime`을 `packages`로 옮기지 않는 이유는 이 디렉터리가 재사용 라이브러리가 아니라 설치 가능한 macOS runtime product를 만들기 위한 distribution boundary이기 때문입니다. 반대로 `packages/vitalserver-devtools`는 설치 대상에 포함되지 않는 build-machine 도구라 `packages`에 남깁니다.
 
 Platform별 차이는 아래처럼 격리합니다.
 
@@ -667,6 +667,17 @@ UI 상태, capability guard, usecase orchestration, 화면 메시지 변환
 
 이 구조에서 파일 기반 계약은 모든 계층에 쓰는 범용 통신 방식이 아닙니다. Swift module 사이에서는 `public` API와 protocol을 import해서 호출하고, 파일 기반 JSON은 process/VM 경계를 넘는 계약에만 사용합니다. 특히 guest VM은 bootstrap 초기에 HTTP service가 아직 없을 수 있으므로, shared directory의 request/result JSON이 update와 repair의 안정적인 최소 계약입니다.
 
+Helper app 내부의 concurrency 경계는 아래처럼 둡니다.
+
+| Owner | 책임 | 포함하는 작업 | 포함하지 않는 작업 |
+|---|---|---|---|
+| `RuntimeViewModel` (`MainActor`) | UI state publish, capability guard, native shell interaction, command orchestration | `@Published` 상태 갱신, 선택/확인 dialog, worker 결과 반영 | disk/SQLite/log 대량 read, privileged command 실행 |
+| `MacHostRuntimeReadWorker` (`actor`) | read-only host snapshot | settings/status/health/events/recorders/backups/log progress/release info read | update apply, Redis backup, rollback, repair, service start/stop |
+| `MacHostRuntimeCommandWorker` (`actor`) | host mutation과 privileged command 실행 | update verify/apply, settings apply, Redis backup, rollback/delete backup, repair, start/stop services, uninstall, log export | UI state publish, 화면 메시지 결정, runtime status polling |
+| `RuntimeNativeShell` (`MainActor`) | macOS shell affordance | file picker, save panel, Finder/browser open, Helper relaunch, UI가 직접 선택한 폴더 생성 | runtime lifecycle command, update/rollback 정책 |
+
+중요한 운영 작업의 owner는 `MacHostRuntimeCommandWorker`입니다. Update, Redis backup, rollback, repair처럼 오래 걸리거나 관리자 권한을 요구하는 작업은 read worker와 섞지 않습니다. UI와 dev Runtime Control API는 같은 `MacHostRuntimeClient` facade를 통해 호출하지만, facade 내부에서는 read worker와 command worker가 분리되어야 합니다. 이 경계가 깨지면 업데이트 중 앱 재시작, UI 끊김, PWA/local UI 상태 차이를 추적하기 어려워집니다.
+
 ### Naming Rules
 
 리팩터링 중 이름은 platform 종속성과 재사용 가능성을 기준으로 정합니다. 이름이 계층 경계를 설명해야 하며, 단순 wrapper가 여러 단계로 겹쳐 호출 깊이를 늘리는 이름은 피합니다.
@@ -684,7 +695,7 @@ UI 상태, capability guard, usecase orchestration, 화면 메시지 변환
 
 Host마다 달라질 가능성이 높은 것은 이름에 host/platform 맥락을 드러냅니다. 예를 들어 macOS의 launchd, AppKit panel, local file/log export, privileged CLI 실행은 `MacHost*`, `MacRuntimeControlApp`, `RuntimeNativeShell` 쪽에 둡니다. 반대로 PWA, Runtime Control API server, macOS/Windows host runtime이 모두 재사용해야 하는 상태/진행/update/guest request-result 계약은 `Contracts`와 `RuntimeControl`에 둡니다.
 
-`MacRuntimeControlEnvironment`는 현재 macOS app composition root입니다. `MacHostRuntimeClient -> RuntimeControlClientAPIReadHandler -> RuntimeControlAPIRouter -> RuntimeControlLocalHTTPServer`로 read-only Runtime Control API를 조립하고, 같은 `MacHostRuntimeClient`를 SwiftUI `RuntimeViewModel`에도 주입합니다. 이로써 UI 경로와 HTTP 경로가 같은 usecase/read model 계약을 공유합니다.
+`MacRuntimeControlEnvironment`는 현재 macOS app composition root입니다. Dev profile에서는 `MacHostRuntimeClient -> RuntimeControlClientAPIReadHandler -> RuntimeControlAPIRouter -> RuntimeControlLocalHTTPServer`로 read-only Runtime Control API를 조립하고, 같은 `MacHostRuntimeClient`를 SwiftUI `RuntimeViewModel`에도 주입합니다. Stable profile은 pairing/session token 기반 auth 정책이 들어가기 전까지 local API server를 시작하지 않습니다. 이 경계는 UI 경로와 HTTP 경로가 같은 usecase/read model 계약을 공유하도록 유지합니다.
 
 `RuntimeHostClient`는 현재 SwiftUI 전환기에서 필요한 local host affordance 경계입니다. PWA 진입 시 이 계약을 그대로 browser client에 노출한다는 뜻이 아닙니다. PWA는 `RuntimeControlClient`에 해당하는 HTTP/SSE API를 우선 사용하고, local file 선택, log export destination, pairing/native shell 같은 기능은 native shell 또는 Runtime Control API의 별도 endpoint로 재배치합니다.
 
@@ -733,8 +744,8 @@ Shell
 | 영역 | 주요 파일 | 책임 | 책임 밖 |
 |---|---|---|---|
 | build orchestration | `make/vm.mk`, `make/vm/config.mk` | target dependency, 중간/최종 산출물 경로, unsigned build 변수, install test wrapper | manifest 해석, disk/rootfs 세부 처리 |
-| build config | `apps/vitalserver-macos-runtime/Support/Build/vm-build.toml` | Ubuntu/rootfs/Docker image/nginx bundle pinned input 값 | 설치 시 사용자 설정 |
-| Python build package | `packages/vm-build/src/tirosh_vitalserver/vm_build/*.py` | Ubuntu asset 준비, cloud-init ISO 생성, rootfs 압축, nginx bundle, Docker image bundle, update bundle 생성/검증, plist/template rendering | 설치 후 runtime 상태 변경 |
+| build config | `config/vm-build.toml` | Ubuntu/rootfs/Docker image/nginx bundle pinned input 값 | 설치 시 사용자 설정 |
+| Python build package | `packages/vitalserver-devtools/src/tirosh_vitalserver/devtools/*.py` | Ubuntu asset 준비, cloud-init ISO 생성, rootfs 압축, nginx bundle, Docker image bundle, update bundle 생성/검증, plist/template rendering | 설치 후 runtime 상태 변경 |
 | Local control entry | `Sources/HostCLI/CLI/Launcher.swift`, `Command.swift` | `vitalserver-vm` command routing, VM start/stop/status/network/runtime command 연결 | package staging, DMG 생성 |
 | Local control lifecycle facade | `Sources/HostCLI/Runtime/RuntimeLifecycle.swift` | `runtime install/status/health/verify-bundle/stage-bundle/apply-bundle/rollback/repair-datastore/start-services/stop-services` command를 typed workflow와 runner로 연결 | workflow 내부 단계 구현, DMG/PKG 파일 생성 |
 | Local control workflows | `RuntimeInstallWorkflow.swift`, `RuntimeBundleWorkflow.swift`, `RuntimeRollbackWorkflow.swift`, `RuntimeGuestActivationWorkflow.swift`, `RuntimeDatastoreRepairWorkflow.swift` | install/update/rollback/guest activation/datastore repair의 단계 조율, progress/status 기록 경계 | CLI argument parsing, Helper UI presentation |
@@ -743,7 +754,7 @@ Shell
 | Swift paths/constants | `LauncherPaths.swift`, `Constants.swift` | 설치/runtime 경로, artifact 이름, launchd/service 이름, command path | runtime 동작 정책 결정 |
 | VM configuration | `VirtualMachine/VMRuntimeConfig.swift`, `VMConfigurationFactory.swift` | `vm-config.json` schema, Apple Virtualization configuration 생성 | install settings 파일 읽기 |
 | Helper app | `Sources/MacRuntimeControlApp/*` | 설치 후 Status/Settings/Update/Logs/About/Advanced/Danger Zone UI, app composition, native shell | rootfs, VM disk, privileged provisioning 포함 |
-| Helper runtime adapter | `Sources/MacHostRuntimeAdapter/*` | `RuntimeControlClient` local 구현, 상태/설정/log/backup file read, privileged command 조립/실행, log export | SwiftUI presentation, host runtime workflow 내부 단계 |
+| Host runtime adapter | `Sources/MacHostRuntimeAdapter/*` | `RuntimeControlClient` local facade, read worker, command worker, host file/log read, privileged command 조립/실행, log export | SwiftUI presentation, host runtime workflow 내부 단계 |
 | PKG scripts | `Support/Packaging/preinstall`, `postinstall`, `proxy-run`, `uninstall` | installer/launchd/uninstall entrypoint wrapper | 복잡한 provisioning 로직 |
 | guest bootstrap | `Support/Guest/bootstrap.sh`, `bin/*`, `systemd/*`, `prepare-airgap-rootfs.sh`, `compose.yaml` | Linux guest 내부 Docker/Compose 구성, edge nginx container, Docker image load, runtime state 기록 | macOS launchd/proxy 관리 |
 
@@ -753,7 +764,7 @@ Shell은 의도적으로 얇게 유지합니다. `postinstall`은 로그를 열�
 
 | 변경 종류 | 위치 |
 |---|---|
-| Ubuntu image URL, rootfs 압축, cloud-init ISO, Docker image bundle, nginx bundle | Python `packages/vm-build` |
+| Ubuntu image URL, rootfs 압축, cloud-init ISO, Docker image bundle, nginx bundle | Python `packages/vitalserver-devtools` |
 | PKG/DMG target dependency, 산출물 경로, 개발용 install wrapper | `make/vm/*.mk` |
 | 설치 후 VM disk 생성, launchd load, runtime config, health, update/rollback | Swift `RuntimeLifecycle` facade와 `Runtime*Workflow`/runner |
 | VM start/stop/network mode와 Apple Virtualization config | Swift `HostCLI` |

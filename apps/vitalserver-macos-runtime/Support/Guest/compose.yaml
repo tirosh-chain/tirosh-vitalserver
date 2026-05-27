@@ -92,6 +92,80 @@ services:
       retries: 30
     restart: unless-stopped
 
+  audit-proxy:
+    build:
+      context: .
+      dockerfile: apps/vitalserver-audit-proxy/Dockerfile
+    image: vitalserver-audit-proxy:0.1.0
+    depends_on:
+      app:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:18083:8080"
+    environment:
+      AUDIT_PROXY_UPSTREAM_HOST: app
+      AUDIT_PROXY_UPSTREAM_PORT: "80"
+      VITALSERVER_REDIS_HOST: "${VITALSERVER_REDIS_HOST:-redis}"
+      VITALSERVER_REDIS_PORT: "${VITALSERVER_REDIS_PORT:-6379}"
+      VITALSERVER_TRUST_PROXY: "${VITALSERVER_TRUST_PROXY:-1}"
+      VITALSERVER_AUDIT_ENABLED: "${VITALSERVER_AUDIT_ENABLED:-1}"
+      VITALSERVER_AUDIT_REDIS_LIST: "${VITALSERVER_AUDIT_REDIS_LIST:-vitalserver:audit_events}"
+      VITALSERVER_AUDIT_REDIS_MAXLEN: "${VITALSERVER_AUDIT_REDIS_MAXLEN:-10000}"
+      VITALSERVER_AUDIT_FILE_ENABLED: "${VITALSERVER_AUDIT_FILE_ENABLED:-1}"
+      VITALSERVER_AUDIT_LOG_PATH: "${VITALSERVER_AUDIT_LOG_PATH:-/var/log/vitalserver-audit/audit-events.log}"
+      VITALSERVER_AUDIT_LOG_FORMAT: "${VITALSERVER_AUDIT_LOG_FORMAT:-json}"
+      VITALSERVER_AUDIT_STDOUT_ENABLED: "${VITALSERVER_AUDIT_STDOUT_ENABLED:-1}"
+      VITALSERVER_AUDIT_STDOUT_FORMAT: "${VITALSERVER_AUDIT_STDOUT_FORMAT:-json}"
+      AUDIT_PROXY_UPSTREAM_TIMEOUT_MS: "${AUDIT_PROXY_UPSTREAM_TIMEOUT_MS:-30000}"
+    volumes:
+      - type: volume
+        source: audit-logs
+        target: /var/log/vitalserver-audit
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          node -e "require('http').get('http://127.0.0.1:8080/audit-proxy/health', r => process.exit(r.statusCode === 204 ? 0 : 1)).on('error', () => process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+  vitaldb-observer:
+    build:
+      context: .
+      dockerfile: apps/vitaldb-observer/Dockerfile
+    image: vitaldb-observer:0.1.0
+    depends_on:
+      redis:
+        condition: service_healthy
+      audit-proxy:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:18084:8080"
+    environment:
+      VITALDB_OBSERVER_HOST: "${VITALDB_OBSERVER_HOST:-0.0.0.0}"
+      VITALDB_OBSERVER_REDIS_HOST: "${VITALDB_OBSERVER_REDIS_HOST:-redis}"
+      VITALDB_OBSERVER_REDIS_PORT: "${VITALDB_OBSERVER_REDIS_PORT:-6379}"
+      VITALDB_OBSERVER_RECORDER_ONLINE_THRESHOLD_SECONDS: "${VITALDB_OBSERVER_RECORDER_ONLINE_THRESHOLD_SECONDS:-120}"
+      VITALDB_OBSERVER_ACCESS_LOG_PATH: "${VITALDB_OBSERVER_ACCESS_LOG_PATH:-/var/log/vitalserver-edge/access.jsonl}"
+    volumes:
+      - type: volume
+        source: edge-logs
+        target: /var/log/vitalserver-edge
+        read_only: true
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8080/ready', timeout=3).status == 200 else 1)"
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
   redis-ui:
     image: ghcr.io/joeferner/redis-commander:0.9.0
     depends_on:
@@ -117,8 +191,19 @@ services:
       - "8080"
     environment:
       BASE_URL: "/swagger"
-      URL: "/swagger/openapi.yaml"
+      URLS: >-
+        [
+          {"name":"VitalServer","url":"/swagger/docs/openapi.yaml"},
+          {"name":"Runtime Control API","url":"/swagger/docs/macos-runtime/runtime-control.openapi.json"},
+          {"name":"Audit Proxy","url":"/swagger/docs/openapi/audit-proxy.openapi.yaml"},
+          {"name":"VitalDB Observer","url":"/swagger/docs/openapi/vitaldb-observer.openapi.yaml"}
+        ]
+      URLS_PRIMARY_NAME: "VitalServer"
     volumes:
+      - type: bind
+        source: /mnt/tirosh/deploy/docs
+        target: /usr/share/nginx/html/docs
+        read_only: true
       - type: bind
         source: /mnt/tirosh/deploy/docs/openapi.yaml
         target: /usr/share/nginx/html/openapi.yaml
@@ -133,7 +218,7 @@ services:
   edge:
     image: nginx:1.24-alpine
     depends_on:
-      app:
+      audit-proxy:
         condition: service_healthy
       redis-ui:
         condition: service_healthy
@@ -146,6 +231,9 @@ services:
         source: /mnt/tirosh/deploy/nginx/vitalserver.conf
         target: /etc/nginx/conf.d/default.conf
         read_only: true
+      - type: volume
+        source: edge-logs
+        target: /var/log/vitalserver-edge
     healthcheck:
       test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1/ready || exit 1"]
       interval: 10s
@@ -156,3 +244,5 @@ services:
 volumes:
   redis-data:
   vital-tmp-files:
+  audit-logs:
+  edge-logs:

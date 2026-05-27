@@ -55,7 +55,7 @@ VM Image/rootfs 자체를 교체하는 특수 bundle이 필요할 때:
 
 ```sh
 make vm-rootfs-update-bundle
-make vm-update-bundle-verify
+make vm-rootfs-update-bundle-verify
 ```
 
 개발용 설치 테스트:

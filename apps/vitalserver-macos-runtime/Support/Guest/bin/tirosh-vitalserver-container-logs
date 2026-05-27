@@ -11,6 +11,7 @@ INTERVAL_SECONDS="${TIROSH_CONTAINER_LOG_INTERVAL:-5}"
 TAIL_LINES="${TIROSH_CONTAINER_LOG_LINES:-1000}"
 MAX_BYTES="${TIROSH_CONTAINER_LOG_MAX_BYTES:-10485760}"
 RETAINED_FILES="${TIROSH_CONTAINER_LOG_RETAINED_FILES:-5}"
+ROTATE_CHECK_LINES="${TIROSH_CONTAINER_LOG_ROTATE_CHECK_LINES:-200}"
 
 mount_runtime_share() {
   mkdir -p "${MOUNT_POINT}"
@@ -30,7 +31,6 @@ append_marker() {
 }
 
 append_line() {
-  rotate_logs
   printf "%s\n" "$1" >> "${LOG_FILE}"
 }
 
@@ -68,6 +68,7 @@ write_snapshot() {
 }
 
 watch_logs() {
+  local line_count=0
   while true; do
     append_marker "docker compose logs --follow --tail=${TAIL_LINES}"
     if ! docker compose \
@@ -75,6 +76,11 @@ watch_logs() {
       -f "${DEPLOY_DIR}/compose.yaml" \
       logs --no-color --follow --tail="${TAIL_LINES}" 2>&1 | while IFS= read -r line; do
         append_line "${line}"
+        line_count=$((line_count + 1))
+        if [[ "${line_count}" -ge "${ROTATE_CHECK_LINES}" ]]; then
+          rotate_logs
+          line_count=0
+        fi
       done; then
       append_line "collector_error_at=$(date -Iseconds)"
     fi

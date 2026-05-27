@@ -21,6 +21,14 @@ extension RuntimeBackup {
         return merged.sorted { $0.name > $1.name }
     }
 
+    static func loadRedisBackups(fileStore: RuntimeFileStore = SystemRuntimeFileStore()) -> [RuntimeBackup] {
+        let directory = URL(fileURLWithPath: RuntimeAdapterConstants.Paths.redisBackups)
+        let discovered = ((try? fileStore.contentsOfDirectory(at: directory, skipsHiddenFiles: true)) ?? [])
+            .filter { $0.lastPathComponent.hasPrefix("redis-") && $0.lastPathComponent.hasSuffix(".tar.gz") }
+            .map { RuntimeBackup(path: $0.path, sizeBytes: fileSize($0, fileStore: fileStore)) }
+        return discovered.sorted { $0.name > $1.name }
+    }
+
     private static func latestBackup(
         _ path: String?,
         excluding backups: [RuntimeBackup],
@@ -41,5 +49,9 @@ extension RuntimeBackup {
 
     private static func directorySize(_ url: URL, fileStore: RuntimeFileStore) -> UInt64? {
         try? fileStore.recursiveRegularFileSize(at: url, skipsHiddenFiles: true)
+    }
+
+    private static func fileSize(_ url: URL, fileStore: RuntimeFileStore) -> UInt64? {
+        try? fileStore.fileSize(url)
     }
 }

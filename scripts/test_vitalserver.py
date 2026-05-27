@@ -164,8 +164,9 @@ def run_health(config: VitalServerCheckConfig) -> None:
 
 
 def run_verify(config: VitalServerCheckConfig) -> None:
+    testkit = testkit_command()
     command = [
-        *testkit_command(),
+        *testkit,
         "verify-recorder",
         "--vitalserver-url",
         config.server.base_url,
@@ -179,13 +180,14 @@ def run_verify(config: VitalServerCheckConfig) -> None:
         str(config.server.poll_interval_seconds),
     ]
 
-    insert_payload_argument(command, config.recorder.payload)
+    insert_payload_argument(command, len(testkit), config.recorder.payload)
     run(*command)
 
 
 def run_load(config: VitalServerCheckConfig) -> None:
+    testkit = testkit_command()
     command = [
-        *testkit_command(),
+        *testkit,
         "send-recorder",
         "--vitalserver-url",
         config.server.base_url,
@@ -201,7 +203,7 @@ def run_load(config: VitalServerCheckConfig) -> None:
         str(config.transfer.max_failure_rate),
     ]
 
-    insert_payload_argument(command, config.recorder.payload)
+    insert_payload_argument(command, len(testkit), config.recorder.payload)
     run(*command)
 
 
@@ -214,8 +216,9 @@ def run_stream(
     if max_messages is None:
         max_messages = default_max_messages
 
+    testkit = testkit_command()
     command = [
-        *testkit_command(),
+        *testkit,
         "stream-recorder",
         "--vitalserver-url",
         config.server.base_url,
@@ -231,7 +234,7 @@ def run_stream(
         config.recorder.default_scenario.value,
     ]
 
-    insert_payload_argument(command, config.recorder.payload)
+    insert_payload_argument(command, len(testkit), config.recorder.payload)
 
     for bed in config.recorder.beds:
         command.extend(["--bed-scenario", f"{bed.index}={bed.scenario.value}"])
@@ -242,11 +245,15 @@ def run_stream(
     run(*command)
 
 
-def insert_payload_argument(command: list[str], payload: Path | None) -> None:
+def insert_payload_argument(
+    command: list[str],
+    testkit_prefix_length: int,
+    payload: Path | None,
+) -> None:
     """Insert the optional recorder payload path after the subcommand."""
 
     if payload is not None:
-        command.insert(2, str(payload))
+        command.insert(testkit_prefix_length + 1, str(payload))
 
 
 def run(*args: str) -> None:

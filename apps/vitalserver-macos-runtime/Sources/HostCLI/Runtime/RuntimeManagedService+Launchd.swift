@@ -12,6 +12,10 @@ extension RuntimeManagedService {
             "VM"
         case .proxy:
             "proxy"
+        case .guestLogSync:
+            "guest log sync"
+        case .sleepPrevention:
+            "sleep prevention"
         case .watchdog:
             "watchdog"
         }

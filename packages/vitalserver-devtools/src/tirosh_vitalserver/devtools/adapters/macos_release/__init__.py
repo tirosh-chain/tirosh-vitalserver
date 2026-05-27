@@ -1,0 +1,1 @@
+"""macOS release infrastructure adapters."""

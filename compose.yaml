@@ -30,8 +30,8 @@ services:
     depends_on:
       redis:
         condition: service_healthy
-    ports:
-      - "${VITALSERVER_BIND_HOST:-127.0.0.1}:${VITALSERVER_HTTP_PORT:-18080}:80"
+    expose:
+      - "80"
     environment:
       VITALSERVER_ADMIN_PASSWORD: "${VITALSERVER_ADMIN_PASSWORD:-admin}"
       VITALSERVER_MIN_CPUS: "8"
@@ -60,6 +60,76 @@ services:
       retries: 30
     restart: unless-stopped
 
+  audit-proxy:
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: apps/vitalserver-audit-proxy/Dockerfile
+    image: vitalserver-audit-proxy:0.1.0
+    depends_on:
+      app:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "${VITALSERVER_BIND_HOST:-127.0.0.1}:${VITALSERVER_HTTP_PORT:-18080}:8080"
+    environment:
+      AUDIT_PROXY_UPSTREAM_HOST: app
+      AUDIT_PROXY_UPSTREAM_PORT: "80"
+      VITALSERVER_REDIS_HOST: "${VITALSERVER_REDIS_HOST:-redis}"
+      VITALSERVER_REDIS_PORT: "${VITALSERVER_REDIS_PORT:-6379}"
+      VITALSERVER_TRUST_PROXY: "${VITALSERVER_TRUST_PROXY:-0}"
+      VITALSERVER_AUDIT_ENABLED: "${VITALSERVER_AUDIT_ENABLED:-1}"
+      VITALSERVER_AUDIT_REDIS_LIST: "${VITALSERVER_AUDIT_REDIS_LIST:-vitalserver:audit_events}"
+      VITALSERVER_AUDIT_REDIS_MAXLEN: "${VITALSERVER_AUDIT_REDIS_MAXLEN:-10000}"
+      VITALSERVER_AUDIT_FILE_ENABLED: "${VITALSERVER_AUDIT_FILE_ENABLED:-1}"
+      VITALSERVER_AUDIT_LOG_PATH: "${VITALSERVER_AUDIT_LOG_PATH:-/var/log/vitalserver-audit/audit-events.log}"
+      VITALSERVER_AUDIT_LOG_FORMAT: "${VITALSERVER_AUDIT_LOG_FORMAT:-json}"
+      VITALSERVER_AUDIT_STDOUT_ENABLED: "${VITALSERVER_AUDIT_STDOUT_ENABLED:-1}"
+      VITALSERVER_AUDIT_STDOUT_FORMAT: "${VITALSERVER_AUDIT_STDOUT_FORMAT:-json}"
+      AUDIT_PROXY_UPSTREAM_TIMEOUT_MS: "${AUDIT_PROXY_UPSTREAM_TIMEOUT_MS:-30000}"
+    volumes:
+      - type: volume
+        source: audit-logs
+        target: /var/log/vitalserver-audit
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          node -e "require('http').get('http://127.0.0.1:8080/audit-proxy/health', r => process.exit(r.statusCode === 204 ? 0 : 1)).on('error', () => process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+  vitaldb-observer:
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: apps/vitaldb-observer/Dockerfile
+    image: vitaldb-observer:0.1.0
+    depends_on:
+      redis:
+        condition: service_healthy
+      audit-proxy:
+        condition: service_healthy
+    ports:
+      - "${VITALDB_OBSERVER_BIND_HOST:-127.0.0.1}:${VITALDB_OBSERVER_PORT:-18083}:8080"
+    environment:
+      VITALDB_OBSERVER_HOST: "${VITALDB_OBSERVER_HOST:-0.0.0.0}"
+      VITALDB_OBSERVER_REDIS_HOST: "${VITALDB_OBSERVER_REDIS_HOST:-redis}"
+      VITALDB_OBSERVER_REDIS_PORT: "${VITALDB_OBSERVER_REDIS_PORT:-6379}"
+      VITALDB_OBSERVER_RECORDER_ONLINE_THRESHOLD_SECONDS: "${VITALDB_OBSERVER_RECORDER_ONLINE_THRESHOLD_SECONDS:-120}"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8080/ready', timeout=3).status == 200 else 1)"
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
   redis-ui:
     image: rediscommander/redis-commander:latest
     platform: linux/amd64
@@ -82,13 +152,20 @@ services:
       redis:
         condition: service_healthy
     environment:
-      URL: /openapi.yaml
+      URLS: >-
+        [
+          {"name":"VitalServer","url":"/docs/openapi.yaml"},
+          {"name":"Runtime Control API","url":"/docs/macos-runtime/runtime-control.openapi.json"},
+          {"name":"Audit Proxy","url":"/docs/openapi/audit-proxy.openapi.yaml"},
+          {"name":"VitalDB Observer","url":"/docs/openapi/vitaldb-observer.openapi.yaml"}
+        ]
+      URLS_PRIMARY_NAME: "VitalServer"
     ports:
       - "${SWAGGER_UI_PORT:-8082}:8080"
     volumes:
       - type: bind
-        source: ./docs/openapi.yaml
-        target: /usr/share/nginx/html/openapi.yaml
+        source: ./docs
+        target: /usr/share/nginx/html/docs
         read_only: true
       - type: bind
         source: ./infra/swagger-ui/default.conf.template
@@ -101,3 +178,4 @@ volumes:
   vital-files:
   vital-vr-release:
   vital-tmp-files:
+  audit-logs:

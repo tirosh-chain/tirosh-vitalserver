@@ -8,7 +8,7 @@ VitalDB VitalServer를 실제 제품 환경에서 사용할 수 있는 수준으
 
 `vendor/vitalserver`는 Tirosh fork를 가리키는 git submodule입니다. VitalServer
 애플리케이션 자체 수정은 fork repository에서 처리하고, 이 저장소에서는 wrapper app,
-Compose 설정, API 문서, Redis relay, 검증 도구를 관리합니다.
+Compose 설정, API 문서, Redis relay, 관측 sidecar, 검증 도구를 관리합니다.
 
 ## 빠른 실행
 
@@ -29,6 +29,18 @@ Redis UI:
 
 ```text
 http://localhost:8081
+```
+
+Swagger UI:
+
+```text
+http://localhost:8082
+```
+
+VitalDB observer:
+
+```text
+http://127.0.0.1:18083/api/v1/observations
 ```
 
 기본 관리자 계정:
@@ -90,7 +102,9 @@ uv가 설치된 개발 환경에서는 기존처럼 workspace source를 우선 �
 ## 자주 쓰는 명령
 
 ```sh
-make help            # 사용 가능한 명령 확인
+make help            # 자주 쓰는 명령 확인
+make help-runtime    # macOS runtime/package/update/VM 명령 확인
+make help-internal   # 저수준 build/debug/troubleshooting 명령 확인
 make doctor          # 로컬 도구와 submodule 상태 확인
 make bootstrap       # .env, submodule, proxy config, 선택적 Python workspace 준비
 make install-testkit-release  # uv 없이 release wheel 기반 testkit 설치
@@ -104,20 +118,23 @@ make clean           # proxy runtime, container, volume, orphan, local image 정
 make open            # VitalServer 브라우저 열기
 make swagger         # 기본 stack은 건드리지 않고 Swagger UI만 시작
 make swagger-down    # 기본 stack은 유지하고 Swagger UI만 중지
-make proxy-config    # macOS host nginx proxy config 출력
-make proxy-start     # macOS host nginx proxy만 수동 시작
-make proxy-stop      # macOS host nginx proxy만 수동 중지
-make proxy-status    # macOS host nginx proxy 상태 확인
 make app-build       # app image만 build
 make testkit-smoke   # simulator 기반 smoke scenario
 make check           # lint, typecheck, test 실행
 ```
+
+macOS runtime 설치물, offline update bundle, 개발 VM PoC 관련 명령은 `make help-runtime`에 모아 둡니다.
+proxy 세부 조작이나 VM 단계별 build/debug target은 일반 실행 경로가 아니므로 `make help-internal`에서
+확인합니다.
 
 Swagger UI는 아래 주소에서 볼 수 있습니다.
 
 ```text
 http://localhost:8082
 ```
+
+Swagger UI catalog는 VitalServer API, Runtime Control API, Audit Proxy API, VitalDB Observer API를
+같은 화면에서 선택할 수 있게 구성합니다.
 
 Swagger UI는 기본 stack을 먼저 실행한 뒤 별도로 시작합니다. `make swagger`는 `swagger-ui`
 컨테이너만 시작하며, `redis`나 `app`을 함께 시작하지 않습니다.
@@ -152,6 +169,8 @@ LaunchDaemon으로 실행해 외부 장비와 브라우저가 proxy port로만 �
 │   ├── vitalserver/           # upstream VitalServer를 감싼 제품 실행 app
 │   │   ├── docker/            # Docker 배포 target
 │   │   └── runtime/           # 공통 실행 shim
+│   ├── vitalserver-audit-proxy/ # VRecorder command audit sidecar
+│   ├── vitaldb-observer/      # Redis/proxy 기반 VitalDB 관측 sidecar
 │   └── vitalserver-macos-runtime/
 │       ├── Sources/           # macOS Helper app, runtime CLI, RuntimeControl/Contracts 계약/adapter
 │       ├── Support/           # app/packaging/guest/build assets
@@ -165,7 +184,7 @@ LaunchDaemon으로 실행해 외부 장비와 브라우저가 proxy port로만 �
 ├── make/                     # Makefile target group
 ├── packages/
 │   ├── vitalserver-testkit/   # 운영 검증과 데이터 전송 검증용 Python 도구
-│   └── vm-build/              # build-machine 전용 VM/rootfs/bundle 생성 Python 도구
+│   └── vitalserver-devtools/  # local build/proxy/runtime/package Python 도구
 ├── scripts/
 └── vendor/
     └── vitalserver/           # git submodule: tirosh-chain/vitalserver
@@ -200,7 +219,13 @@ LaunchDaemon으로 실행해 외부 장비와 브라우저가 proxy port로만 �
 - Redis에 쌓이는 실시간 데이터 구조를 파악하고 relay 가능하게 만들기
 - simulated Vital Recorder data와 실제 payload를 흘려보내며 운영 검증하기
 - 장시간 실행 중 서버, Redis, container 상태를 관측하기
+- VitalDB recorder/bed/proxy/anomaly 관측을 upstream 수정 없이 sidecar로 수집하기
 - 제품에서 필요한 설정, 백업, 복구, 모니터링 지점을 외곽에서 보강하기
+
+관측 정보의 최종 source of truth는 macOS runtime의 `runtime-observability.sqlite`입니다.
+`vitaldb-observer`는 Redis와 proxy/access log를 읽어 snapshot을 생산하는 stateless collector이고,
+watchdog/runtime이 이를 status/event/API read model로 정규화합니다. 전체 owner map은
+[Runtime observability model](docs/macos-runtime/observability.md#source-of-truth-map)을 봅니다.
 
 `packages/vitalserver-testkit`은 이 제품화 작업을 검증하기 위한 도구입니다. testkit 자체가
 저장소의 목적은 아니고, 실시간 수집/업로드/relay가 운영 요구를 만족하는지 확인하는
@@ -258,6 +283,8 @@ build하고 release asset을 업로드합니다. Release note는 monorepo 전체
 - [Redis 데이터 구조](docs/redis-data-model.md): Redis key 구조와 relay 설계 메모
 - [OpenAPI 문서](docs/openapi.yaml): upstream VitalServer route에서 추출한 OpenAPI 문서
 - [VitalServer macOS Runtime](docs/vitalserver-macos-runtime.md): Mac mini VM runtime 문서군
+- [Runtime observability model](docs/macos-runtime/observability.md): status/event/VitalDB observation SoT
+- [Runtime Control API](docs/macos-runtime/runtime-control-api.md): PWA/native shell 공통 API와 SSE 계약
 
 ## Submodule 관리
 

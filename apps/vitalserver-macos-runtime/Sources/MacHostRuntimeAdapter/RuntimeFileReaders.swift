@@ -4,15 +4,18 @@ import Core
 import Contracts
 import HostInfrastructure
 
-protocol RuntimeHostFileReading {
+protocol RuntimeHostFileReading: Sendable {
     func updateBundleSummary(url: URL) -> String
     func backups(latestBackupPath: String?) -> [RuntimeBackup]
+    func redisBackups() -> [RuntimeBackup]
     func logText(sourceID: RuntimeLogSource, helperMessage: String, lineLimit: Int) -> String
     func preferredLogsPath() -> String
     func vitalFileFolders(root: String) -> [VitalFilesFolder]
 }
 
-struct SystemRuntimeHostFileReader: RuntimeHostFileReading {
+struct SystemRuntimeHostFileReader: RuntimeHostFileReading, @unchecked Sendable {
+    private static let logTailReadByteLimit: UInt64 = 128 * 1024
+
     private let fileStore: RuntimeFileStore
     private let logCollector: RuntimeLogCollecting
 
@@ -48,13 +51,31 @@ struct SystemRuntimeHostFileReader: RuntimeHostFileReading {
         RuntimeBackup.loadAll(latestBackupPath: latestBackupPath, fileStore: fileStore)
     }
 
+    func redisBackups() -> [RuntimeBackup] {
+        RuntimeBackup.loadRedisBackups(fileStore: fileStore)
+    }
+
     func logText(sourceID: RuntimeLogSource, helperMessage: String, lineLimit: Int) -> String {
-        logCollector.refreshLogCollection()
         switch sourceID {
         case .helperMessage:
             return helperMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 ? RuntimeAdapterConstants.StatusText.noLogData
                 : helperMessage
+        case .containers:
+            if !fileStore.fileExists(URL(fileURLWithPath: RuntimeAdapterConstants.Paths.containerLogs)) {
+                logCollector.refreshLogCollection(sourceID: sourceID)
+            }
+            return logFile(sourceID: sourceID, lineLimit: lineLimit)
+        default:
+            logCollector.refreshLogCollection(sourceID: sourceID)
+            return logFile(sourceID: sourceID, lineLimit: lineLimit)
+        }
+    }
+
+    private func logFile(sourceID: RuntimeLogSource, lineLimit: Int) -> String {
+        switch sourceID {
+        case .helperMessage:
+            return RuntimeAdapterConstants.StatusText.noLogData
         case .install:
             return logFile(path: RuntimeAdapterConstants.Paths.installLog, lineLimit: lineLimit)
         case .command:
@@ -69,6 +90,18 @@ struct SystemRuntimeHostFileReader: RuntimeHostFileReading {
                 lineLimit: lineLimit,
                 fallbackPath: (RuntimeAdapterConstants.Paths.runtimeLogSources as NSString).appendingPathComponent("launcher.log")
             )
+        case .vmLaunchOutput:
+            return logFile(
+                path: (RuntimeAdapterConstants.Paths.runtimeLogs as NSString).appendingPathComponent("launchd.out.log"),
+                lineLimit: lineLimit,
+                fallbackPath: (RuntimeAdapterConstants.Paths.runtimeLogSources as NSString).appendingPathComponent("launchd.out.log")
+            )
+        case .vmLaunchError:
+            return logFile(
+                path: (RuntimeAdapterConstants.Paths.runtimeLogs as NSString).appendingPathComponent("launchd.err.log"),
+                lineLimit: lineLimit,
+                fallbackPath: (RuntimeAdapterConstants.Paths.runtimeLogSources as NSString).appendingPathComponent("launchd.err.log")
+            )
         case .proxyOutput:
             return logFile(
                 path: (RuntimeAdapterConstants.Paths.runtimeLogs as NSString).appendingPathComponent("proxy.out.log"),
@@ -80,6 +113,12 @@ struct SystemRuntimeHostFileReader: RuntimeHostFileReading {
                 path: (RuntimeAdapterConstants.Paths.runtimeLogs as NSString).appendingPathComponent("proxy.err.log"),
                 lineLimit: lineLimit,
                 fallbackPath: (RuntimeAdapterConstants.Paths.runtimeLogSources as NSString).appendingPathComponent("proxy.err.log")
+            )
+        case .watchdog:
+            return logFile(
+                path: (RuntimeAdapterConstants.Paths.runtimeLogs as NSString).appendingPathComponent("watchdog.out.log"),
+                lineLimit: lineLimit,
+                fallbackPath: (RuntimeAdapterConstants.Paths.runtimeLogSources as NSString).appendingPathComponent("watchdog.out.log")
             )
         case .updateActivation:
             return logFile(
@@ -98,10 +137,7 @@ struct SystemRuntimeHostFileReader: RuntimeHostFileReading {
 
     func preferredLogsPath() -> String {
         logCollector.refreshLogCollection()
-        if fileStore.directoryExists(URL(fileURLWithPath: RuntimeAdapterConstants.Paths.productLogs)) {
-            return RuntimeAdapterConstants.Paths.productLogs
-        }
-        return RuntimeAdapterConstants.Paths.installLog
+        return RuntimeAdapterConstants.Paths.productLogs
     }
 
     func vitalFileFolders(root: String) -> [VitalFilesFolder] {
@@ -126,14 +162,15 @@ struct SystemRuntimeHostFileReader: RuntimeHostFileReading {
             readableURL = url
         } else if let fallbackPath {
             let fallbackURL = URL(fileURLWithPath: fallbackPath)
-            guard fileStore.fileExists(fallbackURL) else {
+            if fileStore.fileExists(fallbackURL) {
+                readableURL = fallbackURL
+            } else {
                 return RuntimeAdapterConstants.StatusText.noLogData
             }
-            readableURL = fallbackURL
         } else {
             return RuntimeAdapterConstants.StatusText.noLogData
         }
-        guard let content = try? fileStore.readUTF8Text(readableURL) else {
+        guard let content = readTailText(readableURL) else {
             return RuntimeAdapterConstants.StatusText.noLogData
         }
         let body = tail(content, lineLimit: lineLimit)
@@ -145,5 +182,23 @@ struct SystemRuntimeHostFileReader: RuntimeHostFileReading {
     private func tail(_ content: String, lineLimit: Int) -> String {
         let lines = content.split(separator: "\n", omittingEmptySubsequences: false)
         return lines.suffix(lineLimit).joined(separator: "\n")
+    }
+
+    private func readTailText(_ url: URL) -> String? {
+        guard let handle = try? FileHandle(forReadingFrom: url) else {
+            return nil
+        }
+        defer {
+            try? handle.close()
+        }
+
+        let fileSize = (try? fileStore.fileSize(url)) ?? 0
+        if fileSize > Self.logTailReadByteLimit {
+            try? handle.seek(toOffset: fileSize - Self.logTailReadByteLimit)
+        }
+        guard let data = try? handle.readToEnd(), !data.isEmpty else {
+            return nil
+        }
+        return String(decoding: data, as: UTF8.self)
     }
 }
