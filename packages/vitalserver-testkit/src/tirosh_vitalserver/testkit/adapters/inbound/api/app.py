@@ -1,7 +1,5 @@
 """FastAPI app for controlling TestKit virtual VRecorder sessions."""
 
-from __future__ import annotations
-
 import logging
 import time
 from typing import Annotated, Any
@@ -32,8 +30,6 @@ def create_testkit_app(
 
     def get_manager() -> VirtualRecorderSessionManager:
         return session_manager
-
-    ManagerDependency = Annotated[VirtualRecorderSessionManager, Depends(get_manager)]
 
     @app.middleware("http")
     async def log_api_request(request: Request, call_next: Any) -> Any:
@@ -67,7 +63,7 @@ def create_testkit_app(
 
     @app.get("/sessions")
     def list_sessions(
-        manager: ManagerDependency,
+        manager: Annotated[VirtualRecorderSessionManager, Depends(get_manager)],
     ) -> dict[str, list[dict[str, Any]]]:
         return {
             "sessions": [
@@ -79,7 +75,7 @@ def create_testkit_app(
     @app.post("/sessions", status_code=201)
     def start_session(
         request: StartVirtualRecordersRequest,
-        manager: ManagerDependency,
+        manager: Annotated[VirtualRecorderSessionManager, Depends(get_manager)],
     ) -> dict[str, Any]:
         emit_testkit_event(
             "api.session.start.requested",
@@ -116,7 +112,7 @@ def create_testkit_app(
     @app.get("/sessions/{session_id}")
     def get_session(
         session_id: str,
-        manager: ManagerDependency,
+        manager: Annotated[VirtualRecorderSessionManager, Depends(get_manager)],
     ) -> dict[str, Any]:
         snapshot = manager.get_session(session_id)
         if snapshot is None:
@@ -127,7 +123,7 @@ def create_testkit_app(
     @app.post("/sessions/{session_id}/stop")
     def stop_session(
         session_id: str,
-        manager: ManagerDependency,
+        manager: Annotated[VirtualRecorderSessionManager, Depends(get_manager)],
     ) -> dict[str, Any]:
         emit_testkit_event("api.session.stop.requested", session_id=session_id)
         snapshot = manager.stop_session(session_id)
