@@ -48,6 +48,7 @@ final class RuntimeLogExporterTests: XCTestCase {
         var archivedBootstrapLog: String?
         var archivedContainerLog: String?
         var archivedRotatedContainerLog: String?
+        var archivedManifest: RuntimeLogExportManifest?
         let exporter = MacHostRuntimeLogExporter(
             logCollector: collector,
             productLogsDirectory: productLogs,
@@ -81,6 +82,11 @@ final class RuntimeLogExporterTests: XCTestCase {
                 archivedRotatedContainerLog = try? String(
                     contentsOf: bundleRoot.appendingPathComponent("guest/container-logs.log.1")
                 )
+                if let manifestData = try? Data(
+                    contentsOf: bundleRoot.appendingPathComponent("diagnostics/export-manifest.json")
+                ) {
+                    archivedManifest = try? JSONDecoder().decode(RuntimeLogExportManifest.self, from: manifestData)
+                }
                 try? "archive".write(to: temporaryArchive, atomically: true, encoding: .utf8)
                 return RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "")
             }
@@ -94,6 +100,8 @@ final class RuntimeLogExporterTests: XCTestCase {
         XCTAssertEqual(archivedBootstrapLog, "bootstrap")
         XCTAssertEqual(archivedContainerLog, "containers")
         XCTAssertEqual(archivedRotatedContainerLog, "rotated")
+        XCTAssertEqual(archivedManifest?.fallbackItems.count, 2)
+        XCTAssertEqual(archivedManifest?.fallbackItems.map(\.included), [true, true])
     }
 
     func testExportDoesNotOverwriteCentralLogsWithFallbackSource() async throws {

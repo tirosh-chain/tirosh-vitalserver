@@ -13,6 +13,12 @@ public enum RuntimeEventType: Codable, Equatable, Sendable {
     case vitalDBObserved
     case vitalDBObserverUnhealthy
     case vitalDBAnomalyDetected
+    case watchdogSkipped
+    case recoveryPlanned
+    case serviceRestartDispatched
+    case observabilityStoreFailed
+    case runtimeStatusObserved
+    case guestStateObserved
     case runtimeCommandStarted
     case runtimeCommandCompleted
     case runtimeCommandFailed
@@ -44,6 +50,18 @@ public enum RuntimeEventType: Codable, Equatable, Sendable {
             self = .vitalDBObserverUnhealthy
         case "vitaldb-anomaly-detected":
             self = .vitalDBAnomalyDetected
+        case "watchdog-skipped":
+            self = .watchdogSkipped
+        case "recovery-planned":
+            self = .recoveryPlanned
+        case "service-restart-dispatched":
+            self = .serviceRestartDispatched
+        case "observability-store-failed":
+            self = .observabilityStoreFailed
+        case "runtime-status-observed":
+            self = .runtimeStatusObserved
+        case "guest-state-observed":
+            self = .guestStateObserved
         case "runtime-command-started":
             self = .runtimeCommandStarted
         case "runtime-command-completed":
@@ -81,6 +99,18 @@ public enum RuntimeEventType: Codable, Equatable, Sendable {
             return "vitaldb-observer-unhealthy"
         case .vitalDBAnomalyDetected:
             return "vitaldb-anomaly-detected"
+        case .watchdogSkipped:
+            return "watchdog-skipped"
+        case .recoveryPlanned:
+            return "recovery-planned"
+        case .serviceRestartDispatched:
+            return "service-restart-dispatched"
+        case .observabilityStoreFailed:
+            return "observability-store-failed"
+        case .runtimeStatusObserved:
+            return "runtime-status-observed"
+        case .guestStateObserved:
+            return "guest-state-observed"
         case .runtimeCommandStarted:
             return "runtime-command-started"
         case .runtimeCommandCompleted:

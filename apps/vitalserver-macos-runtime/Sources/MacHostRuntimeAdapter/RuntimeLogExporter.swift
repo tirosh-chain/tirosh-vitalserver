@@ -52,6 +52,7 @@ struct MacHostRuntimeLogExporter: RuntimeLogExporting {
             try fileManager.createDirectory(at: bundleRoot, withIntermediateDirectories: true)
         }
         try copyFallbackLogs(to: bundleRoot)
+        try writeExportManifest(to: bundleRoot)
 
         let temporaryArchive = stagingRoot.appendingPathComponent(destination.lastPathComponent)
         let result = await archiveRunner(
@@ -129,6 +130,44 @@ struct MacHostRuntimeLogExporter: RuntimeLogExporting {
             try fileManager.copyItem(at: source, to: destination)
         }
     }
+
+    private func writeExportManifest(to bundleRoot: URL) throws {
+        let manifest = RuntimeLogExportManifest(
+            generatedAt: ISO8601DateFormatter().string(from: Date()),
+            productLogsDirectory: productLogsDirectory.path,
+            fallbackItems: fallbackLogItems.map { item in
+                RuntimeLogExportManifest.FallbackItem(
+                    source: item.source.path,
+                    relativeDestination: item.relativeDestination,
+                    sourcePresent: fileManager.fileExists(atPath: item.source.path),
+                    included: fileManager.fileExists(
+                        atPath: bundleRoot.appendingPathComponent(item.relativeDestination).path
+                    )
+                )
+            }
+        )
+        let diagnosticsDirectory = bundleRoot.appendingPathComponent("diagnostics", isDirectory: true)
+        try fileManager.createDirectory(at: diagnosticsDirectory, withIntermediateDirectories: true)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        try encoder.encode(manifest).write(
+            to: diagnosticsDirectory.appendingPathComponent("export-manifest.json"),
+            options: .atomic
+        )
+    }
+}
+
+struct RuntimeLogExportManifest: Codable, Equatable {
+    struct FallbackItem: Codable, Equatable {
+        let source: String
+        let relativeDestination: String
+        let sourcePresent: Bool
+        let included: Bool
+    }
+
+    let generatedAt: String
+    let productLogsDirectory: String
+    let fallbackItems: [FallbackItem]
 }
 
 private extension RuntimeCommandResult {

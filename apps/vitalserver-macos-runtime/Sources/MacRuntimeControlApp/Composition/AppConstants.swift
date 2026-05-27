@@ -550,6 +550,40 @@ enum AppConstants {
                 return "Guest bootstrap missing runtime packages"
             case .guestBootstrapFailed:
                 return "Guest bootstrap failed"
+            case .runtimeStatusDocumentMissing:
+                return "Runtime status missing"
+            case .runtimeStatusDocumentStale:
+                return "Runtime status stale"
+            case .runtimeStatusDocumentInvalid:
+                return "Runtime status invalid"
+            case .guestRuntimeStateInvalid:
+                return "Guest runtime state invalid"
+            case .observabilityEventStoreUnavailable:
+                return "Observability store unavailable"
+            case .observabilityEventStoreCorrupt:
+                return "Observability store corrupt"
+            case .vmPidFileStale:
+                return "VM PID file stale"
+            case .vmProcessExited:
+                return "VM process exited"
+            case .launchdServiceCrashed(let service, let exitCode):
+                return "\(titleCasedStatus(service)) service crashed with exit \(exitCode)"
+            case .launchdServiceThrottled(let service):
+                return "\(titleCasedStatus(service)) service throttled"
+            case .hostProxyListenerMismatch(let port, let listeners):
+                return "Host proxy port \(port) listener mismatch: \(listeners)"
+            case .hostProxyConfigInvalid:
+                return "Host proxy configuration invalid"
+            case .httpProbeTimedOut(let target):
+                return "\(titleCasedStatus(target)) HTTP probe timed out"
+            case .httpProbeConnectionRefused(let target):
+                return "\(titleCasedStatus(target)) HTTP probe connection refused"
+            case .containerExited(let service, let exitCode):
+                return "Container \(service) exited with \(exitCode)"
+            case .containerRestartLoop(let service):
+                return "Container \(service) restart loop"
+            case .vitalDBObservationStale:
+                return "VitalDB observation stale"
             case .unknown(let rawValue):
                 return titleCasedStatus(rawValue)
             }

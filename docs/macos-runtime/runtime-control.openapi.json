@@ -1389,6 +1389,18 @@
               "null"
             ]
           },
+          "vmState": {
+            "$ref": "#/components/schemas/RuntimeVMState"
+          },
+          "vmErrors": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/RuntimeVMError"
+            }
+          },
           "latestBackup": {
             "type": [
               "string",
@@ -1537,10 +1549,31 @@
           "runtimeVersion": {
             "type": "string"
           },
+          "vmState": {
+            "$ref": "#/components/schemas/RuntimeVMState"
+          },
+          "vmErrors": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/RuntimeVMError"
+            }
+          },
           "failureReasons": {
             "type": "array",
             "items": {
               "type": "string"
+            }
+          },
+          "domainErrors": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/RuntimeDomainError"
             }
           },
           "containerObservation": {
@@ -1580,15 +1613,100 @@
           "health-observed",
           "recovery-triggered",
           "recovery-completed",
+          "domain-error-observed",
+          "vm-error-observed",
           "container-observed",
           "audit-proxy-observed",
           "vitaldb-observed",
           "vitaldb-observer-unhealthy",
           "vitaldb-anomaly-detected",
+          "watchdog-skipped",
+          "recovery-planned",
+          "service-restart-dispatched",
+          "observability-store-failed",
+          "runtime-status-observed",
+          "guest-state-observed",
           "runtime-command-started",
           "runtime-command-completed",
           "runtime-command-failed"
         ]
+      },
+      "RuntimeVMState": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "description": "Observed VM lifecycle state. Unknown values are preserved by clients.",
+        "enum": [
+          "not-installed",
+          "stopped",
+          "starting",
+          "running",
+          "stale",
+          "unreachable",
+          "failed",
+          null
+        ]
+      },
+      "RuntimeVMError": {
+        "type": "string",
+        "description": "Observed VM domain error code. The API may return newer codes; clients should preserve unknown values."
+      },
+      "RuntimeDomainError": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "installation",
+              "vmLifecycle",
+              "hostProxy",
+              "hostService",
+              "guestNetworking",
+              "guestAgent",
+              "guestBootstrap",
+              "guestStorage",
+              "container",
+              "vitalDB",
+              "auxiliaryUI",
+              "hostResources",
+              "configuration",
+              "observability",
+              "unknown"
+            ]
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "warning",
+              "critical"
+            ]
+          },
+          "recoveryAction": {
+            "type": "string",
+            "enum": [
+              "installRuntime",
+              "restartVMService",
+              "restartProxyService",
+              "restartWatchdogService",
+              "waitForGuest",
+              "restartGuestAgent",
+              "repairGuestBootstrap",
+              "restartContainerServices",
+              "repairProxyConfiguration",
+              "freeProxyPort",
+              "inspectVitalDBObservation",
+              "backupAndRecreateVM",
+              "fixConfiguration",
+              "freeHostResources",
+              "inspectLogs"
+            ]
+          }
+        }
       },
       "RuntimeContainerObservation": {
         "type": "object",

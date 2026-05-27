@@ -331,6 +331,21 @@ final class ContractsTests: XCTestCase {
 
         XCTAssertEqual(RuntimeFailureReason.redisUIHTTP("failed").domainSeverity, .warning)
         XCTAssertEqual(RuntimeFailureReason.redisUIHTTP("failed").recoveryAction, .inspectLogs)
+
+        XCTAssertEqual(RuntimeFailureReason.runtimeStatusDocumentInvalid.domainCategory, .observability)
+        XCTAssertEqual(RuntimeFailureReason.runtimeStatusDocumentInvalid.domainSeverity, .critical)
+        XCTAssertEqual(RuntimeFailureReason.runtimeStatusDocumentInvalid.recoveryAction, .inspectLogs)
+
+        XCTAssertEqual(RuntimeFailureReason.launchdServiceCrashed(service: "vm", exitCode: 78).domainCategory, .vmLifecycle)
+        XCTAssertEqual(RuntimeFailureReason.launchdServiceCrashed(service: "vm", exitCode: 78).recoveryAction, .restartVMService)
+
+        XCTAssertEqual(RuntimeFailureReason.hostProxyConfigInvalid.domainCategory, .hostProxy)
+        XCTAssertEqual(RuntimeFailureReason.hostProxyConfigInvalid.recoveryAction, .repairProxyConfiguration)
+
+        XCTAssertEqual(RuntimeFailureReason.containerRestartLoop(service: "redis").domainCategory, .container)
+        XCTAssertEqual(RuntimeFailureReason.containerRestartLoop(service: "redis").recoveryAction, .restartContainerServices)
+
+        XCTAssertEqual(RuntimeFailureReason.vitalDBObservationStale.domainSeverity, .warning)
     }
 
     func testRuntimeDomainErrorDocumentOwnsCodeCategorySeverityAndRecoveryAction() throws {
@@ -357,6 +372,15 @@ final class ContractsTests: XCTestCase {
             .vmErrorObserved,
             .containerObserved,
             .auditProxyObserved,
+            .vitalDBObserved,
+            .vitalDBObserverUnhealthy,
+            .vitalDBAnomalyDetected,
+            .watchdogSkipped,
+            .recoveryPlanned,
+            .serviceRestartDispatched,
+            .observabilityStoreFailed,
+            .runtimeStatusObserved,
+            .guestStateObserved,
             .runtimeCommandStarted,
             .runtimeCommandCompleted,
             .runtimeCommandFailed,
@@ -372,6 +396,15 @@ final class ContractsTests: XCTestCase {
             "vm-error-observed",
             "container-observed",
             "audit-proxy-observed",
+            "vitaldb-observed",
+            "vitaldb-observer-unhealthy",
+            "vitaldb-anomaly-detected",
+            "watchdog-skipped",
+            "recovery-planned",
+            "service-restart-dispatched",
+            "observability-store-failed",
+            "runtime-status-observed",
+            "guest-state-observed",
             "runtime-command-started",
             "runtime-command-completed",
             "runtime-command-failed",

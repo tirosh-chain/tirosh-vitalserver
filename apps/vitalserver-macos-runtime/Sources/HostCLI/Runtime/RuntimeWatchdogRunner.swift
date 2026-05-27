@@ -11,6 +11,8 @@ struct RuntimeWatchdogActions {
     let restartService: (RuntimeManagedService) -> Void
     let sleep: (TimeInterval) -> Void
     let writeObservedStatus: (RuntimeStatusLevel, RuntimeOperation, String, RuntimeHealthSnapshot) throws -> Void
+    let recordObservedEvent: (RuntimeStatusLevel, RuntimeOperation, String, RuntimeHealthSnapshot, RuntimeEventType) -> Void
+    let recordLifecycleEvent: (RuntimeOperation, String, RuntimeEventType) -> Void
 }
 
 struct RuntimeWatchdogRunner {
@@ -29,7 +31,9 @@ struct RuntimeWatchdogRunner {
         try actions.prepareLogs()
 
         if let activeOperation = actions.activeManagedOperation() {
-            log("watchdog skipped during active runtime operation operation=\(activeOperation.rawValue)")
+            let message = "watchdog skipped during active runtime operation operation=\(activeOperation.rawValue)"
+            log(message)
+            actions.recordLifecycleEvent(.watchdog, message, .watchdogSkipped)
             print("watchdog: skipped active operation")
             return
         }
@@ -63,6 +67,13 @@ struct RuntimeWatchdogRunner {
             "watchdog recovery plan vm=\(recoveryPlan.restartVM) proxy=\(recoveryPlan.restartProxy) "
                 + "hostProxyHealth=\(proxyLivenessHTTP) hostProxyReady=\(initial.hostProxyHTTP) guestReady=\(initial.guestHTTP)"
         )
+        actions.recordObservedEvent(
+            .recovering,
+            .watchdog,
+            "watchdog recovery planned vm=\(recoveryPlan.restartVM) proxy=\(recoveryPlan.restartProxy)",
+            initial,
+            .recoveryPlanned
+        )
 
         guard actions.automaticRecoveryEnabled() else {
             try actions.writeObservedStatus(
@@ -87,10 +98,24 @@ struct RuntimeWatchdogRunner {
         }
 
         if recoveryPlan.restartVM {
+            actions.recordObservedEvent(
+                .recovering,
+                .watchdog,
+                "watchdog restart dispatched services=vm,guest-log-sync",
+                initial,
+                .serviceRestartDispatched
+            )
             actions.restartService(.vm)
             actions.restartService(.guestLogSync)
         }
         if recoveryPlan.restartProxy {
+            actions.recordObservedEvent(
+                .recovering,
+                .watchdog,
+                "watchdog restart dispatched services=proxy",
+                initial,
+                .serviceRestartDispatched
+            )
             actions.restartService(.proxy)
         }
 

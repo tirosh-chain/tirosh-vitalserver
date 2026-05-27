@@ -74,6 +74,23 @@ public enum RuntimeFailureReason: Codable, Equatable, Sendable {
     case proxyPortInUse(port: Int, listeners: String)
     case guestBootstrapMissingRuntimePackages
     case guestBootstrapFailed
+    case runtimeStatusDocumentMissing
+    case runtimeStatusDocumentStale
+    case runtimeStatusDocumentInvalid
+    case guestRuntimeStateInvalid
+    case observabilityEventStoreUnavailable
+    case observabilityEventStoreCorrupt
+    case vmPidFileStale
+    case vmProcessExited
+    case launchdServiceCrashed(service: String, exitCode: Int)
+    case launchdServiceThrottled(service: String)
+    case hostProxyListenerMismatch(port: Int, listeners: String)
+    case hostProxyConfigInvalid
+    case httpProbeTimedOut(target: String)
+    case httpProbeConnectionRefused(target: String)
+    case containerExited(service: String, exitCode: Int)
+    case containerRestartLoop(service: String)
+    case vitalDBObservationStale
     case unknown(String)
 
     public init(vmError: RuntimeVMError) {
@@ -122,6 +139,26 @@ public enum RuntimeFailureReason: Codable, Equatable, Sendable {
             self = .guestBootstrapFailed
         case "guest-runtime-state-stale":
             self = .guestRuntimeStateStale
+        case "runtime-status-document-missing":
+            self = .runtimeStatusDocumentMissing
+        case "runtime-status-document-stale":
+            self = .runtimeStatusDocumentStale
+        case "runtime-status-document-invalid":
+            self = .runtimeStatusDocumentInvalid
+        case "guest-runtime-state-invalid":
+            self = .guestRuntimeStateInvalid
+        case "observability-event-store-unavailable":
+            self = .observabilityEventStoreUnavailable
+        case "observability-event-store-corrupt":
+            self = .observabilityEventStoreCorrupt
+        case "vm-pid-file-stale":
+            self = .vmPidFileStale
+        case "vm-process-exited":
+            self = .vmProcessExited
+        case "host-proxy-config-invalid":
+            self = .hostProxyConfigInvalid
+        case "vitaldb-observation-stale":
+            self = .vitalDBObservationStale
         default:
             if rawValue.hasPrefix("vm-service-") {
                 self = .vmService(String(rawValue.dropFirst("vm-service-".count)))
@@ -144,6 +181,20 @@ public enum RuntimeFailureReason: Codable, Equatable, Sendable {
             } else if let parsed = RuntimeFailureReason.parseVitalDBAnomaly(rawValue) {
                 self = parsed
             } else if let parsed = RuntimeFailureReason.parseProxyPortInUse(rawValue) {
+                self = parsed
+            } else if let parsed = RuntimeFailureReason.parseLaunchdServiceCrashed(rawValue) {
+                self = parsed
+            } else if let parsed = RuntimeFailureReason.parseLaunchdServiceThrottled(rawValue) {
+                self = parsed
+            } else if let parsed = RuntimeFailureReason.parseHostProxyListenerMismatch(rawValue) {
+                self = parsed
+            } else if let parsed = RuntimeFailureReason.parseHTTPProbeTimedOut(rawValue) {
+                self = parsed
+            } else if let parsed = RuntimeFailureReason.parseHTTPProbeConnectionRefused(rawValue) {
+                self = parsed
+            } else if let parsed = RuntimeFailureReason.parseContainerExited(rawValue) {
+                self = parsed
+            } else if let parsed = RuntimeFailureReason.parseContainerRestartLoop(rawValue) {
                 self = parsed
             } else {
                 self = .unknown(rawValue)
@@ -189,6 +240,40 @@ public enum RuntimeFailureReason: Codable, Equatable, Sendable {
             return "guest-bootstrap-missing-runtime-packages"
         case .guestBootstrapFailed:
             return "guest-bootstrap-failed"
+        case .runtimeStatusDocumentMissing:
+            return "runtime-status-document-missing"
+        case .runtimeStatusDocumentStale:
+            return "runtime-status-document-stale"
+        case .runtimeStatusDocumentInvalid:
+            return "runtime-status-document-invalid"
+        case .guestRuntimeStateInvalid:
+            return "guest-runtime-state-invalid"
+        case .observabilityEventStoreUnavailable:
+            return "observability-event-store-unavailable"
+        case .observabilityEventStoreCorrupt:
+            return "observability-event-store-corrupt"
+        case .vmPidFileStale:
+            return "vm-pid-file-stale"
+        case .vmProcessExited:
+            return "vm-process-exited"
+        case .launchdServiceCrashed(let service, let exitCode):
+            return "launchd-service-\(service)-crashed-exit-\(exitCode)"
+        case .launchdServiceThrottled(let service):
+            return "launchd-service-\(service)-throttled"
+        case .hostProxyListenerMismatch(let port, let listeners):
+            return "host-proxy-listener-mismatch-port-\(port)-listeners-\(listeners)"
+        case .hostProxyConfigInvalid:
+            return "host-proxy-config-invalid"
+        case .httpProbeTimedOut(let target):
+            return "http-probe-\(target)-timed-out"
+        case .httpProbeConnectionRefused(let target):
+            return "http-probe-\(target)-connection-refused"
+        case .containerExited(let service, let exitCode):
+            return "container-\(service)-exited-code-\(exitCode)"
+        case .containerRestartLoop(let service):
+            return "container-\(service)-restart-loop"
+        case .vitalDBObservationStale:
+            return "vitaldb-observation-stale"
         case .unknown(let value):
             return value
         }
@@ -239,6 +324,108 @@ public enum RuntimeFailureReason: Codable, Equatable, Sendable {
         let kind = rawValue[rawValue.index(rawValue.startIndex, offsetBy: prefix.count)..<markerRange.lowerBound]
         return .vitalDBAnomaly(kind: String(kind), subject: String(rawValue[markerRange.upperBound...]))
     }
+
+    private static func parseLaunchdServiceCrashed(_ rawValue: String) -> RuntimeFailureReason? {
+        parseServiceIntValue(
+            rawValue,
+            prefix: "launchd-service-",
+            marker: "-crashed-exit-",
+            build: RuntimeFailureReason.launchdServiceCrashed
+        )
+    }
+
+    private static func parseLaunchdServiceThrottled(_ rawValue: String) -> RuntimeFailureReason? {
+        parseServiceValue(
+            rawValue,
+            prefix: "launchd-service-",
+            suffix: "-throttled",
+            build: RuntimeFailureReason.launchdServiceThrottled
+        )
+    }
+
+    private static func parseHostProxyListenerMismatch(_ rawValue: String) -> RuntimeFailureReason? {
+        let prefix = "host-proxy-listener-mismatch-port-"
+        let marker = "-listeners-"
+        guard rawValue.hasPrefix(prefix),
+              let markerRange = rawValue.range(of: marker) else {
+            return nil
+        }
+        let portText = rawValue[rawValue.index(rawValue.startIndex, offsetBy: prefix.count)..<markerRange.lowerBound]
+        guard let port = Int(portText) else {
+            return nil
+        }
+        return .hostProxyListenerMismatch(port: port, listeners: String(rawValue[markerRange.upperBound...]))
+    }
+
+    private static func parseHTTPProbeTimedOut(_ rawValue: String) -> RuntimeFailureReason? {
+        parseServiceValue(
+            rawValue,
+            prefix: "http-probe-",
+            suffix: "-timed-out",
+            build: RuntimeFailureReason.httpProbeTimedOut
+        )
+    }
+
+    private static func parseHTTPProbeConnectionRefused(_ rawValue: String) -> RuntimeFailureReason? {
+        parseServiceValue(
+            rawValue,
+            prefix: "http-probe-",
+            suffix: "-connection-refused",
+            build: RuntimeFailureReason.httpProbeConnectionRefused
+        )
+    }
+
+    private static func parseContainerExited(_ rawValue: String) -> RuntimeFailureReason? {
+        parseServiceIntValue(
+            rawValue,
+            prefix: "container-",
+            marker: "-exited-code-",
+            build: RuntimeFailureReason.containerExited
+        )
+    }
+
+    private static func parseContainerRestartLoop(_ rawValue: String) -> RuntimeFailureReason? {
+        parseServiceValue(
+            rawValue,
+            prefix: "container-",
+            suffix: "-restart-loop",
+            build: RuntimeFailureReason.containerRestartLoop
+        )
+    }
+
+    private static func parseServiceValue(
+        _ rawValue: String,
+        prefix: String,
+        suffix: String,
+        build: (String) -> RuntimeFailureReason
+    ) -> RuntimeFailureReason? {
+        guard rawValue.hasPrefix(prefix), rawValue.hasSuffix(suffix) else {
+            return nil
+        }
+        let start = rawValue.index(rawValue.startIndex, offsetBy: prefix.count)
+        let end = rawValue.index(rawValue.endIndex, offsetBy: -suffix.count)
+        guard start < end else {
+            return nil
+        }
+        return build(String(rawValue[start..<end]))
+    }
+
+    private static func parseServiceIntValue(
+        _ rawValue: String,
+        prefix: String,
+        marker: String,
+        build: (String, Int) -> RuntimeFailureReason
+    ) -> RuntimeFailureReason? {
+        guard rawValue.hasPrefix(prefix),
+              let markerRange = rawValue.range(of: marker) else {
+            return nil
+        }
+        let service = rawValue[rawValue.index(rawValue.startIndex, offsetBy: prefix.count)..<markerRange.lowerBound]
+        guard let value = Int(rawValue[markerRange.upperBound...]) else {
+            return nil
+        }
+        return build(String(service), value)
+    }
 }
 
 public extension RuntimeFailureReason {
@@ -257,8 +444,19 @@ public extension RuntimeFailureReason {
             return .vmLifecycle
         case .proxyService, .hostProxyHTTP, .proxyPortInUse:
             return .hostProxy
-        case .watchdogService:
+        case .watchdogService, .runtimeStatusDocumentMissing, .runtimeStatusDocumentStale,
+             .runtimeStatusDocumentInvalid, .observabilityEventStoreUnavailable, .observabilityEventStoreCorrupt:
             return .observability
+        case .guestRuntimeStateInvalid:
+            return .guestAgent
+        case .vmPidFileStale, .vmProcessExited, .launchdServiceCrashed, .launchdServiceThrottled:
+            return .vmLifecycle
+        case .hostProxyListenerMismatch, .hostProxyConfigInvalid:
+            return .hostProxy
+        case .httpProbeTimedOut, .httpProbeConnectionRefused:
+            return .guestNetworking
+        case .containerExited, .containerRestartLoop:
+            return .container
         case .redisUIHTTP, .swaggerUIHTTP:
             return .auxiliaryUI
         case .guestHTTP:
@@ -269,7 +467,7 @@ public extension RuntimeFailureReason {
             return .guestBootstrap
         case .auditProxyHTTP, .containerService:
             return .container
-        case .vitalDBAnomaly:
+        case .vitalDBAnomaly, .vitalDBObservationStale:
             return .vitalDB
         case .unknown:
             return .unknown
@@ -278,7 +476,10 @@ public extension RuntimeFailureReason {
 
     var domainSeverity: RuntimeDomainErrorSeverity {
         switch self {
-        case .redisUIHTTP, .swaggerUIHTTP, .watchdogService, .guestRuntimeStateStale:
+        case .redisUIHTTP, .swaggerUIHTTP, .watchdogService, .guestRuntimeStateStale,
+             .runtimeStatusDocumentStale, .observabilityEventStoreUnavailable,
+             .vmPidFileStale, .httpProbeTimedOut, .httpProbeConnectionRefused,
+             .vitalDBObservationStale:
             return .warning
         case .unknown(let value):
             return value.hasPrefix("vm-") ? .critical : .warning
@@ -300,6 +501,21 @@ public extension RuntimeFailureReason {
             return .restartProxyService
         case .watchdogService:
             return .restartWatchdogService
+        case .runtimeStatusDocumentMissing, .runtimeStatusDocumentStale, .runtimeStatusDocumentInvalid,
+             .observabilityEventStoreUnavailable, .observabilityEventStoreCorrupt:
+            return .inspectLogs
+        case .guestRuntimeStateInvalid:
+            return .restartGuestAgent
+        case .vmPidFileStale, .vmProcessExited, .launchdServiceCrashed, .launchdServiceThrottled:
+            return .restartVMService
+        case .hostProxyListenerMismatch:
+            return .freeProxyPort
+        case .hostProxyConfigInvalid:
+            return .repairProxyConfiguration
+        case .httpProbeTimedOut, .httpProbeConnectionRefused:
+            return .waitForGuest
+        case .containerExited, .containerRestartLoop:
+            return .restartContainerServices
         case .redisUIHTTP, .swaggerUIHTTP:
             return .inspectLogs
         case .guestHTTP:
@@ -308,7 +524,7 @@ public extension RuntimeFailureReason {
             return .restartGuestAgent
         case .auditProxyHTTP, .containerService:
             return .restartContainerServices
-        case .vitalDBAnomaly:
+        case .vitalDBAnomaly, .vitalDBObservationStale:
             return .inspectVitalDBObservation
         case .proxyPortInUse:
             return .freeProxyPort

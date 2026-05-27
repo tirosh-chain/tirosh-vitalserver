@@ -192,7 +192,8 @@ extension RuntimeLifecycle {
         operation: RuntimeOperation,
         message: String,
         healthSnapshot: RuntimeHealthSnapshot,
-        eventType: RuntimeEventType = .statusChanged
+        eventType: RuntimeEventType = .statusChanged,
+        progress: RuntimeProgressDocument? = nil
     ) throws {
         let event = RuntimeEventDocument(
             id: UUID().uuidString,
@@ -209,17 +210,71 @@ extension RuntimeLifecycle {
             failureReasons: healthSnapshot.failureReasons,
             containerObservation: healthSnapshot.containerObservation,
             vitalDBObservation: healthSnapshot.vitalDBObservation,
+            progress: progress
+        )
+        try runtimeObservationRecorder().record(event)
+    }
+
+    func recordRuntimeEventBestEffort(
+        _ status: RuntimeStatusLevel,
+        previousStatus: RuntimeStatusLevel?,
+        operation: RuntimeOperation,
+        message: String,
+        healthSnapshot: RuntimeHealthSnapshot,
+        eventType: RuntimeEventType = .statusChanged,
+        progress: RuntimeProgressDocument? = nil
+    ) {
+        let event = RuntimeEventDocument(
+            id: UUID().uuidString,
+            eventType: eventType,
+            timestamp: isoTimestamp(),
+            product: Constants.Product.identifier,
+            status: status,
+            previousStatus: previousStatus,
+            operation: operation,
+            message: message,
+            runtimeVersion: runtimeVersionValue(),
+            vmState: healthSnapshot.vmState,
+            vmErrors: healthSnapshot.vmErrors,
+            failureReasons: healthSnapshot.failureReasons,
+            containerObservation: healthSnapshot.containerObservation,
+            vitalDBObservation: healthSnapshot.vitalDBObservation,
+            progress: progress
+        )
+        runtimeObservationRecorder().recordBestEffort(event)
+    }
+
+    func recordRuntimeLifecycleEventBestEffort(
+        operation: RuntimeOperation,
+        message: String,
+        eventType: RuntimeEventType
+    ) {
+        let currentStatus = statusReporter.loadStatus()
+        let event = RuntimeEventDocument(
+            id: UUID().uuidString,
+            eventType: eventType,
+            timestamp: isoTimestamp(),
+            product: Constants.Product.identifier,
+            status: currentStatus?.status ?? .unknown("unknown"),
+            previousStatus: currentStatus?.status,
+            operation: operation,
+            message: message,
+            runtimeVersion: runtimeVersionValue(),
+            failureReasons: [],
             progress: nil
         )
-        let runtimeEventRepository = CompositeRuntimeEventRepository(
-            primary: JSONLRuntimeEventRepository(url: installedPaths.runtimeEvents),
-            secondary: SQLiteRuntimeEventRepository(url: installedPaths.runtimeObservabilityDB)
+        runtimeObservationRecorder().recordBestEffort(event)
+    }
+
+    func runtimeObservationRecorder() -> RuntimeObservationRecorder {
+        RuntimeObservationRecorder(
+            eventRepository: CompositeRuntimeEventRepository(
+                primary: JSONLRuntimeEventRepository(url: installedPaths.runtimeEvents),
+                secondary: SQLiteRuntimeEventRepository(url: installedPaths.runtimeObservabilityDB)
+            ),
+            observabilityStore: SQLiteRuntimeObservabilityStore(url: installedPaths.runtimeObservabilityDB),
+            log: log
         )
-        try runtimeEventRepository.append(event)
-        if let vitalDBObservation = healthSnapshot.vitalDBObservation {
-            try? SQLiteRuntimeObservabilityStore(url: installedPaths.runtimeObservabilityDB)
-                .append(vitalDBObservation)
-        }
     }
 
     func domainEventType(for snapshot: RuntimeHealthSnapshot, defaultEventType: RuntimeEventType = .statusChanged) -> RuntimeEventType {
@@ -277,6 +332,26 @@ extension RuntimeLifecycle {
             phase: phase,
             message: message,
             reasonCodes: reasonCodes
+        )
+        let progress = RuntimeProgressDocument(
+            operation: operation,
+            phase: phase,
+            step: step,
+            stepStatus: stepStatus,
+            message: message,
+            reasonCodes: reasonCodes,
+            startedAt: nil,
+            updatedAt: isoTimestamp()
+        )
+        let previousStatus = statusReporter.loadStatus()?.status
+        recordRuntimeEventBestEffort(
+            status,
+            previousStatus: previousStatus,
+            operation: operation,
+            message: message,
+            healthSnapshot: runtimeHealthSnapshot(),
+            eventType: .progressUpdated,
+            progress: progress
         )
     }
 
@@ -337,7 +412,23 @@ extension RuntimeLifecycle {
     }
 
     func runtimeCommandExecutor() -> RuntimeCommandExecutor {
-        RuntimeCommandExecutor(commandRunner: commandRunner, log: log)
+        RuntimeCommandExecutor(
+            commandRunner: commandRunner,
+            log: log,
+            recordCommandEvent: { eventType, executable, arguments, result in
+                let exitSuffix = result.map { " exitCode=\($0.exitCode)" } ?? ""
+                let message = "command \(eventType.rawValue) executable=\(executable) arguments=\(arguments.joined(separator: " "))\(exitSuffix)"
+                let currentStatus = statusReporter.loadStatus()
+                recordRuntimeEventBestEffort(
+                    currentStatus?.status ?? .unknown("unknown"),
+                    previousStatus: currentStatus?.status,
+                    operation: currentStatus?.operation ?? .unknown("command"),
+                    message: message,
+                    healthSnapshot: runtimeHealthSnapshot(),
+                    eventType: eventType
+                )
+            }
+        )
     }
 
     func runProcess(_ executable: String, arguments: [String]) -> RuntimeProcessResult {

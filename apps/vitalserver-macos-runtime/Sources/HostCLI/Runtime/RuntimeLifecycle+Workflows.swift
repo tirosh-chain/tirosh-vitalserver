@@ -150,13 +150,31 @@ extension RuntimeLifecycle {
                 writeObservedStatus: { status, operation, message, snapshot in
                     let previousStatus = statusReporter.loadStatus()?.status
                     try writeRuntimeStatus(status, operation: operation, message: message)
-                    try recordRuntimeEvent(
+                    recordRuntimeEventBestEffort(
                         status,
                         previousStatus: previousStatus,
                         operation: operation,
                         message: message,
                         healthSnapshot: snapshot,
                         eventType: domainEventType(for: snapshot)
+                    )
+                },
+                recordObservedEvent: { status, operation, message, snapshot, eventType in
+                    let previousStatus = statusReporter.loadStatus()?.status
+                    recordRuntimeEventBestEffort(
+                        status,
+                        previousStatus: previousStatus,
+                        operation: operation,
+                        message: message,
+                        healthSnapshot: snapshot,
+                        eventType: eventType
+                    )
+                },
+                recordLifecycleEvent: { operation, message, eventType in
+                    recordRuntimeLifecycleEventBestEffort(
+                        operation: operation,
+                        message: message,
+                        eventType: eventType
                     )
                 }
             ),
