@@ -116,7 +116,6 @@ public struct RuntimeTestKitDeleteBedsRequest: Codable, Equatable, Sendable {
 }
 
 public struct RuntimeTestKitVirtualRecorderStartRequest: Codable, Equatable, Sendable {
-    public var targetURL: String
     public var scenario: RuntimeTestKitScenario
     public var signalProfile: RuntimeTestKitSignalProfile
     public var recorders: Int
@@ -130,7 +129,6 @@ public struct RuntimeTestKitVirtualRecorderStartRequest: Codable, Equatable, Sen
     public var generateFrames: Bool
 
     public init(
-        targetURL: String,
         scenario: RuntimeTestKitScenario = .normal,
         signalProfile: RuntimeTestKitSignalProfile = .normal,
         recorders: Int = 1,
@@ -143,7 +141,6 @@ public struct RuntimeTestKitVirtualRecorderStartRequest: Codable, Equatable, Sen
         shiftTime: Bool = true,
         generateFrames: Bool = true
     ) {
-        self.targetURL = targetURL
         self.scenario = scenario
         self.signalProfile = signalProfile
         self.recorders = recorders
@@ -158,7 +155,6 @@ public struct RuntimeTestKitVirtualRecorderStartRequest: Codable, Equatable, Sen
     }
 
     enum CodingKeys: String, CodingKey {
-        case targetURL = "targetUrl"
         case scenario
         case signalProfile
         case recorders

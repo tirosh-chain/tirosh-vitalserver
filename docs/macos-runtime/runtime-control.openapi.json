@@ -3365,7 +3365,6 @@
         "type": "object",
         "additionalProperties": false,
         "required": [
-          "targetUrl",
           "scenario",
           "signalProfile",
           "recorders",
@@ -3376,9 +3375,6 @@
           "generateFrames"
         ],
         "properties": {
-          "targetUrl": {
-            "type": "string"
-          },
           "scenario": {
             "type": "string",
             "enum": [

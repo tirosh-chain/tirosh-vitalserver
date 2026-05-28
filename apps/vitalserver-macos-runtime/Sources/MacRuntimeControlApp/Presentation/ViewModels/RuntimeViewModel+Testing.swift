@@ -416,7 +416,6 @@ extension RuntimeViewModel {
 
     private func testKitStartRequest() -> RuntimeTestKitVirtualRecorderStartRequest {
         RuntimeTestKitVirtualRecorderStartRequest(
-            targetURL: AppConstants.Product.vitalServerURL(proxyPort: status.proxyPort),
             scenario: testKitScenario,
             signalProfile: testKitSignalProfile,
             recorders: normalizedTestKitRecorderCount,

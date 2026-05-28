@@ -55,8 +55,24 @@ public final class MacTestKitController: RuntimeTestKitControlling {
             )
         }
 
-        let sessions = await loadSessions(apiBaseURL: apiBaseURL)
-        let beds = await loadBeds(apiBaseURL: apiBaseURL)
+        let sessions: [RuntimeTestKitSession]
+        let beds: [RuntimeTestKitBed]
+        do {
+            sessions = try await loadSessions(apiBaseURL: apiBaseURL)
+            beds = try await loadBeds(apiBaseURL: apiBaseURL)
+        } catch {
+            let message = "TestKit container API read failed: \(error.localizedDescription)"
+            lastError = message
+            return RuntimeTestKitStatus(
+                enabled: true,
+                state: .failed,
+                serviceName: configuration.serviceName,
+                apiBaseURL: apiBaseURL,
+                recorderTargetURL: configuration.recorderTargetURL,
+                lastError: message
+            )
+        }
+        lastError = nil
         let activeSession = preferredActiveSession(from: sessions)
 
         return RuntimeTestKitStatus(
@@ -281,26 +297,18 @@ public final class MacTestKitController: RuntimeTestKitControlling {
         return "TestKit container API is not reachable at \(apiBaseURL). Container state: \(state), health: \(health)."
     }
 
-    private func loadSessions(apiBaseURL: String) async -> [RuntimeTestKitSession] {
-        do {
-            var urlRequest = apiRequest(apiBaseURL: apiBaseURL, path: "/sessions")
-            urlRequest.httpMethod = "GET"
-            let response = try await decode(TestKitSessionsResponse.self, from: urlRequest)
-            return response.sessions
-        } catch {
-            return []
-        }
+    private func loadSessions(apiBaseURL: String) async throws -> [RuntimeTestKitSession] {
+        var urlRequest = apiRequest(apiBaseURL: apiBaseURL, path: "/sessions")
+        urlRequest.httpMethod = "GET"
+        let response = try await decode(TestKitSessionsResponse.self, from: urlRequest)
+        return response.sessions
     }
 
-    private func loadBeds(apiBaseURL: String) async -> [RuntimeTestKitBed] {
-        do {
-            var urlRequest = apiRequest(apiBaseURL: apiBaseURL, path: "/beds")
-            urlRequest.httpMethod = "GET"
-            let response = try await decode(TestKitBedsResponse.self, from: urlRequest)
-            return response.beds
-        } catch {
-            return []
-        }
+    private func loadBeds(apiBaseURL: String) async throws -> [RuntimeTestKitBed] {
+        var urlRequest = apiRequest(apiBaseURL: apiBaseURL, path: "/beds")
+        urlRequest.httpMethod = "GET"
+        let response = try await decode(TestKitBedsResponse.self, from: urlRequest)
+        return response.beds
     }
 
     private func preferredActiveSession(from sessions: [RuntimeTestKitSession]) -> RuntimeTestKitSession? {

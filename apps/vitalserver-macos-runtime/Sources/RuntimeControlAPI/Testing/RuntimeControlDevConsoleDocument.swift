@@ -691,14 +691,12 @@ public enum RuntimeControlDevConsoleDocument {
     }
 
     async function startTestKit() {
-      const proxyPort = (latestStatus && latestStatus.proxyPort) || 80;
       const beds = await postJSON("/dev/testkit/beds/create", {
         count: 1,
         prefix: "testkit-bed"
       });
       const bedRoomNames = (beds || []).map((bed) => bed.roomName).slice(0, 1);
       const session = await postJSON("/dev/testkit/virtual-recorders/start", {
-        targetUrl: `http://127.0.0.1:${proxyPort}/`,
         scenario: "normal",
         signalProfile: "normal",
         recorders: 1,
