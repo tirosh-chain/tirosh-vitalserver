@@ -318,7 +318,7 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertFalse(viewModel.testKitCanResetBeds)
     }
 
-    func testTestKitStartUsesUnassignedBedRoomNames() async {
+    func testTestKitStartUsesSelectedBedRoomNames() async {
         let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
         let testKit = FakeTestKitController()
         let viewModel = RuntimeViewModel(
@@ -344,6 +344,7 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         )
         testKit.status = status
         viewModel.testKitStatus = status
+        viewModel.setTestKitBedSelection("OR-B", selected: true)
 
         await viewModel.startVirtualRecorderSession()
 

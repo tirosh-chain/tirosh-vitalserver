@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from urllib.parse import urlencode
+
 from tirosh_vitalserver.testkit.application.ports import SocketIoClientPort
 
 
@@ -52,8 +54,28 @@ class SocketIoRecorderManagementClient:
         client = connect_socketio(base_url, timeout=timeout)
 
         try:
-            client.emit("req_cmd", f"job=del_vr&vrcode={vrcode}")
-            client.sleep(0.05)
+            client.emit("req_cmd", urlencode({"job": "del_vr", "vrcode": vrcode}))
+            client.sleep(0.2)
+        finally:
+            if client.connected:
+                client.disconnect()
+
+    def delete_bed(
+        self,
+        base_url: str,
+        *,
+        bed_id: str,
+        bed_name: str,
+        timeout: float = 5.0,
+    ) -> None:
+        client = connect_socketio(base_url, timeout=timeout)
+
+        try:
+            client.emit(
+                "req_cmd",
+                urlencode({"job": "del_bed", "bedid": bed_id, "bedname": bed_name}),
+            )
+            client.sleep(0.2)
         finally:
             if client.connected:
                 client.disconnect()

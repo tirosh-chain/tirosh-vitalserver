@@ -25,9 +25,13 @@ from tirosh_vitalserver.testkit.application.recorder_session.session import (
 from tirosh_vitalserver.testkit.application.recorder_session.store import (
     VirtualRecorderSessionStorePort,
 )
+from tirosh_vitalserver.testkit.domain.bed import Bed
 from tirosh_vitalserver.testkit.domain.signal import RecorderSignalScenario
 from tirosh_vitalserver.testkit.errors import BedAlreadyAssignedError
 from tirosh_vitalserver.testkit.observability import emit_testkit_event
+
+
+_DELETE_STOP_TIMEOUT_SECONDS = 10.0
 
 
 class VirtualRecorderSessionManager:
@@ -179,7 +183,20 @@ class VirtualRecorderSessionManager:
 
         emit_testkit_event("session.delete.requested", session_id=session_id)
         session.stop()
-        session.wait(timeout=2)
+        if not session.wait(timeout=_DELETE_STOP_TIMEOUT_SECONDS):
+            snapshot = snapshot_with_stop_timeout(
+                session.snapshot(),
+                timeout_seconds=_DELETE_STOP_TIMEOUT_SECONDS,
+            )
+            self._save_snapshot(snapshot)
+            emit_testkit_event(
+                "session.delete.stop_timeout",
+                level=logging.WARNING,
+                session_id=session_id,
+                timeout_seconds=_DELETE_STOP_TIMEOUT_SECONDS,
+            )
+            return snapshot
+
         snapshot = session.snapshot()
         cleanup_errors = self._delete_vitalserver_recorders(snapshot)
 
@@ -244,6 +261,43 @@ class VirtualRecorderSessionManager:
                     session_id=snapshot.session_id,
                     target_url=snapshot.request.target_url,
                     vrcode=vrcode,
+                    error=str(exc),
+                )
+        return tuple(errors)
+
+    def delete_vitalserver_beds(
+        self,
+        target_url: str,
+        beds: tuple[Bed, ...],
+    ) -> tuple[str, ...]:
+        """Best-effort cleanup for VitalServer bed assignments owned by TestKit."""
+
+        if self._recorder_management is None:
+            return ()
+
+        errors: list[str] = []
+        for bed in beds:
+            try:
+                self._recorder_management.delete_bed(
+                    target_url,
+                    bed_id=bed.bed_id,
+                    bed_name=bed.room_name,
+                )
+                emit_testkit_event(
+                    "bed.deleted_from_vitalserver",
+                    target_url=target_url,
+                    bed_id=bed.bed_id,
+                    bed_name=bed.room_name,
+                )
+            except Exception as exc:
+                message = f"{bed.room_name}({bed.bed_id}): {exc}"
+                errors.append(message)
+                emit_testkit_event(
+                    "bed.delete_from_vitalserver.failed",
+                    level=logging.WARNING,
+                    target_url=target_url,
+                    bed_id=bed.bed_id,
+                    bed_name=bed.room_name,
                     error=str(exc),
                 )
         return tuple(errors)
@@ -457,3 +511,17 @@ def snapshot_with_cleanup_errors(
     failed = ", ".join(error.vrcode for error in cleanup_errors)
     message = f"Failed to delete virtual VRecorder cleanup targets: {failed}"
     return replace(snapshot, error=message, cleanup_errors=cleanup_errors)
+
+
+def snapshot_with_stop_timeout(
+    snapshot: VirtualRecorderSessionSnapshot,
+    *,
+    timeout_seconds: float,
+) -> VirtualRecorderSessionSnapshot:
+    """Return a snapshot that keeps a still-running session visible for retry."""
+
+    message = (
+        "Timed out waiting for virtual VRecorder session to stop "
+        f"after {timeout_seconds:g}s; cleanup was not run."
+    )
+    return replace(snapshot, error=message)

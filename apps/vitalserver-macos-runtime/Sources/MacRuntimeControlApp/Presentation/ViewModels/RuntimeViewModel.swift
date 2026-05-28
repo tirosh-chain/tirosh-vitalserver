@@ -32,6 +32,7 @@ final class RuntimeViewModel: ObservableObject {
     @Published var containerObservation: RuntimeContainerObservation?
     @Published var testKitStatus = RuntimeTestKitStatus(enabled: false, state: .disabled)
     @Published var selectedTestKitSessionID = ""
+    @Published var selectedTestKitBedRoomNames: Set<String> = []
     @Published var testKitVrcode = RuntimeViewModel.generatedTestKitVrcode()
     @Published var testKitOrphanVrcode = ""
     @Published var testKitScenario = RuntimeTestKitScenario.normal

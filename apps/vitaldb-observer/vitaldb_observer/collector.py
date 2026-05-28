@@ -49,7 +49,6 @@ class VitalDBCollector:
             activity_by_vrcode,
             bed_ids={bed.bed_id for bed in beds},
             registered_vrcodes=registered_vrcodes,
-            bed_vrcodes={bed.vrcode for bed in beds if bed.vrcode},
         )
         devices = self._raw_bed_scoped(
             prefix="devs_", bed_ids=[bed.bed_id for bed in beds]
@@ -78,14 +77,8 @@ class VitalDBCollector:
         *,
         bed_ids: set[str],
         registered_vrcodes: set[str],
-        bed_vrcodes: set[str],
     ) -> list[RecorderObservation]:
-        vrcodes = registered_vrcodes | bed_vrcodes
-        vrcodes.update(
-            vrcode
-            for vrcode in activity_by_vrcode
-            if vrcode in registered_vrcodes or vrcode in bed_vrcodes
-        )
+        vrcodes = set(registered_vrcodes)
         recorders = [
             self._recorder(vrcode, observed_at, activity_by_vrcode.get(vrcode))
             for vrcode in sorted(vrcodes)

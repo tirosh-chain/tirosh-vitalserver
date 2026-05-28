@@ -8,7 +8,7 @@ extension RuntimeViewModel {
             && !isRunningTestKitAction
             && testKitStatus.state != .starting
             && testKitStatus.state != .stopping
-            && availableTestKitBedRoomNames.count >= normalizedTestKitRecorderCount
+            && selectedAvailableTestKitBedRoomNames.count >= normalizedTestKitRecorderCount
     }
 
     var testKitCanStop: Bool {
@@ -23,6 +23,14 @@ extension RuntimeViewModel {
             && !isRunningTestKitAction
             && !testKitStatus.beds.isEmpty
             && activeTestKitBedRoomNames.isEmpty
+    }
+
+    var availableTestKitBedCount: Int {
+        availableTestKitBedRoomNames.count
+    }
+
+    var selectedTestKitBedCount: Int {
+        selectedAvailableTestKitBedRoomNames.count
     }
 
     var selectedTestKitSession: RuntimeTestKitSession? {
@@ -61,11 +69,13 @@ extension RuntimeViewModel {
         testKitActionMessage = RuntimeTestPanelText.creatingBeds
         message = RuntimeTestPanelText.creatingBeds
         do {
+            let existingRoomNames = Set(testKitStatus.beds.map(\.roomName))
             let beds = try await testKitController.createTestKitBeds(RuntimeTestKitCreateBedsRequest(
                 count: normalizedTestKitBedCount,
                 prefix: normalizedTestKitBedPrefix
             ))
             applyTestKitStatus(await testKitController.loadTestKitStatus())
+            selectNewlyCreatedBeds(beds, existingRoomNames: existingRoomNames)
             let createdMessage = RuntimeTestPanelText.createdBeds(beds.count)
             testKitActionMessage = createdMessage
             message = createdMessage
@@ -98,6 +108,7 @@ extension RuntimeViewModel {
         do {
             _ = try await testKitController.resetTestKitBeds()
             applyTestKitStatus(await testKitController.loadTestKitStatus())
+            selectedTestKitBedRoomNames.removeAll()
             let resetMessage = RuntimeTestPanelText.resetBeds(bedCount)
             testKitActionMessage = resetMessage
             message = resetMessage
@@ -115,9 +126,9 @@ extension RuntimeViewModel {
             testKitActionMessage = RuntimeTestPanelText.testKitUnavailable
             return
         }
-        guard availableTestKitBedRoomNames.count >= normalizedTestKitRecorderCount else {
-            let errorMessage = RuntimeTestPanelText.insufficientBeds(
-                availableTestKitBedRoomNames.count,
+        guard selectedAvailableTestKitBedRoomNames.count >= normalizedTestKitRecorderCount else {
+            let errorMessage = RuntimeTestPanelText.insufficientSelectedBeds(
+                selectedAvailableTestKitBedRoomNames.count,
                 normalizedTestKitRecorderCount
             )
             testKitActionMessage = errorMessage
@@ -142,6 +153,26 @@ extension RuntimeViewModel {
             let errorMessage = error.localizedDescription
             testKitActionMessage = errorMessage
             message = errorMessage
+        }
+    }
+
+    func testKitBedIsSelected(_ roomName: String) -> Bool {
+        selectedTestKitBedRoomNames.contains(roomName)
+    }
+
+    func testKitBedIsActive(_ roomName: String) -> Bool {
+        activeTestKitBedRoomNames.contains(roomName)
+    }
+
+    func setTestKitBedSelection(_ roomName: String, selected: Bool) {
+        guard !testKitBedIsActive(roomName) else {
+            selectedTestKitBedRoomNames.remove(roomName)
+            return
+        }
+        if selected {
+            selectedTestKitBedRoomNames.insert(roomName)
+        } else {
+            selectedTestKitBedRoomNames.remove(roomName)
         }
     }
 
@@ -269,7 +300,7 @@ extension RuntimeViewModel {
             scenario: testKitScenario,
             signalProfile: testKitSignalProfile,
             recorders: normalizedTestKitRecorderCount,
-            bedRoomNames: Array(availableTestKitBedRoomNames.prefix(normalizedTestKitRecorderCount)),
+            bedRoomNames: Array(selectedAvailableTestKitBedRoomNames.prefix(normalizedTestKitRecorderCount)),
             vrcode: normalizedTestKitVrcode,
             version: "testkit",
             intervalSeconds: normalizedTestKitIntervalSeconds,
@@ -294,15 +325,27 @@ extension RuntimeViewModel {
     }
 
     private var availableTestKitBedRoomNames: [String] {
-        let activeRoomNames = activeTestKitBedRoomNames
-        return testKitStatus.beds
+        availableTestKitBedRoomNames(in: testKitStatus)
+    }
+
+    private var selectedAvailableTestKitBedRoomNames: [String] {
+        availableTestKitBedRoomNames.filter { selectedTestKitBedRoomNames.contains($0) }
+    }
+
+    private func availableTestKitBedRoomNames(in status: RuntimeTestKitStatus) -> [String] {
+        let activeRoomNames = activeTestKitBedRoomNames(in: status)
+        return status.beds
             .map(\.roomName)
             .filter { !activeRoomNames.contains($0) }
     }
 
     private var activeTestKitBedRoomNames: Set<String> {
+        activeTestKitBedRoomNames(in: testKitStatus)
+    }
+
+    private func activeTestKitBedRoomNames(in status: RuntimeTestKitStatus) -> Set<String> {
         Set(
-            testKitStatus.sessions
+            status.sessions
                 .filter { !["stopped", "failed"].contains($0.state.lowercased()) }
                 .flatMap(\.bedRoomNames)
         )
@@ -339,6 +382,7 @@ extension RuntimeViewModel {
 
     private func applyTestKitStatus(_ status: RuntimeTestKitStatus) {
         testKitStatus = status
+        pruneSelectedTestKitBeds(status)
         guard !status.sessions.isEmpty else {
             selectedTestKitSessionID = ""
             return
@@ -347,5 +391,18 @@ extension RuntimeViewModel {
             || !status.sessions.contains(where: { $0.id == selectedTestKitSessionID }) {
             selectedTestKitSessionID = status.activeSession?.id ?? status.sessions[0].id
         }
+    }
+
+    private func selectNewlyCreatedBeds(_ beds: [RuntimeTestKitBed], existingRoomNames: Set<String>) {
+        let availableRoomNames = Set(availableTestKitBedRoomNames)
+        for roomName in beds.map(\.roomName) where !existingRoomNames.contains(roomName) && availableRoomNames.contains(roomName) {
+            selectedTestKitBedRoomNames.insert(roomName)
+        }
+    }
+
+    private func pruneSelectedTestKitBeds(_ status: RuntimeTestKitStatus) {
+        selectedTestKitBedRoomNames = selectedTestKitBedRoomNames.intersection(
+            Set(availableTestKitBedRoomNames(in: status))
+        )
     }
 }

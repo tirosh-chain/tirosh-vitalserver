@@ -4,7 +4,7 @@ import logging
 import time
 from typing import Annotated, Any
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 
 from tirosh_vitalserver.testkit.adapters.outbound.recorder import (
     SocketIoRecorderManagementClient,
@@ -133,7 +133,8 @@ def create_testkit_app(
     def delete_beds(
         registry: Annotated[BedRegistry, Depends(get_bed_registry)],
         manager: Annotated[VirtualRecorderSessionManager, Depends(get_manager)],
-    ) -> dict[str, list[dict[str, str]]]:
+        target_url: Annotated[str | None, Query(alias="targetUrl")] = None,
+    ) -> dict[str, Any]:
         emit_testkit_event("api.beds.reset.requested")
         active_bed_room_names = manager.active_bed_room_names()
         if active_bed_room_names:
@@ -147,8 +148,18 @@ def create_testkit_app(
             raise HTTPException(status_code=409, detail=str(error)) from error
 
         deleted = registry.reset_beds()
-        emit_testkit_event("api.beds.reset.accepted", count=len(deleted))
-        return {"beds": [bed_to_document(bed) for bed in deleted]}
+        cleanup_errors: tuple[str, ...] = ()
+        if target_url:
+            cleanup_errors = manager.delete_vitalserver_beds(target_url, deleted)
+        emit_testkit_event(
+            "api.beds.reset.accepted",
+            count=len(deleted),
+            cleanup_errors=len(cleanup_errors),
+        )
+        return {
+            "beds": [bed_to_document(bed) for bed in deleted],
+            "cleanupErrors": list(cleanup_errors),
+        }
 
     @app.get("/sessions")
     def list_sessions(

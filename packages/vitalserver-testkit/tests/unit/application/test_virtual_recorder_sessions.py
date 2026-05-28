@@ -9,6 +9,7 @@ from tirosh_vitalserver.testkit.application.recorder_session import (
     VirtualRecorderSessionState,
     session_snapshot_to_document,
 )
+from tirosh_vitalserver.testkit.domain.bed import beds_for_room_names
 from tirosh_vitalserver.testkit.domain.signal import RecorderSignalScenario
 
 
@@ -113,6 +114,23 @@ def test_virtual_recorder_can_delete_orphan_by_vrcode() -> None:
     assert result.vrcode == "VR_ORPHAN"
     assert result.error is None
     assert recorder_management.deleted == [("http://example.test", "VR_ORPHAN")]
+
+
+def test_virtual_recorder_manager_deletes_vitalserver_beds() -> None:
+    recorder_management = FakeRecorderManagement()
+    manager = VirtualRecorderSessionManager(
+        connector=fake_socketio_connector,
+        recorder_management=recorder_management,
+    )
+    beds = beds_for_room_names(("OR-A", "OR-B"))
+
+    errors = manager.delete_vitalserver_beds("http://example.test", beds)
+
+    assert errors == ()
+    assert recorder_management.deleted_beds == [
+        ("http://example.test", beds[0].bed_id, "OR-A"),
+        ("http://example.test", beds[1].bed_id, "OR-B"),
+    ]
 
 
 def test_virtual_recorder_orphan_delete_reports_failure() -> None:
@@ -386,6 +404,7 @@ def test_virtual_recorder_sessions_can_be_reset() -> None:
 class FakeRecorderManagement:
     def __init__(self, failing_vrcodes: set[str] | None = None) -> None:
         self.deleted: list[tuple[str, str]] = []
+        self.deleted_beds: list[tuple[str, str, str]] = []
         self.failing_vrcodes = failing_vrcodes or set()
 
     def delete_vrecorder(
@@ -398,6 +417,16 @@ class FakeRecorderManagement:
         if vrcode in self.failing_vrcodes:
             raise RuntimeError(f"delete failed: {vrcode}")
         self.deleted.append((base_url, vrcode))
+
+    def delete_bed(
+        self,
+        base_url: str,
+        *,
+        bed_id: str,
+        bed_name: str,
+        timeout: float = 5.0,
+    ) -> None:
+        self.deleted_beds.append((base_url, bed_id, bed_name))
 
 
 class InMemorySessionStore:

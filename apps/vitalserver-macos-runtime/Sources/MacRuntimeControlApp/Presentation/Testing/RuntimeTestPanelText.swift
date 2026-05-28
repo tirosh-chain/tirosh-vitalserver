@@ -8,6 +8,9 @@ enum RuntimeTestPanelText {
     static let testKitUnavailable = "TestKit is unavailable for this build."
     static let noActiveSession = "No active TestKit session."
     static let noBeds = "Create beds before starting virtual VRecorders."
+    static let chooseBeds = "Select available beds, then start virtual VRecorders against those beds."
+    static let activeBed = "In use"
+    static let activeBedHelp = "This bed is assigned to an active TestKit session."
     static let creatingBeds = "Creating TestKit beds..."
     static let resettingBeds = "Resetting TestKit beds..."
     static let startingSession = "Starting virtual VRecorder..."
@@ -33,6 +36,14 @@ enum RuntimeTestPanelText {
 
     static func insufficientBeds(_ bedCount: Int, _ recorderCount: Int) -> String {
         "Create at least \(recorderCount) beds before starting \(recorderCount) VRecorders. Current beds: \(bedCount)."
+    }
+
+    static func insufficientSelectedBeds(_ selectedBedCount: Int, _ recorderCount: Int) -> String {
+        "Select at least \(recorderCount) available beds before starting \(recorderCount) VRecorders. Selected beds: \(selectedBedCount)."
+    }
+
+    static func selectedBeds(_ selectedBedCount: Int, _ requiredBedCount: Int, _ availableBedCount: Int) -> String {
+        "\(selectedBedCount) selected / \(requiredBedCount) required · \(availableBedCount) available"
     }
 
     static func startedSession(_ id: String) -> String {

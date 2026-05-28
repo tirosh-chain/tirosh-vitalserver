@@ -81,3 +81,12 @@ class RecorderManagementPort(Protocol):
         *,
         timeout: float = 5.0,
     ) -> None: ...
+
+    def delete_bed(
+        self,
+        base_url: str,
+        *,
+        bed_id: str,
+        bed_name: str,
+        timeout: float = 5.0,
+    ) -> None: ...

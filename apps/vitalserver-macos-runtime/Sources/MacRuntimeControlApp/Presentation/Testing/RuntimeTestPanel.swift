@@ -106,120 +106,15 @@ struct RuntimeTestPanel: View {
 
                 Divider()
 
+                virtualRecorderSession
+
+                Divider()
+
                 sessionList
 
                 Divider()
 
                 orphanCleanup
-
-                Divider()
-
-                VStack(alignment: .leading, spacing: 10) {
-                    Picker(AppConstants.Labels.scenario, selection: $viewModel.testKitScenario) {
-                        ForEach(RuntimeTestKitScenario.allCases, id: \.self) { scenario in
-                            Text(displayName(scenario)).tag(scenario)
-                        }
-                    }
-                    .pickerStyle(.menu)
-
-                    Picker(AppConstants.Labels.signal, selection: $viewModel.testKitSignalProfile) {
-                        ForEach(RuntimeTestKitSignalProfile.allCases, id: \.self) { profile in
-                            Text(displayName(profile)).tag(profile)
-                        }
-                    }
-                    .pickerStyle(.menu)
-
-                    testKitIntegerStepper(
-                        AppConstants.Labels.recorderCount,
-                        value: $viewModel.testKitRecorderCount,
-                        range: 1...200,
-                        displayValue: String(viewModel.testKitRecorderCount)
-                    )
-
-                    if viewModel.testKitRecorderCount > 1 {
-                        Text(RuntimeTestPanelText.sharedContainerIPWarning)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-
-                    HStack(spacing: 10) {
-                        testKitIntegerStepper(
-                            AppConstants.Labels.bedCount,
-                            value: $viewModel.testKitBedCount,
-                            range: 1...200,
-                            displayValue: String(viewModel.testKitBedCount)
-                        )
-                        Button(AppConstants.Actions.create) {
-                            Task { await viewModel.createTestKitBeds() }
-                        }
-                        .disabled(!viewModel.testKitStatus.enabled || viewModel.isRunningTestKitAction)
-                    }
-
-                    TextField(AppConstants.Labels.bedPrefix, text: $viewModel.testKitBedPrefix)
-                        .textFieldStyle(.roundedBorder)
-
-                    testKitDoubleStepper(
-                        AppConstants.Labels.interval,
-                        value: $viewModel.testKitIntervalSeconds,
-                        range: 0.1...60,
-                        step: 0.1,
-                        displayValue: secondsText(viewModel.testKitIntervalSeconds)
-                    )
-
-                    testKitDoubleStepper(
-                        AppConstants.Labels.duration,
-                        value: $viewModel.testKitDurationSeconds,
-                        range: 0...86_400,
-                        step: 10,
-                        displayValue: limitText(seconds: viewModel.testKitDurationSeconds)
-                    )
-
-                    testKitIntegerStepper(
-                        AppConstants.Labels.maxMessages,
-                        value: $viewModel.testKitMaxMessages,
-                        range: 0...1_000_000,
-                        step: 10,
-                        displayValue: viewModel.testKitMaxMessages > 0
-                            ? String(viewModel.testKitMaxMessages)
-                            : AppConstants.Values.unlimited
-                    )
-
-                    HStack(spacing: 16) {
-                        Toggle(AppConstants.Labels.shiftTime, isOn: $viewModel.testKitShiftTime)
-                        Toggle(AppConstants.Labels.generateFrames, isOn: $viewModel.testKitGenerateFrames)
-                    }
-
-                    TextField(AppConstants.Labels.vrcodeOptional, text: $viewModel.testKitVrcode)
-                        .textFieldStyle(.roundedBorder)
-                }
-                .disabled(!viewModel.testKitStatus.enabled || viewModel.isRunningTestKitAction)
-
-                HStack(spacing: 8) {
-                    Button(AppConstants.Actions.refresh) {
-                        Task {
-                            await viewModel.refreshTestKitStatus()
-                            viewModel.testKitActionMessage = RuntimeTestPanelText.refreshedStatus
-                        }
-                    }
-                    .disabled(viewModel.isRunningTestKitAction)
-
-                    Button(AppConstants.Actions.start) {
-                        Task { await viewModel.startVirtualRecorderSession() }
-                    }
-                    .disabled(!viewModel.testKitCanStart)
-                    .help(viewModel.testKitStatus.beds.isEmpty ? RuntimeTestPanelText.noBeds : "")
-
-                    Button(AppConstants.Actions.reset) {
-                        Task { await viewModel.resetVirtualRecorderSessions() }
-                    }
-                    .disabled(viewModel.isRunningTestKitAction || viewModel.testKitStatus.sessions.isEmpty)
-
-                    if viewModel.isRunningTestKitAction {
-                        ProgressView()
-                            .controlSize(.small)
-                    }
-                }
             }
         }
     }
@@ -289,36 +184,205 @@ struct RuntimeTestPanel: View {
     }
 
     private var bedList: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
-                Text(AppConstants.Labels.beds)
+                Text(AppConstants.Labels.bedSetup)
                     .font(.subheadline)
                     .fontWeight(.semibold)
                 Spacer()
+                Button(AppConstants.Actions.create) {
+                    Task { await viewModel.createTestKitBeds() }
+                }
+                .disabled(!viewModel.testKitStatus.enabled || viewModel.isRunningTestKitAction)
                 Button(AppConstants.Actions.reset) {
                     Task { await viewModel.resetTestKitBeds() }
                 }
                 .disabled(!viewModel.testKitCanResetBeds)
             }
 
+            bedCreationControls
+
             if viewModel.testKitStatus.beds.isEmpty {
                 Text(RuntimeTestPanelText.noBeds)
                     .foregroundStyle(.secondary)
             } else {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(AppConstants.Labels.bedSelection)
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                    Text(RuntimeTestPanelText.chooseBeds)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(RuntimeTestPanelText.selectedBeds(
+                        viewModel.selectedTestKitBedCount,
+                        viewModel.testKitRecorderCount,
+                        viewModel.availableTestKitBedCount
+                    ))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+
                 ForEach(viewModel.testKitStatus.beds) { bed in
-                    HStack(spacing: 10) {
-                        Text(bed.roomName)
-                            .fontWeight(.medium)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                        Spacer(minLength: 12)
-                        Text(bed.bedID)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
+                    bedSelectionRow(bed)
+                }
+            }
+        }
+    }
+
+    private var bedCreationControls: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            testKitIntegerStepper(
+                AppConstants.Labels.bedCount,
+                value: $viewModel.testKitBedCount,
+                range: 1...200,
+                displayValue: String(viewModel.testKitBedCount)
+            )
+            TextField(AppConstants.Labels.bedPrefix, text: $viewModel.testKitBedPrefix)
+                .textFieldStyle(.roundedBorder)
+        }
+        .disabled(!viewModel.testKitStatus.enabled || viewModel.isRunningTestKitAction)
+    }
+
+    private func bedSelectionRow(_ bed: RuntimeTestKitBed) -> some View {
+        let isActive = viewModel.testKitBedIsActive(bed.roomName)
+        return HStack(spacing: 10) {
+            Toggle("", isOn: Binding(
+                get: { viewModel.testKitBedIsSelected(bed.roomName) },
+                set: { viewModel.setTestKitBedSelection(bed.roomName, selected: $0) }
+            ))
+            .labelsHidden()
+            .disabled(isActive || viewModel.isRunningTestKitAction)
+            .help(isActive ? RuntimeTestPanelText.activeBedHelp : "")
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(bed.roomName)
+                    .fontWeight(.medium)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Text(bed.bedID)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+
+            Spacer(minLength: 12)
+
+            if isActive {
+                Text(RuntimeTestPanelText.activeBed)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 2)
+    }
+
+    private var virtualRecorderSession: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(AppConstants.Labels.virtualVRecorderSession)
+                .font(.subheadline)
+                .fontWeight(.semibold)
+
+            Picker(AppConstants.Labels.scenario, selection: $viewModel.testKitScenario) {
+                ForEach(RuntimeTestKitScenario.allCases, id: \.self) { scenario in
+                    Text(displayName(scenario)).tag(scenario)
+                }
+            }
+            .pickerStyle(.menu)
+
+            Picker(AppConstants.Labels.signal, selection: $viewModel.testKitSignalProfile) {
+                ForEach(RuntimeTestKitSignalProfile.allCases, id: \.self) { profile in
+                    Text(displayName(profile)).tag(profile)
+                }
+            }
+            .pickerStyle(.menu)
+
+            testKitIntegerStepper(
+                AppConstants.Labels.recorderCount,
+                value: $viewModel.testKitRecorderCount,
+                range: 1...200,
+                displayValue: String(viewModel.testKitRecorderCount)
+            )
+
+            Text(RuntimeTestPanelText.selectedBeds(
+                viewModel.selectedTestKitBedCount,
+                viewModel.testKitRecorderCount,
+                viewModel.availableTestKitBedCount
+            ))
+            .font(.caption)
+            .foregroundStyle(.secondary)
+
+            if viewModel.testKitRecorderCount > 1 {
+                Text(RuntimeTestPanelText.sharedContainerIPWarning)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Divider()
+
+            Text(AppConstants.Labels.trafficProfile)
+                .font(.subheadline)
+                .fontWeight(.semibold)
+
+            testKitDoubleStepper(
+                AppConstants.Labels.interval,
+                value: $viewModel.testKitIntervalSeconds,
+                range: 0.1...60,
+                step: 0.1,
+                displayValue: secondsText(viewModel.testKitIntervalSeconds)
+            )
+
+            testKitDoubleStepper(
+                AppConstants.Labels.duration,
+                value: $viewModel.testKitDurationSeconds,
+                range: 0...86_400,
+                step: 10,
+                displayValue: limitText(seconds: viewModel.testKitDurationSeconds)
+            )
+
+            testKitIntegerStepper(
+                AppConstants.Labels.maxMessages,
+                value: $viewModel.testKitMaxMessages,
+                range: 0...1_000_000,
+                step: 10,
+                displayValue: viewModel.testKitMaxMessages > 0
+                    ? String(viewModel.testKitMaxMessages)
+                    : AppConstants.Values.unlimited
+            )
+
+            HStack(spacing: 16) {
+                Toggle(AppConstants.Labels.shiftTime, isOn: $viewModel.testKitShiftTime)
+                Toggle(AppConstants.Labels.generateFrames, isOn: $viewModel.testKitGenerateFrames)
+            }
+
+            TextField(AppConstants.Labels.vrcodeOptional, text: $viewModel.testKitVrcode)
+                .textFieldStyle(.roundedBorder)
+
+            HStack(spacing: 8) {
+                Button(AppConstants.Actions.refresh) {
+                    Task {
+                        await viewModel.refreshTestKitStatus()
+                        viewModel.testKitActionMessage = RuntimeTestPanelText.refreshedStatus
                     }
-                    .padding(.vertical, 2)
+                }
+                .disabled(viewModel.isRunningTestKitAction)
+
+                Button(AppConstants.Actions.start) {
+                    Task { await viewModel.startVirtualRecorderSession() }
+                }
+                .disabled(!viewModel.testKitCanStart)
+                .help(startHelpText)
+
+                Button(AppConstants.Actions.reset) {
+                    Task { await viewModel.resetVirtualRecorderSessions() }
+                }
+                .disabled(viewModel.isRunningTestKitAction || viewModel.testKitStatus.sessions.isEmpty)
+
+                if viewModel.isRunningTestKitAction {
+                    ProgressView()
+                        .controlSize(.small)
                 }
             }
         }
@@ -389,6 +453,19 @@ struct RuntimeTestPanel: View {
         viewModel.testKitStatus.enabled
             && !viewModel.isRunningTestKitAction
             && !viewModel.testKitOrphanVrcode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var startHelpText: String {
+        if viewModel.testKitStatus.beds.isEmpty {
+            return RuntimeTestPanelText.noBeds
+        }
+        if viewModel.selectedTestKitBedCount < viewModel.testKitRecorderCount {
+            return RuntimeTestPanelText.insufficientSelectedBeds(
+                viewModel.selectedTestKitBedCount,
+                viewModel.testKitRecorderCount
+            )
+        }
+        return ""
     }
 
     private var totalRecorders: Int {

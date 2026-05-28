@@ -74,7 +74,7 @@ def test_collector_builds_observation_from_redis_and_access_log(tmp_path: Path) 
                 "devs_bed-1": "device-json",
                 "filts_bed-1": "filter-json",
             },
-            sets={"beds": ["bed-1"]},
+            sets={"beds": ["bed-1"], "vrs": ["VR_A"]},
         ),
         settings=_settings(access_log),
     )
@@ -151,7 +151,7 @@ def test_collector_summarizes_recorder_activity_from_audit_events() -> None:
     assert activity["messagesPerSecond"] == 0.007
 
 
-def test_collector_does_not_promote_bed_utime_to_recorder() -> None:
+def test_collector_does_not_promote_bed_vrcode_to_recorder() -> None:
     now = str(time.time() - 1)
     bed_id = "d8e1436f3f1acfedc4b481d6b12d063134287810"
     collector = VitalDBCollector(
@@ -169,7 +169,7 @@ def test_collector_does_not_promote_bed_utime_to_recorder() -> None:
 
     document = collector.collect().as_json()
 
-    assert [recorder["vrcode"] for recorder in document["recorders"]] == ["VR_A"]
+    assert document["recorders"] == []
 
 
 def test_collector_does_not_promote_bed_activity_to_recorder() -> None:

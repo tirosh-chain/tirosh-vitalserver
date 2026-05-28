@@ -87,7 +87,13 @@ public final class MacTestKitController: RuntimeTestKitControlling {
         let apiBaseURL = try await requireAPIBaseURL()
         try await ensureAPIAvailable(apiBaseURL: apiBaseURL)
 
-        var urlRequest = apiRequest(apiBaseURL: apiBaseURL, path: "/beds")
+        var urlRequest = apiRequest(
+            apiBaseURL: apiBaseURL,
+            path: "/beds",
+            queryItems: [
+                URLQueryItem(name: "targetUrl", value: configuration.recorderTargetURL)
+            ]
+        )
         urlRequest.httpMethod = "DELETE"
 
         let response = try await decode(TestKitBedsResponse.self, from: urlRequest)
@@ -257,13 +263,25 @@ public final class MacTestKitController: RuntimeTestKitControlling {
         return try JSONDecoder().decode(type, from: data)
     }
 
-    private func apiURL(apiBaseURL: String, path: String) -> URL {
-        URL(string: "\(apiBaseURL)\(path)")!
+    private func apiURL(
+        apiBaseURL: String,
+        path: String,
+        queryItems: [URLQueryItem] = []
+    ) -> URL {
+        var components = URLComponents(string: "\(apiBaseURL)\(path)")!
+        if !queryItems.isEmpty {
+            components.queryItems = queryItems
+        }
+        return components.url!
     }
 
-    private func apiRequest(apiBaseURL: String, path: String) -> URLRequest {
+    private func apiRequest(
+        apiBaseURL: String,
+        path: String,
+        queryItems: [URLQueryItem] = []
+    ) -> URLRequest {
         URLRequest(
-            url: apiURL(apiBaseURL: apiBaseURL, path: path),
+            url: apiURL(apiBaseURL: apiBaseURL, path: path, queryItems: queryItems),
             timeoutInterval: requestTimeout
         )
     }
