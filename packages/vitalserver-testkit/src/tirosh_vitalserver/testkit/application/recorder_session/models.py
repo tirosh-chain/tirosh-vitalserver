@@ -20,6 +20,7 @@ class VirtualRecorderSessionState(StrEnum):
 
     STARTING = "starting"
     RUNNING = "running"
+    PAUSED = "paused"
     STOPPING = "stopping"
     STOPPED = "stopped"
     FAILED = "failed"

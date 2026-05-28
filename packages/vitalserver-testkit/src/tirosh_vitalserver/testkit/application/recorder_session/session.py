@@ -59,6 +59,7 @@ class VirtualRecorderSession:
         self._snapshot_handler = snapshot_handler
         self._runtime_registry = RecorderRuntimeRegistry()
         self._stop_event = threading.Event()
+        self._pause_event = threading.Event()
         self._lock = threading.RLock()
         self._state = VirtualRecorderSessionState.STARTING
         self._created_at = time.time()
@@ -112,6 +113,42 @@ class VirtualRecorderSession:
             vrcode=self._request.vrcode,
         )
         self._publish_snapshot(snapshot)
+
+    def pause(self) -> VirtualRecorderSessionSnapshot:
+        """Pause data transmission while keeping the recorder connection alive."""
+
+        with self._lock:
+            if self._state != VirtualRecorderSessionState.RUNNING:
+                return self.snapshot()
+            self._state = VirtualRecorderSessionState.PAUSED
+            self._pause_event.set()
+            snapshot = self.snapshot()
+        emit_testkit_event(
+            "session.paused",
+            session_id=self._session_id,
+            target_url=self._request.target_url,
+            vrcode=self._request.vrcode,
+        )
+        self._publish_snapshot(snapshot)
+        return snapshot
+
+    def resume(self) -> VirtualRecorderSessionSnapshot:
+        """Resume data transmission for a paused recorder connection."""
+
+        with self._lock:
+            if self._state != VirtualRecorderSessionState.PAUSED:
+                return self.snapshot()
+            self._state = VirtualRecorderSessionState.RUNNING
+            self._pause_event.clear()
+            snapshot = self.snapshot()
+        emit_testkit_event(
+            "session.resumed",
+            session_id=self._session_id,
+            target_url=self._request.target_url,
+            vrcode=self._request.vrcode,
+        )
+        self._publish_snapshot(snapshot)
+        return snapshot
 
     def wait(self, timeout: float | None = None) -> bool:
         """Wait for the session thread to stop."""
@@ -237,6 +274,7 @@ class VirtualRecorderSession:
                     generate_frames=request.generate_frames,
                     signal_profile=signal_profile,
                     stop_event=self._stop_event,
+                    pause_event=self._pause_event,
                     runtime_state=self._runtime_registry.state_for(
                         vrcode=virtual_payload.vrcode,
                         base_url=request.target_url,

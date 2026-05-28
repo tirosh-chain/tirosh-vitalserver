@@ -30,7 +30,6 @@ from tirosh_vitalserver.testkit.domain.signal import RecorderSignalScenario
 from tirosh_vitalserver.testkit.errors import BedAlreadyAssignedError
 from tirosh_vitalserver.testkit.observability import emit_testkit_event
 
-
 _DELETE_STOP_TIMEOUT_SECONDS = 10.0
 
 
@@ -156,6 +155,74 @@ class VirtualRecorderSessionManager:
         snapshot = session.snapshot()
         self._save_snapshot(snapshot)
         return snapshot
+
+    def pause_session(self, session_id: str) -> VirtualRecorderSessionSnapshot | None:
+        """Pause one running virtual recorder session."""
+
+        session = self._session(session_id)
+        if session is None:
+            emit_testkit_event(
+                "session.pause.missing",
+                level=logging.WARNING,
+                session_id=session_id,
+            )
+            return None
+
+        emit_testkit_event("session.pause.requested", session_id=session_id)
+        snapshot = session.pause()
+        self._save_snapshot(snapshot)
+        return snapshot
+
+    def resume_session(self, session_id: str) -> VirtualRecorderSessionSnapshot | None:
+        """Resume one paused virtual recorder session."""
+
+        session = self._session(session_id)
+        if session is None:
+            emit_testkit_event(
+                "session.resume.missing",
+                level=logging.WARNING,
+                session_id=session_id,
+            )
+            return None
+
+        emit_testkit_event("session.resume.requested", session_id=session_id)
+        snapshot = session.resume()
+        self._save_snapshot(snapshot)
+        return snapshot
+
+    def restart_session(
+        self,
+        session_id: str,
+        *,
+        bed_room_names: tuple[str, ...] = (),
+    ) -> VirtualRecorderSessionSnapshot | None:
+        """Start a new session from a stopped session spec and selected beds."""
+
+        with self._lock:
+            snapshot = self._stored_sessions.get(session_id)
+            if snapshot is None and session_id in self._sessions:
+                snapshot = self._sessions[session_id].snapshot()
+
+        if snapshot is None:
+            emit_testkit_event(
+                "session.restart.missing",
+                level=logging.WARNING,
+                session_id=session_id,
+            )
+            return None
+
+        if session_is_active(snapshot):
+            raise ValueError("session must be stopped or failed before restart")
+
+        request = restart_request(snapshot, bed_room_names=bed_room_names)
+        emit_testkit_event(
+            "session.restart.requested",
+            session_id=session_id,
+            vrcode=request.vrcode,
+            beds=len(request.bed_room_names),
+        )
+
+        return self.start_session(request)
 
     def delete_session(self, session_id: str) -> VirtualRecorderSessionSnapshot | None:
         """Stop and remove one managed virtual recorder session."""
@@ -454,6 +521,24 @@ def session_is_active(snapshot: VirtualRecorderSessionSnapshot) -> bool:
     return snapshot.state not in (
         VirtualRecorderSessionState.STOPPED,
         VirtualRecorderSessionState.FAILED,
+    )
+
+
+def restart_request(
+    snapshot: VirtualRecorderSessionSnapshot,
+    *,
+    bed_room_names: tuple[str, ...],
+) -> VirtualRecorderSessionRequest:
+    """Return the request used to reconnect a stopped virtual recorder."""
+
+    vrcode = snapshot.request.vrcode
+    if vrcode is None and len(snapshot.recorders) == 1:
+        vrcode = snapshot.recorders[0].vrcode
+
+    return replace(
+        snapshot.request,
+        bed_room_names=bed_room_names or snapshot.request.bed_room_names,
+        vrcode=vrcode,
     )
 
 

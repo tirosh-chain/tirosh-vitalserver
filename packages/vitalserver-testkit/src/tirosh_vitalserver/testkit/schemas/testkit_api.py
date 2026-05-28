@@ -83,3 +83,11 @@ class DeleteVirtualRecorderRequest(ExternalSchema):
 
     target_url: str = Field(alias="targetUrl")
     vrcode: str
+
+
+class RestartVirtualRecorderSessionRequest(ExternalSchema):
+    """Request body for reconnecting a stopped session to selected beds."""
+
+    model_config = ConfigDict(populate_by_name=True, strict=False)
+
+    bed_room_names: tuple[str, ...] = Field(default=(), alias="bedRoomNames")

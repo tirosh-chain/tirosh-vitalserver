@@ -73,6 +73,60 @@ def test_virtual_recorder_session_can_stop() -> None:
     assert stopped.state == VirtualRecorderSessionState.STOPPED
 
 
+def test_virtual_recorder_session_can_pause_and_resume() -> None:
+    manager = VirtualRecorderSessionManager(connector=fake_socketio_connector)
+    snapshot = manager.start_session(
+        VirtualRecorderSessionRequest(
+            target_url="http://example.test",
+            bed_room_names=("OR-A",),
+            interval_seconds=0.1,
+            max_messages=2,
+            shift_time=False,
+        )
+    )
+
+    paused = manager.pause_session(snapshot.session_id)
+    resumed = manager.resume_session(snapshot.session_id)
+
+    assert paused is not None
+    assert paused.state in (
+        VirtualRecorderSessionState.PAUSED,
+        VirtualRecorderSessionState.STOPPED,
+    )
+    assert resumed is not None
+    assert resumed.state in (
+        VirtualRecorderSessionState.RUNNING,
+        VirtualRecorderSessionState.STOPPED,
+    )
+    assert manager.wait_session(snapshot.session_id, timeout=5)
+
+
+def test_stopped_virtual_recorder_session_can_restart_on_new_bed() -> None:
+    manager = VirtualRecorderSessionManager(connector=fake_socketio_connector)
+    snapshot = manager.start_session(
+        VirtualRecorderSessionRequest(
+            target_url="http://example.test",
+            vrcode="VR_REUSE",
+            bed_room_names=("OR-A",),
+            interval_seconds=0.1,
+            max_messages=1,
+            shift_time=False,
+        )
+    )
+    assert manager.wait_session(snapshot.session_id, timeout=5)
+
+    restarted = manager.restart_session(
+        snapshot.session_id,
+        bed_room_names=("OR-B",),
+    )
+
+    assert restarted is not None
+    assert restarted.session_id != snapshot.session_id
+    assert restarted.request.vrcode == "VR_REUSE"
+    assert restarted.request.bed_room_names == ("OR-B",)
+    assert manager.wait_session(restarted.session_id, timeout=5)
+
+
 def test_virtual_recorder_session_can_be_deleted() -> None:
     recorder_management = FakeRecorderManagement()
     manager = VirtualRecorderSessionManager(

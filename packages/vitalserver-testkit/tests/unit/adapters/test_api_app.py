@@ -11,6 +11,7 @@ from tirosh_vitalserver.testkit.application.recorder_session import (
 )
 from tirosh_vitalserver.testkit.schemas import (
     CreateBedsRequest,
+    RestartVirtualRecorderSessionRequest,
     StartVirtualRecordersRequest,
 )
 
@@ -179,6 +180,38 @@ def test_bed_registry_reset_rejects_active_assignments() -> None:
         )
     finally:
         manager.delete_session(first["id"])
+
+
+def test_session_endpoint_restarts_stopped_session_on_selected_bed() -> None:
+    start_route = route_for("/sessions", "POST")
+    restart_route = route_for("/sessions/{session_id}/restart", "POST")
+    manager = VirtualRecorderSessionManager(connector=fake_socketio_connector)
+    registry = BedRegistry()
+    registry.create_beds(room_names=("OR-A", "OR-B"))
+
+    first = start_route.endpoint(
+        StartVirtualRecordersRequest(
+            targetUrl="http://example.test",
+            vrcode="VR_REUSE",
+            recorders=1,
+            bedRoomNames=("OR-A",),
+            maxMessages=1,
+        ),
+        manager,
+        registry,
+    )
+    assert manager.wait_session(first["id"], timeout=5)
+
+    restarted = restart_route.endpoint(
+        first["id"],
+        RestartVirtualRecorderSessionRequest(bedRoomNames=("OR-B",)),
+        manager,
+        registry,
+    )
+
+    assert restarted["id"] != first["id"]
+    assert restarted["vrcode"] == "VR_REUSE"
+    assert restarted["bedRoomNames"] == ("OR-B",)
 
 
 def route_for(path: str, method: str):

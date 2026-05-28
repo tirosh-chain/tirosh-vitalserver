@@ -31,6 +31,7 @@ from tirosh_vitalserver.testkit.observability import emit_testkit_event
 from tirosh_vitalserver.testkit.schemas.testkit_api import (
     CreateBedsRequest,
     DeleteVirtualRecorderRequest,
+    RestartVirtualRecorderSessionRequest,
     StartVirtualRecordersRequest,
 )
 
@@ -306,6 +307,102 @@ def create_testkit_app(
 
         emit_testkit_event(
             "api.session.stop.accepted",
+            session_id=snapshot.session_id,
+            state=snapshot.state.value,
+        )
+        return session_snapshot_to_document(snapshot)
+
+    @app.post("/sessions/{session_id}/pause")
+    def pause_session(
+        session_id: str,
+        manager: Annotated[VirtualRecorderSessionManager, Depends(get_manager)],
+    ) -> dict[str, Any]:
+        emit_testkit_event("api.session.pause.requested", session_id=session_id)
+        snapshot = manager.pause_session(session_id)
+        if snapshot is None:
+            emit_testkit_event(
+                "api.session.pause.missing",
+                level=logging.WARNING,
+                session_id=session_id,
+            )
+            raise HTTPException(status_code=404, detail="session not found")
+
+        emit_testkit_event(
+            "api.session.pause.accepted",
+            session_id=snapshot.session_id,
+            state=snapshot.state.value,
+        )
+        return session_snapshot_to_document(snapshot)
+
+    @app.post("/sessions/{session_id}/resume")
+    def resume_session(
+        session_id: str,
+        manager: Annotated[VirtualRecorderSessionManager, Depends(get_manager)],
+    ) -> dict[str, Any]:
+        emit_testkit_event("api.session.resume.requested", session_id=session_id)
+        snapshot = manager.resume_session(session_id)
+        if snapshot is None:
+            emit_testkit_event(
+                "api.session.resume.missing",
+                level=logging.WARNING,
+                session_id=session_id,
+            )
+            raise HTTPException(status_code=404, detail="session not found")
+
+        emit_testkit_event(
+            "api.session.resume.accepted",
+            session_id=snapshot.session_id,
+            state=snapshot.state.value,
+        )
+        return session_snapshot_to_document(snapshot)
+
+    @app.post("/sessions/{session_id}/restart", status_code=201)
+    def restart_session(
+        session_id: str,
+        request: RestartVirtualRecorderSessionRequest,
+        manager: Annotated[VirtualRecorderSessionManager, Depends(get_manager)],
+        registry: Annotated[BedRegistry, Depends(get_bed_registry)],
+    ) -> dict[str, Any]:
+        emit_testkit_event(
+            "api.session.restart.requested",
+            session_id=session_id,
+            beds=len(request.bed_room_names),
+        )
+        try:
+            registry.require_registered_room_names(request.bed_room_names)
+            snapshot = manager.restart_session(
+                session_id,
+                bed_room_names=request.bed_room_names,
+            )
+        except BedAlreadyAssignedError as exc:
+            emit_testkit_event(
+                "api.session.restart.conflicted",
+                level=logging.WARNING,
+                session_id=session_id,
+                beds=len(request.bed_room_names),
+                error=str(exc),
+            )
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ValueError as exc:
+            emit_testkit_event(
+                "api.session.restart.rejected",
+                level=logging.WARNING,
+                session_id=session_id,
+                beds=len(request.bed_room_names),
+                error=str(exc),
+            )
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if snapshot is None:
+            emit_testkit_event(
+                "api.session.restart.missing",
+                level=logging.WARNING,
+                session_id=session_id,
+            )
+            raise HTTPException(status_code=404, detail="session not found")
+
+        emit_testkit_event(
+            "api.session.restart.accepted",
+            source_session_id=session_id,
             session_id=snapshot.session_id,
             state=snapshot.state.value,
         )
