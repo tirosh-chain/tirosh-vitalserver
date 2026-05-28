@@ -15,16 +15,20 @@ OpenAPI contract는 [`runtime-control.openapi.json`](./runtime-control.openapi.j
 
 ## Local Server
 
-macOS Helper app composition은 `distribution.profile=dev` build에서만 read-only Runtime Control API server를 조립합니다. Stable build는 아직 local API server를 시작하지 않습니다. Stable/PWA용 API는 pairing/session token 기반 auth 정책을 넣은 뒤 열어야 합니다.
+macOS Helper app composition은 Runtime Control API server를 TestKit/dev console 노출 여부와 분리해서 조립합니다.
+PWA가 사용할 `/runtime/*`, `/vitaldb/*`, `/host/*` API는 stable/dev profile 모두에서 같은 local server를 통해
+제공될 수 있어야 합니다. `/dev/runtime-control` 확인 화면과 `/dev/testkit/*` route만 `distribution.profile=dev`
+또는 test-enabled build 뒤에 둡니다. Stable/PWA용 인증은 현재 transitional token에서 pairing/session token
+정책으로 교체해야 합니다.
 
 | 항목 | 값 |
 |---|---|
 | Base URL | `http://127.0.0.1:18321` |
 | Interface | loopback only |
 | Auth header | `X-Runtime-Control-Token` |
-| Dev-only transitional token | `vitalserver-helper-dev` |
+| Transitional local token | `vitalserver-helper-dev` |
 
-Dev local server는 read-only runtime endpoint, PWA overview, Redis backup 생성/조회, rollback backup 조회, 일부 host log endpoint를 구현합니다.
+Local server는 read-only runtime endpoint, PWA overview, Redis backup 생성/조회, rollback backup 조회, 일부 host log endpoint를 구현합니다.
 
 | Method | Path |
 |---|---|
@@ -39,6 +43,9 @@ Dev local server는 read-only runtime endpoint, PWA overview, Redis backup 생�
 | `GET` | `/vitaldb/observations/stream` |
 | `GET` | `/vitaldb/recorders` |
 | `GET` | `/vitaldb/recorders/{vrcode}` |
+| `GET` | `/vitaldb/beds` |
+| `GET` | `/vitaldb/beds/{bedID}` |
+| `GET` | `/vitaldb/relationships` |
 | `POST` | `/runtime/health` |
 | `GET` | `/runtime/settings` |
 | `GET` | `/runtime/release` |
@@ -49,7 +56,7 @@ Dev local server는 read-only runtime endpoint, PWA overview, Redis backup 생�
 | `POST` | `/host/logs/read` |
 | `GET` | `/host/logs/stream` |
 
-나머지 write/admin/host affordance route는 계약에는 있지만 현재 router에서 `501 endpointNotImplemented`를 반환합니다.
+TestKit route와 browser 확인용 dev console은 test-enabled build에서만 노출됩니다.
 
 ## Status Vocabulary
 
@@ -138,9 +145,14 @@ version, bed, first/last seen, latest status, current anomaly count, `activityTi
 `GET /vitaldb/recorders/{vrcode}`는 같은 history read model에서 특정 `vrcode`의 recorder record 하나를
 반환합니다. 관측 이력이 없으면 `null`을 반환합니다.
 
+`GET /vitaldb/beds`는 runtime observability SQLite에 저장된 VitalDB observation snapshot들을 `bedID`
+기준으로 집계한 `RuntimeVitalBedRecord` 배열을 반환합니다. Bed 탭/PWA는 recorder history payload에
+포함된 `beds` 필드에 의존하지 않고 이 route를 우선 사용합니다. `GET /vitaldb/beds/{bedID}`는 특정
+bed record 하나를 반환하고, 관측 이력이 없으면 `null`을 반환합니다.
+
 `distribution.profile`이 `dev`인 build에서는 macOS Helper가 실행 중일 때
 `http://127.0.0.1:18321/dev/runtime-control`에서 브라우저용 Runtime Control API console을 열 수 있습니다.
-Stable build는 local API server와 이 route를 제공하지 않습니다. 이 화면은 product PWA가 아니라 API/SSE
+Stable build는 local API server는 유지하되 이 dev console route는 제공하지 않습니다. 이 화면은 product PWA가 아니라 API/SSE
 동작 확인용 loopback dev tool이며, status snapshot, status stream, event stream, log stream을 같은 origin에서 호출합니다.
 
 ## Route Scope
@@ -167,6 +179,9 @@ Stable build는 local API server와 이 route를 제공하지 않습니다. 이 
 | `GET` | `/vitaldb/observations/stream` | SSE VitalDB observation snapshot subscription |
 | `GET` | `/vitaldb/recorders` | VRecorder history aggregated by vrcode |
 | `GET` | `/vitaldb/recorders/{vrcode}` | one VRecorder history record by vrcode |
+| `GET` | `/vitaldb/beds` | bed history aggregated by bedID |
+| `GET` | `/vitaldb/beds/{bedID}` | one bed history record by bedID |
+| `GET` | `/vitaldb/relationships` | VRecorder-bed assignment and relationship event history |
 | `POST` | `/runtime/health` | active health refresh |
 | `GET` | `/runtime/settings` | current runtime settings |
 | `PUT` | `/runtime/settings` | apply runtime settings |
@@ -174,6 +189,7 @@ Stable build는 local API server와 이 route를 제공하지 않습니다. 이 
 | `GET` | `/runtime/install` | installed runtime paths and install metadata |
 | `POST` | `/runtime/services/start` | start runtime services |
 | `POST` | `/runtime/services/stop` | stop runtime services |
+| `POST` | `/runtime/services/repair-runtime` | repair VM, guest log sync, host proxy, and watchdog services |
 | `POST` | `/runtime/services/repair-proxy` | repair host proxy |
 | `POST` | `/runtime/services/repair-datastore` | repair datastore |
 | `POST` | `/runtime/redis/backups` | create recoverable Redis backup |
@@ -201,7 +217,7 @@ Stable build는 local API server와 이 route를 제공하지 않습니다. 이 
 
 | Access | 의미 | 현재 route |
 |---|---|---|
-| `browserSafe` | 브라우저/PWA가 local Runtime Control server에 직접 호출 가능한 read-only runtime control | `GET /runtime/capabilities`, `GET /runtime/overview`, `GET /runtime/overview/stream`, `GET /runtime/status`, `GET /runtime/status/stream`, `GET /runtime/events`, `GET /runtime/events/stream`, `GET /vitaldb/observations/latest`, `GET /vitaldb/observations/stream`, `GET /vitaldb/recorders`, `GET /vitaldb/recorders/{vrcode}`, `POST /runtime/health`, `GET /runtime/settings`, `GET /runtime/release`, `GET /runtime/install` |
+| `browserSafe` | 브라우저/PWA가 local Runtime Control server에 직접 호출 가능한 read-only runtime control | `GET /runtime/capabilities`, `GET /runtime/overview`, `GET /runtime/overview/stream`, `GET /runtime/status`, `GET /runtime/status/stream`, `GET /runtime/events`, `GET /runtime/events/stream`, `GET /vitaldb/observations/latest`, `GET /vitaldb/observations/stream`, `GET /vitaldb/recorders`, `GET /vitaldb/recorders/{vrcode}`, `GET /vitaldb/beds`, `GET /vitaldb/beds/{bedID}`, `GET /vitaldb/relationships`, `POST /runtime/health`, `GET /runtime/settings`, `GET /runtime/release`, `GET /runtime/install` |
 | `localServerMediated` | 브라우저가 직접 host resource를 만지지 않고 local server가 권한/파일/프로세스 작업을 중재해야 함 | runtime write/admin routes, Redis backup create/list/restore, backups list/delete/rollback, log read/stream, update bundle summary/verify/apply |
 | `nativeShellOnly` | 브라우저 endpoint만으로는 UX나 보안 경계가 충분하지 않아 native shell mediation이 필요함 | `POST /host/logs/export` |
 

@@ -323,7 +323,7 @@
         "operationId": "applyRuntimeSettings",
         "summary": "Apply runtime settings",
         "x-runtime-control-scope": "runtimeControl",
-        "x-runtime-control-implementation": "planned",
+        "x-runtime-control-implementation": "localCommand",
         "x-runtime-control-access": "localServerMediated",
         "requestBody": {
           "required": true,
@@ -341,9 +341,6 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
-          },
-          "501": {
-            "$ref": "#/components/responses/NotImplemented"
           }
         }
       }
@@ -401,14 +398,14 @@
         "operationId": "startRuntimeServices",
         "summary": "Start runtime services",
         "x-runtime-control-scope": "runtimeControl",
-        "x-runtime-control-implementation": "planned",
+        "x-runtime-control-implementation": "localCommand",
         "x-runtime-control-access": "localServerMediated",
         "responses": {
           "200": {
             "$ref": "#/components/responses/CommandResult"
           },
-          "501": {
-            "$ref": "#/components/responses/NotImplemented"
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           }
         }
       }
@@ -418,14 +415,32 @@
         "operationId": "stopRuntimeServices",
         "summary": "Stop runtime services",
         "x-runtime-control-scope": "runtimeControl",
-        "x-runtime-control-implementation": "planned",
+        "x-runtime-control-implementation": "localCommand",
         "x-runtime-control-access": "localServerMediated",
         "responses": {
           "200": {
             "$ref": "#/components/responses/CommandResult"
           },
-          "501": {
-            "$ref": "#/components/responses/NotImplemented"
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/runtime/services/repair-runtime": {
+      "post": {
+        "operationId": "repairRuntimeServices",
+        "summary": "Repair runtime services",
+        "description": "Restarts the VM, guest log sync, host proxy, and watchdog services.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "localCommand",
+        "x-runtime-control-access": "localServerMediated",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/CommandResult"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           }
         }
       }
@@ -435,7 +450,7 @@
         "operationId": "repairRuntimeProxy",
         "summary": "Repair host proxy service",
         "x-runtime-control-scope": "runtimeControl",
-        "x-runtime-control-implementation": "planned",
+        "x-runtime-control-implementation": "localCommand",
         "x-runtime-control-access": "localServerMediated",
         "requestBody": {
           "required": true,
@@ -451,8 +466,8 @@
           "200": {
             "$ref": "#/components/responses/CommandResult"
           },
-          "501": {
-            "$ref": "#/components/responses/NotImplemented"
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           }
         }
       }
@@ -462,14 +477,14 @@
         "operationId": "repairRuntimeDatastore",
         "summary": "Repair datastore",
         "x-runtime-control-scope": "runtimeControl",
-        "x-runtime-control-implementation": "planned",
+        "x-runtime-control-implementation": "localCommand",
         "x-runtime-control-access": "localServerMediated",
         "responses": {
           "200": {
             "$ref": "#/components/responses/CommandResult"
           },
-          "501": {
-            "$ref": "#/components/responses/NotImplemented"
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           }
         }
       }
@@ -497,7 +512,7 @@
         "operationId": "uninstallRuntime",
         "summary": "Uninstall runtime",
         "x-runtime-control-scope": "runtimeControl",
-        "x-runtime-control-implementation": "planned",
+        "x-runtime-control-implementation": "localCommand",
         "x-runtime-control-access": "localServerMediated",
         "requestBody": {
           "required": true,
@@ -549,7 +564,7 @@
         "operationId": "deleteHostBackup",
         "summary": "Delete selected local backup",
         "x-runtime-control-scope": "hostAffordance",
-        "x-runtime-control-implementation": "planned",
+        "x-runtime-control-implementation": "localCommand",
         "x-runtime-control-access": "localServerMediated",
         "requestBody": {
           "required": true,
@@ -630,7 +645,7 @@
         "operationId": "readHostLogText",
         "summary": "Read local log text",
         "x-runtime-control-scope": "hostAffordance",
-        "x-runtime-control-implementation": "planned",
+        "x-runtime-control-implementation": "readOnlyLocal",
         "x-runtime-control-access": "localServerMediated",
         "requestBody": {
           "required": true,
@@ -721,7 +736,7 @@
         "operationId": "exportHostLogs",
         "summary": "Export local logs",
         "x-runtime-control-scope": "hostAffordance",
-        "x-runtime-control-implementation": "planned",
+        "x-runtime-control-implementation": "localCommand",
         "x-runtime-control-access": "nativeShellOnly",
         "requestBody": {
           "required": true,
@@ -755,7 +770,7 @@
         "operationId": "summarizeHostUpdateBundle",
         "summary": "Summarize selected update bundle",
         "x-runtime-control-scope": "hostAffordance",
-        "x-runtime-control-implementation": "planned",
+        "x-runtime-control-implementation": "readOnlyLocal",
         "x-runtime-control-access": "localServerMediated",
         "requestBody": {
           "required": true,
@@ -789,7 +804,7 @@
         "operationId": "verifyHostUpdateBundle",
         "summary": "Verify selected update bundle",
         "x-runtime-control-scope": "hostAffordance",
-        "x-runtime-control-implementation": "planned",
+        "x-runtime-control-implementation": "localCommand",
         "x-runtime-control-access": "localServerMediated",
         "requestBody": {
           "required": true,
@@ -816,7 +831,7 @@
         "operationId": "applyHostUpdateBundle",
         "summary": "Apply selected update bundle",
         "x-runtime-control-scope": "hostAffordance",
-        "x-runtime-control-implementation": "planned",
+        "x-runtime-control-implementation": "localCommand",
         "x-runtime-control-access": "localServerMediated",
         "requestBody": {
           "required": true,
@@ -843,7 +858,7 @@
         "operationId": "rollbackHostBackup",
         "summary": "Rollback selected local backup",
         "x-runtime-control-scope": "hostAffordance",
-        "x-runtime-control-implementation": "planned",
+        "x-runtime-control-implementation": "localCommand",
         "x-runtime-control-access": "localServerMediated",
         "requestBody": {
           "required": true,
@@ -973,6 +988,75 @@
                   "oneOf": [
                     {
                       "$ref": "#/components/schemas/RuntimeVitalRecorderRecord"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/vitaldb/beds": {
+      "get": {
+        "operationId": "getVitalDBBeds",
+        "summary": "Read VitalDB bed history by bedID",
+        "description": "Aggregated bed history derived from stored VitalDB observation snapshots. bedID is the bed identity key.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "readOnlyLocal",
+        "x-runtime-control-access": "browserSafe",
+        "responses": {
+          "200": {
+            "description": "VitalDB bed records",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RuntimeVitalBedRecord"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/vitaldb/beds/{bedID}": {
+      "get": {
+        "operationId": "getVitalDBBed",
+        "summary": "Read one VitalDB bed by bedID",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "readOnlyLocal",
+        "x-runtime-control-access": "browserSafe",
+        "parameters": [
+          {
+            "name": "bedID",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "VitalDB bed record, or null when no bed has been observed for the requested bedID.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/RuntimeVitalBedRecord"
                     },
                     {
                       "type": "null"
