@@ -11,7 +11,9 @@ from tirosh_vitalserver.testkit.domain.bed import (
     Bed,
     beds_for_room_names,
     create_beds,
+    normalize_bed_room_names,
 )
+from tirosh_vitalserver.testkit.errors import BedNotRegisteredError
 
 
 class BedRegistry:
@@ -32,6 +34,24 @@ class BedRegistry:
 
         with self._lock:
             return tuple(self._beds_by_room_name.values())
+
+    def require_registered_room_names(
+        self,
+        room_names: tuple[str, ...],
+    ) -> tuple[str, ...]:
+        """Return normalized room names only when every bed is registered."""
+
+        resolved_room_names = normalize_bed_room_names(room_names)
+        with self._lock:
+            missing = tuple(
+                room_name
+                for room_name in resolved_room_names
+                if room_name not in self._beds_by_room_name
+            )
+        if missing:
+            raise BedNotRegisteredError(missing)
+
+        return resolved_room_names
 
     def create_beds(
         self,

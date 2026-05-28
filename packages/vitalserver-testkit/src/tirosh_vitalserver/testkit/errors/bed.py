@@ -44,9 +44,37 @@ class InsufficientBedsForRecordersError(BedDomainError):
         super().__init__("bed count must be greater than or equal to recorder count")
 
 
+class BedNotRegisteredError(BedDomainError):
+    """Raised when a recorder references a bed outside the registry."""
+
+    def __init__(self, room_names: tuple[str, ...]) -> None:
+        joined = ", ".join(room_names)
+        super().__init__(f"bed room names are not registered: {joined}")
+
+
+class BedAlreadyAssignedError(BedDomainError):
+    """Raised when a recorder tries to reuse an active bed."""
+
+    def __init__(self, room_names: tuple[str, ...]) -> None:
+        joined = ", ".join(room_names)
+        super().__init__(f"bed room names are already assigned: {joined}")
+
+
+class ActiveBedAssignmentsExistError(BedDomainError):
+    """Raised when deleting beds would orphan active recorder assignments."""
+
+    def __init__(self, room_names: tuple[str, ...]) -> None:
+        joined = ", ".join(room_names)
+        message = f"active bed assignments must be stopped before reset: {joined}"
+        super().__init__(message)
+
+
 __all__ = [
+    "ActiveBedAssignmentsExistError",
+    "BedAlreadyAssignedError",
     "BedCountInvalidError",
     "BedDomainError",
+    "BedNotRegisteredError",
     "BedRoomNameEmptyError",
     "BedRoomNameRequiredError",
     "DuplicateBedRoomNameError",

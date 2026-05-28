@@ -17,6 +17,7 @@ from tirosh_vitalserver.testkit.application.recorder_session.models import (
     VirtualRecorderSessionRequest,
     VirtualRecorderSessionScenario,
     VirtualRecorderSessionSnapshot,
+    VirtualRecorderSessionState,
 )
 from tirosh_vitalserver.testkit.application.recorder_session.session import (
     VirtualRecorderSession,
@@ -25,6 +26,7 @@ from tirosh_vitalserver.testkit.application.recorder_session.store import (
     VirtualRecorderSessionStorePort,
 )
 from tirosh_vitalserver.testkit.domain.signal import RecorderSignalScenario
+from tirosh_vitalserver.testkit.errors import BedAlreadyAssignedError
 from tirosh_vitalserver.testkit.observability import emit_testkit_event
 
 
@@ -52,15 +54,21 @@ class VirtualRecorderSessionManager:
         """Create and start a virtual recorder session."""
 
         request = request_with_scenario_defaults(request)
-        session_id = f"vrecorder-{uuid.uuid4()}"
-        session = VirtualRecorderSession(
-            session_id=session_id,
-            request=request,
-            connector=self._connector,
-            snapshot_handler=self._save_snapshot,
-        )
-
         with self._lock:
+            conflicts = active_bed_room_conflicts(
+                request.bed_room_names,
+                self._active_snapshots_locked(),
+            )
+            if conflicts:
+                raise BedAlreadyAssignedError(conflicts)
+
+            session_id = f"vrecorder-{uuid.uuid4()}"
+            session = VirtualRecorderSession(
+                session_id=session_id,
+                request=request,
+                connector=self._connector,
+                snapshot_handler=self._save_snapshot,
+            )
             self._sessions[session_id] = session
             self._stored_sessions[session_id] = session.snapshot()
         self._save_snapshot(session.snapshot())
@@ -96,6 +104,24 @@ class VirtualRecorderSessionManager:
             self._save_snapshot(snapshot)
 
         return tuple(stored.values())
+
+    def active_bed_room_names(self) -> tuple[str, ...]:
+        """Return bed room names held by active or uncleared sessions."""
+
+        with self._lock:
+            snapshots = self._active_snapshots_locked()
+
+        return tuple(sorted({
+            room_name
+            for snapshot in snapshots
+            for room_name in snapshot.request.bed_room_names
+        }))
+
+    def has_active_sessions(self) -> bool:
+        """Return whether any managed or stored session is still active."""
+
+        with self._lock:
+            return bool(self._active_snapshots_locked())
 
     def get_session(self, session_id: str) -> VirtualRecorderSessionSnapshot | None:
         """Return one session snapshot by id."""
@@ -298,6 +324,19 @@ class VirtualRecorderSessionManager:
         with self._lock:
             return self._sessions.get(session_id)
 
+    def _active_snapshots_locked(self) -> tuple[VirtualRecorderSessionSnapshot, ...]:
+        snapshots: dict[str, VirtualRecorderSessionSnapshot] = dict(
+            self._stored_sessions
+        )
+        for session_id, session in self._sessions.items():
+            snapshots[session_id] = session.snapshot()
+
+        return tuple(
+            snapshot
+            for snapshot in snapshots.values()
+            if session_is_active(snapshot)
+        )
+
     def _save_snapshot(self, snapshot: VirtualRecorderSessionSnapshot) -> None:
         with self._lock:
             self._stored_sessions[snapshot.session_id] = snapshot
@@ -353,6 +392,34 @@ def load_stored_sessions(
             error=str(exc),
         )
         return {}
+
+
+def session_is_active(snapshot: VirtualRecorderSessionSnapshot) -> bool:
+    """Return whether a session still owns runtime resources."""
+
+    return snapshot.state not in (
+        VirtualRecorderSessionState.STOPPED,
+        VirtualRecorderSessionState.FAILED,
+    )
+
+
+def active_bed_room_conflicts(
+    requested_room_names: tuple[str, ...],
+    active_snapshots: tuple[VirtualRecorderSessionSnapshot, ...],
+) -> tuple[str, ...]:
+    """Return active bed room names that would be reused."""
+
+    active_room_names = {
+        room_name
+        for snapshot in active_snapshots
+        for room_name in snapshot.request.bed_room_names
+    }
+
+    return tuple(
+        room_name
+        for room_name in requested_room_names
+        if room_name in active_room_names
+    )
 
 
 def request_with_scenario_defaults(

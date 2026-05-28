@@ -298,7 +298,7 @@ struct RuntimeTestPanel: View {
                 Button(AppConstants.Actions.reset) {
                     Task { await viewModel.resetTestKitBeds() }
                 }
-                .disabled(viewModel.isRunningTestKitAction || viewModel.testKitStatus.beds.isEmpty)
+                .disabled(!viewModel.testKitCanResetBeds)
             }
 
             if viewModel.testKitStatus.beds.isEmpty {

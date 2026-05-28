@@ -228,6 +228,64 @@ def test_virtual_recorder_session_rejects_duplicate_bed_room_names() -> None:
         raise AssertionError("expected duplicate bed validation")
 
 
+def test_virtual_recorder_session_rejects_active_bed_reuse() -> None:
+    manager = VirtualRecorderSessionManager(connector=fake_socketio_connector)
+    first = manager.start_session(
+        VirtualRecorderSessionRequest(
+            target_url="http://example.test",
+            recorders=1,
+            bed_room_names=("OR-A",),
+            interval_seconds=1,
+            shift_time=False,
+        )
+    )
+
+    try:
+        try:
+            manager.start_session(
+                VirtualRecorderSessionRequest(
+                    target_url="http://example.test",
+                    recorders=1,
+                    bed_room_names=("OR-A",),
+                    interval_seconds=1,
+                    shift_time=False,
+                )
+            )
+        except ValueError as exc:
+            assert str(exc) == "bed room names are already assigned: OR-A"
+        else:
+            raise AssertionError("expected active bed assignment validation")
+    finally:
+        manager.delete_session(first.session_id)
+
+
+def test_virtual_recorder_session_allows_reuse_after_session_delete() -> None:
+    manager = VirtualRecorderSessionManager(connector=fake_socketio_connector)
+    first = manager.start_session(
+        VirtualRecorderSessionRequest(
+            target_url="http://example.test",
+            recorders=1,
+            bed_room_names=("OR-A",),
+            interval_seconds=1,
+            shift_time=False,
+        )
+    )
+    manager.delete_session(first.session_id)
+
+    second = manager.start_session(
+        VirtualRecorderSessionRequest(
+            target_url="http://example.test",
+            recorders=1,
+            bed_room_names=("OR-A",),
+            interval_seconds=0.1,
+            max_messages=1,
+            shift_time=False,
+        )
+    )
+
+    assert manager.wait_session(second.session_id, timeout=5)
+
+
 def test_virtual_recorder_session_can_use_existing_bed_room_names() -> None:
     manager = VirtualRecorderSessionManager(connector=fake_socketio_connector)
     snapshot = manager.start_session(

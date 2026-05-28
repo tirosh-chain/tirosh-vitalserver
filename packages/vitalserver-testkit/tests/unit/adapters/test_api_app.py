@@ -48,6 +48,7 @@ def test_bed_registry_endpoint_creates_explicit_bed_identities() -> None:
 
 def test_bed_registry_endpoints_list_and_reset_registered_beds() -> None:
     registry = BedRegistry()
+    manager = VirtualRecorderSessionManager(connector=fake_socketio_connector)
     create_route = route_for("/beds", "POST")
     list_route = route_for("/beds", "GET")
     reset_route = route_for("/beds", "DELETE")
@@ -57,7 +58,7 @@ def test_bed_registry_endpoints_list_and_reset_registered_beds() -> None:
     listed = list_route.endpoint(registry)
     assert [bed["roomName"] for bed in listed["beds"]] == ["OR-A"]
 
-    deleted = reset_route.endpoint(registry)
+    deleted = reset_route.endpoint(registry, manager)
     assert [bed["roomName"] for bed in deleted["beds"]] == ["OR-A"]
     assert list_route.endpoint(registry) == {"beds": []}
 
@@ -76,6 +77,7 @@ def test_bed_registry_endpoint_merges_by_room_name() -> None:
 def test_sessions_endpoint_rejects_missing_bed_room_names() -> None:
     route = route_for("/sessions", "POST")
     manager = VirtualRecorderSessionManager(connector=fake_socketio_connector)
+    registry = BedRegistry()
 
     with pytest.raises(HTTPException) as exc_info:
         route.endpoint(
@@ -86,10 +88,97 @@ def test_sessions_endpoint_rejects_missing_bed_room_names() -> None:
                 maxMessages=1,
             ),
             manager,
+            registry,
         )
 
     assert exc_info.value.status_code == 400
     assert exc_info.value.detail == "bed_room_names is required"
+
+
+def test_sessions_endpoint_requires_registered_bed_room_names() -> None:
+    route = route_for("/sessions", "POST")
+    manager = VirtualRecorderSessionManager(connector=fake_socketio_connector)
+    registry = BedRegistry()
+
+    with pytest.raises(HTTPException) as exc_info:
+        route.endpoint(
+            StartVirtualRecordersRequest(
+                targetUrl="http://example.test",
+                recorders=1,
+                bedRoomNames=("OR-A",),
+                maxMessages=1,
+            ),
+            manager,
+            registry,
+        )
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "bed room names are not registered: OR-A"
+
+
+def test_sessions_endpoint_rejects_active_bed_reuse() -> None:
+    route = route_for("/sessions", "POST")
+    manager = VirtualRecorderSessionManager(connector=fake_socketio_connector)
+    registry = BedRegistry()
+    registry.create_beds(room_names=("OR-A", "OR-B"))
+
+    first = route.endpoint(
+        StartVirtualRecordersRequest(
+            targetUrl="http://example.test",
+            recorders=1,
+            bedRoomNames=("OR-A",),
+            intervalSeconds=1,
+        ),
+        manager,
+        registry,
+    )
+    try:
+        with pytest.raises(HTTPException) as exc_info:
+            route.endpoint(
+                StartVirtualRecordersRequest(
+                    targetUrl="http://example.test",
+                    recorders=1,
+                    bedRoomNames=("OR-A",),
+                    intervalSeconds=1,
+                ),
+                manager,
+                registry,
+            )
+
+        assert exc_info.value.status_code == 409
+        assert exc_info.value.detail == "bed room names are already assigned: OR-A"
+    finally:
+        manager.delete_session(first["id"])
+
+
+def test_bed_registry_reset_rejects_active_assignments() -> None:
+    start_route = route_for("/sessions", "POST")
+    reset_route = route_for("/beds", "DELETE")
+    manager = VirtualRecorderSessionManager(connector=fake_socketio_connector)
+    registry = BedRegistry()
+    registry.create_beds(room_names=("OR-A",))
+
+    first = start_route.endpoint(
+        StartVirtualRecordersRequest(
+            targetUrl="http://example.test",
+            recorders=1,
+            bedRoomNames=("OR-A",),
+            intervalSeconds=1,
+        ),
+        manager,
+        registry,
+    )
+    try:
+        with pytest.raises(HTTPException) as exc_info:
+            reset_route.endpoint(registry, manager)
+
+        assert exc_info.value.status_code == 409
+        assert (
+            exc_info.value.detail
+            == "active bed assignments must be stopped before reset: OR-A"
+        )
+    finally:
+        manager.delete_session(first["id"])
 
 
 def route_for(path: str, method: str):

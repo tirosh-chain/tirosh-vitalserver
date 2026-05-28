@@ -18,6 +18,7 @@ enum RuntimeTestPanelText {
     static let orphanCleanup = "Orphan cleanup"
     static let orphanCleanupDescription = "Delete a VRecorder that remains in VitalServer even when no TestKit session is available."
     static let missingVrcode = "Enter a VRecorder code to delete."
+    static let stopSessionsBeforeResettingBeds = "Stop or delete active TestKit sessions before resetting beds."
     static let sharedContainerIPWarning = """
     Multiple virtual VRecorders in one TestKit container share the same source IP. Use this for traffic/load checks; use one container per VRecorder when IP uniqueness or Network Settings redirection must be tested.
     """

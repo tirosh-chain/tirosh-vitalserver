@@ -23,6 +23,10 @@ from tirosh_vitalserver.testkit.application.recorder_session.store import (
     VirtualRecorderSessionStorePort,
 )
 from tirosh_vitalserver.testkit.domain.bed import Bed
+from tirosh_vitalserver.testkit.errors import (
+    ActiveBedAssignmentsExistError,
+    BedAlreadyAssignedError,
+)
 from tirosh_vitalserver.testkit.observability import emit_testkit_event
 from tirosh_vitalserver.testkit.schemas.testkit_api import (
     CreateBedsRequest,
@@ -128,8 +132,20 @@ def create_testkit_app(
     @app.delete("/beds")
     def delete_beds(
         registry: Annotated[BedRegistry, Depends(get_bed_registry)],
+        manager: Annotated[VirtualRecorderSessionManager, Depends(get_manager)],
     ) -> dict[str, list[dict[str, str]]]:
         emit_testkit_event("api.beds.reset.requested")
+        active_bed_room_names = manager.active_bed_room_names()
+        if active_bed_room_names:
+            error = ActiveBedAssignmentsExistError(active_bed_room_names)
+            emit_testkit_event(
+                "api.beds.reset.rejected",
+                level=logging.WARNING,
+                active_beds=len(active_bed_room_names),
+                error=str(error),
+            )
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
         deleted = registry.reset_beds()
         emit_testkit_event("api.beds.reset.accepted", count=len(deleted))
         return {"beds": [bed_to_document(bed) for bed in deleted]}
@@ -166,6 +182,7 @@ def create_testkit_app(
     def start_session(
         request: StartVirtualRecordersRequest,
         manager: Annotated[VirtualRecorderSessionManager, Depends(get_manager)],
+        registry: Annotated[BedRegistry, Depends(get_bed_registry)],
     ) -> dict[str, Any]:
         emit_testkit_event(
             "api.session.start.requested",
@@ -179,7 +196,19 @@ def create_testkit_app(
             default_scenario=request.default_scenario.value,
         )
         try:
-            snapshot = manager.start_session(request.to_session_request())
+            session_request = request.to_session_request()
+            registry.require_registered_room_names(session_request.bed_room_names)
+            snapshot = manager.start_session(session_request)
+        except BedAlreadyAssignedError as exc:
+            emit_testkit_event(
+                "api.session.start.conflicted",
+                level=logging.WARNING,
+                target_url=request.target_url,
+                recorders=request.recorders,
+                beds=len(request.bed_room_names),
+                error=str(exc),
+            )
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         except ValueError as exc:
             emit_testkit_event(
                 "api.session.start.rejected",

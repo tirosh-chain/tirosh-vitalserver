@@ -97,6 +97,35 @@ def test_run_scenario_uses_requested_scenario(
     assert calls == ["health", "load"]
 
 
+def test_run_scenario_reuses_generated_beds_across_steps(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = VitalServerCheckConfig.model_validate(
+        {
+            "beds": {"count": 2},
+            "recorder": {"recorders": 2},
+        }
+    )
+    commands: list[tuple[str, ...]] = []
+
+    monkeypatch.setenv("TESTKIT_CLI", "vitalserver-testkit")
+    monkeypatch.setattr("scripts.test_vitalserver.run_health", lambda config: None)
+    monkeypatch.setattr(
+        "scripts.test_vitalserver.run",
+        lambda *args: commands.append(args),
+    )
+
+    run_scenario("smoke", config)
+
+    assert [command[1] for command in commands] == [
+        "verify-recorder",
+        "stream-recorder",
+    ]
+    assert bed_room_names_from_command(commands[0]) == bed_room_names_from_command(
+        commands[1]
+    )
+
+
 def test_run_health_uses_server_poll_interval(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -256,3 +285,11 @@ def test_main_returns_130_for_keyboard_interrupt(
     )
 
     assert main(["stream"]) == 130
+
+
+def bed_room_names_from_command(command: tuple[str, ...]) -> tuple[str, ...]:
+    return tuple(
+        value
+        for index, value in enumerate(command)
+        if index > 0 and command[index - 1] == "--bed-room-name"
+    )

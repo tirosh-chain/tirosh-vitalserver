@@ -18,6 +18,13 @@ extension RuntimeViewModel {
             && selectedTestKitSessionIsStoppable
     }
 
+    var testKitCanResetBeds: Bool {
+        testKitStatus.enabled
+            && !isRunningTestKitAction
+            && !testKitStatus.beds.isEmpty
+            && activeTestKitBedRoomNames.isEmpty
+    }
+
     var selectedTestKitSession: RuntimeTestKitSession? {
         if !selectedTestKitSessionID.isEmpty,
            let selected = testKitStatus.sessions.first(where: { $0.id == selectedTestKitSessionID }) {
@@ -77,6 +84,12 @@ extension RuntimeViewModel {
             return
         }
         let bedCount = testKitStatus.beds.count
+        guard activeTestKitBedRoomNames.isEmpty else {
+            let errorMessage = RuntimeTestPanelText.stopSessionsBeforeResettingBeds
+            testKitActionMessage = errorMessage
+            message = errorMessage
+            return
+        }
         isRunningTestKitAction = true
         defer { isRunningTestKitAction = false }
 
@@ -281,7 +294,18 @@ extension RuntimeViewModel {
     }
 
     private var availableTestKitBedRoomNames: [String] {
-        testKitStatus.beds.map(\.roomName)
+        let activeRoomNames = activeTestKitBedRoomNames
+        return testKitStatus.beds
+            .map(\.roomName)
+            .filter { !activeRoomNames.contains($0) }
+    }
+
+    private var activeTestKitBedRoomNames: Set<String> {
+        Set(
+            testKitStatus.sessions
+                .filter { !["stopped", "failed"].contains($0.state.lowercased()) }
+                .flatMap(\.bedRoomNames)
+        )
     }
 
     private var normalizedTestKitIntervalSeconds: Double {

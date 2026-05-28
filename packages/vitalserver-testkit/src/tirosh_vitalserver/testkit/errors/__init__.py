@@ -6,8 +6,11 @@ from tirosh_vitalserver.testkit.errors.base import (
     TestKitValueError,
 )
 from tirosh_vitalserver.testkit.errors.bed import (
+    ActiveBedAssignmentsExistError,
+    BedAlreadyAssignedError,
     BedCountInvalidError,
     BedDomainError,
+    BedNotRegisteredError,
     BedRoomNameEmptyError,
     BedRoomNameRequiredError,
     DuplicateBedRoomNameError,
@@ -24,8 +27,11 @@ from tirosh_vitalserver.testkit.errors.vital_file import (
 )
 
 __all__ = [
+    "ActiveBedAssignmentsExistError",
+    "BedAlreadyAssignedError",
     "BedCountInvalidError",
     "BedDomainError",
+    "BedNotRegisteredError",
     "BedRoomNameEmptyError",
     "BedRoomNameRequiredError",
     "DomainError",

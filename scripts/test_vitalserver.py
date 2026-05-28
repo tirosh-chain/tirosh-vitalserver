@@ -147,6 +147,8 @@ def run_scenario(scenario: ScenarioName, config: VitalServerCheckConfig) -> None
         run_health(config)
         return
 
+    config = config_with_resolved_generated_beds(config)
+
     if scenario == "verify":
         run_health(config)
         run_verify(config)
@@ -169,6 +171,34 @@ def run_scenario(scenario: ScenarioName, config: VitalServerCheckConfig) -> None
         return
 
     raise ValueError(f"unknown scenario: {scenario}")
+
+
+def config_with_resolved_generated_beds(
+    config: VitalServerCheckConfig,
+) -> VitalServerCheckConfig:
+    """Resolve generated bed room names once for a full scenario run."""
+
+    if config.recorder.payload is not None:
+        return config
+    if config.beds.room_names or config.beds.count is None:
+        return config
+
+    room_names = tuple(
+        bed.room_name
+        for bed in create_beds(
+            count=config.beds.count,
+            prefix=config.beds.prefix,
+            admin_user_id=config.beds.admin_user_id,
+        )
+    )
+    beds = config.beds.model_copy(
+        update={
+            "count": None,
+            "room_names": room_names,
+        }
+    )
+
+    return config.model_copy(update={"beds": beds})
 
 
 def run_health(config: VitalServerCheckConfig) -> None:
