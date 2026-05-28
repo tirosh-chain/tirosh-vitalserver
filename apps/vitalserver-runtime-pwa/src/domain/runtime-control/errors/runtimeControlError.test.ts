@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { summarizeRuntimeControlError } from "./runtimeControlError";
+import {
+  RuntimeControlValidationError,
+  summarizeRuntimeControlError
+} from "./runtimeControlError";
 
 describe("runtime control error summaries", () => {
   it("summarizes API error responses", () => {
@@ -36,6 +39,18 @@ describe("runtime control error summaries", () => {
     expect(summarizeRuntimeControlError(new TypeError("Failed to fetch"))).toMatchObject({
       kind: "network",
       title: "Runtime Control API is unreachable"
+    });
+  });
+
+  it("summarizes request validation failures", () => {
+    expect(
+      summarizeRuntimeControlError(
+        new RuntimeControlValidationError("invalid", ["bundle.value is required"])
+      )
+    ).toMatchObject({
+      kind: "validation",
+      title: "Invalid request",
+      detail: "bundle.value is required"
     });
   });
 });

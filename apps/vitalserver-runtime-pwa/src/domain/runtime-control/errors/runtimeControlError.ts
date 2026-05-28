@@ -1,6 +1,7 @@
 export type RuntimeControlErrorKind =
   | "api"
   | "contract"
+  | "validation"
   | "network"
   | "unknown";
 
@@ -10,6 +11,16 @@ export type RuntimeControlErrorSummary = {
   detail: string;
   recovery: string;
 };
+
+export class RuntimeControlValidationError extends Error {
+  readonly fieldErrors: string[];
+
+  constructor(message: string, fieldErrors: string[]) {
+    super(message);
+    this.name = "RuntimeControlValidationError";
+    this.fieldErrors = fieldErrors;
+  }
+}
 
 type ErrorLike = {
   name?: string;
@@ -35,6 +46,17 @@ export function summarizeRuntimeControlError(
       detail: `The response for ${errorLike.path ?? "the requested route"} did not match the PWA contract.`,
       recovery:
         "Refresh after updating the Helper. If this persists, export logs and compare the RuntimeContractAPI version."
+    };
+  }
+
+  if (error instanceof RuntimeControlValidationError) {
+    return {
+      kind: "validation",
+      title: "Invalid request",
+      detail: error.fieldErrors.length
+        ? error.fieldErrors.join(", ")
+        : error.message,
+      recovery: "Review the highlighted values and retry the operation."
     };
   }
 
