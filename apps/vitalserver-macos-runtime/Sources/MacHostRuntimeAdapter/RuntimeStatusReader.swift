@@ -155,7 +155,8 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
         let page = repository.query(query)
         return RuntimeEventHistory(
             events: page.events,
-            nextCursor: page.nextCursor.map(RuntimeEventCursorWireCodec.encode)
+            nextCursor: page.nextCursor.map(RuntimeEventCursorWireCodec.encode),
+            matchingCount: page.matchingCount
         )
     }
 

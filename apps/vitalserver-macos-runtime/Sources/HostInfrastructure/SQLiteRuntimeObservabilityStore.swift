@@ -199,6 +199,16 @@ public struct SQLiteRuntimeObservabilityStore {
                 }
 
                 let whereClause = predicates.isEmpty ? "" : "WHERE \(predicates.joined(separator: " AND "))"
+                let count = try countRows(
+                    db,
+                    sql: """
+                    SELECT COUNT(*)
+                    FROM runtime_events
+                    \(whereClause)
+                    """,
+                    bindings: bindings
+                )
+
                 bindings.append(.int(query.limit + 1))
 
                 let events = try queryEvents(
@@ -214,7 +224,11 @@ public struct SQLiteRuntimeObservabilityStore {
                 )
                 let hasMore = events.count > query.limit
                 let pageEvents = Array(events.prefix(query.limit).reversed())
-                return RuntimeEventPage(events: pageEvents, nextCursor: nextCursor(for: pageEvents, hasMore: hasMore))
+                return RuntimeEventPage(
+                    events: pageEvents,
+                    nextCursor: nextCursor(for: pageEvents, hasMore: hasMore),
+                    matchingCount: count
+                )
             }
         } catch {
             return RuntimeEventPage(events: [])
@@ -375,6 +389,28 @@ public struct SQLiteRuntimeObservabilityStore {
             }
             events.append(event)
         }
+    }
+
+    private func countRows(
+        _ db: OpaquePointer,
+        sql: String,
+        bindings: [SQLiteBinding]
+    ) throws -> Int {
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
+            throw SQLiteRuntimeObservabilityStoreError.prepareFailed(errorMessage(db))
+        }
+        defer {
+            sqlite3_finalize(statement)
+        }
+
+        try bind(bindings, to: statement, db: db)
+
+        let result = sqlite3_step(statement)
+        guard result == SQLITE_ROW else {
+            throw SQLiteRuntimeObservabilityStoreError.stepFailed(errorMessage(db))
+        }
+        return Int(sqlite3_column_int64(statement, 0))
     }
 
     private func insert(_ event: RuntimeEventDocument, db: OpaquePointer) throws {

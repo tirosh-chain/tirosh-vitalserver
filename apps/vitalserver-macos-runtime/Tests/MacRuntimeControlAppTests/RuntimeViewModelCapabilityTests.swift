@@ -304,9 +304,13 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
 
         await viewModel.refreshRuntimeEvents()
 
-        XCTAssertEqual(client.lastRuntimeEventQuery?.limit, 50)
-        XCTAssertEqual(client.lastRuntimeEventQuery?.eventType, .watchdogSkipped)
-        XCTAssertNotNil(client.lastRuntimeEventQuery?.since)
+        XCTAssertEqual(client.runtimeEventQueries.count, 2)
+        XCTAssertEqual(client.runtimeEventQueries.first?.limit, 50)
+        XCTAssertEqual(client.runtimeEventQueries.first?.eventType, .watchdogSkipped)
+        XCTAssertNotNil(client.runtimeEventQueries.first?.since)
+        XCTAssertEqual(client.runtimeEventQueries.last?.limit, 1)
+        XCTAssertNil(client.runtimeEventQueries.last?.eventType)
+        XCTAssertNotNil(client.runtimeEventQueries.last?.since)
     }
 
     func testTestKitStartRequiresAvailableBeds() {
@@ -571,6 +575,7 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     var loadHealthStatusCount = 0
     var loadRuntimeEventsCount = 0
     var lastRuntimeEventQuery: RuntimeEventQuery?
+    var runtimeEventQueries: [RuntimeEventQuery] = []
     var loadVitalDBRecordersCount = 0
     var loadBackupsCount = 0
     var verifyUpdateBundleCount = 0
@@ -617,6 +622,7 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     func loadRuntimeEvents(query: RuntimeEventQuery) -> RuntimeEventHistory {
         loadRuntimeEventsCount += 1
         lastRuntimeEventQuery = query
+        runtimeEventQueries.append(query)
         return RuntimeEventHistory(events: [])
     }
 

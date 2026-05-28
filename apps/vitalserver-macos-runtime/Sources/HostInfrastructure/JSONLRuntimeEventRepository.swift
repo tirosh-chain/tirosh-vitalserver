@@ -69,7 +69,11 @@ public struct JSONLRuntimeEventRepository: RuntimeEventRepository {
                     || (event.timestamp == before.timestamp && event.id < before.id)
             }
         let pageEvents = Array(filtered.suffix(query.limit))
-        return RuntimeEventPage(events: pageEvents, nextCursor: nextCursor(for: pageEvents, hasMore: filtered.count > pageEvents.count))
+        return RuntimeEventPage(
+            events: pageEvents,
+            nextCursor: nextCursor(for: pageEvents, hasMore: filtered.count > pageEvents.count),
+            matchingCount: filtered.count
+        )
     }
 
     public func all() -> [RuntimeEventDocument] {

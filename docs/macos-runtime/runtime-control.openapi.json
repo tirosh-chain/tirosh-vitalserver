@@ -2233,6 +2233,14 @@
               "null"
             ],
             "description": "Opaque pagination cursor for the next page. Omitted or null when there is no next page."
+          },
+          "matchingCount": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "Total number of events matching the query before applying limit pagination."
           }
         }
       },

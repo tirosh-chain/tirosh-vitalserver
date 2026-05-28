@@ -82,6 +82,9 @@ Runtime Control API는 wire payload에서 `runtimeInstalled`, `runtimeState`, `o
 내부 구현은 `RuntimeEventQuery` read model query로 변환되어 SQLite에 pushdown됩니다. Cursor는
 내부적으로 `timestamp + id` 기준이며, API에는 opaque string으로만 노출합니다. Client는 cursor 값을
 해석하지 않고 다음 페이지 조회 시 `cursor=<nextCursor>`로 다시 전달해야 합니다.
+응답의 `matchingCount`는 `limit`을 적용하기 전 query 조건에 일치하는 전체 event 수입니다. UI는 이 값을
+사용해 "50 shown · 183 matching"처럼 현재 표시 개수와 조회 조건에 맞는 전체 개수를 분리해서 보여줄 수
+있습니다.
 
 `GET /runtime/status/stream`은 long-lived SSE 연결입니다. 서버는 연결을 유지하고 runtime status가 바뀔 때
 `runtime-status` frame을 보냅니다. 각 frame의 `id` 값은 `runtime-status`, `data` 값은 JSON encoded

@@ -82,6 +82,7 @@ final class RuntimeViewModel: ObservableObject {
     @Published var releaseInfo = RuntimeReleaseInfo.generated
     @Published var installationInfo = RuntimeInstallInfo()
     @Published var runtimeEvents = RuntimeEventHistory(events: [])
+    @Published var runtimeEventsLast24HoursCount = 0
     @Published var runtimeEventLimit = 50
     @Published var runtimeEventPeriod = RuntimeEventPeriodOption.last24Hours.rawValue
     @Published var runtimeEventFilter = ""
@@ -208,19 +209,27 @@ final class RuntimeViewModel: ObservableObject {
     }
 
     func refreshRuntimeEvents() async {
+        let now = Date()
         runtimeEvents = await loadRuntimeEventsSnapshot(
             query: RuntimeEventQuery(
                 limit: runtimeEventLimit,
                 eventType: selectedRuntimeEventType,
-                since: selectedRuntimeEventSince
+                since: selectedRuntimeEventSince(now: now)
             )
         )
+        let last24Hours = await loadRuntimeEventsSnapshot(
+            query: RuntimeEventQuery(
+                limit: 1,
+                since: RuntimeEventPeriodOption.last24Hours.sinceTimestamp(now: now)
+            )
+        )
+        runtimeEventsLast24HoursCount = last24Hours.matchingCount ?? last24Hours.events.count
         containerObservation = status.containerObservation
             ?? runtimeEvents.events.first { $0.containerObservation != nil }?.containerObservation
     }
 
-    var selectedRuntimeEventSince: String? {
-        (RuntimeEventPeriodOption(rawValue: runtimeEventPeriod) ?? .last24Hours).sinceTimestamp()
+    func selectedRuntimeEventSince(now: Date = Date()) -> String? {
+        (RuntimeEventPeriodOption(rawValue: runtimeEventPeriod) ?? .last24Hours).sinceTimestamp(now: now)
     }
 
     var selectedRuntimeEventType: RuntimeEventType? {

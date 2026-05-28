@@ -45,7 +45,7 @@ struct RuntimeObservabilityPanel: View {
                 metricRow(AppConstants.Labels.knownRecorders, "\(observation?.recorders.count ?? 0)")
                 metricRow(AppConstants.Labels.knownBeds, "\(observation?.beds.count ?? 0)")
                 metricRow(AppConstants.Labels.recorderAnomalies, "\(observation?.anomalies.count ?? 0)")
-                metricRow(AppConstants.Labels.runtimeEvents, "\(viewModel.runtimeEvents.events.count)")
+                metricRow("Runtime events (24h)", "\(viewModel.runtimeEventsLast24HoursCount)")
             }
         }
     }
@@ -95,7 +95,7 @@ struct RuntimeObservabilityPanel: View {
             runtimeEventFilterControl
             runtimeEventLimitControl
             Spacer(minLength: 0)
-            Text("\(eventItems.count) events")
+            Text(runtimeEventSummaryText)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
         }
@@ -188,6 +188,16 @@ struct RuntimeObservabilityPanel: View {
                 return lhs.timestamp > rhs.timestamp
             }
             .map(eventDisplayPolicy.item)
+    }
+
+    private var runtimeEventSummaryText: String {
+        guard let matchingCount = viewModel.runtimeEvents.matchingCount else {
+            return "\(eventItems.count) events"
+        }
+        if matchingCount == eventItems.count {
+            return "\(eventItems.count) events"
+        }
+        return "\(eventItems.count) shown · \(matchingCount) matching"
     }
 
     private func observationTimeText(_ timestamp: String?) -> String {

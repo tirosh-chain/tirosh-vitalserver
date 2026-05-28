@@ -127,10 +127,16 @@ public struct RuntimeInstallInfo: Codable, Equatable, Sendable {
 public struct RuntimeEventHistory: Codable, Equatable, Sendable {
     public let events: [RuntimeEventDocument]
     public let nextCursor: String?
+    public let matchingCount: Int?
 
-    public init(events: [RuntimeEventDocument], nextCursor: String? = nil) {
+    public init(
+        events: [RuntimeEventDocument],
+        nextCursor: String? = nil,
+        matchingCount: Int? = nil
+    ) {
         self.events = events
         self.nextCursor = nextCursor
+        self.matchingCount = matchingCount
     }
 }
 
