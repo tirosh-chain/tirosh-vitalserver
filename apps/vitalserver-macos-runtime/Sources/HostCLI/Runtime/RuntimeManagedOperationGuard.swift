@@ -58,7 +58,8 @@ struct RuntimeManagedOperationGuard {
             return nil
         }
         guard let updatedAt = ISO8601DateFormatter().date(from: status.updatedAt) else {
-            return status.operation
+            log("watchdog active operation guard ignored invalid updatedAt operation=\(status.operation.rawValue) updatedAt=\(status.updatedAt)")
+            return nil
         }
         let age = now().timeIntervalSince(updatedAt)
         if age > graceSeconds {
