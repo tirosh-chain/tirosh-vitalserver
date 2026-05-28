@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+from pathlib import Path
 
 from tirosh_vitalserver.testkit.configuration.logging_config import (
     configure_testkit_logging,
@@ -10,7 +11,7 @@ from tirosh_vitalserver.testkit.configuration.logging_config import (
 from tirosh_vitalserver.testkit.observability import emit_testkit_event
 
 
-def test_testkit_event_logging_defaults_to_json(tmp_path) -> None:
+def test_testkit_event_logging_defaults_to_json(tmp_path: Path) -> None:
     config_path = write_logging_config(tmp_path, format_name="json")
     stream = io.StringIO()
     configure_testkit_logging(config_path=config_path, stream=stream)
@@ -31,7 +32,7 @@ def test_testkit_event_logging_defaults_to_json(tmp_path) -> None:
     assert payload["recorders"] == 1
 
 
-def test_testkit_event_logging_supports_logfmt(tmp_path) -> None:
+def test_testkit_event_logging_supports_logfmt(tmp_path: Path) -> None:
     config_path = write_logging_config(tmp_path, format_name="logfmt")
     stream = io.StringIO()
     configure_testkit_logging(config_path=config_path, stream=stream)
@@ -50,7 +51,7 @@ def test_testkit_event_logging_supports_logfmt(tmp_path) -> None:
     assert 'error="connection refused"' in line
 
 
-def test_testkit_logging_reads_toml_config(tmp_path) -> None:
+def test_testkit_logging_reads_toml_config(tmp_path: Path) -> None:
     config_path = write_logging_config(tmp_path, format_name="logfmt", level="DEBUG")
     stream = io.StringIO()
 
@@ -62,7 +63,7 @@ def test_testkit_logging_reads_toml_config(tmp_path) -> None:
     assert "event=server.started" in line
 
 
-def test_testkit_logging_toml_owns_event_logger(tmp_path) -> None:
+def test_testkit_logging_toml_owns_event_logger(tmp_path: Path) -> None:
     payload = load_logging_config(write_logging_config(tmp_path, format_name="json"))
 
     assert payload["version"] == 1
@@ -71,11 +72,11 @@ def test_testkit_logging_toml_owns_event_logger(tmp_path) -> None:
 
 
 def write_logging_config(
-    tmp_path,
+    tmp_path: Path,
     *,
     format_name: str,
     level: str = "INFO",
-):
+) -> Path:
     config_path = tmp_path / "testkit.toml"
     config_path.write_text(
         f"""

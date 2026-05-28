@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from tests.support import fake_socketio_connector
 from tirosh_vitalserver.testkit.adapters.outbound.bed_registry_store import (
     JsonFileBedRegistryStore,
@@ -15,7 +17,7 @@ from tirosh_vitalserver.testkit.application.recorder_session import (
 )
 
 
-def test_json_file_session_store_round_trips_snapshots(tmp_path) -> None:
+def test_json_file_session_store_round_trips_snapshots(tmp_path: Path) -> None:
     store = JsonFileVirtualRecorderSessionStore(tmp_path / "sessions.json")
     manager = VirtualRecorderSessionManager(
         connector=fake_socketio_connector,
@@ -48,7 +50,7 @@ def test_json_file_session_store_round_trips_snapshots(tmp_path) -> None:
     assert restored.messages_sent == 2
 
 
-def test_json_file_bed_registry_store_round_trips_beds(tmp_path) -> None:
+def test_json_file_bed_registry_store_round_trips_beds(tmp_path: Path) -> None:
     store = JsonFileBedRegistryStore(tmp_path / "bed-registry.json")
     registry = BedRegistry(store=store)
 
