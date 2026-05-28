@@ -8,6 +8,7 @@ from tirosh_vitalserver.testkit.schemas.payloads import (
 )
 from tirosh_vitalserver.testkit.schemas.testkit_api import (
     CreateBedsRequest,
+    DeleteBedsRequest,
     DeleteVirtualRecorderRequest,
     RestartVirtualRecorderSessionRequest,
     StartVirtualRecordersRequest,
@@ -15,6 +16,7 @@ from tirosh_vitalserver.testkit.schemas.testkit_api import (
 
 __all__ = [
     "CreateBedsRequest",
+    "DeleteBedsRequest",
     "DeleteVirtualRecorderRequest",
     "ExternalSchema",
     "HttpResponse",

@@ -36,6 +36,15 @@ class CreateBedsRequest(ExternalSchema):
         return self
 
 
+class DeleteBedsRequest(ExternalSchema):
+    """Request body for deleting selected test bed identities."""
+
+    model_config = ConfigDict(populate_by_name=True, strict=False)
+
+    room_names: tuple[str, ...] = Field(alias="roomNames", min_length=1)
+    target_url: str | None = Field(default=None, alias="targetUrl")
+
+
 class StartVirtualRecordersRequest(ExternalSchema):
     """Request body for starting a virtual VRecorder session."""
 

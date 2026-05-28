@@ -89,6 +89,19 @@ class BedRegistry:
             self._delete_all()
             return beds
 
+    def delete_beds(self, room_names: tuple[str, ...]) -> tuple[Bed, ...]:
+        """Delete selected registered bed identities."""
+
+        resolved_room_names = self.require_registered_room_names(room_names)
+
+        with self._lock:
+            deleted = tuple(
+                self._beds_by_room_name.pop(room_name)
+                for room_name in resolved_room_names
+            )
+            self._save(tuple(self._beds_by_room_name.values()))
+            return deleted
+
     def _save(self, beds: tuple[Bed, ...]) -> None:
         if self._store is not None:
             self._store.save_beds(beds)

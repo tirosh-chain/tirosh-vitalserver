@@ -11,6 +11,7 @@ from tirosh_vitalserver.testkit.application.recorder_session import (
 )
 from tirosh_vitalserver.testkit.schemas import (
     CreateBedsRequest,
+    DeleteBedsRequest,
     RestartVirtualRecorderSessionRequest,
     StartVirtualRecordersRequest,
 )
@@ -62,6 +63,26 @@ def test_bed_registry_endpoints_list_and_reset_registered_beds() -> None:
     deleted = reset_route.endpoint(registry, manager)
     assert [bed["roomName"] for bed in deleted["beds"]] == ["OR-A"]
     assert list_route.endpoint(registry) == {"beds": []}
+
+
+def test_bed_registry_endpoint_deletes_selected_beds() -> None:
+    registry = BedRegistry()
+    manager = VirtualRecorderSessionManager(connector=fake_socketio_connector)
+    create_route = route_for("/beds", "POST")
+    list_route = route_for("/beds", "GET")
+    delete_route = route_for("/beds/delete", "POST")
+
+    create_route.endpoint(CreateBedsRequest(roomNames=("OR-A", "OR-B")), registry)
+
+    deleted = delete_route.endpoint(
+        DeleteBedsRequest(roomNames=("OR-A",)),
+        registry,
+        manager,
+    )
+
+    assert [bed["roomName"] for bed in deleted["beds"]] == ["OR-A"]
+    listed = list_route.endpoint(registry)
+    assert [bed["roomName"] for bed in listed["beds"]] == ["OR-B"]
 
 
 def test_bed_registry_endpoint_merges_by_room_name() -> None:
@@ -177,6 +198,40 @@ def test_bed_registry_reset_rejects_active_assignments() -> None:
         assert (
             exc_info.value.detail
             == "active bed assignments must be stopped before reset: OR-A"
+        )
+    finally:
+        manager.delete_session(first["id"])
+
+
+def test_bed_registry_delete_rejects_active_assignments() -> None:
+    start_route = route_for("/sessions", "POST")
+    delete_route = route_for("/beds/delete", "POST")
+    manager = VirtualRecorderSessionManager(connector=fake_socketio_connector)
+    registry = BedRegistry()
+    registry.create_beds(room_names=("OR-A",))
+
+    first = start_route.endpoint(
+        StartVirtualRecordersRequest(
+            targetUrl="http://example.test",
+            recorders=1,
+            bedRoomNames=("OR-A",),
+            intervalSeconds=1,
+        ),
+        manager,
+        registry,
+    )
+    try:
+        with pytest.raises(HTTPException) as exc_info:
+            delete_route.endpoint(
+                DeleteBedsRequest(roomNames=("OR-A",)),
+                registry,
+                manager,
+            )
+
+        assert exc_info.value.status_code == 409
+        assert (
+            exc_info.value.detail
+            == "active bed assignments must be stopped before delete: OR-A"
         )
     finally:
         manager.delete_session(first["id"])

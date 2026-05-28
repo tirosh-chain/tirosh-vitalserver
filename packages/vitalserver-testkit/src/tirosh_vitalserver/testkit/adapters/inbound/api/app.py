@@ -30,6 +30,7 @@ from tirosh_vitalserver.testkit.errors import (
 from tirosh_vitalserver.testkit.observability import emit_testkit_event
 from tirosh_vitalserver.testkit.schemas.testkit_api import (
     CreateBedsRequest,
+    DeleteBedsRequest,
     DeleteVirtualRecorderRequest,
     RestartVirtualRecorderSessionRequest,
     StartVirtualRecordersRequest,
@@ -154,6 +155,72 @@ def create_testkit_app(
             cleanup_errors = manager.delete_vitalserver_beds(target_url, deleted)
         emit_testkit_event(
             "api.beds.reset.accepted",
+            count=len(deleted),
+            cleanup_errors=len(cleanup_errors),
+        )
+        return {
+            "beds": [bed_to_document(bed) for bed in deleted],
+            "cleanupErrors": list(cleanup_errors),
+        }
+
+    @app.post("/beds/delete")
+    def delete_selected_beds(
+        request: DeleteBedsRequest,
+        registry: Annotated[BedRegistry, Depends(get_bed_registry)],
+        manager: Annotated[VirtualRecorderSessionManager, Depends(get_manager)],
+    ) -> dict[str, Any]:
+        emit_testkit_event(
+            "api.beds.delete.requested",
+            room_names=len(request.room_names),
+        )
+        try:
+            resolved_room_names = registry.require_registered_room_names(
+                request.room_names
+            )
+        except ValueError as exc:
+            emit_testkit_event(
+                "api.beds.delete.rejected",
+                level=logging.WARNING,
+                room_names=len(request.room_names),
+                error=str(exc),
+            )
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        active_bed_room_names = set(manager.active_bed_room_names())
+        conflicts = tuple(
+            room_name
+            for room_name in resolved_room_names
+            if room_name in active_bed_room_names
+        )
+        if conflicts:
+            error = ActiveBedAssignmentsExistError(conflicts, operation="delete")
+            emit_testkit_event(
+                "api.beds.delete.rejected",
+                level=logging.WARNING,
+                active_beds=len(conflicts),
+                error=str(error),
+            )
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
+        try:
+            deleted = registry.delete_beds(resolved_room_names)
+        except ValueError as exc:
+            emit_testkit_event(
+                "api.beds.delete.rejected",
+                level=logging.WARNING,
+                room_names=len(request.room_names),
+                error=str(exc),
+            )
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        cleanup_errors: tuple[str, ...] = ()
+        if request.target_url:
+            cleanup_errors = manager.delete_vitalserver_beds(
+                request.target_url,
+                deleted,
+            )
+        emit_testkit_event(
+            "api.beds.delete.accepted",
             count=len(deleted),
             cleanup_errors=len(cleanup_errors),
         )

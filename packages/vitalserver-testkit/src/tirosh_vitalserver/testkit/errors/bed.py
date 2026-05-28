@@ -63,9 +63,14 @@ class BedAlreadyAssignedError(BedDomainError):
 class ActiveBedAssignmentsExistError(BedDomainError):
     """Raised when deleting beds would orphan active recorder assignments."""
 
-    def __init__(self, room_names: tuple[str, ...]) -> None:
+    def __init__(
+        self,
+        room_names: tuple[str, ...],
+        *,
+        operation: str = "reset",
+    ) -> None:
         joined = ", ".join(room_names)
-        message = f"active bed assignments must be stopped before reset: {joined}"
+        message = f"active bed assignments must be stopped before {operation}: {joined}"
         super().__init__(message)
 
 
