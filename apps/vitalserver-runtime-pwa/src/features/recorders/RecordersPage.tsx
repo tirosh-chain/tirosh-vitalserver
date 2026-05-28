@@ -10,6 +10,7 @@ import {
 } from "../../domain/runtime-control/formatting/status";
 import { formatLocalDateTime } from "../../domain/runtime-control/formatting/time";
 import { DataTable } from "../../shared/ui/DataTable";
+import { ErrorState } from "../../shared/ui/ErrorState";
 import { KeyValueRows } from "../../shared/ui/KeyValueRows";
 import { MetricStrip } from "../../shared/ui/MetricStrip";
 import { Panel } from "../../shared/ui/Panel";
@@ -51,7 +52,10 @@ export function RecordersPage() {
         {recordersQuery.isPending ? (
           <p className="empty-state">Loading VRecorders...</p>
         ) : recordersQuery.isError ? (
-          <p className="error-state">VRecorder history is not available.</p>
+          <ErrorState
+            title="VRecorder history is not available"
+            error={recordersQuery.error}
+          />
         ) : (
           <DataTable
             rows={recorders}

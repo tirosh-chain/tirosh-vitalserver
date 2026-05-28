@@ -6,6 +6,7 @@ import {
   runtimeStateTone
 } from "../../domain/runtime-control/formatting/runtimeState";
 import { formatLocalDateTime, formatUptimeSince } from "../../domain/runtime-control/formatting/time";
+import { ErrorState } from "../../shared/ui/ErrorState";
 import { KeyValueRows } from "../../shared/ui/KeyValueRows";
 import { Panel } from "../../shared/ui/Panel";
 import { StatusBadge } from "../../shared/ui/StatusBadge";
@@ -20,10 +21,7 @@ export function StatusPage() {
   if (overviewQuery.isError) {
     return (
       <Panel title="Status">
-        <p className="error-state">
-          Runtime Control API is not reachable. Confirm the macOS Helper is
-          running on 127.0.0.1:18321.
-        </p>
+        <ErrorState error={overviewQuery.error} />
       </Panel>
     );
   }

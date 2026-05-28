@@ -17,6 +17,7 @@ import type {
 import { formatBytes } from "../../domain/runtime-control/formatting/bytes";
 import { CommandResult } from "../../shared/ui/CommandResult";
 import { DataTable } from "../../shared/ui/DataTable";
+import { ErrorState } from "../../shared/ui/ErrorState";
 import { Panel } from "../../shared/ui/Panel";
 
 export function AdvancedPage() {
@@ -106,9 +107,10 @@ export function AdvancedPage() {
             </button>
           </div>
           {hostBackups.isError ? (
-            <p className="error-state">
-              Failed to read rollback backups. {String(hostBackups.error)}
-            </p>
+            <ErrorState
+              title="Failed to read rollback backups"
+              error={hostBackups.error}
+            />
           ) : null}
         </div>
 
@@ -141,9 +143,10 @@ export function AdvancedPage() {
             </button>
           </div>
           {redisBackups.isError ? (
-            <p className="error-state">
-              Failed to read Redis backups. {String(redisBackups.error)}
-            </p>
+            <ErrorState
+              title="Failed to read Redis backups"
+              error={redisBackups.error}
+            />
           ) : null}
         </div>
       </Panel>

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useExportHostLogs, useHostLogs } from "../../application/runtime-control/queries";
 import type { RuntimeLogSource } from "../../domain/runtime-control/contracts/runtimeControlTypes";
+import { ErrorState } from "../../shared/ui/ErrorState";
 import { Panel } from "../../shared/ui/Panel";
 
 const logSources: Array<{ id: RuntimeLogSource; label: string }> = [
@@ -100,9 +101,7 @@ export function LogsPage() {
         </div>
 
         {logs.isError ? (
-          <p className="error-state">
-            Failed to read logs. {String(logs.error)}
-          </p>
+          <ErrorState title="Failed to read logs" error={logs.error} />
         ) : (
           <pre ref={outputRef} className="log-output">
             {logText || "No log lines are available for this source."}
@@ -129,9 +128,7 @@ export function LogsPage() {
           </button>
         </div>
         {exportLogs.isError ? (
-          <p className="error-state">
-            Failed to export logs. {String(exportLogs.error)}
-          </p>
+          <ErrorState title="Failed to export logs" error={exportLogs.error} />
         ) : null}
         {exportDestination ? (
           <p className="muted">Exported to {exportDestination}</p>

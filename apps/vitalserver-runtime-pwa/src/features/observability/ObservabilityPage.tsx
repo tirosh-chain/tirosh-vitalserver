@@ -4,6 +4,7 @@ import { useRuntimeEvents, useRuntimeOverview } from "../../application/runtime-
 import type { RuntimeEventDocument } from "../../domain/runtime-control/contracts/runtimeControlTypes";
 import { formatRuntimeState } from "../../domain/runtime-control/formatting/runtimeState";
 import { formatLocalDateTime } from "../../domain/runtime-control/formatting/time";
+import { ErrorState } from "../../shared/ui/ErrorState";
 import { KeyValueRows } from "../../shared/ui/KeyValueRows";
 import { Panel } from "../../shared/ui/Panel";
 import {
@@ -120,7 +121,10 @@ export function ObservabilityPage() {
         {eventQuery.isPending ? (
           <p className="empty-state">Loading runtime events...</p>
         ) : eventQuery.isError ? (
-          <p className="error-state">Runtime events are not available.</p>
+          <ErrorState
+            title="Runtime events are not available"
+            error={eventQuery.error}
+          />
         ) : (
           <div className="event-list">
             {(eventQuery.data.events ?? []).map((event) => (

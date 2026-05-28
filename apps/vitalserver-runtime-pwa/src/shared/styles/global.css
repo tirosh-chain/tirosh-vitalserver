@@ -202,6 +202,22 @@ select {
   color: #d92735;
 }
 
+div.error-state {
+  display: grid;
+  gap: 6px;
+}
+
+.error-state strong,
+.error-state span,
+.error-state small {
+  display: block;
+}
+
+.error-state small {
+  color: #7d7f82;
+  font-size: 15px;
+}
+
 .toolbar {
   display: flex;
   flex-wrap: wrap;

@@ -6,6 +6,7 @@ import {
   useVerifyUpdateBundle
 } from "../../application/runtime-control/queries";
 import { CommandResult } from "../../shared/ui/CommandResult";
+import { ErrorState } from "../../shared/ui/ErrorState";
 import { Panel } from "../../shared/ui/Panel";
 
 export function UpdatePage() {
@@ -55,9 +56,7 @@ export function UpdatePage() {
           Verify
         </button>
         {summarize.isError ? (
-          <p className="error-state">
-            Failed to inspect bundle. {String(summarize.error)}
-          </p>
+          <ErrorState title="Failed to inspect bundle" error={summarize.error} />
         ) : null}
         <CommandResult result={verify.data} error={verify.error} />
       </Panel>

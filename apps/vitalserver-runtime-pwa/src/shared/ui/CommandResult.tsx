@@ -1,4 +1,5 @@
 import type { RuntimeCommandResponse } from "../../domain/runtime-control/contracts/runtimeControlTypes";
+import { ErrorState } from "./ErrorState";
 
 export function CommandResult({
   result,
@@ -10,7 +11,7 @@ export function CommandResult({
   emptyText?: string;
 }) {
   if (error) {
-    return <p className="error-state">{String(error)}</p>;
+    return <ErrorState error={error} />;
   }
 
   if (!result) {

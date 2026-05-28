@@ -13,6 +13,7 @@ import {
 } from "../../application/runtime-control/queries";
 import type { RuntimeTestKitSession } from "../../domain/runtime-control/contracts/runtimeControlTypes";
 import { formatBytes } from "../../domain/runtime-control/formatting/bytes";
+import { ErrorState } from "../../shared/ui/ErrorState";
 import { KeyValueRows } from "../../shared/ui/KeyValueRows";
 import { Panel } from "../../shared/ui/Panel";
 
@@ -128,7 +129,7 @@ export function TestKitPage() {
           ]}
         />
         {latestError ? (
-          <p className="error-state">{String(latestError)}</p>
+          <ErrorState title="TestKit operation failed" error={latestError} />
         ) : null}
       </Panel>
 

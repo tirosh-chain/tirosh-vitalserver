@@ -5,6 +5,7 @@ import {
   useRuntimeSettings
 } from "../../application/runtime-control/queries";
 import type { RuntimeSettings } from "../../domain/runtime-control/contracts/runtimeControlTypes";
+import { ErrorState } from "../../shared/ui/ErrorState";
 import { Panel } from "../../shared/ui/Panel";
 
 type SettingsDraft = {
@@ -71,9 +72,7 @@ export function SettingsPage() {
         }
       >
         {settings.isError ? (
-          <p className="error-state">
-            Failed to read settings. {String(settings.error)}
-          </p>
+          <ErrorState title="Failed to read settings" error={settings.error} />
         ) : null}
 
         <div className="settings-grid">
@@ -191,9 +190,10 @@ export function SettingsPage() {
         </div>
 
         {applySettings.isError ? (
-          <p className="error-state">
-            Failed to apply settings. {String(applySettings.error)}
-          </p>
+          <ErrorState
+            title="Failed to apply settings"
+            error={applySettings.error}
+          />
         ) : null}
         {applySettings.data ? (
           <p className="muted">
