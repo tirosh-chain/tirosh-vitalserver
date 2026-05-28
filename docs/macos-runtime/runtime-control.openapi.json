@@ -1051,6 +1051,44 @@
         }
       }
     },
+    "/dev/testkit/beds/delete": {
+      "post": {
+        "operationId": "deleteDevTestKitBeds",
+        "summary": "Delete selected TestKit beds",
+        "description": "Development-only route for deleting selected TestKit bed identities and their matching VitalServer bed records.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "testOnlyLocal",
+        "x-runtime-control-access": "operatorOnly",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeTestKitDeleteBedsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Deleted TestKit beds.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RuntimeTestKitBed"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
     "/dev/testkit/beds/reset": {
       "post": {
         "operationId": "resetDevTestKitBeds",
@@ -3296,6 +3334,22 @@
           },
           "adminUserId": {
             "type": "string"
+          }
+        }
+      },
+      "RuntimeTestKitDeleteBedsRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "roomNames"
+        ],
+        "properties": {
+          "roomNames": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string"
+            }
           }
         }
       },

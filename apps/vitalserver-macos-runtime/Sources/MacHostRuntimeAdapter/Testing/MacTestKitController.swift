@@ -86,6 +86,24 @@ public final class MacTestKitController: RuntimeTestKitControlling {
         return response.beds
     }
 
+    public func deleteTestKitBeds(_ request: RuntimeTestKitDeleteBedsRequest) async throws -> [RuntimeTestKitBed] {
+        let apiBaseURL = try await requireAPIBaseURL()
+        try await ensureAPIAvailable(apiBaseURL: apiBaseURL)
+
+        let requestBody = TestKitDeleteBedsRequest(
+            targetURL: configuration.recorderTargetURL,
+            roomNames: request.roomNames
+        )
+        var urlRequest = apiRequest(apiBaseURL: apiBaseURL, path: "/beds/delete")
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        urlRequest.httpBody = try JSONEncoder().encode(requestBody)
+
+        let response = try await decode(TestKitBedsResponse.self, from: urlRequest)
+        lastError = nil
+        return response.beds
+    }
+
     public func resetTestKitBeds() async throws -> [RuntimeTestKitBed] {
         let apiBaseURL = try await requireAPIBaseURL()
         try await ensureAPIAvailable(apiBaseURL: apiBaseURL)
@@ -447,6 +465,16 @@ private struct TestKitDeleteRecorderRequest: Encodable {
     enum CodingKeys: String, CodingKey {
         case targetURL = "targetUrl"
         case vrcode
+    }
+}
+
+private struct TestKitDeleteBedsRequest: Encodable {
+    let targetURL: String
+    let roomNames: [String]
+
+    enum CodingKeys: String, CodingKey {
+        case targetURL = "targetUrl"
+        case roomNames
     }
 }
 

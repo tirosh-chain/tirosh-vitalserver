@@ -274,6 +274,12 @@ struct RuntimeTestPanel: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+
+            Button(AppConstants.Actions.delete) {
+                Task { await viewModel.deleteTestKitBed(bed) }
+            }
+            .disabled(!viewModel.testKitCanDeleteBed(bed.roomName))
+            .help(isActive ? RuntimeTestPanelText.activeBedHelp : "")
         }
         .padding(.vertical, 2)
     }

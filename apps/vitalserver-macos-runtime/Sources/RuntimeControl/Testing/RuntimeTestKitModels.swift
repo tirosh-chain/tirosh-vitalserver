@@ -107,6 +107,14 @@ public struct RuntimeTestKitCreateBedsRequest: Codable, Equatable, Sendable {
     }
 }
 
+public struct RuntimeTestKitDeleteBedsRequest: Codable, Equatable, Sendable {
+    public var roomNames: [String]
+
+    public init(roomNames: [String]) {
+        self.roomNames = roomNames
+    }
+}
+
 public struct RuntimeTestKitVirtualRecorderStartRequest: Codable, Equatable, Sendable {
     public var targetURL: String
     public var scenario: RuntimeTestKitScenario

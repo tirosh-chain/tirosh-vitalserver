@@ -82,6 +82,10 @@ final class RuntimeControlAPITests: XCTestCase {
 
     func testTestKitEndpointsIncludeManagementActions() {
         XCTAssertEqual(
+            RuntimeTestKitAPIEndpoint.matching(method: .post, path: "/dev/testkit/beds/delete"),
+            .deleteBeds
+        )
+        XCTAssertEqual(
             RuntimeTestKitAPIEndpoint.matching(method: .post, path: "/dev/testkit/virtual-recorders/delete"),
             .deleteVirtualRecorders
         )

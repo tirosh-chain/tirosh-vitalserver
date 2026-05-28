@@ -399,6 +399,34 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
             RuntimeTestPanelText.stopSessionsBeforeResettingBeds
         )
     }
+
+    func testTestKitDeletesSelectedInactiveBed() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let testKit = FakeTestKitController()
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            testKitController: testKit,
+            healthNotifications: NoopHealthNotifications()
+        )
+        let status = RuntimeTestKitStatus(
+            enabled: true,
+            state: .running,
+            beds: [
+                RuntimeTestKitBed(roomName: "OR-A", bedID: "bed-a"),
+                RuntimeTestKitBed(roomName: "OR-B", bedID: "bed-b"),
+            ]
+        )
+        testKit.status = status
+        viewModel.testKitStatus = status
+        viewModel.setTestKitBedSelection("OR-A", selected: true)
+
+        await viewModel.deleteTestKitBed(RuntimeTestKitBed(roomName: "OR-A", bedID: "bed-a"))
+
+        XCTAssertEqual(testKit.deletedBedRequests.map(\.roomNames), [["OR-A"]])
+        XCTAssertEqual(viewModel.testKitStatus.beds.map(\.roomName), ["OR-B"])
+        XCTAssertFalse(viewModel.testKitBedIsSelected("OR-A"))
+    }
 }
 
 private extension RuntimeControlCapabilities {
@@ -460,6 +488,7 @@ private final class FakeTestKitController: RuntimeTestKitControlling {
     var status = RuntimeTestKitStatus(enabled: true, state: .running)
     var startedRequests: [RuntimeTestKitVirtualRecorderStartRequest] = []
     var resetBedsCount = 0
+    var deletedBedRequests: [RuntimeTestKitDeleteBedsRequest] = []
 
     func loadTestKitStatus() async -> RuntimeTestKitStatus {
         status
@@ -478,6 +507,14 @@ private final class FakeTestKitController: RuntimeTestKitControlling {
         let beds = status.beds
         status.beds = []
         return beds
+    }
+
+    func deleteTestKitBeds(_ request: RuntimeTestKitDeleteBedsRequest) async throws -> [RuntimeTestKitBed] {
+        deletedBedRequests.append(request)
+        let requested = Set(request.roomNames)
+        let deleted = status.beds.filter { requested.contains($0.roomName) }
+        status.beds.removeAll { requested.contains($0.roomName) }
+        return deleted
     }
 
     func startVirtualRecorders(_ request: RuntimeTestKitVirtualRecorderStartRequest) async throws -> RuntimeTestKitSession {

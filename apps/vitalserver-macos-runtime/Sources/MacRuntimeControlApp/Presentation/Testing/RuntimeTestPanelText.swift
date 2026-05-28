@@ -12,6 +12,7 @@ enum RuntimeTestPanelText {
     static let activeBed = "In use"
     static let activeBedHelp = "This bed is assigned to an active TestKit session."
     static let creatingBeds = "Creating TestKit beds..."
+    static let stopSessionsBeforeDeletingBed = "Stop or delete active TestKit sessions before deleting this bed."
     static let resettingBeds = "Resetting TestKit beds..."
     static let startingSession = "Starting virtual VRecorder..."
     static let pausingSession = "Pausing virtual VRecorder..."
@@ -35,6 +36,14 @@ enum RuntimeTestPanelText {
 
     static func resetBeds(_ count: Int) -> String {
         "Reset \(count) TestKit beds."
+    }
+
+    static func deletingBed(_ roomName: String) -> String {
+        "Deleting TestKit bed \(roomName)..."
+    }
+
+    static func deletedBed(_ roomName: String) -> String {
+        "Deleted TestKit bed \(roomName)."
     }
 
     static func insufficientBeds(_ bedCount: Int, _ recorderCount: Int) -> String {

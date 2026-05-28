@@ -25,6 +25,12 @@ extension RuntimeViewModel {
             && activeTestKitBedRoomNames.isEmpty
     }
 
+    func testKitCanDeleteBed(_ roomName: String) -> Bool {
+        testKitStatus.enabled
+            && !isRunningTestKitAction
+            && !testKitBedIsActive(roomName)
+    }
+
     var availableTestKitBedCount: Int {
         availableTestKitBedRoomNames.count
     }
@@ -108,10 +114,46 @@ extension RuntimeViewModel {
         do {
             _ = try await testKitController.resetTestKitBeds()
             applyTestKitStatus(await testKitController.loadTestKitStatus())
+            await refreshVitalRecorders()
             selectedTestKitBedRoomNames.removeAll()
             let resetMessage = RuntimeTestPanelText.resetBeds(bedCount)
             testKitActionMessage = resetMessage
             message = resetMessage
+        } catch {
+            applyTestKitStatus(await testKitController.loadTestKitStatus())
+            let errorMessage = error.localizedDescription
+            testKitActionMessage = errorMessage
+            message = errorMessage
+        }
+    }
+
+    func deleteTestKitBed(_ bed: RuntimeTestKitBed) async {
+        guard let testKitController else {
+            message = RuntimeTestPanelText.testKitUnavailable
+            testKitActionMessage = RuntimeTestPanelText.testKitUnavailable
+            return
+        }
+        guard !testKitBedIsActive(bed.roomName) else {
+            let errorMessage = RuntimeTestPanelText.stopSessionsBeforeDeletingBed
+            testKitActionMessage = errorMessage
+            message = errorMessage
+            return
+        }
+        isRunningTestKitAction = true
+        defer { isRunningTestKitAction = false }
+
+        testKitActionMessage = RuntimeTestPanelText.deletingBed(bed.roomName)
+        message = RuntimeTestPanelText.deletingBed(bed.roomName)
+        do {
+            _ = try await testKitController.deleteTestKitBeds(RuntimeTestKitDeleteBedsRequest(
+                roomNames: [bed.roomName]
+            ))
+            applyTestKitStatus(await testKitController.loadTestKitStatus())
+            await refreshVitalRecorders()
+            selectedTestKitBedRoomNames.remove(bed.roomName)
+            let deletedMessage = RuntimeTestPanelText.deletedBed(bed.roomName)
+            testKitActionMessage = deletedMessage
+            message = deletedMessage
         } catch {
             applyTestKitStatus(await testKitController.loadTestKitStatus())
             let errorMessage = error.localizedDescription
@@ -295,6 +337,7 @@ extension RuntimeViewModel {
         do {
             let session = try await testKitController.deleteVirtualRecorders(sessionID: sessionID)
             applyTestKitStatus(await testKitController.loadTestKitStatus())
+            await refreshVitalRecorders()
             let deletedMessage = session.map { RuntimeTestPanelText.deletedSession($0.id) }
                 ?? RuntimeTestPanelText.noActiveSession
             testKitActionMessage = deletedMessage
@@ -321,6 +364,7 @@ extension RuntimeViewModel {
         message = RuntimeTestPanelText.resettingSessions
         do {
             applyTestKitStatus(try await testKitController.resetVirtualRecorders())
+            await refreshVitalRecorders()
             let resetMessage = RuntimeTestPanelText.resetSessions(sessionCount)
             testKitActionMessage = resetMessage
             message = resetMessage
@@ -353,6 +397,7 @@ extension RuntimeViewModel {
         do {
             let deletion = try await testKitController.deleteVirtualRecorder(vrcode: vrcode)
             applyTestKitStatus(await testKitController.loadTestKitStatus())
+            await refreshVitalRecorders()
             let deletionMessage = deletion.deleted
                 ? RuntimeTestPanelText.deletedVRecorder(deletion.vrcode)
                 : RuntimeTestPanelText.failedVRecorderDeletion(deletion.vrcode, deletion.error)
