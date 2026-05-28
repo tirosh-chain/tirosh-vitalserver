@@ -17,8 +17,8 @@ struct ContentView: View {
     @State private var showingUninstallConfirmation = false
     @State private var showingCleanUninstallConfirmation = false
     @State private var showingApplySettingsConfirmation = false
-    @State private var showingStatusRecorderDetails = false
-    @State private var showingStatusResourceUsage = false
+    @State private var showingStatusRecorderDetails = true
+    @State private var showingStatusResourceUsage = true
     @State private var selectedSection = RuntimeSection.status
     @State private var hoveredServiceLink: String?
     @State private var isHoveringVitalDBIcon = false
