@@ -246,7 +246,7 @@ struct RuntimeHealthChecker {
     }
 
     private func readRuntimeLog(_ fileName: String) -> String {
-        let content = (try? fileStore.readUTF8Text(installedPaths.logsDirectory.appendingPathComponent(fileName))) ?? ""
+        let content = (try? fileStore.readUTF8Text(installedPaths.centralRuntimeLogsDirectory.appendingPathComponent(fileName))) ?? ""
         return String(content.suffix(256 * 1024))
     }
 

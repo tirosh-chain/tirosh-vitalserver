@@ -39,30 +39,90 @@ struct RuntimeWatchdogRunner {
         }
 
         let initial = actions.healthSnapshot()
-        guard !initial.isHealthy else {
+        if initial.isHealthy {
             try actions.writeObservedStatus(.healthy, .watchdog, "runtime watchdog passed", initial)
             print("watchdog: ok")
             return
         }
 
-        let reasons = reasonText(initial.failureReasons)
-        log("watchdog detected unhealthy runtime reasons=\(reasons)")
-        try actions.writeObservedStatus(.recovering, .watchdog, "watchdog recovery started: \(reasons)", initial)
+        if let suppressionReason = RuntimeWatchdogRecoveryPolicy.automaticRecoverySuppressionReason(initial) {
+            try suppressRecovery(reason: suppressionReason, snapshot: initial)
+            return
+        }
 
         let proxyLivenessHTTP = actions.proxyLivenessHTTP(initial.proxyPort)
-        let recoveryPlan = RuntimeRecoveryPlanner.plan(RuntimeRecoveryInput(
-            vmExecutable: initial.vmExecutable,
-            proxyExecutable: initial.proxyExecutable,
-            rootfsBase: initial.rootfsBase,
-            vmDisk: initial.vmDisk,
-            vmService: initial.vmService,
-            proxyService: initial.proxyService,
-            vmIP: initial.vmIP,
-            guestHTTP: initial.guestHTTP,
-            hostProxyReadinessHTTP: initial.hostProxyHTTP,
+        let decision = RuntimeWatchdogRecoveryPolicy.decision(
+            snapshot: initial,
             hostProxyLivenessHTTP: proxyLivenessHTTP,
-            containerObservation: initial.containerObservation
-        ))
+            automaticRecoveryEnabled: actions.automaticRecoveryEnabled()
+        )
+
+        switch decision {
+        case .healthy:
+            try actions.writeObservedStatus(.healthy, .watchdog, "runtime watchdog passed", initial)
+            print("watchdog: ok")
+            return
+
+        case .recoveryDisabled(let reason):
+            log("watchdog detected unhealthy runtime reasons=\(reason)")
+            try actions.writeObservedStatus(.recovering, .watchdog, "watchdog recovery started: \(reason)", initial)
+            try actions.writeObservedStatus(
+                .degraded,
+                .watchdog,
+                "watchdog detected unhealthy runtime; automatic recovery is disabled: \(reason)",
+                initial
+            )
+            print("watchdog: recovery disabled")
+            return
+
+        case .recoverySuppressed(let reason):
+            try suppressRecovery(reason: reason, snapshot: initial)
+            return
+
+        case .unrecoverable(let reason):
+            log("watchdog detected unhealthy runtime reasons=\(reason)")
+            try actions.writeObservedStatus(.recovering, .watchdog, "watchdog recovery started: \(reason)", initial)
+            try actions.writeObservedStatus(
+                .critical,
+                .watchdog,
+                "watchdog cannot recover missing installed artifacts: \(reason)",
+                initial
+            )
+            print("watchdog: critical")
+            return
+
+        case .recover(let reason, let recoveryPlan):
+            try recover(
+                reason: reason,
+                recoveryPlan: recoveryPlan,
+                proxyLivenessHTTP: proxyLivenessHTTP,
+                initial: initial
+            )
+        }
+    }
+
+    private func suppressRecovery(reason: String, snapshot: RuntimeHealthSnapshot) throws {
+        let message = "watchdog recovery suppressed: \(reason)"
+        log(message)
+        try actions.writeObservedStatus(.critical, .watchdog, message, snapshot)
+        actions.recordObservedEvent(
+            .critical,
+            .watchdog,
+            message,
+            snapshot,
+            .recoverySuppressed
+        )
+        print("watchdog: suppressed")
+    }
+
+    private func recover(
+        reason: String,
+        recoveryPlan: RuntimeRecoveryPlan,
+        proxyLivenessHTTP: String,
+        initial: RuntimeHealthSnapshot
+    ) throws {
+        log("watchdog detected unhealthy runtime reasons=\(reason)")
+        try actions.writeObservedStatus(.recovering, .watchdog, "watchdog recovery started: \(reason)", initial)
         log(
             "watchdog recovery plan vm=\(recoveryPlan.restartVM) proxy=\(recoveryPlan.restartProxy) "
                 + "hostProxyHealth=\(proxyLivenessHTTP) hostProxyReady=\(initial.hostProxyHTTP) guestReady=\(initial.guestHTTP)"
@@ -74,28 +134,6 @@ struct RuntimeWatchdogRunner {
             initial,
             .recoveryPlanned
         )
-
-        guard actions.automaticRecoveryEnabled() else {
-            try actions.writeObservedStatus(
-                .degraded,
-                .watchdog,
-                "watchdog detected unhealthy runtime; automatic recovery is disabled: \(reasons)",
-                initial
-            )
-            print("watchdog: recovery disabled")
-            return
-        }
-
-        guard recoveryPlan.canRecover else {
-            try actions.writeObservedStatus(
-                .critical,
-                .watchdog,
-                "watchdog cannot recover missing installed artifacts: \(reasons)",
-                initial
-            )
-            print("watchdog: critical")
-            return
-        }
 
         if recoveryPlan.restartVM {
             actions.recordObservedEvent(

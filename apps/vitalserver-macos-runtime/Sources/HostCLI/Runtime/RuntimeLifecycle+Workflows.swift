@@ -115,6 +115,20 @@ extension RuntimeLifecycle {
     func runtimeManagedOperationGuard() -> RuntimeManagedOperationGuard {
         RuntimeManagedOperationGuard(
             statusReporter: statusReporter,
+            activeGuestBootstrap: {
+                guard let bootstrapResult = guestGateway.loadBootstrapResult(),
+                      bootstrapResult.status == .running,
+                      let modifiedAt = try? fileStore.modificationDate(
+                        installedPaths.guestRunDirectory.appendingPathComponent(Constants.Runtime.bootstrapResultFile)
+                      )
+                else {
+                    return nil
+                }
+                return RuntimeGuestBootstrapOperation(
+                    operation: bootstrapResult.operation ?? .install,
+                    modifiedAt: modifiedAt
+                )
+            },
             now: { clock.now },
             graceSeconds: Constants.Runtime.watchdogManagedOperationGraceSeconds,
             log: log

@@ -206,10 +206,10 @@ final class RuntimeHealthCheckerTests: XCTestCase {
         fileStore.files[URL(fileURLWithPath: Constants.InstallPaths.proxyRun)] = Data()
         fileStore.files[installedPaths.runtimeDirectory.appendingPathComponent(Constants.Artifacts.rootfsBase)] = Data()
         fileStore.files[installedPaths.runtimeDirectory.appendingPathComponent(Constants.BootAssets.disk)] = Data()
-        fileStore.files[installedPaths.logsDirectory.appendingPathComponent("launchd.err.log")] = Data(
+        fileStore.files[installedPaths.centralRuntimeLogsDirectory.appendingPathComponent("launchd.err.log")] = Data(
             #"failed to start VM: The storage device attachment is invalid."#.utf8
         )
-        fileStore.files[installedPaths.logsDirectory.appendingPathComponent("launchd.out.log")] = Data("""
+        fileStore.files[installedPaths.centralRuntimeLogsDirectory.appendingPathComponent("launchd.out.log")] = Data("""
         EXT4-fs error (device vda1): inode checksum invalid
         EXT4-fs (vda1): Remounting filesystem read-only
         systemd-journald: Failed to write entry: Input/output error

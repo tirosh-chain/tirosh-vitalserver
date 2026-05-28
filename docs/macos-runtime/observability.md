@@ -81,6 +81,37 @@ Watchdog은 raw source를 제품 관점 status/event로 정규화합니다.
 - VitalDB observation snapshot은 `runtime-observability.sqlite`의 `vitaldb_*` namespace에 저장합니다.
 - 자동 복구 판단도 watchdog에서 수행합니다.
 
+### Status, event, recovery decision
+
+Watchdog은 현재 상태 판단과 과거 이력 기록을 분리합니다.
+
+| 구분 | 의미 | SoT/Owner | 사용처 |
+|---|---|---|---|
+| SoT | 각 owner가 작성한 원본 상태/로그 | host runtime, guest worker, launchd | watchdog 입력 |
+| Status | 현재 제품 상태를 정규화한 최신 snapshot | `status/runtime-status.json` | Helper UI, Runtime Control API, watchdog guard |
+| Event | 의미 있는 상태 변화와 판단 이력 | `status/runtime-events.jsonl`, SQLite index | Observability, troubleshooting, API event history |
+| Recovery decision | 이번 watchdog tick에서 어떤 action을 할지에 대한 일회성 판단 | `RuntimeWatchdogRecoveryPolicy` | skip/suppress/recover/action dispatch |
+
+Watchdog은 event history로 복구 여부를 판단하지 않습니다. Event는 append-only history라 중복, 누락,
+순서 문제가 생길 수 있기 때문입니다. 복구 판단은 현재 SoT를 읽어 만든 `RuntimeHealthSnapshot`과
+active operation guard를 기준으로 합니다.
+
+Recovery decision은 아래처럼 나뉩니다.
+
+| Decision | Status/Event | Watchdog action |
+|---|---|---|
+| `healthy` | `healthy` status 기록 | action 없음 |
+| protected operation | `watchdog-skipped` event 기록 | VM/proxy restart 금지 |
+| `recoveryDisabled` | `degraded` status 기록 | action 없음 |
+| `recoverySuppressed` | `critical` status + `recovery-suppressed` event 기록 | VM/proxy restart 금지 |
+| `unrecoverable` | `critical` status 기록 | action 없음 |
+| `recover` | `recovering` status + recovery event 기록 | policy가 허용한 service만 restart |
+
+`recoverySuppressed`는 자동 재시작이 위험한 상태입니다. 예를 들어 launchd/kernel log에서
+`storage device attachment is invalid`, `EXT4-fs error`, `Remounting filesystem read-only`,
+`Input/output error`가 관측되면 VM disk/data 보존이 먼저 필요하므로 watchdog은 VM restart를 반복하지
+않습니다.
+
 ### Runtime Control API
 
 Runtime Control API는 정규화된 결과를 노출합니다.
@@ -296,6 +327,10 @@ Runtime operational event type은 API와 JSONL의 public contract입니다.
 | `vitaldb-anomaly-detected` | watchdog | VitalDB observer가 recorder/bed/proxy anomaly를 계산함 |
 | `recovery-triggered` | watchdog | recovery policy가 복구 작업을 시작함 |
 | `recovery-completed` | watchdog | recovery 작업 후 runtime이 다시 관측됨 |
+| `watchdog-skipped` | watchdog | protected/grace 상태라 recovery를 건너뜀 |
+| `recovery-planned` | watchdog | recovery policy가 service restart 계획을 생성함 |
+| `recovery-suppressed` | watchdog | disk/filesystem 보호 등으로 자동 recovery를 금지함 |
+| `service-restart-dispatched` | watchdog | VM/proxy/guest-log-sync service restart 명령을 보냄 |
 | `runtime-command-started` | host runtime | start/stop/configure/update 등 host command 시작 |
 | `runtime-command-completed` | host runtime | host command 성공 종료 |
 | `runtime-command-failed` | host runtime | host command 실패 종료 |

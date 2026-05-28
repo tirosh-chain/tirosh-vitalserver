@@ -83,6 +83,24 @@ final class RuntimeWatchdogRunnerTests: XCTestCase {
         XCTAssertEqual(harness.writtenStatuses.map(\.status), [.recovering, .critical])
         XCTAssertTrue(harness.restartedServices.isEmpty)
     }
+
+    func testGuestStorageFailureSuppressesAutomaticRecoveryWithoutRestart() throws {
+        let harness = WatchdogHarness(snapshots: [
+            healthSnapshot(
+                vmErrors: [.guestFilesystemReadOnly],
+                guestHTTP: "failed",
+                failureReasons: [.guestHTTP("failed")]
+            ),
+        ])
+
+        try harness.runner.run()
+
+        XCTAssertEqual(harness.proxyLivenessPorts, [])
+        XCTAssertEqual(harness.writtenStatuses.map(\.status), [.critical])
+        XCTAssertEqual(harness.observedEvents.map(\.eventType), [.recoverySuppressed])
+        XCTAssertTrue(harness.restartedServices.isEmpty)
+        XCTAssertEqual(harness.sleepCalls, [])
+    }
 }
 
 private final class WatchdogHarness {
@@ -173,6 +191,7 @@ private func healthSnapshot(
     vmService: RuntimeServiceState = .loaded,
     proxyService: RuntimeServiceState = .loaded,
     watchdogService: RuntimeServiceState = .loaded,
+    vmErrors: [RuntimeVMError] = [],
     vmIP: String? = "192.168.64.2",
     proxyPort: Int = 80,
     hostProxyHTTP: String = "200",
@@ -189,6 +208,7 @@ private func healthSnapshot(
         vmService: vmService,
         proxyService: proxyService,
         watchdogService: watchdogService,
+        vmErrors: vmErrors,
         vmIP: vmIP,
         proxyPort: proxyPort,
         hostProxyHTTP: hostProxyHTTP,
