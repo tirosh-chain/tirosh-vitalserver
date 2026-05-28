@@ -79,6 +79,17 @@ sync_filesystems() {
   sync || true
 }
 
+start_optional_testkit_async() {
+  local log_file="${RUNTIME_DIR}/testkit-provision.log"
+
+  if [ "${TIROSH_TESTKIT_ENABLED:-0}" != "1" ]; then
+    return
+  fi
+
+  printf "Starting optional TestKit provisioning in background: %s\n" "${log_file}"
+  nohup /usr/local/bin/tirosh-vitalserver-compose testkit-up >"${log_file}" 2>&1 &
+}
+
 install_guest_runtime_files() {
   install -m 0755 "${DEPLOY_DIR}/bin/tirosh-runtime-env" /usr/local/bin/tirosh-runtime-env
   install -m 0755 "${DEPLOY_DIR}/bin/tirosh-vitalserver-health" /usr/local/bin/tirosh-vitalserver-health
@@ -121,6 +132,7 @@ activate_runtime() {
   systemctl restart tirosh-runtime-state.service
   /usr/local/bin/tirosh-runtime-state once || true
   sync_filesystems
+  start_optional_testkit_async
 }
 
 main() {

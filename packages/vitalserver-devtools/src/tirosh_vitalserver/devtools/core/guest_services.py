@@ -23,6 +23,8 @@ class GuestDeployPlan:
     includes: list[GuestDeployEntry]
     docker_bundle_source: Path | None
     docker_bundle_destination: Path | None
+    optional_docker_bundle_source: Path | None
+    optional_docker_bundle_destination: Path | None
     vm_data_dirs: list[Path]
 
 
@@ -46,7 +48,9 @@ class DockerImagePlan:
 class DockerImagesConfig:
     platform: str
     bundle_path: Path
+    optional_bundle_path: Path | None
     images: list[str]
+    optional_images: list[str]
     app_dockerfile: str
     audit_proxy_image: str
     audit_proxy_dockerfile: str
@@ -64,6 +68,7 @@ def guest_deploy_plan(
     vm_home: Path,
     config: GuestDeployConfig,
     docker_bundle: Path | None,
+    optional_docker_bundle: Path | None = None,
 ) -> GuestDeployPlan:
     includes = [
         GuestDeployEntry(
@@ -75,12 +80,19 @@ def guest_deploy_plan(
     docker_destination = (
         deploy_dir / config.docker_image_bundle_destination if docker_bundle else None
     )
+    optional_docker_destination = (
+        deploy_dir / config.optional_docker_image_bundle_destination
+        if docker_bundle and config.optional_docker_image_bundle_destination
+        else None
+    )
     return GuestDeployPlan(
         support_guest_source=runtime_dir / "Support/Guest",
         deploy_dir=deploy_dir,
         includes=includes,
         docker_bundle_source=docker_bundle,
         docker_bundle_destination=docker_destination,
+        optional_docker_bundle_source=optional_docker_bundle,
+        optional_docker_bundle_destination=optional_docker_destination,
         vm_data_dirs=[vm_home / relative for relative in VM_DATA_DIRS],
     )
 

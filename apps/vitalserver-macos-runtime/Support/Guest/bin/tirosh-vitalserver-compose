@@ -24,6 +24,27 @@ compose() {
   docker compose --project-name vitalserver -f "${DEPLOY_DIR}/compose.yaml" "$@"
 }
 
+load_optional_docker_images() {
+  local image_dir="${DEPLOY_DIR}/optional-docker-images"
+  local loaded=0
+
+  if [ ! -d "${image_dir}" ]; then
+    printf "optional Docker image bundle directory is missing: %s\n" "${image_dir}"
+    return
+  fi
+
+  for image_bundle in "${image_dir}"/*.tar "${image_dir}"/*.tar.gz "${image_dir}"/*.tgz; do
+    [ -e "${image_bundle}" ] || continue
+    printf "Loading optional Docker image bundle: %s\n" "${image_bundle}"
+    docker load -i "${image_bundle}"
+    loaded=1
+  done
+
+  if [ "${loaded}" -eq 0 ]; then
+    printf "No optional Docker image bundles found under %s\n" "${image_dir}"
+  fi
+}
+
 wait_for_redis() {
   local deadline
 
@@ -64,7 +85,11 @@ start_ordered() {
   compose up -d app audit-proxy vitaldb-observer redis-ui swagger-ui
   wait_for_app
   compose up -d edge
+}
+
+start_testkit() {
   if [ "${TIROSH_TESTKIT_ENABLED:-0}" = "1" ]; then
+    load_optional_docker_images
     compose up -d testkit
   fi
 }
@@ -73,12 +98,15 @@ case "${ACTION}" in
   up)
     start_ordered
     ;;
+  testkit-up)
+    start_testkit
+    ;;
   stop)
     compose stop --timeout "${TIROSH_COMPOSE_STOP_TIMEOUT:-120}"
     sync
     ;;
   *)
-    printf "usage: tirosh-vitalserver-compose [up|stop]\n" >&2
+    printf "usage: tirosh-vitalserver-compose [up|testkit-up|stop]\n" >&2
     exit 2
     ;;
 esac

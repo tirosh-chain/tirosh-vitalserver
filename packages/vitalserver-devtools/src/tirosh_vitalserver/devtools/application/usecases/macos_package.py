@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 from tirosh_vitalserver.devtools.adapters.build_config import load_config
@@ -159,12 +160,13 @@ def prepare_package_context(input: ReleasePackageInput) -> PackageContext:
             ),
         )
     )
-    build_docker_image_bundle_from_config(
+    optional_docker_bundle = build_docker_image_bundles_from_config(
         root=root,
         config=input.config,
         bundle_path=settings.docker_bundle,
         platform=input.docker_platform,
         compression_threads=input.compression_threads,
+        include_optional="testkit" in release.optional_container_services,
     )
     package_vm_home = settings.pkg_root / settings_install_home(settings).strip("/")
 
@@ -189,20 +191,22 @@ def prepare_package_context(input: ReleasePackageInput) -> PackageContext:
             vm_home=package_vm_home,
             config=settings.guest_deploy,
             docker_bundle=settings.docker_bundle,
+            optional_docker_bundle=optional_docker_bundle,
         ),
         proxy_port=input.proxy_port,
         settings=settings,
     )
 
 
-def build_docker_image_bundle_from_config(
+def build_docker_image_bundles_from_config(
     *,
     root: Path,
     config: Path,
     bundle_path: Path,
     platform: str | None,
     compression_threads: int | None,
-) -> int:
+    include_optional: bool,
+) -> Path | None:
     build_config = load_config(config)
     docker_config = load_docker_images_config(build_config, root)
     plan = docker_image_bundle_build_plan(
@@ -212,8 +216,29 @@ def build_docker_image_bundle_from_config(
         platform=platform,
         compression_threads=compression_threads,
     )
-    return run_docker_image_bundle(
+    run_docker_image_bundle(
         plan=plan.image_plan,
         bundle_path=plan.bundle_path,
         compression_threads_value=plan.compression_threads,
     )
+    if (
+        not include_optional
+        or not docker_config.optional_images
+        or docker_config.optional_bundle_path is None
+    ):
+        return None
+
+    optional_config = replace(docker_config, images=docker_config.optional_images)
+    optional_plan = docker_image_bundle_build_plan(
+        root=root,
+        docker_config=optional_config,
+        bundle_path=docker_config.optional_bundle_path,
+        platform=platform,
+        compression_threads=compression_threads,
+    )
+    run_docker_image_bundle(
+        plan=optional_plan.image_plan,
+        bundle_path=optional_plan.bundle_path,
+        compression_threads_value=optional_plan.compression_threads,
+    )
+    return optional_plan.bundle_path

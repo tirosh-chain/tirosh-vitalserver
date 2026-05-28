@@ -12,3 +12,4 @@ class ReleaseManifest:
     vitalserver_version: str
     target_platform: str
     host_proxy_image: str | None = None
+    optional_container_services: tuple[str, ...] = ()

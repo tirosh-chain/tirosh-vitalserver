@@ -15,6 +15,7 @@ class GuestDeployInclude:
 @dataclass(frozen=True)
 class GuestDeployConfig:
     docker_image_bundle_destination: Path
+    optional_docker_image_bundle_destination: Path | None
     includes: list[GuestDeployInclude]
 
 

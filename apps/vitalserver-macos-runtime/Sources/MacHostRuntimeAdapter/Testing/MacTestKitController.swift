@@ -44,11 +44,11 @@ public final class MacTestKitController: RuntimeTestKitControlling {
         guard healthy else {
             return RuntimeTestKitStatus(
                 enabled: true,
-                state: .failed,
+                state: .starting,
                 serviceName: configuration.serviceName,
                 apiBaseURL: apiBaseURL,
                 recorderTargetURL: configuration.recorderTargetURL,
-                lastError: lastError ?? "TestKit container API is not reachable."
+                lastError: lastError ?? "TestKit container API is not reachable yet."
             )
         }
 

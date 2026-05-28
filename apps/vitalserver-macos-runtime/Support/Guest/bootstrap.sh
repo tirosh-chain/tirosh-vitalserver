@@ -230,6 +230,17 @@ cleanup_docker_cache() {
   docker image prune -f >/dev/null 2>&1 || true
 }
 
+start_optional_testkit_async() {
+  local log_file="${RUNTIME_DIR}/testkit-provision.log"
+
+  if [ "${TIROSH_TESTKIT_ENABLED:-0}" != "1" ]; then
+    return
+  fi
+
+  printf "Starting optional TestKit provisioning in background: %s\n" "${log_file}"
+  nohup /usr/local/bin/tirosh-vitalserver-compose testkit-up >"${log_file}" 2>&1 &
+}
+
 wait_for_vitalserver_edge() {
   local deadline code http_status
 
@@ -306,3 +317,4 @@ systemctl restart tirosh-runtime-state.service
 
 write_bootstrap_result "completed" "Guest bootstrap completed."
 printf "VitalServer edge is ready on this VM at port 80.\n"
+start_optional_testkit_async

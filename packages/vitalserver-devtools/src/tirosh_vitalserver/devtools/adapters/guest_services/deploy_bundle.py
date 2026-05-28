@@ -20,6 +20,15 @@ def stage_guest_deploy(plan: GuestDeployPlan) -> None:
             raise SystemExit(f"error: missing guest deploy include: {entry.source}")
     if plan.docker_bundle_source and plan.docker_bundle_destination:
         copy_file(plan.docker_bundle_source, plan.docker_bundle_destination)
+    if (
+        plan.optional_docker_bundle_source
+        and plan.optional_docker_bundle_destination
+        and plan.optional_docker_bundle_source.is_file()
+    ):
+        copy_file(
+            plan.optional_docker_bundle_source,
+            plan.optional_docker_bundle_destination,
+        )
 
 
 def ensure_vm_data_dirs(plan: GuestDeployPlan) -> None:
