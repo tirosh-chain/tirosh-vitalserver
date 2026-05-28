@@ -75,6 +75,10 @@ load_bundled_docker_images() {
   fi
 }
 
+sync_filesystems() {
+  sync || true
+}
+
 install_guest_runtime_files() {
   install -m 0755 "${DEPLOY_DIR}/bin/tirosh-runtime-env" /usr/local/bin/tirosh-runtime-env
   install -m 0755 "${DEPLOY_DIR}/bin/tirosh-vitalserver-health" /usr/local/bin/tirosh-vitalserver-health
@@ -116,6 +120,7 @@ activate_runtime() {
   systemctl restart tirosh-vitalserver-container-logs.service
   systemctl restart tirosh-runtime-state.service
   /usr/local/bin/tirosh-runtime-state once || true
+  sync_filesystems
 }
 
 main() {

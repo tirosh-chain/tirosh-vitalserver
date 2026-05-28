@@ -30,7 +30,7 @@
   <integer>30</integer>
 
   <key>ExitTimeOut</key>
-  <integer>90</integer>
+  <integer>300</integer>
 
   <key>StandardOutPath</key>
   <string>${VITALSERVER_RUNTIME_LOGS}/launchd.out.log</string>

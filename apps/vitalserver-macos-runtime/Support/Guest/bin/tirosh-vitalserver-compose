@@ -74,7 +74,8 @@ case "${ACTION}" in
     start_ordered
     ;;
   stop)
-    exec docker compose --project-name vitalserver -f "${DEPLOY_DIR}/compose.yaml" stop
+    compose stop --timeout "${TIROSH_COMPOSE_STOP_TIMEOUT:-120}"
+    sync
     ;;
   *)
     printf "usage: tirosh-vitalserver-compose [up|stop]\n" >&2
