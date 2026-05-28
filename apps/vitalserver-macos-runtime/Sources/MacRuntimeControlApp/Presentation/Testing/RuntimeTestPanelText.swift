@@ -14,7 +14,10 @@ enum RuntimeTestPanelText {
     static let creatingBeds = "Creating TestKit beds..."
     static let resettingBeds = "Resetting TestKit beds..."
     static let startingSession = "Starting virtual VRecorder..."
+    static let pausingSession = "Pausing virtual VRecorder..."
+    static let resumingSession = "Resuming virtual VRecorder..."
     static let stoppingSession = "Stopping virtual VRecorder..."
+    static let restartingSession = "Restarting virtual VRecorder..."
     static let deletingSession = "Deleting virtual VRecorder session..."
     static let resettingSessions = "Resetting virtual VRecorder sessions..."
     static let refreshedStatus = "Refreshed TestKit status."
@@ -50,8 +53,20 @@ enum RuntimeTestPanelText {
         "Started TestKit session \(id)."
     }
 
+    static func pausedSession(_ id: String) -> String {
+        "Paused TestKit session \(id)."
+    }
+
+    static func resumedSession(_ id: String) -> String {
+        "Resumed TestKit session \(id)."
+    }
+
     static func stoppedSession(_ id: String) -> String {
         "Stopped TestKit session \(id)."
+    }
+
+    static func restartedSession(_ id: String) -> String {
+        "Restarted TestKit session \(id)."
     }
 
     static func deletedSession(_ id: String) -> String {

@@ -6,7 +6,10 @@ public protocol RuntimeTestKitControlling {
     func createTestKitBeds(_ request: RuntimeTestKitCreateBedsRequest) async throws -> [RuntimeTestKitBed]
     func resetTestKitBeds() async throws -> [RuntimeTestKitBed]
     func startVirtualRecorders(_ request: RuntimeTestKitVirtualRecorderStartRequest) async throws -> RuntimeTestKitSession
+    func pauseVirtualRecorders(sessionID: String?) async throws -> RuntimeTestKitSession?
+    func resumeVirtualRecorders(sessionID: String?) async throws -> RuntimeTestKitSession?
     func stopVirtualRecorders(sessionID: String?) async throws -> RuntimeTestKitSession?
+    func restartVirtualRecorders(sessionID: String?, bedRoomNames: [String]) async throws -> RuntimeTestKitSession?
     func deleteVirtualRecorders(sessionID: String?) async throws -> RuntimeTestKitSession?
     func deleteVirtualRecorder(vrcode: String) async throws -> RuntimeTestKitRecorderDeletion
     func resetVirtualRecorders() async throws -> RuntimeTestKitStatus

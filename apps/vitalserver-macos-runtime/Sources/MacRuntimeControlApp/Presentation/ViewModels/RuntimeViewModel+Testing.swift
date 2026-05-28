@@ -180,7 +180,82 @@ extension RuntimeViewModel {
         await stopVirtualRecorderSession(sessionID: selectedTestKitSession?.id)
     }
 
+    func pauseVirtualRecorderSession(sessionID: String?) async {
+        await runTestKitSessionAction(
+            sessionID: sessionID,
+            progressMessage: RuntimeTestPanelText.pausingSession,
+            action: { try await $0.pauseVirtualRecorders(sessionID: $1) },
+            successMessage: RuntimeTestPanelText.pausedSession
+        )
+    }
+
+    func resumeVirtualRecorderSession(sessionID: String?) async {
+        await runTestKitSessionAction(
+            sessionID: sessionID,
+            progressMessage: RuntimeTestPanelText.resumingSession,
+            action: { try await $0.resumeVirtualRecorders(sessionID: $1) },
+            successMessage: RuntimeTestPanelText.resumedSession
+        )
+    }
+
     func stopVirtualRecorderSession(sessionID: String?) async {
+        await runTestKitSessionAction(
+            sessionID: sessionID,
+            progressMessage: RuntimeTestPanelText.stoppingSession,
+            action: { try await $0.stopVirtualRecorders(sessionID: $1) },
+            successMessage: RuntimeTestPanelText.stoppedSession
+        )
+    }
+
+    func restartVirtualRecorderSession(session: RuntimeTestKitSession) async {
+        guard let testKitController else {
+            message = RuntimeTestPanelText.testKitUnavailable
+            testKitActionMessage = RuntimeTestPanelText.testKitUnavailable
+            return
+        }
+        let requiredBeds = max(session.recordersRequested, 1)
+        let bedRoomNames = Array(selectedAvailableTestKitBedRoomNames.prefix(requiredBeds))
+        guard bedRoomNames.count >= requiredBeds else {
+            let errorMessage = RuntimeTestPanelText.insufficientSelectedBeds(
+                bedRoomNames.count,
+                requiredBeds
+            )
+            testKitActionMessage = errorMessage
+            message = errorMessage
+            return
+        }
+        isRunningTestKitAction = true
+        defer { isRunningTestKitAction = false }
+
+        testKitActionMessage = RuntimeTestPanelText.restartingSession
+        message = RuntimeTestPanelText.restartingSession
+        do {
+            let restarted = try await testKitController.restartVirtualRecorders(
+                sessionID: session.id,
+                bedRoomNames: bedRoomNames
+            )
+            if let restarted {
+                selectedTestKitSessionID = restarted.id
+            }
+            applyTestKitStatus(await testKitController.loadTestKitStatus())
+            let restartedMessage = restarted.map { RuntimeTestPanelText.restartedSession($0.id) }
+                ?? RuntimeTestPanelText.noActiveSession
+            testKitActionMessage = restartedMessage
+            message = restartedMessage
+        } catch {
+            applyTestKitStatus(await testKitController.loadTestKitStatus())
+            let errorMessage = error.localizedDescription
+            testKitActionMessage = errorMessage
+            message = errorMessage
+        }
+    }
+
+    private func runTestKitSessionAction(
+        sessionID: String?,
+        progressMessage: String,
+        action: @MainActor (any RuntimeTestKitControlling, String?) async throws -> RuntimeTestKitSession?,
+        successMessage: (String) -> String
+    ) async {
         guard let testKitController else {
             message = RuntimeTestPanelText.testKitUnavailable
             testKitActionMessage = RuntimeTestPanelText.testKitUnavailable
@@ -189,15 +264,15 @@ extension RuntimeViewModel {
         isRunningTestKitAction = true
         defer { isRunningTestKitAction = false }
 
-        testKitActionMessage = RuntimeTestPanelText.stoppingSession
-        message = RuntimeTestPanelText.stoppingSession
+        testKitActionMessage = progressMessage
+        message = progressMessage
         do {
-            let session = try await testKitController.stopVirtualRecorders(sessionID: sessionID)
+            let session = try await action(testKitController, sessionID)
             applyTestKitStatus(await testKitController.loadTestKitStatus())
-            let stoppedMessage = session.map { RuntimeTestPanelText.stoppedSession($0.id) }
+            let actionMessage = session.map { successMessage($0.id) }
                 ?? RuntimeTestPanelText.noActiveSession
-            testKitActionMessage = stoppedMessage
-            message = stoppedMessage
+            testKitActionMessage = actionMessage
+            message = actionMessage
         } catch {
             applyTestKitStatus(await testKitController.loadTestKitStatus())
             let errorMessage = error.localizedDescription

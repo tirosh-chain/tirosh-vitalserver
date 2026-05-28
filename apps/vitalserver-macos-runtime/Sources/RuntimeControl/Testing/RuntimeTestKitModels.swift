@@ -5,6 +5,7 @@ public enum RuntimeTestKitState: String, Codable, Equatable, Sendable {
     case stopped
     case starting
     case running
+    case paused
     case stopping
     case failed
 }

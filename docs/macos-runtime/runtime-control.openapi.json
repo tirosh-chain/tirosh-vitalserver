@@ -1154,6 +1154,129 @@
         }
       }
     },
+    "/dev/testkit/virtual-recorders/pause": {
+      "post": {
+        "operationId": "pauseDevTestKitVirtualRecorders",
+        "summary": "Pause TestKit virtual VRecorder data transmission",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "testOnlyLocal",
+        "x-runtime-control-access": "operatorOnly",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeTestKitSessionSelectionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Paused TestKit session or null when no session was selected.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/RuntimeTestKitSession"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/dev/testkit/virtual-recorders/resume": {
+      "post": {
+        "operationId": "resumeDevTestKitVirtualRecorders",
+        "summary": "Resume TestKit virtual VRecorder data transmission",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "testOnlyLocal",
+        "x-runtime-control-access": "operatorOnly",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeTestKitSessionSelectionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Resumed TestKit session or null when no session was selected.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/RuntimeTestKitSession"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/dev/testkit/virtual-recorders/restart": {
+      "post": {
+        "operationId": "restartDevTestKitVirtualRecorders",
+        "summary": "Restart a stopped TestKit virtual VRecorder session on selected beds",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "testOnlyLocal",
+        "x-runtime-control-access": "operatorOnly",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeTestKitRestartRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Restarted TestKit session or null when no session was selected.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/RuntimeTestKitSession"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
     "/dev/testkit/virtual-recorders/delete": {
       "post": {
         "operationId": "deleteDevTestKitVirtualRecorders",
@@ -3075,6 +3198,7 @@
               "stopped",
               "starting",
               "running",
+              "paused",
               "stopping",
               "failed"
             ]
@@ -3268,6 +3392,27 @@
               "string",
               "null"
             ]
+          }
+        }
+      },
+      "RuntimeTestKitRestartRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "bedRoomNames"
+        ],
+        "properties": {
+          "sessionID": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "bedRoomNames": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         }
       },

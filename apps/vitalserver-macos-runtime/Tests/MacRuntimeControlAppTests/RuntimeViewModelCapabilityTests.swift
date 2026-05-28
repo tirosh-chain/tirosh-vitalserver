@@ -496,6 +496,18 @@ private final class FakeTestKitController: RuntimeTestKitControlling {
         nil
     }
 
+    func pauseVirtualRecorders(sessionID: String?) async throws -> RuntimeTestKitSession? {
+        nil
+    }
+
+    func resumeVirtualRecorders(sessionID: String?) async throws -> RuntimeTestKitSession? {
+        nil
+    }
+
+    func restartVirtualRecorders(sessionID: String?, bedRoomNames: [String]) async throws -> RuntimeTestKitSession? {
+        nil
+    }
+
     func deleteVirtualRecorders(sessionID: String?) async throws -> RuntimeTestKitSession? {
         nil
     }

@@ -46,9 +46,21 @@ public struct RuntimeTestKitAPIRouter {
             case .startVirtualRecorders:
                 let startRequest = try request.decodedBody(RuntimeTestKitVirtualRecorderStartRequest.self)
                 return try await jsonResponse(controller.startVirtualRecorders(startRequest))
+            case .pauseVirtualRecorders:
+                let pauseRequest = try request.optionalDecodedBody(RuntimeTestKitStopRequest.self)
+                return try await jsonResponse(controller.pauseVirtualRecorders(sessionID: pauseRequest?.sessionID))
+            case .resumeVirtualRecorders:
+                let resumeRequest = try request.optionalDecodedBody(RuntimeTestKitStopRequest.self)
+                return try await jsonResponse(controller.resumeVirtualRecorders(sessionID: resumeRequest?.sessionID))
             case .stopVirtualRecorders:
                 let stopRequest = try request.optionalDecodedBody(RuntimeTestKitStopRequest.self)
                 return try await jsonResponse(controller.stopVirtualRecorders(sessionID: stopRequest?.sessionID))
+            case .restartVirtualRecorders:
+                let restartRequest = try request.decodedBody(RuntimeTestKitRestartRequest.self)
+                return try await jsonResponse(controller.restartVirtualRecorders(
+                    sessionID: restartRequest.sessionID,
+                    bedRoomNames: restartRequest.bedRoomNames
+                ))
             case .deleteVirtualRecorders:
                 let deleteRequest = try request.optionalDecodedBody(RuntimeTestKitDeleteRequest.self)
                 return try await jsonResponse(controller.deleteVirtualRecorders(sessionID: deleteRequest?.sessionID))
@@ -94,7 +106,10 @@ public enum RuntimeTestKitAPIEndpoint: String, CaseIterable, Codable, Equatable,
     case createBeds
     case resetBeds
     case startVirtualRecorders
+    case pauseVirtualRecorders
+    case resumeVirtualRecorders
     case stopVirtualRecorders
+    case restartVirtualRecorders
     case deleteVirtualRecorders
     case deleteVirtualRecorder
     case resetVirtualRecorders
@@ -104,7 +119,9 @@ public enum RuntimeTestKitAPIEndpoint: String, CaseIterable, Codable, Equatable,
         case .status:
             return .get
         case .createBeds, .resetBeds,
-             .startVirtualRecorders, .stopVirtualRecorders,
+             .startVirtualRecorders, .pauseVirtualRecorders,
+             .resumeVirtualRecorders, .stopVirtualRecorders,
+             .restartVirtualRecorders,
              .deleteVirtualRecorders, .deleteVirtualRecorder,
              .resetVirtualRecorders:
             return .post
@@ -121,8 +138,14 @@ public enum RuntimeTestKitAPIEndpoint: String, CaseIterable, Codable, Equatable,
             return "/dev/testkit/beds/reset"
         case .startVirtualRecorders:
             return "/dev/testkit/virtual-recorders/start"
+        case .pauseVirtualRecorders:
+            return "/dev/testkit/virtual-recorders/pause"
+        case .resumeVirtualRecorders:
+            return "/dev/testkit/virtual-recorders/resume"
         case .stopVirtualRecorders:
             return "/dev/testkit/virtual-recorders/stop"
+        case .restartVirtualRecorders:
+            return "/dev/testkit/virtual-recorders/restart"
         case .deleteVirtualRecorders:
             return "/dev/testkit/virtual-recorders/delete"
         case .deleteVirtualRecorder:
@@ -167,6 +190,16 @@ public struct RuntimeTestKitDeleteRequest: Codable, Equatable, Sendable {
 
     public init(sessionID: String? = nil) {
         self.sessionID = sessionID
+    }
+}
+
+public struct RuntimeTestKitRestartRequest: Codable, Equatable, Sendable {
+    public let sessionID: String?
+    public let bedRoomNames: [String]
+
+    public init(sessionID: String? = nil, bedRoomNames: [String]) {
+        self.sessionID = sessionID
+        self.bedRoomNames = bedRoomNames
     }
 }
 

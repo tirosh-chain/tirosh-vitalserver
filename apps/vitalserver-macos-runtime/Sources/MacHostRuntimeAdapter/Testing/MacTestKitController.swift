@@ -125,19 +125,33 @@ public final class MacTestKitController: RuntimeTestKitControlling {
     }
 
     public func stopVirtualRecorders(sessionID: String?) async throws -> RuntimeTestKitSession? {
+        try await sessionAction(sessionID: sessionID, pathComponent: "stop", clearActiveSession: true)
+    }
+
+    public func pauseVirtualRecorders(sessionID: String?) async throws -> RuntimeTestKitSession? {
+        try await sessionAction(sessionID: sessionID, pathComponent: "pause")
+    }
+
+    public func resumeVirtualRecorders(sessionID: String?) async throws -> RuntimeTestKitSession? {
+        try await sessionAction(sessionID: sessionID, pathComponent: "resume")
+    }
+
+    public func restartVirtualRecorders(sessionID: String?, bedRoomNames: [String]) async throws -> RuntimeTestKitSession? {
         let apiBaseURL = try await requireAPIBaseURL()
         let selectedSessionID = sessionID ?? activeSessionID
         guard let selectedSessionID else {
             return nil
         }
 
-        var urlRequest = apiRequest(apiBaseURL: apiBaseURL, path: "/sessions/\(selectedSessionID)/stop")
+        let requestBody = TestKitRestartSessionRequest(bedRoomNames: bedRoomNames)
+        var urlRequest = apiRequest(apiBaseURL: apiBaseURL, path: "/sessions/\(selectedSessionID)/restart")
         urlRequest.httpMethod = "POST"
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        urlRequest.httpBody = try JSONEncoder().encode(requestBody)
 
         let session = try await decode(RuntimeTestKitSession.self, from: urlRequest)
-        if activeSessionID == selectedSessionID {
-            activeSessionID = nil
-        }
+        activeSessionID = session.id
+        lastError = nil
 
         return session
     }
@@ -276,7 +290,32 @@ public final class MacTestKitController: RuntimeTestKitControlling {
            let activeSession = sessions.first(where: { $0.id == activeSessionID }) {
             return activeSession
         }
-        return sessions.first { $0.state == "running" || $0.state == "starting" || $0.state == "stopping" }
+        return sessions.first { ["running", "paused", "starting", "stopping"].contains($0.state) }
+    }
+
+    private func sessionAction(
+        sessionID: String?,
+        pathComponent: String,
+        clearActiveSession: Bool = false
+    ) async throws -> RuntimeTestKitSession? {
+        let apiBaseURL = try await requireAPIBaseURL()
+        let selectedSessionID = sessionID ?? activeSessionID
+        guard let selectedSessionID else {
+            return nil
+        }
+
+        var urlRequest = apiRequest(apiBaseURL: apiBaseURL, path: "/sessions/\(selectedSessionID)/\(pathComponent)")
+        urlRequest.httpMethod = "POST"
+
+        let session = try await decode(RuntimeTestKitSession.self, from: urlRequest)
+        if clearActiveSession, activeSessionID == selectedSessionID {
+            activeSessionID = nil
+        } else {
+            activeSessionID = selectedSessionID
+        }
+        lastError = nil
+
+        return session
     }
 
     private func testKitAPIIsHealthy(apiBaseURL: String) async -> Bool {
@@ -409,6 +448,10 @@ private struct TestKitDeleteRecorderRequest: Encodable {
         case targetURL = "targetUrl"
         case vrcode
     }
+}
+
+private struct TestKitRestartSessionRequest: Encodable {
+    let bedRoomNames: [String]
 }
 
 private enum MacTestKitControllerError: LocalizedError, Equatable {

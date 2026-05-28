@@ -417,16 +417,48 @@ struct RuntimeTestPanel: View {
                     .lineLimit(2)
             }
             Spacer(minLength: 12)
-            Button(AppConstants.Actions.stop) {
-                Task { await viewModel.stopVirtualRecorderSession(sessionID: session.id) }
-            }
-            .disabled(viewModel.isRunningTestKitAction || !sessionIsStoppable(session))
+            sessionControls(session)
             Button(AppConstants.Actions.delete) {
                 Task { await viewModel.deleteVirtualRecorderSession(sessionID: session.id) }
             }
             .disabled(viewModel.isRunningTestKitAction)
         }
         .padding(.vertical, 4)
+    }
+
+    @ViewBuilder
+    private func sessionControls(_ session: RuntimeTestKitSession) -> some View {
+        switch session.state.lowercased() {
+        case "running":
+            Button(AppConstants.Actions.pause) {
+                Task { await viewModel.pauseVirtualRecorderSession(sessionID: session.id) }
+            }
+            .disabled(viewModel.isRunningTestKitAction)
+            Button(AppConstants.Actions.stop) {
+                Task { await viewModel.stopVirtualRecorderSession(sessionID: session.id) }
+            }
+            .disabled(viewModel.isRunningTestKitAction)
+        case "paused":
+            Button(AppConstants.Actions.resume) {
+                Task { await viewModel.resumeVirtualRecorderSession(sessionID: session.id) }
+            }
+            .disabled(viewModel.isRunningTestKitAction)
+            Button(AppConstants.Actions.stop) {
+                Task { await viewModel.stopVirtualRecorderSession(sessionID: session.id) }
+            }
+            .disabled(viewModel.isRunningTestKitAction)
+        case "stopped", "failed":
+            Button(AppConstants.Actions.restart) {
+                Task { await viewModel.restartVirtualRecorderSession(session: session) }
+            }
+            .disabled(viewModel.isRunningTestKitAction || !sessionIsRestartable(session))
+            .help(restartHelpText(session))
+        default:
+            Button(AppConstants.Actions.stop) {
+                Task { await viewModel.stopVirtualRecorderSession(sessionID: session.id) }
+            }
+            .disabled(true)
+        }
     }
 
     private var orphanCleanup: some View {
@@ -522,6 +554,23 @@ struct RuntimeTestPanel: View {
 
     private func sessionIsStoppable(_ session: RuntimeTestKitSession) -> Bool {
         !["stopped", "failed"].contains(session.state.lowercased())
+    }
+
+    private func sessionIsRestartable(_ session: RuntimeTestKitSession) -> Bool {
+        let requiredBeds = max(session.recordersRequested, 1)
+        return ["stopped", "failed"].contains(session.state.lowercased())
+            && viewModel.selectedTestKitBedCount >= requiredBeds
+    }
+
+    private func restartHelpText(_ session: RuntimeTestKitSession) -> String {
+        let requiredBeds = max(session.recordersRequested, 1)
+        guard viewModel.selectedTestKitBedCount < requiredBeds else {
+            return ""
+        }
+        return RuntimeTestPanelText.insufficientSelectedBeds(
+            viewModel.selectedTestKitBedCount,
+            requiredBeds
+        )
     }
 
     private func displayName(_ state: RuntimeTestKitState) -> String {
