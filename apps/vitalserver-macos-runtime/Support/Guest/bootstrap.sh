@@ -187,6 +187,7 @@ install_guest_runtime_files() {
 
   install -m 0644 "${DEPLOY_DIR}/systemd/tirosh-runtime-state.service" /etc/systemd/system/tirosh-runtime-state.service
   install -m 0644 "${DEPLOY_DIR}/systemd/tirosh-vitalserver-compose.service" /etc/systemd/system/tirosh-vitalserver-compose.service
+  install -m 0644 "${DEPLOY_DIR}/systemd/tirosh-vitalserver-testkit.service" /etc/systemd/system/tirosh-vitalserver-testkit.service
   install -m 0644 "${DEPLOY_DIR}/systemd/tirosh-vitalserver-container-logs.service" /etc/systemd/system/tirosh-vitalserver-container-logs.service
   install -m 0644 "${DEPLOY_DIR}/systemd/tirosh-vitalserver-redis-backup.service" /etc/systemd/system/tirosh-vitalserver-redis-backup.service
   install -m 0644 "${DEPLOY_DIR}/systemd/tirosh-vitalserver-redis-backup.timer" /etc/systemd/system/tirosh-vitalserver-redis-backup.timer
@@ -199,6 +200,7 @@ install_guest_runtime_files() {
   systemctl daemon-reload
   systemctl enable tirosh-runtime-state.service
   systemctl enable tirosh-vitalserver-compose.service
+  systemctl enable tirosh-vitalserver-testkit.service
   systemctl enable --now tirosh-vitalserver-container-logs.service
   systemctl enable --now tirosh-vitalserver-redis-backup.timer
   systemctl enable --now tirosh-vitalserver-redis-backup.path
@@ -230,15 +232,15 @@ cleanup_docker_cache() {
   docker image prune -f >/dev/null 2>&1 || true
 }
 
-start_optional_testkit_async() {
-  local log_file="${RUNTIME_DIR}/testkit-provision.log"
-
+start_optional_testkit() {
   if [ "${TIROSH_TESTKIT_ENABLED:-0}" != "1" ]; then
     return
   fi
 
-  printf "Starting optional TestKit provisioning in background: %s\n" "${log_file}"
-  nohup /usr/local/bin/tirosh-vitalserver-compose testkit-up >"${log_file}" 2>&1 &
+  printf "Scheduling optional TestKit provisioning via systemd.\n"
+  systemctl reset-failed tirosh-vitalserver-testkit.service >/dev/null 2>&1 || true
+  systemctl restart --no-block tirosh-vitalserver-testkit.service || \
+    printf "warning: failed to schedule optional TestKit provisioning\n" >&2
 }
 
 wait_for_vitalserver_edge() {
@@ -317,4 +319,4 @@ systemctl restart tirosh-runtime-state.service
 
 write_bootstrap_result "completed" "Guest bootstrap completed."
 printf "VitalServer edge is ready on this VM at port 80.\n"
-start_optional_testkit_async
+start_optional_testkit

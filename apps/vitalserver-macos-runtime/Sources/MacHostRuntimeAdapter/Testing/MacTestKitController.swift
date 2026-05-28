@@ -1,4 +1,5 @@
 import Foundation
+import Contracts
 import RuntimeControl
 
 @MainActor
@@ -30,7 +31,8 @@ public final class MacTestKitController: RuntimeTestKitControlling {
             return RuntimeTestKitStatus(enabled: false, state: .disabled)
         }
 
-        guard let apiBaseURL = await apiBaseURL() else {
+        let runtimeStatus = await statusProvider()
+        guard let apiBaseURL = apiBaseURL(from: runtimeStatus) else {
             return RuntimeTestKitStatus(
                 enabled: true,
                 state: .failed,
@@ -42,13 +44,14 @@ public final class MacTestKitController: RuntimeTestKitControlling {
 
         let healthy = await testKitAPIIsHealthy(apiBaseURL: apiBaseURL)
         guard healthy else {
+            let service = testKitService(in: runtimeStatus)
             return RuntimeTestKitStatus(
                 enabled: true,
-                state: .starting,
+                state: unavailableState(for: service),
                 serviceName: configuration.serviceName,
                 apiBaseURL: apiBaseURL,
                 recorderTargetURL: configuration.recorderTargetURL,
-                lastError: lastError ?? "TestKit container API is not reachable yet."
+                lastError: lastError ?? unavailableMessage(for: service, apiBaseURL: apiBaseURL)
             )
         }
 
@@ -204,10 +207,46 @@ public final class MacTestKitController: RuntimeTestKitControlling {
 
     private func apiBaseURL() async -> String? {
         let status = await statusProvider()
+        return apiBaseURL(from: status)
+    }
+
+    private func apiBaseURL(from status: RuntimeStatus) -> String? {
         guard let vmIP = status.vmIP, !vmIP.isEmpty else {
             return nil
         }
         return "http://\(vmIP):\(configuration.hostPort)"
+    }
+
+    private func testKitService(in status: RuntimeStatus) -> RuntimeContainerServiceObservation? {
+        status.containerObservation?.composeServices.first { $0.service == configuration.serviceName }
+    }
+
+    private func unavailableState(for service: RuntimeContainerServiceObservation?) -> RuntimeTestKitState {
+        guard let service else {
+            return .stopped
+        }
+
+        switch service.state?.lowercased() {
+        case "running", "restarting", "created":
+            return .starting
+        case "exited", "dead":
+            return .failed
+        default:
+            return .stopped
+        }
+    }
+
+    private func unavailableMessage(
+        for service: RuntimeContainerServiceObservation?,
+        apiBaseURL: String
+    ) -> String {
+        guard let service else {
+            return "TestKit container is not running. TestKit is optional and does not affect VitalServer."
+        }
+
+        let state = service.state ?? "unknown"
+        let health = service.health ?? "unknown"
+        return "TestKit container API is not reachable at \(apiBaseURL). Container state: \(state), health: \(health)."
     }
 
     private func loadSessions(apiBaseURL: String) async -> [RuntimeTestKitSession] {

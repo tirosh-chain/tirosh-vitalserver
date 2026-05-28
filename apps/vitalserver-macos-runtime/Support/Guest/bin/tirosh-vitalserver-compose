@@ -94,6 +94,18 @@ start_testkit() {
   fi
 }
 
+start_testkit_logged() {
+  local runtime_dir="${MOUNT_POINT}/run"
+  local log_file="${runtime_dir}/testkit-provision.log"
+
+  mkdir -p "${runtime_dir}"
+  {
+    printf "Starting optional TestKit service via Docker Compose at %s\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    start_testkit
+    printf "Optional TestKit service provisioning completed at %s\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  } >"${log_file}" 2>&1
+}
+
 case "${ACTION}" in
   up)
     start_ordered
@@ -101,12 +113,15 @@ case "${ACTION}" in
   testkit-up)
     start_testkit
     ;;
+  testkit-up-logged)
+    start_testkit_logged
+    ;;
   stop)
     compose stop --timeout "${TIROSH_COMPOSE_STOP_TIMEOUT:-120}"
     sync
     ;;
   *)
-    printf "usage: tirosh-vitalserver-compose [up|testkit-up|stop]\n" >&2
+    printf "usage: tirosh-vitalserver-compose [up|testkit-up|testkit-up-logged|stop]\n" >&2
     exit 2
     ;;
 esac
