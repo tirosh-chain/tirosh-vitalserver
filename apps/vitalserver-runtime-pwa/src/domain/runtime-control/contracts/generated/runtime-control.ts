@@ -986,6 +986,7 @@ export interface components {
             canControlRuntimeServices?: boolean;
             canExportLogs?: boolean;
             canViewReleaseMetadata?: boolean;
+            canUseTestTools?: boolean;
         };
         RuntimeStatus: {
             runtimeInstalled?: boolean;

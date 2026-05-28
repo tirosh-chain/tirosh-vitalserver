@@ -14,6 +14,7 @@ public struct RuntimeControlCapabilities: Codable, Equatable, Sendable {
     public var canControlRuntimeServices: Bool
     public var canExportLogs: Bool
     public var canViewReleaseMetadata: Bool
+    public var canUseTestTools: Bool
 
     public init(
         canInstallRuntime: Bool = true,
@@ -27,7 +28,8 @@ public struct RuntimeControlCapabilities: Codable, Equatable, Sendable {
         canStreamLogs: Bool = true,
         canControlRuntimeServices: Bool = true,
         canExportLogs: Bool = true,
-        canViewReleaseMetadata: Bool = true
+        canViewReleaseMetadata: Bool = true,
+        canUseTestTools: Bool = false
     ) {
         self.canInstallRuntime = canInstallRuntime
         self.canUninstallRuntime = canUninstallRuntime
@@ -41,6 +43,7 @@ public struct RuntimeControlCapabilities: Codable, Equatable, Sendable {
         self.canControlRuntimeServices = canControlRuntimeServices
         self.canExportLogs = canExportLogs
         self.canViewReleaseMetadata = canViewReleaseMetadata
+        self.canUseTestTools = canUseTestTools
     }
 }
 

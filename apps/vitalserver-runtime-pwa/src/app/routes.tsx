@@ -15,6 +15,7 @@ export type RuntimeControlRoute = {
   path: string;
   label: string;
   Page: ComponentType;
+  requiresTestTools?: boolean;
 };
 
 export const runtimeControlRoutes: RuntimeControlRoute[] = [
@@ -27,5 +28,5 @@ export const runtimeControlRoutes: RuntimeControlRoute[] = [
   { path: "/logs", label: "Logs", Page: LogsPage },
   { path: "/advanced", label: "Advanced", Page: AdvancedPage },
   { path: "/danger-zone", label: "Danger Zone", Page: DangerZonePage },
-  { path: "/test", label: "Test", Page: TestKitPage }
+  { path: "/test", label: "Test", Page: TestKitPage, requiresTestTools: true }
 ];

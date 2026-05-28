@@ -99,7 +99,8 @@ export const runtimeCapabilitiesSchema = z
     canStreamLogs: z.boolean().optional(),
     canControlRuntimeServices: z.boolean().optional(),
     canExportLogs: z.boolean().optional(),
-    canViewReleaseMetadata: z.boolean().optional()
+    canViewReleaseMetadata: z.boolean().optional(),
+    canUseTestTools: z.boolean().optional()
   })
   .passthrough();
 

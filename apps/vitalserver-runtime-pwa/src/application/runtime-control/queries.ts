@@ -56,6 +56,14 @@ export function useRuntimeOverview() {
   });
 }
 
+export function useRuntimeCapabilities() {
+  return useQuery({
+    queryKey: runtimeControlQueryKeys.capabilities,
+    queryFn: () => runtimeControlClient.getCapabilities(),
+    staleTime: 30_000
+  });
+}
+
 export function useRuntimeEvents(query: {
   limit?: number;
   type?: string;

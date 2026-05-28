@@ -26,7 +26,8 @@ enum MacRuntimeControlLocalAPI {
         let apiHandler = MacRuntimeControlAPIHandler(
             commandClient: client,
             hostClient: client,
-            readWorker: readWorker
+            readWorker: readWorker,
+            servesTestTools: servesTestTools
         )
         let apiRouter = RuntimeControlAPIRouter(
             handler: apiHandler,

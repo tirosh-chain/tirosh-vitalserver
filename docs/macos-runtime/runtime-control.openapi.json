@@ -2126,6 +2126,9 @@
           },
           "canViewReleaseMetadata": {
             "type": "boolean"
+          },
+          "canUseTestTools": {
+            "type": "boolean"
           }
         }
       },

@@ -1,6 +1,6 @@
 # Runtime Control API
 
-Runtime Control API는 PWA, native shell, remote control client가 공유할 runtime control boundary입니다. 현재 Swift `RuntimeControlAPI` target은 route/DTO, transport-independent router, SSE response model, macOS local loopback HTTP server를 둡니다. 이 문서는 PWA 착수 직전 기준으로 고정된 계약과 아직 구현이 남은 범위를 정리합니다.
+Runtime Control API는 PWA, native shell, remote control client가 공유할 runtime control boundary입니다. 현재 Swift `RuntimeControlAPI` target은 route/DTO, transport-independent router, SSE response model, macOS local loopback HTTP server를 둡니다. 이 문서는 Helper app에 포함되는 Runtime Control PWA와 native UI가 공유하는 계약과 아직 구현이 남은 범위를 정리합니다.
 
 OpenAPI contract는 [`runtime-control.openapi.json`](./runtime-control.openapi.json)에 둡니다. Swift test는 `RuntimeControlAPIEndpoint`와 OpenAPI path/method parity를 검증합니다.
 배포 Swagger UI에서는 이 spec을 VitalServer API, Audit Proxy API와 함께 multi-spec catalog로 노출합니다.
@@ -39,6 +39,10 @@ http://127.0.0.1:18321/
 
 PWA static file 요청은 token 없이 처리합니다. `/runtime/*`, `/vitaldb/*`, `/host/*`, `/dev/*` API 요청은
 기존 Runtime Control API authorization 정책을 따릅니다.
+
+`GET /runtime/capabilities`는 PWA route와 command availability의 source of truth입니다. TestKit 관련
+`/dev/testkit/*` route는 test-enabled build에서만 노출되며, PWA는 `canUseTestTools=true`일 때만 Test
+탭을 보여줍니다.
 
 | Method | Path |
 |---|---|

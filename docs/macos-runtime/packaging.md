@@ -59,6 +59,11 @@ Runtime 전체 SoT map은 [Runtime observability model](observability.md#source-
 
 `bundle.optionalContainerServices`는 Testkit API처럼 컨테이너로 제공되는 선택 서비스를 포함할지 여부만 표현합니다. 선택 서비스의 image/version/display name은 `services.<name>`에 둡니다. Test 탭의 route, API shape, 화면 정책은 release manifest가 아니라 Test 탭/API 구현이 소유합니다.
 
+Runtime Control PWA는 package/update bundle에 static asset으로 포함됩니다. `make vm-app`,
+`make vm-pkg-*`, `make vm-dmg-*`, `make vm-update-bundle-*`는 `make pwa-build`를 먼저 실행합니다.
+빌드 머신에서는 packaging 전에 한 번 `make pwa-install`을 실행해야 하며, 현장 Mac에는 npm/Vite나
+registry 접근이 필요하지 않습니다.
+
 `VitalServer Helper`는 최상위 product release입니다. platform별 build는 같은 Helper release 아래의 variant이며, 세부 변경 범위는 Helper UI, Native Shell, Runtime Control API, Updater, Supervisor, VM Driver, Service Stack, VM Image, VitalServer component version으로 설명합니다.
 
 `make vm-build`는 이 값을 Swift `GeneratedVersion.swift`와 Helper app의 `GeneratedRelease.swift`에 반영하고, `make vm-app`은 app bundle `Info.plist`의 `CFBundleShortVersionString`에 같은 helper version을 씁니다. `make vm-pkg-dev`/`make vm-pkg-release`, `make vm-update-bundle-dev`/`make vm-update-bundle-release`, `make vm-rootfs-update-bundle-dev`/`make vm-rootfs-update-bundle-release`는 release manifest 값을 artifact name, package version, update bundle version, compatibility metadata에 반영합니다. `services.*.displayName`은 Helper UI의 service 표시명 source of truth입니다. 특별한 검증이 아니라면 버전, 표시명, image, update compatibility, optional container service 포함 정책 변경은 이 파일 하나에서 관리합니다.

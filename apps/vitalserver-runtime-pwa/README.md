@@ -20,6 +20,8 @@ API requests to `http://127.0.0.1:18321`.
 The PWA is deployed as static files, not as a Node/Vite runtime. Release builds
 run `make pwa-build`, then package `apps/vitalserver-runtime-pwa/dist/` into the
 macOS Helper app bundle under `Contents/Resources/runtime-control-pwa/`.
+The build machine must run `make pwa-install` before packaging so `node_modules`
+is available. Field machines only receive the built static assets.
 
 Installed systems serve the built PWA from the local Runtime Control server:
 

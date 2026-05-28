@@ -10,19 +10,24 @@ struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
     private let commandClient: any RuntimeControlClient
     private let hostClient: any RuntimeHostClient
     private let readWorker: MacHostRuntimeReadWorker
+    private let servesTestTools: Bool
 
     init(
         commandClient: any RuntimeControlClient,
         hostClient: any RuntimeHostClient,
-        readWorker: MacHostRuntimeReadWorker
+        readWorker: MacHostRuntimeReadWorker,
+        servesTestTools: Bool
     ) {
         self.commandClient = commandClient
         self.hostClient = hostClient
         self.readWorker = readWorker
+        self.servesTestTools = servesTestTools
     }
 
     func loadCapabilities() async throws -> RuntimeControlCapabilities {
-        commandClient.capabilities
+        var capabilities = commandClient.capabilities
+        capabilities.canUseTestTools = servesTestTools
+        return capabilities
     }
 
     func loadStatus() async throws -> RuntimeStatus {

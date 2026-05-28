@@ -1,8 +1,15 @@
-import { NavLink, Route, Routes } from "react-router-dom";
+import { Navigate, NavLink, Route, Routes } from "react-router-dom";
 
+import { useRuntimeCapabilities } from "../application/runtime-control/queries";
 import { runtimeControlRoutes } from "./routes";
 
 export function App() {
+  const capabilities = useRuntimeCapabilities();
+  const canUseTestTools = capabilities.data?.canUseTestTools === true;
+  const visibleRoutes = runtimeControlRoutes.filter(
+    (route) => !route.requiresTestTools || canUseTestTools
+  );
+
   return (
     <div className="app-shell">
       <header className="app-header">
@@ -13,7 +20,7 @@ export function App() {
       </header>
 
       <nav className="app-tabs" aria-label="Runtime Control tabs">
-        {runtimeControlRoutes.map((route) => (
+        {visibleRoutes.map((route) => (
           <NavLink
             key={route.path}
             to={route.path}
@@ -29,9 +36,10 @@ export function App() {
 
       <main className="app-main">
         <Routes>
-          {runtimeControlRoutes.map(({ path, Page }) => (
+          {visibleRoutes.map(({ path, Page }) => (
             <Route key={path} path={path} element={<Page />} />
           ))}
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
     </div>

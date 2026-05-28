@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   runtimeCommandResponseSchema,
+  runtimeCapabilitiesSchema,
   runtimeOverviewSchema,
   vitalDBRecordersSchema
 } from "./runtimeControlSchemas";
@@ -47,5 +48,15 @@ describe("runtime control contract schemas", () => {
         ]
       })
     ).toThrow();
+  });
+
+  it("accepts test tool capability flags", () => {
+    expect(
+      runtimeCapabilitiesSchema.parse({
+        canUseTestTools: true
+      })
+    ).toEqual({
+      canUseTestTools: true
+    });
   });
 });
