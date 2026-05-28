@@ -231,6 +231,14 @@ struct RuntimeLogExportFallback {
                 relativeDestination: "diagnostics/status/\(RuntimeFileNames.runtimeObservabilityDB)"
             ),
             RuntimeLogExportFallback(
+                source: URL(fileURLWithPath: "\(RuntimeAdapterConstants.Paths.runtimeObservabilityDB)-wal"),
+                relativeDestination: "diagnostics/status/\(RuntimeFileNames.runtimeObservabilityDB)-wal"
+            ),
+            RuntimeLogExportFallback(
+                source: URL(fileURLWithPath: "\(RuntimeAdapterConstants.Paths.runtimeObservabilityDB)-shm"),
+                relativeDestination: "diagnostics/status/\(RuntimeFileNames.runtimeObservabilityDB)-shm"
+            ),
+            RuntimeLogExportFallback(
                 source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.runtimeState),
                 relativeDestination: "diagnostics/guest/\(RuntimeFileNames.runtimeState)"
             ),
@@ -291,6 +299,13 @@ struct RuntimeLogExportRotatedFallbackSet {
                 sourceFilePrefix: "container-logs.log.",
                 relativeDestinationDirectory: "guest",
                 destinationFilePrefix: "container-logs.log."
+            ),
+            RuntimeLogExportRotatedFallbackSet(
+                sourceDirectory: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.runtimeEvents)
+                    .deletingLastPathComponent(),
+                sourceFilePrefix: "\(RuntimeFileNames.runtimeEvents).",
+                relativeDestinationDirectory: "diagnostics/status",
+                destinationFilePrefix: "\(RuntimeFileNames.runtimeEvents)."
             ),
         ]
     }

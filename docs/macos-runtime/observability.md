@@ -144,6 +144,20 @@ SQLite는 raw log의 대체물이 아니라 API 조회용 index/read model입니
 - SQLite write 실패는 runtime 실패로 보지 않습니다. warning event 또는 diagnostics 대상으로만 둡니다.
 - SQLite 파일은 삭제 가능해야 하고, raw log/JSONL에서 재구축할 수 있어야 합니다.
 - local runtime 특성상 WAL mode를 사용하고, schema migration을 명시적으로 관리합니다.
+- log export는 SQLite main DB뿐 아니라 `runtime-observability.sqlite-wal`,
+  `runtime-observability.sqlite-shm`도 포함해야 합니다. WAL sidecar가 빠지면 최신 read model row가
+  export에서 누락될 수 있습니다.
+
+### Runtime event retention
+
+`runtime-events.jsonl`은 runtime operational event의 1차 SoT입니다. 단일 파일이 무제한 커지면 export,
+API fallback read, 파일 손상 영향 범위가 모두 커지므로 size 기반 rotation을 적용합니다.
+
+- 현재 파일: `status/runtime-events.jsonl`
+- rotated 파일: `status/runtime-events.jsonl.1`, `.2`, ...
+- JSONL read path는 rotated 파일을 오래된 순서부터 읽고 마지막에 현재 파일을 읽습니다.
+- SQLite read model은 조회용 index이므로 JSONL rotation이 있더라도 event SoT 역할을 대신하지 않습니다.
+- log export는 현재 JSONL, rotated JSONL, SQLite main DB, SQLite WAL/SHM sidecar를 함께 포함해야 합니다.
 
 ## Target flow
 
