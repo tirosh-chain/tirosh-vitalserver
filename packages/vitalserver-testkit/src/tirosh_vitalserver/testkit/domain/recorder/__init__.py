@@ -19,6 +19,7 @@ from tirosh_vitalserver.testkit.domain.recorder.simulator.frames import (
 )
 from tirosh_vitalserver.testkit.domain.recorder.simulator.templates import (
     build_simulated_recorder_payload,
+    unique_testkit_vrcode,
 )
 from tirosh_vitalserver.testkit.domain.signal import RecorderSignalScenario
 
@@ -36,4 +37,5 @@ __all__ = [
     "iter_recorder_rooms",
     "recorder_payload_size_bytes",
     "shift_recorder_payload_time",
+    "unique_testkit_vrcode",
 ]

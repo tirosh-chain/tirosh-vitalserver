@@ -35,6 +35,64 @@ final class RuntimeManagedOperationGuardTests: XCTestCase {
         XCTAssertEqual(guardPolicy.activeOperation(), .install)
     }
 
+    func testBlocksWatchdogRecoveryDuringFreshGuestBootstrap() {
+        let repository = RuntimeStatusRepositorySpy()
+        let guardPolicy = managedOperationGuard(
+            repository: repository,
+            activeGuestBootstrap: RuntimeGuestBootstrapOperation(
+                operation: .unknown("bootstrap"),
+                modifiedAt: ISO8601DateFormatter().date(from: "2026-05-22T00:00:00Z")!
+            ),
+            now: "2026-05-22T00:05:00Z"
+        )
+
+        XCTAssertEqual(guardPolicy.activeOperation(), .unknown("bootstrap"))
+    }
+
+    func testDoesNotBlockWatchdogRecoveryForStaleGuestBootstrap() {
+        var messages: [String] = []
+        let repository = RuntimeStatusRepositorySpy()
+        let guardPolicy = managedOperationGuard(
+            repository: repository,
+            activeGuestBootstrap: RuntimeGuestBootstrapOperation(
+                operation: .unknown("bootstrap"),
+                modifiedAt: ISO8601DateFormatter().date(from: "2026-05-22T00:00:00Z")!
+            ),
+            now: "2026-05-22T00:31:00Z",
+            log: { messages.append($0) }
+        )
+
+        XCTAssertNil(guardPolicy.activeOperation())
+        XCTAssertEqual(messages, [
+            "watchdog guest bootstrap guard expired operation=bootstrap ageSeconds=1860",
+        ])
+    }
+
+    func testBlocksWatchdogRecoveryDuringProtectedRuntimeOperations() {
+        let protectedOperations: [RuntimeOperation] = [
+            .redisBackup,
+            .repairDatastore,
+            .startServices,
+            .stopServices,
+            .uninstall,
+        ]
+
+        for operation in protectedOperations {
+            let repository = RuntimeStatusRepositorySpy()
+            repository.loaded = status(
+                level: .recovering,
+                operation: operation,
+                updatedAt: "2026-05-22T00:00:00Z"
+            )
+            let guardPolicy = managedOperationGuard(
+                repository: repository,
+                now: "2026-05-22T00:05:00Z"
+            )
+
+            XCTAssertEqual(guardPolicy.activeOperation(), operation)
+        }
+    }
+
     func testDoesNotBlockWatchdogRecoveryAfterGracePeriod() {
         var messages: [String] = []
         let repository = RuntimeStatusRepositorySpy()
@@ -72,6 +130,7 @@ final class RuntimeManagedOperationGuardTests: XCTestCase {
 
     private func managedOperationGuard(
         repository: RuntimeStatusRepositorySpy,
+        activeGuestBootstrap: RuntimeGuestBootstrapOperation? = nil,
         now: String,
         log: @escaping (String) -> Void = { _ in }
     ) -> RuntimeManagedOperationGuard {
@@ -81,6 +140,7 @@ final class RuntimeManagedOperationGuardTests: XCTestCase {
                 productRoot: URL(fileURLWithPath: "/product"),
                 runtimeHome: URL(fileURLWithPath: "/product/vm")
             ),
+            activeGuestBootstrap: { activeGuestBootstrap },
             now: { ISO8601DateFormatter().date(from: now)! },
             graceSeconds: 1_800,
             log: log

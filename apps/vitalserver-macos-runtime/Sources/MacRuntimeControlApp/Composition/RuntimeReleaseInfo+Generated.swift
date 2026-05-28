@@ -2,11 +2,8 @@ import Foundation
 import RuntimeControl
 
 extension RuntimeReleaseInfo {
-    static let generated = RuntimeReleaseInfo(
-        helperVersion: GeneratedRelease.helperVersion,
-        minimumUpdaterVersion: GeneratedRelease.minUpdaterVersion,
-        vitalServerVersion: GeneratedRelease.vitalServerVersion,
-        services: [
+    static var generated: RuntimeReleaseInfo {
+        var services = [
             RuntimeBundledServiceInfo(
                 name: GeneratedRelease.vitalServerName,
                 image: GeneratedRelease.vitalServerImage,
@@ -48,5 +45,18 @@ extension RuntimeReleaseInfo {
                 version: GeneratedRelease.hostProxyVersion
             ),
         ]
-    )
+        if GeneratedRelease.testkitContainerIncluded {
+            services.append(RuntimeBundledServiceInfo(
+                name: GeneratedRelease.testkitName,
+                image: GeneratedRelease.testkitImage,
+                version: GeneratedRelease.testkitVersion
+            ))
+        }
+        return RuntimeReleaseInfo(
+            helperVersion: GeneratedRelease.helperVersion,
+            minimumUpdaterVersion: GeneratedRelease.minUpdaterVersion,
+            vitalServerVersion: GeneratedRelease.vitalServerVersion,
+            services: services
+        )
+    }
 }

@@ -178,6 +178,165 @@ final class SQLiteRuntimeObservabilityStoreTests: XCTestCase {
         ])
     }
 
+    func testProjectsVitalDBBedAssignmentsAcrossObservations() throws {
+        let harness = try SQLiteStoreHarness()
+        defer {
+            harness.cleanup()
+        }
+
+        try harness.store.append(VitalDBObservationDocument(
+            observedAt: "2026-05-25T00:00:00Z",
+            ready: true,
+            recorderOnlineThresholdSeconds: 120,
+            recorders: [
+                VitalDBRecorderObservation(vrcode: "VR_A", ip: "10.0.0.10", online: true),
+            ],
+            beds: [
+                VitalDBBedObservation(
+                    bedID: "bed-a",
+                    name: "OR A",
+                    vrcode: "VR_A",
+                    lastSeenAt: "2026-05-25T00:00:00Z",
+                    patientConnected: true,
+                    online: true
+                ),
+            ]
+        ))
+        try harness.store.append(VitalDBObservationDocument(
+            observedAt: "2026-05-25T00:01:00Z",
+            ready: true,
+            recorderOnlineThresholdSeconds: 120,
+            recorders: [
+                VitalDBRecorderObservation(vrcode: "VR_A", ip: "10.0.0.10", online: true),
+            ],
+            beds: [
+                VitalDBBedObservation(
+                    bedID: "bed-a",
+                    name: "OR A",
+                    vrcode: "VR_A",
+                    lastSeenAt: "2026-05-25T00:01:00Z",
+                    patientConnected: true,
+                    online: true
+                ),
+            ]
+        ))
+
+        let assignments = harness.store.vitalDBBedAssignments()
+
+        XCTAssertEqual(assignments.count, 1)
+        XCTAssertEqual(assignments[0].bedID, "bed-a")
+        XCTAssertEqual(assignments[0].vrcode, "VR_A")
+        XCTAssertEqual(assignments[0].startedAt, "2026-05-25T00:00:00Z")
+        XCTAssertNil(assignments[0].endedAt)
+        XCTAssertEqual(assignments[0].lastObservedAt, "2026-05-25T00:01:00Z")
+        XCTAssertEqual(assignments[0].observationCount, 2)
+    }
+
+    func testRelationshipProjectionIsIdempotentForSameObservationTimestamp() throws {
+        let harness = try SQLiteStoreHarness()
+        defer {
+            harness.cleanup()
+        }
+        let observation = VitalDBObservationDocument(
+            observedAt: "2026-05-25T00:00:00Z",
+            ready: true,
+            recorderOnlineThresholdSeconds: 120,
+            recorders: [
+                VitalDBRecorderObservation(vrcode: "VR_A", ip: "10.0.0.10", online: true),
+            ],
+            beds: [
+                VitalDBBedObservation(
+                    bedID: "bed-a",
+                    name: "OR A",
+                    vrcode: "VR_A",
+                    lastSeenAt: "2026-05-25T00:00:00Z",
+                    patientConnected: true,
+                    online: true
+                ),
+            ]
+        )
+
+        try harness.store.append(observation)
+        try harness.store.append(observation)
+
+        let assignments = harness.store.vitalDBBedAssignments()
+
+        XCTAssertEqual(assignments.count, 1)
+        XCTAssertEqual(assignments[0].observationCount, 1)
+    }
+
+
+    func testProjectsVitalDBRelationshipHandoff() throws {
+        let harness = try SQLiteStoreHarness()
+        defer {
+            harness.cleanup()
+        }
+
+        try harness.store.append(VitalDBObservationDocument(
+            observedAt: "2026-05-25T00:00:00Z",
+            ready: true,
+            recorderOnlineThresholdSeconds: 120,
+            recorders: [
+                VitalDBRecorderObservation(vrcode: "VR_A", online: true),
+            ],
+            beds: [
+                VitalDBBedObservation(bedID: "bed-a", name: "OR A", vrcode: "VR_A", online: true),
+            ]
+        ))
+        try harness.store.append(VitalDBObservationDocument(
+            observedAt: "2026-05-25T00:05:00Z",
+            ready: true,
+            recorderOnlineThresholdSeconds: 120,
+            recorders: [
+                VitalDBRecorderObservation(vrcode: "VR_B", online: true),
+            ],
+            beds: [
+                VitalDBBedObservation(bedID: "bed-a", name: "OR A", vrcode: "VR_B", online: true),
+            ]
+        ))
+
+        let assignments = harness.store.vitalDBBedAssignments()
+        let events = harness.store.vitalDBRelationshipEvents()
+
+        XCTAssertEqual(assignments.map(\.vrcode), ["VR_B", "VR_A"])
+        XCTAssertNil(assignments[0].endedAt)
+        XCTAssertEqual(assignments[1].endedAt, "2026-05-25T00:05:00Z")
+        XCTAssertTrue(events.contains {
+            $0.eventType == .handoff
+                && $0.bedID == "bed-a"
+                && $0.vrcode == "VR_B"
+                && $0.previousVrcode == "VR_A"
+        })
+    }
+
+    func testProjectsVitalDBRelationshipAnomalies() throws {
+        let harness = try SQLiteStoreHarness()
+        defer {
+            harness.cleanup()
+        }
+
+        try harness.store.append(VitalDBObservationDocument(
+            observedAt: "2026-05-25T00:00:00Z",
+            ready: true,
+            recorderOnlineThresholdSeconds: 120,
+            recorders: [
+                VitalDBRecorderObservation(vrcode: "VR_DUP", online: true),
+                VitalDBRecorderObservation(vrcode: "VR_FREE", online: true),
+            ],
+            beds: [
+                VitalDBBedObservation(bedID: "bed-a", name: "OR A", vrcode: "VR_DUP", online: true),
+                VitalDBBedObservation(bedID: "bed-b", name: "OR B", vrcode: "VR_DUP", online: true),
+                VitalDBBedObservation(bedID: "bed-c", name: "OR C", vrcode: nil, online: true),
+            ]
+        ))
+
+        let eventTypes = Set(harness.store.vitalDBRelationshipEvents().map(\.eventType))
+
+        XCTAssertTrue(eventTypes.contains(.duplicateAssignment))
+        XCTAssertTrue(eventTypes.contains(.unlinkedBed))
+        XCTAssertTrue(eventTypes.contains(.unlinkedRecorder))
+    }
+
     private func event(id: String, timestamp: String, type: RuntimeEventType) -> RuntimeEventDocument {
         RuntimeEventDocument(
             id: id,

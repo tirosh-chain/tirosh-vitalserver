@@ -67,8 +67,24 @@ enum Constants {
         static let diskStepGiB = 4
         static let minimumMemoryGiB = 4
         static let maximumMemoryGiB = 64
+        static let reservedHostMemoryGiB = 4
         static let memoryStepGiB = 4
-        static let memoryMiB: UInt64 = 8192
+        static var maximumAllowedMemoryGiB: Int {
+            let physicalMemoryGiB = Int(ProcessInfo.processInfo.physicalMemory / 1_073_741_824)
+            let hostAwareMaximum = physicalMemoryGiB - reservedHostMemoryGiB
+            let cappedMaximum = min(maximumMemoryGiB, hostAwareMaximum)
+            let steppedMaximum = (cappedMaximum / memoryStepGiB) * memoryStepGiB
+            return max(minimumMemoryGiB, steppedMaximum)
+        }
+        static var defaultMemoryGiB: Int {
+            min(8, maximumAllowedMemoryGiB)
+        }
+        static var maximumAllowedMemoryMiB: UInt64 {
+            UInt64(maximumAllowedMemoryGiB * 1024)
+        }
+        static var memoryMiB: UInt64 {
+            UInt64(defaultMemoryGiB * 1024)
+        }
         static let sharedDirectoryTag = "tirosh"
         static let sharedDirectoryGuestMountPath = "/mnt/tirosh"
         static let vitalFilesDirectoryTag = "tirosh-vital-files"

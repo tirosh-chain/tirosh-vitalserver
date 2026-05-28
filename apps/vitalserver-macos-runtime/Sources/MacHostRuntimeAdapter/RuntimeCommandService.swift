@@ -154,7 +154,7 @@ enum RuntimeCommandFactory {
             "rm -f \(logFile)",
             "{ \(shellCommand); } > \(logFile) 2>&1",
             "status=$?",
-            "cat \(logFile)",
+            "tail -n 200 \(logFile)",
             "exit $status"
         ].joined(separator: "; ")
         return "/bin/bash -lc \(shellQuote(script))"

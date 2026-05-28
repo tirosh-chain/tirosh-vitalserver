@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 
+from tirosh_vitalserver.testkit.adapters.inbound.cli.bed import add_bed_parsers
 from tirosh_vitalserver.testkit.adapters.inbound.cli.recorder import (
     add_recorder_parsers,
 )
@@ -32,6 +33,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.set_defaults(command=print_help)
 
     subparsers = parser.add_subparsers(dest="command_name")
+    add_bed_parsers(subparsers)
     add_server_parsers(subparsers)
     add_recorder_parsers(subparsers)
     add_vital_file_parsers(subparsers)

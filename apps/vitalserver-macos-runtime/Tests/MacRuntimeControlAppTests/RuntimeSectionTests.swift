@@ -6,6 +6,7 @@ final class RuntimeSectionTests: XCTestCase {
         XCTAssertEqual(RuntimeSection.visibleSections(testEnabled: false).map(\.title), [
             AppConstants.Labels.sectionStatus,
             AppConstants.Labels.sectionRecorders,
+            AppConstants.Labels.sectionBeds,
             AppConstants.Labels.sectionObservability,
             AppConstants.Labels.sectionLog,
             AppConstants.Labels.sectionSettings,
@@ -20,6 +21,7 @@ final class RuntimeSectionTests: XCTestCase {
         XCTAssertEqual(RuntimeSection.visibleSections(testEnabled: true).map(\.title), [
             AppConstants.Labels.sectionStatus,
             AppConstants.Labels.sectionRecorders,
+            AppConstants.Labels.sectionBeds,
             AppConstants.Labels.sectionObservability,
             AppConstants.Labels.sectionLog,
             AppConstants.Labels.sectionSettings,
@@ -35,13 +37,14 @@ final class RuntimeSectionTests: XCTestCase {
         XCTAssertEqual(RuntimeSection.primarySections(testEnabled: true), [
             .status,
             .recorders,
+            .beds,
             .observability,
             .log,
             .settings,
             .update,
         ])
         XCTAssertEqual(RuntimeSection.utilitySections(testEnabled: true), [.advanced])
-        XCTAssertEqual(RuntimeSection.overflowSections(testEnabled: true), [.info, .test, .dangerZone])
+        XCTAssertEqual(RuntimeSection.overflowSections(testEnabled: true), [.info, .dangerZone, .test])
     }
 
     func testStableRuntimeSectionOverflowHidesTestTab() {
@@ -52,14 +55,15 @@ final class RuntimeSectionTests: XCTestCase {
 
     func testRuntimeControlDevConsoleURLUsesLocalAPI() {
         XCTAssertEqual(
-            AppConstants.RuntimeControlAPI.devConsoleURL,
+            RuntimeControlLocalAPIConstants.devConsoleURL,
             "http://127.0.0.1:18321/dev/runtime-control"
         )
     }
 
     @MainActor
-    func testRuntimeControlAPIServerStartsOnlyForDevBuilds() {
-        XCTAssertFalse(MacRuntimeControlEnvironment.shouldStartDevelopmentAPIServer(testEnabled: false))
-        XCTAssertTrue(MacRuntimeControlEnvironment.shouldStartDevelopmentAPIServer(testEnabled: true))
+    func testRuntimeControlAPIServerIsIndependentFromTestTools() {
+        XCTAssertTrue(MacRuntimeControlEnvironment.shouldStartRuntimeControlAPIServer())
+        XCTAssertFalse(MacRuntimeControlEnvironment.shouldServeRuntimeControlTestTools(testEnabled: false))
+        XCTAssertTrue(MacRuntimeControlEnvironment.shouldServeRuntimeControlTestTools(testEnabled: true))
     }
 }

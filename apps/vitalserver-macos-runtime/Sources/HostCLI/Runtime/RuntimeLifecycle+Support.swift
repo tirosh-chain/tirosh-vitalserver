@@ -291,12 +291,55 @@ extension RuntimeLifecycle {
         healthChecker.snapshot()
     }
 
+    func lightweightRuntimeHealthSnapshot() -> RuntimeHealthSnapshot {
+        if let status = statusReporter.loadStatus() {
+            return RuntimeHealthSnapshot(
+                vmExecutable: false,
+                proxyExecutable: false,
+                rootfsBase: status.rootfsBase,
+                vmDisk: status.vmDisk,
+                vmService: status.vmService,
+                proxyService: status.proxyService,
+                watchdogService: status.watchdogService,
+                vmState: status.vmState ?? .unknown("not evaluated"),
+                vmErrors: status.vmErrors ?? [],
+                vmIP: status.vmIP,
+                proxyPort: status.proxyPort,
+                hostProxyHTTP: status.hostProxyHTTP,
+                guestHTTP: status.guestHTTP,
+                redisUIHTTP: status.redisUIHTTP ?? "not evaluated",
+                swaggerUIHTTP: status.swaggerUIHTTP ?? "not evaluated",
+                containerObservation: status.containerObservation,
+                vitalDBObservation: status.vitalDBObservation,
+                failureReasons: status.failureReasons
+            )
+        }
+        return RuntimeHealthSnapshot(
+            vmExecutable: false,
+            proxyExecutable: false,
+            rootfsBase: .unknown("not evaluated"),
+            vmDisk: .unknown("not evaluated"),
+            vmService: .unknown("not evaluated"),
+            proxyService: .unknown("not evaluated"),
+            watchdogService: .unknown("not evaluated"),
+            vmState: .unknown("not evaluated"),
+            vmIP: nil,
+            proxyPort: 0,
+            hostProxyHTTP: "not evaluated",
+            guestHTTP: "not evaluated",
+            redisUIHTTP: "not evaluated",
+            swaggerUIHTTP: "not evaluated",
+            failureReasons: []
+        )
+    }
+
     func runtimeStatusWriter() -> RuntimeStatusWriter {
         RuntimeStatusWriter(
             reporter: statusReporter,
             timestamp: isoTimestamp,
             runtimeVersion: runtimeVersionValue,
             healthSnapshot: runtimeHealthSnapshot,
+            progressHealthSnapshot: lightweightRuntimeHealthSnapshot,
             latestBackup: latestBackup
         )
     }
@@ -349,7 +392,7 @@ extension RuntimeLifecycle {
             previousStatus: previousStatus,
             operation: operation,
             message: message,
-            healthSnapshot: runtimeHealthSnapshot(),
+            healthSnapshot: lightweightRuntimeHealthSnapshot(),
             eventType: .progressUpdated,
             progress: progress
         )
@@ -424,7 +467,7 @@ extension RuntimeLifecycle {
                     previousStatus: currentStatus?.status,
                     operation: currentStatus?.operation ?? .unknown("command"),
                     message: message,
-                    healthSnapshot: runtimeHealthSnapshot(),
+                    healthSnapshot: lightweightRuntimeHealthSnapshot(),
                     eventType: eventType
                 )
             }

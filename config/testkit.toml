@@ -14,18 +14,51 @@ timeout = 60
 wait_seconds = 60
 poll_interval_seconds = 1
 
+[sessions]
+state_path = "/var/lib/vitalserver-testkit/sessions.json"
+
+[bed_registry]
+# TestKit API registry for explicitly created bed identities.
+# This is separate from product VitalDB bed observations and from the runner's
+# [beds] generation defaults below.
+state_path = "/var/lib/vitalserver-testkit/bed-registry.json"
+
+[logging]
+version = 1
+disable_existing_loggers = false
+
+[logging.formatters.testkit]
+"()" = "tirosh_vitalserver.testkit.observability.TestKitEventFormatter"
+format_name = "json"
+
+[logging.handlers.stdout]
+class = "logging.StreamHandler"
+formatter = "testkit"
+stream = "ext://sys.stdout"
+
+[logging.loggers."tirosh_vitalserver.testkit"]
+handlers = ["stdout"]
+level = "INFO"
+propagate = false
+
+[beds]
+# payload를 비워두면 runner가 이 설정으로 test bed identity를 먼저 만든 뒤
+# 해당 room name을 recorder command에 명시적으로 전달한다.
+count = 5
+prefix = "testkit-bed"
+admin_user_id = "admin"
+
 [recorder]
-# payload를 비워두면 testkit이 simulated recorder data를 생성한다.
 # 실제 장비 payload를 재현해야 할 때만 아래처럼 지정한다.
 # payload = "path/to/recorder-payload.json"
 recorders = 5
 default_scenario = "normal"
 
-[[recorder.beds]]
+[[recorder.bed_scenarios]]
 index = 2
 scenario = "tachycardia"
 
-[[recorder.beds]]
+[[recorder.bed_scenarios]]
 index = 4
 scenario = "desaturation"
 

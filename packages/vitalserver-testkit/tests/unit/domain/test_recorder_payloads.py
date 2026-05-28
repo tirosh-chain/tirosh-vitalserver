@@ -5,6 +5,10 @@ import zlib
 from typing import cast
 
 from tirosh_vitalserver.testkit import encode_realtime_payload
+from tirosh_vitalserver.testkit.domain.bed import (
+    create_beds,
+    require_bed_capacity_for_recorders,
+)
 from tirosh_vitalserver.testkit.domain.recorder import (
     bed_id_for_room,
     build_realtime_message,
@@ -20,6 +24,7 @@ from tirosh_vitalserver.testkit.domain.signal import (
     RecorderSignalScenario,
     SignalProfile,
 )
+from tirosh_vitalserver.testkit.errors import InsufficientBedsForRecordersError
 from tirosh_vitalserver.testkit.types.json import JsonArray, JsonObject
 
 
@@ -62,17 +67,26 @@ def test_recorder_room_bed_ids_match_vitalserver_hash() -> None:
     assert bed_id_for_room("mnw4anvs4") == rooms[0].bed_id
 
 
-def test_virtual_recorder_payloads_create_distinct_rooms() -> None:
+def test_virtual_recorder_payloads_connect_existing_beds() -> None:
     recorder_payload: JsonObject = {
-        "recorder-code": {
+        "bed-1": {
             "roomname": "BED01",
             "trks": [],
-        }
+        },
+        "bed-2": {
+            "roomname": "BED02",
+            "trks": [],
+        },
+        "bed-3": {
+            "roomname": "BED03",
+            "trks": [],
+        },
     }
 
     virtual_payloads = build_virtual_recorder_payloads(
         recorder_payload,
         count=3,
+        vrcode="VR",
         version="2.3.4",
     )
     visibility_payload = combine_virtual_recorder_rooms(
@@ -82,15 +96,63 @@ def test_virtual_recorder_payloads_create_distinct_rooms() -> None:
     rooms = iter_recorder_rooms(visibility_payload)
 
     assert [payload.vrcode for payload in virtual_payloads] == [
-        "recorder-code-001",
-        "recorder-code-002",
-        "recorder-code-003",
+        "VR-001",
+        "VR-002",
+        "VR-003",
     ]
     assert [room.room_name for room in rooms] == [
-        "BED01-001",
-        "BED01-002",
-        "BED01-003",
+        "BED01",
+        "BED02",
+        "BED03",
     ]
+
+
+def test_virtual_recorder_payloads_require_a_bed_per_recorder() -> None:
+    recorder_payload: JsonObject = {
+        "bed-1": {
+            "roomname": "BED01",
+            "trks": [],
+        }
+    }
+
+    try:
+        build_virtual_recorder_payloads(recorder_payload, count=2, vrcode="VR")
+    except ValueError as exc:
+        assert str(exc) == "bed count must be greater than or equal to recorder count"
+    else:
+        raise AssertionError("expected missing bed validation")
+
+
+def test_bed_capacity_rule_rejects_competing_active_recorders() -> None:
+    try:
+        require_bed_capacity_for_recorders(bed_count=1, recorder_count=2)
+    except InsufficientBedsForRecordersError as exc:
+        assert str(exc) == "bed count must be greater than or equal to recorder count"
+    else:
+        raise AssertionError("expected bed capacity validation")
+
+
+def test_beds_are_created_before_recorder_payloads() -> None:
+    beds = create_beds(count=2)
+    payload = build_simulated_recorder_payload(
+        room_names=tuple(bed.room_name for bed in beds),
+        now=1000.0,
+    )
+    rooms = iter_recorder_rooms(payload)
+
+    assert len(beds) == 2
+    assert [room.room_name for room in rooms] == [bed.room_name for bed in beds]
+    assert [room.bed_id for room in rooms] == [bed.bed_id for bed in beds]
+    assert set(payload) == {bed.room_name for bed in beds}
+
+
+def test_simulated_recorder_payload_rejects_duplicate_bed_room_names() -> None:
+    try:
+        build_simulated_recorder_payload(room_names=("OR-A", " OR-A "))
+    except ValueError as exc:
+        assert str(exc) == "room_names must not include duplicate values"
+    else:
+        raise AssertionError("expected duplicate bed room validation")
 
 
 def test_shift_recorder_payload_time_preserves_relative_offsets() -> None:
@@ -122,15 +184,15 @@ def test_shift_recorder_payload_time_preserves_relative_offsets() -> None:
 
 
 def test_simulated_recorder_payload_is_valid_room_map() -> None:
-    payload = build_simulated_recorder_payload(now=1000.0)
-    recorder = cast(JsonObject, payload["testkit-recorder"])
+    payload = build_simulated_recorder_payload(room_names=("OR-A",), now=1000.0)
+    recorder = cast(JsonObject, payload["OR-A"])
     tracks = cast(JsonArray, recorder["trks"])
     first_track = cast(JsonObject, tracks[0])
 
     rooms = iter_recorder_rooms(payload)
 
     assert len(rooms) == 1
-    assert rooms[0].room_name == "testkit-bed"
+    assert rooms[0].room_name == "OR-A"
     assert first_track["id"] == 1001
     assert first_track["montype"] == "ECG_WAV"
     assert first_track["dname"] == "Demo"
@@ -138,7 +200,7 @@ def test_simulated_recorder_payload_is_valid_room_map() -> None:
 
 
 def test_simulated_recorder_frame_generates_current_wave_samples() -> None:
-    payload = build_simulated_recorder_payload(now=1000.0)
+    payload = build_simulated_recorder_payload(room_names=("OR-A",), now=1000.0)
 
     generated = generate_simulated_recorder_payload(
         payload,
@@ -146,7 +208,7 @@ def test_simulated_recorder_frame_generates_current_wave_samples() -> None:
         frame_seconds=1.0,
         sequence=7,
     )
-    recorder = cast(JsonObject, generated["testkit-recorder"])
+    recorder = cast(JsonObject, generated["OR-A"])
     tracks = cast(JsonArray, recorder["trks"])
     wave_track = cast(JsonObject, tracks[0])
     records = cast(JsonArray, wave_track["recs"])
@@ -161,7 +223,7 @@ def test_simulated_recorder_frame_generates_current_wave_samples() -> None:
 
 
 def test_simulated_ecg_waveform_uses_heart_rate_period() -> None:
-    payload = build_simulated_recorder_payload(now=1000.0)
+    payload = build_simulated_recorder_payload(room_names=("OR-A",), now=1000.0)
 
     generated = generate_simulated_recorder_payload(
         payload,
@@ -169,7 +231,7 @@ def test_simulated_ecg_waveform_uses_heart_rate_period() -> None:
         frame_seconds=2.0,
         sequence=1,
     )
-    recorder = cast(JsonObject, generated["testkit-recorder"])
+    recorder = cast(JsonObject, generated["OR-A"])
     tracks = cast(JsonArray, recorder["trks"])
     ecg_track = cast(JsonObject, tracks[0])
     records = cast(JsonArray, ecg_track["recs"])
@@ -185,7 +247,7 @@ def test_simulated_ecg_waveform_uses_heart_rate_period() -> None:
 
 
 def test_simulated_ecg_waveform_uses_signal_profile_heart_rate() -> None:
-    payload = build_simulated_recorder_payload(now=1000.0)
+    payload = build_simulated_recorder_payload(room_names=("OR-A",), now=1000.0)
     signal_profile = SignalProfile(heart_rate_bpm=120.0)
 
     generated = generate_simulated_recorder_payload(
@@ -195,7 +257,7 @@ def test_simulated_ecg_waveform_uses_signal_profile_heart_rate() -> None:
         sequence=1,
         signal_profile=signal_profile,
     )
-    recorder = cast(JsonObject, generated["testkit-recorder"])
+    recorder = cast(JsonObject, generated["OR-A"])
     tracks = cast(JsonArray, recorder["trks"])
     ecg_track = cast(JsonObject, tracks[0])
     records = cast(JsonArray, ecg_track["recs"])

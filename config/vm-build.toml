@@ -87,11 +87,14 @@ bootstrap_script = "/mnt/tirosh/deploy/bootstrap.sh"
 [guest.docker_images]
 platform = "linux/arm64"
 bundle_path = ".tmp/vitalserver-vm-pkg/docker-images/vitalserver-images.tar.gz"
+optional_bundle_path = ".tmp/vitalserver-vm-pkg/optional-docker-images/vitalserver-optional-images.tar.gz"
 app_dockerfile = "apps/vitalserver/docker/Dockerfile"
 audit_proxy_image = "vitalserver-audit-proxy:0.1.0"
 audit_proxy_dockerfile = "apps/vitalserver-audit-proxy/Dockerfile"
 vitaldb_observer_image = "vitaldb-observer:0.1.0"
 vitaldb_observer_dockerfile = "apps/vitaldb-observer/Dockerfile"
+testkit_image = "vitalserver-testkit:0.1.1"
+testkit_dockerfile = "packages/vitalserver-testkit/Dockerfile"
 images = [
   "vitalserver:2.3.4",
   "vitalserver-audit-proxy:0.1.0",
@@ -101,14 +104,19 @@ images = [
   "swaggerapi/swagger-ui:v5.17.14",
   "nginx:1.24-alpine",
 ]
+optional_images = [
+  "vitalserver-testkit:0.1.1",
+]
 
 [guest.deploy]
 docker_image_bundle_destination = "docker-images/vitalserver-images.tar.gz"
+optional_docker_image_bundle_destination = "optional-docker-images/vitalserver-optional-images.tar.gz"
 include = [
   "apps/vitalserver/docker",
   "apps/vitalserver/runtime",
   "apps/vitalserver-audit-proxy",
   "apps/vitaldb-observer",
+  "packages/vitalserver-testkit",
   "vendor/vitalserver/vitalserver-old",
   "docs/openapi.yaml",
   "docs/openapi/audit-proxy.openapi.yaml",

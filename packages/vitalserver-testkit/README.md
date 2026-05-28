@@ -25,9 +25,19 @@ VRecorder 접속 lifecycle, `dt` 수신, 관리 이벤트 수신은 `stream-reco
 `send-recorder`와 `verify-recorder`는 one-shot `send_data` 확인용이며 `join_vr`를 보내지 않습니다.
 
 ```sh
+uv run vitalserver-testkit create-beds \
+  --room-name OR-A \
+  --room-name OR-B
+```
+
+생성된 room name을 recorder 명령에 명시해서 연결합니다.
+
+```sh
 uv run vitalserver-testkit stream-recorder \
   --vitalserver-url http://localhost \
-  --recorders 5 \
+  --recorders 2 \
+  --bed-room-name OR-A \
+  --bed-room-name OR-B \
   --interval 1
 ```
 
@@ -58,6 +68,42 @@ uv run vitalserver-testkit stream-recorder \
 상태 페이지는 `join_vr` 전송 여부, 서버 `dt`, local IP, 마지막 `send_data` 시각, 전송 횟수,
 관리 이벤트 수신 이력을 보여줍니다. JSON으로는 `/status.json`을 조회합니다.
 
+Runtime Helper의 Test 탭 또는 PWA에서 TestKit을 제어할 때는 macOS runtime guest compose
+안의 `testkit` container가 제공하는 FastAPI server를 사용합니다. Helper는 VM IP를 기준으로
+`http://<vm-ip>:18322`에 붙고, container 안의 virtual VRecorder는 compose 내부 edge proxy인
+`http://edge/`로 접속합니다.
+
+```sh
+vitalserver-testkit serve --host 0.0.0.0 --port 18322
+```
+
+local 개발 중에 TestKit API만 단독 확인할 때는 같은 command를 host loopback으로 실행할 수
+있지만, 제품 runtime에서는 container가 SoT입니다. 초기 API는 virtual VRecorder session의
+시작/중지/상태 조회를 제공합니다.
+
+```text
+GET  /health
+POST /beds
+GET  /sessions
+POST /sessions
+GET  /sessions/{id}
+POST /sessions/{id}/stop
+DELETE /sessions/{id}
+DELETE /sessions
+```
+
+`POST /beds`는 `{"roomNames":["OR-A"]}`처럼 명시적인 room name을 받거나,
+`{"count":2,"prefix":"OR"}`로 fresh bed identity를 만든다. `POST /sessions`는
+`bedRoomNames` 없이 simulated recorder payload를 만들지 않는다.
+
+TestKit API는 시뮬레이터 실행 상태의 SoT이고, VitalServer가 실제로 인식한 recorder 상태의
+SoT는 `vitaldb-observer`와 Runtime Control API의 recorder 관측 결과입니다.
+생성했던 bed registry는 `[bed_registry].state_path`에, virtual VRecorder 목록은
+`[sessions].state_path`에 저장합니다. 따라서 TestKit API process가 재시작되어도 이전 bed
+room name을 다시 선택하거나 session의 target URL과 vrcode를 기준으로 삭제/reset을 다시
+요청할 수 있습니다. 실행 중이던 streaming thread 자체는 복구하지 않고, 재시작 이후에는
+남은 VitalServer recorder 등록을 정리하는 registry로 사용합니다.
+
 ## Simulated Signal Scenario
 
 testkit은 simulated recorder data를 만들 때 시나리오 이름을 `RecorderSignalScenario`로
@@ -77,19 +123,25 @@ waveform 생성에 반영됩니다.
 | `artifact` | noise나 왜곡이 섞인 신호 | renderer/transport resilience |
 | `device_disconnect` | 장비 연결 해제 또는 신호 없음 | stale data, disconnect 상태, Redis key 갱신 |
 
-기본은 `normal`로 두고, 특정 bed만 override할 수 있습니다. `index`는 `--recorders`로 만들어지는
-1-based virtual recorder 번호입니다.
+기본은 `normal`로 두고, 특정 bed만 override할 수 있습니다. `index`는 생성된 bed 목록의
+1-based 번호입니다.
 
 ```toml
+[bed_registry]
+state_path = "/var/lib/vitalserver-testkit/bed-registry.json"
+
+[beds]
+count = 5
+
 [recorder]
 recorders = 5
 default_scenario = "normal"
 
-[[recorder.beds]]
+[[recorder.bed_scenarios]]
 index = 2
 scenario = "tachycardia"
 
-[[recorder.beds]]
+[[recorder.bed_scenarios]]
 index = 4
 scenario = "desaturation"
 ```
@@ -103,12 +155,16 @@ from tirosh_vitalserver.testkit import (
     build_simulated_recorder_payload,
     build_virtual_recorder_payloads,
     connect_socketio,
+    create_beds,
     stream_total_bytes_sent,
     stream_total_messages_sent,
     stream_vrecorder_session,
 )
 
-payload = build_simulated_recorder_payload()
+beds = create_beds(count=5)
+payload = build_simulated_recorder_payload(
+    room_names=tuple(bed.room_name for bed in beds),
+)
 virtual_payloads = build_virtual_recorder_payloads(payload, count=5)
 
 summary = stream_vrecorder_session(
@@ -140,6 +196,7 @@ src/tirosh_vitalserver/testkit/
     ports.py        # usecase가 요구하는 외부 시스템 계약
     recorder_lifecycle.py  # VRecorder Socket.IO lifecycle wiring
     recorder_runtime.py    # stream 상태와 status page snapshot
+    recorder_session/      # virtual VRecorder API session 상태/manager/document
     results.py      # usecase 실행 결과 value object
     metrics.py      # result/summary 계산 함수
     assertions.py   # 실패율 검증
@@ -151,6 +208,9 @@ src/tirosh_vitalserver/testkit/
   adapters/
     inbound/cli/    # argparse CLI
       recorder.py   # recorder command/parser adapter
+      server.py     # health, TestKit API server command
+    inbound/api/    # FastAPI app factory와 route wiring
+      app.py
     inbound/http/   # local HTTP endpoints exposed by the testkit
       recorder_status.py
     outbound/       # VitalServer HTTP, Socket.IO 구현체
@@ -169,6 +229,8 @@ domain   -> types
 
 `domain`은 `application`이나 `adapters`를 import하지 않습니다. Socket.IO, HTTP 같은 외부 구현체는
 `adapters/outbound`에 두고, `application/usecases`는 `ports.py`의 Protocol에만 의존합니다.
+FastAPI는 `adapters/inbound/api`에서 얇게 wiring하고, long-lived virtual VRecorder session
+상태는 `application/recorder_session`이 소유합니다.
 
 ## 테스트
 

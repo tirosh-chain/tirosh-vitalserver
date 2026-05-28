@@ -1,3 +1,4 @@
+import Foundation
 import SwiftUI
 
 struct RuntimeLogPanel: View {
@@ -6,16 +7,36 @@ struct RuntimeLogPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             toolbar
-            ScrollView {
-                Text(viewModel.logText)
-                    .font(.system(.body, design: .monospaced))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .textSelection(.enabled)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text(viewModel.logText)
+                            .font(.system(.body, design: .monospaced))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .textSelection(.enabled)
+                        Color.clear
+                            .frame(height: 1)
+                            .id(logBottomID)
+                    }
+                }
+                .onAppear {
+                    scrollToLatestLog(proxy, animated: false)
+                }
+                .onChange(of: viewModel.logText) { _ in
+                    if viewModel.logStreaming {
+                        scrollToLatestLog(proxy)
+                    }
+                }
             }
             .padding(12)
             .background(Color(nsColor: .textBackgroundColor))
             .clipShape(RoundedRectangle(cornerRadius: 8))
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private var logBottomID: String {
+        "runtime-log-bottom"
     }
 
     private var toolbar: some View {
@@ -132,5 +153,17 @@ struct RuntimeLogPanel: View {
             .disabled(viewModel.isBusy || !viewModel.capabilities.canExportLogs)
         }
         .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private func scrollToLatestLog(_ proxy: ScrollViewProxy, animated: Bool = true) {
+        DispatchQueue.main.async {
+            if animated {
+                withAnimation(.easeOut(duration: 0.18)) {
+                    proxy.scrollTo(logBottomID, anchor: .bottom)
+                }
+            } else {
+                proxy.scrollTo(logBottomID, anchor: .bottom)
+            }
+        }
     }
 }

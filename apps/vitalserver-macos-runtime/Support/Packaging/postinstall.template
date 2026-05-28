@@ -8,6 +8,7 @@ vm_bin="${VM_BIN}"
 manager_app="${MANAGER_APP}"
 max_log_bytes=$((10 * 1024 * 1024))
 keep_log_count=5
+postinstall_timeout_seconds=300
 
 mkdir -p "$(dirname "${install_log}")"
 
@@ -40,10 +41,39 @@ on_error() {
 
 trap on_error ERR
 
+run_runtime_install_with_timeout() {
+  local deadline pid status
+  deadline=$(( $(date +%s) + postinstall_timeout_seconds ))
+
+  VITALSERVER_VM_HOME="${vm_home}" "${vm_bin}" runtime install &
+  pid="$!"
+  log "runtime install process started pid=${pid} timeoutSeconds=${postinstall_timeout_seconds}"
+
+  while kill -0 "${pid}" 2>/dev/null; do
+    if [ "$(date +%s)" -ge "${deadline}" ]; then
+      log "runtime install timed out timeoutSeconds=${postinstall_timeout_seconds} pid=${pid}"
+      kill -TERM "${pid}" 2>/dev/null || true
+      sleep 5
+      if kill -0 "${pid}" 2>/dev/null; then
+        log "runtime install did not stop after TERM; sending KILL pid=${pid}"
+        kill -KILL "${pid}" 2>/dev/null || true
+      fi
+      wait "${pid}" 2>/dev/null || true
+      return 124
+    fi
+    sleep 2
+  done
+
+  status=0
+  wait "${pid}" || status="$?"
+  log "runtime install process exited status=${status} pid=${pid}"
+  return "${status}"
+}
+
 log "Tirosh VitalServer postinstall started"
 if [ ! -d "${manager_app}" ]; then
   log "helper app missing path=${manager_app}"
   exit 1
 fi
-VITALSERVER_VM_HOME="${vm_home}" "${vm_bin}" runtime install
+run_runtime_install_with_timeout
 log "Tirosh VitalServer postinstall completed"

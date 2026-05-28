@@ -153,6 +153,28 @@ public struct VitalDBRecorderObservation: Codable, Equatable, Sendable {
     }
 }
 
+public struct VitalDBRecorderActivityBucket: Codable, Equatable, Sendable {
+    public let bucketStartedAt: String
+    public let bucketSeconds: Int
+    public let messageCount: Int
+    public let byteCount: Int
+    public let roomCount: Int
+
+    public init(
+        bucketStartedAt: String,
+        bucketSeconds: Int,
+        messageCount: Int,
+        byteCount: Int,
+        roomCount: Int = 0
+    ) {
+        self.bucketStartedAt = bucketStartedAt
+        self.bucketSeconds = bucketSeconds
+        self.messageCount = messageCount
+        self.byteCount = byteCount
+        self.roomCount = roomCount
+    }
+}
+
 public struct VitalDBRecorderActivityObservation: Codable, Equatable, Sendable {
     public let windowSeconds: Int
     public let messageCount: Int
@@ -162,6 +184,7 @@ public struct VitalDBRecorderActivityObservation: Codable, Equatable, Sendable {
     public let lastSeenAt: String?
     public let messagesPerSecond: Double
     public let bytesPerSecond: Double
+    public let buckets: [VitalDBRecorderActivityBucket]
 
     public init(
         windowSeconds: Int,
@@ -171,7 +194,8 @@ public struct VitalDBRecorderActivityObservation: Codable, Equatable, Sendable {
         firstSeenAt: String? = nil,
         lastSeenAt: String? = nil,
         messagesPerSecond: Double = 0,
-        bytesPerSecond: Double = 0
+        bytesPerSecond: Double = 0,
+        buckets: [VitalDBRecorderActivityBucket] = []
     ) {
         self.windowSeconds = windowSeconds
         self.messageCount = messageCount
@@ -181,6 +205,32 @@ public struct VitalDBRecorderActivityObservation: Codable, Equatable, Sendable {
         self.lastSeenAt = lastSeenAt
         self.messagesPerSecond = messagesPerSecond
         self.bytesPerSecond = bytesPerSecond
+        self.buckets = buckets
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case windowSeconds
+        case messageCount
+        case byteCount
+        case roomCount
+        case firstSeenAt
+        case lastSeenAt
+        case messagesPerSecond
+        case bytesPerSecond
+        case buckets
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        windowSeconds = try container.decode(Int.self, forKey: .windowSeconds)
+        messageCount = try container.decode(Int.self, forKey: .messageCount)
+        byteCount = try container.decode(Int.self, forKey: .byteCount)
+        roomCount = try container.decodeIfPresent(Int.self, forKey: .roomCount) ?? 0
+        firstSeenAt = try container.decodeIfPresent(String.self, forKey: .firstSeenAt)
+        lastSeenAt = try container.decodeIfPresent(String.self, forKey: .lastSeenAt)
+        messagesPerSecond = try container.decodeIfPresent(Double.self, forKey: .messagesPerSecond) ?? 0
+        bytesPerSecond = try container.decodeIfPresent(Double.self, forKey: .bytesPerSecond) ?? 0
+        buckets = try container.decodeIfPresent([VitalDBRecorderActivityBucket].self, forKey: .buckets) ?? []
     }
 }
 

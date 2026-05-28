@@ -6,6 +6,7 @@ public enum RuntimeEventType: Codable, Equatable, Sendable {
     case healthObserved
     case recoveryTriggered
     case recoveryCompleted
+    case recoverySuppressed
     case domainErrorObserved
     case vmErrorObserved
     case containerObserved
@@ -24,6 +25,31 @@ public enum RuntimeEventType: Codable, Equatable, Sendable {
     case runtimeCommandFailed
     case unknown(String)
 
+    public static let knownTypes: [RuntimeEventType] = [
+        .statusChanged,
+        .progressUpdated,
+        .healthObserved,
+        .recoveryTriggered,
+        .recoveryCompleted,
+        .recoverySuppressed,
+        .domainErrorObserved,
+        .vmErrorObserved,
+        .containerObserved,
+        .auditProxyObserved,
+        .vitalDBObserved,
+        .vitalDBObserverUnhealthy,
+        .vitalDBAnomalyDetected,
+        .watchdogSkipped,
+        .recoveryPlanned,
+        .serviceRestartDispatched,
+        .observabilityStoreFailed,
+        .runtimeStatusObserved,
+        .guestStateObserved,
+        .runtimeCommandStarted,
+        .runtimeCommandCompleted,
+        .runtimeCommandFailed,
+    ]
+
     public init(rawValue: String) {
         switch rawValue {
         case "status-changed":
@@ -36,6 +62,8 @@ public enum RuntimeEventType: Codable, Equatable, Sendable {
             self = .recoveryTriggered
         case "recovery-completed":
             self = .recoveryCompleted
+        case "recovery-suppressed":
+            self = .recoverySuppressed
         case "domain-error-observed":
             self = .domainErrorObserved
         case "vm-error-observed":
@@ -85,6 +113,8 @@ public enum RuntimeEventType: Codable, Equatable, Sendable {
             return "recovery-triggered"
         case .recoveryCompleted:
             return "recovery-completed"
+        case .recoverySuppressed:
+            return "recovery-suppressed"
         case .domainErrorObserved:
             return "domain-error-observed"
         case .vmErrorObserved:

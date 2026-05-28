@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass
+import string
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Protocol
@@ -13,6 +14,7 @@ from .model import (
     BedObservation,
     ObservationDocument,
     ProxyConnectionObservation,
+    RecorderActivityBucket,
     RawBedScopedObservation,
     RecorderActivityObservation,
     RecorderObservation,
@@ -41,8 +43,14 @@ class VitalDBCollector:
     def collect(self) -> ObservationDocument:
         observed_at = utc_now_iso()
         activity_by_vrcode = self._recorder_activity(observed_at)
-        recorders = self._recorders(observed_at, activity_by_vrcode)
         beds = self._beds(observed_at)
+        registered_vrcodes = self._registered_vrcodes()
+        recorders = self._recorders(
+            observed_at,
+            activity_by_vrcode,
+            bed_ids={bed.bed_id for bed in beds},
+            registered_vrcodes=registered_vrcodes,
+        )
         devices = self._raw_bed_scoped(
             prefix="devs_", bed_ids=[bed.bed_id for bed in beds]
         )
@@ -67,28 +75,30 @@ class VitalDBCollector:
         self,
         observed_at: str,
         activity_by_vrcode: dict[str, RecorderActivityObservation],
+        *,
+        bed_ids: set[str],
+        registered_vrcodes: set[str],
     ) -> list[RecorderObservation]:
-        vrcodes = {
-            key.removeprefix("ip_")
-            for key in self._redis.scan("ip_*")
-            if key.removeprefix("ip_")
-        }
-        vrcodes.update(
-            key.removeprefix("utime_")
-            for key in self._redis.scan("utime_*")
-            if key.removeprefix("utime_")
-        )
-        vrcodes.update(activity_by_vrcode)
+        vrcodes = set(registered_vrcodes)
         recorders = [
             self._recorder(vrcode, observed_at, activity_by_vrcode.get(vrcode))
             for vrcode in sorted(vrcodes)
-            if not vrcode.startswith("bed")
+            if _is_recorder_identity(vrcode, bed_ids=bed_ids)
         ]
         return [
             recorder
             for recorder in recorders
             if recorder.ip or recorder.last_seen_at or recorder.activity
         ]
+
+    def _registered_vrcodes(self) -> set[str]:
+        vrcodes = set(self._redis.smembers("vrs"))
+        vrcodes.update(
+            key.removeprefix("vrs:")
+            for key in self._redis.scan("vrs:*")
+            if key.removeprefix("vrs:")
+        )
+        return vrcodes
 
     def _recorder(
         self,
@@ -147,6 +157,7 @@ class VitalDBCollector:
             )
             builder.observe(
                 timestamp=parsed["timestamp"],
+                event_time=event_time,
                 byte_count=parsed["byte_count"],
                 room_count=parsed["room_count"],
             )
@@ -235,7 +246,7 @@ class VitalDBCollector:
                 anomalies.append(
                     _anomaly(
                         "duplicate-ip",
-                        "critical",
+                        "warning",
                         observed_at,
                         ip,
                         ", ".join(sorted(vrcodes)),
@@ -320,21 +331,29 @@ def _parse_audit_event(raw_value: str) -> dict[str, Any] | None:
     if not isinstance(event, dict):
         return None
 
-    payload_summary = event.get("payload_summary")
+    payload_summary = event.get("payload_summary") or event.get("payloadSummary")
     if not isinstance(payload_summary, dict):
         payload_summary = {}
 
-    timestamp = _string_value(event, "ts") or _string_value(event, "observedAt")
+    timestamp = (
+        _string_value(event, "ts")
+        or _string_value(event, "observedAt")
+        or _string_value(event, "timestamp")
+    )
     vrcode = _string_value(payload_summary, "vrcode") or _string_value(event, "vrcode")
     if timestamp is None or vrcode is None:
         return None
 
     return {
-        "event_type": _string_value(event, "event_type") or "",
+        "event_type": _string_value(event, "event_type")
+        or _string_value(event, "eventType")
+        or "",
         "timestamp": timestamp,
         "vrcode": vrcode,
-        "byte_count": _int_value(payload_summary, "bytes"),
-        "room_count": _int_value(payload_summary, "rooms_count"),
+        "byte_count": _int_value(payload_summary, "bytes")
+        or _int_value(payload_summary, "byteCount"),
+        "room_count": _int_value(payload_summary, "rooms_count")
+        or _int_value(payload_summary, "roomsCount"),
     }
 
 
@@ -350,8 +369,11 @@ class _ActivityBuilder:
     room_count: int = 0
     first_seen_at: str | None = None
     last_seen_at: str | None = None
+    buckets: dict[str, "_ActivityBucketBuilder"] = field(default_factory=dict)
 
-    def observe(self, timestamp: str, byte_count: int, room_count: int) -> None:
+    def observe(
+        self, timestamp: str, event_time: datetime, byte_count: int, room_count: int
+    ) -> None:
         self.message_count += 1
         self.byte_count += byte_count
         self.room_count += room_count
@@ -359,6 +381,11 @@ class _ActivityBuilder:
             self.first_seen_at = timestamp
         if self.last_seen_at is None or timestamp > self.last_seen_at:
             self.last_seen_at = timestamp
+        bucket_started_at = _bucket_started_at(event_time, bucket_seconds=60)
+        bucket = self.buckets.setdefault(
+            bucket_started_at, _ActivityBucketBuilder(bucket_started_at, 60)
+        )
+        bucket.observe(byte_count=byte_count, room_count=room_count)
 
     def observation(self) -> RecorderActivityObservation:
         return RecorderActivityObservation(
@@ -370,7 +397,45 @@ class _ActivityBuilder:
             last_seen_at=self.last_seen_at,
             messages_per_second=round(self.message_count / self.window_seconds, 3),
             bytes_per_second=round(self.byte_count / self.window_seconds, 1),
+            buckets=[
+                bucket.observation()
+                for _, bucket in sorted(self.buckets.items(), key=lambda item: item[0])
+            ],
         )
+
+
+@dataclass
+class _ActivityBucketBuilder:
+    bucket_started_at: str
+    bucket_seconds: int
+    message_count: int = 0
+    byte_count: int = 0
+    room_count: int = 0
+
+    def observe(self, byte_count: int, room_count: int) -> None:
+        self.message_count += 1
+        self.byte_count += byte_count
+        self.room_count += room_count
+
+    def observation(self) -> RecorderActivityBucket:
+        return RecorderActivityBucket(
+            bucket_started_at=self.bucket_started_at,
+            bucket_seconds=self.bucket_seconds,
+            message_count=self.message_count,
+            byte_count=self.byte_count,
+            room_count=self.room_count,
+        )
+
+
+def _bucket_started_at(value: datetime, bucket_seconds: int) -> str:
+    timestamp = int(value.timestamp())
+    bucket_timestamp = timestamp - (timestamp % bucket_seconds)
+    return (
+        datetime.fromtimestamp(bucket_timestamp, value.tzinfo)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
 
 
 def _bed_name(raw_value: str | None) -> str | None:
@@ -423,6 +488,21 @@ def _int_value(data: dict[str, Any], key: str) -> int:
         return max(int(str(value)), 0)
     except (TypeError, ValueError):
         return 0
+
+
+def _is_recorder_identity(value: str, *, bed_ids: set[str]) -> bool:
+    normalized = value.strip()
+    if not normalized:
+        return False
+    if normalized in bed_ids or normalized.startswith("bed"):
+        return False
+    return not _looks_like_sha1_bed_id(normalized)
+
+
+def _looks_like_sha1_bed_id(value: str) -> bool:
+    return len(value) == 40 and all(
+        character in string.hexdigits for character in value
+    )
 
 
 def _anomaly(

@@ -24,6 +24,8 @@ def test_stage_guest_deploy_uses_configured_includes(tmp_path: Path) -> None:
     (root / "docs/openapi.yaml").write_text("openapi\n")
     docker_bundle = tmp_path / "images.tar.gz"
     docker_bundle.write_text("images\n")
+    optional_docker_bundle = tmp_path / "optional-images.tar.gz"
+    optional_docker_bundle.write_text("optional-images\n")
 
     plan = guest_deploy_plan(
         root=root,
@@ -32,6 +34,9 @@ def test_stage_guest_deploy_uses_configured_includes(tmp_path: Path) -> None:
         vm_home=tmp_path / "vm-home",
         config=GuestDeployConfig(
             docker_image_bundle_destination=Path("docker-images/images.tar.gz"),
+            optional_docker_image_bundle_destination=Path(
+                "optional-docker-images/optional-images.tar.gz"
+            ),
             includes=[
                 GuestDeployInclude(
                     source=Path("apps/service"),
@@ -44,6 +49,7 @@ def test_stage_guest_deploy_uses_configured_includes(tmp_path: Path) -> None:
             ],
         ),
         docker_bundle=docker_bundle,
+        optional_docker_bundle=optional_docker_bundle,
     )
     stage_guest_deploy(plan)
 
@@ -51,3 +57,6 @@ def test_stage_guest_deploy_uses_configured_includes(tmp_path: Path) -> None:
     assert (deploy_dir / "apps/service/app.py").read_text() == "service\n"
     assert (deploy_dir / "docs/openapi.yaml").read_text() == "openapi\n"
     assert (deploy_dir / "docker-images/images.tar.gz").read_text() == "images\n"
+    assert (
+        deploy_dir / "optional-docker-images/optional-images.tar.gz"
+    ).read_text() == "optional-images\n"

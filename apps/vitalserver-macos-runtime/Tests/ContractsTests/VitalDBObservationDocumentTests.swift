@@ -24,7 +24,16 @@ final class VitalDBObservationDocumentTests: XCTestCase {
                         firstSeenAt: "2026-05-25T00:00:01Z",
                         lastSeenAt: "2026-05-25T00:00:10Z",
                         messagesPerSecond: 0.04,
-                        bytesPerSecond: 13.7
+                        bytesPerSecond: 13.7,
+                        buckets: [
+                            VitalDBRecorderActivityBucket(
+                                bucketStartedAt: "2026-05-25T00:00:00Z",
+                                bucketSeconds: 60,
+                                messageCount: 12,
+                                byteCount: 4096,
+                                roomCount: 4
+                            ),
+                        ]
                     )
                 ),
             ],
@@ -45,6 +54,7 @@ final class VitalDBObservationDocumentTests: XCTestCase {
 
         XCTAssertEqual(decoded, document)
         XCTAssertEqual(decoded.recorders.first?.activity?.byteCount, 4096)
+        XCTAssertEqual(decoded.recorders.first?.activity?.buckets.first?.messageCount, 12)
         XCTAssertEqual(decoded.anomalies.first?.kind.rawValue, "duplicate-ip")
     }
 

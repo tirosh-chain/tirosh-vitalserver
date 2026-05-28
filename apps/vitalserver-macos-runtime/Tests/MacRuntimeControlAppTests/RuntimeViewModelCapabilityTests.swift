@@ -291,6 +291,146 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertEqual(client.loadRuntimeEventsCount, 0)
         XCTAssertEqual(client.loadVitalDBRecordersCount, 0)
     }
+
+    func testRuntimeEventRefreshUsesSelectedPeriodAndType() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+        viewModel.runtimeEventPeriod = RuntimeEventPeriodOption.lastHour.rawValue
+        viewModel.runtimeEventFilter = RuntimeEventType.watchdogSkipped.rawValue
+
+        await viewModel.refreshRuntimeEvents()
+
+        XCTAssertEqual(client.runtimeEventQueries.count, 2)
+        XCTAssertEqual(client.runtimeEventQueries.first?.limit, 50)
+        XCTAssertEqual(client.runtimeEventQueries.first?.eventType, .watchdogSkipped)
+        XCTAssertNotNil(client.runtimeEventQueries.first?.since)
+        XCTAssertEqual(client.runtimeEventQueries.last?.limit, 1)
+        XCTAssertNil(client.runtimeEventQueries.last?.eventType)
+        XCTAssertNotNil(client.runtimeEventQueries.last?.since)
+    }
+
+    func testTestKitStartRequiresAvailableBeds() {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let testKit = FakeTestKitController()
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            testKitController: testKit,
+            healthNotifications: NoopHealthNotifications()
+        )
+        viewModel.testKitStatus = RuntimeTestKitStatus(
+            enabled: true,
+            state: .running,
+            sessions: [
+                testKitSession(
+                    id: "session-a",
+                    state: "running",
+                    bedRoomNames: ["OR-A"]
+                )
+            ],
+            beds: [RuntimeTestKitBed(roomName: "OR-A", bedID: "bed-a")]
+        )
+
+        XCTAssertFalse(viewModel.testKitCanStart)
+        XCTAssertFalse(viewModel.testKitCanResetBeds)
+    }
+
+    func testTestKitStartUsesSelectedBedRoomNames() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let testKit = FakeTestKitController()
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            testKitController: testKit,
+            healthNotifications: NoopHealthNotifications()
+        )
+        let status = RuntimeTestKitStatus(
+            enabled: true,
+            state: .running,
+            sessions: [
+                testKitSession(
+                    id: "session-a",
+                    state: "running",
+                    bedRoomNames: ["OR-A"]
+                )
+            ],
+            beds: [
+                RuntimeTestKitBed(roomName: "OR-A", bedID: "bed-a"),
+                RuntimeTestKitBed(roomName: "OR-B", bedID: "bed-b"),
+            ]
+        )
+        testKit.status = status
+        viewModel.testKitStatus = status
+        viewModel.setTestKitBedSelection("OR-B", selected: true)
+
+        await viewModel.startVirtualRecorderSession()
+
+        XCTAssertEqual(testKit.startedRequests.count, 1)
+        XCTAssertEqual(testKit.startedRequests[0].bedRoomNames, ["OR-B"])
+    }
+
+    func testTestKitResetBedsRequiresNoActiveSessions() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let testKit = FakeTestKitController()
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            testKitController: testKit,
+            healthNotifications: NoopHealthNotifications()
+        )
+        viewModel.testKitStatus = RuntimeTestKitStatus(
+            enabled: true,
+            state: .running,
+            sessions: [
+                testKitSession(
+                    id: "session-a",
+                    state: "running",
+                    bedRoomNames: ["OR-A"]
+                )
+            ],
+            beds: [RuntimeTestKitBed(roomName: "OR-A", bedID: "bed-a")]
+        )
+
+        await viewModel.resetTestKitBeds()
+
+        XCTAssertEqual(testKit.resetBedsCount, 0)
+        XCTAssertEqual(
+            viewModel.testKitActionMessage,
+            RuntimeTestPanelText.stopSessionsBeforeResettingBeds
+        )
+    }
+
+    func testTestKitDeletesSelectedInactiveBed() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let testKit = FakeTestKitController()
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            testKitController: testKit,
+            healthNotifications: NoopHealthNotifications()
+        )
+        let status = RuntimeTestKitStatus(
+            enabled: true,
+            state: .running,
+            beds: [
+                RuntimeTestKitBed(roomName: "OR-A", bedID: "bed-a"),
+                RuntimeTestKitBed(roomName: "OR-B", bedID: "bed-b"),
+            ]
+        )
+        testKit.status = status
+        viewModel.testKitStatus = status
+        viewModel.setTestKitBedSelection("OR-A", selected: true)
+
+        await viewModel.deleteTestKitBed(RuntimeTestKitBed(roomName: "OR-A", bedID: "bed-a"))
+
+        XCTAssertEqual(testKit.deletedBedRequests.map(\.roomNames), [["OR-A"]])
+        XCTAssertEqual(viewModel.testKitStatus.beds.map(\.roomName), ["OR-B"])
+        XCTAssertFalse(viewModel.testKitBedIsSelected("OR-A"))
+    }
 }
 
 private extension RuntimeControlCapabilities {
@@ -312,9 +452,120 @@ private extension RuntimeControlCapabilities {
     }
 }
 
+private func testKitSession(
+    id: String,
+    state: String,
+    bedRoomNames: [String]
+) -> RuntimeTestKitSession {
+    RuntimeTestKitSession(
+        id: id,
+        state: state,
+        targetURL: "http://example.test",
+        recordersRequested: bedRoomNames.count,
+        bedsRequested: bedRoomNames.count,
+        bedRoomNames: bedRoomNames,
+        vrcode: nil,
+        version: "testkit",
+        intervalSeconds: 1,
+        durationSeconds: nil,
+        maxMessages: nil,
+        shiftTime: true,
+        generateFrames: true,
+        defaultScenario: "normal",
+        createdAt: nil,
+        startedAt: nil,
+        stoppedAt: nil,
+        messagesSent: 0,
+        bytesSent: 0,
+        lastError: nil,
+        recorders: []
+    )
+}
+
 private struct NoopHealthNotifications: HealthNotifying {
     func configure() {}
     func notify(title: String, body: String) {}
+}
+
+@MainActor
+private final class FakeTestKitController: RuntimeTestKitControlling {
+    var status = RuntimeTestKitStatus(enabled: true, state: .running)
+    var startedRequests: [RuntimeTestKitVirtualRecorderStartRequest] = []
+    var resetBedsCount = 0
+    var deletedBedRequests: [RuntimeTestKitDeleteBedsRequest] = []
+
+    func loadTestKitStatus() async -> RuntimeTestKitStatus {
+        status
+    }
+
+    func createTestKitBeds(_ request: RuntimeTestKitCreateBedsRequest) async throws -> [RuntimeTestKitBed] {
+        let beds = (0..<(request.count ?? request.roomNames.count)).map { index in
+            RuntimeTestKitBed(roomName: "OR-\(index + 1)", bedID: "bed-\(index + 1)")
+        }
+        status.beds = beds
+        return beds
+    }
+
+    func resetTestKitBeds() async throws -> [RuntimeTestKitBed] {
+        resetBedsCount += 1
+        let beds = status.beds
+        status.beds = []
+        return beds
+    }
+
+    func deleteTestKitBeds(_ request: RuntimeTestKitDeleteBedsRequest) async throws -> [RuntimeTestKitBed] {
+        deletedBedRequests.append(request)
+        let requested = Set(request.roomNames)
+        let deleted = status.beds.filter { requested.contains($0.roomName) }
+        status.beds.removeAll { requested.contains($0.roomName) }
+        return deleted
+    }
+
+    func startVirtualRecorders(_ request: RuntimeTestKitVirtualRecorderStartRequest) async throws -> RuntimeTestKitSession {
+        startedRequests.append(request)
+        let session = testKitSession(
+            id: "session-\(startedRequests.count)",
+            state: "running",
+            bedRoomNames: request.bedRoomNames
+        )
+        status.sessions.append(session)
+        status.activeSession = session
+        return session
+    }
+
+    func stopVirtualRecorders(sessionID: String?) async throws -> RuntimeTestKitSession? {
+        nil
+    }
+
+    func pauseVirtualRecorders(sessionID: String?) async throws -> RuntimeTestKitSession? {
+        nil
+    }
+
+    func resumeVirtualRecorders(sessionID: String?) async throws -> RuntimeTestKitSession? {
+        nil
+    }
+
+    func restartVirtualRecorders(sessionID: String?, bedRoomNames: [String]) async throws -> RuntimeTestKitSession? {
+        nil
+    }
+
+    func deleteVirtualRecorders(sessionID: String?) async throws -> RuntimeTestKitSession? {
+        nil
+    }
+
+    func deleteVirtualRecorder(vrcode: String) async throws -> RuntimeTestKitRecorderDeletion {
+        RuntimeTestKitRecorderDeletion(
+            vrcode: vrcode,
+            targetURL: "http://example.test",
+            deleted: true
+        )
+    }
+
+    func resetVirtualRecorders() async throws -> RuntimeTestKitStatus {
+        status.sessions = []
+        status.activeSession = nil
+        return status
+    }
 }
 
 @MainActor
@@ -323,6 +574,8 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     var loadStatusCount = 0
     var loadHealthStatusCount = 0
     var loadRuntimeEventsCount = 0
+    var lastRuntimeEventQuery: RuntimeEventQuery?
+    var runtimeEventQueries: [RuntimeEventQuery] = []
     var loadVitalDBRecordersCount = 0
     var loadBackupsCount = 0
     var verifyUpdateBundleCount = 0
@@ -368,6 +621,8 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
 
     func loadRuntimeEvents(query: RuntimeEventQuery) -> RuntimeEventHistory {
         loadRuntimeEventsCount += 1
+        lastRuntimeEventQuery = query
+        runtimeEventQueries.append(query)
         return RuntimeEventHistory(events: [])
     }
 
@@ -378,6 +633,10 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     func loadVitalDBRecorders() -> RuntimeVitalRecorderHistory {
         loadVitalDBRecordersCount += 1
         return RuntimeVitalRecorderHistory()
+    }
+
+    func loadVitalDBRelationships() -> RuntimeVitalRelationshipHistory {
+        RuntimeVitalRelationshipHistory()
     }
 
     func loadBackups(latestBackupPath: String?) -> [RuntimeBackup] {

@@ -24,6 +24,7 @@ from tirosh_vitalserver.testkit.domain.signal import (
     DEFAULT_SIGNAL_PROFILE,
     SignalProfile,
 )
+from tirosh_vitalserver.testkit.observability import emit_testkit_event
 from tirosh_vitalserver.testkit.types.json import JsonValue
 
 
@@ -39,6 +40,7 @@ def stream_realtime_payload(
     generate_frames: bool = False,
     signal_profile: SignalProfile = DEFAULT_SIGNAL_PROFILE,
     stop_event: threading.Event | None = None,
+    pause_event: threading.Event | None = None,
     runtime_state: RecorderRuntimeState | None = None,
     connector: SocketIoConnectorPort,
 ) -> RealtimeStreamResult:
@@ -53,11 +55,26 @@ def stream_realtime_payload(
     started = time.perf_counter()
     messages_sent = 0
     bytes_sent = 0
+    vrcode = runtime_state.vrcode if runtime_state is not None else None
 
     try:
+        emit_testkit_event(
+            "stream.starting",
+            target_url=base_url,
+            vrcode=vrcode,
+            interval_seconds=interval_seconds,
+            duration_seconds=duration_seconds,
+            max_messages=max_messages,
+            generate_frames=generate_frames,
+        )
         client = connector(base_url, timeout=timeout)
         if runtime_state is not None:
             register_vrecorder_lifecycle(client, state=runtime_state)
+        emit_testkit_event(
+            "stream.connected",
+            target_url=base_url,
+            vrcode=vrcode,
+        )
 
         try:
             while should_continue_stream(
@@ -67,6 +84,24 @@ def stream_realtime_payload(
                 max_messages=max_messages,
                 stop_event=stop_event,
             ):
+                while stream_is_paused(pause_event) and should_continue_stream(
+                    started,
+                    messages_sent=messages_sent,
+                    duration_seconds=duration_seconds,
+                    max_messages=max_messages,
+                    stop_event=stop_event,
+                ):
+                    time.sleep(0.2)
+
+                if not should_continue_stream(
+                    started,
+                    messages_sent=messages_sent,
+                    duration_seconds=duration_seconds,
+                    max_messages=max_messages,
+                    stop_event=stop_event,
+                ):
+                    break
+
                 frame_payload = next_frame_payload(
                     payload,
                     interval_seconds=interval_seconds,
@@ -98,6 +133,15 @@ def stream_realtime_payload(
             if client.connected:
                 client.disconnect()
     except Exception as exc:
+        emit_testkit_event(
+            "stream.failed",
+            target_url=base_url,
+            vrcode=vrcode,
+            messages_sent=messages_sent,
+            bytes_sent=bytes_sent,
+            elapsed_seconds=round(time.perf_counter() - started, 3),
+            error=str(exc),
+        )
         return RealtimeStreamResult(
             messages_sent=messages_sent,
             bytes_sent=bytes_sent,
@@ -105,6 +149,14 @@ def stream_realtime_payload(
             error=str(exc),
         )
 
+    emit_testkit_event(
+        "stream.completed",
+        target_url=base_url,
+        vrcode=vrcode,
+        messages_sent=messages_sent,
+        bytes_sent=bytes_sent,
+        elapsed_seconds=round(time.perf_counter() - started, 3),
+    )
     return RealtimeStreamResult(
         messages_sent=messages_sent,
         bytes_sent=bytes_sent,
@@ -168,3 +220,9 @@ def should_continue_stream(
         duration_seconds is not None
         and time.perf_counter() - started >= duration_seconds
     )
+
+
+def stream_is_paused(pause_event: threading.Event | None) -> bool:
+    """Return whether the stream loop should keep the connection idle."""
+
+    return pause_event is not None and pause_event.is_set()

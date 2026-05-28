@@ -80,10 +80,33 @@ final class RuntimeControlAPITests: XCTestCase {
         )
     }
 
+    func testTestKitEndpointsIncludeManagementActions() {
+        XCTAssertEqual(
+            RuntimeTestKitAPIEndpoint.matching(method: .post, path: "/dev/testkit/beds/delete"),
+            .deleteBeds
+        )
+        XCTAssertEqual(
+            RuntimeTestKitAPIEndpoint.matching(method: .post, path: "/dev/testkit/virtual-recorders/delete"),
+            .deleteVirtualRecorders
+        )
+        XCTAssertEqual(
+            RuntimeTestKitAPIEndpoint.matching(method: .post, path: "/dev/testkit/virtual-recorders/delete-orphan"),
+            .deleteVirtualRecorder
+        )
+        XCTAssertEqual(
+            RuntimeTestKitAPIEndpoint.matching(method: .post, path: "/dev/testkit/virtual-recorders/reset"),
+            .resetVirtualRecorders
+        )
+        XCTAssertTrue(RuntimeTestKitAPIEndpoint.matches(path: "/dev/testkit/status"))
+    }
+
     func testOpenAPIRoutesMatchRuntimeControlAPIEndpoints() throws {
         let documentedRoutes = try openAPIRouteKeys()
-        let endpointRoutes = Set(RuntimeControlAPIEndpoint.allCases.map { endpoint in
+        var endpointRoutes = Set(RuntimeControlAPIEndpoint.allCases.map { endpoint in
             "\(endpoint.route.method.rawValue) \(endpoint.route.path)"
+        })
+        endpointRoutes.formUnion(RuntimeTestKitAPIEndpoint.allCases.map { endpoint in
+            "\(endpoint.method.rawValue) \(endpoint.path)"
         })
 
         XCTAssertEqual(documentedRoutes, endpointRoutes)
@@ -109,6 +132,18 @@ final class RuntimeControlAPITests: XCTestCase {
 
             XCTAssertEqual(operation["x-runtime-control-scope"] as? String, endpoint.route.scope.rawValue)
             XCTAssertEqual(operation["x-runtime-control-access"] as? String, endpoint.clientAccess.rawValue)
+        }
+    }
+
+    func testOpenAPITestKitRoutesAreDocumentedAsTestOnly() throws {
+        let operations = try openAPIOperations()
+
+        for endpoint in RuntimeTestKitAPIEndpoint.allCases {
+            let key = "\(endpoint.method.rawValue) \(endpoint.path)"
+            let operation = try XCTUnwrap(operations[key])
+
+            XCTAssertEqual(operation["x-runtime-control-scope"] as? String, RuntimeControlAPIScope.runtimeControl.rawValue)
+            XCTAssertEqual(operation["x-runtime-control-implementation"] as? String, "testOnlyLocal")
         }
     }
 
@@ -281,6 +316,18 @@ final class RuntimeControlAPITests: XCTestCase {
             RuntimeVitalRecorderRecord?.self,
             from: router.route(.init(method: .get, path: "/vitaldb/recorders/VR_A"))
         )
+        let vitalBeds = try await decode(
+            [RuntimeVitalBedRecord].self,
+            from: router.route(.init(method: .get, path: "/vitaldb/beds"))
+        )
+        let vitalBed = try await decode(
+            RuntimeVitalBedRecord?.self,
+            from: router.route(.init(method: .get, path: "/vitaldb/beds/bed-a"))
+        )
+        let vitalRelationships = try await decode(
+            RuntimeVitalRelationshipHistory.self,
+            from: router.route(.init(method: .get, path: "/vitaldb/relationships"))
+        )
 
         XCTAssertTrue(capabilities.canControlRuntimeServices)
         XCTAssertEqual(overview.status.runtimeVersion, "1.2.3")
@@ -297,6 +344,11 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertEqual(vitalRecorders.recorders.first?.activityTimeline.first?.messageCount, 3)
         XCTAssertEqual(vitalRecorder?.vrcode, "VR_A")
         XCTAssertEqual(vitalRecorder?.activityTimeline.first?.byteCount, 2048)
+        XCTAssertEqual(vitalRecorder?.activityTimeline.first?.buckets.first?.bucketSeconds, 60)
+        XCTAssertEqual(vitalBeds.map(\.bedID), ["bed-a"])
+        XCTAssertEqual(vitalBed?.vrcode, "VR_A")
+        XCTAssertEqual(vitalRelationships.assignments.map(\.vrcode), ["VR_A"])
+        XCTAssertEqual(vitalRelationships.events.first?.eventType, .handoff)
     }
 
     @MainActor
@@ -322,14 +374,103 @@ final class RuntimeControlAPITests: XCTestCase {
     }
 
     @MainActor
-    func testRouterReturnsTypedNotImplementedErrorForKnownWriteEndpoint() async throws {
+    func testRouterReturnsTypedNotImplementedErrorForUnsupportedRestoreEndpoint() async throws {
         let router = RuntimeControlAPIRouter(handler: StubRuntimeControlAPIReadHandler())
 
-        let response = await router.route(.init(method: .put, path: "/runtime/settings"))
+        let request = RuntimeBackupRequest(
+            backup: RuntimeControlFileReference(kind: .localPath, value: "/redis-backups/redis.tar.gz")
+        )
+        let response = await router.route(.init(
+            method: .post,
+            path: "/host/backups/redis/restore",
+            body: try JSONEncoder().encode(request)
+        ))
         let error = try decodeError(from: response)
 
         XCTAssertEqual(response.status, .notImplemented)
         XCTAssertEqual(error.code, .endpointNotImplemented)
+    }
+
+    @MainActor
+    func testRouterExecutesRuntimeCommandEndpointsThroughHandler() async throws {
+        let handler = StubRuntimeControlAPIReadHandler()
+        let router = RuntimeControlAPIRouter(handler: handler)
+        let settingsRequest = RuntimeApplySettingsRequest(settings: RuntimeSettings(cpuCount: 3, memoryGiB: 6))
+        let repairProxyRequest = RuntimeRepairProxyRequest(proxyPort: 8080)
+
+        let applySettings = try await decode(RuntimeControlCommandResponse.self, from: router.route(.init(
+            method: .put,
+            path: "/runtime/settings",
+            body: try JSONEncoder().encode(settingsRequest)
+        )))
+        let start = try await decode(RuntimeControlCommandResponse.self, from: router.route(.init(method: .post, path: "/runtime/services/start")))
+        let stop = try await decode(RuntimeControlCommandResponse.self, from: router.route(.init(method: .post, path: "/runtime/services/stop")))
+        let repairRuntime = try await decode(RuntimeControlCommandResponse.self, from: router.route(.init(method: .post, path: "/runtime/services/repair-runtime")))
+        let repairProxy = try await decode(RuntimeControlCommandResponse.self, from: router.route(.init(
+            method: .post,
+            path: "/runtime/services/repair-proxy",
+            body: try JSONEncoder().encode(repairProxyRequest)
+        )))
+        let repairDatastore = try await decode(RuntimeControlCommandResponse.self, from: router.route(.init(method: .post, path: "/runtime/services/repair-datastore")))
+
+        XCTAssertEqual(applySettings.result.stdout, "settings 3")
+        XCTAssertEqual(start.result.stdout, "start services")
+        XCTAssertEqual(stop.result.stdout, "stop services")
+        XCTAssertEqual(repairRuntime.result.stdout, "repair runtime")
+        XCTAssertEqual(repairProxy.result.stdout, "repair proxy 8080")
+        XCTAssertEqual(repairDatastore.result.stdout, "repair datastore")
+    }
+
+    @MainActor
+    func testRouterExecutesHostArtifactEndpointsThroughHandler() async throws {
+        let router = RuntimeControlAPIRouter(handler: StubRuntimeControlAPIReadHandler())
+        let bundleRequest = RuntimeUpdateBundleRequest(
+            bundle: RuntimeControlFileReference(kind: .localPath, value: "/bundles/update.tar.gz")
+        )
+        let backupRequest = RuntimeBackupRequest(
+            backup: RuntimeControlFileReference(kind: .localPath, value: "/backups/latest")
+        )
+        let exportRequest = RuntimeExportLogsRequest(
+            destination: RuntimeControlFileReference(kind: .localPath, value: "/tmp/vitalserver-logs.zip")
+        )
+
+        let summary = try await decode(RuntimeUpdateBundleSummaryResponse.self, from: router.route(.init(
+            method: .post,
+            path: "/host/update-bundles/summary",
+            body: try JSONEncoder().encode(bundleRequest)
+        )))
+        let verify = try await decode(RuntimeControlCommandResponse.self, from: router.route(.init(
+            method: .post,
+            path: "/host/update-bundles/verify",
+            body: try JSONEncoder().encode(bundleRequest)
+        )))
+        let apply = try await decode(RuntimeControlCommandResponse.self, from: router.route(.init(
+            method: .post,
+            path: "/host/update-bundles/apply",
+            body: try JSONEncoder().encode(bundleRequest)
+        )))
+        let rollback = try await decode(RuntimeControlCommandResponse.self, from: router.route(.init(
+            method: .post,
+            path: "/host/backups/rollback",
+            body: try JSONEncoder().encode(backupRequest)
+        )))
+        let deleteBackup = try await decode(RuntimeControlCommandResponse.self, from: router.route(.init(
+            method: .delete,
+            path: "/host/backups",
+            body: try JSONEncoder().encode(backupRequest)
+        )))
+        let export = try await decode(RuntimeLogExportResult.self, from: router.route(.init(
+            method: .post,
+            path: "/host/logs/export",
+            body: try JSONEncoder().encode(exportRequest)
+        )))
+
+        XCTAssertEqual(summary.summary, "summary /bundles/update.tar.gz")
+        XCTAssertEqual(verify.result.stdout, "verify /bundles/update.tar.gz")
+        XCTAssertEqual(apply.result.stdout, "apply /bundles/update.tar.gz")
+        XCTAssertEqual(rollback.result.stdout, "rollback /backups/latest")
+        XCTAssertEqual(deleteBackup.result.stdout, "delete /backups/latest")
+        XCTAssertEqual(export.destination.path, "/tmp/vitalserver-logs.zip")
     }
 
     @MainActor
@@ -837,8 +978,27 @@ private struct StubRuntimeControlAPIReadHandler: RuntimeControlAPIReadHandler {
                         byteCount: 2048,
                         roomCount: 1,
                         messagesPerSecond: 0.01,
-                        bytesPerSecond: 6.8
+                        bytesPerSecond: 6.8,
+                        buckets: [
+                            VitalDBRecorderActivityBucket(
+                                bucketStartedAt: "2026-05-25T00:00:00Z",
+                                bucketSeconds: 60,
+                                messageCount: 3,
+                                byteCount: 2048,
+                                roomCount: 1
+                            ),
+                        ]
                     )
+                ),
+            ],
+            beds: [
+                VitalDBBedObservation(
+                    bedID: "bed-a",
+                    name: "Bed A",
+                    vrcode: "VR_A",
+                    lastSeenAt: "2026-05-25T00:00:00Z",
+                    patientConnected: true,
+                    online: true
                 ),
             ]
         )
@@ -846,6 +1006,40 @@ private struct StubRuntimeControlAPIReadHandler: RuntimeControlAPIReadHandler {
 
     func loadVitalDBRecorders() async throws -> RuntimeVitalRecorderHistory {
         RuntimeVitalRecorderHistory(observations: [try await loadVitalDBObservation()].compactMap { $0 })
+    }
+
+    func loadVitalDBRelationships() async throws -> RuntimeVitalRelationshipHistory {
+        RuntimeVitalRelationshipHistory(
+            assignments: [
+                RuntimeVitalBedAssignmentRecord(
+                    assignmentID: "bed-a:VR_A:2026-05-25T00:00:00Z",
+                    bedID: "bed-a",
+                    bedName: "Bed A",
+                    vrcode: "VR_A",
+                    startedAt: "2026-05-25T00:00:00Z",
+                    endedAt: nil,
+                    lastSeenAt: "2026-05-25T00:00:00Z",
+                    lastObservedAt: "2026-05-25T00:00:00Z",
+                    status: .online,
+                    patientConnected: true,
+                    observationCount: 1
+                ),
+            ],
+            events: [
+                RuntimeVitalRelationshipEventRecord(
+                    eventID: "2026-05-25T00:00:00Z:handoff:bed-a:VR_A",
+                    observedAt: "2026-05-25T00:00:00Z",
+                    eventType: .handoff,
+                    severity: .info,
+                    bedID: "bed-a",
+                    bedName: "Bed A",
+                    vrcode: "VR_A",
+                    previousVrcode: nil,
+                    previousBedID: nil,
+                    message: "Bed bed-a is linked to VRecorder VR_A."
+                ),
+            ]
+        )
     }
 
     func loadHealthStatus() async throws -> RuntimeStatus {
@@ -885,8 +1079,60 @@ private struct StubRuntimeControlAPIReadHandler: RuntimeControlAPIReadHandler {
         [RuntimeBackup(path: "/runtime/data/backups/redis/redis-1.tar.gz", sizeBytes: 512)]
     }
 
+    func applySettings(_ settings: RuntimeSettings) async throws -> RuntimeControlCommandResponse {
+        RuntimeControlCommandResponse(result: RuntimeCommandResult(exitCode: 0, stdout: "settings \(settings.cpuCount)", stderr: ""))
+    }
+
+    func startRuntimeServices() async throws -> RuntimeControlCommandResponse {
+        RuntimeControlCommandResponse(result: RuntimeCommandResult(exitCode: 0, stdout: "start services", stderr: ""))
+    }
+
+    func stopRuntimeServices() async throws -> RuntimeControlCommandResponse {
+        RuntimeControlCommandResponse(result: RuntimeCommandResult(exitCode: 0, stdout: "stop services", stderr: ""))
+    }
+
+    func repairRuntimeServices() async throws -> RuntimeControlCommandResponse {
+        RuntimeControlCommandResponse(result: RuntimeCommandResult(exitCode: 0, stdout: "repair runtime", stderr: ""))
+    }
+
+    func repairProxy(proxyPort: Int) async throws -> RuntimeControlCommandResponse {
+        RuntimeControlCommandResponse(result: RuntimeCommandResult(exitCode: 0, stdout: "repair proxy \(proxyPort)", stderr: ""))
+    }
+
+    func repairDatastore() async throws -> RuntimeControlCommandResponse {
+        RuntimeControlCommandResponse(result: RuntimeCommandResult(exitCode: 0, stdout: "repair datastore", stderr: ""))
+    }
+
     func createRedisBackup() async throws -> RuntimeControlCommandResponse {
         RuntimeControlCommandResponse(result: RuntimeCommandResult(exitCode: 0, stdout: "redis backup created", stderr: ""))
+    }
+
+    func updateBundleSummary(bundle: RuntimeControlFileReference) async throws -> RuntimeUpdateBundleSummaryResponse {
+        RuntimeUpdateBundleSummaryResponse(summary: "summary \(bundle.value)")
+    }
+
+    func verifyUpdateBundle(bundle: RuntimeControlFileReference) async throws -> RuntimeControlCommandResponse {
+        RuntimeControlCommandResponse(result: RuntimeCommandResult(exitCode: 0, stdout: "verify \(bundle.value)", stderr: ""))
+    }
+
+    func applyUpdateBundle(bundle: RuntimeControlFileReference) async throws -> RuntimeControlCommandResponse {
+        RuntimeControlCommandResponse(result: RuntimeCommandResult(exitCode: 0, stdout: "apply \(bundle.value)", stderr: ""))
+    }
+
+    func rollbackBackup(_ backup: RuntimeControlFileReference) async throws -> RuntimeControlCommandResponse {
+        RuntimeControlCommandResponse(result: RuntimeCommandResult(exitCode: 0, stdout: "rollback \(backup.value)", stderr: ""))
+    }
+
+    func deleteBackup(_ backup: RuntimeControlFileReference) async throws -> RuntimeControlCommandResponse {
+        RuntimeControlCommandResponse(result: RuntimeCommandResult(exitCode: 0, stdout: "delete \(backup.value)", stderr: ""))
+    }
+
+    func exportLogs(destination: RuntimeControlFileReference) async throws -> RuntimeLogExportResult {
+        RuntimeLogExportResult(destination: URL(fileURLWithPath: destination.value))
+    }
+
+    func uninstallRuntime(clean: Bool) async throws -> RuntimeControlCommandResponse {
+        RuntimeControlCommandResponse(result: RuntimeCommandResult(exitCode: 0, stdout: clean ? "clean uninstall" : "uninstall", stderr: ""))
     }
 }
 
@@ -992,6 +1238,27 @@ private final class FakeRuntimeControlClient: RuntimeControlClient, RuntimeHostC
 
     func loadVitalDBRecorders() -> RuntimeVitalRecorderHistory {
         RuntimeVitalRecorderHistory(observations: [loadVitalDBObservation()].compactMap { $0 })
+    }
+
+    func loadVitalDBRelationships() -> RuntimeVitalRelationshipHistory {
+        RuntimeVitalRelationshipHistory(
+            assignments: [
+                RuntimeVitalBedAssignmentRecord(
+                    assignmentID: "bed-a:VR_A:2026-05-25T00:00:00Z",
+                    bedID: "bed-a",
+                    bedName: "Bed A",
+                    vrcode: "VR_A",
+                    startedAt: "2026-05-25T00:00:00Z",
+                    endedAt: nil,
+                    lastSeenAt: "2026-05-25T00:00:00Z",
+                    lastObservedAt: "2026-05-25T00:00:00Z",
+                    status: .online,
+                    patientConnected: true,
+                    observationCount: 1
+                ),
+            ],
+            events: []
+        )
     }
 
     func loadBackups(latestBackupPath: String?) -> [RuntimeBackup] {

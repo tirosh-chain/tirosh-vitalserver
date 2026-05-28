@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import time
 from typing import cast
+from uuid import uuid4
 
+from tirosh_vitalserver.testkit.domain.bed import normalize_bed_room_names
 from tirosh_vitalserver.testkit.domain.recorder.montypes import RecorderTrackMontype
 from tirosh_vitalserver.testkit.domain.recorder.payloads.wire import (
     RecorderRecordPayload,
@@ -16,14 +18,40 @@ from tirosh_vitalserver.testkit.types.json import JsonArray, JsonObject
 
 def build_simulated_recorder_payload(
     *,
-    room_name: str = "testkit-bed",
+    room_names: tuple[str, ...],
     now: float | None = None,
     frame_seconds: float = 1.0,
 ) -> JsonObject:
-    """Build a self-contained Vital Recorder payload for productization checks."""
+    """Build a simulated VRecorder payload for explicit bed room names."""
 
     started_at = time.time() if now is None else now
     ended_at = started_at + frame_seconds
+    resolved_room_names = normalize_bed_room_names(room_names)
+
+    rooms: JsonObject = {}
+    for resolved_room_name in resolved_room_names:
+        rooms[resolved_room_name] = build_simulated_room_payload(
+            room_name=resolved_room_name,
+            started_at=started_at,
+            ended_at=ended_at,
+        )
+
+    return rooms
+
+
+def unique_testkit_vrcode(*, prefix: str = "testkit-recorder") -> str:
+    """Return a fresh VRecorder code for generated testkit sessions."""
+
+    return f"{prefix}-{uuid4().hex}"
+
+
+def build_simulated_room_payload(
+    *,
+    room_name: str,
+    started_at: float,
+    ended_at: float,
+) -> JsonObject:
+    """Build one simulated room payload."""
 
     room: RecorderRoomPayload = {
         "roomname": room_name,
@@ -140,7 +168,7 @@ def build_simulated_recorder_payload(
         "filts": [],
     }
 
-    return cast(JsonObject, {"testkit-recorder": room})
+    return cast(JsonObject, room)
 
 
 def make_wave_track(

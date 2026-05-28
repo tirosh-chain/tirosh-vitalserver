@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+product_root="/Library/Application Support/TiroshVitalServer"
+vm_home="${VITALSERVER_VM_HOME:-${product_root}/vm}"
+runtime_logs="${product_root}/logs/runtime"
+launch_daemons="/Library/LaunchDaemons"
+vm_bin="/usr/local/bin/vitalserver-vm"
+vm_label="com.tirosh.vitalserver-vm"
+vm_plist="${launch_daemons}/${vm_label}.plist"
+
+mkdir -p "${runtime_logs}"
+
+cat > "${vm_plist}" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>${vm_label}</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>${vm_bin}</string>
+    <string>start</string>
+  </array>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>VITALSERVER_VM_HOME</key>
+    <string>${vm_home}</string>
+    <key>VITALSERVER_VM_DETACHED</key>
+    <string>1</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>ThrottleInterval</key>
+  <integer>30</integer>
+
+  <key>ExitTimeOut</key>
+  <integer>300</integer>
+
+  <key>StandardOutPath</key>
+  <string>${runtime_logs}/launchd.out.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>${runtime_logs}/launchd.err.log</string>
+</dict>
+</plist>
+PLIST
+
+chmod 0644 "${vm_plist}"
+chown root:wheel "${vm_plist}"
+launchctl enable "system/${vm_label}" 2>/dev/null || true
+
+if launchctl print "system/${vm_label}" >/dev/null 2>&1; then
+  launchctl bootout "system/${vm_label}" 2>/dev/null || true
+  printf "VM launchd service unloaded so updated ExitTimeOut is used on next start: %s\n" "${vm_plist}"
+fi
+
+printf "VM launchd timeout refreshed: %s ExitTimeOut=300\n" "${vm_plist}"

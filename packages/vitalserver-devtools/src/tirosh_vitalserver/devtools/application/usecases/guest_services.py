@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 from tirosh_vitalserver.devtools.adapters.build_config import load_config
 from tirosh_vitalserver.devtools.adapters.guest_services.deploy_bundle import (
     ensure_vm_data_dirs,
@@ -39,11 +41,26 @@ def build_docker_image_bundle(
         platform=input.platform,
         compression_threads=input.compression_threads,
     )
-    return run_docker_image_bundle(
+    run_docker_image_bundle(
         plan=plan.image_plan,
         bundle_path=plan.bundle_path,
         compression_threads_value=plan.compression_threads,
     )
+    if docker_config.optional_images and docker_config.optional_bundle_path is not None:
+        optional_config = replace(docker_config, images=docker_config.optional_images)
+        optional_plan = docker_image_bundle_build_plan(
+            root=root,
+            docker_config=optional_config,
+            bundle_path=docker_config.optional_bundle_path,
+            platform=input.platform,
+            compression_threads=input.compression_threads,
+        )
+        run_docker_image_bundle(
+            plan=optional_plan.image_plan,
+            bundle_path=optional_plan.bundle_path,
+            compression_threads_value=optional_plan.compression_threads,
+        )
+    return 0
 
 
 def stage_guest_deployment(
@@ -64,6 +81,15 @@ def stage_guest_deployment(
         if input.docker_bundle is not None
         else None
     )
+    docker_config = load_docker_images_config(config, root)
+    optional_docker_bundle = (
+        docker_config.optional_bundle_path
+        if (
+            docker_config.optional_bundle_path
+            and docker_config.optional_bundle_path.is_file()
+        )
+        else None
+    )
 
     plan = guest_deploy_plan(
         root=root,
@@ -72,6 +98,7 @@ def stage_guest_deployment(
         vm_home=vm_home,
         config=deploy_config,
         docker_bundle=docker_bundle,
+        optional_docker_bundle=optional_docker_bundle,
     )
     stage_guest_deploy(plan)
     ensure_vm_data_dirs(plan)

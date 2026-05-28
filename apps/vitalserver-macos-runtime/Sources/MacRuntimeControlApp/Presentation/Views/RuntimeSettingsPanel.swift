@@ -20,7 +20,7 @@ struct RuntimeSettingsPanel: View {
                     settingSlider(
                         AppConstants.Labels.memory,
                         value: $viewModel.settings.memoryGiB,
-                        range: AppConstants.SettingsLimits.minimumMemoryGiB...AppConstants.SettingsLimits.maximumMemoryGiB,
+                        range: memoryRange,
                         step: AppConstants.SettingsLimits.memoryStepGiB,
                         suffix: AppConstants.Labels.unitGiB
                     )
@@ -88,9 +88,13 @@ struct RuntimeSettingsPanel: View {
         }
         .onAppear {
             clampCPUCountToSystemLimit()
+            clampMemoryToSystemLimit()
         }
         .onChange(of: viewModel.settings.cpuCount) { _ in
             clampCPUCountToSystemLimit()
+        }
+        .onChange(of: viewModel.settings.memoryGiB) { _ in
+            clampMemoryToSystemLimit()
         }
     }
 
@@ -127,6 +131,11 @@ struct RuntimeSettingsPanel: View {
         return minimum...AppConstants.SettingsLimits.maximumAllowedCPUCount
     }
 
+    private var memoryRange: ClosedRange<Int> {
+        let minimum = AppConstants.SettingsLimits.minimumMemoryGiB
+        return minimum...AppConstants.SettingsLimits.maximumAllowedMemoryGiB
+    }
+
     private var canApplySettingsForCurrentConnection: Bool {
         viewModel.capabilities.canEditVMResources
             || viewModel.capabilities.canEditNetworkExposure
@@ -161,6 +170,13 @@ struct RuntimeSettingsPanel: View {
         let clampedCPUCount = min(max(viewModel.settings.cpuCount, cpuCountRange.lowerBound), cpuCountRange.upperBound)
         if viewModel.settings.cpuCount != clampedCPUCount {
             viewModel.settings.cpuCount = clampedCPUCount
+        }
+    }
+
+    private func clampMemoryToSystemLimit() {
+        let clampedMemoryGiB = min(max(viewModel.settings.memoryGiB, memoryRange.lowerBound), memoryRange.upperBound)
+        if viewModel.settings.memoryGiB != clampedMemoryGiB {
+            viewModel.settings.memoryGiB = clampedMemoryGiB
         }
     }
 

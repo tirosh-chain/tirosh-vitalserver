@@ -2,6 +2,61 @@ import Foundation
 import MacHostRuntimeAdapter
 import RuntimeControl
 import Contracts
+import Core
+
+enum RuntimeEventPeriodOption: String, CaseIterable, Identifiable, Sendable {
+    case last15Minutes = "last-15-minutes"
+    case lastHour = "last-hour"
+    case last6Hours = "last-6-hours"
+    case last24Hours = "last-24-hours"
+    case last7Days = "last-7-days"
+    case all
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .last15Minutes:
+            return "Last 15 minutes"
+        case .lastHour:
+            return "Last hour"
+        case .last6Hours:
+            return "Last 6 hours"
+        case .last24Hours:
+            return "Last 24 hours"
+        case .last7Days:
+            return "Last 7 days"
+        case .all:
+            return AppConstants.StatusText.allRuntimeEvents
+        }
+    }
+
+    func sinceTimestamp(now: Date = Date()) -> String? {
+        guard let interval = interval else {
+            return nil
+        }
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.string(from: now.addingTimeInterval(-interval))
+    }
+
+    private var interval: TimeInterval? {
+        switch self {
+        case .last15Minutes:
+            return 15 * 60
+        case .lastHour:
+            return 60 * 60
+        case .last6Hours:
+            return 6 * 60 * 60
+        case .last24Hours:
+            return 24 * 60 * 60
+        case .last7Days:
+            return 7 * 24 * 60 * 60
+        case .all:
+            return nil
+        }
+    }
+}
 
 @MainActor
 final class RuntimeViewModel: ObservableObject {
@@ -21,16 +76,40 @@ final class RuntimeViewModel: ObservableObject {
     @Published var logStreaming = true
     @Published var useCustomAdvertisedURL = false
     @Published var isBusy = false
+    @Published var isApplyingUpdateBundle = false
     @Published var isCreatingRedisBackup = false
     var isRefreshingLogs = false
     @Published var releaseInfo = RuntimeReleaseInfo.generated
     @Published var installationInfo = RuntimeInstallInfo()
     @Published var runtimeEvents = RuntimeEventHistory(events: [])
+    @Published var runtimeEventsLast24HoursCount = 0
+    @Published var runtimeEventLimit = 50
+    @Published var runtimeEventPeriod = RuntimeEventPeriodOption.last24Hours.rawValue
+    @Published var runtimeEventFilter = ""
     @Published var vitalRecorders = RuntimeVitalRecorderHistory()
+    @Published var vitalRelationships = RuntimeVitalRelationshipHistory()
     @Published var containerObservation: RuntimeContainerObservation?
+    @Published var testKitStatus = RuntimeTestKitStatus(enabled: false, state: .disabled)
+    @Published var selectedTestKitSessionID = ""
+    @Published var selectedTestKitBedRoomNames: Set<String> = []
+    @Published var testKitVrcode = RuntimeViewModel.generatedTestKitVrcode()
+    @Published var testKitOrphanVrcode = ""
+    @Published var testKitScenario = RuntimeTestKitScenario.normal
+    @Published var testKitSignalProfile = RuntimeTestKitSignalProfile.normal
+    @Published var testKitRecorderCount = 1
+    @Published var testKitBedCount = 1
+    @Published var testKitBedPrefix = "testkit-bed"
+    @Published var testKitIntervalSeconds = 1.0
+    @Published var testKitDurationSeconds = 0.0
+    @Published var testKitMaxMessages = 0
+    @Published var testKitShiftTime = true
+    @Published var testKitGenerateFrames = true
+    @Published var isRunningTestKitAction = false
+    @Published var testKitActionMessage = ""
 
     let controlClient: any RuntimeControlClient
     let hostClient: any RuntimeHostClient
+    let testKitController: (any RuntimeTestKitControlling)?
     private let readWorker: MacHostRuntimeReadWorker?
     private let healthNotifications: any HealthNotifying
     private let healthNotificationCoordinator: RuntimeHealthNotificationCoordinator
@@ -44,6 +123,7 @@ final class RuntimeViewModel: ObservableObject {
     init(
         controlClient: any RuntimeControlClient,
         hostClient: any RuntimeHostClient,
+        testKitController: (any RuntimeTestKitControlling)? = nil,
         readWorker: MacHostRuntimeReadWorker? = nil,
         initialSettings: RuntimeSettings? = nil,
         healthNotifications: any HealthNotifying = HealthNotificationCenter(),
@@ -51,6 +131,7 @@ final class RuntimeViewModel: ObservableObject {
     ) {
         self.controlClient = controlClient
         self.hostClient = hostClient
+        self.testKitController = testKitController
         self.readWorker = readWorker
         self.healthNotifications = healthNotifications
         self.healthNotificationCoordinator = RuntimeHealthNotificationCoordinator(notifier: self.healthNotifications)
@@ -79,11 +160,11 @@ final class RuntimeViewModel: ObservableObject {
     }
 
     var shouldShowUpdateProgress: Bool {
-        isBusy || presentationFormatter.updateOperationInProgress(status)
+        isApplyingUpdateBundle || presentationFormatter.updateOperationInProgress(status)
     }
 
     var updateProgressMessage: String {
-        if isBusy {
+        if isApplyingUpdateBundle {
             return operationDetail.isEmpty ? message : operationDetail
         }
         return presentationFormatter.updateOperationDisplayMessage(status) ?? message
@@ -127,14 +208,40 @@ final class RuntimeViewModel: ObservableObject {
         healthNotificationCoordinator.handleTransition(to: status)
     }
 
-    func refreshRuntimeEvents(limit: Int = 100) async {
-        runtimeEvents = await loadRuntimeEventsSnapshot(limit: limit)
+    func refreshRuntimeEvents() async {
+        let now = Date()
+        runtimeEvents = await loadRuntimeEventsSnapshot(
+            query: RuntimeEventQuery(
+                limit: runtimeEventLimit,
+                eventType: selectedRuntimeEventType,
+                since: selectedRuntimeEventSince(now: now)
+            )
+        )
+        let last24Hours = await loadRuntimeEventsSnapshot(
+            query: RuntimeEventQuery(
+                limit: 1,
+                since: RuntimeEventPeriodOption.last24Hours.sinceTimestamp(now: now)
+            )
+        )
+        runtimeEventsLast24HoursCount = last24Hours.matchingCount ?? last24Hours.events.count
         containerObservation = status.containerObservation
             ?? runtimeEvents.events.first { $0.containerObservation != nil }?.containerObservation
     }
 
+    func selectedRuntimeEventSince(now: Date = Date()) -> String? {
+        (RuntimeEventPeriodOption(rawValue: runtimeEventPeriod) ?? .last24Hours).sinceTimestamp(now: now)
+    }
+
+    var selectedRuntimeEventType: RuntimeEventType? {
+        runtimeEventFilter.isEmpty ? nil : RuntimeEventType(rawValue: runtimeEventFilter)
+    }
+
     func refreshVitalRecorders() async {
-        vitalRecorders = await loadVitalRecordersSnapshot()
+        async let recorders = loadVitalRecordersSnapshot()
+        async let relationships = loadVitalRelationshipsSnapshot()
+        let snapshots = await (recorders, relationships)
+        vitalRecorders = snapshots.0
+        vitalRelationships = snapshots.1
     }
 
     func uninstallRuntime(clean: Bool = false) async {
@@ -379,7 +486,7 @@ final class RuntimeViewModel: ObservableObject {
                 while !Task.isCancelled {
                     await refreshLogs()
                     await refreshOperationDetail(fallback: runningMessage)
-                    try? await Task.sleep(nanoseconds: 1_000_000_000)
+                    try? await Task.sleep(nanoseconds: 2_000_000_000)
                 }
             }
             : nil
@@ -476,11 +583,11 @@ final class RuntimeViewModel: ObservableObject {
         return await controlClient.loadHealthStatus(settings: settings)
     }
 
-    private func loadRuntimeEventsSnapshot(limit: Int) async -> RuntimeEventHistory {
+    private func loadRuntimeEventsSnapshot(query: RuntimeEventQuery) async -> RuntimeEventHistory {
         if let readWorker {
-            return await readWorker.loadRuntimeEvents(limit: limit)
+            return await readWorker.loadRuntimeEvents(query: query)
         }
-        return controlClient.loadRuntimeEvents(limit: limit)
+        return controlClient.loadRuntimeEvents(query: query)
     }
 
     private func loadVitalRecordersSnapshot() async -> RuntimeVitalRecorderHistory {
@@ -488,6 +595,13 @@ final class RuntimeViewModel: ObservableObject {
             return await readWorker.loadVitalDBRecorders()
         }
         return controlClient.loadVitalDBRecorders()
+    }
+
+    private func loadVitalRelationshipsSnapshot() async -> RuntimeVitalRelationshipHistory {
+        if let readWorker {
+            return await readWorker.loadVitalDBRelationships()
+        }
+        return controlClient.loadVitalDBRelationships()
     }
 
     private func loadBackupsSnapshot(latestBackupPath: String?) async -> [RuntimeBackup] {

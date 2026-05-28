@@ -54,7 +54,7 @@ extension RuntimeViewModel {
     }
 
     func openRuntimeControlDevConsole() {
-        openRuntimeURL(AppConstants.RuntimeControlAPI.devConsoleURL)
+        openRuntimeURL(RuntimeControlLocalAPIConstants.devConsoleURL)
     }
 
     private func openRuntimeURL(_ rawURL: String) {

@@ -13,6 +13,8 @@ final class RuntimeLogExporterTests: XCTestCase {
         XCTAssertTrue(destinations.contains("diagnostics/status/\(RuntimeFileNames.runtimeStatus)"))
         XCTAssertTrue(destinations.contains("diagnostics/status/\(RuntimeFileNames.runtimeEvents)"))
         XCTAssertTrue(destinations.contains("diagnostics/status/\(RuntimeFileNames.runtimeObservabilityDB)"))
+        XCTAssertTrue(destinations.contains("diagnostics/status/\(RuntimeFileNames.runtimeObservabilityDB)-wal"))
+        XCTAssertTrue(destinations.contains("diagnostics/status/\(RuntimeFileNames.runtimeObservabilityDB)-shm"))
         XCTAssertTrue(destinations.contains("diagnostics/guest/\(RuntimeFileNames.runtimeState)"))
         XCTAssertTrue(destinations.contains("diagnostics/guest/\(RuntimeFileNames.vmIP)"))
         XCTAssertTrue(destinations.contains("diagnostics/runtime/vm-config.json"))
@@ -20,6 +22,15 @@ final class RuntimeLogExporterTests: XCTestCase {
         XCTAssertTrue(destinations.contains("diagnostics/guest/runtime-config.json"))
         XCTAssertTrue(destinations.contains("diagnostics/host/com.tirosh.vitalserver-proxy.plist"))
         XCTAssertTrue(destinations.contains("diagnostics/host/vitalserver-nginx.conf"))
+    }
+
+    func testDefaultRotatedExportFallbacksIncludeRuntimeEventHistory() {
+        let runtimeEventSet = RuntimeLogExportRotatedFallbackSet.defaultSets().first {
+            $0.sourceFilePrefix == "\(RuntimeFileNames.runtimeEvents)."
+        }
+
+        XCTAssertEqual(runtimeEventSet?.relativeDestinationDirectory, "diagnostics/status")
+        XCTAssertEqual(runtimeEventSet?.destinationFilePrefix, "\(RuntimeFileNames.runtimeEvents).")
     }
 
     func testExportRefreshesCollectionAndIncludesFallbackGuestLogs() async throws {

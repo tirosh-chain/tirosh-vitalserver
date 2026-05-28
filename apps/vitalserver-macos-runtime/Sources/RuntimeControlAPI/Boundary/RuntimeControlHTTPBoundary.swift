@@ -89,6 +89,7 @@ public protocol RuntimeControlAPIReadHandler {
     func loadEvents(query: RuntimeEventQuery) async throws -> RuntimeEventHistory
     func loadVitalDBObservation() async throws -> VitalDBObservationDocument?
     func loadVitalDBRecorders() async throws -> RuntimeVitalRecorderHistory
+    func loadVitalDBRelationships() async throws -> RuntimeVitalRelationshipHistory
     func loadHealthStatus() async throws -> RuntimeStatus
     func loadSettings() async throws -> RuntimeSettings
     func loadReleaseInfo() async throws -> RuntimeReleaseInfo
@@ -96,7 +97,20 @@ public protocol RuntimeControlAPIReadHandler {
     func loadLogText(request: RuntimeLogTextRequest) async throws -> RuntimeLogTextResponse
     func loadBackups() async throws -> [RuntimeBackup]
     func loadRedisBackups() async throws -> [RuntimeBackup]
+    func applySettings(_ settings: RuntimeSettings) async throws -> RuntimeControlCommandResponse
+    func startRuntimeServices() async throws -> RuntimeControlCommandResponse
+    func stopRuntimeServices() async throws -> RuntimeControlCommandResponse
+    func repairRuntimeServices() async throws -> RuntimeControlCommandResponse
+    func repairProxy(proxyPort: Int) async throws -> RuntimeControlCommandResponse
+    func repairDatastore() async throws -> RuntimeControlCommandResponse
     func createRedisBackup() async throws -> RuntimeControlCommandResponse
+    func updateBundleSummary(bundle: RuntimeControlFileReference) async throws -> RuntimeUpdateBundleSummaryResponse
+    func verifyUpdateBundle(bundle: RuntimeControlFileReference) async throws -> RuntimeControlCommandResponse
+    func applyUpdateBundle(bundle: RuntimeControlFileReference) async throws -> RuntimeControlCommandResponse
+    func rollbackBackup(_ backup: RuntimeControlFileReference) async throws -> RuntimeControlCommandResponse
+    func deleteBackup(_ backup: RuntimeControlFileReference) async throws -> RuntimeControlCommandResponse
+    func exportLogs(destination: RuntimeControlFileReference) async throws -> RuntimeLogExportResult
+    func uninstallRuntime(clean: Bool) async throws -> RuntimeControlCommandResponse
 }
 
 @MainActor
@@ -192,10 +206,21 @@ public struct RuntimeControlAPIRouter {
                 let vrcode = try request.vitalDBRecorderCode()
                 let recorder = try await handler.loadVitalDBRecorders().recorders.first { $0.vrcode == vrcode }
                 return try jsonResponse(recorder)
+            case .vitalDBBeds:
+                return try await jsonResponse(handler.loadVitalDBRecorders().beds)
+            case .vitalDBBed:
+                let bedID = try request.vitalDBBedID()
+                let bed = try await handler.loadVitalDBRecorders().beds.first { $0.bedID == bedID }
+                return try jsonResponse(bed)
+            case .vitalDBRelationships:
+                return try await jsonResponse(handler.loadVitalDBRelationships())
             case .health:
                 return try await jsonResponse(handler.loadHealthStatus())
             case .settings:
                 return try await jsonResponse(handler.loadSettings())
+            case .applySettings:
+                let settingsRequest = try request.decodedBody(RuntimeApplySettingsRequest.self)
+                return try await jsonResponse(handler.applySettings(settingsRequest.settings))
             case .release:
                 return try await jsonResponse(handler.loadReleaseInfo())
             case .installInfo:
@@ -214,21 +239,41 @@ public struct RuntimeControlAPIRouter {
                 return try await jsonResponse(handler.loadBackups())
             case .redisBackups:
                 return try await jsonResponse(handler.loadRedisBackups())
+            case .startServices:
+                return try await jsonResponse(handler.startRuntimeServices())
+            case .stopServices:
+                return try await jsonResponse(handler.stopRuntimeServices())
+            case .repairRuntimeServices:
+                return try await jsonResponse(handler.repairRuntimeServices())
+            case .repairProxy:
+                let repairRequest = try request.decodedBody(RuntimeRepairProxyRequest.self)
+                return try await jsonResponse(handler.repairProxy(proxyPort: repairRequest.proxyPort))
+            case .repairDatastore:
+                return try await jsonResponse(handler.repairDatastore())
             case .createRedisBackup:
                 return try await jsonResponse(handler.createRedisBackup())
-            case .applySettings,
-                 .startServices,
-                 .stopServices,
-                 .repairProxy,
-                 .repairDatastore,
-                 .uninstall,
-                 .restoreRedisBackup,
-                 .updateBundleSummary,
-                 .verifyUpdateBundle,
-                 .applyUpdateBundle,
-                 .rollbackBackup,
-                 .deleteBackup,
-                 .exportLogs:
+            case .updateBundleSummary:
+                let bundleRequest = try request.decodedBody(RuntimeUpdateBundleRequest.self)
+                return try await jsonResponse(handler.updateBundleSummary(bundle: bundleRequest.bundle))
+            case .verifyUpdateBundle:
+                let bundleRequest = try request.decodedBody(RuntimeUpdateBundleRequest.self)
+                return try await jsonResponse(handler.verifyUpdateBundle(bundle: bundleRequest.bundle))
+            case .applyUpdateBundle:
+                let bundleRequest = try request.decodedBody(RuntimeUpdateBundleRequest.self)
+                return try await jsonResponse(handler.applyUpdateBundle(bundle: bundleRequest.bundle))
+            case .rollbackBackup:
+                let backupRequest = try request.decodedBody(RuntimeBackupRequest.self)
+                return try await jsonResponse(handler.rollbackBackup(backupRequest.backup))
+            case .deleteBackup:
+                let backupRequest = try request.decodedBody(RuntimeBackupRequest.self)
+                return try await jsonResponse(handler.deleteBackup(backupRequest.backup))
+            case .exportLogs:
+                let exportRequest = try request.decodedBody(RuntimeExportLogsRequest.self)
+                return try await jsonResponse(handler.exportLogs(destination: exportRequest.destination))
+            case .uninstall:
+                let uninstallRequest = try request.decodedBody(RuntimeUninstallRequest.self)
+                return try await jsonResponse(handler.uninstallRuntime(clean: uninstallRequest.clean))
+            case .restoreRedisBackup:
                 return errorResponse(
                     status: .notImplemented,
                     code: .endpointNotImplemented,
@@ -313,6 +358,8 @@ public struct RuntimeControlAPIRouter {
         case .vitalDBRecorders:
             return nil
         case .vitalDBRecorder:
+            return nil
+        case .vitalDBRelationships:
             return nil
         case .logStream:
             do {
@@ -686,6 +733,21 @@ public extension RuntimeControlHTTPRequest {
               !decoded.isEmpty
         else {
             throw RuntimeControlHTTPQueryError.invalidPathParameter("vrcode")
+        }
+        return decoded
+    }
+
+    func vitalDBBedID() throws -> String {
+        let components = RuntimeControlAPIEndpoint
+            .normalizedPathForRequest(path)
+            .split(separator: "/", omittingEmptySubsequences: true)
+        guard components.count == 3,
+              components[0] == "vitaldb",
+              components[1] == "beds",
+              let decoded = String(components[2]).removingPercentEncoding,
+              !decoded.isEmpty
+        else {
+            throw RuntimeControlHTTPQueryError.invalidPathParameter("bedID")
         }
         return decoded
     }

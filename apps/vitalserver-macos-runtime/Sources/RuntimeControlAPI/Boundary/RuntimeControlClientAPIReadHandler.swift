@@ -34,6 +34,10 @@ public struct RuntimeControlClientAPIReadHandler: RuntimeControlAPIReadHandler {
         client.loadVitalDBRecorders()
     }
 
+    public func loadVitalDBRelationships() async throws -> RuntimeVitalRelationshipHistory {
+        client.loadVitalDBRelationships()
+    }
+
     public func loadHealthStatus() async throws -> RuntimeStatus {
         let settings = client.loadSettings()
         return await client.loadHealthStatus(settings: settings)
@@ -80,18 +84,98 @@ public struct RuntimeControlClientAPIReadHandler: RuntimeControlAPIReadHandler {
         return hostClient.loadRedisBackups()
     }
 
+    public func applySettings(_ settings: RuntimeSettings) async throws -> RuntimeControlCommandResponse {
+        RuntimeControlCommandResponse(result: try await client.applySettings(settings))
+    }
+
+    public func startRuntimeServices() async throws -> RuntimeControlCommandResponse {
+        RuntimeControlCommandResponse(result: try await client.startRuntimeServices())
+    }
+
+    public func stopRuntimeServices() async throws -> RuntimeControlCommandResponse {
+        RuntimeControlCommandResponse(result: try await client.stopRuntimeServices())
+    }
+
+    public func repairRuntimeServices() async throws -> RuntimeControlCommandResponse {
+        RuntimeControlCommandResponse(result: try await client.repairRuntimeServices())
+    }
+
+    public func repairProxy(proxyPort: Int) async throws -> RuntimeControlCommandResponse {
+        RuntimeControlCommandResponse(result: try await client.repairProxy(proxyPort: proxyPort))
+    }
+
+    public func repairDatastore() async throws -> RuntimeControlCommandResponse {
+        RuntimeControlCommandResponse(result: try await client.repairDatastore())
+    }
+
     public func createRedisBackup() async throws -> RuntimeControlCommandResponse {
         RuntimeControlCommandResponse(result: try await client.createRedisBackup())
+    }
+
+    public func updateBundleSummary(bundle: RuntimeControlFileReference) async throws -> RuntimeUpdateBundleSummaryResponse {
+        guard let hostClient else {
+            throw RuntimeControlAPIReadHandlerError.hostAffordanceUnavailable
+        }
+        return RuntimeUpdateBundleSummaryResponse(summary: hostClient.updateBundleSummary(url: try localFileURL(bundle)))
+    }
+
+    public func verifyUpdateBundle(bundle: RuntimeControlFileReference) async throws -> RuntimeControlCommandResponse {
+        guard let hostClient else {
+            throw RuntimeControlAPIReadHandlerError.hostAffordanceUnavailable
+        }
+        return RuntimeControlCommandResponse(result: try await hostClient.verifyUpdateBundle(url: try localFileURL(bundle)))
+    }
+
+    public func applyUpdateBundle(bundle: RuntimeControlFileReference) async throws -> RuntimeControlCommandResponse {
+        guard let hostClient else {
+            throw RuntimeControlAPIReadHandlerError.hostAffordanceUnavailable
+        }
+        return RuntimeControlCommandResponse(result: try await hostClient.applyUpdateBundle(url: try localFileURL(bundle)))
+    }
+
+    public func rollbackBackup(_ backup: RuntimeControlFileReference) async throws -> RuntimeControlCommandResponse {
+        guard let hostClient else {
+            throw RuntimeControlAPIReadHandlerError.hostAffordanceUnavailable
+        }
+        return RuntimeControlCommandResponse(result: try await hostClient.rollbackRuntime(backupURL: try localFileURL(backup)))
+    }
+
+    public func deleteBackup(_ backup: RuntimeControlFileReference) async throws -> RuntimeControlCommandResponse {
+        guard let hostClient else {
+            throw RuntimeControlAPIReadHandlerError.hostAffordanceUnavailable
+        }
+        return RuntimeControlCommandResponse(result: try await hostClient.deleteBackup(url: try localFileURL(backup)))
+    }
+
+    public func exportLogs(destination: RuntimeControlFileReference) async throws -> RuntimeLogExportResult {
+        guard let hostClient else {
+            throw RuntimeControlAPIReadHandlerError.hostAffordanceUnavailable
+        }
+        return try await hostClient.exportLogs(to: try localFileURL(destination))
+    }
+
+    public func uninstallRuntime(clean: Bool) async throws -> RuntimeControlCommandResponse {
+        RuntimeControlCommandResponse(result: try await client.uninstallRuntime(clean: clean))
+    }
+
+    private func localFileURL(_ reference: RuntimeControlFileReference) throws -> URL {
+        guard reference.kind == .localPath else {
+            throw RuntimeControlAPIReadHandlerError.unsupportedFileReference(reference.kind)
+        }
+        return URL(fileURLWithPath: reference.value)
     }
 }
 
 public enum RuntimeControlAPIReadHandlerError: LocalizedError, Equatable {
     case hostAffordanceUnavailable
+    case unsupportedFileReference(RuntimeControlFileReferenceKind)
 
     public var errorDescription: String? {
         switch self {
         case .hostAffordanceUnavailable:
             return "Host affordance client is unavailable."
+        case .unsupportedFileReference(let kind):
+            return "File reference kind \(kind.rawValue) is not supported by this local Runtime Control handler."
         }
     }
 }

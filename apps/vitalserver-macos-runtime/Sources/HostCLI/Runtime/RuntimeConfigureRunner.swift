@@ -77,11 +77,11 @@ struct RuntimeConfigureRunner {
         case .memoryGiB(let memoryGiB):
             guard stride(
                     from: Constants.Defaults.minimumMemoryGiB,
-                    through: Constants.Defaults.maximumMemoryGiB,
+                    through: Constants.Defaults.maximumAllowedMemoryGiB,
                     by: Constants.Defaults.memoryStepGiB
                   ).contains(Int(memoryGiB)) else {
                 throw LauncherError.missingArgument(
-                    "--memory-gib must be between \(Constants.Defaults.minimumMemoryGiB) and \(Constants.Defaults.maximumMemoryGiB) in \(Constants.Defaults.memoryStepGiB) GiB steps"
+                    "--memory-gib must be between \(Constants.Defaults.minimumMemoryGiB) and \(Constants.Defaults.maximumAllowedMemoryGiB) in \(Constants.Defaults.memoryStepGiB) GiB steps"
                 )
             }
             vmConfig.memoryMiB = memoryGiB * 1024

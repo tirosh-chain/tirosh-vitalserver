@@ -60,8 +60,11 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
         for path in [postinstall, proxy_run, uninstall, components]
     )
     uninstall_text = uninstall.read_text(encoding="utf-8")
+    postinstall_text = postinstall.read_text(encoding="utf-8")
     assert "${PRODUCT_ROOT}" not in rendered
     assert "/Library/Application Support/TiroshVitalServer" in rendered
+    assert "postinstall_timeout_seconds=300" in postinstall_text
+    assert "runtime install timed out timeoutSeconds=" in postinstall_text
     assert 'preserve_path "${vm_home}/data/backups/redis"' in uninstall_text
     assert "Applications/VitalServer Helper.app" in components.read_text(
         encoding="utf-8"

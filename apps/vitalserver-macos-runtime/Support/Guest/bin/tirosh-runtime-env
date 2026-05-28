@@ -12,6 +12,7 @@ DEFAULT_CONFIG = {
     "redisHost": "redis",
     "redisPort": 6379,
     "trustProxy": True,
+    "testkitEnabled": True,
     "vitalFilesDirectory": "/mnt/tirosh-vital-files",
 }
 
@@ -46,6 +47,7 @@ def main() -> int:
     print(export_line("VITALSERVER_PUBLIC_PORT", config["publicPort"]))
     print(export_line("VITALSERVER_ADMIN_PASSWORD", config["adminPassword"]))
     print(export_line("VITALSERVER_VITAL_FILES_DIR", config["vitalFilesDirectory"]))
+    print(export_line("TIROSH_TESTKIT_ENABLED", config["testkitEnabled"]))
     return 0
 
 

@@ -58,7 +58,7 @@ VM runtime 문서는 [VitalServer macOS Runtime](vitalserver-macos-runtime.md)�
 | [Packaging and Update](macos-runtime/packaging.md) | PKG/DMG 빌드, 설치 흐름, install settings, update bundle 계약 |
 | [Update](macos-runtime/update.md) | update bundle 적용 과정, 보존/변경 범위, guest-side activation, rollback 계약 |
 | [Runtime](macos-runtime/runtime.md) | boot asset, cloud-init, guest bootstrap, network/identity/signing 정책 |
-| [Troubleshooting](macos-runtime/troubleshooting.md) | PoC와 패키징 중 확인한 증상과 조치 |
+| [Troubleshooting](troubleshooting.md) | PoC와 패키징 중 확인한 증상과 조치 |
 | [ADR 0002](adr/0002-helper-client-boundary-for-local-and-remote-runtime.md) | Web/PWA Helper UI, macOS native shell, local/remote RuntimeControlClient boundary |
 | [ADR 0003](adr/0003-helper-layer-and-component-version-model.md) | Helper UI, Native Shell, Runtime Control API, Updater, Supervisor, VM Driver, Service Stack, VM Image layer와 version model |
 | [ADR 0004](adr/0004-product-update-and-vm-image-update-contract.md) | Product Update, VM Image Update, two-phase Product Update 구분 |

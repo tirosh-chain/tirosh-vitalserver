@@ -81,6 +81,37 @@ Watchdog은 raw source를 제품 관점 status/event로 정규화합니다.
 - VitalDB observation snapshot은 `runtime-observability.sqlite`의 `vitaldb_*` namespace에 저장합니다.
 - 자동 복구 판단도 watchdog에서 수행합니다.
 
+### Status, event, recovery decision
+
+Watchdog은 현재 상태 판단과 과거 이력 기록을 분리합니다.
+
+| 구분 | 의미 | SoT/Owner | 사용처 |
+|---|---|---|---|
+| SoT | 각 owner가 작성한 원본 상태/로그 | host runtime, guest worker, launchd | watchdog 입력 |
+| Status | 현재 제품 상태를 정규화한 최신 snapshot | `status/runtime-status.json` | Helper UI, Runtime Control API, watchdog guard |
+| Event | 의미 있는 상태 변화와 판단 이력 | `status/runtime-events.jsonl`, SQLite index | Observability, troubleshooting, API event history |
+| Recovery decision | 이번 watchdog tick에서 어떤 action을 할지에 대한 일회성 판단 | `RuntimeWatchdogRecoveryPolicy` | skip/suppress/recover/action dispatch |
+
+Watchdog은 event history로 복구 여부를 판단하지 않습니다. Event는 append-only history라 중복, 누락,
+순서 문제가 생길 수 있기 때문입니다. 복구 판단은 현재 SoT를 읽어 만든 `RuntimeHealthSnapshot`과
+active operation guard를 기준으로 합니다.
+
+Recovery decision은 아래처럼 나뉩니다.
+
+| Decision | Status/Event | Watchdog action |
+|---|---|---|
+| `healthy` | `healthy` status 기록 | action 없음 |
+| protected operation | `watchdog-skipped` event 기록 | VM/proxy restart 금지 |
+| `recoveryDisabled` | `degraded` status 기록 | action 없음 |
+| `recoverySuppressed` | `critical` status + `recovery-suppressed` event 기록 | VM/proxy restart 금지 |
+| `unrecoverable` | `critical` status 기록 | action 없음 |
+| `recover` | `recovering` status + recovery event 기록 | policy가 허용한 service만 restart |
+
+`recoverySuppressed`는 자동 재시작이 위험한 상태입니다. 예를 들어 launchd/kernel log에서
+`storage device attachment is invalid`, `EXT4-fs error`, `Remounting filesystem read-only`,
+`Input/output error`가 관측되면 VM disk/data 보존이 먼저 필요하므로 watchdog은 VM restart를 반복하지
+않습니다.
+
 ### Runtime Control API
 
 Runtime Control API는 정규화된 결과를 노출합니다.
@@ -113,6 +144,20 @@ SQLite는 raw log의 대체물이 아니라 API 조회용 index/read model입니
 - SQLite write 실패는 runtime 실패로 보지 않습니다. warning event 또는 diagnostics 대상으로만 둡니다.
 - SQLite 파일은 삭제 가능해야 하고, raw log/JSONL에서 재구축할 수 있어야 합니다.
 - local runtime 특성상 WAL mode를 사용하고, schema migration을 명시적으로 관리합니다.
+- log export는 SQLite main DB뿐 아니라 `runtime-observability.sqlite-wal`,
+  `runtime-observability.sqlite-shm`도 포함해야 합니다. WAL sidecar가 빠지면 최신 read model row가
+  export에서 누락될 수 있습니다.
+
+### Runtime event retention
+
+`runtime-events.jsonl`은 runtime operational event의 1차 SoT입니다. 단일 파일이 무제한 커지면 export,
+API fallback read, 파일 손상 영향 범위가 모두 커지므로 size 기반 rotation을 적용합니다.
+
+- 현재 파일: `status/runtime-events.jsonl`
+- rotated 파일: `status/runtime-events.jsonl.1`, `.2`, ...
+- JSONL read path는 rotated 파일을 오래된 순서부터 읽고 마지막에 현재 파일을 읽습니다.
+- SQLite read model은 조회용 index이므로 JSONL rotation이 있더라도 event SoT 역할을 대신하지 않습니다.
+- log export는 현재 JSONL, rotated JSONL, SQLite main DB, SQLite WAL/SHM sidecar를 함께 포함해야 합니다.
 
 ## Target flow
 
@@ -296,6 +341,10 @@ Runtime operational event type은 API와 JSONL의 public contract입니다.
 | `vitaldb-anomaly-detected` | watchdog | VitalDB observer가 recorder/bed/proxy anomaly를 계산함 |
 | `recovery-triggered` | watchdog | recovery policy가 복구 작업을 시작함 |
 | `recovery-completed` | watchdog | recovery 작업 후 runtime이 다시 관측됨 |
+| `watchdog-skipped` | watchdog | protected/grace 상태라 recovery를 건너뜀 |
+| `recovery-planned` | watchdog | recovery policy가 service restart 계획을 생성함 |
+| `recovery-suppressed` | watchdog | disk/filesystem 보호 등으로 자동 recovery를 금지함 |
+| `service-restart-dispatched` | watchdog | VM/proxy/guest-log-sync service restart 명령을 보냄 |
 | `runtime-command-started` | host runtime | start/stop/configure/update 등 host command 시작 |
 | `runtime-command-completed` | host runtime | host command 성공 종료 |
 | `runtime-command-failed` | host runtime | host command 실패 종료 |
@@ -329,6 +378,33 @@ vitaldb_observation_snapshots (
   payload_json text not null
 );
 
+vitaldb_bed_assignments (
+  id text primary key,
+  bed_id text not null,
+  bed_name text,
+  vrcode text not null,
+  started_at text not null,
+  ended_at text,
+  last_seen_at text,
+  last_observed_at text not null,
+  status text not null,
+  patient_connected integer,
+  observation_count integer not null
+);
+
+vitaldb_relationship_events (
+  id text primary key,
+  observed_at text not null,
+  event_type text not null,
+  severity text not null,
+  bed_id text,
+  bed_name text,
+  vrcode text,
+  previous_vrcode text,
+  previous_bed_id text,
+  message text not null
+);
+
 runtime_observations (
   id text primary key,
   timestamp text not null,
@@ -359,7 +435,11 @@ audit_event_index (
 );
 ```
 
-초기 구현은 `runtime_events`와 `vitaldb_observation_snapshots`부터 시작했습니다.
+초기 구현은 `runtime_events`, `vitaldb_observation_snapshots`,
+`vitaldb_bed_assignments`, `vitaldb_relationship_events`부터 시작했습니다.
+Bed/VRecorder 관계 read model은 observation snapshot append 시점에 projection합니다. 원본 snapshot은
+canonical source로 유지하고, assignment/event table은 삭제 후 snapshot history에서 다시 만들 수 있는
+derived read model입니다.
 `container_log_index`와 `audit_event_index`는 raw log retention/rotation 정책이 정리된 뒤 ingest합니다.
 
 ## VitalDB observer policy
@@ -373,6 +453,7 @@ audit_event_index (
 | recorder/bed/anomaly 계산 | `vitaldb-observer` |
 | collection/readiness diagnostic stdout 로그 | `vitaldb-observer` |
 | observation history/read model 저장 | watchdog/runtime observability SQLite |
+| bed/VRecorder assignment projection | watchdog/runtime observability SQLite |
 | Helper/PWA 조회 API | Runtime Control API |
 
 이 구조는 수집/계산 장애를 traffic path와 watchdog core loop에서 분리하면서도, 제품이 보는 최종 관측

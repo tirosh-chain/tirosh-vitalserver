@@ -1,6 +1,6 @@
 "use strict";
 
-function createWebSocketParser(onText) {
+function createWebSocketParser(onFrame) {
   let buffer = Buffer.alloc(0);
 
   return {
@@ -9,7 +9,9 @@ function createWebSocketParser(onText) {
       while (buffer.length >= 2) {
         const frame = readFrame(buffer);
         if (!frame) return;
-        if (frame.opcode === 1) onText(frame.payload.toString("utf8"));
+        if (frame.opcode === 1 || frame.opcode === 2) {
+          onFrame(frame.payload, frame.opcode);
+        }
         buffer = buffer.slice(frame.nextOffset);
       }
     },

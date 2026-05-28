@@ -25,18 +25,24 @@ def test_testkit_config_loads_toml_file(tmp_path: Path) -> None:
 [scenario]
 name = "load"
 
+[beds]
+count = 5
+
 [recorder]
 payload = "sample_data.json"
 recorders = 5
 default_scenario = "normal"
 
-[[recorder.beds]]
+[[recorder.bed_scenarios]]
 index = 2
 scenario = "tachycardia"
 
 [server]
 base_url = "http://localhost:28080"
 poll_interval_seconds = 2
+
+[bed_registry]
+state_path = "/tmp/bed-registry.json"
 
 [transfer]
 concurrency = 10
@@ -49,11 +55,16 @@ repeat = 100
     assert config.scenario.name == "load"
     assert config.server.base_url == "http://localhost:28080"
     assert config.server.poll_interval_seconds == 2
+    assert config.bed_registry.state_path == Path("/tmp/bed-registry.json")
+    assert config.beds.count == 5
     assert config.recorder.payload == Path("sample_data.json")
     assert config.recorder.recorders == 5
     assert config.recorder.default_scenario == RecorderSignalScenario.NORMAL
-    assert config.recorder.beds[0].index == 2
-    assert config.recorder.beds[0].scenario == RecorderSignalScenario.TACHYCARDIA
+    assert config.recorder.bed_scenarios[0].index == 2
+    assert (
+        config.recorder.bed_scenarios[0].scenario
+        == RecorderSignalScenario.TACHYCARDIA
+    )
     assert config.transfer.concurrency == 10
     assert config.transfer.repeat == 100
 
@@ -86,6 +97,35 @@ def test_run_scenario_uses_requested_scenario(
     assert calls == ["health", "load"]
 
 
+def test_run_scenario_reuses_generated_beds_across_steps(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = VitalServerCheckConfig.model_validate(
+        {
+            "beds": {"count": 2},
+            "recorder": {"recorders": 2},
+        }
+    )
+    commands: list[tuple[str, ...]] = []
+
+    monkeypatch.setenv("TESTKIT_CLI", "vitalserver-testkit")
+    monkeypatch.setattr("scripts.test_vitalserver.run_health", lambda config: None)
+    monkeypatch.setattr(
+        "scripts.test_vitalserver.run",
+        lambda *args: commands.append(args),
+    )
+
+    run_scenario("smoke", config)
+
+    assert [command[1] for command in commands] == [
+        "verify-recorder",
+        "stream-recorder",
+    ]
+    assert bed_room_names_from_command(commands[0]) == bed_room_names_from_command(
+        commands[1]
+    )
+
+
 def test_run_health_uses_server_poll_interval(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -107,7 +147,7 @@ def test_run_health_uses_server_poll_interval(
 def test_run_verify_omits_payload_argument_by_default(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    config = VitalServerCheckConfig()
+    config = VitalServerCheckConfig.model_validate({"beds": {"count": 1}})
     commands: list[tuple[str, ...]] = []
 
     monkeypatch.setenv("TESTKIT_CLI", "vitalserver-testkit")
@@ -174,8 +214,9 @@ def test_run_stream_passes_bed_scenario_overrides(
             "recorder": {
                 "recorders": 3,
                 "default_scenario": "normal",
-                "beds": [{"index": 2, "scenario": "tachycardia"}],
-            }
+                "bed_scenarios": [{"index": 2, "scenario": "tachycardia"}],
+            },
+            "beds": {"count": 3},
         }
     )
     commands: list[tuple[str, ...]] = []
@@ -189,6 +230,7 @@ def test_run_stream_passes_bed_scenario_overrides(
 
     assert "--default-scenario" in commands[0]
     assert commands[0][commands[0].index("--default-scenario") + 1] == "normal"
+    assert "--bed-room-name" in commands[0]
     assert "--bed-scenario" in commands[0]
     assert commands[0][commands[0].index("--bed-scenario") + 1] == "2=tachycardia"
 
@@ -243,3 +285,11 @@ def test_main_returns_130_for_keyboard_interrupt(
     )
 
     assert main(["stream"]) == 130
+
+
+def bed_room_names_from_command(command: tuple[str, ...]) -> tuple[str, ...]:
+    return tuple(
+        value
+        for index, value in enumerate(command)
+        if index > 0 and command[index - 1] == "--bed-room-name"
+    )

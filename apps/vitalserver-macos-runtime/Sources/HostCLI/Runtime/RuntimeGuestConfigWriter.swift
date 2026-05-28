@@ -20,7 +20,8 @@ struct RuntimeGuestConfigWriter {
             vitalFilesDirectory: Constants.Defaults.vitalFilesDirectoryGuestMountPath,
             redisBackupRetentionCount: Constants.Defaults.redisBackupRetentionCount,
             redisUiPort: Constants.Guest.redisUIPort,
-            swaggerUiPort: Constants.Guest.swaggerUIPort
+            swaggerUiPort: Constants.Guest.swaggerUIPort,
+            testkitEnabled: Constants.testkitContainerIncluded
         )
         let runtimeConfig = installedPaths.guestRuntimeConfig
         let data = try JSONEncoder.pretty.encode(document)

@@ -32,14 +32,6 @@ enum AppConstants {
         }
     }
 
-    enum RuntimeControlAPI {
-        static let port: UInt16 = 18321
-        static let developmentToken = "vitalserver-helper-dev"
-        static var devConsoleURL: String {
-            "http://127.0.0.1:\(port)/dev/runtime-control"
-        }
-    }
-
     enum SettingsLimits {
         static let minimumCPUCount = 7
         static let maximumCPUCount = 64
@@ -57,7 +49,15 @@ enum AppConstants {
         static let diskStepGiB = 4
         static let minimumMemoryGiB = 4
         static let maximumMemoryGiB = 64
+        static let reservedHostMemoryGiB = 4
         static let memoryStepGiB = 4
+        static var maximumAllowedMemoryGiB: Int {
+            let physicalMemoryGiB = Int(ProcessInfo.processInfo.physicalMemory / 1_073_741_824)
+            let hostAwareMaximum = physicalMemoryGiB - reservedHostMemoryGiB
+            let cappedMaximum = min(maximumMemoryGiB, hostAwareMaximum)
+            let steppedMaximum = (cappedMaximum / memoryStepGiB) * memoryStepGiB
+            return max(minimumMemoryGiB, steppedMaximum)
+        }
         static let minimumRedisBackupRetentionCount = 1
         static let maximumRedisBackupRetentionCount = 30
         static let redisBackupRetentionStep = 1
@@ -80,6 +80,7 @@ enum AppConstants {
     enum Labels {
         static let sectionStatus = "Status"
         static let sectionRecorders = "Recorders"
+        static let sectionBeds = "Beds"
         static let sectionSettings = "Settings"
         static let sectionUpdate = "Update"
         static let sectionObservability = "Observability"
@@ -113,17 +114,25 @@ enum AppConstants {
         static let vitalRecorder = "Vital Recorder"
         static let recorderHistory = "Recorder History"
         static let recorderDetails = "Recorder Details"
+        static let bedDetails = "Bed Details"
         static let runtimeEvents = "Runtime Events"
+        static let runtimeEventPeriod = "Period"
+        static let runtimeEventFilter = "Filter"
+        static let runtimeEventLimit = "Limit"
         static let activeRecorderConnections = "Active recorder connections"
         static let knownRecorders = "Known recorders"
         static let onlineRecorders = "Online recorders"
         static let staleRecorders = "Stale recorders"
         static let knownBeds = "Known beds"
+        static let onlineBeds = "Online beds"
+        static let staleBeds = "Stale beds"
+        static let bedAnomalies = "Bed anomalies"
         static let recorderAnomalies = "Recorder anomalies"
         static let latestRecorder = "Latest recorder"
         static let recorderObservation = "Observation updated"
         static let recorderSource = "Recorder source"
         static let recorderSearch = "Search VRecorder"
+        static let bedSearch = "Search Bed"
         static let recorderStatus = "Status"
         static let recorderVersion = "Version"
         static let recorderLastSeen = "Last seen"
@@ -155,12 +164,6 @@ enum AppConstants {
         static let logPaused = "Paused"
         static let advancedSummary = "Advanced runtime details"
         static let advancedDescription = "Diagnostics, service internals, repair actions, update rollback, and administrator operations."
-        static let testSummary = "Test"
-        static let testDescription = "Browser-based runtime checks for development and verification builds."
-        static let sectionBrowserChecks = "Browser"
-        static let runtimeControlConsole = "Runtime Control console"
-        static let runtimeControlConsoleHelp = "Opens the local browser console for Runtime Control API status, event streams, and log streams."
-        static let testkitService = "Testkit API container"
         static let infoSummary = "Runtime information"
         static let infoDescription = "Installed versions, bundled services, and deployment details for support and maintenance."
         static let dangerZoneSummary = "Danger Zone"
@@ -205,7 +208,7 @@ enum AppConstants {
         static let sectionAdvancedConfiguration = "Advanced configuration"
         static let cpu = "CPU"
         static let memory = "Memory allocation"
-        static let memoryAllocationHelp = "Amount of memory assigned to the VM. The Linux guest may report a slightly lower usable total in Status."
+        static let memoryAllocationHelp = "Amount of memory assigned to the VM. The maximum is based on this Mac's memory while leaving memory for macOS. The Linux guest may report a slightly lower usable total in Status."
         static let disk = "Disk"
         static let mode = "Mode"
         static let shared = "Shared"
@@ -266,6 +269,34 @@ enum AppConstants {
         static let serviceImage = "Image"
         static let serviceVersion = "Version"
         static let serviceBundled = "Bundled"
+        static let enabled = "Enabled"
+        static let status = "Status"
+        static let url = "URL"
+        static let session = "Session"
+        static let sessions = "Sessions"
+        static let messages = "Messages"
+        static let bytes = "Bytes"
+        static let lastError = "Last error"
+        static let target = "Target"
+        static let scenario = "Scenario"
+        static let signal = "Signal"
+        static let bedSetup = "Bed setup"
+        static let bedSelection = "Bed selection"
+        static let beds = "Beds"
+        static let bedCount = "Beds"
+        static let bedPrefix = "Bed prefix"
+        static let selectedBeds = "Selected beds"
+        static let virtualVRecorderSession = "Virtual VRecorder session"
+        static let trafficProfile = "Traffic profile"
+        static let recorders = "Recorders"
+        static let recorderCount = "VRecorders"
+        static let interval = "Interval"
+        static let duration = "Duration"
+        static let maxMessages = "Max messages"
+        static let shiftTime = "Shift time"
+        static let generateFrames = "Generate frames"
+        static let vrcodeOptional = "VRecorder code (optional)"
+        static let orphanVrcode = "Orphan VRecorder code"
         static let vmRootfsUpdatePlanned = "VM/rootfs bundle update is planned for this area. Use offline bundle updates for regular application/runtime updates."
         static let destructiveOperationsHelp = "Uninstall removes installed services and runtime files. Choose clean uninstall only when preserved data can also be removed."
         static let appBundlePath = "App bundle path"
@@ -280,6 +311,8 @@ enum AppConstants {
     enum Values {
         static let boolTrue = "true"
         static let boolFalse = "false"
+        static let empty = "-"
+        static let unlimited = "Unlimited"
     }
 
     enum Actions {
@@ -308,6 +341,15 @@ enum AppConstants {
         static let openBackups = "Open Backups"
         static let openLogs = "Open Logs"
         static let exportLogs = "Export Logs"
+        static let start = "Start"
+        static let pause = "Pause"
+        static let resume = "Resume"
+        static let stop = "Stop"
+        static let restart = "Restart"
+        static let create = "Create"
+        static let delete = "Delete"
+        static let deleteVRecorder = "Delete VRecorder"
+        static let reset = "Reset"
         static let startRuntimeServices = "Start Runtime Services"
         static let stopRuntimeServices = "Stop Runtime Services"
         static let startUpdate = "Start Update"
@@ -326,8 +368,10 @@ enum AppConstants {
         static let vitalServerNeedsAttention = "VitalServer needs attention"
         static let runtimeNotInstalled = "Runtime is not installed"
         static let noRuntimeEvents = "No runtime events"
+        static let allRuntimeEvents = "All events"
         static let noVitalRecorderObservations = "No Vital Recorder observations"
         static let noBedObservations = "No bed observations"
+        static let selectBed = "Select a bed to view details."
         static let noRecorderAnomalies = "No recorder anomalies"
         static let unavailable = "Unavailable"
         static let healthy = "Healthy"

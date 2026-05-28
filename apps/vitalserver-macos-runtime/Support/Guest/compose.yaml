@@ -166,6 +166,39 @@ services:
       retries: 30
     restart: unless-stopped
 
+  testkit:
+    build:
+      context: .
+      dockerfile: packages/vitalserver-testkit/Dockerfile
+    image: vitalserver-testkit:0.1.1
+    depends_on:
+      edge:
+        condition: service_healthy
+    ports:
+      - "18322:18322"
+    volumes:
+      - type: volume
+        source: testkit-state
+        target: /var/lib/vitalserver-testkit
+    command:
+      - vitalserver-testkit
+      - serve
+      - --config
+      - "/opt/vitalserver-testkit/config/testkit.toml"
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "18322"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:18322/health', timeout=3).status == 200 else 1)"
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
   redis-ui:
     image: ghcr.io/joeferner/redis-commander:0.9.0
     depends_on:
@@ -246,3 +279,4 @@ volumes:
   vital-tmp-files:
   audit-logs:
   edge-logs:
+  testkit-state:

@@ -142,6 +142,14 @@ final class RuntimeHealthEvaluatorTests: XCTestCase {
                 ),
                 VitalDBAnomalyObservation(
                     id: "a2",
+                    kind: .duplicateIP,
+                    severity: .critical,
+                    observedAt: "2026-05-25T00:00:00Z",
+                    subject: "10.0.0.10",
+                    message: "duplicate-ip"
+                ),
+                VitalDBAnomalyObservation(
+                    id: "a3",
                     kind: .staleRecorder,
                     severity: .warning,
                     observedAt: "2026-05-25T00:00:00Z",

@@ -69,3 +69,24 @@ class SendDataEmitterPort(Protocol):
         *,
         timeout: float = 30.0,
     ) -> None: ...
+
+
+class RecorderManagementPort(Protocol):
+    """Management operations sent to VitalServer for simulated recorders."""
+
+    def delete_vrecorder(
+        self,
+        base_url: str,
+        vrcode: str,
+        *,
+        timeout: float = 5.0,
+    ) -> None: ...
+
+    def delete_bed(
+        self,
+        base_url: str,
+        *,
+        bed_id: str,
+        bed_name: str,
+        timeout: float = 5.0,
+    ) -> None: ...

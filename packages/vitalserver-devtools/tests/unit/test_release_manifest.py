@@ -17,6 +17,9 @@ def test_load_release_manifest_reads_host_proxy_image(tmp_path: Path) -> None:
                 "minUpdaterVersion": "0.1.7",
                 "targetPlatform": "macos-arm64",
                 "vitalServerVersion": "2.3.4",
+                "bundle": {
+                    "optionalContainerServices": ["testkit"],
+                },
                 "services": {
                     "hostProxy": {
                         "image": "nginx/1.31.1",
@@ -30,3 +33,4 @@ def test_load_release_manifest_reads_host_proxy_image(tmp_path: Path) -> None:
     release = load_release_manifest(release_file)
 
     assert release.host_proxy_image == "nginx/1.31.1"
+    assert release.optional_container_services == ("testkit",)

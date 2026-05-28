@@ -24,6 +24,16 @@ def test_cli_subcommand_help(capsys: pytest.CaptureFixture[str]) -> None:
     assert "Socket.IO" in captured.out
 
 
+def test_cli_serve_help(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit) as exc_info:
+        main(["serve", "--help"])
+
+    captured = capsys.readouterr()
+    assert exc_info.value.code == 0
+    assert "Run the loopback TestKit API server" in captured.out
+    assert "--port" in captured.out
+
+
 def test_cli_bed_scenario_parse_error_is_user_facing(
     capsys: pytest.CaptureFixture[str],
 ) -> None:

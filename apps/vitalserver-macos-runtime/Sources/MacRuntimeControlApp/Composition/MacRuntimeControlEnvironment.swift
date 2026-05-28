@@ -23,44 +23,38 @@ final class MacRuntimeControlEnvironment: ObservableObject {
         let readWorker = MacHostRuntimeReadWorker(releaseInfo: .generated)
         let commandWorker = MacHostRuntimeCommandWorker()
         let client = MacHostRuntimeClient(releaseInfo: .generated, commandWorker: commandWorker)
+        let testKitController = MacTestKitController(
+            configuration: MacTestKitControllerConfiguration(
+                enabled: GeneratedRelease.testEnabled && GeneratedRelease.testkitContainerIncluded
+            ),
+            statusProvider: {
+                await readWorker.loadStatus(settings: RuntimeSettings())
+            }
+        )
         let viewModel = RuntimeViewModel(
             controlClient: client,
             hostClient: client,
+            testKitController: testKitController,
             readWorker: readWorker,
             initialSettings: RuntimeSettings(),
             healthNotifications: HealthNotificationCenter(),
             nativeShell: SystemRuntimeNativeShell()
         )
-        let apiServer = shouldStartDevelopmentAPIServer()
-            ? makeDevelopmentAPIServer(client: client, readWorker: readWorker)
-            : nil
+        let apiServer = MacRuntimeControlLocalAPI.make(
+            client: client,
+            readWorker: readWorker,
+            testKitController: testKitController,
+            servesTestTools: GeneratedRelease.testEnabled
+        )
         return MacRuntimeControlEnvironment(viewModel: viewModel, apiServer: apiServer)
     }
 
-    static func shouldStartDevelopmentAPIServer(testEnabled: Bool = GeneratedRelease.testEnabled) -> Bool {
-        testEnabled
+    static func shouldStartRuntimeControlAPIServer() -> Bool {
+        true
     }
 
-    private static func makeDevelopmentAPIServer(
-        client: MacHostRuntimeClient,
-        readWorker: MacHostRuntimeReadWorker
-    ) -> RuntimeControlLocalHTTPServer {
-        let apiHandler = MacRuntimeControlAPIHandler(
-            commandClient: client,
-            hostClient: client,
-            readWorker: readWorker
-        )
-        let apiRouter = RuntimeControlAPIRouter(
-            handler: apiHandler,
-            authorization: RuntimeControlAPIAuthorization(token: AppConstants.RuntimeControlAPI.developmentToken)
-        )
-        return RuntimeControlLocalHTTPServer(
-            configuration: RuntimeControlLocalHTTPServerConfiguration(
-                port: AppConstants.RuntimeControlAPI.port,
-                servesDevConsole: true
-            ),
-            router: apiRouter
-        )
+    static func shouldServeRuntimeControlTestTools(testEnabled: Bool) -> Bool {
+        testEnabled
     }
 
     private func startAPIServer() {

@@ -35,10 +35,16 @@ public struct RuntimeEventQuery: Equatable, Sendable {
 public struct RuntimeEventPage: Equatable, Sendable {
     public let events: [RuntimeEventDocument]
     public let nextCursor: RuntimeEventCursor?
+    public let matchingCount: Int?
 
-    public init(events: [RuntimeEventDocument], nextCursor: RuntimeEventCursor? = nil) {
+    public init(
+        events: [RuntimeEventDocument],
+        nextCursor: RuntimeEventCursor? = nil,
+        matchingCount: Int? = nil
+    ) {
         self.events = events
         self.nextCursor = nextCursor
+        self.matchingCount = matchingCount
     }
 }
 

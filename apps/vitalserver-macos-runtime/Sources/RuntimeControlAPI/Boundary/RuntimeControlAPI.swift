@@ -53,6 +53,9 @@ public enum RuntimeControlAPIEndpoint: String, CaseIterable, Codable, Equatable,
     case vitalDBObservationStream
     case vitalDBRecorders
     case vitalDBRecorder
+    case vitalDBBeds
+    case vitalDBBed
+    case vitalDBRelationships
     case health
     case settings
     case applySettings
@@ -60,6 +63,7 @@ public enum RuntimeControlAPIEndpoint: String, CaseIterable, Codable, Equatable,
     case installInfo
     case startServices
     case stopServices
+    case repairRuntimeServices
     case repairProxy
     case repairDatastore
     case createRedisBackup
@@ -100,6 +104,12 @@ public enum RuntimeControlAPIEndpoint: String, CaseIterable, Codable, Equatable,
             return .init(method: .get, path: "/vitaldb/recorders", scope: .runtimeControl)
         case .vitalDBRecorder:
             return .init(method: .get, path: "/vitaldb/recorders/{vrcode}", scope: .runtimeControl)
+        case .vitalDBBeds:
+            return .init(method: .get, path: "/vitaldb/beds", scope: .runtimeControl)
+        case .vitalDBBed:
+            return .init(method: .get, path: "/vitaldb/beds/{bedID}", scope: .runtimeControl)
+        case .vitalDBRelationships:
+            return .init(method: .get, path: "/vitaldb/relationships", scope: .runtimeControl)
         case .health:
             return .init(method: .post, path: "/runtime/health", scope: .runtimeControl)
         case .settings:
@@ -114,6 +124,8 @@ public enum RuntimeControlAPIEndpoint: String, CaseIterable, Codable, Equatable,
             return .init(method: .post, path: "/runtime/services/start", scope: .runtimeControl)
         case .stopServices:
             return .init(method: .post, path: "/runtime/services/stop", scope: .runtimeControl)
+        case .repairRuntimeServices:
+            return .init(method: .post, path: "/runtime/services/repair-runtime", scope: .runtimeControl)
         case .repairProxy:
             return .init(method: .post, path: "/runtime/services/repair-proxy", scope: .runtimeControl)
         case .repairDatastore:
@@ -162,6 +174,9 @@ public extension RuntimeControlAPIEndpoint {
              .vitalDBObservationStream,
              .vitalDBRecorders,
              .vitalDBRecorder,
+             .vitalDBBeds,
+             .vitalDBBed,
+             .vitalDBRelationships,
              .health,
              .settings,
              .release,
@@ -172,6 +187,7 @@ public extension RuntimeControlAPIEndpoint {
         case .applySettings,
              .startServices,
              .stopServices,
+             .repairRuntimeServices,
              .repairProxy,
              .repairDatastore,
              .createRedisBackup,
@@ -209,6 +225,12 @@ public extension RuntimeControlAPIEndpoint {
             return components.count == 3
                 && components[0] == "vitaldb"
                 && components[1] == "recorders"
+                && !components[2].isEmpty
+        case .vitalDBBed:
+            let components = path.split(separator: "/", omittingEmptySubsequences: true)
+            return components.count == 3
+                && components[0] == "vitaldb"
+                && components[1] == "beds"
                 && !components[2].isEmpty
         default:
             return route.path == path

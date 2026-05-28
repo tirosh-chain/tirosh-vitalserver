@@ -121,11 +121,19 @@ function proxyUpgrade(req, socket, head, dependencies) {
     }
   );
 
-  const clientParser = createWebSocketParser((message) => {
-    dependencies.socketIoAudit.inspect(message, "client", context);
+  const clientParser = createWebSocketParser((payload, opcode) => {
+    if (opcode === 1) {
+      dependencies.socketIoAudit.inspect(payload.toString("utf8"), "client", context);
+    } else if (opcode === 2) {
+      dependencies.socketIoAudit.inspectBinary(payload, "client", context);
+    }
   });
-  const serverParser = createWebSocketParser((message) => {
-    dependencies.socketIoAudit.inspect(message, "server", context);
+  const serverParser = createWebSocketParser((payload, opcode) => {
+    if (opcode === 1) {
+      dependencies.socketIoAudit.inspect(payload.toString("utf8"), "server", context);
+    } else if (opcode === 2) {
+      dependencies.socketIoAudit.inspectBinary(payload, "server", context);
+    }
   });
   if (head && head.length > 0) clientParser.push(head);
   observeServerFramesAfterHandshake(upstream, serverParser);
@@ -143,6 +151,7 @@ function createRequestContext(req, clientIp) {
     joined_vrcode: null,
     last_command: null,
     metrics_vrcode: null,
+    pending_binary_event: null,
   };
 }
 

@@ -91,7 +91,7 @@ public enum RuntimeControlDevConsoleDocument {
       font-size: 12px;
       margin-top: 12px;
     }
-    input, select {
+    input, select, textarea {
       width: 100%;
       border: 1px solid var(--line);
       border-radius: 6px;
@@ -99,6 +99,12 @@ public enum RuntimeControlDevConsoleDocument {
       font: inherit;
       color: var(--text);
       background: white;
+    }
+    textarea {
+      min-height: 120px;
+      resize: vertical;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
     }
     button {
       border: 1px solid var(--line);
@@ -286,6 +292,52 @@ public enum RuntimeControlDevConsoleDocument {
           <input id="lineLimit" type="number" min="1" value="80">
         </label>
       </section>
+      <section>
+        <h2>Runtime Commands</h2>
+        <div class="actions">
+          <button id="healthCheck">Health check</button>
+          <button id="startServices">Start services</button>
+          <button id="stopServices">Stop services</button>
+          <button id="repairRuntime">Repair runtime</button>
+          <button id="repairProxy">Repair proxy</button>
+          <button id="repairDatastore">Repair datastore</button>
+          <button id="createRedisBackup">Create Redis backup</button>
+        </div>
+        <label>
+          Settings JSON
+          <textarea id="settingsJson"></textarea>
+        </label>
+        <div class="actions">
+          <button id="applySettings">Apply settings</button>
+        </div>
+      </section>
+      <section>
+        <h2>Host Artifacts</h2>
+        <label>
+          Update bundle path
+          <input id="bundlePath" autocomplete="off" placeholder="/path/to/update-bundle.tar.gz">
+        </label>
+        <div class="actions">
+          <button id="summaryBundle">Summary</button>
+          <button id="verifyBundle">Verify</button>
+          <button id="applyBundle">Apply</button>
+        </div>
+        <label>
+          Backup path
+          <input id="backupPath" autocomplete="off" placeholder="/Library/Application Support/TiroshVitalServer/backups/...">
+        </label>
+        <div class="actions">
+          <button id="rollbackBackup">Rollback</button>
+          <button id="deleteBackup">Delete backup</button>
+        </div>
+        <label>
+          Log export destination
+          <input id="logExportPath" autocomplete="off" placeholder="/tmp/vitalserver-logs.zip">
+        </label>
+        <div class="actions">
+          <button id="exportLogs">Export logs</button>
+        </div>
+      </section>
     </div>
     <div class="stack">
       <div class="read-grid">
@@ -306,12 +358,27 @@ public enum RuntimeControlDevConsoleDocument {
           <div id="recorderMetrics"></div>
         </section>
         <section>
+          <h2>Vital Beds</h2>
+          <div id="bedMetrics"></div>
+        </section>
+        <section>
           <h2>Observability</h2>
           <div id="observabilityMetrics"></div>
         </section>
         <section>
           <h2>Runtime Events</h2>
           <div id="runtimeEventMetrics"></div>
+        </section>
+        <section>
+          <h2>TestKit</h2>
+          <div id="testKitMetrics"></div>
+          <div class="actions">
+            <button id="refreshTestKit">Refresh TestKit</button>
+            <button id="startTestKit">Start 1 recorder</button>
+            <button id="stopTestKit">Stop</button>
+            <button id="deleteTestKit">Delete active</button>
+            <button id="resetTestKit">Reset</button>
+          </div>
         </section>
       </div>
       <div class="grid">
@@ -378,8 +445,50 @@ public enum RuntimeControlDevConsoleDocument {
       return text ? JSON.parse(text) : null;
     }
 
+    async function postJSON(path, body = null) {
+      const requestHeaders = { ...headers(), "Content-Type": "application/json" };
+      const response = await fetch(endpoint(path), {
+        method: "POST",
+        headers: requestHeaders,
+        body: body === null ? null : JSON.stringify(body)
+      });
+      const text = await response.text();
+      if (!response.ok) {
+        throw new Error(text || `HTTP ${response.status}`);
+      }
+      return text ? JSON.parse(text) : null;
+    }
+
+    async function putJSON(path, body = null) {
+      const requestHeaders = { ...headers(), "Content-Type": "application/json" };
+      const response = await fetch(endpoint(path), {
+        method: "PUT",
+        headers: requestHeaders,
+        body: body === null ? null : JSON.stringify(body)
+      });
+      const text = await response.text();
+      if (!response.ok) {
+        throw new Error(text || `HTTP ${response.status}`);
+      }
+      return text ? JSON.parse(text) : null;
+    }
+
+    async function deleteJSON(path, body = null) {
+      const requestHeaders = { ...headers(), "Content-Type": "application/json" };
+      const response = await fetch(endpoint(path), {
+        method: "DELETE",
+        headers: requestHeaders,
+        body: body === null ? null : JSON.stringify(body)
+      });
+      const text = await response.text();
+      if (!response.ok) {
+        throw new Error(text || `HTTP ${response.status}`);
+      }
+      return text ? JSON.parse(text) : null;
+    }
+
     async function refreshStatus() {
-      const [overview, status, settings, install, release, vitalDBObservation, vitalRecorders, backups, redisBackups, runtimeEvents] = await Promise.all([
+      const [overview, status, settings, install, release, vitalDBObservation, vitalRecorders, vitalBeds, vitalRelationships, backups, redisBackups, runtimeEvents, testKitStatus] = await Promise.all([
         getJSON("/runtime/overview"),
         getJSON("/runtime/status"),
         getJSON("/runtime/settings"),
@@ -387,9 +496,12 @@ public enum RuntimeControlDevConsoleDocument {
         getJSON("/runtime/release"),
         getJSON("/vitaldb/observations/latest"),
         getJSON("/vitaldb/recorders"),
+        getJSON("/vitaldb/beds"),
+        getJSON("/vitaldb/relationships"),
         getJSON("/host/backups"),
         getJSON("/host/backups/redis"),
-        getJSON("/runtime/events?limit=50")
+        getJSON("/runtime/events?limit=50"),
+        getJSON("/dev/testkit/status")
       ]);
       latestStatus = status;
       latestSettings = settings || {};
@@ -401,10 +513,12 @@ public enum RuntimeControlDevConsoleDocument {
       renderSettings(settings);
       renderRelease(release);
       renderVitalDBObservation(vitalDBObservation || status.vitalDBObservation);
-      renderVitalRecorders(vitalRecorders);
+      renderVitalRecorders(vitalRecorders, vitalRelationships);
+      renderVitalBeds(vitalBeds);
       renderObservability(latestStatus, vitalDBObservation || status.vitalDBObservation);
       renderRuntimeEvents();
       renderBackups(backups, redisBackups);
+      renderTestKit(testKitStatus);
       append("statusStream", "snapshot", status);
     }
 
@@ -485,6 +599,9 @@ public enum RuntimeControlDevConsoleDocument {
     }
 
     function renderInstall(install) {
+      if (!$("logExportPath").value && install && install.runtimeHomePath) {
+        $("logExportPath").value = "/tmp/vitalserver-logs.zip";
+      }
       const values = [
         ["app bundle", install.appBundlePath],
         ["package identifier", install.packageIdentifier],
@@ -496,6 +613,7 @@ public enum RuntimeControlDevConsoleDocument {
     }
 
     function renderSettings(settings) {
+      $("settingsJson").value = JSON.stringify(settings || {}, null, 2);
       const values = [
         ["CPU", settings.cpuCount],
         ["memory", `${settings.memoryGiB || "-"} GiB`],
@@ -525,6 +643,9 @@ public enum RuntimeControlDevConsoleDocument {
     }
 
     function renderBackups(backups = [], redisBackups = []) {
+      if (!$("backupPath").value && backups.length > 0 && backups[0].path) {
+        $("backupPath").value = backups[0].path;
+      }
       const values = [
         ["rollback backups", backups.length],
         ["Redis backups", redisBackups.length]
@@ -559,15 +680,19 @@ public enum RuntimeControlDevConsoleDocument {
       $("vitalDBMetrics").innerHTML = `${metricsHTML(values)}<div class="subtle">Recorders</div><div class="list">${recorderList || emptyText("No recorders")}</div><div class="subtle">Anomalies</div><div class="list">${anomalyList || emptyText("No anomalies")}</div>`;
     }
 
-    function renderVitalRecorders(history) {
+    function renderVitalRecorders(history, relationships = null) {
       if (!history) {
         $("recorderMetrics").innerHTML = emptyText("No recorder history");
         return;
       }
       const recorders = history.recorders || [];
+      const assignments = (relationships && relationships.assignments) || [];
+      const relationshipEvents = (relationships && relationships.events) || [];
       const values = [
         ["updated", formatDate(history.updatedAt)],
         ["recorders", recorders.length],
+        ["assignments", assignments.length],
+        ["relationship events", relationshipEvents.length],
         ["online", recorders.filter((recorder) => recorder.status === "online").length],
         ["stale", recorders.filter((recorder) => recorder.status === "stale").length],
         ["offline", recorders.filter((recorder) => recorder.status === "offline").length],
@@ -576,7 +701,27 @@ public enum RuntimeControlDevConsoleDocument {
       const recorderList = recorders.slice(0, 12).map((recorder) => (
         `<div class="list-item"><strong>${escapeHtml(recorder.vrcode || "-")} · ${escapeHtml(recorder.status || "-")}</strong><span>${escapeHtml(recorder.lastIP || "-")} · ${escapeHtml(recorder.bedName || recorder.bedID || "-")} · ${escapeHtml(formatDate(recorder.lastSeenAt))}</span></div>`
       )).join("");
-      $("recorderMetrics").innerHTML = `${metricsHTML(values)}<div class="subtle">Recorder history</div><div class="list">${recorderList || emptyText("No recorders")}</div>`;
+      const assignmentList = assignments.slice(0, 12).map((assignment) => (
+        `<div class="list-item"><strong>${escapeHtml(assignment.bedName || assignment.bedID || "-")} · ${escapeHtml(assignment.vrcode || "-")}</strong><span>${escapeHtml(assignment.status || "-")} · ${escapeHtml(formatDate(assignment.startedAt))} - ${escapeHtml(formatDate(assignment.endedAt))}</span></div>`
+      )).join("");
+      const relationshipEventList = relationshipEvents.slice(0, 12).map((event) => (
+        `<div class="list-item"><strong>${escapeHtml(event.severity || "-")} · ${escapeHtml(event.eventType || "-")}</strong><span>${escapeHtml(event.message || "-")} · ${escapeHtml(formatDate(event.observedAt))}</span></div>`
+      )).join("");
+      $("recorderMetrics").innerHTML = `${metricsHTML(values)}<div class="subtle">Recorder history</div><div class="list">${recorderList || emptyText("No recorders")}</div><div class="subtle">Assignments</div><div class="list">${assignmentList || emptyText("No assignments")}</div><div class="subtle">Relationship events</div><div class="list">${relationshipEventList || emptyText("No relationship events")}</div>`;
+    }
+
+    function renderVitalBeds(beds = []) {
+      const values = [
+        ["beds", beds.length],
+        ["online", beds.filter((bed) => bed.status === "online").length],
+        ["stale", beds.filter((bed) => bed.status === "stale").length],
+        ["offline", beds.filter((bed) => bed.status === "offline").length],
+        ["anomalies", beds.reduce((total, bed) => total + (bed.currentAnomalyCount || 0), 0)]
+      ];
+      const bedList = beds.slice(0, 16).map((bed) => (
+        `<div class="list-item"><strong>${escapeHtml(bed.name || bed.bedID || "-")} · ${escapeHtml(bed.status || "-")}</strong><span>${escapeHtml(bed.bedID || "-")} · ${escapeHtml(bed.vrcode || "-")} · ${escapeHtml(formatDate(bed.lastSeenAt))}</span></div>`
+      )).join("");
+      $("bedMetrics").innerHTML = `${metricsHTML(values)}<div class="list">${bedList || emptyText("No beds")}</div>`;
     }
 
     function renderObservability(status, observation) {
@@ -601,6 +746,148 @@ public enum RuntimeControlDevConsoleDocument {
         `<div class="list-item"><strong>${escapeHtml(formatDate(event.timestamp))} · ${escapeHtml(event.eventType || "-")} · ${escapeHtml(event.status || "-")}</strong><span>${escapeHtml(event.operation || "-")} · ${escapeHtml(event.message || "-")}${eventDetails(event)}</span></div>`
       )).join("");
       $("runtimeEventMetrics").innerHTML = `<div class="event-list list">${rows}</div>`;
+    }
+
+    function renderTestKit(status) {
+      if (!status) {
+        $("testKitMetrics").innerHTML = emptyText("No TestKit status");
+        return;
+      }
+      const session = status.activeSession;
+      const sessions = status.sessions || [];
+      const beds = status.beds || [];
+      const values = [
+        ["enabled", status.enabled],
+        ["state", status.state],
+        ["service", status.serviceName],
+        ["API", status.apiBaseURL],
+        ["recorder target", status.recorderTargetURL],
+        ["started", formatDate(status.startedAt)],
+        ["beds", beds.length],
+        ["sessions", sessions.length],
+        ["active session", session && session.id],
+        ["session state", session && session.state],
+        ["messages", session && session.messagesSent],
+        ["bytes", session && formatBytes(session.bytesSent)],
+        ["last error", status.lastError]
+      ];
+      const sessionList = sessions.slice(0, 16).map((candidate) => (
+        `<div class="list-item"><strong>${escapeHtml(candidate.id || "-")} · ${escapeHtml(candidate.state || "-")}</strong><span>${escapeHtml(testKitSessionRecorderText(candidate))} · ${escapeHtml(candidate.messagesSent || 0)} messages · ${escapeHtml(formatBytes(candidate.bytesSent || 0))}</span></div>`
+      )).join("");
+      const bedList = beds.slice(0, 16).map((bed) => (
+        `<div class="list-item"><strong>${escapeHtml(bed.roomName || "-")}</strong><span>${escapeHtml(bed.bedId || "-")}</span></div>`
+      )).join("");
+      $("testKitMetrics").innerHTML = `${metricsHTML(values)}<div class="subtle">Beds</div><div class="list">${bedList || emptyText("No TestKit beds")}</div><div class="subtle">Sessions</div><div class="list">${sessionList || emptyText("No virtual recorder sessions")}</div>`;
+    }
+
+    function testKitSessionRecorderText(session) {
+      const recorders = session.recorders || [];
+      if (recorders.length === 0) {
+        return session.vrcode || "no recorder";
+      }
+      return recorders.map((recorder) => `${recorder.vrcode || "-"} ${recorder.connected ? "connected" : "disconnected"}`).join(", ");
+    }
+
+    function localPathReference(value) {
+      const path = String(value || "").trim();
+      if (!path) {
+        throw new Error("A local path is required.");
+      }
+      return { kind: "localPath", value: path };
+    }
+
+    async function runRuntimeCommand(label, action) {
+      const result = await action();
+      append("statusStream", label, result);
+      await refreshStatus();
+    }
+
+    async function applyRuntimeSettings() {
+      const settings = JSON.parse($("settingsJson").value || "{}");
+      await runRuntimeCommand("settings-applied", () => putJSON("/runtime/settings", { settings }));
+    }
+
+    async function summarizeBundle() {
+      const result = await postJSON("/host/update-bundles/summary", {
+        bundle: localPathReference($("bundlePath").value)
+      });
+      append("statusStream", "bundle-summary", result);
+    }
+
+    async function verifyBundle() {
+      await runRuntimeCommand("bundle-verified", () => postJSON("/host/update-bundles/verify", {
+        bundle: localPathReference($("bundlePath").value)
+      }));
+    }
+
+    async function applyBundle() {
+      if (!confirm("Apply this update bundle? Runtime services may restart.")) return;
+      await runRuntimeCommand("bundle-applied", () => postJSON("/host/update-bundles/apply", {
+        bundle: localPathReference($("bundlePath").value)
+      }));
+    }
+
+    async function rollbackSelectedBackup() {
+      if (!confirm("Rollback to this backup? Runtime services will restart.")) return;
+      await runRuntimeCommand("backup-rollback", () => postJSON("/host/backups/rollback", {
+        backup: localPathReference($("backupPath").value)
+      }));
+    }
+
+    async function deleteSelectedBackup() {
+      if (!confirm("Delete this backup? This cannot be undone.")) return;
+      await runRuntimeCommand("backup-deleted", () => deleteJSON("/host/backups", {
+        backup: localPathReference($("backupPath").value)
+      }));
+    }
+
+    async function exportRuntimeLogs() {
+      const result = await postJSON("/host/logs/export", {
+        destination: localPathReference($("logExportPath").value)
+      });
+      append("statusStream", "logs-exported", result);
+    }
+
+    async function refreshTestKit() {
+      renderTestKit(await getJSON("/dev/testkit/status"));
+    }
+
+    async function startTestKit() {
+      const beds = await postJSON("/dev/testkit/beds/create", {
+        count: 1,
+        prefix: "testkit-bed"
+      });
+      const bedRoomNames = (beds || []).map((bed) => bed.roomName).slice(0, 1);
+      const session = await postJSON("/dev/testkit/virtual-recorders/start", {
+        scenario: "normal",
+        signalProfile: "normal",
+        recorders: 1,
+        bedRoomNames,
+        version: "testkit",
+        intervalSeconds: 1,
+        shiftTime: true,
+        generateFrames: true
+      });
+      await refreshTestKit();
+      append("statusStream", "testkit-started", session);
+    }
+
+    async function stopTestKit() {
+      const session = await postJSON("/dev/testkit/virtual-recorders/stop", null);
+      await refreshTestKit();
+      append("statusStream", "testkit-stopped", session || { stopped: false });
+    }
+
+    async function deleteTestKit() {
+      const session = await postJSON("/dev/testkit/virtual-recorders/delete", null);
+      await refreshTestKit();
+      append("statusStream", "testkit-deleted", session || { deleted: false });
+    }
+
+    async function resetTestKit() {
+      const status = await postJSON("/dev/testkit/virtual-recorders/reset", null);
+      renderTestKit(status);
+      append("statusStream", "testkit-reset", status);
     }
 
     function replaceRuntimeEvents(events = []) {
@@ -907,6 +1194,25 @@ public enum RuntimeControlDevConsoleDocument {
     }
 
     $("refresh").addEventListener("click", () => refreshStatus().catch((error) => append("statusStream", "error", { message: error.message })));
+    $("healthCheck").addEventListener("click", () => runRuntimeCommand("health-check", () => postJSON("/runtime/health", null)).catch((error) => append("statusStream", "command-error", { message: error.message })));
+    $("startServices").addEventListener("click", () => runRuntimeCommand("services-started", () => postJSON("/runtime/services/start", null)).catch((error) => append("statusStream", "command-error", { message: error.message })));
+    $("stopServices").addEventListener("click", () => confirm("Stop runtime services?") && runRuntimeCommand("services-stopped", () => postJSON("/runtime/services/stop", null)).catch((error) => append("statusStream", "command-error", { message: error.message })));
+    $("repairRuntime").addEventListener("click", () => runRuntimeCommand("runtime-repaired", () => postJSON("/runtime/services/repair-runtime", null)).catch((error) => append("statusStream", "command-error", { message: error.message })));
+    $("repairProxy").addEventListener("click", () => runRuntimeCommand("proxy-repaired", () => postJSON("/runtime/services/repair-proxy", { proxyPort: Number((latestSettings && latestSettings.proxyPort) || (latestStatus && latestStatus.proxyPort) || 80) })).catch((error) => append("statusStream", "command-error", { message: error.message })));
+    $("repairDatastore").addEventListener("click", () => runRuntimeCommand("datastore-repaired", () => postJSON("/runtime/services/repair-datastore", null)).catch((error) => append("statusStream", "command-error", { message: error.message })));
+    $("createRedisBackup").addEventListener("click", () => runRuntimeCommand("redis-backup-created", () => postJSON("/runtime/redis/backups", null)).catch((error) => append("statusStream", "command-error", { message: error.message })));
+    $("applySettings").addEventListener("click", () => confirm("Apply runtime settings?") && applyRuntimeSettings().catch((error) => append("statusStream", "command-error", { message: error.message })));
+    $("summaryBundle").addEventListener("click", () => summarizeBundle().catch((error) => append("statusStream", "bundle-error", { message: error.message })));
+    $("verifyBundle").addEventListener("click", () => verifyBundle().catch((error) => append("statusStream", "bundle-error", { message: error.message })));
+    $("applyBundle").addEventListener("click", () => applyBundle().catch((error) => append("statusStream", "bundle-error", { message: error.message })));
+    $("rollbackBackup").addEventListener("click", () => rollbackSelectedBackup().catch((error) => append("statusStream", "backup-error", { message: error.message })));
+    $("deleteBackup").addEventListener("click", () => deleteSelectedBackup().catch((error) => append("statusStream", "backup-error", { message: error.message })));
+    $("exportLogs").addEventListener("click", () => exportRuntimeLogs().catch((error) => append("statusStream", "logs-error", { message: error.message })));
+    $("refreshTestKit").addEventListener("click", () => refreshTestKit().catch((error) => append("statusStream", "testkit-error", { message: error.message })));
+    $("startTestKit").addEventListener("click", () => startTestKit().catch((error) => append("statusStream", "testkit-error", { message: error.message })));
+    $("stopTestKit").addEventListener("click", () => stopTestKit().catch((error) => append("statusStream", "testkit-error", { message: error.message })));
+    $("deleteTestKit").addEventListener("click", () => deleteTestKit().catch((error) => append("statusStream", "testkit-error", { message: error.message })));
+    $("resetTestKit").addEventListener("click", () => resetTestKit().catch((error) => append("statusStream", "testkit-error", { message: error.message })));
     $("connectAll").addEventListener("click", connectAll);
     $("disconnectAll").addEventListener("click", disconnectAll);
     function reconnectLogs() {

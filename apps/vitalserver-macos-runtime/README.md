@@ -279,5 +279,5 @@ Update bundle manifest는 `schemaVersion: 3`, `channel`, `helperVersion`, `relea
 | [Runtime Observability](../../docs/macos-runtime/observability.md) | runtime status/event/VitalDB observation SoT와 SQLite read model |
 | [Packaging and Update](../../docs/macos-runtime/packaging.md) | PKG/DMG/update bundle 계약 |
 | [Runtime](../../docs/macos-runtime/runtime.md) | VM boot, cloud-init, guest bootstrap, network/identity |
-| [Troubleshooting](../../docs/macos-runtime/troubleshooting.md) | 502, stale pid, disk full, install cleanup 등 |
+| [Troubleshooting](../../docs/troubleshooting.md) | 502, stale pid, disk full, update failure, install cleanup 등 |
 | [macOS host proxy ADR](../../docs/adr/0001-macos-host-proxy-for-vrecorder-ip.md) | host proxy가 필요한 이유 |
