@@ -1,0 +1,39 @@
+{
+  "name": "@tirosh/vitalserver-runtime-pwa",
+  "version": "0.1.0",
+  "private": true,
+  "description": "PWA Runtime Control UI backed by the macOS Runtime Control API.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "npm run generate:api && tsc -b && vite build",
+    "check": "npm run generate:api && tsc -b --pretty false",
+    "preview": "vite preview --host 127.0.0.1",
+    "test": "vitest run",
+    "generate:api": "openapi-typescript ../../docs/macos-runtime/runtime-control.openapi.json -o src/api/generated/runtime-control.ts"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "^5.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-router-dom": "^7.0.0",
+    "uplot": "^1.6.0",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@testing-library/react": "^16.0.0",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "jsdom": "^27.0.0",
+    "openapi-typescript": "^7.0.0",
+    "typescript": "^5.9.0",
+    "vite": "^7.0.0",
+    "vite-plugin-pwa": "^1.0.0",
+    "vitest": "^4.0.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

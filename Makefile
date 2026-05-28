@@ -31,6 +31,7 @@ include make/env.mk
 include make/compose.mk
 include make/testkit.mk
 include make/python.mk
+include make/pwa.mk
 include make/vm.mk
 
 .PHONY: \
@@ -99,7 +100,7 @@ devtools-wait-ip: vm-wait-ip
 devtools-wait-http: vm-wait-http
 devtools-package-clean: vm-pkg-clean
 
-.PHONY: help help-run help-dist help-runtime help-devtools help-proxy help-dev help-all
+.PHONY: help help-run help-dist help-runtime help-devtools help-proxy help-dev help-pwa help-all
 help:
 	@printf "tirosh-vitalserver\n"
 	@printf "\n"
@@ -112,6 +113,7 @@ help:
 	@printf "  make ps              Show container status\n"
 	@printf "  make down            Stop proxy and Compose stack, keep volumes\n"
 	@printf "  make testkit-smoke   Run bounded productization smoke scenario\n"
+	@printf "  make pwa-dev         Start Runtime Control PWA dev server\n"
 	@printf "  make check           Run lint, typecheck, and test\n"
 	@printf "\n"
 	@printf "More help:\n"
@@ -121,6 +123,7 @@ help:
 	@printf "  make help-devtools   Low-level build and staging steps\n"
 	@printf "  make help-proxy      macOS host nginx proxy\n"
 	@printf "  make help-dev        Python/testkit development commands\n"
+	@printf "  make help-pwa        Runtime Control PWA commands\n"
 	@printf "  make help-all        Full command list\n"
 	@printf "\n"
 	@printf "Config:\n"
@@ -274,6 +277,21 @@ help-dev:
 	@printf "  TESTKIT_CONFIG=%s\n" "$(TESTKIT_CONFIG)"
 	@printf "  TESTKIT_VERSION=%s\n" "$(TESTKIT_VERSION)"
 
+help-pwa:
+	@printf "tirosh-vitalserver: pwa\n"
+	@printf "\n"
+	@printf "Runtime Control PWA:\n"
+	@printf "  make pwa-install      Install PWA npm dependencies\n"
+	@printf "  make pwa-generate-api Generate OpenAPI TypeScript types\n"
+	@printf "  make pwa-check        Typecheck Runtime Control PWA\n"
+	@printf "  make pwa-test         Run Runtime Control PWA tests\n"
+	@printf "  make pwa-build        Build Runtime Control PWA static assets\n"
+	@printf "  make pwa-dev          Start Vite dev server on 127.0.0.1:5174\n"
+	@printf "  make pwa-preview      Preview built PWA on 127.0.0.1:4174\n"
+	@printf "\n"
+	@printf "Config:\n"
+	@printf "  PWA_DIR=%s\n" "$(PWA_DIR)"
+
 help-all:
 	@$(MAKE) --no-print-directory help-run
 	@printf "\n"
@@ -286,3 +304,5 @@ help-all:
 	@$(MAKE) --no-print-directory help-proxy
 	@printf "\n"
 	@$(MAKE) --no-print-directory help-dev
+	@printf "\n"
+	@$(MAKE) --no-print-directory help-pwa

@@ -2997,8 +2997,11 @@
           "install",
           "command",
           "launcher",
+          "vmLaunchOutput",
+          "vmLaunchError",
           "proxyOutput",
           "proxyError",
+          "watchdog",
           "updateActivation",
           "containers"
         ]

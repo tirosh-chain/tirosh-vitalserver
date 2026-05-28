@@ -24,6 +24,9 @@ temp/
 .build/
 .cache/
 
+# Node
+node_modules/
+
 # Swift / Xcode
 .swiftpm/
 DerivedData/

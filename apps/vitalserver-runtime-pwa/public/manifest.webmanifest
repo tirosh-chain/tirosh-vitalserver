@@ -1,0 +1,10 @@
+{
+  "name": "VitalServer Runtime Control",
+  "short_name": "Runtime Control",
+  "description": "PWA Runtime Control UI for macOS VitalServer Helper.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#eef2f4",
+  "theme_color": "#eef2f4",
+  "icons": []
+}
