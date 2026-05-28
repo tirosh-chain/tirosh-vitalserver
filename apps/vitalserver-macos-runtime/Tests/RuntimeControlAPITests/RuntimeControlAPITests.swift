@@ -80,6 +80,52 @@ final class RuntimeControlAPITests: XCTestCase {
         )
     }
 
+    func testStaticFileResponderServesPWAIndexWithoutToken() throws {
+        let root = try makeTemporaryPWA()
+        let responder = RuntimeControlStaticFileResponder(rootDirectory: root)
+
+        let response = try XCTUnwrap(responder.response(for: .init(method: .get, path: "/")))
+        let body = try XCTUnwrap(response.body).text()
+
+        XCTAssertEqual(response.status, .ok)
+        XCTAssertEqual(response.headers["Content-Type"], "text/html; charset=utf-8")
+        XCTAssertEqual(response.headers["Cache-Control"], "no-cache")
+        XCTAssertTrue(body.contains("Runtime Control"))
+    }
+
+    func testStaticFileResponderDoesNotInterceptRuntimeAPI() throws {
+        let root = try makeTemporaryPWA()
+        let responder = RuntimeControlStaticFileResponder(rootDirectory: root)
+
+        XCTAssertNil(responder.response(for: .init(method: .get, path: "/runtime/status")))
+        XCTAssertNil(responder.response(for: .init(method: .get, path: "/vitaldb/recorders")))
+        XCTAssertNil(responder.response(for: .init(method: .get, path: "/host/logs/stream")))
+    }
+
+    func testStaticFileResponderFallsBackToIndexForSPARoutes() throws {
+        let root = try makeTemporaryPWA()
+        let responder = RuntimeControlStaticFileResponder(rootDirectory: root)
+
+        let response = try XCTUnwrap(responder.response(for: .init(method: .get, path: "/recorders/VR_001")))
+
+        XCTAssertEqual(response.status, .ok)
+        XCTAssertEqual(try XCTUnwrap(response.body).text(), "<html>Runtime Control</html>")
+    }
+
+    func testStaticFileResponderServesAssetsWithImmutableCache() throws {
+        let root = try makeTemporaryPWA()
+        let assets = root.appendingPathComponent("assets", isDirectory: true)
+        try FileManager.default.createDirectory(at: assets, withIntermediateDirectories: true)
+        try "body {}".write(to: assets.appendingPathComponent("index.css"), atomically: true, encoding: .utf8)
+        let responder = RuntimeControlStaticFileResponder(rootDirectory: root)
+
+        let response = try XCTUnwrap(responder.response(for: .init(method: .get, path: "/assets/index.css")))
+
+        XCTAssertEqual(response.status, .ok)
+        XCTAssertEqual(response.headers["Content-Type"], "text/css; charset=utf-8")
+        XCTAssertEqual(response.headers["Cache-Control"], "public, max-age=31536000, immutable")
+    }
+
     func testTestKitEndpointsIncludeManagementActions() {
         XCTAssertEqual(
             RuntimeTestKitAPIEndpoint.matching(method: .post, path: "/dev/testkit/beds/delete"),
@@ -918,6 +964,24 @@ final class RuntimeControlAPITests: XCTestCase {
             }
         }
         throw RuntimeControlLocalHTTPServerError.listenerUnavailable
+    }
+
+    private func makeTemporaryPWA() throws -> URL {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("runtime-control-pwa-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try "<html>Runtime Control</html>".write(
+            to: root.appendingPathComponent("index.html"),
+            atomically: true,
+            encoding: .utf8
+        )
+        return root
+    }
+}
+
+private extension Data {
+    func text() throws -> String {
+        try XCTUnwrap(String(data: self, encoding: .utf8))
     }
 }
 

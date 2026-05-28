@@ -9,10 +9,16 @@ public enum RuntimeControlLocalHTTPServerError: Error, Equatable {
 public struct RuntimeControlLocalHTTPServerConfiguration: Equatable, Sendable {
     public let port: UInt16
     public let servesDevConsole: Bool
+    public let staticFileDirectory: URL?
 
-    public init(port: UInt16, servesDevConsole: Bool = false) {
+    public init(
+        port: UInt16,
+        servesDevConsole: Bool = false,
+        staticFileDirectory: URL? = nil
+    ) {
         self.port = port
         self.servesDevConsole = servesDevConsole
+        self.staticFileDirectory = staticFileDirectory
     }
 }
 
@@ -20,6 +26,7 @@ public final class RuntimeControlLocalHTTPServer: @unchecked Sendable {
     private let configuration: RuntimeControlLocalHTTPServerConfiguration
     private let router: RuntimeControlAPIRouter
     private let testKitRouter: RuntimeTestKitAPIRouter?
+    private let staticFileResponder: RuntimeControlStaticFileResponder?
     private let queue: DispatchQueue
     private let queueKey = DispatchSpecificKey<Void>()
     private var listener: NWListener?
@@ -43,6 +50,9 @@ public final class RuntimeControlLocalHTTPServer: @unchecked Sendable {
         self.configuration = configuration
         self.router = router
         self.testKitRouter = testKitRouter
+        self.staticFileResponder = configuration.staticFileDirectory.map {
+            RuntimeControlStaticFileResponder(rootDirectory: $0)
+        }
         self.queue = queue
         self.queue.setSpecific(key: queueKey, value: ())
     }
@@ -160,6 +170,11 @@ public final class RuntimeControlLocalHTTPServer: @unchecked Sendable {
         if configuration.servesDevConsole,
            let devConsoleResponse = RuntimeControlDevConsoleDocument.response(for: request) {
             send(devConsoleResponse, on: connection)
+            return
+        }
+
+        if let staticResponse = staticFileResponder?.response(for: request) {
+            send(staticResponse, on: connection)
             return
         }
 

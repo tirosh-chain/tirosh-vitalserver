@@ -6,8 +6,12 @@ import RuntimeControlAPI
 enum RuntimeControlLocalAPIConstants {
     static let port: UInt16 = 18321
     static let token = "vitalserver-helper-dev"
+    static let pwaResourceDirectory = "runtime-control-pwa"
     static var devConsoleURL: String {
         "http://127.0.0.1:\(port)/dev/runtime-control"
+    }
+    static var pwaURL: String {
+        "http://127.0.0.1:\(port)/"
     }
 }
 
@@ -37,7 +41,9 @@ enum MacRuntimeControlLocalAPI {
         return RuntimeControlLocalHTTPServer(
             configuration: RuntimeControlLocalHTTPServerConfiguration(
                 port: RuntimeControlLocalAPIConstants.port,
-                servesDevConsole: servesTestTools
+                servesDevConsole: servesTestTools,
+                staticFileDirectory: Bundle.main.resourceURL?
+                    .appendingPathComponent(RuntimeControlLocalAPIConstants.pwaResourceDirectory, isDirectory: true)
             ),
             router: apiRouter,
             testKitRouter: testKitRouter

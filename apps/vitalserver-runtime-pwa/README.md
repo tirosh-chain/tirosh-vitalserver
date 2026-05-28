@@ -15,6 +15,21 @@ npm --prefix apps/vitalserver-runtime-pwa run dev
 The Vite dev server runs on `http://127.0.0.1:5174` and proxies Runtime Control
 API requests to `http://127.0.0.1:18321`.
 
+## Air-Gapped Deployment
+
+The PWA is deployed as static files, not as a Node/Vite runtime. Release builds
+run `make pwa-build`, then package `apps/vitalserver-runtime-pwa/dist/` into the
+macOS Helper app bundle under `Contents/Resources/runtime-control-pwa/`.
+
+Installed systems serve the built PWA from the local Runtime Control server:
+
+```text
+http://127.0.0.1:18321/
+```
+
+The field machine does not need npm, Vite, or registry access. Package and
+product update bundles carry the already-built static assets.
+
 ## API Contract
 
 The source of truth is:

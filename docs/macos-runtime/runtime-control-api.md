@@ -28,7 +28,17 @@ PWA가 사용할 `/runtime/*`, `/vitaldb/*`, `/host/*` API는 stable/dev profile
 | Auth header | `X-Runtime-Control-Token` |
 | Transitional local token | `vitalserver-helper-dev` |
 
-Local server는 read-only runtime endpoint, PWA overview, Redis backup 생성/조회, rollback backup 조회, 일부 host log endpoint를 구현합니다.
+Local server는 Runtime Control PWA static assets, read-only runtime endpoint, PWA overview,
+Redis backup 생성/조회, rollback backup 조회, 일부 host log endpoint를 구현합니다.
+Product build에서는 `apps/vitalserver-runtime-pwa/dist/` 결과물이 Helper app resource
+`Contents/Resources/runtime-control-pwa/`에 포함되고, local server가 아래 주소에서 제공합니다.
+
+```text
+http://127.0.0.1:18321/
+```
+
+PWA static file 요청은 token 없이 처리합니다. `/runtime/*`, `/vitaldb/*`, `/host/*`, `/dev/*` API 요청은
+기존 Runtime Control API authorization 정책을 따릅니다.
 
 | Method | Path |
 |---|---|
