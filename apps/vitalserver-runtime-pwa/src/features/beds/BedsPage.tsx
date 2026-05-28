@@ -17,25 +17,46 @@ import { StatusBadge } from "../../shared/ui/StatusBadge";
 
 export function BedsPage() {
   const bedsQuery = useVitalDBBeds();
-  const beds = useMemo(
+  const allBeds = useMemo(
     () => [...(bedsQuery.data ?? [])].sort(sortByLastSeen),
     [bedsQuery.data]
   );
+  const [searchText, setSearchText] = useState("");
+  const beds = filterBeds(allBeds, searchText);
   const [selectedBedID, setSelectedBedID] = useState<string | null>(null);
   const selectedBed =
     beds.find((bed) => bed.bedID === selectedBedID) ?? beds[0];
 
   const summary = {
-    known: beds.length,
-    online: beds.filter((bed) => bed.status === "online").length,
-    stale: beds.filter((bed) => bed.status === "stale").length,
-    assignments: beds.filter((bed) => Boolean(bed.vrcode)).length,
-    anomalies: beds.reduce((total, bed) => total + (bed.currentAnomalyCount ?? 0), 0)
+    known: allBeds.length,
+    online: allBeds.filter((bed) => bed.status === "online").length,
+    stale: allBeds.filter((bed) => bed.status === "stale").length,
+    assignments: allBeds.filter((bed) => Boolean(bed.vrcode)).length,
+    anomalies: allBeds.reduce((total, bed) => total + (bed.currentAnomalyCount ?? 0), 0)
   };
 
   return (
     <div className="page-stack">
-      <Panel title="Beds">
+      <Panel
+        title="Beds"
+        actions={
+          <div className="toolbar compact-toolbar">
+            <input
+              type="search"
+              placeholder="Search beds"
+              value={searchText}
+              onChange={(event) => setSearchText(event.target.value)}
+            />
+            <button
+              type="button"
+              disabled={bedsQuery.isFetching}
+              onClick={() => bedsQuery.refetch()}
+            >
+              Refresh
+            </button>
+          </div>
+        }
+      >
         <MetricStrip
           metrics={[
             { label: "Known beds", value: summary.known },
@@ -152,4 +173,16 @@ function timestamp(value: string | null | undefined): number {
   }
   const parsed = new Date(value).getTime();
   return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+function filterBeds(beds: VitalDBBedRecord[], searchText: string): VitalDBBedRecord[] {
+  const query = searchText.trim().toLowerCase();
+  if (!query) {
+    return beds;
+  }
+  return beds.filter((bed) =>
+    [bed.bedID, bed.name, bed.vrcode]
+      .filter(Boolean)
+      .some((value) => value?.toLowerCase().includes(query))
+  );
 }

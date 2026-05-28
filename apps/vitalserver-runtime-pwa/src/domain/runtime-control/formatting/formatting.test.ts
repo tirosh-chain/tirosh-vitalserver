@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { formatBytes } from "./bytes";
+import { successfulHTTP } from "./http";
 import { formatRuntimeState } from "./runtimeState";
 import { formatUptimeSince } from "./time";
 
@@ -26,5 +27,11 @@ describe("runtime presentation formatting", () => {
     const now = Date.now();
     const startedAt = new Date(now - 3661 * 1000).toISOString();
     expect(formatUptimeSince(startedAt)).toMatch(/^01:01:0[0-2]$/);
+  });
+
+  it("detects successful HTTP status text", () => {
+    expect(successfulHTTP("HTTP 200")).toBe(true);
+    expect(successfulHTTP("HTTP 503")).toBe(false);
+    expect(successfulHTTP(undefined)).toBe(false);
   });
 });

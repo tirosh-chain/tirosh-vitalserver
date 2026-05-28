@@ -1,6 +1,7 @@
 import { useRuntimeOverview } from "../../application/runtime-control/queries";
 import type { RuntimeControlOverview } from "../../domain/runtime-control/contracts/runtimeControlTypes";
 import { formatBytes } from "../../domain/runtime-control/formatting/bytes";
+import { runtimeURL } from "../../domain/runtime-control/formatting/http";
 import {
   formatRuntimeState,
   runtimeStateTone
@@ -34,6 +35,7 @@ function StatusOverview({ overview }: { overview: RuntimeControlOverview }) {
   const state = status?.runtimeState;
   const stats = status?.dataDirectoryStats;
   const vitalRecorder = overview.vitalRecorder;
+  const vitalServerURL = runtimeURL(status?.proxyPort ?? overview.settings?.proxyPort);
 
   return (
     <div className="page-stack">
@@ -50,8 +52,17 @@ function StatusOverview({ overview }: { overview: RuntimeControlOverview }) {
             },
             {
               label: "VitalServer",
-              value: status?.hostProxyHTTP ?? "Unknown",
-              detail: formatUptimeSince(status?.startedAt)
+              value: (
+                <a href={vitalServerURL} target="_blank" rel="noreferrer">
+                  {vitalServerURL}
+                </a>
+              ),
+              detail: (
+                <>
+                  {status?.hostProxyHTTP ?? "Unknown"}{" "}
+                  {formatUptimeSince(status?.startedAt)}
+                </>
+              )
             },
             {
               label: "Data directory",

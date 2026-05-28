@@ -1,14 +1,17 @@
 import { useMemo, useState } from "react";
 
 import {
+  useRuntimeCapabilities,
   useStartRuntimeServices,
   useStopRuntimeServices,
   useUninstallRuntime
 } from "../../application/runtime-control/queries";
+import { ConfirmButton } from "../../shared/ui/ConfirmButton";
 import { CommandResult } from "../../shared/ui/CommandResult";
 import { Panel } from "../../shared/ui/Panel";
 
 export function DangerZonePage() {
+  const capabilities = useRuntimeCapabilities();
   const startServices = useStartRuntimeServices();
   const stopServices = useStopRuntimeServices();
   const uninstallRuntime = useUninstallRuntime();
@@ -24,6 +27,10 @@ export function DangerZonePage() {
 
   const requiredConfirmation = cleanUninstall ? "CLEAN UNINSTALL" : "UNINSTALL";
   const canUninstall = uninstallConfirmation.trim() === requiredConfirmation;
+  const canControlServices =
+    capabilities.data?.canControlRuntimeServices === true;
+  const canUninstallRuntime =
+    capabilities.data?.canUninstallRuntime === true;
 
   return (
     <div className="page-stack">
@@ -33,20 +40,20 @@ export function DangerZonePage() {
           actions from Advanced when the runtime should be recovered instead.
         </p>
         <div className="action-row">
-          <button
-            type="button"
-            disabled={startServices.isPending}
+          <ConfirmButton
+            confirmMessage="Start VM, host proxy, and watchdog services?"
+            disabled={startServices.isPending || !canControlServices}
             onClick={() => startServices.mutate()}
           >
             Start Runtime
-          </button>
-          <button
-            type="button"
-            disabled={stopServices.isPending}
+          </ConfirmButton>
+          <ConfirmButton
+            confirmMessage="Stop runtime services? VitalServer will be unavailable until started again."
+            disabled={stopServices.isPending || !canControlServices}
             onClick={() => stopServices.mutate()}
           >
             Stop Runtime
-          </button>
+          </ConfirmButton>
         </div>
       </Panel>
 
@@ -76,13 +83,17 @@ export function DangerZonePage() {
               placeholder={`Type ${requiredConfirmation}`}
             />
           </label>
-          <button
-            type="button"
-            disabled={!canUninstall || uninstallRuntime.isPending}
+          <ConfirmButton
+            confirmMessage={
+              cleanUninstall
+                ? "Clean uninstall removes runtime files, logs, backups, Redis backups, and configured Vital files. Continue?"
+                : "Uninstall removes runtime services and VM files while preserving logs, backups, Redis backups, and Vital files. Continue?"
+            }
+            disabled={!canUninstall || uninstallRuntime.isPending || !canUninstallRuntime}
             onClick={() => uninstallRuntime.mutate(cleanUninstall)}
           >
             {cleanUninstall ? "Clean Uninstall" : "Uninstall"}
-          </button>
+          </ConfirmButton>
         </div>
       </Panel>
 

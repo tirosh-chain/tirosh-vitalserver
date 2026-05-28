@@ -18,20 +18,29 @@ import { RecorderActivityChart } from "./RecorderActivityChart";
 
 export function RecordersPage() {
   const recordersQuery = useVitalDBRecorders();
-  const recorders = useMemo(
+  const allRecorders = useMemo(
     () => [...(recordersQuery.data?.recorders ?? [])].sort(sortByLastSeen),
     [recordersQuery.data?.recorders]
   );
+  const [searchText, setSearchText] = useState("");
+  const [showHistory, setShowHistory] = useState(false);
   const [selectedVrcode, setSelectedVrcode] = useState<string | null>(null);
+  const visibleRecorders = showHistory
+    ? allRecorders
+    : allRecorders.filter((recorder) => recorder.presentInLatestObservation !== false);
+  const recorders = filterRecorders(visibleRecorders, searchText);
   const selectedRecorder =
     recorders.find((recorder) => recorder.vrcode === selectedVrcode) ??
     recorders[0];
 
   const summary = {
-    known: recorders.length,
-    online: recorders.filter((recorder) => recorder.status === "online").length,
-    stale: recorders.filter((recorder) => recorder.status === "stale").length,
-    anomalies: recorders.reduce(
+    known: allRecorders.length,
+    current: allRecorders.filter(
+      (recorder) => recorder.presentInLatestObservation !== false
+    ).length,
+    online: visibleRecorders.filter((recorder) => recorder.status === "online").length,
+    stale: visibleRecorders.filter((recorder) => recorder.status === "stale").length,
+    anomalies: visibleRecorders.reduce(
       (total, recorder) => total + (recorder.currentAnomalyCount ?? 0),
       0
     )
@@ -39,10 +48,38 @@ export function RecordersPage() {
 
   return (
     <div className="page-stack">
-      <Panel title="Recorders">
+      <Panel
+        title="Recorders"
+        actions={
+          <div className="toolbar compact-toolbar">
+            <input
+              type="search"
+              placeholder="Search VRecorders"
+              value={searchText}
+              onChange={(event) => setSearchText(event.target.value)}
+            />
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                checked={showHistory}
+                onChange={(event) => setShowHistory(event.target.checked)}
+              />
+              History
+            </label>
+            <button
+              type="button"
+              disabled={recordersQuery.isFetching}
+              onClick={() => recordersQuery.refetch()}
+            >
+              Refresh
+            </button>
+          </div>
+        }
+      >
         <MetricStrip
           metrics={[
             { label: "Known recorders", value: summary.known },
+            { label: "Current", value: summary.current },
             { label: "Online recorders", value: summary.online },
             { label: "Stale recorders", value: summary.stale },
             { label: "Recorder anomalies", value: summary.anomalies }
@@ -156,4 +193,25 @@ function timestamp(value: string | null | undefined): number {
   }
   const parsed = new Date(value).getTime();
   return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+function filterRecorders(
+  recorders: VitalDBRecorderRecord[],
+  searchText: string
+): VitalDBRecorderRecord[] {
+  const query = searchText.trim().toLowerCase();
+  if (!query) {
+    return recorders;
+  }
+  return recorders.filter((recorder) =>
+    [
+      recorder.vrcode,
+      recorder.lastIP,
+      recorder.version,
+      recorder.bedID,
+      recorder.bedName
+    ]
+      .filter(Boolean)
+      .some((value) => value?.toLowerCase().includes(query))
+  );
 }

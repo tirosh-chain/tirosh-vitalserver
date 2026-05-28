@@ -243,6 +243,19 @@ div.error-state {
   color: #2b2d2f;
 }
 
+.toolbar input {
+  min-width: 220px;
+  border: 1px solid #d8dde1;
+  border-radius: 7px;
+  background: #ffffff;
+  padding: 6px 10px;
+  color: #2b2d2f;
+}
+
+.compact-toolbar {
+  margin-bottom: 0;
+}
+
 .toolbar-count {
   margin-left: auto;
   color: #7d7f82;
@@ -256,6 +269,13 @@ div.error-state {
 .checkbox-label input {
   width: 18px;
   height: 18px;
+}
+
+.block-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
 }
 
 .live-state {

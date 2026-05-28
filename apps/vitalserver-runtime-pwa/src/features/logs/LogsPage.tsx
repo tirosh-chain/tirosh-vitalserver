@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { useExportHostLogs, useHostLogs } from "../../application/runtime-control/queries";
+import {
+  useExportHostLogs,
+  useHostLogs,
+  useRuntimeCapabilities
+} from "../../application/runtime-control/queries";
 import type { RuntimeLogSource } from "../../domain/runtime-control/contracts/runtimeControlTypes";
 import { ErrorState } from "../../shared/ui/ErrorState";
 import { Panel } from "../../shared/ui/Panel";
@@ -29,6 +33,7 @@ export function LogsPage() {
   const [exportPath, setExportPath] = useState(defaultExportPath);
   const outputRef = useRef<HTMLPreElement>(null);
 
+  const capabilities = useRuntimeCapabilities();
   const logs = useHostLogs({ source, lineLimit, live });
   const exportLogs = useExportHostLogs();
   const logText = logs.data?.text ?? "";
@@ -116,13 +121,18 @@ export function LogsPage() {
             <input
               type="text"
               value={exportPath}
+              disabled={capabilities.data?.canExportLogs !== true}
               onChange={(event) => setExportPath(event.target.value)}
             />
           </label>
           <button
             type="button"
             onClick={() => exportLogs.mutate(exportPath)}
-            disabled={exportLogs.isPending || !exportPath.trim()}
+            disabled={
+              exportLogs.isPending ||
+              !exportPath.trim() ||
+              capabilities.data?.canExportLogs !== true
+            }
           >
             Export Logs
           </button>
@@ -134,7 +144,8 @@ export function LogsPage() {
           <p className="muted">Exported to {exportDestination}</p>
         ) : (
           <p className="muted">
-            The archive is created on the Mac running Runtime Control API.
+            The archive is created on the Mac running Runtime Control API. PWA
+            cannot open Finder directly; use the exported path on the host.
           </p>
         )}
       </Panel>

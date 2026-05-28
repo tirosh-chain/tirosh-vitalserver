@@ -8,19 +8,33 @@ import {
   useRepairDatastore,
   useRepairProxy,
   useRepairRuntime,
+  useRuntimeCapabilities,
+  useRuntimeOverview,
   useRestoreRedisBackup,
   useRollbackBackup
 } from "../../application/runtime-control/queries";
+import { canControlRecovery } from "../../domain/runtime-control/capabilities/runtimeCapabilities";
 import type {
+  RuntimeControlOverview,
   RuntimeBackup
 } from "../../domain/runtime-control/contracts/runtimeControlTypes";
 import { formatBytes } from "../../domain/runtime-control/formatting/bytes";
+import { successfulHTTP } from "../../domain/runtime-control/formatting/http";
+import {
+  formatRuntimeState,
+  runtimeStateTone
+} from "../../domain/runtime-control/formatting/runtimeState";
+import { ConfirmButton } from "../../shared/ui/ConfirmButton";
 import { CommandResult } from "../../shared/ui/CommandResult";
 import { DataTable } from "../../shared/ui/DataTable";
 import { ErrorState } from "../../shared/ui/ErrorState";
+import { KeyValueRows } from "../../shared/ui/KeyValueRows";
 import { Panel } from "../../shared/ui/Panel";
+import { StatusBadge } from "../../shared/ui/StatusBadge";
 
 export function AdvancedPage() {
+  const overview = useRuntimeOverview();
+  const capabilities = useRuntimeCapabilities();
   const hostBackups = useHostBackups();
   const redisBackups = useRedisBackups();
   const rollbackBackup = useRollbackBackup();
@@ -36,6 +50,8 @@ export function AdvancedPage() {
   const [selectedRedisBackup, setSelectedRedisBackup] =
     useState<RuntimeBackup | null>(null);
   const [proxyPort, setProxyPort] = useState("");
+  const canRollback = capabilities.data?.canRollback === true;
+  const canRepair = canControlRecovery(capabilities.data);
 
   const latestCommand = useMemo(
     () =>
@@ -68,6 +84,17 @@ export function AdvancedPage() {
 
   return (
     <div className="page-stack">
+      <Panel title="Diagnostics">
+        <Diagnostics overview={overview.data} />
+        {overview.isError ? (
+          <ErrorState title="Failed to read runtime diagnostics" error={overview.error} />
+        ) : null}
+      </Panel>
+
+      <Panel title="Service health">
+        <ServiceHealth overview={overview.data} />
+      </Panel>
+
       <Panel title="Recovery operations">
         <p className="muted">
           Use these actions when the runtime is installed but unhealthy after
@@ -83,9 +110,9 @@ export function AdvancedPage() {
             emptyText="No rollback backups are available."
           />
           <div className="action-row">
-            <button
-              type="button"
-              disabled={!selectedHostBackup || rollbackBackup.isPending}
+            <ConfirmButton
+              confirmMessage="Rollback to the selected managed backup? Runtime services may restart."
+              disabled={!selectedHostBackup || rollbackBackup.isPending || !canRollback}
               onClick={() =>
                 selectedHostBackup?.path
                   ? rollbackBackup.mutate(selectedHostBackup.path)
@@ -93,10 +120,10 @@ export function AdvancedPage() {
               }
             >
               Rollback
-            </button>
-            <button
-              type="button"
-              disabled={!selectedHostBackup || deleteHostBackup.isPending}
+            </ConfirmButton>
+            <ConfirmButton
+              confirmMessage="Delete the selected managed backup? This cannot be undone."
+              disabled={!selectedHostBackup || deleteHostBackup.isPending || !canRollback}
               onClick={() =>
                 selectedHostBackup?.path
                   ? deleteHostBackup.mutate(selectedHostBackup.path)
@@ -104,7 +131,7 @@ export function AdvancedPage() {
               }
             >
               Delete Backup
-            </button>
+            </ConfirmButton>
           </div>
           {hostBackups.isError ? (
             <ErrorState
@@ -123,16 +150,16 @@ export function AdvancedPage() {
             emptyText="No Redis backups are available."
           />
           <div className="action-row">
-            <button
-              type="button"
-              disabled={createRedisBackup.isPending}
+            <ConfirmButton
+              confirmMessage="Create a recoverable Redis backup now?"
+              disabled={createRedisBackup.isPending || !canRepair}
               onClick={() => createRedisBackup.mutate("")}
             >
               Create Redis Backup
-            </button>
-            <button
-              type="button"
-              disabled={!selectedRedisBackup || restoreRedisBackup.isPending}
+            </ConfirmButton>
+            <ConfirmButton
+              confirmMessage="Restore the selected Redis backup? Current Redis data will be replaced."
+              disabled={!selectedRedisBackup || restoreRedisBackup.isPending || !canRepair}
               onClick={() =>
                 selectedRedisBackup?.path
                   ? restoreRedisBackup.mutate(selectedRedisBackup.path)
@@ -140,7 +167,7 @@ export function AdvancedPage() {
               }
             >
               Restore Redis Backup
-            </button>
+            </ConfirmButton>
           </div>
           {redisBackups.isError ? (
             <ErrorState
@@ -153,20 +180,20 @@ export function AdvancedPage() {
 
       <Panel title="Runtime repair">
         <div className="action-row">
-          <button
-            type="button"
-            disabled={repairRuntime.isPending}
+          <ConfirmButton
+            confirmMessage="Restart and repair runtime services?"
+            disabled={repairRuntime.isPending || !canRepair}
             onClick={() => repairRuntime.mutate()}
           >
             Repair Runtime
-          </button>
-          <button
-            type="button"
-            disabled={repairDatastore.isPending}
+          </ConfirmButton>
+          <ConfirmButton
+            confirmMessage="Repair the Redis data store? Redis may create a backup and truncate a corrupted AOF tail."
+            disabled={repairDatastore.isPending || !canRepair}
             onClick={() => repairDatastore.mutate()}
           >
             Repair Data Store
-          </button>
+          </ConfirmButton>
         </div>
         <div className="inline-form">
           <label>
@@ -180,13 +207,13 @@ export function AdvancedPage() {
               placeholder="Use configured port"
             />
           </label>
-          <button
-            type="button"
-            disabled={repairProxy.isPending}
+          <ConfirmButton
+            confirmMessage="Repair the host proxy service on the selected port?"
+            disabled={repairProxy.isPending || !canRepair}
             onClick={() => repairProxy.mutate(parseOptionalNumber(proxyPort))}
           >
             Repair Proxy
-          </button>
+          </ConfirmButton>
         </div>
       </Panel>
 
@@ -194,6 +221,87 @@ export function AdvancedPage() {
         <CommandResult result={latestCommand} error={latestError} />
       </Panel>
     </div>
+  );
+}
+
+function Diagnostics({ overview }: { overview: RuntimeControlOverview | undefined }) {
+  const status = overview?.status;
+  return (
+    <KeyValueRows
+      rows={[
+        {
+          label: "Runtime state",
+          value: (
+            <StatusBadge tone={runtimeStateTone(status?.runtimeState)}>
+              {formatRuntimeState(status?.runtimeState)}
+            </StatusBadge>
+          )
+        },
+        { label: "Operation", value: status?.operation ?? "Unknown" },
+        { label: "Runtime version", value: status?.runtimeVersion ?? "Unknown" },
+        { label: "VM IP", value: status?.vmIP ?? "Waiting" },
+        {
+          label: "Failure reasons",
+          value: status?.failureReasons?.length
+            ? status.failureReasons.join(", ")
+            : "-"
+        }
+      ]}
+    />
+  );
+}
+
+function ServiceHealth({ overview }: { overview: RuntimeControlOverview | undefined }) {
+  const status = overview?.status;
+  const services = [
+    {
+      label: "VM service",
+      value: status?.vmServiceLoaded ? "Running" : "Stopped",
+      healthy: status?.vmServiceLoaded
+    },
+    {
+      label: "Proxy service",
+      value: status?.proxyServiceLoaded ? "Running" : "Stopped",
+      healthy: status?.proxyServiceLoaded
+    },
+    {
+      label: "Watchdog service",
+      value: status?.watchdogServiceLoaded ? "Running" : "Stopped",
+      healthy: status?.watchdogServiceLoaded
+    },
+    {
+      label: "Guest log sync service",
+      value: status?.guestLogSyncServiceLoaded ? "Running" : "Stopped",
+      healthy: status?.guestLogSyncServiceLoaded
+    },
+    {
+      label: "VitalServer",
+      value: status?.guestHTTP ?? "Unknown",
+      healthy: successfulHTTP(status?.guestHTTP)
+    },
+    {
+      label: "Network access",
+      value: status?.hostProxyHTTP ?? "Unknown",
+      healthy: successfulHTTP(status?.hostProxyHTTP)
+    },
+    {
+      label: "Audit proxy",
+      value: status?.containerObservation?.auditProxyHTTP ?? "Unknown",
+      healthy: successfulHTTP(status?.containerObservation?.auditProxyHTTP)
+    }
+  ];
+
+  return (
+    <KeyValueRows
+      rows={services.map((service) => ({
+        label: service.label,
+        value: (
+          <StatusBadge tone={service.healthy ? "success" : "warning"}>
+            {service.value}
+          </StatusBadge>
+        )
+      }))}
+    />
   );
 }
 
