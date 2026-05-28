@@ -1,5 +1,7 @@
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 
+import { Button } from "./Button";
+
 type ConfirmButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   confirmMessage: string;
   children: ReactNode;
@@ -12,9 +14,8 @@ export function ConfirmButton({
   ...props
 }: ConfirmButtonProps) {
   return (
-    <button
+    <Button
       {...props}
-      type={props.type ?? "button"}
       onClick={(event) => {
         if (!globalThis.confirm(confirmMessage)) {
           return;
@@ -23,6 +24,6 @@ export function ConfirmButton({
       }}
     >
       {children}
-    </button>
+    </Button>
   );
 }
