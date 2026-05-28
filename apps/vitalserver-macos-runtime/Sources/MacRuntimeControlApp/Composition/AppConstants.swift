@@ -116,6 +116,7 @@ enum AppConstants {
         static let recorderDetails = "Recorder Details"
         static let bedDetails = "Bed Details"
         static let runtimeEvents = "Runtime Events"
+        static let runtimeEventPeriod = "Period"
         static let runtimeEventFilter = "Filter"
         static let runtimeEventLimit = "Limit"
         static let activeRecorderConnections = "Active recorder connections"

@@ -4,10 +4,10 @@ import SwiftUI
 struct RuntimeObservabilityPanel: View {
     @ObservedObject var viewModel: RuntimeViewModel
     @State private var showingRecorderAnomalies = false
-    @State private var showingRuntimeEvents = false
 
     private let eventDisplayPolicy = RuntimeEventDisplayPolicy()
     private let runtimeEventLimitOptions = [25, 50, 100, 200, 500]
+    private let runtimeEventPeriodOptions = RuntimeEventPeriodOption.allCases
     private let runtimeEventFilterOptions = RuntimeEventFilterOption.allOptions
 
     var body: some View {
@@ -73,33 +73,53 @@ struct RuntimeObservabilityPanel: View {
         observationSection(AppConstants.Labels.runtimeEvents) {
             VStack(alignment: .leading, spacing: 10) {
                 runtimeEventControls
-                RuntimeDisclosureSection(isExpanded: $showingRuntimeEvents) {
-                    Text("\(eventItems.count) events")
-                        .foregroundStyle(.secondary)
-                } content: {
-                    ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 8) {
-                            ForEach(eventItems) { item in
-                                eventRow(item)
-                            }
-                            if eventItems.isEmpty {
-                                emptyObservation(AppConstants.StatusText.noRuntimeEvents)
-                            }
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 8) {
+                        ForEach(eventItems) { item in
+                            eventRow(item)
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        if eventItems.isEmpty {
+                            emptyObservation(AppConstants.StatusText.noRuntimeEvents)
+                        }
                     }
-                    .frame(maxHeight: 260)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                .frame(maxHeight: 360)
             }
         }
     }
 
     private var runtimeEventControls: some View {
         HStack(spacing: 12) {
+            runtimeEventPeriodControl
             runtimeEventFilterControl
             runtimeEventLimitControl
             Spacer(minLength: 0)
+            Text("\(eventItems.count) events")
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
         }
+    }
+
+    private var runtimeEventPeriodControl: some View {
+        HStack(spacing: 8) {
+            Text(AppConstants.Labels.runtimeEventPeriod)
+                .fontWeight(.medium)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+            Picker("", selection: $viewModel.runtimeEventPeriod) {
+                ForEach(runtimeEventPeriodOptions) { option in
+                    Text(option.title).tag(option.id)
+                }
+            }
+            .frame(width: 170)
+            .labelsHidden()
+            .onChange(of: viewModel.runtimeEventPeriod) { _ in
+                Task { await viewModel.refreshRuntimeEvents() }
+            }
+        }
+        .fixedSize(horizontal: true, vertical: false)
     }
 
     private var runtimeEventFilterControl: some View {
@@ -292,7 +312,7 @@ private struct RuntimeEventFilterOption: Identifiable {
     let id: String
     let title: String
 
-    static let allOptions = [all] + knownTypes.map {
+    static let allOptions = [all] + RuntimeEventType.knownTypes.map {
         RuntimeEventFilterOption(title: $0.rawValue, eventType: $0)
     }
 
@@ -300,8 +320,6 @@ private struct RuntimeEventFilterOption: Identifiable {
         id: "",
         title: AppConstants.StatusText.allRuntimeEvents
     )
-
-    private static let knownTypes = RuntimeEventType.knownTypes
 
     init(id: String, title: String) {
         self.id = id

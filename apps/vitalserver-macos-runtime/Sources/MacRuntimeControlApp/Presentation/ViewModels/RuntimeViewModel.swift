@@ -4,6 +4,60 @@ import RuntimeControl
 import Contracts
 import Core
 
+enum RuntimeEventPeriodOption: String, CaseIterable, Identifiable, Sendable {
+    case last15Minutes = "last-15-minutes"
+    case lastHour = "last-hour"
+    case last6Hours = "last-6-hours"
+    case last24Hours = "last-24-hours"
+    case last7Days = "last-7-days"
+    case all
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .last15Minutes:
+            return "Last 15 minutes"
+        case .lastHour:
+            return "Last hour"
+        case .last6Hours:
+            return "Last 6 hours"
+        case .last24Hours:
+            return "Last 24 hours"
+        case .last7Days:
+            return "Last 7 days"
+        case .all:
+            return AppConstants.StatusText.allRuntimeEvents
+        }
+    }
+
+    func sinceTimestamp(now: Date = Date()) -> String? {
+        guard let interval = interval else {
+            return nil
+        }
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.string(from: now.addingTimeInterval(-interval))
+    }
+
+    private var interval: TimeInterval? {
+        switch self {
+        case .last15Minutes:
+            return 15 * 60
+        case .lastHour:
+            return 60 * 60
+        case .last6Hours:
+            return 6 * 60 * 60
+        case .last24Hours:
+            return 24 * 60 * 60
+        case .last7Days:
+            return 7 * 24 * 60 * 60
+        case .all:
+            return nil
+        }
+    }
+}
+
 @MainActor
 final class RuntimeViewModel: ObservableObject {
     @Published var status = RuntimeStatus()
@@ -29,6 +83,7 @@ final class RuntimeViewModel: ObservableObject {
     @Published var installationInfo = RuntimeInstallInfo()
     @Published var runtimeEvents = RuntimeEventHistory(events: [])
     @Published var runtimeEventLimit = 50
+    @Published var runtimeEventPeriod = RuntimeEventPeriodOption.last24Hours.rawValue
     @Published var runtimeEventFilter = ""
     @Published var vitalRecorders = RuntimeVitalRecorderHistory()
     @Published var vitalRelationships = RuntimeVitalRelationshipHistory()
@@ -156,11 +211,16 @@ final class RuntimeViewModel: ObservableObject {
         runtimeEvents = await loadRuntimeEventsSnapshot(
             query: RuntimeEventQuery(
                 limit: runtimeEventLimit,
-                eventType: selectedRuntimeEventType
+                eventType: selectedRuntimeEventType,
+                since: selectedRuntimeEventSince
             )
         )
         containerObservation = status.containerObservation
             ?? runtimeEvents.events.first { $0.containerObservation != nil }?.containerObservation
+    }
+
+    var selectedRuntimeEventSince: String? {
+        (RuntimeEventPeriodOption(rawValue: runtimeEventPeriod) ?? .last24Hours).sinceTimestamp()
     }
 
     var selectedRuntimeEventType: RuntimeEventType? {
