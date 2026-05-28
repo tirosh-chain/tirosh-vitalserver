@@ -35,6 +35,7 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-021 | Ubuntu arm64 `flash-kernel` 실패 | Guest bootstrap | resolved | [Ubuntu arm64 cloud image에서 `flash-kernel`이 실패](troubleshooting/021_ubuntu-flash-kernel-failure.md) |
 | TS-022 | 설치된 runtime binary에 virtualization entitlement가 없음 | Packaging | resolved | [설치된 runtime binary에 virtualization entitlement가 없음](troubleshooting/022_missing-virtualization-entitlement.md) |
 | TS-023 | stale pid file | Local development | archived | [`make vm-status`가 stale pid file을 표시](troubleshooting/023_stale-pid-file.md) |
+| TS-024 | pkg 설치가 `Running package scripts...`에서 실패 | Packaging | active | [pkg 설치가 `Running package scripts...`에서 실패함](troubleshooting/024_pkg-postinstall-timeout.md) |
 
 ## Follow-up 규칙
 
