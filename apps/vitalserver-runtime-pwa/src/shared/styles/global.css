@@ -508,6 +508,72 @@ div.error-state {
   font-size: 18px;
 }
 
+.recorder-activity {
+  display: grid;
+  gap: 16px;
+}
+
+.chart-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+}
+
+.chart-toolbar label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #7d7f82;
+  font-weight: 700;
+}
+
+.chart-toolbar select {
+  min-width: 120px;
+  border: 1px solid #d8dde1;
+  border-radius: 7px;
+  background: #ffffff;
+  padding: 6px 10px;
+  color: #2b2d2f;
+}
+
+.chart-meta {
+  margin-left: auto;
+  color: #7d7f82;
+  font-weight: 700;
+}
+
+.activity-chart {
+  width: 100%;
+  min-height: 260px;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.activity-axis {
+  fill: #7d7f82;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.activity-axis-title {
+  fill: #7d7f82;
+}
+
+.activity-grid-line {
+  stroke: #e8ecef;
+  stroke-width: 1;
+}
+
+.activity-axis-line {
+  stroke: #bfc7ce;
+  stroke-width: 1.4;
+}
+
+.activity-bar {
+  fill: #1683f7;
+}
+
 .event-list {
   display: grid;
   gap: 22px;
@@ -566,7 +632,8 @@ div.error-state {
   }
 
   .toolbar-count,
-  .event-source {
+  .event-source,
+  .chart-meta {
     margin-left: 0;
   }
 

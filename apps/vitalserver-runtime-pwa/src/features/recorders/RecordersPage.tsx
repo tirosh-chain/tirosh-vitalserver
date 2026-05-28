@@ -2,7 +2,6 @@ import { useMemo, useState } from "react";
 
 import { useVitalDBRecorders } from "../../application/runtime-control/queries";
 import type { VitalDBRecorderRecord } from "../../domain/runtime-control/contracts/runtimeControlTypes";
-import { formatBytes } from "../../domain/runtime-control/formatting/bytes";
 import {
   formatBoolean,
   formatRecorderStatus,
@@ -15,6 +14,7 @@ import { KeyValueRows } from "../../shared/ui/KeyValueRows";
 import { MetricStrip } from "../../shared/ui/MetricStrip";
 import { Panel } from "../../shared/ui/Panel";
 import { StatusBadge } from "../../shared/ui/StatusBadge";
+import { RecorderActivityChart } from "./RecorderActivityChart";
 
 export function RecordersPage() {
   const recordersQuery = useVitalDBRecorders();
@@ -109,8 +109,6 @@ export function RecordersPage() {
 }
 
 function RecorderDetails({ recorder }: { recorder: VitalDBRecorderRecord }) {
-  const latestActivity = recorder.activityTimeline?.at(-1);
-
   return (
     <Panel title="Recorder Details">
       <div className="detail-heading">
@@ -139,26 +137,7 @@ function RecorderDetails({ recorder }: { recorder: VitalDBRecorderRecord }) {
 
       <div className="subsection">
         <h3>Activity</h3>
-        {latestActivity ? (
-          <MetricStrip
-            metrics={[
-              { label: "Packets", value: latestActivity.messageCount ?? 0 },
-              {
-                label: "Total data",
-                value: formatBytes(latestActivity.byteCount)
-              },
-              {
-                label: "Data rate",
-                value: `${formatBytes(latestActivity.bytesPerSecond ?? 0)}/s`
-              },
-              { label: "Rooms", value: latestActivity.roomCount ?? 0 }
-            ]}
-          />
-        ) : (
-          <p className="empty-state">
-            No recent data activity has been observed for this VRecorder.
-          </p>
-        )}
+        <RecorderActivityChart recorder={recorder} />
       </div>
     </Panel>
   );
