@@ -40,15 +40,20 @@ final class MacRuntimeControlEnvironment: ObservableObject {
             healthNotifications: HealthNotificationCenter(),
             nativeShell: SystemRuntimeNativeShell()
         )
-        let apiServer = MacRuntimeControlDevelopmentAPI.makeIfEnabled(
+        let apiServer = MacRuntimeControlLocalAPI.make(
             client: client,
             readWorker: readWorker,
-            testKitController: testKitController
+            testKitController: testKitController,
+            servesTestTools: GeneratedRelease.testEnabled
         )
         return MacRuntimeControlEnvironment(viewModel: viewModel, apiServer: apiServer)
     }
 
-    static func shouldStartDevelopmentAPIServer(testEnabled: Bool) -> Bool {
+    static func shouldStartRuntimeControlAPIServer() -> Bool {
+        true
+    }
+
+    static func shouldServeRuntimeControlTestTools(testEnabled: Bool) -> Bool {
         testEnabled
     }
 

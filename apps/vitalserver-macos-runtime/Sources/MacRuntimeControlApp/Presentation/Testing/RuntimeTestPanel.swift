@@ -30,7 +30,7 @@ struct RuntimeTestPanel: View {
         testCard(RuntimeTestPanelText.browserChecks) {
             Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 10) {
                 statusRow(RuntimeTestPanelText.runtimeControlConsole) {
-                    linkButton(RuntimeDevelopmentAPIConstants.devConsoleURL) {
+                    linkButton(RuntimeControlLocalAPIConstants.devConsoleURL) {
                         viewModel.openRuntimeControlDevConsole()
                     }
                     .help(RuntimeTestPanelText.runtimeControlConsoleHelp)

@@ -55,14 +55,15 @@ final class RuntimeSectionTests: XCTestCase {
 
     func testRuntimeControlDevConsoleURLUsesLocalAPI() {
         XCTAssertEqual(
-            RuntimeDevelopmentAPIConstants.devConsoleURL,
+            RuntimeControlLocalAPIConstants.devConsoleURL,
             "http://127.0.0.1:18321/dev/runtime-control"
         )
     }
 
     @MainActor
-    func testRuntimeControlAPIServerStartsOnlyForDevBuilds() {
-        XCTAssertFalse(MacRuntimeControlEnvironment.shouldStartDevelopmentAPIServer(testEnabled: false))
-        XCTAssertTrue(MacRuntimeControlEnvironment.shouldStartDevelopmentAPIServer(testEnabled: true))
+    func testRuntimeControlAPIServerIsIndependentFromTestTools() {
+        XCTAssertTrue(MacRuntimeControlEnvironment.shouldStartRuntimeControlAPIServer())
+        XCTAssertFalse(MacRuntimeControlEnvironment.shouldServeRuntimeControlTestTools(testEnabled: false))
+        XCTAssertTrue(MacRuntimeControlEnvironment.shouldServeRuntimeControlTestTools(testEnabled: true))
     }
 }
