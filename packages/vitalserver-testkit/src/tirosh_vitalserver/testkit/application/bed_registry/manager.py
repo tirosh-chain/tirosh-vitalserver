@@ -78,7 +78,7 @@ class BedRegistry:
                 self._beds_by_room_name[bed.room_name] = bed
             registered_beds = tuple(self._beds_by_room_name.values())
             self._save(registered_beds)
-            return registered_beds
+            return beds
 
     def reset_beds(self) -> tuple[Bed, ...]:
         """Delete all registered bed identities."""

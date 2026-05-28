@@ -96,6 +96,20 @@ def test_bed_registry_endpoint_merges_by_room_name() -> None:
     assert len(second["beds"]) == 1
 
 
+def test_bed_registry_create_endpoint_returns_only_created_beds() -> None:
+    route = route_for("/beds", "POST")
+    list_route = route_for("/beds", "GET")
+    registry = BedRegistry()
+
+    route.endpoint(CreateBedsRequest(roomNames=("OR-A",)), registry)
+
+    created = route.endpoint(CreateBedsRequest(roomNames=("OR-B",)), registry)
+    listed = list_route.endpoint(registry)
+
+    assert [bed["roomName"] for bed in created["beds"]] == ["OR-B"]
+    assert [bed["roomName"] for bed in listed["beds"]] == ["OR-A", "OR-B"]
+
+
 def test_sessions_endpoint_rejects_missing_bed_room_names() -> None:
     route = route_for("/sessions", "POST")
     manager = VirtualRecorderSessionManager(connector=fake_socketio_connector)

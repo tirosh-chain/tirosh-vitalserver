@@ -102,9 +102,17 @@ class VirtualRecorderSessionManager:
             stored = dict(self._stored_sessions)
 
         active_snapshots = tuple(session.snapshot() for session in sessions)
-        for snapshot in active_snapshots:
+        evict_session_ids: list[str] = []
+        for session, snapshot in zip(sessions, active_snapshots, strict=True):
             stored[snapshot.session_id] = snapshot
             self._save_snapshot(snapshot)
+            if not session_is_active(snapshot) and session.wait(timeout=0):
+                evict_session_ids.append(snapshot.session_id)
+
+        if evict_session_ids:
+            with self._lock:
+                for session_id in evict_session_ids:
+                    self._sessions.pop(session_id, None)
 
         return tuple(stored.values())
 
