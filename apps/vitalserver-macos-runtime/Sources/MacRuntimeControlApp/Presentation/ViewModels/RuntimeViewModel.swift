@@ -2,6 +2,7 @@ import Foundation
 import MacHostRuntimeAdapter
 import RuntimeControl
 import Contracts
+import Core
 
 @MainActor
 final class RuntimeViewModel: ObservableObject {
@@ -27,6 +28,8 @@ final class RuntimeViewModel: ObservableObject {
     @Published var releaseInfo = RuntimeReleaseInfo.generated
     @Published var installationInfo = RuntimeInstallInfo()
     @Published var runtimeEvents = RuntimeEventHistory(events: [])
+    @Published var runtimeEventLimit = 50
+    @Published var runtimeEventFilter = ""
     @Published var vitalRecorders = RuntimeVitalRecorderHistory()
     @Published var vitalRelationships = RuntimeVitalRelationshipHistory()
     @Published var containerObservation: RuntimeContainerObservation?
@@ -149,10 +152,19 @@ final class RuntimeViewModel: ObservableObject {
         healthNotificationCoordinator.handleTransition(to: status)
     }
 
-    func refreshRuntimeEvents(limit: Int = 100) async {
-        runtimeEvents = await loadRuntimeEventsSnapshot(limit: limit)
+    func refreshRuntimeEvents() async {
+        runtimeEvents = await loadRuntimeEventsSnapshot(
+            query: RuntimeEventQuery(
+                limit: runtimeEventLimit,
+                eventType: selectedRuntimeEventType
+            )
+        )
         containerObservation = status.containerObservation
             ?? runtimeEvents.events.first { $0.containerObservation != nil }?.containerObservation
+    }
+
+    var selectedRuntimeEventType: RuntimeEventType? {
+        runtimeEventFilter.isEmpty ? nil : RuntimeEventType(rawValue: runtimeEventFilter)
     }
 
     func refreshVitalRecorders() async {
@@ -502,11 +514,11 @@ final class RuntimeViewModel: ObservableObject {
         return await controlClient.loadHealthStatus(settings: settings)
     }
 
-    private func loadRuntimeEventsSnapshot(limit: Int) async -> RuntimeEventHistory {
+    private func loadRuntimeEventsSnapshot(query: RuntimeEventQuery) async -> RuntimeEventHistory {
         if let readWorker {
-            return await readWorker.loadRuntimeEvents(limit: limit)
+            return await readWorker.loadRuntimeEvents(query: query)
         }
-        return controlClient.loadRuntimeEvents(limit: limit)
+        return controlClient.loadRuntimeEvents(query: query)
     }
 
     private func loadVitalRecordersSnapshot() async -> RuntimeVitalRecorderHistory {

@@ -25,6 +25,31 @@ public enum RuntimeEventType: Codable, Equatable, Sendable {
     case runtimeCommandFailed
     case unknown(String)
 
+    public static let knownTypes: [RuntimeEventType] = [
+        .statusChanged,
+        .progressUpdated,
+        .healthObserved,
+        .recoveryTriggered,
+        .recoveryCompleted,
+        .recoverySuppressed,
+        .domainErrorObserved,
+        .vmErrorObserved,
+        .containerObserved,
+        .auditProxyObserved,
+        .vitalDBObserved,
+        .vitalDBObserverUnhealthy,
+        .vitalDBAnomalyDetected,
+        .watchdogSkipped,
+        .recoveryPlanned,
+        .serviceRestartDispatched,
+        .observabilityStoreFailed,
+        .runtimeStatusObserved,
+        .guestStateObserved,
+        .runtimeCommandStarted,
+        .runtimeCommandCompleted,
+        .runtimeCommandFailed,
+    ]
+
     public init(rawValue: String) {
         switch rawValue {
         case "status-changed":
