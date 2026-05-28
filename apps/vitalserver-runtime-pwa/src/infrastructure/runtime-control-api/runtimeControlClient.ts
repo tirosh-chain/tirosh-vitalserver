@@ -25,7 +25,7 @@ import type {
   RuntimeUpdateBundleSummaryResponse,
   VitalDBBeds,
   VitalDBRecorders
-} from "./runtimeControlTypes";
+} from "../../domain/runtime-control/contracts/runtimeControlTypes";
 
 export type RuntimeControlClientOptions = {
   baseURL?: string;

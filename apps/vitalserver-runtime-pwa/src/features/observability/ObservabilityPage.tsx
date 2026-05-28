@@ -1,9 +1,9 @@
 import { useState } from "react";
 
-import { useRuntimeEvents, useRuntimeOverview } from "../../api/queries";
-import type { RuntimeEventDocument } from "../../api/runtimeControlTypes";
-import { formatRuntimeState } from "../../shared/formatting/runtimeState";
-import { formatLocalDateTime } from "../../shared/formatting/time";
+import { useRuntimeEvents, useRuntimeOverview } from "../../application/runtime-control/queries";
+import type { RuntimeEventDocument } from "../../domain/runtime-control/contracts/runtimeControlTypes";
+import { formatRuntimeState } from "../../domain/runtime-control/formatting/runtimeState";
+import { formatLocalDateTime } from "../../domain/runtime-control/formatting/time";
 import { KeyValueRows } from "../../shared/ui/KeyValueRows";
 import { Panel } from "../../shared/ui/Panel";
 import {
@@ -11,7 +11,7 @@ import {
   runtimeEventTypes,
   sinceForPeriod,
   type RuntimeEventPeriod
-} from "./eventFilters";
+} from "../../domain/runtime-control/events/eventFilters";
 
 export function ObservabilityPage() {
   const [period, setPeriod] = useState<RuntimeEventPeriod>("24h");

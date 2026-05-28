@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { useExportHostLogs, useHostLogs } from "../../api/queries";
-import type { RuntimeLogSource } from "../../api/runtimeControlTypes";
+import { useExportHostLogs, useHostLogs } from "../../application/runtime-control/queries";
+import type { RuntimeLogSource } from "../../domain/runtime-control/contracts/runtimeControlTypes";
 import { Panel } from "../../shared/ui/Panel";
 
 const logSources: Array<{ id: RuntimeLogSource; label: string }> = [

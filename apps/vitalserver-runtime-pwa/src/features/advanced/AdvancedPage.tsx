@@ -10,11 +10,11 @@ import {
   useRepairRuntime,
   useRestoreRedisBackup,
   useRollbackBackup
-} from "../../api/queries";
+} from "../../application/runtime-control/queries";
 import type {
   RuntimeBackup
-} from "../../api/runtimeControlTypes";
-import { formatBytes } from "../../shared/formatting/bytes";
+} from "../../domain/runtime-control/contracts/runtimeControlTypes";
+import { formatBytes } from "../../domain/runtime-control/formatting/bytes";
 import { CommandResult } from "../../shared/ui/CommandResult";
 import { DataTable } from "../../shared/ui/DataTable";
 import { Panel } from "../../shared/ui/Panel";

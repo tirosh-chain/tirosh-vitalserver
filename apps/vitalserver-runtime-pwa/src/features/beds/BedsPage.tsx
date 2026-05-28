@@ -1,13 +1,13 @@
 import { useMemo, useState } from "react";
 
-import { useVitalDBBeds } from "../../api/queries";
-import type { VitalDBBedRecord } from "../../api/runtimeControlTypes";
+import { useVitalDBBeds } from "../../application/runtime-control/queries";
+import type { VitalDBBedRecord } from "../../domain/runtime-control/contracts/runtimeControlTypes";
 import {
   formatBoolean,
   formatRecorderStatus,
   recorderStatusTone
-} from "../../shared/formatting/status";
-import { formatLocalDateTime } from "../../shared/formatting/time";
+} from "../../domain/runtime-control/formatting/status";
+import { formatLocalDateTime } from "../../domain/runtime-control/formatting/time";
 import { DataTable } from "../../shared/ui/DataTable";
 import { KeyValueRows } from "../../shared/ui/KeyValueRows";
 import { MetricStrip } from "../../shared/ui/MetricStrip";

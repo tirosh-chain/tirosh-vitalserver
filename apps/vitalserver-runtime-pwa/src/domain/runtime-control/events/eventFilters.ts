@@ -35,8 +35,11 @@ export const runtimeEventTypes = [
   "runtime-command-failed"
 ];
 
-export function sinceForPeriod(period: RuntimeEventPeriod): string {
+export function sinceForPeriod(
+  period: RuntimeEventPeriod,
+  now: Date = new Date()
+): string {
   const match = runtimeEventPeriods.find((candidate) => candidate.value === period);
   const milliseconds = match?.milliseconds ?? runtimeEventPeriods[2].milliseconds;
-  return new Date(Date.now() - milliseconds).toISOString();
+  return new Date(now.getTime() - milliseconds).toISOString();
 }

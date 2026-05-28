@@ -10,7 +10,7 @@
     "check": "npm run generate:api && tsc -b --pretty false",
     "preview": "vite preview --host 127.0.0.1",
     "test": "vitest run",
-    "generate:api": "openapi-typescript ../../docs/macos-runtime/runtime-control.openapi.json -o src/api/generated/runtime-control.ts"
+    "generate:api": "openapi-typescript ../../docs/macos-runtime/runtime-control.openapi.json -o src/domain/runtime-control/contracts/generated/runtime-control.ts"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.0.0",

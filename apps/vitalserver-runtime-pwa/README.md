@@ -26,7 +26,7 @@ docs/macos-runtime/runtime-control.openapi.json
 Generated TypeScript types live in:
 
 ```text
-src/api/generated/runtime-control.ts
+src/domain/runtime-control/contracts/generated/runtime-control.ts
 ```
 
 Regenerate them with:
@@ -34,6 +34,36 @@ Regenerate them with:
 ```sh
 npm --prefix apps/vitalserver-runtime-pwa run generate:api
 ```
+
+## Architecture
+
+The PWA follows the same boundary direction as the runtime code:
+
+```text
+src/
+  domain/
+    runtime-control/
+      contracts/      OpenAPI-derived RuntimeContractAPI types
+      events/         event filter policy and period calculations
+      formatting/     runtime display and status formatting policy
+  application/
+    runtime-control/  React Query hooks and command/query orchestration
+  infrastructure/
+    runtime-control-api/
+                     fetch-based Runtime Control API transport
+  features/           route-level React pages
+  shared/             presentation-only reusable UI components
+```
+
+Dependency direction:
+
+- `features` may use `application`, `domain`, and `shared`.
+- `application` may use `domain` and `infrastructure`.
+- `infrastructure` may use `domain` contracts, but must not import React UI.
+- `domain` must not import React, React Query, or transport code.
+
+Keep new business/display policy in `domain`, command/query composition in
+`application`, and HTTP details in `infrastructure`.
 
 ## Validation
 

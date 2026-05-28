@@ -10,9 +10,9 @@ import {
   useSessionTestKitAction,
   useStartTestKitVirtualRecorders,
   useTestKitStatus
-} from "../../api/queries";
-import type { RuntimeTestKitSession } from "../../api/runtimeControlTypes";
-import { formatBytes } from "../../shared/formatting/bytes";
+} from "../../application/runtime-control/queries";
+import type { RuntimeTestKitSession } from "../../domain/runtime-control/contracts/runtimeControlTypes";
+import { formatBytes } from "../../domain/runtime-control/formatting/bytes";
 import { KeyValueRows } from "../../shared/ui/KeyValueRows";
 import { Panel } from "../../shared/ui/Panel";
 

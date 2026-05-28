@@ -4,7 +4,7 @@ import {
   useApplyUpdateBundle,
   useSummarizeUpdateBundle,
   useVerifyUpdateBundle
-} from "../../api/queries";
+} from "../../application/runtime-control/queries";
 import { CommandResult } from "../../shared/ui/CommandResult";
 import { Panel } from "../../shared/ui/Panel";
 

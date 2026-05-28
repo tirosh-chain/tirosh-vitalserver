@@ -1,4 +1,4 @@
-import type { RuntimeCommandResponse } from "../../api/runtimeControlTypes";
+import type { RuntimeCommandResponse } from "../../domain/runtime-control/contracts/runtimeControlTypes";
 
 export function CommandResult({
   result,

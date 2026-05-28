@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { runtimeControlClient } from "./runtimeControlClient";
-import type { RuntimeLogSource } from "./runtimeControlTypes";
+import { runtimeControlClient } from "../../infrastructure/runtime-control-api/runtimeControlClient";
+import type { RuntimeLogSource } from "../../domain/runtime-control/contracts/runtimeControlTypes";
 
 export const runtimeControlQueryKeys = {
   overview: ["runtime-control", "overview"] as const,

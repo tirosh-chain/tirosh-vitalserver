@@ -3,8 +3,8 @@ import { useEffect, useState } from "react";
 import {
   useApplyRuntimeSettings,
   useRuntimeSettings
-} from "../../api/queries";
-import type { RuntimeSettings } from "../../api/runtimeControlTypes";
+} from "../../application/runtime-control/queries";
+import type { RuntimeSettings } from "../../domain/runtime-control/contracts/runtimeControlTypes";
 import { Panel } from "../../shared/ui/Panel";
 
 type SettingsDraft = {

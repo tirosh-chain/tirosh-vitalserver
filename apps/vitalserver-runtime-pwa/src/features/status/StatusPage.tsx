@@ -1,11 +1,11 @@
-import { useRuntimeOverview } from "../../api/queries";
-import type { RuntimeControlOverview } from "../../api/runtimeControlTypes";
-import { formatBytes } from "../../shared/formatting/bytes";
+import { useRuntimeOverview } from "../../application/runtime-control/queries";
+import type { RuntimeControlOverview } from "../../domain/runtime-control/contracts/runtimeControlTypes";
+import { formatBytes } from "../../domain/runtime-control/formatting/bytes";
 import {
   formatRuntimeState,
   runtimeStateTone
-} from "../../shared/formatting/runtimeState";
-import { formatLocalDateTime, formatUptimeSince } from "../../shared/formatting/time";
+} from "../../domain/runtime-control/formatting/runtimeState";
+import { formatLocalDateTime, formatUptimeSince } from "../../domain/runtime-control/formatting/time";
 import { KeyValueRows } from "../../shared/ui/KeyValueRows";
 import { Panel } from "../../shared/ui/Panel";
 import { StatusBadge } from "../../shared/ui/StatusBadge";

@@ -1,14 +1,14 @@
 import { useMemo, useState } from "react";
 
-import { useVitalDBRecorders } from "../../api/queries";
-import type { VitalDBRecorderRecord } from "../../api/runtimeControlTypes";
-import { formatBytes } from "../../shared/formatting/bytes";
+import { useVitalDBRecorders } from "../../application/runtime-control/queries";
+import type { VitalDBRecorderRecord } from "../../domain/runtime-control/contracts/runtimeControlTypes";
+import { formatBytes } from "../../domain/runtime-control/formatting/bytes";
 import {
   formatBoolean,
   formatRecorderStatus,
   recorderStatusTone
-} from "../../shared/formatting/status";
-import { formatLocalDateTime } from "../../shared/formatting/time";
+} from "../../domain/runtime-control/formatting/status";
+import { formatLocalDateTime } from "../../domain/runtime-control/formatting/time";
 import { DataTable } from "../../shared/ui/DataTable";
 import { KeyValueRows } from "../../shared/ui/KeyValueRows";
 import { MetricStrip } from "../../shared/ui/MetricStrip";
