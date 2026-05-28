@@ -59,4 +59,9 @@ chmod 0644 "${vm_plist}"
 chown root:wheel "${vm_plist}"
 launchctl enable "system/${vm_label}" 2>/dev/null || true
 
+if launchctl print "system/${vm_label}" >/dev/null 2>&1; then
+  launchctl bootout "system/${vm_label}" 2>/dev/null || true
+  printf "VM launchd service unloaded so updated ExitTimeOut is used on next start: %s\n" "${vm_plist}"
+fi
+
 printf "VM launchd timeout refreshed: %s ExitTimeOut=300\n" "${vm_plist}"

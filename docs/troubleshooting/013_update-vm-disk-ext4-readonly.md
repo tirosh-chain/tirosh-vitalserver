@@ -28,6 +28,15 @@ failed to start VM: Error Domain=VZErrorDomain Code=2
 
 update는 guest 내부에서 Docker image load, Compose recreate, systemd unit 갱신처럼 root filesystem에 큰 쓰기 작업을 수행합니다. 기존 VM launchd plist의 `ExitTimeOut=90`은 guest shutdown과 Docker Compose stop이 끝나기에는 여유가 부족했습니다. 특히 guest `tirosh-vitalserver-compose.service`의 기본 stop timeout도 90초 수준이라 host launchd timeout과 맞물리면 filesystem flush가 끝나기 전에 VM process가 종료될 수 있습니다.
 
+plist 파일만 갱신되어도 이미 loaded 상태인 launchd job에는 즉시 반영되지 않습니다. 아래처럼 plist는 `ExitTimeOut=300`인데 `launchctl print`의 loaded job은 더 짧은 timeout을 유지할 수 있습니다.
+
+```sh
+plutil -p "/Library/LaunchDaemons/com.tirosh.vitalserver-vm.plist" | grep ExitTimeOut
+launchctl print system/com.tirosh.vitalserver-vm | grep "exit timeout"
+```
+
+이 상태에서 update/rollback이 VM을 정지하면 launchd가 예전 timeout 기준으로 VM process를 종료할 수 있고, 그 결과 ext4 journal abort 또는 read-only remount로 이어질 수 있습니다.
+
 이 경우 `vm-disk.img`는 mutable 운영 디스크이므로 managed rollback 대상이 아닙니다. rollback은 app bundle, runtime tools, nginx bundle, guest deploy, rootfs base 같은 교체 가능한 artifact를 복원하지만, 이미 손상된 mutable VM disk를 되돌리지는 않습니다.
 
 확인:
@@ -41,7 +50,7 @@ tail -n 200 "/Library/Application Support/TiroshVitalServer/logs/guest/activate-
 
 조치:
 
-최신 runtime은 VM launchd `ExitTimeOut`을 300초로 늘리고, guest Compose stop timeout과 `sync`를 명시합니다. update bundle에는 `004-refresh-vm-shutdown-timeouts` migration이 포함되어 기존 설치본의 VM launchd plist도 갱신합니다.
+최신 runtime은 VM launchd `ExitTimeOut`을 300초로 늘리고, guest Compose stop timeout과 `sync`를 명시합니다. update bundle에는 `004-refresh-vm-shutdown-timeouts` migration이 포함되어 기존 설치본의 VM launchd plist를 갱신하고, loaded 상태인 VM launchd job을 unload하여 다음 start에서 갱신된 timeout이 적용되게 합니다.
 
 이미 disk 오류가 발생한 설치본에서는 같은 update bundle을 반복 적용하지 않습니다. 먼저 Redis backup이 남아 있는지 확인하고, 가능한 경우 Redis backup을 보존한 뒤 VM disk 복구 또는 재설치를 진행합니다.
 
