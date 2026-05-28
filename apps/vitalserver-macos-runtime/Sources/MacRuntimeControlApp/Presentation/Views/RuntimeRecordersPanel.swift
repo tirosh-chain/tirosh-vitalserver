@@ -1,3 +1,5 @@
+import Contracts
+import Foundation
 import RuntimeControl
 import SwiftUI
 
@@ -6,6 +8,7 @@ struct RuntimeRecordersPanel: View {
     @State private var searchText = ""
     @State private var selectedVrcode: String?
     @State private var showingRecorderHistory = false
+    @State private var activityBucketInterval = RecorderActivityBucketInterval.oneMinute
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -233,12 +236,23 @@ struct RuntimeRecordersPanel: View {
 
     private func recorderActivity(_ recorder: RuntimeVitalRecorderRecord) -> some View {
         let latest = recorder.activityTimeline.last
+        let buckets = activityBuckets(from: recorder.activityTimeline, interval: activityBucketInterval)
+        let totalPackets = buckets.reduce(0) { $0 + $1.messageCount }
+        let latestBucket = buckets.last
         return VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text("Activity")
                     .font(.subheadline)
                     .fontWeight(.semibold)
                 Spacer()
+                Picker("", selection: $activityBucketInterval) {
+                    ForEach(RecorderActivityBucketInterval.allCases) { interval in
+                        Text(interval.title).tag(interval)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .frame(width: 132)
                 if let latest {
                     Text("Last sample \(viewModel.presentationFormatter.systemTimeText(latest.observedAt))")
                         .font(.caption)
@@ -254,18 +268,23 @@ struct RuntimeRecordersPanel: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.vertical, 18)
             } else {
-                RecorderActivityChart(points: recorder.activityTimeline)
+                RecorderActivityChart(
+                    buckets: buckets,
+                    intervalTitle: activityBucketInterval.title
+                )
                     .frame(height: 150)
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: 18) {
+                        activityMetric("Packets", latestBucket.map { "\($0.messageCount)" } ?? "-")
+                        activityMetric("Total packets", "\(totalPackets)")
                         activityMetric("Data rate", latest.map { formatBytesPerSecond($0.bytesPerSecond) } ?? "-")
-                        activityMetric("Messages", latest.map { "\($0.messageCount)" } ?? "-")
-                        activityMetric("Rooms", latest.map { "\($0.roomCount)" } ?? "-")
+                        activityMetric("Rooms", latestBucket.map { "\($0.roomCount)" } ?? "-")
                     }
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 110), spacing: 12)], alignment: .leading, spacing: 8) {
+                        activityMetric("Packets", latestBucket.map { "\($0.messageCount)" } ?? "-")
+                        activityMetric("Total packets", "\(totalPackets)")
                         activityMetric("Data rate", latest.map { formatBytesPerSecond($0.bytesPerSecond) } ?? "-")
-                        activityMetric("Messages", latest.map { "\($0.messageCount)" } ?? "-")
-                        activityMetric("Rooms", latest.map { "\($0.roomCount)" } ?? "-")
+                        activityMetric("Rooms", latestBucket.map { "\($0.roomCount)" } ?? "-")
                     }
                 }
             }
@@ -454,23 +473,69 @@ struct RuntimeRecordersPanel: View {
         formatter.includesCount = true
         return "\(formatter.string(fromByteCount: Int64(boundedValue.rounded())))/s"
     }
+
+    private func activityBuckets(
+        from points: [RuntimeVitalRecorderActivityPoint],
+        interval: RecorderActivityBucketInterval
+    ) -> [RecorderActivityChartBucket] {
+        let rawBuckets = points.last?.buckets ?? []
+        if rawBuckets.isEmpty {
+            return points.map {
+                RecorderActivityChartBucket(
+                    bucketStartedAt: $0.observedAt,
+                    bucketSeconds: interval.seconds,
+                    messageCount: $0.messageCount,
+                    byteCount: $0.byteCount,
+                    roomCount: $0.roomCount
+                )
+            }
+        }
+
+        if interval == .oneMinute {
+            return rawBuckets.map(RecorderActivityChartBucket.init)
+        }
+
+        var builders: [String: RecorderActivityChartBucketBuilder] = [:]
+        for bucket in rawBuckets {
+            let startedAt = normalizedBucketStart(
+                bucket.bucketStartedAt,
+                intervalSeconds: interval.seconds
+            )
+            var builder = builders[startedAt] ?? RecorderActivityChartBucketBuilder(
+                bucketStartedAt: startedAt,
+                bucketSeconds: interval.seconds
+            )
+            builder.add(bucket)
+            builders[startedAt] = builder
+        }
+        return builders.values
+            .map(\.bucket)
+            .sorted { $0.bucketStartedAt < $1.bucketStartedAt }
+    }
+
+    private func normalizedBucketStart(_ timestamp: String, intervalSeconds: Int) -> String {
+        guard let date = RuntimeRecorderActivityDateParser.date(from: timestamp) else {
+            return timestamp
+        }
+        let bucketTimestamp = floor(date.timeIntervalSince1970 / Double(intervalSeconds)) * Double(intervalSeconds)
+        return RuntimeRecorderActivityDateParser.string(from: Date(timeIntervalSince1970: bucketTimestamp))
+    }
 }
 
 private struct RecorderActivityChart: View {
-    let points: [RuntimeVitalRecorderActivityPoint]
+    let buckets: [RecorderActivityChartBucket]
+    let intervalTitle: String
 
     var body: some View {
         GeometryReader { proxy in
-            let plottedPoints = chartPoints(in: proxy.size)
+            let bars = chartBars(in: proxy.size)
             ZStack {
                 chartGrid
-                activityPath(points: plottedPoints)
-                    .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
-                ForEach(Array(plottedPoints.enumerated()), id: \.offset) { _, point in
-                    Circle()
+                ForEach(bars) { bar in
+                    RoundedRectangle(cornerRadius: 3)
                         .fill(Color.accentColor)
-                        .frame(width: 6, height: 6)
-                        .position(point)
+                        .frame(width: bar.rect.width, height: bar.rect.height)
+                        .position(x: bar.rect.midX, y: bar.rect.midY)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -478,7 +543,13 @@ private struct RecorderActivityChart: View {
         .background(Color(nsColor: .textBackgroundColor))
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .overlay(alignment: .topLeading) {
-            Text("Data rate")
+            Text("Packets / \(intervalTitle)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding(8)
+        }
+        .overlay(alignment: .topTrailing) {
+            Text("\(buckets.reduce(0) { $0 + $1.messageCount }) packets")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .padding(8)
@@ -500,34 +571,114 @@ private struct RecorderActivityChart: View {
         }
     }
 
-    private func activityPath(points: [CGPoint]) -> Path {
-        Path { path in
-            guard let first = points.first else {
-                return
-            }
-            path.move(to: first)
-            for point in points.dropFirst() {
-                path.addLine(to: point)
-            }
-        }
-    }
-
-    private func chartPoints(in size: CGSize) -> [CGPoint] {
+    private func chartBars(in size: CGSize) -> [RecorderActivityBar] {
         let inset = EdgeInsets(top: 28, leading: 12, bottom: 16, trailing: 12)
         let width = max(size.width - inset.leading - inset.trailing, 1)
         let height = max(size.height - inset.top - inset.bottom, 1)
-        let maxValue = max(points.map(\.bytesPerSecond).max() ?? 0, 1)
+        let maxValue = max(buckets.map(\.messageCount).max() ?? 0, 1)
+        let slotWidth = max(width / CGFloat(max(buckets.count, 1)), 1)
+        let barWidth = min(max(slotWidth * 0.64, 3), 24)
 
-        return points.enumerated().map { index, point in
-            let x: CGFloat
-            if points.count <= 1 {
-                x = inset.leading + width / 2
-            } else {
-                x = inset.leading + width * CGFloat(index) / CGFloat(points.count - 1)
-            }
-            let normalized = min(max(point.bytesPerSecond / maxValue, 0), 1)
-            let y = inset.top + height - height * CGFloat(normalized)
-            return CGPoint(x: x, y: y)
+        return buckets.enumerated().map { index, bucket in
+            let normalized = CGFloat(bucket.messageCount) / CGFloat(maxValue)
+            let barHeight = max(height * normalized, bucket.messageCount > 0 ? 2 : 0)
+            let x = inset.leading + slotWidth * CGFloat(index) + slotWidth / 2
+            let y = inset.top + height - barHeight
+            return RecorderActivityBar(
+                id: bucket.id,
+                rect: CGRect(x: x - barWidth / 2, y: y, width: barWidth, height: barHeight)
+            )
         }
+    }
+}
+
+private enum RecorderActivityBucketInterval: Int, CaseIterable, Identifiable {
+    case oneMinute = 60
+    case fiveMinutes = 300
+
+    var id: Int { rawValue }
+    var seconds: Int { rawValue }
+
+    var title: String {
+        switch self {
+        case .oneMinute:
+            return "1 min"
+        case .fiveMinutes:
+            return "5 min"
+        }
+    }
+}
+
+private struct RecorderActivityChartBucket: Identifiable {
+    var id: String { "\(bucketStartedAt)-\(bucketSeconds)" }
+    let bucketStartedAt: String
+    let bucketSeconds: Int
+    let messageCount: Int
+    let byteCount: Int
+    let roomCount: Int
+
+    init(_ bucket: VitalDBRecorderActivityBucket) {
+        self.init(
+            bucketStartedAt: bucket.bucketStartedAt,
+            bucketSeconds: bucket.bucketSeconds,
+            messageCount: bucket.messageCount,
+            byteCount: bucket.byteCount,
+            roomCount: bucket.roomCount
+        )
+    }
+
+    init(
+        bucketStartedAt: String,
+        bucketSeconds: Int,
+        messageCount: Int,
+        byteCount: Int,
+        roomCount: Int
+    ) {
+        self.bucketStartedAt = bucketStartedAt
+        self.bucketSeconds = bucketSeconds
+        self.messageCount = messageCount
+        self.byteCount = byteCount
+        self.roomCount = roomCount
+    }
+}
+
+private struct RecorderActivityChartBucketBuilder {
+    let bucketStartedAt: String
+    let bucketSeconds: Int
+    var messageCount = 0
+    var byteCount = 0
+    var roomCount = 0
+
+    mutating func add(_ bucket: VitalDBRecorderActivityBucket) {
+        messageCount += bucket.messageCount
+        byteCount += bucket.byteCount
+        roomCount += bucket.roomCount
+    }
+
+    var bucket: RecorderActivityChartBucket {
+        RecorderActivityChartBucket(
+            bucketStartedAt: bucketStartedAt,
+            bucketSeconds: bucketSeconds,
+            messageCount: messageCount,
+            byteCount: byteCount,
+            roomCount: roomCount
+        )
+    }
+}
+
+private struct RecorderActivityBar: Identifiable {
+    let id: String
+    let rect: CGRect
+}
+
+private enum RuntimeRecorderActivityDateParser {
+    static func date(from value: String) -> Date? {
+        let formatter = ISO8601DateFormatter()
+        return formatter.date(from: value)
+    }
+
+    static func string(from date: Date) -> String {
+        let formatter = ISO8601DateFormatter()
+        return formatter.string(from: date)
     }
 }

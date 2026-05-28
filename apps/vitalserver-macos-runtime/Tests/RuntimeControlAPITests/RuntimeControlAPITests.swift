@@ -332,6 +332,7 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertEqual(vitalRecorders.recorders.first?.activityTimeline.first?.messageCount, 3)
         XCTAssertEqual(vitalRecorder?.vrcode, "VR_A")
         XCTAssertEqual(vitalRecorder?.activityTimeline.first?.byteCount, 2048)
+        XCTAssertEqual(vitalRecorder?.activityTimeline.first?.buckets.first?.bucketSeconds, 60)
         XCTAssertEqual(vitalRelationships.assignments.map(\.vrcode), ["VR_A"])
         XCTAssertEqual(vitalRelationships.events.first?.eventType, .handoff)
     }
@@ -874,7 +875,16 @@ private struct StubRuntimeControlAPIReadHandler: RuntimeControlAPIReadHandler {
                         byteCount: 2048,
                         roomCount: 1,
                         messagesPerSecond: 0.01,
-                        bytesPerSecond: 6.8
+                        bytesPerSecond: 6.8,
+                        buckets: [
+                            VitalDBRecorderActivityBucket(
+                                bucketStartedAt: "2026-05-25T00:00:00Z",
+                                bucketSeconds: 60,
+                                messageCount: 3,
+                                byteCount: 2048,
+                                roomCount: 1
+                            ),
+                        ]
                     )
                 ),
             ]

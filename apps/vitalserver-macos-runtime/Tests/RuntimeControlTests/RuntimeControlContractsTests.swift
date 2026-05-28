@@ -92,7 +92,16 @@ final class RuntimeControlContractsTests: XCTestCase {
                         byteCount: 1024,
                         roomCount: 1,
                         messagesPerSecond: 0.01,
-                        bytesPerSecond: 3.4
+                        bytesPerSecond: 3.4,
+                        buckets: [
+                            VitalDBRecorderActivityBucket(
+                                bucketStartedAt: "2026-05-26T00:00:00Z",
+                                bucketSeconds: 60,
+                                messageCount: 2,
+                                byteCount: 1024,
+                                roomCount: 1
+                            ),
+                        ]
                     )
                 ),
                 .init(
@@ -124,7 +133,16 @@ final class RuntimeControlContractsTests: XCTestCase {
                         byteCount: 2048,
                         roomCount: 2,
                         messagesPerSecond: 0.02,
-                        bytesPerSecond: 6.8
+                        bytesPerSecond: 6.8,
+                        buckets: [
+                            VitalDBRecorderActivityBucket(
+                                bucketStartedAt: "2026-05-26T00:01:00Z",
+                                bucketSeconds: 60,
+                                messageCount: 4,
+                                byteCount: 2048,
+                                roomCount: 2
+                            ),
+                        ]
                     )
                 ),
                 .init(
@@ -169,6 +187,7 @@ final class RuntimeControlContractsTests: XCTestCase {
         ])
         XCTAssertEqual(history.recorders[0].activityTimeline.last?.byteCount, 2048)
         XCTAssertEqual(history.recorders[0].activityTimeline.last?.bytesPerSecond, 6.8)
+        XCTAssertEqual(history.recorders[0].activityTimeline.last?.buckets.first?.messageCount, 4)
         XCTAssertEqual(history.recorders[1].status, RuntimeVitalRecorderStatus.offline)
         XCTAssertEqual(history.recorders[1].bedName, "OR B")
         XCTAssertEqual(history.recorders[1].observationCount, 1)

@@ -149,6 +149,9 @@ def test_collector_summarizes_recorder_activity_from_audit_events() -> None:
     assert activity["roomCount"] == 5
     assert activity["bytesPerSecond"] == 0.8
     assert activity["messagesPerSecond"] == 0.007
+    assert [bucket["messageCount"] for bucket in activity["buckets"]] == [2]
+    assert activity["buckets"][0]["bucketSeconds"] == 60
+    assert activity["buckets"][0]["byteCount"] == 250
 
 
 def test_collector_does_not_promote_bed_vrcode_to_recorder() -> None:
@@ -240,6 +243,7 @@ def test_collector_accepts_camel_case_activity_events() -> None:
     assert activity["messageCount"] == 1
     assert activity["byteCount"] == 128
     assert activity["roomCount"] == 2
+    assert activity["buckets"][0]["messageCount"] == 1
 
 
 def test_collector_detects_duplicate_ip() -> None:

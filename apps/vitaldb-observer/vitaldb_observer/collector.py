@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import string
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Protocol
@@ -14,6 +14,7 @@ from .model import (
     BedObservation,
     ObservationDocument,
     ProxyConnectionObservation,
+    RecorderActivityBucket,
     RawBedScopedObservation,
     RecorderActivityObservation,
     RecorderObservation,
@@ -156,6 +157,7 @@ class VitalDBCollector:
             )
             builder.observe(
                 timestamp=parsed["timestamp"],
+                event_time=event_time,
                 byte_count=parsed["byte_count"],
                 room_count=parsed["room_count"],
             )
@@ -367,8 +369,11 @@ class _ActivityBuilder:
     room_count: int = 0
     first_seen_at: str | None = None
     last_seen_at: str | None = None
+    buckets: dict[str, "_ActivityBucketBuilder"] = field(default_factory=dict)
 
-    def observe(self, timestamp: str, byte_count: int, room_count: int) -> None:
+    def observe(
+        self, timestamp: str, event_time: datetime, byte_count: int, room_count: int
+    ) -> None:
         self.message_count += 1
         self.byte_count += byte_count
         self.room_count += room_count
@@ -376,6 +381,11 @@ class _ActivityBuilder:
             self.first_seen_at = timestamp
         if self.last_seen_at is None or timestamp > self.last_seen_at:
             self.last_seen_at = timestamp
+        bucket_started_at = _bucket_started_at(event_time, bucket_seconds=60)
+        bucket = self.buckets.setdefault(
+            bucket_started_at, _ActivityBucketBuilder(bucket_started_at, 60)
+        )
+        bucket.observe(byte_count=byte_count, room_count=room_count)
 
     def observation(self) -> RecorderActivityObservation:
         return RecorderActivityObservation(
@@ -387,7 +397,45 @@ class _ActivityBuilder:
             last_seen_at=self.last_seen_at,
             messages_per_second=round(self.message_count / self.window_seconds, 3),
             bytes_per_second=round(self.byte_count / self.window_seconds, 1),
+            buckets=[
+                bucket.observation()
+                for _, bucket in sorted(self.buckets.items(), key=lambda item: item[0])
+            ],
         )
+
+
+@dataclass
+class _ActivityBucketBuilder:
+    bucket_started_at: str
+    bucket_seconds: int
+    message_count: int = 0
+    byte_count: int = 0
+    room_count: int = 0
+
+    def observe(self, byte_count: int, room_count: int) -> None:
+        self.message_count += 1
+        self.byte_count += byte_count
+        self.room_count += room_count
+
+    def observation(self) -> RecorderActivityBucket:
+        return RecorderActivityBucket(
+            bucket_started_at=self.bucket_started_at,
+            bucket_seconds=self.bucket_seconds,
+            message_count=self.message_count,
+            byte_count=self.byte_count,
+            room_count=self.room_count,
+        )
+
+
+def _bucket_started_at(value: datetime, bucket_seconds: int) -> str:
+    timestamp = int(value.timestamp())
+    bucket_timestamp = timestamp - (timestamp % bucket_seconds)
+    return (
+        datetime.fromtimestamp(bucket_timestamp, value.tzinfo)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
 
 
 def _bed_name(raw_value: str | None) -> str | None:
