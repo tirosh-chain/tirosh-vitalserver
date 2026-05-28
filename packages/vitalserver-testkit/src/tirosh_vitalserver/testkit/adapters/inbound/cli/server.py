@@ -8,11 +8,17 @@ from pathlib import Path
 from tirosh_vitalserver.testkit.adapters.inbound.cli.common import (
     add_common_server_args,
 )
-from tirosh_vitalserver.testkit.adapters.outbound.vitalserver import VitalServerClient
+from tirosh_vitalserver.testkit.adapters.outbound.bed_registry_store import (
+    JsonFileBedRegistryStore,
+)
 from tirosh_vitalserver.testkit.adapters.outbound.session_store import (
     JsonFileVirtualRecorderSessionStore,
 )
+from tirosh_vitalserver.testkit.adapters.outbound.vitalserver import VitalServerClient
 from tirosh_vitalserver.testkit.application.usecases import wait_for_server
+from tirosh_vitalserver.testkit.configuration.bed_registry_config import (
+    load_bed_registry_state_path,
+)
 from tirosh_vitalserver.testkit.configuration.logging_config import (
     configure_testkit_logging,
 )
@@ -118,14 +124,20 @@ def run_serve(args: argparse.Namespace) -> int:
     )
 
     session_state_path = load_session_state_path(args.config)
+    bed_registry_state_path = load_bed_registry_state_path(args.config)
     emit_testkit_event(
         "session_store.configured",
         state_path=str(session_state_path),
+    )
+    emit_testkit_event(
+        "bed_registry_store.configured",
+        state_path=str(bed_registry_state_path),
     )
 
     uvicorn.run(
         create_testkit_app(
             session_store=JsonFileVirtualRecorderSessionStore(session_state_path),
+            bed_registry_store=JsonFileBedRegistryStore(bed_registry_state_path),
         ),
         host=args.host,
         port=args.port,

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from pydantic import ConfigDict, Field
+from typing import Self
+
+from pydantic import ConfigDict, Field, model_validator
 
 from tirosh_vitalserver.testkit.application.recorder_session import (
     VirtualRecorderSessionRequest,
@@ -12,6 +14,28 @@ from tirosh_vitalserver.testkit.domain.signal import RecorderSignalScenario
 from tirosh_vitalserver.testkit.schemas.base import ExternalSchema
 
 
+class CreateBedsRequest(ExternalSchema):
+    """Request body for creating explicit test bed identities."""
+
+    model_config = ConfigDict(populate_by_name=True, strict=False)
+
+    count: int | None = Field(default=None, ge=1)
+    room_names: tuple[str, ...] = Field(default=(), alias="roomNames")
+    prefix: str = "testkit-bed"
+    admin_user_id: str = Field(default="admin", alias="adminUserId")
+
+    @model_validator(mode="after")
+    def require_one_bed_selector(self) -> Self:
+        """Require either generated or named test beds."""
+
+        if self.count is None and not self.room_names:
+            raise ValueError("count or roomNames is required")
+        if self.count is not None and self.room_names:
+            raise ValueError("count and roomNames cannot be used together")
+
+        return self
+
+
 class StartVirtualRecordersRequest(ExternalSchema):
     """Request body for starting a virtual VRecorder session."""
 
@@ -19,6 +43,7 @@ class StartVirtualRecordersRequest(ExternalSchema):
 
     target_url: str = Field(alias="targetUrl")
     recorders: int = 1
+    bed_room_names: tuple[str, ...] = Field(alias="bedRoomNames")
     vrcode: str | None = None
     version: str = "testkit"
     interval_seconds: float = Field(default=1.0, alias="intervalSeconds")
@@ -38,6 +63,7 @@ class StartVirtualRecordersRequest(ExternalSchema):
         return VirtualRecorderSessionRequest(
             target_url=self.target_url,
             recorders=self.recorders,
+            bed_room_names=self.bed_room_names,
             vrcode=self.vrcode,
             version=self.version,
             interval_seconds=self.interval_seconds,

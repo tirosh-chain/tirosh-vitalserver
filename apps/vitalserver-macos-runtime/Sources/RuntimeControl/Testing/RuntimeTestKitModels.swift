@@ -35,6 +35,7 @@ public struct RuntimeTestKitStatus: Codable, Equatable, Sendable {
     public var startedAt: Date?
     public var activeSession: RuntimeTestKitSession?
     public var sessions: [RuntimeTestKitSession]
+    public var beds: [RuntimeTestKitBed]
     public var lastError: String?
 
     public init(
@@ -46,6 +47,7 @@ public struct RuntimeTestKitStatus: Codable, Equatable, Sendable {
         startedAt: Date? = nil,
         activeSession: RuntimeTestKitSession? = nil,
         sessions: [RuntimeTestKitSession] = [],
+        beds: [RuntimeTestKitBed] = [],
         lastError: String? = nil
     ) {
         self.enabled = enabled
@@ -56,7 +58,51 @@ public struct RuntimeTestKitStatus: Codable, Equatable, Sendable {
         self.startedAt = startedAt
         self.activeSession = activeSession
         self.sessions = sessions
+        self.beds = beds
         self.lastError = lastError
+    }
+}
+
+public struct RuntimeTestKitBed: Codable, Equatable, Sendable, Identifiable {
+    public var roomName: String
+    public var bedID: String
+
+    public var id: String { roomName }
+
+    public init(roomName: String, bedID: String) {
+        self.roomName = roomName
+        self.bedID = bedID
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case roomName
+        case bedID = "bedId"
+    }
+}
+
+public struct RuntimeTestKitCreateBedsRequest: Codable, Equatable, Sendable {
+    public var count: Int?
+    public var roomNames: [String]
+    public var prefix: String
+    public var adminUserID: String
+
+    public init(
+        count: Int? = nil,
+        roomNames: [String] = [],
+        prefix: String = "testkit-bed",
+        adminUserID: String = "admin"
+    ) {
+        self.count = count
+        self.roomNames = roomNames
+        self.prefix = prefix
+        self.adminUserID = adminUserID
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case count
+        case roomNames
+        case prefix
+        case adminUserID = "adminUserId"
     }
 }
 
@@ -65,6 +111,7 @@ public struct RuntimeTestKitVirtualRecorderStartRequest: Codable, Equatable, Sen
     public var scenario: RuntimeTestKitScenario
     public var signalProfile: RuntimeTestKitSignalProfile
     public var recorders: Int
+    public var bedRoomNames: [String]
     public var vrcode: String?
     public var version: String
     public var intervalSeconds: Double
@@ -78,6 +125,7 @@ public struct RuntimeTestKitVirtualRecorderStartRequest: Codable, Equatable, Sen
         scenario: RuntimeTestKitScenario = .normal,
         signalProfile: RuntimeTestKitSignalProfile = .normal,
         recorders: Int = 1,
+        bedRoomNames: [String] = [],
         vrcode: String? = nil,
         version: String = "testkit",
         intervalSeconds: Double = 1,
@@ -90,6 +138,7 @@ public struct RuntimeTestKitVirtualRecorderStartRequest: Codable, Equatable, Sen
         self.scenario = scenario
         self.signalProfile = signalProfile
         self.recorders = recorders
+        self.bedRoomNames = bedRoomNames
         self.vrcode = vrcode
         self.version = version
         self.intervalSeconds = intervalSeconds
@@ -104,6 +153,7 @@ public struct RuntimeTestKitVirtualRecorderStartRequest: Codable, Equatable, Sen
         case scenario
         case signalProfile
         case recorders
+        case bedRoomNames
         case vrcode
         case version
         case intervalSeconds
@@ -119,6 +169,8 @@ public struct RuntimeTestKitSession: Codable, Equatable, Sendable {
     public var state: String
     public var targetURL: String
     public var recordersRequested: Int
+    public var bedsRequested: Int
+    public var bedRoomNames: [String]
     public var vrcode: String?
     public var version: String
     public var intervalSeconds: Double
@@ -142,6 +194,8 @@ public struct RuntimeTestKitSession: Codable, Equatable, Sendable {
         state: String,
         targetURL: String,
         recordersRequested: Int,
+        bedsRequested: Int = 0,
+        bedRoomNames: [String] = [],
         vrcode: String?,
         version: String,
         intervalSeconds: Double,
@@ -164,6 +218,8 @@ public struct RuntimeTestKitSession: Codable, Equatable, Sendable {
         self.state = state
         self.targetURL = targetURL
         self.recordersRequested = recordersRequested
+        self.bedsRequested = bedsRequested
+        self.bedRoomNames = bedRoomNames
         self.vrcode = vrcode
         self.version = version
         self.intervalSeconds = intervalSeconds
@@ -189,6 +245,8 @@ public struct RuntimeTestKitSession: Codable, Equatable, Sendable {
         state = try container.decode(String.self, forKey: .state)
         targetURL = try container.decode(String.self, forKey: .targetURL)
         recordersRequested = try container.decode(Int.self, forKey: .recordersRequested)
+        bedsRequested = try container.decodeIfPresent(Int.self, forKey: .bedsRequested) ?? 0
+        bedRoomNames = try container.decodeIfPresent([String].self, forKey: .bedRoomNames) ?? []
         vrcode = try container.decodeIfPresent(String.self, forKey: .vrcode)
         version = try container.decode(String.self, forKey: .version)
         intervalSeconds = try container.decode(Double.self, forKey: .intervalSeconds)
@@ -213,6 +271,8 @@ public struct RuntimeTestKitSession: Codable, Equatable, Sendable {
         case state
         case targetURL = "targetUrl"
         case recordersRequested
+        case bedsRequested
+        case bedRoomNames
         case vrcode
         case version
         case intervalSeconds

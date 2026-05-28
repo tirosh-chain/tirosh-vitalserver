@@ -68,9 +68,3 @@ class RealtimeRecorderMessagePayload(TypedDict):
 
 
 type RecorderRoomMapPayload = dict[str, RecorderRoomPayload]
-
-SimulatedRecorderPayload = TypedDict(
-    "SimulatedRecorderPayload",
-    {"testkit-recorder": RecorderRoomPayload},
-    total=False,
-)

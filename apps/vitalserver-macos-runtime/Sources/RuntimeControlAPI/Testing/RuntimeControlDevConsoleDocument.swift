@@ -653,6 +653,7 @@ public enum RuntimeControlDevConsoleDocument {
       }
       const session = status.activeSession;
       const sessions = status.sessions || [];
+      const beds = status.beds || [];
       const values = [
         ["enabled", status.enabled],
         ["state", status.state],
@@ -660,6 +661,7 @@ public enum RuntimeControlDevConsoleDocument {
         ["API", status.apiBaseURL],
         ["recorder target", status.recorderTargetURL],
         ["started", formatDate(status.startedAt)],
+        ["beds", beds.length],
         ["sessions", sessions.length],
         ["active session", session && session.id],
         ["session state", session && session.state],
@@ -670,7 +672,10 @@ public enum RuntimeControlDevConsoleDocument {
       const sessionList = sessions.slice(0, 16).map((candidate) => (
         `<div class="list-item"><strong>${escapeHtml(candidate.id || "-")} · ${escapeHtml(candidate.state || "-")}</strong><span>${escapeHtml(testKitSessionRecorderText(candidate))} · ${escapeHtml(candidate.messagesSent || 0)} messages · ${escapeHtml(formatBytes(candidate.bytesSent || 0))}</span></div>`
       )).join("");
-      $("testKitMetrics").innerHTML = `${metricsHTML(values)}<div class="subtle">Sessions</div><div class="list">${sessionList || emptyText("No virtual recorder sessions")}</div>`;
+      const bedList = beds.slice(0, 16).map((bed) => (
+        `<div class="list-item"><strong>${escapeHtml(bed.roomName || "-")}</strong><span>${escapeHtml(bed.bedId || "-")}</span></div>`
+      )).join("");
+      $("testKitMetrics").innerHTML = `${metricsHTML(values)}<div class="subtle">Beds</div><div class="list">${bedList || emptyText("No TestKit beds")}</div><div class="subtle">Sessions</div><div class="list">${sessionList || emptyText("No virtual recorder sessions")}</div>`;
     }
 
     function testKitSessionRecorderText(session) {
@@ -687,11 +692,17 @@ public enum RuntimeControlDevConsoleDocument {
 
     async function startTestKit() {
       const proxyPort = (latestStatus && latestStatus.proxyPort) || 80;
+      const beds = await postJSON("/dev/testkit/beds/create", {
+        count: 1,
+        prefix: "testkit-bed"
+      });
+      const bedRoomNames = (beds || []).map((bed) => bed.roomName).slice(0, 1);
       const session = await postJSON("/dev/testkit/virtual-recorders/start", {
         targetUrl: `http://127.0.0.1:${proxyPort}/`,
         scenario: "normal",
         signalProfile: "normal",
         recorders: 1,
+        bedRoomNames,
         version: "testkit",
         intervalSeconds: 1,
         shiftTime: true,

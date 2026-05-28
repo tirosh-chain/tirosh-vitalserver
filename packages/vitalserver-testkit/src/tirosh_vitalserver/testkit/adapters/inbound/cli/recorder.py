@@ -38,12 +38,14 @@ from tirosh_vitalserver.testkit.application.usecases import (
 from tirosh_vitalserver.testkit.application.usecases.recorder.visibility import (
     wait_for_recorder_visibility,
 )
+from tirosh_vitalserver.testkit.domain.bed import beds_for_room_names
 from tirosh_vitalserver.testkit.domain.recorder.payloads import (
     build_virtual_recorder_payloads,
     combine_virtual_recorder_rooms,
 )
 from tirosh_vitalserver.testkit.domain.recorder.simulator.templates import (
     build_simulated_recorder_payload,
+    unique_testkit_vrcode,
 )
 from tirosh_vitalserver.testkit.domain.signal import (
     RecorderSignalScenario,
@@ -231,7 +233,11 @@ def add_verify_recorder_parser(
 def run_send_recorder(args: argparse.Namespace) -> int:
     """Send recorder payloads once or repeatedly and assert transfer success."""
 
-    payload = load_recorder_payload_or_default(args.payload)
+    payload = load_recorder_payload_or_default(
+        args.payload,
+        bed_room_names=tuple(args.bed_room_name),
+    )
+    vrcode = selected_vrcode(args.payload, args.vrcode)
 
     if args.http:
         client = VitalServerClient(args.vitalserver_url, timeout=args.timeout)
@@ -247,7 +253,7 @@ def run_send_recorder(args: argparse.Namespace) -> int:
         virtual_payloads = build_virtual_recorder_payloads(
             payload,
             count=args.recorders,
-            vrcode=args.vrcode,
+            vrcode=vrcode,
             version=args.version,
         )
         summary = send_virtual_recorder_payloads(
@@ -269,11 +275,15 @@ def run_send_recorder(args: argparse.Namespace) -> int:
 def run_stream_recorder(args: argparse.Namespace) -> int:
     """Stream recorder payloads until duration, message limit, or interrupt."""
 
-    payload = load_recorder_payload_or_default(args.payload)
+    payload = load_recorder_payload_or_default(
+        args.payload,
+        bed_room_names=tuple(args.bed_room_name),
+    )
+    vrcode = selected_vrcode(args.payload, args.vrcode)
     virtual_payloads = build_virtual_recorder_payloads(
         payload,
         count=args.recorders,
-        vrcode=args.vrcode,
+        vrcode=vrcode,
         version=args.version,
     )
     duration_seconds = args.duration if args.duration > 0 else None
@@ -317,12 +327,16 @@ def run_stream_recorder(args: argparse.Namespace) -> int:
 def run_verify_recorder(args: argparse.Namespace) -> int:
     """Send recorder data and poll VitalServer until rooms are visible."""
 
-    payload = load_recorder_payload_or_default(args.payload)
+    payload = load_recorder_payload_or_default(
+        args.payload,
+        bed_room_names=tuple(args.bed_room_name),
+    )
+    vrcode = selected_vrcode(args.payload, args.vrcode)
     client = VitalServerClient(args.vitalserver_url, timeout=args.timeout)
     virtual_payloads = build_virtual_recorder_payloads(
         payload,
         count=args.recorders,
-        vrcode=args.vrcode,
+        vrcode=vrcode,
         version=args.version,
     )
 
@@ -381,6 +395,12 @@ def add_common_recorder_args(arg_parser: argparse.ArgumentParser) -> None:
         type=int,
         default=1,
         help="Number of virtual recorder machines",
+    )
+    arg_parser.add_argument(
+        "--bed-room-name",
+        action="append",
+        default=[],
+        help="Existing bed room name to connect to. Repeat to connect multiple beds",
     )
 
 
@@ -477,10 +497,29 @@ def parse_recorder_signal_scenario(value: str) -> RecorderSignalScenario:
         ) from exc
 
 
-def load_recorder_payload_or_default(path: Path | None) -> JsonObject:
+def load_recorder_payload_or_default(
+    path: Path | None,
+    *,
+    bed_room_names: tuple[str, ...] = (),
+) -> JsonObject:
     """Load a recorder payload file or build a simulated one when omitted."""
 
     if path is None:
-        return build_simulated_recorder_payload()
+        if not bed_room_names:
+            raise ValueError("bed room names are required when payload is omitted")
+
+        bed_registry = beds_for_room_names(bed_room_names)
+        return build_simulated_recorder_payload(
+            room_names=tuple(bed.room_name for bed in bed_registry),
+        )
 
     return load_recorder_payload(path)
+
+
+def selected_vrcode(path: Path | None, requested_vrcode: str | None) -> str | None:
+    """Return a fresh default vrcode only for generated testkit payloads."""
+
+    if requested_vrcode is not None or path is not None:
+        return requested_vrcode
+
+    return unique_testkit_vrcode()

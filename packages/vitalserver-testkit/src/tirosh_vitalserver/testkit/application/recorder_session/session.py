@@ -20,14 +20,19 @@ from tirosh_vitalserver.testkit.application.results import RealtimeStreamResult
 from tirosh_vitalserver.testkit.application.usecases.recorder.stream_loop import (
     stream_realtime_payload,
 )
-from tirosh_vitalserver.testkit.domain.recorder.payloads import (
-    build_virtual_recorder_payloads,
+from tirosh_vitalserver.testkit.domain.bed import (
+    Bed,
+    beds_for_room_names,
 )
 from tirosh_vitalserver.testkit.domain.recorder.models import (
     VirtualRecorderPayload,
 )
+from tirosh_vitalserver.testkit.domain.recorder.payloads import (
+    build_virtual_recorder_payloads,
+)
 from tirosh_vitalserver.testkit.domain.recorder.simulator.templates import (
     build_simulated_recorder_payload,
+    unique_testkit_vrcode,
 )
 from tirosh_vitalserver.testkit.domain.signal import profile_for_scenario
 from tirosh_vitalserver.testkit.observability import emit_testkit_event
@@ -42,7 +47,11 @@ class VirtualRecorderSession:
         session_id: str,
         request: VirtualRecorderSessionRequest,
         connector: SocketIoConnectorPort,
-        snapshot_handler: Callable[[VirtualRecorderSessionSnapshot], None] | None = None,
+        snapshot_handler: Callable[
+            [VirtualRecorderSessionSnapshot],
+            None,
+        ]
+        | None = None,
     ) -> None:
         self._session_id = session_id
         self._request = request
@@ -79,6 +88,7 @@ class VirtualRecorderSession:
             session_id=self._session_id,
             target_url=self._request.target_url,
             recorders=self._request.recorders,
+            beds=len(self._request.bed_room_names),
             vrcode=self._request.vrcode,
         )
         self._thread.start()
@@ -155,6 +165,7 @@ class VirtualRecorderSession:
             session_id=self._session_id,
             target_url=self._request.target_url,
             recorders=self._request.recorders,
+            beds=len(self._request.bed_room_names),
             vrcode=self._request.vrcode,
         )
         self._publish_snapshot(snapshot)
@@ -179,6 +190,7 @@ class VirtualRecorderSession:
                 state=self._state.value,
                 target_url=self._request.target_url,
                 recorders=self._request.recorders,
+                beds=len(self._request.bed_room_names),
                 vrcode=self._request.vrcode,
                 messages_sent=sum(result.messages_sent for result in results),
                 bytes_sent=sum(result.bytes_sent for result in results),
@@ -197,6 +209,7 @@ class VirtualRecorderSession:
                 state=VirtualRecorderSessionState.FAILED.value,
                 target_url=self._request.target_url,
                 recorders=self._request.recorders,
+                beds=len(self._request.bed_room_names),
                 vrcode=self._request.vrcode,
                 error=str(exc),
             )
@@ -237,10 +250,13 @@ class VirtualRecorderSession:
 
     def _build_virtual_payloads(self) -> tuple[VirtualRecorderPayload, ...]:
         request = self._request
+        beds = request_beds(request)
         return build_virtual_recorder_payloads(
-            build_simulated_recorder_payload(),
+            build_simulated_recorder_payload(
+                room_names=tuple(bed.room_name for bed in beds),
+            ),
             count=request.recorders,
-            vrcode=request.vrcode,
+            vrcode=request.vrcode or unique_testkit_vrcode(),
             version=request.version,
         )
 
@@ -253,3 +269,9 @@ def first_result_error(results: tuple[RealtimeStreamResult, ...]) -> str | None:
             return result.error
 
     return None
+
+
+def request_beds(request: VirtualRecorderSessionRequest) -> tuple[Bed, ...]:
+    """Return explicitly selected beds for a recorder session."""
+
+    return beds_for_room_names(request.bed_room_names)

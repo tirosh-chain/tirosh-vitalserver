@@ -15,6 +15,10 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict, TomlConfigSettingsSource
 
+from tirosh_vitalserver.testkit.domain.bed import (
+    create_beds,
+    require_bed_capacity_for_recorders,
+)
 from tirosh_vitalserver.testkit.domain.signal import RecorderSignalScenario
 
 ScenarioName = Literal["health", "smoke", "verify", "load", "stream"]
@@ -44,7 +48,14 @@ class RecorderConfig(StrictConfig):
     payload: Path | None = None
     recorders: int = Field(default=1, ge=1)
     default_scenario: RecorderSignalScenario = RecorderSignalScenario.NORMAL
-    beds: tuple[BedScenarioConfig, ...] = ()
+    bed_scenarios: tuple[BedScenarioConfig, ...] = ()
+
+
+class BedsConfig(StrictConfig):
+    count: int | None = Field(default=None, ge=1)
+    room_names: tuple[str, ...] = ()
+    prefix: str = "testkit-bed"
+    admin_user_id: str = "admin"
 
 
 class TransferConfig(StrictConfig):
@@ -59,6 +70,14 @@ class StreamConfig(StrictConfig):
     max_messages: int | None = Field(default=None, ge=1)
 
 
+class SessionsConfig(StrictConfig):
+    state_path: Path = Path("/var/lib/vitalserver-testkit/sessions.json")
+
+
+class BedRegistryConfig(StrictConfig):
+    state_path: Path = Path("/var/lib/vitalserver-testkit/bed-registry.json")
+
+
 class VitalServerCheckConfig(BaseSettings):
     """File-backed configuration for VitalServer productization checks."""
 
@@ -66,9 +85,12 @@ class VitalServerCheckConfig(BaseSettings):
 
     scenario: ScenarioSelectionConfig = Field(default_factory=ScenarioSelectionConfig)
     server: ServerConfig = Field(default_factory=ServerConfig)
+    beds: BedsConfig = Field(default_factory=BedsConfig)
     recorder: RecorderConfig = Field(default_factory=RecorderConfig)
     transfer: TransferConfig = Field(default_factory=TransferConfig)
     stream: StreamConfig = Field(default_factory=StreamConfig)
+    sessions: SessionsConfig = Field(default_factory=SessionsConfig)
+    bed_registry: BedRegistryConfig = Field(default_factory=BedRegistryConfig)
     logging: dict[str, Any] = Field(default_factory=dict)
 
     @classmethod
@@ -182,6 +204,7 @@ def run_verify(config: VitalServerCheckConfig) -> None:
     ]
 
     insert_payload_argument(command, len(testkit), config.recorder.payload)
+    append_bed_room_args(command, recorder=config.recorder, beds=config.beds)
     run(*command)
 
 
@@ -205,6 +228,7 @@ def run_load(config: VitalServerCheckConfig) -> None:
     ]
 
     insert_payload_argument(command, len(testkit), config.recorder.payload)
+    append_bed_room_args(command, recorder=config.recorder, beds=config.beds)
     run(*command)
 
 
@@ -236,8 +260,9 @@ def run_stream(
     ]
 
     insert_payload_argument(command, len(testkit), config.recorder.payload)
+    append_bed_room_args(command, recorder=config.recorder, beds=config.beds)
 
-    for bed in config.recorder.beds:
+    for bed in config.recorder.bed_scenarios:
         command.extend(["--bed-scenario", f"{bed.index}={bed.scenario.value}"])
 
     if max_messages is not None:
@@ -255,6 +280,41 @@ def insert_payload_argument(
 
     if payload is not None:
         command.insert(testkit_prefix_length + 1, str(payload))
+
+
+def append_bed_room_args(
+    command: list[str],
+    *,
+    recorder: RecorderConfig,
+    beds: BedsConfig,
+) -> None:
+    """Append explicit bed room names for generated recorder payloads."""
+
+    if recorder.payload is not None:
+        return
+
+    room_names = beds.room_names
+    if not room_names and beds.count is not None:
+        room_names = tuple(
+            bed.room_name
+            for bed in create_beds(
+                count=beds.count,
+                prefix=beds.prefix,
+                admin_user_id=beds.admin_user_id,
+            )
+        )
+    if not room_names:
+        raise ValueError(
+            "beds.room_names or beds.count is required "
+            "when recorder.payload is omitted"
+        )
+    require_bed_capacity_for_recorders(
+        bed_count=len(room_names),
+        recorder_count=recorder.recorders,
+    )
+
+    for room_name in room_names:
+        command.extend(["--bed-room-name", room_name])
 
 
 def run(*args: str) -> None:

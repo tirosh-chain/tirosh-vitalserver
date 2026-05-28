@@ -24,7 +24,6 @@ from tirosh_vitalserver.testkit.domain.recorder.payloads.wire import (
     RecorderRoomMapPayload,
     RecorderRoomPayload,
     RecorderTrackPayload,
-    SimulatedRecorderPayload,
 )
 
 __all__ = [
@@ -34,7 +33,6 @@ __all__ = [
     "RecorderRoomMapPayload",
     "RecorderRoomPayload",
     "RecorderTrackPayload",
-    "SimulatedRecorderPayload",
     "bed_id_for_room",
     "build_realtime_message",
     "build_virtual_recorder_payloads",

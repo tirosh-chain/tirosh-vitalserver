@@ -52,7 +52,12 @@ class TestKitEventFormatter(logging.Formatter):
 
         if self.format_name == "logfmt":
             return logfmt(payload)
-        return json.dumps(payload, separators=(",", ":"), ensure_ascii=False, default=str)
+        return json.dumps(
+            payload,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            default=str,
+        )
 
 
 def logfmt(fields: dict[str, Any]) -> str:

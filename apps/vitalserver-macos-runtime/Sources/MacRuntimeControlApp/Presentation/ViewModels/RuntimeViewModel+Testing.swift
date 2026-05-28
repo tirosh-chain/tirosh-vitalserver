@@ -8,6 +8,7 @@ extension RuntimeViewModel {
             && !isRunningTestKitAction
             && testKitStatus.state != .starting
             && testKitStatus.state != .stopping
+            && availableTestKitBedRoomNames.count >= normalizedTestKitRecorderCount
     }
 
     var testKitCanStop: Bool {
@@ -41,10 +42,73 @@ extension RuntimeViewModel {
         applyTestKitStatus(await testKitController.loadTestKitStatus())
     }
 
+    func createTestKitBeds() async {
+        guard let testKitController else {
+            message = RuntimeTestPanelText.testKitUnavailable
+            testKitActionMessage = RuntimeTestPanelText.testKitUnavailable
+            return
+        }
+        isRunningTestKitAction = true
+        defer { isRunningTestKitAction = false }
+
+        testKitActionMessage = RuntimeTestPanelText.creatingBeds
+        message = RuntimeTestPanelText.creatingBeds
+        do {
+            let beds = try await testKitController.createTestKitBeds(RuntimeTestKitCreateBedsRequest(
+                count: normalizedTestKitBedCount,
+                prefix: normalizedTestKitBedPrefix
+            ))
+            applyTestKitStatus(await testKitController.loadTestKitStatus())
+            let createdMessage = RuntimeTestPanelText.createdBeds(beds.count)
+            testKitActionMessage = createdMessage
+            message = createdMessage
+        } catch {
+            applyTestKitStatus(await testKitController.loadTestKitStatus())
+            let errorMessage = error.localizedDescription
+            testKitActionMessage = errorMessage
+            message = errorMessage
+        }
+    }
+
+    func resetTestKitBeds() async {
+        guard let testKitController else {
+            message = RuntimeTestPanelText.testKitUnavailable
+            testKitActionMessage = RuntimeTestPanelText.testKitUnavailable
+            return
+        }
+        let bedCount = testKitStatus.beds.count
+        isRunningTestKitAction = true
+        defer { isRunningTestKitAction = false }
+
+        testKitActionMessage = RuntimeTestPanelText.resettingBeds
+        message = RuntimeTestPanelText.resettingBeds
+        do {
+            _ = try await testKitController.resetTestKitBeds()
+            applyTestKitStatus(await testKitController.loadTestKitStatus())
+            let resetMessage = RuntimeTestPanelText.resetBeds(bedCount)
+            testKitActionMessage = resetMessage
+            message = resetMessage
+        } catch {
+            applyTestKitStatus(await testKitController.loadTestKitStatus())
+            let errorMessage = error.localizedDescription
+            testKitActionMessage = errorMessage
+            message = errorMessage
+        }
+    }
+
     func startVirtualRecorderSession() async {
         guard let testKitController else {
             message = RuntimeTestPanelText.testKitUnavailable
             testKitActionMessage = RuntimeTestPanelText.testKitUnavailable
+            return
+        }
+        guard availableTestKitBedRoomNames.count >= normalizedTestKitRecorderCount else {
+            let errorMessage = RuntimeTestPanelText.insufficientBeds(
+                availableTestKitBedRoomNames.count,
+                normalizedTestKitRecorderCount
+            )
+            testKitActionMessage = errorMessage
+            message = errorMessage
             return
         }
         isRunningTestKitAction = true
@@ -192,6 +256,7 @@ extension RuntimeViewModel {
             scenario: testKitScenario,
             signalProfile: testKitSignalProfile,
             recorders: normalizedTestKitRecorderCount,
+            bedRoomNames: Array(availableTestKitBedRoomNames.prefix(normalizedTestKitRecorderCount)),
             vrcode: normalizedTestKitVrcode,
             version: "testkit",
             intervalSeconds: normalizedTestKitIntervalSeconds,
@@ -204,6 +269,19 @@ extension RuntimeViewModel {
 
     private var normalizedTestKitRecorderCount: Int {
         min(max(testKitRecorderCount, 1), 200)
+    }
+
+    private var normalizedTestKitBedCount: Int {
+        min(max(testKitBedCount, 1), 200)
+    }
+
+    private var normalizedTestKitBedPrefix: String {
+        let trimmed = testKitBedPrefix.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "testkit-bed" : trimmed
+    }
+
+    private var availableTestKitBedRoomNames: [String] {
+        testKitStatus.beds.map(\.roomName)
     }
 
     private var normalizedTestKitIntervalSeconds: Double {

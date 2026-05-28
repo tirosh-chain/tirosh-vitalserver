@@ -37,6 +37,8 @@ final class RuntimeViewModel: ObservableObject {
     @Published var testKitScenario = RuntimeTestKitScenario.normal
     @Published var testKitSignalProfile = RuntimeTestKitSignalProfile.normal
     @Published var testKitRecorderCount = 1
+    @Published var testKitBedCount = 1
+    @Published var testKitBedPrefix = "testkit-bed"
     @Published var testKitIntervalSeconds = 1.0
     @Published var testKitDurationSeconds = 0.0
     @Published var testKitMaxMessages = 0

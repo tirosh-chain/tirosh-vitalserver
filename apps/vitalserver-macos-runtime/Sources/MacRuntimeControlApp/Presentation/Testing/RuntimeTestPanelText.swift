@@ -7,6 +7,9 @@ enum RuntimeTestPanelText {
     static let testkitService = "TestKit virtual recorders"
     static let testKitUnavailable = "TestKit is unavailable for this build."
     static let noActiveSession = "No active TestKit session."
+    static let noBeds = "Create beds before starting virtual VRecorders."
+    static let creatingBeds = "Creating TestKit beds..."
+    static let resettingBeds = "Resetting TestKit beds..."
     static let startingSession = "Starting virtual VRecorder..."
     static let stoppingSession = "Stopping virtual VRecorder..."
     static let deletingSession = "Deleting virtual VRecorder session..."
@@ -18,6 +21,18 @@ enum RuntimeTestPanelText {
     static let sharedContainerIPWarning = """
     Multiple virtual VRecorders in one TestKit container share the same source IP. Use this for traffic/load checks; use one container per VRecorder when IP uniqueness or Network Settings redirection must be tested.
     """
+
+    static func createdBeds(_ count: Int) -> String {
+        "Registered \(count) TestKit beds."
+    }
+
+    static func resetBeds(_ count: Int) -> String {
+        "Reset \(count) TestKit beds."
+    }
+
+    static func insufficientBeds(_ bedCount: Int, _ recorderCount: Int) -> String {
+        "Create at least \(recorderCount) beds before starting \(recorderCount) VRecorders. Current beds: \(bedCount)."
+    }
 
     static func startedSession(_ id: String) -> String {
         "Started TestKit session \(id)."

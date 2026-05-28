@@ -1013,6 +1013,72 @@
         }
       }
     },
+    "/dev/testkit/beds/create": {
+      "post": {
+        "operationId": "createDevTestKitBeds",
+        "summary": "Create TestKit beds",
+        "description": "Development-only route for registering explicit TestKit bed identities before virtual VRecorders are started.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "testOnlyLocal",
+        "x-runtime-control-access": "operatorOnly",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeTestKitCreateBedsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Registered TestKit beds.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RuntimeTestKitBed"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/dev/testkit/beds/reset": {
+      "post": {
+        "operationId": "resetDevTestKitBeds",
+        "summary": "Reset TestKit beds",
+        "description": "Development-only route for clearing registered TestKit bed identities.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "testOnlyLocal",
+        "x-runtime-control-access": "operatorOnly",
+        "responses": {
+          "200": {
+            "description": "Deleted TestKit beds.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RuntimeTestKitBed"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
     "/dev/testkit/virtual-recorders/start": {
       "post": {
         "operationId": "startDevTestKitVirtualRecorders",
@@ -2995,7 +3061,8 @@
         "required": [
           "enabled",
           "state",
-          "sessions"
+          "sessions",
+          "beds"
         ],
         "properties": {
           "enabled": {
@@ -3053,11 +3120,58 @@
               "$ref": "#/components/schemas/RuntimeTestKitSession"
             }
           },
+          "beds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeTestKitBed"
+            }
+          },
           "lastError": {
             "type": [
               "string",
               "null"
             ]
+          }
+        }
+      },
+      "RuntimeTestKitBed": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "roomName",
+          "bedId"
+        ],
+        "properties": {
+          "roomName": {
+            "type": "string"
+          },
+          "bedId": {
+            "type": "string"
+          }
+        }
+      },
+      "RuntimeTestKitCreateBedsRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "roomNames": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "prefix": {
+            "type": "string"
+          },
+          "adminUserId": {
+            "type": "string"
           }
         }
       },
@@ -3069,6 +3183,7 @@
           "scenario",
           "signalProfile",
           "recorders",
+          "bedRoomNames",
           "version",
           "intervalSeconds",
           "shiftTime",
@@ -3102,6 +3217,12 @@
           "recorders": {
             "type": "integer",
             "minimum": 1
+          },
+          "bedRoomNames": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           },
           "vrcode": {
             "type": [
@@ -3170,6 +3291,8 @@
           "state",
           "targetUrl",
           "recordersRequested",
+          "bedsRequested",
+          "bedRoomNames",
           "version",
           "intervalSeconds",
           "shiftTime",
@@ -3192,6 +3315,15 @@
           },
           "recordersRequested": {
             "type": "integer"
+          },
+          "bedsRequested": {
+            "type": "integer"
+          },
+          "bedRoomNames": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           },
           "vrcode": {
             "type": [

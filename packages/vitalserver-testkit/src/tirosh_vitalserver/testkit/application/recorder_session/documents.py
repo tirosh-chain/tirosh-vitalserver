@@ -26,6 +26,8 @@ def session_snapshot_to_document(
         "state": snapshot.state.value,
         "targetUrl": request.target_url,
         "recordersRequested": request.recorders,
+        "bedsRequested": len(request.bed_room_names),
+        "bedRoomNames": request.bed_room_names,
         "vrcode": request.vrcode,
         "version": request.version,
         "intervalSeconds": request.interval_seconds,

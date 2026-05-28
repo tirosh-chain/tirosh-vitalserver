@@ -73,6 +73,10 @@ struct RuntimeTestPanel: View {
                         Text(String(viewModel.testKitStatus.sessions.count))
                             .fontWeight(.medium)
                     }
+                    statusRow(AppConstants.Labels.beds) {
+                        Text(String(viewModel.testKitStatus.beds.count))
+                            .fontWeight(.medium)
+                    }
                     statusRow(AppConstants.Labels.recorders) {
                         Text(String(totalRecorders))
                         .fontWeight(.medium)
@@ -95,6 +99,10 @@ struct RuntimeTestPanel: View {
                             .fontWeight(.medium)
                     }
                 }
+
+                Divider()
+
+                bedList
 
                 Divider()
 
@@ -134,6 +142,22 @@ struct RuntimeTestPanel: View {
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
+
+                    HStack(spacing: 10) {
+                        testKitIntegerStepper(
+                            AppConstants.Labels.bedCount,
+                            value: $viewModel.testKitBedCount,
+                            range: 1...200,
+                            displayValue: String(viewModel.testKitBedCount)
+                        )
+                        Button(AppConstants.Actions.create) {
+                            Task { await viewModel.createTestKitBeds() }
+                        }
+                        .disabled(!viewModel.testKitStatus.enabled || viewModel.isRunningTestKitAction)
+                    }
+
+                    TextField(AppConstants.Labels.bedPrefix, text: $viewModel.testKitBedPrefix)
+                        .textFieldStyle(.roundedBorder)
 
                     testKitDoubleStepper(
                         AppConstants.Labels.interval,
@@ -184,6 +208,7 @@ struct RuntimeTestPanel: View {
                         Task { await viewModel.startVirtualRecorderSession() }
                     }
                     .disabled(!viewModel.testKitCanStart)
+                    .help(viewModel.testKitStatus.beds.isEmpty ? RuntimeTestPanelText.noBeds : "")
 
                     Button(AppConstants.Actions.reset) {
                         Task { await viewModel.resetVirtualRecorderSessions() }
@@ -260,6 +285,42 @@ struct RuntimeTestPanel: View {
             Stepper(displayValue, value: value, in: range, step: step)
                 .monospacedDigit()
                 .frame(width: 180, alignment: .trailing)
+        }
+    }
+
+    private var bedList: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Text(AppConstants.Labels.beds)
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                Spacer()
+                Button(AppConstants.Actions.reset) {
+                    Task { await viewModel.resetTestKitBeds() }
+                }
+                .disabled(viewModel.isRunningTestKitAction || viewModel.testKitStatus.beds.isEmpty)
+            }
+
+            if viewModel.testKitStatus.beds.isEmpty {
+                Text(RuntimeTestPanelText.noBeds)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(viewModel.testKitStatus.beds) { bed in
+                    HStack(spacing: 10) {
+                        Text(bed.roomName)
+                            .fontWeight(.medium)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        Spacer(minLength: 12)
+                        Text(bed.bedID)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
         }
     }
 
@@ -373,6 +434,7 @@ struct RuntimeTestPanel: View {
             "\(AppConstants.Labels.messages): \(session.messagesSent)",
             "\(AppConstants.Labels.bytes): \(session.bytesSent)",
             "\(AppConstants.Labels.recorders): \(session.recorders.count)/\(session.recordersRequested)",
+            "\(AppConstants.Labels.beds): \(session.bedRoomNames.count)",
             "\(AppConstants.Labels.interval): \(secondsText(session.intervalSeconds))",
             session.cleanupErrors.isEmpty ? nil : "Cleanup errors: \(session.cleanupErrors.count)",
             session.lastError.map { "\(AppConstants.Labels.lastError): \($0)" }

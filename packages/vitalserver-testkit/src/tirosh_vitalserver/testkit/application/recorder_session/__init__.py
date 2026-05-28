@@ -24,9 +24,9 @@ from tirosh_vitalserver.testkit.application.recorder_session.store import (
 )
 
 __all__ = [
-    "VirtualRecorderSession",
     "VirtualRecorderCleanupError",
     "VirtualRecorderDeletionResult",
+    "VirtualRecorderSession",
     "VirtualRecorderSessionManager",
     "VirtualRecorderSessionRequest",
     "VirtualRecorderSessionScenario",

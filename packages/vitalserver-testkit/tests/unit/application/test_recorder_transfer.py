@@ -41,12 +41,20 @@ def test_stream_virtual_recorder_payloads_streams_each_recorder(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     recorder_payload: JsonObject = {
-        "recorder-code": {
+        "bed-1": {
             "roomname": "BED01",
             "trks": [],
-        }
+        },
+        "bed-2": {
+            "roomname": "BED02",
+            "trks": [],
+        },
     }
-    virtual_payloads = build_virtual_recorder_payloads(recorder_payload, count=2)
+    virtual_payloads = build_virtual_recorder_payloads(
+        recorder_payload,
+        count=2,
+        vrcode="VR_TEST",
+    )
     streamed_rooms: list[str] = []
     streamed_scenarios: list[RecorderSignalScenario] = []
 
@@ -99,7 +107,7 @@ def test_stream_virtual_recorder_payloads_streams_each_recorder(
 
     assert stream_total_streams(summary) == 2
     assert stream_total_messages_sent(summary) == 6
-    assert streamed_rooms == ["BED01-001", "BED01-002"]
+    assert streamed_rooms == ["BED01", "BED02"]
     assert streamed_scenarios == [
         RecorderSignalScenario.NORMAL,
         RecorderSignalScenario.TACHYCARDIA,
@@ -110,12 +118,20 @@ def test_stream_virtual_recorder_payloads_stops_peers_after_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     recorder_payload: JsonObject = {
-        "recorder-code": {
+        "bed-1": {
             "roomname": "BED01",
             "trks": [],
-        }
+        },
+        "bed-2": {
+            "roomname": "BED02",
+            "trks": [],
+        },
     }
-    virtual_payloads = build_virtual_recorder_payloads(recorder_payload, count=2)
+    virtual_payloads = build_virtual_recorder_payloads(
+        recorder_payload,
+        count=2,
+        vrcode="VR_TEST",
+    )
     peer_observed_stop = False
 
     def fake_stream_realtime_payload(
@@ -136,7 +152,7 @@ def test_stream_virtual_recorder_payloads_stops_peers_after_failure(
         nonlocal peer_observed_stop
 
         room_name = iter_recorder_rooms(payload)[0].room_name
-        if room_name == "BED01-001":
+        if room_name == "BED01":
             return RealtimeStreamResult(
                 messages_sent=0,
                 bytes_sent=0,

@@ -53,6 +53,7 @@ public final class MacTestKitController: RuntimeTestKitControlling {
         }
 
         let sessions = await loadSessions(apiBaseURL: apiBaseURL)
+        let beds = await loadBeds(apiBaseURL: apiBaseURL)
         let activeSession = preferredActiveSession(from: sessions)
 
         return RuntimeTestKitStatus(
@@ -63,8 +64,35 @@ public final class MacTestKitController: RuntimeTestKitControlling {
             recorderTargetURL: configuration.recorderTargetURL,
             activeSession: activeSession,
             sessions: sessions,
+            beds: beds,
             lastError: lastError
         )
+    }
+
+    public func createTestKitBeds(_ request: RuntimeTestKitCreateBedsRequest) async throws -> [RuntimeTestKitBed] {
+        let apiBaseURL = try await requireAPIBaseURL()
+        try await ensureAPIAvailable(apiBaseURL: apiBaseURL)
+
+        var urlRequest = apiRequest(apiBaseURL: apiBaseURL, path: "/beds")
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        urlRequest.httpBody = try JSONEncoder().encode(request)
+
+        let response = try await decode(TestKitBedsResponse.self, from: urlRequest)
+        lastError = nil
+        return response.beds
+    }
+
+    public func resetTestKitBeds() async throws -> [RuntimeTestKitBed] {
+        let apiBaseURL = try await requireAPIBaseURL()
+        try await ensureAPIAvailable(apiBaseURL: apiBaseURL)
+
+        var urlRequest = apiRequest(apiBaseURL: apiBaseURL, path: "/beds")
+        urlRequest.httpMethod = "DELETE"
+
+        let response = try await decode(TestKitBedsResponse.self, from: urlRequest)
+        lastError = nil
+        return response.beds
     }
 
     public func startVirtualRecorders(_ request: RuntimeTestKitVirtualRecorderStartRequest) async throws -> RuntimeTestKitSession {
@@ -187,6 +215,17 @@ public final class MacTestKitController: RuntimeTestKitControlling {
         }
     }
 
+    private func loadBeds(apiBaseURL: String) async -> [RuntimeTestKitBed] {
+        do {
+            var urlRequest = apiRequest(apiBaseURL: apiBaseURL, path: "/beds")
+            urlRequest.httpMethod = "GET"
+            let response = try await decode(TestKitBedsResponse.self, from: urlRequest)
+            return response.beds
+        } catch {
+            return []
+        }
+    }
+
     private func preferredActiveSession(from sessions: [RuntimeTestKitSession]) -> RuntimeTestKitSession? {
         if let activeSessionID,
            let activeSession = sessions.first(where: { $0.id == activeSessionID }) {
@@ -253,9 +292,14 @@ private struct TestKitSessionsResponse: Decodable {
     let sessions: [RuntimeTestKitSession]
 }
 
+private struct TestKitBedsResponse: Decodable {
+    let beds: [RuntimeTestKitBed]
+}
+
 private struct TestKitStartSessionRequest: Encodable {
     let targetURL: String
     let recorders: Int
+    let bedRoomNames: [String]
     let vrcode: String?
     let version: String
     let intervalSeconds: Double
@@ -272,6 +316,7 @@ private struct TestKitStartSessionRequest: Encodable {
     ) {
         self.targetURL = targetURL
         recorders = runtimeRequest.recorders
+        bedRoomNames = runtimeRequest.bedRoomNames
         vrcode = runtimeRequest.vrcode
         version = runtimeRequest.version
         intervalSeconds = runtimeRequest.intervalSeconds
@@ -286,6 +331,7 @@ private struct TestKitStartSessionRequest: Encodable {
     enum CodingKeys: String, CodingKey {
         case targetURL = "targetUrl"
         case recorders
+        case bedRoomNames
         case vrcode
         case version
         case intervalSeconds

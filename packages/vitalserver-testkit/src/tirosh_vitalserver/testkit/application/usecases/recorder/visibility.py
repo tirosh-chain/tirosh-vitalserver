@@ -8,6 +8,7 @@ from collections.abc import Mapping
 from tirosh_vitalserver.testkit.application.ports import VitalServerPort
 from tirosh_vitalserver.testkit.application.results import RecorderVisibilityResult
 from tirosh_vitalserver.testkit.domain.recorder.payloads import iter_recorder_rooms
+from tirosh_vitalserver.testkit.errors import RecorderPayloadRoomsRequiredError
 from tirosh_vitalserver.testkit.types.json import JsonValue
 
 
@@ -23,7 +24,7 @@ def wait_for_recorder_visibility(
 
     rooms = iter_recorder_rooms(payload, admin_user_id=admin_user_id)
     if not rooms:
-        raise ValueError("recorder payload does not contain rooms with roomname")
+        raise RecorderPayloadRoomsRequiredError()
 
     deadline = time.monotonic() + timeout_seconds
     latest_results: tuple[RecorderVisibilityResult, ...] = ()

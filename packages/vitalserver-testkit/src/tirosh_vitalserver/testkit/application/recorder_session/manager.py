@@ -70,6 +70,7 @@ class VirtualRecorderSessionManager:
             session_id=session_id,
             target_url=request.target_url,
             recorders=request.recorders,
+            beds=len(request.bed_room_names),
             vrcode=request.vrcode,
             interval_seconds=request.interval_seconds,
             duration_seconds=request.duration_seconds,
@@ -363,7 +364,8 @@ def request_with_scenario_defaults(
         case VirtualRecorderSessionScenario.NORMAL:
             return request
         case VirtualRecorderSessionScenario.MULTIPLE_RECORDERS:
-            return replace(request, recorders=max(request.recorders, 5))
+            recorders = max(request.recorders, 5)
+            return replace(request, recorders=recorders)
         case VirtualRecorderSessionScenario.BURST_TRAFFIC:
             return replace(request, interval_seconds=min(request.interval_seconds, 0.1))
         case VirtualRecorderSessionScenario.DISCONNECT_RECONNECT:

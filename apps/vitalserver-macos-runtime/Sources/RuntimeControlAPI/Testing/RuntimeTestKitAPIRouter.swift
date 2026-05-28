@@ -38,6 +38,11 @@ public struct RuntimeTestKitAPIRouter {
             switch endpoint {
             case .status:
                 return try await jsonResponse(controller.loadTestKitStatus())
+            case .createBeds:
+                let createRequest = try request.decodedBody(RuntimeTestKitCreateBedsRequest.self)
+                return try await jsonResponse(controller.createTestKitBeds(createRequest))
+            case .resetBeds:
+                return try await jsonResponse(controller.resetTestKitBeds())
             case .startVirtualRecorders:
                 let startRequest = try request.decodedBody(RuntimeTestKitVirtualRecorderStartRequest.self)
                 return try await jsonResponse(controller.startVirtualRecorders(startRequest))
@@ -86,6 +91,8 @@ public struct RuntimeTestKitAPIRouter {
 
 public enum RuntimeTestKitAPIEndpoint: String, CaseIterable, Codable, Equatable, Sendable {
     case status
+    case createBeds
+    case resetBeds
     case startVirtualRecorders
     case stopVirtualRecorders
     case deleteVirtualRecorders
@@ -96,7 +103,8 @@ public enum RuntimeTestKitAPIEndpoint: String, CaseIterable, Codable, Equatable,
         switch self {
         case .status:
             return .get
-        case .startVirtualRecorders, .stopVirtualRecorders,
+        case .createBeds, .resetBeds,
+             .startVirtualRecorders, .stopVirtualRecorders,
              .deleteVirtualRecorders, .deleteVirtualRecorder,
              .resetVirtualRecorders:
             return .post
@@ -107,6 +115,10 @@ public enum RuntimeTestKitAPIEndpoint: String, CaseIterable, Codable, Equatable,
         switch self {
         case .status:
             return "/dev/testkit/status"
+        case .createBeds:
+            return "/dev/testkit/beds/create"
+        case .resetBeds:
+            return "/dev/testkit/beds/reset"
         case .startVirtualRecorders:
             return "/dev/testkit/virtual-recorders/start"
         case .stopVirtualRecorders:

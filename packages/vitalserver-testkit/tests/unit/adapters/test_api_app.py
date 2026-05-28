@@ -1,6 +1,18 @@
 from __future__ import annotations
 
+import pytest
+from fastapi import HTTPException
+
+from tests.support import fake_socketio_connector
 from tirosh_vitalserver.testkit.adapters.inbound.api import create_testkit_app
+from tirosh_vitalserver.testkit.application.bed_registry import BedRegistry
+from tirosh_vitalserver.testkit.application.recorder_session import (
+    VirtualRecorderSessionManager,
+)
+from tirosh_vitalserver.testkit.schemas import (
+    CreateBedsRequest,
+    StartVirtualRecordersRequest,
+)
 
 
 def test_sessions_endpoint_uses_manager_dependency_not_query_parameter() -> None:
@@ -17,3 +29,74 @@ def test_sessions_endpoint_uses_manager_dependency_not_query_parameter() -> None
     assert [dependency.name for dependency in route.dependant.dependencies] == [
         "manager"
     ]
+
+
+def test_bed_registry_endpoint_creates_explicit_bed_identities() -> None:
+    route = route_for("/beds", "POST")
+    registry = BedRegistry()
+
+    response = route.endpoint(
+        CreateBedsRequest(roomNames=("OR-A", "OR-B")),
+        registry,
+    )
+
+    beds = response["beds"]
+    assert len(beds) == 2
+    assert beds[0]["roomName"] == "OR-A"
+    assert len(beds[0]["bedId"]) == 40
+
+
+def test_bed_registry_endpoints_list_and_reset_registered_beds() -> None:
+    registry = BedRegistry()
+    create_route = route_for("/beds", "POST")
+    list_route = route_for("/beds", "GET")
+    reset_route = route_for("/beds", "DELETE")
+
+    create_route.endpoint(CreateBedsRequest(roomNames=("OR-A",)), registry)
+
+    listed = list_route.endpoint(registry)
+    assert [bed["roomName"] for bed in listed["beds"]] == ["OR-A"]
+
+    deleted = reset_route.endpoint(registry)
+    assert [bed["roomName"] for bed in deleted["beds"]] == ["OR-A"]
+    assert list_route.endpoint(registry) == {"beds": []}
+
+
+def test_bed_registry_endpoint_merges_by_room_name() -> None:
+    route = route_for("/beds", "POST")
+    registry = BedRegistry()
+
+    first = route.endpoint(CreateBedsRequest(roomNames=("OR-A",)), registry)
+    second = route.endpoint(CreateBedsRequest(roomNames=(" OR-A ",)), registry)
+
+    assert first == second
+    assert len(second["beds"]) == 1
+
+
+def test_sessions_endpoint_rejects_missing_bed_room_names() -> None:
+    route = route_for("/sessions", "POST")
+    manager = VirtualRecorderSessionManager(connector=fake_socketio_connector)
+
+    with pytest.raises(HTTPException) as exc_info:
+        route.endpoint(
+            StartVirtualRecordersRequest(
+                targetUrl="http://example.test",
+                recorders=1,
+                bedRoomNames=(),
+                maxMessages=1,
+            ),
+            manager,
+        )
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "bed_room_names is required"
+
+
+def route_for(path: str, method: str):
+    app = create_testkit_app()
+    return next(
+        route
+        for route in app.routes
+        if getattr(route, "path", None) == path
+        and method in getattr(route, "methods", set())
+    )

@@ -1,15 +1,18 @@
 from __future__ import annotations
 
+from tests.support import fake_socketio_connector
+from tirosh_vitalserver.testkit.adapters.outbound.bed_registry_store import (
+    JsonFileBedRegistryStore,
+)
 from tirosh_vitalserver.testkit.adapters.outbound.session_store import (
     JsonFileVirtualRecorderSessionStore,
 )
+from tirosh_vitalserver.testkit.application.bed_registry import BedRegistry
 from tirosh_vitalserver.testkit.application.recorder_session import (
     VirtualRecorderSessionManager,
     VirtualRecorderSessionRequest,
     VirtualRecorderSessionState,
 )
-
-from tests.support import fake_socketio_connector
 
 
 def test_json_file_session_store_round_trips_snapshots(tmp_path) -> None:
@@ -23,6 +26,7 @@ def test_json_file_session_store_round_trips_snapshots(tmp_path) -> None:
             target_url="http://example.test",
             vrcode="VR_STORE",
             recorders=2,
+            bed_room_names=("OR-A", "OR-B"),
             interval_seconds=0.1,
             max_messages=1,
             shift_time=False,
@@ -42,3 +46,16 @@ def test_json_file_session_store_round_trips_snapshots(tmp_path) -> None:
         "VR_STORE-002",
     ]
     assert restored.messages_sent == 2
+
+
+def test_json_file_bed_registry_store_round_trips_beds(tmp_path) -> None:
+    store = JsonFileBedRegistryStore(tmp_path / "bed-registry.json")
+    registry = BedRegistry(store=store)
+
+    registry.create_beds(room_names=("OR-A", "OR-B"))
+
+    restored = BedRegistry(store=store)
+    assert [bed.room_name for bed in restored.list_beds()] == ["OR-A", "OR-B"]
+
+    restored.reset_beds()
+    assert BedRegistry(store=store).list_beds() == ()

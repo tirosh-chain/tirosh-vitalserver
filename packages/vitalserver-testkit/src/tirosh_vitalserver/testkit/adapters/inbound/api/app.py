@@ -10,16 +10,22 @@ from tirosh_vitalserver.testkit.adapters.outbound.recorder import (
     SocketIoRecorderManagementClient,
     connect_socketio,
 )
-from tirosh_vitalserver.testkit.application.recorder_session.store import (
-    VirtualRecorderSessionStorePort,
+from tirosh_vitalserver.testkit.application.bed_registry import BedRegistry
+from tirosh_vitalserver.testkit.application.bed_registry.store import (
+    BedRegistryStorePort,
 )
 from tirosh_vitalserver.testkit.application.recorder_session import (
     VirtualRecorderSessionManager,
     deletion_result_to_document,
     session_snapshot_to_document,
 )
+from tirosh_vitalserver.testkit.application.recorder_session.store import (
+    VirtualRecorderSessionStorePort,
+)
+from tirosh_vitalserver.testkit.domain.bed import Bed
 from tirosh_vitalserver.testkit.observability import emit_testkit_event
 from tirosh_vitalserver.testkit.schemas.testkit_api import (
+    CreateBedsRequest,
     DeleteVirtualRecorderRequest,
     StartVirtualRecordersRequest,
 )
@@ -28,6 +34,8 @@ from tirosh_vitalserver.testkit.schemas.testkit_api import (
 def create_testkit_app(
     manager: VirtualRecorderSessionManager | None = None,
     session_store: VirtualRecorderSessionStorePort | None = None,
+    bed_registry: BedRegistry | None = None,
+    bed_registry_store: BedRegistryStorePort | None = None,
 ) -> FastAPI:
     """Build the TestKit FastAPI application."""
 
@@ -40,9 +48,13 @@ def create_testkit_app(
         recorder_management=SocketIoRecorderManagementClient(),
         session_store=session_store,
     )
+    beds = bed_registry or BedRegistry(store=bed_registry_store)
 
     def get_manager() -> VirtualRecorderSessionManager:
         return session_manager
+
+    def get_bed_registry() -> BedRegistry:
+        return beds
 
     @app.middleware("http")
     async def log_api_request(request: Request, call_next: Any) -> Any:
@@ -73,6 +85,54 @@ def create_testkit_app(
     @app.get("/health")
     def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.post("/beds", status_code=201)
+    def create_beds(
+        request: CreateBedsRequest,
+        registry: Annotated[BedRegistry, Depends(get_bed_registry)],
+    ) -> dict[str, list[dict[str, str]]]:
+        emit_testkit_event(
+            "api.beds.create.requested",
+            count=request.count,
+            room_names=len(request.room_names),
+            prefix=request.prefix,
+            admin_user_id=request.admin_user_id,
+        )
+        try:
+            registered_beds = registry.create_beds(
+                count=request.count,
+                room_names=request.room_names,
+                prefix=request.prefix,
+                admin_user_id=request.admin_user_id,
+            )
+        except ValueError as exc:
+            emit_testkit_event(
+                "api.beds.create.rejected",
+                level=logging.WARNING,
+                count=request.count,
+                room_names=len(request.room_names),
+                error=str(exc),
+            )
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        emit_testkit_event("api.beds.create.accepted", count=len(registered_beds))
+
+        return {"beds": [bed_to_document(bed) for bed in registered_beds]}
+
+    @app.get("/beds")
+    def list_beds(
+        registry: Annotated[BedRegistry, Depends(get_bed_registry)],
+    ) -> dict[str, list[dict[str, str]]]:
+        return {"beds": [bed_to_document(bed) for bed in registry.list_beds()]}
+
+    @app.delete("/beds")
+    def delete_beds(
+        registry: Annotated[BedRegistry, Depends(get_bed_registry)],
+    ) -> dict[str, list[dict[str, str]]]:
+        emit_testkit_event("api.beds.reset.requested")
+        deleted = registry.reset_beds()
+        emit_testkit_event("api.beds.reset.accepted", count=len(deleted))
+        return {"beds": [bed_to_document(bed) for bed in deleted]}
 
     @app.get("/sessions")
     def list_sessions(
@@ -111,6 +171,7 @@ def create_testkit_app(
             "api.session.start.requested",
             target_url=request.target_url,
             recorders=request.recorders,
+            beds=len(request.bed_room_names),
             vrcode=request.vrcode,
             interval_seconds=request.interval_seconds,
             duration_seconds=request.duration_seconds,
@@ -125,6 +186,7 @@ def create_testkit_app(
                 level=logging.WARNING,
                 target_url=request.target_url,
                 recorders=request.recorders,
+                beds=len(request.bed_room_names),
                 error=str(exc),
             )
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -135,6 +197,7 @@ def create_testkit_app(
             state=snapshot.state.value,
             target_url=snapshot.request.target_url,
             recorders=snapshot.request.recorders,
+            beds=len(snapshot.request.bed_room_names),
             vrcode=snapshot.request.vrcode,
         )
         return session_snapshot_to_document(snapshot)
@@ -237,3 +300,12 @@ def elapsed_ms(started: float) -> int:
     """Return elapsed milliseconds since a perf-counter start."""
 
     return int((time.perf_counter() - started) * 1000)
+
+
+def bed_to_document(bed: Bed) -> dict[str, str]:
+    """Convert one test bed identity to API JSON."""
+
+    return {
+        "roomName": bed.room_name,
+        "bedId": bed.bed_id,
+    }

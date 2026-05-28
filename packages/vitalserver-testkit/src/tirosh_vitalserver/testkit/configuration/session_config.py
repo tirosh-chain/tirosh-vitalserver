@@ -5,7 +5,6 @@ from __future__ import annotations
 import tomllib
 from pathlib import Path
 
-
 DEFAULT_SESSION_STATE_PATH = Path("/var/lib/vitalserver-testkit/sessions.json")
 
 

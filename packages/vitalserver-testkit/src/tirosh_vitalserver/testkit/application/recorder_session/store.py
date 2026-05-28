@@ -54,6 +54,7 @@ def session_snapshot_from_record(
     """Convert a persistent JSON record into a session snapshot."""
 
     request_data = dict(data["request"])
+    request_data.pop("beds", None)
     request_data["scenario"] = VirtualRecorderSessionScenario(
         request_data.get("scenario", VirtualRecorderSessionScenario.NORMAL.value)
     )

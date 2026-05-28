@@ -64,6 +64,12 @@ name = "load"
 wait_seconds = 30
 poll_interval_seconds = 1
 
+[bed_registry]
+state_path = "/var/lib/vitalserver-testkit/bed-registry.json"
+
+[beds]
+count = 5
+
 [recorder]
 recorders = 5
 # 실제 payload를 재현해야 할 때만 지정합니다.
@@ -108,14 +114,23 @@ visible_rooms: 1
 visible: room=mnw4anvs4 bed_id=de8d5733096db32506a924ac566c903c343e2338 bytes=...
 ```
 
-여러 recorder machine이 동시에 붙는 상황은 `--recorders`로 재현합니다. testkit은 payload를
-복제하되 recorder code와 room name을 `-001`, `-002`처럼 분리해서 VitalServer가
-서로 다른 bed로 등록하게 만듭니다.
+여러 recorder machine이 동시에 붙는 상황은 bed room을 먼저 정한 뒤 `--bed-room-name`으로
+명시해서 재현합니다. Bed는 recorder보다 먼저 존재하는 도메인이고, VRecorder payload는
+선택된 bed room에만 연결됩니다.
+
+```sh
+uv run vitalserver-testkit create-beds --count 5
+```
 
 ```sh
 uv run vitalserver-testkit verify-recorder \
   --vitalserver-url http://localhost \
-  --recorders 5
+  --recorders 5 \
+  --bed-room-name OR-A \
+  --bed-room-name OR-B \
+  --bed-room-name OR-C \
+  --bed-room-name OR-D \
+  --bed-room-name OR-E
 ```
 
 반복 전송량과 처리량을 보고 싶을 때는 `send-recorder`를 사용합니다.
@@ -124,6 +139,11 @@ uv run vitalserver-testkit verify-recorder \
 uv run vitalserver-testkit send-recorder \
   --vitalserver-url http://localhost \
   --recorders 5 \
+  --bed-room-name OR-A \
+  --bed-room-name OR-B \
+  --bed-room-name OR-C \
+  --bed-room-name OR-D \
+  --bed-room-name OR-E \
   --concurrency 10 \
   --repeat 100
 ```
@@ -137,6 +157,11 @@ uv run vitalserver-testkit send-recorder \
 uv run vitalserver-testkit stream-recorder \
   --vitalserver-url http://localhost \
   --recorders 5 \
+  --bed-room-name OR-A \
+  --bed-room-name OR-B \
+  --bed-room-name OR-C \
+  --bed-room-name OR-D \
+  --bed-room-name OR-E \
   --interval 1
 ```
 
@@ -146,6 +171,11 @@ uv run vitalserver-testkit stream-recorder \
 uv run vitalserver-testkit stream-recorder \
   --vitalserver-url http://localhost \
   --recorders 5 \
+  --bed-room-name OR-A \
+  --bed-room-name OR-B \
+  --bed-room-name OR-C \
+  --bed-room-name OR-D \
+  --bed-room-name OR-E \
   --interval 1 \
   --duration 10
 ```
@@ -155,6 +185,7 @@ Python 코드에서 직접 호출할 수도 있습니다.
 ```python
 from tirosh_vitalserver.testkit import (
     build_simulated_recorder_payload,
+    create_beds,
     send_realtime_payloads,
 )
 from tirosh_vitalserver.testkit.adapters.outbound.recorder import emit_send_data
@@ -165,7 +196,10 @@ from tirosh_vitalserver.testkit.application.metrics import (
     transfer_total_requests,
 )
 
-payload = build_simulated_recorder_payload()
+beds = create_beds(count=1)
+payload = build_simulated_recorder_payload(
+    room_names=tuple(bed.room_name for bed in beds),
+)
 summary = send_realtime_payloads(
     "http://localhost",
     payload,
@@ -185,6 +219,7 @@ print(f"bytes={transfer_total_bytes_sent(summary)}")
 - `concurrency`: 동시에 보내는 요청 수
 - `repeat`: 같은 payload를 반복 전송하는 횟수
 - `recorders`: payload에서 만들 가상 recorder machine 수
+- `bed_room_name`: 연결할 기존/명시적 bed room name. payload 생략 시 필수
 - `interval`: streaming mode에서 recorder별 전송 간격
 - `duration`: streaming mode 실행 시간; `0`이면 Ctrl+C까지 계속 전송
 - `max_messages`: streaming mode에서 recorder별 최대 전송 횟수
@@ -210,14 +245,19 @@ uv run vitalserver-testkit serve \
 `0.0.0.0:18322`로 API를 열고, 생성된 virtual VRecorder는 guest compose network 안에서
 `http://edge/`를 대상으로 접속한다.
 
-초기 API는 session lifecycle에 집중한다.
+API는 bed registry와 session lifecycle을 분리한다.
 
 ```text
 GET  /health
+POST /beds
+GET  /beds
+DELETE /beds
 GET  /sessions
 POST /sessions
 GET  /sessions/{id}
 POST /sessions/{id}/stop
+DELETE /sessions/{id}
+DELETE /sessions
 ```
 
 Helper Test 탭의 기본 모델은 “virtual VRecorder 1대 = TestKit session 1개”이다. 여러 대를
@@ -228,8 +268,15 @@ Helper Test 탭의 기본 모델은 “virtual VRecorder 1대 = TestKit session 
 
 ```json
 {
+  "roomNames": ["OR-A"]
+}
+```
+
+```json
+{
   "targetUrl": "http://edge/",
   "recorders": 1,
+  "bedRoomNames": ["OR-A"],
   "vrcode": "TEST_VR",
   "intervalSeconds": 1,
   "durationSeconds": 0,
