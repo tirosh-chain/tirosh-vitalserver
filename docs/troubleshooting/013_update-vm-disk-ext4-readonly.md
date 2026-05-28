@@ -3,7 +3,7 @@
 > ID: TS-013  
 > Category: Update  
 > Owner: macOS runtime  
-> Status: active
+> Status: resolved
 
 증상:
 
@@ -48,6 +48,15 @@ cat "/Library/Application Support/TiroshVitalServer/status/runtime-status.json"
 tail -n 200 "/Library/Application Support/TiroshVitalServer/logs/guest/activate-update.log"
 ```
 
+plist와 loaded launchd job의 timeout이 같은지도 확인합니다.
+
+```sh
+plutil -p "/Library/LaunchDaemons/com.tirosh.vitalserver-vm.plist" | grep ExitTimeOut
+launchctl print system/com.tirosh.vitalserver-vm | grep "exit timeout"
+```
+
+정상적으로 갱신된 상태에서는 plist가 `ExitTimeOut => 300`이고, loaded job도 `exit timeout = 300`을 사용해야 합니다.
+
 조치:
 
 최신 runtime은 VM launchd `ExitTimeOut`을 300초로 늘리고, guest Compose stop timeout과 `sync`를 명시합니다. update bundle에는 `004-refresh-vm-shutdown-timeouts` migration이 포함되어 기존 설치본의 VM launchd plist를 갱신하고, loaded 상태인 VM launchd job을 unload하여 다음 start에서 갱신된 timeout이 적용되게 합니다.
@@ -67,4 +76,6 @@ ls -lh "/Library/Application Support/TiroshVitalServer/vm/data/backups" 2>/dev/n
 
 ## Follow-up
 
-- 관련 issue/PR, 재현 로그, 수정 버전, 운영 판단이 생기면 이 섹션에 추가합니다.
+- 2026-05-28: 재현 환경에서 plist 파일은 `ExitTimeOut=300`이었지만 `launchctl print system/com.tirosh.vitalserver-vm`의 loaded job은 `exit timeout = 60`을 유지하고 있었습니다. 원인은 migration이 plist만 갱신하고 loaded launchd job을 reload/unload하지 않은 것입니다.
+- 2026-05-28: `004-refresh-vm-shutdown-timeouts` migration이 VM launchd job을 `bootout`하도록 수정했습니다. 다음 runtime start에서 launchd가 plist를 다시 읽어 `ExitTimeOut=300`을 적용합니다. Fix: `2aaef21 fix: reload VM launchd timeout migration`.
+- 이미 `EXT4-fs error`, `Aborting journal`, `Remounting filesystem read-only`가 발생한 VM disk는 이 수정만으로 복구되지 않습니다. Redis backup을 먼저 확인하고 VM disk repair/recreate 또는 재설치를 진행합니다.

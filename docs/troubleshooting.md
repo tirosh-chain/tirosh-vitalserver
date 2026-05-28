@@ -24,7 +24,7 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-010 | Redis UI가 template fetch 오류를 표시 | Guest containers | resolved | [Redis UI가 `failed to fetch html template`을 표시](troubleshooting/010_redis-ui-template-fetch-error.md) |
 | TS-011 | Service health가 302를 Reachable로 표시 | Runtime health | resolved | [HTTP 302가 Reachable로 표시됨](troubleshooting/011_http-302-reachable.md) |
 | TS-012 | bundle update가 오래 멈춘 것처럼 보임 | Update | active | [bundle update가 health wait 또는 rollback에서 오래 멈춤](troubleshooting/012_bundle-update-health-wait-rollback-stall.md) |
-| TS-013 | update 후 VM disk/ext4 오류 | Update | active | [update 후 VM disk가 ext4 오류 또는 read-only 상태가 됨](troubleshooting/013_update-vm-disk-ext4-readonly.md) |
+| TS-013 | update 후 VM disk/ext4 오류 | Update | resolved | [update 후 VM disk가 ext4 오류 또는 read-only 상태가 됨](troubleshooting/013_update-vm-disk-ext4-readonly.md) |
 | TS-014 | update 후 Redis가 `exec format error` | Update | resolved | [update 후 Redis가 `exec format error`로 실패](troubleshooting/014_update-redis-exec-format-error.md) |
 | TS-015 | update 후 bootstrap이 `missing runtime package`로 실패 | Update | active | [update 후 bootstrap이 `missing runtime package`로 실패](troubleshooting/015_update-missing-runtime-package.md) |
 | TS-016 | Redis가 AOF 오류로 재시작 반복 | Data store | active | [Redis AOF 손상으로 runtime health가 회복되지 않음](troubleshooting/016_redis-aof-corruption.md) |
