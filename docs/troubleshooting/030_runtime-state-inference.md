@@ -27,6 +27,7 @@ Runtime 상태가 실제 상황과 다르게 보이거나, update 진행 상태�
 - status document가 이미 제공해야 하는 `vmIP`, `guestHTTP`, VitalDB observation을 raw `runtime-state.json`으로 보정합니다.
 - 선택되지 않은 backup/update bundle을 빈 문자열 sentinel로 보관해 UI와 command 실행 경로가 같은 값을 다르게 해석합니다.
 - backup/Redis backup 목록을 읽지 못했는데 `[]`로 바꿔 “백업 없음”처럼 표시합니다.
+- 배포되지 않은 구버전 layout을 추정해 runtime install path에서 legacy log migration을 수행합니다.
 
 ## Impact
 
@@ -72,6 +73,7 @@ rg -n "\\?\\? \\\"\\\"|lastSeenAt \\?\\? \\\"\\\"" apps/vitalserver-macos-runtim
 rg -n "document\\?\\.(vmIP|guestHTTP|redisUIHTTP|swaggerUIHTTP).*\\?\\?|freshestVitalDBObservation|guestState\\?\\.vitalDBObservation" apps/vitalserver-macos-runtime/Sources/MacHostRuntimeAdapter
 rg -n "selected.*Path\\.isEmpty|selected.*Path = \\\"\\\"" apps/vitalserver-macos-runtime/Sources/MacRuntimeControlApp
 rg -n "try\\?.*contentsOfDirectory|try\\?.*childDirectories|\\?\\? \\[\\]" apps/vitalserver-macos-runtime/Sources
+rg -n "migrateLegacy|legacy-.*log|legacyDirectory" apps/vitalserver-macos-runtime/Sources
 ```
 
 상태 관련 read path에서 아래 패턴이 보이면 재검토합니다.
@@ -93,6 +95,7 @@ missing timestamp -> compare as empty string
 status document field -> fallback to raw guest runtime-state
 missing selection -> store empty string sentinel
 directory read failure -> return [] as if there are no entries
+current install -> migrate legacy layout implicitly
 ```
 
 ## Actions
@@ -118,6 +121,7 @@ directory read failure -> return [] as if there are no entries
 15. Runtime status API는 status document가 제공해야 하는 필드를 raw guest runtime-state로 보정하지 않습니다. raw guest runtime-state는 resource usage처럼 그 문서가 직접 소유한 값에만 사용합니다.
 16. UI 선택 상태는 optional로 유지합니다. 선택 없음은 `nil`이며, 표시 단계에서만 사용자 문구로 변환합니다.
 17. 목록 조회에서 파일시스템 오류는 throw로 올립니다. 빈 배열은 성공적으로 읽은 결과가 실제로 비어 있을 때만 사용합니다.
+18. 배포 전 제품의 구버전 layout 보정은 install path에서 제거합니다. 필요한 마이그레이션은 명시 migration step으로만 추가합니다.
 
 ## Prevention
 
@@ -147,6 +151,7 @@ directory read failure -> return [] as if there are no entries
 - status document의 누락 필드를 raw guest runtime-state로 보정
 - 선택되지 않은 path를 빈 문자열로 저장
 - 디렉터리 읽기 실패를 `try? ... ?? []`로 숨김
+- 현재 install workflow에서 legacy layout을 암묵적으로 이동/정리
 
 ## Operational Notes
 
@@ -175,3 +180,4 @@ directory read failure -> return [] as if there are no entries
 - 2026-05-30: `RuntimeStatusReader`가 status document의 `vmIP`, `guestHTTP`, UI HTTP, VitalDB observation을 raw `runtime-state.json`으로 보정하던 경로를 제거했습니다. Runtime status API는 status document가 보고한 상태만 노출하고, raw guest runtime-state는 resource usage 소스로만 사용합니다.
 - 2026-05-30: rollback/delete backup 선택 상태의 빈 문자열 sentinel을 제거하고 optional selection으로 변경했습니다. 선택 없음은 command 실행 전 명시적으로 차단합니다.
 - 2026-05-30: backup/Redis backup 목록 조회에서 디렉터리 읽기 실패를 빈 배열로 숨기던 `try? ... ?? []` 패턴을 제거했습니다. 읽기 실패는 API/UI에 오류로 전달하고, 빈 목록은 실제 빈 디렉터리에만 사용합니다.
+- 2026-05-30: runtime install directory 준비 단계에서 legacy runtime log migration을 제거했습니다. Install 준비는 현재 layout 디렉터리를 생성하는 역할만 수행합니다.
