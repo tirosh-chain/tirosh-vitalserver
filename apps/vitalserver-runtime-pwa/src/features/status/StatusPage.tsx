@@ -51,6 +51,9 @@ function StatusOverview({ overview }: { overview: RuntimeControlOverview }) {
     overview.settings?.runtimeControlPort,
     appSettings.runtimeControl.defaultPort
   );
+  const helperConsolePort =
+    overview.settings?.runtimeControlPort ??
+    appSettings.runtimeControl.defaultPort;
 
   return (
     <div className="page-stack">
@@ -80,13 +83,13 @@ function StatusOverview({ overview }: { overview: RuntimeControlOverview }) {
               )
             },
             {
-              label: "Runtime Control PWA",
+              label: "Helper Console",
               value: (
                 <a href={pwaURL} target="_blank" rel="noreferrer">
                   {pwaURL}
                 </a>
               ),
-              detail: "Local helper UI"
+              detail: `Port ${helperConsolePort} · Local browser console`
             },
             {
               label: "Data directory",

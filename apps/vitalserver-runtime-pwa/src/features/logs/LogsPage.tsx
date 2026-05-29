@@ -144,8 +144,9 @@ export function LogsPage() {
           <p className="muted">Exported to {exportDestination}</p>
         ) : (
           <p className="muted">
-            The archive is created on the Mac running Runtime Control API. PWA
-            cannot open Finder directly; use the exported path on the host.
+            The archive is created on the Mac running Runtime Control API. The
+            Helper Console cannot open Finder directly; use the exported path on
+            the host.
           </p>
         )}
       </Panel>

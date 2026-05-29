@@ -63,7 +63,7 @@ describe("runtime control error summaries", () => {
       kind: "network",
       title: "Runtime Control API is unreachable",
       detail:
-        "The PWA tried http://127.0.0.1:18321/runtime/overview, but the local Runtime Control API did not respond. Failed to fetch"
+        "The Helper Console tried http://127.0.0.1:18321/runtime/overview, but the local Runtime Control API did not respond. Failed to fetch"
     });
   });
 

@@ -44,11 +44,11 @@ export function App() {
       <header className="app-header">
         <div>
           <h1>VitalServer Helper</h1>
-          <p>Runtime Control</p>
+          <p>Helper Console</p>
         </div>
       </header>
 
-      <nav className="app-tabs" aria-label="Runtime Control tabs">
+      <nav className="app-tabs" aria-label="Helper Console tabs">
         <div className="app-tab-primary-group">
           {primaryRoutes.map((route) => routeLink(route, "primary"))}
         </div>

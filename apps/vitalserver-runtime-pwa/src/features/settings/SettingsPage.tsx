@@ -163,7 +163,7 @@ export function SettingsPage() {
             />
           </label>
           <label>
-            Runtime Control PWA port
+            Helper Console port
             <input
               type="number"
               min="1"
@@ -177,7 +177,7 @@ export function SettingsPage() {
           </label>
         </div>
         <p className="muted">VitalServer URL: {vitalServerURLPreview}</p>
-        <p className="muted">Runtime Control PWA URL: {runtimeControlURLPreview}</p>
+        <p className="muted">Helper Console URL: {runtimeControlURLPreview}</p>
         <label className="checkbox-label block-checkbox">
           <input
             type="checkbox"

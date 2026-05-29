@@ -34,7 +34,7 @@ export function validateRuntimeSettings(
     errors.push("VitalServer listen port must be between 1 and 65535.");
   }
   if (!validPort(settings.runtimeControlPort)) {
-    errors.push("Runtime Control PWA port must be between 1 and 65535.");
+    errors.push("Helper Console port must be between 1 and 65535.");
   }
   if (!validPort(settings.publicPort)) {
     errors.push("Advertised port must be between 1 and 65535.");

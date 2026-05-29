@@ -1,7 +1,8 @@
-# VitalServer Runtime Control PWA
+# VitalServer Helper Console PWA
 
 macOS `VitalServer Helper`의 Runtime Control API를 브라우저에서 제어하기
-위한 PWA입니다. Swift Helper UI의 정보 구조를 최대한 유지하면서, 화면 동작은
+위한 PWA입니다. 사용자 화면에서는 이 앱을 `Helper Console`로 부릅니다.
+Swift Helper UI의 정보 구조를 최대한 유지하면서, 화면 동작은
 OpenAPI contract와 React Query 기반으로 옮기는 것이 목표입니다.
 
 설치 현장에서는 Node/Vite 앱으로 실행하지 않습니다. 빌드된 static assets를
@@ -58,7 +59,7 @@ VITE_QUERY_STALE_TIME_MS=1000
   비워두면 same-origin을 사용합니다.
 - `VITE_RUNTIME_CONTROL_DEV_PROXY_TARGET`: Vite dev server가 `/runtime`, `/vitaldb`,
   `/host`, `/dev/testkit` 요청을 넘길 대상입니다.
-- `VITE_RUNTIME_CONTROL_DEFAULT_PORT`: Status 화면에서 Runtime Control PWA link를
+- `VITE_RUNTIME_CONTROL_DEFAULT_PORT`: Status 화면에서 Helper Console link를
   만들 때 쓰는 fallback port입니다.
 - `VITE_RUNTIME_CONTROL_DEFAULT_PROXY_PORT`: VitalServer link를 만들 때 쓰는 fallback proxy port입니다.
 - `VITE_PWA_DEV_SERVER_PORT`, `VITE_PWA_PREVIEW_PORT`: Vite dev/preview server port입니다.
@@ -149,7 +150,7 @@ Helper app bundle 내 포함 위치:
 Contents/Resources/runtime-control-pwa/
 ```
 
-설치된 시스템에서는 Helper의 local Runtime Control server가 PWA를 제공합니다.
+설치된 시스템에서는 Helper의 local Runtime Control server가 Helper Console을 제공합니다.
 
 ```text
 http://127.0.0.1:18321/
@@ -182,7 +183,7 @@ API client, domain policy를 바꿨다면 `check`, `test`, `build`를 모두 돌
 
 ## Local Troubleshooting
 
-PWA에서 `Runtime Control API is unreachable`가 보이면 먼저 아래를 확인합니다.
+Helper Console에서 `Runtime Control API is unreachable`가 보이면 먼저 아래를 확인합니다.
 
 - Helper local API server가 실행 중인지 확인합니다.
 - PWA가 기대하는 API URL이 맞는지 확인합니다. 개발 중이면

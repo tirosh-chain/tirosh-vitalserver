@@ -128,15 +128,15 @@ function summarizeNetworkError(
   const cause = asErrorLike(error.cause);
   const causeMessage = cause.message ?? error.message;
   const detail = error.url
-    ? `The PWA tried ${error.url}, but the local Runtime Control API did not respond.`
-    : "The PWA could not reach the local Runtime Control API endpoint.";
+    ? `The Helper Console tried ${error.url}, but the local Runtime Control API did not respond.`
+    : "The Helper Console could not reach the local Runtime Control API endpoint.";
 
   return {
     kind: "network",
     title: "Runtime Control API is unreachable",
     detail: causeMessage ? `${detail} ${causeMessage}` : detail,
     recovery:
-      "Verify that VitalServer Helper is running, then check the PWA URL and Runtime Control API port. In Vite dev mode, also check VITE_RUNTIME_CONTROL_DEV_PROXY_TARGET."
+      "Verify that VitalServer Helper is running, then check the Helper Console URL and port. In Vite dev mode, also check VITE_RUNTIME_CONTROL_DEV_PROXY_TARGET."
   };
 }
 
@@ -174,7 +174,7 @@ function parseAPIErrorBody(
 
 function recoveryForStatus(status: number, code: string | undefined): string {
   if (status === 401 || code === "unauthorized") {
-    return "Verify the Runtime Control token configured for the PWA.";
+    return "Verify the Runtime Control token configured for the Helper Console.";
   }
 
   if (status === 404 || code === "routeNotFound") {
@@ -182,7 +182,7 @@ function recoveryForStatus(status: number, code: string | undefined): string {
   }
 
   if (status === 405 || code === "methodNotAllowed") {
-    return "The PWA and Helper disagree on this endpoint method. Check the RuntimeContractAPI version.";
+    return "The Helper Console and Helper disagree on this endpoint method. Check the RuntimeContractAPI version.";
   }
 
   if (code === "endpointNotImplemented") {
