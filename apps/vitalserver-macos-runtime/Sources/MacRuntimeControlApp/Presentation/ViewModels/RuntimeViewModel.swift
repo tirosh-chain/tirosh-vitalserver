@@ -68,6 +68,7 @@ final class RuntimeViewModel: ObservableObject {
     @Published var selectedBundleVerified = false
     @Published var backups: [RuntimeBackup] = []
     @Published var selectedBackupPath: String?
+    @Published var backupListErrorMessage: String?
     @Published var message = AppConstants.StatusText.ready
     @Published var operationDetail = ""
     @Published var logText = AppConstants.StatusText.ready
@@ -468,7 +469,15 @@ final class RuntimeViewModel: ObservableObject {
     }
 
     func refreshBackupList() async {
-        backups = await loadBackupsSnapshot(latestBackupPath: status.latestBackup)
+        do {
+            backups = try await loadBackupsSnapshot(latestBackupPath: status.latestBackup)
+            backupListErrorMessage = nil
+        } catch {
+            backups = []
+            selectedBackupPath = nil
+            backupListErrorMessage = AppConstants.StatusText.backupListLoadFailed(error.localizedDescription)
+            return
+        }
         selectedBackupPath = backupSelectionPolicy.selectedBackupPath(
             from: backups,
             currentSelection: selectedBackupPath
@@ -643,11 +652,11 @@ final class RuntimeViewModel: ObservableObject {
         return controlClient.loadVitalDBRelationships()
     }
 
-    private func loadBackupsSnapshot(latestBackupPath: String?) async -> [RuntimeBackup] {
+    private func loadBackupsSnapshot(latestBackupPath: String?) async throws -> [RuntimeBackup] {
         if let readWorker {
-            return await readWorker.loadBackups(latestBackupPath: latestBackupPath)
+            return try await readWorker.loadBackups(latestBackupPath: latestBackupPath)
         }
-        return hostClient.loadBackups(latestBackupPath: latestBackupPath)
+        return try hostClient.loadBackups(latestBackupPath: latestBackupPath)
     }
 
 }

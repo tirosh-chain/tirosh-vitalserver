@@ -29,8 +29,8 @@ public protocol RuntimeControlClient {
 
 @MainActor
 public protocol RuntimeHostClient {
-    func loadBackups(latestBackupPath: String?) -> [RuntimeBackup]
-    func loadRedisBackups() -> [RuntimeBackup]
+    func loadBackups(latestBackupPath: String?) throws -> [RuntimeBackup]
+    func loadRedisBackups() throws -> [RuntimeBackup]
     func updateBundleSummary(url: URL) -> String
     func logText(sourceID: RuntimeLogSource, helperMessage: String, lineLimit: Int) -> String
     func loadLogText(sourceID: RuntimeLogSource, helperMessage: String, lineLimit: Int) async -> String

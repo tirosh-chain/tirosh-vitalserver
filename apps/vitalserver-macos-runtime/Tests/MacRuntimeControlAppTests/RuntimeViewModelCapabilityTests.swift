@@ -644,12 +644,12 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
         RuntimeVitalRelationshipHistory()
     }
 
-    func loadBackups(latestBackupPath: String?) -> [RuntimeBackup] {
+    func loadBackups(latestBackupPath: String?) throws -> [RuntimeBackup] {
         loadBackupsCount += 1
         return []
     }
 
-    func loadRedisBackups() -> [RuntimeBackup] {
+    func loadRedisBackups() throws -> [RuntimeBackup] {
         []
     }
 

@@ -26,6 +26,7 @@ Runtime 상태가 실제 상황과 다르게 보이거나, update 진행 상태�
 - timestamp가 없을 때 `""`로 치환해 정렬하거나 최신 값을 고릅니다.
 - status document가 이미 제공해야 하는 `vmIP`, `guestHTTP`, VitalDB observation을 raw `runtime-state.json`으로 보정합니다.
 - 선택되지 않은 backup/update bundle을 빈 문자열 sentinel로 보관해 UI와 command 실행 경로가 같은 값을 다르게 해석합니다.
+- backup/Redis backup 목록을 읽지 못했는데 `[]`로 바꿔 “백업 없음”처럼 표시합니다.
 
 ## Impact
 
@@ -70,6 +71,7 @@ rg -n "containerHealthState\\(.*\\).*\\.stable|return \\.stable" apps/vitalserve
 rg -n "\\?\\? \\\"\\\"|lastSeenAt \\?\\? \\\"\\\"" apps/vitalserver-macos-runtime/Sources/RuntimeControl apps/vitalserver-macos-runtime/Sources/MacRuntimeControlApp
 rg -n "document\\?\\.(vmIP|guestHTTP|redisUIHTTP|swaggerUIHTTP).*\\?\\?|freshestVitalDBObservation|guestState\\?\\.vitalDBObservation" apps/vitalserver-macos-runtime/Sources/MacHostRuntimeAdapter
 rg -n "selected.*Path\\.isEmpty|selected.*Path = \\\"\\\"" apps/vitalserver-macos-runtime/Sources/MacRuntimeControlApp
+rg -n "try\\?.*contentsOfDirectory|try\\?.*childDirectories|\\?\\? \\[\\]" apps/vitalserver-macos-runtime/Sources
 ```
 
 상태 관련 read path에서 아래 패턴이 보이면 재검토합니다.
@@ -90,6 +92,7 @@ missing path/id -> expose empty string
 missing timestamp -> compare as empty string
 status document field -> fallback to raw guest runtime-state
 missing selection -> store empty string sentinel
+directory read failure -> return [] as if there are no entries
 ```
 
 ## Actions
@@ -114,6 +117,7 @@ missing selection -> store empty string sentinel
 14. timestamp 정렬은 explicit comparator를 사용합니다. `nil` timestamp를 빈 문자열로 변환하지 않습니다.
 15. Runtime status API는 status document가 제공해야 하는 필드를 raw guest runtime-state로 보정하지 않습니다. raw guest runtime-state는 resource usage처럼 그 문서가 직접 소유한 값에만 사용합니다.
 16. UI 선택 상태는 optional로 유지합니다. 선택 없음은 `nil`이며, 표시 단계에서만 사용자 문구로 변환합니다.
+17. 목록 조회에서 파일시스템 오류는 throw로 올립니다. 빈 배열은 성공적으로 읽은 결과가 실제로 비어 있을 때만 사용합니다.
 
 ## Prevention
 
@@ -142,6 +146,7 @@ missing selection -> store empty string sentinel
 - timestamp 정렬/선택에서 `nil`을 `""`로 비교
 - status document의 누락 필드를 raw guest runtime-state로 보정
 - 선택되지 않은 path를 빈 문자열로 저장
+- 디렉터리 읽기 실패를 `try? ... ?? []`로 숨김
 
 ## Operational Notes
 
@@ -169,3 +174,4 @@ missing selection -> store empty string sentinel
 - 2026-05-30: Vital recorder/bed 최신값 선택과 정렬에서 `lastSeenAt ?? ""` 비교를 제거하고 explicit timestamp comparator로 변경했습니다.
 - 2026-05-30: `RuntimeStatusReader`가 status document의 `vmIP`, `guestHTTP`, UI HTTP, VitalDB observation을 raw `runtime-state.json`으로 보정하던 경로를 제거했습니다. Runtime status API는 status document가 보고한 상태만 노출하고, raw guest runtime-state는 resource usage 소스로만 사용합니다.
 - 2026-05-30: rollback/delete backup 선택 상태의 빈 문자열 sentinel을 제거하고 optional selection으로 변경했습니다. 선택 없음은 command 실행 전 명시적으로 차단합니다.
+- 2026-05-30: backup/Redis backup 목록 조회에서 디렉터리 읽기 실패를 빈 배열로 숨기던 `try? ... ?? []` 패턴을 제거했습니다. 읽기 실패는 API/UI에 오류로 전달하고, 빈 목록은 실제 빈 디렉터리에만 사용합니다.

@@ -31,7 +31,11 @@ struct RuntimeDangerZonePanel: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-                if !viewModel.backups.isEmpty {
+                if let backupListErrorMessage = viewModel.backupListErrorMessage {
+                    Text(backupListErrorMessage)
+                        .foregroundStyle(.red)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else if !viewModel.backups.isEmpty {
                     Grid(alignment: .leading, horizontalSpacing: 20, verticalSpacing: 10) {
                         settingRow(AppConstants.Labels.rollbackBackup) {
                             Picker("", selection: $viewModel.selectedBackupPath) {

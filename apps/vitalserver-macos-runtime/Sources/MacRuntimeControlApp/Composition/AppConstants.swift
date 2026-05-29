@@ -469,6 +469,9 @@ enum AppConstants {
             "Could not create folder: \(message)"
         }
         static let missingBackup = "Choose a backup first."
+        static func backupListLoadFailed(_ message: String) -> String {
+            "Failed to load backups: \(message)"
+        }
         static let invalidBackup = "Selected backup is outside the managed backup directory."
         static let missingLauncher = "Missing runtime launcher"
         static let missingBundle = "Choose an update bundle first."

@@ -6,8 +6,8 @@ import HostInfrastructure
 
 protocol RuntimeHostFileReading: Sendable {
     func updateBundleSummary(url: URL) -> String
-    func backups(latestBackupPath: String?) -> [RuntimeBackup]
-    func redisBackups() -> [RuntimeBackup]
+    func backups(latestBackupPath: String?) throws -> [RuntimeBackup]
+    func redisBackups() throws -> [RuntimeBackup]
     func logText(sourceID: RuntimeLogSource, helperMessage: String, lineLimit: Int) -> String
     func preferredLogsPath() -> String
     func vitalFileFolders(root: String) -> [VitalFilesFolder]
@@ -47,12 +47,12 @@ struct SystemRuntimeHostFileReader: RuntimeHostFileReading, @unchecked Sendable 
         return "Version: \(version)\nArtifacts:\n\(artifacts)"
     }
 
-    func backups(latestBackupPath: String?) -> [RuntimeBackup] {
-        RuntimeBackup.loadAll(latestBackupPath: latestBackupPath, fileStore: fileStore)
+    func backups(latestBackupPath: String?) throws -> [RuntimeBackup] {
+        try RuntimeBackup.loadAll(latestBackupPath: latestBackupPath, fileStore: fileStore)
     }
 
-    func redisBackups() -> [RuntimeBackup] {
-        RuntimeBackup.loadRedisBackups(fileStore: fileStore)
+    func redisBackups() throws -> [RuntimeBackup] {
+        try RuntimeBackup.loadRedisBackups(fileStore: fileStore)
     }
 
     func logText(sourceID: RuntimeLogSource, helperMessage: String, lineLimit: Int) -> String {

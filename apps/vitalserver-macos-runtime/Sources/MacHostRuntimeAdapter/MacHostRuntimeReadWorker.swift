@@ -66,12 +66,12 @@ public actor MacHostRuntimeReadWorker {
         statusReader.loadVitalDBRelationships()
     }
 
-    public func loadBackups(latestBackupPath: String?) -> [RuntimeBackup] {
-        fileReader.backups(latestBackupPath: latestBackupPath)
+    public func loadBackups(latestBackupPath: String?) throws -> [RuntimeBackup] {
+        try fileReader.backups(latestBackupPath: latestBackupPath)
     }
 
-    public func loadRedisBackups() -> [RuntimeBackup] {
-        fileReader.redisBackups()
+    public func loadRedisBackups() throws -> [RuntimeBackup] {
+        try fileReader.redisBackups()
     }
 
     public func updateBundleSummary(url: URL) -> String {

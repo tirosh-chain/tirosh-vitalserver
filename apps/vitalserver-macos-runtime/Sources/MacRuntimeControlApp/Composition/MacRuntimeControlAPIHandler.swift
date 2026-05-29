@@ -92,11 +92,11 @@ struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
     func loadBackups() async throws -> [RuntimeBackup] {
         let settings = await readWorker.loadSettings()
         let status = await readWorker.loadStatus(settings: settings)
-        return await readWorker.loadBackups(latestBackupPath: status.latestBackup)
+        return try await readWorker.loadBackups(latestBackupPath: status.latestBackup)
     }
 
     func loadRedisBackups() async throws -> [RuntimeBackup] {
-        await readWorker.loadRedisBackups()
+        try await readWorker.loadRedisBackups()
     }
 
     func applySettings(_ settings: RuntimeSettings) async throws -> RuntimeControlCommandResponse {

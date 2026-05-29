@@ -1461,12 +1461,12 @@ private final class FakeRuntimeControlClient: RuntimeControlClient, RuntimeHostC
         )
     }
 
-    func loadBackups(latestBackupPath: String?) -> [RuntimeBackup] {
+    func loadBackups(latestBackupPath: String?) throws -> [RuntimeBackup] {
         backupLatestPaths.append(latestBackupPath)
         return [RuntimeBackup(path: "/backups/rollback", sizeBytes: 1024)]
     }
 
-    func loadRedisBackups() -> [RuntimeBackup] {
+    func loadRedisBackups() throws -> [RuntimeBackup] {
         loadRedisBackupsCount += 1
         return [RuntimeBackup(path: "/runtime/data/backups/redis/redis-1.tar.gz", sizeBytes: 512)]
     }

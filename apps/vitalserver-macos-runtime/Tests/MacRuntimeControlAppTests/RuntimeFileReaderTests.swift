@@ -1,4 +1,6 @@
 import XCTest
+import Core
+import RuntimeControl
 @testable import MacHostRuntimeAdapter
 @testable import MacRuntimeControlApp
 
@@ -95,6 +97,18 @@ final class RuntimeFileReaderTests: XCTestCase {
         XCTAssertEqual(collector.refreshCount, 0)
     }
 
+    func testBackupListPropagatesDirectoryReadFailure() {
+        let fileStore = FailingDirectoryRuntimeFileStore()
+
+        XCTAssertThrowsError(try RuntimeBackup.loadAll(fileStore: fileStore))
+    }
+
+    func testRedisBackupListPropagatesDirectoryReadFailure() {
+        let fileStore = FailingDirectoryRuntimeFileStore()
+
+        XCTAssertThrowsError(try RuntimeBackup.loadRedisBackups(fileStore: fileStore))
+    }
+
     private func temporaryDirectory() throws -> URL {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("RuntimeFileReaderTests-\(UUID().uuidString)")
@@ -108,5 +122,35 @@ private final class FakeRuntimeLogCollector: RuntimeLogCollecting, @unchecked Se
 
     func refreshLogCollection() {
         refreshCount += 1
+    }
+}
+
+private final class FailingDirectoryRuntimeFileStore: RuntimeFileStore {
+    var temporaryDirectory = URL(fileURLWithPath: "/tmp")
+
+    func fileExists(_ url: URL) -> Bool { false }
+    func directoryExists(_ url: URL) -> Bool { false }
+    func isExecutableFile(atPath path: String) -> Bool { false }
+    func readData(_ url: URL) throws -> Data { throw CocoaError(.fileReadNoPermission) }
+    func readUTF8Text(_ url: URL) throws -> String { throw CocoaError(.fileReadNoPermission) }
+    func fileSize(_ url: URL) throws -> UInt64 { throw CocoaError(.fileReadNoPermission) }
+    func modificationDate(_ url: URL) throws -> Date { throw CocoaError(.fileReadNoPermission) }
+    func writeData(_ data: Data, to url: URL, options: Data.WritingOptions) throws {}
+    func writeData(_ data: Data, to url: URL, options: Data.WritingOptions, posixPermissions: Int) throws {}
+    func createDirectory(at url: URL, withIntermediateDirectories: Bool) throws {}
+    func removeItem(at url: URL) throws {}
+    func copyItem(at source: URL, to destination: URL) throws {}
+    func moveItem(at source: URL, to destination: URL) throws {}
+    func contentsOfDirectory(at url: URL, skipsHiddenFiles: Bool) throws -> [URL] {
+        throw CocoaError(.fileReadNoPermission)
+    }
+    func childDirectories(at url: URL, nameContains fragment: String, skipsHiddenFiles: Bool) throws -> [URL] {
+        throw CocoaError(.fileReadNoPermission)
+    }
+    func recursiveRegularFileSize(at url: URL, skipsHiddenFiles: Bool) throws -> UInt64 {
+        throw CocoaError(.fileReadNoPermission)
+    }
+    func fileSystemAttributes(forPath path: String) throws -> RuntimeFileSystemAttributes {
+        throw CocoaError(.fileReadNoPermission)
     }
 }

@@ -8,22 +8,22 @@ extension RuntimeBackup {
     static func loadAll(
         latestBackupPath: String? = nil,
         fileStore: RuntimeFileStore = SystemRuntimeFileStore()
-    ) -> [RuntimeBackup] {
+    ) throws -> [RuntimeBackup] {
         let directory = URL(fileURLWithPath: RuntimeAdapterConstants.Paths.backups)
-        let discovered = ((try? fileStore.childDirectories(
+        let discovered = try fileStore.childDirectories(
             at: directory,
             nameContains: "-before-",
             skipsHiddenFiles: true
-        )) ?? [])
+        )
         .map { RuntimeBackup(path: $0.path, sizeBytes: directorySize($0, fileStore: fileStore)) }
 
         let merged = discovered + latestBackup(latestBackupPath, excluding: discovered, fileStore: fileStore)
         return merged.sorted { $0.name > $1.name }
     }
 
-    static func loadRedisBackups(fileStore: RuntimeFileStore = SystemRuntimeFileStore()) -> [RuntimeBackup] {
+    static func loadRedisBackups(fileStore: RuntimeFileStore = SystemRuntimeFileStore()) throws -> [RuntimeBackup] {
         let directory = URL(fileURLWithPath: RuntimeAdapterConstants.Paths.redisBackups)
-        let discovered = ((try? fileStore.contentsOfDirectory(at: directory, skipsHiddenFiles: true)) ?? [])
+        let discovered = try fileStore.contentsOfDirectory(at: directory, skipsHiddenFiles: true)
             .filter { $0.lastPathComponent.hasPrefix("redis-") && $0.lastPathComponent.hasSuffix(".tar.gz") }
             .map { RuntimeBackup(path: $0.path, sizeBytes: fileSize($0, fileStore: fileStore)) }
         return discovered.sorted { $0.name > $1.name }
