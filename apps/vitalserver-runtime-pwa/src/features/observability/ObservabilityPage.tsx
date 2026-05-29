@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import { useRuntimeEvents, useRuntimeOverview } from "@/application/runtime-control/queries";
 import type { RuntimeEventDocument } from "@/domain/runtime-control/contracts/runtimeControlTypes";
@@ -18,16 +18,24 @@ export function ObservabilityPage() {
   const [period, setPeriod] = useState<RuntimeEventPeriod>("24h");
   const [eventType, setEventType] = useState("");
   const [limit, setLimit] = useState(50);
+  const dailyEventRequest = useMemo(
+    () => ({
+      limit: 500,
+      since: sinceForPeriod("24h")
+    }),
+    []
+  );
+  const eventRequest = useMemo(
+    () => ({
+      limit,
+      since: sinceForPeriod(period),
+      type: eventType || undefined
+    }),
+    [eventType, limit, period]
+  );
   const overviewQuery = useRuntimeOverview();
-  const dailyEventsQuery = useRuntimeEvents({
-    limit: 500,
-    since: sinceForPeriod("24h")
-  });
-  const eventQuery = useRuntimeEvents({
-    limit,
-    since: sinceForPeriod(period),
-    type: eventType || undefined
-  });
+  const dailyEventsQuery = useRuntimeEvents(dailyEventRequest);
+  const eventQuery = useRuntimeEvents(eventRequest);
 
   const overview = overviewQuery.data;
   const recorderSummary = overview?.vitalRecorder;
@@ -115,7 +123,9 @@ export function ObservabilityPage() {
               ))}
             </select>
           </label>
-          <span className="toolbar-count">{eventCount} events</span>
+          <span className="toolbar-count">
+            {eventQuery.isPending ? "Loading..." : `${eventCount} events`}
+          </span>
         </div>
 
         {eventQuery.isPending ? (
@@ -125,6 +135,8 @@ export function ObservabilityPage() {
             title="Runtime events are not available"
             error={eventQuery.error}
           />
+        ) : eventCount === 0 ? (
+          <p className="empty-state">No runtime events were found for this period.</p>
         ) : (
           <div className="event-list">
             {(eventQuery.data.events ?? []).map((event) => (
