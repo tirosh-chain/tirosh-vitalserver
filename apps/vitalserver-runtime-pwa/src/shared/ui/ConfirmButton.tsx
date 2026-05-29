@@ -1,8 +1,8 @@
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+import type { ReactNode } from "react";
 
-import { Button } from "./Button";
+import { Button, type ButtonProps } from "./Button";
 
-type ConfirmButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
+type ConfirmButtonProps = ButtonProps & {
   confirmMessage: string;
   children: ReactNode;
 };

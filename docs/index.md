@@ -53,6 +53,9 @@
 | [PWA Architecture](pwa/architecture.md) | PWA 레이어, source of truth, Runtime Control API boundary |
 | [PWA Design system](pwa/design-system.md) | Tailwind token, shared UI component, styling ownership |
 | [PWA Responsive layout](pwa/responsive-layout.md) | 24/32인치, iPad, iPhone 대응 기준 |
+| [PWA Swift UI parity](pwa/parity.md) | Swift UI와 PWA 기능 parity, host affordance gap |
+| [PWA Deployment](pwa/deployment.md) | air-gapped 배포, Helper resource 포함, update bundle 영향 |
+| [PWA Testing](pwa/testing.md) | PWA test scope, 검증 명령, responsive smoke test 기준 |
 
 ### Mac mini VM Runtime
 

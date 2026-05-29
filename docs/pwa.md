@@ -11,6 +11,9 @@ PWA는 Runtime Control API를 primary boundary로 사용합니다. native shell�
 | [Architecture](pwa/architecture.md) | PWA 레이어, SoT, API boundary, 테스트 경계 |
 | [Design system](pwa/design-system.md) | Tailwind token, shared UI component, styling ownership |
 | [Responsive layout](pwa/responsive-layout.md) | 24/32인치, iPad, iPhone 대응 기준 |
+| [Swift UI parity](pwa/parity.md) | Swift UI 대비 PWA 기능 parity와 host affordance gap |
+| [Deployment](pwa/deployment.md) | air-gapped 배포, Helper resource 포함, update bundle 영향 |
+| [Testing](pwa/testing.md) | PWA test scope, 검증 명령, responsive smoke test 기준 |
 
 ## 목표
 
