@@ -2,6 +2,7 @@ import { useRuntimeOverview } from "@/application/runtime-control/queries";
 import type { RuntimeControlOverview } from "@/domain/runtime-control/contracts/runtimeControlTypes";
 import { formatBytes } from "@/domain/runtime-control/formatting/bytes";
 import {
+  formatHTTPReachability,
   runtimeControlURL,
   runtimeURL
 } from "@/domain/runtime-control/formatting/http";
@@ -51,7 +52,7 @@ function StatusOverview({ overview }: { overview: RuntimeControlOverview }) {
     overview.settings?.runtimeControlPort,
     appSettings.runtimeControl.defaultPort
   );
-  const helperConsolePort =
+  const remoteConsolePort =
     overview.settings?.runtimeControlPort ??
     appSettings.runtimeControl.defaultPort;
 
@@ -77,7 +78,7 @@ function StatusOverview({ overview }: { overview: RuntimeControlOverview }) {
               ),
               detail: (
                 <>
-                  {status?.hostProxyHTTP ?? "Unknown"}{" "}
+                  {formatHTTPReachability(status?.hostProxyHTTP)}{" "}
                   {formatUptimeSince(status?.startedAt)}
                 </>
               )
@@ -89,7 +90,14 @@ function StatusOverview({ overview }: { overview: RuntimeControlOverview }) {
                   {pwaURL}
                 </a>
               ),
-              detail: `Port ${helperConsolePort} · Remote browser access`
+              detail: (
+                <>
+                  {formatHTTPReachability(status?.runtimeControlHTTP)}{" "}
+                  {formatUptimeSince(status?.runtimeControlStartedAt)}
+                  {" · Port "}
+                  {remoteConsolePort}
+                </>
+              )
             },
             {
               label: "Data directory",

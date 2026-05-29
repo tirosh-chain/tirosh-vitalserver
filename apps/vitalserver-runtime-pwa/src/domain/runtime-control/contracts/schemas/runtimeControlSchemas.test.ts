@@ -36,6 +36,20 @@ describe("runtime control contract schemas", () => {
     ).toThrow();
   });
 
+  it("accepts Remote Console status fields in overview responses", () => {
+    expect(
+      runtimeOverviewSchema.parse({
+        status: {
+          runtimeControlHTTP: "200",
+          runtimeControlStartedAt: "2026-05-26T04:30:00Z"
+        }
+      }).status
+    ).toMatchObject({
+      runtimeControlHTTP: "200",
+      runtimeControlStartedAt: "2026-05-26T04:30:00Z"
+    });
+  });
+
   it("rejects malformed VRecorder activity samples", () => {
     expect(() =>
       vitalDBRecordersSchema.parse({

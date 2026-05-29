@@ -278,6 +278,8 @@ export const runtimeStatusSchema = z
     vmIP: nullableString,
     guestHTTP: nullableString,
     hostProxyHTTP: nullableString,
+    runtimeControlHTTP: nullableString,
+    runtimeControlStartedAt: nullableString,
     redisUIHTTP: nullableString,
     swaggerUIHTTP: nullableString,
     cpuUsagePercent: nullableNumber,

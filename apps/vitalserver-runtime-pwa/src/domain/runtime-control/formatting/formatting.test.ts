@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { formatBytes } from "./bytes";
 import {
+  formatHTTPReachability,
   runtimeControlURL,
   runtimeControlURLForPort,
   successfulHTTP
@@ -37,6 +38,12 @@ describe("runtime presentation formatting", () => {
     expect(successfulHTTP("HTTP 200")).toBe(true);
     expect(successfulHTTP("HTTP 503")).toBe(false);
     expect(successfulHTTP(undefined)).toBe(false);
+  });
+
+  it("formats HTTP reachability for status rows", () => {
+    expect(formatHTTPReachability("200")).toBe("Reachable");
+    expect(formatHTTPReachability("failed")).toBe("Unreachable");
+    expect(formatHTTPReachability(undefined)).toBe("Unknown");
   });
 
   it("falls back to the packaged Remote Console URL outside the browser", () => {

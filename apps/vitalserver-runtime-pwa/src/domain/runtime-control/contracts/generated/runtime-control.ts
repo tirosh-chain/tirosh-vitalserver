@@ -1010,6 +1010,10 @@ export interface components {
             vmIP?: string | null;
             guestHTTP?: string | null;
             hostProxyHTTP?: string | null;
+            /** @description HTTP reachability status for the Remote Console and Runtime Control API server. */
+            runtimeControlHTTP?: string | null;
+            /** @description ISO-8601 UTC timestamp for the Remote Console and Runtime Control API server start time. Clients should derive live uptime from this value. */
+            runtimeControlStartedAt?: string | null;
             redisUIHTTP?: string | null;
             swaggerUIHTTP?: string | null;
             cpuUsagePercent?: number | null;

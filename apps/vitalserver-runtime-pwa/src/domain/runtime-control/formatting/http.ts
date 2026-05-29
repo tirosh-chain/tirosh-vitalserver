@@ -4,6 +4,21 @@ export function successfulHTTP(value: string | null | undefined): boolean {
   return Boolean(value && /(^|\D)2\d\d(\D|$)/.test(value));
 }
 
+export function formatHTTPReachability(
+  value: string | null | undefined
+): string {
+  if (successfulHTTP(value)) {
+    return "Reachable";
+  }
+  if (!value) {
+    return "Unknown";
+  }
+  if (value.toLowerCase() === "failed") {
+    return "Unreachable";
+  }
+  return value;
+}
+
 export function runtimeURL(
   proxyPort: number | null | undefined,
   defaultProxyPort = DEFAULT_APP_SETTINGS.runtimeControl.defaultProxyPort

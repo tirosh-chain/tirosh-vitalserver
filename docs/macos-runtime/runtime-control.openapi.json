@@ -1592,6 +1592,8 @@
           "vmIP": "192.168.64.33",
           "guestHTTP": "200",
           "hostProxyHTTP": "200",
+          "runtimeControlHTTP": "200",
+          "runtimeControlStartedAt": "2026-05-26T04:30:00Z",
           "redisUIHTTP": "200",
           "swaggerUIHTTP": "200",
           "dataDirectoryStats": {
@@ -2228,6 +2230,20 @@
               "string",
               "null"
             ]
+          },
+          "runtimeControlHTTP": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "HTTP reachability status for the Remote Console and Runtime Control API server."
+          },
+          "runtimeControlStartedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "ISO-8601 UTC timestamp for the Remote Console and Runtime Control API server start time. Clients should derive live uptime from this value."
           },
           "redisUIHTTP": {
             "type": [

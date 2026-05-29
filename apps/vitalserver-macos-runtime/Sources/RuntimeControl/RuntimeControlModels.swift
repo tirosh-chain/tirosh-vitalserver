@@ -203,6 +203,8 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
     public var vmIP: String?
     public var guestHTTP: String?
     public var hostProxyHTTP: String?
+    public var runtimeControlHTTP: String?
+    public var runtimeControlStartedAt: String?
     public var redisUIHTTP: String?
     public var swaggerUIHTTP: String?
     public var cpuUsagePercent: Double?
@@ -235,6 +237,8 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
         vmIP: String? = nil,
         guestHTTP: String? = nil,
         hostProxyHTTP: String? = nil,
+        runtimeControlHTTP: String? = nil,
+        runtimeControlStartedAt: String? = nil,
         redisUIHTTP: String? = nil,
         swaggerUIHTTP: String? = nil,
         cpuUsagePercent: Double? = nil,
@@ -266,6 +270,8 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
         self.vmIP = vmIP
         self.guestHTTP = guestHTTP
         self.hostProxyHTTP = hostProxyHTTP
+        self.runtimeControlHTTP = runtimeControlHTTP
+        self.runtimeControlStartedAt = runtimeControlStartedAt
         self.redisUIHTTP = redisUIHTTP
         self.swaggerUIHTTP = swaggerUIHTTP
         self.cpuUsagePercent = cpuUsagePercent
