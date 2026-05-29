@@ -1,10 +1,14 @@
 # VitalServer Runtime Control PWA
 
-Runtime Control PWA is the browser client for the macOS VitalServer Helper
-Runtime Control API. Its goal is to preserve the native Swift UI information
-architecture while moving UI behavior behind the OpenAPI contract.
+macOS `VitalServer Helper`의 Runtime Control API를 브라우저에서 제어하기
+위한 PWA입니다. Swift Helper UI의 정보 구조를 최대한 유지하면서, 화면 동작은
+OpenAPI contract와 React Query 기반으로 옮기는 것이 목표입니다.
 
-## Development
+설치 현장에서는 Node/Vite 앱으로 실행하지 않습니다. 빌드된 static assets를
+Helper 앱 번들에 포함하고, Helper의 local Runtime Control server가 이를
+서빙합니다.
+
+## Quick Start
 
 ```sh
 npm --prefix apps/vitalserver-runtime-pwa install
@@ -12,17 +16,28 @@ npm --prefix apps/vitalserver-runtime-pwa run generate:api
 npm --prefix apps/vitalserver-runtime-pwa run dev
 ```
 
-The Vite dev server runs on `http://127.0.0.1:5174` and proxies Runtime Control
-API requests to `http://127.0.0.1:18321`.
+기본 개발 서버:
+
+```text
+http://127.0.0.1:5174/
+```
+
+개발 서버는 Runtime Control API 요청을 기본적으로 아래 Helper API로 proxy합니다.
+
+```text
+http://127.0.0.1:18321/
+```
 
 ## Configuration
 
-Runtime Control PWA settings are loaded during bootstrap from
-`src/shared/config/appSettings.ts`. Browser-visible `.env` values must use the
-`VITE_` prefix. `vite.config.ts` and scripts also accept the matching
-unprefixed keys for compatibility with existing local `.env` files.
+앱 설정은 bootstrap 시점에 `src/shared/config/appSettings.ts`에서 한 번 로딩한 뒤
+`AppSettingsProvider`로 주입합니다.
 
-Start from `.env.example` when overriding local values. Common keys:
+브라우저 번들에서 읽어야 하는 값은 Vite 규칙에 맞춰 `VITE_` prefix가 필요합니다.
+단, `vite.config.ts`나 로컬 script에서 읽는 값은 기존 `.env`와의 호환을 위해
+unprefixed key도 함께 허용합니다.
+
+로컬 설정을 바꿀 때는 `.env.example`을 기준으로 `.env`를 만들어 사용합니다.
 
 ```text
 VITE_RUNTIME_CONTROL_API_BASE_URL=
@@ -32,76 +47,118 @@ VITE_RUNTIME_CONTROL_DEFAULT_PORT=18321
 VITE_RUNTIME_CONTROL_DEFAULT_PROXY_PORT=80
 VITE_PWA_DEV_SERVER_PORT=5174
 VITE_PWA_PREVIEW_PORT=4174
+VITE_QUERY_REFETCH_ON_WINDOW_FOCUS=false
+VITE_QUERY_RETRY=1
+VITE_QUERY_STALE_TIME_MS=1000
 ```
 
-## Air-Gapped Deployment
+주요 의미:
 
-The PWA is deployed as static files, not as a Node/Vite runtime. Release builds
-run `make pwa-build`, then package `apps/vitalserver-runtime-pwa/dist/` into the
-macOS Helper app bundle under `Contents/Resources/runtime-control-pwa/`.
-The build machine must run `make pwa-install` before packaging so `node_modules`
-is available. Field machines only receive the built static assets.
-
-Installed systems serve the built PWA from the local Runtime Control server:
-
-```text
-http://127.0.0.1:18321/
-```
-
-The field machine does not need npm, Vite, or registry access. Package and
-product update bundles carry the already-built static assets.
+- `VITE_RUNTIME_CONTROL_API_BASE_URL`: 브라우저에서 직접 호출할 API base URL입니다.
+  비워두면 same-origin을 사용합니다.
+- `VITE_RUNTIME_CONTROL_DEV_PROXY_TARGET`: Vite dev server가 `/runtime`, `/vitaldb`,
+  `/host`, `/dev/testkit` 요청을 넘길 대상입니다.
+- `VITE_RUNTIME_CONTROL_DEFAULT_PORT`: Status 화면에서 Runtime Control PWA link를
+  만들 때 쓰는 fallback port입니다.
+- `VITE_RUNTIME_CONTROL_DEFAULT_PROXY_PORT`: VitalServer link를 만들 때 쓰는 fallback proxy port입니다.
+- `VITE_PWA_DEV_SERVER_PORT`, `VITE_PWA_PREVIEW_PORT`: Vite dev/preview server port입니다.
 
 ## API Contract
 
-The source of truth is:
+Runtime Control API의 source of truth는 OpenAPI 문서입니다.
 
 ```text
 docs/macos-runtime/runtime-control.openapi.json
 ```
 
-Generated TypeScript types live in:
+생성된 TypeScript type은 아래에 위치합니다.
 
 ```text
 src/domain/runtime-control/contracts/generated/runtime-control.ts
 ```
 
-Regenerate them with:
+OpenAPI가 바뀌면 type을 다시 생성합니다.
 
 ```sh
 npm --prefix apps/vitalserver-runtime-pwa run generate:api
 ```
 
+`check`와 `build`는 내부적으로 `generate:api`를 먼저 실행합니다.
+
 ## Architecture
 
-The PWA follows the same boundary direction as the runtime code:
+`src` 내부 import는 package-relative alias인 `@/*`를 사용합니다. 같은 폴더의 파일만
+`./file` 형태로 import하고, 상위 폴더를 타고 올라가는 `../../` import는 피합니다.
 
 ```text
 src/
+  app/
+    bootstrap.tsx    settings 로딩, API client 설정, provider 구성
+    providers.tsx    React Query와 AppSettings provider
+    routes.tsx       Swift UI 순서에 맞춘 route metadata
   domain/
     runtime-control/
-      contracts/      OpenAPI-derived RuntimeContractAPI types
-      events/         event filter policy and period calculations
-      formatting/     runtime display and status formatting policy
+      contracts/     OpenAPI-derived RuntimeContractAPI types and schemas
+      events/        event filter policy and period calculations
+      formatting/    runtime display/status formatting policy
+      settings/      runtime settings validation/display policy
   application/
-    runtime-control/  React Query hooks and command/query orchestration
+    runtime-control/ React Query hooks and command/query orchestration
   infrastructure/
     runtime-control-api/
-                     fetch-based Runtime Control API transport
-  features/           route-level React pages
-  shared/             app-wide config, styles, and reusable UI components
+                    fetch-based Runtime Control API transport
+  features/          route-level React pages
+  shared/
+    config/          AppSettings and app-wide config context
+    styles/          global styles
+    ui/              reusable UI components
 ```
 
 Dependency direction:
 
-- `features` may use `application`, `domain`, and `shared`.
-- `application` may use `domain` and `infrastructure`.
-- `infrastructure` may use `domain` contracts, but must not import React UI.
-- `domain` must not import React, React Query, or transport code.
+- `features`는 `application`, `domain`, `shared`를 사용할 수 있습니다.
+- `application`은 `domain`, `infrastructure`를 사용할 수 있습니다.
+- `infrastructure`는 `domain` contract를 사용할 수 있지만 React UI는 import하지 않습니다.
+- `domain`은 React, React Query, transport code를 import하지 않습니다.
 
-Keep new business/display policy in `domain`, command/query composition in
-`application`, and HTTP details in `infrastructure`.
+새로운 business/display policy는 `domain`에 둡니다. 여러 API 호출을 조합하는
+command/query 흐름은 `application`에 둡니다. fetch, token, URL 조립 같은 HTTP
+detail은 `infrastructure`에 둡니다.
+
+## Air-Gapped Deployment
+
+PWA는 Node/Vite runtime으로 배포하지 않습니다. release build에서 static files를
+생성하고, macOS Helper app bundle 아래에 포함합니다.
+
+```sh
+make pwa-install
+make pwa-build
+```
+
+빌드 결과물:
+
+```text
+apps/vitalserver-runtime-pwa/dist/
+```
+
+Helper app bundle 내 포함 위치:
+
+```text
+Contents/Resources/runtime-control-pwa/
+```
+
+설치된 시스템에서는 Helper의 local Runtime Control server가 PWA를 제공합니다.
+
+```text
+http://127.0.0.1:18321/
+```
+
+현장 PC에는 npm, Vite, registry access가 필요하지 않습니다. package/update bundle은
+이미 빌드된 static assets를 포함해야 합니다.
 
 ## Validation
+
+기본 검증:
 
 ```sh
 npm --prefix apps/vitalserver-runtime-pwa run check
@@ -109,10 +166,26 @@ npm --prefix apps/vitalserver-runtime-pwa test
 npm --prefix apps/vitalserver-runtime-pwa run build
 ```
 
-Equivalent make targets are available:
+동일한 make target:
 
 ```sh
 make pwa-check
 make pwa-test
 make pwa-build
 ```
+
+README나 문서만 수정했다면 full build가 꼭 필요하지는 않습니다. 설정, routing,
+API client, domain policy를 바꿨다면 `check`, `test`, `build`를 모두 돌리는 것을
+권장합니다.
+
+## Local Troubleshooting
+
+PWA에서 `Runtime Control API is unreachable`가 보이면 먼저 아래를 확인합니다.
+
+- Helper local API server가 실행 중인지 확인합니다.
+- PWA가 기대하는 API URL이 맞는지 확인합니다. 개발 중이면
+  `VITE_RUNTIME_CONTROL_DEV_PROXY_TARGET`가 핵심입니다.
+- 설치된 PWA라면 Helper가 실제로 `http://127.0.0.1:18321/`에서 static assets와
+  API를 함께 제공하는지 확인합니다.
+- 포트를 바꾼 경우 `VITE_RUNTIME_CONTROL_DEFAULT_PORT`, Helper server bind port,
+  현재 접속 URL이 서로 맞아야 합니다.
