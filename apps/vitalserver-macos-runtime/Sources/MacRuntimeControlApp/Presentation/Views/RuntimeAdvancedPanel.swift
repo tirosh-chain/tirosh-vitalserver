@@ -211,11 +211,6 @@ struct RuntimeAdvancedPanel: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
 
-                networkSubsection(AppConstants.Labels.sectionMacExposure) {
-                    settingPortField(AppConstants.Labels.proxyPort, value: $viewModel.settings.proxyPort)
-                    settingHelp(AppConstants.Labels.proxyPortHelp)
-                }
-
                 networkSubsection(AppConstants.Labels.sectionAdvertisedURLOverride) {
                     settingToggle(AppConstants.Labels.customAdvertisedURL, isOn: customAdvertisedURLBinding)
                     settingHelp(AppConstants.Labels.customAdvertisedURLHelp)
