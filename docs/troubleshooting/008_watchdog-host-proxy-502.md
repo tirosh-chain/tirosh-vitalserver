@@ -43,6 +43,8 @@ port 80을 점유한 기존 nginx 또는 다른 web server를 중지한 뒤 prox
 
 Helper app이 열리는 상태라면 `Repair Proxy` 버튼을 사용할 수 있습니다. 이 버튼은 관리자 승인을 받은 뒤 configured proxy port를 점유한 `nginx` listener를 종료하고 `com.tirosh.vitalserver-proxy`를 다시 시작합니다. `nginx`가 아닌 프로세스가 port를 점유한 경우에는 자동 종료하지 않고 로그에 표시합니다.
 
+Update apply는 host proxy를 다시 시작하기 직전에 proxy port를 확인합니다. VitalServer가 설치한 nginx 잔재로 판별되면 자동으로 정리한 뒤 proxy를 시작하고, 다른 프로세스가 점유 중이면 VM은 시작한 상태에서 명확한 port conflict 오류로 중단합니다. 외부 nginx/httpd 같은 프로세스는 자동 종료하지 않습니다.
+
 ```sh
 sudo launchctl kickstart -k system/com.tirosh.vitalserver-proxy
 ```

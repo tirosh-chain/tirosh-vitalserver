@@ -67,18 +67,20 @@ extension RuntimeLifecycle {
         if restartVM, preventSystemSleepEnabled() {
             startLaunchdService(.sleepPrevention)
         }
-        serviceController.startRuntimeServices(
-            restartVM: restartVM,
-            restartProxy: restartProxy,
-            restartWatchdog: restartWatchdog
-        )
+        serviceController.startRuntimeServices(restartVM: restartVM, restartProxy: false, restartWatchdog: false)
+        if restartProxy {
+            try cleanupHostProxyPortBeforeStart()
+            serviceController.startRuntimeServices(restartVM: false, restartProxy: true, restartWatchdog: false)
+        }
+        serviceController.startRuntimeServices(restartVM: false, restartProxy: false, restartWatchdog: restartWatchdog)
     }
 
     func startRuntimeServices(_ policy: RuntimeServiceRestartPolicy) throws {
-        if policy.restartVM, preventSystemSleepEnabled() {
-            startLaunchdService(.sleepPrevention)
-        }
-        serviceController.startRuntimeServices(policy)
+        try startRuntimeServices(
+            restartVM: policy.restartVM,
+            restartProxy: policy.restartProxy,
+            restartWatchdog: policy.restartWatchdog
+        )
     }
 
     func startLaunchdService(_ service: RuntimeManagedService) {
@@ -107,6 +109,25 @@ extension RuntimeLifecycle {
 
     func waitForHealth(_ policy: RuntimeServiceRestartPolicy) throws {
         try runtimeHealthWaitRunner().wait(for: policy)
+    }
+
+    func cleanupHostProxyPortBeforeStart() throws {
+        try RuntimeHostProxyPortCleaner(
+            proxyPort: healthChecker.installedProxyPort,
+            proxyServiceLoaded: {
+                isLaunchdLoaded(.proxy)
+            },
+            expectedProxyNginxPID: {
+                healthChecker.readTrimmed(installedPaths.proxyNginxPID)
+            },
+            ownedNginxPathFragments: [
+                installedPaths.nginxExecutable.path,
+                installedPaths.nginxDirectory.path,
+                "vitalserver-nginx.conf",
+            ],
+            runProcess: runProcess,
+            log: log
+        ).cleanupBeforeStartingProxy()
     }
 
     func runtimeHealthWaitRunner() -> RuntimeHealthWaitRunner {

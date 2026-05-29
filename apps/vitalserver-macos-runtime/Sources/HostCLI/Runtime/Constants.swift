@@ -187,6 +187,8 @@ enum Constants {
         static let plistBuddy = "/usr/libexec/PlistBuddy"
         static let chmod = "/bin/chmod"
         static let chown = "/usr/sbin/chown"
+        static let kill = "/bin/kill"
+        static let ps = "/bin/ps"
         static let tar = "/usr/bin/tar"
         static let lsof = "/usr/sbin/lsof"
     }

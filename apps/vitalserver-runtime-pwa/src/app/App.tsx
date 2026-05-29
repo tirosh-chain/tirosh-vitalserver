@@ -81,8 +81,8 @@ export function App() {
     <div className="app-shell">
       <header className="app-header">
         <div>
-          <h1>VitalServer Remote Console</h1>
-          <p>Runtime Control</p>
+          <h1>VitalServer Helper</h1>
+          <p>Remote Console</p>
         </div>
       </header>
 
