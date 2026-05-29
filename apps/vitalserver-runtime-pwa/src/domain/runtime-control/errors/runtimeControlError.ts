@@ -128,8 +128,8 @@ function summarizeNetworkError(
   const cause = asErrorLike(error.cause);
   const causeMessage = cause.message ?? error.message;
   const detail = error.url
-    ? `The Helper Console tried ${error.url}, but the local Runtime Control API did not respond.`
-    : "The Helper Console could not reach the local Runtime Control API endpoint.";
+    ? `The Helper Console tried ${error.url}, but the Runtime Control API did not respond.`
+    : "The Helper Console could not reach the Runtime Control API endpoint.";
 
   return {
     kind: "network",

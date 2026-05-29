@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { Navigate, NavLink, Route, Routes, useLocation } from "react-router-dom";
 
 import { useRuntimeCapabilities } from "@/application/runtime-control/queries";
@@ -7,6 +8,8 @@ import { runtimeControlRoutes, type RuntimeControlRoute } from "./routes";
 export function App() {
   const capabilities = useRuntimeCapabilities();
   const location = useLocation();
+  const overflowMenuRef = useRef<HTMLDetailsElement>(null);
+  const [overflowMenuOpen, setOverflowMenuOpen] = useState(false);
   const canUseTestTools = capabilities.data?.canUseTestTools === true;
   const visibleRoutes = runtimeControlRoutes.filter(
     (route) => !route.requiresTestTools || canUseTestTools
@@ -18,6 +21,36 @@ export function App() {
     routeMatchesPath(route, location.pathname)
   );
 
+  useEffect(() => {
+    setOverflowMenuOpen(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (!overflowMenuOpen) {
+      return;
+    }
+
+    const closeOnOutsidePointerDown = (event: PointerEvent) => {
+      if (!overflowMenuRef.current?.contains(event.target as Node)) {
+        setOverflowMenuOpen(false);
+      }
+    };
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOverflowMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("pointerdown", closeOnOutsidePointerDown);
+    document.addEventListener("keydown", closeOnEscape);
+
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsidePointerDown);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [overflowMenuOpen]);
+
   const routeLink = (
     route: RuntimeControlRoute,
     variant: "primary" | "utility" | "overflow"
@@ -26,6 +59,11 @@ export function App() {
       key={route.path}
       to={route.path}
       end={route.path === "/"}
+      onClick={() => {
+        if (variant === "overflow") {
+          setOverflowMenuOpen(false);
+        }
+      }}
       className={({ isActive }) =>
         cn(
           "app-tab",
@@ -56,7 +94,14 @@ export function App() {
         <div className="app-tab-utility-group">
           {utilityRoutes.map((route) => routeLink(route, "utility"))}
           {overflowRoutes.length > 0 ? (
-            <details className="app-tab-menu">
+            <details
+              ref={overflowMenuRef}
+              className="app-tab-menu"
+              open={overflowMenuOpen}
+              onToggle={(event) =>
+                setOverflowMenuOpen(event.currentTarget.open)
+              }
+            >
               <summary
                 className={cn(
                   "app-tab",

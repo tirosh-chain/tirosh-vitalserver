@@ -10,15 +10,18 @@ public struct RuntimeControlLocalHTTPServerConfiguration: Equatable, Sendable {
     public let port: UInt16
     public let servesDevConsole: Bool
     public let staticFileDirectory: URL?
+    public let bindsToLoopbackOnly: Bool
 
     public init(
         port: UInt16,
         servesDevConsole: Bool = false,
-        staticFileDirectory: URL? = nil
+        staticFileDirectory: URL? = nil,
+        bindsToLoopbackOnly: Bool = false
     ) {
         self.port = port
         self.servesDevConsole = servesDevConsole
         self.staticFileDirectory = staticFileDirectory
+        self.bindsToLoopbackOnly = bindsToLoopbackOnly
     }
 }
 
@@ -69,7 +72,9 @@ public final class RuntimeControlLocalHTTPServer: @unchecked Sendable {
         }
 
         let parameters = NWParameters.tcp
-        parameters.requiredInterfaceType = .loopback
+        if configuration.bindsToLoopbackOnly {
+            parameters.requiredInterfaceType = .loopback
+        }
         let listener = try NWListener(using: parameters, on: port)
         listener.newConnectionHandler = { [weak self] connection in
             self?.accept(connection)
@@ -285,7 +290,7 @@ public final class RuntimeControlLocalHTTPServer: @unchecked Sendable {
 
     private func corsHeaders(for request: RuntimeControlHTTPRequest) -> [String: String] {
         guard let origin = headerValue("Origin", in: request.headers),
-              isLoopbackOrigin(origin) else {
+              isAllowedBrowserOrigin(origin) else {
             return [:]
         }
 
@@ -304,7 +309,7 @@ public final class RuntimeControlLocalHTTPServer: @unchecked Sendable {
         }?.value
     }
 
-    private func isLoopbackOrigin(_ origin: String) -> Bool {
+    private func isAllowedBrowserOrigin(_ origin: String) -> Bool {
         guard let components = URLComponents(string: origin),
               let scheme = components.scheme?.lowercased(),
               scheme == "http" || scheme == "https",
@@ -312,9 +317,34 @@ public final class RuntimeControlLocalHTTPServer: @unchecked Sendable {
             return false
         }
 
-        return host == "localhost"
+        if host == "localhost"
             || host == "::1"
             || host == "0:0:0:0:0:0:0:1"
-            || host.hasPrefix("127.")
+            || host.hasPrefix("127.") {
+            return true
+        }
+
+        if host.hasSuffix(".local") {
+            return true
+        }
+
+        return isPrivateIPv4Address(host)
+    }
+
+    private func isPrivateIPv4Address(_ host: String) -> Bool {
+        let parts = host.split(separator: ".")
+        guard parts.count == 4 else {
+            return false
+        }
+
+        let octets = parts.compactMap { UInt8($0) }
+        guard octets.count == 4 else {
+            return false
+        }
+
+        return octets[0] == 10
+            || (octets[0] == 172 && (16...31).contains(octets[1]))
+            || (octets[0] == 192 && octets[1] == 168)
+            || (octets[0] == 169 && octets[1] == 254)
     }
 }

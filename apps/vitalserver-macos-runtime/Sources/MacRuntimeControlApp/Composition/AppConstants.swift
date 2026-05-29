@@ -152,7 +152,7 @@ enum AppConstants {
         static let proxyPort = "Host proxy port"
         static let proxyPortHelp = "Port opened on this Mac. Browsers and VRecorder devices connect to this port first, then the Helper forwards traffic into the VM."
         static let runtimeControlPort = "Helper Console port"
-        static let runtimeControlPortHelp = "Port opened on loopback for the Helper Console and local control API. Changing it restarts the local API server and browser sessions should reconnect to the new URL."
+        static let runtimeControlPortHelp = "Port opened on this Mac for the Helper Console and Runtime Control API. Remote browsers can connect to this port when the Mac is reachable on the network."
         static let vmIP = "VM IP"
         static let guestHTTP = "Guest HTTP"
         static let hostProxy = "Host proxy"

@@ -831,6 +831,27 @@ final class RuntimeControlAPITests: XCTestCase {
     }
 
     @MainActor
+    func testLocalHTTPServerAllowsPrivateNetworkCORSPreflight() async throws {
+        let (server, port) = try makeStartedServer(token: "dev-token")
+        defer {
+            server.stop()
+        }
+
+        let origin = "http://192.168.0.42:5174"
+        var request = URLRequest(url: try XCTUnwrap(URL(string: "http://127.0.0.1:\(port)/runtime/status")))
+        request.httpMethod = "OPTIONS"
+        request.setValue(origin, forHTTPHeaderField: "Origin")
+        request.setValue("GET", forHTTPHeaderField: "Access-Control-Request-Method")
+        request.setValue("X-Runtime-Control-Token", forHTTPHeaderField: "Access-Control-Request-Headers")
+
+        let (_, response) = try await fetchWithRetry(request)
+        let httpResponse = try XCTUnwrap(response as? HTTPURLResponse)
+
+        XCTAssertEqual(httpResponse.statusCode, 204)
+        XCTAssertEqual(httpResponse.value(forHTTPHeaderField: "Access-Control-Allow-Origin"), origin)
+    }
+
+    @MainActor
     func testLocalHTTPServerAddsCORSHeadersToLoopbackAPIResponses() async throws {
         let (server, port) = try makeStartedServer(token: "dev-token")
         defer {
@@ -851,7 +872,7 @@ final class RuntimeControlAPITests: XCTestCase {
     }
 
     @MainActor
-    func testLocalHTTPServerDoesNotAllowNonLoopbackCORSOrigins() async throws {
+    func testLocalHTTPServerDoesNotAllowUntrustedCORSOrigins() async throws {
         let (server, port) = try makeStartedServer(token: "dev-token")
         defer {
             server.stop()

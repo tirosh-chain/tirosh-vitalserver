@@ -89,7 +89,7 @@ function StatusOverview({ overview }: { overview: RuntimeControlOverview }) {
                   {pwaURL}
                 </a>
               ),
-              detail: `Port ${helperConsolePort} · Local browser console`
+              detail: `Port ${helperConsolePort} · Remote browser console`
             },
             {
               label: "Data directory",

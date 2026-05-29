@@ -6,8 +6,9 @@ Swift Helper UI의 정보 구조를 최대한 유지하면서, 화면 동작은
 OpenAPI contract와 React Query 기반으로 옮기는 것이 목표입니다.
 
 설치 현장에서는 Node/Vite 앱으로 실행하지 않습니다. 빌드된 static assets를
-Helper 앱 번들에 포함하고, Helper의 local Runtime Control server가 이를
-서빙합니다.
+Helper 앱 번들에 포함하고, Helper의 Runtime Control server가 이를
+서빙합니다. 이 서버는 같은 네트워크의 원격 브라우저가 Helper Console에
+접속할 수 있도록 Mac의 네트워크 인터페이스에서 열립니다.
 
 ## Quick Start
 
@@ -150,10 +151,11 @@ Helper app bundle 내 포함 위치:
 Contents/Resources/runtime-control-pwa/
 ```
 
-설치된 시스템에서는 Helper의 local Runtime Control server가 Helper Console을 제공합니다.
+설치된 시스템에서는 Helper의 Runtime Control server가 Helper Console을 제공합니다.
+원격 브라우저에서는 Mac의 IP나 hostname을 사용합니다.
 
 ```text
-http://127.0.0.1:18321/
+http://<mac-host-or-ip>:18321/
 ```
 
 현장 PC에는 npm, Vite, registry access가 필요하지 않습니다. package/update bundle은
@@ -181,14 +183,14 @@ README나 문서만 수정했다면 full build가 꼭 필요하지는 않습니�
 API client, domain policy를 바꿨다면 `check`, `test`, `build`를 모두 돌리는 것을
 권장합니다.
 
-## Local Troubleshooting
+## Troubleshooting
 
 Helper Console에서 `Runtime Control API is unreachable`가 보이면 먼저 아래를 확인합니다.
 
-- Helper local API server가 실행 중인지 확인합니다.
+- Helper Runtime Control API server가 실행 중인지 확인합니다.
 - PWA가 기대하는 API URL이 맞는지 확인합니다. 개발 중이면
   `VITE_RUNTIME_CONTROL_DEV_PROXY_TARGET`가 핵심입니다.
-- 설치된 PWA라면 Helper가 실제로 `http://127.0.0.1:18321/`에서 static assets와
-  API를 함께 제공하는지 확인합니다.
+- 설치된 PWA라면 Helper가 실제로 `http://<mac-host-or-ip>:18321/`에서 static assets와
+  API를 함께 제공하는지 확인합니다. Mac에서만 확인할 때는 `http://127.0.0.1:18321/`도 사용할 수 있습니다.
 - 포트를 바꾼 경우 `VITE_RUNTIME_CONTROL_DEFAULT_PORT`, Helper server bind port,
   현재 접속 URL이 서로 맞아야 합니다.
