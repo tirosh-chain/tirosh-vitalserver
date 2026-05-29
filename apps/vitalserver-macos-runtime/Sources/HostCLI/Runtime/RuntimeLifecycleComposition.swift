@@ -43,6 +43,15 @@ struct RuntimeLifecycleComposition {
             isLoaded: { service in
                 healthChecker.isLaunchdLoaded(service)
             },
+            waitUntilStopped: { service in
+                try waitUntilServiceStops(
+                    service,
+                    paths: paths,
+                    healthChecker: healthChecker,
+                    fileStore: fileStore,
+                    clock: clock
+                )
+            },
             log: { message in
                 print("[\(ISO8601DateFormatter().string(from: clock.now))] \(message)")
             }
@@ -55,6 +64,37 @@ struct RuntimeLifecycleComposition {
             healthChecker: healthChecker,
             serviceController: serviceController,
             guestGateway: resolvedGuestGateway
+        )
+    }
+
+    private static func waitUntilServiceStops(
+        _ service: RuntimeManagedService,
+        paths: LauncherPaths,
+        healthChecker: RuntimeHealthChecker,
+        fileStore: RuntimeFileStore,
+        clock: RuntimeClock
+    ) throws {
+        let timeout = service == .vm
+            ? Constants.Runtime.vmStopWaitTimeoutSeconds
+            : Constants.Runtime.serviceStopWaitTimeoutSeconds
+        let deadline = clock.now.addingTimeInterval(timeout)
+        while healthChecker.isLaunchdLoaded(service) {
+            guard clock.now < deadline else {
+                throw LauncherError.runtimeOperationFailed(
+                    "service did not unload within \(Int(timeout))s label=\(service.label)"
+                )
+            }
+            Thread.sleep(forTimeInterval: Constants.Runtime.serviceStopPollIntervalSeconds)
+        }
+
+        guard service == .vm else {
+            return
+        }
+        try ProcessState.waitUntilStopped(
+            pidFile: paths.pidFile,
+            fileStore: fileStore,
+            timeoutSeconds: Constants.Runtime.vmStopWaitTimeoutSeconds,
+            pollIntervalSeconds: Constants.Runtime.serviceStopPollIntervalSeconds
         )
     }
 

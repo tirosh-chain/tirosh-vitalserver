@@ -57,6 +57,31 @@ enum ProcessState {
         }
     }
 
+    static func waitUntilStopped(
+        pidFile: URL,
+        fileStore: RuntimeFileReading & RuntimeFileWriting = SystemRuntimeFileStore(),
+        timeoutSeconds: TimeInterval,
+        pollIntervalSeconds: TimeInterval = 0.5,
+        processExists: (pid_t) -> Bool = defaultProcessExists
+    ) throws {
+        let deadline = Date().addingTimeInterval(timeoutSeconds)
+        while true {
+            guard let pid = readPid(pidFile, fileStore: fileStore) else {
+                return
+            }
+            guard processExists(pid) else {
+                removePidFile(pidFile, fileStore: fileStore)
+                return
+            }
+            guard Date() < deadline else {
+                throw LauncherError.runtimeOperationFailed(
+                    "VM process did not stop within \(Int(timeoutSeconds))s pid=\(pid) pidFile=\(pidFile.path)"
+                )
+            }
+            Thread.sleep(forTimeInterval: pollIntervalSeconds)
+        }
+    }
+
     private static func readPid(_ pidFile: URL, fileStore: RuntimeFileReading) -> pid_t? {
         guard
             let data = try? fileStore.readData(pidFile),
@@ -66,5 +91,12 @@ enum ProcessState {
             return nil
         }
         return pid
+    }
+
+    private static func defaultProcessExists(_ pid: pid_t) -> Bool {
+        if kill(pid, 0) == 0 {
+            return true
+        }
+        return errno == EPERM
     }
 }

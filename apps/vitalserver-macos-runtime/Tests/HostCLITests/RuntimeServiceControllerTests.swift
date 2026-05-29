@@ -18,7 +18,7 @@ final class RuntimeServiceControllerTests: XCTestCase {
             log: { _ in }
         )
 
-        controller.stopRuntimeServices()
+        XCTAssertNoThrow(try controller.stopRuntimeServices())
 
         XCTAssertEqual(serviceManager.stoppedLabels, [
             RuntimeManagedService.watchdog.label,
@@ -26,6 +26,45 @@ final class RuntimeServiceControllerTests: XCTestCase {
             RuntimeManagedService.proxy.label,
             RuntimeManagedService.vm.label,
         ])
+    }
+
+    func testWaitsAfterEachLoadedServiceStops() throws {
+        let serviceManager = ServiceControllerServiceManagerSpy()
+        let loaded = Set([
+            RuntimeManagedService.vm,
+            RuntimeManagedService.proxy,
+        ])
+        var waitedLabels: [String] = []
+        let controller = RuntimeServiceController(
+            serviceManager: serviceManager,
+            isLoaded: { loaded.contains($0) },
+            waitUntilStopped: { waitedLabels.append($0.label) },
+            log: { _ in }
+        )
+
+        try controller.stopRuntimeServices()
+
+        XCTAssertEqual(serviceManager.stoppedLabels, [
+            RuntimeManagedService.proxy.label,
+            RuntimeManagedService.vm.label,
+        ])
+        XCTAssertEqual(waitedLabels, [
+            RuntimeManagedService.proxy.label,
+            RuntimeManagedService.vm.label,
+        ])
+    }
+
+    func testStopRuntimeServicesPropagatesWaitFailure() {
+        let serviceManager = ServiceControllerServiceManagerSpy()
+        let controller = RuntimeServiceController(
+            serviceManager: serviceManager,
+            isLoaded: { $0 == .vm },
+            waitUntilStopped: { _ in throw LauncherError.runtimeOperationFailed("still running") },
+            log: { _ in }
+        )
+
+        XCTAssertThrowsError(try controller.stopRuntimeServices())
+        XCTAssertEqual(serviceManager.stoppedLabels, [RuntimeManagedService.vm.label])
     }
 
     func testStartsOnlyServicesRequestedByRestartPolicy() {

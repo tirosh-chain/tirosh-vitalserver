@@ -60,7 +60,7 @@ extension RuntimeLifecycle {
     }
 
     func stopRuntimeServices() throws {
-        serviceController.stopRuntimeServices()
+        try serviceController.stopRuntimeServices()
     }
 
     func startRuntimeServices(restartVM: Bool, restartProxy: Bool, restartWatchdog: Bool) throws {

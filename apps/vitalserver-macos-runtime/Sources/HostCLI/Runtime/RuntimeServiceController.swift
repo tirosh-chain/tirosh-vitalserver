@@ -5,22 +5,29 @@ import Contracts
 struct RuntimeServiceController {
     private let serviceManager: RuntimeServiceManager
     private let isLoaded: (RuntimeManagedService) -> Bool
+    private let waitUntilStopped: (RuntimeManagedService) throws -> Void
     private let log: (String) -> Void
 
     init(
         serviceManager: RuntimeServiceManager,
         isLoaded: @escaping (RuntimeManagedService) -> Bool,
+        waitUntilStopped: @escaping (RuntimeManagedService) throws -> Void = { _ in },
         log: @escaping (String) -> Void
     ) {
         self.serviceManager = serviceManager
         self.isLoaded = isLoaded
+        self.waitUntilStopped = waitUntilStopped
         self.log = log
     }
 
-    func stopRuntimeServices() {
+    func stopRuntimeServices() throws {
         log("stopping runtime services")
         for service in RuntimeManagedService.stopOrder {
-            stopIfLoaded(service)
+            if stopIfLoaded(service) {
+                log("waiting for \(service.displayName) service to stop label=\(service.label)")
+                try waitUntilStopped(service)
+                log("stopped \(service.displayName) service label=\(service.label)")
+            }
         }
     }
 
@@ -65,7 +72,7 @@ struct RuntimeServiceController {
     }
 
     func stopLaunchdService(_ service: RuntimeManagedService) {
-        stopIfLoaded(service)
+        _ = stopIfLoaded(service)
     }
 
     func setStartOnBoot(_ enabled: Bool) throws {
@@ -84,9 +91,11 @@ struct RuntimeServiceController {
         }
     }
 
-    private func stopIfLoaded(_ service: RuntimeManagedService) {
+    private func stopIfLoaded(_ service: RuntimeManagedService) -> Bool {
         if isLoaded(service) {
             serviceManager.stop(service: service)
+            return true
         }
+        return false
     }
 }
