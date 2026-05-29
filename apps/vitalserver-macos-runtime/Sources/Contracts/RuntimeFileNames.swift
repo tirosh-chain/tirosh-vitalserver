@@ -15,5 +15,8 @@ public enum RuntimeFileNames {
     public static let updateActivationRequest = "activate-update.request"
     public static let updateActivationResult = "activate-update-result.json"
     public static let updateActivationLog = "activate-update.log"
+    public static let updateShutdownRequest = "prepare-update-shutdown.request"
+    public static let updateShutdownResult = "prepare-update-shutdown-result.json"
+    public static let updateShutdownLog = "prepare-update-shutdown.log"
     public static let managerCommandLog = "tirosh-vitalserver-manager-command.log"
 }

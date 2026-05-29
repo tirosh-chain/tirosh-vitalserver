@@ -48,10 +48,8 @@ enum RuntimeObservationHealthPolicy {
         if let exitCode = service.exitCode, exitCode != 0 {
             return "exit-\(exitCode)"
         }
-        if let health = service.health,
-           !health.isEmpty,
-           health != "starting",
-           health != "healthy" {
+        if RuntimeHealthClassificationPolicy.isFailingContainerHealth(service.health),
+           let health = service.health {
             return normalizedState(health)
         }
         return nil

@@ -5,7 +5,6 @@ public enum DatastoreRepairDecision: Equatable {
     case wait(message: String)
     case completed(message: String)
     case failed(message: String)
-    case stale(message: String)
 }
 
 public enum DatastoreRepairWaitResult: Equatable {
@@ -36,11 +35,11 @@ public enum DatastoreRepairEvaluator {
         if let expectedRequestId,
            let resultRequestId = result.requestId,
            resultRequestId != expectedRequestId {
-            return .stale(message: "stale datastore repair result")
+            return .failed(message: "datastore repair result does not match the current request")
         }
 
         if expectedRequestId != nil, result.requestId == nil, result.schemaVersion != nil {
-            return .stale(message: "datastore repair result is missing requestId")
+            return .failed(message: "datastore repair result is missing requestId")
         }
 
         switch result.status {
@@ -54,8 +53,6 @@ public enum DatastoreRepairEvaluator {
             return .failed(message: result.message ?? "datastore repair failed")
         case .skipped:
             return .failed(message: result.message ?? "datastore repair skipped")
-        case .stale:
-            return .stale(message: result.message ?? "stale datastore repair result")
         case .unknown(let status):
             return .failed(message: result.message ?? "unknown datastore repair status: \(status)")
         }
@@ -68,7 +65,6 @@ public enum DatastoreRepairWaiter {
         configuration: DatastoreRepairWaitConfiguration,
         loadResult: () -> DatastoreRepairResultDocument?,
         onProgress: (String) -> Void,
-        onStale: (String) -> Void,
         sleep: () -> Void
     ) -> DatastoreRepairWaitResult {
         for attempt in 0..<configuration.maxAttempts {
@@ -77,8 +73,6 @@ public enum DatastoreRepairWaiter {
                 return .completed(message: message)
             case .failed(let message):
                 return .failed(message: message)
-            case .stale(let message):
-                onStale(message)
             case .wait(let message):
                 if attempt % configuration.progressEveryAttempts == 0 {
                     onProgress(message)

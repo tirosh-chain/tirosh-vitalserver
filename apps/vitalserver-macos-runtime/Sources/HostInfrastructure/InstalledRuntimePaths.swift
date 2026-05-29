@@ -142,6 +142,10 @@ public struct InstalledRuntimePaths: Equatable, Sendable {
         guestRunDirectory.appendingPathComponent(RuntimeFileNames.updateActivationLog)
     }
 
+    public var updateShutdownLog: URL {
+        guestRunDirectory.appendingPathComponent(RuntimeFileNames.updateShutdownLog)
+    }
+
     public var datastoreRepairLog: URL {
         guestRunDirectory.appendingPathComponent(RuntimeFileNames.datastoreRepairLog)
     }
@@ -152,6 +156,10 @@ public struct InstalledRuntimePaths: Equatable, Sendable {
 
     public var centralUpdateActivationLog: URL {
         centralGuestLogsDirectory.appendingPathComponent(RuntimeFileNames.updateActivationLog)
+    }
+
+    public var centralUpdateShutdownLog: URL {
+        centralGuestLogsDirectory.appendingPathComponent(RuntimeFileNames.updateShutdownLog)
     }
 
     public var centralDatastoreRepairLog: URL {

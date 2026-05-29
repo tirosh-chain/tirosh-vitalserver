@@ -299,6 +299,9 @@ private final class RuntimeGuestGatewaySpy: RuntimeGuestGateway {
     func removeUpdateActivationResult() throws {}
     func writeUpdateActivationRequest(_ request: RuntimeGuestActivationRequest) throws {}
     func loadUpdateActivationResult() -> GuestUpdateActivationResultDocument? { nil }
+    func removeUpdateShutdownResult() throws {}
+    func writeUpdateShutdownRequest(_ request: RuntimeGuestShutdownRequest) throws {}
+    func loadUpdateShutdownResult() -> GuestUpdateShutdownResultDocument? { nil }
     func removeDatastoreRepairResult() throws {}
     func writeDatastoreRepairRequest(_ request: RuntimeDatastoreRepairRequest) throws {}
     func loadDatastoreRepairResult() -> DatastoreRepairResultDocument? { nil }

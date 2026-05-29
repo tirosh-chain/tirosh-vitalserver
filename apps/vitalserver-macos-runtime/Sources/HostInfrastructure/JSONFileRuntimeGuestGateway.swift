@@ -7,6 +7,8 @@ public struct JSONFileRuntimeGuestGateway: RuntimeGuestGateway {
     public let bootstrapResultURL: URL
     public let updateActivationRequestURL: URL
     public let updateActivationResultURL: URL
+    public let updateShutdownRequestURL: URL
+    public let updateShutdownResultURL: URL
     public let datastoreRepairRequestURL: URL
     public let datastoreRepairResultURL: URL
 
@@ -15,6 +17,8 @@ public struct JSONFileRuntimeGuestGateway: RuntimeGuestGateway {
         bootstrapResultURL: URL,
         updateActivationRequestURL: URL,
         updateActivationResultURL: URL,
+        updateShutdownRequestURL: URL,
+        updateShutdownResultURL: URL,
         datastoreRepairRequestURL: URL,
         datastoreRepairResultURL: URL
     ) {
@@ -22,6 +26,8 @@ public struct JSONFileRuntimeGuestGateway: RuntimeGuestGateway {
         self.bootstrapResultURL = bootstrapResultURL
         self.updateActivationRequestURL = updateActivationRequestURL
         self.updateActivationResultURL = updateActivationResultURL
+        self.updateShutdownRequestURL = updateShutdownRequestURL
+        self.updateShutdownResultURL = updateShutdownResultURL
         self.datastoreRepairRequestURL = datastoreRepairRequestURL
         self.datastoreRepairResultURL = datastoreRepairResultURL
     }
@@ -51,6 +57,25 @@ public struct JSONFileRuntimeGuestGateway: RuntimeGuestGateway {
 
     public func loadUpdateActivationResult() -> GuestUpdateActivationResultDocument? {
         decode(GuestUpdateActivationResultDocument.self, from: updateActivationResultURL)
+    }
+
+    public func removeUpdateShutdownResult() throws {
+        try removeFileIfPresent(updateShutdownResultURL)
+    }
+
+    public func writeUpdateShutdownRequest(_ request: RuntimeGuestShutdownRequest) throws {
+        try write(
+            GuestUpdateShutdownRequestDocument(
+                requestId: request.id,
+                requestedAt: request.requestedAt,
+                version: request.version
+            ),
+            to: updateShutdownRequestURL
+        )
+    }
+
+    public func loadUpdateShutdownResult() -> GuestUpdateShutdownResultDocument? {
+        decode(GuestUpdateShutdownResultDocument.self, from: updateShutdownResultURL)
     }
 
     public func removeDatastoreRepairResult() throws {

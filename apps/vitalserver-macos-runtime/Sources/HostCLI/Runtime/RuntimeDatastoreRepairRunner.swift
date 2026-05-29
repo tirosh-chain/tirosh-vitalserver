@@ -21,7 +21,7 @@ struct RuntimeDatastoreRepairRunner {
     func run() throws {
         log("datastore repair requested")
         try prepareGuestRunDirectory()
-        try? removePreviousResult()
+        try removePreviousResult()
         try writeStatus(.recovering, .repairDatastore, "datastore repair requested")
 
         let request = RuntimeDatastoreRepairRequest(id: makeRequestID(), requestedAt: timestamp())

@@ -13,6 +13,7 @@ struct RuntimeGuestLogCollector {
         try fileStore.createDirectory(at: installedPaths.centralGuestLogsDirectory, withIntermediateDirectories: true)
         try sync(source: installedPaths.bootstrapLog, destination: installedPaths.centralBootstrapLog)
         try sync(source: installedPaths.updateActivationLog, destination: installedPaths.centralUpdateActivationLog)
+        try sync(source: installedPaths.updateShutdownLog, destination: installedPaths.centralUpdateShutdownLog)
         try sync(source: installedPaths.datastoreRepairLog, destination: installedPaths.centralDatastoreRepairLog)
         try sync(source: installedPaths.redisBackupLog, destination: installedPaths.centralRedisBackupLog)
         try sync(source: installedPaths.containerLogs, destination: installedPaths.centralContainerLogs)

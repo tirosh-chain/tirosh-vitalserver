@@ -252,6 +252,10 @@ extension RuntimeLifecycle {
                 },
                 startRuntimeServices: startRuntimeServices,
                 stopRuntimeServices: stopRuntimeServices,
+                prepareGuestShutdownForUpdate: prepareGuestShutdownForUpdate,
+                clearGuestShutdownPreparation: {
+                    try guestGateway.removeUpdateShutdownResult()
+                },
                 isLaunchdLoaded: isLaunchdLoaded,
                 createBackup: { reason in try backupStore().createBackup(reason: reason) },
                 writeRuntimeStatus: { status, operation, message in
@@ -474,5 +478,33 @@ extension RuntimeLifecycle {
                 log: log
             )
         )
+    }
+
+    func prepareGuestShutdownForUpdate(manifest: UpdateBundleManifest) throws {
+        try RuntimeGuestShutdownRunner(
+            createRunDirectory: {
+                try fileStore.createDirectory(at: guestRunDirectory, withIntermediateDirectories: true)
+            },
+            removePreviousResult: {
+                try guestGateway.removeUpdateShutdownResult()
+            },
+            requestID: {
+                UUID().uuidString
+            },
+            timestamp: isoTimestamp,
+            writeRequest: { request in
+                try guestGateway.writeUpdateShutdownRequest(request)
+            },
+            loadResult: {
+                guestGateway.loadUpdateShutdownResult()
+            },
+            reportProgress: { message in
+                try? writeRuntimeStatus(.updating, operation: .applyBundle, message: message)
+            },
+            sleep: {
+                sleeper.sleep(forTimeInterval: 3)
+            },
+            log: log
+        ).prepareForUpdate(version: manifest.version)
     }
 }

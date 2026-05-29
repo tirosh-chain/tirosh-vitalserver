@@ -23,7 +23,7 @@ struct RuntimeGuestActivationRunner {
 
         log("guest update activation requested version=\(manifest.version)")
         try createRunDirectory()
-        try? removePreviousResult()
+        try removePreviousResult()
         let request = RuntimeGuestActivationRequest(
             id: requestID(),
             requestedAt: timestamp(),
@@ -52,9 +52,6 @@ struct RuntimeGuestActivationRunner {
             onProgress: { message in
                 log(message)
                 reportProgress(message)
-            },
-            onStale: { message in
-                log("guest update activation result stale message=\(message)")
             },
             sleep: sleep
         )

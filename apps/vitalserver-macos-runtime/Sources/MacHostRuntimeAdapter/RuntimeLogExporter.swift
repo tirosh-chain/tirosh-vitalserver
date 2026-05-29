@@ -231,6 +231,10 @@ struct RuntimeLogExportFallback {
                 relativeDestination: "guest/\(RuntimeFileNames.updateActivationLog)"
             ),
             RuntimeLogExportFallback(
+                source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.updateShutdownLogSource),
+                relativeDestination: "guest/\(RuntimeFileNames.updateShutdownLog)"
+            ),
+            RuntimeLogExportFallback(
                 source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.datastoreRepairLogSource),
                 relativeDestination: "guest/\(RuntimeFileNames.datastoreRepairLog)"
             ),

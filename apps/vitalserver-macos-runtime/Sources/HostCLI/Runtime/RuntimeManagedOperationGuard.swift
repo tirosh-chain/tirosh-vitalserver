@@ -8,19 +8,6 @@ struct RuntimeGuestBootstrapOperation {
 }
 
 struct RuntimeManagedOperationGuard {
-    private static let protectedOperations: [RuntimeOperation] = [
-        .install,
-        .applyBundle,
-        .activateGuestUpdate,
-        .rollback,
-        .redisBackup,
-        .repairDatastore,
-        .repairVMDisk,
-        .startServices,
-        .stopServices,
-        .uninstall,
-    ]
-
     private let statusReporter: RuntimeStatusReporter
     private let activeGuestBootstrap: () -> RuntimeGuestBootstrapOperation?
     private let now: () -> Date
@@ -55,7 +42,7 @@ struct RuntimeManagedOperationGuard {
         guard status.status == .installing || status.status == .updating || status.status == .recovering else {
             return nil
         }
-        guard Self.protectedOperations.contains(status.operation) else {
+        guard RuntimeManagedOperationPolicy.isProtectedFromWatchdogRecovery(status.operation) else {
             return nil
         }
         guard let updatedAt = ISO8601DateFormatter().date(from: status.updatedAt) else {

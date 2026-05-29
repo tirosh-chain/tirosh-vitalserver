@@ -4,6 +4,8 @@ import Contracts
 
 struct RuntimeApplyBundleStepExecutor {
     var stopRuntimeServices: () throws -> Void
+    var prepareGuestShutdownForUpdate: (UpdateBundleManifest) throws -> Void
+    var clearGuestShutdownPreparation: () throws -> Void
     var createDirectory: (URL, Bool) throws -> Void
     var fileSize: (URL) throws -> UInt64
     var replaceFile: (URL, URL) throws -> Void
@@ -23,6 +25,14 @@ struct RuntimeApplyBundleStepExecutor {
     ) throws {
         switch step {
         case .stopRuntimeServices:
+            if preflight.restartPolicy.restartVM {
+                try prepareGuestShutdownForUpdate(preflight.manifest)
+                do {
+                    defer { try? clearGuestShutdownPreparation() }
+                    try stopRuntimeServices()
+                }
+                return
+            }
             try stopRuntimeServices()
         case .replaceRootfsBase:
             guard let stagedRootfs = preflight.stagedRootfs else {

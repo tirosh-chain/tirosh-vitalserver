@@ -93,6 +93,8 @@ enum RuntimeAdapterConstants {
         static let containerLogSource = installed.containerLogs.path
         static let updateActivationLog = installed.centralUpdateActivationLog.path
         static let updateActivationLogSource = installed.updateActivationLog.path
+        static let updateShutdownLog = installed.centralUpdateShutdownLog.path
+        static let updateShutdownLogSource = installed.updateShutdownLog.path
         static let bootstrapLog = installed.centralBootstrapLog.path
         static let bootstrapLogSource = installed.bootstrapLog.path
         static let datastoreRepairLog = installed.centralDatastoreRepairLog.path

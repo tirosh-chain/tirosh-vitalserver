@@ -20,6 +20,8 @@ struct RuntimeBundleWorkflowOperations {
     let rollback: (URL?) throws -> Void
     let startRuntimeServices: (RuntimeServiceRestartPolicy) throws -> Void
     let stopRuntimeServices: () throws -> Void
+    let prepareGuestShutdownForUpdate: (UpdateBundleManifest) throws -> Void
+    let clearGuestShutdownPreparation: () throws -> Void
     let isLaunchdLoaded: (RuntimeManagedService) -> Bool
     let createBackup: (String) throws -> URL
     let writeRuntimeStatus: (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void
@@ -274,7 +276,7 @@ struct RuntimeBundleWorkflow {
             fileSize: fileSize,
             requireFreeSpace: operations.requireFreeSpace,
             checkCompatibility: { manifest in
-                try RuntimeUpdateCompatibilityChecker.check(
+                try RuntimeUpdatePreflightPolicy.checkCompatibility(
                     manifest: manifest,
                     currentUpdaterVersion: Constants.launcherVersion,
                     currentChannel: Constants.launcherChannel,
@@ -304,6 +306,8 @@ struct RuntimeBundleWorkflow {
     ) throws {
         try RuntimeApplyBundleStepExecutor(
             stopRuntimeServices: operations.stopRuntimeServices,
+            prepareGuestShutdownForUpdate: operations.prepareGuestShutdownForUpdate,
+            clearGuestShutdownPreparation: operations.clearGuestShutdownPreparation,
             createDirectory: { url, withIntermediateDirectories in
                 try operations.fileStore.createDirectory(at: url, withIntermediateDirectories: withIntermediateDirectories)
             },

@@ -76,6 +76,45 @@ final class JSONFileRuntimeGuestGatewayTests: XCTestCase {
         try harness.cleanup()
     }
 
+    func testWritesUpdateShutdownRequestAndLoadsResult() throws {
+        let harness = try GuestGatewayHarness()
+
+        try harness.gateway.writeUpdateShutdownRequest(RuntimeGuestShutdownRequest(
+            id: "shutdown-1",
+            requestedAt: "2026-05-21T12:33:57Z",
+            version: "0.1.4"
+        ))
+        try harness.writeJSON(
+            """
+            {
+              "schemaVersion": 1,
+              "requestId": "shutdown-1",
+              "operation": "prepare-update-shutdown",
+              "status": "ready",
+              "message": "ready",
+              "redisBackupPath": "/mnt/tirosh/backups/redis/redis.tar.gz",
+              "updatedAt": "2026-05-21T12:34:57Z"
+            }
+            """,
+            to: harness.updateShutdownResultURL
+        )
+
+        let request = try harness.jsonObject(at: harness.updateShutdownRequestURL)
+        XCTAssertEqual(request["schemaVersion"] as? Int, 1)
+        XCTAssertEqual(request["requestId"] as? String, "shutdown-1")
+        XCTAssertEqual(request["operation"] as? String, "prepare-update-shutdown")
+        XCTAssertEqual(request["version"] as? String, "0.1.4")
+
+        let result = try XCTUnwrap(harness.gateway.loadUpdateShutdownResult())
+        XCTAssertEqual(result.schemaVersion, 1)
+        XCTAssertEqual(result.requestId, "shutdown-1")
+        XCTAssertEqual(result.operation, .prepareUpdateShutdown)
+        XCTAssertEqual(result.status, .ready)
+        XCTAssertEqual(result.redisBackupPath, "/mnt/tirosh/backups/redis/redis.tar.gz")
+
+        try harness.cleanup()
+    }
+
     func testLoadsRuntimeStateAndRemovesStaleResults() throws {
         let harness = try GuestGatewayHarness()
         try harness.writeJSON(
@@ -92,6 +131,7 @@ final class JSONFileRuntimeGuestGatewayTests: XCTestCase {
             to: harness.runtimeStateURL
         )
         try harness.writeJSON("{}", to: harness.updateActivationResultURL)
+        try harness.writeJSON("{}", to: harness.updateShutdownResultURL)
         try harness.writeJSON("{}", to: harness.datastoreRepairResultURL)
         try harness.writeJSON(
             """
@@ -116,8 +156,10 @@ final class JSONFileRuntimeGuestGatewayTests: XCTestCase {
         XCTAssertEqual(bootstrapResult.reasonCodes, [.guestBootstrapMissingRuntimePackages])
 
         try harness.gateway.removeUpdateActivationResult()
+        try harness.gateway.removeUpdateShutdownResult()
         try harness.gateway.removeDatastoreRepairResult()
         XCTAssertFalse(FileManager.default.fileExists(atPath: harness.updateActivationResultURL.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: harness.updateShutdownResultURL.path))
         XCTAssertFalse(FileManager.default.fileExists(atPath: harness.datastoreRepairResultURL.path))
 
         try harness.cleanup()
@@ -130,6 +172,8 @@ private struct GuestGatewayHarness {
     let bootstrapResultURL: URL
     let updateActivationRequestURL: URL
     let updateActivationResultURL: URL
+    let updateShutdownRequestURL: URL
+    let updateShutdownResultURL: URL
     let datastoreRepairRequestURL: URL
     let datastoreRepairResultURL: URL
     let gateway: JSONFileRuntimeGuestGateway
@@ -141,6 +185,8 @@ private struct GuestGatewayHarness {
         bootstrapResultURL = directory.appendingPathComponent(RuntimeFileNames.bootstrapResult)
         updateActivationRequestURL = directory.appendingPathComponent(RuntimeFileNames.updateActivationRequest)
         updateActivationResultURL = directory.appendingPathComponent(RuntimeFileNames.updateActivationResult)
+        updateShutdownRequestURL = directory.appendingPathComponent(RuntimeFileNames.updateShutdownRequest)
+        updateShutdownResultURL = directory.appendingPathComponent(RuntimeFileNames.updateShutdownResult)
         datastoreRepairRequestURL = directory.appendingPathComponent(RuntimeFileNames.datastoreRepairRequest)
         datastoreRepairResultURL = directory.appendingPathComponent(RuntimeFileNames.datastoreRepairResult)
         gateway = JSONFileRuntimeGuestGateway(
@@ -148,6 +194,8 @@ private struct GuestGatewayHarness {
             bootstrapResultURL: bootstrapResultURL,
             updateActivationRequestURL: updateActivationRequestURL,
             updateActivationResultURL: updateActivationResultURL,
+            updateShutdownRequestURL: updateShutdownRequestURL,
+            updateShutdownResultURL: updateShutdownResultURL,
             datastoreRepairRequestURL: datastoreRepairRequestURL,
             datastoreRepairResultURL: datastoreRepairResultURL
         )

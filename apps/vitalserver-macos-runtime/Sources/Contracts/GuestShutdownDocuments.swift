@@ -1,11 +1,10 @@
 import Foundation
 
-public enum GuestActivationStatus: Codable, Equatable, Sendable {
+public enum GuestShutdownStatus: Codable, Equatable, Sendable {
     case pending
     case running
-    case completed
+    case ready
     case failed
-    case skipped
     case unknown(String)
 
     public init(rawValue: String) {
@@ -14,12 +13,10 @@ public enum GuestActivationStatus: Codable, Equatable, Sendable {
             self = .pending
         case "running":
             self = .running
-        case "completed":
-            self = .completed
+        case "ready":
+            self = .ready
         case "failed":
             self = .failed
-        case "skipped":
-            self = .skipped
         default:
             self = .unknown(rawValue)
         }
@@ -31,12 +28,10 @@ public enum GuestActivationStatus: Codable, Equatable, Sendable {
             return "pending"
         case .running:
             return "running"
-        case .completed:
-            return "completed"
+        case .ready:
+            return "ready"
         case .failed:
             return "failed"
-        case .skipped:
-            return "skipped"
         case .unknown(let value):
             return value
         }
@@ -53,24 +48,26 @@ public enum GuestActivationStatus: Codable, Equatable, Sendable {
     }
 }
 
-public struct GuestUpdateActivationResultDocument: Codable, Equatable, Sendable {
+public struct GuestUpdateShutdownResultDocument: Codable, Equatable, Sendable {
     public let schemaVersion: Int?
     public let requestId: String?
     public let operation: RuntimeOperation?
-    public let status: GuestActivationStatus
+    public let status: GuestShutdownStatus
     public let message: String?
     public let step: String?
     public let reasonCodes: [String]?
+    public let redisBackupPath: String?
     public let updatedAt: String?
 
     public init(
         schemaVersion: Int? = nil,
         requestId: String? = nil,
         operation: RuntimeOperation? = nil,
-        status: GuestActivationStatus,
+        status: GuestShutdownStatus,
         message: String?,
         step: String? = nil,
         reasonCodes: [String]? = nil,
+        redisBackupPath: String? = nil,
         updatedAt: String?
     ) {
         self.schemaVersion = schemaVersion
@@ -80,41 +77,12 @@ public struct GuestUpdateActivationResultDocument: Codable, Equatable, Sendable 
         self.message = message
         self.step = step
         self.reasonCodes = reasonCodes
+        self.redisBackupPath = redisBackupPath
         self.updatedAt = updatedAt
-    }
-
-    public init(
-        schemaVersion: Int? = nil,
-        requestId: String? = nil,
-        operation: String? = nil,
-        status: String,
-        message: String?,
-        step: String? = nil,
-        reasonCodes: [String]? = nil,
-        updatedAt: String?
-    ) {
-        self.init(
-            schemaVersion: schemaVersion,
-            requestId: requestId,
-            operation: operation.map(RuntimeOperation.init(rawValue:)),
-            status: GuestActivationStatus(rawValue: status),
-            message: message,
-            step: step,
-            reasonCodes: reasonCodes,
-            updatedAt: updatedAt
-        )
-    }
-
-    public var completed: Bool {
-        status == .completed
-    }
-
-    public var failed: Bool {
-        status == .failed
     }
 }
 
-public struct GuestUpdateActivationRequestDocument: Codable, Equatable, Sendable {
+public struct GuestUpdateShutdownRequestDocument: Codable, Equatable, Sendable {
     public let schemaVersion: Int
     public let requestId: String
     public let requestedAt: String
@@ -130,10 +98,10 @@ public struct GuestUpdateActivationRequestDocument: Codable, Equatable, Sendable
     }
 
     public init(
-        schemaVersion: Int = 2,
+        schemaVersion: Int = 1,
         requestId: String,
         requestedAt: String,
-        operation: RuntimeOperation = .activateGuestUpdate,
+        operation: RuntimeOperation = .prepareUpdateShutdown,
         version: String
     ) {
         self.schemaVersion = schemaVersion
@@ -159,7 +127,7 @@ public struct GuestUpdateActivationRequestDocument: Codable, Equatable, Sendable
         try container.encode(schemaVersion, forKey: .schemaVersion)
         try container.encode(requestId, forKey: .requestId)
         try container.encode(requestedAt, forKey: .requestedAt)
-        try container.encode("activate-update", forKey: .operation)
+        try container.encode("prepare-update-shutdown", forKey: .operation)
         try container.encode(version, forKey: .version)
     }
 }

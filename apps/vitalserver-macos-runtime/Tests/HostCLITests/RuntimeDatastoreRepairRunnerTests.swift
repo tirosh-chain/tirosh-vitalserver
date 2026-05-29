@@ -35,15 +35,17 @@ final class RuntimeDatastoreRepairRunnerTests: XCTestCase {
         XCTAssertFalse(harness.events.contains("restart-vm"))
     }
 
-    func testRunContinuesWhenPreviousResultRemovalFails() throws {
+    func testRunStopsWhenPreviousResultRemovalFails() {
         let harness = DatastoreRepairHarness()
         harness.removeResultError = TestDatastoreRepairError.removeResult
 
-        try harness.runner.run()
+        XCTAssertThrowsError(try harness.runner.run())
 
-        XCTAssertTrue(harness.events.contains("remove-result"))
-        XCTAssertTrue(harness.events.contains("request:request-1:2026-05-22T00:00:00Z"))
-        XCTAssertEqual(harness.events.last, "log:datastore repair completed")
+        XCTAssertEqual(harness.events, [
+            "log:datastore repair requested",
+            "prepare-run-dir",
+            "remove-result",
+        ])
     }
 
     func testRunStopsBeforeHealthyStatusWhenResultWaitFails() {

@@ -27,6 +27,12 @@ final class RuntimeApplyBundleStepExecutorTests: XCTestCase {
 
         let executor = RuntimeApplyBundleStepExecutor(
             stopRuntimeServices: { events.append("stop") },
+            prepareGuestShutdownForUpdate: { manifest in
+                events.append("shutdown:\(manifest.version)")
+            },
+            clearGuestShutdownPreparation: {
+                events.append("clear-shutdown")
+            },
             createDirectory: { url, withIntermediateDirectories in
                 events.append("mkdir:\(url.path):\(withIntermediateDirectories)")
             },
@@ -66,7 +72,9 @@ final class RuntimeApplyBundleStepExecutorTests: XCTestCase {
         }
 
         XCTAssertEqual(events, [
+            "shutdown:1.2.3",
             "stop",
+            "clear-shutdown",
             "mkdir:/runtime:true",
             "size:rootfs-base.raw.gz",
             "replace:rootfs-base.raw.gz:rootfs-base.raw.gz",
@@ -83,6 +91,8 @@ final class RuntimeApplyBundleStepExecutorTests: XCTestCase {
     func testRootfsReplacementStepSkipsWhenBundleDoesNotIncludeRootfs() throws {
         let executor = RuntimeApplyBundleStepExecutor(
             stopRuntimeServices: {},
+            prepareGuestShutdownForUpdate: { _ in },
+            clearGuestShutdownPreparation: {},
             createDirectory: { _, _ in XCTFail("should not create rootfs directory") },
             fileSize: { _ in XCTFail("should not read rootfs size"); return 0 },
             replaceFile: { _, _ in XCTFail("should not replace rootfs") },
@@ -113,6 +123,8 @@ final class RuntimeApplyBundleStepExecutorTests: XCTestCase {
     func testRejectsNonApplyBundleStep() {
         let executor = RuntimeApplyBundleStepExecutor(
             stopRuntimeServices: {},
+            prepareGuestShutdownForUpdate: { _ in },
+            clearGuestShutdownPreparation: {},
             createDirectory: { _, _ in },
             fileSize: { _ in 0 },
             replaceFile: { _, _ in },

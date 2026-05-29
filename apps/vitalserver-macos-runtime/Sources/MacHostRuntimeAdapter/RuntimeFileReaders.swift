@@ -126,6 +126,12 @@ struct SystemRuntimeHostFileReader: RuntimeHostFileReading, @unchecked Sendable 
                 lineLimit: lineLimit,
                 fallbackPath: RuntimeAdapterConstants.Paths.updateActivationLogSource
             )
+        case .updateShutdown:
+            return logFile(
+                path: RuntimeAdapterConstants.Paths.updateShutdownLog,
+                lineLimit: lineLimit,
+                fallbackPath: RuntimeAdapterConstants.Paths.updateShutdownLogSource
+            )
         case .containers:
             return logFile(
                 path: RuntimeAdapterConstants.Paths.containerLogs,

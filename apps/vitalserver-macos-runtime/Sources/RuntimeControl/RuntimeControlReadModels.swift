@@ -26,6 +26,7 @@ public enum RuntimeLogSource: String, Codable, Hashable, Sendable {
     case proxyError
     case watchdog
     case updateActivation
+    case updateShutdown
     case containers
 }
 

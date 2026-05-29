@@ -26,9 +26,6 @@ struct RuntimeDatastoreRepairResultWaiter {
                     message
                 )
             },
-            onStale: { message in
-                log("datastore repair result stale message=\(message)")
-            },
             sleep: sleep
         )
 

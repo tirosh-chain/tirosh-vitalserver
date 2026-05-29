@@ -203,6 +203,8 @@ struct MacHostRuntimeLogCollector: RuntimeLogCollecting, @unchecked Sendable {
             return item.destination.lastPathComponent == "watchdog.out.log"
         case .updateActivation:
             return item.destination.path == RuntimeAdapterConstants.Paths.updateActivationLog
+        case .updateShutdown:
+            return item.destination.path == RuntimeAdapterConstants.Paths.updateShutdownLog
         case .containers:
             return item.destination.path == RuntimeAdapterConstants.Paths.containerLogs
         }
@@ -332,6 +334,11 @@ struct RuntimeLogCopy {
                 source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.updateActivationLogSource),
                 destination: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.updateActivationLog),
                 archivePrefix: "guest-activate-update.log"
+            ),
+            RuntimeLogCopy(
+                source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.updateShutdownLogSource),
+                destination: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.updateShutdownLog),
+                archivePrefix: "guest-prepare-update-shutdown.log"
             ),
             RuntimeLogCopy(
                 source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.datastoreRepairLogSource),

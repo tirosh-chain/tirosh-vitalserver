@@ -41,6 +41,7 @@ final class RuntimeGuestLogCollectorTests: XCTestCase {
         try fileStore.createDirectory(at: paths.guestRunDirectory, withIntermediateDirectories: true)
         try Data("rotated\n".utf8).write(to: paths.guestRunDirectory.appendingPathComponent("container-logs.log.1"))
         try Data("redis\n".utf8).write(to: paths.redisBackupLog)
+        try Data("shutdown\n".utf8).write(to: paths.updateShutdownLog)
 
         try RuntimeGuestLogCollector(installedPaths: paths, fileStore: fileStore).collect()
 
@@ -52,6 +53,7 @@ final class RuntimeGuestLogCollectorTests: XCTestCase {
             "rotated\n"
         )
         XCTAssertEqual(try String(contentsOf: paths.centralRedisBackupLog, encoding: .utf8), "redis\n")
+        XCTAssertEqual(try String(contentsOf: paths.centralUpdateShutdownLog, encoding: .utf8), "shutdown\n")
     }
 
     func testCollectArchivesCentralLogWhenSourceWasRotatedOrRecreated() throws {
