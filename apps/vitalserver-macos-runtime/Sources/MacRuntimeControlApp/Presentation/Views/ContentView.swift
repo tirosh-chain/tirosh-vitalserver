@@ -55,7 +55,7 @@ struct ContentView: View {
                 Task { await viewModel.rollbackRuntime() }
             }
         } message: {
-            Text(viewModel.selectedBackupPath.isEmpty ? AppConstants.StatusText.latestBackupFallback : viewModel.selectedBackupPath)
+            Text(viewModel.selectedBackupPath ?? AppConstants.StatusText.latestBackupFallback)
         }
         .alert(AppConstants.Actions.deleteBackup, isPresented: $showingDeleteBackupConfirmation) {
             Button(AppConstants.Actions.cancel, role: .cancel) {}
@@ -66,7 +66,7 @@ struct ContentView: View {
             Text([
                 AppConstants.StatusText.deleteBackupConfirmation,
                 viewModel.selectedBackupPath,
-            ].filter { !$0.isEmpty }.joined(separator: "\n\n"))
+            ].compactMap { $0 }.joined(separator: "\n\n"))
         }
         .alert(AppConstants.Actions.repairProxyPort, isPresented: $showingRepairProxyConfirmation) {
             Button(AppConstants.Actions.cancel, role: .cancel) {}

@@ -51,7 +51,7 @@ extension RuntimeViewModel {
     }
 
     var selectedBackup: RuntimeBackup? {
-        guard !selectedBackupPath.isEmpty else {
+        guard let selectedBackupPath else {
             return nil
         }
         return backups.first { $0.path == selectedBackupPath }
@@ -62,7 +62,7 @@ extension RuntimeViewModel {
             message = AppConstants.StatusText.actionUnavailable
             return
         }
-        guard !selectedBackupPath.isEmpty else {
+        guard let selectedBackupPath else {
             message = AppConstants.StatusText.missingBackup
             return
         }
@@ -83,7 +83,7 @@ extension RuntimeViewModel {
             message = AppConstants.StatusText.actionUnavailable
             return
         }
-        guard !selectedBackupPath.isEmpty else {
+        guard let selectedBackupPath else {
             message = AppConstants.StatusText.missingBackup
             return
         }
@@ -107,7 +107,7 @@ extension RuntimeViewModel {
             action: { try await self.hostClient.deleteBackup(url: backupURL) }
         )
         if didDelete {
-            selectedBackupPath = ""
+            self.selectedBackupPath = nil
             await refresh()
         }
     }

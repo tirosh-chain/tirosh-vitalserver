@@ -67,7 +67,7 @@ final class RuntimeViewModel: ObservableObject {
     @Published var selectedBundleVerification = ""
     @Published var selectedBundleVerified = false
     @Published var backups: [RuntimeBackup] = []
-    @Published var selectedBackupPath = ""
+    @Published var selectedBackupPath: String?
     @Published var message = AppConstants.StatusText.ready
     @Published var operationDetail = ""
     @Published var logText = AppConstants.StatusText.ready
@@ -164,6 +164,10 @@ final class RuntimeViewModel: ObservableObject {
 
     var hasSelectedBundle: Bool {
         selectedBundleURL != nil
+    }
+
+    var hasSelectedBackup: Bool {
+        selectedBackupPath != nil
     }
 
     var applySettingsConfirmation: String {
@@ -465,14 +469,10 @@ final class RuntimeViewModel: ObservableObject {
 
     func refreshBackupList() async {
         backups = await loadBackupsSnapshot(latestBackupPath: status.latestBackup)
-        if let nextSelectedBackupPath = backupSelectionPolicy.selectedBackupPath(
+        selectedBackupPath = backupSelectionPolicy.selectedBackupPath(
             from: backups,
             currentSelection: selectedBackupPath
-        ) {
-            selectedBackupPath = nextSelectedBackupPath
-        } else {
-            selectedBackupPath = ""
-        }
+        )
     }
 
     private func refreshReleaseInfo() async {

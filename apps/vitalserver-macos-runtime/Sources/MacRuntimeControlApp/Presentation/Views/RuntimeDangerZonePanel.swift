@@ -37,7 +37,7 @@ struct RuntimeDangerZonePanel: View {
                             Picker("", selection: $viewModel.selectedBackupPath) {
                                 ForEach(viewModel.backups) { backup in
                                     Text("\(backup.name) (\(viewModel.presentationFormatter.backupSizeText(backup)))")
-                                        .tag(backup.path)
+                                        .tag(Optional(backup.path))
                                 }
                             }
                             .labelsHidden()
@@ -69,7 +69,7 @@ struct RuntimeDangerZonePanel: View {
                 }
                 .disabled(
                     viewModel.isBusy
-                        || viewModel.selectedBackupPath.isEmpty
+                        || !viewModel.hasSelectedBackup
                         || !viewModel.capabilities.canRollback
                 )
             }
