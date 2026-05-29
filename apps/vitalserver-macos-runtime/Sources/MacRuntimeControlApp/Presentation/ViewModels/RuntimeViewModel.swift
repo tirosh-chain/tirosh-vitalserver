@@ -556,7 +556,7 @@ final class RuntimeViewModel: ObservableObject {
             operationDetail = progressMessage
             return
         }
-        operationDetail = await legacyCommandProgressLineSnapshot() ?? fallback
+        operationDetail = fallback
     }
 
     private func synchronizeFileBackedOperationPresentation() {
@@ -640,13 +640,6 @@ final class RuntimeViewModel: ObservableObject {
             return await readWorker.loadBackups(latestBackupPath: latestBackupPath)
         }
         return hostClient.loadBackups(latestBackupPath: latestBackupPath)
-    }
-
-    private func legacyCommandProgressLineSnapshot() async -> String? {
-        if let readWorker {
-            return await readWorker.legacyCommandProgressLine()
-        }
-        return hostClient.legacyCommandProgressLine()
     }
 
 }

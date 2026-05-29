@@ -68,11 +68,7 @@ struct RuntimeHealthChecker {
             swaggerUIHTTP: swaggerUIHTTP,
             containerObservation: containerObservation,
             vitalDBObservation: guestState?.vitalDBObservation,
-            vmDiagnosticErrors: vmDiagnosticErrors(
-                hostProxyHTTP: hostProxyHTTP,
-                guestHTTP: guestHTTP,
-                guestRuntimeStateFresh: guestRuntimeStateFresh
-            ),
+            vmDiagnosticErrors: [],
             proxyPortFailureReasons: proxyPortFailureReasons(port: proxyPort),
             guestBootstrapFailureReason: guestBootstrapFailureReason()
         ))
@@ -160,12 +156,7 @@ struct RuntimeHealthChecker {
         if let bootstrapResult = guestGateway.loadBootstrapResult() {
             return GuestBootstrapEvaluator.failureReason(bootstrapResult)
         }
-
-        guard fileStore.fileExists(installedPaths.bootstrapLog),
-              let content = try? fileStore.readUTF8Text(installedPaths.bootstrapLog) else {
-            return nil
-        }
-        return LegacyBootstrapLogEvaluator.failureReason(logContent: content)
+        return nil
     }
 
     private func proxyPortFailureReasons(port: Int) -> [RuntimeFailureReason] {
@@ -206,48 +197,6 @@ struct RuntimeHealthChecker {
         let joined = Array(listeners.prefix(5))
             .joined(separator: "_")
         return [.proxyPortInUse(port: port, listeners: joined)]
-    }
-
-    private func vmDiagnosticErrors(
-        hostProxyHTTP: String,
-        guestHTTP: String,
-        guestRuntimeStateFresh: Bool
-    ) -> [RuntimeVMError] {
-        guard !isSuccessfulHTTPStatus(hostProxyHTTP)
-            || !isSuccessfulHTTPStatus(guestHTTP)
-            || !guestRuntimeStateFresh else {
-            return []
-        }
-        let launchdErrorLog = readRuntimeLog("launchd.err.log")
-        let launchdOutputLog = readRuntimeLog("launchd.out.log")
-        var errors: [RuntimeVMError] = []
-        if launchdErrorLog.localizedCaseInsensitiveContains("storage device attachment is invalid") {
-            errors.append(.diskAttachmentInvalid)
-        }
-        if launchdErrorLog.localizedCaseInsensitiveContains("failed to start VM") {
-            errors.append(.launchFailed("virtualization"))
-        }
-        if launchdErrorLog.localizedCaseInsensitiveContains("not enough memory")
-            || launchdErrorLog.localizedCaseInsensitiveContains("insufficient memory") {
-            errors.append(.hostResourceUnavailable("memory"))
-        }
-        if launchdOutputLog.localizedCaseInsensitiveContains("EXT4-fs error")
-            || launchdOutputLog.localizedCaseInsensitiveContains("Filesystem error recorded")
-            || launchdOutputLog.localizedCaseInsensitiveContains("mounting fs with errors") {
-            errors.append(.guestFilesystemError)
-        }
-        if launchdOutputLog.localizedCaseInsensitiveContains("Remounting filesystem read-only") {
-            errors.append(.guestFilesystemReadOnly)
-        }
-        if launchdOutputLog.localizedCaseInsensitiveContains("Input/output error") {
-            errors.append(.guestDiskIO)
-        }
-        return errors
-    }
-
-    private func readRuntimeLog(_ fileName: String) -> String {
-        let content = (try? fileStore.readUTF8Text(installedPaths.centralRuntimeLogsDirectory.appendingPathComponent(fileName))) ?? ""
-        return String(content.suffix(256 * 1024))
     }
 
     private func isSuccessfulHTTPStatus(_ value: String) -> Bool {

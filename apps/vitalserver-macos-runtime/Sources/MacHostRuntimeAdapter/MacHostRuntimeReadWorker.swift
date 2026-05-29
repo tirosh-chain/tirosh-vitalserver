@@ -82,10 +82,6 @@ public actor MacHostRuntimeReadWorker {
         fileReader.vitalFileFolders(root: root)
     }
 
-    public func legacyCommandProgressLine() -> String? {
-        statusReader.legacyCommandProgressLine()
-    }
-
     public func loadReleaseInfo() -> RuntimeReleaseInfo {
         releaseInfo
     }

@@ -199,7 +199,7 @@ final class RuntimeHealthCheckerTests: XCTestCase {
         XCTAssertEqual(snapshot.containerObservation?.composeServices, [])
     }
 
-    func testSnapshotAddsVMDiagnosticErrorsFromLaunchdLogsWhenRuntimeIsUnhealthy() {
+    func testSnapshotDoesNotInferVMDiagnosticErrorsFromLaunchdLogs() {
         let installedPaths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
         let fileStore = RuntimeFileStoreSpy()
         fileStore.files[URL(fileURLWithPath: Constants.InstallPaths.vmBin)] = Data()
@@ -237,12 +237,12 @@ final class RuntimeHealthCheckerTests: XCTestCase {
 
         let snapshot = checker.snapshot()
 
-        XCTAssertEqual(snapshot.vmState, .failed)
-        XCTAssertTrue(snapshot.vmErrors.contains(.launchFailed("virtualization")))
-        XCTAssertTrue(snapshot.vmErrors.contains(.diskAttachmentInvalid))
-        XCTAssertTrue(snapshot.vmErrors.contains(.guestFilesystemError))
-        XCTAssertTrue(snapshot.vmErrors.contains(.guestFilesystemReadOnly))
-        XCTAssertTrue(snapshot.vmErrors.contains(.guestDiskIO))
+        XCTAssertEqual(snapshot.vmState, .starting)
+        XCTAssertFalse(snapshot.vmErrors.contains(.launchFailed("virtualization")))
+        XCTAssertFalse(snapshot.vmErrors.contains(.diskAttachmentInvalid))
+        XCTAssertFalse(snapshot.vmErrors.contains(.guestFilesystemError))
+        XCTAssertFalse(snapshot.vmErrors.contains(.guestFilesystemReadOnly))
+        XCTAssertFalse(snapshot.vmErrors.contains(.guestDiskIO))
     }
 }
 

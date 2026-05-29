@@ -118,10 +118,6 @@ public struct MacHostRuntimeClient: RuntimeControlClient, RuntimeHostClient {
         fileReader.vitalFileFolders(root: root)
     }
 
-    public func legacyCommandProgressLine() -> String? {
-        statusReader.legacyCommandProgressLine()
-    }
-
     public func verifyUpdateBundle(url: URL) async throws -> RuntimeCommandResult {
         try await commandWorker.verifyUpdateBundle(url: url)
     }

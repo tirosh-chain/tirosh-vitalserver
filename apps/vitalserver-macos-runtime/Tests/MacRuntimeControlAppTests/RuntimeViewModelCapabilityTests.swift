@@ -674,10 +674,6 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
         []
     }
 
-    func legacyCommandProgressLine() -> String? {
-        nil
-    }
-
     func verifyUpdateBundle(url: URL) async throws -> RuntimeCommandResult {
         verifyUpdateBundleCount += 1
         verifiedBundleURLs.append(url)

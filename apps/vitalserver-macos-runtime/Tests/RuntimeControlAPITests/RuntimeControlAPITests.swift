@@ -1491,10 +1491,6 @@ private final class FakeRuntimeControlClient: RuntimeControlClient, RuntimeHostC
         []
     }
 
-    func legacyCommandProgressLine() -> String? {
-        nil
-    }
-
     func createDirectory(at url: URL) {}
 
     func verifyUpdateBundle(url: URL) async throws -> RuntimeCommandResult {

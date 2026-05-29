@@ -12,23 +12,19 @@ protocol RuntimeStatusReading: Sendable {
     func loadVitalDBObservation() -> VitalDBObservationDocument?
     func loadVitalDBRecorders() -> RuntimeVitalRecorderHistory
     func loadVitalDBRelationships() -> RuntimeVitalRelationshipHistory
-    func legacyCommandProgressLine() -> String?
 }
 
 struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
     let paths: RuntimePaths
-    var commandLogPath = RuntimeAdapterConstants.Paths.commandLogFile
     private let fileStore: RuntimeFileStore
     private let storageUsageProvider: RuntimeStorageUsageProviding
 
     init(
         paths: RuntimePaths,
-        commandLogPath: String = RuntimeAdapterConstants.Paths.commandLogFile,
         fileStore: RuntimeFileStore = SystemRuntimeFileStore(),
         storageUsageProvider: RuntimeStorageUsageProviding? = nil
     ) {
         self.paths = paths
-        self.commandLogPath = commandLogPath
         self.fileStore = fileStore
         self.storageUsageProvider = storageUsageProvider ?? SystemRuntimeStorageUsageProvider(fileStore: fileStore)
     }
@@ -46,22 +42,6 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
         next.hostProxyHTTP = await httpStatus(url: RuntimeAdapterConstants.Product.hostProxyHealthURL(proxyPort: next.proxyPort))
         next.redisUIHTTP = await httpStatus(url: RuntimeAdapterConstants.Product.redisUIURL(proxyPort: next.proxyPort))
         next.swaggerUIHTTP = await httpStatus(url: RuntimeAdapterConstants.Product.swaggerURL(proxyPort: next.proxyPort))
-        next.vmState = next.failureReasons.contains(.guestRuntimeStateStale)
-            ? .stale
-            : inferredVMState(
-                runtimeInstalled: next.runtimeInstalled,
-                vmServiceLoaded: next.vmServiceLoaded,
-                vmIP: next.vmIP,
-                guestHTTP: next.guestHTTP
-            )
-        next.vmErrors = inferredVMErrors(
-            runtimeInstalled: next.runtimeInstalled,
-            vmServiceLoaded: next.vmServiceLoaded,
-            vmIP: next.vmIP,
-            guestHTTP: next.guestHTTP,
-            runtimeStatePresent: guestRuntimeStateDocument(paths.runtimeState) != nil,
-            runtimeStateStale: next.failureReasons.contains(.guestRuntimeStateStale)
-        )
 
         return withDataDirectoryMetrics(next, settings: settings)
     }
@@ -77,14 +57,6 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
         let vmServiceLoaded = loaded(document?.vmService) ?? launchdLoaded(.vm)
         let vmIP = document?.vmIP ?? guestState?.vmIP ?? readTrimmed(paths.vmIPFile)
         let guestHTTP = document?.guestHTTP ?? guestState?.guestHTTP
-        let inferredVMErrors = inferredVMErrors(
-            runtimeInstalled: runtimeInstalled,
-            vmServiceLoaded: vmServiceLoaded,
-            vmIP: vmIP,
-            guestHTTP: guestHTTP,
-            runtimeStatePresent: guestState != nil,
-            runtimeStateStale: document?.failureReasons.contains(.guestRuntimeStateStale) ?? false
-        )
         let vitalDBObservation = freshestVitalDBObservation(
             document?.vitalDBObservation,
             guestState?.vitalDBObservation
@@ -104,13 +76,8 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
             startedAt: startedAt,
             runtimeVersion: document?.runtimeVersion,
             latestBackup: document?.latestBackup,
-            vmState: document?.vmState ?? inferredVMState(
-                runtimeInstalled: runtimeInstalled,
-                vmServiceLoaded: vmServiceLoaded,
-                vmIP: vmIP,
-                guestHTTP: guestHTTP
-            ),
-            vmErrors: document?.vmErrors ?? inferredVMErrors,
+            vmState: document?.vmState,
+            vmErrors: document?.vmErrors,
             vmIP: vmIP,
             guestHTTP: guestHTTP,
             hostProxyHTTP: document?.hostProxyHTTP,
@@ -185,16 +152,6 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
         )
     }
 
-    func legacyCommandProgressLine() -> String? {
-        let url = URL(fileURLWithPath: commandLogPath)
-        guard fileStore.fileExists(url),
-              let content = try? fileStore.readUTF8Text(url)
-        else {
-            return nil
-        }
-        return LegacyCommandProgressParser.progressMessage(from: content)
-    }
-
     private func httpStatus(url: String) async -> String {
         let result = await ProcessRunner.run(
             RuntimeAdapterConstants.Commands.curl,
@@ -254,67 +211,6 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
         return value.isLoaded
     }
 
-    private func inferredVMState(
-        runtimeInstalled: Bool,
-        vmServiceLoaded: Bool,
-        vmIP: String?,
-        guestHTTP: String?
-    ) -> RuntimeVMState {
-        if !runtimeInstalled {
-            return .notInstalled
-        }
-        if !vmServiceLoaded {
-            return .stopped
-        }
-        guard vmIP != nil else {
-            return .starting
-        }
-        if isSuccessfulHTTPStatus(guestHTTP) {
-            return .running
-        }
-        if guestHTTP == "bootstrap-pending" || guestHTTP == "missing-vm-ip" || guestHTTP == nil {
-            return .starting
-        }
-        return .unreachable
-    }
-
-    private func isSuccessfulHTTPStatus(_ value: String?) -> Bool {
-        guard let value, let code = Int(value) else {
-            return false
-        }
-        return code >= 200 && code < 300
-    }
-
-    private func inferredVMErrors(
-        runtimeInstalled: Bool,
-        vmServiceLoaded: Bool,
-        vmIP: String?,
-        guestHTTP: String?,
-        runtimeStatePresent: Bool,
-        runtimeStateStale: Bool
-    ) -> [RuntimeVMError] {
-        var errors: [RuntimeVMError] = []
-        if !runtimeInstalled {
-            errors.append(.missingExecutable)
-        }
-        if !vmServiceLoaded {
-            errors.append(.serviceNotLoaded(RuntimeServiceState.notLoaded.rawValue))
-        }
-        if vmIP == nil {
-            errors.append(.missingIPAddress)
-        }
-        if !runtimeStatePresent {
-            errors.append(.runtimeStateMissing)
-        }
-        if let guestHTTP, !isSuccessfulHTTPStatus(guestHTTP), guestHTTP != "missing-vm-ip" {
-            errors.append(.guestHTTP(guestHTTP))
-        }
-        if runtimeStateStale {
-            errors.append(.runtimeStateStale)
-        }
-        return errors
-    }
-
     private func launchdLoaded(_ service: RuntimeManagedService) -> Bool {
         ProcessRunner.runSync(
             RuntimeAdapterConstants.Commands.launchctl,
@@ -350,102 +246,6 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
         return port
     }
 
-}
-
-struct LegacyCommandProgressParser {
-    static func progressMessage(from content: String) -> String? {
-        let lines = content
-            .split(separator: "\n", omittingEmptySubsequences: false)
-            .map(String.init)
-            .reversed()
-
-        for rawLine in lines {
-            let line = normalizedProgressLine(rawLine)
-            if line.isEmpty {
-                continue
-            }
-            if let progress = commandProgressMessage(from: line) {
-                return progress
-            }
-        }
-        return nil
-    }
-
-    private static func normalizedProgressLine(_ line: String) -> String {
-        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.hasPrefix("["),
-              let closing = trimmed.firstIndex(of: "]") else {
-            return trimmed
-        }
-        let afterTimestamp = trimmed.index(after: closing)
-        return String(trimmed[afterTimestamp...]).trimmingCharacters(in: .whitespaces)
-    }
-
-    private static func commandProgressMessage(from line: String) -> String? {
-        if line.contains("waiting for runtime health reasons=") {
-            let reasons = value(after: "reasons=", in: line) ?? line
-            return "Waiting for runtime health: \(reasons)"
-        }
-        if line.contains("waiting for guest update activation result") {
-            return "Waiting for VM update activation..."
-        }
-        if line.contains("guest update activation completed") {
-            return "VM update activation completed."
-        }
-        if line.contains("runtime health ok") {
-            return "Runtime health check passed."
-        }
-        if line.contains("bundle apply started") {
-            return "Update bundle apply started."
-        }
-        if line.contains("bundle apply completed") {
-            return "Update bundle apply completed."
-        }
-        if line.contains("bundle apply failed") {
-            return "Update bundle apply failed."
-        }
-        if line.contains("running migration") {
-            return line
-        }
-        if let step = value(after: "step=", in: line),
-           let status = value(after: "status=", in: line) {
-            return "\(stepStatusText(status)): \(humanizeStepName(step))"
-        }
-        if line.contains("error:") || line.contains("status=failed") {
-            return line
-        }
-        return nil
-    }
-
-    private static func value(after marker: String, in line: String) -> String? {
-        guard let range = line.range(of: marker) else {
-            return nil
-        }
-        let remainder = line[range.upperBound...]
-        guard let token = remainder.split(separator: " ").first else {
-            return nil
-        }
-        return String(token)
-    }
-
-    private static func stepStatusText(_ status: String) -> String {
-        switch status {
-        case "started":
-            return "Running"
-        case "completed":
-            return "Completed"
-        case "failed":
-            return "Failed"
-        default:
-            return status.capitalized
-        }
-    }
-
-    private static func humanizeStepName(_ step: String) -> String {
-        step
-            .replacingOccurrences(of: "-", with: " ")
-            .capitalized
-    }
 }
 
 private extension RuntimeVitalBedAssignmentRecord {

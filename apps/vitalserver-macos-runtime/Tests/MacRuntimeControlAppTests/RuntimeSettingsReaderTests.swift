@@ -144,6 +144,50 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         XCTAssertEqual(status.dataDirectoryStats?.sizeBytes, 8)
     }
 
+    func testStatusReaderDoesNotInferVMStateOrErrorsWhenStatusDocumentDoesNotProvideThem() throws {
+        let directory = try temporaryDirectory()
+        let runtimeStatus = directory.appendingPathComponent(RuntimeFileNames.runtimeStatus)
+        try """
+        {
+          "schemaVersion": 2,
+          "product": "TiroshVitalServer",
+          "status": "healthy",
+          "operation": "health",
+          "message": "ok",
+          "updatedAt": "2026-05-26T00:01:00Z",
+          "productRoot": "/tmp/product",
+          "runtimeHome": "/tmp/vm",
+          "runtimeVersion": "1.0.0",
+          "vmService": "loaded",
+          "proxyService": "loaded",
+          "watchdogService": "loaded",
+          "vmIP": "192.168.64.33",
+          "proxyPort": 19090,
+          "hostProxyHTTP": "200",
+          "guestHTTP": "200",
+          "rootfsBase": "present",
+          "vmDisk": "present",
+          "failureReasons": []
+        }
+        """.write(to: runtimeStatus, atomically: true, encoding: .utf8)
+
+        let reader = SystemRuntimeStatusReader(
+            paths: RuntimePaths(
+                launcher: directory.appendingPathComponent("launcher").path,
+                uninstaller: directory.appendingPathComponent("uninstaller").path,
+                vmIPFile: directory.appendingPathComponent(RuntimeFileNames.vmIP).path,
+                runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
+                runtimeStatus: runtimeStatus.path,
+                proxyLaunchDaemon: directory.appendingPathComponent("proxy.plist").path
+            )
+        )
+
+        let status = reader.loadStatus(settings: RuntimeSettings())
+
+        XCTAssertNil(status.vmState)
+        XCTAssertNil(status.vmErrors)
+    }
+
     func testStatusReaderUsesStatusObservationForVitalRecordersWhenSQLiteIsEmpty() throws {
         let directory = try temporaryDirectory()
         let runtimeStatus = directory.appendingPathComponent(RuntimeFileNames.runtimeStatus)
