@@ -50,6 +50,7 @@ enum RuntimeObservationHealthPolicy {
         }
         if let health = service.health,
            !health.isEmpty,
+           health != "starting",
            health != "healthy" {
             return normalizedState(health)
         }

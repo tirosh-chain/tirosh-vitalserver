@@ -161,6 +161,51 @@ final class RuntimeLogExporterTests: XCTestCase {
         XCTAssertEqual(archivedBootstrapLog, "central")
     }
 
+    func testExportCanAddFallbackLogsWhenCopiedCentralDirectoriesAreReadOnly() async throws {
+        let root = try temporaryDirectory()
+        let guestRun = root.appendingPathComponent("vm/data/run", isDirectory: true)
+        let productLogs = root.appendingPathComponent("product/logs", isDirectory: true)
+        let centralGuestLogs = productLogs.appendingPathComponent("guest", isDirectory: true)
+        let destination = root.appendingPathComponent("export.zip")
+        try FileManager.default.createDirectory(at: guestRun, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: centralGuestLogs, withIntermediateDirectories: true)
+        try "source".write(
+            to: guestRun.appendingPathComponent("container-logs.log"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: centralGuestLogs.path)
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: centralGuestLogs.path)
+        }
+
+        var archivedContainerLog: String?
+        let exporter = MacHostRuntimeLogExporter(
+            logCollector: FakeRuntimeLogCollectorForExport(),
+            productLogsDirectory: productLogs,
+            fallbackLogItems: [
+                RuntimeLogExportFallback(
+                    source: guestRun.appendingPathComponent("container-logs.log"),
+                    relativeDestination: "guest/container-logs.log"
+                ),
+            ],
+            rotatedFallbackSets: [],
+            archiveRunner: { _, arguments in
+                let bundleRoot = URL(fileURLWithPath: arguments[4])
+                let temporaryArchive = URL(fileURLWithPath: arguments[5])
+                archivedContainerLog = try? String(
+                    contentsOf: bundleRoot.appendingPathComponent("guest/container-logs.log")
+                )
+                try? "archive".write(to: temporaryArchive, atomically: true, encoding: .utf8)
+                return RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "")
+            }
+        )
+
+        _ = try await exporter.exportLogs(to: destination)
+
+        XCTAssertEqual(archivedContainerLog, "source")
+    }
+
     private func temporaryDirectory() throws -> URL {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("RuntimeLogExporterTests-\(UUID().uuidString)", isDirectory: true)

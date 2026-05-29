@@ -49,6 +49,7 @@ struct MacHostRuntimeLogExporter: RuntimeLogExporting, @unchecked Sendable {
         if !fileManager.fileExists(atPath: bundleRoot.path) {
             try fileManager.createDirectory(at: bundleRoot, withIntermediateDirectories: true)
         }
+        try makeStagingBundleWritable(bundleRoot)
         try copyFallbackLogs(to: bundleRoot)
         try writeExportManifest(to: bundleRoot)
 
@@ -75,6 +76,29 @@ struct MacHostRuntimeLogExporter: RuntimeLogExporting, @unchecked Sendable {
             try fileManager.removeItem(at: destination)
         }
         try fileManager.copyItem(at: source, to: destination)
+    }
+
+    private func makeStagingBundleWritable(_ bundleRoot: URL) throws {
+        try makeStagingItemWritable(bundleRoot, isDirectory: true)
+        guard let enumerator = fileManager.enumerator(
+            at: bundleRoot,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [],
+            errorHandler: nil
+        ) else {
+            return
+        }
+        for case let url as URL in enumerator {
+            let values = try url.resourceValues(forKeys: [.isDirectoryKey])
+            try makeStagingItemWritable(url, isDirectory: values.isDirectory == true)
+        }
+    }
+
+    private func makeStagingItemWritable(_ url: URL, isDirectory: Bool) throws {
+        let attributes = try fileManager.attributesOfItem(atPath: url.path)
+        let permissions = (attributes[.posixPermissions] as? NSNumber)?.uint16Value ?? 0
+        let writablePermissions = Int(permissions | (isDirectory ? 0o700 : 0o600))
+        try fileManager.setAttributes([.posixPermissions: writablePermissions], ofItemAtPath: url.path)
     }
 
     private func copyFallbackLogs(to bundleRoot: URL) throws {

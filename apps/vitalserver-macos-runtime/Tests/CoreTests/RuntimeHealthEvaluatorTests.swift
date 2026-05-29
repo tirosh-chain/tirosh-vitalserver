@@ -126,6 +126,32 @@ final class RuntimeHealthEvaluatorTests: XCTestCase {
         ])
     }
 
+    func testCriticalContainerServiceStartingHealthIsNotARecoveryReason() {
+        let observation = RuntimeContainerObservation(
+            auditProxyHTTP: "200",
+            auditProxyStatus: nil,
+            containerLogsPresent: true,
+            containerLogsBytes: 2048,
+            composeServices: [
+                RuntimeContainerServiceObservation(
+                    service: "edge",
+                    state: "running",
+                    health: "starting"
+                ),
+                RuntimeContainerServiceObservation(
+                    service: "vitaldb-observer",
+                    state: "running",
+                    health: "starting"
+                ),
+            ]
+        )
+
+        let snapshot = RuntimeHealthEvaluator.evaluate(healthyInput(containerObservation: observation))
+
+        XCTAssertTrue(snapshot.isHealthy)
+        XCTAssertEqual(snapshot.failureReasons, [])
+    }
+
     func testCriticalVitalDBAnomalyProducesTypedReason() {
         let observation = VitalDBObservationDocument(
             observedAt: "2026-05-25T00:00:00Z",
