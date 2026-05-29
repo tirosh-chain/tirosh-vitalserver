@@ -158,8 +158,12 @@ final class RuntimeViewModel: ObservableObject {
         presentationFormatter.selectedBundleConfirmation(bundlePath: selectedBundlePath)
     }
 
-    var selectedBundlePath: String {
-        selectedBundleURL?.path ?? ""
+    var selectedBundlePath: String? {
+        selectedBundleURL?.path
+    }
+
+    var hasSelectedBundle: Bool {
+        selectedBundleURL != nil
     }
 
     var applySettingsConfirmation: String {
@@ -461,10 +465,14 @@ final class RuntimeViewModel: ObservableObject {
 
     func refreshBackupList() async {
         backups = await loadBackupsSnapshot(latestBackupPath: status.latestBackup)
-        selectedBackupPath = backupSelectionPolicy.selectedBackupPath(
+        if let nextSelectedBackupPath = backupSelectionPolicy.selectedBackupPath(
             from: backups,
             currentSelection: selectedBackupPath
-        )
+        ) {
+            selectedBackupPath = nextSelectedBackupPath
+        } else {
+            selectedBackupPath = ""
+        }
     }
 
     private func refreshReleaseInfo() async {

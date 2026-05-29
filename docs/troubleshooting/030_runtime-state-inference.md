@@ -22,6 +22,9 @@ Runtime 상태가 실제 상황과 다르게 보이거나, update 진행 상태�
 - 내부 enum을 API read model로 변환할 때 알 수 없는 값을 `warning`, `staleLink` 같은 구체 상태로 바꿉니다.
 - `runtime-state.json`이 없거나 stale인데 `vm-ip` 파일로 guest endpoint를 직접 probing해 상태를 채웁니다.
 - container health가 보고되지 않았는데 `stable`로 분류됩니다.
+- read model이 제공되지 않은 경로/식별자를 빈 문자열로 채워 UI나 API consumer가 값이 있는 것처럼 처리합니다.
+- timestamp가 없을 때 `""`로 치환해 정렬하거나 최신 값을 고릅니다.
+- status document가 이미 제공해야 하는 `vmIP`, `guestHTTP`, VitalDB observation을 raw `runtime-state.json`으로 보정합니다.
 
 ## Impact
 
@@ -63,6 +66,8 @@ rg -n "\\.isHealthy|lightweightRuntimeHealthSnapshot|progressHealthSnapshot" app
 rg -n "\\?\\? \\.staleLink|\\?\\? \\.warning|\\?\\? \\\"unknown\\\"|\\.unknown\\(\\\"unknown\\\"\\)|\\.unknown\\(\\\"command\\\"\\)" apps/vitalserver-macos-runtime/Sources
 rg -n "guestRuntimeState\\(\\)\\?\\.vmIP|readTrimmed\\(.*vmIPFile\\)|statusCode\\(url: \\\"http://\\\\\\(vmIP\\\\\\)" apps/vitalserver-macos-runtime/Sources
 rg -n "containerHealthState\\(.*\\).*\\.stable|return \\.stable" apps/vitalserver-macos-runtime/Sources/Core/Health
+rg -n "\\?\\? \\\"\\\"|lastSeenAt \\?\\? \\\"\\\"" apps/vitalserver-macos-runtime/Sources/RuntimeControl apps/vitalserver-macos-runtime/Sources/MacRuntimeControlApp
+rg -n "document\\?\\.(vmIP|guestHTTP|redisUIHTTP|swaggerUIHTTP).*\\?\\?|freshestVitalDBObservation|guestState\\?\\.vitalDBObservation" apps/vitalserver-macos-runtime/Sources/MacHostRuntimeAdapter
 ```
 
 상태 관련 read path에서 아래 패턴이 보이면 재검토합니다.
@@ -79,6 +84,9 @@ unknown enum -> map to concrete operational state
 nil database field -> store "unknown" as if it were reported
 stale/missing guest state -> probe guest by vm-ip file
 nil health field -> treat as stable
+missing path/id -> expose empty string
+missing timestamp -> compare as empty string
+status document field -> fallback to raw guest runtime-state
 ```
 
 ## Actions
@@ -99,6 +107,9 @@ nil health field -> treat as stable
 10. 내부 typed enum을 API read model로 옮길 때는 exhaustive mapping을 사용하고, unknown을 임의의 구체 값으로 바꾸지 않습니다.
 11. Guest HTTP 상태는 guest가 제공한 runtime-state만 사용합니다. `vm-ip` 파일을 이용해 Host가 guest readiness를 대신 probing하지 않습니다.
 12. 보고되지 않은 container health는 `stable`이 아니라 `unreported`로 분류합니다.
+13. API/read model에서 미보고 경로와 식별자는 optional로 유지합니다. UI만 표시 단계에서 `Not reported`로 포맷합니다.
+14. timestamp 정렬은 explicit comparator를 사용합니다. `nil` timestamp를 빈 문자열로 변환하지 않습니다.
+15. Runtime status API는 status document가 제공해야 하는 필드를 raw guest runtime-state로 보정하지 않습니다. raw guest runtime-state는 resource usage처럼 그 문서가 직접 소유한 값에만 사용합니다.
 
 ## Prevention
 
@@ -123,6 +134,9 @@ nil health field -> treat as stable
 - 저장소 read path에서 누락된 상태 필드를 `"unknown"`으로 저장/노출
 - stale 또는 missing guest state를 `vm-ip` 파일과 HTTP probe로 보정
 - 누락된 health 값을 stable/healthy로 분류
+- 미보고 경로/식별자를 빈 문자열로 채워 contract 부재를 숨김
+- timestamp 정렬/선택에서 `nil`을 `""`로 비교
+- status document의 누락 필드를 raw guest runtime-state로 보정
 
 ## Operational Notes
 
@@ -146,3 +160,6 @@ nil health field -> treat as stable
 - 2026-05-29: VitalDB relationship event/severity를 Remote Console read model로 옮길 때 `staleLink`/`warning`으로 fallback하던 로직을 제거하고 exhaustive mapping으로 변경했습니다.
 - 2026-05-29: `RuntimeHealthChecker`가 missing/stale `runtime-state.json` 상태에서 `vm-ip` 파일로 guest readiness를 직접 probing하던 경로를 제거했습니다. Guest HTTP 상태는 runtime-state가 제공한 값만 사용합니다.
 - 2026-05-29: container health 미보고 값을 `stable`로 분류하지 않고 `unreported`로 명시했습니다. `RuntimeHealthInput`의 guest runtime-state 기본값도 제거해 호출자가 present/fresh 여부를 직접 넘기게 했습니다.
+- 2026-05-30: `RuntimeInstallInfo`의 경로/식별자 빈 문자열 fallback을 optional로 변경했습니다. Swift UI는 표시 단계에서만 `Not reported`로 포맷합니다.
+- 2026-05-30: Vital recorder/bed 최신값 선택과 정렬에서 `lastSeenAt ?? ""` 비교를 제거하고 explicit timestamp comparator로 변경했습니다.
+- 2026-05-30: `RuntimeStatusReader`가 status document의 `vmIP`, `guestHTTP`, UI HTTP, VitalDB observation을 raw `runtime-state.json`으로 보정하던 경로를 제거했습니다. Runtime status API는 status document가 보고한 상태만 노출하고, raw guest runtime-state는 resource usage 소스로만 사용합니다.

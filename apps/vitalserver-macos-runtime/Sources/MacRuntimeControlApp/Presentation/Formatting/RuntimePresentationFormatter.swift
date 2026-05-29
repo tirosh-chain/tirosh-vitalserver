@@ -15,13 +15,14 @@ struct RuntimePresentationFormatter {
         return String(format: "%.1f MiB", max(mib, 0))
     }
 
-    func selectedBundleConfirmation(bundlePath: String) -> String {
-        [
+    func selectedBundleConfirmation(bundlePath: String?) -> String {
+        guard let bundlePath, !bundlePath.isEmpty else {
+            return AppConstants.StatusText.updateBundleConfirmation
+        }
+        return [
             AppConstants.StatusText.updateBundleConfirmation,
             bundlePath,
-        ]
-        .filter { !$0.isEmpty }
-        .joined(separator: "\n\n")
+        ].joined(separator: "\n\n")
     }
 
     func applySettingsConfirmation(settings: RuntimeSettings) -> String {

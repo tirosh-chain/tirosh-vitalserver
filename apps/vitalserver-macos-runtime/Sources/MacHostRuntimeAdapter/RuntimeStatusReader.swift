@@ -52,15 +52,8 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
         let guestState = guestRuntimeStateDocument(paths.runtimeState)
         let containerObservation = document?.containerObservation
         let startedAt = containerObservation?.composeServices.first { $0.service == "app" }?.startedAt
-            ?? guestState?.containerServices?.first { $0.service == "app" }?.startedAt
         let runtimeInstalled = fileStore.isExecutableFile(atPath: paths.launcher)
         let vmServiceLoaded = loaded(document?.vmService) ?? launchdLoaded(.vm)
-        let vmIP = document?.vmIP ?? guestState?.vmIP
-        let guestHTTP = document?.guestHTTP ?? guestState?.guestHTTP
-        let vitalDBObservation = freshestVitalDBObservation(
-            document?.vitalDBObservation,
-            guestState?.vitalDBObservation
-        )
 
         return RuntimeStatus(
             runtimeInstalled: runtimeInstalled,
@@ -78,11 +71,11 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
             latestBackup: document?.latestBackup,
             vmState: document?.vmState,
             vmErrors: document?.vmErrors,
-            vmIP: vmIP,
-            guestHTTP: guestHTTP,
+            vmIP: document?.vmIP,
+            guestHTTP: document?.guestHTTP,
             hostProxyHTTP: document?.hostProxyHTTP,
-            redisUIHTTP: document?.redisUIHTTP ?? guestState?.redisUIHTTP,
-            swaggerUIHTTP: document?.swaggerUIHTTP ?? guestState?.swaggerUIHTTP,
+            redisUIHTTP: document?.redisUIHTTP,
+            swaggerUIHTTP: document?.swaggerUIHTTP,
             cpuUsagePercent: guestState?.cpuUsagePercent,
             memory: guestState?.memory,
             systemDisk: guestState?.systemDisk,
@@ -91,23 +84,8 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
             failureReasons: document?.failureReasons ?? [],
             progress: document?.progress,
             containerObservation: containerObservation,
-            vitalDBObservation: vitalDBObservation
+            vitalDBObservation: document?.vitalDBObservation
         )
-    }
-
-    private func freshestVitalDBObservation(
-        _ statusObservation: VitalDBObservationDocument?,
-        _ guestObservation: VitalDBObservationDocument?
-    ) -> VitalDBObservationDocument? {
-        guard let statusObservation else {
-            return guestObservation
-        }
-        guard let guestObservation else {
-            return statusObservation
-        }
-        return guestObservation.observedAt > statusObservation.observedAt
-            ? guestObservation
-            : statusObservation
     }
 
     func loadRuntimeEvents(limit: Int) -> RuntimeEventHistory {

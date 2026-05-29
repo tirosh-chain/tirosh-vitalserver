@@ -401,6 +401,7 @@ enum AppConstants {
         static let notAvailable = "Not Available"
         static let noLogData = "No log data for this source yet."
         static let unknown = "Unknown"
+        static let notReported = "Not reported"
         static let online = "Online"
         static let offline = "Offline"
         static let stale = "Stale"

@@ -8,7 +8,11 @@ extension RuntimeViewModel {
             message = AppConstants.StatusText.actionUnavailable
             return
         }
-        openFolder(installationInfo.backupsPath)
+        guard let backupsPath = installationInfo.backupsPath else {
+            message = AppConstants.StatusText.notReported
+            return
+        }
+        openFolder(backupsPath)
     }
 
     func openRedisBackups() {
@@ -16,7 +20,11 @@ extension RuntimeViewModel {
             message = AppConstants.StatusText.actionUnavailable
             return
         }
-        openFolder(installationInfo.redisBackupsPath)
+        guard let redisBackupsPath = installationInfo.redisBackupsPath else {
+            message = AppConstants.StatusText.notReported
+            return
+        }
+        openFolder(redisBackupsPath)
     }
 
     func createRedisBackup() async {
@@ -79,10 +87,14 @@ extension RuntimeViewModel {
             message = AppConstants.StatusText.missingBackup
             return
         }
+        guard let backupsPath = installationInfo.backupsPath else {
+            message = AppConstants.StatusText.notReported
+            return
+        }
         let backupURL = URL(fileURLWithPath: selectedBackupPath)
         guard backupSelectionPolicy.isManagedBackupURL(
             backupURL,
-            backupsRoot: URL(fileURLWithPath: installationInfo.backupsPath)
+            backupsRoot: URL(fileURLWithPath: backupsPath)
         ) else {
             message = AppConstants.StatusText.invalidBackup
             return

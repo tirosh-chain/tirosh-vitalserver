@@ -13,9 +13,9 @@ final class RuntimePresentationFormatterTests: XCTestCase {
         )
     }
 
-    func testSelectedBundleConfirmationOmitsEmptyBundlePath() {
+    func testSelectedBundleConfirmationOmitsMissingBundlePath() {
         XCTAssertEqual(
-            formatter.selectedBundleConfirmation(bundlePath: ""),
+            formatter.selectedBundleConfirmation(bundlePath: nil),
             AppConstants.StatusText.updateBundleConfirmation
         )
     }

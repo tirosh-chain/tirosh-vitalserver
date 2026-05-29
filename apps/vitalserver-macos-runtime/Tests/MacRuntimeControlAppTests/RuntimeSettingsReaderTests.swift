@@ -250,7 +250,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         XCTAssertEqual(history.recorders.first?.status, .online)
     }
 
-    func testStatusReaderUsesFreshGuestObservationForVitalRecordersWhenStatusObservationIsStale() throws {
+    func testStatusReaderDoesNotOverrideStatusObservationWithRawGuestState() throws {
         let directory = try temporaryDirectory()
         let runtimeStatus = directory.appendingPathComponent(RuntimeFileNames.runtimeStatus)
         let runtimeState = directory.appendingPathComponent(RuntimeFileNames.runtimeState)
@@ -341,9 +341,9 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         let status = reader.loadStatus(settings: RuntimeSettings())
         let history = reader.loadVitalDBRecorders()
 
-        XCTAssertEqual(status.vitalDBObservation?.observedAt, "2026-05-26T00:01:05Z")
-        XCTAssertEqual(history.updatedAt, "2026-05-26T00:01:05Z")
-        XCTAssertEqual(history.recorders.map(\.vrcode), ["VR_FRESH_GUEST"])
+        XCTAssertEqual(status.vitalDBObservation?.observedAt, "2026-05-26T00:01:00Z")
+        XCTAssertEqual(history.updatedAt, "2026-05-26T00:01:00Z")
+        XCTAssertEqual(history.recorders.map(\.vrcode), ["VR_STALE_STATUS"])
         XCTAssertEqual(history.recorders.first?.status, .online)
     }
 

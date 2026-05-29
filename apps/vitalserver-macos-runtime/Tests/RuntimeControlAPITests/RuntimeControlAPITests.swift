@@ -70,7 +70,7 @@ final class RuntimeControlAPITests: XCTestCase {
     func testRuntimeInstallInfoDoesNotInferRedisBackupPathFromRollbackBackupPath() {
         let installInfo = RuntimeInstallInfo(backupsPath: "/rollback/backups")
 
-        XCTAssertEqual(installInfo.redisBackupsPath, "")
+        XCTAssertNil(installInfo.redisBackupsPath)
     }
 
     func testEndpointMatchingIgnoresQueryString() {

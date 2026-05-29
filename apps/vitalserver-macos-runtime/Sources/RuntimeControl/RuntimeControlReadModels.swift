@@ -104,24 +104,24 @@ public struct RuntimeBundledServiceInfo: Codable, Equatable, Identifiable, Senda
 }
 
 public struct RuntimeInstallInfo: Codable, Equatable, Sendable {
-    public let appBundlePath: String
-    public let packageIdentifier: String
-    public let runtimeHomePath: String
-    public let backupsPath: String
-    public let redisBackupsPath: String
+    public let appBundlePath: String?
+    public let packageIdentifier: String?
+    public let runtimeHomePath: String?
+    public let backupsPath: String?
+    public let redisBackupsPath: String?
 
     public init(
-        appBundlePath: String = "",
-        packageIdentifier: String = "",
-        runtimeHomePath: String = "",
-        backupsPath: String = "",
+        appBundlePath: String? = nil,
+        packageIdentifier: String? = nil,
+        runtimeHomePath: String? = nil,
+        backupsPath: String? = nil,
         redisBackupsPath: String? = nil
     ) {
         self.appBundlePath = appBundlePath
         self.packageIdentifier = packageIdentifier
         self.runtimeHomePath = runtimeHomePath
         self.backupsPath = backupsPath
-        self.redisBackupsPath = redisBackupsPath ?? ""
+        self.redisBackupsPath = redisBackupsPath
     }
 }
 
@@ -423,12 +423,14 @@ public struct RuntimeVitalRecorderHistory: Codable, Equatable, Sendable {
         }
 
         let records = unsortedRecords.sorted { lhs, rhs in
-            let lhsLastSeen = lhs.lastSeenAt ?? ""
-            let rhsLastSeen = rhs.lastSeenAt ?? ""
-            if lhsLastSeen == rhsLastSeen {
+            switch compareReportedTimestamp(lhs.lastSeenAt, rhs.lastSeenAt) {
+            case .orderedDescending:
+                return true
+            case .orderedAscending:
+                return false
+            case .orderedSame:
                 return lhs.vrcode < rhs.vrcode
             }
-            return lhsLastSeen > rhsLastSeen
         }
 
         let beds = bedBuilders.values.map { builder in
@@ -437,12 +439,14 @@ public struct RuntimeVitalRecorderHistory: Codable, Equatable, Sendable {
             return builder.record(latestBed: latestBed, currentAnomalies: anomalies)
         }
         .sorted { lhs, rhs in
-            let lhsLastSeen = lhs.lastSeenAt ?? ""
-            let rhsLastSeen = rhs.lastSeenAt ?? ""
-            if lhsLastSeen == rhsLastSeen {
+            switch compareReportedTimestamp(lhs.lastSeenAt, rhs.lastSeenAt) {
+            case .orderedDescending:
+                return true
+            case .orderedAscending:
+                return false
+            case .orderedSame:
                 return lhs.bedID < rhs.bedID
             }
-            return lhsLastSeen > rhsLastSeen
         }
 
         self.init(updatedAt: latestObservation.observedAt, recorders: records, beds: beds)
@@ -596,7 +600,7 @@ public struct RuntimeVitalRecorderSummary: Codable, Equatable, Sendable {
         if let observation {
             let recorders = uniqueRecordersByVrcode(observation.recorders)
             let latest = recorders
-                .sorted { ($0.lastSeenAt ?? "") > ($1.lastSeenAt ?? "") }
+                .sorted { compareReportedTimestamp($0.lastSeenAt, $1.lastSeenAt) == .orderedDescending }
                 .first
             self.init(
                 source: .vitalDBObservation,
@@ -621,7 +625,7 @@ public struct RuntimeVitalRecorderSummary: Codable, Equatable, Sendable {
 
         let uniqueConnections = uniqueConnectionsByVrcode(connectionRecorders)
         let latest = uniqueConnections
-            .sorted { ($0.lastSeenAt ?? "") > ($1.lastSeenAt ?? "") }
+            .sorted { compareReportedTimestamp($0.lastSeenAt, $1.lastSeenAt) == .orderedDescending }
             .first
         self.init(
             source: uniqueConnections.isEmpty ? .unavailable : .auditProxy,
@@ -677,10 +681,9 @@ private func preferredRecorder(
     _ current: VitalDBRecorderObservation,
     _ candidate: VitalDBRecorderObservation
 ) -> VitalDBRecorderObservation {
-    let currentLastSeenAt = current.lastSeenAt ?? ""
-    let candidateLastSeenAt = candidate.lastSeenAt ?? ""
-    if candidateLastSeenAt != currentLastSeenAt {
-        return candidateLastSeenAt > currentLastSeenAt ? candidate : current
+    let timestampOrder = compareReportedTimestamp(candidate.lastSeenAt, current.lastSeenAt)
+    if timestampOrder != .orderedSame {
+        return timestampOrder == .orderedDescending ? candidate : current
     }
     if candidate.online != current.online {
         return candidate.online ? candidate : current
@@ -695,10 +698,9 @@ private func preferredConnection(
     _ current: RuntimeRecorderConnectionObservation,
     _ candidate: RuntimeRecorderConnectionObservation
 ) -> RuntimeRecorderConnectionObservation {
-    let currentLastSeenAt = current.lastSeenAt ?? ""
-    let candidateLastSeenAt = candidate.lastSeenAt ?? ""
-    if candidateLastSeenAt != currentLastSeenAt {
-        return candidateLastSeenAt > currentLastSeenAt ? candidate : current
+    let timestampOrder = compareReportedTimestamp(candidate.lastSeenAt, current.lastSeenAt)
+    if timestampOrder != .orderedSame {
+        return timestampOrder == .orderedDescending ? candidate : current
     }
     if candidate.activeConnections != current.activeConnections {
         return candidate.activeConnections > current.activeConnections ? candidate : current
@@ -710,15 +712,29 @@ private func preferredBed(
     _ current: VitalDBBedObservation,
     _ candidate: VitalDBBedObservation
 ) -> VitalDBBedObservation {
-    let currentLastSeenAt = current.lastSeenAt ?? ""
-    let candidateLastSeenAt = candidate.lastSeenAt ?? ""
-    if candidateLastSeenAt != currentLastSeenAt {
-        return candidateLastSeenAt > currentLastSeenAt ? candidate : current
+    let timestampOrder = compareReportedTimestamp(candidate.lastSeenAt, current.lastSeenAt)
+    if timestampOrder != .orderedSame {
+        return timestampOrder == .orderedDescending ? candidate : current
     }
     if candidate.online != current.online {
         return candidate.online ? candidate : current
     }
     return candidate
+}
+
+private func compareReportedTimestamp(_ lhs: String?, _ rhs: String?) -> ComparisonResult {
+    switch (lhs, rhs) {
+    case let (lhs?, rhs?) where lhs != rhs:
+        return lhs > rhs ? .orderedDescending : .orderedAscending
+    case (.some, .some):
+        return .orderedSame
+    case (.some, nil):
+        return .orderedDescending
+    case (nil, .some):
+        return .orderedAscending
+    case (nil, nil):
+        return .orderedSame
+    }
 }
 
 private struct RecorderBuilder {
