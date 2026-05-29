@@ -30,6 +30,7 @@ const runtimeEventTypeSchema = z.enum([
   "health-observed",
   "recovery-triggered",
   "recovery-completed",
+  "recovery-suppressed",
   "domain-error-observed",
   "vm-error-observed",
   "container-observed",

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   runtimeCommandResponseSchema,
   runtimeCapabilitiesSchema,
+  runtimeEventHistorySchema,
   runtimeOverviewSchema,
   vitalDBRecordersSchema
 } from "./runtimeControlSchemas";
@@ -48,6 +49,24 @@ describe("runtime control contract schemas", () => {
       runtimeControlHTTP: "200",
       runtimeControlStartedAt: "2026-05-26T04:30:00Z"
     });
+  });
+
+  it("accepts recovery-suppressed runtime events from the Helper", () => {
+    expect(
+      runtimeEventHistorySchema.parse({
+        events: [
+          {
+            id: "event-1",
+            eventType: "recovery-suppressed",
+            timestamp: "2026-05-29T11:00:00Z",
+            status: "critical",
+            message: "watchdog recovery suppressed"
+          }
+        ],
+        nextCursor: null,
+        matchingCount: 1
+      }).events?.[0]?.eventType
+    ).toBe("recovery-suppressed");
   });
 
   it("rejects malformed VRecorder activity samples", () => {
