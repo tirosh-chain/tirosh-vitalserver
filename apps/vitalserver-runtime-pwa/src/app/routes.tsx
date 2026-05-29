@@ -15,18 +15,40 @@ export type RuntimeControlRoute = {
   path: string;
   label: string;
   Page: ComponentType;
+  group: "primary" | "utility" | "overflow";
   requiresTestTools?: boolean;
 };
 
 export const runtimeControlRoutes: RuntimeControlRoute[] = [
-  { path: "/", label: "Status", Page: StatusPage },
-  { path: "/settings", label: "Settings", Page: SettingsPage },
-  { path: "/update", label: "Update", Page: UpdatePage },
-  { path: "/observability", label: "Observability", Page: ObservabilityPage },
-  { path: "/recorders", label: "Recorders", Page: RecordersPage },
-  { path: "/beds", label: "Beds", Page: BedsPage },
-  { path: "/logs", label: "Logs", Page: LogsPage },
-  { path: "/advanced", label: "Advanced", Page: AdvancedPage },
-  { path: "/danger-zone", label: "Danger Zone", Page: DangerZonePage },
-  { path: "/test", label: "Test", Page: TestKitPage, requiresTestTools: true }
+  { path: "/", label: "Status", Page: StatusPage, group: "primary" },
+  {
+    path: "/recorders",
+    label: "Recorders",
+    Page: RecordersPage,
+    group: "primary"
+  },
+  { path: "/beds", label: "Beds", Page: BedsPage, group: "primary" },
+  {
+    path: "/observability",
+    label: "Observability",
+    Page: ObservabilityPage,
+    group: "primary"
+  },
+  { path: "/logs", label: "Logs", Page: LogsPage, group: "primary" },
+  { path: "/settings", label: "Settings", Page: SettingsPage, group: "primary" },
+  { path: "/update", label: "Update", Page: UpdatePage, group: "primary" },
+  { path: "/advanced", label: "Advanced", Page: AdvancedPage, group: "utility" },
+  {
+    path: "/danger-zone",
+    label: "Danger Zone",
+    Page: DangerZonePage,
+    group: "overflow"
+  },
+  {
+    path: "/test",
+    label: "Test",
+    Page: TestKitPage,
+    group: "overflow",
+    requiresTestTools: true
+  }
 ];

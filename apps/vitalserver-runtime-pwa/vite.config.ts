@@ -1,42 +1,8 @@
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
-import { VitePWA } from "vite-plugin-pwa";
 
 export default defineConfig({
-  plugins: [
-    react(),
-    VitePWA({
-      registerType: "autoUpdate",
-      includeAssets: [],
-      manifest: false,
-      workbox: {
-        navigateFallback: "/index.html",
-        runtimeCaching: [
-          {
-            urlPattern: ({ url }) => url.pathname.startsWith("/runtime/"),
-            handler: "NetworkOnly",
-            options: {
-              cacheName: "runtime-control-api"
-            }
-          },
-          {
-            urlPattern: ({ url }) => url.pathname.startsWith("/vitaldb/"),
-            handler: "NetworkOnly",
-            options: {
-              cacheName: "vitaldb-runtime-api"
-            }
-          },
-          {
-            urlPattern: ({ url }) => url.pathname.startsWith("/host/"),
-            handler: "NetworkOnly",
-            options: {
-              cacheName: "host-runtime-api"
-            }
-          }
-        ]
-      }
-    })
-  ],
+  plugins: [react()],
   server: {
     port: 5174,
     proxy: {

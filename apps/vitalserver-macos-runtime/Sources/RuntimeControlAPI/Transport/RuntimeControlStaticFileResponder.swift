@@ -128,9 +128,12 @@ public struct RuntimeControlStaticFileResponder: Sendable {
     }
 
     private func cacheControl(for url: URL) -> String {
-        url.lastPathComponent == "index.html"
-            ? "no-cache"
-            : "public, max-age=31536000, immutable"
+        switch url.lastPathComponent {
+        case "index.html", "sw.js", "registerSW.js", "manifest.webmanifest":
+            return "no-cache"
+        default:
+            return "public, max-age=31536000, immutable"
+        }
     }
 
     private func notFoundResponse() -> RuntimeControlHTTPResponse {

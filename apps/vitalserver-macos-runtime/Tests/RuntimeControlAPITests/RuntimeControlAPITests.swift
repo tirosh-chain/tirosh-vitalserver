@@ -126,6 +126,19 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertEqual(response.headers["Cache-Control"], "public, max-age=31536000, immutable")
     }
 
+    func testStaticFileResponderDoesNotLongCacheServiceWorkerFiles() throws {
+        let root = try makeTemporaryPWA()
+        try "self.skipWaiting()".write(to: root.appendingPathComponent("sw.js"), atomically: true, encoding: .utf8)
+        try "{}".write(to: root.appendingPathComponent("manifest.webmanifest"), atomically: true, encoding: .utf8)
+        let responder = RuntimeControlStaticFileResponder(rootDirectory: root)
+
+        let serviceWorker = try XCTUnwrap(responder.response(for: .init(method: .get, path: "/sw.js")))
+        let manifest = try XCTUnwrap(responder.response(for: .init(method: .get, path: "/manifest.webmanifest")))
+
+        XCTAssertEqual(serviceWorker.headers["Cache-Control"], "no-cache")
+        XCTAssertEqual(manifest.headers["Cache-Control"], "no-cache")
+    }
+
     func testTestKitEndpointsIncludeManagementActions() {
         XCTAssertEqual(
             RuntimeTestKitAPIEndpoint.matching(method: .post, path: "/dev/testkit/beds/delete"),

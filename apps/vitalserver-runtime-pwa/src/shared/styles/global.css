@@ -83,19 +83,59 @@
   }
 
   .app-tabs {
-    @apply sticky top-0 z-10 -mx-2 mb-5 flex gap-1 overflow-x-auto bg-app-bg/95 px-2 py-2 backdrop-blur-xl;
+    @apply sticky top-0 z-20 -mx-2 mb-5 flex flex-wrap items-center gap-2 bg-app-bg/95 px-2 py-2 backdrop-blur-xl;
+  }
+
+  .app-tab-primary-group {
+    @apply flex flex-wrap gap-1 rounded-panel bg-app-control p-[3px];
+  }
+
+  .app-tab-utility-group {
+    @apply flex flex-none items-center gap-1;
   }
 
   .app-tab {
-    @apply min-w-[82px] flex-none rounded-control border border-transparent px-3 py-2 text-center text-sm text-app-text no-underline sm:min-w-[92px] sm:text-base;
+    @apply min-h-8 min-w-[66px] flex-none rounded-control border border-transparent px-3 py-1.5 text-center text-[13px] font-normal leading-5 text-app-muted no-underline transition;
+  }
+
+  .app-tab-primary {
+    @apply text-app-text;
+  }
+
+  .app-tab-utility {
+    @apply min-w-[70px] text-app-muted;
   }
 
   .app-tab:hover {
-    @apply bg-slate-50;
+    @apply bg-white/60 text-app-text;
   }
 
   .app-tab-active {
-    @apply border-slate-300 bg-app-panel shadow-control;
+    @apply bg-app-panel font-semibold text-app-text shadow-control;
+  }
+
+  .app-tab-danger {
+    @apply text-red-700;
+  }
+
+  .app-tab-menu {
+    @apply relative;
+  }
+
+  .app-tab-menu-button {
+    @apply block cursor-pointer list-none;
+  }
+
+  .app-tab-menu-button::-webkit-details-marker {
+    display: none;
+  }
+
+  .app-tab-menu-list {
+    @apply absolute right-0 top-[calc(100%+6px)] z-30 grid min-w-[150px] gap-1 rounded-panel border border-app-border bg-app-panel p-1 shadow-control;
+  }
+
+  .app-tab-overflow {
+    @apply w-full min-w-0 text-left;
   }
 
   .app-main {
@@ -542,7 +582,7 @@
     }
 
     .app-tab {
-      min-width: 76px;
+      min-width: 66px;
       padding-left: 10px;
       padding-right: 10px;
     }
