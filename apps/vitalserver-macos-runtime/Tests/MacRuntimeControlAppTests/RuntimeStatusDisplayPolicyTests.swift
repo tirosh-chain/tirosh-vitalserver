@@ -89,6 +89,20 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         XCTAssertEqual(vitalServer.severity, .warning)
     }
 
+    func testRemoteConsoleAvailabilityShowsReachabilityAndUptime() {
+        let now = ISO8601DateFormatter().date(from: "2026-05-29T00:02:05Z")!
+        let status = RuntimeStatus(
+            runtimeControlHTTP: "200",
+            runtimeControlStartedAt: "2026-05-29T00:01:00Z"
+        )
+
+        let value = policy.remoteConsoleAvailability(status: status, now: now)
+
+        XCTAssertEqual(value.text, AppConstants.StatusText.reachable)
+        XCTAssertEqual(value.severity, .healthy)
+        XCTAssertEqual(value.uptimeText, "00:01:05")
+    }
+
     func testActionNeededIsHiddenWhenRuntimeIsReady() {
         let status = RuntimeStatus(
             runtimeInstalled: true,

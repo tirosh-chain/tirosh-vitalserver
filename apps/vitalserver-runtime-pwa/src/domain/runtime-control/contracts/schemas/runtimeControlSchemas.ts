@@ -367,6 +367,16 @@ export const runtimeEventHistorySchema = z
   })
   .passthrough();
 
+const recorderActivityBucketSchema = z
+  .object({
+    bucketStartedAt: z.string().optional(),
+    bucketSeconds: z.number().optional(),
+    messageCount: z.number().optional(),
+    byteCount: z.number().optional(),
+    roomCount: z.number().optional()
+  })
+  .passthrough();
+
 const recorderActivityPointSchema = z
   .object({
     observedAt: z.string().optional(),
@@ -375,7 +385,8 @@ const recorderActivityPointSchema = z
     byteCount: z.number().optional(),
     roomCount: z.number().optional(),
     messagesPerSecond: z.number().optional(),
-    bytesPerSecond: z.number().optional()
+    bytesPerSecond: z.number().optional(),
+    buckets: z.array(recorderActivityBucketSchema).optional()
   })
   .passthrough();
 

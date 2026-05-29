@@ -1,16 +1,11 @@
 import { useRuntimeOverview } from "@/application/runtime-control/queries";
 import type { RuntimeControlOverview } from "@/domain/runtime-control/contracts/runtimeControlTypes";
 import { formatBytes } from "@/domain/runtime-control/formatting/bytes";
-import {
-  formatHTTPReachability,
-  runtimeControlURL,
-  runtimeURL
-} from "@/domain/runtime-control/formatting/http";
+import { formatHTTPReachability } from "@/domain/runtime-control/formatting/http";
 import {
   formatRuntimeState,
   runtimeStateTone
 } from "@/domain/runtime-control/formatting/runtimeState";
-import { useAppSettings } from "@/shared/config/AppSettingsContext";
 import {
   formatLocalDateTime,
   formatUptimeSince
@@ -39,22 +34,10 @@ export function StatusPage() {
 }
 
 function StatusOverview({ overview }: { overview: RuntimeControlOverview }) {
-  const appSettings = useAppSettings();
   const status = overview.status;
   const state = status?.runtimeState;
   const stats = status?.dataDirectoryStats;
   const vitalRecorder = overview.vitalRecorder;
-  const vitalServerURL = runtimeURL(
-    status?.proxyPort ?? overview.settings?.proxyPort,
-    appSettings.runtimeControl.defaultProxyPort
-  );
-  const pwaURL = runtimeControlURL(
-    overview.settings?.runtimeControlPort,
-    appSettings.runtimeControl.defaultPort
-  );
-  const remoteConsolePort =
-    overview.settings?.runtimeControlPort ??
-    appSettings.runtimeControl.defaultPort;
 
   return (
     <div className="page-stack">
@@ -71,33 +54,13 @@ function StatusOverview({ overview }: { overview: RuntimeControlOverview }) {
             },
             {
               label: "VitalServer",
-              value: (
-                <a href={vitalServerURL} target="_blank" rel="noreferrer">
-                  {vitalServerURL}
-                </a>
-              ),
-              detail: (
-                <>
-                  {formatHTTPReachability(status?.hostProxyHTTP)}{" "}
-                  {formatUptimeSince(status?.startedAt)}
-                </>
-              )
+              value: formatHTTPReachability(status?.hostProxyHTTP),
+              detail: formatUptimeSince(status?.startedAt)
             },
             {
               label: "Remote Console",
-              value: (
-                <a href={pwaURL} target="_blank" rel="noreferrer">
-                  {pwaURL}
-                </a>
-              ),
-              detail: (
-                <>
-                  {formatHTTPReachability(status?.runtimeControlHTTP)}{" "}
-                  {formatUptimeSince(status?.runtimeControlStartedAt)}
-                  {" · Port "}
-                  {remoteConsolePort}
-                </>
-              )
+              value: formatHTTPReachability(status?.runtimeControlHTTP),
+              detail: formatUptimeSince(status?.runtimeControlStartedAt)
             },
             {
               label: "Data directory",

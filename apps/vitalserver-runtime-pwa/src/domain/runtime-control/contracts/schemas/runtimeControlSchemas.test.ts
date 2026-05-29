@@ -64,6 +64,38 @@ describe("runtime control contract schemas", () => {
     ).toThrow();
   });
 
+  it("accepts VRecorder activity bucket samples", () => {
+    expect(
+      vitalDBRecordersSchema.parse({
+        recorders: [
+          {
+            vrcode: "VR_TEST",
+            status: "online",
+            activityTimeline: [
+              {
+                observedAt: "2026-05-28T00:01:00Z",
+                messageCount: 2,
+                byteCount: 1024,
+                buckets: [
+                  {
+                    bucketStartedAt: "2026-05-28T00:00:00Z",
+                    bucketSeconds: 60,
+                    messageCount: 2,
+                    byteCount: 1024,
+                    roomCount: 1
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }).recorders?.[0]?.activityTimeline?.[0]?.buckets?.[0]
+    ).toMatchObject({
+      bucketStartedAt: "2026-05-28T00:00:00Z",
+      messageCount: 2
+    });
+  });
+
   it("accepts test tool capability flags", () => {
     expect(
       runtimeCapabilitiesSchema.parse({

@@ -54,12 +54,10 @@ struct RuntimeStatusPanel: View {
                 healthStatusValue
             }
             statusRow(GeneratedRelease.vitalServerName) {
-                vitalServerStatusAndURL
+                statusValue(vitalServerAvailability)
             }
             statusRow(AppConstants.Labels.runtimeControlPWA) {
-                linkButton(RuntimeControlLocalAPIConstants.pwaURL(port: viewModel.settings.runtimeControlPort)) {
-                    viewModel.openRuntimeControlPWA()
-                }
+                statusValue(remoteConsoleAvailability)
             }
             statusRow(AppConstants.Labels.dataDirectory) {
                 dataDirectoryValue
@@ -135,21 +133,8 @@ struct RuntimeStatusPanel: View {
         displayPolicy.vitalServerAvailability(status: viewModel.status, observation: viewModel.containerObservation, now: uptimeNow)
     }
 
-    private var vitalServerStatusAndURL: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 12) {
-                linkButton(AppConstants.Product.vitalServerURL(proxyPort: viewModel.status.proxyPort)) {
-                    viewModel.openVitalServer()
-                }
-                statusValue(vitalServerAvailability)
-            }
-            VStack(alignment: .leading, spacing: 4) {
-                linkButton(AppConstants.Product.vitalServerURL(proxyPort: viewModel.status.proxyPort)) {
-                    viewModel.openVitalServer()
-                }
-                statusValue(vitalServerAvailability)
-            }
-        }
+    private var remoteConsoleAvailability: RuntimeStatusDisplayPolicy.StatusValue {
+        displayPolicy.remoteConsoleAvailability(status: viewModel.status, now: uptimeNow)
     }
 
     private var dataDirectoryValue: some View {

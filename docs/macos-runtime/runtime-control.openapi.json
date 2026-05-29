@@ -1828,6 +1828,32 @@
           }
         }
       },
+      "RuntimeVitalRecorderActivityBucket": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "One recorder activity bucket from the VitalDB observer.",
+        "properties": {
+          "bucketStartedAt": {
+            "type": "string"
+          },
+          "bucketSeconds": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "messageCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "byteCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "roomCount": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
       "RuntimeVitalRecorderActivityPoint": {
         "type": "object",
         "additionalProperties": false,
@@ -1859,6 +1885,13 @@
           "bytesPerSecond": {
             "type": "number",
             "minimum": 0
+          },
+          "buckets": {
+            "type": "array",
+            "description": "Per-bucket activity values from the latest observer window.",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeVitalRecorderActivityBucket"
+            }
           }
         }
       },

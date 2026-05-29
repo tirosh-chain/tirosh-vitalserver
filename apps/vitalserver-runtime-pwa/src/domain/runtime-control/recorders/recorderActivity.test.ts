@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import type { RecorderActivityPoint } from "./recorderActivity";
 import {
   buildRecorderActivityBuckets,
   latestRecorderActivityPoint
@@ -57,6 +58,84 @@ describe("recorder activity", () => {
     expect(buckets.map((bucket) => bucket.messageCount)).toEqual([0, 2]);
   });
 
+  it("uses embedded recorder activity buckets from the latest sample", () => {
+    const buckets = buildRecorderActivityBuckets(
+      [
+        activityPointWithBuckets({
+          observedAt: "2026-05-28T00:10:10Z",
+          messageCount: 99,
+          byteCount: 9_999,
+          roomCount: 9,
+          buckets: [
+            {
+              bucketStartedAt: "2026-05-28T00:08:00Z",
+              bucketSeconds: 60,
+              messageCount: 4,
+              byteCount: 400,
+              roomCount: 1
+            },
+            {
+              bucketStartedAt: "2026-05-28T00:09:00Z",
+              bucketSeconds: 60,
+              messageCount: 7,
+              byteCount: 700,
+              roomCount: 2
+            }
+          ]
+        })
+      ],
+      { bucketSeconds: 60 }
+    );
+
+    expect(buckets).toMatchObject([
+      {
+        messageCount: 4,
+        byteCount: 400,
+        roomCount: 1
+      },
+      {
+        messageCount: 7,
+        byteCount: 700,
+        roomCount: 2
+      }
+    ]);
+  });
+
+  it("aggregates embedded recorder activity buckets into the selected interval", () => {
+    const buckets = buildRecorderActivityBuckets(
+      [
+        activityPointWithBuckets({
+          observedAt: "2026-05-28T00:10:10Z",
+          buckets: [
+            {
+              bucketStartedAt: "2026-05-28T00:05:00Z",
+              bucketSeconds: 60,
+              messageCount: 3,
+              byteCount: 300,
+              roomCount: 1
+            },
+            {
+              bucketStartedAt: "2026-05-28T00:06:00Z",
+              bucketSeconds: 60,
+              messageCount: 5,
+              byteCount: 500,
+              roomCount: 2
+            }
+          ]
+        })
+      ],
+      { bucketSeconds: 300 }
+    );
+
+    expect(buckets).toMatchObject([
+      {
+        messageCount: 8,
+        byteCount: 800,
+        roomCount: 3
+      }
+    ]);
+  });
+
   it("returns the latest timestamped activity point", () => {
     expect(
       latestRecorderActivityPoint([
@@ -67,3 +146,17 @@ describe("recorder activity", () => {
     ).toBe(2);
   });
 });
+
+function activityPointWithBuckets(
+  point: RecorderActivityPoint & {
+    buckets: Array<{
+      bucketStartedAt: string;
+      bucketSeconds: number;
+      messageCount: number;
+      byteCount: number;
+      roomCount: number;
+    }>;
+  }
+): RecorderActivityPoint {
+  return point;
+}

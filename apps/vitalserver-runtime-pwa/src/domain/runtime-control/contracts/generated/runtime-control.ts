@@ -910,6 +910,14 @@ export interface components {
             /** @description Chronological activity samples for the VRecorder, derived from VitalDB observer snapshots. */
             activityTimeline?: components["schemas"]["RuntimeVitalRecorderActivityPoint"][];
         };
+        /** @description One recorder activity bucket from the VitalDB observer. */
+        RuntimeVitalRecorderActivityBucket: {
+            bucketStartedAt?: string;
+            bucketSeconds?: number;
+            messageCount?: number;
+            byteCount?: number;
+            roomCount?: number;
+        };
         /** @description Windowed VRecorder data activity sample suitable for UI charts. */
         RuntimeVitalRecorderActivityPoint: {
             observedAt?: string;
@@ -919,6 +927,8 @@ export interface components {
             roomCount?: number;
             messagesPerSecond?: number;
             bytesPerSecond?: number;
+            /** @description Per-bucket activity values from the latest observer window. */
+            buckets?: components["schemas"]["RuntimeVitalRecorderActivityBucket"][];
         };
         /** @enum {string} */
         RuntimeVitalRecorderStatus: "online" | "stale" | "offline" | "unknown";

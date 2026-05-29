@@ -124,6 +124,15 @@ struct RuntimeStatusDisplayPolicy {
         )
     }
 
+    func remoteConsoleAvailability(status: RuntimeStatus, now: Date = Date()) -> StatusValue {
+        let reachable = isSuccessfulHTTPStatus(status.runtimeControlHTTP)
+        return StatusValue(
+            text: reachable ? AppConstants.StatusText.reachable : AppConstants.StatusText.unavailable,
+            severity: reachable ? .healthy : .warning,
+            uptimeText: formatUptime(nil, startedAt: status.runtimeControlStartedAt, observedAt: nil, now: now)
+        )
+    }
+
     func actionNeeded(status: RuntimeStatus) -> ActionNeededItem? {
         if status.isReady || isManagedOperationInProgress(status.runtimeState) {
             return nil

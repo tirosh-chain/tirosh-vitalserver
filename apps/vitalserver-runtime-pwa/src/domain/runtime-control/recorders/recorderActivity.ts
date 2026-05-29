@@ -4,6 +4,10 @@ export type RecorderActivityPoint = NonNullable<
   VitalDBRecorderRecord["activityTimeline"]
 >[number];
 
+type RecorderActivityBucketSample = NonNullable<
+  RecorderActivityPoint["buckets"]
+>[number];
+
 export type RecorderActivityBucket = {
   startMs: number;
   endMs: number;
@@ -45,34 +49,116 @@ export function buildRecorderActivityBuckets(
     : null;
   const bucketMs = options.bucketSeconds * 1_000;
   const buckets = new Map<number, RecorderActivityBucket>();
+  const rawBuckets = activityBuckets(parsed.at(-1)?.point);
+
+  if (rawBuckets.length > 0) {
+    for (const rawBucket of rawBuckets) {
+      addBucket(
+        buckets,
+        {
+          startedAt: rawBucket.bucketStartedAt,
+          messageCount: rawBucket.messageCount,
+          byteCount: rawBucket.byteCount,
+          roomCount: rawBucket.roomCount
+        },
+        bucketMs,
+        "sum"
+      );
+    }
+
+    return filledBuckets(buckets, bucketMs, options.rangeSeconds);
+  }
 
   for (const sample of parsed) {
     if (rangeStartMs !== null && sample.observedMs < rangeStartMs) {
       continue;
     }
 
-    const startMs = Math.floor(sample.observedMs / bucketMs) * bucketMs;
-    const bucket =
-      buckets.get(startMs) ??
+    addBucket(
+      buckets,
       {
-        startMs,
-        endMs: startMs + bucketMs,
-        messageCount: 0,
-        byteCount: 0,
-        roomCount: 0
-      };
-
-    bucket.messageCount += sample.point.messageCount ?? 0;
-    bucket.byteCount += sample.point.byteCount ?? 0;
-    bucket.roomCount = Math.max(bucket.roomCount, sample.point.roomCount ?? 0);
-    buckets.set(startMs, bucket);
+        startedAt: sample.point.observedAt,
+        messageCount: sample.point.messageCount,
+        byteCount: sample.point.byteCount,
+        roomCount: sample.point.roomCount
+      },
+      bucketMs,
+      "max"
+    );
   }
 
+  return filledBuckets(buckets, bucketMs, options.rangeSeconds);
+}
+
+export function latestRecorderActivityPoint(
+  points: RecorderActivityPoint[] | null | undefined
+): RecorderActivityPoint | undefined {
+  return [...(points ?? [])]
+    .filter((point) => timestamp(point.observedAt) !== null)
+    .sort((left, right) => (timestamp(left.observedAt) ?? 0) - (timestamp(right.observedAt) ?? 0))
+    .at(-1);
+}
+
+function activityBuckets(
+  point: RecorderActivityPoint | undefined
+): RecorderActivityBucketSample[] {
+  return Array.isArray(point?.buckets) ? point.buckets : [];
+}
+
+function addBucket(
+  buckets: Map<number, RecorderActivityBucket>,
+  rawBucket: {
+    startedAt?: string;
+    messageCount?: number;
+    byteCount?: number;
+    roomCount?: number;
+  },
+  bucketMs: number,
+  roomCountMode: "max" | "sum"
+) {
+  const rawStartMs = timestamp(rawBucket.startedAt);
+  if (rawStartMs === null) {
+    return;
+  }
+
+  const startMs = Math.floor(rawStartMs / bucketMs) * bucketMs;
+  const bucket =
+    buckets.get(startMs) ??
+    {
+      startMs,
+      endMs: startMs + bucketMs,
+      messageCount: 0,
+      byteCount: 0,
+      roomCount: 0
+    };
+
+  bucket.messageCount += rawBucket.messageCount ?? 0;
+  bucket.byteCount += rawBucket.byteCount ?? 0;
+  bucket.roomCount =
+    roomCountMode === "sum"
+      ? bucket.roomCount + (rawBucket.roomCount ?? 0)
+      : Math.max(bucket.roomCount, rawBucket.roomCount ?? 0);
+  buckets.set(startMs, bucket);
+}
+
+function filledBuckets(
+  buckets: Map<number, RecorderActivityBucket>,
+  bucketMs: number,
+  rangeSeconds?: number | null
+) {
   const bucketStarts = [...buckets.keys()].sort((left, right) => left - right);
+  const latestBucketStart = bucketStarts.at(-1);
+  if (latestBucketStart === undefined) {
+    return [];
+  }
+
+  const rangeStartMs = rangeSeconds
+    ? latestBucketStart - rangeSeconds * 1_000
+    : null;
   const firstBucketStart = rangeStartMs
     ? Math.floor(rangeStartMs / bucketMs) * bucketMs
     : bucketStarts[0];
-  const lastBucketStart = Math.floor(latestMs / bucketMs) * bucketMs;
+  const lastBucketStart = Math.floor(latestBucketStart / bucketMs) * bucketMs;
 
   if (firstBucketStart === undefined) {
     return [];
@@ -92,15 +178,6 @@ export function buildRecorderActivityBuckets(
   }
 
   return filled;
-}
-
-export function latestRecorderActivityPoint(
-  points: RecorderActivityPoint[] | null | undefined
-): RecorderActivityPoint | undefined {
-  return [...(points ?? [])]
-    .filter((point) => timestamp(point.observedAt) !== null)
-    .sort((left, right) => (timestamp(left.observedAt) ?? 0) - (timestamp(right.observedAt) ?? 0))
-    .at(-1);
 }
 
 function timestamp(value: string | null | undefined): number | null {
