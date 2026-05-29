@@ -220,6 +220,13 @@ export function useRepairDatastore() {
   });
 }
 
+export function useRepairVMDisk() {
+  const runtimeControlClient = useRuntimeControlGateway();
+  return useMutation({
+    mutationFn: () => runtimeControlClient.repairVMDisk()
+  });
+}
+
 export function useStartRuntimeServices() {
   const runtimeControlClient = useRuntimeControlGateway();
   return useMutation({

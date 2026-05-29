@@ -343,6 +343,49 @@ extension RuntimeLifecycle {
         )
     }
 
+    func runtimeVMDiskRepairRunner() -> RuntimeVMDiskRepairRunner {
+        RuntimeVMDiskRepairRunner(
+            context: RuntimeVMDiskRepairContext(
+                rootfsBase: rootfsBase,
+                vmDisk: vmDisk,
+                backupsDirectory: backupsDirectory,
+                defaultDiskGiB: Constants.Defaults.defaultDiskGiB,
+                freeSpaceMarginBytes: Constants.Runtime.freeSpaceMarginBytes
+            ),
+            operations: RuntimeVMDiskRepairOperations(
+                fileExists: fileExists,
+                fileSize: fileSize,
+                createDirectory: { url, withIntermediateDirectories in
+                    try fileStore.createDirectory(at: url, withIntermediateDirectories: withIntermediateDirectories)
+                },
+                removeItem: { url in
+                    try fileStore.removeItem(at: url)
+                },
+                moveItem: { source, destination in
+                    try fileStore.moveItem(at: source, to: destination)
+                },
+                requireFreeSpace: { url, minimumBytes, operation in
+                    try storageMaintenance().requireFreeSpace(
+                        at: url,
+                        minimumBytes: minimumBytes,
+                        operation: operation
+                    )
+                },
+                runProcessToFile: runProcessToFile,
+                runRequired: runRequired,
+                createRedisBackup: createRedisBackup,
+                stopRuntimeServices: stopRuntimeServices,
+                startRuntimeServices: startRuntimeServices,
+                waitForHealth: waitForHealth,
+                writeStatus: { status, operation, message in
+                    try writeRuntimeStatus(status, operation: operation, message: message)
+                },
+                timestamp: backupTimestamp,
+                log: log
+            )
+        )
+    }
+
     func runtimeServiceControlRunner() -> RuntimeServiceControlRunner {
         RuntimeServiceControlRunner(
             startRuntimeServices: startRuntimeServices,

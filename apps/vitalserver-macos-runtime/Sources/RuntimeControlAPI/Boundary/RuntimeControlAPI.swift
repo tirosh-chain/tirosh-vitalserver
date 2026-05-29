@@ -67,6 +67,7 @@ public enum RuntimeControlAPIEndpoint: String, CaseIterable, Codable, Equatable,
     case repairRuntimeServices
     case repairProxy
     case repairDatastore
+    case repairVMDisk
     case createRedisBackup
     case uninstall
     case backups
@@ -131,6 +132,8 @@ public enum RuntimeControlAPIEndpoint: String, CaseIterable, Codable, Equatable,
             return .init(method: .post, path: "/runtime/services/repair-proxy", scope: .runtimeControl)
         case .repairDatastore:
             return .init(method: .post, path: "/runtime/services/repair-datastore", scope: .runtimeControl)
+        case .repairVMDisk:
+            return .init(method: .post, path: "/runtime/services/repair-vm-disk", scope: .runtimeControl)
         case .createRedisBackup:
             return .init(method: .post, path: "/runtime/redis/backups", scope: .runtimeControl)
         case .uninstall:
@@ -191,6 +194,7 @@ public extension RuntimeControlAPIEndpoint {
              .repairRuntimeServices,
              .repairProxy,
              .repairDatastore,
+             .repairVMDisk,
              .createRedisBackup,
              .uninstall,
              .backups,

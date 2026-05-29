@@ -12,6 +12,7 @@ final class RuntimeLifecycleCommandTests: XCTestCase {
         XCTAssertEqual(try RuntimeLifecycleCommand.parse(["watchdog"]), .watchdog)
         XCTAssertEqual(try RuntimeLifecycleCommand.parse(["redis-backup"]), .redisBackup)
         XCTAssertEqual(try RuntimeLifecycleCommand.parse(["repair-datastore"]), .repairDatastore)
+        XCTAssertEqual(try RuntimeLifecycleCommand.parse(["repair-vm-disk"]), .repairVMDisk)
         XCTAssertEqual(try RuntimeLifecycleCommand.parse(["repair-services"]), .repairServices)
         XCTAssertEqual(try RuntimeLifecycleCommand.parse(["start-services"]), .startServices)
         XCTAssertEqual(try RuntimeLifecycleCommand.parse(["stop-services"]), .stopServices)
@@ -108,6 +109,7 @@ final class RuntimeLifecycleCommandTests: XCTestCase {
         XCTAssertTrue(RuntimeLifecycleCommand.usage.contains("vitalserver-vm runtime install"))
         XCTAssertTrue(RuntimeLifecycleCommand.usage.contains("vitalserver-vm runtime apply-bundle <bundle.tar.gz>"))
         XCTAssertTrue(RuntimeLifecycleCommand.usage.contains("vitalserver-vm runtime redis-backup"))
+        XCTAssertTrue(RuntimeLifecycleCommand.usage.contains("vitalserver-vm runtime repair-vm-disk"))
         XCTAssertTrue(RuntimeLifecycleCommand.usage.contains("vitalserver-vm runtime repair-services"))
         XCTAssertTrue(RuntimeLifecycleCommand.usage.contains("vitalserver-vm runtime stop-services"))
     }

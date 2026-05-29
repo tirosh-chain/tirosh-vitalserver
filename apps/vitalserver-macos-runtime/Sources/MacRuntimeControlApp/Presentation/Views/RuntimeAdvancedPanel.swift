@@ -6,6 +6,7 @@ struct RuntimeAdvancedPanel: View {
     @Binding var showingRollbackConfirmation: Bool
     @Binding var showingRepairProxyConfirmation: Bool
     @Binding var showingRepairDatastoreConfirmation: Bool
+    @Binding var showingRepairVMDiskConfirmation: Bool
     @Binding var showingRepairRuntimeServicesConfirmation: Bool
     @Binding var showingStartServicesConfirmation: Bool
     @Binding var showingStopServicesConfirmation: Bool
@@ -190,6 +191,11 @@ struct RuntimeAdvancedPanel: View {
 
                         Button(AppConstants.Actions.repairDatastore) {
                             showingRepairDatastoreConfirmation = true
+                        }
+                        .disabled(viewModel.isBusy || !viewModel.status.runtimeInstalled)
+
+                        Button(AppConstants.Actions.repairVMDisk) {
+                            showingRepairVMDiskConfirmation = true
                         }
                         .disabled(viewModel.isBusy || !viewModel.status.runtimeInstalled)
 

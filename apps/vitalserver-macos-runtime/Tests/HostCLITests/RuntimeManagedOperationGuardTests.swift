@@ -72,6 +72,7 @@ final class RuntimeManagedOperationGuardTests: XCTestCase {
         let protectedOperations: [RuntimeOperation] = [
             .redisBackup,
             .repairDatastore,
+            .repairVMDisk,
             .startServices,
             .stopServices,
             .uninstall,

@@ -328,6 +328,7 @@ enum AppConstants {
         static let repairProxy = "Repair Proxy"
         static let repairProxyPort = "Repair Proxy Port"
         static let repairDatastore = "Repair Data Store"
+        static let repairVMDisk = "Repair VM Disk"
         static let repairRuntimeServices = "Repair Runtime Services"
         static let uninstall = "Uninstall"
         static let standardUninstall = "Uninstall..."
@@ -421,6 +422,9 @@ enum AppConstants {
         static let datastoreRepairPreparing = "Preparing data store repair..."
         static let datastoreRepairRunning = "Repairing data store..."
         static let datastoreRepairCompleted = "Data store repair completed."
+        static let vmDiskRepairPreparing = "Preparing VM disk repair..."
+        static let vmDiskRepairRunning = "Recreating VM disk..."
+        static let vmDiskRepairCompleted = "VM disk repair completed."
         static let runtimeServicesRepairPreparing = "Preparing runtime services repair..."
         static let runtimeServicesRepairRunning = "Restarting runtime services..."
         static let runtimeServicesRepaired = "Runtime services repaired."
@@ -471,6 +475,7 @@ enum AppConstants {
         static let latestBackupFallback = "Latest backup"
         static let repairProxyConfirmation = "Stops nginx listeners on the configured proxy port, then restarts the host proxy service. Other process types are reported but not stopped automatically."
         static let repairDatastoreConfirmation = "Checks and repairs the Redis append-only file inside the VM, then restarts VitalServer containers and host services. Redis creates a timestamped backup before fixing a damaged AOF file. Repair can truncate the corrupted tail of the AOF; use Redis backups for full data recovery."
+        static let repairVMDiskConfirmation = "Creates a Redis backup first, then archives the current VM disk, recreates it from the installed base image, and restarts runtime services. If the current VM cannot create a Redis backup, repair continues because the old VM disk is archived before replacement. Vital files stored in the configured host directory are preserved."
         static let repairRuntimeServicesConfirmation = "Restarts the VM, guest log sync, host proxy, and watchdog services. VitalServer may be briefly unavailable while services restart."
         static let startRuntimeServicesConfirmation = "Starts the VM, host proxy, and watchdog services, then waits for VitalServer to become healthy."
         static let stopRuntimeServicesConfirmation = "Stops the watchdog, host proxy, and VM services. VitalServer will be unavailable until runtime services are started again."
@@ -742,6 +747,8 @@ enum AppConstants {
                 return "Redis Backup"
             case "repair-datastore":
                 return "Repair Data Store"
+            case "repair-vm-disk":
+                return "Repair VM Disk"
             case "repair-proxy":
                 return "Repair Proxy"
             case "repair-services":

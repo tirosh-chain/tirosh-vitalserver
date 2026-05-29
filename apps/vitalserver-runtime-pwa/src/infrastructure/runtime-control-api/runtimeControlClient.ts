@@ -351,6 +351,14 @@ export class RuntimeControlClient implements RuntimeControlGateway {
     );
   }
 
+  repairVMDisk(): Promise<RuntimeCommandResponse> {
+    return this.post(
+      "/runtime/services/repair-vm-disk",
+      undefined,
+      runtimeCommandResponseSchema
+    );
+  }
+
   private async get<T>(
     path: string,
     schema: ZodType<T>,

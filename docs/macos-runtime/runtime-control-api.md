@@ -206,6 +206,7 @@ Stable build는 local API server는 유지하되 이 dev console route는 제공
 | `POST` | `/runtime/services/repair-runtime` | repair VM, guest log sync, host proxy, and watchdog services |
 | `POST` | `/runtime/services/repair-proxy` | repair host proxy |
 | `POST` | `/runtime/services/repair-datastore` | repair datastore |
+| `POST` | `/runtime/services/repair-vm-disk` | archive and recreate the mutable VM disk from the installed base image |
 | `POST` | `/runtime/redis/backups` | create recoverable Redis backup |
 | `POST` | `/runtime/uninstall` | uninstall runtime |
 

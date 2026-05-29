@@ -104,6 +104,7 @@ public protocol RuntimeControlAPIReadHandler {
     func repairRuntimeServices() async throws -> RuntimeControlCommandResponse
     func repairProxy(proxyPort: Int) async throws -> RuntimeControlCommandResponse
     func repairDatastore() async throws -> RuntimeControlCommandResponse
+    func repairVMDisk() async throws -> RuntimeControlCommandResponse
     func createRedisBackup() async throws -> RuntimeControlCommandResponse
     func updateBundleSummary(bundle: RuntimeControlFileReference) async throws -> RuntimeUpdateBundleSummaryResponse
     func verifyUpdateBundle(bundle: RuntimeControlFileReference) async throws -> RuntimeControlCommandResponse
@@ -251,6 +252,8 @@ public struct RuntimeControlAPIRouter {
                 return try await jsonResponse(handler.repairProxy(proxyPort: repairRequest.proxyPort))
             case .repairDatastore:
                 return try await jsonResponse(handler.repairDatastore())
+            case .repairVMDisk:
+                return try await jsonResponse(handler.repairVMDisk())
             case .createRedisBackup:
                 return try await jsonResponse(handler.createRedisBackup())
             case .updateBundleSummary:

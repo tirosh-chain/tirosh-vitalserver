@@ -68,6 +68,14 @@ ls -lh "/Library/Application Support/TiroshVitalServer/backups"
 ls -lh "/Library/Application Support/TiroshVitalServer/vm/data/backups" 2>/dev/null || true
 ```
 
+Helper 0.1.9 이후에는 수동 VM disk repair를 사용할 수 있습니다. 이 작업은 Redis backup을 먼저 시도한 뒤 현재 `vm-disk.img`를 `backups/vm-disk-repair-<timestamp>/` 아래로 보관하고, 설치된 `rootfs-base.raw.gz`에서 새 VM disk를 만든 뒤 runtime services를 다시 시작합니다. VM이 이미 부팅 불가능해서 Redis backup이 실패해도 기존 VM disk archive는 남깁니다.
+
+```sh
+sudo /usr/local/bin/vitalserver-vm runtime repair-vm-disk
+```
+
+주의: VM 내부 Redis volume과 Docker runtime state는 새 disk로 교체됩니다. Redis 데이터가 필요하면 Redis backup을 확인하고 복원 절차를 진행합니다. 호스트의 configured Vital files directory는 VM disk 밖에 있으므로 보존됩니다.
+
 운영 판단:
 
 - `activate-update.log`에 `guest update activation completed`가 있어도 이후 health check가 실패할 수 있습니다. 이 경우 update payload가 아니라 VM disk 상태를 먼저 봅니다.

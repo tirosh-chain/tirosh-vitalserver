@@ -15,6 +15,7 @@ enum RuntimeLifecycleCommand: Equatable {
     case rollback(RuntimeRollbackCommand)
     case redisBackup
     case repairDatastore
+    case repairVMDisk
     case repairServices
     case startServices
     case stopServices
@@ -60,6 +61,8 @@ enum RuntimeLifecycleCommand: Equatable {
             return .redisBackup
         case "repair-datastore":
             return .repairDatastore
+        case "repair-vm-disk":
+            return .repairVMDisk
         case "repair-services":
             return .repairServices
         case "start-services":
@@ -88,6 +91,7 @@ enum RuntimeLifecycleCommand: Equatable {
       vitalserver-vm runtime rollback [backup-dir]
       vitalserver-vm runtime redis-backup
       vitalserver-vm runtime repair-datastore
+      vitalserver-vm runtime repair-vm-disk
       vitalserver-vm runtime repair-services
       vitalserver-vm runtime start-services
       vitalserver-vm runtime stop-services

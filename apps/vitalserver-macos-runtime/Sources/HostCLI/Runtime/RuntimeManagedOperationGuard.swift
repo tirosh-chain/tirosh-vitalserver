@@ -15,6 +15,7 @@ struct RuntimeManagedOperationGuard {
         .rollback,
         .redisBackup,
         .repairDatastore,
+        .repairVMDisk,
         .startServices,
         .stopServices,
         .uninstall,

@@ -292,6 +292,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/runtime/services/repair-vm-disk": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Repair VM disk
+         * @description Archives the current mutable VM disk, recreates it from the installed base image, and restarts runtime services.
+         */
+        post: operations["repairRuntimeVMDisk"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/runtime/redis/backups": {
         parameters: {
             query?: never;
@@ -1766,6 +1786,19 @@ export interface operations {
         };
     };
     repairRuntimeDatastore: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["CommandResult"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    repairRuntimeVMDisk: {
         parameters: {
             query?: never;
             header?: never;

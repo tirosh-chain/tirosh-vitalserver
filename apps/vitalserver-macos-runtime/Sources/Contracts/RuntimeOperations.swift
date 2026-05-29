@@ -13,6 +13,7 @@ public enum RuntimeOperation: Codable, Equatable, Sendable {
     case rollback
     case redisBackup
     case repairDatastore
+    case repairVMDisk
     case repairProxy
     case repairServices
     case startServices
@@ -46,6 +47,8 @@ public enum RuntimeOperation: Codable, Equatable, Sendable {
             self = .redisBackup
         case "repair-datastore":
             self = .repairDatastore
+        case "repair-vm-disk":
+            self = .repairVMDisk
         case "repair-proxy":
             self = .repairProxy
         case "repair-services":
@@ -87,6 +90,8 @@ public enum RuntimeOperation: Codable, Equatable, Sendable {
             return "redis-backup"
         case .repairDatastore:
             return "repair-datastore"
+        case .repairVMDisk:
+            return "repair-vm-disk"
         case .repairProxy:
             return "repair-proxy"
         case .repairServices:

@@ -11,6 +11,7 @@ struct ContentView: View {
     @State private var showingDeleteBackupConfirmation = false
     @State private var showingRepairProxyConfirmation = false
     @State private var showingRepairDatastoreConfirmation = false
+    @State private var showingRepairVMDiskConfirmation = false
     @State private var showingRepairRuntimeServicesConfirmation = false
     @State private var showingStartServicesConfirmation = false
     @State private var showingStopServicesConfirmation = false
@@ -82,6 +83,14 @@ struct ContentView: View {
             }
         } message: {
             Text(AppConstants.StatusText.repairDatastoreConfirmation)
+        }
+        .alert(AppConstants.Actions.repairVMDisk, isPresented: $showingRepairVMDiskConfirmation) {
+            Button(AppConstants.Actions.cancel, role: .cancel) {}
+            Button(AppConstants.Actions.repairVMDisk, role: .destructive) {
+                Task { await viewModel.repairVMDisk() }
+            }
+        } message: {
+            Text(AppConstants.StatusText.repairVMDiskConfirmation)
         }
         .alert(AppConstants.Actions.repairRuntimeServices, isPresented: $showingRepairRuntimeServicesConfirmation) {
             Button(AppConstants.Actions.cancel, role: .cancel) {}
@@ -274,6 +283,7 @@ struct ContentView: View {
                 showingRollbackConfirmation: $showingRollbackConfirmation,
                 showingRepairProxyConfirmation: $showingRepairProxyConfirmation,
                 showingRepairDatastoreConfirmation: $showingRepairDatastoreConfirmation,
+                showingRepairVMDiskConfirmation: $showingRepairVMDiskConfirmation,
                 showingRepairRuntimeServicesConfirmation: $showingRepairRuntimeServicesConfirmation,
                 showingStartServicesConfirmation: $showingStartServicesConfirmation,
                 showingStopServicesConfirmation: $showingStopServicesConfirmation,

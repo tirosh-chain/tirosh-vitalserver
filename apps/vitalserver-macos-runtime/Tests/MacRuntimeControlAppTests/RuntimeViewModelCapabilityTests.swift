@@ -29,6 +29,7 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         await viewModel.deleteSelectedBackup()
         await viewModel.repairProxyPort()
         await viewModel.repairDatastore()
+        await viewModel.repairVMDisk()
         await viewModel.repairRuntimeServices()
         await viewModel.createRedisBackup()
         await viewModel.startRuntimeServices()
@@ -46,6 +47,7 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertEqual(client.deleteBackupCount, 0)
         XCTAssertEqual(client.repairProxyCount, 0)
         XCTAssertEqual(client.repairDatastoreCount, 0)
+        XCTAssertEqual(client.repairVMDiskCount, 0)
         XCTAssertEqual(client.repairRuntimeServicesCount, 0)
         XCTAssertEqual(client.createRedisBackupCount, 0)
         XCTAssertEqual(client.startRuntimeServicesCount, 0)
@@ -587,6 +589,7 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     var deleteBackupCount = 0
     var repairProxyCount = 0
     var repairDatastoreCount = 0
+    var repairVMDiskCount = 0
     var repairRuntimeServicesCount = 0
     var createRedisBackupCount = 0
     var startRuntimeServicesCount = 0
@@ -712,6 +715,11 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
 
     func repairDatastore() async throws -> RuntimeCommandResult {
         repairDatastoreCount += 1
+        return success()
+    }
+
+    func repairVMDisk() async throws -> RuntimeCommandResult {
+        repairVMDiskCount += 1
         return success()
     }
 

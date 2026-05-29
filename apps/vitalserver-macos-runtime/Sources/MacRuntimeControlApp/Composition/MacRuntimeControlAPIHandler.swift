@@ -125,6 +125,10 @@ struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
         RuntimeControlCommandResponse(result: try await commandClient.repairDatastore())
     }
 
+    func repairVMDisk() async throws -> RuntimeControlCommandResponse {
+        RuntimeControlCommandResponse(result: try await commandClient.repairVMDisk())
+    }
+
     func createRedisBackup() async throws -> RuntimeControlCommandResponse {
         RuntimeControlCommandResponse(result: try await commandClient.createRedisBackup())
     }

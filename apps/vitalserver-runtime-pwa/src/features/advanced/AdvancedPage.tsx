@@ -8,6 +8,7 @@ import {
   useRepairDatastore,
   useRepairProxy,
   useRepairRuntime,
+  useRepairVMDisk,
   useRuntimeCapabilities,
   useRuntimeOverview,
   useRestoreRedisBackup,
@@ -44,6 +45,7 @@ export function AdvancedPage() {
   const repairRuntime = useRepairRuntime();
   const repairProxy = useRepairProxy();
   const repairDatastore = useRepairDatastore();
+  const repairVMDisk = useRepairVMDisk();
 
   const [selectedHostBackup, setSelectedHostBackup] =
     useState<RuntimeBackup | null>(null);
@@ -58,6 +60,7 @@ export function AdvancedPage() {
       repairRuntime.data ??
       repairProxy.data ??
       repairDatastore.data ??
+      repairVMDisk.data ??
       rollbackBackup.data ??
       deleteHostBackup.data ??
       createRedisBackup.data ??
@@ -66,6 +69,7 @@ export function AdvancedPage() {
       createRedisBackup.data,
       deleteHostBackup.data,
       repairDatastore.data,
+      repairVMDisk.data,
       repairProxy.data,
       repairRuntime.data,
       restoreRedisBackup.data,
@@ -77,6 +81,7 @@ export function AdvancedPage() {
     repairRuntime.error ??
     repairProxy.error ??
     repairDatastore.error ??
+    repairVMDisk.error ??
     rollbackBackup.error ??
     deleteHostBackup.error ??
     createRedisBackup.error ??
@@ -193,6 +198,13 @@ export function AdvancedPage() {
             onClick={() => repairDatastore.mutate()}
           >
             Repair Data Store
+          </ConfirmButton>
+          <ConfirmButton
+            confirmMessage="Create a Redis backup, then recreate the VM disk from the installed base image? If the current VM cannot create a Redis backup, repair continues because the old VM disk is archived before replacement. Vital files stored on the host are preserved."
+            disabled={repairVMDisk.isPending || !canRepair}
+            onClick={() => repairVMDisk.mutate()}
+          >
+            Repair VM Disk
           </ConfirmButton>
         </div>
         <div className="inline-form">

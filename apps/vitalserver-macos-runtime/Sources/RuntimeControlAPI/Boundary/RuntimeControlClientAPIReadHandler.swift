@@ -108,6 +108,10 @@ public struct RuntimeControlClientAPIReadHandler: RuntimeControlAPIReadHandler {
         RuntimeControlCommandResponse(result: try await client.repairDatastore())
     }
 
+    public func repairVMDisk() async throws -> RuntimeControlCommandResponse {
+        RuntimeControlCommandResponse(result: try await client.repairVMDisk())
+    }
+
     public func createRedisBackup() async throws -> RuntimeControlCommandResponse {
         RuntimeControlCommandResponse(result: try await client.createRedisBackup())
     }

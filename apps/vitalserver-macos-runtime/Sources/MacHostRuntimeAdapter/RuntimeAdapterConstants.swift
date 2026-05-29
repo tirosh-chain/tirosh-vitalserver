@@ -42,6 +42,7 @@ enum RuntimeAdapterConstants {
         static let rollback = "rollback"
         static let redisBackup = "redis-backup"
         static let repairDatastore = "repair-datastore"
+        static let repairVMDisk = "repair-vm-disk"
         static let repairServices = "repair-services"
         static let startServices = "start-services"
         static let stopServices = "stop-services"

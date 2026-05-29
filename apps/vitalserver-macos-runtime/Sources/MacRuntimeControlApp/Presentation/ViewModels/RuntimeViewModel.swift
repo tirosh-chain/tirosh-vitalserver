@@ -368,6 +368,21 @@ final class RuntimeViewModel: ObservableObject {
         await refreshHealthStatus()
     }
 
+    func repairVMDisk() async {
+        guard controlClient.capabilities.canControlRuntimeServices else {
+            message = AppConstants.StatusText.actionUnavailable
+            return
+        }
+        _ = await runClientAction(
+            preparingMessage: AppConstants.StatusText.vmDiskRepairPreparing,
+            waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
+            runningMessage: AppConstants.StatusText.vmDiskRepairRunning,
+            successMessage: AppConstants.StatusText.vmDiskRepairCompleted,
+            action: { try await self.controlClient.repairVMDisk() }
+        )
+        await refreshHealthStatus()
+    }
+
     func repairRuntimeServices() async {
         guard controlClient.capabilities.canControlRuntimeServices else {
             message = AppConstants.StatusText.actionUnavailable

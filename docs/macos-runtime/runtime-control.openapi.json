@@ -489,6 +489,24 @@
         }
       }
     },
+    "/runtime/services/repair-vm-disk": {
+      "post": {
+        "operationId": "repairRuntimeVMDisk",
+        "summary": "Repair VM disk",
+        "description": "Archives the current mutable VM disk, recreates it from the installed base image, and restarts runtime services.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "localCommand",
+        "x-runtime-control-access": "localServerMediated",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/CommandResult"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
     "/runtime/redis/backups": {
       "post": {
         "operationId": "createRedisBackup",

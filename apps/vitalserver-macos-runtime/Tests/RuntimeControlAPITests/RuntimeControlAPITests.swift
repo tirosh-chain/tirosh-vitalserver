@@ -471,6 +471,7 @@ final class RuntimeControlAPITests: XCTestCase {
             body: try JSONEncoder().encode(repairProxyRequest)
         )))
         let repairDatastore = try await decode(RuntimeControlCommandResponse.self, from: router.route(.init(method: .post, path: "/runtime/services/repair-datastore")))
+        let repairVMDisk = try await decode(RuntimeControlCommandResponse.self, from: router.route(.init(method: .post, path: "/runtime/services/repair-vm-disk")))
 
         XCTAssertEqual(applySettings.result.stdout, "settings 3")
         XCTAssertEqual(start.result.stdout, "start services")
@@ -478,6 +479,7 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertEqual(repairRuntime.result.stdout, "repair runtime")
         XCTAssertEqual(repairProxy.result.stdout, "repair proxy 8080")
         XCTAssertEqual(repairDatastore.result.stdout, "repair datastore")
+        XCTAssertEqual(repairVMDisk.result.stdout, "repair vm disk")
     }
 
     @MainActor
@@ -1297,6 +1299,10 @@ private struct StubRuntimeControlAPIReadHandler: RuntimeControlAPIReadHandler {
         RuntimeControlCommandResponse(result: RuntimeCommandResult(exitCode: 0, stdout: "repair datastore", stderr: ""))
     }
 
+    func repairVMDisk() async throws -> RuntimeControlCommandResponse {
+        RuntimeControlCommandResponse(result: RuntimeCommandResult(exitCode: 0, stdout: "repair vm disk", stderr: ""))
+    }
+
     func createRedisBackup() async throws -> RuntimeControlCommandResponse {
         RuntimeControlCommandResponse(result: RuntimeCommandResult(exitCode: 0, stdout: "redis backup created", stderr: ""))
     }
@@ -1508,6 +1514,10 @@ private final class FakeRuntimeControlClient: RuntimeControlClient, RuntimeHostC
     }
 
     func repairDatastore() async throws -> RuntimeCommandResult {
+        RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "")
+    }
+
+    func repairVMDisk() async throws -> RuntimeCommandResult {
         RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "")
     }
 

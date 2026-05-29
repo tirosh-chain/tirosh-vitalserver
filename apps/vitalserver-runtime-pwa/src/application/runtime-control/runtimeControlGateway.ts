@@ -96,4 +96,5 @@ export type RuntimeControlGateway = {
   repairRuntime(): Promise<RuntimeCommandResponse>;
   repairProxy(proxyPort?: number): Promise<RuntimeCommandResponse>;
   repairDatastore(): Promise<RuntimeCommandResponse>;
+  repairVMDisk(): Promise<RuntimeCommandResponse>;
 };

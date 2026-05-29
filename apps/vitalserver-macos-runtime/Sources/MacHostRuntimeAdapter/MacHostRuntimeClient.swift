@@ -154,6 +154,10 @@ public struct MacHostRuntimeClient: RuntimeControlClient, RuntimeHostClient {
         try await commandWorker.repairDatastore()
     }
 
+    public func repairVMDisk() async throws -> RuntimeCommandResult {
+        try await commandWorker.repairVMDisk()
+    }
+
     public func repairRuntimeServices() async throws -> RuntimeCommandResult {
         try await commandWorker.repairRuntimeServices()
     }

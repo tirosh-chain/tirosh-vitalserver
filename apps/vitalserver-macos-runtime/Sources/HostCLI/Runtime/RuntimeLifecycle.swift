@@ -116,6 +116,8 @@ struct RuntimeLifecycle {
             try createRedisBackup()
         case .repairDatastore:
             try repairDatastore()
+        case .repairVMDisk:
+            try repairVMDisk()
         case .repairServices:
             try repairServices()
         case .startServices:
@@ -186,6 +188,10 @@ struct RuntimeLifecycle {
 
     func repairDatastore() throws {
         try runtimeDatastoreRepairWorkflow().repair()
+    }
+
+    func repairVMDisk() throws {
+        try runtimeVMDiskRepairRunner().repair()
     }
 
     func createRedisBackup() throws {
