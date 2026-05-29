@@ -1,4 +1,5 @@
 import Contracts
+import Core
 import RuntimeControl
 @testable import MacHostRuntimeAdapter
 import XCTest
@@ -140,6 +141,27 @@ final class RuntimeSettingsReaderTests: XCTestCase {
 
         XCTAssertEqual(status.dataDirectoryStats?.fileCount, 2)
         XCTAssertEqual(status.dataDirectoryStats?.sizeBytes, 8)
+        XCTAssertNil(status.dataDirectoryStatsError)
+    }
+
+    func testStatusReaderReportsDataDirectoryStatsReadFailure() throws {
+        let directory = try temporaryDirectory()
+        let dataDirectory = directory.appendingPathComponent("vital-files", isDirectory: true)
+        let reader = SystemRuntimeStatusReader(
+            paths: RuntimePaths(
+                launcher: directory.appendingPathComponent("launcher").path,
+                uninstaller: directory.appendingPathComponent("uninstaller").path,
+                runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
+                runtimeStatus: directory.appendingPathComponent(RuntimeFileNames.runtimeStatus).path,
+                proxyLaunchDaemon: directory.appendingPathComponent("proxy.plist").path
+            ),
+            fileStore: DataDirectoryReadFailureFileStore(readableDirectory: dataDirectory)
+        )
+
+        let status = reader.loadStatus(settings: RuntimeSettings(vitalFilesDirectory: dataDirectory.path))
+
+        XCTAssertNil(status.dataDirectoryStats)
+        XCTAssertNotNil(status.dataDirectoryStatsError)
     }
 
     func testStatusReaderDoesNotInferVMStateOrErrorsWhenStatusDocumentDoesNotProvideThem() throws {
@@ -360,5 +382,40 @@ final class RuntimeSettingsReaderTests: XCTestCase {
             .appendingPathComponent("RuntimeSettingsReaderTests-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         return directory
+    }
+}
+
+private final class DataDirectoryReadFailureFileStore: RuntimeFileStore {
+    var temporaryDirectory = URL(fileURLWithPath: "/tmp")
+    private let readableDirectory: URL
+
+    init(readableDirectory: URL) {
+        self.readableDirectory = readableDirectory
+    }
+
+    func fileExists(_ url: URL) -> Bool { false }
+    func directoryExists(_ url: URL) -> Bool { url.path == readableDirectory.path }
+    func isExecutableFile(atPath path: String) -> Bool { false }
+    func readData(_ url: URL) throws -> Data { throw CocoaError(.fileReadNoPermission) }
+    func readUTF8Text(_ url: URL) throws -> String { throw CocoaError(.fileReadNoPermission) }
+    func fileSize(_ url: URL) throws -> UInt64 { throw CocoaError(.fileReadNoPermission) }
+    func modificationDate(_ url: URL) throws -> Date { throw CocoaError(.fileReadNoPermission) }
+    func writeData(_ data: Data, to url: URL, options: Data.WritingOptions) throws {}
+    func writeData(_ data: Data, to url: URL, options: Data.WritingOptions, posixPermissions: Int) throws {}
+    func createDirectory(at url: URL, withIntermediateDirectories: Bool) throws {}
+    func removeItem(at url: URL) throws {}
+    func copyItem(at source: URL, to destination: URL) throws {}
+    func moveItem(at source: URL, to destination: URL) throws {}
+    func contentsOfDirectory(at url: URL, skipsHiddenFiles: Bool) throws -> [URL] {
+        throw CocoaError(.fileReadNoPermission)
+    }
+    func childDirectories(at url: URL, nameContains fragment: String, skipsHiddenFiles: Bool) throws -> [URL] {
+        throw CocoaError(.fileReadNoPermission)
+    }
+    func recursiveRegularFileSize(at url: URL, skipsHiddenFiles: Bool) throws -> UInt64 {
+        throw CocoaError(.fileReadNoPermission)
+    }
+    func fileSystemAttributes(forPath path: String) throws -> RuntimeFileSystemAttributes {
+        throw CocoaError(.fileReadNoPermission)
     }
 }

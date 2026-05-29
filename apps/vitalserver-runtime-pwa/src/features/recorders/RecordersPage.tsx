@@ -29,9 +29,10 @@ export function RecordersPage() {
     ? allRecorders
     : allRecorders.filter((recorder) => recorder.presentInLatestObservation !== false);
   const recorders = filterRecorders(visibleRecorders, searchText);
+  const identifiedRecorders = recorders.filter(hasVrcode);
   const selectedRecorder =
-    recorders.find((recorder) => recorder.vrcode === selectedVrcode) ??
-    recorders[0];
+    identifiedRecorders.find((recorder) => recorder.vrcode === selectedVrcode) ??
+    identifiedRecorders[0];
 
   const summary = {
     known: allRecorders.length,
@@ -95,10 +96,10 @@ export function RecordersPage() {
           />
         ) : (
           <DataTable
-            rows={recorders}
-            getRowKey={(recorder) => recorder.vrcode ?? "unknown"}
+            rows={identifiedRecorders}
+            getRowKey={(recorder) => recorder.vrcode}
             selectedKey={selectedRecorder?.vrcode}
-            onSelectRow={(recorder) => setSelectedVrcode(recorder.vrcode ?? null)}
+            onSelectRow={(recorder) => setSelectedVrcode(recorder.vrcode)}
             emptyText="No VRecorders have been observed."
             columns={[
               {
@@ -178,6 +179,12 @@ function RecorderDetails({ recorder }: { recorder: VitalDBRecorderRecord }) {
       </div>
     </Panel>
   );
+}
+
+function hasVrcode(
+  recorder: VitalDBRecorderRecord
+): recorder is VitalDBRecorderRecord & { vrcode: string } {
+  return typeof recorder.vrcode === "string" && recorder.vrcode.length > 0;
 }
 
 function sortByLastSeen(

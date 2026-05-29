@@ -61,9 +61,15 @@ final class RuntimeFileReaderTests: XCTestCase {
             contents: Data()
         )
 
-        let folders = SystemRuntimeHostFileReader().vitalFileFolders(root: directory.path)
+        let folders = try SystemRuntimeHostFileReader().vitalFileFolders(root: directory.path)
 
         XCTAssertEqual(folders.map(\.name), ["alpha", "zeta"])
+    }
+
+    func testVitalFileFoldersPropagatesDirectoryReadFailure() {
+        let reader = SystemRuntimeHostFileReader(fileStore: FailingDirectoryRuntimeFileStore())
+
+        XCTAssertThrowsError(try reader.vitalFileFolders(root: "/restricted"))
     }
 
     func testHelperMessageLogTextUsesNoDataForBlankMessage() {

@@ -670,7 +670,7 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
         return "/logs"
     }
 
-    func vitalFileFolders(root: String) -> [VitalFilesFolder] {
+    func vitalFileFolders(root: String) throws -> [VitalFilesFolder] {
         []
     }
 

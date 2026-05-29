@@ -3,31 +3,45 @@ import Contracts
 import Foundation
 import HostInfrastructure
 
+protocol VitalDBObservationProjectionStore {
+    func append(_ observation: VitalDBObservationDocument) throws
+}
+
+extension SQLiteRuntimeObservabilityStore: VitalDBObservationProjectionStore {}
+
 struct RuntimeObservationRecorder {
     let eventRepository: any RuntimeEventRepository
-    let observabilityStore: SQLiteRuntimeObservabilityStore
+    let vitalDBObservationStore: any VitalDBObservationProjectionStore
     let log: (String) -> Void
 
     init(
         eventRepository: any RuntimeEventRepository,
-        observabilityStore: SQLiteRuntimeObservabilityStore,
+        vitalDBObservationStore: any VitalDBObservationProjectionStore,
         log: @escaping (String) -> Void
     ) {
         self.eventRepository = eventRepository
-        self.observabilityStore = observabilityStore
+        self.vitalDBObservationStore = vitalDBObservationStore
         self.log = log
     }
 
-    func record(_ event: RuntimeEventDocument) throws {
+    func recordEvent(_ event: RuntimeEventDocument) throws {
         try eventRepository.append(event)
         if let vitalDBObservation = event.vitalDBObservation {
-            try? observabilityStore.append(vitalDBObservation)
+            do {
+                try vitalDBObservationStore.append(vitalDBObservation)
+            } catch {
+                log(
+                    "vitaldb observation recording failed " +
+                        "eventType=\(event.eventType.rawValue) observedAt=\(vitalDBObservation.observedAt) " +
+                        "error=\(error.localizedDescription)"
+                )
+            }
         }
     }
 
-    func recordBestEffort(_ event: RuntimeEventDocument) {
+    func recordEventBestEffort(_ event: RuntimeEventDocument) {
         do {
-            try record(event)
+            try recordEvent(event)
         } catch {
             log("observability event recording failed eventType=\(event.eventType.rawValue) error=\(error.localizedDescription)")
         }

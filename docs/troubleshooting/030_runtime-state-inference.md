@@ -30,6 +30,10 @@ Runtime 상태가 실제 상황과 다르게 보이거나, update 진행 상태�
 - 배포되지 않은 구버전 layout을 추정해 runtime install path에서 legacy log migration을 수행합니다.
 - 상태 fallback이 아닌 진단용 추가 로그 소스를 `fallback`으로 이름 붙여 의미를 흐립니다.
 - status/progress/event 기록 실패를 `try?`로 무시해 상태 기록 자체의 장애를 숨깁니다.
+- runtime config 읽기 실패를 자동복구/수면방지 기본값으로 조용히 대체합니다.
+- event 저장은 성공했지만 SQLite observation projection 실패를 `try?`로 무시해 Remote Console 관측 데이터 누락 원인을 숨깁니다.
+- Vital Files 폴더 목록을 읽지 못했는데 `[]`로 바꿔 “폴더 없음”처럼 표시합니다.
+- Data directory 통계를 읽지 못했는데 `0 files · 0 B` 또는 `Unknown`처럼 표시합니다.
 
 ## Impact
 
@@ -78,6 +82,10 @@ rg -n "try\\?.*contentsOfDirectory|try\\?.*childDirectories|\\?\\? \\[\\]" apps/
 rg -n "migrateLegacy|legacy-.*log|legacyDirectory" apps/vitalserver-macos-runtime/Sources
 rg -n "RuntimeLogExportFallback|fallbackLogItems|rotatedFallbackSets|fallbackItems" apps/vitalserver-macos-runtime/Sources apps/vitalserver-macos-runtime/Tests
 rg -n "try\\? (writeStatus|writeProgress|recordObservedEvent|writeRuntimeStatus|operations\\.writeStatus)" apps/vitalserver-macos-runtime/Sources/HostCLI/Runtime
+rg -n "try\\? VMRuntimeConfig\\.load|autoRecoveryEnabled\\(\\).*return true|preventSystemSleepEnabled\\(\\).*return true" apps/vitalserver-macos-runtime/Sources/HostCLI/Runtime
+rg -n "try\\? observabilityStore\\.append" apps/vitalserver-macos-runtime/Sources
+rg -n "func vitalFileFolders\\(root: String\\) -> \\[VitalFilesFolder\\]|vitalFileFolders.*return \\[\\]" apps/vitalserver-macos-runtime/Sources
+rg -n "dataDirectoryStats|directoryStats\\(" apps/vitalserver-macos-runtime/Sources/MacHostRuntimeAdapter/RuntimeStatusReader.swift
 ```
 
 상태 관련 read path에서 아래 패턴이 보이면 재검토합니다.
@@ -102,6 +110,10 @@ directory read failure -> return [] as if there are no entries
 current install -> migrate legacy layout implicitly
 diagnostic supplemental source -> named fallback
 status/progress/event write failure -> silently ignored
+runtime config read failure -> implicit default flag value
+event written -> derived observation write failure hidden
+folder list read failure -> empty folder list
+data directory read failure -> zero or unknown stats
 ```
 
 ## Actions
@@ -130,6 +142,10 @@ status/progress/event write failure -> silently ignored
 18. 배포 전 제품의 구버전 layout 보정은 install path에서 제거합니다. 필요한 마이그레이션은 명시 migration step으로만 추가합니다.
 19. 상태 보정이 아닌 보조 진단 입력은 `fallback`이라고 부르지 않습니다. `supplemental source`처럼 역할이 드러나는 이름을 사용합니다.
 20. status/progress/event 기록 실패는 작업 실패로 승격하지 않더라도 `BestEffortRecording` 경로로 명시하고 로그에 남깁니다.
+21. runtime config flag는 `RuntimeConfigFlagReader`에서만 읽습니다. config read 실패나 필드 누락으로 기본값을 쓰면 로그에 남깁니다.
+22. event 저장과 derived observation 저장의 책임을 분리합니다. derived observation 저장 실패는 event 저장을 되돌리지 않지만 로그에 남깁니다.
+23. Vital Files 폴더 목록 조회 실패는 throw로 올립니다. 메뉴는 빈 목록과 읽기 실패를 구분해 표시합니다.
+24. Data directory 통계 조회 실패는 `dataDirectoryStatsError`로 노출합니다. 성공 통계와 실패 메시지를 같은 값으로 표현하지 않습니다.
 
 ## Prevention
 
@@ -162,6 +178,10 @@ status/progress/event write failure -> silently ignored
 - 현재 install workflow에서 legacy layout을 암묵적으로 이동/정리
 - 진단 export source를 fallback으로 명명해 상태 fallback과 같은 개념처럼 보이게 함
 - status/progress/event 기록 실패를 `try?`로 조용히 무시
+- runtime config read 실패를 운영 설정 기본값으로 조용히 대체
+- derived observation 저장 실패를 조용히 무시
+- 폴더 목록 읽기 실패를 빈 목록으로 표시
+- data directory 통계 읽기 실패를 0 또는 unknown으로 표시
 
 ## Operational Notes
 
@@ -193,3 +213,7 @@ status/progress/event write failure -> silently ignored
 - 2026-05-30: runtime install directory 준비 단계에서 legacy runtime log migration을 제거했습니다. Install 준비는 현재 layout 디렉터리를 생성하는 역할만 수행합니다.
 - 2026-05-30: log export의 `Fallback` 용어를 `SupplementalSource`로 변경했습니다. 이는 상태 보정이 아니라 export archive에 추가 진단 파일을 포함하는 기능입니다.
 - 2026-05-30: install/apply/rollback/health/repair 진행 중 status/progress/event 기록 실패를 `try?`로 무시하던 경로를 제거했습니다. 기록은 best-effort로 유지하되 실패 자체는 runtime log에 남깁니다.
+- 2026-05-30: 자동복구/수면방지 flag 읽기를 `RuntimeConfigFlagReader`로 모았습니다. runtime config read 실패나 flag 누락으로 기본값을 쓰는 경우 runtime log에 남깁니다.
+- 2026-05-30: `RuntimeObservationRecorder`에서 VitalDB observation projection 실패를 조용히 무시하던 `try?`를 제거했습니다. event 기록은 유지하되 projection 실패는 runtime log에 남깁니다.
+- 2026-05-30: Vital Files 폴더 목록 조회 실패를 빈 배열로 숨기지 않도록 `vitalFileFolders(root:)`를 throwing 계약으로 변경했습니다. Swift 메뉴는 `No folders`와 `Could not read folders`를 구분합니다.
+- 2026-05-30: Data directory 통계 조회 실패를 `dataDirectoryStatsError`로 분리했습니다. Swift와 Remote Console status UI는 통계 성공값과 읽기 실패를 구분해 표시합니다.

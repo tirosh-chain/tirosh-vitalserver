@@ -213,7 +213,10 @@ struct RuntimeStatusPanel: View {
 
     @ViewBuilder
     private var dataDirectoryStatsSuffix: some View {
-        if let stats = viewModel.status.dataDirectoryStats {
+        if let error = viewModel.status.dataDirectoryStatsError {
+            Text(AppConstants.StatusText.dataDirectoryStatsFailed(error))
+                .foregroundStyle(.red)
+        } else if let stats = viewModel.status.dataDirectoryStats {
             Text("\(stats.fileCount) files · \(formatBytes(stats.sizeBytes))")
                 .foregroundStyle(.secondary)
                 .monospacedDigit()

@@ -468,6 +468,12 @@ enum AppConstants {
         static func folderCreateFailed(_ message: String) -> String {
             "Could not create folder: \(message)"
         }
+        static func folderReadFailed(_ message: String) -> String {
+            "Could not read folders: \(message)"
+        }
+        static func dataDirectoryStatsFailed(_ message: String) -> String {
+            "Could not read data directory: \(message)"
+        }
         static let missingBackup = "Choose a backup first."
         static func backupListLoadFailed(_ message: String) -> String {
             "Failed to load backups: \(message)"

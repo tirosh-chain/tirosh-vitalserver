@@ -212,6 +212,7 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
     public var systemDisk: ResourceUsage?
     public var dataStorage: ResourceUsage?
     public var dataDirectoryStats: RuntimeDataDirectoryStats?
+    public var dataDirectoryStatsError: String?
     public var proxyPort: Int
     public var failureReasons: [RuntimeFailureReason]
     public var progress: RuntimeProgressDocument?
@@ -246,6 +247,7 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
         systemDisk: ResourceUsage? = nil,
         dataStorage: ResourceUsage? = nil,
         dataDirectoryStats: RuntimeDataDirectoryStats? = nil,
+        dataDirectoryStatsError: String? = nil,
         proxyPort: Int = 80,
         failureReasons: [RuntimeFailureReason] = [],
         progress: RuntimeProgressDocument? = nil,
@@ -279,6 +281,7 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
         self.systemDisk = systemDisk
         self.dataStorage = dataStorage
         self.dataDirectoryStats = dataDirectoryStats
+        self.dataDirectoryStatsError = dataDirectoryStatsError
         self.proxyPort = proxyPort
         self.failureReasons = failureReasons
         self.progress = progress

@@ -288,6 +288,7 @@ export const runtimeStatusSchema = z
     systemDisk: resourceUsageSchema.optional(),
     dataStorage: resourceUsageSchema.optional(),
     dataDirectoryStats: runtimeDataDirectoryStatsSchema.nullable().optional(),
+    dataDirectoryStatsError: nullableString,
     proxyPort: z.number().optional(),
     failureReasons: z.array(z.string()).optional(),
     progress: unknownRecord.nullable().optional(),

@@ -233,7 +233,7 @@ extension RuntimeLifecycle {
             vitalDBObservation: healthSnapshot.vitalDBObservation,
             progress: progress
         )
-        try runtimeObservationRecorder().record(event)
+        try runtimeObservationRecorder().recordEvent(event)
     }
 
     func recordRuntimeEventBestEffort(
@@ -262,7 +262,7 @@ extension RuntimeLifecycle {
             vitalDBObservation: healthSnapshot.vitalDBObservation,
             progress: progress
         )
-        runtimeObservationRecorder().recordBestEffort(event)
+        runtimeObservationRecorder().recordEventBestEffort(event)
     }
 
     func recordRuntimeStatusDocumentEventBestEffort(
@@ -289,7 +289,7 @@ extension RuntimeLifecycle {
             vitalDBObservation: statusDocument.vitalDBObservation,
             progress: progress
         )
-        runtimeObservationRecorder().recordBestEffort(event)
+        runtimeObservationRecorder().recordEventBestEffort(event)
     }
 
     func recordRuntimeProgressEventBestEffort(
@@ -330,7 +330,7 @@ extension RuntimeLifecycle {
                 primary: JSONLRuntimeEventRepository(url: installedPaths.runtimeEvents),
                 secondary: SQLiteRuntimeEventRepository(url: installedPaths.runtimeObservabilityDB)
             ),
-            observabilityStore: SQLiteRuntimeObservabilityStore(url: installedPaths.runtimeObservabilityDB),
+            vitalDBObservationStore: SQLiteRuntimeObservabilityStore(url: installedPaths.runtimeObservabilityDB),
             log: log
         )
     }
@@ -454,10 +454,16 @@ extension RuntimeLifecycle {
     }
 
     func preventSystemSleepEnabled() -> Bool {
-        guard let config = try? VMRuntimeConfig.load(from: paths.config, fileStore: fileStore) else {
-            return true
-        }
-        return config.preventSystemSleep ?? true
+        runtimeConfigFlagReader().preventSystemSleepEnabled()
+    }
+
+    func runtimeConfigFlagReader() -> RuntimeConfigFlagReader {
+        RuntimeConfigFlagReader(
+            loadConfig: {
+                try VMRuntimeConfig.load(from: paths.config, fileStore: fileStore)
+            },
+            log: log
+        )
     }
 
     func runtimeCommandExecutor() -> RuntimeCommandExecutor {

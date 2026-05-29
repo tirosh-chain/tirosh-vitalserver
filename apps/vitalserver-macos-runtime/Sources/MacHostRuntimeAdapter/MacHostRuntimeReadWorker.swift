@@ -78,8 +78,8 @@ public actor MacHostRuntimeReadWorker {
         fileReader.updateBundleSummary(url: url)
     }
 
-    public func vitalFileFolders(root: String) -> [VitalFilesFolder] {
-        fileReader.vitalFileFolders(root: root)
+    public func vitalFileFolders(root: String) throws -> [VitalFilesFolder] {
+        try fileReader.vitalFileFolders(root: root)
     }
 
     public func loadReleaseInfo() -> RuntimeReleaseInfo {

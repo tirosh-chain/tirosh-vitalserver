@@ -23,9 +23,11 @@ export function BedsPage() {
   );
   const [searchText, setSearchText] = useState("");
   const beds = filterBeds(allBeds, searchText);
+  const identifiedBeds = beds.filter(hasBedID);
   const [selectedBedID, setSelectedBedID] = useState<string | null>(null);
   const selectedBed =
-    beds.find((bed) => bed.bedID === selectedBedID) ?? beds[0];
+    identifiedBeds.find((bed) => bed.bedID === selectedBedID) ??
+    identifiedBeds[0];
 
   const summary = {
     known: allBeds.length,
@@ -76,10 +78,10 @@ export function BedsPage() {
           />
         ) : (
           <DataTable
-            rows={beds}
-            getRowKey={(bed) => bed.bedID ?? "unknown"}
+            rows={identifiedBeds}
+            getRowKey={(bed) => bed.bedID}
             selectedKey={selectedBed?.bedID}
-            onSelectRow={(bed) => setSelectedBedID(bed.bedID ?? null)}
+            onSelectRow={(bed) => setSelectedBedID(bed.bedID)}
             emptyText="No beds have been observed."
             columns={[
               {
@@ -151,6 +153,10 @@ function BedDetails({ bed }: { bed: VitalDBBedRecord }) {
       />
     </Panel>
   );
+}
+
+function hasBedID(bed: VitalDBBedRecord): bed is VitalDBBedRecord & { bedID: string } {
+  return typeof bed.bedID === "string" && bed.bedID.length > 0;
 }
 
 function shorten(value: string | undefined): string {

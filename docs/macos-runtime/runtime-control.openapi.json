@@ -2333,6 +2333,12 @@
               }
             ]
           },
+          "dataDirectoryStatsError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "proxyPort": {
             "type": "integer"
           },

@@ -142,34 +142,38 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
     private func withDataDirectoryMetrics(_ status: RuntimeStatus, settings: RuntimeSettings) -> RuntimeStatus {
         var next = status
         next.dataStorage = storageUsageProvider.storageUsage(for: settings.vitalFilesDirectory) ?? next.dataStorage
-        next.dataDirectoryStats = dataDirectoryStats(for: settings.vitalFilesDirectory)
+        do {
+            next.dataDirectoryStats = try dataDirectoryStats(for: settings.vitalFilesDirectory)
+            next.dataDirectoryStatsError = nil
+        } catch {
+            next.dataDirectoryStats = nil
+            next.dataDirectoryStatsError = error.localizedDescription
+        }
         return next
     }
 
-    private func dataDirectoryStats(for path: String) -> RuntimeDataDirectoryStats? {
+    private func dataDirectoryStats(for path: String) throws -> RuntimeDataDirectoryStats? {
         let root = URL(fileURLWithPath: path)
         guard fileStore.directoryExists(root) else {
             return nil
         }
-        let stats = directoryStats(root)
+        let stats = try directoryStats(root)
         return RuntimeDataDirectoryStats(fileCount: stats.fileCount, sizeBytes: Int64(stats.sizeBytes))
     }
 
-    private func directoryStats(_ directory: URL) -> (fileCount: Int, sizeBytes: UInt64) {
-        guard let contents = try? fileStore.contentsOfDirectory(at: directory, skipsHiddenFiles: true) else {
-            return (0, 0)
-        }
+    private func directoryStats(_ directory: URL) throws -> (fileCount: Int, sizeBytes: UInt64) {
+        let contents = try fileStore.contentsOfDirectory(at: directory, skipsHiddenFiles: true)
 
         var fileCount = 0
         var sizeBytes: UInt64 = 0
         for url in contents {
             if fileStore.directoryExists(url) {
-                let nested = directoryStats(url)
+                let nested = try directoryStats(url)
                 fileCount += nested.fileCount
                 sizeBytes += nested.sizeBytes
             } else if fileStore.fileExists(url) {
                 fileCount += 1
-                sizeBytes += (try? fileStore.fileSize(url)) ?? 0
+                sizeBytes += try fileStore.fileSize(url)
             }
         }
         return (fileCount, sizeBytes)

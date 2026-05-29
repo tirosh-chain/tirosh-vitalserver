@@ -114,8 +114,8 @@ public struct MacHostRuntimeClient: RuntimeControlClient, RuntimeHostClient {
         fileReader.preferredLogsPath()
     }
 
-    public func vitalFileFolders(root: String) -> [VitalFilesFolder] {
-        fileReader.vitalFileFolders(root: root)
+    public func vitalFileFolders(root: String) throws -> [VitalFilesFolder] {
+        try fileReader.vitalFileFolders(root: root)
     }
 
     public func verifyUpdateBundle(url: URL) async throws -> RuntimeCommandResult {

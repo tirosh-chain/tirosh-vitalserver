@@ -35,7 +35,7 @@ public protocol RuntimeHostClient {
     func logText(sourceID: RuntimeLogSource, helperMessage: String, lineLimit: Int) -> String
     func loadLogText(sourceID: RuntimeLogSource, helperMessage: String, lineLimit: Int) async -> String
     func preferredLogsPath() -> String
-    func vitalFileFolders(root: String) -> [VitalFilesFolder]
+    func vitalFileFolders(root: String) throws -> [VitalFilesFolder]
     func verifyUpdateBundle(url: URL) async throws -> RuntimeCommandResult
     func applyUpdateBundle(url: URL) async throws -> RuntimeCommandResult
     func rollbackRuntime(backupURL: URL) async throws -> RuntimeCommandResult

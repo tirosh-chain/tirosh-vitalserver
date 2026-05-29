@@ -93,9 +93,11 @@ function StatusOverview({ overview }: { overview: RuntimeControlOverview }) {
             {
               label: "Data directory",
               value: overview.settings?.vitalFilesDirectory ?? "Unknown",
-              detail: stats
-                ? `${stats.fileCount ?? 0} files · ${formatBytes(stats.sizeBytes)}`
-                : "Unknown"
+              detail: status?.dataDirectoryStatsError
+                ? `Read failed: ${status.dataDirectoryStatsError}`
+                : stats
+                  ? `${stats.fileCount ?? 0} files · ${formatBytes(stats.sizeBytes)}`
+                  : "Unknown"
             },
             {
               label: "Observation updated",

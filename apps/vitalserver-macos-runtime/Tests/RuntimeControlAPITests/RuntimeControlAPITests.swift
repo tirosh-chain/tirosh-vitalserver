@@ -1487,7 +1487,7 @@ private final class FakeRuntimeControlClient: RuntimeControlClient, RuntimeHostC
         "/logs"
     }
 
-    func vitalFileFolders(root: String) -> [VitalFilesFolder] {
+    func vitalFileFolders(root: String) throws -> [VitalFilesFolder] {
         []
     }
 

@@ -107,10 +107,7 @@ extension RuntimeLifecycle {
     }
 
     func automaticRecoveryEnabled() -> Bool {
-        guard let config = try? VMRuntimeConfig.load(from: paths.config, fileStore: fileStore) else {
-            return true
-        }
-        return config.autoRecoveryEnabled ?? true
+        runtimeConfigFlagReader().automaticRecoveryEnabled()
     }
 
     func runtimeManagedOperationGuard() -> RuntimeManagedOperationGuard {

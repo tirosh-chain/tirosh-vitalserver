@@ -328,12 +328,14 @@ function BackupTable({
   onSelect: (backup: RuntimeBackup) => void;
   emptyText: string;
 }) {
+  const rowsWithPath = rows.filter(hasBackupPath);
+
   return (
     <DataTable
-      rows={rows}
+      rows={rowsWithPath}
       selectedKey={selected?.path ?? null}
       onSelectRow={onSelect}
-      getRowKey={(row) => row.path ?? ""}
+      getRowKey={(row) => row.path}
       emptyText={emptyText}
       columns={[
         {
@@ -354,6 +356,10 @@ function BackupTable({
       ]}
     />
   );
+}
+
+function hasBackupPath(backup: RuntimeBackup): backup is RuntimeBackup & { path: string } {
+  return typeof backup.path === "string" && backup.path.length > 0;
 }
 
 function backupName(path: string | undefined): string {

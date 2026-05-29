@@ -29,8 +29,10 @@ extension RuntimeViewModel {
         nativeShell.openFileURL(url)
     }
 
-    func vitalFileFolders() -> [VitalFilesFolder] {
-        hostClient.vitalFileFolders(root: settings.vitalFilesDirectory)
+    func vitalFileFoldersResult() -> Result<[VitalFilesFolder], Error> {
+        Result {
+            try hostClient.vitalFileFolders(root: settings.vitalFilesDirectory)
+        }
     }
 
     func openVitalServer() {

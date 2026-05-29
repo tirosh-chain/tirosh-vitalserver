@@ -10,7 +10,7 @@ protocol RuntimeHostFileReading: Sendable {
     func redisBackups() throws -> [RuntimeBackup]
     func logText(sourceID: RuntimeLogSource, helperMessage: String, lineLimit: Int) -> String
     func preferredLogsPath() -> String
-    func vitalFileFolders(root: String) -> [VitalFilesFolder]
+    func vitalFileFolders(root: String) throws -> [VitalFilesFolder]
 }
 
 struct SystemRuntimeHostFileReader: RuntimeHostFileReading, @unchecked Sendable {
@@ -82,61 +82,61 @@ struct SystemRuntimeHostFileReader: RuntimeHostFileReading, @unchecked Sendable 
             return logFile(
                 path: RuntimeAdapterConstants.Paths.commandLog,
                 lineLimit: lineLimit,
-                fallbackPath: RuntimeAdapterConstants.Paths.commandLogFile
+                sourcePath: RuntimeAdapterConstants.Paths.commandLogFile
             )
         case .launcher:
             return logFile(
                 path: (RuntimeAdapterConstants.Paths.runtimeLogs as NSString).appendingPathComponent("launcher.log"),
                 lineLimit: lineLimit,
-                fallbackPath: (RuntimeAdapterConstants.Paths.runtimeLogSources as NSString).appendingPathComponent("launcher.log")
+                sourcePath: (RuntimeAdapterConstants.Paths.runtimeLogSources as NSString).appendingPathComponent("launcher.log")
             )
         case .vmLaunchOutput:
             return logFile(
                 path: (RuntimeAdapterConstants.Paths.runtimeLogs as NSString).appendingPathComponent("launchd.out.log"),
                 lineLimit: lineLimit,
-                fallbackPath: (RuntimeAdapterConstants.Paths.runtimeLogSources as NSString).appendingPathComponent("launchd.out.log")
+                sourcePath: (RuntimeAdapterConstants.Paths.runtimeLogSources as NSString).appendingPathComponent("launchd.out.log")
             )
         case .vmLaunchError:
             return logFile(
                 path: (RuntimeAdapterConstants.Paths.runtimeLogs as NSString).appendingPathComponent("launchd.err.log"),
                 lineLimit: lineLimit,
-                fallbackPath: (RuntimeAdapterConstants.Paths.runtimeLogSources as NSString).appendingPathComponent("launchd.err.log")
+                sourcePath: (RuntimeAdapterConstants.Paths.runtimeLogSources as NSString).appendingPathComponent("launchd.err.log")
             )
         case .proxyOutput:
             return logFile(
                 path: (RuntimeAdapterConstants.Paths.runtimeLogs as NSString).appendingPathComponent("proxy.out.log"),
                 lineLimit: lineLimit,
-                fallbackPath: (RuntimeAdapterConstants.Paths.runtimeLogSources as NSString).appendingPathComponent("proxy.out.log")
+                sourcePath: (RuntimeAdapterConstants.Paths.runtimeLogSources as NSString).appendingPathComponent("proxy.out.log")
             )
         case .proxyError:
             return logFile(
                 path: (RuntimeAdapterConstants.Paths.runtimeLogs as NSString).appendingPathComponent("proxy.err.log"),
                 lineLimit: lineLimit,
-                fallbackPath: (RuntimeAdapterConstants.Paths.runtimeLogSources as NSString).appendingPathComponent("proxy.err.log")
+                sourcePath: (RuntimeAdapterConstants.Paths.runtimeLogSources as NSString).appendingPathComponent("proxy.err.log")
             )
         case .watchdog:
             return logFile(
                 path: (RuntimeAdapterConstants.Paths.runtimeLogs as NSString).appendingPathComponent("watchdog.out.log"),
                 lineLimit: lineLimit,
-                fallbackPath: (RuntimeAdapterConstants.Paths.runtimeLogSources as NSString).appendingPathComponent("watchdog.out.log")
+                sourcePath: (RuntimeAdapterConstants.Paths.runtimeLogSources as NSString).appendingPathComponent("watchdog.out.log")
             )
         case .updateActivation:
             return logFile(
                 path: RuntimeAdapterConstants.Paths.updateActivationLog,
                 lineLimit: lineLimit,
-                fallbackPath: RuntimeAdapterConstants.Paths.updateActivationLogSource
+                sourcePath: RuntimeAdapterConstants.Paths.updateActivationLogSource
             )
         case .updateShutdown:
             return logFile(
                 path: RuntimeAdapterConstants.Paths.updateShutdownLog,
                 lineLimit: lineLimit,
-                fallbackPath: RuntimeAdapterConstants.Paths.updateShutdownLogSource
+                sourcePath: RuntimeAdapterConstants.Paths.updateShutdownLogSource
             )
         case .containers:
             return logFile(
                 path: RuntimeAdapterConstants.Paths.containerLogs,
                 lineLimit: lineLimit,
-                fallbackPath: RuntimeAdapterConstants.Paths.containerLogSource
+                sourcePath: RuntimeAdapterConstants.Paths.containerLogSource
             )
         }
     }
@@ -146,11 +146,9 @@ struct SystemRuntimeHostFileReader: RuntimeHostFileReading, @unchecked Sendable 
         return RuntimeAdapterConstants.Paths.productLogs
     }
 
-    func vitalFileFolders(root: String) -> [VitalFilesFolder] {
+    func vitalFileFolders(root: String) throws -> [VitalFilesFolder] {
         let rootURL = URL(fileURLWithPath: root)
-        guard let entries = try? fileStore.contentsOfDirectory(at: rootURL, skipsHiddenFiles: false) else {
-            return []
-        }
+        let entries = try fileStore.contentsOfDirectory(at: rootURL, skipsHiddenFiles: false)
         return entries
             .filter { fileStore.directoryExists($0) }
             .sorted { lhs, rhs in
@@ -161,15 +159,15 @@ struct SystemRuntimeHostFileReader: RuntimeHostFileReading, @unchecked Sendable 
             }
     }
 
-    private func logFile(path: String, lineLimit: Int, fallbackPath: String? = nil) -> String {
+    private func logFile(path: String, lineLimit: Int, sourcePath: String? = nil) -> String {
         let url = URL(fileURLWithPath: path)
         let readableURL: URL
         if fileStore.fileExists(url) {
             readableURL = url
-        } else if let fallbackPath {
-            let fallbackURL = URL(fileURLWithPath: fallbackPath)
-            if fileStore.fileExists(fallbackURL) {
-                readableURL = fallbackURL
+        } else if let sourcePath {
+            let sourceURL = URL(fileURLWithPath: sourcePath)
+            if fileStore.fileExists(sourceURL) {
+                readableURL = sourceURL
             } else {
                 return RuntimeAdapterConstants.StatusText.noLogData
             }
