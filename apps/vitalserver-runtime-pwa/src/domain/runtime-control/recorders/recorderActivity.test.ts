@@ -101,6 +101,90 @@ describe("recorder activity", () => {
     ]);
   });
 
+  it("keeps embedded bucket history when the latest rolling sample drops older buckets", () => {
+    const buckets = buildRecorderActivityBuckets(
+      [
+        activityPointWithBuckets({
+          observedAt: "2026-05-28T00:10:10Z",
+          buckets: [
+            {
+              bucketStartedAt: "2026-05-28T00:08:00Z",
+              bucketSeconds: 60,
+              messageCount: 4,
+              byteCount: 400,
+              roomCount: 1
+            },
+            {
+              bucketStartedAt: "2026-05-28T00:09:00Z",
+              bucketSeconds: 60,
+              messageCount: 7,
+              byteCount: 700,
+              roomCount: 2
+            }
+          ]
+        }),
+        activityPointWithBuckets({
+          observedAt: "2026-05-28T00:11:10Z",
+          buckets: [
+            {
+              bucketStartedAt: "2026-05-28T00:09:00Z",
+              bucketSeconds: 60,
+              messageCount: 5,
+              byteCount: 500,
+              roomCount: 1
+            },
+            {
+              bucketStartedAt: "2026-05-28T00:10:00Z",
+              bucketSeconds: 60,
+              messageCount: 6,
+              byteCount: 600,
+              roomCount: 1
+            }
+          ]
+        })
+      ],
+      { bucketSeconds: 60 }
+    );
+
+    expect(buckets.map((bucket) => bucket.messageCount)).toEqual([4, 7, 6]);
+    expect(buckets.map((bucket) => bucket.byteCount)).toEqual([400, 700, 600]);
+  });
+
+  it("deduplicates repeated embedded bucket snapshots", () => {
+    const buckets = buildRecorderActivityBuckets(
+      [
+        activityPointWithBuckets({
+          observedAt: "2026-05-28T00:10:10Z",
+          buckets: [
+            {
+              bucketStartedAt: "2026-05-28T00:09:00Z",
+              bucketSeconds: 60,
+              messageCount: 7,
+              byteCount: 700,
+              roomCount: 2
+            }
+          ]
+        }),
+        activityPointWithBuckets({
+          observedAt: "2026-05-28T00:10:30Z",
+          buckets: [
+            {
+              bucketStartedAt: "2026-05-28T00:09:00Z",
+              bucketSeconds: 60,
+              messageCount: 7,
+              byteCount: 700,
+              roomCount: 2
+            }
+          ]
+        })
+      ],
+      { bucketSeconds: 60 }
+    );
+
+    expect(buckets.map((bucket) => bucket.messageCount)).toEqual([7]);
+    expect(buckets.map((bucket) => bucket.byteCount)).toEqual([700]);
+  });
+
   it("aggregates embedded recorder activity buckets into the selected interval", () => {
     const buckets = buildRecorderActivityBuckets(
       [

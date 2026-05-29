@@ -548,7 +548,7 @@ struct RuntimeRecordersPanel: View {
         from points: [RuntimeVitalRecorderActivityPoint],
         interval: RecorderActivityBucketInterval
     ) -> [RecorderActivityChartBucket] {
-        let rawBuckets = points.last?.buckets ?? []
+        let rawBuckets = stableActivityBuckets(from: points)
         if rawBuckets.isEmpty {
             return points.map {
                 RecorderActivityChartBucket(
@@ -562,7 +562,7 @@ struct RuntimeRecordersPanel: View {
         }
 
         if interval == .oneMinute {
-            return rawBuckets.map(RecorderActivityChartBucket.init)
+            return rawBuckets
         }
 
         var builders: [String: RecorderActivityChartBucketBuilder] = [:]
@@ -581,6 +581,20 @@ struct RuntimeRecordersPanel: View {
         return builders.values
             .map(\.bucket)
             .sorted { $0.bucketStartedAt < $1.bucketStartedAt }
+    }
+
+    private func stableActivityBuckets(
+        from points: [RuntimeVitalRecorderActivityPoint]
+    ) -> [RecorderActivityChartBucket] {
+        var buckets: [String: RecorderActivityChartBucket] = [:]
+        for point in points {
+            for bucket in point.buckets {
+                let stableBucket = RecorderActivityChartBucket(bucket)
+                buckets[stableBucket.id] = buckets[stableBucket.id]
+                    .map { $0.keepingLargestCounts(stableBucket) } ?? stableBucket
+            }
+        }
+        return buckets.values.sorted { $0.bucketStartedAt < $1.bucketStartedAt }
     }
 
     private func displayActivityBuckets(
@@ -950,6 +964,16 @@ private struct RecorderActivityChartBucket: Identifiable {
             roomCount: max(roomCount, other.roomCount)
         )
     }
+
+    func keepingLargestCounts(_ other: RecorderActivityChartBucket) -> RecorderActivityChartBucket {
+        RecorderActivityChartBucket(
+            bucketStartedAt: bucketStartedAt,
+            bucketSeconds: bucketSeconds,
+            messageCount: max(messageCount, other.messageCount),
+            byteCount: max(byteCount, other.byteCount),
+            roomCount: max(roomCount, other.roomCount)
+        )
+    }
 }
 
 private struct RecorderActivityChartBucketBuilder {
@@ -959,7 +983,7 @@ private struct RecorderActivityChartBucketBuilder {
     var byteCount = 0
     var roomCount = 0
 
-    mutating func add(_ bucket: VitalDBRecorderActivityBucket) {
+    mutating func add(_ bucket: RecorderActivityChartBucket) {
         messageCount += bucket.messageCount
         byteCount += bucket.byteCount
         roomCount += bucket.roomCount
