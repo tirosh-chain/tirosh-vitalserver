@@ -1,6 +1,7 @@
 import Foundation
 
 public enum RuntimeGuardrailState: Equatable, Sendable {
+    case unreported
     case stable
     case transitional
     case failed
@@ -18,7 +19,7 @@ public enum RuntimeHealthClassificationPolicy {
     public static func containerHealthState(_ health: String?) -> RuntimeGuardrailState {
         guard let normalized = normalizedHealth(health),
               !normalized.isEmpty else {
-            return .stable
+            return .unreported
         }
         if normalized == "healthy" {
             return .stable

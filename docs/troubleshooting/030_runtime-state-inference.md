@@ -20,6 +20,8 @@ Runtime 상태가 실제 상황과 다르게 보이거나, update 진행 상태�
 - `"missing-vm-ip"`, `"bootstrap-pending"`, `"not evaluated"` 같은 문자열이 여러 레이어에 흩어져 상태처럼 사용됩니다.
 - progress/event 기록이 현재 status document 없이 임시 health snapshot을 만들어 상태를 채웁니다.
 - 내부 enum을 API read model로 변환할 때 알 수 없는 값을 `warning`, `staleLink` 같은 구체 상태로 바꿉니다.
+- `runtime-state.json`이 없거나 stale인데 `vm-ip` 파일로 guest endpoint를 직접 probing해 상태를 채웁니다.
+- container health가 보고되지 않았는데 `stable`로 분류됩니다.
 
 ## Impact
 
@@ -59,6 +61,8 @@ rg -n "\\.isReady|\\\"not evaluated\\\"|not-evaluated" apps/vitalserver-macos-ru
 rg -n "vmState.*runtimeInstalled|runtimeInstalled.*vmState|missing-vm-ip|bootstrap-pending" apps/vitalserver-macos-runtime/Sources
 rg -n "\\.isHealthy|lightweightRuntimeHealthSnapshot|progressHealthSnapshot" apps/vitalserver-macos-runtime/Sources
 rg -n "\\?\\? \\.staleLink|\\?\\? \\.warning|\\?\\? \\\"unknown\\\"|\\.unknown\\(\\\"unknown\\\"\\)|\\.unknown\\(\\\"command\\\"\\)" apps/vitalserver-macos-runtime/Sources
+rg -n "guestRuntimeState\\(\\)\\?\\.vmIP|readTrimmed\\(.*vmIPFile\\)|statusCode\\(url: \\\"http://\\\\\\(vmIP\\\\\\)" apps/vitalserver-macos-runtime/Sources
+rg -n "containerHealthState\\(.*\\).*\\.stable|return \\.stable" apps/vitalserver-macos-runtime/Sources/Core/Health
 ```
 
 상태 관련 read path에서 아래 패턴이 보이면 재검토합니다.
@@ -73,6 +77,8 @@ string literal -> shared status sentinel without contract owner
 missing current status -> create placeholder health snapshot
 unknown enum -> map to concrete operational state
 nil database field -> store "unknown" as if it were reported
+stale/missing guest state -> probe guest by vm-ip file
+nil health field -> treat as stable
 ```
 
 ## Actions
@@ -91,6 +97,8 @@ nil database field -> store "unknown" as if it were reported
 8. UI는 상태를 새로 만들지 않습니다. UI policy는 제공된 상태를 표시용 text/severity로만 변환합니다.
 9. Progress/event 기록은 기존 status document의 명시 필드를 보존합니다. health snapshot placeholder를 만들어 채우지 않습니다.
 10. 내부 typed enum을 API read model로 옮길 때는 exhaustive mapping을 사용하고, unknown을 임의의 구체 값으로 바꾸지 않습니다.
+11. Guest HTTP 상태는 guest가 제공한 runtime-state만 사용합니다. `vm-ip` 파일을 이용해 Host가 guest readiness를 대신 probing하지 않습니다.
+12. 보고되지 않은 container health는 `stable`이 아니라 `unreported`로 분류합니다.
 
 ## Prevention
 
@@ -113,6 +121,8 @@ nil database field -> store "unknown" as if it were reported
 - progress/event 생성을 위해 placeholder health snapshot을 생성
 - enum 변환 실패를 구체 상태로 fallback
 - 저장소 read path에서 누락된 상태 필드를 `"unknown"`으로 저장/노출
+- stale 또는 missing guest state를 `vm-ip` 파일과 HTTP probe로 보정
+- 누락된 health 값을 stable/healthy로 분류
 
 ## Operational Notes
 
@@ -134,3 +144,5 @@ nil database field -> store "unknown" as if it were reported
 - 2026-05-29: `RuntimeHealthSnapshot.isHealthy` computed property를 제거하고 `RuntimeHealthSnapshotPolicy`로 분리했습니다. `RuntimeHealthSnapshot`의 기본 `vmState`도 제거해 모든 snapshot 생성자가 VM state를 명시하게 했습니다.
 - 2026-05-29: progress/status writer에서 `not-evaluated` health snapshot을 생성하던 경로를 제거했습니다. Progress는 기존 status document가 없으면 쓰지 않고, 있으면 해당 document의 명시 상태 필드를 보존합니다.
 - 2026-05-29: VitalDB relationship event/severity를 Remote Console read model로 옮길 때 `staleLink`/`warning`으로 fallback하던 로직을 제거하고 exhaustive mapping으로 변경했습니다.
+- 2026-05-29: `RuntimeHealthChecker`가 missing/stale `runtime-state.json` 상태에서 `vm-ip` 파일로 guest readiness를 직접 probing하던 경로를 제거했습니다. Guest HTTP 상태는 runtime-state가 제공한 값만 사용합니다.
+- 2026-05-29: container health 미보고 값을 `stable`로 분류하지 않고 `unreported`로 명시했습니다. `RuntimeHealthInput`의 guest runtime-state 기본값도 제거해 호출자가 present/fresh 여부를 직접 넘기게 했습니다.

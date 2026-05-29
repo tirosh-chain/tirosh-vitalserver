@@ -64,7 +64,6 @@ final class RuntimeSettingsReaderTests: XCTestCase {
                 paths: RuntimePaths(
                     launcher: directory.appendingPathComponent("launcher").path,
                     uninstaller: directory.appendingPathComponent("uninstaller").path,
-                    vmIPFile: directory.appendingPathComponent(RuntimeFileNames.vmIP).path,
                     runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
                     runtimeStatus: runtimeStatus.path,
                     proxyLaunchDaemon: directory.appendingPathComponent("proxy.plist").path
@@ -132,7 +131,6 @@ final class RuntimeSettingsReaderTests: XCTestCase {
             paths: RuntimePaths(
                 launcher: directory.appendingPathComponent("launcher").path,
                 uninstaller: directory.appendingPathComponent("uninstaller").path,
-                vmIPFile: directory.appendingPathComponent(RuntimeFileNames.vmIP).path,
                 runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
                 runtimeStatus: directory.appendingPathComponent(RuntimeFileNames.runtimeStatus).path,
                 proxyLaunchDaemon: directory.appendingPathComponent("proxy.plist").path
@@ -175,7 +173,6 @@ final class RuntimeSettingsReaderTests: XCTestCase {
             paths: RuntimePaths(
                 launcher: directory.appendingPathComponent("launcher").path,
                 uninstaller: directory.appendingPathComponent("uninstaller").path,
-                vmIPFile: directory.appendingPathComponent(RuntimeFileNames.vmIP).path,
                 runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
                 runtimeStatus: runtimeStatus.path,
                 proxyLaunchDaemon: directory.appendingPathComponent("proxy.plist").path
@@ -239,7 +236,6 @@ final class RuntimeSettingsReaderTests: XCTestCase {
             paths: RuntimePaths(
                 launcher: directory.appendingPathComponent("launcher").path,
                 uninstaller: directory.appendingPathComponent("uninstaller").path,
-                vmIPFile: directory.appendingPathComponent(RuntimeFileNames.vmIP).path,
                 runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
                 runtimeStatus: runtimeStatus.path,
                 runtimeObservabilityDB: directory.appendingPathComponent(RuntimeFileNames.runtimeObservabilityDB).path,
@@ -335,7 +331,6 @@ final class RuntimeSettingsReaderTests: XCTestCase {
             paths: RuntimePaths(
                 launcher: directory.appendingPathComponent("launcher").path,
                 uninstaller: directory.appendingPathComponent("uninstaller").path,
-                vmIPFile: directory.appendingPathComponent(RuntimeFileNames.vmIP).path,
                 runtimeState: runtimeState.path,
                 runtimeStatus: runtimeStatus.path,
                 runtimeObservabilityDB: directory.appendingPathComponent(RuntimeFileNames.runtimeObservabilityDB).path,

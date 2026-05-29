@@ -44,7 +44,8 @@ final class RuntimeManagedOperationPolicyTests: XCTestCase {
 
 final class RuntimeHealthClassificationPolicyTests: XCTestCase {
     func testContainerHealthClassifiesTransientStartingAsNonFailure() {
-        XCTAssertEqual(RuntimeHealthClassificationPolicy.containerHealthState(nil), .stable)
+        XCTAssertEqual(RuntimeHealthClassificationPolicy.containerHealthState(nil), .unreported)
+        XCTAssertEqual(RuntimeHealthClassificationPolicy.containerHealthState(""), .unreported)
         XCTAssertEqual(RuntimeHealthClassificationPolicy.containerHealthState("healthy"), .stable)
         XCTAssertEqual(RuntimeHealthClassificationPolicy.containerHealthState("starting"), .transitional)
         XCTAssertEqual(RuntimeHealthClassificationPolicy.containerHealthState("unhealthy"), .failed)

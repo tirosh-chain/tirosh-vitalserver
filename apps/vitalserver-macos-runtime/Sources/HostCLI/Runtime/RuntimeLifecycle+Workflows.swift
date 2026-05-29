@@ -59,7 +59,7 @@ extension RuntimeLifecycle {
             latestBackupPath: { latestBackup()?.path },
             runtimeStatusValue: runtimeStatusValue,
             runtimeVersionValue: runtimeVersionValue,
-            vmIP: { healthChecker.guestRuntimeState()?.vmIP ?? healthChecker.readTrimmed(vmIPFile) ?? "waiting" },
+            vmIP: { statusReporter.loadStatus()?.vmIP ?? "not reported" },
             installedProxyPort: healthChecker.installedProxyPort,
             hostProxyHTTP: { port in
                 httpProber.statusCode(url: Constants.Runtime.proxyHealthURL(port: port))

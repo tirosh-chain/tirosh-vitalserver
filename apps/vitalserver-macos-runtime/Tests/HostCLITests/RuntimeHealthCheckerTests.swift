@@ -84,7 +84,7 @@ final class RuntimeHealthCheckerTests: XCTestCase {
         XCTAssertEqual(snapshot.vmDisk, .present)
     }
 
-    func testSnapshotFallsBackToMissingStateAndDefaultProxyPort() {
+    func testSnapshotDoesNotProbeGuestWhenRuntimeStateIsMissing() {
         let installedPaths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
         let fileStore = RuntimeFileStoreSpy()
         fileStore.files[installedPaths.vmIPFile] = Data("192.168.64.3\n".utf8)
@@ -103,8 +103,9 @@ final class RuntimeHealthCheckerTests: XCTestCase {
 
         XCTAssertFalse(RuntimeHealthSnapshotPolicy.isHealthy(snapshot))
         XCTAssertEqual(snapshot.proxyPort, InstallSettings.defaultProxyPort)
-        XCTAssertEqual(snapshot.guestHTTP, "200")
-        XCTAssertTrue(httpProber.requestedURLs.contains("http://192.168.64.3/ready"))
+        XCTAssertEqual(snapshot.vmIP, nil)
+        XCTAssertEqual(snapshot.guestHTTP, RuntimeHTTPStatusText.missingVMIP)
+        XCTAssertFalse(httpProber.requestedURLs.contains("http://192.168.64.3/ready"))
         XCTAssertTrue(snapshot.failureReasons.contains(.missingVMBin))
         XCTAssertTrue(snapshot.failureReasons.contains(.missingRootfsBase))
     }
@@ -147,7 +148,7 @@ final class RuntimeHealthCheckerTests: XCTestCase {
         XCTAssertTrue(snapshot.failureReasons.contains(.auditProxyHTTP("failed")))
     }
 
-    func testSnapshotTreatsStaleRuntimeStateAsFailedVMStateAndLiveProbesGuest() {
+    func testSnapshotDoesNotUseStaleRuntimeStateForGuestProbes() {
         let installedPaths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
         let fileStore = RuntimeFileStoreSpy()
         fileStore.files[URL(fileURLWithPath: Constants.InstallPaths.vmBin)] = Data()
@@ -189,11 +190,11 @@ final class RuntimeHealthCheckerTests: XCTestCase {
 
         let snapshot = checker.snapshot()
 
-        XCTAssertEqual(snapshot.vmIP, "192.168.64.8")
-        XCTAssertEqual(snapshot.guestHTTP, "failed")
-        XCTAssertTrue(httpProber.requestedURLs.contains("http://192.168.64.8/ready"))
+        XCTAssertEqual(snapshot.vmIP, nil)
+        XCTAssertEqual(snapshot.guestHTTP, RuntimeHTTPStatusText.missingVMIP)
+        XCTAssertFalse(httpProber.requestedURLs.contains("http://192.168.64.8/ready"))
         XCTAssertTrue(snapshot.failureReasons.contains(.guestRuntimeStateStale))
-        XCTAssertTrue(snapshot.failureReasons.contains(.guestHTTP("failed")))
+        XCTAssertFalse(snapshot.failureReasons.contains(.guestHTTP("failed")))
         XCTAssertEqual(snapshot.containerObservation?.runtimeStateUpdatedAt, nil)
         XCTAssertEqual(snapshot.containerObservation?.runtimeStateFileUpdatedAt, "2027-01-15T08:00:00Z")
         XCTAssertEqual(snapshot.containerObservation?.composeServices, [])

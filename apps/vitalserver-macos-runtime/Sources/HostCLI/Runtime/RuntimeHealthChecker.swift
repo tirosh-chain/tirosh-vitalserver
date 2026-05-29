@@ -42,13 +42,13 @@ struct RuntimeHealthChecker {
         let loadedGuestState = guestRuntimeState()
         let guestRuntimeStateFresh = isGuestRuntimeStateFresh(loadedGuestState)
         let guestState = guestRuntimeStateFresh ? loadedGuestState : nil
-        let vmIP = loadedGuestState?.vmIP ?? readTrimmed(installedPaths.vmIPFile)
+        let vmIP = guestState?.vmIP
         let proxyPort = installedProxyPort()
         let hostProxyHTTP = httpProber.statusCode(url: Constants.Runtime.proxyHealthURL(port: proxyPort))
         let redisUIHTTP = httpProber.statusCode(url: Constants.Runtime.redisUIHealthURL(port: proxyPort))
         let swaggerUIHTTP = httpProber.statusCode(url: Constants.Runtime.swaggerUIHealthURL(port: proxyPort))
         let containerObservation = containerObservation(proxyPort: proxyPort, guestState: guestState)
-        let guestHTTP = guestHTTPStatus(guestState: guestState, vmIP: vmIP)
+        let guestHTTP = guestHTTPStatus(guestState: guestState)
 
         return RuntimeHealthEvaluator.evaluate(RuntimeHealthInput(
             vmExecutable: fileStore.isExecutableFile(atPath: Constants.InstallPaths.vmBin),
@@ -139,15 +139,12 @@ struct RuntimeHealthChecker {
         return value
     }
 
-    private func guestHTTPStatus(guestState: GuestRuntimeStateDocument?, vmIP: String?) -> String {
+    private func guestHTTPStatus(guestState: GuestRuntimeStateDocument?) -> String {
         if let guestHTTP = guestState?.guestHTTP, !guestHTTP.isEmpty {
             return guestHTTP
         }
         if guestState != nil {
             return RuntimeHTTPStatusText.bootstrapPending
-        }
-        if let vmIP {
-            return httpProber.statusCode(url: "http://\(vmIP)\(Constants.Runtime.readinessPath)")
         }
         return RuntimeHTTPStatusText.missingVMIP
     }

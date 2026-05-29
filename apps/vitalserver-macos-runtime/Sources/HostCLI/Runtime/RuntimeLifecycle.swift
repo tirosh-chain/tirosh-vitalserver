@@ -82,10 +82,6 @@ struct RuntimeLifecycle {
         installedPaths.runtimeDirectory.appendingPathComponent(Constants.Artifacts.runtimeVersion)
     }
 
-    var vmIPFile: URL {
-        installedPaths.vmIPFile
-    }
-
     var guestRunDirectory: URL {
         installedPaths.guestRunDirectory
     }

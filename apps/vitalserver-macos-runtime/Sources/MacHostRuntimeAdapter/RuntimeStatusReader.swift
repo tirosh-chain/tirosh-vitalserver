@@ -55,7 +55,7 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
             ?? guestState?.containerServices?.first { $0.service == "app" }?.startedAt
         let runtimeInstalled = fileStore.isExecutableFile(atPath: paths.launcher)
         let vmServiceLoaded = loaded(document?.vmService) ?? launchdLoaded(.vm)
-        let vmIP = document?.vmIP ?? guestState?.vmIP ?? readTrimmed(paths.vmIPFile)
+        let vmIP = document?.vmIP ?? guestState?.vmIP
         let guestHTTP = document?.guestHTTP ?? guestState?.guestHTTP
         let vitalDBObservation = freshestVitalDBObservation(
             document?.vitalDBObservation,
