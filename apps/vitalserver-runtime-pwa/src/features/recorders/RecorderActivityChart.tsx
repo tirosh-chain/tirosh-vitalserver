@@ -22,11 +22,11 @@ const rangeOptions = [
 
 const chart = {
   width: 900,
-  height: 280,
+  height: 520,
   left: 58,
   right: 24,
-  top: 30,
-  bottom: 44
+  top: 38,
+  bottom: 58
 };
 
 export function RecorderActivityChart({

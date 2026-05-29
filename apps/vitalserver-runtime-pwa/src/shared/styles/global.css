@@ -140,14 +140,17 @@
 
   .app-main {
     @apply max-w-[1480px] 2xl:max-w-[1760px];
+    min-width: 0;
   }
 
   .page-stack {
     @apply grid gap-4 md:gap-[18px];
+    min-width: 0;
   }
 
   .panel {
     @apply rounded-panel bg-app-panel px-4 py-5 sm:px-5 md:px-7 md:py-6;
+    min-width: 0;
   }
 
   .panel-header {
@@ -192,6 +195,7 @@
 
   .status-badge {
     @apply inline-flex items-center gap-2;
+    min-width: 0;
   }
 
   .status-badge::before {
@@ -453,6 +457,17 @@
 
   .detail-heading {
     @apply mb-[22px] flex flex-wrap items-center justify-between gap-4 text-xl;
+    min-width: 0;
+  }
+
+  .detail-heading .status-badge {
+    @apply flex-wrap;
+    max-width: 100%;
+  }
+
+  .detail-heading .status-badge strong {
+    min-width: 0;
+    overflow-wrap: anywhere;
   }
 
   .detail-heading > span:last-child {
@@ -484,7 +499,8 @@
   }
 
   .activity-chart {
-    @apply min-h-[260px] w-full rounded-panel bg-app-panel;
+    @apply block w-full rounded-panel bg-app-panel;
+    height: auto;
   }
 
   .activity-axis {
@@ -572,6 +588,22 @@
 
     .detail {
       white-space: normal;
+    }
+
+    .detail-heading {
+      @apply items-start gap-2 text-lg;
+    }
+
+    .detail-heading > span:last-child {
+      @apply w-full text-sm;
+    }
+
+    .data-card {
+      min-width: 0;
+    }
+
+    .activity-chart {
+      min-height: 220px;
     }
   }
 

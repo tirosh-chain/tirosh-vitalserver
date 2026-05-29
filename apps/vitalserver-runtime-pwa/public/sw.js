@@ -3,17 +3,10 @@ self.addEventListener("install", () => {
 });
 
 self.addEventListener("activate", (event) => {
-  event.waitUntil(
-    (async () => {
-      const cacheNames = await caches.keys();
-      await Promise.all(cacheNames.map((cacheName) => caches.delete(cacheName)));
-      await self.registration.unregister();
+  event.waitUntil(self.clients.claim());
+});
 
-      const clients = await self.clients.matchAll({
-        includeUncontrolled: true,
-        type: "window"
-      });
-      await Promise.all(clients.map((client) => client.navigate(client.url)));
-    })()
-  );
+self.addEventListener("fetch", () => {
+  // Runtime Control is a live operator console. Leave requests on the network
+  // path so updates and API reads are never served from stale service-worker data.
 });
