@@ -69,6 +69,9 @@ private final class HealthCheckHarness {
             reasonText: { reasons in
                 reasons.map(\.rawValue).joined(separator: ",")
             },
+            log: { line in
+                self.events.append("log:\(line)")
+            },
             printLine: { line in
                 self.events.append("print:\(line)")
             }

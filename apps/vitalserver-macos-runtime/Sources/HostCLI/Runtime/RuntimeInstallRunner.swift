@@ -22,13 +22,19 @@ struct RuntimeInstallRunner {
                 },
                 publish: { event in
                     log("step=\(event.step.rawValue) status=\(event.stepStatus.rawValue)")
-                    try? writeProgress(event)
+                    writeRuntimeProgressBestEffort(event, writeProgress: writeProgress, log: log)
                 }
             )
             try writeStatus(.healthy, .install, "runtime install completed")
             log("runtime install completed home=\(runtimeHomePath())")
         } catch {
-            try? writeStatus(.critical, .install, "runtime install failed: \(error)")
+            writeRuntimeStatusBestEffort(
+                .critical,
+                operation: .install,
+                message: "runtime install failed: \(error)",
+                writeStatus: writeStatus,
+                log: log
+            )
             throw error
         }
     }

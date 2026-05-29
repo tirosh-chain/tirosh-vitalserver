@@ -101,6 +101,7 @@ extension RuntimeLifecycle {
                 )
             },
             reasonText: reasonText,
+            log: log,
             printLine: { line in print(line) }
         )
     }
@@ -499,7 +500,15 @@ extension RuntimeLifecycle {
                 guestGateway.loadUpdateShutdownResult()
             },
             reportProgress: { message in
-                try? writeRuntimeStatus(.updating, operation: .applyBundle, message: message)
+                writeRuntimeStatusBestEffort(
+                    .updating,
+                    operation: .applyBundle,
+                    message: message,
+                    writeStatus: { status, operation, message in
+                        try writeRuntimeStatus(status, operation: operation, message: message)
+                    },
+                    log: log
+                )
             },
             sleep: {
                 sleeper.sleep(forTimeInterval: 3)

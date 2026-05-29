@@ -29,6 +29,7 @@ Runtime 상태가 실제 상황과 다르게 보이거나, update 진행 상태�
 - backup/Redis backup 목록을 읽지 못했는데 `[]`로 바꿔 “백업 없음”처럼 표시합니다.
 - 배포되지 않은 구버전 layout을 추정해 runtime install path에서 legacy log migration을 수행합니다.
 - 상태 fallback이 아닌 진단용 추가 로그 소스를 `fallback`으로 이름 붙여 의미를 흐립니다.
+- status/progress/event 기록 실패를 `try?`로 무시해 상태 기록 자체의 장애를 숨깁니다.
 
 ## Impact
 
@@ -76,6 +77,7 @@ rg -n "selected.*Path\\.isEmpty|selected.*Path = \\\"\\\"" apps/vitalserver-maco
 rg -n "try\\?.*contentsOfDirectory|try\\?.*childDirectories|\\?\\? \\[\\]" apps/vitalserver-macos-runtime/Sources
 rg -n "migrateLegacy|legacy-.*log|legacyDirectory" apps/vitalserver-macos-runtime/Sources
 rg -n "RuntimeLogExportFallback|fallbackLogItems|rotatedFallbackSets|fallbackItems" apps/vitalserver-macos-runtime/Sources apps/vitalserver-macos-runtime/Tests
+rg -n "try\\? (writeStatus|writeProgress|recordObservedEvent|writeRuntimeStatus|operations\\.writeStatus)" apps/vitalserver-macos-runtime/Sources/HostCLI/Runtime
 ```
 
 상태 관련 read path에서 아래 패턴이 보이면 재검토합니다.
@@ -99,6 +101,7 @@ missing selection -> store empty string sentinel
 directory read failure -> return [] as if there are no entries
 current install -> migrate legacy layout implicitly
 diagnostic supplemental source -> named fallback
+status/progress/event write failure -> silently ignored
 ```
 
 ## Actions
@@ -126,6 +129,7 @@ diagnostic supplemental source -> named fallback
 17. 목록 조회에서 파일시스템 오류는 throw로 올립니다. 빈 배열은 성공적으로 읽은 결과가 실제로 비어 있을 때만 사용합니다.
 18. 배포 전 제품의 구버전 layout 보정은 install path에서 제거합니다. 필요한 마이그레이션은 명시 migration step으로만 추가합니다.
 19. 상태 보정이 아닌 보조 진단 입력은 `fallback`이라고 부르지 않습니다. `supplemental source`처럼 역할이 드러나는 이름을 사용합니다.
+20. status/progress/event 기록 실패는 작업 실패로 승격하지 않더라도 `BestEffortRecording` 경로로 명시하고 로그에 남깁니다.
 
 ## Prevention
 
@@ -157,6 +161,7 @@ diagnostic supplemental source -> named fallback
 - 디렉터리 읽기 실패를 `try? ... ?? []`로 숨김
 - 현재 install workflow에서 legacy layout을 암묵적으로 이동/정리
 - 진단 export source를 fallback으로 명명해 상태 fallback과 같은 개념처럼 보이게 함
+- status/progress/event 기록 실패를 `try?`로 조용히 무시
 
 ## Operational Notes
 
@@ -187,3 +192,4 @@ diagnostic supplemental source -> named fallback
 - 2026-05-30: backup/Redis backup 목록 조회에서 디렉터리 읽기 실패를 빈 배열로 숨기던 `try? ... ?? []` 패턴을 제거했습니다. 읽기 실패는 API/UI에 오류로 전달하고, 빈 목록은 실제 빈 디렉터리에만 사용합니다.
 - 2026-05-30: runtime install directory 준비 단계에서 legacy runtime log migration을 제거했습니다. Install 준비는 현재 layout 디렉터리를 생성하는 역할만 수행합니다.
 - 2026-05-30: log export의 `Fallback` 용어를 `SupplementalSource`로 변경했습니다. 이는 상태 보정이 아니라 export archive에 추가 진단 파일을 포함하는 기능입니다.
+- 2026-05-30: install/apply/rollback/health/repair 진행 중 status/progress/event 기록 실패를 `try?`로 무시하던 경로를 제거했습니다. 기록은 best-effort로 유지하되 실패 자체는 runtime log에 남깁니다.

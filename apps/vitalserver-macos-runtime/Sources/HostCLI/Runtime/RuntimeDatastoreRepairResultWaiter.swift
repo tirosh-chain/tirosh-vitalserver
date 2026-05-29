@@ -20,10 +20,12 @@ struct RuntimeDatastoreRepairResultWaiter {
             loadResult: loadResult,
             onProgress: { message in
                 log(message)
-                try? writeStatus(
+                writeRuntimeStatusBestEffort(
                     .recovering,
-                    .repairDatastore,
-                    message
+                    operation: .repairDatastore,
+                    message: message,
+                    writeStatus: writeStatus,
+                    log: log
                 )
             },
             sleep: sleep

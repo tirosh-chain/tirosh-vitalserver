@@ -7,6 +7,7 @@ struct RuntimeHealthCheckRunner {
     var writeStatus: (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void
     var recordObservedEvent: (RuntimeStatusLevel, RuntimeOperation, String, RuntimeHealthSnapshot) throws -> Void
     var reasonText: ([RuntimeFailureReason]) -> String
+    var log: (String) -> Void
     var printLine: (String) -> Void
 
     func run() throws {
@@ -15,12 +16,20 @@ struct RuntimeHealthCheckRunner {
 
         guard RuntimeHealthSnapshotPolicy.isHealthy(snapshot) else {
             let reasons = reasonText(snapshot.failureReasons)
-            try? writeStatus(.degraded, .health, "runtime health check failed: \(reasons)")
-            try? recordObservedEvent(
+            writeRuntimeStatusBestEffort(
                 .degraded,
-                .health,
-                "\(observedErrorLabel(snapshot)) observed: \(observedErrorText(snapshot))",
-                snapshot
+                operation: .health,
+                message: "runtime health check failed: \(reasons)",
+                writeStatus: writeStatus,
+                log: log
+            )
+            recordRuntimeObservedEventBestEffort(
+                .degraded,
+                operation: .health,
+                message: "\(observedErrorLabel(snapshot)) observed: \(observedErrorText(snapshot))",
+                snapshot: snapshot,
+                recordObservedEvent: recordObservedEvent,
+                log: log
             )
             printLine("health: failed")
             throw LauncherError.runtimeHealthFailed

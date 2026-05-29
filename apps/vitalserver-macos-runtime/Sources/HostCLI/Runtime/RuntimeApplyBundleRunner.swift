@@ -29,7 +29,13 @@ struct RuntimeApplyBundleRunner {
         do {
             preflight = try preparePreflight(bundleURL)
         } catch {
-            try? writeStatus(.critical, .applyBundle, "bundle apply preflight failed: \(error)")
+            writeRuntimeStatusBestEffort(
+                .critical,
+                operation: .applyBundle,
+                message: "bundle apply preflight failed: \(error)",
+                writeStatus: writeStatus,
+                log: log
+            )
             throw error
         }
 
@@ -42,20 +48,38 @@ struct RuntimeApplyBundleRunner {
                 },
                 publish: { event in
                     log("step=\(event.step.rawValue) status=\(event.stepStatus.rawValue)")
-                    try? writeProgress(event)
+                    writeRuntimeProgressBestEffort(event, writeProgress: writeProgress, log: log)
                 }
             )
         } catch {
             log("bundle apply failed; rolling back error=\(error)")
-            try? writeStatus(.recovering, .applyBundle, "bundle apply failed; rolling back: \(error)")
+            writeRuntimeStatusBestEffort(
+                .recovering,
+                operation: .applyBundle,
+                message: "bundle apply failed; rolling back: \(error)",
+                writeStatus: writeStatus,
+                log: log
+            )
             do {
                 try rollback(preflight.backup)
                 try startRuntimeServices(preflight.restartPolicy)
-                try? writeStatus(.degraded, .applyBundle, "bundle apply failed; rollback completed: \(error)")
+                writeRuntimeStatusBestEffort(
+                    .degraded,
+                    operation: .applyBundle,
+                    message: "bundle apply failed; rollback completed: \(error)",
+                    writeStatus: writeStatus,
+                    log: log
+                )
             } catch {
                 log("bundle apply rollback failed error=\(error)")
-                try? startRuntimeServices(preflight.restartPolicy)
-                try? writeStatus(.critical, .applyBundle, "bundle apply failed and rollback failed: \(error)")
+                startRuntimeServicesBestEffort(preflight.restartPolicy)
+                writeRuntimeStatusBestEffort(
+                    .critical,
+                    operation: .applyBundle,
+                    message: "bundle apply failed and rollback failed: \(error)",
+                    writeStatus: writeStatus,
+                    log: log
+                )
             }
             throw error
         }
@@ -63,5 +87,13 @@ struct RuntimeApplyBundleRunner {
         try writeStatus(.healthy, .applyBundle, "bundle applied: \(preflight.manifest.version)")
         try pruneOldRuntimeArtifacts()
         log("bundle applied path=\(preflight.stagedBundle.path)")
+    }
+
+    private func startRuntimeServicesBestEffort(_ policy: RuntimeServiceRestartPolicy) {
+        do {
+            try startRuntimeServices(policy)
+        } catch {
+            log("failed to restart runtime services after rollback failure error=\(error)")
+        }
     }
 }

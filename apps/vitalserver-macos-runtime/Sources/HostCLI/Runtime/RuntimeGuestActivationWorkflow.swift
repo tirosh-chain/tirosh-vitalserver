@@ -41,7 +41,13 @@ struct RuntimeGuestActivationWorkflow {
             startVMService: operations.startVMService,
             loadResult: operations.loadResult,
             reportProgress: { message in
-                try? operations.writeStatus(.recovering, .activateGuestUpdate, message)
+                writeRuntimeStatusBestEffort(
+                    .recovering,
+                    operation: .activateGuestUpdate,
+                    message: message,
+                    writeStatus: operations.writeStatus,
+                    log: operations.log
+                )
             },
             sleep: operations.sleep,
             log: operations.log
