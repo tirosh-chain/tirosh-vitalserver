@@ -81,12 +81,12 @@ export function App() {
     <div className="app-shell">
       <header className="app-header">
         <div>
-          <h1>VitalServer Helper</h1>
-          <p>Helper Console</p>
+          <h1>VitalServer Remote Console</h1>
+          <p>Runtime Control</p>
         </div>
       </header>
 
-      <nav className="app-tabs" aria-label="Helper Console tabs">
+      <nav className="app-tabs" aria-label="Remote Console tabs">
         <div className="app-tab-primary-group">
           {primaryRoutes.map((route) => routeLink(route, "primary"))}
         </div>

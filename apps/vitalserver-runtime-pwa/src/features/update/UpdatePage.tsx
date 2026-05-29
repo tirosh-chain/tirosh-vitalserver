@@ -52,7 +52,7 @@ export function UpdatePage() {
           </button>
         </div>
         <p className="muted">
-          The Helper Console cannot browse host files directly. Enter a local
+          The Remote Console cannot browse host files directly. Enter a local
           path that exists on the Mac running Runtime Control API.
         </p>
       </Panel>

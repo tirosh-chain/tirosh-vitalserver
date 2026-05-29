@@ -83,13 +83,13 @@ function StatusOverview({ overview }: { overview: RuntimeControlOverview }) {
               )
             },
             {
-              label: "Helper Console",
+              label: "Remote Console",
               value: (
                 <a href={pwaURL} target="_blank" rel="noreferrer">
                   {pwaURL}
                 </a>
               ),
-              detail: `Port ${helperConsolePort} · Remote browser console`
+              detail: `Port ${helperConsolePort} · Remote browser access`
             },
             {
               label: "Data directory",

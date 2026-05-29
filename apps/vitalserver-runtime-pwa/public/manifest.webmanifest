@@ -1,6 +1,6 @@
 {
-  "name": "VitalServer Helper Console",
-  "short_name": "Helper Console",
+  "name": "VitalServer Remote Console",
+  "short_name": "Remote Console",
   "description": "Browser console for macOS VitalServer Helper.",
   "start_url": "/",
   "display": "standalone",

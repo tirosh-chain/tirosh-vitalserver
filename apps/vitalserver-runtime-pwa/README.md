@@ -1,13 +1,13 @@
-# VitalServer Helper Console PWA
+# VitalServer Remote Console PWA
 
 macOS `VitalServer Helper`의 Runtime Control API를 브라우저에서 제어하기
-위한 PWA입니다. 사용자 화면에서는 이 앱을 `Helper Console`로 부릅니다.
+위한 PWA입니다. 사용자 화면에서는 이 앱을 `Remote Console`로 부릅니다.
 Swift Helper UI의 정보 구조를 최대한 유지하면서, 화면 동작은
 OpenAPI contract와 React Query 기반으로 옮기는 것이 목표입니다.
 
 설치 현장에서는 Node/Vite 앱으로 실행하지 않습니다. 빌드된 static assets를
 Helper 앱 번들에 포함하고, Helper의 Runtime Control server가 이를
-서빙합니다. 이 서버는 같은 네트워크의 원격 브라우저가 Helper Console에
+서빙합니다. 이 서버는 같은 네트워크의 원격 브라우저가 Remote Console에
 접속할 수 있도록 Mac의 네트워크 인터페이스에서 열립니다.
 
 ## Quick Start
@@ -60,7 +60,7 @@ VITE_QUERY_STALE_TIME_MS=1000
   비워두면 same-origin을 사용합니다.
 - `VITE_RUNTIME_CONTROL_DEV_PROXY_TARGET`: Vite dev server가 `/runtime`, `/vitaldb`,
   `/host`, `/dev/testkit` 요청을 넘길 대상입니다.
-- `VITE_RUNTIME_CONTROL_DEFAULT_PORT`: Status 화면에서 Helper Console link를
+- `VITE_RUNTIME_CONTROL_DEFAULT_PORT`: Status 화면에서 Remote Console link를
   만들 때 쓰는 fallback port입니다.
 - `VITE_RUNTIME_CONTROL_DEFAULT_PROXY_PORT`: VitalServer link를 만들 때 쓰는 fallback proxy port입니다.
 - `VITE_PWA_DEV_SERVER_PORT`, `VITE_PWA_PREVIEW_PORT`: Vite dev/preview server port입니다.
@@ -151,7 +151,7 @@ Helper app bundle 내 포함 위치:
 Contents/Resources/runtime-control-pwa/
 ```
 
-설치된 시스템에서는 Helper의 Runtime Control server가 Helper Console을 제공합니다.
+설치된 시스템에서는 Helper의 Runtime Control server가 Remote Console을 제공합니다.
 원격 브라우저에서는 Mac의 IP나 hostname을 사용합니다.
 
 ```text
@@ -185,7 +185,7 @@ API client, domain policy를 바꿨다면 `check`, `test`, `build`를 모두 돌
 
 ## Troubleshooting
 
-Helper Console에서 `Runtime Control API is unreachable`가 보이면 먼저 아래를 확인합니다.
+Remote Console에서 `Runtime Control API is unreachable`가 보이면 먼저 아래를 확인합니다.
 
 - Helper Runtime Control API server가 실행 중인지 확인합니다.
 - PWA가 기대하는 API URL이 맞는지 확인합니다. 개발 중이면

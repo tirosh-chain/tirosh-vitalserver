@@ -163,7 +163,7 @@ export function SettingsPage() {
             />
           </label>
           <label>
-            Helper Console port
+            Remote Console port
             <input
               type="number"
               min="1"
@@ -177,7 +177,7 @@ export function SettingsPage() {
           </label>
         </div>
         <p className="muted">VitalServer URL: {vitalServerURLPreview}</p>
-        <p className="muted">Helper Console URL: {runtimeControlURLPreview}</p>
+        <p className="muted">Remote Console URL: {runtimeControlURLPreview}</p>
         <label className="checkbox-label block-checkbox">
           <input
             type="checkbox"

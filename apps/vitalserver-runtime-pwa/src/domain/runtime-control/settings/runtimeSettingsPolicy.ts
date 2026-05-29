@@ -34,7 +34,7 @@ export function validateRuntimeSettings(
     errors.push("VitalServer listen port must be between 1 and 65535.");
   }
   if (!validPort(settings.runtimeControlPort)) {
-    errors.push("Helper Console port must be between 1 and 65535.");
+    errors.push("Remote Console port must be between 1 and 65535.");
   }
   if (!validPort(settings.publicPort)) {
     errors.push("Advertised port must be between 1 and 65535.");

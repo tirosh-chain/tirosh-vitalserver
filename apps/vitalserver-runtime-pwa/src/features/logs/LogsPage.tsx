@@ -145,7 +145,7 @@ export function LogsPage() {
         ) : (
           <p className="muted">
             The archive is created on the Mac running Runtime Control API. The
-            Helper Console cannot open Finder directly; use the exported path on
+            Remote Console cannot open Finder directly; use the exported path on
             the host.
           </p>
         )}
