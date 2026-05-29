@@ -25,7 +25,7 @@ import type {
   RuntimeUpdateBundleSummaryResponse,
   VitalDBBeds,
   VitalDBRecorders
-} from "../../domain/runtime-control/contracts/runtimeControlTypes";
+} from "@/domain/runtime-control/contracts/runtimeControlTypes";
 import {
   runtimeBackupSchema,
   runtimeCapabilitiesSchema,
@@ -44,7 +44,8 @@ import {
   runtimeUpdateBundleSummaryResponseSchema,
   vitalDBBedsSchema,
   vitalDBRecordersSchema
-} from "../../domain/runtime-control/contracts/schemas/runtimeControlSchemas";
+} from "@/domain/runtime-control/contracts/schemas/runtimeControlSchemas";
+import { DEFAULT_APP_SETTINGS } from "@/shared/config/appSettings";
 import type { ZodType } from "zod";
 
 export type RuntimeControlClientOptions = {
@@ -91,14 +92,10 @@ export class RuntimeControlClient {
 
   constructor(options: RuntimeControlClientOptions = {}) {
     this.baseURL = trimTrailingSlash(
-      options.baseURL ??
-        import.meta.env.VITE_RUNTIME_CONTROL_API_BASE_URL ??
-        ""
+      options.baseURL ?? DEFAULT_APP_SETTINGS.runtimeControl.apiBaseURL
     );
     this.token =
-      options.token ??
-      import.meta.env.VITE_RUNTIME_CONTROL_TOKEN ??
-      "vitalserver-helper-dev";
+      options.token ?? DEFAULT_APP_SETTINGS.runtimeControl.token;
     this.fetchImpl = options.fetchImpl ?? fetch;
   }
 
@@ -505,7 +502,13 @@ export class RuntimeControlClient {
   }
 }
 
-export const runtimeControlClient = new RuntimeControlClient();
+export let runtimeControlClient = new RuntimeControlClient();
+
+export function configureRuntimeControlClient(
+  options: RuntimeControlClientOptions
+) {
+  runtimeControlClient = new RuntimeControlClient(options);
+}
 
 function trimTrailingSlash(value: string): string {
   return value.endsWith("/") ? value.slice(0, -1) : value;

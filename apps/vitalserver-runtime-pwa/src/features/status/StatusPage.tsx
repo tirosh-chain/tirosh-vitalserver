@@ -1,19 +1,23 @@
-import { useRuntimeOverview } from "../../application/runtime-control/queries";
-import type { RuntimeControlOverview } from "../../domain/runtime-control/contracts/runtimeControlTypes";
-import { formatBytes } from "../../domain/runtime-control/formatting/bytes";
+import { useRuntimeOverview } from "@/application/runtime-control/queries";
+import type { RuntimeControlOverview } from "@/domain/runtime-control/contracts/runtimeControlTypes";
+import { formatBytes } from "@/domain/runtime-control/formatting/bytes";
 import {
   runtimeControlURL,
   runtimeURL
-} from "../../domain/runtime-control/formatting/http";
+} from "@/domain/runtime-control/formatting/http";
 import {
   formatRuntimeState,
   runtimeStateTone
-} from "../../domain/runtime-control/formatting/runtimeState";
-import { formatLocalDateTime, formatUptimeSince } from "../../domain/runtime-control/formatting/time";
-import { ErrorState } from "../../shared/ui/ErrorState";
-import { KeyValueRows } from "../../shared/ui/KeyValueRows";
-import { Panel } from "../../shared/ui/Panel";
-import { StatusBadge } from "../../shared/ui/StatusBadge";
+} from "@/domain/runtime-control/formatting/runtimeState";
+import { useAppSettings } from "@/shared/config/AppSettingsContext";
+import {
+  formatLocalDateTime,
+  formatUptimeSince
+} from "@/domain/runtime-control/formatting/time";
+import { ErrorState } from "@/shared/ui/ErrorState";
+import { KeyValueRows } from "@/shared/ui/KeyValueRows";
+import { Panel } from "@/shared/ui/Panel";
+import { StatusBadge } from "@/shared/ui/StatusBadge";
 
 export function StatusPage() {
   const overviewQuery = useRuntimeOverview();
@@ -34,12 +38,19 @@ export function StatusPage() {
 }
 
 function StatusOverview({ overview }: { overview: RuntimeControlOverview }) {
+  const appSettings = useAppSettings();
   const status = overview.status;
   const state = status?.runtimeState;
   const stats = status?.dataDirectoryStats;
   const vitalRecorder = overview.vitalRecorder;
-  const vitalServerURL = runtimeURL(status?.proxyPort ?? overview.settings?.proxyPort);
-  const pwaURL = runtimeControlURL(overview.settings?.runtimeControlPort);
+  const vitalServerURL = runtimeURL(
+    status?.proxyPort ?? overview.settings?.proxyPort,
+    appSettings.runtimeControl.defaultProxyPort
+  );
+  const pwaURL = runtimeControlURL(
+    overview.settings?.runtimeControlPort,
+    appSettings.runtimeControl.defaultPort
+  );
 
   return (
     <div className="page-stack">

@@ -4,10 +4,10 @@ import {
   useApplyUpdateBundle,
   useSummarizeUpdateBundle,
   useVerifyUpdateBundle
-} from "../../application/runtime-control/queries";
-import { CommandResult } from "../../shared/ui/CommandResult";
-import { ErrorState } from "../../shared/ui/ErrorState";
-import { Panel } from "../../shared/ui/Panel";
+} from "@/application/runtime-control/queries";
+import { CommandResult } from "@/shared/ui/CommandResult";
+import { ErrorState } from "@/shared/ui/ErrorState";
+import { Panel } from "@/shared/ui/Panel";
 
 export function UpdatePage() {
   const [bundlePath, setBundlePath] = useState("");

@@ -15,6 +15,25 @@ npm --prefix apps/vitalserver-runtime-pwa run dev
 The Vite dev server runs on `http://127.0.0.1:5174` and proxies Runtime Control
 API requests to `http://127.0.0.1:18321`.
 
+## Configuration
+
+Runtime Control PWA settings are loaded during bootstrap from
+`src/shared/config/appSettings.ts`. Browser-visible `.env` values must use the
+`VITE_` prefix. `vite.config.ts` and scripts also accept the matching
+unprefixed keys for compatibility with existing local `.env` files.
+
+Start from `.env.example` when overriding local values. Common keys:
+
+```text
+VITE_RUNTIME_CONTROL_API_BASE_URL=
+VITE_RUNTIME_CONTROL_DEV_PROXY_TARGET=http://127.0.0.1:18321
+VITE_RUNTIME_CONTROL_TOKEN=vitalserver-helper-dev
+VITE_RUNTIME_CONTROL_DEFAULT_PORT=18321
+VITE_RUNTIME_CONTROL_DEFAULT_PROXY_PORT=80
+VITE_PWA_DEV_SERVER_PORT=5174
+VITE_PWA_PREVIEW_PORT=4174
+```
+
 ## Air-Gapped Deployment
 
 The PWA is deployed as static files, not as a Node/Vite runtime. Release builds
@@ -69,7 +88,7 @@ src/
     runtime-control-api/
                      fetch-based Runtime Control API transport
   features/           route-level React pages
-  shared/             presentation-only reusable UI components
+  shared/             app-wide config, styles, and reusable UI components
 ```
 
 Dependency direction:

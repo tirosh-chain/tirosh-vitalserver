@@ -1,4 +1,4 @@
-import type { RuntimeControlCapabilities } from "../contracts/runtimeControlTypes";
+import type { RuntimeControlCapabilities } from "@/domain/runtime-control/contracts/runtimeControlTypes";
 
 export function canApplyRuntimeSettings(
   capabilities: RuntimeControlCapabilities | undefined

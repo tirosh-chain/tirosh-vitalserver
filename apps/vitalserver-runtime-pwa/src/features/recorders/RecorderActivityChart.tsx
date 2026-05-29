@@ -1,12 +1,12 @@
 import { useMemo, useState } from "react";
 
-import type { VitalDBRecorderRecord } from "../../domain/runtime-control/contracts/runtimeControlTypes";
-import { formatBytes } from "../../domain/runtime-control/formatting/bytes";
+import type { VitalDBRecorderRecord } from "@/domain/runtime-control/contracts/runtimeControlTypes";
+import { formatBytes } from "@/domain/runtime-control/formatting/bytes";
 import {
   buildRecorderActivityBuckets,
   latestRecorderActivityPoint
-} from "../../domain/runtime-control/recorders/recorderActivity";
-import { MetricStrip } from "../../shared/ui/MetricStrip";
+} from "@/domain/runtime-control/recorders/recorderActivity";
+import { MetricStrip } from "@/shared/ui/MetricStrip";
 
 const bucketOptions = [
   { label: "1 min", seconds: 60 },

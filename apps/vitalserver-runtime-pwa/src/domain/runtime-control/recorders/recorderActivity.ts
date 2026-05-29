@@ -1,4 +1,4 @@
-import type { VitalDBRecorderRecord } from "../contracts/runtimeControlTypes";
+import type { VitalDBRecorderRecord } from "@/domain/runtime-control/contracts/runtimeControlTypes";
 
 export type RecorderActivityPoint = NonNullable<
   VitalDBRecorderRecord["activityTimeline"]

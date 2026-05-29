@@ -4,17 +4,17 @@ import {
   useApplyRuntimeSettings,
   useRuntimeCapabilities,
   useRuntimeSettings
-} from "../../application/runtime-control/queries";
-import { canApplyRuntimeSettings } from "../../domain/runtime-control/capabilities/runtimeCapabilities";
-import type { RuntimeSettings } from "../../domain/runtime-control/contracts/runtimeControlTypes";
+} from "@/application/runtime-control/queries";
+import { canApplyRuntimeSettings } from "@/domain/runtime-control/capabilities/runtimeCapabilities";
+import type { RuntimeSettings } from "@/domain/runtime-control/contracts/runtimeControlTypes";
 import {
   runtimeControlURLForPort,
   runtimeURL
-} from "../../domain/runtime-control/formatting/http";
-import { validateRuntimeSettings } from "../../domain/runtime-control/settings/runtimeSettingsPolicy";
-import { ConfirmButton } from "../../shared/ui/ConfirmButton";
-import { ErrorState } from "../../shared/ui/ErrorState";
-import { Panel } from "../../shared/ui/Panel";
+} from "@/domain/runtime-control/formatting/http";
+import { validateRuntimeSettings } from "@/domain/runtime-control/settings/runtimeSettingsPolicy";
+import { ConfirmButton } from "@/shared/ui/ConfirmButton";
+import { ErrorState } from "@/shared/ui/ErrorState";
+import { Panel } from "@/shared/ui/Panel";
 
 type SettingsDraft = {
   cpuCount: string;

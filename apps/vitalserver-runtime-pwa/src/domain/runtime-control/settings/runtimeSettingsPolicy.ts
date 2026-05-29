@@ -1,4 +1,4 @@
-import type { RuntimeSettings } from "../contracts/runtimeControlTypes";
+import type { RuntimeSettings } from "@/domain/runtime-control/contracts/runtimeControlTypes";
 
 export type RuntimeSettingsValidationResult = {
   valid: boolean;

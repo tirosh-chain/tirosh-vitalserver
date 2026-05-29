@@ -1,4 +1,4 @@
-import type { RuntimeCommandResponse } from "../../domain/runtime-control/contracts/runtimeControlTypes";
+import type { RuntimeCommandResponse } from "@/domain/runtime-control/contracts/runtimeControlTypes";
 import { ErrorState } from "./ErrorState";
 
 export function CommandResult({

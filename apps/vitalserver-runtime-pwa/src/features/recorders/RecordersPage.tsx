@@ -1,19 +1,19 @@
 import { useMemo, useState } from "react";
 
-import { useVitalDBRecorders } from "../../application/runtime-control/queries";
-import type { VitalDBRecorderRecord } from "../../domain/runtime-control/contracts/runtimeControlTypes";
+import { useVitalDBRecorders } from "@/application/runtime-control/queries";
+import type { VitalDBRecorderRecord } from "@/domain/runtime-control/contracts/runtimeControlTypes";
 import {
   formatBoolean,
   formatRecorderStatus,
   recorderStatusTone
-} from "../../domain/runtime-control/formatting/status";
-import { formatLocalDateTime } from "../../domain/runtime-control/formatting/time";
-import { DataTable } from "../../shared/ui/DataTable";
-import { ErrorState } from "../../shared/ui/ErrorState";
-import { KeyValueRows } from "../../shared/ui/KeyValueRows";
-import { MetricStrip } from "../../shared/ui/MetricStrip";
-import { Panel } from "../../shared/ui/Panel";
-import { StatusBadge } from "../../shared/ui/StatusBadge";
+} from "@/domain/runtime-control/formatting/status";
+import { formatLocalDateTime } from "@/domain/runtime-control/formatting/time";
+import { DataTable } from "@/shared/ui/DataTable";
+import { ErrorState } from "@/shared/ui/ErrorState";
+import { KeyValueRows } from "@/shared/ui/KeyValueRows";
+import { MetricStrip } from "@/shared/ui/MetricStrip";
+import { Panel } from "@/shared/ui/Panel";
+import { StatusBadge } from "@/shared/ui/StatusBadge";
 import { RecorderActivityChart } from "./RecorderActivityChart";
 
 export function RecordersPage() {

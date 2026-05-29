@@ -1,4 +1,4 @@
-import { summarizeRuntimeControlError } from "../../domain/runtime-control/errors/runtimeControlError";
+import { summarizeRuntimeControlError } from "@/domain/runtime-control/errors/runtimeControlError";
 
 export function ErrorState({
   error,

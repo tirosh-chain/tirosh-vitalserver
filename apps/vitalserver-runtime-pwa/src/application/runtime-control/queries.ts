@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ZodType } from "zod";
 
-import { runtimeControlClient } from "../../infrastructure/runtime-control-api/runtimeControlClient";
+import { runtimeControlClient } from "@/infrastructure/runtime-control-api/runtimeControlClient";
 import type {
   RuntimeBackupRequest,
   RuntimeExportLogsRequest,
@@ -15,7 +15,7 @@ import type {
   RuntimeTestKitVirtualRecorderStartRequest,
   RuntimeUninstallRequest,
   RuntimeUpdateBundleRequest
-} from "../../domain/runtime-control/contracts/runtimeControlTypes";
+} from "@/domain/runtime-control/contracts/runtimeControlTypes";
 import {
   runtimeApplySettingsRequestSchema,
   runtimeBackupRequestSchema,
@@ -30,8 +30,8 @@ import {
   runtimeTestKitVirtualRecorderStartRequestSchema,
   runtimeUninstallRequestSchema,
   runtimeUpdateBundleRequestSchema
-} from "../../domain/runtime-control/contracts/schemas/runtimeControlRequestSchemas";
-import { RuntimeControlValidationError } from "../../domain/runtime-control/errors/runtimeControlError";
+} from "@/domain/runtime-control/contracts/schemas/runtimeControlRequestSchemas";
+import { RuntimeControlValidationError } from "@/domain/runtime-control/errors/runtimeControlError";
 
 export const runtimeControlQueryKeys = {
   overview: ["runtime-control", "overview"] as const,
@@ -161,10 +161,10 @@ export function useApplyUpdateBundle() {
 
 function updateBundleRequest(path: string): RuntimeUpdateBundleRequest {
   return parseRequest(runtimeUpdateBundleRequestSchema, {
-        bundle: {
-          kind: "localPath",
-          value: path
-        }
+    bundle: {
+      kind: "localPath",
+      value: path
+    }
   });
 }
 

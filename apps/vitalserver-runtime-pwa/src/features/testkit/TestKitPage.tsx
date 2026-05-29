@@ -10,12 +10,12 @@ import {
   useSessionTestKitAction,
   useStartTestKitVirtualRecorders,
   useTestKitStatus
-} from "../../application/runtime-control/queries";
-import type { RuntimeTestKitSession } from "../../domain/runtime-control/contracts/runtimeControlTypes";
-import { formatBytes } from "../../domain/runtime-control/formatting/bytes";
-import { ErrorState } from "../../shared/ui/ErrorState";
-import { KeyValueRows } from "../../shared/ui/KeyValueRows";
-import { Panel } from "../../shared/ui/Panel";
+} from "@/application/runtime-control/queries";
+import type { RuntimeTestKitSession } from "@/domain/runtime-control/contracts/runtimeControlTypes";
+import { formatBytes } from "@/domain/runtime-control/formatting/bytes";
+import { ErrorState } from "@/shared/ui/ErrorState";
+import { KeyValueRows } from "@/shared/ui/KeyValueRows";
+import { Panel } from "@/shared/ui/Panel";
 
 export function TestKitPage() {
   const status = useTestKitStatus();

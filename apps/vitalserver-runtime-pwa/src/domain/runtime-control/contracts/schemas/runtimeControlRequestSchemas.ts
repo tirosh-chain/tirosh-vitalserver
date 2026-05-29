@@ -13,7 +13,7 @@ import type {
   RuntimeTestKitVirtualRecorderStartRequest,
   RuntimeUninstallRequest,
   RuntimeUpdateBundleRequest
-} from "../runtimeControlTypes";
+} from "@/domain/runtime-control/contracts/runtimeControlTypes";
 import { runtimeSettingsSchema } from "./runtimeControlSchemas";
 
 const nonEmptyString = z.string().trim().min(1);

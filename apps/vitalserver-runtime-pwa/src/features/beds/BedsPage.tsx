@@ -1,19 +1,19 @@
 import { useMemo, useState } from "react";
 
-import { useVitalDBBeds } from "../../application/runtime-control/queries";
-import type { VitalDBBedRecord } from "../../domain/runtime-control/contracts/runtimeControlTypes";
+import { useVitalDBBeds } from "@/application/runtime-control/queries";
+import type { VitalDBBedRecord } from "@/domain/runtime-control/contracts/runtimeControlTypes";
 import {
   formatBoolean,
   formatRecorderStatus,
   recorderStatusTone
-} from "../../domain/runtime-control/formatting/status";
-import { formatLocalDateTime } from "../../domain/runtime-control/formatting/time";
-import { DataTable } from "../../shared/ui/DataTable";
-import { ErrorState } from "../../shared/ui/ErrorState";
-import { KeyValueRows } from "../../shared/ui/KeyValueRows";
-import { MetricStrip } from "../../shared/ui/MetricStrip";
-import { Panel } from "../../shared/ui/Panel";
-import { StatusBadge } from "../../shared/ui/StatusBadge";
+} from "@/domain/runtime-control/formatting/status";
+import { formatLocalDateTime } from "@/domain/runtime-control/formatting/time";
+import { DataTable } from "@/shared/ui/DataTable";
+import { ErrorState } from "@/shared/ui/ErrorState";
+import { KeyValueRows } from "@/shared/ui/KeyValueRows";
+import { MetricStrip } from "@/shared/ui/MetricStrip";
+import { Panel } from "@/shared/ui/Panel";
+import { StatusBadge } from "@/shared/ui/StatusBadge";
 
 export function BedsPage() {
   const bedsQuery = useVitalDBBeds();

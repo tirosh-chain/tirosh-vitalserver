@@ -12,25 +12,25 @@ import {
   useRuntimeOverview,
   useRestoreRedisBackup,
   useRollbackBackup
-} from "../../application/runtime-control/queries";
-import { canControlRecovery } from "../../domain/runtime-control/capabilities/runtimeCapabilities";
+} from "@/application/runtime-control/queries";
+import { canControlRecovery } from "@/domain/runtime-control/capabilities/runtimeCapabilities";
 import type {
   RuntimeControlOverview,
   RuntimeBackup
-} from "../../domain/runtime-control/contracts/runtimeControlTypes";
-import { formatBytes } from "../../domain/runtime-control/formatting/bytes";
-import { successfulHTTP } from "../../domain/runtime-control/formatting/http";
+} from "@/domain/runtime-control/contracts/runtimeControlTypes";
+import { formatBytes } from "@/domain/runtime-control/formatting/bytes";
+import { successfulHTTP } from "@/domain/runtime-control/formatting/http";
 import {
   formatRuntimeState,
   runtimeStateTone
-} from "../../domain/runtime-control/formatting/runtimeState";
-import { ConfirmButton } from "../../shared/ui/ConfirmButton";
-import { CommandResult } from "../../shared/ui/CommandResult";
-import { DataTable } from "../../shared/ui/DataTable";
-import { ErrorState } from "../../shared/ui/ErrorState";
-import { KeyValueRows } from "../../shared/ui/KeyValueRows";
-import { Panel } from "../../shared/ui/Panel";
-import { StatusBadge } from "../../shared/ui/StatusBadge";
+} from "@/domain/runtime-control/formatting/runtimeState";
+import { ConfirmButton } from "@/shared/ui/ConfirmButton";
+import { CommandResult } from "@/shared/ui/CommandResult";
+import { DataTable } from "@/shared/ui/DataTable";
+import { ErrorState } from "@/shared/ui/ErrorState";
+import { KeyValueRows } from "@/shared/ui/KeyValueRows";
+import { Panel } from "@/shared/ui/Panel";
+import { StatusBadge } from "@/shared/ui/StatusBadge";
 
 export function AdvancedPage() {
   const overview = useRuntimeOverview();

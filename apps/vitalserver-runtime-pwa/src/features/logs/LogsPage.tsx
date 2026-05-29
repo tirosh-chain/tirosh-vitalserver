@@ -4,10 +4,10 @@ import {
   useExportHostLogs,
   useHostLogs,
   useRuntimeCapabilities
-} from "../../application/runtime-control/queries";
-import type { RuntimeLogSource } from "../../domain/runtime-control/contracts/runtimeControlTypes";
-import { ErrorState } from "../../shared/ui/ErrorState";
-import { Panel } from "../../shared/ui/Panel";
+} from "@/application/runtime-control/queries";
+import type { RuntimeLogSource } from "@/domain/runtime-control/contracts/runtimeControlTypes";
+import { ErrorState } from "@/shared/ui/ErrorState";
+import { Panel } from "@/shared/ui/Panel";
 
 const logSources: Array<{ id: RuntimeLogSource; label: string }> = [
   { id: "helperMessage", label: "Helper message" },
