@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  RuntimeControlAPIError,
+  RuntimeControlContractError,
+  RuntimeControlNetworkError,
   RuntimeControlValidationError,
   summarizeRuntimeControlError
 } from "./runtimeControlError";
@@ -8,14 +11,16 @@ import {
 describe("runtime control error summaries", () => {
   it("summarizes API error responses", () => {
     expect(
-      summarizeRuntimeControlError({
-        name: "RuntimeControlAPIError",
-        status: 404,
-        body: JSON.stringify({
-          code: "routeNotFound",
-          message: "missing route"
-        })
-      })
+      summarizeRuntimeControlError(
+        new RuntimeControlAPIError(
+          "missing route",
+          404,
+          JSON.stringify({
+            code: "routeNotFound",
+            message: "missing route"
+          })
+        )
+      )
     ).toMatchObject({
       kind: "api",
       title: "Runtime Control API returned HTTP 404",
@@ -25,10 +30,12 @@ describe("runtime control error summaries", () => {
 
   it("summarizes contract validation failures", () => {
     expect(
-      summarizeRuntimeControlError({
-        name: "RuntimeControlContractError",
-        path: "/runtime/overview"
-      })
+      summarizeRuntimeControlError(
+        new RuntimeControlContractError(
+          "/runtime/overview",
+          new Error("bad schema")
+        )
+      )
     ).toMatchObject({
       kind: "contract",
       title: "Runtime Control API contract mismatch"
@@ -36,7 +43,9 @@ describe("runtime control error summaries", () => {
   });
 
   it("summarizes network failures", () => {
-    expect(summarizeRuntimeControlError(new TypeError("Failed to fetch"))).toMatchObject({
+    expect(
+      summarizeRuntimeControlError(new TypeError("Failed to fetch"))
+    ).toMatchObject({
       kind: "network",
       title: "Runtime Control API is unreachable"
     });
@@ -44,11 +53,12 @@ describe("runtime control error summaries", () => {
 
   it("includes the attempted URL for Runtime Control network failures", () => {
     expect(
-      summarizeRuntimeControlError({
-        name: "RuntimeControlNetworkError",
-        url: "http://127.0.0.1:18321/runtime/overview",
-        cause: new TypeError("Failed to fetch")
-      })
+      summarizeRuntimeControlError(
+        new RuntimeControlNetworkError(
+          "http://127.0.0.1:18321/runtime/overview",
+          new TypeError("Failed to fetch")
+        )
+      )
     ).toMatchObject({
       kind: "network",
       title: "Runtime Control API is unreachable",

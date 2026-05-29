@@ -93,20 +93,20 @@ npm --prefix apps/vitalserver-runtime-pwa run generate:api
 ```text
 src/
   app/
-    bootstrap.tsx    settings 로딩, API client 설정, provider 구성
-    providers.tsx    React Query와 AppSettings provider
+    bootstrap.tsx    settings 로딩, API gateway 생성, provider 구성
+    providers.tsx    React Query, AppSettings, RuntimeControlGateway provider
     routes.tsx       Swift UI 순서에 맞춘 route metadata
   domain/
     runtime-control/
       contracts/     OpenAPI-derived RuntimeContractAPI types and schemas
       events/        event filter policy and period calculations
       formatting/    runtime display/status formatting policy
-      settings/      runtime settings validation/display policy
+      settings/      runtime settings validation and form mapping policy
   application/
-    runtime-control/ React Query hooks and command/query orchestration
+    runtime-control/ gateway port, React Query hooks, command/query orchestration
   infrastructure/
     runtime-control-api/
-                    fetch-based Runtime Control API transport
+                    fetch-based Runtime Control API gateway implementation
   features/          route-level React pages
   shared/
     config/          AppSettings and app-wide config context
@@ -117,13 +117,15 @@ src/
 Dependency direction:
 
 - `features`는 `application`, `domain`, `shared`를 사용할 수 있습니다.
-- `application`은 `domain`, `infrastructure`를 사용할 수 있습니다.
-- `infrastructure`는 `domain` contract를 사용할 수 있지만 React UI는 import하지 않습니다.
+- `application`은 `domain`과 application-owned gateway port만 사용합니다.
+- `infrastructure`는 application gateway port를 구현하고, `domain` contract를 사용할 수 있습니다.
+- `app` composition root는 settings를 읽고 concrete infrastructure gateway를 주입합니다.
 - `domain`은 React, React Query, transport code를 import하지 않습니다.
 
 새로운 business/display policy는 `domain`에 둡니다. 여러 API 호출을 조합하는
 command/query 흐름은 `application`에 둡니다. fetch, token, URL 조립 같은 HTTP
-detail은 `infrastructure`에 둡니다.
+detail은 `infrastructure`에 둡니다. 화면 form draft와 API DTO 사이의 변환은
+도메인 의미가 있는 경우 `domain/runtime-control/*`에 둡니다.
 
 ## Air-Gapped Deployment
 

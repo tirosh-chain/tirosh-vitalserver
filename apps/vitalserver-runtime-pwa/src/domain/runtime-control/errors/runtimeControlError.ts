@@ -13,6 +13,7 @@ export type RuntimeControlErrorSummary = {
 };
 
 export class RuntimeControlValidationError extends Error {
+  readonly kind = "validation" as const;
   readonly fieldErrors: string[];
 
   constructor(message: string, fieldErrors: string[]) {
@@ -22,7 +23,47 @@ export class RuntimeControlValidationError extends Error {
   }
 }
 
+export class RuntimeControlAPIError extends Error {
+  readonly kind = "api" as const;
+  readonly status: number;
+  readonly body: string;
+
+  constructor(message: string, status: number, body: string) {
+    super(message);
+    this.name = "RuntimeControlAPIError";
+    this.status = status;
+    this.body = body;
+  }
+}
+
+export class RuntimeControlNetworkError extends Error {
+  readonly kind = "network" as const;
+  readonly url: string;
+  readonly cause: unknown;
+
+  constructor(url: string, cause: unknown) {
+    super(`Runtime Control API is unreachable: ${url}`);
+    this.name = "RuntimeControlNetworkError";
+    this.url = url;
+    this.cause = cause;
+  }
+}
+
+export class RuntimeControlContractError extends Error {
+  readonly kind = "contract" as const;
+  readonly path: string;
+  readonly cause: unknown;
+
+  constructor(path: string, cause: unknown) {
+    super(`Runtime Control API contract validation failed: ${path}`);
+    this.name = "RuntimeControlContractError";
+    this.path = path;
+    this.cause = cause;
+  }
+}
+
 type ErrorLike = {
+  kind?: RuntimeControlErrorKind;
   name?: string;
   message?: string;
   status?: number;
@@ -37,11 +78,11 @@ export function summarizeRuntimeControlError(
 ): RuntimeControlErrorSummary {
   const errorLike = asErrorLike(error);
 
-  if (errorLike.name === "RuntimeControlAPIError") {
+  if (errorLike.kind === "api") {
     return summarizeAPIError(errorLike);
   }
 
-  if (errorLike.name === "RuntimeControlContractError") {
+  if (errorLike.kind === "contract") {
     return {
       kind: "contract",
       title: "Runtime Control API contract mismatch",
@@ -51,11 +92,14 @@ export function summarizeRuntimeControlError(
     };
   }
 
-  if (errorLike.name === "RuntimeControlNetworkError") {
+  if (errorLike.kind === "network") {
     return summarizeNetworkError(errorLike);
   }
 
-  if (error instanceof RuntimeControlValidationError) {
+  if (
+    errorLike.kind === "validation" &&
+    error instanceof RuntimeControlValidationError
+  ) {
     return {
       kind: "validation",
       title: "Invalid request",

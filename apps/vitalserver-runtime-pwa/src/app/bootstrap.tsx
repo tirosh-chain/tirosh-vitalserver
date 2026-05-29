@@ -8,10 +8,10 @@ import {
   loadBrowserAppSettings,
   type AppSettings
 } from "@/shared/config/appSettings";
-import { configureRuntimeControlClient } from "@/infrastructure/runtime-control-api/runtimeControlClient";
+import { RuntimeControlClient } from "@/infrastructure/runtime-control-api/runtimeControlClient";
 
 export function bootstrapApp(settings: AppSettings = loadBrowserAppSettings()) {
-  configureRuntimeControlClient({
+  const runtimeControlGateway = new RuntimeControlClient({
     baseURL: settings.runtimeControl.apiBaseURL,
     token: settings.runtimeControl.token
   });
@@ -25,7 +25,10 @@ export function bootstrapApp(settings: AppSettings = loadBrowserAppSettings()) {
   createRoot(root).render(
     <StrictMode>
       <BrowserRouter>
-        <AppProviders settings={settings}>
+        <AppProviders
+          runtimeControlGateway={runtimeControlGateway}
+          settings={settings}
+        >
           <App />
         </AppProviders>
       </BrowserRouter>

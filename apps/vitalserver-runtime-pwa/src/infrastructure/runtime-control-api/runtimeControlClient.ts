@@ -1,4 +1,13 @@
 import type {
+  RuntimeControlGateway,
+  RuntimeEventQuery
+} from "@/application/runtime-control/runtimeControlGateway";
+import {
+  RuntimeControlAPIError,
+  RuntimeControlContractError,
+  RuntimeControlNetworkError
+} from "@/domain/runtime-control/errors/runtimeControlError";
+import type {
   RuntimeControlCapabilities,
   RuntimeControlOverview,
   RuntimeApplySettingsRequest,
@@ -54,50 +63,7 @@ export type RuntimeControlClientOptions = {
   fetchImpl?: typeof fetch;
 };
 
-export type RuntimeEventQuery = {
-  limit?: number;
-  type?: string;
-  since?: string;
-  cursor?: string;
-};
-
-export class RuntimeControlAPIError extends Error {
-  readonly status: number;
-  readonly body: string;
-
-  constructor(message: string, status: number, body: string) {
-    super(message);
-    this.name = "RuntimeControlAPIError";
-    this.status = status;
-    this.body = body;
-  }
-}
-
-export class RuntimeControlNetworkError extends Error {
-  readonly url: string;
-  readonly cause: unknown;
-
-  constructor(url: string, cause: unknown) {
-    super(`Runtime Control API is unreachable: ${url}`);
-    this.name = "RuntimeControlNetworkError";
-    this.url = url;
-    this.cause = cause;
-  }
-}
-
-export class RuntimeControlContractError extends Error {
-  readonly path: string;
-  readonly cause: unknown;
-
-  constructor(path: string, cause: unknown) {
-    super(`Runtime Control API contract validation failed: ${path}`);
-    this.name = "RuntimeControlContractError";
-    this.path = path;
-    this.cause = cause;
-  }
-}
-
-export class RuntimeControlClient {
+export class RuntimeControlClient implements RuntimeControlGateway {
   private readonly baseURL: string;
   private readonly token: string;
   private readonly fetchImpl: typeof fetch;
@@ -529,14 +495,6 @@ export class RuntimeControlClient {
     }
     return url.toString();
   }
-}
-
-export let runtimeControlClient = new RuntimeControlClient();
-
-export function configureRuntimeControlClient(
-  options: RuntimeControlClientOptions
-) {
-  runtimeControlClient = new RuntimeControlClient(options);
 }
 
 function trimTrailingSlash(value: string): string {

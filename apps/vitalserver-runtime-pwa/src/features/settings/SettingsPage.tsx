@@ -6,68 +6,48 @@ import {
   useRuntimeSettings
 } from "@/application/runtime-control/queries";
 import { canApplyRuntimeSettings } from "@/domain/runtime-control/capabilities/runtimeCapabilities";
-import type { RuntimeSettings } from "@/domain/runtime-control/contracts/runtimeControlTypes";
 import {
   runtimeControlURLForPort,
   runtimeURL
 } from "@/domain/runtime-control/formatting/http";
+import {
+  draftToRuntimeSettings,
+  emptyRuntimeSettingsDraft,
+  parseOptionalNumber,
+  runtimeSettingsToDraft,
+  type RuntimeSettingsDraft,
+  usesCustomAdvertisedURL
+} from "@/domain/runtime-control/settings/runtimeSettingsForm";
 import { validateRuntimeSettings } from "@/domain/runtime-control/settings/runtimeSettingsPolicy";
 import { ConfirmButton } from "@/shared/ui/ConfirmButton";
 import { ErrorState } from "@/shared/ui/ErrorState";
 import { Panel } from "@/shared/ui/Panel";
 
-type SettingsDraft = {
-  cpuCount: string;
-  memoryGiB: string;
-  diskGiB: string;
-  proxyPort: string;
-  runtimeControlPort: string;
-  vitalFilesDirectory: string;
-  publicHost: string;
-  publicPort: string;
-  redisBackupRetentionCount: string;
-  startOnBoot: boolean;
-  autoRecoveryEnabled: boolean;
-  preventSystemSleep: boolean;
-  restartAfterSave: boolean;
-};
-
-const emptyDraft: SettingsDraft = {
-  cpuCount: "",
-  memoryGiB: "",
-  diskGiB: "",
-  proxyPort: "",
-  runtimeControlPort: "",
-  vitalFilesDirectory: "",
-  publicHost: "",
-  publicPort: "",
-  redisBackupRetentionCount: "",
-  startOnBoot: false,
-  autoRecoveryEnabled: false,
-  preventSystemSleep: false,
-  restartAfterSave: false
-};
-
 export function SettingsPage() {
   const settings = useRuntimeSettings();
   const capabilities = useRuntimeCapabilities();
   const applySettings = useApplyRuntimeSettings();
-  const [draft, setDraft] = useState<SettingsDraft>(emptyDraft);
+  const [draft, setDraft] = useState<RuntimeSettingsDraft>(
+    emptyRuntimeSettingsDraft
+  );
   const [customAdvertisedURL, setCustomAdvertisedURL] = useState(false);
 
   useEffect(() => {
     if (settings.data) {
-      setDraft(toDraft(settings.data));
+      setDraft(runtimeSettingsToDraft(settings.data));
       setCustomAdvertisedURL(usesCustomAdvertisedURL(settings.data));
     }
   }, [settings.data]);
 
-  const updateField = (field: keyof SettingsDraft, value: string | boolean) => {
+  const updateField = (
+    field: keyof RuntimeSettingsDraft,
+    value: string | boolean
+  ) => {
     setDraft((current) => ({ ...current, [field]: value }));
   };
 
   const apply = () => {
-    const runtimeSettings = toRuntimeSettings(
+    const runtimeSettings = draftToRuntimeSettings(
       draft,
       settings.data,
       customAdvertisedURL
@@ -86,7 +66,7 @@ export function SettingsPage() {
     );
   };
 
-  const runtimeSettings = toRuntimeSettings(
+  const runtimeSettings = draftToRuntimeSettings(
     draft,
     settings.data,
     customAdvertisedURL
@@ -357,68 +337,6 @@ export function SettingsPage() {
   );
 }
 
-function toDraft(settings: RuntimeSettings): SettingsDraft {
-  return {
-    cpuCount: formatNumber(settings.cpuCount),
-    memoryGiB: formatNumber(settings.memoryGiB),
-    diskGiB: formatNumber(settings.diskGiB),
-    proxyPort: formatNumber(settings.proxyPort),
-    runtimeControlPort: formatNumber(settings.runtimeControlPort),
-    vitalFilesDirectory: settings.vitalFilesDirectory ?? "",
-    publicHost: settings.publicHost ?? "",
-    publicPort: formatNumber(settings.publicPort),
-    redisBackupRetentionCount: formatNumber(settings.redisBackupRetentionCount),
-    startOnBoot: settings.startOnBoot ?? false,
-    autoRecoveryEnabled: settings.autoRecoveryEnabled ?? false,
-    preventSystemSleep: settings.preventSystemSleep ?? false,
-    restartAfterSave: settings.restartAfterSave ?? false
-  };
-}
-
-function toRuntimeSettings(
-  draft: SettingsDraft,
-  current: RuntimeSettings | undefined,
-  customAdvertisedURL: boolean
-): RuntimeSettings {
-  const proxyPort = parseOptionalNumber(draft.proxyPort);
-  return {
-    cpuCount: parseOptionalNumber(draft.cpuCount),
-    memoryGiB: parseOptionalNumber(draft.memoryGiB),
-    diskGiB: parseOptionalNumber(draft.diskGiB),
-    minimumDiskGiB: current?.minimumDiskGiB,
-    proxyPort,
-    runtimeControlPort: parseOptionalNumber(draft.runtimeControlPort),
-    vitalFilesDirectory: emptyToUndefined(draft.vitalFilesDirectory),
-    publicHost: customAdvertisedURL ? emptyToUndefined(draft.publicHost) : undefined,
-    publicPort: customAdvertisedURL ? parseOptionalNumber(draft.publicPort) : proxyPort,
-    redisBackupRetentionCount: parseOptionalNumber(
-      draft.redisBackupRetentionCount
-    ),
-    startOnBoot: draft.startOnBoot,
-    autoRecoveryEnabled: draft.autoRecoveryEnabled,
-    preventSystemSleep: draft.preventSystemSleep,
-    restartAfterSave: draft.restartAfterSave
-  };
-}
-
-function formatNumber(value: number | undefined): string {
-  return value === undefined ? "" : String(value);
-}
-
-function parseOptionalNumber(value: string): number | undefined {
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return undefined;
-  }
-  const parsed = Number(trimmed);
-  return Number.isFinite(parsed) ? parsed : undefined;
-}
-
-function emptyToUndefined(value: string): string | undefined {
-  const trimmed = value.trim();
-  return trimmed ? trimmed : undefined;
-}
-
 function redirectAfterRuntimeControlPortChange(
   runtimeControlPort: number | undefined
 ) {
@@ -433,11 +351,4 @@ function redirectAfterRuntimeControlPortChange(
   window.setTimeout(() => {
     window.location.assign(runtimeControlURLForPort(runtimeControlPort));
   }, 1_000);
-}
-
-function usesCustomAdvertisedURL(settings: RuntimeSettings): boolean {
-  return Boolean(
-    settings.publicHost?.trim() ||
-      (settings.publicPort !== undefined && settings.publicPort !== settings.proxyPort)
-  );
 }

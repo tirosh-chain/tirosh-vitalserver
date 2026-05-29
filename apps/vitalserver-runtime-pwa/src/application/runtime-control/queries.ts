@@ -1,50 +1,36 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { ZodType } from "zod";
 
-import { runtimeControlClient } from "@/infrastructure/runtime-control-api/runtimeControlClient";
+import { useRuntimeControlGateway } from "@/application/runtime-control/RuntimeControlGatewayContext";
+import { runtimeControlQueryKeys } from "@/application/runtime-control/queryKeys";
+import {
+  backupRequest,
+  parseRuntimeControlRequest,
+  testKitDeleteBedsRequest,
+  testKitSessionSelectionRequest,
+  uninstallRequest,
+  updateBundleRequest
+} from "@/application/runtime-control/requestBuilders";
 import type {
+  RuntimeApplySettingsRequest,
+  RuntimeCommandResponse,
   RuntimeLogSource,
   RuntimeTestKitCreateBedsRequest,
-  RuntimeTestKitDeleteBedsRequest,
   RuntimeTestKitRestartRequest,
-  RuntimeTestKitSessionSelectionRequest,
   RuntimeTestKitVirtualRecorderStartRequest,
-  RuntimeUninstallRequest,
-  RuntimeUpdateBundleRequest
 } from "@/domain/runtime-control/contracts/runtimeControlTypes";
 import {
   runtimeApplySettingsRequestSchema,
-  runtimeBackupRequestSchema,
   runtimeExportLogsRequestSchema,
   runtimeLogTextRequestSchema,
   runtimeRepairProxyRequestSchema,
   runtimeTestKitCreateBedsRequestSchema,
-  runtimeTestKitDeleteBedsRequestSchema,
   runtimeTestKitRecorderDeletionRequestSchema,
   runtimeTestKitRestartRequestSchema,
-  runtimeTestKitSessionSelectionRequestSchema,
   runtimeTestKitVirtualRecorderStartRequestSchema,
-  runtimeUninstallRequestSchema,
-  runtimeUpdateBundleRequestSchema
 } from "@/domain/runtime-control/contracts/schemas/runtimeControlRequestSchemas";
-import { RuntimeControlValidationError } from "@/domain/runtime-control/errors/runtimeControlError";
-
-export const runtimeControlQueryKeys = {
-  overview: ["runtime-control", "overview"] as const,
-  capabilities: ["runtime-control", "capabilities"] as const,
-  settings: ["runtime-control", "settings"] as const,
-  events: (query: { limit?: number; type?: string; since?: string }) =>
-    ["runtime-control", "events", query] as const,
-  logs: (request: { source: RuntimeLogSource; lineLimit: number }) =>
-    ["runtime-control", "logs", request] as const,
-  hostBackups: ["host", "backups"] as const,
-  redisBackups: ["host", "backups", "redis"] as const,
-  testKitStatus: ["dev", "testkit", "status"] as const,
-  recorders: ["vitaldb", "recorders"] as const,
-  beds: ["vitaldb", "beds"] as const
-};
 
 export function useRuntimeOverview() {
+  const runtimeControlClient = useRuntimeControlGateway();
   return useQuery({
     queryKey: runtimeControlQueryKeys.overview,
     queryFn: () => runtimeControlClient.getOverview(),
@@ -53,6 +39,7 @@ export function useRuntimeOverview() {
 }
 
 export function useRuntimeCapabilities() {
+  const runtimeControlClient = useRuntimeControlGateway();
   return useQuery({
     queryKey: runtimeControlQueryKeys.capabilities,
     queryFn: () => runtimeControlClient.getCapabilities(),
@@ -65,6 +52,7 @@ export function useRuntimeEvents(query: {
   type?: string;
   since?: string;
 }) {
+  const runtimeControlClient = useRuntimeControlGateway();
   return useQuery({
     queryKey: runtimeControlQueryKeys.events(query),
     queryFn: () => runtimeControlClient.getRuntimeEvents(query),
@@ -73,6 +61,7 @@ export function useRuntimeEvents(query: {
 }
 
 export function useRuntimeSettings() {
+  const runtimeControlClient = useRuntimeControlGateway();
   return useQuery({
     queryKey: runtimeControlQueryKeys.settings,
     queryFn: () => runtimeControlClient.getSettings(),
@@ -81,15 +70,17 @@ export function useRuntimeSettings() {
 }
 
 export function useApplyRuntimeSettings() {
+  const runtimeControlClient = useRuntimeControlGateway();
   return useMutation({
-    mutationFn: (request: Parameters<typeof runtimeControlClient.applySettings>[0]) =>
+    mutationFn: (request: RuntimeApplySettingsRequest) =>
       runtimeControlClient.applySettings(
-        parseRequest(runtimeApplySettingsRequestSchema, request)
+        parseRuntimeControlRequest(runtimeApplySettingsRequestSchema, request)
       )
   });
 }
 
 export function useVitalDBRecorders() {
+  const runtimeControlClient = useRuntimeControlGateway();
   return useQuery({
     queryKey: runtimeControlQueryKeys.recorders,
     queryFn: () => runtimeControlClient.getRecorders(),
@@ -98,6 +89,7 @@ export function useVitalDBRecorders() {
 }
 
 export function useVitalDBBeds() {
+  const runtimeControlClient = useRuntimeControlGateway();
   return useQuery({
     queryKey: runtimeControlQueryKeys.beds,
     queryFn: () => runtimeControlClient.getBeds(),
@@ -110,10 +102,11 @@ export function useHostLogs(request: {
   lineLimit: number;
   live: boolean;
 }) {
+  const runtimeControlClient = useRuntimeControlGateway();
   return useQuery({
     queryKey: runtimeControlQueryKeys.logs(request),
     queryFn: () =>
-      runtimeControlClient.readLogs(parseRequest(runtimeLogTextRequestSchema, {
+      runtimeControlClient.readLogs(parseRuntimeControlRequest(runtimeLogTextRequestSchema, {
         source: request.source,
         helperMessage: "",
         lineLimit: request.lineLimit
@@ -123,9 +116,10 @@ export function useHostLogs(request: {
 }
 
 export function useExportHostLogs() {
+  const runtimeControlClient = useRuntimeControlGateway();
   return useMutation({
     mutationFn: (destination: string) =>
-      runtimeControlClient.exportLogs(parseRequest(runtimeExportLogsRequestSchema, {
+      runtimeControlClient.exportLogs(parseRuntimeControlRequest(runtimeExportLogsRequestSchema, {
         destination: {
           kind: "localPath",
           value: destination
@@ -135,6 +129,7 @@ export function useExportHostLogs() {
 }
 
 export function useSummarizeUpdateBundle() {
+  const runtimeControlClient = useRuntimeControlGateway();
   return useMutation({
     mutationFn: (path: string) =>
       runtimeControlClient.summarizeUpdateBundle(updateBundleRequest(path))
@@ -142,6 +137,7 @@ export function useSummarizeUpdateBundle() {
 }
 
 export function useVerifyUpdateBundle() {
+  const runtimeControlClient = useRuntimeControlGateway();
   return useMutation({
     mutationFn: (path: string) =>
       runtimeControlClient.verifyUpdateBundle(updateBundleRequest(path))
@@ -149,22 +145,15 @@ export function useVerifyUpdateBundle() {
 }
 
 export function useApplyUpdateBundle() {
+  const runtimeControlClient = useRuntimeControlGateway();
   return useMutation({
     mutationFn: (path: string) =>
       runtimeControlClient.applyUpdateBundle(updateBundleRequest(path))
   });
 }
 
-function updateBundleRequest(path: string): RuntimeUpdateBundleRequest {
-  return parseRequest(runtimeUpdateBundleRequestSchema, {
-    bundle: {
-      kind: "localPath",
-      value: path
-    }
-  });
-}
-
 export function useHostBackups() {
+  const runtimeControlClient = useRuntimeControlGateway();
   return useQuery({
     queryKey: runtimeControlQueryKeys.hostBackups,
     queryFn: () => runtimeControlClient.listHostBackups(),
@@ -173,6 +162,7 @@ export function useHostBackups() {
 }
 
 export function useRedisBackups() {
+  const runtimeControlClient = useRuntimeControlGateway();
   return useQuery({
     queryKey: runtimeControlQueryKeys.redisBackups,
     queryFn: () => runtimeControlClient.listRedisBackups(),
@@ -181,61 +171,71 @@ export function useRedisBackups() {
 }
 
 export function useRollbackBackup() {
+  const runtimeControlClient = useRuntimeControlGateway();
   return useBackupMutation("host", (path) =>
     runtimeControlClient.rollbackBackup(backupRequest(path))
   );
 }
 
 export function useDeleteHostBackup() {
+  const runtimeControlClient = useRuntimeControlGateway();
   return useBackupMutation("host", (path) =>
     runtimeControlClient.deleteHostBackup(backupRequest(path))
   );
 }
 
 export function useCreateRedisBackup() {
+  const runtimeControlClient = useRuntimeControlGateway();
   return useBackupMutation("redis", () => runtimeControlClient.createRedisBackup());
 }
 
 export function useRestoreRedisBackup() {
+  const runtimeControlClient = useRuntimeControlGateway();
   return useBackupMutation("redis", (path) =>
     runtimeControlClient.restoreRedisBackup(backupRequest(path))
   );
 }
 
 export function useRepairRuntime() {
+  const runtimeControlClient = useRuntimeControlGateway();
   return useMutation({
     mutationFn: () => runtimeControlClient.repairRuntime()
   });
 }
 
 export function useRepairProxy() {
+  const runtimeControlClient = useRuntimeControlGateway();
   return useMutation({
     mutationFn: (proxyPort?: number) =>
       runtimeControlClient.repairProxy(
-        parseRequest(runtimeRepairProxyRequestSchema, { proxyPort }).proxyPort
+        parseRuntimeControlRequest(runtimeRepairProxyRequestSchema, { proxyPort }).proxyPort
       )
   });
 }
 
 export function useRepairDatastore() {
+  const runtimeControlClient = useRuntimeControlGateway();
   return useMutation({
     mutationFn: () => runtimeControlClient.repairDatastore()
   });
 }
 
 export function useStartRuntimeServices() {
+  const runtimeControlClient = useRuntimeControlGateway();
   return useMutation({
     mutationFn: () => runtimeControlClient.startRuntimeServices()
   });
 }
 
 export function useStopRuntimeServices() {
+  const runtimeControlClient = useRuntimeControlGateway();
   return useMutation({
     mutationFn: () => runtimeControlClient.stopRuntimeServices()
   });
 }
 
 export function useUninstallRuntime() {
+  const runtimeControlClient = useRuntimeControlGateway();
   return useMutation({
     mutationFn: (clean: boolean) =>
       runtimeControlClient.uninstallRuntime(uninstallRequest(clean))
@@ -243,6 +243,7 @@ export function useUninstallRuntime() {
 }
 
 export function useTestKitStatus() {
+  const runtimeControlClient = useRuntimeControlGateway();
   return useQuery({
     queryKey: runtimeControlQueryKeys.testKitStatus,
     queryFn: () => runtimeControlClient.getTestKitStatus(),
@@ -251,27 +252,31 @@ export function useTestKitStatus() {
 }
 
 export function useCreateTestKitBeds() {
+  const runtimeControlClient = useRuntimeControlGateway();
   return useTestKitMutation((request: RuntimeTestKitCreateBedsRequest) =>
     runtimeControlClient.createTestKitBeds(
-      parseRequest(runtimeTestKitCreateBedsRequestSchema, request)
+      parseRuntimeControlRequest(runtimeTestKitCreateBedsRequestSchema, request)
     )
   );
 }
 
 export function useDeleteTestKitBeds() {
+  const runtimeControlClient = useRuntimeControlGateway();
   return useTestKitMutation((roomNames: string[]) =>
     runtimeControlClient.deleteTestKitBeds(testKitDeleteBedsRequest(roomNames))
   );
 }
 
 export function useResetTestKitBeds() {
+  const runtimeControlClient = useRuntimeControlGateway();
   return useTestKitMutation(() => runtimeControlClient.resetTestKitBeds());
 }
 
 export function useStartTestKitVirtualRecorders() {
+  const runtimeControlClient = useRuntimeControlGateway();
   return useTestKitMutation((request: RuntimeTestKitVirtualRecorderStartRequest) =>
     runtimeControlClient.startTestKitVirtualRecorders(
-      parseRequest(runtimeTestKitVirtualRecorderStartRequestSchema, request)
+      parseRuntimeControlRequest(runtimeTestKitVirtualRecorderStartRequestSchema, request)
     )
   );
 }
@@ -279,6 +284,7 @@ export function useStartTestKitVirtualRecorders() {
 export function useSessionTestKitAction(
   action: "stop" | "pause" | "resume" | "delete"
 ) {
+  const runtimeControlClient = useRuntimeControlGateway();
   return useTestKitMutation((sessionID: string | null) => {
     const request = testKitSessionSelectionRequest(sessionID);
     switch (action) {
@@ -295,30 +301,33 @@ export function useSessionTestKitAction(
 }
 
 export function useRestartTestKitVirtualRecorders() {
+  const runtimeControlClient = useRuntimeControlGateway();
   return useTestKitMutation((request: RuntimeTestKitRestartRequest) =>
     runtimeControlClient.restartTestKitVirtualRecorders(
-      parseRequest(runtimeTestKitRestartRequestSchema, request)
+      parseRuntimeControlRequest(runtimeTestKitRestartRequestSchema, request)
     )
   );
 }
 
 export function useResetTestKitVirtualRecorders() {
+  const runtimeControlClient = useRuntimeControlGateway();
   return useTestKitMutation(() =>
     runtimeControlClient.resetTestKitVirtualRecorders()
   );
 }
 
 export function useDeleteTestKitOrphanVRecorder() {
+  const runtimeControlClient = useRuntimeControlGateway();
   return useTestKitMutation((vrcode: string) =>
     runtimeControlClient.deleteTestKitOrphanVRecorder(
-      parseRequest(runtimeTestKitRecorderDeletionRequestSchema, { vrcode })
+      parseRuntimeControlRequest(runtimeTestKitRecorderDeletionRequestSchema, { vrcode })
     )
   );
 }
 
 function useBackupMutation(
   scope: "host" | "redis",
-  mutationFn: (path: string) => ReturnType<typeof runtimeControlClient.rollbackBackup>
+  mutationFn: (path: string) => Promise<RuntimeCommandResponse>
 ) {
   const queryClient = useQueryClient();
   return useMutation({
@@ -334,47 +343,6 @@ function useBackupMutation(
       });
     }
   });
-}
-
-function backupRequest(path: string) {
-  return parseRequest(runtimeBackupRequestSchema, {
-    backup: {
-      kind: "localPath" as const,
-      value: path
-    }
-  });
-}
-
-function uninstallRequest(clean: boolean): RuntimeUninstallRequest {
-  return parseRequest(runtimeUninstallRequestSchema, { clean });
-}
-
-function testKitDeleteBedsRequest(
-  roomNames: string[]
-): RuntimeTestKitDeleteBedsRequest {
-  return parseRequest(runtimeTestKitDeleteBedsRequestSchema, { roomNames });
-}
-
-function testKitSessionSelectionRequest(
-  sessionID: string | null
-): RuntimeTestKitSessionSelectionRequest {
-  return parseRequest(runtimeTestKitSessionSelectionRequestSchema, {
-    sessionID
-  });
-}
-
-function parseRequest<T>(schema: ZodType<T>, request: unknown): T {
-  const result = schema.safeParse(request);
-  if (!result.success) {
-    throw new RuntimeControlValidationError(
-      "Runtime Control request validation failed",
-      result.error.issues.map((issue) => {
-        const path = issue.path.join(".");
-        return path ? `${path}: ${issue.message}` : issue.message;
-      })
-    );
-  }
-  return result.data;
 }
 
 function useTestKitMutation<TVariables, TResult>(
