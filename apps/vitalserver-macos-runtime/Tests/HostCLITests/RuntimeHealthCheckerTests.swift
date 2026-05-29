@@ -67,7 +67,7 @@ final class RuntimeHealthCheckerTests: XCTestCase {
 
         let snapshot = checker.snapshot()
 
-        XCTAssertTrue(snapshot.isHealthy)
+        XCTAssertTrue(RuntimeHealthSnapshotPolicy.isHealthy(snapshot))
         XCTAssertTrue(httpProber.requestedURLs.contains("http://127.0.0.1:8080/ready"))
         XCTAssertEqual(snapshot.containerObservation?.auditProxyHTTP, "200")
         XCTAssertEqual(snapshot.containerObservation?.auditProxyStatus?.socketIoEventsSeen, 3)
@@ -101,7 +101,7 @@ final class RuntimeHealthCheckerTests: XCTestCase {
 
         let snapshot = checker.snapshot()
 
-        XCTAssertFalse(snapshot.isHealthy)
+        XCTAssertFalse(RuntimeHealthSnapshotPolicy.isHealthy(snapshot))
         XCTAssertEqual(snapshot.proxyPort, InstallSettings.defaultProxyPort)
         XCTAssertEqual(snapshot.guestHTTP, "200")
         XCTAssertTrue(httpProber.requestedURLs.contains("http://192.168.64.3/ready"))

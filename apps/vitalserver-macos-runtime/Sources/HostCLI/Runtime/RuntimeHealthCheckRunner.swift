@@ -13,7 +13,7 @@ struct RuntimeHealthCheckRunner {
         try printStatus()
         let snapshot = healthSnapshot()
 
-        guard snapshot.isHealthy else {
+        guard RuntimeHealthSnapshotPolicy.isHealthy(snapshot) else {
             let reasons = reasonText(snapshot.failureReasons)
             try? writeStatus(.degraded, .health, "runtime health check failed: \(reasons)")
             try? recordObservedEvent(

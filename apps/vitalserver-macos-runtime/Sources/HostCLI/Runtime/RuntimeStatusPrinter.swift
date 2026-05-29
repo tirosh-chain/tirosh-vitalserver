@@ -9,7 +9,7 @@ struct RuntimeStatusPrinter {
     let rootfsBase: URL
     let vmDisk: URL
     let latestBackupPath: () -> String?
-    let runtimeStatusValue: () -> String
+    let runtimeStatusValue: () -> String?
     let runtimeVersionValue: () -> String
     let vmIP: () -> String
     let installedProxyPort: () -> Int
@@ -26,7 +26,7 @@ struct RuntimeStatusPrinter {
         rootfsBase: URL,
         vmDisk: URL,
         latestBackupPath: @escaping () -> String?,
-        runtimeStatusValue: @escaping () -> String,
+        runtimeStatusValue: @escaping () -> String?,
         runtimeVersionValue: @escaping () -> String,
         vmIP: @escaping () -> String,
         installedProxyPort: @escaping () -> Int,
@@ -59,7 +59,11 @@ struct RuntimeStatusPrinter {
         printLine("  runtime dir: \(runtimeDirectory.path)")
         printLine("  latest backup: \(latestBackupPath() ?? "none")")
         printLine("  status file: \(fileState(url: runtimeStatus))")
-        printLine("  status: \(runtimeStatusValue())")
+        if let status = runtimeStatusValue() {
+            printLine("  status: \(status)")
+        } else {
+            printLine("  status: missing status document")
+        }
         printLine("  launcher: \(fileState(path: Constants.InstallPaths.vmBin))")
         printLine("  proxy runner: \(fileState(path: Constants.InstallPaths.proxyRun))")
         printLine("  rootfs base: \(fileState(url: rootfsBase))")

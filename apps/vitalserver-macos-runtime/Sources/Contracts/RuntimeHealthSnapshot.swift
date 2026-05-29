@@ -28,7 +28,7 @@ public struct RuntimeHealthSnapshot: Equatable {
         vmService: RuntimeServiceState,
         proxyService: RuntimeServiceState,
         watchdogService: RuntimeServiceState,
-        vmState: RuntimeVMState = .unknown("unknown"),
+        vmState: RuntimeVMState,
         vmErrors: [RuntimeVMError] = [],
         vmIP: String?,
         proxyPort: Int,
@@ -58,9 +58,5 @@ public struct RuntimeHealthSnapshot: Equatable {
         self.containerObservation = containerObservation
         self.vitalDBObservation = vitalDBObservation
         self.failureReasons = failureReasons
-    }
-
-    public var isHealthy: Bool {
-        failureReasons.isEmpty
     }
 }

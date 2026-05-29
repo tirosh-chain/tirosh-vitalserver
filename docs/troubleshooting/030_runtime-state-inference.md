@@ -18,6 +18,8 @@ Runtime 상태가 실제 상황과 다르게 보이거나, update 진행 상태�
 - `RuntimeStatus.isReady`처럼 모델 안의 computed property가 여러 신호를 묶어 상태를 암묵적으로 판단합니다.
 - UI가 `nil` 상태를 설치 여부 같은 다른 필드로 보정해 실제로 제공되지 않은 값을 표시합니다.
 - `"missing-vm-ip"`, `"bootstrap-pending"`, `"not evaluated"` 같은 문자열이 여러 레이어에 흩어져 상태처럼 사용됩니다.
+- progress/event 기록이 현재 status document 없이 임시 health snapshot을 만들어 상태를 채웁니다.
+- 내부 enum을 API read model로 변환할 때 알 수 없는 값을 `warning`, `staleLink` 같은 구체 상태로 바꿉니다.
 
 ## Impact
 
@@ -53,8 +55,10 @@ UI displays inferred state as if it were reported state
 ```sh
 rg -n "LegacyBootstrapLogEvaluator|LegacyCommandProgressParser|legacyCommandProgressLine" apps/vitalserver-macos-runtime
 rg -n "inferredVMState|inferredVMErrors|vmDiagnosticErrors\\(" apps/vitalserver-macos-runtime
-rg -n "\\.isReady|\\\"not evaluated\\\"" apps/vitalserver-macos-runtime/Sources
+rg -n "\\.isReady|\\\"not evaluated\\\"|not-evaluated" apps/vitalserver-macos-runtime/Sources
 rg -n "vmState.*runtimeInstalled|runtimeInstalled.*vmState|missing-vm-ip|bootstrap-pending" apps/vitalserver-macos-runtime/Sources
+rg -n "\\.isHealthy|lightweightRuntimeHealthSnapshot|progressHealthSnapshot" apps/vitalserver-macos-runtime/Sources
+rg -n "\\?\\? \\.staleLink|\\?\\? \\.warning|\\?\\? \\\"unknown\\\"|\\.unknown\\(\\\"unknown\\\"\\)|\\.unknown\\(\\\"command\\\"\\)" apps/vitalserver-macos-runtime/Sources
 ```
 
 상태 관련 read path에서 아래 패턴이 보이면 재검토합니다.
@@ -66,6 +70,9 @@ missing document field -> infer fallback state
 computed property -> combine fields into operational readiness
 UI fallback -> display unreported state as reported state
 string literal -> shared status sentinel without contract owner
+missing current status -> create placeholder health snapshot
+unknown enum -> map to concrete operational state
+nil database field -> store "unknown" as if it were reported
 ```
 
 ## Actions
@@ -80,8 +87,10 @@ string literal -> shared status sentinel without contract owner
 4. `command.log`, `bootstrap.log`, launchd log는 상태 전이 입력이 아니라 export/diagnostics 자료로만 사용합니다.
 5. Guest 내부 상태가 필요하면 guest가 result/status document로 직접 제공합니다.
 6. Runtime readiness와 VM health 분류는 각각 `RuntimeReadinessPolicy`, `RuntimeVMHealthPolicy`에서만 수행합니다.
-7. 상태 sentinel 문자열은 `RuntimeHTTPStatusText`처럼 contract/shared constant로 모으고, 각 레이어가 새 문자열을 만들지 않습니다.
+7. 실제 contract 값으로 남아야 하는 sentinel 문자열만 `RuntimeHTTPStatusText`처럼 shared constant로 모읍니다. 단순 placeholder 문자열은 제거합니다.
 8. UI는 상태를 새로 만들지 않습니다. UI policy는 제공된 상태를 표시용 text/severity로만 변환합니다.
+9. Progress/event 기록은 기존 status document의 명시 필드를 보존합니다. health snapshot placeholder를 만들어 채우지 않습니다.
+10. 내부 typed enum을 API read model로 옮길 때는 exhaustive mapping을 사용하고, unknown을 임의의 구체 값으로 바꾸지 않습니다.
 
 ## Prevention
 
@@ -101,6 +110,9 @@ string literal -> shared status sentinel without contract owner
 - 모델 computed property에 readiness/health 판단을 숨김
 - UI가 `nil` 또는 `unknown`을 다른 필드로 보정해 구체 상태처럼 표시
 - shared status sentinel 문자열을 여러 파일에 직접 작성
+- progress/event 생성을 위해 placeholder health snapshot을 생성
+- enum 변환 실패를 구체 상태로 fallback
+- 저장소 read path에서 누락된 상태 필드를 `"unknown"`으로 저장/노출
 
 ## Operational Notes
 
@@ -117,5 +129,8 @@ string literal -> shared status sentinel without contract owner
 ## Follow-up
 
 - 2026-05-29: `RuntimeStatusReader`의 `vmState`/`vmErrors` 추정, bootstrap log 기반 실패 분류, command log 기반 progress fallback을 제거했습니다.
-- 2026-05-29: `RuntimeStatus.isReady`의 암묵적 readiness 계산을 `RuntimeReadinessPolicy`로 분리하고, VM 상태/오류 분류를 `RuntimeVMHealthPolicy`로 명시했습니다. `missing-vm-ip`, `bootstrap-pending`, `not-evaluated` 상태 문자열도 `RuntimeHTTPStatusText` contract로 모았습니다.
+- 2026-05-29: `RuntimeStatus.isReady`의 암묵적 readiness 계산을 `RuntimeReadinessPolicy`로 분리하고, VM 상태/오류 분류를 `RuntimeVMHealthPolicy`로 명시했습니다. `missing-vm-ip`, `bootstrap-pending` 상태 문자열도 `RuntimeHTTPStatusText` contract로 모았습니다.
 - 2026-05-29: Swift status UI에서 `vmState == nil`을 `runtimeInstalled == false` 기준으로 `not-installed`처럼 표시하던 fallback을 제거했습니다. 설치 상태는 Runtime installation row가 표시하고, VM state row는 제공된 VM state만 표시합니다.
+- 2026-05-29: `RuntimeHealthSnapshot.isHealthy` computed property를 제거하고 `RuntimeHealthSnapshotPolicy`로 분리했습니다. `RuntimeHealthSnapshot`의 기본 `vmState`도 제거해 모든 snapshot 생성자가 VM state를 명시하게 했습니다.
+- 2026-05-29: progress/status writer에서 `not-evaluated` health snapshot을 생성하던 경로를 제거했습니다. Progress는 기존 status document가 없으면 쓰지 않고, 있으면 해당 document의 명시 상태 필드를 보존합니다.
+- 2026-05-29: VitalDB relationship event/severity를 Remote Console read model로 옮길 때 `staleLink`/`warning`으로 fallback하던 로직을 제거하고 exhaustive mapping으로 변경했습니다.

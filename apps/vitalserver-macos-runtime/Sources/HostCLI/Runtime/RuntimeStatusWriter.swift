@@ -7,7 +7,6 @@ struct RuntimeStatusWriter {
     let timestamp: () -> String
     let runtimeVersion: () -> String
     let healthSnapshot: () -> RuntimeHealthSnapshot
-    let progressHealthSnapshot: () -> RuntimeHealthSnapshot
     let latestBackup: () -> URL?
 
     func writeStatus(
@@ -47,7 +46,6 @@ struct RuntimeStatusWriter {
             reasonCodes: reasonCodes,
             updatedAt: timestamp(),
             runtimeVersion: runtimeVersion(),
-            healthSnapshot: progressHealthSnapshot(),
             latestBackup: latestBackup()
         )
     }

@@ -119,6 +119,7 @@ final class RuntimeHealthWaiterTests: XCTestCase {
             vmService: .loaded,
             proxyService: .loaded,
             watchdogService: .loaded,
+            vmState: reasons.isEmpty ? .running : .unreachable,
             vmIP: "192.168.64.2",
             proxyPort: 80,
             hostProxyHTTP: "200",

@@ -271,8 +271,8 @@ private extension RuntimeVitalRelationshipEventRecord {
         self.init(
             eventID: record.id,
             observedAt: record.observedAt,
-            eventType: RuntimeVitalRelationshipEventType(rawValue: record.eventType.rawValue) ?? .staleLink,
-            severity: RuntimeVitalRelationshipSeverity(rawValue: record.severity.rawValue) ?? .warning,
+            eventType: RuntimeVitalRelationshipEventType(record.eventType),
+            severity: RuntimeVitalRelationshipSeverity(record.severity),
             bedID: record.bedID,
             bedName: record.bedName,
             vrcode: record.vrcode,
@@ -280,5 +280,35 @@ private extension RuntimeVitalRelationshipEventRecord {
             previousBedID: record.previousBedID,
             message: record.message
         )
+    }
+}
+
+private extension RuntimeVitalRelationshipEventType {
+    init(_ eventType: VitalDBRelationshipEventType) {
+        switch eventType {
+        case .handoff:
+            self = .handoff
+        case .duplicateAssignment:
+            self = .duplicateAssignment
+        case .unlinkedBed:
+            self = .unlinkedBed
+        case .unlinkedRecorder:
+            self = .unlinkedRecorder
+        case .staleLink:
+            self = .staleLink
+        }
+    }
+}
+
+private extension RuntimeVitalRelationshipSeverity {
+    init(_ severity: VitalDBRelationshipSeverity) {
+        switch severity {
+        case .info:
+            self = .info
+        case .warning:
+            self = .warning
+        case .critical:
+            self = .critical
+        }
     }
 }

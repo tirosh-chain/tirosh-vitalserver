@@ -824,6 +824,9 @@ public struct SQLiteRuntimeObservabilityStore {
             guard result == SQLITE_ROW else {
                 throw SQLiteRuntimeObservabilityStoreError.stepFailed(errorMessage(db))
             }
+            guard let status = columnText(statement, 8) else {
+                continue
+            }
             assignments.append(VitalDBBedAssignmentRecord(
                 id: columnText(statement, 0) ?? "",
                 bedID: columnText(statement, 1) ?? "",
@@ -833,7 +836,7 @@ public struct SQLiteRuntimeObservabilityStore {
                 endedAt: columnText(statement, 5),
                 lastSeenAt: columnText(statement, 6),
                 lastObservedAt: columnText(statement, 7) ?? "",
-                status: columnText(statement, 8) ?? "unknown",
+                status: status,
                 patientConnected: columnOptionalBool(statement, 9),
                 observationCount: Int(sqlite3_column_int64(statement, 10))
             ))

@@ -96,6 +96,7 @@ private func healthSnapshot(reasons: [RuntimeFailureReason]) -> RuntimeHealthSna
         vmService: .loaded,
         proxyService: .loaded,
         watchdogService: .loaded,
+        vmState: reasons.isEmpty ? .running : .unreachable,
         vmIP: "192.168.64.2",
         proxyPort: 18080,
         hostProxyHTTP: "200",

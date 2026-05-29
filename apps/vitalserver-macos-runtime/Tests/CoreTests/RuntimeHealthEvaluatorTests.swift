@@ -6,7 +6,7 @@ final class RuntimeHealthEvaluatorTests: XCTestCase {
     func testHealthyInputHasNoFailureReasons() {
         let snapshot = RuntimeHealthEvaluator.evaluate(healthyInput())
 
-        XCTAssertTrue(snapshot.isHealthy)
+        XCTAssertTrue(RuntimeHealthSnapshotPolicy.isHealthy(snapshot))
         XCTAssertEqual(snapshot.vmState, .running)
         XCTAssertEqual(snapshot.vmErrors, [])
         XCTAssertEqual(snapshot.failureReasons, [])
@@ -68,7 +68,7 @@ final class RuntimeHealthEvaluatorTests: XCTestCase {
             swaggerUIHTTP: "500"
         ))
 
-        XCTAssertTrue(snapshot.isHealthy)
+        XCTAssertTrue(RuntimeHealthSnapshotPolicy.isHealthy(snapshot))
         XCTAssertEqual(snapshot.redisUIHTTP, "failed")
         XCTAssertEqual(snapshot.swaggerUIHTTP, "500")
         XCTAssertEqual(snapshot.failureReasons, [])
@@ -96,7 +96,7 @@ final class RuntimeHealthEvaluatorTests: XCTestCase {
         )
         let snapshot = RuntimeHealthEvaluator.evaluate(healthyInput(containerObservation: observation))
 
-        XCTAssertTrue(snapshot.isHealthy)
+        XCTAssertTrue(RuntimeHealthSnapshotPolicy.isHealthy(snapshot))
         XCTAssertEqual(snapshot.containerObservation, observation)
     }
 
@@ -148,7 +148,7 @@ final class RuntimeHealthEvaluatorTests: XCTestCase {
 
         let snapshot = RuntimeHealthEvaluator.evaluate(healthyInput(containerObservation: observation))
 
-        XCTAssertTrue(snapshot.isHealthy)
+        XCTAssertTrue(RuntimeHealthSnapshotPolicy.isHealthy(snapshot))
         XCTAssertEqual(snapshot.failureReasons, [])
     }
 
@@ -198,7 +198,7 @@ final class RuntimeHealthEvaluatorTests: XCTestCase {
             guestBootstrapFailureReason: .guestBootstrapFailed
         ))
 
-        XCTAssertTrue(snapshot.isHealthy)
+        XCTAssertTrue(RuntimeHealthSnapshotPolicy.isHealthy(snapshot))
         XCTAssertEqual(snapshot.failureReasons, [])
     }
 
@@ -207,7 +207,7 @@ final class RuntimeHealthEvaluatorTests: XCTestCase {
             guestRuntimeStateFresh: false
         ))
 
-        XCTAssertFalse(snapshot.isHealthy)
+        XCTAssertFalse(RuntimeHealthSnapshotPolicy.isHealthy(snapshot))
         XCTAssertEqual(snapshot.failureReasons, [.guestRuntimeStateStale])
         XCTAssertEqual(snapshot.vmState, .stale)
         XCTAssertEqual(snapshot.vmErrors, [.runtimeStateStale])

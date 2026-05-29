@@ -3,6 +3,6 @@ import Contracts
 
 enum RuntimeFailureReasonText {
     static func describe(_ reasons: [RuntimeFailureReason]) -> String {
-        reasons.isEmpty ? "unknown" : reasons.map(\.rawValue).joined(separator: ", ")
+        reasons.isEmpty ? "no failure reason reported" : reasons.map(\.rawValue).joined(separator: ", ")
     }
 }

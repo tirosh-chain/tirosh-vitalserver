@@ -200,10 +200,10 @@ extension RuntimeLifecycle {
     }
 
     func runtimeVersionValue() -> String {
-        runtimeVersionStore().readVersionValue(default: "unknown")
+        runtimeVersionStore().readVersionValue(default: "missing-version")
     }
 
-    func runtimeStatusValue() -> String {
+    func runtimeStatusValue() -> String? {
         statusReporter.statusValue()
     }
 
@@ -265,26 +265,63 @@ extension RuntimeLifecycle {
         runtimeObservationRecorder().recordBestEffort(event)
     }
 
-    func recordRuntimeLifecycleEventBestEffort(
+    func recordRuntimeStatusDocumentEventBestEffort(
+        _ statusDocument: RuntimeStatusDocument,
         operation: RuntimeOperation,
         message: String,
-        eventType: RuntimeEventType
+        eventType: RuntimeEventType,
+        progress: RuntimeProgressDocument? = nil
     ) {
-        let currentStatus = statusReporter.loadStatus()
         let event = RuntimeEventDocument(
             id: UUID().uuidString,
             eventType: eventType,
             timestamp: isoTimestamp(),
             product: Constants.Product.identifier,
-            status: currentStatus?.status ?? .unknown("unknown"),
-            previousStatus: currentStatus?.status,
+            status: statusDocument.status,
+            previousStatus: statusDocument.status,
             operation: operation,
             message: message,
             runtimeVersion: runtimeVersionValue(),
-            failureReasons: [],
-            progress: nil
+            vmState: statusDocument.vmState,
+            vmErrors: statusDocument.vmErrors,
+            failureReasons: statusDocument.failureReasons,
+            containerObservation: statusDocument.containerObservation,
+            vitalDBObservation: statusDocument.vitalDBObservation,
+            progress: progress
         )
         runtimeObservationRecorder().recordBestEffort(event)
+    }
+
+    func recordRuntimeProgressEventBestEffort(
+        message: String,
+        progress: RuntimeProgressDocument
+    ) {
+        guard let currentStatus = statusReporter.loadStatus() else {
+            return
+        }
+        recordRuntimeStatusDocumentEventBestEffort(
+            currentStatus,
+            operation: progress.operation,
+            message: message,
+            eventType: .progressUpdated,
+            progress: progress
+        )
+    }
+
+    func recordRuntimeLifecycleEventBestEffort(
+        operation: RuntimeOperation,
+        message: String,
+        eventType: RuntimeEventType
+    ) {
+        guard let currentStatus = statusReporter.loadStatus() else {
+            return
+        }
+        recordRuntimeStatusDocumentEventBestEffort(
+            currentStatus,
+            operation: operation,
+            message: message,
+            eventType: eventType
+        )
     }
 
     func runtimeObservationRecorder() -> RuntimeObservationRecorder {
@@ -312,55 +349,12 @@ extension RuntimeLifecycle {
         healthChecker.snapshot()
     }
 
-    func lightweightRuntimeHealthSnapshot() -> RuntimeHealthSnapshot {
-        if let status = statusReporter.loadStatus() {
-            return RuntimeHealthSnapshot(
-                vmExecutable: false,
-                proxyExecutable: false,
-                rootfsBase: status.rootfsBase,
-                vmDisk: status.vmDisk,
-                vmService: status.vmService,
-                proxyService: status.proxyService,
-                watchdogService: status.watchdogService,
-                vmState: status.vmState ?? .unknown(RuntimeHTTPStatusText.notEvaluated),
-                vmErrors: status.vmErrors ?? [],
-                vmIP: status.vmIP,
-                proxyPort: status.proxyPort,
-                hostProxyHTTP: status.hostProxyHTTP,
-                guestHTTP: status.guestHTTP,
-                redisUIHTTP: status.redisUIHTTP ?? RuntimeHTTPStatusText.notEvaluated,
-                swaggerUIHTTP: status.swaggerUIHTTP ?? RuntimeHTTPStatusText.notEvaluated,
-                containerObservation: status.containerObservation,
-                vitalDBObservation: status.vitalDBObservation,
-                failureReasons: status.failureReasons
-            )
-        }
-        return RuntimeHealthSnapshot(
-            vmExecutable: false,
-            proxyExecutable: false,
-            rootfsBase: .unknown(RuntimeHTTPStatusText.notEvaluated),
-            vmDisk: .unknown(RuntimeHTTPStatusText.notEvaluated),
-            vmService: .unknown(RuntimeHTTPStatusText.notEvaluated),
-            proxyService: .unknown(RuntimeHTTPStatusText.notEvaluated),
-            watchdogService: .unknown(RuntimeHTTPStatusText.notEvaluated),
-            vmState: .unknown(RuntimeHTTPStatusText.notEvaluated),
-            vmIP: nil,
-            proxyPort: 0,
-            hostProxyHTTP: RuntimeHTTPStatusText.notEvaluated,
-            guestHTTP: RuntimeHTTPStatusText.notEvaluated,
-            redisUIHTTP: RuntimeHTTPStatusText.notEvaluated,
-            swaggerUIHTTP: RuntimeHTTPStatusText.notEvaluated,
-            failureReasons: []
-        )
-    }
-
     func runtimeStatusWriter() -> RuntimeStatusWriter {
         RuntimeStatusWriter(
             reporter: statusReporter,
             timestamp: isoTimestamp,
             runtimeVersion: runtimeVersionValue,
             healthSnapshot: runtimeHealthSnapshot,
-            progressHealthSnapshot: lightweightRuntimeHealthSnapshot,
             latestBackup: latestBackup
         )
     }
@@ -407,16 +401,7 @@ extension RuntimeLifecycle {
             startedAt: nil,
             updatedAt: isoTimestamp()
         )
-        let previousStatus = statusReporter.loadStatus()?.status
-        recordRuntimeEventBestEffort(
-            status,
-            previousStatus: previousStatus,
-            operation: operation,
-            message: message,
-            healthSnapshot: lightweightRuntimeHealthSnapshot(),
-            eventType: .progressUpdated,
-            progress: progress
-        )
+        recordRuntimeProgressEventBestEffort(message: message, progress: progress)
     }
 
     func setInstalledProxyPort(_ port: Int) throws {
@@ -482,13 +467,13 @@ extension RuntimeLifecycle {
             recordCommandEvent: { eventType, executable, arguments, result in
                 let exitSuffix = result.map { " exitCode=\($0.exitCode)" } ?? ""
                 let message = "command \(eventType.rawValue) executable=\(executable) arguments=\(arguments.joined(separator: " "))\(exitSuffix)"
-                let currentStatus = statusReporter.loadStatus()
-                recordRuntimeEventBestEffort(
-                    currentStatus?.status ?? .unknown("unknown"),
-                    previousStatus: currentStatus?.status,
-                    operation: currentStatus?.operation ?? .unknown("command"),
+                guard let currentStatus = statusReporter.loadStatus() else {
+                    return
+                }
+                recordRuntimeStatusDocumentEventBestEffort(
+                    currentStatus,
+                    operation: currentStatus.operation,
                     message: message,
-                    healthSnapshot: lightweightRuntimeHealthSnapshot(),
                     eventType: eventType
                 )
             }

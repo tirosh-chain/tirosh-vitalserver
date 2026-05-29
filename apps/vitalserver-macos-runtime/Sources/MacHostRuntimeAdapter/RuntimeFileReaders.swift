@@ -36,7 +36,7 @@ struct SystemRuntimeHostFileReader: RuntimeHostFileReading, @unchecked Sendable 
               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             return "Missing or invalid manifest.json"
         }
-        let version = object["version"] as? String ?? "unknown"
+        let version = object["version"] as? String ?? "missing version"
         let artifacts = (object["artifacts"] as? [[String: Any]] ?? [])
             .compactMap { artifact -> String? in
                 guard let type = artifact["type"] as? String,

@@ -292,8 +292,8 @@ public final class MacTestKitController: RuntimeTestKitControlling {
             return "TestKit container is not running. TestKit is optional and does not affect VitalServer."
         }
 
-        let state = service.state ?? "unknown"
-        let health = service.health ?? "unknown"
+        let state = service.state ?? "not reported"
+        let health = service.health ?? "not reported"
         return "TestKit container API is not reachable at \(apiBaseURL). Container state: \(state), health: \(health)."
     }
 

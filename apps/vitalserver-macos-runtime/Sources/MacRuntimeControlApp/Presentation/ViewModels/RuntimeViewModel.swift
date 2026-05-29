@@ -513,7 +513,7 @@ final class RuntimeViewModel: ObservableObject {
             ? Task { @MainActor in
                 while !Task.isCancelled {
                     await refreshLogs()
-                    await refreshOperationDetail(fallback: runningMessage)
+                    await refreshOperationDetail(pendingDetail: runningMessage)
                     try? await Task.sleep(nanoseconds: 2_000_000_000)
                 }
             }
@@ -550,13 +550,13 @@ final class RuntimeViewModel: ObservableObject {
         }
     }
 
-    private func refreshOperationDetail(fallback: String) async {
+    private func refreshOperationDetail(pendingDetail: String) async {
         status = await loadStatusSnapshot(settings: settings)
         if let progressMessage = presentationFormatter.progressDisplayMessage(status) {
             operationDetail = progressMessage
             return
         }
-        operationDetail = fallback
+        operationDetail = pendingDetail
     }
 
     private func synchronizeFileBackedOperationPresentation() {

@@ -85,6 +85,7 @@ private func healthSnapshot(reasons: [RuntimeFailureReason]) -> RuntimeHealthSna
         vmService: .loaded,
         proxyService: .loaded,
         watchdogService: .loaded,
+        vmState: reasons.isEmpty ? .running : .unreachable,
         vmErrors: reasons.compactMap { reason in
             if case .vmService(let state) = reason {
                 return .serviceNotLoaded(state)

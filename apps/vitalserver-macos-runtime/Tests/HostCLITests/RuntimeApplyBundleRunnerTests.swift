@@ -104,6 +104,7 @@ private final class ApplyBundleHarness {
                     vmService: .loaded,
                     proxyService: .loaded,
                     watchdogService: .loaded,
+                    vmState: .running,
                     vmIP: "192.168.64.2",
                     proxyPort: 80,
                     hostProxyHTTP: "200",

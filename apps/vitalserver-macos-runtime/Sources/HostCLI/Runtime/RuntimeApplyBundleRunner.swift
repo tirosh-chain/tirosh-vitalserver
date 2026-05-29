@@ -21,7 +21,7 @@ struct RuntimeApplyBundleRunner {
         try writeStatus(.updating, .applyBundle, "bundle apply started")
 
         let initialHealth = initialHealthSnapshot()
-        if !initialHealth.isHealthy {
+        if !RuntimeHealthSnapshotPolicy.isHealthy(initialHealth) {
             log("bundle apply preflight warning runtime unhealthy reasons=\(reasonText(initialHealth.failureReasons))")
         }
 
