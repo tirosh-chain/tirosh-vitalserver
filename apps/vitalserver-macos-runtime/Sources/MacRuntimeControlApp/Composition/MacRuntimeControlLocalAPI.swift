@@ -38,6 +38,7 @@ enum MacRuntimeControlLocalAPI {
         localAPISettings: RuntimeControlLocalAPISettingsCoordinator,
         servesTestTools: Bool = GeneratedRelease.testEnabled,
         startedAt: Date = Date(),
+        stateHandler: (@Sendable (RuntimeControlLocalHTTPServerState) -> Void)? = nil,
         scheduleHelperRelaunch: @escaping @MainActor () -> Void = {}
     ) -> RuntimeControlLocalHTTPServer {
         let apiHandler = MacRuntimeControlAPIHandler(
@@ -67,7 +68,8 @@ enum MacRuntimeControlLocalAPI {
                     .appendingPathComponent(RuntimeControlLocalAPIConstants.pwaResourceDirectory, isDirectory: true)
             ),
             router: apiRouter,
-            testKitRouter: testKitRouter
+            testKitRouter: testKitRouter,
+            stateHandler: stateHandler
         )
     }
 }

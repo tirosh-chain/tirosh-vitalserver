@@ -808,6 +808,40 @@ final class RuntimeControlAPITests: XCTestCase {
     }
 
     @MainActor
+    func testLocalHTTPServerReportsAsyncListenFailure() async throws {
+        let token = "dev-token"
+        let (server, port) = try makeStartedServer(token: token)
+        defer {
+            server.stop()
+        }
+
+        let failed = expectation(description: "server listen failure")
+        let conflict = RuntimeControlLocalHTTPServer(
+            configuration: RuntimeControlLocalHTTPServerConfiguration(port: port),
+            router: RuntimeControlAPIRouter(
+                handler: StubRuntimeControlAPIReadHandler(),
+                authorization: RuntimeControlAPIAuthorization(token: token)
+            ),
+            stateHandler: { state in
+                if case .failed = state {
+                    failed.fulfill()
+                }
+            }
+        )
+        defer {
+            conflict.stop()
+        }
+
+        do {
+            try conflict.start()
+        } catch {
+            return
+        }
+
+        await fulfillment(of: [failed], timeout: 3)
+    }
+
+    @MainActor
     func testLocalHTTPServerAllowsLoopbackCORSPreflight() async throws {
         let (server, port) = try makeStartedServer(token: "dev-token")
         defer {

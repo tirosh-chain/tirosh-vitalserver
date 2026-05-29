@@ -211,6 +211,11 @@ struct RuntimeAdvancedPanel: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
 
+                networkSubsection(AppConstants.Labels.sectionRemoteConsoleAccess) {
+                    advertisedURLPreviewRow(AppConstants.Labels.remoteConsoleURL, value: remoteConsoleURLPreview)
+                    settingHelp(AppConstants.Labels.remoteConsoleURLHelp)
+                }
+
                 networkSubsection(AppConstants.Labels.sectionAdvertisedURLOverride) {
                     settingToggle(AppConstants.Labels.customAdvertisedURL, isOn: customAdvertisedURLBinding)
                     settingHelp(AppConstants.Labels.customAdvertisedURLHelp)
@@ -294,6 +299,10 @@ struct RuntimeAdvancedPanel: View {
 
     private var defaultAdvertisedURLPreview: String {
         "http://\(AppConstants.Labels.advertisedURLSameHost):\(viewModel.settings.proxyPort)/"
+    }
+
+    private var remoteConsoleURLPreview: String {
+        "http://\(AppConstants.Labels.advertisedURLSameHost):\(viewModel.settings.runtimeControlPort)/"
     }
 
     private var customAdvertisedURLBinding: Binding<Bool> {

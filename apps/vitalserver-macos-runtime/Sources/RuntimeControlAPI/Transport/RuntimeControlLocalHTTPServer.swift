@@ -6,6 +6,12 @@ public enum RuntimeControlLocalHTTPServerError: Error, Equatable {
     case listenerUnavailable
 }
 
+public enum RuntimeControlLocalHTTPServerState: Equatable, Sendable {
+    case ready(port: UInt16?)
+    case failed(String)
+    case stopped
+}
+
 public struct RuntimeControlLocalHTTPServerConfiguration: Equatable, Sendable {
     public let port: UInt16
     public let servesDevConsole: Bool
@@ -30,6 +36,7 @@ public final class RuntimeControlLocalHTTPServer: @unchecked Sendable {
     private let router: RuntimeControlAPIRouter
     private let testKitRouter: RuntimeTestKitAPIRouter?
     private let staticFileResponder: RuntimeControlStaticFileResponder?
+    private let stateHandler: (@Sendable (RuntimeControlLocalHTTPServerState) -> Void)?
     private let queue: DispatchQueue
     private let queueKey = DispatchSpecificKey<Void>()
     private var listener: NWListener?
@@ -48,6 +55,7 @@ public final class RuntimeControlLocalHTTPServer: @unchecked Sendable {
         configuration: RuntimeControlLocalHTTPServerConfiguration,
         router: RuntimeControlAPIRouter,
         testKitRouter: RuntimeTestKitAPIRouter? = nil,
+        stateHandler: (@Sendable (RuntimeControlLocalHTTPServerState) -> Void)? = nil,
         queue: DispatchQueue = DispatchQueue(label: "tirosh.runtime-control.local-http")
     ) {
         self.configuration = configuration
@@ -56,6 +64,7 @@ public final class RuntimeControlLocalHTTPServer: @unchecked Sendable {
         self.staticFileResponder = configuration.staticFileDirectory.map {
             RuntimeControlStaticFileResponder(rootDirectory: $0)
         }
+        self.stateHandler = stateHandler
         self.queue = queue
         self.queue.setSpecific(key: queueKey, value: ())
     }
@@ -76,6 +85,26 @@ public final class RuntimeControlLocalHTTPServer: @unchecked Sendable {
             parameters.requiredInterfaceType = .loopback
         }
         let listener = try NWListener(using: parameters, on: port)
+        listener.stateUpdateHandler = { [weak self, weak listener] state in
+            guard let self else {
+                return
+            }
+            switch state {
+            case .ready:
+                self.stateHandler?(.ready(port: listener?.port?.rawValue))
+            case .failed(let error):
+                self.syncOnQueue {
+                    if self.listener === listener {
+                        self.stopLocked()
+                    }
+                }
+                self.stateHandler?(.failed(String(describing: error)))
+            case .cancelled:
+                self.stateHandler?(.stopped)
+            default:
+                break
+            }
+        }
         listener.newConnectionHandler = { [weak self] connection in
             self?.accept(connection)
         }
