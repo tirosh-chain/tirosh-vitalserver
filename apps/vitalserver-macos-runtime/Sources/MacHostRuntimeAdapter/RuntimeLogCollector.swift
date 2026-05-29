@@ -317,21 +317,6 @@ struct RuntimeLogCopy {
             )
         }
 
-        let proxyNginxFiles = [
-            RuntimeLogCopy(
-                source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.proxyNginxAccessLog),
-                destination: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.runtimeLogs)
-                    .appendingPathComponent("proxy-nginx.access.log"),
-                archivePrefix: "runtime-proxy-nginx.access.log"
-            ),
-            RuntimeLogCopy(
-                source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.proxyNginxErrorLog),
-                destination: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.runtimeLogs)
-                    .appendingPathComponent("proxy-nginx.error.log"),
-                archivePrefix: "runtime-proxy-nginx.error.log"
-            ),
-        ]
-
         let guestFiles = [
             RuntimeLogCopy(
                 source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.bootstrapLogSource),
@@ -365,7 +350,7 @@ struct RuntimeLogCopy {
             ),
         ]
 
-        return runtimeFiles + proxyNginxFiles + guestFiles
+        return runtimeFiles + guestFiles
     }
 }
 

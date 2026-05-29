@@ -23,6 +23,7 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
         root,
     )
     packaging = root / "apps/vitalserver-macos-runtime/Support/Packaging"
+    proxy_config_template = root / "infra/macos-nginx/vitalserver.conf.template"
 
     postinstall = tmp_path / "postinstall"
     proxy_run = tmp_path / "vitalserver-proxy-run"
@@ -61,10 +62,20 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
     )
     uninstall_text = uninstall.read_text(encoding="utf-8")
     postinstall_text = postinstall.read_text(encoding="utf-8")
+    proxy_run_text = proxy_run.read_text(encoding="utf-8")
     assert "${PRODUCT_ROOT}" not in rendered
     assert "/Library/Application Support/TiroshVitalServer" in rendered
     assert "postinstall_timeout_seconds=300" in postinstall_text
     assert "runtime install timed out timeoutSeconds=" in postinstall_text
+    assert 'runtime_logs="${VITALSERVER_RUNTIME_LOGS:-${product_root}/logs/runtime}"' in proxy_run_text
+    assert '"${runtime_logs}"' in proxy_run_text
+    assert '"${nginx_prefix}/temp/client_body"' in proxy_run_text
+    assert '"${nginx_prefix}/temp/proxy"' in proxy_run_text
+    proxy_config_text = proxy_config_template.read_text(encoding="utf-8")
+    assert 'error_log "${VITALSERVER_PROXY_NGINX_ERROR_LOG}";' in proxy_config_text
+    assert 'access_log "${VITALSERVER_PROXY_NGINX_ACCESS_LOG}";' in proxy_config_text
+    assert "client_body_temp_path temp/client_body;" in proxy_config_text
+    assert "proxy_temp_path temp/proxy;" in proxy_config_text
     assert 'preserve_path "${vm_home}/data/backups/redis"' in uninstall_text
     assert "Applications/VitalServer Helper.app" in components.read_text(
         encoding="utf-8"

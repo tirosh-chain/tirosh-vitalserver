@@ -14,6 +14,8 @@ struct RuntimeLogRotator {
             "launchd.err.log",
             "proxy.out.log",
             "proxy.err.log",
+            "proxy-nginx.access.log",
+            "proxy-nginx.error.log",
             "guest-log-sync.out.log",
             "guest-log-sync.err.log",
             "sleep-prevention.out.log",

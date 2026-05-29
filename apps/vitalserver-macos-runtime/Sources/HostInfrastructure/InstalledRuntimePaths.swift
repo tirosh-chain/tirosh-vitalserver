@@ -194,6 +194,14 @@ public struct InstalledRuntimePaths: Equatable, Sendable {
         nginxLogsDirectory.appendingPathComponent("nginx.pid")
     }
 
+    public var proxyNginxAccessLog: URL {
+        centralRuntimeLogsDirectory.appendingPathComponent("proxy-nginx.access.log")
+    }
+
+    public var proxyNginxErrorLog: URL {
+        centralRuntimeLogsDirectory.appendingPathComponent("proxy-nginx.error.log")
+    }
+
     public var proxyLaunchDaemon: URL {
         URL(fileURLWithPath: "/Library/LaunchDaemons/com.tirosh.vitalserver-proxy.plist")
     }

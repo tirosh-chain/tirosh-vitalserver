@@ -108,8 +108,8 @@ enum RuntimeAdapterConstants {
         static let runtimeVersion = installed.runtimeDirectory.appendingPathComponent("runtime-version.json").path
         static let proxyNginxPid = installed.proxyNginxPID.path
         static let proxyNginxConfig = installed.nginxDirectory.appendingPathComponent("vitalserver.conf").path
-        static let proxyNginxAccessLog = installed.nginxLogsDirectory.appendingPathComponent("access.log").path
-        static let proxyNginxErrorLog = installed.nginxLogsDirectory.appendingPathComponent("error.log").path
+        static let proxyNginxAccessLog = installed.proxyNginxAccessLog.path
+        static let proxyNginxErrorLog = installed.proxyNginxErrorLog.path
         static let proxyLaunchDaemon = installed.proxyLaunchDaemon.path
         static let commandLogFile = installed.managerCommandLog.path
     }

@@ -28,6 +28,15 @@ watchdog recovery failed: host-proxy-http-502
 nginx: [emerg] bind() to 0.0.0.0:80 failed (48: Address already in use)
 ```
 
+다른 설치본에서는 host nginx가 Homebrew runtime directory에 의존해서 시작하지 못하는 사례도 있었습니다.
+
+```text
+nginx: [alert] could not open error log file: open() "/opt/homebrew/var/log/nginx/error.log" failed (2: No such file or directory)
+nginx: [emerg] mkdir() "/opt/homebrew/var/run/nginx/client_body_temp" failed (2: No such file or directory)
+```
+
+이 경우는 port 점유가 아니라 packaging/config 문제입니다. `TS-028`을 먼저 봅니다.
+
 확인:
 
 ```sh
@@ -60,3 +69,4 @@ make proxy-stop-orphans
 ## Follow-up
 
 - 관련 issue/PR, 재현 로그, 수정 버전, 운영 판단이 생기면 이 섹션에 추가합니다.
+- `TS-028`: host nginx runtime directory가 Homebrew 기본 경로에 의존하던 문제를 별도 케이스로 분리했습니다.

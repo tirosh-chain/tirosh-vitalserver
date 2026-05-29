@@ -37,6 +37,9 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-023 | stale pid file | Local development | archived | [`make vm-status`가 stale pid file을 표시](troubleshooting/023_stale-pid-file.md) |
 | TS-024 | pkg 설치가 `Running package scripts...`에서 실패 | Packaging | active | [pkg 설치가 `Running package scripts...`에서 실패함](troubleshooting/024_pkg-postinstall-timeout.md) |
 | TS-025 | update 후 VM disk attachment invalid | Update | active | [update 후 VM disk attachment가 invalid로 실패](troubleshooting/025_update-vm-disk-attachment-race.md) |
+| TS-026 | PWA가 Runtime Control API unreachable 표시 | Runtime Control PWA | active | [PWA가 Runtime Control API unreachable을 표시](troubleshooting/026_pwa-runtime-control-api-unreachable.md) |
+| TS-027 | update 후 PWA가 이전 JS 사용 | Runtime Control PWA / Update | active | [Update 적용 후 PWA가 이전 JS를 계속 사용](troubleshooting/027_update-stale-pwa-assets.md) |
+| TS-028 | host proxy가 `/opt/homebrew/var/...`에 의존 | Host proxy / Packaging | resolved | [Host proxy가 Homebrew nginx runtime directory에 의존함](troubleshooting/028_host-proxy-homebrew-runtime-directory.md) |
 
 ## Follow-up 규칙
 
@@ -71,6 +74,7 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | Guest containers | Docker image, Compose service, container health 문제 |
 | Data store | Redis 데이터/AOF/backup/repair 문제 |
 | Host proxy | macOS nginx proxy, port 점유, proxy recovery 문제 |
+| Runtime Control PWA | Remote Console web UI, local Runtime Control API, browser cache/service worker 문제 |
 | Network | shared/NAT, bridged mode, 노출 주소 문제 |
 | Packaging | pkg/dmg, signing, entitlement, app bundle 설치 문제 |
 | Uninstall | 제거/clean 정책과 잔여 파일 문제 |

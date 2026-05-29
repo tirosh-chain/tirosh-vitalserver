@@ -5,13 +5,15 @@ import HostInfrastructure
 import XCTest
 
 final class RuntimeLogCollectorTests: XCTestCase {
-    func testDefaultCopiesIncludeProxyNginxLogs() {
+    func testDefaultCopiesIncludeRuntimeServiceLogs() {
         let destinations = Set(RuntimeLogCopy.defaultCopies().map { $0.destination.lastPathComponent })
 
-        XCTAssertTrue(destinations.contains("proxy-nginx.access.log"))
-        XCTAssertTrue(destinations.contains("proxy-nginx.error.log"))
+        XCTAssertFalse(destinations.contains("proxy-nginx.access.log"))
+        XCTAssertFalse(destinations.contains("proxy-nginx.error.log"))
         XCTAssertTrue(destinations.contains("launchd.out.log"))
         XCTAssertTrue(destinations.contains("launchd.err.log"))
+        XCTAssertTrue(destinations.contains("proxy.out.log"))
+        XCTAssertTrue(destinations.contains("proxy.err.log"))
         XCTAssertTrue(destinations.contains("watchdog.out.log"))
     }
 
