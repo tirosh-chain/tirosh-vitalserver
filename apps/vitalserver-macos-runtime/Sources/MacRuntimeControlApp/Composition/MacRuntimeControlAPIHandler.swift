@@ -12,19 +12,22 @@ struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
     private let readWorker: MacHostRuntimeReadWorker
     private let localAPISettings: RuntimeControlLocalAPISettingsCoordinator
     private let servesTestTools: Bool
+    private let scheduleHelperRelaunch: @MainActor () -> Void
 
     init(
         commandClient: any RuntimeControlClient,
         hostClient: any RuntimeHostClient,
         readWorker: MacHostRuntimeReadWorker,
         localAPISettings: RuntimeControlLocalAPISettingsCoordinator,
-        servesTestTools: Bool
+        servesTestTools: Bool,
+        scheduleHelperRelaunch: @escaping @MainActor () -> Void = {}
     ) {
         self.commandClient = commandClient
         self.hostClient = hostClient
         self.readWorker = readWorker
         self.localAPISettings = localAPISettings
         self.servesTestTools = servesTestTools
+        self.scheduleHelperRelaunch = scheduleHelperRelaunch
     }
 
     func loadCapabilities() async throws -> RuntimeControlCapabilities {
@@ -130,7 +133,11 @@ struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
     }
 
     func applyUpdateBundle(bundle: RuntimeControlFileReference) async throws -> RuntimeControlCommandResponse {
-        RuntimeControlCommandResponse(result: try await hostClient.applyUpdateBundle(url: try localFileURL(bundle)))
+        let result = try await hostClient.applyUpdateBundle(url: try localFileURL(bundle))
+        if result.exitCode == 0 {
+            scheduleHelperRelaunch()
+        }
+        return RuntimeControlCommandResponse(result: result)
     }
 
     func rollbackBackup(_ backup: RuntimeControlFileReference) async throws -> RuntimeControlCommandResponse {

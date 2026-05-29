@@ -14,7 +14,21 @@ export function UpdatePage() {
   const summarize = useSummarizeUpdateBundle();
   const verify = useVerifyUpdateBundle();
   const apply = useApplyUpdateBundle();
+  const [reloadScheduled, setReloadScheduled] = useState(false);
   const hasBundlePath = bundlePath.trim().length > 0;
+  const applyBundle = () => {
+    apply.mutate(bundlePath, {
+      onSuccess: (response) => {
+        if (response.result?.exitCode !== 0) {
+          return;
+        }
+        setReloadScheduled(true);
+        window.setTimeout(() => {
+          window.location.replace(`/?updated=${Date.now()}`);
+        }, 4_000);
+      }
+    });
+  };
 
   return (
     <div className="page-stack">
@@ -68,11 +82,17 @@ export function UpdatePage() {
         </p>
         <button
           type="button"
-          onClick={() => apply.mutate(bundlePath)}
+          onClick={applyBundle}
           disabled={!hasBundlePath || apply.isPending}
         >
           Apply Bundle
         </button>
+        {reloadScheduled ? (
+          <p className="muted">
+            Helper is relaunching. This page will reload shortly to load the
+            updated PWA bundle.
+          </p>
+        ) : null}
         <CommandResult result={apply.data} error={apply.error} />
       </Panel>
     </div>

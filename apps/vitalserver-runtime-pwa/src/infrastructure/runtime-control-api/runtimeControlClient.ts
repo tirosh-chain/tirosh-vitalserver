@@ -108,7 +108,7 @@ export class RuntimeControlClient {
     );
     this.token =
       options.token ?? DEFAULT_APP_SETTINGS.runtimeControl.token;
-    this.fetchImpl = options.fetchImpl ?? fetch;
+    this.fetchImpl = options.fetchImpl ?? globalThis.fetch.bind(globalThis);
   }
 
   getCapabilities(): Promise<RuntimeControlCapabilities> {

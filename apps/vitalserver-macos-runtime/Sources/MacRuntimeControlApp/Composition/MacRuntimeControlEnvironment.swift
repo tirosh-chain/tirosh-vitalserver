@@ -13,6 +13,7 @@ final class MacRuntimeControlEnvironment: ObservableObject {
     private let servesTestTools: Bool
     private var apiServer: RuntimeControlLocalHTTPServer?
     private var restartAPIServerTask: Task<Void, Never>?
+    private var relaunchHelperTask: Task<Void, Never>?
     private(set) var apiServerError: Error?
 
     init(
@@ -37,6 +38,7 @@ final class MacRuntimeControlEnvironment: ObservableObject {
 
     deinit {
         restartAPIServerTask?.cancel()
+        relaunchHelperTask?.cancel()
         apiServer?.stop()
     }
 
@@ -122,7 +124,18 @@ final class MacRuntimeControlEnvironment: ObservableObject {
             testKitController: testKitController,
             port: port,
             localAPISettings: localAPISettings,
-            servesTestTools: servesTestTools
+            servesTestTools: servesTestTools,
+            scheduleHelperRelaunch: { [weak self] in
+                self?.scheduleHelperRelaunch()
+            }
         )
+    }
+
+    private func scheduleHelperRelaunch() {
+        relaunchHelperTask?.cancel()
+        relaunchHelperTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            self?.viewModel.relaunchHelper()
+        }
     }
 }
