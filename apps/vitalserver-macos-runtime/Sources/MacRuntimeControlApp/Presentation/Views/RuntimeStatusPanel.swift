@@ -54,10 +54,10 @@ struct RuntimeStatusPanel: View {
                 healthStatusValue
             }
             statusRow(GeneratedRelease.vitalServerName) {
-                statusValue(vitalServerAvailability)
+                vitalServerStatusAndURL
             }
             statusRow(AppConstants.Labels.runtimeControlPWA) {
-                statusValue(remoteConsoleAvailability)
+                remoteConsoleStatusAndURL
             }
             statusRow(AppConstants.Labels.dataDirectory) {
                 dataDirectoryValue
@@ -134,7 +134,61 @@ struct RuntimeStatusPanel: View {
     }
 
     private var remoteConsoleAvailability: RuntimeStatusDisplayPolicy.StatusValue {
-        displayPolicy.remoteConsoleAvailability(status: viewModel.status, now: uptimeNow)
+        displayPolicy.remoteConsoleAvailability(
+            http: viewModel.remoteConsoleHTTP ?? viewModel.status.runtimeControlHTTP,
+            startedAt: viewModel.remoteConsoleStartedAt ?? viewModel.status.runtimeControlStartedAt,
+            now: uptimeNow
+        )
+    }
+
+    private var vitalServerStatusAndURL: some View {
+        serviceStatusAndURL(
+            url: vitalServerExternalURL,
+            status: vitalServerAvailability
+        )
+    }
+
+    private var remoteConsoleStatusAndURL: some View {
+        serviceStatusAndURL(
+            url: remoteConsoleExternalURL,
+            status: remoteConsoleAvailability
+        )
+    }
+
+    private func serviceStatusAndURL(
+        url: String,
+        status: RuntimeStatusDisplayPolicy.StatusValue
+    ) -> some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 12) {
+                linkButton(url) {
+                    viewModel.openExternalURL(url)
+                }
+                statusValue(status)
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                linkButton(url) {
+                    viewModel.openExternalURL(url)
+                }
+                statusValue(status)
+            }
+        }
+    }
+
+    private var vitalServerExternalURL: String {
+        "http://\(remoteClientHost):\(viewModel.settings.publicPort)/"
+    }
+
+    private var remoteConsoleExternalURL: String {
+        "http://\(remoteClientHost):\(viewModel.settings.runtimeControlPort)/"
+    }
+
+    private var remoteClientHost: String {
+        let configuredHost = viewModel.settings.publicHost.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !configuredHost.isEmpty {
+            return configuredHost
+        }
+        return Host.current().name ?? "localhost"
     }
 
     private var dataDirectoryValue: some View {

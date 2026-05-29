@@ -94,13 +94,15 @@ final class MacRuntimeControlEnvironment: ObservableObject {
         retryAPIServerTask = nil
         apiServerGeneration += 1
         let generation = apiServerGeneration
-        let nextServer = makeAPIServer(port: port, generation: generation)
+        let startedAt = Date()
+        let nextServer = makeAPIServer(port: port, generation: generation, startedAt: startedAt)
         do {
             try nextServer.start()
             apiServer = nextServer
             apiServerError = nil
         } catch {
             apiServerError = error
+            viewModel.updateRemoteConsoleStatus(http: "failed", startedAt: nil)
             scheduleAPIServerRetry(port: port)
         }
     }
@@ -122,7 +124,8 @@ final class MacRuntimeControlEnvironment: ObservableObject {
         let previousServer = apiServer
         apiServerGeneration += 1
         let generation = apiServerGeneration
-        let nextServer = makeAPIServer(port: port, generation: generation)
+        let startedAt = Date()
+        let nextServer = makeAPIServer(port: port, generation: generation, startedAt: startedAt)
         do {
             try nextServer.start()
             apiServer = nextServer
@@ -130,10 +133,15 @@ final class MacRuntimeControlEnvironment: ObservableObject {
             apiServerError = nil
         } catch {
             apiServerError = error
+            viewModel.updateRemoteConsoleStatus(http: "failed", startedAt: nil)
         }
     }
 
-    private func makeAPIServer(port: Int, generation: Int) -> RuntimeControlLocalHTTPServer {
+    private func makeAPIServer(
+        port: Int,
+        generation: Int,
+        startedAt: Date
+    ) -> RuntimeControlLocalHTTPServer {
         MacRuntimeControlLocalAPI.make(
             client: client,
             readWorker: readWorker,
@@ -141,9 +149,15 @@ final class MacRuntimeControlEnvironment: ObservableObject {
             port: port,
             localAPISettings: localAPISettings,
             servesTestTools: servesTestTools,
+            startedAt: startedAt,
             stateHandler: { [weak self] state in
                 Task { @MainActor [weak self] in
-                    self?.handleAPIServerState(state, port: port, generation: generation)
+                    self?.handleAPIServerState(
+                        state,
+                        port: port,
+                        generation: generation,
+                        startedAt: startedAt
+                    )
                 }
             },
             scheduleHelperRelaunch: { [weak self] in
@@ -155,7 +169,8 @@ final class MacRuntimeControlEnvironment: ObservableObject {
     private func handleAPIServerState(
         _ state: RuntimeControlLocalHTTPServerState,
         port: Int,
-        generation: Int
+        generation: Int,
+        startedAt: Date
     ) {
         guard generation == apiServerGeneration else {
             return
@@ -167,12 +182,14 @@ final class MacRuntimeControlEnvironment: ObservableObject {
             retryAPIServerTask = nil
             apiServerRetryAttempt = 0
             apiServerError = nil
+            viewModel.updateRemoteConsoleStatus(http: "200", startedAt: Self.timestamp(startedAt))
         case .failed(let reason):
             apiServer = nil
             apiServerError = RuntimeControlLocalAPIServerLifecycleError.failedToListen(
                 port: port,
                 reason: reason
             )
+            viewModel.updateRemoteConsoleStatus(http: "failed", startedAt: nil)
             scheduleAPIServerRetry(port: port)
         case .stopped:
             break
@@ -198,6 +215,12 @@ final class MacRuntimeControlEnvironment: ObservableObject {
             try? await Task.sleep(nanoseconds: 1_200_000_000)
             self?.viewModel.relaunchHelper()
         }
+    }
+
+    private static func timestamp(_ date: Date) -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.string(from: date)
     }
 }
 

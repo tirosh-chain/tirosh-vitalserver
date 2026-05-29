@@ -1,11 +1,16 @@
 import { useRuntimeOverview } from "@/application/runtime-control/queries";
 import type { RuntimeControlOverview } from "@/domain/runtime-control/contracts/runtimeControlTypes";
 import { formatBytes } from "@/domain/runtime-control/formatting/bytes";
-import { formatHTTPReachability } from "@/domain/runtime-control/formatting/http";
+import {
+  formatHTTPReachability,
+  runtimeControlURL,
+  runtimeURL
+} from "@/domain/runtime-control/formatting/http";
 import {
   formatRuntimeState,
   runtimeStateTone
 } from "@/domain/runtime-control/formatting/runtimeState";
+import { useAppSettings } from "@/shared/config/AppSettingsContext";
 import {
   formatLocalDateTime,
   formatUptimeSince
@@ -34,10 +39,19 @@ export function StatusPage() {
 }
 
 function StatusOverview({ overview }: { overview: RuntimeControlOverview }) {
+  const appSettings = useAppSettings();
   const status = overview.status;
   const state = status?.runtimeState;
   const stats = status?.dataDirectoryStats;
   const vitalRecorder = overview.vitalRecorder;
+  const vitalServerURL = runtimeURL(
+    status?.proxyPort ?? overview.settings?.proxyPort,
+    appSettings.runtimeControl.defaultProxyPort
+  );
+  const remoteConsoleURL = runtimeControlURL(
+    overview.settings?.runtimeControlPort,
+    appSettings.runtimeControl.defaultPort
+  );
 
   return (
     <div className="page-stack">
@@ -54,13 +68,27 @@ function StatusOverview({ overview }: { overview: RuntimeControlOverview }) {
             },
             {
               label: "VitalServer",
-              value: formatHTTPReachability(status?.hostProxyHTTP),
-              detail: formatUptimeSince(status?.startedAt)
+              value: (
+                <a href={vitalServerURL} target="_blank" rel="noreferrer">
+                  {vitalServerURL}
+                </a>
+              ),
+              detail: serviceStatusDetail(
+                status?.hostProxyHTTP,
+                status?.startedAt
+              )
             },
             {
               label: "Remote Console",
-              value: formatHTTPReachability(status?.runtimeControlHTTP),
-              detail: formatUptimeSince(status?.runtimeControlStartedAt)
+              value: (
+                <a href={remoteConsoleURL} target="_blank" rel="noreferrer">
+                  {remoteConsoleURL}
+                </a>
+              ),
+              detail: serviceStatusDetail(
+                status?.runtimeControlHTTP,
+                status?.runtimeControlStartedAt
+              )
             },
             {
               label: "Data directory",
@@ -136,6 +164,15 @@ function StatusOverview({ overview }: { overview: RuntimeControlOverview }) {
       </Panel>
     </div>
   );
+}
+
+function serviceStatusDetail(
+  httpStatus: string | null | undefined,
+  startedAt: string | null | undefined
+): string {
+  return [formatHTTPReachability(httpStatus), formatUptimeSince(startedAt)]
+    .filter((part) => part && part !== "-")
+    .join(" ");
 }
 
 function formatResourceUsage(value: unknown): string {

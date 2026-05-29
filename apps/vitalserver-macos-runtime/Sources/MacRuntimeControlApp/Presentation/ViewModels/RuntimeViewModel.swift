@@ -89,6 +89,8 @@ final class RuntimeViewModel: ObservableObject {
     @Published var vitalRecorders = RuntimeVitalRecorderHistory()
     @Published var vitalRelationships = RuntimeVitalRelationshipHistory()
     @Published var containerObservation: RuntimeContainerObservation?
+    @Published var remoteConsoleHTTP: String?
+    @Published var remoteConsoleStartedAt: String?
     @Published var testKitStatus = RuntimeTestKitStatus(enabled: false, state: .disabled)
     @Published var selectedTestKitSessionID = ""
     @Published var selectedTestKitBedRoomNames: Set<String> = []
@@ -187,6 +189,11 @@ final class RuntimeViewModel: ObservableObject {
         }
         synchronizeFileBackedOperationPresentation()
         healthNotificationCoordinator.handleTransition(to: status)
+    }
+
+    func updateRemoteConsoleStatus(http: String?, startedAt: String?) {
+        remoteConsoleHTTP = http
+        remoteConsoleStartedAt = startedAt
     }
 
     func refreshHealthStatus() async {

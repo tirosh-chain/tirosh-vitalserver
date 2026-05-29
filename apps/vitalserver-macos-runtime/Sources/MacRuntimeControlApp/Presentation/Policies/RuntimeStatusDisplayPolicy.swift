@@ -125,11 +125,19 @@ struct RuntimeStatusDisplayPolicy {
     }
 
     func remoteConsoleAvailability(status: RuntimeStatus, now: Date = Date()) -> StatusValue {
-        let reachable = isSuccessfulHTTPStatus(status.runtimeControlHTTP)
+        remoteConsoleAvailability(
+            http: status.runtimeControlHTTP,
+            startedAt: status.runtimeControlStartedAt,
+            now: now
+        )
+    }
+
+    func remoteConsoleAvailability(http: String?, startedAt: String?, now: Date = Date()) -> StatusValue {
+        let reachable = isSuccessfulHTTPStatus(http)
         return StatusValue(
             text: reachable ? AppConstants.StatusText.reachable : AppConstants.StatusText.unavailable,
             severity: reachable ? .healthy : .warning,
-            uptimeText: formatUptime(nil, startedAt: status.runtimeControlStartedAt, observedAt: nil, now: now)
+            uptimeText: formatUptime(nil, startedAt: startedAt, observedAt: nil, now: now)
         )
     }
 

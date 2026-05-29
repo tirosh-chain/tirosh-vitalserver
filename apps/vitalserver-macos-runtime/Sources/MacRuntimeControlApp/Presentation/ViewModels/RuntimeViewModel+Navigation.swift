@@ -41,6 +41,10 @@ extension RuntimeViewModel {
         openRuntimeURL(RuntimeControlLocalAPIConstants.pwaURL(port: settings.runtimeControlPort))
     }
 
+    func openExternalURL(_ rawURL: String) {
+        openRuntimeURL(rawURL)
+    }
+
     func openRedisUI() {
         openRuntimeURL(AppConstants.Product.redisUIURL(proxyPort: status.proxyPort))
     }
