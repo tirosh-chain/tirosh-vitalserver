@@ -73,6 +73,18 @@ export class RuntimeControlAPIError extends Error {
   }
 }
 
+export class RuntimeControlNetworkError extends Error {
+  readonly url: string;
+  readonly cause: unknown;
+
+  constructor(url: string, cause: unknown) {
+    super(`Runtime Control API is unreachable: ${url}`);
+    this.name = "RuntimeControlNetworkError";
+    this.url = url;
+    this.cause = cause;
+  }
+}
+
 export class RuntimeControlContractError extends Error {
   readonly path: string;
   readonly cause: unknown;
@@ -378,10 +390,14 @@ export class RuntimeControlClient {
     schema: ZodType<T>,
     query: Record<string, string | number | undefined> = {}
   ): Promise<T> {
-    const response = await this.fetchImpl(this.url(path, query), {
-      method: "GET",
-      headers: this.headers()
-    });
+    const response = await this.request(
+      path,
+      {
+        method: "GET",
+        headers: this.headers()
+      },
+      query
+    );
 
     if (!response.ok) {
       const body = await response.text();
@@ -400,7 +416,7 @@ export class RuntimeControlClient {
     body: unknown,
     schema: ZodType<T>
   ): Promise<T> {
-    const response = await this.fetchImpl(this.url(path, {}), {
+    const response = await this.request(path, {
       method: "PUT",
       headers: {
         ...this.headers(),
@@ -426,7 +442,7 @@ export class RuntimeControlClient {
     body: unknown,
     schema: ZodType<T>
   ): Promise<T> {
-    const response = await this.fetchImpl(this.url(path, {}), {
+    const response = await this.request(path, {
       method: "POST",
       headers: {
         ...this.headers(),
@@ -452,7 +468,7 @@ export class RuntimeControlClient {
     body: unknown,
     schema: ZodType<T>
   ): Promise<T> {
-    const response = await this.fetchImpl(this.url(path, {}), {
+    const response = await this.request(path, {
       method: "DELETE",
       headers: {
         ...this.headers(),
@@ -486,6 +502,19 @@ export class RuntimeControlClient {
       Accept: "application/json",
       "X-Runtime-Control-Token": this.token
     };
+  }
+
+  private async request(
+    path: string,
+    init: RequestInit,
+    query: Record<string, string | number | undefined> = {}
+  ): Promise<Response> {
+    const url = this.url(path, query);
+    try {
+      return await this.fetchImpl(url, init);
+    } catch (cause) {
+      throw new RuntimeControlNetworkError(url, cause);
+    }
   }
 
   private url(

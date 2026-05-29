@@ -42,6 +42,21 @@ describe("runtime control error summaries", () => {
     });
   });
 
+  it("includes the attempted URL for Runtime Control network failures", () => {
+    expect(
+      summarizeRuntimeControlError({
+        name: "RuntimeControlNetworkError",
+        url: "http://127.0.0.1:18321/runtime/overview",
+        cause: new TypeError("Failed to fetch")
+      })
+    ).toMatchObject({
+      kind: "network",
+      title: "Runtime Control API is unreachable",
+      detail:
+        "The PWA tried http://127.0.0.1:18321/runtime/overview, but the local Runtime Control API did not respond. Failed to fetch"
+    });
+  });
+
   it("summarizes request validation failures", () => {
     expect(
       summarizeRuntimeControlError(

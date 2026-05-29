@@ -12,6 +12,12 @@ Runtime Control API is unreachable
 The PWA could not reach the local Runtime Control API endpoint.
 ```
 
+최신 PWA에서는 실패한 요청 URL도 같이 표시됩니다.
+
+```text
+The PWA tried http://127.0.0.1:18321/runtime/overview, but the local Runtime Control API did not respond.
+```
+
 진단:
 
 ```sh
@@ -38,6 +44,8 @@ PWA 번들은 로드됐지만 Runtime Control API 호출이 브라우저에서 �
 
 조치:
 
+- 화면에 표시된 `The PWA tried ...` URL을 그대로 `curl -i`로 확인합니다.
+- `curl: (7) Failed to connect`가 나오면 PWA 문제가 아니라 Helper local API server가 떠 있지 않거나 다른 port에 떠 있는 상태입니다.
 - packaged PWA는 Helper가 서빙하는 `http://127.0.0.1:18321/`에서 엽니다.
 - local dev에서는 Vite proxy를 사용하거나, Helper API가 loopback origin CORS preflight를 허용하는 버전으로 업데이트합니다.
 - Runtime Control PWA port를 변경한 경우 Settings 또는 Status에 표시된 새 URL로 접속합니다.

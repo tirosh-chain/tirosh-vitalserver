@@ -28,6 +28,8 @@ type ErrorLike = {
   status?: number;
   body?: string;
   path?: string;
+  url?: string;
+  cause?: unknown;
 };
 
 export function summarizeRuntimeControlError(
@@ -49,6 +51,10 @@ export function summarizeRuntimeControlError(
     };
   }
 
+  if (errorLike.name === "RuntimeControlNetworkError") {
+    return summarizeNetworkError(errorLike);
+  }
+
   if (error instanceof RuntimeControlValidationError) {
     return {
       kind: "validation",
@@ -61,14 +67,7 @@ export function summarizeRuntimeControlError(
   }
 
   if (error instanceof TypeError) {
-    return {
-      kind: "network",
-      title: "Runtime Control API is unreachable",
-      detail:
-        "The PWA could not reach the local Runtime Control API endpoint.",
-      recovery:
-        "Check that VitalServer Helper is running and that the PWA is using the expected local API URL."
-    };
+    return summarizeNetworkError(errorLike);
   }
 
   return {
@@ -76,6 +75,24 @@ export function summarizeRuntimeControlError(
     title: "Operation failed",
     detail: errorLike.message ?? String(error),
     recovery: "Retry the operation. If it fails again, export logs for diagnosis."
+  };
+}
+
+function summarizeNetworkError(
+  error: ErrorLike
+): RuntimeControlErrorSummary {
+  const cause = asErrorLike(error.cause);
+  const causeMessage = cause.message ?? error.message;
+  const detail = error.url
+    ? `The PWA tried ${error.url}, but the local Runtime Control API did not respond.`
+    : "The PWA could not reach the local Runtime Control API endpoint.";
+
+  return {
+    kind: "network",
+    title: "Runtime Control API is unreachable",
+    detail: causeMessage ? `${detail} ${causeMessage}` : detail,
+    recovery:
+      "Verify that VitalServer Helper is running, then check the PWA URL and Runtime Control API port. In Vite dev mode, also check VITE_RUNTIME_CONTROL_DEV_PROXY_TARGET."
   };
 }
 
