@@ -34,6 +34,7 @@ Runtime 상태가 실제 상황과 다르게 보이거나, update 진행 상태�
 - event 저장은 성공했지만 SQLite observation projection 실패를 `try?`로 무시해 Remote Console 관측 데이터 누락 원인을 숨깁니다.
 - Vital Files 폴더 목록을 읽지 못했는데 `[]`로 바꿔 “폴더 없음”처럼 표시합니다.
 - Data directory 통계를 읽지 못했는데 `0 files · 0 B` 또는 `Unknown`처럼 표시합니다.
+- Settings 값인 host proxy port를 StatusReader가 launchd plist/default 값으로 추정합니다.
 
 ## Impact
 
@@ -86,6 +87,7 @@ rg -n "try\\? VMRuntimeConfig\\.load|autoRecoveryEnabled\\(\\).*return true|prev
 rg -n "try\\? observabilityStore\\.append" apps/vitalserver-macos-runtime/Sources
 rg -n "func vitalFileFolders\\(root: String\\) -> \\[VitalFilesFolder\\]|vitalFileFolders.*return \\[\\]" apps/vitalserver-macos-runtime/Sources
 rg -n "dataDirectoryStats|directoryStats\\(" apps/vitalserver-macos-runtime/Sources/MacHostRuntimeAdapter/RuntimeStatusReader.swift
+rg -n "loadBaseStatus\\(\\)\\.proxyPort|proxyPort\\(paths\\.proxyLaunchDaemon\\)|RuntimeStatusReader.*proxyLaunchDaemon" apps/vitalserver-macos-runtime/Sources
 ```
 
 상태 관련 read path에서 아래 패턴이 보이면 재검토합니다.
@@ -114,6 +116,7 @@ runtime config read failure -> implicit default flag value
 event written -> derived observation write failure hidden
 folder list read failure -> empty folder list
 data directory read failure -> zero or unknown stats
+settings value -> read through status/plist fallback
 ```
 
 ## Actions
@@ -146,6 +149,7 @@ data directory read failure -> zero or unknown stats
 22. event 저장과 derived observation 저장의 책임을 분리합니다. derived observation 저장 실패는 event 저장을 되돌리지 않지만 로그에 남깁니다.
 23. Vital Files 폴더 목록 조회 실패는 throw로 올립니다. 메뉴는 빈 목록과 읽기 실패를 구분해 표시합니다.
 24. Data directory 통계 조회 실패는 `dataDirectoryStatsError`로 노출합니다. 성공 통계와 실패 메시지를 같은 값으로 표현하지 않습니다.
+25. Host proxy port는 settings read path가 읽습니다. Status read path는 status document 값이 없을 때 caller가 제공한 settings 값을 사용합니다.
 
 ## Prevention
 
@@ -182,6 +186,7 @@ data directory read failure -> zero or unknown stats
 - derived observation 저장 실패를 조용히 무시
 - 폴더 목록 읽기 실패를 빈 목록으로 표시
 - data directory 통계 읽기 실패를 0 또는 unknown으로 표시
+- settings 값을 status reader가 plist/default fallback으로 추정
 
 ## Operational Notes
 
@@ -217,3 +222,4 @@ data directory read failure -> zero or unknown stats
 - 2026-05-30: `RuntimeObservationRecorder`에서 VitalDB observation projection 실패를 조용히 무시하던 `try?`를 제거했습니다. event 기록은 유지하되 projection 실패는 runtime log에 남깁니다.
 - 2026-05-30: Vital Files 폴더 목록 조회 실패를 빈 배열로 숨기지 않도록 `vitalFileFolders(root:)`를 throwing 계약으로 변경했습니다. Swift 메뉴는 `No folders`와 `Could not read folders`를 구분합니다.
 - 2026-05-30: Data directory 통계 조회 실패를 `dataDirectoryStatsError`로 분리했습니다. Swift와 Remote Console status UI는 통계 성공값과 읽기 실패를 구분해 표시합니다.
+- 2026-05-30: Host proxy port 읽기 책임을 StatusReader에서 SettingsReader로 옮겼습니다. StatusReader는 launchd plist를 직접 읽지 않고 status document 또는 전달받은 settings 값을 사용합니다.

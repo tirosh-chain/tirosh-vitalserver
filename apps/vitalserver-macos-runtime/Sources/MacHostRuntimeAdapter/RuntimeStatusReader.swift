@@ -30,11 +30,11 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
     }
 
     func loadStatus(settings: RuntimeSettings) -> RuntimeStatus {
-        withDataDirectoryMetrics(loadBaseStatus(), settings: settings)
+        withDataDirectoryMetrics(loadBaseStatus(configuredProxyPort: settings.proxyPort), settings: settings)
     }
 
     func loadHealthStatus(settings: RuntimeSettings) async -> RuntimeStatus {
-        var next = loadBaseStatus()
+        var next = loadBaseStatus(configuredProxyPort: settings.proxyPort)
 
         if let vmIP = next.vmIP {
             next.guestHTTP = await httpStatus(url: RuntimeAdapterConstants.Product.guestHealthURL(vmIP: vmIP))
@@ -46,7 +46,7 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
         return withDataDirectoryMetrics(next, settings: settings)
     }
 
-    func loadBaseStatus() -> RuntimeStatus {
+    func loadBaseStatus(configuredProxyPort: Int = RuntimeAdapterConstants.Product.defaultProxyPort) -> RuntimeStatus {
         let statusRepository = JSONFileRuntimeStatusRepository(url: URL(fileURLWithPath: paths.runtimeStatus))
         let document = statusRepository.load()
         let guestState = guestRuntimeStateDocument(paths.runtimeState)
@@ -80,7 +80,7 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
             memory: guestState?.memory,
             systemDisk: guestState?.systemDisk,
             dataStorage: guestState?.vitalFilesDisk,
-            proxyPort: document?.proxyPort ?? proxyPort(paths.proxyLaunchDaemon),
+            proxyPort: document?.proxyPort ?? configuredProxyPort,
             failureReasons: document?.failureReasons ?? [],
             progress: document?.progress,
             containerObservation: containerObservation,
@@ -198,34 +198,6 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
             RuntimeAdapterConstants.Commands.launchctl,
             arguments: ["print", "system/\(service.label)"]
         ).exitCode == 0
-    }
-
-    private func readTrimmed(_ path: String) -> String? {
-        guard let value = try? fileStore.readUTF8Text(URL(fileURLWithPath: path))
-            .trimmingCharacters(in: .whitespacesAndNewlines),
-            !value.isEmpty
-        else {
-            return nil
-        }
-        return value
-    }
-
-    private func proxyPort(_ plistPath: String) -> Int {
-        guard let data = try? fileStore.readData(URL(fileURLWithPath: plistPath)),
-              let plist = try? PropertyListSerialization.propertyList(
-                from: data,
-                options: [],
-                format: nil
-              ),
-              let document = plist as? [String: Any],
-              let environment = document["EnvironmentVariables"] as? [String: Any],
-              let rawPort = environment["VITALSERVER_PROXY_PORT"] as? String,
-              let port = Int(rawPort),
-              (1...65_535).contains(port)
-        else {
-            return RuntimeAdapterConstants.Product.defaultProxyPort
-        }
-        return port
     }
 
 }

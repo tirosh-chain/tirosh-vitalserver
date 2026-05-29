@@ -12,30 +12,30 @@ struct RuntimeSettingsPaths {
     var vmConfig = RuntimeAdapterConstants.Paths.vmConfig
     var vmDisk = RuntimeAdapterConstants.Paths.vmDisk
     var guestRuntimeConfig = RuntimeAdapterConstants.Paths.guestRuntimeConfig
+    var proxyLaunchDaemon = RuntimeAdapterConstants.Paths.proxyLaunchDaemon
 
     init(
         vmConfig: String = RuntimeAdapterConstants.Paths.vmConfig,
         vmDisk: String = RuntimeAdapterConstants.Paths.vmDisk,
-        guestRuntimeConfig: String = RuntimeAdapterConstants.Paths.guestRuntimeConfig
+        guestRuntimeConfig: String = RuntimeAdapterConstants.Paths.guestRuntimeConfig,
+        proxyLaunchDaemon: String = RuntimeAdapterConstants.Paths.proxyLaunchDaemon
     ) {
         self.vmConfig = vmConfig
         self.vmDisk = vmDisk
         self.guestRuntimeConfig = guestRuntimeConfig
+        self.proxyLaunchDaemon = proxyLaunchDaemon
     }
 }
 
 struct SystemRuntimeSettingsReader: RuntimeSettingsReading, @unchecked Sendable {
     var paths = RuntimeSettingsPaths()
-    var statusReader = SystemRuntimeStatusReader(paths: RuntimePaths())
     private var fileStore: RuntimeFileStore = SystemRuntimeFileStore()
 
     init(
         paths: RuntimeSettingsPaths = RuntimeSettingsPaths(),
-        statusReader: SystemRuntimeStatusReader? = nil,
         fileStore: RuntimeFileStore = SystemRuntimeFileStore()
     ) {
         self.paths = paths
-        self.statusReader = statusReader ?? SystemRuntimeStatusReader(paths: RuntimePaths(), fileStore: fileStore)
         self.fileStore = fileStore
     }
 
@@ -65,8 +65,10 @@ struct SystemRuntimeSettingsReader: RuntimeSettingsReading, @unchecked Sendable 
                 settings.redisBackupRetentionCount = min(max(redisBackupRetentionCount, 1), 30)
             }
         }
+        if let proxyPort = proxyPort(plistPath: paths.proxyLaunchDaemon) {
+            settings.proxyPort = proxyPort
+        }
 
-        settings.proxyPort = statusReader.loadBaseStatus().proxyPort
         if let startOnBoot = startOnBootEnabled() {
             settings.startOnBoot = startOnBoot
             settings.startOnBootConfigurable = true
@@ -102,6 +104,24 @@ struct SystemRuntimeSettingsReader: RuntimeSettingsReading, @unchecked Sendable 
         }
         let bytesPerGiB = 1024 * 1024 * 1024
         return max(Int((size + UInt64(bytesPerGiB - 1)) / UInt64(bytesPerGiB)), 1)
+    }
+
+    private func proxyPort(plistPath: String) -> Int? {
+        guard let data = try? fileStore.readData(URL(fileURLWithPath: plistPath)),
+              let plist = try? PropertyListSerialization.propertyList(
+                from: data,
+                options: [],
+                format: nil
+              ),
+              let document = plist as? [String: Any],
+              let environment = document["EnvironmentVariables"] as? [String: Any],
+              let rawPort = environment["VITALSERVER_PROXY_PORT"] as? String,
+              let port = Int(rawPort),
+              (1...65_535).contains(port)
+        else {
+            return nil
+        }
+        return port
     }
 }
 

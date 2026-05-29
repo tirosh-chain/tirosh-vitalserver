@@ -18,7 +18,7 @@ public actor MacHostRuntimeReadWorker {
             releaseInfo: releaseInfo,
             statusReader: statusReader,
             fileReader: fileReader,
-            settingsReader: SystemRuntimeSettingsReader(statusReader: statusReader)
+            settingsReader: SystemRuntimeSettingsReader()
         )
     }
 

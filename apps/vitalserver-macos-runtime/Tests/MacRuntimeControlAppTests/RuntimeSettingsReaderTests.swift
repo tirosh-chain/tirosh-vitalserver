@@ -12,7 +12,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         let vmConfig = directory.appendingPathComponent("vm-config.json")
         let vmDisk = directory.appendingPathComponent("vm-disk.img")
         let guestConfig = directory.appendingPathComponent("runtime-config.json")
-        let runtimeStatus = directory.appendingPathComponent(RuntimeFileNames.runtimeStatus)
+        let proxyLaunchDaemon = directory.appendingPathComponent("proxy.plist")
 
         try """
         {
@@ -32,43 +32,14 @@ final class RuntimeSettingsReaderTests: XCTestCase {
           "redisBackupRetentionCount": 31
         }
         """.write(to: guestConfig, atomically: true, encoding: .utf8)
-        try """
-        {
-          "schemaVersion": 2,
-          "product": "TiroshVitalServer",
-          "status": "healthy",
-          "operation": "health",
-          "message": "ok",
-          "updatedAt": "2026-05-21T12:00:00Z",
-          "productRoot": "/tmp/product",
-          "runtimeHome": "/tmp/vm",
-          "runtimeVersion": "1.0.0",
-          "vmService": "loaded",
-          "proxyService": "loaded",
-          "watchdogService": "loaded",
-          "proxyPort": 19090,
-          "hostProxyHTTP": "200",
-          "guestHTTP": "200",
-          "rootfsBase": "present",
-          "vmDisk": "present",
-          "failureReasons": []
-        }
-        """.write(to: runtimeStatus, atomically: true, encoding: .utf8)
+        try writeProxyLaunchDaemon(proxyLaunchDaemon, proxyPort: 19090)
 
         let reader = SystemRuntimeSettingsReader(
             paths: RuntimeSettingsPaths(
                 vmConfig: vmConfig.path,
                 vmDisk: vmDisk.path,
-                guestRuntimeConfig: guestConfig.path
-            ),
-            statusReader: SystemRuntimeStatusReader(
-                paths: RuntimePaths(
-                    launcher: directory.appendingPathComponent("launcher").path,
-                    uninstaller: directory.appendingPathComponent("uninstaller").path,
-                    runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
-                    runtimeStatus: runtimeStatus.path,
-                    proxyLaunchDaemon: directory.appendingPathComponent("proxy.plist").path
-                )
+                guestRuntimeConfig: guestConfig.path,
+                proxyLaunchDaemon: proxyLaunchDaemon.path
             )
         )
 
@@ -133,8 +104,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
                 launcher: directory.appendingPathComponent("launcher").path,
                 uninstaller: directory.appendingPathComponent("uninstaller").path,
                 runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
-                runtimeStatus: directory.appendingPathComponent(RuntimeFileNames.runtimeStatus).path,
-                proxyLaunchDaemon: directory.appendingPathComponent("proxy.plist").path
+                runtimeStatus: directory.appendingPathComponent(RuntimeFileNames.runtimeStatus).path
             )
         )
         let status = reader.loadStatus(settings: RuntimeSettings(vitalFilesDirectory: dataDirectory.path))
@@ -152,8 +122,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
                 launcher: directory.appendingPathComponent("launcher").path,
                 uninstaller: directory.appendingPathComponent("uninstaller").path,
                 runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
-                runtimeStatus: directory.appendingPathComponent(RuntimeFileNames.runtimeStatus).path,
-                proxyLaunchDaemon: directory.appendingPathComponent("proxy.plist").path
+                runtimeStatus: directory.appendingPathComponent(RuntimeFileNames.runtimeStatus).path
             ),
             fileStore: DataDirectoryReadFailureFileStore(readableDirectory: dataDirectory)
         )
@@ -162,6 +131,44 @@ final class RuntimeSettingsReaderTests: XCTestCase {
 
         XCTAssertNil(status.dataDirectoryStats)
         XCTAssertNotNil(status.dataDirectoryStatsError)
+    }
+
+    func testStatusReaderUsesConfiguredProxyPortWhenStatusDocumentDoesNotReportIt() throws {
+        let directory = try temporaryDirectory()
+        let runtimeStatus = directory.appendingPathComponent(RuntimeFileNames.runtimeStatus)
+        try """
+        {
+          "schemaVersion": 2,
+          "product": "TiroshVitalServer",
+          "status": "healthy",
+          "operation": "health",
+          "message": "ok",
+          "updatedAt": "2026-05-26T00:01:00Z",
+          "productRoot": "/tmp/product",
+          "runtimeHome": "/tmp/vm",
+          "runtimeVersion": "1.0.0",
+          "vmService": "loaded",
+          "proxyService": "loaded",
+          "watchdogService": "loaded",
+          "rootfsBase": "present",
+          "vmDisk": "present",
+          "failureReasons": []
+        }
+        """.write(to: runtimeStatus, atomically: true, encoding: .utf8)
+        let reader = SystemRuntimeStatusReader(
+            paths: RuntimePaths(
+                launcher: directory.appendingPathComponent("launcher").path,
+                uninstaller: directory.appendingPathComponent("uninstaller").path,
+                runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
+                runtimeStatus: runtimeStatus.path
+            )
+        )
+        var settings = RuntimeSettings()
+        settings.proxyPort = 19090
+
+        let status = reader.loadStatus(settings: settings)
+
+        XCTAssertEqual(status.proxyPort, 19090)
     }
 
     func testStatusReaderDoesNotInferVMStateOrErrorsWhenStatusDocumentDoesNotProvideThem() throws {
@@ -196,8 +203,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
                 launcher: directory.appendingPathComponent("launcher").path,
                 uninstaller: directory.appendingPathComponent("uninstaller").path,
                 runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
-                runtimeStatus: runtimeStatus.path,
-                proxyLaunchDaemon: directory.appendingPathComponent("proxy.plist").path
+                runtimeStatus: runtimeStatus.path
             )
         )
 
@@ -260,8 +266,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
                 uninstaller: directory.appendingPathComponent("uninstaller").path,
                 runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
                 runtimeStatus: runtimeStatus.path,
-                runtimeObservabilityDB: directory.appendingPathComponent(RuntimeFileNames.runtimeObservabilityDB).path,
-                proxyLaunchDaemon: directory.appendingPathComponent("proxy.plist").path
+                runtimeObservabilityDB: directory.appendingPathComponent(RuntimeFileNames.runtimeObservabilityDB).path
             )
         )
 
@@ -355,8 +360,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
                 uninstaller: directory.appendingPathComponent("uninstaller").path,
                 runtimeState: runtimeState.path,
                 runtimeStatus: runtimeStatus.path,
-                runtimeObservabilityDB: directory.appendingPathComponent(RuntimeFileNames.runtimeObservabilityDB).path,
-                proxyLaunchDaemon: directory.appendingPathComponent("proxy.plist").path
+                runtimeObservabilityDB: directory.appendingPathComponent(RuntimeFileNames.runtimeObservabilityDB).path
             )
         )
 
@@ -375,6 +379,20 @@ final class RuntimeSettingsReaderTests: XCTestCase {
             return nil
         }
         return arguments[arguments.index(after: index)]
+    }
+
+    private func writeProxyLaunchDaemon(_ url: URL, proxyPort: Int) throws {
+        let document = [
+            "EnvironmentVariables": [
+                "VITALSERVER_PROXY_PORT": "\(proxyPort)",
+            ],
+        ]
+        let data = try PropertyListSerialization.data(
+            fromPropertyList: document,
+            format: .xml,
+            options: 0
+        )
+        try data.write(to: url)
     }
 
     private func temporaryDirectory() throws -> URL {
