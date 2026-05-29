@@ -5,6 +5,7 @@ import Contracts
 
 public enum RuntimeControlHTTPStatus: Int, Codable, Equatable, Sendable {
     case ok = 200
+    case noContent = 204
     case badRequest = 400
     case unauthorized = 401
     case notFound = 404

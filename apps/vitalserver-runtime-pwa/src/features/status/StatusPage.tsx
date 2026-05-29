@@ -1,7 +1,10 @@
 import { useRuntimeOverview } from "../../application/runtime-control/queries";
 import type { RuntimeControlOverview } from "../../domain/runtime-control/contracts/runtimeControlTypes";
 import { formatBytes } from "../../domain/runtime-control/formatting/bytes";
-import { runtimeURL } from "../../domain/runtime-control/formatting/http";
+import {
+  runtimeControlURL,
+  runtimeURL
+} from "../../domain/runtime-control/formatting/http";
 import {
   formatRuntimeState,
   runtimeStateTone
@@ -36,6 +39,7 @@ function StatusOverview({ overview }: { overview: RuntimeControlOverview }) {
   const stats = status?.dataDirectoryStats;
   const vitalRecorder = overview.vitalRecorder;
   const vitalServerURL = runtimeURL(status?.proxyPort ?? overview.settings?.proxyPort);
+  const pwaURL = runtimeControlURL();
 
   return (
     <div className="page-stack">
@@ -63,6 +67,15 @@ function StatusOverview({ overview }: { overview: RuntimeControlOverview }) {
                   {formatUptimeSince(status?.startedAt)}
                 </>
               )
+            },
+            {
+              label: "Runtime Control PWA",
+              value: (
+                <a href={pwaURL} target="_blank" rel="noreferrer">
+                  {pwaURL}
+                </a>
+              ),
+              detail: "Local helper UI"
             },
             {
               label: "Data directory",

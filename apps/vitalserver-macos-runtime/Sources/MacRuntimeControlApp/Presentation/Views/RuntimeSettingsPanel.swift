@@ -41,6 +41,9 @@ struct RuntimeSettingsPanel: View {
                         networkModeSelector
                     }
                     settingHelp(networkModeHelp)
+                    settingPortField(AppConstants.Labels.proxyPort, value: $viewModel.settings.proxyPort)
+                        .disabled(!viewModel.capabilities.canEditNetworkExposure)
+                    settingHelp(AppConstants.Labels.proxyPortHelp)
                 }
                 settingsSection(AppConstants.Labels.sectionStorage) {
                     settingDirectoryField(AppConstants.Labels.vitalFilesDirectory, text: $viewModel.settings.vitalFilesDirectory)
@@ -95,6 +98,9 @@ struct RuntimeSettingsPanel: View {
         }
         .onChange(of: viewModel.settings.memoryGiB) { _ in
             clampMemoryToSystemLimit()
+        }
+        .onChange(of: viewModel.settings.proxyPort) { _ in
+            viewModel.syncAdvertisedURLWithProxyIfNeeded()
         }
     }
 
@@ -266,10 +272,28 @@ struct RuntimeSettingsPanel: View {
         }
     }
 
+    private func settingPortField(_ label: String, value: Binding<Int>) -> some View {
+        settingRow(label) {
+            TextField("", value: value, formatter: portNumberFormatter)
+                .labelsHidden()
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 120)
+        }
+    }
+
     private func settingToggle(_ label: String, isOn: Binding<Bool>) -> some View {
         settingRow(label) {
             Toggle("", isOn: isOn)
                 .labelsHidden()
         }
+    }
+
+    private var portNumberFormatter: NumberFormatter {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .none
+        formatter.minimum = 1
+        formatter.maximum = 65_535
+        formatter.allowsFloats = false
+        return formatter
     }
 }

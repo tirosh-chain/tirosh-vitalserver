@@ -10,3 +10,10 @@ export function runtimeURL(proxyPort: number | null | undefined): string {
   const port = proxyPort ?? 80;
   return `http://${host}:${port}/`;
 }
+
+export function runtimeControlURL(): string {
+  if (typeof window === "undefined" || !window.location.origin) {
+    return "http://127.0.0.1:18321/";
+  }
+  return `${window.location.origin}/`;
+}

@@ -140,6 +140,8 @@ public enum RuntimeControlHTTPWireCodec {
         switch status {
         case .ok:
             return "OK"
+        case .noContent:
+            return "No Content"
         case .badRequest:
             return "Bad Request"
         case .unauthorized:

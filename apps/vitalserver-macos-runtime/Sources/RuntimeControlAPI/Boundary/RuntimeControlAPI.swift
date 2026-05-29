@@ -4,6 +4,7 @@ import Core
 
 public enum RuntimeControlHTTPMethod: String, CaseIterable, Codable, Equatable, Sendable {
     case get = "GET"
+    case options = "OPTIONS"
     case post = "POST"
     case put = "PUT"
     case delete = "DELETE"

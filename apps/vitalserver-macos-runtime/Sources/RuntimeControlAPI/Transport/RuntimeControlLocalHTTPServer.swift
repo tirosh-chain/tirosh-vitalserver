@@ -167,40 +167,45 @@ public final class RuntimeControlLocalHTTPServer: @unchecked Sendable {
             return
         }
 
+        if request.method == .options {
+            send(preflightResponse(for: request), on: connection)
+            return
+        }
+
         if configuration.servesDevConsole,
            let devConsoleResponse = RuntimeControlDevConsoleDocument.response(for: request) {
-            send(devConsoleResponse, on: connection)
+            send(corsResponse(devConsoleResponse, for: request), on: connection)
             return
         }
 
         if let staticResponse = staticFileResponder?.response(for: request) {
-            send(staticResponse, on: connection)
+            send(corsResponse(staticResponse, for: request), on: connection)
             return
         }
 
         Task { @MainActor [router, testKitRouter] in
             if let testKitRouter,
                let result = await testKitRouter.routeResult(request) {
-                self.send(result, on: connection)
+                self.send(result, for: request, on: connection)
                 return
             }
             let result = await router.routeResult(request)
-            self.send(result, on: connection)
+            self.send(result, for: request, on: connection)
         }
     }
 
-    private func send(_ result: RuntimeControlHTTPRouteResult, on connection: NWConnection) {
+    private func send(_ result: RuntimeControlHTTPRouteResult, for request: RuntimeControlHTTPRequest, on connection: NWConnection) {
         switch result {
         case .response(let response):
             queue.async {
-                let encoded = RuntimeControlHTTPWireCodec.encodeResponse(response)
+                let encoded = RuntimeControlHTTPWireCodec.encodeResponse(self.corsResponse(response, for: request))
                 connection.send(content: encoded, completion: .contentProcessed { _ in
                     connection.cancel()
                 })
             }
         case .stream(let stream):
             queue.async {
-                self.startStream(stream, on: connection)
+                self.startStream(self.corsStream(stream, for: request), on: connection)
             }
         }
     }
@@ -247,5 +252,69 @@ public final class RuntimeControlLocalHTTPServer: @unchecked Sendable {
         connection.send(content: encoded, completion: .contentProcessed { _ in
             connection.cancel()
         })
+    }
+
+    private func preflightResponse(for request: RuntimeControlHTTPRequest) -> RuntimeControlHTTPResponse {
+        RuntimeControlHTTPResponse(
+            status: .noContent,
+            headers: corsHeaders(for: request)
+        )
+    }
+
+    private func corsResponse(
+        _ response: RuntimeControlHTTPResponse,
+        for request: RuntimeControlHTTPRequest
+    ) -> RuntimeControlHTTPResponse {
+        RuntimeControlHTTPResponse(
+            status: response.status,
+            headers: response.headers.merging(corsHeaders(for: request)) { current, _ in current },
+            body: response.body
+        )
+    }
+
+    private func corsStream(
+        _ stream: RuntimeControlHTTPStreamResponse,
+        for request: RuntimeControlHTTPRequest
+    ) -> RuntimeControlHTTPStreamResponse {
+        RuntimeControlHTTPStreamResponse(
+            status: stream.status,
+            headers: stream.headers.merging(corsHeaders(for: request)) { current, _ in current },
+            events: stream.events
+        )
+    }
+
+    private func corsHeaders(for request: RuntimeControlHTTPRequest) -> [String: String] {
+        guard let origin = headerValue("Origin", in: request.headers),
+              isLoopbackOrigin(origin) else {
+            return [:]
+        }
+
+        return [
+            "Access-Control-Allow-Headers": "Accept, Content-Type, X-Runtime-Control-Token",
+            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+            "Access-Control-Allow-Origin": origin,
+            "Access-Control-Max-Age": "600",
+            "Vary": "Origin",
+        ]
+    }
+
+    private func headerValue(_ name: String, in headers: [String: String]) -> String? {
+        headers.first { key, _ in
+            key.caseInsensitiveCompare(name) == .orderedSame
+        }?.value
+    }
+
+    private func isLoopbackOrigin(_ origin: String) -> Bool {
+        guard let components = URLComponents(string: origin),
+              let scheme = components.scheme?.lowercased(),
+              scheme == "http" || scheme == "https",
+              let host = components.host?.lowercased() else {
+            return false
+        }
+
+        return host == "localhost"
+            || host == "::1"
+            || host == "0:0:0:0:0:0:0:1"
+            || host.hasPrefix("127.")
     }
 }

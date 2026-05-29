@@ -31,7 +31,7 @@ export function validateRuntimeSettings(
     errors.push(`VM disk must be at least ${settings.minimumDiskGiB} GiB.`);
   }
   if (!validPort(settings.proxyPort)) {
-    errors.push("Mac listen port must be between 1 and 65535.");
+    errors.push("VitalServer listen port must be between 1 and 65535.");
   }
   if (!validPort(settings.publicPort)) {
     errors.push("Advertised port must be between 1 and 65535.");

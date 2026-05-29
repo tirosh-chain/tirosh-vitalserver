@@ -7,6 +7,7 @@ import {
 } from "../../application/runtime-control/queries";
 import { canApplyRuntimeSettings } from "../../domain/runtime-control/capabilities/runtimeCapabilities";
 import type { RuntimeSettings } from "../../domain/runtime-control/contracts/runtimeControlTypes";
+import { runtimeURL } from "../../domain/runtime-control/formatting/http";
 import { validateRuntimeSettings } from "../../domain/runtime-control/settings/runtimeSettingsPolicy";
 import { ConfirmButton } from "../../shared/ui/ConfirmButton";
 import { ErrorState } from "../../shared/ui/ErrorState";
@@ -90,6 +91,7 @@ export function SettingsPage() {
   const canEditLocalFiles = capabilities.data?.canOpenLocalFiles === true;
   const canControlServices =
     capabilities.data?.canControlRuntimeServices === true;
+  const vitalServerURLPreview = runtimeURL(parseOptionalNumber(draft.proxyPort));
 
   return (
     <div className="page-stack">
@@ -153,7 +155,7 @@ export function SettingsPage() {
       <Panel title="Network exposure">
         <div className="settings-grid">
           <label>
-            Mac listen port
+            VitalServer listen port
             <input
               type="number"
               min="1"
@@ -164,6 +166,7 @@ export function SettingsPage() {
             />
           </label>
         </div>
+        <p className="muted">VitalServer URL: {vitalServerURLPreview}</p>
         <label className="checkbox-label block-checkbox">
           <input
             type="checkbox"

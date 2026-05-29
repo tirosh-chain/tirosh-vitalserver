@@ -203,6 +203,7 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         viewModel.openBackups()
         viewModel.openRedisBackups()
         viewModel.openVitalServer()
+        viewModel.openRuntimeControlPWA()
         viewModel.openVitalDBWebsite()
         await viewModel.exportLogs()
 
@@ -213,6 +214,7 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         ])
         XCTAssertEqual(nativeShell.openedWebURLs, [
             URL(string: AppConstants.Product.vitalServerURL(proxyPort: viewModel.status.proxyPort)),
+            URL(string: RuntimeControlLocalAPIConstants.pwaURL),
             URL(string: AppConstants.Product.vitalDBURL),
         ])
         XCTAssertEqual(nativeShell.chooseLogExportDestinationPrompts, [AppConstants.Actions.exportLogs])

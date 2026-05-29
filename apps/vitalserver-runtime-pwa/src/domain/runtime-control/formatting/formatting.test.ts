@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { formatBytes } from "./bytes";
-import { successfulHTTP } from "./http";
+import { runtimeControlURL, successfulHTTP } from "./http";
 import { formatRuntimeState } from "./runtimeState";
 import { formatUptimeSince } from "./time";
 
@@ -33,5 +33,9 @@ describe("runtime presentation formatting", () => {
     expect(successfulHTTP("HTTP 200")).toBe(true);
     expect(successfulHTTP("HTTP 503")).toBe(false);
     expect(successfulHTTP(undefined)).toBe(false);
+  });
+
+  it("falls back to the packaged Runtime Control PWA URL outside the browser", () => {
+    expect(runtimeControlURL()).toBe("http://127.0.0.1:18321/");
   });
 });

@@ -795,6 +795,68 @@ final class RuntimeControlAPITests: XCTestCase {
     }
 
     @MainActor
+    func testLocalHTTPServerAllowsLoopbackCORSPreflight() async throws {
+        let (server, port) = try makeStartedServer(token: "dev-token")
+        defer {
+            server.stop()
+        }
+
+        let origin = "http://127.0.0.1:5174"
+        var request = URLRequest(url: try XCTUnwrap(URL(string: "http://127.0.0.1:\(port)/runtime/status")))
+        request.httpMethod = "OPTIONS"
+        request.setValue(origin, forHTTPHeaderField: "Origin")
+        request.setValue("GET", forHTTPHeaderField: "Access-Control-Request-Method")
+        request.setValue("X-Runtime-Control-Token", forHTTPHeaderField: "Access-Control-Request-Headers")
+
+        let (_, response) = try await fetchWithRetry(request)
+        let httpResponse = try XCTUnwrap(response as? HTTPURLResponse)
+
+        XCTAssertEqual(httpResponse.statusCode, 204)
+        XCTAssertEqual(httpResponse.value(forHTTPHeaderField: "Access-Control-Allow-Origin"), origin)
+        XCTAssertEqual(httpResponse.value(forHTTPHeaderField: "Access-Control-Allow-Headers"), "Accept, Content-Type, X-Runtime-Control-Token")
+        XCTAssertTrue(httpResponse.value(forHTTPHeaderField: "Access-Control-Allow-Methods")?.contains("OPTIONS") == true)
+    }
+
+    @MainActor
+    func testLocalHTTPServerAddsCORSHeadersToLoopbackAPIResponses() async throws {
+        let (server, port) = try makeStartedServer(token: "dev-token")
+        defer {
+            server.stop()
+        }
+
+        let origin = "http://localhost:5174"
+        var request = URLRequest(url: try XCTUnwrap(URL(string: "http://127.0.0.1:\(port)/runtime/status")))
+        request.setValue("dev-token", forHTTPHeaderField: "X-Runtime-Control-Token")
+        request.setValue(origin, forHTTPHeaderField: "Origin")
+
+        let (_, response) = try await fetchWithRetry(request)
+        let httpResponse = try XCTUnwrap(response as? HTTPURLResponse)
+
+        XCTAssertEqual(httpResponse.statusCode, 200)
+        XCTAssertEqual(httpResponse.value(forHTTPHeaderField: "Access-Control-Allow-Origin"), origin)
+        XCTAssertEqual(httpResponse.value(forHTTPHeaderField: "Vary"), "Origin")
+    }
+
+    @MainActor
+    func testLocalHTTPServerDoesNotAllowNonLoopbackCORSOrigins() async throws {
+        let (server, port) = try makeStartedServer(token: "dev-token")
+        defer {
+            server.stop()
+        }
+
+        var request = URLRequest(url: try XCTUnwrap(URL(string: "http://127.0.0.1:\(port)/runtime/status")))
+        request.httpMethod = "OPTIONS"
+        request.setValue("https://example.com", forHTTPHeaderField: "Origin")
+        request.setValue("GET", forHTTPHeaderField: "Access-Control-Request-Method")
+
+        let (_, response) = try await fetchWithRetry(request)
+        let httpResponse = try XCTUnwrap(response as? HTTPURLResponse)
+
+        XCTAssertEqual(httpResponse.statusCode, 204)
+        XCTAssertNil(httpResponse.value(forHTTPHeaderField: "Access-Control-Allow-Origin"))
+    }
+
+    @MainActor
     func testLocalHTTPServerRejectsDevConsoleWhenDisabled() async throws {
         let (server, port) = try makeStartedServer(token: "dev-token")
         defer {

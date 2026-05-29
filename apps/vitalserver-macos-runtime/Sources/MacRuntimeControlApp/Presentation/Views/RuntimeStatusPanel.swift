@@ -56,6 +56,11 @@ struct RuntimeStatusPanel: View {
             statusRow(GeneratedRelease.vitalServerName) {
                 vitalServerStatusAndURL
             }
+            statusRow(AppConstants.Labels.runtimeControlPWA) {
+                linkButton(RuntimeControlLocalAPIConstants.pwaURL) {
+                    viewModel.openRuntimeControlPWA()
+                }
+            }
             statusRow(AppConstants.Labels.dataDirectory) {
                 dataDirectoryValue
             }

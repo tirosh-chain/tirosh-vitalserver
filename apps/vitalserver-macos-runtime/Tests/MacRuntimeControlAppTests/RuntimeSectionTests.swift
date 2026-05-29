@@ -58,6 +58,10 @@ final class RuntimeSectionTests: XCTestCase {
             RuntimeControlLocalAPIConstants.devConsoleURL,
             "http://127.0.0.1:18321/dev/runtime-control"
         )
+        XCTAssertEqual(
+            RuntimeControlLocalAPIConstants.pwaURL,
+            "http://127.0.0.1:18321/"
+        )
     }
 
     @MainActor
