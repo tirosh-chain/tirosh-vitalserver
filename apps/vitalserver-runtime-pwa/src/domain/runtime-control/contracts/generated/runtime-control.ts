@@ -1030,6 +1030,7 @@ export interface components {
             runtimeState?: components["schemas"]["RuntimeState"];
             operation?: string | null;
             statusMessage?: string | null;
+            statusDocumentError?: string | null;
             updatedAt?: string | null;
             /** @description ISO-8601 UTC timestamp for the representative VitalServer runtime start time. Clients should derive live uptime from this value. */
             startedAt?: string | null;

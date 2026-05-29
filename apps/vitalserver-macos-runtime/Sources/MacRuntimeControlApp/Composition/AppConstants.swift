@@ -93,6 +93,7 @@ enum AppConstants {
         static let runtime = "Runtime"
         static let runtimeDetails = "Runtime details"
         static let runtimeState = "Runtime state"
+        static let statusDocument = "Status document"
         static let vitalServerURL = "VitalServer URL"
         static let runtimeControlPWA = "Remote Console"
         static let dataDirectory = "Data directory"

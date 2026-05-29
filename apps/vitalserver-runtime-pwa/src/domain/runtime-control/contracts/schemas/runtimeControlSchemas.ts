@@ -270,6 +270,7 @@ export const runtimeStatusSchema = z
     runtimeState: runtimeStateSchema.optional(),
     operation: nullableString,
     statusMessage: nullableString,
+    statusDocumentError: nullableString,
     updatedAt: nullableString,
     startedAt: nullableString,
     runtimeVersion: nullableString,

@@ -2227,6 +2227,12 @@
               "null"
             ]
           },
+          "statusDocumentError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "updatedAt": {
             "type": [
               "string",

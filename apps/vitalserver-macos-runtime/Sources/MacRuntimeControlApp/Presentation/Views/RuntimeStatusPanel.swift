@@ -53,6 +53,12 @@ struct RuntimeStatusPanel: View {
             statusRow(AppConstants.Labels.overallHealth) {
                 healthStatusValue
             }
+            if let statusDocumentError = viewModel.status.statusDocumentError {
+                statusRow(AppConstants.Labels.statusDocument) {
+                    Text(statusDocumentError)
+                        .foregroundStyle(.red)
+                }
+            }
             statusRow(GeneratedRelease.vitalServerName) {
                 vitalServerStatusAndURL
             }

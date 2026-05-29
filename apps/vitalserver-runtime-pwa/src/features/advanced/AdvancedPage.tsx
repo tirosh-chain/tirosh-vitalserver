@@ -252,6 +252,14 @@ function Diagnostics({ overview }: { overview: RuntimeControlOverview | undefine
         { label: "Operation", value: status?.operation ?? "Unknown" },
         { label: "Runtime version", value: status?.runtimeVersion ?? "Unknown" },
         { label: "VM IP", value: status?.vmIP ?? "Waiting" },
+        ...(status?.statusDocumentError
+          ? [
+              {
+                label: "Status document",
+                value: `Read failed: ${status.statusDocumentError}`
+              }
+            ]
+          : []),
         {
           label: "Failure reasons",
           value: status?.failureReasons?.length

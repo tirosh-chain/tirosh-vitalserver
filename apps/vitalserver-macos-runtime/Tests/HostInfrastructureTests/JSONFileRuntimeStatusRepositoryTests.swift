@@ -30,6 +30,24 @@ final class JSONFileRuntimeStatusRepositoryTests: XCTestCase {
         let repository = JSONFileRuntimeStatusRepository(url: url)
 
         XCTAssertNil(repository.load())
+        XCTAssertEqual(repository.loadResult(), .missing)
+    }
+
+    func testLoadResultReportsInvalidStatusDocument() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let url = directory.appendingPathComponent(RuntimeFileNames.runtimeStatus)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try Data("not-json".utf8).write(to: url)
+        let repository = JSONFileRuntimeStatusRepository(url: url)
+
+        XCTAssertNil(repository.load())
+        guard case .failed(let message) = repository.loadResult() else {
+            return XCTFail("Expected failed status document load")
+        }
+        XCTAssertFalse(message.isEmpty)
+
+        try? FileManager.default.removeItem(at: directory)
     }
 
     private func document(message: String) -> RuntimeStatusDocument {

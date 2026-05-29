@@ -2,6 +2,12 @@ import Foundation
 import Core
 import Contracts
 
+public enum RuntimeStatusDocumentLoadResult: Equatable {
+    case missing
+    case loaded(RuntimeStatusDocument)
+    case failed(String)
+}
+
 public struct JSONFileRuntimeStatusRepository: RuntimeStatusRepository {
     public let url: URL
 
@@ -10,10 +16,22 @@ public struct JSONFileRuntimeStatusRepository: RuntimeStatusRepository {
     }
 
     public func load() -> RuntimeStatusDocument? {
-        guard let data = try? Data(contentsOf: url) else {
+        guard case .loaded(let document) = loadResult() else {
             return nil
         }
-        return try? JSONDecoder().decode(RuntimeStatusDocument.self, from: data)
+        return document
+    }
+
+    public func loadResult() -> RuntimeStatusDocumentLoadResult {
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            return .missing
+        }
+        do {
+            let data = try Data(contentsOf: url)
+            return try .loaded(JSONDecoder().decode(RuntimeStatusDocument.self, from: data))
+        } catch {
+            return .failed(error.localizedDescription)
+        }
     }
 
     public func save(_ document: RuntimeStatusDocument) throws {

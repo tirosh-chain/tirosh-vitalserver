@@ -48,7 +48,20 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
 
     func loadBaseStatus(configuredProxyPort: Int = RuntimeAdapterConstants.Product.defaultProxyPort) -> RuntimeStatus {
         let statusRepository = JSONFileRuntimeStatusRepository(url: URL(fileURLWithPath: paths.runtimeStatus))
-        let document = statusRepository.load()
+        let loadResult = statusRepository.loadResult()
+        let document: RuntimeStatusDocument?
+        let statusDocumentError: String?
+        switch loadResult {
+        case .loaded(let loadedDocument):
+            document = loadedDocument
+            statusDocumentError = nil
+        case .missing:
+            document = nil
+            statusDocumentError = nil
+        case .failed(let message):
+            document = nil
+            statusDocumentError = message
+        }
         let guestState = guestRuntimeStateDocument(paths.runtimeState)
         let containerObservation = document?.containerObservation
         let startedAt = containerObservation?.composeServices.first { $0.service == "app" }?.startedAt
@@ -65,6 +78,7 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
             runtimeState: document.map { RuntimeState(rawValue: $0.status.rawValue) },
             operation: document?.operation,
             statusMessage: document?.message,
+            statusDocumentError: statusDocumentError,
             updatedAt: document?.updatedAt,
             startedAt: startedAt,
             runtimeVersion: document?.runtimeVersion,

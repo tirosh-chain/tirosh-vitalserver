@@ -194,6 +194,7 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
     public var runtimeState: RuntimeState?
     public var operation: RuntimeOperation?
     public var statusMessage: String?
+    public var statusDocumentError: String?
     public var updatedAt: String?
     public var startedAt: String?
     public var runtimeVersion: String?
@@ -229,6 +230,7 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
         runtimeState: RuntimeState? = nil,
         operation: RuntimeOperation? = nil,
         statusMessage: String? = nil,
+        statusDocumentError: String? = nil,
         updatedAt: String? = nil,
         startedAt: String? = nil,
         runtimeVersion: String? = nil,
@@ -263,6 +265,7 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
         self.runtimeState = runtimeState
         self.operation = operation
         self.statusMessage = statusMessage
+        self.statusDocumentError = statusDocumentError
         self.updatedAt = updatedAt
         self.startedAt = startedAt
         self.runtimeVersion = runtimeVersion
