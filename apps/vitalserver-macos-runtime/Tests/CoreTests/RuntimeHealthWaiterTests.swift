@@ -54,7 +54,7 @@ final class RuntimeHealthWaiterTests: XCTestCase {
             configuration: RuntimeHealthWaitConfiguration(maxAttempts: 3, progressEveryAttempts: 1),
             observe: {
                 observation(snapshot: unhealthySnapshot(reasons: [
-                    .guestHTTP("bootstrap-pending"),
+                    .guestHTTP(RuntimeHTTPStatusText.bootstrapPending),
                     .guestBootstrapMissingRuntimePackages,
                 ]))
             },

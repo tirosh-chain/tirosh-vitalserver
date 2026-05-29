@@ -30,7 +30,7 @@ final class RuntimeControlContractsTests: XCTestCase {
             hostProxyHTTP: "200"
         )
 
-        XCTAssertTrue(status.isReady)
+        XCTAssertTrue(RuntimeReadinessPolicy.isReady(status))
 
         let encoded = try JSONEncoder().encode(status)
         let decoded = try JSONDecoder().decode(RuntimeStatus.self, from: encoded)
@@ -38,7 +38,7 @@ final class RuntimeControlContractsTests: XCTestCase {
         XCTAssertEqual(decoded.operation, .applyBundle)
         XCTAssertEqual(decoded.vmState, .running)
         XCTAssertEqual(decoded.vmErrors ?? [], [])
-        XCTAssertTrue(decoded.isReady)
+        XCTAssertTrue(RuntimeReadinessPolicy.isReady(decoded))
     }
 
     func testRuntimeStatusIncludesDataDirectoryStats() throws {

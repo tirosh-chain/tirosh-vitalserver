@@ -1,4 +1,4 @@
-# 030 Runtime 상태를 Host/UI가 추정함
+# 030 Runtime 상태를 Host/UI가 추정하거나 암묵 보정함
 
 > ID: TS-030
 > Category: Runtime health / Update
@@ -15,6 +15,9 @@ Runtime 상태가 실제 상황과 다르게 보이거나, update 진행 상태�
 - guest bootstrap 실패가 명시 result 없이 `bootstrap.log` 문구로 분류됩니다.
 - update 진행 문구가 `command.log`의 과거 라인을 파싱해 복원됩니다.
 - 같은 상태를 Swift UI, Remote Console, event log가 서로 다르게 보여줍니다.
+- `RuntimeStatus.isReady`처럼 모델 안의 computed property가 여러 신호를 묶어 상태를 암묵적으로 판단합니다.
+- UI가 `nil` 상태를 설치 여부 같은 다른 필드로 보정해 실제로 제공되지 않은 값을 표시합니다.
+- `"missing-vm-ip"`, `"bootstrap-pending"`, `"not evaluated"` 같은 문자열이 여러 레이어에 흩어져 상태처럼 사용됩니다.
 
 ## Impact
 
@@ -24,6 +27,7 @@ Runtime 상태가 실제 상황과 다르게 보이거나, update 진행 상태�
 - HTTP probe, launchd log, command log, guest result가 서로 다른 결론을 만들 수 있습니다.
 - 예외 케이스가 생길 때마다 fallback과 방어로직이 늘어납니다.
 - update flow가 실제 contract보다 복잡해지고, 실패를 실패로 남기지 못합니다.
+- 상태 판단 기준이 모델, health evaluator, UI policy에 나뉘면 어떤 기준이 authoritative한지 알기 어렵습니다.
 
 ## Cause
 
@@ -40,6 +44,8 @@ UI displays inferred state as if it were reported state
 
 로그는 진단 자료이고, 상태 전이 contract가 아닙니다. HTTP probe도 특정 endpoint의 관측값일 뿐 VM 내부 상태 전체를 대표하지 않습니다.
 
+같은 성격의 문제는 로그 파싱뿐 아니라 computed property와 UI fallback에서도 발생합니다. 상태가 아닌 필드를 조합해서 새로운 상태를 만들거나, 값이 없을 때 보기 좋은 값으로 채우면 consumer가 provider의 contract 부재를 숨기게 됩니다.
+
 ## Checks
 
 아래 코드가 다시 생기면 이 케이스를 의심합니다.
@@ -47,6 +53,8 @@ UI displays inferred state as if it were reported state
 ```sh
 rg -n "LegacyBootstrapLogEvaluator|LegacyCommandProgressParser|legacyCommandProgressLine" apps/vitalserver-macos-runtime
 rg -n "inferredVMState|inferredVMErrors|vmDiagnosticErrors\\(" apps/vitalserver-macos-runtime
+rg -n "\\.isReady|\\\"not evaluated\\\"" apps/vitalserver-macos-runtime/Sources
+rg -n "vmState.*runtimeInstalled|runtimeInstalled.*vmState|missing-vm-ip|bootstrap-pending" apps/vitalserver-macos-runtime/Sources
 ```
 
 상태 관련 read path에서 아래 패턴이 보이면 재검토합니다.
@@ -55,6 +63,9 @@ rg -n "inferredVMState|inferredVMErrors|vmDiagnosticErrors\\(" apps/vitalserver-
 read log -> map text to status
 probe HTTP -> synthesize vmState
 missing document field -> infer fallback state
+computed property -> combine fields into operational readiness
+UI fallback -> display unreported state as reported state
+string literal -> shared status sentinel without contract owner
 ```
 
 ## Actions
@@ -68,6 +79,9 @@ missing document field -> infer fallback state
 3. update progress는 `RuntimeProgressDocument`만 사용합니다.
 4. `command.log`, `bootstrap.log`, launchd log는 상태 전이 입력이 아니라 export/diagnostics 자료로만 사용합니다.
 5. Guest 내부 상태가 필요하면 guest가 result/status document로 직접 제공합니다.
+6. Runtime readiness와 VM health 분류는 각각 `RuntimeReadinessPolicy`, `RuntimeVMHealthPolicy`에서만 수행합니다.
+7. 상태 sentinel 문자열은 `RuntimeHTTPStatusText`처럼 contract/shared constant로 모으고, 각 레이어가 새 문자열을 만들지 않습니다.
+8. UI는 상태를 새로 만들지 않습니다. UI policy는 제공된 상태를 표시용 text/severity로만 변환합니다.
 
 ## Prevention
 
@@ -84,6 +98,9 @@ missing document field -> infer fallback state
 - 상태 document가 비어 있을 때 HTTP probe로 VM lifecycle state를 생성
 - 오래된 command log에서 update progress를 복원
 - fallback으로 정상 contract 부재를 숨김
+- 모델 computed property에 readiness/health 판단을 숨김
+- UI가 `nil` 또는 `unknown`을 다른 필드로 보정해 구체 상태처럼 표시
+- shared status sentinel 문자열을 여러 파일에 직접 작성
 
 ## Operational Notes
 
@@ -100,3 +117,5 @@ missing document field -> infer fallback state
 ## Follow-up
 
 - 2026-05-29: `RuntimeStatusReader`의 `vmState`/`vmErrors` 추정, bootstrap log 기반 실패 분류, command log 기반 progress fallback을 제거했습니다.
+- 2026-05-29: `RuntimeStatus.isReady`의 암묵적 readiness 계산을 `RuntimeReadinessPolicy`로 분리하고, VM 상태/오류 분류를 `RuntimeVMHealthPolicy`로 명시했습니다. `missing-vm-ip`, `bootstrap-pending`, `not-evaluated` 상태 문자열도 `RuntimeHTTPStatusText` contract로 모았습니다.
+- 2026-05-29: Swift status UI에서 `vmState == nil`을 `runtimeInstalled == false` 기준으로 `not-installed`처럼 표시하던 fallback을 제거했습니다. 설치 상태는 Runtime installation row가 표시하고, VM state row는 제공된 VM state만 표시합니다.

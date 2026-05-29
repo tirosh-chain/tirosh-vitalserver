@@ -50,7 +50,7 @@ enum RuntimeHealthNotificationState: Equatable {
     case notInstalled
 
     init(status: RuntimeStatus) {
-        if status.isReady {
+        if RuntimeReadinessPolicy.isReady(status) {
             self = .healthy
         } else if !status.runtimeInstalled {
             self = .notInstalled

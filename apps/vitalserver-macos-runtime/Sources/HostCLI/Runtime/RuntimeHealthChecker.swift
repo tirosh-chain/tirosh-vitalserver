@@ -68,7 +68,7 @@ struct RuntimeHealthChecker {
             swaggerUIHTTP: swaggerUIHTTP,
             containerObservation: containerObservation,
             vitalDBObservation: guestState?.vitalDBObservation,
-            vmDiagnosticErrors: [],
+            reportedVMErrors: [],
             proxyPortFailureReasons: proxyPortFailureReasons(port: proxyPort),
             guestBootstrapFailureReason: guestBootstrapFailureReason()
         ))
@@ -144,12 +144,12 @@ struct RuntimeHealthChecker {
             return guestHTTP
         }
         if guestState != nil {
-            return "bootstrap-pending"
+            return RuntimeHTTPStatusText.bootstrapPending
         }
         if let vmIP {
             return httpProber.statusCode(url: "http://\(vmIP)\(Constants.Runtime.readinessPath)")
         }
-        return "missing-vm-ip"
+        return RuntimeHTTPStatusText.missingVMIP
     }
 
     private func guestBootstrapFailureReason() -> RuntimeFailureReason? {

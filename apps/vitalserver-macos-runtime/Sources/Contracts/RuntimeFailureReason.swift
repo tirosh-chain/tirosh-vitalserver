@@ -104,7 +104,7 @@ public enum RuntimeFailureReason: Codable, Equatable, Sendable {
         case .serviceNotLoaded(let state):
             self = .vmService(state)
         case .missingIPAddress:
-            self = .guestHTTP("missing-vm-ip")
+            self = .guestHTTP(RuntimeHTTPStatusText.missingVMIP)
         case .runtimeStateMissing:
             self = .unknown(vmError.rawValue)
         case .runtimeStateStale:

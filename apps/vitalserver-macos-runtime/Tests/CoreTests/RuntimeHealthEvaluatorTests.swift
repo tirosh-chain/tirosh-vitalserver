@@ -43,7 +43,7 @@ final class RuntimeHealthEvaluatorTests: XCTestCase {
     func testReadinessFailuresIncludeProxyPortAndBootstrapReasons() {
         let snapshot = RuntimeHealthEvaluator.evaluate(healthyInput(
             hostProxyHTTP: "502",
-            guestHTTP: "bootstrap-pending",
+            guestHTTP: RuntimeHTTPStatusText.bootstrapPending,
             redisUIHTTP: "failed",
             swaggerUIHTTP: "404",
             proxyPortFailureReasons: [.proxyPortInUse(port: 80, listeners: "nginx-1234")],
@@ -51,13 +51,13 @@ final class RuntimeHealthEvaluatorTests: XCTestCase {
         ))
 
         XCTAssertEqual(snapshot.failureReasons, [
-            .guestHTTP("bootstrap-pending"),
+            .guestHTTP(RuntimeHTTPStatusText.bootstrapPending),
             .guestBootstrapMissingRuntimePackages,
             .hostProxyHTTP("502"),
             .proxyPortInUse(port: 80, listeners: "nginx-1234"),
         ])
         XCTAssertEqual(snapshot.vmErrors, [
-            .guestHTTP("bootstrap-pending"),
+            .guestHTTP(RuntimeHTTPStatusText.bootstrapPending),
             .guestBootstrapMissingRuntimePackages,
         ])
     }
@@ -227,18 +227,27 @@ final class RuntimeHealthEvaluatorTests: XCTestCase {
         ])
     }
 
-    func testVMStateDefinesHostAndGuestFailureModes() {
+    func testVMHealthPolicyDefinesHostAndGuestFailureModes() {
+        XCTAssertEqual(RuntimeVMHealthPolicy.evaluate(healthyInput(vmIP: nil, guestHTTP: RuntimeHTTPStatusText.missingVMIP)).vmState, .starting)
+        XCTAssertEqual(RuntimeVMHealthPolicy.evaluate(healthyInput(guestHTTP: RuntimeHTTPStatusText.bootstrapPending)).vmState, .starting)
+        XCTAssertEqual(RuntimeVMHealthPolicy.evaluate(healthyInput(vmExecutable: false)).vmState, .notInstalled)
+        XCTAssertEqual(RuntimeVMHealthPolicy.evaluate(healthyInput(vmDisk: .missing)).vmState, .failed)
+        XCTAssertEqual(RuntimeVMHealthPolicy.evaluate(healthyInput(vmService: .notLoaded)).vmState, .stopped)
+        XCTAssertEqual(RuntimeVMHealthPolicy.evaluate(healthyInput(guestHTTP: "failed")).vmState, .unreachable)
+    }
+
+    func testRuntimeHealthEvaluatorUsesExplicitVMHealthPolicy() {
         XCTAssertEqual(RuntimeHealthEvaluator.evaluate(healthyInput(vmExecutable: false)).vmState, .notInstalled)
         XCTAssertEqual(RuntimeHealthEvaluator.evaluate(healthyInput(vmDisk: .missing)).vmState, .failed)
         XCTAssertEqual(RuntimeHealthEvaluator.evaluate(healthyInput(vmService: .notLoaded)).vmState, .stopped)
-        XCTAssertEqual(RuntimeHealthEvaluator.evaluate(healthyInput(vmIP: nil, guestHTTP: "missing-vm-ip")).vmState, .starting)
-        XCTAssertEqual(RuntimeHealthEvaluator.evaluate(healthyInput(guestHTTP: "bootstrap-pending")).vmState, .starting)
+        XCTAssertEqual(RuntimeHealthEvaluator.evaluate(healthyInput(vmIP: nil, guestHTTP: RuntimeHTTPStatusText.missingVMIP)).vmState, .starting)
+        XCTAssertEqual(RuntimeHealthEvaluator.evaluate(healthyInput(guestHTTP: RuntimeHTTPStatusText.bootstrapPending)).vmState, .starting)
         XCTAssertEqual(RuntimeHealthEvaluator.evaluate(healthyInput(guestHTTP: "failed")).vmState, .unreachable)
     }
 
-    func testDiagnosticVMErrorsMarkVMFailedAndRemainObservable() {
+    func testReportedVMErrorsMarkVMFailedAndRemainObservable() {
         let snapshot = RuntimeHealthEvaluator.evaluate(healthyInput(
-            vmDiagnosticErrors: [.launchFailed("virtualization"), .diskAttachmentInvalid, .guestFilesystemReadOnly, .guestDiskIO]
+            reportedVMErrors: [.launchFailed("virtualization"), .diskAttachmentInvalid, .guestFilesystemReadOnly, .guestDiskIO]
         ))
 
         XCTAssertEqual(snapshot.vmState, .failed)
@@ -274,7 +283,7 @@ final class RuntimeHealthEvaluatorTests: XCTestCase {
         swaggerUIHTTP: String = "200",
         containerObservation: RuntimeContainerObservation? = nil,
         vitalDBObservation: VitalDBObservationDocument? = nil,
-        vmDiagnosticErrors: [RuntimeVMError] = [],
+        reportedVMErrors: [RuntimeVMError] = [],
         proxyPortFailureReasons: [RuntimeFailureReason] = [],
         guestBootstrapFailureReason: RuntimeFailureReason? = nil
     ) -> RuntimeHealthInput {
@@ -296,7 +305,7 @@ final class RuntimeHealthEvaluatorTests: XCTestCase {
             swaggerUIHTTP: swaggerUIHTTP,
             containerObservation: containerObservation,
             vitalDBObservation: vitalDBObservation,
-            vmDiagnosticErrors: vmDiagnosticErrors,
+            reportedVMErrors: reportedVMErrors,
             proxyPortFailureReasons: proxyPortFailureReasons,
             guestBootstrapFailureReason: guestBootstrapFailureReason
         )

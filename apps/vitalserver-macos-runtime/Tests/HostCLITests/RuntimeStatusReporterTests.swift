@@ -79,7 +79,7 @@ final class RuntimeStatusReporterTests: XCTestCase {
             vmIP: nil,
             proxyPort: 80,
             hostProxyHTTP: "failed",
-            guestHTTP: "missing-vm-ip",
+            guestHTTP: RuntimeHTTPStatusText.missingVMIP,
             redisUIHTTP: nil,
             swaggerUIHTTP: nil,
             rootfsBase: .present,

@@ -286,21 +286,4 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
         self.vitalDBObservation = vitalDBObservation
     }
 
-    public var isReady: Bool {
-        runtimeInstalled
-            && vmServiceLoaded
-            && proxyServiceLoaded
-            && watchdogServiceLoaded
-            && runtimeState == .healthy
-            && vmIP != nil
-            && isSuccessfulHTTPStatus(guestHTTP)
-            && isSuccessfulHTTPStatus(hostProxyHTTP)
-    }
-
-    private func isSuccessfulHTTPStatus(_ value: String?) -> Bool {
-        guard let value, let code = Int(value) else {
-            return false
-        }
-        return code >= 200 && code < 300
-    }
 }

@@ -332,12 +332,12 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
     }
 
     func testVMStateDisplayMapsRuntimeStatesToOperatorSeverity() {
-        XCTAssertEqual(policy.vmStateValue(.running, runtimeInstalled: true).text, AppConstants.StatusText.running)
-        XCTAssertEqual(policy.vmStateValue(.running, runtimeInstalled: true).severity, .healthy)
-        XCTAssertEqual(policy.vmStateValue(.starting, runtimeInstalled: true).severity, .warning)
-        XCTAssertEqual(policy.vmStateValue(.stale, runtimeInstalled: true).severity, .warning)
-        XCTAssertEqual(policy.vmStateValue(.unreachable, runtimeInstalled: true).severity, .critical)
-        XCTAssertEqual(policy.vmStateValue(nil, runtimeInstalled: false).text, AppConstants.StatusText.notInstalled)
+        XCTAssertEqual(policy.vmStateValue(.running).text, AppConstants.StatusText.running)
+        XCTAssertEqual(policy.vmStateValue(.running).severity, .healthy)
+        XCTAssertEqual(policy.vmStateValue(.starting).severity, .warning)
+        XCTAssertEqual(policy.vmStateValue(.stale).severity, .warning)
+        XCTAssertEqual(policy.vmStateValue(.unreachable).severity, .critical)
+        XCTAssertEqual(policy.vmStateValue(nil).text, AppConstants.StatusText.unknown)
     }
 
     func testHealthDetailsDisplayVMErrorsWhenPresent() {

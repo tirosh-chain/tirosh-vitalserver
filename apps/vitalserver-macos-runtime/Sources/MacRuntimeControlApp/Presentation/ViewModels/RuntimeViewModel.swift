@@ -583,7 +583,7 @@ final class RuntimeViewModel: ObservableObject {
             await loadRuntimeSettings()
             status = await loadHealthStatusSnapshot(settings: settings)
             await refreshLogsIfLive()
-            if status.isReady || !settings.restartAfterSave {
+            if RuntimeReadinessPolicy.isReady(status) || !settings.restartAfterSave {
                 return
             }
             try? await Task.sleep(nanoseconds: 2_000_000_000)

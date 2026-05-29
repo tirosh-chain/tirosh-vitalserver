@@ -70,7 +70,7 @@ struct RuntimeStatusDisplayPolicy {
                 uptimeText: nil
             )
         }
-        if status.isReady {
+        if RuntimeReadinessPolicy.isReady(status) {
             return StatusValue(
                 text: AppConstants.StatusText.healthy,
                 severity: .healthy,
@@ -142,7 +142,7 @@ struct RuntimeStatusDisplayPolicy {
     }
 
     func actionNeeded(status: RuntimeStatus) -> ActionNeededItem? {
-        if status.isReady || isManagedOperationInProgress(status.runtimeState) {
+        if RuntimeReadinessPolicy.isReady(status) || isManagedOperationInProgress(status.runtimeState) {
             return nil
         }
         if !status.runtimeInstalled {
@@ -184,7 +184,7 @@ struct RuntimeStatusDisplayPolicy {
             ),
             HealthItem(
                 label: AppConstants.Labels.vmState,
-                value: vmStateValue(status.vmState, runtimeInstalled: status.runtimeInstalled)
+                value: vmStateValue(status.vmState)
             ),
         ]
         if let vmErrors = status.vmErrors, !vmErrors.isEmpty {
@@ -483,11 +483,10 @@ struct RuntimeStatusDisplayPolicy {
         AppConstants.StatusText.reachability(httpStatus: value)
     }
 
-    func vmStateValue(_ value: RuntimeVMState?, runtimeInstalled: Bool) -> StatusValue {
-        let resolvedValue = value ?? (runtimeInstalled ? nil : .notInstalled)
+    func vmStateValue(_ value: RuntimeVMState?) -> StatusValue {
         return StatusValue(
-            text: AppConstants.StatusText.vmState(resolvedValue),
-            severity: vmStateSeverity(resolvedValue),
+            text: AppConstants.StatusText.vmState(value),
+            severity: vmStateSeverity(value),
             uptimeText: nil
         )
     }
