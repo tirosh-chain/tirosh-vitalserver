@@ -85,15 +85,105 @@ struct RuntimeLifecycleComposition {
             return
         }
 
+        let launchdOutputLog = paths.installed.centralRuntimeLogsDirectory.appendingPathComponent("launchd.out.log")
+        let logWatermark = runtimeLogWatermark(launchdOutputLog, fileStore: fileStore)
         log("requesting graceful VM process stop before launchd unload", clock: clock)
-        try ProcessState.requestStopAndWait(
-            pidFile: paths.pidFile,
+        do {
+            try ProcessState.requestStopAndWait(
+                pidFile: paths.pidFile,
+                fileStore: fileStore,
+                timeoutSeconds: Constants.Runtime.vmStopWaitTimeoutSeconds,
+                pollIntervalSeconds: Constants.Runtime.serviceStopPollIntervalSeconds,
+                log: { message in log(message, clock: clock) }
+            )
+        } catch {
+            guard isVMStopTimeout(error) else {
+                throw error
+            }
+            try forceStopAfterDiskSafeShutdown(
+                originalError: error,
+                pidFile: paths.pidFile,
+                launchdOutputLog: launchdOutputLog,
+                logWatermark: logWatermark,
+                fileStore: fileStore,
+                clock: clock
+            )
+        }
+        log("VM process stopped before launchd unload", clock: clock)
+    }
+
+    private static func forceStopAfterDiskSafeShutdown(
+        originalError: Error,
+        pidFile: URL,
+        launchdOutputLog: URL,
+        logWatermark: UInt64,
+        fileStore: RuntimeFileStore,
+        clock: RuntimeClock
+    ) throws {
+        log("VM graceful stop timed out; waiting for guest disk-safe shutdown marker", clock: clock)
+        guard waitForGuestDiskSafeShutdown(
+            launchdOutputLog: launchdOutputLog,
+            logWatermark: logWatermark,
             fileStore: fileStore,
-            timeoutSeconds: Constants.Runtime.vmStopWaitTimeoutSeconds,
+            timeoutSeconds: Constants.Runtime.vmDiskSafeShutdownWaitTimeoutSeconds,
+            pollIntervalSeconds: Constants.Runtime.serviceStopPollIntervalSeconds
+        ) else {
+            throw originalError
+        }
+
+        log("guest disk-safe shutdown marker observed; force stopping VM process", clock: clock)
+        try ProcessState.forceKillAndWait(
+            pidFile: pidFile,
+            fileStore: fileStore,
+            timeoutSeconds: Constants.Runtime.vmForceStopWaitTimeoutSeconds,
             pollIntervalSeconds: Constants.Runtime.serviceStopPollIntervalSeconds,
             log: { message in log(message, clock: clock) }
         )
-        log("VM process stopped before launchd unload", clock: clock)
+    }
+
+    private static func runtimeLogWatermark(_ logURL: URL, fileStore: RuntimeFileReading) -> UInt64 {
+        (try? fileStore.fileSize(logURL)) ?? 0
+    }
+
+    private static func waitForGuestDiskSafeShutdown(
+        launchdOutputLog: URL,
+        logWatermark: UInt64,
+        fileStore: RuntimeFileReading,
+        timeoutSeconds: TimeInterval,
+        pollIntervalSeconds: TimeInterval
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeoutSeconds)
+        while true {
+            if guestDiskSafeShutdownReached(
+                launchdOutputLog: launchdOutputLog,
+                logWatermark: logWatermark,
+                fileStore: fileStore
+            ) {
+                return true
+            }
+            guard Date() < deadline else {
+                return false
+            }
+            Thread.sleep(forTimeInterval: pollIntervalSeconds)
+        }
+    }
+
+    private static func guestDiskSafeShutdownReached(
+        launchdOutputLog: URL,
+        logWatermark: UInt64,
+        fileStore: RuntimeFileReading
+    ) -> Bool {
+        guard let data = try? fileStore.readData(launchdOutputLog) else {
+            return false
+        }
+        return RuntimeVMShutdownLogProbe.diskSafeShutdownReached(in: data, after: logWatermark)
+    }
+
+    private static func isVMStopTimeout(_ error: Error) -> Bool {
+        guard case let LauncherError.runtimeOperationFailed(message) = error else {
+            return false
+        }
+        return message.contains("VM process did not stop within")
     }
 
     private static func waitUntilServiceStops(

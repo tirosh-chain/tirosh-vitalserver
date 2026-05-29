@@ -100,6 +100,49 @@ enum ProcessState {
         )
     }
 
+    static func forceKillAndWait(
+        pidFile: URL,
+        fileStore: RuntimeFileReading & RuntimeFileWriting = SystemRuntimeFileStore(),
+        timeoutSeconds: TimeInterval,
+        pollIntervalSeconds: TimeInterval = 0.5,
+        processExists: (pid_t) -> Bool = defaultProcessExists,
+        signalProcess: (pid_t, Int32) -> Int32 = { kill($0, $1) },
+        log: (String) -> Void = { _ in }
+    ) throws {
+        guard let pid = readPid(pidFile, fileStore: fileStore) else {
+            log("VM process pid file is missing; skipping forced process stop")
+            return
+        }
+
+        guard processExists(pid) else {
+            log("VM process pid file is stale before forced stop; removing pidFile=\(pidFile.path)")
+            removePidFile(pidFile, fileStore: fileStore)
+            return
+        }
+
+        if signalProcess(pid, SIGKILL) == 0 {
+            log("sent SIGKILL to VM process pid=\(pid)")
+        } else {
+            let errorNumber = errno
+            if errorNumber == ESRCH {
+                log("VM process already stopped before forced stop pid=\(pid); removing pidFile=\(pidFile.path)")
+                removePidFile(pidFile, fileStore: fileStore)
+                return
+            }
+            throw LauncherError.runtimeOperationFailed(
+                "failed to send SIGKILL to VM process pid=\(pid) errno=\(errorNumber)"
+            )
+        }
+
+        try waitUntilStopped(
+            pidFile: pidFile,
+            fileStore: fileStore,
+            timeoutSeconds: timeoutSeconds,
+            pollIntervalSeconds: pollIntervalSeconds,
+            processExists: processExists
+        )
+    }
+
     static func waitUntilStopped(
         pidFile: URL,
         fileStore: RuntimeFileReading & RuntimeFileWriting = SystemRuntimeFileStore(),
