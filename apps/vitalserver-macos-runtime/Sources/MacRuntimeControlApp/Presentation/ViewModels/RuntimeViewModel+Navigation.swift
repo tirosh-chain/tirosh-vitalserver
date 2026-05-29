@@ -38,7 +38,7 @@ extension RuntimeViewModel {
     }
 
     func openRuntimeControlPWA() {
-        openRuntimeURL(RuntimeControlLocalAPIConstants.pwaURL)
+        openRuntimeURL(RuntimeControlLocalAPIConstants.pwaURL(port: settings.runtimeControlPort))
     }
 
     func openRedisUI() {

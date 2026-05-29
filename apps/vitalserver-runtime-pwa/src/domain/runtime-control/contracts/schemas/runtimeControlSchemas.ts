@@ -113,6 +113,7 @@ export const runtimeSettingsSchema = z
     networkMode: networkModeSchema.optional(),
     bridgedInterface: z.string().optional(),
     proxyPort: z.number().optional(),
+    runtimeControlPort: z.number().optional(),
     vitalFilesDirectory: z.string().optional(),
     publicHost: z.string().optional(),
     publicPort: z.number().optional(),

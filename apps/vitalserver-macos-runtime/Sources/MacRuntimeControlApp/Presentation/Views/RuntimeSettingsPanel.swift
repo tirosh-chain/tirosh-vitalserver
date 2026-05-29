@@ -44,6 +44,9 @@ struct RuntimeSettingsPanel: View {
                     settingPortField(AppConstants.Labels.proxyPort, value: $viewModel.settings.proxyPort)
                         .disabled(!viewModel.capabilities.canEditNetworkExposure)
                     settingHelp(AppConstants.Labels.proxyPortHelp)
+                    settingPortField(AppConstants.Labels.runtimeControlPort, value: $viewModel.settings.runtimeControlPort)
+                        .disabled(!viewModel.capabilities.canEditNetworkExposure)
+                    settingHelp(AppConstants.Labels.runtimeControlPortHelp)
                 }
                 settingsSection(AppConstants.Labels.sectionStorage) {
                     settingDirectoryField(AppConstants.Labels.vitalFilesDirectory, text: $viewModel.settings.vitalFilesDirectory)

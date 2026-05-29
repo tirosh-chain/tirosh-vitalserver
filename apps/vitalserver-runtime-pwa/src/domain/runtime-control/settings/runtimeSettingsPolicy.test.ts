@@ -15,11 +15,12 @@ describe("runtime settings policy", () => {
       diskGiB: 8,
       minimumDiskGiB: 16,
       proxyPort: 70_000,
+      runtimeControlPort: 70_000,
       publicPort: 0,
       redisBackupRetentionCount: 31
     });
 
     expect(result.valid).toBe(false);
-    expect(result.errors).toHaveLength(6);
+    expect(result.errors).toHaveLength(7);
   });
 });

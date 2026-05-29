@@ -1132,6 +1132,7 @@ export interface components {
             networkMode?: "shared" | "bridged";
             bridgedInterface?: string;
             proxyPort?: number;
+            runtimeControlPort?: number;
             vitalFilesDirectory?: string;
             publicHost?: string;
             publicPort?: number;

@@ -118,6 +118,7 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
     public var networkMode: RuntimeNetworkMode
     public var bridgedInterface: String
     public var proxyPort: Int
+    public var runtimeControlPort: Int
     public var vitalFilesDirectory: String
     public var publicHost: String
     public var publicPort: Int
@@ -138,6 +139,7 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
         networkMode: RuntimeNetworkMode = .shared,
         bridgedInterface: String = "",
         proxyPort: Int = 80,
+        runtimeControlPort: Int = 18_321,
         vitalFilesDirectory: String = "/Users/Shared/TiroshVitalServer/vital-files",
         publicHost: String = "",
         publicPort: Int = 80,
@@ -157,6 +159,7 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
         self.networkMode = networkMode
         self.bridgedInterface = bridgedInterface
         self.proxyPort = proxyPort
+        self.runtimeControlPort = runtimeControlPort
         self.vitalFilesDirectory = vitalFilesDirectory
         self.publicHost = publicHost
         self.publicPort = publicPort

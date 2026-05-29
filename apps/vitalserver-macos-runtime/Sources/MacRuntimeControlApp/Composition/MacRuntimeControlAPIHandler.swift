@@ -10,17 +10,20 @@ struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
     private let commandClient: any RuntimeControlClient
     private let hostClient: any RuntimeHostClient
     private let readWorker: MacHostRuntimeReadWorker
+    private let localAPISettings: RuntimeControlLocalAPISettingsCoordinator
     private let servesTestTools: Bool
 
     init(
         commandClient: any RuntimeControlClient,
         hostClient: any RuntimeHostClient,
         readWorker: MacHostRuntimeReadWorker,
+        localAPISettings: RuntimeControlLocalAPISettingsCoordinator,
         servesTestTools: Bool
     ) {
         self.commandClient = commandClient
         self.hostClient = hostClient
         self.readWorker = readWorker
+        self.localAPISettings = localAPISettings
         self.servesTestTools = servesTestTools
     }
 
@@ -57,7 +60,7 @@ struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
     }
 
     func loadSettings() async throws -> RuntimeSettings {
-        await readWorker.loadSettings()
+        localAPISettings.settingsWithLocalAPIPort(await readWorker.loadSettings())
     }
 
     func loadReleaseInfo() async throws -> RuntimeReleaseInfo {
@@ -89,7 +92,9 @@ struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
     }
 
     func applySettings(_ settings: RuntimeSettings) async throws -> RuntimeControlCommandResponse {
-        RuntimeControlCommandResponse(result: try await commandClient.applySettings(settings))
+        let response = RuntimeControlCommandResponse(result: try await commandClient.applySettings(settings))
+        localAPISettings.apply(settings: settings)
+        return response
     }
 
     func startRuntimeServices() async throws -> RuntimeControlCommandResponse {

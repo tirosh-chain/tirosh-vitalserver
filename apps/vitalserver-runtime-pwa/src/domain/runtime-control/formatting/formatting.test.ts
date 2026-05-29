@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import { formatBytes } from "./bytes";
-import { runtimeControlURL, successfulHTTP } from "./http";
+import {
+  runtimeControlURL,
+  runtimeControlURLForPort,
+  successfulHTTP
+} from "./http";
 import { formatRuntimeState } from "./runtimeState";
 import { formatUptimeSince } from "./time";
 
@@ -37,5 +41,6 @@ describe("runtime presentation formatting", () => {
 
   it("falls back to the packaged Runtime Control PWA URL outside the browser", () => {
     expect(runtimeControlURL()).toBe("http://127.0.0.1:18321/");
+    expect(runtimeControlURLForPort(18444)).toBe("http://127.0.0.1:18444/");
   });
 });

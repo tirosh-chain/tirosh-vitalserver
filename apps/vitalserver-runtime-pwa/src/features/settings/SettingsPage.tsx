@@ -7,7 +7,10 @@ import {
 } from "../../application/runtime-control/queries";
 import { canApplyRuntimeSettings } from "../../domain/runtime-control/capabilities/runtimeCapabilities";
 import type { RuntimeSettings } from "../../domain/runtime-control/contracts/runtimeControlTypes";
-import { runtimeURL } from "../../domain/runtime-control/formatting/http";
+import {
+  runtimeControlURLForPort,
+  runtimeURL
+} from "../../domain/runtime-control/formatting/http";
 import { validateRuntimeSettings } from "../../domain/runtime-control/settings/runtimeSettingsPolicy";
 import { ConfirmButton } from "../../shared/ui/ConfirmButton";
 import { ErrorState } from "../../shared/ui/ErrorState";
@@ -18,6 +21,7 @@ type SettingsDraft = {
   memoryGiB: string;
   diskGiB: string;
   proxyPort: string;
+  runtimeControlPort: string;
   vitalFilesDirectory: string;
   publicHost: string;
   publicPort: string;
@@ -33,6 +37,7 @@ const emptyDraft: SettingsDraft = {
   memoryGiB: "",
   diskGiB: "",
   proxyPort: "",
+  runtimeControlPort: "",
   vitalFilesDirectory: "",
   publicHost: "",
   publicPort: "",
@@ -71,7 +76,14 @@ export function SettingsPage() {
     if (!validation.valid) {
       return;
     }
-    applySettings.mutate({ settings: runtimeSettings });
+    applySettings.mutate(
+      { settings: runtimeSettings },
+      {
+        onSuccess: () => {
+          redirectAfterRuntimeControlPortChange(runtimeSettings.runtimeControlPort);
+        }
+      }
+    );
   };
 
   const runtimeSettings = toRuntimeSettings(
@@ -92,6 +104,11 @@ export function SettingsPage() {
   const canControlServices =
     capabilities.data?.canControlRuntimeServices === true;
   const vitalServerURLPreview = runtimeURL(parseOptionalNumber(draft.proxyPort));
+  const runtimeControlPort = parseOptionalNumber(draft.runtimeControlPort);
+  const runtimeControlURLPreview =
+    runtimeControlPort === undefined
+      ? "Unknown"
+      : runtimeControlURLForPort(runtimeControlPort);
 
   return (
     <div className="page-stack">
@@ -165,8 +182,22 @@ export function SettingsPage() {
               onChange={(event) => updateField("proxyPort", event.target.value)}
             />
           </label>
+          <label>
+            Runtime Control PWA port
+            <input
+              type="number"
+              min="1"
+              max="65535"
+              value={draft.runtimeControlPort}
+              disabled={!canEditNetworkExposure}
+              onChange={(event) =>
+                updateField("runtimeControlPort", event.target.value)
+              }
+            />
+          </label>
         </div>
         <p className="muted">VitalServer URL: {vitalServerURLPreview}</p>
+        <p className="muted">Runtime Control PWA URL: {runtimeControlURLPreview}</p>
         <label className="checkbox-label block-checkbox">
           <input
             type="checkbox"
@@ -332,6 +363,7 @@ function toDraft(settings: RuntimeSettings): SettingsDraft {
     memoryGiB: formatNumber(settings.memoryGiB),
     diskGiB: formatNumber(settings.diskGiB),
     proxyPort: formatNumber(settings.proxyPort),
+    runtimeControlPort: formatNumber(settings.runtimeControlPort),
     vitalFilesDirectory: settings.vitalFilesDirectory ?? "",
     publicHost: settings.publicHost ?? "",
     publicPort: formatNumber(settings.publicPort),
@@ -355,6 +387,7 @@ function toRuntimeSettings(
     diskGiB: parseOptionalNumber(draft.diskGiB),
     minimumDiskGiB: current?.minimumDiskGiB,
     proxyPort,
+    runtimeControlPort: parseOptionalNumber(draft.runtimeControlPort),
     vitalFilesDirectory: emptyToUndefined(draft.vitalFilesDirectory),
     publicHost: customAdvertisedURL ? emptyToUndefined(draft.publicHost) : undefined,
     publicPort: customAdvertisedURL ? parseOptionalNumber(draft.publicPort) : proxyPort,
@@ -384,6 +417,22 @@ function parseOptionalNumber(value: string): number | undefined {
 function emptyToUndefined(value: string): string | undefined {
   const trimmed = value.trim();
   return trimmed ? trimmed : undefined;
+}
+
+function redirectAfterRuntimeControlPortChange(
+  runtimeControlPort: number | undefined
+) {
+  if (
+    runtimeControlPort === undefined ||
+    typeof window === "undefined" ||
+    window.location.port === String(runtimeControlPort)
+  ) {
+    return;
+  }
+
+  window.setTimeout(() => {
+    window.location.assign(runtimeControlURLForPort(runtimeControlPort));
+  }, 1_000);
 }
 
 function usesCustomAdvertisedURL(settings: RuntimeSettings): boolean {

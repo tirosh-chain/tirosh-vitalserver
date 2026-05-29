@@ -39,7 +39,7 @@ function StatusOverview({ overview }: { overview: RuntimeControlOverview }) {
   const stats = status?.dataDirectoryStats;
   const vitalRecorder = overview.vitalRecorder;
   const vitalServerURL = runtimeURL(status?.proxyPort ?? overview.settings?.proxyPort);
-  const pwaURL = runtimeControlURL();
+  const pwaURL = runtimeControlURL(overview.settings?.runtimeControlPort);
 
   return (
     <div className="page-stack">

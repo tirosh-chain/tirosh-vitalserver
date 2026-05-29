@@ -45,6 +45,14 @@ final class RuntimeSettingsValidatorTests: XCTestCase {
             validator.validate(settings, installedSettings: installedSettings()),
             .invalid(AppConstants.StatusText.invalidPort)
         )
+
+        settings = validSettings()
+        settings.runtimeControlPort = 65_536
+
+        XCTAssertEqual(
+            validator.validate(settings, installedSettings: installedSettings()),
+            .invalid(AppConstants.StatusText.invalidPort)
+        )
     }
 
     func testRejectsRedisBackupRetentionOutsideRange() {

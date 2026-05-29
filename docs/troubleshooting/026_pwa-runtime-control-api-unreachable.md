@@ -37,11 +37,13 @@ PWA 번들은 로드됐지만 Runtime Control API 호출이 브라우저에서 �
 
 - packaged PWA는 Helper가 서빙하는 `http://127.0.0.1:18321/`에서 엽니다.
 - local dev에서는 Vite proxy를 사용하거나, Helper API가 loopback origin CORS preflight를 허용하는 버전으로 업데이트합니다.
+- Runtime Control PWA port를 변경한 경우 Settings 또는 Status에 표시된 새 URL로 접속합니다.
 - non-loopback origin은 host operation API 보호를 위해 CORS 허용 대상에 넣지 않습니다.
 
 수정:
 
 Runtime Control local HTTP server가 loopback origin의 CORS preflight를 `204 No Content`로 응답하고, 실제 API 응답에도 `Access-Control-Allow-Origin`을 붙이도록 했습니다.
+Runtime Control PWA port는 Settings에서 변경할 수 있으며, 저장 후 Helper local API server가 새 포트로 재시작됩니다.
 
 ## Follow-up
 

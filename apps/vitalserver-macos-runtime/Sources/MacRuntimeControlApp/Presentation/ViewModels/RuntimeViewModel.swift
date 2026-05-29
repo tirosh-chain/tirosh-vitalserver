@@ -111,6 +111,7 @@ final class RuntimeViewModel: ObservableObject {
     let hostClient: any RuntimeHostClient
     let testKitController: (any RuntimeTestKitControlling)?
     private let readWorker: MacHostRuntimeReadWorker?
+    private let localAPISettings: RuntimeControlLocalAPISettingsCoordinator?
     private let healthNotifications: any HealthNotifying
     private let healthNotificationCoordinator: RuntimeHealthNotificationCoordinator
     let nativeShell: any RuntimeNativeShell
@@ -126,6 +127,7 @@ final class RuntimeViewModel: ObservableObject {
         testKitController: (any RuntimeTestKitControlling)? = nil,
         readWorker: MacHostRuntimeReadWorker? = nil,
         initialSettings: RuntimeSettings? = nil,
+        localAPISettings: RuntimeControlLocalAPISettingsCoordinator? = nil,
         healthNotifications: any HealthNotifying = HealthNotificationCenter(),
         nativeShell: any RuntimeNativeShell = SystemRuntimeNativeShell()
     ) {
@@ -133,10 +135,13 @@ final class RuntimeViewModel: ObservableObject {
         self.hostClient = hostClient
         self.testKitController = testKitController
         self.readWorker = readWorker
+        self.localAPISettings = localAPISettings
         self.healthNotifications = healthNotifications
         self.healthNotificationCoordinator = RuntimeHealthNotificationCoordinator(notifier: self.healthNotifications)
         self.nativeShell = nativeShell
-        let initialSettings = initialSettings ?? self.controlClient.loadSettings()
+        let initialSettings = localAPISettings?.settingsWithLocalAPIPort(
+            initialSettings ?? self.controlClient.loadSettings()
+        ) ?? (initialSettings ?? self.controlClient.loadSettings())
         self.settings = initialSettings
         self.useCustomAdvertisedURL = Self.usesCustomAdvertisedURL(initialSettings)
         self.installationInfo = self.controlClient.loadInstallInfo()
@@ -288,6 +293,7 @@ final class RuntimeViewModel: ObservableObject {
             action: { try await self.controlClient.applySettings(settingsToApply) }
         )
         if didSave {
+            localAPISettings?.apply(settings: settingsToApply)
             settings.adminPassword = ""
             settings.changeAdminPassword = false
             await waitForAppliedSettings()
@@ -563,10 +569,13 @@ final class RuntimeViewModel: ObservableObject {
     }
 
     private func loadSettingsSnapshot() async -> RuntimeSettings {
+        let loadedSettings: RuntimeSettings
         if let readWorker {
-            return await readWorker.loadSettings()
+            loadedSettings = await readWorker.loadSettings()
+        } else {
+            loadedSettings = controlClient.loadSettings()
         }
-        return controlClient.loadSettings()
+        return localAPISettings?.settingsWithLocalAPIPort(loadedSettings) ?? loadedSettings
     }
 
     private func loadStatusSnapshot(settings: RuntimeSettings) async -> RuntimeStatus {

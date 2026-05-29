@@ -57,7 +57,7 @@ struct RuntimeStatusPanel: View {
                 vitalServerStatusAndURL
             }
             statusRow(AppConstants.Labels.runtimeControlPWA) {
-                linkButton(RuntimeControlLocalAPIConstants.pwaURL) {
+                linkButton(RuntimeControlLocalAPIConstants.pwaURL(port: viewModel.settings.runtimeControlPort)) {
                     viewModel.openRuntimeControlPWA()
                 }
             }
