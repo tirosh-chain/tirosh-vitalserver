@@ -7,8 +7,8 @@ import XCTest
 
 @MainActor
 final class RuntimeLogExporterTests: XCTestCase {
-    func testDefaultExportFallbacksIncludeDiagnosticStateFiles() {
-        let destinations = Set(RuntimeLogExportFallback.defaultItems().map(\.relativeDestination))
+    func testDefaultExportSupplementalSourcesIncludeDiagnosticStateFiles() {
+        let destinations = Set(RuntimeLogExportSupplementalSource.defaultItems().map(\.relativeDestination))
 
         XCTAssertTrue(destinations.contains("diagnostics/status/\(RuntimeFileNames.runtimeStatus)"))
         XCTAssertTrue(destinations.contains("diagnostics/status/\(RuntimeFileNames.runtimeEvents)"))
@@ -24,8 +24,8 @@ final class RuntimeLogExporterTests: XCTestCase {
         XCTAssertTrue(destinations.contains("diagnostics/host/vitalserver-nginx.conf"))
     }
 
-    func testDefaultRotatedExportFallbacksIncludeRuntimeEventHistory() {
-        let runtimeEventSet = RuntimeLogExportRotatedFallbackSet.defaultSets().first {
+    func testDefaultRotatedExportSupplementalSourcesIncludeRuntimeEventHistory() {
+        let runtimeEventSet = RuntimeLogExportRotatedSupplementalSet.defaultSets().first {
             $0.sourceFilePrefix == "\(RuntimeFileNames.runtimeEvents)."
         }
 
@@ -33,7 +33,7 @@ final class RuntimeLogExporterTests: XCTestCase {
         XCTAssertEqual(runtimeEventSet?.destinationFilePrefix, "\(RuntimeFileNames.runtimeEvents).")
     }
 
-    func testExportRefreshesCollectionAndIncludesFallbackGuestLogs() async throws {
+    func testExportRefreshesCollectionAndIncludesSupplementalGuestLogs() async throws {
         let root = try temporaryDirectory()
         let guestRun = root.appendingPathComponent("vm/data/run", isDirectory: true)
         let productLogs = root.appendingPathComponent("product/logs", isDirectory: true)
@@ -63,18 +63,18 @@ final class RuntimeLogExporterTests: XCTestCase {
         let exporter = MacHostRuntimeLogExporter(
             logCollector: collector,
             productLogsDirectory: productLogs,
-            fallbackLogItems: [
-                RuntimeLogExportFallback(
+            supplementalLogItems: [
+                RuntimeLogExportSupplementalSource(
                     source: guestRun.appendingPathComponent("bootstrap.log"),
                     relativeDestination: "guest/bootstrap.log"
                 ),
-                RuntimeLogExportFallback(
+                RuntimeLogExportSupplementalSource(
                     source: guestRun.appendingPathComponent("container-logs.log"),
                     relativeDestination: "guest/container-logs.log"
                 ),
             ],
-            rotatedFallbackSets: [
-                RuntimeLogExportRotatedFallbackSet(
+            rotatedSupplementalSets: [
+                RuntimeLogExportRotatedSupplementalSet(
                     sourceDirectory: guestRun,
                     sourceFilePrefix: "container-logs.log.",
                     relativeDestinationDirectory: "guest",
@@ -111,11 +111,11 @@ final class RuntimeLogExporterTests: XCTestCase {
         XCTAssertEqual(archivedBootstrapLog, "bootstrap")
         XCTAssertEqual(archivedContainerLog, "containers")
         XCTAssertEqual(archivedRotatedContainerLog, "rotated")
-        XCTAssertEqual(archivedManifest?.fallbackItems.count, 2)
-        XCTAssertEqual(archivedManifest?.fallbackItems.map(\.included), [true, true])
+        XCTAssertEqual(archivedManifest?.supplementalItems.count, 2)
+        XCTAssertEqual(archivedManifest?.supplementalItems.map(\.included), [true, true])
     }
 
-    func testExportDoesNotOverwriteCentralLogsWithFallbackSource() async throws {
+    func testExportDoesNotOverwriteCentralLogsWithSupplementalSource() async throws {
         let root = try temporaryDirectory()
         let guestRun = root.appendingPathComponent("vm/data/run", isDirectory: true)
         let productLogs = root.appendingPathComponent("product/logs", isDirectory: true)
@@ -138,13 +138,13 @@ final class RuntimeLogExporterTests: XCTestCase {
         let exporter = MacHostRuntimeLogExporter(
             logCollector: FakeRuntimeLogCollectorForExport(),
             productLogsDirectory: productLogs,
-            fallbackLogItems: [
-                RuntimeLogExportFallback(
+            supplementalLogItems: [
+                RuntimeLogExportSupplementalSource(
                     source: guestRun.appendingPathComponent("bootstrap.log"),
                     relativeDestination: "guest/bootstrap.log"
                 ),
             ],
-            rotatedFallbackSets: [],
+            rotatedSupplementalSets: [],
             archiveRunner: { _, arguments in
                 let bundleRoot = URL(fileURLWithPath: arguments[4])
                 let temporaryArchive = URL(fileURLWithPath: arguments[5])
@@ -161,7 +161,7 @@ final class RuntimeLogExporterTests: XCTestCase {
         XCTAssertEqual(archivedBootstrapLog, "central")
     }
 
-    func testExportCanAddFallbackLogsWhenCopiedCentralDirectoriesAreReadOnly() async throws {
+    func testExportCanAddSupplementalLogsWhenCopiedCentralDirectoriesAreReadOnly() async throws {
         let root = try temporaryDirectory()
         let guestRun = root.appendingPathComponent("vm/data/run", isDirectory: true)
         let productLogs = root.appendingPathComponent("product/logs", isDirectory: true)
@@ -183,13 +183,13 @@ final class RuntimeLogExporterTests: XCTestCase {
         let exporter = MacHostRuntimeLogExporter(
             logCollector: FakeRuntimeLogCollectorForExport(),
             productLogsDirectory: productLogs,
-            fallbackLogItems: [
-                RuntimeLogExportFallback(
+            supplementalLogItems: [
+                RuntimeLogExportSupplementalSource(
                     source: guestRun.appendingPathComponent("container-logs.log"),
                     relativeDestination: "guest/container-logs.log"
                 ),
             ],
-            rotatedFallbackSets: [],
+            rotatedSupplementalSets: [],
             archiveRunner: { _, arguments in
                 let bundleRoot = URL(fileURLWithPath: arguments[4])
                 let temporaryArchive = URL(fileURLWithPath: arguments[5])
