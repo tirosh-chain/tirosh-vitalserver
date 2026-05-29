@@ -42,6 +42,32 @@ final class ProcessStateTests: XCTestCase {
         XCTAssertEqual(fileStore.removed, [pidFile])
     }
 
+    func testRequestStopAndWaitSignalsProcessAndWaitsUntilStopped() throws {
+        let fileStore = RuntimeFileStoreSpy()
+        let pidFile = URL(fileURLWithPath: "/runtime/run/vitalserver-vm.pid")
+        fileStore.files[pidFile] = Data("123\n".utf8)
+        var processIsRunning = true
+        var signals: [(pid_t, Int32)] = []
+
+        try ProcessState.requestStopAndWait(
+            pidFile: pidFile,
+            fileStore: fileStore,
+            timeoutSeconds: 1,
+            pollIntervalSeconds: 0.001,
+            processExists: { _ in processIsRunning },
+            signalProcess: { pid, signal in
+                signals.append((pid, signal))
+                processIsRunning = false
+                return 0
+            }
+        )
+
+        XCTAssertEqual(signals.count, 1)
+        XCTAssertEqual(signals.first?.0, 123)
+        XCTAssertEqual(signals.first?.1, SIGTERM)
+        XCTAssertNil(fileStore.files[pidFile])
+    }
+
     func testWaitUntilStoppedTimesOutWhenProcessStillExists() {
         let fileStore = RuntimeFileStoreSpy()
         let pidFile = URL(fileURLWithPath: "/runtime/run/vitalserver-vm.pid")

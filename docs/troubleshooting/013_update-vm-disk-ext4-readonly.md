@@ -61,6 +61,8 @@ launchctl print system/com.tirosh.vitalserver-vm | grep "exit timeout"
 
 최신 runtime은 VM launchd `ExitTimeOut`을 300초로 늘리고, guest Compose stop timeout과 `sync`를 명시합니다. update bundle에는 `004-refresh-vm-shutdown-timeouts` migration이 포함되어 기존 설치본의 VM launchd plist를 갱신하고, loaded 상태인 VM launchd job을 unload하여 다음 start에서 갱신된 timeout이 적용되게 합니다.
 
+2026-05-29 이후 runtime은 update의 첫 `stop-runtime-services`에서도 launchd timeout만 믿지 않습니다. VM service를 `bootout`하기 전에 `vitalserver-vm.pid`가 가리키는 VM process에 먼저 `SIGTERM`을 보내고, VM process의 signal handler가 Virtualization `requestStop()`을 수행해 guest shutdown과 disk flush를 끝낼 때까지 최대 330초 기다립니다. 따라서 migration이 아직 실행되기 전 loaded launchd job이 예전 `exit timeout = 60`을 들고 있어도 update 첫 stop이 곧바로 강제 종료로 이어지지 않아야 합니다.
+
 이미 disk 오류가 발생한 설치본에서는 같은 update bundle을 반복 적용하지 않습니다. 먼저 Redis backup이 남아 있는지 확인하고, 가능한 경우 Redis backup을 보존한 뒤 VM disk 복구 또는 재설치를 진행합니다.
 
 ```sh
@@ -86,4 +88,5 @@ sudo /usr/local/bin/vitalserver-vm runtime repair-vm-disk
 
 - 2026-05-28: 재현 환경에서 plist 파일은 `ExitTimeOut=300`이었지만 `launchctl print system/com.tirosh.vitalserver-vm`의 loaded job은 `exit timeout = 60`을 유지하고 있었습니다. 원인은 migration이 plist만 갱신하고 loaded launchd job을 reload/unload하지 않은 것입니다.
 - 2026-05-28: `004-refresh-vm-shutdown-timeouts` migration이 VM launchd job을 `bootout`하도록 수정했습니다. 다음 runtime start에서 launchd가 plist를 다시 읽어 `ExitTimeOut=300`을 적용합니다. Fix: `2aaef21 fix: reload VM launchd timeout migration`.
+- 2026-05-29: 다른 현장 로그에서 `004-refresh-vm-shutdown-timeouts` migration 자체가 update의 첫 `stop-runtime-services` 이후 실행되므로, 이미 loaded 상태인 VM job의 예전 60초 timeout이 첫 stop에 적용될 수 있음을 확인했습니다. Host CLI가 VM launchd `bootout` 전에 VM process에 직접 graceful stop을 요청하고 process 종료를 기다리도록 수정했습니다.
 - 이미 `EXT4-fs error`, `Aborting journal`, `Remounting filesystem read-only`가 발생한 VM disk는 이 수정만으로 복구되지 않습니다. Redis backup을 먼저 확인하고 VM disk repair/recreate 또는 재설치를 진행합니다.

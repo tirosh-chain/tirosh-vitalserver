@@ -76,7 +76,9 @@ cat "/Library/Application Support/TiroshVitalServer/vm/run/vitalserver-vm.pid"
 
 ## Prevention
 
-2026-05-29 수정: `RuntimeServiceController.stopRuntimeServices()`가 stop 요청 직후 완료되지 않고, loaded launchd job이 사라질 때까지 기다립니다. VM service의 경우 추가로 `vitalserver-vm.pid`가 가리키는 process가 종료되거나 pid file이 정리될 때까지 최대 330초 기다립니다.
+2026-05-29 수정: `RuntimeServiceController.stopRuntimeServices()`가 stop 요청 직후 완료되지 않고, loaded launchd job이 사라질 때까지 기다립니다. VM service의 경우 launchd `bootout` 전에 `vitalserver-vm.pid`가 가리키는 process에 먼저 `SIGTERM`을 보내 Virtualization `requestStop()` 경로를 타게 하고, process가 종료되거나 pid file이 정리될 때까지 최대 330초 기다립니다.
+
+이 순서가 중요합니다. update bundle의 `004-refresh-vm-shutdown-timeouts` migration은 첫 `stop-runtime-services` 이후 실행되므로, 기존 설치본에서 이미 loaded 상태인 launchd VM job은 여전히 예전 `exit timeout = 60`을 들고 있을 수 있습니다. VM process를 먼저 graceful stop하지 않으면 첫 stop부터 launchd timeout에 의해 강제 종료될 수 있습니다.
 
 이 수정 이후 `stop-runtime-services` progress event의 `completed` 시점은 launchd 요청 완료가 아니라 service/process stop 확인 완료를 의미합니다. timeout이 발생하면 같은 단계가 실패 event로 기록되므로, 이후 `start-runtime-services`가 같은 disk를 섣불리 attach하지 않습니다.
 

@@ -43,6 +43,14 @@ struct RuntimeLifecycleComposition {
             isLoaded: { service in
                 healthChecker.isLaunchdLoaded(service)
             },
+            prepareForStop: { service in
+                try prepareServiceForStop(
+                    service,
+                    paths: paths,
+                    fileStore: fileStore,
+                    clock: clock
+                )
+            },
             waitUntilStopped: { service in
                 try waitUntilServiceStops(
                     service,
@@ -65,6 +73,27 @@ struct RuntimeLifecycleComposition {
             serviceController: serviceController,
             guestGateway: resolvedGuestGateway
         )
+    }
+
+    private static func prepareServiceForStop(
+        _ service: RuntimeManagedService,
+        paths: LauncherPaths,
+        fileStore: RuntimeFileStore,
+        clock: RuntimeClock
+    ) throws {
+        guard service == .vm else {
+            return
+        }
+
+        log("requesting graceful VM process stop before launchd unload", clock: clock)
+        try ProcessState.requestStopAndWait(
+            pidFile: paths.pidFile,
+            fileStore: fileStore,
+            timeoutSeconds: Constants.Runtime.vmStopWaitTimeoutSeconds,
+            pollIntervalSeconds: Constants.Runtime.serviceStopPollIntervalSeconds,
+            log: { message in log(message, clock: clock) }
+        )
+        log("VM process stopped before launchd unload", clock: clock)
     }
 
     private static func waitUntilServiceStops(
@@ -96,6 +125,10 @@ struct RuntimeLifecycleComposition {
             timeoutSeconds: Constants.Runtime.vmStopWaitTimeoutSeconds,
             pollIntervalSeconds: Constants.Runtime.serviceStopPollIntervalSeconds
         )
+    }
+
+    private static func log(_ message: String, clock: RuntimeClock) {
+        print("[\(ISO8601DateFormatter().string(from: clock.now))] \(message)")
     }
 
     private static func makeGuestGateway(installedPaths: InstalledRuntimePaths) -> RuntimeGuestGateway {
