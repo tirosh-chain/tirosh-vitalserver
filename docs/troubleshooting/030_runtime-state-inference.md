@@ -46,6 +46,7 @@ Runtime 상태가 실제 상황과 다르게 보이거나, update 진행 상태�
 - Guest runtime-state 파일의 modification date를 읽지 못했는데 stale 상태만 표시하고 invalid 원인을 숨깁니다.
 - Runtime events JSONL 파일을 읽거나 decode하지 못했는데 빈 이벤트 목록처럼 보입니다.
 - VitalDB recorder observation이 없는데 audit-proxy connection 목록을 recorder 상태 요약으로 승격합니다.
+- VitalDB recorder observation이 없는데 UI가 recorder/bed/anomaly 수를 `0`으로 표시합니다.
 
 ## Impact
 
@@ -154,6 +155,7 @@ latest backup read failure -> no backups available
 log collection read/copy failure -> silent skip
 guest log collection read failure -> no guest logs
 audit-proxy recorder connections -> VitalDB recorder summary fallback
+missing VitalDB recorder observation -> zero recorder metrics
 ```
 
 ## Actions
@@ -203,6 +205,7 @@ audit-proxy recorder connections -> VitalDB recorder summary fallback
 39. Log collection은 missing source와 read/copy failure를 구분합니다. Export logs는 collection failure를 숨기지 않고 호출자에게 전달합니다.
 40. Guest log collection은 missing guest run directory와 directory read failure를 구분합니다. Health/watchdog의 best-effort collection 실패도 runtime log에 남깁니다.
 41. Recorder 상태 요약은 VitalDB observation만 사용합니다. Audit-proxy recorder connection은 상태 fallback이 아니라 `activeConnections` 연결 수로만 노출합니다.
+42. VitalDB observation이 없을 때 UI는 recorder/bed/anomaly metric을 `0`으로 표시하지 않습니다. `Not reported`로 표시해 미관측과 실제 0개를 구분합니다.
 
 ## Prevention
 

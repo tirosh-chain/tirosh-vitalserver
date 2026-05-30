@@ -42,9 +42,9 @@ struct RuntimeObservabilityPanel: View {
                 metricRow(AppConstants.Labels.vitalDBObserver, observerStatus)
                 metricRow(AppConstants.Labels.guestLogSyncService, viewModel.status.guestLogSyncServiceLoaded ? AppConstants.StatusText.running : AppConstants.StatusText.stopped)
                 metricRow(AppConstants.Labels.recorderObservation, observationTimeText(observation?.observedAt))
-                metricRow(AppConstants.Labels.knownRecorders, "\(observation?.recorders.count ?? 0)")
-                metricRow(AppConstants.Labels.knownBeds, "\(observation?.beds.count ?? 0)")
-                metricRow(AppConstants.Labels.recorderAnomalies, "\(observation?.anomalies.count ?? 0)")
+                metricRow(AppConstants.Labels.knownRecorders, observationMetricText(observation?.recorders.count))
+                metricRow(AppConstants.Labels.knownBeds, observationMetricText(observation?.beds.count))
+                metricRow(AppConstants.Labels.recorderAnomalies, observationMetricText(observation?.anomalies.count))
                 metricRow("Runtime events (24h)", "\(viewModel.runtimeEventsLast24HoursCount)")
             }
         }
@@ -202,6 +202,10 @@ struct RuntimeObservabilityPanel: View {
 
     private func observationTimeText(_ timestamp: String?) -> String {
         viewModel.presentationFormatter.systemTimeText(timestamp)
+    }
+
+    private func observationMetricText(_ value: Int?) -> String {
+        value.map(String.init) ?? AppConstants.StatusText.notReported
     }
 
     private func anomalyRow(_ anomaly: VitalDBAnomalyObservation) -> some View {

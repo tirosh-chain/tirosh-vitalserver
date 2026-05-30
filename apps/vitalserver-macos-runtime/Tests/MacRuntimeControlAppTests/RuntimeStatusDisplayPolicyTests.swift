@@ -453,6 +453,26 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         XCTAssertEqual(summary.observedAt, "2026-05-24T02:00:00Z")
     }
 
+    func testRecorderSummaryDoesNotDisplayUnavailableObservationMetricsAsZero() {
+        let observation = RuntimeContainerObservation(
+            auditProxyHTTP: "200",
+            auditProxyStatus: RuntimeAuditProxyStatusDocument(activeRecorderConnections: 2),
+            containerLogsPresent: true,
+            containerLogsBytes: 1
+        )
+
+        let summary = policy.recorderSummary(status: RuntimeStatus(), observation: observation)
+
+        XCTAssertEqual(summary.activeConnections, "2")
+        XCTAssertEqual(summary.knownRecorders, AppConstants.StatusText.notReported)
+        XCTAssertEqual(summary.onlineRecorders, AppConstants.StatusText.notReported)
+        XCTAssertEqual(summary.staleRecorders, AppConstants.StatusText.notReported)
+        XCTAssertEqual(summary.knownBeds, AppConstants.StatusText.notReported)
+        XCTAssertEqual(summary.anomalies, AppConstants.StatusText.notReported)
+        XCTAssertNil(summary.latestRecorder)
+        XCTAssertNil(summary.observedAt)
+    }
+
     private func item(
         _ label: String,
         in items: [RuntimeStatusDisplayPolicy.HealthItem]

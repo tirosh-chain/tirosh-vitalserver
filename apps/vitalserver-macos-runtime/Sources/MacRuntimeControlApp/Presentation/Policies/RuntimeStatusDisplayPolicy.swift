@@ -320,14 +320,18 @@ struct RuntimeStatusDisplayPolicy {
         let summary = RuntimeVitalRecorderSummary(status: status)
         return RecorderSummary(
             activeConnections: "\(summary.activeConnections)",
-            knownRecorders: "\(summary.knownRecorders)",
-            onlineRecorders: "\(summary.onlineRecorders)",
-            staleRecorders: "\(summary.staleRecorders)",
-            knownBeds: "\(summary.knownBeds)",
-            anomalies: "\(summary.recorderAnomalies)",
+            knownRecorders: reportedRecorderMetric(summary.source, summary.knownRecorders),
+            onlineRecorders: reportedRecorderMetric(summary.source, summary.onlineRecorders),
+            staleRecorders: reportedRecorderMetric(summary.source, summary.staleRecorders),
+            knownBeds: reportedRecorderMetric(summary.source, summary.knownBeds),
+            anomalies: reportedRecorderMetric(summary.source, summary.recorderAnomalies),
             latestRecorder: summary.latestRecorder.map { "\($0.vrcode) \($0.ip ?? AppConstants.StatusText.unknown)" },
             observedAt: summary.observedAt
         )
+    }
+
+    private func reportedRecorderMetric(_ source: RuntimeVitalRecorderSummarySource, _ value: Int) -> String {
+        source == .vitalDBObservation ? "\(value)" : AppConstants.StatusText.notReported
     }
 
     private func serviceStateItem(_ label: String, isHealthy: Bool, value: String) -> ServiceHealthItem {

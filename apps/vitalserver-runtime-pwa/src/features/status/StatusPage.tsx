@@ -20,6 +20,10 @@ import { KeyValueRows } from "@/shared/ui/KeyValueRows";
 import { Panel } from "@/shared/ui/Panel";
 import { StatusBadge } from "@/shared/ui/StatusBadge";
 
+type RuntimeVitalRecorderSummary = NonNullable<
+  RuntimeControlOverview["vitalRecorder"]
+>;
+
 export function StatusPage() {
   const overviewQuery = useRuntimeOverview();
 
@@ -134,23 +138,38 @@ function StatusOverview({ overview }: { overview: RuntimeControlOverview }) {
             },
             {
               label: "Known recorders",
-              value: vitalRecorder?.knownRecorders ?? 0
+              value: formatVitalRecorderObservationMetric(
+                vitalRecorder,
+                "knownRecorders"
+              )
             },
             {
               label: "Online recorders",
-              value: vitalRecorder?.onlineRecorders ?? 0
+              value: formatVitalRecorderObservationMetric(
+                vitalRecorder,
+                "onlineRecorders"
+              )
             },
             {
               label: "Stale recorders",
-              value: vitalRecorder?.staleRecorders ?? 0
+              value: formatVitalRecorderObservationMetric(
+                vitalRecorder,
+                "staleRecorders"
+              )
             },
             {
               label: "Known beds",
-              value: vitalRecorder?.knownBeds ?? 0
+              value: formatVitalRecorderObservationMetric(
+                vitalRecorder,
+                "knownBeds"
+              )
             },
             {
               label: "Recorder anomalies",
-              value: vitalRecorder?.recorderAnomalies ?? 0
+              value: formatVitalRecorderObservationMetric(
+                vitalRecorder,
+                "recorderAnomalies"
+              )
             }
           ]}
         />
@@ -216,4 +235,21 @@ function formatResourceUsage(value: unknown): string {
 
 function numberValue(value: unknown): number | undefined {
   return typeof value === "number" ? value : undefined;
+}
+
+export function formatVitalRecorderObservationMetric(
+  recorder: RuntimeVitalRecorderSummary | null | undefined,
+  key: keyof Pick<
+    RuntimeVitalRecorderSummary,
+    | "knownRecorders"
+    | "onlineRecorders"
+    | "staleRecorders"
+    | "knownBeds"
+    | "recorderAnomalies"
+  >
+): number | string {
+  if (recorder?.source !== "vitalDBObservation") {
+    return "Not reported";
+  }
+  return recorder[key] ?? "Not reported";
 }
