@@ -343,15 +343,19 @@ extension RuntimeLifecycle {
         message: String,
         eventType: RuntimeEventType
     ) {
-        guard let currentStatus = statusReporter.loadStatus() else {
-            return
-        }
-        recordRuntimeStatusDocumentEventBestEffort(
-            currentStatus,
+        let event = RuntimeEventDocument(
+            id: UUID().uuidString,
+            eventType: eventType,
+            timestamp: isoTimestamp(),
+            product: Constants.Product.identifier,
+            previousStatus: nil,
             operation: operation,
             message: message,
-            eventType: eventType
+            runtimeVersion: runtimeVersionValue(),
+            failureReasons: [],
+            progress: nil
         )
+        runtimeObservationRecorder().recordEventBestEffort(event)
     }
 
     func runtimeObservationRecorder() -> RuntimeObservationRecorder {
