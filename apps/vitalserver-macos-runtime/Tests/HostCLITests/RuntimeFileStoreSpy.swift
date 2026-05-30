@@ -8,6 +8,7 @@ final class RuntimeFileStoreSpy: RuntimeFileStore {
     var modificationDates: [URL: Date] = [:]
     var directories: Set<URL> = []
     var removed: [URL] = []
+    var childDirectoriesError: Error?
 
     func fileExists(_ url: URL) -> Bool {
         files[url] != nil
@@ -75,7 +76,10 @@ final class RuntimeFileStoreSpy: RuntimeFileStore {
     }
 
     func childDirectories(at url: URL, nameContains fragment: String, skipsHiddenFiles: Bool) throws -> [URL] {
-        directories.filter {
+        if let childDirectoriesError {
+            throw childDirectoriesError
+        }
+        return directories.filter {
             $0.deletingLastPathComponent() == url && $0.lastPathComponent.contains(fragment)
         }
     }
