@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatVitalRecorderObservationMetric } from "./StatusPage";
+import { formatVitalRecorderObservationMetric } from "@/domain/runtime-control/formatting/vitalRecorder";
 
 describe("formatVitalRecorderObservationMetric", () => {
   it("does not display unavailable VitalDB observation metrics as zero", () => {

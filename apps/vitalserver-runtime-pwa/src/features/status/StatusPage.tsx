@@ -15,14 +15,11 @@ import {
   formatLocalDateTime,
   formatUptimeSince
 } from "@/domain/runtime-control/formatting/time";
+import { formatVitalRecorderObservationMetric } from "@/domain/runtime-control/formatting/vitalRecorder";
 import { ErrorState } from "@/shared/ui/ErrorState";
 import { KeyValueRows } from "@/shared/ui/KeyValueRows";
 import { Panel } from "@/shared/ui/Panel";
 import { StatusBadge } from "@/shared/ui/StatusBadge";
-
-type RuntimeVitalRecorderSummary = NonNullable<
-  RuntimeControlOverview["vitalRecorder"]
->;
 
 export function StatusPage() {
   const overviewQuery = useRuntimeOverview();
@@ -235,21 +232,4 @@ function formatResourceUsage(value: unknown): string {
 
 function numberValue(value: unknown): number | undefined {
   return typeof value === "number" ? value : undefined;
-}
-
-export function formatVitalRecorderObservationMetric(
-  recorder: RuntimeVitalRecorderSummary | null | undefined,
-  key: keyof Pick<
-    RuntimeVitalRecorderSummary,
-    | "knownRecorders"
-    | "onlineRecorders"
-    | "staleRecorders"
-    | "knownBeds"
-    | "recorderAnomalies"
-  >
-): number | string {
-  if (recorder?.source !== "vitalDBObservation") {
-    return "Not reported";
-  }
-  return recorder[key] ?? "Not reported";
 }

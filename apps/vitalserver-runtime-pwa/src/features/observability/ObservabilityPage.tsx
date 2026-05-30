@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 
 import { useRuntimeEvents, useRuntimeOverview } from "@/application/runtime-control/queries";
 import type { RuntimeEventDocument } from "@/domain/runtime-control/contracts/runtimeControlTypes";
+import { formatVitalRecorderObservationMetric } from "@/domain/runtime-control/formatting/vitalRecorder";
 import { formatRuntimeState } from "@/domain/runtime-control/formatting/runtimeState";
 import { formatLocalDateTime } from "@/domain/runtime-control/formatting/time";
 import { ErrorState } from "@/shared/ui/ErrorState";
@@ -63,15 +64,24 @@ export function ObservabilityPage() {
             },
             {
               label: "Known recorders",
-              value: recorderSummary?.knownRecorders ?? 0
+              value: formatVitalRecorderObservationMetric(
+                recorderSummary,
+                "knownRecorders"
+              )
             },
             {
               label: "Known beds",
-              value: recorderSummary?.knownBeds ?? 0
+              value: formatVitalRecorderObservationMetric(
+                recorderSummary,
+                "knownBeds"
+              )
             },
             {
               label: "Recorder anomalies",
-              value: recorderSummary?.recorderAnomalies ?? 0
+              value: formatVitalRecorderObservationMetric(
+                recorderSummary,
+                "recorderAnomalies"
+              )
             },
             {
               label: "Runtime events (24h)",
