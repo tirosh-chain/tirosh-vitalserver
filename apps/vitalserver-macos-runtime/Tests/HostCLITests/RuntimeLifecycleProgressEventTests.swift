@@ -7,15 +7,15 @@ import XCTest
 
 final class RuntimeLifecycleProgressEventTests: XCTestCase {
     func testWriteRuntimeProgressRecordsEventWhenStatusDocumentIsMissing() throws {
-        let home = FileManager.default.temporaryDirectory
+        let productRoot = FileManager.default.temporaryDirectory
             .appendingPathComponent("runtime-lifecycle-progress-\(UUID().uuidString)")
         defer {
-            try? FileManager.default.removeItem(at: home)
+            try? FileManager.default.removeItem(at: productRoot)
         }
-        let installedPaths = InstalledRuntimePaths(runtimeHome: home)
+        let installedPaths = InstalledRuntimePaths(productRoot: productRoot)
         let lifecycle = RuntimeLifecycle(
             paths: LauncherPaths(
-                home: home,
+                home: installedPaths.runtimeHome,
                 installed: installedPaths,
                 config: installedPaths.vmConfig,
                 pidFile: installedPaths.pidFile

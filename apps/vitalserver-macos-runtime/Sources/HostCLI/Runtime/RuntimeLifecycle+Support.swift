@@ -300,41 +300,25 @@ extension RuntimeLifecycle {
         runtimeObservationRecorder().recordEventBestEffort(event)
     }
 
-    func recordRuntimeCommandEventBestEffort(
-        _ eventType: RuntimeEventType,
-        executable: String,
-        arguments: [String],
-        result: RuntimeProcessResult?
-    ) {
-        let exitSuffix = result.map { " exitCode=\($0.exitCode)" } ?? ""
-        let event = RuntimeEventDocument(
-            id: UUID().uuidString,
-            source: "host-command",
-            eventType: eventType,
-            timestamp: isoTimestamp(),
-            product: Constants.Product.identifier,
-            previousStatus: nil,
-            message: "command \(eventType.rawValue) executable=\(executable) arguments=\(arguments.joined(separator: " "))\(exitSuffix)",
-            runtimeVersion: runtimeVersionValue(),
-            failureReasons: [],
-            progress: nil
-        )
-        runtimeObservationRecorder().recordEventBestEffort(event)
-    }
-
-    func recordRuntimeProgressEventBestEffort(
-        status: RuntimeStatusLevel,
+    func recordRuntimeEventDocumentBestEffort(
+        source: String = "host-runtime",
+        eventType: RuntimeEventType,
+        timestamp: String? = nil,
+        status: RuntimeStatusLevel? = nil,
+        previousStatus: RuntimeStatusLevel? = nil,
+        operation: RuntimeOperation? = nil,
         message: String,
-        progress: RuntimeProgressDocument
+        progress: RuntimeProgressDocument? = nil
     ) {
         let event = RuntimeEventDocument(
             id: UUID().uuidString,
-            eventType: .progressUpdated,
-            timestamp: progress.updatedAt,
+            source: source,
+            eventType: eventType,
+            timestamp: timestamp ?? isoTimestamp(),
             product: Constants.Product.identifier,
             status: status,
-            previousStatus: nil,
-            operation: progress.operation,
+            previousStatus: previousStatus,
+            operation: operation,
             message: message,
             runtimeVersion: runtimeVersionValue(),
             failureReasons: [],
@@ -343,24 +327,47 @@ extension RuntimeLifecycle {
         runtimeObservationRecorder().recordEventBestEffort(event)
     }
 
+    func recordRuntimeCommandEventBestEffort(
+        _ eventType: RuntimeEventType,
+        executable: String,
+        arguments: [String],
+        result: RuntimeProcessResult?
+    ) {
+        let exitSuffix = result.map { " exitCode=\($0.exitCode)" } ?? ""
+        recordRuntimeEventDocumentBestEffort(
+            source: "host-command",
+            eventType: eventType,
+            message: "command \(eventType.rawValue) executable=\(executable) arguments=\(arguments.joined(separator: " "))\(exitSuffix)",
+            progress: nil
+        )
+    }
+
+    func recordRuntimeProgressEventBestEffort(
+        status: RuntimeStatusLevel,
+        message: String,
+        progress: RuntimeProgressDocument
+    ) {
+        recordRuntimeEventDocumentBestEffort(
+            eventType: .progressUpdated,
+            timestamp: progress.updatedAt,
+            status: status,
+            operation: progress.operation,
+            message: message,
+            progress: progress
+        )
+    }
+
     func recordRuntimeLifecycleEventBestEffort(
         operation: RuntimeOperation,
         message: String,
         eventType: RuntimeEventType
     ) {
-        let event = RuntimeEventDocument(
-            id: UUID().uuidString,
+        recordRuntimeEventDocumentBestEffort(
             eventType: eventType,
-            timestamp: isoTimestamp(),
-            product: Constants.Product.identifier,
-            previousStatus: nil,
             operation: operation,
             message: message,
-            runtimeVersion: runtimeVersionValue(),
-            failureReasons: [],
             progress: nil
         )
-        runtimeObservationRecorder().recordEventBestEffort(event)
     }
 
     func runtimeObservationRecorder() -> RuntimeObservationRecorder {
