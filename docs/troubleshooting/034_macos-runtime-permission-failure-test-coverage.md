@@ -126,15 +126,19 @@ rg -n "readData|readUTF8Text|writeData|copyItem|moveItem|removeItem|chmod|posixP
 
 ### Remaining Priorities
 
-최근 coverage 보강 이후 남은 우선순위입니다. `RuntimeFileReaders.swift`는 2026-05-31 보강으로 56.12%에서 96.92%까지 올라 목표를 달성했습니다.
+최근 coverage 보강 이후 남은 우선순위입니다.
+
+목표 달성 항목:
+
+- `RuntimeFileReaders.swift`: 56.12%에서 96.92%까지 상승
+- `RuntimeControlHTTPWireCodec.swift`: 74.15%에서 97.96%까지 상승
 
 | Priority | Area | Current | Target | Next check |
 |---:|---|---:|---:|---|
-| 1 | `RuntimeControlAPI/Transport/RuntimeControlHTTPWireCodec.swift` | 74.15% | 95%+ | malformed request, body length, response encoding edge case |
-| 2 | `Core/Application/RuntimeUpdatePreflightPolicy.swift` | 68.00% | 95%+ | update preflight decision matrix |
-| 3 | `Core/Application/RuntimeUpdateCompatibilityChecker.swift` | 80.77% | 95%+ | channel/platform/min version/two-phase/guest activation compatibility |
-| 4 | `MacHostRuntimeAdapter/RuntimeLogExporter.swift` | 91.92% | 95%+ | partial failure manifest and export destination write failure |
-| 5 | `MacHostRuntimeAdapter/RuntimeSettingsReader.swift` | 90.76% | 95%+ | read issue wording for permission/invalid config edge cases |
+| 1 | `Core/Application/RuntimeUpdatePreflightPolicy.swift` | 68.00% | 95%+ | update preflight decision matrix |
+| 2 | `Core/Application/RuntimeUpdateCompatibilityChecker.swift` | 80.77% | 95%+ | channel/platform/min version/two-phase/guest activation compatibility |
+| 3 | `MacHostRuntimeAdapter/RuntimeLogExporter.swift` | 91.92% | 95%+ | partial failure manifest and export destination write failure |
+| 4 | `MacHostRuntimeAdapter/RuntimeSettingsReader.swift` | 90.76% | 95%+ | read issue wording for permission/invalid config edge cases |
 
 ## Operational Notes
 
@@ -165,3 +169,4 @@ Helper 사용자 권한에서 읽기/쓰기 probe를 분리합니다. SQLite row
 - 2026-05-31: Runtime Control API handler에서 backup list read permission failure와 Export logs write permission failure가 빈 결과나 성공 응답으로 숨겨지지 않고 그대로 throw되는지 검증합니다.
 - 2026-05-31: 고가치 coverage target을 TS-034에 명시했습니다. 우선 `RuntimeControlClientAPIReadHandler`는 39.57%에서 100.00%로, `RuntimeObservabilityReader`는 54.71%에서 94.71%로 올렸습니다. 전체 scoped line coverage는 87.27%입니다.
 - 2026-05-31: `RuntimeFileReaders`가 `RuntimeFileStore` 추상화로 partial log read를 수행하도록 조정하고, command log fallback, container log refresh 조건, diagnostic source fallback, backup wrapper 실패 전파를 검증했습니다. `RuntimeFileReaders.swift`는 56.12%에서 96.92%로, 전체 scoped line coverage는 88.02%로 상승했습니다.
+- 2026-05-31: `RuntimeControlHTTPWireCodec`의 malformed request, invalid `Content-Length`, unsupported method, body-without-length, stream header, bad request response, status phrase encoding edge case를 검증했습니다. `RuntimeControlHTTPWireCodec.swift`는 74.15%에서 97.96%로, 전체 scoped line coverage는 88.41%로 상승했습니다.

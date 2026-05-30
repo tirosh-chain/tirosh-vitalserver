@@ -919,6 +919,21 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertEqual(request.body, Data("{\"a\":1}".utf8))
     }
 
+    func testWireCodecDecodesRequestBodyWithoutContentLength() throws {
+        let rawRequest = [
+            "POST /runtime/events HTTP/1.1",
+            "Content-Type: application/json",
+            "",
+            "{\"event\":\"ready\"}",
+        ].joined(separator: "\r\n")
+
+        let request = try RuntimeControlHTTPWireCodec.decodeRequest(Data(rawRequest.utf8))
+
+        XCTAssertEqual(request.method, .post)
+        XCTAssertEqual(request.path, "/runtime/events")
+        XCTAssertEqual(request.body, Data("{\"event\":\"ready\"}".utf8))
+    }
+
     func testWireCodecReportsIncompleteRequestsBeforeDecoding() throws {
         let partialHeader = Data("GET /runtime/status HTTP/1.1\r\nHost: 127.0.0.1".utf8)
         XCTAssertFalse(try RuntimeControlHTTPWireCodec.requestIsComplete(partialHeader))
@@ -940,6 +955,60 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertTrue(try RuntimeControlHTTPWireCodec.requestIsComplete(Data(completeBody.utf8)))
     }
 
+    func testWireCodecRejectsMalformedCompletionInputs() {
+        XCTAssertThrowsError(try RuntimeControlHTTPWireCodec.requestIsComplete(Data([0xFF]))) { error in
+            XCTAssertEqual(error as? RuntimeControlHTTPWireCodecError, .invalidRequest)
+        }
+
+        let malformedHeader = [
+            "GET /runtime/status HTTP/1.1",
+            "Malformed-Header",
+            "",
+            "",
+        ].joined(separator: "\r\n")
+        XCTAssertThrowsError(try RuntimeControlHTTPWireCodec.requestIsComplete(Data(malformedHeader.utf8))) { error in
+            XCTAssertEqual(error as? RuntimeControlHTTPWireCodecError, .invalidRequest)
+        }
+
+        let negativeLength = [
+            "PUT /runtime/settings HTTP/1.1",
+            "Content-Length: -1",
+            "",
+            "{}",
+        ].joined(separator: "\r\n")
+        XCTAssertThrowsError(try RuntimeControlHTTPWireCodec.requestIsComplete(Data(negativeLength.utf8))) { error in
+            XCTAssertEqual(error as? RuntimeControlHTTPWireCodecError, .invalidContentLength("-1"))
+        }
+    }
+
+    func testWireCodecRejectsMalformedDecodeInputs() {
+        XCTAssertThrowsError(try RuntimeControlHTTPWireCodec.decodeRequest(Data([0xFF]))) { error in
+            XCTAssertEqual(error as? RuntimeControlHTTPWireCodecError, .invalidRequest)
+        }
+        XCTAssertThrowsError(try RuntimeControlHTTPWireCodec.decodeRequest(Data("GET /runtime/status".utf8))) { error in
+            XCTAssertEqual(error as? RuntimeControlHTTPWireCodecError, .invalidRequest)
+        }
+        XCTAssertThrowsError(try RuntimeControlHTTPWireCodec.decodeRequest(Data("GET\r\n\r\n".utf8))) { error in
+            XCTAssertEqual(error as? RuntimeControlHTTPWireCodecError, .invalidRequest)
+        }
+        XCTAssertThrowsError(try RuntimeControlHTTPWireCodec.decodeRequest(Data("TRACE /runtime/status HTTP/1.1\r\n\r\n".utf8))) { error in
+            XCTAssertEqual(error as? RuntimeControlHTTPWireCodecError, .unsupportedMethod("TRACE"))
+        }
+        XCTAssertThrowsError(try RuntimeControlHTTPWireCodec.decodeRequest(Data("GET /runtime/status HTTP/1.1\r\nBadHeader\r\n\r\n".utf8))) { error in
+            XCTAssertEqual(error as? RuntimeControlHTTPWireCodecError, .invalidRequest)
+        }
+
+        let invalidLength = [
+            "PUT /runtime/settings HTTP/1.1",
+            "Content-Length: abc",
+            "",
+            "{}",
+        ].joined(separator: "\r\n")
+        XCTAssertThrowsError(try RuntimeControlHTTPWireCodec.decodeRequest(Data(invalidLength.utf8))) { error in
+            XCTAssertEqual(error as? RuntimeControlHTTPWireCodecError, .invalidContentLength("abc"))
+        }
+    }
+
     func testWireCodecEncodesHTTPResponses() throws {
         let response = RuntimeControlHTTPResponse(
             status: .ok,
@@ -956,6 +1025,50 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertTrue(encoded.contains("Content-Length: 11\r\n"))
         XCTAssertTrue(encoded.contains("Content-Type: application/json\r\n"))
         XCTAssertTrue(encoded.hasSuffix("\r\n{\"ok\":true}"))
+    }
+
+    func testWireCodecEncodesStreamHeadersAndStatusPhrases() throws {
+        let streamHeader = try XCTUnwrap(String(
+            data: RuntimeControlHTTPWireCodec.encodeStreamHeader(
+                status: .notFound,
+                headers: ["Content-Type": "text/event-stream"]
+            ),
+            encoding: .utf8
+        ))
+
+        XCTAssertTrue(streamHeader.hasPrefix("HTTP/1.1 404 Not Found\r\n"))
+        XCTAssertTrue(streamHeader.contains("Connection: keep-alive\r\n"))
+        XCTAssertTrue(streamHeader.contains("Content-Type: text/event-stream\r\n"))
+        XCTAssertTrue(streamHeader.hasSuffix("\r\n\r\n"))
+
+        let statuses: [(RuntimeControlHTTPStatus, String)] = [
+            (.badRequest, "400 Bad Request"),
+            (.methodNotAllowed, "405 Method Not Allowed"),
+            (.notImplemented, "501 Not Implemented"),
+            (.internalServerError, "500 Internal Server Error"),
+        ]
+        for (status, phrase) in statuses {
+            let encoded = try XCTUnwrap(String(
+                data: RuntimeControlHTTPWireCodec.encodeResponse(.init(status: status)),
+                encoding: .utf8
+            ))
+
+            XCTAssertTrue(encoded.hasPrefix("HTTP/1.1 \(phrase)\r\n"))
+            XCTAssertTrue(encoded.contains("Content-Length: 0\r\n"))
+            XCTAssertTrue(encoded.contains("Connection: close\r\n"))
+        }
+    }
+
+    func testWireCodecBuildsBadRequestResponses() throws {
+        let response = RuntimeControlHTTPWireCodec.badRequestResponse(message: "Invalid HTTP request.")
+
+        XCTAssertEqual(response.status, .badRequest)
+        XCTAssertEqual(response.headers["Content-Type"], "application/json")
+
+        let body = try XCTUnwrap(response.body)
+        let error = try JSONDecoder().decode(RuntimeControlErrorResponse.self, from: body)
+        XCTAssertEqual(error.code, .badRequest)
+        XCTAssertEqual(error.message, "Invalid HTTP request.")
     }
 
     func testDevConsoleDocumentServesBrowserTestPage() throws {
