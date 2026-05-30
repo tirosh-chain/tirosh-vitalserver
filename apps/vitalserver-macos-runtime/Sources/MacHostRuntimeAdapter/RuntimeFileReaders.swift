@@ -203,16 +203,16 @@ struct SystemRuntimeHostFileReader: RuntimeHostFileReading, @unchecked Sendable 
     }
 
     private func readTailText(_ url: URL) throws -> String? {
-        let handle = try FileHandle(forReadingFrom: url)
-        defer {
-            try? handle.close()
-        }
-
         let fileSize = try fileStore.fileSize(url)
-        if fileSize > Self.logTailReadByteLimit {
-            try handle.seek(toOffset: fileSize - Self.logTailReadByteLimit)
+        let offset = fileSize > Self.logTailReadByteLimit
+            ? fileSize - Self.logTailReadByteLimit
+            : nil
+        let data: Data
+        if let partialReader = fileStore as? RuntimeFilePartialReading {
+            data = try partialReader.readData(url, offset: offset)
+        } else {
+            data = try fileStore.readData(url)
         }
-        let data = try handle.readToEnd() ?? Data()
         guard !data.isEmpty else {
             return nil
         }

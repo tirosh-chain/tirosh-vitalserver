@@ -2,7 +2,7 @@ import Foundation
 import Core
 import Contracts
 
-public struct SystemRuntimeFileStore: RuntimeFileStore {
+public struct SystemRuntimeFileStore: RuntimeFileStore, RuntimeFilePartialReading {
     public init() {}
 
     public var temporaryDirectory: URL {
@@ -27,6 +27,17 @@ public struct SystemRuntimeFileStore: RuntimeFileStore {
 
     public func readData(_ url: URL) throws -> Data {
         try Data(contentsOf: url)
+    }
+
+    public func readData(_ url: URL, offset: UInt64?) throws -> Data {
+        let handle = try FileHandle(forReadingFrom: url)
+        defer {
+            try? handle.close()
+        }
+        if let offset {
+            try handle.seek(toOffset: offset)
+        }
+        return try handle.readToEnd() ?? Data()
     }
 
     public func readUTF8Text(_ url: URL) throws -> String {

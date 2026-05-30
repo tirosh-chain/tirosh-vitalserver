@@ -139,6 +139,72 @@ final class RuntimeFileReaderTests: XCTestCase {
         XCTAssertTrue(logText.contains(RuntimeAdapterConstants.Paths.installLog))
     }
 
+    func testCommandLogTextReadsFallbackSourceAndTailsLargeFile() throws {
+        let padding = String(repeating: "x", count: 130 * 1024)
+        let logData = Data("\(padding)\nfirst\nsecond\nthird".utf8)
+        let collector = FakeRuntimeLogCollector()
+        let reader = SystemRuntimeHostFileReader(
+            fileStore: SpecificFileRuntimeFileStore(dataByPath: [
+                RuntimeAdapterConstants.Paths.commandLogFile: logData,
+            ]),
+            logCollector: collector
+        )
+
+        let logText = reader.logText(sourceID: .command, helperMessage: "Ready", lineLimit: 2)
+
+        XCTAssertEqual(logText, "second\nthird")
+        XCTAssertEqual(collector.sourceIDs, [.command])
+    }
+
+    func testLogTextCoversDiagnosticLogSourcesWhenFilesAreMissing() {
+        let reader = SystemRuntimeHostFileReader(
+            fileStore: SpecificFileRuntimeFileStore(existingFiles: []),
+            logCollector: FakeRuntimeLogCollector()
+        )
+
+        for sourceID in [
+            RuntimeLogSource.vmLaunchOutput,
+            .vmLaunchError,
+            .proxyOutput,
+            .proxyError,
+            .watchdog,
+            .updateActivation,
+            .updateShutdown,
+        ] {
+            XCTAssertEqual(
+                reader.logText(sourceID: sourceID, helperMessage: "Ready", lineLimit: 10),
+                RuntimeAdapterConstants.StatusText.noLogData,
+                "Expected no data for \(sourceID.rawValue)"
+            )
+        }
+    }
+
+    func testContainerLogTextRefreshesOnlyWhenCentralLogIsMissing() {
+        let missingCollector = FakeRuntimeLogCollector()
+        let missingReader = SystemRuntimeHostFileReader(
+            fileStore: SpecificFileRuntimeFileStore(existingFiles: []),
+            logCollector: missingCollector
+        )
+
+        XCTAssertEqual(
+            missingReader.logText(sourceID: .containers, helperMessage: "Ready", lineLimit: 10),
+            RuntimeAdapterConstants.StatusText.noLogData
+        )
+        XCTAssertEqual(missingCollector.sourceIDs, [.containers])
+
+        let existingCollector = FakeRuntimeLogCollector()
+        let existingReader = SystemRuntimeHostFileReader(
+            fileStore: SpecificFileRuntimeFileStore(existingFiles: [RuntimeAdapterConstants.Paths.containerLogs]),
+            logCollector: existingCollector
+        )
+
+        XCTAssertEqual(
+            existingReader.logText(sourceID: .containers, helperMessage: "Ready", lineLimit: 10),
+            RuntimeAdapterConstants.StatusText.noLogData
+        )
+        XCTAssertEqual(existingCollector.refreshCount, 0)
+    }
+
     func testHelperMessageLogTextDoesNotRefreshLogCollection() throws {
         let collector = FakeRuntimeLogCollector()
         let reader = SystemRuntimeHostFileReader(logCollector: collector)
@@ -146,6 +212,20 @@ final class RuntimeFileReaderTests: XCTestCase {
         _ = reader.logText(sourceID: .helperMessage, helperMessage: "Ready", lineLimit: 10)
 
         XCTAssertEqual(collector.refreshCount, 0)
+    }
+
+    func testPreferredLogsPathReturnsProductLogsDirectory() {
+        XCTAssertEqual(
+            SystemRuntimeHostFileReader().preferredLogsPath(),
+            RuntimeAdapterConstants.Paths.productLogs
+        )
+    }
+
+    func testBackupReaderWrappersPropagateReadFailures() {
+        let reader = SystemRuntimeHostFileReader(fileStore: BackupSizeFailingRuntimeFileStore())
+
+        XCTAssertThrowsError(try reader.backups(latestBackupPath: "/backups/latest-before-version"))
+        XCTAssertThrowsError(try reader.redisBackups())
     }
 
     func testBackupListPropagatesDirectoryReadFailure() {
@@ -182,6 +262,7 @@ final class RuntimeFileReaderTests: XCTestCase {
 
 private final class FakeRuntimeLogCollector: RuntimeLogCollecting, @unchecked Sendable {
     var refreshCount = 0
+    var sourceIDs: [RuntimeLogSource] = []
     private let refreshError: Error?
 
     init(refreshError: Error? = nil) {
@@ -193,6 +274,58 @@ private final class FakeRuntimeLogCollector: RuntimeLogCollecting, @unchecked Se
         if let refreshError {
             throw refreshError
         }
+    }
+
+    func refreshLogCollection(sourceID: RuntimeLogSource) throws {
+        sourceIDs.append(sourceID)
+        try refreshLogCollection()
+    }
+}
+
+private final class SpecificFileRuntimeFileStore: RuntimeFileStore, RuntimeFilePartialReading {
+    var temporaryDirectory = URL(fileURLWithPath: "/tmp")
+    private let dataByPath: [String: Data]
+
+    init(existingFiles: Set<String>) {
+        self.dataByPath = Dictionary(uniqueKeysWithValues: existingFiles.map { ($0, Data()) })
+    }
+
+    init(dataByPath: [String: Data]) {
+        self.dataByPath = dataByPath
+    }
+
+    func fileExists(_ url: URL) -> Bool { dataByPath.keys.contains(url.path) }
+    func directoryExists(_ url: URL) -> Bool { false }
+    func isExecutableFile(atPath path: String) -> Bool { false }
+    func readData(_ url: URL) throws -> Data {
+        guard let data = dataByPath[url.path] else {
+            throw CocoaError(.fileReadNoSuchFile)
+        }
+        return data
+    }
+    func readData(_ url: URL, offset: UInt64?) throws -> Data {
+        let data = try readData(url)
+        guard let offset else {
+            return data
+        }
+        return data.suffix(from: min(Int(offset), data.count))
+    }
+    func readUTF8Text(_ url: URL) throws -> String { String(decoding: try readData(url), as: UTF8.self) }
+    func fileSize(_ url: URL) throws -> UInt64 {
+        UInt64(try readData(url).count)
+    }
+    func modificationDate(_ url: URL) throws -> Date { Date(timeIntervalSince1970: 0) }
+    func writeData(_ data: Data, to url: URL, options: Data.WritingOptions) throws {}
+    func writeData(_ data: Data, to url: URL, options: Data.WritingOptions, posixPermissions: Int) throws {}
+    func createDirectory(at url: URL, withIntermediateDirectories: Bool) throws {}
+    func removeItem(at url: URL) throws {}
+    func copyItem(at source: URL, to destination: URL) throws {}
+    func moveItem(at source: URL, to destination: URL) throws {}
+    func contentsOfDirectory(at url: URL, skipsHiddenFiles: Bool) throws -> [URL] { [] }
+    func childDirectories(at url: URL, nameContains fragment: String, skipsHiddenFiles: Bool) throws -> [URL] { [] }
+    func recursiveRegularFileSize(at url: URL, skipsHiddenFiles: Bool) throws -> UInt64 { 0 }
+    func fileSystemAttributes(forPath path: String) throws -> RuntimeFileSystemAttributes {
+        RuntimeFileSystemAttributes(freeBytes: 1)
     }
 }
 

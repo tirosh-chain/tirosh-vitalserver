@@ -15,6 +15,10 @@ public protocol RuntimeFileReading {
     func modificationDate(_ url: URL) throws -> Date
 }
 
+public protocol RuntimeFilePartialReading {
+    func readData(_ url: URL, offset: UInt64?) throws -> Data
+}
+
 public protocol RuntimeFileWriting {
     func writeData(_ data: Data, to url: URL, options: Data.WritingOptions) throws
     func writeData(_ data: Data, to url: URL, options: Data.WritingOptions, posixPermissions: Int) throws
