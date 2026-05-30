@@ -84,9 +84,17 @@ struct RuntimeApplyBundleRunner {
             throw error
         }
 
+        pruneOldRuntimeArtifactsBestEffort()
         try writeStatus(.healthy, .applyBundle, "bundle applied: \(preflight.manifest.version)")
-        try pruneOldRuntimeArtifacts()
         log("bundle applied path=\(preflight.stagedBundle.path)")
+    }
+
+    private func pruneOldRuntimeArtifactsBestEffort() {
+        do {
+            try pruneOldRuntimeArtifacts()
+        } catch {
+            log("runtime artifact cleanup failed after bundle apply error=\(error)")
+        }
     }
 
     private func startRuntimeServicesBestEffort(_ policy: RuntimeServiceRestartPolicy) {

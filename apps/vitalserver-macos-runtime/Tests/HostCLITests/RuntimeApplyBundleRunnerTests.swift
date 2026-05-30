@@ -55,6 +55,19 @@ final class RuntimeApplyBundleRunnerTests: XCTestCase {
         XCTAssertEqual(harness.statuses.last?.operation, .applyBundle)
         XCTAssertTrue(harness.statuses.last?.message.contains("rollback failed") == true)
     }
+
+    func testRunKeepsApplySuccessfulWhenArtifactCleanupFails() throws {
+        let harness = ApplyBundleHarness()
+        harness.pruneError = TestApplyBundleError.prune
+
+        try harness.runner.run(bundleURL: harness.inputBundle)
+
+        XCTAssertEqual(harness.pruneCount, 1)
+        XCTAssertEqual(harness.statuses.last?.level, .healthy)
+        XCTAssertEqual(harness.statuses.last?.operation, .applyBundle)
+        XCTAssertEqual(harness.statuses.last?.message, "bundle applied: 0.1.4")
+        XCTAssertTrue(harness.logs.contains { $0.contains("runtime artifact cleanup failed after bundle apply") })
+    }
 }
 
 private final class ApplyBundleHarness {
@@ -91,6 +104,7 @@ private final class ApplyBundleHarness {
     var preflightError: Error?
     var stepError: Error?
     var rollbackError: Error?
+    var pruneError: Error?
 
     var runner: RuntimeApplyBundleRunner {
         RuntimeApplyBundleRunner(
@@ -143,6 +157,9 @@ private final class ApplyBundleHarness {
             },
             pruneOldRuntimeArtifacts: {
                 self.pruneCount += 1
+                if let pruneError = self.pruneError {
+                    throw pruneError
+                }
             },
             reasonText: { reasons in
                 reasons.map(\.rawValue).joined(separator: ", ")
@@ -158,4 +175,5 @@ private enum TestApplyBundleError: Error {
     case preflight
     case step
     case rollback
+    case prune
 }
