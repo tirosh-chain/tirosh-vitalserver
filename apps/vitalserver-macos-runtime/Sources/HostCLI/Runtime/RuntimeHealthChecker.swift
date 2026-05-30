@@ -239,16 +239,48 @@ struct RuntimeHealthChecker {
 
     private func containerObservation(proxyPort: Int, guestState: GuestRuntimeStateDocument?) -> RuntimeContainerObservation {
         let auditProxyStatus = auditProxyStatus(port: proxyPort)
-        let containerLogsBytes = try? fileStore.fileSize(installedPaths.containerLogs)
+        let containerLogsMetadata = containerLogsMetadata()
         return RuntimeContainerObservation(
             auditProxyHTTP: auditProxyStatus.httpStatus,
             auditProxyStatus: auditProxyStatus.document,
             runtimeStateUpdatedAt: guestState?.updatedAt,
             runtimeStateFileUpdatedAt: fileModifiedAt(installedPaths.runtimeState),
-            containerLogsPresent: fileStore.fileExists(installedPaths.containerLogs),
-            containerLogsBytes: containerLogsBytes,
-            containerLogsUpdatedAt: fileModifiedAt(installedPaths.containerLogs),
+            containerLogsPresent: containerLogsMetadata.present,
+            containerLogsBytes: containerLogsMetadata.bytes,
+            containerLogsUpdatedAt: containerLogsMetadata.updatedAt,
+            containerLogsMetadataError: containerLogsMetadata.error,
             composeServices: guestState?.containerServices ?? []
+        )
+    }
+
+    private func containerLogsMetadata() -> RuntimeContainerLogsMetadata {
+        let url = installedPaths.containerLogs
+        guard fileStore.fileExists(url) else {
+            return RuntimeContainerLogsMetadata(present: false, bytes: nil, updatedAt: nil, error: nil)
+        }
+
+        var errorTokens: [String] = []
+        let bytes: UInt64?
+        do {
+            bytes = try fileStore.fileSize(url)
+        } catch {
+            bytes = nil
+            errorTokens.append("size-read-failed")
+        }
+
+        let updatedAt: String?
+        do {
+            updatedAt = ISO8601DateFormatter().string(from: try fileStore.modificationDate(url))
+        } catch {
+            updatedAt = nil
+            errorTokens.append("mtime-read-failed")
+        }
+
+        return RuntimeContainerLogsMetadata(
+            present: true,
+            bytes: bytes,
+            updatedAt: updatedAt,
+            error: errorTokens.isEmpty ? nil : errorTokens.joined(separator: ",")
         )
     }
 
@@ -288,6 +320,13 @@ private struct RuntimeGuestHTTPReadResult {
 private struct RuntimeGuestStateFreshness {
     let isFresh: Bool
     let failureReasons: [RuntimeFailureReason]
+}
+
+private struct RuntimeContainerLogsMetadata {
+    let present: Bool
+    let bytes: UInt64?
+    let updatedAt: String?
+    let error: String?
 }
 
 private enum RuntimeProxyNginxPIDReadResult {

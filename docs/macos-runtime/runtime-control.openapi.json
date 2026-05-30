@@ -2660,6 +2660,12 @@
               "null"
             ]
           },
+          "containerLogsMetadataError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "composeServices": {
             "type": "array",
             "items": {

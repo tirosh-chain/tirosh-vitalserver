@@ -49,6 +49,7 @@ Runtime 상태가 실제 상황과 다르게 보이거나, update 진행 상태�
 - VitalDB recorder observation이 없는데 UI가 recorder/bed/anomaly 수를 `0`으로 표시합니다.
 - Host proxy listener scan이 실패했는데 listener 없음처럼 처리되어 port 충돌 진단 근거가 사라집니다.
 - Backup archive 크기 계산이 실패했는데 `Unknown` 크기로 표시되어 목록 조회 실패와 실제 unknown size가 섞입니다.
+- Container log 파일은 존재하지만 size/mtime metadata를 읽지 못했는데 단순 미보고 값처럼 표시됩니다.
 
 ## Impact
 
@@ -114,6 +115,7 @@ rg -n "guestRuntimeStateFresh|modificationDate\\(installedPaths\\.runtimeState\\
 rg -n "JSONLRuntimeEventRepository|try\\? Data\\(contentsOf:|compactMap.*decode\\(RuntimeEventDocument" apps/vitalserver-macos-runtime/Sources
 rg -n "lsof.*LISTEN|hostProxyListenerScanFailed|return \\[\\]" apps/vitalserver-macos-runtime/Sources/HostCLI/Runtime/RuntimeHealthChecker.swift
 rg -n "RuntimeBackup.*try\\?|recursiveRegularFileSize.*try\\?|fileSize.*try\\?" apps/vitalserver-macos-runtime/Sources/MacHostRuntimeAdapter
+rg -n "containerLogsBytes = try\\?|containerLogsUpdatedAt: fileModifiedAt" apps/vitalserver-macos-runtime/Sources/HostCLI/Runtime/RuntimeHealthChecker.swift
 ```
 
 상태 관련 read path에서 아래 패턴이 보이면 재검토합니다.
@@ -162,6 +164,7 @@ audit-proxy recorder connections -> VitalDB recorder summary fallback
 missing VitalDB recorder observation -> zero recorder metrics
 host proxy listener scan failure -> no proxy port failure reason
 backup size read failure -> unknown backup size
+container log metadata read failure -> missing container log metadata
 ```
 
 ## Actions
@@ -214,6 +217,7 @@ backup size read failure -> unknown backup size
 42. VitalDB observation이 없을 때 UI는 recorder/bed/anomaly metric을 `0`으로 표시하지 않습니다. `Not reported`로 표시해 미관측과 실제 0개를 구분합니다.
 43. Host proxy listener scan 실패는 `hostProxyListenerScanFailed`로 노출합니다. 빈 stdout/stderr의 `lsof` nonzero만 listener 없음으로 취급합니다.
 44. Backup 목록의 크기 계산 실패는 목록 조회 실패로 전파합니다. `Unknown` 크기는 contract가 명시적으로 size를 제공하지 않을 때만 사용합니다.
+45. Container log 파일이 존재하는데 size/mtime metadata를 읽지 못하면 `containerLogsMetadataError`로 노출합니다. 파일 미존재와 metadata read failure를 같은 `nil`로 합치지 않습니다.
 
 ## Prevention
 

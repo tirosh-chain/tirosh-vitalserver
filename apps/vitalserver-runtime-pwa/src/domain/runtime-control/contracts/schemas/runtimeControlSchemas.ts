@@ -178,6 +178,7 @@ const runtimeContainerObservationSchema = z
     containerLogsPresent: z.boolean().optional(),
     containerLogsBytes: nullableNumber,
     containerLogsUpdatedAt: nullableString,
+    containerLogsMetadataError: nullableString,
     composeServices: z.array(unknownRecord).optional()
   })
   .passthrough();

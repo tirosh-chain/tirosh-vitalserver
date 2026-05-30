@@ -51,6 +51,24 @@ describe("runtime control contract schemas", () => {
     });
   });
 
+  it("accepts container log metadata read errors in overview responses", () => {
+    expect(
+      runtimeOverviewSchema.parse({
+        status: {
+          containerObservation: {
+            containerLogsPresent: true,
+            containerLogsBytes: null,
+            containerLogsUpdatedAt: null,
+            containerLogsMetadataError: "size-read-failed,mtime-read-failed"
+          }
+        }
+      }).status?.containerObservation
+    ).toMatchObject({
+      containerLogsPresent: true,
+      containerLogsMetadataError: "size-read-failed,mtime-read-failed"
+    });
+  });
+
   it("accepts recovery-suppressed runtime events from the Helper", () => {
     expect(
       runtimeEventHistorySchema.parse({

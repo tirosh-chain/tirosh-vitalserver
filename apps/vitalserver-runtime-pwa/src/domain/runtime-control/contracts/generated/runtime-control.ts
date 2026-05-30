@@ -1119,6 +1119,7 @@ export interface components {
             containerLogsPresent?: boolean;
             containerLogsBytes?: number | null;
             containerLogsUpdatedAt?: string | null;
+            containerLogsMetadataError?: string | null;
             composeServices?: components["schemas"]["RuntimeContainerServiceObservation"][];
         };
         RuntimeAuditProxyStatusDocument: {

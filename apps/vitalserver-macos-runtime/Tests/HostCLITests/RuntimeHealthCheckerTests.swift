@@ -359,6 +359,34 @@ final class RuntimeHealthCheckerTests: XCTestCase {
         XCTAssertTrue(snapshot.failureReasons.contains(.auditProxyHTTP(RuntimeHTTPStatusText.invalidResponse)))
     }
 
+    func testSnapshotReportsContainerLogMetadataReadFailure() {
+        let installedPaths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
+        let fileStore = RuntimeFileStoreSpy()
+        fileStore.files[installedPaths.containerLogs] = Data("container logs".utf8)
+        fileStore.fileSizeErrors[installedPaths.containerLogs] = CocoaError(.fileReadNoPermission)
+        fileStore.modificationDateErrors[installedPaths.containerLogs] = CocoaError(.fileReadNoPermission)
+        let commandRunner = RuntimeCommandRunnerSpy()
+        commandRunner.results[Constants.Commands.plistBuddy] = RuntimeProcessResult(exitCode: 0, stdout: "80\n", stderr: "")
+        let checker = RuntimeHealthChecker(
+            installedPaths: installedPaths,
+            fileStore: fileStore,
+            serviceManager: RuntimeServiceManagerSpy(),
+            commandRunner: commandRunner,
+            httpProber: RuntimeHTTPProberSpy(),
+            guestGateway: RuntimeGuestGatewaySpy()
+        )
+
+        let snapshot = checker.snapshot()
+
+        XCTAssertEqual(snapshot.containerObservation?.containerLogsPresent, true)
+        XCTAssertNil(snapshot.containerObservation?.containerLogsBytes)
+        XCTAssertNil(snapshot.containerObservation?.containerLogsUpdatedAt)
+        XCTAssertEqual(
+            snapshot.containerObservation?.containerLogsMetadataError,
+            "size-read-failed,mtime-read-failed"
+        )
+    }
+
     func testSnapshotDoesNotUseStaleRuntimeStateForGuestProbes() {
         let installedPaths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
         let fileStore = RuntimeFileStoreSpy()
