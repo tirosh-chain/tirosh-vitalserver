@@ -219,7 +219,8 @@ struct RuntimeLifecycle {
 
         let maxAttempts = Int(ceil(Constants.Runtime.redisBackupWaitTimeoutSeconds / 3.0))
         for attempt in 0..<maxAttempts {
-            if let result = loadRedisBackupResult(from: resultURL) {
+            switch loadRedisBackupResult(from: resultURL) {
+            case .loaded(let result):
                 if let resultRequestId = result.requestId, resultRequestId != requestID {
                     log("stale redis backup result ignored")
                 } else if result.status == .completed {
@@ -238,8 +239,14 @@ struct RuntimeLifecycle {
                 } else if attempt % 10 == 0 {
                     log(result.message ?? "waiting for redis backup")
                 }
-            } else if attempt % 10 == 0 {
-                log("waiting for redis backup guest worker")
+            case .missing:
+                if attempt % 10 == 0 {
+                    log("waiting for redis backup guest worker")
+                }
+            case .failed(let message):
+                let failureMessage = "failed to read redis backup result: \(message)"
+                try writeRuntimeStatus(.degraded, operation: .redisBackup, message: failureMessage)
+                throw LauncherError.runtimeOperationFailed(failureMessage)
             }
             if attempt < maxAttempts - 1 {
                 sleeper.sleep(forTimeInterval: 3)
@@ -250,11 +257,8 @@ struct RuntimeLifecycle {
         throw LauncherError.runtimeOperationFailed("redis backup timed out")
     }
 
-    private func loadRedisBackupResult(from url: URL) -> RedisBackupResultDocument? {
-        guard let data = try? fileStore.readData(url) else {
-            return nil
-        }
-        return try? JSONDecoder().decode(RedisBackupResultDocument.self, from: data)
+    private func loadRedisBackupResult(from url: URL) -> RedisBackupResultLoadResult {
+        RedisBackupResultReader.load(from: url, fileStore: fileStore)
     }
 
     func collectGuestLogs() throws {
@@ -299,7 +303,27 @@ private struct RedisBackupRequestDocument: Encodable {
     let operation = RuntimeOperation.redisBackup.rawValue
 }
 
-private struct RedisBackupResultDocument: Decodable {
+enum RedisBackupResultLoadResult {
+    case missing
+    case loaded(RedisBackupResultDocument)
+    case failed(String)
+}
+
+enum RedisBackupResultReader {
+    static func load(from url: URL, fileStore: RuntimeFileStore) -> RedisBackupResultLoadResult {
+        guard fileStore.fileExists(url) else {
+            return .missing
+        }
+        do {
+            let data = try fileStore.readData(url)
+            return try .loaded(JSONDecoder().decode(RedisBackupResultDocument.self, from: data))
+        } catch {
+            return .failed(error.localizedDescription)
+        }
+    }
+}
+
+struct RedisBackupResultDocument: Decodable {
     let requestId: String?
     let status: DatastoreRepairStatus
     let message: String?
