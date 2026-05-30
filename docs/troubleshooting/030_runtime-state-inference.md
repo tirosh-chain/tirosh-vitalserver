@@ -299,3 +299,4 @@ guest log collection read failure -> no guest logs
 - 2026-05-30: Runtime log collection이 존재하는 log source의 read/copy/size 실패를 조용히 skip하지 않고 throw하도록 변경했습니다. UI log preview는 실패 메시지를 표시하고, export logs는 실패를 호출자에게 전달합니다.
 - 2026-05-30: Guest log collection이 guest run directory read failure를 조용히 skip하지 않고 throw하도록 변경했습니다. Health/watchdog 경로는 실패를 로그로 남긴 뒤 본래 작업을 계속합니다.
 - 2026-05-30: Host proxy의 legacy `vm-ip` fallback을 제거했습니다. Proxy upstream은 Guest가 제공하는 `runtime-state.json`의 `vmIP`만 사용합니다. `guestHTTP` 필드가 누락된 runtime-state도 `bootstrap-pending`으로 추정하지 않고 `missing-guest-http`와 `guest-runtime-state-invalid`로 노출합니다.
+- 2026-05-30: devtools health/status도 legacy `vm-ip` 파일을 읽지 않도록 변경했습니다. 개발 도구도 `runtime-state.json`의 `vmIP`와 `guestHTTP` 계약을 사용하고 missing/invalid state를 명시 오류로 표시합니다.
