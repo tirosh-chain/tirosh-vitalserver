@@ -300,6 +300,28 @@ extension RuntimeLifecycle {
         runtimeObservationRecorder().recordEventBestEffort(event)
     }
 
+    func recordRuntimeCommandEventBestEffort(
+        _ eventType: RuntimeEventType,
+        executable: String,
+        arguments: [String],
+        result: RuntimeProcessResult?
+    ) {
+        let exitSuffix = result.map { " exitCode=\($0.exitCode)" } ?? ""
+        let event = RuntimeEventDocument(
+            id: UUID().uuidString,
+            source: "host-command",
+            eventType: eventType,
+            timestamp: isoTimestamp(),
+            product: Constants.Product.identifier,
+            previousStatus: nil,
+            message: "command \(eventType.rawValue) executable=\(executable) arguments=\(arguments.joined(separator: " "))\(exitSuffix)",
+            runtimeVersion: runtimeVersionValue(),
+            failureReasons: [],
+            progress: nil
+        )
+        runtimeObservationRecorder().recordEventBestEffort(event)
+    }
+
     func recordRuntimeProgressEventBestEffort(
         message: String,
         progress: RuntimeProgressDocument
@@ -479,17 +501,7 @@ extension RuntimeLifecycle {
             commandRunner: commandRunner,
             log: log,
             recordCommandEvent: { eventType, executable, arguments, result in
-                let exitSuffix = result.map { " exitCode=\($0.exitCode)" } ?? ""
-                let message = "command \(eventType.rawValue) executable=\(executable) arguments=\(arguments.joined(separator: " "))\(exitSuffix)"
-                guard let currentStatus = statusReporter.loadStatus() else {
-                    return
-                }
-                recordRuntimeStatusDocumentEventBestEffort(
-                    currentStatus,
-                    operation: currentStatus.operation,
-                    message: message,
-                    eventType: eventType
-                )
+                recordRuntimeCommandEventBestEffort(eventType, executable: executable, arguments: arguments, result: result)
             }
         )
     }

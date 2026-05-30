@@ -427,6 +427,33 @@ final class ContractsTests: XCTestCase {
         XCTAssertEqual(decoded, .unknown("vendor-event"))
     }
 
+    func testRuntimeEventDocumentAllowsEventsWithoutRuntimeStatusContext() throws {
+        let json = """
+        {
+          "schemaVersion": 1,
+          "id": "event-1",
+          "source": "host-command",
+          "eventType": "runtime-command-started",
+          "timestamp": "2026-05-30T01:00:00Z",
+          "product": "com.tirosh.vitalserver",
+          "message": "command started",
+          "runtimeVersion": "0.1.9",
+          "failureReasons": []
+        }
+        """
+
+        let event = try JSONDecoder().decode(RuntimeEventDocument.self, from: Data(json.utf8))
+
+        XCTAssertNil(event.status)
+        XCTAssertNil(event.operation)
+        XCTAssertEqual(event.source, "host-command")
+        XCTAssertEqual(event.eventType, .runtimeCommandStarted)
+
+        let roundTripped = try JSONDecoder().decode(RuntimeEventDocument.self, from: try JSONEncoder().encode(event))
+        XCTAssertNil(roundTripped.status)
+        XCTAssertNil(roundTripped.operation)
+    }
+
     private func decodeFixture<T: Decodable>(_ type: T.Type, named name: String) throws -> T {
         let url = try XCTUnwrap(Bundle.module.url(forResource: name, withExtension: "json"))
         let data = try Data(contentsOf: url)
