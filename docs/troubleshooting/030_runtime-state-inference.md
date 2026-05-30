@@ -312,3 +312,4 @@ missing VitalDB recorder observation -> zero recorder metrics
 - 2026-05-30: stale VM pid file 제거 실패를 `try?`로 숨기지 않고 process stop/wait 로그에 남기도록 변경했습니다.
 - 2026-05-30: Update artifact tar 검증 중 생성한 임시 출력 파일 cleanup 실패를 `try?`로 숨기지 않고 runtime log에 남기도록 변경했습니다.
 - 2026-05-30: Swift log preview가 log file read/size/seek 실패를 `No log data`로 숨기지 않고 `Failed to read log file ...`로 표시하도록 변경했습니다.
+- 2026-05-30: Host proxy port cleanup에서 `lsof` 실행 실패를 빈 listener 목록으로 숨기지 않고 cleanup 실패로 노출하도록 변경했습니다. listener가 없는 macOS `lsof`의 empty non-zero 결과만 빈 목록으로 처리합니다.

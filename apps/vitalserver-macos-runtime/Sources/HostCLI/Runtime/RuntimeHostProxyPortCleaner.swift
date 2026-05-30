@@ -12,7 +12,7 @@ struct RuntimeHostProxyPortCleaner {
 
     func cleanupBeforeStartingProxy() throws {
         let port = proxyPort()
-        let listeners = portListeners(port: port)
+        let listeners = try portListeners(port: port)
         guard !listeners.isEmpty else {
             log("proxy port cleanup skipped; no listeners on port \(port)")
             return
@@ -31,7 +31,7 @@ struct RuntimeHostProxyPortCleaner {
             log("proxy port cleanup stopping owned nginx listeners port=\(port) pids=\(classified.ownedNginx.joined(separator: ","))")
             terminate(classified.ownedNginx, signal: "-TERM")
             sleep(1)
-            let remainingOwned = classify(portListeners(port: port)).ownedNginx
+            let remainingOwned = classify(try portListeners(port: port)).ownedNginx
             if !remainingOwned.isEmpty {
                 log("proxy port cleanup force stopping owned nginx listeners port=\(port) pids=\(remainingOwned.joined(separator: ","))")
                 terminate(remainingOwned, signal: "-KILL")
@@ -39,7 +39,7 @@ struct RuntimeHostProxyPortCleaner {
             }
         }
 
-        let remaining = portListeners(port: port)
+        let remaining = try portListeners(port: port)
         guard remaining.isEmpty else {
             let classified = classify(remaining)
             if !classified.ownedNginx.isEmpty {
@@ -54,10 +54,17 @@ struct RuntimeHostProxyPortCleaner {
         log("proxy port cleanup completed port=\(port)")
     }
 
-    private func portListeners(port: Int) -> [PortListener] {
+    private func portListeners(port: Int) throws -> [PortListener] {
         let result = runProcess(Constants.Commands.lsof, ["-nP", "-iTCP:\(port)", "-sTCP:LISTEN"])
         guard result.exitCode == 0 else {
-            return []
+            let stderr = result.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+            if result.stdout.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && stderr.isEmpty {
+                return []
+            }
+            log("proxy port listener scan failed port=\(port) exitCode=\(result.exitCode) stderr=\(stderr)")
+            throw LauncherError.runtimeOperationFailed(
+                "failed to inspect proxy port \(port) listeners with lsof exitCode=\(result.exitCode)"
+            )
         }
         return result.stdout
             .split(separator: "\n")

@@ -91,6 +91,51 @@ final class RuntimeHostProxyPortCleanerTests: XCTestCase {
         }
     }
 
+    func testThrowsWhenPortListenerScanFails() {
+        var logs: [String] = []
+        let cleaner = RuntimeHostProxyPortCleaner(
+            proxyPort: { 80 },
+            proxyServiceLoaded: { false },
+            expectedProxyNginxPID: { nil },
+            ownedNginxPathFragments: ["/Library/Application Support/TiroshVitalServer/nginx"],
+            runProcess: { executable, _ in
+                if executable == Constants.Commands.lsof {
+                    return RuntimeProcessResult(exitCode: 1, stdout: "", stderr: "permission denied")
+                }
+                return RuntimeProcessResult(exitCode: 0, stdout: "", stderr: "")
+            },
+            sleep: { _ in XCTFail("failed listener scan should not terminate anything") },
+            log: { logs.append($0) }
+        )
+
+        XCTAssertThrowsError(try cleaner.cleanupBeforeStartingProxy()) { error in
+            XCTAssertTrue(String(describing: error).contains("failed to inspect proxy port 80 listeners"))
+        }
+        XCTAssertTrue(logs.contains { $0.contains("proxy port listener scan failed") })
+    }
+
+    func testTreatsEmptyLsofFailureAsNoListeners() throws {
+        var logs: [String] = []
+        let cleaner = RuntimeHostProxyPortCleaner(
+            proxyPort: { 80 },
+            proxyServiceLoaded: { false },
+            expectedProxyNginxPID: { nil },
+            ownedNginxPathFragments: ["/Library/Application Support/TiroshVitalServer/nginx"],
+            runProcess: { executable, _ in
+                if executable == Constants.Commands.lsof {
+                    return RuntimeProcessResult(exitCode: 1, stdout: "", stderr: "")
+                }
+                return RuntimeProcessResult(exitCode: 0, stdout: "", stderr: "")
+            },
+            sleep: { _ in XCTFail("empty listener scan should not terminate anything") },
+            log: { logs.append($0) }
+        )
+
+        try cleaner.cleanupBeforeStartingProxy()
+
+        XCTAssertTrue(logs.contains { $0.contains("proxy port cleanup skipped; no listeners") })
+    }
+
     func testDoesNotStopConfiguredProxyWhenServiceIsLoaded() throws {
         var killed: [[String]] = []
         let cleaner = RuntimeHostProxyPortCleaner(
