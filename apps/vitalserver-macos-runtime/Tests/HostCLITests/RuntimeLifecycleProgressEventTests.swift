@@ -6,6 +6,38 @@ import HostInfrastructure
 import XCTest
 
 final class RuntimeLifecycleProgressEventTests: XCTestCase {
+    func testRuntimeLifecycleBuildsWorkflowCollaborators() {
+        let productRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("runtime-lifecycle-workflows-\(UUID().uuidString)")
+        defer {
+            try? FileManager.default.removeItem(at: productRoot)
+        }
+        let installedPaths = InstalledRuntimePaths(productRoot: productRoot)
+        let lifecycle = RuntimeLifecycle(
+            paths: LauncherPaths(
+                home: installedPaths.runtimeHome,
+                installed: installedPaths,
+                config: installedPaths.vmConfig,
+                pidFile: installedPaths.pidFile
+            ),
+            runtimeStatusRepository: MissingRuntimeStatusRepository()
+        )
+
+        _ = lifecycle.runtimeInstallWorkflow()
+        _ = lifecycle.runtimeStatusPrinter()
+        _ = lifecycle.runtimeCloudInitSeedWriter()
+        _ = lifecycle.runtimeHealthCheckRunner()
+        _ = lifecycle.runtimeManagedOperationGuard()
+        _ = lifecycle.runtimeWatchdogRunner()
+        _ = lifecycle.runtimeConfigureRunner()
+        _ = lifecycle.runtimeBundleWorkflow()
+        _ = lifecycle.runtimeDatastoreRepairWorkflow()
+        _ = lifecycle.runtimeVMDiskRepairRunner()
+        _ = lifecycle.runtimeServiceControlRunner()
+        _ = lifecycle.runtimeRollbackWorkflow()
+        _ = lifecycle.runtimeGuestActivationWorkflow()
+    }
+
     func testWriteRuntimeProgressRecordsEventWhenStatusDocumentIsMissing() throws {
         let productRoot = FileManager.default.temporaryDirectory
             .appendingPathComponent("runtime-lifecycle-progress-\(UUID().uuidString)")

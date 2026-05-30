@@ -18,6 +18,38 @@ struct RuntimeAdvancedPanel: View {
     @State private var showingAdminOperations = false
     private let displayPolicy = RuntimeStatusDisplayPolicy()
 
+    init(
+        viewModel: RuntimeViewModel,
+        showingApplySettingsConfirmation: Binding<Bool>,
+        showingRollbackConfirmation: Binding<Bool>,
+        showingRepairProxyConfirmation: Binding<Bool>,
+        showingRepairDatastoreConfirmation: Binding<Bool>,
+        showingRepairVMDiskConfirmation: Binding<Bool>,
+        showingRepairRuntimeServicesConfirmation: Binding<Bool>,
+        showingStartServicesConfirmation: Binding<Bool>,
+        showingStopServicesConfirmation: Binding<Bool>,
+        hoveredServiceLink: Binding<String?>,
+        showingServiceHealth: Bool = true,
+        showingRecoveryOperations: Bool = false,
+        showingNetworkOverrides: Bool = false,
+        showingAdminOperations: Bool = false
+    ) {
+        self.viewModel = viewModel
+        self._showingApplySettingsConfirmation = showingApplySettingsConfirmation
+        self._showingRollbackConfirmation = showingRollbackConfirmation
+        self._showingRepairProxyConfirmation = showingRepairProxyConfirmation
+        self._showingRepairDatastoreConfirmation = showingRepairDatastoreConfirmation
+        self._showingRepairVMDiskConfirmation = showingRepairVMDiskConfirmation
+        self._showingRepairRuntimeServicesConfirmation = showingRepairRuntimeServicesConfirmation
+        self._showingStartServicesConfirmation = showingStartServicesConfirmation
+        self._showingStopServicesConfirmation = showingStopServicesConfirmation
+        self._hoveredServiceLink = hoveredServiceLink
+        self._showingServiceHealth = State(initialValue: showingServiceHealth)
+        self._showingRecoveryOperations = State(initialValue: showingRecoveryOperations)
+        self._showingNetworkOverrides = State(initialValue: showingNetworkOverrides)
+        self._showingAdminOperations = State(initialValue: showingAdminOperations)
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {

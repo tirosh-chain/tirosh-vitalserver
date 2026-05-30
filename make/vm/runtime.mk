@@ -125,7 +125,8 @@ vm-coverage:
 	CLANG_MODULE_CACHE_PATH="$(VM_CLANG_MODULE_CACHE)" swift test --enable-code-coverage --package-path "$(VM_SWIFT_PACKAGE_DIR)"
 	$(VM_LLVM_COV) report "$(VM_SWIFT_TEST_BINARY)" \
 		-instr-profile "$(VM_SWIFT_COVERAGE_PROFILE)" \
-		-ignore-filename-regex='$(VM_SWIFT_COVERAGE_IGNORE)'
+		-ignore-filename-regex='$(VM_SWIFT_COVERAGE_IGNORE)' | tee "$(VM_SWIFT_COVERAGE_REPORT)"
+	@awk -v min="$(VM_SWIFT_COVERAGE_MIN)" '/^TOTAL/ { pct=$$10; gsub("%", "", pct); if (pct + 0 < min + 0) { printf "Swift line coverage %.2f%% is below %.2f%%\n", pct, min; exit 1 } printf "Swift line coverage %.2f%% >= %.2f%%\n", pct, min }' "$(VM_SWIFT_COVERAGE_REPORT)"
 
 vm-interfaces: vm-sign-bridged
 	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" macos-runtime-control \

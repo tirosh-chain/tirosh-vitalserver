@@ -3,6 +3,7 @@ import Contracts
 import Core
 import RuntimeControl
 @testable import MacRuntimeControlApp
+import SwiftUI
 import XCTest
 
 @MainActor
@@ -435,6 +436,284 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertEqual(viewModel.testKitStatus.beds.map(\.roomName), ["OR-B"])
         XCTAssertFalse(viewModel.testKitBedIsSelected("OR-A"))
     }
+
+    func testTestKitActionsUpdateStatusAndMessages() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let testKit = FakeTestKitController()
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            testKitController: testKit,
+            healthNotifications: NoopHealthNotifications()
+        )
+        testKit.status = RuntimeTestKitStatus(
+            enabled: true,
+            state: .running,
+            beds: [
+                RuntimeTestKitBed(roomName: "OR-A", bedID: "bed-a"),
+                RuntimeTestKitBed(roomName: "OR-B", bedID: "bed-b"),
+            ]
+        )
+        await viewModel.refreshTestKitStatus()
+
+        viewModel.setTestKitBedSelection("OR-A", selected: true)
+        await viewModel.startVirtualRecorderSession()
+        let sessionID = viewModel.selectedTestKitSessionID
+
+        await viewModel.pauseVirtualRecorderSession(sessionID: sessionID)
+        await viewModel.resumeVirtualRecorderSession(sessionID: sessionID)
+        await viewModel.stopVirtualRecorderSession(sessionID: sessionID)
+        await viewModel.restartVirtualRecorderSession(session: testKitSession(
+            id: sessionID,
+            state: "stopped",
+            bedRoomNames: ["OR-A"]
+        ))
+        await viewModel.deleteVirtualRecorderSession(sessionID: viewModel.selectedTestKitSessionID)
+
+        viewModel.testKitOrphanVrcode = " VR_ORPHAN "
+        await viewModel.deleteOrphanVirtualRecorder()
+        await viewModel.resetVirtualRecorderSessions()
+        await viewModel.resetTestKitBeds()
+        viewModel.testKitBedCount = 2
+        viewModel.testKitBedPrefix = "ICU"
+        await viewModel.createTestKitBeds()
+
+        XCTAssertEqual(testKit.startedRequests.count, 1)
+        XCTAssertEqual(testKit.pausedSessionIDs, [sessionID])
+        XCTAssertEqual(testKit.resumedSessionIDs, [sessionID])
+        XCTAssertEqual(testKit.stoppedSessionIDs, [sessionID])
+        XCTAssertEqual(testKit.deletedRecorderVRCodes, ["VR_ORPHAN"])
+        XCTAssertEqual(testKit.resetSessionsCount, 1)
+        XCTAssertEqual(testKit.resetBedsCount, 1)
+        XCTAssertEqual(viewModel.testKitStatus.beds.map(\.roomName), ["ICU-1", "ICU-2"])
+        XCTAssertEqual(viewModel.selectedTestKitBedCount, 2)
+    }
+
+    func testTestKitActionsReportUnavailableOrInvalidInputs() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+
+        await viewModel.refreshTestKitStatus()
+        await viewModel.createTestKitBeds()
+        await viewModel.resetTestKitBeds()
+        await viewModel.startVirtualRecorderSession()
+        await viewModel.stopVirtualRecorderSession()
+        await viewModel.deleteVirtualRecorderSession(sessionID: nil)
+        await viewModel.resetVirtualRecorderSessions()
+        await viewModel.deleteOrphanVirtualRecorder()
+
+        XCTAssertEqual(viewModel.testKitStatus.state, .disabled)
+        XCTAssertEqual(viewModel.testKitActionMessage, RuntimeTestPanelText.testKitUnavailable)
+
+        let testKit = FakeTestKitController()
+        let controlled = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            testKitController: testKit,
+            healthNotifications: NoopHealthNotifications()
+        )
+        await controlled.deleteOrphanVirtualRecorder()
+
+        XCTAssertEqual(controlled.testKitActionMessage, RuntimeTestPanelText.missingVrcode)
+    }
+
+    func testRuntimePanelsRenderSmokeState() {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+        applySmokeState(to: viewModel)
+
+        render(RuntimeStatusPanel(
+            viewModel: viewModel,
+            showingRecorderDetails: .constant(true),
+            showingResourceUsage: .constant(true)
+        ))
+        render(RuntimeRecordersPanel(viewModel: viewModel))
+        render(RuntimeBedsPanel(viewModel: viewModel))
+        render(RuntimeObservabilityPanel(viewModel: viewModel))
+        render(RuntimeLogPanel(viewModel: viewModel))
+        render(RuntimeSettingsPanel(viewModel: viewModel, showingApplySettingsConfirmation: .constant(false)))
+        render(RuntimeUpdatePanel(viewModel: viewModel, showingUpdateConfirmation: .constant(false)))
+        render(RuntimeInfoPanel(viewModel: viewModel))
+        render(RuntimeDangerZonePanel(
+            viewModel: viewModel,
+            showingDeleteBackupConfirmation: .constant(false),
+            showingUninstallConfirmation: .constant(false),
+            showingCleanUninstallConfirmation: .constant(false)
+        ))
+        render(RuntimeAdvancedPanel(
+            viewModel: viewModel,
+            showingApplySettingsConfirmation: .constant(false),
+            showingRollbackConfirmation: .constant(false),
+            showingRepairProxyConfirmation: .constant(false),
+            showingRepairDatastoreConfirmation: .constant(false),
+            showingRepairVMDiskConfirmation: .constant(false),
+            showingRepairRuntimeServicesConfirmation: .constant(false),
+            showingStartServicesConfirmation: .constant(false),
+            showingStopServicesConfirmation: .constant(false),
+            hoveredServiceLink: Binding<String?>(get: { nil }, set: { _ in }),
+            showingRecoveryOperations: true,
+            showingNetworkOverrides: true,
+            showingAdminOperations: true
+        ))
+        render(RuntimeTestPanel(viewModel: viewModel))
+        render(ContentView().environmentObject(viewModel))
+    }
+
+    private func applySmokeState(to viewModel: RuntimeViewModel) {
+        let observedAt = "2026-05-30T00:00:00Z"
+        let activity = VitalDBRecorderActivityObservation(
+            windowSeconds: 60,
+            messageCount: 120,
+            byteCount: 4_096,
+            roomCount: 2,
+            firstSeenAt: observedAt,
+            lastSeenAt: observedAt,
+            messagesPerSecond: 2,
+            bytesPerSecond: 68
+        )
+        let observation = VitalDBObservationDocument(
+            observedAt: observedAt,
+            ready: true,
+            recorderOnlineThresholdSeconds: 120,
+            recorders: [
+                VitalDBRecorderObservation(
+                    vrcode: "vr-001",
+                    ip: "10.0.0.10",
+                    lastSeenAt: observedAt,
+                    version: "1.0",
+                    info: "recorder",
+                    config: "default",
+                    online: true,
+                    activity: activity
+                )
+            ],
+            beds: [
+                VitalDBBedObservation(
+                    bedID: "bed-001",
+                    name: "OR-1",
+                    vrcode: "vr-001",
+                    lastSeenAt: observedAt,
+                    patientConnected: true,
+                    online: true
+                )
+            ],
+            proxyConnections: [
+                VitalDBProxyConnectionObservation(
+                    observedAt: observedAt,
+                    remoteAddress: "10.0.0.20",
+                    requestURI: "/socket.io",
+                    status: "101",
+                    websocketHandshake: true
+                )
+            ],
+            anomalies: [
+                VitalDBAnomalyObservation(
+                    id: "anomaly-001",
+                    kind: .staleRecorder,
+                    severity: .warning,
+                    observedAt: observedAt,
+                    subject: "vr-001",
+                    message: "stale recorder"
+                )
+            ]
+        )
+        viewModel.status = RuntimeStatus(
+            runtimeInstalled: true,
+            vmServiceLoaded: true,
+            proxyServiceLoaded: true,
+            guestLogSyncServiceLoaded: true,
+            sleepPreventionServiceLoaded: true,
+            watchdogServiceLoaded: true,
+            runtimeState: .healthy,
+            operation: .none,
+            statusMessage: "healthy",
+            updatedAt: observedAt,
+            startedAt: observedAt,
+            runtimeVersion: "2026.05.30",
+            latestBackup: "/backups/latest.tar.gz",
+            vmState: .running,
+            vmIP: "192.168.64.2",
+            guestHTTP: "200",
+            hostProxyHTTP: "200",
+            runtimeControlHTTP: "200",
+            runtimeControlStartedAt: observedAt,
+            redisUIHTTP: "200",
+            swaggerUIHTTP: "200",
+            cpuUsagePercent: 12.5,
+            memory: ResourceUsage(usedBytes: 512 * 1024 * 1024, totalBytes: 2 * 1024 * 1024 * 1024),
+            systemDisk: ResourceUsage(usedBytes: 10 * 1024 * 1024, totalBytes: 100 * 1024 * 1024),
+            dataStorage: ResourceUsage(usedBytes: 20 * 1024 * 1024, totalBytes: 200 * 1024 * 1024),
+            proxyPort: 8080,
+            vitalDBObservation: observation
+        )
+        viewModel.vitalRecorders = RuntimeVitalRecorderHistory(observations: [observation])
+        viewModel.vitalRelationships = RuntimeVitalRelationshipHistory(readError: "relationship projection delayed")
+        viewModel.runtimeEvents = RuntimeEventHistory(events: [
+            RuntimeEventDocument(
+                id: "event-001",
+                eventType: .statusChanged,
+                timestamp: observedAt,
+                product: "VitalServer",
+                status: .healthy,
+                previousStatus: .degraded,
+                operation: .watchdog,
+                message: "runtime recovered",
+                runtimeVersion: "2026.05.30",
+                failureReasons: [],
+                vitalDBObservation: observation,
+                progress: nil
+            )
+        ], matchingCount: 1)
+        viewModel.runtimeEventsLast24HoursCount = 1
+        viewModel.backups = [RuntimeBackup(path: "/backups/backup-001.tar.gz", sizeBytes: 1024)]
+        viewModel.selectedBackupPath = "/backups/backup-001.tar.gz"
+        viewModel.setCustomAdvertisedURL(true)
+        viewModel.settings.publicHost = "vital.example.test"
+        viewModel.settings.publicPort = 8443
+        viewModel.settings.changeAdminPassword = true
+        viewModel.settings.adminPassword = "secret"
+        viewModel.selectedBundleURL = URL(fileURLWithPath: "/tmp/update-bundle.tar.gz")
+        viewModel.selectedBundleSummary = "bundle summary"
+        viewModel.selectedBundleVerification = "verification passed"
+        viewModel.selectedBundleVerified = true
+        viewModel.logText = "runtime log line\nwatchdog recovered"
+        viewModel.releaseInfo = RuntimeReleaseInfo(
+            helperVersion: "1.0",
+            minimumUpdaterVersion: "1.0",
+            vitalServerVersion: "2026.05.30",
+            services: [
+                RuntimeBundledServiceInfo(name: "vitalserver", image: "vitalserver:latest", version: "2026.05.30")
+            ]
+        )
+        viewModel.testKitStatus = RuntimeTestKitStatus(
+            enabled: true,
+            state: .running,
+            serviceName: "testkit",
+            apiBaseURL: "http://127.0.0.1:18081",
+            recorderTargetURL: "http://127.0.0.1",
+            sessions: [testKitSession(id: "session-001", state: "running", bedRoomNames: ["OR-1"])],
+            beds: [RuntimeTestKitBed(roomName: "OR-1", bedID: "bed-001")]
+        )
+    }
+
+    private func render<V: View>(
+        _ view: V,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let host = NSHostingView(rootView: view)
+        host.frame = NSRect(x: 0, y: 0, width: 1_100, height: 900)
+        host.layoutSubtreeIfNeeded()
+        XCTAssertGreaterThan(host.fittingSize.width, 0, file: file, line: line)
+    }
 }
 
 private extension RuntimeControlCapabilities {
@@ -496,15 +775,24 @@ private final class FakeTestKitController: RuntimeTestKitControlling {
     var status = RuntimeTestKitStatus(enabled: true, state: .running)
     var startedRequests: [RuntimeTestKitVirtualRecorderStartRequest] = []
     var resetBedsCount = 0
+    var resetSessionsCount = 0
     var deletedBedRequests: [RuntimeTestKitDeleteBedsRequest] = []
+    var stoppedSessionIDs: [String?] = []
+    var pausedSessionIDs: [String?] = []
+    var resumedSessionIDs: [String?] = []
+    var restartedSessionIDs: [String?] = []
+    var deletedSessionIDs: [String?] = []
+    var deletedRecorderVRCodes: [String] = []
 
     func loadTestKitStatus() async -> RuntimeTestKitStatus {
         status
     }
 
     func createTestKitBeds(_ request: RuntimeTestKitCreateBedsRequest) async throws -> [RuntimeTestKitBed] {
-        let beds = (0..<(request.count ?? request.roomNames.count)).map { index in
-            RuntimeTestKitBed(roomName: "OR-\(index + 1)", bedID: "bed-\(index + 1)")
+        let count = request.count ?? request.roomNames.count
+        let prefix = request.prefix
+        let beds = (0..<count).map { index in
+            RuntimeTestKitBed(roomName: "\(prefix)-\(index + 1)", bedID: "bed-\(index + 1)")
         }
         status.beds = beds
         return beds
@@ -538,27 +826,45 @@ private final class FakeTestKitController: RuntimeTestKitControlling {
     }
 
     func stopVirtualRecorders(sessionID: String?) async throws -> RuntimeTestKitSession? {
-        nil
+        stoppedSessionIDs.append(sessionID)
+        return session(for: sessionID, state: "stopped")
     }
 
     func pauseVirtualRecorders(sessionID: String?) async throws -> RuntimeTestKitSession? {
-        nil
+        pausedSessionIDs.append(sessionID)
+        return session(for: sessionID, state: "paused")
     }
 
     func resumeVirtualRecorders(sessionID: String?) async throws -> RuntimeTestKitSession? {
-        nil
+        resumedSessionIDs.append(sessionID)
+        return session(for: sessionID, state: "running")
     }
 
     func restartVirtualRecorders(sessionID: String?, bedRoomNames: [String]) async throws -> RuntimeTestKitSession? {
-        nil
+        restartedSessionIDs.append(sessionID)
+        let session = testKitSession(
+            id: "session-restarted-\(restartedSessionIDs.count)",
+            state: "running",
+            bedRoomNames: bedRoomNames
+        )
+        status.sessions.append(session)
+        status.activeSession = session
+        return session
     }
 
     func deleteVirtualRecorders(sessionID: String?) async throws -> RuntimeTestKitSession? {
-        nil
+        deletedSessionIDs.append(sessionID)
+        let deleted = session(for: sessionID, state: "deleted")
+        if let sessionID {
+            status.sessions.removeAll { $0.id == sessionID }
+        }
+        status.activeSession = status.sessions.first
+        return deleted
     }
 
     func deleteVirtualRecorder(vrcode: String) async throws -> RuntimeTestKitRecorderDeletion {
-        RuntimeTestKitRecorderDeletion(
+        deletedRecorderVRCodes.append(vrcode)
+        return RuntimeTestKitRecorderDeletion(
             vrcode: vrcode,
             targetURL: "http://example.test",
             deleted: true
@@ -566,9 +872,24 @@ private final class FakeTestKitController: RuntimeTestKitControlling {
     }
 
     func resetVirtualRecorders() async throws -> RuntimeTestKitStatus {
+        resetSessionsCount += 1
         status.sessions = []
         status.activeSession = nil
         return status
+    }
+
+    private func session(for sessionID: String?, state: String) -> RuntimeTestKitSession? {
+        guard let sessionID else {
+            return nil
+        }
+        if let existing = status.sessions.first(where: { $0.id == sessionID }) {
+            return testKitSession(
+                id: existing.id,
+                state: state,
+                bedRoomNames: existing.bedRoomNames
+            )
+        }
+        return testKitSession(id: sessionID, state: state, bedRoomNames: ["OR-A"])
     }
 }
 
