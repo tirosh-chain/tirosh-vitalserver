@@ -105,7 +105,7 @@ struct RuntimeArtifactReplacer {
         let listOutput = temporaryDirectory
             .appendingPathComponent("tirosh-\(UUID().uuidString)-tar-list.txt")
         defer {
-            try? removeItem(listOutput)
+            removeTemporaryValidationOutput(listOutput)
         }
         try runProcessToFile(Constants.Commands.tar, ["-tzf", source.path], listOutput)
         let entries = try readUTF8Text(listOutput)
@@ -134,7 +134,7 @@ struct RuntimeArtifactReplacer {
         let verboseOutput = temporaryDirectory
             .appendingPathComponent("tirosh-\(UUID().uuidString)-tar-verbose.txt")
         defer {
-            try? removeItem(verboseOutput)
+            removeTemporaryValidationOutput(verboseOutput)
         }
         try runProcessToFile(Constants.Commands.tar, ["-tvzf", source.path], verboseOutput)
         let verboseText = try readUTF8Text(verboseOutput)
@@ -147,6 +147,14 @@ struct RuntimeArtifactReplacer {
                     "tar.gz must not contain links: \(source.lastPathComponent)"
                 )
             }
+        }
+    }
+
+    private func removeTemporaryValidationOutput(_ url: URL) {
+        do {
+            try removeItem(url)
+        } catch {
+            log("artifact validation temporary file cleanup failed path=\(url.path) error=\(error)")
         }
     }
 

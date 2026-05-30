@@ -124,6 +124,36 @@ final class RuntimeArtifactReplacerTests: XCTestCase {
         }
     }
 
+    func testReplaceLogsValidationTemporaryFileCleanupFailures() throws {
+        var outputs: [URL: String] = [:]
+        var logs: [String] = []
+        let replacer = makeReplacer(
+            outputs: { outputs },
+            removeItem: { url in
+                if url.path.hasPrefix("/tmp/tirosh-") {
+                    throw CocoaError(.fileWriteNoPermission)
+                }
+            },
+            runProcessToFile: { _, arguments, output in
+                if arguments.first == "-tzf" {
+                    outputs[output] = "VitalServer Helper.app/Contents/Info.plist\n"
+                } else {
+                    outputs[output] = "-rw-r--r-- 0 user group 0 Jan 1 00:00 VitalServer Helper.app/Contents/Info.plist\n"
+                }
+            },
+            log: { logs.append($0) }
+        )
+
+        try replacer.replace([
+            UpdateBundleArtifact(name: "app-bundle.tar.gz", type: .appBundle, sha256: "abc", size: 10),
+        ], stagedBundle: URL(fileURLWithPath: "/bundle"))
+
+        XCTAssertEqual(
+            logs.filter { $0.contains("artifact validation temporary file cleanup failed") }.count,
+            2
+        )
+    }
+
     private func makeReplacer(
         outputs: @escaping () -> [URL: String],
         fileSize: @escaping (URL) throws -> UInt64 = { _ in 10 },
