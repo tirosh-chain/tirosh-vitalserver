@@ -25,6 +25,39 @@ final class ProcessStateTests: XCTestCase {
         XCTAssertEqual(fileStore.removed, [pidFile])
     }
 
+    func testRemovePidFileLogsRemovalFailure() {
+        let fileStore = RuntimeFileStoreSpy()
+        let pidFile = URL(fileURLWithPath: "/runtime/run/vitalserver-vm.pid")
+        fileStore.files[pidFile] = Data("123\n".utf8)
+        fileStore.removeItemError = CocoaError(.fileWriteNoPermission)
+        var logs: [String] = []
+
+        ProcessState.removePidFile(pidFile, fileStore: fileStore, log: { logs.append($0) })
+
+        XCTAssertEqual(fileStore.files[pidFile], Data("123\n".utf8))
+        XCTAssertTrue(logs.contains { $0.contains("failed to remove VM process pid file") })
+        XCTAssertTrue(logs.contains { $0.contains(pidFile.path) })
+    }
+
+    func testWaitUntilStoppedLogsStalePidRemovalFailure() throws {
+        let fileStore = RuntimeFileStoreSpy()
+        let pidFile = URL(fileURLWithPath: "/runtime/run/vitalserver-vm.pid")
+        fileStore.files[pidFile] = Data("123\n".utf8)
+        fileStore.removeItemError = CocoaError(.fileWriteNoPermission)
+        var logs: [String] = []
+
+        try ProcessState.waitUntilStopped(
+            pidFile: pidFile,
+            fileStore: fileStore,
+            timeoutSeconds: 1,
+            pollIntervalSeconds: 0.001,
+            processExists: { _ in false },
+            log: { logs.append($0) }
+        )
+
+        XCTAssertTrue(logs.contains { $0.contains("failed to remove VM process pid file") })
+    }
+
     func testWaitUntilStoppedRemovesStalePidFile() throws {
         let fileStore = RuntimeFileStoreSpy()
         let pidFile = URL(fileURLWithPath: "/runtime/run/vitalserver-vm.pid")

@@ -18,9 +18,14 @@ enum ProcessState {
 
     static func removePidFile(
         _ pidFile: URL,
-        fileStore: RuntimeFileWriting = SystemRuntimeFileStore()
+        fileStore: RuntimeFileWriting = SystemRuntimeFileStore(),
+        log: (String) -> Void = { print($0) }
     ) {
-        try? fileStore.removeItem(at: pidFile)
+        do {
+            try fileStore.removeItem(at: pidFile)
+        } catch {
+            log("failed to remove VM process pid file pidFile=\(pidFile.path) error=\(error)")
+        }
     }
 
     static func status(
@@ -91,7 +96,7 @@ enum ProcessState {
 
         guard processExists(pid) else {
             log("VM process pid file is stale; removing pidFile=\(pidFile.path)")
-            removePidFile(pidFile, fileStore: fileStore)
+            removePidFile(pidFile, fileStore: fileStore, log: log)
             return
         }
 
@@ -101,7 +106,7 @@ enum ProcessState {
             let errorNumber = errno
             if errorNumber == ESRCH {
                 log("VM process already stopped pid=\(pid); removing pidFile=\(pidFile.path)")
-                removePidFile(pidFile, fileStore: fileStore)
+                removePidFile(pidFile, fileStore: fileStore, log: log)
                 return
             }
             throw LauncherError.runtimeOperationFailed(
@@ -114,7 +119,8 @@ enum ProcessState {
             fileStore: fileStore,
             timeoutSeconds: timeoutSeconds,
             pollIntervalSeconds: pollIntervalSeconds,
-            processExists: processExists
+            processExists: processExists,
+            log: log
         )
     }
 
@@ -140,7 +146,7 @@ enum ProcessState {
 
         guard processExists(pid) else {
             log("VM process pid file is stale before forced stop; removing pidFile=\(pidFile.path)")
-            removePidFile(pidFile, fileStore: fileStore)
+            removePidFile(pidFile, fileStore: fileStore, log: log)
             return
         }
 
@@ -150,7 +156,7 @@ enum ProcessState {
             let errorNumber = errno
             if errorNumber == ESRCH {
                 log("VM process already stopped before forced stop pid=\(pid); removing pidFile=\(pidFile.path)")
-                removePidFile(pidFile, fileStore: fileStore)
+                removePidFile(pidFile, fileStore: fileStore, log: log)
                 return
             }
             throw LauncherError.runtimeOperationFailed(
@@ -163,7 +169,8 @@ enum ProcessState {
             fileStore: fileStore,
             timeoutSeconds: timeoutSeconds,
             pollIntervalSeconds: pollIntervalSeconds,
-            processExists: processExists
+            processExists: processExists,
+            log: log
         )
     }
 
@@ -172,7 +179,8 @@ enum ProcessState {
         fileStore: RuntimeFileReading & RuntimeFileWriting = SystemRuntimeFileStore(),
         timeoutSeconds: TimeInterval,
         pollIntervalSeconds: TimeInterval = 0.5,
-        processExists: (pid_t) -> Bool = defaultProcessExists
+        processExists: (pid_t) -> Bool = defaultProcessExists,
+        log: (String) -> Void = { print($0) }
     ) throws {
         let deadline = Date().addingTimeInterval(timeoutSeconds)
         while true {
@@ -186,7 +194,7 @@ enum ProcessState {
                 throw LauncherError.runtimeOperationFailed(message)
             }
             guard processExists(pid) else {
-                removePidFile(pidFile, fileStore: fileStore)
+                removePidFile(pidFile, fileStore: fileStore, log: log)
                 return
             }
             guard Date() < deadline else {
