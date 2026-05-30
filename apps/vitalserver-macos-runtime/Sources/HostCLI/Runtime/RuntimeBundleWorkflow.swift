@@ -244,11 +244,23 @@ struct RuntimeBundleWorkflow {
         fileExists(url) ? try fileSize(url) : 0
     }
 
+    func prepareApplyBundleLogs() {
+        do {
+            try operations.fileStore.createDirectory(at: context.logsDirectory, withIntermediateDirectories: true)
+        } catch {
+            operations.log("bundle apply log directory preparation failed error=\(error)")
+        }
+        do {
+            try operations.rotateRuntimeLogs()
+        } catch {
+            operations.log("bundle apply log rotation failed error=\(error)")
+        }
+    }
+
     private func runtimeApplyBundleRunner() -> RuntimeApplyBundleRunner {
         RuntimeApplyBundleRunner(
             prepareLogs: {
-                try? operations.fileStore.createDirectory(at: context.logsDirectory, withIntermediateDirectories: true)
-                try? operations.rotateRuntimeLogs()
+                prepareApplyBundleLogs()
             },
             initialHealthSnapshot: operations.runtimeHealthSnapshot,
             preparePreflight: prepareApplyBundlePreflight,

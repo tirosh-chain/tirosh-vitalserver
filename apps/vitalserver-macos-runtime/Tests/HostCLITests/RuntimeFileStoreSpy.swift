@@ -9,6 +9,7 @@ final class RuntimeFileStoreSpy: RuntimeFileStore {
     var directories: Set<URL> = []
     var removed: [URL] = []
     var childDirectoriesError: Error?
+    var createDirectoryError: Error?
 
     func fileExists(_ url: URL) -> Bool {
         files[url] != nil
@@ -53,6 +54,9 @@ final class RuntimeFileStoreSpy: RuntimeFileStore {
     }
 
     func createDirectory(at url: URL, withIntermediateDirectories: Bool) throws {
+        if let createDirectoryError {
+            throw createDirectoryError
+        }
         directories.insert(url)
     }
 
