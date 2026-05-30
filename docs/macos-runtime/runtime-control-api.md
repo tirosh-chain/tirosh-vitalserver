@@ -149,6 +149,11 @@ activity, 초당 message/byte rate를 포함합니다.
 바뀔 때 `vitaldb-observed` frame을 보냅니다. 각 frame의 `id` 값은 `vitaldb-observation`, `data` 값은
 JSON encoded `VitalDBObservationDocument` 또는 `null`입니다.
 
+`GET /runtime/overview`는 `vitalDBObservationSnapshot`에 최신 observation read 상태를 함께 싣습니다.
+`state`는 `loaded`, `unavailable`, `failed` 중 하나이며, `observation`이 `null`일 때 단순 미관측인지
+read failure인지 구분하기 위한 API-facing metadata입니다. `/vitaldb/observations/latest` 자체는 기존
+호환성을 위해 `VitalDBObservationDocument` 또는 `null` payload를 유지합니다.
+
 `GET /vitaldb/recorders`는 runtime observability SQLite에 저장된 VitalDB observation snapshot들을
 `vrcode` 기준으로 집계한 `RuntimeVitalRecorderHistory`를 반환합니다. `vrcode`는 recorder identity key이며,
 IP는 마지막 관측 주소일 뿐 identity로 쓰지 않습니다. 이 read model은 접속했었던 VRecorder 목록, last IP,

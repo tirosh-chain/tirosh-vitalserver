@@ -39,10 +39,8 @@ struct RuntimeHealthChecker {
     }
 
     func snapshot() -> RuntimeHealthSnapshot {
-        let loadedGuestState = guestRuntimeState()
-        let guestRuntimeStateFreshness = guestRuntimeStateFreshness(loadedGuestState)
-        let guestRuntimeStateFresh = guestRuntimeStateFreshness.isFresh
-        let guestState = guestRuntimeStateFresh ? loadedGuestState : nil
+        let guestRuntimeState = guestRuntimeStateObservationReader().read()
+        let guestState = guestRuntimeState.freshState
         let vmIP = guestState?.vmIP
         let proxyPortRead = installedProxyPortRead()
         let proxyPort = proxyPortRead.port
@@ -64,15 +62,15 @@ struct RuntimeHealthChecker {
             proxyPort: proxyPort,
             hostProxyHTTP: hostProxyHTTP,
             guestHTTP: guestHTTPRead.status,
-            guestRuntimeStatePresent: loadedGuestState != nil,
-            guestRuntimeStateFresh: guestRuntimeStateFresh,
+            guestRuntimeStatePresent: guestRuntimeState.isPresent,
+            guestRuntimeStateFresh: guestRuntimeState.isFresh,
             redisUIHTTP: redisUIHTTP,
             swaggerUIHTTP: swaggerUIHTTP,
             containerObservation: containerObservation,
             vitalDBObservation: guestState?.vitalDBObservation,
             reportedVMErrors: [],
             configurationFailureReasons: proxyPortRead.failureReasons
-                + guestRuntimeStateFreshness.failureReasons
+                + guestRuntimeState.failureReasons
                 + guestHTTPRead.failureReasons,
             proxyPortFailureReasons: proxyPortFailureReasons(port: proxyPort),
             guestBootstrapFailureReason: guestBootstrapFailureReason()
@@ -127,23 +125,14 @@ struct RuntimeHealthChecker {
         return RuntimeProxyPortReadResult(port: port, failureReasons: [])
     }
 
-    func guestRuntimeState() -> GuestRuntimeStateDocument? {
-        guestGateway.loadRuntimeState()
-    }
-
-    private func guestRuntimeStateFreshness(_ guestState: GuestRuntimeStateDocument?) -> RuntimeGuestStateFreshness {
-        guard guestState != nil else {
-            return RuntimeGuestStateFreshness(isFresh: true, failureReasons: [])
-        }
-        do {
-            let modifiedAt = try fileStore.modificationDate(installedPaths.runtimeState)
-            return RuntimeGuestStateFreshness(
-                isFresh: now().timeIntervalSince(modifiedAt) <= Constants.Runtime.runtimeStateStaleAfterSeconds,
-                failureReasons: []
-            )
-        } catch {
-            return RuntimeGuestStateFreshness(isFresh: false, failureReasons: [.guestRuntimeStateInvalid])
-        }
+    private func guestRuntimeStateObservationReader() -> RuntimeGuestRuntimeStateObservationReader {
+        RuntimeGuestRuntimeStateObservationReader(
+            guestGateway: guestGateway,
+            fileStore: fileStore,
+            runtimeStateURL: installedPaths.runtimeState,
+            staleAfterSeconds: Constants.Runtime.runtimeStateStaleAfterSeconds,
+            now: now
+        )
     }
 
     func readTrimmed(_ url: URL) -> String? {
@@ -170,7 +159,7 @@ struct RuntimeHealthChecker {
     }
 
     private func guestBootstrapFailureReason() -> RuntimeFailureReason? {
-        if let bootstrapResult = guestGateway.loadBootstrapResult() {
+        if case .loaded(let bootstrapResult) = guestGateway.loadBootstrapResultDocument() {
             return GuestBootstrapEvaluator.failureReason(bootstrapResult)
         }
         return nil
@@ -314,11 +303,6 @@ private struct RuntimeProxyPortReadResult {
 
 private struct RuntimeGuestHTTPReadResult {
     let status: String
-    let failureReasons: [RuntimeFailureReason]
-}
-
-private struct RuntimeGuestStateFreshness {
-    let isFresh: Bool
     let failureReasons: [RuntimeFailureReason]
 }
 

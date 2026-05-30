@@ -8,34 +8,29 @@ struct RuntimeStatusWriter {
     let runtimeVersion: () -> String
     let healthSnapshot: () -> RuntimeHealthSnapshot
     let latestBackup: () -> URL?
-    let projectVitalDBObservation: (VitalDBObservationDocument) -> Void
 
     init(
         reporter: RuntimeStatusReporter,
         timestamp: @escaping () -> String,
         runtimeVersion: @escaping () -> String,
         healthSnapshot: @escaping () -> RuntimeHealthSnapshot,
-        latestBackup: @escaping () -> URL?,
-        projectVitalDBObservation: @escaping (VitalDBObservationDocument) -> Void = { _ in }
+        latestBackup: @escaping () -> URL?
     ) {
         self.reporter = reporter
         self.timestamp = timestamp
         self.runtimeVersion = runtimeVersion
         self.healthSnapshot = healthSnapshot
         self.latestBackup = latestBackup
-        self.projectVitalDBObservation = projectVitalDBObservation
     }
 
+    @discardableResult
     func writeStatus(
         _ status: RuntimeStatusLevel,
         operation: RuntimeOperation,
         message: String,
         progress: RuntimeProgressDocument? = nil
-    ) throws {
+    ) throws -> RuntimeHealthSnapshot {
         let snapshot = healthSnapshot()
-        if let vitalDBObservation = snapshot.vitalDBObservation {
-            projectVitalDBObservation(vitalDBObservation)
-        }
         try reporter.writeStatus(
             status,
             operation: operation,
@@ -46,6 +41,7 @@ struct RuntimeStatusWriter {
             latestBackup: latestBackup(),
             progress: progress
         )
+        return snapshot
     }
 
     func writeProgress(

@@ -32,20 +32,21 @@ final class RuntimeLifecycleProgressEventTests: XCTestCase {
             message: "step started: stop-runtime-services"
         ))
 
-        let events = JSONLRuntimeEventRepository(url: installedPaths.runtimeEvents).all()
+        let eventRead = JSONLRuntimeEventRepository(url: installedPaths.runtimeEvents).allResult()
 
-        XCTAssertEqual(events.count, 1)
-        XCTAssertEqual(events.first?.eventType, .progressUpdated)
-        XCTAssertEqual(events.first?.status, .updating)
-        XCTAssertEqual(events.first?.operation, .applyBundle)
-        XCTAssertEqual(events.first?.progress?.step, .stopRuntimeServices)
-        XCTAssertEqual(events.first?.progress?.stepStatus, .started)
+        XCTAssertTrue(eventRead.issues.isEmpty)
+        XCTAssertEqual(eventRead.events.count, 1)
+        XCTAssertEqual(eventRead.events.first?.eventType, .progressUpdated)
+        XCTAssertEqual(eventRead.events.first?.status, .updating)
+        XCTAssertEqual(eventRead.events.first?.operation, .applyBundle)
+        XCTAssertEqual(eventRead.events.first?.progress?.step, .stopRuntimeServices)
+        XCTAssertEqual(eventRead.events.first?.progress?.stepStatus, .started)
     }
 }
 
 private struct MissingRuntimeStatusRepository: RuntimeStatusRepository {
-    func load() -> RuntimeStatusDocument? {
-        nil
+    func loadResult() -> RuntimeStatusDocumentLoadResult {
+        .missing
     }
 
     func save(_: RuntimeStatusDocument) throws {}

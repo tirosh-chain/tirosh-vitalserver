@@ -6,6 +6,92 @@ import HostInfrastructure
 import XCTest
 
 final class RuntimeHealthCheckerTests: XCTestCase {
+    func testGuestRuntimeStateObservationReaderKeepsFreshLoadedState() {
+        let installedPaths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
+        let fileStore = RuntimeFileStoreSpy()
+        fileStore.modificationDates[installedPaths.runtimeState] = Date(timeIntervalSince1970: 1_800_000_000)
+        let guestGateway = RuntimeGuestGatewaySpy()
+        guestGateway.runtimeState = GuestRuntimeStateDocument(
+            vmIP: "192.168.64.2",
+            updatedAt: "2026-05-24T00:00:00Z",
+            guestHTTP: "200",
+            redisUIHTTP: "200",
+            swaggerUIHTTP: "200"
+        )
+        let reader = RuntimeGuestRuntimeStateObservationReader(
+            guestGateway: guestGateway,
+            fileStore: fileStore,
+            runtimeStateURL: installedPaths.runtimeState,
+            staleAfterSeconds: 60,
+            now: { Date(timeIntervalSince1970: 1_800_000_030) }
+        )
+
+        let observation = reader.read()
+
+        XCTAssertEqual(observation.loadedState?.vmIP, "192.168.64.2")
+        XCTAssertEqual(observation.freshState?.vmIP, "192.168.64.2")
+        XCTAssertTrue(observation.isPresent)
+        XCTAssertTrue(observation.isFresh)
+        XCTAssertTrue(observation.failureReasons.isEmpty)
+    }
+
+    func testGuestRuntimeStateObservationReaderKeepsLoadedButSuppressesStaleState() {
+        let installedPaths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
+        let fileStore = RuntimeFileStoreSpy()
+        fileStore.modificationDates[installedPaths.runtimeState] = Date(timeIntervalSince1970: 1_800_000_000)
+        let guestGateway = RuntimeGuestGatewaySpy()
+        guestGateway.runtimeState = GuestRuntimeStateDocument(
+            vmIP: "192.168.64.2",
+            updatedAt: "2026-05-24T00:00:00Z",
+            guestHTTP: "200",
+            redisUIHTTP: "200",
+            swaggerUIHTTP: "200"
+        )
+        let reader = RuntimeGuestRuntimeStateObservationReader(
+            guestGateway: guestGateway,
+            fileStore: fileStore,
+            runtimeStateURL: installedPaths.runtimeState,
+            staleAfterSeconds: 60,
+            now: { Date(timeIntervalSince1970: 1_800_000_061) }
+        )
+
+        let observation = reader.read()
+
+        XCTAssertEqual(observation.loadedState?.vmIP, "192.168.64.2")
+        XCTAssertNil(observation.freshState)
+        XCTAssertTrue(observation.isPresent)
+        XCTAssertFalse(observation.isFresh)
+        XCTAssertTrue(observation.failureReasons.isEmpty)
+    }
+
+    func testGuestRuntimeStateObservationReaderReportsLoadedStateMTimeFailure() {
+        let installedPaths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
+        let fileStore = RuntimeFileStoreSpy()
+        let guestGateway = RuntimeGuestGatewaySpy()
+        guestGateway.runtimeState = GuestRuntimeStateDocument(
+            vmIP: "192.168.64.2",
+            updatedAt: "2026-05-24T00:00:00Z",
+            guestHTTP: "200",
+            redisUIHTTP: "200",
+            swaggerUIHTTP: "200"
+        )
+        let reader = RuntimeGuestRuntimeStateObservationReader(
+            guestGateway: guestGateway,
+            fileStore: fileStore,
+            runtimeStateURL: installedPaths.runtimeState,
+            staleAfterSeconds: 60,
+            now: { Date(timeIntervalSince1970: 1_800_000_030) }
+        )
+
+        let observation = reader.read()
+
+        XCTAssertEqual(observation.loadedState?.vmIP, "192.168.64.2")
+        XCTAssertNil(observation.freshState)
+        XCTAssertTrue(observation.isPresent)
+        XCTAssertFalse(observation.isFresh)
+        XCTAssertEqual(observation.failureReasons, [.guestRuntimeStateInvalid])
+    }
+
     func testSnapshotReadsRuntimeStateThroughPorts() {
         let installedPaths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
         let fileStore = RuntimeFileStoreSpy()
@@ -151,6 +237,37 @@ final class RuntimeHealthCheckerTests: XCTestCase {
         XCTAssertTrue(snapshot.failureReasons.contains(.guestRuntimeStateInvalid))
         XCTAssertTrue(snapshot.failureReasons.contains(.guestHTTP(RuntimeHTTPStatusText.missingGuestHTTP)))
         XCTAssertEqual(snapshot.vmState, .unreachable)
+    }
+
+    func testSnapshotReportsGuestRuntimeStateReadFailureAsInvalid() {
+        let installedPaths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
+        let fileStore = RuntimeFileStoreSpy()
+        fileStore.files[URL(fileURLWithPath: Constants.InstallPaths.vmBin)] = Data()
+        fileStore.files[URL(fileURLWithPath: Constants.InstallPaths.proxyRun)] = Data()
+        fileStore.files[installedPaths.runtimeDirectory.appendingPathComponent(Constants.Artifacts.rootfsBase)] = Data()
+        fileStore.files[installedPaths.runtimeDirectory.appendingPathComponent(Constants.BootAssets.disk)] = Data()
+
+        let commandRunner = RuntimeCommandRunnerSpy()
+        commandRunner.results[Constants.Commands.plistBuddy] = RuntimeProcessResult(exitCode: 0, stdout: "80\n", stderr: "")
+        let serviceManager = RuntimeServiceManagerSpy()
+        serviceManager.states = [.vm: .loaded, .proxy: .loaded, .watchdog: .loaded]
+        let guestGateway = RuntimeGuestGatewaySpy()
+        guestGateway.runtimeStateResult = .failed("runtime-state unreadable")
+
+        let checker = RuntimeHealthChecker(
+            installedPaths: installedPaths,
+            fileStore: fileStore,
+            serviceManager: serviceManager,
+            commandRunner: commandRunner,
+            httpProber: RuntimeHTTPProberSpy(),
+            guestGateway: guestGateway
+        )
+
+        let snapshot = checker.snapshot()
+
+        XCTAssertNil(snapshot.vmIP)
+        XCTAssertEqual(snapshot.guestHTTP, RuntimeHTTPStatusText.missingVMIP)
+        XCTAssertTrue(snapshot.failureReasons.contains(.guestRuntimeStateInvalid))
     }
 
     func testSnapshotReportsInvalidHostProxyPortConfig() {
@@ -563,10 +680,14 @@ private final class RuntimeServiceManagerSpy: RuntimeServiceManager {
 
 private final class RuntimeGuestGatewaySpy: RuntimeGuestGateway {
     var runtimeState: GuestRuntimeStateDocument?
+    var runtimeStateResult: RuntimeGuestDocumentLoadResult<GuestRuntimeStateDocument>?
     var bootstrapResult: GuestBootstrapResultDocument?
 
     func loadRuntimeStateDocument() -> RuntimeGuestDocumentLoadResult<GuestRuntimeStateDocument> {
-        runtimeState.map(RuntimeGuestDocumentLoadResult.loaded) ?? .missing
+        if let runtimeStateResult {
+            return runtimeStateResult
+        }
+        return runtimeState.map(RuntimeGuestDocumentLoadResult.loaded) ?? .missing
     }
 
     func loadBootstrapResultDocument() -> RuntimeGuestDocumentLoadResult<GuestBootstrapResultDocument> {

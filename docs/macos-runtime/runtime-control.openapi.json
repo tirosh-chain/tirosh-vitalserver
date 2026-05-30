@@ -1651,10 +1651,51 @@
               }
             ]
           },
+          "vitalDBObservationSnapshot": {
+            "$ref": "#/components/schemas/RuntimeVitalDBObservationSnapshot"
+          },
           "vitalRecorder": {
             "$ref": "#/components/schemas/RuntimeVitalRecorderSummary"
           }
         }
+      },
+      "RuntimeVitalDBObservationSnapshot": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Explicit latest VitalDB observation read state. observation remains null when the observability read path has no latest snapshot or failed before producing one.",
+        "properties": {
+          "state": {
+            "$ref": "#/components/schemas/RuntimeVitalDBObservationReadState"
+          },
+          "observation": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/VitalDBObservationDocument"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "readError": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "RuntimeVitalDBObservationReadState": {
+        "type": "string",
+        "enum": [
+          "loaded",
+          "unavailable",
+          "failed"
+        ]
       },
       "RuntimeVitalRecorderSummary": {
         "type": "object",

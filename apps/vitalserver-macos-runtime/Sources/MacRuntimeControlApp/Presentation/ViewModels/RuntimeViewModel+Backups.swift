@@ -62,17 +62,20 @@ extension RuntimeViewModel {
             message = AppConstants.StatusText.actionUnavailable
             return
         }
-        guard let selectedBackupPath else {
-            message = AppConstants.StatusText.missingBackup
+        let plan: RuntimeViewModelBackupActionPlan
+        switch RuntimeViewModelBackupActionPlanner().rollbackPlan(selectedBackupPath: selectedBackupPath) {
+        case .success(let actionPlan):
+            plan = actionPlan
+        case .failure(let failure):
+            message = failure.message
             return
         }
-        let backupURL = URL(fileURLWithPath: selectedBackupPath)
         _ = await runClientAction(
             preparingMessage: AppConstants.StatusText.rollbackPreparing,
             waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
             runningMessage: AppConstants.StatusText.rollbackRunning,
             successMessage: AppConstants.StatusText.rollbackCompleted,
-            action: { try await self.hostClient.rollbackRuntime(backupURL: backupURL) }
+            action: { try await self.hostClient.rollbackRuntime(backupURL: plan.backupURL) }
         )
         await refresh()
         await refreshHealthStatus()
@@ -83,20 +86,15 @@ extension RuntimeViewModel {
             message = AppConstants.StatusText.actionUnavailable
             return
         }
-        guard let selectedBackupPath else {
-            message = AppConstants.StatusText.missingBackup
-            return
-        }
-        guard let backupsPath = installationInfo.backupsPath else {
-            message = AppConstants.StatusText.notReported
-            return
-        }
-        let backupURL = URL(fileURLWithPath: selectedBackupPath)
-        guard backupSelectionPolicy.isManagedBackupURL(
-            backupURL,
-            backupsRoot: URL(fileURLWithPath: backupsPath)
-        ) else {
-            message = AppConstants.StatusText.invalidBackup
+        let plan: RuntimeViewModelBackupActionPlan
+        switch RuntimeViewModelBackupActionPlanner().deletePlan(
+            selectedBackupPath: selectedBackupPath,
+            backupsPath: installationInfo.backupsPath
+        ) {
+        case .success(let actionPlan):
+            plan = actionPlan
+        case .failure(let failure):
+            message = failure.message
             return
         }
         let didDelete = await runClientAction(
@@ -104,7 +102,7 @@ extension RuntimeViewModel {
             waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
             runningMessage: AppConstants.StatusText.backupDeleteRunning,
             successMessage: AppConstants.StatusText.backupDeleted,
-            action: { try await self.hostClient.deleteBackup(url: backupURL) }
+            action: { try await self.hostClient.deleteBackup(url: plan.backupURL) }
         )
         if didDelete {
             self.selectedBackupPath = nil

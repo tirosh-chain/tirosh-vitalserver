@@ -72,6 +72,31 @@ final class JSONLRuntimeEventRepositoryTests: XCTestCase {
         XCTAssertFalse(message.isEmpty)
     }
 
+    func testQueryCarriesInvalidLineIssueWithoutDroppingValidEvents() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let url = directory.appendingPathComponent(RuntimeFileNames.runtimeEvents)
+        let repository = JSONLRuntimeEventRepository(url: url)
+        try repository.append(event(id: "event-1", status: .healthy))
+        let handle = try FileHandle(forWritingTo: url)
+        defer {
+            try? handle.close()
+        }
+        try handle.seekToEnd()
+        handle.write(Data("{invalid-json}\n".utf8))
+
+        let page = repository.query(RuntimeEventQuery(limit: 10))
+
+        XCTAssertEqual(page.events.map(\.id), ["event-1"])
+        XCTAssertEqual(page.matchingCount, 1)
+        XCTAssertNotNil(page.readError)
+        XCTAssertTrue(page.readError?.contains("invalidLine") == true)
+    }
+
     func testAllResultReportsUnreadableEventLog() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)

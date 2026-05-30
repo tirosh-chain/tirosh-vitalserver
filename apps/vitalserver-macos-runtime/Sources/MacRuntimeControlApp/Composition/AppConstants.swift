@@ -32,51 +32,6 @@ enum AppConstants {
         }
     }
 
-    enum SettingsLimits {
-        static let minimumCPUCount = 7
-        static let maximumCPUCount = 64
-        static let minimumSystemCPUCountForDynamicLimit = 8
-        static var maximumAllowedCPUCount: Int {
-            let systemCPUCount = ProcessInfo.processInfo.processorCount
-            guard systemCPUCount >= minimumSystemCPUCountForDynamicLimit else {
-                return minimumCPUCount
-            }
-            return min(maximumCPUCount, systemCPUCount)
-        }
-        static let defaultDiskGiB = 32
-        static let minimumDiskGiB = 4
-        static let maximumDiskGiB = 512
-        static let diskStepGiB = 4
-        static let minimumMemoryGiB = 4
-        static let maximumMemoryGiB = 64
-        static let reservedHostMemoryGiB = 4
-        static let memoryStepGiB = 4
-        static var maximumAllowedMemoryGiB: Int {
-            let physicalMemoryGiB = Int(ProcessInfo.processInfo.physicalMemory / 1_073_741_824)
-            let hostAwareMaximum = physicalMemoryGiB - reservedHostMemoryGiB
-            let cappedMaximum = min(maximumMemoryGiB, hostAwareMaximum)
-            let steppedMaximum = (cappedMaximum / memoryStepGiB) * memoryStepGiB
-            return max(minimumMemoryGiB, steppedMaximum)
-        }
-        static let minimumRedisBackupRetentionCount = 1
-        static let maximumRedisBackupRetentionCount = 30
-        static let redisBackupRetentionStep = 1
-    }
-
-    enum ServiceVersions {
-        static let vitalServerImage = GeneratedRelease.vitalServerImage
-        static let redisImage = GeneratedRelease.redisImage
-        static let redisUIImage = GeneratedRelease.redisUIImage
-        static let swaggerUIImage = GeneratedRelease.swaggerUIImage
-        static let guestEdgeImage = GeneratedRelease.guestEdgeImage
-        static let hostProxy = GeneratedRelease.hostProxyImage
-        static let redisVersion = GeneratedRelease.redisVersion
-        static let redisUIVersion = GeneratedRelease.redisUIVersion
-        static let swaggerUIVersion = GeneratedRelease.swaggerUIVersion
-        static let guestEdgeVersion = GeneratedRelease.guestEdgeVersion
-        static let hostProxyVersion = GeneratedRelease.hostProxyVersion
-    }
-
     enum Labels {
         static let sectionStatus = "Status"
         static let sectionRecorders = "Recorders"
@@ -314,61 +269,6 @@ enum AppConstants {
         static func openServiceHelp(_ serviceName: String) -> String {
             "Open \(serviceName)"
         }
-    }
-
-    enum Values {
-        static let boolTrue = "true"
-        static let boolFalse = "false"
-        static let empty = "-"
-        static let unlimited = "Unlimited"
-    }
-
-    enum Actions {
-        static let healthCheck = "Health Check"
-        static let open = "Open"
-        static let openVitalFilesDirectory = "Open Vital Files Directory"
-        static let refresh = "Refresh"
-        static let repairProxy = "Repair Proxy"
-        static let repairProxyPort = "Repair Proxy Port"
-        static let repairDatastore = "Repair Data Store"
-        static let repairVMDisk = "Repair VM Disk"
-        static let repairRuntimeServices = "Repair Runtime Services"
-        static let uninstall = "Uninstall"
-        static let standardUninstall = "Uninstall..."
-        static let cleanUninstall = "Clean Uninstall..."
-        static let vmRootfsUpdate = "VM/rootfs Update"
-        static let applySettings = "Apply"
-        static let chooseDirectory = "Choose..."
-        static let chooseBundle = "Choose Bundle"
-        static let verifyBundle = "Verify"
-        static let applyBundle = "Apply Bundle"
-        static let rollback = "Rollback"
-        static let createRedisBackup = "Create Redis Backup"
-        static let restoreRedisBackup = "Restore Redis Backup"
-        static let deleteBackup = "Delete Backup"
-        static let checkRecorders = "Check Recorders"
-        static let openBackups = "Open Backups"
-        static let openLogs = "Open Logs"
-        static let exportLogs = "Export Logs"
-        static let start = "Start"
-        static let pause = "Pause"
-        static let resume = "Resume"
-        static let stop = "Stop"
-        static let restart = "Restart"
-        static let create = "Create"
-        static let delete = "Delete"
-        static let deleteVRecorder = "Delete VRecorder"
-        static let reset = "Reset"
-        static let startRuntimeServices = "Start Runtime Services"
-        static let stopRuntimeServices = "Stop Runtime Services"
-        static let startUpdate = "Start Update"
-        static let startRollback = "Start Rollback"
-        static let ok = "OK"
-        static let cancel = "Cancel"
-        static let createFolder = "Create Folder"
-        static let continueAction = "Continue"
-        static let back = "Back"
-        static let install = "Install"
     }
 
     enum StatusText {
@@ -839,15 +739,6 @@ enum AppConstants {
                 .replacingOccurrences(of: "_", with: " ")
                 .capitalized
         }
-    }
-
-    enum Notifications {
-        static let needsAttentionTitle = "VitalServer needs attention"
-        static let criticalTitle = "VitalServer is critical"
-        static let recoveredTitle = "VitalServer recovered"
-        static let needsAttentionBody = "Open VitalServer Helper to review runtime health details."
-        static let criticalBody = "VitalServer runtime requires administrator attention."
-        static let recoveredBody = "All monitored runtime services are healthy again."
     }
 
 }

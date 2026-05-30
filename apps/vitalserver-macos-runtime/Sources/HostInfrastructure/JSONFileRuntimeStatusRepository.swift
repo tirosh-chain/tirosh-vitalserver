@@ -2,24 +2,11 @@ import Foundation
 import Core
 import Contracts
 
-public enum RuntimeStatusDocumentLoadResult: Equatable {
-    case missing
-    case loaded(RuntimeStatusDocument)
-    case failed(String)
-}
-
 public struct JSONFileRuntimeStatusRepository: RuntimeStatusRepository {
     public let url: URL
 
     public init(url: URL) {
         self.url = url
-    }
-
-    public func load() -> RuntimeStatusDocument? {
-        guard case .loaded(let document) = loadResult() else {
-            return nil
-        }
-        return document
     }
 
     public func loadResult() -> RuntimeStatusDocumentLoadResult {

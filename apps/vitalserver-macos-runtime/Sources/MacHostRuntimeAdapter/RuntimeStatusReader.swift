@@ -7,11 +7,6 @@ import HostInfrastructure
 protocol RuntimeStatusReading: Sendable {
     func loadStatus(settings: RuntimeSettings) -> RuntimeStatus
     func loadHealthStatus(settings: RuntimeSettings) async -> RuntimeStatus
-    func loadRuntimeEvents(limit: Int) -> RuntimeEventHistory
-    func loadRuntimeEvents(query: RuntimeEventQuery) -> RuntimeEventHistory
-    func loadVitalDBObservation() -> VitalDBObservationDocument?
-    func loadVitalDBRecorders() -> RuntimeVitalRecorderHistory
-    func loadVitalDBRelationships() -> RuntimeVitalRelationshipHistory
 }
 
 struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
@@ -47,136 +42,24 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
     }
 
     func loadBaseStatus(configuredProxyPort: Int = RuntimeAdapterConstants.Product.defaultProxyPort) -> RuntimeStatus {
-        let statusRepository = JSONFileRuntimeStatusRepository(url: URL(fileURLWithPath: paths.runtimeStatus))
-        let loadResult = statusRepository.loadResult()
-        let document: RuntimeStatusDocument?
-        let statusDocumentError: String?
-        switch loadResult {
-        case .loaded(let loadedDocument):
-            document = loadedDocument
-            statusDocumentError = nil
-        case .missing:
-            document = nil
-            statusDocumentError = nil
-        case .failed(let message):
-            document = nil
-            statusDocumentError = message
-        }
-        let guestStateResult = guestRuntimeStateDocument(paths.runtimeState)
-        let guestState: GuestRuntimeStateDocument?
-        let guestRuntimeStateError: String?
-        switch guestStateResult {
-        case .loaded(let loadedDocument):
-            guestState = loadedDocument
-            guestRuntimeStateError = nil
-        case .missing:
-            guestState = nil
-            guestRuntimeStateError = nil
-        case .failed(let message):
-            guestState = nil
-            guestRuntimeStateError = message
-        }
-        let containerObservation = document?.containerObservation
-        let startedAt = containerObservation?.composeServices.first { $0.service == "app" }?.startedAt
-        let runtimeInstalled = fileStore.isExecutableFile(atPath: paths.launcher)
-        let vmServiceLoaded = loaded(document?.vmService) ?? launchdLoaded(.vm)
+        let statusRead = RuntimeStatusDocumentReader(
+            url: URL(fileURLWithPath: paths.runtimeStatus)
+        ).load()
+        let guestStateRead = GuestRuntimeStateDocumentReader(
+            path: paths.runtimeState,
+            fileStore: fileStore
+        ).load()
+        let liveDiagnostics = RuntimeLiveDiagnosticsReader(
+            paths: paths,
+            isExecutableFile: { fileStore.isExecutableFile(atPath: $0) },
+            launchdLoaded: launchdLoaded
+        ).load(statusDocument: statusRead.document)
 
-        return RuntimeStatus(
-            runtimeInstalled: runtimeInstalled,
-            vmServiceLoaded: vmServiceLoaded,
-            proxyServiceLoaded: loaded(document?.proxyService) ?? launchdLoaded(.proxy),
-            guestLogSyncServiceLoaded: launchdLoaded(.guestLogSync),
-            sleepPreventionServiceLoaded: launchdLoaded(.sleepPrevention),
-            watchdogServiceLoaded: loaded(document?.watchdogService) ?? launchdLoaded(.watchdog),
-            runtimeState: document.map { RuntimeState(rawValue: $0.status.rawValue) },
-            operation: document?.operation,
-            statusMessage: document?.message,
-            statusDocumentError: statusDocumentError,
-            updatedAt: document?.updatedAt,
-            startedAt: startedAt,
-            runtimeVersion: document?.runtimeVersion,
-            latestBackup: document?.latestBackup,
-            vmState: document?.vmState,
-            vmErrors: document?.vmErrors,
-            vmIP: document?.vmIP,
-            guestHTTP: document?.guestHTTP,
-            hostProxyHTTP: document?.hostProxyHTTP,
-            redisUIHTTP: document?.redisUIHTTP,
-            swaggerUIHTTP: document?.swaggerUIHTTP,
-            cpuUsagePercent: guestState?.cpuUsagePercent,
-            memory: guestState?.memory,
-            systemDisk: guestState?.systemDisk,
-            dataStorage: guestState?.vitalFilesDisk,
-            guestRuntimeStateError: guestRuntimeStateError,
-            proxyPort: document?.proxyPort ?? configuredProxyPort,
-            failureReasons: document?.failureReasons ?? [],
-            progress: document?.progress,
-            containerObservation: containerObservation,
-            vitalDBObservation: document?.vitalDBObservation
-        )
-    }
-
-    func loadRuntimeEvents(limit: Int) -> RuntimeEventHistory {
-        loadRuntimeEvents(query: RuntimeEventQuery(limit: limit))
-    }
-
-    func loadRuntimeEvents(query: RuntimeEventQuery) -> RuntimeEventHistory {
-        let repository = CompositeRuntimeEventRepository(
-            primary: JSONLRuntimeEventRepository(url: URL(fileURLWithPath: paths.runtimeEvents)),
-            secondary: SQLiteRuntimeEventRepository(url: URL(fileURLWithPath: paths.runtimeObservabilityDB))
-        )
-        let page = repository.query(query)
-        return RuntimeEventHistory(
-            events: page.events,
-            nextCursor: page.nextCursor.map(RuntimeEventCursorWireCodec.encode),
-            matchingCount: page.matchingCount
-        )
-    }
-
-    func loadVitalDBObservation() -> VitalDBObservationDocument? {
-        SQLiteRuntimeObservabilityStore(
-            url: URL(fileURLWithPath: paths.runtimeObservabilityDB)
-        ).latestVitalDBObservation()
-    }
-
-    func loadVitalDBRecorders() -> RuntimeVitalRecorderHistory {
-        let store = SQLiteRuntimeObservabilityStore(
-            url: URL(fileURLWithPath: paths.runtimeObservabilityDB)
-        )
-        var readErrors: [String] = []
-        var observations: [VitalDBObservationDocument]
-        do {
-            observations = try store.loadVitalDBObservations()
-        } catch {
-            observations = []
-            readErrors.append("observations=\(String(describing: error))")
-        }
-        if let latestStatusObservation = loadBaseStatus().vitalDBObservation,
-           !observations.contains(where: { $0.observedAt == latestStatusObservation.observedAt }) {
-            observations.append(latestStatusObservation)
-        }
-        let activityBuckets: [VitalDBRecorderActivityBucketRecord]
-        do {
-            activityBuckets = try store.loadVitalDBRecorderActivityBuckets()
-        } catch {
-            activityBuckets = []
-            readErrors.append("activityBuckets=\(String(describing: error))")
-        }
-        return RuntimeVitalRecorderHistory(
-            observations: observations,
-            activityBuckets: activityBuckets,
-            activityHistory: RuntimeVitalRecorderActivityHistory.fromProjection(
-                activityBuckets,
-                readError: readErrors.isEmpty ? nil : readErrors.joined(separator: ";")
-            )
-        )
-    }
-
-    func loadVitalDBRelationships() -> RuntimeVitalRelationshipHistory {
-        let store = SQLiteRuntimeObservabilityStore(url: URL(fileURLWithPath: paths.runtimeObservabilityDB))
-        return RuntimeVitalRelationshipHistory(
-            assignments: store.vitalDBBedAssignments().map(RuntimeVitalBedAssignmentRecord.init),
-            events: store.vitalDBRelationshipEvents().map(RuntimeVitalRelationshipEventRecord.init)
+        return RuntimeBaseStatusAssembler.makeStatus(
+            configuredProxyPort: configuredProxyPort,
+            statusRead: statusRead,
+            guestStateRead: guestStateRead,
+            liveDiagnostics: liveDiagnostics
         )
     }
 
@@ -191,7 +74,15 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
 
     private func withDataDirectoryMetrics(_ status: RuntimeStatus, settings: RuntimeSettings) -> RuntimeStatus {
         var next = status
-        next.dataStorage = storageUsageProvider.storageUsage(for: settings.vitalFilesDirectory) ?? next.dataStorage
+        switch storageUsageProvider.storageUsage(for: settings.vitalFilesDirectory) {
+        case .loaded(let usage):
+            next.dataStorage = usage
+            next.dataStorageError = nil
+        case .unavailable:
+            next.dataStorageError = nil
+        case .failed(let message):
+            next.dataStorageError = message
+        }
         do {
             next.dataDirectoryStats = try dataDirectoryStats(for: settings.vitalFilesDirectory)
             next.dataDirectoryStatsError = nil
@@ -229,26 +120,6 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
         return (fileCount, sizeBytes)
     }
 
-    private func guestRuntimeStateDocument(_ path: String) -> GuestRuntimeStateLoadResult {
-        let url = URL(fileURLWithPath: path)
-        guard fileStore.fileExists(url) else {
-            return .missing
-        }
-        do {
-            let data = try fileStore.readData(url)
-            return try .loaded(JSONDecoder().decode(GuestRuntimeStateDocument.self, from: data))
-        } catch {
-            return .failed(error.localizedDescription)
-        }
-    }
-
-    private func loaded(_ value: RuntimeServiceState?) -> Bool? {
-        guard let value else {
-            return nil
-        }
-        return value.isLoaded
-    }
-
     private func launchdLoaded(_ service: RuntimeManagedService) -> Bool {
         ProcessRunner.runSync(
             RuntimeAdapterConstants.Commands.launchctl,
@@ -258,73 +129,124 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
 
 }
 
-private enum GuestRuntimeStateLoadResult {
-    case missing
-    case loaded(GuestRuntimeStateDocument)
-    case failed(String)
+private struct RuntimeStatusDocumentRead {
+    let document: RuntimeStatusDocument?
+    let error: String?
 }
 
-private extension RuntimeVitalBedAssignmentRecord {
-    init(_ record: VitalDBBedAssignmentRecord) {
-        self.init(
-            assignmentID: record.id,
-            bedID: record.bedID,
-            bedName: record.bedName,
-            vrcode: record.vrcode,
-            startedAt: record.startedAt,
-            endedAt: record.endedAt,
-            lastSeenAt: record.lastSeenAt,
-            lastObservedAt: record.lastObservedAt,
-            status: RuntimeVitalBedStatus(rawValue: record.status) ?? .unknown,
-            patientConnected: record.patientConnected,
-            observationCount: record.observationCount
-        )
-    }
+private struct GuestRuntimeStateRead {
+    let document: GuestRuntimeStateDocument?
+    let error: String?
 }
 
-private extension RuntimeVitalRelationshipEventRecord {
-    init(_ record: VitalDBRelationshipEventRecord) {
-        self.init(
-            eventID: record.id,
-            observedAt: record.observedAt,
-            eventType: RuntimeVitalRelationshipEventType(record.eventType),
-            severity: RuntimeVitalRelationshipSeverity(record.severity),
-            bedID: record.bedID,
-            bedName: record.bedName,
-            vrcode: record.vrcode,
-            previousVrcode: record.previousVrcode,
-            previousBedID: record.previousBedID,
-            message: record.message
-        )
-    }
+private struct RuntimeLiveDiagnostics {
+    let runtimeInstalled: Bool
+    let vmServiceLoaded: Bool
+    let proxyServiceLoaded: Bool
+    let guestLogSyncServiceLoaded: Bool
+    let sleepPreventionServiceLoaded: Bool
+    let watchdogServiceLoaded: Bool
 }
 
-private extension RuntimeVitalRelationshipEventType {
-    init(_ eventType: VitalDBRelationshipEventType) {
-        switch eventType {
-        case .handoff:
-            self = .handoff
-        case .duplicateAssignment:
-            self = .duplicateAssignment
-        case .unlinkedBed:
-            self = .unlinkedBed
-        case .unlinkedRecorder:
-            self = .unlinkedRecorder
-        case .staleLink:
-            self = .staleLink
+private struct RuntimeStatusDocumentReader {
+    let url: URL
+
+    func load() -> RuntimeStatusDocumentRead {
+        switch JSONFileRuntimeStatusRepository(url: url).loadResult() {
+        case .loaded(let document):
+            RuntimeStatusDocumentRead(document: document, error: nil)
+        case .missing:
+            RuntimeStatusDocumentRead(document: nil, error: nil)
+        case .failed(let message):
+            RuntimeStatusDocumentRead(document: nil, error: message)
         }
     }
 }
 
-private extension RuntimeVitalRelationshipSeverity {
-    init(_ severity: VitalDBRelationshipSeverity) {
-        switch severity {
-        case .info:
-            self = .info
-        case .warning:
-            self = .warning
-        case .critical:
-            self = .critical
+private struct GuestRuntimeStateDocumentReader {
+    let path: String
+    let fileStore: RuntimeFileStore
+
+    func load() -> GuestRuntimeStateRead {
+        let url = URL(fileURLWithPath: path)
+        guard fileStore.fileExists(url) else {
+            return GuestRuntimeStateRead(document: nil, error: nil)
         }
+        do {
+            let data = try fileStore.readData(url)
+            let document = try JSONDecoder().decode(GuestRuntimeStateDocument.self, from: data)
+            return GuestRuntimeStateRead(document: document, error: nil)
+        } catch {
+            return GuestRuntimeStateRead(document: nil, error: error.localizedDescription)
+        }
+    }
+}
+
+private struct RuntimeLiveDiagnosticsReader {
+    let paths: RuntimePaths
+    let isExecutableFile: (String) -> Bool
+    let launchdLoaded: (RuntimeManagedService) -> Bool
+
+    func load(statusDocument document: RuntimeStatusDocument?) -> RuntimeLiveDiagnostics {
+        RuntimeLiveDiagnostics(
+            runtimeInstalled: isExecutableFile(paths.launcher),
+            vmServiceLoaded: serviceLoaded(document?.vmService) ?? launchdLoaded(.vm),
+            proxyServiceLoaded: serviceLoaded(document?.proxyService) ?? launchdLoaded(.proxy),
+            guestLogSyncServiceLoaded: launchdLoaded(.guestLogSync),
+            sleepPreventionServiceLoaded: launchdLoaded(.sleepPrevention),
+            watchdogServiceLoaded: serviceLoaded(document?.watchdogService) ?? launchdLoaded(.watchdog)
+        )
+    }
+
+    private func serviceLoaded(_ value: RuntimeServiceState?) -> Bool? {
+        value?.isLoaded
+    }
+}
+
+private enum RuntimeBaseStatusAssembler {
+    static func makeStatus(
+        configuredProxyPort: Int,
+        statusRead: RuntimeStatusDocumentRead,
+        guestStateRead: GuestRuntimeStateRead,
+        liveDiagnostics: RuntimeLiveDiagnostics
+    ) -> RuntimeStatus {
+        let document = statusRead.document
+        let guestState = guestStateRead.document
+        let containerObservation = document?.containerObservation
+        let startedAt = containerObservation?.composeServices.first { $0.service == "app" }?.startedAt
+
+        return RuntimeStatus(
+            runtimeInstalled: liveDiagnostics.runtimeInstalled,
+            vmServiceLoaded: liveDiagnostics.vmServiceLoaded,
+            proxyServiceLoaded: liveDiagnostics.proxyServiceLoaded,
+            guestLogSyncServiceLoaded: liveDiagnostics.guestLogSyncServiceLoaded,
+            sleepPreventionServiceLoaded: liveDiagnostics.sleepPreventionServiceLoaded,
+            watchdogServiceLoaded: liveDiagnostics.watchdogServiceLoaded,
+            runtimeState: document.map { RuntimeState(rawValue: $0.status.rawValue) },
+            operation: document?.operation,
+            statusMessage: document?.message,
+            statusDocumentError: statusRead.error,
+            updatedAt: document?.updatedAt,
+            startedAt: startedAt,
+            runtimeVersion: document?.runtimeVersion,
+            latestBackup: document?.latestBackup,
+            vmState: document?.vmState,
+            vmErrors: document?.vmErrors,
+            vmIP: document?.vmIP,
+            guestHTTP: document?.guestHTTP,
+            hostProxyHTTP: document?.hostProxyHTTP,
+            redisUIHTTP: document?.redisUIHTTP,
+            swaggerUIHTTP: document?.swaggerUIHTTP,
+            cpuUsagePercent: guestState?.cpuUsagePercent,
+            memory: guestState?.memory,
+            systemDisk: guestState?.systemDisk,
+            dataStorage: guestState?.vitalFilesDisk,
+            guestRuntimeStateError: guestStateRead.error,
+            proxyPort: document?.proxyPort ?? configuredProxyPort,
+            failureReasons: document?.failureReasons ?? [],
+            progress: document?.progress,
+            containerObservation: containerObservation,
+            vitalDBObservation: document?.vitalDBObservation
+        )
     }
 }

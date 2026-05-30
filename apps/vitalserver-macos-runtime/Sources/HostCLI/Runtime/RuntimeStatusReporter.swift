@@ -4,6 +4,7 @@ import Contracts
 
 enum RuntimeStatusReporterError: Error, Equatable {
     case missingStatusDocumentForProgress
+    case statusDocumentReadFailed(String)
 }
 
 struct RuntimeStatusReporter {
@@ -22,11 +23,18 @@ struct RuntimeStatusReporter {
     }
 
     func statusValue() -> String? {
-        repository.load()?.status.rawValue
+        loadStatus()?.status.rawValue
+    }
+
+    func loadStatusResult() -> RuntimeStatusDocumentLoadResult {
+        repository.loadResult()
     }
 
     func loadStatus() -> RuntimeStatusDocument? {
-        repository.load()
+        guard case .loaded(let document) = repository.loadResult() else {
+            return nil
+        }
+        return document
     }
 
     func writeStatus(
@@ -67,8 +75,14 @@ struct RuntimeStatusReporter {
         runtimeVersion: String,
         latestBackup: URL?
     ) throws {
-        guard let current = repository.load() else {
+        let current: RuntimeStatusDocument
+        switch repository.loadResult() {
+        case .loaded(let document):
+            current = document
+        case .missing:
             throw RuntimeStatusReporterError.missingStatusDocumentForProgress
+        case .failed(let message):
+            throw RuntimeStatusReporterError.statusDocumentReadFailed(message)
         }
         let document = RuntimeStatusDocument(
             schemaVersion: current.schemaVersion,

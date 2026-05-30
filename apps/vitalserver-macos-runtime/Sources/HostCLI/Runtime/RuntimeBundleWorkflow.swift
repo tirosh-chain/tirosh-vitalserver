@@ -24,8 +24,7 @@ struct RuntimeBundleWorkflowOperations {
     let clearGuestShutdownPreparation: () throws -> Void
     let isLaunchdLoaded: (RuntimeManagedService) -> Bool
     let createBackup: (String) throws -> URL
-    let writeRuntimeStatus: (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void
-    let writeRuntimeProgress: (RuntimeStepExecutionEvent) throws -> Void
+    let statusReporter: RuntimeWorkflowStatusReporter
     let pruneOldRuntimeArtifacts: () throws -> Void
     let reasonText: ([RuntimeFailureReason]) -> String
     let requireFreeSpace: (URL, UInt64, RuntimeOperation) throws -> Void
@@ -277,11 +276,9 @@ struct RuntimeBundleWorkflow {
                 try operations.rollback(backup)
             },
             startRuntimeServices: operations.startRuntimeServices,
-            writeStatus: operations.writeRuntimeStatus,
-            writeProgress: operations.writeRuntimeProgress,
+            statusReporter: operations.statusReporter,
             pruneOldRuntimeArtifacts: operations.pruneOldRuntimeArtifacts,
-            reasonText: operations.reasonText,
-            log: operations.log
+            reasonText: operations.reasonText
         )
     }
 

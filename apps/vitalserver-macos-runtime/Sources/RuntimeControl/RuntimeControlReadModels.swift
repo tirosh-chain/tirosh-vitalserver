@@ -1,5 +1,4 @@
 import Contracts
-import Core
 import Foundation
 
 public struct RuntimeBackup: Codable, Identifiable, Hashable, Sendable {
@@ -129,15 +128,18 @@ public struct RuntimeEventHistory: Codable, Equatable, Sendable {
     public let events: [RuntimeEventDocument]
     public let nextCursor: String?
     public let matchingCount: Int?
+    public let readError: String?
 
     public init(
         events: [RuntimeEventDocument],
         nextCursor: String? = nil,
-        matchingCount: Int? = nil
+        matchingCount: Int? = nil,
+        readError: String? = nil
     ) {
         self.events = events
         self.nextCursor = nextCursor
         self.matchingCount = matchingCount
+        self.readError = readError
     }
 }
 
@@ -412,8 +414,7 @@ public struct RuntimeVitalRecorderHistory: Codable, Equatable, Sendable {
                 builder.observe(
                     recorder: recorder,
                     bed: bedsByRecorder[recorder.vrcode],
-                    observedAt: observation.observedAt,
-                    includeSnapshotActivity: activityBuckets == nil
+                    observedAt: observation.observedAt
                 )
                 builders[recorder.vrcode] = builder
             }
@@ -482,7 +483,9 @@ public struct RuntimeVitalRecorderHistory: Codable, Equatable, Sendable {
             updatedAt: latestObservation.observedAt,
             recorders: records,
             beds: beds,
-            activityHistory: activityHistory ?? .fromProjection(activityBuckets ?? [])
+            activityHistory: activityHistory
+                ?? activityBuckets.map { RuntimeVitalRecorderActivityHistory.fromProjection($0) }
+                ?? .unavailable()
         )
     }
 }
@@ -631,13 +634,16 @@ public struct RuntimeVitalRelationshipEventRecord: Codable, Equatable, Identifia
 public struct RuntimeVitalRelationshipHistory: Codable, Equatable, Sendable {
     public let assignments: [RuntimeVitalBedAssignmentRecord]
     public let events: [RuntimeVitalRelationshipEventRecord]
+    public let readError: String?
 
     public init(
         assignments: [RuntimeVitalBedAssignmentRecord] = [],
-        events: [RuntimeVitalRelationshipEventRecord] = []
+        events: [RuntimeVitalRelationshipEventRecord] = [],
+        readError: String? = nil
     ) {
         self.assignments = assignments
         self.events = events
+        self.readError = readError
     }
 }
 
@@ -814,13 +820,11 @@ private struct RecorderBuilder {
     var firstSeenAt: String?
     var lastSeenAt: String?
     var observationCount = 0
-    var activityTimeline: [RuntimeVitalRecorderActivityPoint] = []
 
     mutating func observe(
         recorder: VitalDBRecorderObservation,
         bed: VitalDBBedObservation?,
-        observedAt: String,
-        includeSnapshotActivity: Bool = true
+        observedAt: String
     ) {
         observationCount += 1
         let seenAt = recorder.lastSeenAt ?? observedAt
@@ -831,20 +835,6 @@ private struct RecorderBuilder {
         bedID = bed?.bedID ?? bedID
         bedName = bed?.name ?? bedName
         patientConnected = bed?.patientConnected ?? patientConnected
-        if includeSnapshotActivity, let activity = recorder.activity {
-            activityTimeline.append(
-                RuntimeVitalRecorderActivityPoint(
-                    observedAt: observedAt,
-                    windowSeconds: activity.windowSeconds,
-                    messageCount: activity.messageCount,
-                    byteCount: activity.byteCount,
-                    roomCount: activity.roomCount,
-                    messagesPerSecond: activity.messagesPerSecond,
-                    bytesPerSecond: activity.bytesPerSecond,
-                    buckets: activity.buckets
-                )
-            )
-        }
     }
 
     func record(
@@ -867,7 +857,7 @@ private struct RecorderBuilder {
             currentAnomalyCount: currentAnomalies.count,
             latestAnomalySeverity: currentAnomalies.sorted { $0.observedAt > $1.observedAt }.first?.severity,
             presentInLatestObservation: latestRecorder != nil,
-            activityTimeline: projectedActivityTimeline ?? activityTimeline.sorted { $0.observedAt < $1.observedAt }
+            activityTimeline: projectedActivityTimeline ?? []
         )
     }
 
@@ -958,12 +948,60 @@ private struct BedBuilder {
     }
 }
 
+public enum RuntimeVitalDBObservationReadState: String, Codable, Equatable, Sendable {
+    case loaded
+    case unavailable
+    case failed
+}
+
+public struct RuntimeVitalDBObservationSnapshot: Codable, Equatable, Sendable {
+    public let state: RuntimeVitalDBObservationReadState
+    public let observation: VitalDBObservationDocument?
+    public let readError: String?
+
+    public init(
+        state: RuntimeVitalDBObservationReadState,
+        observation: VitalDBObservationDocument? = nil,
+        readError: String? = nil
+    ) {
+        self.state = state
+        self.observation = observation
+        self.readError = readError
+    }
+
+    public static func loaded(_ observation: VitalDBObservationDocument) -> Self {
+        Self(state: .loaded, observation: observation)
+    }
+
+    public static func unavailable(readError: String? = nil) -> Self {
+        Self(state: .unavailable, readError: readError)
+    }
+
+    public static func failed(readError: String) -> Self {
+        Self(state: .failed, readError: readError)
+    }
+
+    public static func fromOptional(
+        _ observation: VitalDBObservationDocument?,
+        readError: String? = nil
+    ) -> Self {
+        if let observation {
+            return loaded(observation)
+        }
+        if let readError {
+            return failed(readError: readError)
+        }
+        return unavailable()
+    }
+}
+
 public struct RuntimeControlOverview: Codable, Equatable, Sendable {
     public let status: RuntimeStatus
     public let settings: RuntimeSettings
     public let release: RuntimeReleaseInfo
     public let install: RuntimeInstallInfo
     public let vitalDBObservation: VitalDBObservationDocument?
+    public let vitalDBObservationSnapshot: RuntimeVitalDBObservationSnapshot
     public let vitalRecorder: RuntimeVitalRecorderSummary
 
     public init(
@@ -971,7 +1009,8 @@ public struct RuntimeControlOverview: Codable, Equatable, Sendable {
         settings: RuntimeSettings,
         release: RuntimeReleaseInfo,
         install: RuntimeInstallInfo,
-        vitalDBObservation: VitalDBObservationDocument? = nil
+        vitalDBObservation: VitalDBObservationDocument? = nil,
+        vitalDBObservationSnapshot: RuntimeVitalDBObservationSnapshot? = nil
     ) {
         let observation = vitalDBObservation ?? status.vitalDBObservation
         self.status = status
@@ -979,6 +1018,7 @@ public struct RuntimeControlOverview: Codable, Equatable, Sendable {
         self.release = release
         self.install = install
         self.vitalDBObservation = observation
+        self.vitalDBObservationSnapshot = vitalDBObservationSnapshot ?? .fromOptional(vitalDBObservation)
         self.vitalRecorder = RuntimeVitalRecorderSummary(status: status, vitalDBObservation: observation)
     }
 }

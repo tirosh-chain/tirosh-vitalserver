@@ -1,6 +1,5 @@
 import Foundation
 import RuntimeControl
-import Core
 
 public enum RuntimeControlHTTPMethod: String, CaseIterable, Codable, Equatable, Sendable {
     case get = "GET"

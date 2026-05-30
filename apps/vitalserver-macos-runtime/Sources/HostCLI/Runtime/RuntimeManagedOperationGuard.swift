@@ -36,7 +36,14 @@ struct RuntimeManagedOperationGuard {
     }
 
     private func activeStatusOperation() -> RuntimeOperation? {
-        guard let status = statusReporter.loadStatus() else {
+        let status: RuntimeStatusDocument
+        switch statusReporter.loadStatusResult() {
+        case .loaded(let document):
+            status = document
+        case .missing:
+            return nil
+        case .failed(let message):
+            log("watchdog active operation guard ignored status read failure error=\(message)")
             return nil
         }
         guard status.status == .installing || status.status == .updating || status.status == .recovering else {

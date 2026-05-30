@@ -32,7 +32,9 @@ final class JSONFileRuntimeGuestGatewayTests: XCTestCase {
         XCTAssertEqual(request["operation"] as? String, "activate-update")
         XCTAssertEqual(request["version"] as? String, "0.1.4")
 
-        let result = try XCTUnwrap(harness.gateway.loadUpdateActivationResult())
+        guard case .loaded(let result) = harness.gateway.loadUpdateActivationResultDocument() else {
+            return XCTFail("Expected loaded update activation result")
+        }
         XCTAssertEqual(result.schemaVersion, 2)
         XCTAssertEqual(result.requestId, "request-1")
         XCTAssertEqual(result.operation, .activateGuestUpdate)
@@ -67,7 +69,9 @@ final class JSONFileRuntimeGuestGatewayTests: XCTestCase {
         XCTAssertEqual(request["requestId"] as? String, "repair-1")
         XCTAssertEqual(request["operation"] as? String, "repair-datastore")
 
-        let result = try XCTUnwrap(harness.gateway.loadDatastoreRepairResult())
+        guard case .loaded(let result) = harness.gateway.loadDatastoreRepairResultDocument() else {
+            return XCTFail("Expected loaded datastore repair result")
+        }
         XCTAssertEqual(result.schemaVersion, 2)
         XCTAssertEqual(result.requestId, "repair-1")
         XCTAssertEqual(result.operation, .repairDatastore)
@@ -105,7 +109,9 @@ final class JSONFileRuntimeGuestGatewayTests: XCTestCase {
         XCTAssertEqual(request["operation"] as? String, "prepare-update-shutdown")
         XCTAssertEqual(request["version"] as? String, "0.1.4")
 
-        let result = try XCTUnwrap(harness.gateway.loadUpdateShutdownResult())
+        guard case .loaded(let result) = harness.gateway.loadUpdateShutdownResultDocument() else {
+            return XCTFail("Expected loaded update shutdown result")
+        }
         XCTAssertEqual(result.schemaVersion, 1)
         XCTAssertEqual(result.requestId, "shutdown-1")
         XCTAssertEqual(result.operation, .prepareUpdateShutdown)
@@ -147,10 +153,14 @@ final class JSONFileRuntimeGuestGatewayTests: XCTestCase {
             to: harness.bootstrapResultURL
         )
 
-        let state = try XCTUnwrap(harness.gateway.loadRuntimeState())
+        guard case .loaded(let state) = harness.gateway.loadRuntimeStateDocument() else {
+            return XCTFail("Expected loaded runtime state")
+        }
         XCTAssertEqual(state.vmIP, "192.168.64.2")
         XCTAssertEqual(state.guestHTTP, "200")
-        let bootstrapResult = try XCTUnwrap(harness.gateway.loadBootstrapResult())
+        guard case .loaded(let bootstrapResult) = harness.gateway.loadBootstrapResultDocument() else {
+            return XCTFail("Expected loaded bootstrap result")
+        }
         XCTAssertEqual(bootstrapResult.status, .failed)
         XCTAssertEqual(bootstrapResult.operation?.rawValue, "bootstrap")
         XCTAssertEqual(bootstrapResult.reasonCodes, [.guestBootstrapMissingRuntimePackages])
@@ -177,7 +187,6 @@ final class JSONFileRuntimeGuestGatewayTests: XCTestCase {
             return XCTFail("Expected failed update activation result load")
         }
         XCTAssertFalse(message.isEmpty)
-        XCTAssertNil(harness.gateway.loadUpdateActivationResult())
 
         try harness.cleanup()
     }

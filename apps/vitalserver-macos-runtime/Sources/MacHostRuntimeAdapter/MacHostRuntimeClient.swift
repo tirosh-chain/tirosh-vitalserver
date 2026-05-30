@@ -9,6 +9,7 @@ public struct MacHostRuntimeClient: RuntimeControlClient, RuntimeHostClient {
 
     private let releaseInfo: RuntimeReleaseInfo
     private let statusReader: RuntimeStatusReading
+    private let observabilityReader: RuntimeObservabilityReading
     private let fileReader: RuntimeHostFileReading
     private let settingsReader: RuntimeSettingsReading
     private let commandWorker: MacHostRuntimeCommandWorker
@@ -16,9 +17,11 @@ public struct MacHostRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     public init(
         releaseInfo: RuntimeReleaseInfo
     ) {
+        let paths = RuntimePaths()
         self.init(
             releaseInfo: releaseInfo,
-            statusReader: SystemRuntimeStatusReader(paths: RuntimePaths()),
+            statusReader: SystemRuntimeStatusReader(paths: paths),
+            observabilityReader: SystemRuntimeObservabilityReader(paths: paths),
             fileReader: SystemRuntimeHostFileReader(),
             settingsReader: SystemRuntimeSettingsReader(),
             commandWorker: MacHostRuntimeCommandWorker()
@@ -29,9 +32,11 @@ public struct MacHostRuntimeClient: RuntimeControlClient, RuntimeHostClient {
         releaseInfo: RuntimeReleaseInfo,
         commandWorker: MacHostRuntimeCommandWorker
     ) {
+        let paths = RuntimePaths()
         self.init(
             releaseInfo: releaseInfo,
-            statusReader: SystemRuntimeStatusReader(paths: RuntimePaths()),
+            statusReader: SystemRuntimeStatusReader(paths: paths),
+            observabilityReader: SystemRuntimeObservabilityReader(paths: paths),
             fileReader: SystemRuntimeHostFileReader(),
             settingsReader: SystemRuntimeSettingsReader(),
             commandWorker: commandWorker
@@ -41,12 +46,14 @@ public struct MacHostRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     init(
         releaseInfo: RuntimeReleaseInfo,
         statusReader: RuntimeStatusReading = SystemRuntimeStatusReader(paths: RuntimePaths()),
+        observabilityReader: RuntimeObservabilityReading = SystemRuntimeObservabilityReader(paths: RuntimePaths()),
         fileReader: RuntimeHostFileReading = SystemRuntimeHostFileReader(),
         settingsReader: RuntimeSettingsReading = SystemRuntimeSettingsReader(),
         commandWorker: MacHostRuntimeCommandWorker = MacHostRuntimeCommandWorker()
     ) {
         self.releaseInfo = releaseInfo
         self.statusReader = statusReader
+        self.observabilityReader = observabilityReader
         self.fileReader = fileReader
         self.settingsReader = settingsReader
         self.commandWorker = commandWorker
@@ -65,23 +72,23 @@ public struct MacHostRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     }
 
     public func loadRuntimeEvents(limit: Int) -> RuntimeEventHistory {
-        statusReader.loadRuntimeEvents(limit: limit)
+        observabilityReader.loadRuntimeEvents(limit: limit)
     }
 
     public func loadRuntimeEvents(query: RuntimeEventQuery) -> RuntimeEventHistory {
-        statusReader.loadRuntimeEvents(query: query)
+        observabilityReader.loadRuntimeEvents(query: query)
     }
 
     public func loadVitalDBObservation() -> VitalDBObservationDocument? {
-        statusReader.loadVitalDBObservation()
+        observabilityReader.loadVitalDBObservation()
     }
 
     public func loadVitalDBRecorders() -> RuntimeVitalRecorderHistory {
-        statusReader.loadVitalDBRecorders()
+        observabilityReader.loadVitalDBRecorders()
     }
 
     public func loadVitalDBRelationships() -> RuntimeVitalRelationshipHistory {
-        statusReader.loadVitalDBRelationships()
+        observabilityReader.loadVitalDBRelationships()
     }
 
     public func loadBackups(latestBackupPath: String?) throws -> [RuntimeBackup] {

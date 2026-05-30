@@ -884,8 +884,17 @@ export interface components {
             release?: components["schemas"]["RuntimeReleaseInfo"];
             install?: components["schemas"]["RuntimeInstallInfo"];
             vitalDBObservation?: components["schemas"]["VitalDBObservationDocument"] | null;
+            vitalDBObservationSnapshot?: components["schemas"]["RuntimeVitalDBObservationSnapshot"];
             vitalRecorder?: components["schemas"]["RuntimeVitalRecorderSummary"];
         };
+        /** @description Explicit latest VitalDB observation read state. observation remains null when the observability read path has no latest snapshot or failed before producing one. */
+        RuntimeVitalDBObservationSnapshot: {
+            state?: components["schemas"]["RuntimeVitalDBObservationReadState"];
+            observation?: components["schemas"]["VitalDBObservationDocument"] | null;
+            readError?: string | null;
+        };
+        /** @enum {string} */
+        RuntimeVitalDBObservationReadState: "loaded" | "unavailable" | "failed";
         /** @description PWA-friendly Vital Recorder summary derived from VitalDB observation. activeConnections is copied from audit-proxy connection status when available. */
         RuntimeVitalRecorderSummary: {
             source?: components["schemas"]["RuntimeVitalRecorderSummarySource"];

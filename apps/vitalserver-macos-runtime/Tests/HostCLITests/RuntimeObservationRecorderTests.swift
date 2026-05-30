@@ -37,7 +37,7 @@ private final class ObservationRecorderHarness {
     }
 }
 
-private final class InMemoryRuntimeEventRepository: RuntimeEventRepository {
+private final class InMemoryRuntimeEventRepository: RuntimeEventRecording {
     var events: [RuntimeEventDocument] = []
     var appendError: Error?
 
@@ -46,10 +46,6 @@ private final class InMemoryRuntimeEventRepository: RuntimeEventRepository {
             throw appendError
         }
         events.append(event)
-    }
-
-    func recent(limit: Int) -> [RuntimeEventDocument] {
-        Array(events.suffix(limit))
     }
 }
 

@@ -1,6 +1,5 @@
 import Foundation
 import Contracts
-import Core
 import MacHostRuntimeAdapter
 import RuntimeControl
 import RuntimeControlAPI
@@ -12,7 +11,7 @@ struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
     private let readWorker: MacHostRuntimeReadWorker
     private let localAPISettings: RuntimeControlLocalAPISettingsCoordinator
     private let servesTestTools: Bool
-    private let runtimeControlStartedAt: String
+    private let statusAnnotator: RuntimeControlStatusAnnotator
     private let scheduleHelperRelaunch: @MainActor () -> Void
 
     init(
@@ -29,7 +28,7 @@ struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
         self.readWorker = readWorker
         self.localAPISettings = localAPISettings
         self.servesTestTools = servesTestTools
-        self.runtimeControlStartedAt = Self.timestamp(runtimeControlStartedAt)
+        self.statusAnnotator = RuntimeControlStatusAnnotator(runtimeControlStartedAt: runtimeControlStartedAt)
         self.scheduleHelperRelaunch = scheduleHelperRelaunch
     }
 
@@ -42,15 +41,15 @@ struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
     func loadStatus() async throws -> RuntimeStatus {
         let settings = await readWorker.loadSettings()
         let status = await readWorker.loadStatus(settings: settings)
-        return remoteConsoleStatus(status)
+        return statusAnnotator.annotated(status)
     }
 
     func loadEvents(query: RuntimeEventQuery) async throws -> RuntimeEventHistory {
         await readWorker.loadRuntimeEvents(query: query)
     }
 
-    func loadVitalDBObservation() async throws -> VitalDBObservationDocument? {
-        await readWorker.loadVitalDBObservation()
+    func loadVitalDBObservationSnapshot() async throws -> RuntimeVitalDBObservationSnapshot {
+        RuntimeVitalDBObservationSnapshot.fromOptional(await readWorker.loadVitalDBObservation())
     }
 
     func loadVitalDBRecorders() async throws -> RuntimeVitalRecorderHistory {
@@ -64,7 +63,7 @@ struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
     func loadHealthStatus() async throws -> RuntimeStatus {
         let settings = await readWorker.loadSettings()
         let status = await readWorker.loadHealthStatus(settings: settings)
-        return remoteConsoleStatus(status)
+        return statusAnnotator.annotated(status)
     }
 
     func loadSettings() async throws -> RuntimeSettings {
@@ -172,18 +171,6 @@ struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
         return URL(fileURLWithPath: reference.value)
     }
 
-    private func remoteConsoleStatus(_ status: RuntimeStatus) -> RuntimeStatus {
-        var next = status
-        next.runtimeControlHTTP = "200"
-        next.runtimeControlStartedAt = runtimeControlStartedAt
-        return next
-    }
-
-    private static func timestamp(_ date: Date) -> String {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime]
-        return formatter.string(from: date)
-    }
 }
 
 enum RuntimeControlAPIHandlerError: LocalizedError, Equatable {

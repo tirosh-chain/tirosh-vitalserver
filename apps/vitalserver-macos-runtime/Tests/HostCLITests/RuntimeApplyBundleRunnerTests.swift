@@ -149,12 +149,17 @@ private final class ApplyBundleHarness {
             startRuntimeServices: { policy in
                 self.restartedPolicy = policy
             },
-            writeStatus: { level, operation, message in
-                self.statuses.append((level: level, operation: operation, message: message))
-            },
-            writeProgress: { event in
-                self.progressEvents.append(event)
-            },
+            statusReporter: RuntimeWorkflowStatusReporter(
+                writeStatus: { level, operation, message in
+                    self.statuses.append((level: level, operation: operation, message: message))
+                },
+                writeProgress: { event in
+                    self.progressEvents.append(event)
+                },
+                log: { message in
+                    self.logs.append(message)
+                }
+            ),
             pruneOldRuntimeArtifacts: {
                 self.pruneCount += 1
                 if let pruneError = self.pruneError {
@@ -163,9 +168,6 @@ private final class ApplyBundleHarness {
             },
             reasonText: { reasons in
                 reasons.map(\.rawValue).joined(separator: ", ")
-            },
-            log: { message in
-                self.logs.append(message)
             }
         )
     }

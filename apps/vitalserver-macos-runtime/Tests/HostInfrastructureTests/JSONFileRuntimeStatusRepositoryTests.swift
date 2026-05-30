@@ -12,7 +12,9 @@ final class JSONFileRuntimeStatusRepositoryTests: XCTestCase {
 
         try repository.save(document(message: "runtime health check passed"))
 
-        let loaded = try XCTUnwrap(repository.load())
+        guard case .loaded(let loaded) = repository.loadResult() else {
+            return XCTFail("Expected loaded status document")
+        }
         XCTAssertEqual(loaded.schemaVersion, 2)
         XCTAssertEqual(loaded.status, .healthy)
         XCTAssertEqual(loaded.operation, .health)
@@ -29,7 +31,6 @@ final class JSONFileRuntimeStatusRepositoryTests: XCTestCase {
             .appendingPathComponent(RuntimeFileNames.runtimeStatus)
         let repository = JSONFileRuntimeStatusRepository(url: url)
 
-        XCTAssertNil(repository.load())
         XCTAssertEqual(repository.loadResult(), .missing)
     }
 
@@ -41,7 +42,6 @@ final class JSONFileRuntimeStatusRepositoryTests: XCTestCase {
         try Data("not-json".utf8).write(to: url)
         let repository = JSONFileRuntimeStatusRepository(url: url)
 
-        XCTAssertNil(repository.load())
         guard case .failed(let message) = repository.loadResult() else {
             return XCTFail("Expected failed status document load")
         }

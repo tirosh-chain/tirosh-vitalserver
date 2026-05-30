@@ -44,11 +44,12 @@ public struct JSONLRuntimeEventRepository: RuntimeEventRepository {
             return []
         }
 
-        return Array(all().suffix(limit))
+        return Array(allResult().events.suffix(limit))
     }
 
     public func query(_ query: RuntimeEventQuery) -> RuntimeEventPage {
-        let filtered = all()
+        let readResult = allResult()
+        let filtered = readResult.events
             .filter { event in
                 guard let eventType = query.eventType else {
                     return true
@@ -72,12 +73,11 @@ public struct JSONLRuntimeEventRepository: RuntimeEventRepository {
         return RuntimeEventPage(
             events: pageEvents,
             nextCursor: nextCursor(for: pageEvents, hasMore: filtered.count > pageEvents.count),
-            matchingCount: filtered.count
+            matchingCount: filtered.count,
+            readError: readResult.issues.isEmpty
+                ? nil
+                : readResult.issues.map(String.init(describing:)).joined(separator: "; ")
         )
-    }
-
-    public func all() -> [RuntimeEventDocument] {
-        allResult().events
     }
 
     public func allResult() -> JSONLRuntimeEventReadResult {

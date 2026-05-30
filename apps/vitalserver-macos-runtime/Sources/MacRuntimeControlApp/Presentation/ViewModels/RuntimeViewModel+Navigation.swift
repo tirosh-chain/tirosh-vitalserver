@@ -12,21 +12,9 @@ extension RuntimeViewModel {
     }
 
     func openFolder(_ path: String) {
-        let url = URL(fileURLWithPath: path)
-        guard nativeShell.directoryExists(url) else {
-            guard nativeShell.confirmCreateDirectory(path: path) else {
-                return
-            }
-            do {
-                try nativeShell.createDirectory(url)
-            } catch {
-                message = AppConstants.StatusText.folderCreateFailed(error.localizedDescription)
-                return
-            }
-            nativeShell.openFileURL(url)
-            return
+        if let errorMessage = navigationCoordinator.openFolder(path, nativeShell: nativeShell) {
+            message = errorMessage
         }
-        nativeShell.openFileURL(url)
     }
 
     func vitalFileFoldersResult() -> Result<[VitalFilesFolder], Error> {
@@ -68,9 +56,6 @@ extension RuntimeViewModel {
     }
 
     private func openRuntimeURL(_ rawURL: String) {
-        guard let url = URL(string: rawURL) else {
-            return
-        }
-        nativeShell.openWebURL(url)
+        navigationCoordinator.openWebURL(rawURL, nativeShell: nativeShell)
     }
 }

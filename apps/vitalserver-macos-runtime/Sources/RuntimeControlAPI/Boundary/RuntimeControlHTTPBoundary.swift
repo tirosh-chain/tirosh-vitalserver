@@ -1,6 +1,5 @@
 import Foundation
 import RuntimeControl
-import Core
 import Contracts
 
 public enum RuntimeControlHTTPStatus: Int, Codable, Equatable, Sendable {
@@ -88,7 +87,7 @@ public protocol RuntimeControlAPIReadHandler {
     func loadCapabilities() async throws -> RuntimeControlCapabilities
     func loadStatus() async throws -> RuntimeStatus
     func loadEvents(query: RuntimeEventQuery) async throws -> RuntimeEventHistory
-    func loadVitalDBObservation() async throws -> VitalDBObservationDocument?
+    func loadVitalDBObservationSnapshot() async throws -> RuntimeVitalDBObservationSnapshot
     func loadVitalDBRecorders() async throws -> RuntimeVitalRecorderHistory
     func loadVitalDBRelationships() async throws -> RuntimeVitalRelationshipHistory
     func loadHealthStatus() async throws -> RuntimeStatus
@@ -195,12 +194,12 @@ public struct RuntimeControlAPIRouter {
                 let query = try request.runtimeEventQuery()
                 return try await eventStreamResponse(handler.loadEvents(query: query))
             case .vitalDBObservation:
-                return try await jsonResponse(handler.loadVitalDBObservation())
+                return try await jsonResponse(loadVitalDBObservation())
             case .vitalDBObservationStream:
                 return try await eventStreamResponse(
                     id: "vitaldb-observation",
                     event: "vitaldb-observed",
-                    value: handler.loadVitalDBObservation()
+                    value: loadVitalDBObservation()
                 )
             case .vitalDBRecorders:
                 return try await jsonResponse(handler.loadVitalDBRecorders())
@@ -313,7 +312,7 @@ public struct RuntimeControlAPIRouter {
                     heartbeatInterval: streamConfiguration.heartbeatIntervalNanoseconds,
                     continuation: continuation
                 ) {
-                    try await makeOverview(handler: handler)
+                    try await RuntimeControlOverviewAssembler(handler: handler).load()
                 }
             }
         case .statusStream:
@@ -348,7 +347,7 @@ public struct RuntimeControlAPIRouter {
                 return errorStreamResponse(error.localizedDescription)
             }
         case .vitalDBObservationStream:
-            return makeStream { [handler, streamConfiguration] continuation in
+            return makeStream { [streamConfiguration] continuation in
                 await pollSnapshot(
                     id: "vitaldb-observation",
                     event: "vitaldb-observed",
@@ -356,7 +355,7 @@ public struct RuntimeControlAPIRouter {
                     heartbeatInterval: streamConfiguration.heartbeatIntervalNanoseconds,
                     continuation: continuation
                 ) {
-                    try await handler.loadVitalDBObservation()
+                    try await loadVitalDBObservation()
                 }
             }
         case .vitalDBRecorders:
@@ -390,7 +389,12 @@ public struct RuntimeControlAPIRouter {
     }
 
     private func loadOverview() async throws -> RuntimeControlOverview {
-        try await makeOverview(handler: handler)
+        try await RuntimeControlOverviewAssembler(handler: handler).load()
+    }
+
+    private func loadVitalDBObservation() async throws -> VitalDBObservationDocument? {
+        let snapshot = try await handler.loadVitalDBObservationSnapshot()
+        return snapshot.observation
     }
 
     private func jsonResponse<T: Encodable>(_ value: T) throws -> RuntimeControlHTTPResponse {
@@ -755,20 +759,6 @@ public extension RuntimeControlHTTPRequest {
         }
         return decoded
     }
-}
-
-@MainActor
-private func makeOverview(handler: any RuntimeControlAPIReadHandler) async throws -> RuntimeControlOverview {
-    var status = try await handler.loadStatus()
-    let vitalDBObservation = try await handler.loadVitalDBObservation()
-    status.vitalDBObservation = vitalDBObservation ?? status.vitalDBObservation
-    return try await RuntimeControlOverview(
-        status: status,
-        settings: handler.loadSettings(),
-        release: handler.loadReleaseInfo(),
-        install: handler.loadInstallInfo(),
-        vitalDBObservation: vitalDBObservation
-    )
 }
 
 public enum RuntimeControlHTTPQueryError: LocalizedError, Equatable {

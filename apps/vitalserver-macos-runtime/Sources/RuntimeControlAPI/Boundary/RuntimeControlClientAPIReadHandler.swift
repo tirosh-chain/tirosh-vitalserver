@@ -1,6 +1,5 @@
 import Foundation
 import RuntimeControl
-import Core
 import Contracts
 
 @MainActor
@@ -26,8 +25,8 @@ public struct RuntimeControlClientAPIReadHandler: RuntimeControlAPIReadHandler {
         client.loadRuntimeEvents(query: query)
     }
 
-    public func loadVitalDBObservation() async throws -> VitalDBObservationDocument? {
-        client.loadVitalDBObservation()
+    public func loadVitalDBObservationSnapshot() async throws -> RuntimeVitalDBObservationSnapshot {
+        RuntimeVitalDBObservationSnapshot.fromOptional(client.loadVitalDBObservation())
     }
 
     public func loadVitalDBRecorders() async throws -> RuntimeVitalRecorderHistory {

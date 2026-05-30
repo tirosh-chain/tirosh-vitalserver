@@ -1,5 +1,4 @@
 import Contracts
-import Core
 import RuntimeControl
 import RuntimeControlAPI
 import XCTest
@@ -390,6 +389,8 @@ final class RuntimeControlAPITests: XCTestCase {
 
         XCTAssertTrue(capabilities.canControlRuntimeServices)
         XCTAssertEqual(overview.status.runtimeVersion, "1.2.3")
+        XCTAssertEqual(overview.vitalDBObservationSnapshot.state, .loaded)
+        XCTAssertEqual(overview.vitalDBObservationSnapshot.observation?.recorders.map(\.vrcode), ["VR_A"])
         XCTAssertEqual(overview.vitalRecorder.knownRecorders, 1)
         XCTAssertEqual(overview.vitalRecorder.onlineRecorders, 1)
         XCTAssertEqual(overview.vitalRecorder.latestRecorder?.vrcode, "VR_A")
@@ -578,6 +579,7 @@ final class RuntimeControlAPITests: XCTestCase {
         let health = try await handler.loadHealthStatus()
         let release = try await handler.loadReleaseInfo()
         let installInfo = try await handler.loadInstallInfo()
+        let observationSnapshot = try await handler.loadVitalDBObservationSnapshot()
 
         XCTAssertFalse(capabilities.canOpenLocalFiles)
         XCTAssertEqual(settings.cpuCount, 6)
@@ -589,9 +591,24 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertEqual(installInfo.packageIdentifier, "com.tirosh.vitalserver.vm")
         XCTAssertEqual(installInfo.backupsPath, "/backups")
         XCTAssertEqual(installInfo.redisBackupsPath, "/runtime/data/backups/redis")
+        XCTAssertEqual(observationSnapshot.state, .loaded)
+        XCTAssertEqual(observationSnapshot.observation?.observedAt, "2026-05-25T00:00:00Z")
         XCTAssertEqual(client.loadSettingsCount, 3)
         XCTAssertEqual(client.statusSettings, [RuntimeSettings(cpuCount: 6, memoryGiB: 10)])
         XCTAssertEqual(client.healthSettings, [RuntimeSettings(cpuCount: 6, memoryGiB: 10)])
+    }
+
+    @MainActor
+    func testRuntimeControlClientReadHandlerReportsMissingObservationExplicitly() async throws {
+        let client = FakeRuntimeControlClient()
+        client.vitalDBObservation = nil
+        let handler = RuntimeControlClientAPIReadHandler(client: client)
+
+        let snapshot = try await handler.loadVitalDBObservationSnapshot()
+
+        XCTAssertEqual(snapshot.state, .unavailable)
+        XCTAssertNil(snapshot.observation)
+        XCTAssertNil(snapshot.readError)
     }
 
     @MainActor
@@ -792,7 +809,7 @@ final class RuntimeControlAPITests: XCTestCase {
 
     @MainActor
     func testLocalHTTPServerServesRuntimeStatusOverLoopback() async throws {
-        let (server, port) = try makeStartedServer(token: "dev-token")
+        let (server, port) = try await makeStartedServer(token: "dev-token")
         defer {
             server.stop()
         }
@@ -812,7 +829,7 @@ final class RuntimeControlAPITests: XCTestCase {
     @MainActor
     func testLocalHTTPServerReportsAsyncListenFailure() async throws {
         let token = "dev-token"
-        let (server, port) = try makeStartedServer(token: token)
+        let (server, port) = try await makeStartedServer(token: token)
         defer {
             server.stop()
         }
@@ -845,7 +862,7 @@ final class RuntimeControlAPITests: XCTestCase {
 
     @MainActor
     func testLocalHTTPServerAllowsLoopbackCORSPreflight() async throws {
-        let (server, port) = try makeStartedServer(token: "dev-token")
+        let (server, port) = try await makeStartedServer(token: "dev-token")
         defer {
             server.stop()
         }
@@ -868,7 +885,7 @@ final class RuntimeControlAPITests: XCTestCase {
 
     @MainActor
     func testLocalHTTPServerAllowsPrivateNetworkCORSPreflight() async throws {
-        let (server, port) = try makeStartedServer(token: "dev-token")
+        let (server, port) = try await makeStartedServer(token: "dev-token")
         defer {
             server.stop()
         }
@@ -889,7 +906,7 @@ final class RuntimeControlAPITests: XCTestCase {
 
     @MainActor
     func testLocalHTTPServerAddsCORSHeadersToLoopbackAPIResponses() async throws {
-        let (server, port) = try makeStartedServer(token: "dev-token")
+        let (server, port) = try await makeStartedServer(token: "dev-token")
         defer {
             server.stop()
         }
@@ -909,7 +926,7 @@ final class RuntimeControlAPITests: XCTestCase {
 
     @MainActor
     func testLocalHTTPServerDoesNotAllowUntrustedCORSOrigins() async throws {
-        let (server, port) = try makeStartedServer(token: "dev-token")
+        let (server, port) = try await makeStartedServer(token: "dev-token")
         defer {
             server.stop()
         }
@@ -928,7 +945,7 @@ final class RuntimeControlAPITests: XCTestCase {
 
     @MainActor
     func testLocalHTTPServerRejectsDevConsoleWhenDisabled() async throws {
-        let (server, port) = try makeStartedServer(token: "dev-token")
+        let (server, port) = try await makeStartedServer(token: "dev-token")
         defer {
             server.stop()
         }
@@ -945,7 +962,7 @@ final class RuntimeControlAPITests: XCTestCase {
 
     @MainActor
     func testLocalHTTPServerServesDevConsoleOverLoopbackWithoutTokenWhenEnabled() async throws {
-        let (server, port) = try makeStartedServer(token: "dev-token", servesDevConsole: true)
+        let (server, port) = try await makeStartedServer(token: "dev-token", servesDevConsole: true)
         defer {
             server.stop()
         }
@@ -963,7 +980,7 @@ final class RuntimeControlAPITests: XCTestCase {
 
     @MainActor
     func testLocalHTTPServerRejectsMissingTokenOverLoopback() async throws {
-        let (server, port) = try makeStartedServer(token: "dev-token")
+        let (server, port) = try await makeStartedServer(token: "dev-token")
         defer {
             server.stop()
         }
@@ -1076,7 +1093,7 @@ final class RuntimeControlAPITests: XCTestCase {
     private func makeStartedServer(
         token: String,
         servesDevConsole: Bool = false
-    ) throws -> (RuntimeControlLocalHTTPServer, UInt16) {
+    ) async throws -> (RuntimeControlLocalHTTPServer, UInt16) {
         for port in UInt16(18_400)...UInt16(18_450) {
             let server = RuntimeControlLocalHTTPServer(
                 configuration: RuntimeControlLocalHTTPServerConfiguration(
@@ -1090,12 +1107,20 @@ final class RuntimeControlAPITests: XCTestCase {
             )
             do {
                 try server.start()
+                try await waitForStartedServer(port: port, token: token)
                 return (server, port)
             } catch {
                 server.stop()
             }
         }
         throw RuntimeControlLocalHTTPServerError.listenerUnavailable
+    }
+
+    @MainActor
+    private func waitForStartedServer(port: UInt16, token: String) async throws {
+        var request = URLRequest(url: try XCTUnwrap(URL(string: "http://127.0.0.1:\(port)/runtime/status")))
+        request.setValue(token, forHTTPHeaderField: "X-Runtime-Control-Token")
+        _ = try await fetchWithRetry(request)
     }
 
     private func makeTemporaryPWA() throws -> URL {
@@ -1158,8 +1183,8 @@ private struct StubRuntimeControlAPIReadHandler: RuntimeControlAPIReadHandler {
         ])
     }
 
-    func loadVitalDBObservation() async throws -> VitalDBObservationDocument? {
-        VitalDBObservationDocument(
+    func loadVitalDBObservationSnapshot() async throws -> RuntimeVitalDBObservationSnapshot {
+        .loaded(VitalDBObservationDocument(
             observedAt: "2026-05-25T00:00:00Z",
             ready: true,
             recorderOnlineThresholdSeconds: 120,
@@ -1197,11 +1222,26 @@ private struct StubRuntimeControlAPIReadHandler: RuntimeControlAPIReadHandler {
                     online: true
                 ),
             ]
-        )
+        ))
     }
 
     func loadVitalDBRecorders() async throws -> RuntimeVitalRecorderHistory {
-        RuntimeVitalRecorderHistory(observations: [try await loadVitalDBObservation()].compactMap { $0 })
+        let observationSnapshot = try await loadVitalDBObservationSnapshot()
+        return RuntimeVitalRecorderHistory(
+            observations: [observationSnapshot.observation].compactMap { $0 },
+            activityBuckets: [
+                VitalDBRecorderActivityBucketRecord(
+                    vrcode: "VR_A",
+                    bucketStartedAt: "2026-05-25T00:00:00Z",
+                    bucketSeconds: 60,
+                    messageCount: 3,
+                    byteCount: 2048,
+                    roomCount: 1,
+                    firstObservedAt: "2026-05-25T00:00:00Z",
+                    lastObservedAt: "2026-05-25T00:00:00Z"
+                ),
+            ]
+        )
     }
 
     func loadVitalDBRelationships() async throws -> RuntimeVitalRelationshipHistory {
@@ -1346,6 +1386,11 @@ private final class FakeRuntimeControlClient: RuntimeControlClient, RuntimeHostC
     var healthSettings: [RuntimeSettings] = []
     var eventQueries: [RuntimeEventQuery] = []
     var backupLatestPaths: [String?] = []
+    var vitalDBObservation: VitalDBObservationDocument? = VitalDBObservationDocument(
+        observedAt: "2026-05-25T00:00:00Z",
+        ready: true,
+        recorderOnlineThresholdSeconds: 120
+    )
 
     func loadSettings() -> RuntimeSettings {
         loadSettingsCount += 1
@@ -1429,11 +1474,7 @@ private final class FakeRuntimeControlClient: RuntimeControlClient, RuntimeHostC
     }
 
     func loadVitalDBObservation() -> VitalDBObservationDocument? {
-        VitalDBObservationDocument(
-            observedAt: "2026-05-25T00:00:00Z",
-            ready: true,
-            recorderOnlineThresholdSeconds: 120
-        )
+        vitalDBObservation
     }
 
     func loadVitalDBRecorders() -> RuntimeVitalRecorderHistory {

@@ -3,11 +3,11 @@ import Contracts
 import Foundation
 
 struct RuntimeObservationRecorder {
-    let eventRepository: any RuntimeEventRepository
+    let eventRepository: any RuntimeEventRecording
     let log: (String) -> Void
 
     init(
-        eventRepository: any RuntimeEventRepository,
+        eventRepository: any RuntimeEventRecording,
         log: @escaping (String) -> Void
     ) {
         self.eventRepository = eventRepository

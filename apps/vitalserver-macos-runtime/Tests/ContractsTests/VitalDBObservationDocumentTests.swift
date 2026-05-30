@@ -63,4 +63,20 @@ final class VitalDBObservationDocumentTests: XCTestCase {
         XCTAssertEqual(RuntimeEventType(rawValue: "vitaldb-observer-unhealthy"), .vitalDBObserverUnhealthy)
         XCTAssertEqual(RuntimeEventType(rawValue: "vitaldb-anomaly-detected"), .vitalDBAnomalyDetected)
     }
+
+    func testRecorderActivityBucketQueryClampsLimitAndPreservesFilters() {
+        let query = VitalDBRecorderActivityBucketQuery(
+            vrcode: "VR_A",
+            since: "2026-05-25T00:00:00Z",
+            until: "2026-05-25T00:10:00Z",
+            limit: 100_000
+        )
+
+        XCTAssertEqual(query.vrcode, "VR_A")
+        XCTAssertEqual(query.since, "2026-05-25T00:00:00Z")
+        XCTAssertEqual(query.until, "2026-05-25T00:10:00Z")
+        XCTAssertEqual(query.limit, 50_000)
+        XCTAssertEqual(VitalDBRecorderActivityBucketQuery(vrcode: "", limit: -1).vrcode, nil)
+        XCTAssertEqual(VitalDBRecorderActivityBucketQuery(limit: -1).limit, 0)
+    }
 }

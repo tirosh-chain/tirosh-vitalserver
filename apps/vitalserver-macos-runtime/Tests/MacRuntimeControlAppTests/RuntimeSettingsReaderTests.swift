@@ -212,6 +212,46 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         XCTAssertNotNil(status.dataDirectoryStatsError)
     }
 
+    func testStatusReaderReportsDataStorageUsageReadFailure() throws {
+        let directory = try temporaryDirectory()
+        let reader = SystemRuntimeStatusReader(
+            paths: RuntimePaths(
+                launcher: directory.appendingPathComponent("launcher").path,
+                uninstaller: directory.appendingPathComponent("uninstaller").path,
+                runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
+                runtimeStatus: directory.appendingPathComponent(RuntimeFileNames.runtimeStatus).path
+            ),
+            storageUsageProvider: StubStorageUsageProvider(result: .failed("volume read failed"))
+        )
+
+        let status = reader.loadStatus(settings: RuntimeSettings(vitalFilesDirectory: "/Volumes/Vital Files"))
+
+        XCTAssertNil(status.dataStorage)
+        XCTAssertEqual(status.dataStorageError, "volume read failed")
+    }
+
+    func testStatusReaderClearsDataStorageUsageReadFailureAfterSuccessfulRead() throws {
+        let directory = try temporaryDirectory()
+        let reader = SystemRuntimeStatusReader(
+            paths: RuntimePaths(
+                launcher: directory.appendingPathComponent("launcher").path,
+                uninstaller: directory.appendingPathComponent("uninstaller").path,
+                runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
+                runtimeStatus: directory.appendingPathComponent(RuntimeFileNames.runtimeStatus).path
+            ),
+            storageUsageProvider: StubStorageUsageProvider(
+                result: .loaded(ResourceUsage(usedBytes: 4, totalBytes: 10))
+            )
+        )
+
+        let status = reader.loadStatus(
+            settings: RuntimeSettings(vitalFilesDirectory: "/Volumes/Vital Files")
+        )
+
+        XCTAssertEqual(status.dataStorage, ResourceUsage(usedBytes: 4, totalBytes: 10))
+        XCTAssertNil(status.dataStorageError)
+    }
+
     func testStatusReaderUsesConfiguredProxyPortWhenStatusDocumentDoesNotReportIt() throws {
         let directory = try temporaryDirectory()
         let runtimeStatus = directory.appendingPathComponent(RuntimeFileNames.runtimeStatus)
@@ -333,7 +373,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         XCTAssertNil(status.vmErrors)
     }
 
-    func testStatusReaderUsesStatusObservationForVitalRecordersWhenSQLiteIsEmpty() throws {
+    func testObservabilityReaderUsesStatusObservationForVitalRecordersWhenSQLiteIsEmpty() throws {
         let directory = try temporaryDirectory()
         let runtimeStatus = directory.appendingPathComponent(RuntimeFileNames.runtimeStatus)
         try """
@@ -380,11 +420,8 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         }
         """.write(to: runtimeStatus, atomically: true, encoding: .utf8)
 
-        let reader = SystemRuntimeStatusReader(
+        let reader = SystemRuntimeObservabilityReader(
             paths: RuntimePaths(
-                launcher: directory.appendingPathComponent("launcher").path,
-                uninstaller: directory.appendingPathComponent("uninstaller").path,
-                runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
                 runtimeStatus: runtimeStatus.path,
                 runtimeObservabilityDB: directory.appendingPathComponent(RuntimeFileNames.runtimeObservabilityDB).path
             )
@@ -397,7 +434,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         XCTAssertEqual(history.recorders.first?.status, .online)
     }
 
-    func testStatusReaderDoesNotOverrideStatusObservationWithRawGuestState() throws {
+    func testObservabilityReaderDoesNotOverrideStatusObservationWithRawGuestState() throws {
         let directory = try temporaryDirectory()
         let runtimeStatus = directory.appendingPathComponent(RuntimeFileNames.runtimeStatus)
         let runtimeState = directory.appendingPathComponent(RuntimeFileNames.runtimeState)
@@ -474,23 +511,101 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         }
         """.write(to: runtimeState, atomically: true, encoding: .utf8)
 
-        let reader = SystemRuntimeStatusReader(
-            paths: RuntimePaths(
-                launcher: directory.appendingPathComponent("launcher").path,
-                uninstaller: directory.appendingPathComponent("uninstaller").path,
-                runtimeState: runtimeState.path,
-                runtimeStatus: runtimeStatus.path,
-                runtimeObservabilityDB: directory.appendingPathComponent(RuntimeFileNames.runtimeObservabilityDB).path
-            )
+        let paths = RuntimePaths(
+            launcher: directory.appendingPathComponent("launcher").path,
+            uninstaller: directory.appendingPathComponent("uninstaller").path,
+            runtimeState: runtimeState.path,
+            runtimeStatus: runtimeStatus.path,
+            runtimeObservabilityDB: directory.appendingPathComponent(RuntimeFileNames.runtimeObservabilityDB).path
         )
+        let statusReader = SystemRuntimeStatusReader(paths: paths)
+        let observabilityReader = SystemRuntimeObservabilityReader(paths: paths)
 
-        let status = reader.loadStatus(settings: RuntimeSettings())
-        let history = reader.loadVitalDBRecorders()
+        let status = statusReader.loadStatus(settings: RuntimeSettings())
+        let history = observabilityReader.loadVitalDBRecorders()
 
         XCTAssertEqual(status.vitalDBObservation?.observedAt, "2026-05-26T00:01:00Z")
         XCTAssertEqual(history.updatedAt, "2026-05-26T00:01:00Z")
         XCTAssertEqual(history.recorders.map(\.vrcode), ["VR_STALE_STATUS"])
         XCTAssertEqual(history.recorders.first?.status, .online)
+    }
+
+    func testObservabilityReaderReportsVitalRelationshipReadFailure() throws {
+        let directory = try temporaryDirectory()
+        let observabilityDB = directory.appendingPathComponent(RuntimeFileNames.runtimeObservabilityDB)
+        try Data("not-sqlite".utf8).write(to: observabilityDB)
+
+        let reader = SystemRuntimeObservabilityReader(
+            paths: RuntimePaths(
+                runtimeObservabilityDB: observabilityDB.path
+            )
+        )
+
+        let history = reader.loadVitalDBRelationships()
+
+        XCTAssertEqual(history.assignments, [])
+        XCTAssertEqual(history.events, [])
+        XCTAssertNotNil(history.readError)
+        XCTAssertTrue(history.readError?.contains("assignments=") == true)
+        XCTAssertTrue(history.readError?.contains("events=") == true)
+    }
+
+    func testObservabilityReaderRunsExplicitEventProjectionCatchUpBeforeReadingEvents() throws {
+        let directory = try temporaryDirectory()
+        let runtimeEvents = directory.appendingPathComponent(RuntimeFileNames.runtimeEvents)
+        let runtimeObservabilityDB = directory.appendingPathComponent(RuntimeFileNames.runtimeObservabilityDB)
+        let event = runtimeEvent(id: "jsonl-event", timestamp: "2026-05-30T00:00:00Z")
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        try (encoder.encode(event) + Data("\n".utf8)).write(to: runtimeEvents)
+        let reader = SystemRuntimeObservabilityReader(
+            paths: RuntimePaths(
+                runtimeEvents: runtimeEvents.path,
+                runtimeObservabilityDB: runtimeObservabilityDB.path
+            )
+        )
+
+        let history = reader.loadRuntimeEvents(query: RuntimeEventQuery(limit: 10))
+
+        XCTAssertEqual(history.events.map(\.id), ["jsonl-event"])
+        XCTAssertEqual(history.matchingCount, 1)
+    }
+
+    func testObservabilityReaderPreservesRuntimeEventReadIssueWhenServingJSONLFallback() throws {
+        let directory = try temporaryDirectory()
+        let runtimeEvents = directory.appendingPathComponent(RuntimeFileNames.runtimeEvents)
+        let event = runtimeEvent(id: "jsonl-event", timestamp: "2026-05-30T00:00:00Z")
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        try (encoder.encode(event) + Data("\n".utf8)).write(to: runtimeEvents)
+        let reader = SystemRuntimeObservabilityReader(
+            paths: RuntimePaths(
+                runtimeEvents: runtimeEvents.path,
+                runtimeObservabilityDB: "/dev/null/events.sqlite"
+            )
+        )
+
+        let history = reader.loadRuntimeEvents(query: RuntimeEventQuery(limit: 10))
+
+        XCTAssertEqual(history.events.map(\.id), ["jsonl-event"])
+        XCTAssertEqual(history.matchingCount, 1)
+        XCTAssertNotNil(history.readError)
+    }
+
+    func testMacHostRuntimeClientUsesSeparateStatusAndObservabilityReaders() {
+        let client = MacHostRuntimeClient(
+            releaseInfo: .generated,
+            statusReader: StubStatusReader(),
+            observabilityReader: StubObservabilityReader()
+        )
+
+        let status = client.loadStatus(settings: RuntimeSettings())
+        let events = client.loadRuntimeEvents(query: RuntimeEventQuery(limit: 1))
+        let observation = client.loadVitalDBObservation()
+
+        XCTAssertEqual(status.statusMessage, "status-reader")
+        XCTAssertEqual(events.matchingCount, 7)
+        XCTAssertEqual(observation?.observedAt, "2026-05-30T00:00:00Z")
     }
 
     private func value(after marker: String, in arguments: [String]) -> String? {
@@ -499,6 +614,23 @@ final class RuntimeSettingsReaderTests: XCTestCase {
             return nil
         }
         return arguments[arguments.index(after: index)]
+    }
+
+    private func runtimeEvent(id: String, timestamp: String) -> RuntimeEventDocument {
+        RuntimeEventDocument(
+            id: id,
+            eventType: .statusChanged,
+            timestamp: timestamp,
+            product: "TiroshVitalServer",
+            status: .healthy,
+            previousStatus: nil,
+            operation: .health,
+            message: "message",
+            runtimeVersion: "0.1.0",
+            failureReasons: [],
+            containerObservation: nil,
+            progress: nil
+        )
     }
 
     private func writeProxyLaunchDaemon(_ url: URL, proxyPort: Int) throws {
@@ -520,6 +652,50 @@ final class RuntimeSettingsReaderTests: XCTestCase {
             .appendingPathComponent("RuntimeSettingsReaderTests-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         return directory
+    }
+}
+
+private final class StubStatusReader: RuntimeStatusReading {
+    func loadStatus(settings: RuntimeSettings) -> RuntimeStatus {
+        RuntimeStatus(statusMessage: "status-reader")
+    }
+
+    func loadHealthStatus(settings: RuntimeSettings) async -> RuntimeStatus {
+        RuntimeStatus(statusMessage: "status-reader-health")
+    }
+}
+
+private final class StubObservabilityReader: RuntimeObservabilityReading {
+    func loadRuntimeEvents(limit: Int) -> RuntimeEventHistory {
+        loadRuntimeEvents(query: RuntimeEventQuery(limit: limit))
+    }
+
+    func loadRuntimeEvents(query: RuntimeEventQuery) -> RuntimeEventHistory {
+        RuntimeEventHistory(events: [], matchingCount: 7)
+    }
+
+    func loadVitalDBObservation() -> VitalDBObservationDocument? {
+        VitalDBObservationDocument(
+            observedAt: "2026-05-30T00:00:00Z",
+            ready: true,
+            recorderOnlineThresholdSeconds: 60
+        )
+    }
+
+    func loadVitalDBRecorders() -> RuntimeVitalRecorderHistory {
+        RuntimeVitalRecorderHistory()
+    }
+
+    func loadVitalDBRelationships() -> RuntimeVitalRelationshipHistory {
+        RuntimeVitalRelationshipHistory()
+    }
+}
+
+private struct StubStorageUsageProvider: RuntimeStorageUsageProviding {
+    let result: RuntimeStorageUsageResult
+
+    func storageUsage(for path: String) -> RuntimeStorageUsageResult {
+        result
     }
 }
 

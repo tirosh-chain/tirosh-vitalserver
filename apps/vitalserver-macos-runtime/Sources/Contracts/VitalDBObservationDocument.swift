@@ -216,6 +216,25 @@ public struct VitalDBRecorderActivityBucketRecord: Codable, Equatable, Sendable 
     }
 }
 
+public struct VitalDBRecorderActivityBucketQuery: Codable, Equatable, Sendable {
+    public let vrcode: String?
+    public let since: String?
+    public let until: String?
+    public let limit: Int
+
+    public init(
+        vrcode: String? = nil,
+        since: String? = nil,
+        until: String? = nil,
+        limit: Int = 10_000
+    ) {
+        self.vrcode = vrcode?.isEmpty == true ? nil : vrcode
+        self.since = since
+        self.until = until
+        self.limit = min(max(limit, 0), 50_000)
+    }
+}
+
 public struct VitalDBRecorderActivityObservation: Codable, Equatable, Sendable {
     public let windowSeconds: Int
     public let messageCount: Int

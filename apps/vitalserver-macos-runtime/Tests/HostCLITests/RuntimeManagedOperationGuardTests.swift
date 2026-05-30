@@ -148,6 +148,23 @@ final class RuntimeManagedOperationGuardTests: XCTestCase {
         XCTAssertNil(guardPolicy.activeOperation())
     }
 
+    func testLogsStatusReadFailureWithoutBlockingRecovery() {
+        var messages: [String] = []
+        let repository = RuntimeStatusRepositorySpy()
+        repository.result = .failed("status unreadable")
+        let guardPolicy = managedOperationGuard(
+            repository: repository,
+            now: "2026-05-22T00:01:00Z",
+            log: { messages.append($0) }
+        )
+
+        XCTAssertNil(guardPolicy.activeOperation())
+        XCTAssertEqual(messages, [
+            "watchdog active operation guard ignored status read failure error=status unreadable",
+        ])
+    }
+
+
     private func managedOperationGuard(
         repository: RuntimeStatusRepositorySpy,
         activeGuestBootstrap: RuntimeGuestBootstrapOperation? = nil,
@@ -199,10 +216,22 @@ final class RuntimeManagedOperationGuardTests: XCTestCase {
 }
 
 private final class RuntimeStatusRepositorySpy: RuntimeStatusRepository {
-    var loaded: RuntimeStatusDocument?
+    var result: RuntimeStatusDocumentLoadResult = .missing
 
-    func load() -> RuntimeStatusDocument? {
-        loaded
+    var loaded: RuntimeStatusDocument? {
+        get {
+            guard case .loaded(let document) = result else {
+                return nil
+            }
+            return document
+        }
+        set {
+            result = newValue.map(RuntimeStatusDocumentLoadResult.loaded) ?? .missing
+        }
+    }
+
+    func loadResult() -> RuntimeStatusDocumentLoadResult {
+        result
     }
 
     func save(_ document: RuntimeStatusDocument) throws {}

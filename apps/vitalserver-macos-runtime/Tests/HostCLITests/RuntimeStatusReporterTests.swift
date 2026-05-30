@@ -96,6 +96,30 @@ final class RuntimeStatusReporterTests: XCTestCase {
         }
     }
 
+    func testWriteProgressReportsStatusDocumentReadFailure() {
+        let repository = RuntimeStatusRepositorySpy()
+        repository.result = .failed("not-json")
+        let reporter = RuntimeStatusReporter(
+            repository: repository,
+            productRoot: URL(fileURLWithPath: "/product"),
+            runtimeHome: URL(fileURLWithPath: "/product/vm")
+        )
+
+        XCTAssertThrowsError(try reporter.writeProgress(
+            .updating,
+            operation: .applyBundle,
+            step: .activateGuestUpdate,
+            stepStatus: .started,
+            phase: .running,
+            message: "step started",
+            updatedAt: "2026-05-22T00:00:00Z",
+            runtimeVersion: "0.1.0",
+            latestBackup: nil
+        )) { error in
+            XCTAssertEqual(error as? RuntimeStatusReporterError, .statusDocumentReadFailed("not-json"))
+        }
+    }
+
     func testStatusValueReadsRepositoryStatus() {
         let repository = RuntimeStatusRepositorySpy()
         repository.loaded = RuntimeStatusDocument(
@@ -164,11 +188,23 @@ final class RuntimeStatusReporterTests: XCTestCase {
 }
 
 private final class RuntimeStatusRepositorySpy: RuntimeStatusRepository {
-    var loaded: RuntimeStatusDocument?
+    var result: RuntimeStatusDocumentLoadResult = .missing
     var saved: RuntimeStatusDocument?
 
-    func load() -> RuntimeStatusDocument? {
-        loaded
+    var loaded: RuntimeStatusDocument? {
+        get {
+            guard case .loaded(let document) = result else {
+                return nil
+            }
+            return document
+        }
+        set {
+            result = newValue.map(RuntimeStatusDocumentLoadResult.loaded) ?? .missing
+        }
+    }
+
+    func loadResult() -> RuntimeStatusDocumentLoadResult {
+        result
     }
 
     func save(_ document: RuntimeStatusDocument) throws {

@@ -434,6 +434,25 @@ final class ContractsTests: XCTestCase {
         XCTAssertEqual(decoded, .unknown("vendor-event"))
     }
 
+    func testRuntimeEventQueryClampsLimitAndPreservesCursor() {
+        let cursor = RuntimeEventCursor(timestamp: "2026-05-24T00:01:00Z", id: "event-2")
+
+        XCTAssertEqual(RuntimeEventQuery(limit: 0).limit, 1)
+        XCTAssertEqual(RuntimeEventQuery(limit: 1_000).limit, RuntimeEventQuery.maximumLimit)
+
+        let query = RuntimeEventQuery(
+            limit: 25,
+            eventType: .auditProxyObserved,
+            since: "2026-05-24T00:00:00Z",
+            before: cursor
+        )
+
+        XCTAssertEqual(query.limit, 25)
+        XCTAssertEqual(query.eventType, .auditProxyObserved)
+        XCTAssertEqual(query.since, "2026-05-24T00:00:00Z")
+        XCTAssertEqual(query.before, cursor)
+    }
+
     func testRuntimeEventDocumentAllowsEventsWithoutRuntimeStatusContext() throws {
         let json = """
         {

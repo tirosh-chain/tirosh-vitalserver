@@ -3,32 +3,37 @@ import RuntimeControl
 
 extension RuntimeViewModel {
     var testKitCanStart: Bool {
-        testKitController != nil
-            && testKitStatus.enabled
-            && !isRunningTestKitAction
-            && testKitStatus.state != .starting
-            && testKitStatus.state != .stopping
-            && selectedAvailableTestKitBedRoomNames.count >= normalizedTestKitRecorderCount
+        testKitStatePolicy.canStart(
+            controllerAvailable: testKitController != nil,
+            status: testKitStatus,
+            isRunningAction: isRunningTestKitAction,
+            selectedBedRoomNames: selectedTestKitBedRoomNames,
+            recorderCount: testKitRecorderCount
+        )
     }
 
     var testKitCanStop: Bool {
-        testKitController != nil
-            && testKitStatus.enabled
-            && !isRunningTestKitAction
-            && selectedTestKitSessionIsStoppable
+        testKitStatePolicy.canStop(
+            controllerAvailable: testKitController != nil,
+            status: testKitStatus,
+            isRunningAction: isRunningTestKitAction,
+            selectedSessionID: selectedTestKitSessionID
+        )
     }
 
     var testKitCanResetBeds: Bool {
-        testKitStatus.enabled
-            && !isRunningTestKitAction
-            && !testKitStatus.beds.isEmpty
-            && activeTestKitBedRoomNames.isEmpty
+        testKitStatePolicy.canResetBeds(
+            status: testKitStatus,
+            isRunningAction: isRunningTestKitAction
+        )
     }
 
     func testKitCanDeleteBed(_ roomName: String) -> Bool {
-        testKitStatus.enabled
-            && !isRunningTestKitAction
-            && !testKitBedIsActive(roomName)
+        testKitStatePolicy.canDeleteBed(
+            roomName,
+            status: testKitStatus,
+            isRunningAction: isRunningTestKitAction
+        )
     }
 
     var availableTestKitBedCount: Int {
@@ -40,18 +45,10 @@ extension RuntimeViewModel {
     }
 
     var selectedTestKitSession: RuntimeTestKitSession? {
-        if !selectedTestKitSessionID.isEmpty,
-           let selected = testKitStatus.sessions.first(where: { $0.id == selectedTestKitSessionID }) {
-            return selected
-        }
-        return testKitStatus.activeSession
-    }
-
-    private var selectedTestKitSessionIsStoppable: Bool {
-        guard let selectedTestKitSession else {
-            return false
-        }
-        return !["stopped", "failed"].contains(selectedTestKitSession.state.lowercased())
+        testKitStatePolicy.selectedSession(
+            status: testKitStatus,
+            selectedSessionID: selectedTestKitSessionID
+        )
     }
 
     func refreshTestKitStatus() async {
@@ -415,80 +412,50 @@ extension RuntimeViewModel {
     }
 
     private func testKitStartRequest() -> RuntimeTestKitVirtualRecorderStartRequest {
-        RuntimeTestKitVirtualRecorderStartRequest(
+        testKitStatePolicy.startRequest(RuntimeViewModelTestKitStartInput(
+            status: testKitStatus,
+            selectedBedRoomNames: selectedTestKitBedRoomNames,
             scenario: testKitScenario,
             signalProfile: testKitSignalProfile,
-            recorders: normalizedTestKitRecorderCount,
-            bedRoomNames: Array(selectedAvailableTestKitBedRoomNames.prefix(normalizedTestKitRecorderCount)),
-            vrcode: normalizedTestKitVrcode,
-            version: "testkit",
-            intervalSeconds: normalizedTestKitIntervalSeconds,
-            durationSeconds: normalizedTestKitDurationSeconds,
-            maxMessages: normalizedTestKitMaxMessages,
+            recorderCount: testKitRecorderCount,
+            vrcode: testKitVrcode,
+            intervalSeconds: testKitIntervalSeconds,
+            durationSeconds: testKitDurationSeconds,
+            maxMessages: testKitMaxMessages,
             shiftTime: testKitShiftTime,
             generateFrames: testKitGenerateFrames
-        )
+        ))
     }
 
     private var normalizedTestKitRecorderCount: Int {
-        min(max(testKitRecorderCount, 1), 200)
+        testKitStatePolicy.normalizedRecorderCount(testKitRecorderCount)
     }
 
     private var normalizedTestKitBedCount: Int {
-        min(max(testKitBedCount, 1), 200)
+        testKitStatePolicy.normalizedBedCount(testKitBedCount)
     }
 
     private var normalizedTestKitBedPrefix: String {
-        let trimmed = testKitBedPrefix.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? "testkit-bed" : trimmed
+        testKitStatePolicy.normalizedBedPrefix(testKitBedPrefix)
     }
 
     private var availableTestKitBedRoomNames: [String] {
-        availableTestKitBedRoomNames(in: testKitStatus)
+        testKitStatePolicy.availableBedRoomNames(in: testKitStatus)
     }
 
     private var selectedAvailableTestKitBedRoomNames: [String] {
-        availableTestKitBedRoomNames.filter { selectedTestKitBedRoomNames.contains($0) }
-    }
-
-    private func availableTestKitBedRoomNames(in status: RuntimeTestKitStatus) -> [String] {
-        let activeRoomNames = activeTestKitBedRoomNames(in: status)
-        return status.beds
-            .map(\.roomName)
-            .filter { !activeRoomNames.contains($0) }
-    }
-
-    private var activeTestKitBedRoomNames: Set<String> {
-        activeTestKitBedRoomNames(in: testKitStatus)
-    }
-
-    private func activeTestKitBedRoomNames(in status: RuntimeTestKitStatus) -> Set<String> {
-        Set(
-            status.sessions
-                .filter { !["stopped", "failed"].contains($0.state.lowercased()) }
-                .flatMap(\.bedRoomNames)
+        testKitStatePolicy.selectedAvailableBedRoomNames(
+            status: testKitStatus,
+            selectedBedRoomNames: selectedTestKitBedRoomNames
         )
     }
 
-    private var normalizedTestKitIntervalSeconds: Double {
-        min(max(testKitIntervalSeconds, 0.1), 60)
-    }
-
-    private var normalizedTestKitDurationSeconds: Double? {
-        testKitDurationSeconds > 0 ? min(testKitDurationSeconds, 86_400) : nil
-    }
-
-    private var normalizedTestKitMaxMessages: Int? {
-        testKitMaxMessages > 0 ? min(testKitMaxMessages, 1_000_000) : nil
-    }
-
-    private var normalizedTestKitVrcode: String? {
-        let trimmed = testKitVrcode.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
+    private var activeTestKitBedRoomNames: Set<String> {
+        testKitStatePolicy.activeBedRoomNames(in: testKitStatus)
     }
 
     private var normalizedTestKitOrphanVrcode: String {
-        testKitOrphanVrcode.trimmingCharacters(in: .whitespacesAndNewlines)
+        testKitStatePolicy.normalizedRequiredVrcode(testKitOrphanVrcode)
     }
 
     static func generatedTestKitVrcode() -> String {
@@ -521,7 +488,7 @@ extension RuntimeViewModel {
 
     private func pruneSelectedTestKitBeds(_ status: RuntimeTestKitStatus) {
         selectedTestKitBedRoomNames = selectedTestKitBedRoomNames.intersection(
-            Set(availableTestKitBedRoomNames(in: status))
+            Set(testKitStatePolicy.availableBedRoomNames(in: status))
         )
     }
 }

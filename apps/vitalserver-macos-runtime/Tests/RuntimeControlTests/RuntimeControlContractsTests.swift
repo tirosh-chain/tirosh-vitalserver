@@ -1,5 +1,4 @@
 import RuntimeControl
-import Core
 import Contracts
 import XCTest
 
@@ -43,12 +42,14 @@ final class RuntimeControlContractsTests: XCTestCase {
 
     func testRuntimeStatusIncludesDataDirectoryStats() throws {
         let status = RuntimeStatus(
+            dataStorageError: "volume read failed",
             dataDirectoryStats: RuntimeDataDirectoryStats(fileCount: 2, sizeBytes: 1024)
         )
 
         let encoded = try JSONEncoder().encode(status)
         let decoded = try JSONDecoder().decode(RuntimeStatus.self, from: encoded)
 
+        XCTAssertEqual(decoded.dataStorageError, "volume read failed")
         XCTAssertEqual(decoded.dataDirectoryStats?.fileCount, 2)
         XCTAssertEqual(decoded.dataDirectoryStats?.sizeBytes, 1024)
     }
@@ -65,13 +66,42 @@ final class RuntimeControlContractsTests: XCTestCase {
         XCTAssertEqual(decoded, cursor)
     }
 
-    func testRuntimeEventHistoryIncludesOptionalNextCursor() throws {
-        let history = RuntimeEventHistory(events: [], nextCursor: "opaque-cursor")
+    func testRuntimeEventHistoryIncludesOptionalReadMetadata() throws {
+        let history = RuntimeEventHistory(
+            events: [],
+            nextCursor: "opaque-cursor",
+            matchingCount: 3,
+            readError: "sqlite=read failed"
+        )
 
         let encoded = try JSONEncoder().encode(history)
         let decoded = try JSONDecoder().decode(RuntimeEventHistory.self, from: encoded)
 
         XCTAssertEqual(decoded.nextCursor, "opaque-cursor")
+        XCTAssertEqual(decoded.matchingCount, 3)
+        XCTAssertEqual(decoded.readError, "sqlite=read failed")
+    }
+
+    func testVitalDBObservationSnapshotPreservesUnavailableState() throws {
+        let snapshot = RuntimeVitalDBObservationSnapshot.unavailable(readError: "sqlite=read failed")
+
+        let encoded = try JSONEncoder().encode(snapshot)
+        let decoded = try JSONDecoder().decode(RuntimeVitalDBObservationSnapshot.self, from: encoded)
+
+        XCTAssertEqual(decoded.state, .unavailable)
+        XCTAssertNil(decoded.observation)
+        XCTAssertEqual(decoded.readError, "sqlite=read failed")
+    }
+
+    func testVitalRelationshipHistoryPreservesReadError() throws {
+        let history = RuntimeVitalRelationshipHistory(readError: "assignments=read failed")
+
+        let encoded = try JSONEncoder().encode(history)
+        let decoded = try JSONDecoder().decode(RuntimeVitalRelationshipHistory.self, from: encoded)
+
+        XCTAssertEqual(decoded.assignments, [])
+        XCTAssertEqual(decoded.events, [])
+        XCTAssertEqual(decoded.readError, "assignments=read failed")
     }
 
     func testVitalRecorderHistoryAggregatesByVrcode() {
@@ -181,13 +211,8 @@ final class RuntimeControlContractsTests: XCTestCase {
         XCTAssertEqual(history.recorders[0].presentInLatestObservation, true)
         XCTAssertEqual(history.recorders[0].currentAnomalyCount, 1)
         XCTAssertEqual(history.recorders[0].latestAnomalySeverity, VitalDBAnomalySeverity.warning)
-        XCTAssertEqual(history.recorders[0].activityTimeline.map(\.observedAt), [
-            "2026-05-26T00:00:00Z",
-            "2026-05-26T00:01:00Z",
-        ])
-        XCTAssertEqual(history.recorders[0].activityTimeline.last?.byteCount, 2048)
-        XCTAssertEqual(history.recorders[0].activityTimeline.last?.bytesPerSecond, 6.8)
-        XCTAssertEqual(history.recorders[0].activityTimeline.last?.buckets.first?.messageCount, 4)
+        XCTAssertEqual(history.recorders[0].activityTimeline, [])
+        XCTAssertEqual(history.activityHistory.source, .unavailable)
         XCTAssertEqual(history.recorders[1].status, RuntimeVitalRecorderStatus.offline)
         XCTAssertEqual(history.recorders[1].bedName, "OR B")
         XCTAssertEqual(history.recorders[1].observationCount, 1)

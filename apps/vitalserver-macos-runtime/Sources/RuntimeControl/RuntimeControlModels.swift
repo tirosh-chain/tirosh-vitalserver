@@ -225,6 +225,7 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
     public var memory: ResourceUsage?
     public var systemDisk: ResourceUsage?
     public var dataStorage: ResourceUsage?
+    public var dataStorageError: String?
     public var guestRuntimeStateError: String?
     public var dataDirectoryStats: RuntimeDataDirectoryStats?
     public var dataDirectoryStatsError: String?
@@ -262,6 +263,7 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
         memory: ResourceUsage? = nil,
         systemDisk: ResourceUsage? = nil,
         dataStorage: ResourceUsage? = nil,
+        dataStorageError: String? = nil,
         guestRuntimeStateError: String? = nil,
         dataDirectoryStats: RuntimeDataDirectoryStats? = nil,
         dataDirectoryStatsError: String? = nil,
@@ -298,6 +300,7 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
         self.memory = memory
         self.systemDisk = systemDisk
         self.dataStorage = dataStorage
+        self.dataStorageError = dataStorageError
         self.guestRuntimeStateError = guestRuntimeStateError
         self.dataDirectoryStats = dataDirectoryStats
         self.dataDirectoryStatsError = dataDirectoryStatsError

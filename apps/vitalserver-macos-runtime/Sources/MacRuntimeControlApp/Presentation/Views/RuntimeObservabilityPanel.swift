@@ -73,6 +73,7 @@ struct RuntimeObservabilityPanel: View {
         observationSection(AppConstants.Labels.runtimeEvents) {
             VStack(alignment: .leading, spacing: 10) {
                 runtimeEventControls
+                runtimeEventReadIssue
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 8) {
                         ForEach(eventItems) { item in
@@ -86,6 +87,16 @@ struct RuntimeObservabilityPanel: View {
                 }
                 .frame(maxHeight: 360)
             }
+        }
+    }
+
+    @ViewBuilder
+    private var runtimeEventReadIssue: some View {
+        if let readError = viewModel.runtimeEvents.readError {
+            Text("Runtime event read issue: \(readError)")
+                .font(.caption)
+                .foregroundStyle(.red)
+                .textSelection(.enabled)
         }
     }
 

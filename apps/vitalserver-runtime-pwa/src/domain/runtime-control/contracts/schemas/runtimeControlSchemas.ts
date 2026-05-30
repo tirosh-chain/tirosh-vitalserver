@@ -51,6 +51,11 @@ const vitalRecorderSummarySourceSchema = z.enum([
   "vitalDBObservation",
   "unavailable"
 ]);
+const vitalDBObservationReadStateSchema = z.enum([
+  "loaded",
+  "unavailable",
+  "failed"
+]);
 
 export const runtimeCommandResponseSchema = z
   .object({
@@ -318,6 +323,14 @@ export const runtimeOverviewSchema = z
     release: unknownRecord.optional(),
     install: unknownRecord.optional(),
     vitalDBObservation: vitalDBObservationSchema.nullable().optional(),
+    vitalDBObservationSnapshot: z
+      .object({
+        state: vitalDBObservationReadStateSchema.optional(),
+        observation: vitalDBObservationSchema.nullable().optional(),
+        readError: nullableString
+      })
+      .passthrough()
+      .optional(),
     vitalRecorder: runtimeVitalRecorderSummarySchema.optional()
   })
   .passthrough();

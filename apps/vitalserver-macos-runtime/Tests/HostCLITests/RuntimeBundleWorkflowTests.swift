@@ -66,8 +66,11 @@ final class RuntimeBundleWorkflowTests: XCTestCase {
                 clearGuestShutdownPreparation: {},
                 isLaunchdLoaded: { _ in false },
                 createBackup: { _ in URL(fileURLWithPath: "/product/backups/backup") },
-                writeRuntimeStatus: { _, _, _ in },
-                writeRuntimeProgress: { _ in },
+                statusReporter: RuntimeWorkflowStatusReporter(
+                    writeStatus: { _, _, _ in },
+                    writeProgress: { _ in },
+                    log: log
+                ),
                 pruneOldRuntimeArtifacts: {},
                 reasonText: { _ in "" },
                 requireFreeSpace: { _, _, _ in },

@@ -3,25 +3,17 @@ import Core
 import Foundation
 
 public struct CompositeRuntimeEventRepository: RuntimeEventRepository, RuntimeEventHistoryReading {
-    public static let defaultCatchUpIntervalSeconds: TimeInterval = 30
-
     private let primary: JSONLRuntimeEventRepository
     private let secondary: SQLiteRuntimeEventRepository
-    private let catchUpIntervalSeconds: TimeInterval
-    private let now: () -> Date
     private let log: (String) -> Void
 
     public init(
         primary: JSONLRuntimeEventRepository,
         secondary: SQLiteRuntimeEventRepository,
-        catchUpIntervalSeconds: TimeInterval = Self.defaultCatchUpIntervalSeconds,
-        now: @escaping () -> Date = Date.init,
         log: @escaping (String) -> Void = { _ in }
     ) {
         self.primary = primary
         self.secondary = secondary
-        self.catchUpIntervalSeconds = catchUpIntervalSeconds
-        self.now = now
         self.log = log
     }
 
@@ -39,36 +31,21 @@ public struct CompositeRuntimeEventRepository: RuntimeEventRepository, RuntimeEv
     }
 
     public func query(_ query: RuntimeEventQuery) -> RuntimeEventPage {
-        catchUpSecondaryIndexIfDue()
         let secondaryPage = secondary.query(query)
-        guard secondaryPage.matchingCount == nil else {
+        guard let secondaryReadError = secondaryPage.readError else {
             return secondaryPage
         }
         let primaryPage = primary.query(query)
         if !primaryPage.events.isEmpty {
-            log("runtime event sqlite query unavailable; served events from jsonl primary")
+            log("runtime event sqlite query unavailable; served events from jsonl primary error=\(secondaryReadError)")
         }
-        return primaryPage
-    }
-
-    private func catchUpSecondaryIndexIfDue() {
-        let currentTime = now()
-        guard secondary.catchUpDue(now: currentTime, intervalSeconds: catchUpIntervalSeconds) else {
-            return
-        }
-
-        let primaryEvents = primary.all()
-        do {
-            try secondary.upsert(primaryEvents)
-            try secondary.markCaughtUp(at: currentTime)
-        } catch {
-            log("runtime event sqlite catch-up failed; rebuilding index error=\(error)")
-            do {
-                try secondary.rebuild(from: primaryEvents)
-                try secondary.markCaughtUp(at: currentTime)
-            } catch {
-                log("runtime event sqlite rebuild failed error=\(error)")
-            }
-        }
+        return RuntimeEventPage(
+            events: primaryPage.events,
+            nextCursor: primaryPage.nextCursor,
+            matchingCount: primaryPage.matchingCount,
+            readError: [secondaryReadError, primaryPage.readError]
+                .compactMap { $0 }
+                .joined(separator: "; ")
+        )
     }
 }

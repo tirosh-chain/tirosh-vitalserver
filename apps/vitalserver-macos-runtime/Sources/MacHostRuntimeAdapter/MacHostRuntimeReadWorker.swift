@@ -8,15 +8,17 @@ import RuntimeControl
 public actor MacHostRuntimeReadWorker {
     private let releaseInfo: RuntimeReleaseInfo
     private let statusReader: any RuntimeStatusReading
+    private let observabilityReader: any RuntimeObservabilityReading
     private let fileReader: any RuntimeHostFileReading
     private let settingsReader: any RuntimeSettingsReading
 
     public init(releaseInfo: RuntimeReleaseInfo) {
+        let paths = RuntimePaths()
         let fileReader = SystemRuntimeHostFileReader()
-        let statusReader = SystemRuntimeStatusReader(paths: RuntimePaths())
         self.init(
             releaseInfo: releaseInfo,
-            statusReader: statusReader,
+            statusReader: SystemRuntimeStatusReader(paths: paths),
+            observabilityReader: SystemRuntimeObservabilityReader(paths: paths),
             fileReader: fileReader,
             settingsReader: SystemRuntimeSettingsReader()
         )
@@ -25,11 +27,13 @@ public actor MacHostRuntimeReadWorker {
     init(
         releaseInfo: RuntimeReleaseInfo,
         statusReader: any RuntimeStatusReading,
+        observabilityReader: any RuntimeObservabilityReading = SystemRuntimeObservabilityReader(paths: RuntimePaths()),
         fileReader: any RuntimeHostFileReading,
         settingsReader: any RuntimeSettingsReading
     ) {
         self.releaseInfo = releaseInfo
         self.statusReader = statusReader
+        self.observabilityReader = observabilityReader
         self.fileReader = fileReader
         self.settingsReader = settingsReader
     }
@@ -47,23 +51,23 @@ public actor MacHostRuntimeReadWorker {
     }
 
     public func loadRuntimeEvents(limit: Int) -> RuntimeEventHistory {
-        statusReader.loadRuntimeEvents(limit: limit)
+        observabilityReader.loadRuntimeEvents(limit: limit)
     }
 
     public func loadRuntimeEvents(query: RuntimeEventQuery) -> RuntimeEventHistory {
-        statusReader.loadRuntimeEvents(query: query)
+        observabilityReader.loadRuntimeEvents(query: query)
     }
 
     public func loadVitalDBObservation() -> VitalDBObservationDocument? {
-        statusReader.loadVitalDBObservation()
+        observabilityReader.loadVitalDBObservation()
     }
 
     public func loadVitalDBRecorders() -> RuntimeVitalRecorderHistory {
-        statusReader.loadVitalDBRecorders()
+        observabilityReader.loadVitalDBRecorders()
     }
 
     public func loadVitalDBRelationships() -> RuntimeVitalRelationshipHistory {
-        statusReader.loadVitalDBRelationships()
+        observabilityReader.loadVitalDBRelationships()
     }
 
     public func loadBackups(latestBackupPath: String?) throws -> [RuntimeBackup] {
