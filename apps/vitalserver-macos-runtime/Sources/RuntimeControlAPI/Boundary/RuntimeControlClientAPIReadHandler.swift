@@ -26,7 +26,7 @@ public struct RuntimeControlClientAPIReadHandler: RuntimeControlAPIReadHandler {
     }
 
     public func loadVitalDBObservationSnapshot() async throws -> RuntimeVitalDBObservationSnapshot {
-        RuntimeVitalDBObservationSnapshot.fromOptional(client.loadVitalDBObservation())
+        client.loadVitalDBObservationSnapshot()
     }
 
     public func loadVitalDBRecorders() async throws -> RuntimeVitalRecorderHistory {

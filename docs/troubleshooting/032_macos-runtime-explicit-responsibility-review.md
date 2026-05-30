@@ -12,7 +12,7 @@
 검토 기준:
 
 - `rg --files apps/vitalserver-macos-runtime/Sources -g '*.swift'`로 전체 Swift 파일 목록을 확정했습니다.
-- `find ... wc -l` 기준으로 8개 target, 234개 Swift 파일, 34,717라인을 검토 범위로 잡았습니다.
+- `find ... wc -l` 기준으로 8개 target, 234개 Swift 파일, 34,748라인을 검토 범위로 잡았습니다.
 - 모든 target에 대해 import graph, port protocol, optional/non-throwing read API, status/event/projection/query path, UI/API boundary 책임을 스캔했습니다.
 - 고위험 파일은 라인 단위로 추가 확인했습니다. 특히 `RuntimeStatusWriter`, `RuntimeStatusReader`, `SQLiteRuntimeObservabilityStore`, `CompositeRuntimeEventRepository`, `RuntimeControlHTTPBoundary`, `MacRuntimeControlAPIHandler`, `RuntimeViewModel`, `RuntimeControlReadModels`, `RuntimeGuestGateway`, `RuntimeEventRepository`, `RuntimeStatusRepository`를 확인했습니다.
 
@@ -376,3 +376,4 @@ rg -n "import (HostInfrastructure|MacHostRuntimeAdapter|HostCLI|RuntimeControlAP
 - 2026-05-30: `RuntimeWorkflowStatusReporter`를 추가해 apply bundle workflow의 status/progress publish와 best-effort failure logging을 runner 밖으로 분리했습니다. `RuntimeApplyBundleRunner`는 update flow와 rollback decision에 집중하고, `RuntimeBundleWorkflow`는 reporter wiring만 담당합니다.
 - 2026-05-30: `AppConstants`의 settings limit, service version, action text, primitive/notification 그룹을 별도 extension 파일로 분리했습니다. 거대한 constants 파일은 product/label/status text 중심으로 축소하고 domain별 상수 소유권을 드러냈습니다.
 - 2026-05-30: `RuntimeRecorderActivityChart`와 `RuntimeRecorderActivityChartDataBuilder`를 추가해 recorder activity chart 렌더링과 bucket aggregation을 `RuntimeRecordersPanel` 밖으로 분리했습니다. Panel은 recorder list/detail 화면 조립에 집중합니다.
+- 2026-05-30: latest VitalDB observation read path도 `RuntimeVitalDBObservationSnapshot`을 직접 반환하도록 변경했습니다. SQLite read failure가 optional `nil`로 접히지 않고 `.failed(readError:)`로 Runtime Control API까지 보존됩니다.

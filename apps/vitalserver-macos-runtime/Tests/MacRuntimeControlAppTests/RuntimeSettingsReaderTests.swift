@@ -608,6 +608,18 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         XCTAssertEqual(observation?.observedAt, "2026-05-30T00:00:00Z")
     }
 
+    func testObservabilityReaderReportsLatestObservationReadFailure() throws {
+        let reader = SystemRuntimeObservabilityReader(
+            paths: RuntimePaths(runtimeObservabilityDB: "/dev/null/vital-observability.sqlite")
+        )
+
+        let snapshot = reader.loadVitalDBObservationSnapshot()
+
+        XCTAssertEqual(snapshot.state, .failed)
+        XCTAssertNil(snapshot.observation)
+        XCTAssertNotNil(snapshot.readError)
+    }
+
     private func value(after marker: String, in arguments: [String]) -> String? {
         guard let index = arguments.firstIndex(of: marker),
               arguments.indices.contains(arguments.index(after: index)) else {
@@ -680,6 +692,10 @@ private final class StubObservabilityReader: RuntimeObservabilityReading {
             ready: true,
             recorderOnlineThresholdSeconds: 60
         )
+    }
+
+    func loadVitalDBObservationSnapshot() -> RuntimeVitalDBObservationSnapshot {
+        RuntimeVitalDBObservationSnapshot.fromOptional(loadVitalDBObservation())
     }
 
     func loadVitalDBRecorders() -> RuntimeVitalRecorderHistory {

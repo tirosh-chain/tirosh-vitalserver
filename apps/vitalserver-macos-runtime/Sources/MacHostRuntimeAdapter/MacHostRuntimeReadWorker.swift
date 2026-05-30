@@ -62,6 +62,10 @@ public actor MacHostRuntimeReadWorker {
         observabilityReader.loadVitalDBObservation()
     }
 
+    public func loadVitalDBObservationSnapshot() -> RuntimeVitalDBObservationSnapshot {
+        observabilityReader.loadVitalDBObservationSnapshot()
+    }
+
     public func loadVitalDBRecorders() -> RuntimeVitalRecorderHistory {
         observabilityReader.loadVitalDBRecorders()
     }

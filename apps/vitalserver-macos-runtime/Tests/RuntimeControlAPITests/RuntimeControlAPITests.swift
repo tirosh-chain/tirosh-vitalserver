@@ -612,6 +612,19 @@ final class RuntimeControlAPITests: XCTestCase {
     }
 
     @MainActor
+    func testRuntimeControlClientReadHandlerPreservesObservationReadFailure() async throws {
+        let client = FakeRuntimeControlClient()
+        client.vitalDBObservationSnapshot = .failed(readError: "sqlite=permission denied")
+        let handler = RuntimeControlClientAPIReadHandler(client: client)
+
+        let snapshot = try await handler.loadVitalDBObservationSnapshot()
+
+        XCTAssertEqual(snapshot.state, .failed)
+        XCTAssertNil(snapshot.observation)
+        XCTAssertEqual(snapshot.readError, "sqlite=permission denied")
+    }
+
+    @MainActor
     func testRuntimeEventsEndpointAcceptsQueryFilters() async throws {
         let client = FakeRuntimeControlClient()
         let router = RuntimeControlAPIRouter(handler: RuntimeControlClientAPIReadHandler(client: client))
@@ -1386,6 +1399,7 @@ private final class FakeRuntimeControlClient: RuntimeControlClient, RuntimeHostC
     var healthSettings: [RuntimeSettings] = []
     var eventQueries: [RuntimeEventQuery] = []
     var backupLatestPaths: [String?] = []
+    var vitalDBObservationSnapshot: RuntimeVitalDBObservationSnapshot?
     var vitalDBObservation: VitalDBObservationDocument? = VitalDBObservationDocument(
         observedAt: "2026-05-25T00:00:00Z",
         ready: true,
@@ -1475,6 +1489,10 @@ private final class FakeRuntimeControlClient: RuntimeControlClient, RuntimeHostC
 
     func loadVitalDBObservation() -> VitalDBObservationDocument? {
         vitalDBObservation
+    }
+
+    func loadVitalDBObservationSnapshot() -> RuntimeVitalDBObservationSnapshot {
+        vitalDBObservationSnapshot ?? RuntimeVitalDBObservationSnapshot.fromOptional(vitalDBObservation)
     }
 
     func loadVitalDBRecorders() -> RuntimeVitalRecorderHistory {

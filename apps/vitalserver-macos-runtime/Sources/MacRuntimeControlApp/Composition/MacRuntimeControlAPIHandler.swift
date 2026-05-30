@@ -49,7 +49,7 @@ struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
     }
 
     func loadVitalDBObservationSnapshot() async throws -> RuntimeVitalDBObservationSnapshot {
-        RuntimeVitalDBObservationSnapshot.fromOptional(await readWorker.loadVitalDBObservation())
+        await readWorker.loadVitalDBObservationSnapshot()
     }
 
     func loadVitalDBRecorders() async throws -> RuntimeVitalRecorderHistory {

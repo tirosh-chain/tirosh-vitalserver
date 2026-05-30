@@ -83,6 +83,10 @@ public struct MacHostRuntimeClient: RuntimeControlClient, RuntimeHostClient {
         observabilityReader.loadVitalDBObservation()
     }
 
+    public func loadVitalDBObservationSnapshot() -> RuntimeVitalDBObservationSnapshot {
+        observabilityReader.loadVitalDBObservationSnapshot()
+    }
+
     public func loadVitalDBRecorders() -> RuntimeVitalRecorderHistory {
         observabilityReader.loadVitalDBRecorders()
     }

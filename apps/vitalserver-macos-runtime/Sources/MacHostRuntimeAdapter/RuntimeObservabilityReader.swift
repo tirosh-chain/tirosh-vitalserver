@@ -7,8 +7,15 @@ protocol RuntimeObservabilityReading: Sendable {
     func loadRuntimeEvents(limit: Int) -> RuntimeEventHistory
     func loadRuntimeEvents(query: RuntimeEventQuery) -> RuntimeEventHistory
     func loadVitalDBObservation() -> VitalDBObservationDocument?
+    func loadVitalDBObservationSnapshot() -> RuntimeVitalDBObservationSnapshot
     func loadVitalDBRecorders() -> RuntimeVitalRecorderHistory
     func loadVitalDBRelationships() -> RuntimeVitalRelationshipHistory
+}
+
+extension RuntimeObservabilityReading {
+    func loadVitalDBObservationSnapshot() -> RuntimeVitalDBObservationSnapshot {
+        RuntimeVitalDBObservationSnapshot.fromOptional(loadVitalDBObservation())
+    }
 }
 
 struct SystemRuntimeObservabilityReader: RuntimeObservabilityReading, @unchecked Sendable {
@@ -42,9 +49,18 @@ struct SystemRuntimeObservabilityReader: RuntimeObservabilityReading, @unchecked
     }
 
     func loadVitalDBObservation() -> VitalDBObservationDocument? {
-        SQLiteVitalDBObservationRepository(
+        loadVitalDBObservationSnapshot().observation
+    }
+
+    func loadVitalDBObservationSnapshot() -> RuntimeVitalDBObservationSnapshot {
+        let repository = SQLiteVitalDBObservationRepository(
             url: URL(fileURLWithPath: paths.runtimeObservabilityDB)
-        ).bestEffortLatestObservation()
+        )
+        do {
+            return RuntimeVitalDBObservationSnapshot.fromOptional(try repository.loadLatestObservation())
+        } catch {
+            return .failed(readError: String(describing: error))
+        }
     }
 
     func loadVitalDBRecorders() -> RuntimeVitalRecorderHistory {
