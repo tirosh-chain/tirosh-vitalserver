@@ -325,3 +325,5 @@ container log metadata read failure -> missing container log metadata
 - 2026-05-30: Update artifact tar 검증 중 생성한 임시 출력 파일 cleanup 실패를 `try?`로 숨기지 않고 runtime log에 남기도록 변경했습니다.
 - 2026-05-30: Swift log preview가 log file read/size/seek 실패를 `No log data`로 숨기지 않고 `Failed to read log file ...`로 표시하도록 변경했습니다.
 - 2026-05-30: Host proxy port cleanup에서 `lsof` 실행 실패를 빈 listener 목록으로 숨기지 않고 cleanup 실패로 노출하도록 변경했습니다. listener가 없는 macOS `lsof`의 empty non-zero 결과만 빈 목록으로 처리합니다.
+- 2026-05-30: Container log 파일이 존재할 때 size/mtime metadata read 실패를 `containerLogsMetadataError`로 노출합니다. 파일 미존재와 metadata read failure를 같은 미보고 상태로 합치지 않습니다.
+- 2026-05-30: 완료 감사 기준을 정했습니다. 남은 `try?`/`unknown` 검색 결과는 file handle close, `Task.sleep`, forward-compatible unknown enum, optional UI formatting처럼 상태를 재구성하지 않는 경로만 허용합니다. Runtime state, update progress, recovery decision, event/read model 경로에서 새 fallback이 보이면 이 문서를 다시 열고 contract owner를 먼저 정합니다.
