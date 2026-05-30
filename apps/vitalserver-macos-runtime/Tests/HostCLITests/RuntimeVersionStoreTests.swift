@@ -52,7 +52,7 @@ final class RuntimeVersionStoreTests: XCTestCase {
         )
 
         XCTAssertEqual(store.readVersion(), .loaded("0.1.6"))
-        XCTAssertEqual(store.readVersionValue(missingValue: "missing", failedValue: "invalid"), "0.1.6")
+        XCTAssertEqual(store.readVersionValue(), "0.1.6")
     }
 
     func testReadVersionDistinguishesMissingAndInvalidFiles() {
@@ -76,8 +76,8 @@ final class RuntimeVersionStoreTests: XCTestCase {
         }
         XCTAssertFalse(unreadableMessage.isEmpty)
 
-        XCTAssertEqual(missing.readVersionValue(missingValue: "missing", failedValue: "invalid"), "missing")
-        XCTAssertEqual(invalid.readVersionValue(missingValue: "missing", failedValue: "invalid"), "invalid")
+        XCTAssertEqual(missing.readVersionValue(), RuntimeVersionStore.missingVersionValue)
+        XCTAssertEqual(invalid.readVersionValue(), RuntimeVersionStore.invalidVersionValue)
     }
 
     private func makeStore(

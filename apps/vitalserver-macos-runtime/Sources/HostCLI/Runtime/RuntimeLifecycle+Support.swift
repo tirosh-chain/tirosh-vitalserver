@@ -205,10 +205,16 @@ extension RuntimeLifecycle {
     }
 
     func runtimeVersionValue() -> String {
-        runtimeVersionStore().readVersionValue(
-            missingValue: "missing-version",
-            failedValue: "invalid-version"
-        )
+        switch runtimeVersionStore().readVersion() {
+        case .loaded(let version):
+            return version
+        case .missing:
+            log("runtime version unavailable reason=missing")
+            return RuntimeVersionStore.missingVersionValue
+        case .failed(let reason):
+            log("runtime version unavailable reason=invalid error=\(reason)")
+            return RuntimeVersionStore.invalidVersionValue
+        }
     }
 
     func runtimeStatusValue() -> String? {

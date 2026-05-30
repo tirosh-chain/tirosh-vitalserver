@@ -1,6 +1,9 @@
 import Foundation
 
 struct RuntimeVersionStore {
+    static let missingVersionValue = "missing-version"
+    static let invalidVersionValue = "invalid-version"
+
     var versionFile: URL
     var timestamp: () -> String
     var fileExists: (URL) -> Bool
@@ -50,14 +53,14 @@ struct RuntimeVersionStore {
         }
     }
 
-    func readVersionValue(missingValue: String, failedValue: String) -> String {
+    func readVersionValue() -> String {
         switch readVersion() {
         case .missing:
-            return missingValue
+            return Self.missingVersionValue
         case .loaded(let version):
             return version
         case .failed:
-            return failedValue
+            return Self.invalidVersionValue
         }
     }
 
