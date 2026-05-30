@@ -40,7 +40,8 @@ struct RuntimeHealthChecker {
 
     func snapshot() -> RuntimeHealthSnapshot {
         let loadedGuestState = guestRuntimeState()
-        let guestRuntimeStateFresh = isGuestRuntimeStateFresh(loadedGuestState)
+        let guestRuntimeStateFreshness = guestRuntimeStateFreshness(loadedGuestState)
+        let guestRuntimeStateFresh = guestRuntimeStateFreshness.isFresh
         let guestState = guestRuntimeStateFresh ? loadedGuestState : nil
         let vmIP = guestState?.vmIP
         let proxyPortRead = installedProxyPortRead()
@@ -70,7 +71,7 @@ struct RuntimeHealthChecker {
             containerObservation: containerObservation,
             vitalDBObservation: guestState?.vitalDBObservation,
             reportedVMErrors: [],
-            configurationFailureReasons: proxyPortRead.failureReasons,
+            configurationFailureReasons: proxyPortRead.failureReasons + guestRuntimeStateFreshness.failureReasons,
             proxyPortFailureReasons: proxyPortFailureReasons(port: proxyPort),
             guestBootstrapFailureReason: guestBootstrapFailureReason()
         ))
@@ -128,14 +129,19 @@ struct RuntimeHealthChecker {
         guestGateway.loadRuntimeState()
     }
 
-    private func isGuestRuntimeStateFresh(_ guestState: GuestRuntimeStateDocument?) -> Bool {
+    private func guestRuntimeStateFreshness(_ guestState: GuestRuntimeStateDocument?) -> RuntimeGuestStateFreshness {
         guard guestState != nil else {
-            return true
+            return RuntimeGuestStateFreshness(isFresh: true, failureReasons: [])
         }
-        guard let modifiedAt = try? fileStore.modificationDate(installedPaths.runtimeState) else {
-            return false
+        do {
+            let modifiedAt = try fileStore.modificationDate(installedPaths.runtimeState)
+            return RuntimeGuestStateFreshness(
+                isFresh: now().timeIntervalSince(modifiedAt) <= Constants.Runtime.runtimeStateStaleAfterSeconds,
+                failureReasons: []
+            )
+        } catch {
+            return RuntimeGuestStateFreshness(isFresh: false, failureReasons: [.guestRuntimeStateInvalid])
         }
-        return now().timeIntervalSince(modifiedAt) <= Constants.Runtime.runtimeStateStaleAfterSeconds
     }
 
     func readTrimmed(_ url: URL) -> String? {
@@ -254,5 +260,10 @@ struct RuntimeHealthChecker {
 
 private struct RuntimeProxyPortReadResult {
     let port: Int
+    let failureReasons: [RuntimeFailureReason]
+}
+
+private struct RuntimeGuestStateFreshness {
+    let isFresh: Bool
     let failureReasons: [RuntimeFailureReason]
 }

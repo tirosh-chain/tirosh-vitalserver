@@ -43,6 +43,7 @@ Runtime 상태가 실제 상황과 다르게 보이거나, update 진행 상태�
 - VM pid 파일을 읽거나 parse하지 못했는데 “프로세스 없음”처럼 종료 성공으로 처리합니다.
 - `runtime-version.json`을 읽거나 parse하지 못했는데 “missing-version”과 같은 값으로 표시합니다.
 - Host proxy launchd plist에서 port를 읽지 못했는데 default port만 사용하고 config 문제를 숨깁니다.
+- Guest runtime-state 파일의 modification date를 읽지 못했는데 stale 상태만 표시하고 invalid 원인을 숨깁니다.
 
 ## Impact
 
@@ -104,6 +105,7 @@ rg -n "loadRedisBackupResult|RedisBackupResultDocument|redis backup guest worker
 rg -n "readPid\\(|try\\? fileStore\\.readData\\(pidFile\\)|pid_t\\(" apps/vitalserver-macos-runtime/Sources
 rg -n "readVersionValue|runtime-version\\.json|try\\? JSONSerialization\\.jsonObject" apps/vitalserver-macos-runtime/Sources
 rg -n "installedProxyPort\\(|VITALSERVER_PROXY_PORT|defaultProxyPort" apps/vitalserver-macos-runtime/Sources
+rg -n "guestRuntimeStateFresh|modificationDate\\(installedPaths\\.runtimeState\\)|guest-runtime-state-stale" apps/vitalserver-macos-runtime/Sources
 ```
 
 상태 관련 read path에서 아래 패턴이 보이면 재검토합니다.
@@ -141,6 +143,7 @@ redis backup result read/decode failure -> still waiting
 pid file read/parse failure -> process stopped
 runtime-version read/parse failure -> missing version
 host proxy port read/parse failure -> default proxy port only
+guest runtime-state metadata read failure -> stale only
 ```
 
 ## Actions
@@ -182,6 +185,7 @@ host proxy port read/parse failure -> default proxy port only
 31. VM pid file reader는 missing과 read/parse failure를 구분합니다. Invalid pid file은 stopped 상태로 추정하지 않고 runtime operation failure로 노출합니다.
 32. Runtime version reader는 missing과 read/parse failure를 구분합니다. Invalid version document는 missing version으로 표시하지 않습니다.
 33. Host proxy port reader는 configured port와 fallback port를 구분합니다. Fallback을 사용하면 `hostProxyConfigInvalid` failure reason을 health snapshot에 남깁니다.
+34. Guest runtime-state freshness reader는 stale과 metadata read failure를 구분합니다. Metadata read failure는 stale과 함께 `guestRuntimeStateInvalid`를 남깁니다.
 
 ## Prevention
 
@@ -227,6 +231,7 @@ host proxy port read/parse failure -> default proxy port only
 - pid file read/parse 실패를 missing pid file과 같은 값으로 처리
 - runtime-version read/parse 실패를 missing version과 같은 값으로 처리
 - host proxy port read/parse 실패를 default port 사용으로만 처리하고 failure reason을 남기지 않음
+- guest runtime-state metadata read 실패를 stale과 같은 값으로만 처리
 
 ## Operational Notes
 
@@ -271,3 +276,4 @@ host proxy port read/parse failure -> default proxy port only
 - 2026-05-30: VM pid file reader가 pid file 읽기 결과를 `missing`, `loaded`, `failed`로 분리했습니다. Invalid/unreadable pid file은 process stopped로 추정하지 않습니다.
 - 2026-05-30: Runtime version reader가 version document 읽기 결과를 `missing`, `loaded`, `failed`로 분리했습니다. Invalid/unreadable version file은 `invalid-version`으로 표시합니다.
 - 2026-05-30: Host proxy port reader가 configured port와 fallback port를 분리했습니다. Launchd plist port를 읽지 못하면 default port를 쓰더라도 `hostProxyConfigInvalid`를 health failure reason으로 남깁니다.
+- 2026-05-30: Guest runtime-state freshness reader가 stale과 metadata read failure를 분리했습니다. Modification date를 읽지 못하면 `guestRuntimeStateInvalid`를 함께 남깁니다.
