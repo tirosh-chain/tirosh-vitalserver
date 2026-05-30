@@ -10,6 +10,7 @@ final class RuntimeFileStoreSpy: RuntimeFileStore {
     var removed: [URL] = []
     var childDirectoriesError: Error?
     var createDirectoryError: Error?
+    var removeItemError: Error?
 
     func fileExists(_ url: URL) -> Bool {
         files[url] != nil
@@ -61,6 +62,9 @@ final class RuntimeFileStoreSpy: RuntimeFileStore {
     }
 
     func removeItem(at url: URL) throws {
+        if let removeItemError {
+            throw removeItemError
+        }
         files.removeValue(forKey: url)
         directories.remove(url)
         removed.append(url)

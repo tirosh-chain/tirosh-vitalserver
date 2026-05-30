@@ -160,8 +160,16 @@ struct RuntimeBundleWorkflow {
         let extractedBundle = try extractBundleArchive(bundleURL, to: temporaryRoot)
         return MaterializedBundleInput(
             bundleURL: extractedBundle,
-            cleanup: { try? operations.fileStore.removeItem(at: temporaryRoot) }
+            cleanup: { removeMaterializedBundleTemporaryRoot(temporaryRoot) }
         )
+    }
+
+    func removeMaterializedBundleTemporaryRoot(_ temporaryRoot: URL) {
+        do {
+            try operations.fileStore.removeItem(at: temporaryRoot)
+        } catch {
+            operations.log("bundle temporary directory cleanup failed path=\(temporaryRoot.path) error=\(error)")
+        }
     }
 
     private func extractBundleArchive(_ archiveURL: URL, to temporaryRoot: URL) throws -> URL {

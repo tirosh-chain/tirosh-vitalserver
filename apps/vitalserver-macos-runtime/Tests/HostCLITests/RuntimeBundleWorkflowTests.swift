@@ -24,6 +24,22 @@ final class RuntimeBundleWorkflowTests: XCTestCase {
         XCTAssertTrue(logs.contains { $0.contains("bundle apply log rotation failed") })
     }
 
+    func testRemoveMaterializedBundleTemporaryRootRecordsCleanupFailure() {
+        let fileStore = RuntimeFileStoreSpy()
+        fileStore.removeItemError = CocoaError(.fileWriteNoPermission)
+        let temporaryRoot = URL(fileURLWithPath: "/tmp/tirosh-update-bundle-test")
+        var logs: [String] = []
+        let workflow = makeWorkflow(
+            fileStore: fileStore,
+            log: { logs.append($0) }
+        )
+
+        workflow.removeMaterializedBundleTemporaryRoot(temporaryRoot)
+
+        XCTAssertTrue(logs.contains { $0.contains("bundle temporary directory cleanup failed") })
+        XCTAssertTrue(logs.contains { $0.contains(temporaryRoot.path) })
+    }
+
     private func makeWorkflow(
         fileStore: RuntimeFileStore,
         rotateRuntimeLogs: @escaping () throws -> Void = {},

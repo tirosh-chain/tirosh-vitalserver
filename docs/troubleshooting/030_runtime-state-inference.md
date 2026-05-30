@@ -308,3 +308,4 @@ missing VitalDB recorder observation -> zero recorder metrics
 - 2026-05-30: devtools health/status도 legacy `vm-ip` 파일을 읽지 않도록 변경했습니다. 개발 도구도 `runtime-state.json`의 `vmIP`와 `guestHTTP` 계약을 사용하고 missing/invalid state를 명시 오류로 표시합니다.
 - 2026-05-30: Apply bundle 시작 전 log directory 준비와 runtime log rotation 실패를 `try?`로 숨기지 않고 runtime log에 남기도록 변경했습니다.
 - 2026-05-30: Apply bundle 중 guest shutdown preparation cleanup 실패를 `try?`로 숨기지 않고 runtime log에 남기도록 변경했습니다.
+- 2026-05-30: Update bundle archive materialization 임시 디렉터리 cleanup 실패를 `try?`로 숨기지 않고 runtime log에 남기도록 변경했습니다.
