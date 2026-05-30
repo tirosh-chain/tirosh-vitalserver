@@ -147,6 +147,7 @@ runtime-version read/parse failure -> missing version
 host proxy port read/parse failure -> default proxy port only
 guest runtime-state metadata read failure -> stale only
 runtime event JSONL read/decode failure -> empty event list only
+audit proxy status decode failure -> curl failure
 ```
 
 ## Actions
@@ -190,6 +191,7 @@ runtime event JSONL read/decode failure -> empty event list only
 33. Host proxy port reader는 configured port와 fallback port를 구분합니다. Fallback을 사용하면 `hostProxyConfigInvalid` failure reason을 health snapshot에 남깁니다.
 34. Guest runtime-state freshness reader는 stale과 metadata read failure를 구분합니다. Metadata read failure는 stale과 함께 `guestRuntimeStateInvalid`를 남깁니다.
 35. Runtime event JSONL reader는 loaded events와 read/decode issues를 함께 제공합니다. Invalid lines는 valid events와 분리해서 기록합니다.
+36. Audit proxy status probe는 request failure와 invalid response를 구분합니다. Curl 실패는 `failed`, 응답 contract decode 실패는 `invalid-response`로 노출합니다.
 
 ## Prevention
 
@@ -283,3 +285,4 @@ runtime event JSONL read/decode failure -> empty event list only
 - 2026-05-30: Host proxy port reader가 configured port와 fallback port를 분리했습니다. Launchd plist port를 읽지 못하면 default port를 쓰더라도 `hostProxyConfigInvalid`를 health failure reason으로 남깁니다.
 - 2026-05-30: Guest runtime-state freshness reader가 stale과 metadata read failure를 분리했습니다. Modification date를 읽지 못하면 `guestRuntimeStateInvalid`를 함께 남깁니다.
 - 2026-05-30: Runtime event JSONL reader가 loaded events와 read/decode issues를 분리했습니다. Legacy `all()`은 events만 반환하지만 `allResult()`로 문제 원인을 확인할 수 있습니다.
+- 2026-05-30: Audit proxy status 응답 decode 실패를 curl 실패와 섞지 않고 `invalid-response`로 노출합니다.

@@ -249,10 +249,12 @@ struct RuntimeHealthChecker {
             Constants.Commands.curl,
             arguments: ["-fsS", "--max-time", "5", Constants.Runtime.auditProxyStatusURL(port: port)]
         )
-        guard result.exitCode == 0,
-              let data = result.stdout.data(using: .utf8),
-              let document = try? JSONDecoder().decode(RuntimeAuditProxyStatusDocument.self, from: data) else {
+        guard result.exitCode == 0 else {
             return ("failed", nil)
+        }
+        guard let data = result.stdout.data(using: .utf8),
+              let document = try? JSONDecoder().decode(RuntimeAuditProxyStatusDocument.self, from: data) else {
+            return (RuntimeHTTPStatusText.invalidResponse, nil)
         }
         return ("200", document)
     }
