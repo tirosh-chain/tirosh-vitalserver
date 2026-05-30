@@ -138,7 +138,11 @@ struct RuntimeLifecycle {
     }
 
     func health() throws {
-        try? collectGuestLogs()
+        do {
+            try collectGuestLogs()
+        } catch {
+            log("health guest log collection failed error=\(error.localizedDescription)")
+        }
         try runtimeHealthCheckRunner().run()
     }
 

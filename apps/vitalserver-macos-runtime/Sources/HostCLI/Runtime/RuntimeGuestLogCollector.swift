@@ -21,9 +21,10 @@ struct RuntimeGuestLogCollector {
     }
 
     private func syncRotatedContainerLogs() throws {
-        guard let entries = try? fileStore.contentsOfDirectory(at: installedPaths.guestRunDirectory, skipsHiddenFiles: true) else {
+        guard fileStore.directoryExists(installedPaths.guestRunDirectory) else {
             return
         }
+        let entries = try fileStore.contentsOfDirectory(at: installedPaths.guestRunDirectory, skipsHiddenFiles: true)
         for source in entries where source.lastPathComponent.hasPrefix("container-logs.log.") {
             let destination = installedPaths.centralGuestLogsDirectory.appendingPathComponent(source.lastPathComponent)
             try sync(source: source, destination: destination)
@@ -44,7 +45,7 @@ struct RuntimeGuestLogCollector {
         let sourceSize = try fileStore.fileSize(source)
         let destinationSize = try fileStore.fileSize(destination)
         guard sourceSize != destinationSize else {
-            if !matchingBytes(source: source, destination: destination, comparedBytes: destinationSize) {
+            if try !matchingBytes(source: source, destination: destination, comparedBytes: destinationSize) {
                 try replaceDestination(source: source, destination: destination)
             }
             return
@@ -53,7 +54,7 @@ struct RuntimeGuestLogCollector {
             try replaceDestination(source: source, destination: destination)
             return
         }
-        guard matchingBytes(source: source, destination: destination, comparedBytes: destinationSize) else {
+        guard try matchingBytes(source: source, destination: destination, comparedBytes: destinationSize) else {
             try replaceDestination(source: source, destination: destination)
             return
         }
@@ -67,32 +68,26 @@ struct RuntimeGuestLogCollector {
         try fileStore.copyItem(at: source, to: destination)
     }
 
-    private func matchingBytes(source: URL, destination: URL, comparedBytes: UInt64) -> Bool {
+    private func matchingBytes(source: URL, destination: URL, comparedBytes: UInt64) throws -> Bool {
         let length = min(comparedBytes, Self.appendValidationByteLimit)
         if length == 0 {
             return true
         }
         let offset = comparedBytes - length
-        guard let sourceData = readData(source, offset: offset, length: length),
-              let destinationData = readData(destination, offset: offset, length: length) else {
+        guard let sourceData = try readData(source, offset: offset, length: length),
+              let destinationData = try readData(destination, offset: offset, length: length) else {
             return false
         }
         return sourceData == destinationData
     }
 
-    private func readData(_ url: URL, offset: UInt64, length: UInt64) -> Data? {
-        guard let handle = try? FileHandle(forReadingFrom: url) else {
-            return nil
-        }
+    private func readData(_ url: URL, offset: UInt64, length: UInt64) throws -> Data? {
+        let handle = try FileHandle(forReadingFrom: url)
         defer {
             try? handle.close()
         }
-        do {
-            try handle.seek(toOffset: offset)
-            return try handle.read(upToCount: Int(length))
-        } catch {
-            return nil
-        }
+        try handle.seek(toOffset: offset)
+        return try handle.read(upToCount: Int(length))
     }
 
     private func archive(_ url: URL) throws {

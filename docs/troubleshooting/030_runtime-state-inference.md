@@ -151,6 +151,7 @@ audit proxy status decode failure -> curl failure
 update bundle manifest read/decode failure -> missing summary
 latest backup read failure -> no backups available
 log collection read/copy failure -> silent skip
+guest log collection read failure -> no guest logs
 ```
 
 ## Actions
@@ -198,6 +199,7 @@ log collection read/copy failure -> silent skip
 37. Update bundle summary는 typed manifest contract를 사용합니다. Missing manifest와 invalid manifest를 같은 메시지로 합치지 않습니다.
 38. Latest backup reader는 목록 read failure와 empty backup list를 구분합니다. Rollback preflight는 read failure를 `no backups available`로 바꾸지 않습니다.
 39. Log collection은 missing source와 read/copy failure를 구분합니다. Export logs는 collection failure를 숨기지 않고 호출자에게 전달합니다.
+40. Guest log collection은 missing guest run directory와 directory read failure를 구분합니다. Health/watchdog의 best-effort collection 실패도 runtime log에 남깁니다.
 
 ## Prevention
 
@@ -295,3 +297,4 @@ log collection read/copy failure -> silent skip
 - 2026-05-30: Update bundle summary가 `[String: Any]` 임의 파싱 대신 `UpdateBundleManifest` contract를 사용하고, missing/invalid manifest를 구분합니다.
 - 2026-05-30: Latest backup 조회가 backup directory read failure를 empty list로 숨기지 않도록 변경했습니다. Status convenience path는 실패를 로그에 남기고, rollback preflight는 오류를 그대로 받습니다.
 - 2026-05-30: Runtime log collection이 존재하는 log source의 read/copy/size 실패를 조용히 skip하지 않고 throw하도록 변경했습니다. UI log preview는 실패 메시지를 표시하고, export logs는 실패를 호출자에게 전달합니다.
+- 2026-05-30: Guest log collection이 guest run directory read failure를 조용히 skip하지 않고 throw하도록 변경했습니다. Health/watchdog 경로는 실패를 로그로 남긴 뒤 본래 작업을 계속합니다.

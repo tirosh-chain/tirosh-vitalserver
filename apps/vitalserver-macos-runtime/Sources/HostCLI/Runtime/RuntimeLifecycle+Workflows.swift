@@ -137,9 +137,21 @@ extension RuntimeLifecycle {
         RuntimeWatchdogRunner(
             actions: RuntimeWatchdogActions(
                 prepareLogs: {
-                    try? fileStore.createDirectory(at: logsDirectory, withIntermediateDirectories: true)
-                    try? rotateRuntimeLogs()
-                    try? collectGuestLogs()
+                    do {
+                        try fileStore.createDirectory(at: logsDirectory, withIntermediateDirectories: true)
+                    } catch {
+                        log("watchdog log directory preparation failed error=\(error.localizedDescription)")
+                    }
+                    do {
+                        try rotateRuntimeLogs()
+                    } catch {
+                        log("watchdog log rotation failed error=\(error.localizedDescription)")
+                    }
+                    do {
+                        try collectGuestLogs()
+                    } catch {
+                        log("watchdog guest log collection failed error=\(error.localizedDescription)")
+                    }
                 },
                 activeManagedOperation: {
                     runtimeManagedOperationGuard().activeOperation()
