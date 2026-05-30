@@ -45,6 +45,7 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-031 | Recorder activity 그래프가 rolling window만 표시 | Runtime Control PWA / Observability | resolved | [Recorder activity 그래프가 rolling window만 표시함](troubleshooting/031_recorder-activity-history-window.md) |
 | TS-032 | macOS runtime 코드의 상태/관측 책임이 섞임 | Runtime health / Observability / Update | active | [macOS runtime 코드의 상태/관측 책임이 섞임](troubleshooting/032_macos-runtime-explicit-responsibility-review.md) |
 | TS-033 | Helper가 Settings/Export logs/event를 읽지 못함 | Runtime Control PWA / Observability | active | [Runtime Control Helper가 설정/로그/event를 읽지 못함](troubleshooting/033_runtime-control-helper-read-permissions.md) |
+| TS-034 | macOS runtime 권한 실패 검증이 부족함 | Update / Runtime Control PWA / Observability | active | [macOS runtime 권한 실패 검증이 부족함](troubleshooting/034_macos-runtime-permission-failure-test-coverage.md) |
 
 ## Follow-up 규칙
 

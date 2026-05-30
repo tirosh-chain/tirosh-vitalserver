@@ -120,6 +120,53 @@ final class RuntimeApplyBundleStepExecutorTests: XCTestCase {
         )
     }
 
+    func testRootfsReplacementPropagatesPermissionFailure() {
+        let permissionError = CocoaError(.fileWriteNoPermission)
+        let preflight = ApplyBundlePreflightContext(
+            stagedBundle: URL(fileURLWithPath: "/staged"),
+            manifest: manifest(version: "1.2.3", artifacts: [
+                UpdateBundleArtifact(name: Constants.Artifacts.rootfsBase, type: .rootfsBase, sha256: "abc", size: 10),
+            ]),
+            stagedRootfs: URL(fileURLWithPath: "/staged/rootfs-base.raw.gz"),
+            backup: URL(fileURLWithPath: "/backup"),
+            restartPolicy: RuntimeServiceRestartPolicy(restartVM: false, restartProxy: false, restartWatchdog: false)
+        )
+        let executor = makeExecutor(replaceFile: { _, _ in throw permissionError })
+
+        XCTAssertThrowsError(try executor.execute(
+            .replaceRootfsBase,
+            preflight: preflight,
+            rootfsBase: URL(fileURLWithPath: "/runtime/rootfs-base.raw.gz")
+        )) { error in
+            XCTAssertFileWriteNoPermission(error)
+        }
+    }
+
+    func testUpdateArtifactReplacementPropagatesPermissionFailure() {
+        let permissionError = CocoaError(.fileWriteNoPermission)
+        let artifact = UpdateBundleArtifact(name: "app.tar.gz", type: .appBundle, sha256: "abc", size: 10)
+        let preflight = ApplyBundlePreflightContext(
+            stagedBundle: URL(fileURLWithPath: "/staged"),
+            manifest: manifest(version: "1.2.3", artifacts: [artifact]),
+            stagedRootfs: nil,
+            backup: URL(fileURLWithPath: "/backup"),
+            restartPolicy: RuntimeServiceRestartPolicy(restartVM: false, restartProxy: false, restartWatchdog: false)
+        )
+        let executor = makeExecutor(replaceUpdateArtifacts: { artifacts, stagedBundle in
+            XCTAssertEqual(artifacts, [artifact])
+            XCTAssertEqual(stagedBundle.path, "/staged")
+            throw permissionError
+        })
+
+        XCTAssertThrowsError(try executor.execute(
+            .replaceUpdateArtifacts,
+            preflight: preflight,
+            rootfsBase: URL(fileURLWithPath: "/runtime/rootfs-base.raw.gz")
+        )) { error in
+            XCTAssertFileWriteNoPermission(error)
+        }
+    }
+
     func testStopRuntimeServicesLogsGuestShutdownPreparationCleanupFailure() throws {
         var logs: [String] = []
         let executor = RuntimeApplyBundleStepExecutor(
@@ -205,5 +252,37 @@ final class RuntimeApplyBundleStepExecutorTests: XCTestCase {
             artifacts: artifacts,
             migrations: migrations
         )
+    }
+
+    private func makeExecutor(
+        replaceFile: @escaping (URL, URL) throws -> Void = { _, _ in },
+        replaceUpdateArtifacts: @escaping ([UpdateBundleArtifact], URL) throws -> Void = { _, _ in }
+    ) -> RuntimeApplyBundleStepExecutor {
+        RuntimeApplyBundleStepExecutor(
+            stopRuntimeServices: {},
+            prepareGuestShutdownForUpdate: { _ in },
+            clearGuestShutdownPreparation: {},
+            createDirectory: { _, _ in },
+            fileSize: { _ in 10 },
+            replaceFile: replaceFile,
+            replaceUpdateArtifacts: replaceUpdateArtifacts,
+            runMigrations: { _, _ in },
+            refreshCloudInitSeedIfNeeded: { _ in },
+            writeRuntimeVersion: { _, _ in },
+            startRuntimeServices: { _ in },
+            activateGuestUpdateIfNeeded: { _ in },
+            waitForHealth: { _ in },
+            log: { _ in }
+        )
+    }
+
+    private func XCTAssertFileWriteNoPermission(
+        _ error: Error,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let nsError = error as NSError
+        XCTAssertEqual(nsError.domain, NSCocoaErrorDomain, file: file, line: line)
+        XCTAssertEqual(nsError.code, CocoaError.Code.fileWriteNoPermission.rawValue, file: file, line: line)
     }
 }

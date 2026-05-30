@@ -625,6 +625,37 @@ final class RuntimeControlAPITests: XCTestCase {
     }
 
     @MainActor
+    func testRuntimeControlClientReadHandlerPropagatesBackupPermissionFailure() async throws {
+        let client = FakeRuntimeControlClient()
+        client.loadBackupsError = CocoaError(.fileReadNoPermission)
+        let handler = RuntimeControlClientAPIReadHandler(client: client, hostClient: client)
+
+        do {
+            _ = try await handler.loadBackups()
+            XCTFail("Expected loadBackups to throw")
+        } catch {
+            XCTAssertFileReadNoPermission(error)
+        }
+        XCTAssertEqual(client.backupLatestPaths, ["latest-backup"])
+    }
+
+    @MainActor
+    func testRuntimeControlClientReadHandlerPropagatesExportLogsPermissionFailure() async throws {
+        let client = FakeRuntimeControlClient()
+        client.exportLogsError = CocoaError(.fileWriteNoPermission)
+        let handler = RuntimeControlClientAPIReadHandler(client: client, hostClient: client)
+
+        do {
+            _ = try await handler.exportLogs(
+                destination: RuntimeControlFileReference(kind: .localPath, value: "/tmp/vitalserver-logs.zip")
+            )
+            XCTFail("Expected exportLogs to throw")
+        } catch {
+            XCTAssertFileWriteNoPermission(error)
+        }
+    }
+
+    @MainActor
     func testRuntimeEventsEndpointAcceptsQueryFilters() async throws {
         let client = FakeRuntimeControlClient()
         let router = RuntimeControlAPIRouter(handler: RuntimeControlClientAPIReadHandler(client: client))
@@ -1389,6 +1420,26 @@ private struct StubRuntimeControlAPIReadHandler: RuntimeControlAPIReadHandler {
     }
 }
 
+private func XCTAssertFileReadNoPermission(
+    _ error: Error,
+    file: StaticString = #filePath,
+    line: UInt = #line
+) {
+    let nsError = error as NSError
+    XCTAssertEqual(nsError.domain, NSCocoaErrorDomain, file: file, line: line)
+    XCTAssertEqual(nsError.code, CocoaError.Code.fileReadNoPermission.rawValue, file: file, line: line)
+}
+
+private func XCTAssertFileWriteNoPermission(
+    _ error: Error,
+    file: StaticString = #filePath,
+    line: UInt = #line
+) {
+    let nsError = error as NSError
+    XCTAssertEqual(nsError.domain, NSCocoaErrorDomain, file: file, line: line)
+    XCTAssertEqual(nsError.code, CocoaError.Code.fileWriteNoPermission.rawValue, file: file, line: line)
+}
+
 @MainActor
 private final class FakeRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
     var capabilities = RuntimeControlCapabilities(canOpenLocalFiles: false)
@@ -1399,6 +1450,8 @@ private final class FakeRuntimeControlClient: RuntimeControlClient, RuntimeHostC
     var healthSettings: [RuntimeSettings] = []
     var eventQueries: [RuntimeEventQuery] = []
     var backupLatestPaths: [String?] = []
+    var loadBackupsError: Error?
+    var exportLogsError: Error?
     var vitalDBObservationSnapshot: RuntimeVitalDBObservationSnapshot?
     var vitalDBObservation: VitalDBObservationDocument? = VitalDBObservationDocument(
         observedAt: "2026-05-25T00:00:00Z",
@@ -1522,6 +1575,9 @@ private final class FakeRuntimeControlClient: RuntimeControlClient, RuntimeHostC
 
     func loadBackups(latestBackupPath: String?) throws -> [RuntimeBackup] {
         backupLatestPaths.append(latestBackupPath)
+        if let loadBackupsError {
+            throw loadBackupsError
+        }
         return [RuntimeBackup(path: "/backups/rollback", sizeBytes: 1024)]
     }
 
@@ -1625,6 +1681,9 @@ private final class FakeRuntimeControlClient: RuntimeControlClient, RuntimeHostC
     }
 
     func exportLogs(to destination: URL) async throws -> RuntimeLogExportResult {
-        RuntimeLogExportResult(destination: destination)
+        if let exportLogsError {
+            throw exportLogsError
+        }
+        return RuntimeLogExportResult(destination: destination)
     }
 }

@@ -13,6 +13,7 @@ final class RuntimeFileStoreSpy: RuntimeFileStore {
     var childDirectoriesError: Error?
     var createDirectoryError: Error?
     var removeItemError: Error?
+    var copyItemError: Error?
 
     func fileExists(_ url: URL) -> Bool {
         files[url] != nil
@@ -79,7 +80,26 @@ final class RuntimeFileStoreSpy: RuntimeFileStore {
     }
 
     func copyItem(at source: URL, to destination: URL) throws {
-        files[destination] = try readData(source)
+        if let copyItemError {
+            throw copyItemError
+        }
+        if let data = files[source] {
+            files[destination] = data
+            return
+        }
+        if directories.contains(source) {
+            directories.insert(destination)
+            for directory in Array(directories) where directory.path.hasPrefix(source.path + "/") {
+                let suffix = String(directory.path.dropFirst(source.path.count))
+                directories.insert(URL(fileURLWithPath: destination.path + suffix))
+            }
+            for (url, data) in files where url.path.hasPrefix(source.path + "/") {
+                let suffix = String(url.path.dropFirst(source.path.count))
+                files[URL(fileURLWithPath: destination.path + suffix)] = data
+            }
+            return
+        }
+        _ = try readData(source)
     }
 
     func moveItem(at source: URL, to destination: URL) throws {

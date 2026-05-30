@@ -40,6 +40,43 @@ final class RuntimeBundleWorkflowTests: XCTestCase {
         XCTAssertTrue(logs.contains { $0.contains(temporaryRoot.path) })
     }
 
+    func testStageBundlePropagatesExistingDestinationPermissionFailure() throws {
+        let fileStore = RuntimeFileStoreSpy()
+        let source = URL(fileURLWithPath: "/input/update-bundle")
+        let destination = URL(fileURLWithPath: "/product/bundles/update-bundle-1.2.3")
+        try writeEmptyBundle(at: source, to: fileStore)
+        fileStore.directories.insert(destination)
+        fileStore.removeItemError = CocoaError(.fileWriteNoPermission)
+        var logs: [String] = []
+        let workflow = makeWorkflow(
+            fileStore: fileStore,
+            log: { logs.append($0) }
+        )
+
+        XCTAssertThrowsError(try workflow.stageBundle(source)) { error in
+            XCTAssertFileWriteNoPermission(error)
+        }
+        XCTAssertTrue(logs.contains { $0.contains("removing existing staged bundle") })
+        XCTAssertTrue(fileStore.removed.isEmpty)
+    }
+
+    func testStageBundlePropagatesManagedStorageCopyPermissionFailure() throws {
+        let fileStore = RuntimeFileStoreSpy()
+        let source = URL(fileURLWithPath: "/input/update-bundle")
+        try writeEmptyBundle(at: source, to: fileStore)
+        fileStore.copyItemError = CocoaError(.fileWriteNoPermission)
+        var logs: [String] = []
+        let workflow = makeWorkflow(
+            fileStore: fileStore,
+            log: { logs.append($0) }
+        )
+
+        XCTAssertThrowsError(try workflow.stageBundle(source)) { error in
+            XCTAssertFileWriteNoPermission(error)
+        }
+        XCTAssertTrue(logs.contains { $0.contains("copying bundle to managed storage") })
+    }
+
     private func makeWorkflow(
         fileStore: RuntimeFileStore,
         rotateRuntimeLogs: @escaping () throws -> Void = {},
@@ -105,5 +142,33 @@ final class RuntimeBundleWorkflowTests: XCTestCase {
             swaggerUIHTTP: "200",
             failureReasons: []
         )
+    }
+
+    private func writeEmptyBundle(at source: URL, to fileStore: RuntimeFileStoreSpy) throws {
+        let manifest = UpdateBundleManifest(
+            schemaVersion: 3,
+            product: Constants.Product.identifier,
+            helperVersion: "1.2.3",
+            releaseLabel: "1.2.3",
+            targetPlatform: "macos-arm64",
+            components: ["updater": "1.2.3"],
+            createdAt: "2026-05-31T00:00:00Z",
+            artifacts: [],
+            migrations: []
+        )
+        fileStore.directories.insert(source)
+        fileStore.files[source.appendingPathComponent(Constants.Bundle.manifest)] = try JSONEncoder().encode(manifest)
+        fileStore.files[source.appendingPathComponent(Constants.Bundle.checksums)] = Data()
+        fileStore.files[source.appendingPathComponent(Constants.Bundle.signature)] = Data("signature".utf8)
+    }
+
+    private func XCTAssertFileWriteNoPermission(
+        _ error: Error,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let nsError = error as NSError
+        XCTAssertEqual(nsError.domain, NSCocoaErrorDomain, file: file, line: line)
+        XCTAssertEqual(nsError.code, CocoaError.Code.fileWriteNoPermission.rawValue, file: file, line: line)
     }
 }
