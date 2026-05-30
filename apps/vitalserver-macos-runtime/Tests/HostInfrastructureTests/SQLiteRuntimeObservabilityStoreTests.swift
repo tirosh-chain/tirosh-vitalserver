@@ -204,6 +204,32 @@ final class SQLiteRuntimeObservabilityStoreTests: XCTestCase {
         XCTAssertEqual(repository.recent(limit: 10).map(\.id), ["event-1", "event-2"])
     }
 
+    func testCompositeRepositoryFallsBackToJSONLWhenSQLiteQueryIsUnavailable() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let jsonl = JSONLRuntimeEventRepository(url: directory.appendingPathComponent("events.jsonl"))
+        let sqlite = SQLiteRuntimeEventRepository(url: URL(fileURLWithPath: "/dev/null/events.sqlite"))
+        var logs: [String] = []
+        let repository = CompositeRuntimeEventRepository(
+            primary: jsonl,
+            secondary: sqlite,
+            catchUpIntervalSeconds: 0,
+            log: { logs.append($0) }
+        )
+
+        try jsonl.append(event(id: "event-1", timestamp: "2026-05-24T00:00:00Z", type: .statusChanged))
+
+        let page = repository.query(RuntimeEventQuery(limit: 10))
+
+        XCTAssertEqual(page.events.map(\.id), ["event-1"])
+        XCTAssertEqual(page.matchingCount, 1)
+        XCTAssertTrue(logs.contains { $0.contains("served events from jsonl primary") })
+    }
+
     func testStoresAndLoadsLatestVitalDBObservation() throws {
         let harness = try SQLiteStoreHarness()
         defer {

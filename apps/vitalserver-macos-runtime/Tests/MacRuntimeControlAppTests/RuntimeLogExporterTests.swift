@@ -206,6 +206,82 @@ final class RuntimeLogExporterTests: XCTestCase {
         XCTAssertEqual(archivedContainerLog, "source")
     }
 
+    func testExportContinuesWhenCollectionRefreshFails() async throws {
+        let root = try temporaryDirectory()
+        let productLogs = root.appendingPathComponent("product/logs", isDirectory: true)
+        let destination = root.appendingPathComponent("export.zip")
+        try FileManager.default.createDirectory(at: productLogs, withIntermediateDirectories: true)
+
+        var archivedManifest: RuntimeLogExportManifest?
+        let exporter = MacHostRuntimeLogExporter(
+            logCollector: FailingRuntimeLogCollectorForExport(),
+            productLogsDirectory: productLogs,
+            supplementalLogItems: [],
+            rotatedSupplementalSets: [],
+            archiveRunner: { _, arguments in
+                let bundleRoot = URL(fileURLWithPath: arguments[4])
+                let temporaryArchive = URL(fileURLWithPath: arguments[5])
+                if let manifestData = try? Data(
+                    contentsOf: bundleRoot.appendingPathComponent("diagnostics/export-manifest.json")
+                ) {
+                    archivedManifest = try? JSONDecoder().decode(RuntimeLogExportManifest.self, from: manifestData)
+                }
+                try? "archive".write(to: temporaryArchive, atomically: true, encoding: .utf8)
+                return RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "")
+            }
+        )
+
+        let result = try await exporter.exportLogs(to: destination)
+
+        XCTAssertEqual(result.destination, destination)
+        XCTAssertEqual(try String(contentsOf: destination), "archive")
+        XCTAssertEqual(archivedManifest?.collectionIssue, "collection failed")
+    }
+
+    func testExportSkipsUnreadableSupplementalSourceAndRecordsManifestIssue() async throws {
+        let root = try temporaryDirectory()
+        let productLogs = root.appendingPathComponent("product/logs", isDirectory: true)
+        let source = root.appendingPathComponent("runtime-config.json")
+        let destination = root.appendingPathComponent("export.zip")
+        try FileManager.default.createDirectory(at: productLogs, withIntermediateDirectories: true)
+        try "secret".write(to: source, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: source.path)
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: source.path)
+        }
+
+        var archivedManifest: RuntimeLogExportManifest?
+        let exporter = MacHostRuntimeLogExporter(
+            logCollector: FakeRuntimeLogCollectorForExport(),
+            productLogsDirectory: productLogs,
+            supplementalLogItems: [
+                RuntimeLogExportSupplementalSource(
+                    source: source,
+                    relativeDestination: "diagnostics/guest/runtime-config.json"
+                ),
+            ],
+            rotatedSupplementalSets: [],
+            archiveRunner: { _, arguments in
+                let bundleRoot = URL(fileURLWithPath: arguments[4])
+                let temporaryArchive = URL(fileURLWithPath: arguments[5])
+                if let manifestData = try? Data(
+                    contentsOf: bundleRoot.appendingPathComponent("diagnostics/export-manifest.json")
+                ) {
+                    archivedManifest = try? JSONDecoder().decode(RuntimeLogExportManifest.self, from: manifestData)
+                }
+                try? "archive".write(to: temporaryArchive, atomically: true, encoding: .utf8)
+                return RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "")
+            }
+        )
+
+        _ = try await exporter.exportLogs(to: destination)
+
+        let item = try XCTUnwrap(archivedManifest?.supplementalItems.first)
+        XCTAssertTrue(item.sourcePresent)
+        XCTAssertFalse(item.included)
+        XCTAssertNotNil(item.error)
+    }
+
     private func temporaryDirectory() throws -> URL {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("RuntimeLogExporterTests-\(UUID().uuidString)", isDirectory: true)
@@ -219,5 +295,13 @@ private final class FakeRuntimeLogCollectorForExport: RuntimeLogCollecting, @unc
 
     func refreshLogCollection() throws {
         refreshCount += 1
+    }
+}
+
+private struct FailingRuntimeLogCollectorForExport: RuntimeLogCollecting {
+    func refreshLogCollection() throws {
+        throw NSError(domain: "RuntimeLogExporterTests", code: 1, userInfo: [
+            NSLocalizedDescriptionKey: "collection failed",
+        ])
     }
 }

@@ -32,7 +32,12 @@ struct MacHostRuntimeLogExporter: RuntimeLogExporting, @unchecked Sendable {
     }
 
     func exportLogs(to destination: URL) async throws -> RuntimeLogExportResult {
-        try logCollector.refreshLogCollection()
+        var exportIssues = RuntimeLogExportIssues()
+        do {
+            try logCollector.refreshLogCollection()
+        } catch {
+            exportIssues.collectionIssue = error.localizedDescription
+        }
 
         let stagingRoot = fileManager.temporaryDirectory
             .appendingPathComponent("vitalserver-log-export-\(UUID().uuidString)", isDirectory: true)
@@ -50,8 +55,8 @@ struct MacHostRuntimeLogExporter: RuntimeLogExporting, @unchecked Sendable {
             try fileManager.createDirectory(at: bundleRoot, withIntermediateDirectories: true)
         }
         try makeStagingBundleWritable(bundleRoot)
-        try copySupplementalLogs(to: bundleRoot)
-        try writeExportManifest(to: bundleRoot)
+        try copySupplementalLogs(to: bundleRoot, issues: &exportIssues)
+        try writeExportManifest(to: bundleRoot, issues: exportIssues)
 
         let temporaryArchive = stagingRoot.appendingPathComponent(destination.lastPathComponent)
         let result = await archiveRunner(
@@ -101,16 +106,20 @@ struct MacHostRuntimeLogExporter: RuntimeLogExporting, @unchecked Sendable {
         try fileManager.setAttributes([.posixPermissions: writablePermissions], ofItemAtPath: url.path)
     }
 
-    private func copySupplementalLogs(to bundleRoot: URL) throws {
+    private func copySupplementalLogs(to bundleRoot: URL, issues: inout RuntimeLogExportIssues) throws {
         for item in supplementalLogItems {
-            try copySupplementalLog(item, to: bundleRoot)
+            try copySupplementalLog(item, to: bundleRoot, issues: &issues)
         }
         for set in rotatedSupplementalSets {
             try copyRotatedSupplementalLogs(set, to: bundleRoot)
         }
     }
 
-    private func copySupplementalLog(_ item: RuntimeLogExportSupplementalSource, to bundleRoot: URL) throws {
+    private func copySupplementalLog(
+        _ item: RuntimeLogExportSupplementalSource,
+        to bundleRoot: URL,
+        issues: inout RuntimeLogExportIssues
+    ) throws {
         guard fileManager.fileExists(atPath: item.source.path) else {
             return
         }
@@ -122,7 +131,11 @@ struct MacHostRuntimeLogExporter: RuntimeLogExporting, @unchecked Sendable {
             at: destination.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
-        try fileManager.copyItem(at: item.source, to: destination)
+        do {
+            try fileManager.copyItem(at: item.source, to: destination)
+        } catch {
+            issues.supplementalIssues[item.relativeDestination] = error.localizedDescription
+        }
     }
 
     private func copyRotatedSupplementalLogs(_ set: RuntimeLogExportRotatedSupplementalSet, to bundleRoot: URL) throws {
@@ -153,10 +166,11 @@ struct MacHostRuntimeLogExporter: RuntimeLogExporting, @unchecked Sendable {
         }
     }
 
-    private func writeExportManifest(to bundleRoot: URL) throws {
+    private func writeExportManifest(to bundleRoot: URL, issues: RuntimeLogExportIssues) throws {
         let manifest = RuntimeLogExportManifest(
             generatedAt: ISO8601DateFormatter().string(from: Date()),
             productLogsDirectory: productLogsDirectory.path,
+            collectionIssue: issues.collectionIssue,
             supplementalItems: supplementalLogItems.map { item in
                 RuntimeLogExportManifest.SupplementalItem(
                     source: item.source.path,
@@ -164,7 +178,8 @@ struct MacHostRuntimeLogExporter: RuntimeLogExporting, @unchecked Sendable {
                     sourcePresent: fileManager.fileExists(atPath: item.source.path),
                     included: fileManager.fileExists(
                         atPath: bundleRoot.appendingPathComponent(item.relativeDestination).path
-                    )
+                    ),
+                    error: issues.supplementalIssues[item.relativeDestination]
                 )
             }
         )
@@ -185,11 +200,18 @@ struct RuntimeLogExportManifest: Codable, Equatable {
         let relativeDestination: String
         let sourcePresent: Bool
         let included: Bool
+        let error: String?
     }
 
     let generatedAt: String
     let productLogsDirectory: String
+    let collectionIssue: String?
     let supplementalItems: [SupplementalItem]
+}
+
+private struct RuntimeLogExportIssues {
+    var collectionIssue: String?
+    var supplementalIssues: [String: String] = [:]
 }
 
 private extension RuntimeCommandResult {

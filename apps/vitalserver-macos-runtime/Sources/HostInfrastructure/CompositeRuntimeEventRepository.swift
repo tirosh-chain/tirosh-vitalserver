@@ -40,7 +40,15 @@ public struct CompositeRuntimeEventRepository: RuntimeEventRepository, RuntimeEv
 
     public func query(_ query: RuntimeEventQuery) -> RuntimeEventPage {
         catchUpSecondaryIndexIfDue()
-        return secondary.query(query)
+        let secondaryPage = secondary.query(query)
+        guard secondaryPage.matchingCount == nil else {
+            return secondaryPage
+        }
+        let primaryPage = primary.query(query)
+        if !primaryPage.events.isEmpty {
+            log("runtime event sqlite query unavailable; served events from jsonl primary")
+        }
+        return primaryPage
     }
 
     private func catchUpSecondaryIndexIfDue() {

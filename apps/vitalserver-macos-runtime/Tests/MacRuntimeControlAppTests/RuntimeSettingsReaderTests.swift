@@ -83,6 +83,61 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         XCTAssertEqual(settings.proxyPort, RuntimeSettings().proxyPort)
     }
 
+    func testDoesNotReportGuestRuntimeConfigPermissionIssueForSecretFile() throws {
+        let guestConfig = URL(fileURLWithPath: "/product/vm/data/deploy/runtime-config.json")
+        let reader = SystemRuntimeSettingsReader(
+            paths: RuntimeSettingsPaths(
+                vmConfig: "/missing/vm-config.json",
+                vmDisk: "/missing/vm-disk.img",
+                guestRuntimeConfig: guestConfig.path,
+                proxyLaunchDaemon: "/missing/proxy.plist"
+            ),
+            fileStore: GuestRuntimeConfigPermissionDeniedFileStore(guestConfig: guestConfig)
+        )
+
+        let settings = reader.load()
+
+        XCTAssertFalse(settings.readIssues.contains { $0.source == "guestRuntimeConfig" })
+        XCTAssertEqual(settings.publicHost, RuntimeSettings().publicHost)
+        XCTAssertEqual(settings.publicPort, RuntimeSettings().publicPort)
+    }
+
+    func testLoadsGuestRuntimeSettingsBeforeSecretRuntimeConfig() throws {
+        let directory = try temporaryDirectory()
+        let guestSettings = directory.appendingPathComponent("runtime-settings.json")
+        let guestConfig = directory.appendingPathComponent("runtime-config.json")
+        try """
+        {
+          "publicHost": "settings.example.test",
+          "publicPort": 8443,
+          "redisBackupRetentionCount": 12
+        }
+        """.write(to: guestSettings, atomically: true, encoding: .utf8)
+        try """
+        {
+          "publicHost": "secret.example.test",
+          "publicPort": 8080,
+          "redisBackupRetentionCount": 20
+        }
+        """.write(to: guestConfig, atomically: true, encoding: .utf8)
+
+        let reader = SystemRuntimeSettingsReader(
+            paths: RuntimeSettingsPaths(
+                vmConfig: directory.appendingPathComponent("missing-vm-config.json").path,
+                vmDisk: directory.appendingPathComponent("missing-disk.img").path,
+                guestRuntimeSettings: guestSettings.path,
+                guestRuntimeConfig: guestConfig.path,
+                proxyLaunchDaemon: directory.appendingPathComponent("missing-proxy.plist").path
+            )
+        )
+
+        let settings = reader.load()
+
+        XCTAssertEqual(settings.publicHost, "settings.example.test")
+        XCTAssertEqual(settings.publicPort, 8443)
+        XCTAssertEqual(settings.redisBackupRetentionCount, 12)
+    }
+
     func testConfigureArgumentsReflectSettings() {
         var settings = RuntimeSettings()
         settings.cpuCount = 2
@@ -500,5 +555,34 @@ private final class DataDirectoryReadFailureFileStore: RuntimeFileStore {
     }
     func fileSystemAttributes(forPath path: String) throws -> RuntimeFileSystemAttributes {
         throw CocoaError(.fileReadNoPermission)
+    }
+}
+
+private final class GuestRuntimeConfigPermissionDeniedFileStore: RuntimeFileStore {
+    var temporaryDirectory = URL(fileURLWithPath: "/tmp")
+    private let guestConfig: URL
+
+    init(guestConfig: URL) {
+        self.guestConfig = guestConfig
+    }
+
+    func fileExists(_ url: URL) -> Bool { url == guestConfig }
+    func directoryExists(_ url: URL) -> Bool { false }
+    func isExecutableFile(atPath path: String) -> Bool { false }
+    func readData(_ url: URL) throws -> Data { throw CocoaError(.fileReadNoPermission) }
+    func readUTF8Text(_ url: URL) throws -> String { throw CocoaError(.fileReadNoPermission) }
+    func fileSize(_ url: URL) throws -> UInt64 { throw CocoaError(.fileReadNoSuchFile) }
+    func modificationDate(_ url: URL) throws -> Date { throw CocoaError(.fileReadNoSuchFile) }
+    func writeData(_ data: Data, to url: URL, options: Data.WritingOptions) throws {}
+    func writeData(_ data: Data, to url: URL, options: Data.WritingOptions, posixPermissions: Int) throws {}
+    func createDirectory(at url: URL, withIntermediateDirectories: Bool) throws {}
+    func removeItem(at url: URL) throws {}
+    func copyItem(at source: URL, to destination: URL) throws {}
+    func moveItem(at source: URL, to destination: URL) throws {}
+    func contentsOfDirectory(at url: URL, skipsHiddenFiles: Bool) throws -> [URL] { [] }
+    func childDirectories(at url: URL, nameContains fragment: String, skipsHiddenFiles: Bool) throws -> [URL] { [] }
+    func recursiveRegularFileSize(at url: URL, skipsHiddenFiles: Bool) throws -> UInt64 { 0 }
+    func fileSystemAttributes(forPath path: String) throws -> RuntimeFileSystemAttributes {
+        RuntimeFileSystemAttributes(freeBytes: 1)
     }
 }

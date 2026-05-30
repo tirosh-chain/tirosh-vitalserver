@@ -26,6 +26,16 @@ struct RuntimeGuestConfigWriter {
         let runtimeConfig = installedPaths.guestRuntimeConfig
         let data = try JSONEncoder.pretty.encode(document)
         try fileStore.writeData(data, to: runtimeConfig, options: .atomic)
+        try writeSettings(document)
         try restrictSecretFile(runtimeConfig)
+    }
+
+    private func writeSettings(_ runtimeConfig: GuestRuntimeConfigDocument) throws {
+        let document = GuestRuntimeSettingsDocument(runtimeConfig: runtimeConfig)
+        try fileStore.writeData(
+            try JSONEncoder.pretty.encode(document),
+            to: installedPaths.guestRuntimeSettings,
+            options: .atomic
+        )
     }
 }

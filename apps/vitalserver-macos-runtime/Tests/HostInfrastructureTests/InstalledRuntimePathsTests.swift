@@ -29,6 +29,7 @@ final class InstalledRuntimePathsTests: XCTestCase {
         XCTAssertEqual(paths.centralUpdateShutdownLog.path, "/Library/Application Support/TiroshVitalServer/logs/guest/prepare-update-shutdown.log")
         XCTAssertEqual(paths.managerCommandLog.path, "/private/tmp/tirosh-vitalserver-manager-command.log")
         XCTAssertEqual(paths.centralCommandLog.path, "/Library/Application Support/TiroshVitalServer/logs/command.log")
+        XCTAssertEqual(paths.guestRuntimeSettings.path, "/Library/Application Support/TiroshVitalServer/vm/data/deploy/runtime-settings.json")
     }
 
     func testRuntimeHomeInitializerDerivesProductRoot() {

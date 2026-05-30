@@ -10,6 +10,7 @@ from tirosh_vitalserver.devtools.config.macos.release_settings import (
 )
 from tirosh_vitalserver.devtools.core.errors import DomainError
 from tirosh_vitalserver.devtools.core.macos_release.release_plans import (
+    default_update_migrations,
     package_clean_plan,
 )
 from tirosh_vitalserver.devtools.core.release_manifest import ReleaseManifest
@@ -49,3 +50,13 @@ def test_package_clean_plan_rejects_workspace_root() -> None:
 
     with pytest.raises(DomainError, match="unsafe path"):
         package_clean_plan(root=root, settings=settings, release=release)
+
+
+def test_default_update_migrations_include_guest_runtime_settings_read_model() -> None:
+    root = repo_root()
+
+    migrations = default_update_migrations(root / "apps/vitalserver-macos-runtime")
+
+    assert migrations[-1].name == "005-write-guest-runtime-settings-read-model"
+    assert all(path.is_file() for path in migrations)
+    assert all(path.stat().st_mode & 0o111 for path in migrations)

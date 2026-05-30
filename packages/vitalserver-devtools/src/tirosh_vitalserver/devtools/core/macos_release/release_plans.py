@@ -16,6 +16,7 @@ DEFAULT_UPDATE_MIGRATIONS = (
     "002-migrate-runtime-logs",
     "003-install-host-launchd-services",
     "004-refresh-vm-shutdown-timeouts",
+    "005-write-guest-runtime-settings-read-model",
 )
 
 
