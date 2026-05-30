@@ -92,8 +92,8 @@ extension RuntimeLifecycle {
         serviceController.startLaunchdService(service)
     }
 
-    func restartLaunchdService(_ service: RuntimeManagedService) {
-        serviceController.restartLaunchdService(service)
+    func restartOrStartLaunchdService(_ service: RuntimeManagedService) {
+        serviceController.restartOrStartLaunchdService(service)
     }
 
     func stopLaunchdService(_ service: RuntimeManagedService) {
@@ -374,7 +374,8 @@ extension RuntimeLifecycle {
         RuntimeObservationRecorder(
             eventRepository: CompositeRuntimeEventRepository(
                 primary: JSONLRuntimeEventRepository(url: installedPaths.runtimeEvents),
-                secondary: SQLiteRuntimeEventRepository(url: installedPaths.runtimeObservabilityDB)
+                secondary: SQLiteRuntimeEventRepository(url: installedPaths.runtimeObservabilityDB),
+                log: log
             ),
             vitalDBObservationStore: SQLiteRuntimeObservabilityStore(url: installedPaths.runtimeObservabilityDB),
             log: log

@@ -166,7 +166,7 @@ extension RuntimeLifecycle {
                     automaticRecoveryEnabled()
                 },
                 restartService: { service in
-                    restartLaunchdService(service)
+                    restartOrStartLaunchdService(service)
                 },
                 sleep: { interval in
                     sleeper.sleep(forTimeInterval: interval)
@@ -231,10 +231,10 @@ extension RuntimeLifecycle {
                     try setSystemSleepPrevention(enabled)
                 },
                 restartRuntimeServices: {
-                    restartLaunchdService(.vm)
-                    restartLaunchdService(.guestLogSync)
-                    restartLaunchdService(.proxy)
-                    restartLaunchdService(.watchdog)
+                    restartOrStartLaunchdService(.vm)
+                    restartOrStartLaunchdService(.guestLogSync)
+                    restartOrStartLaunchdService(.proxy)
+                    restartOrStartLaunchdService(.watchdog)
                 }
             ),
             log: { message in
@@ -330,16 +330,16 @@ extension RuntimeLifecycle {
                     startLaunchdService(.vm)
                 },
                 restartVMService: {
-                    restartLaunchdService(.vm)
+                    restartOrStartLaunchdService(.vm)
                 },
                 loadResult: {
                     guestGateway.loadDatastoreRepairResultDocument()
                 },
                 restartProxyService: {
-                    restartLaunchdService(.proxy)
+                    restartOrStartLaunchdService(.proxy)
                 },
                 restartWatchdogService: {
-                    restartLaunchdService(.watchdog)
+                    restartOrStartLaunchdService(.watchdog)
                 },
                 waitForHealth: waitForHealth,
                 writeStatus: { status, operation, message in

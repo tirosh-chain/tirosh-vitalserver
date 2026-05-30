@@ -66,10 +66,11 @@ struct RuntimeServiceController {
         serviceManager.start(service: service, plist: plist)
     }
 
-    func restartLaunchdService(_ service: RuntimeManagedService) {
+    func restartOrStartLaunchdService(_ service: RuntimeManagedService) {
         log("launchd restart label=\(service.label)")
         serviceManager.restart(service: service)
         if !isLoaded(service) {
+            log("launchd service not loaded after restart; starting label=\(service.label)")
             startLaunchdService(service)
         }
     }

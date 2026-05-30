@@ -9,22 +9,29 @@ public struct CompositeRuntimeEventRepository: RuntimeEventRepository, RuntimeEv
     private let secondary: SQLiteRuntimeEventRepository
     private let catchUpIntervalSeconds: TimeInterval
     private let now: () -> Date
+    private let log: (String) -> Void
 
     public init(
         primary: JSONLRuntimeEventRepository,
         secondary: SQLiteRuntimeEventRepository,
         catchUpIntervalSeconds: TimeInterval = Self.defaultCatchUpIntervalSeconds,
-        now: @escaping () -> Date = Date.init
+        now: @escaping () -> Date = Date.init,
+        log: @escaping (String) -> Void = { _ in }
     ) {
         self.primary = primary
         self.secondary = secondary
         self.catchUpIntervalSeconds = catchUpIntervalSeconds
         self.now = now
+        self.log = log
     }
 
     public func append(_ event: RuntimeEventDocument) throws {
         try primary.append(event)
-        try? secondary.append(event)
+        do {
+            try secondary.append(event)
+        } catch {
+            log("runtime event sqlite append failed eventID=\(event.id) error=\(error)")
+        }
     }
 
     public func recent(limit: Int) -> [RuntimeEventDocument] {
@@ -47,11 +54,12 @@ public struct CompositeRuntimeEventRepository: RuntimeEventRepository, RuntimeEv
             try secondary.upsert(primaryEvents)
             try secondary.markCaughtUp(at: currentTime)
         } catch {
+            log("runtime event sqlite catch-up failed; rebuilding index error=\(error)")
             do {
                 try secondary.rebuild(from: primaryEvents)
                 try secondary.markCaughtUp(at: currentTime)
             } catch {
-                return
+                log("runtime event sqlite rebuild failed error=\(error)")
             }
         }
     }

@@ -128,18 +128,20 @@ final class RuntimeServiceControllerTests: XCTestCase {
         ])
     }
 
-    func testRestartFallsBackToStartWhenServiceIsNotLoadedAfterRestart() {
+    func testRestartOrStartStartsWhenServiceIsNotLoadedAfterRestart() {
         let serviceManager = ServiceControllerServiceManagerSpy()
+        var logs: [String] = []
         let controller = RuntimeServiceController(
             serviceManager: serviceManager,
             isLoaded: { _ in false },
-            log: { _ in }
+            log: { logs.append($0) }
         )
 
-        controller.restartLaunchdService(.vm)
+        controller.restartOrStartLaunchdService(.vm)
 
         XCTAssertEqual(serviceManager.restartedLabels, [RuntimeManagedService.vm.label])
         XCTAssertEqual(serviceManager.startedLabels, [RuntimeManagedService.vm.label])
+        XCTAssertTrue(logs.contains("launchd service not loaded after restart; starting label=\(RuntimeManagedService.vm.label)"))
     }
 
     func testSetStartOnBootStopsAtFirstFailure() {
