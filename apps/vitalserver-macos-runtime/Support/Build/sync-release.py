@@ -274,7 +274,7 @@ def sync_guest_scripts(root, release):
     content = runtime_env.read_text(encoding="utf-8")
     content = replace(
         r'"testkitEnabled": (True|False),',
-        f'"testkitEnabled": {str(testkit_container_included)},',
+        f'"testkitEnabled": {testkit_container_included!s},',
         content,
     )
     write_if_changed(runtime_env, content)

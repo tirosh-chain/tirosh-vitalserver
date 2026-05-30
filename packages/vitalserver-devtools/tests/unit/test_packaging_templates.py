@@ -67,7 +67,10 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
     assert "/Library/Application Support/TiroshVitalServer" in rendered
     assert "postinstall_timeout_seconds=300" in postinstall_text
     assert "runtime install timed out timeoutSeconds=" in postinstall_text
-    assert 'runtime_logs="${VITALSERVER_RUNTIME_LOGS:-${product_root}/logs/runtime}"' in proxy_run_text
+    assert (
+        'runtime_logs="${VITALSERVER_RUNTIME_LOGS:-${product_root}/logs/runtime}"'
+        in proxy_run_text
+    )
     assert '"${runtime_logs}"' in proxy_run_text
     assert '"${nginx_prefix}/temp/client_body"' in proxy_run_text
     assert '"${nginx_prefix}/temp/proxy"' in proxy_run_text

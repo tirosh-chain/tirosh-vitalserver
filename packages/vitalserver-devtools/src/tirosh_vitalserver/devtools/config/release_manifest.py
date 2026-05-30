@@ -72,6 +72,7 @@ def optional_container_services(release: dict[str, object]) -> tuple[str, ...]:
         isinstance(item, str) and item for item in value
     ):
         raise SystemExit(
-            "error: release field bundle.optionalContainerServices must be a string list"
+            "error: release field bundle.optionalContainerServices must be "
+            "a string list"
         )
     return tuple(value)
