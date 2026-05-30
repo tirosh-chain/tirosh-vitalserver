@@ -1,4 +1,5 @@
 import Foundation
+import Core
 import HostInfrastructure
 @testable import MacHostRuntimeAdapter
 @testable import MacRuntimeControlApp
@@ -30,7 +31,7 @@ final class RuntimeLogCollectorTests: XCTestCase {
             now: { Date(timeIntervalSince1970: 1_800_000_000) }
         )
 
-        collector.refreshLogCollection()
+        try collector.refreshLogCollection()
 
         XCTAssertEqual(try String(contentsOf: destination), "hello\nworld\n")
     }
@@ -54,7 +55,7 @@ final class RuntimeLogCollectorTests: XCTestCase {
             now: { Date(timeIntervalSince1970: 1_800_000_000) }
         )
 
-        collector.refreshLogCollection()
+        try collector.refreshLogCollection()
 
         XCTAssertEqual(try String(contentsOf: destination), "line 1\nline 2\n")
     }
@@ -77,7 +78,7 @@ final class RuntimeLogCollectorTests: XCTestCase {
             now: { Date(timeIntervalSince1970: 1_800_000_000) }
         )
 
-        collector.refreshLogCollection()
+        try collector.refreshLogCollection()
 
         XCTAssertEqual(try String(contentsOf: destination), "new line 1\nnew line 2\n")
     }
@@ -102,7 +103,7 @@ final class RuntimeLogCollectorTests: XCTestCase {
             now: { Date(timeIntervalSince1970: 1_800_000_000) }
         )
 
-        collector.refreshLogCollection()
+        try collector.refreshLogCollection()
 
         XCTAssertEqual(try String(contentsOf: destination), "new")
         let archivedFiles = try FileManager.default
@@ -166,7 +167,7 @@ final class RuntimeLogCollectorTests: XCTestCase {
             now: { Date(timeIntervalSince1970: 1_800_000_000) }
         )
 
-        collector.refreshLogCollection()
+        try collector.refreshLogCollection()
 
         XCTAssertEqual(
             try String(contentsOf: destinationDirectory.appendingPathComponent("container-logs.log")),
@@ -205,7 +206,7 @@ final class RuntimeLogCollectorTests: XCTestCase {
             now: { Date(timeIntervalSince1970: 1_800_000_000) }
         )
 
-        collector.refreshLogCollection(sourceID: .launcher)
+        try collector.refreshLogCollection(sourceID: .launcher)
 
         XCTAssertEqual(try String(contentsOf: launcherDestination), "launcher")
         XCTAssertFalse(FileManager.default.fileExists(atPath: proxyDestination.path))
@@ -237,13 +238,25 @@ final class RuntimeLogCollectorTests: XCTestCase {
             now: { Date(timeIntervalSince1970: 1_800_000_000) }
         )
 
-        collector.refreshLogCollection(sourceID: .vmLaunchOutput)
-        collector.refreshLogCollection(sourceID: .vmLaunchError)
-        collector.refreshLogCollection(sourceID: .watchdog)
+        try collector.refreshLogCollection(sourceID: .vmLaunchOutput)
+        try collector.refreshLogCollection(sourceID: .vmLaunchError)
+        try collector.refreshLogCollection(sourceID: .watchdog)
 
         XCTAssertEqual(try String(contentsOf: launchOutputDestination), "launch output")
         XCTAssertEqual(try String(contentsOf: launchErrorDestination), "launch error")
         XCTAssertEqual(try String(contentsOf: watchdogDestination), "watchdog")
+    }
+
+    func testRefreshPropagatesExistingLogReadFailure() {
+        let source = URL(fileURLWithPath: "/source.log")
+        let destination = URL(fileURLWithPath: "/central/source.log")
+        let collector = MacHostRuntimeLogCollector(
+            fileStore: FailingLogCollectionFileStore(existingFiles: [source, destination]),
+            copies: [RuntimeLogCopy(source: source, destination: destination, archivePrefix: "source.log")],
+            rotatedCopySets: []
+        )
+
+        XCTAssertThrowsError(try collector.refreshLogCollection())
     }
 
     private func temporaryDirectory() throws -> URL {
@@ -251,5 +264,65 @@ final class RuntimeLogCollectorTests: XCTestCase {
             .appendingPathComponent("RuntimeLogCollectorTests-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         return directory
+    }
+}
+
+private final class FailingLogCollectionFileStore: RuntimeFileStore {
+    var temporaryDirectory = URL(fileURLWithPath: "/tmp")
+    private let existingFiles: Set<URL>
+
+    init(existingFiles: Set<URL>) {
+        self.existingFiles = existingFiles
+    }
+
+    func fileExists(_ url: URL) -> Bool {
+        existingFiles.contains(url)
+    }
+
+    func directoryExists(_ url: URL) -> Bool {
+        false
+    }
+
+    func isExecutableFile(atPath path: String) -> Bool {
+        false
+    }
+
+    func readData(_ url: URL) throws -> Data {
+        throw CocoaError(.fileReadNoPermission)
+    }
+
+    func readUTF8Text(_ url: URL) throws -> String {
+        throw CocoaError(.fileReadNoPermission)
+    }
+
+    func fileSize(_ url: URL) throws -> UInt64 {
+        throw CocoaError(.fileReadNoPermission)
+    }
+
+    func modificationDate(_ url: URL) throws -> Date {
+        throw CocoaError(.fileReadNoPermission)
+    }
+
+    func writeData(_ data: Data, to url: URL, options: Data.WritingOptions) throws {}
+    func writeData(_ data: Data, to url: URL, options: Data.WritingOptions, posixPermissions: Int) throws {}
+    func createDirectory(at url: URL, withIntermediateDirectories: Bool) throws {}
+    func removeItem(at url: URL) throws {}
+    func copyItem(at source: URL, to destination: URL) throws {}
+    func moveItem(at source: URL, to destination: URL) throws {}
+
+    func contentsOfDirectory(at url: URL, skipsHiddenFiles: Bool) throws -> [URL] {
+        throw CocoaError(.fileReadNoPermission)
+    }
+
+    func childDirectories(at url: URL, nameContains fragment: String, skipsHiddenFiles: Bool) throws -> [URL] {
+        throw CocoaError(.fileReadNoPermission)
+    }
+
+    func recursiveRegularFileSize(at url: URL, skipsHiddenFiles: Bool) throws -> UInt64 {
+        throw CocoaError(.fileReadNoPermission)
+    }
+
+    func fileSystemAttributes(forPath path: String) throws -> RuntimeFileSystemAttributes {
+        throw CocoaError(.fileReadNoPermission)
     }
 }

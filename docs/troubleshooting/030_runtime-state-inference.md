@@ -150,6 +150,7 @@ runtime event JSONL read/decode failure -> empty event list only
 audit proxy status decode failure -> curl failure
 update bundle manifest read/decode failure -> missing summary
 latest backup read failure -> no backups available
+log collection read/copy failure -> silent skip
 ```
 
 ## Actions
@@ -196,6 +197,7 @@ latest backup read failure -> no backups available
 36. Audit proxy status probe는 request failure와 invalid response를 구분합니다. Curl 실패는 `failed`, 응답 contract decode 실패는 `invalid-response`로 노출합니다.
 37. Update bundle summary는 typed manifest contract를 사용합니다. Missing manifest와 invalid manifest를 같은 메시지로 합치지 않습니다.
 38. Latest backup reader는 목록 read failure와 empty backup list를 구분합니다. Rollback preflight는 read failure를 `no backups available`로 바꾸지 않습니다.
+39. Log collection은 missing source와 read/copy failure를 구분합니다. Export logs는 collection failure를 숨기지 않고 호출자에게 전달합니다.
 
 ## Prevention
 
@@ -292,3 +294,4 @@ latest backup read failure -> no backups available
 - 2026-05-30: Audit proxy status 응답 decode 실패를 curl 실패와 섞지 않고 `invalid-response`로 노출합니다.
 - 2026-05-30: Update bundle summary가 `[String: Any]` 임의 파싱 대신 `UpdateBundleManifest` contract를 사용하고, missing/invalid manifest를 구분합니다.
 - 2026-05-30: Latest backup 조회가 backup directory read failure를 empty list로 숨기지 않도록 변경했습니다. Status convenience path는 실패를 로그에 남기고, rollback preflight는 오류를 그대로 받습니다.
+- 2026-05-30: Runtime log collection이 존재하는 log source의 read/copy/size 실패를 조용히 skip하지 않고 throw하도록 변경했습니다. UI log preview는 실패 메시지를 표시하고, export logs는 실패를 호출자에게 전달합니다.

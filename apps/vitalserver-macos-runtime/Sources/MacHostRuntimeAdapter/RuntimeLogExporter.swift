@@ -32,7 +32,7 @@ struct MacHostRuntimeLogExporter: RuntimeLogExporting, @unchecked Sendable {
     }
 
     func exportLogs(to destination: URL) async throws -> RuntimeLogExportResult {
-        logCollector.refreshLogCollection()
+        try logCollector.refreshLogCollection()
 
         let stagingRoot = fileManager.temporaryDirectory
             .appendingPathComponent("vitalserver-log-export-\(UUID().uuidString)", isDirectory: true)

@@ -64,11 +64,19 @@ struct SystemRuntimeHostFileReader: RuntimeHostFileReading, @unchecked Sendable 
                 : helperMessage
         case .containers:
             if !fileStore.fileExists(URL(fileURLWithPath: RuntimeAdapterConstants.Paths.containerLogs)) {
-                logCollector.refreshLogCollection(sourceID: sourceID)
+                do {
+                    try logCollector.refreshLogCollection(sourceID: sourceID)
+                } catch {
+                    return "Failed to refresh log collection: \(error.localizedDescription)"
+                }
             }
             return logFile(sourceID: sourceID, lineLimit: lineLimit)
         default:
-            logCollector.refreshLogCollection(sourceID: sourceID)
+            do {
+                try logCollector.refreshLogCollection(sourceID: sourceID)
+            } catch {
+                return "Failed to refresh log collection: \(error.localizedDescription)"
+            }
             return logFile(sourceID: sourceID, lineLimit: lineLimit)
         }
     }
@@ -143,7 +151,6 @@ struct SystemRuntimeHostFileReader: RuntimeHostFileReading, @unchecked Sendable 
     }
 
     func preferredLogsPath() -> String {
-        logCollector.refreshLogCollection()
         return RuntimeAdapterConstants.Paths.productLogs
     }
 

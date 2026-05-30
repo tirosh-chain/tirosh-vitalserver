@@ -119,6 +119,16 @@ final class RuntimeFileReaderTests: XCTestCase {
         XCTAssertEqual(collector.refreshCount, 1)
     }
 
+    func testLogTextReportsLogCollectionRefreshFailure() throws {
+        let collector = FakeRuntimeLogCollector(refreshError: CocoaError(.fileReadNoPermission))
+        let reader = SystemRuntimeHostFileReader(logCollector: collector)
+
+        let logText = reader.logText(sourceID: .launcher, helperMessage: "Ready", lineLimit: 10)
+
+        XCTAssertTrue(logText.hasPrefix("Failed to refresh log collection:"))
+        XCTAssertEqual(collector.refreshCount, 1)
+    }
+
     func testHelperMessageLogTextDoesNotRefreshLogCollection() throws {
         let collector = FakeRuntimeLogCollector()
         let reader = SystemRuntimeHostFileReader(logCollector: collector)
@@ -150,9 +160,17 @@ final class RuntimeFileReaderTests: XCTestCase {
 
 private final class FakeRuntimeLogCollector: RuntimeLogCollecting, @unchecked Sendable {
     var refreshCount = 0
+    private let refreshError: Error?
 
-    func refreshLogCollection() {
+    init(refreshError: Error? = nil) {
+        self.refreshError = refreshError
+    }
+
+    func refreshLogCollection() throws {
         refreshCount += 1
+        if let refreshError {
+            throw refreshError
+        }
     }
 }
 

@@ -217,7 +217,7 @@ final class RuntimeLogExporterTests: XCTestCase {
 private final class FakeRuntimeLogCollectorForExport: RuntimeLogCollecting, @unchecked Sendable {
     private(set) var refreshCount = 0
 
-    func refreshLogCollection() {
+    func refreshLogCollection() throws {
         refreshCount += 1
     }
 }
