@@ -107,6 +107,23 @@ rg -n "readData|readUTF8Text|writeData|copyItem|moveItem|removeItem|chmod|posixP
 - update/install/rollback의 destructive step은 실패 시 file path, operation, stderr를 남깁니다.
 - coverage gate는 runtime library/API boundary에 적용하고, UI/App shell/CLI orchestrator는 의미 있는 smoke/integration 테스트로 보강합니다.
 
+### Coverage Targets
+
+모든 파일을 100%로 맞추기보다, 운영 판단과 장애 전파에 직접 영향을 주는 영역을 높게 유지합니다.
+
+| Area | Target | Rationale |
+|---|---:|---|
+| `Core/Application/*` | 95%+ | update/rollback policy와 operation plan은 순수 로직에 가까워 조합 테스트 효율이 높습니다. |
+| `Core/Health/*` | 97%+ | runtime health 판단은 운영 상태와 recovery 판단의 기준입니다. |
+| `Core/Guest/*Evaluator` | 95%+ | guest activation/bootstrap/shutdown 결과 해석은 failure reason 품질과 직결됩니다. |
+| `RuntimeControlAPI/Boundary/*` | 90%+, core handler 95% | PWA/API 경계에서 실패가 빈 결과나 성공으로 숨겨지지 않아야 합니다. |
+| `RuntimeControlAPI/Transport/RuntimeControlHTTPWireCodec.swift` | 95%+ | HTTP parsing/encoding은 순수 로직이고 edge case 회귀 비용이 큽니다. |
+| `MacHostRuntimeAdapter/RuntimeObservabilityReader.swift` | 90%+ | event 미조회 이슈와 직접 연결되므로 read failure와 empty result를 구분해야 합니다. |
+| `MacHostRuntimeAdapter/RuntimeFileReaders.swift` | 90%+ | Settings/log/update bundle summary 진단 경로의 권한/파일 없음/invalid data 처리가 중요합니다. |
+| `MacHostRuntimeAdapter/RuntimeSettingsReader.swift` | 95%+ | Settings read issue surface는 Helper 권한 문제의 1차 진단 경계입니다. |
+| `MacHostRuntimeAdapter/RuntimeLogExporter.swift` | 95%+ | Export logs는 partial failure를 manifest issue로 남겨야 합니다. |
+| OS/process adapter and SwiftUI shell | 60-90% by risk | line coverage보다 command mapping, error propagation, smoke rendering을 우선합니다. |
+
 ## Operational Notes
 
 권한 문제를 실제 현장에서 볼 때는 파일 mode만 보지 말고 owner/process boundary를 같이 봅니다.
@@ -134,3 +151,4 @@ Helper 사용자 권한에서 읽기/쓰기 probe를 분리합니다. SQLite row
 - 2026-05-30: 다음 보강 범위를 permission failure 중심으로 재정의했습니다. 우선순위는 update/install/rollback 권한 실패, Settings/Observability read error propagation, Export logs partial failure manifest입니다.
 - 2026-05-31: update/apply 경로의 권한 실패 전파 테스트를 추가했습니다. Bundle stage의 기존 staged bundle 제거 실패와 managed storage copy 실패, artifact replacement의 temporary directory 생성 실패와 기존 app bundle 제거 실패, rootfs/update artifact replacement 실패를 검증합니다.
 - 2026-05-31: Runtime Control API handler에서 backup list read permission failure와 Export logs write permission failure가 빈 결과나 성공 응답으로 숨겨지지 않고 그대로 throw되는지 검증합니다.
+- 2026-05-31: 고가치 coverage target을 TS-034에 명시했습니다. 우선 `RuntimeControlClientAPIReadHandler`는 39.57%에서 100.00%로, `RuntimeObservabilityReader`는 54.71%에서 94.71%로 올렸습니다. 전체 scoped line coverage는 87.27%입니다.

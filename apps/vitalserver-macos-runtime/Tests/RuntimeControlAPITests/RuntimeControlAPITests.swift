@@ -580,6 +580,8 @@ final class RuntimeControlAPITests: XCTestCase {
         let release = try await handler.loadReleaseInfo()
         let installInfo = try await handler.loadInstallInfo()
         let observationSnapshot = try await handler.loadVitalDBObservationSnapshot()
+        let recorders = try await handler.loadVitalDBRecorders()
+        let relationships = try await handler.loadVitalDBRelationships()
 
         XCTAssertFalse(capabilities.canOpenLocalFiles)
         XCTAssertEqual(settings.cpuCount, 6)
@@ -593,6 +595,8 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertEqual(installInfo.redisBackupsPath, "/runtime/data/backups/redis")
         XCTAssertEqual(observationSnapshot.state, .loaded)
         XCTAssertEqual(observationSnapshot.observation?.observedAt, "2026-05-25T00:00:00Z")
+        XCTAssertEqual(recorders.updatedAt, "2026-05-25T00:00:00Z")
+        XCTAssertEqual(relationships.assignments.map(\.assignmentID), ["bed-a:VR_A:2026-05-25T00:00:00Z"])
         XCTAssertEqual(client.loadSettingsCount, 3)
         XCTAssertEqual(client.statusSettings, [RuntimeSettings(cpuCount: 6, memoryGiB: 10)])
         XCTAssertEqual(client.healthSettings, [RuntimeSettings(cpuCount: 6, memoryGiB: 10)])
@@ -653,6 +657,128 @@ final class RuntimeControlAPITests: XCTestCase {
         } catch {
             XCTAssertFileWriteNoPermission(error)
         }
+    }
+
+    @MainActor
+    func testRuntimeControlClientReadHandlerAdaptsClientCommands() async throws {
+        let client = FakeRuntimeControlClient()
+        let handler = RuntimeControlClientAPIReadHandler(client: client)
+
+        let applySettings = try await handler.applySettings(RuntimeSettings(cpuCount: 4, memoryGiB: 8))
+        let start = try await handler.startRuntimeServices()
+        let stop = try await handler.stopRuntimeServices()
+        let repairRuntime = try await handler.repairRuntimeServices()
+        let repairProxy = try await handler.repairProxy(proxyPort: 8080)
+        let repairDatastore = try await handler.repairDatastore()
+        let repairVMDisk = try await handler.repairVMDisk()
+        let createRedisBackup = try await handler.createRedisBackup()
+        let uninstall = try await handler.uninstallRuntime(clean: true)
+
+        XCTAssertEqual(applySettings.result.stdout, "settings 4")
+        XCTAssertEqual(start.result.stdout, "start services")
+        XCTAssertEqual(stop.result.stdout, "stop services")
+        XCTAssertEqual(repairRuntime.result.stdout, "repair runtime")
+        XCTAssertEqual(repairProxy.result.stdout, "repair proxy 8080")
+        XCTAssertEqual(repairDatastore.result.stdout, "repair datastore")
+        XCTAssertEqual(repairVMDisk.result.stdout, "repair vm disk")
+        XCTAssertEqual(createRedisBackup.result.stdout, "redis backup created")
+        XCTAssertEqual(uninstall.result.stdout, "clean uninstall")
+    }
+
+    @MainActor
+    func testRuntimeControlClientReadHandlerAdaptsHostAffordances() async throws {
+        let client = FakeRuntimeControlClient()
+        let handler = RuntimeControlClientAPIReadHandler(client: client, hostClient: client)
+        let bundle = RuntimeControlFileReference(kind: .localPath, value: "/bundles/update.tar.gz")
+        let backup = RuntimeControlFileReference(kind: .localPath, value: "/backups/latest")
+        let destination = RuntimeControlFileReference(kind: .localPath, value: "/tmp/vitalserver-logs.zip")
+
+        let logText = try await handler.loadLogText(request: RuntimeLogTextRequest(
+            source: .helperMessage,
+            helperMessage: "helper unavailable",
+            lineLimit: 25
+        ))
+        let backups = try await handler.loadBackups()
+        let redisBackups = try await handler.loadRedisBackups()
+        let summary = try await handler.updateBundleSummary(bundle: bundle)
+        let verify = try await handler.verifyUpdateBundle(bundle: bundle)
+        let apply = try await handler.applyUpdateBundle(bundle: bundle)
+        let rollback = try await handler.rollbackBackup(backup)
+        let delete = try await handler.deleteBackup(backup)
+        let export = try await handler.exportLogs(destination: destination)
+
+        XCTAssertEqual(logText.text, "helper unavailable")
+        XCTAssertEqual(backups.map(\.path), ["/backups/rollback"])
+        XCTAssertEqual(redisBackups.map(\.path), ["/runtime/data/backups/redis/redis-1.tar.gz"])
+        XCTAssertEqual(summary.summary, "summary /bundles/update.tar.gz")
+        XCTAssertEqual(verify.result.stdout, "verify /bundles/update.tar.gz")
+        XCTAssertEqual(apply.result.stdout, "apply /bundles/update.tar.gz")
+        XCTAssertEqual(rollback.result.stdout, "rollback /backups/latest")
+        XCTAssertEqual(delete.result.stdout, "delete /backups/latest")
+        XCTAssertEqual(export.destination.path, "/tmp/vitalserver-logs.zip")
+        XCTAssertEqual(client.backupLatestPaths, ["latest-backup"])
+        XCTAssertEqual(client.loadRedisBackupsCount, 1)
+    }
+
+    @MainActor
+    func testRuntimeControlClientReadHandlerRequiresHostAffordanceClientForHostOperations() async throws {
+        let handler = RuntimeControlClientAPIReadHandler(client: FakeRuntimeControlClient())
+        let bundle = RuntimeControlFileReference(kind: .localPath, value: "/bundles/update.tar.gz")
+        let backup = RuntimeControlFileReference(kind: .localPath, value: "/backups/latest")
+        let destination = RuntimeControlFileReference(kind: .localPath, value: "/tmp/vitalserver-logs.zip")
+
+        let operations: [(String, () async throws -> Void)] = [
+            ("loadLogText", {
+                _ = try await handler.loadLogText(request: RuntimeLogTextRequest(
+                    source: .helperMessage,
+                    helperMessage: "helper unavailable",
+                    lineLimit: 25
+                ))
+            }),
+            ("loadBackups", { _ = try await handler.loadBackups() }),
+            ("loadRedisBackups", { _ = try await handler.loadRedisBackups() }),
+            ("updateBundleSummary", { _ = try await handler.updateBundleSummary(bundle: bundle) }),
+            ("verifyUpdateBundle", { _ = try await handler.verifyUpdateBundle(bundle: bundle) }),
+            ("applyUpdateBundle", { _ = try await handler.applyUpdateBundle(bundle: bundle) }),
+            ("rollbackBackup", { _ = try await handler.rollbackBackup(backup) }),
+            ("deleteBackup", { _ = try await handler.deleteBackup(backup) }),
+            ("exportLogs", { _ = try await handler.exportLogs(destination: destination) }),
+        ]
+
+        for (name, operation) in operations {
+            try await XCTAssertThrowsHostAffordanceUnavailable(name, operation)
+        }
+    }
+
+    @MainActor
+    func testRuntimeControlClientReadHandlerRejectsUnsupportedFileReferencesForLocalHostOperations() async throws {
+        let client = FakeRuntimeControlClient()
+        let handler = RuntimeControlClientAPIReadHandler(client: client, hostClient: client)
+        let remote = RuntimeControlFileReference(kind: .remoteURL, value: "https://example.invalid/update.tar.gz")
+
+        let operations: [(String, () async throws -> Void)] = [
+            ("updateBundleSummary", { _ = try await handler.updateBundleSummary(bundle: remote) }),
+            ("verifyUpdateBundle", { _ = try await handler.verifyUpdateBundle(bundle: remote) }),
+            ("applyUpdateBundle", { _ = try await handler.applyUpdateBundle(bundle: remote) }),
+            ("rollbackBackup", { _ = try await handler.rollbackBackup(remote) }),
+            ("deleteBackup", { _ = try await handler.deleteBackup(remote) }),
+            ("exportLogs", { _ = try await handler.exportLogs(destination: remote) }),
+        ]
+
+        for (name, operation) in operations {
+            try await XCTAssertThrowsUnsupportedFileReference(name, .remoteURL, operation)
+        }
+    }
+
+    func testRuntimeControlClientReadHandlerErrorsDescribeOperatorVisibleFailures() {
+        XCTAssertEqual(
+            RuntimeControlAPIReadHandlerError.hostAffordanceUnavailable.localizedDescription,
+            "Host affordance client is unavailable."
+        )
+        XCTAssertEqual(
+            RuntimeControlAPIReadHandlerError.unsupportedFileReference(.remoteURL).localizedDescription,
+            "File reference kind remoteURL is not supported by this local Runtime Control handler."
+        )
     }
 
     @MainActor
@@ -1178,6 +1304,47 @@ final class RuntimeControlAPITests: XCTestCase {
         )
         return root
     }
+
+    @MainActor
+    private func XCTAssertThrowsHostAffordanceUnavailable(
+        _ name: String,
+        _ operation: () async throws -> Void,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async throws {
+        do {
+            try await operation()
+            XCTFail("Expected \(name) to throw hostAffordanceUnavailable", file: file, line: line)
+        } catch {
+            XCTAssertEqual(
+                error as? RuntimeControlAPIReadHandlerError,
+                .hostAffordanceUnavailable,
+                file: file,
+                line: line
+            )
+        }
+    }
+
+    @MainActor
+    private func XCTAssertThrowsUnsupportedFileReference(
+        _ name: String,
+        _ expected: RuntimeControlFileReferenceKind,
+        _ operation: () async throws -> Void,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async throws {
+        do {
+            try await operation()
+            XCTFail("Expected \(name) to throw unsupportedFileReference", file: file, line: line)
+        } catch {
+            XCTAssertEqual(
+                error as? RuntimeControlAPIReadHandlerError,
+                .unsupportedFileReference(expected),
+                file: file,
+                line: line
+            )
+        }
+    }
 }
 
 private extension Data {
@@ -1587,7 +1754,7 @@ private final class FakeRuntimeControlClient: RuntimeControlClient, RuntimeHostC
     }
 
     func updateBundleSummary(url: URL) -> String {
-        "bundle"
+        "summary \(url.path)"
     }
 
     func logText(sourceID: RuntimeLogSource, helperMessage: String, lineLimit: Int) -> String {
@@ -1609,31 +1776,31 @@ private final class FakeRuntimeControlClient: RuntimeControlClient, RuntimeHostC
     func createDirectory(at url: URL) {}
 
     func verifyUpdateBundle(url: URL) async throws -> RuntimeCommandResult {
-        RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "")
+        RuntimeCommandResult(exitCode: 0, stdout: "verify \(url.path)", stderr: "")
     }
 
     func uninstallRuntime(clean: Bool) async throws -> RuntimeCommandResult {
-        RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "")
+        RuntimeCommandResult(exitCode: 0, stdout: clean ? "clean uninstall" : "uninstall", stderr: "")
     }
 
     func applySettings(_ settings: RuntimeSettings) async throws -> RuntimeCommandResult {
-        RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "")
+        RuntimeCommandResult(exitCode: 0, stdout: "settings \(settings.cpuCount)", stderr: "")
     }
 
     func repairProxy(proxyPort: Int) async throws -> RuntimeCommandResult {
-        RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "")
+        RuntimeCommandResult(exitCode: 0, stdout: "repair proxy \(proxyPort)", stderr: "")
     }
 
     func repairDatastore() async throws -> RuntimeCommandResult {
-        RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "")
+        RuntimeCommandResult(exitCode: 0, stdout: "repair datastore", stderr: "")
     }
 
     func repairVMDisk() async throws -> RuntimeCommandResult {
-        RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "")
+        RuntimeCommandResult(exitCode: 0, stdout: "repair vm disk", stderr: "")
     }
 
     func repairRuntimeServices() async throws -> RuntimeCommandResult {
-        RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "")
+        RuntimeCommandResult(exitCode: 0, stdout: "repair runtime", stderr: "")
     }
 
     func createRedisBackup() async throws -> RuntimeCommandResult {
@@ -1642,11 +1809,11 @@ private final class FakeRuntimeControlClient: RuntimeControlClient, RuntimeHostC
     }
 
     func startRuntimeServices() async throws -> RuntimeCommandResult {
-        RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "")
+        RuntimeCommandResult(exitCode: 0, stdout: "start services", stderr: "")
     }
 
     func stopRuntimeServices() async throws -> RuntimeCommandResult {
-        RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "")
+        RuntimeCommandResult(exitCode: 0, stdout: "stop services", stderr: "")
     }
 
     func loadReleaseInfo() async throws -> RuntimeReleaseInfo {
@@ -1669,15 +1836,15 @@ private final class FakeRuntimeControlClient: RuntimeControlClient, RuntimeHostC
     }
 
     func applyUpdateBundle(url: URL) async throws -> RuntimeCommandResult {
-        RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "")
+        RuntimeCommandResult(exitCode: 0, stdout: "apply \(url.path)", stderr: "")
     }
 
     func rollbackRuntime(backupURL: URL) async throws -> RuntimeCommandResult {
-        RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "")
+        RuntimeCommandResult(exitCode: 0, stdout: "rollback \(backupURL.path)", stderr: "")
     }
 
     func deleteBackup(url: URL) async throws -> RuntimeCommandResult {
-        RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "")
+        RuntimeCommandResult(exitCode: 0, stdout: "delete \(url.path)", stderr: "")
     }
 
     func exportLogs(to destination: URL) async throws -> RuntimeLogExportResult {
