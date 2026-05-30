@@ -53,6 +53,12 @@ public struct SQLiteRuntimeObservabilityStore {
               ON runtime_events(event_type, timestamp)
             """)
             try execute(db, sql: """
+            CREATE TABLE IF NOT EXISTS runtime_event_index_state (
+              key text primary key,
+              value text not null
+            )
+            """)
+            try execute(db, sql: """
             CREATE TABLE IF NOT EXISTS vitaldb_observation_snapshots (
               observed_at text primary key,
               ready integer not null,
@@ -129,6 +135,22 @@ public struct SQLiteRuntimeObservabilityStore {
         }
     }
 
+    public func upsertRuntimeEvents(_ events: [RuntimeEventDocument]) throws {
+        try initialize()
+        try withDatabase { db in
+            try execute(db, sql: "BEGIN IMMEDIATE TRANSACTION")
+            do {
+                for event in events {
+                    try insert(event, db: db)
+                }
+                try execute(db, sql: "COMMIT")
+            } catch {
+                try? execute(db, sql: "ROLLBACK")
+                throw error
+            }
+        }
+    }
+
     public func rebuild(from events: [RuntimeEventDocument]) throws {
         try removeDatabaseFiles()
         try initialize()
@@ -143,6 +165,34 @@ public struct SQLiteRuntimeObservabilityStore {
                 try? execute(db, sql: "ROLLBACK")
                 throw error
             }
+        }
+    }
+
+    public func runtimeEventIndexCatchUpDue(now: Date, intervalSeconds: TimeInterval) -> Bool {
+        do {
+            try initialize()
+            let lastCaughtUpAt = try runtimeEventIndexStateValue(for: "last_caught_up_at")
+            guard let lastCaughtUpAt,
+                  let lastCaughtUpAtSeconds = TimeInterval(lastCaughtUpAt) else {
+                return true
+            }
+            return now.timeIntervalSince1970 - lastCaughtUpAtSeconds >= intervalSeconds
+        } catch {
+            return true
+        }
+    }
+
+    public func markRuntimeEventIndexCaughtUp(at date: Date) throws {
+        try initialize()
+        try withDatabase { db in
+            try execute(
+                db,
+                sql: """
+                INSERT OR REPLACE INTO runtime_event_index_state(key, value)
+                VALUES ('last_caught_up_at', ?)
+                """,
+                bindings: [.text(String(date.timeIntervalSince1970))]
+            )
         }
     }
 
@@ -447,6 +497,35 @@ public struct SQLiteRuntimeObservabilityStore {
                 .text(payload),
             ]
         )
+    }
+
+    private func runtimeEventIndexStateValue(for key: String) throws -> String? {
+        try withDatabase { db in
+            var statement: OpaquePointer?
+            guard sqlite3_prepare_v2(
+                db,
+                "SELECT value FROM runtime_event_index_state WHERE key = ? LIMIT 1",
+                -1,
+                &statement,
+                nil
+            ) == SQLITE_OK else {
+                throw SQLiteRuntimeObservabilityStoreError.prepareFailed(errorMessage(db))
+            }
+            defer {
+                sqlite3_finalize(statement)
+            }
+
+            try bind([.text(key)], to: statement, db: db)
+
+            let result = sqlite3_step(statement)
+            if result == SQLITE_ROW {
+                return columnText(statement, 0)
+            }
+            guard result == SQLITE_DONE else {
+                throw SQLiteRuntimeObservabilityStoreError.stepFailed(errorMessage(db))
+            }
+            return nil
+        }
     }
 
     private func insert(_ observation: VitalDBObservationDocument, db: OpaquePointer) throws {

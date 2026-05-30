@@ -1,5 +1,6 @@
 import Contracts
 import Core
+import Foundation
 import HostInfrastructure
 import XCTest
 
@@ -55,7 +56,7 @@ final class SQLiteRuntimeObservabilityStoreTests: XCTestCase {
         XCTAssertNil(secondPage.nextCursor)
     }
 
-    func testCompositeRepositoryFallsBackToJSONLWhenSQLiteIsEmpty() throws {
+    func testCompositeRepositoryCatchesUpSQLiteFromJSONLWhenSQLiteIsEmpty() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         defer {
@@ -63,11 +64,16 @@ final class SQLiteRuntimeObservabilityStoreTests: XCTestCase {
         }
         let jsonl = JSONLRuntimeEventRepository(url: directory.appendingPathComponent("events.jsonl"))
         let sqlite = SQLiteRuntimeEventRepository(url: directory.appendingPathComponent("events.sqlite"))
-        let repository = CompositeRuntimeEventRepository(primary: jsonl, secondary: sqlite)
+        let repository = CompositeRuntimeEventRepository(
+            primary: jsonl,
+            secondary: sqlite,
+            catchUpIntervalSeconds: 0
+        )
 
         try jsonl.append(event(id: "jsonl-event", timestamp: "2026-05-24T00:00:00Z", type: .statusChanged))
 
         XCTAssertEqual(repository.recent(limit: 10).map(\.id), ["jsonl-event"])
+        XCTAssertEqual(sqlite.recent(limit: 10).map(\.id), ["jsonl-event"])
     }
 
     func testCompositeRepositoryReadsSQLiteWhenAvailable() throws {
@@ -85,7 +91,42 @@ final class SQLiteRuntimeObservabilityStoreTests: XCTestCase {
         XCTAssertEqual(repository.recent(limit: 10).map(\.id), ["event-1"])
     }
 
-    func testCompositeRepositoryRebuildsSQLiteFromJSONLWhenDatabaseIsCorrupt() throws {
+    func testCompositeRepositoryPeriodicallyCatchesUpStaleSQLiteIndexFromJSONL() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+        let jsonl = JSONLRuntimeEventRepository(url: directory.appendingPathComponent("events.jsonl"))
+        let sqlite = SQLiteRuntimeEventRepository(url: directory.appendingPathComponent("events.sqlite"))
+        let baseDate = Date(timeIntervalSince1970: 1_779_552_000)
+
+        let first = event(id: "event-1", timestamp: "2026-05-24T00:00:00Z", type: .statusChanged)
+        let second = event(id: "event-2", timestamp: "2026-05-24T00:01:00Z", type: .containerObserved)
+        try jsonl.append(first)
+        try jsonl.append(second)
+        try sqlite.append(first)
+        try sqlite.markCaughtUp(at: baseDate)
+
+        let notDueRepository = CompositeRuntimeEventRepository(
+            primary: jsonl,
+            secondary: sqlite,
+            catchUpIntervalSeconds: 30,
+            now: { baseDate.addingTimeInterval(10) }
+        )
+        XCTAssertEqual(notDueRepository.recent(limit: 10).map(\.id), ["event-1"])
+
+        let dueRepository = CompositeRuntimeEventRepository(
+            primary: jsonl,
+            secondary: sqlite,
+            catchUpIntervalSeconds: 30,
+            now: { baseDate.addingTimeInterval(31) }
+        )
+        XCTAssertEqual(dueRepository.recent(limit: 10).map(\.id), ["event-1", "event-2"])
+        XCTAssertEqual(sqlite.recent(limit: 10).map(\.id), ["event-1", "event-2"])
+    }
+
+    func testCompositeRepositoryRebuildsSQLiteIndexFromJSONLWhenDatabaseIsCorrupt() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         defer {
@@ -95,7 +136,11 @@ final class SQLiteRuntimeObservabilityStoreTests: XCTestCase {
         let jsonl = JSONLRuntimeEventRepository(url: directory.appendingPathComponent("events.jsonl"))
         let sqliteURL = directory.appendingPathComponent("events.sqlite")
         let sqlite = SQLiteRuntimeEventRepository(url: sqliteURL)
-        let repository = CompositeRuntimeEventRepository(primary: jsonl, secondary: sqlite)
+        let repository = CompositeRuntimeEventRepository(
+            primary: jsonl,
+            secondary: sqlite,
+            catchUpIntervalSeconds: 0
+        )
 
         try jsonl.append(event(id: "event-1", timestamp: "2026-05-24T00:00:00Z", type: .statusChanged))
         try Data("not a sqlite database".utf8).write(to: sqliteURL)
@@ -104,7 +149,7 @@ final class SQLiteRuntimeObservabilityStoreTests: XCTestCase {
         XCTAssertEqual(sqlite.recent(limit: 10).map(\.id), ["event-1"])
     }
 
-    func testCompositeRepositoryRebuildSkipsBrokenJSONLLines() throws {
+    func testCompositeRepositoryCatchUpSkipsBrokenJSONLLines() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         defer {
@@ -114,7 +159,11 @@ final class SQLiteRuntimeObservabilityStoreTests: XCTestCase {
         let jsonlURL = directory.appendingPathComponent("events.jsonl")
         let jsonl = JSONLRuntimeEventRepository(url: jsonlURL)
         let sqlite = SQLiteRuntimeEventRepository(url: directory.appendingPathComponent("events.sqlite"))
-        let repository = CompositeRuntimeEventRepository(primary: jsonl, secondary: sqlite)
+        let repository = CompositeRuntimeEventRepository(
+            primary: jsonl,
+            secondary: sqlite,
+            catchUpIntervalSeconds: 0
+        )
 
         try jsonl.append(event(id: "event-1", timestamp: "2026-05-24T00:00:00Z", type: .statusChanged))
         let handle = try FileHandle(forWritingTo: jsonlURL)

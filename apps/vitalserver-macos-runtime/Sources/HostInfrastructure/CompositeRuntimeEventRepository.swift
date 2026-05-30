@@ -1,13 +1,25 @@
 import Contracts
 import Core
+import Foundation
 
 public struct CompositeRuntimeEventRepository: RuntimeEventRepository, RuntimeEventHistoryReading {
+    public static let defaultCatchUpIntervalSeconds: TimeInterval = 30
+
     private let primary: JSONLRuntimeEventRepository
     private let secondary: SQLiteRuntimeEventRepository
+    private let catchUpIntervalSeconds: TimeInterval
+    private let now: () -> Date
 
-    public init(primary: JSONLRuntimeEventRepository, secondary: SQLiteRuntimeEventRepository) {
+    public init(
+        primary: JSONLRuntimeEventRepository,
+        secondary: SQLiteRuntimeEventRepository,
+        catchUpIntervalSeconds: TimeInterval = Self.defaultCatchUpIntervalSeconds,
+        now: @escaping () -> Date = Date.init
+    ) {
         self.primary = primary
         self.secondary = secondary
+        self.catchUpIntervalSeconds = catchUpIntervalSeconds
+        self.now = now
     }
 
     public func append(_ event: RuntimeEventDocument) throws {
@@ -20,21 +32,27 @@ public struct CompositeRuntimeEventRepository: RuntimeEventRepository, RuntimeEv
     }
 
     public func query(_ query: RuntimeEventQuery) -> RuntimeEventPage {
-        let secondaryPage = secondary.query(query)
-        if !secondaryPage.events.isEmpty {
-            return secondaryPage
+        catchUpSecondaryIndexIfDue()
+        return secondary.query(query)
+    }
+
+    private func catchUpSecondaryIndexIfDue() {
+        let currentTime = now()
+        guard secondary.catchUpDue(now: currentTime, intervalSeconds: catchUpIntervalSeconds) else {
+            return
         }
 
         let primaryEvents = primary.all()
-        guard !primaryEvents.isEmpty else {
-            return RuntimeEventPage(events: [])
+        do {
+            try secondary.upsert(primaryEvents)
+            try secondary.markCaughtUp(at: currentTime)
+        } catch {
+            do {
+                try secondary.rebuild(from: primaryEvents)
+                try secondary.markCaughtUp(at: currentTime)
+            } catch {
+                return
+            }
         }
-
-        try? secondary.rebuild(from: primaryEvents)
-        let rebuiltPage = secondary.query(query)
-        if !rebuiltPage.events.isEmpty {
-            return rebuiltPage
-        }
-        return primary.query(query)
     }
 }
