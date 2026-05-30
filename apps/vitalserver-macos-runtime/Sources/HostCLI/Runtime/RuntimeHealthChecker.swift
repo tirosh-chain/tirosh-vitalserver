@@ -43,7 +43,8 @@ struct RuntimeHealthChecker {
         let guestRuntimeStateFresh = isGuestRuntimeStateFresh(loadedGuestState)
         let guestState = guestRuntimeStateFresh ? loadedGuestState : nil
         let vmIP = guestState?.vmIP
-        let proxyPort = installedProxyPort()
+        let proxyPortRead = installedProxyPortRead()
+        let proxyPort = proxyPortRead.port
         let hostProxyHTTP = httpProber.statusCode(url: Constants.Runtime.proxyHealthURL(port: proxyPort))
         let redisUIHTTP = httpProber.statusCode(url: Constants.Runtime.redisUIHealthURL(port: proxyPort))
         let swaggerUIHTTP = httpProber.statusCode(url: Constants.Runtime.swaggerUIHealthURL(port: proxyPort))
@@ -69,6 +70,7 @@ struct RuntimeHealthChecker {
             containerObservation: containerObservation,
             vitalDBObservation: guestState?.vitalDBObservation,
             reportedVMErrors: [],
+            configurationFailureReasons: proxyPortRead.failureReasons,
             proxyPortFailureReasons: proxyPortFailureReasons(port: proxyPort),
             guestBootstrapFailureReason: guestBootstrapFailureReason()
         ))
@@ -97,6 +99,10 @@ struct RuntimeHealthChecker {
     }
 
     func installedProxyPort() -> Int {
+        installedProxyPortRead().port
+    }
+
+    private func installedProxyPortRead() -> RuntimeProxyPortReadResult {
         let result = commandRunner.run(
             Constants.Commands.plistBuddy,
             arguments: [
@@ -110,9 +116,12 @@ struct RuntimeHealthChecker {
               let port = Int(value),
               (1...65_535).contains(port)
         else {
-            return InstallSettings.defaultProxyPort
+            return RuntimeProxyPortReadResult(
+                port: InstallSettings.defaultProxyPort,
+                failureReasons: [.hostProxyConfigInvalid]
+            )
         }
-        return port
+        return RuntimeProxyPortReadResult(port: port, failureReasons: [])
     }
 
     func guestRuntimeState() -> GuestRuntimeStateDocument? {
@@ -241,4 +250,9 @@ struct RuntimeHealthChecker {
         }
         return ("200", document)
     }
+}
+
+private struct RuntimeProxyPortReadResult {
+    let port: Int
+    let failureReasons: [RuntimeFailureReason]
 }

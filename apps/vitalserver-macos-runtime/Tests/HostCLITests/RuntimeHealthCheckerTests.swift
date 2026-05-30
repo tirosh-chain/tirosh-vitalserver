@@ -110,6 +110,50 @@ final class RuntimeHealthCheckerTests: XCTestCase {
         XCTAssertTrue(snapshot.failureReasons.contains(.missingRootfsBase))
     }
 
+    func testSnapshotReportsInvalidHostProxyPortConfig() {
+        let installedPaths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
+        let commandRunner = RuntimeCommandRunnerSpy()
+        commandRunner.results[Constants.Commands.plistBuddy] = RuntimeProcessResult(
+            exitCode: 0,
+            stdout: "not-a-port\n",
+            stderr: ""
+        )
+        let httpProber = RuntimeHTTPProberSpy()
+        let checker = RuntimeHealthChecker(
+            installedPaths: installedPaths,
+            fileStore: RuntimeFileStoreSpy(),
+            serviceManager: RuntimeServiceManagerSpy(),
+            commandRunner: commandRunner,
+            httpProber: httpProber,
+            guestGateway: RuntimeGuestGatewaySpy()
+        )
+
+        let snapshot = checker.snapshot()
+
+        XCTAssertEqual(snapshot.proxyPort, InstallSettings.defaultProxyPort)
+        XCTAssertTrue(snapshot.failureReasons.contains(.hostProxyConfigInvalid))
+        XCTAssertTrue(httpProber.requestedURLs.contains(Constants.Runtime.proxyHealthURL(port: InstallSettings.defaultProxyPort)))
+    }
+
+    func testSnapshotDoesNotReportHostProxyConfigInvalidForConfiguredPort() {
+        let installedPaths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
+        let commandRunner = RuntimeCommandRunnerSpy()
+        commandRunner.results[Constants.Commands.plistBuddy] = RuntimeProcessResult(exitCode: 0, stdout: "8080\n", stderr: "")
+        let checker = RuntimeHealthChecker(
+            installedPaths: installedPaths,
+            fileStore: RuntimeFileStoreSpy(),
+            serviceManager: RuntimeServiceManagerSpy(),
+            commandRunner: commandRunner,
+            httpProber: RuntimeHTTPProberSpy(),
+            guestGateway: RuntimeGuestGatewaySpy()
+        )
+
+        let snapshot = checker.snapshot()
+
+        XCTAssertEqual(snapshot.proxyPort, 8080)
+        XCTAssertFalse(snapshot.failureReasons.contains(.hostProxyConfigInvalid))
+    }
+
     func testSnapshotReportsAuditProxyStatusFailure() {
         let installedPaths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
         let fileStore = RuntimeFileStoreSpy()

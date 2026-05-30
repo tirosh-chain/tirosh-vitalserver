@@ -20,6 +20,7 @@ public struct RuntimeHealthInput: Equatable {
     public let containerObservation: RuntimeContainerObservation?
     public let vitalDBObservation: VitalDBObservationDocument?
     public let reportedVMErrors: [RuntimeVMError]
+    public let configurationFailureReasons: [RuntimeFailureReason]
     public let proxyPortFailureReasons: [RuntimeFailureReason]
     public let guestBootstrapFailureReason: RuntimeFailureReason?
 
@@ -42,6 +43,7 @@ public struct RuntimeHealthInput: Equatable {
         containerObservation: RuntimeContainerObservation? = nil,
         vitalDBObservation: VitalDBObservationDocument? = nil,
         reportedVMErrors: [RuntimeVMError] = [],
+        configurationFailureReasons: [RuntimeFailureReason] = [],
         proxyPortFailureReasons: [RuntimeFailureReason] = [],
         guestBootstrapFailureReason: RuntimeFailureReason? = nil
     ) {
@@ -63,6 +65,7 @@ public struct RuntimeHealthInput: Equatable {
         self.containerObservation = containerObservation
         self.vitalDBObservation = vitalDBObservation
         self.reportedVMErrors = reportedVMErrors
+        self.configurationFailureReasons = configurationFailureReasons
         self.proxyPortFailureReasons = proxyPortFailureReasons
         self.guestBootstrapFailureReason = guestBootstrapFailureReason
     }
@@ -83,6 +86,7 @@ public enum RuntimeHealthEvaluator {
         if input.watchdogService != .loaded {
             failureReasons.append(.watchdogService(input.watchdogService.rawValue))
         }
+        failureReasons.append(contentsOf: input.configurationFailureReasons)
         if !isSuccessfulHTTPStatus(input.hostProxyHTTP) {
             failureReasons.append(.hostProxyHTTP(input.hostProxyHTTP))
             failureReasons.append(contentsOf: input.proxyPortFailureReasons)
