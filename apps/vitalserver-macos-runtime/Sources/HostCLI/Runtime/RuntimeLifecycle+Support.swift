@@ -200,7 +200,10 @@ extension RuntimeLifecycle {
     }
 
     func runtimeVersionValue() -> String {
-        runtimeVersionStore().readVersionValue(default: "missing-version")
+        runtimeVersionStore().readVersionValue(
+            missingValue: "missing-version",
+            failedValue: "invalid-version"
+        )
     }
 
     func runtimeStatusValue() -> String? {

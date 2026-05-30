@@ -51,18 +51,33 @@ final class RuntimeVersionStoreTests: XCTestCase {
             readData: { _ in Data(#"{"runtimeVersion":"0.1.6"}"#.utf8) }
         )
 
-        XCTAssertEqual(store.readVersionValue(default: "unknown"), "0.1.6")
+        XCTAssertEqual(store.readVersion(), .loaded("0.1.6"))
+        XCTAssertEqual(store.readVersionValue(missingValue: "missing", failedValue: "invalid"), "0.1.6")
     }
 
-    func testReadVersionValueReturnsDefaultWhenFileIsMissingOrInvalid() {
+    func testReadVersionDistinguishesMissingAndInvalidFiles() {
         let missing = makeStore(fileExists: { _ in false })
         let invalid = makeStore(
             fileExists: { _ in true },
             readData: { _ in Data(#"{"runtimeVersion":7}"#.utf8) }
         )
+        let unreadable = makeStore(
+            fileExists: { _ in true },
+            readData: { _ in throw CocoaError(.fileReadNoPermission) }
+        )
 
-        XCTAssertEqual(missing.readVersionValue(default: "unknown"), "unknown")
-        XCTAssertEqual(invalid.readVersionValue(default: "unknown"), "unknown")
+        XCTAssertEqual(missing.readVersion(), .missing)
+        guard case .failed(let invalidMessage) = invalid.readVersion() else {
+            return XCTFail("Expected invalid runtime version document to fail")
+        }
+        XCTAssertTrue(invalidMessage.contains("runtimeVersion"))
+        guard case .failed(let unreadableMessage) = unreadable.readVersion() else {
+            return XCTFail("Expected unreadable runtime version document to fail")
+        }
+        XCTAssertFalse(unreadableMessage.isEmpty)
+
+        XCTAssertEqual(missing.readVersionValue(missingValue: "missing", failedValue: "invalid"), "missing")
+        XCTAssertEqual(invalid.readVersionValue(missingValue: "missing", failedValue: "invalid"), "invalid")
     }
 
     private func makeStore(
