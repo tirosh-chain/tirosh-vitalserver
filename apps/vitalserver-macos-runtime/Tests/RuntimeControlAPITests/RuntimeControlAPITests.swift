@@ -1110,6 +1110,66 @@ final class RuntimeControlAPITests: XCTestCase {
     }
 
     @MainActor
+    func testRuntimeControlE2ESmokeServesCoreReadEndpointsOverHTTP() async throws {
+        let token = "dev-token"
+        let (server, port) = try await makeStartedServer(token: token)
+        defer {
+            server.stop()
+        }
+
+        let capabilities = try await fetchRuntimeJSON(
+            RuntimeControlCapabilities.self,
+            port: port,
+            path: "/runtime/capabilities",
+            token: token
+        )
+        let status = try await fetchRuntimeJSON(
+            RuntimeStatus.self,
+            port: port,
+            path: "/runtime/status",
+            token: token
+        )
+        let settings = try await fetchRuntimeJSON(
+            RuntimeSettings.self,
+            port: port,
+            path: "/runtime/settings",
+            token: token
+        )
+        let events = try await fetchRuntimeJSON(
+            RuntimeEventHistory.self,
+            port: port,
+            path: "/runtime/events?limit=5",
+            token: token
+        )
+        let overview = try await fetchRuntimeJSON(
+            RuntimeControlOverview.self,
+            port: port,
+            path: "/runtime/overview",
+            token: token
+        )
+
+        XCTAssertTrue(capabilities.canExportLogs)
+        XCTAssertTrue(capabilities.canStreamLogs)
+        XCTAssertEqual(status.runtimeState, .healthy)
+        XCTAssertEqual(status.runtimeVersion, "1.2.3")
+        XCTAssertEqual(settings.cpuCount, 4)
+        XCTAssertEqual(settings.memoryGiB, 8)
+        XCTAssertEqual(events.events.map(\.id), ["event-1"])
+        XCTAssertEqual(overview.status.runtimeVersion, "1.2.3")
+        XCTAssertEqual(overview.vitalRecorder.knownRecorders, 1)
+
+        let missingTokenRequest = URLRequest(
+            url: try XCTUnwrap(URL(string: "http://127.0.0.1:\(port)/runtime/status"))
+        )
+        let (missingTokenData, missingTokenResponse) = try await fetchWithRetry(missingTokenRequest)
+        let missingTokenHTTPResponse = try XCTUnwrap(missingTokenResponse as? HTTPURLResponse)
+        let missingTokenError = try JSONDecoder().decode(RuntimeControlErrorResponse.self, from: missingTokenData)
+
+        XCTAssertEqual(missingTokenHTTPResponse.statusCode, 401)
+        XCTAssertEqual(missingTokenError.code, .unauthorized)
+    }
+
+    @MainActor
     func testLocalHTTPServerReportsAsyncListenFailure() async throws {
         let token = "dev-token"
         let (server, port) = try await makeStartedServer(token: token)
@@ -1370,6 +1430,24 @@ final class RuntimeControlAPITests: XCTestCase {
             }
         }
         throw try XCTUnwrap(lastError)
+    }
+
+    @MainActor
+    private func fetchRuntimeJSON<T: Decodable>(
+        _ type: T.Type,
+        port: UInt16,
+        path: String,
+        token: String
+    ) async throws -> T {
+        var request = URLRequest(url: try XCTUnwrap(URL(string: "http://127.0.0.1:\(port)\(path)")))
+        request.setValue(token, forHTTPHeaderField: "X-Runtime-Control-Token")
+
+        let (data, response) = try await fetchWithRetry(request)
+        let httpResponse = try XCTUnwrap(response as? HTTPURLResponse)
+
+        XCTAssertEqual(httpResponse.statusCode, 200, path)
+        XCTAssertEqual(httpResponse.value(forHTTPHeaderField: "Content-Type"), "application/json", path)
+        return try JSONDecoder().decode(type, from: data)
     }
 
     @MainActor

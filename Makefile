@@ -24,6 +24,8 @@ VITALSERVER_TRUST_PROXY ?= 1
 COMPOSE := $(strip $(DOCKER_COMPOSE) $(if $(COMPOSE_ENV_FILE),--env-file $(COMPOSE_ENV_FILE),))
 TESTKIT_RUNNER ?= $(if $(wildcard .venv/bin/python),.venv/bin/python scripts/test_vitalserver.py,$(shell if command -v "$(UV)" >/dev/null 2>&1; then printf "%s" "$(UV) run python scripts/test_vitalserver.py"; else printf "%s" "$(PYTHON) scripts/test_vitalserver.py"; fi))
 TESTKIT := $(TESTKIT_RUNNER) --config $(TESTKIT_CONFIG)
+E2E_LOOP_COUNT ?= 0
+E2E_LOOP_INTERVAL ?= 10
 
 include make/submodule.mk
 include make/proxy.mk
@@ -43,8 +45,8 @@ include make/vm.mk
 	dist-install-dev dist-installed-health dist-uninstall-dev \
 	runtime-up runtime-up-bridged runtime-down runtime-status runtime-health \
 	runtime-prepare runtime-ip runtime-proxy-start runtime-clean \
-	runtime-interfaces runtime-network-shared runtime-network-bridged runtime-coverage \
-	coverage \
+	runtime-interfaces runtime-network-shared runtime-network-bridged runtime-e2e-smoke \
+	runtime-coverage coverage e2e-smoke e2e-local e2e-local-loop \
 	devtools-version-source devtools-build devtools-nginx-artifact devtools-nginx-bundle \
 	devtools-docker-images devtools-sign devtools-sign-bridged devtools-bridged-preflight \
 	devtools-init devtools-download devtools-cloud-init devtools-stage \
@@ -80,8 +82,23 @@ runtime-clean: vm-clean
 runtime-interfaces: vm-interfaces
 runtime-network-shared: vm-network-shared
 runtime-network-bridged: vm-network-bridged
+runtime-e2e-smoke: vm-e2e-smoke
 runtime-coverage: vm-coverage
 coverage: vm-coverage
+e2e-smoke: vm-e2e-smoke
+e2e-local: e2e-smoke pwa-check pwa-test pwa-build
+
+e2e-local-loop:
+	@iteration=1; \
+	while :; do \
+		printf "\n== local e2e iteration %s ==\n" "$$iteration"; \
+		$(MAKE) e2e-local || exit $$?; \
+		if [ "$(E2E_LOOP_COUNT)" != "0" ] && [ "$$iteration" -ge "$(E2E_LOOP_COUNT)" ]; then \
+			break; \
+		fi; \
+		iteration=$$((iteration + 1)); \
+		sleep "$(E2E_LOOP_INTERVAL)"; \
+	done
 
 devtools-version-source: vm-version-source
 devtools-build: vm-build
@@ -118,6 +135,8 @@ help:
 	@printf "  make testkit-smoke   Run bounded productization smoke scenario\n"
 	@printf "  make pwa-dev         Start Runtime Control PWA dev server\n"
 	@printf "  make check           Run lint, typecheck, and test\n"
+	@printf "  make e2e-smoke       Run local Runtime Control HTTP smoke test\n"
+	@printf "  make e2e-local       Run local HTTP smoke and PWA checks\n"
 	@printf "  make coverage        Run macOS runtime Swift coverage report\n"
 	@printf "\n"
 	@printf "More help:\n"
@@ -211,6 +230,7 @@ help-runtime:
 	@printf "  make runtime-ip           Show detected runtime IP\n"
 	@printf "  make runtime-proxy-start  Start host proxy for a runtime endpoint\n"
 	@printf "  make runtime-clean        Remove runtime state, keep shared data\n"
+	@printf "  make runtime-e2e-smoke    Run local Runtime Control HTTP smoke test\n"
 	@printf "  make runtime-coverage     Run Swift tests with source coverage report\n"
 	@printf "\n"
 	@printf "Networking:\n"

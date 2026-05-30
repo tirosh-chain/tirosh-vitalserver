@@ -1,4 +1,4 @@
-.PHONY: vm-up vm-up-bridged vm-down vm-prepare vm-start vm-start-detached vm-start-bridged vm-stop vm-status vm-clean vm-ip vm-wait-ip vm-wait-http vm-wait-rootfs-ready vm-proxy-start vm-health vm-coverage
+.PHONY: vm-up vm-up-bridged vm-down vm-prepare vm-start vm-start-detached vm-start-bridged vm-stop vm-status vm-clean vm-ip vm-wait-ip vm-wait-http vm-wait-rootfs-ready vm-proxy-start vm-health vm-e2e-smoke vm-coverage
 .PHONY: vm-version-source vm-build vm-sign vm-sign-bridged vm-bridged-preflight vm-init vm-download vm-cloud-init vm-stage vm-interfaces vm-network-shared vm-network-bridged
 
 VM_ROOTFS_SIZE ?= 4G
@@ -120,6 +120,9 @@ vm-health:
 	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" macos-runtime-health \
 		--vm-home "$(VM_HOME)" \
 		--proxy-port "$(VITALSERVER_PROXY_PORT)"
+
+vm-e2e-smoke:
+	CLANG_MODULE_CACHE_PATH="$(VM_CLANG_MODULE_CACHE)" swift test --package-path "$(VM_SWIFT_PACKAGE_DIR)" --filter RuntimeControlAPITests/testRuntimeControlE2ESmokeServesCoreReadEndpointsOverHTTP
 
 vm-coverage:
 	CLANG_MODULE_CACHE_PATH="$(VM_CLANG_MODULE_CACHE)" swift test --enable-code-coverage --package-path "$(VM_SWIFT_PACKAGE_DIR)"

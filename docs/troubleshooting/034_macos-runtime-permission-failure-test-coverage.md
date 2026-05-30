@@ -50,6 +50,23 @@ make coverage
 
 `make coverage`는 runtime library/API boundary에 대해 85% line coverage gate를 적용합니다. 전체 product source coverage도 별도로 확인해 UI/App shell/CLI orchestrator 쪽 blind spot을 파악합니다.
 
+Runtime Control HTTP 경계의 반복 가능한 E2E smoke를 확인합니다.
+
+```sh
+make e2e-smoke
+```
+
+이 smoke는 local HTTP server를 실제로 기동하고 core read endpoint와 missing-token failure를 확인합니다. 설치, update 적용, rollback 같은 destructive 작업은 별도 명시 없이 실행하지 않습니다.
+
+로컬 반복 검증은 아래 묶음 명령을 사용합니다.
+
+```sh
+make e2e-local
+E2E_LOOP_COUNT=5 E2E_LOOP_INTERVAL=10 make e2e-local-loop
+```
+
+`make e2e-local`은 Runtime Control HTTP smoke와 PWA check/test/build를 함께 실행합니다.
+
 권한 실패 테스트가 있는지 빠르게 확인합니다.
 
 ```sh
@@ -106,6 +123,7 @@ rg -n "readData|readUTF8Text|writeData|copyItem|moveItem|removeItem|chmod|posixP
 - read path에서 migration, projection rebuild, schema write 같은 side effect를 암묵 수행하지 않습니다.
 - update/install/rollback의 destructive step은 실패 시 file path, operation, stderr를 남깁니다.
 - coverage gate는 runtime library/API boundary에 적용하고, UI/App shell/CLI orchestrator는 의미 있는 smoke/integration 테스트로 보강합니다.
+- 반복 실행 E2E는 먼저 read-only/local-only smoke로 고정하고, update/install/rollback은 별도 fixture와 cleanup 계약이 생긴 뒤 추가합니다.
 
 ### Coverage Targets
 
@@ -173,3 +191,5 @@ Helper 사용자 권한에서 읽기/쓰기 probe를 분리합니다. SQLite row
 - 2026-05-31: `RuntimeUpdateCompatibilityChecker`의 equivalent version, text/numeric version segment comparison, mixed text/number comparison, operational error description을 검증했습니다. `RuntimeUpdateCompatibilityChecker.swift`는 80.77%에서 100.00%로, 전체 scoped line coverage는 88.73%로 상승했습니다.
 - 2026-05-31: `RuntimeLogExporter`가 기존 export archive를 교체하고, ditto archive 실패 시 stdout/stderr 또는 fallback summary를 보존하는지 검증했습니다. `RuntimeLogExporter.swift`는 91.92%에서 97.31%로, 전체 scoped line coverage는 88.93%로 상승했습니다.
 - 2026-05-31: `RuntimeSettingsReader`가 disk size, public runtime settings, legacy runtime config, proxy launch daemon read failure를 `readIssues`에 보존하는지 검증했습니다. `RuntimeSettingsReader.swift`는 90.76%에서 96.74%로, 전체 scoped line coverage는 89.05%로 상승했습니다.
+- 2026-05-31: `make e2e-smoke`를 추가해 Runtime Control local HTTP server, core read endpoint, auth failure를 실제 HTTP 요청으로 검증합니다. destructive install/update/rollback은 이 smoke 범위에서 제외했습니다.
+- 2026-05-31: 로컬 반복 검증용 `make e2e-local`과 `make e2e-local-loop`를 추가했습니다. CI 연결 전에는 이 명령으로 Runtime Control HTTP smoke와 PWA check/test/build를 묶어 확인합니다.
