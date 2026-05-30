@@ -37,6 +37,7 @@ Runtime 상태가 실제 상황과 다르게 보이거나, update 진행 상태�
 - Settings 값인 host proxy port를 StatusReader가 launchd plist/default 값으로 추정합니다.
 - status document를 읽거나 decode하지 못했는데 `nil`로 바꿔 “상태 없음”처럼 표시합니다.
 - guest `runtime-state.json`을 읽거나 decode하지 못했는데 resource usage 미보고처럼 표시합니다.
+- settings 파일을 읽거나 decode하지 못했는데 기본 설정값으로 조용히 대체합니다.
 
 ## Impact
 
@@ -92,6 +93,7 @@ rg -n "dataDirectoryStats|directoryStats\\(" apps/vitalserver-macos-runtime/Sour
 rg -n "loadBaseStatus\\(\\)\\.proxyPort|proxyPort\\(paths\\.proxyLaunchDaemon\\)|RuntimeStatusReader.*proxyLaunchDaemon" apps/vitalserver-macos-runtime/Sources
 rg -n "try\\? JSONDecoder\\(\\)\\.decode\\(RuntimeStatusDocument|try\\? Data\\(contentsOf:.*runtimeStatus|statusRepository\\.load\\(\\)" apps/vitalserver-macos-runtime/Sources
 rg -n "try\\? JSONDecoder\\(\\)\\.decode\\(GuestRuntimeStateDocument|guestRuntimeStateDocument\\(.*\\) -> GuestRuntimeStateDocument\\?" apps/vitalserver-macos-runtime/Sources
+rg -n "try\\? .*RuntimeSettings|VMConfigDocument\\.load\\(|GuestRuntimeConfig\\.load\\(|proxyPort\\(plistPath" apps/vitalserver-macos-runtime/Sources/MacHostRuntimeAdapter
 ```
 
 상태 관련 read path에서 아래 패턴이 보이면 재검토합니다.
@@ -123,6 +125,7 @@ data directory read failure -> zero or unknown stats
 settings value -> read through status/plist fallback
 status document read/decode failure -> missing status
 guest runtime-state read/decode failure -> missing resource usage
+settings read/decode failure -> default settings
 ```
 
 ## Actions
@@ -158,6 +161,7 @@ guest runtime-state read/decode failure -> missing resource usage
 25. Host proxy port는 settings read path가 읽습니다. Status read path는 status document 값이 없을 때 caller가 제공한 settings 값을 사용합니다.
 26. Status document는 missing과 read/decode failure를 구분합니다. 읽기 실패는 `statusDocumentError`로 노출하고 상태 없음으로 보정하지 않습니다.
 27. Guest runtime-state는 missing과 read/decode failure를 구분합니다. 읽기 실패는 `guestRuntimeStateError`로 노출하고 resource usage 미보고와 섞지 않습니다.
+28. Settings reader는 missing과 read/decode failure를 구분합니다. 파일이 있는데 읽기 실패하면 `readIssues`로 노출하고, 기본값 사용 사실을 숨기지 않습니다.
 
 ## Prevention
 
@@ -197,6 +201,7 @@ guest runtime-state read/decode failure -> missing resource usage
 - settings 값을 status reader가 plist/default fallback으로 추정
 - status document read/decode 실패를 missing status와 같은 값으로 처리
 - guest runtime-state read/decode 실패를 missing resource usage와 같은 값으로 처리
+- settings 파일 read/decode 실패를 기본 설정값으로 조용히 대체
 
 ## Operational Notes
 
@@ -235,3 +240,4 @@ guest runtime-state read/decode failure -> missing resource usage
 - 2026-05-30: Host proxy port 읽기 책임을 StatusReader에서 SettingsReader로 옮겼습니다. StatusReader는 launchd plist를 직접 읽지 않고 status document 또는 전달받은 settings 값을 사용합니다.
 - 2026-05-30: runtime status document 읽기 결과를 `missing`, `loaded`, `failed`로 분리했습니다. Decode/read 실패는 `statusDocumentError`로 노출해 status 미생성과 파일 손상을 구분합니다.
 - 2026-05-30: guest runtime-state 읽기 결과를 `missing`, `loaded`, `failed`로 분리했습니다. Decode/read 실패는 `guestRuntimeStateError`로 노출해 resource usage 미보고와 파일 손상을 구분합니다.
+- 2026-05-30: Settings reader가 `vm-config.json`, guest runtime config, proxy launch daemon, VM disk size 읽기 실패를 `readIssues`로 노출하도록 변경했습니다. 파일 부재와 파일 손상/권한 실패를 분리합니다.

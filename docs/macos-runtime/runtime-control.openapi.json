@@ -2838,6 +2838,12 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
+          "readIssues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeSettingsReadIssue"
+            }
+          },
           "cpuCount": {
             "type": "integer"
           },
@@ -2900,6 +2906,22 @@
             "type": "boolean"
           }
         }
+      },
+      "RuntimeSettingsReadIssue": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "source": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "message"
+        ]
       },
       "RuntimeReleaseInfo": {
         "type": "object",

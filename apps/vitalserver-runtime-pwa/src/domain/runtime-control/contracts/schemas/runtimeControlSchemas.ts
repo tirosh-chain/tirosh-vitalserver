@@ -107,6 +107,16 @@ export const runtimeCapabilitiesSchema = z
 
 export const runtimeSettingsSchema = z
   .object({
+    readIssues: z
+      .array(
+        z
+          .object({
+            source: z.string(),
+            message: z.string()
+          })
+          .passthrough()
+      )
+      .optional(),
     cpuCount: z.number().optional(),
     memoryGiB: z.number().optional(),
     diskGiB: z.number().optional(),

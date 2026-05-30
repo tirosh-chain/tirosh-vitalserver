@@ -189,6 +189,10 @@
     @apply font-medium text-app-muted;
   }
 
+  .warning-list {
+    @apply mb-4 grid gap-1 text-sm font-bold text-app-danger;
+  }
+
   .detail {
     @apply whitespace-nowrap;
   }

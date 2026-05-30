@@ -1161,6 +1161,7 @@ export interface components {
             sizeBytes?: number;
         };
         RuntimeSettings: {
+            readIssues?: components["schemas"]["RuntimeSettingsReadIssue"][];
             cpuCount?: number;
             memoryGiB?: number;
             diskGiB?: number;
@@ -1181,6 +1182,10 @@ export interface components {
             preventSystemSleep?: boolean;
             redisBackupRetentionCount?: number;
             restartAfterSave?: boolean;
+        };
+        RuntimeSettingsReadIssue: {
+            source: string;
+            message: string;
         };
         RuntimeReleaseInfo: {
             helperVersion?: string;

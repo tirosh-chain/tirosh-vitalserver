@@ -45,6 +45,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
 
         let settings = reader.load()
 
+        XCTAssertEqual(settings.readIssues, [])
         XCTAssertEqual(settings.cpuCount, 4)
         XCTAssertEqual(settings.memoryGiB, 6)
         XCTAssertEqual(settings.diskGiB, 1)
@@ -57,6 +58,29 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         XCTAssertEqual(settings.proxyPort, 19090)
         XCTAssertFalse(settings.autoRecoveryEnabled)
         XCTAssertFalse(settings.preventSystemSleep)
+    }
+
+    func testReportsSettingsReadIssuesWithoutReplacingMissingFilesWithErrors() throws {
+        let directory = try temporaryDirectory()
+        let vmConfig = directory.appendingPathComponent("vm-config.json")
+        let proxyLaunchDaemon = directory.appendingPathComponent("proxy.plist")
+        try Data("not-json".utf8).write(to: vmConfig)
+        try writeProxyLaunchDaemon(proxyLaunchDaemon, proxyPort: 70_000)
+
+        let reader = SystemRuntimeSettingsReader(
+            paths: RuntimeSettingsPaths(
+                vmConfig: vmConfig.path,
+                vmDisk: directory.appendingPathComponent("missing-disk.img").path,
+                guestRuntimeConfig: directory.appendingPathComponent("missing-runtime-config.json").path,
+                proxyLaunchDaemon: proxyLaunchDaemon.path
+            )
+        )
+
+        let settings = reader.load()
+
+        XCTAssertEqual(settings.readIssues.map(\.source), ["vmConfig", "proxyLaunchDaemon"])
+        XCTAssertEqual(settings.cpuCount, RuntimeSettings().cpuCount)
+        XCTAssertEqual(settings.proxyPort, RuntimeSettings().proxyPort)
     }
 
     func testConfigureArgumentsReflectSettings() {

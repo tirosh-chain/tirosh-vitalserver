@@ -9,6 +9,7 @@ struct RuntimeSettingsPanel: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
+                settingsReadIssuesSection
                 settingsSection(AppConstants.Labels.sectionVM) {
                     settingSlider(
                         AppConstants.Labels.cpu,
@@ -104,6 +105,20 @@ struct RuntimeSettingsPanel: View {
         }
         .onChange(of: viewModel.settings.proxyPort) { _ in
             viewModel.syncAdvertisedURLWithProxyIfNeeded()
+        }
+    }
+
+    @ViewBuilder
+    private var settingsReadIssuesSection: some View {
+        if !viewModel.settings.readIssues.isEmpty {
+            settingsSection(AppConstants.Labels.settingsReadIssues) {
+                ForEach(viewModel.settings.readIssues, id: \.source) { issue in
+                    Text("\(issue.source): \(issue.message)")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
         }
     }
 

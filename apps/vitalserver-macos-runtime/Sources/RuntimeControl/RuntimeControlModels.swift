@@ -111,6 +111,7 @@ public enum RuntimeState: Codable, Equatable, Sendable {
 }
 
 public struct RuntimeSettings: Codable, Equatable, Sendable {
+    public var readIssues: [RuntimeSettingsReadIssue]
     public var cpuCount: Int
     public var memoryGiB: Int
     public var diskGiB: Int
@@ -132,6 +133,7 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
     public var restartAfterSave: Bool
 
     public init(
+        readIssues: [RuntimeSettingsReadIssue] = [],
         cpuCount: Int = 8,
         memoryGiB: Int = 8,
         diskGiB: Int = 32,
@@ -152,6 +154,7 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
         redisBackupRetentionCount: Int = 30,
         restartAfterSave: Bool = true
     ) {
+        self.readIssues = readIssues
         self.cpuCount = cpuCount
         self.memoryGiB = memoryGiB
         self.diskGiB = diskGiB
@@ -171,6 +174,16 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
         self.preventSystemSleep = preventSystemSleep
         self.redisBackupRetentionCount = redisBackupRetentionCount
         self.restartAfterSave = restartAfterSave
+    }
+}
+
+public struct RuntimeSettingsReadIssue: Codable, Equatable, Sendable {
+    public var source: String
+    public var message: String
+
+    public init(source: String, message: String) {
+        self.source = source
+        self.message = message
     }
 }
 

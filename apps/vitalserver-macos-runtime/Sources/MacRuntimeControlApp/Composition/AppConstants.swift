@@ -210,6 +210,7 @@ enum AppConstants {
         static let sectionStorage = "Storage"
         static let sectionRedisData = "Redis data"
         static let sectionOperations = "Operations"
+        static let settingsReadIssues = "Settings read issues"
         static let sectionAdvancedConfiguration = "Advanced configuration"
         static let cpu = "CPU"
         static let memory = "Memory allocation"

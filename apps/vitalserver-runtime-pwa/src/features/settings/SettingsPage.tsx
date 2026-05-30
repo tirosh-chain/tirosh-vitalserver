@@ -107,6 +107,16 @@ export function SettingsPage() {
         {settings.isError ? (
           <ErrorState title="Failed to read settings" error={settings.error} />
         ) : null}
+        {settings.data?.readIssues?.length ? (
+          <div className="warning-list">
+            <strong>Settings read issues</strong>
+            {settings.data.readIssues.map((issue) => (
+              <div key={issue.source}>
+                {issue.source}: {issue.message}
+              </div>
+            ))}
+          </div>
+        ) : null}
 
         <div className="settings-grid">
           <label>
