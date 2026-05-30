@@ -323,19 +323,24 @@ extension RuntimeLifecycle {
     }
 
     func recordRuntimeProgressEventBestEffort(
+        status: RuntimeStatusLevel,
         message: String,
         progress: RuntimeProgressDocument
     ) {
-        guard let currentStatus = statusReporter.loadStatus() else {
-            return
-        }
-        recordRuntimeStatusDocumentEventBestEffort(
-            currentStatus,
+        let event = RuntimeEventDocument(
+            id: UUID().uuidString,
+            eventType: .progressUpdated,
+            timestamp: progress.updatedAt,
+            product: Constants.Product.identifier,
+            status: status,
+            previousStatus: nil,
             operation: progress.operation,
             message: message,
-            eventType: .progressUpdated,
+            runtimeVersion: runtimeVersionValue(),
+            failureReasons: [],
             progress: progress
         )
+        runtimeObservationRecorder().recordEventBestEffort(event)
     }
 
     func recordRuntimeLifecycleEventBestEffort(
@@ -416,15 +421,6 @@ extension RuntimeLifecycle {
         message: String,
         reasonCodes: [String] = []
     ) throws {
-        try runtimeStatusWriter().writeProgress(
-            status,
-            operation: operation,
-            step: step,
-            stepStatus: stepStatus,
-            phase: phase,
-            message: message,
-            reasonCodes: reasonCodes
-        )
         let progress = RuntimeProgressDocument(
             operation: operation,
             phase: phase,
@@ -435,7 +431,29 @@ extension RuntimeLifecycle {
             startedAt: nil,
             updatedAt: isoTimestamp()
         )
-        recordRuntimeProgressEventBestEffort(message: message, progress: progress)
+        do {
+            try runtimeStatusWriter().writeProgress(
+                status,
+                operation: operation,
+                step: step,
+                stepStatus: stepStatus,
+                phase: phase,
+                message: message,
+                reasonCodes: reasonCodes
+            )
+        } catch {
+            recordRuntimeProgressEventBestEffort(
+                status: status,
+                message: message,
+                progress: progress
+            )
+            throw error
+        }
+        recordRuntimeProgressEventBestEffort(
+            status: status,
+            message: message,
+            progress: progress
+        )
     }
 
     func setInstalledProxyPort(_ port: Int) throws {
