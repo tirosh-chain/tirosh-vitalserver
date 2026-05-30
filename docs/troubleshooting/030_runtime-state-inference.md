@@ -311,3 +311,4 @@ missing VitalDB recorder observation -> zero recorder metrics
 - 2026-05-30: Update bundle archive materialization 임시 디렉터리 cleanup 실패를 `try?`로 숨기지 않고 runtime log에 남기도록 변경했습니다.
 - 2026-05-30: stale VM pid file 제거 실패를 `try?`로 숨기지 않고 process stop/wait 로그에 남기도록 변경했습니다.
 - 2026-05-30: Update artifact tar 검증 중 생성한 임시 출력 파일 cleanup 실패를 `try?`로 숨기지 않고 runtime log에 남기도록 변경했습니다.
+- 2026-05-30: Swift log preview가 log file read/size/seek 실패를 `No log data`로 숨기지 않고 `Failed to read log file ...`로 표시하도록 변경했습니다.

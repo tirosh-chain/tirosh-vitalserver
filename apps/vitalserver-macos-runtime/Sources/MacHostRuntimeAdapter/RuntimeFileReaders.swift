@@ -182,7 +182,13 @@ struct SystemRuntimeHostFileReader: RuntimeHostFileReading, @unchecked Sendable 
         } else {
             return RuntimeAdapterConstants.StatusText.noLogData
         }
-        guard let content = readTailText(readableURL) else {
+        let content: String?
+        do {
+            content = try readTailText(readableURL)
+        } catch {
+            return "Failed to read log file \(readableURL.path): \(error.localizedDescription)"
+        }
+        guard let content else {
             return RuntimeAdapterConstants.StatusText.noLogData
         }
         let body = tail(content, lineLimit: lineLimit)
@@ -196,19 +202,18 @@ struct SystemRuntimeHostFileReader: RuntimeHostFileReading, @unchecked Sendable 
         return lines.suffix(lineLimit).joined(separator: "\n")
     }
 
-    private func readTailText(_ url: URL) -> String? {
-        guard let handle = try? FileHandle(forReadingFrom: url) else {
-            return nil
-        }
+    private func readTailText(_ url: URL) throws -> String? {
+        let handle = try FileHandle(forReadingFrom: url)
         defer {
             try? handle.close()
         }
 
-        let fileSize = (try? fileStore.fileSize(url)) ?? 0
+        let fileSize = try fileStore.fileSize(url)
         if fileSize > Self.logTailReadByteLimit {
-            try? handle.seek(toOffset: fileSize - Self.logTailReadByteLimit)
+            try handle.seek(toOffset: fileSize - Self.logTailReadByteLimit)
         }
-        guard let data = try? handle.readToEnd(), !data.isEmpty else {
+        let data = try handle.readToEnd() ?? Data()
+        guard !data.isEmpty else {
             return nil
         }
         return String(decoding: data, as: UTF8.self)

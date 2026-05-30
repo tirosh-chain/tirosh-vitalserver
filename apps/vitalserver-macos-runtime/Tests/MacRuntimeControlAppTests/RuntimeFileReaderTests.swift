@@ -129,6 +129,16 @@ final class RuntimeFileReaderTests: XCTestCase {
         XCTAssertEqual(collector.refreshCount, 1)
     }
 
+    func testLogTextReportsLogFileReadFailure() throws {
+        let fileStore = ExistingLogRuntimeFileStore()
+        let reader = SystemRuntimeHostFileReader(fileStore: fileStore)
+
+        let logText = reader.logText(sourceID: .install, helperMessage: "Ready", lineLimit: 10)
+
+        XCTAssertTrue(logText.hasPrefix("Failed to read log file "))
+        XCTAssertTrue(logText.contains(RuntimeAdapterConstants.Paths.installLog))
+    }
+
     func testHelperMessageLogTextDoesNotRefreshLogCollection() throws {
         let collector = FakeRuntimeLogCollector()
         let reader = SystemRuntimeHostFileReader(logCollector: collector)
@@ -201,5 +211,29 @@ private final class FailingDirectoryRuntimeFileStore: RuntimeFileStore {
     }
     func fileSystemAttributes(forPath path: String) throws -> RuntimeFileSystemAttributes {
         throw CocoaError(.fileReadNoPermission)
+    }
+}
+
+private final class ExistingLogRuntimeFileStore: RuntimeFileStore {
+    var temporaryDirectory = URL(fileURLWithPath: "/tmp")
+
+    func fileExists(_ url: URL) -> Bool { true }
+    func directoryExists(_ url: URL) -> Bool { false }
+    func isExecutableFile(atPath path: String) -> Bool { false }
+    func readData(_ url: URL) throws -> Data { throw CocoaError(.fileReadNoPermission) }
+    func readUTF8Text(_ url: URL) throws -> String { throw CocoaError(.fileReadNoPermission) }
+    func fileSize(_ url: URL) throws -> UInt64 { throw CocoaError(.fileReadNoPermission) }
+    func modificationDate(_ url: URL) throws -> Date { throw CocoaError(.fileReadNoPermission) }
+    func writeData(_ data: Data, to url: URL, options: Data.WritingOptions) throws {}
+    func writeData(_ data: Data, to url: URL, options: Data.WritingOptions, posixPermissions: Int) throws {}
+    func createDirectory(at url: URL, withIntermediateDirectories: Bool) throws {}
+    func removeItem(at url: URL) throws {}
+    func copyItem(at source: URL, to destination: URL) throws {}
+    func moveItem(at source: URL, to destination: URL) throws {}
+    func contentsOfDirectory(at url: URL, skipsHiddenFiles: Bool) throws -> [URL] { [] }
+    func childDirectories(at url: URL, nameContains fragment: String, skipsHiddenFiles: Bool) throws -> [URL] { [] }
+    func recursiveRegularFileSize(at url: URL, skipsHiddenFiles: Bool) throws -> UInt64 { 0 }
+    func fileSystemAttributes(forPath path: String) throws -> RuntimeFileSystemAttributes {
+        RuntimeFileSystemAttributes(freeBytes: 1)
     }
 }
