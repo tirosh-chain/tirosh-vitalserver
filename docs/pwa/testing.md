@@ -26,6 +26,14 @@ make e2e-smoke
 `/runtime/events`, `/runtime/overview`와 missing-token failure를 검증합니다.
 설치, update 적용, rollback 같은 destructive 작업은 수행하지 않습니다.
 
+Runtime Control host file 권한은 로컬 audit으로 확인합니다.
+
+```sh
+make runtime-permission-audit
+```
+
+설치물이 반드시 있어야 하는 환경에서는 `RUNTIME_PERMISSION_AUDIT_ARGS=--require-install`을 추가합니다.
+
 로컬에서 한 번에 확인할 때는 아래 묶음 명령을 사용합니다.
 
 ```sh
@@ -82,6 +90,12 @@ Runtime Control API smoke와 PWA check/test/build 묶음:
 
 ```sh
 make e2e-local
+```
+
+Installed runtime permission audit:
+
+```sh
+make runtime-permission-audit
 ```
 
 개발 서버:

@@ -67,6 +67,15 @@ E2E_LOOP_COUNT=5 E2E_LOOP_INTERVAL=10 make e2e-local-loop
 
 `make e2e-local`은 Runtime Control HTTP smoke와 PWA check/test/build를 함께 실행합니다.
 
+설치된 runtime의 host-visible 권한은 아래 audit으로 확인합니다.
+
+```sh
+make runtime-permission-audit
+RUNTIME_PERMISSION_AUDIT_ARGS=--require-install make runtime-permission-audit
+```
+
+이 audit은 Helper app, launcher/uninstaller, `/Library/Application Support/TiroshVitalServer`, status/event/observability 파일, VM host-visible config/run directory를 현재 사용자 기준으로 확인합니다. `runtime-config.json`은 secret-bearing file이라 `0600`일 수 있고, Helper가 읽어야 하는 public read model은 `runtime-settings.json`입니다. VM guest 내부 Docker volume owner/mode는 별도 guest probe가 필요합니다.
+
 권한 실패 테스트가 있는지 빠르게 확인합니다.
 
 ```sh
@@ -124,6 +133,8 @@ rg -n "readData|readUTF8Text|writeData|copyItem|moveItem|removeItem|chmod|posixP
 - update/install/rollback의 destructive step은 실패 시 file path, operation, stderr를 남깁니다.
 - coverage gate는 runtime library/API boundary에 적용하고, UI/App shell/CLI orchestrator는 의미 있는 smoke/integration 테스트로 보강합니다.
 - 반복 실행 E2E는 먼저 read-only/local-only smoke로 고정하고, update/install/rollback은 별도 fixture와 cleanup 계약이 생긴 뒤 추가합니다.
+- 사용자가 실패할 수 있는 위치를 선택하지 않도록 Helper/PWA 모두 iCloud Drive, Desktop, Documents, system/app-managed path를 log export destination에서 차단합니다.
+- 설치/업데이트 후 권한 회귀는 `make runtime-permission-audit`으로 host-visible 파일 owner/mode/access를 확인합니다.
 
 ### Coverage Targets
 
@@ -193,3 +204,5 @@ Helper 사용자 권한에서 읽기/쓰기 probe를 분리합니다. SQLite row
 - 2026-05-31: `RuntimeSettingsReader`가 disk size, public runtime settings, legacy runtime config, proxy launch daemon read failure를 `readIssues`에 보존하는지 검증했습니다. `RuntimeSettingsReader.swift`는 90.76%에서 96.74%로, 전체 scoped line coverage는 89.05%로 상승했습니다.
 - 2026-05-31: `make e2e-smoke`를 추가해 Runtime Control local HTTP server, core read endpoint, auth failure를 실제 HTTP 요청으로 검증합니다. destructive install/update/rollback은 이 smoke 범위에서 제외했습니다.
 - 2026-05-31: 로컬 반복 검증용 `make e2e-local`과 `make e2e-local-loop`를 추가했습니다. CI 연결 전에는 이 명령으로 Runtime Control HTTP smoke와 PWA check/test/build를 묶어 확인합니다.
+- 2026-05-31: Helper/PWA log export destination policy를 추가해 iCloud Drive, Desktop, Documents, system/app-managed path를 실행 전에 차단합니다.
+- 2026-05-31: `make runtime-permission-audit`를 추가해 설치된 Helper/runtime의 host-visible permission 상태를 로컬에서 점검합니다.

@@ -23,6 +23,10 @@ extension RuntimeViewModel {
         ) else {
             return
         }
+        if let validationMessage = RuntimeLogExportDestinationPolicy().validationMessage(for: destination) {
+            message = validationMessage
+            return
+        }
 
         isBusy = true
         defer { isBusy = false }

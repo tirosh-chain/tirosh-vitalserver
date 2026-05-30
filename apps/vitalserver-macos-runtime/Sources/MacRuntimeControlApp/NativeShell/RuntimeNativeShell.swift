@@ -52,10 +52,13 @@ struct SystemRuntimeNativeShell: RuntimeNativeShell {
 
     func chooseLogExportDestination(defaultName: String, prompt: String) -> URL? {
         let panel = NSSavePanel()
+        let delegate = LogExportSavePanelDelegate()
         panel.canCreateDirectories = true
         panel.allowedContentTypes = [.zip]
         panel.nameFieldStringValue = defaultName
         panel.prompt = prompt
+        panel.directoryURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+        panel.delegate = delegate
         guard panel.runModal() == .OK else {
             return nil
         }
@@ -140,6 +143,29 @@ private final class VitalFilesDirectoryOpenPanelDelegate: NSObject, NSOpenSavePa
         if let message = policy.validationMessage(for: url) {
             throw NSError(
                 domain: "TiroshVitalServer.VitalFilesDirectory",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: message]
+            )
+        }
+    }
+}
+
+private final class LogExportSavePanelDelegate: NSObject, NSOpenSavePanelDelegate {
+    private let policy = RuntimeLogExportDestinationPolicy()
+
+    func panel(_ sender: Any, shouldEnable url: URL) -> Bool {
+        var isDirectory = ObjCBool(false)
+        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory),
+              isDirectory.boolValue else {
+            return true
+        }
+        return policy.canNavigateDirectory(url)
+    }
+
+    func panel(_ sender: Any, validate url: URL) throws {
+        if let message = policy.validationMessage(for: url) {
+            throw NSError(
+                domain: "TiroshVitalServer.LogExportDestination",
                 code: 1,
                 userInfo: [NSLocalizedDescriptionKey: message]
             )

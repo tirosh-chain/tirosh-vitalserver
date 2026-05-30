@@ -6,6 +6,7 @@ import {
   useRuntimeCapabilities
 } from "@/application/runtime-control/queries";
 import type { RuntimeLogSource } from "@/domain/runtime-control/contracts/runtimeControlTypes";
+import { validateHostLogExportPath } from "@/domain/runtime-control/paths/runtimePathPolicy";
 import { ErrorState } from "@/shared/ui/ErrorState";
 import { Panel } from "@/shared/ui/Panel";
 
@@ -37,6 +38,7 @@ export function LogsPage() {
   const logs = useHostLogs({ source, lineLimit, live });
   const exportLogs = useExportHostLogs();
   const logText = logs.data?.text ?? "";
+  const exportPathValidation = validateHostLogExportPath(exportPath);
 
   const exportDestination = useMemo(() => {
     const destination = exportLogs.data?.destination;
@@ -121,6 +123,7 @@ export function LogsPage() {
             <input
               type="text"
               value={exportPath}
+              aria-invalid={exportPathValidation ? "true" : "false"}
               disabled={capabilities.data?.canExportLogs !== true}
               onChange={(event) => setExportPath(event.target.value)}
             />
@@ -130,13 +133,16 @@ export function LogsPage() {
             onClick={() => exportLogs.mutate(exportPath)}
             disabled={
               exportLogs.isPending ||
-              !exportPath.trim() ||
+              exportPathValidation !== null ||
               capabilities.data?.canExportLogs !== true
             }
           >
             Export Logs
           </button>
         </div>
+        {exportPathValidation ? (
+          <p className="error-state">{exportPathValidation}</p>
+        ) : null}
         {exportLogs.isError ? (
           <ErrorState title="Failed to export logs" error={exportLogs.error} />
         ) : null}

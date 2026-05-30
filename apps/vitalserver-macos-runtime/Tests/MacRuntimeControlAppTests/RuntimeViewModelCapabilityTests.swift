@@ -224,6 +224,24 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertEqual(client.exportLogDestinationURLs, [exportURL])
     }
 
+    func testExportLogsRejectsProtectedDestinationBeforeCommandRuns() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let nativeShell = FakeRuntimeNativeShell()
+        nativeShell.logExportDestinationURL = URL(fileURLWithPath: "/Users/test/Desktop/vitalserver-logs.zip")
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications(),
+            nativeShell: nativeShell
+        )
+
+        await viewModel.exportLogs()
+
+        XCTAssertEqual(nativeShell.chooseLogExportDestinationPrompts, [AppConstants.Actions.exportLogs])
+        XCTAssertEqual(client.exportLogsCount, 0)
+        XCTAssertEqual(viewModel.message, AppConstants.StatusText.logExportDestinationProtected)
+    }
+
     func testOpenFolderPromptsToCreateMissingDirectoryBeforeOpening() {
         let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
         let nativeShell = FakeRuntimeNativeShell()
