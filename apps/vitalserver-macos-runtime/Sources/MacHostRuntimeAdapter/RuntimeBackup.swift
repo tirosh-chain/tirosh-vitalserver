@@ -15,9 +15,10 @@ extension RuntimeBackup {
             nameContains: "-before-",
             skipsHiddenFiles: true
         )
-        .map { RuntimeBackup(path: $0.path, sizeBytes: directorySize($0, fileStore: fileStore)) }
+        .map { RuntimeBackup(path: $0.path, sizeBytes: try directorySize($0, fileStore: fileStore)) }
 
-        let merged = discovered + latestBackup(latestBackupPath, excluding: discovered, fileStore: fileStore)
+        let latest = try latestBackup(latestBackupPath, excluding: discovered, fileStore: fileStore)
+        let merged = discovered + latest
         return merged.sorted { $0.name > $1.name }
     }
 
@@ -25,7 +26,7 @@ extension RuntimeBackup {
         let directory = URL(fileURLWithPath: RuntimeAdapterConstants.Paths.redisBackups)
         let discovered = try fileStore.contentsOfDirectory(at: directory, skipsHiddenFiles: true)
             .filter { $0.lastPathComponent.hasPrefix("redis-") && $0.lastPathComponent.hasSuffix(".tar.gz") }
-            .map { RuntimeBackup(path: $0.path, sizeBytes: fileSize($0, fileStore: fileStore)) }
+            .map { RuntimeBackup(path: $0.path, sizeBytes: try fileSize($0, fileStore: fileStore)) }
         return discovered.sorted { $0.name > $1.name }
     }
 
@@ -33,7 +34,7 @@ extension RuntimeBackup {
         _ path: String?,
         excluding backups: [RuntimeBackup],
         fileStore: RuntimeFileStore
-    ) -> [RuntimeBackup] {
+    ) throws -> [RuntimeBackup] {
         guard let path, !path.isEmpty else {
             return []
         }
@@ -44,14 +45,14 @@ extension RuntimeBackup {
         guard url.lastPathComponent.contains("-before-") else {
             return []
         }
-        return [RuntimeBackup(path: path, sizeBytes: directorySize(url, fileStore: fileStore))]
+        return [RuntimeBackup(path: path, sizeBytes: try directorySize(url, fileStore: fileStore))]
     }
 
-    private static func directorySize(_ url: URL, fileStore: RuntimeFileStore) -> UInt64? {
-        try? fileStore.recursiveRegularFileSize(at: url, skipsHiddenFiles: true)
+    private static func directorySize(_ url: URL, fileStore: RuntimeFileStore) throws -> UInt64 {
+        try fileStore.recursiveRegularFileSize(at: url, skipsHiddenFiles: true)
     }
 
-    private static func fileSize(_ url: URL, fileStore: RuntimeFileStore) -> UInt64? {
-        try? fileStore.fileSize(url)
+    private static func fileSize(_ url: URL, fileStore: RuntimeFileStore) throws -> UInt64 {
+        try fileStore.fileSize(url)
     }
 }

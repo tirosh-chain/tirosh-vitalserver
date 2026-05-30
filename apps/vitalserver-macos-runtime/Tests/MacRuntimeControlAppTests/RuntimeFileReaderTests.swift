@@ -160,6 +160,18 @@ final class RuntimeFileReaderTests: XCTestCase {
         XCTAssertThrowsError(try RuntimeBackup.loadRedisBackups(fileStore: fileStore))
     }
 
+    func testBackupListPropagatesSizeReadFailure() {
+        let fileStore = BackupSizeFailingRuntimeFileStore()
+
+        XCTAssertThrowsError(try RuntimeBackup.loadAll(fileStore: fileStore))
+    }
+
+    func testRedisBackupListPropagatesSizeReadFailure() {
+        let fileStore = BackupSizeFailingRuntimeFileStore()
+
+        XCTAssertThrowsError(try RuntimeBackup.loadRedisBackups(fileStore: fileStore))
+    }
+
     private func temporaryDirectory() throws -> URL {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("RuntimeFileReaderTests-\(UUID().uuidString)")
@@ -211,6 +223,41 @@ private final class FailingDirectoryRuntimeFileStore: RuntimeFileStore {
     }
     func fileSystemAttributes(forPath path: String) throws -> RuntimeFileSystemAttributes {
         throw CocoaError(.fileReadNoPermission)
+    }
+}
+
+private final class BackupSizeFailingRuntimeFileStore: RuntimeFileStore {
+    var temporaryDirectory = URL(fileURLWithPath: "/tmp")
+
+    private let backupDirectory = URL(fileURLWithPath: RuntimeAdapterConstants.Paths.backups)
+        .appendingPathComponent("20260530T000000Z-before-0.1.9")
+    private let redisBackup = URL(fileURLWithPath: RuntimeAdapterConstants.Paths.redisBackups)
+        .appendingPathComponent("redis-20260530T000000Z.tar.gz")
+
+    func fileExists(_ url: URL) -> Bool { true }
+    func directoryExists(_ url: URL) -> Bool { true }
+    func isExecutableFile(atPath path: String) -> Bool { false }
+    func readData(_ url: URL) throws -> Data { Data() }
+    func readUTF8Text(_ url: URL) throws -> String { "" }
+    func fileSize(_ url: URL) throws -> UInt64 { throw CocoaError(.fileReadNoPermission) }
+    func modificationDate(_ url: URL) throws -> Date { Date(timeIntervalSince1970: 0) }
+    func writeData(_ data: Data, to url: URL, options: Data.WritingOptions) throws {}
+    func writeData(_ data: Data, to url: URL, options: Data.WritingOptions, posixPermissions: Int) throws {}
+    func createDirectory(at url: URL, withIntermediateDirectories: Bool) throws {}
+    func removeItem(at url: URL) throws {}
+    func copyItem(at source: URL, to destination: URL) throws {}
+    func moveItem(at source: URL, to destination: URL) throws {}
+    func contentsOfDirectory(at url: URL, skipsHiddenFiles: Bool) throws -> [URL] {
+        [redisBackup]
+    }
+    func childDirectories(at url: URL, nameContains fragment: String, skipsHiddenFiles: Bool) throws -> [URL] {
+        [backupDirectory]
+    }
+    func recursiveRegularFileSize(at url: URL, skipsHiddenFiles: Bool) throws -> UInt64 {
+        throw CocoaError(.fileReadNoPermission)
+    }
+    func fileSystemAttributes(forPath path: String) throws -> RuntimeFileSystemAttributes {
+        RuntimeFileSystemAttributes(freeBytes: 1)
     }
 }
 
