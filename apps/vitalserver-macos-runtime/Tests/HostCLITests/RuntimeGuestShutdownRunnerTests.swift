@@ -6,10 +6,10 @@ import XCTest
 final class RuntimeGuestShutdownRunnerTests: XCTestCase {
     func testPrepareWritesRequestAndWaitsForReadyResult() throws {
         let events = EventLog()
-        var results: [GuestUpdateShutdownResultDocument?] = [
-            nil,
-            result(status: .running, requestId: "request-1", message: "stopping"),
-            result(status: .ready, requestId: "request-1", message: "ready"),
+        var results: [RuntimeGuestDocumentLoadResult<GuestUpdateShutdownResultDocument>] = [
+            .missing,
+            .loaded(result(status: .running, requestId: "request-1", message: "stopping")),
+            .loaded(result(status: .ready, requestId: "request-1", message: "ready")),
         ]
         let runner = makeRunner(
             events: events,
@@ -38,7 +38,7 @@ final class RuntimeGuestShutdownRunnerTests: XCTestCase {
         let runner = makeRunner(
             events: events,
             loadResult: {
-                self.result(status: .failed, requestId: "request-1", message: "backup failed")
+                .loaded(self.result(status: .failed, requestId: "request-1", message: "backup failed"))
             }
         )
 
@@ -48,7 +48,7 @@ final class RuntimeGuestShutdownRunnerTests: XCTestCase {
 
     private func makeRunner(
         events: EventLog,
-        loadResult: @escaping () -> GuestUpdateShutdownResultDocument?
+        loadResult: @escaping () -> RuntimeGuestDocumentLoadResult<GuestUpdateShutdownResultDocument>
     ) -> RuntimeGuestShutdownRunner {
         RuntimeGuestShutdownRunner(
             createRunDirectory: {

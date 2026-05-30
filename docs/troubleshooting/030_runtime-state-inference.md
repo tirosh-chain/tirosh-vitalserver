@@ -38,6 +38,7 @@ Runtime 상태가 실제 상황과 다르게 보이거나, update 진행 상태�
 - status document를 읽거나 decode하지 못했는데 `nil`로 바꿔 “상태 없음”처럼 표시합니다.
 - guest `runtime-state.json`을 읽거나 decode하지 못했는데 resource usage 미보고처럼 표시합니다.
 - settings 파일을 읽거나 decode하지 못했는데 기본 설정값으로 조용히 대체합니다.
+- guest 작업 result 파일을 읽거나 decode하지 못했는데 “아직 result 없음”처럼 대기합니다.
 
 ## Impact
 
@@ -94,6 +95,7 @@ rg -n "loadBaseStatus\\(\\)\\.proxyPort|proxyPort\\(paths\\.proxyLaunchDaemon\\)
 rg -n "try\\? JSONDecoder\\(\\)\\.decode\\(RuntimeStatusDocument|try\\? Data\\(contentsOf:.*runtimeStatus|statusRepository\\.load\\(\\)" apps/vitalserver-macos-runtime/Sources
 rg -n "try\\? JSONDecoder\\(\\)\\.decode\\(GuestRuntimeStateDocument|guestRuntimeStateDocument\\(.*\\) -> GuestRuntimeStateDocument\\?" apps/vitalserver-macos-runtime/Sources
 rg -n "try\\? .*RuntimeSettings|VMConfigDocument\\.load\\(|GuestRuntimeConfig\\.load\\(|proxyPort\\(plistPath" apps/vitalserver-macos-runtime/Sources/MacHostRuntimeAdapter
+rg -n "load(UpdateActivation|UpdateShutdown|DatastoreRepair).*\\(\\) -> .*Document\\?|try\\? JSONDecoder\\(\\)\\.decode\\(.*ResultDocument" apps/vitalserver-macos-runtime/Sources
 ```
 
 상태 관련 read path에서 아래 패턴이 보이면 재검토합니다.
@@ -126,6 +128,7 @@ settings value -> read through status/plist fallback
 status document read/decode failure -> missing status
 guest runtime-state read/decode failure -> missing resource usage
 settings read/decode failure -> default settings
+guest result read/decode failure -> still waiting
 ```
 
 ## Actions
@@ -162,6 +165,7 @@ settings read/decode failure -> default settings
 26. Status document는 missing과 read/decode failure를 구분합니다. 읽기 실패는 `statusDocumentError`로 노출하고 상태 없음으로 보정하지 않습니다.
 27. Guest runtime-state는 missing과 read/decode failure를 구분합니다. 읽기 실패는 `guestRuntimeStateError`로 노출하고 resource usage 미보고와 섞지 않습니다.
 28. Settings reader는 missing과 read/decode failure를 구분합니다. 파일이 있는데 읽기 실패하면 `readIssues`로 노출하고, 기본값 사용 사실을 숨기지 않습니다.
+29. Guest result reader는 missing과 read/decode failure를 구분합니다. Update activation/shutdown/datastore repair waiter는 result read failure를 즉시 실패로 처리합니다.
 
 ## Prevention
 
@@ -202,6 +206,7 @@ settings read/decode failure -> default settings
 - status document read/decode 실패를 missing status와 같은 값으로 처리
 - guest runtime-state read/decode 실패를 missing resource usage와 같은 값으로 처리
 - settings 파일 read/decode 실패를 기본 설정값으로 조용히 대체
+- guest result read/decode 실패를 missing result와 같은 값으로 처리
 
 ## Operational Notes
 
@@ -241,3 +246,4 @@ settings read/decode failure -> default settings
 - 2026-05-30: runtime status document 읽기 결과를 `missing`, `loaded`, `failed`로 분리했습니다. Decode/read 실패는 `statusDocumentError`로 노출해 status 미생성과 파일 손상을 구분합니다.
 - 2026-05-30: guest runtime-state 읽기 결과를 `missing`, `loaded`, `failed`로 분리했습니다. Decode/read 실패는 `guestRuntimeStateError`로 노출해 resource usage 미보고와 파일 손상을 구분합니다.
 - 2026-05-30: Settings reader가 `vm-config.json`, guest runtime config, proxy launch daemon, VM disk size 읽기 실패를 `readIssues`로 노출하도록 변경했습니다. 파일 부재와 파일 손상/권한 실패를 분리합니다.
+- 2026-05-30: Guest result gateway가 result document 읽기 결과를 `missing`, `loaded`, `failed`로 분리했습니다. Update activation/shutdown/datastore repair wait loop는 decode/read 실패를 더 이상 대기 상태로 보지 않습니다.

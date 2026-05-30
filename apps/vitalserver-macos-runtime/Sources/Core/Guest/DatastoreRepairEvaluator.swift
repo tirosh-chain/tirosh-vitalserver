@@ -63,12 +63,21 @@ public enum DatastoreRepairWaiter {
     public static func wait(
         expectedRequestId: String,
         configuration: DatastoreRepairWaitConfiguration,
-        loadResult: () -> DatastoreRepairResultDocument?,
+        loadResult: () -> RuntimeGuestDocumentLoadResult<DatastoreRepairResultDocument>,
         onProgress: (String) -> Void,
         sleep: () -> Void
     ) -> DatastoreRepairWaitResult {
         for attempt in 0..<configuration.maxAttempts {
-            switch DatastoreRepairEvaluator.evaluate(loadResult(), expectedRequestId: expectedRequestId) {
+            let decision: DatastoreRepairDecision
+            switch loadResult() {
+            case .missing:
+                decision = DatastoreRepairEvaluator.evaluate(nil, expectedRequestId: expectedRequestId)
+            case .loaded(let result):
+                decision = DatastoreRepairEvaluator.evaluate(result, expectedRequestId: expectedRequestId)
+            case .failed(let message):
+                decision = .failed(message: "failed to read datastore repair result: \(message)")
+            }
+            switch decision {
             case .completed(let message):
                 return .completed(message: message)
             case .failed(let message):

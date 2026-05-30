@@ -9,7 +9,7 @@ final class RuntimeGuestActivationRunnerTests: XCTestCase {
         let events = EventLog()
         let runner = makeRunner(
             events: events,
-            loadResult: { nil }
+            loadResult: { .missing }
         )
 
         try runner.activateIfNeeded(manifest: manifest(artifacts: [.appBundle]))
@@ -21,10 +21,10 @@ final class RuntimeGuestActivationRunnerTests: XCTestCase {
 
     func testActivateWritesRequestStartsVMAndWaitsForResult() throws {
         let events = EventLog()
-        var results: [GuestUpdateActivationResultDocument?] = [
-            nil,
-            result(status: .running, requestId: "request-1", message: "loading"),
-            result(status: .completed, requestId: "request-1", message: "done"),
+        var results: [RuntimeGuestDocumentLoadResult<GuestUpdateActivationResultDocument>] = [
+            .missing,
+            .loaded(result(status: .running, requestId: "request-1", message: "loading")),
+            .loaded(result(status: .completed, requestId: "request-1", message: "done")),
         ]
         let runner = makeRunner(
             events: events,
@@ -56,7 +56,7 @@ final class RuntimeGuestActivationRunnerTests: XCTestCase {
             events: events,
             vmServiceLoaded: true,
             loadResult: {
-                self.result(status: .completed, requestId: "request-1", message: "done")
+                .loaded(self.result(status: .completed, requestId: "request-1", message: "done"))
             }
         )
 
@@ -71,7 +71,7 @@ final class RuntimeGuestActivationRunnerTests: XCTestCase {
         let runner = makeRunner(
             events: events,
             loadResult: {
-                self.result(status: .failed, requestId: "request-1", message: "compose failed")
+                .loaded(self.result(status: .failed, requestId: "request-1", message: "compose failed"))
             }
         )
 
@@ -84,7 +84,7 @@ final class RuntimeGuestActivationRunnerTests: XCTestCase {
     private func makeRunner(
         events: EventLog,
         vmServiceLoaded: Bool = false,
-        loadResult: @escaping () -> GuestUpdateActivationResultDocument?
+        loadResult: @escaping () -> RuntimeGuestDocumentLoadResult<GuestUpdateActivationResultDocument>
     ) -> RuntimeGuestActivationRunner {
         RuntimeGuestActivationRunner(
             createRunDirectory: {

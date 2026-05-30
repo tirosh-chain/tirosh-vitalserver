@@ -54,12 +54,21 @@ public enum GuestShutdownWaiter {
     public static func wait(
         expectedRequestId: String,
         configuration: GuestShutdownWaitConfiguration,
-        loadResult: () -> GuestUpdateShutdownResultDocument?,
+        loadResult: () -> RuntimeGuestDocumentLoadResult<GuestUpdateShutdownResultDocument>,
         onProgress: (String) -> Void,
         sleep: () -> Void
     ) -> GuestShutdownWaitResult {
         for attempt in 0..<configuration.maxAttempts {
-            switch GuestShutdownEvaluator.evaluate(loadResult(), expectedRequestId: expectedRequestId) {
+            let decision: GuestShutdownDecision
+            switch loadResult() {
+            case .missing:
+                decision = GuestShutdownEvaluator.evaluate(nil, expectedRequestId: expectedRequestId)
+            case .loaded(let result):
+                decision = GuestShutdownEvaluator.evaluate(result, expectedRequestId: expectedRequestId)
+            case .failed(let message):
+                decision = .failed(message: "failed to read guest update shutdown result: \(message)")
+            }
+            switch decision {
             case .ready(let message):
                 return .ready(message: message)
             case .failed(let message):

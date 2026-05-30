@@ -8,7 +8,7 @@ struct RuntimeGuestShutdownRunner {
     var requestID: () -> String
     var timestamp: () -> String
     var writeRequest: (RuntimeGuestShutdownRequest) throws -> Void
-    var loadResult: () -> GuestUpdateShutdownResultDocument?
+    var loadResult: () -> RuntimeGuestDocumentLoadResult<GuestUpdateShutdownResultDocument>
     var reportProgress: (String) -> Void
     var sleep: () -> Void
     var log: (String) -> Void

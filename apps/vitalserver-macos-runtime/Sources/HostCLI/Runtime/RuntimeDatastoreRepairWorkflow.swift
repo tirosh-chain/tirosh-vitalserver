@@ -13,7 +13,7 @@ struct RuntimeDatastoreRepairWorkflowOperations {
     let isVMServiceLoaded: () -> Bool
     let startVMService: () -> Void
     let restartVMService: () -> Void
-    let loadResult: () -> DatastoreRepairResultDocument?
+    let loadResult: () -> RuntimeGuestDocumentLoadResult<DatastoreRepairResultDocument>
     let restartProxyService: () -> Void
     let restartWatchdogService: () -> Void
     let waitForHealth: (RuntimeServiceRestartPolicy) throws -> Void

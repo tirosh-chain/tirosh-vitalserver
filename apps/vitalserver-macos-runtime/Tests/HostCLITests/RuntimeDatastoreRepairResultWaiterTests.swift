@@ -6,9 +6,9 @@ import XCTest
 final class RuntimeDatastoreRepairResultWaiterTests: XCTestCase {
     func testWaitCompletesWhenGuestReportsCompleted() throws {
         let harness = DatastoreRepairResultWaitHarness(results: [
-            nil,
-            result(status: .running, requestId: "request-1", message: "repairing"),
-            result(status: .completed, requestId: "request-1", message: "done"),
+            .missing,
+            .loaded(result(status: .running, requestId: "request-1", message: "repairing")),
+            .loaded(result(status: .completed, requestId: "request-1", message: "done")),
         ])
 
         try harness.waiter.wait(for: RuntimeDatastoreRepairRequest(
@@ -22,8 +22,8 @@ final class RuntimeDatastoreRepairResultWaiterTests: XCTestCase {
 
     func testWaitReportsProgressAndThrowsWhenGuestFails() {
         let harness = DatastoreRepairResultWaitHarness(results: [
-            nil,
-            result(status: .failed, requestId: "request-1", message: "repair failed"),
+            .missing,
+            .loaded(result(status: .failed, requestId: "request-1", message: "repair failed")),
         ])
 
         XCTAssertThrowsError(try harness.waiter.wait(for: RuntimeDatastoreRepairRequest(
@@ -38,10 +38,10 @@ final class RuntimeDatastoreRepairResultWaiterTests: XCTestCase {
 }
 
 private final class DatastoreRepairResultWaitHarness {
-    var results: [DatastoreRepairResultDocument?]
+    var results: [RuntimeGuestDocumentLoadResult<DatastoreRepairResultDocument>]
     var events: [String] = []
 
-    init(results: [DatastoreRepairResultDocument?]) {
+    init(results: [RuntimeGuestDocumentLoadResult<DatastoreRepairResultDocument>]) {
         self.results = results
     }
 

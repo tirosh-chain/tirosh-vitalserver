@@ -321,7 +321,7 @@ extension RuntimeLifecycle {
                     restartLaunchdService(.vm)
                 },
                 loadResult: {
-                    guestGateway.loadDatastoreRepairResult()
+                    guestGateway.loadDatastoreRepairResultDocument()
                 },
                 restartProxyService: {
                     restartLaunchdService(.proxy)
@@ -463,7 +463,7 @@ extension RuntimeLifecycle {
                     startLaunchdService(.vm)
                 },
                 loadResult: {
-                    guestGateway.loadUpdateActivationResult()
+                    guestGateway.loadUpdateActivationResultDocument()
                 },
                 writeStatus: { status, operation, message in
                     try writeRuntimeStatus(status, operation: operation, message: message)
@@ -494,7 +494,7 @@ extension RuntimeLifecycle {
                 try guestGateway.writeUpdateShutdownRequest(request)
             },
             loadResult: {
-                guestGateway.loadUpdateShutdownResult()
+                guestGateway.loadUpdateShutdownResultDocument()
             },
             reportProgress: { message in
                 writeRuntimeStatusBestEffort(

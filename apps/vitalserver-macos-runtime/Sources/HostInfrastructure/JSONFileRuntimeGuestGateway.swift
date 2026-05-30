@@ -32,11 +32,11 @@ public struct JSONFileRuntimeGuestGateway: RuntimeGuestGateway {
         self.datastoreRepairResultURL = datastoreRepairResultURL
     }
 
-    public func loadRuntimeState() -> GuestRuntimeStateDocument? {
+    public func loadRuntimeStateDocument() -> RuntimeGuestDocumentLoadResult<GuestRuntimeStateDocument> {
         decode(GuestRuntimeStateDocument.self, from: runtimeStateURL)
     }
 
-    public func loadBootstrapResult() -> GuestBootstrapResultDocument? {
+    public func loadBootstrapResultDocument() -> RuntimeGuestDocumentLoadResult<GuestBootstrapResultDocument> {
         decode(GuestBootstrapResultDocument.self, from: bootstrapResultURL)
     }
 
@@ -55,7 +55,7 @@ public struct JSONFileRuntimeGuestGateway: RuntimeGuestGateway {
         )
     }
 
-    public func loadUpdateActivationResult() -> GuestUpdateActivationResultDocument? {
+    public func loadUpdateActivationResultDocument() -> RuntimeGuestDocumentLoadResult<GuestUpdateActivationResultDocument> {
         decode(GuestUpdateActivationResultDocument.self, from: updateActivationResultURL)
     }
 
@@ -74,7 +74,7 @@ public struct JSONFileRuntimeGuestGateway: RuntimeGuestGateway {
         )
     }
 
-    public func loadUpdateShutdownResult() -> GuestUpdateShutdownResultDocument? {
+    public func loadUpdateShutdownResultDocument() -> RuntimeGuestDocumentLoadResult<GuestUpdateShutdownResultDocument> {
         decode(GuestUpdateShutdownResultDocument.self, from: updateShutdownResultURL)
     }
 
@@ -92,15 +92,20 @@ public struct JSONFileRuntimeGuestGateway: RuntimeGuestGateway {
         )
     }
 
-    public func loadDatastoreRepairResult() -> DatastoreRepairResultDocument? {
+    public func loadDatastoreRepairResultDocument() -> RuntimeGuestDocumentLoadResult<DatastoreRepairResultDocument> {
         decode(DatastoreRepairResultDocument.self, from: datastoreRepairResultURL)
     }
 
-    private func decode<T: Decodable>(_ type: T.Type, from url: URL) -> T? {
-        guard let data = try? Data(contentsOf: url) else {
-            return nil
+    private func decode<T: Decodable>(_ type: T.Type, from url: URL) -> RuntimeGuestDocumentLoadResult<T> {
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            return .missing
         }
-        return try? JSONDecoder().decode(type, from: data)
+        do {
+            let data = try Data(contentsOf: url)
+            return try .loaded(JSONDecoder().decode(type, from: data))
+        } catch {
+            return .failed(error.localizedDescription)
+        }
     }
 
     private func write<T: Encodable>(_ document: T, to url: URL) throws {

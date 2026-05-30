@@ -164,6 +164,23 @@ final class JSONFileRuntimeGuestGatewayTests: XCTestCase {
 
         try harness.cleanup()
     }
+
+    func testLoadResultReportsMissingAndInvalidGuestDocuments() throws {
+        let harness = try GuestGatewayHarness()
+
+        guard case .missing = harness.gateway.loadUpdateActivationResultDocument() else {
+            return XCTFail("Expected missing update activation result")
+        }
+
+        try harness.writeJSON("not-json", to: harness.updateActivationResultURL)
+        guard case .failed(let message) = harness.gateway.loadUpdateActivationResultDocument() else {
+            return XCTFail("Expected failed update activation result load")
+        }
+        XCTAssertFalse(message.isEmpty)
+        XCTAssertNil(harness.gateway.loadUpdateActivationResult())
+
+        try harness.cleanup()
+    }
 }
 
 private struct GuestGatewayHarness {

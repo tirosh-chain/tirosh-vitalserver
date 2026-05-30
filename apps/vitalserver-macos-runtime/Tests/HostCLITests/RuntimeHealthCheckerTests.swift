@@ -289,21 +289,21 @@ private final class RuntimeGuestGatewaySpy: RuntimeGuestGateway {
     var runtimeState: GuestRuntimeStateDocument?
     var bootstrapResult: GuestBootstrapResultDocument?
 
-    func loadRuntimeState() -> GuestRuntimeStateDocument? {
-        runtimeState
+    func loadRuntimeStateDocument() -> RuntimeGuestDocumentLoadResult<GuestRuntimeStateDocument> {
+        runtimeState.map(RuntimeGuestDocumentLoadResult.loaded) ?? .missing
     }
 
-    func loadBootstrapResult() -> GuestBootstrapResultDocument? {
-        bootstrapResult
+    func loadBootstrapResultDocument() -> RuntimeGuestDocumentLoadResult<GuestBootstrapResultDocument> {
+        bootstrapResult.map(RuntimeGuestDocumentLoadResult.loaded) ?? .missing
     }
 
     func removeUpdateActivationResult() throws {}
     func writeUpdateActivationRequest(_ request: RuntimeGuestActivationRequest) throws {}
-    func loadUpdateActivationResult() -> GuestUpdateActivationResultDocument? { nil }
+    func loadUpdateActivationResultDocument() -> RuntimeGuestDocumentLoadResult<GuestUpdateActivationResultDocument> { .missing }
     func removeUpdateShutdownResult() throws {}
     func writeUpdateShutdownRequest(_ request: RuntimeGuestShutdownRequest) throws {}
-    func loadUpdateShutdownResult() -> GuestUpdateShutdownResultDocument? { nil }
+    func loadUpdateShutdownResultDocument() -> RuntimeGuestDocumentLoadResult<GuestUpdateShutdownResultDocument> { .missing }
     func removeDatastoreRepairResult() throws {}
     func writeDatastoreRepairRequest(_ request: RuntimeDatastoreRepairRequest) throws {}
-    func loadDatastoreRepairResult() -> DatastoreRepairResultDocument? { nil }
+    func loadDatastoreRepairResultDocument() -> RuntimeGuestDocumentLoadResult<DatastoreRepairResultDocument> { .missing }
 }

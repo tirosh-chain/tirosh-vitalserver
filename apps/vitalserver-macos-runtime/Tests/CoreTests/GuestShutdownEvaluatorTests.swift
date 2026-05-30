@@ -30,10 +30,10 @@ final class GuestShutdownEvaluatorTests: XCTestCase {
     }
 
     func testWaiterStopsOnReady() {
-        var results: [GuestUpdateShutdownResultDocument?] = [
-            nil,
-            result(status: .running, requestId: "request-1", message: "running"),
-            result(status: .ready, requestId: "request-1", message: "ready"),
+        var results: [RuntimeGuestDocumentLoadResult<GuestUpdateShutdownResultDocument>] = [
+            .missing,
+            .loaded(result(status: .running, requestId: "request-1", message: "running")),
+            .loaded(result(status: .ready, requestId: "request-1", message: "ready")),
         ]
         var progress: [String] = []
         var sleepCount = 0
@@ -49,6 +49,18 @@ final class GuestShutdownEvaluatorTests: XCTestCase {
         XCTAssertEqual(waitResult, .ready(message: "ready"))
         XCTAssertEqual(progress, ["waiting for guest update shutdown worker", "running"])
         XCTAssertEqual(sleepCount, 2)
+    }
+
+    func testWaiterFailsOnReadFailure() {
+        let waitResult = GuestShutdownWaiter.wait(
+            expectedRequestId: "request-1",
+            configuration: GuestShutdownWaitConfiguration(maxAttempts: 2, progressEveryAttempts: 1),
+            loadResult: { .failed("invalid json") },
+            onProgress: { _ in },
+            sleep: {}
+        )
+
+        XCTAssertEqual(waitResult, .failed(message: "failed to read guest update shutdown result: invalid json"))
     }
 
     private func result(

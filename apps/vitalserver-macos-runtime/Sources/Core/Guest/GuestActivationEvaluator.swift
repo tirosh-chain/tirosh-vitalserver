@@ -63,12 +63,21 @@ public enum GuestActivationWaiter {
     public static func wait(
         expectedRequestId: String,
         configuration: GuestActivationWaitConfiguration,
-        loadResult: () -> GuestUpdateActivationResultDocument?,
+        loadResult: () -> RuntimeGuestDocumentLoadResult<GuestUpdateActivationResultDocument>,
         onProgress: (String) -> Void,
         sleep: () -> Void
     ) -> GuestActivationWaitResult {
         for attempt in 0..<configuration.maxAttempts {
-            switch GuestActivationEvaluator.evaluate(loadResult(), expectedRequestId: expectedRequestId) {
+            let decision: GuestActivationDecision
+            switch loadResult() {
+            case .missing:
+                decision = GuestActivationEvaluator.evaluate(nil, expectedRequestId: expectedRequestId)
+            case .loaded(let result):
+                decision = GuestActivationEvaluator.evaluate(result, expectedRequestId: expectedRequestId)
+            case .failed(let message):
+                decision = .failed(message: "failed to read guest update activation result: \(message)")
+            }
+            switch decision {
             case .completed(let message):
                 return .completed(message: message)
             case .failed(let message):
