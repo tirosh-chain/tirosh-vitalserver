@@ -191,6 +191,27 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         XCTAssertNotNil(status.statusDocumentError)
     }
 
+    func testStatusReaderReportsGuestRuntimeStateReadFailure() throws {
+        let directory = try temporaryDirectory()
+        let runtimeState = directory.appendingPathComponent(RuntimeFileNames.runtimeState)
+        try Data("not-json".utf8).write(to: runtimeState)
+
+        let reader = SystemRuntimeStatusReader(
+            paths: RuntimePaths(
+                launcher: directory.appendingPathComponent("launcher").path,
+                uninstaller: directory.appendingPathComponent("uninstaller").path,
+                runtimeState: runtimeState.path,
+                runtimeStatus: directory.appendingPathComponent(RuntimeFileNames.runtimeStatus).path
+            )
+        )
+
+        let status = reader.loadStatus(settings: RuntimeSettings())
+
+        XCTAssertNil(status.memory)
+        XCTAssertNil(status.systemDisk)
+        XCTAssertNotNil(status.guestRuntimeStateError)
+    }
+
     func testStatusReaderDoesNotInferVMStateOrErrorsWhenStatusDocumentDoesNotProvideThem() throws {
         let directory = try temporaryDirectory()
         let runtimeStatus = directory.appendingPathComponent(RuntimeFileNames.runtimeStatus)

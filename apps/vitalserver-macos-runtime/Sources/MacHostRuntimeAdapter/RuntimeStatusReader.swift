@@ -62,7 +62,20 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
             document = nil
             statusDocumentError = message
         }
-        let guestState = guestRuntimeStateDocument(paths.runtimeState)
+        let guestStateResult = guestRuntimeStateDocument(paths.runtimeState)
+        let guestState: GuestRuntimeStateDocument?
+        let guestRuntimeStateError: String?
+        switch guestStateResult {
+        case .loaded(let loadedDocument):
+            guestState = loadedDocument
+            guestRuntimeStateError = nil
+        case .missing:
+            guestState = nil
+            guestRuntimeStateError = nil
+        case .failed(let message):
+            guestState = nil
+            guestRuntimeStateError = message
+        }
         let containerObservation = document?.containerObservation
         let startedAt = containerObservation?.composeServices.first { $0.service == "app" }?.startedAt
         let runtimeInstalled = fileStore.isExecutableFile(atPath: paths.launcher)
@@ -94,6 +107,7 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
             memory: guestState?.memory,
             systemDisk: guestState?.systemDisk,
             dataStorage: guestState?.vitalFilesDisk,
+            guestRuntimeStateError: guestRuntimeStateError,
             proxyPort: document?.proxyPort ?? configuredProxyPort,
             failureReasons: document?.failureReasons ?? [],
             progress: document?.progress,
@@ -193,11 +207,17 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
         return (fileCount, sizeBytes)
     }
 
-    private func guestRuntimeStateDocument(_ path: String) -> GuestRuntimeStateDocument? {
-        guard let data = try? fileStore.readData(URL(fileURLWithPath: path)) else {
-            return nil
+    private func guestRuntimeStateDocument(_ path: String) -> GuestRuntimeStateLoadResult {
+        let url = URL(fileURLWithPath: path)
+        guard fileStore.fileExists(url) else {
+            return .missing
         }
-        return try? JSONDecoder().decode(GuestRuntimeStateDocument.self, from: data)
+        do {
+            let data = try fileStore.readData(url)
+            return try .loaded(JSONDecoder().decode(GuestRuntimeStateDocument.self, from: data))
+        } catch {
+            return .failed(error.localizedDescription)
+        }
     }
 
     private func loaded(_ value: RuntimeServiceState?) -> Bool? {
@@ -214,6 +234,12 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
         ).exitCode == 0
     }
 
+}
+
+private enum GuestRuntimeStateLoadResult {
+    case missing
+    case loaded(GuestRuntimeStateDocument)
+    case failed(String)
 }
 
 private extension RuntimeVitalBedAssignmentRecord {

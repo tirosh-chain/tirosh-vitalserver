@@ -260,6 +260,14 @@ function Diagnostics({ overview }: { overview: RuntimeControlOverview | undefine
               }
             ]
           : []),
+        ...(status?.guestRuntimeStateError
+          ? [
+              {
+                label: "Guest runtime state",
+                value: `Read failed: ${status.guestRuntimeStateError}`
+              }
+            ]
+          : []),
         {
           label: "Failure reasons",
           value: status?.failureReasons?.length

@@ -66,6 +66,24 @@ function StatusOverview({ overview }: { overview: RuntimeControlOverview }) {
                 </StatusBadge>
               )
             },
+            ...(status?.statusDocumentError
+              ? [
+                  {
+                    label: "Status document",
+                    value: "Read failed",
+                    detail: status.statusDocumentError
+                  }
+                ]
+              : []),
+            ...(status?.guestRuntimeStateError
+              ? [
+                  {
+                    label: "Guest runtime state",
+                    value: "Read failed",
+                    detail: status.guestRuntimeStateError
+                  }
+                ]
+              : []),
             {
               label: "VitalServer",
               value: (

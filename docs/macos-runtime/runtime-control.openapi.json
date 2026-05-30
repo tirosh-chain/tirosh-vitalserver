@@ -2329,6 +2329,12 @@
           "dataStorage": {
             "$ref": "#/components/schemas/ResourceUsage"
           },
+          "guestRuntimeStateError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "dataDirectoryStats": {
             "oneOf": [
               {

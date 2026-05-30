@@ -59,6 +59,12 @@ struct RuntimeStatusPanel: View {
                         .foregroundStyle(.red)
                 }
             }
+            if let guestRuntimeStateError = viewModel.status.guestRuntimeStateError {
+                statusRow(AppConstants.Labels.guestRuntimeState) {
+                    Text(guestRuntimeStateError)
+                        .foregroundStyle(.red)
+                }
+            }
             statusRow(GeneratedRelease.vitalServerName) {
                 vitalServerStatusAndURL
             }

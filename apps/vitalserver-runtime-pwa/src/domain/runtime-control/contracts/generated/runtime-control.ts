@@ -1051,6 +1051,7 @@ export interface components {
             memory?: components["schemas"]["ResourceUsage"];
             systemDisk?: components["schemas"]["ResourceUsage"];
             dataStorage?: components["schemas"]["ResourceUsage"];
+            guestRuntimeStateError?: string | null;
             dataDirectoryStats?: components["schemas"]["RuntimeDataDirectoryStats"] | null;
             dataDirectoryStatsError?: string | null;
             proxyPort?: number;
