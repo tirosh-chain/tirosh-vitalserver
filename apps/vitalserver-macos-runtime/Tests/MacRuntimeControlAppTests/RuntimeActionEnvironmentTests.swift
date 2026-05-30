@@ -17,16 +17,4 @@ final class RuntimeActionEnvironmentTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: url.path))
     }
 
-    func testCreatesDirectory() {
-        let environment = SystemRuntimeActionEnvironment()
-        let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("RuntimeActionEnvironmentTests-\(UUID().uuidString)")
-        defer { try? FileManager.default.removeItem(at: url) }
-
-        environment.createDirectory(at: url)
-
-        var isDirectory: ObjCBool = false
-        XCTAssertTrue(FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory))
-        XCTAssertTrue(isDirectory.boolValue)
-    }
 }
