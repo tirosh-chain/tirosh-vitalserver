@@ -11,7 +11,6 @@ proxy_nginx_access_log="${VITALSERVER_PROXY_NGINX_ACCESS_LOG:-${runtime_logs}/pr
 proxy_nginx_error_log="${VITALSERVER_PROXY_NGINX_ERROR_LOG:-${runtime_logs}/proxy-nginx.error.log}"
 
 state_file="${vm_home}/data/run/runtime-state.json"
-legacy_ip_file="${vm_home}/data/run/vm-ip"
 template="${vm_home}/Support/Proxy/vitalserver.conf.template"
 config="${nginx_prefix}/vitalserver.conf"
 pid_file="${nginx_prefix}/logs/nginx.pid"
@@ -112,14 +111,7 @@ read_state_value() {
 }
 
 read_vm_ip() {
-  local value=""
-
-  value="$(read_state_value vmIP)"
-  if [ -z "${value}" ] && [ -s "${legacy_ip_file}" ]; then
-    value="$(cat "${legacy_ip_file}" | tr -d '[:space:]')"
-  fi
-
-  printf "%s" "${value}"
+  read_state_value vmIP
 }
 
 read_guest_http() {

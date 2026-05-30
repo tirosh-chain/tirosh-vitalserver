@@ -50,7 +50,7 @@ struct RuntimeHealthChecker {
         let redisUIHTTP = httpProber.statusCode(url: Constants.Runtime.redisUIHealthURL(port: proxyPort))
         let swaggerUIHTTP = httpProber.statusCode(url: Constants.Runtime.swaggerUIHealthURL(port: proxyPort))
         let containerObservation = containerObservation(proxyPort: proxyPort, guestState: guestState)
-        let guestHTTP = guestHTTPStatus(guestState: guestState)
+        let guestHTTPRead = guestHTTPStatus(guestState: guestState)
 
         return RuntimeHealthEvaluator.evaluate(RuntimeHealthInput(
             vmExecutable: fileStore.isExecutableFile(atPath: Constants.InstallPaths.vmBin),
@@ -63,7 +63,7 @@ struct RuntimeHealthChecker {
             vmIP: vmIP,
             proxyPort: proxyPort,
             hostProxyHTTP: hostProxyHTTP,
-            guestHTTP: guestHTTP,
+            guestHTTP: guestHTTPRead.status,
             guestRuntimeStatePresent: loadedGuestState != nil,
             guestRuntimeStateFresh: guestRuntimeStateFresh,
             redisUIHTTP: redisUIHTTP,
@@ -71,7 +71,9 @@ struct RuntimeHealthChecker {
             containerObservation: containerObservation,
             vitalDBObservation: guestState?.vitalDBObservation,
             reportedVMErrors: [],
-            configurationFailureReasons: proxyPortRead.failureReasons + guestRuntimeStateFreshness.failureReasons,
+            configurationFailureReasons: proxyPortRead.failureReasons
+                + guestRuntimeStateFreshness.failureReasons
+                + guestHTTPRead.failureReasons,
             proxyPortFailureReasons: proxyPortFailureReasons(port: proxyPort),
             guestBootstrapFailureReason: guestBootstrapFailureReason()
         ))
@@ -154,14 +156,17 @@ struct RuntimeHealthChecker {
         return value
     }
 
-    private func guestHTTPStatus(guestState: GuestRuntimeStateDocument?) -> String {
+    private func guestHTTPStatus(guestState: GuestRuntimeStateDocument?) -> RuntimeGuestHTTPReadResult {
         if let guestHTTP = guestState?.guestHTTP, !guestHTTP.isEmpty {
-            return guestHTTP
+            return RuntimeGuestHTTPReadResult(status: guestHTTP, failureReasons: [])
         }
         if guestState != nil {
-            return RuntimeHTTPStatusText.bootstrapPending
+            return RuntimeGuestHTTPReadResult(
+                status: RuntimeHTTPStatusText.missingGuestHTTP,
+                failureReasons: [.guestRuntimeStateInvalid]
+            )
         }
-        return RuntimeHTTPStatusText.missingVMIP
+        return RuntimeGuestHTTPReadResult(status: RuntimeHTTPStatusText.missingVMIP, failureReasons: [])
     }
 
     private func guestBootstrapFailureReason() -> RuntimeFailureReason? {
@@ -262,6 +267,11 @@ struct RuntimeHealthChecker {
 
 private struct RuntimeProxyPortReadResult {
     let port: Int
+    let failureReasons: [RuntimeFailureReason]
+}
+
+private struct RuntimeGuestHTTPReadResult {
+    let status: String
     let failureReasons: [RuntimeFailureReason]
 }
 

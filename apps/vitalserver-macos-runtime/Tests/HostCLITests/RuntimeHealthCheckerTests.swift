@@ -110,6 +110,49 @@ final class RuntimeHealthCheckerTests: XCTestCase {
         XCTAssertTrue(snapshot.failureReasons.contains(.missingRootfsBase))
     }
 
+    func testSnapshotReportsRuntimeStateMissingGuestHTTPAsInvalid() {
+        let installedPaths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
+        let fileStore = RuntimeFileStoreSpy()
+        fileStore.files[URL(fileURLWithPath: Constants.InstallPaths.vmBin)] = Data()
+        fileStore.files[URL(fileURLWithPath: Constants.InstallPaths.proxyRun)] = Data()
+        fileStore.files[installedPaths.runtimeDirectory.appendingPathComponent(Constants.Artifacts.rootfsBase)] = Data()
+        fileStore.files[installedPaths.runtimeDirectory.appendingPathComponent(Constants.BootAssets.disk)] = Data()
+        fileStore.modificationDates[installedPaths.runtimeState] = Date(timeIntervalSince1970: 1_800_000_000)
+
+        let commandRunner = RuntimeCommandRunnerSpy()
+        commandRunner.results[Constants.Commands.plistBuddy] = RuntimeProcessResult(exitCode: 0, stdout: "80\n", stderr: "")
+        let serviceManager = RuntimeServiceManagerSpy()
+        serviceManager.states = [.vm: .loaded, .proxy: .loaded, .watchdog: .loaded]
+        let httpProber = RuntimeHTTPProberSpy()
+        httpProber.statuses[Constants.Runtime.proxyHealthURL(port: 80)] = "200"
+        httpProber.statuses[Constants.Runtime.redisUIHealthURL(port: 80)] = "200"
+        httpProber.statuses[Constants.Runtime.swaggerUIHealthURL(port: 80)] = "200"
+        let guestGateway = RuntimeGuestGatewaySpy()
+        guestGateway.runtimeState = GuestRuntimeStateDocument(
+            vmIP: "192.168.64.2",
+            updatedAt: "2026-05-24T00:00:00Z",
+            guestHTTP: nil,
+            redisUIHTTP: "200",
+            swaggerUIHTTP: "200"
+        )
+
+        let checker = RuntimeHealthChecker(
+            installedPaths: installedPaths,
+            fileStore: fileStore,
+            serviceManager: serviceManager,
+            commandRunner: commandRunner,
+            httpProber: httpProber,
+            guestGateway: guestGateway
+        )
+
+        let snapshot = checker.snapshot()
+
+        XCTAssertEqual(snapshot.guestHTTP, RuntimeHTTPStatusText.missingGuestHTTP)
+        XCTAssertTrue(snapshot.failureReasons.contains(.guestRuntimeStateInvalid))
+        XCTAssertTrue(snapshot.failureReasons.contains(.guestHTTP(RuntimeHTTPStatusText.missingGuestHTTP)))
+        XCTAssertEqual(snapshot.vmState, .unreachable)
+    }
+
     func testSnapshotReportsInvalidHostProxyPortConfig() {
         let installedPaths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
         let commandRunner = RuntimeCommandRunnerSpy()
