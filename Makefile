@@ -43,7 +43,8 @@ include make/vm.mk
 	dist-install-dev dist-installed-health dist-uninstall-dev \
 	runtime-up runtime-up-bridged runtime-down runtime-status runtime-health \
 	runtime-prepare runtime-ip runtime-proxy-start runtime-clean \
-	runtime-interfaces runtime-network-shared runtime-network-bridged \
+	runtime-interfaces runtime-network-shared runtime-network-bridged runtime-coverage \
+	coverage \
 	devtools-version-source devtools-build devtools-nginx-artifact devtools-nginx-bundle \
 	devtools-docker-images devtools-sign devtools-sign-bridged devtools-bridged-preflight \
 	devtools-init devtools-download devtools-cloud-init devtools-stage \
@@ -79,6 +80,8 @@ runtime-clean: vm-clean
 runtime-interfaces: vm-interfaces
 runtime-network-shared: vm-network-shared
 runtime-network-bridged: vm-network-bridged
+runtime-coverage: vm-coverage
+coverage: vm-coverage
 
 devtools-version-source: vm-version-source
 devtools-build: vm-build
@@ -115,6 +118,7 @@ help:
 	@printf "  make testkit-smoke   Run bounded productization smoke scenario\n"
 	@printf "  make pwa-dev         Start Runtime Control PWA dev server\n"
 	@printf "  make check           Run lint, typecheck, and test\n"
+	@printf "  make coverage        Run macOS runtime Swift coverage report\n"
 	@printf "\n"
 	@printf "More help:\n"
 	@printf "  make help-run        App, Compose, Swagger, cleanup\n"
@@ -207,6 +211,7 @@ help-runtime:
 	@printf "  make runtime-ip           Show detected runtime IP\n"
 	@printf "  make runtime-proxy-start  Start host proxy for a runtime endpoint\n"
 	@printf "  make runtime-clean        Remove runtime state, keep shared data\n"
+	@printf "  make runtime-coverage     Run Swift tests with source coverage report\n"
 	@printf "\n"
 	@printf "Networking:\n"
 	@printf "  make runtime-interfaces       List bridged network interfaces\n"
