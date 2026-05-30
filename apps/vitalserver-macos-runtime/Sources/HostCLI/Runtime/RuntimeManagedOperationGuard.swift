@@ -4,7 +4,7 @@ import Contracts
 
 struct RuntimeGuestBootstrapOperation {
     let operation: RuntimeOperation
-    let modifiedAt: Date
+    let updatedAt: Date?
 }
 
 struct RuntimeManagedOperationGuard {
@@ -61,7 +61,11 @@ struct RuntimeManagedOperationGuard {
         guard let bootstrap = activeGuestBootstrap() else {
             return nil
         }
-        let age = now().timeIntervalSince(bootstrap.modifiedAt)
+        guard let updatedAt = bootstrap.updatedAt else {
+            log("watchdog guest bootstrap guard active without updatedAt operation=\(bootstrap.operation.rawValue)")
+            return bootstrap.operation
+        }
+        let age = now().timeIntervalSince(updatedAt)
         if age > graceSeconds {
             log(
                 "watchdog guest bootstrap guard expired operation=\(bootstrap.operation.rawValue) "

@@ -41,7 +41,7 @@ final class RuntimeManagedOperationGuardTests: XCTestCase {
             repository: repository,
             activeGuestBootstrap: RuntimeGuestBootstrapOperation(
                 operation: .unknown("bootstrap"),
-                modifiedAt: ISO8601DateFormatter().date(from: "2026-05-22T00:00:00Z")!
+                updatedAt: ISO8601DateFormatter().date(from: "2026-05-22T00:00:00Z")!
             ),
             now: "2026-05-22T00:05:00Z"
         )
@@ -56,7 +56,7 @@ final class RuntimeManagedOperationGuardTests: XCTestCase {
             repository: repository,
             activeGuestBootstrap: RuntimeGuestBootstrapOperation(
                 operation: .unknown("bootstrap"),
-                modifiedAt: ISO8601DateFormatter().date(from: "2026-05-22T00:00:00Z")!
+                updatedAt: ISO8601DateFormatter().date(from: "2026-05-22T00:00:00Z")!
             ),
             now: "2026-05-22T00:31:00Z",
             log: { messages.append($0) }
@@ -65,6 +65,25 @@ final class RuntimeManagedOperationGuardTests: XCTestCase {
         XCTAssertNil(guardPolicy.activeOperation())
         XCTAssertEqual(messages, [
             "watchdog guest bootstrap guard expired operation=bootstrap ageSeconds=1860",
+        ])
+    }
+
+    func testBlocksWatchdogRecoveryDuringRunningGuestBootstrapWithoutUpdatedAt() {
+        var messages: [String] = []
+        let repository = RuntimeStatusRepositorySpy()
+        let guardPolicy = managedOperationGuard(
+            repository: repository,
+            activeGuestBootstrap: RuntimeGuestBootstrapOperation(
+                operation: .unknown("bootstrap"),
+                updatedAt: nil
+            ),
+            now: "2026-05-22T00:31:00Z",
+            log: { messages.append($0) }
+        )
+
+        XCTAssertEqual(guardPolicy.activeOperation(), .unknown("bootstrap"))
+        XCTAssertEqual(messages, [
+            "watchdog guest bootstrap guard active without updatedAt operation=bootstrap",
         ])
     }
 
