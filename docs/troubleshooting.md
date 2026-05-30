@@ -42,6 +42,7 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-028 | host proxy가 `/opt/homebrew/var/...`에 의존 | Host proxy / Packaging | resolved | [Host proxy가 Homebrew nginx runtime directory에 의존함](troubleshooting/028_host-proxy-homebrew-runtime-directory.md) |
 | TS-029 | update 중 Host가 Guest shutdown 상태를 추정 | Update | resolved | [Update 중 Host가 Guest shutdown 상태를 추정함](troubleshooting/029_update-guest-shutdown-inference.md) |
 | TS-030 | Runtime 상태를 Host/UI가 추정하거나 암묵 보정 | Runtime health / Update | resolved | [Runtime 상태를 Host/UI가 추정하거나 암묵 보정함](troubleshooting/030_runtime-state-inference.md) |
+| TS-031 | Recorder activity 그래프가 rolling window만 표시 | Runtime Control PWA / Observability | resolved | [Recorder activity 그래프가 rolling window만 표시함](troubleshooting/031_recorder-activity-history-window.md) |
 
 ## Follow-up 규칙
 

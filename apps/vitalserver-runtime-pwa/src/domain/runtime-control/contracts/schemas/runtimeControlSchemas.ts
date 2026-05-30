@@ -417,11 +417,27 @@ const vitalDBBedRecordSchema = z
   })
   .passthrough();
 
+const recorderActivityHistorySourceSchema = z.enum([
+  "sqliteProjection",
+  "unavailable"
+]);
+
+const recorderActivityHistorySchema = z
+  .object({
+    source: recorderActivityHistorySourceSchema.optional(),
+    bucketCount: z.number().optional(),
+    earliestBucketStartedAt: nullableString,
+    latestBucketStartedAt: nullableString,
+    readError: nullableString
+  })
+  .passthrough();
+
 export const vitalDBRecordersSchema = z
   .object({
     updatedAt: nullableString,
     recorders: z.array(vitalDBRecorderRecordSchema).optional(),
-    beds: z.array(vitalDBBedRecordSchema).optional()
+    beds: z.array(vitalDBBedRecordSchema).optional(),
+    activityHistory: recorderActivityHistorySchema.optional()
   })
   .passthrough();
 

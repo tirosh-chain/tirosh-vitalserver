@@ -911,7 +911,18 @@ export interface components {
             updatedAt?: string | null;
             recorders?: components["schemas"]["RuntimeVitalRecorderRecord"][];
             beds?: components["schemas"]["RuntimeVitalBedRecord"][];
+            activityHistory?: components["schemas"]["RuntimeVitalRecorderActivityHistory"];
         };
+        /** @description Metadata for the durable recorder activity bucket projection used by recorder charts. */
+        RuntimeVitalRecorderActivityHistory: {
+            source?: components["schemas"]["RuntimeVitalRecorderActivityHistorySource"];
+            bucketCount?: number;
+            earliestBucketStartedAt?: string | null;
+            latestBucketStartedAt?: string | null;
+            readError?: string | null;
+        };
+        /** @enum {string} */
+        RuntimeVitalRecorderActivityHistorySource: "sqliteProjection" | "unavailable";
         RuntimeVitalRecorderRecord: {
             vrcode?: string;
             status?: components["schemas"]["RuntimeVitalRecorderStatus"];

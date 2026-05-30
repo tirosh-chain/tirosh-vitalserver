@@ -1759,8 +1759,49 @@
             "items": {
               "$ref": "#/components/schemas/RuntimeVitalBedRecord"
             }
+          },
+          "activityHistory": {
+            "$ref": "#/components/schemas/RuntimeVitalRecorderActivityHistory"
           }
         }
+      },
+      "RuntimeVitalRecorderActivityHistory": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Metadata for the durable recorder activity bucket projection used by recorder charts.",
+        "properties": {
+          "source": {
+            "$ref": "#/components/schemas/RuntimeVitalRecorderActivityHistorySource"
+          },
+          "bucketCount": {
+            "type": "integer"
+          },
+          "earliestBucketStartedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "latestBucketStartedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "readError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "RuntimeVitalRecorderActivityHistorySource": {
+        "type": "string",
+        "enum": [
+          "sqliteProjection",
+          "unavailable"
+        ]
       },
       "RuntimeVitalRecorderRecord": {
         "type": "object",

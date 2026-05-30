@@ -140,14 +140,36 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
     }
 
     func loadVitalDBRecorders() -> RuntimeVitalRecorderHistory {
-        var observations = SQLiteRuntimeObservabilityStore(
+        let store = SQLiteRuntimeObservabilityStore(
             url: URL(fileURLWithPath: paths.runtimeObservabilityDB)
-        ).vitalDBObservations()
+        )
+        var readErrors: [String] = []
+        var observations: [VitalDBObservationDocument]
+        do {
+            observations = try store.loadVitalDBObservations()
+        } catch {
+            observations = []
+            readErrors.append("observations=\(String(describing: error))")
+        }
         if let latestStatusObservation = loadBaseStatus().vitalDBObservation,
            !observations.contains(where: { $0.observedAt == latestStatusObservation.observedAt }) {
             observations.append(latestStatusObservation)
         }
-        return RuntimeVitalRecorderHistory(observations: observations)
+        let activityBuckets: [VitalDBRecorderActivityBucketRecord]
+        do {
+            activityBuckets = try store.loadVitalDBRecorderActivityBuckets()
+        } catch {
+            activityBuckets = []
+            readErrors.append("activityBuckets=\(String(describing: error))")
+        }
+        return RuntimeVitalRecorderHistory(
+            observations: observations,
+            activityBuckets: activityBuckets,
+            activityHistory: RuntimeVitalRecorderActivityHistory.fromProjection(
+                activityBuckets,
+                readError: readErrors.isEmpty ? nil : readErrors.joined(separator: ";")
+            )
+        )
     }
 
     func loadVitalDBRelationships() -> RuntimeVitalRelationshipHistory {

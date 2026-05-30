@@ -51,13 +51,17 @@ export function RecorderActivityChart({
     1,
     ...buckets.map((bucket) => bucket.messageCount)
   );
+  const latestBucket =
+    [...buckets].reverse().find((bucket) => bucket.messageCount > 0) ??
+    buckets.at(-1);
   const totalPackets = buckets.reduce(
     (total, bucket) => total + bucket.messageCount,
     0
   );
   const totalBytes = buckets.reduce((total, bucket) => total + bucket.byteCount, 0);
   const latestRate = latestActivity?.bytesPerSecond ?? 0;
-  const roomCount = Math.max(0, ...buckets.map((bucket) => bucket.roomCount));
+  const packetCount = latestBucket?.messageCount ?? 0;
+  const roomCount = latestBucket?.roomCount ?? 0;
 
   return (
     <div className="recorder-activity">
@@ -115,7 +119,7 @@ export function RecorderActivityChart({
 
       <MetricStrip
         metrics={[
-          { label: `Packets / ${bucketLabel(bucketSeconds)}`, value: maxPackets },
+          { label: "Packets", value: packetCount },
           { label: "Total packets", value: totalPackets },
           { label: "Total data", value: formatBytes(totalBytes) },
           { label: "Data rate", value: `${formatBytes(latestRate)}/s` },
@@ -272,8 +276,4 @@ function formatTime(value: string | number | null | undefined): string {
     hour: "2-digit",
     minute: "2-digit"
   }).format(date);
-}
-
-function bucketLabel(seconds: number): string {
-  return seconds >= 60 ? `${seconds / 60} min` : `${seconds} sec`;
 }

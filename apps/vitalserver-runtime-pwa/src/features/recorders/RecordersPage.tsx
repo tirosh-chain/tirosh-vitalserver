@@ -1,7 +1,10 @@
 import { useMemo, useState } from "react";
 
 import { useVitalDBRecorders } from "@/application/runtime-control/queries";
-import type { VitalDBRecorderRecord } from "@/domain/runtime-control/contracts/runtimeControlTypes";
+import type {
+  VitalDBRecorderRecord,
+  VitalDBRecorders
+} from "@/domain/runtime-control/contracts/runtimeControlTypes";
 import {
   formatBoolean,
   formatRecorderStatus,
@@ -151,12 +154,23 @@ export function RecordersPage() {
         )}
       </Panel>
 
-      {selectedRecorder ? <RecorderDetails recorder={selectedRecorder} /> : null}
+      {selectedRecorder ? (
+        <RecorderDetails
+          recorder={selectedRecorder}
+          activityHistory={recordersQuery.data?.activityHistory}
+        />
+      ) : null}
     </div>
   );
 }
 
-function RecorderDetails({ recorder }: { recorder: VitalDBRecorderRecord }) {
+function RecorderDetails({
+  recorder,
+  activityHistory
+}: {
+  recorder: VitalDBRecorderRecord;
+  activityHistory?: VitalDBRecorders["activityHistory"];
+}) {
   return (
     <Panel title="Recorder Details">
       <div className="detail-heading">
@@ -185,6 +199,12 @@ function RecorderDetails({ recorder }: { recorder: VitalDBRecorderRecord }) {
 
       <div className="subsection">
         <h3>Activity</h3>
+        {activityHistory?.readError ? (
+          <ErrorState
+            title="Recorder activity history is incomplete"
+            error={new Error(activityHistory.readError)}
+          />
+        ) : null}
         <RecorderActivityChart recorder={recorder} />
       </div>
     </Panel>

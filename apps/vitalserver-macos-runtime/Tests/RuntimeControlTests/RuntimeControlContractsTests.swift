@@ -203,6 +203,61 @@ final class RuntimeControlContractsTests: XCTestCase {
         XCTAssertEqual(history.beds[1].observationCount, 1)
     }
 
+    func testVitalRecorderHistoryUsesProjectedActivityBucketsWhenProvided() {
+        let observation = VitalDBObservationDocument(
+            observedAt: "2026-05-26T00:02:00Z",
+            ready: true,
+            recorderOnlineThresholdSeconds: 60,
+            recorders: [
+                .init(
+                    vrcode: "VR_A",
+                    ip: "192.168.64.12",
+                    lastSeenAt: "2026-05-26T00:02:00Z",
+                    online: true,
+                    activity: VitalDBRecorderActivityObservation(
+                        windowSeconds: 300,
+                        messageCount: 99,
+                        byteCount: 99_000,
+                        buckets: [
+                            VitalDBRecorderActivityBucket(
+                                bucketStartedAt: "2026-05-26T00:02:00Z",
+                                bucketSeconds: 60,
+                                messageCount: 99,
+                                byteCount: 99_000
+                            ),
+                        ]
+                    )
+                ),
+            ]
+        )
+
+        let history = RuntimeVitalRecorderHistory(
+            observations: [observation],
+            activityBuckets: [
+                VitalDBRecorderActivityBucketRecord(
+                    vrcode: "VR_A",
+                    bucketStartedAt: "2026-05-26T00:01:00Z",
+                    bucketSeconds: 60,
+                    messageCount: 3,
+                    byteCount: 900,
+                    roomCount: 1,
+                    firstObservedAt: "2026-05-26T00:01:05Z",
+                    lastObservedAt: "2026-05-26T00:01:55Z"
+                ),
+            ]
+        )
+
+        let activity = history.recorders.first?.activityTimeline
+        XCTAssertEqual(activity?.count, 1)
+        XCTAssertEqual(activity?.first?.observedAt, "2026-05-26T00:01:55Z")
+        XCTAssertEqual(activity?.first?.messageCount, 3)
+        XCTAssertEqual(activity?.first?.byteCount, 900)
+        XCTAssertEqual(activity?.first?.buckets.first?.bucketStartedAt, "2026-05-26T00:01:00Z")
+        XCTAssertEqual(history.activityHistory.source, .sqliteProjection)
+        XCTAssertEqual(history.activityHistory.bucketCount, 1)
+        XCTAssertEqual(history.activityHistory.latestBucketStartedAt, "2026-05-26T00:01:00Z")
+    }
+
     func testVitalRecorderSummaryCountsUniqueVrcodes() {
         let observation = VitalDBObservationDocument(
             observedAt: "2026-05-26T00:01:00Z",

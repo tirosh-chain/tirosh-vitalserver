@@ -254,6 +254,77 @@ final class SQLiteRuntimeObservabilityStoreTests: XCTestCase {
         ])
     }
 
+    func testProjectsRecorderActivityBucketsFromVitalDBObservations() throws {
+        let harness = try SQLiteStoreHarness()
+        defer {
+            harness.cleanup()
+        }
+
+        try harness.store.append(VitalDBObservationDocument(
+            observedAt: "2026-05-25T00:01:05Z",
+            ready: true,
+            recorderOnlineThresholdSeconds: 120,
+            recorders: [
+                VitalDBRecorderObservation(
+                    vrcode: "VR_A",
+                    online: true,
+                    activity: VitalDBRecorderActivityObservation(
+                        windowSeconds: 300,
+                        messageCount: 3,
+                        byteCount: 900,
+                        roomCount: 1,
+                        buckets: [
+                            VitalDBRecorderActivityBucket(
+                                bucketStartedAt: "2026-05-25T00:01:00Z",
+                                bucketSeconds: 60,
+                                messageCount: 3,
+                                byteCount: 900,
+                                roomCount: 1
+                            ),
+                        ]
+                    )
+                ),
+            ]
+        ))
+
+        XCTAssertEqual(harness.store.vitalDBRecorderActivityBuckets(), [
+            VitalDBRecorderActivityBucketRecord(
+                vrcode: "VR_A",
+                bucketStartedAt: "2026-05-25T00:01:00Z",
+                bucketSeconds: 60,
+                messageCount: 3,
+                byteCount: 900,
+                roomCount: 1,
+                firstObservedAt: "2026-05-25T00:01:05Z",
+                lastObservedAt: "2026-05-25T00:01:05Z"
+            ),
+        ])
+    }
+
+    func testRecorderActivityBucketProjectionKeepsLargestObservedAggregate() throws {
+        let harness = try SQLiteStoreHarness()
+        defer {
+            harness.cleanup()
+        }
+
+        try harness.store.append(recorderActivityObservation(
+            observedAt: "2026-05-25T00:01:05Z",
+            messageCount: 3,
+            byteCount: 900
+        ))
+        try harness.store.append(recorderActivityObservation(
+            observedAt: "2026-05-25T00:01:55Z",
+            messageCount: 5,
+            byteCount: 1500
+        ))
+
+        let bucket = try XCTUnwrap(harness.store.vitalDBRecorderActivityBuckets().first)
+        XCTAssertEqual(bucket.messageCount, 5)
+        XCTAssertEqual(bucket.byteCount, 1500)
+        XCTAssertEqual(bucket.firstObservedAt, "2026-05-25T00:01:05Z")
+        XCTAssertEqual(bucket.lastObservedAt, "2026-05-25T00:01:55Z")
+    }
+
     func testProjectsVitalDBBedAssignmentsAcrossObservations() throws {
         let harness = try SQLiteStoreHarness()
         defer {
@@ -445,4 +516,37 @@ private struct SQLiteStoreHarness {
     func cleanup() {
         try? FileManager.default.removeItem(at: directory)
     }
+}
+
+private func recorderActivityObservation(
+    observedAt: String,
+    messageCount: Int,
+    byteCount: Int
+) -> VitalDBObservationDocument {
+    VitalDBObservationDocument(
+        observedAt: observedAt,
+        ready: true,
+        recorderOnlineThresholdSeconds: 120,
+        recorders: [
+            VitalDBRecorderObservation(
+                vrcode: "VR_A",
+                online: true,
+                activity: VitalDBRecorderActivityObservation(
+                    windowSeconds: 300,
+                    messageCount: messageCount,
+                    byteCount: byteCount,
+                    roomCount: 1,
+                    buckets: [
+                        VitalDBRecorderActivityBucket(
+                            bucketStartedAt: "2026-05-25T00:01:00Z",
+                            bucketSeconds: 60,
+                            messageCount: messageCount,
+                            byteCount: byteCount,
+                            roomCount: 1
+                        ),
+                    ]
+                )
+            ),
+        ]
+    )
 }

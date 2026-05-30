@@ -359,21 +359,44 @@ public struct RuntimeVitalRecorderHistory: Codable, Equatable, Sendable {
     public let updatedAt: String?
     public let recorders: [RuntimeVitalRecorderRecord]
     public let beds: [RuntimeVitalBedRecord]
+    public let activityHistory: RuntimeVitalRecorderActivityHistory
 
     public init(
         updatedAt: String? = nil,
         recorders: [RuntimeVitalRecorderRecord] = [],
-        beds: [RuntimeVitalBedRecord] = []
+        beds: [RuntimeVitalBedRecord] = [],
+        activityHistory: RuntimeVitalRecorderActivityHistory = .unavailable()
     ) {
         self.updatedAt = updatedAt
         self.recorders = recorders
         self.beds = beds
+        self.activityHistory = activityHistory
     }
 
     public init(observations: [VitalDBObservationDocument]) {
+        self.init(observations: observations, projectedActivityBuckets: nil)
+    }
+
+    public init(
+        observations: [VitalDBObservationDocument],
+        activityBuckets: [VitalDBRecorderActivityBucketRecord],
+        activityHistory: RuntimeVitalRecorderActivityHistory? = nil
+    ) {
+        self.init(
+            observations: observations,
+            projectedActivityBuckets: activityBuckets,
+            activityHistory: activityHistory
+        )
+    }
+
+    private init(
+        observations: [VitalDBObservationDocument],
+        projectedActivityBuckets activityBuckets: [VitalDBRecorderActivityBucketRecord]?,
+        activityHistory: RuntimeVitalRecorderActivityHistory? = nil
+    ) {
         let ordered = observations.sorted { $0.observedAt < $1.observedAt }
         guard let latestObservation = ordered.last else {
-            self.init()
+            self.init(activityHistory: activityHistory ?? .unavailable())
             return
         }
 
@@ -386,7 +409,12 @@ public struct RuntimeVitalRecorderHistory: Codable, Equatable, Sendable {
             )
             for recorder in uniqueRecordersByVrcode(observation.recorders) {
                 var builder = builders[recorder.vrcode] ?? RecorderBuilder(vrcode: recorder.vrcode)
-                builder.observe(recorder: recorder, bed: bedsByRecorder[recorder.vrcode], observedAt: observation.observedAt)
+                builder.observe(
+                    recorder: recorder,
+                    bed: bedsByRecorder[recorder.vrcode],
+                    observedAt: observation.observedAt,
+                    includeSnapshotActivity: activityBuckets == nil
+                )
                 builders[recorder.vrcode] = builder
             }
             for bed in uniqueBedsByID(observation.beds) {
@@ -409,6 +437,7 @@ public struct RuntimeVitalRecorderHistory: Codable, Equatable, Sendable {
             uniquingKeysWith: { _, latest in latest }
         )
         let latestAnomaliesBySubject = Dictionary(grouping: latestObservation.anomalies, by: \.subject)
+        let projectedActivityByVrcode = activityBuckets.map(projectedActivityTimelineByVrcode)
 
         let unsortedRecords: [RuntimeVitalRecorderRecord] = builders.values.map { builder in
             let latestRecorder = latestRecorders[builder.vrcode]
@@ -417,7 +446,8 @@ public struct RuntimeVitalRecorderHistory: Codable, Equatable, Sendable {
             return builder.record(
                 latestRecorder: latestRecorder,
                 latestBed: latestBed,
-                currentAnomalies: anomalies
+                currentAnomalies: anomalies,
+                activityTimeline: projectedActivityByVrcode?[builder.vrcode]
             )
         }
 
@@ -448,8 +478,61 @@ public struct RuntimeVitalRecorderHistory: Codable, Equatable, Sendable {
             }
         }
 
-        self.init(updatedAt: latestObservation.observedAt, recorders: records, beds: beds)
+        self.init(
+            updatedAt: latestObservation.observedAt,
+            recorders: records,
+            beds: beds,
+            activityHistory: activityHistory ?? .fromProjection(activityBuckets ?? [])
+        )
     }
+}
+
+public struct RuntimeVitalRecorderActivityHistory: Codable, Equatable, Sendable {
+    public let source: RuntimeVitalRecorderActivityHistorySource
+    public let bucketCount: Int
+    public let earliestBucketStartedAt: String?
+    public let latestBucketStartedAt: String?
+    public let readError: String?
+
+    public init(
+        source: RuntimeVitalRecorderActivityHistorySource,
+        bucketCount: Int,
+        earliestBucketStartedAt: String? = nil,
+        latestBucketStartedAt: String? = nil,
+        readError: String? = nil
+    ) {
+        self.source = source
+        self.bucketCount = bucketCount
+        self.earliestBucketStartedAt = earliestBucketStartedAt
+        self.latestBucketStartedAt = latestBucketStartedAt
+        self.readError = readError
+    }
+
+    public static func fromProjection(
+        _ buckets: [VitalDBRecorderActivityBucketRecord],
+        readError: String? = nil
+    ) -> RuntimeVitalRecorderActivityHistory {
+        RuntimeVitalRecorderActivityHistory(
+            source: .sqliteProjection,
+            bucketCount: buckets.count,
+            earliestBucketStartedAt: buckets.map(\.bucketStartedAt).min(),
+            latestBucketStartedAt: buckets.map(\.bucketStartedAt).max(),
+            readError: readError
+        )
+    }
+
+    public static func unavailable(readError: String? = nil) -> RuntimeVitalRecorderActivityHistory {
+        RuntimeVitalRecorderActivityHistory(
+            source: .unavailable,
+            bucketCount: 0,
+            readError: readError
+        )
+    }
+}
+
+public enum RuntimeVitalRecorderActivityHistorySource: String, Codable, Equatable, Sendable {
+    case sqliteProjection
+    case unavailable
 }
 
 public enum RuntimeVitalRelationshipEventType: String, Codable, Equatable, Sendable {
@@ -699,6 +782,28 @@ private func compareReportedTimestamp(_ lhs: String?, _ rhs: String?) -> Compari
     }
 }
 
+private func projectedActivityTimelineByVrcode(
+    _ records: [VitalDBRecorderActivityBucketRecord]
+) -> [String: [RuntimeVitalRecorderActivityPoint]] {
+    let grouped = Dictionary(grouping: records, by: \.vrcode)
+    return grouped.mapValues { records in
+        records
+            .sorted { $0.bucketStartedAt < $1.bucketStartedAt }
+            .map { record in
+                RuntimeVitalRecorderActivityPoint(
+                    observedAt: record.lastObservedAt,
+                    windowSeconds: record.bucketSeconds,
+                    messageCount: record.messageCount,
+                    byteCount: record.byteCount,
+                    roomCount: record.roomCount,
+                    messagesPerSecond: Double(record.messageCount) / Double(max(record.bucketSeconds, 1)),
+                    bytesPerSecond: Double(record.byteCount) / Double(max(record.bucketSeconds, 1)),
+                    buckets: [record.bucket]
+                )
+            }
+    }
+}
+
 private struct RecorderBuilder {
     let vrcode: String
     var lastIP: String?
@@ -711,7 +816,12 @@ private struct RecorderBuilder {
     var observationCount = 0
     var activityTimeline: [RuntimeVitalRecorderActivityPoint] = []
 
-    mutating func observe(recorder: VitalDBRecorderObservation, bed: VitalDBBedObservation?, observedAt: String) {
+    mutating func observe(
+        recorder: VitalDBRecorderObservation,
+        bed: VitalDBBedObservation?,
+        observedAt: String,
+        includeSnapshotActivity: Bool = true
+    ) {
         observationCount += 1
         let seenAt = recorder.lastSeenAt ?? observedAt
         firstSeenAt = minTimestamp(firstSeenAt, seenAt)
@@ -721,7 +831,7 @@ private struct RecorderBuilder {
         bedID = bed?.bedID ?? bedID
         bedName = bed?.name ?? bedName
         patientConnected = bed?.patientConnected ?? patientConnected
-        if let activity = recorder.activity {
+        if includeSnapshotActivity, let activity = recorder.activity {
             activityTimeline.append(
                 RuntimeVitalRecorderActivityPoint(
                     observedAt: observedAt,
@@ -740,7 +850,8 @@ private struct RecorderBuilder {
     func record(
         latestRecorder: VitalDBRecorderObservation?,
         latestBed: VitalDBBedObservation?,
-        currentAnomalies: [VitalDBAnomalyObservation]
+        currentAnomalies: [VitalDBAnomalyObservation],
+        activityTimeline projectedActivityTimeline: [RuntimeVitalRecorderActivityPoint]? = nil
     ) -> RuntimeVitalRecorderRecord {
         RuntimeVitalRecorderRecord(
             vrcode: vrcode,
@@ -756,7 +867,7 @@ private struct RecorderBuilder {
             currentAnomalyCount: currentAnomalies.count,
             latestAnomalySeverity: currentAnomalies.sorted { $0.observedAt > $1.observedAt }.first?.severity,
             presentInLatestObservation: latestRecorder != nil,
-            activityTimeline: activityTimeline.sorted { $0.observedAt < $1.observedAt }
+            activityTimeline: projectedActivityTimeline ?? activityTimeline.sorted { $0.observedAt < $1.observedAt }
         )
     }
 

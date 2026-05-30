@@ -4,30 +4,14 @@ import XCTest
 @testable import HostCLI
 
 final class RuntimeObservationRecorderTests: XCTestCase {
-    func testRecordWritesEventAndVitalDBObservation() throws {
+    func testRecordWritesEventOnly() throws {
         let harness = ObservationRecorderHarness()
         let event = runtimeEvent(vitalDBObservation: vitalDBObservation())
 
         try harness.recorder.recordEvent(event)
 
         XCTAssertEqual(harness.eventRepository.events, [event])
-        XCTAssertEqual(harness.vitalDBObservationStore.observations, [vitalDBObservation()])
         XCTAssertTrue(harness.logs.isEmpty)
-    }
-
-    func testRecordKeepsEventWhenVitalDBObservationWriteFailsAndLogsFailure() throws {
-        let harness = ObservationRecorderHarness()
-        harness.vitalDBObservationStore.appendError = ObservationRecorderError.observationAppend
-        let event = runtimeEvent(vitalDBObservation: vitalDBObservation())
-
-        try harness.recorder.recordEvent(event)
-
-        XCTAssertEqual(harness.eventRepository.events, [event])
-        XCTAssertTrue(harness.vitalDBObservationStore.observations.isEmpty)
-        XCTAssertEqual(harness.logs.count, 1)
-        XCTAssertTrue(harness.logs[0].contains("vitaldb observation recording failed"))
-        XCTAssertTrue(harness.logs[0].contains("eventType=vitaldb-observed"))
-        XCTAssertTrue(harness.logs[0].contains("observedAt=2026-05-30T00:00:00Z"))
     }
 
     func testRecordPropagatesEventWriteFailure() {
@@ -35,19 +19,17 @@ final class RuntimeObservationRecorderTests: XCTestCase {
         harness.eventRepository.appendError = ObservationRecorderError.eventAppend
 
         XCTAssertThrowsError(try harness.recorder.recordEvent(runtimeEvent(vitalDBObservation: vitalDBObservation())))
-        XCTAssertTrue(harness.vitalDBObservationStore.observations.isEmpty)
+        XCTAssertTrue(harness.eventRepository.events.isEmpty)
     }
 }
 
 private final class ObservationRecorderHarness {
     let eventRepository = InMemoryRuntimeEventRepository()
-    let vitalDBObservationStore = InMemoryVitalDBObservationStore()
     var logs: [String] = []
 
     var recorder: RuntimeObservationRecorder {
         RuntimeObservationRecorder(
             eventRepository: eventRepository,
-            vitalDBObservationStore: vitalDBObservationStore,
             log: { message in
                 self.logs.append(message)
             }
@@ -68,18 +50,6 @@ private final class InMemoryRuntimeEventRepository: RuntimeEventRepository {
 
     func recent(limit: Int) -> [RuntimeEventDocument] {
         Array(events.suffix(limit))
-    }
-}
-
-private final class InMemoryVitalDBObservationStore: VitalDBObservationProjectionStore {
-    var observations: [VitalDBObservationDocument] = []
-    var appendError: Error?
-
-    func append(_ observation: VitalDBObservationDocument) throws {
-        if let appendError {
-            throw appendError
-        }
-        observations.append(observation)
     }
 }
 
@@ -117,5 +87,4 @@ private func vitalDBObservation() -> VitalDBObservationDocument {
 
 private enum ObservationRecorderError: Error {
     case eventAppend
-    case observationAppend
 }

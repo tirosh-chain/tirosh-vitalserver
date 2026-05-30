@@ -383,9 +383,19 @@ extension RuntimeLifecycle {
                 secondary: SQLiteRuntimeEventRepository(url: installedPaths.runtimeObservabilityDB),
                 log: log
             ),
-            vitalDBObservationStore: SQLiteRuntimeObservabilityStore(url: installedPaths.runtimeObservabilityDB),
             log: log
         )
+    }
+
+    func projectVitalDBObservationBestEffort(_ observation: VitalDBObservationDocument) {
+        do {
+            try SQLiteRuntimeObservabilityStore(url: installedPaths.runtimeObservabilityDB).append(observation)
+        } catch {
+            log(
+                "vitaldb observation projection failed " +
+                    "observedAt=\(observation.observedAt) error=\(error.localizedDescription)"
+            )
+        }
     }
 
     func domainEventType(for snapshot: RuntimeHealthSnapshot, defaultEventType: RuntimeEventType = .statusChanged) -> RuntimeEventType {
@@ -408,7 +418,8 @@ extension RuntimeLifecycle {
             timestamp: isoTimestamp,
             runtimeVersion: runtimeVersionValue,
             healthSnapshot: runtimeHealthSnapshot,
-            latestBackup: latestBackup
+            latestBackup: latestBackup,
+            projectVitalDBObservation: projectVitalDBObservationBestEffort
         )
     }
 
