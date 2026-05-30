@@ -119,8 +119,8 @@ capacity 정보는 기존 `dataStorage`를 계속 사용합니다.
 유지하면서 `RuntimeStatus`, `RuntimeSettings`, `RuntimeReleaseInfo`, `RuntimeInstallInfo`, 최신
 `VitalDBObservationDocument`, 그리고 native Status 탭의 `Vital Recorder` 섹션과 같은 성격의
 `RuntimeVitalRecorderSummary`를 한 payload로 제공합니다. `RuntimeVitalRecorderSummary`는
-`vitalDBObservation`을 우선 SoT로 쓰고, observer snapshot이 아직 없을 때만 audit-proxy recorder connection을
-fallback으로 사용합니다.
+recorder 상태와 bed 상태를 `vitalDBObservation`에서만 읽습니다. audit-proxy 상태는 recorder 상태로 승격하지
+않고, 현재 연결 수(`activeConnections`)만 제공합니다.
 
 `GET /runtime/overview/stream`은 long-lived SSE 연결입니다. 서버는 overview payload가 바뀔 때
 `runtime-overview` frame을 보냅니다. 각 frame의 `id` 값은 `runtime-overview`, `data` 값은 JSON encoded

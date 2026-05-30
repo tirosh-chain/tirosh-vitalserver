@@ -70,7 +70,6 @@ const testKitStateSchema = z.enum([
 ]);
 const vitalRecorderSummarySourceSchema = z.enum([
   "vitalDBObservation",
-  "auditProxy",
   "unavailable"
 ]);
 

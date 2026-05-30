@@ -143,7 +143,6 @@ public struct RuntimeEventHistory: Codable, Equatable, Sendable {
 
 public enum RuntimeVitalRecorderSummarySource: String, Codable, Equatable, Sendable {
     case vitalDBObservation
-    case auditProxy
     case unavailable
 }
 
@@ -594,7 +593,6 @@ public struct RuntimeVitalRecorderSummary: Codable, Equatable, Sendable {
 
     public init(status: RuntimeStatus, vitalDBObservation: VitalDBObservationDocument? = nil) {
         let observation = vitalDBObservation ?? status.vitalDBObservation
-        let connectionRecorders = status.containerObservation?.auditProxyStatus?.recorders ?? []
         let activeConnections = status.containerObservation?.auditProxyStatus?.activeRecorderConnections ?? 0
 
         if let observation {
@@ -623,27 +621,16 @@ public struct RuntimeVitalRecorderSummary: Codable, Equatable, Sendable {
             return
         }
 
-        let uniqueConnections = uniqueConnectionsByVrcode(connectionRecorders)
-        let latest = uniqueConnections
-            .sorted { compareReportedTimestamp($0.lastSeenAt, $1.lastSeenAt) == .orderedDescending }
-            .first
         self.init(
-            source: uniqueConnections.isEmpty ? .unavailable : .auditProxy,
+            source: .unavailable,
             activeConnections: activeConnections,
-            knownRecorders: uniqueConnections.count,
+            knownRecorders: 0,
             onlineRecorders: 0,
             staleRecorders: 0,
             knownBeds: 0,
             recorderAnomalies: 0,
             observedAt: nil,
-            latestRecorder: latest.map {
-                RuntimeVitalRecorderReference(
-                    vrcode: $0.vrcode,
-                    ip: $0.selectedIp,
-                    lastSeenAt: $0.lastSeenAt,
-                    source: .auditProxy
-                )
-            }
+            latestRecorder: nil
         )
     }
 }
@@ -666,17 +653,6 @@ private func uniqueBedsByID(_ beds: [VitalDBBedObservation]) -> [VitalDBBedObser
     .sorted { $0.bedID < $1.bedID }
 }
 
-private func uniqueConnectionsByVrcode(
-    _ recorders: [RuntimeRecorderConnectionObservation]
-) -> [RuntimeRecorderConnectionObservation] {
-    Dictionary(
-        recorders.map { ($0.vrcode, $0) },
-        uniquingKeysWith: preferredConnection
-    )
-    .values
-    .sorted { $0.vrcode < $1.vrcode }
-}
-
 private func preferredRecorder(
     _ current: VitalDBRecorderObservation,
     _ candidate: VitalDBRecorderObservation
@@ -690,20 +666,6 @@ private func preferredRecorder(
     }
     if candidate.stale != current.stale {
         return candidate.stale ? current : candidate
-    }
-    return candidate
-}
-
-private func preferredConnection(
-    _ current: RuntimeRecorderConnectionObservation,
-    _ candidate: RuntimeRecorderConnectionObservation
-) -> RuntimeRecorderConnectionObservation {
-    let timestampOrder = compareReportedTimestamp(candidate.lastSeenAt, current.lastSeenAt)
-    if timestampOrder != .orderedSame {
-        return timestampOrder == .orderedDescending ? candidate : current
-    }
-    if candidate.activeConnections != current.activeConnections {
-        return candidate.activeConnections > current.activeConnections ? candidate : current
     }
     return candidate
 }

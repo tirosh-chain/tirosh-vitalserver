@@ -239,4 +239,43 @@ final class RuntimeControlContractsTests: XCTestCase {
         XCTAssertEqual(summary.latestRecorder?.vrcode, "VR_A")
         XCTAssertEqual(summary.latestRecorder?.ip, "192.168.64.10")
     }
+
+    func testVitalRecorderSummaryDoesNotInferRecorderStateFromAuditProxyConnections() {
+        let status = RuntimeStatus(
+            containerObservation: RuntimeContainerObservation(
+                auditProxyHTTP: "200",
+                auditProxyStatus: RuntimeAuditProxyStatusDocument(
+                    activeRecorderConnections: 2,
+                    recorders: [
+                        RuntimeRecorderConnectionObservation(
+                            vrcode: "VR_A",
+                            activeConnections: 1,
+                            selectedIp: "192.168.64.10",
+                            lastSeenAt: "2026-05-26T00:01:00Z"
+                        ),
+                        RuntimeRecorderConnectionObservation(
+                            vrcode: "VR_B",
+                            activeConnections: 1,
+                            selectedIp: "192.168.64.11",
+                            lastSeenAt: "2026-05-26T00:01:30Z"
+                        ),
+                    ]
+                ),
+                containerLogsPresent: false,
+                containerLogsBytes: nil
+            )
+        )
+
+        let summary = RuntimeVitalRecorderSummary(status: status)
+
+        XCTAssertEqual(summary.source, .unavailable)
+        XCTAssertEqual(summary.activeConnections, 2)
+        XCTAssertEqual(summary.knownRecorders, 0)
+        XCTAssertEqual(summary.onlineRecorders, 0)
+        XCTAssertEqual(summary.staleRecorders, 0)
+        XCTAssertEqual(summary.knownBeds, 0)
+        XCTAssertEqual(summary.recorderAnomalies, 0)
+        XCTAssertNil(summary.observedAt)
+        XCTAssertNil(summary.latestRecorder)
+    }
 }

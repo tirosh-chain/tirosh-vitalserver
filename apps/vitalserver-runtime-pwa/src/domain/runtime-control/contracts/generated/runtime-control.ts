@@ -886,7 +886,7 @@ export interface components {
             vitalDBObservation?: components["schemas"]["VitalDBObservationDocument"] | null;
             vitalRecorder?: components["schemas"]["RuntimeVitalRecorderSummary"];
         };
-        /** @description PWA-friendly Vital Recorder summary derived from VitalDB observation first, then audit-proxy recorder connections as fallback. */
+        /** @description PWA-friendly Vital Recorder summary derived from VitalDB observation. activeConnections is copied from audit-proxy connection status when available. */
         RuntimeVitalRecorderSummary: {
             source?: components["schemas"]["RuntimeVitalRecorderSummarySource"];
             activeConnections?: number;
@@ -905,7 +905,7 @@ export interface components {
             source?: components["schemas"]["RuntimeVitalRecorderSummarySource"];
         };
         /** @enum {string} */
-        RuntimeVitalRecorderSummarySource: "vitalDBObservation" | "auditProxy" | "unavailable";
+        RuntimeVitalRecorderSummarySource: "vitalDBObservation" | "unavailable";
         /** @description Aggregated history of VRecorders keyed by vrcode. */
         RuntimeVitalRecorderHistory: {
             updatedAt?: string | null;

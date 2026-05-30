@@ -1659,7 +1659,7 @@
       "RuntimeVitalRecorderSummary": {
         "type": "object",
         "additionalProperties": false,
-        "description": "PWA-friendly Vital Recorder summary derived from VitalDB observation first, then audit-proxy recorder connections as fallback.",
+        "description": "PWA-friendly Vital Recorder summary derived from VitalDB observation. activeConnections is copied from audit-proxy connection status when available.",
         "properties": {
           "source": {
             "$ref": "#/components/schemas/RuntimeVitalRecorderSummarySource"
@@ -1734,7 +1734,6 @@
         "type": "string",
         "enum": [
           "vitalDBObservation",
-          "auditProxy",
           "unavailable"
         ]
       },
