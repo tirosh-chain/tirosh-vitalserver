@@ -203,17 +203,19 @@ struct RuntimeHealthChecker {
             return []
         }
 
-        let hasExpectedProxyNginx = expectedNginxPID.map { expectedPID in
-            listenerFields.contains { $0.command == "nginx" && $0.pid == expectedPID }
-        } ?? false
-        if hasExpectedProxyNginx {
-            return []
-        }
-
         let listeners = listenerFields.map { "\($0.command)-\($0.pid)" }
         let joined = Array(listeners.prefix(5))
             .joined(separator: "_")
-        return [.proxyPortInUse(port: port, listeners: joined)]
+        switch expectedNginxPID {
+        case .loaded(let expectedPID):
+            let hasExpectedProxyNginx = listenerFields.contains { $0.command == "nginx" && $0.pid == expectedPID }
+            if hasExpectedProxyNginx {
+                return []
+            }
+            return [.proxyPortInUse(port: port, listeners: joined)]
+        case .unavailable:
+            return [.hostProxyListenerMismatch(port: port, listeners: joined)]
+        }
     }
 
     private func isSuccessfulHTTPStatus(_ value: String) -> Bool {
@@ -223,8 +225,11 @@ struct RuntimeHealthChecker {
         return code >= 200 && code < 300
     }
 
-    private func readInstalledProxyNginxPID() -> String? {
-        readTrimmed(installedPaths.proxyNginxPID)
+    private func readInstalledProxyNginxPID() -> RuntimeProxyNginxPIDReadResult {
+        guard let pid = readTrimmed(installedPaths.proxyNginxPID) else {
+            return .unavailable
+        }
+        return .loaded(pid)
     }
 
     private func containerObservation(proxyPort: Int, guestState: GuestRuntimeStateDocument?) -> RuntimeContainerObservation {
@@ -278,4 +283,9 @@ private struct RuntimeGuestHTTPReadResult {
 private struct RuntimeGuestStateFreshness {
     let isFresh: Bool
     let failureReasons: [RuntimeFailureReason]
+}
+
+private enum RuntimeProxyNginxPIDReadResult {
+    case loaded(String)
+    case unavailable
 }

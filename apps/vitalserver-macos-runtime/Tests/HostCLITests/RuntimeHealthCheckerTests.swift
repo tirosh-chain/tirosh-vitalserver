@@ -197,6 +197,65 @@ final class RuntimeHealthCheckerTests: XCTestCase {
         XCTAssertFalse(snapshot.failureReasons.contains(.hostProxyConfigInvalid))
     }
 
+    func testSnapshotReportsHostProxyListenerMismatchWhenExpectedProxyPIDIsUnavailable() {
+        let installedPaths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
+        let fileStore = RuntimeFileStoreSpy()
+        fileStore.files[URL(fileURLWithPath: Constants.Commands.lsof)] = Data()
+        let commandRunner = RuntimeCommandRunnerSpy()
+        commandRunner.results[Constants.Commands.plistBuddy] = RuntimeProcessResult(exitCode: 0, stdout: "8080\n", stderr: "")
+        commandRunner.results[Constants.Commands.lsof] = RuntimeProcessResult(
+            exitCode: 0,
+            stdout: """
+            COMMAND PID USER FD TYPE DEVICE SIZE/OFF NODE NAME
+            nginx 1234 root 10u IPv4 0x01 0t0 TCP *:8080 (LISTEN)
+            """,
+            stderr: ""
+        )
+        let checker = RuntimeHealthChecker(
+            installedPaths: installedPaths,
+            fileStore: fileStore,
+            serviceManager: RuntimeServiceManagerSpy(),
+            commandRunner: commandRunner,
+            httpProber: RuntimeHTTPProberSpy(),
+            guestGateway: RuntimeGuestGatewaySpy()
+        )
+
+        let snapshot = checker.snapshot()
+
+        XCTAssertTrue(snapshot.failureReasons.contains(.hostProxyListenerMismatch(port: 8080, listeners: "nginx-1234")))
+        XCTAssertFalse(snapshot.failureReasons.contains(.proxyPortInUse(port: 8080, listeners: "nginx-1234")))
+    }
+
+    func testSnapshotDoesNotReportProxyPortFailureForExpectedProxyPID() {
+        let installedPaths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
+        let fileStore = RuntimeFileStoreSpy()
+        fileStore.files[URL(fileURLWithPath: Constants.Commands.lsof)] = Data()
+        fileStore.files[installedPaths.proxyNginxPID] = Data("1234\n".utf8)
+        let commandRunner = RuntimeCommandRunnerSpy()
+        commandRunner.results[Constants.Commands.plistBuddy] = RuntimeProcessResult(exitCode: 0, stdout: "8080\n", stderr: "")
+        commandRunner.results[Constants.Commands.lsof] = RuntimeProcessResult(
+            exitCode: 0,
+            stdout: """
+            COMMAND PID USER FD TYPE DEVICE SIZE/OFF NODE NAME
+            nginx 1234 root 10u IPv4 0x01 0t0 TCP *:8080 (LISTEN)
+            """,
+            stderr: ""
+        )
+        let checker = RuntimeHealthChecker(
+            installedPaths: installedPaths,
+            fileStore: fileStore,
+            serviceManager: RuntimeServiceManagerSpy(),
+            commandRunner: commandRunner,
+            httpProber: RuntimeHTTPProberSpy(),
+            guestGateway: RuntimeGuestGatewaySpy()
+        )
+
+        let snapshot = checker.snapshot()
+
+        XCTAssertFalse(snapshot.failureReasons.contains(.hostProxyListenerMismatch(port: 8080, listeners: "nginx-1234")))
+        XCTAssertFalse(snapshot.failureReasons.contains(.proxyPortInUse(port: 8080, listeners: "nginx-1234")))
+    }
+
     func testSnapshotReportsAuditProxyStatusFailure() {
         let installedPaths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
         let fileStore = RuntimeFileStoreSpy()
