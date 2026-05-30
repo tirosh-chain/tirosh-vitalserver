@@ -186,7 +186,12 @@ struct RuntimeHealthChecker {
             arguments: ["-nP", "-iTCP:\(port)", "-sTCP:LISTEN"]
         )
         guard result.exitCode == 0 else {
-            return []
+            let stdout = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+            let stderr = result.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+            if stdout.isEmpty && stderr.isEmpty {
+                return []
+            }
+            return [.hostProxyListenerScanFailed(port: port, exitCode: Int(result.exitCode))]
         }
 
         let listenerFields = result.stdout

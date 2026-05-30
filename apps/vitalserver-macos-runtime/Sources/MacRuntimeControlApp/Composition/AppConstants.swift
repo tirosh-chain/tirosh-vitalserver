@@ -640,6 +640,8 @@ enum AppConstants {
                 return "\(titleCasedStatus(service)) service throttled"
             case .hostProxyListenerMismatch(let port, let listeners):
                 return "Host proxy port \(port) listener mismatch: \(listeners)"
+            case .hostProxyListenerScanFailed(let port, let exitCode):
+                return "Host proxy port \(port) listener scan failed with exit \(exitCode)"
             case .hostProxyConfigInvalid:
                 return "Host proxy configuration invalid"
             case .httpProbeTimedOut(let target):

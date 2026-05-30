@@ -47,6 +47,7 @@ Runtime 상태가 실제 상황과 다르게 보이거나, update 진행 상태�
 - Runtime events JSONL 파일을 읽거나 decode하지 못했는데 빈 이벤트 목록처럼 보입니다.
 - VitalDB recorder observation이 없는데 audit-proxy connection 목록을 recorder 상태 요약으로 승격합니다.
 - VitalDB recorder observation이 없는데 UI가 recorder/bed/anomaly 수를 `0`으로 표시합니다.
+- Host proxy listener scan이 실패했는데 listener 없음처럼 처리되어 port 충돌 진단 근거가 사라집니다.
 
 ## Impact
 
@@ -110,6 +111,7 @@ rg -n "readVersionValue|runtime-version\\.json|try\\? JSONSerialization\\.jsonOb
 rg -n "installedProxyPort\\(|VITALSERVER_PROXY_PORT|defaultProxyPort" apps/vitalserver-macos-runtime/Sources
 rg -n "guestRuntimeStateFresh|modificationDate\\(installedPaths\\.runtimeState\\)|guest-runtime-state-stale" apps/vitalserver-macos-runtime/Sources
 rg -n "JSONLRuntimeEventRepository|try\\? Data\\(contentsOf:|compactMap.*decode\\(RuntimeEventDocument" apps/vitalserver-macos-runtime/Sources
+rg -n "lsof.*LISTEN|hostProxyListenerScanFailed|return \\[\\]" apps/vitalserver-macos-runtime/Sources/HostCLI/Runtime/RuntimeHealthChecker.swift
 ```
 
 상태 관련 read path에서 아래 패턴이 보이면 재검토합니다.
@@ -156,6 +158,7 @@ log collection read/copy failure -> silent skip
 guest log collection read failure -> no guest logs
 audit-proxy recorder connections -> VitalDB recorder summary fallback
 missing VitalDB recorder observation -> zero recorder metrics
+host proxy listener scan failure -> no proxy port failure reason
 ```
 
 ## Actions
@@ -206,6 +209,7 @@ missing VitalDB recorder observation -> zero recorder metrics
 40. Guest log collection은 missing guest run directory와 directory read failure를 구분합니다. Health/watchdog의 best-effort collection 실패도 runtime log에 남깁니다.
 41. Recorder 상태 요약은 VitalDB observation만 사용합니다. Audit-proxy recorder connection은 상태 fallback이 아니라 `activeConnections` 연결 수로만 노출합니다.
 42. VitalDB observation이 없을 때 UI는 recorder/bed/anomaly metric을 `0`으로 표시하지 않습니다. `Not reported`로 표시해 미관측과 실제 0개를 구분합니다.
+43. Host proxy listener scan 실패는 `hostProxyListenerScanFailed`로 노출합니다. 빈 stdout/stderr의 `lsof` nonzero만 listener 없음으로 취급합니다.
 
 ## Prevention
 

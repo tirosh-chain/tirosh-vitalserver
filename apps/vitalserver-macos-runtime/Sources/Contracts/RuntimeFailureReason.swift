@@ -85,6 +85,7 @@ public enum RuntimeFailureReason: Codable, Equatable, Sendable {
     case launchdServiceCrashed(service: String, exitCode: Int)
     case launchdServiceThrottled(service: String)
     case hostProxyListenerMismatch(port: Int, listeners: String)
+    case hostProxyListenerScanFailed(port: Int, exitCode: Int)
     case hostProxyConfigInvalid
     case httpProbeTimedOut(target: String)
     case httpProbeConnectionRefused(target: String)
@@ -188,6 +189,8 @@ public enum RuntimeFailureReason: Codable, Equatable, Sendable {
                 self = parsed
             } else if let parsed = RuntimeFailureReason.parseHostProxyListenerMismatch(rawValue) {
                 self = parsed
+            } else if let parsed = RuntimeFailureReason.parseHostProxyListenerScanFailed(rawValue) {
+                self = parsed
             } else if let parsed = RuntimeFailureReason.parseHTTPProbeTimedOut(rawValue) {
                 self = parsed
             } else if let parsed = RuntimeFailureReason.parseHTTPProbeConnectionRefused(rawValue) {
@@ -262,6 +265,8 @@ public enum RuntimeFailureReason: Codable, Equatable, Sendable {
             return "launchd-service-\(service)-throttled"
         case .hostProxyListenerMismatch(let port, let listeners):
             return "host-proxy-listener-mismatch-port-\(port)-listeners-\(listeners)"
+        case .hostProxyListenerScanFailed(let port, let exitCode):
+            return "host-proxy-listener-scan-failed-port-\(port)-exit-\(exitCode)"
         case .hostProxyConfigInvalid:
             return "host-proxy-config-invalid"
         case .httpProbeTimedOut(let target):
@@ -357,6 +362,15 @@ public enum RuntimeFailureReason: Codable, Equatable, Sendable {
         return .hostProxyListenerMismatch(port: port, listeners: String(rawValue[markerRange.upperBound...]))
     }
 
+    private static func parseHostProxyListenerScanFailed(_ rawValue: String) -> RuntimeFailureReason? {
+        parseIntPair(
+            rawValue,
+            prefix: "host-proxy-listener-scan-failed-port-",
+            marker: "-exit-",
+            build: RuntimeFailureReason.hostProxyListenerScanFailed
+        )
+    }
+
     private static func parseHTTPProbeTimedOut(_ rawValue: String) -> RuntimeFailureReason? {
         parseServiceValue(
             rawValue,
@@ -426,6 +440,25 @@ public enum RuntimeFailureReason: Codable, Equatable, Sendable {
         }
         return build(String(service), value)
     }
+
+    private static func parseIntPair(
+        _ rawValue: String,
+        prefix: String,
+        marker: String,
+        build: (Int, Int) -> RuntimeFailureReason
+    ) -> RuntimeFailureReason? {
+        guard rawValue.hasPrefix(prefix),
+              let markerRange = rawValue.range(of: marker) else {
+            return nil
+        }
+        let firstText = rawValue[rawValue.index(rawValue.startIndex, offsetBy: prefix.count)..<markerRange.lowerBound]
+        let secondText = rawValue[markerRange.upperBound...]
+        guard let first = Int(firstText),
+              let second = Int(secondText) else {
+            return nil
+        }
+        return build(first, second)
+    }
 }
 
 public extension RuntimeFailureReason {
@@ -451,7 +484,7 @@ public extension RuntimeFailureReason {
             return .guestAgent
         case .vmPidFileStale, .vmProcessExited, .launchdServiceCrashed, .launchdServiceThrottled:
             return .vmLifecycle
-        case .hostProxyListenerMismatch, .hostProxyConfigInvalid:
+        case .hostProxyListenerMismatch, .hostProxyListenerScanFailed, .hostProxyConfigInvalid:
             return .hostProxy
         case .httpProbeTimedOut, .httpProbeConnectionRefused:
             return .guestNetworking
@@ -478,7 +511,7 @@ public extension RuntimeFailureReason {
         switch self {
         case .redisUIHTTP, .swaggerUIHTTP, .watchdogService, .guestRuntimeStateStale,
              .runtimeStatusDocumentStale, .observabilityEventStoreUnavailable,
-             .vmPidFileStale, .httpProbeTimedOut, .httpProbeConnectionRefused,
+             .vmPidFileStale, .hostProxyListenerScanFailed, .httpProbeTimedOut, .httpProbeConnectionRefused,
              .vitalDBObservationStale:
             return .warning
         case .vitalDBAnomaly(let kind, _):
@@ -512,6 +545,8 @@ public extension RuntimeFailureReason {
             return .restartVMService
         case .hostProxyListenerMismatch:
             return .freeProxyPort
+        case .hostProxyListenerScanFailed:
+            return .inspectLogs
         case .hostProxyConfigInvalid:
             return .repairProxyConfiguration
         case .httpProbeTimedOut, .httpProbeConnectionRefused:
