@@ -9,11 +9,22 @@ final class RuntimeFileReaderTests: XCTestCase {
         let directory = try temporaryDirectory()
         try """
         {
-          "version": "1.2.3",
+          "schemaVersion": 2,
+          "product": "vitalserver",
+          "bundleKind": "product-update",
+          "channel": "dev",
+          "helperVersion": "1.2.3",
+          "releaseLabel": "1.2.3",
+          "targetPlatform": "macos-arm64",
+          "components": {
+            "updater": "1.2.3"
+          },
+          "createdAt": "2026-05-30T00:00:00Z",
           "artifacts": [
-            { "type": "rootfs", "name": "rootfs.img.gz" },
-            { "type": "package", "name": "vitalserver.tar.gz" }
-          ]
+            { "type": "rootfs-base", "name": "rootfs.img.gz", "sha256": "rootfs-digest", "size": 100 },
+            { "type": "app-bundle", "name": "vitalserver.tar.gz", "sha256": "app-digest", "size": 200 }
+          ],
+          "migrations": []
         }
         """.write(
             to: directory.appendingPathComponent("manifest.json"),
@@ -24,16 +35,30 @@ final class RuntimeFileReaderTests: XCTestCase {
         let summary = SystemRuntimeHostFileReader().updateBundleSummary(url: directory)
 
         XCTAssertTrue(summary.contains("Version: 1.2.3"))
-        XCTAssertTrue(summary.contains("rootfs: rootfs.img.gz"))
-        XCTAssertTrue(summary.contains("package: vitalserver.tar.gz"))
+        XCTAssertTrue(summary.contains("rootfs-base: rootfs.img.gz"))
+        XCTAssertTrue(summary.contains("app-bundle: vitalserver.tar.gz"))
     }
 
-    func testUpdateBundleSummaryReportsInvalidManifest() throws {
+    func testUpdateBundleSummaryReportsMissingManifest() throws {
         let directory = try temporaryDirectory()
 
         XCTAssertEqual(
             SystemRuntimeHostFileReader().updateBundleSummary(url: directory),
-            "Missing or invalid manifest.json"
+            "Missing manifest.json"
+        )
+    }
+
+    func testUpdateBundleSummaryReportsInvalidManifest() throws {
+        let directory = try temporaryDirectory()
+        try "{invalid-json".write(
+            to: directory.appendingPathComponent("manifest.json"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(
+            SystemRuntimeHostFileReader().updateBundleSummary(url: directory)
+                .hasPrefix("Invalid manifest.json:")
         )
     }
 

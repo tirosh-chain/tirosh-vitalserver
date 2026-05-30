@@ -148,6 +148,7 @@ host proxy port read/parse failure -> default proxy port only
 guest runtime-state metadata read failure -> stale only
 runtime event JSONL read/decode failure -> empty event list only
 audit proxy status decode failure -> curl failure
+update bundle manifest read/decode failure -> missing summary
 ```
 
 ## Actions
@@ -192,6 +193,7 @@ audit proxy status decode failure -> curl failure
 34. Guest runtime-state freshness reader는 stale과 metadata read failure를 구분합니다. Metadata read failure는 stale과 함께 `guestRuntimeStateInvalid`를 남깁니다.
 35. Runtime event JSONL reader는 loaded events와 read/decode issues를 함께 제공합니다. Invalid lines는 valid events와 분리해서 기록합니다.
 36. Audit proxy status probe는 request failure와 invalid response를 구분합니다. Curl 실패는 `failed`, 응답 contract decode 실패는 `invalid-response`로 노출합니다.
+37. Update bundle summary는 typed manifest contract를 사용합니다. Missing manifest와 invalid manifest를 같은 메시지로 합치지 않습니다.
 
 ## Prevention
 
@@ -286,3 +288,4 @@ audit proxy status decode failure -> curl failure
 - 2026-05-30: Guest runtime-state freshness reader가 stale과 metadata read failure를 분리했습니다. Modification date를 읽지 못하면 `guestRuntimeStateInvalid`를 함께 남깁니다.
 - 2026-05-30: Runtime event JSONL reader가 loaded events와 read/decode issues를 분리했습니다. Legacy `all()`은 events만 반환하지만 `allResult()`로 문제 원인을 확인할 수 있습니다.
 - 2026-05-30: Audit proxy status 응답 decode 실패를 curl 실패와 섞지 않고 `invalid-response`로 노출합니다.
+- 2026-05-30: Update bundle summary가 `[String: Any]` 임의 파싱 대신 `UpdateBundleManifest` contract를 사용하고, missing/invalid manifest를 구분합니다.

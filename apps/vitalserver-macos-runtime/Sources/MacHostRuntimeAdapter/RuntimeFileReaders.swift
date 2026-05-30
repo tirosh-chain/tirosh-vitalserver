@@ -32,19 +32,20 @@ struct SystemRuntimeHostFileReader: RuntimeHostFileReading, @unchecked Sendable 
             return "Archive: \(url.lastPathComponent)\nVerify to inspect manifest and checksums."
         }
         let manifestURL = url.appendingPathComponent("manifest.json")
-        guard let data = try? fileStore.readData(manifestURL),
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return "Missing or invalid manifest.json"
+        guard fileStore.fileExists(manifestURL) else {
+            return "Missing manifest.json"
         }
-        let version = object["version"] as? String ?? "missing version"
-        let artifacts = (object["artifacts"] as? [[String: Any]] ?? [])
-            .compactMap { artifact -> String? in
-                guard let type = artifact["type"] as? String,
-                      let name = artifact["name"] as? String else { return nil }
-                return "\(type): \(name)"
-            }
+        let manifest: UpdateBundleManifest
+        do {
+            let data = try fileStore.readData(manifestURL)
+            manifest = try JSONDecoder().decode(UpdateBundleManifest.self, from: data)
+        } catch {
+            return "Invalid manifest.json: \(error.localizedDescription)"
+        }
+        let artifacts = manifest.artifacts
+            .map { artifact in "\(artifact.type.rawValue): \(artifact.name)" }
             .joined(separator: "\n")
-        return "Version: \(version)\nArtifacts:\n\(artifacts)"
+        return "Version: \(manifest.version)\nArtifacts:\n\(artifacts)"
     }
 
     func backups(latestBackupPath: String?) throws -> [RuntimeBackup] {
