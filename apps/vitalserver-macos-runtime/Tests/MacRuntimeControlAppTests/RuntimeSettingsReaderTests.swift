@@ -102,6 +102,38 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         XCTAssertEqual(settings.publicPort, RuntimeSettings().publicPort)
     }
 
+    func testReportsSettingsReadFailuresForNonSecretRuntimeFiles() {
+        let paths = RuntimeSettingsPaths(
+            vmConfig: "/missing/vm-config.json",
+            vmDisk: "/runtime/vm-disk.img",
+            guestRuntimeSettings: "/runtime/runtime-settings.json",
+            guestRuntimeConfig: "/runtime/runtime-config.json",
+            proxyLaunchDaemon: "/runtime/proxy.plist"
+        )
+        let reader = SystemRuntimeSettingsReader(
+            paths: paths,
+            fileStore: SettingsReadFailureFileStore(existingPaths: [
+                paths.vmDisk,
+                paths.guestRuntimeSettings,
+                paths.guestRuntimeConfig,
+                paths.proxyLaunchDaemon,
+            ])
+        )
+
+        let settings = reader.load()
+
+        XCTAssertEqual(settings.readIssues.map(\.source), [
+            "vmDisk",
+            "guestRuntimeSettings",
+            "guestRuntimeConfig",
+            "proxyLaunchDaemon",
+        ])
+        XCTAssertTrue(settings.readIssues[0].message.contains("disk size denied"))
+        XCTAssertTrue(settings.readIssues[1].message.contains("runtime settings denied"))
+        XCTAssertTrue(settings.readIssues[2].message.contains("invalid legacy runtime config"))
+        XCTAssertTrue(settings.readIssues[3].message.contains("proxy plist denied"))
+    }
+
     func testLoadsGuestRuntimeSettingsBeforeSecretRuntimeConfig() throws {
         let directory = try temporaryDirectory()
         let guestSettings = directory.appendingPathComponent("runtime-settings.json")
@@ -765,6 +797,56 @@ private final class GuestRuntimeConfigPermissionDeniedFileStore: RuntimeFileStor
     func readUTF8Text(_ url: URL) throws -> String { throw CocoaError(.fileReadNoPermission) }
     func fileSize(_ url: URL) throws -> UInt64 { throw CocoaError(.fileReadNoSuchFile) }
     func modificationDate(_ url: URL) throws -> Date { throw CocoaError(.fileReadNoSuchFile) }
+    func writeData(_ data: Data, to url: URL, options: Data.WritingOptions) throws {}
+    func writeData(_ data: Data, to url: URL, options: Data.WritingOptions, posixPermissions: Int) throws {}
+    func createDirectory(at url: URL, withIntermediateDirectories: Bool) throws {}
+    func removeItem(at url: URL) throws {}
+    func copyItem(at source: URL, to destination: URL) throws {}
+    func moveItem(at source: URL, to destination: URL) throws {}
+    func contentsOfDirectory(at url: URL, skipsHiddenFiles: Bool) throws -> [URL] { [] }
+    func childDirectories(at url: URL, nameContains fragment: String, skipsHiddenFiles: Bool) throws -> [URL] { [] }
+    func recursiveRegularFileSize(at url: URL, skipsHiddenFiles: Bool) throws -> UInt64 { 0 }
+    func fileSystemAttributes(forPath path: String) throws -> RuntimeFileSystemAttributes {
+        RuntimeFileSystemAttributes(freeBytes: 1)
+    }
+}
+
+private final class SettingsReadFailureFileStore: RuntimeFileStore {
+    var temporaryDirectory = URL(fileURLWithPath: "/tmp")
+    private let existingPaths: Set<String>
+
+    init(existingPaths: Set<String>) {
+        self.existingPaths = existingPaths
+    }
+
+    func fileExists(_ url: URL) -> Bool { existingPaths.contains(url.path) }
+    func directoryExists(_ url: URL) -> Bool { false }
+    func isExecutableFile(atPath path: String) -> Bool { false }
+    func readData(_ url: URL) throws -> Data {
+        switch url.path {
+        case "/runtime/runtime-settings.json":
+            throw NSError(domain: "RuntimeSettingsReaderTests", code: 1, userInfo: [
+                NSLocalizedDescriptionKey: "runtime settings denied",
+            ])
+        case "/runtime/runtime-config.json":
+            throw NSError(domain: "RuntimeSettingsReaderTests", code: 2, userInfo: [
+                NSLocalizedDescriptionKey: "invalid legacy runtime config",
+            ])
+        case "/runtime/proxy.plist":
+            throw NSError(domain: "RuntimeSettingsReaderTests", code: 3, userInfo: [
+                NSLocalizedDescriptionKey: "proxy plist denied",
+            ])
+        default:
+            throw CocoaError(.fileReadNoSuchFile)
+        }
+    }
+    func readUTF8Text(_ url: URL) throws -> String { String(decoding: try readData(url), as: UTF8.self) }
+    func fileSize(_ url: URL) throws -> UInt64 {
+        throw NSError(domain: "RuntimeSettingsReaderTests", code: 4, userInfo: [
+            NSLocalizedDescriptionKey: "disk size denied",
+        ])
+    }
+    func modificationDate(_ url: URL) throws -> Date { Date(timeIntervalSince1970: 0) }
     func writeData(_ data: Data, to url: URL, options: Data.WritingOptions) throws {}
     func writeData(_ data: Data, to url: URL, options: Data.WritingOptions, posixPermissions: Int) throws {}
     func createDirectory(at url: URL, withIntermediateDirectories: Bool) throws {}

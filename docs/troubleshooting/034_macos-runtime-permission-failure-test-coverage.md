@@ -132,13 +132,12 @@ rg -n "readData|readUTF8Text|writeData|copyItem|moveItem|removeItem|chmod|posixP
 
 - `RuntimeFileReaders.swift`: 56.12%에서 96.92%까지 상승
 - `RuntimeControlHTTPWireCodec.swift`: 74.15%에서 97.96%까지 상승
+- `RuntimeUpdatePreflightPolicy.swift`: 68.00%에서 100.00%까지 상승
+- `RuntimeUpdateCompatibilityChecker.swift`: 80.77%에서 100.00%까지 상승
+- `RuntimeLogExporter.swift`: 91.92%에서 97.31%까지 상승
+- `RuntimeSettingsReader.swift`: 90.76%에서 96.74%까지 상승
 
-| Priority | Area | Current | Target | Next check |
-|---:|---|---:|---:|---|
-| 1 | `Core/Application/RuntimeUpdatePreflightPolicy.swift` | 68.00% | 95%+ | update preflight decision matrix |
-| 2 | `Core/Application/RuntimeUpdateCompatibilityChecker.swift` | 80.77% | 95%+ | channel/platform/min version/two-phase/guest activation compatibility |
-| 3 | `MacHostRuntimeAdapter/RuntimeLogExporter.swift` | 91.92% | 95%+ | partial failure manifest and export destination write failure |
-| 4 | `MacHostRuntimeAdapter/RuntimeSettingsReader.swift` | 90.76% | 95%+ | read issue wording for permission/invalid config edge cases |
+현재 TS-034에서 지정한 고가치 coverage target은 모두 목표를 달성했습니다. 다음 coverage 보강은 새 장애 사례가 확인될 때 운영 리스크 기준으로 재선정합니다.
 
 ## Operational Notes
 
@@ -170,3 +169,7 @@ Helper 사용자 권한에서 읽기/쓰기 probe를 분리합니다. SQLite row
 - 2026-05-31: 고가치 coverage target을 TS-034에 명시했습니다. 우선 `RuntimeControlClientAPIReadHandler`는 39.57%에서 100.00%로, `RuntimeObservabilityReader`는 54.71%에서 94.71%로 올렸습니다. 전체 scoped line coverage는 87.27%입니다.
 - 2026-05-31: `RuntimeFileReaders`가 `RuntimeFileStore` 추상화로 partial log read를 수행하도록 조정하고, command log fallback, container log refresh 조건, diagnostic source fallback, backup wrapper 실패 전파를 검증했습니다. `RuntimeFileReaders.swift`는 56.12%에서 96.92%로, 전체 scoped line coverage는 88.02%로 상승했습니다.
 - 2026-05-31: `RuntimeControlHTTPWireCodec`의 malformed request, invalid `Content-Length`, unsupported method, body-without-length, stream header, bad request response, status phrase encoding edge case를 검증했습니다. `RuntimeControlHTTPWireCodec.swift`는 74.15%에서 97.96%로, 전체 scoped line coverage는 88.41%로 상승했습니다.
+- 2026-05-31: `RuntimeUpdatePreflightPolicy`가 compatible bundle을 통과시키고 compatibility failure를 그대로 전파하는지 검증했습니다. `RuntimeUpdatePreflightPolicy.swift`는 68.00%에서 100.00%로, 전체 scoped line coverage는 88.50%로 상승했습니다.
+- 2026-05-31: `RuntimeUpdateCompatibilityChecker`의 equivalent version, text/numeric version segment comparison, mixed text/number comparison, operational error description을 검증했습니다. `RuntimeUpdateCompatibilityChecker.swift`는 80.77%에서 100.00%로, 전체 scoped line coverage는 88.73%로 상승했습니다.
+- 2026-05-31: `RuntimeLogExporter`가 기존 export archive를 교체하고, ditto archive 실패 시 stdout/stderr 또는 fallback summary를 보존하는지 검증했습니다. `RuntimeLogExporter.swift`는 91.92%에서 97.31%로, 전체 scoped line coverage는 88.93%로 상승했습니다.
+- 2026-05-31: `RuntimeSettingsReader`가 disk size, public runtime settings, legacy runtime config, proxy launch daemon read failure를 `readIssues`에 보존하는지 검증했습니다. `RuntimeSettingsReader.swift`는 90.76%에서 96.74%로, 전체 scoped line coverage는 89.05%로 상승했습니다.

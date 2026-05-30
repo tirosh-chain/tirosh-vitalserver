@@ -3,6 +3,33 @@ import Contracts
 import XCTest
 
 final class RuntimeUpdatePreflightPolicyTests: XCTestCase {
+    func testCheckCompatibilityAllowsMatchingBundle() throws {
+        try RuntimeUpdatePreflightPolicy.checkCompatibility(
+            manifest: manifest(
+                channel: .stable,
+                targetPlatform: "macos-arm64",
+                minUpdaterVersion: "1.2.0"
+            ),
+            currentUpdaterVersion: "1.2.3",
+            currentChannel: .stable,
+            currentPlatform: "macos-arm64"
+        )
+    }
+
+    func testCheckCompatibilityPropagatesCompatibilityFailures() {
+        XCTAssertThrowsError(try RuntimeUpdatePreflightPolicy.checkCompatibility(
+            manifest: manifest(channel: .dev),
+            currentUpdaterVersion: "1.2.3",
+            currentChannel: .stable,
+            currentPlatform: "macos-arm64"
+        )) { error in
+            XCTAssertEqual(error as? RuntimeUpdateCompatibilityError, .unsupportedChannel(
+                currentChannel: .stable,
+                bundleChannel: .dev
+            ))
+        }
+    }
+
     func testStorageRequirementIncludesBundleRootfsAndMargin() {
         let requirement = RuntimeUpdatePreflightPolicy.storageRequirement(
             stagedBundleBytes: 30,
@@ -28,6 +55,28 @@ final class RuntimeUpdatePreflightPolicyTests: XCTestCase {
         XCTAssertEqual(requirement.requiredBytes, 130)
         XCTAssertNil(requirement.installedRootfsBytes)
         XCTAssertNil(requirement.incomingRootfsBytes)
+    }
+
+    private func manifest(
+        channel: UpdateBundleChannel = .stable,
+        targetPlatform: String = "macos-arm64",
+        minUpdaterVersion: String? = "1.2.0"
+    ) -> UpdateBundleManifest {
+        UpdateBundleManifest(
+            schemaVersion: 3,
+            product: "com.tirosh.vitalserver",
+            channel: channel,
+            helperVersion: "1.2.3",
+            releaseLabel: "1.2.3",
+            targetPlatform: targetPlatform,
+            components: ["updater": "1.2.3"],
+            minUpdaterVersion: minUpdaterVersion,
+            requiresGuestActivation: false,
+            requiresTwoPhaseUpdate: false,
+            createdAt: "2026-05-22T00:00:00Z",
+            artifacts: [],
+            migrations: []
+        )
     }
 }
 

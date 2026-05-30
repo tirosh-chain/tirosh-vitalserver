@@ -238,6 +238,79 @@ final class RuntimeLogExporterTests: XCTestCase {
         XCTAssertEqual(archivedManifest?.collectionIssue, "collection failed")
     }
 
+    func testExportReplacesExistingDestinationArchive() async throws {
+        let root = try temporaryDirectory()
+        let productLogs = root.appendingPathComponent("product/logs", isDirectory: true)
+        let destination = root.appendingPathComponent("export.zip")
+        try FileManager.default.createDirectory(at: productLogs, withIntermediateDirectories: true)
+        try "old archive".write(to: destination, atomically: true, encoding: .utf8)
+
+        let exporter = MacHostRuntimeLogExporter(
+            logCollector: FakeRuntimeLogCollectorForExport(),
+            productLogsDirectory: productLogs,
+            supplementalLogItems: [],
+            rotatedSupplementalSets: [],
+            archiveRunner: { _, arguments in
+                let temporaryArchive = URL(fileURLWithPath: arguments[5])
+                try? "new archive".write(to: temporaryArchive, atomically: true, encoding: .utf8)
+                return RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "")
+            }
+        )
+
+        let result = try await exporter.exportLogs(to: destination)
+
+        XCTAssertEqual(result.destination, destination)
+        XCTAssertEqual(try String(contentsOf: destination), "new archive")
+    }
+
+    func testExportThrowsArchiveFailureWithCommandOutput() async throws {
+        let root = try temporaryDirectory()
+        let productLogs = root.appendingPathComponent("product/logs", isDirectory: true)
+        let destination = root.appendingPathComponent("export.zip")
+        try FileManager.default.createDirectory(at: productLogs, withIntermediateDirectories: true)
+
+        let exporter = MacHostRuntimeLogExporter(
+            logCollector: FakeRuntimeLogCollectorForExport(),
+            productLogsDirectory: productLogs,
+            supplementalLogItems: [],
+            rotatedSupplementalSets: [],
+            archiveRunner: { _, _ in
+                RuntimeCommandResult(exitCode: 2, stdout: "stdout detail", stderr: "ditto denied")
+            }
+        )
+
+        do {
+            _ = try await exporter.exportLogs(to: destination)
+            XCTFail("Expected log export failure")
+        } catch {
+            XCTAssertEqual(error.localizedDescription, "stdout detail\nditto denied")
+        }
+    }
+
+    func testExportThrowsArchiveFailureWithFallbackSummary() async throws {
+        let root = try temporaryDirectory()
+        let productLogs = root.appendingPathComponent("product/logs", isDirectory: true)
+        let destination = root.appendingPathComponent("export.zip")
+        try FileManager.default.createDirectory(at: productLogs, withIntermediateDirectories: true)
+
+        let exporter = MacHostRuntimeLogExporter(
+            logCollector: FakeRuntimeLogCollectorForExport(),
+            productLogsDirectory: productLogs,
+            supplementalLogItems: [],
+            rotatedSupplementalSets: [],
+            archiveRunner: { _, _ in
+                RuntimeCommandResult(exitCode: 7, stdout: "  ", stderr: "\n")
+            }
+        )
+
+        do {
+            _ = try await exporter.exportLogs(to: destination)
+            XCTFail("Expected log export failure")
+        } catch {
+            XCTAssertEqual(error.localizedDescription, "Command failed with exit code 7")
+        }
+    }
+
     func testExportSkipsUnreadableSupplementalSourceAndRecordsManifestIssue() async throws {
         let root = try temporaryDirectory()
         let productLogs = root.appendingPathComponent("product/logs", isDirectory: true)
