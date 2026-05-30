@@ -107,4 +107,43 @@ final class ProcessStateTests: XCTestCase {
             processExists: { _ in true }
         ))
     }
+
+    func testWaitUntilStoppedFailsWhenPidFileIsInvalid() {
+        let fileStore = RuntimeFileStoreSpy()
+        let pidFile = URL(fileURLWithPath: "/runtime/run/vitalserver-vm.pid")
+        fileStore.files[pidFile] = Data("not-a-pid\n".utf8)
+
+        XCTAssertThrowsError(try ProcessState.waitUntilStopped(
+            pidFile: pidFile,
+            fileStore: fileStore,
+            timeoutSeconds: 1,
+            pollIntervalSeconds: 0.001,
+            processExists: { _ in false }
+        )) { error in
+            guard case LauncherError.runtimeOperationFailed(let message) = error else {
+                return XCTFail("Expected runtimeOperationFailed, got \(error)")
+            }
+            XCTAssertTrue(message.contains("invalid VM process pid file"))
+        }
+    }
+
+    func testRequestStopAndWaitFailsWhenPidFileIsInvalid() {
+        let fileStore = RuntimeFileStoreSpy()
+        let pidFile = URL(fileURLWithPath: "/runtime/run/vitalserver-vm.pid")
+        fileStore.files[pidFile] = Data("not-a-pid\n".utf8)
+
+        XCTAssertThrowsError(try ProcessState.requestStopAndWait(
+            pidFile: pidFile,
+            fileStore: fileStore,
+            timeoutSeconds: 1,
+            pollIntervalSeconds: 0.001,
+            processExists: { _ in false },
+            signalProcess: { _, _ in XCTFail("Invalid pid file should fail before signaling"); return 0 }
+        )) { error in
+            guard case LauncherError.runtimeOperationFailed(let message) = error else {
+                return XCTFail("Expected runtimeOperationFailed, got \(error)")
+            }
+            XCTAssertTrue(message.contains("invalid VM process pid file"))
+        }
+    }
 }

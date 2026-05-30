@@ -27,9 +27,15 @@ enum ProcessState {
         pidFile: URL,
         fileStore: RuntimeFileReading & RuntimeFileWriting = SystemRuntimeFileStore()
     ) throws {
-        guard let pid = readPid(pidFile, fileStore: fileStore) else {
+        let pid: pid_t
+        switch readPid(pidFile, fileStore: fileStore) {
+        case .missing:
             print("stopped")
             return
+        case .loaded(let loadedPid):
+            pid = loadedPid
+        case .failed(let message):
+            throw LauncherError.runtimeOperationFailed(message)
         }
 
         if kill(pid, 0) == 0 {
@@ -44,9 +50,15 @@ enum ProcessState {
         pidFile: URL,
         fileStore: RuntimeFileReading & RuntimeFileWriting = SystemRuntimeFileStore()
     ) throws {
-        guard let pid = readPid(pidFile, fileStore: fileStore) else {
+        let pid: pid_t
+        switch readPid(pidFile, fileStore: fileStore) {
+        case .missing:
             print("already stopped")
             return
+        case .loaded(let loadedPid):
+            pid = loadedPid
+        case .failed(let message):
+            throw LauncherError.runtimeOperationFailed(message)
         }
 
         if kill(pid, SIGTERM) == 0 {
@@ -66,9 +78,15 @@ enum ProcessState {
         signalProcess: (pid_t, Int32) -> Int32 = { kill($0, $1) },
         log: (String) -> Void = { _ in }
     ) throws {
-        guard let pid = readPid(pidFile, fileStore: fileStore) else {
+        let pid: pid_t
+        switch readPid(pidFile, fileStore: fileStore) {
+        case .missing:
             log("VM process pid file is missing; skipping graceful process stop")
             return
+        case .loaded(let loadedPid):
+            pid = loadedPid
+        case .failed(let message):
+            throw LauncherError.runtimeOperationFailed(message)
         }
 
         guard processExists(pid) else {
@@ -109,9 +127,15 @@ enum ProcessState {
         signalProcess: (pid_t, Int32) -> Int32 = { kill($0, $1) },
         log: (String) -> Void = { _ in }
     ) throws {
-        guard let pid = readPid(pidFile, fileStore: fileStore) else {
+        let pid: pid_t
+        switch readPid(pidFile, fileStore: fileStore) {
+        case .missing:
             log("VM process pid file is missing; skipping forced process stop")
             return
+        case .loaded(let loadedPid):
+            pid = loadedPid
+        case .failed(let message):
+            throw LauncherError.runtimeOperationFailed(message)
         }
 
         guard processExists(pid) else {
@@ -152,8 +176,14 @@ enum ProcessState {
     ) throws {
         let deadline = Date().addingTimeInterval(timeoutSeconds)
         while true {
-            guard let pid = readPid(pidFile, fileStore: fileStore) else {
+            let pid: pid_t
+            switch readPid(pidFile, fileStore: fileStore) {
+            case .missing:
                 return
+            case .loaded(let loadedPid):
+                pid = loadedPid
+            case .failed(let message):
+                throw LauncherError.runtimeOperationFailed(message)
             }
             guard processExists(pid) else {
                 removePidFile(pidFile, fileStore: fileStore)
@@ -168,15 +198,22 @@ enum ProcessState {
         }
     }
 
-    private static func readPid(_ pidFile: URL, fileStore: RuntimeFileReading) -> pid_t? {
-        guard
-            let data = try? fileStore.readData(pidFile),
-            let text = String(data: data, encoding: .utf8),
-            let pid = pid_t(text.trimmingCharacters(in: .whitespacesAndNewlines))
-        else {
-            return nil
+    private static func readPid(_ pidFile: URL, fileStore: RuntimeFileReading) -> RuntimePidFileReadResult {
+        guard fileStore.fileExists(pidFile) else {
+            return .missing
         }
-        return pid
+        do {
+            let data = try fileStore.readData(pidFile)
+            guard
+                let text = String(data: data, encoding: .utf8),
+                let pid = pid_t(text.trimmingCharacters(in: .whitespacesAndNewlines))
+            else {
+                return .failed("invalid VM process pid file pidFile=\(pidFile.path)")
+            }
+            return .loaded(pid)
+        } catch {
+            return .failed("failed to read VM process pid file pidFile=\(pidFile.path) error=\(error.localizedDescription)")
+        }
     }
 
     private static func defaultProcessExists(_ pid: pid_t) -> Bool {
@@ -185,4 +222,10 @@ enum ProcessState {
         }
         return errno == EPERM
     }
+}
+
+private enum RuntimePidFileReadResult {
+    case missing
+    case loaded(pid_t)
+    case failed(String)
 }

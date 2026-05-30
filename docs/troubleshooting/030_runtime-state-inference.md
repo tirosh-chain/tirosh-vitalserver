@@ -40,6 +40,7 @@ Runtime 상태가 실제 상황과 다르게 보이거나, update 진행 상태�
 - settings 파일을 읽거나 decode하지 못했는데 기본 설정값으로 조용히 대체합니다.
 - guest 작업 result 파일을 읽거나 decode하지 못했는데 “아직 result 없음”처럼 대기합니다.
 - Redis backup result 파일을 읽거나 decode하지 못했는데 “guest worker 대기 중”처럼 대기합니다.
+- VM pid 파일을 읽거나 parse하지 못했는데 “프로세스 없음”처럼 종료 성공으로 처리합니다.
 
 ## Impact
 
@@ -98,6 +99,7 @@ rg -n "try\\? JSONDecoder\\(\\)\\.decode\\(GuestRuntimeStateDocument|guestRuntim
 rg -n "try\\? .*RuntimeSettings|VMConfigDocument\\.load\\(|GuestRuntimeConfig\\.load\\(|proxyPort\\(plistPath" apps/vitalserver-macos-runtime/Sources/MacHostRuntimeAdapter
 rg -n "load(UpdateActivation|UpdateShutdown|DatastoreRepair).*\\(\\) -> .*Document\\?|try\\? JSONDecoder\\(\\)\\.decode\\(.*ResultDocument" apps/vitalserver-macos-runtime/Sources
 rg -n "loadRedisBackupResult|RedisBackupResultDocument|redis backup guest worker" apps/vitalserver-macos-runtime/Sources
+rg -n "readPid\\(|try\\? fileStore\\.readData\\(pidFile\\)|pid_t\\(" apps/vitalserver-macos-runtime/Sources
 ```
 
 상태 관련 read path에서 아래 패턴이 보이면 재검토합니다.
@@ -132,6 +134,7 @@ guest runtime-state read/decode failure -> missing resource usage
 settings read/decode failure -> default settings
 guest result read/decode failure -> still waiting
 redis backup result read/decode failure -> still waiting
+pid file read/parse failure -> process stopped
 ```
 
 ## Actions
@@ -170,6 +173,7 @@ redis backup result read/decode failure -> still waiting
 28. Settings reader는 missing과 read/decode failure를 구분합니다. 파일이 있는데 읽기 실패하면 `readIssues`로 노출하고, 기본값 사용 사실을 숨기지 않습니다.
 29. Guest result reader는 missing과 read/decode failure를 구분합니다. Update activation/shutdown/datastore repair waiter는 result read failure를 즉시 실패로 처리합니다.
 30. Redis backup result reader는 missing과 read/decode failure를 구분합니다. Redis backup wait loop는 result read failure를 guest worker 대기 상태로 보지 않습니다.
+31. VM pid file reader는 missing과 read/parse failure를 구분합니다. Invalid pid file은 stopped 상태로 추정하지 않고 runtime operation failure로 노출합니다.
 
 ## Prevention
 
@@ -212,6 +216,7 @@ redis backup result read/decode failure -> still waiting
 - settings 파일 read/decode 실패를 기본 설정값으로 조용히 대체
 - guest result read/decode 실패를 missing result와 같은 값으로 처리
 - Redis backup result read/decode 실패를 guest worker 대기 상태와 같은 값으로 처리
+- pid file read/parse 실패를 missing pid file과 같은 값으로 처리
 
 ## Operational Notes
 
@@ -253,3 +258,4 @@ redis backup result read/decode failure -> still waiting
 - 2026-05-30: Settings reader가 `vm-config.json`, guest runtime config, proxy launch daemon, VM disk size 읽기 실패를 `readIssues`로 노출하도록 변경했습니다. 파일 부재와 파일 손상/권한 실패를 분리합니다.
 - 2026-05-30: Guest result gateway가 result document 읽기 결과를 `missing`, `loaded`, `failed`로 분리했습니다. Update activation/shutdown/datastore repair wait loop는 decode/read 실패를 더 이상 대기 상태로 보지 않습니다.
 - 2026-05-30: Redis backup result reader가 result document 읽기 결과를 `missing`, `loaded`, `failed`로 분리했습니다. Decode/read 실패는 Redis backup operation 실패로 즉시 노출합니다.
+- 2026-05-30: VM pid file reader가 pid file 읽기 결과를 `missing`, `loaded`, `failed`로 분리했습니다. Invalid/unreadable pid file은 process stopped로 추정하지 않습니다.
