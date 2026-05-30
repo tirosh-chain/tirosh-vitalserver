@@ -5,7 +5,12 @@ import HostInfrastructure
 
 extension RuntimeLifecycle {
     func latestBackup() -> URL? {
-        backupStore().latestBackup()
+        do {
+            return try backupStore().latestBackup()
+        } catch {
+            log("failed to read latest backup error=\(error.localizedDescription)")
+            return nil
+        }
     }
 
     func backupStore() -> RuntimeBackupStore {
