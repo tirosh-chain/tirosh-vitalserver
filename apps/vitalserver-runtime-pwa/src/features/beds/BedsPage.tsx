@@ -8,6 +8,7 @@ import {
   recorderStatusTone
 } from "@/domain/runtime-control/formatting/status";
 import { formatLocalDateTime } from "@/domain/runtime-control/formatting/time";
+import { NOT_REPORTED } from "@/domain/runtime-control/formatting/reported";
 import { DataTable } from "@/shared/ui/DataTable";
 import { ErrorState } from "@/shared/ui/ErrorState";
 import { KeyValueRows } from "@/shared/ui/KeyValueRows";
@@ -18,24 +19,29 @@ import { StatusBadge } from "@/shared/ui/StatusBadge";
 export function BedsPage() {
   const bedsQuery = useVitalDBBeds();
   const allBeds = useMemo(
-    () => [...(bedsQuery.data ?? [])].sort(sortByLastSeen),
+    () => (bedsQuery.data ? [...bedsQuery.data].sort(sortByLastSeen) : null),
     [bedsQuery.data]
   );
   const [searchText, setSearchText] = useState("");
-  const beds = filterBeds(allBeds, searchText);
+  const beds = filterBeds(allBeds ?? [], searchText);
   const identifiedBeds = beds.filter(hasBedID);
   const [selectedBedID, setSelectedBedID] = useState<string | null>(null);
   const selectedBed =
     identifiedBeds.find((bed) => bed.bedID === selectedBedID) ??
     identifiedBeds[0];
 
-  const summary = {
-    known: allBeds.length,
-    online: allBeds.filter((bed) => bed.status === "online").length,
-    stale: allBeds.filter((bed) => bed.status === "stale").length,
-    assignments: allBeds.filter((bed) => Boolean(bed.vrcode)).length,
-    anomalies: allBeds.reduce((total, bed) => total + (bed.currentAnomalyCount ?? 0), 0)
-  };
+  const summary = allBeds
+    ? {
+        known: allBeds.length,
+        online: allBeds.filter((bed) => bed.status === "online").length,
+        stale: allBeds.filter((bed) => bed.status === "stale").length,
+        assignments: allBeds.filter((bed) => Boolean(bed.vrcode)).length,
+        anomalies: allBeds.reduce(
+          (total, bed) => total + (bed.currentAnomalyCount ?? 0),
+          0
+        )
+      }
+    : null;
 
   return (
     <div className="page-stack">
@@ -61,11 +67,11 @@ export function BedsPage() {
       >
         <MetricStrip
           metrics={[
-            { label: "Known beds", value: summary.known },
-            { label: "Online beds", value: summary.online },
-            { label: "Stale beds", value: summary.stale },
-            { label: "Assignments", value: summary.assignments },
-            { label: "Bed anomalies", value: summary.anomalies }
+            { label: "Known beds", value: summary?.known ?? NOT_REPORTED },
+            { label: "Online beds", value: summary?.online ?? NOT_REPORTED },
+            { label: "Stale beds", value: summary?.stale ?? NOT_REPORTED },
+            { label: "Assignments", value: summary?.assignments ?? NOT_REPORTED },
+            { label: "Bed anomalies", value: summary?.anomalies ?? NOT_REPORTED }
           ]}
         />
 

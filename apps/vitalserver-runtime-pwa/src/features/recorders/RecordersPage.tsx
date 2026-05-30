@@ -8,6 +8,7 @@ import {
   recorderStatusTone
 } from "@/domain/runtime-control/formatting/status";
 import { formatLocalDateTime } from "@/domain/runtime-control/formatting/time";
+import { NOT_REPORTED } from "@/domain/runtime-control/formatting/reported";
 import { DataTable } from "@/shared/ui/DataTable";
 import { ErrorState } from "@/shared/ui/ErrorState";
 import { KeyValueRows } from "@/shared/ui/KeyValueRows";
@@ -19,33 +20,42 @@ import { RecorderActivityChart } from "./RecorderActivityChart";
 export function RecordersPage() {
   const recordersQuery = useVitalDBRecorders();
   const allRecorders = useMemo(
-    () => [...(recordersQuery.data?.recorders ?? [])].sort(sortByLastSeen),
+    () =>
+      recordersQuery.data?.recorders
+        ? [...recordersQuery.data.recorders].sort(sortByLastSeen)
+        : null,
     [recordersQuery.data?.recorders]
   );
   const [searchText, setSearchText] = useState("");
   const [showHistory, setShowHistory] = useState(false);
   const [selectedVrcode, setSelectedVrcode] = useState<string | null>(null);
   const visibleRecorders = showHistory
-    ? allRecorders
-    : allRecorders.filter((recorder) => recorder.presentInLatestObservation !== false);
+    ? (allRecorders ?? [])
+    : (allRecorders ?? []).filter(
+        (recorder) => recorder.presentInLatestObservation !== false
+      );
   const recorders = filterRecorders(visibleRecorders, searchText);
   const identifiedRecorders = recorders.filter(hasVrcode);
   const selectedRecorder =
     identifiedRecorders.find((recorder) => recorder.vrcode === selectedVrcode) ??
     identifiedRecorders[0];
 
-  const summary = {
-    known: allRecorders.length,
-    current: allRecorders.filter(
-      (recorder) => recorder.presentInLatestObservation !== false
-    ).length,
-    online: visibleRecorders.filter((recorder) => recorder.status === "online").length,
-    stale: visibleRecorders.filter((recorder) => recorder.status === "stale").length,
-    anomalies: visibleRecorders.reduce(
-      (total, recorder) => total + (recorder.currentAnomalyCount ?? 0),
-      0
-    )
-  };
+  const summary = allRecorders
+    ? {
+        known: allRecorders.length,
+        current: allRecorders.filter(
+          (recorder) => recorder.presentInLatestObservation !== false
+        ).length,
+        online: visibleRecorders.filter((recorder) => recorder.status === "online")
+          .length,
+        stale: visibleRecorders.filter((recorder) => recorder.status === "stale")
+          .length,
+        anomalies: visibleRecorders.reduce(
+          (total, recorder) => total + (recorder.currentAnomalyCount ?? 0),
+          0
+        )
+      }
+    : null;
 
   return (
     <div className="page-stack">
@@ -79,11 +89,11 @@ export function RecordersPage() {
       >
         <MetricStrip
           metrics={[
-            { label: "Known recorders", value: summary.known },
-            { label: "Current", value: summary.current },
-            { label: "Online recorders", value: summary.online },
-            { label: "Stale recorders", value: summary.stale },
-            { label: "Recorder anomalies", value: summary.anomalies }
+            { label: "Known recorders", value: summary?.known ?? NOT_REPORTED },
+            { label: "Current", value: summary?.current ?? NOT_REPORTED },
+            { label: "Online recorders", value: summary?.online ?? NOT_REPORTED },
+            { label: "Stale recorders", value: summary?.stale ?? NOT_REPORTED },
+            { label: "Recorder anomalies", value: summary?.anomalies ?? NOT_REPORTED }
           ]}
         />
 

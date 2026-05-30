@@ -1,4 +1,5 @@
 import type { RuntimeControlOverview } from "@/domain/runtime-control/contracts/runtimeControlTypes";
+import { NOT_REPORTED } from "@/domain/runtime-control/formatting/reported";
 
 type RuntimeVitalRecorderSummary = NonNullable<
   RuntimeControlOverview["vitalRecorder"]
@@ -18,7 +19,7 @@ export function formatVitalRecorderObservationMetric(
   key: VitalRecorderObservationMetric
 ): number | string {
   if (recorder?.source !== "vitalDBObservation") {
-    return "Not reported";
+    return NOT_REPORTED;
   }
-  return recorder[key] ?? "Not reported";
+  return recorder[key] ?? NOT_REPORTED;
 }
