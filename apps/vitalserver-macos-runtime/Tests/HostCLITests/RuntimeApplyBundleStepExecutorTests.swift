@@ -120,6 +120,43 @@ final class RuntimeApplyBundleStepExecutorTests: XCTestCase {
         )
     }
 
+    func testStopRuntimeServicesLogsGuestShutdownPreparationCleanupFailure() throws {
+        var logs: [String] = []
+        let executor = RuntimeApplyBundleStepExecutor(
+            stopRuntimeServices: {},
+            prepareGuestShutdownForUpdate: { _ in },
+            clearGuestShutdownPreparation: {
+                throw LauncherError.runtimeOperationFailed("clear failed")
+            },
+            createDirectory: { _, _ in },
+            fileSize: { _ in 0 },
+            replaceFile: { _, _ in },
+            replaceUpdateArtifacts: { _, _ in },
+            runMigrations: { _, _ in },
+            refreshCloudInitSeedIfNeeded: { _ in },
+            writeRuntimeVersion: { _, _ in },
+            startRuntimeServices: { _ in },
+            activateGuestUpdateIfNeeded: { _ in },
+            waitForHealth: { _ in },
+            log: { logs.append($0) }
+        )
+        let preflight = ApplyBundlePreflightContext(
+            stagedBundle: URL(fileURLWithPath: "/staged"),
+            manifest: manifest(version: "1.2.3"),
+            stagedRootfs: URL(fileURLWithPath: "/staged/rootfs-base.raw.gz"),
+            backup: URL(fileURLWithPath: "/backup"),
+            restartPolicy: RuntimeServiceRestartPolicy(restartVM: true, restartProxy: false, restartWatchdog: false)
+        )
+
+        try executor.execute(
+            .stopRuntimeServices,
+            preflight: preflight,
+            rootfsBase: URL(fileURLWithPath: "/runtime/rootfs-base.raw.gz")
+        )
+
+        XCTAssertTrue(logs.contains { $0.contains("guest shutdown preparation cleanup failed") })
+    }
+
     func testRejectsNonApplyBundleStep() {
         let executor = RuntimeApplyBundleStepExecutor(
             stopRuntimeServices: {},

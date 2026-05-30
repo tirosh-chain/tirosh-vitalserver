@@ -28,7 +28,7 @@ struct RuntimeApplyBundleStepExecutor {
             if preflight.restartPolicy.restartVM {
                 try prepareGuestShutdownForUpdate(preflight.manifest)
                 do {
-                    defer { try? clearGuestShutdownPreparation() }
+                    defer { clearGuestShutdownPreparationAfterRuntimeStop() }
                     try stopRuntimeServices()
                 }
                 return
@@ -67,5 +67,13 @@ struct RuntimeApplyBundleStepExecutor {
     private func formatBytes(_ bytes: UInt64) -> String {
         let mib = Double(bytes) / 1_048_576
         return String(format: "%.1f MiB", max(mib, 0))
+    }
+
+    private func clearGuestShutdownPreparationAfterRuntimeStop() {
+        do {
+            try clearGuestShutdownPreparation()
+        } catch {
+            log("guest shutdown preparation cleanup failed error=\(error)")
+        }
     }
 }
