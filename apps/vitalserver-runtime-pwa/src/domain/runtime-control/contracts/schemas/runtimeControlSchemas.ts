@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { runtimeEventTypeValues } from "@/domain/runtime-control/contracts/runtimeEventTypes";
+
 const nullableString = z.string().nullable().optional();
 const nullableNumber = z.number().nullable().optional();
 const nullableBoolean = z.boolean().nullable().optional();
@@ -24,30 +26,7 @@ const vmStateSchema = z
     "failed"
   ])
   .nullable();
-const runtimeEventTypeSchema = z.enum([
-  "status-changed",
-  "progress-updated",
-  "health-observed",
-  "recovery-triggered",
-  "recovery-completed",
-  "recovery-suppressed",
-  "domain-error-observed",
-  "vm-error-observed",
-  "container-observed",
-  "audit-proxy-observed",
-  "vitaldb-observed",
-  "vitaldb-observer-unhealthy",
-  "vitaldb-anomaly-detected",
-  "watchdog-skipped",
-  "recovery-planned",
-  "service-restart-dispatched",
-  "observability-store-failed",
-  "runtime-status-observed",
-  "guest-state-observed",
-  "runtime-command-started",
-  "runtime-command-completed",
-  "runtime-command-failed"
-]);
+const runtimeEventTypeSchema = z.enum(runtimeEventTypeValues);
 const recorderStatusSchema = z.enum(["online", "stale", "offline", "unknown"]);
 const bedStatusSchema = z.enum(["online", "stale", "offline", "unknown"]);
 const anomalySeveritySchema = z.enum(["info", "warning", "critical"]);

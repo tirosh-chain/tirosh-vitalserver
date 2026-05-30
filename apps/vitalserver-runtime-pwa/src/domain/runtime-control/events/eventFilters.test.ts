@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { sinceForPeriod } from "./eventFilters";
+import { runtimeEventTypes, sinceForPeriod } from "./eventFilters";
 
 describe("runtime event filters", () => {
   it("derives a since timestamp from the selected period", () => {
@@ -16,5 +16,9 @@ describe("runtime event filters", () => {
         new Date("2026-05-29T00:00:00.000Z")
       )
     ).toBe("2026-05-28T00:00:00.000Z");
+  });
+
+  it("uses the contract event type list for UI filters", () => {
+    expect(runtimeEventTypes).toContain("recovery-suppressed");
   });
 });

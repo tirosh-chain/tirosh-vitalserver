@@ -1,3 +1,5 @@
+import { runtimeEventTypeValues } from "@/domain/runtime-control/contracts/runtimeEventTypes";
+
 export type RuntimeEventPeriod = "1h" | "6h" | "24h" | "7d";
 
 export const runtimeEventPeriods: Array<{
@@ -11,29 +13,7 @@ export const runtimeEventPeriods: Array<{
   { value: "7d", label: "Last 7 days", milliseconds: 7 * 24 * 60 * 60 * 1000 }
 ];
 
-export const runtimeEventTypes = [
-  "status-changed",
-  "progress-updated",
-  "health-observed",
-  "recovery-triggered",
-  "recovery-completed",
-  "domain-error-observed",
-  "vm-error-observed",
-  "container-observed",
-  "audit-proxy-observed",
-  "vitaldb-observed",
-  "vitaldb-observer-unhealthy",
-  "vitaldb-anomaly-detected",
-  "watchdog-skipped",
-  "recovery-planned",
-  "service-restart-dispatched",
-  "observability-store-failed",
-  "runtime-status-observed",
-  "guest-state-observed",
-  "runtime-command-started",
-  "runtime-command-completed",
-  "runtime-command-failed"
-];
+export const runtimeEventTypes = [...runtimeEventTypeValues];
 
 export function sinceForPeriod(
   period: RuntimeEventPeriod,
