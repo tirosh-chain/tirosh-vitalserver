@@ -4,7 +4,7 @@ import {
   useExportHostLogs,
   useHostLogs,
   useRuntimeCapabilities
-} from "@/application/runtime-control/queries";
+} from "@/console/hooks";
 import type { RuntimeLogSource } from "@/domain/runtime-control/contracts/runtimeControlTypes";
 import { validateHostLogExportPath } from "@/domain/runtime-control/paths/runtimePathPolicy";
 import { ErrorState } from "@/components/ErrorState";

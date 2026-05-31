@@ -17,7 +17,7 @@ import {
 import { RuntimeControlValidationError } from "@/domain/runtime-control/errors/runtimeControlError";
 
 export function updateBundleRequest(path: string): RuntimeUpdateBundleRequest {
-  return parseRuntimeControlRequest(runtimeUpdateBundleRequestSchema, {
+  return parseConsoleRequest(runtimeUpdateBundleRequestSchema, {
     bundle: {
       kind: "localPath",
       value: path
@@ -26,7 +26,7 @@ export function updateBundleRequest(path: string): RuntimeUpdateBundleRequest {
 }
 
 export function backupRequest(path: string): RuntimeBackupRequest {
-  return parseRuntimeControlRequest(runtimeBackupRequestSchema, {
+  return parseConsoleRequest(runtimeBackupRequestSchema, {
     backup: {
       kind: "localPath" as const,
       value: path
@@ -35,13 +35,13 @@ export function backupRequest(path: string): RuntimeBackupRequest {
 }
 
 export function uninstallRequest(clean: boolean): RuntimeUninstallRequest {
-  return parseRuntimeControlRequest(runtimeUninstallRequestSchema, { clean });
+  return parseConsoleRequest(runtimeUninstallRequestSchema, { clean });
 }
 
 export function testKitDeleteBedsRequest(
   roomNames: string[]
 ): RuntimeTestKitDeleteBedsRequest {
-  return parseRuntimeControlRequest(runtimeTestKitDeleteBedsRequestSchema, {
+  return parseConsoleRequest(runtimeTestKitDeleteBedsRequestSchema, {
     roomNames
   });
 }
@@ -49,19 +49,19 @@ export function testKitDeleteBedsRequest(
 export function testKitSessionSelectionRequest(
   sessionID: string | null
 ): RuntimeTestKitSessionSelectionRequest {
-  return parseRuntimeControlRequest(runtimeTestKitSessionSelectionRequestSchema, {
+  return parseConsoleRequest(runtimeTestKitSessionSelectionRequestSchema, {
     sessionID
   });
 }
 
-export function parseRuntimeControlRequest<T>(
+export function parseConsoleRequest<T>(
   schema: ZodType<T>,
   request: unknown
 ): T {
   const result = schema.safeParse(request);
   if (!result.success) {
     throw new RuntimeControlValidationError(
-      "Runtime Control request validation failed",
+      "Console request validation failed",
       result.error.issues.map((issue) => {
         const path = issue.path.join(".");
         return path ? `${path}: ${issue.message}` : issue.message;

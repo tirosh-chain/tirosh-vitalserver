@@ -34,7 +34,7 @@ export type RuntimeEventQuery = {
   cursor?: string;
 };
 
-export type RuntimeControlGateway = {
+export type ConsoleGateway = {
   getCapabilities(): Promise<RuntimeControlCapabilities>;
   getOverview(): Promise<RuntimeControlOverview>;
   getStatus(): Promise<RuntimeStatus>;

@@ -4,7 +4,7 @@ import {
   useApplyRuntimeSettings,
   useRuntimeCapabilities,
   useRuntimeSettings
-} from "@/application/runtime-control/queries";
+} from "@/console/hooks";
 import { canApplyRuntimeSettings } from "@/domain/runtime-control/capabilities/runtimeCapabilities";
 import {
   runtimeControlURLForPort,

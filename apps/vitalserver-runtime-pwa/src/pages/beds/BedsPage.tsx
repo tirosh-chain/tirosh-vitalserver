@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 
-import { useVitalDBBeds } from "@/application/runtime-control/queries";
+import { useVitalDBBeds } from "@/console/hooks";
 import type { VitalDBBedRecord } from "@/domain/runtime-control/contracts/runtimeControlTypes";
 import {
   formatBoolean,

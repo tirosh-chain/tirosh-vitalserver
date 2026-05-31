@@ -1,7 +1,7 @@
 import type {
-  RuntimeControlGateway,
+  ConsoleGateway,
   RuntimeEventQuery
-} from "@/application/runtime-control/runtimeControlGateway";
+} from "@/console/gateway";
 import {
   RuntimeControlAPIError,
   RuntimeControlContractError,
@@ -57,18 +57,18 @@ import {
 import { DEFAULT_APP_SETTINGS } from "@/config/appSettings";
 import type { ZodType } from "zod";
 
-export type RuntimeControlClientOptions = {
+export type ConsoleClientOptions = {
   baseURL?: string;
   token?: string;
   fetchImpl?: typeof fetch;
 };
 
-export class RuntimeControlClient implements RuntimeControlGateway {
+export class ConsoleClient implements ConsoleGateway {
   private readonly baseURL: string;
   private readonly token: string;
   private readonly fetchImpl: typeof fetch;
 
-  constructor(options: RuntimeControlClientOptions = {}) {
+  constructor(options: ConsoleClientOptions = {}) {
     this.baseURL = trimTrailingSlash(
       options.baseURL ?? DEFAULT_APP_SETTINGS.runtimeControl.apiBaseURL
     );

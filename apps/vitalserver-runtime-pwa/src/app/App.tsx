@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { Navigate, NavLink, Route, Routes, useLocation } from "react-router-dom";
 
-import { useRuntimeCapabilities } from "@/application/runtime-control/queries";
+import { useRuntimeCapabilities } from "@/console/hooks";
 import { cn } from "@/components/cn";
-import { runtimeControlRoutes, type RuntimeControlRoute } from "./routes";
+import { consoleRoutes, type ConsoleRoute } from "./routes";
 
 export function App() {
   const capabilities = useRuntimeCapabilities();
@@ -11,7 +11,7 @@ export function App() {
   const overflowMenuRef = useRef<HTMLDetailsElement>(null);
   const [overflowMenuOpen, setOverflowMenuOpen] = useState(false);
   const canUseTestTools = capabilities.data?.canUseTestTools === true;
-  const visibleRoutes = runtimeControlRoutes.filter(
+  const visibleRoutes = consoleRoutes.filter(
     (route) => !route.requiresTestTools || canUseTestTools
   );
   const primaryRoutes = visibleRoutes.filter((route) => route.group === "primary");
@@ -52,7 +52,7 @@ export function App() {
   }, [overflowMenuOpen]);
 
   const routeLink = (
-    route: RuntimeControlRoute,
+    route: ConsoleRoute,
     variant: "primary" | "utility" | "overflow"
   ) => (
     <NavLink
@@ -132,6 +132,6 @@ export function App() {
   );
 }
 
-function routeMatchesPath(route: RuntimeControlRoute, pathname: string) {
+function routeMatchesPath(route: ConsoleRoute, pathname: string) {
   return route.path === "/" ? pathname === "/" : pathname === route.path;
 }

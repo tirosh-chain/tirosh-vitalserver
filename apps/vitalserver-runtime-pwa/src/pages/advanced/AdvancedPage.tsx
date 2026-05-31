@@ -13,7 +13,7 @@ import {
   useRuntimeOverview,
   useRestoreRedisBackup,
   useRollbackBackup
-} from "@/application/runtime-control/queries";
+} from "@/console/hooks";
 import { canControlRecovery } from "@/domain/runtime-control/capabilities/runtimeCapabilities";
 import type {
   RuntimeControlOverview,

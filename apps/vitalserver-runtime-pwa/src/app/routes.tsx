@@ -11,7 +11,7 @@ import { StatusPage } from "@/pages/status/StatusPage";
 import { TestKitPage } from "@/pages/testkit/TestKitPage";
 import { UpdatePage } from "@/pages/update/UpdatePage";
 
-export type RuntimeControlRoute = {
+export type ConsoleRoute = {
   path: string;
   label: string;
   Page: ComponentType;
@@ -19,7 +19,7 @@ export type RuntimeControlRoute = {
   requiresTestTools?: boolean;
 };
 
-export const runtimeControlRoutes: RuntimeControlRoute[] = [
+export const consoleRoutes: ConsoleRoute[] = [
   { path: "/", label: "Status", Page: StatusPage, group: "primary" },
   {
     path: "/recorders",

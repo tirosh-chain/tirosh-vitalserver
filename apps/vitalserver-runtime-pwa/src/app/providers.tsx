@@ -2,17 +2,17 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { PropsWithChildren } from "react";
 import { useState } from "react";
 
-import { RuntimeControlGatewayProvider } from "@/application/runtime-control/RuntimeControlGatewayContext";
-import type { RuntimeControlGateway } from "@/application/runtime-control/runtimeControlGateway";
+import { ConsoleGatewayProvider } from "@/console/gatewayContext";
+import type { ConsoleGateway } from "@/console/gateway";
 import type { AppSettings } from "@/config/appSettings";
 import { AppSettingsProvider } from "@/config/AppSettingsContext";
 
 export function AppProviders({
   children,
-  runtimeControlGateway,
+  consoleGateway,
   settings
 }: PropsWithChildren<{
-  runtimeControlGateway: RuntimeControlGateway;
+  consoleGateway: ConsoleGateway;
   settings: AppSettings;
 }>) {
   const [queryClient] = useState(
@@ -30,9 +30,9 @@ export function AppProviders({
 
   return (
     <AppSettingsProvider settings={settings}>
-      <RuntimeControlGatewayProvider gateway={runtimeControlGateway}>
+      <ConsoleGatewayProvider gateway={consoleGateway}>
         <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-      </RuntimeControlGatewayProvider>
+      </ConsoleGatewayProvider>
     </AppSettingsProvider>
   );
 }

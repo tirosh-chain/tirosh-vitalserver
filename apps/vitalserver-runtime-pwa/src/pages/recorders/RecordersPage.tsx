@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 
-import { useVitalDBRecorders } from "@/application/runtime-control/queries";
+import { useVitalDBRecorders } from "@/console/hooks";
 import type {
   VitalDBRecorderRecord,
   VitalDBRecorders

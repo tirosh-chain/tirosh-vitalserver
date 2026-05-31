@@ -61,6 +61,7 @@ apps/vitalserver-vm-launcher/data/
 __pycache__/
 *.py[cod]
 .coverage
+coverage/
 coverage.xml
 htmlcov/
 

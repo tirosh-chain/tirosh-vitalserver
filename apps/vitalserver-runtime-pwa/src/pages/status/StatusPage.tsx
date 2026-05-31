@@ -1,4 +1,4 @@
-import { useRuntimeOverview } from "@/application/runtime-control/queries";
+import { useRuntimeOverview } from "@/console/hooks";
 import type { RuntimeControlOverview } from "@/domain/runtime-control/contracts/runtimeControlTypes";
 import { formatBytes } from "@/domain/runtime-control/formatting/bytes";
 import {

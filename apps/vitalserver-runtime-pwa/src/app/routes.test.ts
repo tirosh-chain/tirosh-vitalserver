@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { runtimeControlRoutes } from "./routes";
+import { consoleRoutes } from "./routes";
 
-describe("runtimeControlRoutes", () => {
+describe("consoleRoutes", () => {
   it("matches the Swift primary section order", () => {
     expect(labelsForGroup("primary")).toEqual([
       "Status",
@@ -22,7 +22,7 @@ describe("runtimeControlRoutes", () => {
 });
 
 function labelsForGroup(group: "primary" | "utility" | "overflow") {
-  return runtimeControlRoutes
+  return consoleRoutes
     .filter((route) => route.group === group)
     .map((route) => route.label);
 }

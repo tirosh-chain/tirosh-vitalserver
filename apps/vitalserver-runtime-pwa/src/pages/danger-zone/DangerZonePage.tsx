@@ -5,7 +5,7 @@ import {
   useStartRuntimeServices,
   useStopRuntimeServices,
   useUninstallRuntime
-} from "@/application/runtime-control/queries";
+} from "@/console/hooks";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { CommandResult } from "@/components/CommandResult";
 import { Panel } from "@/components/Panel";

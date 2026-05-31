@@ -1,3 +1,5 @@
+/// <reference types="vitest/config" />
+
 import { fileURLToPath, URL } from "node:url";
 
 import react from "@vitejs/plugin-react";
@@ -26,6 +28,18 @@ export default defineConfig(({ mode }) => {
     },
     preview: {
       port: settings.pwa.previewPort
+    },
+    test: {
+      coverage: {
+        provider: "v8",
+        reporter: ["text", "html", "lcov"],
+        reportsDirectory: "coverage",
+        include: ["src/**/*.{ts,tsx}"],
+        exclude: [
+          "src/domain/runtime-control/contracts/generated/**",
+          "src/main.tsx"
+        ]
+      }
     }
   };
 });

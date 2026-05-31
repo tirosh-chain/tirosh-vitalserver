@@ -314,6 +314,7 @@ help-pwa:
 	@printf "  make pwa-generate-api Generate OpenAPI TypeScript types\n"
 	@printf "  make pwa-check        Typecheck Runtime Control PWA\n"
 	@printf "  make pwa-test         Run Runtime Control PWA tests\n"
+	@printf "  make pwa-coverage     Run Runtime Control PWA coverage report\n"
 	@printf "  make pwa-build        Build Runtime Control PWA static assets\n"
 	@printf "  make pwa-dev          Start Vite dev server on 127.0.0.1:5174\n"
 	@printf "  make pwa-preview      Preview built PWA on 127.0.0.1:4174\n"

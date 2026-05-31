@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 
-import { useRuntimeEvents, useRuntimeOverview } from "@/application/runtime-control/queries";
+import { useRuntimeEvents, useRuntimeOverview } from "@/console/hooks";
 import type { RuntimeEventDocument } from "@/domain/runtime-control/contracts/runtimeControlTypes";
 import { formatVitalRecorderObservationMetric } from "@/domain/runtime-control/formatting/vitalRecorder";
 import { formatRuntimeState } from "@/domain/runtime-control/formatting/runtimeState";

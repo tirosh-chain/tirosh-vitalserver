@@ -4,7 +4,7 @@ import {
   useApplyUpdateBundle,
   useSummarizeUpdateBundle,
   useVerifyUpdateBundle
-} from "@/application/runtime-control/queries";
+} from "@/console/hooks";
 import { CommandResult } from "@/components/CommandResult";
 import { ErrorState } from "@/components/ErrorState";
 import { Panel } from "@/components/Panel";

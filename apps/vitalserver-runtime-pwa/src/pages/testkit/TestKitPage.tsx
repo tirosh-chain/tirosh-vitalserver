@@ -10,7 +10,7 @@ import {
   useSessionTestKitAction,
   useStartTestKitVirtualRecorders,
   useTestKitStatus
-} from "@/application/runtime-control/queries";
+} from "@/console/hooks";
 import type { RuntimeTestKitSession } from "@/domain/runtime-control/contracts/runtimeControlTypes";
 import { formatBytes } from "@/domain/runtime-control/formatting/bytes";
 import { ErrorState } from "@/components/ErrorState";

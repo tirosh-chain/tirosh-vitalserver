@@ -96,8 +96,9 @@ npm --prefix apps/vitalserver-runtime-pwa run generate:api
 src/
   app/
     bootstrap.tsx    settings 로딩, API gateway 생성, provider 구성
-    providers.tsx    React Query, AppSettings, RuntimeControlGateway provider
+    providers.tsx    React Query, AppSettings, ConsoleGateway provider
     routes.tsx       Swift UI 순서에 맞춘 route metadata
+  console/           Remote Console gateway port, React Query hooks, request builders
   components/        app-wide reusable UI components
   config/            AppSettings and app-wide config context
   styles/            global styles
@@ -107,30 +108,29 @@ src/
       events/        event filter policy and period calculations
       formatting/    runtime display/status formatting policy
       settings/      runtime settings validation policy
-  application/
-    runtime-control/ gateway port, React Query hooks, command/query orchestration
   infrastructure/
-    runtime-control-api/
-                    fetch-based Runtime Control API gateway implementation
+    console-api/     fetch-based ConsoleGateway implementation
   pages/             route-level Remote Console pages and page-owned form logic
 ```
 
 Dependency direction:
 
-- `pages`는 `application`, `domain`, `components`, `config`를 사용할 수 있습니다.
-- `application`은 `domain`과 application-owned gateway port만 사용합니다.
-- `infrastructure`는 application gateway port를 구현하고, `domain` contract를 사용할 수 있습니다.
+- `pages`는 `console`, `domain`, `components`, `config`를 사용할 수 있습니다.
+- `console`은 `domain`과 console-owned gateway port만 사용합니다.
+- `infrastructure`는 console gateway port를 구현하고, `domain` contract를 사용할 수 있습니다.
 - `app` composition root는 settings를 읽고 concrete infrastructure gateway를 주입합니다.
 - `domain`은 React, React Query, transport code를 import하지 않습니다.
 
 새로운 business/display policy는 `domain`에 둡니다. 여러 API 호출을 조합하는
-command/query 흐름은 `application`에 둡니다. fetch, token, URL 조립 같은 HTTP
+command/query 흐름은 `console`에 둡니다. fetch, token, URL 조립 같은 HTTP
 detail은 `infrastructure`에 둡니다.
 
 Route/page 컴포넌트와 특정 화면에 묶인 form draft 변환은 `pages/<page>/`에
 둡니다. 이 PWA는 Remote Console 전용 앱이므로 UI route 경로에 `runtime-control`
-depth를 한 번 더 두지 않습니다. 여러 화면에서 공유되는 UI는 `components`에 두고,
-여러 화면에서 공유되는 runtime contract, validation, formatting, capability policy는
+depth를 한 번 더 두지 않습니다. PWA 내부의 gateway, hooks, query key도 `console`
+이름으로 관리하고, `runtime-control` 이름은 OpenAPI contract와 runtime policy
+경계에만 남깁니다. 여러 화면에서 공유되는 UI는 `components`에 두고, 여러 화면에서
+공유되는 runtime contract, validation, formatting, capability policy는
 `domain/runtime-control`에 둡니다.
 
 ## Air-Gapped Deployment
@@ -172,6 +172,7 @@ http://<mac-host-or-ip>:18321/
 ```sh
 npm --prefix apps/vitalserver-runtime-pwa run check
 npm --prefix apps/vitalserver-runtime-pwa test
+npm --prefix apps/vitalserver-runtime-pwa run coverage
 npm --prefix apps/vitalserver-runtime-pwa run build
 ```
 
@@ -180,8 +181,15 @@ npm --prefix apps/vitalserver-runtime-pwa run build
 ```sh
 make pwa-check
 make pwa-test
+make pwa-coverage
 make pwa-build
 ```
+
+Coverage report:
+
+- Terminal summary: printed by `npm --prefix apps/vitalserver-runtime-pwa run coverage`.
+- HTML report: `apps/vitalserver-runtime-pwa/coverage/index.html`.
+- LCOV report: `apps/vitalserver-runtime-pwa/coverage/lcov.info`.
 
 README나 문서만 수정했다면 full build가 꼭 필요하지는 않습니다. 설정, routing,
 API client, domain policy를 바꿨다면 `check`, `test`, `build`를 모두 돌리는 것을

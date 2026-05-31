@@ -1,7 +1,7 @@
 PWA_DIR ?= apps/vitalserver-runtime-pwa
 NPM ?= npm
 
-.PHONY: pwa-install pwa-require-deps pwa-generate-api pwa-check pwa-test pwa-build pwa-dev pwa-preview
+.PHONY: pwa-install pwa-require-deps pwa-generate-api pwa-check pwa-test pwa-coverage pwa-build pwa-dev pwa-preview
 
 pwa-install:
 	$(NPM) --prefix $(PWA_DIR) install
@@ -21,6 +21,9 @@ pwa-check:
 
 pwa-test:
 	$(NPM) --prefix $(PWA_DIR) test
+
+pwa-coverage:
+	$(NPM) --prefix $(PWA_DIR) run coverage
 
 pwa-build: pwa-require-deps
 	$(NPM) --prefix $(PWA_DIR) run build

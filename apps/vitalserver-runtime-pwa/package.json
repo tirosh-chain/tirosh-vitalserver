@@ -10,6 +10,7 @@
     "check": "npm run generate:api && tsc -b --pretty false",
     "preview": "vite preview --host 127.0.0.1",
     "test": "vitest run",
+    "coverage": "vitest run --coverage",
     "generate:api": "openapi-typescript ../../docs/macos-runtime/runtime-control.openapi.json -o src/domain/runtime-control/contracts/generated/runtime-control.ts"
   },
   "dependencies": {
@@ -27,6 +28,7 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^5.0.0",
+    "@vitest/coverage-v8": "^4.1.7",
     "autoprefixer": "^10.5.0",
     "openapi-typescript": "^7.0.0",
     "postcss": "^8.5.15",
