@@ -127,6 +127,199 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
         XCTAssertEqual(events.last?.result?.stderr, "permission denied\n")
     }
 
+    func testUpdateApplyChaosSeparatesApplyFailureFromRollbackFailure() {
+        let preflight = applyPreflight(
+            artifacts: [
+                UpdateBundleArtifact(
+                    name: "app.tar.gz",
+                    type: .appBundle,
+                    sha256: "sha256",
+                    size: 10
+                ),
+            ]
+        )
+        var statuses: [(level: RuntimeStatusLevel, operation: RuntimeOperation, message: String)] = []
+        var progressEvents: [RuntimeStepExecutionEvent] = []
+        var executedSteps: [RuntimeWorkflowStep] = []
+        var rollbackBackup: URL?
+        var restartedPolicy: RuntimeServiceRestartPolicy?
+        var logs: [String] = []
+        let runner = RuntimeApplyBundleRunner(
+            prepareLogs: {},
+            initialHealthSnapshot: { Self.healthSnapshot() },
+            preparePreflight: { _ in preflight },
+            executeStep: { step, _ in
+                executedSteps.append(step)
+                if step == .replaceUpdateArtifacts {
+                    throw RuntimeChaosError.applyArtifactWriteDenied
+                }
+            },
+            rollback: { backup in
+                rollbackBackup = backup
+                throw RuntimeChaosError.rollbackRestoreDenied
+            },
+            startRuntimeServices: { policy in
+                restartedPolicy = policy
+            },
+            statusReporter: RuntimeWorkflowStatusReporter(
+                writeStatus: { level, operation, message in
+                    statuses.append((level, operation, message))
+                },
+                writeProgress: { event in
+                    progressEvents.append(event)
+                },
+                log: { message in
+                    logs.append(message)
+                }
+            ),
+            pruneOldRuntimeArtifacts: {},
+            reasonText: { $0.map(\.rawValue).joined(separator: ", ") }
+        )
+
+        XCTAssertThrowsError(try runner.run(bundleURL: URL(fileURLWithPath: "/incoming/update-bundle"))) { error in
+            XCTAssertEqual(String(describing: error), "applyArtifactWriteDenied")
+        }
+
+        XCTAssertEqual(rollbackBackup, preflight.backup)
+        XCTAssertEqual(restartedPolicy, preflight.restartPolicy)
+        XCTAssertTrue(executedSteps.contains(.replaceUpdateArtifacts))
+        XCTAssertEqual(progressEvents.last?.step, .replaceUpdateArtifacts)
+        XCTAssertEqual(progressEvents.last?.stepStatus, .failed)
+        XCTAssertTrue(statuses.contains { $0.level == .recovering && $0.message.contains("applyArtifactWriteDenied") })
+        XCTAssertEqual(statuses.last?.level, .critical)
+        XCTAssertTrue(statuses.last?.message.contains("rollbackRestoreDenied") == true)
+        XCTAssertTrue(logs.contains { $0.contains("bundle apply failed; rolling back error=applyArtifactWriteDenied") })
+        XCTAssertTrue(logs.contains { $0.contains("bundle apply rollback failed error=rollbackRestoreDenied") })
+    }
+
+    func testRollbackChaosPublishesFailedRestoreStepAndKeepsRecoveringStatus() {
+        let preflight = rollbackPreflight()
+        var statuses: [(level: RuntimeStatusLevel, operation: RuntimeOperation, message: String)] = []
+        var progressEvents: [RuntimeStepExecutionEvent] = []
+        var executedSteps: [RuntimeWorkflowStep] = []
+        let runner = RuntimeRollbackRunner(
+            preparePreflight: { _ in preflight },
+            executeStep: { step, _ in
+                executedSteps.append(step)
+                if step == .rollbackRestoreRootfsBase {
+                    throw RuntimeChaosError.rollbackRestoreDenied
+                }
+            },
+            writeStatus: { level, operation, message in
+                statuses.append((level, operation, message))
+            },
+            writeProgress: { event in
+                progressEvents.append(event)
+            },
+            vmDiskPath: { "/product/vm/vm-disk.img" },
+            log: { _ in }
+        )
+
+        XCTAssertThrowsError(try runner.run(.specificBackup(preflight.backup))) { error in
+            XCTAssertEqual(String(describing: error), "rollbackRestoreDenied")
+        }
+
+        XCTAssertEqual(executedSteps, [.rollbackStopRuntimeServices, .rollbackRestoreRootfsBase])
+        XCTAssertEqual(progressEvents.last?.step, .rollbackRestoreRootfsBase)
+        XCTAssertEqual(progressEvents.last?.stepStatus, .failed)
+        XCTAssertEqual(statuses.last?.level, .recovering)
+        XCTAssertEqual(statuses.last?.operation, .rollback)
+    }
+
+    func testGuestResultChaosSeparatesInvalidResultFromTimeout() {
+        let invalidResult = GuestActivationWaiter.wait(
+            expectedRequestId: "request-current",
+            configuration: GuestActivationWaitConfiguration(maxAttempts: 1, progressEveryAttempts: 1),
+            loadResult: {
+                .loaded(GuestUpdateActivationResultDocument(
+                    schemaVersion: 2,
+                    requestId: "request-stale",
+                    operation: .activateGuestUpdate,
+                    status: .completed,
+                    message: "stale success",
+                    updatedAt: "2026-05-31T00:00:00Z"
+                ))
+            },
+            onProgress: { _ in },
+            sleep: {}
+        )
+        var progressMessages: [String] = []
+        var sleepCount = 0
+        let timeoutResult = GuestActivationWaiter.wait(
+            expectedRequestId: "request-current",
+            configuration: GuestActivationWaitConfiguration(maxAttempts: 2, progressEveryAttempts: 1),
+            loadResult: { .missing },
+            onProgress: { progressMessages.append($0) },
+            sleep: { sleepCount += 1 }
+        )
+
+        XCTAssertEqual(invalidResult, .failed(message: "guest update activation result does not match the current request"))
+        XCTAssertEqual(timeoutResult, .timedOut)
+        XCTAssertEqual(progressMessages, [
+            "waiting for guest update activation worker",
+            "waiting for guest update activation worker",
+        ])
+        XCTAssertEqual(sleepCount, 1)
+    }
+
+    func testRollbackPreflightChaosStopsWhenRestoreArtifactIsMissing() {
+        let backup = URL(fileURLWithPath: "/product/backups/20260531T000000Z-before-1.2.3")
+        let missingRootfs = backup.appendingPathComponent(Constants.Artifacts.rootfsBase)
+        let runner = RuntimeRollbackPreflightRunner(
+            requireLatestBackup: {
+                XCTFail("specific backup should not resolve latest backup")
+                return URL(fileURLWithPath: "/unused")
+            },
+            directoryExists: { url in url == backup },
+            fileExists: { _ in false },
+            serviceRestartPolicy: {
+                XCTFail("missing restore artifact should stop before service policy")
+                return RuntimeServiceRestartPolicy(restartVM: false, restartProxy: false, restartWatchdog: false)
+            },
+            log: { _ in XCTFail("missing restore artifact should stop before logging") }
+        )
+
+        XCTAssertThrowsError(try runner.prepare(.specificBackup(backup))) { error in
+            XCTAssertEqual(String(describing: error), String(describing: LauncherError.missingFile(missingRootfs.path)))
+        }
+    }
+
+    func testBackupChaosStopsBeforeManifestWhenManagedArtifactCopyIsDenied() {
+        let paths = backupStorePaths()
+        var createdDirectories: [URL] = []
+        var wroteManifest = false
+        let store = RuntimeBackupStore(
+            paths: paths,
+            timestamp: { "20260531T000000Z" },
+            isoTimestamp: { "2026-05-31T00:00:00Z" },
+            fileExists: { url in url == paths.rootfsBase },
+            directoryExists: { _ in false },
+            createDirectory: { url, _ in
+                createdDirectories.append(url)
+            },
+            copyItem: { _, _ in
+                throw RuntimeChaosError.backupWriteDenied
+            },
+            removeItem: { _ in },
+            writeData: { _, _ in
+                wroteManifest = true
+            },
+            contentsOfDirectory: { _ in [] },
+            childDirectories: { _, _ in [] },
+            chmodExecutable: { _ in },
+            log: { _ in }
+        )
+
+        XCTAssertThrowsError(try store.createBackup(reason: "before-1.2.3")) { error in
+            XCTAssertEqual(String(describing: error), "backupWriteDenied")
+        }
+
+        XCTAssertEqual(createdDirectories, [
+            URL(fileURLWithPath: "/product/backups/20260531T000000Z-before-1.2.3"),
+        ])
+        XCTAssertFalse(wroteManifest)
+    }
+
     private func makeWorkflow(
         fileStore: RuntimeFileStore,
         log: @escaping (String) -> Void = { _ in }
@@ -218,6 +411,55 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
         )
         fileStore.files[source.appendingPathComponent(Constants.Bundle.checksums)] = Data()
         fileStore.files[source.appendingPathComponent(Constants.Bundle.signature)] = Data("signature".utf8)
+    }
+
+    private func applyPreflight(artifacts: [UpdateBundleArtifact]) -> ApplyBundlePreflightContext {
+        ApplyBundlePreflightContext(
+            stagedBundle: URL(fileURLWithPath: "/managed/update-bundle-1.2.3"),
+            manifest: manifest(version: "1.2.3", artifacts: artifacts),
+            stagedRootfs: nil,
+            backup: URL(fileURLWithPath: "/product/backups/20260531T000000Z-before-1.2.3"),
+            restartPolicy: RuntimeServiceRestartPolicy(restartVM: true, restartProxy: true, restartWatchdog: false)
+        )
+    }
+
+    private func rollbackPreflight() -> RollbackPreflightContext {
+        let backup = URL(fileURLWithPath: "/product/backups/20260531T000000Z-before-1.2.3")
+        return RollbackPreflightContext(
+            backup: backup,
+            backupRootfs: backup.appendingPathComponent(Constants.Artifacts.rootfsBase),
+            backupVersion: backup.appendingPathComponent(Constants.Artifacts.runtimeVersion),
+            restartPolicy: RuntimeServiceRestartPolicy(restartVM: true, restartProxy: false, restartWatchdog: true)
+        )
+    }
+
+    private func backupStorePaths() -> RuntimeBackupStorePaths {
+        RuntimeBackupStorePaths(
+            backupsDirectory: URL(fileURLWithPath: "/product/backups"),
+            rootfsBase: URL(fileURLWithPath: "/product/vm/runtime/rootfs-base.raw.gz"),
+            runtimeVersion: URL(fileURLWithPath: "/product/vm/runtime/runtime-version.json"),
+            managerApp: URL(fileURLWithPath: "/Applications/VitalServer Helper.app"),
+            nginxBundle: URL(fileURLWithPath: "/product/nginx"),
+            guestDeploy: URL(fileURLWithPath: "/product/vm/data/deploy"),
+            runtimeTools: URL(fileURLWithPath: "/usr/local/bin")
+        )
+    }
+}
+
+private enum RuntimeChaosError: Error, CustomStringConvertible {
+    case applyArtifactWriteDenied
+    case rollbackRestoreDenied
+    case backupWriteDenied
+
+    var description: String {
+        switch self {
+        case .applyArtifactWriteDenied:
+            return "applyArtifactWriteDenied"
+        case .rollbackRestoreDenied:
+            return "rollbackRestoreDenied"
+        case .backupWriteDenied:
+            return "backupWriteDenied"
+        }
     }
 }
 

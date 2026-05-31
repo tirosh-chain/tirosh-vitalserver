@@ -112,6 +112,54 @@ final class RuntimeChaosScenarioTests: XCTestCase {
         XCTAssertNotNil(item.error)
     }
 
+    func testObservabilityCorruptionChaosReturnsReadErrorInsteadOfEmptySuccess() throws {
+        let root = try temporaryDirectory()
+        defer { cleanup(root) }
+        let database = root.appendingPathComponent(RuntimeFileNames.runtimeObservabilityDB)
+        try "not a sqlite database".write(to: database, atomically: true, encoding: .utf8)
+        let reader = SystemRuntimeObservabilityReader(
+            paths: RuntimePaths(runtimeObservabilityDB: database.path)
+        )
+
+        let snapshot = reader.loadVitalDBObservationSnapshot()
+        let relationships = reader.loadVitalDBRelationships()
+
+        XCTAssertEqual(snapshot.state, .failed)
+        XCTAssertNotNil(snapshot.readError)
+        XCTAssertEqual(relationships.assignments, [])
+        XCTAssertEqual(relationships.events, [])
+        XCTAssertTrue(relationships.readError?.contains("assignments=") == true)
+        XCTAssertTrue(relationships.readError?.contains("events=") == true)
+    }
+
+    func testInstalledPermissionChaosPropagatesBackupReadDeniedInsteadOfEmptyList() {
+        let reader = SystemRuntimeHostFileReader(
+            fileStore: ChaosPermissionFileStore(),
+            logCollector: ChaosFailingRuntimeLogCollector()
+        )
+
+        XCTAssertThrowsError(try reader.backups(latestBackupPath: nil)) { error in
+            XCTAssertEqual((error as NSError).code, CocoaError.Code.fileReadNoPermission.rawValue)
+        }
+    }
+
+    func testCleanUninstallResidueChaosStopsAtMissingUninstallerBoundary() async {
+        let runner = ChaosPrivilegedCommandRunner()
+        let worker = MacHostRuntimeCommandWorker(
+            privilegedCommandRunner: runner,
+            actionEnvironment: ChaosActionEnvironment(executablePaths: []),
+            logExporter: ChaosNoopLogExporter()
+        )
+
+        do {
+            _ = try await worker.uninstallRuntime(clean: true)
+            XCTFail("Expected missing uninstaller")
+        } catch {
+            XCTAssertEqual((error as? RuntimeClientError)?.errorDescription, RuntimeAdapterConstants.StatusText.missingUninstaller)
+        }
+        XCTAssertEqual(runner.commands, [])
+    }
+
     func testSettingsPermissionChaosDoesNotSurfaceSecretRuntimeConfigAsRequiredReadModel() {
         let secretConfig = URL(fileURLWithPath: "/product/vm/data/deploy/runtime-config.json")
         let reader = SystemRuntimeSettingsReader(
@@ -122,7 +170,7 @@ final class RuntimeChaosScenarioTests: XCTestCase {
                 guestRuntimeConfig: secretConfig.path,
                 proxyLaunchDaemon: "/missing/proxy.plist"
             ),
-            fileStore: ChaosSecretRuntimeConfigFileStore(secretConfig: secretConfig)
+            fileStore: ChaosPermissionFileStore(secretConfig: secretConfig)
         )
 
         let settings = reader.load()
@@ -226,11 +274,11 @@ private final class ChaosCommandLogFileStore: RuntimeFileStore, RuntimeFileParti
     }
 }
 
-private final class ChaosSecretRuntimeConfigFileStore: RuntimeFileStore {
+private final class ChaosPermissionFileStore: RuntimeFileStore {
     var temporaryDirectory = URL(fileURLWithPath: "/tmp")
-    private let secretConfig: URL
+    private let secretConfig: URL?
 
-    init(secretConfig: URL) {
+    init(secretConfig: URL? = nil) {
         self.secretConfig = secretConfig
     }
 
@@ -261,9 +309,48 @@ private final class ChaosSecretRuntimeConfigFileStore: RuntimeFileStore {
     func copyItem(at source: URL, to destination: URL) throws {}
     func moveItem(at source: URL, to destination: URL) throws {}
     func contentsOfDirectory(at url: URL, skipsHiddenFiles: Bool) throws -> [URL] { [] }
-    func childDirectories(at url: URL, nameContains fragment: String, skipsHiddenFiles: Bool) throws -> [URL] { [] }
+    func childDirectories(at url: URL, nameContains fragment: String, skipsHiddenFiles: Bool) throws -> [URL] {
+        throw CocoaError(.fileReadNoPermission)
+    }
     func recursiveRegularFileSize(at url: URL, skipsHiddenFiles: Bool) throws -> UInt64 { 0 }
     func fileSystemAttributes(forPath path: String) throws -> RuntimeFileSystemAttributes {
         RuntimeFileSystemAttributes(freeBytes: 1)
+    }
+}
+
+private final class ChaosPrivilegedCommandRunner: PrivilegedCommandRunning, @unchecked Sendable {
+    private(set) var commands: [String] = []
+
+    func run(shellCommand: String) async -> RuntimeCommandResult {
+        commands.append(shellCommand)
+        return RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "")
+    }
+}
+
+private struct ChaosActionEnvironment: RuntimeActionEnvironment {
+    let executablePaths: Set<String>
+
+    init(executablePaths: Set<String>) {
+        self.executablePaths = executablePaths
+    }
+
+    func isExecutable(atPath path: String) -> Bool {
+        executablePaths.contains(path)
+    }
+
+    func writeAdminPasswordFile(_ password: String) throws -> URL {
+        URL(fileURLWithPath: "/tmp/admin-password")
+    }
+
+    func removeItem(at url: URL) {}
+
+    func verifyBundle(launcher: String, bundleURL: URL) async -> RuntimeCommandResult {
+        RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "")
+    }
+}
+
+private struct ChaosNoopLogExporter: RuntimeLogExporting {
+    func exportLogs(to destination: URL) async throws -> RuntimeLogExportResult {
+        RuntimeLogExportResult(destination: destination)
     }
 }

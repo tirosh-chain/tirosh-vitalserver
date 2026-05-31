@@ -3,7 +3,7 @@
 > ID: TS-036  
 > Category: Update / Runtime health / Observability / Packaging  
 > Owner: macOS runtime / testkit  
-> Status: active
+> Status: resolved
 
 ## Symptoms
 
@@ -50,6 +50,7 @@ AGENTS.md 원칙상 Host/UI는 상태를 추정하지 않아야 합니다. 따�
 make coverage
 make runtime-chaos
 CHAOS_LOOP_COUNT=5 make runtime-chaos-loop
+cd apps/vitalserver-runtime-pwa && npm run test -- --run src/infrastructure/console-api/consoleClient.test.ts
 make e2e-smoke
 make e2e-local
 ```
@@ -114,20 +115,42 @@ rg -n "RuntimeFileStore|ProcessRunner|permission|fault|chaos|CocoaError|readIssu
    - recovery가 가능하면 recovery command/result/event가 남아야 합니다.
    - recovery가 불가능하면 unsafe retry 대신 typed failure로 멈춰야 합니다.
 
-## Initial Scenario Set
+## Implemented Scenario Set
 
-우선순위는 실제로 문제가 확인된 흐름부터 잡습니다.
+우선순위는 실제로 문제가 확인된 흐름부터 잡았습니다. 현재 기본 deterministic suite는 destructive installed-runtime 조작 없이 아래 계약을 검증합니다.
 
-| Scenario | Injected fault | Expected result |
-|---|---|---|
-| log export permission chaos | `logs` directory 또는 command log copy permission denied | 가능한 로그는 export하고, 실패 item은 manifest/read issue에 남김 |
-| settings read permission chaos | secret-bearing config read denied | Helper가 secret file을 직접 요구하지 않고 public read model/read issue로 구분 |
-| observability read chaos | SQLite/JSONL event store read denied | `0 events`/unavailable default가 아니라 read failure/readError를 노출 |
-| update log refresh chaos | update 중 log collection refresh 실패 | update operation state와 log read failure를 분리 |
-| guest capability chaos | request/result worker capability missing | request를 쓰지 않고 unsupported capability typed failure |
-| update artifact chaos | stage/copy/move/remove/chmod failure | path/operation/stderr가 command result 또는 runtime event에 남음 |
-| clean uninstall residue chaos | uninstall 후 plist/app/runtime/cache 일부 잔존 | 잔존 artifact가 다음 install/update에 미치는 영향을 audit 결과로 표시 |
-| PWA stale asset chaos | update 후 이전 JS/service worker cache 유지 | updated asset load 또는 explicit stale asset guidance |
+| Scenario | Injected fault | Expected result | Coverage |
+|---|---|---|---|
+| log export permission chaos | log collection failure, supplemental file copy denied | 가능한 로그는 export하고, 실패 item은 export manifest에 남김 | `RuntimeChaosScenarioTests` |
+| settings read permission chaos | secret-bearing config read denied | Helper가 secret file을 직접 required read model로 요구하지 않음 | `RuntimeChaosScenarioTests` |
+| observability read chaos | SQLite/JSONL event store read denied | `0 events`/unavailable default가 아니라 read failure/readError를 노출 | `RuntimeChaosScenarioTests` |
+| observability corruption chaos | corrupt SQLite file | event 없음과 store corruption을 readError/failed state로 분리 | `RuntimeChaosScenarioTests` |
+| update log refresh chaos | update 중 log collection refresh 실패 | update operation state와 log read failure를 분리 | `RuntimeChaosScenarioTests` |
+| update artifact chaos | managed storage copy denied | copy 실패 원래 error와 operation log를 보존 | `RuntimeUpdateChaosScenarioTests` |
+| update apply chaos | apply 중 update artifact replacement 실패 | partial success로 보이지 않고 failed progress, recovering status, rollback 시도를 남김 | `RuntimeUpdateChaosScenarioTests` |
+| rollback chaos | rollback restore step failure | failed rollback step과 recovering status를 보존 | `RuntimeUpdateChaosScenarioTests` |
+| guest capability chaos | capability missing/read failure | request를 쓰기 전에 typed failure로 중단 | `RuntimeUpdateChaosScenarioTests` |
+| guest result chaos | stale result, missing result timeout | Host가 Guest 내부 상태를 추정하지 않고 invalid/timeout을 분리 | `RuntimeUpdateChaosScenarioTests` |
+| clean uninstall residue chaos | uninstaller missing after partial uninstall/residue | clean uninstall command를 추정 실행하지 않고 missing uninstaller boundary에서 중단 | `RuntimeChaosScenarioTests` |
+| installed permission chaos | installed backup directory read denied | empty backup list로 숨기지 않고 read failure를 throw | `RuntimeChaosScenarioTests` |
+| backup/restore chaos | backup artifact copy denied, restore rootfs missing | backup manifest를 쓰기 전에 중단하고 missing restore artifact에서 rollback preflight 중단 | `RuntimeUpdateChaosScenarioTests` |
+| runtime command chaos | command non-zero exit with stderr | throw 전에 stderr, failed event, process result를 남김 | `RuntimeUpdateChaosScenarioTests` |
+| PWA API contract chaos | API 500, contract mismatch, network failure | UI/client가 domain state를 만들지 않고 API/contract/network error boundary를 유지 | `consoleClient.test.ts` |
+
+## Scenario Coverage
+
+TS-036은 개별 장애를 새 TS로 쪼개기보다 macOS runtime chaos scenario catalog로 유지합니다. High/medium priority backlog는 deterministic Tier 1/2 coverage로 전환했습니다.
+
+| Priority | Scenario | Coverage status | Tier |
+|---|---|---|---|
+| High | update apply chaos | covered by deterministic apply runner chaos | Tier 1 |
+| High | rollback chaos | covered by deterministic rollback runner chaos | Tier 1 |
+| High | guest result chaos | covered by deterministic GuestActivationWaiter chaos | Tier 1 |
+| High | clean uninstall residue chaos | covered at command boundary; destructive residue audit remains opt-in | Tier 1 / Tier 3 opt-in |
+| High | installed permission chaos | covered at host file reader boundary; installed read-only audit remains opt-in | Tier 1 / Tier 3 opt-in |
+| Medium | observability corruption chaos | covered by corrupt SQLite read chaos | Tier 2 |
+| Medium | backup/restore chaos | covered by backup copy denial and rollback preflight missing artifact chaos | Tier 1 |
+| Medium | PWA API contract chaos | covered by ConsoleClient API/contract/network boundary chaos | Tier 1 |
 
 ## Prevention
 
@@ -164,3 +187,4 @@ rg -n "RuntimeFileStore|ProcessRunner|permission|fault|chaos|CocoaError|readIssu
 - 2026-05-31: 카오스 테스트를 TS-036으로 등록했습니다. 첫 구현 후보는 permission chaos, observability read chaos, update log refresh chaos, guest capability chaos입니다.
 - 2026-05-31: `make runtime-chaos`를 추가해 `Chaos` 필터가 붙은 deterministic Swift chaos scenario만 빠르게 실행할 수 있게 했습니다. 초기 suite는 update log refresh chaos, observability read chaos, settings permission chaos, guest capability chaos, update artifact copy permission chaos를 포함합니다.
 - 2026-05-31: `make runtime-chaos-loop`를 추가해 deterministic chaos suite를 반복 실행할 수 있게 했습니다. suite는 log export manifest issue, observability snapshot/relationship read failure, command stderr/runtime event 보존까지 확장했습니다.
+- 2026-05-31: high/medium priority backlog를 deterministic coverage로 전환했습니다. Swift `Chaos` suite는 18개 scenario를 통과하고, PWA ConsoleClient는 API/contract/network boundary chaos를 통과합니다. TS-036 상태를 `resolved`로 변경했습니다.

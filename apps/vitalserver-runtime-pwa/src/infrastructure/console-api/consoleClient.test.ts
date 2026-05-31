@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { RuntimeControlAPIError, RuntimeControlContractError, RuntimeControlNetworkError } from "@/domain/runtime-control/errors/runtimeControlError";
+import {
+  RuntimeControlAPIError,
+  RuntimeControlContractError,
+  RuntimeControlNetworkError,
+  summarizeRuntimeControlError
+} from "@/domain/runtime-control/errors/runtimeControlError";
 import { ConsoleClient } from "./consoleClient";
 
 type RecordedRequest = {
@@ -154,6 +159,43 @@ describe("ConsoleClient", () => {
       }) as typeof fetch
     });
     await expect(network.getStatus()).rejects.toBeInstanceOf(RuntimeControlNetworkError);
+  });
+
+  it("keeps PWA API contract chaos failures typed by boundary", async () => {
+    const api = clientWithResponses(
+      { "/runtime/status": { code: "handlerFailed", message: "permission denied" } },
+      500
+    );
+    await expect(api.client.getStatus()).rejects.toMatchObject({
+      kind: "api",
+      status: 500,
+      body: JSON.stringify({ code: "handlerFailed", message: "permission denied" })
+    });
+
+    const contract = clientWithResponses({ "/runtime/status": { runtimeState: 42 } });
+    await expect(contract.client.getStatus()).rejects.toMatchObject({
+      kind: "contract",
+      path: "/runtime/status"
+    });
+
+    const network = new ConsoleClient({
+      baseURL: "http://helper.local/",
+      fetchImpl: vi.fn(async () => {
+        throw new TypeError("fetch failed");
+      }) as typeof fetch
+    });
+    await expect(network.getStatus()).rejects.toMatchObject({
+      kind: "network",
+      url: "http://helper.local/runtime/status"
+    });
+
+    const summary = summarizeRuntimeControlError(
+      new RuntimeControlContractError("/runtime/status", new Error("invalid shape"))
+    );
+    expect(summary).toMatchObject({
+      kind: "contract",
+      title: "Runtime Control API contract mismatch"
+    });
   });
 });
 
