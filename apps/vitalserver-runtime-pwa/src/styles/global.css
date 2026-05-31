@@ -370,6 +370,30 @@
     @apply grid gap-0.5;
   }
 
+  .anomaly-list {
+    @apply grid gap-3;
+  }
+
+  .anomaly-item {
+    @apply grid gap-2 rounded-panel border border-app-border bg-app-panel p-4;
+    min-width: 0;
+  }
+
+  .anomaly-meta {
+    @apply flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-app-muted;
+    min-width: 0;
+  }
+
+  .anomaly-meta strong,
+  .anomaly-meta span {
+    overflow-wrap: anywhere;
+  }
+
+  .anomaly-item p {
+    @apply m-0 leading-normal;
+    overflow-wrap: anywhere;
+  }
+
   .session-list {
     @apply grid gap-3.5;
   }

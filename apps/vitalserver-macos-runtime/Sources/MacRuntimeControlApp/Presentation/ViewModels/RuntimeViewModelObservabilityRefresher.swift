@@ -5,6 +5,7 @@ import RuntimeControl
 @MainActor
 protocol RuntimeViewModelObservabilitySnapshotLoading {
     func loadRuntimeEvents(query: RuntimeEventQuery) async -> RuntimeEventHistory
+    func loadVitalDBObservationSnapshot() async -> RuntimeVitalDBObservationSnapshot
     func loadVitalRecorders() async -> RuntimeVitalRecorderHistory
     func loadVitalRelationships() async -> RuntimeVitalRelationshipHistory
 }
@@ -18,6 +19,7 @@ struct RuntimeViewModelRuntimeEventRefreshResult {
 }
 
 struct RuntimeViewModelVitalObservabilityRefreshResult {
+    let observationSnapshot: RuntimeVitalDBObservationSnapshot
     let recorders: RuntimeVitalRecorderHistory
     let relationships: RuntimeVitalRelationshipHistory
 }
@@ -64,9 +66,11 @@ struct RuntimeViewModelObservabilityRefresher {
     }
 
     func refreshVitalObservability() async -> RuntimeViewModelVitalObservabilityRefreshResult {
+        let observationSnapshot = await snapshots.loadVitalDBObservationSnapshot()
         let recorders = await snapshots.loadVitalRecorders()
         let relationships = await snapshots.loadVitalRelationships()
         return RuntimeViewModelVitalObservabilityRefreshResult(
+            observationSnapshot: observationSnapshot,
             recorders: recorders,
             relationships: relationships
         )

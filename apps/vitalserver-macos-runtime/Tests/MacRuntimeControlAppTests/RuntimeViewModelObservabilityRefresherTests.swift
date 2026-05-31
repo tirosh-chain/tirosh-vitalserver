@@ -64,9 +64,16 @@ final class RuntimeViewModelObservabilityRefresherTests: XCTestCase {
     }
 
     func testVitalObservabilityRefreshLoadsRecordersAndRelationships() async {
+        let observation = VitalDBObservationDocument(
+            observedAt: "2026-05-30T00:00:00Z",
+            ready: true,
+            recorderOnlineThresholdSeconds: 120
+        )
+        let observationSnapshot = RuntimeVitalDBObservationSnapshot.loaded(observation)
         let recorders = RuntimeVitalRecorderHistory(updatedAt: "2026-05-30T00:00:00Z")
         let relationships = RuntimeVitalRelationshipHistory(readError: "relationships")
         let snapshots = StubObservabilitySnapshotLoader(
+            observationSnapshot: observationSnapshot,
             recorderResponse: recorders,
             relationshipResponse: relationships
         )
@@ -74,8 +81,10 @@ final class RuntimeViewModelObservabilityRefresherTests: XCTestCase {
 
         let result = await refresher.refreshVitalObservability()
 
+        XCTAssertEqual(snapshots.loadVitalDBObservationSnapshotCount, 1)
         XCTAssertEqual(snapshots.loadVitalRecordersCount, 1)
         XCTAssertEqual(snapshots.loadVitalRelationshipsCount, 1)
+        XCTAssertEqual(result.observationSnapshot, observationSnapshot)
         XCTAssertEqual(result.recorders, recorders)
         XCTAssertEqual(result.relationships, relationships)
     }
@@ -119,18 +128,22 @@ final class RuntimeViewModelObservabilityRefresherTests: XCTestCase {
 @MainActor
 private final class StubObservabilitySnapshotLoader: RuntimeViewModelObservabilitySnapshotLoading {
     var eventResponses: [RuntimeEventHistory]
+    let observationSnapshot: RuntimeVitalDBObservationSnapshot
     let recorderResponse: RuntimeVitalRecorderHistory
     let relationshipResponse: RuntimeVitalRelationshipHistory
     private(set) var runtimeEventQueries: [RuntimeEventQuery] = []
+    private(set) var loadVitalDBObservationSnapshotCount = 0
     private(set) var loadVitalRecordersCount = 0
     private(set) var loadVitalRelationshipsCount = 0
 
     init(
         eventResponses: [RuntimeEventHistory] = [],
+        observationSnapshot: RuntimeVitalDBObservationSnapshot = .unavailable(),
         recorderResponse: RuntimeVitalRecorderHistory = RuntimeVitalRecorderHistory(),
         relationshipResponse: RuntimeVitalRelationshipHistory = RuntimeVitalRelationshipHistory()
     ) {
         self.eventResponses = eventResponses
+        self.observationSnapshot = observationSnapshot
         self.recorderResponse = recorderResponse
         self.relationshipResponse = relationshipResponse
     }
@@ -141,6 +154,11 @@ private final class StubObservabilitySnapshotLoader: RuntimeViewModelObservabili
             return RuntimeEventHistory(events: [])
         }
         return eventResponses.removeFirst()
+    }
+
+    func loadVitalDBObservationSnapshot() async -> RuntimeVitalDBObservationSnapshot {
+        loadVitalDBObservationSnapshotCount += 1
+        return observationSnapshot
     }
 
     func loadVitalRecorders() async -> RuntimeVitalRecorderHistory {

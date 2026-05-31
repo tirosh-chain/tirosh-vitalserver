@@ -198,6 +198,9 @@ describe("runtime console pages", () => {
     renderPage(<ObservabilityPage />);
 
     expect(screen.getByText("Observation pipeline")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Recorder anomalies" })).toBeInTheDocument();
+    expect(screen.getByText("duplicate-ip")).toBeInTheDocument();
+    expect(screen.getByText("10.0.0.10")).toBeInTheDocument();
     expect(screen.getByText("runtime updated")).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("Period"), { target: { value: "7d" } });
@@ -471,7 +474,28 @@ function overview() {
       containerObservation: { auditProxyHTTP: "HTTP 200" },
       failureReasons: []
     },
-    vitalDBObservation: { ready: true },
+    vitalDBObservation: {
+      schemaVersion: 1,
+      source: "vitaldb-observer",
+      observedAt: "2026-05-31T01:00:00Z",
+      ready: true,
+      recorderOnlineThresholdSeconds: 120,
+      recorders: [],
+      beds: [],
+      devices: [],
+      filters: [],
+      proxyConnections: [],
+      anomalies: [
+        {
+          id: "duplicate-ip-10",
+          kind: "duplicate-ip",
+          severity: "warning",
+          observedAt: "2026-05-31T01:00:00Z",
+          subject: "10.0.0.10",
+          message: "duplicate recorder IP"
+        }
+      ]
+    },
     vitalRecorder: {
       observedAt: "2026-05-31T01:00:00Z",
       activeConnections: 1,
@@ -479,7 +503,7 @@ function overview() {
       onlineRecorders: 1,
       staleRecorders: 0,
       knownBeds: 1,
-      recorderAnomalies: 0
+      recorderAnomalies: 1
     }
   };
 }

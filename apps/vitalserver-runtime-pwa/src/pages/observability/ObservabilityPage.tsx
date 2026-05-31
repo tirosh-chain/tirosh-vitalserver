@@ -1,13 +1,19 @@
 import { useMemo, useState } from "react";
 
 import { useRuntimeEvents, useRuntimeOverview } from "@/console/hooks";
-import type { RuntimeEventDocument } from "@/domain/runtime-control/contracts/runtimeControlTypes";
+import type {
+  RuntimeControlOverview,
+  RuntimeEventDocument,
+  VitalDBAnomalyObservation,
+  VitalDBObservationDocument
+} from "@/domain/runtime-control/contracts/runtimeControlTypes";
 import { formatVitalRecorderObservationMetric } from "@/domain/runtime-control/formatting/vitalRecorder";
 import { formatRuntimeState } from "@/domain/runtime-control/formatting/runtimeState";
 import { formatLocalDateTime } from "@/domain/runtime-control/formatting/time";
 import { ErrorState } from "@/components/ErrorState";
 import { KeyValueRows } from "@/components/KeyValueRows";
 import { Panel } from "@/components/Panel";
+import { StatusBadge, type StatusBadgeProps } from "@/components/StatusBadge";
 import {
   runtimeEventPeriods,
   runtimeEventTypes,
@@ -39,6 +45,9 @@ export function ObservabilityPage() {
   const eventQuery = useRuntimeEvents(eventRequest);
 
   const overview = overviewQuery.data;
+  const vitalDBObservation = selectVitalDBObservation(overview);
+  const vitalDBObservationReadIssue =
+    overview?.vitalDBObservationSnapshot?.readError ?? null;
   const recorderSummary = overview?.vitalRecorder;
   const eventCount = eventQuery.data?.events?.length ?? 0;
   const dailyEventCount = dailyEventsQuery.data?.events?.length ?? 0;
@@ -50,7 +59,7 @@ export function ObservabilityPage() {
           rows={[
             {
               label: "VitalDB Observer",
-              value: overview?.vitalDBObservation?.ready ? "Ready" : "Unknown"
+              value: formatObserverStatus(vitalDBObservation)
             },
             {
               label: "Guest log sync service",
@@ -60,7 +69,9 @@ export function ObservabilityPage() {
             },
             {
               label: "Observation updated",
-              value: formatLocalDateTime(recorderSummary?.observedAt)
+              value: formatLocalDateTime(
+                vitalDBObservation?.observedAt ?? recorderSummary?.observedAt
+              )
             },
             {
               label: "Known recorders",
@@ -89,6 +100,30 @@ export function ObservabilityPage() {
             }
           ]}
         />
+      </Panel>
+
+      <Panel title="Recorder anomalies">
+        {vitalDBObservationReadIssue ? (
+          <ErrorState
+            title="Recorder anomaly details are incomplete"
+            error={new Error(vitalDBObservationReadIssue)}
+          />
+        ) : null}
+
+        {!vitalDBObservation ? (
+          <p className="empty-state">VitalDB observation is not available.</p>
+        ) : vitalDBObservation.anomalies.length === 0 ? (
+          <p className="empty-state">No recorder anomalies were reported.</p>
+        ) : (
+          <div className="anomaly-list">
+            {vitalDBObservation.anomalies.map((anomaly, index) => (
+              <AnomalyItem
+                key={anomaly.id ?? `${anomaly.kind ?? "anomaly"}-${index}`}
+                anomaly={anomaly}
+              />
+            ))}
+          </div>
+        )}
       </Panel>
 
       <Panel title="Runtime Events">
@@ -159,6 +194,24 @@ export function ObservabilityPage() {
   );
 }
 
+function AnomalyItem({ anomaly }: { anomaly: VitalDBAnomalyObservation }) {
+  const severity = anomaly.severity ?? "warning";
+
+  return (
+    <article className="anomaly-item">
+      <div className="anomaly-meta">
+        <StatusBadge tone={anomalySeverityTone(severity)}>
+          {severity}
+        </StatusBadge>
+        <strong>{anomaly.kind ?? "unknown"}</strong>
+        <span>{anomaly.subject ?? "Unknown subject"}</span>
+        <span>{formatLocalDateTime(anomaly.observedAt)}</span>
+      </div>
+      <p>{anomaly.message ?? "No anomaly message was reported."}</p>
+    </article>
+  );
+}
+
 function RuntimeEventItem({ event }: { event: RuntimeEventDocument }) {
   return (
     <article className="event-item">
@@ -174,4 +227,39 @@ function RuntimeEventItem({ event }: { event: RuntimeEventDocument }) {
       ) : null}
     </article>
   );
+}
+
+function selectVitalDBObservation(
+  overview: RuntimeControlOverview | undefined
+): VitalDBObservationDocument | null {
+  return (
+    overview?.vitalDBObservationSnapshot?.observation ??
+    overview?.vitalDBObservation ??
+    overview?.status?.vitalDBObservation ??
+    null
+  );
+}
+
+function formatObserverStatus(
+  observation: VitalDBObservationDocument | null
+): string {
+  if (!observation) {
+    return "Unavailable";
+  }
+  return observation.ready ? "Ready" : "Unhealthy";
+}
+
+function anomalySeverityTone(
+  severity: VitalDBAnomalyObservation["severity"]
+): StatusBadgeProps["tone"] {
+  switch (severity) {
+    case "critical":
+      return "danger";
+    case "warning":
+      return "warning";
+    case "info":
+      return "neutral";
+    default:
+      return "neutral";
+  }
 }

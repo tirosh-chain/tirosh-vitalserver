@@ -384,6 +384,7 @@ struct ContentView: View {
             await viewModel.refreshVitalRecorders()
         case .observability:
             await viewModel.refreshRuntimeEvents()
+            await viewModel.refreshVitalRecorders()
         default:
             break
         }
