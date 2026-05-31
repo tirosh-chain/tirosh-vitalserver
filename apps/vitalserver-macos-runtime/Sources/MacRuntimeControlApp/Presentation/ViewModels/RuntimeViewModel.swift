@@ -68,7 +68,15 @@ final class RuntimeViewModel: ObservableObject {
     @Published var backups: [RuntimeBackup] = []
     @Published var selectedBackupPath: String?
     @Published var backupListErrorMessage: String?
-    @Published var message = AppConstants.StatusText.ready
+    private let helperMessageLog: any RuntimeHelperMessageLogging
+    @Published var message = AppConstants.StatusText.ready {
+        didSet {
+            guard message != oldValue else {
+                return
+            }
+            helperMessageLog.append(message)
+        }
+    }
     @Published var operationDetail = ""
     @Published var logText = AppConstants.StatusText.ready
     @Published var logLineLimit = 500
@@ -136,12 +144,14 @@ final class RuntimeViewModel: ObservableObject {
         initialSettings: RuntimeSettings? = nil,
         localAPISettings: RuntimeControlLocalAPISettingsCoordinator? = nil,
         healthNotifications: any HealthNotifying = HealthNotificationCenter(),
-        nativeShell: any RuntimeNativeShell = SystemRuntimeNativeShell()
+        nativeShell: any RuntimeNativeShell = SystemRuntimeNativeShell(),
+        helperMessageLog: any RuntimeHelperMessageLogging = FileRuntimeHelperMessageLog()
     ) {
         self.controlClient = controlClient
         self.hostClient = hostClient
         self.testKitController = testKitController
         self.localAPISettings = localAPISettings
+        self.helperMessageLog = helperMessageLog
         let snapshots = RuntimeViewModelSnapshotLoader(
             controlClient: controlClient,
             hostClient: hostClient,
@@ -161,6 +171,7 @@ final class RuntimeViewModel: ObservableObject {
         self.useCustomAdvertisedURL = Self.usesCustomAdvertisedURL(initialSettings)
         self.installationInfo = self.controlClient.loadInstallInfo()
         self.healthNotifications.configure()
+        self.helperMessageLog.append(message)
     }
 
     var capabilities: RuntimeControlCapabilities {

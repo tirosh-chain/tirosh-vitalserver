@@ -134,6 +134,15 @@ Recorder send_data
 - `/vitaldb/recorders` response에 `activityHistory` metadata를 추가해 SQLite projection source, bucket coverage, read error를 명시했습니다.
 - Remote Console은 `activityHistory.readError`가 있으면 activity chart 영역에서 history가 불완전하다는 오류를 표시합니다.
 
+2026-05-31 hotfix 원칙:
+
+- `/vitaldb/recorders`의 current recorder status는 SQLite projection에서 추정하지 않습니다.
+- current status source는 Guest owner가 제공하는 `runtime-state.json.vitalDBObservation`입니다.
+- Host `runtime-status.json.vitalDBObservation`은 guest runtime-state를 읽을 수 없을 때의 명시 fallback입니다.
+- SQLite observation/bucket projection은 history source입니다. Projection이 current status보다 오래됐을 때 더 최신처럼 선택하면 안 됩니다.
+- `runtime-state.json` read/decode 실패는 빈 current status로 숨기지 않고 `/vitaldb/recorders.activityHistory.readError`에 보존합니다.
+- `vitaldb-observer`는 Redis `utime_*` fractional timestamp와 observer `observedAt` second precision 사이의 subsecond skew만 허용합니다. 큰 future timestamp는 stale로 남깁니다.
+
 ## Prevention
 
 Recorder activity는 세 값을 분리해서 다뤄야 합니다.
@@ -154,3 +163,4 @@ latest rolling window를 장시간 history처럼 보이게 만들면 안 됩니�
 - 2026-05-30: 패킷 수집부터 SQLite 조회까지의 흐름을 확인했습니다. SQLite 삽입은 존재하지만 watchdog event recording에 종속되어 있고, append/read 실패가 명시 상태로 드러나지 않는 구조를 추가 원인으로 등록했습니다.
 - 2026-05-30: recorder activity 1-minute bucket projection을 SQLite에 명시적으로 추가하고, `/vitaldb/recorders` read model이 projection bucket을 activity timeline으로 사용하도록 전환했습니다.
 - 2026-05-30: SQLite activity projection read failure를 `/vitaldb/recorders.activityHistory.readError`로 노출하고, Remote Console에서 불완전한 activity history를 표시하도록 수정했습니다.
+- 2026-05-31: VRecorder 상태 변화가 30-60초 늦게 보이는 증상을 확인했습니다. `/vitaldb/recorders`가 host watchdog이 쌓는 SQLite/status projection을 current status처럼 사용하던 구조를 분리하고, guest runtime-state를 current source로 명시했습니다.

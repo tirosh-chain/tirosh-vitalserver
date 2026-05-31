@@ -305,6 +305,25 @@ def test_collector_treats_future_recorder_timestamp_as_stale() -> None:
     assert document["recorders"][0]["stale"] is True
 
 
+def test_collector_allows_subsecond_timestamp_skew() -> None:
+    observed = int(time.time())
+    collector = VitalDBCollector(
+        redis_client=FakeRedis(
+            values={
+                "ip_VR_A": "10.0.0.10",
+                "utime_VR_A": str(observed + 0.5),
+            },
+            sets={"vrs": ["VR_A"]},
+        ),
+        settings=_settings(),
+    )
+
+    document = collector.collect().as_json()
+
+    assert document["recorders"][0]["online"] is True
+    assert document["recorders"][0]["stale"] is False
+
+
 def test_collector_ignores_deleted_recorder_status_keys() -> None:
     now = str(time.time() - 1)
     collector = VitalDBCollector(

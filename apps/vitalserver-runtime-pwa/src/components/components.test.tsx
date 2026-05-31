@@ -120,6 +120,22 @@ describe("shared components", () => {
     expect(screen.getByText("Healthy")).toHaveClass("status-badge-success");
   });
 
+  it("renders status indicators for every tone", () => {
+    render(
+      <>
+        <StatusBadge tone="success">Online</StatusBadge>
+        <StatusBadge tone="warning">Stale</StatusBadge>
+        <StatusBadge tone="danger">Offline</StatusBadge>
+        <StatusBadge tone="neutral">Unknown</StatusBadge>
+      </>
+    );
+
+    expect(screen.getByText("Online").querySelector(".status-badge-icon")).not.toBeNull();
+    expect(screen.getByText("Stale")).toHaveClass("status-badge-warning");
+    expect(screen.getByText("Offline")).toHaveClass("status-badge-danger");
+    expect(screen.getByText("Unknown")).toHaveClass("status-badge-neutral");
+  });
+
   it("renders summarized runtime errors and joins class names", () => {
     render(<ErrorState title="Custom failure" error={new TypeError("Failed to fetch")} />);
 

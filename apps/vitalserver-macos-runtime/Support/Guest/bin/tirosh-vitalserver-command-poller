@@ -1,0 +1,99 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+MOUNT_TAG="${TIROSH_SHARE_TAG:-tirosh}"
+MOUNT_POINT="${TIROSH_SHARE_MOUNT:-/mnt/tirosh}"
+RUNTIME_DIR="${TIROSH_RUNTIME_DIR:-${MOUNT_POINT}/run}"
+LOG_FILE="${RUNTIME_DIR}/guest-command-poller.log"
+POLL_INTERVAL_SECONDS="${TIROSH_GUEST_COMMAND_POLL_INTERVAL_SECONDS:-3}"
+
+mount_runtime_share() {
+  mkdir -p "${MOUNT_POINT}"
+  if ! mountpoint -q "${MOUNT_POINT}"; then
+    mount -t virtiofs "${MOUNT_TAG}" "${MOUNT_POINT}"
+  fi
+  mkdir -p "${RUNTIME_DIR}"
+}
+
+log() {
+  printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*"
+}
+
+poll_interval() {
+  case "${POLL_INTERVAL_SECONDS}" in
+    ''|*[!0-9]*)
+      printf '3'
+      ;;
+    *)
+      if [ "${POLL_INTERVAL_SECONDS}" -lt 2 ]; then
+        printf '2'
+      elif [ "${POLL_INTERVAL_SECONDS}" -gt 300 ]; then
+        printf '300'
+      else
+        printf '%s' "${POLL_INTERVAL_SECONDS}"
+      fi
+      ;;
+  esac
+}
+
+service_is_running() {
+  local service="$1"
+  local state
+
+  state="$(systemctl show --property=ActiveState --value "${service}" 2>/dev/null || true)"
+  [ "${state}" = "active" ] || [ "${state}" = "activating" ]
+}
+
+dispatch_request() {
+  local request_file="$1"
+  local service="$2"
+  local operation="$3"
+
+  if [ ! -f "${request_file}" ]; then
+    return
+  fi
+
+  if service_is_running "${service}"; then
+    return
+  fi
+
+  log "operation=${operation} status=request-detected service=${service}"
+  systemctl reset-failed "${service}" >/dev/null 2>&1 || true
+  if systemctl start --no-block "${service}"; then
+    log "operation=${operation} status=service-scheduled service=${service}"
+  else
+    log "operation=${operation} status=service-schedule-failed service=${service}"
+  fi
+}
+
+main() {
+  mount_runtime_share
+  touch "${LOG_FILE}"
+  exec >>"${LOG_FILE}" 2>&1
+
+  local interval
+  interval="$(poll_interval)"
+  log "status=started intervalSeconds=${interval}"
+
+  while true; do
+    dispatch_request \
+      "${RUNTIME_DIR}/prepare-update-shutdown.request" \
+      "tirosh-vitalserver-prepare-update-shutdown.service" \
+      "prepare-update-shutdown"
+    dispatch_request \
+      "${RUNTIME_DIR}/activate-update.request" \
+      "tirosh-vitalserver-activate-update.service" \
+      "activate-update"
+    dispatch_request \
+      "${RUNTIME_DIR}/repair-datastore.request" \
+      "tirosh-vitalserver-repair-datastore.service" \
+      "repair-datastore"
+    dispatch_request \
+      "${RUNTIME_DIR}/redis-backup.request" \
+      "tirosh-vitalserver-redis-backup.service" \
+      "redis-backup"
+    sleep "${interval}"
+  done
+}
+
+main "$@"

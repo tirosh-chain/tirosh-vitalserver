@@ -143,6 +143,7 @@ final class JSONFileRuntimeGuestGatewayTests: XCTestCase {
             """
             {
               "schemaVersion": 2,
+              "bootID": "boot-1",
               "operation": "bootstrap",
               "status": "failed",
               "message": "Missing runtime packages.",
@@ -162,6 +163,7 @@ final class JSONFileRuntimeGuestGatewayTests: XCTestCase {
             return XCTFail("Expected loaded bootstrap result")
         }
         XCTAssertEqual(bootstrapResult.status, .failed)
+        XCTAssertEqual(bootstrapResult.bootID, "boot-1")
         XCTAssertEqual(bootstrapResult.operation?.rawValue, "bootstrap")
         XCTAssertEqual(bootstrapResult.reasonCodes, [.guestBootstrapMissingRuntimePackages])
 

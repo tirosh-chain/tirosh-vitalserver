@@ -222,8 +222,7 @@ public struct SQLiteRuntimeObservabilityStore {
             return []
         }
         do {
-            try initialize()
-            return try withDatabase { db in
+            return try withReadOnlyDatabase { db in
                 return Array(try queryEvents(
                     db,
                     sql: """
@@ -249,8 +248,7 @@ public struct SQLiteRuntimeObservabilityStore {
             return RuntimeEventPage(events: [])
         }
         do {
-            try initialize()
-            return try withDatabase { db in
+            return try withReadOnlyDatabase { db in
                 var predicates: [String] = []
                 var bindings: [SQLiteBinding] = []
 
@@ -330,8 +328,7 @@ public struct SQLiteRuntimeObservabilityStore {
     }
 
     public func loadLatestVitalDBObservation() throws -> VitalDBObservationDocument? {
-        try initialize()
-        return try withDatabase { db in
+        try withReadOnlyDatabase { db in
             let observations = try queryVitalDBObservations(
                 db,
                 sql: """
@@ -354,8 +351,7 @@ public struct SQLiteRuntimeObservabilityStore {
         guard limit > 0 else {
             return []
         }
-        try initialize()
-        return try withDatabase { db in
+        return try withReadOnlyDatabase { db in
             let observations = try queryVitalDBObservations(
                 db,
                 sql: """
@@ -382,8 +378,7 @@ public struct SQLiteRuntimeObservabilityStore {
         guard query.limit > 0 else {
             return []
         }
-        try initialize()
-        return try withDatabase { db in
+        return try withReadOnlyDatabase { db in
             var predicates: [String] = []
             var bindings: [SQLiteBinding] = []
             if let vrcode = query.vrcode {
@@ -425,8 +420,7 @@ public struct SQLiteRuntimeObservabilityStore {
         guard limit > 0 else {
             return []
         }
-        try initialize()
-        return try withDatabase { db in
+        return try withReadOnlyDatabase { db in
             try queryBedAssignments(
                 db,
                 sql: """
@@ -450,8 +444,7 @@ public struct SQLiteRuntimeObservabilityStore {
         guard limit > 0 else {
             return []
         }
-        try initialize()
-        return try withDatabase { db in
+        return try withReadOnlyDatabase { db in
             Array(try queryRelationshipEvents(
                 db,
                 sql: """
@@ -950,6 +943,20 @@ public struct SQLiteRuntimeObservabilityStore {
 
         var db: OpaquePointer?
         guard sqlite3_open_v2(url.path, &db, SQLITE_OPEN_CREATE | SQLITE_OPEN_READWRITE | SQLITE_OPEN_FULLMUTEX, nil) == SQLITE_OK,
+              let openedDB = db else {
+            let message = db.map(sqliteErrorMessage) ?? "unknown sqlite open error"
+            sqlite3_close(db)
+            throw SQLiteRuntimeObservabilityStoreError.openFailed(message)
+        }
+        defer {
+            sqlite3_close(openedDB)
+        }
+        return try operation(openedDB)
+    }
+
+    private func withReadOnlyDatabase<T>(_ operation: (OpaquePointer) throws -> T) throws -> T {
+        var db: OpaquePointer?
+        guard sqlite3_open_v2(url.path, &db, SQLITE_OPEN_READONLY | SQLITE_OPEN_FULLMUTEX, nil) == SQLITE_OK,
               let openedDB = db else {
             let message = db.map(sqliteErrorMessage) ?? "unknown sqlite open error"
             sqlite3_close(db)

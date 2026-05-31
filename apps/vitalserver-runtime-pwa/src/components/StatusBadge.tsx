@@ -11,6 +11,7 @@ export type StatusBadgeProps = {
 export function StatusBadge({ tone, children, className }: StatusBadgeProps) {
   return (
     <span className={cn("status-badge", `status-badge-${tone}`, className)}>
+      <span className="status-badge-icon" aria-hidden="true" />
       {children}
     </span>
   );

@@ -58,6 +58,7 @@ private final class RollbackHarness {
         backup: URL(fileURLWithPath: "/backup"),
         backupRootfs: URL(fileURLWithPath: "/backup/rootfs-base.raw.gz"),
         backupVersion: URL(fileURLWithPath: "/backup/runtime-version.json"),
+        restoresRootfsBase: true,
         restartPolicy: RuntimeServiceRestartPolicy(
             restartVM: true,
             restartProxy: false,

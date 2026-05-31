@@ -202,24 +202,23 @@
     min-width: 0;
   }
 
-  .status-badge::before {
-    @apply inline-block h-3 w-3 rounded-full;
-    content: "";
+  .status-badge-icon {
+    @apply inline-block h-3 w-3 flex-none rounded-full;
   }
 
-  .status-badge-success::before {
+  .status-badge-success .status-badge-icon {
     @apply bg-app-success;
   }
 
-  .status-badge-warning::before {
+  .status-badge-warning .status-badge-icon {
     @apply bg-app-warning;
   }
 
-  .status-badge-danger::before {
+  .status-badge-danger .status-badge-icon {
     @apply bg-app-danger;
   }
 
-  .status-badge-neutral::before {
+  .status-badge-neutral .status-badge-icon {
     @apply bg-app-neutral;
   }
 

@@ -1,4 +1,5 @@
 import Contracts
+import Core
 import Foundation
 import HostInfrastructure
 import RuntimeControl
@@ -20,14 +21,14 @@ extension RuntimeObservabilityReading {
 
 struct SystemRuntimeObservabilityReader: RuntimeObservabilityReading, @unchecked Sendable {
     let paths: RuntimePaths
-    private let statusObservationProvider: (@Sendable () -> VitalDBObservationDocument?)?
+    private let currentObservationProvider: RuntimeVitalDBCurrentObservationProvider
 
     init(
         paths: RuntimePaths,
-        statusObservationProvider: (@Sendable () -> VitalDBObservationDocument?)? = nil
+        currentObservationProvider: RuntimeVitalDBCurrentObservationProvider? = nil
     ) {
         self.paths = paths
-        self.statusObservationProvider = statusObservationProvider
+        self.currentObservationProvider = currentObservationProvider ?? .live(paths: paths)
     }
 
     func loadRuntimeEvents(limit: Int) -> RuntimeEventHistory {
@@ -37,7 +38,6 @@ struct SystemRuntimeObservabilityReader: RuntimeObservabilityReading, @unchecked
     func loadRuntimeEvents(query: RuntimeEventQuery) -> RuntimeEventHistory {
         let primary = JSONLRuntimeEventRepository(url: URL(fileURLWithPath: paths.runtimeEvents))
         let secondary = SQLiteRuntimeEventRepository(url: URL(fileURLWithPath: paths.runtimeObservabilityDB))
-        RuntimeEventSQLiteProjectionCatchUp(primary: primary, secondary: secondary).catchUpIfDue()
         let repository = CompositeRuntimeEventRepository(primary: primary, secondary: secondary)
         let page = repository.query(query)
         return RuntimeEventHistory(
@@ -56,10 +56,37 @@ struct SystemRuntimeObservabilityReader: RuntimeObservabilityReading, @unchecked
         let repository = SQLiteVitalDBObservationRepository(
             url: URL(fileURLWithPath: paths.runtimeObservabilityDB)
         )
+        let currentRead = currentObservationProvider.load()
         do {
-            return RuntimeVitalDBObservationSnapshot.fromOptional(try repository.loadLatestObservation())
+            let projectedObservation = try repository.loadLatestObservation()
+            if let currentObservation = currentRead.observation {
+                return RuntimeVitalDBObservationSnapshot(
+                    state: .loaded,
+                    observation: currentObservation,
+                    readError: currentRead.readError
+                )
+            }
+            if let projectedObservation {
+                return RuntimeVitalDBObservationSnapshot(
+                    state: .loaded,
+                    observation: projectedObservation,
+                    readError: currentRead.readError
+                )
+            }
+            return RuntimeVitalDBObservationSnapshot.fromOptional(nil, readError: currentRead.readError)
         } catch {
-            return .failed(readError: String(describing: error))
+            let readError = joinedReadError([
+                "projection=\(String(describing: error))",
+                currentRead.readError,
+            ])
+            if let currentObservation = currentRead.observation {
+                return RuntimeVitalDBObservationSnapshot(
+                    state: .loaded,
+                    observation: currentObservation,
+                    readError: readError
+                )
+            }
+            return .failed(readError: readError ?? String(describing: error))
         }
     }
 
@@ -75,9 +102,13 @@ struct SystemRuntimeObservabilityReader: RuntimeObservabilityReading, @unchecked
             observations = []
             readErrors.append("observations=\(String(describing: error))")
         }
-        if let statusObservation = statusObservation(),
-           !observations.contains(where: { $0.observedAt == statusObservation.observedAt }) {
-            observations.append(statusObservation)
+        let currentRead = currentObservationProvider.load()
+        if let readError = currentRead.readError {
+            readErrors.append("currentObservation=\(readError)")
+        }
+        if let currentObservation = currentRead.observation,
+           !observations.contains(where: { $0.observedAt == currentObservation.observedAt }) {
+            observations.append(currentObservation)
         }
         let activityBuckets: [VitalDBRecorderActivityBucketRecord]
         var activityHistory: RuntimeVitalRecorderActivityHistory?
@@ -125,19 +156,143 @@ struct SystemRuntimeObservabilityReader: RuntimeObservabilityReading, @unchecked
         )
     }
 
-    private func statusObservation() -> VitalDBObservationDocument? {
-        if let statusObservationProvider {
-            return statusObservationProvider()
-        }
-        switch JSONFileRuntimeStatusRepository(
-            url: URL(fileURLWithPath: paths.runtimeStatus)
-        ).loadResult() {
-        case .loaded(let document):
-            return document.vitalDBObservation
-        case .missing, .failed:
-            return nil
+}
+
+enum RuntimeVitalDBCurrentObservationSource: String, Equatable, Sendable {
+    case guestRuntimeState
+    case runtimeStatus
+}
+
+struct RuntimeVitalDBCurrentObservationRead: Equatable, Sendable {
+    let source: RuntimeVitalDBCurrentObservationSource?
+    let observation: VitalDBObservationDocument?
+    let readIssues: [String]
+
+    var readError: String? {
+        joinedReadError(readIssues.map(Optional.some))
+    }
+
+    static func loaded(
+        _ observation: VitalDBObservationDocument,
+        source: RuntimeVitalDBCurrentObservationSource,
+        readIssues: [String] = []
+    ) -> RuntimeVitalDBCurrentObservationRead {
+        RuntimeVitalDBCurrentObservationRead(
+            source: source,
+            observation: observation,
+            readIssues: readIssues
+        )
+    }
+
+    static func unavailable(readIssues: [String] = []) -> RuntimeVitalDBCurrentObservationRead {
+        RuntimeVitalDBCurrentObservationRead(
+            source: nil,
+            observation: nil,
+            readIssues: readIssues
+        )
+    }
+}
+
+struct RuntimeVitalDBCurrentObservationProvider: Sendable {
+    private let loadCurrentObservation: @Sendable () -> RuntimeVitalDBCurrentObservationRead
+
+    init(load: @escaping @Sendable () -> RuntimeVitalDBCurrentObservationRead) {
+        self.loadCurrentObservation = load
+    }
+
+    func load() -> RuntimeVitalDBCurrentObservationRead {
+        loadCurrentObservation()
+    }
+
+    static func live(paths: RuntimePaths) -> RuntimeVitalDBCurrentObservationProvider {
+        let runtimeStatePath = paths.runtimeState
+        let runtimeStatusPath = paths.runtimeStatus
+        return RuntimeVitalDBCurrentObservationProvider {
+            let guestStateReader = GuestRuntimeStateVitalDBObservationReader(
+                path: runtimeStatePath,
+                fileStore: SystemRuntimeFileStore()
+            )
+            let statusReader = RuntimeStatusVitalDBObservationReader(
+                url: URL(fileURLWithPath: runtimeStatusPath)
+            )
+            var readIssues: [String] = []
+            switch guestStateReader.load() {
+            case .loaded(let observation):
+                if let observation {
+                    return .loaded(observation, source: .guestRuntimeState)
+                }
+            case .missing:
+                break
+            case .failed(let message):
+                readIssues.append("runtimeState=\(message)")
+            }
+
+            switch statusReader.load() {
+            case .loaded(let observation):
+                if let observation {
+                    return .loaded(observation, source: .runtimeStatus, readIssues: readIssues)
+                }
+            case .missing:
+                break
+            case .failed(let message):
+                readIssues.append("runtimeStatus=\(message)")
+            }
+            return .unavailable(readIssues: readIssues)
         }
     }
+}
+
+private enum RuntimeVitalDBObservationDocumentRead {
+    case missing
+    case loaded(VitalDBObservationDocument?)
+    case failed(String)
+}
+
+private struct GuestRuntimeStateVitalDBObservationReader {
+    let path: String
+    let fileStore: RuntimeFileReading
+
+    func load() -> RuntimeVitalDBObservationDocumentRead {
+        let url = URL(fileURLWithPath: path)
+        guard fileStore.fileExists(url) else {
+            return .missing
+        }
+        do {
+            let data = try fileStore.readData(url)
+            let document = try JSONDecoder().decode(GuestRuntimeStateDocument.self, from: data)
+            return .loaded(document.vitalDBObservation)
+        } catch {
+            return .failed(error.localizedDescription)
+        }
+    }
+}
+
+private struct RuntimeStatusVitalDBObservationReader {
+    let url: URL
+
+    func load() -> RuntimeVitalDBObservationDocumentRead {
+        switch JSONFileRuntimeStatusRepository(url: url).loadResult() {
+        case .loaded(let document):
+            return .loaded(document.vitalDBObservation)
+        case .missing:
+            return .missing
+        case .failed(let message):
+            return .failed(message)
+        }
+    }
+}
+
+private func joinedReadError(_ parts: [String?]) -> String? {
+    let messages = parts.compactMap { part -> String? in
+        guard let part, !part.isEmpty else {
+            return nil
+        }
+        return part
+    }
+    guard !messages.isEmpty else {
+        return nil
+    }
+    return messages.joined(separator: ";")
 }
 
 private extension RuntimeVitalBedAssignmentRecord {

@@ -272,6 +272,16 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
             },
             directoryExists: { url in url == backup },
             fileExists: { _ in false },
+            loadManifest: { _ in
+                BackupManifest(
+                    product: Constants.Product.identifier,
+                    createdAt: "2026-05-31T00:00:00Z",
+                    reason: "before-1.2.3",
+                    rootfsBase: Constants.Artifacts.rootfsBase,
+                    vmDisk: Constants.BootAssets.disk,
+                    vmDiskPreserved: true
+                )
+            },
             serviceRestartPolicy: {
                 XCTFail("missing restore artifact should stop before service policy")
                 return RuntimeServiceRestartPolicy(restartVM: false, restartProxy: false, restartWatchdog: false)
@@ -429,6 +439,7 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
             backup: backup,
             backupRootfs: backup.appendingPathComponent(Constants.Artifacts.rootfsBase),
             backupVersion: backup.appendingPathComponent(Constants.Artifacts.runtimeVersion),
+            restoresRootfsBase: true,
             restartPolicy: RuntimeServiceRestartPolicy(restartVM: true, restartProxy: false, restartWatchdog: true)
         )
     }

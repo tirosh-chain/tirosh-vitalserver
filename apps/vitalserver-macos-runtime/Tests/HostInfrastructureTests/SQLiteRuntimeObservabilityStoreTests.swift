@@ -65,6 +65,35 @@ final class SQLiteRuntimeObservabilityStoreTests: XCTestCase {
         XCTAssertNotNil(page.readError)
     }
 
+    func testRuntimeEventQueryDoesNotCreateSQLiteReadModel() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let database = directory.appendingPathComponent("events.sqlite")
+        let store = SQLiteRuntimeObservabilityStore(url: database)
+
+        let page = store.query(RuntimeEventQuery(limit: 10))
+
+        XCTAssertEqual(page.events, [])
+        XCTAssertNotNil(page.readError)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: directory.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: database.path))
+    }
+
+    func testVitalDBReadsDoNotCreateSQLiteReadModel() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let database = directory.appendingPathComponent("observability.sqlite")
+        let store = SQLiteRuntimeObservabilityStore(url: database)
+
+        XCTAssertThrowsError(try store.loadLatestVitalDBObservation())
+        XCTAssertThrowsError(try store.loadVitalDBObservations())
+        XCTAssertThrowsError(try store.loadVitalDBRecorderActivityBuckets())
+        XCTAssertThrowsError(try store.loadVitalDBBedAssignments())
+        XCTAssertThrowsError(try store.loadVitalDBRelationshipEvents())
+        XCTAssertFalse(FileManager.default.fileExists(atPath: directory.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: database.path))
+    }
+
     func testProjectionCatchUpPopulatesSQLiteFromJSONLWhenSQLiteIsEmpty() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -139,8 +168,12 @@ final class SQLiteRuntimeObservabilityStoreTests: XCTestCase {
 
         try jsonl.append(event(id: "event-1", timestamp: "2026-05-24T00:00:00Z", type: .statusChanged))
 
-        XCTAssertEqual(repository.recent(limit: 10), [])
+        let page = repository.query(RuntimeEventQuery(limit: 10))
+
+        XCTAssertEqual(page.events.map(\.id), ["event-1"])
+        XCTAssertNotNil(page.readError)
         XCTAssertEqual(sqlite.recent(limit: 10), [])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: directory.appendingPathComponent("events.sqlite").path))
     }
 
     func testProjectionCatchUpHonorsIntervalWhenSQLiteIndexIsStale() throws {

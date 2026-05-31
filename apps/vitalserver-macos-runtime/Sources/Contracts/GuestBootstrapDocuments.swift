@@ -45,6 +45,7 @@ public enum GuestBootstrapStatus: Codable, Equatable, Sendable {
 
 public struct GuestBootstrapResultDocument: Codable, Equatable, Sendable {
     public let schemaVersion: Int?
+    public let bootID: String?
     public let operation: RuntimeOperation?
     public let status: GuestBootstrapStatus
     public let message: String?
@@ -53,6 +54,7 @@ public struct GuestBootstrapResultDocument: Codable, Equatable, Sendable {
 
     public init(
         schemaVersion: Int? = nil,
+        bootID: String? = nil,
         operation: RuntimeOperation? = nil,
         status: GuestBootstrapStatus,
         message: String?,
@@ -60,6 +62,7 @@ public struct GuestBootstrapResultDocument: Codable, Equatable, Sendable {
         updatedAt: String?
     ) {
         self.schemaVersion = schemaVersion
+        self.bootID = bootID
         self.operation = operation
         self.status = status
         self.message = message
@@ -69,6 +72,7 @@ public struct GuestBootstrapResultDocument: Codable, Equatable, Sendable {
 
     public init(
         schemaVersion: Int? = nil,
+        bootID: String? = nil,
         operation: String? = nil,
         status: String,
         message: String?,
@@ -77,6 +81,7 @@ public struct GuestBootstrapResultDocument: Codable, Equatable, Sendable {
     ) {
         self.init(
             schemaVersion: schemaVersion,
+            bootID: bootID,
             operation: operation.map(RuntimeOperation.init(rawValue:)),
             status: GuestBootstrapStatus(rawValue: status),
             message: message,

@@ -115,6 +115,7 @@ enum RuntimeAdapterConstants {
         static let proxyNginxErrorLog = installed.proxyNginxErrorLog.path
         static let proxyLaunchDaemon = installed.proxyLaunchDaemon.path
         static let commandLogFile = installed.managerCommandLog.path
+        static let helperMessageLogFile = installed.managerHelperMessageLog.path
     }
 
     enum Commands {

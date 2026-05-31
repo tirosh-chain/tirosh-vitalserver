@@ -97,16 +97,27 @@ final class RuntimeFileReaderTests: XCTestCase {
         XCTAssertThrowsError(try reader.vitalFileFolders(root: "/restricted"))
     }
 
-    func testHelperMessageLogTextUsesNoDataForBlankMessage() {
-        let reader = SystemRuntimeHostFileReader()
+    func testHelperMessageLogTextReadsPersistedHelperMessageLog() {
+        let reader = SystemRuntimeHostFileReader(
+            fileStore: SpecificFileRuntimeFileStore(dataByPath: [
+                RuntimeAdapterConstants.Paths.helperMessageLogFile: Data("first\nsecond\nthird".utf8),
+            ])
+        )
 
         XCTAssertEqual(
-            reader.logText(sourceID: .helperMessage, helperMessage: "  \n", lineLimit: 10),
-            AppConstants.StatusText.noLogData
+            reader.logText(sourceID: .helperMessage, helperMessage: "ignored", lineLimit: 2),
+            "second\nthird"
         )
+    }
+
+    func testHelperMessageLogTextReportsNoDataWhenPersistedLogIsMissing() {
+        let reader = SystemRuntimeHostFileReader(
+            fileStore: SpecificFileRuntimeFileStore(existingFiles: [])
+        )
+
         XCTAssertEqual(
             reader.logText(sourceID: .helperMessage, helperMessage: "Ready", lineLimit: 10),
-            "Ready"
+            AppConstants.StatusText.noLogData
         )
     }
 

@@ -15,6 +15,7 @@ struct RuntimeRollbackWorkflowOperations {
     let requireLatestBackup: () throws -> URL
     let directoryExists: (URL) -> Bool
     let fileExists: (URL) -> Bool
+    let readData: (URL) throws -> Data
     let isLaunchdLoaded: (RuntimeManagedService) -> Bool
     let stopRuntimeServices: () throws -> Void
     let startRuntimeServices: (RuntimeServiceRestartPolicy) throws -> Void
@@ -52,6 +53,14 @@ struct RuntimeRollbackWorkflow {
             requireLatestBackup: operations.requireLatestBackup,
             directoryExists: operations.directoryExists,
             fileExists: operations.fileExists,
+            loadManifest: { backup in
+                let manifestURL = backup.appendingPathComponent(Constants.Artifacts.backupManifest)
+                guard operations.fileExists(manifestURL) else {
+                    throw LauncherError.missingFile(manifestURL.path)
+                }
+                let data = try operations.readData(manifestURL)
+                return try JSONDecoder().decode(BackupManifest.self, from: data)
+            },
             serviceRestartPolicy: {
                 RuntimeServiceRestartPolicy(
                     restartVM: operations.isLaunchdLoaded(.vm),

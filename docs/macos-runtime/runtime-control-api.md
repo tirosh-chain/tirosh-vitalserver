@@ -137,6 +137,9 @@ channel이며, command 전송용 양방향 WebSocket contract가 아닙니다.
 `GET /host/logs/stream`은 long-lived SSE 연결입니다. 서버는 선택한 host log text가 바뀔 때 `runtime-log`
 frame을 보냅니다. 각 frame의 `id` 값은 `runtime-log-<source>`, `data` 값은 JSON encoded
 `RuntimeLogTextResponse`입니다. Query는 `source`, `lineLimit`, `helperMessage`를 지원합니다.
+`source=helperMessage`는 현재 UI message 값을 재전송하지 않고 host의 append-only
+`tirosh-vitalserver-helper-message.log`를 읽습니다. `helperMessage` query/body field는 이전 client
+호환을 위해 남아 있지만 log source의 SoT가 아닙니다.
 
 `GET /vitaldb/observations/latest`는 watchdog/runtime observability SQLite에 저장된 최신
 `VitalDBObservationDocument`를 반환합니다. 이 payload는 `vitaldb-observer` container가 계산한

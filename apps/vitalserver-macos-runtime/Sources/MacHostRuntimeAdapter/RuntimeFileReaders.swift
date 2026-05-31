@@ -59,9 +59,7 @@ struct SystemRuntimeHostFileReader: RuntimeHostFileReading, @unchecked Sendable 
     func logText(sourceID: RuntimeLogSource, helperMessage: String, lineLimit: Int) -> String {
         switch sourceID {
         case .helperMessage:
-            return helperMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                ? RuntimeAdapterConstants.StatusText.noLogData
-                : helperMessage
+            return logFile(path: RuntimeAdapterConstants.Paths.helperMessageLogFile, lineLimit: lineLimit)
         case .containers:
             if !fileStore.fileExists(URL(fileURLWithPath: RuntimeAdapterConstants.Paths.containerLogs)) {
                 let refreshFailure = refreshLogCollectionFailure(sourceID)

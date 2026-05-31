@@ -115,6 +115,7 @@ main() {
     write_result "completed" "Redis append-only file checked and VitalServer services restarted."
     printf "datastore repair completed\n"
   else
+    rm -f "${REQUEST_FILE}"
     write_result "failed" "Datastore repair failed. See repair-datastore.log."
     printf "datastore repair failed\n" >&2
     return 1

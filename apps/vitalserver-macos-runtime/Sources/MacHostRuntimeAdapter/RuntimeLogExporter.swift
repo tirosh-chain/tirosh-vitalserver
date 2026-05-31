@@ -269,6 +269,10 @@ struct RuntimeLogExportSupplementalSource {
                 relativeDestination: "command.log"
             ),
             RuntimeLogExportSupplementalSource(
+                source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.helperMessageLogFile),
+                relativeDestination: "helper-message.log"
+            ),
+            RuntimeLogExportSupplementalSource(
                 source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.runtimeStatus),
                 relativeDestination: "diagnostics/status/\(RuntimeFileNames.runtimeStatus)"
             ),

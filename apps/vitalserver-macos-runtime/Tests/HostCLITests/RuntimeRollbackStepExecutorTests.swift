@@ -12,6 +12,7 @@ final class RuntimeRollbackStepExecutorTests: XCTestCase {
             backup: backup,
             backupRootfs: backup.appendingPathComponent(Constants.Artifacts.rootfsBase),
             backupVersion: backup.appendingPathComponent(Constants.Artifacts.runtimeVersion),
+            restoresRootfsBase: true,
             restartPolicy: policy
         )
         var events: [String] = []
@@ -74,6 +75,7 @@ final class RuntimeRollbackStepExecutorTests: XCTestCase {
             backup: backup,
             backupRootfs: backup.appendingPathComponent(Constants.Artifacts.rootfsBase),
             backupVersion: backup.appendingPathComponent(Constants.Artifacts.runtimeVersion),
+            restoresRootfsBase: true,
             restartPolicy: RuntimeServiceRestartPolicy(restartVM: false, restartProxy: false, restartWatchdog: false)
         )
         var events: [String] = []
@@ -117,6 +119,7 @@ final class RuntimeRollbackStepExecutorTests: XCTestCase {
             backup: backup,
             backupRootfs: backup.appendingPathComponent(Constants.Artifacts.rootfsBase),
             backupVersion: backup.appendingPathComponent(Constants.Artifacts.runtimeVersion),
+            restoresRootfsBase: true,
             restartPolicy: RuntimeServiceRestartPolicy(restartVM: false, restartProxy: false, restartWatchdog: false)
         )
 

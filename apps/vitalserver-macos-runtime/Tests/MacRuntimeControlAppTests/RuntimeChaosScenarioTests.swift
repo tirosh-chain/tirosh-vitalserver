@@ -40,9 +40,56 @@ final class RuntimeChaosScenarioTests: XCTestCase {
         XCTAssertFalse(history.readError?.isEmpty == true)
     }
 
+    func testObservabilityReadChaosDoesNotCreateSQLiteReadModel() throws {
+        let root = try temporaryDirectory()
+        defer { cleanup(root) }
+        let statusDirectory = root.appendingPathComponent("status", isDirectory: true)
+        let events = root.appendingPathComponent(RuntimeFileNames.runtimeEvents)
+        let database = statusDirectory.appendingPathComponent(RuntimeFileNames.runtimeObservabilityDB)
+        let event = RuntimeEventDocument(
+            id: "jsonl-event",
+            eventType: .statusChanged,
+            timestamp: "2026-05-31T00:00:00Z",
+            product: "TiroshVitalServer",
+            status: .healthy,
+            previousStatus: nil,
+            operation: .health,
+            message: "ready",
+            runtimeVersion: "1.2.3",
+            failureReasons: [],
+            containerObservation: nil,
+            progress: nil
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        try (encoder.encode(event) + Data("\n".utf8)).write(to: events)
+        let reader = SystemRuntimeObservabilityReader(
+            paths: RuntimePaths(
+                runtimeEvents: events.path,
+                runtimeObservabilityDB: database.path
+            )
+        )
+
+        let eventHistory = reader.loadRuntimeEvents(limit: 10)
+        let recorderHistory = reader.loadVitalDBRecorders()
+        let relationships = reader.loadVitalDBRelationships()
+
+        XCTAssertEqual(eventHistory.events.map(\.id), ["jsonl-event"])
+        XCTAssertNotNil(eventHistory.readError)
+        XCTAssertEqual(recorderHistory.activityHistory.source, .unavailable)
+        XCTAssertNotNil(recorderHistory.activityHistory.readError)
+        XCTAssertNotNil(relationships.readError)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: statusDirectory.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: database.path))
+    }
+
     func testObservabilitySnapshotChaosReturnsFailedStateInsteadOfUnavailableDefault() {
         let reader = SystemRuntimeObservabilityReader(
-            paths: RuntimePaths(runtimeObservabilityDB: "/dev/null/\(RuntimeFileNames.runtimeObservabilityDB)")
+            paths: RuntimePaths(
+                runtimeState: "/dev/null/\(RuntimeFileNames.runtimeState)",
+                runtimeStatus: "/dev/null/\(RuntimeFileNames.runtimeStatus)",
+                runtimeObservabilityDB: "/dev/null/\(RuntimeFileNames.runtimeObservabilityDB)"
+            )
         )
 
         let snapshot = reader.loadVitalDBObservationSnapshot()
@@ -118,7 +165,11 @@ final class RuntimeChaosScenarioTests: XCTestCase {
         let database = root.appendingPathComponent(RuntimeFileNames.runtimeObservabilityDB)
         try "not a sqlite database".write(to: database, atomically: true, encoding: .utf8)
         let reader = SystemRuntimeObservabilityReader(
-            paths: RuntimePaths(runtimeObservabilityDB: database.path)
+            paths: RuntimePaths(
+                runtimeState: root.appendingPathComponent(RuntimeFileNames.runtimeState).path,
+                runtimeStatus: root.appendingPathComponent(RuntimeFileNames.runtimeStatus).path,
+                runtimeObservabilityDB: database.path
+            )
         )
 
         let snapshot = reader.loadVitalDBObservationSnapshot()
