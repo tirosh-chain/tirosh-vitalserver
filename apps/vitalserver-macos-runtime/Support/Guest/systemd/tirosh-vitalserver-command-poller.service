@@ -1,0 +1,12 @@
+[Unit]
+Description=Dispatch Tirosh VitalServer guest command requests
+After=local-fs.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/tirosh-vitalserver-command-poller
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

@@ -22,6 +22,7 @@ from .model import (
 from .time import redis_unix_time_to_iso, utc_now_iso
 
 _ACCESS_LOG_TAIL_BYTES = 256 * 1024
+_RECORDER_TIMESTAMP_FUTURE_SKEW_SECONDS = 1.0
 
 
 class RedisReader(Protocol):
@@ -311,7 +312,11 @@ def _is_recent(
     except ValueError:
         return False
     age_seconds = observed - timestamp
-    return 0 <= age_seconds <= threshold_seconds
+    return (
+        -_RECORDER_TIMESTAMP_FUTURE_SKEW_SECONDS
+        <= age_seconds
+        <= threshold_seconds
+    )
 
 
 def _tail_lines(path: Path, max_bytes: int) -> list[str]:

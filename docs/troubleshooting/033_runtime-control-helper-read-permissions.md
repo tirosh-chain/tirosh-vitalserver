@@ -12,6 +12,7 @@ VitalServer Helper 또는 Remote Console에서 아래 증상이 함께 나타납
 - Settings에 `guestRuntimeConfig: The file "runtime-config.json" couldn't be opened because you don't have permission to view it.`가 표시됩니다.
 - Logs > Export logs가 실패합니다.
 - Observability > Runtime Events가 `0 events` 또는 `No runtime events`로 표시됩니다.
+- Recorders > Activity에 `attempt to write a readonly database`가 포함된 `Recorder activity history is incomplete`가 표시됩니다.
 
 정상 상태라면 Settings는 guest runtime exposure 값을 읽고, Export logs는 host/guest diagnostic archive를 생성하며, Observability는 최근 watchdog/runtime command event를 표시해야 합니다.
 
@@ -35,7 +36,7 @@ Settings의 read issue는 network exposure, Redis backup retention 같은 일부
 
 두 번째 원인은 observability SQLite 조회가 pure read가 아니라는 점입니다. `/Library/Application Support/TiroshVitalServer/status/runtime-observability.sqlite`와 `runtime-events.jsonl`에 event가 있어도, Runtime Control API의 event query는 SQLite secondary index를 사용합니다. SQLite query path는 `initialize()`와 catch-up을 먼저 수행하면서 schema migration/index state write를 시도할 수 있습니다.
 
-사용자 권한 Helper가 root-owned DB 또는 status directory에 write할 수 없으면 SQLite가 `attempt to write a readonly database`를 반환합니다. 현재 query 구현은 이 실패를 UI에 전달하지 않고 빈 `RuntimeEventPage(events: [])`로 숨길 수 있어, 실제 event가 있어도 Remote Console에는 0건처럼 보입니다.
+같은 DB를 사용하는 VitalDB observation/recorder activity/relationship 조회도 `initialize()`를 먼저 호출하면 read 요청이 schema write를 시도합니다. 사용자 권한 Helper가 root-owned DB 또는 status directory에 write할 수 없으면 SQLite가 `attempt to write a readonly database`를 반환합니다. 이 실패를 빈 event/activity list로 숨기면 실제 data가 있어도 Remote Console에는 0건 또는 불완전한 history처럼 보입니다.
 
 ## Checks
 
@@ -61,7 +62,7 @@ wc -l \
 
 sqlite3 \
   "/Library/Application Support/TiroshVitalServer/status/runtime-observability.sqlite" \
-  'select count(*), min(timestamp), max(timestamp) from runtime_events;'
+  'select count(*), min(timestamp), max(timestamp) from runtime_events; select count(*) from vitaldb_observation_snapshots; select count(*) from vitaldb_recorder_activity_buckets;'
 ```
 
 SQLite가 사용자 권한에서 read-write 초기화에 실패하는지 확인합니다.
@@ -99,8 +100,8 @@ touch \
 2. Helper가 읽는 Settings source는 secret-free read model이어야 합니다.
 3. Export logs는 root-only supplemental file을 읽지 못해도 전체 export를 실패시키지 말고, manifest에 `sourcePresent=true`, `included=false`, `error=<reason>` 형태로 남깁니다. secret file은 redacted copy만 포함합니다.
 4. Log collection refresh는 사용자 권한 Helper가 root-owned central logs를 touch/copy하지 않도록 privileged launcher에 위임하거나 read-only export path와 분리합니다.
-5. SQLite event query는 read-only connection/path를 제공해야 합니다. 조회 중 schema migration, catch-up, index state write를 시도하면 안 됩니다.
-6. SQLite query 실패 시 JSONL primary fallback을 사용하거나, 최소한 `readError`를 API/UI에 노출합니다. 빈 event list로 실패를 숨기면 안 됩니다.
+5. SQLite runtime event/VitalDB observation/recorder activity/relationship query는 read-only connection/path를 제공해야 합니다. 조회 중 schema migration, catch-up, index state write를 시도하면 안 됩니다.
+6. SQLite query 실패 시 JSONL primary fallback을 사용하거나, 최소한 `readError`를 API/UI에 노출합니다. 빈 event/activity list로 실패를 숨기면 안 됩니다.
 
 ## Prevention
 
@@ -136,3 +137,4 @@ touch \
 - 2026-05-30: Helper가 `runtime-settings.json` secret-free read model을 우선 읽도록 수정하고, install/configure/update migration이 이 파일을 생성하도록 보강했습니다.
 - 2026-05-30: Export logs는 refresh/supplemental read 실패를 manifest issue로 기록하고 가능한 로그를 계속 export하도록 수정했습니다.
 - 2026-05-30: SQLite event query 실패 시 JSONL primary event store로 fallback하도록 수정했습니다.
+- 2026-05-31: Runtime Events뿐 아니라 Recorders/Activity/Relationships read path도 SQLite를 read-only로 열도록 hotfix 범위를 확장했습니다. Remote Console 조회는 projection catch-up, schema init, migration을 수행하지 않습니다.

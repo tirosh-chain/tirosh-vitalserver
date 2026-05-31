@@ -582,7 +582,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         XCTAssertTrue(history.readError?.contains("events=") == true)
     }
 
-    func testObservabilityReaderRunsExplicitEventProjectionCatchUpBeforeReadingEvents() throws {
+    func testObservabilityReaderDoesNotCreateSQLiteProjectionWhenReadingEvents() throws {
         let directory = try temporaryDirectory()
         let runtimeEvents = directory.appendingPathComponent(RuntimeFileNames.runtimeEvents)
         let runtimeObservabilityDB = directory.appendingPathComponent(RuntimeFileNames.runtimeObservabilityDB)
@@ -601,6 +601,8 @@ final class RuntimeSettingsReaderTests: XCTestCase {
 
         XCTAssertEqual(history.events.map(\.id), ["jsonl-event"])
         XCTAssertEqual(history.matchingCount, 1)
+        XCTAssertNotNil(history.readError)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: runtimeObservabilityDB.path))
     }
 
     func testObservabilityReaderPreservesRuntimeEventReadIssueWhenServingJSONLFallback() throws {

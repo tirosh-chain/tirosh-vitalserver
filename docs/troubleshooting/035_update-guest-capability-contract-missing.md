@@ -33,11 +33,13 @@ Update가 apply 중간에서 멈춘 것처럼 보이고, timeout 이후 rollback
 
 ## Cause
 
-Host update flow가 Guest 내부의 request/result worker 존재를 명시 계약으로 확인하지 않고 가정합니다.
+Host update flow가 Guest 내부의 request/result worker 존재와 dispatch mechanism을 명시 계약으로 확인하지 않고 가정합니다.
 
 현재 Product Update flow는 `prepare-update-shutdown.request`를 host-visible run directory에 쓰고, Guest systemd path unit이 이를 감지해 `prepare-update-shutdown-result.json`을 생성하기를 기다립니다. 하지만 기존 설치본의 Guest에 해당 script/path unit이 설치되어 있지 않거나 활성화되어 있지 않으면 request는 남고 result/log는 생성되지 않습니다.
 
 이 구조는 update 전 필요한 capability를 update bundle 안의 새 guest deploy로 제공하려는 순환 의존을 만들 수 있습니다. 새 worker는 activation 이후 Guest에 설치되는데, Host는 activation 전에 그 worker를 필요로 합니다.
+
+또 다른 실패 모드는 `systemd.path` 자체입니다. Host가 virtiofs/shared run directory에 request 파일을 만들면 Guest의 `PathExists=` watcher가 항상 inotify event로 깨어난다는 보장이 없습니다. 이 경우 request 파일은 실제로 존재하지만 service가 한 번도 실행되지 않아 result/log가 전혀 생기지 않습니다. runtime state가 계속 갱신되고 capability가 true여도 command dispatcher가 request를 소비하지 못하면 Host는 timeout까지 기다립니다.
 
 AGENTS.md 원칙상 Host는 Guest 내부 상태를 로그, 파일명, old command output, absence of data로 추정하면 안 됩니다. Guest 상태 owner가 명시 capability/state를 제공해야 하고, Host는 그 계약을 소비해야 합니다.
 
@@ -96,6 +98,7 @@ stat -f '%Sp %Su:%Sg %N' \
 4. `missing result`, `invalid result`, `failed result`, `unsupported capability`, `worker timeout`을 서로 다른 상태로 보존합니다.
 5. unreleased legacy behavior를 보상하는 묵시 fallback은 추가하지 않습니다. 이미 배포된 설치본을 지원해야 하면 명시 migration 또는 compatibility gate로 처리합니다.
 6. Logs read path는 update state와 분리합니다. Helper가 로그를 읽으면서 root-owned central log directory에 copy/touch/create 실패를 만나도, 원본 로그가 읽히면 그 로그를 표시합니다.
+7. Host-written request 파일 감지는 `systemd.path`에 의존하지 않습니다. Guest owner process가 짧은 주기로 run directory를 polling하고, request 발견 시 해당 oneshot service를 명시적으로 dispatch합니다.
 
 ## Code Notes
 
@@ -106,6 +109,7 @@ stat -f '%Sp %Su:%Sg %N' \
 - `prepare-update-shutdown`, `activate-update`, `redis-backup`, `repair-datastore` request는 capability 확인 후에만 작성됩니다.
 - Update preflight는 managed backup을 만들기 전에 update에 필요한 Guest capability를 확인합니다.
 - Logs read path는 refresh 실패를 보존하되, fallback source log가 있으면 refresh permission failure 대신 실제 log text를 반환합니다.
+- Guest command dispatch는 `tirosh-vitalserver-command-poller.service`가 담당합니다. 기본 polling interval은 3초이며 `TIROSH_GUEST_COMMAND_POLL_INTERVAL_SECONDS`로 조정할 수 있습니다. bootstrap/activation은 기존 `*.path` unit을 비활성화하고 poller service를 활성화합니다.
 
 ## Prevention
 
@@ -115,6 +119,7 @@ Update flow는 Host와 Guest 사이의 capability/state 계약을 먼저 확인�
 - Host는 capability가 없을 때 Guest 내부 상태를 추정하지 않습니다.
 - Request/result 파일은 provider contract가 확인된 뒤에만 사용합니다.
 - Absence of result는 성공, 빈 상태, 또는 fallback trigger가 아닙니다.
+- Host가 shared directory에 파일을 생성하는 방식은 event notification 계약이 아닙니다. Guest는 파일 생성 event를 기다리지 말고 명시 dispatcher로 request를 읽어야 합니다.
 - UI/Helper read path는 domain state를 만들거나 변경하지 않습니다.
 - 권한 문제나 log refresh 실패는 update state와 별도 issue로 보존합니다.
 
@@ -146,3 +151,4 @@ Update flow는 Host와 Guest 사이의 capability/state 계약을 먼저 확인�
 - 2026-05-31: 동시에 Helper Logs read path가 root-owned central logs directory에 command log를 복사하려다 permission failure를 표시해 실제 update 대기/rollback 상태를 흐리는 것을 확인했습니다.
 - 2026-05-31: AGENTS.md 원칙에 따라 fallback 진행이 아니라 Guest capability 계약과 typed failure를 추가하는 방향으로 정리했습니다.
 - 2026-05-31: `GuestRuntimeCapabilities`, Host capability preflight, request writer guard, log refresh fallback 분리를 구현하고 targeted Swift tests 86개를 통과했습니다.
+- 2026-05-31: `systemd.path` watcher가 virtiofs/shared run directory의 host-written request를 깨우지 못하는 구조적 실패를 확인했습니다. Guest command dispatch를 3초 polling service로 전환하고, bootstrap/activation에서 기존 path unit을 비활성화하도록 hotfix 범위를 확장했습니다.

@@ -77,6 +77,7 @@ on_error() {
   trap - ERR
   log "status=failed exit=${status} command=${command}"
   write_result "failed" "Guest update shutdown failed at: ${command}" "failed" "guest-update-shutdown-failed" || true
+  rm -f "${REQUEST_FILE}"
   exit "${status}"
 }
 

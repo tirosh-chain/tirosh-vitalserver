@@ -185,6 +185,7 @@ install_guest_runtime_files() {
   install -m 0755 "${DEPLOY_DIR}/bin/tirosh-vitalserver-repair-datastore" /usr/local/bin/tirosh-vitalserver-repair-datastore
   install -m 0755 "${DEPLOY_DIR}/bin/tirosh-vitalserver-activate-update" /usr/local/bin/tirosh-vitalserver-activate-update
   install -m 0755 "${DEPLOY_DIR}/bin/tirosh-vitalserver-prepare-update-shutdown" /usr/local/bin/tirosh-vitalserver-prepare-update-shutdown
+  install -m 0755 "${DEPLOY_DIR}/bin/tirosh-vitalserver-command-poller" /usr/local/bin/tirosh-vitalserver-command-poller
 
   install -m 0644 "${DEPLOY_DIR}/systemd/tirosh-runtime-state.service" /etc/systemd/system/tirosh-runtime-state.service
   install -m 0644 "${DEPLOY_DIR}/systemd/tirosh-vitalserver-compose.service" /etc/systemd/system/tirosh-vitalserver-compose.service
@@ -192,24 +193,22 @@ install_guest_runtime_files() {
   install -m 0644 "${DEPLOY_DIR}/systemd/tirosh-vitalserver-container-logs.service" /etc/systemd/system/tirosh-vitalserver-container-logs.service
   install -m 0644 "${DEPLOY_DIR}/systemd/tirosh-vitalserver-redis-backup.service" /etc/systemd/system/tirosh-vitalserver-redis-backup.service
   install -m 0644 "${DEPLOY_DIR}/systemd/tirosh-vitalserver-redis-backup.timer" /etc/systemd/system/tirosh-vitalserver-redis-backup.timer
-  install -m 0644 "${DEPLOY_DIR}/systemd/tirosh-vitalserver-redis-backup.path" /etc/systemd/system/tirosh-vitalserver-redis-backup.path
   install -m 0644 "${DEPLOY_DIR}/systemd/tirosh-vitalserver-repair-datastore.service" /etc/systemd/system/tirosh-vitalserver-repair-datastore.service
-  install -m 0644 "${DEPLOY_DIR}/systemd/tirosh-vitalserver-repair-datastore.path" /etc/systemd/system/tirosh-vitalserver-repair-datastore.path
   install -m 0644 "${DEPLOY_DIR}/systemd/tirosh-vitalserver-activate-update.service" /etc/systemd/system/tirosh-vitalserver-activate-update.service
-  install -m 0644 "${DEPLOY_DIR}/systemd/tirosh-vitalserver-activate-update.path" /etc/systemd/system/tirosh-vitalserver-activate-update.path
   install -m 0644 "${DEPLOY_DIR}/systemd/tirosh-vitalserver-prepare-update-shutdown.service" /etc/systemd/system/tirosh-vitalserver-prepare-update-shutdown.service
-  install -m 0644 "${DEPLOY_DIR}/systemd/tirosh-vitalserver-prepare-update-shutdown.path" /etc/systemd/system/tirosh-vitalserver-prepare-update-shutdown.path
+  install -m 0644 "${DEPLOY_DIR}/systemd/tirosh-vitalserver-command-poller.service" /etc/systemd/system/tirosh-vitalserver-command-poller.service
 
   systemctl daemon-reload
+  systemctl disable --now tirosh-vitalserver-redis-backup.path >/dev/null 2>&1 || true
+  systemctl disable --now tirosh-vitalserver-repair-datastore.path >/dev/null 2>&1 || true
+  systemctl disable --now tirosh-vitalserver-activate-update.path >/dev/null 2>&1 || true
+  systemctl disable --now tirosh-vitalserver-prepare-update-shutdown.path >/dev/null 2>&1 || true
   systemctl enable tirosh-runtime-state.service
   systemctl enable tirosh-vitalserver-compose.service
   systemctl enable tirosh-vitalserver-testkit.service
   systemctl enable --now tirosh-vitalserver-container-logs.service
   systemctl enable --now tirosh-vitalserver-redis-backup.timer
-  systemctl enable --now tirosh-vitalserver-redis-backup.path
-  systemctl enable --now tirosh-vitalserver-repair-datastore.path
-  systemctl enable --now tirosh-vitalserver-activate-update.path
-  systemctl enable --now tirosh-vitalserver-prepare-update-shutdown.path
+  systemctl enable --now tirosh-vitalserver-command-poller.service
 }
 
 load_bundled_docker_images() {
