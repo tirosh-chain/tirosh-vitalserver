@@ -7,6 +7,7 @@ struct RuntimeDatastoreRepairWorkflowContext {
 }
 
 struct RuntimeDatastoreRepairWorkflowOperations {
+    let requireCapability: () throws -> Void
     let createDirectory: (URL, Bool) throws -> Void
     let removePreviousResult: () throws -> Void
     let writeRequest: (RuntimeDatastoreRepairRequest) throws -> Void
@@ -34,6 +35,7 @@ struct RuntimeDatastoreRepairWorkflow {
 
     private func runner() -> RuntimeDatastoreRepairRunner {
         RuntimeDatastoreRepairRunner(
+            requireCapability: operations.requireCapability,
             prepareGuestRunDirectory: {
                 try operations.createDirectory(context.guestRunDirectory, true)
             },

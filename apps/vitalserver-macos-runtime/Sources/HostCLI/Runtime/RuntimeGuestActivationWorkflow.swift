@@ -7,6 +7,7 @@ struct RuntimeGuestActivationWorkflowContext {
 }
 
 struct RuntimeGuestActivationWorkflowOperations {
+    let requireCapability: () throws -> Void
     let createDirectory: (URL, Bool) throws -> Void
     let removePreviousResult: () throws -> Void
     let writeRequest: (RuntimeGuestActivationRequest) throws -> Void
@@ -30,6 +31,7 @@ struct RuntimeGuestActivationWorkflow {
 
     private func runner() -> RuntimeGuestActivationRunner {
         RuntimeGuestActivationRunner(
+            requireCapability: operations.requireCapability,
             createRunDirectory: {
                 try operations.createDirectory(context.guestRunDirectory, true)
             },

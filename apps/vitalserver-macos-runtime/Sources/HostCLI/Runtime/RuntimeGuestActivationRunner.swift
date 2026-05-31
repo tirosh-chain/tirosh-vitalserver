@@ -3,6 +3,7 @@ import Core
 import Contracts
 
 struct RuntimeGuestActivationRunner {
+    var requireCapability: () throws -> Void
     var createRunDirectory: () throws -> Void
     var removePreviousResult: () throws -> Void
     var requestID: () -> String
@@ -22,6 +23,7 @@ struct RuntimeGuestActivationRunner {
         }
 
         log("guest update activation requested version=\(manifest.version)")
+        try requireCapability()
         try createRunDirectory()
         try removePreviousResult()
         let request = RuntimeGuestActivationRequest(

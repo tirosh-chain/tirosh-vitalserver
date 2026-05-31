@@ -36,6 +36,7 @@ struct RuntimeBundleWorkflowOperations {
     let refreshCloudInitSeedIfNeeded: (UpdateBundleManifest) throws -> Void
     let activateGuestUpdateIfNeeded: (UpdateBundleManifest) throws -> Void
     let waitForHealth: (RuntimeServiceRestartPolicy) throws -> Void
+    let requireGuestCapability: (RuntimeGuestCapabilityRequirement) throws -> Void
     let log: (String) -> Void
 }
 
@@ -307,6 +308,7 @@ struct RuntimeBundleWorkflow {
                     restartWatchdog: operations.isLaunchdLoaded(.watchdog)
                 )
             },
+            requireGuestCapability: operations.requireGuestCapability,
             createBackup: operations.createBackup,
             directorySize: directorySize,
             log: operations.log

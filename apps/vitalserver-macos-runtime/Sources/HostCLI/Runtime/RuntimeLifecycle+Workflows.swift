@@ -271,6 +271,7 @@ extension RuntimeLifecycle {
                 refreshCloudInitSeedIfNeeded: refreshCloudInitSeedIfNeeded,
                 activateGuestUpdateIfNeeded: activateGuestUpdateIfNeeded,
                 waitForHealth: waitForHealth,
+                requireGuestCapability: requireGuestCapability,
                 log: log
             )
         )
@@ -282,6 +283,9 @@ extension RuntimeLifecycle {
                 guestRunDirectory: guestRunDirectory
             ),
             operations: RuntimeDatastoreRepairWorkflowOperations(
+                requireCapability: {
+                    try requireGuestCapability(.repairDatastore)
+                },
                 createDirectory: createDirectoryAction(),
                 removePreviousResult: {
                     try guestGateway.removeDatastoreRepairResult()
@@ -396,6 +400,9 @@ extension RuntimeLifecycle {
                 guestRunDirectory: guestRunDirectory
             ),
             operations: RuntimeGuestActivationWorkflowOperations(
+                requireCapability: {
+                    try requireGuestCapability(.activateUpdate)
+                },
                 createDirectory: createDirectoryAction(),
                 removePreviousResult: {
                     try guestGateway.removeUpdateActivationResult()
@@ -419,6 +426,9 @@ extension RuntimeLifecycle {
 
     func prepareGuestShutdownForUpdate(manifest: UpdateBundleManifest) throws {
         try RuntimeGuestShutdownRunner(
+            requireCapability: {
+                try requireGuestCapability(.prepareUpdateShutdown)
+            },
             createRunDirectory: {
                 try fileStore.createDirectory(at: guestRunDirectory, withIntermediateDirectories: true)
             },
@@ -445,6 +455,14 @@ extension RuntimeLifecycle {
             sleep: workflowPollingSleepAction(),
             log: log
         ).prepareForUpdate(version: manifest.version)
+    }
+
+    func requireGuestCapability(_ capability: RuntimeGuestCapabilityRequirement) throws {
+        try RuntimeGuestCapabilityChecker(
+            loadRuntimeState: {
+                guestGateway.loadRuntimeStateDocument()
+            }
+        ).require(capability)
     }
 }
 

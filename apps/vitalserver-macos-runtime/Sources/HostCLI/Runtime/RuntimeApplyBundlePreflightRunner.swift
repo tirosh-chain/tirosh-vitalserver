@@ -11,6 +11,7 @@ struct RuntimeApplyBundlePreflightRunner {
     var requireFreeSpace: (URL, UInt64, RuntimeOperation) throws -> Void
     var checkCompatibility: (UpdateBundleManifest) throws -> Void
     var serviceRestartPolicy: () -> RuntimeServiceRestartPolicy
+    var requireGuestCapability: (RuntimeGuestCapabilityRequirement) throws -> Void
     var createBackup: (String) throws -> URL
     var directorySize: (URL) throws -> UInt64
     var log: (String) -> Void
@@ -59,6 +60,12 @@ struct RuntimeApplyBundlePreflightRunner {
         log(
             "runtime services before update vm=\(restartPolicy.restartVM ? "loaded" : "not-loaded") proxy=\(restartPolicy.restartProxy ? "loaded" : "not-loaded") watchdog=\(restartPolicy.restartWatchdog ? "loaded" : "not-loaded")"
         )
+        if restartPolicy.restartVM {
+            try requireGuestCapability(.prepareUpdateShutdown)
+        }
+        if manifest.artifacts.contains(where: { $0.type == .guestDeploy }) {
+            try requireGuestCapability(.activateUpdate)
+        }
         log("creating managed backup reason=before-\(manifest.version)")
         let backup = try createBackup("before-\(manifest.version)")
         log("backup created path=\(backup.path) size=\(formatBytes(try directorySize(backup)))")

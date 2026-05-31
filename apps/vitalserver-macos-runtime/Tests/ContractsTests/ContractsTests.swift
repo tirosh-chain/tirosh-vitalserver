@@ -46,6 +46,15 @@ final class ContractsTests: XCTestCase {
         XCTAssertEqual(document.memory?.percent, 25.0)
         XCTAssertEqual(document.systemDisk?.percent, 31.25)
         XCTAssertEqual(document.vitalFilesDisk?.percent, 25.0)
+        XCTAssertEqual(
+            document.capabilities,
+            GuestRuntimeCapabilities(
+                prepareUpdateShutdown: true,
+                activateUpdate: true,
+                redisBackup: true,
+                repairDatastore: true
+            )
+        )
     }
 
     func testDecodesGuestRuntimeStateContainerServices() throws {

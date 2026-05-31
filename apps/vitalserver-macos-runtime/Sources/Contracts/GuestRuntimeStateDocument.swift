@@ -1,6 +1,7 @@
 import Foundation
 
 public struct GuestRuntimeStateDocument: Codable, Equatable, Sendable {
+    public let capabilities: GuestRuntimeCapabilities?
     public let vmIP: String?
     public let updatedAt: String?
     public let bootID: String?
@@ -15,6 +16,7 @@ public struct GuestRuntimeStateDocument: Codable, Equatable, Sendable {
     public let vitalDBObservation: VitalDBObservationDocument?
 
     public init(
+        capabilities: GuestRuntimeCapabilities? = nil,
         vmIP: String?,
         updatedAt: String? = nil,
         bootID: String? = nil,
@@ -28,6 +30,7 @@ public struct GuestRuntimeStateDocument: Codable, Equatable, Sendable {
         containerServices: [RuntimeContainerServiceObservation]? = nil,
         vitalDBObservation: VitalDBObservationDocument? = nil
     ) {
+        self.capabilities = capabilities
         self.vmIP = vmIP
         self.updatedAt = updatedAt
         self.bootID = bootID
@@ -42,4 +45,23 @@ public struct GuestRuntimeStateDocument: Codable, Equatable, Sendable {
         self.vitalDBObservation = vitalDBObservation
     }
 
+}
+
+public struct GuestRuntimeCapabilities: Codable, Equatable, Sendable {
+    public let prepareUpdateShutdown: Bool
+    public let activateUpdate: Bool
+    public let redisBackup: Bool
+    public let repairDatastore: Bool
+
+    public init(
+        prepareUpdateShutdown: Bool,
+        activateUpdate: Bool,
+        redisBackup: Bool,
+        repairDatastore: Bool
+    ) {
+        self.prepareUpdateShutdown = prepareUpdateShutdown
+        self.activateUpdate = activateUpdate
+        self.redisBackup = redisBackup
+        self.repairDatastore = repairDatastore
+    }
 }

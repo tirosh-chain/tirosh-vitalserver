@@ -3,6 +3,7 @@ import Core
 import Contracts
 
 struct RuntimeDatastoreRepairRunner {
+    var requireCapability: () throws -> Void
     var prepareGuestRunDirectory: () throws -> Void
     var removePreviousResult: () throws -> Void
     var writeRequest: (RuntimeDatastoreRepairRequest) throws -> Void
@@ -20,6 +21,7 @@ struct RuntimeDatastoreRepairRunner {
 
     func run() throws {
         log("datastore repair requested")
+        try requireCapability()
         try prepareGuestRunDirectory()
         try removePreviousResult()
         try writeStatus(.recovering, .repairDatastore, "datastore repair requested")

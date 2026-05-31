@@ -196,6 +196,7 @@ struct RuntimeLifecycle {
 
     func createRedisBackup() throws {
         log("redis backup requested")
+        try requireGuestCapability(.redisBackup)
         try fileStore.createDirectory(at: guestRunDirectory, withIntermediateDirectories: true)
         try fileStore.createDirectory(
             at: installedPaths.redisBackupsDirectory,

@@ -36,6 +36,7 @@ final class RuntimeGuestActivationRunnerTests: XCTestCase {
 
         XCTAssertEqual(events.values, [
             "log:guest update activation requested version=1.2.3",
+            "capability",
             "mkdir",
             "remove-result",
             "write-request:request-1:2026-05-22T00:00:00Z:1.2.3",
@@ -66,6 +67,25 @@ final class RuntimeGuestActivationRunnerTests: XCTestCase {
         XCTAssertTrue(events.values.contains("write-request:request-1:2026-05-22T00:00:00Z:1.2.3"))
     }
 
+    func testActivateStopsBeforeWritingRequestWhenCapabilityIsMissing() {
+        let events = EventLog()
+        let runner = makeRunner(
+            events: events,
+            requireCapability: {
+                throw LauncherError.runtimeOperationFailed("guest capability missing: activate-update")
+            },
+            loadResult: { .missing }
+        )
+
+        XCTAssertThrowsError(try runner.activateIfNeeded(manifest: manifest(artifacts: [.guestDeploy]))) { error in
+            XCTAssertEqual(String(describing: error), "guest capability missing: activate-update")
+        }
+        XCTAssertEqual(events.values, [
+            "log:guest update activation requested version=1.2.3",
+            "capability",
+        ])
+    }
+
     func testActivatePropagatesFailedResult() {
         let events = EventLog()
         let runner = makeRunner(
@@ -84,9 +104,14 @@ final class RuntimeGuestActivationRunnerTests: XCTestCase {
     private func makeRunner(
         events: EventLog,
         vmServiceLoaded: Bool = false,
+        requireCapability: @escaping () throws -> Void = {},
         loadResult: @escaping () -> RuntimeGuestDocumentLoadResult<GuestUpdateActivationResultDocument>
     ) -> RuntimeGuestActivationRunner {
         RuntimeGuestActivationRunner(
+            requireCapability: {
+                events.append("capability")
+                try requireCapability()
+            },
             createRunDirectory: {
                 events.append("mkdir")
             },

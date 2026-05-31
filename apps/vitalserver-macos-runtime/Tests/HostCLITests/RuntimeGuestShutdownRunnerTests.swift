@@ -20,6 +20,7 @@ final class RuntimeGuestShutdownRunnerTests: XCTestCase {
 
         XCTAssertEqual(events.values, [
             "log:guest update shutdown requested version=1.2.3",
+            "capability",
             "mkdir",
             "remove-result",
             "write-request:request-1:2026-05-22T00:00:00Z:1.2.3",
@@ -46,11 +47,35 @@ final class RuntimeGuestShutdownRunnerTests: XCTestCase {
         XCTAssertTrue(events.values.contains("log:guest update shutdown result failed message=backup failed"))
     }
 
+    func testPrepareStopsBeforeWritingRequestWhenCapabilityIsMissing() {
+        let events = EventLog()
+        let runner = makeRunner(
+            events: events,
+            requireCapability: {
+                throw LauncherError.runtimeOperationFailed("guest capability missing: prepare-update-shutdown")
+            },
+            loadResult: { .missing }
+        )
+
+        XCTAssertThrowsError(try runner.prepareForUpdate(version: "1.2.3")) { error in
+            XCTAssertEqual(String(describing: error), "guest capability missing: prepare-update-shutdown")
+        }
+        XCTAssertEqual(events.values, [
+            "log:guest update shutdown requested version=1.2.3",
+            "capability",
+        ])
+    }
+
     private func makeRunner(
         events: EventLog,
+        requireCapability: @escaping () throws -> Void = {},
         loadResult: @escaping () -> RuntimeGuestDocumentLoadResult<GuestUpdateShutdownResultDocument>
     ) -> RuntimeGuestShutdownRunner {
         RuntimeGuestShutdownRunner(
+            requireCapability: {
+                events.append("capability")
+                try requireCapability()
+            },
             createRunDirectory: {
                 events.append("mkdir")
             },

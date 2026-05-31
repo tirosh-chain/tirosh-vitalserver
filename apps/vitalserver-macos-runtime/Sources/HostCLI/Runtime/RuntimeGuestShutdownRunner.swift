@@ -3,6 +3,7 @@ import Contracts
 import Foundation
 
 struct RuntimeGuestShutdownRunner {
+    var requireCapability: () throws -> Void
     var createRunDirectory: () throws -> Void
     var removePreviousResult: () throws -> Void
     var requestID: () -> String
@@ -15,6 +16,7 @@ struct RuntimeGuestShutdownRunner {
 
     func prepareForUpdate(version: String) throws {
         log("guest update shutdown requested version=\(version)")
+        try requireCapability()
         try createRunDirectory()
         try removePreviousResult()
         let request = RuntimeGuestShutdownRequest(

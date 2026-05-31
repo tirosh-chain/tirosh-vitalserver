@@ -119,6 +119,7 @@ final class RuntimeBundleWorkflowTests: XCTestCase {
                 refreshCloudInitSeedIfNeeded: { _ in },
                 activateGuestUpdateIfNeeded: { _ in },
                 waitForHealth: { _ in },
+                requireGuestCapability: { _ in },
                 log: log
             )
         )

@@ -64,20 +64,30 @@ struct SystemRuntimeHostFileReader: RuntimeHostFileReading, @unchecked Sendable 
                 : helperMessage
         case .containers:
             if !fileStore.fileExists(URL(fileURLWithPath: RuntimeAdapterConstants.Paths.containerLogs)) {
-                do {
-                    try logCollector.refreshLogCollection(sourceID: sourceID)
-                } catch {
-                    return "Failed to refresh log collection: \(error.localizedDescription)"
+                let refreshFailure = refreshLogCollectionFailure(sourceID)
+                let text = logFile(sourceID: sourceID, lineLimit: lineLimit)
+                if text == RuntimeAdapterConstants.StatusText.noLogData, let refreshFailure {
+                    return refreshFailure
                 }
+                return text
             }
             return logFile(sourceID: sourceID, lineLimit: lineLimit)
         default:
-            do {
-                try logCollector.refreshLogCollection(sourceID: sourceID)
-            } catch {
-                return "Failed to refresh log collection: \(error.localizedDescription)"
+            let refreshFailure = refreshLogCollectionFailure(sourceID)
+            let text = logFile(sourceID: sourceID, lineLimit: lineLimit)
+            if text == RuntimeAdapterConstants.StatusText.noLogData, let refreshFailure {
+                return refreshFailure
             }
-            return logFile(sourceID: sourceID, lineLimit: lineLimit)
+            return text
+        }
+    }
+
+    private func refreshLogCollectionFailure(_ sourceID: RuntimeLogSource) -> String? {
+        do {
+            try logCollector.refreshLogCollection(sourceID: sourceID)
+            return nil
+        } catch {
+            return "Failed to refresh log collection: \(error.localizedDescription)"
         }
     }
 

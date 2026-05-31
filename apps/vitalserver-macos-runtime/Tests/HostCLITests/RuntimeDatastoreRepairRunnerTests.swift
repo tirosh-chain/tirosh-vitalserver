@@ -11,6 +11,7 @@ final class RuntimeDatastoreRepairRunnerTests: XCTestCase {
 
         XCTAssertEqual(harness.events, [
             "log:datastore repair requested",
+            "capability",
             "prepare-run-dir",
             "remove-result",
             "status:recovering:repair-datastore:datastore repair requested",
@@ -43,8 +44,23 @@ final class RuntimeDatastoreRepairRunnerTests: XCTestCase {
 
         XCTAssertEqual(harness.events, [
             "log:datastore repair requested",
+            "capability",
             "prepare-run-dir",
             "remove-result",
+        ])
+    }
+
+    func testRunStopsBeforeWritingRequestWhenCapabilityIsMissing() {
+        let harness = DatastoreRepairHarness()
+        harness.capabilityError = LauncherError.runtimeOperationFailed("guest capability missing: repair-datastore")
+
+        XCTAssertThrowsError(try harness.runner.run()) { error in
+            XCTAssertEqual(String(describing: error), "guest capability missing: repair-datastore")
+        }
+
+        XCTAssertEqual(harness.events, [
+            "log:datastore repair requested",
+            "capability",
         ])
     }
 
@@ -63,11 +79,18 @@ final class RuntimeDatastoreRepairRunnerTests: XCTestCase {
 private final class DatastoreRepairHarness {
     var events: [String] = []
     var vmLoaded = true
+    var capabilityError: Error?
     var removeResultError: Error?
     var waitResultError: Error?
 
     var runner: RuntimeDatastoreRepairRunner {
         RuntimeDatastoreRepairRunner(
+            requireCapability: {
+                self.events.append("capability")
+                if let capabilityError = self.capabilityError {
+                    throw capabilityError
+                }
+            },
             prepareGuestRunDirectory: {
                 self.events.append("prepare-run-dir")
             },
