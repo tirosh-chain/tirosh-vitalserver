@@ -30,6 +30,8 @@ export default defineConfig(({ mode }) => {
       port: settings.pwa.previewPort
     },
     test: {
+      environment: "jsdom",
+      setupFiles: ["./src/testing/setup.ts"],
       coverage: {
         provider: "v8",
         reporter: ["text", "html", "lcov"],
@@ -38,7 +40,13 @@ export default defineConfig(({ mode }) => {
         exclude: [
           "src/domain/runtime-control/contracts/generated/**",
           "src/main.tsx"
-        ]
+        ],
+        thresholds: {
+          statements: 85,
+          branches: 70,
+          functions: 85,
+          lines: 85
+        }
       }
     }
   };

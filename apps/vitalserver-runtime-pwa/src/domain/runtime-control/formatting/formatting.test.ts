@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { formatBytes } from "./bytes";
 import {
@@ -46,8 +46,13 @@ describe("runtime presentation formatting", () => {
     expect(formatHTTPReachability(undefined)).toBe("Unknown");
   });
 
-  it("falls back to the packaged Remote Console URL outside the browser", () => {
+  it("uses the browser origin when available and falls back outside the browser", () => {
+    expect(runtimeControlURL()).toBe("http://localhost:3000/");
+    expect(runtimeControlURLForPort(18444)).toBe("http://localhost:18444/");
+
+    vi.stubGlobal("window", undefined);
     expect(runtimeControlURL()).toBe("http://127.0.0.1:18321/");
     expect(runtimeControlURLForPort(18444)).toBe("http://127.0.0.1:18444/");
+    vi.unstubAllGlobals();
   });
 });

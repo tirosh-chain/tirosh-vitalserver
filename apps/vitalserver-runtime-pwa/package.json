@@ -24,12 +24,16 @@
     "zod": "^4.0.0"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
     "@types/node": "^24.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^5.0.0",
     "@vitest/coverage-v8": "^4.1.7",
     "autoprefixer": "^10.5.0",
+    "jsdom": "^29.1.1",
     "openapi-typescript": "^7.0.0",
     "postcss": "^8.5.15",
     "tailwindcss": "^3.4.19",
