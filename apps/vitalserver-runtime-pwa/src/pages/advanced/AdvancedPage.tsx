@@ -11,7 +11,6 @@ import {
   useRepairVMDisk,
   useRuntimeCapabilities,
   useRuntimeOverview,
-  useRestoreRedisBackup,
   useRollbackBackup
 } from "@/console/hooks";
 import { canControlRecovery } from "@/domain/runtime-control/capabilities/runtimeCapabilities";
@@ -25,6 +24,7 @@ import {
   formatRuntimeState,
   runtimeStateTone
 } from "@/domain/runtime-control/formatting/runtimeState";
+import { useAppSettings } from "@/config/AppSettingsContext";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { CommandResult } from "@/components/CommandResult";
 import { DataTable } from "@/components/DataTable";
@@ -34,6 +34,7 @@ import { Panel } from "@/components/Panel";
 import { StatusBadge } from "@/components/StatusBadge";
 
 export function AdvancedPage() {
+  const appSettings = useAppSettings();
   const overview = useRuntimeOverview();
   const capabilities = useRuntimeCapabilities();
   const hostBackups = useHostBackups();
@@ -41,7 +42,6 @@ export function AdvancedPage() {
   const rollbackBackup = useRollbackBackup();
   const deleteHostBackup = useDeleteHostBackup();
   const createRedisBackup = useCreateRedisBackup();
-  const restoreRedisBackup = useRestoreRedisBackup();
   const repairRuntime = useRepairRuntime();
   const repairProxy = useRepairProxy();
   const repairDatastore = useRepairDatastore();
@@ -63,8 +63,7 @@ export function AdvancedPage() {
       repairVMDisk.data ??
       rollbackBackup.data ??
       deleteHostBackup.data ??
-      createRedisBackup.data ??
-      restoreRedisBackup.data,
+      createRedisBackup.data,
     [
       createRedisBackup.data,
       deleteHostBackup.data,
@@ -72,7 +71,6 @@ export function AdvancedPage() {
       repairVMDisk.data,
       repairProxy.data,
       repairRuntime.data,
-      restoreRedisBackup.data,
       rollbackBackup.data
     ]
   );
@@ -84,8 +82,12 @@ export function AdvancedPage() {
     repairVMDisk.error ??
     rollbackBackup.error ??
     deleteHostBackup.error ??
-    createRedisBackup.error ??
-    restoreRedisBackup.error;
+    createRedisBackup.error;
+  const configuredProxyPort =
+    parseOptionalNumber(proxyPort) ??
+    overview.data?.settings?.proxyPort ??
+    overview.data?.status?.proxyPort ??
+    appSettings.runtimeControl.defaultProxyPort;
 
   return (
     <div className="page-stack">
@@ -164,12 +166,8 @@ export function AdvancedPage() {
             </ConfirmButton>
             <ConfirmButton
               confirmMessage="Restore the selected Redis backup? Current Redis data will be replaced."
-              disabled={!selectedRedisBackup || restoreRedisBackup.isPending || !canRepair}
-              onClick={() =>
-                selectedRedisBackup?.path
-                  ? restoreRedisBackup.mutate(selectedRedisBackup.path)
-                  : undefined
-              }
+              disabled
+              onClick={() => undefined}
             >
               Restore Redis Backup
             </ConfirmButton>
@@ -222,7 +220,7 @@ export function AdvancedPage() {
           <ConfirmButton
             confirmMessage="Repair the host proxy service on the selected port?"
             disabled={repairProxy.isPending || !canRepair}
-            onClick={() => repairProxy.mutate(parseOptionalNumber(proxyPort))}
+            onClick={() => repairProxy.mutate(configuredProxyPort)}
           >
             Repair Proxy
           </ConfirmButton>

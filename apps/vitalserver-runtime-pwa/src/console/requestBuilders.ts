@@ -2,6 +2,7 @@ import type { ZodType } from "zod";
 
 import type {
   RuntimeBackupRequest,
+  RuntimeTestKitCreateBedsRequest,
   RuntimeTestKitDeleteBedsRequest,
   RuntimeTestKitSessionSelectionRequest,
   RuntimeUninstallRequest,
@@ -9,6 +10,7 @@ import type {
 } from "@/domain/runtime-control/contracts/runtimeControlTypes";
 import {
   runtimeBackupRequestSchema,
+  runtimeTestKitCreateBedsRequestSchema,
   runtimeTestKitDeleteBedsRequestSchema,
   runtimeTestKitSessionSelectionRequestSchema,
   runtimeUninstallRequestSchema,
@@ -38,6 +40,19 @@ export function uninstallRequest(clean: boolean): RuntimeUninstallRequest {
   return parseConsoleRequest(runtimeUninstallRequestSchema, { clean });
 }
 
+export function testKitCreateBedsRequest(
+  count: number | null,
+  prefix: string,
+  roomNames: string[] = []
+): RuntimeTestKitCreateBedsRequest {
+  return parseConsoleRequest(runtimeTestKitCreateBedsRequestSchema, {
+    count,
+    roomNames,
+    prefix,
+    adminUserId: "admin"
+  });
+}
+
 export function testKitDeleteBedsRequest(
   roomNames: string[]
 ): RuntimeTestKitDeleteBedsRequest {
@@ -50,7 +65,7 @@ export function testKitSessionSelectionRequest(
   sessionID: string | null
 ): RuntimeTestKitSessionSelectionRequest {
   return parseConsoleRequest(runtimeTestKitSessionSelectionRequestSchema, {
-    sessionID
+    sessionID: sessionID?.trim() || null
   });
 }
 

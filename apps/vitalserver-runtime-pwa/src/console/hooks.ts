@@ -5,6 +5,7 @@ import { consoleQueryKeys } from "@/console/queryKeys";
 import {
   backupRequest,
   parseConsoleRequest,
+  testKitCreateBedsRequest,
   testKitDeleteBedsRequest,
   testKitSessionSelectionRequest,
   uninstallRequest,
@@ -14,7 +15,6 @@ import type {
   RuntimeApplySettingsRequest,
   RuntimeCommandResponse,
   RuntimeLogSource,
-  RuntimeTestKitCreateBedsRequest,
   RuntimeTestKitRestartRequest,
   RuntimeTestKitVirtualRecorderStartRequest,
 } from "@/domain/runtime-control/contracts/runtimeControlTypes";
@@ -23,7 +23,6 @@ import {
   runtimeExportLogsRequestSchema,
   runtimeLogTextRequestSchema,
   runtimeRepairProxyRequestSchema,
-  runtimeTestKitCreateBedsRequestSchema,
   runtimeTestKitRecorderDeletionRequestSchema,
   runtimeTestKitRestartRequestSchema,
   runtimeTestKitVirtualRecorderStartRequestSchema,
@@ -206,7 +205,7 @@ export function useRepairRuntime() {
 export function useRepairProxy() {
   const consoleGateway = useConsoleGateway();
   return useMutation({
-    mutationFn: (proxyPort?: number) =>
+    mutationFn: (proxyPort: number) =>
       consoleGateway.repairProxy(
         parseConsoleRequest(runtimeRepairProxyRequestSchema, { proxyPort }).proxyPort
       )
@@ -260,10 +259,16 @@ export function useTestKitStatus() {
 
 export function useCreateTestKitBeds() {
   const consoleGateway = useConsoleGateway();
-  return useTestKitMutation((request: RuntimeTestKitCreateBedsRequest) =>
-    consoleGateway.createTestKitBeds(
-      parseConsoleRequest(runtimeTestKitCreateBedsRequestSchema, request)
-    )
+  return useTestKitMutation((request: {
+    count: number | null;
+    prefix: string;
+    roomNames?: string[];
+  }) =>
+    consoleGateway.createTestKitBeds(testKitCreateBedsRequest(
+      request.count,
+      request.prefix,
+      request.roomNames ?? []
+    ))
   );
 }
 

@@ -3141,6 +3141,9 @@
       },
       "RuntimeRepairProxyRequest": {
         "type": "object",
+        "required": [
+          "proxyPort"
+        ],
         "properties": {
           "proxyPort": {
             "type": "integer"
@@ -3149,6 +3152,9 @@
       },
       "RuntimeUninstallRequest": {
         "type": "object",
+        "required": [
+          "clean"
+        ],
         "properties": {
           "clean": {
             "type": "boolean"
@@ -3179,6 +3185,11 @@
       },
       "RuntimeLogTextRequest": {
         "type": "object",
+        "required": [
+          "source",
+          "helperMessage",
+          "lineLimit"
+        ],
         "properties": {
           "source": {
             "$ref": "#/components/schemas/RuntimeLogSource"
@@ -3611,6 +3622,11 @@
       "RuntimeTestKitCreateBedsRequest": {
         "type": "object",
         "additionalProperties": false,
+        "required": [
+          "roomNames",
+          "prefix",
+          "adminUserId"
+        ],
         "properties": {
           "count": {
             "type": [

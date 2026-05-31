@@ -1249,10 +1249,10 @@ export interface components {
             settings?: components["schemas"]["RuntimeSettings"];
         };
         RuntimeRepairProxyRequest: {
-            proxyPort?: number;
+            proxyPort: number;
         };
         RuntimeUninstallRequest: {
-            clean?: boolean;
+            clean: boolean;
         };
         RuntimeBackup: {
             path?: string;
@@ -1262,9 +1262,9 @@ export interface components {
             backup?: components["schemas"]["RuntimeControlFileReference"];
         };
         RuntimeLogTextRequest: {
-            source?: components["schemas"]["RuntimeLogSource"];
-            helperMessage?: string;
-            lineLimit?: number;
+            source: components["schemas"]["RuntimeLogSource"];
+            helperMessage: string;
+            lineLimit: number;
         };
         /** @enum {string} */
         RuntimeLogSource: "helperMessage" | "install" | "command" | "launcher" | "vmLaunchOutput" | "vmLaunchError" | "proxyOutput" | "proxyError" | "watchdog" | "updateActivation" | "containers";
@@ -1361,9 +1361,9 @@ export interface components {
         };
         RuntimeTestKitCreateBedsRequest: {
             count?: number | null;
-            roomNames?: string[];
-            prefix?: string;
-            adminUserId?: string;
+            roomNames: string[];
+            prefix: string;
+            adminUserId: string;
         };
         RuntimeTestKitDeleteBedsRequest: {
             roomNames: string[];

@@ -34,7 +34,7 @@ export const runtimeApplySettingsRequestSchema = z.object({
 }) satisfies z.ZodType<RuntimeApplySettingsRequest>;
 
 export const runtimeUninstallRequestSchema = z.object({
-  clean: z.boolean().optional()
+  clean: z.boolean()
 }) satisfies z.ZodType<RuntimeUninstallRequest>;
 
 export const runtimeBackupRequestSchema = z.object({
@@ -63,22 +63,22 @@ export const runtimeLogTextRequestSchema = z.object({
     "updateActivation",
     "containers"
   ]),
-  helperMessage: z.string().optional(),
-  lineLimit: z.number().int().min(1).max(5_000).optional()
+  helperMessage: z.string(),
+  lineLimit: z.number().int().min(1).max(5_000)
 }) satisfies z.ZodType<RuntimeLogTextRequest>;
 
 export const runtimeRepairProxyRequestSchema = z.object({
-  proxyPort: z.number().int().min(1).max(65_535).optional()
+  proxyPort: z.number().int().min(1).max(65_535)
 });
 
 export const runtimeTestKitCreateBedsRequestSchema = z
   .object({
     count: z.number().int().min(1).max(500).nullable().optional(),
-    roomNames: z.array(nonEmptyString).optional(),
-    prefix: nonEmptyString.optional(),
-    adminUserId: nonEmptyString.optional()
+    roomNames: z.array(nonEmptyString),
+    prefix: nonEmptyString,
+    adminUserId: nonEmptyString
   })
-  .refine((request) => request.count !== undefined || request.roomNames?.length, {
+  .refine((request) => request.count != null || request.roomNames.length > 0, {
     message: "count or roomNames is required",
     path: ["count"]
   }) satisfies z.ZodType<RuntimeTestKitCreateBedsRequest>;

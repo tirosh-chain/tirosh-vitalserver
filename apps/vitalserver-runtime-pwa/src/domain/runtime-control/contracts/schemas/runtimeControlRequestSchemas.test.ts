@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   runtimeRepairProxyRequestSchema,
+  runtimeTestKitCreateBedsRequestSchema,
   runtimeTestKitVirtualRecorderStartRequestSchema,
+  runtimeLogTextRequestSchema,
+  runtimeUninstallRequestSchema,
   runtimeUpdateBundleRequestSchema
 } from "./runtimeControlRequestSchemas";
 
@@ -22,6 +25,43 @@ describe("runtime control request schemas", () => {
     expect(() =>
       runtimeRepairProxyRequestSchema.parse({
         proxyPort: 70_000
+      })
+    ).toThrow();
+  });
+
+  it("requires proxy ports because the Swift API decoder requires the key", () => {
+    expect(() => runtimeRepairProxyRequestSchema.parse({})).toThrow();
+  });
+
+  it("requires uninstall clean because the Swift API decoder requires the key", () => {
+    expect(() => runtimeUninstallRequestSchema.parse({})).toThrow();
+  });
+
+  it("requires complete log text requests because the Swift API decoder requires every key", () => {
+    expect(() =>
+      runtimeLogTextRequestSchema.parse({
+        source: "containers",
+        lineLimit: 100
+      })
+    ).toThrow();
+  });
+
+  it("requires TestKit bed defaults that Swift encodes from native UI", () => {
+    expect(() =>
+      runtimeTestKitCreateBedsRequestSchema.parse({
+        count: 1,
+        prefix: "testkit-bed"
+      })
+    ).toThrow();
+  });
+
+  it("requires either a TestKit bed count or explicit room names", () => {
+    expect(() =>
+      runtimeTestKitCreateBedsRequestSchema.parse({
+        count: null,
+        roomNames: [],
+        prefix: "testkit-bed",
+        adminUserId: "admin"
       })
     ).toThrow();
   });
