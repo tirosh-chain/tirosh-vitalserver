@@ -40,6 +40,78 @@ final class RuntimeChaosScenarioTests: XCTestCase {
         XCTAssertFalse(history.readError?.isEmpty == true)
     }
 
+    func testObservabilitySnapshotChaosReturnsFailedStateInsteadOfUnavailableDefault() {
+        let reader = SystemRuntimeObservabilityReader(
+            paths: RuntimePaths(runtimeObservabilityDB: "/dev/null/\(RuntimeFileNames.runtimeObservabilityDB)")
+        )
+
+        let snapshot = reader.loadVitalDBObservationSnapshot()
+
+        XCTAssertEqual(snapshot.state, .failed)
+        XCTAssertNil(snapshot.observation)
+        XCTAssertNotNil(snapshot.readError)
+        XCTAssertFalse(snapshot.readError?.isEmpty == true)
+    }
+
+    func testObservabilityRelationshipChaosPreservesBothReadFailures() {
+        let reader = SystemRuntimeObservabilityReader(
+            paths: RuntimePaths(runtimeObservabilityDB: "/dev/null/\(RuntimeFileNames.runtimeObservabilityDB)")
+        )
+
+        let history = reader.loadVitalDBRelationships()
+
+        XCTAssertEqual(history.assignments, [])
+        XCTAssertEqual(history.events, [])
+        XCTAssertTrue(history.readError?.contains("assignments=") == true)
+        XCTAssertTrue(history.readError?.contains("events=") == true)
+    }
+
+    func testLogExportChaosRecordsCollectionAndSupplementalIssuesInManifest() async throws {
+        let root = try temporaryDirectory()
+        defer { cleanup(root) }
+        let productLogs = root.appendingPathComponent("product/logs", isDirectory: true)
+        let source = root.appendingPathComponent("runtime-config.json")
+        let destination = root.appendingPathComponent("export.zip")
+        try FileManager.default.createDirectory(at: productLogs, withIntermediateDirectories: true)
+        try "secret".write(to: source, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: source.path)
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: source.path)
+        }
+
+        var archivedManifest: RuntimeLogExportManifest?
+        let exporter = MacHostRuntimeLogExporter(
+            logCollector: ChaosFailingExportLogCollector(),
+            productLogsDirectory: productLogs,
+            supplementalLogItems: [
+                RuntimeLogExportSupplementalSource(
+                    source: source,
+                    relativeDestination: "diagnostics/guest/runtime-config.json"
+                ),
+            ],
+            rotatedSupplementalSets: [],
+            archiveRunner: { _, arguments in
+                let bundleRoot = URL(fileURLWithPath: arguments[4])
+                let temporaryArchive = URL(fileURLWithPath: arguments[5])
+                if let manifestData = try? Data(
+                    contentsOf: bundleRoot.appendingPathComponent("diagnostics/export-manifest.json")
+                ) {
+                    archivedManifest = try? JSONDecoder().decode(RuntimeLogExportManifest.self, from: manifestData)
+                }
+                try? "archive".write(to: temporaryArchive, atomically: true, encoding: .utf8)
+                return RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "")
+            }
+        )
+
+        _ = try await exporter.exportLogs(to: destination)
+
+        XCTAssertEqual(archivedManifest?.collectionIssue, "collection denied")
+        let item = try XCTUnwrap(archivedManifest?.supplementalItems.first)
+        XCTAssertTrue(item.sourcePresent)
+        XCTAssertFalse(item.included)
+        XCTAssertNotNil(item.error)
+    }
+
     func testSettingsPermissionChaosDoesNotSurfaceSecretRuntimeConfigAsRequiredReadModel() {
         let secretConfig = URL(fileURLWithPath: "/product/vm/data/deploy/runtime-config.json")
         let reader = SystemRuntimeSettingsReader(
@@ -59,6 +131,17 @@ final class RuntimeChaosScenarioTests: XCTestCase {
         XCTAssertEqual(settings.publicHost, RuntimeSettings().publicHost)
         XCTAssertEqual(settings.publicPort, RuntimeSettings().publicPort)
     }
+
+    private func temporaryDirectory() throws -> URL {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("RuntimeChaosScenarioTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory
+    }
+
+    private func cleanup(_ url: URL) {
+        try? FileManager.default.removeItem(at: url)
+    }
 }
 
 private final class ChaosFailingRuntimeLogCollector: RuntimeLogCollecting, @unchecked Sendable {
@@ -72,6 +155,20 @@ private final class ChaosFailingRuntimeLogCollector: RuntimeLogCollecting, @unch
 
     func refreshLogCollection(sourceID: RuntimeLogSource) throws {
         sourceIDs.append(sourceID)
+        try refreshLogCollection()
+    }
+}
+
+private final class ChaosFailingExportLogCollector: RuntimeLogCollecting, @unchecked Sendable {
+    func refreshLogCollection() throws {
+        throw NSError(
+            domain: "RuntimeChaosScenarioTests",
+            code: 1,
+            userInfo: [NSLocalizedDescriptionKey: "collection denied"]
+        )
+    }
+
+    func refreshLogCollection(sourceID: RuntimeLogSource) throws {
         try refreshLogCollection()
     }
 }

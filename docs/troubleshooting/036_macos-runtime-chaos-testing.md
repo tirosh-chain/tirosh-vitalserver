@@ -49,6 +49,7 @@ AGENTS.md 원칙상 Host/UI는 상태를 추정하지 않아야 합니다. 따�
 ```sh
 make coverage
 make runtime-chaos
+CHAOS_LOOP_COUNT=5 make runtime-chaos-loop
 make e2e-smoke
 make e2e-local
 ```
@@ -96,6 +97,7 @@ rg -n "RuntimeFileStore|ProcessRunner|permission|fault|chaos|CocoaError|readIssu
    - process runner fake로 command timeout, non-zero exit, stderr permission failure를 주입합니다.
    - Guest capability/result reader fake로 unsupported/missing/invalid/running-timeout을 주입합니다.
    - HTTP/PWA 테스트는 mocked gateway와 contract decoder로 API/network/contract failure를 분리합니다.
+   - 반복 실행은 `CHAOS_LOOP_COUNT`, `CHAOS_LOOP_INTERVAL`로 제어하고, 기본 suite는 deterministic scenario만 실행합니다.
 
 3. Local-only POSIX chaos를 얇게 추가합니다.
    - temp directory에 `0o000`, `0o555`, `0o600`을 적용해 실제 FileManager path를 검증합니다.
@@ -120,7 +122,7 @@ rg -n "RuntimeFileStore|ProcessRunner|permission|fault|chaos|CocoaError|readIssu
 |---|---|---|
 | log export permission chaos | `logs` directory 또는 command log copy permission denied | 가능한 로그는 export하고, 실패 item은 manifest/read issue에 남김 |
 | settings read permission chaos | secret-bearing config read denied | Helper가 secret file을 직접 요구하지 않고 public read model/read issue로 구분 |
-| observability read chaos | SQLite/JSONL event store read denied | `0 events`가 아니라 read failure/readError를 노출 |
+| observability read chaos | SQLite/JSONL event store read denied | `0 events`/unavailable default가 아니라 read failure/readError를 노출 |
 | update log refresh chaos | update 중 log collection refresh 실패 | update operation state와 log read failure를 분리 |
 | guest capability chaos | request/result worker capability missing | request를 쓰지 않고 unsupported capability typed failure |
 | update artifact chaos | stage/copy/move/remove/chmod failure | path/operation/stderr가 command result 또는 runtime event에 남음 |
@@ -161,3 +163,4 @@ rg -n "RuntimeFileStore|ProcessRunner|permission|fault|chaos|CocoaError|readIssu
 - 2026-05-31: PWA coverage gate를 추가해 statements 88.51%, lines 88.42%, functions 89.04%, branches 70.09% 상태에서 threshold를 적용했습니다. Chaos test는 coverage 숫자보다 failure visibility와 recovery contract를 우선합니다.
 - 2026-05-31: 카오스 테스트를 TS-036으로 등록했습니다. 첫 구현 후보는 permission chaos, observability read chaos, update log refresh chaos, guest capability chaos입니다.
 - 2026-05-31: `make runtime-chaos`를 추가해 `Chaos` 필터가 붙은 deterministic Swift chaos scenario만 빠르게 실행할 수 있게 했습니다. 초기 suite는 update log refresh chaos, observability read chaos, settings permission chaos, guest capability chaos, update artifact copy permission chaos를 포함합니다.
+- 2026-05-31: `make runtime-chaos-loop`를 추가해 deterministic chaos suite를 반복 실행할 수 있게 했습니다. suite는 log export manifest issue, observability snapshot/relationship read failure, command stderr/runtime event 보존까지 확장했습니다.

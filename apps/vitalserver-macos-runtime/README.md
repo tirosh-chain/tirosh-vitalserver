@@ -46,6 +46,7 @@ Browser / VRecorder
 | 개발용 package를 현재 Mac에 설치해 보고 싶다 | `make vm-pkg-install` |
 | 설치된 runtime 상태를 확인하고 싶다 | `make vm-installed-health` |
 | 권한/update/observability 실패 주입 시나리오를 빠르게 확인하고 싶다 | `make runtime-chaos` |
+| 권한/update/observability 실패 주입 시나리오를 반복 확인하고 싶다 | `make runtime-chaos-loop` |
 | 개발용 설치물을 지우고 싶다 | `make vm-pkg-uninstall-dev` |
 | VM을 직접 띄워 PoC를 확인하고 싶다 | `make vm-up` |
 

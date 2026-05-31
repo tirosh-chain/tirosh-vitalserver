@@ -83,6 +83,50 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
         XCTAssertTrue(logs.contains { $0.contains("copying bundle to managed storage") })
     }
 
+    func testGuestCapabilityReadChaosPreservesReadFailureReason() {
+        let checker = RuntimeGuestCapabilityChecker(loadRuntimeState: {
+            .failed("permission denied")
+        })
+
+        XCTAssertThrowsError(try checker.require(.prepareUpdateShutdown)) { error in
+            XCTAssertEqual(
+                String(describing: error),
+                "failed to read guest runtime state for guest capability prepare-update-shutdown: permission denied"
+            )
+        }
+    }
+
+    func testCommandChaosRecordsStderrAndFailedEventBeforeThrowing() {
+        let runner = ChaosCommandRunner(
+            result: RuntimeProcessResult(exitCode: 13, stdout: "", stderr: "permission denied\n")
+        )
+        var logs: [String] = []
+        var events: [(type: RuntimeEventType, result: RuntimeProcessResult?)] = []
+        let executor = RuntimeCommandExecutor(
+            commandRunner: runner,
+            log: { logs.append($0) },
+            recordCommandEvent: { type, _, _, result in
+                events.append((type, result))
+            }
+        )
+
+        XCTAssertThrowsError(try executor.runRequired("/bin/chmod", ["0755", "/restricted"])) { error in
+            XCTAssertEqual(
+                String(describing: error),
+                "command failed: /bin/chmod 0755 /restricted"
+            )
+        }
+
+        XCTAssertEqual(logs, [
+            "command started executable=/bin/chmod arguments=0755 /restricted",
+            "command stderr executable=/bin/chmod stderr=permission denied",
+            "command failed executable=/bin/chmod exitCode=13",
+        ])
+        XCTAssertEqual(events.map(\.type), [.runtimeCommandStarted, .runtimeCommandFailed])
+        XCTAssertEqual(events.last?.result?.exitCode, 13)
+        XCTAssertEqual(events.last?.result?.stderr, "permission denied\n")
+    }
+
     private func makeWorkflow(
         fileStore: RuntimeFileStore,
         log: @escaping (String) -> Void = { _ in }
@@ -174,5 +218,21 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
         )
         fileStore.files[source.appendingPathComponent(Constants.Bundle.checksums)] = Data()
         fileStore.files[source.appendingPathComponent(Constants.Bundle.signature)] = Data("signature".utf8)
+    }
+}
+
+private final class ChaosCommandRunner: RuntimeCommandRunner {
+    let result: RuntimeProcessResult
+
+    init(result: RuntimeProcessResult) {
+        self.result = result
+    }
+
+    func run(_ executable: String, arguments: [String]) -> RuntimeProcessResult {
+        result
+    }
+
+    func runWritingOutput(_ executable: String, arguments: [String], output: URL) -> RuntimeProcessResult {
+        result
     }
 }

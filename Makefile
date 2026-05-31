@@ -26,6 +26,8 @@ TESTKIT_RUNNER ?= $(if $(wildcard .venv/bin/python),.venv/bin/python scripts/tes
 TESTKIT := $(TESTKIT_RUNNER) --config $(TESTKIT_CONFIG)
 E2E_LOOP_COUNT ?= 0
 E2E_LOOP_INTERVAL ?= 10
+CHAOS_LOOP_COUNT ?= 5
+CHAOS_LOOP_INTERVAL ?= 0
 
 include make/submodule.mk
 include make/proxy.mk
@@ -46,7 +48,7 @@ include make/vm.mk
 	runtime-up runtime-up-bridged runtime-down runtime-status runtime-health \
 	runtime-prepare runtime-ip runtime-proxy-start runtime-clean \
 	runtime-interfaces runtime-network-shared runtime-network-bridged runtime-e2e-smoke \
-	runtime-permission-audit runtime-chaos runtime-coverage coverage e2e-smoke e2e-local e2e-local-loop \
+	runtime-permission-audit runtime-chaos runtime-chaos-loop runtime-coverage coverage e2e-smoke e2e-local e2e-local-loop \
 	devtools-version-source devtools-build devtools-nginx-artifact devtools-nginx-bundle \
 	devtools-docker-images devtools-sign devtools-sign-bridged devtools-bridged-preflight \
 	devtools-init devtools-download devtools-cloud-init devtools-stage \
@@ -87,6 +89,17 @@ runtime-permission-audit:
 	$(PYTHON) scripts/runtime_permission_audit.py $(RUNTIME_PERMISSION_AUDIT_ARGS)
 runtime-chaos:
 	CLANG_MODULE_CACHE_PATH="$(VM_CLANG_MODULE_CACHE)" swift test --package-path "$(VM_SWIFT_PACKAGE_DIR)" --filter Chaos
+runtime-chaos-loop:
+	@iteration=1; \
+	while :; do \
+		printf "\n== runtime chaos iteration %s ==\n" "$$iteration"; \
+		$(MAKE) runtime-chaos || exit $$?; \
+		if [ "$(CHAOS_LOOP_COUNT)" != "0" ] && [ "$$iteration" -ge "$(CHAOS_LOOP_COUNT)" ]; then \
+			break; \
+		fi; \
+		iteration=$$((iteration + 1)); \
+		sleep "$(CHAOS_LOOP_INTERVAL)"; \
+	done
 runtime-coverage: vm-coverage
 coverage: vm-coverage
 e2e-smoke: vm-e2e-smoke
@@ -142,6 +155,7 @@ help:
 	@printf "  make e2e-smoke       Run local Runtime Control HTTP smoke test\n"
 	@printf "  make e2e-local       Run local HTTP smoke and PWA checks\n"
 	@printf "  make runtime-chaos   Run deterministic macOS runtime chaos scenarios\n"
+	@printf "  make runtime-chaos-loop  Repeat deterministic runtime chaos scenarios\n"
 	@printf "  make runtime-permission-audit  Audit installed runtime file permissions\n"
 	@printf "  make coverage        Run macOS runtime Swift coverage report\n"
 	@printf "\n"
@@ -238,6 +252,7 @@ help-runtime:
 	@printf "  make runtime-clean        Remove runtime state, keep shared data\n"
 	@printf "  make runtime-e2e-smoke    Run local Runtime Control HTTP smoke test\n"
 	@printf "  make runtime-chaos        Run deterministic macOS runtime chaos scenarios\n"
+	@printf "  make runtime-chaos-loop   Repeat deterministic runtime chaos scenarios\n"
 	@printf "  make runtime-permission-audit  Audit installed runtime file permissions\n"
 	@printf "  make runtime-coverage     Run Swift tests with source coverage report\n"
 	@printf "\n"
