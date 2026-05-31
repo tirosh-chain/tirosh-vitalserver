@@ -161,6 +161,9 @@ extension RuntimeLifecycle {
                 automaticRecoveryEnabled: {
                     automaticRecoveryEnabled()
                 },
+                restartVMRuntime: {
+                    try restartVMRuntimeServices()
+                },
                 restartService: { service in
                     restartOrStartLaunchdService(service)
                 },
@@ -222,8 +225,7 @@ extension RuntimeLifecycle {
                     try setSystemSleepPrevention(enabled)
                 },
                 restartRuntimeServices: {
-                    restartOrStartLaunchdService(.vm)
-                    restartOrStartLaunchdService(.guestLogSync)
+                    try restartVMRuntimeServices()
                     restartOrStartLaunchdService(.proxy)
                     restartOrStartLaunchdService(.watchdog)
                 }
@@ -524,9 +526,9 @@ private extension RuntimeLifecycle {
         }
     }
 
-    func restartVMServiceAction() -> () -> Void {
+    func restartVMServiceAction() -> () throws -> Void {
         {
-            restartOrStartLaunchdService(.vm)
+            try restartVMRuntimeServices()
         }
     }
 

@@ -28,6 +28,28 @@ final class RuntimeWatchdogRecoveryPolicyTests: XCTestCase {
         XCTAssertEqual(decision, .recoverySuppressed(reason: "vm-guest-filesystem-read-only"))
     }
 
+    func testDefersAutomaticRecoveryForBootstrappingVMLifecycle() {
+        let snapshot = healthSnapshot(
+            vmLifecycle: RuntimeVMLifecycleDocument(
+                state: .bootstrapping,
+                startedAt: "2026-05-31T00:00:00Z",
+                updatedAt: "2026-05-31T00:00:01Z",
+                deadlineAt: "2999-01-01T00:00:00Z"
+            ),
+            vmIP: nil,
+            guestHTTP: RuntimeHTTPStatusText.missingVMIP,
+            failureReasons: [.guestHTTP(RuntimeHTTPStatusText.missingVMIP)]
+        )
+
+        let decision = RuntimeWatchdogRecoveryPolicy.decision(
+            snapshot: snapshot,
+            hostProxyLivenessHTTP: "failed",
+            automaticRecoveryEnabled: true
+        )
+
+        XCTAssertEqual(decision, .recoveryDeferred(reason: "vm-lifecycle-bootstrapping"))
+    }
+
     func testReportsRecoveryDisabledWithoutCreatingPlan() {
         let decision = RuntimeWatchdogRecoveryPolicy.decision(
             snapshot: healthSnapshot(guestHTTP: "failed", failureReasons: [.guestHTTP("failed")]),
@@ -77,6 +99,7 @@ private func healthSnapshot(
         vmService: RuntimeServiceState = .loaded,
         proxyService: RuntimeServiceState = .loaded,
         watchdogService: RuntimeServiceState = .loaded,
+        vmLifecycle: RuntimeVMLifecycleDocument? = nil,
         vmState: RuntimeVMState = .running,
         vmErrors: [RuntimeVMError] = [],
     vmIP: String? = "192.168.64.2",
@@ -95,6 +118,7 @@ private func healthSnapshot(
         vmService: vmService,
         proxyService: proxyService,
         watchdogService: watchdogService,
+        vmLifecycle: vmLifecycle,
         vmState: vmState,
         vmErrors: vmErrors,
         vmIP: vmIP,

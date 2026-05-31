@@ -9,6 +9,7 @@ public struct RuntimeHealthInput: Equatable {
     public let vmService: RuntimeServiceState
     public let proxyService: RuntimeServiceState
     public let watchdogService: RuntimeServiceState
+    public let vmLifecycle: RuntimeVMLifecycleDocument?
     public let vmIP: String?
     public let proxyPort: Int
     public let hostProxyHTTP: String
@@ -32,6 +33,7 @@ public struct RuntimeHealthInput: Equatable {
         vmService: RuntimeServiceState,
         proxyService: RuntimeServiceState,
         watchdogService: RuntimeServiceState,
+        vmLifecycle: RuntimeVMLifecycleDocument? = nil,
         vmIP: String?,
         proxyPort: Int,
         hostProxyHTTP: String,
@@ -54,6 +56,7 @@ public struct RuntimeHealthInput: Equatable {
         self.vmService = vmService
         self.proxyService = proxyService
         self.watchdogService = watchdogService
+        self.vmLifecycle = vmLifecycle
         self.vmIP = vmIP
         self.proxyPort = proxyPort
         self.hostProxyHTTP = hostProxyHTTP
@@ -108,6 +111,7 @@ public enum RuntimeHealthEvaluator {
             vmService: input.vmService,
             proxyService: input.proxyService,
             watchdogService: input.watchdogService,
+            vmLifecycle: input.vmLifecycle,
             vmState: vmHealth.vmState,
             vmErrors: vmErrors,
             vmIP: input.vmIP,

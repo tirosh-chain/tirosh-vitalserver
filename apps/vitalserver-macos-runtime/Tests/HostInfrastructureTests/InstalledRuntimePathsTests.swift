@@ -22,6 +22,7 @@ final class InstalledRuntimePathsTests: XCTestCase {
         XCTAssertEqual(paths.centralGuestLogsDirectory.path, "/Library/Application Support/TiroshVitalServer/logs/guest")
         XCTAssertEqual(paths.logArchiveDirectory.path, "/Library/Application Support/TiroshVitalServer/logs/archive")
         XCTAssertEqual(paths.vmIPFile.path, "/Library/Application Support/TiroshVitalServer/vm/data/run/vm-ip")
+        XCTAssertEqual(paths.vmLifecycle.path, "/Library/Application Support/TiroshVitalServer/vm/run/vm-lifecycle.json")
         XCTAssertEqual(paths.runtimeState.path, "/Library/Application Support/TiroshVitalServer/vm/data/run/runtime-state.json")
         XCTAssertEqual(paths.bootstrapResult.path, "/Library/Application Support/TiroshVitalServer/vm/data/run/bootstrap-result.json")
         XCTAssertEqual(paths.updateActivationLog.path, "/Library/Application Support/TiroshVitalServer/vm/data/run/activate-update.log")

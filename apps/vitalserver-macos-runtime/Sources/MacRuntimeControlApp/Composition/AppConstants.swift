@@ -534,6 +534,10 @@ enum AppConstants {
                 return "Observability store unavailable"
             case .observabilityEventStoreCorrupt:
                 return "Observability store corrupt"
+            case .vmLifecycleDocumentInvalid:
+                return "VM lifecycle document invalid"
+            case .vmLifecycleDocumentStale:
+                return "VM lifecycle document stale"
             case .vmPidFileStale:
                 return "VM PID file stale"
             case .vmProcessExited:

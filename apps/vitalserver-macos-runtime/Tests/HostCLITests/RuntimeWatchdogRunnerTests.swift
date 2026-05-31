@@ -59,7 +59,8 @@ final class RuntimeWatchdogRunnerTests: XCTestCase {
         try harness.runner.run()
 
         XCTAssertEqual(harness.proxyLivenessPorts, [80])
-        XCTAssertEqual(harness.restartedServices, [.vm, .guestLogSync, .proxy])
+        XCTAssertEqual(harness.vmRuntimeRestartCalls, 1)
+        XCTAssertEqual(harness.restartedServices, [.proxy])
         XCTAssertEqual(harness.sleepCalls, [Constants.Runtime.watchdogRecoveryWaitSeconds])
         XCTAssertEqual(harness.writtenStatuses.map(\.status), [.recovering, .healthy])
         XCTAssertEqual(harness.observedStatuses.map(\.status), [.recovering, .healthy])
@@ -96,10 +97,36 @@ final class RuntimeWatchdogRunnerTests: XCTestCase {
         try harness.runner.run()
 
         XCTAssertEqual(harness.proxyLivenessPorts, [])
+        XCTAssertEqual(harness.vmRuntimeRestartCalls, 0)
         XCTAssertEqual(harness.writtenStatuses.map(\.status), [.critical])
         XCTAssertEqual(harness.observedEvents.map(\.eventType), [.recoverySuppressed])
         XCTAssertTrue(harness.restartedServices.isEmpty)
         XCTAssertEqual(harness.sleepCalls, [])
+    }
+
+    func testBootstrappingVMLifecycleDefersRecoveryWithoutRestart() throws {
+        let harness = WatchdogHarness(snapshots: [
+            healthSnapshot(
+                vmLifecycle: RuntimeVMLifecycleDocument(
+                    state: .bootstrapping,
+                    startedAt: "2026-05-31T00:00:00Z",
+                    updatedAt: "2026-05-31T00:00:01Z",
+                    deadlineAt: "2999-01-01T00:00:00Z"
+                ),
+                vmState: .starting,
+                vmIP: nil,
+                guestHTTP: RuntimeHTTPStatusText.missingVMIP,
+                failureReasons: [.guestHTTP(RuntimeHTTPStatusText.missingVMIP)]
+            ),
+        ])
+
+        try harness.runner.run()
+
+        XCTAssertEqual(harness.proxyLivenessPorts, [])
+        XCTAssertEqual(harness.vmRuntimeRestartCalls, 0)
+        XCTAssertTrue(harness.restartedServices.isEmpty)
+        XCTAssertEqual(harness.writtenStatuses.map(\.status), [.degraded])
+        XCTAssertEqual(harness.observedEvents.map(\.eventType), [.recoveryDeferred])
     }
 }
 
@@ -107,6 +134,7 @@ private final class WatchdogHarness {
     var prepareLogCalls = 0
     var healthCalls = 0
     var proxyLivenessPorts: [Int] = []
+    var vmRuntimeRestartCalls = 0
     var restartedServices: [RuntimeManagedService] = []
     var sleepCalls: [TimeInterval] = []
     var writtenStatuses: [(status: RuntimeStatusLevel, operation: RuntimeOperation, message: String)] = []
@@ -159,6 +187,9 @@ private final class WatchdogHarness {
                 automaticRecoveryEnabled: {
                     self.automaticRecoveryEnabled
                 },
+                restartVMRuntime: {
+                    self.vmRuntimeRestartCalls += 1
+                },
                 restartService: { label in
                     self.restartedServices.append(label)
                 },
@@ -191,6 +222,7 @@ private func healthSnapshot(
     vmService: RuntimeServiceState = .loaded,
     proxyService: RuntimeServiceState = .loaded,
     watchdogService: RuntimeServiceState = .loaded,
+    vmLifecycle: RuntimeVMLifecycleDocument? = nil,
     vmState: RuntimeVMState = .running,
     vmErrors: [RuntimeVMError] = [],
     vmIP: String? = "192.168.64.2",
@@ -209,6 +241,7 @@ private func healthSnapshot(
         vmService: vmService,
         proxyService: proxyService,
         watchdogService: watchdogService,
+        vmLifecycle: vmLifecycle,
         vmState: vmState,
         vmErrors: vmErrors,
         vmIP: vmIP,

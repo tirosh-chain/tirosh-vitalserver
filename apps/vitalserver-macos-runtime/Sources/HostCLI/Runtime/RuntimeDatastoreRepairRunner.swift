@@ -9,7 +9,7 @@ struct RuntimeDatastoreRepairRunner {
     var writeRequest: (RuntimeDatastoreRepairRequest) throws -> Void
     var isVMServiceLoaded: () -> Bool
     var startVMService: () -> Void
-    var restartVMService: () -> Void
+    var restartVMService: () throws -> Void
     var waitForResult: (RuntimeDatastoreRepairRequest) throws -> Void
     var restartProxyService: () -> Void
     var restartWatchdogService: () -> Void
@@ -30,7 +30,7 @@ struct RuntimeDatastoreRepairRunner {
         try writeRequest(request)
 
         if isVMServiceLoaded() {
-            restartVMService()
+            try restartVMService()
         } else {
             startVMService()
         }

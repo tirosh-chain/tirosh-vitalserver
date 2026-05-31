@@ -80,6 +80,8 @@ public enum RuntimeFailureReason: Codable, Equatable, Sendable {
     case guestRuntimeStateInvalid
     case observabilityEventStoreUnavailable
     case observabilityEventStoreCorrupt
+    case vmLifecycleDocumentInvalid
+    case vmLifecycleDocumentStale
     case vmPidFileStale
     case vmProcessExited
     case launchdServiceCrashed(service: String, exitCode: Int)
@@ -152,6 +154,10 @@ public enum RuntimeFailureReason: Codable, Equatable, Sendable {
             self = .observabilityEventStoreUnavailable
         case "observability-event-store-corrupt":
             self = .observabilityEventStoreCorrupt
+        case "vm-lifecycle-document-invalid":
+            self = .vmLifecycleDocumentInvalid
+        case "vm-lifecycle-document-stale":
+            self = .vmLifecycleDocumentStale
         case "vm-pid-file-stale":
             self = .vmPidFileStale
         case "vm-process-exited":
@@ -255,6 +261,10 @@ public enum RuntimeFailureReason: Codable, Equatable, Sendable {
             return "observability-event-store-unavailable"
         case .observabilityEventStoreCorrupt:
             return "observability-event-store-corrupt"
+        case .vmLifecycleDocumentInvalid:
+            return "vm-lifecycle-document-invalid"
+        case .vmLifecycleDocumentStale:
+            return "vm-lifecycle-document-stale"
         case .vmPidFileStale:
             return "vm-pid-file-stale"
         case .vmProcessExited:
@@ -482,7 +492,8 @@ public extension RuntimeFailureReason {
             return .observability
         case .guestRuntimeStateInvalid:
             return .guestAgent
-        case .vmPidFileStale, .vmProcessExited, .launchdServiceCrashed, .launchdServiceThrottled:
+        case .vmLifecycleDocumentInvalid, .vmLifecycleDocumentStale,
+             .vmPidFileStale, .vmProcessExited, .launchdServiceCrashed, .launchdServiceThrottled:
             return .vmLifecycle
         case .hostProxyListenerMismatch, .hostProxyListenerScanFailed, .hostProxyConfigInvalid:
             return .hostProxy
@@ -511,7 +522,8 @@ public extension RuntimeFailureReason {
         switch self {
         case .redisUIHTTP, .swaggerUIHTTP, .watchdogService, .guestRuntimeStateStale,
              .runtimeStatusDocumentStale, .observabilityEventStoreUnavailable,
-             .vmPidFileStale, .hostProxyListenerScanFailed, .httpProbeTimedOut, .httpProbeConnectionRefused,
+             .vmLifecycleDocumentStale, .vmPidFileStale, .hostProxyListenerScanFailed,
+             .httpProbeTimedOut, .httpProbeConnectionRefused,
              .vitalDBObservationStale:
             return .warning
         case .vitalDBAnomaly(let kind, _):
@@ -543,6 +555,8 @@ public extension RuntimeFailureReason {
             return .restartGuestAgent
         case .vmPidFileStale, .vmProcessExited, .launchdServiceCrashed, .launchdServiceThrottled:
             return .restartVMService
+        case .vmLifecycleDocumentInvalid, .vmLifecycleDocumentStale:
+            return .inspectLogs
         case .hostProxyListenerMismatch:
             return .freeProxyPort
         case .hostProxyListenerScanFailed:
@@ -577,6 +591,12 @@ public extension RuntimeFailureReason {
     }
 
     private var vmError: RuntimeVMError? {
+        switch self {
+        case .vmLifecycleDocumentInvalid, .vmLifecycleDocumentStale:
+            return nil
+        default:
+            break
+        }
         let parsed = RuntimeVMError(rawValue: rawValue)
         if case .unknown(let value) = parsed {
             return value.hasPrefix("vm-") ? parsed : nil

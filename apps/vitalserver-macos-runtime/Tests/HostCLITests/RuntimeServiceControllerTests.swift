@@ -144,6 +144,53 @@ final class RuntimeServiceControllerTests: XCTestCase {
         XCTAssertTrue(logs.contains("launchd service not loaded after restart; starting label=\(RuntimeManagedService.vm.label)"))
     }
 
+    func testRestartVMRuntimeServicesStopsVMWithPrepareAndStartsVMAndGuestLogSync() throws {
+        let serviceManager = ServiceControllerServiceManagerSpy()
+        var loaded = Set([RuntimeManagedService.vm, .guestLogSync])
+        var events: [String] = []
+        serviceManager.onStop = { service in
+            events.append("stop:\(service.label)")
+            loaded.remove(service)
+        }
+        let controller = RuntimeServiceController(
+            serviceManager: serviceManager,
+            isLoaded: { loaded.contains($0) },
+            prepareForStop: { events.append("prepare:\($0.label)") },
+            waitUntilStopped: { events.append("wait:\($0.label)") },
+            log: { _ in }
+        )
+
+        try controller.restartVMRuntimeServices()
+
+        XCTAssertEqual(events, [
+            "prepare:\(RuntimeManagedService.guestLogSync.label)",
+            "stop:\(RuntimeManagedService.guestLogSync.label)",
+            "wait:\(RuntimeManagedService.guestLogSync.label)",
+            "prepare:\(RuntimeManagedService.vm.label)",
+            "stop:\(RuntimeManagedService.vm.label)",
+            "wait:\(RuntimeManagedService.vm.label)",
+        ])
+        XCTAssertEqual(serviceManager.startedLabels, [
+            RuntimeManagedService.vm.label,
+            RuntimeManagedService.guestLogSync.label,
+        ])
+        XCTAssertEqual(serviceManager.restartedLabels, [])
+    }
+
+    func testRestartVMRuntimeServicesPropagatesPrepareFailureWithoutStart() {
+        let serviceManager = ServiceControllerServiceManagerSpy()
+        let controller = RuntimeServiceController(
+            serviceManager: serviceManager,
+            isLoaded: { $0 == .vm },
+            prepareForStop: { _ in throw LauncherError.runtimeOperationFailed("graceful stop failed") },
+            log: { _ in }
+        )
+
+        XCTAssertThrowsError(try controller.restartVMRuntimeServices())
+        XCTAssertEqual(serviceManager.startedLabels, [])
+        XCTAssertEqual(serviceManager.restartedLabels, [])
+    }
+
     func testSetStartOnBootStopsAtFirstFailure() {
         let serviceManager = ServiceControllerServiceManagerSpy()
         serviceManager.setEnabledResults[.proxy] = RuntimeProcessResult(

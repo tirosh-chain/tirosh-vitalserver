@@ -130,6 +130,10 @@ public struct InstalledRuntimePaths: Equatable, Sendable {
         guestRunDirectory.appendingPathComponent(RuntimeFileNames.vmIP)
     }
 
+    public var vmLifecycle: URL {
+        hostRunDirectory.appendingPathComponent(RuntimeFileNames.vmLifecycle)
+    }
+
     public var runtimeState: URL {
         guestRunDirectory.appendingPathComponent(RuntimeFileNames.runtimeState)
     }

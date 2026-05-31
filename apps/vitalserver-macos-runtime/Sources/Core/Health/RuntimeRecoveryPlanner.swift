@@ -1,4 +1,6 @@
 import Contracts
+import Foundation
+
 public struct RuntimeRecoveryInput: Equatable {
     public let vmExecutable: Bool
     public let proxyExecutable: Bool
@@ -6,6 +8,8 @@ public struct RuntimeRecoveryInput: Equatable {
     public let vmDisk: RuntimeFileState
     public let vmService: RuntimeServiceState
     public let proxyService: RuntimeServiceState
+    public let vmLifecycle: RuntimeVMLifecycleDocument?
+    public let now: Date
     public let vmIP: String?
     public let guestHTTP: String
     public let hostProxyReadinessHTTP: String
@@ -19,6 +23,8 @@ public struct RuntimeRecoveryInput: Equatable {
         vmDisk: RuntimeFileState,
         vmService: RuntimeServiceState,
         proxyService: RuntimeServiceState,
+        vmLifecycle: RuntimeVMLifecycleDocument? = nil,
+        now: Date = Date(),
         vmIP: String?,
         guestHTTP: String,
         hostProxyReadinessHTTP: String,
@@ -31,6 +37,8 @@ public struct RuntimeRecoveryInput: Equatable {
         self.vmDisk = vmDisk
         self.vmService = vmService
         self.proxyService = proxyService
+        self.vmLifecycle = vmLifecycle
+        self.now = now
         self.vmIP = vmIP
         self.guestHTTP = guestHTTP
         self.hostProxyReadinessHTTP = hostProxyReadinessHTTP
@@ -64,10 +72,12 @@ public enum RuntimeRecoveryPlanner {
         let hostProxyReady = isSuccessfulHTTPStatus(input.hostProxyReadinessHTTP)
         let hostProxyAlive = isSuccessfulHTTPStatus(input.hostProxyLivenessHTTP)
 
-        let restartVM = input.vmService != .loaded
+        let waitingForGuest = input.vmLifecycle?.isWaitingForGuest(at: input.now) ?? false
+
+        let restartVM = !waitingForGuest && (input.vmService != .loaded
             || input.vmIP == nil
             || !guestReady
-            || RuntimeObservationHealthPolicy.requiresVMRestart(containerObservation: input.containerObservation)
+            || RuntimeObservationHealthPolicy.requiresVMRestart(containerObservation: input.containerObservation))
 
         let restartProxy = restartVM
             || input.proxyService != .loaded
