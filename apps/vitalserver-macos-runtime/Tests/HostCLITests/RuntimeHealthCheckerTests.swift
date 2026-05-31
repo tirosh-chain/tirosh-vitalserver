@@ -128,6 +128,7 @@ final class RuntimeHealthCheckerTests: XCTestCase {
         guestGateway.runtimeState = GuestRuntimeStateDocument(
             vmIP: "192.168.64.2",
             updatedAt: "2026-05-24T00:00:00Z",
+            bootID: "boot-current",
             guestHTTP: "200",
             redisUIHTTP: "200",
             swaggerUIHTTP: "200",
@@ -140,6 +141,15 @@ final class RuntimeHealthCheckerTests: XCTestCase {
                     exitCode: 0
                 ),
             ]
+        )
+        guestGateway.bootstrapResult = GuestBootstrapResultDocument(
+            schemaVersion: 3,
+            bootID: "boot-old",
+            operation: .unknown("bootstrap"),
+            status: .failed,
+            message: "stale bootstrap failure",
+            reasonCodes: [.guestBootstrapFailed],
+            updatedAt: "2027-01-15T08:00:00Z"
         )
 
         let checker = RuntimeHealthChecker(
@@ -154,6 +164,7 @@ final class RuntimeHealthCheckerTests: XCTestCase {
         let snapshot = checker.snapshot()
 
         XCTAssertTrue(RuntimeHealthSnapshotPolicy.isHealthy(snapshot))
+        XCTAssertFalse(snapshot.failureReasons.contains(.guestBootstrapFailed))
         XCTAssertTrue(httpProber.requestedURLs.contains("http://127.0.0.1:8080/ready"))
         XCTAssertEqual(snapshot.containerObservation?.auditProxyHTTP, "200")
         XCTAssertEqual(snapshot.containerObservation?.auditProxyStatus?.socketIoEventsSeen, 3)

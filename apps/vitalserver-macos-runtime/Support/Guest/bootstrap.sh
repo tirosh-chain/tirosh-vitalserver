@@ -30,9 +30,10 @@ write_bootstrap_result() {
   local status="$1"
   local message="$2"
   local reason_code="${3:-}"
-  local updated_at reason_codes_json
+  local boot_id updated_at reason_codes_json
 
   mkdir -p "${RUNTIME_DIR}"
+  boot_id="$(cat /proc/sys/kernel/random/boot_id 2>/dev/null || true)"
   updated_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   if [ -n "${reason_code}" ]; then
     reason_codes_json="[\"${reason_code}\"]"
@@ -40,12 +41,13 @@ write_bootstrap_result() {
     reason_codes_json="[]"
   fi
 
-  cat > "${BOOTSTRAP_RESULT_FILE}" <<EOF
+cat > "${BOOTSTRAP_RESULT_FILE}" <<EOF
 {
+  "bootID" : "${boot_id}",
   "message" : "${message}",
   "operation" : "bootstrap",
   "reasonCodes" : ${reason_codes_json},
-  "schemaVersion" : 2,
+  "schemaVersion" : 3,
   "status" : "${status}",
   "updatedAt" : "${updated_at}"
 }

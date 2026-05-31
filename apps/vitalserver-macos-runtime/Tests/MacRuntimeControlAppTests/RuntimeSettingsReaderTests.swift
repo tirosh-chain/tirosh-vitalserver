@@ -38,6 +38,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
             paths: RuntimeSettingsPaths(
                 vmConfig: vmConfig.path,
                 vmDisk: vmDisk.path,
+                guestRuntimeSettings: directory.appendingPathComponent("missing-runtime-settings.json").path,
                 guestRuntimeConfig: guestConfig.path,
                 proxyLaunchDaemon: proxyLaunchDaemon.path
             )
@@ -454,6 +455,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
 
         let reader = SystemRuntimeObservabilityReader(
             paths: RuntimePaths(
+                runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
                 runtimeStatus: runtimeStatus.path,
                 runtimeObservabilityDB: directory.appendingPathComponent(RuntimeFileNames.runtimeObservabilityDB).path
             )
@@ -466,7 +468,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         XCTAssertEqual(history.recorders.first?.status, .online)
     }
 
-    func testObservabilityReaderDoesNotOverrideStatusObservationWithRawGuestState() throws {
+    func testObservabilityReaderUsesGuestRuntimeStateAsCurrentObservation() throws {
         let directory = try temporaryDirectory()
         let runtimeStatus = directory.appendingPathComponent(RuntimeFileNames.runtimeStatus)
         let runtimeState = directory.appendingPathComponent(RuntimeFileNames.runtimeState)
@@ -557,8 +559,8 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         let history = observabilityReader.loadVitalDBRecorders()
 
         XCTAssertEqual(status.vitalDBObservation?.observedAt, "2026-05-26T00:01:00Z")
-        XCTAssertEqual(history.updatedAt, "2026-05-26T00:01:00Z")
-        XCTAssertEqual(history.recorders.map(\.vrcode), ["VR_STALE_STATUS"])
+        XCTAssertEqual(history.updatedAt, "2026-05-26T00:01:05Z")
+        XCTAssertEqual(history.recorders.map(\.vrcode), ["VR_FRESH_GUEST"])
         XCTAssertEqual(history.recorders.first?.status, .online)
     }
 
@@ -643,8 +645,13 @@ final class RuntimeSettingsReaderTests: XCTestCase {
     }
 
     func testObservabilityReaderReportsLatestObservationReadFailure() throws {
+        let directory = try temporaryDirectory()
         let reader = SystemRuntimeObservabilityReader(
-            paths: RuntimePaths(runtimeObservabilityDB: "/dev/null/vital-observability.sqlite")
+            paths: RuntimePaths(
+                runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
+                runtimeStatus: directory.appendingPathComponent(RuntimeFileNames.runtimeStatus).path,
+                runtimeObservabilityDB: "/dev/null/vital-observability.sqlite"
+            )
         )
 
         let snapshot = reader.loadVitalDBObservationSnapshot()

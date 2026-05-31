@@ -9,6 +9,7 @@ final class RollbackPreflightTests: XCTestCase {
             backup: URL(fileURLWithPath: "/tmp/backups/backup-1"),
             backupRootfs: URL(fileURLWithPath: "/tmp/backups/backup-1/rootfs-base.raw.gz"),
             backupVersion: URL(fileURLWithPath: "/tmp/backups/backup-1/runtime-version.json"),
+            restoresRootfsBase: true,
             restartPolicy: RuntimeServiceRestartPolicy(
                 restartVM: true,
                 restartProxy: true,
@@ -17,7 +18,8 @@ final class RollbackPreflightTests: XCTestCase {
         )
 
         XCTAssertEqual(context.backup.lastPathComponent, "backup-1")
-        XCTAssertEqual(context.backupRootfs.lastPathComponent, "rootfs-base.raw.gz")
+        XCTAssertEqual(context.backupRootfs?.lastPathComponent, "rootfs-base.raw.gz")
+        XCTAssertTrue(context.restoresRootfsBase)
         XCTAssertTrue(context.restartPolicy.restartVM)
         XCTAssertTrue(context.restartPolicy.restartProxy)
         XCTAssertFalse(context.restartPolicy.restartWatchdog)

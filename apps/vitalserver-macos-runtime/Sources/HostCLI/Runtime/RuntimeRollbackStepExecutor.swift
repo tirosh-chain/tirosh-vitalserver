@@ -25,7 +25,10 @@ struct RuntimeRollbackStepExecutor {
         case .rollbackStopRuntimeServices:
             try stopRuntimeServices()
         case .rollbackRestoreRootfsBase:
-            try replaceFile(preflight.backupRootfs, rootfsBase)
+            guard let backupRootfs = preflight.backupRootfs else {
+                throw LauncherError.unsupportedCommand("rollback rootfs restore requested without backup rootfs")
+            }
+            try replaceFile(backupRootfs, rootfsBase)
         case .rollbackRestoreRuntimeVersion:
             if fileExists(preflight.backupVersion) {
                 try replaceFile(preflight.backupVersion, runtimeVersion)

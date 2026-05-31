@@ -138,16 +138,32 @@ public struct InstalledRuntimePaths: Equatable, Sendable {
         guestRunDirectory.appendingPathComponent(RuntimeFileNames.bootstrapLog)
     }
 
+    public var bootstrapResult: URL {
+        guestRunDirectory.appendingPathComponent(RuntimeFileNames.bootstrapResult)
+    }
+
     public var updateActivationLog: URL {
         guestRunDirectory.appendingPathComponent(RuntimeFileNames.updateActivationLog)
+    }
+
+    public var updateActivationResult: URL {
+        guestRunDirectory.appendingPathComponent(RuntimeFileNames.updateActivationResult)
     }
 
     public var updateShutdownLog: URL {
         guestRunDirectory.appendingPathComponent(RuntimeFileNames.updateShutdownLog)
     }
 
+    public var updateShutdownResult: URL {
+        guestRunDirectory.appendingPathComponent(RuntimeFileNames.updateShutdownResult)
+    }
+
     public var datastoreRepairLog: URL {
         guestRunDirectory.appendingPathComponent(RuntimeFileNames.datastoreRepairLog)
+    }
+
+    public var datastoreRepairResult: URL {
+        guestRunDirectory.appendingPathComponent(RuntimeFileNames.datastoreRepairResult)
     }
 
     public var centralBootstrapLog: URL {
@@ -220,5 +236,9 @@ public struct InstalledRuntimePaths: Equatable, Sendable {
 
     public var managerCommandLog: URL {
         URL(fileURLWithPath: "/private/tmp/\(RuntimeFileNames.managerCommandLog)")
+    }
+
+    public var managerHelperMessageLog: URL {
+        URL(fileURLWithPath: "/private/tmp/\(RuntimeFileNames.managerHelperMessageLog)")
     }
 }

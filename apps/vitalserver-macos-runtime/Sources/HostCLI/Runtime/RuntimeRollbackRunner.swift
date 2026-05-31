@@ -16,7 +16,7 @@ struct RuntimeRollbackRunner {
         try writeStatus(.recovering, .rollback, "rollback started")
 
         try RuntimeOperationPlanRunner.run(
-            plan: RuntimeOperationPlans.rollback,
+            plan: RuntimeOperationPlans.rollback(restoresRootfsBase: preflight.restoresRootfsBase),
             status: .recovering,
             execute: { step in
                 try executeStep(step, preflight)

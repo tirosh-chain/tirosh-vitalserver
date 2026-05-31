@@ -11,6 +11,7 @@ VitalServer Helper 또는 Remote Console에서 아래 증상이 함께 나타납
 
 - Settings에 `guestRuntimeConfig: The file "runtime-config.json" couldn't be opened because you don't have permission to view it.`가 표시됩니다.
 - Logs > Export logs가 실패합니다.
+- Logs > Helper message가 최신 메시지만 보이고 이전 메시지는 사라집니다.
 - Observability > Runtime Events가 `0 events` 또는 `No runtime events`로 표시됩니다.
 - Recorders > Activity에 `attempt to write a readonly database`가 포함된 `Recorder activity history is incomplete`가 표시됩니다.
 
@@ -37,6 +38,8 @@ Settings의 read issue는 network exposure, Redis backup retention 같은 일부
 두 번째 원인은 observability SQLite 조회가 pure read가 아니라는 점입니다. `/Library/Application Support/TiroshVitalServer/status/runtime-observability.sqlite`와 `runtime-events.jsonl`에 event가 있어도, Runtime Control API의 event query는 SQLite secondary index를 사용합니다. SQLite query path는 `initialize()`와 catch-up을 먼저 수행하면서 schema migration/index state write를 시도할 수 있습니다.
 
 같은 DB를 사용하는 VitalDB observation/recorder activity/relationship 조회도 `initialize()`를 먼저 호출하면 read 요청이 schema write를 시도합니다. 사용자 권한 Helper가 root-owned DB 또는 status directory에 write할 수 없으면 SQLite가 `attempt to write a readonly database`를 반환합니다. 이 실패를 빈 event/activity list로 숨기면 실제 data가 있어도 Remote Console에는 0건 또는 불완전한 history처럼 보입니다.
+
+세 번째 원인은 Helper message가 실제 로그가 아니라 UI state였다는 점입니다. macOS Helper의 `message` 값은 하나의 현재 상태 문자열이고, Remote Console은 `helperMessage=""`를 보내므로 이전 메시지를 조회할 source가 없었습니다. 따라서 Helper message를 Logs 탭에 노출하려면 host-visible append-only log file이 별도로 필요합니다.
 
 ## Checks
 
@@ -102,6 +105,7 @@ touch \
 4. Log collection refresh는 사용자 권한 Helper가 root-owned central logs를 touch/copy하지 않도록 privileged launcher에 위임하거나 read-only export path와 분리합니다.
 5. SQLite runtime event/VitalDB observation/recorder activity/relationship query는 read-only connection/path를 제공해야 합니다. 조회 중 schema migration, catch-up, index state write를 시도하면 안 됩니다.
 6. SQLite query 실패 시 JSONL primary fallback을 사용하거나, 최소한 `readError`를 API/UI에 노출합니다. 빈 event/activity list로 실패를 숨기면 안 됩니다.
+7. Helper message는 UI state가 아니라 append-only helper message log를 source of truth로 읽습니다. 현재 UI message를 API request parameter로 재전송해 로그처럼 취급하지 않습니다.
 
 ## Prevention
 
@@ -110,6 +114,7 @@ touch \
 - secret-bearing file: root-only, Helper 직접 read 금지
 - Helper read model: secret-free, user-readable 또는 Helper-owned
 - runtime write store: root/service-owned, read API는 read-only path 제공
+- helper message log: Helper-owned append-only file, Logs 탭은 file tail만 표시
 - support bundle: best-effort collection과 redaction manifest 제공
 
 읽기 API에서 `initialize`, migration, catch-up, projection rebuild 같은 쓰기 작업을 암묵 수행하지 않습니다. 쓰기가 필요한 유지보수는 watchdog/launcher 같은 owner process가 수행하고, Helper/Remote Console read path는 실패를 명시적으로 드러냅니다.
@@ -138,3 +143,4 @@ touch \
 - 2026-05-30: Export logs는 refresh/supplemental read 실패를 manifest issue로 기록하고 가능한 로그를 계속 export하도록 수정했습니다.
 - 2026-05-30: SQLite event query 실패 시 JSONL primary event store로 fallback하도록 수정했습니다.
 - 2026-05-31: Runtime Events뿐 아니라 Recorders/Activity/Relationships read path도 SQLite를 read-only로 열도록 hotfix 범위를 확장했습니다. Remote Console 조회는 projection catch-up, schema init, migration을 수행하지 않습니다.
+- 2026-05-31: Helper message가 실제 로그로 남지 않고 현재 UI message 문자열만 표시하던 구조를 확인했습니다. `tirosh-vitalserver-helper-message.log` append-only source를 추가하고 Logs 탭/Export logs가 이 파일을 읽도록 수정했습니다.

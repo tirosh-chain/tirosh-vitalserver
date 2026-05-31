@@ -22,6 +22,7 @@ final class RuntimeLogExporterTests: XCTestCase {
         XCTAssertTrue(destinations.contains("diagnostics/guest/runtime-config.json"))
         XCTAssertTrue(destinations.contains("diagnostics/host/com.tirosh.vitalserver-proxy.plist"))
         XCTAssertTrue(destinations.contains("diagnostics/host/vitalserver-nginx.conf"))
+        XCTAssertTrue(destinations.contains("helper-message.log"))
     }
 
     func testDefaultRotatedExportSupplementalSourcesIncludeRuntimeEventHistory() {

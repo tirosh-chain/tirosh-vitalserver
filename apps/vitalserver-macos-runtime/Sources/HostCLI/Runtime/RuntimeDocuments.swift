@@ -148,11 +148,11 @@ struct GuestRuntimeSettingsDocument: Codable, Equatable {
     }
 }
 
-struct BackupManifest: Encodable {
+struct BackupManifest: Codable, Equatable {
     let product: String
     let createdAt: String
     let reason: String
-    let rootfsBase: String
+    let rootfsBase: String?
     let vmDisk: String
     let vmDiskPreserved: Bool
 }

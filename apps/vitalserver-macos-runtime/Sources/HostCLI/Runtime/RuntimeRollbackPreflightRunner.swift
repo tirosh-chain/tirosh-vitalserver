@@ -6,18 +6,20 @@ struct RuntimeRollbackPreflightRunner {
     var requireLatestBackup: () throws -> URL
     var directoryExists: (URL) -> Bool
     var fileExists: (URL) -> Bool
+    var loadManifest: (URL) throws -> BackupManifest
     var serviceRestartPolicy: () -> RuntimeServiceRestartPolicy
     var log: (String) -> Void
 
     func prepare(_ command: RuntimeRollbackCommand) throws -> RollbackPreflightContext {
         let backup = try backupURL(for: command)
-        let backupRootfs = backup.appendingPathComponent(Constants.Artifacts.rootfsBase)
         let backupVersion = backup.appendingPathComponent(Constants.Artifacts.runtimeVersion)
 
         guard directoryExists(backup) else {
             throw LauncherError.missingFile(backup.path)
         }
-        guard fileExists(backupRootfs) else {
+        let manifest = try loadManifest(backup)
+        let backupRootfs = manifest.rootfsBase.map { backup.appendingPathComponent($0) }
+        if let backupRootfs, !fileExists(backupRootfs) {
             throw LauncherError.missingFile(backupRootfs.path)
         }
 
@@ -30,6 +32,7 @@ struct RuntimeRollbackPreflightRunner {
             backup: backup,
             backupRootfs: backupRootfs,
             backupVersion: backupVersion,
+            restoresRootfsBase: backupRootfs != nil,
             restartPolicy: restartPolicy
         )
     }

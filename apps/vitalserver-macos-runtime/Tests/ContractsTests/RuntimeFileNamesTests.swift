@@ -23,5 +23,6 @@ final class RuntimeFileNamesTests: XCTestCase {
         XCTAssertEqual(RuntimeFileNames.updateShutdownResult, "prepare-update-shutdown-result.json")
         XCTAssertEqual(RuntimeFileNames.updateShutdownLog, "prepare-update-shutdown.log")
         XCTAssertEqual(RuntimeFileNames.managerCommandLog, "tirosh-vitalserver-manager-command.log")
+        XCTAssertEqual(RuntimeFileNames.managerHelperMessageLog, "tirosh-vitalserver-helper-message.log")
     }
 }

@@ -23,6 +23,10 @@ final class RuntimeRollbackPreflightRunnerTests: XCTestCase {
                 events.append("file:\(url.path)")
                 return url == backupRootfs
             },
+            loadManifest: { url in
+                events.append("manifest:\(url.path)")
+                return self.backupManifest(rootfsBase: Constants.Artifacts.rootfsBase)
+            },
             serviceRestartPolicy: {
                 events.append("policy")
                 return RuntimeServiceRestartPolicy(restartVM: true, restartProxy: false, restartWatchdog: true)
@@ -35,6 +39,7 @@ final class RuntimeRollbackPreflightRunnerTests: XCTestCase {
         XCTAssertEqual(context.backup, requestedBackup)
         XCTAssertEqual(context.backupRootfs, backupRootfs)
         XCTAssertEqual(context.backupVersion, requestedBackup.appendingPathComponent(Constants.Artifacts.runtimeVersion))
+        XCTAssertTrue(context.restoresRootfsBase)
         XCTAssertEqual(context.restartPolicy, RuntimeServiceRestartPolicy(
             restartVM: true,
             restartProxy: false,
@@ -42,6 +47,7 @@ final class RuntimeRollbackPreflightRunnerTests: XCTestCase {
         ))
         XCTAssertEqual(events, [
             "directory:/product/backups/backup-1",
+            "manifest:/product/backups/backup-1",
             "file:/product/backups/backup-1/rootfs-base.raw.gz",
             "policy",
             "log",
@@ -66,6 +72,10 @@ final class RuntimeRollbackPreflightRunnerTests: XCTestCase {
                 events.append("file:\(url.path)")
                 return url == backupRootfs
             },
+            loadManifest: { url in
+                events.append("manifest:\(url.path)")
+                return self.backupManifest(rootfsBase: Constants.Artifacts.rootfsBase)
+            },
             serviceRestartPolicy: {
                 events.append("policy")
                 return RuntimeServiceRestartPolicy(restartVM: false, restartProxy: true, restartWatchdog: false)
@@ -84,6 +94,7 @@ final class RuntimeRollbackPreflightRunnerTests: XCTestCase {
         XCTAssertEqual(events, [
             "latest",
             "directory:/product/backups/latest",
+            "manifest:/product/backups/latest",
             "file:/product/backups/latest/rootfs-base.raw.gz",
             "policy",
             "log",
@@ -98,6 +109,10 @@ final class RuntimeRollbackPreflightRunnerTests: XCTestCase {
             fileExists: { _ in
                 XCTFail("missing backup directory should stop before file checks")
                 return false
+            },
+            loadManifest: { _ in
+                XCTFail("missing backup directory should stop before manifest load")
+                return self.backupManifest(rootfsBase: Constants.Artifacts.rootfsBase)
             },
             serviceRestartPolicy: {
                 XCTFail("missing backup directory should stop before service policy")
@@ -118,6 +133,7 @@ final class RuntimeRollbackPreflightRunnerTests: XCTestCase {
             requireLatestBackup: { URL(fileURLWithPath: "/unused") },
             directoryExists: { _ in true },
             fileExists: { _ in false },
+            loadManifest: { _ in self.backupManifest(rootfsBase: Constants.Artifacts.rootfsBase) },
             serviceRestartPolicy: {
                 XCTFail("missing rootfs should stop before service policy")
                 return RuntimeServiceRestartPolicy(restartVM: false, restartProxy: false, restartWatchdog: false)
@@ -128,5 +144,41 @@ final class RuntimeRollbackPreflightRunnerTests: XCTestCase {
         XCTAssertThrowsError(try runner.prepare(.specificBackup(requestedBackup))) { error in
             XCTAssertEqual(String(describing: error), String(describing: LauncherError.missingFile(missingRootfs.path)))
         }
+    }
+
+    func testPrepareSkipsRootfsRestoreWhenManifestDoesNotDeclareRootfs() throws {
+        let requestedBackup = URL(fileURLWithPath: "/product/backups/backup-1")
+        var events: [String] = []
+        let runner = RuntimeRollbackPreflightRunner(
+            requireLatestBackup: { URL(fileURLWithPath: "/unused") },
+            directoryExists: { _ in true },
+            fileExists: { url in
+                events.append("file:\(url.path)")
+                return false
+            },
+            loadManifest: { _ in self.backupManifest(rootfsBase: nil) },
+            serviceRestartPolicy: {
+                events.append("policy")
+                return RuntimeServiceRestartPolicy(restartVM: false, restartProxy: false, restartWatchdog: false)
+            },
+            log: { _ in events.append("log") }
+        )
+
+        let context = try runner.prepare(.specificBackup(requestedBackup))
+
+        XCTAssertNil(context.backupRootfs)
+        XCTAssertFalse(context.restoresRootfsBase)
+        XCTAssertEqual(events, ["policy", "log"])
+    }
+
+    private func backupManifest(rootfsBase: String?) -> BackupManifest {
+        BackupManifest(
+            product: Constants.Product.identifier,
+            createdAt: "2026-05-31T00:00:00Z",
+            reason: "before-1.2.3",
+            rootfsBase: rootfsBase,
+            vmDisk: Constants.BootAssets.disk,
+            vmDiskPreserved: true
+        )
     }
 }

@@ -27,5 +27,19 @@ struct RuntimeInstallDirectoryPreparer {
         for directory in directories {
             try fileStore.createDirectory(at: directory, withIntermediateDirectories: true)
         }
+        try removeStaleGuestRunDocuments()
+    }
+
+    private func removeStaleGuestRunDocuments() throws {
+        for document in [
+            installedPaths.vmIPFile,
+            installedPaths.runtimeState,
+            installedPaths.bootstrapResult,
+            installedPaths.updateActivationResult,
+            installedPaths.updateShutdownResult,
+            installedPaths.datastoreRepairResult,
+        ] where fileStore.fileExists(document) {
+            try fileStore.removeItem(at: document)
+        }
     }
 }

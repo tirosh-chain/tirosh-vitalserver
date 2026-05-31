@@ -104,6 +104,17 @@ extension RuntimeLifecycle {
                 else {
                     return nil
                 }
+                guard let bootstrapBootID = bootstrapResult.bootID, !bootstrapBootID.isEmpty else {
+                    log("watchdog guest bootstrap guard ignored result without bootID")
+                    return nil
+                }
+                if case .loaded(let runtimeState) = guestGateway.loadRuntimeStateDocument(),
+                   let runtimeBootID = runtimeState.bootID,
+                   !runtimeBootID.isEmpty,
+                   runtimeBootID != bootstrapBootID {
+                    log("watchdog guest bootstrap guard ignored stale result bootID=\(bootstrapBootID) runtimeBootID=\(runtimeBootID)")
+                    return nil
+                }
                 let updatedAt = bootstrapResult.updatedAt.flatMap {
                     ISO8601DateFormatter().date(from: $0)
                 }
@@ -377,6 +388,7 @@ extension RuntimeLifecycle {
                 requireLatestBackup: { try backupStore().requireLatestBackup() },
                 directoryExists: directoryExists,
                 fileExists: fileExists,
+                readData: { url in try fileStore.readData(url) },
                 isLaunchdLoaded: isLaunchdLoaded,
                 stopRuntimeServices: stopRuntimeServices,
                 startRuntimeServices: startRuntimeServices,

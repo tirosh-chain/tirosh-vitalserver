@@ -91,7 +91,8 @@ struct RuntimeBackupStore {
         let backup = paths.backupsDirectory.appendingPathComponent("\(timestamp())-\(reason)")
         try createDirectory(backup, true)
 
-        if fileExists(paths.rootfsBase) {
+        let backsUpRootfsBase = fileExists(paths.rootfsBase)
+        if backsUpRootfsBase {
             log("backup rootfs-base source=\(paths.rootfsBase.path)")
             try copyItem(paths.rootfsBase, backup.appendingPathComponent(Constants.Artifacts.rootfsBase))
         }
@@ -109,7 +110,7 @@ struct RuntimeBackupStore {
             product: Constants.Product.identifier,
             createdAt: isoTimestamp(),
             reason: reason,
-            rootfsBase: Constants.Artifacts.rootfsBase,
+            rootfsBase: backsUpRootfsBase ? Constants.Artifacts.rootfsBase : nil,
             vmDisk: Constants.BootAssets.disk,
             vmDiskPreserved: true
         )

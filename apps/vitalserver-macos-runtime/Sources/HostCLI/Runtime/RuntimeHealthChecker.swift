@@ -73,7 +73,7 @@ struct RuntimeHealthChecker {
                 + guestRuntimeState.failureReasons
                 + guestHTTPRead.failureReasons,
             proxyPortFailureReasons: proxyPortFailureReasons(port: proxyPort),
-            guestBootstrapFailureReason: guestBootstrapFailureReason()
+            guestBootstrapFailureReason: guestBootstrapFailureReason(guestState: guestRuntimeState.loadedState)
         ))
     }
 
@@ -158,11 +158,43 @@ struct RuntimeHealthChecker {
         return RuntimeGuestHTTPReadResult(status: RuntimeHTTPStatusText.missingVMIP, failureReasons: [])
     }
 
-    private func guestBootstrapFailureReason() -> RuntimeFailureReason? {
+    private func guestBootstrapFailureReason(guestState: GuestRuntimeStateDocument?) -> RuntimeFailureReason? {
         if case .loaded(let bootstrapResult) = guestGateway.loadBootstrapResultDocument() {
+            guard bootstrapResultBelongsToCurrentBoot(bootstrapResult, guestState: guestState) else {
+                return nil
+            }
             return GuestBootstrapEvaluator.failureReason(bootstrapResult)
         }
         return nil
+    }
+
+    private func bootstrapResultBelongsToCurrentBoot(
+        _ bootstrapResult: GuestBootstrapResultDocument,
+        guestState: GuestRuntimeStateDocument?
+    ) -> Bool {
+        guard let bootstrapBootID = nonEmpty(bootstrapResult.bootID) else {
+            return false
+        }
+        guard let guestBootID = nonEmpty(guestState?.bootID) else {
+            return isFreshBootstrapResult(bootstrapResult)
+        }
+        return bootstrapBootID == guestBootID
+    }
+
+    private func isFreshBootstrapResult(_ bootstrapResult: GuestBootstrapResultDocument) -> Bool {
+        guard let updatedAt = bootstrapResult.updatedAt,
+              let updatedAtDate = ISO8601DateFormatter().date(from: updatedAt)
+        else {
+            return false
+        }
+        return now().timeIntervalSince(updatedAtDate) <= Constants.Runtime.watchdogManagedOperationGraceSeconds
+    }
+
+    private func nonEmpty(_ value: String?) -> String? {
+        guard let value, !value.isEmpty else {
+            return nil
+        }
+        return value
     }
 
     private func proxyPortFailureReasons(port: Int) -> [RuntimeFailureReason] {

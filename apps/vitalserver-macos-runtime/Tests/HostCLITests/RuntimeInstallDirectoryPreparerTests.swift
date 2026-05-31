@@ -7,6 +7,16 @@ final class RuntimeInstallDirectoryPreparerTests: XCTestCase {
     func testPrepareCreatesRuntimeDirectoriesAndCustomVitalFilesDirectory() throws {
         let fileStore = RuntimeFileStoreSpy()
         let paths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
+        for staleDocument in [
+            paths.vmIPFile,
+            paths.runtimeState,
+            paths.bootstrapResult,
+            paths.updateActivationResult,
+            paths.updateShutdownResult,
+            paths.datastoreRepairResult,
+        ] {
+            fileStore.files[staleDocument] = Data("stale".utf8)
+        }
         let preparer = RuntimeInstallDirectoryPreparer(
             installedPaths: paths,
             fileStore: fileStore
@@ -26,5 +36,13 @@ final class RuntimeInstallDirectoryPreparerTests: XCTestCase {
         XCTAssertTrue(fileStore.directories.contains(paths.hostRunDirectory))
         XCTAssertTrue(fileStore.directories.contains(paths.statusDirectory))
         XCTAssertTrue(fileStore.directories.contains(paths.nginxLogsDirectory))
+        XCTAssertEqual(Set(fileStore.removed), [
+            paths.vmIPFile,
+            paths.runtimeState,
+            paths.bootstrapResult,
+            paths.updateActivationResult,
+            paths.updateShutdownResult,
+            paths.datastoreRepairResult,
+        ])
     }
 }

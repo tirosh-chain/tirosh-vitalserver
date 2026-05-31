@@ -93,7 +93,26 @@ final class RuntimeBackupStoreTests: XCTestCase {
         XCTAssertTrue(manifest.contains(#""product" : "com.tirosh.vitalserver""#))
         XCTAssertTrue(manifest.contains(#""createdAt" : "2026-05-22T01:02:03Z""#))
         XCTAssertTrue(manifest.contains(#""reason" : "before-0.1.4""#))
+        XCTAssertTrue(manifest.contains(#""rootfsBase" : "rootfs-base.raw.gz""#))
         XCTAssertTrue(manifest.contains(#""vmDiskPreserved" : true"#))
+    }
+
+    func testCreateBackupManifestOmitsRootfsWhenSourceIsMissing() throws {
+        var writtenFiles: [String: String] = [:]
+        let paths = makePaths()
+        let store = makeStore(
+            paths: paths,
+            fileExists: { url in url == paths.runtimeVersion },
+            writeData: { data, url in
+                writtenFiles[url.path] = String(data: data, encoding: .utf8)
+            }
+        )
+
+        _ = try store.createBackup(reason: "before-0.1.4")
+
+        let manifestPath = "/product/backups/20260522T010203Z-before-0.1.4/backup-manifest.json"
+        let manifest = try XCTUnwrap(writtenFiles[manifestPath])
+        XCTAssertFalse(manifest.contains(#""rootfsBase""#))
     }
 
     func testRestoreBackupPathReplacesExistingDestination() throws {
