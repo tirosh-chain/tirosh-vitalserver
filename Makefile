@@ -46,7 +46,7 @@ include make/vm.mk
 	runtime-up runtime-up-bridged runtime-down runtime-status runtime-health \
 	runtime-prepare runtime-ip runtime-proxy-start runtime-clean \
 	runtime-interfaces runtime-network-shared runtime-network-bridged runtime-e2e-smoke \
-	runtime-permission-audit runtime-coverage coverage e2e-smoke e2e-local e2e-local-loop \
+	runtime-permission-audit runtime-chaos runtime-coverage coverage e2e-smoke e2e-local e2e-local-loop \
 	devtools-version-source devtools-build devtools-nginx-artifact devtools-nginx-bundle \
 	devtools-docker-images devtools-sign devtools-sign-bridged devtools-bridged-preflight \
 	devtools-init devtools-download devtools-cloud-init devtools-stage \
@@ -85,6 +85,8 @@ runtime-network-bridged: vm-network-bridged
 runtime-e2e-smoke: vm-e2e-smoke
 runtime-permission-audit:
 	$(PYTHON) scripts/runtime_permission_audit.py $(RUNTIME_PERMISSION_AUDIT_ARGS)
+runtime-chaos:
+	CLANG_MODULE_CACHE_PATH="$(VM_CLANG_MODULE_CACHE)" swift test --package-path "$(VM_SWIFT_PACKAGE_DIR)" --filter Chaos
 runtime-coverage: vm-coverage
 coverage: vm-coverage
 e2e-smoke: vm-e2e-smoke
@@ -139,6 +141,7 @@ help:
 	@printf "  make check           Run lint, typecheck, and test\n"
 	@printf "  make e2e-smoke       Run local Runtime Control HTTP smoke test\n"
 	@printf "  make e2e-local       Run local HTTP smoke and PWA checks\n"
+	@printf "  make runtime-chaos   Run deterministic macOS runtime chaos scenarios\n"
 	@printf "  make runtime-permission-audit  Audit installed runtime file permissions\n"
 	@printf "  make coverage        Run macOS runtime Swift coverage report\n"
 	@printf "\n"
@@ -234,6 +237,7 @@ help-runtime:
 	@printf "  make runtime-proxy-start  Start host proxy for a runtime endpoint\n"
 	@printf "  make runtime-clean        Remove runtime state, keep shared data\n"
 	@printf "  make runtime-e2e-smoke    Run local Runtime Control HTTP smoke test\n"
+	@printf "  make runtime-chaos        Run deterministic macOS runtime chaos scenarios\n"
 	@printf "  make runtime-permission-audit  Audit installed runtime file permissions\n"
 	@printf "  make runtime-coverage     Run Swift tests with source coverage report\n"
 	@printf "\n"
