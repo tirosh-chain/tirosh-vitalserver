@@ -445,6 +445,29 @@ function capabilities() {
 }
 
 function overview() {
+  const vitalDBObservation = {
+    schemaVersion: 1,
+    source: "vitaldb-observer",
+    observedAt: "2026-05-31T01:00:00Z",
+    ready: true,
+    recorderOnlineThresholdSeconds: 120,
+    recorders: [],
+    beds: [],
+    devices: [],
+    filters: [],
+    proxyConnections: [],
+    anomalies: [
+      {
+        id: "duplicate-ip-10",
+        kind: "duplicate-ip",
+        severity: "warning",
+        observedAt: "2026-05-31T01:00:00Z",
+        subject: "10.0.0.10",
+        message: "duplicate recorder IP"
+      }
+    ]
+  };
+
   return {
     settings: {
       proxyPort: 18080,
@@ -474,27 +497,11 @@ function overview() {
       containerObservation: { auditProxyHTTP: "HTTP 200" },
       failureReasons: []
     },
-    vitalDBObservation: {
-      schemaVersion: 1,
-      source: "vitaldb-observer",
-      observedAt: "2026-05-31T01:00:00Z",
-      ready: true,
-      recorderOnlineThresholdSeconds: 120,
-      recorders: [],
-      beds: [],
-      devices: [],
-      filters: [],
-      proxyConnections: [],
-      anomalies: [
-        {
-          id: "duplicate-ip-10",
-          kind: "duplicate-ip",
-          severity: "warning",
-          observedAt: "2026-05-31T01:00:00Z",
-          subject: "10.0.0.10",
-          message: "duplicate recorder IP"
-        }
-      ]
+    vitalDBObservation,
+    vitalDBObservationSnapshot: {
+      state: "loaded",
+      observation: vitalDBObservation,
+      readError: null
     },
     vitalRecorder: {
       observedAt: "2026-05-31T01:00:00Z",

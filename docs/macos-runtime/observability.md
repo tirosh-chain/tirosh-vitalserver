@@ -301,6 +301,10 @@ Runtime Control API
 최종 VitalDB observation SoT는 watchdog/runtime이 저장하는 `runtime-observability.sqlite`입니다.
 UI나 Runtime Control API는 observer container를 직접 신뢰하지 않고 runtime 계층의 저장 결과를 기준으로
 응답합니다.
+Remote Console의 Observability anomaly detail은 `RuntimeVitalDBObservationSnapshot`을 기준으로
+표시합니다. Snapshot `failed`/`unavailable`은 stale `runtime-status.json` 값으로 대체하지 않고
+read issue 또는 unavailable state로 노출해야 합니다. Status summary는 status document의
+`vitalDBObservation`을 표시할 수 있지만, anomaly detail의 대체 source가 되면 안 됩니다.
 
 ## Canonical source policy
 
@@ -311,7 +315,7 @@ UI나 Runtime Control API는 observer container를 직접 신뢰하지 않고 ru
 | guest service가 살아 있나? | watchdog이 읽은 `runtime-state.json` + HTTP probe 결과 |
 | container가 무슨 로그를 냈나? | `container-logs.log` |
 | VRecorder command가 어떤 흐름으로 전달됐나? | audit proxy event log / Redis List |
-| VRecorder/bed/anomaly 최신 관측 결과는? | `runtime-observability.sqlite`, fallback `runtime-status.json`의 `vitalDBObservation` |
+| VRecorder/bed/anomaly 최신 관측 결과는? | `runtime-observability.sqlite`, API `RuntimeVitalDBObservationSnapshot` |
 | 장애 원인을 제품 상태로 볼 수 있나? | watchdog이 정규화한 `failureReasons`와 runtime event |
 
 ## Event taxonomy

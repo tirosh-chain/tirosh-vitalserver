@@ -342,7 +342,7 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         await viewModel.refreshVitalRecorders()
 
         XCTAssertEqual(viewModel.vitalDBObservationSnapshot.observation, observation)
-        XCTAssertEqual(viewModel.status.vitalDBObservation, observation)
+        XCTAssertNil(viewModel.status.vitalDBObservation)
     }
 
     func testRuntimeEventRefreshUsesSelectedPeriodAndType() async {

@@ -258,9 +258,6 @@ final class RuntimeViewModel: ObservableObject {
     func refreshVitalRecorders() async {
         let refreshed = await observabilityRefresher.refreshVitalObservability()
         vitalDBObservationSnapshot = refreshed.observationSnapshot
-        if let observation = refreshed.observationSnapshot.observation {
-            status.vitalDBObservation = observation
-        }
         vitalRecorders = refreshed.recorders
         vitalRelationships = refreshed.relationships
     }

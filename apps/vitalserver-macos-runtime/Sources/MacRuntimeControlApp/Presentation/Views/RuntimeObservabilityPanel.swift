@@ -191,11 +191,11 @@ struct RuntimeObservabilityPanel: View {
     private var observation: VitalDBObservationDocument? {
         switch viewModel.vitalDBObservationSnapshot.state {
         case .loaded:
-            return viewModel.vitalDBObservationSnapshot.observation ?? viewModel.status.vitalDBObservation
+            return viewModel.vitalDBObservationSnapshot.observation
         case .failed:
             return nil
         case .unavailable:
-            return viewModel.status.vitalDBObservation
+            return nil
         }
     }
 

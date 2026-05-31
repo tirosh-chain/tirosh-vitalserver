@@ -69,9 +69,7 @@ export function ObservabilityPage() {
             },
             {
               label: "Observation updated",
-              value: formatLocalDateTime(
-                vitalDBObservation?.observedAt ?? recorderSummary?.observedAt
-              )
+              value: formatLocalDateTime(vitalDBObservation?.observedAt)
             },
             {
               label: "Known recorders",
@@ -195,12 +193,12 @@ export function ObservabilityPage() {
 }
 
 function AnomalyItem({ anomaly }: { anomaly: VitalDBAnomalyObservation }) {
-  const severity = anomaly.severity ?? "warning";
+  const severity = anomaly.severity ?? "unknown";
 
   return (
     <article className="anomaly-item">
       <div className="anomaly-meta">
-        <StatusBadge tone={anomalySeverityTone(severity)}>
+        <StatusBadge tone={anomalySeverityTone(anomaly.severity)}>
           {severity}
         </StatusBadge>
         <strong>{anomaly.kind ?? "unknown"}</strong>
@@ -232,12 +230,11 @@ function RuntimeEventItem({ event }: { event: RuntimeEventDocument }) {
 function selectVitalDBObservation(
   overview: RuntimeControlOverview | undefined
 ): VitalDBObservationDocument | null {
-  return (
-    overview?.vitalDBObservationSnapshot?.observation ??
-    overview?.vitalDBObservation ??
-    overview?.status?.vitalDBObservation ??
-    null
-  );
+  const snapshot = overview?.vitalDBObservationSnapshot;
+  if (snapshot?.state !== "loaded") {
+    return null;
+  }
+  return snapshot.observation ?? null;
 }
 
 function formatObserverStatus(
