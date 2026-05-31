@@ -54,7 +54,7 @@ import {
   vitalDBBedsSchema,
   vitalDBRecordersSchema
 } from "@/domain/runtime-control/contracts/schemas/runtimeControlSchemas";
-import { DEFAULT_APP_SETTINGS } from "@/shared/config/appSettings";
+import { DEFAULT_APP_SETTINGS } from "@/config/appSettings";
 import type { ZodType } from "zod";
 
 export type RuntimeControlClientOptions = {

@@ -5,9 +5,9 @@ import {
   useSummarizeUpdateBundle,
   useVerifyUpdateBundle
 } from "@/application/runtime-control/queries";
-import { CommandResult } from "@/shared/ui/CommandResult";
-import { ErrorState } from "@/shared/ui/ErrorState";
-import { Panel } from "@/shared/ui/Panel";
+import { CommandResult } from "@/components/CommandResult";
+import { ErrorState } from "@/components/ErrorState";
+import { Panel } from "@/components/Panel";
 
 export function UpdatePage() {
   const [bundlePath, setBundlePath] = useState("");

@@ -13,9 +13,9 @@ import {
 } from "@/application/runtime-control/queries";
 import type { RuntimeTestKitSession } from "@/domain/runtime-control/contracts/runtimeControlTypes";
 import { formatBytes } from "@/domain/runtime-control/formatting/bytes";
-import { ErrorState } from "@/shared/ui/ErrorState";
-import { KeyValueRows } from "@/shared/ui/KeyValueRows";
-import { Panel } from "@/shared/ui/Panel";
+import { ErrorState } from "@/components/ErrorState";
+import { KeyValueRows } from "@/components/KeyValueRows";
+import { Panel } from "@/components/Panel";
 
 export function TestKitPage() {
   const status = useTestKitStatus();

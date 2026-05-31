@@ -1,4 +1,4 @@
-import { DEFAULT_APP_SETTINGS } from "@/shared/config/appSettings";
+import { DEFAULT_APP_SETTINGS } from "@/config/appSettings";
 
 export function successfulHTTP(value: string | null | undefined): boolean {
   return Boolean(value && /(^|\D)2\d\d(\D|$)/.test(value));

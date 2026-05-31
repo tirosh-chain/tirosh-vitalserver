@@ -7,7 +7,7 @@ import { AppProviders } from "@/app/providers";
 import {
   loadBrowserAppSettings,
   type AppSettings
-} from "@/shared/config/appSettings";
+} from "@/config/appSettings";
 import { RuntimeControlClient } from "@/infrastructure/runtime-control-api/runtimeControlClient";
 
 export function bootstrapApp(settings: AppSettings = loadBrowserAppSettings()) {

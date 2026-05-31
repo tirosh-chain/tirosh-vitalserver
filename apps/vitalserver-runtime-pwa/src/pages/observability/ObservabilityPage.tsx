@@ -5,9 +5,9 @@ import type { RuntimeEventDocument } from "@/domain/runtime-control/contracts/ru
 import { formatVitalRecorderObservationMetric } from "@/domain/runtime-control/formatting/vitalRecorder";
 import { formatRuntimeState } from "@/domain/runtime-control/formatting/runtimeState";
 import { formatLocalDateTime } from "@/domain/runtime-control/formatting/time";
-import { ErrorState } from "@/shared/ui/ErrorState";
-import { KeyValueRows } from "@/shared/ui/KeyValueRows";
-import { Panel } from "@/shared/ui/Panel";
+import { ErrorState } from "@/components/ErrorState";
+import { KeyValueRows } from "@/components/KeyValueRows";
+import { Panel } from "@/components/Panel";
 import {
   runtimeEventPeriods,
   runtimeEventTypes,

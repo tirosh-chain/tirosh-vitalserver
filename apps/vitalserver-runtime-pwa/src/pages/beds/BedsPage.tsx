@@ -9,12 +9,12 @@ import {
 } from "@/domain/runtime-control/formatting/status";
 import { formatLocalDateTime } from "@/domain/runtime-control/formatting/time";
 import { NOT_REPORTED } from "@/domain/runtime-control/formatting/reported";
-import { DataTable } from "@/shared/ui/DataTable";
-import { ErrorState } from "@/shared/ui/ErrorState";
-import { KeyValueRows } from "@/shared/ui/KeyValueRows";
-import { MetricStrip } from "@/shared/ui/MetricStrip";
-import { Panel } from "@/shared/ui/Panel";
-import { StatusBadge } from "@/shared/ui/StatusBadge";
+import { DataTable } from "@/components/DataTable";
+import { ErrorState } from "@/components/ErrorState";
+import { KeyValueRows } from "@/components/KeyValueRows";
+import { MetricStrip } from "@/components/MetricStrip";
+import { Panel } from "@/components/Panel";
+import { StatusBadge } from "@/components/StatusBadge";
 
 export function BedsPage() {
   const bedsQuery = useVitalDBBeds();

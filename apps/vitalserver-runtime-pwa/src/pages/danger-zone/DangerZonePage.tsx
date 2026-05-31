@@ -6,9 +6,9 @@ import {
   useStopRuntimeServices,
   useUninstallRuntime
 } from "@/application/runtime-control/queries";
-import { ConfirmButton } from "@/shared/ui/ConfirmButton";
-import { CommandResult } from "@/shared/ui/CommandResult";
-import { Panel } from "@/shared/ui/Panel";
+import { ConfirmButton } from "@/components/ConfirmButton";
+import { CommandResult } from "@/components/CommandResult";
+import { Panel } from "@/components/Panel";
 
 export function DangerZonePage() {
   const capabilities = useRuntimeCapabilities();

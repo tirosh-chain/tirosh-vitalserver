@@ -17,11 +17,11 @@ import {
   runtimeSettingsToDraft,
   type RuntimeSettingsDraft,
   usesCustomAdvertisedURL
-} from "@/domain/runtime-control/settings/runtimeSettingsForm";
+} from "@/pages/settings/runtimeSettingsForm";
 import { validateRuntimeSettings } from "@/domain/runtime-control/settings/runtimeSettingsPolicy";
-import { ConfirmButton } from "@/shared/ui/ConfirmButton";
-import { ErrorState } from "@/shared/ui/ErrorState";
-import { Panel } from "@/shared/ui/Panel";
+import { ConfirmButton } from "@/components/ConfirmButton";
+import { ErrorState } from "@/components/ErrorState";
+import { Panel } from "@/components/Panel";
 
 export function SettingsPage() {
   const settings = useRuntimeSettings();

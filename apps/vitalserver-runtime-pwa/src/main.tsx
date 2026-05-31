@@ -1,4 +1,4 @@
 import { bootstrapApp } from "@/app/bootstrap";
-import "@/shared/styles/global.css";
+import "@/styles/global.css";
 
 bootstrapApp();

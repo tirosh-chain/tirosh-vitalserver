@@ -1,15 +1,15 @@
 import type { ComponentType } from "react";
 
-import { AdvancedPage } from "@/features/advanced/AdvancedPage";
-import { BedsPage } from "@/features/beds/BedsPage";
-import { DangerZonePage } from "@/features/danger-zone/DangerZonePage";
-import { LogsPage } from "@/features/logs/LogsPage";
-import { ObservabilityPage } from "@/features/observability/ObservabilityPage";
-import { RecordersPage } from "@/features/recorders/RecordersPage";
-import { SettingsPage } from "@/features/settings/SettingsPage";
-import { StatusPage } from "@/features/status/StatusPage";
-import { TestKitPage } from "@/features/testkit/TestKitPage";
-import { UpdatePage } from "@/features/update/UpdatePage";
+import { AdvancedPage } from "@/pages/advanced/AdvancedPage";
+import { BedsPage } from "@/pages/beds/BedsPage";
+import { DangerZonePage } from "@/pages/danger-zone/DangerZonePage";
+import { LogsPage } from "@/pages/logs/LogsPage";
+import { ObservabilityPage } from "@/pages/observability/ObservabilityPage";
+import { RecordersPage } from "@/pages/recorders/RecordersPage";
+import { SettingsPage } from "@/pages/settings/SettingsPage";
+import { StatusPage } from "@/pages/status/StatusPage";
+import { TestKitPage } from "@/pages/testkit/TestKitPage";
+import { UpdatePage } from "@/pages/update/UpdatePage";
 
 export type RuntimeControlRoute = {
   path: string;

@@ -32,7 +32,7 @@ http://127.0.0.1:18321/
 
 ## Configuration
 
-앱 설정은 bootstrap 시점에 `src/shared/config/appSettings.ts`에서 한 번 로딩한 뒤
+앱 설정은 bootstrap 시점에 `src/config/appSettings.ts`에서 한 번 로딩한 뒤
 `AppSettingsProvider`로 주입합니다.
 
 브라우저 번들에서 읽어야 하는 값은 Vite 규칙에 맞춰 `VITE_` prefix가 필요합니다.
@@ -98,27 +98,26 @@ src/
     bootstrap.tsx    settings 로딩, API gateway 생성, provider 구성
     providers.tsx    React Query, AppSettings, RuntimeControlGateway provider
     routes.tsx       Swift UI 순서에 맞춘 route metadata
+  components/        app-wide reusable UI components
+  config/            AppSettings and app-wide config context
+  styles/            global styles
   domain/
     runtime-control/
       contracts/     OpenAPI-derived RuntimeContractAPI types and schemas
       events/        event filter policy and period calculations
       formatting/    runtime display/status formatting policy
-      settings/      runtime settings validation and form mapping policy
+      settings/      runtime settings validation policy
   application/
     runtime-control/ gateway port, React Query hooks, command/query orchestration
   infrastructure/
     runtime-control-api/
                     fetch-based Runtime Control API gateway implementation
-  features/          route-level React pages
-  shared/
-    config/          AppSettings and app-wide config context
-    styles/          global styles
-    ui/              reusable UI components
+  pages/             route-level Remote Console pages and page-owned form logic
 ```
 
 Dependency direction:
 
-- `features`는 `application`, `domain`, `shared`를 사용할 수 있습니다.
+- `pages`는 `application`, `domain`, `components`, `config`를 사용할 수 있습니다.
 - `application`은 `domain`과 application-owned gateway port만 사용합니다.
 - `infrastructure`는 application gateway port를 구현하고, `domain` contract를 사용할 수 있습니다.
 - `app` composition root는 settings를 읽고 concrete infrastructure gateway를 주입합니다.
@@ -126,8 +125,13 @@ Dependency direction:
 
 새로운 business/display policy는 `domain`에 둡니다. 여러 API 호출을 조합하는
 command/query 흐름은 `application`에 둡니다. fetch, token, URL 조립 같은 HTTP
-detail은 `infrastructure`에 둡니다. 화면 form draft와 API DTO 사이의 변환은
-도메인 의미가 있는 경우 `domain/runtime-control/*`에 둡니다.
+detail은 `infrastructure`에 둡니다.
+
+Route/page 컴포넌트와 특정 화면에 묶인 form draft 변환은 `pages/<page>/`에
+둡니다. 이 PWA는 Remote Console 전용 앱이므로 UI route 경로에 `runtime-control`
+depth를 한 번 더 두지 않습니다. 여러 화면에서 공유되는 UI는 `components`에 두고,
+여러 화면에서 공유되는 runtime contract, validation, formatting, capability policy는
+`domain/runtime-control`에 둡니다.
 
 ## Air-Gapped Deployment
 

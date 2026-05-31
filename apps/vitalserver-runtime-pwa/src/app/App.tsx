@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Navigate, NavLink, Route, Routes, useLocation } from "react-router-dom";
 
 import { useRuntimeCapabilities } from "@/application/runtime-control/queries";
-import { cn } from "@/shared/ui/cn";
+import { cn } from "@/components/cn";
 import { runtimeControlRoutes, type RuntimeControlRoute } from "./routes";
 
 export function App() {

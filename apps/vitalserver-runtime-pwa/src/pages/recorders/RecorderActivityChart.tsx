@@ -6,7 +6,7 @@ import {
   buildRecorderActivityBuckets,
   latestRecorderActivityPoint
 } from "@/domain/runtime-control/recorders/recorderActivity";
-import { MetricStrip } from "@/shared/ui/MetricStrip";
+import { MetricStrip } from "@/components/MetricStrip";
 
 const bucketOptions = [
   { label: "1 min", seconds: 60 },

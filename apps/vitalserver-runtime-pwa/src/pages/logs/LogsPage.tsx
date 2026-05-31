@@ -7,8 +7,8 @@ import {
 } from "@/application/runtime-control/queries";
 import type { RuntimeLogSource } from "@/domain/runtime-control/contracts/runtimeControlTypes";
 import { validateHostLogExportPath } from "@/domain/runtime-control/paths/runtimePathPolicy";
-import { ErrorState } from "@/shared/ui/ErrorState";
-import { Panel } from "@/shared/ui/Panel";
+import { ErrorState } from "@/components/ErrorState";
+import { Panel } from "@/components/Panel";
 
 const logSources: Array<{ id: RuntimeLogSource; label: string }> = [
   { id: "helperMessage", label: "Helper message" },

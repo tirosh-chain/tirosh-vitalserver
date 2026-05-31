@@ -10,16 +10,16 @@ import {
   formatRuntimeState,
   runtimeStateTone
 } from "@/domain/runtime-control/formatting/runtimeState";
-import { useAppSettings } from "@/shared/config/AppSettingsContext";
+import { useAppSettings } from "@/config/AppSettingsContext";
 import {
   formatLocalDateTime,
   formatUptimeSince
 } from "@/domain/runtime-control/formatting/time";
 import { formatVitalRecorderObservationMetric } from "@/domain/runtime-control/formatting/vitalRecorder";
-import { ErrorState } from "@/shared/ui/ErrorState";
-import { KeyValueRows } from "@/shared/ui/KeyValueRows";
-import { Panel } from "@/shared/ui/Panel";
-import { StatusBadge } from "@/shared/ui/StatusBadge";
+import { ErrorState } from "@/components/ErrorState";
+import { KeyValueRows } from "@/components/KeyValueRows";
+import { Panel } from "@/components/Panel";
+import { StatusBadge } from "@/components/StatusBadge";
 
 export function StatusPage() {
   const overviewQuery = useRuntimeOverview();

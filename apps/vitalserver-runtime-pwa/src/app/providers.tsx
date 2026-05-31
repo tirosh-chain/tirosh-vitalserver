@@ -4,8 +4,8 @@ import { useState } from "react";
 
 import { RuntimeControlGatewayProvider } from "@/application/runtime-control/RuntimeControlGatewayContext";
 import type { RuntimeControlGateway } from "@/application/runtime-control/runtimeControlGateway";
-import type { AppSettings } from "@/shared/config/appSettings";
-import { AppSettingsProvider } from "@/shared/config/AppSettingsContext";
+import type { AppSettings } from "@/config/appSettings";
+import { AppSettingsProvider } from "@/config/AppSettingsContext";
 
 export function AppProviders({
   children,
