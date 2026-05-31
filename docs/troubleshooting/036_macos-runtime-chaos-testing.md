@@ -152,6 +152,19 @@ TS-036은 개별 장애를 새 TS로 쪼개기보다 macOS runtime chaos scenari
 | Medium | backup/restore chaos | covered by backup copy denial and rollback preflight missing artifact chaos | Tier 1 |
 | Medium | PWA API contract chaos | covered by ConsoleClient API/contract/network boundary chaos | Tier 1 |
 
+## Installed Verification
+
+2026-05-31에 destructive action 없이 설치본 read-only 검증을 수행했습니다.
+
+| Check | Result | Notes |
+|---|---|---|
+| `make runtime-permission-audit` | passed | installed runtime 필수 경로 모두 `OK`; `/Users/Shared/TiroshVitalServer`만 optional `WARN missing` |
+| `RUNTIME_PERMISSION_AUDIT_ARGS=--require-install make runtime-permission-audit` | passed | Helper app, launcher, uninstaller, status/log/db/runtime/deploy/run 경로 모두 required audit 통과 |
+| `make e2e-smoke` | passed | Runtime Control HTTP core read endpoint smoke 통과 |
+| `make e2e-local` | passed | HTTP smoke, PWA typecheck, PWA test 86개, PWA production build 통과 |
+
+Tier 4 destructive chaos는 실행하지 않았습니다. `sudo chmod`, `launchctl`, app bundle removal, runtime directory partial remove, update apply interruption은 backup/cleanup/명시 확인이 있는 별도 운영 절차에서만 수행합니다.
+
 ## Prevention
 
 - Chaos scenario는 실제 운영 장애와 연결된 named scenario로 관리합니다.
@@ -188,3 +201,4 @@ TS-036은 개별 장애를 새 TS로 쪼개기보다 macOS runtime chaos scenari
 - 2026-05-31: `make runtime-chaos`를 추가해 `Chaos` 필터가 붙은 deterministic Swift chaos scenario만 빠르게 실행할 수 있게 했습니다. 초기 suite는 update log refresh chaos, observability read chaos, settings permission chaos, guest capability chaos, update artifact copy permission chaos를 포함합니다.
 - 2026-05-31: `make runtime-chaos-loop`를 추가해 deterministic chaos suite를 반복 실행할 수 있게 했습니다. suite는 log export manifest issue, observability snapshot/relationship read failure, command stderr/runtime event 보존까지 확장했습니다.
 - 2026-05-31: high/medium priority backlog를 deterministic coverage로 전환했습니다. Swift `Chaos` suite는 18개 scenario를 통과하고, PWA ConsoleClient는 API/contract/network boundary chaos를 통과합니다. TS-036 상태를 `resolved`로 변경했습니다.
+- 2026-05-31: 설치본 read-only permission audit와 `make e2e-smoke`, `make e2e-local`을 통과했습니다. Tier 4 destructive chaos는 의도적으로 실행하지 않았습니다.
