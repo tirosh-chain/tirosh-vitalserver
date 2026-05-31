@@ -54,7 +54,7 @@ final class RuntimeHealthWaiterTests: XCTestCase {
             configuration: RuntimeHealthWaitConfiguration(maxAttempts: 3, progressEveryAttempts: 1),
             observe: {
                 observation(snapshot: unhealthySnapshot(reasons: [
-                    .guestHTTP("bootstrap-pending"),
+                    .guestHTTP(RuntimeHTTPStatusText.bootstrapPending),
                     .guestBootstrapMissingRuntimePackages,
                 ]))
             },
@@ -119,6 +119,7 @@ final class RuntimeHealthWaiterTests: XCTestCase {
             vmService: .loaded,
             proxyService: .loaded,
             watchdogService: .loaded,
+            vmState: reasons.isEmpty ? .running : .unreachable,
             vmIP: "192.168.64.2",
             proxyPort: 80,
             hostProxyHTTP: "200",

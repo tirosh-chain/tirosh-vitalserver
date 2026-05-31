@@ -36,6 +36,18 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-022 | 설치된 runtime binary에 virtualization entitlement가 없음 | Packaging | resolved | [설치된 runtime binary에 virtualization entitlement가 없음](troubleshooting/022_missing-virtualization-entitlement.md) |
 | TS-023 | stale pid file | Local development | archived | [`make vm-status`가 stale pid file을 표시](troubleshooting/023_stale-pid-file.md) |
 | TS-024 | pkg 설치가 `Running package scripts...`에서 실패 | Packaging | active | [pkg 설치가 `Running package scripts...`에서 실패함](troubleshooting/024_pkg-postinstall-timeout.md) |
+| TS-025 | update 후 VM disk attachment invalid | Update | active | [update 후 VM disk attachment가 invalid로 실패](troubleshooting/025_update-vm-disk-attachment-race.md) |
+| TS-026 | PWA가 Runtime Control API unreachable 표시 | Runtime Control PWA | active | [PWA가 Runtime Control API unreachable을 표시](troubleshooting/026_pwa-runtime-control-api-unreachable.md) |
+| TS-027 | update 후 PWA가 이전 JS 사용 | Runtime Control PWA / Update | active | [Update 적용 후 PWA가 이전 JS를 계속 사용](troubleshooting/027_update-stale-pwa-assets.md) |
+| TS-028 | host proxy가 `/opt/homebrew/var/...`에 의존 | Host proxy / Packaging | resolved | [Host proxy가 Homebrew nginx runtime directory에 의존함](troubleshooting/028_host-proxy-homebrew-runtime-directory.md) |
+| TS-029 | update 중 Host가 Guest shutdown 상태를 추정 | Update | resolved | [Update 중 Host가 Guest shutdown 상태를 추정함](troubleshooting/029_update-guest-shutdown-inference.md) |
+| TS-030 | Runtime 상태를 Host/UI가 추정하거나 암묵 보정 | Runtime health / Update | resolved | [Runtime 상태를 Host/UI가 추정하거나 암묵 보정함](troubleshooting/030_runtime-state-inference.md) |
+| TS-031 | Recorder activity 그래프가 rolling window만 표시 | Runtime Control PWA / Observability | resolved | [Recorder activity 그래프가 rolling window만 표시함](troubleshooting/031_recorder-activity-history-window.md) |
+| TS-032 | macOS runtime 코드의 상태/관측 책임이 섞임 | Runtime health / Observability / Update | active | [macOS runtime 코드의 상태/관측 책임이 섞임](troubleshooting/032_macos-runtime-explicit-responsibility-review.md) |
+| TS-033 | Helper가 Settings/Export logs/event를 읽지 못함 | Runtime Control PWA / Observability | active | [Runtime Control Helper가 설정/로그/event를 읽지 못함](troubleshooting/033_runtime-control-helper-read-permissions.md) |
+| TS-034 | macOS runtime 권한 실패 검증이 부족함 | Update / Runtime Control PWA / Observability | active | [macOS runtime 권한 실패 검증이 부족함](troubleshooting/034_macos-runtime-permission-failure-test-coverage.md) |
+| TS-035 | Update가 Guest capability 계약 없이 request/result worker를 가정함 | Update | active | [Update가 Guest capability 계약 없이 request/result worker를 가정함](troubleshooting/035_update-guest-capability-contract-missing.md) |
+| TS-036 | macOS runtime 카오스 테스트 체계가 필요함 | Update / Runtime health / Observability / Packaging | resolved | [macOS runtime 카오스 테스트 체계가 필요함](troubleshooting/036_macos-runtime-chaos-testing.md) |
 
 ## Follow-up 규칙
 
@@ -70,6 +82,7 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | Guest containers | Docker image, Compose service, container health 문제 |
 | Data store | Redis 데이터/AOF/backup/repair 문제 |
 | Host proxy | macOS nginx proxy, port 점유, proxy recovery 문제 |
+| Runtime Control PWA | Remote Console web UI, local Runtime Control API, browser cache/service worker 문제 |
 | Network | shared/NAT, bridged mode, 노출 주소 문제 |
 | Packaging | pkg/dmg, signing, entitlement, app bundle 설치 문제 |
 | Uninstall | 제거/clean 정책과 잔여 파일 문제 |

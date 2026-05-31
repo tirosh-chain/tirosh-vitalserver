@@ -131,10 +131,17 @@ enum Constants {
         static let updateActivationRequestFile = RuntimeFileNames.updateActivationRequest
         static let updateActivationResultFile = RuntimeFileNames.updateActivationResult
         static let updateActivationLogFile = RuntimeFileNames.updateActivationLog
+        static let updateShutdownRequestFile = RuntimeFileNames.updateShutdownRequest
+        static let updateShutdownResultFile = RuntimeFileNames.updateShutdownResult
+        static let updateShutdownLogFile = RuntimeFileNames.updateShutdownLog
         static let waitTimeoutSeconds = 600.0
+        static let serviceStopWaitTimeoutSeconds = 30.0
+        static let vmStopWaitTimeoutSeconds = 330.0
+        static let serviceStopPollIntervalSeconds = 0.5
         static let datastoreRepairWaitTimeoutSeconds = 300.0
         static let redisBackupWaitTimeoutSeconds = 300.0
         static let updateActivationWaitTimeoutSeconds = 180.0
+        static let updateShutdownWaitTimeoutSeconds = 300.0
         static let runtimeStateStaleAfterSeconds = 30.0
         static let watchdogRecoveryWaitSeconds = 20.0
         static let watchdogManagedOperationGraceSeconds = 1_800.0
@@ -184,6 +191,8 @@ enum Constants {
         static let plistBuddy = "/usr/libexec/PlistBuddy"
         static let chmod = "/bin/chmod"
         static let chown = "/usr/sbin/chown"
+        static let kill = "/bin/kill"
+        static let ps = "/bin/ps"
         static let tar = "/usr/bin/tar"
         static let lsof = "/usr/sbin/lsof"
     }

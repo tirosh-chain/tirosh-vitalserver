@@ -3,6 +3,7 @@ import Core
 import Contracts
 
 struct RuntimeGuestActivationRunner {
+    var requireCapability: () throws -> Void
     var createRunDirectory: () throws -> Void
     var removePreviousResult: () throws -> Void
     var requestID: () -> String
@@ -10,7 +11,7 @@ struct RuntimeGuestActivationRunner {
     var writeRequest: (RuntimeGuestActivationRequest) throws -> Void
     var isVMServiceLoaded: () -> Bool
     var startVMService: () -> Void
-    var loadResult: () -> GuestUpdateActivationResultDocument?
+    var loadResult: () -> RuntimeGuestDocumentLoadResult<GuestUpdateActivationResultDocument>
     var reportProgress: (String) -> Void
     var sleep: () -> Void
     var log: (String) -> Void
@@ -22,8 +23,9 @@ struct RuntimeGuestActivationRunner {
         }
 
         log("guest update activation requested version=\(manifest.version)")
+        try requireCapability()
         try createRunDirectory()
-        try? removePreviousResult()
+        try removePreviousResult()
         let request = RuntimeGuestActivationRequest(
             id: requestID(),
             requestedAt: timestamp(),
@@ -52,9 +54,6 @@ struct RuntimeGuestActivationRunner {
             onProgress: { message in
                 log(message)
                 reportProgress(message)
-            },
-            onStale: { message in
-                log("guest update activation result stale message=\(message)")
             },
             sleep: sleep
         )

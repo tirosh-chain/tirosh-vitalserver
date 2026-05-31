@@ -239,9 +239,9 @@ Repository layout 기준은 아래처럼 둡니다.
 |---|---|---|
 | `apps/vitalserver` | VM/컨테이너 안에서 실행되는 VitalServer service wrapper와 runtime shim | macOS host runtime, package installer 정책 |
 | `apps/vitalserver-macos-runtime` | macOS runtime distribution. Swift Helper app, `vitalserver-vm` CLI, packaging scripts, launchd template, guest deploy assets, release metadata | build-machine 전용 rootfs/image 생성 로직, PWA product UI |
+| `apps/vitalserver-runtime-pwa` | Runtime Control API를 사용하는 Web/PWA Helper UI. build 결과물은 Helper app resource로 배포 | host file/process/launchd 직접 호출 |
 | `packages/vitalserver-devtools` | Python build-machine tooling. Ubuntu image, cloud-init, rootfs compression, nginx bundle, Docker image bundle, update bundle 생성/검증 | 설치 후 runtime 상태 전이, launchd/VM lifecycle 정책 |
 | `packages/vitalserver-testkit` | 운영/통합 검증용 testkit | 제품 runtime 구현 |
-| future `apps/vitalserver-helper-pwa` 또는 동등한 PWA app | Web/PWA primary Helper UI | host file/process/launchd 직접 호출 |
 
 `apps/vitalserver-macos-runtime`을 `packages`로 옮기지 않는 이유는 이 디렉터리가 재사용 라이브러리가 아니라 설치 가능한 macOS runtime product를 만들기 위한 distribution boundary이기 때문입니다. 반대로 `packages/vitalserver-devtools`는 설치 대상에 포함되지 않는 build-machine 도구라 `packages`에 남깁니다.
 

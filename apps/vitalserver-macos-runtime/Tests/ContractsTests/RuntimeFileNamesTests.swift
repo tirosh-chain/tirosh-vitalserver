@@ -19,6 +19,9 @@ final class RuntimeFileNamesTests: XCTestCase {
         XCTAssertEqual(RuntimeFileNames.updateActivationRequest, "activate-update.request")
         XCTAssertEqual(RuntimeFileNames.updateActivationResult, "activate-update-result.json")
         XCTAssertEqual(RuntimeFileNames.updateActivationLog, "activate-update.log")
+        XCTAssertEqual(RuntimeFileNames.updateShutdownRequest, "prepare-update-shutdown.request")
+        XCTAssertEqual(RuntimeFileNames.updateShutdownResult, "prepare-update-shutdown-result.json")
+        XCTAssertEqual(RuntimeFileNames.updateShutdownLog, "prepare-update-shutdown.log")
         XCTAssertEqual(RuntimeFileNames.managerCommandLog, "tirosh-vitalserver-manager-command.log")
     }
 }

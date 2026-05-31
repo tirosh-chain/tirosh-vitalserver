@@ -235,6 +235,7 @@ struct RuntimeBedsPanel: View {
             Text("Relationship history")
                 .font(.subheadline)
                 .fontWeight(.semibold)
+            relationshipReadIssue
             if assignments.isEmpty, events.isEmpty {
                 Text("No bed relationship history has been observed.")
                     .foregroundStyle(.secondary)
@@ -266,6 +267,16 @@ struct RuntimeBedsPanel: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(nsColor: .controlBackgroundColor))
         .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    @ViewBuilder
+    private var relationshipReadIssue: some View {
+        if let readError = viewModel.vitalRelationships.readError {
+            Text("Relationship history read issue: \(readError)")
+                .font(.caption)
+                .foregroundStyle(.red)
+                .textSelection(.enabled)
+        }
     }
 
     private func relationshipSubsection(_ title: String) -> some View {

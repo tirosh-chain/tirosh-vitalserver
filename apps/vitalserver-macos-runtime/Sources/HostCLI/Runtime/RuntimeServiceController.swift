@@ -5,22 +5,32 @@ import Contracts
 struct RuntimeServiceController {
     private let serviceManager: RuntimeServiceManager
     private let isLoaded: (RuntimeManagedService) -> Bool
+    private let prepareForStop: (RuntimeManagedService) throws -> Void
+    private let waitUntilStopped: (RuntimeManagedService) throws -> Void
     private let log: (String) -> Void
 
     init(
         serviceManager: RuntimeServiceManager,
         isLoaded: @escaping (RuntimeManagedService) -> Bool,
+        prepareForStop: @escaping (RuntimeManagedService) throws -> Void = { _ in },
+        waitUntilStopped: @escaping (RuntimeManagedService) throws -> Void = { _ in },
         log: @escaping (String) -> Void
     ) {
         self.serviceManager = serviceManager
         self.isLoaded = isLoaded
+        self.prepareForStop = prepareForStop
+        self.waitUntilStopped = waitUntilStopped
         self.log = log
     }
 
-    func stopRuntimeServices() {
+    func stopRuntimeServices() throws {
         log("stopping runtime services")
         for service in RuntimeManagedService.stopOrder {
-            stopIfLoaded(service)
+            if try stopIfLoaded(service) {
+                log("waiting for \(service.displayName) service to stop label=\(service.label)")
+                try waitUntilStopped(service)
+                log("stopped \(service.displayName) service label=\(service.label)")
+            }
         }
     }
 
@@ -56,16 +66,21 @@ struct RuntimeServiceController {
         serviceManager.start(service: service, plist: plist)
     }
 
-    func restartLaunchdService(_ service: RuntimeManagedService) {
+    func restartOrStartLaunchdService(_ service: RuntimeManagedService) {
         log("launchd restart label=\(service.label)")
         serviceManager.restart(service: service)
         if !isLoaded(service) {
+            log("launchd service not loaded after restart; starting label=\(service.label)")
             startLaunchdService(service)
         }
     }
 
     func stopLaunchdService(_ service: RuntimeManagedService) {
-        stopIfLoaded(service)
+        do {
+            _ = try stopIfLoaded(service)
+        } catch {
+            log("failed to stop \(service.displayName) service label=\(service.label) error=\(error)")
+        }
     }
 
     func setStartOnBoot(_ enabled: Bool) throws {
@@ -84,9 +99,12 @@ struct RuntimeServiceController {
         }
     }
 
-    private func stopIfLoaded(_ service: RuntimeManagedService) {
+    private func stopIfLoaded(_ service: RuntimeManagedService) throws -> Bool {
         if isLoaded(service) {
+            try prepareForStop(service)
             serviceManager.stop(service: service)
+            return true
         }
+        return false
     }
 }

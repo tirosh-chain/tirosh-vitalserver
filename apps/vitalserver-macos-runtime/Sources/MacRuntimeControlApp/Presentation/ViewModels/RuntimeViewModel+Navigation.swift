@@ -12,29 +12,27 @@ extension RuntimeViewModel {
     }
 
     func openFolder(_ path: String) {
-        let url = URL(fileURLWithPath: path)
-        guard nativeShell.directoryExists(url) else {
-            guard nativeShell.confirmCreateDirectory(path: path) else {
-                return
-            }
-            do {
-                try nativeShell.createDirectory(url)
-            } catch {
-                message = AppConstants.StatusText.folderCreateFailed(error.localizedDescription)
-                return
-            }
-            nativeShell.openFileURL(url)
-            return
+        if let errorMessage = navigationCoordinator.openFolder(path, nativeShell: nativeShell) {
+            message = errorMessage
         }
-        nativeShell.openFileURL(url)
     }
 
-    func vitalFileFolders() -> [VitalFilesFolder] {
-        hostClient.vitalFileFolders(root: settings.vitalFilesDirectory)
+    func vitalFileFoldersResult() -> Result<[VitalFilesFolder], Error> {
+        Result {
+            try hostClient.vitalFileFolders(root: settings.vitalFilesDirectory)
+        }
     }
 
     func openVitalServer() {
         openRuntimeURL(AppConstants.Product.vitalServerURL(proxyPort: status.proxyPort))
+    }
+
+    func openRuntimeControlPWA() {
+        openRuntimeURL(RuntimeControlLocalAPIConstants.pwaURL(port: settings.runtimeControlPort))
+    }
+
+    func openExternalURL(_ rawURL: String) {
+        openRuntimeURL(rawURL)
     }
 
     func openRedisUI() {
@@ -58,9 +56,6 @@ extension RuntimeViewModel {
     }
 
     private func openRuntimeURL(_ rawURL: String) {
-        guard let url = URL(string: rawURL) else {
-            return
-        }
-        nativeShell.openWebURL(url)
+        navigationCoordinator.openWebURL(rawURL, nativeShell: nativeShell)
     }
 }

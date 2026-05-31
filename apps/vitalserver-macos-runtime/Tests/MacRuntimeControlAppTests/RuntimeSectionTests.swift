@@ -1,4 +1,5 @@
 @testable import MacRuntimeControlApp
+import RuntimeControl
 import XCTest
 
 final class RuntimeSectionTests: XCTestCase {
@@ -53,11 +54,31 @@ final class RuntimeSectionTests: XCTestCase {
         XCTAssertFalse(RuntimeSection.sectionIsInOverflow(.advanced, testEnabled: false))
     }
 
+    @MainActor
     func testRuntimeControlDevConsoleURLUsesLocalAPI() {
         XCTAssertEqual(
             RuntimeControlLocalAPIConstants.devConsoleURL,
             "http://127.0.0.1:18321/dev/runtime-control"
         )
+        XCTAssertEqual(
+            RuntimeControlLocalAPIConstants.pwaURL,
+            "http://127.0.0.1:18321/"
+        )
+    }
+
+    @MainActor
+    func testRuntimeControlLocalAPISettingsPersistConfiguredPort() {
+        let store = InMemoryRuntimeControlLocalAPISettingsStore()
+        let coordinator = RuntimeControlLocalAPISettingsCoordinator(store: store)
+        var changedPorts: [Int] = []
+        coordinator.onPortChanged = { changedPorts.append($0) }
+
+        coordinator.apply(port: 18_444)
+        let settings = coordinator.settingsWithLocalAPIPort(RuntimeSettings())
+
+        XCTAssertEqual(store.runtimeControlPort, 18_444)
+        XCTAssertEqual(settings.runtimeControlPort, 18_444)
+        XCTAssertEqual(changedPorts, [18_444])
     }
 
     @MainActor

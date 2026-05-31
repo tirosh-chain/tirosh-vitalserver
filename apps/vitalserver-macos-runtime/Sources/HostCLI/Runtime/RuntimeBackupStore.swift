@@ -145,17 +145,15 @@ struct RuntimeBackupStore {
         }
     }
 
-    func latestBackup() -> URL? {
-        guard let directories = try? childDirectories(paths.backupsDirectory, "-before-") else {
-            return nil
-        }
+    func latestBackup() throws -> URL? {
+        let directories = try childDirectories(paths.backupsDirectory, "-before-")
         return directories
             .sorted { $0.lastPathComponent < $1.lastPathComponent }
             .last
     }
 
     func requireLatestBackup() throws -> URL {
-        guard let backup = latestBackup() else {
+        guard let backup = try latestBackup() else {
             throw LauncherError.missingArgument("no backups available")
         }
         return backup

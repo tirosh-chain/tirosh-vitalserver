@@ -14,7 +14,7 @@ public enum RuntimeWatchdogRecoveryPolicy {
         hostProxyLivenessHTTP: String,
         automaticRecoveryEnabled: Bool
     ) -> RuntimeWatchdogRecoveryDecision {
-        if snapshot.isHealthy {
+        if RuntimeHealthSnapshotPolicy.isHealthy(snapshot) {
             return .healthy
         }
 
@@ -55,6 +55,6 @@ public enum RuntimeWatchdogRecoveryPolicy {
     }
 
     private static func reasonText(_ reasons: [RuntimeFailureReason]) -> String {
-        reasons.isEmpty ? "unknown" : reasons.map(\.rawValue).joined(separator: ", ")
+        reasons.isEmpty ? "no failure reason reported" : reasons.map(\.rawValue).joined(separator: ", ")
     }
 }

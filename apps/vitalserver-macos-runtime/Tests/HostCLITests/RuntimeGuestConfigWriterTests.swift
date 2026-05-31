@@ -32,6 +32,11 @@ final class RuntimeGuestConfigWriterTests: XCTestCase {
         XCTAssertEqual(document.adminPassword, "custom-secret")
         XCTAssertEqual(document.vitalFilesDirectory, Constants.Defaults.vitalFilesDirectoryGuestMountPath)
         XCTAssertEqual(document.redisBackupRetentionCount, Constants.Defaults.redisBackupRetentionCount)
+        let settingsData = try XCTUnwrap(fileStore.files[paths.guestRuntimeSettings])
+        let settingsDocument = try JSONDecoder().decode(GuestRuntimeSettingsDocument.self, from: settingsData)
+        XCTAssertEqual(settingsDocument.publicHost, "vital.example.test")
+        XCTAssertEqual(settingsDocument.publicPort, 8080)
+        XCTAssertEqual(settingsDocument.redisBackupRetentionCount, Constants.Defaults.redisBackupRetentionCount)
         XCTAssertEqual(restricted, [paths.guestRuntimeConfig])
     }
 

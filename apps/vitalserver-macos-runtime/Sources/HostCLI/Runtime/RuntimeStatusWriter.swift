@@ -7,25 +7,41 @@ struct RuntimeStatusWriter {
     let timestamp: () -> String
     let runtimeVersion: () -> String
     let healthSnapshot: () -> RuntimeHealthSnapshot
-    let progressHealthSnapshot: () -> RuntimeHealthSnapshot
     let latestBackup: () -> URL?
 
+    init(
+        reporter: RuntimeStatusReporter,
+        timestamp: @escaping () -> String,
+        runtimeVersion: @escaping () -> String,
+        healthSnapshot: @escaping () -> RuntimeHealthSnapshot,
+        latestBackup: @escaping () -> URL?
+    ) {
+        self.reporter = reporter
+        self.timestamp = timestamp
+        self.runtimeVersion = runtimeVersion
+        self.healthSnapshot = healthSnapshot
+        self.latestBackup = latestBackup
+    }
+
+    @discardableResult
     func writeStatus(
         _ status: RuntimeStatusLevel,
         operation: RuntimeOperation,
         message: String,
         progress: RuntimeProgressDocument? = nil
-    ) throws {
+    ) throws -> RuntimeHealthSnapshot {
+        let snapshot = healthSnapshot()
         try reporter.writeStatus(
             status,
             operation: operation,
             message: message,
             updatedAt: timestamp(),
             runtimeVersion: runtimeVersion(),
-            healthSnapshot: healthSnapshot(),
+            healthSnapshot: snapshot,
             latestBackup: latestBackup(),
             progress: progress
         )
+        return snapshot
     }
 
     func writeProgress(
@@ -47,7 +63,6 @@ struct RuntimeStatusWriter {
             reasonCodes: reasonCodes,
             updatedAt: timestamp(),
             runtimeVersion: runtimeVersion(),
-            healthSnapshot: progressHealthSnapshot(),
             latestBackup: latestBackup()
         )
     }

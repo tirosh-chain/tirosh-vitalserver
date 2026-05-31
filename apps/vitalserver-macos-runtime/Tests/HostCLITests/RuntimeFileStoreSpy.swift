@@ -8,6 +8,12 @@ final class RuntimeFileStoreSpy: RuntimeFileStore {
     var modificationDates: [URL: Date] = [:]
     var directories: Set<URL> = []
     var removed: [URL] = []
+    var fileSizeErrors: [URL: Error] = [:]
+    var modificationDateErrors: [URL: Error] = [:]
+    var childDirectoriesError: Error?
+    var createDirectoryError: Error?
+    var removeItemError: Error?
+    var copyItemError: Error?
 
     func fileExists(_ url: URL) -> Bool {
         files[url] != nil
@@ -33,10 +39,16 @@ final class RuntimeFileStoreSpy: RuntimeFileStore {
     }
 
     func fileSize(_ url: URL) throws -> UInt64 {
-        UInt64(try readData(url).count)
+        if let error = fileSizeErrors[url] {
+            throw error
+        }
+        return UInt64(try readData(url).count)
     }
 
     func modificationDate(_ url: URL) throws -> Date {
+        if let error = modificationDateErrors[url] {
+            throw error
+        }
         guard let date = modificationDates[url] else {
             throw CocoaError(.fileReadNoSuchFile, userInfo: [NSFilePathErrorKey: url.path])
         }
@@ -52,17 +64,42 @@ final class RuntimeFileStoreSpy: RuntimeFileStore {
     }
 
     func createDirectory(at url: URL, withIntermediateDirectories: Bool) throws {
+        if let createDirectoryError {
+            throw createDirectoryError
+        }
         directories.insert(url)
     }
 
     func removeItem(at url: URL) throws {
+        if let removeItemError {
+            throw removeItemError
+        }
         files.removeValue(forKey: url)
         directories.remove(url)
         removed.append(url)
     }
 
     func copyItem(at source: URL, to destination: URL) throws {
-        files[destination] = try readData(source)
+        if let copyItemError {
+            throw copyItemError
+        }
+        if let data = files[source] {
+            files[destination] = data
+            return
+        }
+        if directories.contains(source) {
+            directories.insert(destination)
+            for directory in Array(directories) where directory.path.hasPrefix(source.path + "/") {
+                let suffix = String(directory.path.dropFirst(source.path.count))
+                directories.insert(URL(fileURLWithPath: destination.path + suffix))
+            }
+            for (url, data) in files where url.path.hasPrefix(source.path + "/") {
+                let suffix = String(url.path.dropFirst(source.path.count))
+                files[URL(fileURLWithPath: destination.path + suffix)] = data
+            }
+            return
+        }
+        _ = try readData(source)
     }
 
     func moveItem(at source: URL, to destination: URL) throws {
@@ -75,7 +112,10 @@ final class RuntimeFileStoreSpy: RuntimeFileStore {
     }
 
     func childDirectories(at url: URL, nameContains fragment: String, skipsHiddenFiles: Bool) throws -> [URL] {
-        directories.filter {
+        if let childDirectoriesError {
+            throw childDirectoriesError
+        }
+        return directories.filter {
             $0.deletingLastPathComponent() == url && $0.lastPathComponent.contains(fragment)
         }
     }

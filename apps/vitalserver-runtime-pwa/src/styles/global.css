@@ -1,0 +1,635 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    font-family:
+      -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    color: theme("colors.app.text");
+    background: theme("colors.app.bg");
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    @apply m-0 min-h-screen min-w-[320px] bg-app-bg text-app-text;
+  }
+
+  a {
+    @apply text-inherit;
+  }
+
+  button,
+  input,
+  select {
+    font: inherit;
+  }
+
+  button:not(.data-card),
+  .ui-button {
+    @apply inline-flex min-h-9 items-center justify-center rounded-control border border-app-control bg-app-panel px-4 py-1.5 text-app-text shadow-control transition disabled:cursor-not-allowed disabled:opacity-45;
+  }
+
+  button:not(.data-card):hover:not(:disabled),
+  .ui-button-default:hover:not(:disabled) {
+    @apply bg-slate-50;
+  }
+}
+
+@layer components {
+  .ui-button-primary {
+    @apply border-app-accent bg-app-accent text-white;
+  }
+
+  .ui-button-primary:hover:not(:disabled) {
+    @apply bg-blue-600;
+  }
+
+  .ui-button-danger {
+    @apply border-app-danger bg-app-danger text-white;
+  }
+
+  .ui-button-danger:hover:not(:disabled) {
+    @apply bg-red-600;
+  }
+
+  .ui-button-ghost {
+    @apply border-transparent bg-transparent shadow-none;
+  }
+
+  .ui-button-ghost:hover:not(:disabled) {
+    @apply bg-slate-100;
+  }
+
+  .app-shell {
+    @apply min-h-screen px-4 py-5 sm:px-5 md:px-7 md:py-6 xl:px-8 2xl:px-10;
+  }
+
+  .app-header {
+    @apply mb-5 flex items-end justify-between gap-4;
+  }
+
+  .app-header h1 {
+    @apply m-0 text-3xl font-extrabold leading-tight md:text-4xl;
+  }
+
+  .app-header p {
+    @apply mt-2 mb-0 text-base text-app-muted md:text-lg;
+  }
+
+  .app-tabs {
+    @apply sticky top-0 z-20 -mx-2 mb-5 flex flex-wrap items-center gap-2 bg-app-bg/95 px-2 py-2 backdrop-blur-xl;
+  }
+
+  .app-tab-primary-group {
+    @apply flex flex-wrap gap-1 rounded-panel bg-app-control p-[3px];
+  }
+
+  .app-tab-utility-group {
+    @apply flex flex-none items-center gap-1;
+  }
+
+  .app-tab {
+    @apply min-h-8 min-w-[66px] flex-none rounded-control border border-transparent px-3 py-1.5 text-center text-[13px] font-normal leading-5 text-app-muted no-underline transition;
+  }
+
+  .app-tab-primary {
+    @apply text-app-text;
+  }
+
+  .app-tab-utility {
+    @apply min-w-[70px] text-app-muted;
+  }
+
+  .app-tab:hover {
+    @apply bg-white/60 text-app-text;
+  }
+
+  .app-tab-active {
+    @apply bg-app-panel font-semibold text-app-text shadow-control;
+  }
+
+  .app-tab-danger {
+    @apply text-red-700;
+  }
+
+  .app-tab-menu {
+    @apply relative;
+  }
+
+  .app-tab-menu-button {
+    @apply block cursor-pointer list-none;
+  }
+
+  .app-tab-menu-button::-webkit-details-marker {
+    display: none;
+  }
+
+  .app-tab-menu-list {
+    @apply absolute right-0 top-[calc(100%+6px)] z-30 grid min-w-[150px] gap-1 rounded-panel border border-app-border bg-app-panel p-1 shadow-control;
+  }
+
+  .app-tab-overflow {
+    @apply w-full min-w-0 text-left;
+  }
+
+  .app-main {
+    @apply max-w-[1480px] 2xl:max-w-[1760px];
+    min-width: 0;
+  }
+
+  .page-stack {
+    @apply grid gap-4 md:gap-[18px];
+    min-width: 0;
+  }
+
+  .panel {
+    @apply rounded-panel bg-app-panel px-4 py-5 sm:px-5 md:px-7 md:py-6;
+    min-width: 0;
+  }
+
+  .panel-header {
+    @apply mb-5 flex flex-wrap items-center justify-between gap-3 md:gap-4;
+  }
+
+  .panel-header h2 {
+    @apply m-0 text-xl font-extrabold leading-tight md:text-[22px];
+  }
+
+  .panel-actions {
+    @apply flex flex-wrap items-center gap-2;
+  }
+
+  .key-value-rows {
+    @apply m-0 grid gap-3.5;
+  }
+
+  .key-value-row {
+    @apply grid gap-1 md:grid-cols-[minmax(180px,240px)_minmax(0,1fr)] md:gap-4;
+  }
+
+  .key-value-row dt {
+    @apply text-app-muted;
+  }
+
+  .key-value-row dd {
+    @apply m-0 flex min-w-0 flex-wrap gap-2.5 font-bold;
+  }
+
+  .key-value-row dd > span:first-child {
+    overflow-wrap: anywhere;
+  }
+
+  .muted {
+    @apply font-medium text-app-muted;
+  }
+
+  .warning-list {
+    @apply mb-4 grid gap-1 text-sm font-bold text-app-danger;
+  }
+
+  .detail {
+    @apply whitespace-nowrap;
+  }
+
+  .status-badge {
+    @apply inline-flex items-center gap-2;
+    min-width: 0;
+  }
+
+  .status-badge::before {
+    @apply inline-block h-3 w-3 rounded-full;
+    content: "";
+  }
+
+  .status-badge-success::before {
+    @apply bg-app-success;
+  }
+
+  .status-badge-warning::before {
+    @apply bg-app-warning;
+  }
+
+  .status-badge-danger::before {
+    @apply bg-app-danger;
+  }
+
+  .status-badge-neutral::before {
+    @apply bg-app-neutral;
+  }
+
+  .empty-state,
+  .error-state {
+    @apply m-0 text-lg leading-normal text-app-muted;
+  }
+
+  .error-state {
+    @apply text-app-danger;
+  }
+
+  div.error-state {
+    @apply grid gap-1.5;
+  }
+
+  .error-state strong,
+  .error-state span,
+  .error-state small {
+    @apply block;
+  }
+
+  .error-state small {
+    @apply text-[15px] text-app-muted;
+  }
+
+  .toolbar {
+    @apply mb-[18px] flex flex-wrap items-center gap-3.5;
+  }
+
+  .toolbar label,
+  .log-toolbar label,
+  .inline-form label,
+  .chart-toolbar label {
+    @apply inline-flex items-center gap-2 font-bold text-app-muted;
+  }
+
+  .toolbar select,
+  .toolbar input,
+  .log-toolbar select,
+  .inline-form input,
+  .chart-toolbar select,
+  .settings-grid input,
+  .settings-grid select {
+    @apply min-w-0 rounded-control border border-app-control bg-app-panel px-2.5 py-1.5 text-app-text;
+  }
+
+  .toolbar select {
+    @apply min-w-[150px];
+  }
+
+  .toolbar input {
+    @apply min-w-[220px];
+  }
+
+  .compact-toolbar {
+    @apply mb-0;
+  }
+
+  .toolbar-count {
+    @apply ml-auto font-bold text-app-muted;
+  }
+
+  .checkbox-label {
+    @apply text-app-text;
+  }
+
+  .checkbox-label input {
+    @apply h-[18px] w-[18px];
+  }
+
+  .block-checkbox {
+    @apply mb-2 inline-flex items-center gap-2;
+  }
+
+  .live-state {
+    @apply font-bold text-app-muted;
+  }
+
+  .live-state-on {
+    @apply text-green-600;
+  }
+
+  .log-toolbar {
+    @apply sticky top-[58px] z-[5] -mx-2 mb-4 flex flex-wrap items-center gap-3.5 bg-app-panel/95 p-2 backdrop-blur-xl;
+  }
+
+  .log-toolbar select {
+    @apply min-w-[180px];
+  }
+
+  .log-output,
+  .command-output {
+    @apply m-0 w-full overflow-auto rounded-panel bg-app-panel font-mono text-app-text;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+  }
+
+  .log-output {
+    @apply max-h-[64vh] text-sm leading-snug md:text-base;
+  }
+
+  .command-output {
+    @apply mb-4 min-h-24 text-[15px] leading-normal;
+  }
+
+  .inline-form {
+    @apply mb-3.5 flex flex-wrap items-center gap-3;
+  }
+
+  .inline-form label {
+    @apply flex-1 basis-[420px];
+  }
+
+  .inline-form input {
+    @apply min-w-[240px] flex-1;
+  }
+
+  .settings-grid {
+    @apply mb-[22px] grid grid-cols-1 gap-x-5 gap-y-4 lg:grid-cols-2;
+  }
+
+  .settings-grid label {
+    @apply grid gap-2 font-bold text-app-muted;
+  }
+
+  .settings-grid input,
+  .settings-grid select {
+    @apply w-full;
+  }
+
+  .settings-toggles {
+    @apply mb-3.5 flex flex-wrap gap-[18px];
+  }
+
+  .action-row {
+    @apply mt-4 flex flex-wrap gap-2.5;
+  }
+
+  .check-list {
+    @apply grid gap-3;
+  }
+
+  .check-list .checkbox-label {
+    @apply items-start;
+  }
+
+  .check-list .checkbox-label span {
+    @apply grid gap-0.5;
+  }
+
+  .session-list {
+    @apply grid gap-3.5;
+  }
+
+  .session-row {
+    @apply grid gap-2.5 border-b border-app-border pb-3.5 last:border-b-0 last:pb-0;
+  }
+
+  .session-row > div:first-child {
+    @apply grid gap-1;
+  }
+
+  .metric-strip {
+    @apply mb-5 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5 xl:flex xl:flex-wrap xl:gap-7;
+  }
+
+  .metric {
+    @apply grid min-w-[120px] gap-1.5;
+  }
+
+  .metric span {
+    @apply font-bold text-app-muted;
+  }
+
+  .metric strong {
+    @apply text-2xl font-extrabold leading-none;
+  }
+
+  .table-wrap {
+    @apply hidden overflow-x-auto rounded-panel md:block;
+  }
+
+  .data-table {
+    @apply w-full min-w-[760px] border-collapse bg-app-panel;
+  }
+
+  .data-table th,
+  .data-table td {
+    @apply border-b border-app-border px-4 py-[13px] text-left align-middle;
+  }
+
+  .data-table th {
+    @apply font-extrabold text-app-muted;
+  }
+
+  .data-table tbody tr {
+    @apply cursor-default;
+  }
+
+  .data-table tbody tr:hover,
+  .selected-row {
+    @apply bg-app-accentSoft;
+  }
+
+  .data-card-list {
+    @apply grid gap-3 md:hidden;
+  }
+
+  .data-card {
+    @apply block w-full rounded-panel border border-app-border bg-app-panel p-4 text-left shadow-none;
+  }
+
+  .data-card:hover {
+    @apply bg-slate-50;
+  }
+
+  .data-card-title {
+    @apply mb-3 text-base font-extrabold;
+    overflow-wrap: anywhere;
+  }
+
+  .data-card-rows {
+    @apply m-0 grid gap-2.5;
+  }
+
+  .data-card-row {
+    @apply grid gap-1 xs:grid-cols-[120px_minmax(0,1fr)];
+  }
+
+  .data-card-row dt {
+    @apply font-bold text-app-muted;
+  }
+
+  .data-card-row dd {
+    @apply m-0 min-w-0;
+    overflow-wrap: anywhere;
+  }
+
+  .detail-heading {
+    @apply mb-[22px] flex flex-wrap items-center justify-between gap-4 text-xl;
+    min-width: 0;
+  }
+
+  .detail-heading .status-badge {
+    @apply flex-wrap;
+    max-width: 100%;
+  }
+
+  .detail-heading .status-badge strong {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .detail-heading > span:last-child {
+    @apply text-base font-bold text-app-muted;
+  }
+
+  .subsection {
+    @apply mt-[26px] border-t border-app-border pt-[22px];
+  }
+
+  .subsection h3 {
+    @apply mb-4 mt-0 text-lg font-extrabold;
+  }
+
+  .recorder-activity {
+    @apply grid gap-4;
+  }
+
+  .chart-toolbar {
+    @apply flex flex-wrap items-center gap-3.5;
+  }
+
+  .chart-toolbar select {
+    @apply min-w-[120px];
+  }
+
+  .chart-meta {
+    @apply ml-auto font-bold text-app-muted;
+  }
+
+  .activity-chart {
+    @apply block w-full rounded-panel bg-app-panel;
+    height: auto;
+  }
+
+  .activity-axis {
+    @apply fill-app-muted text-[13px] font-bold;
+  }
+
+  .activity-axis-title {
+    @apply fill-app-muted;
+  }
+
+  .activity-grid-line {
+    stroke: #e8ecef;
+    stroke-width: 1;
+  }
+
+  .activity-axis-line {
+    stroke: #bfc7ce;
+    stroke-width: 1.4;
+  }
+
+  .activity-bar {
+    @apply fill-app-accent;
+  }
+
+  .event-list {
+    @apply grid gap-[22px];
+  }
+
+  .event-item {
+    @apply border-b border-app-border pb-5 last:border-b-0 last:pb-0;
+  }
+
+  .event-meta {
+    @apply flex flex-wrap gap-3 text-sm font-bold text-app-muted;
+  }
+
+  .event-source {
+    @apply ml-auto;
+  }
+
+  .event-item h3 {
+    @apply mb-1.5 mt-2 text-lg font-extrabold;
+  }
+
+  .event-item p {
+    @apply m-0 leading-snug text-app-muted;
+  }
+}
+
+@layer utilities {
+  @media (max-width: 767px) {
+    .panel-header {
+      align-items: stretch;
+    }
+
+    .panel-actions,
+    .panel-actions > .toolbar,
+    .toolbar,
+    .log-toolbar,
+    .chart-toolbar,
+    .action-row {
+      width: 100%;
+    }
+
+    .toolbar input,
+    .toolbar select,
+    .log-toolbar select,
+    .inline-form input,
+    .chart-toolbar select {
+      min-width: 0;
+      flex: 1 1 100%;
+      width: 100%;
+    }
+
+    .toolbar-count,
+    .event-source,
+    .chart-meta {
+      margin-left: 0;
+    }
+
+    .action-row button,
+    .panel-actions button {
+      flex: 1 1 auto;
+    }
+
+    .detail {
+      white-space: normal;
+    }
+
+    .detail-heading {
+      @apply items-start gap-2 text-lg;
+    }
+
+    .detail-heading > span:last-child {
+      @apply w-full text-sm;
+    }
+
+    .data-card {
+      min-width: 0;
+    }
+
+    .activity-chart {
+      min-height: 220px;
+    }
+  }
+
+  @media (max-width: 389px) {
+    .app-shell {
+      padding-left: 12px;
+      padding-right: 12px;
+    }
+
+    .app-tab {
+      min-width: 66px;
+      padding-left: 10px;
+      padding-right: 10px;
+    }
+
+    .panel {
+      padding-left: 14px;
+      padding-right: 14px;
+    }
+
+    .metric-strip {
+      grid-template-columns: 1fr;
+    }
+  }
+}

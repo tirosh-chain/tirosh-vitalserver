@@ -489,6 +489,24 @@
         }
       }
     },
+    "/runtime/services/repair-vm-disk": {
+      "post": {
+        "operationId": "repairRuntimeVMDisk",
+        "summary": "Repair VM disk",
+        "description": "Archives the current mutable VM disk, recreates it from the installed base image, and restarts runtime services.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "localCommand",
+        "x-runtime-control-access": "localServerMediated",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/CommandResult"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
     "/runtime/redis/backups": {
       "post": {
         "operationId": "createRedisBackup",
@@ -1592,6 +1610,8 @@
           "vmIP": "192.168.64.33",
           "guestHTTP": "200",
           "hostProxyHTTP": "200",
+          "runtimeControlHTTP": "200",
+          "runtimeControlStartedAt": "2026-05-26T04:30:00Z",
           "redisUIHTTP": "200",
           "swaggerUIHTTP": "200",
           "dataDirectoryStats": {
@@ -1631,15 +1651,56 @@
               }
             ]
           },
+          "vitalDBObservationSnapshot": {
+            "$ref": "#/components/schemas/RuntimeVitalDBObservationSnapshot"
+          },
           "vitalRecorder": {
             "$ref": "#/components/schemas/RuntimeVitalRecorderSummary"
           }
         }
       },
+      "RuntimeVitalDBObservationSnapshot": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Explicit latest VitalDB observation read state. observation remains null when the observability read path has no latest snapshot or failed before producing one.",
+        "properties": {
+          "state": {
+            "$ref": "#/components/schemas/RuntimeVitalDBObservationReadState"
+          },
+          "observation": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/VitalDBObservationDocument"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "readError": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "RuntimeVitalDBObservationReadState": {
+        "type": "string",
+        "enum": [
+          "loaded",
+          "unavailable",
+          "failed"
+        ]
+      },
       "RuntimeVitalRecorderSummary": {
         "type": "object",
         "additionalProperties": false,
-        "description": "PWA-friendly Vital Recorder summary derived from VitalDB observation first, then audit-proxy recorder connections as fallback.",
+        "description": "PWA-friendly Vital Recorder summary derived from VitalDB observation. activeConnections is copied from audit-proxy connection status when available.",
         "properties": {
           "source": {
             "$ref": "#/components/schemas/RuntimeVitalRecorderSummarySource"
@@ -1714,7 +1775,6 @@
         "type": "string",
         "enum": [
           "vitalDBObservation",
-          "auditProxy",
           "unavailable"
         ]
       },
@@ -1740,8 +1800,49 @@
             "items": {
               "$ref": "#/components/schemas/RuntimeVitalBedRecord"
             }
+          },
+          "activityHistory": {
+            "$ref": "#/components/schemas/RuntimeVitalRecorderActivityHistory"
           }
         }
+      },
+      "RuntimeVitalRecorderActivityHistory": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Metadata for the durable recorder activity bucket projection used by recorder charts.",
+        "properties": {
+          "source": {
+            "$ref": "#/components/schemas/RuntimeVitalRecorderActivityHistorySource"
+          },
+          "bucketCount": {
+            "type": "integer"
+          },
+          "earliestBucketStartedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "latestBucketStartedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "readError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "RuntimeVitalRecorderActivityHistorySource": {
+        "type": "string",
+        "enum": [
+          "sqliteProjection",
+          "unavailable"
+        ]
       },
       "RuntimeVitalRecorderRecord": {
         "type": "object",
@@ -1826,6 +1927,32 @@
           }
         }
       },
+      "RuntimeVitalRecorderActivityBucket": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "One recorder activity bucket from the VitalDB observer.",
+        "properties": {
+          "bucketStartedAt": {
+            "type": "string"
+          },
+          "bucketSeconds": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "messageCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "byteCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "roomCount": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
       "RuntimeVitalRecorderActivityPoint": {
         "type": "object",
         "additionalProperties": false,
@@ -1857,6 +1984,13 @@
           "bytesPerSecond": {
             "type": "number",
             "minimum": 0
+          },
+          "buckets": {
+            "type": "array",
+            "description": "Per-bucket activity values from the latest observer window.",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeVitalRecorderActivityBucket"
+            }
           }
         }
       },
@@ -2126,6 +2260,9 @@
           },
           "canViewReleaseMetadata": {
             "type": "boolean"
+          },
+          "canUseTestTools": {
+            "type": "boolean"
           }
         }
       },
@@ -2166,6 +2303,12 @@
             ]
           },
           "statusMessage": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "statusDocumentError": {
             "type": [
               "string",
               "null"
@@ -2226,6 +2369,20 @@
               "null"
             ]
           },
+          "runtimeControlHTTP": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "HTTP reachability status for the Remote Console and Runtime Control API server."
+          },
+          "runtimeControlStartedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "ISO-8601 UTC timestamp for the Remote Console and Runtime Control API server start time. Clients should derive live uptime from this value."
+          },
           "redisUIHTTP": {
             "type": [
               "string",
@@ -2253,6 +2410,12 @@
           "dataStorage": {
             "$ref": "#/components/schemas/ResourceUsage"
           },
+          "guestRuntimeStateError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "dataDirectoryStats": {
             "oneOf": [
               {
@@ -2261,6 +2424,12 @@
               {
                 "type": "null"
               }
+            ]
+          },
+          "dataDirectoryStatsError": {
+            "type": [
+              "string",
+              "null"
             ]
           },
           "proxyPort": {
@@ -2432,6 +2601,7 @@
           "health-observed",
           "recovery-triggered",
           "recovery-completed",
+          "recovery-suppressed",
           "domain-error-observed",
           "vm-error-observed",
           "container-observed",
@@ -2567,6 +2737,12 @@
             "minimum": 0
           },
           "containerLogsUpdatedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "containerLogsMetadataError": {
             "type": [
               "string",
               "null"
@@ -2749,6 +2925,12 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
+          "readIssues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeSettingsReadIssue"
+            }
+          },
           "cpuCount": {
             "type": "integer"
           },
@@ -2772,6 +2954,9 @@
             "type": "string"
           },
           "proxyPort": {
+            "type": "integer"
+          },
+          "runtimeControlPort": {
             "type": "integer"
           },
           "vitalFilesDirectory": {
@@ -2808,6 +2993,22 @@
             "type": "boolean"
           }
         }
+      },
+      "RuntimeSettingsReadIssue": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "source": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "message"
+        ]
       },
       "RuntimeReleaseInfo": {
         "type": "object",
@@ -2940,6 +3141,9 @@
       },
       "RuntimeRepairProxyRequest": {
         "type": "object",
+        "required": [
+          "proxyPort"
+        ],
         "properties": {
           "proxyPort": {
             "type": "integer"
@@ -2948,6 +3152,9 @@
       },
       "RuntimeUninstallRequest": {
         "type": "object",
+        "required": [
+          "clean"
+        ],
         "properties": {
           "clean": {
             "type": "boolean"
@@ -2978,6 +3185,11 @@
       },
       "RuntimeLogTextRequest": {
         "type": "object",
+        "required": [
+          "source",
+          "helperMessage",
+          "lineLimit"
+        ],
         "properties": {
           "source": {
             "$ref": "#/components/schemas/RuntimeLogSource"
@@ -2997,8 +3209,11 @@
           "install",
           "command",
           "launcher",
+          "vmLaunchOutput",
+          "vmLaunchError",
           "proxyOutput",
           "proxyError",
+          "watchdog",
           "updateActivation",
           "containers"
         ]
@@ -3407,6 +3622,11 @@
       "RuntimeTestKitCreateBedsRequest": {
         "type": "object",
         "additionalProperties": false,
+        "required": [
+          "roomNames",
+          "prefix",
+          "adminUserId"
+        ],
         "properties": {
           "count": {
             "type": [

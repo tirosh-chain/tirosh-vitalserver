@@ -43,6 +43,23 @@ struct RuntimeLifecycleComposition {
             isLoaded: { service in
                 healthChecker.isLaunchdLoaded(service)
             },
+            prepareForStop: { service in
+                try prepareServiceForStop(
+                    service,
+                    paths: paths,
+                    fileStore: fileStore,
+                    clock: clock
+                )
+            },
+            waitUntilStopped: { service in
+                try waitUntilServiceStops(
+                    service,
+                    paths: paths,
+                    healthChecker: healthChecker,
+                    fileStore: fileStore,
+                    clock: clock
+                )
+            },
             log: { message in
                 print("[\(ISO8601DateFormatter().string(from: clock.now))] \(message)")
             }
@@ -58,6 +75,62 @@ struct RuntimeLifecycleComposition {
         )
     }
 
+    private static func prepareServiceForStop(
+        _ service: RuntimeManagedService,
+        paths: LauncherPaths,
+        fileStore: RuntimeFileStore,
+        clock: RuntimeClock
+    ) throws {
+        guard service == .vm else {
+            return
+        }
+
+        log("requesting graceful VM process stop before launchd unload", clock: clock)
+        try ProcessState.requestStopAndWait(
+            pidFile: paths.pidFile,
+            fileStore: fileStore,
+            timeoutSeconds: Constants.Runtime.vmStopWaitTimeoutSeconds,
+            pollIntervalSeconds: Constants.Runtime.serviceStopPollIntervalSeconds,
+            log: { message in log(message, clock: clock) }
+        )
+        log("VM process stopped before launchd unload", clock: clock)
+    }
+
+    private static func waitUntilServiceStops(
+        _ service: RuntimeManagedService,
+        paths: LauncherPaths,
+        healthChecker: RuntimeHealthChecker,
+        fileStore: RuntimeFileStore,
+        clock: RuntimeClock
+    ) throws {
+        let timeout = service == .vm
+            ? Constants.Runtime.vmStopWaitTimeoutSeconds
+            : Constants.Runtime.serviceStopWaitTimeoutSeconds
+        let deadline = clock.now.addingTimeInterval(timeout)
+        while healthChecker.isLaunchdLoaded(service) {
+            guard clock.now < deadline else {
+                throw LauncherError.runtimeOperationFailed(
+                    "service did not unload within \(Int(timeout))s label=\(service.label)"
+                )
+            }
+            Thread.sleep(forTimeInterval: Constants.Runtime.serviceStopPollIntervalSeconds)
+        }
+
+        guard service == .vm else {
+            return
+        }
+        try ProcessState.waitUntilStopped(
+            pidFile: paths.pidFile,
+            fileStore: fileStore,
+            timeoutSeconds: Constants.Runtime.vmStopWaitTimeoutSeconds,
+            pollIntervalSeconds: Constants.Runtime.serviceStopPollIntervalSeconds
+        )
+    }
+
+    private static func log(_ message: String, clock: RuntimeClock) {
+        print("[\(ISO8601DateFormatter().string(from: clock.now))] \(message)")
+    }
+
     private static func makeGuestGateway(installedPaths: InstalledRuntimePaths) -> RuntimeGuestGateway {
         let guestRunDirectory = installedPaths.guestRunDirectory
         return JSONFileRuntimeGuestGateway(
@@ -65,6 +138,8 @@ struct RuntimeLifecycleComposition {
             bootstrapResultURL: guestRunDirectory.appendingPathComponent(Constants.Runtime.bootstrapResultFile),
             updateActivationRequestURL: guestRunDirectory.appendingPathComponent(Constants.Runtime.updateActivationRequestFile),
             updateActivationResultURL: guestRunDirectory.appendingPathComponent(Constants.Runtime.updateActivationResultFile),
+            updateShutdownRequestURL: guestRunDirectory.appendingPathComponent(Constants.Runtime.updateShutdownRequestFile),
+            updateShutdownResultURL: guestRunDirectory.appendingPathComponent(Constants.Runtime.updateShutdownResultFile),
             datastoreRepairRequestURL: guestRunDirectory.appendingPathComponent(Constants.Runtime.datastoreRepairRequestFile),
             datastoreRepairResultURL: guestRunDirectory.appendingPathComponent(Constants.Runtime.datastoreRepairResultFile)
         )

@@ -42,6 +42,7 @@ enum RuntimeAdapterConstants {
         static let rollback = "rollback"
         static let redisBackup = "redis-backup"
         static let repairDatastore = "repair-datastore"
+        static let repairVMDisk = "repair-vm-disk"
         static let repairServices = "repair-services"
         static let startServices = "start-services"
         static let stopServices = "stop-services"
@@ -92,6 +93,8 @@ enum RuntimeAdapterConstants {
         static let containerLogSource = installed.containerLogs.path
         static let updateActivationLog = installed.centralUpdateActivationLog.path
         static let updateActivationLogSource = installed.updateActivationLog.path
+        static let updateShutdownLog = installed.centralUpdateShutdownLog.path
+        static let updateShutdownLogSource = installed.updateShutdownLog.path
         static let bootstrapLog = installed.centralBootstrapLog.path
         static let bootstrapLogSource = installed.bootstrapLog.path
         static let datastoreRepairLog = installed.centralDatastoreRepairLog.path
@@ -104,11 +107,12 @@ enum RuntimeAdapterConstants {
         static let vmConfig = installed.vmConfig.path
         static let vmDisk = installed.vmDisk.path
         static let guestRuntimeConfig = installed.guestRuntimeConfig.path
+        static let guestRuntimeSettings = installed.guestRuntimeSettings.path
         static let runtimeVersion = installed.runtimeDirectory.appendingPathComponent("runtime-version.json").path
         static let proxyNginxPid = installed.proxyNginxPID.path
         static let proxyNginxConfig = installed.nginxDirectory.appendingPathComponent("vitalserver.conf").path
-        static let proxyNginxAccessLog = installed.nginxLogsDirectory.appendingPathComponent("access.log").path
-        static let proxyNginxErrorLog = installed.nginxLogsDirectory.appendingPathComponent("error.log").path
+        static let proxyNginxAccessLog = installed.proxyNginxAccessLog.path
+        static let proxyNginxErrorLog = installed.proxyNginxErrorLog.path
         static let proxyLaunchDaemon = installed.proxyLaunchDaemon.path
         static let commandLogFile = installed.managerCommandLog.path
     }

@@ -175,6 +175,66 @@ public struct VitalDBRecorderActivityBucket: Codable, Equatable, Sendable {
     }
 }
 
+public struct VitalDBRecorderActivityBucketRecord: Codable, Equatable, Sendable {
+    public let vrcode: String
+    public let bucketStartedAt: String
+    public let bucketSeconds: Int
+    public let messageCount: Int
+    public let byteCount: Int
+    public let roomCount: Int
+    public let firstObservedAt: String
+    public let lastObservedAt: String
+
+    public init(
+        vrcode: String,
+        bucketStartedAt: String,
+        bucketSeconds: Int,
+        messageCount: Int,
+        byteCount: Int,
+        roomCount: Int = 0,
+        firstObservedAt: String,
+        lastObservedAt: String
+    ) {
+        self.vrcode = vrcode
+        self.bucketStartedAt = bucketStartedAt
+        self.bucketSeconds = bucketSeconds
+        self.messageCount = messageCount
+        self.byteCount = byteCount
+        self.roomCount = roomCount
+        self.firstObservedAt = firstObservedAt
+        self.lastObservedAt = lastObservedAt
+    }
+
+    public var bucket: VitalDBRecorderActivityBucket {
+        VitalDBRecorderActivityBucket(
+            bucketStartedAt: bucketStartedAt,
+            bucketSeconds: bucketSeconds,
+            messageCount: messageCount,
+            byteCount: byteCount,
+            roomCount: roomCount
+        )
+    }
+}
+
+public struct VitalDBRecorderActivityBucketQuery: Codable, Equatable, Sendable {
+    public let vrcode: String?
+    public let since: String?
+    public let until: String?
+    public let limit: Int
+
+    public init(
+        vrcode: String? = nil,
+        since: String? = nil,
+        until: String? = nil,
+        limit: Int = 10_000
+    ) {
+        self.vrcode = vrcode?.isEmpty == true ? nil : vrcode
+        self.since = since
+        self.until = until
+        self.limit = min(max(limit, 0), 50_000)
+    }
+}
+
 public struct VitalDBRecorderActivityObservation: Codable, Equatable, Sendable {
     public let windowSeconds: Int
     public let messageCount: Int

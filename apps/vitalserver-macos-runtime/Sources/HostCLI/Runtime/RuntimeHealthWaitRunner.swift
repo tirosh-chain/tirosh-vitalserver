@@ -33,10 +33,12 @@ struct RuntimeHealthWaitRunner {
             onProgress: { reasons in
                 let reasonText = RuntimeFailureReasonText.describe(reasons)
                 log("waiting for runtime health reasons=\(reasonText)")
-                try? writeStatus(
+                writeRuntimeStatusBestEffort(
                     .recovering,
-                    .health,
-                    "waiting for runtime health: \(reasonText)"
+                    operation: .health,
+                    message: "waiting for runtime health: \(reasonText)",
+                    writeStatus: writeStatus,
+                    log: log
                 )
             },
             sleep: sleep

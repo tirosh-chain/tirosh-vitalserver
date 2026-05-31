@@ -43,7 +43,7 @@ struct RuntimeUpdatePanel: View {
                     .fixedSize(horizontal: false, vertical: true)
                 Grid(alignment: .leading, horizontalSpacing: 20, verticalSpacing: 10) {
                     statusRow(AppConstants.Labels.selectedBundle) {
-                        Text(viewModel.selectedBundlePath.isEmpty ? AppConstants.Labels.noUpdateBundleSelected : viewModel.selectedBundlePath)
+                        Text(viewModel.selectedBundlePath ?? AppConstants.Labels.noUpdateBundleSelected)
                             .fontWeight(.medium)
                             .lineLimit(2)
                             .truncationMode(.middle)
@@ -79,7 +79,7 @@ struct RuntimeUpdatePanel: View {
                 }
                 .disabled(
                     viewModel.shouldShowUpdateProgress
-                        || viewModel.selectedBundlePath.isEmpty
+                        || !viewModel.hasSelectedBundle
                         || !viewModel.capabilities.canApplyBundle
                 )
             }
@@ -111,7 +111,7 @@ struct RuntimeUpdatePanel: View {
             }
             .disabled(
                 viewModel.shouldShowUpdateProgress
-                    || viewModel.selectedBundlePath.isEmpty
+                    || !viewModel.hasSelectedBundle
                     || !viewModel.selectedBundleVerified
                     || !viewModel.status.runtimeInstalled
                     || !viewModel.capabilities.canApplyBundle

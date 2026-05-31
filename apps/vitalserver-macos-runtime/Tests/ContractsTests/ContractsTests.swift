@@ -34,6 +34,8 @@ final class ContractsTests: XCTestCase {
         XCTAssertEqual(RuntimeOperation.stopServices.rawValue, "stop-services")
         XCTAssertEqual(RuntimeOperation(rawValue: "repair-services"), .repairServices)
         XCTAssertEqual(RuntimeOperation.repairServices.rawValue, "repair-services")
+        XCTAssertEqual(RuntimeOperation(rawValue: "prepare-update-shutdown"), .prepareUpdateShutdown)
+        XCTAssertEqual(RuntimeOperation.prepareUpdateShutdown.rawValue, "prepare-update-shutdown")
     }
 
     func testDecodesGuestRuntimeState() throws {
@@ -44,6 +46,15 @@ final class ContractsTests: XCTestCase {
         XCTAssertEqual(document.memory?.percent, 25.0)
         XCTAssertEqual(document.systemDisk?.percent, 31.25)
         XCTAssertEqual(document.vitalFilesDisk?.percent, 25.0)
+        XCTAssertEqual(
+            document.capabilities,
+            GuestRuntimeCapabilities(
+                prepareUpdateShutdown: true,
+                activateUpdate: true,
+                redisBackup: true,
+                repairDatastore: true
+            )
+        )
     }
 
     func testDecodesGuestRuntimeStateContainerServices() throws {
@@ -280,6 +291,7 @@ final class ContractsTests: XCTestCase {
           "container-service-app-state-unhealthy",
           "vitaldb-anomaly-duplicate-ip-subject-10.0.0.10",
           "proxy-port-80-in-use-by-nginx-1234",
+          "host-proxy-listener-scan-failed-port-80-exit-1",
           "guest-bootstrap-missing-runtime-packages",
           "future-reason"
         ]
@@ -293,8 +305,9 @@ final class ContractsTests: XCTestCase {
         XCTAssertEqual(reasons[4], .containerService(service: "app", state: "unhealthy"))
         XCTAssertEqual(reasons[5], .vitalDBAnomaly(kind: "duplicate-ip", subject: "10.0.0.10"))
         XCTAssertEqual(reasons[6], .proxyPortInUse(port: 80, listeners: "nginx-1234"))
-        XCTAssertEqual(reasons[7], .guestBootstrapMissingRuntimePackages)
-        XCTAssertEqual(reasons[8], .unknown("future-reason"))
+        XCTAssertEqual(reasons[7], .hostProxyListenerScanFailed(port: 80, exitCode: 1))
+        XCTAssertEqual(reasons[8], .guestBootstrapMissingRuntimePackages)
+        XCTAssertEqual(reasons[9], .unknown("future-reason"))
 
         let encoded = try JSONEncoder().encode(reasons)
         let roundTripped = try JSONDecoder().decode([RuntimeFailureReason].self, from: encoded)
@@ -306,6 +319,7 @@ final class ContractsTests: XCTestCase {
             "container-service-app-state-unhealthy",
             "vitaldb-anomaly-duplicate-ip-subject-10.0.0.10",
             "proxy-port-80-in-use-by-nginx-1234",
+            "host-proxy-listener-scan-failed-port-80-exit-1",
             "guest-bootstrap-missing-runtime-packages",
             "future-reason",
         ])
@@ -348,6 +362,10 @@ final class ContractsTests: XCTestCase {
 
         XCTAssertEqual(RuntimeFailureReason.hostProxyConfigInvalid.domainCategory, .hostProxy)
         XCTAssertEqual(RuntimeFailureReason.hostProxyConfigInvalid.recoveryAction, .repairProxyConfiguration)
+
+        XCTAssertEqual(RuntimeFailureReason.hostProxyListenerScanFailed(port: 80, exitCode: 1).domainCategory, .hostProxy)
+        XCTAssertEqual(RuntimeFailureReason.hostProxyListenerScanFailed(port: 80, exitCode: 1).domainSeverity, .warning)
+        XCTAssertEqual(RuntimeFailureReason.hostProxyListenerScanFailed(port: 80, exitCode: 1).recoveryAction, .inspectLogs)
 
         XCTAssertEqual(RuntimeFailureReason.containerRestartLoop(service: "redis").domainCategory, .container)
         XCTAssertEqual(RuntimeFailureReason.containerRestartLoop(service: "redis").recoveryAction, .restartContainerServices)
@@ -423,6 +441,52 @@ final class ContractsTests: XCTestCase {
         let decoded = try JSONDecoder().decode(RuntimeEventType.self, from: encoded)
 
         XCTAssertEqual(decoded, .unknown("vendor-event"))
+    }
+
+    func testRuntimeEventQueryClampsLimitAndPreservesCursor() {
+        let cursor = RuntimeEventCursor(timestamp: "2026-05-24T00:01:00Z", id: "event-2")
+
+        XCTAssertEqual(RuntimeEventQuery(limit: 0).limit, 1)
+        XCTAssertEqual(RuntimeEventQuery(limit: 1_000).limit, RuntimeEventQuery.maximumLimit)
+
+        let query = RuntimeEventQuery(
+            limit: 25,
+            eventType: .auditProxyObserved,
+            since: "2026-05-24T00:00:00Z",
+            before: cursor
+        )
+
+        XCTAssertEqual(query.limit, 25)
+        XCTAssertEqual(query.eventType, .auditProxyObserved)
+        XCTAssertEqual(query.since, "2026-05-24T00:00:00Z")
+        XCTAssertEqual(query.before, cursor)
+    }
+
+    func testRuntimeEventDocumentAllowsEventsWithoutRuntimeStatusContext() throws {
+        let json = """
+        {
+          "schemaVersion": 1,
+          "id": "event-1",
+          "source": "host-command",
+          "eventType": "runtime-command-started",
+          "timestamp": "2026-05-30T01:00:00Z",
+          "product": "com.tirosh.vitalserver",
+          "message": "command started",
+          "runtimeVersion": "0.1.9",
+          "failureReasons": []
+        }
+        """
+
+        let event = try JSONDecoder().decode(RuntimeEventDocument.self, from: Data(json.utf8))
+
+        XCTAssertNil(event.status)
+        XCTAssertNil(event.operation)
+        XCTAssertEqual(event.source, "host-command")
+        XCTAssertEqual(event.eventType, .runtimeCommandStarted)
+
+        let roundTripped = try JSONDecoder().decode(RuntimeEventDocument.self, from: try JSONEncoder().encode(event))
+        XCTAssertNil(roundTripped.status)
+        XCTAssertNil(roundTripped.operation)
     }
 
     private func decodeFixture<T: Decodable>(_ type: T.Type, named name: String) throws -> T {

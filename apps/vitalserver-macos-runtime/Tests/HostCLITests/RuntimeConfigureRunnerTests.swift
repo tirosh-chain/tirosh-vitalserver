@@ -54,6 +54,11 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
         XCTAssertEqual(guestConfig.adminPassword, "secret")
         XCTAssertEqual(guestConfig.vitalFilesDirectory, Constants.Defaults.vitalFilesDirectoryGuestMountPath)
         XCTAssertEqual(guestConfig.redisBackupRetentionCount, 20)
+        let settingsData = try XCTUnwrap(harness.fileStore.files[harness.paths.guestRuntimeSettings])
+        let guestSettings = try JSONDecoder().decode(GuestRuntimeSettingsDocument.self, from: settingsData)
+        XCTAssertEqual(guestSettings.publicHost, "vitalserver.local")
+        XCTAssertEqual(guestSettings.publicPort, 8080)
+        XCTAssertEqual(guestSettings.redisBackupRetentionCount, 20)
     }
 
     func testConfigureWithoutRestartDoesNotRestartServices() throws {

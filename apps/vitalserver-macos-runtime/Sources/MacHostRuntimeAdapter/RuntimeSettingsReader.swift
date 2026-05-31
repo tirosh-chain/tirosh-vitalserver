@@ -11,38 +11,42 @@ protocol RuntimeSettingsReading: Sendable {
 struct RuntimeSettingsPaths {
     var vmConfig = RuntimeAdapterConstants.Paths.vmConfig
     var vmDisk = RuntimeAdapterConstants.Paths.vmDisk
+    var guestRuntimeSettings = RuntimeAdapterConstants.Paths.guestRuntimeSettings
     var guestRuntimeConfig = RuntimeAdapterConstants.Paths.guestRuntimeConfig
+    var proxyLaunchDaemon = RuntimeAdapterConstants.Paths.proxyLaunchDaemon
 
     init(
         vmConfig: String = RuntimeAdapterConstants.Paths.vmConfig,
         vmDisk: String = RuntimeAdapterConstants.Paths.vmDisk,
-        guestRuntimeConfig: String = RuntimeAdapterConstants.Paths.guestRuntimeConfig
+        guestRuntimeSettings: String = RuntimeAdapterConstants.Paths.guestRuntimeSettings,
+        guestRuntimeConfig: String = RuntimeAdapterConstants.Paths.guestRuntimeConfig,
+        proxyLaunchDaemon: String = RuntimeAdapterConstants.Paths.proxyLaunchDaemon
     ) {
         self.vmConfig = vmConfig
         self.vmDisk = vmDisk
+        self.guestRuntimeSettings = guestRuntimeSettings
         self.guestRuntimeConfig = guestRuntimeConfig
+        self.proxyLaunchDaemon = proxyLaunchDaemon
     }
 }
 
 struct SystemRuntimeSettingsReader: RuntimeSettingsReading, @unchecked Sendable {
     var paths = RuntimeSettingsPaths()
-    var statusReader = SystemRuntimeStatusReader(paths: RuntimePaths())
     private var fileStore: RuntimeFileStore = SystemRuntimeFileStore()
 
     init(
         paths: RuntimeSettingsPaths = RuntimeSettingsPaths(),
-        statusReader: SystemRuntimeStatusReader? = nil,
         fileStore: RuntimeFileStore = SystemRuntimeFileStore()
     ) {
         self.paths = paths
-        self.statusReader = statusReader ?? SystemRuntimeStatusReader(paths: RuntimePaths(), fileStore: fileStore)
         self.fileStore = fileStore
     }
 
     func load() -> RuntimeSettings {
         var settings = RuntimeSettings()
 
-        if let vmConfig = VMConfigDocument.load(path: paths.vmConfig, fileStore: fileStore) {
+        switch VMConfigDocument.loadResult(path: paths.vmConfig, fileStore: fileStore) {
+        case .loaded(let vmConfig):
             settings.cpuCount = vmConfig.cpuCount
             settings.memoryGiB = max(Int(vmConfig.memoryMiB / 1024), 1)
             settings.networkMode = RuntimeNetworkMode.shared
@@ -52,21 +56,39 @@ struct SystemRuntimeSettingsReader: RuntimeSettingsReading, @unchecked Sendable 
             }
             settings.autoRecoveryEnabled = vmConfig.autoRecoveryEnabled ?? true
             settings.preventSystemSleep = vmConfig.preventSystemSleep ?? true
+        case .missing:
+            break
+        case .failed(let message):
+            settings.readIssues.append(RuntimeSettingsReadIssue(source: "vmConfig", message: message))
         }
 
-        if let diskGiB = diskSizeGiB(path: paths.vmDisk) {
+        switch diskSizeGiB(path: paths.vmDisk) {
+        case .loaded(let diskGiB):
             settings.diskGiB = diskGiB
             settings.minimumDiskGiB = diskGiB
+        case .missing:
+            break
+        case .failed(let message):
+            settings.readIssues.append(RuntimeSettingsReadIssue(source: "vmDisk", message: message))
         }
-        if let guestConfig = GuestRuntimeConfig.load(path: paths.guestRuntimeConfig, fileStore: fileStore) {
-            settings.publicHost = guestConfig.publicHost
-            settings.publicPort = guestConfig.publicPort
-            if let redisBackupRetentionCount = guestConfig.redisBackupRetentionCount {
-                settings.redisBackupRetentionCount = min(max(redisBackupRetentionCount, 1), 30)
-            }
+        switch GuestRuntimeSettings.loadResult(path: paths.guestRuntimeSettings, fileStore: fileStore) {
+        case .loaded(let guestSettings):
+            apply(guestSettings, to: &settings)
+        case .missing:
+            loadLegacyGuestRuntimeConfig(into: &settings)
+        case .failed(let message):
+            settings.readIssues.append(RuntimeSettingsReadIssue(source: "guestRuntimeSettings", message: message))
+            loadLegacyGuestRuntimeConfig(into: &settings)
+        }
+        switch proxyPort(plistPath: paths.proxyLaunchDaemon) {
+        case .loaded(let proxyPort):
+            settings.proxyPort = proxyPort
+        case .missing:
+            break
+        case .failed(let message):
+            settings.readIssues.append(RuntimeSettingsReadIssue(source: "proxyLaunchDaemon", message: message))
         }
 
-        settings.proxyPort = statusReader.loadBaseStatus().proxyPort
         if let startOnBoot = startOnBootEnabled() {
             settings.startOnBoot = startOnBoot
             settings.startOnBootConfigurable = true
@@ -74,6 +96,27 @@ struct SystemRuntimeSettingsReader: RuntimeSettingsReading, @unchecked Sendable 
             settings.startOnBootConfigurable = false
         }
         return settings
+    }
+
+    private func loadLegacyGuestRuntimeConfig(into settings: inout RuntimeSettings) {
+        switch GuestRuntimeSettings.loadResult(path: paths.guestRuntimeConfig, fileStore: fileStore) {
+        case .loaded(let guestConfig):
+            apply(guestConfig, to: &settings)
+        case .missing:
+            break
+        case .failed(let message):
+            if !GuestRuntimeSettings.isPermissionDenied(message) {
+                settings.readIssues.append(RuntimeSettingsReadIssue(source: "guestRuntimeConfig", message: message))
+            }
+        }
+    }
+
+    private func apply(_ guestSettings: GuestRuntimeSettings, to settings: inout RuntimeSettings) {
+        settings.publicHost = guestSettings.publicHost
+        settings.publicPort = guestSettings.publicPort
+        if let redisBackupRetentionCount = guestSettings.redisBackupRetentionCount {
+            settings.redisBackupRetentionCount = min(max(redisBackupRetentionCount, 1), 30)
+        }
     }
 
     private func startOnBootEnabled() -> Bool? {
@@ -96,13 +139,51 @@ struct SystemRuntimeSettingsReader: RuntimeSettingsReading, @unchecked Sendable 
         return true
     }
 
-    private func diskSizeGiB(path: String) -> Int? {
-        guard let size = try? fileStore.fileSize(URL(fileURLWithPath: path)) else {
-            return nil
+    private func diskSizeGiB(path: String) -> RuntimeSettingsLoadResult<Int> {
+        let url = URL(fileURLWithPath: path)
+        guard fileStore.fileExists(url) else {
+            return .missing
         }
-        let bytesPerGiB = 1024 * 1024 * 1024
-        return max(Int((size + UInt64(bytesPerGiB - 1)) / UInt64(bytesPerGiB)), 1)
+        do {
+            let size = try fileStore.fileSize(url)
+            let bytesPerGiB = 1024 * 1024 * 1024
+            return .loaded(max(Int((size + UInt64(bytesPerGiB - 1)) / UInt64(bytesPerGiB)), 1))
+        } catch {
+            return .failed(error.localizedDescription)
+        }
     }
+
+    private func proxyPort(plistPath: String) -> RuntimeSettingsLoadResult<Int> {
+        let url = URL(fileURLWithPath: plistPath)
+        guard fileStore.fileExists(url) else {
+            return .missing
+        }
+        do {
+            let data = try fileStore.readData(url)
+            let plist = try PropertyListSerialization.propertyList(
+                from: data,
+                options: [],
+                format: nil
+            )
+            guard let document = plist as? [String: Any],
+                  let environment = document["EnvironmentVariables"] as? [String: Any],
+                  let rawPort = environment["VITALSERVER_PROXY_PORT"] as? String,
+                  let port = Int(rawPort),
+                  (1...65_535).contains(port)
+            else {
+                return .failed("VITALSERVER_PROXY_PORT is missing or invalid")
+            }
+            return .loaded(port)
+        } catch {
+            return .failed(error.localizedDescription)
+        }
+    }
+}
+
+private enum RuntimeSettingsLoadResult<T> {
+    case missing
+    case loaded(T)
+    case failed(String)
 }
 
 private struct VMConfigDocument: Decodable {
@@ -113,11 +194,17 @@ private struct VMConfigDocument: Decodable {
     let autoRecoveryEnabled: Bool?
     let preventSystemSleep: Bool?
 
-    static func load(path: String, fileStore: RuntimeFileReading) -> VMConfigDocument? {
-        guard let data = try? fileStore.readData(URL(fileURLWithPath: path)) else {
-            return nil
+    static func loadResult(path: String, fileStore: RuntimeFileReading) -> RuntimeSettingsLoadResult<VMConfigDocument> {
+        let url = URL(fileURLWithPath: path)
+        guard fileStore.fileExists(url) else {
+            return .missing
         }
-        return try? JSONDecoder().decode(VMConfigDocument.self, from: data)
+        do {
+            let data = try fileStore.readData(url)
+            return try .loaded(JSONDecoder().decode(VMConfigDocument.self, from: data))
+        } catch {
+            return .failed(error.localizedDescription)
+        }
     }
 }
 
@@ -130,15 +217,28 @@ private struct SharedDirectoryDocument: Decodable {
     let hostPath: String
 }
 
-private struct GuestRuntimeConfig: Decodable {
+private struct GuestRuntimeSettings: Decodable {
     let publicHost: String
     let publicPort: Int
     let redisBackupRetentionCount: Int?
 
-    static func load(path: String, fileStore: RuntimeFileReading) -> GuestRuntimeConfig? {
-        guard let data = try? fileStore.readData(URL(fileURLWithPath: path)) else {
-            return nil
+    static func loadResult(path: String, fileStore: RuntimeFileReading) -> RuntimeSettingsLoadResult<GuestRuntimeSettings> {
+        let url = URL(fileURLWithPath: path)
+        guard fileStore.fileExists(url) else {
+            return .missing
         }
-        return try? JSONDecoder().decode(GuestRuntimeConfig.self, from: data)
+        do {
+            let data = try fileStore.readData(url)
+            return try .loaded(JSONDecoder().decode(GuestRuntimeSettings.self, from: data))
+        } catch {
+            return .failed(error.localizedDescription)
+        }
+    }
+
+    static func isPermissionDenied(_ message: String) -> Bool {
+        let normalized = message.lowercased()
+        return normalized.contains("permission")
+            || normalized.contains("not permitted")
+            || normalized.contains("operation not permitted")
     }
 }

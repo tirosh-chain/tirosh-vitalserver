@@ -9,10 +9,12 @@ public enum RuntimeOperation: Codable, Equatable, Sendable {
     case verifyBundle
     case stageBundle
     case applyBundle
+    case prepareUpdateShutdown
     case activateGuestUpdate
     case rollback
     case redisBackup
     case repairDatastore
+    case repairVMDisk
     case repairProxy
     case repairServices
     case startServices
@@ -38,6 +40,8 @@ public enum RuntimeOperation: Codable, Equatable, Sendable {
             self = .stageBundle
         case "apply-bundle":
             self = .applyBundle
+        case "prepare-update-shutdown":
+            self = .prepareUpdateShutdown
         case "activate-guest-update", "activate-update":
             self = .activateGuestUpdate
         case "rollback":
@@ -46,6 +50,8 @@ public enum RuntimeOperation: Codable, Equatable, Sendable {
             self = .redisBackup
         case "repair-datastore":
             self = .repairDatastore
+        case "repair-vm-disk":
+            self = .repairVMDisk
         case "repair-proxy":
             self = .repairProxy
         case "repair-services":
@@ -79,6 +85,8 @@ public enum RuntimeOperation: Codable, Equatable, Sendable {
             return "stage-bundle"
         case .applyBundle:
             return "apply-bundle"
+        case .prepareUpdateShutdown:
+            return "prepare-update-shutdown"
         case .activateGuestUpdate:
             return "activate-guest-update"
         case .rollback:
@@ -87,6 +95,8 @@ public enum RuntimeOperation: Codable, Equatable, Sendable {
             return "redis-backup"
         case .repairDatastore:
             return "repair-datastore"
+        case .repairVMDisk:
+            return "repair-vm-disk"
         case .repairProxy:
             return "repair-proxy"
         case .repairServices:

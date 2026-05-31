@@ -11,6 +11,7 @@ struct RuntimeApplyBundlePreflightRunner {
     var requireFreeSpace: (URL, UInt64, RuntimeOperation) throws -> Void
     var checkCompatibility: (UpdateBundleManifest) throws -> Void
     var serviceRestartPolicy: () -> RuntimeServiceRestartPolicy
+    var requireGuestCapability: (RuntimeGuestCapabilityRequirement) throws -> Void
     var createBackup: (String) throws -> URL
     var directorySize: (URL) throws -> UInt64
     var log: (String) -> Void
@@ -27,25 +28,31 @@ struct RuntimeApplyBundlePreflightRunner {
             ? stagedBundle.appendingPathComponent(Constants.Artifacts.rootfsBase)
             : nil
         let stagedBundleSize = try directorySize(stagedBundle)
-        var requiredBytes = Constants.Runtime.updateFreeSpaceMarginBytes + stagedBundleSize
+        var installedRootfsSize: UInt64?
+        var incomingRootfsSize: UInt64?
         log("bundle apply storage preflight stagedBundle=\(formatBytes(stagedBundleSize))")
         if let stagedRootfs {
             guard fileExists(stagedRootfs) else {
                 throw LauncherError.missingFile(stagedRootfs.path)
             }
-            let installedRootfsSize = try fileSize(rootfsBase)
-            let incomingRootfsSize = try fileSize(stagedRootfs)
-            requiredBytes += installedRootfsSize + incomingRootfsSize
+            installedRootfsSize = try fileSize(rootfsBase)
+            incomingRootfsSize = try fileSize(stagedRootfs)
             log(
-                "bundle apply storage preflight installedRootfs=\(formatBytes(installedRootfsSize)) incomingRootfs=\(formatBytes(incomingRootfsSize))"
+                "bundle apply storage preflight installedRootfs=\(formatBytes(installedRootfsSize ?? 0)) incomingRootfs=\(formatBytes(incomingRootfsSize ?? 0))"
             )
         } else {
             log("bundle apply storage preflight rootfsBase=unchanged")
         }
+        let storageRequirement = RuntimeUpdatePreflightPolicy.storageRequirement(
+            stagedBundleBytes: stagedBundleSize,
+            installedRootfsBytes: installedRootfsSize,
+            incomingRootfsBytes: incomingRootfsSize,
+            marginBytes: Constants.Runtime.updateFreeSpaceMarginBytes
+        )
         try createDirectory(backupsDirectory, true)
         try requireFreeSpace(
             backupsDirectory,
-            requiredBytes,
+            storageRequirement.requiredBytes,
             .applyBundle
         )
 
@@ -53,6 +60,12 @@ struct RuntimeApplyBundlePreflightRunner {
         log(
             "runtime services before update vm=\(restartPolicy.restartVM ? "loaded" : "not-loaded") proxy=\(restartPolicy.restartProxy ? "loaded" : "not-loaded") watchdog=\(restartPolicy.restartWatchdog ? "loaded" : "not-loaded")"
         )
+        if restartPolicy.restartVM {
+            try requireGuestCapability(.prepareUpdateShutdown)
+        }
+        if manifest.artifacts.contains(where: { $0.type == .guestDeploy }) {
+            try requireGuestCapability(.activateUpdate)
+        }
         log("creating managed backup reason=before-\(manifest.version)")
         let backup = try createBackup("before-\(manifest.version)")
         log("backup created path=\(backup.path) size=\(formatBytes(try directorySize(backup)))")

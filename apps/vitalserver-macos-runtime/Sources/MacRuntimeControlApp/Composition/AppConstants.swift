@@ -32,51 +32,6 @@ enum AppConstants {
         }
     }
 
-    enum SettingsLimits {
-        static let minimumCPUCount = 7
-        static let maximumCPUCount = 64
-        static let minimumSystemCPUCountForDynamicLimit = 8
-        static var maximumAllowedCPUCount: Int {
-            let systemCPUCount = ProcessInfo.processInfo.processorCount
-            guard systemCPUCount >= minimumSystemCPUCountForDynamicLimit else {
-                return minimumCPUCount
-            }
-            return min(maximumCPUCount, systemCPUCount)
-        }
-        static let defaultDiskGiB = 32
-        static let minimumDiskGiB = 4
-        static let maximumDiskGiB = 512
-        static let diskStepGiB = 4
-        static let minimumMemoryGiB = 4
-        static let maximumMemoryGiB = 64
-        static let reservedHostMemoryGiB = 4
-        static let memoryStepGiB = 4
-        static var maximumAllowedMemoryGiB: Int {
-            let physicalMemoryGiB = Int(ProcessInfo.processInfo.physicalMemory / 1_073_741_824)
-            let hostAwareMaximum = physicalMemoryGiB - reservedHostMemoryGiB
-            let cappedMaximum = min(maximumMemoryGiB, hostAwareMaximum)
-            let steppedMaximum = (cappedMaximum / memoryStepGiB) * memoryStepGiB
-            return max(minimumMemoryGiB, steppedMaximum)
-        }
-        static let minimumRedisBackupRetentionCount = 1
-        static let maximumRedisBackupRetentionCount = 30
-        static let redisBackupRetentionStep = 1
-    }
-
-    enum ServiceVersions {
-        static let vitalServerImage = GeneratedRelease.vitalServerImage
-        static let redisImage = GeneratedRelease.redisImage
-        static let redisUIImage = GeneratedRelease.redisUIImage
-        static let swaggerUIImage = GeneratedRelease.swaggerUIImage
-        static let guestEdgeImage = GeneratedRelease.guestEdgeImage
-        static let hostProxy = GeneratedRelease.hostProxyImage
-        static let redisVersion = GeneratedRelease.redisVersion
-        static let redisUIVersion = GeneratedRelease.redisUIVersion
-        static let swaggerUIVersion = GeneratedRelease.swaggerUIVersion
-        static let guestEdgeVersion = GeneratedRelease.guestEdgeVersion
-        static let hostProxyVersion = GeneratedRelease.hostProxyVersion
-    }
-
     enum Labels {
         static let sectionStatus = "Status"
         static let sectionRecorders = "Recorders"
@@ -93,7 +48,10 @@ enum AppConstants {
         static let runtime = "Runtime"
         static let runtimeDetails = "Runtime details"
         static let runtimeState = "Runtime state"
+        static let statusDocument = "Status document"
+        static let guestRuntimeState = "Guest runtime state"
         static let vitalServerURL = "VitalServer URL"
+        static let runtimeControlPWA = "Remote Console"
         static let dataDirectory = "Data directory"
         static let actionNeeded = "Action needed"
         static let recommendedAction = "Recommended action"
@@ -150,6 +108,8 @@ enum AppConstants {
         static let watchdogService = "Watchdog service"
         static let proxyPort = "Host proxy port"
         static let proxyPortHelp = "Port opened on this Mac. Browsers and VRecorder devices connect to this port first, then the Helper forwards traffic into the VM."
+        static let runtimeControlPort = "Remote Console port"
+        static let runtimeControlPortHelp = "Port opened on this Mac for the Remote Console and Runtime Control API. Remote browsers can connect to this port when the Mac is reachable on the network."
         static let vmIP = "VM IP"
         static let guestHTTP = "Guest HTTP"
         static let hostProxy = "Host proxy"
@@ -205,6 +165,7 @@ enum AppConstants {
         static let sectionStorage = "Storage"
         static let sectionRedisData = "Redis data"
         static let sectionOperations = "Operations"
+        static let settingsReadIssues = "Settings read issues"
         static let sectionAdvancedConfiguration = "Advanced configuration"
         static let cpu = "CPU"
         static let memory = "Memory allocation"
@@ -217,10 +178,12 @@ enum AppConstants {
         static let bridgedInterface = "Bridged interface"
         static let sharedNetworkHelp = "Shared/NAT mode is supported in this build. VitalServer is exposed through the Mac host proxy."
         static let bridgedNetworkHelp = "Bridged mode is planned, but it requires Apple's restricted networking entitlement and is disabled for now."
-        static let sectionMacExposure = "Host proxy"
+        static let sectionRemoteConsoleAccess = "Remote Console access"
         static let sectionAdvertisedURL = "Advertised URL"
         static let sectionAdvertisedURLOverride = "Advertised URL override"
         static let sectionPlannedNetworkFeatures = "Planned network features"
+        static let remoteConsoleURL = "Remote Console URL"
+        static let remoteConsoleURLHelp = "Remote browsers open this Mac's host name or IP with the Remote Console port. Change the port in Settings when needed."
         static let customAdvertisedURL = "Custom advertised URL"
         static let customAdvertisedURLHelp = "Enable only when clients reach VitalServer through a different external URL than this Mac's host proxy, such as a hospital reverse proxy, NAT port-forward, or HTTPS endpoint."
         static let defaultAdvertisedURL = "Default advertised URL"
@@ -233,7 +196,7 @@ enum AppConstants {
         static let redisBackupRetentionHelp = "Number of Redis backup archives to keep in Vital files backups, up to 30. Older archives are pruned after a new verified backup is created."
         static let advertisedURLPreview = "Advertised URL preview"
         static let advertisedURLSameHost = "(same host)"
-        static let advancedNetworkHelp = "These settings change how VitalServer is exposed outside the VM. Most installs only need the Host proxy port."
+        static let advancedNetworkHelp = "These settings change how clients discover VitalServer beyond the Mac host proxy. Most installs should keep the default advertised URL."
         static let mdnsName = "mDNS / Bonjour name"
         static let mdnsHelp = "Planned. Would publish a stable .local name such as vitalserver.local from the Mac host."
         static let bridgedNetworking = "Bridged VM networking"
@@ -308,60 +271,6 @@ enum AppConstants {
         }
     }
 
-    enum Values {
-        static let boolTrue = "true"
-        static let boolFalse = "false"
-        static let empty = "-"
-        static let unlimited = "Unlimited"
-    }
-
-    enum Actions {
-        static let healthCheck = "Health Check"
-        static let open = "Open"
-        static let openVitalFilesDirectory = "Open Vital Files Directory"
-        static let refresh = "Refresh"
-        static let repairProxy = "Repair Proxy"
-        static let repairProxyPort = "Repair Proxy Port"
-        static let repairDatastore = "Repair Data Store"
-        static let repairRuntimeServices = "Repair Runtime Services"
-        static let uninstall = "Uninstall"
-        static let standardUninstall = "Uninstall..."
-        static let cleanUninstall = "Clean Uninstall..."
-        static let vmRootfsUpdate = "VM/rootfs Update"
-        static let applySettings = "Apply"
-        static let chooseDirectory = "Choose..."
-        static let chooseBundle = "Choose Bundle"
-        static let verifyBundle = "Verify"
-        static let applyBundle = "Apply Bundle"
-        static let rollback = "Rollback"
-        static let createRedisBackup = "Create Redis Backup"
-        static let restoreRedisBackup = "Restore Redis Backup"
-        static let deleteBackup = "Delete Backup"
-        static let checkRecorders = "Check Recorders"
-        static let openBackups = "Open Backups"
-        static let openLogs = "Open Logs"
-        static let exportLogs = "Export Logs"
-        static let start = "Start"
-        static let pause = "Pause"
-        static let resume = "Resume"
-        static let stop = "Stop"
-        static let restart = "Restart"
-        static let create = "Create"
-        static let delete = "Delete"
-        static let deleteVRecorder = "Delete VRecorder"
-        static let reset = "Reset"
-        static let startRuntimeServices = "Start Runtime Services"
-        static let stopRuntimeServices = "Stop Runtime Services"
-        static let startUpdate = "Start Update"
-        static let startRollback = "Start Rollback"
-        static let ok = "OK"
-        static let cancel = "Cancel"
-        static let createFolder = "Create Folder"
-        static let continueAction = "Continue"
-        static let back = "Back"
-        static let install = "Install"
-    }
-
     enum StatusText {
         static let ready = "Ready"
         static let vitalServerUnavailable = "VitalServer is unavailable"
@@ -395,6 +304,7 @@ enum AppConstants {
         static let notAvailable = "Not Available"
         static let noLogData = "No log data for this source yet."
         static let unknown = "Unknown"
+        static let notReported = "Not reported"
         static let online = "Online"
         static let offline = "Offline"
         static let stale = "Stale"
@@ -416,6 +326,9 @@ enum AppConstants {
         static let datastoreRepairPreparing = "Preparing data store repair..."
         static let datastoreRepairRunning = "Repairing data store..."
         static let datastoreRepairCompleted = "Data store repair completed."
+        static let vmDiskRepairPreparing = "Preparing VM disk repair..."
+        static let vmDiskRepairRunning = "Recreating VM disk..."
+        static let vmDiskRepairCompleted = "VM disk repair completed."
         static let runtimeServicesRepairPreparing = "Preparing runtime services repair..."
         static let runtimeServicesRepairRunning = "Restarting runtime services..."
         static let runtimeServicesRepaired = "Runtime services repaired."
@@ -423,6 +336,10 @@ enum AppConstants {
         static let logExportCompleted = "Logs exported."
         static let logExportFailed = "Log export failed."
         static let logExportUnavailable = "Log export is not available for this runtime connection."
+        static let logExportDestinationInvalid = "Choose a local zip file destination for log export."
+        static let logExportDestinationDirectory = "Choose a zip file destination, not a folder."
+        static let logExportDestinationNotWritable = "The selected folder is not writable. Choose another local folder for log export."
+        static let logExportDestinationProtected = "Choose a local folder that the Helper can write to. iCloud Drive, Desktop, Documents, system, and app-managed folders are not supported for log export."
         static let runtimeServicesStartPreparing = "Preparing runtime service start..."
         static let runtimeServicesStartRunning = "Starting runtime services..."
         static let runtimeServicesStarted = "Runtime services started."
@@ -458,7 +375,16 @@ enum AppConstants {
         static func folderCreateFailed(_ message: String) -> String {
             "Could not create folder: \(message)"
         }
+        static func folderReadFailed(_ message: String) -> String {
+            "Could not read folders: \(message)"
+        }
+        static func dataDirectoryStatsFailed(_ message: String) -> String {
+            "Could not read data directory: \(message)"
+        }
         static let missingBackup = "Choose a backup first."
+        static func backupListLoadFailed(_ message: String) -> String {
+            "Failed to load backups: \(message)"
+        }
         static let invalidBackup = "Selected backup is outside the managed backup directory."
         static let missingLauncher = "Missing runtime launcher"
         static let missingBundle = "Choose an update bundle first."
@@ -466,6 +392,7 @@ enum AppConstants {
         static let latestBackupFallback = "Latest backup"
         static let repairProxyConfirmation = "Stops nginx listeners on the configured proxy port, then restarts the host proxy service. Other process types are reported but not stopped automatically."
         static let repairDatastoreConfirmation = "Checks and repairs the Redis append-only file inside the VM, then restarts VitalServer containers and host services. Redis creates a timestamped backup before fixing a damaged AOF file. Repair can truncate the corrupted tail of the AOF; use Redis backups for full data recovery."
+        static let repairVMDiskConfirmation = "Creates a Redis backup first, then archives the current VM disk, recreates it from the installed base image, and restarts runtime services. If the current VM cannot create a Redis backup, repair continues because the old VM disk is archived before replacement. Vital files stored in the configured host directory are preserved."
         static let repairRuntimeServicesConfirmation = "Restarts the VM, guest log sync, host proxy, and watchdog services. VitalServer may be briefly unavailable while services restart."
         static let startRuntimeServicesConfirmation = "Starts the VM, host proxy, and watchdog services, then waits for VitalServer to become healthy."
         static let stopRuntimeServicesConfirmation = "Stops the watchdog, host proxy, and VM services. VitalServer will be unavailable until runtime services are started again."
@@ -617,6 +544,8 @@ enum AppConstants {
                 return "\(titleCasedStatus(service)) service throttled"
             case .hostProxyListenerMismatch(let port, let listeners):
                 return "Host proxy port \(port) listener mismatch: \(listeners)"
+            case .hostProxyListenerScanFailed(let port, let exitCode):
+                return "Host proxy port \(port) listener scan failed with exit \(exitCode)"
             case .hostProxyConfigInvalid:
                 return "Host proxy configuration invalid"
             case .httpProbeTimedOut(let target):
@@ -737,6 +666,8 @@ enum AppConstants {
                 return "Redis Backup"
             case "repair-datastore":
                 return "Repair Data Store"
+            case "repair-vm-disk":
+                return "Repair VM Disk"
             case "repair-proxy":
                 return "Repair Proxy"
             case "repair-services":
@@ -812,15 +743,6 @@ enum AppConstants {
                 .replacingOccurrences(of: "_", with: " ")
                 .capitalized
         }
-    }
-
-    enum Notifications {
-        static let needsAttentionTitle = "VitalServer needs attention"
-        static let criticalTitle = "VitalServer is critical"
-        static let recoveredTitle = "VitalServer recovered"
-        static let needsAttentionBody = "Open VitalServer Helper to review runtime health details."
-        static let criticalBody = "VitalServer runtime requires administrator attention."
-        static let recoveredBody = "All monitored runtime services are healthy again."
     }
 
 }

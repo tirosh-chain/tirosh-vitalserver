@@ -1,6 +1,9 @@
 import Foundation
 
 struct RuntimeVersionStore {
+    static let missingVersionValue = "missing-version"
+    static let invalidVersionValue = "invalid-version"
+
     var versionFile: URL
     var timestamp: () -> String
     var fileExists: (URL) -> Bool
@@ -31,15 +34,34 @@ struct RuntimeVersionStore {
         try writeDocument(document)
     }
 
-    func readVersionValue(default defaultValue: String) -> String {
-        guard fileExists(versionFile),
-              let data = try? readData(versionFile),
-              let document = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let version = document["runtimeVersion"] as? String
-        else {
-            return defaultValue
+    func readVersion() -> RuntimeVersionReadResult {
+        guard fileExists(versionFile) else {
+            return .missing
         }
-        return version
+        do {
+            let data = try readData(versionFile)
+            guard
+                let document = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                let version = document["runtimeVersion"] as? String,
+                !version.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            else {
+                return .failed("runtime-version.json is missing runtimeVersion")
+            }
+            return .loaded(version)
+        } catch {
+            return .failed(error.localizedDescription)
+        }
+    }
+
+    func readVersionValue() -> String {
+        switch readVersion() {
+        case .missing:
+            return Self.missingVersionValue
+        case .loaded(let version):
+            return version
+        case .failed:
+            return Self.invalidVersionValue
+        }
     }
 
     private func writeDocument(_ document: some Encodable) throws {
@@ -47,4 +69,10 @@ struct RuntimeVersionStore {
         try createDirectory(versionFile.deletingLastPathComponent(), true)
         try writeData(data, versionFile)
     }
+}
+
+enum RuntimeVersionReadResult: Equatable {
+    case missing
+    case loaded(String)
+    case failed(String)
 }

@@ -14,6 +14,7 @@ public struct RuntimeControlCapabilities: Codable, Equatable, Sendable {
     public var canControlRuntimeServices: Bool
     public var canExportLogs: Bool
     public var canViewReleaseMetadata: Bool
+    public var canUseTestTools: Bool
 
     public init(
         canInstallRuntime: Bool = true,
@@ -27,7 +28,8 @@ public struct RuntimeControlCapabilities: Codable, Equatable, Sendable {
         canStreamLogs: Bool = true,
         canControlRuntimeServices: Bool = true,
         canExportLogs: Bool = true,
-        canViewReleaseMetadata: Bool = true
+        canViewReleaseMetadata: Bool = true,
+        canUseTestTools: Bool = false
     ) {
         self.canInstallRuntime = canInstallRuntime
         self.canUninstallRuntime = canUninstallRuntime
@@ -41,6 +43,7 @@ public struct RuntimeControlCapabilities: Codable, Equatable, Sendable {
         self.canControlRuntimeServices = canControlRuntimeServices
         self.canExportLogs = canExportLogs
         self.canViewReleaseMetadata = canViewReleaseMetadata
+        self.canUseTestTools = canUseTestTools
     }
 }
 
@@ -108,6 +111,7 @@ public enum RuntimeState: Codable, Equatable, Sendable {
 }
 
 public struct RuntimeSettings: Codable, Equatable, Sendable {
+    public var readIssues: [RuntimeSettingsReadIssue]
     public var cpuCount: Int
     public var memoryGiB: Int
     public var diskGiB: Int
@@ -115,6 +119,7 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
     public var networkMode: RuntimeNetworkMode
     public var bridgedInterface: String
     public var proxyPort: Int
+    public var runtimeControlPort: Int
     public var vitalFilesDirectory: String
     public var publicHost: String
     public var publicPort: Int
@@ -128,6 +133,7 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
     public var restartAfterSave: Bool
 
     public init(
+        readIssues: [RuntimeSettingsReadIssue] = [],
         cpuCount: Int = 8,
         memoryGiB: Int = 8,
         diskGiB: Int = 32,
@@ -135,6 +141,7 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
         networkMode: RuntimeNetworkMode = .shared,
         bridgedInterface: String = "",
         proxyPort: Int = 80,
+        runtimeControlPort: Int = 18_321,
         vitalFilesDirectory: String = "/Users/Shared/TiroshVitalServer/vital-files",
         publicHost: String = "",
         publicPort: Int = 80,
@@ -147,6 +154,7 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
         redisBackupRetentionCount: Int = 30,
         restartAfterSave: Bool = true
     ) {
+        self.readIssues = readIssues
         self.cpuCount = cpuCount
         self.memoryGiB = memoryGiB
         self.diskGiB = diskGiB
@@ -154,6 +162,7 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
         self.networkMode = networkMode
         self.bridgedInterface = bridgedInterface
         self.proxyPort = proxyPort
+        self.runtimeControlPort = runtimeControlPort
         self.vitalFilesDirectory = vitalFilesDirectory
         self.publicHost = publicHost
         self.publicPort = publicPort
@@ -165,6 +174,16 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
         self.preventSystemSleep = preventSystemSleep
         self.redisBackupRetentionCount = redisBackupRetentionCount
         self.restartAfterSave = restartAfterSave
+    }
+}
+
+public struct RuntimeSettingsReadIssue: Codable, Equatable, Sendable {
+    public var source: String
+    public var message: String
+
+    public init(source: String, message: String) {
+        self.source = source
+        self.message = message
     }
 }
 
@@ -188,6 +207,7 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
     public var runtimeState: RuntimeState?
     public var operation: RuntimeOperation?
     public var statusMessage: String?
+    public var statusDocumentError: String?
     public var updatedAt: String?
     public var startedAt: String?
     public var runtimeVersion: String?
@@ -197,13 +217,18 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
     public var vmIP: String?
     public var guestHTTP: String?
     public var hostProxyHTTP: String?
+    public var runtimeControlHTTP: String?
+    public var runtimeControlStartedAt: String?
     public var redisUIHTTP: String?
     public var swaggerUIHTTP: String?
     public var cpuUsagePercent: Double?
     public var memory: ResourceUsage?
     public var systemDisk: ResourceUsage?
     public var dataStorage: ResourceUsage?
+    public var dataStorageError: String?
+    public var guestRuntimeStateError: String?
     public var dataDirectoryStats: RuntimeDataDirectoryStats?
+    public var dataDirectoryStatsError: String?
     public var proxyPort: Int
     public var failureReasons: [RuntimeFailureReason]
     public var progress: RuntimeProgressDocument?
@@ -220,6 +245,7 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
         runtimeState: RuntimeState? = nil,
         operation: RuntimeOperation? = nil,
         statusMessage: String? = nil,
+        statusDocumentError: String? = nil,
         updatedAt: String? = nil,
         startedAt: String? = nil,
         runtimeVersion: String? = nil,
@@ -229,13 +255,18 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
         vmIP: String? = nil,
         guestHTTP: String? = nil,
         hostProxyHTTP: String? = nil,
+        runtimeControlHTTP: String? = nil,
+        runtimeControlStartedAt: String? = nil,
         redisUIHTTP: String? = nil,
         swaggerUIHTTP: String? = nil,
         cpuUsagePercent: Double? = nil,
         memory: ResourceUsage? = nil,
         systemDisk: ResourceUsage? = nil,
         dataStorage: ResourceUsage? = nil,
+        dataStorageError: String? = nil,
+        guestRuntimeStateError: String? = nil,
         dataDirectoryStats: RuntimeDataDirectoryStats? = nil,
+        dataDirectoryStatsError: String? = nil,
         proxyPort: Int = 80,
         failureReasons: [RuntimeFailureReason] = [],
         progress: RuntimeProgressDocument? = nil,
@@ -251,6 +282,7 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
         self.runtimeState = runtimeState
         self.operation = operation
         self.statusMessage = statusMessage
+        self.statusDocumentError = statusDocumentError
         self.updatedAt = updatedAt
         self.startedAt = startedAt
         self.runtimeVersion = runtimeVersion
@@ -260,13 +292,18 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
         self.vmIP = vmIP
         self.guestHTTP = guestHTTP
         self.hostProxyHTTP = hostProxyHTTP
+        self.runtimeControlHTTP = runtimeControlHTTP
+        self.runtimeControlStartedAt = runtimeControlStartedAt
         self.redisUIHTTP = redisUIHTTP
         self.swaggerUIHTTP = swaggerUIHTTP
         self.cpuUsagePercent = cpuUsagePercent
         self.memory = memory
         self.systemDisk = systemDisk
         self.dataStorage = dataStorage
+        self.dataStorageError = dataStorageError
+        self.guestRuntimeStateError = guestRuntimeStateError
         self.dataDirectoryStats = dataDirectoryStats
+        self.dataDirectoryStatsError = dataDirectoryStatsError
         self.proxyPort = proxyPort
         self.failureReasons = failureReasons
         self.progress = progress
@@ -274,21 +311,4 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
         self.vitalDBObservation = vitalDBObservation
     }
 
-    public var isReady: Bool {
-        runtimeInstalled
-            && vmServiceLoaded
-            && proxyServiceLoaded
-            && watchdogServiceLoaded
-            && runtimeState == .healthy
-            && vmIP != nil
-            && isSuccessfulHTTPStatus(guestHTTP)
-            && isSuccessfulHTTPStatus(hostProxyHTTP)
-    }
-
-    private func isSuccessfulHTTPStatus(_ value: String?) -> Bool {
-        guard let value, let code = Int(value) else {
-            return false
-        }
-        return code >= 200 && code < 300
-    }
 }

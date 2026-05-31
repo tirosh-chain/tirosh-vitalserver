@@ -24,6 +24,10 @@ VITALSERVER_TRUST_PROXY ?= 1
 COMPOSE := $(strip $(DOCKER_COMPOSE) $(if $(COMPOSE_ENV_FILE),--env-file $(COMPOSE_ENV_FILE),))
 TESTKIT_RUNNER ?= $(if $(wildcard .venv/bin/python),.venv/bin/python scripts/test_vitalserver.py,$(shell if command -v "$(UV)" >/dev/null 2>&1; then printf "%s" "$(UV) run python scripts/test_vitalserver.py"; else printf "%s" "$(PYTHON) scripts/test_vitalserver.py"; fi))
 TESTKIT := $(TESTKIT_RUNNER) --config $(TESTKIT_CONFIG)
+E2E_LOOP_COUNT ?= 0
+E2E_LOOP_INTERVAL ?= 10
+CHAOS_LOOP_COUNT ?= 5
+CHAOS_LOOP_INTERVAL ?= 0
 
 include make/submodule.mk
 include make/proxy.mk
@@ -31,6 +35,7 @@ include make/env.mk
 include make/compose.mk
 include make/testkit.mk
 include make/python.mk
+include make/pwa.mk
 include make/vm.mk
 
 .PHONY: \
@@ -42,7 +47,8 @@ include make/vm.mk
 	dist-install-dev dist-installed-health dist-uninstall-dev \
 	runtime-up runtime-up-bridged runtime-down runtime-status runtime-health \
 	runtime-prepare runtime-ip runtime-proxy-start runtime-clean \
-	runtime-interfaces runtime-network-shared runtime-network-bridged \
+	runtime-interfaces runtime-network-shared runtime-network-bridged runtime-e2e-smoke \
+	runtime-permission-audit runtime-chaos runtime-chaos-loop runtime-coverage coverage e2e-smoke e2e-local e2e-local-loop \
 	devtools-version-source devtools-build devtools-nginx-artifact devtools-nginx-bundle \
 	devtools-docker-images devtools-sign devtools-sign-bridged devtools-bridged-preflight \
 	devtools-init devtools-download devtools-cloud-init devtools-stage \
@@ -78,6 +84,38 @@ runtime-clean: vm-clean
 runtime-interfaces: vm-interfaces
 runtime-network-shared: vm-network-shared
 runtime-network-bridged: vm-network-bridged
+runtime-e2e-smoke: vm-e2e-smoke
+runtime-permission-audit:
+	$(PYTHON) scripts/runtime_permission_audit.py $(RUNTIME_PERMISSION_AUDIT_ARGS)
+runtime-chaos:
+	CLANG_MODULE_CACHE_PATH="$(VM_CLANG_MODULE_CACHE)" swift test --package-path "$(VM_SWIFT_PACKAGE_DIR)" --filter Chaos
+runtime-chaos-loop:
+	@iteration=1; \
+	while :; do \
+		printf "\n== runtime chaos iteration %s ==\n" "$$iteration"; \
+		$(MAKE) runtime-chaos || exit $$?; \
+		if [ "$(CHAOS_LOOP_COUNT)" != "0" ] && [ "$$iteration" -ge "$(CHAOS_LOOP_COUNT)" ]; then \
+			break; \
+		fi; \
+		iteration=$$((iteration + 1)); \
+		sleep "$(CHAOS_LOOP_INTERVAL)"; \
+	done
+runtime-coverage: vm-coverage
+coverage: vm-coverage
+e2e-smoke: vm-e2e-smoke
+e2e-local: e2e-smoke pwa-check pwa-test pwa-build
+
+e2e-local-loop:
+	@iteration=1; \
+	while :; do \
+		printf "\n== local e2e iteration %s ==\n" "$$iteration"; \
+		$(MAKE) e2e-local || exit $$?; \
+		if [ "$(E2E_LOOP_COUNT)" != "0" ] && [ "$$iteration" -ge "$(E2E_LOOP_COUNT)" ]; then \
+			break; \
+		fi; \
+		iteration=$$((iteration + 1)); \
+		sleep "$(E2E_LOOP_INTERVAL)"; \
+	done
 
 devtools-version-source: vm-version-source
 devtools-build: vm-build
@@ -99,7 +137,7 @@ devtools-wait-ip: vm-wait-ip
 devtools-wait-http: vm-wait-http
 devtools-package-clean: vm-pkg-clean
 
-.PHONY: help help-run help-dist help-runtime help-devtools help-proxy help-dev help-all
+.PHONY: help help-run help-dist help-runtime help-devtools help-proxy help-dev help-pwa help-all
 help:
 	@printf "tirosh-vitalserver\n"
 	@printf "\n"
@@ -112,7 +150,14 @@ help:
 	@printf "  make ps              Show container status\n"
 	@printf "  make down            Stop proxy and Compose stack, keep volumes\n"
 	@printf "  make testkit-smoke   Run bounded productization smoke scenario\n"
+	@printf "  make pwa-dev         Start Runtime Control PWA dev server\n"
 	@printf "  make check           Run lint, typecheck, and test\n"
+	@printf "  make e2e-smoke       Run local Runtime Control HTTP smoke test\n"
+	@printf "  make e2e-local       Run local HTTP smoke and PWA checks\n"
+	@printf "  make runtime-chaos   Run deterministic macOS runtime chaos scenarios\n"
+	@printf "  make runtime-chaos-loop  Repeat deterministic runtime chaos scenarios\n"
+	@printf "  make runtime-permission-audit  Audit installed runtime file permissions\n"
+	@printf "  make coverage        Run macOS runtime Swift coverage report\n"
 	@printf "\n"
 	@printf "More help:\n"
 	@printf "  make help-run        App, Compose, Swagger, cleanup\n"
@@ -121,6 +166,7 @@ help:
 	@printf "  make help-devtools   Low-level build and staging steps\n"
 	@printf "  make help-proxy      macOS host nginx proxy\n"
 	@printf "  make help-dev        Python/testkit development commands\n"
+	@printf "  make help-pwa        Runtime Control PWA commands\n"
 	@printf "  make help-all        Full command list\n"
 	@printf "\n"
 	@printf "Config:\n"
@@ -204,6 +250,11 @@ help-runtime:
 	@printf "  make runtime-ip           Show detected runtime IP\n"
 	@printf "  make runtime-proxy-start  Start host proxy for a runtime endpoint\n"
 	@printf "  make runtime-clean        Remove runtime state, keep shared data\n"
+	@printf "  make runtime-e2e-smoke    Run local Runtime Control HTTP smoke test\n"
+	@printf "  make runtime-chaos        Run deterministic macOS runtime chaos scenarios\n"
+	@printf "  make runtime-chaos-loop   Repeat deterministic runtime chaos scenarios\n"
+	@printf "  make runtime-permission-audit  Audit installed runtime file permissions\n"
+	@printf "  make runtime-coverage     Run Swift tests with source coverage report\n"
 	@printf "\n"
 	@printf "Networking:\n"
 	@printf "  make runtime-interfaces       List bridged network interfaces\n"
@@ -274,6 +325,22 @@ help-dev:
 	@printf "  TESTKIT_CONFIG=%s\n" "$(TESTKIT_CONFIG)"
 	@printf "  TESTKIT_VERSION=%s\n" "$(TESTKIT_VERSION)"
 
+help-pwa:
+	@printf "tirosh-vitalserver: pwa\n"
+	@printf "\n"
+	@printf "Runtime Control PWA:\n"
+	@printf "  make pwa-install      Install PWA npm dependencies\n"
+	@printf "  make pwa-generate-api Generate OpenAPI TypeScript types\n"
+	@printf "  make pwa-check        Typecheck Runtime Control PWA\n"
+	@printf "  make pwa-test         Run Runtime Control PWA tests\n"
+	@printf "  make pwa-coverage     Run Runtime Control PWA coverage report\n"
+	@printf "  make pwa-build        Build Runtime Control PWA static assets\n"
+	@printf "  make pwa-dev          Start Vite dev server on 127.0.0.1:5174\n"
+	@printf "  make pwa-preview      Preview built PWA on 127.0.0.1:4174\n"
+	@printf "\n"
+	@printf "Config:\n"
+	@printf "  PWA_DIR=%s\n" "$(PWA_DIR)"
+
 help-all:
 	@$(MAKE) --no-print-directory help-run
 	@printf "\n"
@@ -286,3 +353,5 @@ help-all:
 	@$(MAKE) --no-print-directory help-proxy
 	@printf "\n"
 	@$(MAKE) --no-print-directory help-dev
+	@printf "\n"
+	@$(MAKE) --no-print-directory help-pwa

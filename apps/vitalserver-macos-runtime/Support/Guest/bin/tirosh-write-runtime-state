@@ -234,6 +234,12 @@ def main() -> int:
     state_path.write_text(
         json.dumps(
             {
+                "capabilities": {
+                    "activateUpdate": True,
+                    "prepareUpdateShutdown": True,
+                    "redisBackup": True,
+                    "repairDatastore": True,
+                },
                 "schemaVersion": 1,
                 "vmIP": first_non_loopback_ip(),
                 "bootID": boot_id(),

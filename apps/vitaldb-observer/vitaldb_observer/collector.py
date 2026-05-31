@@ -14,8 +14,8 @@ from .model import (
     BedObservation,
     ObservationDocument,
     ProxyConnectionObservation,
-    RecorderActivityBucket,
     RawBedScopedObservation,
+    RecorderActivityBucket,
     RecorderActivityObservation,
     RecorderObservation,
 )
@@ -369,7 +369,7 @@ class _ActivityBuilder:
     room_count: int = 0
     first_seen_at: str | None = None
     last_seen_at: str | None = None
-    buckets: dict[str, "_ActivityBucketBuilder"] = field(default_factory=dict)
+    buckets: dict[str, _ActivityBucketBuilder] = field(default_factory=dict)
 
     def observe(
         self, timestamp: str, event_time: datetime, byte_count: int, room_count: int

@@ -38,7 +38,7 @@ def render_proxy_config(input: HostProxyInput) -> int:
 
 def write_proxy_config(input: HostProxyInput) -> int:
     config = resolve_repo_path(input.proxy_config)
-    (resolve_repo_path(input.runtime_dir) / "logs").mkdir(parents=True, exist_ok=True)
+    ensure_nginx_runtime_dirs(resolve_repo_path(input.runtime_dir))
     config.parent.mkdir(parents=True, exist_ok=True)
     config.write_text(
         render_proxy_config_text(input.port, input.upstream),
@@ -170,13 +170,25 @@ def build_nginx_bundle(input: NginxBundleInput, config: NginxBundleConfig) -> in
 
 def write_proxy_config_file(input: HostProxyInput) -> None:
     config = resolve_repo_path(input.proxy_config)
-    (resolve_repo_path(input.runtime_dir) / "logs").mkdir(parents=True, exist_ok=True)
+    ensure_nginx_runtime_dirs(resolve_repo_path(input.runtime_dir))
     config.parent.mkdir(parents=True, exist_ok=True)
     config.write_text(
         render_proxy_config_text(input.port, input.upstream),
         encoding="utf-8",
     )
     print(f"Wrote {input.proxy_config}")
+
+
+def ensure_nginx_runtime_dirs(runtime_dir: Path) -> None:
+    for relative_path in [
+        "logs",
+        "temp/client_body",
+        "temp/proxy",
+        "temp/fastcgi",
+        "temp/uwsgi",
+        "temp/scgi",
+    ]:
+        (runtime_dir / relative_path).mkdir(parents=True, exist_ok=True)
 
 
 def render_proxy_config_text(port: str, upstream: str) -> str:

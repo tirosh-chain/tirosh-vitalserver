@@ -6,6 +6,7 @@ struct RuntimeAdvancedPanel: View {
     @Binding var showingRollbackConfirmation: Bool
     @Binding var showingRepairProxyConfirmation: Bool
     @Binding var showingRepairDatastoreConfirmation: Bool
+    @Binding var showingRepairVMDiskConfirmation: Bool
     @Binding var showingRepairRuntimeServicesConfirmation: Bool
     @Binding var showingStartServicesConfirmation: Bool
     @Binding var showingStopServicesConfirmation: Bool
@@ -16,6 +17,38 @@ struct RuntimeAdvancedPanel: View {
     @State private var showingNetworkOverrides = false
     @State private var showingAdminOperations = false
     private let displayPolicy = RuntimeStatusDisplayPolicy()
+
+    init(
+        viewModel: RuntimeViewModel,
+        showingApplySettingsConfirmation: Binding<Bool>,
+        showingRollbackConfirmation: Binding<Bool>,
+        showingRepairProxyConfirmation: Binding<Bool>,
+        showingRepairDatastoreConfirmation: Binding<Bool>,
+        showingRepairVMDiskConfirmation: Binding<Bool>,
+        showingRepairRuntimeServicesConfirmation: Binding<Bool>,
+        showingStartServicesConfirmation: Binding<Bool>,
+        showingStopServicesConfirmation: Binding<Bool>,
+        hoveredServiceLink: Binding<String?>,
+        showingServiceHealth: Bool = true,
+        showingRecoveryOperations: Bool = false,
+        showingNetworkOverrides: Bool = false,
+        showingAdminOperations: Bool = false
+    ) {
+        self.viewModel = viewModel
+        self._showingApplySettingsConfirmation = showingApplySettingsConfirmation
+        self._showingRollbackConfirmation = showingRollbackConfirmation
+        self._showingRepairProxyConfirmation = showingRepairProxyConfirmation
+        self._showingRepairDatastoreConfirmation = showingRepairDatastoreConfirmation
+        self._showingRepairVMDiskConfirmation = showingRepairVMDiskConfirmation
+        self._showingRepairRuntimeServicesConfirmation = showingRepairRuntimeServicesConfirmation
+        self._showingStartServicesConfirmation = showingStartServicesConfirmation
+        self._showingStopServicesConfirmation = showingStopServicesConfirmation
+        self._hoveredServiceLink = hoveredServiceLink
+        self._showingServiceHealth = State(initialValue: showingServiceHealth)
+        self._showingRecoveryOperations = State(initialValue: showingRecoveryOperations)
+        self._showingNetworkOverrides = State(initialValue: showingNetworkOverrides)
+        self._showingAdminOperations = State(initialValue: showingAdminOperations)
+    }
 
     var body: some View {
         ScrollView {
@@ -90,13 +123,17 @@ struct RuntimeAdvancedPanel: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
-                    if !viewModel.backups.isEmpty {
+                    if let backupListErrorMessage = viewModel.backupListErrorMessage {
+                        Text(backupListErrorMessage)
+                            .foregroundStyle(.red)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else if !viewModel.backups.isEmpty {
                         Grid(alignment: .leading, horizontalSpacing: 20, verticalSpacing: 10) {
                             settingRow(AppConstants.Labels.rollbackBackup) {
                                 Picker("", selection: $viewModel.selectedBackupPath) {
                                     ForEach(viewModel.backups) { backup in
                                         Text("\(backup.name) (\(viewModel.presentationFormatter.backupSizeText(backup)))")
-                                            .tag(backup.path)
+                                            .tag(Optional(backup.path))
                                     }
                                 }
                                 .labelsHidden()
@@ -129,7 +166,7 @@ struct RuntimeAdvancedPanel: View {
                         }
                         .disabled(
                             viewModel.isBusy
-                                || viewModel.selectedBackupPath.isEmpty
+                                || !viewModel.hasSelectedBackup
                                 || !viewModel.capabilities.canRollback
                         )
 
@@ -193,6 +230,11 @@ struct RuntimeAdvancedPanel: View {
                         }
                         .disabled(viewModel.isBusy || !viewModel.status.runtimeInstalled)
 
+                        Button(AppConstants.Actions.repairVMDisk) {
+                            showingRepairVMDiskConfirmation = true
+                        }
+                        .disabled(viewModel.isBusy || !viewModel.status.runtimeInstalled)
+
                         Button(AppConstants.Actions.repairProxy) {
                             showingRepairProxyConfirmation = true
                         }
@@ -211,9 +253,9 @@ struct RuntimeAdvancedPanel: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
 
-                networkSubsection(AppConstants.Labels.sectionMacExposure) {
-                    settingPortField(AppConstants.Labels.proxyPort, value: $viewModel.settings.proxyPort)
-                    settingHelp(AppConstants.Labels.proxyPortHelp)
+                networkSubsection(AppConstants.Labels.sectionRemoteConsoleAccess) {
+                    advertisedURLPreviewRow(AppConstants.Labels.remoteConsoleURL, value: remoteConsoleURLPreview)
+                    settingHelp(AppConstants.Labels.remoteConsoleURLHelp)
                 }
 
                 networkSubsection(AppConstants.Labels.sectionAdvertisedURLOverride) {
@@ -299,6 +341,10 @@ struct RuntimeAdvancedPanel: View {
 
     private var defaultAdvertisedURLPreview: String {
         "http://\(AppConstants.Labels.advertisedURLSameHost):\(viewModel.settings.proxyPort)/"
+    }
+
+    private var remoteConsoleURLPreview: String {
+        "http://\(AppConstants.Labels.advertisedURLSameHost):\(viewModel.settings.runtimeControlPort)/"
     }
 
     private var customAdvertisedURLBinding: Binding<Bool> {

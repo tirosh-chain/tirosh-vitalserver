@@ -120,6 +120,8 @@ make swagger         # 기본 stack은 건드리지 않고 Swagger UI만 시작
 make swagger-down    # 기본 stack은 유지하고 Swagger UI만 중지
 make app-build       # app image만 build
 make testkit-smoke   # simulator 기반 smoke scenario
+make runtime-chaos   # macOS runtime deterministic chaos scenario
+make runtime-chaos-loop  # deterministic chaos scenario 반복 실행
 make check           # lint, typecheck, test 실행
 ```
 

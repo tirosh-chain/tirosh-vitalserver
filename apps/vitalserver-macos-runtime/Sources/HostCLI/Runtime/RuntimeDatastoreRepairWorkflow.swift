@@ -7,13 +7,14 @@ struct RuntimeDatastoreRepairWorkflowContext {
 }
 
 struct RuntimeDatastoreRepairWorkflowOperations {
+    let requireCapability: () throws -> Void
     let createDirectory: (URL, Bool) throws -> Void
     let removePreviousResult: () throws -> Void
     let writeRequest: (RuntimeDatastoreRepairRequest) throws -> Void
     let isVMServiceLoaded: () -> Bool
     let startVMService: () -> Void
     let restartVMService: () -> Void
-    let loadResult: () -> DatastoreRepairResultDocument?
+    let loadResult: () -> RuntimeGuestDocumentLoadResult<DatastoreRepairResultDocument>
     let restartProxyService: () -> Void
     let restartWatchdogService: () -> Void
     let waitForHealth: (RuntimeServiceRestartPolicy) throws -> Void
@@ -34,6 +35,7 @@ struct RuntimeDatastoreRepairWorkflow {
 
     private func runner() -> RuntimeDatastoreRepairRunner {
         RuntimeDatastoreRepairRunner(
+            requireCapability: operations.requireCapability,
             prepareGuestRunDirectory: {
                 try operations.createDirectory(context.guestRunDirectory, true)
             },

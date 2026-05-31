@@ -59,6 +59,11 @@ Runtime 전체 SoT map은 [Runtime observability model](observability.md#source-
 
 `bundle.optionalContainerServices`는 Testkit API처럼 컨테이너로 제공되는 선택 서비스를 포함할지 여부만 표현합니다. 선택 서비스의 image/version/display name은 `services.<name>`에 둡니다. Test 탭의 route, API shape, 화면 정책은 release manifest가 아니라 Test 탭/API 구현이 소유합니다.
 
+Runtime Control PWA는 package/update bundle에 static asset으로 포함됩니다. `make vm-app`,
+`make vm-pkg-*`, `make vm-dmg-*`, `make vm-update-bundle-*`는 `make pwa-build`를 먼저 실행합니다.
+빌드 머신에서는 packaging 전에 한 번 `make pwa-install`을 실행해야 하며, 현장 Mac에는 npm/Vite나
+registry 접근이 필요하지 않습니다.
+
 `VitalServer Helper`는 최상위 product release입니다. platform별 build는 같은 Helper release 아래의 variant이며, 세부 변경 범위는 Helper UI, Native Shell, Runtime Control API, Updater, Supervisor, VM Driver, Service Stack, VM Image, VitalServer component version으로 설명합니다.
 
 `make vm-build`는 이 값을 Swift `GeneratedVersion.swift`와 Helper app의 `GeneratedRelease.swift`에 반영하고, `make vm-app`은 app bundle `Info.plist`의 `CFBundleShortVersionString`에 같은 helper version을 씁니다. `make vm-pkg-dev`/`make vm-pkg-release`, `make vm-update-bundle-dev`/`make vm-update-bundle-release`, `make vm-rootfs-update-bundle-dev`/`make vm-rootfs-update-bundle-release`는 release manifest 값을 artifact name, package version, update bundle version, compatibility metadata에 반영합니다. `services.*.displayName`은 Helper UI의 service 표시명 source of truth입니다. 특별한 검증이 아니라면 버전, 표시명, image, update compatibility, optional container service 포함 정책 변경은 이 파일 하나에서 관리합니다.
@@ -232,6 +237,7 @@ launchd
 
 ```text
 make vm-dmg-release
+  -> make pwa-build               # Runtime Control PWA static assets
   -> make vm-golden-rootfs         # clean VM disk -> rootfs-base.raw.gz
   -> vitalserver-devtools release-dmg
      -> release-pkg staging/pkgbuild
@@ -243,6 +249,7 @@ make vm-dmg-release
 | 단계 | 주 책임 구현 | 이유 |
 |---|---|---|
 | target dependency 연결 | `make/vm/package.mk` | 개발자가 실행할 명령과 산출물 경로를 한 곳에서 노출 |
+| Runtime Control PWA build | `apps/vitalserver-runtime-pwa` Vite build | 현장 Mac에는 npm/Vite를 요구하지 않고 static asset만 배포 |
 | Ubuntu/cloud-init/rootfs/nginx/Docker/update bundle 생성 | `packages/vitalserver-devtools` Python package | build-machine 전용 작업이고 입력/출력 검증과 unit test가 필요 |
 | Swift binary와 Helper app build/sign | SwiftPM, `codesign`, Make target | macOS toolchain과 app bundle 조립이 필요 |
 | PKG root staging | Make + filesystem tools | payload 배치가 명령형이고 `pkgbuild` 입력 구조와 1:1 대응 |
@@ -258,6 +265,7 @@ make vm-dmg-release
 | package work dir | `.tmp/vitalserver-vm-pkg/` | PKG staging, rootfs cache, nginx bundle, Docker bundle |
 | package root | `.tmp/vitalserver-vm-pkg/root/` | `pkgbuild --root` 입력 |
 | app bundle staging | `.tmp/VitalServer Helper.app` | `/Applications` payload로 들어갈 app |
+| PWA static build | `apps/vitalserver-runtime-pwa/dist/` | Helper app resource로 들어갈 Runtime Control PWA |
 | golden VM home | `.tmp/vitalserver-vm-golden/` | package용 clean rootfs를 만들기 위한 임시 VM home |
 | DMG staging | `.tmp/vitalserver-vm-dmg/` | DMG root에 들어갈 파일 배치 |
 | PKG output | `dist/TiroshVitalServerVM-<version>.pkg` | installer payload |
@@ -593,14 +601,16 @@ make vm-rootfs-update-bundle-verify-release
 
 `make vm-update-bundle-release`는 Product Update artifact staging을 `packages/vitalserver-devtools` CLI에서 수행하고
 `app-bundle.tar.gz`, `runtime-tools.tar.gz`, `nginx-bundle.tar.gz`, `guest-deploy.tar.gz`를 기본 포함합니다.
-따라서 Helper UI, Native Shell, Runtime Control API, Updater/Supervisor/VM Driver tools, host nginx,
-Service Stack/guest deploy bundle까지 같은 online/offline Product Update 계약으로 배포할 수 있습니다.
+`app-bundle.tar.gz`에는 Swift Helper app과 Runtime Control PWA static assets
+(`Contents/Resources/runtime-control-pwa`)가 함께 들어갑니다. 따라서 Helper UI, PWA UI, Native Shell,
+Runtime Control API, Updater/Supervisor/VM Driver tools, host nginx, Service Stack/guest deploy bundle까지
+같은 online/offline Product Update 계약으로 배포할 수 있습니다.
 
 update bundle도 압축이 필요합니다. 다만 압축 대상은 update artifact 단위입니다. 일반적인 현장 업데이트는 작은 `.tar.gz` artifact를 교체하는 흐름이고, 무거운 `rootfs-base.raw.gz`를 매번 다시 압축하거나 배포하는 흐름이 아닙니다.
 
 | artifact | 압축 파일 | Product Update 포함 여부 | 비고 |
 |---|---|---|---|
-| Helper UI | `app-bundle.tar.gz` | 기본 포함 | `/Applications/VitalServer Helper.app` 교체 |
+| Helper UI + Runtime Control PWA | `app-bundle.tar.gz` | 기본 포함 | `/Applications/VitalServer Helper.app` 교체. PWA는 app resource static asset으로 포함 |
 | Updater/Supervisor/VM Driver tools | `runtime-tools.tar.gz` | 기본 포함 | `/usr/local/bin` local control tools 교체 |
 | host nginx bundle | `nginx-bundle.tar.gz` | 기본 포함 | host proxy binary/dylib 교체 |
 | Service Stack / guest deploy bundle | `guest-deploy.tar.gz` | 기본 포함 | VM shared deploy script/config, compose, container image bundle 교체 |

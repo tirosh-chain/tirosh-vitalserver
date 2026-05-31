@@ -1,4 +1,4 @@
-import Core
+import Contracts
 import Foundation
 
 public enum RuntimeEventCursorWireCodec {

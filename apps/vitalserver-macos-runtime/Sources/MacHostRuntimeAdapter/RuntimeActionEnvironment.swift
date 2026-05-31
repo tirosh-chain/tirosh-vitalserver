@@ -6,7 +6,6 @@ import HostInfrastructure
 
 protocol RuntimeActionEnvironment: Sendable {
     func isExecutable(atPath path: String) -> Bool
-    func createDirectory(at url: URL)
     func writeAdminPasswordFile(_ password: String) throws -> URL
     func removeItem(at url: URL)
     func verifyBundle(launcher: String, bundleURL: URL) async -> RuntimeCommandResult
@@ -21,10 +20,6 @@ struct SystemRuntimeActionEnvironment: RuntimeActionEnvironment, @unchecked Send
 
     func isExecutable(atPath path: String) -> Bool {
         fileStore.isExecutableFile(atPath: path)
-    }
-
-    func createDirectory(at url: URL) {
-        try? fileStore.createDirectory(at: url, withIntermediateDirectories: true)
     }
 
     func writeAdminPasswordFile(_ password: String) throws -> URL {

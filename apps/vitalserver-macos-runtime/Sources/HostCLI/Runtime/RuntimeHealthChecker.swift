@@ -39,16 +39,16 @@ struct RuntimeHealthChecker {
     }
 
     func snapshot() -> RuntimeHealthSnapshot {
-        let loadedGuestState = guestRuntimeState()
-        let guestRuntimeStateFresh = isGuestRuntimeStateFresh(loadedGuestState)
-        let guestState = guestRuntimeStateFresh ? loadedGuestState : nil
-        let vmIP = loadedGuestState?.vmIP ?? readTrimmed(installedPaths.vmIPFile)
-        let proxyPort = installedProxyPort()
+        let guestRuntimeState = guestRuntimeStateObservationReader().read()
+        let guestState = guestRuntimeState.freshState
+        let vmIP = guestState?.vmIP
+        let proxyPortRead = installedProxyPortRead()
+        let proxyPort = proxyPortRead.port
         let hostProxyHTTP = httpProber.statusCode(url: Constants.Runtime.proxyHealthURL(port: proxyPort))
         let redisUIHTTP = httpProber.statusCode(url: Constants.Runtime.redisUIHealthURL(port: proxyPort))
         let swaggerUIHTTP = httpProber.statusCode(url: Constants.Runtime.swaggerUIHealthURL(port: proxyPort))
         let containerObservation = containerObservation(proxyPort: proxyPort, guestState: guestState)
-        let guestHTTP = guestHTTPStatus(guestState: guestState, vmIP: vmIP)
+        let guestHTTPRead = guestHTTPStatus(guestState: guestState)
 
         return RuntimeHealthEvaluator.evaluate(RuntimeHealthInput(
             vmExecutable: fileStore.isExecutableFile(atPath: Constants.InstallPaths.vmBin),
@@ -61,18 +61,17 @@ struct RuntimeHealthChecker {
             vmIP: vmIP,
             proxyPort: proxyPort,
             hostProxyHTTP: hostProxyHTTP,
-            guestHTTP: guestHTTP,
-            guestRuntimeStatePresent: loadedGuestState != nil,
-            guestRuntimeStateFresh: guestRuntimeStateFresh,
+            guestHTTP: guestHTTPRead.status,
+            guestRuntimeStatePresent: guestRuntimeState.isPresent,
+            guestRuntimeStateFresh: guestRuntimeState.isFresh,
             redisUIHTTP: redisUIHTTP,
             swaggerUIHTTP: swaggerUIHTTP,
             containerObservation: containerObservation,
             vitalDBObservation: guestState?.vitalDBObservation,
-            vmDiagnosticErrors: vmDiagnosticErrors(
-                hostProxyHTTP: hostProxyHTTP,
-                guestHTTP: guestHTTP,
-                guestRuntimeStateFresh: guestRuntimeStateFresh
-            ),
+            reportedVMErrors: [],
+            configurationFailureReasons: proxyPortRead.failureReasons
+                + guestRuntimeState.failureReasons
+                + guestHTTPRead.failureReasons,
             proxyPortFailureReasons: proxyPortFailureReasons(port: proxyPort),
             guestBootstrapFailureReason: guestBootstrapFailureReason()
         ))
@@ -101,6 +100,10 @@ struct RuntimeHealthChecker {
     }
 
     func installedProxyPort() -> Int {
+        installedProxyPortRead().port
+    }
+
+    private func installedProxyPortRead() -> RuntimeProxyPortReadResult {
         let result = commandRunner.run(
             Constants.Commands.plistBuddy,
             arguments: [
@@ -114,23 +117,22 @@ struct RuntimeHealthChecker {
               let port = Int(value),
               (1...65_535).contains(port)
         else {
-            return InstallSettings.defaultProxyPort
+            return RuntimeProxyPortReadResult(
+                port: InstallSettings.defaultProxyPort,
+                failureReasons: [.hostProxyConfigInvalid]
+            )
         }
-        return port
+        return RuntimeProxyPortReadResult(port: port, failureReasons: [])
     }
 
-    func guestRuntimeState() -> GuestRuntimeStateDocument? {
-        guestGateway.loadRuntimeState()
-    }
-
-    private func isGuestRuntimeStateFresh(_ guestState: GuestRuntimeStateDocument?) -> Bool {
-        guard guestState != nil else {
-            return true
-        }
-        guard let modifiedAt = try? fileStore.modificationDate(installedPaths.runtimeState) else {
-            return false
-        }
-        return now().timeIntervalSince(modifiedAt) <= Constants.Runtime.runtimeStateStaleAfterSeconds
+    private func guestRuntimeStateObservationReader() -> RuntimeGuestRuntimeStateObservationReader {
+        RuntimeGuestRuntimeStateObservationReader(
+            guestGateway: guestGateway,
+            fileStore: fileStore,
+            runtimeStateURL: installedPaths.runtimeState,
+            staleAfterSeconds: Constants.Runtime.runtimeStateStaleAfterSeconds,
+            now: now
+        )
     }
 
     func readTrimmed(_ url: URL) -> String? {
@@ -143,29 +145,24 @@ struct RuntimeHealthChecker {
         return value
     }
 
-    private func guestHTTPStatus(guestState: GuestRuntimeStateDocument?, vmIP: String?) -> String {
+    private func guestHTTPStatus(guestState: GuestRuntimeStateDocument?) -> RuntimeGuestHTTPReadResult {
         if let guestHTTP = guestState?.guestHTTP, !guestHTTP.isEmpty {
-            return guestHTTP
+            return RuntimeGuestHTTPReadResult(status: guestHTTP, failureReasons: [])
         }
         if guestState != nil {
-            return "bootstrap-pending"
+            return RuntimeGuestHTTPReadResult(
+                status: RuntimeHTTPStatusText.missingGuestHTTP,
+                failureReasons: [.guestRuntimeStateInvalid]
+            )
         }
-        if let vmIP {
-            return httpProber.statusCode(url: "http://\(vmIP)\(Constants.Runtime.readinessPath)")
-        }
-        return "missing-vm-ip"
+        return RuntimeGuestHTTPReadResult(status: RuntimeHTTPStatusText.missingVMIP, failureReasons: [])
     }
 
     private func guestBootstrapFailureReason() -> RuntimeFailureReason? {
-        if let bootstrapResult = guestGateway.loadBootstrapResult() {
+        if case .loaded(let bootstrapResult) = guestGateway.loadBootstrapResultDocument() {
             return GuestBootstrapEvaluator.failureReason(bootstrapResult)
         }
-
-        guard fileStore.fileExists(installedPaths.bootstrapLog),
-              let content = try? fileStore.readUTF8Text(installedPaths.bootstrapLog) else {
-            return nil
-        }
-        return LegacyBootstrapLogEvaluator.failureReason(logContent: content)
+        return nil
     }
 
     private func proxyPortFailureReasons(port: Int) -> [RuntimeFailureReason] {
@@ -178,7 +175,12 @@ struct RuntimeHealthChecker {
             arguments: ["-nP", "-iTCP:\(port)", "-sTCP:LISTEN"]
         )
         guard result.exitCode == 0 else {
-            return []
+            let stdout = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+            let stderr = result.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+            if stdout.isEmpty && stderr.isEmpty {
+                return []
+            }
+            return [.hostProxyListenerScanFailed(port: port, exitCode: Int(result.exitCode))]
         }
 
         let listenerFields = result.stdout
@@ -195,59 +197,19 @@ struct RuntimeHealthChecker {
             return []
         }
 
-        let hasExpectedProxyNginx = expectedNginxPID.map { expectedPID in
-            listenerFields.contains { $0.command == "nginx" && $0.pid == expectedPID }
-        } ?? false
-        if hasExpectedProxyNginx {
-            return []
-        }
-
         let listeners = listenerFields.map { "\($0.command)-\($0.pid)" }
         let joined = Array(listeners.prefix(5))
             .joined(separator: "_")
-        return [.proxyPortInUse(port: port, listeners: joined)]
-    }
-
-    private func vmDiagnosticErrors(
-        hostProxyHTTP: String,
-        guestHTTP: String,
-        guestRuntimeStateFresh: Bool
-    ) -> [RuntimeVMError] {
-        guard !isSuccessfulHTTPStatus(hostProxyHTTP)
-            || !isSuccessfulHTTPStatus(guestHTTP)
-            || !guestRuntimeStateFresh else {
-            return []
+        switch expectedNginxPID {
+        case .loaded(let expectedPID):
+            let hasExpectedProxyNginx = listenerFields.contains { $0.command == "nginx" && $0.pid == expectedPID }
+            if hasExpectedProxyNginx {
+                return []
+            }
+            return [.proxyPortInUse(port: port, listeners: joined)]
+        case .unavailable:
+            return [.hostProxyListenerMismatch(port: port, listeners: joined)]
         }
-        let launchdErrorLog = readRuntimeLog("launchd.err.log")
-        let launchdOutputLog = readRuntimeLog("launchd.out.log")
-        var errors: [RuntimeVMError] = []
-        if launchdErrorLog.localizedCaseInsensitiveContains("storage device attachment is invalid") {
-            errors.append(.diskAttachmentInvalid)
-        }
-        if launchdErrorLog.localizedCaseInsensitiveContains("failed to start VM") {
-            errors.append(.launchFailed("virtualization"))
-        }
-        if launchdErrorLog.localizedCaseInsensitiveContains("not enough memory")
-            || launchdErrorLog.localizedCaseInsensitiveContains("insufficient memory") {
-            errors.append(.hostResourceUnavailable("memory"))
-        }
-        if launchdOutputLog.localizedCaseInsensitiveContains("EXT4-fs error")
-            || launchdOutputLog.localizedCaseInsensitiveContains("Filesystem error recorded")
-            || launchdOutputLog.localizedCaseInsensitiveContains("mounting fs with errors") {
-            errors.append(.guestFilesystemError)
-        }
-        if launchdOutputLog.localizedCaseInsensitiveContains("Remounting filesystem read-only") {
-            errors.append(.guestFilesystemReadOnly)
-        }
-        if launchdOutputLog.localizedCaseInsensitiveContains("Input/output error") {
-            errors.append(.guestDiskIO)
-        }
-        return errors
-    }
-
-    private func readRuntimeLog(_ fileName: String) -> String {
-        let content = (try? fileStore.readUTF8Text(installedPaths.centralRuntimeLogsDirectory.appendingPathComponent(fileName))) ?? ""
-        return String(content.suffix(256 * 1024))
     }
 
     private func isSuccessfulHTTPStatus(_ value: String) -> Bool {
@@ -257,22 +219,57 @@ struct RuntimeHealthChecker {
         return code >= 200 && code < 300
     }
 
-    private func readInstalledProxyNginxPID() -> String? {
-        readTrimmed(installedPaths.proxyNginxPID)
+    private func readInstalledProxyNginxPID() -> RuntimeProxyNginxPIDReadResult {
+        guard let pid = readTrimmed(installedPaths.proxyNginxPID) else {
+            return .unavailable
+        }
+        return .loaded(pid)
     }
 
     private func containerObservation(proxyPort: Int, guestState: GuestRuntimeStateDocument?) -> RuntimeContainerObservation {
         let auditProxyStatus = auditProxyStatus(port: proxyPort)
-        let containerLogsBytes = try? fileStore.fileSize(installedPaths.containerLogs)
+        let containerLogsMetadata = containerLogsMetadata()
         return RuntimeContainerObservation(
             auditProxyHTTP: auditProxyStatus.httpStatus,
             auditProxyStatus: auditProxyStatus.document,
             runtimeStateUpdatedAt: guestState?.updatedAt,
             runtimeStateFileUpdatedAt: fileModifiedAt(installedPaths.runtimeState),
-            containerLogsPresent: fileStore.fileExists(installedPaths.containerLogs),
-            containerLogsBytes: containerLogsBytes,
-            containerLogsUpdatedAt: fileModifiedAt(installedPaths.containerLogs),
+            containerLogsPresent: containerLogsMetadata.present,
+            containerLogsBytes: containerLogsMetadata.bytes,
+            containerLogsUpdatedAt: containerLogsMetadata.updatedAt,
+            containerLogsMetadataError: containerLogsMetadata.error,
             composeServices: guestState?.containerServices ?? []
+        )
+    }
+
+    private func containerLogsMetadata() -> RuntimeContainerLogsMetadata {
+        let url = installedPaths.containerLogs
+        guard fileStore.fileExists(url) else {
+            return RuntimeContainerLogsMetadata(present: false, bytes: nil, updatedAt: nil, error: nil)
+        }
+
+        var errorTokens: [String] = []
+        let bytes: UInt64?
+        do {
+            bytes = try fileStore.fileSize(url)
+        } catch {
+            bytes = nil
+            errorTokens.append("size-read-failed")
+        }
+
+        let updatedAt: String?
+        do {
+            updatedAt = ISO8601DateFormatter().string(from: try fileStore.modificationDate(url))
+        } catch {
+            updatedAt = nil
+            errorTokens.append("mtime-read-failed")
+        }
+
+        return RuntimeContainerLogsMetadata(
+            present: true,
+            bytes: bytes,
+            updatedAt: updatedAt,
+            error: errorTokens.isEmpty ? nil : errorTokens.joined(separator: ",")
         )
     }
 
@@ -288,11 +285,35 @@ struct RuntimeHealthChecker {
             Constants.Commands.curl,
             arguments: ["-fsS", "--max-time", "5", Constants.Runtime.auditProxyStatusURL(port: port)]
         )
-        guard result.exitCode == 0,
-              let data = result.stdout.data(using: .utf8),
-              let document = try? JSONDecoder().decode(RuntimeAuditProxyStatusDocument.self, from: data) else {
+        guard result.exitCode == 0 else {
             return ("failed", nil)
+        }
+        guard let data = result.stdout.data(using: .utf8),
+              let document = try? JSONDecoder().decode(RuntimeAuditProxyStatusDocument.self, from: data) else {
+            return (RuntimeHTTPStatusText.invalidResponse, nil)
         }
         return ("200", document)
     }
+}
+
+private struct RuntimeProxyPortReadResult {
+    let port: Int
+    let failureReasons: [RuntimeFailureReason]
+}
+
+private struct RuntimeGuestHTTPReadResult {
+    let status: String
+    let failureReasons: [RuntimeFailureReason]
+}
+
+private struct RuntimeContainerLogsMetadata {
+    let present: Bool
+    let bytes: UInt64?
+    let updatedAt: String?
+    let error: String?
+}
+
+private enum RuntimeProxyNginxPIDReadResult {
+    case loaded(String)
+    case unavailable
 }

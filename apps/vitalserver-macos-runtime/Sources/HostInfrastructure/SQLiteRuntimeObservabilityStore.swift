@@ -12,7 +12,7 @@ public enum SQLiteRuntimeObservabilityStoreError: Error, Equatable {
 }
 
 public struct SQLiteRuntimeObservabilityStore {
-    public static let schemaVersion = 3
+    public static let schemaVersion = 4
 
     public let url: URL
 
@@ -53,6 +53,12 @@ public struct SQLiteRuntimeObservabilityStore {
               ON runtime_events(event_type, timestamp)
             """)
             try execute(db, sql: """
+            CREATE TABLE IF NOT EXISTS runtime_event_index_state (
+              key text primary key,
+              value text not null
+            )
+            """)
+            try execute(db, sql: """
             CREATE TABLE IF NOT EXISTS vitaldb_observation_snapshots (
               observed_at text primary key,
               ready integer not null,
@@ -64,6 +70,27 @@ public struct SQLiteRuntimeObservabilityStore {
             try execute(db, sql: """
             CREATE INDEX IF NOT EXISTS idx_vitaldb_observation_snapshots_observed_at
               ON vitaldb_observation_snapshots(observed_at)
+            """)
+            try execute(db, sql: """
+            CREATE TABLE IF NOT EXISTS vitaldb_recorder_activity_buckets (
+              vrcode text not null,
+              bucket_started_at text not null,
+              bucket_seconds integer not null,
+              message_count integer not null,
+              byte_count integer not null,
+              room_count integer not null,
+              first_observed_at text not null,
+              last_observed_at text not null,
+              primary key(vrcode, bucket_started_at, bucket_seconds)
+            )
+            """)
+            try execute(db, sql: """
+            CREATE INDEX IF NOT EXISTS idx_vitaldb_recorder_activity_buckets_time
+              ON vitaldb_recorder_activity_buckets(bucket_started_at)
+            """)
+            try execute(db, sql: """
+            CREATE INDEX IF NOT EXISTS idx_vitaldb_recorder_activity_buckets_vrcode_time
+              ON vitaldb_recorder_activity_buckets(vrcode, bucket_started_at)
             """)
             try execute(db, sql: """
             CREATE TABLE IF NOT EXISTS vitaldb_bed_assignments (
@@ -129,6 +156,22 @@ public struct SQLiteRuntimeObservabilityStore {
         }
     }
 
+    public func upsertRuntimeEvents(_ events: [RuntimeEventDocument]) throws {
+        try initialize()
+        try withDatabase { db in
+            try execute(db, sql: "BEGIN IMMEDIATE TRANSACTION")
+            do {
+                for event in events {
+                    try insert(event, db: db)
+                }
+                try execute(db, sql: "COMMIT")
+            } catch {
+                try? execute(db, sql: "ROLLBACK")
+                throw error
+            }
+        }
+    }
+
     public func rebuild(from events: [RuntimeEventDocument]) throws {
         try removeDatabaseFiles()
         try initialize()
@@ -143,6 +186,34 @@ public struct SQLiteRuntimeObservabilityStore {
                 try? execute(db, sql: "ROLLBACK")
                 throw error
             }
+        }
+    }
+
+    public func runtimeEventIndexCatchUpDue(now: Date, intervalSeconds: TimeInterval) -> Bool {
+        do {
+            try initialize()
+            let lastCaughtUpAt = try runtimeEventIndexStateValue(for: "last_caught_up_at")
+            guard let lastCaughtUpAt,
+                  let lastCaughtUpAtSeconds = TimeInterval(lastCaughtUpAt) else {
+                return true
+            }
+            return now.timeIntervalSince1970 - lastCaughtUpAtSeconds >= intervalSeconds
+        } catch {
+            return true
+        }
+    }
+
+    public func markRuntimeEventIndexCaughtUp(at date: Date) throws {
+        try initialize()
+        try withDatabase { db in
+            try execute(
+                db,
+                sql: """
+                INSERT OR REPLACE INTO runtime_event_index_state(key, value)
+                VALUES ('last_caught_up_at', ?)
+                """,
+                bindings: [.text(String(date.timeIntervalSince1970))]
+            )
         }
     }
 
@@ -231,7 +302,7 @@ public struct SQLiteRuntimeObservabilityStore {
                 )
             }
         } catch {
-            return RuntimeEventPage(events: [])
+            return RuntimeEventPage(events: [], readError: String(describing: error))
         }
     }
 
@@ -243,6 +314,7 @@ public struct SQLiteRuntimeObservabilityStore {
                 let shouldProject = try !vitalDBObservationExists(observedAt: observation.observedAt, db: db)
                 try insert(observation, db: db)
                 if shouldProject {
+                    try projectRecorderActivityBuckets(observation, db: db)
                     try projectRelationships(observation, db: db)
                 }
                 try execute(db, sql: "COMMIT")
@@ -253,97 +325,144 @@ public struct SQLiteRuntimeObservabilityStore {
         }
     }
 
-    public func latestVitalDBObservation() -> VitalDBObservationDocument? {
-        do {
-            try initialize()
-            return try withDatabase { db in
-                let observations = try queryVitalDBObservations(
-                    db,
-                    sql: """
-                    SELECT payload_json
-                    FROM vitaldb_observation_snapshots
-                    ORDER BY observed_at DESC
-                    LIMIT 1
-                    """,
-                    bindings: []
-                )
-                return observations.first
-            }
-        } catch {
-            return nil
+    public func bestEffortLatestVitalDBObservation() -> VitalDBObservationDocument? {
+        try? loadLatestVitalDBObservation()
+    }
+
+    public func loadLatestVitalDBObservation() throws -> VitalDBObservationDocument? {
+        try initialize()
+        return try withDatabase { db in
+            let observations = try queryVitalDBObservations(
+                db,
+                sql: """
+                SELECT payload_json
+                FROM vitaldb_observation_snapshots
+                ORDER BY observed_at DESC
+                LIMIT 1
+                """,
+                bindings: []
+            )
+            return observations.first
         }
     }
 
-    public func vitalDBObservations(limit: Int = 1000) -> [VitalDBObservationDocument] {
+    public func bestEffortVitalDBObservations(limit: Int = 1000) -> [VitalDBObservationDocument] {
+        (try? loadVitalDBObservations(limit: limit)) ?? []
+    }
+
+    public func loadVitalDBObservations(limit: Int = 1000) throws -> [VitalDBObservationDocument] {
         guard limit > 0 else {
             return []
         }
-        do {
-            try initialize()
-            return try withDatabase { db in
-                let observations = try queryVitalDBObservations(
-                    db,
-                    sql: """
-                    SELECT payload_json
-                    FROM vitaldb_observation_snapshots
-                    ORDER BY observed_at DESC
-                    LIMIT ?
-                    """,
-                    bindings: [.int(limit)]
-                )
-                return Array(observations.reversed())
-            }
-        } catch {
-            return []
+        try initialize()
+        return try withDatabase { db in
+            let observations = try queryVitalDBObservations(
+                db,
+                sql: """
+                SELECT payload_json
+                FROM vitaldb_observation_snapshots
+                ORDER BY observed_at DESC
+                LIMIT ?
+                """,
+                bindings: [.int(limit)]
+            )
+            return Array(observations.reversed())
         }
     }
 
-    public func vitalDBBedAssignments(limit: Int = 1000) -> [VitalDBBedAssignmentRecord] {
-        guard limit > 0 else {
+    public func bestEffortVitalDBRecorderActivityBuckets(
+        query: VitalDBRecorderActivityBucketQuery = VitalDBRecorderActivityBucketQuery()
+    ) -> [VitalDBRecorderActivityBucketRecord] {
+        (try? loadVitalDBRecorderActivityBuckets(query: query)) ?? []
+    }
+
+    public func loadVitalDBRecorderActivityBuckets(
+        query: VitalDBRecorderActivityBucketQuery = VitalDBRecorderActivityBucketQuery()
+    ) throws -> [VitalDBRecorderActivityBucketRecord] {
+        guard query.limit > 0 else {
             return []
         }
-        do {
-            try initialize()
-            return try withDatabase { db in
-                try queryBedAssignments(
-                    db,
-                    sql: """
-                    SELECT id, bed_id, bed_name, vrcode, started_at, ended_at,
-                           last_seen_at, last_observed_at, status, patient_connected,
-                           observation_count
-                    FROM vitaldb_bed_assignments
-                    ORDER BY started_at DESC, id DESC
-                    LIMIT ?
-                    """,
-                    bindings: [.int(limit)]
-                )
+        try initialize()
+        return try withDatabase { db in
+            var predicates: [String] = []
+            var bindings: [SQLiteBinding] = []
+            if let vrcode = query.vrcode {
+                predicates.append("vrcode = ?")
+                bindings.append(.text(vrcode))
             }
-        } catch {
-            return []
+            if let since = query.since {
+                predicates.append("bucket_started_at >= ?")
+                bindings.append(.text(since))
+            }
+            if let until = query.until {
+                predicates.append("bucket_started_at <= ?")
+                bindings.append(.text(until))
+            }
+            let whereClause = predicates.isEmpty ? "" : "WHERE \(predicates.joined(separator: " AND "))"
+            bindings.append(.int(query.limit))
+            let records = try queryRecorderActivityBuckets(
+                db,
+                sql: """
+                SELECT vrcode, bucket_started_at, bucket_seconds,
+                       message_count, byte_count, room_count,
+                       first_observed_at, last_observed_at
+                FROM vitaldb_recorder_activity_buckets
+                \(whereClause)
+                ORDER BY bucket_started_at DESC, vrcode DESC
+                LIMIT ?
+                """,
+                bindings: bindings
+            )
+            return Array(records.reversed())
         }
     }
 
-    public func vitalDBRelationshipEvents(limit: Int = 1000) -> [VitalDBRelationshipEventRecord] {
+    public func bestEffortVitalDBBedAssignments(limit: Int = 1000) -> [VitalDBBedAssignmentRecord] {
+        (try? loadVitalDBBedAssignments(limit: limit)) ?? []
+    }
+
+    public func loadVitalDBBedAssignments(limit: Int = 1000) throws -> [VitalDBBedAssignmentRecord] {
         guard limit > 0 else {
             return []
         }
-        do {
-            try initialize()
-            return try withDatabase { db in
-                Array(try queryRelationshipEvents(
-                    db,
-                    sql: """
-                    SELECT id, observed_at, event_type, severity, bed_id, bed_name,
-                           vrcode, previous_vrcode, previous_bed_id, message
-                    FROM vitaldb_relationship_events
-                    ORDER BY observed_at DESC, id DESC
-                    LIMIT ?
-                    """,
-                    bindings: [.int(limit)]
-                ).reversed())
-            }
-        } catch {
+        try initialize()
+        return try withDatabase { db in
+            try queryBedAssignments(
+                db,
+                sql: """
+                SELECT id, bed_id, bed_name, vrcode, started_at, ended_at,
+                       last_seen_at, last_observed_at, status, patient_connected,
+                       observation_count
+                FROM vitaldb_bed_assignments
+                ORDER BY started_at DESC, id DESC
+                LIMIT ?
+                """,
+                bindings: [.int(limit)]
+            )
+        }
+    }
+
+    public func bestEffortVitalDBRelationshipEvents(limit: Int = 1000) -> [VitalDBRelationshipEventRecord] {
+        (try? loadVitalDBRelationshipEvents(limit: limit)) ?? []
+    }
+
+    public func loadVitalDBRelationshipEvents(limit: Int = 1000) throws -> [VitalDBRelationshipEventRecord] {
+        guard limit > 0 else {
             return []
+        }
+        try initialize()
+        return try withDatabase { db in
+            Array(try queryRelationshipEvents(
+                db,
+                sql: """
+                SELECT id, observed_at, event_type, severity, bed_id, bed_name,
+                       vrcode, previous_vrcode, previous_bed_id, message
+                FROM vitaldb_relationship_events
+                ORDER BY observed_at DESC, id DESC
+                LIMIT ?
+                """,
+                bindings: [.int(limit)]
+            ).reversed())
         }
     }
 
@@ -360,57 +479,16 @@ public struct SQLiteRuntimeObservabilityStore {
         bindings: [SQLiteBinding]
     ) throws -> [RuntimeEventDocument] {
         let decoder = JSONDecoder()
-        var statement: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
-            throw SQLiteRuntimeObservabilityStoreError.prepareFailed(errorMessage(db))
-        }
-        defer {
-            sqlite3_finalize(statement)
-        }
-
-        try bind(bindings, to: statement, db: db)
-
-        var events: [RuntimeEventDocument] = []
-        while true {
-            let result = sqlite3_step(statement)
-            if result == SQLITE_DONE {
-                return events
+        return try queryRows(db, sql: sql, bindings: bindings) { statement in
+            guard let payload = columnText(statement, 0) else {
+                return nil
             }
-            guard result == SQLITE_ROW else {
-                throw SQLiteRuntimeObservabilityStoreError.stepFailed(errorMessage(db))
-            }
-            guard let rawPayload = sqlite3_column_text(statement, 0) else {
-                continue
-            }
-            let payload = String(cString: rawPayload)
             guard let data = payload.data(using: .utf8),
                   let event = try? decoder.decode(RuntimeEventDocument.self, from: data) else {
                 throw SQLiteRuntimeObservabilityStoreError.decodeFailed(payload)
             }
-            events.append(event)
+            return event
         }
-    }
-
-    private func countRows(
-        _ db: OpaquePointer,
-        sql: String,
-        bindings: [SQLiteBinding]
-    ) throws -> Int {
-        var statement: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
-            throw SQLiteRuntimeObservabilityStoreError.prepareFailed(errorMessage(db))
-        }
-        defer {
-            sqlite3_finalize(statement)
-        }
-
-        try bind(bindings, to: statement, db: db)
-
-        let result = sqlite3_step(statement)
-        guard result == SQLITE_ROW else {
-            throw SQLiteRuntimeObservabilityStoreError.stepFailed(errorMessage(db))
-        }
-        return Int(sqlite3_column_int64(statement, 0))
     }
 
     private func insert(_ event: RuntimeEventDocument, db: OpaquePointer) throws {
@@ -439,14 +517,24 @@ public struct SQLiteRuntimeObservabilityStore {
                 .text(event.timestamp),
                 .text(event.source),
                 .text(event.eventType.rawValue),
-                .text(event.status.rawValue),
+                .optionalText(event.status?.rawValue),
                 .optionalText(event.previousStatus?.rawValue),
-                .text(event.operation.rawValue),
+                .optionalText(event.operation?.rawValue),
                 .text(event.message),
                 .text(event.runtimeVersion),
                 .text(payload),
             ]
         )
+    }
+
+    private func runtimeEventIndexStateValue(for key: String) throws -> String? {
+        try withDatabase { db in
+            try scalarString(
+                db,
+                sql: "SELECT value FROM runtime_event_index_state WHERE key = ? LIMIT 1",
+                bindings: [.text(key)]
+            )
+        }
     }
 
     private func insert(_ observation: VitalDBObservationDocument, db: OpaquePointer) throws {
@@ -476,30 +564,69 @@ public struct SQLiteRuntimeObservabilityStore {
     }
 
     private func vitalDBObservationExists(observedAt: String, db: OpaquePointer) throws -> Bool {
-        var statement: OpaquePointer?
-        guard sqlite3_prepare_v2(
+        try containsRow(
             db,
-            "SELECT 1 FROM vitaldb_observation_snapshots WHERE observed_at = ? LIMIT 1",
-            -1,
-            &statement,
-            nil
-        ) == SQLITE_OK else {
-            throw SQLiteRuntimeObservabilityStoreError.prepareFailed(errorMessage(db))
-        }
-        defer {
-            sqlite3_finalize(statement)
-        }
+            sql: "SELECT 1 FROM vitaldb_observation_snapshots WHERE observed_at = ? LIMIT 1",
+            bindings: [.text(observedAt)]
+        )
+    }
 
-        try bind([.text(observedAt)], to: statement, db: db)
+    private func projectRecorderActivityBuckets(
+        _ observation: VitalDBObservationDocument,
+        db: OpaquePointer
+    ) throws {
+        for recorder in observation.recorders {
+            guard let activity = recorder.activity else {
+                continue
+            }
+            for bucket in activity.buckets {
+                try upsertRecorderActivityBucket(
+                    vrcode: recorder.vrcode,
+                    bucket: bucket,
+                    observedAt: observation.observedAt,
+                    db: db
+                )
+            }
+        }
+    }
 
-        let result = sqlite3_step(statement)
-        if result == SQLITE_ROW {
-            return true
-        }
-        guard result == SQLITE_DONE else {
-            throw SQLiteRuntimeObservabilityStoreError.stepFailed(errorMessage(db))
-        }
-        return false
+    private func upsertRecorderActivityBucket(
+        vrcode: String,
+        bucket: VitalDBRecorderActivityBucket,
+        observedAt: String,
+        db: OpaquePointer
+    ) throws {
+        try execute(
+            db,
+            sql: """
+            INSERT INTO vitaldb_recorder_activity_buckets(
+              vrcode,
+              bucket_started_at,
+              bucket_seconds,
+              message_count,
+              byte_count,
+              room_count,
+              first_observed_at,
+              last_observed_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(vrcode, bucket_started_at, bucket_seconds) DO UPDATE SET
+              message_count = max(message_count, excluded.message_count),
+              byte_count = max(byte_count, excluded.byte_count),
+              room_count = max(room_count, excluded.room_count),
+              first_observed_at = min(first_observed_at, excluded.first_observed_at),
+              last_observed_at = max(last_observed_at, excluded.last_observed_at)
+            """,
+            bindings: [
+                .text(vrcode),
+                .text(bucket.bucketStartedAt),
+                .int(bucket.bucketSeconds),
+                .int(bucket.messageCount),
+                .int(bucket.byteCount),
+                .int(bucket.roomCount),
+                .text(observedAt),
+                .text(observedAt),
+            ]
+        )
     }
 
     private func queryVitalDBObservations(
@@ -508,34 +635,40 @@ public struct SQLiteRuntimeObservabilityStore {
         bindings: [SQLiteBinding]
     ) throws -> [VitalDBObservationDocument] {
         let decoder = JSONDecoder()
-        var statement: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
-            throw SQLiteRuntimeObservabilityStoreError.prepareFailed(errorMessage(db))
-        }
-        defer {
-            sqlite3_finalize(statement)
-        }
-
-        try bind(bindings, to: statement, db: db)
-
-        var observations: [VitalDBObservationDocument] = []
-        while true {
-            let result = sqlite3_step(statement)
-            if result == SQLITE_DONE {
-                return observations
+        return try queryRows(db, sql: sql, bindings: bindings) { statement in
+            guard let payload = columnText(statement, 0) else {
+                return nil
             }
-            guard result == SQLITE_ROW else {
-                throw SQLiteRuntimeObservabilityStoreError.stepFailed(errorMessage(db))
-            }
-            guard let rawPayload = sqlite3_column_text(statement, 0) else {
-                continue
-            }
-            let payload = String(cString: rawPayload)
             guard let data = payload.data(using: .utf8),
                   let observation = try? decoder.decode(VitalDBObservationDocument.self, from: data) else {
                 throw SQLiteRuntimeObservabilityStoreError.decodeFailed(payload)
             }
-            observations.append(observation)
+            return observation
+        }
+    }
+
+    private func queryRecorderActivityBuckets(
+        _ db: OpaquePointer,
+        sql: String,
+        bindings: [SQLiteBinding]
+    ) throws -> [VitalDBRecorderActivityBucketRecord] {
+        try queryRows(db, sql: sql, bindings: bindings) { statement in
+            guard let vrcode = columnText(statement, 0),
+                  let bucketStartedAt = columnText(statement, 1),
+                  let firstObservedAt = columnText(statement, 6),
+                  let lastObservedAt = columnText(statement, 7) else {
+                return nil
+            }
+            return VitalDBRecorderActivityBucketRecord(
+                vrcode: vrcode,
+                bucketStartedAt: bucketStartedAt,
+                bucketSeconds: Int(sqlite3_column_int(statement, 2)),
+                messageCount: Int(sqlite3_column_int(statement, 3)),
+                byteCount: Int(sqlite3_column_int(statement, 4)),
+                roomCount: Int(sqlite3_column_int(statement, 5)),
+                firstObservedAt: firstObservedAt,
+                lastObservedAt: lastObservedAt
+            )
         }
     }
 
@@ -544,31 +677,11 @@ public struct SQLiteRuntimeObservabilityStore {
         db: OpaquePointer
     ) throws {
         let observedAt = observation.observedAt
-        let recordersByVrcode = Dictionary(
-            observation.recorders.map { ($0.vrcode, $0) },
-            uniquingKeysWith: { _, latest in latest }
-        )
-        let linkedBedVrcodes = Set(observation.beds.compactMap(\.vrcode).filter { !$0.isEmpty })
-        let bedsByVrcode = Dictionary(grouping: observation.beds.compactMap { bed in
-            bed.vrcode.map { ($0, bed) }
-        }, by: \.0)
+        let plannedEvents = VitalDBRelationshipProjectionPlanner().plannedEvents(for: observation)
 
         for bed in observation.beds.sorted(by: { $0.bedID < $1.bedID }) {
             guard let vrcode = bed.vrcode, !vrcode.isEmpty else {
                 try closeOpenAssignment(for: bed.bedID, endedAt: observedAt, db: db)
-                try insertRelationshipEvent(
-                    db,
-                    id: relationshipEventID(.unlinkedBed, observedAt, bed.bedID, nil, nil),
-                    observedAt: observedAt,
-                    eventType: .unlinkedBed,
-                    severity: .warning,
-                    bedID: bed.bedID,
-                    bedName: bed.name,
-                    vrcode: nil,
-                    previousVrcode: nil,
-                    previousBedID: nil,
-                    message: "Bed has no linked VRecorder."
-                )
                 continue
             }
 
@@ -579,7 +692,13 @@ public struct SQLiteRuntimeObservabilityStore {
                     try closeAssignment(openAssignment.id, endedAt: observedAt, db: db)
                     try insertRelationshipEvent(
                         db,
-                        id: relationshipEventID(.handoff, observedAt, bed.bedID, vrcode, openAssignment.vrcode),
+                        id: VitalDBRelationshipProjectionPlanner.eventID(
+                            .handoff,
+                            observedAt,
+                            bed.bedID,
+                            vrcode,
+                            openAssignment.vrcode
+                        ),
                         observedAt: observedAt,
                         eventType: .handoff,
                         severity: .info,
@@ -595,55 +714,21 @@ public struct SQLiteRuntimeObservabilityStore {
             } else {
                 try insertAssignment(for: bed, observedAt: observedAt, db: db)
             }
-
-            if let recorder = recordersByVrcode[vrcode],
-               bed.online != recorder.online {
-                try insertRelationshipEvent(
-                    db,
-                    id: relationshipEventID(.staleLink, observedAt, bed.bedID, vrcode, nil),
-                    observedAt: observedAt,
-                    eventType: .staleLink,
-                    severity: .warning,
-                    bedID: bed.bedID,
-                    bedName: bed.name,
-                    vrcode: vrcode,
-                    previousVrcode: nil,
-                    previousBedID: nil,
-                    message: "Bed and VRecorder online state differ."
-                )
-            }
         }
 
-        for (vrcode, pairs) in bedsByVrcode where pairs.count > 1 {
-            let bedIDs = pairs.map(\.1.bedID).sorted()
+        for event in plannedEvents {
             try insertRelationshipEvent(
                 db,
-                id: relationshipEventID(.duplicateAssignment, observedAt, bedIDs.joined(separator: ","), vrcode, nil),
-                observedAt: observedAt,
-                eventType: .duplicateAssignment,
-                severity: .warning,
-                bedID: bedIDs.first,
-                bedName: nil,
-                vrcode: vrcode,
-                previousVrcode: nil,
-                previousBedID: nil,
-                message: "VRecorder is linked to multiple beds: \(bedIDs.joined(separator: ", "))."
-            )
-        }
-
-        for recorder in observation.recorders where !linkedBedVrcodes.contains(recorder.vrcode) {
-            try insertRelationshipEvent(
-                db,
-                id: relationshipEventID(.unlinkedRecorder, observedAt, nil, recorder.vrcode, nil),
-                observedAt: observedAt,
-                eventType: .unlinkedRecorder,
-                severity: recorder.online ? .warning : .info,
-                bedID: nil,
-                bedName: nil,
-                vrcode: recorder.vrcode,
-                previousVrcode: nil,
-                previousBedID: nil,
-                message: "VRecorder has no linked bed."
+                id: event.id,
+                observedAt: event.observedAt,
+                eventType: event.eventType,
+                severity: event.severity,
+                bedID: event.bedID,
+                bedName: event.bedName,
+                vrcode: event.vrcode,
+                previousVrcode: event.previousVrcode,
+                previousBedID: event.previousBedID,
+                message: event.message
             )
         }
     }
@@ -805,26 +890,11 @@ public struct SQLiteRuntimeObservabilityStore {
         sql: String,
         bindings: [SQLiteBinding]
     ) throws -> [VitalDBBedAssignmentRecord] {
-        var statement: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
-            throw SQLiteRuntimeObservabilityStoreError.prepareFailed(errorMessage(db))
-        }
-        defer {
-            sqlite3_finalize(statement)
-        }
-
-        try bind(bindings, to: statement, db: db)
-
-        var assignments: [VitalDBBedAssignmentRecord] = []
-        while true {
-            let result = sqlite3_step(statement)
-            if result == SQLITE_DONE {
-                return assignments
+        try queryRows(db, sql: sql, bindings: bindings) { statement in
+            guard let status = columnText(statement, 8) else {
+                return nil
             }
-            guard result == SQLITE_ROW else {
-                throw SQLiteRuntimeObservabilityStoreError.stepFailed(errorMessage(db))
-            }
-            assignments.append(VitalDBBedAssignmentRecord(
+            return VitalDBBedAssignmentRecord(
                 id: columnText(statement, 0) ?? "",
                 bedID: columnText(statement, 1) ?? "",
                 bedName: columnText(statement, 2),
@@ -833,10 +903,10 @@ public struct SQLiteRuntimeObservabilityStore {
                 endedAt: columnText(statement, 5),
                 lastSeenAt: columnText(statement, 6),
                 lastObservedAt: columnText(statement, 7) ?? "",
-                status: columnText(statement, 8) ?? "unknown",
+                status: status,
                 patientConnected: columnOptionalBool(statement, 9),
                 observationCount: Int(sqlite3_column_int64(statement, 10))
-            ))
+            )
         }
     }
 
@@ -845,30 +915,12 @@ public struct SQLiteRuntimeObservabilityStore {
         sql: String,
         bindings: [SQLiteBinding]
     ) throws -> [VitalDBRelationshipEventRecord] {
-        var statement: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
-            throw SQLiteRuntimeObservabilityStoreError.prepareFailed(errorMessage(db))
-        }
-        defer {
-            sqlite3_finalize(statement)
-        }
-
-        try bind(bindings, to: statement, db: db)
-
-        var events: [VitalDBRelationshipEventRecord] = []
-        while true {
-            let result = sqlite3_step(statement)
-            if result == SQLITE_DONE {
-                return events
-            }
-            guard result == SQLITE_ROW else {
-                throw SQLiteRuntimeObservabilityStoreError.stepFailed(errorMessage(db))
-            }
+        try queryRows(db, sql: sql, bindings: bindings) { statement in
             guard let eventType = columnText(statement, 2).flatMap(VitalDBRelationshipEventType.init(rawValue:)),
                   let severity = columnText(statement, 3).flatMap(VitalDBRelationshipSeverity.init(rawValue:)) else {
-                continue
+                return nil
             }
-            events.append(VitalDBRelationshipEventRecord(
+            return VitalDBRelationshipEventRecord(
                 id: columnText(statement, 0) ?? "",
                 observedAt: columnText(statement, 1) ?? "",
                 eventType: eventType,
@@ -879,7 +931,7 @@ public struct SQLiteRuntimeObservabilityStore {
                 previousVrcode: columnText(statement, 7),
                 previousBedID: columnText(statement, 8),
                 message: columnText(statement, 9) ?? ""
-            ))
+            )
         }
     }
 
@@ -899,7 +951,7 @@ public struct SQLiteRuntimeObservabilityStore {
         var db: OpaquePointer?
         guard sqlite3_open_v2(url.path, &db, SQLITE_OPEN_CREATE | SQLITE_OPEN_READWRITE | SQLITE_OPEN_FULLMUTEX, nil) == SQLITE_OK,
               let openedDB = db else {
-            let message = db.map(errorMessage) ?? "unknown sqlite open error"
+            let message = db.map(sqliteErrorMessage) ?? "unknown sqlite open error"
             sqlite3_close(db)
             throw SQLiteRuntimeObservabilityStoreError.openFailed(message)
         }
@@ -909,114 +961,11 @@ public struct SQLiteRuntimeObservabilityStore {
         return try operation(openedDB)
     }
 
-    private func execute(
-        _ db: OpaquePointer,
-        sql: String,
-        bindings: [SQLiteBinding] = []
-    ) throws {
-        var statement: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
-            throw SQLiteRuntimeObservabilityStoreError.prepareFailed(errorMessage(db))
-        }
-        defer {
-            sqlite3_finalize(statement)
-        }
-
-        try bind(bindings, to: statement, db: db)
-
-        while true {
-            let result = sqlite3_step(statement)
-            if result == SQLITE_DONE {
-                return
-            }
-            guard result == SQLITE_ROW else {
-                throw SQLiteRuntimeObservabilityStoreError.stepFailed(errorMessage(db))
-            }
-        }
-    }
-
-    private func bind(
-        _ bindings: [SQLiteBinding],
-        to statement: OpaquePointer?,
-        db: OpaquePointer
-    ) throws {
-        for (offset, binding) in bindings.enumerated() {
-            let index = Int32(offset + 1)
-            let result: Int32
-            switch binding {
-            case .int(let value):
-                result = sqlite3_bind_int64(statement, index, sqlite3_int64(value))
-            case .text(let value):
-                result = sqlite3_bind_text(statement, index, value, -1, SQLITE_TRANSIENT)
-            case .optionalText(let value):
-                if let value {
-                    result = sqlite3_bind_text(statement, index, value, -1, SQLITE_TRANSIENT)
-                } else {
-                    result = sqlite3_bind_null(statement, index)
-                }
-            case .optionalInt(let value):
-                if let value {
-                    result = sqlite3_bind_int64(statement, index, sqlite3_int64(value))
-                } else {
-                    result = sqlite3_bind_null(statement, index)
-                }
-            }
-            guard result == SQLITE_OK else {
-                throw SQLiteRuntimeObservabilityStoreError.bindFailed(errorMessage(db))
-            }
-        }
-    }
-
-    private func errorMessage(_ db: OpaquePointer) -> String {
-        sqlite3_errmsg(db).map { String(cString: $0) } ?? "unknown sqlite error"
-    }
-
     private static func now() -> String {
         ISO8601DateFormatter().string(from: Date())
     }
 }
 
-private enum SQLiteBinding {
-    case int(Int)
-    case text(String)
-    case optionalText(String?)
-    case optionalInt(Int?)
-}
-
-private func columnText(_ statement: OpaquePointer?, _ index: Int32) -> String? {
-    guard sqlite3_column_type(statement, index) != SQLITE_NULL,
-          let rawValue = sqlite3_column_text(statement, index) else {
-        return nil
-    }
-    return String(cString: rawValue)
-}
-
-private func columnOptionalBool(_ statement: OpaquePointer?, _ index: Int32) -> Bool? {
-    guard sqlite3_column_type(statement, index) != SQLITE_NULL else {
-        return nil
-    }
-    return sqlite3_column_int64(statement, index) != 0
-}
-
 private func assignmentID(bedID: String, vrcode: String, startedAt: String) -> String {
     "assignment:\(bedID):\(vrcode):\(startedAt)"
 }
-
-private func relationshipEventID(
-    _ eventType: VitalDBRelationshipEventType,
-    _ observedAt: String,
-    _ bedID: String?,
-    _ vrcode: String?,
-    _ previous: String?
-) -> String {
-    [
-        "relationship",
-        eventType.rawValue,
-        observedAt,
-        bedID ?? "-",
-        vrcode ?? "-",
-        previous ?? "-",
-    ].joined(separator: ":")
-}
-
-private let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)

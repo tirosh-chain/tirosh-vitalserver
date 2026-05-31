@@ -4,6 +4,8 @@ import Contracts
 
 struct RuntimeApplyBundleStepExecutor {
     var stopRuntimeServices: () throws -> Void
+    var prepareGuestShutdownForUpdate: (UpdateBundleManifest) throws -> Void
+    var clearGuestShutdownPreparation: () throws -> Void
     var createDirectory: (URL, Bool) throws -> Void
     var fileSize: (URL) throws -> UInt64
     var replaceFile: (URL, URL) throws -> Void
@@ -23,6 +25,14 @@ struct RuntimeApplyBundleStepExecutor {
     ) throws {
         switch step {
         case .stopRuntimeServices:
+            if preflight.restartPolicy.restartVM {
+                try prepareGuestShutdownForUpdate(preflight.manifest)
+                do {
+                    defer { clearGuestShutdownPreparationAfterRuntimeStop() }
+                    try stopRuntimeServices()
+                }
+                return
+            }
             try stopRuntimeServices()
         case .replaceRootfsBase:
             guard let stagedRootfs = preflight.stagedRootfs else {
@@ -57,5 +67,13 @@ struct RuntimeApplyBundleStepExecutor {
     private func formatBytes(_ bytes: UInt64) -> String {
         let mib = Double(bytes) / 1_048_576
         return String(format: "%.1f MiB", max(mib, 0))
+    }
+
+    private func clearGuestShutdownPreparationAfterRuntimeStop() {
+        do {
+            try clearGuestShutdownPreparation()
+        } catch {
+            log("guest shutdown preparation cleanup failed error=\(error)")
+        }
     }
 }

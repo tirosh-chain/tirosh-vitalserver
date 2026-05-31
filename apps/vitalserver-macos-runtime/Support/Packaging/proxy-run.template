@@ -5,14 +5,24 @@ vm_home="${VITALSERVER_VM_HOME:-${VM_HOME}}"
 nginx_prefix="${VITALSERVER_NGINX_PREFIX:-${NGINX_PREFIX}}"
 nginx_bin="${VITALSERVER_NGINX_BIN:-${nginx_prefix}/sbin/nginx}"
 proxy_port="${VITALSERVER_PROXY_PORT:-80}"
+product_root="$(dirname "${nginx_prefix}")"
+runtime_logs="${VITALSERVER_RUNTIME_LOGS:-${product_root}/logs/runtime}"
+proxy_nginx_access_log="${VITALSERVER_PROXY_NGINX_ACCESS_LOG:-${runtime_logs}/proxy-nginx.access.log}"
+proxy_nginx_error_log="${VITALSERVER_PROXY_NGINX_ERROR_LOG:-${runtime_logs}/proxy-nginx.error.log}"
 
 state_file="${vm_home}/data/run/runtime-state.json"
-legacy_ip_file="${vm_home}/data/run/vm-ip"
 template="${vm_home}/Support/Proxy/vitalserver.conf.template"
 config="${nginx_prefix}/vitalserver.conf"
 pid_file="${nginx_prefix}/logs/nginx.pid"
 
-mkdir -p "${nginx_prefix}/logs"
+mkdir -p \
+  "${runtime_logs}" \
+  "${nginx_prefix}/logs" \
+  "${nginx_prefix}/temp/client_body" \
+  "${nginx_prefix}/temp/proxy" \
+  "${nginx_prefix}/temp/fastcgi" \
+  "${nginx_prefix}/temp/uwsgi" \
+  "${nginx_prefix}/temp/scgi"
 
 timestamp() {
   date -u +"%Y-%m-%dT%H:%M:%SZ"
@@ -60,6 +70,8 @@ render_config() {
   sed \
     -e "s|\${VITALSERVER_PROXY_PORT}|${proxy_port}|g" \
     -e "s|\${PROXY_UPSTREAM}|${upstream}|g" \
+    -e "s|\${VITALSERVER_PROXY_NGINX_ACCESS_LOG}|${proxy_nginx_access_log}|g" \
+    -e "s|\${VITALSERVER_PROXY_NGINX_ERROR_LOG}|${proxy_nginx_error_log}|g" \
     "${template}" > "${config}"
 }
 
@@ -99,14 +111,7 @@ read_state_value() {
 }
 
 read_vm_ip() {
-  local value=""
-
-  value="$(read_state_value vmIP)"
-  if [ -z "${value}" ] && [ -s "${legacy_ip_file}" ]; then
-    value="$(cat "${legacy_ip_file}" | tr -d '[:space:]')"
-  fi
-
-  printf "%s" "${value}"
+  read_state_value vmIP
 }
 
 read_guest_http() {

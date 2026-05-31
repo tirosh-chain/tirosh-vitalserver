@@ -4,22 +4,10 @@ import Contracts
 
 struct RuntimeGuestBootstrapOperation {
     let operation: RuntimeOperation
-    let modifiedAt: Date
+    let updatedAt: Date?
 }
 
 struct RuntimeManagedOperationGuard {
-    private static let protectedOperations: [RuntimeOperation] = [
-        .install,
-        .applyBundle,
-        .activateGuestUpdate,
-        .rollback,
-        .redisBackup,
-        .repairDatastore,
-        .startServices,
-        .stopServices,
-        .uninstall,
-    ]
-
     private let statusReporter: RuntimeStatusReporter
     private let activeGuestBootstrap: () -> RuntimeGuestBootstrapOperation?
     private let now: () -> Date
@@ -48,13 +36,20 @@ struct RuntimeManagedOperationGuard {
     }
 
     private func activeStatusOperation() -> RuntimeOperation? {
-        guard let status = statusReporter.loadStatus() else {
+        let status: RuntimeStatusDocument
+        switch statusReporter.loadStatusResult() {
+        case .loaded(let document):
+            status = document
+        case .missing:
+            return nil
+        case .failed(let message):
+            log("watchdog active operation guard ignored status read failure error=\(message)")
             return nil
         }
         guard status.status == .installing || status.status == .updating || status.status == .recovering else {
             return nil
         }
-        guard Self.protectedOperations.contains(status.operation) else {
+        guard RuntimeManagedOperationPolicy.isProtectedFromWatchdogRecovery(status.operation) else {
             return nil
         }
         guard let updatedAt = ISO8601DateFormatter().date(from: status.updatedAt) else {
@@ -73,7 +68,11 @@ struct RuntimeManagedOperationGuard {
         guard let bootstrap = activeGuestBootstrap() else {
             return nil
         }
-        let age = now().timeIntervalSince(bootstrap.modifiedAt)
+        guard let updatedAt = bootstrap.updatedAt else {
+            log("watchdog guest bootstrap guard active without updatedAt operation=\(bootstrap.operation.rawValue)")
+            return bootstrap.operation
+        }
+        let age = now().timeIntervalSince(updatedAt)
         if age > graceSeconds {
             log(
                 "watchdog guest bootstrap guard expired operation=\(bootstrap.operation.rawValue) "

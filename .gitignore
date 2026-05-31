@@ -24,6 +24,9 @@ temp/
 .build/
 .cache/
 
+# Node
+node_modules/
+
 # Swift / Xcode
 .swiftpm/
 DerivedData/
@@ -58,6 +61,7 @@ apps/vitalserver-vm-launcher/data/
 __pycache__/
 *.py[cod]
 .coverage
+coverage/
 coverage.xml
 htmlcov/
 

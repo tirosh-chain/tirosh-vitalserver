@@ -145,6 +145,7 @@ public struct RuntimeContainerObservation: Codable, Equatable, Sendable {
     public let containerLogsPresent: Bool
     public let containerLogsBytes: UInt64?
     public let containerLogsUpdatedAt: String?
+    public let containerLogsMetadataError: String?
     public let composeServices: [RuntimeContainerServiceObservation]
 
     public init(
@@ -155,6 +156,7 @@ public struct RuntimeContainerObservation: Codable, Equatable, Sendable {
         containerLogsPresent: Bool,
         containerLogsBytes: UInt64?,
         containerLogsUpdatedAt: String? = nil,
+        containerLogsMetadataError: String? = nil,
         composeServices: [RuntimeContainerServiceObservation] = []
     ) {
         self.auditProxyHTTP = auditProxyHTTP
@@ -164,6 +166,7 @@ public struct RuntimeContainerObservation: Codable, Equatable, Sendable {
         self.containerLogsPresent = containerLogsPresent
         self.containerLogsBytes = containerLogsBytes
         self.containerLogsUpdatedAt = containerLogsUpdatedAt
+        self.containerLogsMetadataError = containerLogsMetadataError
         self.composeServices = composeServices
     }
 }

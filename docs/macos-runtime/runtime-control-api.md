@@ -1,6 +1,6 @@
 # Runtime Control API
 
-Runtime Control API는 PWA, native shell, remote control client가 공유할 runtime control boundary입니다. 현재 Swift `RuntimeControlAPI` target은 route/DTO, transport-independent router, SSE response model, macOS local loopback HTTP server를 둡니다. 이 문서는 PWA 착수 직전 기준으로 고정된 계약과 아직 구현이 남은 범위를 정리합니다.
+Runtime Control API는 PWA, native shell, remote control client가 공유할 runtime control boundary입니다. 현재 Swift `RuntimeControlAPI` target은 route/DTO, transport-independent router, SSE response model, macOS local loopback HTTP server를 둡니다. 이 문서는 Helper app에 포함되는 Runtime Control PWA와 native UI가 공유하는 계약과 아직 구현이 남은 범위를 정리합니다.
 
 OpenAPI contract는 [`runtime-control.openapi.json`](./runtime-control.openapi.json)에 둡니다. Swift test는 `RuntimeControlAPIEndpoint`와 OpenAPI path/method parity를 검증합니다.
 배포 Swagger UI에서는 이 spec을 VitalServer API, Audit Proxy API와 함께 multi-spec catalog로 노출합니다.
@@ -28,7 +28,21 @@ PWA가 사용할 `/runtime/*`, `/vitaldb/*`, `/host/*` API는 stable/dev profile
 | Auth header | `X-Runtime-Control-Token` |
 | Transitional local token | `vitalserver-helper-dev` |
 
-Local server는 read-only runtime endpoint, PWA overview, Redis backup 생성/조회, rollback backup 조회, 일부 host log endpoint를 구현합니다.
+Local server는 Runtime Control PWA static assets, read-only runtime endpoint, PWA overview,
+Redis backup 생성/조회, rollback backup 조회, 일부 host log endpoint를 구현합니다.
+Product build에서는 `apps/vitalserver-runtime-pwa/dist/` 결과물이 Helper app resource
+`Contents/Resources/runtime-control-pwa/`에 포함되고, local server가 아래 주소에서 제공합니다.
+
+```text
+http://127.0.0.1:18321/
+```
+
+PWA static file 요청은 token 없이 처리합니다. `/runtime/*`, `/vitaldb/*`, `/host/*`, `/dev/*` API 요청은
+기존 Runtime Control API authorization 정책을 따릅니다.
+
+`GET /runtime/capabilities`는 PWA route와 command availability의 source of truth입니다. TestKit 관련
+`/dev/testkit/*` route는 test-enabled build에서만 노출되며, PWA는 `canUseTestTools=true`일 때만 Test
+탭을 보여줍니다.
 
 | Method | Path |
 |---|---|
@@ -105,8 +119,8 @@ capacity 정보는 기존 `dataStorage`를 계속 사용합니다.
 유지하면서 `RuntimeStatus`, `RuntimeSettings`, `RuntimeReleaseInfo`, `RuntimeInstallInfo`, 최신
 `VitalDBObservationDocument`, 그리고 native Status 탭의 `Vital Recorder` 섹션과 같은 성격의
 `RuntimeVitalRecorderSummary`를 한 payload로 제공합니다. `RuntimeVitalRecorderSummary`는
-`vitalDBObservation`을 우선 SoT로 쓰고, observer snapshot이 아직 없을 때만 audit-proxy recorder connection을
-fallback으로 사용합니다.
+recorder 상태와 bed 상태를 `vitalDBObservation`에서만 읽습니다. audit-proxy 상태는 recorder 상태로 승격하지
+않고, 현재 연결 수(`activeConnections`)만 제공합니다.
 
 `GET /runtime/overview/stream`은 long-lived SSE 연결입니다. 서버는 overview payload가 바뀔 때
 `runtime-overview` frame을 보냅니다. 각 frame의 `id` 값은 `runtime-overview`, `data` 값은 JSON encoded
@@ -134,6 +148,11 @@ activity, 초당 message/byte rate를 포함합니다.
 `GET /vitaldb/observations/stream`은 long-lived SSE 연결입니다. 서버는 최신 VitalDB observation payload가
 바뀔 때 `vitaldb-observed` frame을 보냅니다. 각 frame의 `id` 값은 `vitaldb-observation`, `data` 값은
 JSON encoded `VitalDBObservationDocument` 또는 `null`입니다.
+
+`GET /runtime/overview`는 `vitalDBObservationSnapshot`에 최신 observation read 상태를 함께 싣습니다.
+`state`는 `loaded`, `unavailable`, `failed` 중 하나이며, `observation`이 `null`일 때 단순 미관측인지
+read failure인지 구분하기 위한 API-facing metadata입니다. `/vitaldb/observations/latest` 자체는 기존
+호환성을 위해 `VitalDBObservationDocument` 또는 `null` payload를 유지합니다.
 
 `GET /vitaldb/recorders`는 runtime observability SQLite에 저장된 VitalDB observation snapshot들을
 `vrcode` 기준으로 집계한 `RuntimeVitalRecorderHistory`를 반환합니다. `vrcode`는 recorder identity key이며,
@@ -192,6 +211,7 @@ Stable build는 local API server는 유지하되 이 dev console route는 제공
 | `POST` | `/runtime/services/repair-runtime` | repair VM, guest log sync, host proxy, and watchdog services |
 | `POST` | `/runtime/services/repair-proxy` | repair host proxy |
 | `POST` | `/runtime/services/repair-datastore` | repair datastore |
+| `POST` | `/runtime/services/repair-vm-disk` | archive and recreate the mutable VM disk from the installed base image |
 | `POST` | `/runtime/redis/backups` | create recoverable Redis backup |
 | `POST` | `/runtime/uninstall` | uninstall runtime |
 

@@ -12,6 +12,15 @@ from tirosh_vitalserver.devtools.adapters.macos_release.runtime_app import (
     sign_runtime_cli_with_entitlements,
     sync_release,
 )
+from tirosh_vitalserver.devtools.adapters.macos_release.runtime_state import (
+    RuntimeStateReadError,
+    read_runtime_state,
+    read_runtime_state_guest_http,
+    read_runtime_state_string,
+    read_runtime_state_vm_ip,
+    runtime_state_file,
+    vm_home_path,
+)
 from tirosh_vitalserver.devtools.adapters.toolchain.workspace_paths import repo_root
 from tirosh_vitalserver.devtools.application.inputs import (
     RequireBridgedIdentityInput,
@@ -117,42 +126,50 @@ def start_runtime_detached(input: RuntimeVmHomeInput) -> int:
 
 
 def print_runtime_ip(input: RuntimeVmHomeInput) -> int:
-    ip_file = vm_ip_file(input.vm_home)
-    if ip_file.is_file() and ip_file.stat().st_size > 0:
-        print(ip_file.read_text().strip())
-        return 0
-    raise SystemExit(f"VM IP is not available yet: {ip_file}")
+    try:
+        print(read_runtime_state_vm_ip(input.vm_home))
+    except RuntimeStateReadError as error:
+        raise SystemExit(str(error)) from error
+    return 0
 
 
 def wait_for_runtime_ip(input: RuntimeWaitInput) -> int:
-    ip_file = vm_ip_file(input.vm_home)
-    print(f"Waiting for VM IP file: {ip_file}")
+    state_file = runtime_state_file(input.vm_home)
+    print(f"Waiting for runtime-state VM IP: {state_file}")
     deadline = time.monotonic() + input.timeout
+    last_error = "not-started"
     while time.monotonic() < deadline:
-        if ip_file.is_file() and ip_file.stat().st_size > 0:
-            print(f"VM IP: {ip_file.read_text().strip()}")
+        try:
+            vm_ip = read_runtime_state_vm_ip(input.vm_home)
+            print(f"VM IP: {vm_ip}")
             return 0
+        except RuntimeStateReadError as error:
+            last_error = str(error)
         time.sleep(2)
     raise SystemExit(
-        f"error: timed out waiting for VM IP. Check {launcher_log(input.vm_home)}"
+        f"error: timed out waiting for VM IP in runtime state: {state_file} "
+        f"last={last_error}\nCheck {launcher_log(input.vm_home)}"
     )
 
 
 def wait_for_runtime_http(input: RuntimeWaitInput) -> int:
-    ip = read_vm_ip(input.vm_home)
-    url = f"http://{ip}/"
-    print(f"Waiting for VM HTTP: {url}")
+    state_file = runtime_state_file(input.vm_home)
+    print(f"Waiting for runtime-state guestHTTP: {state_file}")
     deadline = time.monotonic() + input.timeout
     last_status = "not-started"
     while time.monotonic() < deadline:
-        ok, status = probe_http(url)
-        if ok:
-            print(f"VM HTTP ready: {url} -> {status}")
-            return 0
-        last_status = status
+        try:
+            status = read_runtime_state_guest_http(input.vm_home)
+            if successful_http_status(status):
+                print(f"VM HTTP ready: guestHTTP={status}")
+                return 0
+            last_status = status
+        except RuntimeStateReadError as error:
+            last_status = str(error)
         time.sleep(2)
     raise SystemExit(
-        f"error: timed out waiting for VM HTTP: {url} last={last_status}\n"
+        f"error: timed out waiting for VM HTTP in runtime state: {state_file} "
+        f"last={last_status}\n"
         f"Check guest bootstrap in {launcher_log(input.vm_home)}"
     )
 
@@ -178,7 +195,6 @@ def check_runtime_health(input: RuntimeHealthInput) -> int:
     root = repo_root()
     settings = load_macos_release_settings(input.config, root)
     vm_home = resolve_path(root, input.vm_home)
-    ip_file = vm_home / "data/run/vm-ip"
     status = 0
 
     print("VM health")
@@ -200,23 +216,25 @@ def check_runtime_health(input: RuntimeHealthInput) -> int:
 
     print("\nVM IP:")
     vm_ip = ""
-    if ip_file.is_file() and ip_file.stat().st_size > 0:
-        vm_ip = ip_file.read_text().strip()
+    try:
+        runtime_state = read_runtime_state(vm_home)
+        vm_ip = read_runtime_state_string(runtime_state, "vmIP", vm_home)
+        guest_http = read_runtime_state_string(runtime_state, "guestHTTP", vm_home)
         print(f"  {vm_ip}")
-    else:
-        print(f"  missing {ip_file}")
+    except RuntimeStateReadError as error:
+        guest_http = ""
+        print(f"  unavailable: {error}")
         status = 1
 
     print("\nGuest HTTP:")
-    if vm_ip:
-        ok, code = probe_http(f"http://{vm_ip}/")
-        if ok:
-            print(f"  ok http://{vm_ip}/ -> {code}")
+    if guest_http:
+        if successful_http_status(guest_http):
+            print(f"  ok reported guestHTTP={guest_http}")
         else:
-            print(f"  failed http://{vm_ip}/ -> {code}")
+            print(f"  failed reported guestHTTP={guest_http}")
             status = 1
     else:
-        print("  skipped because VM IP is unavailable")
+        print("  skipped because runtime state guestHTTP is unavailable")
 
     print("\nHost proxy:")
     status |= subprocess.run(
@@ -245,24 +263,12 @@ def process_is_running(pid_file: Path) -> bool:
     return True
 
 
-def vm_home_path(value: str | Path) -> Path:
-    path = Path(value).expanduser()
-    return path if path.is_absolute() else repo_root() / path
-
-
-def vm_ip_file(value: str | Path) -> Path:
-    return vm_home_path(value) / "data/run/vm-ip"
-
-
 def launcher_log(vm_home: str | Path) -> Path:
     return vm_home_path(vm_home) / "logs/launcher.log"
 
 
-def read_vm_ip(vm_home: str | Path) -> str:
-    ip_file = vm_ip_file(vm_home)
-    if ip_file.is_file() and ip_file.stat().st_size > 0:
-        return ip_file.read_text().strip()
-    raise SystemExit(f"VM IP is not available yet: {ip_file}")
+def successful_http_status(status: str) -> bool:
+    return status.isdigit() and 200 <= int(status) < 400
 
 
 def probe_http(url: str) -> tuple[bool, str]:

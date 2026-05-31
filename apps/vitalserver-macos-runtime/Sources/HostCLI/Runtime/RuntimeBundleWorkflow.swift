@@ -20,10 +20,11 @@ struct RuntimeBundleWorkflowOperations {
     let rollback: (URL?) throws -> Void
     let startRuntimeServices: (RuntimeServiceRestartPolicy) throws -> Void
     let stopRuntimeServices: () throws -> Void
+    let prepareGuestShutdownForUpdate: (UpdateBundleManifest) throws -> Void
+    let clearGuestShutdownPreparation: () throws -> Void
     let isLaunchdLoaded: (RuntimeManagedService) -> Bool
     let createBackup: (String) throws -> URL
-    let writeRuntimeStatus: (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void
-    let writeRuntimeProgress: (RuntimeStepExecutionEvent) throws -> Void
+    let statusReporter: RuntimeWorkflowStatusReporter
     let pruneOldRuntimeArtifacts: () throws -> Void
     let reasonText: ([RuntimeFailureReason]) -> String
     let requireFreeSpace: (URL, UInt64, RuntimeOperation) throws -> Void
@@ -35,6 +36,7 @@ struct RuntimeBundleWorkflowOperations {
     let refreshCloudInitSeedIfNeeded: (UpdateBundleManifest) throws -> Void
     let activateGuestUpdateIfNeeded: (UpdateBundleManifest) throws -> Void
     let waitForHealth: (RuntimeServiceRestartPolicy) throws -> Void
+    let requireGuestCapability: (RuntimeGuestCapabilityRequirement) throws -> Void
     let log: (String) -> Void
 }
 
@@ -158,8 +160,16 @@ struct RuntimeBundleWorkflow {
         let extractedBundle = try extractBundleArchive(bundleURL, to: temporaryRoot)
         return MaterializedBundleInput(
             bundleURL: extractedBundle,
-            cleanup: { try? operations.fileStore.removeItem(at: temporaryRoot) }
+            cleanup: { removeMaterializedBundleTemporaryRoot(temporaryRoot) }
         )
+    }
+
+    func removeMaterializedBundleTemporaryRoot(_ temporaryRoot: URL) {
+        do {
+            try operations.fileStore.removeItem(at: temporaryRoot)
+        } catch {
+            operations.log("bundle temporary directory cleanup failed path=\(temporaryRoot.path) error=\(error)")
+        }
     }
 
     private func extractBundleArchive(_ archiveURL: URL, to temporaryRoot: URL) throws -> URL {
@@ -242,11 +252,23 @@ struct RuntimeBundleWorkflow {
         fileExists(url) ? try fileSize(url) : 0
     }
 
+    func prepareApplyBundleLogs() {
+        do {
+            try operations.fileStore.createDirectory(at: context.logsDirectory, withIntermediateDirectories: true)
+        } catch {
+            operations.log("bundle apply log directory preparation failed error=\(error)")
+        }
+        do {
+            try operations.rotateRuntimeLogs()
+        } catch {
+            operations.log("bundle apply log rotation failed error=\(error)")
+        }
+    }
+
     private func runtimeApplyBundleRunner() -> RuntimeApplyBundleRunner {
         RuntimeApplyBundleRunner(
             prepareLogs: {
-                try? operations.fileStore.createDirectory(at: context.logsDirectory, withIntermediateDirectories: true)
-                try? operations.rotateRuntimeLogs()
+                prepareApplyBundleLogs()
             },
             initialHealthSnapshot: operations.runtimeHealthSnapshot,
             preparePreflight: prepareApplyBundlePreflight,
@@ -255,11 +277,9 @@ struct RuntimeBundleWorkflow {
                 try operations.rollback(backup)
             },
             startRuntimeServices: operations.startRuntimeServices,
-            writeStatus: operations.writeRuntimeStatus,
-            writeProgress: operations.writeRuntimeProgress,
+            statusReporter: operations.statusReporter,
             pruneOldRuntimeArtifacts: operations.pruneOldRuntimeArtifacts,
-            reasonText: operations.reasonText,
-            log: operations.log
+            reasonText: operations.reasonText
         )
     }
 
@@ -274,7 +294,7 @@ struct RuntimeBundleWorkflow {
             fileSize: fileSize,
             requireFreeSpace: operations.requireFreeSpace,
             checkCompatibility: { manifest in
-                try RuntimeUpdateCompatibilityChecker.check(
+                try RuntimeUpdatePreflightPolicy.checkCompatibility(
                     manifest: manifest,
                     currentUpdaterVersion: Constants.launcherVersion,
                     currentChannel: Constants.launcherChannel,
@@ -288,6 +308,7 @@ struct RuntimeBundleWorkflow {
                     restartWatchdog: operations.isLaunchdLoaded(.watchdog)
                 )
             },
+            requireGuestCapability: operations.requireGuestCapability,
             createBackup: operations.createBackup,
             directorySize: directorySize,
             log: operations.log
@@ -304,6 +325,8 @@ struct RuntimeBundleWorkflow {
     ) throws {
         try RuntimeApplyBundleStepExecutor(
             stopRuntimeServices: operations.stopRuntimeServices,
+            prepareGuestShutdownForUpdate: operations.prepareGuestShutdownForUpdate,
+            clearGuestShutdownPreparation: operations.clearGuestShutdownPreparation,
             createDirectory: { url, withIntermediateDirectories in
                 try operations.fileStore.createDirectory(at: url, withIntermediateDirectories: withIntermediateDirectories)
             },

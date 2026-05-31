@@ -27,15 +27,17 @@ private struct MacRuntimeControlCommands: Commands {
                 viewModel.openVitalFilesDirectory()
             }
             Menu(AppConstants.Labels.menuVitalFiles) {
-                let folders = viewModel.vitalFileFolders()
-                if folders.isEmpty {
+                switch viewModel.vitalFileFoldersResult() {
+                case .success(let folders) where folders.isEmpty:
                     Text(AppConstants.Labels.noVitalFileFolders)
-                } else {
+                case .success(let folders):
                     ForEach(folders) { folder in
                         Button(folder.name) {
                             viewModel.openFolder(folder.path)
                         }
                     }
+                case .failure(let error):
+                    Text(AppConstants.StatusText.folderReadFailed(error.localizedDescription))
                 }
             }
         }

@@ -23,7 +23,7 @@ struct RuntimeRollbackRunner {
             },
             publish: { event in
                 log("step=\(event.step.rawValue) status=\(event.stepStatus.rawValue)")
-                try? writeProgress(event)
+                writeRuntimeProgressBestEffort(event, writeProgress: writeProgress, log: log)
             }
         )
 

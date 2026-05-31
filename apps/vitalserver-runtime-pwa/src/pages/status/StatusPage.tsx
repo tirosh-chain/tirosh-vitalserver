@@ -1,0 +1,235 @@
+import { useRuntimeOverview } from "@/console/hooks";
+import type { RuntimeControlOverview } from "@/domain/runtime-control/contracts/runtimeControlTypes";
+import { formatBytes } from "@/domain/runtime-control/formatting/bytes";
+import {
+  formatHTTPReachability,
+  runtimeControlURL,
+  runtimeURL
+} from "@/domain/runtime-control/formatting/http";
+import {
+  formatRuntimeState,
+  runtimeStateTone
+} from "@/domain/runtime-control/formatting/runtimeState";
+import { useAppSettings } from "@/config/AppSettingsContext";
+import {
+  formatLocalDateTime,
+  formatUptimeSince
+} from "@/domain/runtime-control/formatting/time";
+import { formatVitalRecorderObservationMetric } from "@/domain/runtime-control/formatting/vitalRecorder";
+import { ErrorState } from "@/components/ErrorState";
+import { KeyValueRows } from "@/components/KeyValueRows";
+import { Panel } from "@/components/Panel";
+import { StatusBadge } from "@/components/StatusBadge";
+
+export function StatusPage() {
+  const overviewQuery = useRuntimeOverview();
+
+  if (overviewQuery.isPending) {
+    return <Panel title="Status">Loading runtime overview...</Panel>;
+  }
+
+  if (overviewQuery.isError) {
+    return (
+      <Panel title="Status">
+        <ErrorState error={overviewQuery.error} />
+      </Panel>
+    );
+  }
+
+  return <StatusOverview overview={overviewQuery.data} />;
+}
+
+function StatusOverview({ overview }: { overview: RuntimeControlOverview }) {
+  const appSettings = useAppSettings();
+  const status = overview.status;
+  const state = status?.runtimeState;
+  const stats = status?.dataDirectoryStats;
+  const vitalRecorder = overview.vitalRecorder;
+  const vitalServerURL = runtimeURL(
+    status?.proxyPort ?? overview.settings?.proxyPort,
+    appSettings.runtimeControl.defaultProxyPort
+  );
+  const remoteConsoleURL = runtimeControlURL(
+    overview.settings?.runtimeControlPort,
+    appSettings.runtimeControl.defaultPort
+  );
+
+  return (
+    <div className="page-stack">
+      <Panel title="Runtime">
+        <KeyValueRows
+          rows={[
+            {
+              label: "Overall health",
+              value: (
+                <StatusBadge tone={runtimeStateTone(state)}>
+                  {formatRuntimeState(state)}
+                </StatusBadge>
+              )
+            },
+            ...(status?.statusDocumentError
+              ? [
+                  {
+                    label: "Status document",
+                    value: "Read failed",
+                    detail: status.statusDocumentError
+                  }
+                ]
+              : []),
+            ...(status?.guestRuntimeStateError
+              ? [
+                  {
+                    label: "Guest runtime state",
+                    value: "Read failed",
+                    detail: status.guestRuntimeStateError
+                  }
+                ]
+              : []),
+            {
+              label: "VitalServer",
+              value: (
+                <a href={vitalServerURL} target="_blank" rel="noreferrer">
+                  {vitalServerURL}
+                </a>
+              ),
+              detail: serviceStatusDetail(
+                status?.hostProxyHTTP,
+                status?.startedAt
+              )
+            },
+            {
+              label: "Remote Console",
+              value: (
+                <a href={remoteConsoleURL} target="_blank" rel="noreferrer">
+                  {remoteConsoleURL}
+                </a>
+              ),
+              detail: serviceStatusDetail(
+                status?.runtimeControlHTTP,
+                status?.runtimeControlStartedAt
+              )
+            },
+            {
+              label: "Data directory",
+              value: overview.settings?.vitalFilesDirectory ?? "Unknown",
+              detail: status?.dataDirectoryStatsError
+                ? `Read failed: ${status.dataDirectoryStatsError}`
+                : stats
+                  ? `${stats.fileCount ?? 0} files · ${formatBytes(stats.sizeBytes)}`
+                  : "Unknown"
+            },
+            {
+              label: "Observation updated",
+              value: formatLocalDateTime(vitalRecorder?.observedAt)
+            }
+          ]}
+        />
+      </Panel>
+
+      <Panel title="Vital Recorder">
+        <KeyValueRows
+          rows={[
+            {
+              label: "Active recorder connections",
+              value: vitalRecorder?.activeConnections ?? 0
+            },
+            {
+              label: "Known recorders",
+              value: formatVitalRecorderObservationMetric(
+                vitalRecorder,
+                "knownRecorders"
+              )
+            },
+            {
+              label: "Online recorders",
+              value: formatVitalRecorderObservationMetric(
+                vitalRecorder,
+                "onlineRecorders"
+              )
+            },
+            {
+              label: "Stale recorders",
+              value: formatVitalRecorderObservationMetric(
+                vitalRecorder,
+                "staleRecorders"
+              )
+            },
+            {
+              label: "Known beds",
+              value: formatVitalRecorderObservationMetric(
+                vitalRecorder,
+                "knownBeds"
+              )
+            },
+            {
+              label: "Recorder anomalies",
+              value: formatVitalRecorderObservationMetric(
+                vitalRecorder,
+                "recorderAnomalies"
+              )
+            }
+          ]}
+        />
+      </Panel>
+
+      <Panel title="Resource usage">
+        <KeyValueRows
+          rows={[
+            {
+              label: "CPU",
+              value:
+                status?.cpuUsagePercent === null ||
+                status?.cpuUsagePercent === undefined
+                  ? "Unknown"
+                  : `${Math.round(status.cpuUsagePercent)}%`
+            },
+            {
+              label: "Memory available to VM",
+              value: formatResourceUsage(status?.memory)
+            },
+            {
+              label: "VM disk",
+              value: formatResourceUsage(status?.systemDisk)
+            },
+            {
+              label: "Data storage",
+              value: formatResourceUsage(status?.dataStorage)
+            }
+          ]}
+        />
+      </Panel>
+    </div>
+  );
+}
+
+function serviceStatusDetail(
+  httpStatus: string | null | undefined,
+  startedAt: string | null | undefined
+): string {
+  return [formatHTTPReachability(httpStatus), formatUptimeSince(startedAt)]
+    .filter((part) => part && part !== "-")
+    .join(" ");
+}
+
+function formatResourceUsage(value: unknown): string {
+  if (!value || typeof value !== "object") {
+    return "Unknown";
+  }
+
+  const record = value as Record<string, unknown>;
+  const usedBytes = numberValue(record.usedBytes);
+  const totalBytes = numberValue(record.totalBytes);
+  const availableBytes = numberValue(record.availableBytes);
+
+  if (usedBytes !== undefined && totalBytes !== undefined) {
+    return `${formatBytes(usedBytes)} / ${formatBytes(totalBytes)}`;
+  }
+  if (availableBytes !== undefined && totalBytes !== undefined) {
+    return `${formatBytes(availableBytes)} / ${formatBytes(totalBytes)}`;
+  }
+  return "Unknown";
+}
+
+function numberValue(value: unknown): number | undefined {
+  return typeof value === "number" ? value : undefined;
+}

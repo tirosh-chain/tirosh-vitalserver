@@ -1,6 +1,5 @@
 import Foundation
 import RuntimeControl
-import Core
 import Contracts
 
 @MainActor
@@ -26,8 +25,8 @@ public struct RuntimeControlClientAPIReadHandler: RuntimeControlAPIReadHandler {
         client.loadRuntimeEvents(query: query)
     }
 
-    public func loadVitalDBObservation() async throws -> VitalDBObservationDocument? {
-        client.loadVitalDBObservation()
+    public func loadVitalDBObservationSnapshot() async throws -> RuntimeVitalDBObservationSnapshot {
+        client.loadVitalDBObservationSnapshot()
     }
 
     public func loadVitalDBRecorders() async throws -> RuntimeVitalRecorderHistory {
@@ -74,14 +73,14 @@ public struct RuntimeControlClientAPIReadHandler: RuntimeControlAPIReadHandler {
         }
         let settings = client.loadSettings()
         let status = client.loadStatus(settings: settings)
-        return hostClient.loadBackups(latestBackupPath: status.latestBackup)
+        return try hostClient.loadBackups(latestBackupPath: status.latestBackup)
     }
 
     public func loadRedisBackups() async throws -> [RuntimeBackup] {
         guard let hostClient else {
             throw RuntimeControlAPIReadHandlerError.hostAffordanceUnavailable
         }
-        return hostClient.loadRedisBackups()
+        return try hostClient.loadRedisBackups()
     }
 
     public func applySettings(_ settings: RuntimeSettings) async throws -> RuntimeControlCommandResponse {
@@ -106,6 +105,10 @@ public struct RuntimeControlClientAPIReadHandler: RuntimeControlAPIReadHandler {
 
     public func repairDatastore() async throws -> RuntimeControlCommandResponse {
         RuntimeControlCommandResponse(result: try await client.repairDatastore())
+    }
+
+    public func repairVMDisk() async throws -> RuntimeControlCommandResponse {
+        RuntimeControlCommandResponse(result: try await client.repairVMDisk())
     }
 
     public func createRedisBackup() async throws -> RuntimeControlCommandResponse {

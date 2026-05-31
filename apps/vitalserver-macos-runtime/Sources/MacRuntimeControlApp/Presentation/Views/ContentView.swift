@@ -11,6 +11,7 @@ struct ContentView: View {
     @State private var showingDeleteBackupConfirmation = false
     @State private var showingRepairProxyConfirmation = false
     @State private var showingRepairDatastoreConfirmation = false
+    @State private var showingRepairVMDiskConfirmation = false
     @State private var showingRepairRuntimeServicesConfirmation = false
     @State private var showingStartServicesConfirmation = false
     @State private var showingStopServicesConfirmation = false
@@ -54,7 +55,7 @@ struct ContentView: View {
                 Task { await viewModel.rollbackRuntime() }
             }
         } message: {
-            Text(viewModel.selectedBackupPath.isEmpty ? AppConstants.StatusText.latestBackupFallback : viewModel.selectedBackupPath)
+            Text(viewModel.selectedBackupPath ?? AppConstants.StatusText.latestBackupFallback)
         }
         .alert(AppConstants.Actions.deleteBackup, isPresented: $showingDeleteBackupConfirmation) {
             Button(AppConstants.Actions.cancel, role: .cancel) {}
@@ -65,7 +66,7 @@ struct ContentView: View {
             Text([
                 AppConstants.StatusText.deleteBackupConfirmation,
                 viewModel.selectedBackupPath,
-            ].filter { !$0.isEmpty }.joined(separator: "\n\n"))
+            ].compactMap { $0 }.joined(separator: "\n\n"))
         }
         .alert(AppConstants.Actions.repairProxyPort, isPresented: $showingRepairProxyConfirmation) {
             Button(AppConstants.Actions.cancel, role: .cancel) {}
@@ -82,6 +83,14 @@ struct ContentView: View {
             }
         } message: {
             Text(AppConstants.StatusText.repairDatastoreConfirmation)
+        }
+        .alert(AppConstants.Actions.repairVMDisk, isPresented: $showingRepairVMDiskConfirmation) {
+            Button(AppConstants.Actions.cancel, role: .cancel) {}
+            Button(AppConstants.Actions.repairVMDisk, role: .destructive) {
+                Task { await viewModel.repairVMDisk() }
+            }
+        } message: {
+            Text(AppConstants.StatusText.repairVMDiskConfirmation)
         }
         .alert(AppConstants.Actions.repairRuntimeServices, isPresented: $showingRepairRuntimeServicesConfirmation) {
             Button(AppConstants.Actions.cancel, role: .cancel) {}
@@ -274,6 +283,7 @@ struct ContentView: View {
                 showingRollbackConfirmation: $showingRollbackConfirmation,
                 showingRepairProxyConfirmation: $showingRepairProxyConfirmation,
                 showingRepairDatastoreConfirmation: $showingRepairDatastoreConfirmation,
+                showingRepairVMDiskConfirmation: $showingRepairVMDiskConfirmation,
                 showingRepairRuntimeServicesConfirmation: $showingRepairRuntimeServicesConfirmation,
                 showingStartServicesConfirmation: $showingStartServicesConfirmation,
                 showingStopServicesConfirmation: $showingStopServicesConfirmation,

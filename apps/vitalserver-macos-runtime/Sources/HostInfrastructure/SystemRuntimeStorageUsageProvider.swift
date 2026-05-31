@@ -9,25 +9,32 @@ public struct SystemRuntimeStorageUsageProvider: RuntimeStorageUsageProviding {
         self.fileStore = fileStore
     }
 
-    public func storageUsage(for path: String) -> ResourceUsage? {
-        guard let volumeURL = existingStorageURL(for: path),
-              let values = try? volumeURL.resourceValues(forKeys: [
+    public func storageUsage(for path: String) -> RuntimeStorageUsageResult {
+        guard let volumeURL = existingStorageURL(for: path) else {
+            return .unavailable
+        }
+        do {
+            let values = try volumeURL.resourceValues(forKeys: [
                 .volumeAvailableCapacityForImportantUsageKey,
                 .volumeAvailableCapacityKey,
                 .volumeTotalCapacityKey,
-              ]),
-              let total = values.volumeTotalCapacity,
-              total > 0 else {
-            return nil
-        }
+            ])
+            guard let total = values.volumeTotalCapacity, total > 0 else {
+                return .unavailable
+            }
 
-        let available = values.volumeAvailableCapacityForImportantUsage
-            ?? values.volumeAvailableCapacity.map(Int64.init)
-            ?? 0
-        return ResourceUsage(
-            usedBytes: max(Int64(total) - available, 0),
-            totalBytes: Int64(total)
-        )
+            let available = values.volumeAvailableCapacityForImportantUsage
+                ?? values.volumeAvailableCapacity.map(Int64.init)
+                ?? 0
+            return .loaded(
+                ResourceUsage(
+                    usedBytes: max(Int64(total) - available, 0),
+                    totalBytes: Int64(total)
+                )
+            )
+        } catch {
+            return .failed(error.localizedDescription)
+        }
     }
 
     private func existingStorageURL(for path: String) -> URL? {

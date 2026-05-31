@@ -1,6 +1,5 @@
 import Foundation
 import Contracts
-import Core
 import MacHostRuntimeAdapter
 import RuntimeControl
 import RuntimeControlAPI
@@ -10,32 +9,47 @@ struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
     private let commandClient: any RuntimeControlClient
     private let hostClient: any RuntimeHostClient
     private let readWorker: MacHostRuntimeReadWorker
+    private let localAPISettings: RuntimeControlLocalAPISettingsCoordinator
+    private let servesTestTools: Bool
+    private let statusAnnotator: RuntimeControlStatusAnnotator
+    private let scheduleHelperRelaunch: @MainActor () -> Void
 
     init(
         commandClient: any RuntimeControlClient,
         hostClient: any RuntimeHostClient,
-        readWorker: MacHostRuntimeReadWorker
+        readWorker: MacHostRuntimeReadWorker,
+        localAPISettings: RuntimeControlLocalAPISettingsCoordinator,
+        servesTestTools: Bool,
+        runtimeControlStartedAt: Date = Date(),
+        scheduleHelperRelaunch: @escaping @MainActor () -> Void = {}
     ) {
         self.commandClient = commandClient
         self.hostClient = hostClient
         self.readWorker = readWorker
+        self.localAPISettings = localAPISettings
+        self.servesTestTools = servesTestTools
+        self.statusAnnotator = RuntimeControlStatusAnnotator(runtimeControlStartedAt: runtimeControlStartedAt)
+        self.scheduleHelperRelaunch = scheduleHelperRelaunch
     }
 
     func loadCapabilities() async throws -> RuntimeControlCapabilities {
-        commandClient.capabilities
+        var capabilities = commandClient.capabilities
+        capabilities.canUseTestTools = servesTestTools
+        return capabilities
     }
 
     func loadStatus() async throws -> RuntimeStatus {
         let settings = await readWorker.loadSettings()
-        return await readWorker.loadStatus(settings: settings)
+        let status = await readWorker.loadStatus(settings: settings)
+        return statusAnnotator.annotated(status)
     }
 
     func loadEvents(query: RuntimeEventQuery) async throws -> RuntimeEventHistory {
         await readWorker.loadRuntimeEvents(query: query)
     }
 
-    func loadVitalDBObservation() async throws -> VitalDBObservationDocument? {
-        await readWorker.loadVitalDBObservation()
+    func loadVitalDBObservationSnapshot() async throws -> RuntimeVitalDBObservationSnapshot {
+        await readWorker.loadVitalDBObservationSnapshot()
     }
 
     func loadVitalDBRecorders() async throws -> RuntimeVitalRecorderHistory {
@@ -48,11 +62,12 @@ struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
 
     func loadHealthStatus() async throws -> RuntimeStatus {
         let settings = await readWorker.loadSettings()
-        return await readWorker.loadHealthStatus(settings: settings)
+        let status = await readWorker.loadHealthStatus(settings: settings)
+        return statusAnnotator.annotated(status)
     }
 
     func loadSettings() async throws -> RuntimeSettings {
-        await readWorker.loadSettings()
+        localAPISettings.settingsWithLocalAPIPort(await readWorker.loadSettings())
     }
 
     func loadReleaseInfo() async throws -> RuntimeReleaseInfo {
@@ -76,15 +91,17 @@ struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
     func loadBackups() async throws -> [RuntimeBackup] {
         let settings = await readWorker.loadSettings()
         let status = await readWorker.loadStatus(settings: settings)
-        return await readWorker.loadBackups(latestBackupPath: status.latestBackup)
+        return try await readWorker.loadBackups(latestBackupPath: status.latestBackup)
     }
 
     func loadRedisBackups() async throws -> [RuntimeBackup] {
-        await readWorker.loadRedisBackups()
+        try await readWorker.loadRedisBackups()
     }
 
     func applySettings(_ settings: RuntimeSettings) async throws -> RuntimeControlCommandResponse {
-        RuntimeControlCommandResponse(result: try await commandClient.applySettings(settings))
+        let response = RuntimeControlCommandResponse(result: try await commandClient.applySettings(settings))
+        localAPISettings.apply(settings: settings)
+        return response
     }
 
     func startRuntimeServices() async throws -> RuntimeControlCommandResponse {
@@ -107,6 +124,10 @@ struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
         RuntimeControlCommandResponse(result: try await commandClient.repairDatastore())
     }
 
+    func repairVMDisk() async throws -> RuntimeControlCommandResponse {
+        RuntimeControlCommandResponse(result: try await commandClient.repairVMDisk())
+    }
+
     func createRedisBackup() async throws -> RuntimeControlCommandResponse {
         RuntimeControlCommandResponse(result: try await commandClient.createRedisBackup())
     }
@@ -120,7 +141,11 @@ struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
     }
 
     func applyUpdateBundle(bundle: RuntimeControlFileReference) async throws -> RuntimeControlCommandResponse {
-        RuntimeControlCommandResponse(result: try await hostClient.applyUpdateBundle(url: try localFileURL(bundle)))
+        let result = try await hostClient.applyUpdateBundle(url: try localFileURL(bundle))
+        if result.exitCode == 0 {
+            scheduleHelperRelaunch()
+        }
+        return RuntimeControlCommandResponse(result: result)
     }
 
     func rollbackBackup(_ backup: RuntimeControlFileReference) async throws -> RuntimeControlCommandResponse {
@@ -145,6 +170,7 @@ struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
         }
         return URL(fileURLWithPath: reference.value)
     }
+
 }
 
 enum RuntimeControlAPIHandlerError: LocalizedError, Equatable {

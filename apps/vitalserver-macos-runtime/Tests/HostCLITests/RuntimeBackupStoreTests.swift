@@ -163,7 +163,7 @@ final class RuntimeBackupStoreTests: XCTestCase {
         ])
     }
 
-    func testLatestBackupSelectsNewestManagedBeforeBackup() {
+    func testLatestBackupSelectsNewestManagedBeforeBackup() throws {
         let store = makeStore(
             childDirectories: { url, nameContains in
                 XCTAssertEqual(url.path, "/product/backups")
@@ -175,7 +175,17 @@ final class RuntimeBackupStoreTests: XCTestCase {
             }
         )
 
-        XCTAssertEqual(store.latestBackup()?.path, "/product/backups/20260522T000000Z-before-0.1.3")
+        XCTAssertEqual(try store.latestBackup()?.path, "/product/backups/20260522T000000Z-before-0.1.3")
+    }
+
+    func testLatestBackupPropagatesReadFailure() {
+        let store = makeStore(
+            childDirectories: { _, _ in
+                throw NSError(domain: "backup-read", code: 1)
+            }
+        )
+
+        XCTAssertThrowsError(try store.latestBackup())
     }
 
     func testRequireLatestBackupFailsWhenNoneExists() {

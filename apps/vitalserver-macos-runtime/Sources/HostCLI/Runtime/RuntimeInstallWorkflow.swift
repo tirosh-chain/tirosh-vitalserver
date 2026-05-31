@@ -94,8 +94,7 @@ struct RuntimeInstallWorkflow {
     private func runtimeInstallDirectoryPreparer() -> RuntimeInstallDirectoryPreparer {
         RuntimeInstallDirectoryPreparer(
             installedPaths: context.installedPaths,
-            fileStore: operations.fileStore,
-            now: operations.now
+            fileStore: operations.fileStore
         )
     }
 

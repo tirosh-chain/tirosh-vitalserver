@@ -11,6 +11,7 @@ final class RuntimeDatastoreRepairRunnerTests: XCTestCase {
 
         XCTAssertEqual(harness.events, [
             "log:datastore repair requested",
+            "capability",
             "prepare-run-dir",
             "remove-result",
             "status:recovering:repair-datastore:datastore repair requested",
@@ -35,15 +36,32 @@ final class RuntimeDatastoreRepairRunnerTests: XCTestCase {
         XCTAssertFalse(harness.events.contains("restart-vm"))
     }
 
-    func testRunContinuesWhenPreviousResultRemovalFails() throws {
+    func testRunStopsWhenPreviousResultRemovalFails() {
         let harness = DatastoreRepairHarness()
         harness.removeResultError = TestDatastoreRepairError.removeResult
 
-        try harness.runner.run()
+        XCTAssertThrowsError(try harness.runner.run())
 
-        XCTAssertTrue(harness.events.contains("remove-result"))
-        XCTAssertTrue(harness.events.contains("request:request-1:2026-05-22T00:00:00Z"))
-        XCTAssertEqual(harness.events.last, "log:datastore repair completed")
+        XCTAssertEqual(harness.events, [
+            "log:datastore repair requested",
+            "capability",
+            "prepare-run-dir",
+            "remove-result",
+        ])
+    }
+
+    func testRunStopsBeforeWritingRequestWhenCapabilityIsMissing() {
+        let harness = DatastoreRepairHarness()
+        harness.capabilityError = LauncherError.runtimeOperationFailed("guest capability missing: repair-datastore")
+
+        XCTAssertThrowsError(try harness.runner.run()) { error in
+            XCTAssertEqual(String(describing: error), "guest capability missing: repair-datastore")
+        }
+
+        XCTAssertEqual(harness.events, [
+            "log:datastore repair requested",
+            "capability",
+        ])
     }
 
     func testRunStopsBeforeHealthyStatusWhenResultWaitFails() {
@@ -61,11 +79,18 @@ final class RuntimeDatastoreRepairRunnerTests: XCTestCase {
 private final class DatastoreRepairHarness {
     var events: [String] = []
     var vmLoaded = true
+    var capabilityError: Error?
     var removeResultError: Error?
     var waitResultError: Error?
 
     var runner: RuntimeDatastoreRepairRunner {
         RuntimeDatastoreRepairRunner(
+            requireCapability: {
+                self.events.append("capability")
+                if let capabilityError = self.capabilityError {
+                    throw capabilityError
+                }
+            },
             prepareGuestRunDirectory: {
                 self.events.append("prepare-run-dir")
             },

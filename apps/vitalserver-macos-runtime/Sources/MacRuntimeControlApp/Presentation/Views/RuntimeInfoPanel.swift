@@ -112,9 +112,9 @@ struct RuntimeInfoPanel: View {
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
-    private func statusRow(_ label: String, _ value: String) -> some View {
+    private func statusRow(_ label: String, _ value: String?) -> some View {
         statusRow(label) {
-            Text(value)
+            Text(value ?? AppConstants.StatusText.notReported)
                 .fontWeight(.medium)
         }
     }
@@ -127,9 +127,9 @@ struct RuntimeInfoPanel: View {
         }
     }
 
-    private func pathRow(_ label: String, _ path: String) -> some View {
+    private func pathRow(_ label: String, _ path: String?) -> some View {
         statusRow(label) {
-            Text(path)
+            Text(path ?? AppConstants.StatusText.notReported)
                 .font(.system(.body, design: .monospaced))
                 .lineLimit(2)
                 .truncationMode(.middle)

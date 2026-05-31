@@ -39,7 +39,7 @@ struct RuntimeWatchdogRunner {
         }
 
         let initial = actions.healthSnapshot()
-        if initial.isHealthy {
+        if RuntimeHealthSnapshotPolicy.isHealthy(initial) {
             try actions.writeObservedStatus(.healthy, .watchdog, "runtime watchdog passed", initial)
             print("watchdog: ok")
             return
@@ -159,7 +159,7 @@ struct RuntimeWatchdogRunner {
 
         actions.sleep(Constants.Runtime.watchdogRecoveryWaitSeconds)
         let recovered = actions.healthSnapshot()
-        if recovered.isHealthy {
+        if RuntimeHealthSnapshotPolicy.isHealthy(recovered) {
             try actions.writeObservedStatus(.healthy, .watchdog, "watchdog recovery completed", recovered)
             print("watchdog: recovered")
         } else {
@@ -174,6 +174,6 @@ struct RuntimeWatchdogRunner {
     }
 
     private func reasonText(_ reasons: [RuntimeFailureReason]) -> String {
-        reasons.isEmpty ? "unknown" : reasons.map(\.rawValue).joined(separator: ", ")
+        RuntimeFailureReasonText.describe(reasons)
     }
 }

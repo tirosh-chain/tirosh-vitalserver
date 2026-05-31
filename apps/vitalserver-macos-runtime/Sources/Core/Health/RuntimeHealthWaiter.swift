@@ -70,7 +70,7 @@ public enum RuntimeHealthWaiter {
             if let bootstrapFailure = observation.snapshot.failureReasons.first(where: { $0.isGuestBootstrapFailure }) {
                 return .failedEarly(bootstrapFailure)
             }
-            if observation.snapshot.isHealthy {
+            if RuntimeHealthSnapshotPolicy.isHealthy(observation.snapshot) {
                 return .healthy
             }
 

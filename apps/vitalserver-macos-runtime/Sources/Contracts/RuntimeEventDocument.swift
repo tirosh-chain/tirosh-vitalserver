@@ -170,9 +170,9 @@ public struct RuntimeEventDocument: Codable, Equatable, Sendable {
     public let eventType: RuntimeEventType
     public let timestamp: String
     public let product: String
-    public let status: RuntimeStatusLevel
+    public let status: RuntimeStatusLevel?
     public let previousStatus: RuntimeStatusLevel?
-    public let operation: RuntimeOperation
+    public let operation: RuntimeOperation?
     public let message: String
     public let runtimeVersion: String
     public let vmState: RuntimeVMState?
@@ -190,9 +190,9 @@ public struct RuntimeEventDocument: Codable, Equatable, Sendable {
         eventType: RuntimeEventType,
         timestamp: String,
         product: String,
-        status: RuntimeStatusLevel,
+        status: RuntimeStatusLevel? = nil,
         previousStatus: RuntimeStatusLevel?,
-        operation: RuntimeOperation,
+        operation: RuntimeOperation? = nil,
         message: String,
         runtimeVersion: String,
         vmState: RuntimeVMState? = nil,
@@ -230,9 +230,9 @@ public struct RuntimeEventDocument: Codable, Equatable, Sendable {
         eventType: RuntimeEventType,
         timestamp: String,
         product: String,
-        status: RuntimeStatusLevel,
+        status: RuntimeStatusLevel? = nil,
         previousStatus: RuntimeStatusLevel?,
-        operation: RuntimeOperation,
+        operation: RuntimeOperation? = nil,
         message: String,
         runtimeVersion: String,
         vmState: RuntimeVMState? = nil,

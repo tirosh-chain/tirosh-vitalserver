@@ -70,7 +70,7 @@ struct RuntimeStatusDisplayPolicy {
                 uptimeText: nil
             )
         }
-        if status.isReady {
+        if RuntimeReadinessPolicy.isReady(status) {
             return StatusValue(
                 text: AppConstants.StatusText.healthy,
                 severity: .healthy,
@@ -124,8 +124,25 @@ struct RuntimeStatusDisplayPolicy {
         )
     }
 
+    func remoteConsoleAvailability(status: RuntimeStatus, now: Date = Date()) -> StatusValue {
+        remoteConsoleAvailability(
+            http: status.runtimeControlHTTP,
+            startedAt: status.runtimeControlStartedAt,
+            now: now
+        )
+    }
+
+    func remoteConsoleAvailability(http: String?, startedAt: String?, now: Date = Date()) -> StatusValue {
+        let reachable = isSuccessfulHTTPStatus(http)
+        return StatusValue(
+            text: reachable ? AppConstants.StatusText.reachable : AppConstants.StatusText.unavailable,
+            severity: reachable ? .healthy : .warning,
+            uptimeText: formatUptime(nil, startedAt: startedAt, observedAt: nil, now: now)
+        )
+    }
+
     func actionNeeded(status: RuntimeStatus) -> ActionNeededItem? {
-        if status.isReady || isManagedOperationInProgress(status.runtimeState) {
+        if RuntimeReadinessPolicy.isReady(status) || isManagedOperationInProgress(status.runtimeState) {
             return nil
         }
         if !status.runtimeInstalled {
@@ -167,7 +184,7 @@ struct RuntimeStatusDisplayPolicy {
             ),
             HealthItem(
                 label: AppConstants.Labels.vmState,
-                value: vmStateValue(status.vmState, runtimeInstalled: status.runtimeInstalled)
+                value: vmStateValue(status.vmState)
             ),
         ]
         if let vmErrors = status.vmErrors, !vmErrors.isEmpty {
@@ -303,14 +320,18 @@ struct RuntimeStatusDisplayPolicy {
         let summary = RuntimeVitalRecorderSummary(status: status)
         return RecorderSummary(
             activeConnections: "\(summary.activeConnections)",
-            knownRecorders: "\(summary.knownRecorders)",
-            onlineRecorders: "\(summary.onlineRecorders)",
-            staleRecorders: "\(summary.staleRecorders)",
-            knownBeds: "\(summary.knownBeds)",
-            anomalies: "\(summary.recorderAnomalies)",
+            knownRecorders: reportedRecorderMetric(summary.source, summary.knownRecorders),
+            onlineRecorders: reportedRecorderMetric(summary.source, summary.onlineRecorders),
+            staleRecorders: reportedRecorderMetric(summary.source, summary.staleRecorders),
+            knownBeds: reportedRecorderMetric(summary.source, summary.knownBeds),
+            anomalies: reportedRecorderMetric(summary.source, summary.recorderAnomalies),
             latestRecorder: summary.latestRecorder.map { "\($0.vrcode) \($0.ip ?? AppConstants.StatusText.unknown)" },
             observedAt: summary.observedAt
         )
+    }
+
+    private func reportedRecorderMetric(_ source: RuntimeVitalRecorderSummarySource, _ value: Int) -> String {
+        source == .vitalDBObservation ? "\(value)" : AppConstants.StatusText.notReported
     }
 
     private func serviceStateItem(_ label: String, isHealthy: Bool, value: String) -> ServiceHealthItem {
@@ -466,11 +487,10 @@ struct RuntimeStatusDisplayPolicy {
         AppConstants.StatusText.reachability(httpStatus: value)
     }
 
-    func vmStateValue(_ value: RuntimeVMState?, runtimeInstalled: Bool) -> StatusValue {
-        let resolvedValue = value ?? (runtimeInstalled ? nil : .notInstalled)
+    func vmStateValue(_ value: RuntimeVMState?) -> StatusValue {
         return StatusValue(
-            text: AppConstants.StatusText.vmState(resolvedValue),
-            severity: vmStateSeverity(resolvedValue),
+            text: AppConstants.StatusText.vmState(value),
+            severity: vmStateSeverity(value),
             uptimeText: nil
         )
     }

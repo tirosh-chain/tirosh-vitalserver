@@ -284,6 +284,7 @@ public enum RuntimeControlDevConsoleDocument {
             <option value="proxyError">proxyError</option>
             <option value="watchdog">watchdog</option>
             <option value="updateActivation">updateActivation</option>
+            <option value="updateShutdown">updateShutdown</option>
             <option value="containers" selected>containers</option>
           </select>
         </label>

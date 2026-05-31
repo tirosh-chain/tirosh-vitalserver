@@ -43,23 +43,23 @@ final class DatastoreRepairEvaluatorTests: XCTestCase {
         )
     }
 
-    func testStaleRequestIdIsIgnored() {
+    func testMismatchedRequestIdFails() {
         XCTAssertEqual(
             DatastoreRepairEvaluator.evaluate(
                 result(status: .completed, requestId: "old", message: "old done"),
                 expectedRequestId: "new"
             ),
-            .stale(message: "stale datastore repair result")
+            .failed(message: "datastore repair result does not match the current request")
         )
     }
 
-    func testV2ResultMissingRequestIdIsStaleWhenExpectedRequestIdExists() {
+    func testV2ResultMissingRequestIdFailsWhenExpectedRequestIdExists() {
         XCTAssertEqual(
             DatastoreRepairEvaluator.evaluate(
                 result(schemaVersion: 2, status: .completed, requestId: nil, message: "done"),
                 expectedRequestId: "new"
             ),
-            .stale(message: "datastore repair result is missing requestId")
+            .failed(message: "datastore repair result is missing requestId")
         )
     }
 

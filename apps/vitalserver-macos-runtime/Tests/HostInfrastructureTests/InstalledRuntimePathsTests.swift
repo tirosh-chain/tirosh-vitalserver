@@ -17,14 +17,19 @@ final class InstalledRuntimePathsTests: XCTestCase {
         XCTAssertEqual(paths.nginxExecutable.path, "/Library/Application Support/TiroshVitalServer/nginx/sbin/nginx")
         XCTAssertEqual(paths.productLogsDirectory.path, "/Library/Application Support/TiroshVitalServer/logs")
         XCTAssertEqual(paths.centralRuntimeLogsDirectory.path, "/Library/Application Support/TiroshVitalServer/logs/runtime")
+        XCTAssertEqual(paths.proxyNginxAccessLog.path, "/Library/Application Support/TiroshVitalServer/logs/runtime/proxy-nginx.access.log")
+        XCTAssertEqual(paths.proxyNginxErrorLog.path, "/Library/Application Support/TiroshVitalServer/logs/runtime/proxy-nginx.error.log")
         XCTAssertEqual(paths.centralGuestLogsDirectory.path, "/Library/Application Support/TiroshVitalServer/logs/guest")
         XCTAssertEqual(paths.logArchiveDirectory.path, "/Library/Application Support/TiroshVitalServer/logs/archive")
         XCTAssertEqual(paths.vmIPFile.path, "/Library/Application Support/TiroshVitalServer/vm/data/run/vm-ip")
         XCTAssertEqual(paths.runtimeState.path, "/Library/Application Support/TiroshVitalServer/vm/data/run/runtime-state.json")
         XCTAssertEqual(paths.updateActivationLog.path, "/Library/Application Support/TiroshVitalServer/vm/data/run/activate-update.log")
         XCTAssertEqual(paths.centralUpdateActivationLog.path, "/Library/Application Support/TiroshVitalServer/logs/guest/activate-update.log")
+        XCTAssertEqual(paths.updateShutdownLog.path, "/Library/Application Support/TiroshVitalServer/vm/data/run/prepare-update-shutdown.log")
+        XCTAssertEqual(paths.centralUpdateShutdownLog.path, "/Library/Application Support/TiroshVitalServer/logs/guest/prepare-update-shutdown.log")
         XCTAssertEqual(paths.managerCommandLog.path, "/private/tmp/tirosh-vitalserver-manager-command.log")
         XCTAssertEqual(paths.centralCommandLog.path, "/Library/Application Support/TiroshVitalServer/logs/command.log")
+        XCTAssertEqual(paths.guestRuntimeSettings.path, "/Library/Application Support/TiroshVitalServer/vm/data/deploy/runtime-settings.json")
     }
 
     func testRuntimeHomeInitializerDerivesProductRoot() {

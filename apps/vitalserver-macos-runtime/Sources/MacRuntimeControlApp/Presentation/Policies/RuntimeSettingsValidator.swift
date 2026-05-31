@@ -11,7 +11,9 @@ struct RuntimeSettingsValidator {
         if settings.diskGiB < installedSettings.diskGiB {
             return .invalid(AppConstants.StatusText.diskDecreaseUnavailable)
         }
-        if !(1...65_535).contains(settings.proxyPort) || !(1...65_535).contains(settings.publicPort) {
+        if !(1...65_535).contains(settings.proxyPort)
+            || !(1...65_535).contains(settings.publicPort)
+            || !(1...65_535).contains(settings.runtimeControlPort) {
             return .invalid(AppConstants.StatusText.invalidPort)
         }
         if !(AppConstants.SettingsLimits.minimumRedisBackupRetentionCount...AppConstants.SettingsLimits.maximumRedisBackupRetentionCount)

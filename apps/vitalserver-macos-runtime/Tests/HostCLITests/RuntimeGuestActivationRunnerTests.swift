@@ -9,7 +9,7 @@ final class RuntimeGuestActivationRunnerTests: XCTestCase {
         let events = EventLog()
         let runner = makeRunner(
             events: events,
-            loadResult: { nil }
+            loadResult: { .missing }
         )
 
         try runner.activateIfNeeded(manifest: manifest(artifacts: [.appBundle]))
@@ -21,10 +21,10 @@ final class RuntimeGuestActivationRunnerTests: XCTestCase {
 
     func testActivateWritesRequestStartsVMAndWaitsForResult() throws {
         let events = EventLog()
-        var results: [GuestUpdateActivationResultDocument?] = [
-            nil,
-            result(status: .running, requestId: "request-1", message: "loading"),
-            result(status: .completed, requestId: "request-1", message: "done"),
+        var results: [RuntimeGuestDocumentLoadResult<GuestUpdateActivationResultDocument>] = [
+            .missing,
+            .loaded(result(status: .running, requestId: "request-1", message: "loading")),
+            .loaded(result(status: .completed, requestId: "request-1", message: "done")),
         ]
         let runner = makeRunner(
             events: events,
@@ -36,6 +36,7 @@ final class RuntimeGuestActivationRunnerTests: XCTestCase {
 
         XCTAssertEqual(events.values, [
             "log:guest update activation requested version=1.2.3",
+            "capability",
             "mkdir",
             "remove-result",
             "write-request:request-1:2026-05-22T00:00:00Z:1.2.3",
@@ -56,7 +57,7 @@ final class RuntimeGuestActivationRunnerTests: XCTestCase {
             events: events,
             vmServiceLoaded: true,
             loadResult: {
-                self.result(status: .completed, requestId: "request-1", message: "done")
+                .loaded(self.result(status: .completed, requestId: "request-1", message: "done"))
             }
         )
 
@@ -66,12 +67,31 @@ final class RuntimeGuestActivationRunnerTests: XCTestCase {
         XCTAssertTrue(events.values.contains("write-request:request-1:2026-05-22T00:00:00Z:1.2.3"))
     }
 
+    func testActivateStopsBeforeWritingRequestWhenCapabilityIsMissing() {
+        let events = EventLog()
+        let runner = makeRunner(
+            events: events,
+            requireCapability: {
+                throw LauncherError.runtimeOperationFailed("guest capability missing: activate-update")
+            },
+            loadResult: { .missing }
+        )
+
+        XCTAssertThrowsError(try runner.activateIfNeeded(manifest: manifest(artifacts: [.guestDeploy]))) { error in
+            XCTAssertEqual(String(describing: error), "guest capability missing: activate-update")
+        }
+        XCTAssertEqual(events.values, [
+            "log:guest update activation requested version=1.2.3",
+            "capability",
+        ])
+    }
+
     func testActivatePropagatesFailedResult() {
         let events = EventLog()
         let runner = makeRunner(
             events: events,
             loadResult: {
-                self.result(status: .failed, requestId: "request-1", message: "compose failed")
+                .loaded(self.result(status: .failed, requestId: "request-1", message: "compose failed"))
             }
         )
 
@@ -84,9 +104,14 @@ final class RuntimeGuestActivationRunnerTests: XCTestCase {
     private func makeRunner(
         events: EventLog,
         vmServiceLoaded: Bool = false,
-        loadResult: @escaping () -> GuestUpdateActivationResultDocument?
+        requireCapability: @escaping () throws -> Void = {},
+        loadResult: @escaping () -> RuntimeGuestDocumentLoadResult<GuestUpdateActivationResultDocument>
     ) -> RuntimeGuestActivationRunner {
         RuntimeGuestActivationRunner(
+            requireCapability: {
+                events.append("capability")
+                try requireCapability()
+            },
             createRunDirectory: {
                 events.append("mkdir")
             },

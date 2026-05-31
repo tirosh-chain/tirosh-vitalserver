@@ -36,6 +36,18 @@ final class RuntimeStatusReporterTests: XCTestCase {
 
     func testWritesProgressAsTypedWorkflowStep() throws {
         let repository = RuntimeStatusRepositorySpy()
+        repository.loaded = RuntimeStatusDocumentBuilder.build(RuntimeStatusDocumentInput(
+            product: "TiroshVitalServer",
+            status: .healthy,
+            operation: .health,
+            message: "runtime health check passed",
+            updatedAt: "2026-05-22T00:00:00Z",
+            productRoot: "/product",
+            runtimeHome: "/product/vm",
+            runtimeVersion: "0.1.0",
+            healthSnapshot: healthSnapshot(),
+            latestBackup: nil
+        ))
         let reporter = RuntimeStatusReporter(
             repository: repository,
             productRoot: URL(fileURLWithPath: "/product"),
@@ -51,15 +63,61 @@ final class RuntimeStatusReporterTests: XCTestCase {
             message: "step started",
             updatedAt: "2026-05-22T00:00:00Z",
             runtimeVersion: "0.1.0",
-            healthSnapshot: healthSnapshot(),
             latestBackup: nil
         )
 
+        XCTAssertEqual(repository.saved?.vmState, .running)
         let progress = try XCTUnwrap(repository.saved?.progress)
         XCTAssertEqual(progress.operation, .applyBundle)
         XCTAssertEqual(progress.step, .activateGuestUpdate)
         XCTAssertEqual(progress.stepStatus, .started)
         XCTAssertEqual(progress.phase, .running)
+    }
+
+    func testWriteProgressRequiresExistingStatusDocument() {
+        let reporter = RuntimeStatusReporter(
+            repository: RuntimeStatusRepositorySpy(),
+            productRoot: URL(fileURLWithPath: "/product"),
+            runtimeHome: URL(fileURLWithPath: "/product/vm")
+        )
+
+        XCTAssertThrowsError(try reporter.writeProgress(
+            .updating,
+            operation: .applyBundle,
+            step: .activateGuestUpdate,
+            stepStatus: .started,
+            phase: .running,
+            message: "step started",
+            updatedAt: "2026-05-22T00:00:00Z",
+            runtimeVersion: "0.1.0",
+            latestBackup: nil
+        )) { error in
+            XCTAssertEqual(error as? RuntimeStatusReporterError, .missingStatusDocumentForProgress)
+        }
+    }
+
+    func testWriteProgressReportsStatusDocumentReadFailure() {
+        let repository = RuntimeStatusRepositorySpy()
+        repository.result = .failed("not-json")
+        let reporter = RuntimeStatusReporter(
+            repository: repository,
+            productRoot: URL(fileURLWithPath: "/product"),
+            runtimeHome: URL(fileURLWithPath: "/product/vm")
+        )
+
+        XCTAssertThrowsError(try reporter.writeProgress(
+            .updating,
+            operation: .applyBundle,
+            step: .activateGuestUpdate,
+            stepStatus: .started,
+            phase: .running,
+            message: "step started",
+            updatedAt: "2026-05-22T00:00:00Z",
+            runtimeVersion: "0.1.0",
+            latestBackup: nil
+        )) { error in
+            XCTAssertEqual(error as? RuntimeStatusReporterError, .statusDocumentReadFailed("not-json"))
+        }
     }
 
     func testStatusValueReadsRepositoryStatus() {
@@ -79,7 +137,7 @@ final class RuntimeStatusReporterTests: XCTestCase {
             vmIP: nil,
             proxyPort: 80,
             hostProxyHTTP: "failed",
-            guestHTTP: "missing-vm-ip",
+            guestHTTP: RuntimeHTTPStatusText.missingVMIP,
             redisUIHTTP: nil,
             swaggerUIHTTP: nil,
             rootfsBase: .present,
@@ -95,6 +153,16 @@ final class RuntimeStatusReporterTests: XCTestCase {
         )
 
         XCTAssertEqual(reporter.statusValue(), "degraded")
+    }
+
+    func testStatusValueReturnsNilWhenStatusDocumentIsMissing() {
+        let reporter = RuntimeStatusReporter(
+            repository: RuntimeStatusRepositorySpy(),
+            productRoot: URL(fileURLWithPath: "/product"),
+            runtimeHome: URL(fileURLWithPath: "/product/vm")
+        )
+
+        XCTAssertNil(reporter.statusValue())
     }
 
     private func healthSnapshot() -> RuntimeHealthSnapshot {
@@ -120,11 +188,23 @@ final class RuntimeStatusReporterTests: XCTestCase {
 }
 
 private final class RuntimeStatusRepositorySpy: RuntimeStatusRepository {
-    var loaded: RuntimeStatusDocument?
+    var result: RuntimeStatusDocumentLoadResult = .missing
     var saved: RuntimeStatusDocument?
 
-    func load() -> RuntimeStatusDocument? {
-        loaded
+    var loaded: RuntimeStatusDocument? {
+        get {
+            guard case .loaded(let document) = result else {
+                return nil
+            }
+            return document
+        }
+        set {
+            result = newValue.map(RuntimeStatusDocumentLoadResult.loaded) ?? .missing
+        }
+    }
+
+    func loadResult() -> RuntimeStatusDocumentLoadResult {
+        result
     }
 
     func save(_ document: RuntimeStatusDocument) throws {

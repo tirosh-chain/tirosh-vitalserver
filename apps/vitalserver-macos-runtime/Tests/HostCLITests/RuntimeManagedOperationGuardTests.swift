@@ -41,7 +41,7 @@ final class RuntimeManagedOperationGuardTests: XCTestCase {
             repository: repository,
             activeGuestBootstrap: RuntimeGuestBootstrapOperation(
                 operation: .unknown("bootstrap"),
-                modifiedAt: ISO8601DateFormatter().date(from: "2026-05-22T00:00:00Z")!
+                updatedAt: ISO8601DateFormatter().date(from: "2026-05-22T00:00:00Z")!
             ),
             now: "2026-05-22T00:05:00Z"
         )
@@ -56,7 +56,7 @@ final class RuntimeManagedOperationGuardTests: XCTestCase {
             repository: repository,
             activeGuestBootstrap: RuntimeGuestBootstrapOperation(
                 operation: .unknown("bootstrap"),
-                modifiedAt: ISO8601DateFormatter().date(from: "2026-05-22T00:00:00Z")!
+                updatedAt: ISO8601DateFormatter().date(from: "2026-05-22T00:00:00Z")!
             ),
             now: "2026-05-22T00:31:00Z",
             log: { messages.append($0) }
@@ -68,10 +68,30 @@ final class RuntimeManagedOperationGuardTests: XCTestCase {
         ])
     }
 
+    func testBlocksWatchdogRecoveryDuringRunningGuestBootstrapWithoutUpdatedAt() {
+        var messages: [String] = []
+        let repository = RuntimeStatusRepositorySpy()
+        let guardPolicy = managedOperationGuard(
+            repository: repository,
+            activeGuestBootstrap: RuntimeGuestBootstrapOperation(
+                operation: .unknown("bootstrap"),
+                updatedAt: nil
+            ),
+            now: "2026-05-22T00:31:00Z",
+            log: { messages.append($0) }
+        )
+
+        XCTAssertEqual(guardPolicy.activeOperation(), .unknown("bootstrap"))
+        XCTAssertEqual(messages, [
+            "watchdog guest bootstrap guard active without updatedAt operation=bootstrap",
+        ])
+    }
+
     func testBlocksWatchdogRecoveryDuringProtectedRuntimeOperations() {
         let protectedOperations: [RuntimeOperation] = [
             .redisBackup,
             .repairDatastore,
+            .repairVMDisk,
             .startServices,
             .stopServices,
             .uninstall,
@@ -128,6 +148,23 @@ final class RuntimeManagedOperationGuardTests: XCTestCase {
         XCTAssertNil(guardPolicy.activeOperation())
     }
 
+    func testLogsStatusReadFailureWithoutBlockingRecovery() {
+        var messages: [String] = []
+        let repository = RuntimeStatusRepositorySpy()
+        repository.result = .failed("status unreadable")
+        let guardPolicy = managedOperationGuard(
+            repository: repository,
+            now: "2026-05-22T00:01:00Z",
+            log: { messages.append($0) }
+        )
+
+        XCTAssertNil(guardPolicy.activeOperation())
+        XCTAssertEqual(messages, [
+            "watchdog active operation guard ignored status read failure error=status unreadable",
+        ])
+    }
+
+
     private func managedOperationGuard(
         repository: RuntimeStatusRepositorySpy,
         activeGuestBootstrap: RuntimeGuestBootstrapOperation? = nil,
@@ -179,10 +216,22 @@ final class RuntimeManagedOperationGuardTests: XCTestCase {
 }
 
 private final class RuntimeStatusRepositorySpy: RuntimeStatusRepository {
-    var loaded: RuntimeStatusDocument?
+    var result: RuntimeStatusDocumentLoadResult = .missing
 
-    func load() -> RuntimeStatusDocument? {
-        loaded
+    var loaded: RuntimeStatusDocument? {
+        get {
+            guard case .loaded(let document) = result else {
+                return nil
+            }
+            return document
+        }
+        set {
+            result = newValue.map(RuntimeStatusDocumentLoadResult.loaded) ?? .missing
+        }
+    }
+
+    func loadResult() -> RuntimeStatusDocumentLoadResult {
+        result
     }
 
     func save(_ document: RuntimeStatusDocument) throws {}

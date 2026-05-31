@@ -89,6 +89,20 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         XCTAssertEqual(vitalServer.severity, .warning)
     }
 
+    func testRemoteConsoleAvailabilityShowsReachabilityAndUptime() {
+        let now = ISO8601DateFormatter().date(from: "2026-05-29T00:02:05Z")!
+        let status = RuntimeStatus(
+            runtimeControlHTTP: "200",
+            runtimeControlStartedAt: "2026-05-29T00:01:00Z"
+        )
+
+        let value = policy.remoteConsoleAvailability(status: status, now: now)
+
+        XCTAssertEqual(value.text, AppConstants.StatusText.reachable)
+        XCTAssertEqual(value.severity, .healthy)
+        XCTAssertEqual(value.uptimeText, "00:01:05")
+    }
+
     func testActionNeededIsHiddenWhenRuntimeIsReady() {
         let status = RuntimeStatus(
             runtimeInstalled: true,
@@ -318,12 +332,12 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
     }
 
     func testVMStateDisplayMapsRuntimeStatesToOperatorSeverity() {
-        XCTAssertEqual(policy.vmStateValue(.running, runtimeInstalled: true).text, AppConstants.StatusText.running)
-        XCTAssertEqual(policy.vmStateValue(.running, runtimeInstalled: true).severity, .healthy)
-        XCTAssertEqual(policy.vmStateValue(.starting, runtimeInstalled: true).severity, .warning)
-        XCTAssertEqual(policy.vmStateValue(.stale, runtimeInstalled: true).severity, .warning)
-        XCTAssertEqual(policy.vmStateValue(.unreachable, runtimeInstalled: true).severity, .critical)
-        XCTAssertEqual(policy.vmStateValue(nil, runtimeInstalled: false).text, AppConstants.StatusText.notInstalled)
+        XCTAssertEqual(policy.vmStateValue(.running).text, AppConstants.StatusText.running)
+        XCTAssertEqual(policy.vmStateValue(.running).severity, .healthy)
+        XCTAssertEqual(policy.vmStateValue(.starting).severity, .warning)
+        XCTAssertEqual(policy.vmStateValue(.stale).severity, .warning)
+        XCTAssertEqual(policy.vmStateValue(.unreachable).severity, .critical)
+        XCTAssertEqual(policy.vmStateValue(nil).text, AppConstants.StatusText.unknown)
     }
 
     func testHealthDetailsDisplayVMErrorsWhenPresent() {
@@ -437,6 +451,26 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         XCTAssertEqual(summary.anomalies, "1")
         XCTAssertEqual(summary.latestRecorder, "VR_OBSERVED 192.168.64.20")
         XCTAssertEqual(summary.observedAt, "2026-05-24T02:00:00Z")
+    }
+
+    func testRecorderSummaryDoesNotDisplayUnavailableObservationMetricsAsZero() {
+        let observation = RuntimeContainerObservation(
+            auditProxyHTTP: "200",
+            auditProxyStatus: RuntimeAuditProxyStatusDocument(activeRecorderConnections: 2),
+            containerLogsPresent: true,
+            containerLogsBytes: 1
+        )
+
+        let summary = policy.recorderSummary(status: RuntimeStatus(), observation: observation)
+
+        XCTAssertEqual(summary.activeConnections, "2")
+        XCTAssertEqual(summary.knownRecorders, AppConstants.StatusText.notReported)
+        XCTAssertEqual(summary.onlineRecorders, AppConstants.StatusText.notReported)
+        XCTAssertEqual(summary.staleRecorders, AppConstants.StatusText.notReported)
+        XCTAssertEqual(summary.knownBeds, AppConstants.StatusText.notReported)
+        XCTAssertEqual(summary.anomalies, AppConstants.StatusText.notReported)
+        XCTAssertNil(summary.latestRecorder)
+        XCTAssertNil(summary.observedAt)
     }
 
     private func item(

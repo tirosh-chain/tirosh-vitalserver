@@ -60,6 +60,9 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
                 events.append("policy")
                 return RuntimeServiceRestartPolicy(restartVM: true, restartProxy: false, restartWatchdog: true)
             },
+            requireGuestCapability: { capability in
+                events.append("capability:\(capability.rawValue)")
+            },
             createBackup: { reason in
                 events.append("backup:\(reason)")
                 return backup
@@ -96,6 +99,7 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
             "du:/managed/update-bundle-1.2.3",
             "mkdir:/product/backups:true",
             "policy",
+            "capability:prepare-update-shutdown",
             "backup:before-1.2.3",
             "du:/product/backups/backup-before-1.2.3",
         ])
@@ -124,6 +128,9 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
             checkCompatibility: { _ in },
             serviceRestartPolicy: {
                 RuntimeServiceRestartPolicy(restartVM: false, restartProxy: true, restartWatchdog: false)
+            },
+            requireGuestCapability: { _ in
+                XCTFail("guest capability should not be required")
             },
             createBackup: { _ in backup },
             directorySize: { _ in 10 },
@@ -166,6 +173,7 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
             serviceRestartPolicy: {
                 RuntimeServiceRestartPolicy(restartVM: false, restartProxy: false, restartWatchdog: false)
             },
+            requireGuestCapability: { _ in },
             createBackup: { _ in URL(fileURLWithPath: "/backup") },
             directorySize: { _ in 0 },
             log: { _ in }
@@ -180,6 +188,60 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
                 stagedBundle.appendingPathComponent(Constants.Artifacts.rootfsBase).path
             )))
         }
+    }
+
+    func testPrepareRequiresGuestCapabilitiesBeforeCreatingBackup() {
+        let stagedBundle = URL(fileURLWithPath: "/managed/update-bundle-1.2.3")
+        var events: [String] = []
+        let runner = RuntimeApplyBundlePreflightRunner(
+            stageBundle: { _ in stagedBundle },
+            loadManifest: { _ in
+                self.manifest(
+                    version: "1.2.3",
+                    artifacts: [
+                        UpdateBundleArtifact(
+                            name: "guest-deploy.tar.gz",
+                            type: .guestDeploy,
+                            sha256: "abc",
+                            size: 20
+                        ),
+                    ]
+                )
+            },
+            fileExists: { _ in false },
+            createDirectory: { _, _ in events.append("mkdir") },
+            fileSize: { _ in 0 },
+            requireFreeSpace: { _, _, _ in },
+            checkCompatibility: { _ in },
+            serviceRestartPolicy: {
+                RuntimeServiceRestartPolicy(restartVM: true, restartProxy: false, restartWatchdog: false)
+            },
+            requireGuestCapability: { capability in
+                events.append("capability:\(capability.rawValue)")
+                if capability == .activateUpdate {
+                    throw LauncherError.runtimeOperationFailed("guest capability missing: \(capability.rawValue)")
+                }
+            },
+            createBackup: { _ in
+                events.append("backup")
+                return URL(fileURLWithPath: "/backup")
+            },
+            directorySize: { _ in 10 },
+            log: { _ in }
+        )
+
+        XCTAssertThrowsError(try runner.prepare(
+            bundleURL: URL(fileURLWithPath: "/incoming/bundle"),
+            backupsDirectory: URL(fileURLWithPath: "/product/backups"),
+            rootfsBase: URL(fileURLWithPath: "/product/runtime/rootfs-base.raw.gz")
+        )) { error in
+            XCTAssertEqual(String(describing: error), "guest capability missing: activate-update")
+        }
+        XCTAssertEqual(events, [
+            "mkdir",
+            "capability:prepare-update-shutdown",
+            "capability:activate-update",
+        ])
     }
 
     private func manifest(

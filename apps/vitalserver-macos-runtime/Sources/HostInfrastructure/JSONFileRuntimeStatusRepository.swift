@@ -9,11 +9,16 @@ public struct JSONFileRuntimeStatusRepository: RuntimeStatusRepository {
         self.url = url
     }
 
-    public func load() -> RuntimeStatusDocument? {
-        guard let data = try? Data(contentsOf: url) else {
-            return nil
+    public func loadResult() -> RuntimeStatusDocumentLoadResult {
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            return .missing
         }
-        return try? JSONDecoder().decode(RuntimeStatusDocument.self, from: data)
+        do {
+            let data = try Data(contentsOf: url)
+            return try .loaded(JSONDecoder().decode(RuntimeStatusDocument.self, from: data))
+        } catch {
+            return .failed(error.localizedDescription)
+        }
     }
 
     public func save(_ document: RuntimeStatusDocument) throws {

@@ -6,13 +6,18 @@ import RuntimeControl
 public final class MacTestKitController: RuntimeTestKitControlling {
     private let configuration: MacTestKitControllerConfiguration
     private let statusProvider: () async -> RuntimeStatus
+    private let apiHealthCheck: (String) async -> Bool
     private var activeSessionID: String?
     private var lastError: String?
     private let requestTimeout: TimeInterval = 5
 
-    public init(configuration: MacTestKitControllerConfiguration = MacTestKitControllerConfiguration()) {
+    public init(
+        configuration: MacTestKitControllerConfiguration = MacTestKitControllerConfiguration(),
+        apiHealthCheck: ((String) async -> Bool)? = nil
+    ) {
         let statusReader = SystemRuntimeStatusReader(paths: RuntimePaths())
         self.configuration = configuration
+        self.apiHealthCheck = apiHealthCheck ?? Self.defaultAPIHealthCheck
         self.statusProvider = {
             statusReader.loadStatus(settings: RuntimeSettings())
         }
@@ -20,10 +25,12 @@ public final class MacTestKitController: RuntimeTestKitControlling {
 
     public init(
         configuration: MacTestKitControllerConfiguration = MacTestKitControllerConfiguration(),
-        statusProvider: @escaping () async -> RuntimeStatus
+        statusProvider: @escaping () async -> RuntimeStatus,
+        apiHealthCheck: ((String) async -> Bool)? = nil
     ) {
         self.configuration = configuration
         self.statusProvider = statusProvider
+        self.apiHealthCheck = apiHealthCheck ?? Self.defaultAPIHealthCheck
     }
 
     public func loadTestKitStatus() async -> RuntimeTestKitStatus {
@@ -38,7 +45,7 @@ public final class MacTestKitController: RuntimeTestKitControlling {
                 state: .failed,
                 serviceName: configuration.serviceName,
                 recorderTargetURL: configuration.recorderTargetURL,
-                lastError: MacTestKitControllerError.missingVMIP.localizedDescription
+                lastError: configuration.apiEndpoint.unavailableDescription
             )
         }
 
@@ -247,8 +254,8 @@ public final class MacTestKitController: RuntimeTestKitControlling {
 
     private func requireAPIBaseURL() async throws -> String {
         guard let apiBaseURL = await apiBaseURL() else {
-            lastError = MacTestKitControllerError.missingVMIP.localizedDescription
-            throw MacTestKitControllerError.missingVMIP
+            lastError = configuration.apiEndpoint.unavailableDescription
+            throw MacTestKitControllerError.apiEndpointUnavailable(lastError ?? "")
         }
         return apiBaseURL
     }
@@ -259,10 +266,7 @@ public final class MacTestKitController: RuntimeTestKitControlling {
     }
 
     private func apiBaseURL(from status: RuntimeStatus) -> String? {
-        guard let vmIP = status.vmIP, !vmIP.isEmpty else {
-            return nil
-        }
-        return "http://\(vmIP):\(configuration.hostPort)"
+        configuration.apiEndpoint.baseURL(from: status)
     }
 
     private func testKitService(in status: RuntimeStatus) -> RuntimeContainerServiceObservation? {
@@ -292,8 +296,8 @@ public final class MacTestKitController: RuntimeTestKitControlling {
             return "TestKit container is not running. TestKit is optional and does not affect VitalServer."
         }
 
-        let state = service.state ?? "unknown"
-        let health = service.health ?? "unknown"
+        let state = service.state ?? "not reported"
+        let health = service.health ?? "not reported"
         return "TestKit container API is not reachable at \(apiBaseURL). Container state: \(state), health: \(health)."
     }
 
@@ -345,8 +349,15 @@ public final class MacTestKitController: RuntimeTestKitControlling {
     }
 
     private func testKitAPIIsHealthy(apiBaseURL: String) async -> Bool {
+        await apiHealthCheck(apiBaseURL)
+    }
+
+    private static func defaultAPIHealthCheck(apiBaseURL: String) async -> Bool {
         do {
-            var request = apiRequest(apiBaseURL: apiBaseURL, path: "/health")
+            var request = URLRequest(
+                url: URL(string: "\(apiBaseURL)/health")!,
+                timeoutInterval: 5
+            )
             request.httpMethod = "GET"
             let (_, response) = try await URLSession.shared.data(for: request)
             return (response as? HTTPURLResponse)?.statusCode == 200
@@ -391,21 +402,48 @@ public final class MacTestKitController: RuntimeTestKitControlling {
     }
 }
 
+public enum MacTestKitAPIEndpointSource: Equatable, Sendable {
+    case explicit(baseURL: String)
+    case runtimeStatusVMIP(port: Int)
+
+    func baseURL(from status: RuntimeStatus) -> String? {
+        switch self {
+        case .explicit(let baseURL):
+            let normalized = baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            return normalized.isEmpty ? nil : normalized
+        case .runtimeStatusVMIP(let port):
+            guard let vmIP = status.vmIP, !vmIP.isEmpty else {
+                return nil
+            }
+            return "http://\(vmIP):\(port)"
+        }
+    }
+
+    var unavailableDescription: String {
+        switch self {
+        case .explicit:
+            return "TestKit container API endpoint is not configured."
+        case .runtimeStatusVMIP:
+            return "TestKit container API is unavailable because the VM IP is not known yet."
+        }
+    }
+}
+
 public struct MacTestKitControllerConfiguration: Equatable, Sendable {
     public let enabled: Bool
     public let serviceName: String
-    public let hostPort: Int
+    public let apiEndpoint: MacTestKitAPIEndpointSource
     public let recorderTargetURL: String
 
     public init(
         enabled: Bool = false,
         serviceName: String = "testkit",
-        hostPort: Int = 18322,
+        apiEndpoint: MacTestKitAPIEndpointSource = .runtimeStatusVMIP(port: 18322),
         recorderTargetURL: String = "http://edge/"
     ) {
         self.enabled = enabled
         self.serviceName = serviceName
-        self.hostPort = hostPort
+        self.apiEndpoint = apiEndpoint
         self.recorderTargetURL = recorderTargetURL
     }
 }
@@ -491,15 +529,15 @@ private struct TestKitRestartSessionRequest: Encodable {
 }
 
 private enum MacTestKitControllerError: LocalizedError, Equatable {
-    case missingVMIP
+    case apiEndpointUnavailable(String)
     case apiUnavailable(String)
     case invalidResponse
     case requestFailed(String)
 
     var errorDescription: String? {
         switch self {
-        case .missingVMIP:
-            return "TestKit container API is unavailable because the VM IP is not known yet."
+        case .apiEndpointUnavailable(let message):
+            return message
         case .apiUnavailable(let apiBaseURL):
             return "TestKit container API is not reachable at \(apiBaseURL)."
         case .invalidResponse:

@@ -89,14 +89,14 @@ vm-docker-images:
 vm-require-release-branch:
 	$(VM_BUILD_RUNNER) require-branch --branch "$(VM_RELEASE_BRANCH)"
 
-vm-app:
+vm-app: pwa-build
 	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" macos-app \
 		--release-file "$(VM_RELEASE_FILE)" \
 		--clang-module-cache "$(VM_CLANG_MODULE_CACHE)" \
 		--codesign-identity "$(VM_CODESIGN_IDENTITY)" \
 		--sdkroot "$(VM_SDKROOT)"
 
-vm-pkg: vm-golden-rootfs
+vm-pkg: vm-golden-rootfs pwa-build
 	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" release-pkg \
 		--release-file "$(VM_RELEASE_FILE)" \
 		--rootfs-base "$(VM_PKG_ROOTFS_CACHE)" \
@@ -118,7 +118,7 @@ vm-pkg-release:
 	$(MAKE) vm-require-release-branch
 	$(MAKE) vm-pkg VM_RELEASE_FILE="$(VM_RELEASE_FILE)" VM_RECREATE_GOLDEN_ROOTFS="$(VM_RECREATE_GOLDEN_ROOTFS)"
 
-vm-dmg: vm-golden-rootfs
+vm-dmg: vm-golden-rootfs pwa-build
 	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" release-dmg \
 		--release-file "$(VM_RELEASE_FILE)" \
 		--rootfs-base "$(VM_PKG_ROOTFS_CACHE)" \
@@ -140,7 +140,7 @@ vm-dmg-release:
 	$(MAKE) vm-require-release-branch
 	$(MAKE) vm-dmg VM_RELEASE_FILE="$(VM_RELEASE_FILE)" VM_RECREATE_GOLDEN_ROOTFS="$(VM_RECREATE_GOLDEN_ROOTFS)"
 
-vm-update-bundle:
+vm-update-bundle: pwa-build
 	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" release-update-bundle \
 		--release-file "$(VM_RELEASE_FILE)" \
 		--bundle-kind "$(VM_UPDATE_BUNDLE_KIND)" \

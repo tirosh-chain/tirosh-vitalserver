@@ -15,19 +15,8 @@ extension RuntimeLifecycle {
             operations: RuntimeInstallWorkflowOperations(
                 fileStore: fileStore,
                 now: { clock.now },
-                writeRuntimeStatus: { status, operation, message in
-                    try writeRuntimeStatus(status, operation: operation, message: message)
-                },
-                writeRuntimeProgress: { event in
-                    try writeRuntimeProgress(
-                        event.status,
-                        operation: event.operation,
-                        step: event.step,
-                        stepStatus: event.stepStatus,
-                        phase: event.phase,
-                        message: event.message
-                    )
-                },
+                writeRuntimeStatus: runtimeStatusWriterAction(),
+                writeRuntimeProgress: runtimeProgressWriterAction(),
                 rotateRuntimeLogs: rotateRuntimeLogs,
                 requireFreeSpace: { url, minimumBytes, operation in
                     try storageMaintenance().requireFreeSpace(
@@ -59,7 +48,7 @@ extension RuntimeLifecycle {
             latestBackupPath: { latestBackup()?.path },
             runtimeStatusValue: runtimeStatusValue,
             runtimeVersionValue: runtimeVersionValue,
-            vmIP: { healthChecker.guestRuntimeState()?.vmIP ?? healthChecker.readTrimmed(vmIPFile) ?? "waiting" },
+            vmIP: { statusReporter.loadStatus()?.vmIP ?? "not reported" },
             installedProxyPort: healthChecker.installedProxyPort,
             hostProxyHTTP: { port in
                 httpProber.statusCode(url: Constants.Runtime.proxyHealthURL(port: port))
@@ -86,47 +75,41 @@ extension RuntimeLifecycle {
         RuntimeHealthCheckRunner(
             printStatus: printStatus,
             healthSnapshot: runtimeHealthSnapshot,
-            writeStatus: { status, operation, message in
-                try writeRuntimeStatus(status, operation: operation, message: message)
-            },
+            writeStatus: runtimeStatusWriterAction(),
             recordObservedEvent: { status, operation, message, snapshot in
-                let previousStatus = statusReporter.loadStatus()?.status
-                try recordRuntimeEvent(
+                try runtimeObservedEventPublisher().recordObservedEvent(
                     status,
-                    previousStatus: previousStatus,
                     operation: operation,
                     message: message,
-                    healthSnapshot: snapshot,
-                    eventType: domainEventType(for: snapshot, defaultEventType: .healthObserved)
+                    snapshot: snapshot,
+                    defaultEventType: .healthObserved
                 )
             },
             reasonText: reasonText,
+            log: log,
             printLine: { line in print(line) }
         )
     }
 
     func automaticRecoveryEnabled() -> Bool {
-        guard let config = try? VMRuntimeConfig.load(from: paths.config, fileStore: fileStore) else {
-            return true
-        }
-        return config.autoRecoveryEnabled ?? true
+        runtimeConfigFlagReader().automaticRecoveryEnabled()
     }
 
     func runtimeManagedOperationGuard() -> RuntimeManagedOperationGuard {
         RuntimeManagedOperationGuard(
             statusReporter: statusReporter,
             activeGuestBootstrap: {
-                guard let bootstrapResult = guestGateway.loadBootstrapResult(),
-                      bootstrapResult.status == .running,
-                      let modifiedAt = try? fileStore.modificationDate(
-                        installedPaths.guestRunDirectory.appendingPathComponent(Constants.Runtime.bootstrapResultFile)
-                      )
+                guard case .loaded(let bootstrapResult) = guestGateway.loadBootstrapResultDocument(),
+                      bootstrapResult.status == .running
                 else {
                     return nil
                 }
+                let updatedAt = bootstrapResult.updatedAt.flatMap {
+                    ISO8601DateFormatter().date(from: $0)
+                }
                 return RuntimeGuestBootstrapOperation(
                     operation: bootstrapResult.operation ?? .install,
-                    modifiedAt: modifiedAt
+                    updatedAt: updatedAt
                 )
             },
             now: { clock.now },
@@ -139,9 +122,21 @@ extension RuntimeLifecycle {
         RuntimeWatchdogRunner(
             actions: RuntimeWatchdogActions(
                 prepareLogs: {
-                    try? fileStore.createDirectory(at: logsDirectory, withIntermediateDirectories: true)
-                    try? rotateRuntimeLogs()
-                    try? collectGuestLogs()
+                    do {
+                        try fileStore.createDirectory(at: logsDirectory, withIntermediateDirectories: true)
+                    } catch {
+                        log("watchdog log directory preparation failed error=\(error.localizedDescription)")
+                    }
+                    do {
+                        try rotateRuntimeLogs()
+                    } catch {
+                        log("watchdog log rotation failed error=\(error.localizedDescription)")
+                    }
+                    do {
+                        try collectGuestLogs()
+                    } catch {
+                        log("watchdog guest log collection failed error=\(error.localizedDescription)")
+                    }
                 },
                 activeManagedOperation: {
                     runtimeManagedOperationGuard().activeOperation()
@@ -156,36 +151,31 @@ extension RuntimeLifecycle {
                     automaticRecoveryEnabled()
                 },
                 restartService: { service in
-                    restartLaunchdService(service)
+                    restartOrStartLaunchdService(service)
                 },
                 sleep: { interval in
                     sleeper.sleep(forTimeInterval: interval)
                 },
                 writeObservedStatus: { status, operation, message, snapshot in
-                    let previousStatus = statusReporter.loadStatus()?.status
                     try writeRuntimeStatus(status, operation: operation, message: message)
-                    recordRuntimeEventBestEffort(
+                    runtimeObservedEventPublisher().recordObservedEventBestEffort(
                         status,
-                        previousStatus: previousStatus,
                         operation: operation,
                         message: message,
-                        healthSnapshot: snapshot,
-                        eventType: domainEventType(for: snapshot)
+                        snapshot: snapshot
                     )
                 },
                 recordObservedEvent: { status, operation, message, snapshot, eventType in
-                    let previousStatus = statusReporter.loadStatus()?.status
-                    recordRuntimeEventBestEffort(
+                    runtimeObservedEventPublisher().recordObservedEventBestEffort(
                         status,
-                        previousStatus: previousStatus,
                         operation: operation,
                         message: message,
-                        healthSnapshot: snapshot,
+                        snapshot: snapshot,
                         eventType: eventType
                     )
                 },
                 recordLifecycleEvent: { operation, message, eventType in
-                    recordRuntimeLifecycleEventBestEffort(
+                    runtimeEventPublisher().recordLifecycleEventBestEffort(
                         operation: operation,
                         message: message,
                         eventType: eventType
@@ -221,10 +211,10 @@ extension RuntimeLifecycle {
                     try setSystemSleepPrevention(enabled)
                 },
                 restartRuntimeServices: {
-                    restartLaunchdService(.vm)
-                    restartLaunchdService(.guestLogSync)
-                    restartLaunchdService(.proxy)
-                    restartLaunchdService(.watchdog)
+                    restartOrStartLaunchdService(.vm)
+                    restartOrStartLaunchdService(.guestLogSync)
+                    restartOrStartLaunchdService(.proxy)
+                    restartOrStartLaunchdService(.watchdog)
                 }
             ),
             log: { message in
@@ -252,21 +242,13 @@ extension RuntimeLifecycle {
                 },
                 startRuntimeServices: startRuntimeServices,
                 stopRuntimeServices: stopRuntimeServices,
+                prepareGuestShutdownForUpdate: prepareGuestShutdownForUpdate,
+                clearGuestShutdownPreparation: {
+                    try guestGateway.removeUpdateShutdownResult()
+                },
                 isLaunchdLoaded: isLaunchdLoaded,
                 createBackup: { reason in try backupStore().createBackup(reason: reason) },
-                writeRuntimeStatus: { status, operation, message in
-                    try writeRuntimeStatus(status, operation: operation, message: message)
-                },
-                writeRuntimeProgress: { event in
-                    try writeRuntimeProgress(
-                        event.status,
-                        operation: event.operation,
-                        step: event.step,
-                        stepStatus: event.stepStatus,
-                        phase: event.phase,
-                        message: event.message
-                    )
-                },
+                statusReporter: runtimeWorkflowStatusReporter(),
                 pruneOldRuntimeArtifacts: {
                     try storageMaintenance().pruneOldRuntimeArtifacts(
                         backupsDirectory: backupsDirectory,
@@ -289,6 +271,7 @@ extension RuntimeLifecycle {
                 refreshCloudInitSeedIfNeeded: refreshCloudInitSeedIfNeeded,
                 activateGuestUpdateIfNeeded: activateGuestUpdateIfNeeded,
                 waitForHealth: waitForHealth,
+                requireGuestCapability: requireGuestCapability,
                 log: log
             )
         )
@@ -300,44 +283,72 @@ extension RuntimeLifecycle {
                 guestRunDirectory: guestRunDirectory
             ),
             operations: RuntimeDatastoreRepairWorkflowOperations(
-                createDirectory: { url, withIntermediateDirectories in
-                    try fileStore.createDirectory(at: url, withIntermediateDirectories: withIntermediateDirectories)
+                requireCapability: {
+                    try requireGuestCapability(.repairDatastore)
                 },
+                createDirectory: createDirectoryAction(),
                 removePreviousResult: {
                     try guestGateway.removeDatastoreRepairResult()
                 },
                 writeRequest: { request in
                     try guestGateway.writeDatastoreRepairRequest(request)
                 },
-                isVMServiceLoaded: {
-                    isLaunchdLoaded(.vm)
-                },
-                startVMService: {
-                    startLaunchdService(.vm)
-                },
-                restartVMService: {
-                    restartLaunchdService(.vm)
-                },
+                isVMServiceLoaded: vmServiceLoadedAction(),
+                startVMService: startVMServiceAction(),
+                restartVMService: restartVMServiceAction(),
                 loadResult: {
-                    guestGateway.loadDatastoreRepairResult()
+                    guestGateway.loadDatastoreRepairResultDocument()
                 },
                 restartProxyService: {
-                    restartLaunchdService(.proxy)
+                    restartOrStartLaunchdService(.proxy)
                 },
                 restartWatchdogService: {
-                    restartLaunchdService(.watchdog)
+                    restartOrStartLaunchdService(.watchdog)
                 },
                 waitForHealth: waitForHealth,
-                writeStatus: { status, operation, message in
-                    try writeRuntimeStatus(status, operation: operation, message: message)
-                },
-                requestID: {
-                    UUID().uuidString
-                },
+                writeStatus: runtimeStatusWriterAction(),
+                requestID: requestIDAction(),
                 timestamp: isoTimestamp,
-                sleep: {
-                    sleeper.sleep(forTimeInterval: 3)
+                sleep: workflowPollingSleepAction(),
+                log: log
+            )
+        )
+    }
+
+    func runtimeVMDiskRepairRunner() -> RuntimeVMDiskRepairRunner {
+        RuntimeVMDiskRepairRunner(
+            context: RuntimeVMDiskRepairContext(
+                rootfsBase: rootfsBase,
+                vmDisk: vmDisk,
+                backupsDirectory: backupsDirectory,
+                defaultDiskGiB: Constants.Defaults.defaultDiskGiB,
+                freeSpaceMarginBytes: Constants.Runtime.freeSpaceMarginBytes
+            ),
+            operations: RuntimeVMDiskRepairOperations(
+                fileExists: fileExists,
+                fileSize: fileSize,
+                createDirectory: createDirectoryAction(),
+                removeItem: { url in
+                    try fileStore.removeItem(at: url)
                 },
+                moveItem: { source, destination in
+                    try fileStore.moveItem(at: source, to: destination)
+                },
+                requireFreeSpace: { url, minimumBytes, operation in
+                    try storageMaintenance().requireFreeSpace(
+                        at: url,
+                        minimumBytes: minimumBytes,
+                        operation: operation
+                    )
+                },
+                runProcessToFile: runProcessToFile,
+                runRequired: runRequired,
+                createRedisBackup: createRedisBackup,
+                stopRuntimeServices: stopRuntimeServices,
+                startRuntimeServices: startRuntimeServices,
+                waitForHealth: waitForHealth,
+                writeStatus: runtimeStatusWriterAction(),
+                timestamp: backupTimestamp,
                 log: log
             )
         )
@@ -347,9 +358,7 @@ extension RuntimeLifecycle {
         RuntimeServiceControlRunner(
             startRuntimeServices: startRuntimeServices,
             stopRuntimeServices: stopRuntimeServices,
-            writeStatus: { status, operation, message in
-                try writeRuntimeStatus(status, operation: operation, message: message)
-            },
+            writeStatus: runtimeStatusWriterAction(),
             log: log
         )
     }
@@ -378,19 +387,8 @@ extension RuntimeLifecycle {
                     try backupStore().restoreBackupPathIfExists(source, to: destination)
                 },
                 restoreRuntimeToolsIfExists: { source in try backupStore().restoreRuntimeToolsIfExists(source) },
-                writeStatus: { status, operation, message in
-                    try writeRuntimeStatus(status, operation: operation, message: message)
-                },
-                writeProgress: { event in
-                    try writeRuntimeProgress(
-                        event.status,
-                        operation: event.operation,
-                        step: event.step,
-                        stepStatus: event.stepStatus,
-                        phase: event.phase,
-                        message: event.message
-                    )
-                },
+                writeStatus: runtimeStatusWriterAction(),
+                writeProgress: runtimeProgressWriterAction(),
                 log: log
             )
         )
@@ -402,34 +400,133 @@ extension RuntimeLifecycle {
                 guestRunDirectory: guestRunDirectory
             ),
             operations: RuntimeGuestActivationWorkflowOperations(
-                createDirectory: { url, withIntermediateDirectories in
-                    try fileStore.createDirectory(at: url, withIntermediateDirectories: withIntermediateDirectories)
+                requireCapability: {
+                    try requireGuestCapability(.activateUpdate)
                 },
+                createDirectory: createDirectoryAction(),
                 removePreviousResult: {
                     try guestGateway.removeUpdateActivationResult()
                 },
                 writeRequest: { request in
                     try guestGateway.writeUpdateActivationRequest(request)
                 },
-                isVMServiceLoaded: {
-                    isLaunchdLoaded(.vm)
-                },
-                startVMService: {
-                    startLaunchdService(.vm)
-                },
+                isVMServiceLoaded: vmServiceLoadedAction(),
+                startVMService: startVMServiceAction(),
                 loadResult: {
-                    guestGateway.loadUpdateActivationResult()
+                    guestGateway.loadUpdateActivationResultDocument()
                 },
-                writeStatus: { status, operation, message in
-                    try writeRuntimeStatus(status, operation: operation, message: message)
-                },
-                requestID: { UUID().uuidString },
+                writeStatus: runtimeStatusWriterAction(),
+                requestID: requestIDAction(),
                 timestamp: isoTimestamp,
-                sleep: {
-                    sleeper.sleep(forTimeInterval: 3)
-                },
+                sleep: workflowPollingSleepAction(),
                 log: log
             )
         )
+    }
+
+    func prepareGuestShutdownForUpdate(manifest: UpdateBundleManifest) throws {
+        try RuntimeGuestShutdownRunner(
+            requireCapability: {
+                try requireGuestCapability(.prepareUpdateShutdown)
+            },
+            createRunDirectory: {
+                try fileStore.createDirectory(at: guestRunDirectory, withIntermediateDirectories: true)
+            },
+            removePreviousResult: {
+                try guestGateway.removeUpdateShutdownResult()
+            },
+            requestID: requestIDAction(),
+            timestamp: isoTimestamp,
+            writeRequest: { request in
+                try guestGateway.writeUpdateShutdownRequest(request)
+            },
+            loadResult: {
+                guestGateway.loadUpdateShutdownResultDocument()
+            },
+            reportProgress: { message in
+                writeRuntimeStatusBestEffort(
+                    .updating,
+                    operation: .applyBundle,
+                    message: message,
+                    writeStatus: runtimeStatusWriterAction(),
+                    log: log
+                )
+            },
+            sleep: workflowPollingSleepAction(),
+            log: log
+        ).prepareForUpdate(version: manifest.version)
+    }
+
+    func requireGuestCapability(_ capability: RuntimeGuestCapabilityRequirement) throws {
+        try RuntimeGuestCapabilityChecker(
+            loadRuntimeState: {
+                guestGateway.loadRuntimeStateDocument()
+            }
+        ).require(capability)
+    }
+}
+
+private extension RuntimeLifecycle {
+    func runtimeWorkflowStatusReporter() -> RuntimeWorkflowStatusReporter {
+        RuntimeWorkflowStatusReporter(
+            writeStatus: runtimeStatusWriterAction(),
+            writeProgress: runtimeProgressWriterAction(),
+            log: log
+        )
+    }
+
+    func runtimeStatusWriterAction() -> (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void {
+        { status, operation, message in
+            try writeRuntimeStatus(status, operation: operation, message: message)
+        }
+    }
+
+    func runtimeProgressWriterAction() -> (RuntimeStepExecutionEvent) throws -> Void {
+        { event in
+            try writeRuntimeProgress(
+                event.status,
+                operation: event.operation,
+                step: event.step,
+                stepStatus: event.stepStatus,
+                phase: event.phase,
+                message: event.message
+            )
+        }
+    }
+
+    func createDirectoryAction() -> (URL, Bool) throws -> Void {
+        { url, withIntermediateDirectories in
+            try fileStore.createDirectory(at: url, withIntermediateDirectories: withIntermediateDirectories)
+        }
+    }
+
+    func vmServiceLoadedAction() -> () -> Bool {
+        {
+            isLaunchdLoaded(.vm)
+        }
+    }
+
+    func startVMServiceAction() -> () -> Void {
+        {
+            startLaunchdService(.vm)
+        }
+    }
+
+    func restartVMServiceAction() -> () -> Void {
+        {
+            restartOrStartLaunchdService(.vm)
+        }
+    }
+
+    func requestIDAction() -> () -> String {
+        {
+            UUID().uuidString
+        }
+    }
+
+    func workflowPollingSleepAction() -> () -> Void {
+        {
+            sleeper.sleep(forTimeInterval: 3)
+        }
     }
 }

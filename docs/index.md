@@ -13,6 +13,7 @@
 | testkit으로 검증 실행하기 | [Testkit 사용법](testkit-usage.md) |
 | Redis key와 relay 근거 보기 | [Redis 데이터 구조](redis-data-model.md) |
 | Mac mini VM runtime/package 이해하기 | [VitalServer macOS Runtime](vitalserver-macos-runtime.md) |
+| Runtime Control PWA 구현 기준 보기 | [Runtime Control PWA](pwa.md) |
 | runtime status/event/log/index 수집 책임 보기 | [Runtime observability model](macos-runtime/observability.md) |
 | branch와 tag 운영 기준 보기 | [Branch 운영 기준](branching.md) |
 
@@ -43,6 +44,18 @@
 | 문서 | 역할 |
 |---|---|
 | [Testkit 사용법](testkit-usage.md) | `vitalserver-testkit` CLI와 검증 시나리오 실행 방법 |
+
+### Runtime Control PWA
+
+| 문서 | 역할 |
+|---|---|
+| [Runtime Control PWA](pwa.md) | PWA 문서군 진입점과 목표/비목표 |
+| [PWA Architecture](pwa/architecture.md) | PWA 레이어, source of truth, Runtime Control API boundary |
+| [PWA Design system](pwa/design-system.md) | Tailwind token, shared UI component, styling ownership |
+| [PWA Responsive layout](pwa/responsive-layout.md) | 24/32인치, iPad, iPhone 대응 기준 |
+| [PWA Swift UI parity](pwa/parity.md) | Swift UI와 PWA 기능 parity, host affordance gap |
+| [PWA Deployment](pwa/deployment.md) | air-gapped 배포, Helper resource 포함, update bundle 영향 |
+| [PWA Testing](pwa/testing.md) | PWA test scope, 검증 명령, responsive smoke test 기준 |
 
 ### Mac mini VM Runtime
 

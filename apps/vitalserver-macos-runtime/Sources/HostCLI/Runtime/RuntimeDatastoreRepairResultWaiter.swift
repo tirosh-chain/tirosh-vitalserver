@@ -3,7 +3,7 @@ import Core
 import Contracts
 
 struct RuntimeDatastoreRepairResultWaiter {
-    var loadResult: () -> DatastoreRepairResultDocument?
+    var loadResult: () -> RuntimeGuestDocumentLoadResult<DatastoreRepairResultDocument>
     var writeStatus: (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void
     var sleep: () -> Void
     var log: (String) -> Void
@@ -20,14 +20,13 @@ struct RuntimeDatastoreRepairResultWaiter {
             loadResult: loadResult,
             onProgress: { message in
                 log(message)
-                try? writeStatus(
+                writeRuntimeStatusBestEffort(
                     .recovering,
-                    .repairDatastore,
-                    message
+                    operation: .repairDatastore,
+                    message: message,
+                    writeStatus: writeStatus,
+                    log: log
                 )
-            },
-            onStale: { message in
-                log("datastore repair result stale message=\(message)")
             },
             sleep: sleep
         )

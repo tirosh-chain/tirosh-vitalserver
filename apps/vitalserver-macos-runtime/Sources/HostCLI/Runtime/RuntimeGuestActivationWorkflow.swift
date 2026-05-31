@@ -7,12 +7,13 @@ struct RuntimeGuestActivationWorkflowContext {
 }
 
 struct RuntimeGuestActivationWorkflowOperations {
+    let requireCapability: () throws -> Void
     let createDirectory: (URL, Bool) throws -> Void
     let removePreviousResult: () throws -> Void
     let writeRequest: (RuntimeGuestActivationRequest) throws -> Void
     let isVMServiceLoaded: () -> Bool
     let startVMService: () -> Void
-    let loadResult: () -> GuestUpdateActivationResultDocument?
+    let loadResult: () -> RuntimeGuestDocumentLoadResult<GuestUpdateActivationResultDocument>
     let writeStatus: (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void
     let requestID: () -> String
     let timestamp: () -> String
@@ -30,6 +31,7 @@ struct RuntimeGuestActivationWorkflow {
 
     private func runner() -> RuntimeGuestActivationRunner {
         RuntimeGuestActivationRunner(
+            requireCapability: operations.requireCapability,
             createRunDirectory: {
                 try operations.createDirectory(context.guestRunDirectory, true)
             },
@@ -41,7 +43,13 @@ struct RuntimeGuestActivationWorkflow {
             startVMService: operations.startVMService,
             loadResult: operations.loadResult,
             reportProgress: { message in
-                try? operations.writeStatus(.recovering, .activateGuestUpdate, message)
+                writeRuntimeStatusBestEffort(
+                    .recovering,
+                    operation: .activateGuestUpdate,
+                    message: message,
+                    writeStatus: operations.writeStatus,
+                    log: operations.log
+                )
             },
             sleep: operations.sleep,
             log: operations.log

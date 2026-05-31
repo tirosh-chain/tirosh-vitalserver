@@ -51,6 +51,11 @@ struct RuntimeConfigureRunner {
         VMRuntimeConfig.ensureRuntimeDefaults(&vmConfig, paths: installedPaths)
         try fileStore.writeData(try JSONEncoder.pretty.encode(vmConfig), to: configURL, options: .atomic)
         try fileStore.writeData(try JSONEncoder.pretty.encode(guestConfig), to: runtimeConfigURL, options: .atomic)
+        try fileStore.writeData(
+            try JSONEncoder.pretty.encode(GuestRuntimeSettingsDocument(runtimeConfig: guestConfig)),
+            to: installedPaths.guestRuntimeSettings,
+            options: .atomic
+        )
         try actions.restrictSecretFile(runtimeConfigURL)
         log("runtime configuration updated restart=\(command.restart)")
 

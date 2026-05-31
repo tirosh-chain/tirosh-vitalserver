@@ -44,11 +44,12 @@ public struct JSONLRuntimeEventRepository: RuntimeEventRepository {
             return []
         }
 
-        return Array(all().suffix(limit))
+        return Array(allResult().events.suffix(limit))
     }
 
     public func query(_ query: RuntimeEventQuery) -> RuntimeEventPage {
-        let filtered = all()
+        let readResult = allResult()
+        let filtered = readResult.events
             .filter { event in
                 guard let eventType = query.eventType else {
                     return true
@@ -72,25 +73,44 @@ public struct JSONLRuntimeEventRepository: RuntimeEventRepository {
         return RuntimeEventPage(
             events: pageEvents,
             nextCursor: nextCursor(for: pageEvents, hasMore: filtered.count > pageEvents.count),
-            matchingCount: filtered.count
+            matchingCount: filtered.count,
+            readError: readResult.issues.isEmpty
+                ? nil
+                : readResult.issues.map(String.init(describing:)).joined(separator: "; ")
         )
     }
 
-    public func all() -> [RuntimeEventDocument] {
+    public func allResult() -> JSONLRuntimeEventReadResult {
         let decoder = JSONDecoder()
-        return eventLogURLs()
-            .flatMap { url -> [RuntimeEventDocument] in
-                guard let data = try? Data(contentsOf: url),
-                      let text = String(data: data, encoding: .utf8)
-                else {
-                    return []
-                }
-                return text
-                    .split(separator: "\n")
-                    .compactMap { line in
-                        try? decoder.decode(RuntimeEventDocument.self, from: Data(line.utf8))
-                    }
+        var events: [RuntimeEventDocument] = []
+        var issues: [JSONLRuntimeEventReadIssue] = []
+        for url in eventLogURLs() {
+            guard FileManager.default.fileExists(atPath: url.path) else {
+                continue
             }
+            do {
+                let data = try Data(contentsOf: url)
+                guard let text = String(data: data, encoding: .utf8) else {
+                    issues.append(.invalidEncoding(path: url.path))
+                    continue
+                }
+                let decoded = text
+                    .split(separator: "\n")
+                    .enumerated()
+                    .compactMap { index, line -> RuntimeEventDocument? in
+                        do {
+                            return try decoder.decode(RuntimeEventDocument.self, from: Data(line.utf8))
+                        } catch {
+                            issues.append(.invalidLine(path: url.path, line: index + 1, message: error.localizedDescription))
+                            return nil
+                        }
+                    }
+                events.append(contentsOf: decoded)
+            } catch {
+                issues.append(.readFailed(path: url.path, message: error.localizedDescription))
+            }
+        }
+        return JSONLRuntimeEventReadResult(events: events, issues: issues)
     }
 
     private func rotateIfNeeded(incomingBytes: UInt64) throws {
@@ -147,4 +167,20 @@ public struct JSONLRuntimeEventRepository: RuntimeEventRepository {
         }
         return RuntimeEventCursor(timestamp: first.timestamp, id: first.id)
     }
+}
+
+public struct JSONLRuntimeEventReadResult: Equatable, Sendable {
+    public let events: [RuntimeEventDocument]
+    public let issues: [JSONLRuntimeEventReadIssue]
+
+    public init(events: [RuntimeEventDocument], issues: [JSONLRuntimeEventReadIssue]) {
+        self.events = events
+        self.issues = issues
+    }
+}
+
+public enum JSONLRuntimeEventReadIssue: Equatable, Sendable {
+    case readFailed(path: String, message: String)
+    case invalidEncoding(path: String)
+    case invalidLine(path: String, line: Int, message: String)
 }

@@ -53,8 +53,23 @@ struct RuntimeStatusPanel: View {
             statusRow(AppConstants.Labels.overallHealth) {
                 healthStatusValue
             }
+            if let statusDocumentError = viewModel.status.statusDocumentError {
+                statusRow(AppConstants.Labels.statusDocument) {
+                    Text(statusDocumentError)
+                        .foregroundStyle(.red)
+                }
+            }
+            if let guestRuntimeStateError = viewModel.status.guestRuntimeStateError {
+                statusRow(AppConstants.Labels.guestRuntimeState) {
+                    Text(guestRuntimeStateError)
+                        .foregroundStyle(.red)
+                }
+            }
             statusRow(GeneratedRelease.vitalServerName) {
                 vitalServerStatusAndURL
+            }
+            statusRow(AppConstants.Labels.runtimeControlPWA) {
+                remoteConsoleStatusAndURL
             }
             statusRow(AppConstants.Labels.dataDirectory) {
                 dataDirectoryValue
@@ -130,21 +145,62 @@ struct RuntimeStatusPanel: View {
         displayPolicy.vitalServerAvailability(status: viewModel.status, observation: viewModel.containerObservation, now: uptimeNow)
     }
 
+    private var remoteConsoleAvailability: RuntimeStatusDisplayPolicy.StatusValue {
+        displayPolicy.remoteConsoleAvailability(
+            http: viewModel.remoteConsoleHTTP ?? viewModel.status.runtimeControlHTTP,
+            startedAt: viewModel.remoteConsoleStartedAt ?? viewModel.status.runtimeControlStartedAt,
+            now: uptimeNow
+        )
+    }
+
     private var vitalServerStatusAndURL: some View {
+        serviceStatusAndURL(
+            url: vitalServerExternalURL,
+            status: vitalServerAvailability
+        )
+    }
+
+    private var remoteConsoleStatusAndURL: some View {
+        serviceStatusAndURL(
+            url: remoteConsoleExternalURL,
+            status: remoteConsoleAvailability
+        )
+    }
+
+    private func serviceStatusAndURL(
+        url: String,
+        status: RuntimeStatusDisplayPolicy.StatusValue
+    ) -> some View {
         ViewThatFits(in: .horizontal) {
             HStack(spacing: 12) {
-                linkButton(AppConstants.Product.vitalServerURL(proxyPort: viewModel.status.proxyPort)) {
-                    viewModel.openVitalServer()
+                linkButton(url) {
+                    viewModel.openExternalURL(url)
                 }
-                statusValue(vitalServerAvailability)
+                statusValue(status)
             }
             VStack(alignment: .leading, spacing: 4) {
-                linkButton(AppConstants.Product.vitalServerURL(proxyPort: viewModel.status.proxyPort)) {
-                    viewModel.openVitalServer()
+                linkButton(url) {
+                    viewModel.openExternalURL(url)
                 }
-                statusValue(vitalServerAvailability)
+                statusValue(status)
             }
         }
+    }
+
+    private var vitalServerExternalURL: String {
+        "http://\(remoteClientHost):\(viewModel.settings.publicPort)/"
+    }
+
+    private var remoteConsoleExternalURL: String {
+        "http://\(remoteClientHost):\(viewModel.settings.runtimeControlPort)/"
+    }
+
+    private var remoteClientHost: String {
+        let configuredHost = viewModel.settings.publicHost.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !configuredHost.isEmpty {
+            return configuredHost
+        }
+        return Host.current().name ?? "localhost"
     }
 
     private var dataDirectoryValue: some View {
@@ -169,7 +225,10 @@ struct RuntimeStatusPanel: View {
 
     @ViewBuilder
     private var dataDirectoryStatsSuffix: some View {
-        if let stats = viewModel.status.dataDirectoryStats {
+        if let error = viewModel.status.dataDirectoryStatsError {
+            Text(AppConstants.StatusText.dataDirectoryStatsFailed(error))
+                .foregroundStyle(.red)
+        } else if let stats = viewModel.status.dataDirectoryStats {
             Text("\(stats.fileCount) files · \(formatBytes(stats.sizeBytes))")
                 .foregroundStyle(.secondary)
                 .monospacedDigit()

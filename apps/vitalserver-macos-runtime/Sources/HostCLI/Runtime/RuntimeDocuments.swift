@@ -124,6 +124,30 @@ struct GuestRuntimeConfigDocument: Codable {
     }
 }
 
+struct GuestRuntimeSettingsDocument: Codable, Equatable {
+    var publicHost: String
+    var publicPort: Int
+    var redisBackupRetentionCount: Int
+
+    init(
+        publicHost: String,
+        publicPort: Int,
+        redisBackupRetentionCount: Int
+    ) {
+        self.publicHost = publicHost
+        self.publicPort = publicPort
+        self.redisBackupRetentionCount = redisBackupRetentionCount
+    }
+
+    init(runtimeConfig: GuestRuntimeConfigDocument) {
+        self.init(
+            publicHost: runtimeConfig.publicHost,
+            publicPort: runtimeConfig.publicPort,
+            redisBackupRetentionCount: runtimeConfig.redisBackupRetentionCount
+        )
+    }
+}
+
 struct BackupManifest: Encodable {
     let product: String
     let createdAt: String

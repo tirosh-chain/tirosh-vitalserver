@@ -24,9 +24,9 @@ struct RuntimeEventDisplayPolicy {
             id: event.id,
             timestamp: event.timestamp,
             eventType: event.eventType.rawValue,
-            status: event.status.rawValue,
+            status: event.status?.rawValue ?? AppConstants.StatusText.unknown,
             statusSeverity: severity(for: event.status),
-            operation: event.operation.rawValue,
+            operation: event.operation?.rawValue ?? AppConstants.StatusText.unknown,
             message: event.message,
             detailText: detailText(for: event)
         )
@@ -57,7 +57,7 @@ struct RuntimeEventDisplayPolicy {
         return details.isEmpty ? nil : details.joined(separator: ", ")
     }
 
-    private func severity(for status: RuntimeStatusLevel) -> Severity {
+    private func severity(for status: RuntimeStatusLevel?) -> Severity {
         switch status {
         case .healthy:
             return .healthy
