@@ -3,12 +3,13 @@ from __future__ import annotations
 from pytest import MonkeyPatch
 
 from tirosh_guest_tools.runtime import state_writer
+from tirosh_guest_tools.runtime.probes import ProbeError
 
 
 def test_runtime_state_document_reports_probe_failures(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    def missing_ip(probe_errors: list[dict[str, str]]) -> str | None:
+    def missing_ip(probe_errors: list[ProbeError]) -> str | None:
         state_writer.append_probe_error(probe_errors, "vmIP", "missing")
         return None
 

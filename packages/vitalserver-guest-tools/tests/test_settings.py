@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from tirosh_guest_tools.domain.errors import GuestContractError
 from tirosh_guest_tools.settings import load_settings
 
 
@@ -84,5 +85,6 @@ commandPollSeconds = "fast"
         encoding="utf-8",
     )
 
-    with pytest.raises(ValueError, match="commandPollSeconds"):
+    with pytest.raises(GuestContractError, match="commandPollSeconds") as error:
         load_settings(settings_file)
+    assert error.value.code == "guest-tools-setting-type-invalid"

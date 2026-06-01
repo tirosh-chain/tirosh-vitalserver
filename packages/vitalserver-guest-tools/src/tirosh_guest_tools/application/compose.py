@@ -18,6 +18,7 @@ from tirosh_guest_tools.contracts import (
     ComposeService,
     RuntimeFileName,
 )
+from tirosh_guest_tools.domain.errors import GuestUseCaseInputError
 from tirosh_guest_tools.inbound import ComposeAction
 from tirosh_guest_tools.runtime.config import RuntimeConfig, load_config
 from tirosh_guest_tools.settings import SETTINGS
@@ -39,7 +40,10 @@ def run_compose_action(action: ComposeAction | str) -> None:
         compose(["stop", "--timeout", str(SETTINGS.compose.stop_timeout_seconds)])
         run(["sync"])
     else:
-        raise ValueError(f"unsupported compose action: {action}")
+        raise GuestUseCaseInputError(
+            f"unsupported compose action: {action}",
+            code="compose-action-unsupported",
+        )
 
 
 def load_runtime_env() -> RuntimeConfig:

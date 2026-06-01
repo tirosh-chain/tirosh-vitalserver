@@ -19,6 +19,7 @@ from tirosh_guest_tools.common import (
     write_json,
 )
 from tirosh_guest_tools.contracts import RuntimeFileName, RuntimeService
+from tirosh_guest_tools.domain.errors import GuestDependencyError
 from tirosh_guest_tools.domain.operations import (
     GuestOperationResult,
     ObservationPhase,
@@ -121,7 +122,10 @@ def backup_redis(
     outcome = run_redis_backup()
     redis_backup_path = str(outcome.archive)
     if not redis_backup_path:
-        raise RuntimeError("redis backup archive was not created")
+        raise GuestDependencyError(
+            "redis backup archive was not created",
+            code="redis-backup-archive-missing",
+        )
     context.redis_backup_path = redis_backup_path
     log.log(f"step=redis-backup status=completed archive={redis_backup_path}")
 

@@ -24,6 +24,7 @@ from tirosh_guest_tools.contracts import (
     RuntimeFileName,
     RuntimeService,
 )
+from tirosh_guest_tools.domain.errors import GuestDependencyError
 from tirosh_guest_tools.domain.operations import (
     GuestOperationResult,
     ObservationPhase,
@@ -118,8 +119,9 @@ def activate_runtime() -> None:
 def load_bundled_docker_images() -> None:
     image_dir = DEPLOY_DIR / "docker-images"
     if not image_dir.is_dir():
-        raise FileNotFoundError(
-            f"docker image bundle directory is missing: {image_dir}"
+        raise GuestDependencyError(
+            f"docker image bundle directory is missing: {image_dir}",
+            code="docker-image-bundle-directory-missing",
         )
     loaded = False
     for image_bundle in docker_image_bundles(image_dir):
@@ -129,7 +131,10 @@ def load_bundled_docker_images() -> None:
     if loaded:
         print("Bundled Docker images are loaded.")
     else:
-        raise RuntimeError(f"No Docker image bundles found under {image_dir}")
+        raise GuestDependencyError(
+            f"No Docker image bundles found under {image_dir}",
+            code="docker-image-bundle-empty",
+        )
 
 
 def docker_image_bundles(image_dir: Path) -> list[Path]:

@@ -8,6 +8,7 @@ from typing import Any
 
 from tirosh_guest_tools.common import read_json
 from tirosh_guest_tools.contracts import RuntimeConfigKey
+from tirosh_guest_tools.domain.errors import GuestContractError
 
 
 @dataclass(frozen=True)
@@ -82,9 +83,15 @@ def required_str(
 ) -> str:
     value = required_value(document, key)
     if not isinstance(value, str):
-        raise ValueError(f"runtime-config field '{key.value}' must be a string")
+        raise GuestContractError(
+            f"runtime-config field '{key.value}' must be a string",
+            code="runtime-config-field-type-invalid",
+        )
     if not allow_empty and value == "":
-        raise ValueError(f"runtime-config field '{key.value}' must be non-empty")
+        raise GuestContractError(
+            f"runtime-config field '{key.value}' must be non-empty",
+            code="runtime-config-field-empty",
+        )
     return value
 
 
@@ -97,24 +104,39 @@ def required_int(
 ) -> int:
     value = required_value(document, key)
     if not isinstance(value, int) or isinstance(value, bool):
-        raise ValueError(f"runtime-config field '{key.value}' must be an integer")
+        raise GuestContractError(
+            f"runtime-config field '{key.value}' must be an integer",
+            code="runtime-config-field-type-invalid",
+        )
     if value < minimum:
-        raise ValueError(f"runtime-config field '{key.value}' must be >= {minimum}")
+        raise GuestContractError(
+            f"runtime-config field '{key.value}' must be >= {minimum}",
+            code="runtime-config-field-range-invalid",
+        )
     if maximum is not None and value > maximum:
-        raise ValueError(f"runtime-config field '{key.value}' must be <= {maximum}")
+        raise GuestContractError(
+            f"runtime-config field '{key.value}' must be <= {maximum}",
+            code="runtime-config-field-range-invalid",
+        )
     return value
 
 
 def required_bool(document: dict[str, Any], key: RuntimeConfigKey) -> bool:
     value = required_value(document, key)
     if not isinstance(value, bool):
-        raise ValueError(f"runtime-config field '{key.value}' must be a boolean")
+        raise GuestContractError(
+            f"runtime-config field '{key.value}' must be a boolean",
+            code="runtime-config-field-type-invalid",
+        )
     return value
 
 
 def required_value(document: dict[str, Any], key: RuntimeConfigKey) -> Any:
     if key.value not in document:
-        raise ValueError(f"runtime-config field '{key.value}' is missing")
+        raise GuestContractError(
+            f"runtime-config field '{key.value}' is missing",
+            code="runtime-config-field-missing",
+        )
     return document[key.value]
 
 

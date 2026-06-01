@@ -5,6 +5,7 @@ import time
 
 from tirosh_guest_tools.common import RUNTIME_DIR, mount_runtime_share, systemctl
 from tirosh_guest_tools.contracts import RuntimeFileName, RuntimeService
+from tirosh_guest_tools.domain.errors import GuestUseCaseInputError
 from tirosh_guest_tools.inbound import RuntimeStateAction
 from tirosh_guest_tools.runtime.state_writer import write_runtime_state
 from tirosh_guest_tools.settings import SETTINGS
@@ -20,7 +21,10 @@ def run_runtime_state_action(action: RuntimeStateAction | str) -> None:
         write_current_state()
         return
     if action != RuntimeStateAction.WATCH:
-        raise ValueError(f"unsupported runtime state action: {action}")
+        raise GuestUseCaseInputError(
+            f"unsupported runtime state action: {action}",
+            code="runtime-state-action-unsupported",
+        )
     while True:
         trigger_redis_backup_if_requested()
         write_current_state()

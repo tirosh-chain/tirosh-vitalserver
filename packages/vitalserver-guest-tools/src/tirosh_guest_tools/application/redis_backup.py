@@ -18,6 +18,7 @@ from tirosh_guest_tools.common import (
     write_json,
 )
 from tirosh_guest_tools.contracts import RuntimeFileName
+from tirosh_guest_tools.domain.errors import GuestDependencyError
 from tirosh_guest_tools.domain.operations import (
     GuestOperationResult,
     OperationName,
@@ -142,13 +143,19 @@ def create_backup(archive: Path, log: TextIO) -> None:
     log_line(log, f"redis_volume_mount={redis_volume_mount}")
     source = Path(redis_volume_mount)
     if not source.is_dir():
-        raise FileNotFoundError(redis_volume_mount)
+        raise GuestDependencyError(
+            f"redis volume mount is missing: {redis_volume_mount}",
+            code="redis-volume-mount-missing",
+        )
     log_line(log, "step=archive status=started")
     with tarfile.open(archive, "w:gz") as tar:
         for entry in source.iterdir():
             tar.add(entry, arcname=entry.name)
     if archive.stat().st_size <= 0:
-        raise RuntimeError("backup archive is empty")
+        raise GuestDependencyError(
+            "backup archive is empty",
+            code="redis-backup-archive-empty",
+        )
     with tarfile.open(archive, "r:gz") as tar:
         tar.getmembers()
     log_line(log, f"step=archive status=completed archive={archive}")

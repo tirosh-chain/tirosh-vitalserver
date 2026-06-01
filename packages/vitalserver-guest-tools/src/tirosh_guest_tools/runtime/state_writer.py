@@ -13,6 +13,7 @@ from pathlib import Path
 
 from tirosh_guest_tools.common import DEPLOY_DIR, PROJECT_NAME
 from tirosh_guest_tools.contracts import RuntimeFileName
+from tirosh_guest_tools.runtime.probes import ProbeError, append_probe_error
 from tirosh_guest_tools.settings import SETTINGS
 
 VITALDB_OBSERVER_ENDPOINT = SETTINGS.observability.vitaldb_observer_url
@@ -60,7 +61,7 @@ def runtime_state_document(
     redis_ui_http: str | None = None,
     swagger_ui_http: str | None = None,
 ) -> dict[str, object]:
-    probe_errors: list[dict[str, str]] = []
+    probe_errors: list[ProbeError] = []
     return {
         "capabilities": {
             "activateUpdate": True,
@@ -75,7 +76,7 @@ def runtime_state_document(
         "cpuUsagePercent": cpu_usage_percent(probe_errors),
         "guestHTTP": optional_value(guest_http),
         "memory": memory_usage(probe_errors),
-        "probeErrors": probe_errors,
+        "probeErrors": [error.as_json() for error in probe_errors],
         "redisUIHTTP": optional_value(redis_ui_http),
         "systemDisk": disk_usage("/", probe_errors),
         "swaggerUIHTTP": optional_value(swagger_ui_http),
@@ -89,7 +90,7 @@ def optional_value(value: str | None) -> str | None:
     return value if value else None
 
 
-def first_non_loopback_ip(probe_errors: list[dict[str, str]]) -> str | None:
+def first_non_loopback_ip(probe_errors: list[ProbeError]) -> str | None:
     try:
         output = subprocess.check_output(
             ["hostname", "-I"], stderr=subprocess.DEVNULL, text=True
@@ -109,7 +110,7 @@ def first_non_loopback_ip(probe_errors: list[dict[str, str]]) -> str | None:
     return None
 
 
-def boot_id(probe_errors: list[dict[str, str]]) -> str | None:
+def boot_id(probe_errors: list[ProbeError]) -> str | None:
     path = Path("/proc/sys/kernel/random/boot_id")
     try:
         return path.read_text(encoding="utf-8").strip()
@@ -121,7 +122,7 @@ def boot_id(probe_errors: list[dict[str, str]]) -> str | None:
         return None
 
 
-def read_proc_stat(probe_errors: list[dict[str, str]]) -> tuple[int, int] | None:
+def read_proc_stat(probe_errors: list[ProbeError]) -> tuple[int, int] | None:
     try:
         fields = Path("/proc/stat").read_text(encoding="utf-8").splitlines()[0]
         values = [int(value) for value in fields.split()[1:]]
@@ -132,7 +133,7 @@ def read_proc_stat(probe_errors: list[dict[str, str]]) -> tuple[int, int] | None
     return idle, sum(values)
 
 
-def cpu_usage_percent(probe_errors: list[dict[str, str]]) -> float | None:
+def cpu_usage_percent(probe_errors: list[ProbeError]) -> float | None:
     first = read_proc_stat(probe_errors)
     if first is None:
         return None
@@ -147,7 +148,7 @@ def cpu_usage_percent(probe_errors: list[dict[str, str]]) -> float | None:
     return round(max(0.0, min(100.0, (1.0 - (idle_delta / total_delta)) * 100.0)), 1)
 
 
-def memory_usage(probe_errors: list[dict[str, str]]) -> dict[str, int] | None:
+def memory_usage(probe_errors: list[ProbeError]) -> dict[str, int] | None:
     values: dict[str, int] = {}
     try:
         for line in Path("/proc/meminfo").read_text(encoding="utf-8").splitlines():
@@ -168,7 +169,7 @@ def memory_usage(probe_errors: list[dict[str, str]]) -> dict[str, int] | None:
     return {"usedBytes": max(total - available, 0), "totalBytes": total}
 
 
-def disk_usage(path: str, probe_errors: list[dict[str, str]]) -> dict[str, int] | None:
+def disk_usage(path: str, probe_errors: list[ProbeError]) -> dict[str, int] | None:
     try:
         stats = os.statvfs(path)
     except OSError as error:
@@ -179,7 +180,7 @@ def disk_usage(path: str, probe_errors: list[dict[str, str]]) -> dict[str, int] 
     return {"usedBytes": max(total - available, 0), "totalBytes": total}
 
 
-def vitaldb_observation(probe_errors: list[dict[str, str]]) -> dict[str, object] | None:
+def vitaldb_observation(probe_errors: list[ProbeError]) -> dict[str, object] | None:
     try:
         with urllib.request.urlopen(VITALDB_OBSERVER_ENDPOINT, timeout=5) as response:
             payload = response.read().decode("utf-8")
@@ -198,7 +199,7 @@ def vitaldb_observation(probe_errors: list[dict[str, str]]) -> dict[str, object]
 
 
 def compose_services(
-    probe_errors: list[dict[str, str]],
+    probe_errors: list[ProbeError],
 ) -> list[dict[str, object]] | None:
     compose_path = DEPLOY_DIR / RuntimeFileName.COMPOSE.value
     if not compose_path.is_file():
@@ -275,7 +276,7 @@ def normalized_exit_code(value: object) -> int | None:
 
 def container_started_at(
     item: dict[str, object],
-    probe_errors: list[dict[str, str]],
+    probe_errors: list[ProbeError],
 ) -> str | None:
     identifier = str(item.get("ID") or item.get("Name") or "")
     if not identifier:
@@ -307,14 +308,6 @@ def uptime_seconds(started_at: str | None, now: datetime) -> int | None:
     except ValueError:
         return None
     return max(int((now - started).total_seconds()), 0)
-
-
-def append_probe_error(
-    probe_errors: list[dict[str, str]],
-    source: str,
-    error: object,
-) -> None:
-    probe_errors.append({"source": source, "message": str(error)})
 
 
 if __name__ == "__main__":

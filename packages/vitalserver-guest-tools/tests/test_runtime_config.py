@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from tirosh_guest_tools.domain.errors import GuestContractError
 from tirosh_guest_tools.runtime.config import load_config
 
 
@@ -32,8 +33,9 @@ def test_load_config_requires_host_owned_fields(tmp_path: Path) -> None:
     del document["testkitEnabled"]
     write_config(config_path, document)
 
-    with pytest.raises(ValueError, match="testkitEnabled"):
+    with pytest.raises(GuestContractError, match="testkitEnabled") as error:
         load_config(config_path)
+    assert error.value.code == "runtime-config-field-missing"
 
 
 def test_load_config_rejects_invalid_runtime_contract_type(tmp_path: Path) -> None:
@@ -42,8 +44,9 @@ def test_load_config_rejects_invalid_runtime_contract_type(tmp_path: Path) -> No
     document["redisPort"] = "6379"
     write_config(config_path, document)
 
-    with pytest.raises(ValueError, match="redisPort"):
+    with pytest.raises(GuestContractError, match="redisPort") as error:
         load_config(config_path)
+    assert error.value.code == "runtime-config-field-type-invalid"
 
 
 def test_load_config_returns_explicit_contract_values(tmp_path: Path) -> None:

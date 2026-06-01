@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 from tirosh_guest_tools.contracts import RuntimeCommand
+from tirosh_guest_tools.domain.errors import GuestDependencyError
 from tirosh_guest_tools.settings import SETTINGS
 
 GUEST_TOOLS_HOME = SETTINGS.paths.guest_tools_home
@@ -71,7 +72,10 @@ def install_guest_tools_runtime() -> None:
 def latest_guest_tools_wheel() -> Path:
     wheels = sorted(PYTHON_WHEEL_DIR.glob("tirosh_vitalserver_guest_tools-*.whl"))
     if not wheels:
-        raise FileNotFoundError(f"missing guest tools wheel under {PYTHON_WHEEL_DIR}")
+        raise GuestDependencyError(
+            f"missing guest tools wheel under {PYTHON_WHEEL_DIR}",
+            code="guest-tools-wheel-missing",
+        )
     return wheels[-1]
 
 

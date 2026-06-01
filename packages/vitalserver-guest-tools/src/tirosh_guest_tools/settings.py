@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from tirosh_guest_tools.domain.errors import GuestContractError
+
 DEFAULT_SETTINGS_PATH = Path("/etc/tirosh/guest-tools.toml")
 
 
@@ -69,7 +71,10 @@ def load_settings(path: Path = DEFAULT_SETTINGS_PATH) -> GuestToolsSettings:
         with path.open("rb") as handle:
             parsed = tomllib.load(handle)
         if not isinstance(parsed, dict):
-            raise ValueError(f"guest tools settings must be a TOML table: {path}")
+            raise GuestContractError(
+                f"guest tools settings must be a TOML table: {path}",
+                code="guest-tools-settings-invalid",
+            )
         document = parsed
 
     shares = table(document, "shares")
@@ -177,14 +182,20 @@ def load_settings(path: Path = DEFAULT_SETTINGS_PATH) -> GuestToolsSettings:
 def table(document: dict[str, Any], key: str) -> dict[str, Any]:
     value = document.get(key, {})
     if not isinstance(value, dict):
-        raise ValueError(f"guest tools setting '{key}' must be a TOML table")
+        raise GuestContractError(
+            f"guest tools setting '{key}' must be a TOML table",
+            code="guest-tools-setting-type-invalid",
+        )
     return value
 
 
 def str_value(document: dict[str, Any], key: str, default: str) -> str:
     value = document.get(key, default)
     if not isinstance(value, str) or value == "":
-        raise ValueError(f"guest tools setting '{key}' must be a non-empty string")
+        raise GuestContractError(
+            f"guest tools setting '{key}' must be a non-empty string",
+            code="guest-tools-setting-type-invalid",
+        )
     return value
 
 
@@ -201,9 +212,15 @@ def int_value(
 ) -> int:
     value = document.get(key, default)
     if not isinstance(value, int) or isinstance(value, bool):
-        raise ValueError(f"guest tools setting '{key}' must be an integer")
+        raise GuestContractError(
+            f"guest tools setting '{key}' must be an integer",
+            code="guest-tools-setting-type-invalid",
+        )
     if value < minimum:
-        raise ValueError(f"guest tools setting '{key}' must be >= {minimum}")
+        raise GuestContractError(
+            f"guest tools setting '{key}' must be >= {minimum}",
+            code="guest-tools-setting-range-invalid",
+        )
     return value
 
 
@@ -216,10 +233,16 @@ def float_value(
 ) -> float:
     value = document.get(key, default)
     if not isinstance(value, int | float) or isinstance(value, bool):
-        raise ValueError(f"guest tools setting '{key}' must be a number")
+        raise GuestContractError(
+            f"guest tools setting '{key}' must be a number",
+            code="guest-tools-setting-type-invalid",
+        )
     value = float(value)
     if value < minimum:
-        raise ValueError(f"guest tools setting '{key}' must be >= {minimum}")
+        raise GuestContractError(
+            f"guest tools setting '{key}' must be >= {minimum}",
+            code="guest-tools-setting-range-invalid",
+        )
     return value
 
 

@@ -14,6 +14,7 @@ from tirosh_guest_tools.observability.commands import (
     run_command,
     run_shell,
 )
+from tirosh_guest_tools.runtime.probes import ProbeError, append_probe_error
 
 OBSERVABILITY_DIR = RUNTIME_DIR / "guest-observability"
 VITAL_FILES_DIR = VITAL_FILES_MOUNT_POINT
@@ -24,7 +25,7 @@ def collect_snapshot(
     phase: str | None = None,
     detail: str = "daemon",
 ) -> dict[str, Any]:
-    errors: list[dict[str, str]] = []
+    errors: list[ProbeError] = []
     observed_at = utc_now()
     document: dict[str, Any] = {
         "schemaVersion": 1,
@@ -44,7 +45,7 @@ def collect_snapshot(
         "docker": collect_docker(),
         "network": collect_network(),
         "runtime": collect_runtime_files(errors),
-        "collectorErrors": errors,
+        "collectorErrors": [error.as_json() for error in errors],
     }
     if detail == "oneshot":
         document["commands"] = collect_diagnostic_commands()
@@ -139,7 +140,7 @@ def collect_network() -> dict[str, Any]:
     }
 
 
-def collect_storage(errors: list[dict[str, str]]) -> dict[str, Any]:
+def collect_storage(errors: list[ProbeError]) -> dict[str, Any]:
     return {
         "df": lines(
             run_command(["df", "-PT", "/", str(RUNTIME_DIR), str(VITAL_FILES_DIR)])
@@ -151,17 +152,17 @@ def collect_storage(errors: list[dict[str, str]]) -> dict[str, Any]:
     }
 
 
-def collect_mounts(errors: list[dict[str, str]]) -> dict[str, Any]:
+def collect_mounts(errors: list[ProbeError]) -> dict[str, Any]:
     result = run_command(["findmnt", "-J", "/", str(RUNTIME_DIR), str(VITAL_FILES_DIR)])
     if result.exit_code == 0:
         try:
             return json.loads(result.stdout)
         except json.JSONDecodeError as error:
-            errors.append({"collector": "findmnt", "message": str(error)})
+            append_probe_error(errors, "findmnt", error)
     return {"text": lines(run_command(["findmnt"]))}
 
 
-def collect_runtime_files(errors: list[dict[str, str]]) -> dict[str, Any]:
+def collect_runtime_files(errors: list[ProbeError]) -> dict[str, Any]:
     files = [
         RUNTIME_DIR / RuntimeFileName.RUNTIME_STATE.value,
         RUNTIME_DIR / RuntimeFileName.BOOTSTRAP_RESULT.value,
@@ -236,13 +237,13 @@ def collect_diagnostic_commands() -> dict[str, dict[str, object]]:
     return {name: result.as_dict() for name, result in commands.items()}
 
 
-def file_state(path: Path, errors: list[dict[str, str]]) -> dict[str, Any]:
+def file_state(path: Path, errors: list[ProbeError]) -> dict[str, Any]:
     try:
         stat = path.stat()
     except FileNotFoundError:
         return {"exists": False}
     except OSError as error:
-        errors.append({"collector": str(path), "message": str(error)})
+        append_probe_error(errors, str(path), error)
         return {"exists": None, "error": str(error)}
     return {
         "exists": True,
@@ -254,14 +255,14 @@ def file_state(path: Path, errors: list[dict[str, str]]) -> dict[str, Any]:
     }
 
 
-def read_text(path: Path, errors: list[dict[str, str]]) -> str | None:
+def read_text(path: Path, errors: list[ProbeError]) -> str | None:
     try:
         return path.read_text(encoding="utf-8").strip()
     except FileNotFoundError as error:
-        errors.append({"collector": str(path), "message": str(error)})
+        append_probe_error(errors, str(path), error)
         return None
     except OSError as error:
-        errors.append({"collector": str(path), "message": str(error)})
+        append_probe_error(errors, str(path), error)
         return None
 
 
@@ -272,18 +273,18 @@ def read_optional(path: Path) -> str | None:
         return None
 
 
-def read_uptime_seconds(errors: list[dict[str, str]]) -> float | None:
+def read_uptime_seconds(errors: list[ProbeError]) -> float | None:
     text = read_text(Path("/proc/uptime"), errors)
     if not text:
         return None
     try:
         return float(text.split()[0])
     except (IndexError, ValueError) as error:
-        errors.append({"collector": "/proc/uptime", "message": str(error)})
+        append_probe_error(errors, "/proc/uptime", error)
         return None
 
 
-def read_load_average(errors: list[dict[str, str]]) -> list[float]:
+def read_load_average(errors: list[ProbeError]) -> list[float]:
     text = read_text(Path("/proc/loadavg"), errors)
     if not text:
         return []
@@ -292,11 +293,11 @@ def read_load_average(errors: list[dict[str, str]]) -> list[float]:
         try:
             values.append(float(value))
         except ValueError:
-            errors.append({"collector": "/proc/loadavg", "message": value})
+            append_probe_error(errors, "/proc/loadavg", value)
     return values
 
 
-def read_meminfo(errors: list[dict[str, str]]) -> dict[str, int]:
+def read_meminfo(errors: list[ProbeError]) -> dict[str, int]:
     text = read_text(Path("/proc/meminfo"), errors)
     if not text:
         return {}
@@ -309,7 +310,7 @@ def read_meminfo(errors: list[dict[str, str]]) -> dict[str, int]:
     return output
 
 
-def root_is_read_only(errors: list[dict[str, str]]) -> bool | None:
+def root_is_read_only(errors: list[ProbeError]) -> bool | None:
     text = read_text(Path("/proc/mounts"), errors)
     if not text:
         return None

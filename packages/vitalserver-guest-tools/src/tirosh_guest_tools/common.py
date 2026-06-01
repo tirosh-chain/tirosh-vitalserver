@@ -8,6 +8,10 @@ from pathlib import Path
 from typing import Any, TextIO
 
 from tirosh_guest_tools.contracts import RuntimeFileName
+from tirosh_guest_tools.domain.errors import (
+    GuestContractError,
+    GuestOperationRequestError,
+)
 from tirosh_guest_tools.settings import SETTINGS
 
 MOUNT_TAG = SETTINGS.shares.runtime_tag
@@ -84,7 +88,10 @@ def read_json(path: Path) -> dict[str, Any]:
     with path.open(encoding="utf-8") as handle:
         value = json.load(handle)
     if not isinstance(value, dict):
-        raise ValueError(f"expected JSON object: {path}")
+        raise GuestContractError(
+            f"expected JSON object: {path}",
+            code="guest-json-object-invalid",
+        )
     return value
 
 
@@ -101,7 +108,10 @@ def write_json(path: Path, document: dict[str, Any]) -> None:
 def request_id_from(path: Path) -> str:
     request_id = read_json(path).get("requestId")
     if not isinstance(request_id, str) or not request_id:
-        raise ValueError(f"requestId is missing: {path}")
+        raise GuestOperationRequestError(
+            f"requestId is missing: {path}",
+            code="guest-operation-request-id-missing",
+        )
     return request_id
 
 
@@ -111,7 +121,10 @@ def request_version_from(path: Path) -> str:
         return ""
     version = document["version"]
     if not isinstance(version, str):
-        raise ValueError(f"version must be a string when present: {path}")
+        raise GuestOperationRequestError(
+            f"version must be a string when present: {path}",
+            code="guest-operation-request-version-invalid",
+        )
     return version
 
 
