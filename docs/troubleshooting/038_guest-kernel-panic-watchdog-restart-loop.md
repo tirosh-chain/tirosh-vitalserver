@@ -94,7 +94,7 @@ launchctl print system/com.tirosh.vitalserver-vm | grep "exit timeout"
 - `jbd2/vda1-8`, `EXT4-fs error`, `Aborting journal`, `Remounting filesystem read-only`는 VM disk/journal 손상을 의미합니다.
 - `Failed to spawn executor: Input/output error`가 반복되면 guest root filesystem이 정상적으로 실행 파일을 읽지 못하는 상태입니다.
 - watchdog log에 `launchd restart label=com.tirosh.vitalserver-vm`가 반복되면 recovery loop입니다.
-- plist는 `ExitTimeOut=300`인데 loaded job이 `exit timeout = 60`이면 현재 launchd job에는 최신 shutdown timeout이 적용되지 않은 상태입니다.
+- plist는 최신 `ExitTimeOut`인데 loaded job이 더 짧은 `exit timeout`을 유지하면 현재 launchd job에는 최신 shutdown timeout이 적용되지 않은 상태입니다.
 
 ## Actions
 
@@ -134,7 +134,7 @@ sudo /usr/local/bin/vitalserver-vm runtime repair-vm-disk
    - lifecycle이 `failed`이고 terminal storage reason이 있으면 automatic VM restart를 suppress합니다.
 4. Watchdog VM restart 경로를 safe shutdown workflow로 통합합니다.
    - watchdog이 VM을 재시작해야 할 때도 `launchctl kickstart -k`를 직접 호출하지 않습니다.
-   - VM process에 graceful stop을 요청하고 disk-safe marker 또는 명시 timeout 결과를 확인한 뒤 다음 start로 넘어갑니다.
+   - VM process에 graceful stop을 요청하고 명시 timeout 결과를 확인한 뒤 다음 start로 넘어갑니다.
    - stop timeout 결과는 숨기지 않고 event/status에 기록합니다.
 5. install/update handoff를 명확히 합니다.
    - install/update status가 completed가 되기 전에 VM lifecycle owner가 fresh `starting` 또는 `bootstrapping` state를 기록해야 합니다.
@@ -214,7 +214,7 @@ AGENTS.md 원칙을 이 TS에 적용할 때 특히 조심할 점:
    - storage failure가 보이면 watchdog은 자동 restart를 줄이고, 명시 조치가 필요한 상태를 남깁니다.
 4. Safe shutdown을 우회하는 새 restart path를 추가하지 않습니다.
    - `launchctl kickstart -k`는 VM disk flush를 보장하지 않습니다.
-   - VM restart가 필요하면 기존 graceful stop, disk-safe marker 확인, timeout result 기록을 통과해야 합니다.
+   - VM restart가 필요하면 기존 graceful stop과 timeout result 기록을 통과해야 합니다.
    - timeout을 늘리는 것만으로는 구조적 해결이 아닙니다.
 5. Recovery planner에 편의 fallback을 넣지 않습니다.
    - `missing vmIP`를 `starting`으로 추정하거나, stale state를 legacy file/probe로 보정하지 않습니다.

@@ -78,6 +78,7 @@ Host-side 추정과 fallback을 제거합니다.
 4. Host는 현재 requestId의 성공 result만 인정합니다.
 5. 이후 VM은 graceful stop만 수행합니다.
 6. VM stop timeout이면 실패로 처리합니다. Host가 log marker나 stale result를 근거로 force kill하지 않습니다.
+7. Guest shutdown finalization이 오래 걸릴 수 있으므로 VM stop timeout은 systemd shutdown 지연을 포함할 수 있을 만큼 길게 둡니다. 2026-06-01 기준 Host CLI와 VM launchd timeout은 900초입니다.
 
 현재 구현에서 유지해야 하는 contract:
 
