@@ -88,6 +88,8 @@ enum RuntimeAdapterConstants {
         static let runtimeLogSources = installed.logsDirectory.path
         static let guestLogs = installed.centralGuestLogsDirectory.path
         static let guestRunDirectory = installed.guestRunDirectory.path
+        static let guestObservability = installed.centralGuestObservabilityDirectory.path
+        static let guestObservabilitySource = installed.guestObservabilityDirectory.path
         static let logArchive = installed.logArchiveDirectory.path
         static let commandLog = installed.centralCommandLog.path
         static let containerLogs = installed.centralContainerLogs.path

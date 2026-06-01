@@ -6,6 +6,7 @@ from tirosh_vitalserver.devtools.config.build_toml import (
     TomlTable,
     nested_section,
     required_string,
+    required_string_list,
 )
 from tirosh_vitalserver.devtools.core.guest_deploy import (
     GuestDeployConfig,
@@ -30,6 +31,21 @@ def load_guest_deploy_config(config: TomlTable) -> GuestDeployConfig:
             "optional_docker_image_bundle_destination",
             path=path,
         ),
+        python_wheel_destination=Path(
+            required_string(
+                deploy,
+                "python_wheel_destination",
+                path=path,
+            )
+        ),
+        python_wheel_projects=[
+            Path(item)
+            for item in required_string_list(
+                deploy,
+                "python_wheel_projects",
+                path=path,
+            )
+        ],
         includes=load_guest_deploy_includes(deploy, path=path),
     )
 

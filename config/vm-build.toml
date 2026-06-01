@@ -111,6 +111,10 @@ optional_images = [
 [guest.deploy]
 docker_image_bundle_destination = "docker-images/vitalserver-images.tar.gz"
 optional_docker_image_bundle_destination = "optional-docker-images/vitalserver-optional-images.tar.gz"
+python_wheel_destination = "python-wheels"
+python_wheel_projects = [
+  "packages/vitalserver-guest-tools",
+]
 include = [
   "apps/vitalserver/docker",
   "apps/vitalserver/runtime",

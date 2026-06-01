@@ -357,7 +357,7 @@ Fallback:
 | VM launch | launchd | `vitalserver-vm start` | `VITALSERVER_VM_HOME`, `VITALSERVER_VM_DETACHED=1`, `runtime/vm-config.json` | Virtualization.framework VM process |
 | watchdog | launchd | `vitalserver-vm runtime watchdog` | runtime files, launchd state, guest runtime state, HTTP health | runtime status update, VM/proxy kickstart |
 | host proxy | launchd | `vitalserver-proxy-run` | `vm/data/run/runtime-state.json`, legacy `vm-ip`, proxy template, nginx binary | rendered host nginx config, nginx process |
-| guest bootstrap | cloud-init | `bootstrap.sh`, `bin/*`, `systemd/*` | VirtioFS mounts, `runtime-config.json`, Docker bundle | Docker Compose stack, edge nginx container, runtime state marker |
+| guest bootstrap | cloud-init | `bootstrap.sh`, Guest tools wheel | VirtioFS mounts, `runtime-config.json`, Docker bundle | Docker Compose stack, edge nginx container, runtime state marker |
 | update verification | operator/Helper | `vitalserver-vm runtime verify-bundle` | bundle tarball | manifest/checksum validation |
 | update apply | operator/Helper | `vitalserver-vm runtime apply-bundle` | verified bundle tarball | staged bundle, backup, artifact replacement, migrations, health check |
 

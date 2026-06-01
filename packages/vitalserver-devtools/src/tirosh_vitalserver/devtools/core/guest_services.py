@@ -17,10 +17,17 @@ class GuestDeployEntry:
 
 
 @dataclass(frozen=True)
+class GuestPythonWheelProject:
+    source: Path
+    destination_directory: Path
+
+
+@dataclass(frozen=True)
 class GuestDeployPlan:
     support_guest_source: Path
     deploy_dir: Path
     includes: list[GuestDeployEntry]
+    python_wheel_projects: list[GuestPythonWheelProject]
     docker_bundle_source: Path | None
     docker_bundle_destination: Path | None
     optional_docker_bundle_source: Path | None
@@ -77,6 +84,13 @@ def guest_deploy_plan(
         )
         for entry in config.includes
     ]
+    python_wheel_projects = [
+        GuestPythonWheelProject(
+            source=root / project,
+            destination_directory=deploy_dir / config.python_wheel_destination,
+        )
+        for project in config.python_wheel_projects
+    ]
     docker_destination = (
         deploy_dir / config.docker_image_bundle_destination if docker_bundle else None
     )
@@ -89,6 +103,7 @@ def guest_deploy_plan(
         support_guest_source=runtime_dir / "Support/Guest",
         deploy_dir=deploy_dir,
         includes=includes,
+        python_wheel_projects=python_wheel_projects,
         docker_bundle_source=docker_bundle,
         docker_bundle_destination=docker_destination,
         optional_docker_bundle_source=optional_docker_bundle,

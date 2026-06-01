@@ -287,6 +287,10 @@ struct RuntimeLogExportSupplementalSource {
                 relativeDestination: "guest/\(RuntimeFileNames.redisBackupLog)"
             ),
             RuntimeLogExportSupplementalSource(
+                source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.guestObservabilitySource),
+                relativeDestination: "guest/guest-observability"
+            ),
+            RuntimeLogExportSupplementalSource(
                 source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.commandLogFile),
                 relativeDestination: "command.log"
             ),

@@ -42,6 +42,10 @@ public struct InstalledRuntimePaths: Equatable, Sendable {
         dataDirectory.appendingPathComponent("run")
     }
 
+    public var guestObservabilityDirectory: URL {
+        guestRunDirectory.appendingPathComponent("guest-observability")
+    }
+
     public var hostRunDirectory: URL {
         runtimeHome.appendingPathComponent("run")
     }
@@ -64,6 +68,10 @@ public struct InstalledRuntimePaths: Equatable, Sendable {
 
     public var centralGuestLogsDirectory: URL {
         productLogsDirectory.appendingPathComponent("guest")
+    }
+
+    public var centralGuestObservabilityDirectory: URL {
+        centralGuestLogsDirectory.appendingPathComponent("guest-observability")
     }
 
     public var logArchiveDirectory: URL {

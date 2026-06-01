@@ -1,0 +1,30 @@
+[project]
+name = "tirosh-vitalserver-guest-tools"
+version = "0.1.0"
+description = "Guest-side tools for Tirosh VitalServer runtime."
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+tirosh-guest-observed = "tirosh_guest_tools.observability.daemon:main"
+tirosh-guest-observe = "tirosh_guest_tools.observability.cli:main"
+tirosh-guest-container-logs = "tirosh_guest_tools.observability.container_logs:main"
+tirosh-guest-diagnostics = "tirosh_guest_tools.observability.diagnostics:main"
+tirosh-runtime-env = "tirosh_guest_tools.runtime.config:main"
+tirosh-write-runtime-state = "tirosh_guest_tools.runtime.state_writer:main"
+tirosh-runtime-state = "tirosh_guest_tools.runtime.state:main"
+tirosh-vitalserver-health = "tirosh_guest_tools.runtime.health:main"
+tirosh-vitalserver-compose = "tirosh_guest_tools.compose:main"
+tirosh-vitalserver-command-poller = "tirosh_guest_tools.operations.command_poller:main"
+tirosh-vitalserver-redis-backup = "tirosh_guest_tools.redis.backup:main"
+tirosh-vitalserver-repair-datastore = "tirosh_guest_tools.redis.repair:main"
+tirosh-vitalserver-activate-update = "tirosh_guest_tools.update.activate:main"
+tirosh-vitalserver-prepare-update-shutdown = "tirosh_guest_tools.update.prepare_shutdown:main"
+tirosh-guest-tools-install-runtime = "tirosh_guest_tools.system_install:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tirosh_guest_tools"]

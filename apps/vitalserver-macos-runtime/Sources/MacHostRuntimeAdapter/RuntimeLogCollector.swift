@@ -21,6 +21,7 @@ struct MacHostRuntimeLogCollector: RuntimeLogCollecting, @unchecked Sendable {
 
     private let fileStore: RuntimeFileStore
     private let copies: [RuntimeLogCopy]
+    private let directoryCopies: [RuntimeLogDirectoryCopy]
     private let rotatedCopySets: [RuntimeRotatedLogCopySet]
     private let archiveDirectory: URL
     private let maxCentralLogBytes: UInt64
@@ -30,6 +31,7 @@ struct MacHostRuntimeLogCollector: RuntimeLogCollecting, @unchecked Sendable {
     init(
         fileStore: RuntimeFileStore = SystemRuntimeFileStore(),
         copies: [RuntimeLogCopy] = RuntimeLogCopy.defaultCopies(),
+        directoryCopies: [RuntimeLogDirectoryCopy] = RuntimeLogDirectoryCopy.defaultCopies(),
         rotatedCopySets: [RuntimeRotatedLogCopySet] = RuntimeRotatedLogCopySet.defaultSets(),
         archiveDirectory: URL = URL(fileURLWithPath: RuntimeAdapterConstants.Paths.logArchive),
         maxCentralLogBytes: UInt64 = 10 * 1024 * 1024,
@@ -38,6 +40,7 @@ struct MacHostRuntimeLogCollector: RuntimeLogCollecting, @unchecked Sendable {
     ) {
         self.fileStore = fileStore
         self.copies = copies
+        self.directoryCopies = directoryCopies
         self.rotatedCopySets = rotatedCopySets
         self.archiveDirectory = archiveDirectory
         self.maxCentralLogBytes = maxCentralLogBytes
@@ -48,6 +51,9 @@ struct MacHostRuntimeLogCollector: RuntimeLogCollecting, @unchecked Sendable {
     func refreshLogCollection() throws {
         for item in copies {
             try copyIntoCentralLogs(item)
+        }
+        for item in directoryCopies {
+            try copyDirectoryIntoCentralLogs(item)
         }
         for set in rotatedCopySets {
             try copyRotatedLogs(set)
@@ -61,12 +67,31 @@ struct MacHostRuntimeLogCollector: RuntimeLogCollecting, @unchecked Sendable {
         for item in copies where shouldRefresh(item, for: sourceID) {
             try copyIntoCentralLogs(item)
         }
+        if sourceID == .containers {
+            for item in directoryCopies {
+                try copyDirectoryIntoCentralLogs(item)
+            }
+        }
         guard sourceID == .containers else {
             return
         }
         for set in rotatedCopySets {
             try copyRotatedLogs(set)
         }
+    }
+
+    private func copyDirectoryIntoCentralLogs(_ item: RuntimeLogDirectoryCopy) throws {
+        guard fileStore.directoryExists(item.source) else {
+            return
+        }
+        try fileStore.createDirectory(
+            at: item.destination.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        if fileStore.fileExists(item.destination) || fileStore.directoryExists(item.destination) {
+            try fileStore.removeItem(at: item.destination)
+        }
+        try fileStore.copyItem(at: item.source, to: item.destination)
     }
 
     private func copyIntoCentralLogs(_ item: RuntimeLogCopy) throws {
@@ -344,6 +369,25 @@ struct RuntimeLogCopy {
         ]
 
         return runtimeFiles + guestFiles
+    }
+}
+
+struct RuntimeLogDirectoryCopy {
+    let source: URL
+    let destination: URL
+
+    init(source: URL, destination: URL) {
+        self.source = source
+        self.destination = destination
+    }
+
+    static func defaultCopies() -> [RuntimeLogDirectoryCopy] {
+        [
+            RuntimeLogDirectoryCopy(
+                source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.guestObservabilitySource),
+                destination: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.guestObservability)
+            ),
+        ]
     }
 }
 

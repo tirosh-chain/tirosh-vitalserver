@@ -20,6 +20,8 @@ final class InstalledRuntimePathsTests: XCTestCase {
         XCTAssertEqual(paths.proxyNginxAccessLog.path, "/Library/Application Support/TiroshVitalServer/logs/runtime/proxy-nginx.access.log")
         XCTAssertEqual(paths.proxyNginxErrorLog.path, "/Library/Application Support/TiroshVitalServer/logs/runtime/proxy-nginx.error.log")
         XCTAssertEqual(paths.centralGuestLogsDirectory.path, "/Library/Application Support/TiroshVitalServer/logs/guest")
+        XCTAssertEqual(paths.guestObservabilityDirectory.path, "/Library/Application Support/TiroshVitalServer/vm/data/run/guest-observability")
+        XCTAssertEqual(paths.centralGuestObservabilityDirectory.path, "/Library/Application Support/TiroshVitalServer/logs/guest/guest-observability")
         XCTAssertEqual(paths.logArchiveDirectory.path, "/Library/Application Support/TiroshVitalServer/logs/archive")
         XCTAssertEqual(paths.vmIPFile.path, "/Library/Application Support/TiroshVitalServer/vm/data/run/vm-ip")
         XCTAssertEqual(paths.vmLifecycle.path, "/Library/Application Support/TiroshVitalServer/vm/run/vm-lifecycle.json")

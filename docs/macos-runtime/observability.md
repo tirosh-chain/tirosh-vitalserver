@@ -21,7 +21,9 @@ Guest/container 쪽은 목적이 다른 자료가 병렬로 있습니다.
 | 데이터 | 작성자 | 소비자 | 성격 |
 |---|---|---|---|
 | `vm/data/run/runtime-state.json` | guest `tirosh-runtime-state` | host `RuntimeHealthChecker`, Helper status | guest health/resource 스냅샷 |
-| `vm/data/run/container-logs.log` | guest `tirosh-vitalserver-container-logs` | Helper Logs, export logs | `docker compose logs --follow` 수집본 |
+| `vm/data/run/guest-observability/latest.json` | guest `tirosh-guest-observed` | Helper Logs, export logs | guest OS 진단 스냅샷 |
+| `vm/data/run/guest-observability/snapshots/*` | guest `tirosh-guest-observe` | Helper Logs, export logs | phase별 one-shot 진단 |
+| `vm/data/run/container-logs.log` | guest `tirosh-guest-container-logs` | Helper Logs, export logs | `docker compose logs --follow` 수집본 |
 | `/var/log/vitalserver-audit/audit-events.log` | `vitalserver-audit-proxy` | guest/operator diagnostics | command audit 원본 파일 로그 |
 | audit proxy stdout | `vitalserver-audit-proxy` | container log collector | collector 호환 raw event log |
 | Redis List `vitalserver:audit_events` | `vitalserver-audit-proxy` | 운영 조회/디버깅 | Redis 3.2 호환 보조 조회 sink |
@@ -41,6 +43,7 @@ source인지 명확하지 않다는 점입니다.
 - `vitalserver-audit-proxy`는 command audit event를 생성합니다.
 - `vitaldb-observer`는 Redis와 proxy/access log를 읽어 VitalDB observation snapshot을 계산합니다.
 - guest `tirosh-runtime-state`는 guest HTTP/resource snapshot을 생성합니다.
+- guest `tirosh-guest-observed`는 Linux guest OS의 진단 snapshot을 생성합니다.
 - compose service와 container는 stdout/stderr에 raw log를 남깁니다.
 - upstream VitalServer app은 제품 runtime event를 직접 알 필요가 없습니다.
 
@@ -50,9 +53,31 @@ source인지 명확하지 않다는 점입니다.
 
 Guest collector는 수집만 담당합니다.
 
-- `tirosh-vitalserver-container-logs`는 `docker compose logs --follow`를 공유 디렉터리로 복사합니다.
+- `tirosh-guest-container-logs`는 `docker compose logs --follow`를 공유 디렉터리로 복사합니다.
+- `tirosh-guest-observed`는 `guest-observability/latest.json`, `history.jsonl`, `events.jsonl`을 공유
+  디렉터리에 씁니다.
+- `tirosh-guest-observe <phase>`는 shutdown/update/repair 같은 전이 지점의 one-shot snapshot과 raw
+  command report를 씁니다.
+- `tirosh-guest-diagnostics`는 operator용 one-shot diagnostic report를 출력합니다.
 - collector는 로그를 해석하거나 status/event로 승격하지 않습니다.
 - `container-logs.log`는 진단용 raw log로 유지합니다.
+- `guest-observability` 산출물은 진단/export 자료이며 update 성공/실패 판단의 contract가 아닙니다.
+
+Guest observability는 Guest tools Python wheel package의 `observability` 서브패키지로 배포합니다.
+
+- package source: `packages/vitalserver-guest-tools`
+- staged wheel: `deploy/python-wheels/tirosh_vitalserver_guest_tools-*.whl`
+- guest venv: `/opt/tirosh/guest-tools/venv`
+- daemon entrypoint: `/usr/local/bin/tirosh-guest-observed`
+- one-shot entrypoint: `/usr/local/bin/tirosh-guest-observe`
+- container log entrypoint: `/usr/local/bin/tirosh-guest-container-logs`
+- diagnostics entrypoint: `/usr/local/bin/tirosh-guest-diagnostics`
+- systemd units: `Support/Guest/systemd/tirosh-guest-observability.service`,
+  `Support/Guest/systemd/tirosh-vitalserver-container-logs.service`
+
+이 경계가 중요합니다. Guest가 자기 내부 상태를 명시적으로 관측하고 파일로 제공합니다. Host는 그 파일을
+수집하고 export하지만, marker나 snapshot 내용을 근거로 guest state를 추정하거나 update flow를 성공으로
+바꾸지 않습니다.
 
 ### Host watchdog
 

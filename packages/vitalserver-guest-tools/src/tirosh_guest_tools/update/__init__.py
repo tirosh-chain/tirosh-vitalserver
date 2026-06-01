@@ -1,0 +1,1 @@
+"""Guest update operation helpers."""

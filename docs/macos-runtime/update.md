@@ -362,7 +362,7 @@ rootfs는 Linux VM의 OS base입니다. 변경 기준은 “Mac host나 guest de
 | Updater/Supervisor/VM Driver Swift CLI 변경 | `runtime-tools.tar.gz` |
 | host nginx binary/config 변경 | `nginx-bundle.tar.gz` |
 | `compose.yaml` 변경 | `guest-deploy.tar.gz` |
-| guest `bootstrap.sh`, `bin/*`, `systemd/*`, `nginx/*.conf` 변경 | `guest-deploy.tar.gz` |
+| guest `bootstrap.sh`, Guest tools wheel, `nginx/*.conf` 변경 | `guest-deploy.tar.gz` |
 | VitalServer container image 변경 | `guest-deploy.tar.gz` 안의 Docker image bundle |
 | OpenAPI/Swagger static file 변경 | `guest-deploy.tar.gz` |
 | update/rollback host 로직 변경 | `runtime-tools.tar.gz` |

@@ -3,9 +3,9 @@ import XCTest
 
 final class GuestCommandDispatcherSupportTests: XCTestCase {
     func testGuestCommandPollerDispatchesAllHostWrittenRequests() throws {
-        let poller = try readGuestSupportFile("bin/tirosh-vitalserver-command-poller")
+        let poller = try readGuestToolsFile("operations/command_poller.py")
 
-        XCTAssertTrue(poller.contains("POLL_INTERVAL_SECONDS=\"${TIROSH_GUEST_COMMAND_POLL_INTERVAL_SECONDS:-3}\""))
+        XCTAssertTrue(poller.contains("TIROSH_GUEST_COMMAND_POLL_INTERVAL_SECONDS"))
         XCTAssertTrue(poller.contains("prepare-update-shutdown.request"))
         XCTAssertTrue(poller.contains("tirosh-vitalserver-prepare-update-shutdown.service"))
         XCTAssertTrue(poller.contains("activate-update.request"))
@@ -14,44 +14,72 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
         XCTAssertTrue(poller.contains("tirosh-vitalserver-repair-datastore.service"))
         XCTAssertTrue(poller.contains("redis-backup.request"))
         XCTAssertTrue(poller.contains("tirosh-vitalserver-redis-backup.service"))
-        XCTAssertTrue(poller.contains("systemctl start --no-block"))
+        XCTAssertTrue(poller.contains("\"start\", \"--no-block\""))
         XCTAssertFalse(poller.contains("PathExists="))
     }
 
-    func testBootstrapAndActivationInstallPollerInsteadOfEnablingPathWatchers() throws {
+    func testBootstrapInstallsWrappersAndExplicitSystemdFiles() throws {
         let bootstrap = try readGuestSupportFile("bootstrap.sh")
-        let activation = try readGuestSupportFile("bin/tirosh-vitalserver-activate-update")
 
-        for installer in [bootstrap, activation] {
-            XCTAssertTrue(installer.contains("install -m 0755 \"${DEPLOY_DIR}/bin/tirosh-vitalserver-command-poller\""))
-            XCTAssertTrue(installer.contains("install -m 0644 \"${DEPLOY_DIR}/systemd/tirosh-vitalserver-command-poller.service\""))
-            XCTAssertTrue(installer.contains("systemctl enable --now tirosh-vitalserver-command-poller.service"))
-
-            XCTAssertTrue(installer.contains("systemctl disable --now tirosh-vitalserver-redis-backup.path"))
-            XCTAssertTrue(installer.contains("systemctl disable --now tirosh-vitalserver-repair-datastore.path"))
-            XCTAssertTrue(installer.contains("systemctl disable --now tirosh-vitalserver-activate-update.path"))
-            XCTAssertTrue(installer.contains("systemctl disable --now tirosh-vitalserver-prepare-update-shutdown.path"))
-
-            XCTAssertFalse(installer.contains("systemctl enable --now tirosh-vitalserver-redis-backup.path"))
-            XCTAssertFalse(installer.contains("systemctl enable --now tirosh-vitalserver-repair-datastore.path"))
-            XCTAssertFalse(installer.contains("systemctl enable --now tirosh-vitalserver-activate-update.path"))
-            XCTAssertFalse(installer.contains("systemctl enable --now tirosh-vitalserver-prepare-update-shutdown.path"))
-        }
+        XCTAssertTrue(bootstrap.contains("install_guest_tools"))
+        XCTAssertFalse(bootstrap.contains("tirosh-guest-tools-install-systemd"))
+        XCTAssertTrue(bootstrap.contains("systemctl enable --now tirosh-vitalserver-command-poller.service"))
+        XCTAssertTrue(bootstrap.contains("install -m 0755 \"${DEPLOY_DIR}/bin/tirosh-vitalserver-command-poller\""))
+        XCTAssertTrue(bootstrap.contains("install -m 0644 \"${DEPLOY_DIR}/systemd/tirosh-vitalserver-command-poller.service\""))
+        let observabilityUnit = try readGuestSupportFile(
+            "systemd/tirosh-guest-observability.service"
+        )
+        let removedInstaller = try guestToolsDirectory()
+            .appendingPathComponent("observability/systemd_installer.py")
+        XCTAssertTrue(observabilityUnit.contains("tirosh-guest-observed"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: removedInstaller.path))
     }
 
     func testGuestCommandFailuresClearRequestFilesAfterWritingFailureResult() throws {
-        let activation = try readGuestSupportFile("bin/tirosh-vitalserver-activate-update")
-        let shutdown = try readGuestSupportFile("bin/tirosh-vitalserver-prepare-update-shutdown")
-        let repair = try readGuestSupportFile("bin/tirosh-vitalserver-repair-datastore")
+        let activation = try readGuestToolsFile("update/activate.py")
+        let shutdown = try readGuestToolsFile("update/prepare_shutdown.py")
+        let repair = try readGuestToolsFile("redis/repair.py")
 
-        XCTAssertTrue(activation.contains("rm -f \"${REQUEST_FILE}\"\n    write_result \"failed\""))
-        XCTAssertTrue(shutdown.contains("write_result \"failed\""))
-        XCTAssertTrue(shutdown.contains("rm -f \"${REQUEST_FILE}\""))
-        XCTAssertTrue(repair.contains("rm -f \"${REQUEST_FILE}\"\n    write_result \"failed\""))
+        XCTAssertTrue(activation.contains("REQUEST_FILE.unlink(missing_ok=True)"))
+        XCTAssertTrue(shutdown.contains("write_result"))
+        XCTAssertTrue(shutdown.contains("REQUEST_FILE.unlink(missing_ok=True)"))
+        XCTAssertTrue(repair.contains("REQUEST_FILE.unlink(missing_ok=True)"))
+    }
+
+    func testGuestToolsBackThinWrappersAndSystemdFiles() throws {
+        let bootstrap = try readGuestSupportFile("bootstrap.sh")
+        let guestSupport = try guestSupportDirectory()
+
+        XCTAssertTrue(bootstrap.contains("python3 -m venv --clear \"${GUEST_TOOLS_VENV}\""))
+        XCTAssertTrue(
+            bootstrap.contains(
+                "\"${GUEST_TOOLS_VENV}/bin/pip\" install --no-index --no-deps \"${wheel}\""
+            )
+        )
+        XCTAssertTrue(bootstrap.contains("tirosh-guest-observed"))
+        XCTAssertTrue(bootstrap.contains("tirosh-runtime-state"))
+        XCTAssertTrue(bootstrap.contains("tirosh-vitalserver-activate-update"))
+        XCTAssertTrue(try readGuestToolsFile("update/activate.py").contains("activation-pre"))
+        XCTAssertTrue(try readGuestToolsFile("update/activate.py").contains("activation-post"))
+        XCTAssertTrue(try readGuestToolsFile("update/activate.py").contains("activation-failure"))
+        XCTAssertTrue(try readGuestToolsFile("update/prepare_shutdown.py").contains("shutdown-pre-stop"))
+        XCTAssertTrue(try readGuestToolsFile("update/prepare_shutdown.py").contains("shutdown-post-sync"))
+        XCTAssertTrue(try readGuestToolsFile("update/prepare_shutdown.py").contains("shutdown-failure"))
+        let wrapper = try readGuestSupportFile("bin/tirosh-vitalserver-compose")
+        let service = try readGuestSupportFile("systemd/tirosh-vitalserver-compose.service")
+        XCTAssertTrue(wrapper.contains("exec /opt/tirosh/guest-tools/venv/bin/"))
+        XCTAssertTrue(service.contains("ExecStart=/usr/local/bin/tirosh-vitalserver-compose up"))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: guestSupport.appendingPathComponent("bin").path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: guestSupport.appendingPathComponent("systemd").path))
     }
 
     private func readGuestSupportFile(_ relativePath: String) throws -> String {
         let fileURL = try guestSupportDirectory().appendingPathComponent(relativePath)
+        return try String(contentsOf: fileURL, encoding: .utf8)
+    }
+
+    private func readGuestToolsFile(_ relativePath: String) throws -> String {
+        let fileURL = try guestToolsDirectory().appendingPathComponent(relativePath)
         return try String(contentsOf: fileURL, encoding: .utf8)
     }
 
@@ -66,5 +94,18 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
             current.deleteLastPathComponent()
         }
         throw NSError(domain: "GuestCommandDispatcherSupportTests", code: 1)
+    }
+
+    private func guestToolsDirectory() throws -> URL {
+        var current = URL(fileURLWithPath: #filePath)
+        while current.path != "/" {
+            let candidate = current
+                .appendingPathComponent("packages/vitalserver-guest-tools/src/tirosh_guest_tools")
+            if FileManager.default.fileExists(atPath: candidate.path) {
+                return candidate
+            }
+            current.deleteLastPathComponent()
+        }
+        throw NSError(domain: "GuestCommandDispatcherSupportTests", code: 2)
     }
 }
