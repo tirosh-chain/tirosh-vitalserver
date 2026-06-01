@@ -19,13 +19,19 @@ from tirosh_guest_tools.common import (
     write_json,
 )
 from tirosh_guest_tools.domain.operations import (
+    ComposeAction,
     GuestOperationResult,
+    ObservationPhase,
+    OperationName,
     OperationStatus,
+    ReasonCode,
+    RuntimeFileName,
+    RuntimeService,
 )
 
-REQUEST_FILE = RUNTIME_DIR / "prepare-update-shutdown.request"
-RESULT_FILE = RUNTIME_DIR / "prepare-update-shutdown-result.json"
-LOG_FILE = RUNTIME_DIR / "prepare-update-shutdown.log"
+REQUEST_FILE = RUNTIME_DIR / RuntimeFileName.PREPARE_UPDATE_SHUTDOWN_REQUEST.value
+RESULT_FILE = RUNTIME_DIR / RuntimeFileName.PREPARE_UPDATE_SHUTDOWN_RESULT.value
+LOG_FILE = RUNTIME_DIR / RuntimeFileName.PREPARE_UPDATE_SHUTDOWN_LOG.value
 
 
 @dataclass
@@ -46,14 +52,14 @@ def run_prepare_update_shutdown() -> None:
             run_prepare(context, log)
         except Exception as error:
             log.log(f"status=failed error={error}")
-            collect_guest_observability("shutdown-failure")
+            collect_guest_observability(ObservationPhase.SHUTDOWN_FAILURE)
             if context is not None:
                 write_result(
                     context,
                     OperationStatus.FAILED,
                     f"Guest update shutdown failed at: {error}",
-                    step="failed",
-                    reason_codes=("guest-update-shutdown-failed",),
+                    step=OperationStatus.FAILED.value,
+                    reason_codes=(ReasonCode.GUEST_UPDATE_SHUTDOWN_FAILED.value,),
                 )
             REQUEST_FILE.unlink(missing_ok=True)
             raise
@@ -78,30 +84,30 @@ def prepare_context(log: Tee) -> PrepareUpdateShutdownContext | None:
 
 
 def run_prepare(context: PrepareUpdateShutdownContext, log: Tee) -> None:
-    collect_guest_observability("shutdown-pre-stop")
+    collect_guest_observability(ObservationPhase.SHUTDOWN_PRE_STOP)
     backup_redis(context, log)
     write_result(
         context,
         OperationStatus.RUNNING,
         "Redis backup completed. Stopping guest services.",
-        step="redis-backup",
+        step=OperationName.REDIS_BACKUP.value,
     )
     stop_runtime_services(log)
     log.log("step=sync status=started")
     subprocess.run(["sync"], check=True)
     log.log("step=sync status=completed")
-    collect_guest_observability("shutdown-post-sync")
+    collect_guest_observability(ObservationPhase.SHUTDOWN_POST_SYNC)
     write_result(
         context,
         OperationStatus.READY,
         "Guest services are stopped and filesystems are synced.",
-        step="ready",
+        step=OperationStatus.READY.value,
     )
     REQUEST_FILE.unlink(missing_ok=True)
     log.log("guest update shutdown preparation ready")
 
 
-def collect_guest_observability(phase: str) -> None:
+def collect_guest_observability(phase: ObservationPhase) -> None:
     try:
         write_guest_observability_snapshot(phase)
     except Exception as error:
@@ -126,9 +132,9 @@ def backup_redis(
 
 def stop_runtime_services(log: Tee) -> None:
     log.log("step=guest-services-stop status=started")
-    systemctl("stop", "tirosh-vitalserver-container-logs.service", check=False)
-    systemctl("stop", "tirosh-runtime-state.service", check=False)
-    run_compose_action("stop")
+    systemctl("stop", RuntimeService.CONTAINER_LOGS.value, check=False)
+    systemctl("stop", RuntimeService.RUNTIME_STATE.value, check=False)
+    run_compose_action(ComposeAction.STOP)
     log.log("step=guest-services-stop status=completed")
 
 
@@ -143,7 +149,7 @@ def write_result(
     write_json(
         RESULT_FILE,
         GuestOperationResult(
-            operation="prepare-update-shutdown",
+            operation=OperationName.PREPARE_UPDATE_SHUTDOWN,
             request_id=context.request_id,
             schema_version=1,
             message=message,

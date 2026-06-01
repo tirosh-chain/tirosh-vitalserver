@@ -13,6 +13,7 @@ from tirosh_guest_tools.common import (
     RUNTIME_DIR,
     mount_runtime_share,
 )
+from tirosh_guest_tools.domain.operations import ContainerLogAction, RuntimeFileName
 from tirosh_guest_tools.settings import SETTINGS
 
 LOG_FILE = RUNTIME_DIR / "container-logs.log"
@@ -27,11 +28,16 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description="Write Docker Compose logs to the shared runtime directory."
     )
-    parser.add_argument("action", nargs="?", choices=["watch", "once"], default="watch")
+    parser.add_argument(
+        "action",
+        nargs="?",
+        choices=[action.value for action in ContainerLogAction],
+        default=ContainerLogAction.WATCH.value,
+    )
     args = parser.parse_args()
 
     mount_runtime_share()
-    if args.action == "once":
+    if args.action == ContainerLogAction.ONCE.value:
         write_snapshot()
         return 0
     watch_logs()
@@ -129,7 +135,7 @@ def docker_compose_logs_command(arguments: list[str]) -> list[str]:
         "--project-name",
         PROJECT_NAME,
         "-f",
-        str(DEPLOY_DIR / "compose.yaml"),
+        str(DEPLOY_DIR / RuntimeFileName.COMPOSE.value),
         "logs",
         "--no-color",
         *arguments,

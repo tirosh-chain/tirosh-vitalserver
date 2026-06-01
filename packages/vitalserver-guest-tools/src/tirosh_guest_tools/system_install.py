@@ -4,6 +4,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from tirosh_guest_tools.domain.operations import RuntimeCommand
 from tirosh_guest_tools.settings import SETTINGS
 
 GUEST_TOOLS_HOME = SETTINGS.paths.guest_tools_home
@@ -11,25 +12,25 @@ GUEST_TOOLS_VENV = GUEST_TOOLS_HOME / "venv"
 PYTHON_WHEEL_DIR = SETTINGS.paths.python_wheel_dir
 
 COMMANDS = [
-    "tirosh-guest-observed",
-    "tirosh-guest-observe",
-    "tirosh-guest-container-logs",
-    "tirosh-guest-diagnostics",
-    "tirosh-runtime-env",
-    "tirosh-write-runtime-state",
-    "tirosh-runtime-state",
-    "tirosh-vitalserver-health",
-    "tirosh-vitalserver-compose",
-    "tirosh-vitalserver-command-poller",
-    "tirosh-vitalserver-redis-backup",
-    "tirosh-vitalserver-repair-datastore",
-    "tirosh-vitalserver-activate-update",
-    "tirosh-vitalserver-prepare-update-shutdown",
+    RuntimeCommand.GUEST_OBSERVED,
+    RuntimeCommand.GUEST_OBSERVE,
+    RuntimeCommand.GUEST_CONTAINER_LOGS,
+    RuntimeCommand.GUEST_DIAGNOSTICS,
+    RuntimeCommand.RUNTIME_ENV,
+    RuntimeCommand.WRITE_RUNTIME_STATE,
+    RuntimeCommand.RUNTIME_STATE,
+    RuntimeCommand.VITALSERVER_HEALTH,
+    RuntimeCommand.VITALSERVER_COMPOSE,
+    RuntimeCommand.VITALSERVER_COMMAND_POLLER,
+    RuntimeCommand.VITALSERVER_REDIS_BACKUP,
+    RuntimeCommand.VITALSERVER_REPAIR_DATASTORE,
+    RuntimeCommand.VITALSERVER_ACTIVATE_UPDATE,
+    RuntimeCommand.VITALSERVER_PREPARE_UPDATE_SHUTDOWN,
 ]
 
 COMPATIBILITY_LINKS = {
-    "tirosh-vitalserver-container-logs": "tirosh-guest-container-logs",
-    "tirosh-vitalserver-diagnostics": "tirosh-guest-diagnostics",
+    RuntimeCommand.VITALSERVER_CONTAINER_LOGS: RuntimeCommand.GUEST_CONTAINER_LOGS,
+    RuntimeCommand.VITALSERVER_DIAGNOSTICS: RuntimeCommand.GUEST_DIAGNOSTICS,
 }
 
 
@@ -62,9 +63,9 @@ def install_guest_tools_runtime() -> None:
         check=True,
     )
     for command in COMMANDS:
-        link_command(command, command)
+        link_command(command.value, command.value)
     for compatibility_name, target_name in COMPATIBILITY_LINKS.items():
-        link_command(compatibility_name, target_name)
+        link_command(compatibility_name.value, target_name.value)
 
 
 def latest_guest_tools_wheel() -> Path:

@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from tirosh_guest_tools.common import DEPLOY_DIR, PROJECT_NAME
+from tirosh_guest_tools.domain.operations import RuntimeFileName
 from tirosh_guest_tools.settings import SETTINGS
 
 VITALDB_OBSERVER_ENDPOINT = SETTINGS.observability.vitaldb_observer_url
@@ -176,7 +177,7 @@ def vitaldb_observation() -> dict[str, object] | None:
 
 
 def compose_services() -> list[dict[str, object]]:
-    compose_path = DEPLOY_DIR / "compose.yaml"
+    compose_path = DEPLOY_DIR / RuntimeFileName.COMPOSE.value
     if not compose_path.is_file():
         return []
     command = [

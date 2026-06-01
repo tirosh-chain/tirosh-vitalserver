@@ -6,17 +6,18 @@ from pathlib import Path
 from typing import Any
 
 from tirosh_guest_tools.common import read_json
+from tirosh_guest_tools.domain.operations import RuntimeConfigKey
 
 DEFAULT_CONFIG: dict[str, Any] = {
-    "adminPassword": "admin",
-    "publicHost": "",
-    "publicPort": "",
-    "redisBackupRetentionCount": 30,
-    "redisHost": "redis",
-    "redisPort": 6379,
-    "trustProxy": True,
-    "testkitEnabled": True,
-    "vitalFilesDirectory": "/mnt/tirosh-vital-files",
+    RuntimeConfigKey.ADMIN_PASSWORD.value: "admin",
+    RuntimeConfigKey.PUBLIC_HOST.value: "",
+    RuntimeConfigKey.PUBLIC_PORT.value: "",
+    RuntimeConfigKey.REDIS_BACKUP_RETENTION_COUNT.value: 30,
+    RuntimeConfigKey.REDIS_HOST.value: "redis",
+    RuntimeConfigKey.REDIS_PORT.value: 6379,
+    RuntimeConfigKey.TRUST_PROXY.value: True,
+    RuntimeConfigKey.TESTKIT_ENABLED.value: True,
+    RuntimeConfigKey.VITAL_FILES_DIRECTORY.value: "/mnt/tirosh-vital-files",
 }
 
 
@@ -32,15 +33,15 @@ def main() -> int:
 
     config = load_config(args.runtime_config)
     for name, key in [
-        ("VITALSERVER_REDIS_HOST", "redisHost"),
-        ("VITALSERVER_REDIS_PORT", "redisPort"),
-        ("VITALSERVER_TRUST_PROXY", "trustProxy"),
-        ("VITALSERVER_PUBLIC_HOST", "publicHost"),
-        ("VITALSERVER_PUBLIC_PORT", "publicPort"),
-        ("VITALSERVER_ADMIN_PASSWORD", "adminPassword"),
-        ("VITALSERVER_VITAL_FILES_DIR", "vitalFilesDirectory"),
+        ("VITALSERVER_REDIS_HOST", RuntimeConfigKey.REDIS_HOST),
+        ("VITALSERVER_REDIS_PORT", RuntimeConfigKey.REDIS_PORT),
+        ("VITALSERVER_TRUST_PROXY", RuntimeConfigKey.TRUST_PROXY),
+        ("VITALSERVER_PUBLIC_HOST", RuntimeConfigKey.PUBLIC_HOST),
+        ("VITALSERVER_PUBLIC_PORT", RuntimeConfigKey.PUBLIC_PORT),
+        ("VITALSERVER_ADMIN_PASSWORD", RuntimeConfigKey.ADMIN_PASSWORD),
+        ("VITALSERVER_VITAL_FILES_DIR", RuntimeConfigKey.VITAL_FILES_DIRECTORY),
     ]:
-        print(export_line(name, config[key]))
+        print(export_line(name, config[key.value]))
     return 0
 
 

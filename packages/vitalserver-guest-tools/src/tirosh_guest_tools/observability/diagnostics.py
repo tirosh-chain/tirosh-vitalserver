@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 
 from tirosh_guest_tools.common import DEPLOY_DIR, MOUNT_POINT, PROJECT_NAME
+from tirosh_guest_tools.domain.operations import RuntimeFileName, RuntimeService
 from tirosh_guest_tools.observability.commands import run_command
 
 
@@ -27,9 +28,9 @@ def print_report() -> None:
             "--full",
             "status",
             "docker",
-            "tirosh-vitalserver-compose.service",
-            "tirosh-runtime-state.service",
-            "tirosh-vitalserver-container-logs.service",
+            RuntimeService.COMPOSE.value,
+            RuntimeService.RUNTIME_STATE.value,
+            RuntimeService.CONTAINER_LOGS.value,
         ]
     )
     print()
@@ -55,7 +56,7 @@ def compose_command(arguments: list[str]) -> list[str]:
         "--project-name",
         PROJECT_NAME,
         "-f",
-        str(DEPLOY_DIR / "compose.yaml"),
+        str(DEPLOY_DIR / RuntimeFileName.COMPOSE.value),
         *arguments,
     ]
 

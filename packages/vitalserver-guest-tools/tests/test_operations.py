@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from tirosh_guest_tools.domain.operations import (
     GuestOperationResult,
+    OperationName,
     OperationStatus,
 )
 
 
 def test_guest_operation_result_keeps_missing_fields_absent() -> None:
     result = GuestOperationResult(
-        operation="activate-update",
+        operation=OperationName.ACTIVATE_UPDATE,
         request_id="req-1",
         schema_version=2,
         status=OperationStatus.RUNNING,
@@ -18,15 +19,15 @@ def test_guest_operation_result_keeps_missing_fields_absent() -> None:
 
     document = result.as_json()
 
-    assert document["operation"] == "activate-update"
-    assert document["status"] == "running"
+    assert document["operation"] == OperationName.ACTIVATE_UPDATE.value
+    assert document["status"] == OperationStatus.RUNNING.value
     assert "reasonCodes" not in document
     assert "redisBackupPath" not in document
 
 
 def test_guest_operation_result_reports_explicit_failure_details() -> None:
     result = GuestOperationResult(
-        operation="prepare-update-shutdown",
+        operation=OperationName.PREPARE_UPDATE_SHUTDOWN,
         request_id="req-2",
         schema_version=1,
         status=OperationStatus.FAILED,
@@ -39,7 +40,7 @@ def test_guest_operation_result_reports_explicit_failure_details() -> None:
 
     document = result.as_json()
 
-    assert document["status"] == "failed"
-    assert document["step"] == "failed"
+    assert document["status"] == OperationStatus.FAILED.value
+    assert document["step"] == OperationStatus.FAILED.value
     assert document["reasonCodes"] == ["guest-update-shutdown-failed"]
     assert document["redisBackupPath"] == "/mnt/tirosh/backups/redis/redis.tar.gz"

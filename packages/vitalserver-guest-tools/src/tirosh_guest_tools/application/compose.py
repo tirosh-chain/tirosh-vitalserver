@@ -14,24 +14,29 @@ from tirosh_guest_tools.common import (
     run,
     utc_now,
 )
+from tirosh_guest_tools.domain.operations import (
+    ComposeAction,
+    ComposeService,
+    RuntimeConfigKey,
+    RuntimeFileName,
+)
 from tirosh_guest_tools.runtime.config import load_config
 from tirosh_guest_tools.settings import SETTINGS
 
-ComposeAction = str
 
-
-def run_compose_action(action: ComposeAction) -> None:
+def run_compose_action(action: ComposeAction | str) -> None:
+    action = ComposeAction(action)
     mount_runtime_share()
     mount_vital_files_share()
     runtime_config = load_runtime_env()
 
-    if action == "up":
+    if action == ComposeAction.UP:
         start_ordered()
-    elif action == "testkit-up":
+    elif action == ComposeAction.TESTKIT_UP:
         start_testkit(runtime_config)
-    elif action == "testkit-up-logged":
+    elif action == ComposeAction.TESTKIT_UP_LOGGED:
         start_testkit_logged(runtime_config)
-    elif action == "stop":
+    elif action == ComposeAction.STOP:
         compose(["stop", "--timeout", str(SETTINGS.compose.stop_timeout_seconds)])
         run(["sync"])
     else:
@@ -39,14 +44,28 @@ def run_compose_action(action: ComposeAction) -> None:
 
 
 def load_runtime_env() -> dict[str, object]:
-    config = load_config(DEPLOY_DIR / "runtime-config.json")
-    os.environ["VITALSERVER_REDIS_HOST"] = str(config["redisHost"])
-    os.environ["VITALSERVER_REDIS_PORT"] = str(config["redisPort"])
-    os.environ["VITALSERVER_TRUST_PROXY"] = "1" if config["trustProxy"] else "0"
-    os.environ["VITALSERVER_PUBLIC_HOST"] = str(config["publicHost"])
-    os.environ["VITALSERVER_PUBLIC_PORT"] = str(config["publicPort"])
-    os.environ["VITALSERVER_ADMIN_PASSWORD"] = str(config["adminPassword"])
-    os.environ["VITALSERVER_VITAL_FILES_DIR"] = str(config["vitalFilesDirectory"])
+    config = load_config(DEPLOY_DIR / RuntimeFileName.RUNTIME_CONFIG.value)
+    os.environ["VITALSERVER_REDIS_HOST"] = str(
+        config[RuntimeConfigKey.REDIS_HOST.value]
+    )
+    os.environ["VITALSERVER_REDIS_PORT"] = str(
+        config[RuntimeConfigKey.REDIS_PORT.value]
+    )
+    os.environ["VITALSERVER_TRUST_PROXY"] = (
+        "1" if config[RuntimeConfigKey.TRUST_PROXY.value] else "0"
+    )
+    os.environ["VITALSERVER_PUBLIC_HOST"] = str(
+        config[RuntimeConfigKey.PUBLIC_HOST.value]
+    )
+    os.environ["VITALSERVER_PUBLIC_PORT"] = str(
+        config[RuntimeConfigKey.PUBLIC_PORT.value]
+    )
+    os.environ["VITALSERVER_ADMIN_PASSWORD"] = str(
+        config[RuntimeConfigKey.ADMIN_PASSWORD.value]
+    )
+    os.environ["VITALSERVER_VITAL_FILES_DIR"] = str(
+        config[RuntimeConfigKey.VITAL_FILES_DIRECTORY.value]
+    )
     return config
 
 
@@ -77,16 +96,21 @@ def load_optional_docker_images() -> None:
 def wait_for_redis() -> None:
     deadline = time.time() + 120
     while time.time() < deadline:
-        completed = compose(["exec", "-T", "redis", "redis-cli", "ping"], check=False)
+        completed = compose(
+            ["exec", "-T", ComposeService.REDIS.value, "redis-cli", "ping"],
+            check=False,
+        )
         if completed.returncode == 0 and "PONG" in output(
-            compose_command(["exec", "-T", "redis", "redis-cli", "ping"]),
+            compose_command(
+                ["exec", "-T", ComposeService.REDIS.value, "redis-cli", "ping"]
+            ),
             check=False,
         ):
             return
         time.sleep(2)
     print("error: redis did not become ready")
     compose(["ps"], check=False)
-    compose(["logs", "redis", "--tail=100"], check=False)
+    compose(["logs", ComposeService.REDIS.value, "--tail=100"], check=False)
     raise SystemExit(1)
 
 
@@ -98,37 +122,48 @@ def wait_for_app() -> None:
     )
     deadline = time.time() + 180
     while time.time() < deadline:
-        completed = compose(["exec", "-T", "app", "node", "-e", script], check=False)
+        completed = compose(
+            ["exec", "-T", ComposeService.APP.value, "node", "-e", script],
+            check=False,
+        )
         if completed.returncode == 0:
             return
         time.sleep(2)
     print("error: app did not become healthy")
     compose(["ps"], check=False)
-    compose(["logs", "app", "--tail=100"], check=False)
+    compose(["logs", ComposeService.APP.value, "--tail=100"], check=False)
     raise SystemExit(1)
 
 
 def start_ordered() -> None:
-    compose(["up", "-d", "redis"])
+    compose(["up", "-d", ComposeService.REDIS.value])
     wait_for_redis()
     compose(
-        ["up", "-d", "app", "audit-proxy", "vitaldb-observer", "redis-ui", "swagger-ui"]
+        [
+            "up",
+            "-d",
+            ComposeService.APP.value,
+            ComposeService.AUDIT_PROXY.value,
+            ComposeService.VITALDB_OBSERVER.value,
+            ComposeService.REDIS_UI.value,
+            ComposeService.SWAGGER_UI.value,
+        ]
     )
     wait_for_app()
-    compose(["up", "-d", "edge"])
+    compose(["up", "-d", ComposeService.EDGE.value])
 
 
 def start_testkit(runtime_config: dict[str, object]) -> None:
-    if runtime_config["testkitEnabled"] is True:
+    if runtime_config[RuntimeConfigKey.TESTKIT_ENABLED.value] is True:
         load_optional_docker_images()
-        compose(["up", "-d", "testkit"])
+        compose(["up", "-d", ComposeService.TESTKIT.value])
 
 
 def start_testkit_logged(runtime_config: dict[str, object]) -> None:
     log_file = MOUNT_POINT / "run" / "testkit-provision.log"
     log_file.parent.mkdir(parents=True, exist_ok=True)
     with log_file.open("w", encoding="utf-8") as handle:
-        if runtime_config["testkitEnabled"] is not True:
+        if runtime_config[RuntimeConfigKey.TESTKIT_ENABLED.value] is not True:
             handle.write(f"Optional TestKit service is disabled at {utc_now()}\n")
             return
         handle.write(

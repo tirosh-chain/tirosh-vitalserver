@@ -3,6 +3,7 @@ from __future__ import annotations
 import traceback
 from typing import Any
 
+from tirosh_guest_tools.domain.operations import ObservationPhase
 from tirosh_guest_tools.observability.collectors import (
     OBSERVABILITY_DIR,
     collect_snapshot,
@@ -22,9 +23,12 @@ def write_daemon_observability_snapshot() -> dict[str, Any]:
     return snapshot
 
 
-def write_guest_observability_snapshot(phase: str) -> dict[str, Any]:
-    snapshot = collect_snapshot(phase=phase, detail="oneshot")
-    write_oneshot_snapshot(phase, snapshot, collect_text_report(snapshot))
+def write_guest_observability_snapshot(
+    phase: ObservationPhase | str,
+) -> dict[str, Any]:
+    phase_value = phase.value if isinstance(phase, ObservationPhase) else phase
+    snapshot = collect_snapshot(phase=phase_value, detail="oneshot")
+    write_oneshot_snapshot(phase_value, snapshot, collect_text_report(snapshot))
     return snapshot
 
 

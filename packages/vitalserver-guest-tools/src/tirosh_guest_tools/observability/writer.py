@@ -6,6 +6,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+from tirosh_guest_tools.domain.operations import ObservationPhase
 from tirosh_guest_tools.observability.collectors import OBSERVABILITY_DIR
 
 PHASE_PATTERN = re.compile(r"[^A-Za-z0-9_.-]+")
@@ -37,7 +38,7 @@ def write_text(path: Path, text: str) -> None:
 
 def safe_phase(phase: str) -> str:
     value = PHASE_PATTERN.sub("-", phase.strip())
-    return value.strip("-") or "manual"
+    return value.strip("-") or ObservationPhase.MANUAL.value
 
 
 def write_daemon_snapshot(document: dict[str, Any]) -> None:

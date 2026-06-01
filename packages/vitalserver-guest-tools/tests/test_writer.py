@@ -5,12 +5,13 @@ from pathlib import Path
 
 from pytest import MonkeyPatch
 
+from tirosh_guest_tools.domain.operations import ObservationPhase
 from tirosh_guest_tools.observability import writer
 
 
 def test_safe_phase_keeps_snapshot_file_names_stable() -> None:
     assert writer.safe_phase("shutdown pre/stop") == "shutdown-pre-stop"
-    assert writer.safe_phase("  ") == "manual"
+    assert writer.safe_phase("  ") == ObservationPhase.MANUAL.value
 
 
 def test_write_oneshot_snapshot_writes_latest_and_history_files(
@@ -22,18 +23,21 @@ def test_write_oneshot_snapshot_writes_latest_and_history_files(
     document = {
         "schemaVersion": 1,
         "observedAt": "2026-06-01T00:00:00Z",
-        "phase": "shutdown-pre-stop",
+        "phase": ObservationPhase.SHUTDOWN_PRE_STOP.value,
     }
 
     writer.write_oneshot_snapshot(
-        "shutdown-pre-stop",
+        ObservationPhase.SHUTDOWN_PRE_STOP.value,
         document,
         "snapshot\n",
     )
 
-    latest = json.loads((tmp_path / "shutdown-pre-stop.latest.json").read_text())
-    assert latest["phase"] == "shutdown-pre-stop"
-    assert (tmp_path / "shutdown-pre-stop.latest.log").read_text() == "snapshot\n"
+    latest_path = tmp_path / f"{ObservationPhase.SHUTDOWN_PRE_STOP.value}.latest.json"
+    latest = json.loads(latest_path.read_text())
+    assert latest["phase"] == ObservationPhase.SHUTDOWN_PRE_STOP.value
+    assert (
+        tmp_path / f"{ObservationPhase.SHUTDOWN_PRE_STOP.value}.latest.log"
+    ).read_text() == "snapshot\n"
     assert (
         tmp_path / "snapshots/20260601T000000Z-shutdown-pre-stop.json"
     ).is_file()

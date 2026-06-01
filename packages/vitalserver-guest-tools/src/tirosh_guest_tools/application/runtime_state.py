@@ -4,20 +4,25 @@ import subprocess
 import time
 
 from tirosh_guest_tools.common import RUNTIME_DIR, mount_runtime_share, systemctl
+from tirosh_guest_tools.domain.operations import (
+    RuntimeFileName,
+    RuntimeService,
+    RuntimeStateAction,
+)
 from tirosh_guest_tools.runtime.state_writer import write_runtime_state
 from tirosh_guest_tools.settings import SETTINGS
 
-RUNTIME_STATE_FILE = RUNTIME_DIR / "runtime-state.json"
-REDIS_BACKUP_REQUEST_FILE = RUNTIME_DIR / "redis-backup.request"
-REDIS_BACKUP_SERVICE = "tirosh-vitalserver-redis-backup.service"
+RUNTIME_STATE_FILE = RUNTIME_DIR / RuntimeFileName.RUNTIME_STATE.value
+REDIS_BACKUP_REQUEST_FILE = RUNTIME_DIR / RuntimeFileName.REDIS_BACKUP_REQUEST.value
 
 
-def run_runtime_state_action(action: str) -> None:
+def run_runtime_state_action(action: RuntimeStateAction | str) -> None:
+    action = RuntimeStateAction(action)
     mount_runtime_share()
-    if action == "once":
+    if action == RuntimeStateAction.ONCE:
         write_current_state()
         return
-    if action != "watch":
+    if action != RuntimeStateAction.WATCH:
         raise ValueError(f"unsupported runtime state action: {action}")
     while True:
         trigger_redis_backup_if_requested()
@@ -58,7 +63,12 @@ def http_status(url: str) -> str:
 def trigger_redis_backup_if_requested() -> None:
     if not REDIS_BACKUP_REQUEST_FILE.is_file():
         return
-    result = systemctl("is-active", "--quiet", REDIS_BACKUP_SERVICE, check=False)
+    result = systemctl(
+        "is-active",
+        "--quiet",
+        RuntimeService.REDIS_BACKUP.value,
+        check=False,
+    )
     if result.returncode == 0:
         return
-    systemctl("start", "--no-block", REDIS_BACKUP_SERVICE, check=False)
+    systemctl("start", "--no-block", RuntimeService.REDIS_BACKUP.value, check=False)

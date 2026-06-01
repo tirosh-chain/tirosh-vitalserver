@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, TextIO
 
+from tirosh_guest_tools.domain.operations import RuntimeFileName
 from tirosh_guest_tools.settings import SETTINGS
 
 MOUNT_TAG = SETTINGS.shares.runtime_tag
@@ -48,7 +49,7 @@ def compose_command(arguments: list[str]) -> list[str]:
         "--project-name",
         PROJECT_NAME,
         "-f",
-        str(DEPLOY_DIR / "compose.yaml"),
+        str(DEPLOY_DIR / RuntimeFileName.COMPOSE.value),
         *arguments,
     ]
 

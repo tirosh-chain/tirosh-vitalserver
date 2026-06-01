@@ -19,14 +19,17 @@ from tirosh_guest_tools.common import (
 )
 from tirosh_guest_tools.domain.operations import (
     GuestOperationResult,
+    OperationName,
     OperationStatus,
+    RuntimeConfigKey,
+    RuntimeFileName,
 )
 from tirosh_guest_tools.runtime.config import load_config
 
 BACKUP_DIR = MOUNT_POINT / "backups" / "redis"
-REQUEST_FILE = RUNTIME_DIR / "redis-backup.request"
-RESULT_FILE = RUNTIME_DIR / "redis-backup-result.json"
-LOG_FILE = RUNTIME_DIR / "redis-backup.log"
+REQUEST_FILE = RUNTIME_DIR / RuntimeFileName.REDIS_BACKUP_REQUEST.value
+RESULT_FILE = RUNTIME_DIR / RuntimeFileName.REDIS_BACKUP_RESULT.value
+LOG_FILE = RUNTIME_DIR / RuntimeFileName.REDIS_BACKUP_LOG.value
 REDIS_VOLUME = f"{PROJECT_NAME}_redis-data"
 
 
@@ -53,13 +56,18 @@ def run_redis_backup() -> RedisBackupOutcome:
                 f"project={PROJECT_NAME} volume={REDIS_VOLUME}",
             )
             if request_id:
-                write_result(request_id, "running", "Redis backup is running.", archive)
+                write_result(
+                    request_id,
+                    OperationStatus.RUNNING,
+                    "Redis backup is running.",
+                    archive,
+                )
             create_backup(archive, log)
             prune_backups(retention)
             if request_id:
                 write_result(
                     request_id,
-                    "completed",
+                    OperationStatus.COMPLETED,
                     "Redis backup completed.",
                     archive,
                 )
@@ -71,7 +79,7 @@ def run_redis_backup() -> RedisBackupOutcome:
             if request_id:
                 write_result(
                     request_id,
-                    "failed",
+                    OperationStatus.FAILED,
                     f"Redis backup failed: {error}",
                     archive,
                 )
@@ -87,20 +95,27 @@ def read_request_id() -> str:
 
 
 def read_retention_count() -> int:
-    value = load_config(DEPLOY_DIR / "runtime-config.json")["redisBackupRetentionCount"]
+    value = load_config(DEPLOY_DIR / RuntimeFileName.RUNTIME_CONFIG.value)[
+        RuntimeConfigKey.REDIS_BACKUP_RETENTION_COUNT.value
+    ]
     if not isinstance(value, int):
         raise ValueError("redisBackupRetentionCount must be an integer")
     return min(max(value, 1), 30)
 
 
-def write_result(request_id: str, status: str, message: str, archive: Path) -> None:
+def write_result(
+    request_id: str,
+    status: OperationStatus,
+    message: str,
+    archive: Path,
+) -> None:
     write_json(
         RESULT_FILE,
         GuestOperationResult(
-            operation="redis-backup",
+            operation=OperationName.REDIS_BACKUP,
             request_id=request_id,
             schema_version=1,
-            status=OperationStatus(status),
+            status=status,
             message=message,
             updated_at=utc_now(),
             archive=str(archive),
@@ -117,7 +132,7 @@ def create_backup(archive: Path, log: TextIO) -> None:
             "--project-name",
             PROJECT_NAME,
             "-f",
-            str(DEPLOY_DIR / "compose.yaml"),
+            str(DEPLOY_DIR / RuntimeFileName.COMPOSE.value),
             "exec",
             "-T",
             "redis",

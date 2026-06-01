@@ -14,13 +14,17 @@ from tirosh_guest_tools.common import (
     write_json,
 )
 from tirosh_guest_tools.domain.operations import (
+    ComposeAction,
+    ComposeService,
     GuestOperationResult,
+    OperationName,
     OperationStatus,
+    RuntimeFileName,
 )
 
-REQUEST_FILE = RUNTIME_DIR / "repair-datastore.request"
-RESULT_FILE = RUNTIME_DIR / "repair-datastore-result.json"
-LOG_FILE = RUNTIME_DIR / "repair-datastore.log"
+REQUEST_FILE = RUNTIME_DIR / RuntimeFileName.REPAIR_DATASTORE_REQUEST.value
+RESULT_FILE = RUNTIME_DIR / RuntimeFileName.REPAIR_DATASTORE_RESULT.value
+LOG_FILE = RUNTIME_DIR / RuntimeFileName.REPAIR_DATASTORE_LOG.value
 REDIS_VOLUME = f"{PROJECT_NAME}_redis-data"
 
 
@@ -62,7 +66,7 @@ def write_result(request_id: str, status: OperationStatus, message: str) -> None
     write_json(
         RESULT_FILE,
         GuestOperationResult(
-            operation="repair-datastore",
+            operation=OperationName.REPAIR_DATASTORE,
             request_id=request_id,
             schema_version=2,
             message=message,
@@ -74,11 +78,20 @@ def write_result(request_id: str, status: OperationStatus, message: str) -> None
 
 def restart_runtime_compose() -> None:
     run(
-        compose_command(["stop", "app", "audit-proxy", "redis-ui", "edge", "redis"]),
+        compose_command(
+            [
+                "stop",
+                ComposeService.APP.value,
+                ComposeService.AUDIT_PROXY.value,
+                ComposeService.REDIS_UI.value,
+                ComposeService.EDGE.value,
+                ComposeService.REDIS.value,
+            ]
+        ),
         check=False,
     )
     repair_appendonly_file()
-    run_compose_action("up")
+    run_compose_action(ComposeAction.UP)
     write_current_state()
 
 

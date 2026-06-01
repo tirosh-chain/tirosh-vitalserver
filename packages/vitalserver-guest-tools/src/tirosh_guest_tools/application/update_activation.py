@@ -21,15 +21,21 @@ from tirosh_guest_tools.common import (
     write_json,
 )
 from tirosh_guest_tools.domain.operations import (
+    ComposeAction,
     GuestOperationResult,
+    ObservationPhase,
+    OperationName,
     OperationStatus,
+    RuntimeConfigKey,
+    RuntimeFileName,
+    RuntimeService,
 )
 from tirosh_guest_tools.runtime.config import load_config
 from tirosh_guest_tools.system_install import install_guest_tools_runtime
 
-REQUEST_FILE = RUNTIME_DIR / "activate-update.request"
-RESULT_FILE = RUNTIME_DIR / "activate-update-result.json"
-LOG_FILE = RUNTIME_DIR / "activate-update.log"
+REQUEST_FILE = RUNTIME_DIR / RuntimeFileName.ACTIVATE_UPDATE_REQUEST.value
+RESULT_FILE = RUNTIME_DIR / RuntimeFileName.ACTIVATE_UPDATE_RESULT.value
+LOG_FILE = RUNTIME_DIR / RuntimeFileName.ACTIVATE_UPDATE_LOG.value
 
 
 def run_activate_update() -> None:
@@ -62,7 +68,7 @@ def run_activate_update() -> None:
         try:
             activate_runtime()
         except Exception:
-            collect_guest_observability("activation-failure")
+            collect_guest_observability(ObservationPhase.ACTIVATION_FAILURE)
             REQUEST_FILE.unlink(missing_ok=True)
             write_result(
                 request_id,
@@ -71,7 +77,7 @@ def run_activate_update() -> None:
             )
             log.write("guest update activation failed")
             raise
-        collect_guest_observability("activation-post")
+        collect_guest_observability(ObservationPhase.ACTIVATION_POST)
         REQUEST_FILE.unlink(missing_ok=True)
         write_result(
             request_id,
@@ -85,7 +91,7 @@ def write_result(request_id: str, status: OperationStatus, message: str) -> None
     write_json(
         RESULT_FILE,
         GuestOperationResult(
-            operation="activate-update",
+            operation=OperationName.ACTIVATE_UPDATE,
             request_id=request_id,
             schema_version=2,
             status=status,
@@ -97,12 +103,12 @@ def write_result(request_id: str, status: OperationStatus, message: str) -> None
 
 def activate_runtime() -> None:
     install_guest_tools_runtime()
-    collect_guest_observability("activation-pre")
+    collect_guest_observability(ObservationPhase.ACTIVATION_PRE)
     load_bundled_docker_images()
     run(compose_command(["down", "--remove-orphans"]))
-    run_compose_action("up")
-    systemctl("restart", "tirosh-vitalserver-container-logs.service", check=False)
-    systemctl("restart", "tirosh-runtime-state.service", check=False)
+    run_compose_action(ComposeAction.UP)
+    systemctl("restart", RuntimeService.CONTAINER_LOGS.value, check=False)
+    systemctl("restart", RuntimeService.RUNTIME_STATE.value, check=False)
     write_current_state()
     run(["sync"], check=False)
     start_optional_testkit()
@@ -133,21 +139,26 @@ def docker_image_bundles(image_dir: Path) -> list[Path]:
 
 
 def start_optional_testkit() -> None:
-    if load_config(DEPLOY_DIR / "runtime-config.json")["testkitEnabled"] is not True:
+    if (
+        load_config(DEPLOY_DIR / RuntimeFileName.RUNTIME_CONFIG.value)[
+            RuntimeConfigKey.TESTKIT_ENABLED.value
+        ]
+        is not True
+    ):
         return
     print("Scheduling optional TestKit provisioning via systemd.")
-    systemctl("reset-failed", "tirosh-vitalserver-testkit.service", check=False)
+    systemctl("reset-failed", RuntimeService.TESTKIT.value, check=False)
     result = systemctl(
         "restart",
         "--no-block",
-        "tirosh-vitalserver-testkit.service",
+        RuntimeService.TESTKIT.value,
         check=False,
     )
     if result.returncode != 0:
         print("warning: failed to schedule optional TestKit provisioning")
 
 
-def collect_guest_observability(phase: str) -> None:
+def collect_guest_observability(phase: ObservationPhase) -> None:
     try:
         write_guest_observability_snapshot(phase)
     except Exception as error:

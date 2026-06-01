@@ -11,29 +11,34 @@ from tirosh_guest_tools.common import (
     systemctl,
     utc_now,
 )
+from tirosh_guest_tools.domain.operations import (
+    OperationName,
+    RuntimeFileName,
+    RuntimeService,
+)
 from tirosh_guest_tools.settings import SETTINGS
 
 LOG_FILE = RUNTIME_DIR / "guest-command-poller.log"
 REQUESTS: list[tuple[Path, str, str]] = [
     (
-        RUNTIME_DIR / "prepare-update-shutdown.request",
-        "tirosh-vitalserver-prepare-update-shutdown.service",
-        "prepare-update-shutdown",
+        RUNTIME_DIR / RuntimeFileName.PREPARE_UPDATE_SHUTDOWN_REQUEST.value,
+        RuntimeService.PREPARE_UPDATE_SHUTDOWN.value,
+        OperationName.PREPARE_UPDATE_SHUTDOWN.value,
     ),
     (
-        RUNTIME_DIR / "activate-update.request",
-        "tirosh-vitalserver-activate-update.service",
-        "activate-update",
+        RUNTIME_DIR / RuntimeFileName.ACTIVATE_UPDATE_REQUEST.value,
+        RuntimeService.ACTIVATE_UPDATE.value,
+        OperationName.ACTIVATE_UPDATE.value,
     ),
     (
-        RUNTIME_DIR / "repair-datastore.request",
-        "tirosh-vitalserver-repair-datastore.service",
-        "repair-datastore",
+        RUNTIME_DIR / RuntimeFileName.REPAIR_DATASTORE_REQUEST.value,
+        RuntimeService.REPAIR_DATASTORE.value,
+        OperationName.REPAIR_DATASTORE.value,
     ),
     (
-        RUNTIME_DIR / "redis-backup.request",
-        "tirosh-vitalserver-redis-backup.service",
-        "redis-backup",
+        RUNTIME_DIR / RuntimeFileName.REDIS_BACKUP_REQUEST.value,
+        RuntimeService.REDIS_BACKUP.value,
+        OperationName.REDIS_BACKUP.value,
     ),
 ]
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 
 from tirosh_guest_tools.application.compose import run_compose_action
+from tirosh_guest_tools.domain.operations import ComposeAction
 
 
 def main() -> int:
@@ -12,8 +13,8 @@ def main() -> int:
     parser.add_argument(
         "action",
         nargs="?",
-        choices=["up", "testkit-up", "testkit-up-logged", "stop"],
-        default="up",
+        choices=[action.value for action in ComposeAction],
+        default=ComposeAction.UP.value,
     )
     args = parser.parse_args()
     run_compose_action(args.action)

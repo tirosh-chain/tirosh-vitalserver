@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from tirosh_guest_tools.common import DEPLOY_DIR, RUNTIME_DIR, VITAL_FILES_MOUNT_POINT
+from tirosh_guest_tools.domain.operations import RuntimeFileName, RuntimeService
 from tirosh_guest_tools.observability.commands import (
     CommandResult,
     run_command,
@@ -102,9 +103,9 @@ def collect_services() -> dict[str, str]:
         "dbus.service",
         "docker.service",
         "containerd.service",
-        "tirosh-runtime-state.service",
-        "tirosh-vitalserver-compose.service",
-        "tirosh-vitalserver-container-logs.service",
+        RuntimeService.RUNTIME_STATE.value,
+        RuntimeService.COMPOSE.value,
+        RuntimeService.CONTAINER_LOGS.value,
     ]
     return {
         service: compact_output(run_command(["systemctl", "is-active", service]))
@@ -162,13 +163,13 @@ def collect_mounts(errors: list[dict[str, str]]) -> dict[str, Any]:
 
 def collect_runtime_files(errors: list[dict[str, str]]) -> dict[str, Any]:
     files = [
-        RUNTIME_DIR / "runtime-state.json",
-        RUNTIME_DIR / "bootstrap-result.json",
-        RUNTIME_DIR / "activate-update.request",
-        RUNTIME_DIR / "activate-update-result.json",
-        RUNTIME_DIR / "prepare-update-shutdown.request",
-        RUNTIME_DIR / "prepare-update-shutdown-result.json",
-        DEPLOY_DIR / "runtime-config.json",
+        RUNTIME_DIR / RuntimeFileName.RUNTIME_STATE.value,
+        RUNTIME_DIR / RuntimeFileName.BOOTSTRAP_RESULT.value,
+        RUNTIME_DIR / RuntimeFileName.ACTIVATE_UPDATE_REQUEST.value,
+        RUNTIME_DIR / RuntimeFileName.ACTIVATE_UPDATE_RESULT.value,
+        RUNTIME_DIR / RuntimeFileName.PREPARE_UPDATE_SHUTDOWN_REQUEST.value,
+        RUNTIME_DIR / RuntimeFileName.PREPARE_UPDATE_SHUTDOWN_RESULT.value,
+        DEPLOY_DIR / RuntimeFileName.RUNTIME_CONFIG.value,
     ]
     return {str(path): file_state(path, errors) for path in files}
 
