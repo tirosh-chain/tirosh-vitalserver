@@ -49,6 +49,8 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-035 | Update가 Guest capability 계약 없이 request/result worker를 가정함 | Update | active | [Update가 Guest capability 계약 없이 request/result worker를 가정함](troubleshooting/035_update-guest-capability-contract-missing.md) |
 | TS-036 | macOS runtime 카오스 테스트 체계가 필요함 | Update / Runtime health / Observability / Packaging | resolved | [macOS runtime 카오스 테스트 체계가 필요함](troubleshooting/036_macos-runtime-chaos-testing.md) |
 | TS-037 | clean uninstall 이후 stale operation이 rollback/recovery를 유발함 | Uninstall / Update / Runtime health | active | [clean uninstall 이후 stale operation이 rollback/recovery를 유발함](troubleshooting/037_clean-uninstall-stale-operation-recovery.md) |
+| TS-038 | Guest kernel panic 이후 watchdog restart loop가 발생함 | Runtime health / VM disk / Watchdog recovery | implemented | [Guest kernel panic 이후 watchdog restart loop가 발생함](troubleshooting/038_guest-kernel-panic-watchdog-restart-loop.md) |
+| TS-039 | AGENTS.md 상태/실패 fallback 감사를 진행함 | Architecture / Runtime Control / Observability / TestKit | active | [AGENTS.md 상태/실패 fallback 감사를 진행함](troubleshooting/039_agents-compliance-fallback-audit.md) |
 
 ## Follow-up 규칙
 

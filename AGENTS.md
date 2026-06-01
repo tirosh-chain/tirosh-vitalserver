@@ -16,6 +16,22 @@ Documentation is part of the product. Important architectural decisions, repeate
 
 Prefer one focused change per commit. When code changes introduce or clarify an operational rule, update the related documentation in the same change.
 
+## Fallback Boundaries
+
+Fallback must not create, infer, or hide state.
+
+Do not use fallback at contract, repository, domain, recovery, update, API command, or observability boundaries. Missing, invalid, failed, stale, and zero/empty must remain distinct.
+
+Allowed fallback is limited to display labels, input presets, documented config defaults, explicit migrations, and reported degraded operation.
+
+## Purity Boundaries
+
+Pure code computes from complete explicit inputs only. It must not read external state or create domain state from absence.
+
+Stateless code may orchestrate calls and map explicit results, but must not cache hidden state or convert dependency failure into success.
+
+Stateful code must declare owned state, expose it through explicit contracts, and report read/write/decode/permission failures.
+
 ## HAVE TO
 
 - Keep code simple, explicit, and domain-readable.
