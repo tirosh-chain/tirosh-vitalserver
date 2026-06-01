@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, TextIO
 
-from tirosh_guest_tools.domain.operations import RuntimeFileName
+from tirosh_guest_tools.contracts import RuntimeFileName
 from tirosh_guest_tools.settings import SETTINGS
 
 MOUNT_TAG = SETTINGS.shares.runtime_tag
@@ -106,8 +106,13 @@ def request_id_from(path: Path) -> str:
 
 
 def request_version_from(path: Path) -> str:
-    version = read_json(path).get("version", "")
-    return version if isinstance(version, str) else ""
+    document = read_json(path)
+    if "version" not in document:
+        return ""
+    version = document["version"]
+    if not isinstance(version, str):
+        raise ValueError(f"version must be a string when present: {path}")
+    return version
 
 
 def systemctl(*arguments: str, check: bool = True) -> subprocess.CompletedProcess[str]:

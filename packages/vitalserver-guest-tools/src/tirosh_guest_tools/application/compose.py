@@ -14,13 +14,12 @@ from tirosh_guest_tools.common import (
     run,
     utc_now,
 )
-from tirosh_guest_tools.domain.operations import (
-    ComposeAction,
+from tirosh_guest_tools.contracts import (
     ComposeService,
-    RuntimeConfigKey,
     RuntimeFileName,
 )
-from tirosh_guest_tools.runtime.config import load_config
+from tirosh_guest_tools.inbound import ComposeAction
+from tirosh_guest_tools.runtime.config import RuntimeConfig, load_config
 from tirosh_guest_tools.settings import SETTINGS
 
 
@@ -43,29 +42,15 @@ def run_compose_action(action: ComposeAction | str) -> None:
         raise ValueError(f"unsupported compose action: {action}")
 
 
-def load_runtime_env() -> dict[str, object]:
+def load_runtime_env() -> RuntimeConfig:
     config = load_config(DEPLOY_DIR / RuntimeFileName.RUNTIME_CONFIG.value)
-    os.environ["VITALSERVER_REDIS_HOST"] = str(
-        config[RuntimeConfigKey.REDIS_HOST.value]
-    )
-    os.environ["VITALSERVER_REDIS_PORT"] = str(
-        config[RuntimeConfigKey.REDIS_PORT.value]
-    )
-    os.environ["VITALSERVER_TRUST_PROXY"] = (
-        "1" if config[RuntimeConfigKey.TRUST_PROXY.value] else "0"
-    )
-    os.environ["VITALSERVER_PUBLIC_HOST"] = str(
-        config[RuntimeConfigKey.PUBLIC_HOST.value]
-    )
-    os.environ["VITALSERVER_PUBLIC_PORT"] = str(
-        config[RuntimeConfigKey.PUBLIC_PORT.value]
-    )
-    os.environ["VITALSERVER_ADMIN_PASSWORD"] = str(
-        config[RuntimeConfigKey.ADMIN_PASSWORD.value]
-    )
-    os.environ["VITALSERVER_VITAL_FILES_DIR"] = str(
-        config[RuntimeConfigKey.VITAL_FILES_DIRECTORY.value]
-    )
+    os.environ["VITALSERVER_REDIS_HOST"] = config.redis_host
+    os.environ["VITALSERVER_REDIS_PORT"] = str(config.redis_port)
+    os.environ["VITALSERVER_TRUST_PROXY"] = "1" if config.trust_proxy else "0"
+    os.environ["VITALSERVER_PUBLIC_HOST"] = config.public_host
+    os.environ["VITALSERVER_PUBLIC_PORT"] = str(config.public_port)
+    os.environ["VITALSERVER_ADMIN_PASSWORD"] = config.admin_password
+    os.environ["VITALSERVER_VITAL_FILES_DIR"] = config.vital_files_directory
     return config
 
 
@@ -153,17 +138,17 @@ def start_ordered() -> None:
     compose(["up", "-d", ComposeService.EDGE.value])
 
 
-def start_testkit(runtime_config: dict[str, object]) -> None:
-    if runtime_config[RuntimeConfigKey.TESTKIT_ENABLED.value] is True:
+def start_testkit(runtime_config: RuntimeConfig) -> None:
+    if runtime_config.testkit_enabled:
         load_optional_docker_images()
         compose(["up", "-d", ComposeService.TESTKIT.value])
 
 
-def start_testkit_logged(runtime_config: dict[str, object]) -> None:
+def start_testkit_logged(runtime_config: RuntimeConfig) -> None:
     log_file = MOUNT_POINT / "run" / "testkit-provision.log"
     log_file.parent.mkdir(parents=True, exist_ok=True)
     with log_file.open("w", encoding="utf-8") as handle:
-        if runtime_config[RuntimeConfigKey.TESTKIT_ENABLED.value] is not True:
+        if not runtime_config.testkit_enabled:
             handle.write(f"Optional TestKit service is disabled at {utc_now()}\n")
             return
         handle.write(

@@ -55,4 +55,25 @@ final class RuntimeGuestConfigWriterTests: XCTestCase {
         let document = try JSONDecoder().decode(GuestRuntimeConfigDocument.self, from: data)
         XCTAssertEqual(document.adminPassword, Constants.Guest.defaultAdminPassword)
     }
+
+    func testGuestRuntimeConfigRequiresExplicitHostOwnedFields() throws {
+        let json = """
+        {
+          "vitalserverHttpPort": 18080,
+          "redisHost": "redis",
+          "redisPort": 6379,
+          "trustProxy": true,
+          "publicHost": "",
+          "publicPort": 80,
+          "adminPassword": "admin",
+          "vitalFilesDirectory": "/mnt/tirosh-vital-files",
+          "redisUiPort": 18081,
+          "swaggerUiPort": 18082
+        }
+        """
+
+        XCTAssertThrowsError(
+            try JSONDecoder().decode(GuestRuntimeConfigDocument.self, from: Data(json.utf8))
+        )
+    }
 }

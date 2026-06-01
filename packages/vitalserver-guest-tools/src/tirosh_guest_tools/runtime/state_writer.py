@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from tirosh_guest_tools.common import DEPLOY_DIR, PROJECT_NAME
-from tirosh_guest_tools.domain.operations import RuntimeFileName
+from tirosh_guest_tools.contracts import RuntimeFileName
 from tirosh_guest_tools.settings import SETTINGS
 
 VITALDB_OBSERVER_ENDPOINT = SETTINGS.observability.vitaldb_observer_url
@@ -60,6 +60,7 @@ def runtime_state_document(
     redis_ui_http: str | None = None,
     swagger_ui_http: str | None = None,
 ) -> dict[str, object]:
+    probe_errors: list[dict[str, str]] = []
     return {
         "capabilities": {
             "activateUpdate": True,
@@ -68,18 +69,19 @@ def runtime_state_document(
             "repairDatastore": True,
         },
         "schemaVersion": 1,
-        "vmIP": first_non_loopback_ip(),
-        "bootID": boot_id(),
-        "containerServices": compose_services(),
-        "cpuUsagePercent": cpu_usage_percent(),
+        "vmIP": first_non_loopback_ip(probe_errors),
+        "bootID": boot_id(probe_errors),
+        "containerServices": compose_services(probe_errors),
+        "cpuUsagePercent": cpu_usage_percent(probe_errors),
         "guestHTTP": optional_value(guest_http),
-        "memory": memory_usage(),
+        "memory": memory_usage(probe_errors),
+        "probeErrors": probe_errors,
         "redisUIHTTP": optional_value(redis_ui_http),
-        "systemDisk": disk_usage("/"),
+        "systemDisk": disk_usage("/", probe_errors),
         "swaggerUIHTTP": optional_value(swagger_ui_http),
         "updatedAt": datetime.now(UTC).isoformat(),
-        "vitalFilesDisk": disk_usage("/mnt/tirosh-vital-files"),
-        "vitalDBObservation": vitaldb_observation(),
+        "vitalFilesDisk": disk_usage("/mnt/tirosh-vital-files", probe_errors),
+        "vitalDBObservation": vitaldb_observation(probe_errors),
     }
 
 
@@ -87,7 +89,7 @@ def optional_value(value: str | None) -> str | None:
     return value if value else None
 
 
-def first_non_loopback_ip() -> str:
+def first_non_loopback_ip(probe_errors: list[dict[str, str]]) -> str | None:
     try:
         output = subprocess.check_output(
             ["hostname", "-I"], stderr=subprocess.DEVNULL, text=True
@@ -95,40 +97,47 @@ def first_non_loopback_ip() -> str:
         for candidate in output.split():
             if not candidate.startswith(("127.", "169.254.")):
                 return candidate
-    except Exception:
-        pass
+    except (OSError, subprocess.CalledProcessError) as error:
+        append_probe_error(probe_errors, "hostname -I", error)
     try:
         for candidate in socket.gethostbyname_ex(socket.gethostname())[2]:
             if not candidate.startswith(("127.", "169.254.")):
                 return candidate
-    except socket.gaierror:
-        pass
-    return ""
+    except socket.gaierror as error:
+        append_probe_error(probe_errors, "socket.gethostbyname_ex", error)
+    append_probe_error(probe_errors, "vmIP", "no non-loopback IP address found")
+    return None
 
 
-def boot_id() -> str | None:
+def boot_id(probe_errors: list[dict[str, str]]) -> str | None:
     path = Path("/proc/sys/kernel/random/boot_id")
-    if not path.is_file():
+    try:
+        return path.read_text(encoding="utf-8").strip()
+    except FileNotFoundError:
+        append_probe_error(probe_errors, str(path), "missing")
         return None
-    return path.read_text(encoding="utf-8").strip()
+    except OSError as error:
+        append_probe_error(probe_errors, str(path), error)
+        return None
 
 
-def read_proc_stat() -> tuple[int, int] | None:
+def read_proc_stat(probe_errors: list[dict[str, str]]) -> tuple[int, int] | None:
     try:
         fields = Path("/proc/stat").read_text(encoding="utf-8").splitlines()[0]
         values = [int(value) for value in fields.split()[1:]]
-    except Exception:
+    except (OSError, IndexError, ValueError) as error:
+        append_probe_error(probe_errors, "/proc/stat", error)
         return None
     idle = values[3] + (values[4] if len(values) > 4 else 0)
     return idle, sum(values)
 
 
-def cpu_usage_percent() -> float | None:
-    first = read_proc_stat()
+def cpu_usage_percent(probe_errors: list[dict[str, str]]) -> float | None:
+    first = read_proc_stat(probe_errors)
     if first is None:
         return None
     time.sleep(0.1)
-    second = read_proc_stat()
+    second = read_proc_stat(probe_errors)
     if second is None:
         return None
     idle_delta = second[0] - first[0]
@@ -138,48 +147,63 @@ def cpu_usage_percent() -> float | None:
     return round(max(0.0, min(100.0, (1.0 - (idle_delta / total_delta)) * 100.0)), 1)
 
 
-def memory_usage() -> dict[str, int] | None:
+def memory_usage(probe_errors: list[dict[str, str]]) -> dict[str, int] | None:
     values: dict[str, int] = {}
     try:
         for line in Path("/proc/meminfo").read_text(encoding="utf-8").splitlines():
             key, raw_value = line.split(":", 1)
             values[key] = int(raw_value.strip().split()[0]) * 1024
-    except Exception:
+    except (OSError, IndexError, ValueError) as error:
+        append_probe_error(probe_errors, "/proc/meminfo", error)
         return None
     total = values.get("MemTotal")
     available = values.get("MemAvailable")
     if total is None or available is None:
+        append_probe_error(
+            probe_errors,
+            "/proc/meminfo",
+            "missing MemTotal or MemAvailable",
+        )
         return None
     return {"usedBytes": max(total - available, 0), "totalBytes": total}
 
 
-def disk_usage(path: str) -> dict[str, int] | None:
+def disk_usage(path: str, probe_errors: list[dict[str, str]]) -> dict[str, int] | None:
     try:
         stats = os.statvfs(path)
-    except OSError:
+    except OSError as error:
+        append_probe_error(probe_errors, path, error)
         return None
     total = stats.f_frsize * stats.f_blocks
     available = stats.f_frsize * stats.f_bavail
     return {"usedBytes": max(total - available, 0), "totalBytes": total}
 
 
-def vitaldb_observation() -> dict[str, object] | None:
+def vitaldb_observation(probe_errors: list[dict[str, str]]) -> dict[str, object] | None:
     try:
         with urllib.request.urlopen(VITALDB_OBSERVER_ENDPOINT, timeout=5) as response:
             payload = response.read().decode("utf-8")
-    except (OSError, urllib.error.URLError):
+    except (OSError, urllib.error.URLError) as error:
+        append_probe_error(probe_errors, "vitalDBObservation", error)
         return None
     try:
         value = json.loads(payload)
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as error:
+        append_probe_error(probe_errors, "vitalDBObservation", error)
         return None
-    return value if isinstance(value, dict) else None
+    if not isinstance(value, dict):
+        append_probe_error(probe_errors, "vitalDBObservation", "expected JSON object")
+        return None
+    return value
 
 
-def compose_services() -> list[dict[str, object]]:
+def compose_services(
+    probe_errors: list[dict[str, str]],
+) -> list[dict[str, object]] | None:
     compose_path = DEPLOY_DIR / RuntimeFileName.COMPOSE.value
     if not compose_path.is_file():
-        return []
+        append_probe_error(probe_errors, str(compose_path), "missing")
+        return None
     command = [
         "docker",
         "compose",
@@ -193,8 +217,9 @@ def compose_services() -> list[dict[str, object]]:
     ]
     try:
         output = subprocess.check_output(command, stderr=subprocess.DEVNULL, text=True)
-    except Exception:
-        return []
+    except (OSError, subprocess.CalledProcessError) as error:
+        append_probe_error(probe_errors, "docker compose ps", error)
+        return None
     documents = parse_compose_documents(output)
     services: list[dict[str, object]] = []
     now = datetime.now(UTC)
@@ -202,7 +227,7 @@ def compose_services() -> list[dict[str, object]]:
         service = str(item.get("Service") or item.get("Name") or "")
         if not service:
             continue
-        started_at = container_started_at(item)
+        started_at = container_started_at(item, probe_errors)
         services.append(
             {
                 "exitCode": normalized_exit_code(item.get("ExitCode")),
@@ -248,9 +273,17 @@ def normalized_exit_code(value: object) -> int | None:
         return None
 
 
-def container_started_at(item: dict[str, object]) -> str | None:
+def container_started_at(
+    item: dict[str, object],
+    probe_errors: list[dict[str, str]],
+) -> str | None:
     identifier = str(item.get("ID") or item.get("Name") or "")
     if not identifier:
+        append_probe_error(
+            probe_errors,
+            "docker inspect",
+            "missing container identifier",
+        )
         return None
     try:
         output = subprocess.check_output(
@@ -258,7 +291,8 @@ def container_started_at(item: dict[str, object]) -> str | None:
             stderr=subprocess.DEVNULL,
             text=True,
         ).strip()
-    except Exception:
+    except (OSError, subprocess.CalledProcessError) as error:
+        append_probe_error(probe_errors, f"docker inspect {identifier}", error)
         return None
     if not output or output.startswith("0001-01-01"):
         return None
@@ -273,6 +307,14 @@ def uptime_seconds(started_at: str | None, now: datetime) -> int | None:
     except ValueError:
         return None
     return max(int((now - started).total_seconds()), 0)
+
+
+def append_probe_error(
+    probe_errors: list[dict[str, str]],
+    source: str,
+    error: object,
+) -> None:
+    probe_errors.append({"source": source, "message": str(error)})
 
 
 if __name__ == "__main__":

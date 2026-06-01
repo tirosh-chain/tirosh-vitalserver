@@ -166,7 +166,7 @@ make vm-stage
 | `systemd/*` | runtime state writer, Compose stack, Redis backup timer, observability daemon unit |
 | `compose.yaml` | VM 내부 VitalServer/Redis/UI/edge nginx Compose stack |
 | `nginx/vitalserver.conf` | Compose edge nginx container 설정 |
-| `runtime-config.json` | VitalServer container/runtime 설정 |
+| `runtime-config.json` | Host-owned VitalServer container/runtime 계약. Guest는 누락/타입 오류를 default로 보정하지 않고 실패로 드러냄 |
 | `apps/vitalserver/docker` | VitalServer image build Dockerfile |
 | `apps/vitalserver/runtime` | VitalServer runtime preload |
 | `vendor/vitalserver/vitalserver-old` | upstream VitalServer source |
@@ -187,6 +187,12 @@ bootstrap 순서:
 6. bundled Docker image를 load하고 dangling image cleanup 수행
 7. bundled Docker image를 load한 뒤 `docker compose up -d`로 VitalServer/Redis/UI/edge nginx 실행
 8. runtime state에 VM IP와 guest HTTP readiness 기록
+
+Guest tools는 `guest-tools.toml`에만 package 운영 default를 둡니다.
+`runtime-config.json`은 Host가 제공하는 실행 계약이므로 `adminPassword`,
+`redisHost`, `redisPort`, `publicHost`, `publicPort`, `trustProxy`,
+`vitalFilesDirectory`, `redisBackupRetentionCount`, `testkitEnabled`가 모두
+명시돼야 합니다. Guest는 이 값을 추론하거나 보정하지 않습니다.
 
 Guest tools package는 CLI를 application usecase의 inbound adapter로만 둡니다.
 

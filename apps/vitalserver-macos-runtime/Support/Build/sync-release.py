@@ -270,17 +270,14 @@ def sync_guest_scripts(root, release):
     )
     write_if_changed(bootstrap, content)
 
-    runtime_env = (
-        root.parent.parent
-        / "packages/vitalserver-guest-tools/src/tirosh_guest_tools/runtime/config.py"
-    )
-    content = runtime_env.read_text(encoding="utf-8")
+    runtime_config = root / "Support/Guest/runtime-config.json"
+    content = runtime_config.read_text(encoding="utf-8")
     content = replace(
-        r'"testkitEnabled": (True|False),',
-        f'"testkitEnabled": {testkit_container_included!s},',
+        r'"testkitEnabled": (true|false),',
+        f'"testkitEnabled": {str(testkit_container_included).lower()},',
         content,
     )
-    write_if_changed(runtime_env, content)
+    write_if_changed(runtime_config, content)
 
     repair_datastore = (
         root.parent.parent

@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 
 from tirosh_guest_tools.application.compose import run_compose_action
-from tirosh_guest_tools.domain.operations import ComposeAction
+from tirosh_guest_tools.inbound import ComposeAction
 
 
 def main() -> int:

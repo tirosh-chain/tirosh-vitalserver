@@ -13,6 +13,7 @@ public struct GuestRuntimeStateDocument: Codable, Equatable, Sendable {
     public let systemDisk: ResourceUsage?
     public let vitalFilesDisk: ResourceUsage?
     public let containerServices: [RuntimeContainerServiceObservation]?
+    public let probeErrors: [GuestRuntimeProbeError]?
     public let vitalDBObservation: VitalDBObservationDocument?
 
     public init(
@@ -28,6 +29,7 @@ public struct GuestRuntimeStateDocument: Codable, Equatable, Sendable {
         systemDisk: ResourceUsage? = nil,
         vitalFilesDisk: ResourceUsage? = nil,
         containerServices: [RuntimeContainerServiceObservation]? = nil,
+        probeErrors: [GuestRuntimeProbeError]? = nil,
         vitalDBObservation: VitalDBObservationDocument? = nil
     ) {
         self.capabilities = capabilities
@@ -42,9 +44,20 @@ public struct GuestRuntimeStateDocument: Codable, Equatable, Sendable {
         self.systemDisk = systemDisk
         self.vitalFilesDisk = vitalFilesDisk
         self.containerServices = containerServices
+        self.probeErrors = probeErrors
         self.vitalDBObservation = vitalDBObservation
     }
 
+}
+
+public struct GuestRuntimeProbeError: Codable, Equatable, Sendable {
+    public let source: String
+    public let message: String
+
+    public init(source: String, message: String) {
+        self.source = source
+        self.message = message
+    }
 }
 
 public struct GuestRuntimeCapabilities: Codable, Equatable, Sendable {

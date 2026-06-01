@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 
 from tirosh_guest_tools.application.runtime_state import run_runtime_state_action
-from tirosh_guest_tools.domain.operations import RuntimeStateAction
+from tirosh_guest_tools.inbound import RuntimeStateAction
 
 
 def main() -> int:

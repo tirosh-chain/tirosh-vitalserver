@@ -86,16 +86,16 @@ struct GuestRuntimeConfigDocument: Codable {
         self.publicPort = try container.decode(Int.self, forKey: .publicPort)
         self.adminPassword = try container.decode(String.self, forKey: .adminPassword)
         self.vitalFilesDirectory = try container.decode(String.self, forKey: .vitalFilesDirectory)
-        self.redisBackupRetentionCount = try container.decodeIfPresent(
+        self.redisBackupRetentionCount = try container.decode(
             Int.self,
             forKey: .redisBackupRetentionCount
-        ) ?? Constants.Defaults.redisBackupRetentionCount
+        )
         self.redisUiPort = try container.decode(Int.self, forKey: .redisUiPort)
         self.swaggerUiPort = try container.decode(Int.self, forKey: .swaggerUiPort)
-        self.testkitEnabled = try container.decodeIfPresent(
+        self.testkitEnabled = try container.decode(
             Bool.self,
             forKey: .testkitEnabled
-        ) ?? Constants.testkitContainerIncluded
+        )
     }
 
     static func load(from url: URL, fileStore: RuntimeFileReading) throws -> GuestRuntimeConfigDocument {

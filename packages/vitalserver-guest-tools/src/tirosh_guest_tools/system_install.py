@@ -4,7 +4,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from tirosh_guest_tools.domain.operations import RuntimeCommand
+from tirosh_guest_tools.contracts import RuntimeCommand
 from tirosh_guest_tools.settings import SETTINGS
 
 GUEST_TOOLS_HOME = SETTINGS.paths.guest_tools_home

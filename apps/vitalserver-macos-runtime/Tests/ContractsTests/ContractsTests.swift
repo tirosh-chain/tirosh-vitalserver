@@ -111,6 +111,34 @@ final class ContractsTests: XCTestCase {
         ])
     }
 
+    func testDecodesGuestRuntimeStateProbeErrors() throws {
+        let json = """
+        {
+          "schemaVersion": 1,
+          "vmIP": null,
+          "guestHTTP": "failed",
+          "redisUIHTTP": null,
+          "swaggerUIHTTP": null,
+          "updatedAt": "2026-05-24T00:00:00Z",
+          "probeErrors": [
+            {
+              "source": "vmIP",
+              "message": "no non-loopback IP address found"
+            }
+          ]
+        }
+        """
+        let document = try JSONDecoder().decode(GuestRuntimeStateDocument.self, from: Data(json.utf8))
+
+        XCTAssertNil(document.vmIP)
+        XCTAssertEqual(document.probeErrors, [
+            GuestRuntimeProbeError(
+                source: "vmIP",
+                message: "no non-loopback IP address found"
+            ),
+        ])
+    }
+
     func testDecodesActivationResultV1() throws {
         let document = try decodeFixture(
             GuestUpdateActivationResultDocument.self,

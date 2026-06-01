@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from tirosh_guest_tools.common import DEPLOY_DIR, RUNTIME_DIR, VITAL_FILES_MOUNT_POINT
-from tirosh_guest_tools.domain.operations import RuntimeFileName, RuntimeService
+from tirosh_guest_tools.contracts import RuntimeFileName, RuntimeService
 from tirosh_guest_tools.observability.commands import (
     CommandResult,
     run_command,
@@ -257,7 +257,8 @@ def file_state(path: Path, errors: list[dict[str, str]]) -> dict[str, Any]:
 def read_text(path: Path, errors: list[dict[str, str]]) -> str | None:
     try:
         return path.read_text(encoding="utf-8").strip()
-    except FileNotFoundError:
+    except FileNotFoundError as error:
+        errors.append({"collector": str(path), "message": str(error)})
         return None
     except OSError as error:
         errors.append({"collector": str(path), "message": str(error)})

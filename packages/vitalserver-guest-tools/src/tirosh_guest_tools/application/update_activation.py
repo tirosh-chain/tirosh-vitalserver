@@ -20,16 +20,17 @@ from tirosh_guest_tools.common import (
     utc_now,
     write_json,
 )
+from tirosh_guest_tools.contracts import (
+    RuntimeFileName,
+    RuntimeService,
+)
 from tirosh_guest_tools.domain.operations import (
-    ComposeAction,
     GuestOperationResult,
     ObservationPhase,
     OperationName,
     OperationStatus,
-    RuntimeConfigKey,
-    RuntimeFileName,
-    RuntimeService,
 )
+from tirosh_guest_tools.inbound import ComposeAction
 from tirosh_guest_tools.runtime.config import load_config
 from tirosh_guest_tools.system_install import install_guest_tools_runtime
 
@@ -117,8 +118,9 @@ def activate_runtime() -> None:
 def load_bundled_docker_images() -> None:
     image_dir = DEPLOY_DIR / "docker-images"
     if not image_dir.is_dir():
-        print(f"docker image bundle directory is missing: {image_dir}")
-        return
+        raise FileNotFoundError(
+            f"docker image bundle directory is missing: {image_dir}"
+        )
     loaded = False
     for image_bundle in docker_image_bundles(image_dir):
         print(f"Loading Docker image bundle: {image_bundle}")
@@ -127,7 +129,7 @@ def load_bundled_docker_images() -> None:
     if loaded:
         print("Bundled Docker images are loaded.")
     else:
-        print(f"No Docker image bundles found under {image_dir}")
+        raise RuntimeError(f"No Docker image bundles found under {image_dir}")
 
 
 def docker_image_bundles(image_dir: Path) -> list[Path]:
@@ -139,12 +141,8 @@ def docker_image_bundles(image_dir: Path) -> list[Path]:
 
 
 def start_optional_testkit() -> None:
-    if (
-        load_config(DEPLOY_DIR / RuntimeFileName.RUNTIME_CONFIG.value)[
-            RuntimeConfigKey.TESTKIT_ENABLED.value
-        ]
-        is not True
-    ):
+    runtime_config = load_config(DEPLOY_DIR / RuntimeFileName.RUNTIME_CONFIG.value)
+    if not runtime_config.testkit_enabled:
         return
     print("Scheduling optional TestKit provisioning via systemd.")
     systemctl("reset-failed", RuntimeService.TESTKIT.value, check=False)

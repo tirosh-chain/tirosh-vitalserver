@@ -12,17 +12,16 @@ from tirosh_guest_tools.common import (
     RUNTIME_DIR,
     mount_runtime_share,
     output,
-    read_json,
+    request_id_from,
     run,
     utc_now,
     write_json,
 )
+from tirosh_guest_tools.contracts import RuntimeFileName
 from tirosh_guest_tools.domain.operations import (
     GuestOperationResult,
     OperationName,
     OperationStatus,
-    RuntimeConfigKey,
-    RuntimeFileName,
 )
 from tirosh_guest_tools.runtime.config import load_config
 
@@ -90,17 +89,13 @@ def run_redis_backup() -> RedisBackupOutcome:
 def read_request_id() -> str:
     if not REQUEST_FILE.is_file():
         return ""
-    value = read_json(REQUEST_FILE).get("requestId", "")
-    return value if isinstance(value, str) else ""
+    return request_id_from(REQUEST_FILE)
 
 
 def read_retention_count() -> int:
-    value = load_config(DEPLOY_DIR / RuntimeFileName.RUNTIME_CONFIG.value)[
-        RuntimeConfigKey.REDIS_BACKUP_RETENTION_COUNT.value
-    ]
-    if not isinstance(value, int):
-        raise ValueError("redisBackupRetentionCount must be an integer")
-    return min(max(value, 1), 30)
+    return load_config(
+        DEPLOY_DIR / RuntimeFileName.RUNTIME_CONFIG.value
+    ).redis_backup_retention_count
 
 
 def write_result(

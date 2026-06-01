@@ -13,14 +13,13 @@ from tirosh_guest_tools.common import (
     utc_now,
     write_json,
 )
+from tirosh_guest_tools.contracts import ComposeService, RuntimeFileName
 from tirosh_guest_tools.domain.operations import (
-    ComposeAction,
-    ComposeService,
     GuestOperationResult,
     OperationName,
     OperationStatus,
-    RuntimeFileName,
 )
+from tirosh_guest_tools.inbound import ComposeAction
 
 REQUEST_FILE = RUNTIME_DIR / RuntimeFileName.REPAIR_DATASTORE_REQUEST.value
 RESULT_FILE = RUNTIME_DIR / RuntimeFileName.REPAIR_DATASTORE_RESULT.value

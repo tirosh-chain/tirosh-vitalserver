@@ -13,7 +13,8 @@ from tirosh_guest_tools.common import (
     RUNTIME_DIR,
     mount_runtime_share,
 )
-from tirosh_guest_tools.domain.operations import ContainerLogAction, RuntimeFileName
+from tirosh_guest_tools.contracts import RuntimeFileName
+from tirosh_guest_tools.inbound import ContainerLogAction
 from tirosh_guest_tools.settings import SETTINGS
 
 LOG_FILE = RUNTIME_DIR / "container-logs.log"

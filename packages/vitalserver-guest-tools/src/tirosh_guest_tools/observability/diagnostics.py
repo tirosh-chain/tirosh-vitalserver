@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 
 from tirosh_guest_tools.common import DEPLOY_DIR, MOUNT_POINT, PROJECT_NAME
-from tirosh_guest_tools.domain.operations import RuntimeFileName, RuntimeService
+from tirosh_guest_tools.contracts import RuntimeFileName, RuntimeService
 from tirosh_guest_tools.observability.commands import run_command
 
 

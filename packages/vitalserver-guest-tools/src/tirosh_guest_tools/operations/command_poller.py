@@ -11,10 +11,9 @@ from tirosh_guest_tools.common import (
     systemctl,
     utc_now,
 )
+from tirosh_guest_tools.contracts import RuntimeFileName, RuntimeService
 from tirosh_guest_tools.domain.operations import (
     OperationName,
-    RuntimeFileName,
-    RuntimeService,
 )
 from tirosh_guest_tools.settings import SETTINGS
 
