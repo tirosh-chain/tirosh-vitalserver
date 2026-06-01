@@ -5,7 +5,7 @@ RequiresMountsFor=/mnt/tirosh
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/tirosh-guest-observed --interval 10
+ExecStart=/usr/local/bin/tirosh-guest-observed
 Restart=always
 RestartSec=5
 User=root

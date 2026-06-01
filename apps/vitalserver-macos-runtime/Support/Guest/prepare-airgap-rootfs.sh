@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-MOUNT_TAG="${TIROSH_SHARE_TAG:-tirosh}"
-MOUNT_POINT="${TIROSH_SHARE_MOUNT:-/mnt/tirosh}"
+MOUNT_TAG="tirosh"
+MOUNT_POINT="/mnt/tirosh"
 RUNTIME_DIR="${MOUNT_POINT}/run"
 READY_FILE="${RUNTIME_DIR}/rootfs-ready"
 

@@ -15,6 +15,7 @@ from tirosh_guest_tools.common import (
     run,
     utc_now,
 )
+from tirosh_guest_tools.settings import SETTINGS
 
 
 def main() -> int:
@@ -31,23 +32,21 @@ def main() -> int:
 
     mount_runtime_share()
     mount_vital_files_share()
-    load_runtime_env()
+    runtime_config = load_runtime_env()
 
     if args.action == "up":
         start_ordered()
     elif args.action == "testkit-up":
-        start_testkit()
+        start_testkit(runtime_config)
     elif args.action == "testkit-up-logged":
-        start_testkit_logged()
+        start_testkit_logged(runtime_config)
     elif args.action == "stop":
-        compose(
-            ["stop", "--timeout", os.environ.get("TIROSH_COMPOSE_STOP_TIMEOUT", "120")]
-        )
+        compose(["stop", "--timeout", str(SETTINGS.compose.stop_timeout_seconds)])
         run(["sync"])
     return 0
 
 
-def load_runtime_env() -> None:
+def load_runtime_env() -> dict[str, object]:
     from tirosh_guest_tools.runtime.config import load_config
 
     config = load_config(DEPLOY_DIR / "runtime-config.json")
@@ -58,7 +57,7 @@ def load_runtime_env() -> None:
     os.environ["VITALSERVER_PUBLIC_PORT"] = str(config["publicPort"])
     os.environ["VITALSERVER_ADMIN_PASSWORD"] = str(config["adminPassword"])
     os.environ["VITALSERVER_VITAL_FILES_DIR"] = str(config["vitalFilesDirectory"])
-    os.environ["TIROSH_TESTKIT_ENABLED"] = "1" if config["testkitEnabled"] else "0"
+    return config
 
 
 def compose(
@@ -129,20 +128,23 @@ def start_ordered() -> None:
     compose(["up", "-d", "edge"])
 
 
-def start_testkit() -> None:
-    if os.environ.get("TIROSH_TESTKIT_ENABLED", "0") == "1":
+def start_testkit(runtime_config: dict[str, object]) -> None:
+    if runtime_config["testkitEnabled"] is True:
         load_optional_docker_images()
         compose(["up", "-d", "testkit"])
 
 
-def start_testkit_logged() -> None:
+def start_testkit_logged(runtime_config: dict[str, object]) -> None:
     log_file = MOUNT_POINT / "run" / "testkit-provision.log"
     log_file.parent.mkdir(parents=True, exist_ok=True)
     with log_file.open("w", encoding="utf-8") as handle:
+        if runtime_config["testkitEnabled"] is not True:
+            handle.write(f"Optional TestKit service is disabled at {utc_now()}\n")
+            return
         handle.write(
             f"Starting optional TestKit service via Docker Compose at {utc_now()}\n"
         )
-        start_testkit()
+        start_testkit(runtime_config)
         handle.write(
             f"Optional TestKit service provisioning completed at {utc_now()}\n"
         )

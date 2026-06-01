@@ -12,11 +12,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from tirosh_guest_tools.common import DEPLOY_DIR, PROJECT_NAME
+from tirosh_guest_tools.settings import SETTINGS
 
-VITALDB_OBSERVER_URL = os.environ.get(
-    "VITALDB_OBSERVER_URL",
-    "http://127.0.0.1:18084/api/v1/observations",
-)
+VITALDB_OBSERVER_ENDPOINT = SETTINGS.observability.vitaldb_observer_url
 
 
 def main() -> int:
@@ -138,7 +136,7 @@ def disk_usage(path: str) -> dict[str, int] | None:
 
 def vitaldb_observation() -> dict[str, object] | None:
     try:
-        with urllib.request.urlopen(VITALDB_OBSERVER_URL, timeout=5) as response:
+        with urllib.request.urlopen(VITALDB_OBSERVER_ENDPOINT, timeout=5) as response:
             payload = response.read().decode("utf-8")
     except (OSError, urllib.error.URLError):
         return None

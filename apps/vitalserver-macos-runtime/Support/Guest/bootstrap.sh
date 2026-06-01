@@ -1,17 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-MOUNT_TAG="${TIROSH_SHARE_TAG:-tirosh}"
-MOUNT_POINT="${TIROSH_SHARE_MOUNT:-/mnt/tirosh}"
-VITAL_FILES_MOUNT_TAG="${TIROSH_VITAL_FILES_SHARE_TAG:-tirosh-vital-files}"
-VITAL_FILES_MOUNT_POINT="${TIROSH_VITAL_FILES_SHARE_MOUNT:-/mnt/tirosh-vital-files}"
-DEPLOY_DIR="${TIROSH_DEPLOY_DIR:-${MOUNT_POINT}/deploy}"
+MOUNT_TAG="tirosh"
+MOUNT_POINT="/mnt/tirosh"
+VITAL_FILES_MOUNT_TAG="tirosh-vital-files"
+VITAL_FILES_MOUNT_POINT="/mnt/tirosh-vital-files"
+DEPLOY_DIR="${MOUNT_POINT}/deploy"
 RUNTIME_DIR="${MOUNT_POINT}/run"
 RUNTIME_STATE_FILE="${RUNTIME_DIR}/runtime-state.json"
 BOOTSTRAP_RESULT_FILE="${RUNTIME_DIR}/bootstrap-result.json"
 BOOTSTRAP_RESULT_WRITTEN=0
 GUEST_TOOLS_HOME="/opt/tirosh/guest-tools"
 GUEST_TOOLS_VENV="${GUEST_TOOLS_HOME}/venv"
+GUEST_TOOLS_CONFIG_FILE="/etc/tirosh/guest-tools.toml"
 PYTHON_WHEEL_DIR="${DEPLOY_DIR}/python-wheels"
 
 if [ "$(id -u)" -ne 0 ]; then
@@ -75,6 +76,11 @@ require_deploy_bundle() {
 
   if [ ! -f "${DEPLOY_DIR}/runtime-config.json" ]; then
     printf "error: missing %s/runtime-config.json\n" "${DEPLOY_DIR}" >&2
+    exit 1
+  fi
+
+  if [ ! -f "${DEPLOY_DIR}/guest-tools.toml" ]; then
+    printf "error: missing %s/guest-tools.toml\n" "${DEPLOY_DIR}" >&2
     exit 1
   fi
 }
@@ -217,6 +223,9 @@ install_guest_tools() {
 }
 
 install_guest_runtime_files() {
+  install -d -m 0755 /etc/tirosh
+  install -m 0644 "${DEPLOY_DIR}/guest-tools.toml" "${GUEST_TOOLS_CONFIG_FILE}"
+
   install -m 0755 "${DEPLOY_DIR}/bin/tirosh-runtime-env" /usr/local/bin/tirosh-runtime-env
   install -m 0755 "${DEPLOY_DIR}/bin/tirosh-write-runtime-state" /usr/local/bin/tirosh-write-runtime-state
   install -m 0755 "${DEPLOY_DIR}/bin/tirosh-runtime-state" /usr/local/bin/tirosh-runtime-state
@@ -282,14 +291,7 @@ cleanup_docker_cache() {
 }
 
 start_optional_testkit() {
-  if [ "${TIROSH_TESTKIT_ENABLED:-0}" != "1" ]; then
-    return
-  fi
-
-  printf "Scheduling optional TestKit provisioning via systemd.\n"
-  systemctl reset-failed tirosh-vitalserver-testkit.service >/dev/null 2>&1 || true
-  systemctl restart --no-block tirosh-vitalserver-testkit.service || \
-    printf "warning: failed to schedule optional TestKit provisioning\n" >&2
+  /usr/local/bin/tirosh-vitalserver-compose testkit-up-logged
 }
 
 wait_for_vitalserver_edge() {
@@ -339,7 +341,7 @@ install_guest_runtime_files
 write_runtime_state
 
 systemctl enable --now docker
-hostnamectl set-hostname "${TIROSH_GUEST_HOSTNAME:-tirosh-vitalserver}"
+hostnamectl set-hostname "tirosh-vitalserver"
 systemctl enable --now avahi-daemon
 
 mkdir -p "${VITAL_FILES_MOUNT_POINT}" "${MOUNT_POINT}/vr-release"
@@ -360,7 +362,6 @@ if ! docker image inspect vitalserver-audit-proxy:0.1.0 >/dev/null 2>&1; then
     build audit-proxy
 fi
 
-eval "$(/usr/local/bin/tirosh-runtime-env "${DEPLOY_DIR}/runtime-config.json")"
 /usr/local/bin/tirosh-vitalserver-compose up
 
 wait_for_vitalserver_edge

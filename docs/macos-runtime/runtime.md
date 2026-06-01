@@ -162,8 +162,8 @@ make vm-stage
 |---|---|
 | `bootstrap.sh` | Linux guest 초기 entrypoint. mount/package 확인 후 `bin/`, `systemd/`, Compose stack 연결 |
 | `python-wheels/*` | Guest tools package. runtime env/state, Compose, health, update, repair, Redis backup, observability 명령 |
-| package systemd resources | Guest tools wheel이 설치하는 runtime state writer, Compose stack, Redis backup timer unit |
-| `python-wheels/*` | Guest tools wheel. observability collector와 diagnostic command 제공 |
+| `guest-tools.toml` | Guest tools 운영 설정. interval/path/compose project 같은 package 설정을 명시 |
+| `systemd/*` | runtime state writer, Compose stack, Redis backup timer, observability daemon unit |
 | `compose.yaml` | VM 내부 VitalServer/Redis/UI/edge nginx Compose stack |
 | `nginx/vitalserver.conf` | Compose edge nginx container 설정 |
 | `runtime-config.json` | VitalServer container/runtime 설정 |
@@ -182,10 +182,11 @@ bootstrap 순서:
 1. VirtioFS 공유 디렉터리를 `/mnt/tirosh`에 mount
 2. air-gapped rootfs에 Docker/Compose/avahi/growpart 등 guest 필수 package가 준비됐는지 확인
 3. 준비물이 없으면 `apt-get`을 시도하지 않고 실패 처리
-4. Guest tools wheel을 venv에 설치하고 package-provided systemd unit을 등록
-5. bundled Docker image를 load하고 dangling image cleanup 수행
-6. bundled Docker image를 load한 뒤 `docker compose up -d`로 VitalServer/Redis/UI/edge nginx 실행
-7. runtime state에 VM IP와 guest HTTP readiness 기록
+4. `guest-tools.toml`을 `/etc/tirosh/guest-tools.toml`에 설치
+5. Guest tools wheel을 venv에 설치하고 `Support/Guest/systemd` unit을 등록
+6. bundled Docker image를 load하고 dangling image cleanup 수행
+7. bundled Docker image를 load한 뒤 `docker compose up -d`로 VitalServer/Redis/UI/edge nginx 실행
+8. runtime state에 VM IP와 guest HTTP readiness 기록
 
 ## macOS Data Sharing
 

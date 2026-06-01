@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import os
 from pathlib import Path
 
 from tirosh_guest_tools.common import (
@@ -19,6 +18,7 @@ from tirosh_guest_tools.common import (
 )
 from tirosh_guest_tools.compose import main as compose_main
 from tirosh_guest_tools.observability.cli import main as observe_main
+from tirosh_guest_tools.runtime.config import load_config
 from tirosh_guest_tools.runtime.state import write_current_state
 from tirosh_guest_tools.system_install import install_guest_tools_runtime
 
@@ -126,7 +126,7 @@ def docker_image_bundles(image_dir: Path) -> list[Path]:
 
 
 def start_optional_testkit() -> None:
-    if os.environ.get("TIROSH_TESTKIT_ENABLED", "0") != "1":
+    if load_config(DEPLOY_DIR / "runtime-config.json")["testkitEnabled"] is not True:
         return
     print("Scheduling optional TestKit provisioning via systemd.")
     systemctl("reset-failed", "tirosh-vitalserver-testkit.service", check=False)

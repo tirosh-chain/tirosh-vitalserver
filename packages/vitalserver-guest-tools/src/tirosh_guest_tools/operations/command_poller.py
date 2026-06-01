@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import os
 import time
 from pathlib import Path
 
@@ -12,6 +11,7 @@ from tirosh_guest_tools.common import (
     systemctl,
     utc_now,
 )
+from tirosh_guest_tools.settings import SETTINGS
 
 LOG_FILE = RUNTIME_DIR / "guest-command-poller.log"
 REQUESTS: list[tuple[Path, str, str]] = [
@@ -52,11 +52,7 @@ def main() -> int:
 
 
 def poll_interval() -> int:
-    try:
-        value = int(os.environ.get("TIROSH_GUEST_COMMAND_POLL_INTERVAL_SECONDS", "3"))
-    except ValueError:
-        return 3
-    return min(max(value, 2), 300)
+    return SETTINGS.intervals.command_poll_seconds
 
 
 def append_log(message: str) -> None:

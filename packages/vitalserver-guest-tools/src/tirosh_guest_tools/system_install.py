@@ -1,17 +1,14 @@
 from __future__ import annotations
 
-import os
 import subprocess
 import sys
 from pathlib import Path
 
-GUEST_TOOLS_HOME = Path(
-    os.environ.get("TIROSH_GUEST_TOOLS_HOME", "/opt/tirosh/guest-tools")
-)
+from tirosh_guest_tools.settings import SETTINGS
+
+GUEST_TOOLS_HOME = SETTINGS.paths.guest_tools_home
 GUEST_TOOLS_VENV = GUEST_TOOLS_HOME / "venv"
-PYTHON_WHEEL_DIR = Path(
-    os.environ.get("TIROSH_PYTHON_WHEEL_DIR", "/mnt/tirosh/deploy/python-wheels")
-)
+PYTHON_WHEEL_DIR = SETTINGS.paths.python_wheel_dir
 
 COMMANDS = [
     "tirosh-guest-observed",
@@ -87,7 +84,7 @@ def running_inside_guest_tools_venv() -> bool:
 
 
 def link_command(name: str, target_name: str) -> None:
-    destination = Path("/usr/local/bin") / name
+    destination = SETTINGS.paths.command_bin_dir / name
     target = GUEST_TOOLS_VENV / "bin" / target_name
     destination.unlink(missing_ok=True)
     destination.symlink_to(target)

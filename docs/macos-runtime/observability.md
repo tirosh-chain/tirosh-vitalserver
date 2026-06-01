@@ -72,6 +72,7 @@ Guest observability는 Guest tools Python wheel package의 `observability` 서�
 - one-shot entrypoint: `/usr/local/bin/tirosh-guest-observe`
 - container log entrypoint: `/usr/local/bin/tirosh-guest-container-logs`
 - diagnostics entrypoint: `/usr/local/bin/tirosh-guest-diagnostics`
+- guest tools config: `/etc/tirosh/guest-tools.toml`
 - systemd units: `Support/Guest/systemd/tirosh-guest-observability.service`,
   `Support/Guest/systemd/tirosh-vitalserver-container-logs.service`
 

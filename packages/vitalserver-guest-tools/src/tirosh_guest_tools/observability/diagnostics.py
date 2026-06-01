@@ -1,13 +1,9 @@
 from __future__ import annotations
 
 import argparse
-import os
-from pathlib import Path
 
+from tirosh_guest_tools.common import DEPLOY_DIR, MOUNT_POINT, PROJECT_NAME
 from tirosh_guest_tools.observability.commands import run_command
-
-MOUNT_POINT = Path(os.environ.get("TIROSH_SHARE_MOUNT", "/mnt/tirosh"))
-DEPLOY_DIR = Path(os.environ.get("TIROSH_DEPLOY_DIR", str(MOUNT_POINT / "deploy")))
 
 
 def main() -> int:
@@ -57,7 +53,7 @@ def compose_command(arguments: list[str]) -> list[str]:
         "docker",
         "compose",
         "--project-name",
-        "vitalserver",
+        PROJECT_NAME,
         "-f",
         str(DEPLOY_DIR / "compose.yaml"),
         *arguments,

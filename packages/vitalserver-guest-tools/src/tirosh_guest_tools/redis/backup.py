@@ -16,6 +16,7 @@ from tirosh_guest_tools.common import (
     utc_now,
     write_json,
 )
+from tirosh_guest_tools.runtime.config import load_config
 
 BACKUP_DIR = MOUNT_POINT / "backups" / "redis"
 REQUEST_FILE = RUNTIME_DIR / "redis-backup.request"
@@ -77,14 +78,9 @@ def read_request_id() -> str:
 
 
 def read_retention_count() -> int:
-    try:
-        value = read_json(DEPLOY_DIR / "runtime-config.json").get(
-            "redisBackupRetentionCount", 30
-        )
-    except Exception:
-        return 30
+    value = load_config(DEPLOY_DIR / "runtime-config.json")["redisBackupRetentionCount"]
     if not isinstance(value, int):
-        return 30
+        raise ValueError("redisBackupRetentionCount must be an integer")
     return min(max(value, 1), 30)
 
 

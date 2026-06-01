@@ -1,14 +1,9 @@
 from __future__ import annotations
 
 import argparse
-import os
 import subprocess
-from pathlib import Path
 
 from tirosh_guest_tools.common import compose_command, run, systemctl
-
-MOUNT_POINT = Path(os.environ.get("TIROSH_SHARE_MOUNT", "/mnt/tirosh"))
-DEPLOY_DIR = Path(os.environ.get("TIROSH_DEPLOY_DIR", str(MOUNT_POINT / "deploy")))
 
 
 def main() -> int:

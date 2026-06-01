@@ -7,20 +7,15 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, TextIO
 
-MOUNT_TAG = os.environ.get("TIROSH_SHARE_TAG", "tirosh")
-MOUNT_POINT = Path(os.environ.get("TIROSH_SHARE_MOUNT", "/mnt/tirosh"))
-VITAL_FILES_MOUNT_TAG = os.environ.get(
-    "TIROSH_VITAL_FILES_SHARE_TAG", "tirosh-vital-files"
-)
-VITAL_FILES_MOUNT_POINT = Path(
-    os.environ.get("TIROSH_VITAL_FILES_SHARE_MOUNT", "/mnt/tirosh-vital-files")
-)
-DEPLOY_DIR = Path(os.environ.get("TIROSH_DEPLOY_DIR", str(MOUNT_POINT / "deploy")))
-RUNTIME_DIR = Path(os.environ.get("TIROSH_RUNTIME_DIR", str(MOUNT_POINT / "run")))
-PROJECT_NAME = os.environ.get(
-    "TIROSH_COMPOSE_PROJECT_NAME",
-    os.environ.get("TIROSH_COMPOSE_PROJECT", "vitalserver"),
-)
+from tirosh_guest_tools.settings import SETTINGS
+
+MOUNT_TAG = SETTINGS.shares.runtime_tag
+MOUNT_POINT = SETTINGS.shares.runtime_mount
+VITAL_FILES_MOUNT_TAG = SETTINGS.shares.vital_files_tag
+VITAL_FILES_MOUNT_POINT = SETTINGS.shares.vital_files_mount
+DEPLOY_DIR = SETTINGS.paths.deploy_dir
+RUNTIME_DIR = SETTINGS.paths.runtime_dir
+PROJECT_NAME = SETTINGS.compose.project_name
 
 
 def utc_now() -> str:

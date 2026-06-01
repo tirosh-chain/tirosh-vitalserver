@@ -11,6 +11,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "adminPassword": "admin",
     "publicHost": "",
     "publicPort": "",
+    "redisBackupRetentionCount": 30,
     "redisHost": "redis",
     "redisPort": 6379,
     "trustProxy": True,
@@ -38,7 +39,6 @@ def main() -> int:
         ("VITALSERVER_PUBLIC_PORT", "publicPort"),
         ("VITALSERVER_ADMIN_PASSWORD", "adminPassword"),
         ("VITALSERVER_VITAL_FILES_DIR", "vitalFilesDirectory"),
-        ("TIROSH_TESTKIT_ENABLED", "testkitEnabled"),
     ]:
         print(export_line(name, config[key]))
     return 0

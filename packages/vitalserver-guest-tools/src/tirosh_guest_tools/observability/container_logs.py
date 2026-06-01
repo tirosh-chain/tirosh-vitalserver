@@ -1,25 +1,26 @@
 from __future__ import annotations
 
 import argparse
-import os
 import subprocess
 import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import IO
 
-MOUNT_TAG = os.environ.get("TIROSH_SHARE_TAG", "tirosh")
-MOUNT_POINT = Path(os.environ.get("TIROSH_SHARE_MOUNT", "/mnt/tirosh"))
-DEPLOY_DIR = Path(os.environ.get("TIROSH_DEPLOY_DIR", str(MOUNT_POINT / "deploy")))
-RUNTIME_DIR = MOUNT_POINT / "run"
-LOG_FILE = RUNTIME_DIR / "container-logs.log"
-INTERVAL_SECONDS = float(os.environ.get("TIROSH_CONTAINER_LOG_INTERVAL", "5"))
-TAIL_LINES = os.environ.get("TIROSH_CONTAINER_LOG_LINES", "1000")
-MAX_BYTES = int(os.environ.get("TIROSH_CONTAINER_LOG_MAX_BYTES", "10485760"))
-RETAINED_FILES = int(os.environ.get("TIROSH_CONTAINER_LOG_RETAINED_FILES", "5"))
-ROTATE_CHECK_LINES = int(
-    os.environ.get("TIROSH_CONTAINER_LOG_ROTATE_CHECK_LINES", "200")
+from tirosh_guest_tools.common import (
+    DEPLOY_DIR,
+    PROJECT_NAME,
+    RUNTIME_DIR,
+    mount_runtime_share,
 )
+from tirosh_guest_tools.settings import SETTINGS
+
+LOG_FILE = RUNTIME_DIR / "container-logs.log"
+INTERVAL_SECONDS = SETTINGS.container_logs.interval_seconds
+TAIL_LINES = SETTINGS.container_logs.tail_lines
+MAX_BYTES = SETTINGS.container_logs.max_bytes
+RETAINED_FILES = SETTINGS.container_logs.retained_files
+ROTATE_CHECK_LINES = SETTINGS.container_logs.rotate_check_lines
 
 
 def main() -> int:
@@ -35,20 +36,6 @@ def main() -> int:
         return 0
     watch_logs()
     return 0
-
-
-def mount_runtime_share() -> None:
-    MOUNT_POINT.mkdir(parents=True, exist_ok=True)
-    if not is_mountpoint(MOUNT_POINT):
-        subprocess.run(
-            ["mount", "-t", "virtiofs", MOUNT_TAG, str(MOUNT_POINT)],
-            check=True,
-        )
-    RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
-
-
-def is_mountpoint(path: Path) -> bool:
-    return subprocess.run(["mountpoint", "-q", str(path)], check=False).returncode == 0
 
 
 def append_marker(source: str) -> None:
@@ -140,7 +127,7 @@ def docker_compose_logs_command(arguments: list[str]) -> list[str]:
         "docker",
         "compose",
         "--project-name",
-        "vitalserver",
+        PROJECT_NAME,
         "-f",
         str(DEPLOY_DIR / "compose.yaml"),
         "logs",

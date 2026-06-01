@@ -10,11 +10,16 @@ from tirosh_guest_tools.observability.collectors import (
     utc_now,
 )
 from tirosh_guest_tools.observability.writer import append_jsonl, write_daemon_snapshot
+from tirosh_guest_tools.settings import SETTINGS
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run guest observability daemon.")
-    parser.add_argument("--interval", type=float, default=10.0)
+    parser.add_argument(
+        "--interval",
+        type=float,
+        default=SETTINGS.intervals.observability_seconds,
+    )
     parser.add_argument("--once", action="store_true")
     args = parser.parse_args()
 

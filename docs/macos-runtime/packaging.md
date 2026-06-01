@@ -681,7 +681,7 @@ sudo /usr/local/bin/vitalserver-vm runtime rollback
 
 ### Guest deploy 변경 반영 정책
 
-`guest-deploy.tar.gz`는 host shared directory의 `vm/data/deploy`를 교체합니다. 여기에 `bootstrap.sh`, compose, guest bin/systemd, Docker image bundle이 포함됩니다. 단순 파일 교체만으로 VM 내부 Docker daemon이나 systemd unit이 자동 갱신되는 것은 아니므로, update bundle은 아래 경로로 반영합니다.
+`guest-deploy.tar.gz`는 host shared directory의 `vm/data/deploy`를 교체합니다. 여기에 `bootstrap.sh`, `guest-tools.toml`, compose, guest bin/systemd, Docker image bundle이 포함됩니다. 단순 파일 교체만으로 VM 내부 Docker daemon이나 systemd unit이 자동 갱신되는 것은 아니므로, update bundle은 아래 경로로 반영합니다.
 
 ```text
 apply-bundle

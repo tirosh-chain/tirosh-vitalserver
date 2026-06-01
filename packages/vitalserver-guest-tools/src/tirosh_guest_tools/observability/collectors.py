@@ -1,25 +1,21 @@
 from __future__ import annotations
 
 import json
-import os
 import socket
 import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from tirosh_guest_tools.common import DEPLOY_DIR, RUNTIME_DIR, VITAL_FILES_MOUNT_POINT
 from tirosh_guest_tools.observability.commands import (
     CommandResult,
     run_command,
     run_shell,
 )
 
-RUNTIME_DIR = Path(os.environ.get("TIROSH_RUNTIME_DIR", "/mnt/tirosh/run"))
 OBSERVABILITY_DIR = RUNTIME_DIR / "guest-observability"
-VITAL_FILES_DIR = Path(
-    os.environ.get("TIROSH_VITAL_FILES_DIR", "/mnt/tirosh-vital-files")
-)
-DEPLOY_DIR = Path(os.environ.get("TIROSH_DEPLOY_DIR", "/mnt/tirosh/deploy"))
+VITAL_FILES_DIR = VITAL_FILES_MOUNT_POINT
 
 
 def collect_snapshot(

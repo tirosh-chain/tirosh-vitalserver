@@ -1,17 +1,17 @@
 from __future__ import annotations
 
 import argparse
-import os
 import subprocess
 import time
 
 from tirosh_guest_tools.common import RUNTIME_DIR, mount_runtime_share, systemctl
 from tirosh_guest_tools.runtime.state_writer import main as write_runtime_state_main
+from tirosh_guest_tools.settings import SETTINGS
 
 RUNTIME_STATE_FILE = RUNTIME_DIR / "runtime-state.json"
 REDIS_BACKUP_REQUEST_FILE = RUNTIME_DIR / "redis-backup.request"
 REDIS_BACKUP_SERVICE = "tirosh-vitalserver-redis-backup.service"
-INTERVAL_SECONDS = int(os.environ.get("TIROSH_RUNTIME_STATE_INTERVAL", "5"))
+INTERVAL_SECONDS = SETTINGS.intervals.runtime_state_seconds
 
 
 def main() -> int:

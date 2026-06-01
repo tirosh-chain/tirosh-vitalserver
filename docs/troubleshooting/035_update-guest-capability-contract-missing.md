@@ -109,7 +109,7 @@ stat -f '%Sp %Su:%Sg %N' \
 - `prepare-update-shutdown`, `activate-update`, `redis-backup`, `repair-datastore` request는 capability 확인 후에만 작성됩니다.
 - Update preflight는 managed backup을 만들기 전에 update에 필요한 Guest capability를 확인합니다.
 - Logs read path는 refresh 실패를 보존하되, fallback source log가 있으면 refresh permission failure 대신 실제 log text를 반환합니다.
-- Guest command dispatch는 `tirosh-vitalserver-command-poller.service`가 담당합니다. 기본 polling interval은 3초이며 `TIROSH_GUEST_COMMAND_POLL_INTERVAL_SECONDS`로 조정할 수 있습니다. bootstrap/activation은 기존 `*.path` unit을 비활성화하고 poller service를 활성화합니다.
+- Guest command dispatch는 `tirosh-vitalserver-command-poller.service`가 담당합니다. 기본 polling interval은 3초이며 guest tools 설정 파일 `guest-tools.toml`의 `intervals.commandPollSeconds`로 조정합니다. bootstrap/activation은 기존 `*.path` unit을 비활성화하고 poller service를 활성화합니다.
 
 ## Prevention
 
