@@ -8,7 +8,9 @@ struct RuntimeWatchdogActions {
     let healthSnapshot: () -> RuntimeHealthSnapshot
     let proxyLivenessHTTP: (Int) -> String
     let automaticRecoveryEnabled: () -> Bool
+    let restartVMRuntime: () throws -> Void
     let restartService: (RuntimeManagedService) -> Void
+    let markVMLifecycleRunning: (RuntimeVMLifecycleDocument) throws -> Void
     let sleep: (TimeInterval) -> Void
     let writeObservedStatus: (RuntimeStatusLevel, RuntimeOperation, String, RuntimeHealthSnapshot) throws -> Void
     let recordObservedEvent: (RuntimeStatusLevel, RuntimeOperation, String, RuntimeHealthSnapshot, RuntimeEventType) -> Void
@@ -40,13 +42,18 @@ struct RuntimeWatchdogRunner {
 
         let initial = actions.healthSnapshot()
         if RuntimeHealthSnapshotPolicy.isHealthy(initial) {
-            try actions.writeObservedStatus(.healthy, .watchdog, "runtime watchdog passed", initial)
+            let finalized = completeHealthyVMLifecycleIfNeeded(initial)
+            try actions.writeObservedStatus(.healthy, .watchdog, "runtime watchdog passed", finalized)
             print("watchdog: ok")
             return
         }
 
         if let suppressionReason = RuntimeWatchdogRecoveryPolicy.automaticRecoverySuppressionReason(initial) {
             try suppressRecovery(reason: suppressionReason, snapshot: initial)
+            return
+        }
+        if let deferralReason = RuntimeWatchdogRecoveryPolicy.automaticRecoveryDeferralReason(initial) {
+            try deferRecovery(reason: deferralReason, snapshot: initial)
             return
         }
 
@@ -59,7 +66,8 @@ struct RuntimeWatchdogRunner {
 
         switch decision {
         case .healthy:
-            try actions.writeObservedStatus(.healthy, .watchdog, "runtime watchdog passed", initial)
+            let finalized = completeHealthyVMLifecycleIfNeeded(initial)
+            try actions.writeObservedStatus(.healthy, .watchdog, "runtime watchdog passed", finalized)
             print("watchdog: ok")
             return
 
@@ -73,6 +81,10 @@ struct RuntimeWatchdogRunner {
                 initial
             )
             print("watchdog: recovery disabled")
+            return
+
+        case .recoveryDeferred(let reason):
+            try deferRecovery(reason: reason, snapshot: initial)
             return
 
         case .recoverySuppressed(let reason):
@@ -115,6 +127,40 @@ struct RuntimeWatchdogRunner {
         print("watchdog: suppressed")
     }
 
+    private func completeHealthyVMLifecycleIfNeeded(_ snapshot: RuntimeHealthSnapshot) -> RuntimeHealthSnapshot {
+        guard let lifecycle = snapshot.vmLifecycle,
+              lifecycle.state == .starting || lifecycle.state == .bootstrapping
+        else {
+            return snapshot
+        }
+        do {
+            try actions.markVMLifecycleRunning(lifecycle)
+            actions.recordLifecycleEvent(
+                .watchdog,
+                "VM lifecycle marked running after healthy runtime observation",
+                .statusChanged
+            )
+            return actions.healthSnapshot()
+        } catch {
+            log("watchdog failed to mark VM lifecycle running error=\(error.localizedDescription)")
+            return snapshot
+        }
+    }
+
+    private func deferRecovery(reason: String, snapshot: RuntimeHealthSnapshot) throws {
+        let message = "watchdog recovery deferred: \(reason)"
+        log(message)
+        try actions.writeObservedStatus(.degraded, .watchdog, message, snapshot)
+        actions.recordObservedEvent(
+            .degraded,
+            .watchdog,
+            message,
+            snapshot,
+            .recoveryDeferred
+        )
+        print("watchdog: deferred")
+    }
+
     private func recover(
         reason: String,
         recoveryPlan: RuntimeRecoveryPlan,
@@ -143,8 +189,22 @@ struct RuntimeWatchdogRunner {
                 initial,
                 .serviceRestartDispatched
             )
-            actions.restartService(.vm)
-            actions.restartService(.guestLogSync)
+            do {
+                try actions.restartVMRuntime()
+            } catch {
+                let message = "watchdog VM restart failed: \(error.localizedDescription)"
+                log(message)
+                try actions.writeObservedStatus(.critical, .watchdog, message, initial)
+                actions.recordObservedEvent(
+                    .critical,
+                    .watchdog,
+                    message,
+                    initial,
+                    .runtimeCommandFailed
+                )
+                print("watchdog: critical")
+                return
+            }
         }
         if recoveryPlan.restartProxy {
             actions.recordObservedEvent(

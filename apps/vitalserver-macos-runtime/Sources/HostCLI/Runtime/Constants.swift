@@ -136,12 +136,13 @@ enum Constants {
         static let updateShutdownLogFile = RuntimeFileNames.updateShutdownLog
         static let waitTimeoutSeconds = 600.0
         static let serviceStopWaitTimeoutSeconds = 30.0
-        static let vmStopWaitTimeoutSeconds = 330.0
+        static let vmStopWaitTimeoutSeconds = 900.0
         static let serviceStopPollIntervalSeconds = 0.5
         static let datastoreRepairWaitTimeoutSeconds = 300.0
         static let redisBackupWaitTimeoutSeconds = 300.0
         static let updateActivationWaitTimeoutSeconds = 180.0
         static let updateShutdownWaitTimeoutSeconds = 300.0
+        static let vmBootLifecycleDeadlineSeconds = 600.0
         static let runtimeStateStaleAfterSeconds = 30.0
         static let watchdogRecoveryWaitSeconds = 20.0
         static let watchdogManagedOperationGraceSeconds = 1_800.0

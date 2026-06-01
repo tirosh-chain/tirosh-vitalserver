@@ -198,10 +198,21 @@ describe("runtime console pages", () => {
     renderPage(<ObservabilityPage />);
 
     expect(screen.getByText("Observation pipeline")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Recorder anomalies" })).toBeInTheDocument();
+    expect(screen.getByText("duplicate-ip")).toBeInTheDocument();
+    expect(screen.getByText("10.0.0.10")).toBeInTheDocument();
     expect(screen.getByText("runtime updated")).toBeInTheDocument();
+    expect(screen.getByText("runtime recovered")).toBeInTheDocument();
+    expect(
+      screen.getByText("runtime recovered").compareDocumentPosition(
+        screen.getByText("runtime updated")
+      ) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText("Period"), { target: { value: "7d" } });
-    fireEvent.change(screen.getByLabelText("Type"), { target: { value: "update" } });
+    fireEvent.change(screen.getByLabelText("Type"), {
+      target: { value: "recovery-deferred" }
+    });
     fireEvent.change(screen.getByLabelText("Limit"), { target: { value: "100" } });
 
     expect(hooks.useRuntimeEvents).toHaveBeenCalled();
@@ -442,6 +453,29 @@ function capabilities() {
 }
 
 function overview() {
+  const vitalDBObservation = {
+    schemaVersion: 1,
+    source: "vitaldb-observer",
+    observedAt: "2026-05-31T01:00:00Z",
+    ready: true,
+    recorderOnlineThresholdSeconds: 120,
+    recorders: [],
+    beds: [],
+    devices: [],
+    filters: [],
+    proxyConnections: [],
+    anomalies: [
+      {
+        id: "duplicate-ip-10",
+        kind: "duplicate-ip",
+        severity: "warning",
+        observedAt: "2026-05-31T01:00:00Z",
+        subject: "10.0.0.10",
+        message: "duplicate recorder IP"
+      }
+    ]
+  };
+
   return {
     settings: {
       proxyPort: 18080,
@@ -471,7 +505,12 @@ function overview() {
       containerObservation: { auditProxyHTTP: "HTTP 200" },
       failureReasons: []
     },
-    vitalDBObservation: { ready: true },
+    vitalDBObservation,
+    vitalDBObservationSnapshot: {
+      state: "loaded",
+      observation: vitalDBObservation,
+      readError: null
+    },
     vitalRecorder: {
       observedAt: "2026-05-31T01:00:00Z",
       activeConnections: 1,
@@ -479,7 +518,7 @@ function overview() {
       onlineRecorders: 1,
       staleRecorders: 0,
       knownBeds: 1,
-      recorderAnomalies: 0
+      recorderAnomalies: 1
     }
   };
 }
@@ -565,16 +604,26 @@ function events() {
       {
         id: "event-1",
         timestamp: "2026-05-31T01:00:00Z",
-        eventType: "update",
+        eventType: "status-changed",
         status: "healthy",
         operation: "apply",
         source: "runtime",
         message: "runtime updated",
         failureReasons: []
+      },
+      {
+        id: "event-2",
+        timestamp: "2026-05-31T01:05:00Z",
+        eventType: "recovery-deferred",
+        status: "degraded",
+        operation: "watchdog",
+        source: "runtime",
+        message: "runtime recovered",
+        failureReasons: []
       }
     ],
     nextCursor: null,
-    matchingCount: 1
+    matchingCount: 2
   };
 }
 

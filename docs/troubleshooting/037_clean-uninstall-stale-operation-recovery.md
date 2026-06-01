@@ -3,7 +3,7 @@
 > ID: TS-037  
 > Category: Uninstall / Update / Runtime health  
 > Owner: macOS runtime  
-> Status: active
+> Status: implemented
 
 ## Symptoms
 
@@ -143,3 +143,4 @@ stat -f "%Sm %Sp %Su:%Sg %z %N" \
 
 - 2026-05-31: clean uninstall 이후 rollback event와 watchdog recovery가 이어진 현장 로그를 근거로 TS-037을 등록했습니다. 핵심 수정 원칙은 operation ownership, boot-scoped guest result, rollback preflight, watchdog recovery input을 명시 계약으로 분리하는 것입니다.
 - 2026-05-31: hotfix에서 fresh install stale guest-run cleanup, `bootstrap-result.json.bootID`, boot-scoped bootstrap result validation, manifest 기반 rollback preflight/restore plan을 추가했습니다. Full operation ownership document는 후속 구조 개선으로 남겼습니다.
+- 2026-06-01: 핵심 hotfix가 반영되어 문서 상태를 `implemented`로 갱신했습니다. `RuntimeOperationOwnershipDocument`는 별도 구조 개선 후보로 유지합니다.

@@ -10,7 +10,7 @@ struct RuntimeHealthChecker {
     private let commandRunner: RuntimeCommandRunner
     private let httpProber: RuntimeHTTPProber
     private let guestGateway: RuntimeGuestGateway
-    private let now: () -> Date
+    private let now: @Sendable () -> Date
 
     init(
         installedPaths: InstalledRuntimePaths,
@@ -19,7 +19,7 @@ struct RuntimeHealthChecker {
         commandRunner: RuntimeCommandRunner,
         httpProber: RuntimeHTTPProber,
         guestGateway: RuntimeGuestGateway,
-        now: @escaping () -> Date = Date.init
+        now: @escaping @Sendable () -> Date = Date.init
     ) {
         self.installedPaths = installedPaths
         self.fileStore = fileStore
@@ -40,6 +40,7 @@ struct RuntimeHealthChecker {
 
     func snapshot() -> RuntimeHealthSnapshot {
         let guestRuntimeState = guestRuntimeStateObservationReader().read()
+        let vmLifecycle = vmLifecycleObservation()
         let guestState = guestRuntimeState.freshState
         let vmIP = guestState?.vmIP
         let proxyPortRead = installedProxyPortRead()
@@ -58,6 +59,7 @@ struct RuntimeHealthChecker {
             vmService: launchdState(.vm),
             proxyService: launchdState(.proxy),
             watchdogService: launchdState(.watchdog),
+            vmLifecycle: vmLifecycle.document,
             vmIP: vmIP,
             proxyPort: proxyPort,
             hostProxyHTTP: hostProxyHTTP,
@@ -71,6 +73,7 @@ struct RuntimeHealthChecker {
             reportedVMErrors: [],
             configurationFailureReasons: proxyPortRead.failureReasons
                 + guestRuntimeState.failureReasons
+                + vmLifecycle.failureReasons
                 + guestHTTPRead.failureReasons,
             proxyPortFailureReasons: proxyPortFailureReasons(port: proxyPort),
             guestBootstrapFailureReason: guestBootstrapFailureReason(guestState: guestRuntimeState.loadedState)
@@ -133,6 +136,30 @@ struct RuntimeHealthChecker {
             staleAfterSeconds: Constants.Runtime.runtimeStateStaleAfterSeconds,
             now: now
         )
+    }
+
+    private func vmLifecycleObservation() -> RuntimeVMLifecycleObservation {
+        switch RuntimeVMLifecycleStore(
+            url: installedPaths.vmLifecycle,
+            fileStore: fileStore,
+            now: now
+        ).load() {
+        case .missing:
+            return RuntimeVMLifecycleObservation(document: nil, failureReasons: [])
+        case .failed:
+            return RuntimeVMLifecycleObservation(document: nil, failureReasons: [.vmLifecycleDocumentInvalid])
+        case .loaded(let document):
+            guard let deadlineAt = document.deadlineAt else {
+                return RuntimeVMLifecycleObservation(document: document, failureReasons: [])
+            }
+            guard let deadline = ISO8601DateFormatter().date(from: deadlineAt) else {
+                return RuntimeVMLifecycleObservation(document: document, failureReasons: [.vmLifecycleDocumentInvalid])
+            }
+            guard now() <= deadline || !(document.state == .starting || document.state == .bootstrapping) else {
+                return RuntimeVMLifecycleObservation(document: document, failureReasons: [.vmLifecycleDocumentStale])
+            }
+            return RuntimeVMLifecycleObservation(document: document, failureReasons: [])
+        }
     }
 
     func readTrimmed(_ url: URL) -> String? {
@@ -335,6 +362,11 @@ private struct RuntimeProxyPortReadResult {
 
 private struct RuntimeGuestHTTPReadResult {
     let status: String
+    let failureReasons: [RuntimeFailureReason]
+}
+
+private struct RuntimeVMLifecycleObservation {
+    let document: RuntimeVMLifecycleDocument?
     let failureReasons: [RuntimeFailureReason]
 }
 

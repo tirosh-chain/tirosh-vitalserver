@@ -3,7 +3,7 @@ import SwiftUI
 
 struct RuntimeObservabilityPanel: View {
     @ObservedObject var viewModel: RuntimeViewModel
-    @State private var showingRecorderAnomalies = false
+    @State private var showingRecorderAnomalies = true
 
     private let eventDisplayPolicy = RuntimeEventDisplayPolicy()
     private let runtimeEventLimitOptions = [25, 50, 100, 200, 500]
@@ -52,7 +52,10 @@ struct RuntimeObservabilityPanel: View {
 
     private var anomalySection: some View {
         observationSection(AppConstants.Labels.recorderAnomalies) {
-            if anomalyRows.isEmpty {
+            vitalDBObservationReadIssue
+            if observation == nil {
+                emptyObservation(AppConstants.StatusText.noVitalRecorderObservations)
+            } else if anomalyRows.isEmpty {
                 emptyObservation(AppConstants.StatusText.noRecorderAnomalies)
             } else {
                 RuntimeDisclosureSection(isExpanded: $showingRecorderAnomalies) {
@@ -87,6 +90,16 @@ struct RuntimeObservabilityPanel: View {
                 }
                 .frame(maxHeight: 360)
             }
+        }
+    }
+
+    @ViewBuilder
+    private var vitalDBObservationReadIssue: some View {
+        if let readError = viewModel.vitalDBObservationSnapshot.readError {
+            Text("VitalDB observation read issue: \(readError)")
+                .font(.caption)
+                .foregroundStyle(.red)
+                .textSelection(.enabled)
         }
     }
 
@@ -176,7 +189,14 @@ struct RuntimeObservabilityPanel: View {
     }
 
     private var observation: VitalDBObservationDocument? {
-        viewModel.status.vitalDBObservation
+        switch viewModel.vitalDBObservationSnapshot.state {
+        case .loaded:
+            return viewModel.vitalDBObservationSnapshot.observation
+        case .failed:
+            return nil
+        case .unavailable:
+            return nil
+        }
     }
 
     private var observerStatus: String {
@@ -187,7 +207,13 @@ struct RuntimeObservabilityPanel: View {
     }
 
     private var anomalyRows: [VitalDBAnomalyObservation] {
-        observation?.anomalies ?? []
+        (observation?.anomalies ?? [])
+            .sorted { lhs, rhs in
+                if lhs.severity == rhs.severity {
+                    return lhs.observedAt > rhs.observedAt
+                }
+                return anomalySeverityRank(lhs.severity) > anomalySeverityRank(rhs.severity)
+            }
     }
 
     private var eventItems: [RuntimeEventDisplayPolicy.EventItem] {
@@ -316,6 +342,19 @@ struct RuntimeObservabilityPanel: View {
             return .secondary
         case .unknown:
             return .secondary
+        }
+    }
+
+    private func anomalySeverityRank(_ severity: VitalDBAnomalySeverity) -> Int {
+        switch severity {
+        case .critical:
+            return 3
+        case .warning:
+            return 2
+        case .info:
+            return 1
+        case .unknown:
+            return 0
         }
     }
 

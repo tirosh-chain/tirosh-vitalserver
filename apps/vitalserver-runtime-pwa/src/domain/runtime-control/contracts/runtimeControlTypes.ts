@@ -40,6 +40,12 @@ export type RuntimeEventDocument = NonNullable<
   RuntimeEventHistory["events"]
 >[number];
 
+export type VitalDBObservationDocument =
+  components["schemas"]["VitalDBObservationDocument"];
+
+export type VitalDBAnomalyObservation =
+  components["schemas"]["VitalDBAnomalyObservation"];
+
 export type RuntimeLogSource = components["schemas"]["RuntimeLogSource"];
 
 export type RuntimeLogTextRequest =

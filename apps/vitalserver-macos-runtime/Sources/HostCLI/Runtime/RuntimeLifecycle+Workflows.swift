@@ -161,8 +161,23 @@ extension RuntimeLifecycle {
                 automaticRecoveryEnabled: {
                     automaticRecoveryEnabled()
                 },
+                restartVMRuntime: {
+                    try restartVMRuntimeServices()
+                },
                 restartService: { service in
                     restartOrStartLaunchdService(service)
+                },
+                markVMLifecycleRunning: { lifecycle in
+                    let timestamp = clock.now
+                    try RuntimeVMLifecycleStore(
+                        url: installedPaths.vmLifecycle,
+                        fileStore: fileStore,
+                        now: { timestamp }
+                    ).write(
+                        state: .running,
+                        operation: lifecycle.operation,
+                        message: "Guest runtime reported healthy"
+                    )
                 },
                 sleep: { interval in
                     sleeper.sleep(forTimeInterval: interval)
@@ -222,8 +237,7 @@ extension RuntimeLifecycle {
                     try setSystemSleepPrevention(enabled)
                 },
                 restartRuntimeServices: {
-                    restartOrStartLaunchdService(.vm)
-                    restartOrStartLaunchdService(.guestLogSync)
+                    try restartVMRuntimeServices()
                     restartOrStartLaunchdService(.proxy)
                     restartOrStartLaunchdService(.watchdog)
                 }
@@ -524,9 +538,9 @@ private extension RuntimeLifecycle {
         }
     }
 
-    func restartVMServiceAction() -> () -> Void {
+    func restartVMServiceAction() -> () throws -> Void {
         {
-            restartOrStartLaunchdService(.vm)
+            try restartVMRuntimeServices()
         }
     }
 

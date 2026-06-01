@@ -40,6 +40,13 @@ struct RuntimeViewModelSnapshotLoader {
         return controlClient.loadRuntimeEvents(query: query)
     }
 
+    func loadVitalDBObservationSnapshot() async -> RuntimeVitalDBObservationSnapshot {
+        if let readWorker {
+            return await readWorker.loadVitalDBObservationSnapshot()
+        }
+        return controlClient.loadVitalDBObservationSnapshot()
+    }
+
     func loadVitalRecorders() async -> RuntimeVitalRecorderHistory {
         if let readWorker {
             return await readWorker.loadVitalDBRecorders()

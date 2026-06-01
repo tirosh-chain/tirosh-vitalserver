@@ -224,6 +224,13 @@ final class RuntimeControlAPITests: XCTestCase {
         }
     }
 
+    func testRuntimeEventTypeOpenAPIEnumMatchesSwiftContract() throws {
+        let openAPIEventTypes = try openAPIStringEnum(named: "RuntimeEventType")
+        let swiftEventTypes = RuntimeEventType.knownTypes.map(\.rawValue)
+
+        XCTAssertEqual(openAPIEventTypes, swiftEventTypes)
+    }
+
     func testRuntimeControlOpenAPIOperationsDoNotUseFileReferences() throws {
         let operations = try openAPIOperations()
 
@@ -1392,6 +1399,14 @@ final class RuntimeControlAPITests: XCTestCase {
             }
         }
         return operationsByRoute
+    }
+
+    private func openAPIStringEnum(named name: String) throws -> [String] {
+        let document = try openAPIDocument()
+        let components = try XCTUnwrap(document["components"] as? [String: Any])
+        let schemas = try XCTUnwrap(components["schemas"] as? [String: Any])
+        let schema = try XCTUnwrap(schemas[name] as? [String: Any])
+        return try XCTUnwrap(schema["enum"] as? [String])
     }
 
     private func openAPIDocument() throws -> [String: Any] {

@@ -1,8 +1,10 @@
 import Contracts
+import Foundation
 
 public enum RuntimeWatchdogRecoveryDecision: Equatable {
     case healthy
     case recoveryDisabled(reason: String)
+    case recoveryDeferred(reason: String)
     case recoverySuppressed(reason: String)
     case unrecoverable(reason: String)
     case recover(reason: String, plan: RuntimeRecoveryPlan)
@@ -22,6 +24,9 @@ public enum RuntimeWatchdogRecoveryPolicy {
         if let suppressionReason = automaticRecoverySuppressionReason(snapshot) {
             return .recoverySuppressed(reason: suppressionReason)
         }
+        if let deferralReason = automaticRecoveryDeferralReason(snapshot) {
+            return .recoveryDeferred(reason: deferralReason)
+        }
 
         guard automaticRecoveryEnabled else {
             return .recoveryDisabled(reason: reasons)
@@ -34,6 +39,7 @@ public enum RuntimeWatchdogRecoveryPolicy {
             vmDisk: snapshot.vmDisk,
             vmService: snapshot.vmService,
             proxyService: snapshot.proxyService,
+            vmLifecycle: snapshot.vmLifecycle,
             vmIP: snapshot.vmIP,
             guestHTTP: snapshot.guestHTTP,
             hostProxyReadinessHTTP: snapshot.hostProxyHTTP,
@@ -52,6 +58,18 @@ public enum RuntimeWatchdogRecoveryPolicy {
             return nil
         }
         return protectedError.rawValue
+    }
+
+    public static func automaticRecoveryDeferralReason(
+        _ snapshot: RuntimeHealthSnapshot,
+        now: Date = Date()
+    ) -> String? {
+        guard let lifecycle = snapshot.vmLifecycle,
+              lifecycle.isWaitingForGuest(at: now)
+        else {
+            return nil
+        }
+        return "vm-lifecycle-\(lifecycle.state.rawValue)"
     }
 
     private static func reasonText(_ reasons: [RuntimeFailureReason]) -> String {

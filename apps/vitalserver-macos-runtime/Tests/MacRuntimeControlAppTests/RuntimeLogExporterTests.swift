@@ -16,6 +16,7 @@ final class RuntimeLogExporterTests: XCTestCase {
         XCTAssertTrue(destinations.contains("diagnostics/status/\(RuntimeFileNames.runtimeObservabilityDB)-wal"))
         XCTAssertTrue(destinations.contains("diagnostics/status/\(RuntimeFileNames.runtimeObservabilityDB)-shm"))
         XCTAssertTrue(destinations.contains("diagnostics/guest/\(RuntimeFileNames.runtimeState)"))
+        XCTAssertTrue(destinations.contains("diagnostics/runtime/\(RuntimeFileNames.vmLifecycle)"))
         XCTAssertTrue(destinations.contains("diagnostics/guest/\(RuntimeFileNames.vmIP)"))
         XCTAssertTrue(destinations.contains("diagnostics/runtime/vm-config.json"))
         XCTAssertTrue(destinations.contains("diagnostics/runtime/runtime-version.json"))
@@ -114,6 +115,7 @@ final class RuntimeLogExporterTests: XCTestCase {
         XCTAssertEqual(archivedRotatedContainerLog, "rotated")
         XCTAssertEqual(archivedManifest?.supplementalItems.count, 2)
         XCTAssertEqual(archivedManifest?.supplementalItems.map(\.included), [true, true])
+        XCTAssertEqual(archivedManifest?.supplementalItems.map(\.status), ["included", "included"])
     }
 
     func testExportDoesNotOverwriteCentralLogsWithSupplementalSource() async throws {
@@ -353,6 +355,7 @@ final class RuntimeLogExporterTests: XCTestCase {
         let item = try XCTUnwrap(archivedManifest?.supplementalItems.first)
         XCTAssertTrue(item.sourcePresent)
         XCTAssertFalse(item.included)
+        XCTAssertEqual(item.status, "failed")
         XCTAssertNotNil(item.error)
     }
 

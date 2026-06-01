@@ -57,7 +57,7 @@ public enum RuntimeVMHealthPolicy {
         if !input.guestRuntimeStateFresh {
             errors.append(.runtimeStateStale)
         }
-        return uniqueErrors(errors + input.reportedVMErrors)
+        return uniqueErrors(errors + input.reportedVMErrors + (input.vmLifecycle?.reportedVMErrors ?? []))
     }
 
     private static func vmError(for failureReason: RuntimeFailureReason) -> RuntimeVMError {
@@ -96,6 +96,12 @@ public enum RuntimeVMHealthPolicy {
             return false
         }) {
             return .stopped
+        }
+        if input.vmLifecycle?.state == .stopping {
+            return .stopped
+        }
+        if input.vmLifecycle?.state == .starting || input.vmLifecycle?.state == .bootstrapping {
+            return .starting
         }
         if errors.contains(.runtimeStateStale) {
             return .stale

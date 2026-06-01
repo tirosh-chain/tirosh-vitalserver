@@ -7,6 +7,7 @@ public enum RuntimeEventType: Codable, Equatable, Sendable {
     case recoveryTriggered
     case recoveryCompleted
     case recoverySuppressed
+    case recoveryDeferred
     case domainErrorObserved
     case vmErrorObserved
     case containerObserved
@@ -32,6 +33,7 @@ public enum RuntimeEventType: Codable, Equatable, Sendable {
         .recoveryTriggered,
         .recoveryCompleted,
         .recoverySuppressed,
+        .recoveryDeferred,
         .domainErrorObserved,
         .vmErrorObserved,
         .containerObserved,
@@ -64,6 +66,8 @@ public enum RuntimeEventType: Codable, Equatable, Sendable {
             self = .recoveryCompleted
         case "recovery-suppressed":
             self = .recoverySuppressed
+        case "recovery-deferred":
+            self = .recoveryDeferred
         case "domain-error-observed":
             self = .domainErrorObserved
         case "vm-error-observed":
@@ -115,6 +119,8 @@ public enum RuntimeEventType: Codable, Equatable, Sendable {
             return "recovery-completed"
         case .recoverySuppressed:
             return "recovery-suppressed"
+        case .recoveryDeferred:
+            return "recovery-deferred"
         case .domainErrorObserved:
             return "domain-error-observed"
         case .vmErrorObserved:

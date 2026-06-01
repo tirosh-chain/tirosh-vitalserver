@@ -172,14 +172,22 @@ struct MacHostRuntimeLogExporter: RuntimeLogExporting, @unchecked Sendable {
             productLogsDirectory: productLogsDirectory.path,
             collectionIssue: issues.collectionIssue,
             supplementalItems: supplementalLogItems.map { item in
-                RuntimeLogExportManifest.SupplementalItem(
+                let included = fileManager.fileExists(
+                    atPath: bundleRoot.appendingPathComponent(item.relativeDestination).path
+                )
+                let sourcePresent = fileManager.fileExists(atPath: item.source.path)
+                let error = issues.supplementalIssues[item.relativeDestination]
+                return RuntimeLogExportManifest.SupplementalItem(
                     source: item.source.path,
                     relativeDestination: item.relativeDestination,
-                    sourcePresent: fileManager.fileExists(atPath: item.source.path),
-                    included: fileManager.fileExists(
-                        atPath: bundleRoot.appendingPathComponent(item.relativeDestination).path
+                    sourcePresent: sourcePresent,
+                    included: included,
+                    status: RuntimeLogExportManifest.SupplementalItem.statusValue(
+                        sourcePresent: sourcePresent,
+                        included: included,
+                        error: error
                     ),
-                    error: issues.supplementalIssues[item.relativeDestination]
+                    error: error
                 )
             }
         )
@@ -200,7 +208,21 @@ struct RuntimeLogExportManifest: Codable, Equatable {
         let relativeDestination: String
         let sourcePresent: Bool
         let included: Bool
+        let status: String
         let error: String?
+
+        static func statusValue(sourcePresent: Bool, included: Bool, error: String?) -> String {
+            if included {
+                return "included"
+            }
+            if error != nil {
+                return "failed"
+            }
+            if sourcePresent {
+                return "not-included"
+            }
+            return "missing"
+        }
     }
 
     let generatedAt: String
@@ -295,6 +317,10 @@ struct RuntimeLogExportSupplementalSource {
             RuntimeLogExportSupplementalSource(
                 source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.runtimeState),
                 relativeDestination: "diagnostics/guest/\(RuntimeFileNames.runtimeState)"
+            ),
+            RuntimeLogExportSupplementalSource(
+                source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.vmLifecycle),
+                relativeDestination: "diagnostics/runtime/\(RuntimeFileNames.vmLifecycle)"
             ),
             RuntimeLogExportSupplementalSource(
                 source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.vmIPFile),

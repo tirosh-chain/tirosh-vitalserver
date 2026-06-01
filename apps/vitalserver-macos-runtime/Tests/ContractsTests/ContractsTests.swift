@@ -38,6 +38,27 @@ final class ContractsTests: XCTestCase {
         XCTAssertEqual(RuntimeOperation.prepareUpdateShutdown.rawValue, "prepare-update-shutdown")
     }
 
+    func testVMLifecycleDocumentDecodesExplicitStateAndTerminalReason() throws {
+        let json = """
+        {
+          "schemaVersion": 1,
+          "state": "failed",
+          "operation": "install",
+          "startedAt": "2026-05-31T00:00:00Z",
+          "updatedAt": "2026-05-31T00:00:05Z",
+          "terminalReason": "disk-attachment-invalid",
+          "message": "storage attachment failed"
+        }
+        """
+
+        let document = try JSONDecoder().decode(RuntimeVMLifecycleDocument.self, from: Data(json.utf8))
+
+        XCTAssertEqual(document.state, .failed)
+        XCTAssertEqual(document.operation, .install)
+        XCTAssertEqual(document.terminalReason, .diskAttachmentInvalid)
+        XCTAssertEqual(document.reportedVMErrors, [.diskAttachmentInvalid])
+    }
+
     func testDecodesGuestRuntimeState() throws {
         let document = try decodeFixture(GuestRuntimeStateDocument.self, named: "runtime-state-ready")
 
@@ -394,6 +415,7 @@ final class ContractsTests: XCTestCase {
             .recoveryTriggered,
             .recoveryCompleted,
             .recoverySuppressed,
+            .recoveryDeferred,
             .domainErrorObserved,
             .vmErrorObserved,
             .containerObserved,
@@ -419,6 +441,7 @@ final class ContractsTests: XCTestCase {
             "recovery-triggered",
             "recovery-completed",
             "recovery-suppressed",
+            "recovery-deferred",
             "domain-error-observed",
             "vm-error-observed",
             "container-observed",

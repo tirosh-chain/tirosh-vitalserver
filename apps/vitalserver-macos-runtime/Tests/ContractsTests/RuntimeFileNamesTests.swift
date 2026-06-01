@@ -7,6 +7,7 @@ final class RuntimeFileNamesTests: XCTestCase {
         XCTAssertEqual(RuntimeFileNames.runtimeEvents, "runtime-events.jsonl")
         XCTAssertEqual(RuntimeFileNames.runtimeObservabilityDB, "runtime-observability.sqlite")
         XCTAssertEqual(RuntimeFileNames.vmIP, "vm-ip")
+        XCTAssertEqual(RuntimeFileNames.vmLifecycle, "vm-lifecycle.json")
         XCTAssertEqual(RuntimeFileNames.runtimeState, "runtime-state.json")
         XCTAssertEqual(RuntimeFileNames.bootstrapLog, "bootstrap.log")
         XCTAssertEqual(RuntimeFileNames.bootstrapResult, "bootstrap-result.json")

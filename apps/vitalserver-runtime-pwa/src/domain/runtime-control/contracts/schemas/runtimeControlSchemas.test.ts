@@ -87,6 +87,24 @@ describe("runtime control contract schemas", () => {
     ).toBe("recovery-suppressed");
   });
 
+  it("accepts recovery-deferred runtime events from the Helper", () => {
+    expect(
+      runtimeEventHistorySchema.parse({
+        events: [
+          {
+            id: "event-1",
+            eventType: "recovery-deferred",
+            timestamp: "2026-06-01T01:43:20Z",
+            status: "degraded",
+            message: "watchdog recovery deferred"
+          }
+        ],
+        nextCursor: null,
+        matchingCount: 1
+      }).events?.[0]?.eventType
+    ).toBe("recovery-deferred");
+  });
+
   it("rejects malformed VRecorder activity samples", () => {
     expect(() =>
       vitalDBRecordersSchema.parse({

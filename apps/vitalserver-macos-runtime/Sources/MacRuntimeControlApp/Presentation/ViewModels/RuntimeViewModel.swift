@@ -94,6 +94,7 @@ final class RuntimeViewModel: ObservableObject {
     @Published var runtimeEventLimit = 50
     @Published var runtimeEventPeriod = RuntimeEventPeriodOption.last24Hours.rawValue
     @Published var runtimeEventFilter = ""
+    @Published var vitalDBObservationSnapshot = RuntimeVitalDBObservationSnapshot.unavailable()
     @Published var vitalRecorders = RuntimeVitalRecorderHistory()
     @Published var vitalRelationships = RuntimeVitalRelationshipHistory()
     @Published var containerObservation: RuntimeContainerObservation?
@@ -256,6 +257,7 @@ final class RuntimeViewModel: ObservableObject {
 
     func refreshVitalRecorders() async {
         let refreshed = await observabilityRefresher.refreshVitalObservability()
+        vitalDBObservationSnapshot = refreshed.observationSnapshot
         vitalRecorders = refreshed.recorders
         vitalRelationships = refreshed.relationships
     }

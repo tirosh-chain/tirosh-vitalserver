@@ -207,6 +207,66 @@ final class RuntimeHealthCheckerTests: XCTestCase {
         XCTAssertTrue(snapshot.failureReasons.contains(.missingRootfsBase))
     }
 
+    func testSnapshotCarriesFreshVMLifecycleWithoutInferringRuntimeState() throws {
+        let installedPaths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
+        let fileStore = RuntimeFileStoreSpy()
+        fileStore.files[URL(fileURLWithPath: Constants.InstallPaths.vmBin)] = Data()
+        fileStore.files[URL(fileURLWithPath: Constants.InstallPaths.proxyRun)] = Data()
+        fileStore.files[installedPaths.runtimeDirectory.appendingPathComponent(Constants.Artifacts.rootfsBase)] = Data()
+        fileStore.files[installedPaths.runtimeDirectory.appendingPathComponent(Constants.BootAssets.disk)] = Data()
+        fileStore.files[installedPaths.vmLifecycle] = try JSONEncoder.pretty.encode(RuntimeVMLifecycleDocument(
+            state: .bootstrapping,
+            startedAt: "2026-05-31T00:00:00Z",
+            updatedAt: "2026-05-31T00:00:01Z",
+            deadlineAt: "2026-05-31T00:10:00Z"
+        ))
+
+        let commandRunner = RuntimeCommandRunnerSpy()
+        commandRunner.results[Constants.Commands.plistBuddy] = RuntimeProcessResult(exitCode: 0, stdout: "80\n", stderr: "")
+        let serviceManager = RuntimeServiceManagerSpy()
+        serviceManager.states = [.vm: .loaded, .proxy: .loaded, .watchdog: .loaded]
+        let checker = RuntimeHealthChecker(
+            installedPaths: installedPaths,
+            fileStore: fileStore,
+            serviceManager: serviceManager,
+            commandRunner: commandRunner,
+            httpProber: RuntimeHTTPProberSpy(),
+            guestGateway: RuntimeGuestGatewaySpy(),
+            now: { ISO8601DateFormatter().date(from: "2026-05-31T00:05:00Z")! }
+        )
+
+        let snapshot = checker.snapshot()
+
+        XCTAssertEqual(snapshot.vmLifecycle?.state, .bootstrapping)
+        XCTAssertEqual(snapshot.vmState, .starting)
+        XCTAssertFalse(snapshot.failureReasons.contains(.vmLifecycleDocumentStale))
+    }
+
+    func testSnapshotReportsExpiredBootLifecycleAsStale() throws {
+        let installedPaths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
+        let fileStore = RuntimeFileStoreSpy()
+        fileStore.files[installedPaths.vmLifecycle] = try JSONEncoder.pretty.encode(RuntimeVMLifecycleDocument(
+            state: .bootstrapping,
+            startedAt: "2026-05-31T00:00:00Z",
+            updatedAt: "2026-05-31T00:00:01Z",
+            deadlineAt: "2026-05-31T00:10:00Z"
+        ))
+        let checker = RuntimeHealthChecker(
+            installedPaths: installedPaths,
+            fileStore: fileStore,
+            serviceManager: RuntimeServiceManagerSpy(),
+            commandRunner: RuntimeCommandRunnerSpy(),
+            httpProber: RuntimeHTTPProberSpy(),
+            guestGateway: RuntimeGuestGatewaySpy(),
+            now: { ISO8601DateFormatter().date(from: "2026-05-31T00:11:00Z")! }
+        )
+
+        let snapshot = checker.snapshot()
+
+        XCTAssertEqual(snapshot.vmLifecycle?.state, .bootstrapping)
+        XCTAssertTrue(snapshot.failureReasons.contains(.vmLifecycleDocumentStale))
+    }
+
     func testSnapshotReportsRuntimeStateMissingGuestHTTPAsInvalid() {
         let installedPaths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
         let fileStore = RuntimeFileStoreSpy()

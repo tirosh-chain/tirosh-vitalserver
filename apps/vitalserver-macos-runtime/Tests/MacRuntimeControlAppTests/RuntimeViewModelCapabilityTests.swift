@@ -315,6 +315,36 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertEqual(client.loadVitalDBRecordersCount, 0)
     }
 
+    func testVitalRecorderRefreshUpdatesCurrentObservationSnapshot() async {
+        let observation = VitalDBObservationDocument(
+            observedAt: "2026-06-01T00:00:00Z",
+            ready: true,
+            recorderOnlineThresholdSeconds: 120,
+            anomalies: [
+                VitalDBAnomalyObservation(
+                    id: "duplicate-ip-1",
+                    kind: .duplicateIP,
+                    severity: .warning,
+                    observedAt: "2026-06-01T00:00:00Z",
+                    subject: "10.0.0.10",
+                    message: "duplicate-ip"
+                ),
+            ]
+        )
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        client.vitalDBObservation = observation
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+
+        await viewModel.refreshVitalRecorders()
+
+        XCTAssertEqual(viewModel.vitalDBObservationSnapshot.observation, observation)
+        XCTAssertNil(viewModel.status.vitalDBObservation)
+    }
+
     func testRuntimeEventRefreshUsesSelectedPeriodAndType() async {
         let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
         let viewModel = RuntimeViewModel(
@@ -939,6 +969,7 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     var verifiedBundleURLs: [URL] = []
     var exportLogDestinationURLs: [URL] = []
     var settings = RuntimeSettings()
+    var vitalDBObservation: VitalDBObservationDocument?
 
     init(capabilities: RuntimeControlCapabilities) {
         self.capabilities = capabilities
@@ -971,7 +1002,7 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     }
 
     func loadVitalDBObservation() -> VitalDBObservationDocument? {
-        nil
+        vitalDBObservation
     }
 
     func loadVitalDBRecorders() -> RuntimeVitalRecorderHistory {

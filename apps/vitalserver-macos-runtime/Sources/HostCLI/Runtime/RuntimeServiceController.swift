@@ -75,6 +75,22 @@ struct RuntimeServiceController {
         }
     }
 
+    func restartVMRuntimeServices() throws {
+        log("safely restarting VM runtime services")
+        if try stopIfLoaded(.guestLogSync) {
+            log("waiting for \(RuntimeManagedService.guestLogSync.displayName) service to stop label=\(RuntimeManagedService.guestLogSync.label)")
+            try waitUntilStopped(.guestLogSync)
+            log("stopped \(RuntimeManagedService.guestLogSync.displayName) service label=\(RuntimeManagedService.guestLogSync.label)")
+        }
+        if try stopIfLoaded(.vm) {
+            log("waiting for \(RuntimeManagedService.vm.displayName) service to stop label=\(RuntimeManagedService.vm.label)")
+            try waitUntilStopped(.vm)
+            log("stopped \(RuntimeManagedService.vm.displayName) service label=\(RuntimeManagedService.vm.label)")
+        }
+        startLaunchdService(.vm)
+        startLaunchdService(.guestLogSync)
+    }
+
     func stopLaunchdService(_ service: RuntimeManagedService) {
         do {
             _ = try stopIfLoaded(service)

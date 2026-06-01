@@ -7,6 +7,7 @@ import Virtualization
 final class VirtualMachineTerminationHandler {
     private let virtualMachine: VZVirtualMachine
     private let pidFile: URL
+    private let lifecycleStore: RuntimeVMLifecycleStore
     private let fileStore: RuntimeFileWriting
     private var signalSources: [DispatchSourceSignal] = []
     private var stopRequested = false
@@ -14,10 +15,12 @@ final class VirtualMachineTerminationHandler {
     init(
         virtualMachine: VZVirtualMachine,
         pidFile: URL,
+        lifecycleStore: RuntimeVMLifecycleStore,
         fileStore: RuntimeFileWriting = SystemRuntimeFileStore()
     ) {
         self.virtualMachine = virtualMachine
         self.pidFile = pidFile
+        self.lifecycleStore = lifecycleStore
         self.fileStore = fileStore
     }
 
@@ -44,8 +47,13 @@ final class VirtualMachineTerminationHandler {
         stopRequested = true
 
         print("received signal \(signalNumber); requesting vitalserver VM shutdown")
+        do {
+            try lifecycleStore.write(state: .stopping, message: "VM stop requested by signal \(signalNumber)")
+        } catch {
+            fputs("failed to write VM lifecycle stopping state: \(error)\n", stderr)
+        }
         guard virtualMachine.canRequestStop else {
-            forceStop()
+            handleUnavailableGuestStop()
             return
         }
 
@@ -53,24 +61,30 @@ final class VirtualMachineTerminationHandler {
             try virtualMachine.requestStop()
         } catch {
             fputs("failed to request guest shutdown: \(error)\n", stderr)
-            forceStop()
+            markStopRequestFailed("VM guest stop request failed: \(error)")
         }
     }
 
-    private func forceStop() {
+    private func handleUnavailableGuestStop() {
         guard virtualMachine.canStop else {
+            do {
+                try lifecycleStore.write(state: .stopped, message: "VM process already stopped")
+            } catch {
+                fputs("failed to write VM lifecycle stopped state: \(error)\n", stderr)
+            }
             ProcessState.removePidFile(pidFile, fileStore: fileStore)
             Foundation.exit(0)
         }
 
-        fputs("forcing vitalserver VM stop\n", stderr)
-        virtualMachine.stop { [pidFile] error in
-            if let error {
-                fputs("failed to stop VM: \(error)\n", stderr)
-                Foundation.exit(1)
-            }
-            ProcessState.removePidFile(pidFile, fileStore: SystemRuntimeFileStore())
-            Foundation.exit(0)
+        markStopRequestFailed("VM guest stop request is unavailable")
+    }
+
+    private func markStopRequestFailed(_ message: String) {
+        fputs("\(message)\n", stderr)
+        do {
+            try lifecycleStore.write(state: .failed, message: message)
+        } catch {
+            fputs("failed to write VM lifecycle failed state: \(error)\n", stderr)
         }
     }
 }

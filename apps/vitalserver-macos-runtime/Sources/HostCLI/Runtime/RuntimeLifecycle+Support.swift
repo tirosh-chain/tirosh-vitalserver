@@ -96,6 +96,10 @@ extension RuntimeLifecycle {
         serviceController.restartOrStartLaunchdService(service)
     }
 
+    func restartVMRuntimeServices() throws {
+        try serviceController.restartVMRuntimeServices()
+    }
+
     func stopLaunchdService(_ service: RuntimeManagedService) {
         serviceController.stopLaunchdService(service)
     }

@@ -265,6 +265,21 @@ final class RuntimeHealthEvaluatorTests: XCTestCase {
         ])
     }
 
+    func testVMLifecycleTerminalReasonReportsStoragePreservingVMError() {
+        let snapshot = RuntimeHealthEvaluator.evaluate(healthyInput(
+            vmLifecycle: RuntimeVMLifecycleDocument(
+                state: .failed,
+                startedAt: "2026-05-31T00:00:00Z",
+                updatedAt: "2026-05-31T00:00:05Z",
+                terminalReason: .diskAttachmentInvalid
+            )
+        ))
+
+        XCTAssertEqual(snapshot.vmState, .failed)
+        XCTAssertEqual(snapshot.vmErrors, [.diskAttachmentInvalid])
+        XCTAssertEqual(snapshot.failureReasons.map(\.rawValue), ["vm-disk-attachment-invalid"])
+    }
+
     private func healthyInput(
         vmExecutable: Bool = true,
         proxyExecutable: Bool = true,
@@ -273,6 +288,7 @@ final class RuntimeHealthEvaluatorTests: XCTestCase {
         vmService: RuntimeServiceState = .loaded,
         proxyService: RuntimeServiceState = .loaded,
         watchdogService: RuntimeServiceState = .loaded,
+        vmLifecycle: RuntimeVMLifecycleDocument? = nil,
         vmIP: String? = "192.168.64.2",
         proxyPort: Int = 80,
         hostProxyHTTP: String = "200",
@@ -295,6 +311,7 @@ final class RuntimeHealthEvaluatorTests: XCTestCase {
             vmService: vmService,
             proxyService: proxyService,
             watchdogService: watchdogService,
+            vmLifecycle: vmLifecycle,
             vmIP: vmIP,
             proxyPort: proxyPort,
             hostProxyHTTP: hostProxyHTTP,

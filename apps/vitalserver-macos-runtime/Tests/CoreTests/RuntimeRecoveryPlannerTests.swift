@@ -54,6 +54,23 @@ final class RuntimeRecoveryPlannerTests: XCTestCase {
         XCTAssertTrue(plan.restartProxy)
     }
 
+    func testBootstrappingVMLifecycleDoesNotRestartVMForMissingGuestReadiness() {
+        let plan = RuntimeRecoveryPlanner.plan(input(
+            vmLifecycle: RuntimeVMLifecycleDocument(
+                state: .bootstrapping,
+                startedAt: "2026-05-31T00:00:00Z",
+                updatedAt: "2026-05-31T00:00:01Z",
+                deadlineAt: "2999-01-01T00:00:00Z"
+            ),
+            vmIP: nil,
+            guestHTTP: RuntimeHTTPStatusText.missingVMIP
+        ))
+
+        XCTAssertTrue(plan.canRecover)
+        XCTAssertFalse(plan.restartVM)
+        XCTAssertFalse(plan.restartProxy)
+    }
+
     func testCriticalContainerServiceFailureRestartsVM() {
         let plan = RuntimeRecoveryPlanner.plan(input(
             containerObservation: RuntimeContainerObservation(
@@ -83,6 +100,7 @@ final class RuntimeRecoveryPlannerTests: XCTestCase {
         vmDisk: RuntimeFileState = .present,
         vmService: RuntimeServiceState = .loaded,
         proxyService: RuntimeServiceState = .loaded,
+        vmLifecycle: RuntimeVMLifecycleDocument? = nil,
         vmIP: String? = "192.168.64.2",
         guestHTTP: String = "200",
         hostProxyReadinessHTTP: String = "200",
@@ -96,6 +114,7 @@ final class RuntimeRecoveryPlannerTests: XCTestCase {
             vmDisk: vmDisk,
             vmService: vmService,
             proxyService: proxyService,
+            vmLifecycle: vmLifecycle,
             vmIP: vmIP,
             guestHTTP: guestHTTP,
             hostProxyReadinessHTTP: hostProxyReadinessHTTP,
