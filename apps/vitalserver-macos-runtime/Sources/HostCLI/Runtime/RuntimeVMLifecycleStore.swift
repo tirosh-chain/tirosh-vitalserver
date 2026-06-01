@@ -2,15 +2,15 @@ import Foundation
 import Core
 import Contracts
 
-struct RuntimeVMLifecycleStore {
+struct RuntimeVMLifecycleStore: @unchecked Sendable {
     let url: URL
     let fileStore: RuntimeFileReading & RuntimeFileWriting
-    let now: () -> Date
+    let now: @Sendable () -> Date
 
     init(
         url: URL,
         fileStore: RuntimeFileReading & RuntimeFileWriting,
-        now: @escaping () -> Date = Date.init
+        now: @escaping @Sendable () -> Date = Date.init
     ) {
         self.url = url
         self.fileStore = fileStore

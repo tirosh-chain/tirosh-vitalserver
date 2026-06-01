@@ -10,7 +10,7 @@ struct RuntimeHealthChecker {
     private let commandRunner: RuntimeCommandRunner
     private let httpProber: RuntimeHTTPProber
     private let guestGateway: RuntimeGuestGateway
-    private let now: () -> Date
+    private let now: @Sendable () -> Date
 
     init(
         installedPaths: InstalledRuntimePaths,
@@ -19,7 +19,7 @@ struct RuntimeHealthChecker {
         commandRunner: RuntimeCommandRunner,
         httpProber: RuntimeHTTPProber,
         guestGateway: RuntimeGuestGateway,
-        now: @escaping () -> Date = Date.init
+        now: @escaping @Sendable () -> Date = Date.init
     ) {
         self.installedPaths = installedPaths
         self.fileStore = fileStore
