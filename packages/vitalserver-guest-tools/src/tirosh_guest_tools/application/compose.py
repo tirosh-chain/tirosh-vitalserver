@@ -1,18 +1,17 @@
 from __future__ import annotations
 
+import logging
 import os
 import subprocess
 import time
 
 from tirosh_guest_tools.common import (
     DEPLOY_DIR,
-    MOUNT_POINT,
     compose_command,
     mount_runtime_share,
     mount_vital_files_share,
     output,
     run,
-    utc_now,
 )
 from tirosh_guest_tools.contracts import (
     ComposeService,
@@ -22,6 +21,8 @@ from tirosh_guest_tools.domain.errors import GuestUseCaseInputError
 from tirosh_guest_tools.inbound import ComposeAction
 from tirosh_guest_tools.runtime.config import RuntimeConfig, load_config
 from tirosh_guest_tools.settings import SETTINGS
+
+logger = logging.getLogger(__name__)
 
 
 def run_compose_action(action: ComposeAction | str) -> None:
@@ -69,17 +70,26 @@ def compose(
 def load_optional_docker_images() -> None:
     image_dir = DEPLOY_DIR / "optional-docker-images"
     if not image_dir.is_dir():
-        print(f"optional Docker image bundle directory is missing: {image_dir}")
+        logger.info(
+            "optional Docker image bundle directory is missing",
+            extra={"fields": {"imageDirectory": str(image_dir)}},
+        )
         return
     loaded = False
     for image_bundle in sorted(image_dir.iterdir()):
         if image_bundle.suffix not in {".tar", ".gz", ".tgz"}:
             continue
-        print(f"Loading optional Docker image bundle: {image_bundle}")
+        logger.info(
+            "loading optional Docker image bundle",
+            extra={"fields": {"imageBundle": str(image_bundle)}},
+        )
         run(["docker", "load", "-i", str(image_bundle)])
         loaded = True
     if not loaded:
-        print(f"No optional Docker image bundles found under {image_dir}")
+        logger.info(
+            "no optional Docker image bundles found",
+            extra={"fields": {"imageDirectory": str(image_dir)}},
+        )
 
 
 def wait_for_redis() -> None:
@@ -97,7 +107,7 @@ def wait_for_redis() -> None:
         ):
             return
         time.sleep(2)
-    print("error: redis did not become ready")
+    logger.error("redis did not become ready")
     compose(["ps"], check=False)
     compose(["logs", ComposeService.REDIS.value, "--tail=100"], check=False)
     raise SystemExit(1)
@@ -118,7 +128,7 @@ def wait_for_app() -> None:
         if completed.returncode == 0:
             return
         time.sleep(2)
-    print("error: app did not become healthy")
+    logger.error("app did not become healthy")
     compose(["ps"], check=False)
     compose(["logs", ComposeService.APP.value, "--tail=100"], check=False)
     raise SystemExit(1)
@@ -149,16 +159,9 @@ def start_testkit(runtime_config: RuntimeConfig) -> None:
 
 
 def start_testkit_logged(runtime_config: RuntimeConfig) -> None:
-    log_file = MOUNT_POINT / "run" / "testkit-provision.log"
-    log_file.parent.mkdir(parents=True, exist_ok=True)
-    with log_file.open("w", encoding="utf-8") as handle:
-        if not runtime_config.testkit_enabled:
-            handle.write(f"Optional TestKit service is disabled at {utc_now()}\n")
-            return
-        handle.write(
-            f"Starting optional TestKit service via Docker Compose at {utc_now()}\n"
-        )
-        start_testkit(runtime_config)
-        handle.write(
-            f"Optional TestKit service provisioning completed at {utc_now()}\n"
-        )
+    if not runtime_config.testkit_enabled:
+        logger.info("optional TestKit service is disabled")
+        return
+    logger.info("starting optional TestKit service via Docker Compose")
+    start_testkit(runtime_config)
+    logger.info("optional TestKit service provisioning completed")

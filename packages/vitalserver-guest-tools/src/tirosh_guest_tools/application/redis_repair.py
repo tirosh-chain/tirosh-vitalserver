@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import logging
+
 from tirosh_guest_tools.application.compose import run_compose_action
 from tirosh_guest_tools.application.runtime_state import write_current_state
 from tirosh_guest_tools.common import (
     PROJECT_NAME,
     RUNTIME_DIR,
-    Tee,
     compose_command,
     mount_runtime_share,
     request_id_from,
@@ -25,40 +26,46 @@ REQUEST_FILE = RUNTIME_DIR / RuntimeFileName.REPAIR_DATASTORE_REQUEST.value
 RESULT_FILE = RUNTIME_DIR / RuntimeFileName.REPAIR_DATASTORE_RESULT.value
 LOG_FILE = RUNTIME_DIR / RuntimeFileName.REPAIR_DATASTORE_LOG.value
 REDIS_VOLUME = f"{PROJECT_NAME}_redis-data"
+logger = logging.getLogger(__name__)
 
 
 def run_repair_datastore() -> None:
     mount_runtime_share()
-    with Tee(LOG_FILE) as log:
-        log.write("datastore repair started")
-        if not REQUEST_FILE.is_file():
-            log.write("request file is missing; exiting")
-            write_result("", OperationStatus.SKIPPED, "request file is missing")
-            return
-        request_id = request_id_from(REQUEST_FILE)
-        write_result(
-            request_id,
-            OperationStatus.RUNNING,
-            "Datastore repair is running.",
-        )
-        try:
-            restart_runtime_compose()
-        except Exception:
-            REQUEST_FILE.unlink(missing_ok=True)
-            write_result(
-                request_id,
-                OperationStatus.FAILED,
-                "Datastore repair failed. See repair-datastore.log.",
-            )
-            log.write("datastore repair failed")
-            raise
+    logger.info("datastore repair started")
+    if not REQUEST_FILE.is_file():
+        logger.info("request file is missing; exiting")
+        write_result("", OperationStatus.SKIPPED, "request file is missing")
+        return
+    request_id = request_id_from(REQUEST_FILE)
+    write_result(
+        request_id,
+        OperationStatus.RUNNING,
+        "Datastore repair is running.",
+    )
+    try:
+        restart_runtime_compose()
+    except Exception:
         REQUEST_FILE.unlink(missing_ok=True)
         write_result(
             request_id,
-            OperationStatus.COMPLETED,
-            "Redis append-only file checked and VitalServer services restarted.",
+            OperationStatus.FAILED,
+            "Datastore repair failed. See repair-datastore.log.",
         )
-        log.write("datastore repair completed")
+        logger.exception(
+            "datastore repair failed",
+            extra={"fields": {"requestId": request_id}},
+        )
+        raise
+    REQUEST_FILE.unlink(missing_ok=True)
+    write_result(
+        request_id,
+        OperationStatus.COMPLETED,
+        "Redis append-only file checked and VitalServer services restarted.",
+    )
+    logger.info(
+        "datastore repair completed",
+        extra={"fields": {"requestId": request_id}},
+    )
 
 
 def write_result(request_id: str, status: OperationStatus, message: str) -> None:
@@ -96,7 +103,10 @@ def restart_runtime_compose() -> None:
 
 def repair_appendonly_file() -> None:
     if run(["docker", "volume", "inspect", REDIS_VOLUME], check=False).returncode != 0:
-        print(f"redis volume does not exist: {REDIS_VOLUME}")
+        logger.info(
+            "redis volume does not exist",
+            extra={"fields": {"volume": REDIS_VOLUME}},
+        )
         return
     run(
         [

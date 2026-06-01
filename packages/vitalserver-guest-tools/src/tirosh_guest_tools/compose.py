@@ -4,6 +4,8 @@ import argparse
 
 from tirosh_guest_tools.application.compose import run_compose_action
 from tirosh_guest_tools.inbound import ComposeAction
+from tirosh_guest_tools.logging import configure_logging
+from tirosh_guest_tools.settings import SETTINGS
 
 
 def main() -> int:
@@ -17,6 +19,7 @@ def main() -> int:
         default=ComposeAction.UP.value,
     )
     args = parser.parse_args()
+    configure_logging(SETTINGS.logging)
     run_compose_action(args.action)
     return 0
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import tomllib
 from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
@@ -54,6 +55,26 @@ class ObservabilitySettings:
     vitaldb_observer_url: str
 
 
+class LoggingFormat(StrEnum):
+    JSON = "json"
+
+
+class LoggingLevel(StrEnum):
+    DEBUG = "debug"
+    INFO = "info"
+    WARNING = "warning"
+    ERROR = "error"
+    CRITICAL = "critical"
+
+
+@dataclass(frozen=True)
+class LoggingSettings:
+    format: LoggingFormat
+    level: LoggingLevel
+    stream_enabled: bool
+    file_enabled: bool
+
+
 @dataclass(frozen=True)
 class GuestToolsSettings:
     shares: ShareSettings
@@ -62,6 +83,7 @@ class GuestToolsSettings:
     intervals: IntervalSettings
     container_logs: ContainerLogSettings
     observability: ObservabilitySettings
+    logging: LoggingSettings
     guest_hostname: str
 
 
@@ -175,6 +197,16 @@ def load_settings(path: Path = DEFAULT_SETTINGS_PATH) -> GuestToolsSettings:
                 "http://127.0.0.1:18084/api/v1/observations",
             )
         ),
+        logging=LoggingSettings(
+            format=logging_format_value(table(document, "logging"), "format", "json"),
+            level=logging_level_value(table(document, "logging"), "level", "info"),
+            stream_enabled=bool_value(
+                table(document, "logging"),
+                "streamEnabled",
+                True,
+            ),
+            file_enabled=bool_value(table(document, "logging"), "fileEnabled", True),
+        ),
         guest_hostname=str_value(document, "guestHostname", "tirosh-vitalserver"),
     )
 
@@ -201,6 +233,47 @@ def str_value(document: dict[str, Any], key: str, default: str) -> str:
 
 def path_value(document: dict[str, Any], key: str, default: str) -> Path:
     return Path(str_value(document, key, default))
+
+
+def bool_value(document: dict[str, Any], key: str, default: bool) -> bool:
+    value = document.get(key, default)
+    if not isinstance(value, bool):
+        raise GuestContractError(
+            f"guest tools setting '{key}' must be a boolean",
+            code="guest-tools-setting-type-invalid",
+        )
+    return value
+
+
+def logging_format_value(
+    document: dict[str, Any],
+    key: str,
+    default: str,
+) -> LoggingFormat:
+    value = str_value(document, key, default)
+    try:
+        return LoggingFormat(value)
+    except ValueError as error:
+        raise GuestContractError(
+            f"guest tools setting '{key}' must be one of: json",
+            code="guest-tools-setting-value-invalid",
+        ) from error
+
+
+def logging_level_value(
+    document: dict[str, Any],
+    key: str,
+    default: str,
+) -> LoggingLevel:
+    value = str_value(document, key, default)
+    try:
+        return LoggingLevel(value)
+    except ValueError as error:
+        raise GuestContractError(
+            "guest tools setting "
+            f"'{key}' must be one of: debug, info, warning, error, critical",
+            code="guest-tools-setting-value-invalid",
+        ) from error
 
 
 def int_value(

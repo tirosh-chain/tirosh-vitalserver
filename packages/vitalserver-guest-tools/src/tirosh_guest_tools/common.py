@@ -140,28 +140,3 @@ def service_is_running(service: str) -> bool:
         text=True,
     )
     return completed.stdout.strip() in {"active", "activating"}
-
-
-class Tee:
-    def __init__(self, path: Path) -> None:
-        self.path = path
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.handle: TextIO | None = None
-
-    def __enter__(self) -> Tee:
-        self.handle = self.path.open("w", encoding="utf-8")
-        return self
-
-    def __exit__(self, *_: object) -> None:
-        if self.handle:
-            self.handle.close()
-
-    def write(self, text: str) -> None:
-        print(text, flush=True)
-        if self.handle:
-            self.handle.write(text)
-            self.handle.write("\n")
-            self.handle.flush()
-
-    def log(self, text: str) -> None:
-        self.write(f"{utc_now()} {text}")

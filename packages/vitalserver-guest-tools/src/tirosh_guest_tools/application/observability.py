@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import traceback
 from typing import Any
 
@@ -15,6 +16,8 @@ from tirosh_guest_tools.observability.writer import (
     write_daemon_snapshot,
     write_oneshot_snapshot,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def write_daemon_observability_snapshot() -> dict[str, Any]:
@@ -42,6 +45,4 @@ def record_daemon_error(error: Exception) -> None:
         "traceback": traceback.format_exc(),
     }
     append_jsonl(OBSERVABILITY_DIR / "events.jsonl", message)
-    daemon_log = OBSERVABILITY_DIR / "daemon.log"
-    with daemon_log.open("a", encoding="utf-8") as handle:
-        handle.write(f"{message['observedAt']} daemon-error {error}\n")
+    logger.exception("guest observability daemon error")

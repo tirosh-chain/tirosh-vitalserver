@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import time
 from pathlib import Path
 
@@ -9,15 +10,16 @@ from tirosh_guest_tools.common import (
     mount_runtime_share,
     service_is_running,
     systemctl,
-    utc_now,
 )
 from tirosh_guest_tools.contracts import RuntimeFileName, RuntimeService
 from tirosh_guest_tools.domain.operations import (
     OperationName,
 )
+from tirosh_guest_tools.logging import configure_logging
 from tirosh_guest_tools.settings import SETTINGS
 
 LOG_FILE = RUNTIME_DIR / "guest-command-poller.log"
+logger = logging.getLogger(__name__)
 REQUESTS: list[tuple[Path, str, str]] = [
     (
         RUNTIME_DIR / RuntimeFileName.PREPARE_UPDATE_SHUTDOWN_REQUEST.value,
@@ -46,9 +48,12 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Dispatch guest command requests.")
     parser.parse_args()
     mount_runtime_share()
-    LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    configure_logging(SETTINGS.logging, log_file=LOG_FILE)
     interval = poll_interval()
-    append_log(f"status=started intervalSeconds={interval}")
+    logger.info(
+        "guest command poller started",
+        extra={"fields": {"interval": interval}},
+    )
     while True:
         for request_file, service, operation in REQUESTS:
             dispatch_request(request_file, service, operation)
@@ -59,15 +64,13 @@ def poll_interval() -> int:
     return SETTINGS.intervals.command_poll_seconds
 
 
-def append_log(message: str) -> None:
-    with LOG_FILE.open("a", encoding="utf-8") as handle:
-        handle.write(f"{utc_now()} {message}\n")
-
-
 def dispatch_request(request_file: Path, service: str, operation: str) -> None:
     if not request_file.is_file() or service_is_running(service):
         return
-    append_log(f"operation={operation} status=request-detected service={service}")
+    logger.info(
+        "guest command request detected",
+        extra={"fields": {"operation": operation, "service": service}},
+    )
     systemctl("reset-failed", service, check=False)
     result = systemctl("start", "--no-block", service, check=False)
     status = (
@@ -75,7 +78,16 @@ def dispatch_request(request_file: Path, service: str, operation: str) -> None:
         if result.returncode == 0
         else "service-schedule-failed"
     )
-    append_log(f"operation={operation} status={status} service={service}")
+    logger.info(
+        "guest command service dispatch completed",
+        extra={
+            "fields": {
+                "operation": operation,
+                "service": service,
+                "status": status,
+            }
+        },
+    )
 
 
 if __name__ == "__main__":

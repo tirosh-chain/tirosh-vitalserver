@@ -31,3 +31,9 @@ rotateCheckLines = 200
 
 [observability]
 vitaldbObserverUrl = "http://127.0.0.1:18084/api/v1/observations"
+
+[logging]
+format = "json"
+level = "info"
+streamEnabled = true
+fileEnabled = true

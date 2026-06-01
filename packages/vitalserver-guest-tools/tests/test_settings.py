@@ -45,6 +45,12 @@ rotateCheckLines = 19
 
 [observability]
 vitaldbObserverUrl = "http://127.0.0.1:19000/observations"
+
+[logging]
+format = "json"
+level = "warning"
+streamEnabled = false
+fileEnabled = true
 """.strip()
         + "\n",
         encoding="utf-8",
@@ -61,6 +67,8 @@ vitaldbObserverUrl = "http://127.0.0.1:19000/observations"
     assert settings.intervals.command_poll_seconds == 7
     assert settings.container_logs.tail_lines == "250"
     assert settings.observability.vitaldb_observer_url.endswith("/observations")
+    assert settings.logging.level == "warning"
+    assert settings.logging.stream_enabled is False
 
 
 def test_load_settings_uses_documented_defaults_when_file_is_missing(
@@ -72,6 +80,8 @@ def test_load_settings_uses_documented_defaults_when_file_is_missing(
     assert settings.paths.deploy_dir == Path("/mnt/tirosh/deploy")
     assert settings.compose.project_name == "vitalserver"
     assert settings.intervals.command_poll_seconds == 3
+    assert settings.logging.format == "json"
+    assert settings.logging.file_enabled is True
 
 
 def test_load_settings_rejects_invalid_value_type(tmp_path: Path) -> None:

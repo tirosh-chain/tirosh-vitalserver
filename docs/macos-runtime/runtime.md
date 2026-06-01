@@ -188,7 +188,9 @@ bootstrap 순서:
 7. bundled Docker image를 load한 뒤 `docker compose up -d`로 VitalServer/Redis/UI/edge nginx 실행
 8. runtime state에 VM IP와 guest HTTP readiness 기록
 
-Guest tools는 `guest-tools.toml`에만 package 운영 default를 둡니다.
+Guest tools는 `guest-tools.toml`에만 package 운영 default를 둡니다. 로깅 정책도
+`[logging]` section에 선언하고, Python entrypoint는 이를 `logging.config.dictConfig`
+형태로 적용합니다.
 `runtime-config.json`은 Host가 제공하는 실행 계약이므로 `adminPassword`,
 `redisHost`, `redisPort`, `publicHost`, `publicPort`, `trustProxy`,
 `vitalFilesDirectory`, `redisBackupRetentionCount`, `testkitEnabled`가 모두

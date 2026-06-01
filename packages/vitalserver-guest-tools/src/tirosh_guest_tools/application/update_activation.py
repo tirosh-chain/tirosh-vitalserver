@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from tirosh_guest_tools.application.compose import run_compose_action
@@ -10,7 +11,6 @@ from tirosh_guest_tools.application.runtime_state import write_current_state
 from tirosh_guest_tools.common import (
     DEPLOY_DIR,
     RUNTIME_DIR,
-    Tee,
     compose_command,
     mount_runtime_share,
     request_id_from,
@@ -38,55 +38,62 @@ from tirosh_guest_tools.system_install import install_guest_tools_runtime
 REQUEST_FILE = RUNTIME_DIR / RuntimeFileName.ACTIVATE_UPDATE_REQUEST.value
 RESULT_FILE = RUNTIME_DIR / RuntimeFileName.ACTIVATE_UPDATE_RESULT.value
 LOG_FILE = RUNTIME_DIR / RuntimeFileName.ACTIVATE_UPDATE_LOG.value
+logger = logging.getLogger(__name__)
 
 
 def run_activate_update() -> None:
     mount_runtime_share()
-    with Tee(LOG_FILE) as log:
-        log.write("guest update activation started")
-        if not REQUEST_FILE.is_file():
-            log.write("request file is missing; exiting")
-            write_result("", OperationStatus.SKIPPED, "request file is missing")
-            return
-        try:
-            request_id = request_id_from(REQUEST_FILE)
-            version = request_version_from(REQUEST_FILE)
-        except Exception:
-            write_result(
-                "",
-                OperationStatus.FAILED,
-                "Activation request metadata is invalid.",
-            )
-            raise
-        log.write(
-            f"guest update activation requestId={request_id} "
-            f"version={version or 'unknown'}"
-        )
+    logger.info("guest update activation started")
+    if not REQUEST_FILE.is_file():
+        logger.info("request file is missing; exiting")
+        write_result("", OperationStatus.SKIPPED, "request file is missing")
+        return
+    try:
+        request_id = request_id_from(REQUEST_FILE)
+        version = request_version_from(REQUEST_FILE)
+    except Exception:
         write_result(
-            request_id,
-            OperationStatus.RUNNING,
-            "Guest update activation started.",
+            "",
+            OperationStatus.FAILED,
+            "Activation request metadata is invalid.",
         )
-        try:
-            activate_runtime()
-        except Exception:
-            collect_guest_observability(ObservationPhase.ACTIVATION_FAILURE)
-            REQUEST_FILE.unlink(missing_ok=True)
-            write_result(
-                request_id,
-                OperationStatus.FAILED,
-                "Guest update activation failed. See activate-update.log.",
-            )
-            log.write("guest update activation failed")
-            raise
-        collect_guest_observability(ObservationPhase.ACTIVATION_POST)
+        logger.exception("activation request metadata is invalid")
+        raise
+    logger.info(
+        "guest update activation request loaded",
+        extra={"fields": {"requestId": request_id, "version": version or None}},
+    )
+    write_result(
+        request_id,
+        OperationStatus.RUNNING,
+        "Guest update activation started.",
+    )
+    try:
+        activate_runtime()
+    except Exception:
+        collect_guest_observability(ObservationPhase.ACTIVATION_FAILURE)
         REQUEST_FILE.unlink(missing_ok=True)
         write_result(
             request_id,
-            OperationStatus.COMPLETED,
-            "Guest Docker images loaded and VitalServer services recreated.",
+            OperationStatus.FAILED,
+            "Guest update activation failed. See activate-update.log.",
         )
-        log.write("guest update activation completed")
+        logger.exception(
+            "guest update activation failed",
+            extra={"fields": {"requestId": request_id}},
+        )
+        raise
+    collect_guest_observability(ObservationPhase.ACTIVATION_POST)
+    REQUEST_FILE.unlink(missing_ok=True)
+    write_result(
+        request_id,
+        OperationStatus.COMPLETED,
+        "Guest Docker images loaded and VitalServer services recreated.",
+    )
+    logger.info(
+        "guest update activation completed",
+        extra={"fields": {"requestId": request_id}},
+    )
 
 
 def write_result(request_id: str, status: OperationStatus, message: str) -> None:
@@ -125,11 +132,14 @@ def load_bundled_docker_images() -> None:
         )
     loaded = False
     for image_bundle in docker_image_bundles(image_dir):
-        print(f"Loading Docker image bundle: {image_bundle}")
+        logger.info(
+            "loading Docker image bundle",
+            extra={"fields": {"imageBundle": str(image_bundle)}},
+        )
         run(["docker", "load", "-i", str(image_bundle)])
         loaded = True
     if loaded:
-        print("Bundled Docker images are loaded.")
+        logger.info("bundled Docker images are loaded")
     else:
         raise GuestDependencyError(
             f"No Docker image bundles found under {image_dir}",
@@ -149,7 +159,7 @@ def start_optional_testkit() -> None:
     runtime_config = load_config(DEPLOY_DIR / RuntimeFileName.RUNTIME_CONFIG.value)
     if not runtime_config.testkit_enabled:
         return
-    print("Scheduling optional TestKit provisioning via systemd.")
+    logger.info("scheduling optional TestKit provisioning via systemd")
     systemctl("reset-failed", RuntimeService.TESTKIT.value, check=False)
     result = systemctl(
         "restart",
@@ -158,11 +168,14 @@ def start_optional_testkit() -> None:
         check=False,
     )
     if result.returncode != 0:
-        print("warning: failed to schedule optional TestKit provisioning")
+        logger.warning("failed to schedule optional TestKit provisioning")
 
 
 def collect_guest_observability(phase: ObservationPhase) -> None:
     try:
         write_guest_observability_snapshot(phase)
     except Exception as error:
-        print(f"warning: guest observability snapshot failed: {phase}: {error}")
+        logger.warning(
+            "guest observability snapshot failed",
+            extra={"fields": {"phase": phase.value, "error": str(error)}},
+        )
