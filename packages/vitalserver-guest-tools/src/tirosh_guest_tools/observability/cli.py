@@ -2,11 +2,9 @@ from __future__ import annotations
 
 import argparse
 
-from tirosh_guest_tools.observability.collectors import (
-    collect_snapshot,
-    collect_text_report,
+from tirosh_guest_tools.application.observability import (
+    write_guest_observability_snapshot,
 )
-from tirosh_guest_tools.observability.writer import write_oneshot_snapshot
 
 
 def main() -> int:
@@ -16,8 +14,7 @@ def main() -> int:
     parser.add_argument("phase", nargs="?", default="manual")
     args = parser.parse_args()
 
-    snapshot = collect_snapshot(phase=args.phase, detail="oneshot")
-    write_oneshot_snapshot(args.phase, snapshot, collect_text_report(snapshot))
+    write_guest_observability_snapshot(args.phase)
     return 0
 
 

@@ -2,14 +2,11 @@ from __future__ import annotations
 
 import argparse
 import time
-import traceback
 
-from tirosh_guest_tools.observability.collectors import (
-    OBSERVABILITY_DIR,
-    collect_snapshot,
-    utc_now,
+from tirosh_guest_tools.application.observability import (
+    record_daemon_error,
+    write_daemon_observability_snapshot,
 )
-from tirosh_guest_tools.observability.writer import append_jsonl, write_daemon_snapshot
 from tirosh_guest_tools.settings import SETTINGS
 
 
@@ -25,20 +22,9 @@ def main() -> int:
 
     while True:
         try:
-            write_daemon_snapshot(collect_snapshot(detail="daemon"))
+            write_daemon_observability_snapshot()
         except Exception as error:
-            OBSERVABILITY_DIR.mkdir(parents=True, exist_ok=True)
-            message = {
-                "schemaVersion": 1,
-                "type": "daemon-error",
-                "observedAt": utc_now(),
-                "message": str(error),
-                "traceback": traceback.format_exc(),
-            }
-            append_jsonl(OBSERVABILITY_DIR / "events.jsonl", message)
-            daemon_log = OBSERVABILITY_DIR / "daemon.log"
-            with daemon_log.open("a", encoding="utf-8") as handle:
-                handle.write(f"{message['observedAt']} daemon-error {error}\n")
+            record_daemon_error(error)
         if args.once:
             return 0
         time.sleep(max(args.interval, 1.0))

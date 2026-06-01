@@ -1,0 +1,111 @@
+from __future__ import annotations
+
+from tirosh_guest_tools.application.compose import run_compose_action
+from tirosh_guest_tools.application.runtime_state import write_current_state
+from tirosh_guest_tools.common import (
+    PROJECT_NAME,
+    RUNTIME_DIR,
+    Tee,
+    compose_command,
+    mount_runtime_share,
+    request_id_from,
+    run,
+    utc_now,
+    write_json,
+)
+from tirosh_guest_tools.domain.operations import (
+    GuestOperationResult,
+    OperationStatus,
+)
+
+REQUEST_FILE = RUNTIME_DIR / "repair-datastore.request"
+RESULT_FILE = RUNTIME_DIR / "repair-datastore-result.json"
+LOG_FILE = RUNTIME_DIR / "repair-datastore.log"
+REDIS_VOLUME = f"{PROJECT_NAME}_redis-data"
+
+
+def run_repair_datastore() -> None:
+    mount_runtime_share()
+    with Tee(LOG_FILE) as log:
+        log.write("datastore repair started")
+        if not REQUEST_FILE.is_file():
+            log.write("request file is missing; exiting")
+            write_result("", OperationStatus.SKIPPED, "request file is missing")
+            return
+        request_id = request_id_from(REQUEST_FILE)
+        write_result(
+            request_id,
+            OperationStatus.RUNNING,
+            "Datastore repair is running.",
+        )
+        try:
+            restart_runtime_compose()
+        except Exception:
+            REQUEST_FILE.unlink(missing_ok=True)
+            write_result(
+                request_id,
+                OperationStatus.FAILED,
+                "Datastore repair failed. See repair-datastore.log.",
+            )
+            log.write("datastore repair failed")
+            raise
+        REQUEST_FILE.unlink(missing_ok=True)
+        write_result(
+            request_id,
+            OperationStatus.COMPLETED,
+            "Redis append-only file checked and VitalServer services restarted.",
+        )
+        log.write("datastore repair completed")
+
+
+def write_result(request_id: str, status: OperationStatus, message: str) -> None:
+    write_json(
+        RESULT_FILE,
+        GuestOperationResult(
+            operation="repair-datastore",
+            request_id=request_id,
+            schema_version=2,
+            message=message,
+            status=status,
+            updated_at=utc_now(),
+        ).as_json(),
+    )
+
+
+def restart_runtime_compose() -> None:
+    run(
+        compose_command(["stop", "app", "audit-proxy", "redis-ui", "edge", "redis"]),
+        check=False,
+    )
+    repair_appendonly_file()
+    run_compose_action("up")
+    write_current_state()
+
+
+def repair_appendonly_file() -> None:
+    if run(["docker", "volume", "inspect", REDIS_VOLUME], check=False).returncode != 0:
+        print(f"redis volume does not exist: {REDIS_VOLUME}")
+        return
+    run(
+        [
+            "docker",
+            "run",
+            "--rm",
+            "-v",
+            f"{REDIS_VOLUME}:/data",
+            "redis:3.2.12-alpine",
+            "sh",
+            "-c",
+            (
+                "set -eu; "
+                "if [ ! -f /data/appendonly.aof ]; then "
+                "echo 'appendonly.aof does not exist; nothing to repair'; exit 0; fi; "
+                "if redis-check-aof /data/appendonly.aof; then "
+                "echo 'appendonly.aof is valid'; exit 0; fi; "
+                "backup=\"/data/appendonly.aof.bak.$(date +%Y%m%d%H%M%S)\"; "
+                "cp /data/appendonly.aof \"$backup\"; "
+                "printf 'created backup: %s\\n' \"$backup\"; "
+                "printf 'y\\n' | redis-check-aof --fix /data/appendonly.aof"
+            ),
+        ]
+    )

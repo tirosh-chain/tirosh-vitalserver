@@ -188,6 +188,17 @@ bootstrap 순서:
 7. bundled Docker image를 load한 뒤 `docker compose up -d`로 VitalServer/Redis/UI/edge nginx 실행
 8. runtime state에 VM IP와 guest HTTP readiness 기록
 
+Guest tools package는 CLI를 application usecase의 inbound adapter로만 둡니다.
+
+```text
+tirosh_guest_tools/domain       # operation request/result 같은 domain 의미
+tirosh_guest_tools/application  # compose, update, repair, backup, observability usecase
+tirosh_guest_tools/*            # console entrypoint와 Linux integration wrapper
+```
+
+CLI 외의 호출자도 `application` usecase를 직접 호출할 수 있어야 합니다. 따라서 package 내부에서는
+다른 CLI `main()`을 `sys.argv` 변경으로 재호출하지 않습니다.
+
 ## macOS Data Sharing
 
 Redis data는 VM 내부 Docker volume에 둡니다. VitalServer가 저장하는 `.vital` 파일은 macOS에서도 확인/백업할 수 있어야 하므로 host shared directory로 분리합니다.

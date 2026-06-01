@@ -37,9 +37,9 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
     }
 
     func testGuestCommandFailuresClearRequestFilesAfterWritingFailureResult() throws {
-        let activation = try readGuestToolsFile("update/activate.py")
-        let shutdown = try readGuestToolsFile("update/prepare_shutdown.py")
-        let repair = try readGuestToolsFile("redis/repair.py")
+        let activation = try readGuestToolsFile("application/update_activation.py")
+        let shutdown = try readGuestToolsFile("application/update_shutdown.py")
+        let repair = try readGuestToolsFile("application/redis_repair.py")
 
         XCTAssertTrue(activation.contains("REQUEST_FILE.unlink(missing_ok=True)"))
         XCTAssertTrue(shutdown.contains("write_result"))
@@ -60,12 +60,14 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
         XCTAssertTrue(bootstrap.contains("tirosh-guest-observed"))
         XCTAssertTrue(bootstrap.contains("tirosh-runtime-state"))
         XCTAssertTrue(bootstrap.contains("tirosh-vitalserver-activate-update"))
-        XCTAssertTrue(try readGuestToolsFile("update/activate.py").contains("activation-pre"))
-        XCTAssertTrue(try readGuestToolsFile("update/activate.py").contains("activation-post"))
-        XCTAssertTrue(try readGuestToolsFile("update/activate.py").contains("activation-failure"))
-        XCTAssertTrue(try readGuestToolsFile("update/prepare_shutdown.py").contains("shutdown-pre-stop"))
-        XCTAssertTrue(try readGuestToolsFile("update/prepare_shutdown.py").contains("shutdown-post-sync"))
-        XCTAssertTrue(try readGuestToolsFile("update/prepare_shutdown.py").contains("shutdown-failure"))
+        let activationUseCase = try readGuestToolsFile("application/update_activation.py")
+        let shutdownUseCase = try readGuestToolsFile("application/update_shutdown.py")
+        XCTAssertTrue(activationUseCase.contains("activation-pre"))
+        XCTAssertTrue(activationUseCase.contains("activation-post"))
+        XCTAssertTrue(activationUseCase.contains("activation-failure"))
+        XCTAssertTrue(shutdownUseCase.contains("shutdown-pre-stop"))
+        XCTAssertTrue(shutdownUseCase.contains("shutdown-post-sync"))
+        XCTAssertTrue(shutdownUseCase.contains("shutdown-failure"))
         let wrapper = try readGuestSupportFile("bin/tirosh-vitalserver-compose")
         let service = try readGuestSupportFile("systemd/tirosh-vitalserver-compose.service")
         XCTAssertTrue(wrapper.contains("exec /opt/tirosh/guest-tools/venv/bin/"))

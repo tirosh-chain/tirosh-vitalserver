@@ -25,7 +25,41 @@ def main() -> int:
     parser.add_argument("swagger_ui_http", nargs="?")
     args = parser.parse_args()
 
-    document = {
+    write_runtime_state(
+        args.runtime_state,
+        guest_http=args.guest_http,
+        redis_ui_http=args.redis_ui_http,
+        swagger_ui_http=args.swagger_ui_http,
+    )
+    return 0
+
+
+def write_runtime_state(
+    runtime_state: Path,
+    *,
+    guest_http: str | None = None,
+    redis_ui_http: str | None = None,
+    swagger_ui_http: str | None = None,
+) -> None:
+    document = runtime_state_document(
+        guest_http=guest_http,
+        redis_ui_http=redis_ui_http,
+        swagger_ui_http=swagger_ui_http,
+    )
+    runtime_state.parent.mkdir(parents=True, exist_ok=True)
+    runtime_state.write_text(
+        json.dumps(document, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+
+def runtime_state_document(
+    *,
+    guest_http: str | None = None,
+    redis_ui_http: str | None = None,
+    swagger_ui_http: str | None = None,
+) -> dict[str, object]:
+    return {
         "capabilities": {
             "activateUpdate": True,
             "prepareUpdateShutdown": True,
@@ -37,21 +71,15 @@ def main() -> int:
         "bootID": boot_id(),
         "containerServices": compose_services(),
         "cpuUsagePercent": cpu_usage_percent(),
-        "guestHTTP": optional_value(args.guest_http),
+        "guestHTTP": optional_value(guest_http),
         "memory": memory_usage(),
-        "redisUIHTTP": optional_value(args.redis_ui_http),
+        "redisUIHTTP": optional_value(redis_ui_http),
         "systemDisk": disk_usage("/"),
-        "swaggerUIHTTP": optional_value(args.swagger_ui_http),
+        "swaggerUIHTTP": optional_value(swagger_ui_http),
         "updatedAt": datetime.now(UTC).isoformat(),
         "vitalFilesDisk": disk_usage("/mnt/tirosh-vital-files"),
         "vitalDBObservation": vitaldb_observation(),
     }
-    args.runtime_state.parent.mkdir(parents=True, exist_ok=True)
-    args.runtime_state.write_text(
-        json.dumps(document, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
-    return 0
 
 
 def optional_value(value: str | None) -> str | None:
