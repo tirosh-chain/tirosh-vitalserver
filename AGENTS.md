@@ -8,6 +8,8 @@ State must not be guessed. The owner of a state must provide it explicitly, and 
 
 The architecture must make domain meaning, role boundaries, dependency direction, and layer responsibility easy to read.
 
+Host owns runtime/process/filesystem state. Guest consumes explicit Host contracts only.
+
 ## Repository Policy
 
 This repository is a monorepo. Changes must respect package boundaries and avoid unrelated cross-package edits.
@@ -21,6 +23,8 @@ Prefer one focused change per commit. When code changes introduce or clarify an 
 Fallback must not create, infer, or hide state.
 
 Do not use fallback at contract, repository, domain, recovery, update, API command, or observability boundaries. Missing, invalid, failed, stale, and zero/empty must remain distinct.
+
+Absence, decode failure, permission failure, and dependency failure must not become empty/default success.
 
 Allowed fallback is limited to display labels, input presets, documented config defaults, explicit migrations, and reported degraded operation.
 
@@ -42,7 +46,7 @@ Stateful code must declare owned state, expose it through explicit contracts, an
 - Let each layer do its own job.
 - Let state owners provide state through explicit contracts.
 - Make failures visible and typed enough to act on.
-- Use TDD or focused tests when changing domain behavior, contracts, or update flow.
+- Use TDD or focused tests when changing domain behavior, contracts, parsing/decoding, recovery, settings, or update flow.
 - Prefer deleting fallback logic over preserving unreleased legacy behavior.
 - Record important failure patterns in troubleshooting docs.
 
