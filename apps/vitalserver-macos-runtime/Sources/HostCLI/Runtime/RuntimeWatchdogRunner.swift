@@ -10,6 +10,7 @@ struct RuntimeWatchdogActions {
     let automaticRecoveryEnabled: () -> Bool
     let restartVMRuntime: () throws -> Void
     let restartService: (RuntimeManagedService) -> Void
+    let markVMLifecycleRunning: (RuntimeVMLifecycleDocument) throws -> Void
     let sleep: (TimeInterval) -> Void
     let writeObservedStatus: (RuntimeStatusLevel, RuntimeOperation, String, RuntimeHealthSnapshot) throws -> Void
     let recordObservedEvent: (RuntimeStatusLevel, RuntimeOperation, String, RuntimeHealthSnapshot, RuntimeEventType) -> Void
@@ -41,7 +42,8 @@ struct RuntimeWatchdogRunner {
 
         let initial = actions.healthSnapshot()
         if RuntimeHealthSnapshotPolicy.isHealthy(initial) {
-            try actions.writeObservedStatus(.healthy, .watchdog, "runtime watchdog passed", initial)
+            let finalized = completeHealthyVMLifecycleIfNeeded(initial)
+            try actions.writeObservedStatus(.healthy, .watchdog, "runtime watchdog passed", finalized)
             print("watchdog: ok")
             return
         }
@@ -64,7 +66,8 @@ struct RuntimeWatchdogRunner {
 
         switch decision {
         case .healthy:
-            try actions.writeObservedStatus(.healthy, .watchdog, "runtime watchdog passed", initial)
+            let finalized = completeHealthyVMLifecycleIfNeeded(initial)
+            try actions.writeObservedStatus(.healthy, .watchdog, "runtime watchdog passed", finalized)
             print("watchdog: ok")
             return
 
@@ -122,6 +125,26 @@ struct RuntimeWatchdogRunner {
             .recoverySuppressed
         )
         print("watchdog: suppressed")
+    }
+
+    private func completeHealthyVMLifecycleIfNeeded(_ snapshot: RuntimeHealthSnapshot) -> RuntimeHealthSnapshot {
+        guard let lifecycle = snapshot.vmLifecycle,
+              lifecycle.state == .starting || lifecycle.state == .bootstrapping
+        else {
+            return snapshot
+        }
+        do {
+            try actions.markVMLifecycleRunning(lifecycle)
+            actions.recordLifecycleEvent(
+                .watchdog,
+                "VM lifecycle marked running after healthy runtime observation",
+                .statusChanged
+            )
+            return actions.healthSnapshot()
+        } catch {
+            log("watchdog failed to mark VM lifecycle running error=\(error.localizedDescription)")
+            return snapshot
+        }
     }
 
     private func deferRecovery(reason: String, snapshot: RuntimeHealthSnapshot) throws {

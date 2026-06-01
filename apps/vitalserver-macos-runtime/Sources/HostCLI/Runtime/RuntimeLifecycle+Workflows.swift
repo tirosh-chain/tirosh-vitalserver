@@ -167,6 +167,18 @@ extension RuntimeLifecycle {
                 restartService: { service in
                     restartOrStartLaunchdService(service)
                 },
+                markVMLifecycleRunning: { lifecycle in
+                    let timestamp = clock.now
+                    try RuntimeVMLifecycleStore(
+                        url: installedPaths.vmLifecycle,
+                        fileStore: fileStore,
+                        now: { timestamp }
+                    ).write(
+                        state: .running,
+                        operation: lifecycle.operation,
+                        message: "Guest runtime reported healthy"
+                    )
+                },
                 sleep: { interval in
                     sleeper.sleep(forTimeInterval: interval)
                 },

@@ -156,6 +156,7 @@ final class RuntimeChaosScenarioTests: XCTestCase {
         let item = try XCTUnwrap(archivedManifest?.supplementalItems.first)
         XCTAssertTrue(item.sourcePresent)
         XCTAssertFalse(item.included)
+        XCTAssertEqual(item.status, "failed")
         XCTAssertNotNil(item.error)
     }
 

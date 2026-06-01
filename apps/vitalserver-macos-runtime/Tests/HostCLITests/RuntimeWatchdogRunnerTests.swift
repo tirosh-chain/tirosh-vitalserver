@@ -30,6 +30,36 @@ final class RuntimeWatchdogRunnerTests: XCTestCase {
         XCTAssertEqual(harness.sleepCalls, [])
     }
 
+    func testHealthyRuntimeMarksBootstrappingVMLifecycleRunningBeforeStatusWrite() throws {
+        let lifecycle = RuntimeVMLifecycleDocument(
+            state: .bootstrapping,
+            operation: .startServices,
+            startedAt: "2026-05-31T00:00:00Z",
+            updatedAt: "2026-05-31T00:00:01Z",
+            deadlineAt: "2026-05-31T00:10:00Z"
+        )
+        let harness = WatchdogHarness(snapshots: [
+            healthSnapshot(vmLifecycle: lifecycle, vmState: .starting),
+            healthSnapshot(
+                vmLifecycle: RuntimeVMLifecycleDocument(
+                    state: .running,
+                    operation: .startServices,
+                    startedAt: "2026-05-31T00:00:00Z",
+                    updatedAt: "2026-05-31T00:02:00Z"
+                )
+            ),
+        ])
+
+        try harness.runner.run()
+
+        XCTAssertEqual(harness.healthCalls, 2)
+        XCTAssertEqual(harness.runningLifecycleStates, [.bootstrapping])
+        XCTAssertEqual(harness.lifecycleEvents.map(\.eventType), [.statusChanged])
+        XCTAssertEqual(harness.writtenStatuses.map(\.status), [.healthy])
+        XCTAssertEqual(harness.observedStatuses.last?.snapshot.vmLifecycle?.state, .running)
+        XCTAssertEqual(harness.observedStatuses.last?.snapshot.vmState, .running)
+    }
+
     func testDisabledAutoRecoveryWritesDegradedStatusWithoutRestart() throws {
         let harness = WatchdogHarness(
             automaticRecoveryEnabled: false,
@@ -137,6 +167,7 @@ private final class WatchdogHarness {
     var vmRuntimeRestartCalls = 0
     var restartedServices: [RuntimeManagedService] = []
     var sleepCalls: [TimeInterval] = []
+    var runningLifecycleStates: [RuntimeVMLifecycleState] = []
     var writtenStatuses: [(status: RuntimeStatusLevel, operation: RuntimeOperation, message: String)] = []
     var observedStatuses: [
         (status: RuntimeStatusLevel, operation: RuntimeOperation, message: String, snapshot: RuntimeHealthSnapshot)
@@ -192,6 +223,9 @@ private final class WatchdogHarness {
                 },
                 restartService: { label in
                     self.restartedServices.append(label)
+                },
+                markVMLifecycleRunning: { lifecycle in
+                    self.runningLifecycleStates.append(lifecycle.state)
                 },
                 sleep: { interval in
                     self.sleepCalls.append(interval)
