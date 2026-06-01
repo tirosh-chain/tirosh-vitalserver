@@ -3,7 +3,7 @@
 > ID: TS-040  
 > Category: Runtime health / Observability  
 > Owner: macOS runtime / HostCLI / MacHostRuntimeAdapter  
-> Status: active
+> Status: implemented
 
 ## Symptoms
 
@@ -74,3 +74,7 @@ jq '.supplementalItems[] | select(.included == false)' \
 - [TS-030 runtime state inference](030_runtime-state-inference.md)
 - [TS-032 macOS runtime explicit responsibility review](032_macos-runtime-explicit-responsibility-review.md)
 - [TS-039 AGENTS.md fallback audit](039_agents-compliance-fallback-audit.md)
+
+## Follow-up
+
+- 2026-06-01: hotfix에서 healthy runtime 관측 후 Host VM lifecycle을 `.running`으로 명시 전환하고, log export에 `diagnostics/runtime/vm-lifecycle.json`과 supplemental item `status`를 추가했습니다. Focused Swift tests와 build를 통과해 문서 상태를 `implemented`로 갱신했습니다.
