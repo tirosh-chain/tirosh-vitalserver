@@ -14,7 +14,7 @@
 
 ## Summary
 
-AGENTS.md 기준으로 monorepo 전반의 상태 추론, fallback, 실패 은폐 후보를 확장 감사한다.
+AGENTS.md 기준으로 runtime/control 관련 apps/packages의 상태 추론, fallback, 실패 은폐 후보를 확장 감사한다.
 
 이 TS는 즉시 코드 수정을 목표로 하지 않는다. 우선 발견된 후보를 명시적으로 등록하고, 이후 위험도와 소유 레이어에 따라 별도 수정 단위로 분해한다.
 
@@ -28,12 +28,15 @@ AGENTS.md 기준으로 monorepo 전반의 상태 추론, fallback, 실패 은폐
   - `packages/vitalserver-testkit`
   - `apps/vitaldb-observer`
   - `packages/vitalserver-devtools`
+  - 이 범위 밖의 apps/packages는 이번 pass에서 제외한다.
 - Baseline:
   - 직전 AGENTS.md 리뷰에서 30개 항목을 이미 확인했다.
   - 본 문서는 그 이후 추가로 추적할 후보를 등록한다.
+  - 기준 branch/commit과 기존 30개 항목의 원문은 후속 수정 전에 다시 확인한다.
 - Scale:
   - `apps` / `packages` 내 Swift, TypeScript, TSX, Python 파일 약 3,243개
   - 총 약 687,164 LOC
+  - 위 수치는 감사 당시 로컬 측정값이며, 재분류 전 같은 명령으로 재측정한다.
 
 ## Symptoms
 
@@ -62,7 +65,7 @@ AGENTS.md 기준으로 monorepo 전반의 상태 추론, fallback, 실패 은폐
 ## Audit Commands
 
 ```sh
-rg -n "??|try\\?|catch|return \\[\\]|return nil|Unknown|not reported|default|fallback|passthrough|optional" apps packages
+rg -n '\?\?|try\?|catch|return \[\]|return nil|Unknown|not reported|default|fallback|passthrough|optional' apps packages
 find apps packages -type f \( -name '*.swift' -o -name '*.ts' -o -name '*.tsx' -o -name '*.py' \) -print
 ```
 
@@ -380,7 +383,7 @@ find apps packages -type f \( -name '*.swift' -o -name '*.ts' -o -name '*.tsx' -
 | Class | Count | Candidate IDs | Meaning | First fix direction |
 |---|---:|---|---|---|
 | A. AGENTS.md 위반 가능성 높음 | 244 | 1-5, 8-10, 14-27, 31-49, 51-55, 57-87, 89-126, 129-132, 134-139, 141-147, 149-160, 162-170, 172-173, 175-182, 188, 190-192, 194-200, 209-215, 219-221, 226, 230, 232, 234-236, 238-239, 241-247, 249, 252-253, 256-265, 268-279, 281-300 | 상태 owner가 아닌 계층이 상태를 추론하거나, read/decode/permission/persistence 실패가 빈 값, `0`, `Unknown`, 성공 비슷한 결과로 축소될 수 있다. | typed result/contract로 분리한다. UI는 표시만 하고, Host/adapter/recovery 계층은 명시 상태만 소비하게 한다. |
-| B. 의도된 기본값으로 승격 가능 | 29 | 6-7, 11-13, 30, 184-187, 201-206, 222-225, 227-229, 231, 233, 237, 248, 250-251 | form preset, polling interval, command default, API limit 같은 값일 가능성이 있다. 기본값 자체는 허용될 수 있지만 owner, scope, mode가 명시되어야 한다. | default policy를 provider/API/config contract에 문서화하고 테스트한다. dev-only default는 production path에서 분리한다. |
+| B. 명시 기본값으로 유지 가능성 있음 | 29 | 6-7, 11-13, 30, 184-187, 201-206, 222-225, 227-229, 231, 233, 237, 248, 250-251 | form preset, polling interval, documented config default, API limit 같은 값일 가능성이 있다. API command 경계에서는 fallback이 아니라 명시 contract default일 때만 허용된다. | default owner, scope, mode를 provider/API/config contract에 문서화하고 테스트한다. dev-only default는 production path에서 분리한다. |
 | C. 표시 전용 fallback로 유지 가능 | 18 | 28-29, 50, 56, 133, 140, 148, 161, 171, 174, 183, 189, 193, 207-208, 216-218 | React key, selection 초기값, display label, formatting fallback처럼 domain state를 만들지 않는 경우일 수 있다. | upstream 상태가 explicit인지 확인한다. fallback 이름을 display policy로 한정하고 decision/input model에는 넣지 않는다. |
 | D. 삭제 또는 경계 재설계 후보 | 9 | 88, 127-128, 240, 254-255, 266-267, 280 | default password, optional provider, implicit unsupported route, optional command body, old observation fallback처럼 unreleased compatibility 또는 책임 경계 우회일 가능성이 높다. | 유지 사유가 없으면 삭제한다. 필요한 경우 명시 migration 또는 explicit unsupported/error contract로 바꾼다. |
 
@@ -394,7 +397,7 @@ find apps packages -type f \( -name '*.swift' -o -name '*.ts' -o -name '*.tsx' -
    - 1-5, 8-10, 14-27, 31-47, 131-164, 188, 190-200, 209-221, 226, 230, 232, 234-239
 4. P2: Swift presentation/display policy가 read model을 재구성하는 A/C 항목
    - 48-61, 62-70
-5. P2: 의도된 default로 남길 수 있으나 계약화가 필요한 B 항목
+5. P2: 명시 default로 남길 수 있으나 계약화가 필요한 B 항목
    - 6-7, 11-13, 30, 184-187, 201-206, 222-225, 227-229, 231, 233, 237, 248, 250-251
 
 ## Triage Direction
@@ -418,9 +421,11 @@ find apps packages -type f \( -name '*.swift' -o -name '*.ts' -o -name '*.tsx' -
 - Let provider contracts represent:
   - available value
   - missing provider state
+  - stale provider state
   - permission/read failure
   - decode/contract failure
   - unsupported feature
+  - observed zero/empty value
 - Keep UI as formatter only. It may choose labels, but it must not create runtime state.
 - Recovery planner must consume explicit lifecycle/health contracts, not infer state from probes alone.
 - If a fallback is retained for display only, name it as display fallback and keep it out of domain/read models.
