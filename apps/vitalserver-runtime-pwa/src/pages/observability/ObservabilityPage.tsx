@@ -51,6 +51,10 @@ export function ObservabilityPage() {
   const recorderSummary = overview?.vitalRecorder;
   const eventCount = eventQuery.data?.events?.length ?? 0;
   const dailyEventCount = dailyEventsQuery.data?.events?.length ?? 0;
+  const runtimeEvents = useMemo(
+    () => sortRuntimeEventsNewestFirst(eventQuery.data?.events ?? []),
+    [eventQuery.data?.events]
+  );
 
   return (
     <div className="page-stack">
@@ -182,7 +186,7 @@ export function ObservabilityPage() {
           <p className="empty-state">No runtime events were found for this period.</p>
         ) : (
           <div className="event-list">
-            {(eventQuery.data.events ?? []).map((event) => (
+            {runtimeEvents.map((event) => (
               <RuntimeEventItem key={event.id ?? event.timestamp} event={event} />
             ))}
           </div>
@@ -190,6 +194,32 @@ export function ObservabilityPage() {
       </Panel>
     </div>
   );
+}
+
+function sortRuntimeEventsNewestFirst(
+  events: RuntimeEventDocument[]
+): RuntimeEventDocument[] {
+  return events
+    .map((event, index) => ({
+      event,
+      index,
+      timestamp: Date.parse(event.timestamp ?? "")
+    }))
+    .sort((left, right) => {
+      const leftHasTimestamp = Number.isFinite(left.timestamp);
+      const rightHasTimestamp = Number.isFinite(right.timestamp);
+      if (leftHasTimestamp && rightHasTimestamp) {
+        return right.timestamp - left.timestamp;
+      }
+      if (leftHasTimestamp) {
+        return -1;
+      }
+      if (rightHasTimestamp) {
+        return 1;
+      }
+      return left.index - right.index;
+    })
+    .map(({ event }) => event);
 }
 
 function AnomalyItem({ anomaly }: { anomaly: VitalDBAnomalyObservation }) {

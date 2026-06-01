@@ -5,6 +5,7 @@ export const runtimeEventTypeValues = [
   "recovery-triggered",
   "recovery-completed",
   "recovery-suppressed",
+  "recovery-deferred",
   "domain-error-observed",
   "vm-error-observed",
   "container-observed",

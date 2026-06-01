@@ -202,9 +202,17 @@ describe("runtime console pages", () => {
     expect(screen.getByText("duplicate-ip")).toBeInTheDocument();
     expect(screen.getByText("10.0.0.10")).toBeInTheDocument();
     expect(screen.getByText("runtime updated")).toBeInTheDocument();
+    expect(screen.getByText("runtime recovered")).toBeInTheDocument();
+    expect(
+      screen.getByText("runtime recovered").compareDocumentPosition(
+        screen.getByText("runtime updated")
+      ) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText("Period"), { target: { value: "7d" } });
-    fireEvent.change(screen.getByLabelText("Type"), { target: { value: "update" } });
+    fireEvent.change(screen.getByLabelText("Type"), {
+      target: { value: "recovery-deferred" }
+    });
     fireEvent.change(screen.getByLabelText("Limit"), { target: { value: "100" } });
 
     expect(hooks.useRuntimeEvents).toHaveBeenCalled();
@@ -596,16 +604,26 @@ function events() {
       {
         id: "event-1",
         timestamp: "2026-05-31T01:00:00Z",
-        eventType: "update",
+        eventType: "status-changed",
         status: "healthy",
         operation: "apply",
         source: "runtime",
         message: "runtime updated",
         failureReasons: []
+      },
+      {
+        id: "event-2",
+        timestamp: "2026-05-31T01:05:00Z",
+        eventType: "recovery-deferred",
+        status: "degraded",
+        operation: "watchdog",
+        source: "runtime",
+        message: "runtime recovered",
+        failureReasons: []
       }
     ],
     nextCursor: null,
-    matchingCount: 1
+    matchingCount: 2
   };
 }
 
