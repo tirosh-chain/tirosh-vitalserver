@@ -68,6 +68,10 @@ extension RuntimeLifecycle {
         try serviceController.stopRuntimeServices()
     }
 
+    func stopRuntimeServicesAfterGuestPoweroff() throws {
+        try serviceController.stopRuntimeServicesAfterGuestPoweroff()
+    }
+
     func startRuntimeServices(restartVM: Bool, restartProxy: Bool, restartWatchdog: Bool) throws {
         if restartVM, preventSystemSleepEnabled() {
             startLaunchdService(.sleepPrevention)

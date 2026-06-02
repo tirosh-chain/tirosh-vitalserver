@@ -75,6 +75,7 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
         XCTAssertTrue(activationUseCase.contains("ObservationPhase.ACTIVATION_FAILURE"))
         XCTAssertTrue(shutdownUseCase.contains("ObservationPhase.SHUTDOWN_PRE_STOP"))
         XCTAssertTrue(shutdownUseCase.contains("ObservationPhase.SHUTDOWN_POST_SYNC"))
+        XCTAssertTrue(shutdownUseCase.contains("ObservationPhase.SHUTDOWN_POWEROFF_REQUESTED"))
         XCTAssertTrue(shutdownUseCase.contains("ObservationPhase.SHUTDOWN_FAILURE"))
         let wrapper = try readGuestSupportFile("bin/tirosh-vitalserver-compose")
         let service = try readGuestSupportFile("systemd/tirosh-vitalserver-compose.service")

@@ -20,6 +20,7 @@ struct RuntimeBundleWorkflowOperations {
     let rollback: (URL?) throws -> Void
     let startRuntimeServices: (RuntimeServiceRestartPolicy) throws -> Void
     let stopRuntimeServices: () throws -> Void
+    let stopRuntimeServicesAfterGuestPoweroff: () throws -> Void
     let prepareGuestShutdownForUpdate: (UpdateBundleManifest) throws -> Void
     let clearGuestShutdownPreparation: () throws -> Void
     let isLaunchdLoaded: (RuntimeManagedService) -> Bool
@@ -325,6 +326,7 @@ struct RuntimeBundleWorkflow {
     ) throws {
         try RuntimeApplyBundleStepExecutor(
             stopRuntimeServices: operations.stopRuntimeServices,
+            stopRuntimeServicesAfterGuestPoweroff: operations.stopRuntimeServicesAfterGuestPoweroff,
             prepareGuestShutdownForUpdate: operations.prepareGuestShutdownForUpdate,
             clearGuestShutdownPreparation: operations.clearGuestShutdownPreparation,
             createDirectory: { url, withIntermediateDirectories in

@@ -48,11 +48,60 @@ public enum GuestShutdownStatus: Codable, Equatable, Sendable {
     }
 }
 
+public enum GuestShutdownPhase: Codable, Equatable, Sendable {
+    case preparing
+    case prepared
+    case poweroffRequested
+    case poweroffFailed
+    case unknown(String)
+
+    public init(rawValue: String) {
+        switch rawValue {
+        case "preparing":
+            self = .preparing
+        case "prepared":
+            self = .prepared
+        case "poweroff-requested":
+            self = .poweroffRequested
+        case "poweroff-failed":
+            self = .poweroffFailed
+        default:
+            self = .unknown(rawValue)
+        }
+    }
+
+    public var rawValue: String {
+        switch self {
+        case .preparing:
+            return "preparing"
+        case .prepared:
+            return "prepared"
+        case .poweroffRequested:
+            return "poweroff-requested"
+        case .poweroffFailed:
+            return "poweroff-failed"
+        case .unknown(let value):
+            return value
+        }
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        self.init(rawValue: try container.decode(String.self))
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
+}
+
 public struct GuestUpdateShutdownResultDocument: Codable, Equatable, Sendable {
     public let schemaVersion: Int?
     public let requestId: String?
     public let operation: RuntimeOperation?
     public let status: GuestShutdownStatus
+    public let shutdownPhase: GuestShutdownPhase?
     public let message: String?
     public let step: String?
     public let reasonCodes: [String]?
@@ -64,6 +113,7 @@ public struct GuestUpdateShutdownResultDocument: Codable, Equatable, Sendable {
         requestId: String? = nil,
         operation: RuntimeOperation? = nil,
         status: GuestShutdownStatus,
+        shutdownPhase: GuestShutdownPhase? = nil,
         message: String?,
         step: String? = nil,
         reasonCodes: [String]? = nil,
@@ -74,6 +124,7 @@ public struct GuestUpdateShutdownResultDocument: Codable, Equatable, Sendable {
         self.requestId = requestId
         self.operation = operation
         self.status = status
+        self.shutdownPhase = shutdownPhase
         self.message = message
         self.step = step
         self.reasonCodes = reasonCodes

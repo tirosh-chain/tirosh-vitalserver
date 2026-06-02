@@ -4,6 +4,7 @@ import Contracts
 
 struct RuntimeApplyBundleStepExecutor {
     var stopRuntimeServices: () throws -> Void
+    var stopRuntimeServicesAfterGuestPoweroff: () throws -> Void
     var prepareGuestShutdownForUpdate: (UpdateBundleManifest) throws -> Void
     var clearGuestShutdownPreparation: () throws -> Void
     var createDirectory: (URL, Bool) throws -> Void
@@ -29,7 +30,7 @@ struct RuntimeApplyBundleStepExecutor {
                 try prepareGuestShutdownForUpdate(preflight.manifest)
                 do {
                     defer { clearGuestShutdownPreparationAfterRuntimeStop() }
-                    try stopRuntimeServices()
+                    try stopRuntimeServicesAfterGuestPoweroff()
                 }
                 return
             }

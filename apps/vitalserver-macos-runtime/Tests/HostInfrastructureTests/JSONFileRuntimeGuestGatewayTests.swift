@@ -91,10 +91,11 @@ final class JSONFileRuntimeGuestGatewayTests: XCTestCase {
         try harness.writeJSON(
             """
             {
-              "schemaVersion": 1,
+              "schemaVersion": 2,
               "requestId": "shutdown-1",
               "operation": "prepare-update-shutdown",
               "status": "ready",
+              "shutdownPhase": "poweroff-requested",
               "message": "ready",
               "redisBackupPath": "/mnt/tirosh/backups/redis/redis.tar.gz",
               "updatedAt": "2026-05-21T12:34:57Z"
@@ -112,10 +113,11 @@ final class JSONFileRuntimeGuestGatewayTests: XCTestCase {
         guard case .loaded(let result) = harness.gateway.loadUpdateShutdownResultDocument() else {
             return XCTFail("Expected loaded update shutdown result")
         }
-        XCTAssertEqual(result.schemaVersion, 1)
+        XCTAssertEqual(result.schemaVersion, 2)
         XCTAssertEqual(result.requestId, "shutdown-1")
         XCTAssertEqual(result.operation, .prepareUpdateShutdown)
         XCTAssertEqual(result.status, .ready)
+        XCTAssertEqual(result.shutdownPhase, .poweroffRequested)
         XCTAssertEqual(result.redisBackupPath, "/mnt/tirosh/backups/redis/redis.tar.gz")
 
         try harness.cleanup()

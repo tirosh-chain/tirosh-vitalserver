@@ -9,7 +9,12 @@ final class RuntimeGuestShutdownRunnerTests: XCTestCase {
         var results: [RuntimeGuestDocumentLoadResult<GuestUpdateShutdownResultDocument>] = [
             .missing,
             .loaded(result(status: .running, requestId: "request-1", message: "stopping")),
-            .loaded(result(status: .ready, requestId: "request-1", message: "ready")),
+            .loaded(result(
+                status: .ready,
+                requestId: "request-1",
+                message: "poweroff requested",
+                shutdownPhase: .poweroffRequested
+            )),
         ]
         let runner = makeRunner(
             events: events,
@@ -29,7 +34,7 @@ final class RuntimeGuestShutdownRunnerTests: XCTestCase {
             "progress:waiting for guest update shutdown worker",
             "sleep",
             "sleep",
-            "log:guest update shutdown result ready message=ready",
+            "log:guest update shutdown result ready message=poweroff requested",
             "log:guest update shutdown ready version=1.2.3",
         ])
     }
@@ -107,13 +112,15 @@ final class RuntimeGuestShutdownRunnerTests: XCTestCase {
     private func result(
         status: GuestShutdownStatus,
         requestId: String,
-        message: String
+        message: String,
+        shutdownPhase: GuestShutdownPhase? = nil
     ) -> GuestUpdateShutdownResultDocument {
         GuestUpdateShutdownResultDocument(
             schemaVersion: 1,
             requestId: requestId,
             operation: .prepareUpdateShutdown,
             status: status,
+            shutdownPhase: shutdownPhase,
             message: message,
             updatedAt: "2026-05-22T00:00:00Z"
         )

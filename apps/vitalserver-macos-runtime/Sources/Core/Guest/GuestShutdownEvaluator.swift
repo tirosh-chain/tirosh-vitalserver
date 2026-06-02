@@ -39,13 +39,35 @@ public enum GuestShutdownEvaluator {
         case .pending:
             return .wait(message: result.message ?? "guest update shutdown pending")
         case .running:
+            if result.shutdownPhase == .poweroffFailed {
+                return .failed(message: result.message ?? "guest poweroff request failed")
+            }
             return .wait(message: result.message ?? "guest update shutdown running")
         case .ready:
-            return .ready(message: result.message ?? "guest update shutdown ready")
+            return evaluateReadyResult(result)
         case .failed:
             return .failed(message: result.message ?? "guest update shutdown failed")
         case .unknown(let status):
             return .failed(message: result.message ?? "unknown guest update shutdown status: \(status)")
+        }
+    }
+
+    private static func evaluateReadyResult(
+        _ result: GuestUpdateShutdownResultDocument
+    ) -> GuestShutdownDecision {
+        guard let phase = result.shutdownPhase else {
+            return .failed(message: "guest update shutdown ready result is missing shutdownPhase")
+        }
+
+        switch phase {
+        case .preparing, .prepared:
+            return .wait(message: result.message ?? "waiting for guest poweroff request")
+        case .poweroffRequested:
+            return .ready(message: result.message ?? "guest poweroff requested")
+        case .poweroffFailed:
+            return .failed(message: result.message ?? "guest poweroff request failed")
+        case .unknown(let phase):
+            return .failed(message: result.message ?? "unknown guest update shutdown phase: \(phase)")
         }
     }
 }

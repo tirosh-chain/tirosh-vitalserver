@@ -43,10 +43,18 @@ class ObservationPhase(StrEnum):
     ACTIVATION_FAILURE = "activation-failure"
     SHUTDOWN_PRE_STOP = "shutdown-pre-stop"
     SHUTDOWN_POST_SYNC = "shutdown-post-sync"
+    SHUTDOWN_POWEROFF_REQUESTED = "shutdown-poweroff-requested"
     SHUTDOWN_FAILURE = "shutdown-failure"
     REPAIR_PRE = "repair-pre"
     REPAIR_FAILURE = "repair-failure"
     MANUAL = "manual"
+
+
+class ShutdownPhase(StrEnum):
+    PREPARING = "preparing"
+    PREPARED = "prepared"
+    POWEROFF_REQUESTED = "poweroff-requested"
+    POWEROFF_FAILED = "poweroff-failed"
 
 
 class ReasonCode(StrEnum):
@@ -71,6 +79,7 @@ class GuestOperationResult:
     reason_codes: tuple[str, ...] = ()
     archive: str = ""
     redis_backup_path: str = ""
+    shutdown_phase: ShutdownPhase | None = None
 
     def as_json(self) -> dict[str, Any]:
         document: dict[str, Any] = {
@@ -89,4 +98,6 @@ class GuestOperationResult:
             document["archive"] = self.archive
         if self.redis_backup_path:
             document["redisBackupPath"] = self.redis_backup_path
+        if self.shutdown_phase is not None:
+            document["shutdownPhase"] = self.shutdown_phase.value
         return document

@@ -76,7 +76,9 @@ cat "/Library/Application Support/TiroshVitalServer/vm/run/vitalserver-vm.pid"
 
 ## Prevention
 
-2026-05-29 수정: `RuntimeServiceController.stopRuntimeServices()`가 stop 요청 직후 완료되지 않고, loaded launchd job이 사라질 때까지 기다립니다. VM service의 경우 launchd `bootout` 전에 `vitalserver-vm.pid`가 가리키는 process에 먼저 `SIGTERM`을 보내 Virtualization `requestStop()` 경로를 타게 하고, process가 종료되거나 pid file이 정리될 때까지 기다립니다. 2026-06-01 이후 VM stop 대기 시간은 최대 900초입니다.
+2026-05-29 수정: `RuntimeServiceController.stopRuntimeServices()`가 stop 요청 직후 완료되지 않고, loaded launchd job이 사라질 때까지 기다립니다. 일반 VM service stop의 경우 launchd `bootout` 전에 `vitalserver-vm.pid`가 가리키는 process에 먼저 `SIGTERM`을 보내 Virtualization `requestStop()` 경로를 타게 하고, process가 종료되거나 pid file이 정리될 때까지 기다립니다. 2026-06-01 이후 VM stop 대기 시간은 최대 900초입니다.
+
+2026-06-02 수정: update bundle 적용처럼 guest가 update shutdown contract를 처리하는 경로는 일반 VM stop과 다릅니다. Guest가 `shutdownPhase=poweroff-requested`를 명시적으로 쓴 뒤 host는 VM process 자연 종료를 기다리고, 그 다음 launchd job을 정리합니다. 이 경로에서는 host가 VM process에 직접 stop signal을 보내지 않습니다.
 
 추가 현장 로그에서 guest가 `poweroff.target` 이후 initrd shutdown으로 들어갔지만 `systemd-resolved` 프로세스를 계속 기다려 VM process가 330초 안에 끝나지 않는 케이스를 확인했습니다. 최신 host CLI는 guest shutdown을 log marker로 추정하거나 VM process를 자동 강제 종료하지 않습니다. VM process가 900초 안에 종료되지 않으면 update를 실패로 남기고, disk와 Redis backup 보존 여부를 확인한 뒤 수동 복구 절차를 선택합니다.
 

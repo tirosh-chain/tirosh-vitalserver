@@ -60,6 +60,13 @@ struct RuntimeLifecycleComposition {
                     clock: clock
                 )
             },
+            waitForVMProcessExitAfterGuestPoweroff: {
+                try waitForVMProcessExitAfterGuestPoweroff(
+                    paths: paths,
+                    fileStore: fileStore,
+                    clock: clock
+                )
+            },
             log: { message in
                 print("[\(ISO8601DateFormatter().string(from: clock.now))] \(message)")
             }
@@ -94,6 +101,22 @@ struct RuntimeLifecycleComposition {
             log: { message in log(message, clock: clock) }
         )
         log("VM process stopped before launchd unload", clock: clock)
+    }
+
+    private static func waitForVMProcessExitAfterGuestPoweroff(
+        paths: LauncherPaths,
+        fileStore: RuntimeFileStore,
+        clock: RuntimeClock
+    ) throws {
+        log("waiting for VM process to exit after guest poweroff request", clock: clock)
+        try ProcessState.waitUntilStopped(
+            pidFile: paths.pidFile,
+            fileStore: fileStore,
+            timeoutSeconds: Constants.Runtime.vmStopWaitTimeoutSeconds,
+            pollIntervalSeconds: Constants.Runtime.serviceStopPollIntervalSeconds,
+            log: { message in log(message, clock: clock) }
+        )
+        log("VM process exited after guest poweroff request", clock: clock)
     }
 
     private static func waitUntilServiceStops(

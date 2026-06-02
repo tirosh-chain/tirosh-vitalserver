@@ -191,6 +191,52 @@ final class RuntimeServiceControllerTests: XCTestCase {
         XCTAssertEqual(serviceManager.restartedLabels, [])
     }
 
+    func testStopRuntimeServicesAfterGuestPoweroffWaitsForVMExitBeforeUnloadingVM() throws {
+        let serviceManager = ServiceControllerServiceManagerSpy()
+        var loaded = Set([
+            RuntimeManagedService.watchdog,
+            .proxy,
+            .guestLogSync,
+            .vm,
+            .sleepPrevention,
+        ])
+        var events: [String] = []
+        serviceManager.onStop = { service in
+            events.append("stop:\(service.label)")
+            loaded.remove(service)
+        }
+        let controller = RuntimeServiceController(
+            serviceManager: serviceManager,
+            isLoaded: { loaded.contains($0) },
+            prepareForStop: { events.append("prepare:\($0.label)") },
+            waitUntilStopped: { events.append("wait:\($0.label)") },
+            waitForVMProcessExitAfterGuestPoweroff: {
+                events.append("wait-vm-process")
+            },
+            log: { _ in }
+        )
+
+        try controller.stopRuntimeServicesAfterGuestPoweroff()
+
+        XCTAssertEqual(events, [
+            "prepare:\(RuntimeManagedService.watchdog.label)",
+            "stop:\(RuntimeManagedService.watchdog.label)",
+            "wait:\(RuntimeManagedService.watchdog.label)",
+            "prepare:\(RuntimeManagedService.proxy.label)",
+            "stop:\(RuntimeManagedService.proxy.label)",
+            "wait:\(RuntimeManagedService.proxy.label)",
+            "wait-vm-process",
+            "prepare:\(RuntimeManagedService.guestLogSync.label)",
+            "stop:\(RuntimeManagedService.guestLogSync.label)",
+            "wait:\(RuntimeManagedService.guestLogSync.label)",
+            "stop:\(RuntimeManagedService.vm.label)",
+            "wait:\(RuntimeManagedService.vm.label)",
+            "prepare:\(RuntimeManagedService.sleepPrevention.label)",
+            "stop:\(RuntimeManagedService.sleepPrevention.label)",
+            "wait:\(RuntimeManagedService.sleepPrevention.label)",
+        ])
+    }
+
     func testSetStartOnBootStopsAtFirstFailure() {
         let serviceManager = ServiceControllerServiceManagerSpy()
         serviceManager.setEnabledResults[.proxy] = RuntimeProcessResult(

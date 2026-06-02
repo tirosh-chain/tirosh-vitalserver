@@ -18,6 +18,7 @@ from tirosh_guest_tools.domain.operations import (
     OperationName,
     OperationStatus,
     ReasonCode,
+    ShutdownPhase,
 )
 from tirosh_guest_tools.infrastructure.common import (
     RUNTIME_DIR,
@@ -33,6 +34,10 @@ REQUEST_FILE = RUNTIME_DIR / RuntimeFileName.PREPARE_UPDATE_SHUTDOWN_REQUEST.val
 RESULT_FILE = RUNTIME_DIR / RuntimeFileName.PREPARE_UPDATE_SHUTDOWN_RESULT.value
 LOG_FILE = RUNTIME_DIR / RuntimeFileName.PREPARE_UPDATE_SHUTDOWN_LOG.value
 logger = logging.getLogger(__name__)
+
+
+class GuestPoweroffRequestError(GuestDependencyError):
+    pass
 
 
 def run_prepare_update_shutdown() -> None:
@@ -53,6 +58,11 @@ def run_prepare_update_shutdown() -> None:
                 f"Guest update shutdown failed at: {error}",
                 step=OperationStatus.FAILED.value,
                 reason_codes=(ReasonCode.GUEST_UPDATE_SHUTDOWN_FAILED.value,),
+                shutdown_phase=(
+                    ShutdownPhase.POWEROFF_FAILED
+                    if isinstance(error, GuestPoweroffRequestError)
+                    else None
+                ),
             )
         REQUEST_FILE.unlink(missing_ok=True)
         raise
@@ -95,12 +105,22 @@ def run_prepare(context: PrepareUpdateShutdownContext) -> None:
     collect_guest_observability(ObservationPhase.SHUTDOWN_POST_SYNC)
     write_result(
         context,
-        OperationStatus.READY,
+        OperationStatus.RUNNING,
         "Guest services are stopped and filesystems are synced.",
-        step=OperationStatus.READY.value,
+        step=ShutdownPhase.PREPARED.value,
+        shutdown_phase=ShutdownPhase.PREPARED,
+    )
+    collect_guest_observability(ObservationPhase.SHUTDOWN_POWEROFF_REQUESTED)
+    write_result(
+        context,
+        OperationStatus.READY,
+        "Guest poweroff requested after services stopped and filesystems synced.",
+        step=ShutdownPhase.POWEROFF_REQUESTED.value,
+        shutdown_phase=ShutdownPhase.POWEROFF_REQUESTED,
     )
     REQUEST_FILE.unlink(missing_ok=True)
-    logger.info("guest update shutdown preparation ready")
+    logger.info("guest poweroff requested")
+    request_guest_poweroff()
 
 
 def collect_guest_observability(phase: ObservationPhase) -> None:
@@ -147,6 +167,17 @@ def stop_runtime_services() -> None:
     )
 
 
+def request_guest_poweroff() -> None:
+    result = systemctl("poweroff", check=False)
+    if result.returncode == 0:
+        return
+    stderr = (result.stderr or "").strip()
+    raise GuestPoweroffRequestError(
+        f"systemctl poweroff failed: {stderr or result.returncode}",
+        code="guest-poweroff-request-failed",
+    )
+
+
 def write_result(
     context: PrepareUpdateShutdownContext,
     status: OperationStatus,
@@ -154,18 +185,20 @@ def write_result(
     *,
     step: str = "",
     reason_codes: tuple[str, ...] = (),
+    shutdown_phase: ShutdownPhase | None = None,
 ) -> None:
     write_json(
         RESULT_FILE,
         GuestOperationResult(
             operation=OperationName.PREPARE_UPDATE_SHUTDOWN,
             request_id=context.request_id,
-            schema_version=1,
+            schema_version=2,
             message=message,
             status=status,
             updated_at=utc_now(),
             step=step,
             reason_codes=reason_codes,
             redis_backup_path=context.redis_backup_path,
+            shutdown_phase=shutdown_phase,
         ).as_json(),
     )

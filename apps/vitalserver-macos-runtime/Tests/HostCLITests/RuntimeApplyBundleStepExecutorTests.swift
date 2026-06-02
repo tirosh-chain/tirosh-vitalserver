@@ -27,6 +27,7 @@ final class RuntimeApplyBundleStepExecutorTests: XCTestCase {
 
         let executor = RuntimeApplyBundleStepExecutor(
             stopRuntimeServices: { events.append("stop") },
+            stopRuntimeServicesAfterGuestPoweroff: { events.append("stop-after-poweroff") },
             prepareGuestShutdownForUpdate: { manifest in
                 events.append("shutdown:\(manifest.version)")
             },
@@ -73,7 +74,7 @@ final class RuntimeApplyBundleStepExecutorTests: XCTestCase {
 
         XCTAssertEqual(events, [
             "shutdown:1.2.3",
-            "stop",
+            "stop-after-poweroff",
             "clear-shutdown",
             "mkdir:/runtime:true",
             "size:rootfs-base.raw.gz",
@@ -91,6 +92,7 @@ final class RuntimeApplyBundleStepExecutorTests: XCTestCase {
     func testRootfsReplacementStepSkipsWhenBundleDoesNotIncludeRootfs() throws {
         let executor = RuntimeApplyBundleStepExecutor(
             stopRuntimeServices: {},
+            stopRuntimeServicesAfterGuestPoweroff: {},
             prepareGuestShutdownForUpdate: { _ in },
             clearGuestShutdownPreparation: {},
             createDirectory: { _, _ in XCTFail("should not create rootfs directory") },
@@ -171,6 +173,7 @@ final class RuntimeApplyBundleStepExecutorTests: XCTestCase {
         var logs: [String] = []
         let executor = RuntimeApplyBundleStepExecutor(
             stopRuntimeServices: {},
+            stopRuntimeServicesAfterGuestPoweroff: {},
             prepareGuestShutdownForUpdate: { _ in },
             clearGuestShutdownPreparation: {
                 throw LauncherError.runtimeOperationFailed("clear failed")
@@ -207,6 +210,7 @@ final class RuntimeApplyBundleStepExecutorTests: XCTestCase {
     func testRejectsNonApplyBundleStep() {
         let executor = RuntimeApplyBundleStepExecutor(
             stopRuntimeServices: {},
+            stopRuntimeServicesAfterGuestPoweroff: {},
             prepareGuestShutdownForUpdate: { _ in },
             clearGuestShutdownPreparation: {},
             createDirectory: { _, _ in },
@@ -260,6 +264,7 @@ final class RuntimeApplyBundleStepExecutorTests: XCTestCase {
     ) -> RuntimeApplyBundleStepExecutor {
         RuntimeApplyBundleStepExecutor(
             stopRuntimeServices: {},
+            stopRuntimeServicesAfterGuestPoweroff: {},
             prepareGuestShutdownForUpdate: { _ in },
             clearGuestShutdownPreparation: {},
             createDirectory: { _, _ in },

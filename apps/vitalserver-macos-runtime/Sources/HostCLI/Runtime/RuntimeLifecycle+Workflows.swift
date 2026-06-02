@@ -267,6 +267,7 @@ extension RuntimeLifecycle {
                 },
                 startRuntimeServices: startRuntimeServices,
                 stopRuntimeServices: stopRuntimeServices,
+                stopRuntimeServicesAfterGuestPoweroff: stopRuntimeServicesAfterGuestPoweroff,
                 prepareGuestShutdownForUpdate: prepareGuestShutdownForUpdate,
                 clearGuestShutdownPreparation: {
                     try guestGateway.removeUpdateShutdownResult()

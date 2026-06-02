@@ -4,6 +4,7 @@ from tirosh_guest_tools.domain.operations import (
     GuestOperationResult,
     OperationName,
     OperationStatus,
+    ShutdownPhase,
 )
 
 
@@ -44,3 +45,19 @@ def test_guest_operation_result_reports_explicit_failure_details() -> None:
     assert document["step"] == OperationStatus.FAILED.value
     assert document["reasonCodes"] == ["guest-update-shutdown-failed"]
     assert document["redisBackupPath"] == "/mnt/tirosh/backups/redis/redis.tar.gz"
+
+
+def test_guest_operation_result_reports_explicit_shutdown_phase() -> None:
+    result = GuestOperationResult(
+        operation=OperationName.PREPARE_UPDATE_SHUTDOWN,
+        request_id="req-3",
+        schema_version=1,
+        status=OperationStatus.READY,
+        message="poweroff requested",
+        updated_at="2026-06-01T00:00:00Z",
+        shutdown_phase=ShutdownPhase.POWEROFF_REQUESTED,
+    )
+
+    document = result.as_json()
+
+    assert document["shutdownPhase"] == ShutdownPhase.POWEROFF_REQUESTED.value
