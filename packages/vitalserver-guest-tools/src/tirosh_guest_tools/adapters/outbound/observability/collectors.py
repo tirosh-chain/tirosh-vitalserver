@@ -5,18 +5,27 @@ import socket
 import time
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
 
 from tirosh_guest_tools.adapters.outbound.observability.commands import (
     CommandResult,
     run_command,
     run_shell,
 )
-from tirosh_guest_tools.adapters.outbound.runtime.probes import (
-    ProbeError,
-    append_probe_error,
-)
 from tirosh_guest_tools.contracts import RuntimeFileName, RuntimeService
+from tirosh_guest_tools.domain.observability import (
+    DiagnosticCommandObservation,
+    DockerObservation,
+    GuestObservabilitySnapshot,
+    MountObservation,
+    NetworkObservation,
+    ObservabilityCollectorError,
+    ObservationDetail,
+    RuntimeFileObservation,
+    RuntimeFileStatus,
+    StorageObservation,
+    SystemdObservation,
+    append_collector_error,
+)
 from tirosh_guest_tools.infrastructure.common import (
     DEPLOY_DIR,
     RUNTIME_DIR,
@@ -31,63 +40,39 @@ def collect_snapshot(
     *,
     phase: str | None = None,
     detail: str = "daemon",
-) -> dict[str, Any]:
-    errors: list[ProbeError] = []
+) -> GuestObservabilitySnapshot:
+    errors: list[ObservabilityCollectorError] = []
     observed_at = utc_now()
-    document: dict[str, Any] = {
-        "schemaVersion": 1,
-        "kind": "guest-observability",
-        "detail": detail,
-        "observedAt": observed_at,
-        "hostname": socket.gethostname(),
-        "bootID": read_text(Path("/proc/sys/kernel/random/boot_id"), errors),
-        "uptimeSeconds": read_uptime_seconds(errors),
-        "phase": phase,
-        "systemd": collect_systemd(),
-        "loadAverage": read_load_average(errors),
-        "memory": read_meminfo(errors),
-        "storage": collect_storage(errors),
-        "mounts": collect_mounts(errors),
-        "services": collect_services(),
-        "docker": collect_docker(),
-        "network": collect_network(),
-        "runtime": collect_runtime_files(errors),
-        "collectorErrors": [error.as_json() for error in errors],
-    }
-    if detail == "oneshot":
-        document["commands"] = collect_diagnostic_commands()
-    return document
+    detail_value = ObservationDetail(detail)
+    return GuestObservabilitySnapshot(
+        detail=detail_value,
+        observed_at=observed_at,
+        hostname=socket.gethostname(),
+        boot_id=read_text(Path("/proc/sys/kernel/random/boot_id"), errors),
+        uptime_seconds=read_uptime_seconds(errors),
+        phase=phase,
+        systemd=collect_systemd(),
+        load_average=read_load_average(errors),
+        memory=read_meminfo(errors),
+        storage=collect_storage(errors),
+        mounts=collect_mounts(errors),
+        services=collect_services(),
+        docker=collect_docker(),
+        network=collect_network(),
+        runtime=collect_runtime_files(errors),
+        collector_errors=tuple(errors),
+        commands=(
+            collect_diagnostic_commands()
+            if detail_value == ObservationDetail.ONESHOT
+            else {}
+        ),
+    )
 
 
-def collect_text_report(snapshot: dict[str, Any]) -> str:
-    lines = [
-        f"observedAt={snapshot.get('observedAt', '')}",
-        f"phase={snapshot.get('phase') or ''}",
-        f"bootID={snapshot.get('bootID') or ''}",
-        "",
-    ]
-    for name, value in snapshot.get("commands", {}).items():
-        if not isinstance(value, dict):
-            continue
-        lines.append(f"===== {name} =====")
-        lines.append(f"command={value.get('command', '')}")
-        lines.append(f"exitCode={value.get('exitCode')}")
-        lines.append(f"timedOut={value.get('timedOut')}")
-        stdout = str(value.get("stdout") or "")
-        stderr = str(value.get("stderr") or "")
-        if stdout:
-            lines.append(stdout.rstrip())
-        if stderr:
-            lines.append("--- stderr ---")
-            lines.append(stderr.rstrip())
-        lines.append("")
-    return "\n".join(lines).rstrip() + "\n"
-
-
-def collect_systemd() -> dict[str, Any]:
-    return {
-        "systemState": compact_output(run_command(["systemctl", "is-system-running"])),
-        "failedUnits": lines(
+def collect_systemd() -> SystemdObservation:
+    return SystemdObservation(
+        system_state=compact_output(run_command(["systemctl", "is-system-running"])),
+        failed_units=lines(
             run_command(
                 [
                     "systemctl",
@@ -98,10 +83,10 @@ def collect_systemd() -> dict[str, Any]:
                 ]
             )
         ),
-        "jobs": lines(
+        jobs=lines(
             run_command(["systemctl", "list-jobs", "--no-legend", "--no-pager"])
         ),
-    }
+    )
 
 
 def collect_services() -> dict[str, str]:
@@ -121,11 +106,13 @@ def collect_services() -> dict[str, str]:
     }
 
 
-def collect_docker() -> dict[str, Any]:
-    return {
-        "version": compact_output(run_command(["docker", "--version"])),
-        "composeVersion": compact_output(run_command(["docker", "compose", "version"])),
-        "containers": lines(
+def collect_docker() -> DockerObservation:
+    return DockerObservation(
+        version=compact_output(run_command(["docker", "--version"])),
+        compose_version=compact_output(
+            run_command(["docker", "compose", "version"])
+        ),
+        containers=lines(
             run_command(
                 [
                     "docker",
@@ -136,40 +123,49 @@ def collect_docker() -> dict[str, Any]:
                 ]
             )
         ),
-    }
+    )
 
 
-def collect_network() -> dict[str, Any]:
-    return {
-        "addresses": lines(run_command(["ip", "-brief", "addr"])),
-        "routes": lines(run_command(["ip", "route"])),
-        "resolvConf": read_optional(Path("/etc/resolv.conf")),
-    }
+def collect_network() -> NetworkObservation:
+    return NetworkObservation(
+        addresses=lines(run_command(["ip", "-brief", "addr"])),
+        routes=lines(run_command(["ip", "route"])),
+        resolv_conf=read_optional(Path("/etc/resolv.conf")),
+    )
 
 
-def collect_storage(errors: list[ProbeError]) -> dict[str, Any]:
-    return {
-        "df": lines(
+def collect_storage(errors: list[ObservabilityCollectorError]) -> StorageObservation:
+    return StorageObservation(
+        df=lines(
             run_command(["df", "-PT", "/", str(RUNTIME_DIR), str(VITAL_FILES_DIR)])
         ),
-        "inodes": lines(
+        inodes=lines(
             run_command(["df", "-Pi", "/", str(RUNTIME_DIR), str(VITAL_FILES_DIR)])
         ),
-        "rootReadOnly": root_is_read_only(errors),
-    }
+        root_read_only=root_is_read_only(errors),
+    )
 
 
-def collect_mounts(errors: list[ProbeError]) -> dict[str, Any]:
+def collect_mounts(errors: list[ObservabilityCollectorError]) -> MountObservation:
     result = run_command(["findmnt", "-J", "/", str(RUNTIME_DIR), str(VITAL_FILES_DIR)])
     if result.exit_code == 0:
         try:
-            return json.loads(result.stdout)
+            parsed = json.loads(result.stdout)
         except json.JSONDecodeError as error:
-            append_probe_error(errors, "findmnt", error)
-    return {"text": lines(run_command(["findmnt"]))}
+            append_collector_error(errors, "findmnt", error)
+        else:
+            if isinstance(parsed, dict):
+                return MountObservation(source="findmnt-json", document=parsed)
+            append_collector_error(errors, "findmnt", "expected JSON object")
+    return MountObservation(
+        source="findmnt-text",
+        lines=lines(run_command(["findmnt"])),
+    )
 
 
-def collect_runtime_files(errors: list[ProbeError]) -> dict[str, Any]:
+def collect_runtime_files(
+    errors: list[ObservabilityCollectorError],
+) -> dict[str, RuntimeFileObservation]:
     files = [
         RUNTIME_DIR / RuntimeFileName.RUNTIME_STATE.value,
         RUNTIME_DIR / RuntimeFileName.BOOTSTRAP_RESULT.value,
@@ -182,7 +178,7 @@ def collect_runtime_files(errors: list[ProbeError]) -> dict[str, Any]:
     return {str(path): file_state(path, errors) for path in files}
 
 
-def collect_diagnostic_commands() -> dict[str, dict[str, object]]:
+def collect_diagnostic_commands() -> dict[str, DiagnosticCommandObservation]:
     commands: dict[str, CommandResult] = {
         "systemdCriticalServices": run_command(
             [
@@ -241,35 +237,44 @@ def collect_diagnostic_commands() -> dict[str, dict[str, object]]:
         "diskstats": run_shell("cat /proc/diskstats", timeout_seconds=8),
         "dockerPs": run_command(["docker", "ps", "--all"], timeout_seconds=8),
     }
-    return {name: result.as_dict() for name, result in commands.items()}
+    return {name: result.as_observation() for name, result in commands.items()}
 
 
-def file_state(path: Path, errors: list[ProbeError]) -> dict[str, Any]:
+def file_state(
+    path: Path,
+    errors: list[ObservabilityCollectorError],
+) -> RuntimeFileObservation:
     try:
         stat = path.stat()
     except FileNotFoundError:
-        return {"exists": False}
+        return RuntimeFileObservation(status=RuntimeFileStatus.MISSING)
     except OSError as error:
-        append_probe_error(errors, str(path), error)
-        return {"exists": None, "error": str(error)}
-    return {
-        "exists": True,
-        "sizeBytes": stat.st_size,
-        "modifiedAt": datetime.fromtimestamp(stat.st_mtime, UTC)
+        append_collector_error(errors, str(path), error)
+        return RuntimeFileObservation(
+            status=RuntimeFileStatus.UNKNOWN,
+            error=str(error),
+        )
+    return RuntimeFileObservation(
+        status=RuntimeFileStatus.PRESENT,
+        size_bytes=stat.st_size,
+        modified_at=datetime.fromtimestamp(stat.st_mtime, UTC)
         .isoformat()
         .replace("+00:00", "Z"),
-        "ageSeconds": max(0, int(time.time() - stat.st_mtime)),
-    }
+        age_seconds=max(0, int(time.time() - stat.st_mtime)),
+    )
 
 
-def read_text(path: Path, errors: list[ProbeError]) -> str | None:
+def read_text(
+    path: Path,
+    errors: list[ObservabilityCollectorError],
+) -> str | None:
     try:
         return path.read_text(encoding="utf-8").strip()
     except FileNotFoundError as error:
-        append_probe_error(errors, str(path), error)
+        append_collector_error(errors, str(path), error)
         return None
     except OSError as error:
-        append_probe_error(errors, str(path), error)
+        append_collector_error(errors, str(path), error)
         return None
 
 
@@ -280,18 +285,18 @@ def read_optional(path: Path) -> str | None:
         return None
 
 
-def read_uptime_seconds(errors: list[ProbeError]) -> float | None:
+def read_uptime_seconds(errors: list[ObservabilityCollectorError]) -> float | None:
     text = read_text(Path("/proc/uptime"), errors)
     if not text:
         return None
     try:
         return float(text.split()[0])
     except (IndexError, ValueError) as error:
-        append_probe_error(errors, "/proc/uptime", error)
+        append_collector_error(errors, "/proc/uptime", error)
         return None
 
 
-def read_load_average(errors: list[ProbeError]) -> list[float]:
+def read_load_average(errors: list[ObservabilityCollectorError]) -> list[float]:
     text = read_text(Path("/proc/loadavg"), errors)
     if not text:
         return []
@@ -300,11 +305,11 @@ def read_load_average(errors: list[ProbeError]) -> list[float]:
         try:
             values.append(float(value))
         except ValueError:
-            append_probe_error(errors, "/proc/loadavg", value)
+            append_collector_error(errors, "/proc/loadavg", value)
     return values
 
 
-def read_meminfo(errors: list[ProbeError]) -> dict[str, int]:
+def read_meminfo(errors: list[ObservabilityCollectorError]) -> dict[str, int]:
     text = read_text(Path("/proc/meminfo"), errors)
     if not text:
         return {}
@@ -317,7 +322,7 @@ def read_meminfo(errors: list[ProbeError]) -> dict[str, int]:
     return output
 
 
-def root_is_read_only(errors: list[ProbeError]) -> bool | None:
+def root_is_read_only(errors: list[ObservabilityCollectorError]) -> bool | None:
     text = read_text(Path("/proc/mounts"), errors)
     if not text:
         return None

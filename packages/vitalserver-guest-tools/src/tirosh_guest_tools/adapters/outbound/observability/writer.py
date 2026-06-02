@@ -9,6 +9,7 @@ from typing import Any
 from tirosh_guest_tools.adapters.outbound.observability.collectors import (
     OBSERVABILITY_DIR,
 )
+from tirosh_guest_tools.domain.observability import GuestObservabilitySnapshot
 from tirosh_guest_tools.domain.operations import ObservationPhase
 
 PHASE_PATTERN = re.compile(r"[^A-Za-z0-9_.-]+")
@@ -43,7 +44,8 @@ def safe_phase(phase: str) -> str:
     return value.strip("-") or ObservationPhase.MANUAL.value
 
 
-def write_daemon_snapshot(document: dict[str, Any]) -> None:
+def write_daemon_snapshot(snapshot: GuestObservabilitySnapshot) -> None:
+    document = snapshot.as_json()
     write_json(OBSERVABILITY_DIR / "latest.json", document)
     append_jsonl(OBSERVABILITY_DIR / "history.jsonl", document)
     if document.get("collectorErrors"):
@@ -60,10 +62,11 @@ def write_daemon_snapshot(document: dict[str, Any]) -> None:
 
 def write_oneshot_snapshot(
     phase: str,
-    document: dict[str, Any],
+    snapshot: GuestObservabilitySnapshot,
     text_report: str,
 ) -> None:
     safe = safe_phase(phase)
+    document = snapshot.as_json()
     timestamp = str(document.get("observedAt", "")).replace(":", "").replace("-", "")
     timestamp = timestamp.replace(".", "").replace("Z", "Z")
     base_name = f"{timestamp}-{safe}"

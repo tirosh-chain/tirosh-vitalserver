@@ -6,6 +6,15 @@ from pathlib import Path
 from pytest import MonkeyPatch
 
 from tirosh_guest_tools.adapters.outbound.observability import writer
+from tirosh_guest_tools.domain.observability import (
+    DockerObservation,
+    GuestObservabilitySnapshot,
+    MountObservation,
+    NetworkObservation,
+    ObservationDetail,
+    StorageObservation,
+    SystemdObservation,
+)
 from tirosh_guest_tools.domain.operations import ObservationPhase
 
 
@@ -20,15 +29,28 @@ def test_write_oneshot_snapshot_writes_latest_and_history_files(
 ) -> None:
     monkeypatch.setattr(writer, "OBSERVABILITY_DIR", tmp_path)
 
-    document = {
-        "schemaVersion": 1,
-        "observedAt": "2026-06-01T00:00:00Z",
-        "phase": ObservationPhase.SHUTDOWN_PRE_STOP.value,
-    }
+    snapshot = GuestObservabilitySnapshot(
+        detail=ObservationDetail.ONESHOT,
+        observed_at="2026-06-01T00:00:00Z",
+        hostname="guest",
+        boot_id="boot-id",
+        uptime_seconds=1.0,
+        phase=ObservationPhase.SHUTDOWN_PRE_STOP.value,
+        systemd=SystemdObservation(system_state="running", failed_units=(), jobs=()),
+        load_average=(),
+        memory={},
+        storage=StorageObservation(df=(), inodes=(), root_read_only=False),
+        mounts=MountObservation(source="findmnt-text", lines=()),
+        services={},
+        docker=DockerObservation(version="", compose_version="", containers=()),
+        network=NetworkObservation(addresses=(), routes=(), resolv_conf=None),
+        runtime={},
+        collector_errors=(),
+    )
 
     writer.write_oneshot_snapshot(
         ObservationPhase.SHUTDOWN_PRE_STOP.value,
-        document,
+        snapshot,
         "snapshot\n",
     )
 

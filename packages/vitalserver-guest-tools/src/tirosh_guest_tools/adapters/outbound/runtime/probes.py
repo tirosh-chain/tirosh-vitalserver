@@ -1,15 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-
-
-@dataclass(frozen=True)
-class ProbeError:
-    source: str
-    message: str
-
-    def as_json(self) -> dict[str, str]:
-        return {"source": self.source, "message": self.message}
+from tirosh_guest_tools.domain.runtime_state import ProbeError
 
 
 def append_probe_error(

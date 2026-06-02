@@ -5,16 +5,14 @@ import os
 import subprocess
 import time
 
-from tirosh_guest_tools.adapters.outbound.runtime.config import (
-    RuntimeConfig,
-    load_config,
-)
+from tirosh_guest_tools.adapters.outbound.runtime.config import load_config
 from tirosh_guest_tools.contracts import (
     ComposeService,
     RuntimeFileName,
 )
 from tirosh_guest_tools.domain.errors import GuestUseCaseInputError
 from tirosh_guest_tools.domain.operations import ComposeAction
+from tirosh_guest_tools.domain.runtime_config import RuntimeConfig
 from tirosh_guest_tools.infrastructure.common import (
     DEPLOY_DIR,
     compose_command,

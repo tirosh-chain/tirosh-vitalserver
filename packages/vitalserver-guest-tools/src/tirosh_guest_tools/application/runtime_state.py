@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import subprocess
 import time
 
 from tirosh_guest_tools.adapters.outbound.runtime.state_writer import (
@@ -38,33 +37,7 @@ def run_runtime_state_action(action: RuntimeStateAction | str) -> None:
 
 
 def write_current_state() -> None:
-    write_runtime_state(
-        RUNTIME_STATE_FILE,
-        guest_http=http_status("http://127.0.0.1/ready"),
-        redis_ui_http=http_status("http://127.0.0.1/redis-ui/"),
-        swagger_ui_http=http_status("http://127.0.0.1/swagger/"),
-    )
-
-
-def http_status(url: str) -> str:
-    completed = subprocess.run(
-        [
-            "curl",
-            "-sS",
-            "-I",
-            "-o",
-            "/dev/null",
-            "-w",
-            "%{http_code}",
-            "--max-time",
-            "5",
-            url,
-        ],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    return completed.stdout if completed.returncode == 0 else "failed"
+    write_runtime_state(RUNTIME_STATE_FILE)
 
 
 def trigger_redis_backup_if_requested() -> None:

@@ -3,14 +3,14 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from tirosh_guest_tools.adapters.inbound.operations.command_poller import (
-    run_command_poller,
+from tirosh_guest_tools.adapters.inbound.observability_daemon import (
+    run_observability_daemon,
+)
+from tirosh_guest_tools.adapters.inbound.request_file_poller import (
+    run_request_file_poller,
 )
 from tirosh_guest_tools.adapters.outbound.observability.container_logs import (
     run_container_log_action,
-)
-from tirosh_guest_tools.adapters.outbound.observability.daemon import (
-    run_observability_daemon,
 )
 from tirosh_guest_tools.adapters.outbound.observability.diagnostics import print_report
 from tirosh_guest_tools.adapters.outbound.runtime.config import (
@@ -176,7 +176,7 @@ def vitalserver_compose() -> int:
 def vitalserver_command_poller() -> int:
     parser = argparse.ArgumentParser(description="Dispatch guest command requests.")
     parser.parse_args()
-    run_command_poller()
+    run_request_file_poller()
     return 0
 
 

@@ -17,7 +17,7 @@ from tirosh_guest_tools.infrastructure.common import (
 from tirosh_guest_tools.infrastructure.logging import configure_logging
 from tirosh_guest_tools.infrastructure.settings import SETTINGS
 
-LOG_FILE = RUNTIME_DIR / "guest-command-poller.log"
+LOG_FILE = RUNTIME_DIR / "guest-request-file-poller.log"
 logger = logging.getLogger(__name__)
 REQUESTS: list[tuple[Path, str, str]] = [
     (
@@ -43,22 +43,18 @@ REQUESTS: list[tuple[Path, str, str]] = [
 ]
 
 
-def run_command_poller() -> None:
+def run_request_file_poller() -> None:
     mount_runtime_share()
     configure_logging(SETTINGS.logging, log_file=LOG_FILE)
-    interval = poll_interval()
+    interval = SETTINGS.intervals.command_poll_seconds
     logger.info(
-        "guest command poller started",
+        "guest request file poller started",
         extra={"fields": {"interval": interval}},
     )
     while True:
         for request_file, service, operation in REQUESTS:
             dispatch_request(request_file, service, operation)
         time.sleep(interval)
-
-
-def poll_interval() -> int:
-    return SETTINGS.intervals.command_poll_seconds
 
 
 def dispatch_request(request_file: Path, service: str, operation: str) -> None:

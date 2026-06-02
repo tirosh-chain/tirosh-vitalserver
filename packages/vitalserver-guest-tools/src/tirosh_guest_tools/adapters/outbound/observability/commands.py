@@ -4,6 +4,8 @@ import subprocess
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from tirosh_guest_tools.domain.observability import DiagnosticCommandObservation
+
 
 @dataclass(frozen=True)
 class CommandResult:
@@ -21,6 +23,15 @@ class CommandResult:
             "stderr": self.stderr,
             "timedOut": self.timed_out,
         }
+
+    def as_observation(self) -> DiagnosticCommandObservation:
+        return DiagnosticCommandObservation(
+            command=self.command,
+            exit_code=self.exit_code,
+            stdout=self.stdout,
+            stderr=self.stderr,
+            timed_out=self.timed_out,
+        )
 
 
 def run_command(argv: Sequence[str], *, timeout_seconds: float = 3.0) -> CommandResult:
