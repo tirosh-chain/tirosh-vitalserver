@@ -104,7 +104,7 @@ def dict_config(
         "version": 1,
         "disable_existing_loggers": False,
         "formatters": {
-            "json": {"()": "tirosh_guest_tools.logging.JsonLogFormatter"},
+            "json": {"()": JsonLogFormatter},
         },
         "handlers": handlers,
         "root": {

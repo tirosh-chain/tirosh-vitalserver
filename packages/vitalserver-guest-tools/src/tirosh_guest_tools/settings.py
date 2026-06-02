@@ -7,6 +7,15 @@ from pathlib import Path
 from typing import Any
 
 from tirosh_guest_tools.domain.errors import GuestContractError
+from tirosh_guest_tools.settings_utils import (
+    toml_bool_value,
+    toml_enum_value,
+    toml_float_value,
+    toml_int_value,
+    toml_path_value,
+    toml_str_value,
+    toml_table,
+)
 
 DEFAULT_SETTINGS_PATH = Path("/etc/tirosh/guest-tools.toml")
 
@@ -99,224 +108,144 @@ def load_settings(path: Path = DEFAULT_SETTINGS_PATH) -> GuestToolsSettings:
             )
         document = parsed
 
-    shares = table(document, "shares")
-    runtime_mount = path_value(shares, "runtimeMount", "/mnt/tirosh")
-    vital_files_mount = path_value(
+    shares = toml_table(document, "shares")
+    runtime_mount = toml_path_value(shares, "runtimeMount", "/mnt/tirosh")
+    vital_files_mount = toml_path_value(
         shares,
         "vitalFilesMount",
         "/mnt/tirosh-vital-files",
     )
 
-    paths = table(document, "paths")
-    deploy_dir = path_value(paths, "deployDir", str(runtime_mount / "deploy"))
-    runtime_dir = path_value(paths, "runtimeDir", str(runtime_mount / "run"))
-    guest_tools_home = path_value(paths, "guestToolsHome", "/opt/tirosh/guest-tools")
+    paths = toml_table(document, "paths")
+    deploy_dir = toml_path_value(paths, "deployDir", str(runtime_mount / "deploy"))
+    runtime_dir = toml_path_value(paths, "runtimeDir", str(runtime_mount / "run"))
+    guest_tools_home = toml_path_value(
+        paths,
+        "guestToolsHome",
+        "/opt/tirosh/guest-tools",
+    )
 
     return GuestToolsSettings(
         shares=ShareSettings(
-            runtime_tag=str_value(shares, "runtimeTag", "tirosh"),
+            runtime_tag=toml_str_value(shares, "runtimeTag", "tirosh"),
             runtime_mount=runtime_mount,
-            vital_files_tag=str_value(shares, "vitalFilesTag", "tirosh-vital-files"),
+            vital_files_tag=toml_str_value(
+                shares,
+                "vitalFilesTag",
+                "tirosh-vital-files",
+            ),
             vital_files_mount=vital_files_mount,
         ),
         paths=PathSettings(
             deploy_dir=deploy_dir,
             runtime_dir=runtime_dir,
             guest_tools_home=guest_tools_home,
-            python_wheel_dir=path_value(
+            python_wheel_dir=toml_path_value(
                 paths,
                 "pythonWheelDir",
                 str(deploy_dir / "python-wheels"),
             ),
-            command_bin_dir=path_value(paths, "commandBinDir", "/usr/local/bin"),
+            command_bin_dir=toml_path_value(paths, "commandBinDir", "/usr/local/bin"),
         ),
         compose=ComposeSettings(
-            project_name=str_value(
-                table(document, "compose"),
+            project_name=toml_str_value(
+                toml_table(document, "compose"),
                 "projectName",
                 "vitalserver",
             ),
-            stop_timeout_seconds=int_value(
-                table(document, "compose"),
+            stop_timeout_seconds=toml_int_value(
+                toml_table(document, "compose"),
                 "stopTimeoutSeconds",
                 120,
                 minimum=1,
             ),
         ),
         intervals=IntervalSettings(
-            command_poll_seconds=int_value(
-                table(document, "intervals"),
+            command_poll_seconds=toml_int_value(
+                toml_table(document, "intervals"),
                 "commandPollSeconds",
                 3,
                 minimum=1,
             ),
-            runtime_state_seconds=int_value(
-                table(document, "intervals"),
+            runtime_state_seconds=toml_int_value(
+                toml_table(document, "intervals"),
                 "runtimeStateSeconds",
                 5,
                 minimum=1,
             ),
-            observability_seconds=float_value(
-                table(document, "intervals"),
+            observability_seconds=toml_float_value(
+                toml_table(document, "intervals"),
                 "observabilitySeconds",
                 10.0,
                 minimum=1.0,
             ),
         ),
         container_logs=ContainerLogSettings(
-            interval_seconds=float_value(
-                table(document, "containerLogs"),
+            interval_seconds=toml_float_value(
+                toml_table(document, "containerLogs"),
                 "intervalSeconds",
                 5.0,
                 minimum=1.0,
             ),
-            tail_lines=str_value(table(document, "containerLogs"), "tailLines", "1000"),
-            max_bytes=int_value(
-                table(document, "containerLogs"),
+            tail_lines=toml_str_value(
+                toml_table(document, "containerLogs"),
+                "tailLines",
+                "1000",
+            ),
+            max_bytes=toml_int_value(
+                toml_table(document, "containerLogs"),
                 "maxBytes",
                 10_485_760,
                 minimum=1,
             ),
-            retained_files=int_value(
-                table(document, "containerLogs"),
+            retained_files=toml_int_value(
+                toml_table(document, "containerLogs"),
                 "retainedFiles",
                 5,
                 minimum=1,
             ),
-            rotate_check_lines=int_value(
-                table(document, "containerLogs"),
+            rotate_check_lines=toml_int_value(
+                toml_table(document, "containerLogs"),
                 "rotateCheckLines",
                 200,
                 minimum=1,
             ),
         ),
         observability=ObservabilitySettings(
-            vitaldb_observer_url=str_value(
-                table(document, "observability"),
+            vitaldb_observer_url=toml_str_value(
+                toml_table(document, "observability"),
                 "vitaldbObserverUrl",
                 "http://127.0.0.1:18084/api/v1/observations",
             )
         ),
         logging=LoggingSettings(
-            format=logging_format_value(table(document, "logging"), "format", "json"),
-            level=logging_level_value(table(document, "logging"), "level", "info"),
-            stream_enabled=bool_value(
-                table(document, "logging"),
+            format=toml_enum_value(
+                toml_table(document, "logging"),
+                "format",
+                "json",
+                LoggingFormat,
+                choices="json",
+            ),
+            level=toml_enum_value(
+                toml_table(document, "logging"),
+                "level",
+                "info",
+                LoggingLevel,
+                choices="debug, info, warning, error, critical",
+            ),
+            stream_enabled=toml_bool_value(
+                toml_table(document, "logging"),
                 "streamEnabled",
                 True,
             ),
-            file_enabled=bool_value(table(document, "logging"), "fileEnabled", True),
+            file_enabled=toml_bool_value(
+                toml_table(document, "logging"),
+                "fileEnabled",
+                True,
+            ),
         ),
-        guest_hostname=str_value(document, "guestHostname", "tirosh-vitalserver"),
+        guest_hostname=toml_str_value(document, "guestHostname", "tirosh-vitalserver"),
     )
-
-
-def table(document: dict[str, Any], key: str) -> dict[str, Any]:
-    value = document.get(key, {})
-    if not isinstance(value, dict):
-        raise GuestContractError(
-            f"guest tools setting '{key}' must be a TOML table",
-            code="guest-tools-setting-type-invalid",
-        )
-    return value
-
-
-def str_value(document: dict[str, Any], key: str, default: str) -> str:
-    value = document.get(key, default)
-    if not isinstance(value, str) or value == "":
-        raise GuestContractError(
-            f"guest tools setting '{key}' must be a non-empty string",
-            code="guest-tools-setting-type-invalid",
-        )
-    return value
-
-
-def path_value(document: dict[str, Any], key: str, default: str) -> Path:
-    return Path(str_value(document, key, default))
-
-
-def bool_value(document: dict[str, Any], key: str, default: bool) -> bool:
-    value = document.get(key, default)
-    if not isinstance(value, bool):
-        raise GuestContractError(
-            f"guest tools setting '{key}' must be a boolean",
-            code="guest-tools-setting-type-invalid",
-        )
-    return value
-
-
-def logging_format_value(
-    document: dict[str, Any],
-    key: str,
-    default: str,
-) -> LoggingFormat:
-    value = str_value(document, key, default)
-    try:
-        return LoggingFormat(value)
-    except ValueError as error:
-        raise GuestContractError(
-            f"guest tools setting '{key}' must be one of: json",
-            code="guest-tools-setting-value-invalid",
-        ) from error
-
-
-def logging_level_value(
-    document: dict[str, Any],
-    key: str,
-    default: str,
-) -> LoggingLevel:
-    value = str_value(document, key, default)
-    try:
-        return LoggingLevel(value)
-    except ValueError as error:
-        raise GuestContractError(
-            "guest tools setting "
-            f"'{key}' must be one of: debug, info, warning, error, critical",
-            code="guest-tools-setting-value-invalid",
-        ) from error
-
-
-def int_value(
-    document: dict[str, Any],
-    key: str,
-    default: int,
-    *,
-    minimum: int,
-) -> int:
-    value = document.get(key, default)
-    if not isinstance(value, int) or isinstance(value, bool):
-        raise GuestContractError(
-            f"guest tools setting '{key}' must be an integer",
-            code="guest-tools-setting-type-invalid",
-        )
-    if value < minimum:
-        raise GuestContractError(
-            f"guest tools setting '{key}' must be >= {minimum}",
-            code="guest-tools-setting-range-invalid",
-        )
-    return value
-
-
-def float_value(
-    document: dict[str, Any],
-    key: str,
-    default: float,
-    *,
-    minimum: float,
-) -> float:
-    value = document.get(key, default)
-    if not isinstance(value, int | float) or isinstance(value, bool):
-        raise GuestContractError(
-            f"guest tools setting '{key}' must be a number",
-            code="guest-tools-setting-type-invalid",
-        )
-    value = float(value)
-    if value < minimum:
-        raise GuestContractError(
-            f"guest tools setting '{key}' must be >= {minimum}",
-            code="guest-tools-setting-range-invalid",
-        )
-    return value
 
 
 SETTINGS = load_settings()

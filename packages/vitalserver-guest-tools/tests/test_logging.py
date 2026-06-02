@@ -51,7 +51,5 @@ def test_dict_config_declares_json_stream_and_file_handlers(
 
     assert config["root"]["level"] == "WARNING"
     assert config["root"]["handlers"] == ["stderr", "file"]
-    assert config["formatters"]["json"] == {
-        "()": "tirosh_guest_tools.logging.JsonLogFormatter"
-    }
+    assert config["formatters"]["json"] == {"()": JsonLogFormatter}
     assert config["handlers"]["file"]["filename"] == str(log_file)
