@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import argparse
 import json
 import os
 import socket
@@ -17,23 +16,6 @@ from tirosh_guest_tools.runtime.probes import ProbeError, append_probe_error
 from tirosh_guest_tools.settings import SETTINGS
 
 VITALDB_OBSERVER_ENDPOINT = SETTINGS.observability.vitaldb_observer_url
-
-
-def main() -> int:
-    parser = argparse.ArgumentParser(description="Write guest runtime state JSON.")
-    parser.add_argument("runtime_state", type=Path)
-    parser.add_argument("guest_http", nargs="?")
-    parser.add_argument("redis_ui_http", nargs="?")
-    parser.add_argument("swagger_ui_http", nargs="?")
-    args = parser.parse_args()
-
-    write_runtime_state(
-        args.runtime_state,
-        guest_http=args.guest_http,
-        redis_ui_http=args.redis_ui_http,
-        swagger_ui_http=args.swagger_ui_http,
-    )
-    return 0
 
 
 def write_runtime_state(
@@ -308,7 +290,3 @@ def uptime_seconds(started_at: str | None, now: datetime) -> int | None:
     except ValueError:
         return None
     return max(int((now - started).total_seconds()), 0)
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

@@ -21,13 +21,13 @@ from tirosh_guest_tools.common import (
 from tirosh_guest_tools.contracts import RuntimeFileName, RuntimeService
 from tirosh_guest_tools.domain.errors import GuestDependencyError
 from tirosh_guest_tools.domain.operations import (
+    ComposeAction,
     GuestOperationResult,
     ObservationPhase,
     OperationName,
     OperationStatus,
     ReasonCode,
 )
-from tirosh_guest_tools.inbound import ComposeAction
 
 REQUEST_FILE = RUNTIME_DIR / RuntimeFileName.PREPARE_UPDATE_SHUTDOWN_REQUEST.value
 RESULT_FILE = RUNTIME_DIR / RuntimeFileName.PREPARE_UPDATE_SHUTDOWN_RESULT.value

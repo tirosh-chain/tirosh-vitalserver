@@ -18,7 +18,7 @@ from tirosh_guest_tools.contracts import (
     RuntimeFileName,
 )
 from tirosh_guest_tools.domain.errors import GuestUseCaseInputError
-from tirosh_guest_tools.inbound import ComposeAction
+from tirosh_guest_tools.domain.operations import ComposeAction
 from tirosh_guest_tools.runtime.config import RuntimeConfig, load_config
 from tirosh_guest_tools.settings import SETTINGS
 

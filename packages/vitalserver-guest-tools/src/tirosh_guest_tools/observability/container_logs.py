@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import argparse
 import subprocess
 import time
 from datetime import UTC, datetime
@@ -14,7 +13,7 @@ from tirosh_guest_tools.common import (
     mount_runtime_share,
 )
 from tirosh_guest_tools.contracts import RuntimeFileName
-from tirosh_guest_tools.inbound import ContainerLogAction
+from tirosh_guest_tools.domain.operations import ContainerLogAction
 from tirosh_guest_tools.settings import SETTINGS
 
 LOG_FILE = RUNTIME_DIR / "container-logs.log"
@@ -25,24 +24,13 @@ RETAINED_FILES = SETTINGS.container_logs.retained_files
 ROTATE_CHECK_LINES = SETTINGS.container_logs.rotate_check_lines
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="Write Docker Compose logs to the shared runtime directory."
-    )
-    parser.add_argument(
-        "action",
-        nargs="?",
-        choices=[action.value for action in ContainerLogAction],
-        default=ContainerLogAction.WATCH.value,
-    )
-    args = parser.parse_args()
-
+def run_container_log_action(action: ContainerLogAction | str) -> None:
+    action = ContainerLogAction(action)
     mount_runtime_share()
-    if args.action == ContainerLogAction.ONCE.value:
+    if action == ContainerLogAction.ONCE:
         write_snapshot()
-        return 0
+        return
     watch_logs()
-    return 0
 
 
 def append_marker(source: str) -> None:
@@ -145,7 +133,3 @@ def docker_compose_logs_command(arguments: list[str]) -> list[str]:
 
 def utc_now() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

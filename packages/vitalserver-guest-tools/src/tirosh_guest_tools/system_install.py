@@ -35,11 +35,6 @@ COMPATIBILITY_LINKS = {
 }
 
 
-def main() -> int:
-    install_guest_tools_runtime()
-    return 0
-
-
 def install_guest_tools_runtime() -> None:
     wheel = latest_guest_tools_wheel()
     GUEST_TOOLS_HOME.mkdir(parents=True, exist_ok=True)
@@ -93,7 +88,3 @@ def link_command(name: str, target_name: str) -> None:
     target = GUEST_TOOLS_VENV / "bin" / target_name
     destination.unlink(missing_ok=True)
     destination.symlink_to(target)
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

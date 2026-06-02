@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import argparse
 import shlex
 from dataclasses import dataclass
 from pathlib import Path
@@ -24,17 +23,8 @@ class RuntimeConfig:
     vital_files_directory: str
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="Print shell exports for the guest runtime config."
-    )
-    parser.add_argument("runtime_config", type=Path)
-    args = parser.parse_args()
-
-    if not args.runtime_config.is_file():
-        parser.exit(1, f"error: missing {args.runtime_config}\n")
-
-    config = load_config(args.runtime_config)
+def print_runtime_config_exports(runtime_config: Path) -> None:
+    config = load_config(runtime_config)
     for name, value in [
         ("VITALSERVER_REDIS_HOST", config.redis_host),
         ("VITALSERVER_REDIS_PORT", config.redis_port),
@@ -45,7 +35,6 @@ def main() -> int:
         ("VITALSERVER_VITAL_FILES_DIR", config.vital_files_directory),
     ]:
         print(export_line(name, value))
-    return 0
 
 
 def load_config(config_path: Path) -> RuntimeConfig:
@@ -144,7 +133,3 @@ def export_line(name: str, value: object) -> str:
     if isinstance(value, bool):
         value = "1" if value else "0"
     return f"export {name}={shlex.quote(str(value))}"
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

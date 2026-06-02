@@ -26,12 +26,12 @@ from tirosh_guest_tools.contracts import (
 )
 from tirosh_guest_tools.domain.errors import GuestDependencyError
 from tirosh_guest_tools.domain.operations import (
+    ComposeAction,
     GuestOperationResult,
     ObservationPhase,
     OperationName,
     OperationStatus,
 )
-from tirosh_guest_tools.inbound import ComposeAction
 from tirosh_guest_tools.runtime.config import load_config
 from tirosh_guest_tools.system_install import install_guest_tools_runtime
 

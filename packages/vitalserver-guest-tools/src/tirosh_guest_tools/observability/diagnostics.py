@@ -1,17 +1,8 @@
 from __future__ import annotations
 
-import argparse
-
 from tirosh_guest_tools.common import DEPLOY_DIR, MOUNT_POINT, PROJECT_NAME
 from tirosh_guest_tools.contracts import RuntimeFileName, RuntimeService
 from tirosh_guest_tools.observability.commands import run_command
-
-
-def main() -> int:
-    parser = argparse.ArgumentParser(description="Print guest diagnostic details.")
-    parser.parse_args()
-    print_report()
-    return 0
 
 
 def print_report() -> None:
@@ -59,7 +50,3 @@ def compose_command(arguments: list[str]) -> list[str]:
         str(DEPLOY_DIR / RuntimeFileName.COMPOSE.value),
         *arguments,
     ]
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

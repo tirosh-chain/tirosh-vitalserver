@@ -20,6 +20,23 @@ class OperationName(StrEnum):
     REPAIR_DATASTORE = "repair-datastore"
 
 
+class ComposeAction(StrEnum):
+    UP = "up"
+    TESTKIT_UP = "testkit-up"
+    TESTKIT_UP_LOGGED = "testkit-up-logged"
+    STOP = "stop"
+
+
+class RuntimeStateAction(StrEnum):
+    WATCH = "watch"
+    ONCE = "once"
+
+
+class ContainerLogAction(StrEnum):
+    WATCH = "watch"
+    ONCE = "once"
+
+
 class ObservationPhase(StrEnum):
     ACTIVATION_PRE = "activation-pre"
     ACTIVATION_POST = "activation-post"

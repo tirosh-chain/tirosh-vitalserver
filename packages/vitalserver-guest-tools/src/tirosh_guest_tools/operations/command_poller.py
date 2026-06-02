@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import argparse
 import logging
 import time
 from pathlib import Path
@@ -44,9 +43,7 @@ REQUESTS: list[tuple[Path, str, str]] = [
 ]
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description="Dispatch guest command requests.")
-    parser.parse_args()
+def run_command_poller() -> None:
     mount_runtime_share()
     configure_logging(SETTINGS.logging, log_file=LOG_FILE)
     interval = poll_interval()
@@ -88,7 +85,3 @@ def dispatch_request(request_file: Path, service: str, operation: str) -> None:
             }
         },
     )
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

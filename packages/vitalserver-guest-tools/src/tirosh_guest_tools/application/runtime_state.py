@@ -6,7 +6,7 @@ import time
 from tirosh_guest_tools.common import RUNTIME_DIR, mount_runtime_share, systemctl
 from tirosh_guest_tools.contracts import RuntimeFileName, RuntimeService
 from tirosh_guest_tools.domain.errors import GuestUseCaseInputError
-from tirosh_guest_tools.inbound import RuntimeStateAction
+from tirosh_guest_tools.domain.operations import RuntimeStateAction
 from tirosh_guest_tools.runtime.state_writer import write_runtime_state
 from tirosh_guest_tools.settings import SETTINGS
 
