@@ -13,6 +13,7 @@ struct RuntimeInstallStepExecutor {
     var configureInstalledPermissions: (InstallSettings) throws -> Void
     var startInstalledServices: (InstallSettings) throws -> Void
     var applyStartOnBootPolicy: (InstallSettings) throws -> Void
+    var waitForHealth: (RuntimeServiceRestartPolicy) throws -> Void
     var cleanupInstallSettings: () throws -> Void
     var log: (String) -> Void
 
@@ -42,6 +43,12 @@ struct RuntimeInstallStepExecutor {
             try startInstalledServices(settings)
         case .applyStartOnBootPolicy:
             try applyStartOnBootPolicy(settings)
+        case .waitInstallRuntimeHealth:
+            try waitForHealth(RuntimeServiceRestartPolicy(
+                restartVM: settings.startAfterInstall,
+                restartProxy: settings.startAfterInstall,
+                restartWatchdog: settings.startAfterInstall
+            ))
         case .cleanupInstallSettings:
             try cleanupInstallSettings()
         default:

@@ -41,6 +41,9 @@ final class RuntimeInstallStepExecutorTests: XCTestCase {
             applyStartOnBootPolicy: { settings in
                 events.append("boot:\(settings.startOnBoot)")
             },
+            waitForHealth: { policy in
+                events.append("wait-health:\(policy.restartVM):\(policy.restartProxy):\(policy.restartWatchdog)")
+            },
             cleanupInstallSettings: {
                 events.append("cleanup")
             },
@@ -66,6 +69,7 @@ final class RuntimeInstallStepExecutorTests: XCTestCase {
             "permissions:80",
             "start:true",
             "boot:true",
+            "wait-health:true:true:true",
             "cleanup",
         ])
     }
@@ -83,6 +87,7 @@ final class RuntimeInstallStepExecutorTests: XCTestCase {
             configureInstalledPermissions: { _ in },
             startInstalledServices: { _ in },
             applyStartOnBootPolicy: { _ in },
+            waitForHealth: { _ in },
             cleanupInstallSettings: {},
             log: { _ in }
         )

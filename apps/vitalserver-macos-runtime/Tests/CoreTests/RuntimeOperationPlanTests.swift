@@ -19,6 +19,7 @@ final class RuntimeOperationPlanTests: XCTestCase {
             "configure-installed-permissions",
             "start-installed-services",
             "apply-start-on-boot-policy",
+            "wait-install-runtime-health",
             "cleanup-install-settings",
         ])
     }
@@ -90,6 +91,7 @@ final class RuntimeOperationPlanTests: XCTestCase {
 
     func testWorkflowStepsExposeOwningOperation() {
         XCTAssertEqual(RuntimeWorkflowStep.loadInstallSettings.operation, .install)
+        XCTAssertEqual(RuntimeWorkflowStep.waitInstallRuntimeHealth.operation, .install)
         XCTAssertEqual(RuntimeWorkflowStep.stopRuntimeServices.operation, .applyBundle)
         XCTAssertEqual(RuntimeWorkflowStep.rollbackRestoreRootfsBase.operation, .rollback)
         XCTAssertNil(RuntimeWorkflowStep.unknown("future-step").operation)

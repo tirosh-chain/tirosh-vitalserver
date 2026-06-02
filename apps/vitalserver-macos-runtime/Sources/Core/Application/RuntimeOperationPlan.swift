@@ -64,6 +64,7 @@ public enum RuntimeOperationPlans {
             .configureInstalledPermissions,
             .startInstalledServices,
             .applyStartOnBootPolicy,
+            .waitInstallRuntimeHealth,
             .cleanupInstallSettings,
         ]
     )

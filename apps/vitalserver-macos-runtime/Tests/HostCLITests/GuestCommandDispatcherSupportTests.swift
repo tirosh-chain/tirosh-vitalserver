@@ -66,6 +66,13 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
         XCTAssertFalse(syncRelease.contains("tirosh_guest_tools/redis/repair.py"))
     }
 
+    func testPostinstallTimeoutCoversRuntimeHealthWait() throws {
+        let postinstall = try readRuntimeSupportFile("Packaging/postinstall.template")
+
+        XCTAssertTrue(postinstall.contains("postinstall_timeout_seconds=900"))
+        XCTAssertFalse(postinstall.contains("postinstall_timeout_seconds=300"))
+    }
+
     func testGuestToolsBackThinWrappersAndSystemdFiles() throws {
         let bootstrap = try readGuestSupportFile("bootstrap.sh")
         let guestSupport = try guestSupportDirectory()

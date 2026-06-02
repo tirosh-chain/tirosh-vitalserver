@@ -36,6 +36,9 @@ Failing command: /opt/tirosh/guest-tools/venv/bin/python3
 
 수정된 `bootstrap.sh`가 들어간 update bundle을 다시 만들고 적용합니다. 해당 변경은 `guest-deploy.tar.gz`에 포함되며, 기본 migration과 guest activation 경로를 통해 현장 runtime에 반영됩니다.
 
+Clean install/pkg install에서는 host-side 파일 배치와 launchd 시작만으로 성공 처리하면 안 됩니다. `start-installed-services` 이후 `wait-install-runtime-health`가 guest bootstrap/runtime health를 확인해야 하며, `guest-bootstrap-missing-runtime-packages` 같은 bootstrap failure는 postinstall 실패로 전파되어야 합니다.
+
 ## Follow-up
 
 - 2026-06-02: `python3 -m venv --help`는 ensurepip 존재를 보장하지 않는다는 clean install 로그를 확인했습니다. Guest bootstrap과 air-gapped rootfs 준비 스크립트가 실제 임시 venv를 생성하는 smoke check를 수행하도록 수정했습니다.
+- 2026-06-02: pkg install 성공 조건에 install-owned `wait-install-runtime-health` 단계를 추가했습니다. Runtime install은 health 확인 전 `.healthy` status를 쓰지 않습니다.

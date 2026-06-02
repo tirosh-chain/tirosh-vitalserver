@@ -8,7 +8,7 @@ vm_bin="${VM_BIN}"
 manager_app="${MANAGER_APP}"
 max_log_bytes=$((10 * 1024 * 1024))
 keep_log_count=5
-postinstall_timeout_seconds=300
+postinstall_timeout_seconds=900
 
 mkdir -p "$(dirname "${install_log}")"
 

@@ -23,6 +23,7 @@ struct RuntimeInstallWorkflowOperations {
     let writeInstalledRuntimeVersion: () throws -> Void
     let setStartOnBoot: (Bool) throws -> Void
     let startLaunchdService: (RuntimeManagedService) -> Void
+    let waitForHealth: (RuntimeServiceRestartPolicy) throws -> Void
     let restrictSecretFile: (URL) throws -> Void
     let log: (String) -> Void
 }
@@ -84,6 +85,7 @@ struct RuntimeInstallWorkflow {
             applyStartOnBootPolicy: { settings in
                 try applyStartOnBootPolicy(settings)
             },
+            waitForHealth: operations.waitForHealth,
             cleanupInstallSettings: {
                 try cleanupInstallSettings()
             },
