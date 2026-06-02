@@ -36,6 +36,20 @@ Stateless code may orchestrate calls and map explicit results, but must not cach
 
 Stateful code must declare owned state, expose it through explicit contracts, and report read/write/decode/permission failures.
 
+## Layer Boundaries
+
+Contracts define explicit state, event, command, and document types shared across layers. Contracts must preserve missing, invalid, failed, stale, zero, and empty meanings.
+
+Domain/Core defines pure policy, state machines, transition rules, guards, and invariants. Domain/Core consumes complete explicit inputs only and must not read Host, Guest, filesystem, process, network, logs, or command output state.
+
+Application/Usecase/Workflow orchestrates an operation. It reads explicit state through ports, calls Domain/Core policy, executes returned commands through ports, creates explicit events from results, and persists operation state when required. Workflow may sequence steps, but must not infer state.
+
+Adapters, HostCLI, packaging scripts, repositories, and infrastructure own external reads and writes. They must report explicit typed results and failures to the inward layers instead of converting dependency failure into success.
+
+Presentation/UI formats explicit state for humans. It must not create domain state, decide domain transitions, or repair missing provider contracts.
+
+State machines that manage operation transitions must define states, events, guards, commands/effects, invariants, and persisted state documents when persistence is part of the operation. State machines return decisions; they do not perform side effects.
+
 ## HAVE TO
 
 - Keep code simple, explicit, and domain-readable.
@@ -44,6 +58,9 @@ Stateful code must declare owned state, expose it through explicit contracts, an
 - Model domain concepts with DDD language.
 - Keep dependencies flowing inward, not across or backward.
 - Let each layer do its own job.
+- Define state transitions with explicit states, events, guards, commands/effects, and invariants when operation order matters.
+- Keep state machines and transition policy pure and inside Domain/Core.
+- Keep side effects in Application/Usecase/Workflow ports or adapters.
 - Let state owners provide state through explicit contracts.
 - Make failures visible and typed enough to act on.
 - Use TDD or focused tests when changing domain behavior, contracts, parsing/decoding, recovery, settings, or update flow.
@@ -60,4 +77,6 @@ Stateful code must declare owned state, expose it through explicit contracts, an
 - Must not let infrastructure concerns leak into domain models.
 - Must not use fallback logic to compensate for a missing provider contract.
 - Must not mix layer responsibilities for convenience.
+- Must not let adapters, shell scripts, or UI own domain transition rules.
+- Must not advance an operation from missing, invalid, failed, stale, or unknown state without an explicit transition rule.
 - Must not make code clever when a direct contract would be clearer.
