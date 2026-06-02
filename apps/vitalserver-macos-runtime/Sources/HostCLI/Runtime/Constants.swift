@@ -5,6 +5,10 @@ import Contracts
 enum Constants {
     enum Product {
         static let identifier = "com.tirosh.vitalserver"
+        static let packageReceiptIdentifiers = [
+            "com.tirosh.vitalserver.vm",
+            identifier,
+        ]
         static let managerAppName = "VitalServer Helper.app"
         static let managerAppPath = "/Applications/\(managerAppName)"
     }

@@ -35,7 +35,8 @@ struct RuntimeUninstallRunner {
     var moveItem: (URL, URL) throws -> Void
     var contentsOfDirectory: (URL) throws -> [URL]
     var runProcess: (String, [String]) -> RuntimeProcessResult
-    var forgetPackageReceipt: () -> Void
+    var packageReceiptIdentifiers: [String]
+    var forgetPackageReceipt: (String) -> Void
     var log: (String) -> Void
 
     func run(_ command: RuntimeUninstallCommand) throws {
@@ -87,7 +88,10 @@ struct RuntimeUninstallRunner {
         }
 
         log("step=forget-package-receipt status=started")
-        forgetPackageReceipt()
+        for identifier in packageReceiptIdentifiers {
+            log("forget package receipt identifier=\(identifier)")
+            forgetPackageReceipt(identifier)
+        }
         log("step=forget-package-receipt status=completed")
         log("uninstall completed")
     }

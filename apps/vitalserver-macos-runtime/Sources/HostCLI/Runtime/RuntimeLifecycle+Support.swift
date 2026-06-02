@@ -170,6 +170,7 @@ extension RuntimeLifecycle {
                 runtimeTools: [
                     installedPaths.launcher,
                     URL(fileURLWithPath: Constants.InstallPaths.proxyRun),
+                    installedPaths.uninstaller,
                 ]
             ),
             createRedisBackup: createRedisBackup,
@@ -189,8 +190,9 @@ extension RuntimeLifecycle {
                 try fileStore.contentsOfDirectory(at: url, skipsHiddenFiles: false)
             },
             runProcess: runProcess,
-            forgetPackageReceipt: {
-                _ = runProcess("/usr/sbin/pkgutil", arguments: ["--forget", Constants.Product.identifier])
+            packageReceiptIdentifiers: Constants.Product.packageReceiptIdentifiers,
+            forgetPackageReceipt: { identifier in
+                _ = runProcess("/usr/sbin/pkgutil", arguments: ["--forget", identifier])
             },
             log: log
         )

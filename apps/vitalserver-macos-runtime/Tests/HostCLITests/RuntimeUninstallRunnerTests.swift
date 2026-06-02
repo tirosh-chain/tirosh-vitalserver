@@ -30,9 +30,13 @@ final class RuntimeUninstallRunnerTests: XCTestCase {
             "log:step=remove-runtime-tools status=started",
             "remove:/usr/local/bin/vitalserver-vm",
             "remove:/usr/local/bin/vitalserver-proxy-run",
+            "remove:/usr/local/bin/tirosh-vitalserver-uninstall",
             "log:step=remove-runtime-tools status=completed",
             "log:step=forget-package-receipt status=started",
-            "forget",
+            "log:forget package receipt identifier=com.tirosh.vitalserver.vm",
+            "forget:com.tirosh.vitalserver.vm",
+            "log:forget package receipt identifier=com.tirosh.vitalserver",
+            "forget:com.tirosh.vitalserver",
             "log:step=forget-package-receipt status=completed",
             "log:uninstall completed",
         ])
@@ -109,6 +113,7 @@ private final class RuntimeUninstallRunnerHarness {
             "/Library/LaunchDaemons/com.tirosh.vitalserver-sleep-prevention.plist",
             "/usr/local/bin/vitalserver-vm",
             "/usr/local/bin/vitalserver-proxy-run",
+            "/usr/local/bin/tirosh-vitalserver-uninstall",
         ]
     }
 
@@ -125,6 +130,7 @@ private final class RuntimeUninstallRunnerHarness {
                 runtimeTools: [
                     URL(fileURLWithPath: "/usr/local/bin/vitalserver-vm"),
                     URL(fileURLWithPath: "/usr/local/bin/vitalserver-proxy-run"),
+                    URL(fileURLWithPath: "/usr/local/bin/tirosh-vitalserver-uninstall"),
                 ]
             ),
             createRedisBackup: {
@@ -162,8 +168,12 @@ private final class RuntimeUninstallRunnerHarness {
             runProcess: { _, _ in
                 RuntimeProcessResult(exitCode: 1, stdout: "", stderr: "")
             },
-            forgetPackageReceipt: {
-                self.events.append("forget")
+            packageReceiptIdentifiers: [
+                "com.tirosh.vitalserver.vm",
+                "com.tirosh.vitalserver",
+            ],
+            forgetPackageReceipt: { identifier in
+                self.events.append("forget:\(identifier)")
             },
             log: { message in
                 self.events.append("log:\(message)")

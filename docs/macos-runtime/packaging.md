@@ -327,7 +327,9 @@ VM service가 시작되면 `vitalserver-vm start`가 `vm-config.json`을 읽어 
 Uninstall 로직은 Helper app에 중복 구현하지 않고, 설치된
 `/usr/local/bin/tirosh-vitalserver-uninstall`을 관리자 권한으로 호출합니다. Helper app을 열 수 없는 깨진 설치 상태에서는 같은 command를 Terminal 또는 MDM/Jamf에서 root로 실행합니다.
 
-기본 Uninstall은 먼저 VM 안의 Redis volume에서 복구 가능한 Redis backup을 생성합니다. 이 backup이 완료되지 않으면 제거를 중단합니다. 이후 Helper app, LaunchDaemon, Updater/Supervisor/VM Driver tools, VM disk, package receipt를 제거하지만 `.vital` 파일 경로, logs, rollback backups, Redis backups는 보존합니다. Clean Uninstall은 `--clean`을 전달해 Redis backup 생성과 보존 단계를 건너뛰고 VM 영역, logs, backups, Redis backups, 설정된 vital files directory까지 삭제합니다.
+기본 Uninstall은 먼저 VM 안의 Redis volume에서 복구 가능한 Redis backup을 생성합니다. 이 backup이 완료되지 않으면 제거를 중단합니다. 이후 Helper app, LaunchDaemon, runtime tools, uninstaller, VM disk, package receipt를 제거하지만 `.vital` 파일 경로, logs, rollback backups, Redis backups는 보존합니다. Clean Uninstall은 `--clean`을 전달해 Redis backup 생성과 보존 단계를 건너뛰고 VM 영역, logs, backups, Redis backups, 설정된 vital files directory까지 삭제합니다.
+
+Fresh install 차단 조건과 uninstall 제거 대상은 같은 계약을 따라야 합니다. `preinstall`이 검사하는 `/Library/Application Support/TiroshVitalServer`, Helper app, runtime tools, uninstaller, LaunchDaemon plist, loaded launchd service, package receipt가 uninstall 이후 남으면 다음 `.pkg` 설치는 실패해야 합니다. Package receipt는 현재 installer receipt인 `com.tirosh.vitalserver.vm`과 product/update contract에서 쓰는 `com.tirosh.vitalserver`를 모두 정리합니다.
 
 ```text
 VitalServer Helper.app

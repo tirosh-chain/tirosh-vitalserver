@@ -128,6 +128,7 @@ stat -f "%Sm %Sp %Su:%Sg %z %N" \
 - `vm-disk.img`의 수정 시간은 VM이 실행 중이면 계속 바뀔 수 있습니다. mtime만으로 disk가 새로 만들어졌다고 판단하지 않습니다.
 - clean uninstall은 의도적으로 VM 영역과 backup 영역까지 제거할 수 있습니다. Redis backup/VM disk 보존이 필요하면 clean uninstall 전에 별도 확인이 필요합니다.
 - watchdog recovery log는 service restart 기록입니다. disk deletion, rollback restore, reinstall과 구분해서 읽어야 합니다.
+- fresh install 전용 `.pkg`는 product root, Helper app, runtime tools, uninstaller, LaunchDaemon, loaded launchd service, package receipt 중 하나라도 남아 있으면 `preinstall`에서 실패해야 합니다. 따라서 clean uninstall은 현재 package receipt `com.tirosh.vitalserver.vm`과 legacy/product receipt `com.tirosh.vitalserver`를 모두 정리해야 합니다.
 - runtime event history는 과거 operation의 이벤트를 포함하므로 current owner/status와 함께 해석해야 합니다.
 - `launchctl bootout`은 stop 요청이지 stopped 상태 계약이 아닙니다. Clean uninstall은 launchd unload와 VM process exit를 확인한 뒤 runtime directory 삭제로 넘어가야 합니다.
 
