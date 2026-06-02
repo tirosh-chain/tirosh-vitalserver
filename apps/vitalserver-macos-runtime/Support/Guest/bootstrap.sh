@@ -142,11 +142,24 @@ expand_root_filesystem() {
   df -h /
 }
 
+python_venv_ready() {
+  local test_venv
+
+  test_venv="$(mktemp -d)"
+  if python3 -m venv "${test_venv}" >/dev/null 2>&1; then
+    rm -rf "${test_venv}"
+    return 0
+  fi
+
+  rm -rf "${test_venv}"
+  return 1
+}
+
 runtime_packages_ready() {
   command -v curl >/dev/null 2>&1 \
     && command -v docker >/dev/null 2>&1 \
     && command -v python3 >/dev/null 2>&1 \
-    && python3 -m venv --help >/dev/null 2>&1 \
+    && python_venv_ready \
     && command -v fuser >/dev/null 2>&1 \
     && command -v avahi-daemon >/dev/null 2>&1 \
     && command -v growpart >/dev/null 2>&1 \
@@ -159,7 +172,7 @@ missing_runtime_packages() {
   command -v curl >/dev/null 2>&1 || missing+=("curl")
   command -v docker >/dev/null 2>&1 || missing+=("docker")
   command -v python3 >/dev/null 2>&1 || missing+=("python3-minimal")
-  python3 -m venv --help >/dev/null 2>&1 || missing+=("python3-venv")
+  python_venv_ready || missing+=("python3-venv/ensurepip")
   command -v fuser >/dev/null 2>&1 || missing+=("psmisc")
   command -v avahi-daemon >/dev/null 2>&1 || missing+=("avahi-daemon")
   command -v growpart >/dev/null 2>&1 || missing+=("growpart")

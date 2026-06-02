@@ -37,6 +37,17 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: removedInstaller.path))
     }
 
+    func testBootstrapChecksActualPythonVenvCreation() throws {
+        let bootstrap = try readGuestSupportFile("bootstrap.sh")
+        let prepareAirgapRootfs = try readGuestSupportFile("prepare-airgap-rootfs.sh")
+
+        XCTAssertTrue(bootstrap.contains("python_venv_ready"))
+        XCTAssertTrue(bootstrap.contains("python3 -m venv \"${test_venv}\""))
+        XCTAssertFalse(bootstrap.contains("python3 -m venv --help"))
+        XCTAssertTrue(prepareAirgapRootfs.contains("verify_python_venv"))
+        XCTAssertTrue(prepareAirgapRootfs.contains("python3 -m venv \"${test_venv}\""))
+    }
+
     func testGuestCommandFailuresClearRequestFilesAfterWritingFailureResult() throws {
         let activation = try readGuestToolsFile("application/update_activation.py")
         let shutdown = try readGuestToolsFile("application/update_shutdown.py")

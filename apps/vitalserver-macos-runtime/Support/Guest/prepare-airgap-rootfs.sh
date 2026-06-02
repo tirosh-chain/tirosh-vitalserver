@@ -69,7 +69,30 @@ install_runtime_packages() {
   rm -rf /var/lib/apt/lists/*
 }
 
+verify_python_venv() {
+  local test_venv
+
+  test_venv="$(mktemp -d)"
+  if ! python3 -m venv "${test_venv}" >/dev/null 2>&1; then
+    rm -rf "${test_venv}"
+    printf "error: python3 venv cannot be created; ensure python3-venv and ensurepip are installed\n" >&2
+    return 1
+  fi
+  if ! "${test_venv}/bin/python" -m pip --version >/dev/null 2>&1; then
+    rm -rf "${test_venv}"
+    printf "error: python3 venv was created without pip; ensure ensurepip is available\n" >&2
+    return 1
+  fi
+  rm -rf "${test_venv}"
+}
+
+verify_runtime_packages() {
+  verify_python_venv
+  docker compose version >/dev/null
+}
+
 install_runtime_packages
+verify_runtime_packages
 systemctl enable docker
 systemctl enable avahi-daemon
 
@@ -77,6 +100,7 @@ systemctl enable avahi-daemon
   printf "ready_at=%s\n" "$(date -Iseconds)"
   printf "docker=%s\n" "$(docker --version 2>/dev/null || true)"
   printf "compose=%s\n" "$(docker compose version 2>/dev/null || true)"
+  printf "python_venv=ready\n"
 } >"${READY_FILE}"
 
 printf "Air-gapped rootfs package prerequisites are ready.\n"
