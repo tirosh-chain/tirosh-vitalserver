@@ -66,10 +66,16 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
         XCTAssertFalse(syncRelease.contains("tirosh_guest_tools/redis/repair.py"))
     }
 
-    func testPostinstallTimeoutCoversRuntimeHealthWait() throws {
+    func testPostinstallDelegatesInstallProvisionWithoutStatusFallback() throws {
         let postinstall = try readRuntimeSupportFile("Packaging/postinstall.template")
 
-        XCTAssertTrue(postinstall.contains("postinstall_timeout_seconds=900"))
+        XCTAssertTrue(postinstall.contains("\"${vm_bin}\" runtime install-provision"))
+        XCTAssertFalse(postinstall.contains("\"${vm_bin}\" runtime install &"))
+        XCTAssertFalse(postinstall.contains("runtime_status="))
+        XCTAssertFalse(postinstall.contains("log_runtime_install_status"))
+        XCTAssertFalse(postinstall.contains("runtime install progress"))
+        XCTAssertFalse(postinstall.contains("runtime install timed out"))
+        XCTAssertFalse(postinstall.contains("kill -KILL \"${pid}\""))
         XCTAssertFalse(postinstall.contains("postinstall_timeout_seconds=300"))
     }
 
@@ -78,7 +84,8 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
 
         XCTAssertTrue(uninstall.contains("command=(\"${vm_bin}\" \"runtime\" \"uninstall\")"))
         XCTAssertTrue(uninstall.contains("command+=(\"--clean\")"))
-        XCTAssertTrue(uninstall.contains("\"${command[@]}\""))
+        XCTAssertTrue(uninstall.contains("vm_home=\"${VM_HOME}\""))
+        XCTAssertTrue(uninstall.contains("VITALSERVER_VM_HOME=\"${vm_home}\" \"${command[@]}\""))
         XCTAssertTrue(uninstall.contains("step=remove-uninstaller status=started"))
         XCTAssertFalse(uninstall.contains("/usr/bin/python3"))
         XCTAssertFalse(uninstall.contains("launchctl bootout"))

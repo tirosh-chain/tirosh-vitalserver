@@ -34,11 +34,30 @@ struct RuntimeInstallWorkflow {
     let operations: RuntimeInstallWorkflowOperations
 
     func install() throws {
-        try runtimeInstallRunner().run()
+        try runtimeInstallRunner(
+            plan: RuntimeOperationPlans.install,
+            completionStatus: .healthy,
+            completionMessage: "runtime install completed"
+        ).run()
     }
 
-    private func runtimeInstallRunner() -> RuntimeInstallRunner {
+    func installProvision() throws {
+        try runtimeInstallRunner(
+            plan: RuntimeOperationPlans.installProvision,
+            completionStatus: .degraded,
+            completionMessage: "runtime install provisioned; runtime services starting"
+        ).run()
+    }
+
+    private func runtimeInstallRunner(
+        plan: RuntimeOperationPlan,
+        completionStatus: RuntimeStatusLevel,
+        completionMessage: String
+    ) -> RuntimeInstallRunner {
         RuntimeInstallRunner(
+            plan: plan,
+            completionStatus: completionStatus,
+            completionMessage: completionMessage,
             loadSettings: {
                 try InstallSettings.load(
                     defaultVitalFilesDirectory: context.installedPaths.vitalFilesDirectory.path,

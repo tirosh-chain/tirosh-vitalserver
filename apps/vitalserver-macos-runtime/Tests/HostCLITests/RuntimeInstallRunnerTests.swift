@@ -27,6 +27,25 @@ final class RuntimeInstallRunnerTests: XCTestCase {
         XCTAssertTrue(harness.logs.contains("runtime install completed home=/runtime-home"))
     }
 
+    func testRunCanProvisionInstallWithoutClaimingRuntimeHealthy() throws {
+        let harness = InstallHarness()
+
+        try harness.provisionRunner.run()
+
+        XCTAssertEqual(harness.executedSteps, RuntimeOperationPlans.installProvision.steps)
+        XCTAssertEqual(harness.statuses.first?.level, .installing)
+        XCTAssertEqual(harness.statuses.last?.level, .degraded)
+        XCTAssertEqual(harness.statuses.last?.operation, .install)
+        XCTAssertEqual(
+            harness.statuses.last?.message,
+            "runtime install provisioned; runtime services starting"
+        )
+        XCTAssertFalse(harness.executedSteps.contains(.waitInstallRuntimeHealth))
+        XCTAssertTrue(
+            harness.logs.contains("runtime install provisioned; runtime services starting home=/runtime-home")
+        )
+    }
+
     func testRunWritesCriticalStatusWhenSettingsLoadFails() throws {
         let harness = InstallHarness()
         harness.loadError = TestInstallError.load
@@ -59,7 +78,26 @@ private final class InstallHarness {
     var stepError: Error?
 
     var runner: RuntimeInstallRunner {
+        makeRunner()
+    }
+
+    var provisionRunner: RuntimeInstallRunner {
+        makeRunner(
+            plan: RuntimeOperationPlans.installProvision,
+            completionStatus: .degraded,
+            completionMessage: "runtime install provisioned; runtime services starting"
+        )
+    }
+
+    private func makeRunner(
+        plan: RuntimeOperationPlan = RuntimeOperationPlans.install,
+        completionStatus: RuntimeStatusLevel = .healthy,
+        completionMessage: String = "runtime install completed"
+    ) -> RuntimeInstallRunner {
         RuntimeInstallRunner(
+            plan: plan,
+            completionStatus: completionStatus,
+            completionMessage: completionMessage,
             loadSettings: {
                 if let loadError = self.loadError {
                     throw loadError

@@ -5,6 +5,7 @@ uninstall_log="${UNINSTALL_LOG}"
 exec > >(tee -a "${uninstall_log}") 2>&1
 
 vm_bin="${VM_BIN}"
+vm_home="${VM_HOME}"
 uninstall="${UNINSTALL}"
 clean=false
 
@@ -46,7 +47,7 @@ if [ "${clean}" = true ]; then
 fi
 
 log "delegating uninstall to HostCLI clean=${clean}"
-"${command[@]}"
+VITALSERVER_VM_HOME="${vm_home}" "${command[@]}"
 
 log "step=remove-uninstaller status=started"
 rm -f "${uninstall}"

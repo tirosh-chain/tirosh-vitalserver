@@ -32,13 +32,16 @@ Failing command: /opt/tirosh/guest-tools/venv/bin/python3
 
 이 경우 VM은 boot되고 DHCP IP도 받지만 guest-tools venv가 생성되지 않습니다. 따라서 `tirosh-runtime-state`, command poller, observability service가 실행될 수 없고 host에는 `vm-runtime-state-missing`, `guest-http-missing-vm-ip`, `host-proxy-http-failed`가 연쇄적으로 보입니다. 원인은 host proxy가 아니라 guest bootstrap prerequisite 실패입니다.
 
+또 다른 사례에서는 Guest-owned `runtime-state.json`에는 `vmIP`와 HTTP 200 상태가 기록됐지만, Host-owned `runtime-status.json`이 stale `recovering/install` 상태에 머물렀습니다. watchdog은 stale install status를 active managed operation으로 보고 스스로 실행을 skip했기 때문에 VM lifecycle을 `running`으로 전환하지 못했고, Helper에는 `guest-http-missing-vm-ip`가 계속 표시됐습니다. 이 경우 IP가 없는 것이 아니라 Host status owner가 Guest state를 아직 반영하지 못한 상태입니다.
+
 조치:
 
 수정된 `bootstrap.sh`가 들어간 update bundle을 다시 만들고 적용합니다. 해당 변경은 `guest-deploy.tar.gz`에 포함되며, 기본 migration과 guest activation 경로를 통해 현장 runtime에 반영됩니다.
 
-Clean install/pkg install에서는 host-side 파일 배치와 launchd 시작만으로 성공 처리하면 안 됩니다. `start-installed-services` 이후 `wait-install-runtime-health`가 guest bootstrap/runtime health를 확인해야 하며, `guest-bootstrap-missing-runtime-packages` 같은 bootstrap failure는 postinstall 실패로 전파되어야 합니다.
+Clean install/pkg install에서는 host-side 파일 배치와 launchd 시작 이후 runtime이 아직 bootstrapping 중임을 명시 status로 남겨야 합니다. `guest-bootstrap-missing-runtime-packages` 같은 bootstrap failure는 `postinstall`의 추론이 아니라 watchdog, Helper app, `runtime health`의 explicit status로 전파되어야 합니다.
 
 ## Follow-up
 
 - 2026-06-02: `python3 -m venv --help`는 ensurepip 존재를 보장하지 않는다는 clean install 로그를 확인했습니다. Guest bootstrap과 air-gapped rootfs 준비 스크립트가 실제 임시 venv를 생성하는 smoke check를 수행하도록 수정했습니다.
-- 2026-06-02: pkg install 성공 조건에 install-owned `wait-install-runtime-health` 단계를 추가했습니다. Runtime install은 health 확인 전 `.healthy` status를 쓰지 않습니다.
+- 2026-06-02: pkg install 경계를 `runtime install-provision`으로 분리했습니다. Runtime install provision은 `.healthy` status를 쓰지 않고, readiness는 runtime health owner가 별도로 보고합니다.
+- 2026-06-02: `install-provision` 완료 status가 `.recovering`이면 watchdog 보호 정책과 충돌해 stale install 상태가 active operation처럼 남을 수 있음을 확인했습니다. Provision 완료 status는 health 미확정 상태로 남기고, watchdog/health가 Guest-owned state를 읽어 최종 상태를 갱신해야 합니다.

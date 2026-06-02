@@ -427,7 +427,7 @@ Single-node self-healing runtime
 /Library/Application Support/TiroshVitalServer/status/runtime-status.json
 ```
 
-이 파일은 `vitalserver-vm runtime install`, `health`, `watchdog`, `apply-bundle`, `rollback`이 갱신합니다. Helper app, watchdog, 운영 CLI는 같은 파일을 읽어 상태를 판단합니다.
+이 파일은 `vitalserver-vm runtime install`, `install-provision`, `health`, `watchdog`, `apply-bundle`, `rollback`이 갱신합니다. Helper app, watchdog, 운영 CLI는 같은 파일을 읽어 상태를 판단합니다.
 
 `runtime-status.json`은 update/watchdog coordination에도 사용합니다. update와 rollback은 VM/proxy/watchdog launchd service를 직접 stop/start하므로, 이 구간에서 watchdog auto-recovery가 동시에 실행되면 같은 자원을 두 process가 재시작하는 경쟁 상태가 됩니다. 따라서 watchdog은 상태 문서가 아래 operation을 진행 중이라고 판단하면 recovery를 건너뜁니다.
 
@@ -747,7 +747,7 @@ Shell
 | build config | `config/vm-build.toml` | Ubuntu/rootfs/Docker image/nginx bundle pinned input 값 | 설치 시 사용자 설정 |
 | Python build package | `packages/vitalserver-devtools/src/tirosh_vitalserver/devtools/*.py` | Ubuntu asset 준비, cloud-init ISO 생성, rootfs 압축, nginx bundle, Docker image bundle, update bundle 생성/검증, plist/template rendering | 설치 후 runtime 상태 변경 |
 | Local control entry | `Sources/HostCLI/CLI/Launcher.swift`, `Command.swift` | `vitalserver-vm` command routing, VM start/stop/status/network/runtime command 연결 | package staging, DMG 생성 |
-| Local control lifecycle facade | `Sources/HostCLI/Runtime/RuntimeLifecycle.swift` | `runtime install/status/health/verify-bundle/stage-bundle/apply-bundle/rollback/repair-datastore/start-services/stop-services` command를 typed workflow와 runner로 연결 | workflow 내부 단계 구현, DMG/PKG 파일 생성 |
+| Local control lifecycle facade | `Sources/HostCLI/Runtime/RuntimeLifecycle.swift` | `runtime install/install-provision/status/health/verify-bundle/stage-bundle/apply-bundle/rollback/repair-datastore/start-services/stop-services` command를 typed workflow와 runner로 연결 | workflow 내부 단계 구현, DMG/PKG 파일 생성 |
 | Local control workflows | `RuntimeInstallWorkflow.swift`, `RuntimeBundleWorkflow.swift`, `RuntimeRollbackWorkflow.swift`, `RuntimeGuestActivationWorkflow.swift`, `RuntimeDatastoreRepairWorkflow.swift` | install/update/rollback/guest activation/datastore repair의 단계 조율, progress/status 기록 경계 | CLI argument parsing, Helper UI presentation |
 | Local control contracts | `Sources/Contracts/*.swift`, `Sources/Core/Ports/*.swift` | runtime status/progress/health/guest request/result/update bundle/port 계약, 닫힌 상태값 enum | host filesystem이나 launchd 직접 호출 |
 | Local control host services | `RuntimeServiceController.swift`, `RuntimeStorageMaintenance.swift`, `RuntimeStatusWriter.swift`, `RuntimeCommandExecutor.swift`, `RuntimeHealthChecker.swift` | launchd service 제어, free-space/file replacement/artifact pruning, status document 작성, shell command 실행, host/guest health snapshot 수집 | product update policy 결정 |
@@ -758,7 +758,7 @@ Shell
 | PKG scripts | `Support/Packaging/preinstall`, `postinstall`, `proxy-run`, `uninstall` | installer/launchd/uninstall entrypoint wrapper | 복잡한 provisioning 로직 |
 | guest bootstrap | `Support/Guest/bootstrap.sh`, Guest tools wheel, `prepare-airgap-rootfs.sh`, `compose.yaml` | Linux guest 내부 Docker/Compose 구성, edge nginx container, Docker image load, runtime state 기록 | macOS launchd/proxy 관리 |
 
-Shell은 의도적으로 얇게 유지합니다. `postinstall`은 로그를 열고 `VITALSERVER_VM_HOME=/Library/Application Support/TiroshVitalServer/vm vitalserver-vm runtime install`만 호출합니다. 설치 정책은 Swift `RuntimeLifecycle`에 둡니다.
+Shell은 의도적으로 얇게 유지합니다. `postinstall`은 로그를 열고 `VITALSERVER_VM_HOME=/Library/Application Support/TiroshVitalServer/vm vitalserver-vm runtime install-provision`만 호출합니다. 설치 정책은 Swift `RuntimeLifecycle`에 둡니다. Runtime readiness 판단은 `postinstall`이 아니라 watchdog, Helper app, `runtime health` command가 담당합니다.
 
 변경 판단 기준은 아래입니다.
 

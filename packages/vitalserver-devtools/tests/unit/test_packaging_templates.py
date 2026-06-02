@@ -73,8 +73,9 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
     assert "existing host proxy port listener found" in preinstall_text
     assert 'lsof -nP -iTCP:"${proxy_port}" -sTCP:LISTEN' in preinstall_text
     assert "/Library/Application Support/TiroshVitalServer" in rendered
-    assert "postinstall_timeout_seconds=300" in postinstall_text
-    assert "runtime install timed out timeoutSeconds=" in postinstall_text
+    assert '"${vm_bin}" runtime install-provision' in postinstall_text
+    assert "postinstall_timeout_seconds" not in postinstall_text
+    assert "runtime install timed out timeoutSeconds=" not in postinstall_text
     assert "postinstall failure cleanup started" in postinstall_text
     assert 'nginx_prefix="/Library/Application Support/TiroshVitalServer/nginx"' in postinstall_text
     assert 'nginx_bin="${nginx_prefix}/sbin/nginx"' in postinstall_text
@@ -86,8 +87,9 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
     assert '"${vm_bin}"' in postinstall_text
     assert '"${proxy_run}"' in postinstall_text
     assert '"${uninstaller}"' in postinstall_text
-    assert "runtime install progress status=" in postinstall_text
-    assert "runtime install progress failureReasons=" in postinstall_text
+    assert "runtime install progress status=" not in postinstall_text
+    assert "runtime install progress failureReasons=" not in postinstall_text
+    assert "runtime_status=" not in postinstall_text
     assert (
         'runtime_logs="${VITALSERVER_RUNTIME_LOGS:-${product_root}/logs/runtime}"'
         in proxy_run_text
@@ -102,6 +104,8 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
     assert "proxy_temp_path temp/proxy;" in proxy_config_text
     assert '"${vm_bin}" "runtime" "uninstall"' in uninstall_text
     assert 'command+=("--clean")' in uninstall_text
+    assert 'vm_home="/Library/Application Support/TiroshVitalServer/vm"' in uninstall_text
+    assert 'VITALSERVER_VM_HOME="${vm_home}" "${command[@]}"' in uninstall_text
     assert "Applications/VitalServer Helper.app" in components.read_text(
         encoding="utf-8"
     )

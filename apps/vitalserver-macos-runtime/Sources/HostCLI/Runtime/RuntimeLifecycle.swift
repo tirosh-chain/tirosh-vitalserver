@@ -90,6 +90,8 @@ struct RuntimeLifecycle {
         switch try RuntimeLifecycleCommand.parse(arguments) {
         case .install:
             try install()
+        case .installProvision:
+            try installProvision()
         case .status:
             printStatus()
         case .health:
@@ -133,6 +135,10 @@ struct RuntimeLifecycle {
 
     func install() throws {
         try runtimeInstallWorkflow().install()
+    }
+
+    func installProvision() throws {
+        try runtimeInstallWorkflow().installProvision()
     }
 
     func printStatus() {

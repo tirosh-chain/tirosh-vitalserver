@@ -4,6 +4,7 @@ import Contracts
 
 enum RuntimeLifecycleCommand: Equatable {
     case install
+    case installProvision
     case status
     case health
     case guestLogSync
@@ -31,6 +32,8 @@ enum RuntimeLifecycleCommand: Equatable {
         switch command {
         case "install":
             return .install
+        case "install-provision":
+            return .installProvision
         case "status":
             return .status
         case "health":
@@ -82,6 +85,7 @@ enum RuntimeLifecycleCommand: Equatable {
     static let usage = """
     Usage:
       vitalserver-vm runtime install
+      vitalserver-vm runtime install-provision
       vitalserver-vm runtime status
       vitalserver-vm runtime health
       vitalserver-vm runtime guest-log-sync

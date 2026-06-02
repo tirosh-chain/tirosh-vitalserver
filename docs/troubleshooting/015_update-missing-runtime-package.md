@@ -29,9 +29,9 @@ Product Update bundle은 `rootfs-base.raw.gz`를 포함하거나 교체하지 �
 
 같은 bundle을 반복 적용하지 말고, 새 package 재설치 또는 별도 VM Image replacement 흐름으로 복구합니다. 운영 데이터 보존 범위는 [Update](../macos-runtime/update.md)의 `0.1.4 update에서 다시 실패하는 경우`를 확인합니다.
 
-새 package clean install에서는 `start-installed-services`만으로 pkg install을 성공 처리하면 안 됩니다. Guest bootstrap prerequisite 실패가 `bootstrap-result.json`에 기록되면 install health wait가 이를 early failure로 소비하고 postinstall이 실패해야 합니다.
+새 package clean install에서는 `start-installed-services` 이후 runtime이 아직 bootstrapping 중임을 명시 status로 남겨야 합니다. Guest bootstrap prerequisite 실패가 `bootstrap-result.json`에 기록되면 watchdog, Helper app, `runtime health`가 이를 실패 상태로 표시해야 하며, `postinstall`이 guest 상태를 추론해 성공/실패를 대신 판단하면 안 됩니다.
 
 ## Follow-up
 
 - 2026-06-02: `python3-venv`/ensurepip 누락 rootfs에서 clean install 후 guest-tools venv 생성이 실패하는 로그를 확인했습니다. Rootfs 준비와 bootstrap preflight가 실제 `python3 -m venv` smoke check를 수행하도록 수정했습니다.
-- 2026-06-02: pkg install 성공 조건에 `wait-install-runtime-health`를 추가해 guest bootstrap/runtime health 실패가 postinstall 성공 뒤로 밀리지 않게 했습니다.
+- 2026-06-02: pkg install 경계를 `runtime install-provision`으로 분리했습니다. Guest bootstrap/runtime health 실패는 `postinstall`이 추론하지 않고 runtime status owner가 explicit status로 보고합니다. Provision 완료 status는 watchdog을 막는 active operation으로 남기지 않습니다.

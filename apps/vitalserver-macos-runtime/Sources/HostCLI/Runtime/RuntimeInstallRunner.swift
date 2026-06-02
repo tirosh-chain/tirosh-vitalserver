@@ -2,6 +2,9 @@ import Core
 import Contracts
 
 struct RuntimeInstallRunner {
+    var plan: RuntimeOperationPlan = RuntimeOperationPlans.install
+    var completionStatus: RuntimeStatusLevel = .healthy
+    var completionMessage: String = "runtime install completed"
     var loadSettings: () throws -> InstallSettings
     var executeStep: (RuntimeWorkflowStep, InstallSettings) throws -> Void
     var writeStatus: (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void
@@ -15,7 +18,7 @@ struct RuntimeInstallRunner {
         try writeStatus(.installing, .install, "runtime install started")
         do {
             try RuntimeOperationPlanRunner.run(
-                plan: RuntimeOperationPlans.install,
+                plan: plan,
                 status: .installing,
                 execute: { step in
                     try executeStep(step, settings)
@@ -25,8 +28,8 @@ struct RuntimeInstallRunner {
                     writeRuntimeProgressBestEffort(event, writeProgress: writeProgress, log: log)
                 }
             )
-            try writeStatus(.healthy, .install, "runtime install completed")
-            log("runtime install completed home=\(runtimeHomePath())")
+            try writeStatus(completionStatus, .install, completionMessage)
+            log("\(completionMessage) home=\(runtimeHomePath())")
         } catch {
             writeRuntimeStatusBestEffort(
                 .critical,

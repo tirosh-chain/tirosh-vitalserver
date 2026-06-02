@@ -24,6 +24,27 @@ final class RuntimeOperationPlanTests: XCTestCase {
         ])
     }
 
+    func testInstallProvisionPlanDoesNotWaitForRuntimeHealth() {
+        XCTAssertEqual(RuntimeOperationPlans.installProvision.operation, .install)
+        XCTAssertTrue(RuntimeOperationPlans.installProvision.isValid)
+        XCTAssertEqual(RuntimeOperationPlans.installProvision.steps.map(\.rawValue), [
+            "load-install-settings",
+            "prepare-install-directories",
+            "rotate-runtime-logs",
+            "configure-guest-runtime-config",
+            "prepare-installed-executables",
+            "provision-vm-disk",
+            "configure-vm-runtime",
+            "create-cloud-init-seed",
+            "write-install-runtime-version",
+            "configure-installed-permissions",
+            "start-installed-services",
+            "apply-start-on-boot-policy",
+            "cleanup-install-settings",
+        ])
+        XCTAssertFalse(RuntimeOperationPlans.installProvision.steps.contains(.waitInstallRuntimeHealth))
+    }
+
     func testApplyBundlePlanStepOrder() {
         XCTAssertEqual(RuntimeOperationPlans.applyBundle.operation, .applyBundle)
         XCTAssertTrue(RuntimeOperationPlans.applyBundle.isValid)

@@ -10,7 +10,7 @@
 | DMG의 역할은? | `.pkg`를 전달하는 껍데기 |
 | 최종 산출물 위치는? | `dist/` |
 | build 작업의 주 구현은? | Python `packages/vitalserver-devtools` |
-| 설치 후 provisioning 주 구현은? | Swift `vitalserver-vm runtime install` |
+| 설치 후 provisioning 주 구현은? | Swift `vitalserver-vm runtime install-provision` |
 | Shell script 역할은? | `postinstall`, launchd, uninstall wrapper |
 | update bundle은 누가 검증/적용하나? | Swift `RuntimeLifecycle` |
 
@@ -257,7 +257,9 @@ make vm-dmg-release
 | PKG root staging | Make + filesystem tools | payload 배치가 명령형이고 `pkgbuild` 입력 구조와 1:1 대응 |
 | 설치 후 provisioning | Swift `RuntimeLifecycle` | target Mac 상태, launchd, backup/rollback, health를 하나의 runtime source of truth로 관리 |
 
-따라서 `postinstall`이나 Make target에 provisioning 정책을 다시 넣지 않습니다. `postinstall`은 설치 log를 연결한 뒤 `vitalserver-vm runtime install`을 호출하는 wrapper로 유지합니다.
+따라서 `postinstall`이나 Make target에 provisioning 정책을 다시 넣지 않습니다. `postinstall`은 설치 log를 연결한 뒤 `vitalserver-vm runtime install-provision`을 호출하는 wrapper로 유지합니다.
+
+`install-provision`은 package payload, VM disk/config, cloud-init seed, 권한, launchd service 시작 요청까지 담당합니다. runtime이 실제로 healthy인지 판단하는 일은 `postinstall`이 하지 않습니다. Helper app, watchdog, `vitalserver-vm runtime health`가 `runtime-status.json`과 guest-owned state를 읽어 별도 readiness로 보고합니다. 따라서 `.pkg` 성공은 "runtime service start가 요청됨"을 뜻하고, "VitalServer backend가 ready"를 뜻하지 않습니다. Provision 완료 status는 active operation이 아니어야 하며, watchdog이 이어서 Guest-owned state를 반영할 수 있어야 합니다.
 
 Fresh install `postinstall`이 실패하면 wrapper는 실패 로그를 `/private/tmp/tirosh-vitalserver-postinstall-failure.log`에 보존한 뒤 이번 package attempt가 만든 product root, Helper app, runtime tools, LaunchDaemon plist, package receipt를 제거합니다. Cleanup은 package nginx 경로로 확인된 orphan host proxy process도 종료합니다. 이 cleanup은 fresh install 경계에서만 동작하며, 외부 `.vital` 경로나 별도 사용자 데이터 경로는 삭제하지 않습니다.
 
@@ -286,9 +288,9 @@ DMG root에는 `Install Tirosh VitalServer.pkg`만 둡니다. 사용자는 pkg�
 2. Install Tirosh VitalServer.pkg 실행
 3. macOS Installer가 payload 복사
 4. PKG postinstall 실행
-5. Swift runtime install이 runtime instance provision
+5. Swift runtime install-provision이 runtime instance provision
 6. launchd VM/proxy/watchdog service 등록 및 정책 적용
-7. Helper.app 또는 CLI로 status/health 확인
+7. Helper.app, watchdog, CLI가 status/health 확인
 ```
 
 실제 코드 호출은 아래처럼 이어집니다.
@@ -304,7 +306,7 @@ Install Tirosh VitalServer.pkg
     -> /Library/Application Support/TiroshVitalServer/nginx/*
     -> /Library/LaunchDaemons/com.tirosh.vitalserver-*.plist
   -> rendered postinstall from Support/Packaging/postinstall.template
-    -> vitalserver-vm runtime install
+    -> vitalserver-vm runtime install-provision
       -> read /private/tmp/tirosh-vitalserver-install.json if present
       -> create runtime/data/log directories
       -> write deploy/runtime-config.json
@@ -358,7 +360,7 @@ Fallback:
 | nginx bundle | `make vm-nginx-bundle` | Python `nginx-bundle` | pinned macOS nginx binary, expected version | self-contained `nginx/sbin`, `nginx/lib` bundle |
 | Docker image bundle | `make vm-docker-images` | Python `docker-images` | Dockerfile, image list, build platform | `vitalserver-images.tar.gz` |
 | PKG/DMG staging | `vitalserver-devtools release-pkg` / `release-dmg` | Python build CLI, Swift, macOS packaging tools | release manifest, app source, rootfs base, nginx binary, Docker image list, templates | package root under `.tmp/vitalserver-vm-pkg/root`, `dist/*` |
-| install provisioning | PKG `postinstall` | `vitalserver-vm runtime install` | installed payload, optional `/private/tmp/tirosh-vitalserver-install.json` | `vm-disk.img`, `vm-config.json`, `seed.iso`, permissions, launchd services |
+| install provisioning | PKG `postinstall` | `vitalserver-vm runtime install-provision` | installed payload, optional `/private/tmp/tirosh-vitalserver-install.json` | `vm-disk.img`, `vm-config.json`, `seed.iso`, permissions, launchd services, degraded runtime status until health is observed |
 | runtime status | RuntimeLifecycle | `runtime-status.json` | health/install/update/rollback result | Helper/watchdog-readable status |
 | VM launch | launchd | `vitalserver-vm start` | `VITALSERVER_VM_HOME`, `VITALSERVER_VM_DETACHED=1`, `runtime/vm-config.json` | Virtualization.framework VM process |
 | watchdog | launchd | `vitalserver-vm runtime watchdog` | runtime files, launchd state, guest runtime state, HTTP health | runtime status update, VM/proxy kickstart |

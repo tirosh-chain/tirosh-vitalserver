@@ -69,6 +69,25 @@ public enum RuntimeOperationPlans {
         ]
     )
 
+    public static let installProvision = try! RuntimeOperationPlan(
+        operation: .install,
+        steps: [
+            .loadInstallSettings,
+            .prepareInstallDirectories,
+            .rotateRuntimeLogs,
+            .configureGuestRuntimeConfig,
+            .prepareInstalledExecutables,
+            .provisionVMDisk,
+            .configureVMRuntime,
+            .createCloudInitSeed,
+            .writeInstallRuntimeVersion,
+            .configureInstalledPermissions,
+            .startInstalledServices,
+            .applyStartOnBootPolicy,
+            .cleanupInstallSettings,
+        ]
+    )
+
     public static let applyBundle = try! RuntimeOperationPlan(
         operation: .applyBundle,
         steps: [
