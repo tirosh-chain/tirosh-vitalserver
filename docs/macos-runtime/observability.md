@@ -354,6 +354,12 @@ Runtime event와 command audit event는 분리합니다.
 | command audit event | VRecorder/Web Monitoring command 추적 | `join_vr`, `send_data`, `req_cmd`, `command_dispatch` |
 | raw log | 사람이 보는 진단 정보 | compose logs, launchd logs, proxy logs |
 
+Raw proxy log rows can explain why a previous request failed, but they do not
+own current backend availability state. VitalDB observer keeps parsed proxy
+connections as diagnostic evidence only. Current runtime failure reasons must be
+derived from explicit status/probe contracts owned by watchdog/runtime and guest
+runtime state, not from historical log rows.
+
 Runtime operational event는 watchdog이 생성합니다. Command audit event는 audit proxy가 생성하고 watchdog은
 필요한 경우 요약 상태만 관측합니다.
 

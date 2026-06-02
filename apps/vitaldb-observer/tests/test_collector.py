@@ -92,6 +92,7 @@ def test_collector_builds_observation_from_redis_and_access_log(tmp_path: Path) 
 
 def test_collector_summarizes_recorder_activity_from_audit_events() -> None:
     now = time.time()
+    bucket_started = now - (now % 60) - 60
     collector = VitalDBCollector(
         redis_client=FakeRedis(
             values={
@@ -104,7 +105,7 @@ def test_collector_summarizes_recorder_activity_from_audit_events() -> None:
                     json.dumps(
                         {
                             "event_type": "send_data",
-                            "ts": _iso(now - 20),
+                            "ts": _iso(bucket_started + 10),
                             "payload_summary": {
                                 "vrcode": "VR_A",
                                 "bytes": 100,
@@ -115,7 +116,7 @@ def test_collector_summarizes_recorder_activity_from_audit_events() -> None:
                     json.dumps(
                         {
                             "event_type": "send_data",
-                            "ts": _iso(now - 10),
+                            "ts": _iso(bucket_started + 20),
                             "payload_summary": {
                                 "vrcode": "VR_A",
                                 "bytes": 150,
@@ -285,6 +286,34 @@ def test_collector_reads_recent_access_log_tail_only(tmp_path: Path) -> None:
     proxy_connections = document["proxyConnections"]
     assert len(proxy_connections) < 40001
     assert proxy_connections[-1]["requestURI"] == "/socket.io/?EIO=3"
+
+
+def test_collector_keeps_proxy_failures_as_diagnostics_not_anomalies(
+    tmp_path: Path,
+) -> None:
+    access_log = tmp_path / "access.jsonl"
+    access_log.write_text(
+        json.dumps(
+            {
+                "time": "2026-06-02T07:24:34Z",
+                "request_uri": "/ready",
+                "status": "502",
+                "upstream_status": "502",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    collector = VitalDBCollector(
+        redis_client=FakeRedis(values={}),
+        settings=_settings(access_log),
+    )
+
+    document = collector.collect().as_json()
+
+    assert document["proxyConnections"][0]["requestURI"] == "/ready"
+    assert document["proxyConnections"][0]["status"] == "502"
+    assert document["anomalies"] == []
 
 
 def test_collector_treats_future_recorder_timestamp_as_stale() -> None:

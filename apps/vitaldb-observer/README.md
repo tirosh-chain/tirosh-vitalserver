@@ -7,10 +7,16 @@ database.
 ## Responsibility
 
 - Read VitalServer Redis keys in read-only mode.
-- Parse optional proxy/access JSONL logs.
+- Parse optional proxy/access JSONL logs as diagnostic evidence.
 - Build recorder, bed, device, filter, proxy, and anomaly snapshots.
 - Serve stateless JSON APIs for the guest runtime-state collector.
 - Write structured diagnostic JSONL events to container stdout.
+
+Proxy/access log entries are not the owner of current backend availability state.
+They remain in `proxyConnections` for inspection, but the observer must not turn
+historical 502/504 log rows into current `backend-unavailable` anomalies. Current
+service availability is provided by explicit runtime HTTP probes and runtime
+status contracts.
 
 The final read model SoT is the macOS runtime observability SQLite file. The guest
 `tirosh-runtime-state` service writes `runtime-state.json` through

@@ -59,7 +59,7 @@ class VitalDBCollector:
             prefix="filts_", bed_ids=[bed.bed_id for bed in beds]
         )
         proxy_connections = self._proxy_connections()
-        anomalies = self._anomalies(observed_at, recorders, proxy_connections)
+        anomalies = self._anomalies(observed_at, recorders)
         return ObservationDocument(
             observed_at=observed_at,
             ready=True,
@@ -229,7 +229,6 @@ class VitalDBCollector:
         self,
         observed_at: str,
         recorders: list[RecorderObservation],
-        proxy_connections: list[ProxyConnectionObservation],
     ) -> list[AnomalyObservation]:
         anomalies: list[AnomalyObservation] = []
         for recorder in recorders:
@@ -254,15 +253,6 @@ class VitalDBCollector:
                     )
                 )
 
-        for connection in proxy_connections:
-            if connection.upstream_status in {"502", "504"} or connection.status in {
-                "502",
-                "504",
-            }:
-                subject = connection.request_uri or "proxy"
-                anomalies.append(
-                    _anomaly("backend-unavailable", "critical", observed_at, subject)
-                )
         return anomalies
 
     def _empty_to_none(self, value: str | None) -> str | None:
