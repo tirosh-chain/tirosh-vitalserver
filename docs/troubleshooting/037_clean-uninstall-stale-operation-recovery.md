@@ -128,6 +128,7 @@ stat -f "%Sm %Sp %Su:%Sg %z %N" \
 - clean uninstall은 의도적으로 VM 영역과 backup 영역까지 제거할 수 있습니다. Redis backup/VM disk 보존이 필요하면 clean uninstall 전에 별도 확인이 필요합니다.
 - watchdog recovery log는 service restart 기록입니다. disk deletion, rollback restore, reinstall과 구분해서 읽어야 합니다.
 - runtime event history는 과거 operation의 이벤트를 포함하므로 current owner/status와 함께 해석해야 합니다.
+- `launchctl bootout`은 stop 요청이지 stopped 상태 계약이 아닙니다. Clean uninstall은 launchd unload와 VM process exit를 확인한 뒤 runtime directory 삭제로 넘어가야 합니다.
 
 ## Related Cases
 
@@ -144,3 +145,4 @@ stat -f "%Sm %Sp %Su:%Sg %z %N" \
 - 2026-05-31: clean uninstall 이후 rollback event와 watchdog recovery가 이어진 현장 로그를 근거로 TS-037을 등록했습니다. 핵심 수정 원칙은 operation ownership, boot-scoped guest result, rollback preflight, watchdog recovery input을 명시 계약으로 분리하는 것입니다.
 - 2026-05-31: hotfix에서 fresh install stale guest-run cleanup, `bootstrap-result.json.bootID`, boot-scoped bootstrap result validation, manifest 기반 rollback preflight/restore plan을 추가했습니다. Full operation ownership document는 후속 구조 개선으로 남겼습니다.
 - 2026-06-01: 핵심 hotfix가 반영되어 문서 상태를 `implemented`로 갱신했습니다. `RuntimeOperationOwnershipDocument`는 별도 구조 개선 후보로 유지합니다.
+- 2026-06-02: clean uninstall이 `stop-launchd-services` 직후 product root 삭제에 들어가 `/Library/Application Support/TiroshVitalServer/vm`에서 `Directory not empty`로 실패하는 로그를 확인했습니다. Uninstaller가 launchd unload와 VM process exit를 기다리고, runtime tools 제거를 product root 삭제 이후로 늦추며, 삭제 실패 시 잔존 파일/open file 진단을 남기도록 보강했습니다.

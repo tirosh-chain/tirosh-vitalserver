@@ -10,8 +10,12 @@ vm_config="${product_root}/vm/runtime/vm-config.json"
 default_vital_files="${product_root}/vm/data/vital-files"
 vm_home="${product_root}/vm"
 guest_run_dir="${vm_home}/data/run"
+pid_file="${vm_home}/run/vitalserver-vm.pid"
 redis_backup_request="${guest_run_dir}/redis-backup.request"
 redis_backup_result="${guest_run_dir}/redis-backup-result.json"
+launchd_stop_timeout_seconds=60
+vm_process_stop_timeout_seconds=900
+stop_poll_seconds=2
 clean=false
 
 log() {
@@ -78,7 +82,137 @@ safe_rm_rf() {
     return 1
   fi
   if [ -e "${target}" ] || [ -L "${target}" ]; then
-    rm -rf "${target}"
+    if ! rm -rf "${target}"; then
+      log "removal failed target=${target}"
+      diagnose_removal_target "${target}"
+      return 1
+    fi
+    if [ -e "${target}" ] || [ -L "${target}" ]; then
+      log "removal incomplete target=${target}"
+      diagnose_removal_target "${target}"
+      return 1
+    fi
+  fi
+}
+
+diagnose_removal_target() {
+  local target="$1"
+  log "removal diagnostic target=${target}"
+  if [ ! -e "${target}" ] && [ ! -L "${target}" ]; then
+    log "removal diagnostic target missing after failed removal target=${target}"
+    return 0
+  fi
+  log "removal diagnostic listing target=${target}"
+  ls -laOe@ "${target}" 2>/dev/null || true
+  log "removal diagnostic residual paths target=${target}"
+  find "${target}" -maxdepth 4 -print 2>/dev/null | sed 's/^/  /' | head -n 200 || true
+  log "removal diagnostic residual metadata target=${target}"
+  find "${target}" -maxdepth 4 -exec ls -ldeO@ {} \; 2>/dev/null | head -n 200 || true
+  if command -v lsof >/dev/null 2>&1; then
+    log "removal diagnostic open files target=${target}"
+    lsof +D "${target}" 2>/dev/null | head -n 200 || true
+  fi
+}
+
+wait_launchd_unloaded() {
+  local label="$1"
+  local deadline
+  deadline=$(( $(date +%s) + launchd_stop_timeout_seconds ))
+  while launchctl print "system/${label}" >/dev/null 2>&1; do
+    if [ "$(date +%s)" -ge "${deadline}" ]; then
+      log "launchd unload timed out label=${label} timeoutSeconds=${launchd_stop_timeout_seconds}"
+      return 1
+    fi
+    sleep "${stop_poll_seconds}"
+  done
+  log "launchd unloaded label=${label}"
+}
+
+read_vm_pid_file() {
+  local value
+  if [ ! -f "${pid_file}" ]; then
+    return 0
+  fi
+  value="$(tr -d '[:space:]' <"${pid_file}")"
+  if [[ "${value}" =~ ^[0-9]+$ ]]; then
+    printf "%s" "${value}"
+    return 0
+  fi
+  log "invalid VM pid file pidFile=${pid_file} value=${value}"
+  return 1
+}
+
+wait_vm_process_stopped() {
+  local pid="$1"
+  local request_signal="$2"
+  local deadline
+  if [ -z "${pid}" ]; then
+    log "VM pid file missing; relying on launchd unloaded state pidFile=${pid_file}"
+    return 0
+  fi
+  if ! kill -0 "${pid}" >/dev/null 2>&1; then
+    log "VM process already stopped pid=${pid}; removing pid file"
+    rm -f "${pid_file}"
+    return 0
+  fi
+  if ! vm_pid_matches_runtime "${pid}"; then
+    log "VM pid file is stale or reused pid=${pid}; removing pid file"
+    rm -f "${pid_file}"
+    return 0
+  fi
+  if [ "${request_signal}" = true ]; then
+    log "requesting graceful VM process stop pid=${pid}"
+    if ! kill -TERM "${pid}" >/dev/null 2>&1; then
+      log "failed to send SIGTERM to VM process pid=${pid}"
+      return 1
+    fi
+  fi
+  deadline=$(( $(date +%s) + vm_process_stop_timeout_seconds ))
+  while kill -0 "${pid}" >/dev/null 2>&1; do
+    if [ "$(date +%s)" -ge "${deadline}" ]; then
+      log "VM process stop timed out pid=${pid} timeoutSeconds=${vm_process_stop_timeout_seconds}"
+      return 1
+    fi
+    sleep "${stop_poll_seconds}"
+  done
+  rm -f "${pid_file}"
+  log "VM process stopped pid=${pid}"
+}
+
+vm_pid_matches_runtime() {
+  local pid="$1"
+  local command
+  command="$(ps -p "${pid}" -o command= 2>/dev/null || true)"
+  case "${command}" in
+    *vitalserver-vm*|*"${product_root}"*)
+      return 0
+      ;;
+    *)
+      log "VM pid file does not identify VitalServer VM process pid=${pid} command=${command:-missing}"
+      return 1
+      ;;
+  esac
+}
+
+stop_launchd_service() {
+  local label="$1"
+  local vm_pid=""
+  if [ "${label}" = "com.tirosh.vitalserver-vm" ]; then
+    vm_pid="$(read_vm_pid_file)"
+  fi
+
+  if launchctl print "system/${label}" >/dev/null 2>&1; then
+    log "launchd unloading label=${label}"
+    launchctl bootout "system/${label}" >/dev/null 2>&1 || true
+    wait_launchd_unloaded "${label}"
+    if [ "${label}" = "com.tirosh.vitalserver-vm" ]; then
+      wait_vm_process_stopped "${vm_pid}" false
+    fi
+  else
+    log "launchd not-loaded label=${label}"
+    if [ "${label}" = "com.tirosh.vitalserver-vm" ]; then
+      wait_vm_process_stopped "${vm_pid}" true
+    fi
   fi
 }
 
@@ -201,25 +335,18 @@ fi
 
 log "step=stop-launchd-services status=started"
 for label in "${labels[@]}"; do
-  if launchctl print "system/${label}" >/dev/null 2>&1; then
-    log "launchd unloading label=${label}"
-    launchctl bootout "system/${label}" >/dev/null 2>&1 || true
-  else
-    log "launchd not-loaded label=${label}"
-  fi
+  stop_launchd_service "${label}"
 done
 log "step=stop-launchd-services status=completed"
 
-log "step=remove-plists-and-tools status=started"
+log "step=remove-plists status=started"
 rm -f \
   "${LAUNCH_DAEMONS_DIR}/com.tirosh.vitalserver-watchdog.plist" \
   "${LAUNCH_DAEMONS_DIR}/com.tirosh.vitalserver-guest-log-sync.plist" \
   "${LAUNCH_DAEMONS_DIR}/com.tirosh.vitalserver-sleep-prevention.plist" \
   "${LAUNCH_DAEMONS_DIR}/com.tirosh.vitalserver-vm.plist" \
-  "${LAUNCH_DAEMONS_DIR}/com.tirosh.vitalserver-proxy.plist" \
-  "${VM_BIN}" \
-  "${PROXY_RUN}"
-log "step=remove-plists-and-tools status=completed"
+  "${LAUNCH_DAEMONS_DIR}/com.tirosh.vitalserver-proxy.plist"
+log "step=remove-plists status=completed"
 
 if [ "${clean}" = false ]; then
   log "step=preserve-user-data status=started"
@@ -242,6 +369,12 @@ if [ "${clean}" = true ] && [ "${vital_files_dir}" != "${default_vital_files}" ]
   safe_rm_rf "${vital_files_dir}"
 fi
 log "step=remove-installed-files status=completed"
+
+log "step=remove-runtime-tools status=started"
+rm -f \
+  "${VM_BIN}" \
+  "${PROXY_RUN}"
+log "step=remove-runtime-tools status=completed"
 
 if [ "${clean}" = false ]; then
   log "step=restore-preserved-user-data status=started"

@@ -73,6 +73,22 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
         XCTAssertFalse(postinstall.contains("postinstall_timeout_seconds=300"))
     }
 
+    func testUninstallWaitsForStoppedStateBeforeRemovingRuntimeFiles() throws {
+        let uninstall = try readRuntimeSupportFile("Packaging/uninstall.template")
+
+        XCTAssertTrue(uninstall.contains("pid_file=\"${vm_home}/run/vitalserver-vm.pid\""))
+        XCTAssertTrue(uninstall.contains("wait_launchd_unloaded"))
+        XCTAssertTrue(uninstall.contains("wait_vm_process_stopped"))
+        XCTAssertTrue(uninstall.contains("vm_pid_matches_runtime"))
+        XCTAssertTrue(uninstall.contains("diagnose_removal_target"))
+        XCTAssertTrue(uninstall.contains("step=remove-plists status=started"))
+        XCTAssertTrue(uninstall.contains("step=remove-runtime-tools status=started"))
+
+        let removeFiles = try XCTUnwrap(uninstall.range(of: "step=remove-installed-files status=completed"))
+        let removeTools = try XCTUnwrap(uninstall.range(of: "step=remove-runtime-tools status=started"))
+        XCTAssertLessThan(removeFiles.lowerBound, removeTools.lowerBound)
+    }
+
     func testGuestToolsBackThinWrappersAndSystemdFiles() throws {
         let bootstrap = try readGuestSupportFile("bootstrap.sh")
         let guestSupport = try guestSupportDirectory()
