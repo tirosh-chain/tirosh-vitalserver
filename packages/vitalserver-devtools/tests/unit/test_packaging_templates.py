@@ -65,7 +65,9 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
     postinstall_text = postinstall.read_text(encoding="utf-8")
     proxy_run_text = proxy_run.read_text(encoding="utf-8")
     assert "${PRODUCT_ROOT}" not in rendered
+    assert "${NGINX_PREFIX}" not in rendered
     assert "pkg install supports fresh installs only" in preinstall_text
+    assert 'manager_app="/Applications/VitalServer Helper.app"' in preinstall_text
     assert "/Library/LaunchDaemons/com.tirosh.vitalserver*.plist" in preinstall_text
     assert 'pkgutil --pkg-info "${receipt}"' in preinstall_text
     assert "existing host proxy port listener found" in preinstall_text
@@ -74,9 +76,12 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
     assert "postinstall_timeout_seconds=300" in postinstall_text
     assert "runtime install timed out timeoutSeconds=" in postinstall_text
     assert "postinstall failure cleanup started" in postinstall_text
+    assert 'nginx_prefix="/Library/Application Support/TiroshVitalServer/nginx"' in postinstall_text
+    assert 'nginx_bin="${nginx_prefix}/sbin/nginx"' in postinstall_text
     assert "postinstall failure cleanup terminating packaged nginx" in postinstall_text
     assert "tirosh-vitalserver-postinstall-failure.log" in postinstall_text
     assert '"${product_root}"' in postinstall_text
+    assert 'manager_app="/Applications/VitalServer Helper.app"' in postinstall_text
     assert '"${manager_app}"' in postinstall_text
     assert '"${vm_bin}"' in postinstall_text
     assert '"${proxy_run}"' in postinstall_text
