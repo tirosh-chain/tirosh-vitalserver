@@ -259,6 +259,8 @@ make vm-dmg-release
 
 따라서 `postinstall`이나 Make target에 provisioning 정책을 다시 넣지 않습니다. `postinstall`은 설치 log를 연결한 뒤 `vitalserver-vm runtime install`을 호출하는 wrapper로 유지합니다.
 
+Fresh install `postinstall`이 실패하면 wrapper는 실패 로그를 `/private/tmp/tirosh-vitalserver-postinstall-failure.log`에 보존한 뒤 이번 package attempt가 만든 product root, Helper app, runtime tools, LaunchDaemon plist, package receipt를 제거합니다. 이 cleanup은 fresh install 경계에서만 동작하며, 외부 `.vital` 경로나 별도 사용자 데이터 경로는 삭제하지 않습니다.
+
 중간 파일과 최종 파일은 아래 위치를 사용합니다.
 
 | 단계 | 경로 | 의미 |

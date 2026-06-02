@@ -5,12 +5,22 @@ product_root="${PRODUCT_ROOT}"
 vm_home="${VM_HOME}"
 install_log="${INSTALL_LOG}"
 vm_bin="${VM_BIN}"
+proxy_run="${PROXY_RUN}"
+uninstaller="${UNINSTALL}"
 manager_app="${MANAGER_APP}"
 runtime_status="${product_root}/status/runtime-status.json"
+failure_log="/private/tmp/tirosh-vitalserver-postinstall-failure.log"
 max_log_bytes=$((10 * 1024 * 1024))
 keep_log_count=5
 postinstall_timeout_seconds=300
 progress_log_interval_seconds=10
+labels=(
+  "com.tirosh.vitalserver-watchdog"
+  "com.tirosh.vitalserver-guest-log-sync"
+  "com.tirosh.vitalserver-proxy"
+  "com.tirosh.vitalserver-vm"
+  "com.tirosh.vitalserver-sleep-prevention"
+)
 
 mkdir -p "$(dirname "${install_log}")"
 
@@ -38,10 +48,44 @@ log() {
 on_error() {
   local status="$?"
   log "postinstall failed status=${status} command=${BASH_COMMAND}"
+  preserve_failure_log
+  cleanup_failed_fresh_install
   exit "${status}"
 }
 
 trap on_error ERR
+
+preserve_failure_log() {
+  if [ -f "${install_log}" ]; then
+    cp -p "${install_log}" "${failure_log}" 2>/dev/null || true
+    log "postinstall failure log preserved path=${failure_log}"
+  fi
+}
+
+cleanup_failed_fresh_install() {
+  log "postinstall failure cleanup started"
+  trap - ERR
+  set +e
+
+  local label
+  for label in "${labels[@]}"; do
+    launchctl bootout "system/${label}" >/dev/null 2>&1
+  done
+
+  rm -rf \
+    "${product_root}" \
+    "${manager_app}" \
+    "${vm_bin}" \
+    "${proxy_run}" \
+    "${uninstaller}" \
+    /Library/LaunchDaemons/com.tirosh.vitalserver*.plist
+  pkgutil --forget com.tirosh.vitalserver.vm >/dev/null 2>&1
+  pkgutil --forget com.tirosh.vitalserver >/dev/null 2>&1
+
+  set -e
+  trap on_error ERR
+  log "postinstall failure cleanup completed"
+}
 
 json_raw_value() {
   local key="$1"

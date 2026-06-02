@@ -84,6 +84,7 @@ pkgutil --pkg-info com.tirosh.vitalserver.vm
 - macOS Installer의 600초 제한에 기대지 않고, 제품 `postinstall`에서 300초 timeout을 먼저 적용합니다. 이 guard에 걸리면 `install.log`에 `runtime install timed out timeoutSeconds=300`이 남습니다.
 - launchd start는 명령 실행 여부가 아니라 service loaded 상태까지 확인합니다. 서비스가 로드되지 않으면 install step failure로 전파합니다.
 - `.pkg`는 fresh install 전용입니다. 기존 product root, Helper app, tools, LaunchDaemon plist, receipt가 있으면 `preinstall`에서 실패시키고 update flow로 우회하지 않습니다.
+- Fresh install `postinstall` 실패 시 이번 package attempt가 만든 package-owned 잔여물을 cleanup합니다. 삭제 전에 install log를 `/private/tmp/tirosh-vitalserver-postinstall-failure.log`로 보존합니다.
 
 ## Operational Notes
 
@@ -91,6 +92,7 @@ pkgutil --pkg-info com.tirosh.vitalserver.vm
 - 제품 guard인 300초는 정상 목표 시간이 아닙니다. 정상적인 `postinstall`은 60-120초 내 종료되는 것이 목표입니다.
 - Installer UI는 상세 원인을 거의 보여주지 않으므로 `/var/log/install.log`가 SoT입니다.
 - runtime status/event 로그는 보조 진단 자료입니다. event 기록 자체가 느린 경우에는 이벤트의 `timestamp`가 실제 작업 진행보다 늦게 찍힐 수 있습니다.
+- 실패 cleanup 이후 product root 로그가 사라질 수 있으므로, fresh install postinstall failure는 `/private/tmp/tirosh-vitalserver-postinstall-failure.log`도 함께 확인합니다.
 - 같은 증상이 재발하면 `postinstall`에서 오래 걸리는 단계가 실제 작업인지, 관측/event 기록인지 먼저 분리해서 봅니다.
 
 ## Related Cases

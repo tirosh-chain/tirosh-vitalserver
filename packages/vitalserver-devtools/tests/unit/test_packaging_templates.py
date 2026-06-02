@@ -71,6 +71,13 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
     assert "/Library/Application Support/TiroshVitalServer" in rendered
     assert "postinstall_timeout_seconds=300" in postinstall_text
     assert "runtime install timed out timeoutSeconds=" in postinstall_text
+    assert "postinstall failure cleanup started" in postinstall_text
+    assert "tirosh-vitalserver-postinstall-failure.log" in postinstall_text
+    assert '"${product_root}"' in postinstall_text
+    assert '"${manager_app}"' in postinstall_text
+    assert '"${vm_bin}"' in postinstall_text
+    assert '"${proxy_run}"' in postinstall_text
+    assert '"${uninstaller}"' in postinstall_text
     assert "runtime install progress status=" in postinstall_text
     assert "runtime install progress failureReasons=" in postinstall_text
     assert (
