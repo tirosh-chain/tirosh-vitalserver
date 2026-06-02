@@ -48,6 +48,13 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
         XCTAssertTrue(repair.contains("REQUEST_FILE.unlink(missing_ok=True)"))
     }
 
+    func testReleaseSyncTargetsGuestToolsRedisRepairUseCase() throws {
+        let syncRelease = try readRuntimeSupportFile("Build/sync-release.py")
+
+        XCTAssertTrue(syncRelease.contains("application/redis_repair.py"))
+        XCTAssertFalse(syncRelease.contains("tirosh_guest_tools/redis/repair.py"))
+    }
+
     func testGuestToolsBackThinWrappersAndSystemdFiles() throws {
         let bootstrap = try readGuestSupportFile("bootstrap.sh")
         let guestSupport = try guestSupportDirectory()
@@ -87,6 +94,13 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
 
     private func readGuestSupportFile(_ relativePath: String) throws -> String {
         let fileURL = try guestSupportDirectory().appendingPathComponent(relativePath)
+        return try String(contentsOf: fileURL, encoding: .utf8)
+    }
+
+    private func readRuntimeSupportFile(_ relativePath: String) throws -> String {
+        let fileURL = try guestSupportDirectory()
+            .deletingLastPathComponent()
+            .appendingPathComponent(relativePath)
         return try String(contentsOf: fileURL, encoding: .utf8)
     }
 

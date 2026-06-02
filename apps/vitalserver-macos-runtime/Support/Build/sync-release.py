@@ -281,7 +281,7 @@ def sync_guest_scripts(root, release):
 
     repair_datastore = (
         root.parent.parent
-        / "packages/vitalserver-guest-tools/src/tirosh_guest_tools/redis/repair.py"
+        / "packages/vitalserver-guest-tools/src/tirosh_guest_tools/application/redis_repair.py"
     )
     content = repair_datastore.read_text(encoding="utf-8")
     content = replace(
