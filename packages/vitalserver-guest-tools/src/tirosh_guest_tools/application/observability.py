@@ -13,7 +13,10 @@ from tirosh_guest_tools.adapters.outbound.observability.writer import (
     write_daemon_snapshot,
     write_oneshot_snapshot,
 )
-from tirosh_guest_tools.domain.observability import GuestObservabilitySnapshot
+from tirosh_guest_tools.domain.observability import (
+    GuestObservabilitySnapshot,
+    ObservabilityDaemonErrorEvent,
+)
 from tirosh_guest_tools.domain.operations import ObservationPhase
 
 logger = logging.getLogger(__name__)
@@ -36,12 +39,10 @@ def write_guest_observability_snapshot(
 
 def record_daemon_error(error: Exception) -> None:
     OBSERVABILITY_DIR.mkdir(parents=True, exist_ok=True)
-    message = {
-        "schemaVersion": 1,
-        "type": "daemon-error",
-        "observedAt": utc_now(),
-        "message": str(error),
-        "traceback": traceback.format_exc(),
-    }
-    append_jsonl(OBSERVABILITY_DIR / "events.jsonl", message)
+    event = ObservabilityDaemonErrorEvent(
+        observed_at=utc_now(),
+        message=str(error),
+        traceback=traceback.format_exc(),
+    )
+    append_jsonl(OBSERVABILITY_DIR / "events.jsonl", event.as_json())
     logger.exception("guest observability daemon error")

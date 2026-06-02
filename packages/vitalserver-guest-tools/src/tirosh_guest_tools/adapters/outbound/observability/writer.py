@@ -9,7 +9,10 @@ from typing import Any
 from tirosh_guest_tools.adapters.outbound.observability.collectors import (
     OBSERVABILITY_DIR,
 )
-from tirosh_guest_tools.domain.observability import GuestObservabilitySnapshot
+from tirosh_guest_tools.domain.observability import (
+    GuestObservabilitySnapshot,
+    ObservabilityCollectorErrorsEvent,
+)
 from tirosh_guest_tools.domain.operations import ObservationPhase
 
 PHASE_PATTERN = re.compile(r"[^A-Za-z0-9_.-]+")
@@ -48,15 +51,13 @@ def write_daemon_snapshot(snapshot: GuestObservabilitySnapshot) -> None:
     document = snapshot.as_json()
     write_json(OBSERVABILITY_DIR / "latest.json", document)
     append_jsonl(OBSERVABILITY_DIR / "history.jsonl", document)
-    if document.get("collectorErrors"):
+    if snapshot.collector_errors:
         append_jsonl(
             OBSERVABILITY_DIR / "events.jsonl",
-            {
-                "schemaVersion": 1,
-                "type": "collector-errors",
-                "observedAt": document.get("observedAt"),
-                "collectorErrors": document.get("collectorErrors"),
-            },
+            ObservabilityCollectorErrorsEvent(
+                observed_at=snapshot.observed_at,
+                collector_errors=snapshot.collector_errors,
+            ).as_json(),
         )
 
 

@@ -17,6 +17,11 @@ class RuntimeFileStatus(StrEnum):
     UNKNOWN = "unknown"
 
 
+class ObservabilityEventType(StrEnum):
+    COLLECTOR_ERRORS = "collector-errors"
+    DAEMON_ERROR = "daemon-error"
+
+
 @dataclass(frozen=True)
 class ObservabilityCollectorError:
     source: str
@@ -24,6 +29,40 @@ class ObservabilityCollectorError:
 
     def as_json(self) -> dict[str, str]:
         return {"source": self.source, "message": self.message}
+
+
+@dataclass(frozen=True)
+class ObservabilityCollectorErrorsEvent:
+    observed_at: str
+    collector_errors: Sequence[ObservabilityCollectorError]
+    schema_version: int = 1
+
+    def as_json(self) -> dict[str, object]:
+        return {
+            "schemaVersion": self.schema_version,
+            "type": ObservabilityEventType.COLLECTOR_ERRORS.value,
+            "observedAt": self.observed_at,
+            "collectorErrors": [
+                error.as_json() for error in self.collector_errors
+            ],
+        }
+
+
+@dataclass(frozen=True)
+class ObservabilityDaemonErrorEvent:
+    observed_at: str
+    message: str
+    traceback: str
+    schema_version: int = 1
+
+    def as_json(self) -> dict[str, object]:
+        return {
+            "schemaVersion": self.schema_version,
+            "type": ObservabilityEventType.DAEMON_ERROR.value,
+            "observedAt": self.observed_at,
+            "message": self.message,
+            "traceback": self.traceback,
+        }
 
 
 @dataclass(frozen=True)
