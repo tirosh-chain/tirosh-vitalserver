@@ -72,6 +72,8 @@ cleanup_failed_fresh_install() {
     launchctl bootout "system/${label}" >/dev/null 2>&1
   done
 
+  stop_packaged_nginx
+
   rm -rf \
     "${product_root}" \
     "${manager_app}" \
@@ -85,6 +87,34 @@ cleanup_failed_fresh_install() {
   set -e
   trap on_error ERR
   log "postinstall failure cleanup completed"
+}
+
+stop_packaged_nginx() {
+  local pid pids remaining
+
+  pid=""
+  if [ -s "${nginx_prefix}/logs/nginx.pid" ]; then
+    pid="$(cat "${nginx_prefix}/logs/nginx.pid" 2>/dev/null || true)"
+  fi
+  if [ -n "${pid}" ] && kill -0 "${pid}" >/dev/null 2>&1; then
+    log "postinstall failure cleanup stopping packaged nginx pid=${pid}"
+    "${nginx_bin}" -p "${nginx_prefix}" -c "${nginx_prefix}/vitalserver.conf" -s quit >/dev/null 2>&1 || true
+    sleep 1
+  fi
+
+  if command -v pgrep >/dev/null 2>&1; then
+    pids="$(pgrep -f "${nginx_prefix}/sbin/nginx" | paste -sd" " - || true)"
+    if [ -n "${pids}" ]; then
+      log "postinstall failure cleanup terminating packaged nginx pids=${pids}"
+      kill -TERM ${pids} >/dev/null 2>&1 || true
+      sleep 1
+      remaining="$(pgrep -f "${nginx_prefix}/sbin/nginx" | paste -sd" " - || true)"
+      if [ -n "${remaining}" ]; then
+        log "postinstall failure cleanup killing packaged nginx pids=${remaining}"
+        kill -KILL ${remaining} >/dev/null 2>&1 || true
+      fi
+    fi
+  fi
 }
 
 json_raw_value() {

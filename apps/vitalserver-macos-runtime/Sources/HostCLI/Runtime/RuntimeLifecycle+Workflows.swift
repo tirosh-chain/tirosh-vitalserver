@@ -32,6 +32,7 @@ extension RuntimeLifecycle {
                 },
                 setStartOnBoot: setStartOnBoot,
                 startLaunchdService: startLaunchdService,
+                cleanupHostProxyPortBeforeStart: cleanupHostProxyPortBeforeStart,
                 waitForHealth: waitForHealth,
                 restrictSecretFile: restrictSecretFile,
                 log: log

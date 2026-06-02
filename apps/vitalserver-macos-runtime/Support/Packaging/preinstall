@@ -3,6 +3,8 @@ set -euo pipefail
 
 product_root="/Library/Application Support/TiroshVitalServer"
 manager_app="/Applications/VitalServer Helper.app"
+install_settings="/private/tmp/tirosh-vitalserver-install.json"
+proxy_port="80"
 existing_paths=(
   "${product_root}"
   "${manager_app}"
@@ -21,9 +23,16 @@ labels=(
 
 fail_fresh_install_only() {
   echo "Tirosh VitalServer pkg install supports fresh installs only." >&2
-  echo "Run a clean uninstall before installing this pkg." >&2
+  echo "Run a clean uninstall, stop the conflicting process, or choose a different Host proxy port before installing this pkg." >&2
   exit 1
 }
+
+if [[ -f "${install_settings}" ]]; then
+  configured_proxy_port="$(/usr/bin/plutil -extract proxyPort raw -o - "${install_settings}" 2>/dev/null || true)"
+  if [[ "${configured_proxy_port}" =~ ^[0-9]+$ ]]; then
+    proxy_port="${configured_proxy_port}"
+  fi
+fi
 
 for path in "${existing_paths[@]}"; do
   if [[ -e "${path}" ]]; then
@@ -52,3 +61,11 @@ for label in "${labels[@]}"; do
     fail_fresh_install_only
   fi
 done
+
+if command -v lsof >/dev/null 2>&1; then
+  listeners="$(lsof -nP -iTCP:"${proxy_port}" -sTCP:LISTEN 2>/dev/null | awk 'NR>1 {print $1 "/" $2}' | sort -u | paste -sd, - || true)"
+  if [[ -n "${listeners}" ]]; then
+    echo "existing host proxy port listener found: port=${proxy_port} listeners=${listeners}" >&2
+    fail_fresh_install_only
+  fi
+fi

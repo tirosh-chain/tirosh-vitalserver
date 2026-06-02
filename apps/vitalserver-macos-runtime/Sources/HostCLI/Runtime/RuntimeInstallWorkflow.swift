@@ -23,6 +23,7 @@ struct RuntimeInstallWorkflowOperations {
     let writeInstalledRuntimeVersion: () throws -> Void
     let setStartOnBoot: (Bool) throws -> Void
     let startLaunchdService: (RuntimeManagedService) throws -> Void
+    let cleanupHostProxyPortBeforeStart: () throws -> Void
     let waitForHealth: (RuntimeServiceRestartPolicy) throws -> Void
     let restrictSecretFile: (URL) throws -> Void
     let log: (String) -> Void
@@ -236,6 +237,9 @@ struct RuntimeInstallWorkflow {
             try operations.startLaunchdService(.sleepPrevention)
         }
         for service in RuntimeManagedService.startOrder {
+            if service == .proxy {
+                try operations.cleanupHostProxyPortBeforeStart()
+            }
             try operations.startLaunchdService(service)
         }
     }

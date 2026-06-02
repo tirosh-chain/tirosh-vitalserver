@@ -68,10 +68,13 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
     assert "pkg install supports fresh installs only" in preinstall_text
     assert "/Library/LaunchDaemons/com.tirosh.vitalserver*.plist" in preinstall_text
     assert 'pkgutil --pkg-info "${receipt}"' in preinstall_text
+    assert "existing host proxy port listener found" in preinstall_text
+    assert 'lsof -nP -iTCP:"${proxy_port}" -sTCP:LISTEN' in preinstall_text
     assert "/Library/Application Support/TiroshVitalServer" in rendered
     assert "postinstall_timeout_seconds=300" in postinstall_text
     assert "runtime install timed out timeoutSeconds=" in postinstall_text
     assert "postinstall failure cleanup started" in postinstall_text
+    assert "postinstall failure cleanup terminating packaged nginx" in postinstall_text
     assert "tirosh-vitalserver-postinstall-failure.log" in postinstall_text
     assert '"${product_root}"' in postinstall_text
     assert '"${manager_app}"' in postinstall_text
