@@ -2,10 +2,18 @@ from __future__ import annotations
 
 import logging
 import tarfile
-from dataclasses import dataclass
 from pathlib import Path
 
-from tirosh_guest_tools.common import (
+from tirosh_guest_tools.adapters.outbound.runtime.config import load_config
+from tirosh_guest_tools.application.contexts import RedisBackupOutcome
+from tirosh_guest_tools.contracts import RuntimeFileName
+from tirosh_guest_tools.domain.errors import GuestDependencyError
+from tirosh_guest_tools.domain.operations import (
+    GuestOperationResult,
+    OperationName,
+    OperationStatus,
+)
+from tirosh_guest_tools.infrastructure.common import (
     DEPLOY_DIR,
     MOUNT_POINT,
     PROJECT_NAME,
@@ -17,14 +25,6 @@ from tirosh_guest_tools.common import (
     utc_now,
     write_json,
 )
-from tirosh_guest_tools.contracts import RuntimeFileName
-from tirosh_guest_tools.domain.errors import GuestDependencyError
-from tirosh_guest_tools.domain.operations import (
-    GuestOperationResult,
-    OperationName,
-    OperationStatus,
-)
-from tirosh_guest_tools.runtime.config import load_config
 
 BACKUP_DIR = MOUNT_POINT / "backups" / "redis"
 REQUEST_FILE = RUNTIME_DIR / RuntimeFileName.REDIS_BACKUP_REQUEST.value
@@ -32,12 +32,6 @@ RESULT_FILE = RUNTIME_DIR / RuntimeFileName.REDIS_BACKUP_RESULT.value
 LOG_FILE = RUNTIME_DIR / RuntimeFileName.REDIS_BACKUP_LOG.value
 REDIS_VOLUME = f"{PROJECT_NAME}_redis-data"
 logger = logging.getLogger(__name__)
-
-
-@dataclass(frozen=True)
-class RedisBackupOutcome:
-    archive: Path
-    request_id: str
 
 
 def run_redis_backup() -> RedisBackupOutcome:

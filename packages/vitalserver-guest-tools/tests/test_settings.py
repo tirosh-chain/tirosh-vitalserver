@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from tirosh_guest_tools.domain.errors import GuestContractError
-from tirosh_guest_tools.settings import load_settings
+from tirosh_guest_tools.infrastructure.settings import load_settings
 
 
 def test_load_settings_reads_guest_tools_toml(tmp_path: Path) -> None:

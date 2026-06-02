@@ -3,6 +3,23 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from tirosh_guest_tools.adapters.inbound.operations.command_poller import (
+    run_command_poller,
+)
+from tirosh_guest_tools.adapters.outbound.observability.container_logs import (
+    run_container_log_action,
+)
+from tirosh_guest_tools.adapters.outbound.observability.daemon import (
+    run_observability_daemon,
+)
+from tirosh_guest_tools.adapters.outbound.observability.diagnostics import print_report
+from tirosh_guest_tools.adapters.outbound.runtime.config import (
+    print_runtime_config_exports,
+)
+from tirosh_guest_tools.adapters.outbound.runtime.health import check_runtime_health
+from tirosh_guest_tools.adapters.outbound.runtime.state_writer import (
+    write_runtime_state,
+)
 from tirosh_guest_tools.application.compose import run_compose_action
 from tirosh_guest_tools.application.observability import (
     write_guest_observability_snapshot,
@@ -37,16 +54,9 @@ from tirosh_guest_tools.domain.operations import (
     ContainerLogAction,
     RuntimeStateAction,
 )
-from tirosh_guest_tools.logging import configure_logging
-from tirosh_guest_tools.observability.container_logs import run_container_log_action
-from tirosh_guest_tools.observability.daemon import run_observability_daemon
-from tirosh_guest_tools.observability.diagnostics import print_report
-from tirosh_guest_tools.operations.command_poller import run_command_poller
-from tirosh_guest_tools.runtime.config import print_runtime_config_exports
-from tirosh_guest_tools.runtime.health import check_runtime_health
-from tirosh_guest_tools.runtime.state_writer import write_runtime_state
-from tirosh_guest_tools.settings import SETTINGS
-from tirosh_guest_tools.system_install import install_guest_tools_runtime
+from tirosh_guest_tools.infrastructure.logging import configure_logging
+from tirosh_guest_tools.infrastructure.settings import SETTINGS
+from tirosh_guest_tools.infrastructure.system_install import install_guest_tools_runtime
 
 
 def guest_observed() -> int:

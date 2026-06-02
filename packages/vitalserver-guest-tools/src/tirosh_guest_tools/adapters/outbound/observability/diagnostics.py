@@ -1,8 +1,12 @@
 from __future__ import annotations
 
-from tirosh_guest_tools.common import DEPLOY_DIR, MOUNT_POINT, PROJECT_NAME
+from tirosh_guest_tools.adapters.outbound.observability.commands import run_command
 from tirosh_guest_tools.contracts import RuntimeFileName, RuntimeService
-from tirosh_guest_tools.observability.commands import run_command
+from tirosh_guest_tools.infrastructure.common import (
+    DEPLOY_DIR,
+    MOUNT_POINT,
+    PROJECT_NAME,
+)
 
 
 def print_report() -> None:

@@ -5,13 +5,9 @@ import os
 import subprocess
 import time
 
-from tirosh_guest_tools.common import (
-    DEPLOY_DIR,
-    compose_command,
-    mount_runtime_share,
-    mount_vital_files_share,
-    output,
-    run,
+from tirosh_guest_tools.adapters.outbound.runtime.config import (
+    RuntimeConfig,
+    load_config,
 )
 from tirosh_guest_tools.contracts import (
     ComposeService,
@@ -19,8 +15,15 @@ from tirosh_guest_tools.contracts import (
 )
 from tirosh_guest_tools.domain.errors import GuestUseCaseInputError
 from tirosh_guest_tools.domain.operations import ComposeAction
-from tirosh_guest_tools.runtime.config import RuntimeConfig, load_config
-from tirosh_guest_tools.settings import SETTINGS
+from tirosh_guest_tools.infrastructure.common import (
+    DEPLOY_DIR,
+    compose_command,
+    mount_runtime_share,
+    mount_vital_files_share,
+    output,
+    run,
+)
+from tirosh_guest_tools.infrastructure.settings import SETTINGS
 
 logger = logging.getLogger(__name__)
 

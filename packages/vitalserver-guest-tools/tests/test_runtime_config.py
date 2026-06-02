@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
+from tirosh_guest_tools.adapters.outbound.runtime.config import load_config
 from tirosh_guest_tools.domain.errors import GuestContractError
-from tirosh_guest_tools.runtime.config import load_config
 
 
 def valid_runtime_config() -> dict[str, object]:

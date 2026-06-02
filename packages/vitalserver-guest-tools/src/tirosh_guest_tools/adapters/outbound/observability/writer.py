@@ -6,8 +6,10 @@ import re
 from pathlib import Path
 from typing import Any
 
+from tirosh_guest_tools.adapters.outbound.observability.collectors import (
+    OBSERVABILITY_DIR,
+)
 from tirosh_guest_tools.domain.operations import ObservationPhase
-from tirosh_guest_tools.observability.collectors import OBSERVABILITY_DIR
 
 PHASE_PATTERN = re.compile(r"[^A-Za-z0-9_.-]+")
 

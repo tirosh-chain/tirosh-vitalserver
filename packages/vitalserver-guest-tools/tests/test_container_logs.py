@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from tirosh_guest_tools.observability.container_logs import docker_compose_logs_command
+from tirosh_guest_tools.adapters.outbound.observability.container_logs import (
+    docker_compose_logs_command,
+)
 
 
 def test_docker_compose_logs_command_targets_vitalserver_project() -> None:

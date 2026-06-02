@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from tirosh_guest_tools.domain.errors import GuestToolsDomainError
-from tirosh_guest_tools.settings import LoggingFormat, LoggingSettings
+from tirosh_guest_tools.infrastructure.settings import LoggingFormat, LoggingSettings
 
 LOG_RECORD_RESERVED = {
     "args",

@@ -10,10 +10,13 @@ import urllib.request
 from datetime import UTC, datetime
 from pathlib import Path
 
-from tirosh_guest_tools.common import DEPLOY_DIR, PROJECT_NAME
+from tirosh_guest_tools.adapters.outbound.runtime.probes import (
+    ProbeError,
+    append_probe_error,
+)
 from tirosh_guest_tools.contracts import RuntimeFileName
-from tirosh_guest_tools.runtime.probes import ProbeError, append_probe_error
-from tirosh_guest_tools.settings import SETTINGS
+from tirosh_guest_tools.infrastructure.common import DEPLOY_DIR, PROJECT_NAME
+from tirosh_guest_tools.infrastructure.settings import SETTINGS
 
 VITALDB_OBSERVER_ENDPOINT = SETTINGS.observability.vitaldb_observer_url
 

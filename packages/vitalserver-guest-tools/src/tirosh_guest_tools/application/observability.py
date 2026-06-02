@@ -4,18 +4,18 @@ import logging
 import traceback
 from typing import Any
 
-from tirosh_guest_tools.domain.operations import ObservationPhase
-from tirosh_guest_tools.observability.collectors import (
+from tirosh_guest_tools.adapters.outbound.observability.collectors import (
     OBSERVABILITY_DIR,
     collect_snapshot,
     collect_text_report,
     utc_now,
 )
-from tirosh_guest_tools.observability.writer import (
+from tirosh_guest_tools.adapters.outbound.observability.writer import (
     append_jsonl,
     write_daemon_snapshot,
     write_oneshot_snapshot,
 )
+from tirosh_guest_tools.domain.operations import ObservationPhase
 
 logger = logging.getLogger(__name__)
 

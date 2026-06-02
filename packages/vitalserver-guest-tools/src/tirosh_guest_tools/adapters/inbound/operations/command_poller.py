@@ -4,18 +4,18 @@ import logging
 import time
 from pathlib import Path
 
-from tirosh_guest_tools.common import (
+from tirosh_guest_tools.contracts import RuntimeFileName, RuntimeService
+from tirosh_guest_tools.domain.operations import (
+    OperationName,
+)
+from tirosh_guest_tools.infrastructure.common import (
     RUNTIME_DIR,
     mount_runtime_share,
     service_is_running,
     systemctl,
 )
-from tirosh_guest_tools.contracts import RuntimeFileName, RuntimeService
-from tirosh_guest_tools.domain.operations import (
-    OperationName,
-)
-from tirosh_guest_tools.logging import configure_logging
-from tirosh_guest_tools.settings import SETTINGS
+from tirosh_guest_tools.infrastructure.logging import configure_logging
+from tirosh_guest_tools.infrastructure.settings import SETTINGS
 
 LOG_FILE = RUNTIME_DIR / "guest-command-poller.log"
 logger = logging.getLogger(__name__)

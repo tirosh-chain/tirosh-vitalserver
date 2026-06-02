@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import subprocess
 
-from tirosh_guest_tools.common import compose_command, run, systemctl
+from tirosh_guest_tools.infrastructure.common import compose_command, run, systemctl
 
 
 def check_runtime_health() -> None:

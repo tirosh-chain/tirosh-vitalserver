@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from pytest import MonkeyPatch
 
-from tirosh_guest_tools.runtime import state_writer
-from tirosh_guest_tools.runtime.probes import ProbeError
+from tirosh_guest_tools.adapters.outbound.runtime import state_writer
+from tirosh_guest_tools.adapters.outbound.runtime.probes import ProbeError
 
 
 def test_runtime_state_document_reports_probe_failures(

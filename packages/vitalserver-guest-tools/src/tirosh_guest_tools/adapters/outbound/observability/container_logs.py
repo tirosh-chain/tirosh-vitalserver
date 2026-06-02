@@ -6,15 +6,15 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import IO
 
-from tirosh_guest_tools.common import (
+from tirosh_guest_tools.contracts import RuntimeFileName
+from tirosh_guest_tools.domain.operations import ContainerLogAction
+from tirosh_guest_tools.infrastructure.common import (
     DEPLOY_DIR,
     PROJECT_NAME,
     RUNTIME_DIR,
     mount_runtime_share,
 )
-from tirosh_guest_tools.contracts import RuntimeFileName
-from tirosh_guest_tools.domain.operations import ContainerLogAction
-from tirosh_guest_tools.settings import SETTINGS
+from tirosh_guest_tools.infrastructure.settings import SETTINGS
 
 LOG_FILE = RUNTIME_DIR / "container-logs.log"
 INTERVAL_SECONDS = SETTINGS.container_logs.interval_seconds

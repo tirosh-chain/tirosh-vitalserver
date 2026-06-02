@@ -6,7 +6,7 @@ from pathlib import Path
 
 from tirosh_guest_tools.contracts import RuntimeCommand
 from tirosh_guest_tools.domain.errors import GuestDependencyError
-from tirosh_guest_tools.settings import SETTINGS
+from tirosh_guest_tools.infrastructure.settings import SETTINGS
 
 GUEST_TOOLS_HOME = SETTINGS.paths.guest_tools_home
 GUEST_TOOLS_VENV = GUEST_TOOLS_HOME / "venv"

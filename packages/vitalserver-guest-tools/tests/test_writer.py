@@ -5,8 +5,8 @@ from pathlib import Path
 
 from pytest import MonkeyPatch
 
+from tirosh_guest_tools.adapters.outbound.observability import writer
 from tirosh_guest_tools.domain.operations import ObservationPhase
-from tirosh_guest_tools.observability import writer
 
 
 def test_safe_phase_keeps_snapshot_file_names_stable() -> None:

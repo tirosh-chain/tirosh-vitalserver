@@ -3,12 +3,18 @@ from __future__ import annotations
 import subprocess
 import time
 
-from tirosh_guest_tools.common import RUNTIME_DIR, mount_runtime_share, systemctl
+from tirosh_guest_tools.adapters.outbound.runtime.state_writer import (
+    write_runtime_state,
+)
 from tirosh_guest_tools.contracts import RuntimeFileName, RuntimeService
 from tirosh_guest_tools.domain.errors import GuestUseCaseInputError
 from tirosh_guest_tools.domain.operations import RuntimeStateAction
-from tirosh_guest_tools.runtime.state_writer import write_runtime_state
-from tirosh_guest_tools.settings import SETTINGS
+from tirosh_guest_tools.infrastructure.common import (
+    RUNTIME_DIR,
+    mount_runtime_share,
+    systemctl,
+)
+from tirosh_guest_tools.infrastructure.settings import SETTINGS
 
 RUNTIME_STATE_FILE = RUNTIME_DIR / RuntimeFileName.RUNTIME_STATE.value
 REDIS_BACKUP_REQUEST_FILE = RUNTIME_DIR / RuntimeFileName.REDIS_BACKUP_REQUEST.value

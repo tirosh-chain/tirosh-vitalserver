@@ -2,22 +2,13 @@ from __future__ import annotations
 
 import logging
 import subprocess
-from dataclasses import dataclass
 
 from tirosh_guest_tools.application.compose import run_compose_action
+from tirosh_guest_tools.application.contexts import PrepareUpdateShutdownContext
 from tirosh_guest_tools.application.observability import (
     write_guest_observability_snapshot,
 )
 from tirosh_guest_tools.application.redis_backup import run_redis_backup
-from tirosh_guest_tools.common import (
-    RUNTIME_DIR,
-    mount_runtime_share,
-    request_id_from,
-    request_version_from,
-    systemctl,
-    utc_now,
-    write_json,
-)
 from tirosh_guest_tools.contracts import RuntimeFileName, RuntimeService
 from tirosh_guest_tools.domain.errors import GuestDependencyError
 from tirosh_guest_tools.domain.operations import (
@@ -28,18 +19,20 @@ from tirosh_guest_tools.domain.operations import (
     OperationStatus,
     ReasonCode,
 )
+from tirosh_guest_tools.infrastructure.common import (
+    RUNTIME_DIR,
+    mount_runtime_share,
+    request_id_from,
+    request_version_from,
+    systemctl,
+    utc_now,
+    write_json,
+)
 
 REQUEST_FILE = RUNTIME_DIR / RuntimeFileName.PREPARE_UPDATE_SHUTDOWN_REQUEST.value
 RESULT_FILE = RUNTIME_DIR / RuntimeFileName.PREPARE_UPDATE_SHUTDOWN_RESULT.value
 LOG_FILE = RUNTIME_DIR / RuntimeFileName.PREPARE_UPDATE_SHUTDOWN_LOG.value
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class PrepareUpdateShutdownContext:
-    request_id: str
-    version: str
-    redis_backup_path: str = ""
 
 
 def run_prepare_update_shutdown() -> None:

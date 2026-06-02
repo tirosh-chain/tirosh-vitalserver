@@ -4,7 +4,14 @@ import logging
 
 from tirosh_guest_tools.application.compose import run_compose_action
 from tirosh_guest_tools.application.runtime_state import write_current_state
-from tirosh_guest_tools.common import (
+from tirosh_guest_tools.contracts import ComposeService, RuntimeFileName
+from tirosh_guest_tools.domain.operations import (
+    ComposeAction,
+    GuestOperationResult,
+    OperationName,
+    OperationStatus,
+)
+from tirosh_guest_tools.infrastructure.common import (
     PROJECT_NAME,
     RUNTIME_DIR,
     compose_command,
@@ -13,13 +20,6 @@ from tirosh_guest_tools.common import (
     run,
     utc_now,
     write_json,
-)
-from tirosh_guest_tools.contracts import ComposeService, RuntimeFileName
-from tirosh_guest_tools.domain.operations import (
-    ComposeAction,
-    GuestOperationResult,
-    OperationName,
-    OperationStatus,
 )
 
 REQUEST_FILE = RUNTIME_DIR / RuntimeFileName.REPAIR_DATASTORE_REQUEST.value

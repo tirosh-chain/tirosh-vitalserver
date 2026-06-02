@@ -7,14 +7,21 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from tirosh_guest_tools.common import DEPLOY_DIR, RUNTIME_DIR, VITAL_FILES_MOUNT_POINT
-from tirosh_guest_tools.contracts import RuntimeFileName, RuntimeService
-from tirosh_guest_tools.observability.commands import (
+from tirosh_guest_tools.adapters.outbound.observability.commands import (
     CommandResult,
     run_command,
     run_shell,
 )
-from tirosh_guest_tools.runtime.probes import ProbeError, append_probe_error
+from tirosh_guest_tools.adapters.outbound.runtime.probes import (
+    ProbeError,
+    append_probe_error,
+)
+from tirosh_guest_tools.contracts import RuntimeFileName, RuntimeService
+from tirosh_guest_tools.infrastructure.common import (
+    DEPLOY_DIR,
+    RUNTIME_DIR,
+    VITAL_FILES_MOUNT_POINT,
+)
 
 OBSERVABILITY_DIR = RUNTIME_DIR / "guest-observability"
 VITAL_FILES_DIR = VITAL_FILES_MOUNT_POINT

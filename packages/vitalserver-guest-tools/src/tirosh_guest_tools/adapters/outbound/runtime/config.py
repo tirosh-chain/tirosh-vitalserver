@@ -5,9 +5,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from tirosh_guest_tools.common import read_json
 from tirosh_guest_tools.contracts import RuntimeConfigKey
 from tirosh_guest_tools.domain.errors import GuestContractError
+from tirosh_guest_tools.infrastructure.common import read_json
 
 
 @dataclass(frozen=True)

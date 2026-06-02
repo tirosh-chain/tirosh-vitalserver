@@ -13,4 +13,4 @@ def test_guest_tools_console_scripts_are_owned_by_inbound_cli() -> None:
 
     assert scripts
     for target in scripts.values():
-        assert target.startswith("tirosh_guest_tools.inbound.cli:")
+        assert target.startswith("tirosh_guest_tools.adapters.inbound.cli:")

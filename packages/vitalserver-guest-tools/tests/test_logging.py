@@ -6,8 +6,12 @@ import sys
 from pathlib import Path
 
 from tirosh_guest_tools.domain.errors import GuestContractError
-from tirosh_guest_tools.logging import JsonLogFormatter, dict_config
-from tirosh_guest_tools.settings import LoggingFormat, LoggingLevel, LoggingSettings
+from tirosh_guest_tools.infrastructure.logging import JsonLogFormatter, dict_config
+from tirosh_guest_tools.infrastructure.settings import (
+    LoggingFormat,
+    LoggingLevel,
+    LoggingSettings,
+)
 
 
 def test_json_log_formatter_preserves_message_fields_and_error_code() -> None:

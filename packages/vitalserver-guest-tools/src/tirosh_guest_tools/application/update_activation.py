@@ -3,23 +3,12 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+from tirosh_guest_tools.adapters.outbound.runtime.config import load_config
 from tirosh_guest_tools.application.compose import run_compose_action
 from tirosh_guest_tools.application.observability import (
     write_guest_observability_snapshot,
 )
 from tirosh_guest_tools.application.runtime_state import write_current_state
-from tirosh_guest_tools.common import (
-    DEPLOY_DIR,
-    RUNTIME_DIR,
-    compose_command,
-    mount_runtime_share,
-    request_id_from,
-    request_version_from,
-    run,
-    systemctl,
-    utc_now,
-    write_json,
-)
 from tirosh_guest_tools.contracts import (
     RuntimeFileName,
     RuntimeService,
@@ -32,8 +21,19 @@ from tirosh_guest_tools.domain.operations import (
     OperationName,
     OperationStatus,
 )
-from tirosh_guest_tools.runtime.config import load_config
-from tirosh_guest_tools.system_install import install_guest_tools_runtime
+from tirosh_guest_tools.infrastructure.common import (
+    DEPLOY_DIR,
+    RUNTIME_DIR,
+    compose_command,
+    mount_runtime_share,
+    request_id_from,
+    request_version_from,
+    run,
+    systemctl,
+    utc_now,
+    write_json,
+)
+from tirosh_guest_tools.infrastructure.system_install import install_guest_tools_runtime
 
 REQUEST_FILE = RUNTIME_DIR / RuntimeFileName.ACTIVATE_UPDATE_REQUEST.value
 RESULT_FILE = RUNTIME_DIR / RuntimeFileName.ACTIVATE_UPDATE_RESULT.value

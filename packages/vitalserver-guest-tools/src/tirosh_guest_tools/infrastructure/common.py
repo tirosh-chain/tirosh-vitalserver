@@ -12,7 +12,7 @@ from tirosh_guest_tools.domain.errors import (
     GuestContractError,
     GuestOperationRequestError,
 )
-from tirosh_guest_tools.settings import SETTINGS
+from tirosh_guest_tools.infrastructure.settings import SETTINGS
 
 MOUNT_TAG = SETTINGS.shares.runtime_tag
 MOUNT_POINT = SETTINGS.shares.runtime_mount

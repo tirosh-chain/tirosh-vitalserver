@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import time
 
+from tirosh_guest_tools.adapters.outbound.observability.collectors import (
+    OBSERVABILITY_DIR,
+)
 from tirosh_guest_tools.application.observability import (
     record_daemon_error,
     write_daemon_observability_snapshot,
 )
-from tirosh_guest_tools.logging import configure_logging
-from tirosh_guest_tools.observability.collectors import OBSERVABILITY_DIR
-from tirosh_guest_tools.settings import SETTINGS
+from tirosh_guest_tools.infrastructure.logging import configure_logging
+from tirosh_guest_tools.infrastructure.settings import SETTINGS
 
 
 def run_observability_daemon(

@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from tirosh_guest_tools.domain.errors import GuestContractError
-from tirosh_guest_tools.settings_utils import (
+from tirosh_guest_tools.infrastructure.settings_utils import (
     toml_bool_value,
     toml_enum_value,
     toml_float_value,
