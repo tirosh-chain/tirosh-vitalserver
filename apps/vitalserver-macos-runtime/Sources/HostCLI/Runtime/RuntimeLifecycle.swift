@@ -120,6 +120,8 @@ struct RuntimeLifecycle {
             try startServices()
         case .stopServices:
             try stopServices()
+        case .uninstall(let command):
+            try uninstall(command)
         case .help:
             printUsage()
         }
@@ -280,6 +282,10 @@ struct RuntimeLifecycle {
 
     func stopServices() throws {
         try runtimeServiceControlRunner().run(.stopAll)
+    }
+
+    func uninstall(_ command: RuntimeUninstallCommand) throws {
+        try runtimeUninstallRunner().run(command)
     }
 
     func rollback(_ command: RuntimeRollbackCommand) throws {

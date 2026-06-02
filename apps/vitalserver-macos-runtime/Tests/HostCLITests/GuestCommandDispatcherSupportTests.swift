@@ -76,17 +76,13 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
     func testUninstallWaitsForStoppedStateBeforeRemovingRuntimeFiles() throws {
         let uninstall = try readRuntimeSupportFile("Packaging/uninstall.template")
 
-        XCTAssertTrue(uninstall.contains("pid_file=\"${vm_home}/run/vitalserver-vm.pid\""))
-        XCTAssertTrue(uninstall.contains("wait_launchd_unloaded"))
-        XCTAssertTrue(uninstall.contains("wait_vm_process_stopped"))
-        XCTAssertTrue(uninstall.contains("vm_pid_matches_runtime"))
-        XCTAssertTrue(uninstall.contains("diagnose_removal_target"))
-        XCTAssertTrue(uninstall.contains("step=remove-plists status=started"))
-        XCTAssertTrue(uninstall.contains("step=remove-runtime-tools status=started"))
-
-        let removeFiles = try XCTUnwrap(uninstall.range(of: "step=remove-installed-files status=completed"))
-        let removeTools = try XCTUnwrap(uninstall.range(of: "step=remove-runtime-tools status=started"))
-        XCTAssertLessThan(removeFiles.lowerBound, removeTools.lowerBound)
+        XCTAssertTrue(uninstall.contains("command=(\"${vm_bin}\" \"runtime\" \"uninstall\")"))
+        XCTAssertTrue(uninstall.contains("command+=(\"--clean\")"))
+        XCTAssertTrue(uninstall.contains("\"${command[@]}\""))
+        XCTAssertTrue(uninstall.contains("step=remove-uninstaller status=started"))
+        XCTAssertFalse(uninstall.contains("/usr/bin/python3"))
+        XCTAssertFalse(uninstall.contains("launchctl bootout"))
+        XCTAssertFalse(uninstall.contains("rm -rf"))
     }
 
     func testGuestToolsBackThinWrappersAndSystemdFiles() throws {

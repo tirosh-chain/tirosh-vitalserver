@@ -23,6 +23,11 @@ VM_NGINX_ARTIFACT_BIN := .artifacts/nginx/macos/bin/nginx
 
 VM_PKG_BUILD_DIR ?= $(call VM_TOML_VALUE,workspace.build_dir)
 VM_PKG_ROOTFS_CACHE ?= $(VM_PKG_BUILD_DIR)/rootfs-base.raw.gz
+VM_PKG_ROOTFS_CONTRACT_STAMP ?= $(VM_PKG_BUILD_DIR)/rootfs-base.contract
+VM_PKG_ROOTFS_CONTRACT_INPUTS := \
+	$(VM_MACOS_RUNTIME_DIR)/Support/Guest/prepare-airgap-rootfs.sh \
+	$(VM_MACOS_RUNTIME_DIR)/Support/Guest/bootstrap.sh
+VM_PKG_ROOTFS_CONTRACT_FINGERPRINT := $(shell cksum $(VM_PKG_ROOTFS_CONTRACT_INPUTS) | cksum | awk '{print $$1 "-" $$2}')
 
 VM_RECREATE_GOLDEN_ROOTFS ?= false
 VM_GOLDEN_HOME := .tmp/vitalserver-vm-golden
@@ -45,12 +50,27 @@ vm-airgap-rootfs: vm-download vm-stage
 
 vm-golden-rootfs:
 	@set -e; \
+	rootfs_contract_expected="$(VM_PKG_ROOTFS_CONTRACT_FINGERPRINT)"; \
+	rootfs_contract_actual=""; \
+	if [ -s "$(VM_PKG_ROOTFS_CONTRACT_STAMP)" ]; then \
+		rootfs_contract_actual="$$(cat "$(VM_PKG_ROOTFS_CONTRACT_STAMP)")"; \
+	fi; \
 	if [ "$(VM_RECREATE_GOLDEN_ROOTFS)" = "false" ] \
 		&& [ -s "$(VM_PKG_ROOTFS_CACHE)" ] \
 		&& [ -s "$(VM_GOLDEN_RUNTIME_DIR)/Image" ] \
-		&& [ -s "$(VM_GOLDEN_RUNTIME_DIR)/initrd.img" ]; then \
+		&& [ -s "$(VM_GOLDEN_RUNTIME_DIR)/initrd.img" ] \
+		&& [ "$${rootfs_contract_actual}" = "$${rootfs_contract_expected}" ]; then \
 		printf "Reusing golden rootfs cache: %s\n" "$(VM_PKG_ROOTFS_CACHE)"; \
 	else \
+		if [ "$(VM_RECREATE_GOLDEN_ROOTFS)" != "false" ]; then \
+			printf "Recreating golden rootfs cache: %s\n" "$(VM_PKG_ROOTFS_CACHE)"; \
+		elif [ -s "$(VM_PKG_ROOTFS_CACHE)" ]; then \
+			if [ -z "$${rootfs_contract_actual}" ]; then \
+				printf "Golden rootfs cache missing contract stamp; rebuilding: %s\n" "$(VM_PKG_ROOTFS_CACHE)"; \
+			else \
+				printf "Golden rootfs cache contract changed; rebuilding: %s\n" "$(VM_PKG_ROOTFS_CACHE)"; \
+			fi; \
+		fi; \
 		$(MAKE) vm-airgap-rootfs \
 			VM_HOME="$(abspath $(VM_GOLDEN_HOME))" \
 			VM_RECREATE_ROOTFS="$(VM_RECREATE_GOLDEN_ROOTFS)"; \
@@ -62,6 +82,8 @@ vm-golden-rootfs:
 			--source "$(VM_GOLDEN_RUNTIME_DIR)/vm-disk.img" \
 			--output "$(VM_PKG_ROOTFS_CACHE)" \
 			--compression-threads "$(VM_COMPRESSION_THREADS)"; \
+		mkdir -p "$(dir $(VM_PKG_ROOTFS_CONTRACT_STAMP))"; \
+		printf "%s\n" "$${rootfs_contract_expected}" >"$(VM_PKG_ROOTFS_CONTRACT_STAMP)"; \
 	fi
 
 vm-nginx-artifact:

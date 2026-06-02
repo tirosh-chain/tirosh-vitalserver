@@ -19,6 +19,7 @@ enum RuntimeLifecycleCommand: Equatable {
     case repairServices
     case startServices
     case stopServices
+    case uninstall(RuntimeUninstallCommand)
     case help
 
     static func parse(_ arguments: [String]) throws -> RuntimeLifecycleCommand {
@@ -69,6 +70,8 @@ enum RuntimeLifecycleCommand: Equatable {
             return .startServices
         case "stop-services":
             return .stopServices
+        case "uninstall":
+            return .uninstall(try parseUninstallCommand(remaining))
         case "-h", "--help", "help":
             return .help
         default:
@@ -95,6 +98,7 @@ enum RuntimeLifecycleCommand: Equatable {
       vitalserver-vm runtime repair-services
       vitalserver-vm runtime start-services
       vitalserver-vm runtime stop-services
+      vitalserver-vm runtime uninstall [--clean]
     """
 
     private static func requiredBundleURL(in arguments: [String], usage: String) throws -> URL {
@@ -109,6 +113,19 @@ enum RuntimeLifecycleCommand: Equatable {
             return .latestBackup
         }
         return .specificBackup(URL(fileURLWithPath: backupPath))
+    }
+
+    private static func parseUninstallCommand(_ arguments: [String]) throws -> RuntimeUninstallCommand {
+        var clean = false
+        for argument in arguments {
+            switch argument {
+            case "--clean":
+                clean = true
+            default:
+                throw LauncherError.missingArgument("usage: vitalserver-vm runtime uninstall [--clean]")
+            }
+        }
+        return RuntimeUninstallCommand(clean: clean)
     }
 
     private static func parseConfigureCommand(_ arguments: [String]) throws -> RuntimeConfigureCommand {

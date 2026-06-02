@@ -16,7 +16,15 @@ final class RuntimeLifecycleCommandTests: XCTestCase {
         XCTAssertEqual(try RuntimeLifecycleCommand.parse(["repair-services"]), .repairServices)
         XCTAssertEqual(try RuntimeLifecycleCommand.parse(["start-services"]), .startServices)
         XCTAssertEqual(try RuntimeLifecycleCommand.parse(["stop-services"]), .stopServices)
+        XCTAssertEqual(try RuntimeLifecycleCommand.parse(["uninstall"]), .uninstall(RuntimeUninstallCommand(clean: false)))
         XCTAssertEqual(try RuntimeLifecycleCommand.parse(["--help"]), .help)
+    }
+
+    func testParsesCleanUninstallCommand() throws {
+        XCTAssertEqual(
+            try RuntimeLifecycleCommand.parse(["uninstall", "--clean"]),
+            .uninstall(RuntimeUninstallCommand(clean: true))
+        )
     }
 
     func testParsesConfigureArgumentsIntoTypedCommand() throws {
@@ -112,6 +120,7 @@ final class RuntimeLifecycleCommandTests: XCTestCase {
         XCTAssertTrue(RuntimeLifecycleCommand.usage.contains("vitalserver-vm runtime repair-vm-disk"))
         XCTAssertTrue(RuntimeLifecycleCommand.usage.contains("vitalserver-vm runtime repair-services"))
         XCTAssertTrue(RuntimeLifecycleCommand.usage.contains("vitalserver-vm runtime stop-services"))
+        XCTAssertTrue(RuntimeLifecycleCommand.usage.contains("vitalserver-vm runtime uninstall [--clean]"))
     }
 
     private func assertMissingArgument(

@@ -157,6 +157,45 @@ extension RuntimeLifecycle {
         )
     }
 
+    func runtimeUninstallRunner() throws -> RuntimeUninstallRunner {
+        RuntimeUninstallRunner(
+            paths: RuntimeUninstallPaths(
+                productRoot: installedPaths.productRoot,
+                managerApp: installedPaths.managerApp,
+                defaultVitalFilesDirectory: installedPaths.vitalFilesDirectory,
+                configuredVitalFilesDirectory: configuredVitalFilesDirectory(),
+                launchDaemonPlists: RuntimeManagedService.stopOrder.map {
+                    URL(fileURLWithPath: $0.launchDaemonPlist)
+                },
+                runtimeTools: [
+                    installedPaths.launcher,
+                    URL(fileURLWithPath: Constants.InstallPaths.proxyRun),
+                ]
+            ),
+            createRedisBackup: createRedisBackup,
+            stopRuntimeServices: stopRuntimeServices,
+            fileExists: fileExists,
+            directoryExists: directoryExists,
+            createDirectory: { url, withIntermediateDirectories in
+                try fileStore.createDirectory(at: url, withIntermediateDirectories: withIntermediateDirectories)
+            },
+            removeItem: { url in
+                try fileStore.removeItem(at: url)
+            },
+            moveItem: { source, destination in
+                try fileStore.moveItem(at: source, to: destination)
+            },
+            contentsOfDirectory: { url in
+                try fileStore.contentsOfDirectory(at: url, skipsHiddenFiles: false)
+            },
+            runProcess: runProcess,
+            forgetPackageReceipt: {
+                _ = runProcess("/usr/sbin/pkgutil", arguments: ["--forget", Constants.Product.identifier])
+            },
+            log: log
+        )
+    }
+
     func reasonText(_ reasons: [RuntimeFailureReason]) -> String {
         RuntimeFailureReasonText.describe(reasons)
     }
@@ -444,6 +483,18 @@ extension RuntimeLifecycle {
             },
             log: log
         )
+    }
+
+    func configuredVitalFilesDirectory() -> URL {
+        do {
+            let config = try VMRuntimeConfig.load(from: paths.config, fileStore: fileStore)
+            if let hostPath = config.vitalFilesDirectory?.hostPath, hostPath.hasPrefix("/") {
+                return URL(fileURLWithPath: hostPath)
+            }
+        } catch {
+            log("failed to read configured vital files directory error=\(error.localizedDescription)")
+        }
+        return installedPaths.vitalFilesDirectory
     }
 
     func runtimeCommandExecutor() -> RuntimeCommandExecutor {
