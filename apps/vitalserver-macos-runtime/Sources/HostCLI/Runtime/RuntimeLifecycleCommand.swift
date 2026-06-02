@@ -5,6 +5,7 @@ import Contracts
 enum RuntimeLifecycleCommand: Equatable {
     case install
     case installProvision
+    case preinstallCheck
     case status
     case health
     case guestLogSync
@@ -34,6 +35,8 @@ enum RuntimeLifecycleCommand: Equatable {
             return .install
         case "install-provision":
             return .installProvision
+        case "preinstall-check":
+            return .preinstallCheck
         case "status":
             return .status
         case "health":
@@ -86,6 +89,7 @@ enum RuntimeLifecycleCommand: Equatable {
     Usage:
       vitalserver-vm runtime install
       vitalserver-vm runtime install-provision
+      vitalserver-vm runtime preinstall-check
       vitalserver-vm runtime status
       vitalserver-vm runtime health
       vitalserver-vm runtime guest-log-sync

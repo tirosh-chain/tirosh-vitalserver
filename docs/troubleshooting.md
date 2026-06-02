@@ -51,6 +51,7 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-037 | clean uninstall 이후 stale operation이 rollback/recovery를 유발함 | Uninstall / Update / Runtime health | active | [clean uninstall 이후 stale operation이 rollback/recovery를 유발함](troubleshooting/037_clean-uninstall-stale-operation-recovery.md) |
 | TS-038 | Guest kernel panic 이후 watchdog restart loop가 발생함 | Runtime health / VM disk / Watchdog recovery | implemented | [Guest kernel panic 이후 watchdog restart loop가 발생함](troubleshooting/038_guest-kernel-panic-watchdog-restart-loop.md) |
 | TS-039 | AGENTS.md 상태/실패 fallback 감사를 진행함 | Architecture / Runtime Control / Observability / TestKit | active | [AGENTS.md 상태/실패 fallback 감사를 진행함](troubleshooting/039_agents-compliance-fallback-audit.md) |
+| TS-042 | Host install/uninstall state 계약 부족으로 cleanup/reinstall이 막힘 | Packaging / Uninstall / Runtime health | implemented | [Host install/uninstall state contract gap](troubleshooting/042_host-install-uninstall-state-contract-gap.md) |
 
 ## Follow-up 규칙
 

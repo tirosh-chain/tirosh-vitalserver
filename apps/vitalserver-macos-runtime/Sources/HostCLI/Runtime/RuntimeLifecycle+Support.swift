@@ -158,23 +158,34 @@ extension RuntimeLifecycle {
     }
 
     func runtimeUninstallRunner() throws -> RuntimeUninstallRunner {
-        RuntimeUninstallRunner(
-            paths: RuntimeUninstallPaths(
-                productRoot: installedPaths.productRoot,
-                managerApp: installedPaths.managerApp,
-                defaultVitalFilesDirectory: installedPaths.vitalFilesDirectory,
-                configuredVitalFilesDirectory: configuredVitalFilesDirectory(),
-                launchDaemonPlists: RuntimeManagedService.stopOrder.map {
-                    URL(fileURLWithPath: $0.launchDaemonPlist)
-                },
-                runtimeTools: [
-                    installedPaths.launcher,
-                    URL(fileURLWithPath: Constants.InstallPaths.proxyRun),
-                    installedPaths.uninstaller,
-                ]
-            ),
+        let vitalFilesDirectoryRead = configuredExternalVitalFilesDirectory()
+        let uninstallPaths = RuntimeUninstallPaths(
+            productRoot: installedPaths.productRoot,
+            managerApp: installedPaths.managerApp,
+            defaultVitalFilesDirectory: installedPaths.vitalFilesDirectory,
+            externalVitalFilesDirectory: vitalFilesDirectoryRead.externalDirectory,
+            configuredVitalFilesDirectoryReadFailure: vitalFilesDirectoryRead.failure,
+            launchDaemonPlists: RuntimeManagedService.stopOrder.map {
+                URL(fileURLWithPath: $0.launchDaemonPlist)
+            },
+            runtimeTools: [
+                installedPaths.launcher,
+                URL(fileURLWithPath: Constants.InstallPaths.proxyRun),
+                installedPaths.uninstaller,
+            ]
+        )
+        return RuntimeUninstallRunner(
+            paths: uninstallPaths,
             createRedisBackup: createRedisBackup,
             stopRuntimeServices: stopRuntimeServices,
+            serviceStates: {
+                Dictionary(uniqueKeysWithValues: RuntimeManagedService.stopOrder.map { service in
+                    (service, healthChecker.launchdState(service))
+                })
+            },
+            vmProcessState: {
+                ProcessState.inspect(pidFile: paths.pidFile, fileStore: fileStore)
+            },
             fileExists: fileExists,
             directoryExists: directoryExists,
             createDirectory: { url, withIntermediateDirectories in
@@ -192,10 +203,98 @@ extension RuntimeLifecycle {
             runProcess: runProcess,
             packageReceiptIdentifiers: Constants.Product.packageReceiptIdentifiers,
             forgetPackageReceipt: { identifier in
-                _ = runProcess("/usr/sbin/pkgutil", arguments: ["--forget", identifier])
+                runProcess("/usr/sbin/pkgutil", arguments: ["--forget", identifier])
+            },
+            packageReceiptStates: {
+                RuntimePackageReceiptStateReader.states(
+                    identifiers: Constants.Product.packageReceiptIdentifiers,
+                    runProcess: { executable, arguments in
+                        runProcess(executable, arguments: arguments)
+                    }
+                )
+            },
+            cleanupArtifactStates: { clean in
+                RuntimeInstallArtifactStateReader.states(
+                    paths: cleanupArtifactPaths(clean: clean, paths: uninstallPaths).map(\.path)
+                )
+            },
+            writeState: { state, clean, message, blockers in
+                try RuntimeUninstallStateStore(
+                    url: installedPaths.runtimeUninstallState,
+                    fileStore: fileStore,
+                    now: { clock.now }
+                ).write(
+                    state: state,
+                    clean: clean,
+                    message: message,
+                    blockers: blockers
+                )
             },
             log: log
         )
+    }
+
+    func cleanupArtifactPaths(clean: Bool, paths: RuntimeUninstallPaths) -> [URL] {
+        var artifactPaths = [paths.managerApp]
+        artifactPaths.append(contentsOf: paths.launchDaemonPlists)
+        artifactPaths.append(contentsOf: paths.runtimeTools)
+        if clean {
+            artifactPaths.append(paths.productRoot)
+            if let externalVitalFilesDirectory = paths.externalVitalFilesDirectory {
+                artifactPaths.append(externalVitalFilesDirectory)
+            }
+        }
+        return artifactPaths
+    }
+
+    func runtimeFreshInstallPreflightRunner() -> RuntimeFreshInstallPreflightRunner {
+        RuntimeFreshInstallPreflightRunner(
+            settingsState: {
+                RuntimeInstallSettingsStateReader.state(
+                    path: Constants.InstallPaths.settingsPath,
+                    fileStore: fileStore
+                )
+            },
+            artifactStates: {
+                RuntimeInstallArtifactStateReader.states(paths: freshInstallArtifactPaths().map(\.path))
+            },
+            serviceStates: {
+                RuntimeManagedService.stopOrder.map { service in
+                    RuntimeFreshInstallServiceState(
+                        label: service.label,
+                        state: healthChecker.launchdState(service)
+                    )
+                }
+            },
+            packageReceiptStates: {
+                RuntimePackageReceiptStateReader.states(
+                    identifiers: Constants.Product.packageReceiptIdentifiers,
+                    runProcess: { executable, arguments in
+                        runProcess(executable, arguments: arguments)
+                    }
+                )
+            },
+            proxyPortState: { port in
+                RuntimeHostProxyPortStateReader.state(
+                    port: port,
+                    runProcess: { executable, arguments in
+                        runProcess(executable, arguments: arguments)
+                    }
+                )
+            }
+        )
+    }
+
+    func freshInstallArtifactPaths() -> [URL] {
+        [
+            installedPaths.productRoot,
+            installedPaths.managerApp,
+            installedPaths.launcher,
+            URL(fileURLWithPath: Constants.InstallPaths.proxyRun),
+            installedPaths.uninstaller,
+        ] + RuntimeManagedService.stopOrder.map {
+            URL(fileURLWithPath: $0.launchDaemonPlist)
+        }
     }
 
     func reasonText(_ reasons: [RuntimeFailureReason]) -> String {
@@ -487,16 +586,22 @@ extension RuntimeLifecycle {
         )
     }
 
-    func configuredVitalFilesDirectory() -> URL {
+    func configuredExternalVitalFilesDirectory() -> RuntimeConfiguredExternalVitalFilesDirectoryRead {
         do {
             let config = try VMRuntimeConfig.load(from: paths.config, fileStore: fileStore)
             if let hostPath = config.vitalFilesDirectory?.hostPath, hostPath.hasPrefix("/") {
-                return URL(fileURLWithPath: hostPath)
+                let url = URL(fileURLWithPath: hostPath)
+                guard url.path != installedPaths.vitalFilesDirectory.path else {
+                    return RuntimeConfiguredExternalVitalFilesDirectoryRead(externalDirectory: nil, failure: nil)
+                }
+                return RuntimeConfiguredExternalVitalFilesDirectoryRead(externalDirectory: url, failure: nil)
             }
+            return RuntimeConfiguredExternalVitalFilesDirectoryRead(externalDirectory: nil, failure: nil)
         } catch {
-            log("failed to read configured vital files directory error=\(error.localizedDescription)")
+            let reason = error.localizedDescription
+            log("failed to read configured vital files directory error=\(reason)")
+            return RuntimeConfiguredExternalVitalFilesDirectoryRead(externalDirectory: nil, failure: reason)
         }
-        return installedPaths.vitalFilesDirectory
     }
 
     func runtimeCommandExecutor() -> RuntimeCommandExecutor {

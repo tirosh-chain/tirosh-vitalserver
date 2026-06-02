@@ -6,6 +6,7 @@ final class RuntimeFileNamesTests: XCTestCase {
         XCTAssertEqual(RuntimeFileNames.runtimeStatus, "runtime-status.json")
         XCTAssertEqual(RuntimeFileNames.runtimeEvents, "runtime-events.jsonl")
         XCTAssertEqual(RuntimeFileNames.runtimeObservabilityDB, "runtime-observability.sqlite")
+        XCTAssertEqual(RuntimeFileNames.runtimeUninstallState, "tirosh-vitalserver-uninstall-state.json")
         XCTAssertEqual(RuntimeFileNames.vmIP, "vm-ip")
         XCTAssertEqual(RuntimeFileNames.vmLifecycle, "vm-lifecycle.json")
         XCTAssertEqual(RuntimeFileNames.runtimeState, "runtime-state.json")

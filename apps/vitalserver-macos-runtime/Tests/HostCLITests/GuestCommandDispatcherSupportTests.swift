@@ -77,6 +77,25 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
         XCTAssertFalse(postinstall.contains("runtime install timed out"))
         XCTAssertFalse(postinstall.contains("kill -KILL \"${pid}\""))
         XCTAssertFalse(postinstall.contains("postinstall_timeout_seconds=300"))
+        XCTAssertTrue(postinstall.contains("\"${vm_bin}\" runtime uninstall --clean"))
+        XCTAssertTrue(postinstall.contains("postinstall failure cleanup blocked"))
+        XCTAssertFalse(postinstall.contains("launchctl bootout"))
+        XCTAssertFalse(postinstall.contains("rm -rf"))
+        XCTAssertFalse(postinstall.contains("pkgutil --forget"))
+        XCTAssertFalse(postinstall.contains("pgrep -f"))
+    }
+
+    func testPreinstallDelegatesFreshInstallStateCheckToHostCLI() throws {
+        let preinstall = try readRuntimeSupportFile("Packaging/preinstall")
+
+        XCTAssertTrue(preinstall.contains("preflight_bin=\"${script_dir}/vitalserver-vm-preinstall\""))
+        XCTAssertTrue(preinstall.contains("\"${preflight_bin}\" runtime preinstall-check"))
+        XCTAssertTrue(preinstall.contains("pkg install supports fresh installs only"))
+        XCTAssertFalse(preinstall.contains("pkgutil --pkg-info"))
+        XCTAssertFalse(preinstall.contains("launchctl print"))
+        XCTAssertFalse(preinstall.contains("lsof -nP"))
+        XCTAssertFalse(preinstall.contains("plutil -extract"))
+        XCTAssertFalse(preinstall.contains("[[ -e"))
     }
 
     func testUninstallWaitsForStoppedStateBeforeRemovingRuntimeFiles() throws {

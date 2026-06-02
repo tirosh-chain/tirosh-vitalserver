@@ -75,6 +75,33 @@ final class ProcessStateTests: XCTestCase {
         XCTAssertEqual(fileStore.removed, [pidFile])
     }
 
+    func testInspectReportsRunningProcessState() {
+        let fileStore = RuntimeFileStoreSpy()
+        let pidFile = URL(fileURLWithPath: "/runtime/run/vitalserver-vm.pid")
+        fileStore.files[pidFile] = Data("123\n".utf8)
+
+        let state = ProcessState.inspect(
+            pidFile: pidFile,
+            fileStore: fileStore,
+            processExists: { _ in true }
+        )
+
+        XCTAssertEqual(state, .running(pid: 123))
+    }
+
+    func testInspectKeepsInvalidPidDistinctFromMissingPidFile() {
+        let fileStore = RuntimeFileStoreSpy()
+        let pidFile = URL(fileURLWithPath: "/runtime/run/vitalserver-vm.pid")
+        fileStore.files[pidFile] = Data("not-a-pid\n".utf8)
+
+        let state = ProcessState.inspect(pidFile: pidFile, fileStore: fileStore)
+
+        guard case .pidFileInvalid(let reason) = state else {
+            return XCTFail("Expected pidFileInvalid, got \(state)")
+        }
+        XCTAssertTrue(reason.contains("invalid VM process pid file"))
+    }
+
     func testRequestStopAndWaitSignalsProcessAndWaitsUntilStopped() throws {
         let fileStore = RuntimeFileStoreSpy()
         let pidFile = URL(fileURLWithPath: "/runtime/run/vitalserver-vm.pid")
@@ -99,6 +126,49 @@ final class ProcessStateTests: XCTestCase {
         XCTAssertEqual(signals.first?.0, 123)
         XCTAssertEqual(signals.first?.1, SIGTERM)
         XCTAssertNil(fileStore.files[pidFile])
+    }
+
+    func testRequestStopAndWaitFailsWhenPidFileIsMissing() {
+        let fileStore = RuntimeFileStoreSpy()
+        let pidFile = URL(fileURLWithPath: "/runtime/run/vitalserver-vm.pid")
+
+        XCTAssertThrowsError(try ProcessState.requestStopAndWait(
+            pidFile: pidFile,
+            fileStore: fileStore,
+            timeoutSeconds: 1,
+            pollIntervalSeconds: 0.001,
+            processExists: { _ in XCTFail("Missing pid file should fail before process probing"); return false },
+            signalProcess: { _, _ in XCTFail("Missing pid file should fail before signaling"); return 0 }
+        )) { error in
+            guard case LauncherError.runtimeOperationFailed(let message) = error else {
+                return XCTFail("Expected runtimeOperationFailed, got \(error)")
+            }
+            XCTAssertTrue(message.contains("pid file is missing"))
+        }
+    }
+
+    func testWaitUntilStoppedStateReportsStoppedWhenObservedPidExitsAfterPidFileDisappears() {
+        let fileStore = RuntimeFileStoreSpy()
+        let pidFile = URL(fileURLWithPath: "/runtime/run/vitalserver-vm.pid")
+        fileStore.files[pidFile] = Data("123\n".utf8)
+        var probeCount = 0
+
+        let state = ProcessState.waitUntilStoppedState(
+            pidFile: pidFile,
+            fileStore: fileStore,
+            timeoutSeconds: 1,
+            pollIntervalSeconds: 0.001,
+            processExists: { _ in
+                probeCount += 1
+                if probeCount == 1 {
+                    fileStore.files.removeValue(forKey: pidFile)
+                    return true
+                }
+                return false
+            }
+        )
+
+        XCTAssertEqual(state, .stopped)
     }
 
     func testForceKillAndWaitSignalsProcessAndWaitsUntilStopped() throws {
@@ -139,6 +209,22 @@ final class ProcessStateTests: XCTestCase {
             pollIntervalSeconds: 0.001,
             processExists: { _ in true }
         ))
+    }
+
+    func testWaitUntilStoppedStateReportsTimeoutWithPid() {
+        let fileStore = RuntimeFileStoreSpy()
+        let pidFile = URL(fileURLWithPath: "/runtime/run/vitalserver-vm.pid")
+        fileStore.files[pidFile] = Data("123\n".utf8)
+
+        let state = ProcessState.waitUntilStoppedState(
+            pidFile: pidFile,
+            fileStore: fileStore,
+            timeoutSeconds: 0,
+            pollIntervalSeconds: 0.001,
+            processExists: { _ in true }
+        )
+
+        XCTAssertEqual(state, .stopTimedOut(pid: 123, timeoutSeconds: 0))
     }
 
     func testWaitUntilStoppedFailsWhenPidFileIsInvalid() {

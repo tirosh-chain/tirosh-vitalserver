@@ -92,6 +92,8 @@ struct RuntimeLifecycle {
             try install()
         case .installProvision:
             try installProvision()
+        case .preinstallCheck:
+            try preinstallCheck()
         case .status:
             printStatus()
         case .health:
@@ -139,6 +141,19 @@ struct RuntimeLifecycle {
 
     func installProvision() throws {
         try runtimeInstallWorkflow().installProvision()
+    }
+
+    func preinstallCheck() throws {
+        let document = runtimeFreshInstallPreflightRunner().run()
+        let data = try JSONEncoder.pretty.encode(document)
+        if let text = String(data: data, encoding: .utf8) {
+            print(text)
+        }
+        guard document.passed else {
+            throw LauncherError.runtimeOperationFailed(
+                "fresh install preflight blocked blockers=\(document.blockers.joined(separator: ","))"
+            )
+        }
     }
 
     func printStatus() {

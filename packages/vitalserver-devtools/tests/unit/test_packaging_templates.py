@@ -24,6 +24,10 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
     )
     packaging = root / "apps/vitalserver-macos-runtime/Support/Packaging"
     proxy_config_template = root / "infra/macos-nginx/vitalserver.conf.template"
+    installer_package_source = (
+        root
+        / "packages/vitalserver-devtools/src/tirosh_vitalserver/devtools/adapters/macos_release/installer_package.py"
+    )
 
     postinstall = tmp_path / "postinstall"
     proxy_run = tmp_path / "vitalserver-proxy-run"
@@ -67,26 +71,28 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
     assert "${PRODUCT_ROOT}" not in rendered
     assert "${NGINX_PREFIX}" not in rendered
     assert "pkg install supports fresh installs only" in preinstall_text
-    assert 'manager_app="/Applications/VitalServer Helper.app"' in preinstall_text
-    assert "/Library/LaunchDaemons/com.tirosh.vitalserver*.plist" in preinstall_text
-    assert 'pkgutil --pkg-info "${receipt}"' in preinstall_text
-    assert "existing host proxy port listener found" in preinstall_text
-    assert 'lsof -nP -iTCP:"${proxy_port}" -sTCP:LISTEN' in preinstall_text
+    assert 'preflight_bin="${script_dir}/vitalserver-vm-preinstall"' in preinstall_text
+    assert '"${preflight_bin}" runtime preinstall-check' in preinstall_text
+    assert 'context.pkg_scripts / "vitalserver-vm-preinstall"' in installer_package_source.read_text(
+        encoding="utf-8"
+    )
+    assert "pkgutil --pkg-info" not in preinstall_text
+    assert "launchctl print" not in preinstall_text
+    assert "lsof -nP" not in preinstall_text
+    assert "plutil -extract" not in preinstall_text
     assert "/Library/Application Support/TiroshVitalServer" in rendered
     assert '"${vm_bin}" runtime install-provision' in postinstall_text
     assert "postinstall_timeout_seconds" not in postinstall_text
     assert "runtime install timed out timeoutSeconds=" not in postinstall_text
     assert "postinstall failure cleanup started" in postinstall_text
-    assert 'nginx_prefix="/Library/Application Support/TiroshVitalServer/nginx"' in postinstall_text
-    assert 'nginx_bin="${nginx_prefix}/sbin/nginx"' in postinstall_text
-    assert "postinstall failure cleanup terminating packaged nginx" in postinstall_text
     assert "tirosh-vitalserver-postinstall-failure.log" in postinstall_text
-    assert '"${product_root}"' in postinstall_text
+    assert 'vm_home="/Library/Application Support/TiroshVitalServer/vm"' in postinstall_text
     assert 'manager_app="/Applications/VitalServer Helper.app"' in postinstall_text
     assert '"${manager_app}"' in postinstall_text
     assert '"${vm_bin}"' in postinstall_text
-    assert '"${proxy_run}"' in postinstall_text
-    assert '"${uninstaller}"' in postinstall_text
+    assert "launchctl bootout" not in postinstall_text
+    assert "pkgutil --forget" not in postinstall_text
+    assert "rm -rf" not in postinstall_text
     assert "runtime install progress status=" not in postinstall_text
     assert "runtime install progress failureReasons=" not in postinstall_text
     assert "runtime_status=" not in postinstall_text

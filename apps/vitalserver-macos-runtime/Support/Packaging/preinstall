@@ -2,24 +2,9 @@
 set -euo pipefail
 
 product_root="/Library/Application Support/TiroshVitalServer"
-manager_app="/Applications/VitalServer Helper.app"
-install_settings="/private/tmp/tirosh-vitalserver-install.json"
-proxy_port="80"
-existing_paths=(
-  "${product_root}"
-  "${manager_app}"
-  "/usr/local/bin/vitalserver-vm"
-  "/usr/local/bin/vitalserver-proxy-run"
-  "/usr/local/bin/tirosh-vitalserver-uninstall"
-)
-
-labels=(
-  "com.tirosh.vitalserver-watchdog"
-  "com.tirosh.vitalserver-guest-log-sync"
-  "com.tirosh.vitalserver-proxy"
-  "com.tirosh.vitalserver-vm"
-  "com.tirosh.vitalserver-sleep-prevention"
-)
+vm_home="${product_root}/vm"
+script_dir="$(cd "$(dirname "$0")" && pwd)"
+preflight_bin="${script_dir}/vitalserver-vm-preinstall"
 
 fail_fresh_install_only() {
   echo "Tirosh VitalServer pkg install supports fresh installs only." >&2
@@ -27,45 +12,11 @@ fail_fresh_install_only() {
   exit 1
 }
 
-if [[ -f "${install_settings}" ]]; then
-  configured_proxy_port="$(/usr/bin/plutil -extract proxyPort raw -o - "${install_settings}" 2>/dev/null || true)"
-  if [[ "${configured_proxy_port}" =~ ^[0-9]+$ ]]; then
-    proxy_port="${configured_proxy_port}"
-  fi
+if [ ! -x "${preflight_bin}" ]; then
+  echo "fresh install preflight unavailable: ${preflight_bin}" >&2
+  fail_fresh_install_only
 fi
 
-for path in "${existing_paths[@]}"; do
-  if [[ -e "${path}" ]]; then
-    echo "existing install artifact found: ${path}" >&2
-    fail_fresh_install_only
-  fi
-done
-
-shopt -s nullglob
-for plist in /Library/LaunchDaemons/com.tirosh.vitalserver*.plist; do
-  echo "existing launch daemon plist found: ${plist}" >&2
+if ! VITALSERVER_VM_HOME="${vm_home}" "${preflight_bin}" runtime preinstall-check; then
   fail_fresh_install_only
-done
-shopt -u nullglob
-
-for receipt in "com.tirosh.vitalserver.vm" "com.tirosh.vitalserver"; do
-  if pkgutil --pkg-info "${receipt}" >/dev/null 2>&1; then
-    echo "existing package receipt found: ${receipt}" >&2
-    fail_fresh_install_only
-  fi
-done
-
-for label in "${labels[@]}"; do
-  if launchctl print "system/${label}" >/dev/null 2>&1; then
-    echo "existing launchd service is loaded: ${label}" >&2
-    fail_fresh_install_only
-  fi
-done
-
-if command -v lsof >/dev/null 2>&1; then
-  listeners="$(lsof -nP -iTCP:"${proxy_port}" -sTCP:LISTEN 2>/dev/null | awk 'NR>1 {print $1 "/" $2}' | sort -u | paste -sd, - || true)"
-  if [[ -n "${listeners}" ]]; then
-    echo "existing host proxy port listener found: port=${proxy_port} listeners=${listeners}" >&2
-    fail_fresh_install_only
-  fi
 fi

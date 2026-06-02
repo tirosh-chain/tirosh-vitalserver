@@ -134,6 +134,10 @@ public struct InstalledRuntimePaths: Equatable, Sendable {
         statusDirectory.appendingPathComponent(RuntimeFileNames.runtimeObservabilityDB)
     }
 
+    public var runtimeUninstallState: URL {
+        URL(fileURLWithPath: "/private/tmp/\(RuntimeFileNames.runtimeUninstallState)")
+    }
+
     public var vmIPFile: URL {
         guestRunDirectory.appendingPathComponent(RuntimeFileNames.vmIP)
     }

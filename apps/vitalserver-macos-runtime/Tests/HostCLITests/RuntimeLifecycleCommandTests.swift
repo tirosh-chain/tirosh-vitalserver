@@ -7,6 +7,7 @@ final class RuntimeLifecycleCommandTests: XCTestCase {
         XCTAssertEqual(try RuntimeLifecycleCommand.parse([]), .help)
         XCTAssertEqual(try RuntimeLifecycleCommand.parse(["install"]), .install)
         XCTAssertEqual(try RuntimeLifecycleCommand.parse(["install-provision"]), .installProvision)
+        XCTAssertEqual(try RuntimeLifecycleCommand.parse(["preinstall-check"]), .preinstallCheck)
         XCTAssertEqual(try RuntimeLifecycleCommand.parse(["status"]), .status)
         XCTAssertEqual(try RuntimeLifecycleCommand.parse(["health"]), .health)
         XCTAssertEqual(try RuntimeLifecycleCommand.parse(["guest-log-sync"]), .guestLogSync)
@@ -117,6 +118,7 @@ final class RuntimeLifecycleCommandTests: XCTestCase {
     func testUsageListsRuntimeCommands() {
         XCTAssertTrue(RuntimeLifecycleCommand.usage.contains("vitalserver-vm runtime install"))
         XCTAssertTrue(RuntimeLifecycleCommand.usage.contains("vitalserver-vm runtime install-provision"))
+        XCTAssertTrue(RuntimeLifecycleCommand.usage.contains("vitalserver-vm runtime preinstall-check"))
         XCTAssertTrue(RuntimeLifecycleCommand.usage.contains("vitalserver-vm runtime apply-bundle <bundle.tar.gz>"))
         XCTAssertTrue(RuntimeLifecycleCommand.usage.contains("vitalserver-vm runtime redis-backup"))
         XCTAssertTrue(RuntimeLifecycleCommand.usage.contains("vitalserver-vm runtime repair-vm-disk"))

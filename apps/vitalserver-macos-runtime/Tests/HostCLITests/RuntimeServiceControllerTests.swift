@@ -14,7 +14,7 @@ final class RuntimeServiceControllerTests: XCTestCase {
         ])
         let controller = RuntimeServiceController(
             serviceManager: serviceManager,
-            isLoaded: { loaded.contains($0) },
+            serviceState: { loaded.contains($0) ? .loaded : .notLoaded },
             log: { _ in }
         )
 
@@ -37,7 +37,7 @@ final class RuntimeServiceControllerTests: XCTestCase {
         var waitedLabels: [String] = []
         let controller = RuntimeServiceController(
             serviceManager: serviceManager,
-            isLoaded: { loaded.contains($0) },
+            serviceState: { loaded.contains($0) ? .loaded : .notLoaded },
             waitUntilStopped: { waitedLabels.append($0.label) },
             log: { _ in }
         )
@@ -61,7 +61,7 @@ final class RuntimeServiceControllerTests: XCTestCase {
         serviceManager.onStop = { events.append("stop:\($0.label)") }
         let controller = RuntimeServiceController(
             serviceManager: serviceManager,
-            isLoaded: { loaded.contains($0) },
+            serviceState: { loaded.contains($0) ? .loaded : .notLoaded },
             prepareForStop: { events.append("prepare:\($0.label)") },
             waitUntilStopped: { events.append("wait:\($0.label)") },
             log: { _ in }
@@ -80,7 +80,7 @@ final class RuntimeServiceControllerTests: XCTestCase {
         let serviceManager = ServiceControllerServiceManagerSpy()
         let controller = RuntimeServiceController(
             serviceManager: serviceManager,
-            isLoaded: { $0 == .vm },
+            serviceState: { $0 == .vm ? .loaded : .notLoaded },
             prepareForStop: { _ in throw LauncherError.runtimeOperationFailed("graceful stop failed") },
             log: { _ in }
         )
@@ -89,11 +89,29 @@ final class RuntimeServiceControllerTests: XCTestCase {
         XCTAssertEqual(serviceManager.stoppedLabels, [])
     }
 
+    func testStopRuntimeServicesBlocksWhenLaunchdStateReadFails() {
+        let serviceManager = ServiceControllerServiceManagerSpy()
+        var logs: [String] = []
+        let controller = RuntimeServiceController(
+            serviceManager: serviceManager,
+            serviceState: { $0 == .watchdog ? .readFailed("exitCode=1 stderr=permission") : .notLoaded },
+            log: { logs.append($0) }
+        )
+
+        XCTAssertThrowsError(try controller.stopRuntimeServices()) { error in
+            XCTAssertTrue(String(describing: error).contains("launchd service state read failed"))
+        }
+        XCTAssertEqual(serviceManager.stoppedLabels, [])
+        XCTAssertTrue(logs.contains {
+            $0.contains("launchd service state read failed label=\(RuntimeManagedService.watchdog.label)")
+        })
+    }
+
     func testStopRuntimeServicesPropagatesWaitFailure() {
         let serviceManager = ServiceControllerServiceManagerSpy()
         let controller = RuntimeServiceController(
             serviceManager: serviceManager,
-            isLoaded: { $0 == .vm },
+            serviceState: { $0 == .vm ? .loaded : .notLoaded },
             waitUntilStopped: { _ in throw LauncherError.runtimeOperationFailed("still running") },
             log: { _ in }
         )
@@ -108,7 +126,7 @@ final class RuntimeServiceControllerTests: XCTestCase {
         serviceManager.onStart = { loaded.insert($0) }
         let controller = RuntimeServiceController(
             serviceManager: serviceManager,
-            isLoaded: { loaded.contains($0) },
+            serviceState: { loaded.contains($0) ? .loaded : .notLoaded },
             log: { _ in }
         )
 
@@ -135,7 +153,7 @@ final class RuntimeServiceControllerTests: XCTestCase {
         var logs: [String] = []
         let controller = RuntimeServiceController(
             serviceManager: serviceManager,
-            isLoaded: { _ in false },
+            serviceState: { _ in .notLoaded },
             log: { logs.append($0) }
         )
 
@@ -159,7 +177,7 @@ final class RuntimeServiceControllerTests: XCTestCase {
         var logs: [String] = []
         let controller = RuntimeServiceController(
             serviceManager: serviceManager,
-            isLoaded: { loaded.contains($0) },
+            serviceState: { loaded.contains($0) ? .loaded : .notLoaded },
             log: { logs.append($0) }
         )
 
@@ -181,7 +199,7 @@ final class RuntimeServiceControllerTests: XCTestCase {
         }
         let controller = RuntimeServiceController(
             serviceManager: serviceManager,
-            isLoaded: { loaded.contains($0) },
+            serviceState: { loaded.contains($0) ? .loaded : .notLoaded },
             prepareForStop: { events.append("prepare:\($0.label)") },
             waitUntilStopped: { events.append("wait:\($0.label)") },
             log: { _ in }
@@ -208,7 +226,7 @@ final class RuntimeServiceControllerTests: XCTestCase {
         let serviceManager = ServiceControllerServiceManagerSpy()
         let controller = RuntimeServiceController(
             serviceManager: serviceManager,
-            isLoaded: { $0 == .vm },
+            serviceState: { $0 == .vm ? .loaded : .notLoaded },
             prepareForStop: { _ in throw LauncherError.runtimeOperationFailed("graceful stop failed") },
             log: { _ in }
         )
@@ -234,7 +252,7 @@ final class RuntimeServiceControllerTests: XCTestCase {
         }
         let controller = RuntimeServiceController(
             serviceManager: serviceManager,
-            isLoaded: { loaded.contains($0) },
+            serviceState: { loaded.contains($0) ? .loaded : .notLoaded },
             prepareForStop: { events.append("prepare:\($0.label)") },
             waitUntilStopped: { events.append("wait:\($0.label)") },
             waitForVMProcessExitAfterGuestPoweroff: {
@@ -273,7 +291,7 @@ final class RuntimeServiceControllerTests: XCTestCase {
         )
         let controller = RuntimeServiceController(
             serviceManager: serviceManager,
-            isLoaded: { _ in false },
+            serviceState: { _ in .notLoaded },
             log: { _ in }
         )
 

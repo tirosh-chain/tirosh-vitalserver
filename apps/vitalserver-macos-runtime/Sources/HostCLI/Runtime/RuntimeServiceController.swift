@@ -4,7 +4,7 @@ import Contracts
 
 struct RuntimeServiceController {
     private let serviceManager: RuntimeServiceManager
-    private let isLoaded: (RuntimeManagedService) -> Bool
+    private let serviceState: (RuntimeManagedService) -> RuntimeServiceState
     private let prepareForStop: (RuntimeManagedService) throws -> Void
     private let waitUntilStopped: (RuntimeManagedService) throws -> Void
     private let waitForVMProcessExitAfterGuestPoweroff: () throws -> Void
@@ -12,7 +12,7 @@ struct RuntimeServiceController {
 
     init(
         serviceManager: RuntimeServiceManager,
-        isLoaded: @escaping (RuntimeManagedService) -> Bool,
+        serviceState: @escaping (RuntimeManagedService) -> RuntimeServiceState,
         prepareForStop: @escaping (RuntimeManagedService) throws -> Void = { _ in },
         waitUntilStopped: @escaping (RuntimeManagedService) throws -> Void = { _ in },
         waitForVMProcessExitAfterGuestPoweroff: @escaping () throws -> Void = {
@@ -21,7 +21,7 @@ struct RuntimeServiceController {
         log: @escaping (String) -> Void
     ) {
         self.serviceManager = serviceManager
-        self.isLoaded = isLoaded
+        self.serviceState = serviceState
         self.prepareForStop = prepareForStop
         self.waitUntilStopped = waitUntilStopped
         self.waitForVMProcessExitAfterGuestPoweroff = waitForVMProcessExitAfterGuestPoweroff
@@ -55,7 +55,7 @@ struct RuntimeServiceController {
             try waitUntilStopped(.guestLogSync)
             log("stopped \(RuntimeManagedService.guestLogSync.displayName) service label=\(RuntimeManagedService.guestLogSync.label)")
         }
-        if unloadIfLoaded(.vm) {
+        if try unloadIfLoaded(.vm) {
             log("waiting for \(RuntimeManagedService.vm.displayName) service to stop label=\(RuntimeManagedService.vm.label)")
             try waitUntilStopped(.vm)
             log("stopped \(RuntimeManagedService.vm.displayName) service label=\(RuntimeManagedService.vm.label)")
@@ -97,7 +97,7 @@ struct RuntimeServiceController {
         log("starting \(service.displayName) service label=\(service.label)")
         log("launchd bootstrap label=\(service.label) plist=\(plist)")
         serviceManager.start(service: service, plist: plist)
-        guard isLoaded(service) else {
+        guard try isLoaded(service) else {
             let message = "launchd service failed to load label=\(service.label) plist=\(plist)"
             log(message)
             throw LauncherError.runtimeOperationFailed(message)
@@ -108,7 +108,7 @@ struct RuntimeServiceController {
     func restartOrStartLaunchdService(_ service: RuntimeManagedService) throws {
         log("launchd restart label=\(service.label)")
         serviceManager.restart(service: service)
-        if !isLoaded(service) {
+        if try !isLoaded(service) {
             log("launchd service not loaded after restart; starting label=\(service.label)")
             try startLaunchdService(service)
         }
@@ -155,18 +155,44 @@ struct RuntimeServiceController {
     }
 
     private func stopIfLoaded(_ service: RuntimeManagedService) throws -> Bool {
-        if isLoaded(service) {
+        if try isLoaded(service) {
             try prepareForStop(service)
-            return unloadIfLoaded(service)
+            return try unloadIfLoaded(service)
         }
         return false
     }
 
-    private func unloadIfLoaded(_ service: RuntimeManagedService) -> Bool {
-        if isLoaded(service) {
+    private func unloadIfLoaded(_ service: RuntimeManagedService) throws -> Bool {
+        if try isLoaded(service) {
             serviceManager.stop(service: service)
             return true
         }
         return false
+    }
+
+    private func isLoaded(_ service: RuntimeManagedService) throws -> Bool {
+        let state = serviceState(service)
+        switch state {
+        case .loaded:
+            return true
+        case .notLoaded:
+            return false
+        case .readFailed(let reason):
+            throw serviceStateFailure(service, kind: "read failed", reason: reason)
+        case .permissionDenied(let reason):
+            throw serviceStateFailure(service, kind: "permission denied", reason: reason)
+        case .unknown(let value):
+            throw serviceStateFailure(service, kind: "unknown", reason: value)
+        }
+    }
+
+    private func serviceStateFailure(
+        _ service: RuntimeManagedService,
+        kind: String,
+        reason: String
+    ) -> LauncherError {
+        let message = "launchd service state \(kind) label=\(service.label) reason=\(reason)"
+        log(message)
+        return LauncherError.runtimeOperationFailed(message)
     }
 }

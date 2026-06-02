@@ -40,8 +40,8 @@ struct RuntimeLifecycleComposition {
         )
         let serviceController = RuntimeServiceController(
             serviceManager: resolvedServiceManager,
-            isLoaded: { service in
-                healthChecker.isLaunchdLoaded(service)
+            serviceState: { service in
+                healthChecker.launchdState(service)
             },
             prepareForStop: { service in
                 try prepareServiceForStop(
@@ -130,7 +130,7 @@ struct RuntimeLifecycleComposition {
             ? Constants.Runtime.vmStopWaitTimeoutSeconds
             : Constants.Runtime.serviceStopWaitTimeoutSeconds
         let deadline = clock.now.addingTimeInterval(timeout)
-        while healthChecker.isLaunchdLoaded(service) {
+        while try launchdServiceIsLoaded(service, healthChecker: healthChecker) {
             guard clock.now < deadline else {
                 throw LauncherError.runtimeOperationFailed(
                     "service did not unload within \(Int(timeout))s label=\(service.label)"
@@ -148,6 +148,31 @@ struct RuntimeLifecycleComposition {
             timeoutSeconds: Constants.Runtime.vmStopWaitTimeoutSeconds,
             pollIntervalSeconds: Constants.Runtime.serviceStopPollIntervalSeconds
         )
+    }
+
+    private static func launchdServiceIsLoaded(
+        _ service: RuntimeManagedService,
+        healthChecker: RuntimeHealthChecker
+    ) throws -> Bool {
+        let state = healthChecker.launchdState(service)
+        switch state {
+        case .loaded:
+            return true
+        case .notLoaded:
+            return false
+        case .readFailed(let reason):
+            throw LauncherError.runtimeOperationFailed(
+                "launchd service state read failed label=\(service.label) reason=\(reason)"
+            )
+        case .permissionDenied(let reason):
+            throw LauncherError.runtimeOperationFailed(
+                "launchd service state permission denied label=\(service.label) reason=\(reason)"
+            )
+        case .unknown(let value):
+            throw LauncherError.runtimeOperationFailed(
+                "launchd service state unknown label=\(service.label) value=\(value)"
+            )
+        }
     }
 
     private static func log(_ message: String, clock: RuntimeClock) {

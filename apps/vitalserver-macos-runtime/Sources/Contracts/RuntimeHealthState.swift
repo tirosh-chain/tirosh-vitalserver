@@ -44,6 +44,8 @@ public enum RuntimeFileState: Codable, Equatable, Sendable {
 public enum RuntimeServiceState: Codable, Equatable, Sendable {
     case loaded
     case notLoaded
+    case readFailed(String)
+    case permissionDenied(String)
     case unknown(String)
 
     public init(rawValue: String) {
@@ -52,8 +54,18 @@ public enum RuntimeServiceState: Codable, Equatable, Sendable {
             self = .loaded
         case "not loaded", "not-loaded":
             self = .notLoaded
+        case "read failed", "read-failed":
+            self = .readFailed("")
+        case "permission denied", "permission-denied":
+            self = .permissionDenied("")
         default:
-            self = .unknown(rawValue)
+            if rawValue.hasPrefix("read failed: ") {
+                self = .readFailed(String(rawValue.dropFirst("read failed: ".count)))
+            } else if rawValue.hasPrefix("permission denied: ") {
+                self = .permissionDenied(String(rawValue.dropFirst("permission denied: ".count)))
+            } else {
+                self = .unknown(rawValue)
+            }
         }
     }
 
@@ -63,6 +75,10 @@ public enum RuntimeServiceState: Codable, Equatable, Sendable {
             "loaded"
         case .notLoaded:
             "not loaded"
+        case .readFailed(let reason):
+            reason.isEmpty ? "read failed" : "read failed: \(reason)"
+        case .permissionDenied(let reason):
+            reason.isEmpty ? "permission denied" : "permission denied: \(reason)"
         case .unknown(let value):
             value
         }
@@ -70,6 +86,15 @@ public enum RuntimeServiceState: Codable, Equatable, Sendable {
 
     public var isLoaded: Bool {
         self == .loaded
+    }
+
+    public var isReadFailure: Bool {
+        switch self {
+        case .readFailed, .permissionDenied, .unknown:
+            return true
+        case .loaded, .notLoaded:
+            return false
+        }
     }
 
     public init(from decoder: Decoder) throws {

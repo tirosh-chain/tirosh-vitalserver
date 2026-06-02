@@ -1,25 +1,13 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-product_root="${PRODUCT_ROOT}"
 vm_home="${VM_HOME}"
 install_log="${INSTALL_LOG}"
 vm_bin="${VM_BIN}"
-proxy_run="${PROXY_RUN}"
-uninstaller="${UNINSTALL}"
 manager_app="${MANAGER_APP}"
-nginx_prefix="${NGINX_PREFIX}"
-nginx_bin="${nginx_prefix}/sbin/nginx"
 failure_log="/private/tmp/tirosh-vitalserver-postinstall-failure.log"
 max_log_bytes=$((10 * 1024 * 1024))
 keep_log_count=5
-labels=(
-  "com.tirosh.vitalserver-watchdog"
-  "com.tirosh.vitalserver-guest-log-sync"
-  "com.tirosh.vitalserver-proxy"
-  "com.tirosh.vitalserver-vm"
-  "com.tirosh.vitalserver-sleep-prevention"
-)
 
 mkdir -p "$(dirname "${install_log}")"
 
@@ -64,56 +52,17 @@ preserve_failure_log() {
 cleanup_failed_fresh_install() {
   log "postinstall failure cleanup started"
   trap - ERR
-  set +e
 
-  local label
-  for label in "${labels[@]}"; do
-    launchctl bootout "system/${label}" >/dev/null 2>&1
-  done
+  if [ ! -x "${vm_bin}" ]; then
+    log "postinstall failure cleanup unavailable vm_bin=${vm_bin}"
+  elif VITALSERVER_VM_HOME="${vm_home}" "${vm_bin}" runtime uninstall --clean; then
+    log "postinstall failure cleanup completed"
+  else
+    local cleanup_status="$?"
+    log "postinstall failure cleanup blocked status=${cleanup_status}"
+  fi
 
-  stop_packaged_nginx
-
-  rm -rf \
-    "${product_root}" \
-    "${manager_app}" \
-    "${vm_bin}" \
-    "${proxy_run}" \
-    "${uninstaller}" \
-    /Library/LaunchDaemons/com.tirosh.vitalserver*.plist
-  pkgutil --forget com.tirosh.vitalserver.vm >/dev/null 2>&1
-  pkgutil --forget com.tirosh.vitalserver >/dev/null 2>&1
-
-  set -e
   trap on_error ERR
-  log "postinstall failure cleanup completed"
-}
-
-stop_packaged_nginx() {
-  local pid pids remaining
-
-  pid=""
-  if [ -s "${nginx_prefix}/logs/nginx.pid" ]; then
-    pid="$(cat "${nginx_prefix}/logs/nginx.pid" 2>/dev/null || true)"
-  fi
-  if [ -n "${pid}" ] && kill -0 "${pid}" >/dev/null 2>&1; then
-    log "postinstall failure cleanup stopping packaged nginx pid=${pid}"
-    "${nginx_bin}" -p "${nginx_prefix}" -c "${nginx_prefix}/vitalserver.conf" -s quit >/dev/null 2>&1 || true
-    sleep 1
-  fi
-
-  if command -v pgrep >/dev/null 2>&1; then
-    pids="$(pgrep -f "${nginx_prefix}/sbin/nginx" | paste -sd" " - || true)"
-    if [ -n "${pids}" ]; then
-      log "postinstall failure cleanup terminating packaged nginx pids=${pids}"
-      kill -TERM ${pids} >/dev/null 2>&1 || true
-      sleep 1
-      remaining="$(pgrep -f "${nginx_prefix}/sbin/nginx" | paste -sd" " - || true)"
-      if [ -n "${remaining}" ]; then
-        log "postinstall failure cleanup killing packaged nginx pids=${remaining}"
-        kill -KILL ${remaining} >/dev/null 2>&1 || true
-      fi
-    fi
-  fi
 }
 
 log "Tirosh VitalServer postinstall started"
