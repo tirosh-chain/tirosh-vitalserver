@@ -9,7 +9,7 @@ struct RuntimeWatchdogActions {
     let proxyLivenessHTTP: (Int) -> String
     let automaticRecoveryEnabled: () -> Bool
     let restartVMRuntime: () throws -> Void
-    let restartService: (RuntimeManagedService) -> Void
+    let restartService: (RuntimeManagedService) throws -> Void
     let markVMLifecycleRunning: (RuntimeVMLifecycleDocument) throws -> Void
     let sleep: (TimeInterval) -> Void
     let writeObservedStatus: (RuntimeStatusLevel, RuntimeOperation, String, RuntimeHealthSnapshot) throws -> Void
@@ -214,7 +214,22 @@ struct RuntimeWatchdogRunner {
                 initial,
                 .serviceRestartDispatched
             )
-            actions.restartService(.proxy)
+            do {
+                try actions.restartService(.proxy)
+            } catch {
+                let message = "watchdog proxy restart failed: \(error.localizedDescription)"
+                log(message)
+                try actions.writeObservedStatus(.critical, .watchdog, message, initial)
+                actions.recordObservedEvent(
+                    .critical,
+                    .watchdog,
+                    message,
+                    initial,
+                    .runtimeCommandFailed
+                )
+                print("watchdog: critical")
+                return
+            }
         }
 
         actions.sleep(Constants.Runtime.watchdogRecoveryWaitSeconds)

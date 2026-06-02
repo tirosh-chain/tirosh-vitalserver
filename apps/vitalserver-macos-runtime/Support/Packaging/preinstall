@@ -1,6 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+product_root="/Library/Application Support/TiroshVitalServer"
+manager_app="/Applications/VitalServer Helper.app"
+existing_paths=(
+  "${product_root}"
+  "${manager_app}"
+  "/usr/local/bin/vitalserver-vm"
+  "/usr/local/bin/vitalserver-proxy-run"
+  "/usr/local/bin/tirosh-vitalserver-uninstall"
+)
+
 labels=(
   "com.tirosh.vitalserver-watchdog"
   "com.tirosh.vitalserver-guest-log-sync"
@@ -9,8 +19,36 @@ labels=(
   "com.tirosh.vitalserver-sleep-prevention"
 )
 
+fail_fresh_install_only() {
+  echo "Tirosh VitalServer pkg install supports fresh installs only." >&2
+  echo "Run a clean uninstall before installing this pkg." >&2
+  exit 1
+}
+
+for path in "${existing_paths[@]}"; do
+  if [[ -e "${path}" ]]; then
+    echo "existing install artifact found: ${path}" >&2
+    fail_fresh_install_only
+  fi
+done
+
+shopt -s nullglob
+for plist in /Library/LaunchDaemons/com.tirosh.vitalserver*.plist; do
+  echo "existing launch daemon plist found: ${plist}" >&2
+  fail_fresh_install_only
+done
+shopt -u nullglob
+
+for receipt in "com.tirosh.vitalserver.vm" "com.tirosh.vitalserver"; do
+  if pkgutil --pkg-info "${receipt}" >/dev/null 2>&1; then
+    echo "existing package receipt found: ${receipt}" >&2
+    fail_fresh_install_only
+  fi
+done
+
 for label in "${labels[@]}"; do
   if launchctl print "system/${label}" >/dev/null 2>&1; then
-    launchctl bootout "system/${label}" >/dev/null 2>&1 || true
+    echo "existing launchd service is loaded: ${label}" >&2
+    fail_fresh_install_only
   fi
 done

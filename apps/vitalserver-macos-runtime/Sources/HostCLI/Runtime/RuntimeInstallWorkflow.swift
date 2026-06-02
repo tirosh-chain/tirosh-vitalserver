@@ -22,7 +22,7 @@ struct RuntimeInstallWorkflowOperations {
     let runProcessToFile: (String, [String], URL) throws -> Void
     let writeInstalledRuntimeVersion: () throws -> Void
     let setStartOnBoot: (Bool) throws -> Void
-    let startLaunchdService: (RuntimeManagedService) -> Void
+    let startLaunchdService: (RuntimeManagedService) throws -> Void
     let waitForHealth: (RuntimeServiceRestartPolicy) throws -> Void
     let restrictSecretFile: (URL) throws -> Void
     let log: (String) -> Void
@@ -233,10 +233,10 @@ struct RuntimeInstallWorkflow {
             return
         }
         if settings.preventSystemSleep {
-            operations.startLaunchdService(.sleepPrevention)
+            try operations.startLaunchdService(.sleepPrevention)
         }
         for service in RuntimeManagedService.startOrder {
-            operations.startLaunchdService(service)
+            try operations.startLaunchdService(service)
         }
     }
 

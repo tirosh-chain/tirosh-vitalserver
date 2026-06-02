@@ -9,7 +9,7 @@ manager_app="${MANAGER_APP}"
 runtime_status="${product_root}/status/runtime-status.json"
 max_log_bytes=$((10 * 1024 * 1024))
 keep_log_count=5
-postinstall_timeout_seconds=900
+postinstall_timeout_seconds=300
 progress_log_interval_seconds=10
 
 mkdir -p "$(dirname "${install_log}")"

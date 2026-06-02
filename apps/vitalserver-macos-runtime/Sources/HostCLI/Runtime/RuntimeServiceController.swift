@@ -67,8 +67,8 @@ struct RuntimeServiceController {
         }
     }
 
-    func startRuntimeServices(_ policy: RuntimeServiceRestartPolicy) {
-        startRuntimeServices(
+    func startRuntimeServices(_ policy: RuntimeServiceRestartPolicy) throws {
+        try startRuntimeServices(
             restartVM: policy.restartVM,
             restartProxy: policy.restartProxy,
             restartWatchdog: policy.restartWatchdog
@@ -79,32 +79,38 @@ struct RuntimeServiceController {
         restartVM: Bool,
         restartProxy: Bool,
         restartWatchdog: Bool
-    ) {
+    ) throws {
         if restartVM {
-            startLaunchdService(.vm)
-            startLaunchdService(.guestLogSync)
+            try startLaunchdService(.vm)
+            try startLaunchdService(.guestLogSync)
         }
         if restartProxy {
-            startLaunchdService(.proxy)
+            try startLaunchdService(.proxy)
         }
         if restartWatchdog {
-            startLaunchdService(.watchdog)
+            try startLaunchdService(.watchdog)
         }
     }
 
-    func startLaunchdService(_ service: RuntimeManagedService) {
+    func startLaunchdService(_ service: RuntimeManagedService) throws {
         let plist = service.launchDaemonPlist
         log("starting \(service.displayName) service label=\(service.label)")
         log("launchd bootstrap label=\(service.label) plist=\(plist)")
         serviceManager.start(service: service, plist: plist)
+        guard isLoaded(service) else {
+            let message = "launchd service failed to load label=\(service.label) plist=\(plist)"
+            log(message)
+            throw LauncherError.runtimeOperationFailed(message)
+        }
+        log("launchd service loaded label=\(service.label)")
     }
 
-    func restartOrStartLaunchdService(_ service: RuntimeManagedService) {
+    func restartOrStartLaunchdService(_ service: RuntimeManagedService) throws {
         log("launchd restart label=\(service.label)")
         serviceManager.restart(service: service)
         if !isLoaded(service) {
             log("launchd service not loaded after restart; starting label=\(service.label)")
-            startLaunchdService(service)
+            try startLaunchdService(service)
         }
     }
 
@@ -120,8 +126,8 @@ struct RuntimeServiceController {
             try waitUntilStopped(.vm)
             log("stopped \(RuntimeManagedService.vm.displayName) service label=\(RuntimeManagedService.vm.label)")
         }
-        startLaunchdService(.vm)
-        startLaunchdService(.guestLogSync)
+        try startLaunchdService(.vm)
+        try startLaunchdService(.guestLogSync)
     }
 
     func stopLaunchdService(_ service: RuntimeManagedService) {

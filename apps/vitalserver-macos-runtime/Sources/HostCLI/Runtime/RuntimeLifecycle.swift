@@ -221,7 +221,7 @@ struct RuntimeLifecycle {
         try fileStore.writeData(try encoder.encode(request), to: requestURL, options: .atomic)
 
         if !isLaunchdLoaded(.vm) {
-            startLaunchdService(.vm)
+            try startLaunchdService(.vm)
         }
 
         let maxAttempts = Int(ceil(Constants.Runtime.redisBackupWaitTimeoutSeconds / 3.0))

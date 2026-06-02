@@ -74,14 +74,14 @@ extension RuntimeLifecycle {
 
     func startRuntimeServices(restartVM: Bool, restartProxy: Bool, restartWatchdog: Bool) throws {
         if restartVM, preventSystemSleepEnabled() {
-            startLaunchdService(.sleepPrevention)
+            try startLaunchdService(.sleepPrevention)
         }
-        serviceController.startRuntimeServices(restartVM: restartVM, restartProxy: false, restartWatchdog: false)
+        try serviceController.startRuntimeServices(restartVM: restartVM, restartProxy: false, restartWatchdog: false)
         if restartProxy {
             try cleanupHostProxyPortBeforeStart()
-            serviceController.startRuntimeServices(restartVM: false, restartProxy: true, restartWatchdog: false)
+            try serviceController.startRuntimeServices(restartVM: false, restartProxy: true, restartWatchdog: false)
         }
-        serviceController.startRuntimeServices(restartVM: false, restartProxy: false, restartWatchdog: restartWatchdog)
+        try serviceController.startRuntimeServices(restartVM: false, restartProxy: false, restartWatchdog: restartWatchdog)
     }
 
     func startRuntimeServices(_ policy: RuntimeServiceRestartPolicy) throws {
@@ -92,12 +92,12 @@ extension RuntimeLifecycle {
         )
     }
 
-    func startLaunchdService(_ service: RuntimeManagedService) {
-        serviceController.startLaunchdService(service)
+    func startLaunchdService(_ service: RuntimeManagedService) throws {
+        try serviceController.startLaunchdService(service)
     }
 
-    func restartOrStartLaunchdService(_ service: RuntimeManagedService) {
-        serviceController.restartOrStartLaunchdService(service)
+    func restartOrStartLaunchdService(_ service: RuntimeManagedService) throws {
+        try serviceController.restartOrStartLaunchdService(service)
     }
 
     func restartVMRuntimeServices() throws {
@@ -465,7 +465,7 @@ extension RuntimeLifecycle {
             "system/\(RuntimeManagedService.sleepPrevention.label)",
         ])
         if enabled {
-            startLaunchdService(.sleepPrevention)
+            try startLaunchdService(.sleepPrevention)
         } else {
             stopLaunchdService(.sleepPrevention)
         }

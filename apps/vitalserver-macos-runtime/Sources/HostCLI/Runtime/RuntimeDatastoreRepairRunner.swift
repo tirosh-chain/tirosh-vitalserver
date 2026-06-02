@@ -8,11 +8,11 @@ struct RuntimeDatastoreRepairRunner {
     var removePreviousResult: () throws -> Void
     var writeRequest: (RuntimeDatastoreRepairRequest) throws -> Void
     var isVMServiceLoaded: () -> Bool
-    var startVMService: () -> Void
+    var startVMService: () throws -> Void
     var restartVMService: () throws -> Void
     var waitForResult: (RuntimeDatastoreRepairRequest) throws -> Void
-    var restartProxyService: () -> Void
-    var restartWatchdogService: () -> Void
+    var restartProxyService: () throws -> Void
+    var restartWatchdogService: () throws -> Void
     var waitForHealth: (RuntimeServiceRestartPolicy) throws -> Void
     var writeStatus: (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void
     var makeRequestID: () -> String
@@ -32,12 +32,12 @@ struct RuntimeDatastoreRepairRunner {
         if isVMServiceLoaded() {
             try restartVMService()
         } else {
-            startVMService()
+            try startVMService()
         }
 
         try waitForResult(request)
-        restartProxyService()
-        restartWatchdogService()
+        try restartProxyService()
+        try restartWatchdogService()
         try waitForHealth(RuntimeServiceRestartPolicy(
             restartVM: true,
             restartProxy: true,

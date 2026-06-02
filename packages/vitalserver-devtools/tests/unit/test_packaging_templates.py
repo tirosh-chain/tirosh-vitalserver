@@ -60,12 +60,16 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
         path.read_text(encoding="utf-8")
         for path in [postinstall, proxy_run, uninstall, components]
     )
+    preinstall_text = (packaging / "preinstall").read_text(encoding="utf-8")
     uninstall_text = uninstall.read_text(encoding="utf-8")
     postinstall_text = postinstall.read_text(encoding="utf-8")
     proxy_run_text = proxy_run.read_text(encoding="utf-8")
     assert "${PRODUCT_ROOT}" not in rendered
+    assert "pkg install supports fresh installs only" in preinstall_text
+    assert "/Library/LaunchDaemons/com.tirosh.vitalserver*.plist" in preinstall_text
+    assert 'pkgutil --pkg-info "${receipt}"' in preinstall_text
     assert "/Library/Application Support/TiroshVitalServer" in rendered
-    assert "postinstall_timeout_seconds=900" in postinstall_text
+    assert "postinstall_timeout_seconds=300" in postinstall_text
     assert "runtime install timed out timeoutSeconds=" in postinstall_text
     assert "runtime install progress status=" in postinstall_text
     assert "runtime install progress failureReasons=" in postinstall_text

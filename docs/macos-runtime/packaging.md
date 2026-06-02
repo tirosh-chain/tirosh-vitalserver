@@ -231,6 +231,8 @@ launchd
 
 `vm-disk.img`는 sparse disk라 package payload에 그대로 넣으면 `pkgbuild`가 실패할 수 있습니다. 따라서 package에는 immutable base artifact인 `rootfs-base.raw.gz`를 넣고, 설치 시 `postinstall`에서 `vm-disk.img`를 생성합니다.
 
+직접 배포되는 `.pkg`는 fresh install 전용입니다. 이미 `/Library/Application Support/TiroshVitalServer`, Helper app, runtime tools, LaunchDaemon plist, package receipt가 있으면 `preinstall`에서 실패해야 합니다. 기존 설치본의 교체는 Helper app의 update flow가 소유하며, `.pkg` 설치가 기존 `vm-disk.img`나 partially installed runtime을 재사용해서 upgrade처럼 동작하면 안 됩니다.
+
 ## DMG Build 흐름
 
 `make vm-dmg-release`는 최종 전달 매체를 만들지만, 실제로는 아래 dependency chain을 실행합니다.
@@ -503,6 +505,8 @@ sudo tirosh-vitalserver-uninstall
 ```
 
 이 명령은 Redis backup을 생성한 뒤 VM/proxy/guest-log-sync/watchdog LaunchDaemon을 unload하고, package가 설치한 runtime 파일과 Helper app을 제거합니다. 기본 모드는 `.vital` 파일 경로, logs, rollback backups, Redis backups를 보존합니다. 완전 삭제가 필요하면 `sudo tirosh-vitalserver-uninstall --clean`을 사용합니다. Clean Uninstall은 Redis backup 보존 없이 VM 영역과 backup 영역까지 제거합니다. GUI 제품에서는 Helper app의 “Uninstall”과 “Clean Uninstall”이 같은 backend command를 호출합니다.
+
+`.pkg`로 재설치하려면 먼저 uninstall 또는 clean uninstall을 완료해야 합니다. `preinstall`은 stale install artifact를 정리하지 않고 설치 실패로 보고합니다. 삭제와 재설치 책임을 분리해야 fresh install과 update가 서로의 state를 추정하지 않습니다.
 
 ### nginx release artifact
 

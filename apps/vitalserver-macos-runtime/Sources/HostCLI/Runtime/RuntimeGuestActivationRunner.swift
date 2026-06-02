@@ -10,7 +10,7 @@ struct RuntimeGuestActivationRunner {
     var timestamp: () -> String
     var writeRequest: (RuntimeGuestActivationRequest) throws -> Void
     var isVMServiceLoaded: () -> Bool
-    var startVMService: () -> Void
+    var startVMService: () throws -> Void
     var loadResult: () -> RuntimeGuestDocumentLoadResult<GuestUpdateActivationResultDocument>
     var reportProgress: (String) -> Void
     var sleep: () -> Void
@@ -34,7 +34,7 @@ struct RuntimeGuestActivationRunner {
         try writeRequest(request)
 
         if !isVMServiceLoaded() {
-            startVMService()
+            try startVMService()
         }
 
         try waitForActivationResult(request)

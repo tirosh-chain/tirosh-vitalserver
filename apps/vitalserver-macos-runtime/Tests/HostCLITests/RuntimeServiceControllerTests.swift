@@ -104,17 +104,19 @@ final class RuntimeServiceControllerTests: XCTestCase {
 
     func testStartsOnlyServicesRequestedByRestartPolicy() {
         let serviceManager = ServiceControllerServiceManagerSpy()
+        var loaded = Set<RuntimeManagedService>()
+        serviceManager.onStart = { loaded.insert($0) }
         let controller = RuntimeServiceController(
             serviceManager: serviceManager,
-            isLoaded: { _ in false },
+            isLoaded: { loaded.contains($0) },
             log: { _ in }
         )
 
-        controller.startRuntimeServices(RuntimeServiceRestartPolicy(
+        XCTAssertNoThrow(try controller.startRuntimeServices(RuntimeServiceRestartPolicy(
             restartVM: true,
             restartProxy: false,
             restartWatchdog: true
-        ))
+        )))
 
         XCTAssertEqual(serviceManager.startedLabels, [
             RuntimeManagedService.vm.label,
@@ -128,7 +130,7 @@ final class RuntimeServiceControllerTests: XCTestCase {
         ])
     }
 
-    func testRestartOrStartStartsWhenServiceIsNotLoadedAfterRestart() {
+    func testStartRuntimeServicesFailsWhenLaunchdServiceDoesNotLoad() {
         let serviceManager = ServiceControllerServiceManagerSpy()
         var logs: [String] = []
         let controller = RuntimeServiceController(
@@ -137,7 +139,31 @@ final class RuntimeServiceControllerTests: XCTestCase {
             log: { logs.append($0) }
         )
 
-        controller.restartOrStartLaunchdService(.vm)
+        XCTAssertThrowsError(try controller.startRuntimeServices(RuntimeServiceRestartPolicy(
+            restartVM: true,
+            restartProxy: false,
+            restartWatchdog: false
+        ))) { error in
+            XCTAssertTrue(String(describing: error).contains("launchd service failed to load"))
+        }
+        XCTAssertEqual(serviceManager.startedLabels, [RuntimeManagedService.vm.label])
+        XCTAssertTrue(logs.contains {
+            $0.contains("launchd service failed to load label=\(RuntimeManagedService.vm.label)")
+        })
+    }
+
+    func testRestartOrStartStartsWhenServiceIsNotLoadedAfterRestart() {
+        let serviceManager = ServiceControllerServiceManagerSpy()
+        var loaded = Set<RuntimeManagedService>()
+        serviceManager.onStart = { loaded.insert($0) }
+        var logs: [String] = []
+        let controller = RuntimeServiceController(
+            serviceManager: serviceManager,
+            isLoaded: { loaded.contains($0) },
+            log: { logs.append($0) }
+        )
+
+        XCTAssertNoThrow(try controller.restartOrStartLaunchdService(.vm))
 
         XCTAssertEqual(serviceManager.restartedLabels, [RuntimeManagedService.vm.label])
         XCTAssertEqual(serviceManager.startedLabels, [RuntimeManagedService.vm.label])
@@ -148,6 +174,7 @@ final class RuntimeServiceControllerTests: XCTestCase {
         let serviceManager = ServiceControllerServiceManagerSpy()
         var loaded = Set([RuntimeManagedService.vm, .guestLogSync])
         var events: [String] = []
+        serviceManager.onStart = { loaded.insert($0) }
         serviceManager.onStop = { service in
             events.append("stop:\(service.label)")
             loaded.remove(service)
@@ -265,6 +292,7 @@ private final class ServiceControllerServiceManagerSpy: RuntimeServiceManager {
     var restartedLabels: [String] = []
     var setEnabledLabels: [String] = []
     var setEnabledResults: [RuntimeManagedService: RuntimeProcessResult] = [:]
+    var onStart: (RuntimeManagedService) -> Void = { _ in }
     var onStop: (RuntimeManagedService) -> Void = { _ in }
 
     func state(service: RuntimeManagedService) -> RuntimeServiceState {
@@ -272,6 +300,7 @@ private final class ServiceControllerServiceManagerSpy: RuntimeServiceManager {
     }
 
     func start(service: RuntimeManagedService, plist: String) {
+        onStart(service)
         startedLabels.append(service.label)
         startedPlists.append(plist)
     }

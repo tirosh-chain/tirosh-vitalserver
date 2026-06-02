@@ -166,7 +166,7 @@ extension RuntimeLifecycle {
                     try restartVMRuntimeServices()
                 },
                 restartService: { service in
-                    restartOrStartLaunchdService(service)
+                    try restartOrStartLaunchdService(service)
                 },
                 markVMLifecycleRunning: { lifecycle in
                     let timestamp = clock.now
@@ -239,8 +239,8 @@ extension RuntimeLifecycle {
                 },
                 restartRuntimeServices: {
                     try restartVMRuntimeServices()
-                    restartOrStartLaunchdService(.proxy)
-                    restartOrStartLaunchdService(.watchdog)
+                    try restartOrStartLaunchdService(.proxy)
+                    try restartOrStartLaunchdService(.watchdog)
                 }
             ),
             log: { message in
@@ -327,10 +327,10 @@ extension RuntimeLifecycle {
                     guestGateway.loadDatastoreRepairResultDocument()
                 },
                 restartProxyService: {
-                    restartOrStartLaunchdService(.proxy)
+                    try restartOrStartLaunchdService(.proxy)
                 },
                 restartWatchdogService: {
-                    restartOrStartLaunchdService(.watchdog)
+                    try restartOrStartLaunchdService(.watchdog)
                 },
                 waitForHealth: waitForHealth,
                 writeStatus: runtimeStatusWriterAction(),
@@ -534,9 +534,9 @@ private extension RuntimeLifecycle {
         }
     }
 
-    func startVMServiceAction() -> () -> Void {
+    func startVMServiceAction() -> () throws -> Void {
         {
-            startLaunchdService(.vm)
+            try startLaunchdService(.vm)
         }
     }
 
