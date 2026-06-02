@@ -62,6 +62,27 @@ final class RuntimeHealthEvaluatorTests: XCTestCase {
         ])
     }
 
+    func testExplicitBootstrapFailureIsReportedWhenGuestRuntimeStateIsMissing() {
+        let snapshot = RuntimeHealthEvaluator.evaluate(healthyInput(
+            vmIP: nil,
+            guestHTTP: RuntimeHTTPStatusText.missingVMIP,
+            guestRuntimeStatePresent: false,
+            guestBootstrapFailureReason: .guestBootstrapMissingRuntimePackages
+        ))
+
+        XCTAssertEqual(snapshot.failureReasons, [
+            .guestHTTP(RuntimeHTTPStatusText.missingVMIP),
+            .unknown("vm-runtime-state-missing"),
+            .guestBootstrapMissingRuntimePackages,
+        ])
+        XCTAssertEqual(snapshot.vmErrors, [
+            .missingIPAddress,
+            .runtimeStateMissing,
+            .guestBootstrapMissingRuntimePackages,
+        ])
+        XCTAssertEqual(snapshot.vmState, .failed)
+    }
+
     func testAuxiliaryUIFailuresDoNotTriggerRuntimeRecovery() {
         let snapshot = RuntimeHealthEvaluator.evaluate(healthyInput(
             redisUIHTTP: "failed",

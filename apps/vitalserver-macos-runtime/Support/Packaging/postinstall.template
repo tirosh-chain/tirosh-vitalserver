@@ -6,9 +6,11 @@ vm_home="${VM_HOME}"
 install_log="${INSTALL_LOG}"
 vm_bin="${VM_BIN}"
 manager_app="${MANAGER_APP}"
+runtime_status="${product_root}/status/runtime-status.json"
 max_log_bytes=$((10 * 1024 * 1024))
 keep_log_count=5
 postinstall_timeout_seconds=900
+progress_log_interval_seconds=10
 
 mkdir -p "$(dirname "${install_log}")"
 
@@ -41,16 +43,61 @@ on_error() {
 
 trap on_error ERR
 
+json_raw_value() {
+  local key="$1"
+  [ -f "${runtime_status}" ] || return 0
+  /usr/bin/plutil -extract "${key}" raw -o - "${runtime_status}" 2>/dev/null || true
+}
+
+json_value() {
+  local key="$1"
+  [ -f "${runtime_status}" ] || return 0
+  /usr/bin/plutil -extract "${key}" json -o - "${runtime_status}" 2>/dev/null | tr -d '\n' || true
+}
+
+log_runtime_install_status() {
+  local status operation step step_status message progress_message failure_reasons
+
+  if [ ! -f "${runtime_status}" ]; then
+    log "runtime install progress statusFile=missing path=${runtime_status}"
+    return
+  fi
+
+  status="$(json_raw_value "status")"
+  operation="$(json_raw_value "operation")"
+  step="$(json_raw_value "progress.step")"
+  step_status="$(json_raw_value "progress.stepStatus")"
+  message="$(json_raw_value "message")"
+  progress_message="$(json_raw_value "progress.message")"
+  failure_reasons="$(json_value "failureReasons")"
+
+  log "runtime install progress status=${status:-unknown} operation=${operation:-unknown} step=${step:-none} stepStatus=${step_status:-none} message=${message:-none}"
+  if [ -n "${progress_message}" ] && [ "${progress_message}" != "${message}" ]; then
+    log "runtime install progress detail=${progress_message}"
+  fi
+  if [ -n "${failure_reasons}" ] && [ "${failure_reasons}" != "[]" ]; then
+    log "runtime install progress failureReasons=${failure_reasons}"
+  fi
+}
+
 run_runtime_install_with_timeout() {
-  local deadline pid status
+  local deadline last_progress_log now pid status
   deadline=$(( $(date +%s) + postinstall_timeout_seconds ))
+  last_progress_log=0
 
   VITALSERVER_VM_HOME="${vm_home}" "${vm_bin}" runtime install &
   pid="$!"
   log "runtime install process started pid=${pid} timeoutSeconds=${postinstall_timeout_seconds}"
+  log_runtime_install_status
 
   while kill -0 "${pid}" 2>/dev/null; do
+    now="$(date +%s)"
+    if [ $((now - last_progress_log)) -ge "${progress_log_interval_seconds}" ]; then
+      log_runtime_install_status
+      last_progress_log="${now}"
+    fi
     if [ "$(date +%s)" -ge "${deadline}" ]; then
+      log_runtime_install_status
       log "runtime install timed out timeoutSeconds=${postinstall_timeout_seconds} pid=${pid}"
       kill -TERM "${pid}" 2>/dev/null || true
       sleep 5
@@ -66,6 +113,7 @@ run_runtime_install_with_timeout() {
 
   status=0
   wait "${pid}" || status="$?"
+  log_runtime_install_status
   log "runtime install process exited status=${status} pid=${pid}"
   return "${status}"
 }

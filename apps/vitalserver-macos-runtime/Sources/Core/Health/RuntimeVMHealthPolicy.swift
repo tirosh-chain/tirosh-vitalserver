@@ -50,9 +50,10 @@ public enum RuntimeVMHealthPolicy {
         if !isSuccessfulHTTPStatus(input.guestHTTP),
            input.guestHTTP != RuntimeHTTPStatusText.missingVMIP {
             errors.append(.guestHTTP(input.guestHTTP))
-            if let guestBootstrapFailureReason = input.guestBootstrapFailureReason {
-                errors.append(vmError(for: guestBootstrapFailureReason))
-            }
+        }
+        if !isSuccessfulHTTPStatus(input.guestHTTP),
+           let guestBootstrapFailureReason = input.guestBootstrapFailureReason {
+            errors.append(vmError(for: guestBootstrapFailureReason))
         }
         if !input.guestRuntimeStateFresh {
             errors.append(.runtimeStateStale)
@@ -86,7 +87,9 @@ public enum RuntimeVMHealthPolicy {
             || errors.contains(.diskAttachmentInvalid)
             || errors.contains(.guestFilesystemError)
             || errors.contains(.guestFilesystemReadOnly)
-            || errors.contains(.guestDiskIO) {
+            || errors.contains(.guestDiskIO)
+            || errors.contains(.guestBootstrapMissingRuntimePackages)
+            || errors.contains(.guestBootstrapFailed) {
             return .failed
         }
         if errors.contains(where: { error in
