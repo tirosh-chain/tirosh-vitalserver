@@ -1,6 +1,7 @@
 import Foundation
 import Core
 import Contracts
+import RuntimeWorkflow
 
 enum RuntimeLifecycleCommand: Equatable {
     case install

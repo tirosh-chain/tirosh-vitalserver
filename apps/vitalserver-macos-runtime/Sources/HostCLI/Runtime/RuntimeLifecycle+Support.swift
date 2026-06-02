@@ -2,6 +2,7 @@ import Foundation
 import Core
 import Contracts
 import HostInfrastructure
+import RuntimeWorkflow
 
 extension RuntimeLifecycle {
     func latestBackup() -> URL? {
@@ -157,7 +158,7 @@ extension RuntimeLifecycle {
         )
     }
 
-    func runtimeUninstallRunner() throws -> RuntimeUninstallRunner {
+    func runtimeUninstallRunner() throws -> RuntimeUninstallWorkflow {
         let vitalFilesDirectoryRead = configuredExternalVitalFilesDirectory()
         let uninstallPaths = RuntimeUninstallPaths(
             productRoot: installedPaths.productRoot,
@@ -174,7 +175,7 @@ extension RuntimeLifecycle {
                 installedPaths.uninstaller,
             ]
         )
-        return RuntimeUninstallRunner(
+        return RuntimeUninstallWorkflow(
             paths: uninstallPaths,
             createRedisBackup: createRedisBackup,
             stopRuntimeServices: stopRuntimeServices,

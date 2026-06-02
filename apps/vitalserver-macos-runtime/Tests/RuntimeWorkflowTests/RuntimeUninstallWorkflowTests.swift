@@ -1,12 +1,11 @@
 import Core
 import Contracts
-import HostInfrastructure
-@testable import HostCLI
+import RuntimeWorkflow
 import XCTest
 
-final class RuntimeUninstallRunnerTests: XCTestCase {
+final class RuntimeUninstallWorkflowTests: XCTestCase {
     func testCleanUninstallStopsServicesBeforeRemovingInstalledFilesAndTools() throws {
-        let harness = RuntimeUninstallRunnerHarness()
+        let harness = RuntimeUninstallWorkflowHarness()
 
         try harness.runner.run(RuntimeUninstallCommand(clean: true))
 
@@ -48,7 +47,7 @@ final class RuntimeUninstallRunnerTests: XCTestCase {
     }
 
     func testStandardUninstallCreatesBackupAndPreservesUserData() throws {
-        let harness = RuntimeUninstallRunnerHarness(externalVitalFilesDirectory: nil)
+        let harness = RuntimeUninstallWorkflowHarness(externalVitalFilesDirectory: nil)
 
         try harness.runner.run(RuntimeUninstallCommand(clean: false))
 
@@ -64,7 +63,7 @@ final class RuntimeUninstallRunnerTests: XCTestCase {
     }
 
     func testStandardUninstallStopsWhenBackupFails() {
-        let harness = RuntimeUninstallRunnerHarness()
+        let harness = RuntimeUninstallWorkflowHarness()
         harness.backupError = RuntimeUninstallTestError.backup
 
         XCTAssertThrowsError(try harness.runner.run(RuntimeUninstallCommand(clean: false)))
@@ -85,7 +84,7 @@ final class RuntimeUninstallRunnerTests: XCTestCase {
     }
 
     func testStandardUninstallRestoresPreservedDataWhenRemovalFails() {
-        let harness = RuntimeUninstallRunnerHarness(externalVitalFilesDirectory: nil)
+        let harness = RuntimeUninstallWorkflowHarness(externalVitalFilesDirectory: nil)
         harness.removeErrorPath = "/product"
 
         XCTAssertThrowsError(try harness.runner.run(RuntimeUninstallCommand(clean: false)))
@@ -103,7 +102,7 @@ final class RuntimeUninstallRunnerTests: XCTestCase {
     }
 
     func testStandardUninstallReportsPreservedDataRestoreFailure() {
-        let harness = RuntimeUninstallRunnerHarness(externalVitalFilesDirectory: nil)
+        let harness = RuntimeUninstallWorkflowHarness(externalVitalFilesDirectory: nil)
         harness.removeErrorPath = "/product"
         harness.moveErrorDestination = "/product/vm/data/vital-files"
 
@@ -120,7 +119,7 @@ final class RuntimeUninstallRunnerTests: XCTestCase {
     }
 
     func testUninstallWritesServiceStopBlockedFromExplicitHostStates() {
-        let harness = RuntimeUninstallRunnerHarness()
+        let harness = RuntimeUninstallWorkflowHarness()
         harness.stopError = RuntimeUninstallTestError.stop
         harness.serviceStates[.watchdog] = .readFailed("exitCode=1 stderr=denied")
         harness.vmProcessState = .running(pid: 123)
@@ -136,7 +135,7 @@ final class RuntimeUninstallRunnerTests: XCTestCase {
     }
 
     func testUninstallDoesNotRemoveFilesWhenStoppedStateIsNotProven() {
-        let harness = RuntimeUninstallRunnerHarness()
+        let harness = RuntimeUninstallWorkflowHarness()
         harness.vmProcessState = .pidFileMissing
 
         XCTAssertThrowsError(try harness.runner.run(RuntimeUninstallCommand(clean: true)))
@@ -150,7 +149,7 @@ final class RuntimeUninstallRunnerTests: XCTestCase {
     }
 
     func testCleanUninstallDoesNotCompleteWhenCleanupArtifactRemains() {
-        let harness = RuntimeUninstallRunnerHarness()
+        let harness = RuntimeUninstallWorkflowHarness()
         harness.cleanupArtifactStates = [
             .present(path: "/usr/local/bin/vitalserver-vm"),
         ]
@@ -166,7 +165,7 @@ final class RuntimeUninstallRunnerTests: XCTestCase {
     }
 
     func testReceiptForgetFailureWritesBlockedState() {
-        let harness = RuntimeUninstallRunnerHarness()
+        let harness = RuntimeUninstallWorkflowHarness()
         harness.receiptForgetResults["com.tirosh.vitalserver.vm"] = RuntimeProcessResult(
             exitCode: 1,
             stdout: "",
@@ -184,7 +183,7 @@ final class RuntimeUninstallRunnerTests: XCTestCase {
     }
 
     func testReceiptRemainingAfterForgetWritesBlockedState() {
-        let harness = RuntimeUninstallRunnerHarness()
+        let harness = RuntimeUninstallWorkflowHarness()
         harness.receiptStates = [
             .present(identifier: "com.tirosh.vitalserver.vm"),
             .absent(identifier: "com.tirosh.vitalserver"),
@@ -200,7 +199,7 @@ final class RuntimeUninstallRunnerTests: XCTestCase {
     }
 }
 
-private final class RuntimeUninstallRunnerHarness {
+private final class RuntimeUninstallWorkflowHarness {
     var events: [String] = []
     var existing: Set<String>
     var backupError: Error?
@@ -248,8 +247,8 @@ private final class RuntimeUninstallRunnerHarness {
         }
     }
 
-    var runner: RuntimeUninstallRunner {
-        RuntimeUninstallRunner(
+    var runner: RuntimeUninstallWorkflow {
+        RuntimeUninstallWorkflow(
             paths: RuntimeUninstallPaths(
                 productRoot: URL(fileURLWithPath: "/product"),
                 managerApp: URL(fileURLWithPath: "/Applications/VitalServer Helper.app"),

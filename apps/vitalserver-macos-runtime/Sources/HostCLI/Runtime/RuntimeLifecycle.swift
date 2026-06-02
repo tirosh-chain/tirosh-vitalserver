@@ -2,6 +2,7 @@ import Foundation
 import Core
 import Contracts
 import HostInfrastructure
+import RuntimeWorkflow
 
 struct RuntimeLifecycle {
     let paths: LauncherPaths
