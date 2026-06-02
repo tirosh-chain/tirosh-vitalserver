@@ -21,6 +21,7 @@ tirosh-vitalserver-repair-datastore = "tirosh_guest_tools.adapters.inbound.cli:v
 tirosh-vitalserver-activate-update = "tirosh_guest_tools.adapters.inbound.cli:vitalserver_activate_update"
 tirosh-vitalserver-prepare-update-shutdown = "tirosh_guest_tools.adapters.inbound.cli:vitalserver_prepare_update_shutdown"
 tirosh-guest-tools-install-runtime = "tirosh_guest_tools.adapters.inbound.cli:guest_tools_install_runtime"
+tirosh-guest-tools-install-config = "tirosh_guest_tools.adapters.inbound.cli:guest_tools_install_config"
 
 [build-system]
 requires = ["hatchling"]

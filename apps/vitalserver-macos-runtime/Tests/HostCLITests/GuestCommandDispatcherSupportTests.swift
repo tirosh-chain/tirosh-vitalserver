@@ -3,7 +3,7 @@ import XCTest
 
 final class GuestCommandDispatcherSupportTests: XCTestCase {
     func testGuestCommandPollerDispatchesAllHostWrittenRequests() throws {
-        let poller = try readGuestToolsFile("operations/command_poller.py")
+        let poller = try readGuestToolsFile("adapters/inbound/request_file_poller.py")
 
         XCTAssertTrue(poller.contains("SETTINGS.intervals.command_poll_seconds"))
         XCTAssertTrue(poller.contains("RuntimeFileName.PREPARE_UPDATE_SHUTDOWN_REQUEST"))
@@ -22,7 +22,8 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
         let bootstrap = try readGuestSupportFile("bootstrap.sh")
 
         XCTAssertTrue(bootstrap.contains("install_guest_tools"))
-        XCTAssertTrue(bootstrap.contains("install -m 0644 \"${DEPLOY_DIR}/guest-tools.toml\""))
+        XCTAssertTrue(bootstrap.contains("tirosh-guest-tools-install-config"))
+        XCTAssertFalse(bootstrap.contains("install -m 0644 \"${DEPLOY_DIR}/guest-tools.toml\""))
         XCTAssertFalse(bootstrap.contains("tirosh-guest-tools-install-systemd"))
         XCTAssertTrue(bootstrap.contains("systemctl enable --now tirosh-vitalserver-command-poller.service"))
         XCTAssertTrue(bootstrap.contains("install -m 0755 \"${DEPLOY_DIR}/bin/tirosh-vitalserver-command-poller\""))
@@ -72,7 +73,14 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
         let service = try readGuestSupportFile("systemd/tirosh-vitalserver-compose.service")
         XCTAssertTrue(wrapper.contains("exec /opt/tirosh/guest-tools/venv/bin/"))
         XCTAssertTrue(service.contains("ExecStart=/usr/local/bin/tirosh-vitalserver-compose up"))
-        XCTAssertTrue(FileManager.default.fileExists(atPath: guestSupport.appendingPathComponent("guest-tools.toml").path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: guestSupport.appendingPathComponent("guest-tools.toml").path))
+        XCTAssertTrue(
+            FileManager.default.fileExists(
+                atPath: try guestToolsDirectory()
+                    .appendingPathComponent("resources/guest-tools.toml")
+                    .path
+            )
+        )
         XCTAssertTrue(FileManager.default.fileExists(atPath: guestSupport.appendingPathComponent("bin").path))
         XCTAssertTrue(FileManager.default.fileExists(atPath: guestSupport.appendingPathComponent("systemd").path))
     }

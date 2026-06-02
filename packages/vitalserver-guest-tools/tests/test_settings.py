@@ -5,7 +5,11 @@ from pathlib import Path
 import pytest
 
 from tirosh_guest_tools.domain.errors import GuestContractError
-from tirosh_guest_tools.infrastructure.settings import load_settings
+from tirosh_guest_tools.infrastructure.settings import (
+    default_settings_text,
+    install_default_settings,
+    load_settings,
+)
 
 
 def test_load_settings_reads_guest_tools_toml(tmp_path: Path) -> None:
@@ -71,7 +75,7 @@ fileEnabled = true
     assert settings.logging.stream_enabled is False
 
 
-def test_load_settings_uses_documented_defaults_when_file_is_missing(
+def test_load_settings_uses_packaged_defaults_when_file_is_missing(
     tmp_path: Path,
 ) -> None:
     settings = load_settings(tmp_path / "missing.toml")
@@ -82,6 +86,38 @@ def test_load_settings_uses_documented_defaults_when_file_is_missing(
     assert settings.intervals.command_poll_seconds == 3
     assert settings.logging.format == "json"
     assert settings.logging.file_enabled is True
+
+
+def test_load_settings_merges_explicit_override_with_packaged_defaults(
+    tmp_path: Path,
+) -> None:
+    settings_file = tmp_path / "guest-tools.toml"
+    settings_file.write_text(
+        """
+[intervals]
+commandPollSeconds = 9
+
+[logging]
+level = "debug"
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    settings = load_settings(settings_file)
+
+    assert settings.intervals.command_poll_seconds == 9
+    assert settings.intervals.runtime_state_seconds == 5
+    assert settings.logging.level == "debug"
+    assert settings.logging.format == "json"
+
+
+def test_install_default_settings_writes_packaged_toml(tmp_path: Path) -> None:
+    settings_file = tmp_path / "guest-tools.toml"
+
+    install_default_settings(settings_file)
+
+    assert settings_file.read_text(encoding="utf-8") == default_settings_text()
 
 
 def test_load_settings_rejects_invalid_value_type(tmp_path: Path) -> None:

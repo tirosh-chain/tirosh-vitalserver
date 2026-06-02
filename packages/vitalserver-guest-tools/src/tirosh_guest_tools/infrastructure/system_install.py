@@ -6,7 +6,11 @@ from pathlib import Path
 
 from tirosh_guest_tools.contracts import RuntimeCommand
 from tirosh_guest_tools.domain.errors import GuestDependencyError
-from tirosh_guest_tools.infrastructure.settings import SETTINGS
+from tirosh_guest_tools.infrastructure.settings import (
+    DEFAULT_SETTINGS_PATH,
+    SETTINGS,
+    install_default_settings,
+)
 
 GUEST_TOOLS_HOME = SETTINGS.paths.guest_tools_home
 GUEST_TOOLS_VENV = GUEST_TOOLS_HOME / "venv"
@@ -27,6 +31,7 @@ COMMANDS = [
     RuntimeCommand.VITALSERVER_REPAIR_DATASTORE,
     RuntimeCommand.VITALSERVER_ACTIVATE_UPDATE,
     RuntimeCommand.VITALSERVER_PREPARE_UPDATE_SHUTDOWN,
+    RuntimeCommand.GUEST_TOOLS_INSTALL_CONFIG,
 ]
 
 COMPATIBILITY_LINKS = {
@@ -62,6 +67,10 @@ def install_guest_tools_runtime() -> None:
         link_command(command.value, command.value)
     for compatibility_name, target_name in COMPATIBILITY_LINKS.items():
         link_command(compatibility_name.value, target_name.value)
+
+
+def install_guest_tools_config() -> None:
+    install_default_settings(DEFAULT_SETTINGS_PATH)
 
 
 def latest_guest_tools_wheel() -> Path:

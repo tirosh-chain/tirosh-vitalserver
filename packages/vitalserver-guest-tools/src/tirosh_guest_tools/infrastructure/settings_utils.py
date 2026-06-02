@@ -7,8 +7,17 @@ from typing import Any
 from tirosh_guest_tools.domain.errors import GuestContractError
 
 
+def toml_required_value(document: dict[str, Any], key: str) -> Any:
+    if key not in document:
+        raise GuestContractError(
+            f"guest tools setting '{key}' is missing",
+            code="guest-tools-setting-missing",
+        )
+    return document[key]
+
+
 def toml_table(document: dict[str, Any], key: str) -> dict[str, Any]:
-    value = document.get(key, {})
+    value = toml_required_value(document, key)
     if not isinstance(value, dict):
         raise GuestContractError(
             f"guest tools setting '{key}' must be a TOML table",
@@ -17,8 +26,8 @@ def toml_table(document: dict[str, Any], key: str) -> dict[str, Any]:
     return value
 
 
-def toml_str_value(document: dict[str, Any], key: str, default: str) -> str:
-    value = document.get(key, default)
+def toml_str_value(document: dict[str, Any], key: str) -> str:
+    value = toml_required_value(document, key)
     if not isinstance(value, str) or value == "":
         raise GuestContractError(
             f"guest tools setting '{key}' must be a non-empty string",
@@ -27,12 +36,12 @@ def toml_str_value(document: dict[str, Any], key: str, default: str) -> str:
     return value
 
 
-def toml_path_value(document: dict[str, Any], key: str, default: str) -> Path:
-    return Path(toml_str_value(document, key, default))
+def toml_path_value(document: dict[str, Any], key: str) -> Path:
+    return Path(toml_str_value(document, key))
 
 
-def toml_bool_value(document: dict[str, Any], key: str, default: bool) -> bool:
-    value = document.get(key, default)
+def toml_bool_value(document: dict[str, Any], key: str) -> bool:
+    value = toml_required_value(document, key)
     if not isinstance(value, bool):
         raise GuestContractError(
             f"guest tools setting '{key}' must be a boolean",
@@ -44,12 +53,11 @@ def toml_bool_value(document: dict[str, Any], key: str, default: bool) -> bool:
 def toml_enum_value[SettingEnum: StrEnum](
     document: dict[str, Any],
     key: str,
-    default: str,
     enum_type: type[SettingEnum],
     *,
     choices: str,
 ) -> SettingEnum:
-    value = toml_str_value(document, key, default)
+    value = toml_str_value(document, key)
     try:
         return enum_type(value)
     except ValueError as error:
@@ -62,11 +70,10 @@ def toml_enum_value[SettingEnum: StrEnum](
 def toml_int_value(
     document: dict[str, Any],
     key: str,
-    default: int,
     *,
     minimum: int,
 ) -> int:
-    value = document.get(key, default)
+    value = toml_required_value(document, key)
     if not isinstance(value, int) or isinstance(value, bool):
         raise GuestContractError(
             f"guest tools setting '{key}' must be an integer",
@@ -83,11 +90,10 @@ def toml_int_value(
 def toml_float_value(
     document: dict[str, Any],
     key: str,
-    default: float,
     *,
     minimum: float,
 ) -> float:
-    value = document.get(key, default)
+    value = toml_required_value(document, key)
     if not isinstance(value, int | float) or isinstance(value, bool):
         raise GuestContractError(
             f"guest tools setting '{key}' must be a number",

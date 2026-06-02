@@ -56,7 +56,10 @@ from tirosh_guest_tools.domain.operations import (
 )
 from tirosh_guest_tools.infrastructure.logging import configure_logging
 from tirosh_guest_tools.infrastructure.settings import SETTINGS
-from tirosh_guest_tools.infrastructure.system_install import install_guest_tools_runtime
+from tirosh_guest_tools.infrastructure.system_install import (
+    install_guest_tools_config,
+    install_guest_tools_runtime,
+)
 
 
 def guest_observed() -> int:
@@ -216,4 +219,11 @@ def guest_tools_install_runtime() -> int:
     parser = argparse.ArgumentParser(description="Install the guest tools runtime.")
     parser.parse_args()
     install_guest_tools_runtime()
+    return 0
+
+
+def guest_tools_install_config() -> int:
+    parser = argparse.ArgumentParser(description="Install default guest tools config.")
+    parser.parse_args()
+    install_guest_tools_config()
     return 0

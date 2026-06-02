@@ -12,7 +12,6 @@ BOOTSTRAP_RESULT_FILE="${RUNTIME_DIR}/bootstrap-result.json"
 BOOTSTRAP_RESULT_WRITTEN=0
 GUEST_TOOLS_HOME="/opt/tirosh/guest-tools"
 GUEST_TOOLS_VENV="${GUEST_TOOLS_HOME}/venv"
-GUEST_TOOLS_CONFIG_FILE="/etc/tirosh/guest-tools.toml"
 PYTHON_WHEEL_DIR="${DEPLOY_DIR}/python-wheels"
 
 if [ "$(id -u)" -ne 0 ]; then
@@ -79,10 +78,6 @@ require_deploy_bundle() {
     exit 1
   fi
 
-  if [ ! -f "${DEPLOY_DIR}/guest-tools.toml" ]; then
-    printf "error: missing %s/guest-tools.toml\n" "${DEPLOY_DIR}" >&2
-    exit 1
-  fi
 }
 
 write_runtime_state() {
@@ -201,6 +196,7 @@ install_guest_tools() {
   mkdir -p "${GUEST_TOOLS_HOME}"
   python3 -m venv --clear "${GUEST_TOOLS_VENV}"
   "${GUEST_TOOLS_VENV}/bin/pip" install --no-index --no-deps "${wheel}"
+  "${GUEST_TOOLS_VENV}/bin/tirosh-guest-tools-install-config"
   for command in \
     tirosh-guest-observed \
     tirosh-guest-observe \
@@ -215,7 +211,8 @@ install_guest_tools() {
     tirosh-vitalserver-redis-backup \
     tirosh-vitalserver-repair-datastore \
     tirosh-vitalserver-activate-update \
-    tirosh-vitalserver-prepare-update-shutdown; do
+    tirosh-vitalserver-prepare-update-shutdown \
+    tirosh-guest-tools-install-config; do
     ln -sf "${GUEST_TOOLS_VENV}/bin/${command}" "/usr/local/bin/${command}"
   done
   ln -sf "${GUEST_TOOLS_VENV}/bin/tirosh-guest-container-logs" /usr/local/bin/tirosh-vitalserver-container-logs
@@ -224,7 +221,6 @@ install_guest_tools() {
 
 install_guest_runtime_files() {
   install -d -m 0755 /etc/tirosh
-  install -m 0644 "${DEPLOY_DIR}/guest-tools.toml" "${GUEST_TOOLS_CONFIG_FILE}"
 
   install -m 0755 "${DEPLOY_DIR}/bin/tirosh-runtime-env" /usr/local/bin/tirosh-runtime-env
   install -m 0755 "${DEPLOY_DIR}/bin/tirosh-write-runtime-state" /usr/local/bin/tirosh-write-runtime-state

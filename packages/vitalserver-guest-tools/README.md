@@ -99,3 +99,13 @@ application code:
 
 These modules may know about the guest environment. They should not define
 domain document shapes.
+
+## Settings
+
+Default guest-tools settings live in
+`tirosh_guest_tools/resources/guest-tools.toml`. That packaged TOML is the
+single source for default values.
+
+`/etc/tirosh/guest-tools.toml` is optional and acts as an explicit override.
+The loader merges it over the packaged defaults, so deployment-specific changes
+can stay small without duplicating the full settings document.

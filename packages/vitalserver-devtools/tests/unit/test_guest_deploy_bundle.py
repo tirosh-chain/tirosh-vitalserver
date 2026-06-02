@@ -23,8 +23,12 @@ def test_stage_guest_deploy_uses_configured_includes(tmp_path: Path) -> None:
     (root / "apps/service/app.py").write_text("service\n")
     wheel_project = root / "packages/guest-tools"
     (wheel_project / "src/guest_tools/observability").mkdir(parents=True)
+    (wheel_project / "src/guest_tools/resources").mkdir(parents=True)
     (wheel_project / "src/guest_tools/__init__.py").write_text("\n")
     (wheel_project / "src/guest_tools/observability/__init__.py").write_text("\n")
+    (wheel_project / "src/guest_tools/resources/guest-tools.toml").write_text(
+        "guestHostname = \"guest\"\n"
+    )
     (wheel_project / "src/guest_tools/observability/cli.py").write_text(
         "def main():\n    return 0\n"
     )
@@ -83,9 +87,9 @@ def test_stage_guest_deploy_uses_configured_includes(tmp_path: Path) -> None:
     wheel = deploy_dir / "python-wheels/guest_tools-0.1.0-py3-none-any.whl"
     assert wheel.is_file()
     with ZipFile(wheel) as archive:
-        assert "guest_tools/observability/container_logs.py" in {
-            info.filename for info in archive.infolist()
-        }
+        archive_names = {info.filename for info in archive.infolist()}
+        assert "guest_tools/observability/container_logs.py" in archive_names
+        assert "guest_tools/resources/guest-tools.toml" in archive_names
     assert (deploy_dir / "docker-images/images.tar.gz").read_text() == "images\n"
     assert (
         deploy_dir / "optional-docker-images/optional-images.tar.gz"

@@ -61,6 +61,7 @@ class RuntimeCommand(StrEnum):
     VITALSERVER_PREPARE_UPDATE_SHUTDOWN = "tirosh-vitalserver-prepare-update-shutdown"
     VITALSERVER_CONTAINER_LOGS = "tirosh-vitalserver-container-logs"
     VITALSERVER_DIAGNOSTICS = "tirosh-vitalserver-diagnostics"
+    GUEST_TOOLS_INSTALL_CONFIG = "tirosh-guest-tools-install-config"
 
 
 class RuntimeConfigKey(StrEnum):
