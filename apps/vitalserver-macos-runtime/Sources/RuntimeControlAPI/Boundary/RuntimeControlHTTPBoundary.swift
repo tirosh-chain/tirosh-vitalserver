@@ -140,8 +140,8 @@ public struct RuntimeControlAPIRouter {
         }
 
         if let endpoint = RuntimeControlAPIEndpoint.matching(method: request.method, path: request.path) {
-            if let stream = streamResponse(endpoint, request: request) {
-                return .stream(stream)
+            if endpoint.streamCapability == .supported {
+                return .stream(streamResponse(endpoint, request: request))
             }
             return .response(await route(endpoint, request: request))
         }
@@ -199,7 +199,7 @@ public struct RuntimeControlAPIRouter {
                 return try await eventStreamResponse(
                     id: "vitaldb-observation",
                     event: "vitaldb-observed",
-                    value: loadVitalDBObservation()
+                    value: handler.loadVitalDBObservationSnapshot()
                 )
             case .vitalDBRecorders:
                 return try await jsonResponse(handler.loadVitalDBRecorders())
@@ -301,7 +301,7 @@ public struct RuntimeControlAPIRouter {
     private func streamResponse(
         _ endpoint: RuntimeControlAPIEndpoint,
         request: RuntimeControlHTTPRequest
-    ) -> RuntimeControlHTTPStreamResponse? {
+    ) -> RuntimeControlHTTPStreamResponse {
         switch endpoint {
         case .overviewStream:
             return makeStream { [handler, streamConfiguration] continuation in
@@ -347,7 +347,7 @@ public struct RuntimeControlAPIRouter {
                 return errorStreamResponse(error.localizedDescription)
             }
         case .vitalDBObservationStream:
-            return makeStream { [streamConfiguration] continuation in
+            return makeStream { [handler, streamConfiguration] continuation in
                 await pollSnapshot(
                     id: "vitaldb-observation",
                     event: "vitaldb-observed",
@@ -355,15 +355,9 @@ public struct RuntimeControlAPIRouter {
                     heartbeatInterval: streamConfiguration.heartbeatIntervalNanoseconds,
                     continuation: continuation
                 ) {
-                    try await loadVitalDBObservation()
+                    try await handler.loadVitalDBObservationSnapshot()
                 }
             }
-        case .vitalDBRecorders:
-            return nil
-        case .vitalDBRecorder:
-            return nil
-        case .vitalDBRelationships:
-            return nil
         case .logStream:
             do {
                 let logRequest = try request.runtimeLogTextRequest()
@@ -384,7 +378,7 @@ public struct RuntimeControlAPIRouter {
                 return errorStreamResponse(error.localizedDescription)
             }
         default:
-            return nil
+            return errorStreamResponse("Endpoint does not support streaming.")
         }
     }
 
@@ -460,9 +454,11 @@ public struct RuntimeControlAPIRouter {
             status: .badRequest,
             headers: RuntimeControlServerSentEventCodec.streamHeaders,
             events: AsyncThrowingStream { continuation in
-                let error = RuntimeControlErrorResponse(code: .badRequest, message: message)
-                let data = (try? JSONEncoder().encode(error)) ?? Data()
-                continuation.yield(RuntimeControlServerSentEvent(id: nil, event: "runtime-control-error", data: data))
+                continuation.yield(RuntimeControlServerSentEvent(
+                    id: "runtime-control-error",
+                    event: "runtime-control-error",
+                    data: RuntimeControlErrorResponseEncoder.encode(code: .badRequest, message: message)
+                ))
                 continuation.finish()
             }
         )
@@ -473,11 +469,10 @@ public struct RuntimeControlAPIRouter {
         code: RuntimeControlAPIErrorCode,
         message: String
     ) -> RuntimeControlHTTPResponse {
-        let response = RuntimeControlErrorResponse(code: code, message: message)
         return RuntimeControlHTTPResponse(
             status: status,
             headers: ["Content-Type": "application/json"],
-            body: try? JSONEncoder().encode(response)
+            body: RuntimeControlErrorResponseEncoder.encode(code: code, message: message)
         )
     }
 }
@@ -578,24 +573,56 @@ public enum RuntimeControlServerSentEventCodec {
 
     public static func encode<T: Encodable>(id: String, event: String, value: T) throws -> Data {
         let payload = try JSONEncoder().encode(value)
-        return encode(RuntimeControlServerSentEvent(id: id, event: event, data: payload))
+        return try encode(RuntimeControlServerSentEvent(id: id, event: event, data: payload))
     }
 
-    public static func encode(_ event: RuntimeControlServerSentEvent) -> Data {
-        Data(encodeString(event).utf8)
+    public static func encode(_ event: RuntimeControlServerSentEvent) throws -> Data {
+        let text = try encodeString(event)
+        return Data(text.utf8)
     }
 
-    private static func encodeString(_ event: RuntimeControlServerSentEvent) -> String {
+    private static func encodeString(_ event: RuntimeControlServerSentEvent) throws -> String {
         if let comment = event.comment {
             return ": \(comment)\n\n"
         }
-        let data = event.data.flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
+        guard let id = event.id, !id.isEmpty else {
+            throw RuntimeControlServerSentEventEncodingError.missingID
+        }
+        guard let eventName = event.event, !eventName.isEmpty else {
+            throw RuntimeControlServerSentEventEncodingError.missingEvent
+        }
+        guard let payload = event.data else {
+            throw RuntimeControlServerSentEventEncodingError.missingData
+        }
+        guard let data = String(data: payload, encoding: .utf8) else {
+            throw RuntimeControlServerSentEventEncodingError.invalidUTF8Data
+        }
         return """
-        id: \(event.id ?? "")
-        event: \(event.event ?? "message")
+        id: \(id)
+        event: \(eventName)
         data: \(data)
 
         """
+    }
+}
+
+public enum RuntimeControlServerSentEventEncodingError: LocalizedError, Equatable, Sendable {
+    case missingID
+    case missingEvent
+    case missingData
+    case invalidUTF8Data
+
+    public var errorDescription: String? {
+        switch self {
+        case .missingID:
+            return "SSE event id is missing."
+        case .missingEvent:
+            return "SSE event name is missing."
+        case .missingData:
+            return "SSE event data is missing."
+        case .invalidUTF8Data:
+            return "SSE event data is not valid UTF-8."
+        }
     }
 }
 
@@ -644,27 +671,32 @@ public extension RuntimeControlHTTPRequest {
         }?.value
     }
 
-    func queryValue(named name: String) -> String? {
-        queryParameters.first { key, _ in
-            key.caseInsensitiveCompare(name) == .orderedSame
-        }?.value
+    func queryValue(named name: String) throws -> String? {
+        let matches = queryItems.filter { item in
+            item.name.caseInsensitiveCompare(name) == .orderedSame
+        }
+        guard matches.count <= 1 else {
+            throw RuntimeControlHTTPQueryError.duplicateQueryParameter(name)
+        }
+        guard let item = matches.first else {
+            return nil
+        }
+        guard let value = item.value else {
+            throw RuntimeControlHTTPQueryError.missingQueryParameterValue(name)
+        }
+        return value
     }
 
-    var queryParameters: [String: String] {
+    var queryItems: [URLQueryItem] {
         guard let components = URLComponents(string: path), let queryItems = components.queryItems else {
-            return [:]
+            return []
         }
-        return queryItems.reduce(into: [:]) { result, item in
-            guard let value = item.value else {
-                return
-            }
-            result[item.name] = value
-        }
+        return queryItems
     }
 
     func runtimeEventQuery() throws -> RuntimeEventQuery {
         let limit: Int
-        if let rawLimit = queryValue(named: "limit") {
+        if let rawLimit = try queryValue(named: "limit") {
             guard let parsedLimit = Int(rawLimit), parsedLimit > 0 else {
                 throw RuntimeControlHTTPQueryError.invalidLimit(rawLimit)
             }
@@ -674,7 +706,7 @@ public extension RuntimeControlHTTPRequest {
         }
 
         let before: RuntimeEventCursor?
-        if let rawCursor = queryValue(named: "cursor") {
+        if let rawCursor = try queryValue(named: "cursor") {
             guard let decodedCursor = RuntimeEventCursorWireCodec.decode(rawCursor) else {
                 throw RuntimeControlHTTPQueryError.invalidCursor(rawCursor)
             }
@@ -683,17 +715,28 @@ public extension RuntimeControlHTTPRequest {
             before = nil
         }
 
+        let eventType: RuntimeEventType?
+        if let rawEventType = try queryValue(named: "type") {
+            let parsedEventType = RuntimeEventType(rawValue: rawEventType)
+            guard RuntimeEventType.knownTypes.contains(parsedEventType) else {
+                throw RuntimeControlHTTPQueryError.invalidEventType(rawEventType)
+            }
+            eventType = parsedEventType
+        } else {
+            eventType = nil
+        }
+
         return RuntimeEventQuery(
             limit: limit,
-            eventType: queryValue(named: "type").map(RuntimeEventType.init(rawValue:)),
-            since: queryValue(named: "since"),
+            eventType: eventType,
+            since: try queryValue(named: "since"),
             before: before
         )
     }
 
     func runtimeLogTextRequest() throws -> RuntimeLogTextRequest {
         let source: RuntimeLogSource
-        if let rawSource = queryValue(named: "source") {
+        if let rawSource = try queryValue(named: "source") {
             guard let parsedSource = RuntimeLogSource(rawValue: rawSource) else {
                 throw RuntimeControlHTTPQueryError.invalidLogSource(rawSource)
             }
@@ -703,7 +746,7 @@ public extension RuntimeControlHTTPRequest {
         }
 
         let lineLimit: Int
-        if let rawLimit = queryValue(named: "lineLimit") {
+        if let rawLimit = try queryValue(named: "lineLimit") {
             guard let parsedLimit = Int(rawLimit), parsedLimit > 0 else {
                 throw RuntimeControlHTTPQueryError.invalidLimit(rawLimit)
             }
@@ -714,7 +757,7 @@ public extension RuntimeControlHTTPRequest {
 
         return RuntimeLogTextRequest(
             source: source,
-            helperMessage: queryValue(named: "helperMessage") ?? "",
+            helperMessage: try queryValue(named: "helperMessage"),
             lineLimit: lineLimit
         )
     }
@@ -726,7 +769,9 @@ public extension RuntimeControlHTTPRequest {
         do {
             return try JSONDecoder().decode(type, from: body)
         } catch {
-            throw RuntimeControlHTTPQueryError.invalidBody
+            throw RuntimeControlHTTPQueryError.invalidBody(
+                "Decode failed for \(String(describing: type)): \(error.localizedDescription)"
+            )
         }
     }
 
@@ -764,10 +809,13 @@ public extension RuntimeControlHTTPRequest {
 public enum RuntimeControlHTTPQueryError: LocalizedError, Equatable {
     case invalidLimit(String)
     case invalidCursor(String)
+    case invalidEventType(String)
     case invalidLogSource(String)
+    case duplicateQueryParameter(String)
+    case missingQueryParameterValue(String)
     case invalidPathParameter(String)
     case missingBody
-    case invalidBody
+    case invalidBody(String)
 
     public var errorDescription: String? {
         switch self {
@@ -775,14 +823,20 @@ public enum RuntimeControlHTTPQueryError: LocalizedError, Equatable {
             return "Invalid runtime event limit: \(value)"
         case .invalidCursor(let value):
             return "Invalid runtime event cursor: \(value)"
+        case .invalidEventType(let value):
+            return "Invalid runtime event type: \(value)"
         case .invalidLogSource(let value):
             return "Invalid runtime log source: \(value)"
+        case .duplicateQueryParameter(let name):
+            return "Duplicate query parameter: \(name)"
+        case .missingQueryParameterValue(let name):
+            return "Missing query parameter value: \(name)"
         case .invalidPathParameter(let name):
             return "Invalid path parameter: \(name)"
         case .missingBody:
             return "Missing request body."
-        case .invalidBody:
-            return "Invalid request body."
+        case .invalidBody(let message):
+            return "Invalid request body: \(message)"
         }
     }
 }

@@ -132,7 +132,7 @@ extension RuntimeLifecycle {
                 isLaunchdLoaded(.proxy)
             },
             expectedProxyNginxPID: {
-                healthChecker.readTrimmed(installedPaths.proxyNginxPID)
+                healthChecker.readInstalledProxyNginxPID()
             },
             ownedNginxPathFragments: [
                 installedPaths.nginxExecutable.path,

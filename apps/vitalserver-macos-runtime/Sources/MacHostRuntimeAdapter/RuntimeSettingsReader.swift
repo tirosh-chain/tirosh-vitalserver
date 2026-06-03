@@ -33,13 +33,16 @@ struct RuntimeSettingsPaths {
 struct SystemRuntimeSettingsReader: RuntimeSettingsReading, @unchecked Sendable {
     var paths = RuntimeSettingsPaths()
     private var fileStore: RuntimeFileStore = SystemRuntimeFileStore()
+    private var runCommand: @Sendable (String, [String]) -> RuntimeCommandResult
 
     init(
         paths: RuntimeSettingsPaths = RuntimeSettingsPaths(),
-        fileStore: RuntimeFileStore = SystemRuntimeFileStore()
+        fileStore: RuntimeFileStore = SystemRuntimeFileStore(),
+        runCommand: @escaping @Sendable (String, [String]) -> RuntimeCommandResult = ProcessRunner.runSync
     ) {
         self.paths = paths
         self.fileStore = fileStore
+        self.runCommand = runCommand
     }
 
     func load() -> RuntimeSettings {
@@ -49,13 +52,26 @@ struct SystemRuntimeSettingsReader: RuntimeSettingsReading, @unchecked Sendable 
         case .loaded(let vmConfig):
             settings.cpuCount = vmConfig.cpuCount
             settings.memoryGiB = max(Int(vmConfig.memoryMiB / 1024), 1)
-            settings.networkMode = RuntimeNetworkMode.shared
-            settings.bridgedInterface = vmConfig.network.bridgedInterface ?? ""
+            applyNetworkSettings(vmConfig.network, to: &settings)
             if let vitalFilesDirectory = vmConfig.vitalFilesDirectory?.hostPath {
                 settings.vitalFilesDirectory = vitalFilesDirectory
             }
-            settings.autoRecoveryEnabled = vmConfig.autoRecoveryEnabled ?? true
-            settings.preventSystemSleep = vmConfig.preventSystemSleep ?? true
+            if let autoRecoveryEnabled = vmConfig.autoRecoveryEnabled {
+                settings.autoRecoveryEnabled = autoRecoveryEnabled
+            } else {
+                settings.readIssues.append(RuntimeSettingsReadIssue(
+                    source: "vmConfig.autoRecoveryEnabled",
+                    message: "autoRecoveryEnabled is missing"
+                ))
+            }
+            if let preventSystemSleep = vmConfig.preventSystemSleep {
+                settings.preventSystemSleep = preventSystemSleep
+            } else {
+                settings.readIssues.append(RuntimeSettingsReadIssue(
+                    source: "vmConfig.preventSystemSleep",
+                    message: "preventSystemSleep is missing"
+                ))
+            }
         case .missing:
             break
         case .failed(let message):
@@ -89,11 +105,15 @@ struct SystemRuntimeSettingsReader: RuntimeSettingsReading, @unchecked Sendable 
             settings.readIssues.append(RuntimeSettingsReadIssue(source: "proxyLaunchDaemon", message: message))
         }
 
-        if let startOnBoot = startOnBootEnabled() {
+        switch startOnBootEnabled() {
+        case .loaded(let startOnBoot):
             settings.startOnBoot = startOnBoot
             settings.startOnBootConfigurable = true
-        } else {
+        case .missing:
             settings.startOnBootConfigurable = false
+        case .failed(let message):
+            settings.startOnBootConfigurable = false
+            settings.readIssues.append(RuntimeSettingsReadIssue(source: "startOnBoot", message: message))
         }
         return settings
     }
@@ -119,13 +139,38 @@ struct SystemRuntimeSettingsReader: RuntimeSettingsReading, @unchecked Sendable 
         }
     }
 
-    private func startOnBootEnabled() -> Bool? {
-        let result = ProcessRunner.runSync(
+    private func applyNetworkSettings(_ network: NetworkDocument, to settings: inout RuntimeSettings) {
+        guard let networkMode = RuntimeNetworkMode(rawValue: network.mode) else {
+            settings.readIssues.append(RuntimeSettingsReadIssue(
+                source: "vmConfig.network.mode",
+                message: "network mode is invalid: \(network.mode)"
+            ))
+            return
+        }
+
+        settings.networkMode = networkMode
+        switch networkMode {
+        case .shared:
+            settings.bridgedInterface = network.bridgedInterface ?? ""
+        case .bridged:
+            guard let bridgedInterface = network.bridgedInterface, !bridgedInterface.isEmpty else {
+                settings.readIssues.append(RuntimeSettingsReadIssue(
+                    source: "vmConfig.network.bridgedInterface",
+                    message: "bridgedInterface is missing for bridged network mode"
+                ))
+                return
+            }
+            settings.bridgedInterface = bridgedInterface
+        }
+    }
+
+    private func startOnBootEnabled() -> RuntimeSettingsLoadResult<Bool> {
+        let result = runCommand(
             RuntimeAdapterConstants.Commands.launchctl,
-            arguments: ["print-disabled", "system"]
+            ["print-disabled", "system"]
         )
         guard result.exitCode == 0 else {
-            return nil
+            return .failed(result.stderr.isEmpty ? "launchctl print-disabled failed" : result.stderr)
         }
         let output = result.stdout
         for label in [
@@ -134,9 +179,9 @@ struct SystemRuntimeSettingsReader: RuntimeSettingsReading, @unchecked Sendable 
             RuntimeManagedService.guestLogSync.label,
             RuntimeManagedService.watchdog.label,
         ] where output.contains("\"\(label)\" => true") {
-            return false
+            return .loaded(false)
         }
-        return true
+        return .loaded(true)
     }
 
     private func diskSizeGiB(path: String) -> RuntimeSettingsLoadResult<Int> {

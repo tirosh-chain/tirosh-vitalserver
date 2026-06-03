@@ -315,6 +315,40 @@ final class RuntimeLogExporterTests: XCTestCase {
         }
     }
 
+    func testExportThrowsArchiveFailureWithOutputIssueSummary() async throws {
+        let root = try temporaryDirectory()
+        let productLogs = root.appendingPathComponent("product/logs", isDirectory: true)
+        let destination = root.appendingPathComponent("export.zip")
+        try FileManager.default.createDirectory(at: productLogs, withIntermediateDirectories: true)
+
+        let exporter = MacHostRuntimeLogExporter(
+            logCollector: FakeRuntimeLogCollectorForExport(),
+            productLogsDirectory: productLogs,
+            supplementalLogItems: [],
+            rotatedSupplementalSets: [],
+            archiveRunner: { _, _ in
+                RuntimeCommandResult(
+                    exitCode: 7,
+                    stdout: "",
+                    stderr: "",
+                    outputIssues: [
+                        RuntimeCommandOutputIssue(
+                            stream: .stderr,
+                            message: "command stderr is not valid UTF-8"
+                        ),
+                    ]
+                )
+            }
+        )
+
+        do {
+            _ = try await exporter.exportLogs(to: destination)
+            XCTFail("Expected log export failure")
+        } catch {
+            XCTAssertEqual(error.localizedDescription, "stderr: command stderr is not valid UTF-8")
+        }
+    }
+
     func testExportSkipsUnreadableSupplementalSourceAndRecordsManifestIssue() async throws {
         let root = try temporaryDirectory()
         let productLogs = root.appendingPathComponent("product/logs", isDirectory: true)

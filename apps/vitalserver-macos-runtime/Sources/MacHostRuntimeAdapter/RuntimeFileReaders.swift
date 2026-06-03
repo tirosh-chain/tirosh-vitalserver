@@ -224,6 +224,20 @@ struct SystemRuntimeHostFileReader: RuntimeHostFileReading, @unchecked Sendable 
         guard !data.isEmpty else {
             return nil
         }
-        return String(decoding: data, as: UTF8.self)
+        guard let text = String(data: data, encoding: .utf8) else {
+            throw RuntimeHostFileReaderError.invalidUTF8(path: url.path)
+        }
+        return text
+    }
+}
+
+enum RuntimeHostFileReaderError: LocalizedError, Equatable {
+    case invalidUTF8(path: String)
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidUTF8(let path):
+            return "Log file is not valid UTF-8: \(path)"
+        }
     }
 }

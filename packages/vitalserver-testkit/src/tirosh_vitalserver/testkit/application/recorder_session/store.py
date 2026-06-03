@@ -54,12 +54,11 @@ def session_snapshot_from_record(
     """Convert a persistent JSON record into a session snapshot."""
 
     request_data = dict(data["request"])
-    request_data.pop("beds", None)
     request_data["scenario"] = VirtualRecorderSessionScenario(
-        request_data.get("scenario", VirtualRecorderSessionScenario.NORMAL.value)
+        str(request_data["scenario"])
     )
     request_data["default_scenario"] = RecorderSignalScenario(
-        request_data.get("default_scenario", RecorderSignalScenario.NORMAL.value)
+        str(request_data["default_scenario"])
     )
 
     return VirtualRecorderSessionSnapshot(
@@ -67,22 +66,22 @@ def session_snapshot_from_record(
         state=VirtualRecorderSessionState(str(data["state"])),
         request=VirtualRecorderSessionRequest(**request_data),
         created_at=float(data["created_at"]),
-        started_at=optional_float(data.get("started_at")),
-        stopped_at=optional_float(data.get("stopped_at")),
+        started_at=optional_float(data["started_at"]),
+        stopped_at=optional_float(data["stopped_at"]),
         recorders=tuple(
             recorder_snapshot_from_record(recorder)
-            for recorder in data.get("recorders", [])
+            for recorder in data["recorders"]
         ),
-        messages_sent=int(data.get("messages_sent", 0)),
-        bytes_sent=int(data.get("bytes_sent", 0)),
-        error=data.get("error"),
+        messages_sent=int(data["messages_sent"]),
+        bytes_sent=int(data["bytes_sent"]),
+        error=data["error"],
         cleanup_errors=tuple(
             VirtualRecorderCleanupError(
                 vrcode=str(error["vrcode"]),
                 target_url=str(error["target_url"]),
                 error=str(error["error"]),
             )
-            for error in data.get("cleanup_errors", [])
+            for error in data["cleanup_errors"]
         ),
     )
 
@@ -109,23 +108,23 @@ def recorder_snapshot_from_record(data: dict[str, Any]) -> RecorderRuntimeSnapsh
     return RecorderRuntimeSnapshot(
         vrcode=str(data["vrcode"]),
         base_url=str(data["base_url"]),
-        local_ip=data.get("local_ip"),
-        connected=bool(data.get("connected", False)),
-        join_sent=bool(data.get("join_sent", False)),
-        joined_at=optional_float(data.get("joined_at")),
-        server_dt=data.get("server_dt"),
-        server_dt_received_at=optional_float(data.get("server_dt_received_at")),
-        last_reconnect_at=optional_float(data.get("last_reconnect_at")),
-        last_send_data_at=optional_float(data.get("last_send_data_at")),
-        messages_sent=int(data.get("messages_sent", 0)),
-        bytes_sent=int(data.get("bytes_sent", 0)),
+        local_ip=data["local_ip"],
+        connected=bool(data["connected"]),
+        join_sent=bool(data["join_sent"]),
+        joined_at=optional_float(data["joined_at"]),
+        server_dt=data["server_dt"],
+        server_dt_received_at=optional_float(data["server_dt_received_at"]),
+        last_reconnect_at=optional_float(data["last_reconnect_at"]),
+        last_send_data_at=optional_float(data["last_send_data_at"]),
+        messages_sent=int(data["messages_sent"]),
+        bytes_sent=int(data["bytes_sent"]),
         management_events=tuple(
             RecorderManagementEvent(
                 name=str(event["name"]),
                 received_at=float(event["received_at"]),
-                payload=tuple(event.get("payload", [])),
+                payload=tuple(event["payload"]),
             )
-            for event in data.get("management_events", [])
+            for event in data["management_events"]
         ),
     )
 

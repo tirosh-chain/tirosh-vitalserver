@@ -141,6 +141,7 @@ enum AppConstants {
         static let sectionRuntimeRepair = "Runtime repair"
         static let sectionUpdateRecovery = "Update recovery"
         static let sectionRedisDataRecovery = "Redis data recovery"
+        static let statusReadIssues = "Status read issues"
         static let adminOperationsHelp = "Use these actions only when administering the installed runtime. Password changes are applied with the same runtime configuration flow as Settings."
         static let runtimeServiceControlHelp = "Starts or stops the VM, host proxy, and watchdog together. Use Stop for planned maintenance, then Start to bring VitalServer back online."
         static let recoveryOperationsHelp = "Use these actions when the runtime is installed but unhealthy after update, rollback, or unexpected shutdown."
@@ -419,6 +420,24 @@ enum AppConstants {
             loaded ? running : stopped
         }
 
+        static func launchdState(_ state: RuntimeServiceState?) -> String {
+            guard let state else {
+                return unknown
+            }
+            switch state {
+            case .loaded:
+                return running
+            case .notLoaded:
+                return stopped
+            case .readFailed:
+                return "Read failed"
+            case .permissionDenied:
+                return "Permission denied"
+            case .unknown(let value):
+                return titleCasedStatus(value)
+            }
+        }
+
         static func vmState(_ value: RuntimeVMState?) -> String {
             guard let value else {
                 return unknown
@@ -457,6 +476,8 @@ enum AppConstants {
                 return "Missing VM IP"
             case .runtimeStateMissing:
                 return "Guest runtime state missing"
+            case .runtimeStateInvalid:
+                return "Guest runtime state invalid"
             case .runtimeStateStale:
                 return "Guest runtime state stale"
             case .launchFailed(let reason):
@@ -475,6 +496,12 @@ enum AppConstants {
                 return "Guest disk I/O error"
             case .guestHTTP(let status):
                 return "Guest HTTP \(status)"
+            case .guestHTTPProbeFailed(let status):
+                return "Guest HTTP probe failed (\(status))"
+            case .guestBootstrapResultMissing:
+                return "Guest bootstrap result missing"
+            case .guestBootstrapResultUnavailable:
+                return "Guest bootstrap result unavailable"
             case .guestBootstrapMissingRuntimePackages:
                 return "Guest bootstrap missing runtime packages"
             case .guestBootstrapFailed:
@@ -508,16 +535,30 @@ enum AppConstants {
                 return "Swagger UI HTTP \(status)"
             case .guestHTTP(let status):
                 return "Guest HTTP \(status)"
+            case .guestHTTPProbeFailed(let status):
+                return "Guest HTTP probe failed (\(status))"
             case .guestRuntimeStateStale:
                 return "Guest runtime state stale"
             case .auditProxyHTTP(let status):
                 return "Audit proxy HTTP \(status)"
             case .containerService(let service, let state):
                 return "Container \(service) \(titleCasedStatus(state))"
+            case .containerObservationMissing:
+                return "Container observation missing"
+            case .containerObservationReadFailed(let message):
+                return "Container observation read failed (\(titleCasedStatus(message)))"
             case .vitalDBAnomaly(let kind, let subject):
                 return "VitalDB anomaly \(titleCasedStatus(kind)) on \(subject)"
+            case .vitalDBObservationMissing:
+                return "VitalDB observation missing"
+            case .vitalDBObservationReadFailed(let message):
+                return "VitalDB observation read failed (\(titleCasedStatus(message)))"
             case .proxyPortInUse(let port, let listeners):
                 return "Host proxy port \(port) in use by \(listeners)"
+            case .guestBootstrapResultMissing:
+                return "Guest bootstrap result missing"
+            case .guestBootstrapResultUnavailable:
+                return "Guest bootstrap result unavailable"
             case .guestBootstrapMissingRuntimePackages:
                 return "Guest bootstrap missing runtime packages"
             case .guestBootstrapFailed:

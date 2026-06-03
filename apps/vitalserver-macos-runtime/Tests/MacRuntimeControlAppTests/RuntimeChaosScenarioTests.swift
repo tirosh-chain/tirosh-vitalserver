@@ -25,7 +25,7 @@ final class RuntimeChaosScenarioTests: XCTestCase {
     }
 
     func testObservabilityReadChaosReturnsReadErrorInsteadOfEmptySuccess() {
-        let reader = SystemRuntimeObservabilityReader(
+        let reader = SystemRuntimeObservabilityReader.live(
             paths: RuntimePaths(
                 runtimeEvents: "/dev/null/\(RuntimeFileNames.runtimeEvents)",
                 runtimeObservabilityDB: "/dev/null/\(RuntimeFileNames.runtimeObservabilityDB)"
@@ -63,7 +63,7 @@ final class RuntimeChaosScenarioTests: XCTestCase {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         try (encoder.encode(event) + Data("\n".utf8)).write(to: events)
-        let reader = SystemRuntimeObservabilityReader(
+        let reader = SystemRuntimeObservabilityReader.live(
             paths: RuntimePaths(
                 runtimeEvents: events.path,
                 runtimeObservabilityDB: database.path
@@ -77,6 +77,7 @@ final class RuntimeChaosScenarioTests: XCTestCase {
         XCTAssertEqual(eventHistory.events.map(\.id), ["jsonl-event"])
         XCTAssertNotNil(eventHistory.readError)
         XCTAssertEqual(recorderHistory.activityHistory.source, .unavailable)
+        XCTAssertNotNil(recorderHistory.readError)
         XCTAssertNotNil(recorderHistory.activityHistory.readError)
         XCTAssertNotNil(relationships.readError)
         XCTAssertFalse(FileManager.default.fileExists(atPath: statusDirectory.path))
@@ -84,7 +85,7 @@ final class RuntimeChaosScenarioTests: XCTestCase {
     }
 
     func testObservabilitySnapshotChaosReturnsFailedStateInsteadOfUnavailableDefault() {
-        let reader = SystemRuntimeObservabilityReader(
+        let reader = SystemRuntimeObservabilityReader.live(
             paths: RuntimePaths(
                 runtimeState: "/dev/null/\(RuntimeFileNames.runtimeState)",
                 runtimeStatus: "/dev/null/\(RuntimeFileNames.runtimeStatus)",
@@ -101,7 +102,7 @@ final class RuntimeChaosScenarioTests: XCTestCase {
     }
 
     func testObservabilityRelationshipChaosPreservesBothReadFailures() {
-        let reader = SystemRuntimeObservabilityReader(
+        let reader = SystemRuntimeObservabilityReader.live(
             paths: RuntimePaths(runtimeObservabilityDB: "/dev/null/\(RuntimeFileNames.runtimeObservabilityDB)")
         )
 
@@ -165,7 +166,7 @@ final class RuntimeChaosScenarioTests: XCTestCase {
         defer { cleanup(root) }
         let database = root.appendingPathComponent(RuntimeFileNames.runtimeObservabilityDB)
         try "not a sqlite database".write(to: database, atomically: true, encoding: .utf8)
-        let reader = SystemRuntimeObservabilityReader(
+        let reader = SystemRuntimeObservabilityReader.live(
             paths: RuntimePaths(
                 runtimeState: root.appendingPathComponent(RuntimeFileNames.runtimeState).path,
                 runtimeStatus: root.appendingPathComponent(RuntimeFileNames.runtimeStatus).path,

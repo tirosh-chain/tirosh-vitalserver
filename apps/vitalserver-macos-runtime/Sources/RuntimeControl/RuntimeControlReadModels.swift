@@ -50,15 +50,52 @@ public struct VitalFilesFolder: Codable, Identifiable, Sendable {
     }
 }
 
+public enum RuntimeCommandOutputStream: String, Codable, Equatable, Sendable {
+    case stdout
+    case stderr
+}
+
+public struct RuntimeCommandOutputIssue: Codable, Equatable, Sendable {
+    public let stream: RuntimeCommandOutputStream
+    public let message: String
+
+    public init(stream: RuntimeCommandOutputStream, message: String) {
+        self.stream = stream
+        self.message = message
+    }
+}
+
 public struct RuntimeCommandResult: Codable, Equatable, Sendable {
     public let exitCode: Int32
     public let stdout: String
     public let stderr: String
+    public let outputIssues: [RuntimeCommandOutputIssue]
 
-    public init(exitCode: Int32, stdout: String, stderr: String) {
+    public init(
+        exitCode: Int32,
+        stdout: String,
+        stderr: String,
+        outputIssues: [RuntimeCommandOutputIssue] = []
+    ) {
         self.exitCode = exitCode
         self.stdout = stdout
         self.stderr = stderr
+        self.outputIssues = outputIssues
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case exitCode
+        case stdout
+        case stderr
+        case outputIssues
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        exitCode = try container.decode(Int32.self, forKey: .exitCode)
+        stdout = try container.decode(String.self, forKey: .stdout)
+        stderr = try container.decode(String.self, forKey: .stderr)
+        outputIssues = try container.decodeIfPresent([RuntimeCommandOutputIssue].self, forKey: .outputIssues) ?? []
     }
 }
 
@@ -171,6 +208,7 @@ public enum RuntimeVitalRecorderStatus: String, Codable, Equatable, Sendable {
     case online
     case stale
     case offline
+    case notObserved
     case unknown
 }
 
@@ -178,6 +216,7 @@ public enum RuntimeVitalBedStatus: String, Codable, Equatable, Sendable {
     case online
     case stale
     case offline
+    case notObserved
     case unknown
 }
 
@@ -229,10 +268,10 @@ public struct RuntimeVitalRecorderActivityPoint: Codable, Equatable, Identifiabl
         windowSeconds = try container.decode(Int.self, forKey: .windowSeconds)
         messageCount = try container.decode(Int.self, forKey: .messageCount)
         byteCount = try container.decode(Int.self, forKey: .byteCount)
-        roomCount = try container.decodeIfPresent(Int.self, forKey: .roomCount) ?? 0
-        messagesPerSecond = try container.decodeIfPresent(Double.self, forKey: .messagesPerSecond) ?? 0
-        bytesPerSecond = try container.decodeIfPresent(Double.self, forKey: .bytesPerSecond) ?? 0
-        buckets = try container.decodeIfPresent([VitalDBRecorderActivityBucket].self, forKey: .buckets) ?? []
+        roomCount = try container.decode(Int.self, forKey: .roomCount)
+        messagesPerSecond = try container.decode(Double.self, forKey: .messagesPerSecond)
+        bytesPerSecond = try container.decode(Double.self, forKey: .bytesPerSecond)
+        buckets = try container.decode([VitalDBRecorderActivityBucket].self, forKey: .buckets)
     }
 }
 
@@ -248,10 +287,11 @@ public struct RuntimeVitalRecorderRecord: Codable, Equatable, Identifiable, Send
     public let firstSeenAt: String?
     public let lastSeenAt: String?
     public let observationCount: Int
+    public let duplicateObservationCount: Int
     public let currentAnomalyCount: Int
     public let latestAnomalySeverity: VitalDBAnomalySeverity?
     public let presentInLatestObservation: Bool
-    public let activityTimeline: [RuntimeVitalRecorderActivityPoint]
+    public let activityTimeline: [RuntimeVitalRecorderActivityPoint]?
 
     public init(
         vrcode: String,
@@ -264,6 +304,7 @@ public struct RuntimeVitalRecorderRecord: Codable, Equatable, Identifiable, Send
         firstSeenAt: String?,
         lastSeenAt: String?,
         observationCount: Int,
+        duplicateObservationCount: Int = 0,
         currentAnomalyCount: Int,
         latestAnomalySeverity: VitalDBAnomalySeverity?,
         presentInLatestObservation: Bool = true
@@ -279,10 +320,11 @@ public struct RuntimeVitalRecorderRecord: Codable, Equatable, Identifiable, Send
             firstSeenAt: firstSeenAt,
             lastSeenAt: lastSeenAt,
             observationCount: observationCount,
+            duplicateObservationCount: duplicateObservationCount,
             currentAnomalyCount: currentAnomalyCount,
             latestAnomalySeverity: latestAnomalySeverity,
             presentInLatestObservation: presentInLatestObservation,
-            activityTimeline: []
+            activityTimeline: nil
         )
     }
 
@@ -297,10 +339,11 @@ public struct RuntimeVitalRecorderRecord: Codable, Equatable, Identifiable, Send
         firstSeenAt: String?,
         lastSeenAt: String?,
         observationCount: Int,
+        duplicateObservationCount: Int,
         currentAnomalyCount: Int,
         latestAnomalySeverity: VitalDBAnomalySeverity?,
         presentInLatestObservation: Bool,
-        activityTimeline: [RuntimeVitalRecorderActivityPoint]
+        activityTimeline: [RuntimeVitalRecorderActivityPoint]?
     ) {
         self.vrcode = vrcode
         self.status = status
@@ -312,6 +355,7 @@ public struct RuntimeVitalRecorderRecord: Codable, Equatable, Identifiable, Send
         self.firstSeenAt = firstSeenAt
         self.lastSeenAt = lastSeenAt
         self.observationCount = observationCount
+        self.duplicateObservationCount = duplicateObservationCount
         self.currentAnomalyCount = currentAnomalyCount
         self.latestAnomalySeverity = latestAnomalySeverity
         self.presentInLatestObservation = presentInLatestObservation
@@ -329,6 +373,7 @@ public struct RuntimeVitalBedRecord: Codable, Equatable, Identifiable, Sendable 
     public let firstSeenAt: String?
     public let lastSeenAt: String?
     public let observationCount: Int
+    public let duplicateObservationCount: Int
     public let currentAnomalyCount: Int
     public let latestAnomalySeverity: VitalDBAnomalySeverity?
 
@@ -341,6 +386,7 @@ public struct RuntimeVitalBedRecord: Codable, Equatable, Identifiable, Sendable 
         firstSeenAt: String?,
         lastSeenAt: String?,
         observationCount: Int,
+        duplicateObservationCount: Int = 0,
         currentAnomalyCount: Int,
         latestAnomalySeverity: VitalDBAnomalySeverity?
     ) {
@@ -352,6 +398,7 @@ public struct RuntimeVitalBedRecord: Codable, Equatable, Identifiable, Sendable 
         self.firstSeenAt = firstSeenAt
         self.lastSeenAt = lastSeenAt
         self.observationCount = observationCount
+        self.duplicateObservationCount = duplicateObservationCount
         self.currentAnomalyCount = currentAnomalyCount
         self.latestAnomalySeverity = latestAnomalySeverity
     }
@@ -361,18 +408,27 @@ public struct RuntimeVitalRecorderHistory: Codable, Equatable, Sendable {
     public let updatedAt: String?
     public let recorders: [RuntimeVitalRecorderRecord]
     public let beds: [RuntimeVitalBedRecord]
+    public let summary: RuntimeVitalRecorderHistorySummary
     public let activityHistory: RuntimeVitalRecorderActivityHistory
+    public let readError: String?
 
     public init(
         updatedAt: String? = nil,
         recorders: [RuntimeVitalRecorderRecord] = [],
         beds: [RuntimeVitalBedRecord] = [],
-        activityHistory: RuntimeVitalRecorderActivityHistory = .unavailable()
+        summary: RuntimeVitalRecorderHistorySummary? = nil,
+        activityHistory: RuntimeVitalRecorderActivityHistory = .notProvided(),
+        readError: String? = nil
     ) {
         self.updatedAt = updatedAt
         self.recorders = recorders
         self.beds = beds
+        self.summary = summary ?? RuntimeVitalRecorderHistorySummary(
+            recorders: recorders,
+            beds: beds
+        )
         self.activityHistory = activityHistory
+        self.readError = readError
     }
 
     public init(observations: [VitalDBObservationDocument]) {
@@ -382,29 +438,42 @@ public struct RuntimeVitalRecorderHistory: Codable, Equatable, Sendable {
     public init(
         observations: [VitalDBObservationDocument],
         activityBuckets: [VitalDBRecorderActivityBucketRecord],
-        activityHistory: RuntimeVitalRecorderActivityHistory? = nil
+        activityHistory: RuntimeVitalRecorderActivityHistory? = nil,
+        readError: String? = nil
     ) {
         self.init(
             observations: observations,
             projectedActivityBuckets: activityBuckets,
-            activityHistory: activityHistory
+            activityHistory: activityHistory,
+            readError: readError
         )
     }
 
     private init(
         observations: [VitalDBObservationDocument],
         projectedActivityBuckets activityBuckets: [VitalDBRecorderActivityBucketRecord]?,
-        activityHistory: RuntimeVitalRecorderActivityHistory? = nil
+        activityHistory: RuntimeVitalRecorderActivityHistory? = nil,
+        readError: String? = nil
     ) {
         let ordered = observations.sorted { $0.observedAt < $1.observedAt }
         guard let latestObservation = ordered.last else {
-            self.init(activityHistory: activityHistory ?? .unavailable())
+            self.init(activityHistory: activityHistory ?? .notProvided(readError: readError), readError: readError)
             return
         }
 
         var builders: [String: RecorderBuilder] = [:]
         var bedBuilders: [String: BedBuilder] = [:]
+        var recorderDuplicateObservationCounts: [String: Int] = [:]
+        var bedDuplicateObservationCounts: [String: Int] = [:]
         for observation in ordered {
+            recorderDuplicateObservationCounts.merge(
+                duplicateRecorderObservationCounts(observation.recorders),
+                uniquingKeysWith: +
+            )
+            bedDuplicateObservationCounts.merge(
+                duplicateBedObservationCounts(observation.beds),
+                uniquingKeysWith: +
+            )
             let bedsByRecorder = Dictionary(
                 observation.beds.compactMap { bed in bed.vrcode.map { ($0, bed) } },
                 uniquingKeysWith: { _, latest in latest }
@@ -448,6 +517,7 @@ public struct RuntimeVitalRecorderHistory: Codable, Equatable, Sendable {
                 latestRecorder: latestRecorder,
                 latestBed: latestBed,
                 currentAnomalies: anomalies,
+                duplicateObservationCount: recorderDuplicateObservationCounts[builder.vrcode, default: 0],
                 activityTimeline: projectedActivityByVrcode?[builder.vrcode]
             )
         }
@@ -466,7 +536,11 @@ public struct RuntimeVitalRecorderHistory: Codable, Equatable, Sendable {
         let beds = bedBuilders.values.map { builder in
             let latestBed = latestBeds[builder.bedID]
             let anomalies = latestAnomaliesBySubject[builder.bedID] ?? []
-            return builder.record(latestBed: latestBed, currentAnomalies: anomalies)
+            return builder.record(
+                latestBed: latestBed,
+                currentAnomalies: anomalies,
+                duplicateObservationCount: bedDuplicateObservationCounts[builder.bedID, default: 0]
+            )
         }
         .sorted { lhs, rhs in
             switch compareReportedTimestamp(lhs.lastSeenAt, rhs.lastSeenAt) {
@@ -483,9 +557,71 @@ public struct RuntimeVitalRecorderHistory: Codable, Equatable, Sendable {
             updatedAt: latestObservation.observedAt,
             recorders: records,
             beds: beds,
+            summary: RuntimeVitalRecorderHistorySummary(
+                recorders: records,
+                beds: beds
+            ),
             activityHistory: activityHistory
                 ?? activityBuckets.map { RuntimeVitalRecorderActivityHistory.fromProjection($0) }
-                ?? .unavailable()
+                ?? .notProvided(),
+            readError: readError
+        )
+    }
+}
+
+public struct RuntimeVitalRecorderHistorySummary: Codable, Equatable, Sendable {
+    public let knownRecorders: Int
+    public let currentRecorders: Int
+    public let onlineRecorders: Int
+    public let staleRecorders: Int
+    public let recorderAnomalies: Int
+    public let knownBeds: Int
+    public let onlineBeds: Int
+    public let staleBeds: Int
+    public let bedAssignments: Int
+    public let bedAnomalies: Int
+
+    public init(
+        knownRecorders: Int = 0,
+        currentRecorders: Int = 0,
+        onlineRecorders: Int = 0,
+        staleRecorders: Int = 0,
+        recorderAnomalies: Int = 0,
+        knownBeds: Int = 0,
+        onlineBeds: Int = 0,
+        staleBeds: Int = 0,
+        bedAssignments: Int = 0,
+        bedAnomalies: Int = 0
+    ) {
+        self.knownRecorders = knownRecorders
+        self.currentRecorders = currentRecorders
+        self.onlineRecorders = onlineRecorders
+        self.staleRecorders = staleRecorders
+        self.recorderAnomalies = recorderAnomalies
+        self.knownBeds = knownBeds
+        self.onlineBeds = onlineBeds
+        self.staleBeds = staleBeds
+        self.bedAssignments = bedAssignments
+        self.bedAnomalies = bedAnomalies
+    }
+
+    public init(
+        recorders: [RuntimeVitalRecorderRecord],
+        beds: [RuntimeVitalBedRecord]
+    ) {
+        let currentRecorders = recorders.filter(\.presentInLatestObservation)
+        let currentBeds = beds.filter { $0.status != .notObserved }
+        self.init(
+            knownRecorders: recorders.count,
+            currentRecorders: currentRecorders.count,
+            onlineRecorders: currentRecorders.filter { $0.status == .online }.count,
+            staleRecorders: currentRecorders.filter { $0.status == .stale }.count,
+            recorderAnomalies: currentRecorders.reduce(0) { $0 + $1.currentAnomalyCount },
+            knownBeds: beds.count,
+            onlineBeds: currentBeds.filter { $0.status == .online }.count,
+            staleBeds: currentBeds.filter { $0.status == .stale }.count,
+            bedAssignments: currentBeds.filter { $0.vrcode?.isEmpty == false }.count,
+            bedAnomalies: currentBeds.reduce(0) { $0 + $1.currentAnomalyCount }
         )
     }
 }
@@ -531,11 +667,20 @@ public struct RuntimeVitalRecorderActivityHistory: Codable, Equatable, Sendable 
             readError: readError
         )
     }
+
+    public static func notProvided(readError: String? = nil) -> RuntimeVitalRecorderActivityHistory {
+        RuntimeVitalRecorderActivityHistory(
+            source: .notProvided,
+            bucketCount: 0,
+            readError: readError
+        )
+    }
 }
 
 public enum RuntimeVitalRecorderActivityHistorySource: String, Codable, Equatable, Sendable {
     case sqliteProjection
     case unavailable
+    case notProvided
 }
 
 public enum RuntimeVitalRelationshipEventType: String, Codable, Equatable, Sendable {
@@ -649,23 +794,23 @@ public struct RuntimeVitalRelationshipHistory: Codable, Equatable, Sendable {
 
 public struct RuntimeVitalRecorderSummary: Codable, Equatable, Sendable {
     public let source: RuntimeVitalRecorderSummarySource
-    public let activeConnections: Int
-    public let knownRecorders: Int
-    public let onlineRecorders: Int
-    public let staleRecorders: Int
-    public let knownBeds: Int
-    public let recorderAnomalies: Int
+    public let activeConnections: Int?
+    public let knownRecorders: Int?
+    public let onlineRecorders: Int?
+    public let staleRecorders: Int?
+    public let knownBeds: Int?
+    public let recorderAnomalies: Int?
     public let observedAt: String?
     public let latestRecorder: RuntimeVitalRecorderReference?
 
     public init(
         source: RuntimeVitalRecorderSummarySource,
-        activeConnections: Int,
-        knownRecorders: Int,
-        onlineRecorders: Int,
-        staleRecorders: Int,
-        knownBeds: Int,
-        recorderAnomalies: Int,
+        activeConnections: Int?,
+        knownRecorders: Int?,
+        onlineRecorders: Int?,
+        staleRecorders: Int?,
+        knownBeds: Int?,
+        recorderAnomalies: Int?,
         observedAt: String?,
         latestRecorder: RuntimeVitalRecorderReference?
     ) {
@@ -681,8 +826,18 @@ public struct RuntimeVitalRecorderSummary: Codable, Equatable, Sendable {
     }
 
     public init(status: RuntimeStatus, vitalDBObservation: VitalDBObservationDocument? = nil) {
-        let observation = vitalDBObservation ?? status.vitalDBObservation
-        let activeConnections = status.containerObservation?.auditProxyStatus?.activeRecorderConnections ?? 0
+        self.init(
+            containerObservation: status.containerObservation,
+            vitalDBObservation: vitalDBObservation ?? status.vitalDBObservation
+        )
+    }
+
+    public init(
+        containerObservation: RuntimeContainerObservation?,
+        vitalDBObservation: VitalDBObservationDocument?
+    ) {
+        let observation = vitalDBObservation
+        let activeConnections = containerObservation?.auditProxyStatus?.activeRecorderConnections
 
         if let observation {
             let recorders = uniqueRecordersByVrcode(observation.recorders)
@@ -713,14 +868,30 @@ public struct RuntimeVitalRecorderSummary: Codable, Equatable, Sendable {
         self.init(
             source: .unavailable,
             activeConnections: activeConnections,
-            knownRecorders: 0,
-            onlineRecorders: 0,
-            staleRecorders: 0,
-            knownBeds: 0,
-            recorderAnomalies: 0,
+            knownRecorders: nil,
+            onlineRecorders: nil,
+            staleRecorders: nil,
+            knownBeds: nil,
+            recorderAnomalies: nil,
             observedAt: nil,
             latestRecorder: nil
         )
+    }
+}
+
+private func duplicateRecorderObservationCounts(
+    _ recorders: [VitalDBRecorderObservation]
+) -> [String: Int] {
+    let grouped = Dictionary(grouping: recorders, by: \.vrcode)
+    return grouped.compactMapValues { observations in
+        observations.count > 1 ? observations.count - 1 : nil
+    }
+}
+
+private func duplicateBedObservationCounts(_ beds: [VitalDBBedObservation]) -> [String: Int] {
+    let grouped = Dictionary(grouping: beds, by: \.bedID)
+    return grouped.compactMapValues { observations in
+        observations.count > 1 ? observations.count - 1 : nil
     }
 }
 
@@ -774,6 +945,20 @@ private func preferredBed(
 }
 
 private func compareReportedTimestamp(_ lhs: String?, _ rhs: String?) -> ComparisonResult {
+    let lhsDate = reportedTimestampDate(lhs)
+    let rhsDate = reportedTimestampDate(rhs)
+    if let lhsDate, let rhsDate {
+        if lhsDate == rhsDate {
+            return .orderedSame
+        }
+        return lhsDate > rhsDate ? .orderedDescending : .orderedAscending
+    }
+    if lhsDate != nil {
+        return .orderedDescending
+    }
+    if rhsDate != nil {
+        return .orderedAscending
+    }
     switch (lhs, rhs) {
     case let (lhs?, rhs?) where lhs != rhs:
         return lhs > rhs ? .orderedDescending : .orderedAscending
@@ -786,6 +971,18 @@ private func compareReportedTimestamp(_ lhs: String?, _ rhs: String?) -> Compari
     case (nil, nil):
         return .orderedSame
     }
+}
+
+private func reportedTimestampDate(_ value: String?) -> Date? {
+    guard let value else {
+        return nil
+    }
+    let formatter = ISO8601DateFormatter()
+    if let date = formatter.date(from: value) {
+        return date
+    }
+    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    return formatter.date(from: value)
 }
 
 private func projectedActivityTimelineByVrcode(
@@ -824,12 +1021,13 @@ private struct RecorderBuilder {
     mutating func observe(
         recorder: VitalDBRecorderObservation,
         bed: VitalDBBedObservation?,
-        observedAt: String
+        observedAt _: String
     ) {
         observationCount += 1
-        let seenAt = recorder.lastSeenAt ?? observedAt
-        firstSeenAt = minTimestamp(firstSeenAt, seenAt)
-        lastSeenAt = maxTimestamp(lastSeenAt, seenAt)
+        if let seenAt = recorder.lastSeenAt {
+            firstSeenAt = minTimestamp(firstSeenAt, seenAt)
+            lastSeenAt = maxTimestamp(lastSeenAt, seenAt)
+        }
         lastIP = recorder.ip ?? lastIP
         version = recorder.version ?? version
         bedID = bed?.bedID ?? bedID
@@ -841,29 +1039,32 @@ private struct RecorderBuilder {
         latestRecorder: VitalDBRecorderObservation?,
         latestBed: VitalDBBedObservation?,
         currentAnomalies: [VitalDBAnomalyObservation],
+        duplicateObservationCount: Int,
         activityTimeline projectedActivityTimeline: [RuntimeVitalRecorderActivityPoint]? = nil
     ) -> RuntimeVitalRecorderRecord {
-        RuntimeVitalRecorderRecord(
+        let presentInLatestObservation = latestRecorder != nil
+        return RuntimeVitalRecorderRecord(
             vrcode: vrcode,
             status: status(latestRecorder),
-            lastIP: latestRecorder?.ip ?? lastIP,
-            version: latestRecorder?.version ?? version,
-            bedID: latestBed?.bedID ?? bedID,
-            bedName: latestBed?.name ?? bedName,
-            patientConnected: latestBed?.patientConnected ?? patientConnected,
+            lastIP: presentInLatestObservation ? latestRecorder?.ip : lastIP,
+            version: presentInLatestObservation ? latestRecorder?.version : version,
+            bedID: presentInLatestObservation ? latestBed?.bedID : bedID,
+            bedName: presentInLatestObservation ? latestBed?.name : bedName,
+            patientConnected: presentInLatestObservation ? latestBed?.patientConnected : patientConnected,
             firstSeenAt: firstSeenAt,
-            lastSeenAt: latestRecorder?.lastSeenAt ?? lastSeenAt,
+            lastSeenAt: presentInLatestObservation ? latestRecorder?.lastSeenAt : lastSeenAt,
             observationCount: observationCount,
+            duplicateObservationCount: duplicateObservationCount,
             currentAnomalyCount: currentAnomalies.count,
             latestAnomalySeverity: currentAnomalies.sorted { $0.observedAt > $1.observedAt }.first?.severity,
-            presentInLatestObservation: latestRecorder != nil,
-            activityTimeline: projectedActivityTimeline ?? []
+            presentInLatestObservation: presentInLatestObservation,
+            activityTimeline: projectedActivityTimeline
         )
     }
 
     private func status(_ recorder: VitalDBRecorderObservation?) -> RuntimeVitalRecorderStatus {
         guard let recorder else {
-            return .offline
+            return .notObserved
         }
         if recorder.online {
             return .online
@@ -898,11 +1099,12 @@ private struct BedBuilder {
     var lastSeenAt: String?
     var observationCount = 0
 
-    mutating func observe(bed: VitalDBBedObservation, observedAt: String) {
+    mutating func observe(bed: VitalDBBedObservation, observedAt _: String) {
         observationCount += 1
-        let seenAt = bed.lastSeenAt ?? observedAt
-        firstSeenAt = minTimestamp(firstSeenAt, seenAt)
-        lastSeenAt = maxTimestamp(lastSeenAt, seenAt)
+        if let seenAt = bed.lastSeenAt {
+            firstSeenAt = minTimestamp(firstSeenAt, seenAt)
+            lastSeenAt = maxTimestamp(lastSeenAt, seenAt)
+        }
         name = bed.name ?? name
         vrcode = bed.vrcode ?? vrcode
         patientConnected = bed.patientConnected ?? patientConnected
@@ -910,17 +1112,20 @@ private struct BedBuilder {
 
     func record(
         latestBed: VitalDBBedObservation?,
-        currentAnomalies: [VitalDBAnomalyObservation]
+        currentAnomalies: [VitalDBAnomalyObservation],
+        duplicateObservationCount: Int
     ) -> RuntimeVitalBedRecord {
-        RuntimeVitalBedRecord(
+        let presentInLatestObservation = latestBed != nil
+        return RuntimeVitalBedRecord(
             bedID: bedID,
-            name: latestBed?.name ?? name,
-            vrcode: latestBed?.vrcode ?? vrcode,
+            name: presentInLatestObservation ? latestBed?.name : name,
+            vrcode: presentInLatestObservation ? latestBed?.vrcode : vrcode,
             status: status(latestBed),
-            patientConnected: latestBed?.patientConnected ?? patientConnected,
+            patientConnected: presentInLatestObservation ? latestBed?.patientConnected : patientConnected,
             firstSeenAt: firstSeenAt,
-            lastSeenAt: latestBed?.lastSeenAt ?? lastSeenAt,
+            lastSeenAt: presentInLatestObservation ? latestBed?.lastSeenAt : lastSeenAt,
             observationCount: observationCount,
+            duplicateObservationCount: duplicateObservationCount,
             currentAnomalyCount: currentAnomalies.count,
             latestAnomalySeverity: currentAnomalies.sorted { $0.observedAt > $1.observedAt }.first?.severity
         )
@@ -928,9 +1133,9 @@ private struct BedBuilder {
 
     private func status(_ bed: VitalDBBedObservation?) -> RuntimeVitalBedStatus {
         guard let bed else {
-            return .offline
+            return .notObserved
         }
-        return bed.online ? .online : .stale
+        return bed.online ? .online : .offline
     }
 
     private func minTimestamp(_ current: String?, _ next: String) -> String {
@@ -986,7 +1191,7 @@ public struct RuntimeVitalDBObservationSnapshot: Codable, Equatable, Sendable {
         readError: String? = nil
     ) -> Self {
         if let observation {
-            return loaded(observation)
+            return Self(state: .loaded, observation: observation, readError: readError)
         }
         if let readError {
             return failed(readError: readError)

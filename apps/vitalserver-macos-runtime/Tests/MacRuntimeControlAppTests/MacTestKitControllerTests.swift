@@ -25,6 +25,7 @@ final class MacTestKitControllerTests: XCTestCase {
         XCTAssertEqual(status.apiBaseURL, "http://127.0.0.1:18322")
         XCTAssertEqual(status.state, .stopped)
         XCTAssertFalse(status.lastError?.contains("VM IP") ?? false)
+        XCTAssertEqual(status.readIssues.map(\.source), ["testKitAPI", "containerService"])
     }
 
     func testRuntimeStatusVMIPEndpointReportsMissingVMIP() async {
@@ -45,6 +46,12 @@ final class MacTestKitControllerTests: XCTestCase {
             status.lastError,
             "TestKit container API is unavailable because the VM IP is not known yet."
         )
+        XCTAssertEqual(status.readIssues, [
+            RuntimeTestKitReadIssue(
+                source: "apiEndpoint",
+                message: "TestKit container API is unavailable because the VM IP is not known yet."
+            ),
+        ])
     }
 
     func testHealthyAPIEndpointLoadsSessionsAndBeds() async throws {
@@ -157,6 +164,67 @@ final class MacTestKitControllerTests: XCTestCase {
 
         XCTAssertEqual(status.state, .failed)
         XCTAssertEqual(status.lastError, "TestKit container API read failed: boom")
+        XCTAssertEqual(status.readIssues, [
+            RuntimeTestKitReadIssue(
+                source: "containerAPI",
+                message: "TestKit container API read failed: boom"
+            ),
+        ])
+    }
+
+    func testControllerReportsInvalidUTF8HTTPFailureBody() async throws {
+        TestKitURLProtocol.start()
+        TestKitURLProtocol.register(method: "GET", path: "/sessions") {
+            TestKitURLProtocol.Response(statusCode: 500, data: Data([0xff]))
+        }
+        let controller = makeHTTPController()
+
+        let status = await controller.loadTestKitStatus()
+
+        XCTAssertEqual(status.state, .failed)
+        XCTAssertEqual(
+            status.lastError,
+            "TestKit container API read failed: HTTP 500 response body is not valid UTF-8"
+        )
+        XCTAssertEqual(status.readIssues, [
+            RuntimeTestKitReadIssue(
+                source: "containerAPI",
+                message: "TestKit container API read failed: HTTP 500 response body is not valid UTF-8"
+            ),
+        ])
+    }
+
+    func testControllerReportsMissingServiceStateAndHealth() async {
+        let controller = MacTestKitController(
+            configuration: MacTestKitControllerConfiguration(
+                enabled: true,
+                apiEndpoint: .explicit(baseURL: "http://127.0.0.1:18322/")
+            ),
+            statusProvider: {
+                RuntimeStatus(
+                    vmIP: nil,
+                    containerObservation: RuntimeContainerObservation(
+                        auditProxyHTTP: "200",
+                        auditProxyStatus: nil,
+                        containerLogsPresent: false,
+                        containerLogsBytes: nil,
+                        composeServices: [
+                            RuntimeContainerServiceObservation(service: "testkit"),
+                        ]
+                    )
+                )
+            },
+            apiHealthCheck: { _ in false }
+        )
+
+        let status = await controller.loadTestKitStatus()
+
+        XCTAssertEqual(status.state, .stopped)
+        XCTAssertEqual(status.readIssues.map(\.source), [
+            "testKitAPI",
+            "containerService.state",
+            "containerService.health",
+        ])
     }
 
     private func makeHTTPController() -> MacTestKitController {

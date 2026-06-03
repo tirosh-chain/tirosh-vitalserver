@@ -2,11 +2,43 @@ import Foundation
 import Core
 import Contracts
 
+public struct RuntimeStorageCapacityValues: Equatable, Sendable {
+    public let total: Int?
+    public let availableForImportantUsage: Int64?
+    public let available: Int?
+
+    public init(
+        total: Int?,
+        availableForImportantUsage: Int64?,
+        available: Int?
+    ) {
+        self.total = total
+        self.availableForImportantUsage = availableForImportantUsage
+        self.available = available
+    }
+}
+
 public struct SystemRuntimeStorageUsageProvider: RuntimeStorageUsageProviding {
     private let fileStore: RuntimeFileStore
+    private let loadCapacityValues: (URL) throws -> RuntimeStorageCapacityValues
 
-    public init(fileStore: RuntimeFileStore = SystemRuntimeFileStore()) {
+    public init(
+        fileStore: RuntimeFileStore = SystemRuntimeFileStore(),
+        loadCapacityValues: @escaping (URL) throws -> RuntimeStorageCapacityValues = { url in
+            let values = try url.resourceValues(forKeys: [
+                .volumeAvailableCapacityForImportantUsageKey,
+                .volumeAvailableCapacityKey,
+                .volumeTotalCapacityKey,
+            ])
+            return RuntimeStorageCapacityValues(
+                total: values.volumeTotalCapacity,
+                availableForImportantUsage: values.volumeAvailableCapacityForImportantUsage,
+                available: values.volumeAvailableCapacity
+            )
+        }
+    ) {
         self.fileStore = fileStore
+        self.loadCapacityValues = loadCapacityValues
     }
 
     public func storageUsage(for path: String) -> RuntimeStorageUsageResult {
@@ -14,18 +46,19 @@ public struct SystemRuntimeStorageUsageProvider: RuntimeStorageUsageProviding {
             return .unavailable
         }
         do {
-            let values = try volumeURL.resourceValues(forKeys: [
-                .volumeAvailableCapacityForImportantUsageKey,
-                .volumeAvailableCapacityKey,
-                .volumeTotalCapacityKey,
-            ])
-            guard let total = values.volumeTotalCapacity, total > 0 else {
+            let values = try loadCapacityValues(volumeURL)
+            guard let total = values.total, total > 0 else {
                 return .unavailable
             }
 
-            let available = values.volumeAvailableCapacityForImportantUsage
-                ?? values.volumeAvailableCapacity.map(Int64.init)
-                ?? 0
+            let available: Int64
+            if let importantUsageCapacity = values.availableForImportantUsage {
+                available = importantUsageCapacity
+            } else if let standardCapacity = values.available {
+                available = Int64(standardCapacity)
+            } else {
+                return .unavailable
+            }
             return .loaded(
                 ResourceUsage(
                     usedBytes: max(Int64(total) - available, 0),

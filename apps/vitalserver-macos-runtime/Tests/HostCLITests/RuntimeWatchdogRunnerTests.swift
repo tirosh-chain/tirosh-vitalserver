@@ -79,6 +79,7 @@ final class RuntimeWatchdogRunnerTests: XCTestCase {
     func testGuestReadinessFailureRestartsVMGuestLogSyncAndProxy() throws {
         let harness = WatchdogHarness(snapshots: [
             healthSnapshot(
+                vmLifecycle: runningLifecycle(),
                 hostProxyHTTP: "502",
                 guestHTTP: "503",
                 failureReasons: [.hostProxyHTTP("502"), .guestHTTP("503")]
@@ -285,5 +286,13 @@ private func healthSnapshot(
         redisUIHTTP: redisUIHTTP,
         swaggerUIHTTP: swaggerUIHTTP,
         failureReasons: failureReasons
+    )
+}
+
+private func runningLifecycle() -> RuntimeVMLifecycleDocument {
+    RuntimeVMLifecycleDocument(
+        state: .running,
+        startedAt: "2026-05-31T00:00:00Z",
+        updatedAt: "2026-05-31T00:00:01Z"
     )
 }

@@ -107,7 +107,7 @@ export function useHostLogs(request: {
     queryFn: () =>
       consoleGateway.readLogs(parseConsoleRequest(runtimeLogTextRequestSchema, {
         source: request.source,
-        helperMessage: "",
+        helperMessage: null,
         lineLimit: request.lineLimit
       })),
     refetchInterval: request.live ? 2_000 : false
@@ -297,7 +297,7 @@ export function useSessionTestKitAction(
   action: "stop" | "pause" | "resume" | "delete"
 ) {
   const consoleGateway = useConsoleGateway();
-  return useTestKitMutation((sessionID: string | null) => {
+  return useTestKitMutation((sessionID: string) => {
     const request = testKitSessionSelectionRequest(sessionID);
     switch (action) {
       case "stop":

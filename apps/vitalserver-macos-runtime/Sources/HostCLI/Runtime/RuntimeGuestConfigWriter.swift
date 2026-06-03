@@ -9,6 +9,9 @@ struct RuntimeGuestConfigWriter {
     var restrictSecretFile: (URL) throws -> Void
 
     func writeInstallConfig(settings: InstallSettings) throws {
+        guard let adminPassword = settings.adminPassword else {
+            throw LauncherError.missingArgument("install settings adminPassword is required")
+        }
         let document = GuestRuntimeConfigDocument(
             vitalserverHttpPort: Constants.Guest.vitalserverHTTPPort,
             redisHost: Constants.Guest.redisHost,
@@ -16,7 +19,7 @@ struct RuntimeGuestConfigWriter {
             trustProxy: true,
             publicHost: settings.publicHost,
             publicPort: settings.publicPort,
-            adminPassword: settings.adminPassword ?? Constants.Guest.defaultAdminPassword,
+            adminPassword: adminPassword,
             vitalFilesDirectory: Constants.Defaults.vitalFilesDirectoryGuestMountPath,
             redisBackupRetentionCount: Constants.Defaults.redisBackupRetentionCount,
             redisUiPort: Constants.Guest.redisUIPort,

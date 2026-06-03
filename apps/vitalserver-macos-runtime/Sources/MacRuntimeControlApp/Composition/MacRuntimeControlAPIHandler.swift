@@ -82,7 +82,7 @@ struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
         RuntimeLogTextResponse(
             text: await hostClient.loadLogText(
                 sourceID: request.source,
-                helperMessage: request.helperMessage,
+                helperMessage: request.helperMessage ?? "",
                 lineLimit: request.lineLimit
             )
         )

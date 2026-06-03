@@ -47,6 +47,10 @@ source인지 명확하지 않다는 점입니다.
 - compose service와 container는 stdout/stderr에 raw log를 남깁니다.
 - upstream VitalServer app은 제품 runtime event를 직접 알 필요가 없습니다.
 
+`vitaldb-observer` observation의 `readIssues`는 Redis audit event, proxy/access log, bed JSON처럼 source별
+read/parse 문제가 있었음을 나타냅니다. 관련 `readIssues`가 있는 빈 `proxyConnections`, 빈 activity, 또는
+부분 recorder/bed snapshot은 실제 관측값 0과 같은 의미가 아닙니다.
+
 각 app은 제품 전체 상태를 판단하지 않습니다.
 
 ### Guest collectors

@@ -54,9 +54,26 @@ function createGateway(capabilities: { canUseTestTools: boolean }) {
     getCapabilities: vi.fn().mockResolvedValue(capabilities),
     getOverview: vi.fn().mockResolvedValue({
       settings: {
+        readIssues: [],
+        cpuCount: 2,
+        memoryGiB: 4,
+        diskGiB: 32,
+        minimumDiskGiB: 4,
+        networkMode: "shared",
+        bridgedInterface: "",
         proxyPort: 18080,
         runtimeControlPort: 18321,
-        vitalFilesDirectory: "/Users/shared/vital"
+        vitalFilesDirectory: "/Users/shared/vital",
+        publicHost: "",
+        publicPort: 18080,
+        adminPassword: "",
+        changeAdminPassword: false,
+        startOnBoot: true,
+        startOnBootConfigurable: true,
+        autoRecoveryEnabled: true,
+        preventSystemSleep: true,
+        redisBackupRetentionCount: 30,
+        restartAfterSave: true
       },
       status: {
         runtimeState: "healthy",

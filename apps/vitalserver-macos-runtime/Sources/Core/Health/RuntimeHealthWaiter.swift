@@ -50,41 +50,45 @@ public enum RuntimeHealthWaiter {
         onProgress: ([RuntimeFailureReason]) -> Void,
         sleep: () -> Void
     ) -> RuntimeHealthWaitResult {
-        var lastReasons: [RuntimeFailureReason] = []
+        var accumulatedReasons: [RuntimeFailureReason] = []
 
         for attempt in 0..<configuration.maxAttempts {
             let observation = observe()
             let pendingServiceReasons = pendingRequiredServiceReasons(observation)
+            let snapshotReasons = explicitSnapshotFailureReasons(observation.snapshot)
+            let currentReasons = uniqueReasons(pendingServiceReasons + snapshotReasons)
+
+            if let bootstrapFailure = currentReasons.first(where: { $0.isGuestBootstrapFailure }) {
+                return .failedEarly(bootstrapFailure)
+            }
+
             if !pendingServiceReasons.isEmpty {
-                lastReasons = pendingServiceReasons
+                accumulatedReasons = uniqueReasons(accumulatedReasons + currentReasons)
                 publishProgressIfNeeded(
                     attempt: attempt,
                     configuration: configuration,
-                    reasons: pendingServiceReasons,
+                    reasons: currentReasons,
                     onProgress: onProgress
                 )
                 sleep()
                 continue
             }
 
-            if let bootstrapFailure = observation.snapshot.failureReasons.first(where: { $0.isGuestBootstrapFailure }) {
-                return .failedEarly(bootstrapFailure)
-            }
             if RuntimeHealthSnapshotPolicy.isHealthy(observation.snapshot) {
                 return .healthy
             }
 
-            lastReasons = observation.snapshot.failureReasons
+            accumulatedReasons = uniqueReasons(accumulatedReasons + currentReasons)
             publishProgressIfNeeded(
                 attempt: attempt,
                 configuration: configuration,
-                reasons: observation.snapshot.failureReasons,
+                reasons: currentReasons,
                 onProgress: onProgress
             )
             sleep()
         }
 
-        return .timedOut(lastReasons)
+        return .timedOut(accumulatedReasons)
     }
 
     private static func pendingRequiredServiceReasons(_ observation: RuntimeHealthWaitObservation) -> [RuntimeFailureReason] {
@@ -98,6 +102,21 @@ public enum RuntimeHealthWaiter {
             return [.watchdogService("not-loaded")]
         }
         return []
+    }
+
+    private static func explicitSnapshotFailureReasons(_ snapshot: RuntimeHealthSnapshot) -> [RuntimeFailureReason] {
+        if let missingIssue = RuntimeHealthSnapshotPolicy.missingFailureReasonIssue(snapshot) {
+            return [.unknown(missingIssue)]
+        }
+        return snapshot.failureReasons
+    }
+
+    private static func uniqueReasons(_ reasons: [RuntimeFailureReason]) -> [RuntimeFailureReason] {
+        var result: [RuntimeFailureReason] = []
+        for reason in reasons where !result.contains(reason) {
+            result.append(reason)
+        }
+        return result
     }
 
     private static func publishProgressIfNeeded(

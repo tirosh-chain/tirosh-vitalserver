@@ -16,8 +16,8 @@ final class JSONLRuntimeEventRepositoryTests: XCTestCase {
         try repository.append(event(id: "event-1", status: .healthy))
         try repository.append(event(id: "event-2", status: .degraded))
 
-        XCTAssertEqual(repository.recent(limit: 1).map(\.id), ["event-2"])
-        XCTAssertEqual(repository.recent(limit: 10).map(\.id), ["event-1", "event-2"])
+        XCTAssertEqual(repository.query(RuntimeEventQuery(limit: 1)).events.map(\.id), ["event-2"])
+        XCTAssertEqual(repository.query(RuntimeEventQuery(limit: 10)).events.map(\.id), ["event-1", "event-2"])
     }
 
     func testRotatesRuntimeEventsAndReadsAcrossRotatedFiles() throws {
@@ -39,8 +39,8 @@ final class JSONLRuntimeEventRepositoryTests: XCTestCase {
 
         XCTAssertTrue(FileManager.default.fileExists(atPath: "\(url.path).1"))
         XCTAssertTrue(FileManager.default.fileExists(atPath: "\(url.path).2"))
-        XCTAssertEqual(repository.recent(limit: 10).map(\.id), ["event-1", "event-2", "event-3"])
-        XCTAssertEqual(repository.recent(limit: 2).map(\.id), ["event-2", "event-3"])
+        XCTAssertEqual(repository.query(RuntimeEventQuery(limit: 10)).events.map(\.id), ["event-1", "event-2", "event-3"])
+        XCTAssertEqual(repository.query(RuntimeEventQuery(limit: 2)).events.map(\.id), ["event-2", "event-3"])
     }
 
     func testAllResultReportsInvalidLinesWithoutDroppingValidEvents() throws {

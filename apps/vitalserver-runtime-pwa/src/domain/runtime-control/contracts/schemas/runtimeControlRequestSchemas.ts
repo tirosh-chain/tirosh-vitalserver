@@ -17,7 +17,7 @@ import type {
 import { runtimeSettingsSchema } from "./runtimeControlSchemas";
 
 const nonEmptyString = z.string().trim().min(1);
-const nullableNonEmptyString = z
+const optionalNullableNonEmptyString = z
   .string()
   .trim()
   .min(1)
@@ -63,7 +63,7 @@ export const runtimeLogTextRequestSchema = z.object({
     "updateActivation",
     "containers"
   ]),
-  helperMessage: z.string(),
+  helperMessage: z.string().nullable(),
   lineLimit: z.number().int().min(1).max(5_000)
 }) satisfies z.ZodType<RuntimeLogTextRequest>;
 
@@ -106,7 +106,7 @@ export const runtimeTestKitVirtualRecorderStartRequestSchema = z
     ]),
     recorders: z.number().int().min(1).max(500),
     bedRoomNames: z.array(nonEmptyString).min(1),
-    vrcode: nullableNonEmptyString,
+    vrcode: optionalNullableNonEmptyString,
     version: nonEmptyString,
     intervalSeconds: z.number().positive(),
     durationSeconds: z.number().positive().nullable().optional(),
@@ -120,11 +120,11 @@ export const runtimeTestKitVirtualRecorderStartRequestSchema = z
   }) satisfies z.ZodType<RuntimeTestKitVirtualRecorderStartRequest>;
 
 export const runtimeTestKitSessionSelectionRequestSchema = z.object({
-  sessionID: nullableNonEmptyString
+  sessionID: nonEmptyString
 }) satisfies z.ZodType<RuntimeTestKitSessionSelectionRequest>;
 
 export const runtimeTestKitRestartRequestSchema = z.object({
-  sessionID: nullableNonEmptyString,
+  sessionID: nonEmptyString,
   bedRoomNames: z.array(nonEmptyString).min(1)
 }) satisfies z.ZodType<RuntimeTestKitRestartRequest>;
 

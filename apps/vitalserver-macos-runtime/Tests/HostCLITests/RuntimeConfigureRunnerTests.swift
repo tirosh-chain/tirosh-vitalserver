@@ -100,6 +100,20 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
         }
     }
 
+    func testConfigureFailsWhenGuestRuntimeConfigIsMissing() throws {
+        let harness = try Harness()
+        harness.fileStore.files[harness.paths.guestRuntimeConfig] = nil
+
+        XCTAssertThrowsError(try harness.runner.configure(RuntimeConfigureCommand(
+            changes: [.autoRecovery(false)]
+        ))) { error in
+            guard case LauncherError.missingFile(let path) = error else {
+                return XCTFail("expected missingFile, got \(error)")
+            }
+            XCTAssertEqual(path, harness.paths.guestRuntimeConfig.path)
+        }
+    }
+
     final class Harness {
         let paths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
         let fileStore = RuntimeFileStoreSpy()

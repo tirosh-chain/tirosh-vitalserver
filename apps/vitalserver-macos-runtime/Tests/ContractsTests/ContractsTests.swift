@@ -139,6 +139,37 @@ final class ContractsTests: XCTestCase {
         ])
     }
 
+    func testRuntimeContainerObservationPreservesReadErrors() throws {
+        let json = """
+        {
+          "auditProxyHTTP": "invalid-response",
+          "auditProxyStatus": null,
+          "auditProxyStatusReadError": "decode-failed",
+          "runtimeStateFileUpdatedAt": null,
+          "runtimeStateFileMetadataError": "mtime-read-failed",
+          "containerLogsPresent": true,
+          "containerLogsBytes": null,
+          "containerLogsMetadataError": "size-read-failed",
+          "composeServices": [],
+          "composeServicesReadError": "guest-runtime-state-invalid"
+        }
+        """
+
+        let observation = try JSONDecoder().decode(RuntimeContainerObservation.self, from: Data(json.utf8))
+
+        XCTAssertEqual(observation.auditProxyStatusReadError, "decode-failed")
+        XCTAssertEqual(observation.runtimeStateFileMetadataError, "mtime-read-failed")
+        XCTAssertEqual(observation.containerLogsMetadataError, "size-read-failed")
+        XCTAssertEqual(observation.composeServices, [])
+        XCTAssertEqual(observation.composeServicesReadError, "guest-runtime-state-invalid")
+
+        let encoded = try JSONDecoder().decode(
+            RuntimeContainerObservation.self,
+            from: JSONEncoder().encode(observation)
+        )
+        XCTAssertEqual(encoded, observation)
+    }
+
     func testDecodesActivationResultV1() throws {
         let document = try decodeFixture(
             GuestUpdateActivationResultDocument.self,
@@ -281,6 +312,7 @@ final class ContractsTests: XCTestCase {
             .serviceNotLoaded("not loaded"),
             .missingIPAddress,
             .runtimeStateMissing,
+            .runtimeStateInvalid,
             .runtimeStateStale,
             .launchFailed("virtualization"),
             .invalidConfiguration("network"),
@@ -290,6 +322,9 @@ final class ContractsTests: XCTestCase {
             .guestFilesystemReadOnly,
             .guestDiskIO,
             .guestHTTP("failed"),
+            .guestHTTPProbeFailed("failed"),
+            .guestBootstrapResultMissing,
+            .guestBootstrapResultUnavailable,
             .guestBootstrapMissingRuntimePackages,
             .guestBootstrapFailed,
         ]
@@ -301,6 +336,7 @@ final class ContractsTests: XCTestCase {
             "vm-service-state-not loaded",
             "vm-missing-ip-address",
             "vm-runtime-state-missing",
+            "vm-runtime-state-invalid",
             "vm-runtime-state-stale",
             "vm-launch-failed-virtualization",
             "vm-invalid-configuration-network",
@@ -310,6 +346,9 @@ final class ContractsTests: XCTestCase {
             "vm-guest-filesystem-read-only",
             "vm-guest-disk-io-error",
             "vm-guest-http-failed",
+            "vm-guest-http-probe-failed-failed",
+            "vm-guest-bootstrap-result-missing",
+            "vm-guest-bootstrap-result-unavailable",
             "vm-guest-bootstrap-missing-runtime-packages",
             "vm-guest-bootstrap-failed",
         ])
@@ -328,6 +367,15 @@ final class ContractsTests: XCTestCase {
         XCTAssertEqual(RuntimeVMError.runtimeStateMissing.category, .guestAgent)
         XCTAssertEqual(RuntimeVMError.runtimeStateMissing.recoveryAction, .restartGuestAgent)
         XCTAssertFalse(RuntimeVMError.runtimeStateMissing.requiresDataPreservationBeforeRecovery)
+        XCTAssertEqual(RuntimeVMError.runtimeStateInvalid.category, .guestAgent)
+        XCTAssertEqual(RuntimeVMError.runtimeStateInvalid.recoveryAction, .restartGuestAgent)
+        XCTAssertEqual(RuntimeVMError.guestHTTPProbeFailed("failed").category, .networking)
+        XCTAssertEqual(RuntimeVMError.guestHTTPProbeFailed("failed").recoveryAction, .waitForGuest)
+
+        XCTAssertEqual(RuntimeVMError.guestBootstrapResultMissing.category, .guestBootstrap)
+        XCTAssertEqual(RuntimeVMError.guestBootstrapResultMissing.recoveryAction, .waitForGuest)
+        XCTAssertEqual(RuntimeVMError.guestBootstrapResultUnavailable.category, .guestBootstrap)
+        XCTAssertEqual(RuntimeVMError.guestBootstrapResultUnavailable.recoveryAction, .inspectLogs)
     }
 
     func testRuntimeFailureReasonsDecodeAsTypedCodes() throws {
@@ -336,11 +384,18 @@ final class ContractsTests: XCTestCase {
           "missing-vm-bin",
           "vm-service-not loaded",
           "host-proxy-http-502",
+          "guest-http-probe-failed-failed",
           "audit-proxy-http-failed",
           "container-service-app-state-unhealthy",
+          "container-observation-missing",
+          "container-observation-read-failed-permission_denied",
           "vitaldb-anomaly-duplicate-ip-subject-10.0.0.10",
+          "vitaldb-observation-missing",
+          "vitaldb-observation-read-failed-decode_failed",
           "proxy-port-80-in-use-by-nginx-1234",
           "host-proxy-listener-scan-failed-port-80-exit-1",
+          "guest-bootstrap-result-missing",
+          "guest-bootstrap-result-unavailable",
           "guest-bootstrap-missing-runtime-packages",
           "future-reason"
         ]
@@ -350,13 +405,20 @@ final class ContractsTests: XCTestCase {
         XCTAssertEqual(reasons[0], .missingVMBin)
         XCTAssertEqual(reasons[1], .vmService("not loaded"))
         XCTAssertEqual(reasons[2], .hostProxyHTTP("502"))
-        XCTAssertEqual(reasons[3], .auditProxyHTTP("failed"))
-        XCTAssertEqual(reasons[4], .containerService(service: "app", state: "unhealthy"))
-        XCTAssertEqual(reasons[5], .vitalDBAnomaly(kind: "duplicate-ip", subject: "10.0.0.10"))
-        XCTAssertEqual(reasons[6], .proxyPortInUse(port: 80, listeners: "nginx-1234"))
-        XCTAssertEqual(reasons[7], .hostProxyListenerScanFailed(port: 80, exitCode: 1))
-        XCTAssertEqual(reasons[8], .guestBootstrapMissingRuntimePackages)
-        XCTAssertEqual(reasons[9], .unknown("future-reason"))
+        XCTAssertEqual(reasons[3], .guestHTTPProbeFailed("failed"))
+        XCTAssertEqual(reasons[4], .auditProxyHTTP("failed"))
+        XCTAssertEqual(reasons[5], .containerService(service: "app", state: "unhealthy"))
+        XCTAssertEqual(reasons[6], .containerObservationMissing)
+        XCTAssertEqual(reasons[7], .containerObservationReadFailed("permission_denied"))
+        XCTAssertEqual(reasons[8], .vitalDBAnomaly(kind: "duplicate-ip", subject: "10.0.0.10"))
+        XCTAssertEqual(reasons[9], .vitalDBObservationMissing)
+        XCTAssertEqual(reasons[10], .vitalDBObservationReadFailed("decode_failed"))
+        XCTAssertEqual(reasons[11], .proxyPortInUse(port: 80, listeners: "nginx-1234"))
+        XCTAssertEqual(reasons[12], .hostProxyListenerScanFailed(port: 80, exitCode: 1))
+        XCTAssertEqual(reasons[13], .guestBootstrapResultMissing)
+        XCTAssertEqual(reasons[14], .guestBootstrapResultUnavailable)
+        XCTAssertEqual(reasons[15], .guestBootstrapMissingRuntimePackages)
+        XCTAssertEqual(reasons[16], .unknown("future-reason"))
 
         let encoded = try JSONEncoder().encode(reasons)
         let roundTripped = try JSONDecoder().decode([RuntimeFailureReason].self, from: encoded)
@@ -364,11 +426,18 @@ final class ContractsTests: XCTestCase {
             "missing-vm-bin",
             "vm-service-not loaded",
             "host-proxy-http-502",
+            "guest-http-probe-failed-failed",
             "audit-proxy-http-failed",
             "container-service-app-state-unhealthy",
+            "container-observation-missing",
+            "container-observation-read-failed-permission_denied",
             "vitaldb-anomaly-duplicate-ip-subject-10.0.0.10",
+            "vitaldb-observation-missing",
+            "vitaldb-observation-read-failed-decode_failed",
             "proxy-port-80-in-use-by-nginx-1234",
             "host-proxy-listener-scan-failed-port-80-exit-1",
+            "guest-bootstrap-result-missing",
+            "guest-bootstrap-result-unavailable",
             "guest-bootstrap-missing-runtime-packages",
             "future-reason",
         ])
@@ -402,6 +471,10 @@ final class ContractsTests: XCTestCase {
         XCTAssertEqual(RuntimeFailureReason.redisUIHTTP("failed").domainSeverity, .warning)
         XCTAssertEqual(RuntimeFailureReason.redisUIHTTP("failed").recoveryAction, .inspectLogs)
 
+        XCTAssertEqual(RuntimeFailureReason.guestHTTPProbeFailed("failed").domainCategory, .guestNetworking)
+        XCTAssertEqual(RuntimeFailureReason.guestHTTPProbeFailed("failed").domainSeverity, .warning)
+        XCTAssertEqual(RuntimeFailureReason.guestHTTPProbeFailed("failed").recoveryAction, .waitForGuest)
+
         XCTAssertEqual(RuntimeFailureReason.runtimeStatusDocumentInvalid.domainCategory, .observability)
         XCTAssertEqual(RuntimeFailureReason.runtimeStatusDocumentInvalid.domainSeverity, .critical)
         XCTAssertEqual(RuntimeFailureReason.runtimeStatusDocumentInvalid.recoveryAction, .inspectLogs)
@@ -419,7 +492,23 @@ final class ContractsTests: XCTestCase {
         XCTAssertEqual(RuntimeFailureReason.containerRestartLoop(service: "redis").domainCategory, .container)
         XCTAssertEqual(RuntimeFailureReason.containerRestartLoop(service: "redis").recoveryAction, .restartContainerServices)
 
+        XCTAssertEqual(RuntimeFailureReason.containerObservationMissing.domainCategory, .observability)
+        XCTAssertEqual(RuntimeFailureReason.containerObservationMissing.domainSeverity, .warning)
+        XCTAssertEqual(RuntimeFailureReason.containerObservationMissing.recoveryAction, .inspectLogs)
+
+        XCTAssertEqual(RuntimeFailureReason.vitalDBObservationReadFailed("decode_failed").domainCategory, .vitalDB)
+        XCTAssertEqual(RuntimeFailureReason.vitalDBObservationReadFailed("decode_failed").domainSeverity, .warning)
+        XCTAssertEqual(
+            RuntimeFailureReason.vitalDBObservationReadFailed("decode_failed").recoveryAction,
+            .inspectVitalDBObservation
+        )
+
         XCTAssertEqual(RuntimeFailureReason.vitalDBObservationStale.domainSeverity, .warning)
+
+        XCTAssertEqual(RuntimeFailureReason.guestBootstrapResultMissing.domainCategory, .guestBootstrap)
+        XCTAssertEqual(RuntimeFailureReason.guestBootstrapResultMissing.recoveryAction, .waitForGuest)
+        XCTAssertEqual(RuntimeFailureReason.guestBootstrapResultUnavailable.domainCategory, .guestBootstrap)
+        XCTAssertEqual(RuntimeFailureReason.guestBootstrapResultUnavailable.recoveryAction, .inspectLogs)
     }
 
     func testRuntimeDomainErrorDocumentOwnsCodeCategorySeverityAndRecoveryAction() throws {

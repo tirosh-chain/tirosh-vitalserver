@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from tests.support import fake_socketio_connector
 from tirosh_vitalserver.testkit.application.recorder_session import (
     VirtualRecorderSessionManager,
@@ -225,6 +227,78 @@ def test_virtual_recorder_delete_keeps_session_when_cleanup_fails() -> None:
     assert manager.get_session(snapshot.session_id) == deleted
 
 
+def test_virtual_recorder_delete_reports_missing_cleanup_provider() -> None:
+    manager = VirtualRecorderSessionManager(connector=fake_socketio_connector)
+    snapshot = manager.start_session(
+        VirtualRecorderSessionRequest(
+            target_url="http://example.test",
+            vrcode="VR_NO_PROVIDER",
+            recorders=1,
+            bed_room_names=("OR-A",),
+            interval_seconds=1,
+            shift_time=False,
+        )
+    )
+
+    deleted = manager.delete_session(snapshot.session_id)
+
+    assert deleted is not None
+    assert deleted.cleanup_errors[0].vrcode == "VR_NO_PROVIDER"
+    assert "recorder management is not configured" in deleted.cleanup_errors[0].error
+    assert manager.get_session(snapshot.session_id) == deleted
+
+
+def test_virtual_recorder_bed_cleanup_reports_missing_provider() -> None:
+    manager = VirtualRecorderSessionManager(connector=fake_socketio_connector)
+    beds = beds_for_room_names(("OR-A",))
+
+    errors = manager.delete_vitalserver_beds("http://example.test", beds)
+
+    assert errors == (
+        f"OR-A({beds[0].bed_id}): recorder management is not configured",
+    )
+
+
+def test_virtual_recorder_session_save_failure_is_not_event_only() -> None:
+    manager = VirtualRecorderSessionManager(
+        connector=fake_socketio_connector,
+        session_store=FailingSessionStore(save_error=RuntimeError("save denied")),
+    )
+
+    with pytest.raises(RuntimeError, match="save denied"):
+        manager.start_session(
+            VirtualRecorderSessionRequest(
+                target_url="http://example.test",
+                bed_room_names=("OR-A",),
+                interval_seconds=1,
+                shift_time=False,
+            )
+        )
+
+
+def test_virtual_recorder_session_delete_failure_is_not_event_only() -> None:
+    recorder_management = FakeRecorderManagement()
+    manager = VirtualRecorderSessionManager(
+        connector=fake_socketio_connector,
+        recorder_management=recorder_management,
+        session_store=FailingSessionStore(delete_error=RuntimeError("delete denied")),
+    )
+    snapshot = manager.start_session(
+        VirtualRecorderSessionRequest(
+            target_url="http://example.test",
+            vrcode="VR_STORE_DELETE",
+            bed_room_names=("OR-A",),
+            interval_seconds=1,
+            shift_time=False,
+        )
+    )
+
+    with pytest.raises(RuntimeError, match="delete denied"):
+        manager.delete_session(snapshot.session_id)
+
+    assert manager.get_session(snapshot.session_id) is not None
+
+
 def test_virtual_recorder_session_applies_session_scenario_defaults() -> None:
     manager = VirtualRecorderSessionManager(connector=fake_socketio_connector)
     snapshot = manager.start_session(
@@ -301,7 +375,10 @@ def test_virtual_recorder_session_rejects_duplicate_bed_room_names() -> None:
 
 
 def test_virtual_recorder_session_rejects_active_bed_reuse() -> None:
-    manager = VirtualRecorderSessionManager(connector=fake_socketio_connector)
+    manager = VirtualRecorderSessionManager(
+        connector=fake_socketio_connector,
+        recorder_management=FakeRecorderManagement(),
+    )
     first = manager.start_session(
         VirtualRecorderSessionRequest(
             target_url="http://example.test",
@@ -332,7 +409,10 @@ def test_virtual_recorder_session_rejects_active_bed_reuse() -> None:
 
 
 def test_virtual_recorder_session_allows_reuse_after_session_delete() -> None:
-    manager = VirtualRecorderSessionManager(connector=fake_socketio_connector)
+    manager = VirtualRecorderSessionManager(
+        connector=fake_socketio_connector,
+        recorder_management=FakeRecorderManagement(),
+    )
     first = manager.start_session(
         VirtualRecorderSessionRequest(
             target_url="http://example.test",
@@ -428,7 +508,10 @@ def test_stored_virtual_recorder_session_can_be_deleted_after_restart() -> None:
 
 
 def test_virtual_recorder_sessions_can_be_reset() -> None:
-    manager = VirtualRecorderSessionManager(connector=fake_socketio_connector)
+    manager = VirtualRecorderSessionManager(
+        connector=fake_socketio_connector,
+        recorder_management=FakeRecorderManagement(),
+    )
     first = manager.start_session(
         VirtualRecorderSessionRequest(
             target_url="http://example.test",
@@ -498,3 +581,25 @@ class InMemorySessionStore:
 
     def delete_all_sessions(self) -> None:
         self.sessions.clear()
+
+
+class FailingSessionStore(InMemorySessionStore):
+    def __init__(
+        self,
+        *,
+        save_error: Exception | None = None,
+        delete_error: Exception | None = None,
+    ) -> None:
+        super().__init__()
+        self.save_error = save_error
+        self.delete_error = delete_error
+
+    def save_session(self, snapshot: VirtualRecorderSessionSnapshot) -> None:
+        if self.save_error is not None:
+            raise self.save_error
+        super().save_session(snapshot)
+
+    def delete_session(self, session_id: str) -> None:
+        if self.delete_error is not None:
+            raise self.delete_error
+        super().delete_session(session_id)

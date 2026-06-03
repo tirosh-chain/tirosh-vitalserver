@@ -6,7 +6,7 @@ import json
 import logging
 import threading
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from tirosh_vitalserver.testkit.application.recorder_session.models import (
     VirtualRecorderSessionSnapshot,
@@ -32,9 +32,9 @@ class JsonFileVirtualRecorderSessionStore:
             payload = self._read_payload()
 
         sessions = []
-        for record in payload.get("sessions", []):
+        for record in payload["sessions"]:
             if not isinstance(record, dict):
-                continue
+                raise ValueError("session record must be an object")
             try:
                 sessions.append(session_snapshot_from_record(record))
             except Exception as exc:
@@ -44,6 +44,7 @@ class JsonFileVirtualRecorderSessionStore:
                     path=str(self._path),
                     error=str(exc),
                 )
+                raise
 
         return tuple(sessions)
 
@@ -52,11 +53,11 @@ class JsonFileVirtualRecorderSessionStore:
 
         with self._lock:
             payload = self._read_payload()
+            records = session_records(payload)
             sessions = [
                 record
-                for record in payload.get("sessions", [])
-                if isinstance(record, dict)
-                and record.get("session_id") != snapshot.session_id
+                for record in records
+                if record.get("session_id") != snapshot.session_id
             ]
             sessions.append(session_snapshot_to_record(snapshot))
             self._write_payload({"sessions": sessions})
@@ -68,9 +69,8 @@ class JsonFileVirtualRecorderSessionStore:
             payload = self._read_payload()
             sessions = [
                 record
-                for record in payload.get("sessions", [])
-                if isinstance(record, dict)
-                and record.get("session_id") != session_id
+                for record in session_records(payload)
+                if record.get("session_id") != session_id
             ]
             self._write_payload({"sessions": sessions})
 
@@ -94,9 +94,13 @@ class JsonFileVirtualRecorderSessionStore:
                 path=str(self._path),
                 error=str(exc),
             )
-            return {"sessions": []}
+            raise
 
-        return payload if isinstance(payload, dict) else {"sessions": []}
+        if not isinstance(payload, dict):
+            raise ValueError("session store payload must be an object")
+        if not isinstance(payload.get("sessions"), list):
+            raise ValueError("session store sessions must be an array")
+        return payload
 
     def _write_payload(self, payload: dict[str, Any]) -> None:
         self._path.parent.mkdir(parents=True, exist_ok=True)
@@ -105,3 +109,10 @@ class JsonFileVirtualRecorderSessionStore:
             json.dump(payload, file, separators=(",", ":"), sort_keys=True)
             file.write("\n")
         temporary_path.replace(self._path)
+
+
+def session_records(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    records = payload["sessions"]
+    if not all(isinstance(record, dict) for record in records):
+        raise ValueError("session record must be an object")
+    return cast(list[dict[str, Any]], records)

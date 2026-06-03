@@ -5,7 +5,8 @@ import type {
 import {
   RuntimeControlAPIError,
   RuntimeControlContractError,
-  RuntimeControlNetworkError
+  RuntimeControlNetworkError,
+  RuntimeControlValidationError
 } from "@/domain/runtime-control/errors/runtimeControlError";
 import type {
   RuntimeControlCapabilities,
@@ -56,6 +57,8 @@ import {
 } from "@/domain/runtime-control/contracts/schemas/runtimeControlSchemas";
 import { DEFAULT_APP_SETTINGS } from "@/config/appSettings";
 import type { ZodType } from "zod";
+
+type ConsoleRequestQuery = Record<string, string | number>;
 
 export type ConsoleClientOptions = {
   baseURL?: string;
@@ -125,8 +128,14 @@ export class ConsoleClient implements ConsoleGateway {
     );
   }
 
-  getRuntimeEvents(query: RuntimeEventQuery = {}): Promise<RuntimeEventHistory> {
-    return this.get("/runtime/events", runtimeEventHistorySchema, query);
+  async getRuntimeEvents(
+    query: RuntimeEventQuery = {}
+  ): Promise<RuntimeEventHistory> {
+    return await this.get(
+      "/runtime/events",
+      runtimeEventHistorySchema,
+      runtimeEventQueryParameters(query)
+    );
   }
 
   getRecorders(): Promise<VitalDBRecorders> {
@@ -335,7 +344,7 @@ export class ConsoleClient implements ConsoleGateway {
     );
   }
 
-  repairProxy(proxyPort?: number): Promise<RuntimeCommandResponse> {
+  repairProxy(proxyPort: number): Promise<RuntimeCommandResponse> {
     return this.post(
       "/runtime/services/repair-proxy",
       { proxyPort },
@@ -362,7 +371,7 @@ export class ConsoleClient implements ConsoleGateway {
   private async get<T>(
     path: string,
     schema: ZodType<T>,
-    query: Record<string, string | number | undefined> = {}
+    query: ConsoleRequestQuery = {}
   ): Promise<T> {
     const response = await this.request(
       path,
@@ -390,14 +399,7 @@ export class ConsoleClient implements ConsoleGateway {
     body: unknown,
     schema: ZodType<T>
   ): Promise<T> {
-    const response = await this.request(path, {
-      method: "PUT",
-      headers: {
-        ...this.headers(),
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify(body)
-    });
+    const response = await this.request(path, this.jsonRequest("PUT", body));
 
     if (!response.ok) {
       const responseBody = await response.text();
@@ -413,17 +415,10 @@ export class ConsoleClient implements ConsoleGateway {
 
   private async post<T>(
     path: string,
-    body: unknown,
+    body: unknown | undefined,
     schema: ZodType<T>
   ): Promise<T> {
-    const response = await this.request(path, {
-      method: "POST",
-      headers: {
-        ...this.headers(),
-        "Content-Type": "application/json"
-      },
-      body: body === undefined ? undefined : JSON.stringify(body)
-    });
+    const response = await this.request(path, this.jsonRequest("POST", body));
 
     if (!response.ok) {
       const responseBody = await response.text();
@@ -439,17 +434,10 @@ export class ConsoleClient implements ConsoleGateway {
 
   private async delete<T>(
     path: string,
-    body: unknown,
+    body: unknown | undefined,
     schema: ZodType<T>
   ): Promise<T> {
-    const response = await this.request(path, {
-      method: "DELETE",
-      headers: {
-        ...this.headers(),
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify(body)
-    });
+    const response = await this.request(path, this.jsonRequest("DELETE", body));
 
     if (!response.ok) {
       const responseBody = await response.text();
@@ -478,10 +466,28 @@ export class ConsoleClient implements ConsoleGateway {
     };
   }
 
+  private jsonRequest(method: string, body: unknown | undefined): RequestInit {
+    if (body === undefined) {
+      return {
+        method,
+        headers: this.headers()
+      };
+    }
+
+    return {
+      method,
+      headers: {
+        ...this.headers(),
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(body)
+    };
+  }
+
   private async request(
     path: string,
     init: RequestInit,
-    query: Record<string, string | number | undefined> = {}
+    query: ConsoleRequestQuery = {}
   ): Promise<Response> {
     const url = this.url(path, query);
     try {
@@ -493,13 +499,11 @@ export class ConsoleClient implements ConsoleGateway {
 
   private url(
     path: string,
-    query: Record<string, string | number | undefined>
+    query: ConsoleRequestQuery
   ): string {
     const url = new URL(`${this.baseURL}${path}`, window.location.origin);
     for (const [key, value] of Object.entries(query)) {
-      if (value !== undefined) {
-        url.searchParams.set(key, String(value));
-      }
+      url.searchParams.set(key, String(value));
     }
     return url.toString();
   }
@@ -507,4 +511,33 @@ export class ConsoleClient implements ConsoleGateway {
 
 function trimTrailingSlash(value: string): string {
   return value.endsWith("/") ? value.slice(0, -1) : value;
+}
+
+function runtimeEventQueryParameters(
+  query: RuntimeEventQuery
+): ConsoleRequestQuery {
+  const params: ConsoleRequestQuery = {};
+  const fields: Array<keyof RuntimeEventQuery> = [
+    "limit",
+    "type",
+    "since",
+    "cursor"
+  ];
+
+  for (const field of fields) {
+    if (!Object.prototype.hasOwnProperty.call(query, field)) {
+      continue;
+    }
+
+    const value = query[field];
+    if (value === undefined) {
+      throw new RuntimeControlValidationError(
+        "Runtime event query contains an undefined value.",
+        [`${field} must be omitted or set to a value.`]
+      );
+    }
+    params[field] = value;
+  }
+
+  return params;
 }

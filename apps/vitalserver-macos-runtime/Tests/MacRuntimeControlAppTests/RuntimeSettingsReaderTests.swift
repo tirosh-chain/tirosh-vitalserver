@@ -41,7 +41,8 @@ final class RuntimeSettingsReaderTests: XCTestCase {
                 guestRuntimeSettings: directory.appendingPathComponent("missing-runtime-settings.json").path,
                 guestRuntimeConfig: guestConfig.path,
                 proxyLaunchDaemon: proxyLaunchDaemon.path
-            )
+            ),
+            runCommand: startOnBootCommand()
         )
 
         let settings = reader.load()
@@ -74,7 +75,8 @@ final class RuntimeSettingsReaderTests: XCTestCase {
                 vmDisk: directory.appendingPathComponent("missing-disk.img").path,
                 guestRuntimeConfig: directory.appendingPathComponent("missing-runtime-config.json").path,
                 proxyLaunchDaemon: proxyLaunchDaemon.path
-            )
+            ),
+            runCommand: startOnBootCommand()
         )
 
         let settings = reader.load()
@@ -82,6 +84,83 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         XCTAssertEqual(settings.readIssues.map(\.source), ["vmConfig", "proxyLaunchDaemon"])
         XCTAssertEqual(settings.cpuCount, RuntimeSettings().cpuCount)
         XCTAssertEqual(settings.proxyPort, RuntimeSettings().proxyPort)
+    }
+
+    func testReportsMissingVMConfigProviderFields() throws {
+        let directory = try temporaryDirectory()
+        let vmConfig = directory.appendingPathComponent("vm-config.json")
+        try """
+        {
+          "cpuCount": 4,
+          "memoryMiB": 6144,
+          "network": { "mode": "bridged" }
+        }
+        """.write(to: vmConfig, atomically: true, encoding: .utf8)
+        let reader = SystemRuntimeSettingsReader(
+            paths: RuntimeSettingsPaths(
+                vmConfig: vmConfig.path,
+                vmDisk: directory.appendingPathComponent("missing-disk.img").path,
+                guestRuntimeSettings: directory.appendingPathComponent("missing-runtime-settings.json").path,
+                guestRuntimeConfig: directory.appendingPathComponent("missing-runtime-config.json").path,
+                proxyLaunchDaemon: directory.appendingPathComponent("missing-proxy.plist").path
+            ),
+            runCommand: startOnBootCommand()
+        )
+
+        let settings = reader.load()
+
+        XCTAssertEqual(settings.networkMode, .bridged)
+        XCTAssertEqual(settings.bridgedInterface, "")
+        XCTAssertTrue(settings.autoRecoveryEnabled)
+        XCTAssertTrue(settings.preventSystemSleep)
+        XCTAssertEqual(settings.readIssues, [
+            RuntimeSettingsReadIssue(
+                source: "vmConfig.network.bridgedInterface",
+                message: "bridgedInterface is missing for bridged network mode"
+            ),
+            RuntimeSettingsReadIssue(
+                source: "vmConfig.autoRecoveryEnabled",
+                message: "autoRecoveryEnabled is missing"
+            ),
+            RuntimeSettingsReadIssue(
+                source: "vmConfig.preventSystemSleep",
+                message: "preventSystemSleep is missing"
+            ),
+        ])
+    }
+
+    func testReportsInvalidVMConfigNetworkMode() throws {
+        let directory = try temporaryDirectory()
+        let vmConfig = directory.appendingPathComponent("vm-config.json")
+        try """
+        {
+          "cpuCount": 4,
+          "memoryMiB": 6144,
+          "network": { "mode": "invalid-mode" },
+          "autoRecoveryEnabled": true,
+          "preventSystemSleep": true
+        }
+        """.write(to: vmConfig, atomically: true, encoding: .utf8)
+        let reader = SystemRuntimeSettingsReader(
+            paths: RuntimeSettingsPaths(
+                vmConfig: vmConfig.path,
+                vmDisk: directory.appendingPathComponent("missing-disk.img").path,
+                guestRuntimeSettings: directory.appendingPathComponent("missing-runtime-settings.json").path,
+                guestRuntimeConfig: directory.appendingPathComponent("missing-runtime-config.json").path,
+                proxyLaunchDaemon: directory.appendingPathComponent("missing-proxy.plist").path
+            ),
+            runCommand: startOnBootCommand()
+        )
+
+        let settings = reader.load()
+
+        XCTAssertEqual(settings.networkMode, .shared)
+        XCTAssertEqual(settings.readIssues, [
+            RuntimeSettingsReadIssue(
+                source: "vmConfig.network.mode",
+                message: "network mode is invalid: invalid-mode"
+            ),
+        ])
     }
 
     func testDoesNotReportGuestRuntimeConfigPermissionIssueForSecretFile() throws {
@@ -93,7 +172,8 @@ final class RuntimeSettingsReaderTests: XCTestCase {
                 guestRuntimeConfig: guestConfig.path,
                 proxyLaunchDaemon: "/missing/proxy.plist"
             ),
-            fileStore: GuestRuntimeConfigPermissionDeniedFileStore(guestConfig: guestConfig)
+            fileStore: GuestRuntimeConfigPermissionDeniedFileStore(guestConfig: guestConfig),
+            runCommand: startOnBootCommand()
         )
 
         let settings = reader.load()
@@ -118,7 +198,8 @@ final class RuntimeSettingsReaderTests: XCTestCase {
                 paths.guestRuntimeSettings,
                 paths.guestRuntimeConfig,
                 paths.proxyLaunchDaemon,
-            ])
+            ]),
+            runCommand: startOnBootCommand()
         )
 
         let settings = reader.load()
@@ -133,6 +214,30 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         XCTAssertTrue(settings.readIssues[1].message.contains("runtime settings denied"))
         XCTAssertTrue(settings.readIssues[2].message.contains("invalid legacy runtime config"))
         XCTAssertTrue(settings.readIssues[3].message.contains("proxy plist denied"))
+    }
+
+    func testReportsStartOnBootLaunchctlReadFailure() {
+        let reader = SystemRuntimeSettingsReader(
+            paths: RuntimeSettingsPaths(
+                vmConfig: "/missing/vm-config.json",
+                vmDisk: "/missing/vm-disk.img",
+                guestRuntimeSettings: "/missing/runtime-settings.json",
+                guestRuntimeConfig: "/missing/runtime-config.json",
+                proxyLaunchDaemon: "/missing/proxy.plist"
+            ),
+            runCommand: { executable, arguments in
+                XCTAssertEqual(executable, RuntimeAdapterConstants.Commands.launchctl)
+                XCTAssertEqual(arguments, ["print-disabled", "system"])
+                return RuntimeCommandResult(exitCode: 1, stdout: "", stderr: "launchctl denied")
+            }
+        )
+
+        let settings = reader.load()
+
+        XCTAssertFalse(settings.startOnBootConfigurable)
+        XCTAssertEqual(settings.readIssues, [
+            RuntimeSettingsReadIssue(source: "startOnBoot", message: "launchctl denied"),
+        ])
     }
 
     func testLoadsGuestRuntimeSettingsBeforeSecretRuntimeConfig() throws {
@@ -161,7 +266,8 @@ final class RuntimeSettingsReaderTests: XCTestCase {
                 guestRuntimeSettings: guestSettings.path,
                 guestRuntimeConfig: guestConfig.path,
                 proxyLaunchDaemon: directory.appendingPathComponent("missing-proxy.plist").path
-            )
+            ),
+            runCommand: startOnBootCommand()
         )
 
         let settings = reader.load()
@@ -406,6 +512,87 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         XCTAssertNil(status.vmErrors)
     }
 
+    func testStatusReaderPreservesLaunchdReadFailureAsServiceStateIssue() throws {
+        let directory = try temporaryDirectory()
+        let runtimeStatus = directory.appendingPathComponent(RuntimeFileNames.runtimeStatus)
+        try writeRuntimeStatusDocument(
+            runtimeStatus,
+            extraFields: """
+              "vmService": "loaded",
+              "proxyService": "loaded",
+              "watchdogService": "loaded",
+            """
+        )
+
+        let reader = SystemRuntimeStatusReader(
+            paths: RuntimePaths(
+                launcher: directory.appendingPathComponent("launcher").path,
+                uninstaller: directory.appendingPathComponent("uninstaller").path,
+                runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
+                runtimeStatus: runtimeStatus.path
+            ),
+            runSyncCommand: { _, _ in
+                RuntimeCommandResult(exitCode: 1, stdout: "", stderr: "Operation not permitted")
+            }
+        )
+
+        let status = reader.loadStatus(settings: RuntimeSettings())
+
+        XCTAssertEqual(status.vmServiceState, .loaded)
+        XCTAssertEqual(status.proxyServiceState, .loaded)
+        XCTAssertEqual(status.watchdogServiceState, .loaded)
+        XCTAssertEqual(status.guestLogSyncServiceState, .permissionDenied("exitCode=1 stderr=Operation not permitted"))
+        XCTAssertFalse(status.guestLogSyncServiceLoaded)
+        XCTAssertTrue(status.readIssues.contains {
+            $0.source == "guestLogSyncService"
+                && $0.message == "exitCode=1 stderr=Operation not permitted"
+        })
+    }
+
+    func testHealthStatusPreservesHTTPProbeReadFailureAsStatusReadIssue() async throws {
+        let directory = try temporaryDirectory()
+        let runtimeStatus = directory.appendingPathComponent(RuntimeFileNames.runtimeStatus)
+        try writeRuntimeStatusDocument(
+            runtimeStatus,
+            extraFields: """
+              "vmService": "loaded",
+              "proxyService": "loaded",
+              "watchdogService": "loaded",
+              "vmIP": "192.168.64.33",
+            """
+        )
+
+        let reader = SystemRuntimeStatusReader(
+            paths: RuntimePaths(
+                launcher: directory.appendingPathComponent("launcher").path,
+                uninstaller: directory.appendingPathComponent("uninstaller").path,
+                runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
+                runtimeStatus: runtimeStatus.path
+            ),
+            runCommand: { _, _ in
+                RuntimeCommandResult(exitCode: 28, stdout: "", stderr: "Operation timed out")
+            },
+            runSyncCommand: { _, _ in
+                RuntimeCommandResult(exitCode: 1, stdout: "", stderr: "Could not find service")
+            }
+        )
+
+        let status = await reader.loadHealthStatus(settings: RuntimeSettings())
+
+        XCTAssertNil(status.guestHTTP)
+        XCTAssertNil(status.hostProxyHTTP)
+        XCTAssertNil(status.redisUIHTTP)
+        XCTAssertNil(status.swaggerUIHTTP)
+        XCTAssertTrue(status.readIssues.contains {
+            $0.source == "guestHTTP"
+                && $0.message == "exitCode=28 stderr=Operation timed out"
+        })
+        XCTAssertTrue(status.readIssues.contains {
+            $0.source == "hostProxyHTTP"
+                && $0.message == "exitCode=28 stderr=Operation timed out"
+        })
+    }
+
     func testObservabilityReaderUsesStatusObservationForVitalRecordersWhenSQLiteIsEmpty() throws {
         let directory = try temporaryDirectory()
         let runtimeStatus = directory.appendingPathComponent(RuntimeFileNames.runtimeStatus)
@@ -453,7 +640,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         }
         """.write(to: runtimeStatus, atomically: true, encoding: .utf8)
 
-        let reader = SystemRuntimeObservabilityReader(
+        let reader = SystemRuntimeObservabilityReader.live(
             paths: RuntimePaths(
                 runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
                 runtimeStatus: runtimeStatus.path,
@@ -553,7 +740,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
             runtimeObservabilityDB: directory.appendingPathComponent(RuntimeFileNames.runtimeObservabilityDB).path
         )
         let statusReader = SystemRuntimeStatusReader(paths: paths)
-        let observabilityReader = SystemRuntimeObservabilityReader(paths: paths)
+        let observabilityReader = SystemRuntimeObservabilityReader.live(paths: paths)
 
         let status = statusReader.loadStatus(settings: RuntimeSettings())
         let history = observabilityReader.loadVitalDBRecorders()
@@ -569,7 +756,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         let observabilityDB = directory.appendingPathComponent(RuntimeFileNames.runtimeObservabilityDB)
         try Data("not-sqlite".utf8).write(to: observabilityDB)
 
-        let reader = SystemRuntimeObservabilityReader(
+        let reader = SystemRuntimeObservabilityReader.live(
             paths: RuntimePaths(
                 runtimeObservabilityDB: observabilityDB.path
             )
@@ -592,7 +779,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         try (encoder.encode(event) + Data("\n".utf8)).write(to: runtimeEvents)
-        let reader = SystemRuntimeObservabilityReader(
+        let reader = SystemRuntimeObservabilityReader.live(
             paths: RuntimePaths(
                 runtimeEvents: runtimeEvents.path,
                 runtimeObservabilityDB: runtimeObservabilityDB.path
@@ -614,7 +801,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         try (encoder.encode(event) + Data("\n".utf8)).write(to: runtimeEvents)
-        let reader = SystemRuntimeObservabilityReader(
+        let reader = SystemRuntimeObservabilityReader.live(
             paths: RuntimePaths(
                 runtimeEvents: runtimeEvents.path,
                 runtimeObservabilityDB: "/dev/null/events.sqlite"
@@ -646,7 +833,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
 
     func testObservabilityReaderReportsLatestObservationReadFailure() throws {
         let directory = try temporaryDirectory()
-        let reader = SystemRuntimeObservabilityReader(
+        let reader = SystemRuntimeObservabilityReader.live(
             paths: RuntimePaths(
                 runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
                 runtimeStatus: directory.appendingPathComponent(RuntimeFileNames.runtimeStatus).path,
@@ -669,6 +856,12 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         return arguments[arguments.index(after: index)]
     }
 
+    private func startOnBootCommand(
+        stdout: String = ""
+    ) -> @Sendable (String, [String]) -> RuntimeCommandResult {
+        { _, _ in RuntimeCommandResult(exitCode: 0, stdout: stdout, stderr: "") }
+    }
+
     private func runtimeEvent(id: String, timestamp: String) -> RuntimeEventDocument {
         RuntimeEventDocument(
             id: id,
@@ -684,6 +877,29 @@ final class RuntimeSettingsReaderTests: XCTestCase {
             containerObservation: nil,
             progress: nil
         )
+    }
+
+    private func writeRuntimeStatusDocument(_ url: URL, extraFields: String) throws {
+        try """
+        {
+          "schemaVersion": 2,
+          "product": "TiroshVitalServer",
+          "status": "healthy",
+          "operation": "health",
+          "message": "ok",
+          "updatedAt": "2026-05-26T00:01:00Z",
+          "productRoot": "/tmp/product",
+          "runtimeHome": "/tmp/vm",
+          "runtimeVersion": "1.0.0",
+          "proxyPort": 19090,
+          "hostProxyHTTP": "200",
+          "guestHTTP": "200",
+        \(extraFields)
+          "rootfsBase": "present",
+          "vmDisk": "present",
+          "failureReasons": []
+        }
+        """.write(to: url, atomically: true, encoding: .utf8)
     }
 
     private func writeProxyLaunchDaemon(_ url: URL, proxyPort: Int) throws {
@@ -728,15 +944,15 @@ private final class StubObservabilityReader: RuntimeObservabilityReading {
     }
 
     func loadVitalDBObservation() -> VitalDBObservationDocument? {
-        VitalDBObservationDocument(
-            observedAt: "2026-05-30T00:00:00Z",
-            ready: true,
-            recorderOnlineThresholdSeconds: 60
-        )
+        loadVitalDBObservationSnapshot().observation
     }
 
     func loadVitalDBObservationSnapshot() -> RuntimeVitalDBObservationSnapshot {
-        RuntimeVitalDBObservationSnapshot.fromOptional(loadVitalDBObservation())
+        RuntimeVitalDBObservationSnapshot.loaded(VitalDBObservationDocument(
+            observedAt: "2026-05-30T00:00:00Z",
+            ready: true,
+            recorderOnlineThresholdSeconds: 60
+        ))
     }
 
     func loadVitalDBRecorders() -> RuntimeVitalRecorderHistory {

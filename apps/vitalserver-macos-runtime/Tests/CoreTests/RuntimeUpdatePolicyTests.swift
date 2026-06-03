@@ -33,8 +33,7 @@ final class RuntimeUpdatePreflightPolicyTests: XCTestCase {
     func testStorageRequirementIncludesBundleRootfsAndMargin() {
         let requirement = RuntimeUpdatePreflightPolicy.storageRequirement(
             stagedBundleBytes: 30,
-            installedRootfsBytes: 10,
-            incomingRootfsBytes: 20,
+            rootfsStorage: .replacing(installedRootfsBytes: 10, incomingRootfsBytes: 20),
             marginBytes: 100
         )
 
@@ -47,8 +46,7 @@ final class RuntimeUpdatePreflightPolicyTests: XCTestCase {
     func testStorageRequirementDoesNotRequireRootfsSpaceWhenRootfsIsUnchanged() {
         let requirement = RuntimeUpdatePreflightPolicy.storageRequirement(
             stagedBundleBytes: 30,
-            installedRootfsBytes: nil,
-            incomingRootfsBytes: nil,
+            rootfsStorage: .unchanged,
             marginBytes: 100
         )
 

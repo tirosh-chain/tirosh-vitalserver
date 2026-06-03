@@ -50,14 +50,20 @@ public struct RuntimeTestKitAPIRouter {
                 let startRequest = try request.decodedBody(RuntimeTestKitVirtualRecorderStartRequest.self)
                 return try await jsonResponse(controller.startVirtualRecorders(startRequest))
             case .pauseVirtualRecorders:
-                let pauseRequest = try request.optionalDecodedBody(RuntimeTestKitStopRequest.self)
-                return try await jsonResponse(controller.pauseVirtualRecorders(sessionID: pauseRequest?.sessionID))
+                let pauseRequest = try request.decodedBody(RuntimeTestKitStopRequest.self)
+                return try await jsonResponse(controller.pauseVirtualRecorders(
+                    sessionID: requiredSessionID(pauseRequest.sessionID)
+                ))
             case .resumeVirtualRecorders:
-                let resumeRequest = try request.optionalDecodedBody(RuntimeTestKitStopRequest.self)
-                return try await jsonResponse(controller.resumeVirtualRecorders(sessionID: resumeRequest?.sessionID))
+                let resumeRequest = try request.decodedBody(RuntimeTestKitStopRequest.self)
+                return try await jsonResponse(controller.resumeVirtualRecorders(
+                    sessionID: requiredSessionID(resumeRequest.sessionID)
+                ))
             case .stopVirtualRecorders:
-                let stopRequest = try request.optionalDecodedBody(RuntimeTestKitStopRequest.self)
-                return try await jsonResponse(controller.stopVirtualRecorders(sessionID: stopRequest?.sessionID))
+                let stopRequest = try request.decodedBody(RuntimeTestKitStopRequest.self)
+                return try await jsonResponse(controller.stopVirtualRecorders(
+                    sessionID: requiredSessionID(stopRequest.sessionID)
+                ))
             case .restartVirtualRecorders:
                 let restartRequest = try request.decodedBody(RuntimeTestKitRestartRequest.self)
                 return try await jsonResponse(controller.restartVirtualRecorders(
@@ -65,14 +71,22 @@ public struct RuntimeTestKitAPIRouter {
                     bedRoomNames: restartRequest.bedRoomNames
                 ))
             case .deleteVirtualRecorders:
-                let deleteRequest = try request.optionalDecodedBody(RuntimeTestKitDeleteRequest.self)
-                return try await jsonResponse(controller.deleteVirtualRecorders(sessionID: deleteRequest?.sessionID))
+                let deleteRequest = try request.decodedBody(RuntimeTestKitDeleteRequest.self)
+                return try await jsonResponse(controller.deleteVirtualRecorders(
+                    sessionID: requiredSessionID(deleteRequest.sessionID)
+                ))
             case .deleteVirtualRecorder:
                 let deleteRequest = try request.decodedBody(RuntimeTestKitRecorderDeletionRequest.self)
                 return try await jsonResponse(controller.deleteVirtualRecorder(vrcode: deleteRequest.vrcode))
             case .resetVirtualRecorders:
                 return try await jsonResponse(controller.resetVirtualRecorders())
             }
+        } catch let queryError as RuntimeControlHTTPQueryError {
+            return errorResponse(
+                status: .badRequest,
+                code: .badRequest,
+                message: queryError.localizedDescription
+            )
         } catch {
             return errorResponse(
                 status: .internalServerError,
@@ -80,6 +94,14 @@ public struct RuntimeTestKitAPIRouter {
                 message: error.localizedDescription
             )
         }
+    }
+
+    private func requiredSessionID(_ value: String) throws -> String {
+        let sessionID = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !sessionID.isEmpty else {
+            throw RuntimeControlHTTPQueryError.invalidBody("sessionID is required.")
+        }
+        return sessionID
     }
 
     private func jsonResponse<T: Encodable>(_ value: T) throws -> RuntimeControlHTTPResponse {
@@ -95,11 +117,10 @@ public struct RuntimeTestKitAPIRouter {
         code: RuntimeControlAPIErrorCode,
         message: String
     ) -> RuntimeControlHTTPResponse {
-        let response = RuntimeControlErrorResponse(code: code, message: message)
         return RuntimeControlHTTPResponse(
             status: status,
             headers: ["Content-Type": "application/json"],
-            body: try? JSONEncoder().encode(response)
+            body: RuntimeControlErrorResponseEncoder.encode(code: code, message: message)
         )
     }
 }
@@ -184,26 +205,26 @@ public enum RuntimeTestKitAPIEndpoint: String, CaseIterable, Codable, Equatable,
 }
 
 public struct RuntimeTestKitStopRequest: Codable, Equatable, Sendable {
-    public let sessionID: String?
+    public let sessionID: String
 
-    public init(sessionID: String? = nil) {
+    public init(sessionID: String) {
         self.sessionID = sessionID
     }
 }
 
 public struct RuntimeTestKitDeleteRequest: Codable, Equatable, Sendable {
-    public let sessionID: String?
+    public let sessionID: String
 
-    public init(sessionID: String? = nil) {
+    public init(sessionID: String) {
         self.sessionID = sessionID
     }
 }
 
 public struct RuntimeTestKitRestartRequest: Codable, Equatable, Sendable {
-    public let sessionID: String?
+    public let sessionID: String
     public let bedRoomNames: [String]
 
-    public init(sessionID: String? = nil, bedRoomNames: [String]) {
+    public init(sessionID: String, bedRoomNames: [String]) {
         self.sessionID = sessionID
         self.bedRoomNames = bedRoomNames
     }
@@ -214,14 +235,5 @@ public struct RuntimeTestKitRecorderDeletionRequest: Codable, Equatable, Sendabl
 
     public init(vrcode: String) {
         self.vrcode = vrcode
-    }
-}
-
-private extension RuntimeControlHTTPRequest {
-    func optionalDecodedBody<T: Decodable>(_ type: T.Type) throws -> T? {
-        guard let body, !body.isEmpty else {
-            return nil
-        }
-        return try JSONDecoder().decode(type, from: body)
     }
 }

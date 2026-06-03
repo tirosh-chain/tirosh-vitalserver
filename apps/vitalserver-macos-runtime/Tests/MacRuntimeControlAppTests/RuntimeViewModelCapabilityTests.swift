@@ -1002,7 +1002,11 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     }
 
     func loadVitalDBObservation() -> VitalDBObservationDocument? {
-        vitalDBObservation
+        loadVitalDBObservationSnapshot().observation
+    }
+
+    func loadVitalDBObservationSnapshot() -> RuntimeVitalDBObservationSnapshot {
+        RuntimeVitalDBObservationSnapshot.fromOptional(vitalDBObservation)
     }
 
     func loadVitalDBRecorders() -> RuntimeVitalRecorderHistory {

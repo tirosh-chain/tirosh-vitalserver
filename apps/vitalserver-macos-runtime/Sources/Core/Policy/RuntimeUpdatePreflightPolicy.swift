@@ -19,6 +19,11 @@ public struct RuntimeUpdateStorageRequirement: Equatable, Sendable {
     }
 }
 
+public enum RuntimeUpdateRootfsStorageInput: Equatable, Sendable {
+    case unchanged
+    case replacing(installedRootfsBytes: UInt64, incomingRootfsBytes: UInt64)
+}
+
 public enum RuntimeUpdatePreflightPolicy {
     public static func checkCompatibility(
         manifest: UpdateBundleManifest,
@@ -36,11 +41,22 @@ public enum RuntimeUpdatePreflightPolicy {
 
     public static func storageRequirement(
         stagedBundleBytes: UInt64,
-        installedRootfsBytes: UInt64?,
-        incomingRootfsBytes: UInt64?,
+        rootfsStorage: RuntimeUpdateRootfsStorageInput,
         marginBytes: UInt64
     ) -> RuntimeUpdateStorageRequirement {
-        let rootfsBytes = (installedRootfsBytes ?? 0) + (incomingRootfsBytes ?? 0)
+        let installedRootfsBytes: UInt64?
+        let incomingRootfsBytes: UInt64?
+        let rootfsBytes: UInt64
+        switch rootfsStorage {
+        case .unchanged:
+            installedRootfsBytes = nil
+            incomingRootfsBytes = nil
+            rootfsBytes = 0
+        case .replacing(let installed, let incoming):
+            installedRootfsBytes = installed
+            incomingRootfsBytes = incoming
+            rootfsBytes = installed + incoming
+        }
         return RuntimeUpdateStorageRequirement(
             requiredBytes: marginBytes + stagedBundleBytes + rootfsBytes,
             stagedBundleBytes: stagedBundleBytes,

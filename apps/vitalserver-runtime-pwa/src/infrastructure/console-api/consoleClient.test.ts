@@ -4,6 +4,7 @@ import {
   RuntimeControlAPIError,
   RuntimeControlContractError,
   RuntimeControlNetworkError,
+  RuntimeControlValidationError,
   summarizeRuntimeControlError
 } from "@/domain/runtime-control/errors/runtimeControlError";
 import { ConsoleClient } from "./consoleClient";
@@ -43,7 +44,7 @@ describe("ConsoleClient", () => {
       "/host/backups": commandResponse()
     });
 
-    await client.applySettings({ settings: { proxyPort: 18080 } });
+    await client.applySettings({ settings: fullSettings({ proxyPort: 18080 }) });
     await client.uninstallRuntime({ clean: true });
     await client.repairProxy(18080);
     await client.deleteHostBackup({ backup: { kind: "localPath", value: "/tmp/b" } });
@@ -55,7 +56,7 @@ describe("ConsoleClient", () => {
       "DELETE"
     ]);
     expect(JSON.parse(String(requests[0]?.init.body))).toEqual({
-      settings: { proxyPort: 18080 }
+      settings: fullSettings({ proxyPort: 18080 })
     });
     expect(JSON.parse(String(requests[2]?.init.body))).toEqual({
       proxyPort: 18080
@@ -65,14 +66,46 @@ describe("ConsoleClient", () => {
     });
   });
 
+  it("keeps absent JSON bodies distinct from explicit JSON command payloads", async () => {
+    const { client, requests } = clientWithResponses({
+      "/runtime/services/start": commandResponse(),
+      "/runtime/services/repair-proxy": commandResponse()
+    });
+
+    await client.startRuntimeServices();
+    await client.repairProxy(18080);
+
+    expect(requests[0]?.init.body).toBeUndefined();
+    expect(requests[0]?.init.headers).not.toMatchObject({
+      "Content-Type": "application/json"
+    });
+    expect(JSON.parse(String(requests[1]?.init.body))).toEqual({
+      proxyPort: 18080
+    });
+    expect(requests[1]?.init.headers).toMatchObject({
+      "Content-Type": "application/json"
+    });
+  });
+
+  it("rejects undefined query values instead of dropping them", async () => {
+    const { client, requests } = clientWithResponses({
+      "/runtime/events": { events: [], nextCursor: null, matchingCount: 0 }
+    });
+
+    await expect(
+      client.getRuntimeEvents({ limit: 5, type: undefined })
+    ).rejects.toBeInstanceOf(RuntimeControlValidationError);
+    expect(requests).toHaveLength(0);
+  });
+
   it("covers read endpoints and host affordance endpoints", async () => {
     const session = testKitSession();
     const { client } = clientWithResponses({
-      "/runtime/capabilities": { canUseTestTools: true },
-      "/runtime/overview": { status: { runtimeState: "healthy" } },
+      "/runtime/capabilities": fullCapabilities(),
+      "/runtime/overview": fullRuntimeOverview(),
       "/runtime/status": { runtimeState: "healthy" },
-      "/runtime/settings": { proxyPort: 80 },
-      "/vitaldb/recorders": { updatedAt: null, recorders: [], beds: [] },
+      "/runtime/settings": fullSettings({ proxyPort: 80 }),
+      "/vitaldb/recorders": fullVitalRecorderHistory(),
       "/vitaldb/beds": [],
       "/dev/testkit/status": testKitStatus(),
       "/dev/testkit/beds/create": [{ roomName: "OR-A", bedId: "bed-a" }],
@@ -152,6 +185,23 @@ describe("ConsoleClient", () => {
       RuntimeControlContractError
     );
 
+    const logContract = clientWithResponses({ "/host/logs/read": {} });
+    await expect(
+      logContract.client.readLogs({ source: "containers", helperMessage: null, lineLimit: 100 })
+    ).rejects.toBeInstanceOf(RuntimeControlContractError);
+
+    const exportContract = clientWithResponses({ "/host/logs/export": {} });
+    await expect(
+      exportContract.client.exportLogs({ destination: { kind: "localPath", value: "/tmp/logs.zip" } })
+    ).rejects.toBeInstanceOf(RuntimeControlContractError);
+
+    const updateSummaryContract = clientWithResponses({ "/host/update-bundles/summary": {} });
+    await expect(
+      updateSummaryContract.client.summarizeUpdateBundle({
+        bundle: { kind: "localPath", value: "/tmp/u.zip" }
+      })
+    ).rejects.toBeInstanceOf(RuntimeControlContractError);
+
     const network = new ConsoleClient({
       baseURL: "http://helper.local/",
       fetchImpl: vi.fn(async () => {
@@ -224,8 +274,108 @@ function clientWithResponses(
   };
 }
 
+function fullCapabilities() {
+  return {
+    canInstallRuntime: true,
+    canUninstallRuntime: true,
+    canApplyBundle: true,
+    canRollback: true,
+    canEditVMResources: true,
+    canEditNetworkExposure: true,
+    canResetAdminPassword: true,
+    canOpenLocalFiles: true,
+    canStreamLogs: true,
+    canControlRuntimeServices: true,
+    canExportLogs: true,
+    canViewReleaseMetadata: true,
+    canUseTestTools: true
+  };
+}
+
+function fullSettings(overrides: Partial<ReturnType<typeof fullSettingsShape>> = {}) {
+  return {
+    ...fullSettingsShape(),
+    ...overrides
+  };
+}
+
+function fullSettingsShape() {
+  return {
+    readIssues: [],
+    cpuCount: 2,
+    memoryGiB: 4,
+    diskGiB: 32,
+    minimumDiskGiB: 4,
+    networkMode: "shared" as const,
+    bridgedInterface: "",
+    proxyPort: 80,
+    runtimeControlPort: 18321,
+    vitalFilesDirectory: "/Users/shared/vital",
+    publicHost: "",
+    publicPort: 80,
+    adminPassword: "",
+    changeAdminPassword: false,
+    startOnBoot: true,
+    startOnBootConfigurable: true,
+    autoRecoveryEnabled: true,
+    preventSystemSleep: true,
+    redisBackupRetentionCount: 30,
+    restartAfterSave: true
+  };
+}
+
+function fullRuntimeOverview() {
+  return {
+    status: {
+      runtimeState: "healthy"
+    },
+    settings: fullSettings(),
+    release: {},
+    install: {},
+    vitalDBObservation: null,
+    vitalDBObservationSnapshot: {
+      state: "unavailable",
+      observation: null,
+      readError: null
+    },
+    vitalRecorder: {
+      source: "unavailable",
+      observedAt: null,
+      latestRecorder: null
+    }
+  };
+}
+
 function commandResponse() {
   return { result: { exitCode: 0, stdout: "ok", stderr: "" } };
+}
+
+function fullVitalRecorderHistory() {
+  return {
+    updatedAt: null,
+    recorders: [],
+    beds: [],
+    summary: {
+      knownRecorders: 0,
+      currentRecorders: 0,
+      onlineRecorders: 0,
+      staleRecorders: 0,
+      recorderAnomalies: 0,
+      knownBeds: 0,
+      onlineBeds: 0,
+      staleBeds: 0,
+      bedAssignments: 0,
+      bedAnomalies: 0
+    },
+    activityHistory: {
+      source: "notProvided",
+      bucketCount: 0,
+      earliestBucketStartedAt: null,
+      latestBucketStartedAt: null,
+      readError: null
+    },
+    readError: null
+  };
 }
 
 function testKitStartRequest() {

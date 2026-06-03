@@ -40,7 +40,7 @@ final class RuntimeGuestConfigWriterTests: XCTestCase {
         XCTAssertEqual(restricted, [paths.guestRuntimeConfig])
     }
 
-    func testWriteInstallConfigUsesDefaultAdminPasswordWhenSettingsOmitIt() throws {
+    func testWriteInstallConfigRequiresAdminPassword() throws {
         let fileStore = RuntimeFileStoreSpy()
         let paths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
         let writer = RuntimeGuestConfigWriter(
@@ -49,11 +49,15 @@ final class RuntimeGuestConfigWriterTests: XCTestCase {
             restrictSecretFile: { _ in }
         )
 
-        try writer.writeInstallConfig(settings: InstallSettings(vitalFilesDirectory: "/custom/vital-files"))
-
-        let data = try XCTUnwrap(fileStore.files[paths.guestRuntimeConfig])
-        let document = try JSONDecoder().decode(GuestRuntimeConfigDocument.self, from: data)
-        XCTAssertEqual(document.adminPassword, Constants.Guest.defaultAdminPassword)
+        XCTAssertThrowsError(
+            try writer.writeInstallConfig(settings: InstallSettings(vitalFilesDirectory: "/custom/vital-files"))
+        ) { error in
+            guard case LauncherError.missingArgument(let message) = error else {
+                return XCTFail("expected missingArgument, got \(error)")
+            }
+            XCTAssertEqual(message, "install settings adminPassword is required")
+        }
+        XCTAssertNil(fileStore.files[paths.guestRuntimeConfig])
     }
 
     func testGuestRuntimeConfigRequiresExplicitHostOwnedFields() throws {

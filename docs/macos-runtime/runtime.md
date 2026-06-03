@@ -148,7 +148,7 @@ uv run --project packages/vitalserver-devtools vitalserver-devtools \
   --ssh-key ~/.ssh/id_ed25519.pub
 ```
 
-기본 password는 build-time seed 편의값입니다. 제품 설치에서는 Helper app wizard 또는 install settings JSON이 설치 대상별 admin password를 runtime config에 전달합니다.
+기본 password는 build-time seed 편의값입니다. 제품 설치에서는 Helper app wizard 또는 install settings JSON이 설치 대상별 admin password를 runtime config에 전달해야 하며, Host install writer는 누락된 admin password를 기본값으로 보정하지 않습니다.
 
 ## Guest Bootstrap
 

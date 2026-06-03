@@ -18,6 +18,12 @@ historical 502/504 log rows into current `backend-unavailable` anomalies. Curren
 service availability is provided by explicit runtime HTTP probes and runtime
 status contracts.
 
+`readIssues` in the observation document records source-level read or parse
+problems, such as malformed audit events, invalid access log encoding, missing
+configured access logs, or malformed bed JSON. Empty `recorders`, `beds`,
+`proxyConnections`, or activity summaries mean observed empty data only when no
+related `readIssues` are present.
+
 The final read model SoT is the macOS runtime observability SQLite file. The guest
 `tirosh-runtime-state` service writes `runtime-state.json` through
 `tirosh-write-runtime-state`, and watchdog stores the embedded observation in

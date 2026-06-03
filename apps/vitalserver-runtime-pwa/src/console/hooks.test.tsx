@@ -77,7 +77,7 @@ describe("console hooks", () => {
     await waitFor(() => expect(logs.result.current.data).toEqual({ text: "logs" }));
     expect(gateway.readLogs).toHaveBeenCalledWith({
       source: "containers",
-      helperMessage: "",
+      helperMessage: null,
       lineLimit: 100
     });
   });
@@ -88,11 +88,11 @@ describe("console hooks", () => {
 
     await mutateHook(
       () => useApplyRuntimeSettings(),
-      { settings: { proxyPort: 18080 } },
+      { settings: fullSettings({ proxyPort: 18080 }) },
       wrapper
     );
     expect(gateway.applySettings).toHaveBeenCalledWith({
-      settings: { proxyPort: 18080 }
+      settings: fullSettings({ proxyPort: 18080 })
     });
 
     await mutateHook(() => useExportHostLogs(), "/tmp/logs.zip", wrapper);
@@ -245,11 +245,11 @@ function createGateway(): GatewayMock {
     deleteTestKitVirtualRecorders: vi.fn().mockResolvedValue(testKitSession()),
     exportLogs: vi.fn().mockResolvedValue({ destination: "file:///tmp/logs.zip" }),
     getBeds: vi.fn().mockResolvedValue([]),
-    getCapabilities: vi.fn().mockResolvedValue({ canUseTestTools: true }),
+    getCapabilities: vi.fn().mockResolvedValue(fullCapabilities()),
     getOverview: vi.fn().mockResolvedValue({ status: { runtimeState: "healthy" } }),
-    getRecorders: vi.fn().mockResolvedValue({ recorders: [], beds: [] }),
+    getRecorders: vi.fn().mockResolvedValue(fullVitalRecorderHistory()),
     getRuntimeEvents: vi.fn().mockResolvedValue({ events: [] }),
-    getSettings: vi.fn().mockResolvedValue({ proxyPort: 18080 }),
+    getSettings: vi.fn().mockResolvedValue(fullSettings({ proxyPort: 18080 })),
     getStatus: vi.fn().mockResolvedValue({ runtimeState: "healthy" }),
     getTestKitStatus: vi.fn().mockResolvedValue({ enabled: true, sessions: [], beds: [] }),
     listHostBackups: vi.fn().mockResolvedValue([]),
@@ -276,7 +276,85 @@ function createGateway(): GatewayMock {
   };
 }
 
+function fullCapabilities() {
+  return {
+    canInstallRuntime: true,
+    canUninstallRuntime: true,
+    canApplyBundle: true,
+    canRollback: true,
+    canEditVMResources: true,
+    canEditNetworkExposure: true,
+    canResetAdminPassword: true,
+    canOpenLocalFiles: true,
+    canStreamLogs: true,
+    canControlRuntimeServices: true,
+    canExportLogs: true,
+    canViewReleaseMetadata: true,
+    canUseTestTools: true
+  };
+}
+
+function fullSettings(overrides: Partial<ReturnType<typeof fullSettingsShape>> = {}) {
+  return {
+    ...fullSettingsShape(),
+    ...overrides
+  };
+}
+
+function fullSettingsShape() {
+  return {
+    readIssues: [],
+    cpuCount: 2,
+    memoryGiB: 4,
+    diskGiB: 32,
+    minimumDiskGiB: 4,
+    networkMode: "shared" as const,
+    bridgedInterface: "",
+    proxyPort: 80,
+    runtimeControlPort: 18321,
+    vitalFilesDirectory: "/Users/shared/vital",
+    publicHost: "",
+    publicPort: 80,
+    adminPassword: "",
+    changeAdminPassword: false,
+    startOnBoot: true,
+    startOnBootConfigurable: true,
+    autoRecoveryEnabled: true,
+    preventSystemSleep: true,
+    redisBackupRetentionCount: 30,
+    restartAfterSave: true
+  };
+}
+
 const commandResult = { result: { exitCode: 0, stdout: "ok", stderr: "" } };
+
+function fullVitalRecorderHistory() {
+  return {
+    updatedAt: null,
+    recorders: [],
+    beds: [],
+    summary: {
+      knownRecorders: 0,
+      currentRecorders: 0,
+      onlineRecorders: 0,
+      staleRecorders: 0,
+      recorderAnomalies: 0,
+      knownBeds: 0,
+      onlineBeds: 0,
+      staleBeds: 0,
+      bedAssignments: 0,
+      bedAnomalies: 0
+    },
+    activityHistory: {
+      source: "notProvided",
+      bucketCount: 0,
+      earliestBucketStartedAt: null,
+      latestBucketStartedAt: null,
+      readError: null
+    },
+    readError: null
+  };
+}
 
 function testKitStart() {
   return {

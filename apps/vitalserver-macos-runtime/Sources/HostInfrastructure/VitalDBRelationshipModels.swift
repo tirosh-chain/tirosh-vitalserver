@@ -14,6 +14,12 @@ public enum VitalDBRelationshipSeverity: String, Codable, Equatable, Sendable {
     case critical
 }
 
+public enum VitalDBBedAssignmentStatus: String, Codable, Equatable, Sendable {
+    case online
+    case stale
+    case offline
+}
+
 public struct VitalDBBedAssignmentRecord: Codable, Equatable, Identifiable, Sendable {
     public var id: String
     public let bedID: String
@@ -23,7 +29,7 @@ public struct VitalDBBedAssignmentRecord: Codable, Equatable, Identifiable, Send
     public let endedAt: String?
     public let lastSeenAt: String?
     public let lastObservedAt: String
-    public let status: String
+    public let status: VitalDBBedAssignmentStatus
     public let patientConnected: Bool?
     public let observationCount: Int
 
@@ -36,7 +42,7 @@ public struct VitalDBBedAssignmentRecord: Codable, Equatable, Identifiable, Send
         endedAt: String?,
         lastSeenAt: String?,
         lastObservedAt: String,
-        status: String,
+        status: VitalDBBedAssignmentStatus,
         patientConnected: Bool?,
         observationCount: Int
     ) {

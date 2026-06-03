@@ -933,7 +933,7 @@
       "get": {
         "operationId": "streamVitalDBObservations",
         "summary": "Subscribe to VitalDB observation updates",
-        "description": "Long-lived SSE stream for latest VitalDB observation snapshot changes.",
+        "description": "Long-lived SSE stream for latest VitalDB observation snapshot changes. Each data frame is a JSON encoded RuntimeVitalDBObservationSnapshot so read state and readError are preserved.",
         "x-runtime-control-scope": "runtimeControl",
         "x-runtime-control-implementation": "readOnlyLocal",
         "x-runtime-control-access": "browserSafe",
@@ -944,7 +944,7 @@
               "text/event-stream": {
                 "schema": {
                   "type": "string",
-                  "description": "SSE frames with event=vitaldb-observed."
+                  "description": "SSE frames with event=vitaldb-observed and data=RuntimeVitalDBObservationSnapshot JSON."
                 }
               }
             }
@@ -1628,6 +1628,14 @@
         "type": "object",
         "additionalProperties": false,
         "description": "Aggregated PWA read model aligned with the native runtime status UI.",
+        "required": [
+          "status",
+          "settings",
+          "release",
+          "install",
+          "vitalDBObservationSnapshot",
+          "vitalRecorder"
+        ],
         "properties": {
           "status": {
             "$ref": "#/components/schemas/RuntimeStatus"
@@ -1663,6 +1671,9 @@
         "type": "object",
         "additionalProperties": false,
         "description": "Explicit latest VitalDB observation read state. observation remains null when the observability read path has no latest snapshot or failed before producing one.",
+        "required": [
+          "state"
+        ],
         "properties": {
           "state": {
             "$ref": "#/components/schemas/RuntimeVitalDBObservationReadState"
@@ -1782,6 +1793,12 @@
         "type": "object",
         "additionalProperties": false,
         "description": "Aggregated history of VRecorders keyed by vrcode.",
+        "required": [
+          "recorders",
+          "beds",
+          "summary",
+          "activityHistory"
+        ],
         "properties": {
           "updatedAt": {
             "type": [
@@ -1801,8 +1818,77 @@
               "$ref": "#/components/schemas/RuntimeVitalBedRecord"
             }
           },
+          "summary": {
+            "$ref": "#/components/schemas/RuntimeVitalRecorderHistorySummary"
+          },
           "activityHistory": {
             "$ref": "#/components/schemas/RuntimeVitalRecorderActivityHistory"
+          },
+          "readError": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Recorder history read issue. Present when observation/current/activity projection reads failed and the recorders/beds lists may be incomplete."
+          }
+        }
+      },
+      "RuntimeVitalRecorderHistorySummary": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Provider-owned summary for the derived Vital Recorder and Bed history read model.",
+        "required": [
+          "knownRecorders",
+          "currentRecorders",
+          "onlineRecorders",
+          "staleRecorders",
+          "recorderAnomalies",
+          "knownBeds",
+          "onlineBeds",
+          "staleBeds",
+          "bedAssignments",
+          "bedAnomalies"
+        ],
+        "properties": {
+          "knownRecorders": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "currentRecorders": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "onlineRecorders": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "staleRecorders": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "recorderAnomalies": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "knownBeds": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "onlineBeds": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "staleBeds": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "bedAssignments": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "bedAnomalies": {
+            "type": "integer",
+            "minimum": 0
           }
         }
       },
@@ -1810,6 +1896,10 @@
         "type": "object",
         "additionalProperties": false,
         "description": "Metadata for the durable recorder activity bucket projection used by recorder charts.",
+        "required": [
+          "source",
+          "bucketCount"
+        ],
         "properties": {
           "source": {
             "$ref": "#/components/schemas/RuntimeVitalRecorderActivityHistorySource"
@@ -1841,12 +1931,21 @@
         "type": "string",
         "enum": [
           "sqliteProjection",
-          "unavailable"
+          "unavailable",
+          "notProvided"
         ]
       },
       "RuntimeVitalRecorderRecord": {
         "type": "object",
         "additionalProperties": false,
+        "required": [
+          "vrcode",
+          "status",
+          "observationCount",
+          "duplicateObservationCount",
+          "currentAnomalyCount",
+          "presentInLatestObservation"
+        ],
         "properties": {
           "vrcode": {
             "type": "string"
@@ -1900,6 +1999,11 @@
             "type": "integer",
             "minimum": 0
           },
+          "duplicateObservationCount": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Number of extra source recorder observations collapsed because they shared this VRecorder identity."
+          },
           "currentAnomalyCount": {
             "type": "integer",
             "minimum": 0
@@ -1931,6 +2035,13 @@
         "type": "object",
         "additionalProperties": false,
         "description": "One recorder activity bucket from the VitalDB observer.",
+        "required": [
+          "bucketStartedAt",
+          "bucketSeconds",
+          "messageCount",
+          "byteCount",
+          "roomCount"
+        ],
         "properties": {
           "bucketStartedAt": {
             "type": "string"
@@ -1957,6 +2068,16 @@
         "type": "object",
         "additionalProperties": false,
         "description": "Windowed VRecorder data activity sample suitable for UI charts.",
+        "required": [
+          "observedAt",
+          "windowSeconds",
+          "messageCount",
+          "byteCount",
+          "roomCount",
+          "messagesPerSecond",
+          "bytesPerSecond",
+          "buckets"
+        ],
         "properties": {
           "observedAt": {
             "type": "string"
@@ -2000,6 +2121,7 @@
           "online",
           "stale",
           "offline",
+          "notObserved",
           "unknown"
         ]
       },
@@ -2007,6 +2129,13 @@
         "type": "object",
         "additionalProperties": false,
         "description": "Aggregated history of one VitalDB bed keyed by bedID.",
+        "required": [
+          "bedID",
+          "status",
+          "observationCount",
+          "duplicateObservationCount",
+          "currentAnomalyCount"
+        ],
         "properties": {
           "bedID": {
             "type": "string"
@@ -2048,6 +2177,11 @@
             "type": "integer",
             "minimum": 0
           },
+          "duplicateObservationCount": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Number of extra source bed observations collapsed because they shared this bed identity."
+          },
           "currentAnomalyCount": {
             "type": "integer",
             "minimum": 0
@@ -2070,6 +2204,7 @@
           "online",
           "stale",
           "offline",
+          "notObserved",
           "unknown"
         ]
       },
@@ -2089,6 +2224,13 @@
             "items": {
               "$ref": "#/components/schemas/RuntimeVitalRelationshipEventRecord"
             }
+          },
+          "readError": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Relationship projection read issue. Present when assignments or relationship events could not be read completely."
           }
         }
       },
@@ -2473,6 +2615,9 @@
       "RuntimeEventHistory": {
         "type": "object",
         "additionalProperties": false,
+        "required": [
+          "events"
+        ],
         "properties": {
           "events": {
             "type": "array",
@@ -2500,6 +2645,17 @@
       "RuntimeEventDocument": {
         "type": "object",
         "additionalProperties": false,
+        "required": [
+          "schemaVersion",
+          "id",
+          "source",
+          "eventType",
+          "timestamp",
+          "product",
+          "message",
+          "runtimeVersion",
+          "failureReasons"
+        ],
         "properties": {
           "schemaVersion": {
             "type": "integer"
@@ -2701,6 +2857,11 @@
       "RuntimeContainerObservation": {
         "type": "object",
         "additionalProperties": false,
+        "required": [
+          "auditProxyHTTP",
+          "containerLogsPresent",
+          "composeServices"
+        ],
         "properties": {
           "auditProxyHTTP": {
             "type": "string"
@@ -2715,6 +2876,12 @@
               }
             ]
           },
+          "auditProxyStatusReadError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "runtimeStateUpdatedAt": {
             "type": [
               "string",
@@ -2722,6 +2889,12 @@
             ]
           },
           "runtimeStateFileUpdatedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "runtimeStateFileMetadataError": {
             "type": [
               "string",
               "null"
@@ -2754,12 +2927,30 @@
             "items": {
               "$ref": "#/components/schemas/RuntimeContainerServiceObservation"
             }
+          },
+          "composeServicesReadError": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
       "RuntimeAuditProxyStatusDocument": {
         "type": "object",
         "additionalProperties": false,
+        "required": [
+          "activeWebSockets",
+          "activeRecorderConnections",
+          "recorders",
+          "httpRequests",
+          "socketIoEventsSeen",
+          "socketIoParseFailures",
+          "auditWriteFailures",
+          "auditFileWriteFailures",
+          "auditStdoutWriteFailures",
+          "redisIpWriteFailures"
+        ],
         "properties": {
           "startedAt": {
             "type": [
@@ -2821,6 +3012,10 @@
       "RuntimeRecorderConnectionObservation": {
         "type": "object",
         "additionalProperties": false,
+        "required": [
+          "vrcode",
+          "activeConnections"
+        ],
         "properties": {
           "vrcode": {
             "type": "string"
@@ -2846,6 +3041,9 @@
       "RuntimeContainerServiceObservation": {
         "type": "object",
         "additionalProperties": false,
+        "required": [
+          "service"
+        ],
         "properties": {
           "service": {
             "type": "string"
@@ -2925,6 +3123,28 @@
       "RuntimeSettings": {
         "type": "object",
         "additionalProperties": false,
+        "required": [
+          "readIssues",
+          "cpuCount",
+          "memoryGiB",
+          "diskGiB",
+          "minimumDiskGiB",
+          "networkMode",
+          "bridgedInterface",
+          "proxyPort",
+          "runtimeControlPort",
+          "vitalFilesDirectory",
+          "publicHost",
+          "publicPort",
+          "adminPassword",
+          "changeAdminPassword",
+          "startOnBoot",
+          "startOnBootConfigurable",
+          "autoRecoveryEnabled",
+          "preventSystemSleep",
+          "redisBackupRetentionCount",
+          "restartAfterSave"
+        ],
         "properties": {
           "readIssues": {
             "type": "array",
@@ -3134,6 +3354,9 @@
       },
       "RuntimeApplySettingsRequest": {
         "type": "object",
+        "required": [
+          "settings"
+        ],
         "properties": {
           "settings": {
             "$ref": "#/components/schemas/RuntimeSettings"
@@ -3196,7 +3419,11 @@
             "$ref": "#/components/schemas/RuntimeLogSource"
           },
           "helperMessage": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Legacy helper message field. Send null when the caller is reading the append-only helper message log."
           },
           "lineLimit": {
             "type": "integer"
@@ -3221,6 +3448,9 @@
       },
       "RuntimeLogTextResponse": {
         "type": "object",
+        "required": [
+          "text"
+        ],
         "properties": {
           "text": {
             "type": "string"
@@ -3229,6 +3459,9 @@
       },
       "RuntimeLogExportResult": {
         "type": "object",
+        "required": [
+          "destination"
+        ],
         "properties": {
           "destination": {
             "type": "string",
@@ -3254,6 +3487,9 @@
       },
       "RuntimeUpdateBundleSummaryResponse": {
         "type": "object",
+        "required": [
+          "summary"
+        ],
         "properties": {
           "summary": {
             "type": "string"
@@ -3274,7 +3510,8 @@
           "devices",
           "filters",
           "proxyConnections",
-          "anomalies"
+          "anomalies",
+          "readIssues"
         ],
         "properties": {
           "schemaVersion": {
@@ -3327,12 +3564,39 @@
             "items": {
               "$ref": "#/components/schemas/VitalDBAnomalyObservation"
             }
+          },
+          "readIssues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VitalDBObservationReadIssue"
+            }
+          }
+        }
+      },
+      "VitalDBObservationReadIssue": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "source",
+          "message"
+        ],
+        "properties": {
+          "source": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
           }
         }
       },
       "VitalDBRecorderObservation": {
         "type": "object",
         "additionalProperties": false,
+        "required": [
+          "vrcode",
+          "online",
+          "stale"
+        ],
         "properties": {
           "vrcode": {
             "type": "string"
@@ -3389,6 +3653,15 @@
         "type": "object",
         "additionalProperties": false,
         "description": "Recent VRecorder send_data activity summarized from the audit proxy Redis list.",
+        "required": [
+          "windowSeconds",
+          "messageCount",
+          "byteCount",
+          "roomCount",
+          "messagesPerSecond",
+          "bytesPerSecond",
+          "buckets"
+        ],
         "properties": {
           "windowSeconds": {
             "type": "integer",
@@ -3425,12 +3698,54 @@
           "bytesPerSecond": {
             "type": "number",
             "minimum": 0
+          },
+          "buckets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VitalDBRecorderActivityBucket"
+            }
+          }
+        }
+      },
+      "VitalDBRecorderActivityBucket": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "bucketStartedAt",
+          "bucketSeconds",
+          "messageCount",
+          "byteCount",
+          "roomCount"
+        ],
+        "properties": {
+          "bucketStartedAt": {
+            "type": "string"
+          },
+          "bucketSeconds": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "messageCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "byteCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "roomCount": {
+            "type": "integer",
+            "minimum": 0
           }
         }
       },
       "VitalDBBedObservation": {
         "type": "object",
         "additionalProperties": false,
+        "required": [
+          "bedID",
+          "online"
+        ],
         "properties": {
           "bedID": {
             "type": "string"
@@ -3749,12 +4064,12 @@
       "RuntimeTestKitSessionSelectionRequest": {
         "type": "object",
         "additionalProperties": false,
+        "required": [
+          "sessionID"
+        ],
         "properties": {
           "sessionID": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": "string"
           }
         }
       },
@@ -3762,14 +4077,12 @@
         "type": "object",
         "additionalProperties": false,
         "required": [
+          "sessionID",
           "bedRoomNames"
         ],
         "properties": {
           "sessionID": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": "string"
           },
           "bedRoomNames": {
             "type": "array",
@@ -4021,6 +4334,14 @@
       "VitalDBAnomalyObservation": {
         "type": "object",
         "additionalProperties": false,
+        "required": [
+          "id",
+          "kind",
+          "severity",
+          "observedAt",
+          "subject",
+          "message"
+        ],
         "properties": {
           "id": {
             "type": "string"

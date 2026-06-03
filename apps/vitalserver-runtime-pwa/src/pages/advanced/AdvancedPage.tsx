@@ -19,7 +19,8 @@ import type {
   RuntimeBackup
 } from "@/domain/runtime-control/contracts/runtimeControlTypes";
 import { formatBytes } from "@/domain/runtime-control/formatting/bytes";
-import { successfulHTTP } from "@/domain/runtime-control/formatting/http";
+import { formatHTTPStatus } from "@/domain/runtime-control/formatting/http";
+import { NOT_REPORTED } from "@/domain/runtime-control/formatting/reported";
 import {
   formatRuntimeState,
   runtimeStateTone
@@ -302,18 +303,18 @@ function ServiceHealth({ overview }: { overview: RuntimeControlOverview | undefi
     },
     {
       label: "VitalServer",
-      value: status?.guestHTTP ?? "Unknown",
-      healthy: successfulHTTP(status?.guestHTTP)
+      value: formatHTTPStatus(status?.guestHTTP),
+      healthy: null
     },
     {
       label: "Network access",
-      value: status?.hostProxyHTTP ?? "Unknown",
-      healthy: successfulHTTP(status?.hostProxyHTTP)
+      value: formatHTTPStatus(status?.hostProxyHTTP),
+      healthy: null
     },
     {
       label: "Audit proxy",
-      value: status?.containerObservation?.auditProxyHTTP ?? "Unknown",
-      healthy: successfulHTTP(status?.containerObservation?.auditProxyHTTP)
+      value: formatHTTPStatus(status?.containerObservation?.auditProxyHTTP),
+      healthy: null
     }
   ];
 
@@ -322,13 +323,26 @@ function ServiceHealth({ overview }: { overview: RuntimeControlOverview | undefi
       rows={services.map((service) => ({
         label: service.label,
         value: (
-          <StatusBadge tone={service.healthy ? "success" : "warning"}>
+          <StatusBadge tone={serviceTone(service.healthy, service.value)}>
             {service.value}
           </StatusBadge>
         )
       }))}
     />
   );
+}
+
+function serviceTone(
+  healthy: boolean | null | undefined,
+  value: string
+): "success" | "warning" | "neutral" {
+  if (healthy === true) {
+    return "success";
+  }
+  if (healthy === false || value === NOT_REPORTED) {
+    return "warning";
+  }
+  return "neutral";
 }
 
 function BackupTable({

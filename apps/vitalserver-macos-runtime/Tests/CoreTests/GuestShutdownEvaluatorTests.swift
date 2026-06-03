@@ -3,10 +3,10 @@ import Core
 import XCTest
 
 final class GuestShutdownEvaluatorTests: XCTestCase {
-    func testEvaluatesMissingAndRunningResultsAsWait() {
+    func testEvaluatesMissingResultSeparatelyFromRunningResult() {
         XCTAssertEqual(
             GuestShutdownEvaluator.evaluate(nil, expectedRequestId: "request-1"),
-            .wait(message: "waiting for guest update shutdown worker")
+            .missing(message: "waiting for guest update shutdown worker")
         )
         XCTAssertEqual(
             GuestShutdownEvaluator.evaluate(result(status: .running, requestId: "request-1", message: "stopping"), expectedRequestId: "request-1"),

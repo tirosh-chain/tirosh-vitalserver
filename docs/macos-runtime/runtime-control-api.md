@@ -83,10 +83,15 @@ Runtime Control API는 wire payload에서 `runtimeInstalled`, `runtimeState`, `o
 | VM/proxy/watchdog/guest log sync/sleep prevention service | launchd loaded flags | `Running`, `Stopped` |
 | VitalServer/Network access/Redis UI/Swagger UI | HTTP probe fields | `Reachable`, `Unreachable`, `Waiting` |
 | Redis container health | guest compose observation | `Healthy`, `Unhealthy`, `Starting`, `Running`, `Stopped` |
+| VitalDB recorder/bed status | VitalDB observation history | `Online`, `Stale`, `Offline`, `Not observed`, `Unknown` |
 | Command/progress step | `RuntimeProgressDocument` | `Waiting`, `Running`, `Done`, `Failed`, `Skipped` |
 | Planned or unsupported feature | capability/build profile | `Planned`, `Not Available` |
 
 `Runtime installation` replaces the older UI wording `Helper runtime`. The value describes whether the installed VitalServer runtime components exist on the Mac, not whether the Helper app process itself is running.
+
+`RuntimeVitalRecorderStatus.notObserved` and `RuntimeVitalBedStatus.notObserved` mean the recorder or bed is known from history but is absent from the latest VitalDB observation. It is distinct from `offline`, which requires the current owner observation to report the subject as present and not online.
+
+`RuntimeVitalRecorderRecord.duplicateObservationCount` and `RuntimeVitalBedRecord.duplicateObservationCount` report the number of extra source observations that were collapsed because they shared the same VRecorder or bed identity. `0` means the source observation did not contain duplicates for that identity.
 
 `RuntimeStatus.sleepPreventionServiceLoaded` reports the optional host launchd service that keeps the Mac awake while VitalServer is running. It prevents idle system sleep so the host proxy, VM, and VRecorder TCP streams remain online, but it cannot prevent manual Sleep, lid close, shutdown, or managed power-policy sleep.
 
@@ -120,7 +125,9 @@ capacity 정보는 기존 `dataStorage`를 계속 사용합니다.
 `VitalDBObservationDocument`, 그리고 native Status 탭의 `Vital Recorder` 섹션과 같은 성격의
 `RuntimeVitalRecorderSummary`를 한 payload로 제공합니다. `RuntimeVitalRecorderSummary`는
 recorder 상태와 bed 상태를 `vitalDBObservation`에서만 읽습니다. audit-proxy 상태는 recorder 상태로 승격하지
-않고, 현재 연결 수(`activeConnections`)만 제공합니다.
+않고, 현재 연결 수(`activeConnections`)만 제공합니다. audit-proxy status가 없으면 `activeConnections`는
+생략되고, `vitalDBObservation`이 없으면 recorder/bed/anomaly count도 생략됩니다. 생략된 count는 관측된
+`0`이 아니라 not-reported state입니다.
 
 `GET /runtime/overview/stream`은 long-lived SSE 연결입니다. 서버는 overview payload가 바뀔 때
 `runtime-overview` frame을 보냅니다. 각 frame의 `id` 값은 `runtime-overview`, `data` 값은 JSON encoded
@@ -138,8 +145,10 @@ channel이며, command 전송용 양방향 WebSocket contract가 아닙니다.
 frame을 보냅니다. 각 frame의 `id` 값은 `runtime-log-<source>`, `data` 값은 JSON encoded
 `RuntimeLogTextResponse`입니다. Query는 `source`, `lineLimit`, `helperMessage`를 지원합니다.
 `source=helperMessage`는 현재 UI message 값을 재전송하지 않고 host의 append-only
-`tirosh-vitalserver-helper-message.log`를 읽습니다. `helperMessage` query/body field는 이전 client
-호환을 위해 남아 있지만 log source의 SoT가 아닙니다.
+`tirosh-vitalserver-helper-message.log`를 읽습니다. `/host/logs/read` body는 `source`,
+`helperMessage`, `lineLimit`를 모두 보내야 하며 legacy helper message 값이 없으면
+`helperMessage: null`을 보냅니다. field absence와 explicit null/empty string은 다른 request state로
+보존합니다.
 
 `GET /vitaldb/observations/latest`는 watchdog/runtime observability SQLite에 저장된 최신
 `VitalDBObservationDocument`를 반환합니다. 이 payload는 `vitaldb-observer` container가 계산한
@@ -147,15 +156,24 @@ recorder/bed/device/filter/proxy/anomaly snapshot과 최근 `send_data` 활동�
 경로로 전달하고, watchdog이 runtime observability SoT에 저장한 결과입니다. `recorders[].activity`는
 audit proxy Redis List에서 계산한 windowed metric이며 message count, byte count, room count, first/last
 activity, 초당 message/byte rate를 포함합니다.
+`readIssues`는 observer가 source를 읽거나 파싱하는 중 발견한 문제를 보존합니다. 관련 `readIssues`가 있는
+빈 배열/빈 activity는 실제 관측값 0이 아니라 부분 관측 실패일 수 있습니다.
 
 `GET /vitaldb/observations/stream`은 long-lived SSE 연결입니다. 서버는 최신 VitalDB observation payload가
 바뀔 때 `vitaldb-observed` frame을 보냅니다. 각 frame의 `id` 값은 `vitaldb-observation`, `data` 값은
-JSON encoded `VitalDBObservationDocument` 또는 `null`입니다.
+JSON encoded `RuntimeVitalDBObservationSnapshot`입니다. Stream payload는 `/runtime/overview`의
+`vitalDBObservationSnapshot`과 같은 read state/readError contract를 유지합니다. 따라서 최신 observation이
+없거나 read가 실패한 상태를 `null` observation으로만 축소하지 않습니다.
 
 `GET /runtime/overview`는 `vitalDBObservationSnapshot`에 최신 observation read 상태를 함께 싣습니다.
 `state`는 `loaded`, `unavailable`, `failed` 중 하나이며, `observation`이 `null`일 때 단순 미관측인지
 read failure인지 구분하기 위한 API-facing metadata입니다. `/vitaldb/observations/latest` 자체는 기존
 호환성을 위해 `VitalDBObservationDocument` 또는 `null` payload를 유지합니다.
+최신 observation 선택 정책은 명시적입니다. reader는 guest `runtime-state.json`의 current observation을
+가장 신선한 source로 우선하고, 없으면 `runtime-status.json`의 current observation을 사용하며, 둘 다 없을
+때만 `runtime-observability.sqlite` projection의 latest snapshot을 사용합니다. current source read issue는
+projection fallback을 쓰더라도 `readError`에 보존합니다. durable history/relationship/activity read model은
+SQLite projection을 source로 유지합니다.
 
 `GET /vitaldb/recorders`는 runtime observability SQLite에 저장된 VitalDB observation snapshot들을
 `vrcode` 기준으로 집계한 `RuntimeVitalRecorderHistory`를 반환합니다. `vrcode`는 recorder identity key이며,
@@ -163,6 +181,11 @@ IP는 마지막 관측 주소일 뿐 identity로 쓰지 않습니다. 이 read m
 version, bed, first/last seen, latest status, current anomaly count, `activityTimeline`을 PWA/SwiftUI가
 바로 표시할 수 있게 정리한 결과입니다. `activityTimeline`은 snapshot history에서 vrcode별
 `recorders[].activity`를 시간순으로 모은 chart-friendly sample list입니다.
+`activityHistory.source`는 `sqliteProjection`, `unavailable`, `notProvided` 중 하나입니다.
+`sqliteProjection`의 empty timeline은 activity bucket projection을 읽었지만 해당 recorder activity가
+없었다는 뜻이고, `notProvided`는 caller가 activity projection을 제공하지 않은 construction path입니다.
+`readError`가 있으면 observation/current/activity projection read가 실패해 `recorders`, `beds`,
+`activityHistory`가 incomplete일 수 있습니다. 이 상태는 관측된 recorder가 없다는 의미와 구분해야 합니다.
 
 `GET /vitaldb/recorders/{vrcode}`는 같은 history read model에서 특정 `vrcode`의 recorder record 하나를
 반환합니다. 관측 이력이 없으면 `null`을 반환합니다.
@@ -171,6 +194,10 @@ version, bed, first/last seen, latest status, current anomaly count, `activityTi
 기준으로 집계한 `RuntimeVitalBedRecord` 배열을 반환합니다. Bed 탭/PWA는 recorder history payload에
 포함된 `beds` 필드에 의존하지 않고 이 route를 우선 사용합니다. `GET /vitaldb/beds/{bedID}`는 특정
 bed record 하나를 반환하고, 관측 이력이 없으면 `null`을 반환합니다.
+
+`GET /vitaldb/relationships`는 bed/VRecorder assignment와 relationship event projection을 반환합니다.
+`readError`가 있으면 assignment projection 또는 relationship event projection 일부가 실패한 상태이며,
+empty `assignments`/`events`를 정상적인 무관측 상태로 해석하면 안 됩니다.
 
 `distribution.profile`이 `dev`인 build에서는 macOS Helper가 실행 중일 때
 `http://127.0.0.1:18321/dev/runtime-control`에서 브라우저용 Runtime Control API console을 열 수 있습니다.

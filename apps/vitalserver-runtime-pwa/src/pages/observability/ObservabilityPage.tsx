@@ -33,11 +33,20 @@ export function ObservabilityPage() {
     []
   );
   const eventRequest = useMemo(
-    () => ({
-      limit,
-      since: sinceForPeriod(period),
-      type: eventType || undefined
-    }),
+    () => {
+      const request: {
+        limit: number;
+        since: string;
+        type?: string;
+      } = {
+        limit,
+        since: sinceForPeriod(period)
+      };
+      if (eventType) {
+        request.type = eventType;
+      }
+      return request;
+    },
     [eventType, limit, period]
   );
   const overviewQuery = useRuntimeOverview();
@@ -45,15 +54,19 @@ export function ObservabilityPage() {
   const eventQuery = useRuntimeEvents(eventRequest);
 
   const overview = overviewQuery.data;
-  const vitalDBObservation = selectVitalDBObservation(overview);
-  const vitalDBObservationReadIssue =
-    overview?.vitalDBObservationSnapshot?.readError ?? null;
+  const vitalDBObservationRead = selectVitalDBObservationRead(overview);
   const recorderSummary = overview?.vitalRecorder;
-  const eventCount = eventQuery.data?.events?.length ?? 0;
-  const dailyEventCount = dailyEventsQuery.data?.events?.length ?? 0;
+  const eventRead = runtimeEventsRead(eventQuery);
+  const dailyEventRead = runtimeEventsRead(dailyEventsQuery);
+  const anomalyReadIssue = vitalDBObservationAnomalyReadIssue(
+    vitalDBObservationRead
+  );
   const runtimeEvents = useMemo(
-    () => sortRuntimeEventsNewestFirst(eventQuery.data?.events ?? []),
-    [eventQuery.data?.events]
+    () =>
+      eventRead.state === "loaded"
+        ? sortRuntimeEventsNewestFirst(eventRead.events)
+        : [],
+    [eventRead]
   );
 
   return (
@@ -63,17 +76,20 @@ export function ObservabilityPage() {
           rows={[
             {
               label: "VitalDB Observer",
-              value: formatObserverStatus(vitalDBObservation)
+              value: formatObserverStatus(vitalDBObservationRead)
             },
             {
               label: "Guest log sync service",
-              value: overview?.status?.guestLogSyncServiceLoaded
-                ? "Running"
-                : "Stopped"
+              value: formatGuestLogSyncService(
+                overview?.status?.guestLogSyncServiceLoaded
+              )
             },
             {
               label: "Observation updated",
-              value: formatLocalDateTime(vitalDBObservation?.observedAt)
+              value:
+                vitalDBObservationRead.state === "loaded"
+                  ? formatLocalDateTime(vitalDBObservationRead.observation.observedAt)
+                  : "Not reported"
             },
             {
               label: "Known recorders",
@@ -91,34 +107,41 @@ export function ObservabilityPage() {
             },
             {
               label: "Recorder anomalies",
-              value: formatVitalRecorderObservationMetric(
+              value: formatRecorderAnomalyMetric(
                 recorderSummary,
-                "recorderAnomalies"
+                vitalDBObservationRead
               )
             },
             {
               label: "Runtime events (24h)",
-              value: dailyEventCount
+              value: formatRuntimeEventCount(dailyEventRead)
             }
           ]}
         />
       </Panel>
 
       <Panel title="Recorder anomalies">
-        {vitalDBObservationReadIssue ? (
+        {anomalyReadIssue ? (
           <ErrorState
             title="Recorder anomaly details are incomplete"
-            error={new Error(vitalDBObservationReadIssue)}
+            error={new Error(anomalyReadIssue)}
           />
         ) : null}
 
-        {!vitalDBObservation ? (
-          <p className="empty-state">VitalDB observation is not available.</p>
-        ) : vitalDBObservation.anomalies.length === 0 ? (
+        {vitalDBObservationRead.state !== "loaded" ? (
+          <p className="empty-state">
+            {vitalDBObservationReadEmptyMessage(vitalDBObservationRead)}
+          </p>
+        ) : vitalDBObservationRead.observation.anomalies.length === 0 &&
+          !anomalyReadIssue ? (
           <p className="empty-state">No recorder anomalies were reported.</p>
+        ) : vitalDBObservationRead.observation.anomalies.length === 0 ? (
+          <p className="empty-state">
+            Recorder anomaly records are incomplete.
+          </p>
         ) : (
           <div className="anomaly-list">
-            {vitalDBObservation.anomalies.map((anomaly, index) => (
+            {vitalDBObservationRead.observation.anomalies.map((anomaly, index) => (
               <AnomalyItem
                 key={anomaly.id ?? `${anomaly.kind ?? "anomaly"}-${index}`}
                 anomaly={anomaly}
@@ -134,7 +157,9 @@ export function ObservabilityPage() {
             Period
             <select
               value={period}
-              onChange={(event) => setPeriod(event.target.value as RuntimeEventPeriod)}
+              onChange={(event) =>
+                setPeriod(parseRuntimeEventPeriod(event.target.value))
+              }
             >
               {runtimeEventPeriods.map((candidate) => (
                 <option key={candidate.value} value={candidate.value}>
@@ -171,18 +196,23 @@ export function ObservabilityPage() {
             </select>
           </label>
           <span className="toolbar-count">
-            {eventQuery.isPending ? "Loading..." : `${eventCount} events`}
+            {formatRuntimeEventCount(eventRead)}
           </span>
         </div>
 
-        {eventQuery.isPending ? (
+        {eventRead.state === "loading" ? (
           <p className="empty-state">Loading runtime events...</p>
-        ) : eventQuery.isError ? (
+        ) : eventRead.state === "failed" ? (
           <ErrorState
             title="Runtime events are not available"
-            error={eventQuery.error}
+            error={eventRead.error}
           />
-        ) : eventCount === 0 ? (
+        ) : eventRead.state === "missing" ? (
+          <ErrorState
+            title="Runtime event response is incomplete"
+            error={new Error("Runtime events response is missing events.")}
+          />
+        ) : eventRead.events.length === 0 ? (
           <p className="empty-state">No runtime events were found for this period.</p>
         ) : (
           <div className="event-list">
@@ -247,9 +277,15 @@ function RuntimeEventItem({ event }: { event: RuntimeEventDocument }) {
         <span>{formatLocalDateTime(event.timestamp)}</span>
         <strong>{event.eventType}</strong>
         <span>{formatRuntimeState(event.status)}</span>
-        <span className="event-source">{event.operation || event.source}</span>
+        {event.operation ? <span>operation: {event.operation}</span> : null}
+        {event.source ? (
+          <span className="event-source">source: {event.source}</span>
+        ) : null}
+        {!event.operation && !event.source ? (
+          <span className="event-source">source not reported</span>
+        ) : null}
       </div>
-      <h3>{event.message || event.eventType || "Runtime event"}</h3>
+      <h3>{event.message || "Message not reported"}</h3>
       {event.failureReasons?.length ? (
         <p>{event.failureReasons.join(", ")}</p>
       ) : null}
@@ -257,23 +293,184 @@ function RuntimeEventItem({ event }: { event: RuntimeEventDocument }) {
   );
 }
 
-function selectVitalDBObservation(
+type VitalDBObservationRead =
+  | {
+      state: "loaded";
+      observation: VitalDBObservationDocument;
+      readError: string | null;
+    }
+  | {
+      state: "failed";
+      readError: string;
+    }
+  | {
+      state: "unavailable";
+      readError: string | null;
+    }
+  | {
+      state: "notReported";
+    };
+
+function selectVitalDBObservationRead(
   overview: RuntimeControlOverview | undefined
-): VitalDBObservationDocument | null {
+): VitalDBObservationRead {
   const snapshot = overview?.vitalDBObservationSnapshot;
-  if (snapshot?.state !== "loaded") {
-    return null;
+  if (!snapshot?.state) {
+    return { state: "notReported" };
   }
-  return snapshot.observation ?? null;
+  if (snapshot.state === "loaded") {
+    if (snapshot.observation) {
+      return {
+        state: "loaded",
+        observation: snapshot.observation,
+        readError: snapshot.readError ?? null
+      };
+    }
+    return {
+      state: "failed",
+      readError: "VitalDB observation snapshot is loaded but observation is missing."
+    };
+  }
+  if (snapshot.state === "failed") {
+    return {
+      state: "failed",
+      readError: snapshot.readError || "VitalDB observation read failed."
+    };
+  }
+  return {
+    state: "unavailable",
+    readError: snapshot.readError ?? null
+  };
 }
 
-function formatObserverStatus(
-  observation: VitalDBObservationDocument | null
-): string {
-  if (!observation) {
-    return "Unavailable";
+function formatObserverStatus(read: VitalDBObservationRead): string {
+  switch (read.state) {
+    case "loaded":
+      if (read.readError) {
+        return read.observation.ready ? "Ready with issues" : "Unhealthy with issues";
+      }
+      return read.observation.ready ? "Ready" : "Unhealthy";
+    case "failed":
+      return "Failed";
+    case "unavailable":
+      return "Unavailable";
+    case "notReported":
+      return "Not reported";
   }
-  return observation.ready ? "Ready" : "Unhealthy";
+}
+
+function vitalDBObservationReadEmptyMessage(read: VitalDBObservationRead): string {
+  switch (read.state) {
+    case "loaded":
+      return "";
+    case "failed":
+      return "VitalDB observation read failed.";
+    case "unavailable":
+      return "VitalDB observation is unavailable.";
+    case "notReported":
+      return "VitalDB observation has not been reported.";
+  }
+}
+
+function vitalDBObservationAnomalyReadIssue(
+  read: VitalDBObservationRead
+): string | null {
+  if (read.state === "failed") {
+    return read.readError;
+  }
+  if (read.state === "unavailable") {
+    return read.readError;
+  }
+  if (read.state !== "loaded") {
+    return null;
+  }
+  const observationIssues =
+    read.observation.readIssues.length > 0
+      ? read.observation.readIssues
+          .map((issue) => `${issue.source}: ${issue.message}`)
+          .join("; ")
+      : null;
+  return [read.readError, observationIssues].filter(Boolean).join("; ") || null;
+}
+
+type RuntimeEventsRead =
+  | {
+      state: "loading";
+    }
+  | {
+      state: "failed";
+      error: unknown;
+    }
+  | {
+      state: "missing";
+    }
+  | {
+      state: "loaded";
+      events: RuntimeEventDocument[];
+    };
+
+function runtimeEventsRead(query: {
+  data?: { events?: RuntimeEventDocument[] };
+  error: unknown;
+  isError: boolean;
+  isPending: boolean;
+}): RuntimeEventsRead {
+  if (query.isPending) {
+    return { state: "loading" };
+  }
+  if (query.isError) {
+    return { state: "failed", error: query.error };
+  }
+  if (!query.data || !Array.isArray(query.data.events)) {
+    return { state: "missing" };
+  }
+  return { state: "loaded", events: query.data.events };
+}
+
+function formatRuntimeEventCount(read: RuntimeEventsRead): string {
+  switch (read.state) {
+    case "loaded":
+      return `${read.events.length} events`;
+    case "loading":
+      return "Loading...";
+    case "failed":
+      return "Failed";
+    case "missing":
+      return "Not reported";
+  }
+}
+
+function formatGuestLogSyncService(value: boolean | null | undefined): string {
+  if (value === true) {
+    return "Running";
+  }
+  if (value === false) {
+    return "Stopped";
+  }
+  return "Not reported";
+}
+
+function formatRecorderAnomalyMetric(
+  recorderSummary: RuntimeControlOverview["vitalRecorder"] | undefined,
+  read: VitalDBObservationRead
+): string {
+  const summaryValue = String(formatVitalRecorderObservationMetric(
+    recorderSummary,
+    "recorderAnomalies"
+  ));
+  if (read.state !== "loaded") {
+    return summaryValue;
+  }
+  const detailCount = read.observation.anomalies.length;
+  if (String(detailCount) === String(summaryValue)) {
+    return summaryValue;
+  }
+  return `${summaryValue} reported, ${detailCount} detailed`;
+}
+
+function parseRuntimeEventPeriod(value: string): RuntimeEventPeriod {
+  const period = runtimeEventPeriods.find((candidate) => candidate.value === value);
+  return period?.value ?? "24h";
 }
 
 function anomalySeverityTone(

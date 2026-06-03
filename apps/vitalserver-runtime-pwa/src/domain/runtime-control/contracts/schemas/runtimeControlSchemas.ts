@@ -27,8 +27,20 @@ const vmStateSchema = z
   ])
   .nullable();
 const runtimeEventTypeSchema = z.enum(runtimeEventTypeValues);
-const recorderStatusSchema = z.enum(["online", "stale", "offline", "unknown"]);
-const bedStatusSchema = z.enum(["online", "stale", "offline", "unknown"]);
+const recorderStatusSchema = z.enum([
+  "online",
+  "stale",
+  "offline",
+  "notObserved",
+  "unknown"
+]);
+const bedStatusSchema = z.enum([
+  "online",
+  "stale",
+  "offline",
+  "notObserved",
+  "unknown"
+]);
 const anomalySeveritySchema = z.enum(["info", "warning", "critical"]);
 const vitalDBAnomalyKindSchema = z.enum([
   "offline",
@@ -72,19 +84,19 @@ export const runtimeCommandResponseSchema = z
 
 export const runtimeCapabilitiesSchema = z
   .object({
-    canInstallRuntime: z.boolean().optional(),
-    canUninstallRuntime: z.boolean().optional(),
-    canApplyBundle: z.boolean().optional(),
-    canRollback: z.boolean().optional(),
-    canEditVMResources: z.boolean().optional(),
-    canEditNetworkExposure: z.boolean().optional(),
-    canResetAdminPassword: z.boolean().optional(),
-    canOpenLocalFiles: z.boolean().optional(),
-    canStreamLogs: z.boolean().optional(),
-    canControlRuntimeServices: z.boolean().optional(),
-    canExportLogs: z.boolean().optional(),
-    canViewReleaseMetadata: z.boolean().optional(),
-    canUseTestTools: z.boolean().optional()
+    canInstallRuntime: z.boolean(),
+    canUninstallRuntime: z.boolean(),
+    canApplyBundle: z.boolean(),
+    canRollback: z.boolean(),
+    canEditVMResources: z.boolean(),
+    canEditNetworkExposure: z.boolean(),
+    canResetAdminPassword: z.boolean(),
+    canOpenLocalFiles: z.boolean(),
+    canStreamLogs: z.boolean(),
+    canControlRuntimeServices: z.boolean(),
+    canExportLogs: z.boolean(),
+    canViewReleaseMetadata: z.boolean(),
+    canUseTestTools: z.boolean()
   })
   .passthrough();
 
@@ -98,27 +110,26 @@ export const runtimeSettingsSchema = z
             message: z.string()
           })
           .passthrough()
-      )
-      .optional(),
-    cpuCount: z.number().optional(),
-    memoryGiB: z.number().optional(),
-    diskGiB: z.number().optional(),
-    minimumDiskGiB: z.number().optional(),
-    networkMode: networkModeSchema.optional(),
-    bridgedInterface: z.string().optional(),
-    proxyPort: z.number().optional(),
-    runtimeControlPort: z.number().optional(),
-    vitalFilesDirectory: z.string().optional(),
-    publicHost: z.string().optional(),
-    publicPort: z.number().optional(),
-    adminPassword: z.string().optional(),
-    changeAdminPassword: z.boolean().optional(),
-    startOnBoot: z.boolean().optional(),
-    startOnBootConfigurable: z.boolean().optional(),
-    autoRecoveryEnabled: z.boolean().optional(),
-    preventSystemSleep: z.boolean().optional(),
-    redisBackupRetentionCount: z.number().optional(),
-    restartAfterSave: z.boolean().optional()
+      ),
+    cpuCount: z.number(),
+    memoryGiB: z.number(),
+    diskGiB: z.number(),
+    minimumDiskGiB: z.number(),
+    networkMode: networkModeSchema,
+    bridgedInterface: z.string(),
+    proxyPort: z.number(),
+    runtimeControlPort: z.number(),
+    vitalFilesDirectory: z.string(),
+    publicHost: z.string(),
+    publicPort: z.number(),
+    adminPassword: z.string(),
+    changeAdminPassword: z.boolean(),
+    startOnBoot: z.boolean(),
+    startOnBootConfigurable: z.boolean(),
+    autoRecoveryEnabled: z.boolean(),
+    preventSystemSleep: z.boolean(),
+    redisBackupRetentionCount: z.number(),
+    restartAfterSave: z.boolean()
   })
   .passthrough();
 
@@ -174,66 +185,125 @@ const runtimeDomainErrorSchema = z
   })
   .passthrough();
 
+const runtimeRecorderConnectionObservationSchema = z
+  .object({
+    vrcode: z.string(),
+    activeConnections: z.number(),
+    selectedIp: nullableString,
+    lastSeenAt: nullableString
+  })
+  .passthrough();
+
+const runtimeAuditProxyStatusDocumentSchema = z
+  .object({
+    startedAt: nullableString,
+    uptimeSeconds: nullableNumber,
+    activeWebSockets: z.number(),
+    activeRecorderConnections: z.number(),
+    recorders: z.array(runtimeRecorderConnectionObservationSchema),
+    httpRequests: z.number(),
+    socketIoEventsSeen: z.number(),
+    socketIoParseFailures: z.number(),
+    auditWriteFailures: z.number(),
+    auditFileWriteFailures: z.number(),
+    auditStdoutWriteFailures: z.number(),
+    redisIpWriteFailures: z.number()
+  })
+  .passthrough();
+
+const runtimeContainerServiceObservationSchema = z
+  .object({
+    service: z.string(),
+    name: nullableString,
+    state: nullableString,
+    health: nullableString,
+    exitCode: nullableNumber,
+    startedAt: nullableString,
+    uptimeSeconds: nullableNumber
+  })
+  .passthrough();
+
 const runtimeContainerObservationSchema = z
   .object({
-    auditProxyHTTP: z.string().optional(),
-    auditProxyStatus: unknownRecord.nullable().optional(),
+    auditProxyHTTP: z.string(),
+    auditProxyStatus: runtimeAuditProxyStatusDocumentSchema.nullable().optional(),
+    auditProxyStatusReadError: nullableString,
     runtimeStateUpdatedAt: nullableString,
     runtimeStateFileUpdatedAt: nullableString,
-    containerLogsPresent: z.boolean().optional(),
+    runtimeStateFileMetadataError: nullableString,
+    containerLogsPresent: z.boolean(),
     containerLogsBytes: nullableNumber,
     containerLogsUpdatedAt: nullableString,
     containerLogsMetadataError: nullableString,
-    composeServices: z.array(unknownRecord).optional()
+    composeServices: z.array(runtimeContainerServiceObservationSchema),
+    composeServicesReadError: nullableString
+  })
+  .passthrough();
+
+const vitalDBRecorderActivityBucketSchema = z
+  .object({
+    bucketStartedAt: z.string(),
+    bucketSeconds: z.number(),
+    messageCount: z.number(),
+    byteCount: z.number(),
+    roomCount: z.number()
   })
   .passthrough();
 
 const vitalDBRecorderActivityObservationSchema = z
   .object({
-    windowSeconds: z.number().optional(),
-    messageCount: z.number().optional(),
-    byteCount: z.number().optional(),
-    roomCount: z.number().optional(),
+    windowSeconds: z.number(),
+    messageCount: z.number(),
+    byteCount: z.number(),
+    roomCount: z.number(),
     firstSeenAt: nullableString,
     lastSeenAt: nullableString,
-    messagesPerSecond: z.number().optional(),
-    bytesPerSecond: z.number().optional()
+    messagesPerSecond: z.number(),
+    bytesPerSecond: z.number(),
+    buckets: z.array(vitalDBRecorderActivityBucketSchema)
   })
   .passthrough();
 
 const vitalDBRecorderObservationSchema = z
   .object({
-    vrcode: z.string().optional(),
+    vrcode: z.string(),
     ip: nullableString,
     lastSeenAt: nullableString,
     version: nullableString,
     info: nullableString,
     config: nullableString,
-    online: z.boolean().optional(),
-    stale: z.boolean().optional(),
+    online: z.boolean(),
+    stale: z.boolean(),
     activity: vitalDBRecorderActivityObservationSchema.nullable().optional()
   })
   .passthrough();
 
 const vitalDBBedObservationSchema = z
   .object({
-    bedID: z.string().optional(),
+    bedID: z.string(),
     name: nullableString,
     vrcode: nullableString,
     lastSeenAt: nullableString,
     patientConnected: nullableBoolean,
-    online: z.boolean().optional()
+    online: z.boolean()
   })
   .passthrough();
 
 const vitalDBAnomalyObservationSchema = z
   .object({
-    id: z.string().optional(),
-    kind: vitalDBAnomalyKindSchema.optional(),
-    severity: anomalySeveritySchema.optional(),
-    observedAt: z.string().optional(),
-    subject: z.string().optional(),
-    message: z.string().optional()
+    id: z.string(),
+    kind: vitalDBAnomalyKindSchema,
+    severity: anomalySeveritySchema,
+    observedAt: z.string(),
+    subject: z.string(),
+    message: z.string()
+  })
+  .passthrough();
+
+const vitalDBObservationReadIssueSchema = z
+  .object({
+    source: z.string(),
+    message: z.string()
   })
   .passthrough();
 
@@ -249,7 +319,8 @@ export const vitalDBObservationSchema = z
     devices: z.array(unknownRecord),
     filters: z.array(unknownRecord),
     proxyConnections: z.array(unknownRecord),
-    anomalies: z.array(vitalDBAnomalyObservationSchema)
+    anomalies: z.array(vitalDBAnomalyObservationSchema),
+    readIssues: z.array(vitalDBObservationReadIssueSchema)
   })
   .passthrough();
 
@@ -318,20 +389,19 @@ const runtimeVitalRecorderSummarySchema = z
 
 export const runtimeOverviewSchema = z
   .object({
-    status: runtimeStatusSchema.optional(),
-    settings: runtimeSettingsSchema.optional(),
-    release: unknownRecord.optional(),
-    install: unknownRecord.optional(),
+    status: runtimeStatusSchema,
+    settings: runtimeSettingsSchema,
+    release: unknownRecord,
+    install: unknownRecord,
     vitalDBObservation: vitalDBObservationSchema.nullable().optional(),
     vitalDBObservationSnapshot: z
       .object({
-        state: vitalDBObservationReadStateSchema.optional(),
+        state: vitalDBObservationReadStateSchema,
         observation: vitalDBObservationSchema.nullable().optional(),
         readError: nullableString
       })
-      .passthrough()
-      .optional(),
-    vitalRecorder: runtimeVitalRecorderSummarySchema.optional()
+      .passthrough(),
+    vitalRecorder: runtimeVitalRecorderSummarySchema
   })
   .passthrough();
 
@@ -344,20 +414,20 @@ export const runtimeBackupSchema = z
 
 export const runtimeEventDocumentSchema = z
   .object({
-    schemaVersion: z.number().optional(),
-    id: z.string().optional(),
-    source: z.string().optional(),
-    eventType: runtimeEventTypeSchema.optional(),
-    timestamp: z.string().optional(),
-    product: z.string().optional(),
+    schemaVersion: z.number(),
+    id: z.string(),
+    source: z.string(),
+    eventType: runtimeEventTypeSchema,
+    timestamp: z.string(),
+    product: z.string(),
     status: runtimeStateSchema.optional(),
     previousStatus: nullableString,
     operation: z.string().optional(),
-    message: z.string().optional(),
-    runtimeVersion: z.string().optional(),
+    message: z.string(),
+    runtimeVersion: z.string(),
     vmState: vmStateSchema.optional(),
     vmErrors: z.array(z.string()).nullable().optional(),
-    failureReasons: z.array(z.string()).optional(),
+    failureReasons: z.array(z.string()),
     domainErrors: z.array(runtimeDomainErrorSchema).nullable().optional(),
     containerObservation: runtimeContainerObservationSchema.nullable().optional(),
     progress: unknownRecord.nullable().optional(),
@@ -367,7 +437,7 @@ export const runtimeEventDocumentSchema = z
 
 export const runtimeEventHistorySchema = z
   .object({
-    events: z.array(runtimeEventDocumentSchema).optional(),
+    events: z.array(runtimeEventDocumentSchema),
     nextCursor: nullableString,
     matchingCount: nullableNumber
   })
@@ -375,31 +445,31 @@ export const runtimeEventHistorySchema = z
 
 const recorderActivityBucketSchema = z
   .object({
-    bucketStartedAt: z.string().optional(),
-    bucketSeconds: z.number().optional(),
-    messageCount: z.number().optional(),
-    byteCount: z.number().optional(),
-    roomCount: z.number().optional()
+    bucketStartedAt: z.string(),
+    bucketSeconds: z.number(),
+    messageCount: z.number(),
+    byteCount: z.number(),
+    roomCount: z.number()
   })
   .passthrough();
 
 const recorderActivityPointSchema = z
   .object({
-    observedAt: z.string().optional(),
-    windowSeconds: z.number().optional(),
-    messageCount: z.number().optional(),
-    byteCount: z.number().optional(),
-    roomCount: z.number().optional(),
-    messagesPerSecond: z.number().optional(),
-    bytesPerSecond: z.number().optional(),
-    buckets: z.array(recorderActivityBucketSchema).optional()
+    observedAt: z.string(),
+    windowSeconds: z.number(),
+    messageCount: z.number(),
+    byteCount: z.number(),
+    roomCount: z.number(),
+    messagesPerSecond: z.number(),
+    bytesPerSecond: z.number(),
+    buckets: z.array(recorderActivityBucketSchema)
   })
   .passthrough();
 
 const vitalDBRecorderRecordSchema = z
   .object({
-    vrcode: z.string().optional(),
-    status: recorderStatusSchema.optional(),
+    vrcode: z.string(),
+    status: recorderStatusSchema,
     lastIP: nullableString,
     version: nullableString,
     bedID: nullableString,
@@ -407,38 +477,56 @@ const vitalDBRecorderRecordSchema = z
     patientConnected: nullableBoolean,
     firstSeenAt: nullableString,
     lastSeenAt: nullableString,
-    observationCount: z.number().optional(),
-    currentAnomalyCount: z.number().optional(),
+    observationCount: z.number(),
+    duplicateObservationCount: z.number(),
+    currentAnomalyCount: z.number(),
     latestAnomalySeverity: anomalySeveritySchema.nullable().optional(),
-    presentInLatestObservation: z.boolean().optional(),
+    presentInLatestObservation: z.boolean(),
     activityTimeline: z.array(recorderActivityPointSchema).optional()
   })
   .passthrough();
 
 const vitalDBBedRecordSchema = z
   .object({
-    bedID: z.string().optional(),
+    bedID: z.string(),
     name: nullableString,
     vrcode: nullableString,
-    status: bedStatusSchema.optional(),
+    status: bedStatusSchema,
     patientConnected: nullableBoolean,
     firstSeenAt: nullableString,
     lastSeenAt: nullableString,
-    observationCount: z.number().optional(),
-    currentAnomalyCount: z.number().optional(),
+    observationCount: z.number(),
+    duplicateObservationCount: z.number(),
+    currentAnomalyCount: z.number(),
     latestAnomalySeverity: anomalySeveritySchema.nullable().optional()
+  })
+  .passthrough();
+
+const vitalDBRecorderHistorySummarySchema = z
+  .object({
+    knownRecorders: z.number(),
+    currentRecorders: z.number(),
+    onlineRecorders: z.number(),
+    staleRecorders: z.number(),
+    recorderAnomalies: z.number(),
+    knownBeds: z.number(),
+    onlineBeds: z.number(),
+    staleBeds: z.number(),
+    bedAssignments: z.number(),
+    bedAnomalies: z.number()
   })
   .passthrough();
 
 const recorderActivityHistorySourceSchema = z.enum([
   "sqliteProjection",
-  "unavailable"
+  "unavailable",
+  "notProvided"
 ]);
 
 const recorderActivityHistorySchema = z
   .object({
-    source: recorderActivityHistorySourceSchema.optional(),
-    bucketCount: z.number().optional(),
+    source: recorderActivityHistorySourceSchema,
+    bucketCount: z.number(),
     earliestBucketStartedAt: nullableString,
     latestBucketStartedAt: nullableString,
     readError: nullableString
@@ -448,9 +536,11 @@ const recorderActivityHistorySchema = z
 export const vitalDBRecordersSchema = z
   .object({
     updatedAt: nullableString,
-    recorders: z.array(vitalDBRecorderRecordSchema).optional(),
-    beds: z.array(vitalDBBedRecordSchema).optional(),
-    activityHistory: recorderActivityHistorySchema.optional()
+    recorders: z.array(vitalDBRecorderRecordSchema),
+    beds: z.array(vitalDBBedRecordSchema),
+    summary: vitalDBRecorderHistorySummarySchema,
+    activityHistory: recorderActivityHistorySchema,
+    readError: nullableString
   })
   .passthrough();
 
@@ -458,19 +548,19 @@ export const vitalDBBedsSchema = z.array(vitalDBBedRecordSchema);
 
 export const runtimeLogTextResponseSchema = z
   .object({
-    text: z.string().optional()
+    text: z.string()
   })
   .passthrough();
 
 export const runtimeLogExportResultSchema = z
   .object({
-    destination: z.string().optional()
+    destination: z.string()
   })
   .passthrough();
 
 export const runtimeUpdateBundleSummaryResponseSchema = z
   .object({
-    summary: z.string().optional()
+    summary: z.string()
   })
   .passthrough();
 

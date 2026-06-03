@@ -100,7 +100,7 @@ struct GuestRuntimeConfigDocument: Codable {
 
     static func load(from url: URL, fileStore: RuntimeFileReading) throws -> GuestRuntimeConfigDocument {
         guard fileStore.fileExists(url) else {
-            return GuestRuntimeConfigDocument.default
+            throw LauncherError.missingFile(url.path)
         }
         let data = try fileStore.readData(url)
         return try JSONDecoder().decode(GuestRuntimeConfigDocument.self, from: data)

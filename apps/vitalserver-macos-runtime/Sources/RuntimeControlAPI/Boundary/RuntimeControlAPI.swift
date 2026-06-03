@@ -20,6 +20,11 @@ public enum RuntimeControlAPIClientAccess: String, Codable, Equatable, Sendable 
     case nativeShellOnly
 }
 
+public enum RuntimeControlAPIStreamCapability: String, Codable, Equatable, Sendable {
+    case supported
+    case unsupported
+}
+
 public enum RuntimeControlAPIErrorCode: String, Codable, Equatable, Sendable {
     case badRequest
     case routeNotFound
@@ -164,6 +169,51 @@ public enum RuntimeControlAPIEndpoint: String, CaseIterable, Codable, Equatable,
 }
 
 public extension RuntimeControlAPIEndpoint {
+    var streamCapability: RuntimeControlAPIStreamCapability {
+        switch self {
+        case .overviewStream,
+             .statusStream,
+             .eventStream,
+             .vitalDBObservationStream,
+             .logStream:
+            return .supported
+        case .capabilities,
+             .overview,
+             .status,
+             .events,
+             .vitalDBObservation,
+             .vitalDBRecorders,
+             .vitalDBRecorder,
+             .vitalDBBeds,
+             .vitalDBBed,
+             .vitalDBRelationships,
+             .health,
+             .settings,
+             .applySettings,
+             .release,
+             .installInfo,
+             .startServices,
+             .stopServices,
+             .repairRuntimeServices,
+             .repairProxy,
+             .repairDatastore,
+             .repairVMDisk,
+             .createRedisBackup,
+             .uninstall,
+             .backups,
+             .redisBackups,
+             .restoreRedisBackup,
+             .logText,
+             .updateBundleSummary,
+             .verifyUpdateBundle,
+             .applyUpdateBundle,
+             .rollbackBackup,
+             .deleteBackup,
+             .exportLogs:
+            return .unsupported
+        }
+    }
+
     var clientAccess: RuntimeControlAPIClientAccess {
         switch self {
         case .capabilities,
@@ -279,6 +329,39 @@ public struct RuntimeControlErrorResponse: Codable, Equatable, Sendable {
     }
 }
 
+public enum RuntimeControlErrorResponseEncoder {
+    public static func encode(code: RuntimeControlAPIErrorCode, message: String) -> Data {
+        Data("{\"code\":\"\(jsonStringContent(code.rawValue))\",\"message\":\"\(jsonStringContent(message))\"}".utf8)
+    }
+
+    private static func jsonStringContent(_ value: String) -> String {
+        var result = ""
+        for scalar in value.unicodeScalars {
+            switch scalar {
+            case "\"":
+                result += "\\\""
+            case "\\":
+                result += "\\\\"
+            case "\u{08}":
+                result += "\\b"
+            case "\u{0C}":
+                result += "\\f"
+            case "\n":
+                result += "\\n"
+            case "\r":
+                result += "\\r"
+            case "\t":
+                result += "\\t"
+            case let control where control.value < 0x20:
+                result += String(format: "\\u%04X", control.value)
+            default:
+                result.unicodeScalars.append(scalar)
+            }
+        }
+        return result
+    }
+}
+
 public struct RuntimeControlCommandResponse: Codable, Equatable, Sendable {
     public let result: RuntimeCommandResult
 
@@ -313,10 +396,10 @@ public struct RuntimeUninstallRequest: Codable, Equatable, Sendable {
 
 public struct RuntimeLogTextRequest: Codable, Equatable, Sendable {
     public let source: RuntimeLogSource
-    public let helperMessage: String
+    public let helperMessage: String?
     public let lineLimit: Int
 
-    public init(source: RuntimeLogSource, helperMessage: String, lineLimit: Int) {
+    public init(source: RuntimeLogSource, helperMessage: String? = nil, lineLimit: Int) {
         self.source = source
         self.helperMessage = helperMessage
         self.lineLimit = lineLimit

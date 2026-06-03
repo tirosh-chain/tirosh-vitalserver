@@ -165,6 +165,21 @@ final class RuntimeFileReaderTests: XCTestCase {
         XCTAssertTrue(logText.contains(RuntimeAdapterConstants.Paths.installLog))
     }
 
+    func testLogTextReportsInvalidUTF8LogFile() throws {
+        let reader = SystemRuntimeHostFileReader(
+            fileStore: SpecificFileRuntimeFileStore(dataByPath: [
+                RuntimeAdapterConstants.Paths.installLog: Data([0xff]),
+            ]),
+            logCollector: FakeRuntimeLogCollector()
+        )
+
+        let logText = reader.logText(sourceID: .install, helperMessage: "Ready", lineLimit: 10)
+
+        XCTAssertTrue(logText.hasPrefix("Failed to read log file "))
+        XCTAssertTrue(logText.contains(RuntimeAdapterConstants.Paths.installLog))
+        XCTAssertFalse(logText.contains(AppConstants.StatusText.noLogData))
+    }
+
     func testCommandLogTextReadsFallbackSourceAndTailsLargeFile() throws {
         let padding = String(repeating: "x", count: 130 * 1024)
         let logData = Data("\(padding)\nfirst\nsecond\nthird".utf8)

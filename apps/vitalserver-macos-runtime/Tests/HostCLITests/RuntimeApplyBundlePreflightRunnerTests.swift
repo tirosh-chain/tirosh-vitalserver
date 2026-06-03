@@ -190,6 +190,53 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
         }
     }
 
+    func testPreparePropagatesRootfsSizeReadFailureBeforeFreeSpaceCheck() {
+        let stagedBundle = URL(fileURLWithPath: "/managed/update-bundle-1.2.3")
+        let stagedRootfs = stagedBundle.appendingPathComponent(Constants.Artifacts.rootfsBase)
+        let rootfsBase = URL(fileURLWithPath: "/product/runtime/rootfs-base.raw.gz")
+        let runner = RuntimeApplyBundlePreflightRunner(
+            stageBundle: { _ in stagedBundle },
+            loadManifest: { _ in
+                self.manifest(
+                    version: "1.2.3",
+                    artifacts: [
+                        UpdateBundleArtifact(
+                            name: Constants.Artifacts.rootfsBase,
+                            type: .rootfsBase,
+                            sha256: "abc",
+                            size: 20
+                        ),
+                    ]
+                )
+            },
+            fileExists: { url in url == stagedRootfs },
+            createDirectory: { _, _ in XCTFail("should not create backup directory") },
+            fileSize: { url in
+                if url == rootfsBase {
+                    throw LauncherError.missingFile(url.path)
+                }
+                return 20
+            },
+            requireFreeSpace: { _, _, _ in XCTFail("should not check free space") },
+            checkCompatibility: { _ in },
+            serviceRestartPolicy: {
+                RuntimeServiceRestartPolicy(restartVM: false, restartProxy: false, restartWatchdog: false)
+            },
+            requireGuestCapability: { _ in },
+            createBackup: { _ in URL(fileURLWithPath: "/backup") },
+            directorySize: { _ in 30 },
+            log: { _ in }
+        )
+
+        XCTAssertThrowsError(try runner.prepare(
+            bundleURL: URL(fileURLWithPath: "/incoming/bundle"),
+            backupsDirectory: URL(fileURLWithPath: "/product/backups"),
+            rootfsBase: rootfsBase
+        )) { error in
+            XCTAssertEqual(String(describing: error), String(describing: LauncherError.missingFile(rootfsBase.path)))
+        }
+    }
+
     func testPrepareRequiresGuestCapabilitiesBeforeCreatingBackup() {
         let stagedBundle = URL(fileURLWithPath: "/managed/update-bundle-1.2.3")
         var events: [String] = []

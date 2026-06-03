@@ -2,6 +2,12 @@ import Foundation
 import Core
 import Contracts
 
+public enum SystemRuntimeFileStoreError: Error, Equatable, Sendable {
+    case missingFileSize(path: String)
+    case missingDirectoryFlag(path: String)
+    case missingRegularFileFlag(path: String)
+}
+
 public struct SystemRuntimeFileStore: RuntimeFileStore, RuntimeFilePartialReading {
     public init() {}
 
@@ -46,7 +52,10 @@ public struct SystemRuntimeFileStore: RuntimeFileStore, RuntimeFilePartialReadin
 
     public func fileSize(_ url: URL) throws -> UInt64 {
         let values = try url.resourceValues(forKeys: [.fileSizeKey])
-        return UInt64(values.fileSize ?? 0)
+        guard let fileSize = values.fileSize else {
+            throw SystemRuntimeFileStoreError.missingFileSize(path: url.path)
+        }
+        return UInt64(fileSize)
     }
 
     public func modificationDate(_ url: URL) throws -> Date {
@@ -111,9 +120,12 @@ public struct SystemRuntimeFileStore: RuntimeFileStore, RuntimeFilePartialReadin
             includingPropertiesForKeys: [.isDirectoryKey],
             options: options
         )
-        return contents.filter { item in
-            let values = try? item.resourceValues(forKeys: [.isDirectoryKey])
-            return values?.isDirectory == true && item.lastPathComponent.contains(fragment)
+        return try contents.filter { item in
+            let values = try item.resourceValues(forKeys: [.isDirectoryKey])
+            guard let isDirectory = values.isDirectory else {
+                throw SystemRuntimeFileStoreError.missingDirectoryFlag(path: item.path)
+            }
+            return isDirectory && item.lastPathComponent.contains(fragment)
         }
     }
 
@@ -136,8 +148,14 @@ public struct SystemRuntimeFileStore: RuntimeFileStore, RuntimeFilePartialReadin
         var total: UInt64 = 0
         for case let fileURL as URL in enumerator {
             let values = try fileURL.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
-            if values.isRegularFile == true {
-                total += UInt64(values.fileSize ?? 0)
+            guard let isRegularFile = values.isRegularFile else {
+                throw SystemRuntimeFileStoreError.missingRegularFileFlag(path: fileURL.path)
+            }
+            if isRegularFile {
+                guard let fileSize = values.fileSize else {
+                    throw SystemRuntimeFileStoreError.missingFileSize(path: fileURL.path)
+                }
+                total += UInt64(fileSize)
             }
         }
         return total

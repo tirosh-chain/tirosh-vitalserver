@@ -261,7 +261,8 @@ public final class RuntimeControlLocalHTTPServer: @unchecked Sendable {
                     guard !Task.isCancelled else {
                         break
                     }
-                    guard await self.sendData(RuntimeControlServerSentEventCodec.encode(event), on: connection) else {
+                    let data = try RuntimeControlServerSentEventCodec.encode(event)
+                    guard await self.sendData(data, on: connection) else {
                         break
                     }
                 }

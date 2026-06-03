@@ -1,6 +1,7 @@
 import Contracts
 
 public enum GuestShutdownDecision: Equatable {
+    case missing(message: String)
     case wait(message: String)
     case ready(message: String)
     case failed(message: String)
@@ -28,7 +29,7 @@ public enum GuestShutdownEvaluator {
         expectedRequestId: String
     ) -> GuestShutdownDecision {
         guard let result else {
-            return .wait(message: "waiting for guest update shutdown worker")
+            return .missing(message: "waiting for guest update shutdown worker")
         }
 
         guard result.requestId == expectedRequestId else {
@@ -95,6 +96,10 @@ public enum GuestShutdownWaiter {
                 return .ready(message: message)
             case .failed(let message):
                 return .failed(message: message)
+            case .missing(let message):
+                if attempt % configuration.progressEveryAttempts == 0 {
+                    onProgress(message)
+                }
             case .wait(let message):
                 if attempt % configuration.progressEveryAttempts == 0 {
                     onProgress(message)

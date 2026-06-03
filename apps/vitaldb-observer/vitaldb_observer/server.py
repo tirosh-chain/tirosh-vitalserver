@@ -101,6 +101,12 @@ class ObserverRequestHandler(BaseHTTPRequestHandler):
                             "message": str(error),
                         }
                     ],
+                    "readIssues": [
+                        {
+                            "source": "vitaldb-observer",
+                            "message": str(error),
+                        }
+                    ],
                 },
                 status=HTTPStatus.SERVICE_UNAVAILABLE,
             )

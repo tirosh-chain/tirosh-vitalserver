@@ -62,10 +62,10 @@ export function testKitDeleteBedsRequest(
 }
 
 export function testKitSessionSelectionRequest(
-  sessionID: string | null
+  sessionID: string
 ): RuntimeTestKitSessionSelectionRequest {
   return parseConsoleRequest(runtimeTestKitSessionSelectionRequestSchema, {
-    sessionID: sessionID?.trim() || null
+    sessionID: sessionID.trim()
   });
 }
 

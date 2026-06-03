@@ -21,7 +21,7 @@ public struct MacHostRuntimeClient: RuntimeControlClient, RuntimeHostClient {
         self.init(
             releaseInfo: releaseInfo,
             statusReader: SystemRuntimeStatusReader(paths: paths),
-            observabilityReader: SystemRuntimeObservabilityReader(paths: paths),
+            observabilityReader: SystemRuntimeObservabilityReader.live(paths: paths),
             fileReader: SystemRuntimeHostFileReader(),
             settingsReader: SystemRuntimeSettingsReader(),
             commandWorker: MacHostRuntimeCommandWorker()
@@ -36,7 +36,7 @@ public struct MacHostRuntimeClient: RuntimeControlClient, RuntimeHostClient {
         self.init(
             releaseInfo: releaseInfo,
             statusReader: SystemRuntimeStatusReader(paths: paths),
-            observabilityReader: SystemRuntimeObservabilityReader(paths: paths),
+            observabilityReader: SystemRuntimeObservabilityReader.live(paths: paths),
             fileReader: SystemRuntimeHostFileReader(),
             settingsReader: SystemRuntimeSettingsReader(),
             commandWorker: commandWorker
@@ -46,7 +46,7 @@ public struct MacHostRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     init(
         releaseInfo: RuntimeReleaseInfo,
         statusReader: RuntimeStatusReading = SystemRuntimeStatusReader(paths: RuntimePaths()),
-        observabilityReader: RuntimeObservabilityReading = SystemRuntimeObservabilityReader(paths: RuntimePaths()),
+        observabilityReader: RuntimeObservabilityReading = SystemRuntimeObservabilityReader.live(paths: RuntimePaths()),
         fileReader: RuntimeHostFileReading = SystemRuntimeHostFileReader(),
         settingsReader: RuntimeSettingsReading = SystemRuntimeSettingsReader(),
         commandWorker: MacHostRuntimeCommandWorker = MacHostRuntimeCommandWorker()

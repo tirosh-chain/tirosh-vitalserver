@@ -3,10 +3,10 @@ import Contracts
 import XCTest
 
 final class GuestActivationEvaluatorTests: XCTestCase {
-    func testMissingResultWaits() {
+    func testMissingResultIsDistinctFromPendingWorkerState() {
         XCTAssertEqual(
             GuestActivationEvaluator.evaluate(nil),
-            .wait(message: "waiting for guest update activation worker")
+            .missing(message: "waiting for guest update activation worker")
         )
     }
 

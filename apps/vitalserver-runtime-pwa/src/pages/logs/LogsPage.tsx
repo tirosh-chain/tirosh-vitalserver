@@ -37,7 +37,22 @@ export function LogsPage() {
   const capabilities = useRuntimeCapabilities();
   const logs = useHostLogs({ source, lineLimit, live });
   const exportLogs = useExportHostLogs();
-  const logText = logs.data?.text ?? "";
+  const logText = logs.data?.text ?? null;
+  const capabilityData = capabilities.data ?? null;
+  const canExportLogs =
+    !capabilities.isPending &&
+    !capabilities.isError &&
+    capabilityData !== null &&
+    capabilityData.canExportLogs === true;
+  const exportCapabilityMissing =
+    !capabilities.isPending &&
+    !capabilities.isError &&
+    (capabilityData === null || capabilityData.canExportLogs === undefined);
+  const exportUnsupported =
+    !capabilities.isPending &&
+    !capabilities.isError &&
+    capabilityData !== null &&
+    capabilityData.canExportLogs === false;
   const exportPathValidation = validateHostLogExportPath(exportPath);
 
   const exportDestination = useMemo(() => {
@@ -107,8 +122,15 @@ export function LogsPage() {
           </span>
         </div>
 
-        {logs.isError ? (
+        {logs.isPending ? (
+          <p className="empty-state">Loading logs...</p>
+        ) : logs.isError ? (
           <ErrorState title="Failed to read logs" error={logs.error} />
+        ) : logText === null ? (
+          <ErrorState
+            title="Log response is incomplete"
+            error={new Error("Runtime Control API did not return log text.")}
+          />
         ) : (
           <pre ref={outputRef} className="log-output">
             {logText || "No log lines are available for this source."}
@@ -124,7 +146,7 @@ export function LogsPage() {
               type="text"
               value={exportPath}
               aria-invalid={exportPathValidation ? "true" : "false"}
-              disabled={capabilities.data?.canExportLogs !== true}
+              disabled={!canExportLogs}
               onChange={(event) => setExportPath(event.target.value)}
             />
           </label>
@@ -134,12 +156,36 @@ export function LogsPage() {
             disabled={
               exportLogs.isPending ||
               exportPathValidation !== null ||
-              capabilities.data?.canExportLogs !== true
+              !canExportLogs
             }
           >
             Export Logs
           </button>
         </div>
+        {capabilities.isPending ? (
+          <p className="empty-state">Loading export capability...</p>
+        ) : null}
+        {capabilities.isError ? (
+          <ErrorState
+            title="Failed to read export capability"
+            error={capabilities.error}
+          />
+        ) : null}
+        {exportCapabilityMissing ? (
+          <ErrorState
+            title="Export capability response is incomplete"
+            error={
+              new Error(
+                "Runtime Control API did not return log export capability."
+              )
+            }
+          />
+        ) : null}
+        {exportUnsupported ? (
+          <p className="muted">
+            Log export is not supported by this Runtime Control API.
+          </p>
+        ) : null}
         {exportPathValidation ? (
           <p className="error-state">{exportPathValidation}</p>
         ) : null}

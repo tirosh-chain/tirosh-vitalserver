@@ -549,7 +549,7 @@ export interface paths {
         };
         /**
          * Subscribe to VitalDB observation updates
-         * @description Long-lived SSE stream for latest VitalDB observation snapshot changes.
+         * @description Long-lived SSE stream for latest VitalDB observation snapshot changes. Each data frame is a JSON encoded RuntimeVitalDBObservationSnapshot so read state and readError are preserved.
          */
         get: operations["streamVitalDBObservations"];
         put?: never;
@@ -879,17 +879,17 @@ export interface components {
     schemas: {
         /** @description Aggregated PWA read model aligned with the native runtime status UI. */
         RuntimeControlOverview: {
-            status?: components["schemas"]["RuntimeStatus"];
-            settings?: components["schemas"]["RuntimeSettings"];
-            release?: components["schemas"]["RuntimeReleaseInfo"];
-            install?: components["schemas"]["RuntimeInstallInfo"];
+            status: components["schemas"]["RuntimeStatus"];
+            settings: components["schemas"]["RuntimeSettings"];
+            release: components["schemas"]["RuntimeReleaseInfo"];
+            install: components["schemas"]["RuntimeInstallInfo"];
             vitalDBObservation?: components["schemas"]["VitalDBObservationDocument"] | null;
-            vitalDBObservationSnapshot?: components["schemas"]["RuntimeVitalDBObservationSnapshot"];
-            vitalRecorder?: components["schemas"]["RuntimeVitalRecorderSummary"];
+            vitalDBObservationSnapshot: components["schemas"]["RuntimeVitalDBObservationSnapshot"];
+            vitalRecorder: components["schemas"]["RuntimeVitalRecorderSummary"];
         };
         /** @description Explicit latest VitalDB observation read state. observation remains null when the observability read path has no latest snapshot or failed before producing one. */
         RuntimeVitalDBObservationSnapshot: {
-            state?: components["schemas"]["RuntimeVitalDBObservationReadState"];
+            state: components["schemas"]["RuntimeVitalDBObservationReadState"];
             observation?: components["schemas"]["VitalDBObservationDocument"] | null;
             readError?: string | null;
         };
@@ -918,23 +918,39 @@ export interface components {
         /** @description Aggregated history of VRecorders keyed by vrcode. */
         RuntimeVitalRecorderHistory: {
             updatedAt?: string | null;
-            recorders?: components["schemas"]["RuntimeVitalRecorderRecord"][];
-            beds?: components["schemas"]["RuntimeVitalBedRecord"][];
-            activityHistory?: components["schemas"]["RuntimeVitalRecorderActivityHistory"];
+            recorders: components["schemas"]["RuntimeVitalRecorderRecord"][];
+            beds: components["schemas"]["RuntimeVitalBedRecord"][];
+            summary: components["schemas"]["RuntimeVitalRecorderHistorySummary"];
+            activityHistory: components["schemas"]["RuntimeVitalRecorderActivityHistory"];
+            /** @description Recorder history read issue. Present when observation/current/activity projection reads failed and the recorders/beds lists may be incomplete. */
+            readError?: string | null;
+        };
+        /** @description Provider-owned summary for the derived Vital Recorder and Bed history read model. */
+        RuntimeVitalRecorderHistorySummary: {
+            knownRecorders: number;
+            currentRecorders: number;
+            onlineRecorders: number;
+            staleRecorders: number;
+            recorderAnomalies: number;
+            knownBeds: number;
+            onlineBeds: number;
+            staleBeds: number;
+            bedAssignments: number;
+            bedAnomalies: number;
         };
         /** @description Metadata for the durable recorder activity bucket projection used by recorder charts. */
         RuntimeVitalRecorderActivityHistory: {
-            source?: components["schemas"]["RuntimeVitalRecorderActivityHistorySource"];
-            bucketCount?: number;
+            source: components["schemas"]["RuntimeVitalRecorderActivityHistorySource"];
+            bucketCount: number;
             earliestBucketStartedAt?: string | null;
             latestBucketStartedAt?: string | null;
             readError?: string | null;
         };
         /** @enum {string} */
-        RuntimeVitalRecorderActivityHistorySource: "sqliteProjection" | "unavailable";
+        RuntimeVitalRecorderActivityHistorySource: "sqliteProjection" | "unavailable" | "notProvided";
         RuntimeVitalRecorderRecord: {
-            vrcode?: string;
-            status?: components["schemas"]["RuntimeVitalRecorderStatus"];
+            vrcode: string;
+            status: components["schemas"]["RuntimeVitalRecorderStatus"];
             lastIP?: string | null;
             version?: string | null;
             bedID?: string | null;
@@ -942,55 +958,61 @@ export interface components {
             patientConnected?: boolean | null;
             firstSeenAt?: string | null;
             lastSeenAt?: string | null;
-            observationCount?: number;
-            currentAnomalyCount?: number;
+            observationCount: number;
+            /** @description Number of extra source recorder observations collapsed because they shared this VRecorder identity. */
+            duplicateObservationCount: number;
+            currentAnomalyCount: number;
             latestAnomalySeverity?: components["schemas"]["VitalDBAnomalySeverity"] | null;
             /** @description True when this recorder is present in the latest VitalDB observation snapshot; false means it is historical. */
-            presentInLatestObservation?: boolean;
+            presentInLatestObservation: boolean;
             /** @description Chronological activity samples for the VRecorder, derived from VitalDB observer snapshots. */
             activityTimeline?: components["schemas"]["RuntimeVitalRecorderActivityPoint"][];
         };
         /** @description One recorder activity bucket from the VitalDB observer. */
         RuntimeVitalRecorderActivityBucket: {
-            bucketStartedAt?: string;
-            bucketSeconds?: number;
-            messageCount?: number;
-            byteCount?: number;
-            roomCount?: number;
+            bucketStartedAt: string;
+            bucketSeconds: number;
+            messageCount: number;
+            byteCount: number;
+            roomCount: number;
         };
         /** @description Windowed VRecorder data activity sample suitable for UI charts. */
         RuntimeVitalRecorderActivityPoint: {
-            observedAt?: string;
-            windowSeconds?: number;
-            messageCount?: number;
-            byteCount?: number;
-            roomCount?: number;
-            messagesPerSecond?: number;
-            bytesPerSecond?: number;
+            observedAt: string;
+            windowSeconds: number;
+            messageCount: number;
+            byteCount: number;
+            roomCount: number;
+            messagesPerSecond: number;
+            bytesPerSecond: number;
             /** @description Per-bucket activity values from the latest observer window. */
-            buckets?: components["schemas"]["RuntimeVitalRecorderActivityBucket"][];
+            buckets: components["schemas"]["RuntimeVitalRecorderActivityBucket"][];
         };
         /** @enum {string} */
-        RuntimeVitalRecorderStatus: "online" | "stale" | "offline" | "unknown";
+        RuntimeVitalRecorderStatus: "online" | "stale" | "offline" | "notObserved" | "unknown";
         /** @description Aggregated history of one VitalDB bed keyed by bedID. */
         RuntimeVitalBedRecord: {
-            bedID?: string;
+            bedID: string;
             name?: string | null;
             vrcode?: string | null;
-            status?: components["schemas"]["RuntimeVitalBedStatus"];
+            status: components["schemas"]["RuntimeVitalBedStatus"];
             patientConnected?: boolean | null;
             firstSeenAt?: string | null;
             lastSeenAt?: string | null;
-            observationCount?: number;
-            currentAnomalyCount?: number;
+            observationCount: number;
+            /** @description Number of extra source bed observations collapsed because they shared this bed identity. */
+            duplicateObservationCount: number;
+            currentAnomalyCount: number;
             latestAnomalySeverity?: components["schemas"]["VitalDBAnomalySeverity"] | null;
         };
         /** @enum {string} */
-        RuntimeVitalBedStatus: "online" | "stale" | "offline" | "unknown";
+        RuntimeVitalBedStatus: "online" | "stale" | "offline" | "notObserved" | "unknown";
         /** @description Derived assignment and relationship event history between VitalDB beds and VRecorders. */
         RuntimeVitalRelationshipHistory: {
             assignments?: components["schemas"]["RuntimeVitalBedAssignmentRecord"][];
             events?: components["schemas"]["RuntimeVitalRelationshipEventRecord"][];
+            /** @description Relationship projection read issue. Present when assignments or relationship events could not be read completely. */
+            readError?: string | null;
         };
         RuntimeVitalBedAssignmentRecord: {
             assignmentID?: string;
@@ -1085,27 +1107,27 @@ export interface components {
             [key: string]: unknown;
         };
         RuntimeEventHistory: {
-            events?: components["schemas"]["RuntimeEventDocument"][];
+            events: components["schemas"]["RuntimeEventDocument"][];
             /** @description Opaque pagination cursor for the next page. Omitted or null when there is no next page. */
             nextCursor?: string | null;
             /** @description Total number of events matching the query before applying limit pagination. */
             matchingCount?: number | null;
         };
         RuntimeEventDocument: {
-            schemaVersion?: number;
-            id?: string;
-            source?: string;
-            eventType?: components["schemas"]["RuntimeEventType"];
-            timestamp?: string;
-            product?: string;
+            schemaVersion: number;
+            id: string;
+            source: string;
+            eventType: components["schemas"]["RuntimeEventType"];
+            timestamp: string;
+            product: string;
             status?: components["schemas"]["RuntimeState"];
             previousStatus?: string | null;
             operation?: string;
-            message?: string;
-            runtimeVersion?: string;
+            message: string;
+            runtimeVersion: string;
             vmState?: components["schemas"]["RuntimeVMState"];
             vmErrors?: components["schemas"]["RuntimeVMError"][] | null;
-            failureReasons?: string[];
+            failureReasons: string[];
             domainErrors?: components["schemas"]["RuntimeDomainError"][] | null;
             containerObservation?: components["schemas"]["RuntimeContainerObservation"] | null;
             progress?: {
@@ -1132,38 +1154,41 @@ export interface components {
             recoveryAction?: "installRuntime" | "restartVMService" | "restartProxyService" | "restartWatchdogService" | "waitForGuest" | "restartGuestAgent" | "repairGuestBootstrap" | "restartContainerServices" | "repairProxyConfiguration" | "freeProxyPort" | "inspectVitalDBObservation" | "backupAndRecreateVM" | "fixConfiguration" | "freeHostResources" | "inspectLogs";
         };
         RuntimeContainerObservation: {
-            auditProxyHTTP?: string;
+            auditProxyHTTP: string;
             auditProxyStatus?: components["schemas"]["RuntimeAuditProxyStatusDocument"] | null;
+            auditProxyStatusReadError?: string | null;
             runtimeStateUpdatedAt?: string | null;
             runtimeStateFileUpdatedAt?: string | null;
-            containerLogsPresent?: boolean;
+            runtimeStateFileMetadataError?: string | null;
+            containerLogsPresent: boolean;
             containerLogsBytes?: number | null;
             containerLogsUpdatedAt?: string | null;
             containerLogsMetadataError?: string | null;
-            composeServices?: components["schemas"]["RuntimeContainerServiceObservation"][];
+            composeServices: components["schemas"]["RuntimeContainerServiceObservation"][];
+            composeServicesReadError?: string | null;
         };
         RuntimeAuditProxyStatusDocument: {
             startedAt?: string | null;
             uptimeSeconds?: number | null;
-            activeWebSockets?: number;
-            activeRecorderConnections?: number;
-            recorders?: components["schemas"]["RuntimeRecorderConnectionObservation"][];
-            httpRequests?: number;
-            socketIoEventsSeen?: number;
-            socketIoParseFailures?: number;
-            auditWriteFailures?: number;
-            auditFileWriteFailures?: number;
-            auditStdoutWriteFailures?: number;
-            redisIpWriteFailures?: number;
+            activeWebSockets: number;
+            activeRecorderConnections: number;
+            recorders: components["schemas"]["RuntimeRecorderConnectionObservation"][];
+            httpRequests: number;
+            socketIoEventsSeen: number;
+            socketIoParseFailures: number;
+            auditWriteFailures: number;
+            auditFileWriteFailures: number;
+            auditStdoutWriteFailures: number;
+            redisIpWriteFailures: number;
         };
         RuntimeRecorderConnectionObservation: {
-            vrcode?: string;
-            activeConnections?: number;
+            vrcode: string;
+            activeConnections: number;
             selectedIp?: string | null;
             lastSeenAt?: string | null;
         };
         RuntimeContainerServiceObservation: {
-            service?: string;
+            service: string;
             name?: string | null;
             state?: string | null;
             health?: string | null;
@@ -1182,27 +1207,27 @@ export interface components {
             sizeBytes?: number;
         };
         RuntimeSettings: {
-            readIssues?: components["schemas"]["RuntimeSettingsReadIssue"][];
-            cpuCount?: number;
-            memoryGiB?: number;
-            diskGiB?: number;
-            minimumDiskGiB?: number;
+            readIssues: components["schemas"]["RuntimeSettingsReadIssue"][];
+            cpuCount: number;
+            memoryGiB: number;
+            diskGiB: number;
+            minimumDiskGiB: number;
             /** @enum {string} */
-            networkMode?: "shared" | "bridged";
-            bridgedInterface?: string;
-            proxyPort?: number;
-            runtimeControlPort?: number;
-            vitalFilesDirectory?: string;
-            publicHost?: string;
-            publicPort?: number;
-            adminPassword?: string;
-            changeAdminPassword?: boolean;
-            startOnBoot?: boolean;
-            startOnBootConfigurable?: boolean;
-            autoRecoveryEnabled?: boolean;
-            preventSystemSleep?: boolean;
-            redisBackupRetentionCount?: number;
-            restartAfterSave?: boolean;
+            networkMode: "shared" | "bridged";
+            bridgedInterface: string;
+            proxyPort: number;
+            runtimeControlPort: number;
+            vitalFilesDirectory: string;
+            publicHost: string;
+            publicPort: number;
+            adminPassword: string;
+            changeAdminPassword: boolean;
+            startOnBoot: boolean;
+            startOnBootConfigurable: boolean;
+            autoRecoveryEnabled: boolean;
+            preventSystemSleep: boolean;
+            redisBackupRetentionCount: number;
+            restartAfterSave: boolean;
         };
         RuntimeSettingsReadIssue: {
             source: string;
@@ -1246,7 +1271,7 @@ export interface components {
             value?: string;
         };
         RuntimeApplySettingsRequest: {
-            settings?: components["schemas"]["RuntimeSettings"];
+            settings: components["schemas"]["RuntimeSettings"];
         };
         RuntimeRepairProxyRequest: {
             proxyPort: number;
@@ -1263,17 +1288,18 @@ export interface components {
         };
         RuntimeLogTextRequest: {
             source: components["schemas"]["RuntimeLogSource"];
-            helperMessage: string;
+            /** @description Legacy helper message field. Send null when the caller is reading the append-only helper message log. */
+            helperMessage: string | null;
             lineLimit: number;
         };
         /** @enum {string} */
         RuntimeLogSource: "helperMessage" | "install" | "command" | "launcher" | "vmLaunchOutput" | "vmLaunchError" | "proxyOutput" | "proxyError" | "watchdog" | "updateActivation" | "containers";
         RuntimeLogTextResponse: {
-            text?: string;
+            text: string;
         };
         RuntimeLogExportResult: {
             /** Format: uri */
-            destination?: string;
+            destination: string;
         };
         RuntimeExportLogsRequest: {
             destination?: components["schemas"]["RuntimeControlFileReference"];
@@ -1282,7 +1308,7 @@ export interface components {
             bundle?: components["schemas"]["RuntimeControlFileReference"];
         };
         RuntimeUpdateBundleSummaryResponse: {
-            summary?: string;
+            summary: string;
         };
         VitalDBObservationDocument: {
             schemaVersion: number;
@@ -1296,36 +1322,49 @@ export interface components {
             filters: components["schemas"]["VitalDBRawBedScopedObservation"][];
             proxyConnections: components["schemas"]["VitalDBProxyConnectionObservation"][];
             anomalies: components["schemas"]["VitalDBAnomalyObservation"][];
+            readIssues: components["schemas"]["VitalDBObservationReadIssue"][];
+        };
+        VitalDBObservationReadIssue: {
+            source: string;
+            message: string;
         };
         VitalDBRecorderObservation: {
-            vrcode?: string;
+            vrcode: string;
             ip?: string | null;
             lastSeenAt?: string | null;
             version?: string | null;
             info?: string | null;
             config?: string | null;
-            online?: boolean;
-            stale?: boolean;
+            online: boolean;
+            stale: boolean;
             activity?: components["schemas"]["VitalDBRecorderActivityObservation"] | null;
         };
         /** @description Recent VRecorder send_data activity summarized from the audit proxy Redis list. */
         VitalDBRecorderActivityObservation: {
-            windowSeconds?: number;
-            messageCount?: number;
-            byteCount?: number;
-            roomCount?: number;
+            windowSeconds: number;
+            messageCount: number;
+            byteCount: number;
+            roomCount: number;
             firstSeenAt?: string | null;
             lastSeenAt?: string | null;
-            messagesPerSecond?: number;
-            bytesPerSecond?: number;
+            messagesPerSecond: number;
+            bytesPerSecond: number;
+            buckets: components["schemas"]["VitalDBRecorderActivityBucket"][];
+        };
+        VitalDBRecorderActivityBucket: {
+            bucketStartedAt: string;
+            bucketSeconds: number;
+            messageCount: number;
+            byteCount: number;
+            roomCount: number;
         };
         VitalDBBedObservation: {
-            bedID?: string;
+            bedID: string;
             name?: string | null;
             vrcode?: string | null;
             lastSeenAt?: string | null;
             patientConnected?: boolean | null;
-            online?: boolean;
+            online: boolean;
         };
         VitalDBRawBedScopedObservation: {
             bedID?: string;
@@ -1384,10 +1423,10 @@ export interface components {
             generateFrames: boolean;
         };
         RuntimeTestKitSessionSelectionRequest: {
-            sessionID?: string | null;
+            sessionID: string;
         };
         RuntimeTestKitRestartRequest: {
-            sessionID?: string | null;
+            sessionID: string;
             bedRoomNames: string[];
         };
         RuntimeTestKitRecorderDeletionRequest: {
@@ -1442,14 +1481,14 @@ export interface components {
             bytesSent: number;
         };
         VitalDBAnomalyObservation: {
-            id?: string;
+            id: string;
             /** @enum {string} */
-            kind?: "offline" | "duplicate-ip" | "backend-unavailable" | "stale-recorder" | "observer-unhealthy";
+            kind: "offline" | "duplicate-ip" | "backend-unavailable" | "stale-recorder" | "observer-unhealthy";
             /** @enum {string} */
-            severity?: "info" | "warning" | "critical";
-            observedAt?: string;
-            subject?: string;
-            message?: string;
+            severity: "info" | "warning" | "critical";
+            observedAt: string;
+            subject: string;
+            message: string;
         };
     };
     responses: {

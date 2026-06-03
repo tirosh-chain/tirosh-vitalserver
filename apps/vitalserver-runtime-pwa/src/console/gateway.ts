@@ -94,7 +94,7 @@ export type ConsoleGateway = {
   restoreRedisBackup(request: RuntimeBackupRequest): Promise<RuntimeCommandResponse>;
   createRedisBackup(): Promise<RuntimeCommandResponse>;
   repairRuntime(): Promise<RuntimeCommandResponse>;
-  repairProxy(proxyPort?: number): Promise<RuntimeCommandResponse>;
+  repairProxy(proxyPort: number): Promise<RuntimeCommandResponse>;
   repairDatastore(): Promise<RuntimeCommandResponse>;
   repairVMDisk(): Promise<RuntimeCommandResponse>;
 };

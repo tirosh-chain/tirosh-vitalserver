@@ -40,25 +40,35 @@ public final class MacTestKitController: RuntimeTestKitControlling {
 
         let runtimeStatus = await statusProvider()
         guard let apiBaseURL = apiBaseURL(from: runtimeStatus) else {
+            let message = configuration.apiEndpoint.unavailableDescription
             return RuntimeTestKitStatus(
                 enabled: true,
                 state: .failed,
                 serviceName: configuration.serviceName,
                 recorderTargetURL: configuration.recorderTargetURL,
-                lastError: configuration.apiEndpoint.unavailableDescription
+                lastError: message,
+                readIssues: [
+                    RuntimeTestKitReadIssue(source: "apiEndpoint", message: message),
+                ]
             )
         }
 
         let healthy = await testKitAPIIsHealthy(apiBaseURL: apiBaseURL)
         guard healthy else {
             let service = testKitService(in: runtimeStatus)
+            let message = unavailableMessage(for: service, apiBaseURL: apiBaseURL)
+            lastError = message
             return RuntimeTestKitStatus(
                 enabled: true,
                 state: unavailableState(for: service),
                 serviceName: configuration.serviceName,
                 apiBaseURL: apiBaseURL,
                 recorderTargetURL: configuration.recorderTargetURL,
-                lastError: lastError ?? unavailableMessage(for: service, apiBaseURL: apiBaseURL)
+                lastError: message,
+                readIssues: unavailableReadIssues(
+                    for: service,
+                    message: message
+                )
             )
         }
 
@@ -76,7 +86,10 @@ public final class MacTestKitController: RuntimeTestKitControlling {
                 serviceName: configuration.serviceName,
                 apiBaseURL: apiBaseURL,
                 recorderTargetURL: configuration.recorderTargetURL,
-                lastError: message
+                lastError: message,
+                readIssues: [
+                    RuntimeTestKitReadIssue(source: "containerAPI", message: message),
+                ]
             )
         }
         lastError = nil
@@ -301,6 +314,35 @@ public final class MacTestKitController: RuntimeTestKitControlling {
         return "TestKit container API is not reachable at \(apiBaseURL). Container state: \(state), health: \(health)."
     }
 
+    private func unavailableReadIssues(
+        for service: RuntimeContainerServiceObservation?,
+        message: String
+    ) -> [RuntimeTestKitReadIssue] {
+        var issues = [
+            RuntimeTestKitReadIssue(source: "testKitAPI", message: message),
+        ]
+        guard let service else {
+            issues.append(RuntimeTestKitReadIssue(
+                source: "containerService",
+                message: "TestKit container service observation is missing for \(configuration.serviceName)."
+            ))
+            return issues
+        }
+        if service.state == nil {
+            issues.append(RuntimeTestKitReadIssue(
+                source: "containerService.state",
+                message: "TestKit container service state is not reported for \(configuration.serviceName)."
+            ))
+        }
+        if service.health == nil {
+            issues.append(RuntimeTestKitReadIssue(
+                source: "containerService.health",
+                message: "TestKit container service health is not reported for \(configuration.serviceName)."
+            ))
+        }
+        return issues
+    }
+
     private func loadSessions(apiBaseURL: String) async throws -> [RuntimeTestKitSession] {
         var urlRequest = apiRequest(apiBaseURL: apiBaseURL, path: "/sessions")
         urlRequest.httpMethod = "GET"
@@ -372,7 +414,11 @@ public final class MacTestKitController: RuntimeTestKitControlling {
             throw MacTestKitControllerError.invalidResponse
         }
         guard (200..<300).contains(httpResponse.statusCode) else {
-            let message = String(data: data, encoding: .utf8) ?? "HTTP \(httpResponse.statusCode)"
+            guard let message = String(data: data, encoding: .utf8) else {
+                throw MacTestKitControllerError.requestFailed(
+                    "HTTP \(httpResponse.statusCode) response body is not valid UTF-8"
+                )
+            }
             throw MacTestKitControllerError.requestFailed(message)
         }
         return try JSONDecoder().decode(type, from: data)

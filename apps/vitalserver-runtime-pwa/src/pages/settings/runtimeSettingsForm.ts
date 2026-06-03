@@ -41,36 +41,39 @@ export function runtimeSettingsToDraft(
     diskGiB: formatNumber(settings.diskGiB),
     proxyPort: formatNumber(settings.proxyPort),
     runtimeControlPort: formatNumber(settings.runtimeControlPort),
-    vitalFilesDirectory: settings.vitalFilesDirectory ?? "",
-    publicHost: settings.publicHost ?? "",
+    vitalFilesDirectory: settings.vitalFilesDirectory,
+    publicHost: settings.publicHost,
     publicPort: formatNumber(settings.publicPort),
     redisBackupRetentionCount: formatNumber(settings.redisBackupRetentionCount),
-    startOnBoot: settings.startOnBoot ?? false,
-    autoRecoveryEnabled: settings.autoRecoveryEnabled ?? false,
-    preventSystemSleep: settings.preventSystemSleep ?? false,
-    restartAfterSave: settings.restartAfterSave ?? false
+    startOnBoot: settings.startOnBoot,
+    autoRecoveryEnabled: settings.autoRecoveryEnabled,
+    preventSystemSleep: settings.preventSystemSleep,
+    restartAfterSave: settings.restartAfterSave
   };
 }
 
 export function draftToRuntimeSettings(
   draft: RuntimeSettingsDraft,
-  current: RuntimeSettings | undefined,
+  current: RuntimeSettings,
   customAdvertisedURL: boolean
 ): RuntimeSettings {
-  const proxyPort = parseOptionalNumber(draft.proxyPort);
+  const proxyPort = requiredNumber(draft.proxyPort);
   return {
-    cpuCount: parseOptionalNumber(draft.cpuCount),
-    memoryGiB: parseOptionalNumber(draft.memoryGiB),
-    diskGiB: parseOptionalNumber(draft.diskGiB),
-    minimumDiskGiB: current?.minimumDiskGiB,
+    ...current,
+    cpuCount: requiredNumber(draft.cpuCount),
+    memoryGiB: requiredNumber(draft.memoryGiB),
+    diskGiB: requiredNumber(draft.diskGiB),
+    minimumDiskGiB: current.minimumDiskGiB,
+    networkMode: current.networkMode,
+    bridgedInterface: current.bridgedInterface,
     proxyPort,
-    runtimeControlPort: parseOptionalNumber(draft.runtimeControlPort),
-    vitalFilesDirectory: emptyToUndefined(draft.vitalFilesDirectory),
-    publicHost: customAdvertisedURL ? emptyToUndefined(draft.publicHost) : undefined,
-    publicPort: customAdvertisedURL ? parseOptionalNumber(draft.publicPort) : proxyPort,
-    redisBackupRetentionCount: parseOptionalNumber(
-      draft.redisBackupRetentionCount
-    ),
+    runtimeControlPort: requiredNumber(draft.runtimeControlPort),
+    vitalFilesDirectory: draft.vitalFilesDirectory.trim(),
+    publicHost: customAdvertisedURL ? draft.publicHost.trim() : "",
+    publicPort: customAdvertisedURL ? requiredNumber(draft.publicPort) : proxyPort,
+    adminPassword: current.adminPassword,
+    changeAdminPassword: current.changeAdminPassword,
+    redisBackupRetentionCount: requiredNumber(draft.redisBackupRetentionCount),
     startOnBoot: draft.startOnBoot,
     autoRecoveryEnabled: draft.autoRecoveryEnabled,
     preventSystemSleep: draft.preventSystemSleep,
@@ -80,8 +83,8 @@ export function draftToRuntimeSettings(
 
 export function usesCustomAdvertisedURL(settings: RuntimeSettings): boolean {
   return Boolean(
-    settings.publicHost?.trim() ||
-      (settings.publicPort !== undefined && settings.publicPort !== settings.proxyPort)
+    settings.publicHost.trim() ||
+      settings.publicPort !== settings.proxyPort
   );
 }
 
@@ -98,7 +101,6 @@ function formatNumber(value: number | undefined): string {
   return value === undefined ? "" : String(value);
 }
 
-function emptyToUndefined(value: string): string | undefined {
-  const trimmed = value.trim();
-  return trimmed ? trimmed : undefined;
+function requiredNumber(value: string): number {
+  return parseOptionalNumber(value) ?? 0;
 }

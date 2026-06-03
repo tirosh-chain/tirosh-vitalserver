@@ -3,9 +3,10 @@ import { useMemo, useState } from "react";
 import type { VitalDBRecorderRecord } from "@/domain/runtime-control/contracts/runtimeControlTypes";
 import { formatBytes } from "@/domain/runtime-control/formatting/bytes";
 import {
-  buildRecorderActivityBuckets,
+  readRecorderActivityBuckets,
   latestRecorderActivityPoint
 } from "@/domain/runtime-control/recorders/recorderActivity";
+import { ErrorState } from "@/components/ErrorState";
 import { MetricStrip } from "@/components/MetricStrip";
 
 const bucketOptions = [
@@ -36,16 +37,18 @@ export function RecorderActivityChart({
 }) {
   const [bucketSeconds, setBucketSeconds] = useState(60);
   const [rangeSeconds, setRangeSeconds] = useState<number | null>(60 * 60);
+  const activityTimeline = recorder.activityTimeline;
 
-  const buckets = useMemo(
+  const activityRead = useMemo(
     () =>
-      buildRecorderActivityBuckets(recorder.activityTimeline, {
+      readRecorderActivityBuckets(activityTimeline, {
         bucketSeconds,
         rangeSeconds
       }),
-    [bucketSeconds, rangeSeconds, recorder.activityTimeline]
+    [activityTimeline, bucketSeconds, rangeSeconds]
   );
-  const latestActivity = latestRecorderActivityPoint(recorder.activityTimeline);
+  const buckets = activityRead.buckets;
+  const latestActivity = latestRecorderActivityPoint(activityTimeline);
 
   const maxPackets = Math.max(
     1,
@@ -62,46 +65,60 @@ export function RecorderActivityChart({
   const latestRate = latestActivity?.bytesPerSecond ?? 0;
   const packetCount = latestBucket?.messageCount ?? 0;
   const roomCount = latestBucket?.roomCount ?? 0;
+  const activityReported = activityTimeline !== undefined;
 
   return (
     <div className="recorder-activity">
-      <div className="chart-toolbar">
-        <label>
-          Bucket
-          <select
-            value={bucketSeconds}
-            onChange={(event) => setBucketSeconds(Number(event.target.value))}
-          >
-            {bucketOptions.map((option) => (
-              <option key={option.seconds} value={option.seconds}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Period
-          <select
-            value={rangeSeconds ?? "all"}
-            onChange={(event) =>
-              setRangeSeconds(
-                event.target.value === "all" ? null : Number(event.target.value)
-              )
-            }
-          >
-            {rangeOptions.map((option) => (
-              <option key={option.label} value={option.seconds ?? "all"}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <span className="chart-meta">
-          Last sample {formatTime(latestActivity?.observedAt)}
-        </span>
-      </div>
+      {activityReported ? (
+        <div className="chart-toolbar">
+          <label>
+            Bucket
+            <select
+              value={bucketSeconds}
+              onChange={(event) => setBucketSeconds(Number(event.target.value))}
+            >
+              {bucketOptions.map((option) => (
+                <option key={option.seconds} value={option.seconds}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Period
+            <select
+              value={rangeSeconds ?? "all"}
+              onChange={(event) =>
+                setRangeSeconds(
+                  event.target.value === "all" ? null : Number(event.target.value)
+                )
+              }
+            >
+              {rangeOptions.map((option) => (
+                <option key={option.label} value={option.seconds ?? "all"}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          {latestActivity ? (
+            <span className="chart-meta">
+              Last sample {formatTime(latestActivity.observedAt)}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
 
-      {buckets.length > 0 ? (
+      {activityRead.issues.length > 0 ? (
+        <ErrorState
+          title="Recorder activity data is incomplete"
+          error={new Error(activityRead.issues.join("; "))}
+        />
+      ) : null}
+
+      {!activityReported ? (
+        <p className="empty-state">Recorder activity history is not reported.</p>
+      ) : buckets.length > 0 ? (
         <svg
           className="activity-chart"
           viewBox={`0 0 ${chart.width} ${chart.height}`}
@@ -117,15 +134,17 @@ export function RecorderActivityChart({
         </p>
       )}
 
-      <MetricStrip
-        metrics={[
-          { label: "Packets", value: packetCount },
-          { label: "Total packets", value: totalPackets },
-          { label: "Total data", value: formatBytes(totalBytes) },
-          { label: "Data rate", value: `${formatBytes(latestRate)}/s` },
-          { label: "Rooms", value: roomCount }
-        ]}
-      />
+      {activityReported ? (
+        <MetricStrip
+          metrics={[
+            { label: "Packets", value: packetCount },
+            { label: "Total packets", value: totalPackets },
+            { label: "Total data", value: formatBytes(totalBytes) },
+            { label: "Data rate", value: `${formatBytes(latestRate)}/s` },
+            { label: "Rooms", value: roomCount }
+          ]}
+        />
+      ) : null}
     </div>
   );
 }

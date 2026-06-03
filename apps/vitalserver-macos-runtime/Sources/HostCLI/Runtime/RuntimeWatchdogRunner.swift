@@ -169,14 +169,16 @@ struct RuntimeWatchdogRunner {
     ) throws {
         log("watchdog detected unhealthy runtime reasons=\(reason)")
         try actions.writeObservedStatus(.recovering, .watchdog, "watchdog recovery started: \(reason)", initial)
+        let restartReasons = restartReasonText(recoveryPlan)
         log(
             "watchdog recovery plan vm=\(recoveryPlan.restartVM) proxy=\(recoveryPlan.restartProxy) "
+                + "restartReasons=\(restartReasons) "
                 + "hostProxyHealth=\(proxyLivenessHTTP) hostProxyReady=\(initial.hostProxyHTTP) guestReady=\(initial.guestHTTP)"
         )
         actions.recordObservedEvent(
             .recovering,
             .watchdog,
-            "watchdog recovery planned vm=\(recoveryPlan.restartVM) proxy=\(recoveryPlan.restartProxy)",
+            "watchdog recovery planned vm=\(recoveryPlan.restartVM) proxy=\(recoveryPlan.restartProxy) reasons=\(restartReasons)",
             initial,
             .recoveryPlanned
         )
@@ -250,5 +252,13 @@ struct RuntimeWatchdogRunner {
 
     private func reasonText(_ reasons: [RuntimeFailureReason]) -> String {
         RuntimeFailureReasonText.describe(reasons)
+    }
+
+    private func restartReasonText(_ recoveryPlan: RuntimeRecoveryPlan) -> String {
+        let reasonCodes = recoveryPlan.restartReasonCodes
+        guard !reasonCodes.isEmpty else {
+            return "none"
+        }
+        return reasonCodes.joined(separator: ",")
     }
 }

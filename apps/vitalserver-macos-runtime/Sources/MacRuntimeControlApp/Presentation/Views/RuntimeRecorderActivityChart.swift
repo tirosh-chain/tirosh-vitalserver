@@ -4,6 +4,70 @@ import RuntimeControl
 import SwiftUI
 
 struct RuntimeRecorderActivityChartDataBuilder {
+    func display(
+        from timeline: [RuntimeVitalRecorderActivityPoint]?,
+        interval: RecorderActivityBucketInterval,
+        period: RecorderActivityPeriod,
+        readError: String?
+    ) -> RuntimeRecorderActivityDisplay {
+        if let readError {
+            return RuntimeRecorderActivityDisplay(
+                state: .readFailed(readError),
+                buckets: [],
+                latestSample: nil,
+                latestBucket: nil,
+                totalPackets: nil
+            )
+        }
+        guard let timeline else {
+            return RuntimeRecorderActivityDisplay(
+                state: .notReported,
+                buckets: [],
+                latestSample: nil,
+                latestBucket: nil,
+                totalPackets: nil
+            )
+        }
+        guard !timeline.isEmpty else {
+            return RuntimeRecorderActivityDisplay(
+                state: .emptyTimeline,
+                buckets: [],
+                latestSample: nil,
+                latestBucket: nil,
+                totalPackets: 0
+            )
+        }
+
+        let latestSample = timeline.max {
+            let lhs = RuntimeRecorderActivityDateParser.date(from: $0.observedAt) ?? .distantPast
+            let rhs = RuntimeRecorderActivityDateParser.date(from: $1.observedAt) ?? .distantPast
+            return lhs < rhs
+        }
+        let buckets = displayActivityBuckets(
+            activityBuckets(from: timeline, interval: interval),
+            interval: interval,
+            period: period
+        )
+        guard !buckets.isEmpty else {
+            return RuntimeRecorderActivityDisplay(
+                state: .noBucketsInPeriod,
+                buckets: [],
+                latestSample: latestSample,
+                latestBucket: nil,
+                totalPackets: 0
+            )
+        }
+
+        let latestBucket = buckets.last(where: { $0.messageCount > 0 }) ?? buckets.last
+        return RuntimeRecorderActivityDisplay(
+            state: .available,
+            buckets: buckets,
+            latestSample: latestSample,
+            latestBucket: latestBucket,
+            totalPackets: buckets.reduce(0) { $0 + $1.messageCount }
+        )
+    }
+
     func activityBuckets(
         from points: [RuntimeVitalRecorderActivityPoint],
         interval: RecorderActivityBucketInterval
@@ -128,6 +192,31 @@ struct RuntimeRecorderActivityChartDataBuilder {
         }
         let bucketTimestamp = floor(date.timeIntervalSince1970 / Double(intervalSeconds)) * Double(intervalSeconds)
         return RuntimeRecorderActivityDateParser.string(from: Date(timeIntervalSince1970: bucketTimestamp))
+    }
+}
+
+struct RuntimeRecorderActivityDisplay {
+    let state: RuntimeRecorderActivityDisplayState
+    let buckets: [RecorderActivityChartBucket]
+    let latestSample: RuntimeVitalRecorderActivityPoint?
+    let latestBucket: RecorderActivityChartBucket?
+    let totalPackets: Int?
+}
+
+enum RuntimeRecorderActivityDisplayState: Equatable {
+    case available
+    case notReported
+    case emptyTimeline
+    case noBucketsInPeriod
+    case readFailed(String)
+
+    var showsControls: Bool {
+        switch self {
+        case .available, .emptyTimeline, .noBucketsInPeriod:
+            return true
+        case .notReported, .readFailed:
+            return false
+        }
     }
 }
 

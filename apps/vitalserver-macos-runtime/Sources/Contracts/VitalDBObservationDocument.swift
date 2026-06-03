@@ -395,6 +395,16 @@ public struct VitalDBAnomalyObservation: Codable, Equatable, Sendable {
     }
 }
 
+public struct VitalDBObservationReadIssue: Codable, Equatable, Sendable {
+    public let source: String
+    public let message: String
+
+    public init(source: String, message: String) {
+        self.source = source
+        self.message = message
+    }
+}
+
 public struct VitalDBObservationDocument: Codable, Equatable, Sendable {
     public let schemaVersion: Int
     public let source: String
@@ -407,6 +417,7 @@ public struct VitalDBObservationDocument: Codable, Equatable, Sendable {
     public let filters: [VitalDBFilterObservation]
     public let proxyConnections: [VitalDBProxyConnectionObservation]
     public let anomalies: [VitalDBAnomalyObservation]
+    public let readIssues: [VitalDBObservationReadIssue]
 
     public init(
         schemaVersion: Int = 1,
@@ -419,7 +430,8 @@ public struct VitalDBObservationDocument: Codable, Equatable, Sendable {
         devices: [VitalDBDeviceObservation] = [],
         filters: [VitalDBFilterObservation] = [],
         proxyConnections: [VitalDBProxyConnectionObservation] = [],
-        anomalies: [VitalDBAnomalyObservation] = []
+        anomalies: [VitalDBAnomalyObservation] = [],
+        readIssues: [VitalDBObservationReadIssue] = []
     ) {
         self.schemaVersion = schemaVersion
         self.source = source
@@ -432,5 +444,61 @@ public struct VitalDBObservationDocument: Codable, Equatable, Sendable {
         self.filters = filters
         self.proxyConnections = proxyConnections
         self.anomalies = anomalies
+        self.readIssues = readIssues
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case schemaVersion
+        case source
+        case observedAt
+        case ready
+        case recorderOnlineThresholdSeconds
+        case recorders
+        case beds
+        case devices
+        case filters
+        case proxyConnections
+        case anomalies
+        case readIssues
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
+        source = try container.decode(String.self, forKey: .source)
+        observedAt = try container.decode(String.self, forKey: .observedAt)
+        ready = try container.decode(Bool.self, forKey: .ready)
+        recorderOnlineThresholdSeconds = try container.decode(
+            Int.self,
+            forKey: .recorderOnlineThresholdSeconds
+        )
+        recorders = try container.decode(
+            [VitalDBRecorderObservation].self,
+            forKey: .recorders
+        )
+        beds = try container.decode(
+            [VitalDBBedObservation].self,
+            forKey: .beds
+        )
+        devices = try container.decode(
+            [VitalDBDeviceObservation].self,
+            forKey: .devices
+        )
+        filters = try container.decode(
+            [VitalDBFilterObservation].self,
+            forKey: .filters
+        )
+        proxyConnections = try container.decode(
+            [VitalDBProxyConnectionObservation].self,
+            forKey: .proxyConnections
+        )
+        anomalies = try container.decode(
+            [VitalDBAnomalyObservation].self,
+            forKey: .anomalies
+        )
+        readIssues = try container.decodeIfPresent(
+            [VitalDBObservationReadIssue].self,
+            forKey: .readIssues
+        ) ?? []
     }
 }

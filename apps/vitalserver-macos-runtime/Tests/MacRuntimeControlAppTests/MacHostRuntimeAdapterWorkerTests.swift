@@ -173,15 +173,15 @@ private final class AdapterStubObservabilityReader: RuntimeObservabilityReading 
     }
 
     func loadVitalDBObservation() -> VitalDBObservationDocument? {
-        VitalDBObservationDocument(
-            observedAt: "2026-05-30T00:00:00Z",
-            ready: true,
-            recorderOnlineThresholdSeconds: 60
-        )
+        loadVitalDBObservationSnapshot().observation
     }
 
     func loadVitalDBObservationSnapshot() -> RuntimeVitalDBObservationSnapshot {
-        RuntimeVitalDBObservationSnapshot.fromOptional(loadVitalDBObservation())
+        RuntimeVitalDBObservationSnapshot.loaded(VitalDBObservationDocument(
+            observedAt: "2026-05-30T00:00:00Z",
+            ready: true,
+            recorderOnlineThresholdSeconds: 60
+        ))
     }
 
     func loadVitalDBRecorders() -> RuntimeVitalRecorderHistory {

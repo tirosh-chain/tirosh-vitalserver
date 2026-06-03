@@ -13,6 +13,7 @@ from .model import (
     AnomalyObservation,
     BedObservation,
     ObservationDocument,
+    ObservationReadIssue,
     ProxyConnectionObservation,
     RawBedScopedObservation,
     RecorderActivityBucket,
@@ -43,8 +44,9 @@ class VitalDBCollector:
 
     def collect(self) -> ObservationDocument:
         observed_at = utc_now_iso()
-        activity_by_vrcode = self._recorder_activity(observed_at)
-        beds = self._beds(observed_at)
+        read_issues: list[ObservationReadIssue] = []
+        activity_by_vrcode = self._recorder_activity(observed_at, read_issues)
+        beds = self._beds(observed_at, read_issues)
         registered_vrcodes = self._registered_vrcodes()
         recorders = self._recorders(
             observed_at,
@@ -58,7 +60,7 @@ class VitalDBCollector:
         filters = self._raw_bed_scoped(
             prefix="filts_", bed_ids=[bed.bed_id for bed in beds]
         )
-        proxy_connections = self._proxy_connections()
+        proxy_connections = self._proxy_connections(read_issues)
         anomalies = self._anomalies(observed_at, recorders)
         return ObservationDocument(
             observed_at=observed_at,
@@ -70,6 +72,7 @@ class VitalDBCollector:
             filters=filters,
             proxy_connections=proxy_connections,
             anomalies=anomalies,
+            read_issues=read_issues,
         )
 
     def _recorders(
@@ -128,8 +131,21 @@ class VitalDBCollector:
     def _recorder_activity(
         self,
         observed_at: str,
+        read_issues: list[ObservationReadIssue],
     ) -> dict[str, RecorderActivityObservation]:
-        if not self._settings.audit_redis_list or self._settings.audit_event_limit <= 0:
+        if not self._settings.audit_redis_list:
+            _append_read_issue(
+                read_issues,
+                "auditEvents",
+                "audit Redis list is not configured",
+            )
+            return {}
+        if self._settings.audit_event_limit <= 0:
+            _append_read_issue(
+                read_issues,
+                "auditEvents",
+                "audit event limit must be positive",
+            )
             return {}
         events = self._redis.lrange(
             self._settings.audit_redis_list,
@@ -139,19 +155,30 @@ class VitalDBCollector:
         window_seconds = max(self._settings.recorder_activity_window_seconds, 1)
         window_started_at = _parse_iso(observed_at) - timedelta(seconds=window_seconds)
         builders: dict[str, _ActivityBuilder] = {}
-        for raw_event in events:
-            parsed = _parse_audit_event(raw_event)
-            if parsed is None or parsed["event_type"] != "send_data":
+        for index, raw_event in enumerate(events):
+            try:
+                parsed = _parse_audit_event(raw_event)
+            except ValueError as error:
+                _append_read_issue(
+                    read_issues,
+                    "auditEvents",
+                    f"event {index} was skipped: {error}",
+                )
+                continue
+            if parsed["event_type"] != "send_data":
                 continue
             try:
                 event_time = _parse_iso(parsed["timestamp"])
-            except ValueError:
+            except ValueError as error:
+                _append_read_issue(
+                    read_issues,
+                    "auditEvents",
+                    f"send_data event {index} has invalid timestamp: {error}",
+                )
                 continue
             if event_time < window_started_at:
                 continue
             vrcode = parsed["vrcode"]
-            if not vrcode:
-                continue
             builder = builders.setdefault(
                 vrcode,
                 _ActivityBuilder(window_seconds=window_seconds),
@@ -168,23 +195,34 @@ class VitalDBCollector:
             if builder.message_count > 0
         }
 
-    def _beds(self, observed_at: str) -> list[BedObservation]:
+    def _beds(
+        self, observed_at: str, read_issues: list[ObservationReadIssue]
+    ) -> list[BedObservation]:
         bed_ids = set(self._redis.smembers("beds"))
         bed_ids.update(
             key.removeprefix("beds:")
             for key in self._redis.scan("beds:*")
             if key.removeprefix("beds:")
         )
-        return [self._bed(bed_id, observed_at) for bed_id in sorted(bed_ids)]
+        return [
+            self._bed(bed_id, observed_at, read_issues)
+            for bed_id in sorted(bed_ids)
+        ]
 
-    def _bed(self, bed_id: str, observed_at: str) -> BedObservation:
+    def _bed(
+        self,
+        bed_id: str,
+        observed_at: str,
+        read_issues: list[ObservationReadIssue],
+    ) -> BedObservation:
         raw_bed = self._empty_to_none(self._redis.get(f"beds:{bed_id}"))
         raw_ptcon = self._empty_to_none(self._redis.get(f"ptcon_{bed_id}"))
         last_seen_raw = self._redis.get(f"utime_{bed_id}")
+        bed_data = _bed_json_object(raw_bed, bed_id, read_issues)
         return BedObservation(
             bed_id=bed_id,
-            name=_bed_name(raw_bed),
-            vrcode=_bed_vrcode(raw_bed),
+            name=_bed_name(raw_bed, bed_data),
+            vrcode=_bed_vrcode(bed_data),
             last_seen_at=redis_unix_time_to_iso(last_seen_raw),
             patient_connected=_bool_string(raw_ptcon),
             online=_is_recent(
@@ -211,19 +249,47 @@ class VitalDBCollector:
             )
         return observations
 
-    def _proxy_connections(self) -> list[ProxyConnectionObservation]:
+    def _proxy_connections(
+        self, read_issues: list[ObservationReadIssue]
+    ) -> list[ProxyConnectionObservation]:
         path = self._settings.access_log_path
         if not path:
+            _append_read_issue(
+                read_issues,
+                "proxyAccessLog",
+                "proxy access log path is not configured",
+            )
             return []
         log_path = Path(path)
         if not log_path.exists():
+            _append_read_issue(
+                read_issues,
+                "proxyAccessLog",
+                f"proxy access log does not exist: {path}",
+            )
             return []
-        lines = _tail_lines(log_path, _ACCESS_LOG_TAIL_BYTES)
-        return [
-            _proxy_connection_from_json(line)
-            for line in lines[-self._settings.access_log_limit :]
-            if line.strip()
-        ]
+        try:
+            lines = _tail_lines(log_path, _ACCESS_LOG_TAIL_BYTES)
+        except UnicodeDecodeError as error:
+            _append_read_issue(
+                read_issues,
+                "proxyAccessLog",
+                f"proxy access log is not valid UTF-8: {error}",
+            )
+            return []
+        observations: list[ProxyConnectionObservation] = []
+        for index, line in enumerate(lines[-self._settings.access_log_limit :]):
+            if not line.strip():
+                continue
+            try:
+                observations.append(_proxy_connection_from_json(line))
+            except ValueError as error:
+                _append_read_issue(
+                    read_issues,
+                    "proxyAccessLog",
+                    f"line {index} was skipped: {error}",
+                )
+        return observations
 
     def _anomalies(
         self,
@@ -262,8 +328,10 @@ class VitalDBCollector:
 def _proxy_connection_from_json(line: str) -> ProxyConnectionObservation:
     try:
         data: dict[str, Any] = json.loads(line)
-    except json.JSONDecodeError:
-        data = {}
+    except json.JSONDecodeError as error:
+        raise ValueError(f"invalid JSON: {error}") from error
+    if not isinstance(data, dict):
+        raise ValueError("JSON line must be an object")
     request_uri = _string_value(data, "request_uri") or _string_value(
         data, "requestURI"
     )
@@ -315,40 +383,57 @@ def _tail_lines(path: Path, max_bytes: int) -> list[str]:
         if size > max_bytes:
             handle.seek(-max_bytes, 2)
         data = handle.read()
-    return data.decode("utf-8", errors="replace").splitlines()
+    return data.decode("utf-8").splitlines()
 
 
-def _parse_audit_event(raw_value: str) -> dict[str, Any] | None:
+def _parse_audit_event(raw_value: str) -> dict[str, Any]:
     try:
         event = json.loads(raw_value)
-    except json.JSONDecodeError:
-        return None
+    except json.JSONDecodeError as error:
+        raise ValueError(f"invalid JSON: {error}") from error
     if not isinstance(event, dict):
-        return None
+        raise ValueError("JSON value must be an object")
 
     payload_summary = event.get("payload_summary") or event.get("payloadSummary")
     if not isinstance(payload_summary, dict):
         payload_summary = {}
 
+    event_type = (
+        _string_value(event, "event_type")
+        or _string_value(event, "eventType")
+        or ""
+    )
+    if event_type != "send_data":
+        return {
+            "event_type": event_type,
+            "timestamp": "",
+            "vrcode": "",
+            "byte_count": 0,
+            "room_count": 0,
+        }
     timestamp = (
         _string_value(event, "ts")
         or _string_value(event, "observedAt")
         or _string_value(event, "timestamp")
     )
     vrcode = _string_value(payload_summary, "vrcode") or _string_value(event, "vrcode")
-    if timestamp is None or vrcode is None:
-        return None
+    if timestamp is None or timestamp == "":
+        raise ValueError("send_data event is missing timestamp")
+    if vrcode is None or vrcode == "":
+        raise ValueError("send_data event is missing vrcode")
 
     return {
-        "event_type": _string_value(event, "event_type")
-        or _string_value(event, "eventType")
-        or "",
+        "event_type": event_type,
         "timestamp": timestamp,
         "vrcode": vrcode,
-        "byte_count": _int_value(payload_summary, "bytes")
-        or _int_value(payload_summary, "byteCount"),
-        "room_count": _int_value(payload_summary, "rooms_count")
-        or _int_value(payload_summary, "roomsCount"),
+        "byte_count": _required_non_negative_int(
+            payload_summary,
+            ("bytes", "byteCount"),
+        ),
+        "room_count": _required_non_negative_int(
+            payload_summary,
+            ("rooms_count", "roomsCount"),
+        ),
     }
 
 
@@ -433,16 +518,14 @@ def _bucket_started_at(value: datetime, bucket_seconds: int) -> str:
     )
 
 
-def _bed_name(raw_value: str | None) -> str | None:
-    data = _json_object(raw_value)
-    if data:
+def _bed_name(raw_value: str | None, data: dict[str, Any] | None) -> str | None:
+    if data is not None:
         return _string_value(data, "name") or _string_value(data, "bedname")
     return raw_value
 
 
-def _bed_vrcode(raw_value: str | None) -> str | None:
-    data = _json_object(raw_value)
-    if data:
+def _bed_vrcode(data: dict[str, Any] | None) -> str | None:
+    if data is not None:
         return _string_value(data, "vrcode") or _string_value(data, "vr")
     return None
 
@@ -458,14 +541,30 @@ def _bool_string(raw_value: str | None) -> bool | None:
     return None
 
 
-def _json_object(raw_value: str | None) -> dict[str, Any] | None:
+def _bed_json_object(
+    raw_value: str | None,
+    bed_id: str,
+    read_issues: list[ObservationReadIssue],
+) -> dict[str, Any] | None:
     if not raw_value:
         return None
     try:
         value = json.loads(raw_value)
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as error:
+        _append_read_issue(
+            read_issues,
+            f"bed:{bed_id}",
+            f"bed record is not valid JSON: {error}",
+        )
         return None
-    return value if isinstance(value, dict) else None
+    if not isinstance(value, dict):
+        _append_read_issue(
+            read_issues,
+            f"bed:{bed_id}",
+            "bed record JSON must be an object",
+        )
+        return None
+    return value
 
 
 def _string_value(data: dict[str, Any], key: str) -> str | None:
@@ -475,14 +574,39 @@ def _string_value(data: dict[str, Any], key: str) -> str | None:
     return str(value)
 
 
-def _int_value(data: dict[str, Any], key: str) -> int:
-    value = data.get(key)
+def _required_non_negative_int(data: dict[str, Any], keys: tuple[str, ...]) -> int:
+    selected_key: str | None = None
+    value: Any = None
+    for key in keys:
+        if key in data and data[key] != "":
+            selected_key = key
+            value = data[key]
+            break
+    if selected_key is None:
+        raise ValueError(f"send_data event is missing {'/'.join(keys)}")
     if value in (None, ""):
-        return 0
+        raise ValueError(f"send_data event is missing {selected_key}")
     try:
-        return max(int(str(value)), 0)
+        parsed = int(str(value))
     except (TypeError, ValueError):
-        return 0
+        raise ValueError(
+            f"send_data event has invalid {selected_key}: {value!r}"
+        ) from None
+    if parsed < 0:
+        raise ValueError(
+            f"send_data event has negative {selected_key}: {value!r}"
+        )
+    return parsed
+
+
+def _append_read_issue(
+    read_issues: list[ObservationReadIssue],
+    source: str,
+    message: str,
+) -> None:
+    issue = ObservationReadIssue(source=source, message=message)
+    if issue not in read_issues:
+        read_issues.append(issue)
 
 
 def _is_recorder_identity(value: str, *, bed_ids: set[str]) -> bool:

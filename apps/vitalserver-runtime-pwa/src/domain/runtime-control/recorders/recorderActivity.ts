@@ -14,11 +14,17 @@ export type RecorderActivityBucket = {
   messageCount: number;
   byteCount: number;
   roomCount: number;
+  synthetic: boolean;
 };
 
 export type RecorderActivityBucketOptions = {
   bucketSeconds: number;
   rangeSeconds?: number | null;
+};
+
+export type RecorderActivityRead = {
+  buckets: RecorderActivityBucket[];
+  issues: string[];
 };
 
 type RecorderActivityBucketMergeMode = "sum" | "max";
@@ -28,23 +34,54 @@ export function buildRecorderActivityBuckets(
   points: RecorderActivityPoint[] | null | undefined,
   options: RecorderActivityBucketOptions
 ): RecorderActivityBucket[] {
-  if (!points?.length || options.bucketSeconds <= 0) {
-    return [];
+  return readRecorderActivityBuckets(points, options).buckets;
+}
+
+export function readRecorderActivityBuckets(
+  points: RecorderActivityPoint[] | null | undefined,
+  options: RecorderActivityBucketOptions
+): RecorderActivityRead {
+  const issues: string[] = [];
+  if (points === null || points === undefined) {
+    return {
+      buckets: [],
+      issues: ["activityTimeline is not reported"]
+    };
+  }
+  if (options.bucketSeconds <= 0) {
+    return {
+      buckets: [],
+      issues: [`bucketSeconds must be positive: ${options.bucketSeconds}`]
+    };
+  }
+  if (points.length === 0) {
+    return { buckets: [], issues };
   }
 
   const parsed = points
-    .map((point) => ({
-      point,
-      observedMs: timestamp(point.observedAt)
-    }))
-    .filter((sample): sample is { point: RecorderActivityPoint; observedMs: number } =>
-      sample.observedMs !== null
+    .map((point, index) => {
+      const observedMs = timestamp(point.observedAt);
+      if (observedMs === null) {
+        issues.push(`activity point ${index} has invalid observedAt`);
+        return null;
+      }
+      return { point, index, observedMs };
+    })
+    .filter((sample): sample is {
+      point: RecorderActivityPoint;
+      index: number;
+      observedMs: number;
+    } =>
+      sample !== null
     )
     .sort((left, right) => left.observedMs - right.observedMs);
 
   const latestMs = parsed.at(-1)?.observedMs;
   if (latestMs === undefined) {
-    return [];
+    return {
+      buckets: [],
+      issues: issues.length > 0 ? issues : ["activity has no valid timestamped samples"]
+    };
   }
 
   const rangeStartMs = options.rangeSeconds
@@ -52,9 +89,14 @@ export function buildRecorderActivityBuckets(
     : null;
   const bucketMs = options.bucketSeconds * 1_000;
   const buckets = new Map<number, RecorderActivityBucket>();
-  const rawBuckets = stableActivityBuckets(parsed.map((sample) => sample.point));
+  const hasEmbeddedBucketSource = parsed.some(
+    (sample) => activityBuckets(sample.point).length > 0
+  );
+  const rawRead = stableActivityBuckets(parsed.map((sample) => sample.point));
+  issues.push(...rawRead.issues);
+  const rawBuckets = rawRead.buckets;
 
-  if (rawBuckets.length > 0) {
+  if (hasEmbeddedBucketSource) {
     for (const rawBucket of rawBuckets) {
       mergeBucketFromTimestamp(
         buckets,
@@ -70,11 +112,19 @@ export function buildRecorderActivityBuckets(
       );
     }
 
-    return filledBuckets(buckets, bucketMs, options.rangeSeconds);
+    return {
+      buckets: filledBuckets(buckets, bucketMs, options.rangeSeconds),
+      issues
+    };
   }
 
   for (const sample of parsed) {
     if (rangeStartMs !== null && sample.observedMs < rangeStartMs) {
+      continue;
+    }
+    const counts = activityCounts(sample.point);
+    if (!counts) {
+      issues.push(`activity point ${sample.index} has incomplete counts`);
       continue;
     }
 
@@ -82,9 +132,9 @@ export function buildRecorderActivityBuckets(
       buckets,
       {
         startedAt: sample.point.observedAt,
-        messageCount: sample.point.messageCount,
-        byteCount: sample.point.byteCount,
-        roomCount: sample.point.roomCount
+        messageCount: counts.messageCount,
+        byteCount: counts.byteCount,
+        roomCount: counts.roomCount
       },
       bucketMs,
       "sum",
@@ -92,7 +142,10 @@ export function buildRecorderActivityBuckets(
     );
   }
 
-  return filledBuckets(buckets, bucketMs, options.rangeSeconds);
+  return {
+    buckets: filledBuckets(buckets, bucketMs, options.rangeSeconds),
+    issues
+  };
 }
 
 export function latestRecorderActivityPoint(
@@ -112,16 +165,33 @@ function activityBuckets(
 
 function stableActivityBuckets(
   points: RecorderActivityPoint[]
-): RecorderActivityBucket[] {
+): RecorderActivityRead {
   const buckets = new Map<string, RecorderActivityBucket>();
+  const issues: string[] = [];
 
-  for (const point of points) {
-    for (const rawBucket of activityBuckets(point)) {
-      const rawBucketMs = Math.max(1, rawBucket.bucketSeconds ?? 60) * 1_000;
-      const rawStartMs = timestamp(rawBucket.bucketStartedAt);
-      if (rawStartMs === null) {
+  for (const [pointIndex, point] of points.entries()) {
+    for (const [bucketIndex, rawBucket] of activityBuckets(point).entries()) {
+      if (typeof rawBucket.bucketSeconds !== "number" || rawBucket.bucketSeconds <= 0) {
+        issues.push(
+          `activity point ${pointIndex} bucket ${bucketIndex} has invalid bucketSeconds`
+        );
         continue;
       }
+      const rawStartMs = timestamp(rawBucket.bucketStartedAt);
+      if (rawStartMs === null) {
+        issues.push(
+          `activity point ${pointIndex} bucket ${bucketIndex} has invalid bucketStartedAt`
+        );
+        continue;
+      }
+      const counts = activityCounts(rawBucket);
+      if (!counts) {
+        issues.push(
+          `activity point ${pointIndex} bucket ${bucketIndex} has incomplete counts`
+        );
+        continue;
+      }
+      const rawBucketMs = rawBucket.bucketSeconds * 1_000;
       const startMs = Math.floor(rawStartMs / rawBucketMs) * rawBucketMs;
       mergeBucketByStart(
         buckets,
@@ -129,9 +199,9 @@ function stableActivityBuckets(
         startMs,
         rawBucketMs,
         {
-          messageCount: rawBucket.messageCount,
-          byteCount: rawBucket.byteCount,
-          roomCount: rawBucket.roomCount
+          messageCount: counts.messageCount,
+          byteCount: counts.byteCount,
+          roomCount: counts.roomCount
         },
         "max",
         "max"
@@ -139,16 +209,19 @@ function stableActivityBuckets(
     }
   }
 
-  return [...buckets.values()].sort((left, right) => left.startMs - right.startMs);
+  return {
+    buckets: [...buckets.values()].sort((left, right) => left.startMs - right.startMs),
+    issues
+  };
 }
 
 function mergeBucketFromTimestamp(
   buckets: Map<number, RecorderActivityBucket>,
   rawBucket: {
     startedAt?: string;
-    messageCount?: number;
-    byteCount?: number;
-    roomCount?: number;
+    messageCount: number;
+    byteCount: number;
+    roomCount: number;
   },
   bucketMs: number,
   mergeMode: RecorderActivityBucketMergeMode,
@@ -177,9 +250,9 @@ function mergeBucketByStart<Key>(
   startMs: number,
   bucketMs: number,
   rawBucket: {
-    messageCount?: number;
-    byteCount?: number;
-    roomCount?: number;
+    messageCount: number;
+    byteCount: number;
+    roomCount: number;
   },
   mergeMode: RecorderActivityBucketMergeMode,
   roomCountMode: RecorderActivityRoomCountMode
@@ -191,21 +264,22 @@ function mergeBucketByStart<Key>(
       endMs: startMs + bucketMs,
       messageCount: 0,
       byteCount: 0,
-      roomCount: 0
+      roomCount: 0,
+      synthetic: false
     };
 
   if (mergeMode === "max") {
-    bucket.messageCount = Math.max(bucket.messageCount, rawBucket.messageCount ?? 0);
-    bucket.byteCount = Math.max(bucket.byteCount, rawBucket.byteCount ?? 0);
+    bucket.messageCount = Math.max(bucket.messageCount, rawBucket.messageCount);
+    bucket.byteCount = Math.max(bucket.byteCount, rawBucket.byteCount);
   } else {
-    bucket.messageCount += rawBucket.messageCount ?? 0;
-    bucket.byteCount += rawBucket.byteCount ?? 0;
+    bucket.messageCount += rawBucket.messageCount;
+    bucket.byteCount += rawBucket.byteCount;
   }
 
   bucket.roomCount =
     roomCountMode === "sum"
-      ? bucket.roomCount + (rawBucket.roomCount ?? 0)
-      : Math.max(bucket.roomCount, rawBucket.roomCount ?? 0);
+      ? bucket.roomCount + rawBucket.roomCount
+      : Math.max(bucket.roomCount, rawBucket.roomCount);
   buckets.set(key, bucket);
 }
 
@@ -240,12 +314,32 @@ function filledBuckets(
         endMs: startMs + bucketMs,
         messageCount: 0,
         byteCount: 0,
-        roomCount: 0
+        roomCount: 0,
+        synthetic: true
       }
     );
   }
 
   return filled;
+}
+
+function activityCounts(value: {
+  messageCount?: number;
+  byteCount?: number;
+  roomCount?: number;
+}): { messageCount: number; byteCount: number; roomCount: number } | null {
+  if (
+    typeof value.messageCount !== "number" ||
+    typeof value.byteCount !== "number" ||
+    typeof value.roomCount !== "number"
+  ) {
+    return null;
+  }
+  return {
+    messageCount: value.messageCount,
+    byteCount: value.byteCount,
+    roomCount: value.roomCount
+  };
 }
 
 function timestamp(value: string | null | undefined): number | null {

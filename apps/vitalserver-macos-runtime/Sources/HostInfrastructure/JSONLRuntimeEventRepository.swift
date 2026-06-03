@@ -39,14 +39,6 @@ public struct JSONLRuntimeEventRepository: RuntimeEventRepository {
         }
     }
 
-    public func recent(limit: Int) -> [RuntimeEventDocument] {
-        guard limit > 0 else {
-            return []
-        }
-
-        return Array(allResult().events.suffix(limit))
-    }
-
     public func query(_ query: RuntimeEventQuery) -> RuntimeEventPage {
         let readResult = allResult()
         let filtered = readResult.events
@@ -158,7 +150,10 @@ public struct JSONLRuntimeEventRepository: RuntimeEventRepository {
 
     private func fileSize(_ url: URL) throws -> UInt64 {
         let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
-        return (attributes[.size] as? NSNumber)?.uint64Value ?? 0
+        guard let size = attributes[.size] as? NSNumber else {
+            throw JSONLRuntimeEventRepositoryError.missingFileSize(path: url.path)
+        }
+        return size.uint64Value
     }
 
     private func nextCursor(for events: [RuntimeEventDocument], hasMore: Bool) -> RuntimeEventCursor? {
@@ -167,6 +162,10 @@ public struct JSONLRuntimeEventRepository: RuntimeEventRepository {
         }
         return RuntimeEventCursor(timestamp: first.timestamp, id: first.id)
     }
+}
+
+public enum JSONLRuntimeEventRepositoryError: Error, Equatable, Sendable {
+    case missingFileSize(path: String)
 }
 
 public struct JSONLRuntimeEventReadResult: Equatable, Sendable {

@@ -27,6 +27,15 @@ public enum RuntimeWatchdogRecoveryPolicy {
         if let deferralReason = automaticRecoveryDeferralReason(snapshot) {
             return .recoveryDeferred(reason: deferralReason)
         }
+        if let missingFailureReasonIssue = RuntimeHealthSnapshotPolicy.missingFailureReasonIssue(snapshot) {
+            return .unrecoverable(reason: missingFailureReasonIssue)
+        }
+        if let bootstrapObservationIssue = bootstrapObservationIssue(snapshot.failureReasons) {
+            return .unrecoverable(reason: bootstrapObservationIssue.rawValue)
+        }
+        if let observationSourceIssue = observationSourceIssue(snapshot.failureReasons) {
+            return .unrecoverable(reason: observationSourceIssue.rawValue)
+        }
 
         guard automaticRecoveryEnabled else {
             return .recoveryDisabled(reason: reasons)
@@ -44,20 +53,23 @@ public enum RuntimeWatchdogRecoveryPolicy {
             guestHTTP: snapshot.guestHTTP,
             hostProxyReadinessHTTP: snapshot.hostProxyHTTP,
             hostProxyLivenessHTTP: hostProxyLivenessHTTP,
-            containerObservation: snapshot.containerObservation
+            containerObservation: snapshot.containerObservation.map(RuntimeObservationInput.loaded) ?? .notReported
         ))
 
         guard plan.canRecover else {
-            return .unrecoverable(reason: reasons)
+            return .unrecoverable(reason: plan.blockers.isEmpty ? reasons : reasonText(plan.blockers))
         }
         return .recover(reason: reasons, plan: plan)
     }
 
     public static func automaticRecoverySuppressionReason(_ snapshot: RuntimeHealthSnapshot) -> String? {
-        guard let protectedError = snapshot.vmErrors.first(where: { $0.requiresDataPreservationBeforeRecovery }) else {
-            return nil
+        if let protectedError = snapshot.vmErrors.first(where: { $0.requiresDataPreservationBeforeRecovery }) {
+            return protectedError.rawValue
         }
-        return protectedError.rawValue
+        if let protectedReason = snapshot.failureReasons.first(where: { $0.requiresDataPreservationBeforeRecovery }) {
+            return protectedReason.rawValue
+        }
+        return nil
     }
 
     public static func automaticRecoveryDeferralReason(
@@ -74,5 +86,27 @@ public enum RuntimeWatchdogRecoveryPolicy {
 
     private static func reasonText(_ reasons: [RuntimeFailureReason]) -> String {
         reasons.isEmpty ? "no failure reason reported" : reasons.map(\.rawValue).joined(separator: ", ")
+    }
+
+    private static func bootstrapObservationIssue(_ reasons: [RuntimeFailureReason]) -> RuntimeFailureReason? {
+        reasons.first { reason in
+            reason == .guestBootstrapResultMissing || reason == .guestBootstrapResultUnavailable
+        }
+    }
+
+    private static func observationSourceIssue(_ reasons: [RuntimeFailureReason]) -> RuntimeFailureReason? {
+        reasons.first { reason in
+            switch reason {
+            case .containerObservationMissing, .containerObservationReadFailed,
+                 .vitalDBObservationMissing, .vitalDBObservationReadFailed:
+                return true
+            default:
+                return false
+            }
+        }
+    }
+
+    private static func reasonText(_ reasons: [String]) -> String {
+        reasons.isEmpty ? "no failure reason reported" : reasons.joined(separator: ", ")
     }
 }
