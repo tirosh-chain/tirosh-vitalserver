@@ -77,6 +77,60 @@ Refactor in this order:
 - Diagnostic directory-read failures are logged explicitly instead of being silently ignored.
 - HostCLI remains the composition root for external reads, writes, effects, and diagnostics.
 
+## Install Parity Review
+
+TS-044 completed the uninstall workflow cleanup. At the time of this review, the same structure had not yet been applied to install.
+
+Current install coverage:
+
+- Fresh install preflight is represented in Core by `RuntimeFreshInstallPreflightPolicy`.
+- Install step order is represented in Core by `RuntimeOperationPlan`.
+- HostCLI has runner and step executor tests for install/provision step execution.
+- `preinstall` calls explicit fresh install preflight instead of probing package state directly.
+- `postinstall` calls `runtime install-provision` and uses `runtime uninstall --clean` for failed fresh-install cleanup.
+
+Findings:
+
+- `RuntimeWorkflow` currently contains only uninstall workflow code. There is no `RuntimeWorkflow/Install` equivalent.
+- Install has no `RuntimeInstallTransitionPolicy`, `RuntimeInstallWorkflowState`, `RuntimeInstallWorkflowEvent`, `RuntimeInstallWorkflowCommand`, or transition decision type.
+- Install execution still lives in `HostCLI/RuntimeInstallWorkflow`, `RuntimeInstallRunner`, and `RuntimeInstallStepExecutor`.
+- Install tests verify plan execution and step dispatch, but they do not verify state-machine transitions, command emission/consumption, persisted install state, or observed-state blockers at each phase.
+- Install dependency roles are grouped as broad HostCLI operations, not as explicit state readers, side-effect executors, state writer, and diagnostics ports.
+- Install reaches final status through runner completion rather than through an explicit state transition that proves required install observations.
+
+Install was brought to uninstall parity in `TS-045`. The implementation pass used this checklist:
+
+1. Define Core install state machine types:
+   - states
+   - events
+   - commands/effects
+   - blockers
+   - persisted install state document
+2. Move install orchestration into `RuntimeWorkflow/Install`.
+3. Group install dependencies by role:
+   - state readers
+   - side-effect executors
+   - state writer
+   - diagnostics/logging
+4. Make each install phase consume Core commands before executing effects.
+5. Require explicit owner-provided observations before advancing through risky boundaries:
+   - settings loaded/defaulted/invalid/read failed
+   - install artifacts absent/present/inspect failed
+   - package receipts absent/present/read failed
+   - service state not loaded/loaded/read failed/permission denied
+   - VM disk/rootfs availability
+   - launchd start result
+   - runtime health result
+6. Add focused tests equivalent to uninstall:
+   - Core transition table tests
+   - blocking state tests
+   - command emission/consumption tests
+   - RuntimeWorkflow phase order tests
+   - diagnostic failure visibility tests
+   - install-provision path tests that do not claim full health
+
+This follow-up must preserve the TS-042 rule: install must not guess clean state from absence, logs, package script success, or stale command output.
+
 ## Verification
 
 - `swift test --filter 'RuntimeUninstallTransitionPolicyTests|RuntimeWorkflowBoundaryTests|RuntimeUninstallWorkflowTests|RuntimeLifecycleCommandTests'`

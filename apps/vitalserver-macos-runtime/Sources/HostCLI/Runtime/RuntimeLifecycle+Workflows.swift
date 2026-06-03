@@ -3,8 +3,8 @@ import Core
 import Contracts
 
 extension RuntimeLifecycle {
-    func runtimeInstallWorkflow() -> RuntimeInstallWorkflow {
-        RuntimeInstallWorkflow(
+    func runtimeInstallWorkflow() -> RuntimeInstallWorkflowComposition {
+        RuntimeInstallWorkflowComposition(
             context: RuntimeInstallWorkflowContext(
                 paths: paths,
                 installedPaths: installedPaths,
@@ -15,6 +15,9 @@ extension RuntimeLifecycle {
             operations: RuntimeInstallWorkflowOperations(
                 fileStore: fileStore,
                 now: { clock.now },
+                freshInstallPreflight: {
+                    runtimeFreshInstallPreflightRunner().run()
+                },
                 writeRuntimeStatus: runtimeStatusWriterAction(),
                 writeRuntimeProgress: runtimeProgressWriterAction(),
                 rotateRuntimeLogs: rotateRuntimeLogs,

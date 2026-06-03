@@ -9,6 +9,7 @@ final class InstalledRuntimePathsTests: XCTestCase {
         XCTAssertEqual(paths.productRoot.path, "/Library/Application Support/TiroshVitalServer")
         XCTAssertEqual(paths.runtimeHome.path, "/Library/Application Support/TiroshVitalServer/vm")
         XCTAssertEqual(paths.runtimeStatus.path, "/Library/Application Support/TiroshVitalServer/status/runtime-status.json")
+        XCTAssertEqual(paths.runtimeInstallState.path, "/private/tmp/tirosh-vitalserver-install-state.json")
         XCTAssertEqual(paths.runtimeUninstallState.path, "/private/tmp/tirosh-vitalserver-uninstall-state.json")
         XCTAssertEqual(paths.hostRunDirectory.path, "/Library/Application Support/TiroshVitalServer/vm/run")
         XCTAssertEqual(paths.guestRunDirectory.path, "/Library/Application Support/TiroshVitalServer/vm/data/run")

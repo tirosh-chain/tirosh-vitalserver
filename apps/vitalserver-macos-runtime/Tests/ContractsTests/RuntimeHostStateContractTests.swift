@@ -121,6 +121,50 @@ final class RuntimeHostStateContractTests: XCTestCase {
         XCTAssertFalse(decoded.blockers.isEmpty)
     }
 
+    func testRuntimeInstallStateDocumentKeepsBlockedProvisionedAndCompletedDistinct() throws {
+        let blocked = RuntimeInstallStateDocument(
+            state: .preflightBlocked,
+            mode: .full,
+            currentStep: nil,
+            updatedAt: "2026-06-02T00:00:00Z",
+            message: "fresh install preflight blocked",
+            blockers: ["install-artifact-present:path=/usr/local/bin/vitalserver-vm"]
+        )
+        let provisioned = RuntimeInstallStateDocument(
+            state: .provisioned,
+            mode: .provision,
+            currentStep: .cleanupInstallSettings,
+            updatedAt: "2026-06-02T00:01:00Z",
+            message: "runtime install provisioned",
+            blockers: []
+        )
+
+        let blockedDecoded = try JSONDecoder().decode(
+            RuntimeInstallStateDocument.self,
+            from: JSONEncoder().encode(blocked)
+        )
+        let provisionedDecoded = try JSONDecoder().decode(
+            RuntimeInstallStateDocument.self,
+            from: JSONEncoder().encode(provisioned)
+        )
+
+        XCTAssertEqual(blockedDecoded, blocked)
+        XCTAssertEqual(provisionedDecoded, provisioned)
+        XCTAssertNotEqual(blockedDecoded.state, .completed)
+        XCTAssertNotEqual(provisionedDecoded.state, .completed)
+        XCTAssertEqual(provisionedDecoded.mode, .provision)
+    }
+
+    func testRuntimeInstallModePreservesUnknownValues() throws {
+        let mode = RuntimeInstallMode.unknown("future-mode")
+
+        let encoded = try JSONEncoder().encode(mode)
+        let decoded = try JSONDecoder().decode(RuntimeInstallMode.self, from: encoded)
+
+        XCTAssertEqual(decoded, mode)
+        XCTAssertEqual(decoded.rawValue, "future-mode")
+    }
+
     func testRuntimeUninstallStateDocumentKeepsBlockedDistinctFromCompleted() throws {
         let document = RuntimeUninstallStateDocument(
             state: .serviceStopBlocked,

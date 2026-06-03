@@ -2,6 +2,7 @@ import Foundation
 import HostInfrastructure
 import Core
 import Contracts
+import RuntimeWorkflow
 
 struct RuntimeInstallWorkflowContext {
     let paths: LauncherPaths
@@ -14,6 +15,7 @@ struct RuntimeInstallWorkflowContext {
 struct RuntimeInstallWorkflowOperations {
     let fileStore: RuntimeFileStore
     let now: () -> Date
+    let freshInstallPreflight: () -> RuntimeFreshInstallPreflightDocument
     let writeRuntimeStatus: (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void
     let writeRuntimeProgress: (RuntimeStepExecutionEvent) throws -> Void
     let rotateRuntimeLogs: () throws -> Void
@@ -29,48 +31,63 @@ struct RuntimeInstallWorkflowOperations {
     let log: (String) -> Void
 }
 
-struct RuntimeInstallWorkflow {
+struct RuntimeInstallWorkflowComposition {
     let context: RuntimeInstallWorkflowContext
     let operations: RuntimeInstallWorkflowOperations
 
     func install() throws {
-        try runtimeInstallRunner(
+        try runtimeInstallWorkflow().run(RuntimeInstallCommand(
+            mode: .full,
             plan: RuntimeOperationPlans.install,
             completionStatus: .healthy,
             completionMessage: "runtime install completed"
-        ).run()
+        ))
     }
 
     func installProvision() throws {
-        try runtimeInstallRunner(
+        try runtimeInstallWorkflow().run(RuntimeInstallCommand(
+            mode: .provision,
             plan: RuntimeOperationPlans.installProvision,
             completionStatus: .degraded,
             completionMessage: "runtime install provisioned; runtime services starting"
-        ).run()
+        ))
     }
 
-    private func runtimeInstallRunner(
-        plan: RuntimeOperationPlan,
-        completionStatus: RuntimeStatusLevel,
-        completionMessage: String
-    ) -> RuntimeInstallRunner {
-        RuntimeInstallRunner(
-            plan: plan,
-            completionStatus: completionStatus,
-            completionMessage: completionMessage,
-            loadSettings: {
-                try InstallSettings.load(
-                    defaultVitalFilesDirectory: context.installedPaths.vitalFilesDirectory.path,
-                    fileStore: operations.fileStore
-                )
-            },
-            executeStep: { step, settings in
-                try runtimeInstallStepExecutor().execute(step, settings: settings)
-            },
-            writeStatus: operations.writeRuntimeStatus,
-            writeProgress: operations.writeRuntimeProgress,
-            runtimeHomePath: { context.paths.home.path },
-            log: operations.log
+    private func runtimeInstallWorkflow() -> RuntimeInstallWorkflow<InstallSettings> {
+        RuntimeInstallWorkflow(
+            readers: RuntimeInstallStateReaders(
+                loadSettings: {
+                    try InstallSettings.load(
+                        defaultVitalFilesDirectory: context.installedPaths.vitalFilesDirectory.path,
+                        fileStore: operations.fileStore
+                    )
+                },
+                freshInstallPreflight: operations.freshInstallPreflight
+            ),
+            effects: RuntimeInstallEffects(
+                executeStep: { step, settings in
+                    try runtimeInstallStepExecutor().execute(step, settings: settings)
+                }
+            ),
+            writer: RuntimeInstallStateWriter(
+                writeState: { state, mode, currentStep, message, blockers in
+                    try RuntimeInstallStateStore(
+                        url: context.installedPaths.runtimeInstallState,
+                        fileStore: operations.fileStore,
+                        now: operations.now
+                    ).write(
+                        state: state,
+                        mode: mode,
+                        currentStep: currentStep,
+                        message: message,
+                        blockers: blockers
+                    )
+                },
+                writeStatus: operations.writeRuntimeStatus,
+                writeProgress: operations.writeRuntimeProgress
+            ),
+            diagnostics: RuntimeInstallDiagnostics(log: operations.log),
+            runtimeHomePath: { context.paths.home.path }
         )
     }
 

@@ -54,6 +54,7 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-042 | Host install/uninstall state 계약 부족으로 cleanup/reinstall이 막힘 | Packaging / Uninstall / Runtime health | implemented | [Host install/uninstall state contract gap](troubleshooting/042_host-install-uninstall-state-contract-gap.md) |
 | TS-043 | Runtime workflow StateMachine과 계층 경계 정리가 필요함 | Architecture / Runtime workflow / macOS runtime | implemented | [Runtime workflow state machine and layer boundary cleanup](troubleshooting/043_runtime-workflow-state-machine-layer-boundary.md) |
 | TS-044 | Runtime uninstall workflow가 phase와 command 계약을 읽기 어렵게 섞음 | Runtime workflow / Readability / StateMachine | implemented | [Runtime uninstall workflow phase and command readability cleanup](troubleshooting/044_runtime-uninstall-workflow-phase-command-readability.md) |
+| TS-045 | Runtime install workflow가 uninstall 수준의 StateMachine 경계를 갖지 않음 | Runtime workflow / Install / StateMachine | implemented | [Runtime install workflow state machine parity](troubleshooting/045_runtime-install-workflow-state-machine-parity.md) |
 
 ## Follow-up 규칙
 
