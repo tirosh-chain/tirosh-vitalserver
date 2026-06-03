@@ -8,6 +8,7 @@
 | 목적 | 먼저 볼 문서 |
 |---|---|
 | 제품 전체 맥락을 잡기 | [VitalServer 제품화 전략](vitalserver-productization.md) |
+| Vital Server Helper 공개/배포용 release/dev 문서 작성 계획 보기 | [Vital Server Helper Release/Dev Documentation Plan](release-dev-documentation-plan.md) |
 | VRecorder가 VitalServer에 어떻게 붙는지 보기 | [Vital Recorder](vrecorder.md) |
 | command audit event 계약 확인하기 | [VitalServer command audit](vitalserver-command-audit.md) |
 | testkit으로 검증 실행하기 | [Testkit 사용법](testkit-usage.md) |
@@ -25,6 +26,7 @@
 | 문서 | 역할 |
 |---|---|
 | [VitalServer 제품화 전략](vitalserver-productization.md) | 저장소의 목표, upstream 동작, 제품화 기준, 아직 비어 있는 영역 |
+| [Vital Server Helper Release/Dev Documentation Plan](release-dev-documentation-plan.md) | Vital Server Helper 공개/배포를 위한 release/dev 독자 구분, 작성 대상 문서, MkDocs nav 초안 |
 | [ADR 0001](adr/0001-macos-host-proxy-for-vrecorder-ip.md) | macOS host proxy로 VRecorder 원 IP를 보존하기로 한 결정 |
 | [ADR 0002](adr/0002-helper-client-boundary-for-local-and-remote-runtime.md) | Web/PWA primary UI와 local/remote RuntimeControlClient boundary 결정 |
 | [ADR 0003](adr/0003-helper-layer-and-component-version-model.md) | VitalServer Helper layer와 component version model 결정 |
