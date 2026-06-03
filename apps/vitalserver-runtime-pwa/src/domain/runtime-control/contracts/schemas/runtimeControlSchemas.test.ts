@@ -83,6 +83,126 @@ describe("runtime control contract schemas", () => {
     });
   });
 
+  it("preserves VitalDB observation snapshot read-state semantics", () => {
+    expect(() =>
+      runtimeOverviewSchema.parse(
+        fullRuntimeOverview({
+          vitalDBObservationSnapshot: {
+            state: "loaded",
+            observation: null,
+            readError: null
+          }
+        })
+      )
+    ).toThrow();
+
+    expect(() =>
+      runtimeOverviewSchema.parse(
+        fullRuntimeOverview({
+          vitalDBObservationSnapshot: {
+            state: "failed",
+            observation: null,
+            readError: ""
+          }
+        })
+      )
+    ).toThrow();
+
+    expect(
+      runtimeOverviewSchema.parse(
+        fullRuntimeOverview({
+          vitalDBObservationSnapshot: {
+            state: "loaded",
+            observation: fullVitalDBObservation(),
+            readError: null
+          }
+        })
+      ).vitalDBObservationSnapshot
+    ).toMatchObject({
+      state: "loaded",
+      observation: {
+        source: "vitaldb-observer"
+      }
+    });
+  });
+
+  it("requires explicit Vital Recorder summary source and observed metrics", () => {
+    expect(() =>
+      runtimeOverviewSchema.parse(
+        fullRuntimeOverview({
+          vitalRecorder: {
+            knownRecorders: 1
+          }
+        })
+      )
+    ).toThrow();
+
+    expect(() =>
+      runtimeOverviewSchema.parse(
+        fullRuntimeOverview({
+          vitalRecorder: {
+            source: "vitalDBObservation",
+            knownRecorders: 1,
+            onlineRecorders: 1,
+            staleRecorders: 0,
+            knownBeds: 1,
+            observedAt: "2026-05-31T01:00:00Z",
+            latestRecorder: null
+          }
+        })
+      )
+    ).toThrow();
+
+    expect(() =>
+      runtimeOverviewSchema.parse(
+        fullRuntimeOverview({
+          vitalRecorder: {
+            source: "vitalDBObservation",
+            knownRecorders: 1,
+            onlineRecorders: 1,
+            staleRecorders: 0,
+            knownBeds: 1,
+            recorderAnomalies: 0,
+            observedAt: "2026-05-31T01:00:00Z",
+            latestRecorder: {
+              ip: "10.0.0.2",
+              lastSeenAt: "2026-05-31T01:00:00Z"
+            }
+          }
+        })
+      )
+    ).toThrow();
+
+    expect(
+      runtimeOverviewSchema.parse(
+        fullRuntimeOverview({
+          vitalRecorder: {
+            source: "vitalDBObservation",
+            knownRecorders: 1,
+            onlineRecorders: 1,
+            staleRecorders: 0,
+            knownBeds: 1,
+            recorderAnomalies: 0,
+            observedAt: "2026-05-31T01:00:00Z",
+            latestRecorder: {
+              vrcode: "VR_TEST",
+              ip: "10.0.0.2",
+              lastSeenAt: "2026-05-31T01:00:00Z",
+              source: "vitalDBObservation"
+            }
+          }
+        })
+      ).vitalRecorder
+    ).toMatchObject({
+      source: "vitalDBObservation",
+      knownRecorders: 1,
+      recorderAnomalies: 0,
+      latestRecorder: {
+        vrcode: "VR_TEST"
+      }
+    });
+  });
+
   it("requires explicit container observation owner fields", () => {
     expect(() =>
       runtimeOverviewSchema.parse({

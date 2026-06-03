@@ -1077,7 +1077,7 @@ event type filter가 선택된 경우에만 query field를 만든다. `repairPro
 검증:
 
 ```sh
-PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm test -- --run src/infrastructure/console-api/consoleClient.test.ts
+PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm test -- --run src/infrastructure/console-api/runtimeControlApiClient.test.ts
 PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm run check
 ```
 
@@ -1407,7 +1407,7 @@ capability contract를 사용한다.
 검증:
 
 ```sh
-PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm test -- --run src/domain/runtime-control/contracts/schemas/runtimeControlSchemas.test.ts src/infrastructure/console-api/consoleClient.test.ts src/console/hooks.test.tsx src/pages/pages.test.tsx
+PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm test -- --run src/domain/runtime-control/contracts/schemas/runtimeControlSchemas.test.ts src/infrastructure/console-api/runtimeControlApiClient.test.ts src/console/hooks.test.tsx src/pages/pages.test.tsx
 PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm run check
 ```
 
@@ -1436,7 +1436,7 @@ message 값이 없을 때 `helperMessage: null`을 명시적으로 보낸다.
 검증:
 
 ```sh
-PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm test -- --run src/domain/runtime-control/contracts/schemas/runtimeControlSchemas.test.ts src/domain/runtime-control/contracts/schemas/runtimeControlRequestSchemas.test.ts src/domain/runtime-control/settings/runtimeSettingsPolicy.test.ts src/pages/settings/runtimeSettingsForm.test.ts src/infrastructure/console-api/consoleClient.test.ts src/console/hooks.test.tsx src/pages/pages.test.tsx src/app/App.test.tsx
+PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm test -- --run src/domain/runtime-control/contracts/schemas/runtimeControlSchemas.test.ts src/domain/runtime-control/contracts/schemas/runtimeControlRequestSchemas.test.ts src/domain/runtime-control/settings/runtimeSettingsPolicy.test.ts src/pages/settings/runtimeSettingsForm.test.ts src/infrastructure/console-api/runtimeControlApiClient.test.ts src/console/hooks.test.tsx src/pages/pages.test.tsx src/app/App.test.tsx
 PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm test -- --run src/pages/settings/runtimeSettingsForm.test.ts src/domain/runtime-control/settings/runtimeSettingsPolicy.test.ts
 PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm run check
 ```
@@ -1566,7 +1566,7 @@ schema에서 required로 검증한다.
 검증:
 
 ```sh
-PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm test -- --run src/domain/runtime-control/contracts/schemas/runtimeControlSchemas.test.ts src/infrastructure/console-api/consoleClient.test.ts
+PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm test -- --run src/domain/runtime-control/contracts/schemas/runtimeControlSchemas.test.ts src/infrastructure/console-api/runtimeControlApiClient.test.ts
 PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm run check
 ```
 
@@ -1610,7 +1610,7 @@ Original finding의 `matchingCount` sub-claim은 Swift owner contract상 optiona
 검증:
 
 ```sh
-PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm test -- --run src/domain/runtime-control/contracts/schemas/runtimeControlSchemas.test.ts src/infrastructure/console-api/consoleClient.test.ts
+PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm test -- --run src/domain/runtime-control/contracts/schemas/runtimeControlSchemas.test.ts src/infrastructure/console-api/runtimeControlApiClient.test.ts
 PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm run check
 ```
 
@@ -1720,7 +1720,7 @@ OpenAPI/PWA generated type/zod schema 모두 `text`를 required로 맞췄고, co
 검증:
 
 ```sh
-PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm test -- --run src/domain/runtime-control/contracts/schemas/runtimeControlSchemas.test.ts src/infrastructure/console-api/consoleClient.test.ts
+PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm test -- --run src/domain/runtime-control/contracts/schemas/runtimeControlSchemas.test.ts src/infrastructure/console-api/runtimeControlApiClient.test.ts
 PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm run check
 ```
 
@@ -1742,7 +1742,7 @@ API/command failure로 남아야 한다.
 검증:
 
 ```sh
-PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm test -- --run src/domain/runtime-control/contracts/schemas/runtimeControlSchemas.test.ts src/infrastructure/console-api/consoleClient.test.ts
+PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm test -- --run src/domain/runtime-control/contracts/schemas/runtimeControlSchemas.test.ts src/infrastructure/console-api/runtimeControlApiClient.test.ts
 PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm run check
 ```
 
@@ -1763,7 +1763,7 @@ response를 `RuntimeControlContractError`로 거부한다.
 검증:
 
 ```sh
-PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm test -- --run src/domain/runtime-control/contracts/schemas/runtimeControlSchemas.test.ts src/infrastructure/console-api/consoleClient.test.ts
+PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm test -- --run src/domain/runtime-control/contracts/schemas/runtimeControlSchemas.test.ts src/infrastructure/console-api/runtimeControlApiClient.test.ts
 PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm run check
 ```
 
@@ -1844,7 +1844,7 @@ missing history data를 empty list로 렌더링하지 않고 contract error로 �
 
 ```sh
 PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm run check
-PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm test -- --run src/domain/runtime-control/contracts/schemas/runtimeControlSchemas.test.ts src/infrastructure/console-api/consoleClient.test.ts src/console/hooks.test.tsx src/pages/pages.test.tsx
+PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm test -- --run src/domain/runtime-control/contracts/schemas/runtimeControlSchemas.test.ts src/infrastructure/console-api/runtimeControlApiClient.test.ts src/console/hooks.test.tsx src/pages/pages.test.tsx
 swift test --package-path apps/vitalserver-macos-runtime --filter RuntimeControlContractsTests
 ```
 

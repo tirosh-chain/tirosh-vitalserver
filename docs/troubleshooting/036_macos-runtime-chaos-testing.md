@@ -50,7 +50,7 @@ AGENTS.md 원칙상 Host/UI는 상태를 추정하지 않아야 합니다. 따�
 make coverage
 make runtime-chaos
 CHAOS_LOOP_COUNT=5 make runtime-chaos-loop
-cd apps/vitalserver-runtime-pwa && npm run test -- --run src/infrastructure/console-api/consoleClient.test.ts
+cd apps/vitalserver-runtime-pwa && npm run test -- --run src/infrastructure/console-api/runtimeControlApiClient.test.ts
 make e2e-smoke
 make e2e-local
 ```
@@ -135,7 +135,7 @@ rg -n "RuntimeFileStore|ProcessRunner|permission|fault|chaos|CocoaError|readIssu
 | installed permission chaos | installed backup directory read denied | empty backup list로 숨기지 않고 read failure를 throw | `RuntimeChaosScenarioTests` |
 | backup/restore chaos | backup artifact copy denied, restore rootfs missing | backup manifest를 쓰기 전에 중단하고 missing restore artifact에서 rollback preflight 중단 | `RuntimeUpdateChaosScenarioTests` |
 | runtime command chaos | command non-zero exit with stderr | throw 전에 stderr, failed event, process result를 남김 | `RuntimeUpdateChaosScenarioTests` |
-| PWA API contract chaos | API 500, contract mismatch, network failure | UI/client가 domain state를 만들지 않고 API/contract/network error boundary를 유지 | `consoleClient.test.ts` |
+| PWA API contract chaos | API 500, contract mismatch, network failure | UI/client가 domain state를 만들지 않고 API/contract/network error boundary를 유지 | `runtimeControlApiClient.test.ts` |
 
 ## Scenario Coverage
 
@@ -150,7 +150,7 @@ TS-036은 개별 장애를 새 TS로 쪼개기보다 macOS runtime chaos scenari
 | High | installed permission chaos | covered at host file reader boundary; installed read-only audit remains opt-in | Tier 1 / Tier 3 opt-in |
 | Medium | observability corruption chaos | covered by corrupt SQLite read chaos | Tier 2 |
 | Medium | backup/restore chaos | covered by backup copy denial and rollback preflight missing artifact chaos | Tier 1 |
-| Medium | PWA API contract chaos | covered by ConsoleClient API/contract/network boundary chaos | Tier 1 |
+| Medium | PWA API contract chaos | covered by RuntimeControlApiClient API/contract/network boundary chaos | Tier 1 |
 
 ## Installed Verification
 
@@ -200,5 +200,5 @@ Tier 4 destructive chaos는 실행하지 않았습니다. `sudo chmod`, `launchc
 - 2026-05-31: 카오스 테스트를 TS-036으로 등록했습니다. 첫 구현 후보는 permission chaos, observability read chaos, update log refresh chaos, guest capability chaos입니다.
 - 2026-05-31: `make runtime-chaos`를 추가해 `Chaos` 필터가 붙은 deterministic Swift chaos scenario만 빠르게 실행할 수 있게 했습니다. 초기 suite는 update log refresh chaos, observability read chaos, settings permission chaos, guest capability chaos, update artifact copy permission chaos를 포함합니다.
 - 2026-05-31: `make runtime-chaos-loop`를 추가해 deterministic chaos suite를 반복 실행할 수 있게 했습니다. suite는 log export manifest issue, observability snapshot/relationship read failure, command stderr/runtime event 보존까지 확장했습니다.
-- 2026-05-31: high/medium priority backlog를 deterministic coverage로 전환했습니다. Swift `Chaos` suite는 18개 scenario를 통과하고, PWA ConsoleClient는 API/contract/network boundary chaos를 통과합니다. TS-036 상태를 `resolved`로 변경했습니다.
+- 2026-05-31: high/medium priority backlog를 deterministic coverage로 전환했습니다. Swift `Chaos` suite는 18개 scenario를 통과하고, PWA RuntimeControlApiClient는 API/contract/network boundary chaos를 통과합니다. TS-036 상태를 `resolved`로 변경했습니다.
 - 2026-05-31: 설치본 read-only permission audit와 `make e2e-smoke`, `make e2e-local`을 통과했습니다. Tier 4 destructive chaos는 의도적으로 실행하지 않았습니다.

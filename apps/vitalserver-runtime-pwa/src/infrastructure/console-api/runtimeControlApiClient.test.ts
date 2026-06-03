@@ -7,14 +7,14 @@ import {
   RuntimeControlValidationError,
   summarizeRuntimeControlError
 } from "@/domain/runtime-control/errors/runtimeControlError";
-import { ConsoleClient } from "./consoleClient";
+import { RuntimeControlApiClient } from "./runtimeControlApiClient";
 
 type RecordedRequest = {
   url: string;
   init: RequestInit;
 };
 
-describe("ConsoleClient", () => {
+describe("RuntimeControlApiClient", () => {
   it("sends authenticated GET requests with query parameters", async () => {
     const { client, requests } = clientWithResponses({
       "/runtime/events": { events: [], nextCursor: null, matchingCount: 0 }
@@ -202,7 +202,7 @@ describe("ConsoleClient", () => {
       })
     ).rejects.toBeInstanceOf(RuntimeControlContractError);
 
-    const network = new ConsoleClient({
+    const network = new RuntimeControlApiClient({
       baseURL: "http://helper.local/",
       fetchImpl: vi.fn(async () => {
         throw new Error("offline");
@@ -228,7 +228,7 @@ describe("ConsoleClient", () => {
       path: "/runtime/status"
     });
 
-    const network = new ConsoleClient({
+    const network = new RuntimeControlApiClient({
       baseURL: "http://helper.local/",
       fetchImpl: vi.fn(async () => {
         throw new TypeError("fetch failed");
@@ -252,7 +252,7 @@ describe("ConsoleClient", () => {
 function clientWithResponses(
   responses: Record<string, unknown>,
   status = 200
-): { client: ConsoleClient; requests: RecordedRequest[] } {
+): { client: RuntimeControlApiClient; requests: RecordedRequest[] } {
   const requests: RecordedRequest[] = [];
   const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
@@ -265,7 +265,7 @@ function clientWithResponses(
   }) as typeof fetch;
 
   return {
-    client: new ConsoleClient({
+    client: new RuntimeControlApiClient({
       baseURL: "http://helper.local/",
       token: "token-a",
       fetchImpl

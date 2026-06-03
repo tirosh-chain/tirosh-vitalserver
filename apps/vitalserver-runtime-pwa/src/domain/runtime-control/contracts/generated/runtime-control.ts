@@ -897,7 +897,7 @@ export interface components {
         RuntimeVitalDBObservationReadState: "loaded" | "unavailable" | "failed";
         /** @description PWA-friendly Vital Recorder summary derived from VitalDB observation. activeConnections is copied from audit-proxy connection status when available. */
         RuntimeVitalRecorderSummary: {
-            source?: components["schemas"]["RuntimeVitalRecorderSummarySource"];
+            source: components["schemas"]["RuntimeVitalRecorderSummarySource"];
             activeConnections?: number;
             knownRecorders?: number;
             onlineRecorders?: number;
@@ -908,10 +908,10 @@ export interface components {
             latestRecorder?: components["schemas"]["RuntimeVitalRecorderReference"] | null;
         };
         RuntimeVitalRecorderReference: {
-            vrcode?: string;
+            vrcode: string;
             ip?: string | null;
             lastSeenAt?: string | null;
-            source?: components["schemas"]["RuntimeVitalRecorderSummarySource"];
+            source: components["schemas"]["RuntimeVitalRecorderSummarySource"];
         };
         /** @enum {string} */
         RuntimeVitalRecorderSummarySource: "vitalDBObservation" | "unavailable";

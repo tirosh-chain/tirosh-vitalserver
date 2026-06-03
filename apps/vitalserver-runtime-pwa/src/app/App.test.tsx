@@ -34,7 +34,7 @@ function renderApp(gateway: ReturnType<typeof createGateway>) {
   return render(
     <MemoryRouter initialEntries={["/"]}>
       <AppProviders
-        consoleGateway={gateway as never}
+        runtimeControlGateway={gateway as never}
         settings={{
           ...DEFAULT_APP_SETTINGS,
           queries: {

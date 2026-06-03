@@ -13,6 +13,7 @@
 | testkit으로 검증 실행하기 | [Testkit 사용법](testkit-usage.md) |
 | Redis key와 relay 근거 보기 | [Redis 데이터 구조](redis-data-model.md) |
 | Mac mini VM runtime/package 이해하기 | [VitalServer macOS Runtime](vitalserver-macos-runtime.md) |
+| runtime operation 상태 전이 검증 기준 보기 | [Runtime State Machine Traceability](macos-runtime/state-machine-traceability.md) |
 | Runtime Control PWA 구현 기준 보기 | [Runtime Control PWA](pwa.md) |
 | runtime status/event/log/index 수집 책임 보기 | [Runtime observability model](macos-runtime/observability.md) |
 | branch와 tag 운영 기준 보기 | [Branch 운영 기준](branching.md) |
@@ -66,6 +67,7 @@ VM runtime 문서는 [VitalServer macOS Runtime](vitalserver-macos-runtime.md)�
 | [VitalServer macOS Runtime](vitalserver-macos-runtime.md) | VM runtime 문서군의 빠른 지도 |
 | [macOS Runtime Overview](macos-runtime/overview.md) | VM runtime 세부 문서의 한눈에 보기와 사용자 시나리오 |
 | [Architecture](macos-runtime/architecture.md) | 제품 구조, 단일 노드 가용성, Web/PWA UI/native shell/host runtime 책임 경계 |
+| [State Machine Traceability](macos-runtime/state-machine-traceability.md) | install/update/recovery/recorder/log 흐름의 상태, 이벤트, guard, invariant, 검증 기준 |
 | [Runtime Control API](macos-runtime/runtime-control-api.md) | PWA 직전 Runtime Control API 계약, OpenAPI, local read-only server 경계 |
 | [Runtime observability model](macos-runtime/observability.md) | runtime status/event/log/index 수집 책임, watchdog 중심 정규화와 SQLite read model 기준 |
 | [Packaging and Update](macos-runtime/packaging.md) | PKG/DMG 빌드, 설치 흐름, install settings, update bundle 계약 |

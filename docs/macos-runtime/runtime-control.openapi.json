@@ -1712,6 +1712,9 @@
         "type": "object",
         "additionalProperties": false,
         "description": "PWA-friendly Vital Recorder summary derived from VitalDB observation. activeConnections is copied from audit-proxy connection status when available.",
+        "required": [
+          "source"
+        ],
         "properties": {
           "source": {
             "$ref": "#/components/schemas/RuntimeVitalRecorderSummarySource"
@@ -1761,6 +1764,10 @@
       "RuntimeVitalRecorderReference": {
         "type": "object",
         "additionalProperties": false,
+        "required": [
+          "vrcode",
+          "source"
+        ],
         "properties": {
           "vrcode": {
             "type": "string"

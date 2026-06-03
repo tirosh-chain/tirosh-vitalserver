@@ -119,6 +119,48 @@ Guest VM
 | `Core` | evaluator, operation plan, health/recovery policy, port protocol | `Contracts`에 의존하는 순수 도메인/워크플로 정책 |
 | `HostInfrastructure` | installed path, file store, JSON repository/gateway | host filesystem/shared directory 구현 |
 
+### Source code architecture boundary
+
+현재 SwiftPM target graph는 Clean Architecture와 ports-and-adapters 경계를 강제하는 1차 장치입니다.
+
+```text
+Contracts
+  <- Core
+  <- RuntimeWorkflow
+  <- HostInfrastructure
+  <- HostCLI
+  <- MacHostRuntimeAdapter
+  <- MacRuntimeControlApp
+
+RuntimeControl
+  <- RuntimeControlAPI
+  <- MacHostRuntimeAdapter
+  <- MacRuntimeControlApp
+```
+
+책임 기준은 아래처럼 읽습니다.
+
+| 위치 | 책임 | 허용 의존성 | 금지 |
+|---|---|---|---|
+| `Contracts` | shared state/event/document/command contract | Foundation 수준 value type | Host, UI, filesystem, process, network |
+| `Core` | pure policy, state machine, transition guard, invariant | `Contracts` | HostInfrastructure, HostCLI, RuntimeControl API, UI |
+| `RuntimeWorkflow` | usecase orchestration, Core command consumption, injected port execution | `Contracts`, `Core` | filesystem/process 직접 read/write, adapter import |
+| `HostInfrastructure` | host filesystem, JSON repository, SQLite/read model, external state adapter | `Contracts`, `Core` | UI composition, domain transition rule ownership |
+| `HostCLI` | CLI entrypoint and host composition root | inward targets plus infrastructure | Core state inference from logs/absence |
+| `RuntimeControl` | UI/API-facing read and command DTO, client contracts | `Contracts` | host side effects |
+| `RuntimeControlAPI` | HTTP route/DTO/server boundary | `RuntimeControl` | host filesystem/process details |
+| `MacHostRuntimeAdapter` | macOS local RuntimeControl implementation | `Contracts`, `RuntimeControl`, `Core`, `HostInfrastructure` | UI state creation |
+| `MacRuntimeControlApp` | SwiftUI presentation, native shell composition | `Contracts`, `RuntimeControl`, `RuntimeControlAPI`, adapter facade | domain transition decisions, host state inference |
+
+State owner rule:
+
+- Host owns runtime, process, filesystem, launchd, package, and log collection state.
+- Guest owns guest-internal observation and operation result documents.
+- `Contracts` preserves the state meanings that cross process/layer boundaries.
+- `Core` consumes complete explicit input only.
+- `RuntimeWorkflow` may sequence effects, but only after Core returns the command/effect to execute.
+- UI formats explicit state and must not turn missing, failed, stale, unavailable, or invalid into empty/default success.
+
 As-is의 계층 간 통신은 아래처럼 섞여 있습니다.
 
 | 방향 | 현재 방식 | 비고 |

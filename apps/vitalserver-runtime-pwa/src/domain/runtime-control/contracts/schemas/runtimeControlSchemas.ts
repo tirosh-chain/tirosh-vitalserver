@@ -324,6 +324,30 @@ export const vitalDBObservationSchema = z
   })
   .passthrough();
 
+const runtimeVitalDBObservationSnapshotSchema = z
+  .object({
+    state: vitalDBObservationReadStateSchema,
+    observation: vitalDBObservationSchema.nullable().optional(),
+    readError: nullableString
+  })
+  .passthrough()
+  .superRefine((snapshot, context) => {
+    if (snapshot.state === "loaded" && snapshot.observation == null) {
+      context.addIssue({
+        code: "custom",
+        path: ["observation"],
+        message: "loaded VitalDB observation snapshots must include observation"
+      });
+    }
+    if (snapshot.state === "failed" && isBlank(snapshot.readError)) {
+      context.addIssue({
+        code: "custom",
+        path: ["readError"],
+        message: "failed VitalDB observation snapshots must include readError"
+      });
+    }
+  });
+
 export const runtimeStatusSchema = z
   .object({
     runtimeInstalled: z.boolean().optional(),
@@ -366,7 +390,7 @@ export const runtimeStatusSchema = z
 
 const runtimeVitalRecorderSummarySchema = z
   .object({
-    source: vitalRecorderSummarySourceSchema.optional(),
+    source: vitalRecorderSummarySourceSchema,
     activeConnections: z.number().optional(),
     knownRecorders: z.number().optional(),
     onlineRecorders: z.number().optional(),
@@ -376,16 +400,38 @@ const runtimeVitalRecorderSummarySchema = z
     observedAt: nullableString,
     latestRecorder: z
       .object({
-        vrcode: z.string().optional(),
+        vrcode: z.string(),
         ip: nullableString,
         lastSeenAt: nullableString,
-        source: vitalRecorderSummarySourceSchema.optional()
+        source: vitalRecorderSummarySourceSchema
       })
       .passthrough()
       .nullable()
       .optional()
   })
-  .passthrough();
+  .passthrough()
+  .superRefine((summary, context) => {
+    if (summary.source !== "vitalDBObservation") {
+      return;
+    }
+
+    for (const field of [
+      "knownRecorders",
+      "onlineRecorders",
+      "staleRecorders",
+      "knownBeds",
+      "recorderAnomalies",
+      "observedAt"
+    ] as const) {
+      if (summary[field] == null) {
+        context.addIssue({
+          code: "custom",
+          path: [field],
+          message: "VitalDB-backed recorder summaries must include observed metrics"
+        });
+      }
+    }
+  });
 
 export const runtimeOverviewSchema = z
   .object({
@@ -394,13 +440,7 @@ export const runtimeOverviewSchema = z
     release: unknownRecord,
     install: unknownRecord,
     vitalDBObservation: vitalDBObservationSchema.nullable().optional(),
-    vitalDBObservationSnapshot: z
-      .object({
-        state: vitalDBObservationReadStateSchema,
-        observation: vitalDBObservationSchema.nullable().optional(),
-        readError: nullableString
-      })
-      .passthrough(),
+    vitalDBObservationSnapshot: runtimeVitalDBObservationSnapshotSchema,
     vitalRecorder: runtimeVitalRecorderSummarySchema
   })
   .passthrough();
@@ -563,6 +603,10 @@ export const runtimeUpdateBundleSummaryResponseSchema = z
     summary: z.string()
   })
   .passthrough();
+
+function isBlank(value: string | null | undefined): boolean {
+  return value == null || value.trim().length === 0;
+}
 
 const runtimeTestKitBedSchema = z
   .object({

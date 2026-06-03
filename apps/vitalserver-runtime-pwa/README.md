@@ -96,9 +96,9 @@ npm --prefix apps/vitalserver-runtime-pwa run generate:api
 src/
   app/
     bootstrap.tsx    settings 로딩, API gateway 생성, provider 구성
-    providers.tsx    React Query, AppSettings, ConsoleGateway provider
+    providers.tsx    React Query, AppSettings, RuntimeControlGateway provider
     routes.tsx       Swift UI 순서에 맞춘 route metadata
-  console/           Remote Console gateway port, React Query hooks, request builders
+  console/           RuntimeControlGateway port, React Query hooks, request builders
   components/        app-wide reusable UI components
   config/            AppSettings and app-wide config context
   styles/            global styles
@@ -109,15 +109,15 @@ src/
       formatting/    runtime display/status formatting policy
       settings/      runtime settings validation policy
   infrastructure/
-    console-api/     fetch-based ConsoleGateway implementation
+    console-api/     fetch-based RuntimeControlApiClient implementation
   pages/             route-level Remote Console pages and page-owned form logic
 ```
 
 Dependency direction:
 
 - `pages`는 `console`, `domain`, `components`, `config`를 사용할 수 있습니다.
-- `console`은 `domain`과 console-owned gateway port만 사용합니다.
-- `infrastructure`는 console gateway port를 구현하고, `domain` contract를 사용할 수 있습니다.
+- `console`은 `domain`과 `RuntimeControlGateway` port만 사용합니다.
+- `infrastructure`는 `RuntimeControlGateway` port를 구현하고, `domain` contract를 사용할 수 있습니다.
 - `app` composition root는 settings를 읽고 concrete infrastructure gateway를 주입합니다.
 - `domain`은 React, React Query, transport code를 import하지 않습니다.
 

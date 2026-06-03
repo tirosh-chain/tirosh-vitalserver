@@ -23,7 +23,7 @@ describe("formatVitalRecorderObservationMetric", () => {
       formatVitalRecorderObservationMetric(
         {
           knownRecorders: 0
-        },
+        } as unknown as Parameters<typeof formatVitalRecorderObservationMetric>[0],
         "knownRecorders"
       )
     ).toBe("Vital Recorder source not reported");

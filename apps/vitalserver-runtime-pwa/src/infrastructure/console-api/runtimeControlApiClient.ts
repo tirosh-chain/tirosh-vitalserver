@@ -1,7 +1,7 @@
 import type {
-  ConsoleGateway,
+  RuntimeControlGateway,
   RuntimeEventQuery
-} from "@/console/gateway";
+} from "@/console/runtimeControlGateway";
 import {
   RuntimeControlAPIError,
   RuntimeControlContractError,
@@ -58,20 +58,20 @@ import {
 import { DEFAULT_APP_SETTINGS } from "@/config/appSettings";
 import type { ZodType } from "zod";
 
-type ConsoleRequestQuery = Record<string, string | number>;
+type RuntimeControlRequestQuery = Record<string, string | number>;
 
-export type ConsoleClientOptions = {
+export type RuntimeControlApiClientOptions = {
   baseURL?: string;
   token?: string;
   fetchImpl?: typeof fetch;
 };
 
-export class ConsoleClient implements ConsoleGateway {
+export class RuntimeControlApiClient implements RuntimeControlGateway {
   private readonly baseURL: string;
   private readonly token: string;
   private readonly fetchImpl: typeof fetch;
 
-  constructor(options: ConsoleClientOptions = {}) {
+  constructor(options: RuntimeControlApiClientOptions = {}) {
     this.baseURL = trimTrailingSlash(
       options.baseURL ?? DEFAULT_APP_SETTINGS.runtimeControl.apiBaseURL
     );
@@ -371,7 +371,7 @@ export class ConsoleClient implements ConsoleGateway {
   private async get<T>(
     path: string,
     schema: ZodType<T>,
-    query: ConsoleRequestQuery = {}
+    query: RuntimeControlRequestQuery = {}
   ): Promise<T> {
     const response = await this.request(
       path,
@@ -487,7 +487,7 @@ export class ConsoleClient implements ConsoleGateway {
   private async request(
     path: string,
     init: RequestInit,
-    query: ConsoleRequestQuery = {}
+    query: RuntimeControlRequestQuery = {}
   ): Promise<Response> {
     const url = this.url(path, query);
     try {
@@ -499,7 +499,7 @@ export class ConsoleClient implements ConsoleGateway {
 
   private url(
     path: string,
-    query: ConsoleRequestQuery
+    query: RuntimeControlRequestQuery
   ): string {
     const url = new URL(`${this.baseURL}${path}`, window.location.origin);
     for (const [key, value] of Object.entries(query)) {
@@ -515,8 +515,8 @@ function trimTrailingSlash(value: string): string {
 
 function runtimeEventQueryParameters(
   query: RuntimeEventQuery
-): ConsoleRequestQuery {
-  const params: ConsoleRequestQuery = {};
+): RuntimeControlRequestQuery {
+  const params: RuntimeControlRequestQuery = {};
   const fields: Array<keyof RuntimeEventQuery> = [
     "limit",
     "type",

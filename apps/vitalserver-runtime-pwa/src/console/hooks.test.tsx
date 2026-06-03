@@ -3,8 +3,8 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import type { PropsWithChildren, ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
 
-import { ConsoleGatewayProvider } from "@/console/gatewayContext";
-import type { ConsoleGateway } from "./gateway";
+import { RuntimeControlGatewayProvider } from "@/console/runtimeControlGatewayContext";
+import type { RuntimeControlGateway } from "./runtimeControlGateway";
 import {
   useApplyRuntimeSettings,
   useApplyUpdateBundle,
@@ -42,7 +42,7 @@ import {
 } from "./hooks";
 
 type GatewayMock = {
-  [K in keyof ConsoleGateway]: ReturnType<typeof vi.fn>;
+  [K in keyof RuntimeControlGateway]: ReturnType<typeof vi.fn>;
 };
 
 describe("console hooks", () => {
@@ -225,9 +225,9 @@ function createWrapper(gateway: GatewayMock) {
   });
   return function Wrapper({ children }: PropsWithChildren) {
     return (
-      <ConsoleGatewayProvider gateway={gateway as unknown as ConsoleGateway}>
+      <RuntimeControlGatewayProvider gateway={gateway as unknown as RuntimeControlGateway}>
         <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-      </ConsoleGatewayProvider>
+      </RuntimeControlGatewayProvider>
     );
   };
 }
