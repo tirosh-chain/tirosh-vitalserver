@@ -32,12 +32,52 @@ Health Check는 별도 제품명이 아니라 `Vital Server Helper`가 제공하
 repository 내부 문서와 코드에서 이미 쓰는 `VitalServer Helper` 표기는 package/app
 이름이나 기존 내부 component를 가리킬 때 유지합니다.
 
+## Mac 하드웨어 메시지 기준
+
+`release/mac-hardware-appliance.md`는 OS가 아니라 Mac 하드웨어를 선택한 이유를
+주 메시지로 둡니다. macOS는 Host runtime, local proxy, packaging, Helper app을
+구동하기 위한 운영 환경으로만 설명합니다.
+
+release 문서의 핵심 주장은 아래처럼 둡니다.
+
+> Vital Server Helper는 병원 내부망에서 장기간 켜져 있는 현장 appliance를
+> 목표로 한다. Mac을 선택한 주된 이유는 macOS가 아니라 Mac mini/Mac Studio
+> 하드웨어의 QA 일관성, 표준화, 장기 호환성이다. 일반 Linux/Windows PC는
+> 제조사와 부품 조합이 다양해 현장별 검증 범위가 커지지만, Mac 기반 표준
+> 장비는 설치, 검증, 교체, 장애 대응 절차를 좁힐 수 있다.
+
+release 문서의 핵심 메시지는 아래 순서로 작성합니다.
+
+| 메시지 | 설명 방향 |
+|---|---|
+| 하드웨어 QA 일관성 | Apple이 설계, 제조, 펌웨어, 전원, 열, 부품 조합을 통합 관리하므로 현장 장비 편차와 하드웨어 품질 리스크를 줄일 수 있다는 점을 설명 |
+| 표준화된 하드웨어 SKU | 일반 Linux/Windows PC가 나쁘다는 주장이 아니라, 제조사, 메인보드, BIOS/UEFI, 전원부, 네트워크 칩셋 조합이 다양해 검증 matrix가 커진다는 점을 설명 |
+| 검증 범위 축소 | Mac mini/Mac Studio 계열로 배포 target을 제한하면 설치, runtime, networking, update, replacement 절차를 같은 하드웨어 기준으로 반복 검증할 수 있다는 점을 설명 |
+| 24/7 소형 appliance 운용성 | 24시간 상시 운영이 가능한 일반 PC는 대개 rack/server class로 올라가지만, Mac mini/Mac Studio는 mini PC 크기로 병원 내부망 옆에 배치 가능한 appliance가 된다는 점을 설명 |
+| 장기 제품 호환성 | 동일 계열 제품의 호환성과 지원 기간이 길어 현장 설치물, packaging, runtime 검증 결과를 오래 유지할 수 있다는 점을 설명. 단, 무기한 지원처럼 표현하지 않는다 |
+| 낮은 운영 부담 | 서버랙, 별도 전산실, 복잡한 하드웨어 조달 없이 표준 장비 교체와 재설치 절차를 단순화할 수 있다는 점을 설명 |
+| 저전력 장기 운영 | Apple Silicon 기반 Mac mini/Mac Studio의 전력 대비 성능을 병원 내 24시간 상시 운영 비용 절감 근거로 설명 |
+| OS의 부수적 역할 | macOS 자체가 주된 선택 이유가 아니며, 하드웨어 appliance 위에서 host runtime을 제공하는 환경으로만 설명 |
+
+반대 입장이 타당한 지점도 문서 안에서 경계로 남깁니다. 중앙 인프라,
+대규모 HA, redundant PSU, ECC memory, hot-swap storage, IPMI/iDRAC class 원격
+관리, rack mounting, server vendor SLA가 핵심 요구라면 전통적인 server 또는
+industrial PC가 더 적합할 수 있습니다. Vital Server Helper의 Mac 선택 논리는
+그 요구를 부정하지 않고, 병원 내부망 가까이에 둘 표준 소형 현장 appliance라는
+범위에서만 주장합니다.
+
+본문 작성 시 참고할 공식 source 후보:
+
+- Mac mini technical specifications: <https://support.apple.com/en-us/121555>
+- Mac Studio product/spec overview: <https://www.apple.com/mac-studio/>
+- Apple service and parts period after warranty: <https://support.apple.com/en-ca/102772>
+
 ## 요구사항 대응
 
 | 요구사항 | 담당 문서 |
 |---|---|
 | K-MFDB 구축 관련 Vital Server Helper 공개/배포 취지 설명 | `release/background.md`, `release/index.md` |
-| Mac 기반 서비스 포팅 이유: 저전력, 안정성, 저렴함, 장기간 서비스 | `release/macos-porting.md`, `dev/architecture.md` |
+| Mac 하드웨어 기반 appliance 선택 이유: QA 일관성, 표준화, 검증 범위 축소, 24/7 소형 appliance, 장기 호환성 | `release/mac-hardware-appliance.md`, `dev/architecture.md` |
 | Vital Server Helper가 제공하는 VR 동작 유무 확인 | `release/health-check-service.md`, `dev/health-check-contract.md` |
 | Vital Server Helper가 제공하는 저장 데이터 sanity check | `release/health-check-service.md`, `dev/health-check-contract.md` |
 | 병원 내 사용 모드 기본 지원 | `release/deployment-modes.md`, `release/installation.md` |
@@ -57,7 +97,7 @@ release 문서군은 외부 공개와 현장 배포에 필요한 설명만 담�
 |---|---|---|---|
 | `release/index.md` | 전체 공개 독자 | Vital Server Helper 공개 문서의 첫 화면 | 서비스 한 줄 설명, 제공 범위, 병원 내 기본 지원, cloud 선택 지원, 다음 문서 안내 |
 | `release/background.md` | 연구 과제 관계자, 도입 검토자 | K-MFDB 구축 맥락과 Vital Server Helper 공개 취지 설명 | 저출산 극복 기술개발 중점연구 맥락, VitalDB 기반 병원 데이터 운영 필요성, 공개/배포 목적 |
-| `release/macos-porting.md` | 도입 검토자, 병원 IT 담당자 | Mac 기반 포팅 이유 설명 | 저전력, 안정성, 낮은 도입/운영 비용, 장기간 상시 서비스, Mac mini/Mac Studio 운영 전제 |
+| `release/mac-hardware-appliance.md` | 도입 검토자, 병원 IT 담당자 | Mac 하드웨어 기반 appliance 선택 이유 설명 | Apple 하드웨어 QA 일관성, 표준화된 하드웨어 SKU, 검증 범위 축소, 24/7 소형 appliance 운용성, 장기 제품 호환성, Mac mini/Mac Studio 하드웨어 운영 전제. OS는 host runtime과 packaging을 위한 부수 조건으로만 설명 |
 | `release/health-check-service.md` | 병원 운영자, 병원 IT 담당자 | Vital Server Helper의 Health Check 서비스가 무엇을 확인하는지 설명 | VR/VRecorder 동작 유무, `.vital` 파일 sanity check, 서비스 상태, 결과 상태의 의미, 확장 가능성 |
 | `release/deployment-modes.md` | 병원 IT 담당자, 보안 담당자 | 병원 내/외 사용 모드 구분 | 병원 내 기본 모드, outbound 허용 시 cloud 연계 모드, network/security 전제 |
 | `release/installation.md` | 현장 설치 담당자 | 설치와 초기 확인 절차 안내 | DMG/PKG 설치, 초기 설정, Health Check 확인, 기본 URL, offline 설치 전제 |
@@ -75,7 +115,7 @@ dev 문서군은 repository 유지보수자가 release 문서를 실제 구현�
 | `dev/index.md` | 개발자 전체 | 내부 문서군 진입점 | service catalog, architecture, build/release/test 문서 안내 |
 | `dev/service-catalog.md` | 신규 개발자, reviewer | repository 안의 서비스 목록과 책임 설명 | `apps/vitalserver`, `apps/vitalserver-macos-runtime`, `apps/vitalserver-runtime-pwa`, `apps/vitaldb-observer`, `apps/vitalserver-audit-proxy`, `packages/*` |
 | `dev/package-map.md` | 개발자, release 담당자 | monorepo package 경계 설명 | app/package/infra/docs 경계, package별 owner, 외부 공개 여부 |
-| `dev/architecture.md` | runtime/API 개발자 | release 모드가 실제 구조에 어떻게 대응되는지 설명 | Host/Guest, macOS host proxy, Linux VM, Runtime Control API, observer/testkit 관계 |
+| `dev/architecture.md` | runtime/API 개발자 | release 모드가 실제 구조에 어떻게 대응되는지 설명 | Mac hardware appliance, Host/Guest, macOS host proxy, Linux VM, Runtime Control API, observer/testkit 관계. OS보다 하드웨어 운영 특성이 선택의 주된 근거임을 명시하고, server-class 요구에는 전통적인 server/industrial PC가 더 타당할 수 있음을 경계로 둠 |
 | `dev/health-check-contract.md` | Health Check 구현자 | Health Check 상태 계약 고정 | VR observed/missing/stale/read-failed, `.vital` file found/invalid/decode-failed/permission-failed, empty vs missing 구분 |
 | `dev/api-contracts.md` | API/PWA/testkit 개발자 | 공개/내부 API 문서 위치 안내 | Runtime Control API, VitalDB Observer API, Audit Proxy API, OpenAPI source |
 | `dev/build-and-release.md` | release 담당자 | 배포 artifact 생성 절차 설명 | `make vm-dmg-release`, `make vm-update-bundle-release`, `make install-testkit-release`, artifact 위치 |
@@ -108,7 +148,7 @@ nav:
   - Release:
       - Overview: release/index.md
       - Research Background: release/background.md
-      - Why macOS Runtime: release/macos-porting.md
+      - Why Mac Hardware: release/mac-hardware-appliance.md
       - Vital Server Helper Health Check: release/health-check-service.md
       - Deployment Modes: release/deployment-modes.md
       - Installation: release/installation.md
@@ -142,7 +182,7 @@ nav:
 1. `release/index.md`
 2. `release/health-check-service.md`
 3. `release/deployment-modes.md`
-4. `release/macos-porting.md`
+4. `release/mac-hardware-appliance.md`
 5. `dev/service-catalog.md`
 6. `dev/health-check-contract.md`
 7. `dev/build-and-release.md`
@@ -162,7 +202,11 @@ release 문서군은 아래 기준을 만족해야 합니다.
 - 병원 내 기본 모드와 cloud 선택 지원 모드가 명확히 구분된다.
 - Vital Server Helper Health Check 결과에서 missing, invalid, failed, stale,
   empty가 같은 의미로 섞이지 않는다.
-- Mac 기반 포팅 이유가 저전력, 안정성, 비용, 장기간 서비스 관점으로 설명된다.
+- Mac 기반 선택 이유가 OS 중심이 아니라 Apple 하드웨어의 QA 일관성, 표준화,
+  검증 범위 축소, 24/7 소형 appliance 운용성, 장기 제품 호환성 중심으로
+  설명된다.
+- 전통적인 server/industrial PC가 더 타당한 요구 조건을 인정하고, Mac 선택
+  논리를 병원 내부망 표준 소형 appliance 범위로 제한한다.
 
 dev 문서군은 아래 기준을 만족해야 합니다.
 
