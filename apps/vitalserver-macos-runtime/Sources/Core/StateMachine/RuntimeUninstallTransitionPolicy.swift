@@ -150,7 +150,6 @@ public enum RuntimeUninstallTransitionPolicy {
             return RuntimeUninstallTransitionDecision(
                 state: .filesRemovalStarted,
                 persistedState: .filesRemovalStarted,
-                commands: [.removeFiles],
                 message: "file removal started"
             )
 
@@ -173,7 +172,6 @@ public enum RuntimeUninstallTransitionPolicy {
             return RuntimeUninstallTransitionDecision(
                 state: .receiptsForgetStarted,
                 persistedState: .receiptsForgetStarted,
-                commands: [.forgetPackageReceipts],
                 message: "package receipt forget started"
             )
 

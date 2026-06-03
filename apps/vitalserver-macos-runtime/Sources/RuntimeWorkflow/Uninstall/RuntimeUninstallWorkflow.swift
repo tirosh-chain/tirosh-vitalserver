@@ -59,128 +59,201 @@ public enum RuntimeWorkflowError: Error, CustomStringConvertible {
     }
 }
 
-public struct RuntimeUninstallWorkflow {
-    public var paths: RuntimeUninstallPaths
-    public var createRedisBackup: () throws -> Void
-    public var stopRuntimeServices: () throws -> Void
+public struct RuntimeUninstallStateReaders {
     public var serviceStates: () -> [RuntimeManagedService: RuntimeServiceState]
     public var vmProcessState: () -> RuntimeVMProcessState
     public var fileExists: (URL) -> Bool
     public var directoryExists: (URL) -> Bool
-    public var createDirectory: (URL, Bool) throws -> Void
-    public var removeItem: (URL) throws -> Void
-    public var moveItem: (URL, URL) throws -> Void
-    public var contentsOfDirectory: (URL) throws -> [URL]
-    public var runProcess: (String, [String]) -> RuntimeProcessResult
-    public var packageReceiptIdentifiers: [String]
-    public var forgetPackageReceipt: (String) -> RuntimeProcessResult
     public var packageReceiptStates: () -> [RuntimePackageReceiptState]
     public var cleanupArtifactStates: (Bool) -> [RuntimeInstallArtifactState]
-    public var writeState: (RuntimeUninstallState, Bool, String?, [String]) throws -> Void
-    public var log: (String) -> Void
 
     public init(
-        paths: RuntimeUninstallPaths,
-        createRedisBackup: @escaping () throws -> Void,
-        stopRuntimeServices: @escaping () throws -> Void,
         serviceStates: @escaping () -> [RuntimeManagedService: RuntimeServiceState],
         vmProcessState: @escaping () -> RuntimeVMProcessState,
         fileExists: @escaping (URL) -> Bool,
         directoryExists: @escaping (URL) -> Bool,
-        createDirectory: @escaping (URL, Bool) throws -> Void,
-        removeItem: @escaping (URL) throws -> Void,
-        moveItem: @escaping (URL, URL) throws -> Void,
-        contentsOfDirectory: @escaping (URL) throws -> [URL],
-        runProcess: @escaping (String, [String]) -> RuntimeProcessResult,
-        packageReceiptIdentifiers: [String],
-        forgetPackageReceipt: @escaping (String) -> RuntimeProcessResult,
         packageReceiptStates: @escaping () -> [RuntimePackageReceiptState],
-        cleanupArtifactStates: @escaping (Bool) -> [RuntimeInstallArtifactState],
-        writeState: @escaping (RuntimeUninstallState, Bool, String?, [String]) throws -> Void,
-        log: @escaping (String) -> Void
+        cleanupArtifactStates: @escaping (Bool) -> [RuntimeInstallArtifactState]
     ) {
-        self.paths = paths
-        self.createRedisBackup = createRedisBackup
-        self.stopRuntimeServices = stopRuntimeServices
         self.serviceStates = serviceStates
         self.vmProcessState = vmProcessState
         self.fileExists = fileExists
         self.directoryExists = directoryExists
+        self.packageReceiptStates = packageReceiptStates
+        self.cleanupArtifactStates = cleanupArtifactStates
+    }
+}
+
+public struct RuntimeUninstallEffects {
+    public var createRedisBackup: () throws -> Void
+    public var stopRuntimeServices: () throws -> Void
+    public var createDirectory: (URL, Bool) throws -> Void
+    public var removeItem: (URL) throws -> Void
+    public var moveItem: (URL, URL) throws -> Void
+    public var forgetPackageReceipt: (String) -> RuntimeProcessResult
+
+    public init(
+        createRedisBackup: @escaping () throws -> Void,
+        stopRuntimeServices: @escaping () throws -> Void,
+        createDirectory: @escaping (URL, Bool) throws -> Void,
+        removeItem: @escaping (URL) throws -> Void,
+        moveItem: @escaping (URL, URL) throws -> Void,
+        forgetPackageReceipt: @escaping (String) -> RuntimeProcessResult
+    ) {
+        self.createRedisBackup = createRedisBackup
+        self.stopRuntimeServices = stopRuntimeServices
         self.createDirectory = createDirectory
         self.removeItem = removeItem
         self.moveItem = moveItem
+        self.forgetPackageReceipt = forgetPackageReceipt
+    }
+}
+
+public struct RuntimeUninstallStateWriter {
+    public var writeState: (RuntimeUninstallState, Bool, String?, [String]) throws -> Void
+
+    public init(
+        writeState: @escaping (RuntimeUninstallState, Bool, String?, [String]) throws -> Void
+    ) {
+        self.writeState = writeState
+    }
+}
+
+public struct RuntimeUninstallDiagnostics {
+    public var contentsOfDirectory: (URL) throws -> [URL]
+    public var runProcess: (String, [String]) -> RuntimeProcessResult
+    public var log: (String) -> Void
+
+    public init(
+        contentsOfDirectory: @escaping (URL) throws -> [URL],
+        runProcess: @escaping (String, [String]) -> RuntimeProcessResult,
+        log: @escaping (String) -> Void
+    ) {
         self.contentsOfDirectory = contentsOfDirectory
         self.runProcess = runProcess
-        self.packageReceiptIdentifiers = packageReceiptIdentifiers
-        self.forgetPackageReceipt = forgetPackageReceipt
-        self.packageReceiptStates = packageReceiptStates
-        self.cleanupArtifactStates = cleanupArtifactStates
-        self.writeState = writeState
         self.log = log
+    }
+}
+
+public struct RuntimeUninstallWorkflow {
+    public var paths: RuntimeUninstallPaths
+    public var readers: RuntimeUninstallStateReaders
+    public var effects: RuntimeUninstallEffects
+    public var writer: RuntimeUninstallStateWriter
+    public var diagnostics: RuntimeUninstallDiagnostics
+    public var packageReceiptIdentifiers: [String]
+
+    public init(
+        paths: RuntimeUninstallPaths,
+        readers: RuntimeUninstallStateReaders,
+        effects: RuntimeUninstallEffects,
+        writer: RuntimeUninstallStateWriter,
+        diagnostics: RuntimeUninstallDiagnostics,
+        packageReceiptIdentifiers: [String]
+    ) {
+        self.paths = paths
+        self.readers = readers
+        self.effects = effects
+        self.writer = writer
+        self.diagnostics = diagnostics
+        self.packageReceiptIdentifiers = packageReceiptIdentifiers
     }
 
     public func run(_ command: RuntimeUninstallCommand) throws {
+        let startedState = try start(command)
+        let readyForStopState = try backupIfNeeded(command, from: startedState)
+        let stoppedDecision = try stopAndVerifyRuntime(from: readyForStopState, clean: command.clean)
+        let cleanupDecision = try removeFilesAndVerifyCleanup(approvedBy: stoppedDecision, command: command)
+        let receiptDecision = try forgetReceiptsAndVerifyAbsence(approvedBy: cleanupDecision, clean: command.clean)
+        try complete(approvedBy: receiptDecision, clean: command.clean)
+    }
+
+    private func start(_ command: RuntimeUninstallCommand) throws -> RuntimeUninstallWorkflowState {
         log("uninstall started clean=\(command.clean)")
-        let startDecision = try RuntimeUninstallTransitionPolicy.transition(
+        let startDecision = try transitionAndPersist(
             from: .notStarted,
-            event: .start(clean: command.clean)
+            event: .start(clean: command.clean),
+            clean: command.clean,
+            expectedCommands: []
         )
-        try writePersistedState(startDecision, clean: command.clean)
-        var workflowState = startDecision.state
         if let readFailure = paths.configuredVitalFilesDirectoryReadFailure {
             log("configured vital files directory unavailable reason=\(readFailure)")
         }
-        if !command.clean {
-            log("step=create-redis-backup status=started")
-            let backupRequestDecision = try RuntimeUninstallTransitionPolicy.transition(
-                from: workflowState,
-                event: .redisBackupRequested
-            )
-            try writePersistedState(backupRequestDecision, clean: command.clean)
-            workflowState = backupRequestDecision.state
-            do {
-                try createRedisBackup()
-                log("step=create-redis-backup status=completed")
-                let backupCompletedDecision = try RuntimeUninstallTransitionPolicy.transition(
-                    from: workflowState,
-                    event: .redisBackupSucceeded
-                )
-                try writePersistedState(backupCompletedDecision, clean: command.clean)
-                workflowState = backupCompletedDecision.state
-            } catch {
-                log("standard uninstall aborted because Redis backup did not complete error=\(error.localizedDescription)")
-                let decision = try RuntimeUninstallTransitionPolicy.transition(
-                    from: workflowState,
-                    event: .redisBackupFailed(reason: error.localizedDescription)
-                )
-                try writePersistedState(decision, clean: command.clean)
-                throw error
-            }
+        return startDecision.state
+    }
+
+    private func backupIfNeeded(
+        _ command: RuntimeUninstallCommand,
+        from state: RuntimeUninstallWorkflowState
+    ) throws -> RuntimeUninstallWorkflowState {
+        guard !command.clean else {
+            return state
         }
 
-        log("step=stop-launchd-services status=started")
-        let stopRequestDecision = try RuntimeUninstallTransitionPolicy.transition(
-            from: workflowState,
-            event: .stopServicesRequested
+        log("step=create-redis-backup status=started")
+        let backupRequestDecision = try transitionAndPersist(
+            from: state,
+            event: .redisBackupRequested,
+            clean: command.clean,
+            expectedCommands: [.createRedisBackup]
         )
-        try writePersistedState(stopRequestDecision, clean: command.clean)
-        workflowState = stopRequestDecision.state
         do {
-            try stopRuntimeServices()
+            try effects.createRedisBackup()
+            log("step=create-redis-backup status=completed")
+            let backupCompletedDecision = try transitionAndPersist(
+                from: backupRequestDecision.state,
+                event: .redisBackupSucceeded,
+                clean: command.clean,
+                expectedCommands: []
+            )
+            return backupCompletedDecision.state
         } catch {
-            let decision = try RuntimeUninstallTransitionPolicy.transition(
-                from: workflowState,
+            log("standard uninstall aborted because Redis backup did not complete error=\(error.localizedDescription)")
+            let decision = try transitionAndPersist(
+                from: backupRequestDecision.state,
+                event: .redisBackupFailed(reason: error.localizedDescription),
+                clean: command.clean,
+                expectedCommands: []
+            )
+            try requireCommands([], in: decision)
+            throw error
+        }
+    }
+
+    private func stopAndVerifyRuntime(
+        from state: RuntimeUninstallWorkflowState,
+        clean: Bool
+    ) throws -> RuntimeUninstallTransitionDecision {
+        log("step=stop-launchd-services status=started")
+        let stopRequestDecision = try transitionAndPersist(
+            from: state,
+            event: .stopServicesRequested,
+            clean: clean,
+            expectedCommands: [.stopRuntimeServices]
+        )
+        do {
+            try effects.stopRuntimeServices()
+        } catch {
+            _ = try transitionAndPersist(
+                from: stopRequestDecision.state,
                 event: .stopServicesFailed(
                     input: runtimeStopReadinessInput(),
                     commandFailureReason: error.localizedDescription
-                )
+                ),
+                clean: clean,
+                expectedCommands: []
             )
-            try writePersistedState(decision, clean: command.clean)
             throw error
         }
         log("step=stop-launchd-services status=completed")
-        let stoppedDecision = try assertRuntimeStoppedBeforeRemovingFiles(clean: command.clean)
+        return try verifyRuntimeStopped(from: stopRequestDecision.state, clean: clean)
+    }
 
+    private func removeFilesAndVerifyCleanup(
+        approvedBy stoppedDecision: RuntimeUninstallTransitionDecision,
+        command: RuntimeUninstallCommand
+    ) throws -> RuntimeUninstallTransitionDecision {
+        try requireCommands([.removeFiles], in: stoppedDecision)
         log("step=remove-plists status=started")
         for plist in paths.launchDaemonPlists {
             try removeIfPresent(plist)
@@ -190,11 +263,12 @@ public struct RuntimeUninstallWorkflow {
         let preserved = command.clean ? nil : try preserveUserData()
         do {
             log("step=remove-installed-files status=started")
-            let fileRemovalDecision = try RuntimeUninstallTransitionPolicy.transition(
+            let fileRemovalDecision = try transitionAndPersist(
                 from: stoppedDecision.state,
-                event: .filesRemovalStarted
+                event: .filesRemovalStarted,
+                clean: command.clean,
+                expectedCommands: []
             )
-            try writePersistedState(fileRemovalDecision, clean: command.clean)
             try removeInstalledFiles(clean: command.clean)
             log("step=remove-installed-files status=completed")
 
@@ -203,7 +277,7 @@ public struct RuntimeUninstallWorkflow {
                 try removeIfPresent(tool)
             }
             log("step=remove-runtime-tools status=completed")
-            let cleanupDecision = try verifyCleanupArtifacts(clean: command.clean)
+            let cleanupDecision = try verifyCleanupArtifacts(from: fileRemovalDecision.state, clean: command.clean)
 
             if let preserved {
                 log("step=restore-preserved-user-data status=started")
@@ -211,12 +285,7 @@ public struct RuntimeUninstallWorkflow {
                 log("step=restore-preserved-user-data status=completed")
             }
 
-            log("step=forget-package-receipt status=started")
-            let receiptsStartDecision = try RuntimeUninstallTransitionPolicy.transition(
-                from: cleanupDecision.state,
-                event: .receiptsForgetStarted
-            )
-            try writePersistedState(receiptsStartDecision, clean: command.clean)
+            return cleanupDecision
         } catch {
             var blockers = ["file-removal-failed:reason=\(error.localizedDescription)"]
             if let preserved {
@@ -228,7 +297,7 @@ public struct RuntimeUninstallWorkflow {
                     blockers.append("restore-preserved-user-data-failed:reason=\(error.localizedDescription)")
                 }
             }
-            try writeState(
+            try writer.writeState(
                 .filesRemovalBlocked,
                 command.clean,
                 "file removal blocked",
@@ -236,42 +305,67 @@ public struct RuntimeUninstallWorkflow {
             )
             throw error
         }
+    }
+
+    private func forgetReceiptsAndVerifyAbsence(
+        approvedBy cleanupDecision: RuntimeUninstallTransitionDecision,
+        clean: Bool
+    ) throws -> RuntimeUninstallTransitionDecision {
+        try requireCommands([.forgetPackageReceipts], in: cleanupDecision)
+        log("step=forget-package-receipt status=started")
+        let receiptsStartDecision = try transitionAndPersist(
+            from: cleanupDecision.state,
+            event: .receiptsForgetStarted,
+            clean: clean,
+            expectedCommands: []
+        )
 
         for identifier in packageReceiptIdentifiers {
             log("forget package receipt identifier=\(identifier)")
-            let result = forgetPackageReceipt(identifier)
+            let result = effects.forgetPackageReceipt(identifier)
             guard result.exitCode == 0 else {
                 let reason = processFailureReason(result)
-                let decision = try RuntimeUninstallTransitionPolicy.transition(
-                    from: .receiptsForgetStarted,
-                    event: .receiptForgetFailed(identifier: identifier, reason: reason)
+                _ = try transitionAndPersist(
+                    from: receiptsStartDecision.state,
+                    event: .receiptForgetFailed(identifier: identifier, reason: reason),
+                    clean: clean,
+                    expectedCommands: []
                 )
-                try writePersistedState(decision, clean: command.clean)
                 throw RuntimeWorkflowError.operationFailed(
                     "package receipt forget failed identifier=\(identifier) \(reason)"
                 )
             }
         }
-        let receiptDecision = try RuntimeUninstallTransitionPolicy.transition(
-            from: .receiptsForgetStarted,
-            event: .packageReceiptsObserved(packageReceiptStates())
+        let receiptDecision = try transition(
+            from: receiptsStartDecision.state,
+            event: .packageReceiptsObserved(readers.packageReceiptStates()),
+            expectedCommandsWhenAllowed: [.complete]
         )
         guard receiptDecision.blockers.isEmpty else {
-            try writePersistedState(receiptDecision, clean: command.clean)
+            try requireCommands([], in: receiptDecision)
+            try writePersistedState(receiptDecision, clean: clean)
             throw RuntimeWorkflowError.operationFailed(
                 "package receipt forget verification failed blockers=\(receiptDecision.blockers.joined(separator: ","))"
             )
         }
+        return receiptDecision
+    }
+
+    private func complete(
+        approvedBy receiptDecision: RuntimeUninstallTransitionDecision,
+        clean: Bool
+    ) throws {
+        try requireCommands([.complete], in: receiptDecision)
         log("step=forget-package-receipt status=completed")
         log("uninstall completed")
-        try writePersistedState(receiptDecision, clean: command.clean)
+        try writePersistedState(receiptDecision, clean: clean)
     }
 
     private func preserveUserData() throws -> RuntimeUninstallPreservedPaths {
         log("step=preserve-user-data status=started")
         let preserveRoot = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("tirosh-vitalserver-uninstall-\(UUID().uuidString)")
-        try createDirectory(preserveRoot, true)
+        try effects.createDirectory(preserveRoot, true)
 
         var items: [RuntimeUninstallPreservedPath] = []
         try preservePath(paths.productRoot.appendingPathComponent("logs"), preserveRoot, "logs", into: &items)
@@ -306,16 +400,16 @@ public struct RuntimeUninstallWorkflow {
         }
         let destination = preserveRoot.appendingPathComponent(token)
         try removeIfPresent(destination)
-        try moveItem(source, destination)
+        try effects.moveItem(source, destination)
         items.append(RuntimeUninstallPreservedPath(source: source, destination: destination))
         log("preserved source=\(source.path)")
     }
 
     private func restorePreservedPaths(_ preserved: RuntimeUninstallPreservedPaths) throws {
         for item in preserved.items {
-            try createDirectory(item.source.deletingLastPathComponent(), true)
+            try effects.createDirectory(item.source.deletingLastPathComponent(), true)
             try removeIfPresent(item.source)
-            try moveItem(item.destination, item.source)
+            try effects.moveItem(item.destination, item.source)
             log("restored preserved=\(item.source.path)")
         }
         try removeIfPresent(preserved.root)
@@ -339,7 +433,7 @@ public struct RuntimeUninstallWorkflow {
             return
         }
         do {
-            try removeItem(target)
+            try effects.removeItem(target)
         } catch {
             logRemovalDiagnostics(target)
             throw error
@@ -352,12 +446,15 @@ public struct RuntimeUninstallWorkflow {
 
     private func logRemovalDiagnostics(_ target: URL) {
         log("removal diagnostic target=\(target.path)")
-        if let items = try? contentsOfDirectory(target) {
+        do {
+            let items = try diagnostics.contentsOfDirectory(target)
             for item in items.prefix(200) {
                 log("removal diagnostic residual path=\(item.path)")
             }
+        } catch {
+            log("removal diagnostic contents read failed target=\(target.path) error=\(error.localizedDescription)")
         }
-        let result = runProcess("/usr/sbin/lsof", ["+D", target.path])
+        let result = diagnostics.runProcess("/usr/sbin/lsof", ["+D", target.path])
         if result.exitCode == 0 {
             for line in result.stdout.split(separator: "\n").prefix(200) {
                 log("removal diagnostic open file \(line)")
@@ -372,24 +469,28 @@ public struct RuntimeUninstallWorkflow {
         guard exists(url) else {
             return
         }
-        try removeItem(url)
+        try effects.removeItem(url)
     }
 
     private func exists(_ url: URL) -> Bool {
-        fileExists(url) || directoryExists(url)
+        readers.fileExists(url) || readers.directoryExists(url)
     }
 
     private func runtimeStopReadinessInput() -> RuntimeUninstallReadinessInput {
         RuntimeUninstallReadinessInput(
-            serviceStates: serviceStates(),
-            vmProcessState: vmProcessState()
+            serviceStates: readers.serviceStates(),
+            vmProcessState: readers.vmProcessState()
         )
     }
 
-    private func assertRuntimeStoppedBeforeRemovingFiles(clean: Bool) throws -> RuntimeUninstallTransitionDecision {
-        let decision = try RuntimeUninstallTransitionPolicy.transition(
-            from: .stopServicesRequested,
-            event: .stoppedStateObserved(runtimeStopReadinessInput())
+    private func verifyRuntimeStopped(
+        from state: RuntimeUninstallWorkflowState,
+        clean: Bool
+    ) throws -> RuntimeUninstallTransitionDecision {
+        let decision = try transition(
+            from: state,
+            event: .stoppedStateObserved(runtimeStopReadinessInput()),
+            expectedCommandsWhenAllowed: [.removeFiles]
         )
         guard decision.blockers.isEmpty else {
             try writePersistedState(decision, clean: clean)
@@ -400,10 +501,14 @@ public struct RuntimeUninstallWorkflow {
         return decision
     }
 
-    private func verifyCleanupArtifacts(clean: Bool) throws -> RuntimeUninstallTransitionDecision {
-        let decision = try RuntimeUninstallTransitionPolicy.transition(
-            from: .filesRemovalStarted,
-            event: .cleanupArtifactsObserved(cleanupArtifactStates(clean))
+    private func verifyCleanupArtifacts(
+        from state: RuntimeUninstallWorkflowState,
+        clean: Bool
+    ) throws -> RuntimeUninstallTransitionDecision {
+        let decision = try transition(
+            from: state,
+            event: .cleanupArtifactsObserved(readers.cleanupArtifactStates(clean)),
+            expectedCommandsWhenAllowed: [.forgetPackageReceipts]
         )
         guard decision.blockers.isEmpty else {
             try writePersistedState(decision, clean: clean)
@@ -414,6 +519,48 @@ public struct RuntimeUninstallWorkflow {
         return decision
     }
 
+    private func transitionAndPersist(
+        from state: RuntimeUninstallWorkflowState,
+        event: RuntimeUninstallWorkflowEvent,
+        clean: Bool,
+        expectedCommands: [RuntimeUninstallWorkflowCommand]
+    ) throws -> RuntimeUninstallTransitionDecision {
+        let decision = try RuntimeUninstallTransitionPolicy.transition(
+            from: state,
+            event: event
+        )
+        try requireCommands(expectedCommands, in: decision)
+        try writePersistedState(decision, clean: clean)
+        return decision
+    }
+
+    private func transition(
+        from state: RuntimeUninstallWorkflowState,
+        event: RuntimeUninstallWorkflowEvent,
+        expectedCommandsWhenAllowed: [RuntimeUninstallWorkflowCommand]
+    ) throws -> RuntimeUninstallTransitionDecision {
+        let decision = try RuntimeUninstallTransitionPolicy.transition(
+            from: state,
+            event: event
+        )
+        try requireCommands(
+            decision.blockers.isEmpty ? expectedCommandsWhenAllowed : [],
+            in: decision
+        )
+        return decision
+    }
+
+    private func requireCommands(
+        _ expectedCommands: [RuntimeUninstallWorkflowCommand],
+        in decision: RuntimeUninstallTransitionDecision
+    ) throws {
+        guard decision.commands == expectedCommands else {
+            throw RuntimeWorkflowError.operationFailed(
+                "unexpected uninstall workflow commands state=\(decision.state) expected=\(expectedCommands) actual=\(decision.commands)"
+            )
+        }
+    }
+
     private func writePersistedState(
         _ decision: RuntimeUninstallTransitionDecision,
         clean: Bool
@@ -421,7 +568,11 @@ public struct RuntimeUninstallWorkflow {
         guard let state = decision.persistedState else {
             return
         }
-        try writeState(state, clean, decision.message, decision.blockers)
+        try writer.writeState(state, clean, decision.message, decision.blockers)
+    }
+
+    private func log(_ message: String) {
+        diagnostics.log(message)
     }
 
     private func processFailureReason(_ result: RuntimeProcessResult) -> String {

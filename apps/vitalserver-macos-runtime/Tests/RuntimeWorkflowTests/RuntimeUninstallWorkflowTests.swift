@@ -118,6 +118,18 @@ final class RuntimeUninstallWorkflowTests: XCTestCase {
         })
     }
 
+    func testRemovalDiagnosticsLogsDirectoryReadFailure() {
+        let harness = RuntimeUninstallWorkflowHarness()
+        harness.removeErrorPath = "/product"
+        harness.contentsOfDirectoryError = RuntimeUninstallTestError.diagnosticRead
+
+        XCTAssertThrowsError(try harness.runner.run(RuntimeUninstallCommand(clean: true)))
+
+        XCTAssertTrue(harness.events.contains {
+            $0 == "log:removal diagnostic contents read failed target=/product error=diagnostic read failed"
+        })
+    }
+
     func testUninstallWritesServiceStopBlockedFromExplicitHostStates() {
         let harness = RuntimeUninstallWorkflowHarness()
         harness.stopError = RuntimeUninstallTestError.stop
@@ -206,6 +218,7 @@ private final class RuntimeUninstallWorkflowHarness {
     var stopError: Error?
     var removeErrorPath: String?
     var moveErrorDestination: String?
+    var contentsOfDirectoryError: Error?
     var serviceStates: [RuntimeManagedService: RuntimeServiceState]
     var vmProcessState: RuntimeVMProcessState = .stopped
     var receiptForgetResults: [String: RuntimeProcessResult] = [:]
@@ -264,78 +277,91 @@ private final class RuntimeUninstallWorkflowHarness {
                     URL(fileURLWithPath: "/usr/local/bin/tirosh-vitalserver-uninstall"),
                 ]
             ),
-            createRedisBackup: {
-                self.events.append("backup")
-                if let backupError = self.backupError {
-                    throw backupError
+            readers: RuntimeUninstallStateReaders(
+                serviceStates: {
+                    self.serviceStates
+                },
+                vmProcessState: {
+                    self.vmProcessState
+                },
+                fileExists: { url in
+                    self.existing.contains(url.path)
+                },
+                directoryExists: { url in
+                    self.existing.contains(url.path)
+                },
+                packageReceiptStates: {
+                    self.receiptStates
+                },
+                cleanupArtifactStates: { clean in
+                    if let cleanupArtifactStates = self.cleanupArtifactStates {
+                        return cleanupArtifactStates
+                    }
+                    return self.cleanupArtifactPaths(clean: clean).map { path in
+                        self.existing.contains(path) ? .present(path: path) : .absent(path: path)
+                    }
                 }
-            },
-            stopRuntimeServices: {
-                self.events.append("stop")
-                if let stopError = self.stopError {
-                    throw stopError
+            ),
+            effects: RuntimeUninstallEffects(
+                createRedisBackup: {
+                    self.events.append("backup")
+                    if let backupError = self.backupError {
+                        throw backupError
+                    }
+                },
+                stopRuntimeServices: {
+                    self.events.append("stop")
+                    if let stopError = self.stopError {
+                        throw stopError
+                    }
+                },
+                createDirectory: { url, _ in
+                    self.events.append("mkdir:\(url.path)")
+                    self.existing.insert(url.path)
+                },
+                removeItem: { url in
+                    self.events.append("remove:\(url.path)")
+                    if self.removeErrorPath == url.path {
+                        throw RuntimeUninstallTestError.remove
+                    }
+                    self.existing.remove(url.path)
+                },
+                moveItem: { source, destination in
+                    self.events.append("move:\(source.path)->\(destination.path)")
+                    if destination.path == self.moveErrorDestination {
+                        throw RuntimeUninstallTestError.restore
+                    }
+                    self.existing.remove(source.path)
+                    self.existing.insert(destination.path)
+                },
+                forgetPackageReceipt: { identifier in
+                    self.events.append("forget:\(identifier)")
+                    return self.receiptForgetResults[identifier] ?? RuntimeProcessResult(exitCode: 0, stdout: "", stderr: "")
                 }
-            },
-            serviceStates: {
-                self.serviceStates
-            },
-            vmProcessState: {
-                self.vmProcessState
-            },
-            fileExists: { url in
-                self.existing.contains(url.path)
-            },
-            directoryExists: { url in
-                self.existing.contains(url.path)
-            },
-            createDirectory: { url, _ in
-                self.events.append("mkdir:\(url.path)")
-                self.existing.insert(url.path)
-            },
-            removeItem: { url in
-                self.events.append("remove:\(url.path)")
-                if self.removeErrorPath == url.path {
-                    throw RuntimeUninstallTestError.remove
+            ),
+            writer: RuntimeUninstallStateWriter(
+                writeState: { state, _, message, blockers in
+                    self.events.append("state:\(state.rawValue):\(message ?? ""):\(blockers.joined(separator: "|"))")
                 }
-                self.existing.remove(url.path)
-            },
-            moveItem: { source, destination in
-                self.events.append("move:\(source.path)->\(destination.path)")
-                if destination.path == self.moveErrorDestination {
-                    throw RuntimeUninstallTestError.restore
+            ),
+            diagnostics: RuntimeUninstallDiagnostics(
+                contentsOfDirectory: { _ in
+                    if let contentsOfDirectoryError = self.contentsOfDirectoryError {
+                        throw contentsOfDirectoryError
+                    }
+                    return []
+                },
+                runProcess: { _, _ in
+                    RuntimeProcessResult(exitCode: 1, stdout: "", stderr: "")
+                },
+                log: { message in
+                    self.events.append("log:\(message)")
                 }
-                self.existing.remove(source.path)
-                self.existing.insert(destination.path)
-            },
-            contentsOfDirectory: { _ in [] },
-            runProcess: { _, _ in
-                RuntimeProcessResult(exitCode: 1, stdout: "", stderr: "")
-            },
+            ),
             packageReceiptIdentifiers: [
                 "com.tirosh.vitalserver.vm",
                 "com.tirosh.vitalserver",
-            ],
-            forgetPackageReceipt: { identifier in
-                self.events.append("forget:\(identifier)")
-                return self.receiptForgetResults[identifier] ?? RuntimeProcessResult(exitCode: 0, stdout: "", stderr: "")
-            },
-            packageReceiptStates: {
-                self.receiptStates
-            },
-            cleanupArtifactStates: { clean in
-                if let cleanupArtifactStates = self.cleanupArtifactStates {
-                    return cleanupArtifactStates
-                }
-                return self.cleanupArtifactPaths(clean: clean).map { path in
-                    self.existing.contains(path) ? .present(path: path) : .absent(path: path)
-                }
-            },
-            writeState: { state, _, message, blockers in
-                self.events.append("state:\(state.rawValue):\(message ?? ""):\(blockers.joined(separator: "|"))")
-            },
-            log: { message in
-                self.events.append("log:\(message)")
-            }
+            ]
         )
     }
 
@@ -361,9 +387,25 @@ private final class RuntimeUninstallWorkflowHarness {
     }
 }
 
-private enum RuntimeUninstallTestError: Error {
+private enum RuntimeUninstallTestError: Error, LocalizedError {
     case backup
     case remove
     case stop
     case restore
+    case diagnosticRead
+
+    var errorDescription: String? {
+        switch self {
+        case .backup:
+            return "backup failed"
+        case .remove:
+            return "remove failed"
+        case .stop:
+            return "stop failed"
+        case .restore:
+            return "restore failed"
+        case .diagnosticRead:
+            return "diagnostic read failed"
+        }
+    }
 }

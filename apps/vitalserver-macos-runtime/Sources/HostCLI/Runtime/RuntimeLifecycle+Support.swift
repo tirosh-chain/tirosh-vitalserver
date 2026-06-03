@@ -177,61 +177,69 @@ extension RuntimeLifecycle {
         )
         return RuntimeUninstallWorkflow(
             paths: uninstallPaths,
-            createRedisBackup: createRedisBackup,
-            stopRuntimeServices: stopRuntimeServices,
-            serviceStates: {
-                Dictionary(uniqueKeysWithValues: RuntimeManagedService.stopOrder.map { service in
-                    (service, healthChecker.launchdState(service))
-                })
-            },
-            vmProcessState: {
-                ProcessState.inspect(pidFile: paths.pidFile, fileStore: fileStore)
-            },
-            fileExists: fileExists,
-            directoryExists: directoryExists,
-            createDirectory: { url, withIntermediateDirectories in
-                try fileStore.createDirectory(at: url, withIntermediateDirectories: withIntermediateDirectories)
-            },
-            removeItem: { url in
-                try fileStore.removeItem(at: url)
-            },
-            moveItem: { source, destination in
-                try fileStore.moveItem(at: source, to: destination)
-            },
-            contentsOfDirectory: { url in
-                try fileStore.contentsOfDirectory(at: url, skipsHiddenFiles: false)
-            },
-            runProcess: runProcess,
-            packageReceiptIdentifiers: Constants.Product.packageReceiptIdentifiers,
-            forgetPackageReceipt: { identifier in
-                runProcess("/usr/sbin/pkgutil", arguments: ["--forget", identifier])
-            },
-            packageReceiptStates: {
-                RuntimePackageReceiptStateReader.states(
-                    identifiers: Constants.Product.packageReceiptIdentifiers,
-                    runProcess: { executable, arguments in
-                        runProcess(executable, arguments: arguments)
-                    }
-                )
-            },
-            cleanupArtifactStates: { clean in
-                RuntimeInstallArtifactStateReader.states(
-                    paths: cleanupArtifactPaths(clean: clean, paths: uninstallPaths).map(\.path)
-                )
-            },
-            writeState: { state, clean, message, blockers in
-                try RuntimeUninstallStateStore(
-                    url: installedPaths.runtimeUninstallState,
-                    fileStore: fileStore,
-                    now: { clock.now }
-                ).write(
-                    state: state,
-                    clean: clean,
-                    message: message,
-                    blockers: blockers
-                )
-            },
-            log: log
+            readers: RuntimeUninstallStateReaders(
+                serviceStates: {
+                    Dictionary(uniqueKeysWithValues: RuntimeManagedService.stopOrder.map { service in
+                        (service, healthChecker.launchdState(service))
+                    })
+                },
+                vmProcessState: {
+                    ProcessState.inspect(pidFile: paths.pidFile, fileStore: fileStore)
+                },
+                fileExists: fileExists,
+                directoryExists: directoryExists,
+                packageReceiptStates: {
+                    RuntimePackageReceiptStateReader.states(
+                        identifiers: Constants.Product.packageReceiptIdentifiers,
+                        runProcess: { executable, arguments in
+                            runProcess(executable, arguments: arguments)
+                        }
+                    )
+                },
+                cleanupArtifactStates: { clean in
+                    RuntimeInstallArtifactStateReader.states(
+                        paths: cleanupArtifactPaths(clean: clean, paths: uninstallPaths).map(\.path)
+                    )
+                }
+            ),
+            effects: RuntimeUninstallEffects(
+                createRedisBackup: createRedisBackup,
+                stopRuntimeServices: stopRuntimeServices,
+                createDirectory: { url, withIntermediateDirectories in
+                    try fileStore.createDirectory(at: url, withIntermediateDirectories: withIntermediateDirectories)
+                },
+                removeItem: { url in
+                    try fileStore.removeItem(at: url)
+                },
+                moveItem: { source, destination in
+                    try fileStore.moveItem(at: source, to: destination)
+                },
+                forgetPackageReceipt: { identifier in
+                    runProcess("/usr/sbin/pkgutil", arguments: ["--forget", identifier])
+                }
+            ),
+            writer: RuntimeUninstallStateWriter(
+                writeState: { state, clean, message, blockers in
+                    try RuntimeUninstallStateStore(
+                        url: installedPaths.runtimeUninstallState,
+                        fileStore: fileStore,
+                        now: { clock.now }
+                    ).write(
+                        state: state,
+                        clean: clean,
+                        message: message,
+                        blockers: blockers
+                    )
+                }
+            ),
+            diagnostics: RuntimeUninstallDiagnostics(
+                contentsOfDirectory: { url in
+                    try fileStore.contentsOfDirectory(at: url, skipsHiddenFiles: false)
+                },
+                runProcess: runProcess,
+                log: log
+            ),
+            packageReceiptIdentifiers: Constants.Product.packageReceiptIdentifiers
         )
     }
 
