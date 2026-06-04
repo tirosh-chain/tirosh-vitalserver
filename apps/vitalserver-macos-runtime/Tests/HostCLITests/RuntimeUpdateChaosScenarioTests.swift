@@ -31,8 +31,9 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
             checkCompatibility: { _ in events.append("compatibility") },
             serviceRestartPolicy: {
                 events.append("policy")
-                return RuntimeServiceRestartPolicy(restartVM: true, restartProxy: false, restartWatchdog: false)
+                return RuntimeServiceRestartPolicy(restartVM: true, restartGuestLogSync: true, restartProxy: false, restartWatchdog: false)
             },
+            runtimeHealthSnapshot: { self.healthySnapshot() },
             requireGuestCapability: { capability in
                 events.append("capability:\(capability.rawValue)")
                 if capability == .activateUpdate {
@@ -284,7 +285,7 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
             },
             serviceRestartPolicy: {
                 XCTFail("missing restore artifact should stop before service policy")
-                return RuntimeServiceRestartPolicy(restartVM: false, restartProxy: false, restartWatchdog: false)
+                return RuntimeServiceRestartPolicy(restartVM: false, restartGuestLogSync: false, restartProxy: false, restartWatchdog: false)
             },
             log: { _ in XCTFail("missing restore artifact should stop before logging") }
         )
@@ -351,6 +352,8 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
                 rollback: { _ in },
                 startRuntimeServices: { _ in },
                 stopRuntimeServices: {},
+                runningVMProcessID: { 123 },
+                stopRuntimeServicesAfterGuestPoweroff: { _ in },
                 prepareGuestShutdownForUpdate: { _ in },
                 clearGuestShutdownPreparation: {},
                 isLaunchdLoaded: { _ in false },
@@ -429,7 +432,7 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
             manifest: manifest(version: "1.2.3", artifacts: artifacts),
             stagedRootfs: nil,
             backup: URL(fileURLWithPath: "/product/backups/20260531T000000Z-before-1.2.3"),
-            restartPolicy: RuntimeServiceRestartPolicy(restartVM: true, restartProxy: true, restartWatchdog: false)
+            restartPolicy: RuntimeServiceRestartPolicy(restartVM: true, restartGuestLogSync: true, restartProxy: true, restartWatchdog: false)
         )
     }
 
@@ -440,7 +443,7 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
             backupRootfs: backup.appendingPathComponent(Constants.Artifacts.rootfsBase),
             backupVersion: backup.appendingPathComponent(Constants.Artifacts.runtimeVersion),
             restoresRootfsBase: true,
-            restartPolicy: RuntimeServiceRestartPolicy(restartVM: true, restartProxy: false, restartWatchdog: true)
+            restartPolicy: RuntimeServiceRestartPolicy(restartVM: true, restartGuestLogSync: true, restartProxy: false, restartWatchdog: true)
         )
     }
 
@@ -453,6 +456,27 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
             nginxBundle: URL(fileURLWithPath: "/product/nginx"),
             guestDeploy: URL(fileURLWithPath: "/product/vm/data/deploy"),
             runtimeTools: URL(fileURLWithPath: "/usr/local/bin")
+        )
+    }
+
+    private func healthySnapshot() -> RuntimeHealthSnapshot {
+        RuntimeHealthSnapshot(
+            vmExecutable: true,
+            proxyExecutable: true,
+            rootfsBase: .present,
+            vmDisk: .present,
+            vmService: .loaded,
+            proxyService: .loaded,
+            watchdogService: .loaded,
+            vmState: .running,
+            vmErrors: [],
+            vmIP: "192.168.64.2",
+            proxyPort: 80,
+            hostProxyHTTP: "200",
+            guestHTTP: "200",
+            redisUIHTTP: "200",
+            swaggerUIHTTP: "200",
+            failureReasons: []
         )
     }
 }

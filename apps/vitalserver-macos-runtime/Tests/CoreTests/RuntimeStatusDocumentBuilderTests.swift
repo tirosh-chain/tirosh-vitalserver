@@ -16,21 +16,21 @@ final class RuntimeStatusDocumentBuilderTests: XCTestCase {
         )
 
         let document = RuntimeStatusDocumentBuilder.build(RuntimeStatusDocumentInput(
-            product: "TiroshVitalServer",
+            product: "VitalServerHelper",
             status: .updating,
             operation: .applyBundle,
             message: "bundle apply started",
             updatedAt: "2026-05-21T12:33:57Z",
-            productRoot: "/Library/Application Support/TiroshVitalServer",
-            runtimeHome: "/Library/Application Support/TiroshVitalServer/vm",
+            productRoot: "/Library/Application Support/VitalServerHelper",
+            runtimeHome: "/Library/Application Support/VitalServerHelper/vm",
             runtimeVersion: "0.1.4",
             healthSnapshot: snapshot(failureReasons: [.guestHTTP("failed")]),
-            latestBackup: "/Library/Application Support/TiroshVitalServer/backups/backup",
+            latestBackup: "/Library/Application Support/VitalServerHelper/backups/backup",
             progress: progress
         ))
 
         XCTAssertEqual(document.schemaVersion, 2)
-        XCTAssertEqual(document.product, "TiroshVitalServer")
+        XCTAssertEqual(document.product, "VitalServerHelper")
         XCTAssertEqual(document.status, .updating)
         XCTAssertEqual(document.operation, .applyBundle)
         XCTAssertEqual(document.runtimeVersion, "0.1.4")
@@ -45,13 +45,13 @@ final class RuntimeStatusDocumentBuilderTests: XCTestCase {
         XCTAssertEqual(document.guestHTTP, "failed")
         XCTAssertEqual(document.failureReasons, [.guestHTTP("failed")])
         XCTAssertEqual(document.domainErrors, [RuntimeDomainError(.guestHTTP("failed"))])
-        XCTAssertEqual(document.latestBackup, "/Library/Application Support/TiroshVitalServer/backups/backup")
+        XCTAssertEqual(document.latestBackup, "/Library/Application Support/VitalServerHelper/backups/backup")
         XCTAssertEqual(document.progress, progress)
     }
 
     func testBuildsWithoutProgressOrLatestBackup() {
         let document = RuntimeStatusDocumentBuilder.build(RuntimeStatusDocumentInput(
-            product: "TiroshVitalServer",
+            product: "VitalServerHelper",
             status: .healthy,
             operation: .health,
             message: "runtime health check passed",

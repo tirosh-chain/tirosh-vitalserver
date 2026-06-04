@@ -2,24 +2,25 @@
 
 ## Goal
 
-PWA는 Tailwind를 직접적인 화면 구현 도구로만 쓰지 않습니다. Tailwind는 design token과 responsive utility를 제공하고, 제품 UI의 SoT는 shared UI component입니다.
+PWA는 Tailwind를 직접적인 화면 구현 도구로만 쓰지 않습니다. Tailwind는 design token과 responsive utility를 제공하고, 제품 UI의 SoT는 reusable UI component입니다.
 
 ## Styling Ownership
 
 | 계층 | 책임 |
 |---|---|
 | `tailwind.config.cjs` | color, radius, font, breakpoint token |
-| `shared/styles/global.css` | base reset, app shell, 기존 class compatibility, responsive layout rules |
-| `shared/ui/*` | button, panel, table/card, badge, metric, confirm interaction 같은 reusable primitive |
-| `features/*` | 화면 조합, query state, feature-specific local state |
+| `src/styles/global.css` | base reset, app shell, 기존 class compatibility, responsive layout rules |
+| `src/components/*` | button, panel, table/card, badge, metric, confirm interaction 같은 reusable primitive |
+| `src/pages/*` | 화면 조합, page-local form state |
+| `src/console/*` | query state and Runtime Control command orchestration |
 
 ## Tailwind Rules
 
 - page에 긴 utility class를 반복하지 않습니다.
-- 반복되는 조합은 `shared/ui` component로 승격합니다.
+- 반복되는 조합은 `components` component로 승격합니다.
 - variant가 있는 컴포넌트는 `class-variance-authority`로 관리합니다.
 - 조건부 class 조합은 `clsx` 기반 `cn()` helper를 사용합니다.
-- domain/application/infrastructure 계층에는 Tailwind class를 두지 않습니다.
+- domain/console/infrastructure 계층에는 Tailwind class를 두지 않습니다.
 - 색상/spacing/radius는 가능한 한 Tailwind token을 사용합니다.
 
 ## Current Tokens

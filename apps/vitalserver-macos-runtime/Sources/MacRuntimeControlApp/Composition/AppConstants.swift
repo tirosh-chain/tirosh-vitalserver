@@ -9,11 +9,14 @@ enum AppConstants {
         static let poweredByPrefix = "Powered by"
         static let tiroshName = "Tirosh"
         static let tiroshURL = "https://www.tirosh.ai/"
-        static let packageIdentifier = "com.tirosh.vitalserver.vm"
+        static let packageIdentifier = "ai.tirosh.vitalserver.helper"
         static let vitalServerVersion = GeneratedRelease.vitalServerVersion
         static let defaultProxyPort = 80
         static func vitalServerURL(proxyPort: Int) -> String {
             "http://127.0.0.1:\(proxyPort)/"
+        }
+        static func remoteConsoleURL(port: Int) -> String {
+            "http://127.0.0.1:\(port)/"
         }
         static func redisUIURL(proxyPort: Int) -> String {
             "http://127.0.0.1:\(proxyPort)/redis-ui/"
@@ -141,6 +144,7 @@ enum AppConstants {
         static let sectionRuntimeRepair = "Runtime repair"
         static let sectionUpdateRecovery = "Update recovery"
         static let sectionRedisDataRecovery = "Redis data recovery"
+        static let statusReadIssues = "Status read issues"
         static let adminOperationsHelp = "Use these actions only when administering the installed runtime. Password changes are applied with the same runtime configuration flow as Settings."
         static let runtimeServiceControlHelp = "Starts or stops the VM, host proxy, and watchdog together. Use Stop for planned maintenance, then Start to bring VitalServer back online."
         static let recoveryOperationsHelp = "Use these actions when the runtime is installed but unhealthy after update, rollback, or unexpected shutdown."
@@ -178,25 +182,22 @@ enum AppConstants {
         static let bridgedInterface = "Bridged interface"
         static let sharedNetworkHelp = "Shared/NAT mode is supported in this build. VitalServer is exposed through the Mac host proxy."
         static let bridgedNetworkHelp = "Bridged mode is planned, but it requires Apple's restricted networking entitlement and is disabled for now."
-        static let sectionRemoteConsoleAccess = "Remote Console access"
         static let sectionAdvertisedURL = "Advertised URL"
-        static let sectionAdvertisedURLOverride = "Advertised URL override"
+        static let sectionAdvertisedURLOverride = "Advertised service URLs"
         static let sectionPlannedNetworkFeatures = "Planned network features"
         static let remoteConsoleURL = "Remote Console URL"
-        static let remoteConsoleURLHelp = "Remote browsers open this Mac's host name or IP with the Remote Console port. Change the port in Settings when needed."
-        static let customAdvertisedURL = "Custom advertised URL"
-        static let customAdvertisedURLHelp = "Enable only when clients reach VitalServer through a different external URL than this Mac's host proxy, such as a hospital reverse proxy, NAT port-forward, or HTTPS endpoint."
-        static let defaultAdvertisedURL = "Default advertised URL"
-        static let defaultAdvertisedURLHelp = "Uses the same host clients connected to and the Host proxy port. This is correct for direct Mac-hosted installs."
-        static let publicHost = "Advertised host"
-        static let publicHostHelp = "External host name or IP written into VitalServer runtime config."
-        static let publicPort = "Advertised port"
-        static let publicPortHelp = "External port that VitalServer should advertise to clients."
+        static let remoteConsoleURLHelp = "Remote browsers open this URL for the Remote Console and Runtime Control API."
+        static let defaultAdvertisedURL = "Default URL"
+        static let defaultVitalServerURLHelp = "Leave VitalServer URL empty to advertise the Mac host with the Host proxy port."
+        static let defaultRemoteConsoleURLHelp = "Leave Remote Console URL empty to use the Mac host with the Remote Console port."
+        static let vitalServerAdvertisedURL = "VitalServer URL"
+        static let vitalServerURLHelp = "External URL that VitalServer should advertise to clients, such as https://vitaldb.tirosh.ai/."
+        static let remoteConsoleAdvertisedURL = "Remote Console URL"
+        static let remoteConsoleAdvertisedURLHelp = "External URL for Remote Console, such as https://console.tirosh.ai/."
         static let redisBackupRetention = "Redis backups"
         static let redisBackupRetentionHelp = "Number of Redis backup archives to keep in Vital files backups, up to 30. Older archives are pruned after a new verified backup is created."
-        static let advertisedURLPreview = "Advertised URL preview"
         static let advertisedURLSameHost = "(same host)"
-        static let advancedNetworkHelp = "These settings change how clients discover VitalServer beyond the Mac host proxy. Most installs should keep the default advertised URL."
+        static let advancedNetworkHelp = "These settings change how clients discover VitalServer and Remote Console beyond this Mac's direct host proxy URLs."
         static let mdnsName = "mDNS / Bonjour name"
         static let mdnsHelp = "Planned. Would publish a stable .local name such as vitalserver.local from the Mac host."
         static let bridgedNetworking = "Bridged VM networking"
@@ -316,10 +317,10 @@ enum AppConstants {
         static let missingUninstaller = "Missing uninstaller"
         static let uninstallPreparing = "Preparing runtime removal..."
         static let uninstallWaitingForPrivilege = "Waiting for administrator approval..."
-        static let uninstallRunning = "Removing runtime..."
-        static let uninstallCompleted = "Runtime removal completed."
-        static let cleanUninstallCompleted = "Runtime and preserved data removal completed."
-        static let applicationWillQuit = "The Helper app will quit now."
+        static let uninstallRunning = "Starting background uninstaller..."
+        static let uninstallCompleted = "Background uninstaller started."
+        static let cleanUninstallCompleted = "Background clean uninstaller started."
+        static let applicationWillQuit = "The Helper app will quit now. Cleanup continues in the background."
         static let proxyRepairPreparing = "Preparing host proxy repair..."
         static let proxyRepairRunning = "Repairing host proxy..."
         static let proxyRepairCompleted = "Host proxy repair completed."
@@ -402,8 +403,9 @@ enum AppConstants {
         static let bridgedModeUnavailable = "Bridged mode is not available in this build."
         static let diskDecreaseUnavailable = "Disk size can only be increased."
         static let vitalFilesDirectoryRequired = "Vital files directory must be an absolute path."
-        static let vitalFilesDirectoryProtected = "Vital files directory cannot be Desktop, Documents, Downloads, or iCloud Drive. Choose a non-protected local folder such as /Users/Shared/TiroshVitalServer/vital-files."
+        static let vitalFilesDirectoryProtected = "Vital files directory cannot be Desktop, Documents, Downloads, or iCloud Drive. Choose a non-protected local folder such as /Users/Shared/VitalServerHelper/vital-files."
         static let invalidPort = "Port must be between 1 and 65535."
+        static let invalidAdvertisedURL = "Advertised URLs must be empty or absolute http/https URLs."
         static let invalidRedisBackupRetention = "Redis backups must be between 1 and 30 archives."
         static let adminPasswordRequired = "Admin password reset value must not be empty."
         static let adminPasswordNewline = "Admin password reset value must not contain newlines."
@@ -417,6 +419,24 @@ enum AppConstants {
 
         static func launchdState(loaded: Bool) -> String {
             loaded ? running : stopped
+        }
+
+        static func launchdState(_ state: RuntimeServiceState?) -> String {
+            guard let state else {
+                return unknown
+            }
+            switch state {
+            case .loaded:
+                return running
+            case .notLoaded:
+                return stopped
+            case .readFailed:
+                return "Read failed"
+            case .permissionDenied:
+                return "Permission denied"
+            case .unknown(let value):
+                return titleCasedStatus(value)
+            }
         }
 
         static func vmState(_ value: RuntimeVMState?) -> String {
@@ -457,6 +477,8 @@ enum AppConstants {
                 return "Missing VM IP"
             case .runtimeStateMissing:
                 return "Guest runtime state missing"
+            case .runtimeStateInvalid:
+                return "Guest runtime state invalid"
             case .runtimeStateStale:
                 return "Guest runtime state stale"
             case .launchFailed(let reason):
@@ -475,6 +497,12 @@ enum AppConstants {
                 return "Guest disk I/O error"
             case .guestHTTP(let status):
                 return "Guest HTTP \(status)"
+            case .guestHTTPProbeFailed(let status):
+                return "Guest HTTP probe failed (\(status))"
+            case .guestBootstrapResultMissing:
+                return "Guest bootstrap result missing"
+            case .guestBootstrapResultUnavailable:
+                return "Guest bootstrap result unavailable"
             case .guestBootstrapMissingRuntimePackages:
                 return "Guest bootstrap missing runtime packages"
             case .guestBootstrapFailed:
@@ -496,6 +524,8 @@ enum AppConstants {
                 return "Missing VM disk"
             case .vmService(let state):
                 return "VM service \(titleCasedStatus(state))"
+            case .guestLogSyncService(let state):
+                return "Guest log sync service \(titleCasedStatus(state))"
             case .proxyService(let state):
                 return "Host proxy service \(titleCasedStatus(state))"
             case .watchdogService(let state):
@@ -508,16 +538,30 @@ enum AppConstants {
                 return "Swagger UI HTTP \(status)"
             case .guestHTTP(let status):
                 return "Guest HTTP \(status)"
+            case .guestHTTPProbeFailed(let status):
+                return "Guest HTTP probe failed (\(status))"
             case .guestRuntimeStateStale:
                 return "Guest runtime state stale"
             case .auditProxyHTTP(let status):
                 return "Audit proxy HTTP \(status)"
             case .containerService(let service, let state):
                 return "Container \(service) \(titleCasedStatus(state))"
+            case .containerObservationMissing:
+                return "Container observation missing"
+            case .containerObservationReadFailed(let message):
+                return "Container observation read failed (\(titleCasedStatus(message)))"
             case .vitalDBAnomaly(let kind, let subject):
                 return "VitalDB anomaly \(titleCasedStatus(kind)) on \(subject)"
+            case .vitalDBObservationMissing:
+                return "VitalDB observation missing"
+            case .vitalDBObservationReadFailed(let message):
+                return "VitalDB observation read failed (\(titleCasedStatus(message)))"
             case .proxyPortInUse(let port, let listeners):
                 return "Host proxy port \(port) in use by \(listeners)"
+            case .guestBootstrapResultMissing:
+                return "Guest bootstrap result missing"
+            case .guestBootstrapResultUnavailable:
+                return "Guest bootstrap result unavailable"
             case .guestBootstrapMissingRuntimePackages:
                 return "Guest bootstrap missing runtime packages"
             case .guestBootstrapFailed:

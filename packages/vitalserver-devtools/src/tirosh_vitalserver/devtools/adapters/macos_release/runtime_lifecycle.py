@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import time
@@ -188,6 +189,28 @@ def wait_for_rootfs_ready(input: RuntimeWaitInput) -> int:
     raise SystemExit(
         f"error: timed out waiting for {marker}\n"
         f"Check VM launcher log: {launcher_log(input.vm_home)}"
+    )
+
+
+def wait_for_runtime_stopped(input: RuntimeWaitInput) -> int:
+    lifecycle = vm_home_path(input.vm_home) / "run/vm-lifecycle.json"
+    print(f"Waiting for VM lifecycle stopped: {lifecycle}")
+    deadline = time.monotonic() + input.timeout
+    last_state = "not-started"
+    while time.monotonic() < deadline:
+        try:
+            document = json.loads(lifecycle.read_text(encoding="utf-8"))
+            state = document.get("state")
+            if state == "stopped":
+                print("VM lifecycle is stopped")
+                return 0
+            last_state = str(state)
+        except (OSError, json.JSONDecodeError) as error:
+            last_state = str(error)
+        time.sleep(2)
+    raise SystemExit(
+        f"error: timed out waiting for VM lifecycle stopped: {lifecycle} "
+        f"last={last_state}\nCheck VM launcher log: {launcher_log(input.vm_home)}"
     )
 
 

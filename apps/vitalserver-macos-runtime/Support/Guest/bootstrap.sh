@@ -1,15 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-MOUNT_TAG="${TIROSH_SHARE_TAG:-tirosh}"
-MOUNT_POINT="${TIROSH_SHARE_MOUNT:-/mnt/tirosh}"
-VITAL_FILES_MOUNT_TAG="${TIROSH_VITAL_FILES_SHARE_TAG:-tirosh-vital-files}"
-VITAL_FILES_MOUNT_POINT="${TIROSH_VITAL_FILES_SHARE_MOUNT:-/mnt/tirosh-vital-files}"
-DEPLOY_DIR="${TIROSH_DEPLOY_DIR:-${MOUNT_POINT}/deploy}"
+MOUNT_TAG="tirosh"
+MOUNT_POINT="/mnt/tirosh"
+VITAL_FILES_MOUNT_TAG="tirosh-vital-files"
+VITAL_FILES_MOUNT_POINT="/mnt/tirosh-vital-files"
+DEPLOY_DIR="${MOUNT_POINT}/deploy"
 RUNTIME_DIR="${MOUNT_POINT}/run"
 RUNTIME_STATE_FILE="${RUNTIME_DIR}/runtime-state.json"
 BOOTSTRAP_RESULT_FILE="${RUNTIME_DIR}/bootstrap-result.json"
 BOOTSTRAP_RESULT_WRITTEN=0
+GUEST_TOOLS_HOME="/opt/tirosh/guest-tools"
+GUEST_TOOLS_VENV="${GUEST_TOOLS_HOME}/venv"
+PYTHON_WHEEL_DIR="${DEPLOY_DIR}/python-wheels"
 
 if [ "$(id -u)" -ne 0 ]; then
   printf "error: run with sudo\n" >&2
@@ -74,6 +77,7 @@ require_deploy_bundle() {
     printf "error: missing %s/runtime-config.json\n" "${DEPLOY_DIR}" >&2
     exit 1
   fi
+
 }
 
 write_runtime_state() {
@@ -138,10 +142,25 @@ expand_root_filesystem() {
   df -h /
 }
 
+python_venv_ready() {
+  local test_venv
+
+  test_venv="$(mktemp -d)"
+  if python3 -m venv "${test_venv}" >/dev/null 2>&1; then
+    rm -rf "${test_venv}"
+    return 0
+  fi
+
+  rm -rf "${test_venv}"
+  return 1
+}
+
 runtime_packages_ready() {
   command -v curl >/dev/null 2>&1 \
     && command -v docker >/dev/null 2>&1 \
     && command -v python3 >/dev/null 2>&1 \
+    && python_venv_ready \
+    && command -v fuser >/dev/null 2>&1 \
     && command -v avahi-daemon >/dev/null 2>&1 \
     && command -v growpart >/dev/null 2>&1 \
     && docker compose version >/dev/null 2>&1
@@ -153,6 +172,8 @@ missing_runtime_packages() {
   command -v curl >/dev/null 2>&1 || missing+=("curl")
   command -v docker >/dev/null 2>&1 || missing+=("docker")
   command -v python3 >/dev/null 2>&1 || missing+=("python3-minimal")
+  python_venv_ready || missing+=("python3-venv/ensurepip")
+  command -v fuser >/dev/null 2>&1 || missing+=("psmisc")
   command -v avahi-daemon >/dev/null 2>&1 || missing+=("avahi-daemon")
   command -v growpart >/dev/null 2>&1 || missing+=("growpart")
   docker compose version >/dev/null 2>&1 || missing+=("docker compose")
@@ -168,27 +189,67 @@ require_runtime_packages() {
 
   printf "error: missing runtime package in air-gapped rootfs\n" >&2
   printf "The target bootstrap never runs apt-get. Rebuild the package rootfs with make vm-golden-rootfs.\n" >&2
-  printf "Required commands/services: curl, docker, docker compose, python3-minimal, avahi-daemon, growpart.\n" >&2
+  printf "Required commands/services: curl, docker, docker compose, python3-minimal, python3-venv, psmisc, avahi-daemon, growpart.\n" >&2
   printf "Missing commands/services:\n" >&2
   missing_runtime_packages | sed 's/^/  - /' >&2
   write_bootstrap_result "failed" "Missing runtime packages." "guest-bootstrap-missing-runtime-packages"
   exit 1
 }
 
+install_guest_tools() {
+  local wheel
+  local command
+
+  wheel="$(find "${PYTHON_WHEEL_DIR}" -maxdepth 1 -name 'tirosh_vitalserver_guest_tools-*.whl' -type f | sort | tail -n 1 || true)"
+  if [ -z "${wheel}" ]; then
+    printf "error: missing guest tools wheel under %s\n" "${PYTHON_WHEEL_DIR}" >&2
+    return 1
+  fi
+
+  mkdir -p "${GUEST_TOOLS_HOME}"
+  python3 -m venv --clear "${GUEST_TOOLS_VENV}"
+  "${GUEST_TOOLS_VENV}/bin/pip" install --no-index --no-deps "${wheel}"
+  "${GUEST_TOOLS_VENV}/bin/tirosh-guest-tools-install-config"
+  for command in \
+    tirosh-guest-observed \
+    tirosh-guest-observe \
+    tirosh-guest-container-logs \
+    tirosh-guest-diagnostics \
+    tirosh-runtime-env \
+    tirosh-write-runtime-state \
+    tirosh-runtime-state \
+    tirosh-vitalserver-health \
+    tirosh-vitalserver-compose \
+    tirosh-vitalserver-command-poller \
+    tirosh-vitalserver-redis-backup \
+    tirosh-vitalserver-repair-datastore \
+    tirosh-vitalserver-activate-update \
+    tirosh-vitalserver-prepare-update-shutdown \
+    tirosh-guest-tools-install-config; do
+    ln -sf "${GUEST_TOOLS_VENV}/bin/${command}" "/usr/local/bin/${command}"
+  done
+  ln -sf "${GUEST_TOOLS_VENV}/bin/tirosh-guest-container-logs" /usr/local/bin/tirosh-vitalserver-container-logs
+  ln -sf "${GUEST_TOOLS_VENV}/bin/tirosh-guest-diagnostics" /usr/local/bin/tirosh-vitalserver-diagnostics
+}
+
 install_guest_runtime_files() {
+  install -d -m 0755 /etc/tirosh
+
   install -m 0755 "${DEPLOY_DIR}/bin/tirosh-runtime-env" /usr/local/bin/tirosh-runtime-env
   install -m 0755 "${DEPLOY_DIR}/bin/tirosh-write-runtime-state" /usr/local/bin/tirosh-write-runtime-state
   install -m 0755 "${DEPLOY_DIR}/bin/tirosh-runtime-state" /usr/local/bin/tirosh-runtime-state
   install -m 0755 "${DEPLOY_DIR}/bin/tirosh-vitalserver-compose" /usr/local/bin/tirosh-vitalserver-compose
   install -m 0755 "${DEPLOY_DIR}/bin/tirosh-vitalserver-health" /usr/local/bin/tirosh-vitalserver-health
-  install -m 0755 "${DEPLOY_DIR}/bin/tirosh-vitalserver-diagnostics" /usr/local/bin/tirosh-vitalserver-diagnostics
   install -m 0755 "${DEPLOY_DIR}/bin/tirosh-vitalserver-container-logs" /usr/local/bin/tirosh-vitalserver-container-logs
+  install -m 0755 "${DEPLOY_DIR}/bin/tirosh-vitalserver-diagnostics" /usr/local/bin/tirosh-vitalserver-diagnostics
   install -m 0755 "${DEPLOY_DIR}/bin/tirosh-vitalserver-redis-backup" /usr/local/bin/tirosh-vitalserver-redis-backup
   install -m 0755 "${DEPLOY_DIR}/bin/tirosh-vitalserver-repair-datastore" /usr/local/bin/tirosh-vitalserver-repair-datastore
   install -m 0755 "${DEPLOY_DIR}/bin/tirosh-vitalserver-activate-update" /usr/local/bin/tirosh-vitalserver-activate-update
   install -m 0755 "${DEPLOY_DIR}/bin/tirosh-vitalserver-prepare-update-shutdown" /usr/local/bin/tirosh-vitalserver-prepare-update-shutdown
   install -m 0755 "${DEPLOY_DIR}/bin/tirosh-vitalserver-command-poller" /usr/local/bin/tirosh-vitalserver-command-poller
+  install_guest_tools
 
+  install -m 0644 "${DEPLOY_DIR}/systemd/tirosh-guest-observability.service" /etc/systemd/system/tirosh-guest-observability.service
   install -m 0644 "${DEPLOY_DIR}/systemd/tirosh-runtime-state.service" /etc/systemd/system/tirosh-runtime-state.service
   install -m 0644 "${DEPLOY_DIR}/systemd/tirosh-vitalserver-compose.service" /etc/systemd/system/tirosh-vitalserver-compose.service
   install -m 0644 "${DEPLOY_DIR}/systemd/tirosh-vitalserver-testkit.service" /etc/systemd/system/tirosh-vitalserver-testkit.service
@@ -211,6 +272,7 @@ install_guest_runtime_files() {
   systemctl enable --now tirosh-vitalserver-container-logs.service
   systemctl enable --now tirosh-vitalserver-redis-backup.timer
   systemctl enable --now tirosh-vitalserver-command-poller.service
+  systemctl enable --now tirosh-guest-observability.service
 }
 
 load_bundled_docker_images() {
@@ -238,14 +300,7 @@ cleanup_docker_cache() {
 }
 
 start_optional_testkit() {
-  if [ "${TIROSH_TESTKIT_ENABLED:-0}" != "1" ]; then
-    return
-  fi
-
-  printf "Scheduling optional TestKit provisioning via systemd.\n"
-  systemctl reset-failed tirosh-vitalserver-testkit.service >/dev/null 2>&1 || true
-  systemctl restart --no-block tirosh-vitalserver-testkit.service || \
-    printf "warning: failed to schedule optional TestKit provisioning\n" >&2
+  /usr/local/bin/tirosh-vitalserver-compose testkit-up-logged
 }
 
 wait_for_vitalserver_edge() {
@@ -295,7 +350,7 @@ install_guest_runtime_files
 write_runtime_state
 
 systemctl enable --now docker
-hostnamectl set-hostname "${TIROSH_GUEST_HOSTNAME:-tirosh-vitalserver}"
+hostnamectl set-hostname "tirosh-vitalserver"
 systemctl enable --now avahi-daemon
 
 mkdir -p "${VITAL_FILES_MOUNT_POINT}" "${MOUNT_POINT}/vr-release"
@@ -316,7 +371,6 @@ if ! docker image inspect vitalserver-audit-proxy:0.1.0 >/dev/null 2>&1; then
     build audit-proxy
 fi
 
-eval "$(/usr/local/bin/tirosh-runtime-env "${DEPLOY_DIR}/runtime-config.json")"
 /usr/local/bin/tirosh-vitalserver-compose up
 
 wait_for_vitalserver_edge

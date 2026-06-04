@@ -325,7 +325,7 @@ public enum RuntimeControlDevConsoleDocument {
         </div>
         <label>
           Backup path
-          <input id="backupPath" autocomplete="off" placeholder="/Library/Application Support/TiroshVitalServer/backups/...">
+          <input id="backupPath" autocomplete="off" placeholder="/Library/Application Support/VitalServerHelper/backups/...">
         </label>
         <div class="actions">
           <button id="rollbackBackup">Rollback</button>
@@ -586,14 +586,15 @@ public enum RuntimeControlDevConsoleDocument {
         ["host proxy HTTP", status.hostProxyHTTP],
         ["Redis UI HTTP", status.redisUIHTTP],
         ["Swagger HTTP", status.swaggerUIHTTP],
+        ["status read issues", (status.readIssues || []).map(issue => `${issue.source}: ${issue.message}`).join(", ")],
         ["VitalServer URL", vitalServerURL],
         ["Redis UI URL", redisUIURL],
         ["Swagger URL", swaggerURL],
-        ["VM service", status.vmServiceLoaded ? "running" : "stopped"],
-        ["host proxy service", status.proxyServiceLoaded ? "running" : "stopped"],
-        ["guest log sync service", status.guestLogSyncServiceLoaded ? "running" : "stopped"],
-        ["watchdog service", status.watchdogServiceLoaded ? "running" : "stopped"],
-        ["sleep prevention service", status.sleepPreventionServiceLoaded === true ? "running" : status.sleepPreventionServiceLoaded === false ? "stopped" : "unavailable"],
+        ["VM service", serviceState(status.vmServiceState, status.vmServiceLoaded)],
+        ["host proxy service", serviceState(status.proxyServiceState, status.proxyServiceLoaded)],
+        ["guest log sync service", serviceState(status.guestLogSyncServiceState, status.guestLogSyncServiceLoaded)],
+        ["watchdog service", serviceState(status.watchdogServiceState, status.watchdogServiceLoaded)],
+        ["sleep prevention service", serviceState(status.sleepPreventionServiceState, status.sleepPreventionServiceLoaded)],
         ["updated", formatDate(status.updatedAt)]
       ];
       $("advancedStatusMetrics").innerHTML = metricsHTML(values);
@@ -1079,6 +1080,25 @@ public enum RuntimeControlDevConsoleDocument {
       return "Waiting";
     }
 
+    function serviceState(state, fallbackLoaded) {
+      if (state === "loaded") {
+        return "running";
+      }
+      if (state === "not loaded" || state === "not-loaded") {
+        return "stopped";
+      }
+      if (typeof state === "string" && state.length > 0) {
+        return state;
+      }
+      if (fallbackLoaded === true) {
+        return "running";
+      }
+      if (fallbackLoaded === false) {
+        return "stopped";
+      }
+      return "unavailable";
+    }
+
     function successfulHTTPStatus(httpStatus) {
       const code = Number(httpStatus);
       return Number.isInteger(code) && code >= 200 && code < 300;
@@ -1105,6 +1125,9 @@ public enum RuntimeControlDevConsoleDocument {
       }
       if (reasons.some((reason) => String(reason).includes("vitaldb"))) {
         return { title: "VitalServer needs attention", action: "Check Recorders" };
+      }
+      if ((status.readIssues || []).length > 0) {
+        return { title: "VitalServer needs attention", action: "Open Logs" };
       }
       return { title: "VitalServer is unavailable", action: "Repair Runtime Services" };
     }

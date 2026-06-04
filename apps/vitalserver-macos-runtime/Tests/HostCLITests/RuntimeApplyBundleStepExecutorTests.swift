@@ -15,7 +15,7 @@ final class RuntimeApplyBundleStepExecutorTests: XCTestCase {
             UpdateBundleArtifact(name: Constants.Artifacts.rootfsBase, type: .rootfsBase, sha256: "root", size: 1),
             artifact,
         ], migrations: [migration])
-        let policy = RuntimeServiceRestartPolicy(restartVM: true, restartProxy: false, restartWatchdog: true)
+        let policy = RuntimeServiceRestartPolicy(restartVM: true, restartGuestLogSync: true, restartProxy: false, restartWatchdog: true)
         let preflight = ApplyBundlePreflightContext(
             stagedBundle: stagedBundle,
             manifest: manifest,
@@ -27,6 +27,11 @@ final class RuntimeApplyBundleStepExecutorTests: XCTestCase {
 
         let executor = RuntimeApplyBundleStepExecutor(
             stopRuntimeServices: { events.append("stop") },
+            runningVMProcessID: {
+                events.append("pid")
+                return 123
+            },
+            stopRuntimeServicesAfterGuestPoweroff: { pid in events.append("stop-after-poweroff:\(pid)") },
             prepareGuestShutdownForUpdate: { manifest in
                 events.append("shutdown:\(manifest.version)")
             },
@@ -72,8 +77,9 @@ final class RuntimeApplyBundleStepExecutorTests: XCTestCase {
         }
 
         XCTAssertEqual(events, [
+            "pid",
             "shutdown:1.2.3",
-            "stop",
+            "stop-after-poweroff:123",
             "clear-shutdown",
             "mkdir:/runtime:true",
             "size:rootfs-base.raw.gz",
@@ -91,6 +97,8 @@ final class RuntimeApplyBundleStepExecutorTests: XCTestCase {
     func testRootfsReplacementStepSkipsWhenBundleDoesNotIncludeRootfs() throws {
         let executor = RuntimeApplyBundleStepExecutor(
             stopRuntimeServices: {},
+            runningVMProcessID: { 123 },
+            stopRuntimeServicesAfterGuestPoweroff: { _ in },
             prepareGuestShutdownForUpdate: { _ in },
             clearGuestShutdownPreparation: {},
             createDirectory: { _, _ in XCTFail("should not create rootfs directory") },
@@ -110,7 +118,7 @@ final class RuntimeApplyBundleStepExecutorTests: XCTestCase {
             manifest: manifest(version: "1.2.3"),
             stagedRootfs: nil,
             backup: URL(fileURLWithPath: "/backup"),
-            restartPolicy: RuntimeServiceRestartPolicy(restartVM: false, restartProxy: false, restartWatchdog: false)
+            restartPolicy: RuntimeServiceRestartPolicy(restartVM: false, restartGuestLogSync: false, restartProxy: false, restartWatchdog: false)
         )
 
         try executor.execute(
@@ -129,7 +137,7 @@ final class RuntimeApplyBundleStepExecutorTests: XCTestCase {
             ]),
             stagedRootfs: URL(fileURLWithPath: "/staged/rootfs-base.raw.gz"),
             backup: URL(fileURLWithPath: "/backup"),
-            restartPolicy: RuntimeServiceRestartPolicy(restartVM: false, restartProxy: false, restartWatchdog: false)
+            restartPolicy: RuntimeServiceRestartPolicy(restartVM: false, restartGuestLogSync: false, restartProxy: false, restartWatchdog: false)
         )
         let executor = makeExecutor(replaceFile: { _, _ in throw permissionError })
 
@@ -150,7 +158,7 @@ final class RuntimeApplyBundleStepExecutorTests: XCTestCase {
             manifest: manifest(version: "1.2.3", artifacts: [artifact]),
             stagedRootfs: nil,
             backup: URL(fileURLWithPath: "/backup"),
-            restartPolicy: RuntimeServiceRestartPolicy(restartVM: false, restartProxy: false, restartWatchdog: false)
+            restartPolicy: RuntimeServiceRestartPolicy(restartVM: false, restartGuestLogSync: false, restartProxy: false, restartWatchdog: false)
         )
         let executor = makeExecutor(replaceUpdateArtifacts: { artifacts, stagedBundle in
             XCTAssertEqual(artifacts, [artifact])
@@ -171,6 +179,8 @@ final class RuntimeApplyBundleStepExecutorTests: XCTestCase {
         var logs: [String] = []
         let executor = RuntimeApplyBundleStepExecutor(
             stopRuntimeServices: {},
+            runningVMProcessID: { 123 },
+            stopRuntimeServicesAfterGuestPoweroff: { _ in },
             prepareGuestShutdownForUpdate: { _ in },
             clearGuestShutdownPreparation: {
                 throw LauncherError.runtimeOperationFailed("clear failed")
@@ -192,7 +202,7 @@ final class RuntimeApplyBundleStepExecutorTests: XCTestCase {
             manifest: manifest(version: "1.2.3"),
             stagedRootfs: URL(fileURLWithPath: "/staged/rootfs-base.raw.gz"),
             backup: URL(fileURLWithPath: "/backup"),
-            restartPolicy: RuntimeServiceRestartPolicy(restartVM: true, restartProxy: false, restartWatchdog: false)
+            restartPolicy: RuntimeServiceRestartPolicy(restartVM: true, restartGuestLogSync: true, restartProxy: false, restartWatchdog: false)
         )
 
         try executor.execute(
@@ -207,6 +217,8 @@ final class RuntimeApplyBundleStepExecutorTests: XCTestCase {
     func testRejectsNonApplyBundleStep() {
         let executor = RuntimeApplyBundleStepExecutor(
             stopRuntimeServices: {},
+            runningVMProcessID: { 123 },
+            stopRuntimeServicesAfterGuestPoweroff: { _ in },
             prepareGuestShutdownForUpdate: { _ in },
             clearGuestShutdownPreparation: {},
             createDirectory: { _, _ in },
@@ -226,7 +238,7 @@ final class RuntimeApplyBundleStepExecutorTests: XCTestCase {
             manifest: manifest(version: "1.2.3"),
             stagedRootfs: URL(fileURLWithPath: "/staged/rootfs-base.raw.gz"),
             backup: URL(fileURLWithPath: "/backup"),
-            restartPolicy: RuntimeServiceRestartPolicy(restartVM: false, restartProxy: false, restartWatchdog: false)
+            restartPolicy: RuntimeServiceRestartPolicy(restartVM: false, restartGuestLogSync: false, restartProxy: false, restartWatchdog: false)
         )
 
         XCTAssertThrowsError(try executor.execute(
@@ -260,6 +272,8 @@ final class RuntimeApplyBundleStepExecutorTests: XCTestCase {
     ) -> RuntimeApplyBundleStepExecutor {
         RuntimeApplyBundleStepExecutor(
             stopRuntimeServices: {},
+            runningVMProcessID: { 123 },
+            stopRuntimeServicesAfterGuestPoweroff: { _ in },
             prepareGuestShutdownForUpdate: { _ in },
             clearGuestShutdownPreparation: {},
             createDirectory: { _, _ in },

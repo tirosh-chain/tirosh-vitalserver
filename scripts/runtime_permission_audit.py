@@ -9,10 +9,9 @@ import os
 import pwd
 import stat
 import sys
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
-
 
 DEFAULT_PRODUCT_ROOT = Path("/Library/Application Support/TiroshVitalServer")
 DEFAULT_HELPER_APP = Path("/Applications/VitalServer Helper.app")
@@ -35,7 +34,13 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     product_root = args.product_root
     vm_home = args.vm_home or product_root / "vm"
-    probes = list(build_probes(product_root=product_root, vm_home=vm_home, require_install=args.require_install))
+    probes = list(
+        build_probes(
+            product_root=product_root,
+            vm_home=vm_home,
+            require_install=args.require_install,
+        )
+    )
     results = [audit_probe(probe) for probe in probes]
 
     if args.json:
@@ -55,11 +60,19 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         action="store_true",
         help="Treat missing installed-runtime paths as failures instead of warnings.",
     )
-    parser.add_argument("--json", action="store_true", help="Print machine-readable audit output.")
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Print machine-readable audit output.",
+    )
     return parser.parse_args(argv)
 
 
-def build_probes(product_root: Path, vm_home: Path, require_install: bool) -> Iterable[Probe]:
+def build_probes(
+    product_root: Path,
+    vm_home: Path,
+    require_install: bool,
+) -> Iterable[Probe]:
     status_dir = product_root / "status"
     logs_dir = product_root / "logs"
     runtime_dir = vm_home / "runtime"
@@ -70,24 +83,120 @@ def build_probes(product_root: Path, vm_home: Path, require_install: bool) -> It
     installed = require_install or product_root.exists() or DEFAULT_HELPER_APP.exists()
     required = installed
 
-    yield Probe("helperApp", DEFAULT_HELPER_APP, "directory", ("read", "execute"), required)
+    yield Probe(
+        "helperApp",
+        DEFAULT_HELPER_APP,
+        "directory",
+        ("read", "execute"),
+        required,
+    )
     yield Probe("launcher", DEFAULT_LAUNCHER, "file", ("read", "execute"), required)
-    yield Probe("uninstaller", DEFAULT_UNINSTALLER, "file", ("read", "execute"), required)
-    yield Probe("proxyLaunchDaemon", DEFAULT_PROXY_PLIST, "file", ("read",), installed and DEFAULT_PROXY_PLIST.exists())
+    yield Probe(
+        "uninstaller",
+        DEFAULT_UNINSTALLER,
+        "file",
+        ("read", "execute"),
+        required,
+    )
+    yield Probe(
+        "proxyLaunchDaemon",
+        DEFAULT_PROXY_PLIST,
+        "file",
+        ("read",),
+        installed and DEFAULT_PROXY_PLIST.exists(),
+    )
     yield Probe("productRoot", product_root, "directory", ("read", "execute"), required)
-    yield Probe("statusDirectory", status_dir, "directory", ("read", "execute"), required)
-    yield Probe("runtimeStatus", status_dir / "runtime-status.json", "file", ("read",), installed and status_dir.exists())
-    yield Probe("runtimeEvents", status_dir / "runtime-events.jsonl", "file", ("read",), installed and status_dir.exists())
-    yield Probe("runtimeObservabilityDB", status_dir / "runtime-observability.sqlite", "file", ("read",), installed and status_dir.exists())
-    yield Probe("logsDirectory", logs_dir, "directory", ("read", "execute"), installed and product_root.exists())
-    yield Probe("runtimeHome", vm_home, "directory", ("read", "execute"), installed and vm_home.exists())
-    yield Probe("runtimeDirectory", runtime_dir, "directory", ("read", "execute"), installed and vm_home.exists())
-    yield Probe("runtimeConfig", runtime_dir / "vm-config.json", "file", ("read",), installed and runtime_dir.exists())
-    yield Probe("guestDeployDirectory", deploy_dir, "directory", ("read", "execute"), installed and deploy_dir.exists())
-    yield Probe("guestRuntimeConfigSecret", deploy_dir / "runtime-config.json", "file", (), installed and deploy_dir.exists())
-    yield Probe("guestRuntimeSettings", deploy_dir / "runtime-settings.json", "file", ("read",), installed and deploy_dir.exists())
-    yield Probe("guestRunDirectory", run_dir, "directory", ("read", "execute"), installed and run_dir.exists())
-    yield Probe("sharedRoot", DEFAULT_SHARED_ROOT, "directory", ("read", "write", "execute"), DEFAULT_SHARED_ROOT.exists())
+    yield Probe(
+        "statusDirectory",
+        status_dir,
+        "directory",
+        ("read", "execute"),
+        required,
+    )
+    yield Probe(
+        "runtimeStatus",
+        status_dir / "runtime-status.json",
+        "file",
+        ("read",),
+        installed and status_dir.exists(),
+    )
+    yield Probe(
+        "runtimeEvents",
+        status_dir / "runtime-events.jsonl",
+        "file",
+        ("read",),
+        installed and status_dir.exists(),
+    )
+    yield Probe(
+        "runtimeObservabilityDB",
+        status_dir / "runtime-observability.sqlite",
+        "file",
+        ("read",),
+        installed and status_dir.exists(),
+    )
+    yield Probe(
+        "logsDirectory",
+        logs_dir,
+        "directory",
+        ("read", "execute"),
+        installed and product_root.exists(),
+    )
+    yield Probe(
+        "runtimeHome",
+        vm_home,
+        "directory",
+        ("read", "execute"),
+        installed and vm_home.exists(),
+    )
+    yield Probe(
+        "runtimeDirectory",
+        runtime_dir,
+        "directory",
+        ("read", "execute"),
+        installed and vm_home.exists(),
+    )
+    yield Probe(
+        "runtimeConfig",
+        runtime_dir / "vm-config.json",
+        "file",
+        ("read",),
+        installed and runtime_dir.exists(),
+    )
+    yield Probe(
+        "guestDeployDirectory",
+        deploy_dir,
+        "directory",
+        ("read", "execute"),
+        installed and deploy_dir.exists(),
+    )
+    yield Probe(
+        "guestRuntimeConfigSecret",
+        deploy_dir / "runtime-config.json",
+        "file",
+        (),
+        installed and deploy_dir.exists(),
+    )
+    yield Probe(
+        "guestRuntimeSettings",
+        deploy_dir / "runtime-settings.json",
+        "file",
+        ("read",),
+        installed and deploy_dir.exists(),
+    )
+    yield Probe(
+        "guestRunDirectory",
+        run_dir,
+        "directory",
+        ("read", "execute"),
+        installed and run_dir.exists(),
+    )
+    yield Probe(
+        "sharedRoot",
+        DEFAULT_SHARED_ROOT,
+        "directory",
+        ("read", "write", "execute"),
+        DEFAULT_SHARED_ROOT.exists(),
+    )
 
 
 def audit_probe(probe: Probe) -> dict[str, object]:
@@ -110,7 +219,13 @@ def audit_probe(probe: Probe) -> dict[str, object]:
         result["message"] = f"stat failed: {exc}"
         return result
 
-    actual_kind = "directory" if stat.S_ISDIR(st.st_mode) else "file" if stat.S_ISREG(st.st_mode) else "other"
+    actual_kind = (
+        "directory"
+        if stat.S_ISDIR(st.st_mode)
+        else "file"
+        if stat.S_ISREG(st.st_mode)
+        else "other"
+    )
     result.update(
         {
             "status": "ok",
@@ -125,7 +240,9 @@ def audit_probe(probe: Probe) -> dict[str, object]:
     if actual_kind != probe.kind:
         issues.append(f"expected {probe.kind}, found {actual_kind}")
 
-    missing_access = [access for access in probe.access if not has_access(probe.path, access)]
+    missing_access = [
+        access for access in probe.access if not has_access(probe.path, access)
+    ]
     if missing_access:
         issues.append(f"missing access: {', '.join(missing_access)}")
 
@@ -158,7 +275,12 @@ def print_human(results: list[dict[str, object]]) -> None:
         mode = result.get("mode", "-")
         owner = result.get("owner", "-")
         message = result.get("message", "")
-        print(f"{status:4} {result['name']}: {result['path']} [{mode} {owner}] {message}".rstrip())
+        print(
+            (
+                f"{status:4} {result['name']}: {result['path']} "
+                f"[{mode} {owner}] {message}"
+            ).rstrip()
+        )
 
 
 if __name__ == "__main__":

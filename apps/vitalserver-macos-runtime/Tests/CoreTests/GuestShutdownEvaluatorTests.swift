@@ -3,10 +3,10 @@ import Core
 import XCTest
 
 final class GuestShutdownEvaluatorTests: XCTestCase {
-    func testEvaluatesMissingAndRunningResultsAsWait() {
+    func testEvaluatesMissingResultSeparatelyFromRunningResult() {
         XCTAssertEqual(
             GuestShutdownEvaluator.evaluate(nil, expectedRequestId: "request-1"),
-            .wait(message: "waiting for guest update shutdown worker")
+            .missing(message: "waiting for guest update shutdown worker")
         )
         XCTAssertEqual(
             GuestShutdownEvaluator.evaluate(result(status: .running, requestId: "request-1", message: "stopping"), expectedRequestId: "request-1"),
@@ -16,7 +16,15 @@ final class GuestShutdownEvaluatorTests: XCTestCase {
 
     func testEvaluatesReadyAndFailedResults() {
         XCTAssertEqual(
-            GuestShutdownEvaluator.evaluate(result(status: .ready, requestId: "request-1", message: "safe"), expectedRequestId: "request-1"),
+            GuestShutdownEvaluator.evaluate(
+                result(
+                    status: .ready,
+                    requestId: "request-1",
+                    message: "safe",
+                    shutdownPhase: .poweroffRequested
+                ),
+                expectedRequestId: "request-1"
+            ),
             .ready(message: "safe")
         )
         XCTAssertEqual(
@@ -29,11 +37,50 @@ final class GuestShutdownEvaluatorTests: XCTestCase {
         )
     }
 
+    func testReadyResultRequiresExplicitPoweroffPhase() {
+        XCTAssertEqual(
+            GuestShutdownEvaluator.evaluate(
+                result(status: .ready, requestId: "request-1", message: "legacy ready"),
+                expectedRequestId: "request-1"
+            ),
+            .failed(message: "guest update shutdown ready result is missing shutdownPhase")
+        )
+        XCTAssertEqual(
+            GuestShutdownEvaluator.evaluate(
+                result(
+                    status: .ready,
+                    requestId: "request-1",
+                    message: "prepared",
+                    shutdownPhase: .prepared
+                ),
+                expectedRequestId: "request-1"
+            ),
+            .wait(message: "prepared")
+        )
+        XCTAssertEqual(
+            GuestShutdownEvaluator.evaluate(
+                result(
+                    status: .ready,
+                    requestId: "request-1",
+                    message: "poweroff failed",
+                    shutdownPhase: .poweroffFailed
+                ),
+                expectedRequestId: "request-1"
+            ),
+            .failed(message: "poweroff failed")
+        )
+    }
+
     func testWaiterStopsOnReady() {
         var results: [RuntimeGuestDocumentLoadResult<GuestUpdateShutdownResultDocument>] = [
             .missing,
             .loaded(result(status: .running, requestId: "request-1", message: "running")),
-            .loaded(result(status: .ready, requestId: "request-1", message: "ready")),
+            .loaded(result(
+                status: .ready,
+                requestId: "request-1",
+                message: "ready",
+                shutdownPhase: .poweroffRequested
+            )),
         ]
         var progress: [String] = []
         var sleepCount = 0
@@ -66,13 +113,15 @@ final class GuestShutdownEvaluatorTests: XCTestCase {
     private func result(
         status: GuestShutdownStatus,
         requestId: String,
-        message: String
+        message: String,
+        shutdownPhase: GuestShutdownPhase? = nil
     ) -> GuestUpdateShutdownResultDocument {
         GuestUpdateShutdownResultDocument(
             schemaVersion: 1,
             requestId: requestId,
             operation: .prepareUpdateShutdown,
             status: status,
+            shutdownPhase: shutdownPhase,
             message: message,
             updatedAt: "2026-05-22T00:00:00Z"
         )

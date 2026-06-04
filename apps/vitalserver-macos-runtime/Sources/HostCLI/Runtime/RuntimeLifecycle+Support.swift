@@ -2,6 +2,7 @@ import Foundation
 import Core
 import Contracts
 import HostInfrastructure
+import RuntimeWorkflow
 
 extension RuntimeLifecycle {
     func latestBackup() -> URL? {
@@ -68,32 +69,80 @@ extension RuntimeLifecycle {
         try serviceController.stopRuntimeServices()
     }
 
-    func startRuntimeServices(restartVM: Bool, restartProxy: Bool, restartWatchdog: Bool) throws {
-        if restartVM, preventSystemSleepEnabled() {
-            startLaunchdService(.sleepPrevention)
+    func stopRuntimeServicesForVMDiskReplacement() throws {
+        do {
+            try stopRuntimeServices()
+            return
+        } catch {
+            log("graceful runtime services stop failed before VM disk replacement; forcing VM process stop error=\(error.localizedDescription)")
         }
-        serviceController.startRuntimeServices(restartVM: restartVM, restartProxy: false, restartWatchdog: false)
+
+        try ProcessState.forceKillAndWait(
+            pidFile: paths.pidFile,
+            fileStore: fileStore,
+            timeoutSeconds: Constants.Runtime.vmStopWaitTimeoutSeconds,
+            pollIntervalSeconds: Constants.Runtime.serviceStopPollIntervalSeconds,
+            log: log
+        )
+        serviceController.unloadRuntimeServicesAfterForcedVMStop()
+        log("runtime services stopped for VM disk replacement")
+    }
+
+    func runningVMProcessID() throws -> pid_t {
+        try ProcessState.runningPid(pidFile: paths.pidFile, fileStore: fileStore)
+    }
+
+    func stopRuntimeServicesAfterGuestPoweroff(expectedVMProcessID: pid_t) throws {
+        try serviceController.stopRuntimeServicesAfterGuestPoweroff(expectedVMProcessID: expectedVMProcessID)
+    }
+
+    func startRuntimeServices(
+        restartVM: Bool,
+        restartGuestLogSync: Bool,
+        restartProxy: Bool,
+        restartWatchdog: Bool
+    ) throws {
+        if restartVM, preventSystemSleepEnabled() {
+            try startLaunchdService(.sleepPrevention)
+        }
+        try serviceController.startRuntimeServices(
+            restartVM: restartVM,
+            restartGuestLogSync: restartGuestLogSync,
+            restartProxy: false,
+            restartWatchdog: false
+        )
         if restartProxy {
             try cleanupHostProxyPortBeforeStart()
-            serviceController.startRuntimeServices(restartVM: false, restartProxy: true, restartWatchdog: false)
+            try serviceController.startRuntimeServices(
+                restartVM: false,
+                restartGuestLogSync: false,
+                restartProxy: true,
+                restartWatchdog: false
+            )
         }
-        serviceController.startRuntimeServices(restartVM: false, restartProxy: false, restartWatchdog: restartWatchdog)
+        try serviceController.startRuntimeServices(
+            restartVM: false,
+            restartGuestLogSync: false,
+            restartProxy: false,
+            restartWatchdog: restartWatchdog
+        )
     }
 
     func startRuntimeServices(_ policy: RuntimeServiceRestartPolicy) throws {
         try startRuntimeServices(
             restartVM: policy.restartVM,
+            restartGuestLogSync: policy.restartGuestLogSync,
             restartProxy: policy.restartProxy,
             restartWatchdog: policy.restartWatchdog
         )
     }
 
-    func startLaunchdService(_ service: RuntimeManagedService) {
-        serviceController.startLaunchdService(service)
+    func startLaunchdService(_ service: RuntimeManagedService) throws {
+        try serviceController.startLaunchdService(service)
     }
 
-    func restartOrStartLaunchdService(_ service: RuntimeManagedService) {
-        serviceController.restartOrStartLaunchdService(service)
+    func restartOrStartLaunchdService(_ service: RuntimeManagedService) throws {
+        try serviceController.restartOrStartLaunchdService(service)
     }
 
     func restartVMRuntimeServices() throws {
@@ -111,6 +160,7 @@ extension RuntimeLifecycle {
     func waitForHealth(restartVM: Bool, restartProxy: Bool, restartWatchdog: Bool) throws {
         try runtimeHealthWaitRunner().wait(for: RuntimeServiceRestartPolicy(
             restartVM: restartVM,
+            restartGuestLogSync: restartVM,
             restartProxy: restartProxy,
             restartWatchdog: restartWatchdog
         ))
@@ -127,7 +177,7 @@ extension RuntimeLifecycle {
                 isLaunchdLoaded(.proxy)
             },
             expectedProxyNginxPID: {
-                healthChecker.readTrimmed(installedPaths.proxyNginxPID)
+                healthChecker.readInstalledProxyNginxPID()
             },
             ownedNginxPathFragments: [
                 installedPaths.nginxExecutable.path,
@@ -151,6 +201,161 @@ extension RuntimeLifecycle {
             },
             log: log
         )
+    }
+
+    func runtimeUninstallRunner() throws -> RuntimeUninstallWorkflow {
+        let vitalFilesDirectoryRead = configuredExternalVitalFilesDirectory()
+        let uninstallPaths = RuntimeUninstallPaths(
+            productRoot: installedPaths.productRoot,
+            managerApp: installedPaths.managerApp,
+            defaultVitalFilesDirectory: installedPaths.vitalFilesDirectory,
+            externalVitalFilesDirectory: vitalFilesDirectoryRead.externalDirectory,
+            configuredVitalFilesDirectoryReadFailure: vitalFilesDirectoryRead.failure,
+            launchDaemonPlists: RuntimeManagedService.stopOrder.map {
+                URL(fileURLWithPath: $0.launchDaemonPlist)
+            },
+            runtimeTools: [
+                installedPaths.launcher,
+                URL(fileURLWithPath: Constants.InstallPaths.proxyRun),
+                installedPaths.uninstaller,
+            ]
+        )
+        return RuntimeUninstallWorkflow(
+            paths: uninstallPaths,
+            readers: RuntimeUninstallStateReaders(
+                serviceStates: {
+                    Dictionary(uniqueKeysWithValues: RuntimeManagedService.stopOrder.map { service in
+                        (service, healthChecker.launchdState(service))
+                    })
+                },
+                vmProcessState: {
+                    ProcessState.inspect(pidFile: paths.pidFile, fileStore: fileStore)
+                },
+                fileExists: fileExists,
+                directoryExists: directoryExists,
+                packageReceiptStates: {
+                    RuntimePackageReceiptStateReader.states(
+                        identifiers: Constants.Product.packageReceiptIdentifiers,
+                        runProcess: { executable, arguments in
+                            runProcess(executable, arguments: arguments)
+                        }
+                    )
+                },
+                cleanupArtifactStates: { clean in
+                    RuntimeInstallArtifactStateReader.states(
+                        paths: cleanupArtifactPaths(clean: clean, paths: uninstallPaths).map(\.path)
+                    )
+                }
+            ),
+            effects: RuntimeUninstallEffects(
+                createRedisBackup: createRedisBackup,
+                stopRuntimeServices: {
+                    try serviceController.disableRuntimeServicesForUninstall()
+                    try stopRuntimeServices()
+                },
+                createDirectory: { url, withIntermediateDirectories in
+                    try fileStore.createDirectory(at: url, withIntermediateDirectories: withIntermediateDirectories)
+                },
+                removeItem: { url in
+                    try fileStore.removeItem(at: url)
+                },
+                moveItem: { source, destination in
+                    try fileStore.moveItem(at: source, to: destination)
+                },
+                forgetPackageReceipt: { identifier in
+                    runProcess("/usr/sbin/pkgutil", arguments: ["--forget", identifier])
+                }
+            ),
+            writer: RuntimeUninstallStateWriter(
+                writeState: { state, clean, message, blockers in
+                    try RuntimeUninstallStateStore(
+                        url: installedPaths.runtimeUninstallState,
+                        fileStore: fileStore,
+                        now: { clock.now }
+                    ).write(
+                        state: state,
+                        clean: clean,
+                        message: message,
+                        blockers: blockers
+                    )
+                }
+            ),
+            diagnostics: RuntimeUninstallDiagnostics(
+                contentsOfDirectory: { url in
+                    try fileStore.contentsOfDirectory(at: url, skipsHiddenFiles: false)
+                },
+                runProcess: runProcess,
+                log: log
+            ),
+            packageReceiptIdentifiers: Constants.Product.packageReceiptIdentifiers
+        )
+    }
+
+    func cleanupArtifactPaths(clean: Bool, paths: RuntimeUninstallPaths) -> [URL] {
+        var artifactPaths = [paths.managerApp]
+        artifactPaths.append(contentsOf: paths.launchDaemonPlists)
+        artifactPaths.append(contentsOf: paths.runtimeTools)
+        if clean {
+            artifactPaths.append(paths.productRoot)
+            if let externalVitalFilesDirectory = paths.externalVitalFilesDirectory {
+                artifactPaths.append(externalVitalFilesDirectory)
+            }
+        }
+        return artifactPaths
+    }
+
+    func runtimeFreshInstallPreflightRunner() -> RuntimeFreshInstallPreflightRunner {
+        RuntimeFreshInstallPreflightRunner(
+            settingsState: {
+                RuntimeInstallSettingsStateReader.state(
+                    path: Constants.InstallPaths.settingsPath,
+                    fileStore: fileStore
+                )
+            },
+            artifactStates: {
+                RuntimeInstallArtifactStateReader.states(paths: freshInstallArtifactPaths().map(\.path))
+            },
+            serviceStates: {
+                RuntimeManagedService.stopOrder.map { service in
+                    RuntimeFreshInstallServiceState(
+                        label: service.label,
+                        state: healthChecker.launchdState(service)
+                    )
+                }
+            },
+            packageReceiptStates: {
+                RuntimePackageReceiptStateReader.states(
+                    identifiers: Constants.Product.packageReceiptIdentifiers,
+                    runProcess: { executable, arguments in
+                        runProcess(executable, arguments: arguments)
+                    }
+                )
+            },
+            proxyPortState: { port in
+                RuntimeHostProxyPortStateReader.state(
+                    port: port,
+                    runProcess: { executable, arguments in
+                        runProcess(executable, arguments: arguments)
+                    }
+                )
+            }
+        )
+    }
+
+    func freshInstallArtifactPaths() -> [URL] {
+        [
+            installedPaths.productRoot,
+            installedPaths.managerApp,
+            installedPaths.launcher,
+            URL(fileURLWithPath: Constants.InstallPaths.proxyRun),
+            installedPaths.uninstaller,
+        ] + RuntimeManagedService.stopOrder.map {
+            URL(fileURLWithPath: $0.launchDaemonPlist)
+        }
+    }
+
+    func installProvisionPayloadPaths() -> [URL] {
+        freshInstallArtifactPaths()
     }
 
     func reasonText(_ reasons: [RuntimeFailureReason]) -> String {
@@ -422,7 +627,7 @@ extension RuntimeLifecycle {
             "system/\(RuntimeManagedService.sleepPrevention.label)",
         ])
         if enabled {
-            startLaunchdService(.sleepPrevention)
+            try startLaunchdService(.sleepPrevention)
         } else {
             stopLaunchdService(.sleepPrevention)
         }
@@ -440,6 +645,24 @@ extension RuntimeLifecycle {
             },
             log: log
         )
+    }
+
+    func configuredExternalVitalFilesDirectory() -> RuntimeConfiguredExternalVitalFilesDirectoryRead {
+        do {
+            let config = try VMRuntimeConfig.load(from: paths.config, fileStore: fileStore)
+            if let hostPath = config.vitalFilesDirectory?.hostPath, hostPath.hasPrefix("/") {
+                let url = URL(fileURLWithPath: hostPath)
+                guard url.path != installedPaths.vitalFilesDirectory.path else {
+                    return RuntimeConfiguredExternalVitalFilesDirectoryRead(externalDirectory: nil, failure: nil)
+                }
+                return RuntimeConfiguredExternalVitalFilesDirectoryRead(externalDirectory: url, failure: nil)
+            }
+            return RuntimeConfiguredExternalVitalFilesDirectoryRead(externalDirectory: nil, failure: nil)
+        } catch {
+            let reason = error.localizedDescription
+            log("failed to read configured vital files directory error=\(reason)")
+            return RuntimeConfiguredExternalVitalFilesDirectoryRead(externalDirectory: nil, failure: reason)
+        }
     }
 
     func runtimeCommandExecutor() -> RuntimeCommandExecutor {

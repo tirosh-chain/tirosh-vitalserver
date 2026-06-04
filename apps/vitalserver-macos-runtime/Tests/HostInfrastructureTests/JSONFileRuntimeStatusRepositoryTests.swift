@@ -53,13 +53,13 @@ final class JSONFileRuntimeStatusRepositoryTests: XCTestCase {
     private func document(message: String) -> RuntimeStatusDocument {
         RuntimeStatusDocument(
             schemaVersion: 2,
-            product: "TiroshVitalServer",
+            product: "VitalServerHelper",
             status: .healthy,
             operation: .health,
             message: message,
             updatedAt: "2026-05-21T12:33:57Z",
-            productRoot: "/Library/Application Support/TiroshVitalServer",
-            runtimeHome: "/Library/Application Support/TiroshVitalServer/vm",
+            productRoot: "/Library/Application Support/VitalServerHelper",
+            runtimeHome: "/Library/Application Support/VitalServerHelper/vm",
             runtimeVersion: "0.1.4",
             vmService: .loaded,
             proxyService: .loaded,

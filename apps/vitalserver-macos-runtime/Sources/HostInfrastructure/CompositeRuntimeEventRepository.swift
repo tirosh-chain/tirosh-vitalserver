@@ -2,6 +2,17 @@ import Contracts
 import Core
 import Foundation
 
+public enum CompositeRuntimeEventRepositoryError: Error, Equatable, CustomStringConvertible {
+    case secondaryAppendFailed(eventID: String, error: String)
+
+    public var description: String {
+        switch self {
+        case .secondaryAppendFailed(let eventID, let error):
+            return "runtime event sqlite append failed eventID=\(eventID) error=\(error)"
+        }
+    }
+}
+
 public struct CompositeRuntimeEventRepository: RuntimeEventRepository, RuntimeEventHistoryReading {
     private let primary: JSONLRuntimeEventRepository
     private let secondary: SQLiteRuntimeEventRepository
@@ -22,12 +33,13 @@ public struct CompositeRuntimeEventRepository: RuntimeEventRepository, RuntimeEv
         do {
             try secondary.append(event)
         } catch {
-            log("runtime event sqlite append failed eventID=\(event.id) error=\(error)")
+            let appendError = CompositeRuntimeEventRepositoryError.secondaryAppendFailed(
+                eventID: event.id,
+                error: String(describing: error)
+            )
+            log(appendError.description)
+            throw appendError
         }
-    }
-
-    public func recent(limit: Int) -> [RuntimeEventDocument] {
-        query(RuntimeEventQuery(limit: limit)).events
     }
 
     public func query(_ query: RuntimeEventQuery) -> RuntimeEventPage {

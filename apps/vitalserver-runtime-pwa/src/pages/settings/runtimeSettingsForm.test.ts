@@ -6,11 +6,13 @@ import {
   usesCustomAdvertisedURL,
   type RuntimeSettingsDraft
 } from "./runtimeSettingsForm";
+import { startOnBootControlState } from "@/domain/runtime-control/settings/runtimeSettingsPolicy";
 
 describe("runtime settings form mapping", () => {
   it("maps runtime settings into editable draft values", () => {
     expect(
       runtimeSettingsToDraft({
+        ...runtimeSettings(),
         cpuCount: 4,
         memoryGiB: 8,
         diskGiB: 64,
@@ -43,10 +45,21 @@ describe("runtime settings form mapping", () => {
   });
 
   it("uses proxy port as advertised port when custom advertised URL is disabled", () => {
-    expect(draftToRuntimeSettings(draft({ proxyPort: "18080" }), undefined, false))
+    expect(
+      draftToRuntimeSettings(
+        draft({
+          ...draftFromSettings(runtimeSettings()),
+          proxyPort: "18080",
+          publicHost: "example.local",
+          publicPort: "443"
+        }),
+        runtimeSettings(),
+        false
+      )
+    )
       .toMatchObject({
         proxyPort: 18080,
-        publicHost: undefined,
+        publicHost: "",
         publicPort: 18080
       });
   });
@@ -59,7 +72,7 @@ describe("runtime settings form mapping", () => {
           publicHost: "example.local",
           publicPort: "443"
         }),
-        { minimumDiskGiB: 32 },
+        runtimeSettings({ minimumDiskGiB: 32 }),
         true
       )
     ).toMatchObject({
@@ -71,11 +84,84 @@ describe("runtime settings form mapping", () => {
   });
 
   it("detects custom advertised URL settings", () => {
-    expect(usesCustomAdvertisedURL({ proxyPort: 80, publicPort: 80 })).toBe(false);
-    expect(usesCustomAdvertisedURL({ proxyPort: 80, publicPort: 443 })).toBe(true);
-    expect(usesCustomAdvertisedURL({ publicHost: "vital.local" })).toBe(true);
+    expect(usesCustomAdvertisedURL(runtimeSettings({ proxyPort: 80, publicPort: 80 }))).toBe(false);
+    expect(usesCustomAdvertisedURL(runtimeSettings({ proxyPort: 80, publicPort: 443 }))).toBe(true);
+    expect(usesCustomAdvertisedURL(runtimeSettings({ publicHost: "vital.local" }))).toBe(true);
+  });
+
+  it("keeps start-on-boot edit state reasons explicit", () => {
+    expect(
+      startOnBootControlState({
+        startOnBootConfigurable: true,
+        capabilityReadState: "available",
+        capabilities: capabilities({ canControlRuntimeServices: true })
+      })
+    ).toEqual({ enabled: true, reason: null });
+
+    expect(
+      startOnBootControlState({
+        startOnBootConfigurable: false,
+        capabilityReadState: "available",
+        capabilities: capabilities({ canControlRuntimeServices: true })
+      })
+    ).toMatchObject({
+      enabled: false,
+      reason: "Start on boot is not configurable for this runtime."
+    });
+
+    expect(
+      startOnBootControlState({
+        startOnBootConfigurable: true,
+        capabilityReadState: "failed",
+        capabilities: undefined
+      })
+    ).toMatchObject({
+      enabled: false,
+      reason: "Runtime service control capability could not be read."
+    });
+
+    expect(
+      startOnBootControlState({
+        startOnBootConfigurable: true,
+        capabilityReadState: "available",
+        capabilities: capabilities({ canControlRuntimeServices: undefined })
+      })
+    ).toMatchObject({
+      enabled: false,
+      reason: "Runtime service control capability was not reported."
+    });
   });
 });
+
+function runtimeSettings(overrides = {}) {
+  return {
+    readIssues: [],
+    cpuCount: 2,
+    memoryGiB: 4,
+    diskGiB: 32,
+    minimumDiskGiB: 4,
+    networkMode: "shared" as const,
+    bridgedInterface: "",
+    proxyPort: 80,
+    runtimeControlPort: 18321,
+    vitalFilesDirectory: "/Users/shared/vital",
+    publicHost: "",
+    publicPort: 80,
+    adminPassword: "",
+    changeAdminPassword: false,
+    startOnBoot: true,
+    startOnBootConfigurable: true,
+    autoRecoveryEnabled: true,
+    preventSystemSleep: true,
+    redisBackupRetentionCount: 30,
+    restartAfterSave: true,
+    ...overrides
+  };
+}
+
+function draftFromSettings(settings: ReturnType<typeof runtimeSettings>): RuntimeSettingsDraft {
+  return runtimeSettingsToDraft(settings);
+}
 
 function draft(
   overrides: Partial<RuntimeSettingsDraft> = {}
@@ -94,6 +180,25 @@ function draft(
     autoRecoveryEnabled: false,
     preventSystemSleep: false,
     restartAfterSave: false,
+    ...overrides
+  };
+}
+
+function capabilities(overrides = {}) {
+  return {
+    canInstallRuntime: true,
+    canUninstallRuntime: true,
+    canApplyBundle: true,
+    canRollback: true,
+    canEditVMResources: true,
+    canEditNetworkExposure: true,
+    canResetAdminPassword: true,
+    canOpenLocalFiles: true,
+    canStreamLogs: true,
+    canControlRuntimeServices: true,
+    canExportLogs: true,
+    canViewReleaseMetadata: true,
+    canUseTestTools: true,
     ...overrides
   };
 }

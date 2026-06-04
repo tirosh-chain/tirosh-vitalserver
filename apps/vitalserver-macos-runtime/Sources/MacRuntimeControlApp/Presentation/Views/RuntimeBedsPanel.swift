@@ -138,13 +138,6 @@ struct RuntimeBedsPanel: View {
         return filteredBeds.first
     }
 
-    private var linkedRecorder: RuntimeVitalRecorderRecord? {
-        guard let vrcode = selectedBed?.vrcode else {
-            return nil
-        }
-        return viewModel.vitalRecorders.recorders.first { $0.vrcode == vrcode }
-    }
-
     private var bedHeaderRow: some View {
         HStack(spacing: 12) {
             tableHeader("Bed ID", minWidth: 160)
@@ -163,9 +156,9 @@ struct RuntimeBedsPanel: View {
         } label: {
             HStack(spacing: 12) {
                 tableValue(bed.bedID, minWidth: 160, weight: .semibold)
-                tableValue(bed.name ?? AppConstants.StatusText.unknown, minWidth: 140)
-                tableValue(bed.vrcode ?? AppConstants.StatusText.unknown, minWidth: 140)
-                Text(bed.status.rawValue.capitalized)
+                tableValue(reportedText(bed.name, missing: "Bed name not reported"), minWidth: 140)
+                tableValue(reportedText(bed.vrcode, missing: "VRecorder not reported"), minWidth: 140)
+                Text(statusLabel(bed.status))
                     .font(.caption)
                     .fontWeight(.semibold)
                     .foregroundStyle(statusColor(bed.status))
@@ -189,7 +182,7 @@ struct RuntimeBedsPanel: View {
                 .font(.title3)
                 .fontWeight(.semibold)
                 .lineLimit(1)
-            Text(bed.status.rawValue.capitalized)
+            Text(statusLabel(bed.status))
                 .fontWeight(.semibold)
                 .foregroundStyle(statusColor(bed.status))
             Spacer()
@@ -207,14 +200,21 @@ struct RuntimeBedsPanel: View {
     private func bedMetadata(_ bed: RuntimeVitalBedRecord) -> some View {
         Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 9) {
             detailRow("Bed ID", bed.bedID)
-            detailRow("Name", bed.name ?? AppConstants.StatusText.unknown)
-            detailRow("VRecorder", bed.vrcode ?? AppConstants.StatusText.unknown)
-            detailRow("VRecorder status", linkedRecorder?.status.rawValue.capitalized ?? AppConstants.StatusText.unknown)
-            detailRow("VRecorder IP", linkedRecorder?.lastIP ?? AppConstants.StatusText.unknown)
+            detailRow("Name", reportedText(bed.name, missing: "Bed name not reported"))
+            detailRow("VRecorder", reportedText(bed.vrcode, missing: "VRecorder not reported"))
+            detailRow(
+                "VRecorder status",
+                bed.vrcode == nil ? "VRecorder not reported" : "Recorder status not reported by bed record"
+            )
+            detailRow(
+                "VRecorder IP",
+                bed.vrcode == nil ? "VRecorder not reported" : "Recorder IP not reported by bed record"
+            )
             detailRow(AppConstants.Labels.patient, patientText(bed.patientConnected))
             detailRow("First seen", viewModel.presentationFormatter.systemTimeText(bed.firstSeenAt))
             detailRow(AppConstants.Labels.recorderLastSeen, viewModel.presentationFormatter.systemTimeText(bed.lastSeenAt))
             detailRow(AppConstants.Labels.observations, "\(bed.observationCount)")
+            detailRow("Duplicate observations", "\(bed.duplicateObservationCount)")
             detailRow(AppConstants.Labels.bedAnomalies, "\(bed.currentAnomalyCount)")
         }
         .padding(12)
@@ -355,15 +355,39 @@ struct RuntimeBedsPanel: View {
             return .orange
         case .offline:
             return .secondary
+        case .notObserved:
+            return .secondary
         case .unknown:
             return .secondary
         }
     }
 
-    private func patientText(_ connected: Bool?) -> String {
-        guard let connected else {
+    private func statusLabel(_ status: RuntimeVitalBedStatus) -> String {
+        switch status {
+        case .online:
+            return "Online"
+        case .stale:
+            return "Stale"
+        case .offline:
+            return "Offline"
+        case .notObserved:
+            return "Not observed"
+        case .unknown:
             return AppConstants.StatusText.unknown
         }
+    }
+
+    private func patientText(_ connected: Bool?) -> String {
+        guard let connected else {
+            return "Patient connection not reported"
+        }
         return connected ? "Connected" : "Not connected"
+    }
+
+    private func reportedText(_ value: String?, missing: String) -> String {
+        guard let value, !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return missing
+        }
+        return value
     }
 }

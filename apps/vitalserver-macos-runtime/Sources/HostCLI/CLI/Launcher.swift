@@ -364,6 +364,7 @@ struct Launcher {
               vitalserver-vm interfaces
               vitalserver-vm configure --cpu <count> --memory-mib <mib> --network shared --vital-files-dir <path>
               vitalserver-vm runtime install
+              vitalserver-vm runtime install-provision
               vitalserver-vm runtime status
               vitalserver-vm runtime health
               vitalserver-vm runtime guest-log-sync

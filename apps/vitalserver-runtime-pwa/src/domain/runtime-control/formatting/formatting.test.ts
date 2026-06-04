@@ -1,11 +1,9 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { formatBytes } from "./bytes";
 import {
-  formatHTTPReachability,
-  runtimeControlURL,
-  runtimeControlURLForPort,
-  successfulHTTP
+  formatHTTPStatus,
+  runtimeURL
 } from "./http";
 import { formatRuntimeState } from "./runtimeState";
 import { formatUptimeSince } from "./time";
@@ -34,25 +32,16 @@ describe("runtime presentation formatting", () => {
     expect(formatUptimeSince(startedAt)).toMatch(/^01:01:0[0-2]$/);
   });
 
-  it("detects successful HTTP status text", () => {
-    expect(successfulHTTP("HTTP 200")).toBe(true);
-    expect(successfulHTTP("HTTP 503")).toBe(false);
-    expect(successfulHTTP(undefined)).toBe(false);
+  it("formats HTTP probe text without deriving reachability state", () => {
+    expect(formatHTTPStatus("HTTP 200")).toBe("HTTP 200");
+    expect(formatHTTPStatus("failed")).toBe("failed");
+    expect(formatHTTPStatus(undefined)).toBe("Not reported");
   });
 
-  it("formats HTTP reachability for status rows", () => {
-    expect(formatHTTPReachability("200")).toBe("Reachable");
-    expect(formatHTTPReachability("failed")).toBe("Unreachable");
-    expect(formatHTTPReachability(undefined)).toBe("Unknown");
-  });
-
-  it("uses the browser origin when available and falls back outside the browser", () => {
-    expect(runtimeControlURL()).toBe("http://localhost:3000/");
-    expect(runtimeControlURLForPort(18444)).toBe("http://localhost:18444/");
-
-    vi.stubGlobal("window", undefined);
-    expect(runtimeControlURL()).toBe("http://127.0.0.1:18321/");
-    expect(runtimeControlURLForPort(18444)).toBe("http://127.0.0.1:18444/");
-    vi.unstubAllGlobals();
+  it("builds runtime URLs only from explicit host and port", () => {
+    expect(runtimeURL({ host: "vital.local", port: 18080 })).toBe(
+      "http://vital.local:18080/"
+    );
+    expect(runtimeURL({ host: "", port: 18080 })).toBeNull();
   });
 });

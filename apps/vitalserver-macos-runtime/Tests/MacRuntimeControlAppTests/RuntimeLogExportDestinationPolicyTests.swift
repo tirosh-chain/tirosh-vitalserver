@@ -38,7 +38,7 @@ final class RuntimeLogExportDestinationPolicyTests: XCTestCase {
         let policy = RuntimeLogExportDestinationPolicy(fileManager: FakePathPermissionFileManager())
 
         XCTAssertEqual(
-            policy.validationMessage(for: URL(fileURLWithPath: "/Library/Application Support/TiroshVitalServer/vitalserver-logs.zip")),
+            policy.validationMessage(for: URL(fileURLWithPath: "/Library/Application Support/VitalServerHelper/vitalserver-logs.zip")),
             AppConstants.StatusText.logExportDestinationProtected
         )
         XCTAssertEqual(

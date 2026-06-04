@@ -11,8 +11,8 @@ enum RuntimeObservationHealthPolicy {
     ]
 
     static func failureReasons(
-        containerObservation: RuntimeContainerObservation?,
-        vitalDBObservation: VitalDBObservationDocument?
+        containerObservation: RuntimeObservationInput<RuntimeContainerObservation>,
+        vitalDBObservation: RuntimeObservationInput<VitalDBObservationDocument>
     ) -> [RuntimeFailureReason] {
         var reasons: [RuntimeFailureReason] = []
         reasons.append(contentsOf: containerFailureReasons(containerObservation))
@@ -20,16 +20,33 @@ enum RuntimeObservationHealthPolicy {
         return reasons
     }
 
-    static func requiresVMRestart(containerObservation: RuntimeContainerObservation?) -> Bool {
-        !containerFailureReasons(containerObservation).isEmpty
+    static func requiresVMRestart(
+        containerObservation: RuntimeObservationInput<RuntimeContainerObservation>
+    ) -> Bool {
+        guard case .loaded(let observation) = containerObservation else {
+            return false
+        }
+        return !containerFailureReasons(observation).isEmpty
     }
 
     private static func containerFailureReasons(
-        _ observation: RuntimeContainerObservation?
+        _ input: RuntimeObservationInput<RuntimeContainerObservation>
     ) -> [RuntimeFailureReason] {
-        guard let observation else {
+        switch input {
+        case .notReported:
             return []
+        case .missing:
+            return [.containerObservationMissing]
+        case .readFailed(let message):
+            return [.containerObservationReadFailed(failureToken(message))]
+        case .loaded(let observation):
+            return containerFailureReasons(observation)
         }
+    }
+
+    private static func containerFailureReasons(
+        _ observation: RuntimeContainerObservation
+    ) -> [RuntimeFailureReason] {
         return observation.composeServices.compactMap { service in
             guard criticalContainerServices.contains(service.service),
                   let failureState = containerFailureState(service) else {
@@ -56,12 +73,23 @@ enum RuntimeObservationHealthPolicy {
     }
 
     private static func vitalDBFailureReasons(
-        _ observation: VitalDBObservationDocument?
+        _ input: RuntimeObservationInput<VitalDBObservationDocument>
     ) -> [RuntimeFailureReason] {
-        guard let observation else {
+        switch input {
+        case .notReported:
             return []
+        case .missing:
+            return [.vitalDBObservationMissing]
+        case .readFailed(let message):
+            return [.vitalDBObservationReadFailed(failureToken(message))]
+        case .loaded(let observation):
+            return vitalDBFailureReasons(observation)
         }
+    }
 
+    private static func vitalDBFailureReasons(
+        _ observation: VitalDBObservationDocument
+    ) -> [RuntimeFailureReason] {
         var reasons: [RuntimeFailureReason] = []
         if !observation.ready {
             reasons.append(.vitalDBAnomaly(
@@ -80,6 +108,15 @@ enum RuntimeObservationHealthPolicy {
             }
         }
         return reasons
+    }
+
+    static func isRuntimeHealthAnomaly(_ anomaly: VitalDBAnomalyObservation) -> Bool {
+        isRuntimeCriticalVitalDBAnomaly(anomaly)
+    }
+
+    static func isOperatorVisibleOnlyAnomaly(_ anomaly: VitalDBAnomalyObservation) -> Bool {
+        (anomaly.severity == .warning || anomaly.severity == .critical)
+            && !isRuntimeCriticalVitalDBAnomaly(anomaly)
     }
 
     private static func isRuntimeCriticalVitalDBAnomaly(

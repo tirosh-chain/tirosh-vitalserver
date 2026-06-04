@@ -82,7 +82,6 @@ final class RuntimeViewModel: ObservableObject {
     @Published var logLineLimit = 500
     @Published var selectedLogSource = RuntimeLogSource.helperMessage
     @Published var logStreaming = true
-    @Published var useCustomAdvertisedURL = false
     @Published var isBusy = false
     @Published var isApplyingUpdateBundle = false
     @Published var isCreatingRedisBackup = false
@@ -169,7 +168,6 @@ final class RuntimeViewModel: ObservableObject {
             initialSettings ?? self.controlClient.loadSettings()
         ) ?? (initialSettings ?? self.controlClient.loadSettings())
         self.settings = initialSettings
-        self.useCustomAdvertisedURL = Self.usesCustomAdvertisedURL(initialSettings)
         self.installationInfo = self.controlClient.loadInstallInfo()
         self.healthNotifications.configure()
         self.helperMessageLog.append(message)
@@ -334,11 +332,6 @@ final class RuntimeViewModel: ObservableObject {
         }
     }
 
-    func setCustomAdvertisedURL(_ enabled: Bool) {
-        useCustomAdvertisedURL = enabled
-        normalizeAdvertisedURLSettings()
-    }
-
     func syncAdvertisedURLWithProxyIfNeeded() {
         normalizeAdvertisedURLSettings()
     }
@@ -449,20 +442,11 @@ final class RuntimeViewModel: ObservableObject {
     private func loadRuntimeSettings() async {
         let nextSettings = await snapshots.loadSettings()
         settings = nextSettings
-        useCustomAdvertisedURL = Self.usesCustomAdvertisedURL(nextSettings)
     }
 
     private func normalizeAdvertisedURLSettings() {
-        guard !useCustomAdvertisedURL else {
-            return
-        }
         settings.publicHost = ""
         settings.publicPort = settings.proxyPort
-    }
-
-    private static func usesCustomAdvertisedURL(_ settings: RuntimeSettings) -> Bool {
-        !settings.publicHost.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            || settings.publicPort != settings.proxyPort
     }
 
     func refreshBackupList() async {

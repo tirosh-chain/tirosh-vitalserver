@@ -12,7 +12,7 @@ struct RuntimeGuestActivationWorkflowOperations {
     let removePreviousResult: () throws -> Void
     let writeRequest: (RuntimeGuestActivationRequest) throws -> Void
     let isVMServiceLoaded: () -> Bool
-    let startVMService: () -> Void
+    let startVMService: () throws -> Void
     let loadResult: () -> RuntimeGuestDocumentLoadResult<GuestUpdateActivationResultDocument>
     let writeStatus: (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void
     let requestID: () -> String

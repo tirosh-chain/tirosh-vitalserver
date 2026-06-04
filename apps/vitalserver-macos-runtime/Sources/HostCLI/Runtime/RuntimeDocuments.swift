@@ -24,6 +24,8 @@ struct GuestRuntimeConfigDocument: Codable {
     var redisHost: String
     var redisPort: Int
     var trustProxy: Bool
+    var vitalServerURL: String
+    var remoteConsoleURL: String
     var publicHost: String
     var publicPort: Int
     var adminPassword: String
@@ -38,6 +40,8 @@ struct GuestRuntimeConfigDocument: Codable {
         case redisHost
         case redisPort
         case trustProxy
+        case vitalServerURL
+        case remoteConsoleURL
         case publicHost
         case publicPort
         case adminPassword
@@ -53,6 +57,8 @@ struct GuestRuntimeConfigDocument: Codable {
         redisHost: String,
         redisPort: Int,
         trustProxy: Bool,
+        vitalServerURL: String = "",
+        remoteConsoleURL: String = "",
         publicHost: String,
         publicPort: Int,
         adminPassword: String,
@@ -66,6 +72,8 @@ struct GuestRuntimeConfigDocument: Codable {
         self.redisHost = redisHost
         self.redisPort = redisPort
         self.trustProxy = trustProxy
+        self.vitalServerURL = vitalServerURL
+        self.remoteConsoleURL = remoteConsoleURL
         self.publicHost = publicHost
         self.publicPort = publicPort
         self.adminPassword = adminPassword
@@ -82,25 +90,30 @@ struct GuestRuntimeConfigDocument: Codable {
         self.redisHost = try container.decode(String.self, forKey: .redisHost)
         self.redisPort = try container.decode(Int.self, forKey: .redisPort)
         self.trustProxy = try container.decode(Bool.self, forKey: .trustProxy)
-        self.publicHost = try container.decode(String.self, forKey: .publicHost)
-        self.publicPort = try container.decode(Int.self, forKey: .publicPort)
+        let publicHost = try container.decode(String.self, forKey: .publicHost)
+        let publicPort = try container.decode(Int.self, forKey: .publicPort)
+        self.publicHost = publicHost
+        self.publicPort = publicPort
+        self.vitalServerURL = try container.decodeIfPresent(String.self, forKey: .vitalServerURL)
+            ?? Self.legacyVitalServerURL(publicHost: publicHost, publicPort: publicPort)
+        self.remoteConsoleURL = try container.decodeIfPresent(String.self, forKey: .remoteConsoleURL) ?? ""
         self.adminPassword = try container.decode(String.self, forKey: .adminPassword)
         self.vitalFilesDirectory = try container.decode(String.self, forKey: .vitalFilesDirectory)
-        self.redisBackupRetentionCount = try container.decodeIfPresent(
+        self.redisBackupRetentionCount = try container.decode(
             Int.self,
             forKey: .redisBackupRetentionCount
-        ) ?? Constants.Defaults.redisBackupRetentionCount
+        )
         self.redisUiPort = try container.decode(Int.self, forKey: .redisUiPort)
         self.swaggerUiPort = try container.decode(Int.self, forKey: .swaggerUiPort)
-        self.testkitEnabled = try container.decodeIfPresent(
+        self.testkitEnabled = try container.decode(
             Bool.self,
             forKey: .testkitEnabled
-        ) ?? Constants.testkitContainerIncluded
+        )
     }
 
     static func load(from url: URL, fileStore: RuntimeFileReading) throws -> GuestRuntimeConfigDocument {
         guard fileStore.fileExists(url) else {
-            return GuestRuntimeConfigDocument.default
+            throw LauncherError.missingFile(url.path)
         }
         let data = try fileStore.readData(url)
         return try JSONDecoder().decode(GuestRuntimeConfigDocument.self, from: data)
@@ -112,6 +125,8 @@ struct GuestRuntimeConfigDocument: Codable {
             redisHost: Constants.Guest.redisHost,
             redisPort: Constants.Guest.redisPort,
             trustProxy: true,
+            vitalServerURL: "",
+            remoteConsoleURL: "",
             publicHost: "",
             publicPort: Constants.Guest.publicPort,
             adminPassword: Constants.Guest.defaultAdminPassword,
@@ -122,18 +137,31 @@ struct GuestRuntimeConfigDocument: Codable {
             testkitEnabled: Constants.testkitContainerIncluded
         )
     }
+
+    private static func legacyVitalServerURL(publicHost: String, publicPort: Int) -> String {
+        guard !publicHost.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return ""
+        }
+        return "http://\(publicHost):\(publicPort)/"
+    }
 }
 
 struct GuestRuntimeSettingsDocument: Codable, Equatable {
+    var vitalServerURL: String
+    var remoteConsoleURL: String
     var publicHost: String
     var publicPort: Int
     var redisBackupRetentionCount: Int
 
     init(
+        vitalServerURL: String,
+        remoteConsoleURL: String,
         publicHost: String,
         publicPort: Int,
         redisBackupRetentionCount: Int
     ) {
+        self.vitalServerURL = vitalServerURL
+        self.remoteConsoleURL = remoteConsoleURL
         self.publicHost = publicHost
         self.publicPort = publicPort
         self.redisBackupRetentionCount = redisBackupRetentionCount
@@ -141,6 +169,8 @@ struct GuestRuntimeSettingsDocument: Codable, Equatable {
 
     init(runtimeConfig: GuestRuntimeConfigDocument) {
         self.init(
+            vitalServerURL: runtimeConfig.vitalServerURL,
+            remoteConsoleURL: runtimeConfig.remoteConsoleURL,
             publicHost: runtimeConfig.publicHost,
             publicPort: runtimeConfig.publicPort,
             redisBackupRetentionCount: runtimeConfig.redisBackupRetentionCount
@@ -167,8 +197,10 @@ struct InstallSettings {
     var networkMode = NetworkMode.shared
     var proxyPort = defaultProxyPort
     var vitalFilesDirectory: String
-    var adminPassword: String?
+    var adminPassword: String? = Constants.Guest.defaultAdminPassword
     var vmHostname = Constants.Guest.hostname
+    var vitalServerURL = ""
+    var remoteConsoleURL = ""
     var publicHost = ""
     var publicPort = Constants.Guest.publicPort
     var startAfterInstall = true
@@ -246,6 +278,15 @@ struct InstallSettings {
            requestedPublicPort <= 65_535 {
             publicPort = requestedPublicPort
         }
+        if let requestedVitalServerURL = document.vitalServerURL,
+           isValidAdvertisedURL(requestedVitalServerURL) {
+            vitalServerURL = requestedVitalServerURL
+            applyVitalServerURLCompatibilityFields(requestedVitalServerURL)
+        }
+        if let requestedRemoteConsoleURL = document.remoteConsoleURL,
+           isValidAdvertisedURL(requestedRemoteConsoleURL) {
+            remoteConsoleURL = requestedRemoteConsoleURL
+        }
         if let requestedStartAfterInstall = document.startAfterInstall {
             startAfterInstall = requestedStartAfterInstall
         }
@@ -270,6 +311,39 @@ struct InstallSettings {
         return value.unicodeScalars.allSatisfy { allowed.contains($0) }
             && value.unicodeScalars.first.map { alphanumeric.contains($0) } == true
     }
+
+    private func isValidAdvertisedURL(_ value: String) -> Bool {
+        if value.isEmpty {
+            return true
+        }
+        guard isLineSafe(value),
+              let components = URLComponents(string: value),
+              let scheme = components.scheme?.lowercased(),
+              scheme == "http" || scheme == "https",
+              let host = components.host,
+              !host.isEmpty else {
+            return false
+        }
+        if let port = components.port, !(1...65_535).contains(port) {
+            return false
+        }
+        return true
+    }
+
+    private mutating func applyVitalServerURLCompatibilityFields(_ value: String) {
+        guard let components = URLComponents(string: value),
+              let host = components.host else {
+            return
+        }
+        publicHost = host
+        if let port = components.port {
+            publicPort = port
+        } else if components.scheme?.lowercased() == "https" {
+            publicPort = 443
+        } else {
+            publicPort = Constants.Guest.publicPort
+        }
+    }
 }
 
 private struct InstallSettingsDocument: Decodable {
@@ -281,6 +355,8 @@ private struct InstallSettingsDocument: Decodable {
     let vitalFilesDirectory: String?
     let adminPassword: String?
     let vmHostname: String?
+    let vitalServerURL: String?
+    let remoteConsoleURL: String?
     let publicHost: String?
     let publicPort: Int?
     let startAfterInstall: Bool?

@@ -19,8 +19,30 @@ final class RuntimeOperationPlanTests: XCTestCase {
             "configure-installed-permissions",
             "start-installed-services",
             "apply-start-on-boot-policy",
+            "wait-install-runtime-health",
             "cleanup-install-settings",
         ])
+    }
+
+    func testInstallProvisionPlanDoesNotWaitForRuntimeHealth() {
+        XCTAssertEqual(RuntimeOperationPlans.installProvision.operation, .install)
+        XCTAssertTrue(RuntimeOperationPlans.installProvision.isValid)
+        XCTAssertEqual(RuntimeOperationPlans.installProvision.steps.map(\.rawValue), [
+            "load-install-settings",
+            "prepare-install-directories",
+            "rotate-runtime-logs",
+            "configure-guest-runtime-config",
+            "prepare-installed-executables",
+            "provision-vm-disk",
+            "configure-vm-runtime",
+            "create-cloud-init-seed",
+            "write-install-runtime-version",
+            "configure-installed-permissions",
+            "start-installed-services",
+            "apply-start-on-boot-policy",
+            "cleanup-install-settings",
+        ])
+        XCTAssertFalse(RuntimeOperationPlans.installProvision.steps.contains(.waitInstallRuntimeHealth))
     }
 
     func testApplyBundlePlanStepOrder() {
@@ -90,6 +112,7 @@ final class RuntimeOperationPlanTests: XCTestCase {
 
     func testWorkflowStepsExposeOwningOperation() {
         XCTAssertEqual(RuntimeWorkflowStep.loadInstallSettings.operation, .install)
+        XCTAssertEqual(RuntimeWorkflowStep.waitInstallRuntimeHealth.operation, .install)
         XCTAssertEqual(RuntimeWorkflowStep.stopRuntimeServices.operation, .applyBundle)
         XCTAssertEqual(RuntimeWorkflowStep.rollbackRestoreRootfsBase.operation, .rollback)
         XCTAssertNil(RuntimeWorkflowStep.unknown("future-step").operation)

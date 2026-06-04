@@ -3,31 +3,32 @@ import { describe, expect, it } from "vitest";
 import type { RecorderActivityPoint } from "./recorderActivity";
 import {
   buildRecorderActivityBuckets,
-  latestRecorderActivityPoint
+  latestRecorderActivityPoint,
+  readRecorderActivityBuckets
 } from "./recorderActivity";
 
 describe("recorder activity", () => {
   it("groups activity samples into selected packet buckets", () => {
     const buckets = buildRecorderActivityBuckets(
       [
-        {
+        activityPoint({
           observedAt: "2026-05-28T00:00:10Z",
           messageCount: 3,
           byteCount: 300,
           roomCount: 1
-        },
-        {
+        }),
+        activityPoint({
           observedAt: "2026-05-28T00:00:50Z",
           messageCount: 4,
           byteCount: 500,
           roomCount: 2
-        },
-        {
+        }),
+        activityPoint({
           observedAt: "2026-05-28T00:01:03Z",
           messageCount: 2,
           byteCount: 100,
           roomCount: 1
-        }
+        })
       ],
       { bucketSeconds: 60 }
     );
@@ -49,13 +50,24 @@ describe("recorder activity", () => {
   it("filters buckets by latest sample relative range", () => {
     const buckets = buildRecorderActivityBuckets(
       [
-        { observedAt: "2026-05-28T00:00:00Z", messageCount: 1 },
-        { observedAt: "2026-05-28T00:10:00Z", messageCount: 2 }
+        activityPoint({
+          observedAt: "2026-05-28T00:00:00Z",
+          messageCount: 1,
+          byteCount: 100,
+          roomCount: 1
+        }),
+        activityPoint({
+          observedAt: "2026-05-28T00:10:00Z",
+          messageCount: 2,
+          byteCount: 200,
+          roomCount: 1
+        })
       ],
       { bucketSeconds: 60, rangeSeconds: 60 }
     );
 
     expect(buckets.map((bucket) => bucket.messageCount)).toEqual([0, 2]);
+    expect(buckets.map((bucket) => bucket.synthetic)).toEqual([true, false]);
   });
 
   it("uses embedded recorder activity buckets from the latest sample", () => {
@@ -223,24 +235,106 @@ describe("recorder activity", () => {
   it("returns the latest timestamped activity point", () => {
     expect(
       latestRecorderActivityPoint([
-        { messageCount: 99 },
-        { observedAt: "2026-05-28T00:00:00Z", messageCount: 1 },
-        { observedAt: "2026-05-28T00:00:01Z", messageCount: 2 }
+        ...malformedActivityPoints([{ messageCount: 99 }]),
+        activityPoint({ observedAt: "2026-05-28T00:00:00Z", messageCount: 1 }),
+        activityPoint({ observedAt: "2026-05-28T00:00:01Z", messageCount: 2 })
       ])?.messageCount
     ).toBe(2);
   });
+
+  it("reports missing and invalid activity input separately from empty data", () => {
+    expect(
+      readRecorderActivityBuckets(undefined, { bucketSeconds: 60 })
+    ).toMatchObject({
+      buckets: [],
+      issues: ["activityTimeline is not reported"]
+    });
+
+    const invalid = readRecorderActivityBuckets(
+      malformedActivityPoints([
+        {
+          observedAt: "not-a-date",
+          messageCount: 1,
+          byteCount: 10,
+          roomCount: 1
+        },
+        {
+          observedAt: "2026-05-28T00:00:00Z",
+          messageCount: 1
+        }
+      ]),
+      { bucketSeconds: 60 }
+    );
+
+    expect(invalid.buckets).toEqual([]);
+    expect(invalid.issues).toEqual([
+      "activity point 0 has invalid observedAt",
+      "activity point 1 has incomplete counts"
+    ]);
+  });
+
+  it("reports invalid embedded bucket contracts without using defaults", () => {
+    const read = readRecorderActivityBuckets(
+      malformedActivityPoints([
+        {
+          observedAt: "2026-05-28T00:00:00Z",
+          windowSeconds: 60,
+          messageCount: 1,
+          byteCount: 10,
+          roomCount: 1,
+          messagesPerSecond: 0.01,
+          bytesPerSecond: 10,
+          buckets: [
+            {
+              bucketStartedAt: "2026-05-28T00:00:00Z",
+              messageCount: 1,
+              byteCount: 10,
+              roomCount: 1
+            },
+            {
+              bucketStartedAt: "invalid",
+              bucketSeconds: 60,
+              messageCount: 1,
+              byteCount: 10,
+              roomCount: 1
+            }
+          ]
+        }
+      ]),
+      { bucketSeconds: 60 }
+    );
+
+    expect(read.buckets).toEqual([]);
+    expect(read.issues).toEqual([
+      "activity point 0 bucket 0 has invalid bucketSeconds",
+      "activity point 0 bucket 1 has invalid bucketStartedAt"
+    ]);
+  });
 });
 
+function activityPoint(overrides: Partial<RecorderActivityPoint>): RecorderActivityPoint {
+  return {
+    observedAt: "2026-05-28T00:00:00Z",
+    windowSeconds: 60,
+    messageCount: 0,
+    byteCount: 0,
+    roomCount: 0,
+    messagesPerSecond: 0,
+    bytesPerSecond: 0,
+    buckets: [],
+    ...overrides
+  };
+}
+
 function activityPointWithBuckets(
-  point: RecorderActivityPoint & {
-    buckets: Array<{
-      bucketStartedAt: string;
-      bucketSeconds: number;
-      messageCount: number;
-      byteCount: number;
-      roomCount: number;
-    }>;
+  point: Partial<RecorderActivityPoint> & {
+    observedAt: string;
+    buckets: RecorderActivityPoint["buckets"];
   }
 ): RecorderActivityPoint {
-  return point;
+  return activityPoint(point);
+}
+
+function malformedActivityPoints(points: Array<Record<string, unknown>>): RecorderActivityPoint[] {
+  return points as unknown as RecorderActivityPoint[];
 }

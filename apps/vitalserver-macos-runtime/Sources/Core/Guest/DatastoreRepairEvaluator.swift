@@ -2,6 +2,7 @@ import Contracts
 import Foundation
 
 public enum DatastoreRepairDecision: Equatable {
+    case missing(message: String)
     case wait(message: String)
     case completed(message: String)
     case failed(message: String)
@@ -29,7 +30,7 @@ public enum DatastoreRepairEvaluator {
         expectedRequestId: String? = nil
     ) -> DatastoreRepairDecision {
         guard let result else {
-            return .wait(message: "waiting for datastore repair guest worker")
+            return .missing(message: "waiting for datastore repair guest worker")
         }
 
         if let expectedRequestId,
@@ -82,6 +83,10 @@ public enum DatastoreRepairWaiter {
                 return .completed(message: message)
             case .failed(let message):
                 return .failed(message: message)
+            case .missing(let message):
+                if attempt % configuration.progressEveryAttempts == 0 {
+                    onProgress(message)
+                }
             case .wait(let message):
                 if attempt % configuration.progressEveryAttempts == 0 {
                     onProgress(message)

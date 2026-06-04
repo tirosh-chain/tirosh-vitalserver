@@ -131,6 +131,39 @@ describe("runtime console pages", () => {
     expect(screen.getByText(/2.0 KiB \/ 4.0 KiB/)).toBeInTheDocument();
   });
 
+  it("does not infer missing status endpoint or resource fields", () => {
+    const baseOverview = overview();
+    hooks.useRuntimeOverview.mockReturnValue(
+      query({
+        ...baseOverview,
+        settings: {
+          ...baseOverview.settings,
+          publicHost: "",
+          runtimeControlPort: undefined
+        },
+        status: {
+          ...baseOverview.status,
+          proxyPort: undefined,
+          cpuUsagePercent: undefined,
+          dataDirectoryStats: {
+            sizeBytes: 4096
+          },
+          memory: {
+            usedBytes: 2048
+          }
+        }
+      })
+    );
+
+    renderPage(<StatusPage />);
+
+    expect(screen.getAllByText("Not reported").length).toBeGreaterThanOrEqual(3);
+    expect(screen.getByText("File count not reported · 4.0 KiB")).toBeInTheDocument();
+    expect(screen.getByText("Incomplete resource usage")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /18080/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /18321/ })).not.toBeInTheDocument();
+  });
+
   it("renders settings, validation, and applies edited values", () => {
     const apply = pendingMutation();
     hooks.useApplyRuntimeSettings.mockReturnValue(apply);
@@ -168,6 +201,88 @@ describe("runtime console pages", () => {
     );
   });
 
+  it("does not render an empty settings draft before settings load", () => {
+    hooks.useRuntimeSettings.mockReturnValue(query(undefined));
+
+    renderPage(<SettingsPage />);
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Settings response is incomplete"
+    );
+    expect(screen.queryByLabelText("CPU cores")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Start on boot")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Apply" })).toBeDisabled();
+  });
+
+  it("uses provider-owned settings values without form fallbacks", () => {
+    renderPage(<SettingsPage />);
+
+    expect(screen.getByLabelText("VM disk GiB")).toHaveAttribute("min", "20");
+    expect(
+      screen.getByText("VM disk can only be increased. Minimum for this install is 20 GiB.")
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText("Custom advertised URL"));
+    expect(
+      screen.getByText("Default advertised URL: http://(same host):18080/")
+    ).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("VitalServer listen port"), {
+      target: { value: "" }
+    });
+    expect(
+      screen.getByText("Default advertised URL: Proxy port is not available.")
+    ).toBeInTheDocument();
+  });
+
+  it("does not erase custom advertised URL draft values when toggled off", () => {
+    renderPage(<SettingsPage />);
+
+    expect(screen.getByLabelText("Custom advertised host")).toHaveValue(
+      "host.local"
+    );
+
+    fireEvent.click(screen.getByLabelText("Custom advertised URL"));
+    expect(screen.queryByLabelText("Custom advertised host")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText("Custom advertised URL"));
+    expect(screen.getByLabelText("Custom advertised host")).toHaveValue(
+      "host.local"
+    );
+  });
+
+  it("shows explicit start-on-boot disabled reasons", () => {
+    hooks.useRuntimeCapabilities.mockReturnValue(
+      query({ ...capabilities(), canControlRuntimeServices: false })
+    );
+
+    renderPage(<SettingsPage />);
+
+    expect(screen.getByLabelText("Start on boot")).toBeDisabled();
+    expect(
+      screen.getByText("Runtime service control capability is unavailable.")
+    ).toBeInTheDocument();
+  });
+
+  it("does not guess Remote Console readiness with a timed redirect after settings apply", () => {
+    const apply = mutation(commandResult);
+    hooks.useApplyRuntimeSettings.mockReturnValue(apply);
+
+    renderPage(<SettingsPage />);
+
+    const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
+    fireEvent.change(screen.getByLabelText("Remote Console port"), {
+      target: { value: "18322" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+
+    expect(setTimeoutSpy).not.toHaveBeenCalled();
+    expect(
+      screen.getByText(/Remote Console port changed to 18322/)
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Remote Console" })).not.toBeInTheDocument();
+  });
+
   it("renders recorder lists, filters history, and selects recorder details", () => {
     renderPage(<RecordersPage />);
 
@@ -181,6 +296,51 @@ describe("runtime console pages", () => {
     expect(screen.getByText("No VRecorders have been observed.")).toBeInTheDocument();
   });
 
+  it("shows missing recorder activity history as not reported", () => {
+    hooks.useVitalDBRecorders.mockReturnValue(
+      query({
+        ...recorders(),
+        recorders: [
+          {
+            ...recorders().recorders[0],
+            status: "notObserved",
+            activityTimeline: undefined
+          }
+        ]
+      })
+    );
+
+    renderPage(<RecordersPage />);
+
+    expect(screen.getAllByText("Not observed").length).toBeGreaterThan(0);
+    expect(
+      screen.getByText("Recorder activity history is not reported.")
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: /Packet activity/ })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Last sample/)).not.toBeInTheDocument();
+  });
+
+  it("does not render recorder activity charts when activity history read failed", () => {
+    hooks.useVitalDBRecorders.mockReturnValue(
+      query({
+        ...recorders(),
+        activityHistory: {
+          ...recorders().activityHistory,
+          source: "unavailable",
+          readError: "activity projection denied"
+        }
+      })
+    );
+
+    renderPage(<RecordersPage />);
+
+    expect(
+      screen.getByText("Recorder activity history is incomplete")
+    ).toBeInTheDocument();
+    expect(screen.getByText(/activity projection denied/)).toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: /Packet activity/ })).not.toBeInTheDocument();
+  });
+
   it("renders beds, filters rows, and shows selected bed details", () => {
     renderPage(<BedsPage />);
 
@@ -192,6 +352,17 @@ describe("runtime console pages", () => {
       target: { value: "none" }
     });
     expect(screen.getByText("No beds have been observed.")).toBeInTheDocument();
+  });
+
+  it("does not render missing bed query data as an empty bed list", () => {
+    hooks.useVitalDBRecorders.mockReturnValue(query(undefined));
+
+    renderPage(<BedsPage />);
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Bed history response is incomplete"
+    );
+    expect(screen.queryByText("No beds have been observed.")).not.toBeInTheDocument();
   });
 
   it("renders observability events and reacts to filters", () => {
@@ -218,6 +389,122 @@ describe("runtime console pages", () => {
     expect(hooks.useRuntimeEvents).toHaveBeenCalled();
   });
 
+  it("keeps observability read failures distinct from empty data", () => {
+    const baseOverview = overview();
+    hooks.useRuntimeOverview.mockReturnValue(
+      query({
+        ...baseOverview,
+        status: {
+          ...baseOverview.status,
+          guestLogSyncServiceLoaded: undefined
+        },
+        vitalDBObservationSnapshot: {
+          state: "failed",
+          observation: null,
+          readError: "sqlite denied"
+        }
+      })
+    );
+    hooks.useRuntimeEvents.mockReturnValue(query({ nextCursor: null }));
+
+    renderPage(<ObservabilityPage />);
+
+    expect(screen.getByText("Failed")).toBeInTheDocument();
+    expect(screen.getAllByText("Not reported").length).toBeGreaterThan(0);
+    expect(screen.getByText("VitalDB observation read failed.")).toBeInTheDocument();
+    expect(screen.getByText("Runtime event response is incomplete")).toBeInTheDocument();
+    expect(screen.getByText("Runtime events response is missing events.")).toBeInTheDocument();
+    expect(
+      screen.queryByText("No runtime events were found for this period.")
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows VitalDB source read issues instead of no anomaly fallback", () => {
+    const baseOverview = overview();
+    const vitalDBObservation = {
+      ...baseOverview.vitalDBObservation,
+      anomalies: [],
+      readIssues: [
+        {
+          source: "proxyAccessLog",
+          message: "proxy access log is not valid UTF-8"
+        }
+      ]
+    };
+    hooks.useRuntimeOverview.mockReturnValue(
+      query({
+        ...baseOverview,
+        vitalDBObservation,
+        vitalDBObservationSnapshot: {
+          state: "loaded",
+          observation: vitalDBObservation,
+          readError: null
+        }
+      })
+    );
+
+    renderPage(<ObservabilityPage />);
+
+    expect(screen.getByText("Recorder anomaly details are incomplete")).toBeInTheDocument();
+    expect(screen.getByText(/proxyAccessLog/)).toBeInTheDocument();
+    expect(screen.getByText("Recorder anomaly records are incomplete.")).toBeInTheDocument();
+    expect(
+      screen.queryByText("No recorder anomalies were reported.")
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps loaded VitalDB observation read issues visible", () => {
+    const baseOverview = overview();
+    const vitalDBObservation = {
+      ...baseOverview.vitalDBObservation,
+      anomalies: [],
+      readIssues: []
+    };
+    hooks.useRuntimeOverview.mockReturnValue(
+      query({
+        ...baseOverview,
+        vitalDBObservation,
+        vitalDBObservationSnapshot: {
+          state: "loaded",
+          observation: vitalDBObservation,
+          readError: "projection=read failed"
+        }
+      })
+    );
+
+    renderPage(<ObservabilityPage />);
+
+    expect(screen.getByText("Ready with issues")).toBeInTheDocument();
+    expect(screen.getByText("Recorder anomaly details are incomplete")).toBeInTheDocument();
+    expect(screen.getByText(/projection=read failed/)).toBeInTheDocument();
+    expect(
+      screen.queryByText("No recorder anomalies were reported.")
+    ).not.toBeInTheDocument();
+  });
+
+  it("does not use event type as fallback event message or source", () => {
+    hooks.useRuntimeEvents.mockReturnValue(
+      query({
+        events: [
+          {
+            id: "event-missing-message",
+            timestamp: "2026-05-31T01:00:00Z",
+            eventType: "status-changed",
+            status: "healthy",
+            failureReasons: []
+          }
+        ],
+        nextCursor: null,
+        matchingCount: 1
+      })
+    );
+
+    renderPage(<ObservabilityPage />);
+
+    expect(screen.getByText("Message not reported")).toBeInTheDocument();
+    expect(screen.getByText("source not reported")).toBeInTheDocument();
+  });
+
   it("reads and exports logs with host path validation", () => {
     const exportLogs = mutation({ destination: "file:///tmp/vitalserver-logs.zip" });
     hooks.useExportHostLogs.mockReturnValue(exportLogs);
@@ -234,6 +521,71 @@ describe("runtime console pages", () => {
 
     expect(exportLogs.mutate).toHaveBeenCalledWith("/tmp/vitalserver-logs.zip");
     expect(screen.getByText(/Exported to/)).toBeInTheDocument();
+  });
+
+  it("does not render missing log response data as an empty log", () => {
+    hooks.useHostLogs.mockReturnValue(query(undefined));
+
+    renderPage(<LogsPage />);
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Log response is incomplete"
+    );
+    expect(
+      screen.queryByText("No log lines are available for this source.")
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders explicit empty log text as an empty log", () => {
+    hooks.useHostLogs.mockReturnValue(query({ text: "" }));
+
+    renderPage(<LogsPage />);
+
+    expect(
+      screen.getByText("No log lines are available for this source.")
+    ).toBeInTheDocument();
+  });
+
+  it("shows log export capability read failure separately from unsupported export", () => {
+    hooks.useRuntimeCapabilities.mockReturnValue(
+      failedQuery(new Error("capabilities denied"))
+    );
+
+    renderPage(<LogsPage />);
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Failed to read export capability"
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent("capabilities denied");
+    expect(screen.getByRole("button", { name: "Export Logs" })).toBeDisabled();
+  });
+
+  it("shows unsupported log export as explicit unsupported capability", () => {
+    hooks.useRuntimeCapabilities.mockReturnValue(
+      query({ ...capabilities(), canExportLogs: false })
+    );
+
+    renderPage(<LogsPage />);
+
+    expect(
+      screen.getByText("Log export is not supported by this Runtime Control API.")
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Export Logs" })).toBeDisabled();
+  });
+
+  it("does not render missing log export capability as unsupported export", () => {
+    hooks.useRuntimeCapabilities.mockReturnValue(query(undefined));
+
+    renderPage(<LogsPage />);
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Export capability response is incomplete"
+    );
+    expect(
+      screen.queryByText("Log export is not supported by this Runtime Control API.")
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Export Logs" })).toBeDisabled();
   });
 
   it("runs update inspection, verification, and apply actions", () => {
@@ -377,9 +729,27 @@ describe("runtime console pages", () => {
     expect(deleteOrphan.mutate).toHaveBeenCalledWith("VR_ORPHAN");
   });
 
+  it("does not turn missing TestKit status into empty beds or sessions", () => {
+    hooks.useTestKitStatus.mockReturnValue(query(undefined));
+
+    renderPage(<TestKitPage />);
+
+    expect(screen.getAllByText("Not reported").length).toBeGreaterThanOrEqual(5);
+    expect(screen.getByText("TestKit bed state is not reported.")).toBeInTheDocument();
+    expect(screen.getByText("TestKit session state is not reported.")).toBeInTheDocument();
+    expect(
+      screen.queryByText("Create beds before starting VRecorders.")
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("No virtual recorder sessions.")
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Start" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Create" })).toBeDisabled();
+  });
+
   it("shows page-level query errors", () => {
     hooks.useRuntimeOverview.mockReturnValue(failedQuery(new Error("overview denied")));
-    hooks.useVitalDBBeds.mockReturnValue(failedQuery(new Error("beds denied")));
+    hooks.useVitalDBRecorders.mockReturnValue(failedQuery(new Error("beds denied")));
 
     const { rerender } = renderPage(<StatusPage />);
     expect(screen.getByRole("alert")).toHaveTextContent("overview denied");
@@ -437,18 +807,23 @@ function setupDefaultHooks() {
 
 function capabilities() {
   return {
+    canInstallRuntime: true,
+    canUninstallRuntime: true,
+    canApplyBundle: true,
+    canRollback: true,
+    canEditVMResources: true,
+    canEditNetworkExposure: true,
+    canResetAdminPassword: true,
+    canOpenLocalFiles: true,
+    canStreamLogs: true,
+    canControlRuntimeServices: true,
+    canExportLogs: true,
+    canViewReleaseMetadata: true,
+    canUseTestTools: true,
     canApplySettings: true,
     canApplyRuntimeSettings: true,
     canControlRecovery: true,
-    canControlRuntimeServices: true,
-    canEditLocalFiles: true,
-    canEditNetworkExposure: true,
-    canEditVMResources: true,
-    canExportLogs: true,
-    canOpenLocalFiles: true,
-    canRollback: true,
-    canUninstallRuntime: true,
-    canUseTestTools: true
+    canEditLocalFiles: true
   };
 }
 
@@ -464,6 +839,7 @@ function overview() {
     devices: [],
     filters: [],
     proxyConnections: [],
+    readIssues: [],
     anomalies: [
       {
         id: "duplicate-ip-10",
@@ -477,11 +853,7 @@ function overview() {
   };
 
   return {
-    settings: {
-      proxyPort: 18080,
-      runtimeControlPort: 18321,
-      vitalFilesDirectory: "/Users/shared/vital"
-    },
+    settings: settings(),
     status: {
       runtimeState: "healthy",
       operation: "idle",
@@ -502,7 +874,20 @@ function overview() {
       memory: { usedBytes: 2048, totalBytes: 4096 },
       systemDisk: { availableBytes: 8192, totalBytes: 16384 },
       dataStorage: { usedBytes: 1024, totalBytes: 2048 },
-      containerObservation: { auditProxyHTTP: "HTTP 200" },
+      containerObservation: {
+        auditProxyHTTP: "HTTP 200",
+        auditProxyStatus: null,
+        auditProxyStatusReadError: null,
+        runtimeStateUpdatedAt: null,
+        runtimeStateFileUpdatedAt: null,
+        runtimeStateFileMetadataError: null,
+        containerLogsPresent: true,
+        containerLogsBytes: null,
+        containerLogsUpdatedAt: null,
+        containerLogsMetadataError: null,
+        composeServices: [],
+        composeServicesReadError: null
+      },
       failureReasons: []
     },
     vitalDBObservation,
@@ -512,6 +897,7 @@ function overview() {
       readError: null
     },
     vitalRecorder: {
+      source: "vitalDBObservation",
       observedAt: "2026-05-31T01:00:00Z",
       activeConnections: 1,
       knownRecorders: 1,
@@ -529,10 +915,14 @@ function settings() {
     memoryGiB: 4,
     diskGiB: 20,
     minimumDiskGiB: 20,
+    networkMode: "shared" as const,
+    bridgedInterface: "",
     proxyPort: 18080,
     runtimeControlPort: 18321,
     publicHost: "host.local",
     publicPort: 18080,
+    adminPassword: "",
+    changeAdminPassword: false,
     vitalFilesDirectory: "/Users/shared/vital",
     redisBackupRetentionCount: 7,
     startOnBoot: true,
@@ -564,21 +954,43 @@ function recorders() {
         firstSeenAt: "2026-05-31T00:00:00Z",
         lastSeenAt: "2026-05-31T01:00:00Z",
         observationCount: 3,
+        duplicateObservationCount: 0,
         currentAnomalyCount: 0,
         presentInLatestObservation: true,
         activityTimeline: [
           {
             observedAt: "2026-05-31T00:59:00Z",
+            windowSeconds: 60,
             messageCount: 3,
             byteCount: 2048,
             roomCount: 1,
-            bytesPerSecond: 128
+            messagesPerSecond: 0.05,
+            bytesPerSecond: 128,
+            buckets: []
           }
         ]
       }
     ],
     beds: beds(),
-    activityHistory: {}
+    summary: {
+      knownRecorders: 1,
+      currentRecorders: 1,
+      onlineRecorders: 1,
+      staleRecorders: 0,
+      recorderAnomalies: 0,
+      knownBeds: 1,
+      onlineBeds: 1,
+      staleBeds: 0,
+      bedAssignments: 1,
+      bedAnomalies: 0
+    },
+    activityHistory: {
+      source: "notProvided",
+      bucketCount: 0,
+      earliestBucketStartedAt: null,
+      latestBucketStartedAt: null,
+      readError: null
+    }
   };
 }
 
@@ -593,6 +1005,7 @@ function beds() {
       firstSeenAt: "2026-05-31T00:00:00Z",
       lastSeenAt: "2026-05-31T01:00:00Z",
       observationCount: 2,
+      duplicateObservationCount: 0,
       currentAnomalyCount: 0
     }
   ];

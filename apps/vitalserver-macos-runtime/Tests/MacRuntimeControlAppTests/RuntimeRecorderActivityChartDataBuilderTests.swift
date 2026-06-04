@@ -86,4 +86,60 @@ final class RuntimeRecorderActivityChartDataBuilderTests: XCTestCase {
         ])
         XCTAssertEqual(displayed.map(\.messageCount), [0, 3, 0, 7])
     }
+
+    func testActivityDisplayUsesLatestTimestampAndOwnsSummaryMetrics() {
+        let builder = RuntimeRecorderActivityChartDataBuilder()
+        let display = builder.display(
+            from: [
+                activityPoint(observedAt: "2026-05-30T00:10:00Z", messageCount: 4),
+                activityPoint(observedAt: "2026-05-30T00:05:00Z", messageCount: 9),
+            ],
+            interval: .oneMinute,
+            period: .lastHour,
+            readError: nil
+        )
+
+        XCTAssertEqual(display.state, .available)
+        XCTAssertEqual(display.latestSample?.observedAt, "2026-05-30T00:10:00Z")
+        XCTAssertEqual(display.totalPackets, 13)
+        XCTAssertEqual(display.latestBucket?.messageCount, 4)
+    }
+
+    func testActivityDisplayKeepsReadFailureDistinctFromEmptyActivity() {
+        let builder = RuntimeRecorderActivityChartDataBuilder()
+        let display = builder.display(
+            from: [],
+            interval: .oneMinute,
+            period: .lastHour,
+            readError: "activity projection denied"
+        )
+
+        XCTAssertEqual(display.state, .readFailed("activity projection denied"))
+        XCTAssertTrue(display.buckets.isEmpty)
+        XCTAssertNil(display.totalPackets)
+    }
+
+    private func activityPoint(
+        observedAt: String,
+        messageCount: Int
+    ) -> RuntimeVitalRecorderActivityPoint {
+        RuntimeVitalRecorderActivityPoint(
+            observedAt: observedAt,
+            windowSeconds: 60,
+            messageCount: messageCount,
+            byteCount: messageCount * 10,
+            roomCount: 1,
+            messagesPerSecond: Double(messageCount),
+            bytesPerSecond: Double(messageCount * 10),
+            buckets: [
+                VitalDBRecorderActivityBucket(
+                    bucketStartedAt: observedAt,
+                    bucketSeconds: 60,
+                    messageCount: messageCount,
+                    byteCount: messageCount * 10,
+                    roomCount: 1
+                )
+            ]
+        )
+    }
 }

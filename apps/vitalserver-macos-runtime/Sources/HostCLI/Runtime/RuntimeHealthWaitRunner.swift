@@ -10,7 +10,7 @@ struct RuntimeHealthWaitRunner {
     var log: (String) -> Void
 
     func wait(for policy: RuntimeServiceRestartPolicy) throws {
-        guard policy.restartVM || policy.restartProxy || policy.restartWatchdog else {
+        guard policy.anyServiceWasRunning else {
             log("runtime services were not running before apply; skipping health wait")
             return
         }
@@ -22,9 +22,11 @@ struct RuntimeHealthWaitRunner {
             observe: {
                 RuntimeHealthWaitObservation(
                     vmServiceRequired: policy.restartVM,
+                    guestLogSyncServiceRequired: policy.restartGuestLogSync,
                     proxyServiceRequired: policy.restartProxy,
                     watchdogServiceRequired: policy.restartWatchdog,
                     vmServiceLoaded: isLaunchdLoaded(.vm),
+                    guestLogSyncServiceLoaded: isLaunchdLoaded(.guestLogSync),
                     proxyServiceLoaded: isLaunchdLoaded(.proxy),
                     watchdogServiceLoaded: isLaunchdLoaded(.watchdog),
                     snapshot: healthSnapshot()

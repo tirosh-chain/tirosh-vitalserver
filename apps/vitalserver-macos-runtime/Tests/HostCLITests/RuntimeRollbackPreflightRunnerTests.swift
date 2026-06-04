@@ -29,7 +29,7 @@ final class RuntimeRollbackPreflightRunnerTests: XCTestCase {
             },
             serviceRestartPolicy: {
                 events.append("policy")
-                return RuntimeServiceRestartPolicy(restartVM: true, restartProxy: false, restartWatchdog: true)
+                return RuntimeServiceRestartPolicy(restartVM: true, restartGuestLogSync: true, restartProxy: false, restartWatchdog: true)
             },
             log: { _ in events.append("log") }
         )
@@ -42,6 +42,7 @@ final class RuntimeRollbackPreflightRunnerTests: XCTestCase {
         XCTAssertTrue(context.restoresRootfsBase)
         XCTAssertEqual(context.restartPolicy, RuntimeServiceRestartPolicy(
             restartVM: true,
+            restartGuestLogSync: true,
             restartProxy: false,
             restartWatchdog: true
         ))
@@ -78,7 +79,7 @@ final class RuntimeRollbackPreflightRunnerTests: XCTestCase {
             },
             serviceRestartPolicy: {
                 events.append("policy")
-                return RuntimeServiceRestartPolicy(restartVM: false, restartProxy: true, restartWatchdog: false)
+                return RuntimeServiceRestartPolicy(restartVM: false, restartGuestLogSync: false, restartProxy: true, restartWatchdog: false)
             },
             log: { _ in events.append("log") }
         )
@@ -88,6 +89,7 @@ final class RuntimeRollbackPreflightRunnerTests: XCTestCase {
         XCTAssertEqual(context.backup, latestBackup)
         XCTAssertEqual(context.restartPolicy, RuntimeServiceRestartPolicy(
             restartVM: false,
+            restartGuestLogSync: false,
             restartProxy: true,
             restartWatchdog: false
         ))
@@ -116,7 +118,7 @@ final class RuntimeRollbackPreflightRunnerTests: XCTestCase {
             },
             serviceRestartPolicy: {
                 XCTFail("missing backup directory should stop before service policy")
-                return RuntimeServiceRestartPolicy(restartVM: false, restartProxy: false, restartWatchdog: false)
+                return RuntimeServiceRestartPolicy(restartVM: false, restartGuestLogSync: false, restartProxy: false, restartWatchdog: false)
             },
             log: { _ in XCTFail("missing backup directory should stop before logging") }
         )
@@ -136,7 +138,7 @@ final class RuntimeRollbackPreflightRunnerTests: XCTestCase {
             loadManifest: { _ in self.backupManifest(rootfsBase: Constants.Artifacts.rootfsBase) },
             serviceRestartPolicy: {
                 XCTFail("missing rootfs should stop before service policy")
-                return RuntimeServiceRestartPolicy(restartVM: false, restartProxy: false, restartWatchdog: false)
+                return RuntimeServiceRestartPolicy(restartVM: false, restartGuestLogSync: false, restartProxy: false, restartWatchdog: false)
             },
             log: { _ in XCTFail("missing rootfs should stop before logging") }
         )
@@ -159,7 +161,7 @@ final class RuntimeRollbackPreflightRunnerTests: XCTestCase {
             loadManifest: { _ in self.backupManifest(rootfsBase: nil) },
             serviceRestartPolicy: {
                 events.append("policy")
-                return RuntimeServiceRestartPolicy(restartVM: false, restartProxy: false, restartWatchdog: false)
+                return RuntimeServiceRestartPolicy(restartVM: false, restartGuestLogSync: false, restartProxy: false, restartWatchdog: false)
             },
             log: { _ in events.append("log") }
         )

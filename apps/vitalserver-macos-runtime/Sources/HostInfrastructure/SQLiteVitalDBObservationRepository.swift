@@ -16,10 +16,6 @@ public struct SQLiteVitalDBObservationRepository {
         try store.append(observation)
     }
 
-    public func bestEffortLatestObservation() -> VitalDBObservationDocument? {
-        try? loadLatestObservation()
-    }
-
     public func loadLatestObservation() throws -> VitalDBObservationDocument? {
         try store.loadLatestVitalDBObservation()
     }

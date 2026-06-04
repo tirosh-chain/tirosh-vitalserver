@@ -119,6 +119,48 @@ Guest VM
 | `Core` | evaluator, operation plan, health/recovery policy, port protocol | `Contracts`에 의존하는 순수 도메인/워크플로 정책 |
 | `HostInfrastructure` | installed path, file store, JSON repository/gateway | host filesystem/shared directory 구현 |
 
+### Source code architecture boundary
+
+현재 SwiftPM target graph는 Clean Architecture와 ports-and-adapters 경계를 강제하는 1차 장치입니다.
+
+```text
+Contracts
+  <- Core
+  <- RuntimeWorkflow
+  <- HostInfrastructure
+  <- HostCLI
+  <- MacHostRuntimeAdapter
+  <- MacRuntimeControlApp
+
+RuntimeControl
+  <- RuntimeControlAPI
+  <- MacHostRuntimeAdapter
+  <- MacRuntimeControlApp
+```
+
+책임 기준은 아래처럼 읽습니다.
+
+| 위치 | 책임 | 허용 의존성 | 금지 |
+|---|---|---|---|
+| `Contracts` | shared state/event/document/command contract | Foundation 수준 value type | Host, UI, filesystem, process, network |
+| `Core` | pure policy, state machine, transition guard, invariant | `Contracts` | HostInfrastructure, HostCLI, RuntimeControl API, UI |
+| `RuntimeWorkflow` | usecase orchestration, Core command consumption, injected port execution | `Contracts`, `Core` | filesystem/process 직접 read/write, adapter import |
+| `HostInfrastructure` | host filesystem, JSON repository, SQLite/read model, external state adapter | `Contracts`, `Core` | UI composition, domain transition rule ownership |
+| `HostCLI` | CLI entrypoint and host composition root | inward targets plus infrastructure | Core state inference from logs/absence |
+| `RuntimeControl` | UI/API-facing read and command DTO, client contracts | `Contracts` | host side effects |
+| `RuntimeControlAPI` | HTTP route/DTO/server boundary | `RuntimeControl` | host filesystem/process details |
+| `MacHostRuntimeAdapter` | macOS local RuntimeControl implementation | `Contracts`, `RuntimeControl`, `Core`, `HostInfrastructure` | UI state creation |
+| `MacRuntimeControlApp` | SwiftUI presentation, native shell composition | `Contracts`, `RuntimeControl`, `RuntimeControlAPI`, adapter facade | domain transition decisions, host state inference |
+
+State owner rule:
+
+- Host owns runtime, process, filesystem, launchd, package, and log collection state.
+- Guest owns guest-internal observation and operation result documents.
+- `Contracts` preserves the state meanings that cross process/layer boundaries.
+- `Core` consumes complete explicit input only.
+- `RuntimeWorkflow` may sequence effects, but only after Core returns the command/effect to execute.
+- UI formats explicit state and must not turn missing, failed, stale, unavailable, or invalid into empty/default success.
+
 As-is의 계층 간 통신은 아래처럼 섞여 있습니다.
 
 | 방향 | 현재 방식 | 비고 |
@@ -328,16 +370,16 @@ download Ubuntu cloud image
 병원 Mac mini/Mac Studio는 설치 파일만 받습니다.
 
 ```text
-TiroshVitalServer.pkg
+VitalServerHelper.pkg
   -> /usr/local/bin/vitalserver-vm
   -> /usr/local/bin/vitalserver-proxy-run
   -> /usr/local/bin/tirosh-vitalserver-uninstall
   -> /Applications/VitalServer Helper.app
-  -> /Library/Application Support/TiroshVitalServer/nginx/sbin/nginx
-  -> /Library/LaunchDaemons/com.tirosh.vitalserver-proxy.plist
-  -> /Library/LaunchDaemons/com.tirosh.vitalserver-vm.plist
-  -> /Library/LaunchDaemons/com.tirosh.vitalserver-watchdog.plist
-  -> /Library/Application Support/TiroshVitalServer/vm/runtime/
+  -> /Library/Application Support/VitalServerHelper/nginx/sbin/nginx
+  -> /Library/LaunchDaemons/ai.tirosh.vitalserver.helper.proxy.plist
+  -> /Library/LaunchDaemons/ai.tirosh.vitalserver.helper.vm.plist
+  -> /Library/LaunchDaemons/ai.tirosh.vitalserver.helper.watchdog.plist
+  -> /Library/Application Support/VitalServerHelper/vm/runtime/
        Image
        initrd.img
        rootfs-base.raw.gz
@@ -345,7 +387,7 @@ TiroshVitalServer.pkg
        vm-config.json
        seed.iso
        runtime-version.json
-  -> /Library/Application Support/TiroshVitalServer/vm/data/
+  -> /Library/Application Support/VitalServerHelper/vm/data/
        vital-files/
        vr-release/
 ```
@@ -415,7 +457,7 @@ Single-node self-healing runtime
 2. watchdog LaunchDaemon은 `vitalserver-vm runtime watchdog`을 주기 실행한다.
 3. watchdog은 VM/proxy/HTTP health를 기준으로 VM/proxy를 kickstart하고 `runtime-status.json`을 갱신한다.
 4. guest 내부 Docker Compose stack은 `tirosh-vitalserver-compose.service`로 재부팅 후 재적용된다.
-5. Helper app은 `/Library/Application Support/TiroshVitalServer/status/runtime-status.json`을 읽어 정상/복구중/장애/업데이트중 상태를 표시한다.
+5. Helper app은 `/Library/Application Support/VitalServerHelper/status/runtime-status.json`을 읽어 정상/복구중/장애/업데이트중 상태를 표시한다.
 6. install/update는 free-space preflight를 수행하고, installer/runtime log는 size 기반 rotation을 수행한다.
 7. guest bootstrap은 bundled image load 후 Docker dangling image cleanup을 수행한다.
 
@@ -424,10 +466,10 @@ Single-node self-healing runtime
 운영 상태의 source of truth는 아래 JSON 파일입니다.
 
 ```text
-/Library/Application Support/TiroshVitalServer/status/runtime-status.json
+/Library/Application Support/VitalServerHelper/status/runtime-status.json
 ```
 
-이 파일은 `vitalserver-vm runtime install`, `health`, `watchdog`, `apply-bundle`, `rollback`이 갱신합니다. Helper app, watchdog, 운영 CLI는 같은 파일을 읽어 상태를 판단합니다.
+이 파일은 `vitalserver-vm runtime install`, `install-provision`, `health`, `watchdog`, `apply-bundle`, `rollback`이 갱신합니다. Helper app, watchdog, 운영 CLI는 같은 파일을 읽어 상태를 판단합니다.
 
 `runtime-status.json`은 update/watchdog coordination에도 사용합니다. update와 rollback은 VM/proxy/watchdog launchd service를 직접 stop/start하므로, 이 구간에서 watchdog auto-recovery가 동시에 실행되면 같은 자원을 두 process가 재시작하는 경쟁 상태가 됩니다. 따라서 watchdog은 상태 문서가 아래 operation을 진행 중이라고 판단하면 recovery를 건너뜁니다.
 
@@ -454,13 +496,13 @@ Single-node self-healing runtime
 
 ```json
 {
-  "product": "TiroshVitalServer",
+  "product": "VitalServerHelper",
   "status": "healthy",
   "operation": "health",
   "message": "runtime health check passed",
   "updatedAt": "2026-05-21T00:00:00Z",
-  "productRoot": "/Library/Application Support/TiroshVitalServer",
-  "runtimeHome": "/Library/Application Support/TiroshVitalServer/vm",
+  "productRoot": "/Library/Application Support/VitalServerHelper",
+  "runtimeHome": "/Library/Application Support/VitalServerHelper/vm",
   "runtimeVersion": "<version>",
   "vmService": "loaded",
   "proxyService": "loaded",
@@ -474,7 +516,7 @@ Single-node self-healing runtime
   "rootfsBase": "present",
   "vmDisk": "present",
   "failureReasons": [],
-  "latestBackup": "/Library/Application Support/TiroshVitalServer/backups/..."
+  "latestBackup": "/Library/Application Support/VitalServerHelper/backups/..."
 }
 ```
 
@@ -499,12 +541,12 @@ rollback success    -> healthy
 ## GUI와 Package
 
 제품 설치 책임은 `.pkg`에 둡니다. `.dmg`가 필요하면 installer 전달 매체로만 사용하고, DMG root에는
-단일 `Install Tirosh VitalServer.pkg`를 둡니다. PKG가 Helper app/native shell과 host control components를 함께 설치하고,
+단일 `Install VitalServer Helper.pkg`를 둡니다. PKG가 Helper app/native shell과 host control components를 함께 설치하고,
 Helper UI는 설치 이후 상태 확인과 운영 작업을 담당합니다. 장기적으로 이 UI는 Web/PWA primary implementation으로 이동하고 native app은 local runtime host/shell 역할에 집중합니다.
 
 단일 PKG를 기본 배포물로 선택한 이유는 설치 대상이 self-contained app 하나가 아니기 때문입니다.
 이 제품은 `/Applications`에 Helper app을 놓는 것 외에도 `/usr/local/bin` Updater/Supervisor/VM Driver tools,
-`/Library/LaunchDaemons` system services, `/Library/Application Support/TiroshVitalServer` 아래의
+`/Library/LaunchDaemons` system services, `/Library/Application Support/VitalServerHelper` 아래의
 VM Image/runtime asset, host nginx bundle, Docker image bundle을 설치하고 `postinstall`에서 VM disk,
 cloud-init seed, component config, launchd 상태를 provision합니다. 이런 system-wide 설치는 macOS
 Installer가 권한 상승, receipt, MDM/Jamf 배포, CLI 설치(`installer -pkg ... -target /`)를 다룰 수
@@ -518,10 +560,10 @@ host proxy를 부팅 시 자동 실행해야 하므로 `.app`만으로 배포하
 깨진 설치/MDM 배포/제거 경로가 불명확해집니다.
 
 ```text
-TiroshVitalServer.dmg
-  -> Install Tirosh VitalServer.pkg
+VitalServerHelper.dmg
+  -> Install VitalServer Helper.pkg
       -> /Applications/VitalServer Helper.app
-      -> /Library/Application Support/TiroshVitalServer runtime data
+      -> /Library/Application Support/VitalServerHelper runtime data
       -> /usr/local/bin Updater/Supervisor/VM Driver tools
       -> LaunchDaemons
       -> postinstall runtime provisioning
@@ -543,7 +585,7 @@ administrator privilege로 호출합니다.
 
 | 대상 | 책임 |
 |---|---|
-| `Install Tirosh VitalServer.pkg` | 파일 배치, 권한 설정, LaunchDaemon 설치, 최초 runtime provisioning |
+| `Install VitalServer Helper.pkg` | 파일 배치, 권한 설정, LaunchDaemon 설치, 최초 runtime provisioning |
 | `VitalServer Helper.app` | 설치 후 Status/Settings/Update/Logs/About/Advanced/Danger Zone 진입점 |
 | `/usr/local/bin/vitalserver-vm` | 현재 local control binary. Updater, Supervisor, VM Driver 명령을 제공 |
 | `/usr/local/bin/tirosh-vitalserver-uninstall` | 제거 source of truth, Helper/Terminal/MDM 공통 backend |
@@ -557,7 +599,7 @@ open ".tmp/VitalServer Helper.app"
 
 제품 DMG는 drag-and-drop app wrapper가 아니라 installer pkg를 전달합니다.
 `make vm-pkg`는 Helper app을 `/Applications/VitalServer Helper.app` payload로 포함하고,
-`make vm-dmg`는 DMG root에 `Install Tirosh VitalServer.pkg`만 배치합니다.
+`make vm-dmg`는 DMG root에 `Install VitalServer Helper.pkg`만 배치합니다.
 
 현재 배포 기준은 unsigned입니다. `.pkg`와 `.dmg`에 Developer ID 서명/notarization을 적용하지 않습니다. 단, nginx binary와 dylib는 `install_name_tool`로 load path를 수정하므로 실행 가능한 Mach-O 상태를 위해 ad-hoc signing(`codesign --sign -`)만 수행합니다.
 
@@ -747,7 +789,7 @@ Shell
 | build config | `config/vm-build.toml` | Ubuntu/rootfs/Docker image/nginx bundle pinned input 값 | 설치 시 사용자 설정 |
 | Python build package | `packages/vitalserver-devtools/src/tirosh_vitalserver/devtools/*.py` | Ubuntu asset 준비, cloud-init ISO 생성, rootfs 압축, nginx bundle, Docker image bundle, update bundle 생성/검증, plist/template rendering | 설치 후 runtime 상태 변경 |
 | Local control entry | `Sources/HostCLI/CLI/Launcher.swift`, `Command.swift` | `vitalserver-vm` command routing, VM start/stop/status/network/runtime command 연결 | package staging, DMG 생성 |
-| Local control lifecycle facade | `Sources/HostCLI/Runtime/RuntimeLifecycle.swift` | `runtime install/status/health/verify-bundle/stage-bundle/apply-bundle/rollback/repair-datastore/start-services/stop-services` command를 typed workflow와 runner로 연결 | workflow 내부 단계 구현, DMG/PKG 파일 생성 |
+| Local control lifecycle facade | `Sources/HostCLI/Runtime/RuntimeLifecycle.swift` | `runtime install/install-provision/status/health/verify-bundle/stage-bundle/apply-bundle/rollback/repair-datastore/start-services/stop-services` command를 typed workflow와 runner로 연결 | workflow 내부 단계 구현, DMG/PKG 파일 생성 |
 | Local control workflows | `RuntimeInstallWorkflow.swift`, `RuntimeBundleWorkflow.swift`, `RuntimeRollbackWorkflow.swift`, `RuntimeGuestActivationWorkflow.swift`, `RuntimeDatastoreRepairWorkflow.swift` | install/update/rollback/guest activation/datastore repair의 단계 조율, progress/status 기록 경계 | CLI argument parsing, Helper UI presentation |
 | Local control contracts | `Sources/Contracts/*.swift`, `Sources/Core/Ports/*.swift` | runtime status/progress/health/guest request/result/update bundle/port 계약, 닫힌 상태값 enum | host filesystem이나 launchd 직접 호출 |
 | Local control host services | `RuntimeServiceController.swift`, `RuntimeStorageMaintenance.swift`, `RuntimeStatusWriter.swift`, `RuntimeCommandExecutor.swift`, `RuntimeHealthChecker.swift` | launchd service 제어, free-space/file replacement/artifact pruning, status document 작성, shell command 실행, host/guest health snapshot 수집 | product update policy 결정 |
@@ -756,9 +798,9 @@ Shell
 | Helper app | `Sources/MacRuntimeControlApp/*` | 설치 후 Status/Settings/Update/Logs/About/Advanced/Danger Zone UI, app composition, native shell | rootfs, VM disk, privileged provisioning 포함 |
 | Host runtime adapter | `Sources/MacHostRuntimeAdapter/*` | `RuntimeControlClient` local facade, read worker, command worker, host file/log read, privileged command 조립/실행, log export | SwiftUI presentation, host runtime workflow 내부 단계 |
 | PKG scripts | `Support/Packaging/preinstall`, `postinstall`, `proxy-run`, `uninstall` | installer/launchd/uninstall entrypoint wrapper | 복잡한 provisioning 로직 |
-| guest bootstrap | `Support/Guest/bootstrap.sh`, `bin/*`, `systemd/*`, `prepare-airgap-rootfs.sh`, `compose.yaml` | Linux guest 내부 Docker/Compose 구성, edge nginx container, Docker image load, runtime state 기록 | macOS launchd/proxy 관리 |
+| guest bootstrap | `Support/Guest/bootstrap.sh`, Guest tools wheel, `prepare-airgap-rootfs.sh`, `compose.yaml` | Linux guest 내부 Docker/Compose 구성, edge nginx container, Docker image load, runtime state 기록 | macOS launchd/proxy 관리 |
 
-Shell은 의도적으로 얇게 유지합니다. `postinstall`은 로그를 열고 `VITALSERVER_VM_HOME=/Library/Application Support/TiroshVitalServer/vm vitalserver-vm runtime install`만 호출합니다. 설치 정책은 Swift `RuntimeLifecycle`에 둡니다.
+Shell은 의도적으로 얇게 유지합니다. `postinstall`은 로그를 열고 `VITALSERVER_VM_HOME=/Library/Application Support/VitalServerHelper/vm vitalserver-vm runtime install-provision`만 호출합니다. 설치 정책은 Swift `RuntimeLifecycle`에 둡니다. Runtime readiness 판단은 `postinstall`이 아니라 watchdog, Helper app, `runtime health` command가 담당합니다.
 
 변경 판단 기준은 아래입니다.
 

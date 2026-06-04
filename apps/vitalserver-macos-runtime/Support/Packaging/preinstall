@@ -1,16 +1,22 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-labels=(
-  "com.tirosh.vitalserver-watchdog"
-  "com.tirosh.vitalserver-guest-log-sync"
-  "com.tirosh.vitalserver-proxy"
-  "com.tirosh.vitalserver-vm"
-  "com.tirosh.vitalserver-sleep-prevention"
-)
+product_root="/Library/Application Support/VitalServerHelper"
+vm_home="${product_root}/vm"
+script_dir="$(cd "$(dirname "$0")" && pwd)"
+preflight_bin="${script_dir}/vitalserver-vm-preinstall"
 
-for label in "${labels[@]}"; do
-  if launchctl print "system/${label}" >/dev/null 2>&1; then
-    launchctl bootout "system/${label}" >/dev/null 2>&1 || true
-  fi
-done
+fail_fresh_install_only() {
+  echo "Tirosh VitalServer pkg install supports fresh installs only." >&2
+  echo "Run a clean uninstall, stop the conflicting process, or choose a different Host proxy port before installing this pkg." >&2
+  exit 1
+}
+
+if [ ! -x "${preflight_bin}" ]; then
+  echo "fresh install preflight unavailable: ${preflight_bin}" >&2
+  fail_fresh_install_only
+fi
+
+if ! VITALSERVER_VM_HOME="${vm_home}" "${preflight_bin}" runtime preinstall-check; then
+  fail_fresh_install_only
+fi

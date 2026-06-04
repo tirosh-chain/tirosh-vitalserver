@@ -3,8 +3,8 @@ import Core
 import Contracts
 
 extension RuntimeLifecycle {
-    func runtimeInstallWorkflow() -> RuntimeInstallWorkflow {
-        RuntimeInstallWorkflow(
+    func runtimeInstallWorkflow() -> RuntimeInstallWorkflowComposition {
+        RuntimeInstallWorkflowComposition(
             context: RuntimeInstallWorkflowContext(
                 paths: paths,
                 installedPaths: installedPaths,
@@ -15,6 +15,16 @@ extension RuntimeLifecycle {
             operations: RuntimeInstallWorkflowOperations(
                 fileStore: fileStore,
                 now: { clock.now },
+                freshInstallPreflight: {
+                    runtimeFreshInstallPreflightRunner().run()
+                },
+                installProvisionPayload: {
+                    RuntimeInstallProvisionPayloadPolicy.document(
+                        artifactStates: RuntimeInstallArtifactStateReader.states(
+                            paths: installProvisionPayloadPaths().map(\.path)
+                        )
+                    )
+                },
                 writeRuntimeStatus: runtimeStatusWriterAction(),
                 writeRuntimeProgress: runtimeProgressWriterAction(),
                 rotateRuntimeLogs: rotateRuntimeLogs,
@@ -32,6 +42,8 @@ extension RuntimeLifecycle {
                 },
                 setStartOnBoot: setStartOnBoot,
                 startLaunchdService: startLaunchdService,
+                cleanupHostProxyPortBeforeStart: cleanupHostProxyPortBeforeStart,
+                waitForHealth: waitForHealth,
                 restrictSecretFile: restrictSecretFile,
                 log: log
             )
@@ -165,7 +177,7 @@ extension RuntimeLifecycle {
                     try restartVMRuntimeServices()
                 },
                 restartService: { service in
-                    restartOrStartLaunchdService(service)
+                    try restartOrStartLaunchdService(service)
                 },
                 markVMLifecycleRunning: { lifecycle in
                     let timestamp = clock.now
@@ -238,8 +250,8 @@ extension RuntimeLifecycle {
                 },
                 restartRuntimeServices: {
                     try restartVMRuntimeServices()
-                    restartOrStartLaunchdService(.proxy)
-                    restartOrStartLaunchdService(.watchdog)
+                    try restartOrStartLaunchdService(.proxy)
+                    try restartOrStartLaunchdService(.watchdog)
                 }
             ),
             log: { message in
@@ -267,6 +279,8 @@ extension RuntimeLifecycle {
                 },
                 startRuntimeServices: startRuntimeServices,
                 stopRuntimeServices: stopRuntimeServices,
+                runningVMProcessID: runningVMProcessID,
+                stopRuntimeServicesAfterGuestPoweroff: stopRuntimeServicesAfterGuestPoweroff,
                 prepareGuestShutdownForUpdate: prepareGuestShutdownForUpdate,
                 clearGuestShutdownPreparation: {
                     try guestGateway.removeUpdateShutdownResult()
@@ -325,10 +339,10 @@ extension RuntimeLifecycle {
                     guestGateway.loadDatastoreRepairResultDocument()
                 },
                 restartProxyService: {
-                    restartOrStartLaunchdService(.proxy)
+                    try restartOrStartLaunchdService(.proxy)
                 },
                 restartWatchdogService: {
-                    restartOrStartLaunchdService(.watchdog)
+                    try restartOrStartLaunchdService(.watchdog)
                 },
                 waitForHealth: waitForHealth,
                 writeStatus: runtimeStatusWriterAction(),
@@ -369,7 +383,7 @@ extension RuntimeLifecycle {
                 runProcessToFile: runProcessToFile,
                 runRequired: runRequired,
                 createRedisBackup: createRedisBackup,
-                stopRuntimeServices: stopRuntimeServices,
+                stopRuntimeServicesForVMDiskReplacement: stopRuntimeServicesForVMDiskReplacement,
                 startRuntimeServices: startRuntimeServices,
                 waitForHealth: waitForHealth,
                 writeStatus: runtimeStatusWriterAction(),
@@ -532,9 +546,9 @@ private extension RuntimeLifecycle {
         }
     }
 
-    func startVMServiceAction() -> () -> Void {
+    func startVMServiceAction() -> () throws -> Void {
         {
-            startLaunchdService(.vm)
+            try startLaunchdService(.vm)
         }
     }
 

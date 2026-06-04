@@ -12,6 +12,7 @@ from tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle import
     wait_for_rootfs_ready,
     wait_for_runtime_http,
     wait_for_runtime_ip,
+    wait_for_runtime_stopped,
 )
 from tirosh_vitalserver.devtools.application.inputs import (
     RequireBridgedIdentityInput,
@@ -67,6 +68,10 @@ def wait_http(input: RuntimeWaitInput) -> int:
 
 def wait_rootfs_ready(input: RuntimeWaitInput) -> int:
     return wait_for_rootfs_ready(input)
+
+
+def wait_stopped(input: RuntimeWaitInput) -> int:
+    return wait_for_runtime_stopped(input)
 
 
 def health(input: RuntimeHealthInput) -> int:

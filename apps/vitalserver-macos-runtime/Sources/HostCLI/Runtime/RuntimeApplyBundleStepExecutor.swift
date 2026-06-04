@@ -4,6 +4,8 @@ import Contracts
 
 struct RuntimeApplyBundleStepExecutor {
     var stopRuntimeServices: () throws -> Void
+    var runningVMProcessID: () throws -> pid_t
+    var stopRuntimeServicesAfterGuestPoweroff: (pid_t) throws -> Void
     var prepareGuestShutdownForUpdate: (UpdateBundleManifest) throws -> Void
     var clearGuestShutdownPreparation: () throws -> Void
     var createDirectory: (URL, Bool) throws -> Void
@@ -26,10 +28,12 @@ struct RuntimeApplyBundleStepExecutor {
         switch step {
         case .stopRuntimeServices:
             if preflight.restartPolicy.restartVM {
+                let expectedVMProcessID = try runningVMProcessID()
+                log("captured VM process before guest update shutdown pid=\(expectedVMProcessID)")
                 try prepareGuestShutdownForUpdate(preflight.manifest)
                 do {
                     defer { clearGuestShutdownPreparationAfterRuntimeStop() }
-                    try stopRuntimeServices()
+                    try stopRuntimeServicesAfterGuestPoweroff(expectedVMProcessID)
                 }
                 return
             }

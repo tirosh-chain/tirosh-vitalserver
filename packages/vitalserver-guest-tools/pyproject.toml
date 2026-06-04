@@ -1,0 +1,31 @@
+[project]
+name = "tirosh-vitalserver-guest-tools"
+version = "0.1.0"
+description = "Guest-side tools for Tirosh VitalServer runtime."
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+tirosh-guest-observed = "tirosh_guest_tools.adapters.inbound.cli:guest_observed"
+tirosh-guest-observe = "tirosh_guest_tools.adapters.inbound.cli:guest_observe"
+tirosh-guest-container-logs = "tirosh_guest_tools.adapters.inbound.cli:guest_container_logs"
+tirosh-guest-diagnostics = "tirosh_guest_tools.adapters.inbound.cli:guest_diagnostics"
+tirosh-runtime-env = "tirosh_guest_tools.adapters.inbound.cli:runtime_env"
+tirosh-write-runtime-state = "tirosh_guest_tools.adapters.inbound.cli:write_runtime_state_command"
+tirosh-runtime-state = "tirosh_guest_tools.adapters.inbound.cli:runtime_state"
+tirosh-vitalserver-health = "tirosh_guest_tools.adapters.inbound.cli:vitalserver_health"
+tirosh-vitalserver-compose = "tirosh_guest_tools.adapters.inbound.cli:vitalserver_compose"
+tirosh-vitalserver-command-poller = "tirosh_guest_tools.adapters.inbound.cli:vitalserver_command_poller"
+tirosh-vitalserver-redis-backup = "tirosh_guest_tools.adapters.inbound.cli:vitalserver_redis_backup"
+tirosh-vitalserver-repair-datastore = "tirosh_guest_tools.adapters.inbound.cli:vitalserver_repair_datastore"
+tirosh-vitalserver-activate-update = "tirosh_guest_tools.adapters.inbound.cli:vitalserver_activate_update"
+tirosh-vitalserver-prepare-update-shutdown = "tirosh_guest_tools.adapters.inbound.cli:vitalserver_prepare_update_shutdown"
+tirosh-guest-tools-install-runtime = "tirosh_guest_tools.adapters.inbound.cli:guest_tools_install_runtime"
+tirosh-guest-tools-install-config = "tirosh_guest_tools.adapters.inbound.cli:guest_tools_install_config"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tirosh_guest_tools"]

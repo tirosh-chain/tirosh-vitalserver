@@ -20,6 +20,8 @@ struct RuntimeBundleWorkflowOperations {
     let rollback: (URL?) throws -> Void
     let startRuntimeServices: (RuntimeServiceRestartPolicy) throws -> Void
     let stopRuntimeServices: () throws -> Void
+    let runningVMProcessID: () throws -> pid_t
+    let stopRuntimeServicesAfterGuestPoweroff: (pid_t) throws -> Void
     let prepareGuestShutdownForUpdate: (UpdateBundleManifest) throws -> Void
     let clearGuestShutdownPreparation: () throws -> Void
     let isLaunchdLoaded: (RuntimeManagedService) -> Bool
@@ -304,10 +306,12 @@ struct RuntimeBundleWorkflow {
             serviceRestartPolicy: {
                 RuntimeServiceRestartPolicy(
                     restartVM: operations.isLaunchdLoaded(.vm),
+                    restartGuestLogSync: operations.isLaunchdLoaded(.guestLogSync),
                     restartProxy: operations.isLaunchdLoaded(.proxy),
                     restartWatchdog: operations.isLaunchdLoaded(.watchdog)
                 )
             },
+            runtimeHealthSnapshot: operations.runtimeHealthSnapshot,
             requireGuestCapability: operations.requireGuestCapability,
             createBackup: operations.createBackup,
             directorySize: directorySize,
@@ -325,6 +329,8 @@ struct RuntimeBundleWorkflow {
     ) throws {
         try RuntimeApplyBundleStepExecutor(
             stopRuntimeServices: operations.stopRuntimeServices,
+            runningVMProcessID: operations.runningVMProcessID,
+            stopRuntimeServicesAfterGuestPoweroff: operations.stopRuntimeServicesAfterGuestPoweroff,
             prepareGuestShutdownForUpdate: operations.prepareGuestShutdownForUpdate,
             clearGuestShutdownPreparation: operations.clearGuestShutdownPreparation,
             createDirectory: { url, withIntermediateDirectories in

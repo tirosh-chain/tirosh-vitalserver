@@ -101,7 +101,9 @@ struct MacHostRuntimeLogExporter: RuntimeLogExporting, @unchecked Sendable {
 
     private func makeStagingItemWritable(_ url: URL, isDirectory: Bool) throws {
         let attributes = try fileManager.attributesOfItem(atPath: url.path)
-        let permissions = (attributes[.posixPermissions] as? NSNumber)?.uint16Value ?? 0
+        guard let permissions = (attributes[.posixPermissions] as? NSNumber)?.uint16Value else {
+            throw RuntimeLogExporterError.missingPOSIXPermissions(path: url.path)
+        }
         let writablePermissions = Int(permissions | (isDirectory ? 0o700 : 0o600))
         try fileManager.setAttributes([.posixPermissions: writablePermissions], ofItemAtPath: url.path)
     }
@@ -236,9 +238,20 @@ private struct RuntimeLogExportIssues {
     var supplementalIssues: [String: String] = [:]
 }
 
+enum RuntimeLogExporterError: LocalizedError, Equatable {
+    case missingPOSIXPermissions(path: String)
+
+    var errorDescription: String? {
+        switch self {
+        case .missingPOSIXPermissions(let path):
+            return "POSIX permissions are missing for \(path)"
+        }
+    }
+}
+
 private extension RuntimeCommandResult {
     var localSummary: String {
-        let output = [stdout, stderr]
+        let output = [stdout, stderr, outputIssues.localSummary]
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
             .joined(separator: "\n")
@@ -248,6 +261,13 @@ private extension RuntimeCommandResult {
                 : "Command failed with exit code \(exitCode)"
         }
         return output
+    }
+}
+
+private extension Array where Element == RuntimeCommandOutputIssue {
+    var localSummary: String {
+        map { "\($0.stream.rawValue): \($0.message)" }
+            .joined(separator: "\n")
     }
 }
 
@@ -285,6 +305,10 @@ struct RuntimeLogExportSupplementalSource {
             RuntimeLogExportSupplementalSource(
                 source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.redisBackupLogSource),
                 relativeDestination: "guest/\(RuntimeFileNames.redisBackupLog)"
+            ),
+            RuntimeLogExportSupplementalSource(
+                source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.guestObservabilitySource),
+                relativeDestination: "guest/guest-observability"
             ),
             RuntimeLogExportSupplementalSource(
                 source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.commandLogFile),
@@ -340,7 +364,7 @@ struct RuntimeLogExportSupplementalSource {
             ),
             RuntimeLogExportSupplementalSource(
                 source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.proxyLaunchDaemon),
-                relativeDestination: "diagnostics/host/com.tirosh.vitalserver-proxy.plist"
+                relativeDestination: "diagnostics/host/ai.tirosh.vitalserver.helper.proxy.plist"
             ),
             RuntimeLogExportSupplementalSource(
                 source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.proxyNginxConfig),

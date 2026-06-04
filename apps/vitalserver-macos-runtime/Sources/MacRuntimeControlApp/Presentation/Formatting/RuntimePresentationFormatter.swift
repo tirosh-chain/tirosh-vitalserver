@@ -3,6 +3,27 @@ import Contracts
 import RuntimeControl
 
 struct RuntimePresentationFormatter {
+    struct ServiceURLPresentation: Equatable {
+        let displayURL: String
+        let openURL: String
+    }
+
+    func vitalServerStatusURL(settings: RuntimeSettings) -> ServiceURLPresentation {
+        serviceStatusURL(
+            explicitURL: settings.vitalServerURL,
+            displayFallback: "http://\(AppConstants.Labels.advertisedURLSameHost):\(settings.proxyPort)/",
+            openFallback: AppConstants.Product.vitalServerURL(proxyPort: settings.proxyPort)
+        )
+    }
+
+    func remoteConsoleStatusURL(settings: RuntimeSettings) -> ServiceURLPresentation {
+        serviceStatusURL(
+            explicitURL: settings.remoteConsoleURL,
+            displayFallback: "http://\(AppConstants.Labels.advertisedURLSameHost):\(settings.runtimeControlPort)/",
+            openFallback: AppConstants.Product.remoteConsoleURL(port: settings.runtimeControlPort)
+        )
+    }
+
     func backupSizeText(_ backup: RuntimeBackup) -> String {
         guard let sizeBytes = backup.sizeBytes else {
             return AppConstants.StatusText.unknown
@@ -29,8 +50,8 @@ struct RuntimePresentationFormatter {
         [
             AppConstants.StatusText.applySettingsConfirmation,
             "Proxy port: \(settings.proxyPort)",
-            "Public host: \(settings.publicHost.isEmpty ? "(same host)" : settings.publicHost)",
-            "Public port: \(settings.publicPort)",
+            "VitalServer URL: \(settings.vitalServerURL.isEmpty ? "(default)" : settings.vitalServerURL)",
+            "Remote Console URL: \(settings.remoteConsoleURL.isEmpty ? "(default)" : settings.remoteConsoleURL)",
             "Network mode: \(settings.networkMode.rawValue)",
             "Disk size: \(settings.diskGiB) GiB",
             "Vital files directory: \(settings.vitalFilesDirectory)",
@@ -132,6 +153,18 @@ struct RuntimePresentationFormatter {
         formatter.timeZone = .current
         formatter.dateFormat = "yyyyMMdd-HHmmss"
         return formatter.string(from: date)
+    }
+
+    private func serviceStatusURL(
+        explicitURL: String,
+        displayFallback: String,
+        openFallback: String
+    ) -> ServiceURLPresentation {
+        let trimmed = explicitURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            return ServiceURLPresentation(displayURL: displayFallback, openURL: openFallback)
+        }
+        return ServiceURLPresentation(displayURL: trimmed, openURL: trimmed)
     }
 
     private func stepStatusDisplayName(_ status: RuntimeProgressStepStatus) -> String {

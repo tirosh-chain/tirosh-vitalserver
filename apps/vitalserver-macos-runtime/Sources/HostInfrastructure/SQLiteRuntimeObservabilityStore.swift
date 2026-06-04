@@ -9,6 +9,8 @@ public enum SQLiteRuntimeObservabilityStoreError: Error, Equatable {
     case stepFailed(String)
     case bindFailed(String)
     case decodeFailed(String)
+    case missingColumn(table: String, column: String)
+    case invalidColumnValue(table: String, column: String, value: String)
 }
 
 public struct SQLiteRuntimeObservabilityStore {
@@ -217,32 +219,6 @@ public struct SQLiteRuntimeObservabilityStore {
         }
     }
 
-    public func recent(limit: Int) -> [RuntimeEventDocument] {
-        guard limit > 0 else {
-            return []
-        }
-        do {
-            return try withReadOnlyDatabase { db in
-                return Array(try queryEvents(
-                    db,
-                    sql: """
-                    SELECT payload_json
-                    FROM runtime_events
-                    ORDER BY timestamp DESC, id DESC
-                    LIMIT ?
-                    """,
-                    bindings: [.int(limit)]
-                ).reversed())
-            }
-        } catch {
-            return []
-        }
-    }
-
-    public func recent(limit: Int, eventType: RuntimeEventType?, since: String?) -> [RuntimeEventDocument] {
-        query(RuntimeEventQuery(limit: limit, eventType: eventType, since: since)).events
-    }
-
     public func query(_ query: RuntimeEventQuery) -> RuntimeEventPage {
         guard query.limit > 0 else {
             return RuntimeEventPage(events: [])
@@ -323,10 +299,6 @@ public struct SQLiteRuntimeObservabilityStore {
         }
     }
 
-    public func bestEffortLatestVitalDBObservation() -> VitalDBObservationDocument? {
-        try? loadLatestVitalDBObservation()
-    }
-
     public func loadLatestVitalDBObservation() throws -> VitalDBObservationDocument? {
         try withReadOnlyDatabase { db in
             let observations = try queryVitalDBObservations(
@@ -341,10 +313,6 @@ public struct SQLiteRuntimeObservabilityStore {
             )
             return observations.first
         }
-    }
-
-    public func bestEffortVitalDBObservations(limit: Int = 1000) -> [VitalDBObservationDocument] {
-        (try? loadVitalDBObservations(limit: limit)) ?? []
     }
 
     public func loadVitalDBObservations(limit: Int = 1000) throws -> [VitalDBObservationDocument] {
@@ -364,12 +332,6 @@ public struct SQLiteRuntimeObservabilityStore {
             )
             return Array(observations.reversed())
         }
-    }
-
-    public func bestEffortVitalDBRecorderActivityBuckets(
-        query: VitalDBRecorderActivityBucketQuery = VitalDBRecorderActivityBucketQuery()
-    ) -> [VitalDBRecorderActivityBucketRecord] {
-        (try? loadVitalDBRecorderActivityBuckets(query: query)) ?? []
     }
 
     public func loadVitalDBRecorderActivityBuckets(
@@ -412,10 +374,6 @@ public struct SQLiteRuntimeObservabilityStore {
         }
     }
 
-    public func bestEffortVitalDBBedAssignments(limit: Int = 1000) -> [VitalDBBedAssignmentRecord] {
-        (try? loadVitalDBBedAssignments(limit: limit)) ?? []
-    }
-
     public func loadVitalDBBedAssignments(limit: Int = 1000) throws -> [VitalDBBedAssignmentRecord] {
         guard limit > 0 else {
             return []
@@ -434,10 +392,6 @@ public struct SQLiteRuntimeObservabilityStore {
                 bindings: [.int(limit)]
             )
         }
-    }
-
-    public func bestEffortVitalDBRelationshipEvents(limit: Int = 1000) -> [VitalDBRelationshipEventRecord] {
-        (try? loadVitalDBRelationshipEvents(limit: limit)) ?? []
     }
 
     public func loadVitalDBRelationshipEvents(limit: Int = 1000) throws -> [VitalDBRelationshipEventRecord] {
@@ -473,9 +427,7 @@ public struct SQLiteRuntimeObservabilityStore {
     ) throws -> [RuntimeEventDocument] {
         let decoder = JSONDecoder()
         return try queryRows(db, sql: sql, bindings: bindings) { statement in
-            guard let payload = columnText(statement, 0) else {
-                return nil
-            }
+            let payload = try requiredText(statement, 0, table: "runtime_events", column: "payload_json")
             guard let data = payload.data(using: .utf8),
                   let event = try? decoder.decode(RuntimeEventDocument.self, from: data) else {
                 throw SQLiteRuntimeObservabilityStoreError.decodeFailed(payload)
@@ -629,9 +581,12 @@ public struct SQLiteRuntimeObservabilityStore {
     ) throws -> [VitalDBObservationDocument] {
         let decoder = JSONDecoder()
         return try queryRows(db, sql: sql, bindings: bindings) { statement in
-            guard let payload = columnText(statement, 0) else {
-                return nil
-            }
+            let payload = try requiredText(
+                statement,
+                0,
+                table: "vitaldb_observation_snapshots",
+                column: "payload_json"
+            )
             guard let data = payload.data(using: .utf8),
                   let observation = try? decoder.decode(VitalDBObservationDocument.self, from: data) else {
                 throw SQLiteRuntimeObservabilityStoreError.decodeFailed(payload)
@@ -646,12 +601,25 @@ public struct SQLiteRuntimeObservabilityStore {
         bindings: [SQLiteBinding]
     ) throws -> [VitalDBRecorderActivityBucketRecord] {
         try queryRows(db, sql: sql, bindings: bindings) { statement in
-            guard let vrcode = columnText(statement, 0),
-                  let bucketStartedAt = columnText(statement, 1),
-                  let firstObservedAt = columnText(statement, 6),
-                  let lastObservedAt = columnText(statement, 7) else {
-                return nil
-            }
+            let vrcode = try requiredText(statement, 0, table: "vitaldb_recorder_activity_buckets", column: "vrcode")
+            let bucketStartedAt = try requiredText(
+                statement,
+                1,
+                table: "vitaldb_recorder_activity_buckets",
+                column: "bucket_started_at"
+            )
+            let firstObservedAt = try requiredText(
+                statement,
+                6,
+                table: "vitaldb_recorder_activity_buckets",
+                column: "first_observed_at"
+            )
+            let lastObservedAt = try requiredText(
+                statement,
+                7,
+                table: "vitaldb_recorder_activity_buckets",
+                column: "last_observed_at"
+            )
             return VitalDBRecorderActivityBucketRecord(
                 vrcode: vrcode,
                 bucketStartedAt: bucketStartedAt,
@@ -884,18 +852,32 @@ public struct SQLiteRuntimeObservabilityStore {
         bindings: [SQLiteBinding]
     ) throws -> [VitalDBBedAssignmentRecord] {
         try queryRows(db, sql: sql, bindings: bindings) { statement in
-            guard let status = columnText(statement, 8) else {
-                return nil
-            }
+            let id = try requiredText(statement, 0, table: "vitaldb_bed_assignments", column: "id")
+            let bedID = try requiredText(statement, 1, table: "vitaldb_bed_assignments", column: "bed_id")
+            let vrcode = try requiredText(statement, 3, table: "vitaldb_bed_assignments", column: "vrcode")
+            let startedAt = try requiredText(statement, 4, table: "vitaldb_bed_assignments", column: "started_at")
+            let lastObservedAt = try requiredText(
+                statement,
+                7,
+                table: "vitaldb_bed_assignments",
+                column: "last_observed_at"
+            )
+            let status = try requiredEnum(
+                VitalDBBedAssignmentStatus.self,
+                statement,
+                8,
+                table: "vitaldb_bed_assignments",
+                column: "status"
+            )
             return VitalDBBedAssignmentRecord(
-                id: columnText(statement, 0) ?? "",
-                bedID: columnText(statement, 1) ?? "",
+                id: id,
+                bedID: bedID,
                 bedName: columnText(statement, 2),
-                vrcode: columnText(statement, 3) ?? "",
-                startedAt: columnText(statement, 4) ?? "",
+                vrcode: vrcode,
+                startedAt: startedAt,
                 endedAt: columnText(statement, 5),
                 lastSeenAt: columnText(statement, 6),
-                lastObservedAt: columnText(statement, 7) ?? "",
+                lastObservedAt: lastObservedAt,
                 status: status,
                 patientConnected: columnOptionalBool(statement, 9),
                 observationCount: Int(sqlite3_column_int64(statement, 10))
@@ -909,13 +891,31 @@ public struct SQLiteRuntimeObservabilityStore {
         bindings: [SQLiteBinding]
     ) throws -> [VitalDBRelationshipEventRecord] {
         try queryRows(db, sql: sql, bindings: bindings) { statement in
-            guard let eventType = columnText(statement, 2).flatMap(VitalDBRelationshipEventType.init(rawValue:)),
-                  let severity = columnText(statement, 3).flatMap(VitalDBRelationshipSeverity.init(rawValue:)) else {
-                return nil
-            }
+            let id = try requiredText(statement, 0, table: "vitaldb_relationship_events", column: "id")
+            let observedAt = try requiredText(
+                statement,
+                1,
+                table: "vitaldb_relationship_events",
+                column: "observed_at"
+            )
+            let eventType = try requiredEnum(
+                VitalDBRelationshipEventType.self,
+                statement,
+                2,
+                table: "vitaldb_relationship_events",
+                column: "event_type"
+            )
+            let severity = try requiredEnum(
+                VitalDBRelationshipSeverity.self,
+                statement,
+                3,
+                table: "vitaldb_relationship_events",
+                column: "severity"
+            )
+            let message = try requiredText(statement, 9, table: "vitaldb_relationship_events", column: "message")
             return VitalDBRelationshipEventRecord(
-                id: columnText(statement, 0) ?? "",
-                observedAt: columnText(statement, 1) ?? "",
+                id: id,
+                observedAt: observedAt,
                 eventType: eventType,
                 severity: severity,
                 bedID: columnText(statement, 4),
@@ -923,7 +923,7 @@ public struct SQLiteRuntimeObservabilityStore {
                 vrcode: columnText(statement, 6),
                 previousVrcode: columnText(statement, 7),
                 previousBedID: columnText(statement, 8),
-                message: columnText(statement, 9) ?? ""
+                message: message
             )
         }
     }
@@ -975,4 +975,34 @@ public struct SQLiteRuntimeObservabilityStore {
 
 private func assignmentID(bedID: String, vrcode: String, startedAt: String) -> String {
     "assignment:\(bedID):\(vrcode):\(startedAt)"
+}
+
+private func requiredText(
+    _ statement: OpaquePointer?,
+    _ index: Int32,
+    table: String,
+    column: String
+) throws -> String {
+    guard let value = columnText(statement, index) else {
+        throw SQLiteRuntimeObservabilityStoreError.missingColumn(table: table, column: column)
+    }
+    return value
+}
+
+private func requiredEnum<T: RawRepresentable>(
+    _ type: T.Type,
+    _ statement: OpaquePointer?,
+    _ index: Int32,
+    table: String,
+    column: String
+) throws -> T where T.RawValue == String {
+    let value = try requiredText(statement, index, table: table, column: column)
+    guard let decoded = type.init(rawValue: value) else {
+        throw SQLiteRuntimeObservabilityStoreError.invalidColumnValue(
+            table: table,
+            column: column,
+            value: value
+        )
+    }
+    return decoded
 }

@@ -2,6 +2,7 @@ import Foundation
 import Core
 import Contracts
 import HostInfrastructure
+import RuntimeWorkflow
 
 struct RuntimeLifecycle {
     let paths: LauncherPaths
@@ -90,6 +91,10 @@ struct RuntimeLifecycle {
         switch try RuntimeLifecycleCommand.parse(arguments) {
         case .install:
             try install()
+        case .installProvision:
+            try installProvision()
+        case .preinstallCheck:
+            try preinstallCheck()
         case .status:
             printStatus()
         case .health:
@@ -120,6 +125,8 @@ struct RuntimeLifecycle {
             try startServices()
         case .stopServices:
             try stopServices()
+        case .uninstall(let command):
+            try uninstall(command)
         case .help:
             printUsage()
         }
@@ -131,6 +138,23 @@ struct RuntimeLifecycle {
 
     func install() throws {
         try runtimeInstallWorkflow().install()
+    }
+
+    func installProvision() throws {
+        try runtimeInstallWorkflow().installProvision()
+    }
+
+    func preinstallCheck() throws {
+        let document = runtimeFreshInstallPreflightRunner().run()
+        let data = try JSONEncoder.pretty.encode(document)
+        if let text = String(data: data, encoding: .utf8) {
+            print(text)
+        }
+        guard document.passed else {
+            throw LauncherError.runtimeOperationFailed(
+                "fresh install preflight blocked blockers=\(document.blockers.joined(separator: ","))"
+            )
+        }
     }
 
     func printStatus() {
@@ -219,7 +243,7 @@ struct RuntimeLifecycle {
         try fileStore.writeData(try encoder.encode(request), to: requestURL, options: .atomic)
 
         if !isLaunchdLoaded(.vm) {
-            startLaunchdService(.vm)
+            try startLaunchdService(.vm)
         }
 
         let maxAttempts = Int(ceil(Constants.Runtime.redisBackupWaitTimeoutSeconds / 3.0))
@@ -280,6 +304,10 @@ struct RuntimeLifecycle {
 
     func stopServices() throws {
         try runtimeServiceControlRunner().run(.stopAll)
+    }
+
+    func uninstall(_ command: RuntimeUninstallCommand) throws {
+        try runtimeUninstallRunner().run(command)
     }
 
     func rollback(_ command: RuntimeRollbackCommand) throws {

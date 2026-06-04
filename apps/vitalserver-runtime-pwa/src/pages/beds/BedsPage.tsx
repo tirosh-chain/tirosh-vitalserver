@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 
-import { useVitalDBBeds } from "@/console/hooks";
+import { useVitalDBRecorders } from "@/console/hooks";
 import type { VitalDBBedRecord } from "@/domain/runtime-control/contracts/runtimeControlTypes";
 import {
   formatBoolean,
@@ -17,31 +17,23 @@ import { Panel } from "@/components/Panel";
 import { StatusBadge } from "@/components/StatusBadge";
 
 export function BedsPage() {
-  const bedsQuery = useVitalDBBeds();
+  const recordersQuery = useVitalDBRecorders();
   const allBeds = useMemo(
-    () => (bedsQuery.data ? [...bedsQuery.data].sort(sortByLastSeen) : null),
-    [bedsQuery.data]
+    () =>
+      recordersQuery.data === undefined
+        ? null
+        : [...recordersQuery.data.beds].sort(sortByLastSeen),
+    [recordersQuery.data]
   );
   const [searchText, setSearchText] = useState("");
-  const beds = filterBeds(allBeds ?? [], searchText);
-  const identifiedBeds = beds.filter(hasBedID);
+  const beds = allBeds === null ? null : filterBeds(allBeds, searchText);
   const [selectedBedID, setSelectedBedID] = useState<string | null>(null);
   const selectedBed =
-    identifiedBeds.find((bed) => bed.bedID === selectedBedID) ??
-    identifiedBeds[0];
+    beds?.find((bed) => bed.bedID === selectedBedID) ??
+    beds?.[0] ??
+    null;
 
-  const summary = allBeds
-    ? {
-        known: allBeds.length,
-        online: allBeds.filter((bed) => bed.status === "online").length,
-        stale: allBeds.filter((bed) => bed.status === "stale").length,
-        assignments: allBeds.filter((bed) => Boolean(bed.vrcode)).length,
-        anomalies: allBeds.reduce(
-          (total, bed) => total + (bed.currentAnomalyCount ?? 0),
-          0
-        )
-      }
-    : null;
+  const summary = recordersQuery.data?.summary ?? null;
 
   return (
     <div className="page-stack">
@@ -57,8 +49,8 @@ export function BedsPage() {
             />
             <button
               type="button"
-              disabled={bedsQuery.isFetching}
-              onClick={() => bedsQuery.refetch()}
+              disabled={recordersQuery.isFetching}
+              onClick={() => recordersQuery.refetch()}
             >
               Refresh
             </button>
@@ -67,24 +59,34 @@ export function BedsPage() {
       >
         <MetricStrip
           metrics={[
-            { label: "Known beds", value: summary?.known ?? NOT_REPORTED },
-            { label: "Online beds", value: summary?.online ?? NOT_REPORTED },
-            { label: "Stale beds", value: summary?.stale ?? NOT_REPORTED },
-            { label: "Assignments", value: summary?.assignments ?? NOT_REPORTED },
-            { label: "Bed anomalies", value: summary?.anomalies ?? NOT_REPORTED }
+            { label: "Known beds", value: summary?.knownBeds ?? NOT_REPORTED },
+            { label: "Online beds", value: summary?.onlineBeds ?? NOT_REPORTED },
+            { label: "Stale beds", value: summary?.staleBeds ?? NOT_REPORTED },
+            {
+              label: "Assignments",
+              value: summary?.bedAssignments ?? NOT_REPORTED
+            },
+            { label: "Bed anomalies", value: summary?.bedAnomalies ?? NOT_REPORTED }
           ]}
         />
 
-        {bedsQuery.isPending ? (
+        {recordersQuery.isPending ? (
           <p className="empty-state">Loading beds...</p>
-        ) : bedsQuery.isError ? (
+        ) : recordersQuery.isError ? (
           <ErrorState
             title="Bed history is not available"
-            error={bedsQuery.error}
+            error={recordersQuery.error}
+          />
+        ) : beds === null ? (
+          <ErrorState
+            title="Bed history response is incomplete"
+            error={
+              new Error("Runtime Control API did not return bed history data.")
+            }
           />
         ) : (
           <DataTable
-            rows={identifiedBeds}
+            rows={beds}
             getRowKey={(bed) => bed.bedID}
             selectedKey={selectedBed?.bedID}
             onSelectRow={(bed) => setSelectedBedID(bed.bedID)}
@@ -98,12 +100,12 @@ export function BedsPage() {
               {
                 key: "name",
                 header: "Name",
-                render: (bed) => bed.name ?? "Unknown"
+                render: (bed) => bed.name ?? NOT_REPORTED
               },
               {
                 key: "vrcode",
                 header: "VRecorder",
-                render: (bed) => bed.vrcode ?? "Unknown"
+                render: (bed) => bed.vrcode ?? NOT_REPORTED
               },
               {
                 key: "status",
@@ -122,7 +124,7 @@ export function BedsPage() {
               {
                 key: "anomaly",
                 header: "Anomaly",
-                render: (bed) => bed.currentAnomalyCount ?? 0
+                render: (bed) => bed.currentAnomalyCount
               }
             ]}
           />
@@ -148,27 +150,21 @@ function BedDetails({ bed }: { bed: VitalDBBedRecord }) {
       <KeyValueRows
         rows={[
           { label: "Bed ID", value: bed.bedID },
-          { label: "Name", value: bed.name ?? "Unknown" },
-          { label: "VRecorder", value: bed.vrcode ?? "Unknown" },
+          { label: "Name", value: bed.name ?? NOT_REPORTED },
+          { label: "VRecorder", value: bed.vrcode ?? NOT_REPORTED },
           { label: "Patient", value: formatBoolean(bed.patientConnected) },
           { label: "First seen", value: formatLocalDateTime(bed.firstSeenAt) },
           { label: "Last seen", value: formatLocalDateTime(bed.lastSeenAt) },
-          { label: "Observations", value: bed.observationCount ?? 0 },
-          { label: "Bed anomalies", value: bed.currentAnomalyCount ?? 0 }
+          { label: "Observations", value: bed.observationCount },
+          { label: "Duplicate observations", value: bed.duplicateObservationCount },
+          { label: "Bed anomalies", value: bed.currentAnomalyCount }
         ]}
       />
     </Panel>
   );
 }
 
-function hasBedID(bed: VitalDBBedRecord): bed is VitalDBBedRecord & { bedID: string } {
-  return typeof bed.bedID === "string" && bed.bedID.length > 0;
-}
-
-function shorten(value: string | undefined): string {
-  if (!value) {
-    return "Unknown";
-  }
+function shorten(value: string): string {
   if (value.length <= 18) {
     return value;
   }
@@ -176,15 +172,26 @@ function shorten(value: string | undefined): string {
 }
 
 function sortByLastSeen(left: VitalDBBedRecord, right: VitalDBBedRecord): number {
-  return timestamp(right.lastSeenAt) - timestamp(left.lastSeenAt);
+  const leftTimestamp = timestamp(left.lastSeenAt);
+  const rightTimestamp = timestamp(right.lastSeenAt);
+  if (leftTimestamp === null && rightTimestamp === null) {
+    return left.bedID.localeCompare(right.bedID);
+  }
+  if (leftTimestamp === null) {
+    return 1;
+  }
+  if (rightTimestamp === null) {
+    return -1;
+  }
+  return rightTimestamp - leftTimestamp;
 }
 
-function timestamp(value: string | null | undefined): number {
+function timestamp(value: string | null | undefined): number | null {
   if (!value) {
-    return 0;
+    return null;
   }
   const parsed = new Date(value).getTime();
-  return Number.isNaN(parsed) ? 0 : parsed;
+  return Number.isNaN(parsed) ? null : parsed;
 }
 
 function filterBeds(beds: VitalDBBedRecord[], searchText: string): VitalDBBedRecord[] {

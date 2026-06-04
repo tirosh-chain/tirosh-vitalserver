@@ -29,7 +29,7 @@ final class RuntimeVMDiskRepairRunnerTests: XCTestCase {
             "gunzip:-c rootfs-base.raw.gz:.vm-disk.img.repair.tmp",
             "truncate:-s 40G \(harness.vmDisk.deletingLastPathComponent().appendingPathComponent(".vm-disk.img.repair.tmp").path)",
             "status:recovering:repair-vm-disk:Archiving current VM disk",
-            "stop",
+            "stop-for-disk-replacement",
             "mkdir:vm-disk-repair-20260529T081838Z:true",
             "move:vm-disk.img:vm-disk.img",
             "log:archived vm disk path=\(archivedDisk.path)",
@@ -142,8 +142,8 @@ private final class VMDiskRepairHarness {
                         throw redisBackupError
                     }
                 },
-                stopRuntimeServices: { [self] in
-                    events.append("stop")
+                stopRuntimeServicesForVMDiskReplacement: { [self] in
+                    events.append("stop-for-disk-replacement")
                 },
                 startRuntimeServices: { [self] policy in
                     events.append("start:\(policy.restartVM):\(policy.restartProxy):\(policy.restartWatchdog)")

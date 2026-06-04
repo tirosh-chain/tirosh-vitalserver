@@ -2,6 +2,7 @@ const recorderStatusLabels: Record<string, string> = {
   online: "Online",
   stale: "Stale",
   offline: "Offline",
+  notObserved: "Not observed",
   unknown: "Unknown"
 };
 

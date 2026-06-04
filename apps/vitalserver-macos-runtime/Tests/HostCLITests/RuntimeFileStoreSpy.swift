@@ -8,6 +8,7 @@ final class RuntimeFileStoreSpy: RuntimeFileStore {
     var modificationDates: [URL: Date] = [:]
     var directories: Set<URL> = []
     var removed: [URL] = []
+    var readDataErrors: [URL: Error] = [:]
     var fileSizeErrors: [URL: Error] = [:]
     var modificationDateErrors: [URL: Error] = [:]
     var childDirectoriesError: Error?
@@ -28,6 +29,9 @@ final class RuntimeFileStoreSpy: RuntimeFileStore {
     }
 
     func readData(_ url: URL) throws -> Data {
+        if let error = readDataErrors[url] {
+            throw error
+        }
         guard let data = files[url] else {
             throw CocoaError(.fileReadNoSuchFile, userInfo: [NSFilePathErrorKey: url.path])
         }

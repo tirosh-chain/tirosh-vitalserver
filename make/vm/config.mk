@@ -28,7 +28,7 @@ VM_CLANG_MODULE_CACHE ?= $(CURDIR)/$(call VM_TOML_VALUE,workspace.clang_module_c
 # Swift package test coverage.
 VM_SWIFT_PACKAGE_DIR ?= $(VM_MACOS_RUNTIME_DIR)
 VM_SWIFT_DEBUG_DIR ?= $(VM_SWIFT_PACKAGE_DIR)/.build/debug
-VM_SWIFT_TEST_BINARY ?= $(VM_SWIFT_DEBUG_DIR)/TiroshVitalServerHelperPackageTests.xctest/Contents/MacOS/TiroshVitalServerHelperPackageTests
+VM_SWIFT_TEST_BINARY ?= $(VM_SWIFT_DEBUG_DIR)/VitalServerHelperPackageTests.xctest/Contents/MacOS/VitalServerHelperPackageTests
 VM_SWIFT_COVERAGE_PROFILE ?= $(VM_SWIFT_DEBUG_DIR)/codecov/default.profdata
 VM_SWIFT_COVERAGE_REPORT ?= $(VM_SWIFT_DEBUG_DIR)/codecov/coverage-report.txt
 VM_SWIFT_COVERAGE_MIN ?= 85

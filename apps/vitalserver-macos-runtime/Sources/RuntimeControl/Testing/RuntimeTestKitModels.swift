@@ -38,6 +38,7 @@ public struct RuntimeTestKitStatus: Codable, Equatable, Sendable {
     public var sessions: [RuntimeTestKitSession]
     public var beds: [RuntimeTestKitBed]
     public var lastError: String?
+    public var readIssues: [RuntimeTestKitReadIssue]
 
     public init(
         enabled: Bool,
@@ -49,7 +50,8 @@ public struct RuntimeTestKitStatus: Codable, Equatable, Sendable {
         activeSession: RuntimeTestKitSession? = nil,
         sessions: [RuntimeTestKitSession] = [],
         beds: [RuntimeTestKitBed] = [],
-        lastError: String? = nil
+        lastError: String? = nil,
+        readIssues: [RuntimeTestKitReadIssue] = []
     ) {
         self.enabled = enabled
         self.state = state
@@ -61,6 +63,46 @@ public struct RuntimeTestKitStatus: Codable, Equatable, Sendable {
         self.sessions = sessions
         self.beds = beds
         self.lastError = lastError
+        self.readIssues = readIssues
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case enabled
+        case state
+        case serviceName
+        case apiBaseURL
+        case recorderTargetURL
+        case startedAt
+        case activeSession
+        case sessions
+        case beds
+        case lastError
+        case readIssues
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        enabled = try container.decode(Bool.self, forKey: .enabled)
+        state = try container.decode(RuntimeTestKitState.self, forKey: .state)
+        serviceName = try container.decodeIfPresent(String.self, forKey: .serviceName)
+        apiBaseURL = try container.decodeIfPresent(String.self, forKey: .apiBaseURL)
+        recorderTargetURL = try container.decodeIfPresent(String.self, forKey: .recorderTargetURL)
+        startedAt = try container.decodeIfPresent(Date.self, forKey: .startedAt)
+        activeSession = try container.decodeIfPresent(RuntimeTestKitSession.self, forKey: .activeSession)
+        sessions = try container.decodeIfPresent([RuntimeTestKitSession].self, forKey: .sessions) ?? []
+        beds = try container.decodeIfPresent([RuntimeTestKitBed].self, forKey: .beds) ?? []
+        lastError = try container.decodeIfPresent(String.self, forKey: .lastError)
+        readIssues = try container.decodeIfPresent([RuntimeTestKitReadIssue].self, forKey: .readIssues) ?? []
+    }
+}
+
+public struct RuntimeTestKitReadIssue: Codable, Equatable, Sendable {
+    public var source: String
+    public var message: String
+
+    public init(source: String, message: String) {
+        self.source = source
+        self.message = message
     }
 }
 

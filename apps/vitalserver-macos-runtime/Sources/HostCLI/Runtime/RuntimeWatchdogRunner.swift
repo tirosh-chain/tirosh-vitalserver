@@ -9,7 +9,7 @@ struct RuntimeWatchdogActions {
     let proxyLivenessHTTP: (Int) -> String
     let automaticRecoveryEnabled: () -> Bool
     let restartVMRuntime: () throws -> Void
-    let restartService: (RuntimeManagedService) -> Void
+    let restartService: (RuntimeManagedService) throws -> Void
     let markVMLifecycleRunning: (RuntimeVMLifecycleDocument) throws -> Void
     let sleep: (TimeInterval) -> Void
     let writeObservedStatus: (RuntimeStatusLevel, RuntimeOperation, String, RuntimeHealthSnapshot) throws -> Void
@@ -169,14 +169,16 @@ struct RuntimeWatchdogRunner {
     ) throws {
         log("watchdog detected unhealthy runtime reasons=\(reason)")
         try actions.writeObservedStatus(.recovering, .watchdog, "watchdog recovery started: \(reason)", initial)
+        let restartReasons = restartReasonText(recoveryPlan)
         log(
             "watchdog recovery plan vm=\(recoveryPlan.restartVM) proxy=\(recoveryPlan.restartProxy) "
+                + "restartReasons=\(restartReasons) "
                 + "hostProxyHealth=\(proxyLivenessHTTP) hostProxyReady=\(initial.hostProxyHTTP) guestReady=\(initial.guestHTTP)"
         )
         actions.recordObservedEvent(
             .recovering,
             .watchdog,
-            "watchdog recovery planned vm=\(recoveryPlan.restartVM) proxy=\(recoveryPlan.restartProxy)",
+            "watchdog recovery planned vm=\(recoveryPlan.restartVM) proxy=\(recoveryPlan.restartProxy) reasons=\(restartReasons)",
             initial,
             .recoveryPlanned
         )
@@ -214,7 +216,22 @@ struct RuntimeWatchdogRunner {
                 initial,
                 .serviceRestartDispatched
             )
-            actions.restartService(.proxy)
+            do {
+                try actions.restartService(.proxy)
+            } catch {
+                let message = "watchdog proxy restart failed: \(error.localizedDescription)"
+                log(message)
+                try actions.writeObservedStatus(.critical, .watchdog, message, initial)
+                actions.recordObservedEvent(
+                    .critical,
+                    .watchdog,
+                    message,
+                    initial,
+                    .runtimeCommandFailed
+                )
+                print("watchdog: critical")
+                return
+            }
         }
 
         actions.sleep(Constants.Runtime.watchdogRecoveryWaitSeconds)
@@ -235,5 +252,13 @@ struct RuntimeWatchdogRunner {
 
     private func reasonText(_ reasons: [RuntimeFailureReason]) -> String {
         RuntimeFailureReasonText.describe(reasons)
+    }
+
+    private func restartReasonText(_ recoveryPlan: RuntimeRecoveryPlan) -> String {
+        let reasonCodes = recoveryPlan.restartReasonCodes
+        guard !reasonCodes.isEmpty else {
+            return "none"
+        }
+        return reasonCodes.joined(separator: ",")
     }
 }

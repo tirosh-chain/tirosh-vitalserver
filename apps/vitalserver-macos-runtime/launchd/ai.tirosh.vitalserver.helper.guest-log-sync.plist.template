@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>ai.tirosh.vitalserver.helper.guest-log-sync</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>${VITALSERVER_VM_BIN}</string>
+    <string>runtime</string>
+    <string>guest-log-sync</string>
+  </array>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>VITALSERVER_VM_HOME</key>
+    <string>${VITALSERVER_VM_HOME}</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>ThrottleInterval</key>
+  <integer>30</integer>
+
+  <key>StandardOutPath</key>
+  <string>${VITALSERVER_RUNTIME_LOGS}/guest-log-sync.out.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>${VITALSERVER_RUNTIME_LOGS}/guest-log-sync.err.log</string>
+</dict>
+</plist>

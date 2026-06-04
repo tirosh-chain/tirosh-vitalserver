@@ -40,7 +40,7 @@ final class RuntimeGuestConfigWriterTests: XCTestCase {
         XCTAssertEqual(restricted, [paths.guestRuntimeConfig])
     }
 
-    func testWriteInstallConfigUsesDefaultAdminPasswordWhenSettingsOmitIt() throws {
+    func testWriteInstallConfigUsesDefaultAdminPassword() throws {
         let fileStore = RuntimeFileStoreSpy()
         let paths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
         let writer = RuntimeGuestConfigWriter(
@@ -54,5 +54,48 @@ final class RuntimeGuestConfigWriterTests: XCTestCase {
         let data = try XCTUnwrap(fileStore.files[paths.guestRuntimeConfig])
         let document = try JSONDecoder().decode(GuestRuntimeConfigDocument.self, from: data)
         XCTAssertEqual(document.adminPassword, Constants.Guest.defaultAdminPassword)
+    }
+
+    func testWriteInstallConfigRequiresAdminPassword() throws {
+        let fileStore = RuntimeFileStoreSpy()
+        let paths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
+        let writer = RuntimeGuestConfigWriter(
+            installedPaths: paths,
+            fileStore: fileStore,
+            restrictSecretFile: { _ in }
+        )
+        var settings = InstallSettings(vitalFilesDirectory: "/custom/vital-files")
+        settings.adminPassword = nil
+
+        XCTAssertThrowsError(
+            try writer.writeInstallConfig(settings: settings)
+        ) { error in
+            guard case LauncherError.missingArgument(let message) = error else {
+                return XCTFail("expected missingArgument, got \(error)")
+            }
+            XCTAssertEqual(message, "install settings adminPassword is required")
+        }
+        XCTAssertNil(fileStore.files[paths.guestRuntimeConfig])
+    }
+
+    func testGuestRuntimeConfigRequiresExplicitHostOwnedFields() throws {
+        let json = """
+        {
+          "vitalserverHttpPort": 18080,
+          "redisHost": "redis",
+          "redisPort": 6379,
+          "trustProxy": true,
+          "publicHost": "",
+          "publicPort": 80,
+          "adminPassword": "admin",
+          "vitalFilesDirectory": "/mnt/tirosh-vital-files",
+          "redisUiPort": 18081,
+          "swaggerUiPort": 18082
+        }
+        """
+
+        XCTAssertThrowsError(
+            try JSONDecoder().decode(GuestRuntimeConfigDocument.self, from: Data(json.utf8))
+        )
     }
 }

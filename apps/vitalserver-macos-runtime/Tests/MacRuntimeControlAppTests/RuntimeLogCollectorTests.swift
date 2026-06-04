@@ -8,6 +8,7 @@ import XCTest
 final class RuntimeLogCollectorTests: XCTestCase {
     func testDefaultCopiesIncludeRuntimeServiceLogs() {
         let destinations = Set(RuntimeLogCopy.defaultCopies().map { $0.destination.lastPathComponent })
+        let directoryDestinations = Set(RuntimeLogDirectoryCopy.defaultCopies().map { $0.destination.lastPathComponent })
 
         XCTAssertFalse(destinations.contains("proxy-nginx.access.log"))
         XCTAssertFalse(destinations.contains("proxy-nginx.error.log"))
@@ -16,6 +17,36 @@ final class RuntimeLogCollectorTests: XCTestCase {
         XCTAssertTrue(destinations.contains("proxy.out.log"))
         XCTAssertTrue(destinations.contains("proxy.err.log"))
         XCTAssertTrue(destinations.contains("watchdog.out.log"))
+        XCTAssertTrue(directoryDestinations.contains("guest-observability"))
+    }
+
+    func testRefreshCopiesGuestObservabilityDirectory() throws {
+        let root = try temporaryDirectory()
+        let source = root.appendingPathComponent("run/guest-observability", isDirectory: true)
+        let destination = root.appendingPathComponent("logs/guest/guest-observability", isDirectory: true)
+        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        try "{\"ok\":true}\n".write(
+            to: source.appendingPathComponent("latest.json"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let collector = MacHostRuntimeLogCollector(
+            fileStore: SystemRuntimeFileStore(),
+            copies: [],
+            directoryCopies: [
+                RuntimeLogDirectoryCopy(source: source, destination: destination),
+            ],
+            rotatedCopySets: [],
+            archiveDirectory: root.appendingPathComponent("archive")
+        )
+
+        try collector.refreshLogCollection()
+
+        XCTAssertEqual(
+            try String(contentsOf: destination.appendingPathComponent("latest.json")),
+            "{\"ok\":true}\n"
+        )
     }
 
     func testRefreshCopiesSourceLogToCentralDestination() throws {
@@ -27,6 +58,8 @@ final class RuntimeLogCollectorTests: XCTestCase {
         let collector = MacHostRuntimeLogCollector(
             fileStore: SystemRuntimeFileStore(),
             copies: [RuntimeLogCopy(source: source, destination: destination, archivePrefix: "source.log")],
+            directoryCopies: [],
+            rotatedCopySets: [],
             archiveDirectory: root.appendingPathComponent("archive"),
             now: { Date(timeIntervalSince1970: 1_800_000_000) }
         )
@@ -51,6 +84,8 @@ final class RuntimeLogCollectorTests: XCTestCase {
         let collector = MacHostRuntimeLogCollector(
             fileStore: SystemRuntimeFileStore(),
             copies: [RuntimeLogCopy(source: source, destination: destination, archivePrefix: "source.log")],
+            directoryCopies: [],
+            rotatedCopySets: [],
             archiveDirectory: root.appendingPathComponent("archive"),
             now: { Date(timeIntervalSince1970: 1_800_000_000) }
         )
@@ -74,6 +109,8 @@ final class RuntimeLogCollectorTests: XCTestCase {
         let collector = MacHostRuntimeLogCollector(
             fileStore: SystemRuntimeFileStore(),
             copies: [RuntimeLogCopy(source: source, destination: destination, archivePrefix: "source.log")],
+            directoryCopies: [],
+            rotatedCopySets: [],
             archiveDirectory: root.appendingPathComponent("archive"),
             now: { Date(timeIntervalSince1970: 1_800_000_000) }
         )
@@ -98,6 +135,8 @@ final class RuntimeLogCollectorTests: XCTestCase {
         let collector = MacHostRuntimeLogCollector(
             fileStore: SystemRuntimeFileStore(),
             copies: [RuntimeLogCopy(source: source, destination: destination, archivePrefix: "source.log")],
+            directoryCopies: [],
+            rotatedCopySets: [],
             archiveDirectory: archiveDirectory,
             maxCentralLogBytes: 1,
             now: { Date(timeIntervalSince1970: 1_800_000_000) }
@@ -154,6 +193,7 @@ final class RuntimeLogCollectorTests: XCTestCase {
                     archivePrefix: "container-logs.log"
                 ),
             ],
+            directoryCopies: [],
             rotatedCopySets: [
                 RuntimeRotatedLogCopySet(
                     sourceDirectory: sourceDirectory,
@@ -202,6 +242,8 @@ final class RuntimeLogCollectorTests: XCTestCase {
                 RuntimeLogCopy(source: launcherSource, destination: launcherDestination, archivePrefix: "launcher.log"),
                 RuntimeLogCopy(source: proxySource, destination: proxyDestination, archivePrefix: "proxy.err.log"),
             ],
+            directoryCopies: [],
+            rotatedCopySets: [],
             archiveDirectory: root.appendingPathComponent("archive"),
             now: { Date(timeIntervalSince1970: 1_800_000_000) }
         )
@@ -234,6 +276,8 @@ final class RuntimeLogCollectorTests: XCTestCase {
                 RuntimeLogCopy(source: launchErrorSource, destination: launchErrorDestination, archivePrefix: "launchd.err.log"),
                 RuntimeLogCopy(source: watchdogSource, destination: watchdogDestination, archivePrefix: "watchdog.out.log"),
             ],
+            directoryCopies: [],
+            rotatedCopySets: [],
             archiveDirectory: root.appendingPathComponent("archive"),
             now: { Date(timeIntervalSince1970: 1_800_000_000) }
         )
@@ -253,6 +297,7 @@ final class RuntimeLogCollectorTests: XCTestCase {
         let collector = MacHostRuntimeLogCollector(
             fileStore: FailingLogCollectionFileStore(existingFiles: [source, destination]),
             copies: [RuntimeLogCopy(source: source, destination: destination, archivePrefix: "source.log")],
+            directoryCopies: [],
             rotatedCopySets: []
         )
 

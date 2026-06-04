@@ -17,10 +17,6 @@ public struct SQLiteRuntimeEventRepository: RuntimeEventRepository {
         try store.append(event)
     }
 
-    public func recent(limit: Int) -> [RuntimeEventDocument] {
-        store.recent(limit: limit)
-    }
-
     public func query(_ query: RuntimeEventQuery) -> RuntimeEventPage {
         store.query(query)
     }

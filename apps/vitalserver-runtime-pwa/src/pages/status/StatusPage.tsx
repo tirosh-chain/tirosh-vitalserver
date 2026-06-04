@@ -2,20 +2,22 @@ import { useRuntimeOverview } from "@/console/hooks";
 import type { RuntimeControlOverview } from "@/domain/runtime-control/contracts/runtimeControlTypes";
 import { formatBytes } from "@/domain/runtime-control/formatting/bytes";
 import {
-  formatHTTPReachability,
-  runtimeControlURL,
+  formatHTTPStatus,
   runtimeURL
 } from "@/domain/runtime-control/formatting/http";
 import {
   formatRuntimeState,
   runtimeStateTone
 } from "@/domain/runtime-control/formatting/runtimeState";
-import { useAppSettings } from "@/config/AppSettingsContext";
 import {
   formatLocalDateTime,
   formatUptimeSince
 } from "@/domain/runtime-control/formatting/time";
-import { formatVitalRecorderObservationMetric } from "@/domain/runtime-control/formatting/vitalRecorder";
+import {
+  formatVitalRecorderConnectionMetric,
+  formatVitalRecorderObservationMetric
+} from "@/domain/runtime-control/formatting/vitalRecorder";
+import { NOT_REPORTED } from "@/domain/runtime-control/formatting/reported";
 import { ErrorState } from "@/components/ErrorState";
 import { KeyValueRows } from "@/components/KeyValueRows";
 import { Panel } from "@/components/Panel";
@@ -40,19 +42,20 @@ export function StatusPage() {
 }
 
 function StatusOverview({ overview }: { overview: RuntimeControlOverview }) {
-  const appSettings = useAppSettings();
   const status = overview.status;
   const state = status?.runtimeState;
   const stats = status?.dataDirectoryStats;
   const vitalRecorder = overview.vitalRecorder;
-  const vitalServerURL = runtimeURL(
-    status?.proxyPort ?? overview.settings?.proxyPort,
-    appSettings.runtimeControl.defaultProxyPort
-  );
-  const remoteConsoleURL = runtimeControlURL(
-    overview.settings?.runtimeControlPort,
-    appSettings.runtimeControl.defaultPort
-  );
+  const vitalServerURL = overview.settings
+    ? runtimeURL({
+        host: overview.settings.publicHost,
+        port: overview.settings.publicPort
+      })
+    : null;
+  const remoteConsolePort =
+    typeof overview.settings?.runtimeControlPort === "number"
+      ? `Port ${overview.settings.runtimeControlPort}`
+      : NOT_REPORTED;
 
   return (
     <div className="page-stack">
@@ -87,10 +90,12 @@ function StatusOverview({ overview }: { overview: RuntimeControlOverview }) {
               : []),
             {
               label: "VitalServer",
-              value: (
+              value: vitalServerURL ? (
                 <a href={vitalServerURL} target="_blank" rel="noreferrer">
                   {vitalServerURL}
                 </a>
+              ) : (
+                NOT_REPORTED
               ),
               detail: serviceStatusDetail(
                 status?.hostProxyHTTP,
@@ -99,11 +104,7 @@ function StatusOverview({ overview }: { overview: RuntimeControlOverview }) {
             },
             {
               label: "Remote Console",
-              value: (
-                <a href={remoteConsoleURL} target="_blank" rel="noreferrer">
-                  {remoteConsoleURL}
-                </a>
-              ),
+              value: remoteConsolePort,
               detail: serviceStatusDetail(
                 status?.runtimeControlHTTP,
                 status?.runtimeControlStartedAt
@@ -111,12 +112,11 @@ function StatusOverview({ overview }: { overview: RuntimeControlOverview }) {
             },
             {
               label: "Data directory",
-              value: overview.settings?.vitalFilesDirectory ?? "Unknown",
-              detail: status?.dataDirectoryStatsError
-                ? `Read failed: ${status.dataDirectoryStatsError}`
-                : stats
-                  ? `${stats.fileCount ?? 0} files · ${formatBytes(stats.sizeBytes)}`
-                  : "Unknown"
+              value: overview.settings?.vitalFilesDirectory ?? NOT_REPORTED,
+              detail: formatDataDirectoryStats(
+                stats,
+                status?.dataDirectoryStatsError
+              )
             },
             {
               label: "Observation updated",
@@ -131,7 +131,7 @@ function StatusOverview({ overview }: { overview: RuntimeControlOverview }) {
           rows={[
             {
               label: "Active recorder connections",
-              value: vitalRecorder?.activeConnections ?? 0
+              value: formatVitalRecorderConnectionMetric(vitalRecorder)
             },
             {
               label: "Known recorders",
@@ -180,7 +180,7 @@ function StatusOverview({ overview }: { overview: RuntimeControlOverview }) {
               value:
                 status?.cpuUsagePercent === null ||
                 status?.cpuUsagePercent === undefined
-                  ? "Unknown"
+                  ? NOT_REPORTED
                   : `${Math.round(status.cpuUsagePercent)}%`
             },
             {
@@ -206,14 +206,36 @@ function serviceStatusDetail(
   httpStatus: string | null | undefined,
   startedAt: string | null | undefined
 ): string {
-  return [formatHTTPReachability(httpStatus), formatUptimeSince(startedAt)]
+  return [formatHTTPStatus(httpStatus), formatUptimeSince(startedAt)]
     .filter((part) => part && part !== "-")
     .join(" ");
 }
 
+function formatDataDirectoryStats(
+  stats: unknown,
+  readError: string | null | undefined
+): string {
+  if (readError) {
+    return `Read failed: ${readError}`;
+  }
+  if (!stats || typeof stats !== "object") {
+    return NOT_REPORTED;
+  }
+  const record = stats as Record<string, unknown>;
+  const fileCount = numberValue(record.fileCount);
+  const sizeBytes = numberValue(record.sizeBytes);
+  const fileCountText =
+    fileCount === undefined ? "File count not reported" : `${fileCount} files`;
+  const sizeText = sizeBytes === undefined ? "Size not reported" : formatBytes(sizeBytes);
+  return `${fileCountText} · ${sizeText}`;
+}
+
 function formatResourceUsage(value: unknown): string {
-  if (!value || typeof value !== "object") {
-    return "Unknown";
+  if (value === null || value === undefined) {
+    return NOT_REPORTED;
+  }
+  if (typeof value !== "object") {
+    return "Invalid resource usage";
   }
 
   const record = value as Record<string, unknown>;
@@ -227,7 +249,7 @@ function formatResourceUsage(value: unknown): string {
   if (availableBytes !== undefined && totalBytes !== undefined) {
     return `${formatBytes(availableBytes)} / ${formatBytes(totalBytes)}`;
   }
-  return "Unknown";
+  return "Incomplete resource usage";
 }
 
 function numberValue(value: unknown): number | undefined {

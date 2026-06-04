@@ -22,23 +22,66 @@ PWA owns browser runtime control presentation. Runtime Control API owns runtime 
 
 ```text
 src/
-  app/                         # routing, providers, app shell
-  application/runtime-control/  # query/mutation orchestration
-  domain/runtime-control/       # API contract validation, formatting, policy
-  infrastructure/               # Runtime Control API client
-  features/                     # page-level composition
-  shared/ui/                    # UI primitives and responsive data views
-  shared/styles/                # Tailwind layers and global shell styles
+  app/                         # bootstrap, routing, providers, app shell
+  console/                     # RuntimeControlGateway port, React Query hooks, request builders
+  domain/runtime-control/      # API contract validation, formatting, display policy
+  infrastructure/console-api/  # fetch-based RuntimeControlApiClient adapter
+  pages/                       # route-level Remote Console screens
+  components/                  # app-wide reusable UI components
+  config/                      # app settings and config provider
+  styles/                      # Tailwind layers and global shell styles
+  testing/                     # test utilities and fixtures
 ```
 
 ## Boundary Rules
 
 - `domain/runtime-control`은 React와 Tailwind를 알면 안 됩니다.
-- `application/runtime-control`은 API 호출과 cache/invalidation을 조율합니다.
-- `features/*`는 page 조합과 local UI state만 가집니다.
-- `shared/ui`는 reusable presentation primitive를 소유합니다.
-- `shared/styles`는 token 기반 global layout과 legacy class compatibility만 둡니다.
+- `console`은 `RuntimeControlGateway` port, query/mutation orchestration, request validation wrapper를 소유합니다.
+- `infrastructure/console-api`는 `RuntimeControlGateway`를 구현하는 HTTP adapter입니다.
+- `pages/*`는 page 조합과 page-local form state만 가집니다.
+- `components`는 reusable presentation primitive를 소유합니다.
+- `styles`는 token 기반 global layout과 legacy class compatibility만 둡니다.
 - Runtime Control API response는 Zod schema에서 먼저 검증한 뒤 feature에 전달합니다.
+- OpenAPI generated type은 compile-time contract이고, Zod schema는 runtime contract gate입니다.
+- `app`은 concrete `RuntimeControlApiClient`를 만들고 `RuntimeControlGatewayProvider`로 주입하는 composition root입니다.
+- `pages`와 `components`는 HTTP client를 직접 import하지 않습니다.
+
+## Runtime Control Gateway
+
+PWA application layer의 port 이름은 `RuntimeControlGateway`입니다.
+
+| 코드 | 책임 |
+|---|---|
+| `src/console/runtimeControlGateway.ts` | Remote Console이 필요로 하는 Runtime Control read/command port |
+| `src/console/runtimeControlGatewayContext.tsx` | React provider/hook boundary |
+| `src/console/hooks.ts` | React Query query/mutation orchestration |
+| `src/console/requestBuilders.ts` | command request body validation and construction |
+| `src/infrastructure/console-api/runtimeControlApiClient.ts` | fetch, URL, token, response schema parsing |
+
+이 이름은 의도적으로 `console`과 `runtime-control`을 나눕니다. `console`은 이 PWA의 application layer이고,
+`runtime-control`은 Host/API가 제공하는 product contract입니다. HTTP 세부 구현은 infrastructure adapter에만
+있어야 합니다.
+
+## Contract Drift Guard
+
+Runtime Control API 계약은 세 곳에서 동시에 관리됩니다.
+
+| 위치 | 역할 |
+|---|---|
+| `docs/macos-runtime/runtime-control.openapi.json` | transport contract source |
+| `src/domain/runtime-control/contracts/generated/runtime-control.ts` | OpenAPI generated TypeScript type |
+| `src/domain/runtime-control/contracts/schemas/runtimeControlSchemas.ts` | runtime response validation |
+
+Schema는 OpenAPI type보다 보수적으로 동작할 수 있습니다. 특히 Swift contract가 non-optional로 제공하는
+상태 의미는 generated type이 optional로 보이더라도 Zod schema에서 required로 검증합니다.
+
+중요한 guard:
+
+- `vitalDBObservationSnapshot.state=loaded`이면 `observation`이 있어야 합니다.
+- `vitalDBObservationSnapshot.state=failed`이면 `readError`가 있어야 합니다.
+- `vitalRecorder.source`는 항상 있어야 합니다.
+- `vitalRecorder.source=vitalDBObservation`이면 observed metric과 `observedAt`이 있어야 합니다.
+- `latestRecorder`가 있으면 `vrcode`와 `source`가 있어야 합니다.
 
 ## Capability Gating
 

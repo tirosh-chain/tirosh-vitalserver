@@ -233,8 +233,8 @@ final class RuntimeArtifactReplacerTests: XCTestCase {
         RuntimeArtifactReplacer(
             destinations: RuntimeArtifactReplacementDestinations(
                 managerApp: URL(fileURLWithPath: "/Applications/VitalServer Helper.app"),
-                nginxBundle: URL(fileURLWithPath: "/Library/Application Support/TiroshVitalServer/nginx"),
-                guestDeploy: URL(fileURLWithPath: "/Library/Application Support/TiroshVitalServer/vm/data/deploy"),
+                nginxBundle: URL(fileURLWithPath: "/Library/Application Support/VitalServerHelper/nginx"),
+                guestDeploy: URL(fileURLWithPath: "/Library/Application Support/VitalServerHelper/vm/data/deploy"),
                 runtimeTools: URL(fileURLWithPath: "/usr/local/bin")
             ),
             temporaryDirectory: URL(fileURLWithPath: "/tmp"),

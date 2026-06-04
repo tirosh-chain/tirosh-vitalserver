@@ -7,15 +7,14 @@ import RuntimeControl
 protocol RuntimeObservabilityReading: Sendable {
     func loadRuntimeEvents(limit: Int) -> RuntimeEventHistory
     func loadRuntimeEvents(query: RuntimeEventQuery) -> RuntimeEventHistory
-    func loadVitalDBObservation() -> VitalDBObservationDocument?
     func loadVitalDBObservationSnapshot() -> RuntimeVitalDBObservationSnapshot
     func loadVitalDBRecorders() -> RuntimeVitalRecorderHistory
     func loadVitalDBRelationships() -> RuntimeVitalRelationshipHistory
 }
 
 extension RuntimeObservabilityReading {
-    func loadVitalDBObservationSnapshot() -> RuntimeVitalDBObservationSnapshot {
-        RuntimeVitalDBObservationSnapshot.fromOptional(loadVitalDBObservation())
+    func loadVitalDBObservation() -> VitalDBObservationDocument? {
+        loadVitalDBObservationSnapshot().observation
     }
 }
 
@@ -25,10 +24,17 @@ struct SystemRuntimeObservabilityReader: RuntimeObservabilityReading, @unchecked
 
     init(
         paths: RuntimePaths,
-        currentObservationProvider: RuntimeVitalDBCurrentObservationProvider? = nil
+        currentObservationProvider: RuntimeVitalDBCurrentObservationProvider
     ) {
         self.paths = paths
-        self.currentObservationProvider = currentObservationProvider ?? .live(paths: paths)
+        self.currentObservationProvider = currentObservationProvider
+    }
+
+    static func live(paths: RuntimePaths) -> SystemRuntimeObservabilityReader {
+        SystemRuntimeObservabilityReader(
+            paths: paths,
+            currentObservationProvider: .live(paths: paths)
+        )
     }
 
     func loadRuntimeEvents(limit: Int) -> RuntimeEventHistory {
@@ -123,12 +129,12 @@ struct SystemRuntimeObservabilityReader: RuntimeObservabilityReading, @unchecked
             readErrors.append("activityBuckets=\(String(describing: error))")
             activityHistory = RuntimeVitalRecorderActivityHistory.unavailable(readError: readErrors.joined(separator: ";"))
         }
+        let readError = joinedReadError(readErrors.map(Optional.some))
         return RuntimeVitalRecorderHistory(
             observations: observations,
             activityBuckets: activityBuckets,
-            activityHistory: activityHistory ?? RuntimeVitalRecorderActivityHistory.unavailable(
-                readError: readErrors.isEmpty ? nil : readErrors.joined(separator: ";")
-            )
+            activityHistory: activityHistory ?? RuntimeVitalRecorderActivityHistory.unavailable(readError: readError),
+            readError: readError
         )
     }
 
@@ -222,7 +228,7 @@ struct RuntimeVitalDBCurrentObservationProvider: Sendable {
                     return .loaded(observation, source: .guestRuntimeState)
                 }
             case .missing:
-                break
+                readIssues.append("runtimeState=missing")
             case .failed(let message):
                 readIssues.append("runtimeState=\(message)")
             }
@@ -233,7 +239,7 @@ struct RuntimeVitalDBCurrentObservationProvider: Sendable {
                     return .loaded(observation, source: .runtimeStatus, readIssues: readIssues)
                 }
             case .missing:
-                break
+                readIssues.append("runtimeStatus=missing")
             case .failed(let message):
                 readIssues.append("runtimeStatus=\(message)")
             }
@@ -306,10 +312,23 @@ private extension RuntimeVitalBedAssignmentRecord {
             endedAt: record.endedAt,
             lastSeenAt: record.lastSeenAt,
             lastObservedAt: record.lastObservedAt,
-            status: RuntimeVitalBedStatus(rawValue: record.status) ?? .unknown,
+            status: RuntimeVitalBedStatus(record.status),
             patientConnected: record.patientConnected,
             observationCount: record.observationCount
         )
+    }
+}
+
+private extension RuntimeVitalBedStatus {
+    init(_ status: VitalDBBedAssignmentStatus) {
+        switch status {
+        case .online:
+            self = .online
+        case .stale:
+            self = .stale
+        case .offline:
+            self = .offline
+        }
     }
 }
 

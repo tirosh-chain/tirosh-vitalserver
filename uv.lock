@@ -10,6 +10,7 @@ resolution-markers = [
 members = [
     "tirosh-vitalserver",
     "tirosh-vitalserver-devtools",
+    "tirosh-vitalserver-guest-tools",
     "tirosh-vitalserver-testkit",
 ]
 
@@ -498,6 +499,7 @@ source = { virtual = "." }
 dependencies = [
     { name = "pydantic-settings" },
     { name = "tirosh-vitalserver-devtools" },
+    { name = "tirosh-vitalserver-guest-tools" },
     { name = "tirosh-vitalserver-testkit" },
 ]
 
@@ -512,6 +514,7 @@ dev = [
 requires-dist = [
     { name = "pydantic-settings", specifier = ">=2.14.1" },
     { name = "tirosh-vitalserver-devtools", editable = "packages/vitalserver-devtools" },
+    { name = "tirosh-vitalserver-guest-tools", editable = "packages/vitalserver-guest-tools" },
     { name = "tirosh-vitalserver-testkit", editable = "packages/vitalserver-testkit" },
 ]
 
@@ -526,6 +529,11 @@ dev = [
 name = "tirosh-vitalserver-devtools"
 version = "0.1.0"
 source = { editable = "packages/vitalserver-devtools" }
+
+[[package]]
+name = "tirosh-vitalserver-guest-tools"
+version = "0.1.0"
+source = { editable = "packages/vitalserver-guest-tools" }
 
 [[package]]
 name = "tirosh-vitalserver-testkit"

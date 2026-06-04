@@ -33,8 +33,7 @@ final class RuntimeUpdatePreflightPolicyTests: XCTestCase {
     func testStorageRequirementIncludesBundleRootfsAndMargin() {
         let requirement = RuntimeUpdatePreflightPolicy.storageRequirement(
             stagedBundleBytes: 30,
-            installedRootfsBytes: 10,
-            incomingRootfsBytes: 20,
+            rootfsStorage: .replacing(installedRootfsBytes: 10, incomingRootfsBytes: 20),
             marginBytes: 100
         )
 
@@ -47,14 +46,30 @@ final class RuntimeUpdatePreflightPolicyTests: XCTestCase {
     func testStorageRequirementDoesNotRequireRootfsSpaceWhenRootfsIsUnchanged() {
         let requirement = RuntimeUpdatePreflightPolicy.storageRequirement(
             stagedBundleBytes: 30,
-            installedRootfsBytes: nil,
-            incomingRootfsBytes: nil,
+            rootfsStorage: .unchanged,
             marginBytes: 100
         )
 
         XCTAssertEqual(requirement.requiredBytes, 130)
         XCTAssertNil(requirement.installedRootfsBytes)
         XCTAssertNil(requirement.incomingRootfsBytes)
+    }
+
+    func testBlockingGuestStorageErrorsKeepsOnlyDiskRepairClassErrors() {
+        XCTAssertEqual(
+            RuntimeUpdatePreflightPolicy.blockingGuestStorageErrors([
+                .runtimeStateStale,
+                .guestFilesystemError,
+                .guestHTTP("failed"),
+                .guestFilesystemReadOnly,
+                .guestDiskIO,
+            ]),
+            [
+                .guestFilesystemError,
+                .guestFilesystemReadOnly,
+                .guestDiskIO,
+            ]
+        )
     }
 
     private func manifest(
@@ -64,7 +79,7 @@ final class RuntimeUpdatePreflightPolicyTests: XCTestCase {
     ) -> UpdateBundleManifest {
         UpdateBundleManifest(
             schemaVersion: 3,
-            product: "com.tirosh.vitalserver",
+            product: "ai.tirosh.vitalserver.helper",
             channel: channel,
             helperVersion: "1.2.3",
             releaseLabel: "1.2.3",

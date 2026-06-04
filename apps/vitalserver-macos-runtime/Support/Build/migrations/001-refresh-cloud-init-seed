@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-vm_home="${VITALSERVER_VM_HOME:-/Library/Application Support/TiroshVitalServer/vm}"
+vm_home="${VITALSERVER_VM_HOME:-/Library/Application Support/VitalServerHelper/vm}"
 runtime_dir="${vm_home}/runtime"
 seed_dir="${runtime_dir}/cloud-init-seed"
 seed_iso="${runtime_dir}/seed.iso"

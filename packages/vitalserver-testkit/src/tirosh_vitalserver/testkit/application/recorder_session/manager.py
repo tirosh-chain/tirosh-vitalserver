@@ -306,7 +306,25 @@ class VirtualRecorderSessionManager:
         snapshot: VirtualRecorderSessionSnapshot,
     ) -> tuple[VirtualRecorderCleanupError, ...]:
         if self._recorder_management is None:
-            return ()
+            error = "recorder management is not configured"
+            emit_testkit_event(
+                "vrecorder.delete_from_vitalserver.unavailable",
+                level=logging.WARNING,
+                session_id=snapshot.session_id,
+                target_url=snapshot.request.target_url,
+                error=error,
+            )
+            return tuple(
+                VirtualRecorderCleanupError(
+                    vrcode=vrcode,
+                    target_url=snapshot.request.target_url,
+                    error=error,
+                )
+                for vrcode in sorted({
+                    recorder.vrcode
+                    for recorder in snapshot.recorders
+                })
+            )
 
         errors: list[VirtualRecorderCleanupError] = []
         vrcodes = sorted({recorder.vrcode for recorder in snapshot.recorders})
@@ -348,7 +366,18 @@ class VirtualRecorderSessionManager:
         """Best-effort cleanup for VitalServer bed assignments owned by TestKit."""
 
         if self._recorder_management is None:
-            return ()
+            error = "recorder management is not configured"
+            emit_testkit_event(
+                "bed.delete_from_vitalserver.unavailable",
+                level=logging.WARNING,
+                target_url=target_url,
+                beds=len(beds),
+                error=error,
+            )
+            return tuple(
+                f"{bed.room_name}({bed.bed_id}): {error}"
+                for bed in beds
+            )
 
         errors: list[str] = []
         for bed in beds:
@@ -482,12 +511,12 @@ class VirtualRecorderSessionManager:
                 session_id=snapshot.session_id,
                 error=str(exc),
             )
+            raise
 
     def _delete_stored_snapshot(self, session_id: str) -> None:
-        with self._lock:
-            self._stored_sessions.pop(session_id, None)
-
         if self._session_store is None:
+            with self._lock:
+                self._stored_sessions.pop(session_id, None)
             return
 
         try:
@@ -499,6 +528,10 @@ class VirtualRecorderSessionManager:
                 session_id=session_id,
                 error=str(exc),
             )
+            raise
+
+        with self._lock:
+            self._stored_sessions.pop(session_id, None)
 
 
 def load_stored_sessions(
@@ -520,7 +553,7 @@ def load_stored_sessions(
             level=logging.WARNING,
             error=str(exc),
         )
-        return {}
+        raise
 
 
 def session_is_active(snapshot: VirtualRecorderSessionSnapshot) -> bool:

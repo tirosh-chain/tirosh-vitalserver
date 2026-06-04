@@ -11,8 +11,8 @@ final class RuntimeHostProxyPortCleanerTests: XCTestCase {
         let cleaner = RuntimeHostProxyPortCleaner(
             proxyPort: { 80 },
             proxyServiceLoaded: { false },
-            expectedProxyNginxPID: { "123" },
-            ownedNginxPathFragments: ["/Library/Application Support/TiroshVitalServer/nginx"],
+            expectedProxyNginxPID: { .loaded("123") },
+            ownedNginxPathFragments: ["/Library/Application Support/VitalServerHelper/nginx"],
             runProcess: { executable, arguments in
                 commands.append((executable, arguments))
                 if executable == Constants.Commands.lsof {
@@ -39,8 +39,8 @@ final class RuntimeHostProxyPortCleanerTests: XCTestCase {
         let cleaner = RuntimeHostProxyPortCleaner(
             proxyPort: { 80 },
             proxyServiceLoaded: { false },
-            expectedProxyNginxPID: { nil },
-            ownedNginxPathFragments: ["/Library/Application Support/TiroshVitalServer/nginx"],
+            expectedProxyNginxPID: { .missing },
+            ownedNginxPathFragments: ["/Library/Application Support/VitalServerHelper/nginx"],
             runProcess: { executable, arguments in
                 switch executable {
                 case Constants.Commands.lsof:
@@ -51,7 +51,7 @@ final class RuntimeHostProxyPortCleanerTests: XCTestCase {
                 case Constants.Commands.ps:
                     return RuntimeProcessResult(
                         exitCode: 0,
-                        stdout: "/Library/Application Support/TiroshVitalServer/nginx/sbin/nginx -c vitalserver-nginx.conf\n",
+                        stdout: "/Library/Application Support/VitalServerHelper/nginx/sbin/nginx -c vitalserver-nginx.conf\n",
                         stderr: ""
                     )
                 case Constants.Commands.kill:
@@ -74,8 +74,8 @@ final class RuntimeHostProxyPortCleanerTests: XCTestCase {
         let cleaner = RuntimeHostProxyPortCleaner(
             proxyPort: { 80 },
             proxyServiceLoaded: { false },
-            expectedProxyNginxPID: { nil },
-            ownedNginxPathFragments: ["/Library/Application Support/TiroshVitalServer/nginx"],
+            expectedProxyNginxPID: { .missing },
+            ownedNginxPathFragments: ["/Library/Application Support/VitalServerHelper/nginx"],
             runProcess: { executable, _ in
                 if executable == Constants.Commands.lsof {
                     return RuntimeProcessResult(exitCode: 0, stdout: Self.lsof(["httpd", "789"]), stderr: "")
@@ -96,8 +96,8 @@ final class RuntimeHostProxyPortCleanerTests: XCTestCase {
         let cleaner = RuntimeHostProxyPortCleaner(
             proxyPort: { 80 },
             proxyServiceLoaded: { false },
-            expectedProxyNginxPID: { nil },
-            ownedNginxPathFragments: ["/Library/Application Support/TiroshVitalServer/nginx"],
+            expectedProxyNginxPID: { .missing },
+            ownedNginxPathFragments: ["/Library/Application Support/VitalServerHelper/nginx"],
             runProcess: { executable, _ in
                 if executable == Constants.Commands.lsof {
                     return RuntimeProcessResult(exitCode: 1, stdout: "", stderr: "permission denied")
@@ -119,8 +119,8 @@ final class RuntimeHostProxyPortCleanerTests: XCTestCase {
         let cleaner = RuntimeHostProxyPortCleaner(
             proxyPort: { 80 },
             proxyServiceLoaded: { false },
-            expectedProxyNginxPID: { nil },
-            ownedNginxPathFragments: ["/Library/Application Support/TiroshVitalServer/nginx"],
+            expectedProxyNginxPID: { .missing },
+            ownedNginxPathFragments: ["/Library/Application Support/VitalServerHelper/nginx"],
             runProcess: { executable, _ in
                 if executable == Constants.Commands.lsof {
                     return RuntimeProcessResult(exitCode: 1, stdout: "", stderr: "")
@@ -141,8 +141,8 @@ final class RuntimeHostProxyPortCleanerTests: XCTestCase {
         let cleaner = RuntimeHostProxyPortCleaner(
             proxyPort: { 80 },
             proxyServiceLoaded: { true },
-            expectedProxyNginxPID: { "123" },
-            ownedNginxPathFragments: ["/Library/Application Support/TiroshVitalServer/nginx"],
+            expectedProxyNginxPID: { .loaded("123") },
+            ownedNginxPathFragments: ["/Library/Application Support/VitalServerHelper/nginx"],
             runProcess: { executable, arguments in
                 switch executable {
                 case Constants.Commands.lsof:
@@ -161,6 +161,36 @@ final class RuntimeHostProxyPortCleanerTests: XCTestCase {
         try cleaner.cleanupBeforeStartingProxy()
 
         XCTAssertTrue(killed.isEmpty)
+    }
+
+    func testExpectedProxyPIDReadFailureBlocksCleanupBeforeKillingListeners() {
+        var killed: [[String]] = []
+        var logs: [String] = []
+        let cleaner = RuntimeHostProxyPortCleaner(
+            proxyPort: { 80 },
+            proxyServiceLoaded: { false },
+            expectedProxyNginxPID: { .readFailed("permission denied") },
+            ownedNginxPathFragments: ["/Library/Application Support/VitalServerHelper/nginx"],
+            runProcess: { executable, arguments in
+                switch executable {
+                case Constants.Commands.lsof:
+                    return RuntimeProcessResult(exitCode: 0, stdout: Self.lsof(["nginx", "123"]), stderr: "")
+                case Constants.Commands.kill:
+                    killed.append(arguments)
+                    return RuntimeProcessResult(exitCode: 0, stdout: "", stderr: "")
+                default:
+                    return RuntimeProcessResult(exitCode: 0, stdout: "", stderr: "")
+                }
+            },
+            sleep: { _ in XCTFail("read failure should not terminate anything") },
+            log: { logs.append($0) }
+        )
+
+        XCTAssertThrowsError(try cleaner.cleanupBeforeStartingProxy()) { error in
+            XCTAssertTrue(String(describing: error).contains("failed to read expected Host proxy nginx PID"))
+        }
+        XCTAssertTrue(killed.isEmpty)
+        XCTAssertTrue(logs.contains { $0.contains("failed to read expected nginx pid") })
     }
 
     private static func lsof(_ listener: [String]) -> String {

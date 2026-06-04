@@ -92,6 +92,7 @@ def test_collector_builds_observation_from_redis_and_access_log(tmp_path: Path) 
 
 def test_collector_summarizes_recorder_activity_from_audit_events() -> None:
     now = time.time()
+    bucket_started = now - (now % 60) - 60
     collector = VitalDBCollector(
         redis_client=FakeRedis(
             values={
@@ -104,7 +105,7 @@ def test_collector_summarizes_recorder_activity_from_audit_events() -> None:
                     json.dumps(
                         {
                             "event_type": "send_data",
-                            "ts": _iso(now - 20),
+                            "ts": _iso(bucket_started + 10),
                             "payload_summary": {
                                 "vrcode": "VR_A",
                                 "bytes": 100,
@@ -115,7 +116,7 @@ def test_collector_summarizes_recorder_activity_from_audit_events() -> None:
                     json.dumps(
                         {
                             "event_type": "send_data",
-                            "ts": _iso(now - 10),
+                            "ts": _iso(bucket_started + 20),
                             "payload_summary": {
                                 "vrcode": "VR_A",
                                 "bytes": 150,
@@ -154,6 +155,142 @@ def test_collector_summarizes_recorder_activity_from_audit_events() -> None:
     assert activity["buckets"][0]["byteCount"] == 250
 
 
+def test_collector_reports_audit_source_read_issues() -> None:
+    now = time.time()
+    collector = VitalDBCollector(
+        redis_client=FakeRedis(
+            values={
+                "ip_VR_A": "10.0.0.10",
+                "utime_VR_A": str(now - 1),
+            },
+            sets={"vrs": ["VR_A"]},
+            lists={
+                "vitalserver:audit_events": [
+                    "{not-json",
+                    json.dumps(
+                        {
+                            "event_type": "send_data",
+                            "payload_summary": {
+                                "vrcode": "VR_A",
+                                "bytes": 100,
+                                "rooms_count": 1,
+                            },
+                        }
+                    ),
+                    json.dumps(
+                        {
+                            "event_type": "send_data",
+                            "ts": _iso(now - 10),
+                            "payload_summary": {
+                                "bytes": 100,
+                                "rooms_count": 1,
+                            },
+                        }
+                    ),
+                    json.dumps(
+                        {
+                            "event_type": "send_data",
+                            "ts": _iso(now - 10),
+                            "payload_summary": {
+                                "vrcode": "VR_A",
+                                "bytes": "not-int",
+                                "rooms_count": 1,
+                            },
+                        }
+                    ),
+                    json.dumps(
+                        {
+                            "event_type": "send_data",
+                            "ts": _iso(now - 10),
+                            "payload_summary": {
+                                "vrcode": "VR_A",
+                                "bytes": -1,
+                                "rooms_count": 1,
+                            },
+                        }
+                    ),
+                    json.dumps(
+                        {
+                            "event_type": "send_data",
+                            "ts": _iso(now - 10),
+                            "payload_summary": {
+                                "vrcode": "VR_A",
+                                "bytes": 12,
+                                "rooms_count": 2,
+                            },
+                        }
+                    ),
+                ]
+            },
+        ),
+        settings=_settings(),
+    )
+
+    document = collector.collect().as_json()
+    activity = document["recorders"][0]["activity"]
+
+    assert activity["messageCount"] == 1
+    assert activity["byteCount"] == 12
+    messages = _read_issue_messages(document, "auditEvents")
+    assert messages[0].startswith("event 0 was skipped: invalid JSON")
+    assert messages[1:] == [
+        "event 1 was skipped: send_data event is missing timestamp",
+        "event 2 was skipped: send_data event is missing vrcode",
+        "event 3 was skipped: send_data event has invalid bytes: 'not-int'",
+        "event 4 was skipped: send_data event has negative bytes: -1",
+    ]
+
+
+def test_collector_reports_invalid_audit_timestamp() -> None:
+    collector = VitalDBCollector(
+        redis_client=FakeRedis(
+            values={
+                "ip_VR_A": "10.0.0.10",
+                "utime_VR_A": str(time.time() - 1),
+            },
+            sets={"vrs": ["VR_A"]},
+            lists={
+                "vitalserver:audit_events": [
+                    json.dumps(
+                        {
+                            "event_type": "send_data",
+                            "ts": "not-a-timestamp",
+                            "payload_summary": {
+                                "vrcode": "VR_A",
+                                "bytes": 100,
+                                "rooms_count": 1,
+                            },
+                        }
+                    )
+                ]
+            },
+        ),
+        settings=_settings(),
+    )
+
+    document = collector.collect().as_json()
+
+    assert document["recorders"][0]["activity"] is None
+    assert any(
+        "invalid timestamp" in message
+        for message in _read_issue_messages(document, "auditEvents")
+    )
+
+
+def test_collector_reports_missing_audit_source_config() -> None:
+    collector = VitalDBCollector(
+        redis_client=FakeRedis(values={}),
+        settings=_settings(audit_redis_list="", audit_event_limit=0),
+    )
+
+    document = collector.collect().as_json()
+
+    assert "audit Redis list is not configured" in _read_issue_messages(
+        document,
+        "auditEvents",
+    )
+
+
 def test_collector_does_not_promote_bed_vrcode_to_recorder() -> None:
     now = str(time.time() - 1)
     bed_id = "d8e1436f3f1acfedc4b481d6b12d063134287810"
@@ -173,6 +310,29 @@ def test_collector_does_not_promote_bed_vrcode_to_recorder() -> None:
     document = collector.collect().as_json()
 
     assert document["recorders"] == []
+
+
+def test_collector_reports_malformed_bed_json() -> None:
+    now = str(time.time() - 1)
+    collector = VitalDBCollector(
+        redis_client=FakeRedis(
+            values={
+                "beds:bed-1": "{not-json",
+                "utime_bed-1": now,
+            },
+            sets={"beds": ["bed-1"]},
+        ),
+        settings=_settings(),
+    )
+
+    document = collector.collect().as_json()
+
+    assert document["beds"][0]["name"] == "{not-json"
+    assert document["beds"][0]["vrcode"] is None
+    assert any(
+        message.startswith("bed record is not valid JSON")
+        for message in _read_issue_messages(document, "bed:bed-1")
+    )
 
 
 def test_collector_does_not_promote_bed_activity_to_recorder() -> None:
@@ -287,6 +447,87 @@ def test_collector_reads_recent_access_log_tail_only(tmp_path: Path) -> None:
     assert proxy_connections[-1]["requestURI"] == "/socket.io/?EIO=3"
 
 
+def test_collector_keeps_proxy_failures_as_diagnostics_not_anomalies(
+    tmp_path: Path,
+) -> None:
+    access_log = tmp_path / "access.jsonl"
+    access_log.write_text(
+        json.dumps(
+            {
+                "time": "2026-06-02T07:24:34Z",
+                "request_uri": "/ready",
+                "status": "502",
+                "upstream_status": "502",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    collector = VitalDBCollector(
+        redis_client=FakeRedis(values={}),
+        settings=_settings(access_log),
+    )
+
+    document = collector.collect().as_json()
+
+    assert document["proxyConnections"][0]["requestURI"] == "/ready"
+    assert document["proxyConnections"][0]["status"] == "502"
+    assert document["anomalies"] == []
+
+
+def test_collector_reports_missing_access_log_file(tmp_path: Path) -> None:
+    missing_log = tmp_path / "missing-access.jsonl"
+    collector = VitalDBCollector(
+        redis_client=FakeRedis(values={}),
+        settings=_settings(missing_log),
+    )
+
+    document = collector.collect().as_json()
+
+    assert document["proxyConnections"] == []
+    assert _read_issue_messages(document, "proxyAccessLog") == [
+        f"proxy access log does not exist: {missing_log}"
+    ]
+
+
+def test_collector_reports_invalid_access_log_utf8(tmp_path: Path) -> None:
+    access_log = tmp_path / "access.jsonl"
+    access_log.write_bytes(b"\xff")
+    collector = VitalDBCollector(
+        redis_client=FakeRedis(values={}),
+        settings=_settings(access_log),
+    )
+
+    document = collector.collect().as_json()
+
+    assert document["proxyConnections"] == []
+    assert any(
+        message.startswith("proxy access log is not valid UTF-8")
+        for message in _read_issue_messages(document, "proxyAccessLog")
+    )
+
+
+def test_collector_reports_malformed_access_log_json(tmp_path: Path) -> None:
+    access_log = tmp_path / "access.jsonl"
+    access_log.write_text(
+        "{not-json\n" + json.dumps({"time": "2026-05-25T00:00:00Z"}) + "\n",
+        encoding="utf-8",
+    )
+    collector = VitalDBCollector(
+        redis_client=FakeRedis(values={}),
+        settings=_settings(access_log),
+    )
+
+    document = collector.collect().as_json()
+
+    assert len(document["proxyConnections"]) == 1
+    assert document["proxyConnections"][0]["observedAt"] == "2026-05-25T00:00:00Z"
+    assert any(
+        message.startswith("line 0 was skipped: invalid JSON")
+        for message in _read_issue_messages(document, "proxyAccessLog")
+    )
+
+
 def test_collector_treats_future_recorder_timestamp_as_stale() -> None:
     collector = VitalDBCollector(
         redis_client=FakeRedis(
@@ -342,7 +583,12 @@ def test_collector_ignores_deleted_recorder_status_keys() -> None:
     assert document["recorders"] == []
 
 
-def _settings(access_log: Path | None = None) -> ObserverSettings:
+def _settings(
+    access_log: Path | None = None,
+    *,
+    audit_redis_list: str = "vitalserver:audit_events",
+    audit_event_limit: int = 1000,
+) -> ObserverSettings:
     return ObserverSettings(
         host="127.0.0.1",
         port=8080,
@@ -351,8 +597,8 @@ def _settings(access_log: Path | None = None) -> ObserverSettings:
         redis_timeout_seconds=1,
         recorder_online_threshold_seconds=120,
         recorder_activity_window_seconds=300,
-        audit_redis_list="vitalserver:audit_events",
-        audit_event_limit=1000,
+        audit_redis_list=audit_redis_list,
+        audit_event_limit=audit_event_limit,
         access_log_path=str(access_log) if access_log else "",
         access_log_limit=20,
     )
@@ -360,3 +606,13 @@ def _settings(access_log: Path | None = None) -> ObserverSettings:
 
 def _iso(timestamp: float) -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(timestamp))
+
+
+def _read_issue_messages(document: dict[str, object], source: str) -> list[str]:
+    issues = document["readIssues"]
+    assert isinstance(issues, list)
+    return [
+        str(issue["message"])
+        for issue in issues
+        if isinstance(issue, dict) and issue.get("source") == source
+    ]

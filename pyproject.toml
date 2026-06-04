@@ -6,6 +6,7 @@ requires-python = ">=3.14"
 dependencies = [
   "pydantic-settings>=2.14.1",
   "tirosh-vitalserver-devtools",
+  "tirosh-vitalserver-guest-tools",
   "tirosh-vitalserver-testkit",
 ]
 
@@ -19,17 +20,21 @@ dev = [
 [tool.uv.workspace]
 members = [
   "packages/vitalserver-devtools",
+  "packages/vitalserver-guest-tools",
   "packages/vitalserver-testkit",
 ]
 
 [tool.uv.sources]
 tirosh-vitalserver-devtools = { workspace = true }
+tirosh-vitalserver-guest-tools = { workspace = true }
 tirosh-vitalserver-testkit = { workspace = true }
 
 [tool.ruff]
 src = [
   "packages/vitalserver-devtools/src",
+  "packages/vitalserver-guest-tools/src",
   "packages/vitalserver-testkit/src",
+  "packages/vitalserver-guest-tools/tests",
   "packages/vitalserver-testkit/tests",
   "apps/vitaldb-observer",
   "scripts",
@@ -71,6 +76,7 @@ docstring-code-format = true
 [tool.ruff.lint.isort]
 known-first-party = [
   "tirosh_vitalserver",
+  "tirosh_guest_tools",
   "vitaldb_observer",
 ]
 
@@ -81,6 +87,8 @@ explicit_package_bases = true
 files = [
   "packages/vitalserver-devtools/src",
   "packages/vitalserver-devtools/tests",
+  "packages/vitalserver-guest-tools/src",
+  "packages/vitalserver-guest-tools/tests",
   "packages/vitalserver-testkit/src",
   "packages/vitalserver-testkit/tests",
   "apps/vitaldb-observer",
@@ -89,6 +97,7 @@ files = [
 ignore_missing_imports = true
 mypy_path = [
   "packages/vitalserver-devtools/src",
+  "packages/vitalserver-guest-tools/src",
   "packages/vitalserver-testkit/src",
   "apps/vitaldb-observer",
 ]
@@ -110,6 +119,7 @@ pythonpath = [
 ]
 testpaths = [
   "packages/vitalserver-devtools/tests",
+  "packages/vitalserver-guest-tools/tests",
   "packages/vitalserver-testkit/tests",
   "apps/vitaldb-observer/tests",
 ]

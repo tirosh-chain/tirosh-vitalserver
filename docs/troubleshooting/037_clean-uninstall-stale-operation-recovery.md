@@ -118,6 +118,7 @@ stat -f "%Sm %Sp %Su:%Sg %z %N" \
 - Runtime state는 owner가 명시 contract로 제공하고 consumer가 추정하지 않습니다.
 - Clean uninstall은 이전 update/rollback이 남긴 request/result/status를 terminal state로 끊습니다.
 - Guest result는 boot identity 없이 current state로 사용하지 않습니다.
+- Dev pkg의 golden rootfs cache는 파일 존재 여부만으로 재사용하지 않습니다. Guest bootstrap prerequisite 또는 air-gapped rootfs preparation contract가 바뀌면 cache stamp mismatch로 rootfs를 재생성해야 합니다.
 - Rollback은 backup manifest/preflight가 통과한 artifact만 복원합니다.
 - Watchdog은 update/rollback/uninstall owner가 명시된 동안 recovery를 수행하지 않습니다.
 - Destructive installed-runtime chaos는 TS-036의 Tier 4 절차로만 검증합니다.
@@ -127,7 +128,9 @@ stat -f "%Sm %Sp %Su:%Sg %z %N" \
 - `vm-disk.img`의 수정 시간은 VM이 실행 중이면 계속 바뀔 수 있습니다. mtime만으로 disk가 새로 만들어졌다고 판단하지 않습니다.
 - clean uninstall은 의도적으로 VM 영역과 backup 영역까지 제거할 수 있습니다. Redis backup/VM disk 보존이 필요하면 clean uninstall 전에 별도 확인이 필요합니다.
 - watchdog recovery log는 service restart 기록입니다. disk deletion, rollback restore, reinstall과 구분해서 읽어야 합니다.
+- fresh install 전용 `.pkg`는 product root, Helper app, runtime tools, uninstaller, LaunchDaemon, loaded launchd service, package receipt, Host proxy port listener 중 하나라도 남아 있으면 `preinstall`에서 실패해야 합니다. 따라서 clean uninstall은 현재 package receipt `com.tirosh.vitalserver.vm`과 legacy/product receipt `com.tirosh.vitalserver`를 모두 정리해야 합니다.
 - runtime event history는 과거 operation의 이벤트를 포함하므로 current owner/status와 함께 해석해야 합니다.
+- `launchctl bootout`은 stop 요청이지 stopped 상태 계약이 아닙니다. Clean uninstall은 launchd unload와 VM process exit를 확인한 뒤 runtime directory 삭제로 넘어가야 합니다.
 
 ## Related Cases
 
@@ -144,3 +147,5 @@ stat -f "%Sm %Sp %Su:%Sg %z %N" \
 - 2026-05-31: clean uninstall 이후 rollback event와 watchdog recovery가 이어진 현장 로그를 근거로 TS-037을 등록했습니다. 핵심 수정 원칙은 operation ownership, boot-scoped guest result, rollback preflight, watchdog recovery input을 명시 계약으로 분리하는 것입니다.
 - 2026-05-31: hotfix에서 fresh install stale guest-run cleanup, `bootstrap-result.json.bootID`, boot-scoped bootstrap result validation, manifest 기반 rollback preflight/restore plan을 추가했습니다. Full operation ownership document는 후속 구조 개선으로 남겼습니다.
 - 2026-06-01: 핵심 hotfix가 반영되어 문서 상태를 `implemented`로 갱신했습니다. `RuntimeOperationOwnershipDocument`는 별도 구조 개선 후보로 유지합니다.
+- 2026-06-02: clean uninstall이 `stop-launchd-services` 직후 product root 삭제에 들어가 `/Library/Application Support/TiroshVitalServer/vm`에서 `Directory not empty`로 실패하는 로그를 확인했습니다. Bash uninstaller는 `vitalserver-vm runtime uninstall [--clean]`을 호출하는 얇은 entrypoint로 축소하고, HostCLI가 launchd unload/VM process exit, product root 삭제, runtime tools 제거 순서, 삭제 실패 진단을 소유하도록 옮겼습니다.
+- 2026-06-02: clean uninstall 완료 로그가 남았지만 `/Library/Application Support/TiroshVitalServer`가 남아 fresh install `preinstall`에서 차단되는 케이스를 확인했습니다. 원인은 uninstaller wrapper가 `VITALSERVER_VM_HOME`을 설치 VM home으로 전달하지 않아 HostCLI가 package-owned runtime home이 아닌 기본 home을 대상으로 uninstall할 수 있었던 것입니다. Wrapper는 `VITALSERVER_VM_HOME=/Library/Application Support/TiroshVitalServer/vm`을 명시해 product-owned path contract를 보존해야 합니다.

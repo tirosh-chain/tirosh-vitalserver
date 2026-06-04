@@ -3,7 +3,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "TiroshVitalServerHelper",
+    name: "VitalServerHelper",
     platforms: [
         .macOS(.v13)
     ],
@@ -26,6 +26,10 @@ let package = Package(
             dependencies: ["Contracts"]
         ),
         .target(
+            name: "RuntimeWorkflow",
+            dependencies: ["Contracts", "Core"]
+        ),
+        .target(
             name: "RuntimeControl",
             dependencies: ["Contracts"]
         ),
@@ -46,7 +50,7 @@ let package = Package(
         ),
         .executableTarget(
             name: "HostCLI",
-            dependencies: ["Contracts", "Core", "HostInfrastructure"]
+            dependencies: ["Contracts", "Core", "RuntimeWorkflow", "HostInfrastructure"]
         ),
         .executableTarget(
             name: "MacRuntimeControlApp",
@@ -64,6 +68,10 @@ let package = Package(
             dependencies: ["Contracts", "Core"]
         ),
         .testTarget(
+            name: "RuntimeWorkflowTests",
+            dependencies: ["Contracts", "Core", "RuntimeWorkflow"]
+        ),
+        .testTarget(
             name: "RuntimeControlTests",
             dependencies: ["Contracts", "RuntimeControl"]
         ),
@@ -77,7 +85,7 @@ let package = Package(
         ),
         .testTarget(
             name: "HostCLITests",
-            dependencies: ["Contracts", "Core", "HostCLI"]
+            dependencies: ["Contracts", "Core", "RuntimeWorkflow", "HostCLI"]
         ),
         .testTarget(
             name: "MacRuntimeControlAppTests",

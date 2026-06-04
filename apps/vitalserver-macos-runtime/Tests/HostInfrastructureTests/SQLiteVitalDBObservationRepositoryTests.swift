@@ -1,5 +1,6 @@
 import Contracts
 import HostInfrastructure
+import SQLite3
 import XCTest
 
 final class SQLiteVitalDBObservationRepositoryTests: XCTestCase {
@@ -71,24 +72,73 @@ final class SQLiteVitalDBObservationRepositoryTests: XCTestCase {
 
         XCTAssertEqual(assignments.map(\.bedID), ["bed-a"])
         XCTAssertEqual(assignments.map(\.vrcode), ["VR_A"])
+        XCTAssertEqual(assignments.map(\.status), [.online])
         XCTAssertEqual(relationshipEvents, [])
+    }
+
+    func testRepositoryRejectsInvalidBedAssignmentStatus() throws {
+        let harness = try Harness()
+        defer {
+            harness.cleanup()
+        }
+        try harness.repository.append(VitalDBObservationDocument(
+            observedAt: "2026-05-30T00:00:00Z",
+            ready: true,
+            recorderOnlineThresholdSeconds: 60,
+            beds: [
+                VitalDBBedObservation(
+                    bedID: "bed-a",
+                    vrcode: "VR_A",
+                    online: true
+                ),
+            ]
+        ))
+        try harness.executeSQL("UPDATE vitaldb_bed_assignments SET status = 'future-status'")
+
+        XCTAssertThrowsError(try harness.repository.loadBedAssignments()) { error in
+            XCTAssertEqual(
+                error as? SQLiteRuntimeObservabilityStoreError,
+                .invalidColumnValue(
+                    table: "vitaldb_bed_assignments",
+                    column: "status",
+                    value: "future-status"
+                )
+            )
+        }
     }
 }
 
 private struct Harness {
     let directory: URL
+    let database: URL
     let repository: SQLiteVitalDBObservationRepository
 
     init() throws {
         directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        repository = SQLiteVitalDBObservationRepository(
-            url: directory.appendingPathComponent(RuntimeFileNames.runtimeObservabilityDB)
-        )
+        database = directory.appendingPathComponent(RuntimeFileNames.runtimeObservabilityDB)
+        repository = SQLiteVitalDBObservationRepository(url: database)
     }
 
     func cleanup() {
         try? FileManager.default.removeItem(at: directory)
+    }
+
+    func executeSQL(_ sql: String) throws {
+        var db: OpaquePointer?
+        guard sqlite3_open(database.path, &db) == SQLITE_OK, let openedDB = db else {
+            throw SQLiteRuntimeObservabilityStoreError.openFailed(
+                String(cString: sqlite3_errmsg(db))
+            )
+        }
+        defer {
+            sqlite3_close(openedDB)
+        }
+        guard sqlite3_exec(openedDB, sql, nil, nil, nil) == SQLITE_OK else {
+            throw SQLiteRuntimeObservabilityStoreError.stepFailed(
+                String(cString: sqlite3_errmsg(openedDB))
+            )
+        }
     }
 }

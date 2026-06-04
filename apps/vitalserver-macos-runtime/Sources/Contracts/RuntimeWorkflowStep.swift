@@ -11,6 +11,7 @@ public enum RuntimeWorkflowStep: Codable, Equatable, Sendable {
     case configureInstalledPermissions
     case startInstalledServices
     case applyStartOnBootPolicy
+    case waitInstallRuntimeHealth
     case cleanupInstallSettings
     case stopRuntimeServices
     case replaceRootfsBase
@@ -55,6 +56,8 @@ public enum RuntimeWorkflowStep: Codable, Equatable, Sendable {
             self = .startInstalledServices
         case "apply-start-on-boot-policy":
             self = .applyStartOnBootPolicy
+        case "wait-install-runtime-health":
+            self = .waitInstallRuntimeHealth
         case "cleanup-install-settings":
             self = .cleanupInstallSettings
         case "stop-runtime-services":
@@ -118,6 +121,8 @@ public enum RuntimeWorkflowStep: Codable, Equatable, Sendable {
             return "start-installed-services"
         case .applyStartOnBootPolicy:
             return "apply-start-on-boot-policy"
+        case .waitInstallRuntimeHealth:
+            return "wait-install-runtime-health"
         case .cleanupInstallSettings:
             return "cleanup-install-settings"
         case .stopRuntimeServices:
@@ -169,6 +174,7 @@ public enum RuntimeWorkflowStep: Codable, Equatable, Sendable {
              .configureInstalledPermissions,
              .startInstalledServices,
              .applyStartOnBootPolicy,
+             .waitInstallRuntimeHealth,
              .cleanupInstallSettings:
             return .install
         case .stopRuntimeServices,

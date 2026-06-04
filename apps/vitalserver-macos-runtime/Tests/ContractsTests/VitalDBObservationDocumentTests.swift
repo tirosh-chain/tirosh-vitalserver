@@ -46,6 +46,12 @@ final class VitalDBObservationDocumentTests: XCTestCase {
                     subject: "10.0.0.10",
                     message: "duplicate-ip"
                 ),
+            ],
+            readIssues: [
+                VitalDBObservationReadIssue(
+                    source: "proxyAccessLog",
+                    message: "proxy access log is not valid UTF-8"
+                ),
             ]
         )
 
@@ -56,6 +62,29 @@ final class VitalDBObservationDocumentTests: XCTestCase {
         XCTAssertEqual(decoded.recorders.first?.activity?.byteCount, 4096)
         XCTAssertEqual(decoded.recorders.first?.activity?.buckets.first?.messageCount, 12)
         XCTAssertEqual(decoded.anomalies.first?.kind.rawValue, "duplicate-ip")
+        XCTAssertEqual(decoded.readIssues, document.readIssues)
+    }
+
+    func testObservationDocumentDecodesLegacyPayloadWithoutReadIssues() throws {
+        let payload = """
+        {
+          "schemaVersion": 1,
+          "source": "vitaldb-observer",
+          "observedAt": "2026-05-25T00:00:00Z",
+          "ready": true,
+          "recorderOnlineThresholdSeconds": 120,
+          "recorders": [],
+          "beds": [],
+          "devices": [],
+          "filters": [],
+          "proxyConnections": [],
+          "anomalies": []
+        }
+        """.data(using: .utf8)!
+
+        let decoded = try JSONDecoder().decode(VitalDBObservationDocument.self, from: payload)
+
+        XCTAssertEqual(decoded.readIssues, [])
     }
 
     func testRuntimeEventTypeIncludesVitalDBObservationEvents() {

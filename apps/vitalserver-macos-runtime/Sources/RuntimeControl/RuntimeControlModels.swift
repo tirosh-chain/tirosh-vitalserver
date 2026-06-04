@@ -121,6 +121,8 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
     public var proxyPort: Int
     public var runtimeControlPort: Int
     public var vitalFilesDirectory: String
+    public var vitalServerURL: String
+    public var remoteConsoleURL: String
     public var publicHost: String
     public var publicPort: Int
     public var adminPassword: String
@@ -142,7 +144,9 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
         bridgedInterface: String = "",
         proxyPort: Int = 80,
         runtimeControlPort: Int = 18_321,
-        vitalFilesDirectory: String = "/Users/Shared/TiroshVitalServer/vital-files",
+        vitalFilesDirectory: String = "/Users/Shared/VitalServerHelper/vital-files",
+        vitalServerURL: String = "",
+        remoteConsoleURL: String = "",
         publicHost: String = "",
         publicPort: Int = 80,
         adminPassword: String = "",
@@ -164,6 +168,8 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
         self.proxyPort = proxyPort
         self.runtimeControlPort = runtimeControlPort
         self.vitalFilesDirectory = vitalFilesDirectory
+        self.vitalServerURL = vitalServerURL
+        self.remoteConsoleURL = remoteConsoleURL
         self.publicHost = publicHost
         self.publicPort = publicPort
         self.adminPassword = adminPassword
@@ -197,6 +203,16 @@ public struct RuntimeDataDirectoryStats: Codable, Equatable, Sendable {
     }
 }
 
+public struct RuntimeStatusReadIssue: Codable, Equatable, Sendable {
+    public var source: String
+    public var message: String
+
+    public init(source: String, message: String) {
+        self.source = source
+        self.message = message
+    }
+}
+
 public struct RuntimeStatus: Codable, Equatable, Sendable {
     public var runtimeInstalled: Bool
     public var vmServiceLoaded: Bool
@@ -204,10 +220,16 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
     public var guestLogSyncServiceLoaded: Bool
     public var sleepPreventionServiceLoaded: Bool?
     public var watchdogServiceLoaded: Bool
+    public var vmServiceState: RuntimeServiceState?
+    public var proxyServiceState: RuntimeServiceState?
+    public var guestLogSyncServiceState: RuntimeServiceState?
+    public var sleepPreventionServiceState: RuntimeServiceState?
+    public var watchdogServiceState: RuntimeServiceState?
     public var runtimeState: RuntimeState?
     public var operation: RuntimeOperation?
     public var statusMessage: String?
     public var statusDocumentError: String?
+    public var readIssues: [RuntimeStatusReadIssue]
     public var updatedAt: String?
     public var startedAt: String?
     public var runtimeVersion: String?
@@ -242,10 +264,16 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
         guestLogSyncServiceLoaded: Bool = false,
         sleepPreventionServiceLoaded: Bool? = nil,
         watchdogServiceLoaded: Bool = false,
+        vmServiceState: RuntimeServiceState? = nil,
+        proxyServiceState: RuntimeServiceState? = nil,
+        guestLogSyncServiceState: RuntimeServiceState? = nil,
+        sleepPreventionServiceState: RuntimeServiceState? = nil,
+        watchdogServiceState: RuntimeServiceState? = nil,
         runtimeState: RuntimeState? = nil,
         operation: RuntimeOperation? = nil,
         statusMessage: String? = nil,
         statusDocumentError: String? = nil,
+        readIssues: [RuntimeStatusReadIssue] = [],
         updatedAt: String? = nil,
         startedAt: String? = nil,
         runtimeVersion: String? = nil,
@@ -279,10 +307,16 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
         self.guestLogSyncServiceLoaded = guestLogSyncServiceLoaded
         self.sleepPreventionServiceLoaded = sleepPreventionServiceLoaded
         self.watchdogServiceLoaded = watchdogServiceLoaded
+        self.vmServiceState = vmServiceState
+        self.proxyServiceState = proxyServiceState
+        self.guestLogSyncServiceState = guestLogSyncServiceState
+        self.sleepPreventionServiceState = sleepPreventionServiceState
+        self.watchdogServiceState = watchdogServiceState
         self.runtimeState = runtimeState
         self.operation = operation
         self.statusMessage = statusMessage
         self.statusDocumentError = statusDocumentError
+        self.readIssues = readIssues
         self.updatedAt = updatedAt
         self.startedAt = startedAt
         self.runtimeVersion = runtimeVersion

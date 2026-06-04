@@ -7,18 +7,17 @@ import {
 } from "@/console/hooks";
 import { canApplyRuntimeSettings } from "@/domain/runtime-control/capabilities/runtimeCapabilities";
 import {
-  runtimeControlURLForPort,
-  runtimeURL
-} from "@/domain/runtime-control/formatting/http";
-import {
   draftToRuntimeSettings,
-  emptyRuntimeSettingsDraft,
   parseOptionalNumber,
   runtimeSettingsToDraft,
   type RuntimeSettingsDraft,
   usesCustomAdvertisedURL
 } from "@/pages/settings/runtimeSettingsForm";
-import { validateRuntimeSettings } from "@/domain/runtime-control/settings/runtimeSettingsPolicy";
+import {
+  startOnBootControlState,
+  validateRuntimeSettings,
+  type RuntimeCapabilityReadState
+} from "@/domain/runtime-control/settings/runtimeSettingsPolicy";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { ErrorState } from "@/components/ErrorState";
 import { Panel } from "@/components/Panel";
@@ -27,15 +26,18 @@ export function SettingsPage() {
   const settings = useRuntimeSettings();
   const capabilities = useRuntimeCapabilities();
   const applySettings = useApplyRuntimeSettings();
-  const [draft, setDraft] = useState<RuntimeSettingsDraft>(
-    emptyRuntimeSettingsDraft
-  );
+  const [draft, setDraft] = useState<RuntimeSettingsDraft | null>(null);
   const [customAdvertisedURL, setCustomAdvertisedURL] = useState(false);
+  const [changedRuntimeControlPort, setChangedRuntimeControlPort] =
+    useState<number | null>(null);
 
   useEffect(() => {
     if (settings.data) {
       setDraft(runtimeSettingsToDraft(settings.data));
       setCustomAdvertisedURL(usesCustomAdvertisedURL(settings.data));
+    } else {
+      setDraft(null);
+      setCustomAdvertisedURL(false);
     }
   }, [settings.data]);
 
@@ -43,10 +45,13 @@ export function SettingsPage() {
     field: keyof RuntimeSettingsDraft,
     value: string | boolean
   ) => {
-    setDraft((current) => ({ ...current, [field]: value }));
+    setDraft((current) => current && { ...current, [field]: value });
   };
 
   const apply = () => {
+    if (!settings.data || !draft) {
+      return;
+    }
     const runtimeSettings = draftToRuntimeSettings(
       draft,
       settings.data,
@@ -60,19 +65,22 @@ export function SettingsPage() {
       { settings: runtimeSettings },
       {
         onSuccess: () => {
-          redirectAfterRuntimeControlPortChange(runtimeSettings.runtimeControlPort);
+          setChangedRuntimeControlPort(
+            changedRuntimeControlPortValue(runtimeSettings.runtimeControlPort)
+          );
         }
       }
     );
   };
 
-  const runtimeSettings = draftToRuntimeSettings(
-    draft,
-    settings.data,
-    customAdvertisedURL
-  );
-  const validation = validateRuntimeSettings(runtimeSettings);
+  const runtimeSettings = settings.data && draft
+    ? draftToRuntimeSettings(draft, settings.data, customAdvertisedURL)
+    : null;
+  const validation = runtimeSettings
+    ? validateRuntimeSettings(runtimeSettings)
+    : { valid: false, errors: ["Runtime settings are not loaded."] };
   const canApply =
+    runtimeSettings !== null &&
     canApplyRuntimeSettings(capabilities.data) &&
     validation.valid &&
     !settings.isLoading &&
@@ -83,12 +91,74 @@ export function SettingsPage() {
   const canEditLocalFiles = capabilities.data?.canOpenLocalFiles === true;
   const canControlServices =
     capabilities.data?.canControlRuntimeServices === true;
-  const vitalServerURLPreview = runtimeURL(parseOptionalNumber(draft.proxyPort));
+  const capabilityReadState: RuntimeCapabilityReadState = capabilities.isPending
+    ? "loading"
+    : capabilities.isError
+      ? "failed"
+      : capabilities.data
+        ? "available"
+        : "missing";
+
+  if (!settings.data || !draft) {
+    return (
+      <div className="page-stack">
+        <Panel
+          title="VM resources"
+          actions={
+            <ConfirmButton
+              confirmMessage="Apply runtime settings? This may rewrite runtime configuration and restart runtime services when restart after save is enabled."
+              onClick={apply}
+              disabled
+            >
+              Apply
+            </ConfirmButton>
+          }
+        >
+          {settings.isPending ? (
+            <p className="empty-state">Loading runtime settings...</p>
+          ) : null}
+          {settings.isError ? (
+            <ErrorState title="Failed to read settings" error={settings.error} />
+          ) : null}
+          {!settings.isPending && !settings.isError && !settings.data ? (
+            <ErrorState
+              title="Settings response is incomplete"
+              error={
+                new Error("Runtime Control API did not return settings data.")
+              }
+            />
+          ) : null}
+          {settings.data && !draft ? (
+            <p className="empty-state">Preparing settings form...</p>
+          ) : null}
+        </Panel>
+      </div>
+    );
+  }
+
+  const proxyPort = parseOptionalNumber(draft.proxyPort);
   const runtimeControlPort = parseOptionalNumber(draft.runtimeControlPort);
   const runtimeControlURLPreview =
     runtimeControlPort === undefined
-      ? "Unknown"
-      : runtimeControlURLForPort(runtimeControlPort);
+      ? "Remote Console port is not available."
+      : `Port ${runtimeControlPort}`;
+  const defaultAdvertisedURLPreview =
+    proxyPort === undefined
+      ? "Proxy port is not available."
+      : `http://(same host):${proxyPort}/`;
+  const advertisedPort = parseOptionalNumber(draft.publicPort);
+  const customAdvertisedURLPreview =
+    draft.publicHost.trim() && advertisedPort !== undefined
+      ? `http://${draft.publicHost.trim()}:${advertisedPort}/`
+      : "Custom advertised URL is not available.";
+  const vitalServerURLPreview = customAdvertisedURL
+    ? customAdvertisedURLPreview
+    : defaultAdvertisedURLPreview;
+  const startOnBootControl = startOnBootControlState({
+    startOnBootConfigurable: settings.data.startOnBootConfigurable,
+    capabilityReadState,
+    capabilities: capabilities.data
+  });
 
   return (
     <div className="page-stack">
@@ -144,19 +214,17 @@ export function SettingsPage() {
             VM disk GiB
             <input
               type="number"
-              min={settings.data?.minimumDiskGiB ?? 1}
+              min={settings.data.minimumDiskGiB}
               value={draft.diskGiB}
               disabled={!canEditVMResources}
               onChange={(event) => updateField("diskGiB", event.target.value)}
             />
           </label>
         </div>
-        {settings.data?.minimumDiskGiB ? (
-          <p className="muted">
-            VM disk can only be increased. Minimum for this install is{" "}
-            {settings.data.minimumDiskGiB} GiB.
-          </p>
-        ) : null}
+        <p className="muted">
+          VM disk can only be increased. Minimum for this install is{" "}
+          {settings.data.minimumDiskGiB} GiB.
+        </p>
       </Panel>
 
       <Panel title="Network exposure">
@@ -186,21 +254,16 @@ export function SettingsPage() {
             />
           </label>
         </div>
-        <p className="muted">VitalServer URL: {vitalServerURLPreview}</p>
-        <p className="muted">Remote Console URL: {runtimeControlURLPreview}</p>
+        <p className="muted">
+          VitalServer URL: {vitalServerURLPreview}
+        </p>
+        <p className="muted">Remote Console: {runtimeControlURLPreview}</p>
         <label className="checkbox-label block-checkbox">
           <input
             type="checkbox"
             checked={customAdvertisedURL}
             disabled={!canEditNetworkExposure}
-            onChange={(event) => {
-              const enabled = event.target.checked;
-              setCustomAdvertisedURL(enabled);
-              if (!enabled) {
-                updateField("publicHost", "");
-                updateField("publicPort", draft.proxyPort);
-              }
-            }}
+            onChange={(event) => setCustomAdvertisedURL(event.target.checked)}
           />
           Custom advertised URL
         </label>
@@ -233,7 +296,7 @@ export function SettingsPage() {
           </div>
         ) : (
           <p className="muted">
-            Default advertised URL: http://(same host):{draft.proxyPort || 80}/
+            Default advertised URL: {defaultAdvertisedURLPreview}
           </p>
         )}
       </Panel>
@@ -277,9 +340,7 @@ export function SettingsPage() {
             <input
               type="checkbox"
               checked={draft.startOnBoot}
-              disabled={
-                !settings.data?.startOnBootConfigurable || !canControlServices
-              }
+              disabled={!startOnBootControl.enabled}
               onChange={(event) =>
                 updateField("startOnBoot", event.target.checked)
               }
@@ -320,6 +381,9 @@ export function SettingsPage() {
             Restart services after save
           </label>
         </div>
+        {!startOnBootControl.enabled ? (
+          <p className="muted">{startOnBootControl.reason}</p>
+        ) : null}
 
         {validation.errors.length ? (
           <div className="error-state">
@@ -342,23 +406,28 @@ export function SettingsPage() {
             {applySettings.data.result?.exitCode ?? "unknown"}.
           </p>
         ) : null}
+        {changedRuntimeControlPort !== null ? (
+          <p className="muted">
+            Remote Console port changed to {changedRuntimeControlPort}. Open the
+            Remote Console on the configured host after the Runtime Control API
+            is available on the new port.
+          </p>
+        ) : null}
       </Panel>
     </div>
   );
 }
 
-function redirectAfterRuntimeControlPortChange(
+function changedRuntimeControlPortValue(
   runtimeControlPort: number | undefined
-) {
+): number | null {
   if (
     runtimeControlPort === undefined ||
     typeof window === "undefined" ||
     window.location.port === String(runtimeControlPort)
   ) {
-    return;
+    return null;
   }
 
-  window.setTimeout(() => {
-    window.location.assign(runtimeControlURLForPort(runtimeControlPort));
-  }, 1_000);
+  return runtimeControlPort;
 }

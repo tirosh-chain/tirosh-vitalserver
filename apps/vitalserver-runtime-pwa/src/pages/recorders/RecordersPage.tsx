@@ -24,41 +24,29 @@ export function RecordersPage() {
   const recordersQuery = useVitalDBRecorders();
   const allRecorders = useMemo(
     () =>
-      recordersQuery.data?.recorders
-        ? [...recordersQuery.data.recorders].sort(sortByLastSeen)
-        : null,
-    [recordersQuery.data?.recorders]
+      recordersQuery.data === undefined
+        ? null
+        : [...recordersQuery.data.recorders].sort(sortByLastSeen),
+    [recordersQuery.data]
   );
   const [searchText, setSearchText] = useState("");
   const [showHistory, setShowHistory] = useState(false);
   const [selectedVrcode, setSelectedVrcode] = useState<string | null>(null);
-  const visibleRecorders = showHistory
-    ? (allRecorders ?? [])
-    : (allRecorders ?? []).filter(
-        (recorder) => recorder.presentInLatestObservation !== false
-      );
-  const recorders = filterRecorders(visibleRecorders, searchText);
-  const identifiedRecorders = recorders.filter(hasVrcode);
+  const visibleRecorders = allRecorders === null
+    ? null
+    : showHistory
+      ? allRecorders
+      : allRecorders.filter(
+          (recorder) => recorder.presentInLatestObservation === true
+        );
+  const recorders = visibleRecorders === null
+    ? null
+    : filterRecorders(visibleRecorders, searchText);
   const selectedRecorder =
-    identifiedRecorders.find((recorder) => recorder.vrcode === selectedVrcode) ??
-    identifiedRecorders[0];
-
-  const summary = allRecorders
-    ? {
-        known: allRecorders.length,
-        current: allRecorders.filter(
-          (recorder) => recorder.presentInLatestObservation !== false
-        ).length,
-        online: visibleRecorders.filter((recorder) => recorder.status === "online")
-          .length,
-        stale: visibleRecorders.filter((recorder) => recorder.status === "stale")
-          .length,
-        anomalies: visibleRecorders.reduce(
-          (total, recorder) => total + (recorder.currentAnomalyCount ?? 0),
-          0
-        )
-      }
-    : null;
+    recorders?.find((recorder) => recorder.vrcode === selectedVrcode) ??
+    recorders?.[0] ??
+    null;
+  const summary = recordersQuery.data?.summary ?? null;
 
   return (
     <div className="page-stack">
@@ -92,11 +80,23 @@ export function RecordersPage() {
       >
         <MetricStrip
           metrics={[
-            { label: "Known recorders", value: summary?.known ?? NOT_REPORTED },
-            { label: "Current", value: summary?.current ?? NOT_REPORTED },
-            { label: "Online recorders", value: summary?.online ?? NOT_REPORTED },
-            { label: "Stale recorders", value: summary?.stale ?? NOT_REPORTED },
-            { label: "Recorder anomalies", value: summary?.anomalies ?? NOT_REPORTED }
+            {
+              label: "Known recorders",
+              value: summary?.knownRecorders ?? NOT_REPORTED
+            },
+            { label: "Current", value: summary?.currentRecorders ?? NOT_REPORTED },
+            {
+              label: "Online recorders",
+              value: summary?.onlineRecorders ?? NOT_REPORTED
+            },
+            {
+              label: "Stale recorders",
+              value: summary?.staleRecorders ?? NOT_REPORTED
+            },
+            {
+              label: "Recorder anomalies",
+              value: summary?.recorderAnomalies ?? NOT_REPORTED
+            }
           ]}
         />
 
@@ -107,9 +107,16 @@ export function RecordersPage() {
             title="VRecorder history is not available"
             error={recordersQuery.error}
           />
+        ) : recorders === null ? (
+          <ErrorState
+            title="VRecorder history response is incomplete"
+            error={
+              new Error("Runtime Control API did not return VRecorder history data.")
+            }
+          />
         ) : (
           <DataTable
-            rows={identifiedRecorders}
+            rows={recorders}
             getRowKey={(recorder) => recorder.vrcode}
             selectedKey={selectedRecorder?.vrcode}
             onSelectRow={(recorder) => setSelectedVrcode(recorder.vrcode)}
@@ -132,12 +139,13 @@ export function RecordersPage() {
               {
                 key: "ip",
                 header: "IP",
-                render: (recorder) => recorder.lastIP ?? "Unknown"
+                render: (recorder) => recorder.lastIP ?? NOT_REPORTED
               },
               {
                 key: "bed",
                 header: "Bed",
-                render: (recorder) => recorder.bedName ?? recorder.bedID ?? "Unknown"
+                render: (recorder) =>
+                  recorder.bedName ?? recorder.bedID ?? NOT_REPORTED
               },
               {
                 key: "lastSeen",
@@ -147,17 +155,17 @@ export function RecordersPage() {
               {
                 key: "anomaly",
                 header: "Anomaly",
-                render: (recorder) => recorder.currentAnomalyCount ?? 0
+                render: (recorder) => recorder.currentAnomalyCount
               }
             ]}
           />
         )}
       </Panel>
 
-      {selectedRecorder ? (
+      {selectedRecorder && recordersQuery.data ? (
         <RecorderDetails
           recorder={selectedRecorder}
-          activityHistory={recordersQuery.data?.activityHistory}
+          activityHistory={recordersQuery.data.activityHistory}
         />
       ) : null}
     </div>
@@ -169,7 +177,7 @@ function RecorderDetails({
   activityHistory
 }: {
   recorder: VitalDBRecorderRecord;
-  activityHistory?: VitalDBRecorders["activityHistory"];
+  activityHistory: VitalDBRecorders["activityHistory"];
 }) {
   return (
     <Panel title="Recorder Details">
@@ -183,53 +191,66 @@ function RecorderDetails({
 
       <KeyValueRows
         rows={[
-          { label: "IP", value: recorder.lastIP ?? "Unknown" },
-          { label: "Version", value: recorder.version ?? "Unknown" },
-          { label: "Bed", value: recorder.bedName ?? recorder.bedID ?? "Unknown" },
+          { label: "IP", value: recorder.lastIP ?? NOT_REPORTED },
+          { label: "Version", value: recorder.version ?? NOT_REPORTED },
+          {
+            label: "Bed",
+            value: recorder.bedName ?? recorder.bedID ?? NOT_REPORTED
+          },
           { label: "Patient", value: formatBoolean(recorder.patientConnected) },
           { label: "First seen", value: formatLocalDateTime(recorder.firstSeenAt) },
           { label: "Last seen", value: formatLocalDateTime(recorder.lastSeenAt) },
-          { label: "Observations", value: recorder.observationCount ?? 0 },
+          { label: "Observations", value: recorder.observationCount },
+          {
+            label: "Duplicate observations",
+            value: recorder.duplicateObservationCount
+          },
           {
             label: "Recorder anomalies",
-            value: recorder.currentAnomalyCount ?? 0
+            value: recorder.currentAnomalyCount
           }
         ]}
       />
 
       <div className="subsection">
         <h3>Activity</h3>
-        {activityHistory?.readError ? (
+        {activityHistory.readError ? (
           <ErrorState
             title="Recorder activity history is incomplete"
             error={new Error(activityHistory.readError)}
           />
-        ) : null}
-        <RecorderActivityChart recorder={recorder} />
+        ) : (
+          <RecorderActivityChart recorder={recorder} />
+        )}
       </div>
     </Panel>
   );
-}
-
-function hasVrcode(
-  recorder: VitalDBRecorderRecord
-): recorder is VitalDBRecorderRecord & { vrcode: string } {
-  return typeof recorder.vrcode === "string" && recorder.vrcode.length > 0;
 }
 
 function sortByLastSeen(
   left: VitalDBRecorderRecord,
   right: VitalDBRecorderRecord
 ): number {
-  return timestamp(right.lastSeenAt) - timestamp(left.lastSeenAt);
+  const leftTimestamp = timestamp(left.lastSeenAt);
+  const rightTimestamp = timestamp(right.lastSeenAt);
+  if (leftTimestamp === null && rightTimestamp === null) {
+    return left.vrcode.localeCompare(right.vrcode);
+  }
+  if (leftTimestamp === null) {
+    return 1;
+  }
+  if (rightTimestamp === null) {
+    return -1;
+  }
+  return rightTimestamp - leftTimestamp;
 }
 
-function timestamp(value: string | null | undefined): number {
+function timestamp(value: string | null | undefined): number | null {
   if (!value) {
-    return 0;
+    return null;
   }
   const parsed = new Date(value).getTime();
-  return Number.isNaN(parsed) ? 0 : parsed;
+  return Number.isNaN(parsed) ? null : parsed;
 }
 
 function filterRecorders(

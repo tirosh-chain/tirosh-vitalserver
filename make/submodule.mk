@@ -1,7 +1,7 @@
-.PHONY: init update-submodule
+.PHONY: repo/init repo/update-submodule
 
-init:
+repo/init:
 	git submodule update --init --recursive
 
-update-submodule:
+repo/update-submodule:
 	git submodule update --remote --merge vendor/vitalserver

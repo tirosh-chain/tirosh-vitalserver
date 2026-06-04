@@ -21,8 +21,9 @@ final class RuntimeLogExporterTests: XCTestCase {
         XCTAssertTrue(destinations.contains("diagnostics/runtime/vm-config.json"))
         XCTAssertTrue(destinations.contains("diagnostics/runtime/runtime-version.json"))
         XCTAssertTrue(destinations.contains("diagnostics/guest/runtime-config.json"))
-        XCTAssertTrue(destinations.contains("diagnostics/host/com.tirosh.vitalserver-proxy.plist"))
+        XCTAssertTrue(destinations.contains("diagnostics/host/ai.tirosh.vitalserver.helper.proxy.plist"))
         XCTAssertTrue(destinations.contains("diagnostics/host/vitalserver-nginx.conf"))
+        XCTAssertTrue(destinations.contains("guest/guest-observability"))
         XCTAssertTrue(destinations.contains("helper-message.log"))
     }
 
@@ -311,6 +312,40 @@ final class RuntimeLogExporterTests: XCTestCase {
             XCTFail("Expected log export failure")
         } catch {
             XCTAssertEqual(error.localizedDescription, "Command failed with exit code 7")
+        }
+    }
+
+    func testExportThrowsArchiveFailureWithOutputIssueSummary() async throws {
+        let root = try temporaryDirectory()
+        let productLogs = root.appendingPathComponent("product/logs", isDirectory: true)
+        let destination = root.appendingPathComponent("export.zip")
+        try FileManager.default.createDirectory(at: productLogs, withIntermediateDirectories: true)
+
+        let exporter = MacHostRuntimeLogExporter(
+            logCollector: FakeRuntimeLogCollectorForExport(),
+            productLogsDirectory: productLogs,
+            supplementalLogItems: [],
+            rotatedSupplementalSets: [],
+            archiveRunner: { _, _ in
+                RuntimeCommandResult(
+                    exitCode: 7,
+                    stdout: "",
+                    stderr: "",
+                    outputIssues: [
+                        RuntimeCommandOutputIssue(
+                            stream: .stderr,
+                            message: "command stderr is not valid UTF-8"
+                        ),
+                    ]
+                )
+            }
+        )
+
+        do {
+            _ = try await exporter.exportLogs(to: destination)
+            XCTFail("Expected log export failure")
+        } catch {
+            XCTAssertEqual(error.localizedDescription, "stderr: command stderr is not valid UTF-8")
         }
     }
 

@@ -54,7 +54,7 @@ Audit 실패는 VitalServer 기능 실패로 전파하지 않습니다.
 
 Audit event는 기본적으로 파일 로그와 Redis List에 함께 기록합니다. 파일 로그는 Docker named volume
 `audit-logs`에 저장되므로 컨테이너 재시작 후에도 유지됩니다. 같은 event를 stdout에도 기록하므로
-guest의 `tirosh-vitalserver-container-logs` collector가 `docker compose logs --follow`로 수집하는
+guest의 `tirosh-guest-container-logs` collector가 `docker compose logs --follow`로 수집하는
 `container-logs.log`에도 포함됩니다. Redis는 현재 `3.2.12`로 pin되어 있으므로 Redis Stream 대신 Redis
 List를 보조 조회 sink로 사용합니다.
 

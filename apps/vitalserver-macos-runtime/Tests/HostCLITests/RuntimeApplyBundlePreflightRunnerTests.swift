@@ -58,8 +58,9 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
             },
             serviceRestartPolicy: {
                 events.append("policy")
-                return RuntimeServiceRestartPolicy(restartVM: true, restartProxy: false, restartWatchdog: true)
+                return RuntimeServiceRestartPolicy(restartVM: true, restartGuestLogSync: true, restartProxy: false, restartWatchdog: true)
             },
+            runtimeHealthSnapshot: { healthySnapshot() },
             requireGuestCapability: { capability in
                 events.append("capability:\(capability.rawValue)")
             },
@@ -86,6 +87,7 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
         XCTAssertEqual(context.backup, backup)
         XCTAssertEqual(context.restartPolicy, RuntimeServiceRestartPolicy(
             restartVM: true,
+            restartGuestLogSync: true,
             restartProxy: false,
             restartWatchdog: true
         ))
@@ -127,7 +129,11 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
             requireFreeSpace: { _, bytes, _ in requiredSpace = bytes },
             checkCompatibility: { _ in },
             serviceRestartPolicy: {
-                RuntimeServiceRestartPolicy(restartVM: false, restartProxy: true, restartWatchdog: false)
+                RuntimeServiceRestartPolicy(restartVM: false, restartGuestLogSync: false, restartProxy: true, restartWatchdog: false)
+            },
+            runtimeHealthSnapshot: {
+                XCTFail("runtime health should not be checked when VM is not running")
+                return healthySnapshot()
             },
             requireGuestCapability: { _ in
                 XCTFail("guest capability should not be required")
@@ -171,7 +177,11 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
             requireFreeSpace: { _, _, _ in },
             checkCompatibility: { _ in },
             serviceRestartPolicy: {
-                RuntimeServiceRestartPolicy(restartVM: false, restartProxy: false, restartWatchdog: false)
+                RuntimeServiceRestartPolicy(restartVM: false, restartGuestLogSync: false, restartProxy: false, restartWatchdog: false)
+            },
+            runtimeHealthSnapshot: {
+                XCTFail("runtime health should not be checked after missing rootfs")
+                return healthySnapshot()
             },
             requireGuestCapability: { _ in },
             createBackup: { _ in URL(fileURLWithPath: "/backup") },
@@ -187,6 +197,57 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
             XCTAssertEqual(String(describing: error), String(describing: LauncherError.missingFile(
                 stagedBundle.appendingPathComponent(Constants.Artifacts.rootfsBase).path
             )))
+        }
+    }
+
+    func testPreparePropagatesRootfsSizeReadFailureBeforeFreeSpaceCheck() {
+        let stagedBundle = URL(fileURLWithPath: "/managed/update-bundle-1.2.3")
+        let stagedRootfs = stagedBundle.appendingPathComponent(Constants.Artifacts.rootfsBase)
+        let rootfsBase = URL(fileURLWithPath: "/product/runtime/rootfs-base.raw.gz")
+        let runner = RuntimeApplyBundlePreflightRunner(
+            stageBundle: { _ in stagedBundle },
+            loadManifest: { _ in
+                self.manifest(
+                    version: "1.2.3",
+                    artifacts: [
+                        UpdateBundleArtifact(
+                            name: Constants.Artifacts.rootfsBase,
+                            type: .rootfsBase,
+                            sha256: "abc",
+                            size: 20
+                        ),
+                    ]
+                )
+            },
+            fileExists: { url in url == stagedRootfs },
+            createDirectory: { _, _ in XCTFail("should not create backup directory") },
+            fileSize: { url in
+                if url == rootfsBase {
+                    throw LauncherError.missingFile(url.path)
+                }
+                return 20
+            },
+            requireFreeSpace: { _, _, _ in XCTFail("should not check free space") },
+            checkCompatibility: { _ in },
+            serviceRestartPolicy: {
+                RuntimeServiceRestartPolicy(restartVM: false, restartGuestLogSync: false, restartProxy: false, restartWatchdog: false)
+            },
+            runtimeHealthSnapshot: {
+                XCTFail("runtime health should not be checked after rootfs size read failure")
+                return healthySnapshot()
+            },
+            requireGuestCapability: { _ in },
+            createBackup: { _ in URL(fileURLWithPath: "/backup") },
+            directorySize: { _ in 30 },
+            log: { _ in }
+        )
+
+        XCTAssertThrowsError(try runner.prepare(
+            bundleURL: URL(fileURLWithPath: "/incoming/bundle"),
+            backupsDirectory: URL(fileURLWithPath: "/product/backups"),
+            rootfsBase: rootfsBase
+        )) { error in
+            XCTAssertEqual(String(describing: error), String(describing: LauncherError.missingFile(rootfsBase.path)))
         }
     }
 
@@ -214,8 +275,9 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
             requireFreeSpace: { _, _, _ in },
             checkCompatibility: { _ in },
             serviceRestartPolicy: {
-                RuntimeServiceRestartPolicy(restartVM: true, restartProxy: false, restartWatchdog: false)
+                RuntimeServiceRestartPolicy(restartVM: true, restartGuestLogSync: true, restartProxy: false, restartWatchdog: false)
             },
+            runtimeHealthSnapshot: { healthySnapshot() },
             requireGuestCapability: { capability in
                 events.append("capability:\(capability.rawValue)")
                 if capability == .activateUpdate {
@@ -244,6 +306,60 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
         ])
     }
 
+    func testPrepareBlocksUpdateWhenGuestStorageHealthRequiresVMDiskRepair() {
+        let stagedBundle = URL(fileURLWithPath: "/managed/update-bundle-1.2.3")
+        var events: [String] = []
+        let runner = RuntimeApplyBundlePreflightRunner(
+            stageBundle: { _ in stagedBundle },
+            loadManifest: { _ in self.manifest(version: "1.2.3") },
+            fileExists: { _ in false },
+            createDirectory: { _, _ in events.append("mkdir") },
+            fileSize: { _ in 0 },
+            requireFreeSpace: { _, _, _ in events.append("space") },
+            checkCompatibility: { _ in events.append("compatibility") },
+            serviceRestartPolicy: {
+                events.append("policy")
+                return RuntimeServiceRestartPolicy(restartVM: true, restartGuestLogSync: true, restartProxy: false, restartWatchdog: false)
+            },
+            runtimeHealthSnapshot: {
+                events.append("health")
+                return healthySnapshot(vmErrors: [.guestFilesystemError])
+            },
+            requireGuestCapability: { capability in
+                events.append("capability:\(capability.rawValue)")
+            },
+            createBackup: { reason in
+                events.append("backup:\(reason)")
+                return URL(fileURLWithPath: "/backup")
+            },
+            directorySize: { _ in 10 },
+            log: { message in events.append("log:\(message)") }
+        )
+
+        XCTAssertThrowsError(try runner.prepare(
+            bundleURL: URL(fileURLWithPath: "/incoming/bundle"),
+            backupsDirectory: URL(fileURLWithPath: "/product/backups"),
+            rootfsBase: URL(fileURLWithPath: "/product/runtime/rootfs-base.raw.gz")
+        )) { error in
+            XCTAssertEqual(
+                String(describing: error),
+                "VM disk health blocks update; run Repair VM Disk before applying update. errors=vm-guest-filesystem-error"
+            )
+        }
+        XCTAssertEqual(events, [
+            "log:bundle apply manifest version=1.2.3 runtimeVersion=1.2.3 artifacts=0 migrations=0",
+            "compatibility",
+            "log:bundle apply storage preflight stagedBundle=0.0 MiB",
+            "log:bundle apply storage preflight rootfsBase=unchanged",
+            "mkdir",
+            "space",
+            "policy",
+            "log:runtime services before update vm=loaded guestLogSync=loaded proxy=not-loaded watchdog=not-loaded",
+            "health",
+            "log:bundle apply blocked by VM guest storage health errors=vm-guest-filesystem-error",
+        ])
+    }
+
     private func manifest(
         version: String,
         artifacts: [UpdateBundleArtifact] = []
@@ -261,4 +377,25 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
             migrations: []
         )
     }
+}
+
+private func healthySnapshot(vmErrors: [RuntimeVMError] = []) -> RuntimeHealthSnapshot {
+    RuntimeHealthSnapshot(
+        vmExecutable: true,
+        proxyExecutable: true,
+        rootfsBase: .present,
+        vmDisk: .present,
+        vmService: .loaded,
+        proxyService: .loaded,
+        watchdogService: .loaded,
+        vmState: vmErrors.isEmpty ? .running : .failed,
+        vmErrors: vmErrors,
+        vmIP: "192.168.64.2",
+        proxyPort: 80,
+        hostProxyHTTP: "200",
+        guestHTTP: "200",
+        redisUIHTTP: "200",
+        swaggerUIHTTP: "200",
+        failureReasons: vmErrors.map(RuntimeFailureReason.init(vmError:))
+    )
 }

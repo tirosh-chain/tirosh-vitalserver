@@ -2,6 +2,7 @@ import Contracts
 import Core
 import Foundation
 import HostInfrastructure
+import SQLite3
 import XCTest
 
 final class SQLiteRuntimeObservabilityStoreTests: XCTestCase {
@@ -15,7 +16,7 @@ final class SQLiteRuntimeObservabilityStoreTests: XCTestCase {
         try harness.store.append(event(id: "event-2", timestamp: "2026-05-24T00:01:00Z", type: .auditProxyObserved))
         try harness.store.append(event(id: "event-3", timestamp: "2026-05-24T00:02:00Z", type: .containerObserved))
 
-        XCTAssertEqual(harness.store.recent(limit: 2).map(\.id), ["event-2", "event-3"])
+        XCTAssertEqual(harness.store.query(RuntimeEventQuery(limit: 2)).events.map(\.id), ["event-2", "event-3"])
     }
 
     func testQueriesRuntimeEventsByTypeAndTimestamp() throws {
@@ -28,11 +29,11 @@ final class SQLiteRuntimeObservabilityStoreTests: XCTestCase {
         try harness.store.append(event(id: "event-2", timestamp: "2026-05-24T00:01:00Z", type: .auditProxyObserved))
         try harness.store.append(event(id: "event-3", timestamp: "2026-05-24T00:02:00Z", type: .auditProxyObserved))
 
-        let events = harness.store.recent(
+        let events = harness.store.query(RuntimeEventQuery(
             limit: 10,
             eventType: .auditProxyObserved,
             since: "2026-05-24T00:02:00Z"
-        )
+        )).events
 
         XCTAssertEqual(events.map(\.id), ["event-3"])
     }
@@ -79,6 +80,41 @@ final class SQLiteRuntimeObservabilityStoreTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: database.path))
     }
 
+    func testRuntimeEventQueryReportsCorruptSQLitePayload() throws {
+        let harness = try SQLiteStoreHarness()
+        defer {
+            harness.cleanup()
+        }
+        try harness.store.initialize()
+        try executeSQLite(
+            url: harness.store.url,
+            sql: """
+            INSERT INTO runtime_events(
+              id,
+              timestamp,
+              source,
+              event_type,
+              message,
+              runtime_version,
+              payload_json
+            ) VALUES (
+              'broken-event',
+              '2026-05-24T00:00:00Z',
+              'host',
+              'status-changed',
+              'message',
+              '0.1.0',
+              '{broken json}'
+            )
+            """
+        )
+
+        let page = harness.store.query(RuntimeEventQuery(limit: 10))
+
+        XCTAssertEqual(page.events, [])
+        XCTAssertTrue(page.readError?.contains("decodeFailed") == true)
+    }
+
     func testVitalDBReadsDoNotCreateSQLiteReadModel() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -113,8 +149,8 @@ final class SQLiteRuntimeObservabilityStoreTests: XCTestCase {
 
         catchUp.catchUpIfDue()
 
-        XCTAssertEqual(repository.recent(limit: 10).map(\.id), ["jsonl-event"])
-        XCTAssertEqual(sqlite.recent(limit: 10).map(\.id), ["jsonl-event"])
+        XCTAssertEqual(repository.query(RuntimeEventQuery(limit: 10)).events.map(\.id), ["jsonl-event"])
+        XCTAssertEqual(sqlite.query(RuntimeEventQuery(limit: 10)).events.map(\.id), ["jsonl-event"])
     }
 
     func testCompositeRepositoryReadsSQLiteWhenAvailable() throws {
@@ -129,10 +165,10 @@ final class SQLiteRuntimeObservabilityStoreTests: XCTestCase {
 
         try repository.append(event(id: "event-1", timestamp: "2026-05-24T00:00:00Z", type: .statusChanged))
 
-        XCTAssertEqual(repository.recent(limit: 10).map(\.id), ["event-1"])
+        XCTAssertEqual(repository.query(RuntimeEventQuery(limit: 10)).events.map(\.id), ["event-1"])
     }
 
-    func testCompositeRepositoryLogsSecondaryAppendFailureWithoutLosingPrimaryEvent() throws {
+    func testCompositeRepositoryReportsSecondaryAppendFailureWithoutLosingPrimaryEvent() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         defer {
@@ -150,9 +186,17 @@ final class SQLiteRuntimeObservabilityStoreTests: XCTestCase {
             log: { logs.append($0) }
         )
 
-        try repository.append(event(id: "event-1", timestamp: "2026-05-24T00:00:00Z", type: .statusChanged))
+        XCTAssertThrowsError(
+            try repository.append(event(id: "event-1", timestamp: "2026-05-24T00:00:00Z", type: .statusChanged))
+        ) { error in
+            guard case .secondaryAppendFailed(let eventID, _) = error as? CompositeRuntimeEventRepositoryError else {
+                XCTFail("Unexpected error: \(error)")
+                return
+            }
+            XCTAssertEqual(eventID, "event-1")
+        }
 
-        XCTAssertEqual(jsonl.recent(limit: 10).map(\.id), ["event-1"])
+        XCTAssertEqual(jsonl.query(RuntimeEventQuery(limit: 10)).events.map(\.id), ["event-1"])
         XCTAssertTrue(logs.contains { $0.contains("runtime event sqlite append failed eventID=event-1") })
     }
 
@@ -172,7 +216,7 @@ final class SQLiteRuntimeObservabilityStoreTests: XCTestCase {
 
         XCTAssertEqual(page.events.map(\.id), ["event-1"])
         XCTAssertNotNil(page.readError)
-        XCTAssertEqual(sqlite.recent(limit: 10), [])
+        XCTAssertEqual(sqlite.query(RuntimeEventQuery(limit: 10)).events, [])
         XCTAssertFalse(FileManager.default.fileExists(atPath: directory.appendingPathComponent("events.sqlite").path))
     }
 
@@ -200,7 +244,7 @@ final class SQLiteRuntimeObservabilityStoreTests: XCTestCase {
             now: { baseDate.addingTimeInterval(10) }
         )
         notDueCatchUp.catchUpIfDue()
-        XCTAssertEqual(sqlite.recent(limit: 10).map(\.id), ["event-1"])
+        XCTAssertEqual(sqlite.query(RuntimeEventQuery(limit: 10)).events.map(\.id), ["event-1"])
 
         let dueCatchUp = RuntimeEventSQLiteProjectionCatchUp(
             primary: jsonl,
@@ -209,7 +253,7 @@ final class SQLiteRuntimeObservabilityStoreTests: XCTestCase {
             now: { baseDate.addingTimeInterval(31) }
         )
         dueCatchUp.catchUpIfDue()
-        XCTAssertEqual(sqlite.recent(limit: 10).map(\.id), ["event-1", "event-2"])
+        XCTAssertEqual(sqlite.query(RuntimeEventQuery(limit: 10)).events.map(\.id), ["event-1", "event-2"])
     }
 
     func testProjectionCatchUpRebuildsSQLiteIndexFromJSONLWhenDatabaseIsCorrupt() throws {
@@ -235,7 +279,7 @@ final class SQLiteRuntimeObservabilityStoreTests: XCTestCase {
 
         catchUp.catchUpIfDue()
 
-        XCTAssertEqual(sqlite.recent(limit: 10).map(\.id), ["event-1"])
+        XCTAssertEqual(sqlite.query(RuntimeEventQuery(limit: 10)).events.map(\.id), ["event-1"])
         XCTAssertTrue(logs.contains { $0.contains("runtime event sqlite catch-up failed; rebuilding index") })
     }
 
@@ -268,7 +312,7 @@ final class SQLiteRuntimeObservabilityStoreTests: XCTestCase {
 
         catchUp.catchUpIfDue()
 
-        XCTAssertEqual(sqlite.recent(limit: 10).map(\.id), ["event-1", "event-2"])
+        XCTAssertEqual(sqlite.query(RuntimeEventQuery(limit: 10)).events.map(\.id), ["event-1", "event-2"])
         XCTAssertTrue(logs.contains { $0.contains("runtime event jsonl read issue during sqlite catch-up") })
     }
 
@@ -321,6 +365,36 @@ final class SQLiteRuntimeObservabilityStoreTests: XCTestCase {
         try harness.store.append(newer)
 
         XCTAssertEqual(try harness.store.loadLatestVitalDBObservation(), newer)
+    }
+
+    func testLoadLatestVitalDBObservationThrowsForCorruptProjectionPayload() throws {
+        let harness = try SQLiteStoreHarness()
+        defer {
+            harness.cleanup()
+        }
+        try harness.store.initialize()
+        try executeSQLite(
+            url: harness.store.url,
+            sql: """
+            INSERT INTO vitaldb_observation_snapshots(
+              observed_at,
+              ready,
+              recorder_count,
+              anomaly_count,
+              payload_json
+            ) VALUES (
+              '2026-05-25T00:00:00Z',
+              1,
+              0,
+              0,
+              '{broken json}'
+            )
+            """
+        )
+
+        XCTAssertThrowsError(try harness.store.loadLatestVitalDBObservation()) { error in
+            XCTAssertTrue(String(describing: error).contains("decodeFailed"))
+        }
     }
 
     func testLoadsVitalDBObservationsInChronologicalOrder() throws {
@@ -619,12 +693,49 @@ final class SQLiteRuntimeObservabilityStoreTests: XCTestCase {
         XCTAssertTrue(eventTypes.contains(.unlinkedRecorder))
     }
 
+    func testLoadVitalDBRelationshipEventsThrowsForInvalidProjectionEnum() throws {
+        let harness = try SQLiteStoreHarness()
+        defer {
+            harness.cleanup()
+        }
+        try harness.store.initialize()
+        try executeSQLite(
+            url: harness.store.url,
+            sql: """
+            INSERT INTO vitaldb_relationship_events(
+              id,
+              observed_at,
+              event_type,
+              severity,
+              message
+            ) VALUES (
+              'broken-relationship',
+              '2026-05-25T00:00:00Z',
+              'unknown-event',
+              'warning',
+              'Broken relationship projection row.'
+            )
+            """
+        )
+
+        XCTAssertThrowsError(try harness.store.loadVitalDBRelationshipEvents()) { error in
+            XCTAssertEqual(
+                error as? SQLiteRuntimeObservabilityStoreError,
+                .invalidColumnValue(
+                    table: "vitaldb_relationship_events",
+                    column: "event_type",
+                    value: "unknown-event"
+                )
+            )
+        }
+    }
+
     private func event(id: String, timestamp: String, type: RuntimeEventType) -> RuntimeEventDocument {
         RuntimeEventDocument(
             id: id,
             eventType: type,
             timestamp: timestamp,
-            product: "TiroshVitalServer",
+            product: "VitalServerHelper",
             status: .healthy,
             previousStatus: nil,
             operation: .health,
@@ -633,6 +744,30 @@ final class SQLiteRuntimeObservabilityStoreTests: XCTestCase {
             failureReasons: [],
             containerObservation: nil,
             progress: nil
+        )
+    }
+}
+
+private func executeSQLite(url: URL, sql: String) throws {
+    var database: OpaquePointer?
+    guard sqlite3_open_v2(url.path, &database, SQLITE_OPEN_READWRITE | SQLITE_OPEN_FULLMUTEX, nil) == SQLITE_OK,
+          let openedDatabase = database else {
+        let message: String
+        if let database, let rawMessage = sqlite3_errmsg(database) {
+            message = String(cString: rawMessage)
+        } else {
+            message = "unknown sqlite open error"
+        }
+        sqlite3_close(database)
+        throw SQLiteRuntimeObservabilityStoreError.openFailed(message)
+    }
+    defer {
+        sqlite3_close(openedDatabase)
+    }
+    guard sqlite3_exec(openedDatabase, sql, nil, nil, nil) == SQLITE_OK else {
+        let message = sqlite3_errmsg(openedDatabase).map { String(cString: $0) } ?? "unknown sqlite exec error"
+        throw SQLiteRuntimeObservabilityStoreError.stepFailed(
+            message
         )
     }
 }

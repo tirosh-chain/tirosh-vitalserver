@@ -61,7 +61,7 @@ public struct RuntimeControlClientAPIReadHandler: RuntimeControlAPIReadHandler {
         return RuntimeLogTextResponse(
             text: await hostClient.loadLogText(
                 sourceID: request.source,
-                helperMessage: request.helperMessage,
+                helperMessage: request.helperMessage ?? "",
                 lineLimit: request.lineLimit
             )
         )

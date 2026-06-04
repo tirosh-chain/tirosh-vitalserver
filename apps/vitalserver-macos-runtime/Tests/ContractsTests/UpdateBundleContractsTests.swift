@@ -6,7 +6,7 @@ final class UpdateBundleContractsTests: XCTestCase {
         let manifest = try JSONDecoder().decode(UpdateBundleManifest.self, from: Data("""
         {
           "schemaVersion": 3,
-          "product": "com.tirosh.vitalserver",
+          "product": "ai.tirosh.vitalserver.helper",
           "bundleKind": "product-update",
           "channel": "stable",
           "helperVersion": "1.2.3",
@@ -42,7 +42,7 @@ final class UpdateBundleContractsTests: XCTestCase {
         XCTAssertThrowsError(try JSONDecoder().decode(UpdateBundleManifest.self, from: Data("""
         {
           "schemaVersion": 3,
-          "product": "TiroshVitalServer",
+          "product": "VitalServerHelper",
           "version": "1.2.3",
           "runtimeVersion": "4.5.6",
           "createdAt": "2026-05-21T12:00:00Z",
@@ -56,7 +56,7 @@ final class UpdateBundleContractsTests: XCTestCase {
         let manifest = try JSONDecoder().decode(UpdateBundleManifest.self, from: Data("""
         {
           "schemaVersion": 3,
-          "product": "com.tirosh.vitalserver",
+          "product": "ai.tirosh.vitalserver.helper",
           "bundleKind": "product-update",
           "channel": "stable",
           "helperVersion": "1.2.3",
@@ -87,7 +87,7 @@ final class UpdateBundleContractsTests: XCTestCase {
         let manifest = try JSONDecoder().decode(UpdateBundleManifest.self, from: Data("""
         {
           "schemaVersion": 3,
-          "product": "com.tirosh.vitalserver",
+          "product": "ai.tirosh.vitalserver.helper",
           "bundleKind": "product-update",
           "channel": "dev",
           "helperVersion": "0.2.0",
@@ -125,7 +125,7 @@ final class UpdateBundleContractsTests: XCTestCase {
         let manifest = try JSONDecoder().decode(UpdateBundleManifest.self, from: Data("""
         {
           "schemaVersion": 3,
-          "product": "com.tirosh.vitalserver",
+          "product": "ai.tirosh.vitalserver.helper",
           "bundleKind": "future-kind",
           "channel": "stable",
           "helperVersion": "0.2.0",

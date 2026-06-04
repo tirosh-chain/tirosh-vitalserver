@@ -51,10 +51,10 @@ def installed_status(config: Path) -> int:
             status = 1
 
     for label, service in [
-        ("launchd vm", "system/com.tirosh.vitalserver-vm"),
-        ("launchd proxy", "system/com.tirosh.vitalserver-proxy"),
-        ("launchd guest log sync", "system/com.tirosh.vitalserver-guest-log-sync"),
-        ("launchd watchdog", "system/com.tirosh.vitalserver-watchdog"),
+        ("launchd vm", "system/ai.tirosh.vitalserver.helper.vm"),
+        ("launchd proxy", "system/ai.tirosh.vitalserver.helper.proxy"),
+        ("launchd guest log sync", "system/ai.tirosh.vitalserver.helper.guest-log-sync"),
+        ("launchd watchdog", "system/ai.tirosh.vitalserver.helper.watchdog"),
     ]:
         if launchd_loaded(service):
             print(f"  {label}: loaded")
@@ -63,7 +63,7 @@ def installed_status(config: Path) -> int:
             status = 1
 
     for label, service in [
-        ("launchd sleep prevention", "system/com.tirosh.vitalserver-sleep-prevention"),
+        ("launchd sleep prevention", "system/ai.tirosh.vitalserver.helper.sleep-prevention"),
     ]:
         if launchd_loaded(service):
             print(f"  {label}: loaded")

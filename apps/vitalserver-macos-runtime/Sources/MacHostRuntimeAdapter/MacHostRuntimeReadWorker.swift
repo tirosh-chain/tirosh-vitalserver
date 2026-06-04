@@ -18,7 +18,7 @@ public actor MacHostRuntimeReadWorker {
         self.init(
             releaseInfo: releaseInfo,
             statusReader: SystemRuntimeStatusReader(paths: paths),
-            observabilityReader: SystemRuntimeObservabilityReader(paths: paths),
+            observabilityReader: SystemRuntimeObservabilityReader.live(paths: paths),
             fileReader: fileReader,
             settingsReader: SystemRuntimeSettingsReader()
         )
@@ -27,7 +27,7 @@ public actor MacHostRuntimeReadWorker {
     init(
         releaseInfo: RuntimeReleaseInfo,
         statusReader: any RuntimeStatusReading,
-        observabilityReader: any RuntimeObservabilityReading = SystemRuntimeObservabilityReader(paths: RuntimePaths()),
+        observabilityReader: any RuntimeObservabilityReading = SystemRuntimeObservabilityReader.live(paths: RuntimePaths()),
         fileReader: any RuntimeHostFileReading,
         settingsReader: any RuntimeSettingsReading
     ) {

@@ -66,6 +66,17 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertEqual(decoded, response)
     }
 
+    func testErrorResponseEncoderBuildsDeterministicJSONBody() throws {
+        let data = RuntimeControlErrorResponseEncoder.encode(
+            code: .badRequest,
+            message: "line 1\n\"quoted\""
+        )
+        let decoded = try JSONDecoder().decode(RuntimeControlErrorResponse.self, from: data)
+
+        XCTAssertEqual(decoded.code, .badRequest)
+        XCTAssertEqual(decoded.message, "line 1\n\"quoted\"")
+    }
+
     func testRuntimeInstallInfoDoesNotInferRedisBackupPathFromRollbackBackupPath() {
         let installInfo = RuntimeInstallInfo(backupsPath: "/rollback/backups")
 
@@ -158,6 +169,48 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertTrue(RuntimeTestKitAPIEndpoint.matches(path: "/dev/testkit/status"))
     }
 
+    @MainActor
+    func testTestKitSessionCommandsRequireExplicitSessionBody() async throws {
+        let controller = FakeRuntimeTestKitController()
+        let router = RuntimeTestKitAPIRouter(controller: controller)
+
+        let missingBody = try await testKitResponse(
+            router: router,
+            endpoint: .pauseVirtualRecorders
+        )
+        let nullSession = try await testKitResponse(
+            router: router,
+            endpoint: .stopVirtualRecorders,
+            body: Data(#"{"sessionID":null}"#.utf8)
+        )
+        let emptySession = try await testKitResponse(
+            router: router,
+            endpoint: .deleteVirtualRecorders,
+            body: Data(#"{"sessionID":"  "}"#.utf8)
+        )
+
+        XCTAssertEqual(missingBody.status, .badRequest)
+        XCTAssertEqual(try decodeError(from: missingBody).code, .badRequest)
+        XCTAssertEqual(try decodeError(from: missingBody).message, "Missing request body.")
+        XCTAssertEqual(nullSession.status, .badRequest)
+        XCTAssertTrue(try decodeError(from: nullSession).message.contains("RuntimeTestKitStopRequest"))
+        XCTAssertEqual(emptySession.status, .badRequest)
+        XCTAssertTrue(try decodeError(from: emptySession).message.contains("sessionID is required."))
+        XCTAssertEqual(controller.pausedSessionIDs, [])
+        XCTAssertEqual(controller.stoppedSessionIDs, [])
+        XCTAssertEqual(controller.deletedSessionIDs, [])
+
+        let validBody = try JSONEncoder().encode(RuntimeTestKitStopRequest(sessionID: " session-1 "))
+        let valid = try await testKitResponse(
+            router: router,
+            endpoint: .pauseVirtualRecorders,
+            body: validBody
+        )
+
+        XCTAssertEqual(valid.status, .ok)
+        XCTAssertEqual(controller.pausedSessionIDs, ["session-1"])
+    }
+
     func testOpenAPIRoutesMatchRuntimeControlAPIEndpoints() throws {
         let documentedRoutes = try openAPIRouteKeys()
         var endpointRoutes = Set(RuntimeControlAPIEndpoint.allCases.map { endpoint in
@@ -224,6 +277,25 @@ final class RuntimeControlAPITests: XCTestCase {
         }
     }
 
+    func testRuntimeControlAPIStreamCapabilitiesAreExplicit() {
+        let supported: Set<RuntimeControlAPIEndpoint> = [
+            .overviewStream,
+            .statusStream,
+            .eventStream,
+            .vitalDBObservationStream,
+            .logStream,
+        ]
+
+        for endpoint in RuntimeControlAPIEndpoint.allCases {
+            let expected: RuntimeControlAPIStreamCapability = supported.contains(endpoint) ? .supported : .unsupported
+            XCTAssertEqual(endpoint.streamCapability, expected, endpoint.rawValue)
+        }
+
+        XCTAssertEqual(RuntimeControlAPIEndpoint.vitalDBRecorders.streamCapability, .unsupported)
+        XCTAssertEqual(RuntimeControlAPIEndpoint.vitalDBRecorder.streamCapability, .unsupported)
+        XCTAssertEqual(RuntimeControlAPIEndpoint.vitalDBRelationships.streamCapability, .unsupported)
+    }
+
     func testRuntimeEventTypeOpenAPIEnumMatchesSwiftContract() throws {
         let openAPIEventTypes = try openAPIStringEnum(named: "RuntimeEventType")
         let swiftEventTypes = RuntimeEventType.knownTypes.map(\.rawValue)
@@ -267,7 +339,7 @@ final class RuntimeControlAPITests: XCTestCase {
 
         let stream = try await streamResponse(from: router.routeResult(.init(method: .get, path: "/runtime/events/stream")))
         let event = try await firstStreamEvent(stream)
-        let text = try XCTUnwrap(String(data: RuntimeControlServerSentEventCodec.encode(event), encoding: .utf8))
+        let text = try XCTUnwrap(String(data: try RuntimeControlServerSentEventCodec.encode(event), encoding: .utf8))
 
         XCTAssertEqual(stream.status, .ok)
         XCTAssertEqual(stream.headers["Content-Type"], "text/event-stream")
@@ -297,7 +369,7 @@ final class RuntimeControlAPITests: XCTestCase {
 
         let stream = try await streamResponse(from: router.routeResult(.init(method: .get, path: "/runtime/status/stream")))
         let event = try await firstStreamEvent(stream)
-        let text = try XCTUnwrap(String(data: RuntimeControlServerSentEventCodec.encode(event), encoding: .utf8))
+        let text = try XCTUnwrap(String(data: try RuntimeControlServerSentEventCodec.encode(event), encoding: .utf8))
 
         XCTAssertEqual(stream.status, .ok)
         XCTAssertEqual(stream.headers["Content-Type"], "text/event-stream")
@@ -312,7 +384,7 @@ final class RuntimeControlAPITests: XCTestCase {
 
         let stream = try await streamResponse(from: router.routeResult(.init(method: .get, path: "/runtime/overview/stream")))
         let event = try await firstStreamEvent(stream)
-        let text = try XCTUnwrap(String(data: RuntimeControlServerSentEventCodec.encode(event), encoding: .utf8))
+        let text = try XCTUnwrap(String(data: try RuntimeControlServerSentEventCodec.encode(event), encoding: .utf8))
 
         XCTAssertEqual(stream.status, .ok)
         XCTAssertEqual(stream.headers["Content-Type"], "text/event-stream")
@@ -328,13 +400,73 @@ final class RuntimeControlAPITests: XCTestCase {
 
         let stream = try await streamResponse(from: router.routeResult(.init(method: .get, path: "/host/logs/stream?source=command&lineLimit=5")))
         let event = try await firstStreamEvent(stream)
-        let text = try XCTUnwrap(String(data: RuntimeControlServerSentEventCodec.encode(event), encoding: .utf8))
+        let text = try XCTUnwrap(String(data: try RuntimeControlServerSentEventCodec.encode(event), encoding: .utf8))
 
         XCTAssertEqual(stream.status, .ok)
         XCTAssertEqual(stream.headers["Content-Type"], "text/event-stream")
         XCTAssertTrue(text.contains("id: runtime-log-command"))
         XCTAssertTrue(text.contains("event: runtime-log"))
         XCTAssertTrue(text.contains("\"text\":\"command log tail 5\""))
+    }
+
+    @MainActor
+    func testVitalDBObservationStreamPreservesReadSnapshotState() async throws {
+        let handler = StubRuntimeControlAPIReadHandler()
+        let router = RuntimeControlAPIRouter(handler: handler)
+
+        let stream = try await streamResponse(from: router.routeResult(.init(
+            method: .get,
+            path: "/vitaldb/observations/stream"
+        )))
+        let event = try await firstStreamEvent(stream)
+        let data = try RuntimeControlServerSentEventCodec.encode(event)
+        let text = try XCTUnwrap(String(data: data, encoding: .utf8))
+        let decodedEventData = try JSONDecoder().decode(RuntimeVitalDBObservationSnapshot.self, from: try XCTUnwrap(event.data))
+
+        XCTAssertEqual(stream.status, .ok)
+        XCTAssertEqual(event.id, "vitaldb-observation")
+        XCTAssertEqual(event.event, "vitaldb-observed")
+        XCTAssertTrue(text.contains("\"state\":\"loaded\""))
+        XCTAssertTrue(text.contains("\"observation\""))
+        XCTAssertEqual(decodedEventData.state, .loaded)
+        XCTAssertEqual(decodedEventData.observation?.observedAt, "2026-05-25T00:00:00Z")
+    }
+
+    func testServerSentEventCodecRejectsIncompleteFrames() throws {
+        XCTAssertThrowsError(try RuntimeControlServerSentEventCodec.encode(RuntimeControlServerSentEvent(
+            id: nil,
+            event: "runtime-status",
+            data: Data("{}".utf8)
+        ))) { error in
+            XCTAssertEqual(error as? RuntimeControlServerSentEventEncodingError, .missingID)
+        }
+
+        XCTAssertThrowsError(try RuntimeControlServerSentEventCodec.encode(RuntimeControlServerSentEvent(
+            id: "runtime-status",
+            event: nil,
+            data: Data("{}".utf8)
+        ))) { error in
+            XCTAssertEqual(error as? RuntimeControlServerSentEventEncodingError, .missingEvent)
+        }
+
+        XCTAssertThrowsError(try RuntimeControlServerSentEventCodec.encode(RuntimeControlServerSentEvent(
+            id: "runtime-status",
+            event: "runtime-status",
+            data: nil
+        ))) { error in
+            XCTAssertEqual(error as? RuntimeControlServerSentEventEncodingError, .missingData)
+        }
+
+        XCTAssertThrowsError(try RuntimeControlServerSentEventCodec.encode(RuntimeControlServerSentEvent(
+            id: "runtime-status",
+            event: "runtime-status",
+            data: Data([0xFF])
+        ))) { error in
+            XCTAssertEqual(error as? RuntimeControlServerSentEventEncodingError, .invalidUTF8Data)
+        }
+
+        let heartbeat = try RuntimeControlServerSentEventCodec.encode(.heartbeat)
+        XCTAssertEqual(String(data: heartbeat, encoding: .utf8), ": heartbeat\n\n")
     }
 
     @MainActor
@@ -408,10 +540,10 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertEqual(events.events.map(\.id), ["event-1"])
         XCTAssertEqual(vitalDBObservation?.recorders.map(\.vrcode), ["VR_A"])
         XCTAssertEqual(vitalRecorders.recorders.map(\.vrcode), ["VR_A"])
-        XCTAssertEqual(vitalRecorders.recorders.first?.activityTimeline.first?.messageCount, 3)
+        XCTAssertEqual(vitalRecorders.recorders.first?.activityTimeline?.first?.messageCount, 3)
         XCTAssertEqual(vitalRecorder?.vrcode, "VR_A")
-        XCTAssertEqual(vitalRecorder?.activityTimeline.first?.byteCount, 2048)
-        XCTAssertEqual(vitalRecorder?.activityTimeline.first?.buckets.first?.bucketSeconds, 60)
+        XCTAssertEqual(vitalRecorder?.activityTimeline?.first?.byteCount, 2048)
+        XCTAssertEqual(vitalRecorder?.activityTimeline?.first?.buckets.first?.bucketSeconds, 60)
         XCTAssertEqual(vitalBeds.map(\.bedID), ["bed-a"])
         XCTAssertEqual(vitalBed?.vrcode, "VR_A")
         XCTAssertEqual(vitalRelationships.assignments.map(\.vrcode), ["VR_A"])
@@ -597,7 +729,7 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertEqual(health.statusMessage, "health with 6 CPUs")
         XCTAssertEqual(release.helperVersion, "0.2.0")
         XCTAssertEqual(installInfo.appBundlePath, "/Applications/VitalServer Helper.app")
-        XCTAssertEqual(installInfo.packageIdentifier, "com.tirosh.vitalserver.vm")
+        XCTAssertEqual(installInfo.packageIdentifier, "ai.tirosh.vitalserver.helper")
         XCTAssertEqual(installInfo.backupsPath, "/backups")
         XCTAssertEqual(installInfo.redisBackupsPath, "/runtime/data/backups/redis")
         XCTAssertEqual(observationSnapshot.state, .loaded)
@@ -834,6 +966,30 @@ final class RuntimeControlAPITests: XCTestCase {
     }
 
     @MainActor
+    func testRuntimeEventsEndpointRejectsDuplicateQueryParameters() async throws {
+        let router = RuntimeControlAPIRouter(handler: StubRuntimeControlAPIReadHandler())
+
+        let response = await router.route(.init(method: .get, path: "/runtime/events?limit=1&limit=2"))
+        let error = try decodeError(from: response)
+
+        XCTAssertEqual(response.status, .badRequest)
+        XCTAssertEqual(error.code, .badRequest)
+        XCTAssertEqual(error.message, "Duplicate query parameter: limit")
+    }
+
+    @MainActor
+    func testRuntimeEventsEndpointRejectsMissingQueryParameterValue() async throws {
+        let router = RuntimeControlAPIRouter(handler: StubRuntimeControlAPIReadHandler())
+
+        let response = await router.route(.init(method: .get, path: "/runtime/events?limit"))
+        let error = try decodeError(from: response)
+
+        XCTAssertEqual(response.status, .badRequest)
+        XCTAssertEqual(error.code, .badRequest)
+        XCTAssertEqual(error.message, "Missing query parameter value: limit")
+    }
+
+    @MainActor
     func testRuntimeEventsEndpointRejectsInvalidCursor() async throws {
         let router = RuntimeControlAPIRouter(handler: StubRuntimeControlAPIReadHandler())
 
@@ -842,6 +998,49 @@ final class RuntimeControlAPITests: XCTestCase {
 
         XCTAssertEqual(response.status, .badRequest)
         XCTAssertEqual(error.code, .badRequest)
+    }
+
+    @MainActor
+    func testRuntimeEventsEndpointRejectsUnknownEventType() async throws {
+        let router = RuntimeControlAPIRouter(handler: StubRuntimeControlAPIReadHandler())
+
+        let response = await router.route(.init(method: .get, path: "/runtime/events?type=unknown"))
+        let error = try decodeError(from: response)
+
+        XCTAssertEqual(response.status, .badRequest)
+        XCTAssertEqual(error.code, .badRequest)
+        XCTAssertEqual(error.message, "Invalid runtime event type: unknown")
+    }
+
+    func testRuntimeLogQueryPreservesMissingHelperMessage() throws {
+        let missing = try RuntimeControlHTTPRequest(
+            method: .get,
+            path: "/host/logs/stream?source=command&lineLimit=5"
+        ).runtimeLogTextRequest()
+        let explicitEmpty = try RuntimeControlHTTPRequest(
+            method: .get,
+            path: "/host/logs/stream?source=command&lineLimit=5&helperMessage="
+        ).runtimeLogTextRequest()
+
+        XCTAssertNil(missing.helperMessage)
+        XCTAssertEqual(explicitEmpty.helperMessage, "")
+    }
+
+    @MainActor
+    func testRouterReportsRequestBodyDecodeFailureDetails() async throws {
+        let router = RuntimeControlAPIRouter(handler: StubRuntimeControlAPIReadHandler())
+
+        let response = await router.route(.init(
+            method: .put,
+            path: "/runtime/settings",
+            body: Data("{".utf8)
+        ))
+        let error = try decodeError(from: response)
+
+        XCTAssertEqual(response.status, .badRequest)
+        XCTAssertEqual(error.code, .badRequest)
+        XCTAssertTrue(error.message.contains("RuntimeApplySettingsRequest"))
+        XCTAssertTrue(error.message.contains("Decode failed"))
     }
 
     @MainActor
@@ -1378,6 +1577,27 @@ final class RuntimeControlAPITests: XCTestCase {
         return event
     }
 
+    @MainActor
+    private func testKitResponse(
+        router: RuntimeTestKitAPIRouter,
+        endpoint: RuntimeTestKitAPIEndpoint,
+        body: Data? = nil
+    ) async throws -> RuntimeControlHTTPResponse {
+        let routeResult = await router.routeResult(.init(
+            method: endpoint.method,
+            path: endpoint.path,
+            body: body
+        ))
+        let result = try XCTUnwrap(routeResult)
+        switch result {
+        case .response(let response):
+            return response
+        case .stream:
+            XCTFail("Expected response")
+            throw RuntimeControlAPIEndpointTestError.expectedResponse
+        }
+    }
+
     private func openAPIRouteKeys() throws -> Set<String> {
         try Set(openAPIOperations().keys)
     }
@@ -1561,6 +1781,7 @@ private extension Data {
 
 private enum RuntimeControlAPIEndpointTestError: Error {
     case expectedStream
+    case expectedResponse
 }
 
 private struct StubRuntimeControlAPIReadHandler: RuntimeControlAPIReadHandler {
@@ -1587,7 +1808,7 @@ private struct StubRuntimeControlAPIReadHandler: RuntimeControlAPIReadHandler {
                 id: "event-1",
                 eventType: .statusChanged,
                 timestamp: "2026-05-24T00:00:00Z",
-                product: "TiroshVitalServer",
+                product: "VitalServerHelper",
                 status: .healthy,
                 previousStatus: nil,
                 operation: .health,
@@ -1814,6 +2035,109 @@ private func XCTAssertFileWriteNoPermission(
 }
 
 @MainActor
+private final class FakeRuntimeTestKitController: RuntimeTestKitControlling {
+    var pausedSessionIDs: [String] = []
+    var resumedSessionIDs: [String] = []
+    var stoppedSessionIDs: [String] = []
+    var deletedSessionIDs: [String] = []
+
+    func loadTestKitStatus() async -> RuntimeTestKitStatus {
+        RuntimeTestKitStatus(enabled: true, state: .running)
+    }
+
+    func createTestKitBeds(_ request: RuntimeTestKitCreateBedsRequest) async throws -> [RuntimeTestKitBed] {
+        []
+    }
+
+    func deleteTestKitBeds(_ request: RuntimeTestKitDeleteBedsRequest) async throws -> [RuntimeTestKitBed] {
+        []
+    }
+
+    func resetTestKitBeds() async throws -> [RuntimeTestKitBed] {
+        []
+    }
+
+    func startVirtualRecorders(
+        _ request: RuntimeTestKitVirtualRecorderStartRequest
+    ) async throws -> RuntimeTestKitSession {
+        session(id: "session-started", state: "running")
+    }
+
+    func pauseVirtualRecorders(sessionID: String?) async throws -> RuntimeTestKitSession? {
+        guard let sessionID else {
+            return nil
+        }
+        pausedSessionIDs.append(sessionID)
+        return session(id: sessionID, state: "paused")
+    }
+
+    func resumeVirtualRecorders(sessionID: String?) async throws -> RuntimeTestKitSession? {
+        guard let sessionID else {
+            return nil
+        }
+        resumedSessionIDs.append(sessionID)
+        return session(id: sessionID, state: "running")
+    }
+
+    func stopVirtualRecorders(sessionID: String?) async throws -> RuntimeTestKitSession? {
+        guard let sessionID else {
+            return nil
+        }
+        stoppedSessionIDs.append(sessionID)
+        return session(id: sessionID, state: "stopped")
+    }
+
+    func restartVirtualRecorders(
+        sessionID: String?,
+        bedRoomNames: [String]
+    ) async throws -> RuntimeTestKitSession? {
+        guard let sessionID else {
+            return nil
+        }
+        return session(id: sessionID, state: "running")
+    }
+
+    func deleteVirtualRecorders(sessionID: String?) async throws -> RuntimeTestKitSession? {
+        guard let sessionID else {
+            return nil
+        }
+        deletedSessionIDs.append(sessionID)
+        return session(id: sessionID, state: "deleted")
+    }
+
+    func deleteVirtualRecorder(vrcode: String) async throws -> RuntimeTestKitRecorderDeletion {
+        RuntimeTestKitRecorderDeletion(vrcode: vrcode, targetURL: "http://edge/", deleted: true)
+    }
+
+    func resetVirtualRecorders() async throws -> RuntimeTestKitStatus {
+        RuntimeTestKitStatus(enabled: true, state: .stopped)
+    }
+
+    private func session(id: String, state: String) -> RuntimeTestKitSession {
+        RuntimeTestKitSession(
+            id: id,
+            state: state,
+            targetURL: "http://edge/",
+            recordersRequested: 1,
+            vrcode: nil,
+            version: "testkit",
+            intervalSeconds: 1,
+            durationSeconds: nil,
+            maxMessages: nil,
+            shiftTime: false,
+            generateFrames: false,
+            defaultScenario: "normal",
+            createdAt: nil,
+            startedAt: nil,
+            stoppedAt: nil,
+            messagesSent: 0,
+            bytesSent: 0,
+            lastError: nil,
+            recorders: []
+        )
+    }
+}
+
 private final class FakeRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
     var capabilities = RuntimeControlCapabilities(canOpenLocalFiles: false)
     var loadSettingsCount = 0
@@ -1858,7 +2182,7 @@ private final class FakeRuntimeControlClient: RuntimeControlClient, RuntimeHostC
                 id: "event-1",
                 eventType: .statusChanged,
                 timestamp: "2026-05-24T00:00:00Z",
-                product: "TiroshVitalServer",
+                product: "VitalServerHelper",
                 status: .healthy,
                 previousStatus: nil,
                 operation: .health,
@@ -1872,7 +2196,7 @@ private final class FakeRuntimeControlClient: RuntimeControlClient, RuntimeHostC
                 id: "event-2",
                 eventType: .containerObserved,
                 timestamp: "2026-05-24T00:01:00Z",
-                product: "TiroshVitalServer",
+                product: "VitalServerHelper",
                 status: .healthy,
                 previousStatus: nil,
                 operation: .health,
@@ -1886,7 +2210,7 @@ private final class FakeRuntimeControlClient: RuntimeControlClient, RuntimeHostC
                 id: "event-3",
                 eventType: .auditProxyObserved,
                 timestamp: "2026-05-24T00:02:00Z",
-                product: "TiroshVitalServer",
+                product: "VitalServerHelper",
                 status: .healthy,
                 previousStatus: nil,
                 operation: .health,
@@ -2034,7 +2358,7 @@ private final class FakeRuntimeControlClient: RuntimeControlClient, RuntimeHostC
     func loadInstallInfo() -> RuntimeInstallInfo {
         RuntimeInstallInfo(
             appBundlePath: "/Applications/VitalServer Helper.app",
-            packageIdentifier: "com.tirosh.vitalserver.vm",
+            packageIdentifier: "ai.tirosh.vitalserver.helper",
             runtimeHomePath: "/runtime",
             backupsPath: "/backups",
             redisBackupsPath: "/runtime/data/backups/redis"

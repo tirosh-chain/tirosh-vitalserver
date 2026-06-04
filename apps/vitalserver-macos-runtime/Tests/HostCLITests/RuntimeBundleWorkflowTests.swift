@@ -99,6 +99,8 @@ final class RuntimeBundleWorkflowTests: XCTestCase {
                 rollback: { _ in },
                 startRuntimeServices: { _ in },
                 stopRuntimeServices: {},
+                runningVMProcessID: { 123 },
+                stopRuntimeServicesAfterGuestPoweroff: { _ in },
                 prepareGuestShutdownForUpdate: { _ in },
                 clearGuestShutdownPreparation: {},
                 isLaunchdLoaded: { _ in false },

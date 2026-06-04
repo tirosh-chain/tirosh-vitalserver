@@ -4,7 +4,7 @@ import Core
 struct RuntimeHostProxyPortCleaner {
     var proxyPort: () -> Int
     var proxyServiceLoaded: () -> Bool
-    var expectedProxyNginxPID: () -> String?
+    var expectedProxyNginxPID: () -> RuntimeProxyNginxPIDReadResult
     var ownedNginxPathFragments: [String]
     var runProcess: (String, [String]) -> RuntimeProcessResult
     var sleep: (TimeInterval) -> Void = { Thread.sleep(forTimeInterval: $0) }
@@ -18,7 +18,8 @@ struct RuntimeHostProxyPortCleaner {
             return
         }
 
-        let classified = classify(listeners)
+        let expectedPID = try readExpectedProxyNginxPID()
+        let classified = classify(listeners, expectedPID: expectedPID)
         if proxyServiceLoaded(), !classified.ownedNginx.isEmpty {
             if classified.external.isEmpty {
                 log("proxy port cleanup skipped; configured host proxy already owns port \(port)")
@@ -31,7 +32,7 @@ struct RuntimeHostProxyPortCleaner {
             log("proxy port cleanup stopping owned nginx listeners port=\(port) pids=\(classified.ownedNginx.joined(separator: ","))")
             terminate(classified.ownedNginx, signal: "-TERM")
             sleep(1)
-            let remainingOwned = classify(try portListeners(port: port)).ownedNginx
+            let remainingOwned = classify(try portListeners(port: port), expectedPID: expectedPID).ownedNginx
             if !remainingOwned.isEmpty {
                 log("proxy port cleanup force stopping owned nginx listeners port=\(port) pids=\(remainingOwned.joined(separator: ","))")
                 terminate(remainingOwned, signal: "-KILL")
@@ -41,7 +42,7 @@ struct RuntimeHostProxyPortCleaner {
 
         let remaining = try portListeners(port: port)
         guard remaining.isEmpty else {
-            let classified = classify(remaining)
+            let classified = classify(remaining, expectedPID: expectedPID)
             if !classified.ownedNginx.isEmpty {
                 let description = classified.ownedNginx.map { "nginx-\($0)" }.joined(separator: ",")
                 log("proxy port cleanup could not stop owned listeners port=\(port) listeners=\(description)")
@@ -78,8 +79,24 @@ struct RuntimeHostProxyPortCleaner {
             }
     }
 
-    private func classify(_ listeners: [PortListener]) -> (ownedNginx: [String], external: [PortListener]) {
-        let expectedPID = expectedProxyNginxPID()
+    private func readExpectedProxyNginxPID() throws -> String? {
+        switch expectedProxyNginxPID() {
+        case .loaded(let pid):
+            return pid
+        case .missing, .empty:
+            return nil
+        case .readFailed(let message):
+            log("proxy port cleanup failed to read expected nginx pid error=\(message)")
+            throw LauncherError.runtimeOperationFailed(
+                "failed to read expected Host proxy nginx PID. Retry the update or repair Host proxy."
+            )
+        }
+    }
+
+    private func classify(
+        _ listeners: [PortListener],
+        expectedPID: String?
+    ) -> (ownedNginx: [String], external: [PortListener]) {
         var owned: [String] = []
         var external: [PortListener] = []
 

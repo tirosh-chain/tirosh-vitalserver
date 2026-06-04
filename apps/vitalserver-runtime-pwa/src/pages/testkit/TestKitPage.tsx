@@ -13,6 +13,7 @@ import {
 } from "@/console/hooks";
 import type { RuntimeTestKitSession } from "@/domain/runtime-control/contracts/runtimeControlTypes";
 import { formatBytes } from "@/domain/runtime-control/formatting/bytes";
+import { NOT_REPORTED } from "@/domain/runtime-control/formatting/reported";
 import { ErrorState } from "@/components/ErrorState";
 import { KeyValueRows } from "@/components/KeyValueRows";
 import { Panel } from "@/components/Panel";
@@ -35,16 +36,19 @@ export function TestKitPage() {
   const [bedPrefix, setBedPrefix] = useState("testkit-bed");
   const [selectedBeds, setSelectedBeds] = useState<string[]>([]);
   const [recorders, setRecorders] = useState(1);
-  const [scenario, setScenario] = useState("normal");
-  const [signalProfile, setSignalProfile] = useState("normal");
+  const [scenario, setScenario] = useState<TestKitScenario>("normal");
+  const [signalProfile, setSignalProfile] = useState<TestKitSignalProfile>("normal");
   const [vrcode, setVrcode] = useState(generateVrcode());
   const [intervalSeconds, setIntervalSeconds] = useState(1);
   const [orphanVrcode, setOrphanVrcode] = useState("");
 
-  const beds = status.data?.beds ?? [];
-  const sessions = status.data?.sessions ?? [];
+  const beds = status.data?.beds ?? null;
+  const sessions = status.data?.sessions ?? null;
 
   useEffect(() => {
+    if (beds === null) {
+      return;
+    }
     setSelectedBeds((current) =>
       current.filter((roomName) =>
         beds.some((bed) => bed.roomName === roomName)
@@ -79,13 +83,19 @@ export function TestKitPage() {
     resumeSession.error ??
     deleteSession.error;
 
-  const canStart = selectedBeds.length >= recorders && !isBusy;
+  const testKitReady = status.data?.enabled === true && status.data.state === "running";
+  const canMutateTestKit = testKitReady && !isBusy;
+  const canStart =
+    testKitReady &&
+    beds !== null &&
+    selectedBeds.length >= recorders &&
+    !isBusy;
 
   const start = () => {
     startSession.mutate(
       {
-        scenario: scenario as "normal",
-        signalProfile: signalProfile as "normal",
+        scenario,
+        signalProfile,
         recorders,
         bedRoomNames: selectedBeds.slice(0, recorders),
         vrcode: vrcode.trim() || null,
@@ -118,13 +128,13 @@ export function TestKitPage() {
       >
         <KeyValueRows
           rows={[
-            { label: "Enabled", value: String(status.data?.enabled ?? false) },
-            { label: "Status", value: status.data?.state ?? "Unknown" },
-            { label: "Service", value: status.data?.serviceName ?? "-" },
-            { label: "URL", value: status.data?.apiBaseURL ?? "-" },
-            { label: "Target", value: status.data?.recorderTargetURL ?? "-" },
-            { label: "Sessions", value: sessions.length },
-            { label: "Beds", value: beds.length },
+            { label: "Enabled", value: formatEnabled(status.data?.enabled) },
+            { label: "Status", value: status.data?.state ?? NOT_REPORTED },
+            { label: "Service", value: status.data?.serviceName ?? NOT_REPORTED },
+            { label: "URL", value: status.data?.apiBaseURL ?? NOT_REPORTED },
+            { label: "Target", value: status.data?.recorderTargetURL ?? NOT_REPORTED },
+            { label: "Sessions", value: sessions?.length ?? NOT_REPORTED },
+            { label: "Beds", value: beds?.length ?? NOT_REPORTED },
             { label: "Last error", value: status.data?.lastError ?? "-" }
           ]}
         />
@@ -139,21 +149,21 @@ export function TestKitPage() {
           <>
             <button
               type="button"
-              disabled={isBusy}
+              disabled={!canMutateTestKit}
               onClick={() => createBeds.mutate({ count: bedCount, prefix: bedPrefix })}
             >
               Create
             </button>
             <button
               type="button"
-              disabled={isBusy || selectedBeds.length === 0}
+              disabled={!canMutateTestKit || selectedBeds.length === 0}
               onClick={() => deleteBeds.mutate(selectedBeds)}
             >
               Delete selected
             </button>
             <button
               type="button"
-              disabled={isBusy || beds.length === 0}
+              disabled={!canMutateTestKit || beds === null || beds.length === 0}
               onClick={() => resetBeds.mutate(undefined)}
             >
               Reset
@@ -193,7 +203,11 @@ export function TestKitPage() {
             Scenario
             <select
               value={scenario}
-              onChange={(event) => setScenario(event.target.value)}
+              onChange={(event) => {
+                if (isTestKitScenario(event.target.value)) {
+                  setScenario(event.target.value);
+                }
+              }}
             >
               {scenarioOptions.map((option) => (
                 <option key={option} value={option}>
@@ -206,7 +220,11 @@ export function TestKitPage() {
             Signal
             <select
               value={signalProfile}
-              onChange={(event) => setSignalProfile(event.target.value)}
+              onChange={(event) => {
+                if (isTestKitSignalProfile(event.target.value)) {
+                  setSignalProfile(event.target.value);
+                }
+              }}
             >
               {signalOptions.map((option) => (
                 <option key={option} value={option}>
@@ -249,20 +267,22 @@ export function TestKitPage() {
           </button>
           <button
             type="button"
-            disabled={isBusy || sessions.length === 0}
+            disabled={!canMutateTestKit || sessions === null || sessions.length === 0}
             onClick={() => resetSessions.mutate(undefined)}
           >
             Reset sessions
           </button>
         </div>
         <p className="muted">
-          {selectedBeds.length} selected / {recorders} required / {beds.length}{" "}
-          available
+          {selectedBeds.length} selected / {recorders} required /{" "}
+          {beds === null ? NOT_REPORTED : beds.length} available
         </p>
       </Panel>
 
       <Panel title="Sessions">
-        {sessions.length === 0 ? (
+        {sessions === null ? (
+          <p className="empty-state">TestKit session state is not reported.</p>
+        ) : sessions.length === 0 ? (
           <p className="empty-state">No virtual recorder sessions.</p>
         ) : (
           <div className="session-list">
@@ -271,7 +291,7 @@ export function TestKitPage() {
                 key={session.id}
                 session={session}
                 selectedBeds={selectedBeds}
-                disabled={isBusy}
+                disabled={!canMutateTestKit}
                 onStop={() => stopSession.mutate(session.id)}
                 onPause={() => pauseSession.mutate(session.id)}
                 onResume={() => resumeSession.mutate(session.id)}
@@ -303,7 +323,7 @@ export function TestKitPage() {
           </label>
           <button
             type="button"
-            disabled={isBusy || !orphanVrcode.trim()}
+            disabled={!canMutateTestKit || !orphanVrcode.trim()}
             onClick={() => deleteOrphan.mutate(orphanVrcode)}
           >
             Delete VRecorder
@@ -319,10 +339,13 @@ function BedSelection({
   selectedBeds,
   setSelectedBeds
 }: {
-  beds: Array<{ roomName: string; bedId: string }>;
+  beds: Array<{ roomName: string; bedId: string }> | null;
   selectedBeds: string[];
   setSelectedBeds: (value: string[]) => void;
 }) {
+  if (beds === null) {
+    return <p className="empty-state">TestKit bed state is not reported.</p>;
+  }
   if (beds.length === 0) {
     return <p className="empty-state">Create beds before starting VRecorders.</p>;
   }
@@ -418,7 +441,9 @@ const scenarioOptions = [
   "disconnect_reconnect",
   "stale_recorder",
   "signal_anomaly"
-];
+] as const;
+
+type TestKitScenario = (typeof scenarioOptions)[number];
 
 const signalOptions = [
   "normal",
@@ -426,7 +451,27 @@ const signalOptions = [
   "desaturation",
   "artifact",
   "device_disconnect"
-];
+] as const;
+
+type TestKitSignalProfile = (typeof signalOptions)[number];
+
+function isTestKitScenario(value: string): value is TestKitScenario {
+  return scenarioOptions.includes(value as TestKitScenario);
+}
+
+function isTestKitSignalProfile(value: string): value is TestKitSignalProfile {
+  return signalOptions.includes(value as TestKitSignalProfile);
+}
+
+function formatEnabled(value: boolean | null | undefined): string {
+  if (value === true) {
+    return "true";
+  }
+  if (value === false) {
+    return "false";
+  }
+  return NOT_REPORTED;
+}
 
 function generateVrcode(): string {
   return `VR_${Math.random().toString(16).slice(2, 10).toUpperCase()}`;

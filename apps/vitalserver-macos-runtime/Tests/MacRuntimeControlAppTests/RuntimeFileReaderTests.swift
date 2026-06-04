@@ -140,7 +140,7 @@ final class RuntimeFileReaderTests: XCTestCase {
         XCTAssertEqual(collector.refreshCount, 1)
     }
 
-    func testLogTextReadsAvailableSourceWhenRefreshFails() throws {
+    func testCommandLogTextReadsSourceWithoutRefreshingLogCollection() throws {
         let collector = FakeRuntimeLogCollector(refreshError: CocoaError(.fileReadNoPermission))
         let reader = SystemRuntimeHostFileReader(
             fileStore: SpecificFileRuntimeFileStore(dataByPath: [
@@ -152,7 +152,8 @@ final class RuntimeFileReaderTests: XCTestCase {
         let logText = reader.logText(sourceID: .command, helperMessage: "Ready", lineLimit: 2)
 
         XCTAssertEqual(logText, "second\nthird")
-        XCTAssertEqual(collector.sourceIDs, [.command])
+        XCTAssertEqual(collector.sourceIDs, [])
+        XCTAssertEqual(collector.refreshCount, 0)
     }
 
     func testLogTextReportsLogFileReadFailure() throws {
@@ -163,6 +164,21 @@ final class RuntimeFileReaderTests: XCTestCase {
 
         XCTAssertTrue(logText.hasPrefix("Failed to read log file "))
         XCTAssertTrue(logText.contains(RuntimeAdapterConstants.Paths.installLog))
+    }
+
+    func testLogTextReportsInvalidUTF8LogFile() throws {
+        let reader = SystemRuntimeHostFileReader(
+            fileStore: SpecificFileRuntimeFileStore(dataByPath: [
+                RuntimeAdapterConstants.Paths.installLog: Data([0xff]),
+            ]),
+            logCollector: FakeRuntimeLogCollector()
+        )
+
+        let logText = reader.logText(sourceID: .install, helperMessage: "Ready", lineLimit: 10)
+
+        XCTAssertTrue(logText.hasPrefix("Failed to read log file "))
+        XCTAssertTrue(logText.contains(RuntimeAdapterConstants.Paths.installLog))
+        XCTAssertFalse(logText.contains(AppConstants.StatusText.noLogData))
     }
 
     func testCommandLogTextReadsFallbackSourceAndTailsLargeFile() throws {
@@ -179,7 +195,8 @@ final class RuntimeFileReaderTests: XCTestCase {
         let logText = reader.logText(sourceID: .command, helperMessage: "Ready", lineLimit: 2)
 
         XCTAssertEqual(logText, "second\nthird")
-        XCTAssertEqual(collector.sourceIDs, [.command])
+        XCTAssertEqual(collector.sourceIDs, [])
+        XCTAssertEqual(collector.refreshCount, 0)
     }
 
     func testLogTextCoversDiagnosticLogSourcesWhenFilesAreMissing() {

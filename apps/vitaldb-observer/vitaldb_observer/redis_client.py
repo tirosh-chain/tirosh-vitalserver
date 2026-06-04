@@ -34,14 +34,26 @@ class RedisClient:
     def smembers(self, key: str) -> list[str]:
         value = self.command("SMEMBERS", key)
         if not isinstance(value, list):
-            return []
-        return sorted(item for item in value if isinstance(item, str))
+            raise RedisProtocolError(
+                f"unexpected SMEMBERS response for {key}: {value!r}"
+            )
+        for item in value:
+            if not isinstance(item, str):
+                raise RedisProtocolError(
+                    f"unexpected SMEMBERS member for {key}: {item!r}"
+                )
+        return sorted(value)
 
     def lrange(self, key: str, start: int, stop: int) -> list[str]:
         value = self.command("LRANGE", key, str(start), str(stop))
         if not isinstance(value, list):
-            return []
-        return [item for item in value if isinstance(item, str)]
+            raise RedisProtocolError(f"unexpected LRANGE response for {key}: {value!r}")
+        for item in value:
+            if not isinstance(item, str):
+                raise RedisProtocolError(
+                    f"unexpected LRANGE item for {key}: {item!r}"
+                )
+        return value
 
     def scan(self, pattern: str, count: int = 1000) -> list[str]:
         cursor = "0"
@@ -51,10 +63,24 @@ class RedisClient:
             seen_cursors.add(cursor)
             value = self.command("SCAN", cursor, "MATCH", pattern, "COUNT", str(count))
             if not isinstance(value, list) or len(value) != 2:
-                return sorted(keys)
+                raise RedisProtocolError(
+                    f"unexpected SCAN response for {pattern}: {value!r}"
+                )
             next_cursor, page = value
-            if isinstance(page, list):
-                keys.update(item for item in page if isinstance(item, str))
+            if not isinstance(next_cursor, str | int):
+                raise RedisProtocolError(
+                    f"unexpected SCAN cursor for {pattern}: {next_cursor!r}"
+                )
+            if not isinstance(page, list):
+                raise RedisProtocolError(
+                    f"unexpected SCAN page for {pattern}: {page!r}"
+                )
+            for item in page:
+                if not isinstance(item, str):
+                    raise RedisProtocolError(
+                        f"unexpected SCAN key for {pattern}: {item!r}"
+                    )
+                keys.add(item)
             cursor = str(next_cursor)
             if cursor == "0":
                 break

@@ -2,6 +2,7 @@ import Foundation
 import HostInfrastructure
 import Core
 import Contracts
+import RuntimeWorkflow
 
 struct RuntimeInstallWorkflowContext {
     let paths: LauncherPaths
@@ -14,6 +15,8 @@ struct RuntimeInstallWorkflowContext {
 struct RuntimeInstallWorkflowOperations {
     let fileStore: RuntimeFileStore
     let now: () -> Date
+    let freshInstallPreflight: () -> RuntimeFreshInstallPreflightDocument
+    let installProvisionPayload: () -> RuntimeInstallProvisionPayloadDocument
     let writeRuntimeStatus: (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void
     let writeRuntimeProgress: (RuntimeStepExecutionEvent) throws -> Void
     let rotateRuntimeLogs: () throws -> Void
@@ -22,34 +25,71 @@ struct RuntimeInstallWorkflowOperations {
     let runProcessToFile: (String, [String], URL) throws -> Void
     let writeInstalledRuntimeVersion: () throws -> Void
     let setStartOnBoot: (Bool) throws -> Void
-    let startLaunchdService: (RuntimeManagedService) -> Void
+    let startLaunchdService: (RuntimeManagedService) throws -> Void
+    let cleanupHostProxyPortBeforeStart: () throws -> Void
+    let waitForHealth: (RuntimeServiceRestartPolicy) throws -> Void
     let restrictSecretFile: (URL) throws -> Void
     let log: (String) -> Void
 }
 
-struct RuntimeInstallWorkflow {
+struct RuntimeInstallWorkflowComposition {
     let context: RuntimeInstallWorkflowContext
     let operations: RuntimeInstallWorkflowOperations
 
     func install() throws {
-        try runtimeInstallRunner().run()
+        try runtimeInstallWorkflow().run(RuntimeInstallCommand(
+            mode: .full,
+            plan: RuntimeOperationPlans.install,
+            completionStatus: .healthy,
+            completionMessage: "runtime install completed"
+        ))
     }
 
-    private func runtimeInstallRunner() -> RuntimeInstallRunner {
-        RuntimeInstallRunner(
-            loadSettings: {
-                try InstallSettings.load(
-                    defaultVitalFilesDirectory: context.installedPaths.vitalFilesDirectory.path,
-                    fileStore: operations.fileStore
-                )
-            },
-            executeStep: { step, settings in
-                try runtimeInstallStepExecutor().execute(step, settings: settings)
-            },
-            writeStatus: operations.writeRuntimeStatus,
-            writeProgress: operations.writeRuntimeProgress,
-            runtimeHomePath: { context.paths.home.path },
-            log: operations.log
+    func installProvision() throws {
+        try runtimeInstallWorkflow().run(RuntimeInstallCommand(
+            mode: .provision,
+            plan: RuntimeOperationPlans.installProvision,
+            completionStatus: .degraded,
+            completionMessage: "runtime install provisioned; runtime services starting"
+        ))
+    }
+
+    private func runtimeInstallWorkflow() -> RuntimeInstallWorkflow<InstallSettings> {
+        RuntimeInstallWorkflow(
+            readers: RuntimeInstallStateReaders(
+                loadSettings: {
+                    try InstallSettings.load(
+                        defaultVitalFilesDirectory: context.installedPaths.vitalFilesDirectory.path,
+                        fileStore: operations.fileStore
+                    )
+                },
+                freshInstallPreflight: operations.freshInstallPreflight,
+                provisionPayload: operations.installProvisionPayload
+            ),
+            effects: RuntimeInstallEffects(
+                executeStep: { step, settings in
+                    try runtimeInstallStepExecutor().execute(step, settings: settings)
+                }
+            ),
+            writer: RuntimeInstallStateWriter(
+                writeState: { state, mode, currentStep, message, blockers in
+                    try RuntimeInstallStateStore(
+                        url: context.installedPaths.runtimeInstallState,
+                        fileStore: operations.fileStore,
+                        now: operations.now
+                    ).write(
+                        state: state,
+                        mode: mode,
+                        currentStep: currentStep,
+                        message: message,
+                        blockers: blockers
+                    )
+                },
+                writeStatus: operations.writeRuntimeStatus,
+                writeProgress: operations.writeRuntimeProgress
+            ),
+            diagnostics: RuntimeInstallDiagnostics(log: operations.log),
+            runtimeHomePath: { context.paths.home.path }
         )
     }
 
@@ -84,6 +124,7 @@ struct RuntimeInstallWorkflow {
             applyStartOnBootPolicy: { settings in
                 try applyStartOnBootPolicy(settings)
             },
+            waitForHealth: operations.waitForHealth,
             cleanupInstallSettings: {
                 try cleanupInstallSettings()
             },
@@ -231,10 +272,13 @@ struct RuntimeInstallWorkflow {
             return
         }
         if settings.preventSystemSleep {
-            operations.startLaunchdService(.sleepPrevention)
+            try operations.startLaunchdService(.sleepPrevention)
         }
         for service in RuntimeManagedService.startOrder {
-            operations.startLaunchdService(service)
+            if service == .proxy {
+                try operations.cleanupHostProxyPortBeforeStart()
+            }
+            try operations.startLaunchdService(service)
         }
     }
 

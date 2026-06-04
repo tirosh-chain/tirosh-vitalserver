@@ -54,7 +54,7 @@ private func runtimeEvent(vitalDBObservation: VitalDBObservationDocument?) -> Ru
         id: "event-1",
         eventType: .vitalDBObserved,
         timestamp: "2026-05-30T00:00:01Z",
-        product: "com.tirosh.vitalserver",
+        product: "ai.tirosh.vitalserver.helper",
         status: .healthy,
         previousStatus: .healthy,
         operation: .health,

@@ -19,7 +19,7 @@ PWA는 Runtime Control API를 primary boundary로 사용합니다. native shell�
 
 - Swift UI가 제공하는 runtime control 정보를 PWA에서도 같은 의미로 보여줍니다.
 - Runtime Control API 계약을 기준으로 UI를 구성하고, 임시 dev/test 화면에 종속되지 않습니다.
-- 도메인 타입과 표시 정책은 domain/application/shared UI 경계에 두고, page는 조합 책임만 갖습니다.
+- 도메인 타입과 표시 정책은 `domain/runtime-control`, query/command orchestration은 `console`, reusable UI는 `components`에 두고 page는 조합 책임만 갖습니다.
 - 반응형 UI는 같은 기능을 화면 폭에 맞게 재배치하되, 제품 기능을 숨기거나 별도 구현으로 분기하지 않습니다.
 
 ## 비목표

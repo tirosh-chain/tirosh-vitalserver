@@ -41,23 +41,58 @@ public enum RuntimeVMHealthPolicy {
         if input.vmService != .loaded {
             errors.append(.serviceNotLoaded(input.vmService.rawValue))
         }
-        if input.vmIP == nil {
-            errors.append(.missingIPAddress)
-        }
-        if !input.guestRuntimeStatePresent {
-            errors.append(.runtimeStateMissing)
-        }
-        if !isSuccessfulHTTPStatus(input.guestHTTP),
-           input.guestHTTP != RuntimeHTTPStatusText.missingVMIP {
-            errors.append(.guestHTTP(input.guestHTTP))
-            if let guestBootstrapFailureReason = input.guestBootstrapFailureReason {
-                errors.append(vmError(for: guestBootstrapFailureReason))
-            }
-        }
-        if !input.guestRuntimeStateFresh {
-            errors.append(.runtimeStateStale)
-        }
+        errors.append(contentsOf: guestRuntimeStateErrors(input.guestRuntimeState))
+        errors.append(contentsOf: guestBootstrapErrors(input))
         return uniqueErrors(errors + input.reportedVMErrors + (input.vmLifecycle?.reportedVMErrors ?? []))
+    }
+
+    private static func guestRuntimeStateErrors(_ state: RuntimeGuestRuntimeStateInput) -> [RuntimeVMError] {
+        switch state {
+        case .fresh(let vmIP, let guestHTTP):
+            var errors: [RuntimeVMError] = []
+            if vmIP == nil {
+                errors.append(.missingIPAddress)
+            }
+            switch guestHTTP {
+            case .reportedStatus(let status):
+                if !isSuccessfulHTTPStatus(status) {
+                    errors.append(.guestHTTP(status))
+                }
+            case .missing:
+                errors.append(.guestHTTP(RuntimeHTTPStatusText.missingGuestHTTP))
+            case .probeFailed(let status):
+                errors.append(.guestHTTPProbeFailed(status))
+            }
+            return errors
+        case .missing:
+            return [.runtimeStateMissing]
+        case .invalid:
+            return [.runtimeStateInvalid]
+        case .stale:
+            return [.runtimeStateStale]
+        }
+    }
+
+    private static func guestBootstrapErrors(_ input: RuntimeHealthInput) -> [RuntimeVMError] {
+        if case .failed(let reason) = input.guestBootstrapAssessment {
+            return [vmError(for: reason)]
+        }
+        guard case .fresh(_, let guestHTTP) = input.guestRuntimeState,
+              !guestHTTP.isSuccessful else {
+            return []
+        }
+        switch input.guestBootstrapAssessment {
+        case .missing:
+            return isBootstrapping(input.vmLifecycle) ? [] : [.guestBootstrapResultMissing]
+        case .unavailable:
+            return [.guestBootstrapResultUnavailable]
+        case .notCurrentBoot, .noFailure, .failed:
+            return []
+        }
+    }
+
+    private static func isBootstrapping(_ lifecycle: RuntimeVMLifecycleDocument?) -> Bool {
+        lifecycle?.state == .starting || lifecycle?.state == .bootstrapping
     }
 
     private static func vmError(for failureReason: RuntimeFailureReason) -> RuntimeVMError {
@@ -86,7 +121,9 @@ public enum RuntimeVMHealthPolicy {
             || errors.contains(.diskAttachmentInvalid)
             || errors.contains(.guestFilesystemError)
             || errors.contains(.guestFilesystemReadOnly)
-            || errors.contains(.guestDiskIO) {
+            || errors.contains(.guestDiskIO)
+            || errors.contains(.guestBootstrapMissingRuntimePackages)
+            || errors.contains(.guestBootstrapFailed) {
             return .failed
         }
         if errors.contains(where: { error in
@@ -107,24 +144,32 @@ public enum RuntimeVMHealthPolicy {
             return .stale
         }
         if errors.contains(.runtimeStateMissing) {
-            return input.vmIP == nil ? .starting : .unreachable
+            return .unreachable
+        }
+        if errors.contains(.runtimeStateInvalid) {
+            return .unreachable
         }
         if errors.contains(.missingIPAddress) {
             return .starting
         }
-        if !errors.contains(where: { error in
-            if case .guestHTTP = error {
-                return true
-            }
-            return false
-        }) {
+        if !errors.contains(where: isGuestHTTPError) {
             return .running
         }
-        if input.guestHTTP == RuntimeHTTPStatusText.bootstrapPending
-            || input.guestHTTP == RuntimeHTTPStatusText.missingVMIP {
+        let guestHTTP = input.guestRuntimeState.guestHTTPStatusText
+        if guestHTTP == RuntimeHTTPStatusText.bootstrapPending
+            || guestHTTP == RuntimeHTTPStatusText.missingVMIP {
             return .starting
         }
         return .unreachable
+    }
+
+    private static func isGuestHTTPError(_ error: RuntimeVMError) -> Bool {
+        switch error {
+        case .guestHTTP, .guestHTTPProbeFailed:
+            return true
+        default:
+            return false
+        }
     }
 
     private static func uniqueErrors(_ errors: [RuntimeVMError]) -> [RuntimeVMError] {

@@ -47,7 +47,7 @@ final class RuntimeEventPublisherTests: XCTestCase {
         harness.publisher.recordCommandEventBestEffort(
             .runtimeCommandCompleted,
             executable: "/bin/launchctl",
-            arguments: ["kickstart", "system/com.tirosh.vitalserver.vm"],
+            arguments: ["kickstart", "system/ai.tirosh.vitalserver.helper"],
             result: RuntimeProcessResult(exitCode: 0, stdout: "", stderr: "")
         )
 
@@ -56,7 +56,7 @@ final class RuntimeEventPublisherTests: XCTestCase {
         XCTAssertEqual(harness.events.first?.eventType, .runtimeCommandCompleted)
         XCTAssertEqual(
             harness.events.first?.message,
-            "command runtime-command-completed executable=/bin/launchctl arguments=kickstart system/com.tirosh.vitalserver.vm exitCode=0"
+            "command runtime-command-completed executable=/bin/launchctl arguments=kickstart system/ai.tirosh.vitalserver.helper exitCode=0"
         )
     }
 
@@ -99,7 +99,7 @@ private final class RuntimeEventPublisherHarness {
             factory: RuntimeEventFactory(
                 id: { "event-\(self.repository.events.count + 1)" },
                 timestamp: { "2026-05-30T00:00:01Z" },
-                product: "TiroshVitalServer",
+                product: "VitalServerHelper",
                 runtimeVersion: { "1.2.3" }
             ),
             recorder: RuntimeObservationRecorder(

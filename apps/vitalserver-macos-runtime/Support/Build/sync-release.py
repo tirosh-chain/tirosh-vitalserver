@@ -270,20 +270,24 @@ def sync_guest_scripts(root, release):
     )
     write_if_changed(bootstrap, content)
 
-    runtime_env = root / "Support/Guest/bin/tirosh-runtime-env"
-    content = runtime_env.read_text(encoding="utf-8")
+    runtime_config = root / "Support/Guest/runtime-config.json"
+    content = runtime_config.read_text(encoding="utf-8")
     content = replace(
-        r'"testkitEnabled": (True|False),',
-        f'"testkitEnabled": {testkit_container_included!s},',
+        r'"testkitEnabled": (true|false),',
+        f'"testkitEnabled": {str(testkit_container_included).lower()},',
         content,
     )
-    write_if_changed(runtime_env, content)
+    write_if_changed(runtime_config, content)
 
-    repair_datastore = root / "Support/Guest/bin/tirosh-vitalserver-repair-datastore"
+    repair_datastore = (
+        root.parent.parent
+        / "packages/vitalserver-guest-tools/src/tirosh_guest_tools/application"
+        / "redis_repair.py"
+    )
     content = repair_datastore.read_text(encoding="utf-8")
     content = replace(
-        r"\n    redis:[^ ]+ \\\n",
-        f"\n    {require_service(release, 'redis')['image']} \\\n",
+        r'"redis:[^"]+",',
+        f'"{require_service(release, "redis")["image"]}",',
         content,
     )
     write_if_changed(repair_datastore, content)

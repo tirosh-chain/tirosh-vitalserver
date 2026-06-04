@@ -16,7 +16,7 @@ final class UpdateBundleVerifierTests: XCTestCase {
 
         let plan = try UpdateBundleVerifier.makePlan(
             manifest: manifest,
-            expectedProduct: "com.tirosh.vitalserver"
+            expectedProduct: "ai.tirosh.vitalserver.helper"
         )
 
         XCTAssertEqual(plan.artifactFiles.map(\.checksumKey), [
@@ -29,14 +29,14 @@ final class UpdateBundleVerifierTests: XCTestCase {
     func testMakePlanRejectsUnsupportedSchemaProductUnsafeNamesAndUnknownTypes() {
         XCTAssertThrowsError(try UpdateBundleVerifier.makePlan(
             manifest: manifest(schemaVersion: 1),
-            expectedProduct: "com.tirosh.vitalserver"
+            expectedProduct: "ai.tirosh.vitalserver.helper"
         )) { error in
             XCTAssertEqual(error as? UpdateBundleVerificationError, .unsupportedSchema(1))
         }
 
         XCTAssertThrowsError(try UpdateBundleVerifier.makePlan(
             manifest: manifest(product: "OtherProduct"),
-            expectedProduct: "com.tirosh.vitalserver"
+            expectedProduct: "ai.tirosh.vitalserver.helper"
         )) { error in
             XCTAssertEqual(error as? UpdateBundleVerificationError, .unsupportedProduct("OtherProduct"))
         }
@@ -45,7 +45,7 @@ final class UpdateBundleVerifierTests: XCTestCase {
             manifest: manifest(artifacts: [
                 UpdateBundleArtifact(name: "../escape.tar.gz", type: .guestDeploy, sha256: "abc", size: 10),
             ]),
-            expectedProduct: "com.tirosh.vitalserver"
+            expectedProduct: "ai.tirosh.vitalserver.helper"
         )) { error in
             XCTAssertEqual(error as? UpdateBundleVerificationError, .invalidArtifactName("../escape.tar.gz"))
         }
@@ -54,7 +54,7 @@ final class UpdateBundleVerifierTests: XCTestCase {
             manifest: manifest(artifacts: [
                 UpdateBundleArtifact(name: "future.tar.gz", type: .unknown("future"), sha256: "abc", size: 10),
             ]),
-            expectedProduct: "com.tirosh.vitalserver"
+            expectedProduct: "ai.tirosh.vitalserver.helper"
         )) { error in
             XCTAssertEqual(error as? UpdateBundleVerificationError, .unsupportedArtifactType("future"))
         }
@@ -106,7 +106,7 @@ final class UpdateBundleVerifierTests: XCTestCase {
 
     private func manifest(
         schemaVersion: Int = 3,
-        product: String = "com.tirosh.vitalserver",
+        product: String = "ai.tirosh.vitalserver.helper",
         artifacts: [UpdateBundleArtifact] = [
             UpdateBundleArtifact(name: "rootfs-base.raw.gz", type: .rootfsBase, sha256: "abc", size: 10),
         ],

@@ -151,6 +151,18 @@ class AnomalyObservation:
 
 
 @dataclass(frozen=True)
+class ObservationReadIssue:
+    source: str
+    message: str
+
+    def as_json(self) -> dict[str, Any]:
+        return {
+            "source": self.source,
+            "message": self.message,
+        }
+
+
+@dataclass(frozen=True)
 class ObservationDocument:
     observed_at: str
     ready: bool
@@ -161,6 +173,7 @@ class ObservationDocument:
     filters: list[RawBedScopedObservation] = field(default_factory=list)
     proxy_connections: list[ProxyConnectionObservation] = field(default_factory=list)
     anomalies: list[AnomalyObservation] = field(default_factory=list)
+    read_issues: list[ObservationReadIssue] = field(default_factory=list)
 
     def as_json(self) -> dict[str, Any]:
         return {
@@ -175,4 +188,5 @@ class ObservationDocument:
             "filters": [item.as_json() for item in self.filters],
             "proxyConnections": [item.as_json() for item in self.proxy_connections],
             "anomalies": [item.as_json() for item in self.anomalies],
+            "readIssues": [item.as_json() for item in self.read_issues],
         }

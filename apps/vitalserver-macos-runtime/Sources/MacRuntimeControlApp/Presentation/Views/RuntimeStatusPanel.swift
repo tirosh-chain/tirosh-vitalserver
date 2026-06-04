@@ -154,53 +154,42 @@ struct RuntimeStatusPanel: View {
     }
 
     private var vitalServerStatusAndURL: some View {
-        serviceStatusAndURL(
-            url: vitalServerExternalURL,
+        let url = viewModel.presentationFormatter.vitalServerStatusURL(settings: viewModel.settings)
+        return serviceStatusAndURL(
+            displayURL: url.displayURL,
+            openURL: url.openURL,
             status: vitalServerAvailability
         )
     }
 
     private var remoteConsoleStatusAndURL: some View {
-        serviceStatusAndURL(
-            url: remoteConsoleExternalURL,
+        let url = viewModel.presentationFormatter.remoteConsoleStatusURL(settings: viewModel.settings)
+        return serviceStatusAndURL(
+            displayURL: url.displayURL,
+            openURL: url.openURL,
             status: remoteConsoleAvailability
         )
     }
 
     private func serviceStatusAndURL(
-        url: String,
+        displayURL: String,
+        openURL: String,
         status: RuntimeStatusDisplayPolicy.StatusValue
     ) -> some View {
         ViewThatFits(in: .horizontal) {
             HStack(spacing: 12) {
-                linkButton(url) {
-                    viewModel.openExternalURL(url)
+                linkButton(displayURL) {
+                    viewModel.openExternalURL(openURL)
                 }
                 statusValue(status)
             }
             VStack(alignment: .leading, spacing: 4) {
-                linkButton(url) {
-                    viewModel.openExternalURL(url)
+                linkButton(displayURL) {
+                    viewModel.openExternalURL(openURL)
                 }
                 statusValue(status)
             }
         }
-    }
-
-    private var vitalServerExternalURL: String {
-        "http://\(remoteClientHost):\(viewModel.settings.publicPort)/"
-    }
-
-    private var remoteConsoleExternalURL: String {
-        "http://\(remoteClientHost):\(viewModel.settings.runtimeControlPort)/"
-    }
-
-    private var remoteClientHost: String {
-        let configuredHost = viewModel.settings.publicHost.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !configuredHost.isEmpty {
-            return configuredHost
-        }
-        return Host.current().name ?? "localhost"
     }
 
     private var dataDirectoryValue: some View {
@@ -328,8 +317,10 @@ struct RuntimeStatusPanel: View {
             Text(label)
                 .foregroundStyle(.secondary)
             HStack(spacing: 10) {
-                ProgressView(value: min(max(percent ?? 0, 0), 100), total: 100)
-                    .frame(width: 160)
+                if let percent {
+                    ProgressView(value: min(max(percent, 0), 100), total: 100)
+                        .frame(width: 160)
+                }
                 Text(detail)
                     .fontWeight(.medium)
                     .monospacedDigit()

@@ -22,9 +22,9 @@ describe("console request builders", () => {
     });
   });
 
-  it("normalizes blank TestKit session ids to null", () => {
-    expect(testKitSessionSelectionRequest(" ")).toEqual({
-      sessionID: null
-    });
+  it("rejects blank TestKit session ids before sending commands", () => {
+    expect(() => testKitSessionSelectionRequest(" ")).toThrow(
+      "Console request validation failed"
+    );
   });
 });

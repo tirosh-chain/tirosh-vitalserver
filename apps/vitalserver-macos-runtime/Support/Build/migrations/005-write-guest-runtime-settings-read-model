@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-product_root="/Library/Application Support/TiroshVitalServer"
+product_root="/Library/Application Support/VitalServerHelper"
 vm_home="${VITALSERVER_VM_HOME:-${product_root}/vm}"
 deploy_dir="${vm_home}/data/deploy"
 runtime_config="${deploy_dir}/runtime-config.json"
@@ -26,9 +26,14 @@ try:
     with open(source, "r", encoding="utf-8") as handle:
         config = json.load(handle)
 
+    public_host = config.get("publicHost", "")
+    public_port = int(config.get("publicPort", 80))
+    legacy_vitalserver_url = f"http://{public_host}:{public_port}/" if public_host else ""
     settings = {
-        "publicHost": config.get("publicHost", ""),
-        "publicPort": int(config.get("publicPort", 80)),
+        "vitalServerURL": config.get("vitalServerURL", legacy_vitalserver_url),
+        "remoteConsoleURL": config.get("remoteConsoleURL", ""),
+        "publicHost": public_host,
+        "publicPort": public_port,
         "redisBackupRetentionCount": int(config.get("redisBackupRetentionCount", 30)),
     }
 

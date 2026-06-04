@@ -7,7 +7,7 @@ import Contracts
 enum RuntimeAdapterConstants {
     enum Product {
         static let defaultProxyPort = 80
-        static let packageIdentifier = "com.tirosh.vitalserver.vm"
+        static let packageIdentifier = "ai.tirosh.vitalserver.helper"
 
         static func redisUIURL(proxyPort: Int) -> String {
             "http://127.0.0.1:\(proxyPort)/redis-ui/"
@@ -54,6 +54,8 @@ enum RuntimeAdapterConstants {
         static let optionNetwork = "--network"
         static let optionProxyPort = "--proxy-port"
         static let optionVitalFilesDirectory = "--vital-files-dir"
+        static let optionVitalServerURL = "--vitalserver-url"
+        static let optionRemoteConsoleURL = "--remote-console-url"
         static let optionPublicHost = "--public-host"
         static let optionPublicPort = "--public-port"
         static let optionStartOnBoot = "--start-on-boot"
@@ -84,10 +86,13 @@ enum RuntimeAdapterConstants {
         static let managerApp = installed.managerApp.path
         static let installLog = installed.installLog.path
         static let productLogs = installed.productLogsDirectory.path
+        static let uninstallLog = "/private/tmp/tirosh-vitalserver-uninstall.log"
         static let runtimeLogs = installed.centralRuntimeLogsDirectory.path
         static let runtimeLogSources = installed.logsDirectory.path
         static let guestLogs = installed.centralGuestLogsDirectory.path
         static let guestRunDirectory = installed.guestRunDirectory.path
+        static let guestObservability = installed.centralGuestObservabilityDirectory.path
+        static let guestObservabilitySource = installed.guestObservabilityDirectory.path
         static let logArchive = installed.logArchiveDirectory.path
         static let commandLog = installed.centralCommandLog.path
         static let containerLogs = installed.centralContainerLogs.path

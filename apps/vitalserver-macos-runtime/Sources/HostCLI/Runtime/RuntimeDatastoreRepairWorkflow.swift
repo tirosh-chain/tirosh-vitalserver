@@ -12,11 +12,11 @@ struct RuntimeDatastoreRepairWorkflowOperations {
     let removePreviousResult: () throws -> Void
     let writeRequest: (RuntimeDatastoreRepairRequest) throws -> Void
     let isVMServiceLoaded: () -> Bool
-    let startVMService: () -> Void
+    let startVMService: () throws -> Void
     let restartVMService: () throws -> Void
     let loadResult: () -> RuntimeGuestDocumentLoadResult<DatastoreRepairResultDocument>
-    let restartProxyService: () -> Void
-    let restartWatchdogService: () -> Void
+    let restartProxyService: () throws -> Void
+    let restartWatchdogService: () throws -> Void
     let waitForHealth: (RuntimeServiceRestartPolicy) throws -> Void
     let writeStatus: (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void
     let requestID: () -> String

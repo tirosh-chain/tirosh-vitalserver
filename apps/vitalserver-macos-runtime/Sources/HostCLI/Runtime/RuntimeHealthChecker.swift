@@ -41,15 +41,14 @@ struct RuntimeHealthChecker {
     func snapshot() -> RuntimeHealthSnapshot {
         let guestRuntimeState = guestRuntimeStateObservationReader().read()
         let vmLifecycle = vmLifecycleObservation()
-        let guestState = guestRuntimeState.freshState
-        let vmIP = guestState?.vmIP
+        let guestRuntimeStateInput = guestRuntimeStateInput(guestRuntimeState)
         let proxyPortRead = installedProxyPortRead()
         let proxyPort = proxyPortRead.port
         let hostProxyHTTP = httpProber.statusCode(url: Constants.Runtime.proxyHealthURL(port: proxyPort))
         let redisUIHTTP = httpProber.statusCode(url: Constants.Runtime.redisUIHealthURL(port: proxyPort))
         let swaggerUIHTTP = httpProber.statusCode(url: Constants.Runtime.swaggerUIHealthURL(port: proxyPort))
-        let containerObservation = containerObservation(proxyPort: proxyPort, guestState: guestState)
-        let guestHTTPRead = guestHTTPStatus(guestState: guestState)
+        let containerObservation = containerObservation(proxyPort: proxyPort, guestRuntimeState: guestRuntimeState)
+        let vitalDBObservation = vitalDBObservation(guestRuntimeState)
 
         return RuntimeHealthEvaluator.evaluate(RuntimeHealthInput(
             vmExecutable: fileStore.isExecutableFile(atPath: Constants.InstallPaths.vmBin),
@@ -60,23 +59,20 @@ struct RuntimeHealthChecker {
             proxyService: launchdState(.proxy),
             watchdogService: launchdState(.watchdog),
             vmLifecycle: vmLifecycle.document,
-            vmIP: vmIP,
+            guestRuntimeState: guestRuntimeStateInput.state,
             proxyPort: proxyPort,
             hostProxyHTTP: hostProxyHTTP,
-            guestHTTP: guestHTTPRead.status,
-            guestRuntimeStatePresent: guestRuntimeState.isPresent,
-            guestRuntimeStateFresh: guestRuntimeState.isFresh,
             redisUIHTTP: redisUIHTTP,
             swaggerUIHTTP: swaggerUIHTTP,
-            containerObservation: containerObservation,
-            vitalDBObservation: guestState?.vitalDBObservation,
-            reportedVMErrors: [],
+            containerObservation: .loaded(containerObservation),
+            vitalDBObservation: vitalDBObservation,
+            reportedVMErrors: guestDiskHealthErrors(guestRuntimeState.freshState),
             configurationFailureReasons: proxyPortRead.failureReasons
                 + guestRuntimeState.failureReasons
                 + vmLifecycle.failureReasons
-                + guestHTTPRead.failureReasons,
+                + guestRuntimeStateInput.failureReasons,
             proxyPortFailureReasons: proxyPortFailureReasons(port: proxyPort),
-            guestBootstrapFailureReason: guestBootstrapFailureReason(guestState: guestRuntimeState.loadedState)
+            guestBootstrapAssessment: guestBootstrapAssessment(guestState: guestRuntimeState.loadedState)
         ))
     }
 
@@ -162,37 +158,80 @@ struct RuntimeHealthChecker {
         }
     }
 
-    func readTrimmed(_ url: URL) -> String? {
-        guard let value = try? fileStore.readUTF8Text(url)
-            .trimmingCharacters(in: .whitespacesAndNewlines),
-            !value.isEmpty
-        else {
-            return nil
+    private func guestRuntimeStateInput(
+        _ observation: RuntimeGuestRuntimeStateObservation
+    ) -> RuntimeGuestRuntimeStateInputReadResult {
+        if let guestState = observation.freshState {
+            let guestHTTP = guestHTTPStatus(guestState)
+            return RuntimeGuestRuntimeStateInputReadResult(
+                state: .fresh(vmIP: nonEmpty(guestState.vmIP), guestHTTP: guestHTTP.status),
+                failureReasons: guestHTTP.failureReasons
+            )
         }
-        return value
+        if observation.failureReasons.contains(.guestRuntimeStateInvalid) {
+            return RuntimeGuestRuntimeStateInputReadResult(state: .invalid, failureReasons: [])
+        }
+        if observation.loadedState != nil {
+            return RuntimeGuestRuntimeStateInputReadResult(state: .stale, failureReasons: [])
+        }
+        return RuntimeGuestRuntimeStateInputReadResult(state: .missing, failureReasons: [])
     }
 
-    private func guestHTTPStatus(guestState: GuestRuntimeStateDocument?) -> RuntimeGuestHTTPReadResult {
-        if let guestHTTP = guestState?.guestHTTP, !guestHTTP.isEmpty {
-            return RuntimeGuestHTTPReadResult(status: guestHTTP, failureReasons: [])
-        }
-        if guestState != nil {
+    private func guestHTTPStatus(_ guestState: GuestRuntimeStateDocument) -> RuntimeGuestHTTPReadResult {
+        guard let rawValue = nonEmpty(guestState.guestHTTP) else {
             return RuntimeGuestHTTPReadResult(
-                status: RuntimeHTTPStatusText.missingGuestHTTP,
+                status: .missing,
                 failureReasons: [.guestRuntimeStateInvalid]
             )
         }
-        return RuntimeGuestHTTPReadResult(status: RuntimeHTTPStatusText.missingVMIP, failureReasons: [])
+        if isSuccessfulHTTPStatus(rawValue)
+            || rawValue == RuntimeHTTPStatusText.bootstrapPending
+            || rawValue == RuntimeHTTPStatusText.missingVMIP {
+            return RuntimeGuestHTTPReadResult(status: .reportedStatus(rawValue), failureReasons: [])
+        }
+        if Int(rawValue) != nil {
+            return RuntimeGuestHTTPReadResult(status: .reportedStatus(rawValue), failureReasons: [])
+        }
+        return RuntimeGuestHTTPReadResult(status: .probeFailed(rawValue), failureReasons: [])
     }
 
-    private func guestBootstrapFailureReason(guestState: GuestRuntimeStateDocument?) -> RuntimeFailureReason? {
-        if case .loaded(let bootstrapResult) = guestGateway.loadBootstrapResultDocument() {
-            guard bootstrapResultBelongsToCurrentBoot(bootstrapResult, guestState: guestState) else {
-                return nil
-            }
-            return GuestBootstrapEvaluator.failureReason(bootstrapResult)
+    private func guestDiskHealthErrors(_ guestState: GuestRuntimeStateDocument?) -> [RuntimeVMError] {
+        guard let diskHealth = guestState?.diskHealth else {
+            return []
         }
-        return nil
+        var errors: [RuntimeVMError] = []
+        if diskHealth.rootFilesystemReadOnly == true {
+            errors.append(.guestFilesystemReadOnly)
+        }
+        for line in diskHealth.kernelErrors ?? [] {
+            let lowercased = line.lowercased()
+            if lowercased.contains("buffer i/o error")
+                || lowercased.contains(" i/o error")
+                || lowercased.contains("input/output error") {
+                errors.append(.guestDiskIO)
+            }
+            if lowercased.contains("ext4-fs error")
+                || lowercased.contains("checksum invalid")
+                || lowercased.contains("metadata checksum")
+                || lowercased.contains("remounting filesystem read-only") {
+                errors.append(.guestFilesystemError)
+            }
+        }
+        return errors
+    }
+
+    private func guestBootstrapAssessment(guestState: GuestRuntimeStateDocument?) -> GuestBootstrapAssessment {
+        switch guestGateway.loadBootstrapResultDocument() {
+        case .missing:
+            return .missing
+        case .failed(let message):
+            return .unavailable(message)
+        case .loaded(let bootstrapResult):
+            guard bootstrapResultBelongsToCurrentBoot(bootstrapResult, guestState: guestState) else {
+                return .notCurrentBoot
+            }
+            return GuestBootstrapEvaluator.assess(bootstrapResult)
+        }
     }
 
     private func bootstrapResultBelongsToCurrentBoot(
@@ -266,8 +305,13 @@ struct RuntimeHealthChecker {
                 return []
             }
             return [.proxyPortInUse(port: port, listeners: joined)]
-        case .unavailable:
+        case .missing, .empty:
             return [.hostProxyListenerMismatch(port: port, listeners: joined)]
+        case .readFailed:
+            return [
+                .hostProxyConfigInvalid,
+                .hostProxyListenerMismatch(port: port, listeners: joined),
+            ]
         }
     }
 
@@ -278,26 +322,44 @@ struct RuntimeHealthChecker {
         return code >= 200 && code < 300
     }
 
-    private func readInstalledProxyNginxPID() -> RuntimeProxyNginxPIDReadResult {
-        guard let pid = readTrimmed(installedPaths.proxyNginxPID) else {
-            return .unavailable
+    func readInstalledProxyNginxPID() -> RuntimeProxyNginxPIDReadResult {
+        let url = installedPaths.proxyNginxPID
+        guard fileStore.fileExists(url) else {
+            return .missing
         }
-        return .loaded(pid)
+        do {
+            let value = try fileStore.readUTF8Text(url)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !value.isEmpty else {
+                return .empty
+            }
+            return .loaded(value)
+        } catch {
+            return .readFailed(String(describing: error))
+        }
     }
 
-    private func containerObservation(proxyPort: Int, guestState: GuestRuntimeStateDocument?) -> RuntimeContainerObservation {
+    private func containerObservation(
+        proxyPort: Int,
+        guestRuntimeState: RuntimeGuestRuntimeStateObservation
+    ) -> RuntimeContainerObservation {
         let auditProxyStatus = auditProxyStatus(port: proxyPort)
         let containerLogsMetadata = containerLogsMetadata()
+        let runtimeStateFileModifiedAt = runtimeStateFileModifiedAt(guestRuntimeState)
+        let composeServices = composeServices(guestRuntimeState)
         return RuntimeContainerObservation(
             auditProxyHTTP: auditProxyStatus.httpStatus,
             auditProxyStatus: auditProxyStatus.document,
-            runtimeStateUpdatedAt: guestState?.updatedAt,
-            runtimeStateFileUpdatedAt: fileModifiedAt(installedPaths.runtimeState),
+            auditProxyStatusReadError: auditProxyStatus.readError,
+            runtimeStateUpdatedAt: guestRuntimeState.freshState?.updatedAt,
+            runtimeStateFileUpdatedAt: runtimeStateFileModifiedAt.updatedAt,
+            runtimeStateFileMetadataError: runtimeStateFileModifiedAt.readError,
             containerLogsPresent: containerLogsMetadata.present,
             containerLogsBytes: containerLogsMetadata.bytes,
             containerLogsUpdatedAt: containerLogsMetadata.updatedAt,
             containerLogsMetadataError: containerLogsMetadata.error,
-            composeServices: guestState?.containerServices ?? []
+            composeServices: composeServices.services,
+            composeServicesReadError: composeServices.readError
         )
     }
 
@@ -332,26 +394,103 @@ struct RuntimeHealthChecker {
         )
     }
 
-    private func fileModifiedAt(_ url: URL) -> String? {
-        guard let date = try? fileStore.modificationDate(url) else {
-            return nil
+    private func fileModifiedAt(_ url: URL) -> RuntimeFileModifiedAtReadResult {
+        do {
+            return RuntimeFileModifiedAtReadResult(
+                updatedAt: ISO8601DateFormatter().string(from: try fileStore.modificationDate(url)),
+                readError: nil
+            )
+        } catch {
+            return RuntimeFileModifiedAtReadResult(
+                updatedAt: nil,
+                readError: "mtime-read-failed"
+            )
         }
-        return ISO8601DateFormatter().string(from: date)
     }
 
-    private func auditProxyStatus(port: Int) -> (httpStatus: String, document: RuntimeAuditProxyStatusDocument?) {
+    private func runtimeStateFileModifiedAt(
+        _ observation: RuntimeGuestRuntimeStateObservation
+    ) -> RuntimeFileModifiedAtReadResult {
+        guard observation.isPresent else {
+            return RuntimeFileModifiedAtReadResult(updatedAt: nil, readError: nil)
+        }
+        return fileModifiedAt(installedPaths.runtimeState)
+    }
+
+    private func composeServices(
+        _ observation: RuntimeGuestRuntimeStateObservation
+    ) -> RuntimeComposeServicesReadResult {
+        if let guestState = observation.freshState {
+            guard let services = guestState.containerServices else {
+                return RuntimeComposeServicesReadResult(
+                    services: [],
+                    readError: "container-services-missing"
+                )
+            }
+            return RuntimeComposeServicesReadResult(
+                services: services,
+                readError: nil
+            )
+        }
+        if observation.failureReasons.contains(.guestRuntimeStateInvalid) {
+            return RuntimeComposeServicesReadResult(
+                services: [],
+                readError: "guest-runtime-state-invalid"
+            )
+        }
+        if observation.loadedState != nil {
+            return RuntimeComposeServicesReadResult(
+                services: [],
+                readError: "guest-runtime-state-stale"
+            )
+        }
+        return RuntimeComposeServicesReadResult(
+            services: [],
+            readError: "guest-runtime-state-missing"
+        )
+    }
+
+    private func vitalDBObservation(
+        _ observation: RuntimeGuestRuntimeStateObservation
+    ) -> RuntimeObservationInput<VitalDBObservationDocument> {
+        guard let guestState = observation.freshState else {
+            return .notReported
+        }
+        guard let vitalDBObservation = guestState.vitalDBObservation else {
+            return .missing
+        }
+        return .loaded(vitalDBObservation)
+    }
+
+    private func auditProxyStatus(port: Int) -> RuntimeAuditProxyStatusReadResult {
         let result = commandRunner.run(
             Constants.Commands.curl,
             arguments: ["-fsS", "--max-time", "5", Constants.Runtime.auditProxyStatusURL(port: port)]
         )
         guard result.exitCode == 0 else {
-            return ("failed", nil)
+            return RuntimeAuditProxyStatusReadResult(
+                httpStatus: "failed",
+                document: nil,
+                readError: "command-failed-\(result.exitCode)"
+            )
         }
-        guard let data = result.stdout.data(using: .utf8),
-              let document = try? JSONDecoder().decode(RuntimeAuditProxyStatusDocument.self, from: data) else {
-            return (RuntimeHTTPStatusText.invalidResponse, nil)
+        do {
+            let document = try JSONDecoder().decode(
+                RuntimeAuditProxyStatusDocument.self,
+                from: Data(result.stdout.utf8)
+            )
+            return RuntimeAuditProxyStatusReadResult(
+                httpStatus: "200",
+                document: document,
+                readError: nil
+            )
+        } catch {
+            return RuntimeAuditProxyStatusReadResult(
+                httpStatus: RuntimeHTTPStatusText.invalidResponse,
+                document: nil,
+                readError: "decode-failed"
+            )
         }
-        return ("200", document)
     }
 }
 
@@ -361,13 +500,34 @@ private struct RuntimeProxyPortReadResult {
 }
 
 private struct RuntimeGuestHTTPReadResult {
-    let status: String
+    let status: RuntimeGuestHTTPStatusInput
     let failureReasons: [RuntimeFailureReason]
+}
+
+private struct RuntimeGuestRuntimeStateInputReadResult {
+    let state: RuntimeGuestRuntimeStateInput
+    let failureReasons: [RuntimeFailureReason]
+}
+
+private struct RuntimeAuditProxyStatusReadResult {
+    let httpStatus: String
+    let document: RuntimeAuditProxyStatusDocument?
+    let readError: String?
 }
 
 private struct RuntimeVMLifecycleObservation {
     let document: RuntimeVMLifecycleDocument?
     let failureReasons: [RuntimeFailureReason]
+}
+
+private struct RuntimeFileModifiedAtReadResult {
+    let updatedAt: String?
+    let readError: String?
+}
+
+private struct RuntimeComposeServicesReadResult {
+    let services: [RuntimeContainerServiceObservation]
+    let readError: String?
 }
 
 private struct RuntimeContainerLogsMetadata {
@@ -377,7 +537,16 @@ private struct RuntimeContainerLogsMetadata {
     let error: String?
 }
 
-private enum RuntimeProxyNginxPIDReadResult {
+enum RuntimeProxyNginxPIDReadResult: Equatable {
     case loaded(String)
-    case unavailable
+    case missing
+    case empty
+    case readFailed(String)
+
+    var loadedPID: String? {
+        if case .loaded(let value) = self {
+            return value
+        }
+        return nil
+    }
 }

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 from tirosh_vitalserver.devtools.adapters.toolchain.gzip_compression import (
     compression_threads,
     gzip_file,
@@ -14,6 +17,7 @@ def run_rootfs_base(input: RootfsBaseInput) -> int:
 
     if not source.is_file() or source.stat().st_size == 0:
         raise SystemExit(f"missing rootfs source: {source}")
+    require_stopped_lifecycle(source)
     if (
         output.exists()
         and not force
@@ -28,3 +32,26 @@ def run_rootfs_base(input: RootfsBaseInput) -> int:
     gzip_file(source, output, threads=threads)
     print(f"rootfs base is ready: {output}")
     return 0
+
+
+def require_stopped_lifecycle(source: Path) -> None:
+    runtime_dir = source.parent
+    vm_home = runtime_dir.parent
+    lifecycle = vm_home / "run" / "vm-lifecycle.json"
+    if not lifecycle.is_file():
+        raise SystemExit(
+            "error: rootfs source VM lifecycle is missing; stop the golden VM "
+            f"cleanly before compressing rootfs: {lifecycle}"
+        )
+    try:
+        document = json.loads(lifecycle.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise SystemExit(
+            f"error: rootfs source VM lifecycle is unreadable: {lifecycle}: {error}"
+        ) from error
+    state = document.get("state")
+    if state != "stopped":
+        raise SystemExit(
+            "error: rootfs source VM lifecycle is not stopped; refusing to "
+            f"compress a VM disk with unproven shutdown state: state={state}"
+        )

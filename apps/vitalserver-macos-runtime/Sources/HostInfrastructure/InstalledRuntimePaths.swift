@@ -3,7 +3,7 @@ import Core
 import Contracts
 
 public struct InstalledRuntimePaths: Equatable, Sendable {
-    public static let defaultProductRoot = URL(fileURLWithPath: "/Library/Application Support/TiroshVitalServer")
+    public static let defaultProductRoot = URL(fileURLWithPath: "/Library/Application Support/VitalServerHelper")
     public static let defaultInstalled = InstalledRuntimePaths(productRoot: defaultProductRoot)
 
     public let productRoot: URL
@@ -42,6 +42,10 @@ public struct InstalledRuntimePaths: Equatable, Sendable {
         dataDirectory.appendingPathComponent("run")
     }
 
+    public var guestObservabilityDirectory: URL {
+        guestRunDirectory.appendingPathComponent("guest-observability")
+    }
+
     public var hostRunDirectory: URL {
         runtimeHome.appendingPathComponent("run")
     }
@@ -64,6 +68,10 @@ public struct InstalledRuntimePaths: Equatable, Sendable {
 
     public var centralGuestLogsDirectory: URL {
         productLogsDirectory.appendingPathComponent("guest")
+    }
+
+    public var centralGuestObservabilityDirectory: URL {
+        centralGuestLogsDirectory.appendingPathComponent("guest-observability")
     }
 
     public var logArchiveDirectory: URL {
@@ -124,6 +132,14 @@ public struct InstalledRuntimePaths: Equatable, Sendable {
 
     public var runtimeObservabilityDB: URL {
         statusDirectory.appendingPathComponent(RuntimeFileNames.runtimeObservabilityDB)
+    }
+
+    public var runtimeUninstallState: URL {
+        URL(fileURLWithPath: "/private/tmp/\(RuntimeFileNames.runtimeUninstallState)")
+    }
+
+    public var runtimeInstallState: URL {
+        URL(fileURLWithPath: "/private/tmp/\(RuntimeFileNames.runtimeInstallState)")
     }
 
     public var vmIPFile: URL {
@@ -235,7 +251,7 @@ public struct InstalledRuntimePaths: Equatable, Sendable {
     }
 
     public var proxyLaunchDaemon: URL {
-        URL(fileURLWithPath: "/Library/LaunchDaemons/com.tirosh.vitalserver-proxy.plist")
+        URL(fileURLWithPath: "/Library/LaunchDaemons/ai.tirosh.vitalserver.helper.proxy.plist")
     }
 
     public var managerCommandLog: URL {

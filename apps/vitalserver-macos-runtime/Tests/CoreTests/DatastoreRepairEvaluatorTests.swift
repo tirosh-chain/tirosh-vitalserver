@@ -3,10 +3,10 @@ import Contracts
 import XCTest
 
 final class DatastoreRepairEvaluatorTests: XCTestCase {
-    func testMissingResultWaits() {
+    func testMissingResultIsDistinctFromPendingWorkerState() {
         XCTAssertEqual(
             DatastoreRepairEvaluator.evaluate(nil),
-            .wait(message: "waiting for datastore repair guest worker")
+            .missing(message: "waiting for datastore repair guest worker")
         )
     }
 

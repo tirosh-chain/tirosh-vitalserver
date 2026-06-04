@@ -11,6 +11,7 @@ struct RuntimeApplyBundlePreflightRunner {
     var requireFreeSpace: (URL, UInt64, RuntimeOperation) throws -> Void
     var checkCompatibility: (UpdateBundleManifest) throws -> Void
     var serviceRestartPolicy: () -> RuntimeServiceRestartPolicy
+    var runtimeHealthSnapshot: () -> RuntimeHealthSnapshot
     var requireGuestCapability: (RuntimeGuestCapabilityRequirement) throws -> Void
     var createBackup: (String) throws -> URL
     var directorySize: (URL) throws -> UInt64
@@ -28,25 +29,28 @@ struct RuntimeApplyBundlePreflightRunner {
             ? stagedBundle.appendingPathComponent(Constants.Artifacts.rootfsBase)
             : nil
         let stagedBundleSize = try directorySize(stagedBundle)
-        var installedRootfsSize: UInt64?
-        var incomingRootfsSize: UInt64?
+        let rootfsStorage: RuntimeUpdateRootfsStorageInput
         log("bundle apply storage preflight stagedBundle=\(formatBytes(stagedBundleSize))")
         if let stagedRootfs {
             guard fileExists(stagedRootfs) else {
                 throw LauncherError.missingFile(stagedRootfs.path)
             }
-            installedRootfsSize = try fileSize(rootfsBase)
-            incomingRootfsSize = try fileSize(stagedRootfs)
+            let installedRootfsSize = try fileSize(rootfsBase)
+            let incomingRootfsSize = try fileSize(stagedRootfs)
+            rootfsStorage = .replacing(
+                installedRootfsBytes: installedRootfsSize,
+                incomingRootfsBytes: incomingRootfsSize
+            )
             log(
-                "bundle apply storage preflight installedRootfs=\(formatBytes(installedRootfsSize ?? 0)) incomingRootfs=\(formatBytes(incomingRootfsSize ?? 0))"
+                "bundle apply storage preflight installedRootfs=\(formatBytes(installedRootfsSize)) incomingRootfs=\(formatBytes(incomingRootfsSize))"
             )
         } else {
+            rootfsStorage = .unchanged
             log("bundle apply storage preflight rootfsBase=unchanged")
         }
         let storageRequirement = RuntimeUpdatePreflightPolicy.storageRequirement(
             stagedBundleBytes: stagedBundleSize,
-            installedRootfsBytes: installedRootfsSize,
-            incomingRootfsBytes: incomingRootfsSize,
+            rootfsStorage: rootfsStorage,
             marginBytes: Constants.Runtime.updateFreeSpaceMarginBytes
         )
         try createDirectory(backupsDirectory, true)
@@ -58,9 +62,10 @@ struct RuntimeApplyBundlePreflightRunner {
 
         let restartPolicy = serviceRestartPolicy()
         log(
-            "runtime services before update vm=\(restartPolicy.restartVM ? "loaded" : "not-loaded") proxy=\(restartPolicy.restartProxy ? "loaded" : "not-loaded") watchdog=\(restartPolicy.restartWatchdog ? "loaded" : "not-loaded")"
+            "runtime services before update vm=\(restartPolicy.restartVM ? "loaded" : "not-loaded") guestLogSync=\(restartPolicy.restartGuestLogSync ? "loaded" : "not-loaded") proxy=\(restartPolicy.restartProxy ? "loaded" : "not-loaded") watchdog=\(restartPolicy.restartWatchdog ? "loaded" : "not-loaded")"
         )
         if restartPolicy.restartVM {
+            try requireRuntimeDiskHealthAllowsUpdate()
             try requireGuestCapability(.prepareUpdateShutdown)
         }
         if manifest.artifacts.contains(where: { $0.type == .guestDeploy }) {
@@ -82,5 +87,17 @@ struct RuntimeApplyBundlePreflightRunner {
     private func formatBytes(_ bytes: UInt64) -> String {
         let mib = Double(bytes) / 1_048_576
         return String(format: "%.1f MiB", max(mib, 0))
+    }
+
+    private func requireRuntimeDiskHealthAllowsUpdate() throws {
+        let snapshot = runtimeHealthSnapshot()
+        let blockers = RuntimeUpdatePreflightPolicy.blockingGuestStorageErrors(snapshot.vmErrors)
+        guard blockers.isEmpty else {
+            let codes = blockers.map(\.rawValue).joined(separator: ",")
+            log("bundle apply blocked by VM guest storage health errors=\(codes)")
+            throw LauncherError.runtimeOperationFailed(
+                "VM disk health blocks update; run Repair VM Disk before applying update. errors=\(codes)"
+            )
+        }
     }
 }

@@ -5,17 +5,16 @@ import RuntimeControl
 import XCTest
 
 final class RuntimeObservabilityReaderTests: XCTestCase {
-    func testProtocolDefaultObservationSnapshotWrapsOptionalObservation() {
-        let reader = DefaultSnapshotObservabilityReader(observation: VitalDBObservationDocument(
+    func testProtocolDefaultObservationProjectionUsesSnapshot() {
+        let reader = DefaultSnapshotObservabilityReader(snapshot: .loaded(VitalDBObservationDocument(
             observedAt: "2026-05-31T00:00:00Z",
             ready: true,
             recorderOnlineThresholdSeconds: 60
-        ))
+        )))
 
-        let snapshot = reader.loadVitalDBObservationSnapshot()
+        let observation = reader.loadVitalDBObservation()
 
-        XCTAssertEqual(snapshot.state, .loaded)
-        XCTAssertEqual(snapshot.observation?.observedAt, "2026-05-31T00:00:00Z")
+        XCTAssertEqual(observation?.observedAt, "2026-05-31T00:00:00Z")
     }
 
     func testLoadRuntimeEventsLimitDelegatesToQueryReader() throws {
@@ -26,7 +25,7 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         try (encoder.encode(event) + Data("\n".utf8)).write(to: runtimeEvents)
-        let reader = SystemRuntimeObservabilityReader(
+        let reader = SystemRuntimeObservabilityReader.live(
             paths: RuntimePaths(
                 runtimeEvents: runtimeEvents.path,
                 runtimeObservabilityDB: directory.appendingPathComponent(RuntimeFileNames.runtimeObservabilityDB).path
@@ -49,7 +48,7 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
             ready: true,
             recorderOnlineThresholdSeconds: 60
         ))
-        let reader = SystemRuntimeObservabilityReader(paths: RuntimePaths(
+        let reader = SystemRuntimeObservabilityReader.live(paths: RuntimePaths(
             runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
             runtimeStatus: directory.appendingPathComponent(RuntimeFileNames.runtimeStatus).path,
             runtimeObservabilityDB: database.path
@@ -85,7 +84,7 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
                 ]
             )
         )
-        let reader = SystemRuntimeObservabilityReader(paths: RuntimePaths(
+        let reader = SystemRuntimeObservabilityReader.live(paths: RuntimePaths(
             runtimeState: runtimeState.path,
             runtimeObservabilityDB: database.path
         ))
@@ -95,6 +94,54 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
         XCTAssertEqual(snapshot.state, .loaded)
         XCTAssertEqual(snapshot.observation?.observedAt, "2026-05-31T00:00:05Z")
         XCTAssertEqual(snapshot.observation?.recorders.first?.stale, true)
+    }
+
+    func testLoadVitalDBObservationReportsMissingRuntimeStateWhenUsingStatusObservation() throws {
+        let directory = try temporaryDirectory()
+        defer { cleanup(directory) }
+        let database = directory.appendingPathComponent(RuntimeFileNames.runtimeObservabilityDB)
+        let runtimeStatus = directory.appendingPathComponent(RuntimeFileNames.runtimeStatus)
+        try writeRuntimeStatus(
+            to: runtimeStatus,
+            observation: VitalDBObservationDocument(
+                observedAt: "2026-05-31T00:00:10Z",
+                ready: true,
+                recorderOnlineThresholdSeconds: 60,
+                recorders: [
+                    VitalDBRecorderObservation(vrcode: "VR_STATUS", online: true),
+                ]
+            )
+        )
+        let reader = SystemRuntimeObservabilityReader.live(paths: RuntimePaths(
+            runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
+            runtimeStatus: runtimeStatus.path,
+            runtimeObservabilityDB: database.path
+        ))
+
+        let snapshot = reader.loadVitalDBObservationSnapshot()
+
+        XCTAssertEqual(snapshot.state, .loaded)
+        XCTAssertEqual(snapshot.observation?.observedAt, "2026-05-31T00:00:10Z")
+        XCTAssertTrue(snapshot.readError?.contains("runtimeState=missing") == true)
+        XCTAssertFalse(snapshot.readError?.contains("runtimeStatus=missing") == true)
+    }
+
+    func testLoadVitalDBObservationReportsMissingCurrentObservationSourcesWhenProjectionIsEmpty() throws {
+        let directory = try temporaryDirectory()
+        defer { cleanup(directory) }
+        let database = directory.appendingPathComponent(RuntimeFileNames.runtimeObservabilityDB)
+        let reader = SystemRuntimeObservabilityReader.live(paths: RuntimePaths(
+            runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
+            runtimeStatus: directory.appendingPathComponent(RuntimeFileNames.runtimeStatus).path,
+            runtimeObservabilityDB: database.path
+        ))
+
+        let snapshot = reader.loadVitalDBObservationSnapshot()
+
+        XCTAssertEqual(snapshot.state, .failed)
+        XCTAssertNil(snapshot.observation)
+        XCTAssertTrue(snapshot.readError?.contains("runtimeState=missing") == true)
+        XCTAssertTrue(snapshot.readError?.contains("runtimeStatus=missing") == true)
     }
 
     func testLoadVitalDBRecordersPreservesProjectionReadFailuresWithStatusProviderFallback() {
@@ -118,6 +165,8 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
         XCTAssertEqual(history.updatedAt, "2026-05-31T00:01:00Z")
         XCTAssertEqual(history.recorders.map(\.vrcode), ["VR_STATUS"])
         XCTAssertEqual(history.activityHistory.source, .unavailable)
+        XCTAssertTrue(history.readError?.contains("observations=") == true)
+        XCTAssertTrue(history.readError?.contains("activityBuckets=") == true)
         XCTAssertTrue(history.activityHistory.readError?.contains("observations=") == true)
         XCTAssertTrue(history.activityHistory.readError?.contains("activityBuckets=") == true)
     }
@@ -158,7 +207,7 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
                 ]
             )
         )
-        let reader = SystemRuntimeObservabilityReader(paths: RuntimePaths(
+        let reader = SystemRuntimeObservabilityReader.live(paths: RuntimePaths(
             runtimeState: runtimeState.path,
             runtimeObservabilityDB: database.path
         ))
@@ -187,7 +236,7 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
             ]
         ))
         try Data("not-json".utf8).write(to: runtimeState)
-        let reader = SystemRuntimeObservabilityReader(paths: RuntimePaths(
+        let reader = SystemRuntimeObservabilityReader.live(paths: RuntimePaths(
             runtimeState: runtimeState.path,
             runtimeStatus: directory.appendingPathComponent(RuntimeFileNames.runtimeStatus).path,
             runtimeObservabilityDB: database.path
@@ -198,6 +247,7 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
         XCTAssertEqual(history.updatedAt, "2026-05-31T00:00:00Z")
         XCTAssertEqual(history.recorders.map(\.vrcode), ["VR_PROJECTED"])
         XCTAssertEqual(history.activityHistory.source, .sqliteProjection)
+        XCTAssertTrue(history.readError?.contains("currentObservation=runtimeState=") == true)
         XCTAssertTrue(history.activityHistory.readError?.contains("currentObservation=runtimeState=") == true)
     }
 
@@ -205,7 +255,7 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
         let directory = try temporaryDirectory()
         defer { cleanup(directory) }
         let database = directory.appendingPathComponent(RuntimeFileNames.runtimeObservabilityDB)
-        let reader = SystemRuntimeObservabilityReader(
+        let reader = SystemRuntimeObservabilityReader.live(
             paths: RuntimePaths(
                 runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
                 runtimeStatus: directory.appendingPathComponent(RuntimeFileNames.runtimeStatus).path,
@@ -218,7 +268,10 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
         XCTAssertNil(history.updatedAt)
         XCTAssertEqual(history.recorders, [])
         XCTAssertEqual(history.activityHistory.source, .unavailable)
-        XCTAssertNotNil(history.activityHistory.readError)
+        XCTAssertTrue(history.readError?.contains("runtimeState=missing") == true)
+        XCTAssertTrue(history.readError?.contains("runtimeStatus=missing") == true)
+        XCTAssertTrue(history.activityHistory.readError?.contains("runtimeState=missing") == true)
+        XCTAssertTrue(history.activityHistory.readError?.contains("runtimeStatus=missing") == true)
     }
 
     func testLoadVitalDBRelationshipsProjectsAssignmentsAndRelationshipEvents() throws {
@@ -242,7 +295,7 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
                 VitalDBBedObservation(bedID: "bed-d", name: "D", vrcode: "VR_STALE", online: true),
             ]
         ))
-        let reader = SystemRuntimeObservabilityReader(paths: RuntimePaths(runtimeObservabilityDB: database.path))
+        let reader = SystemRuntimeObservabilityReader.live(paths: RuntimePaths(runtimeObservabilityDB: database.path))
 
         let history = reader.loadVitalDBRelationships()
 
@@ -270,7 +323,7 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
             id: id,
             eventType: .statusChanged,
             timestamp: timestamp,
-            product: "TiroshVitalServer",
+            product: "VitalServerHelper",
             status: .healthy,
             previousStatus: nil,
             operation: .health,
@@ -297,10 +350,44 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
         encoder.outputFormatting = [.sortedKeys]
         try encoder.encode(document).write(to: url)
     }
+
+    private func writeRuntimeStatus(
+        to url: URL,
+        observation: VitalDBObservationDocument
+    ) throws {
+        let document = RuntimeStatusDocument(
+            schemaVersion: 2,
+            product: "VitalServerHelper",
+            status: .healthy,
+            operation: .health,
+            message: "ok",
+            updatedAt: "2026-05-31T00:00:10Z",
+            productRoot: "/tmp/product",
+            runtimeHome: "/tmp/runtime",
+            runtimeVersion: "1.0.0",
+            vmService: .loaded,
+            proxyService: .loaded,
+            watchdogService: .loaded,
+            vmIP: "192.168.64.33",
+            proxyPort: 19090,
+            hostProxyHTTP: "200",
+            guestHTTP: "200",
+            redisUIHTTP: nil,
+            swaggerUIHTTP: nil,
+            rootfsBase: .present,
+            vmDisk: .present,
+            failureReasons: [],
+            latestBackup: nil,
+            vitalDBObservation: observation
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        try encoder.encode(document).write(to: url)
+    }
 }
 
 private struct DefaultSnapshotObservabilityReader: RuntimeObservabilityReading {
-    let observation: VitalDBObservationDocument?
+    let snapshot: RuntimeVitalDBObservationSnapshot
 
     func loadRuntimeEvents(limit: Int) -> RuntimeEventHistory {
         RuntimeEventHistory(events: [])
@@ -310,8 +397,8 @@ private struct DefaultSnapshotObservabilityReader: RuntimeObservabilityReading {
         RuntimeEventHistory(events: [])
     }
 
-    func loadVitalDBObservation() -> VitalDBObservationDocument? {
-        observation
+    func loadVitalDBObservationSnapshot() -> RuntimeVitalDBObservationSnapshot {
+        snapshot
     }
 
     func loadVitalDBRecorders() -> RuntimeVitalRecorderHistory {

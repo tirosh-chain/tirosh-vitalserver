@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { useConsoleGateway } from "@/console/gatewayContext";
+import { useRuntimeControlGateway } from "@/console/runtimeControlGatewayContext";
 import { consoleQueryKeys } from "@/console/queryKeys";
 import {
   backupRequest,
@@ -29,19 +29,19 @@ import {
 } from "@/domain/runtime-control/contracts/schemas/runtimeControlRequestSchemas";
 
 export function useRuntimeOverview() {
-  const consoleGateway = useConsoleGateway();
+  const runtimeControlGateway = useRuntimeControlGateway();
   return useQuery({
     queryKey: consoleQueryKeys.overview,
-    queryFn: () => consoleGateway.getOverview(),
+    queryFn: () => runtimeControlGateway.getOverview(),
     refetchInterval: 2_000
   });
 }
 
 export function useRuntimeCapabilities() {
-  const consoleGateway = useConsoleGateway();
+  const runtimeControlGateway = useRuntimeControlGateway();
   return useQuery({
     queryKey: consoleQueryKeys.capabilities,
-    queryFn: () => consoleGateway.getCapabilities(),
+    queryFn: () => runtimeControlGateway.getCapabilities(),
     staleTime: 30_000
   });
 }
@@ -51,47 +51,47 @@ export function useRuntimeEvents(query: {
   type?: string;
   since?: string;
 }) {
-  const consoleGateway = useConsoleGateway();
+  const runtimeControlGateway = useRuntimeControlGateway();
   return useQuery({
     queryKey: consoleQueryKeys.events(query),
-    queryFn: () => consoleGateway.getRuntimeEvents(query),
+    queryFn: () => runtimeControlGateway.getRuntimeEvents(query),
     refetchInterval: 5_000
   });
 }
 
 export function useRuntimeSettings() {
-  const consoleGateway = useConsoleGateway();
+  const runtimeControlGateway = useRuntimeControlGateway();
   return useQuery({
     queryKey: consoleQueryKeys.settings,
-    queryFn: () => consoleGateway.getSettings(),
+    queryFn: () => runtimeControlGateway.getSettings(),
     refetchInterval: 5_000
   });
 }
 
 export function useApplyRuntimeSettings() {
-  const consoleGateway = useConsoleGateway();
+  const runtimeControlGateway = useRuntimeControlGateway();
   return useMutation({
     mutationFn: (request: RuntimeApplySettingsRequest) =>
-      consoleGateway.applySettings(
+      runtimeControlGateway.applySettings(
         parseConsoleRequest(runtimeApplySettingsRequestSchema, request)
       )
   });
 }
 
 export function useVitalDBRecorders() {
-  const consoleGateway = useConsoleGateway();
+  const runtimeControlGateway = useRuntimeControlGateway();
   return useQuery({
     queryKey: consoleQueryKeys.recorders,
-    queryFn: () => consoleGateway.getRecorders(),
+    queryFn: () => runtimeControlGateway.getRecorders(),
     refetchInterval: 5_000
   });
 }
 
 export function useVitalDBBeds() {
-  const consoleGateway = useConsoleGateway();
+  const runtimeControlGateway = useRuntimeControlGateway();
   return useQuery({
     queryKey: consoleQueryKeys.beds,
-    queryFn: () => consoleGateway.getBeds(),
+    queryFn: () => runtimeControlGateway.getBeds(),
     refetchInterval: 5_000
   });
 }
@@ -101,13 +101,13 @@ export function useHostLogs(request: {
   lineLimit: number;
   live: boolean;
 }) {
-  const consoleGateway = useConsoleGateway();
+  const runtimeControlGateway = useRuntimeControlGateway();
   return useQuery({
     queryKey: consoleQueryKeys.logs(request),
     queryFn: () =>
-      consoleGateway.readLogs(parseConsoleRequest(runtimeLogTextRequestSchema, {
+      runtimeControlGateway.readLogs(parseConsoleRequest(runtimeLogTextRequestSchema, {
         source: request.source,
-        helperMessage: "",
+        helperMessage: null,
         lineLimit: request.lineLimit
       })),
     refetchInterval: request.live ? 2_000 : false
@@ -115,10 +115,10 @@ export function useHostLogs(request: {
 }
 
 export function useExportHostLogs() {
-  const consoleGateway = useConsoleGateway();
+  const runtimeControlGateway = useRuntimeControlGateway();
   return useMutation({
     mutationFn: (destination: string) =>
-      consoleGateway.exportLogs(parseConsoleRequest(runtimeExportLogsRequestSchema, {
+      runtimeControlGateway.exportLogs(parseConsoleRequest(runtimeExportLogsRequestSchema, {
         destination: {
           kind: "localPath",
           value: destination
@@ -128,143 +128,143 @@ export function useExportHostLogs() {
 }
 
 export function useSummarizeUpdateBundle() {
-  const consoleGateway = useConsoleGateway();
+  const runtimeControlGateway = useRuntimeControlGateway();
   return useMutation({
     mutationFn: (path: string) =>
-      consoleGateway.summarizeUpdateBundle(updateBundleRequest(path))
+      runtimeControlGateway.summarizeUpdateBundle(updateBundleRequest(path))
   });
 }
 
 export function useVerifyUpdateBundle() {
-  const consoleGateway = useConsoleGateway();
+  const runtimeControlGateway = useRuntimeControlGateway();
   return useMutation({
     mutationFn: (path: string) =>
-      consoleGateway.verifyUpdateBundle(updateBundleRequest(path))
+      runtimeControlGateway.verifyUpdateBundle(updateBundleRequest(path))
   });
 }
 
 export function useApplyUpdateBundle() {
-  const consoleGateway = useConsoleGateway();
+  const runtimeControlGateway = useRuntimeControlGateway();
   return useMutation({
     mutationFn: (path: string) =>
-      consoleGateway.applyUpdateBundle(updateBundleRequest(path))
+      runtimeControlGateway.applyUpdateBundle(updateBundleRequest(path))
   });
 }
 
 export function useHostBackups() {
-  const consoleGateway = useConsoleGateway();
+  const runtimeControlGateway = useRuntimeControlGateway();
   return useQuery({
     queryKey: consoleQueryKeys.hostBackups,
-    queryFn: () => consoleGateway.listHostBackups(),
+    queryFn: () => runtimeControlGateway.listHostBackups(),
     refetchInterval: 10_000
   });
 }
 
 export function useRedisBackups() {
-  const consoleGateway = useConsoleGateway();
+  const runtimeControlGateway = useRuntimeControlGateway();
   return useQuery({
     queryKey: consoleQueryKeys.redisBackups,
-    queryFn: () => consoleGateway.listRedisBackups(),
+    queryFn: () => runtimeControlGateway.listRedisBackups(),
     refetchInterval: 10_000
   });
 }
 
 export function useRollbackBackup() {
-  const consoleGateway = useConsoleGateway();
+  const runtimeControlGateway = useRuntimeControlGateway();
   return useBackupMutation("host", (path) =>
-    consoleGateway.rollbackBackup(backupRequest(path))
+    runtimeControlGateway.rollbackBackup(backupRequest(path))
   );
 }
 
 export function useDeleteHostBackup() {
-  const consoleGateway = useConsoleGateway();
+  const runtimeControlGateway = useRuntimeControlGateway();
   return useBackupMutation("host", (path) =>
-    consoleGateway.deleteHostBackup(backupRequest(path))
+    runtimeControlGateway.deleteHostBackup(backupRequest(path))
   );
 }
 
 export function useCreateRedisBackup() {
-  const consoleGateway = useConsoleGateway();
-  return useBackupMutation("redis", () => consoleGateway.createRedisBackup());
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useBackupMutation("redis", () => runtimeControlGateway.createRedisBackup());
 }
 
 export function useRestoreRedisBackup() {
-  const consoleGateway = useConsoleGateway();
+  const runtimeControlGateway = useRuntimeControlGateway();
   return useBackupMutation("redis", (path) =>
-    consoleGateway.restoreRedisBackup(backupRequest(path))
+    runtimeControlGateway.restoreRedisBackup(backupRequest(path))
   );
 }
 
 export function useRepairRuntime() {
-  const consoleGateway = useConsoleGateway();
+  const runtimeControlGateway = useRuntimeControlGateway();
   return useMutation({
-    mutationFn: () => consoleGateway.repairRuntime()
+    mutationFn: () => runtimeControlGateway.repairRuntime()
   });
 }
 
 export function useRepairProxy() {
-  const consoleGateway = useConsoleGateway();
+  const runtimeControlGateway = useRuntimeControlGateway();
   return useMutation({
     mutationFn: (proxyPort: number) =>
-      consoleGateway.repairProxy(
+      runtimeControlGateway.repairProxy(
         parseConsoleRequest(runtimeRepairProxyRequestSchema, { proxyPort }).proxyPort
       )
   });
 }
 
 export function useRepairDatastore() {
-  const consoleGateway = useConsoleGateway();
+  const runtimeControlGateway = useRuntimeControlGateway();
   return useMutation({
-    mutationFn: () => consoleGateway.repairDatastore()
+    mutationFn: () => runtimeControlGateway.repairDatastore()
   });
 }
 
 export function useRepairVMDisk() {
-  const consoleGateway = useConsoleGateway();
+  const runtimeControlGateway = useRuntimeControlGateway();
   return useMutation({
-    mutationFn: () => consoleGateway.repairVMDisk()
+    mutationFn: () => runtimeControlGateway.repairVMDisk()
   });
 }
 
 export function useStartRuntimeServices() {
-  const consoleGateway = useConsoleGateway();
+  const runtimeControlGateway = useRuntimeControlGateway();
   return useMutation({
-    mutationFn: () => consoleGateway.startRuntimeServices()
+    mutationFn: () => runtimeControlGateway.startRuntimeServices()
   });
 }
 
 export function useStopRuntimeServices() {
-  const consoleGateway = useConsoleGateway();
+  const runtimeControlGateway = useRuntimeControlGateway();
   return useMutation({
-    mutationFn: () => consoleGateway.stopRuntimeServices()
+    mutationFn: () => runtimeControlGateway.stopRuntimeServices()
   });
 }
 
 export function useUninstallRuntime() {
-  const consoleGateway = useConsoleGateway();
+  const runtimeControlGateway = useRuntimeControlGateway();
   return useMutation({
     mutationFn: (clean: boolean) =>
-      consoleGateway.uninstallRuntime(uninstallRequest(clean))
+      runtimeControlGateway.uninstallRuntime(uninstallRequest(clean))
   });
 }
 
 export function useTestKitStatus() {
-  const consoleGateway = useConsoleGateway();
+  const runtimeControlGateway = useRuntimeControlGateway();
   return useQuery({
     queryKey: consoleQueryKeys.testKitStatus,
-    queryFn: () => consoleGateway.getTestKitStatus(),
+    queryFn: () => runtimeControlGateway.getTestKitStatus(),
     refetchInterval: 2_000
   });
 }
 
 export function useCreateTestKitBeds() {
-  const consoleGateway = useConsoleGateway();
+  const runtimeControlGateway = useRuntimeControlGateway();
   return useTestKitMutation((request: {
     count: number | null;
     prefix: string;
     roomNames?: string[];
   }) =>
-    consoleGateway.createTestKitBeds(testKitCreateBedsRequest(
+    runtimeControlGateway.createTestKitBeds(testKitCreateBedsRequest(
       request.count,
       request.prefix,
       request.roomNames ?? []
@@ -273,21 +273,21 @@ export function useCreateTestKitBeds() {
 }
 
 export function useDeleteTestKitBeds() {
-  const consoleGateway = useConsoleGateway();
+  const runtimeControlGateway = useRuntimeControlGateway();
   return useTestKitMutation((roomNames: string[]) =>
-    consoleGateway.deleteTestKitBeds(testKitDeleteBedsRequest(roomNames))
+    runtimeControlGateway.deleteTestKitBeds(testKitDeleteBedsRequest(roomNames))
   );
 }
 
 export function useResetTestKitBeds() {
-  const consoleGateway = useConsoleGateway();
-  return useTestKitMutation(() => consoleGateway.resetTestKitBeds());
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useTestKitMutation(() => runtimeControlGateway.resetTestKitBeds());
 }
 
 export function useStartTestKitVirtualRecorders() {
-  const consoleGateway = useConsoleGateway();
+  const runtimeControlGateway = useRuntimeControlGateway();
   return useTestKitMutation((request: RuntimeTestKitVirtualRecorderStartRequest) =>
-    consoleGateway.startTestKitVirtualRecorders(
+    runtimeControlGateway.startTestKitVirtualRecorders(
       parseConsoleRequest(runtimeTestKitVirtualRecorderStartRequestSchema, request)
     )
   );
@@ -296,42 +296,42 @@ export function useStartTestKitVirtualRecorders() {
 export function useSessionTestKitAction(
   action: "stop" | "pause" | "resume" | "delete"
 ) {
-  const consoleGateway = useConsoleGateway();
-  return useTestKitMutation((sessionID: string | null) => {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useTestKitMutation((sessionID: string) => {
     const request = testKitSessionSelectionRequest(sessionID);
     switch (action) {
       case "stop":
-        return consoleGateway.stopTestKitVirtualRecorders(request);
+        return runtimeControlGateway.stopTestKitVirtualRecorders(request);
       case "pause":
-        return consoleGateway.pauseTestKitVirtualRecorders(request);
+        return runtimeControlGateway.pauseTestKitVirtualRecorders(request);
       case "resume":
-        return consoleGateway.resumeTestKitVirtualRecorders(request);
+        return runtimeControlGateway.resumeTestKitVirtualRecorders(request);
       case "delete":
-        return consoleGateway.deleteTestKitVirtualRecorders(request);
+        return runtimeControlGateway.deleteTestKitVirtualRecorders(request);
     }
   });
 }
 
 export function useRestartTestKitVirtualRecorders() {
-  const consoleGateway = useConsoleGateway();
+  const runtimeControlGateway = useRuntimeControlGateway();
   return useTestKitMutation((request: RuntimeTestKitRestartRequest) =>
-    consoleGateway.restartTestKitVirtualRecorders(
+    runtimeControlGateway.restartTestKitVirtualRecorders(
       parseConsoleRequest(runtimeTestKitRestartRequestSchema, request)
     )
   );
 }
 
 export function useResetTestKitVirtualRecorders() {
-  const consoleGateway = useConsoleGateway();
+  const runtimeControlGateway = useRuntimeControlGateway();
   return useTestKitMutation(() =>
-    consoleGateway.resetTestKitVirtualRecorders()
+    runtimeControlGateway.resetTestKitVirtualRecorders()
   );
 }
 
 export function useDeleteTestKitOrphanVRecorder() {
-  const consoleGateway = useConsoleGateway();
+  const runtimeControlGateway = useRuntimeControlGateway();
   return useTestKitMutation((vrcode: string) =>
-    consoleGateway.deleteTestKitOrphanVRecorder(
+    runtimeControlGateway.deleteTestKitOrphanVRecorder(
       parseConsoleRequest(runtimeTestKitRecorderDeletionRequestSchema, { vrcode })
     )
   );
