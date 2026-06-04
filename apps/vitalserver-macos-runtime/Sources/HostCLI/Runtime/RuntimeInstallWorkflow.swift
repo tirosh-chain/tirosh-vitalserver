@@ -312,26 +312,28 @@ struct RuntimeInstallWorkflowComposition {
     }
 
     private func configureInstalledPermissions(_ settings: InstallSettings) throws {
-        try operations.runRequired(Constants.Commands.chown, ["-R", "root:wheel", context.paths.home.path])
-        try operations.runRequired(Constants.Commands.chown, ["-R", "root:wheel", "\(context.productRoot.path)/nginx"])
-        try operations.runRequired(
-            Constants.Commands.plistBuddy,
-            [
-                "-c",
-                "Set :EnvironmentVariables:VITALSERVER_PROXY_PORT \(settings.proxyPort)",
-                RuntimeManagedService.proxy.launchDaemonPlist,
-            ]
-        )
-        for plist in [
-            RuntimeManagedService.vm.launchDaemonPlist,
-            RuntimeManagedService.proxy.launchDaemonPlist,
-            RuntimeManagedService.guestLogSync.launchDaemonPlist,
-            RuntimeManagedService.sleepPrevention.launchDaemonPlist,
-            RuntimeManagedService.watchdog.launchDaemonPlist,
-        ] {
-            try operations.runRequired(Constants.Commands.chmod, ["0644", plist])
-            try operations.runRequired(Constants.Commands.chown, ["root:wheel", plist])
-        }
+        try RuntimeInstallPermissionConfigurator(
+            context: RuntimeInstallPermissionContext(
+                runtimeHome: context.paths.home,
+                nginxDirectory: context.productRoot.appendingPathComponent("nginx"),
+                proxyLaunchDaemonPlist: RuntimeManagedService.proxy.launchDaemonPlist,
+                serviceLaunchDaemonPlists: [
+                    RuntimeManagedService.vm.launchDaemonPlist,
+                    RuntimeManagedService.proxy.launchDaemonPlist,
+                    RuntimeManagedService.guestLogSync.launchDaemonPlist,
+                    RuntimeManagedService.sleepPrevention.launchDaemonPlist,
+                    RuntimeManagedService.watchdog.launchDaemonPlist,
+                ],
+                chownExecutable: Constants.Commands.chown,
+                chmodExecutable: Constants.Commands.chmod,
+                plistBuddyExecutable: Constants.Commands.plistBuddy
+            ),
+            operations: RuntimeInstallPermissionOperations(
+                runRequired: operations.runRequired
+            )
+        ).configure(input: RuntimeInstallPermissionInput(
+            proxyPort: settings.proxyPort
+        ))
     }
 
     private func startInstalledServices(_ settings: InstallSettings) throws {
