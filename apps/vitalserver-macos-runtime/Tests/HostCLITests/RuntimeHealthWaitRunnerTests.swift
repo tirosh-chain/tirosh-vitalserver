@@ -86,8 +86,10 @@ private final class HealthWaitHarness {
 
     var runner: RuntimeHealthWaitRunner {
         RuntimeHealthWaitRunner(
-            isLaunchdLoaded: { service in
-                self.loadedServices.contains(service)
+            serviceStates: { services in
+                Dictionary(uniqueKeysWithValues: services.map { service in
+                    (service, self.loadedServices.contains(service) ? .loaded : .notLoaded)
+                })
             },
             healthSnapshot: {
                 if self.snapshots.count > 1 {
@@ -95,7 +97,7 @@ private final class HealthWaitHarness {
                 }
                 return self.snapshots[0]
             },
-            writeStatus: { status, operation, message in
+            writeStatusBestEffort: { status, operation, message in
                 self.events.append("status:\(status.rawValue):\(operation.rawValue):\(message)")
             },
             sleep: {

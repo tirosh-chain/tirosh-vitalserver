@@ -191,10 +191,22 @@ extension RuntimeLifecycle {
 
     func runtimeHealthWaitRunner() -> RuntimeHealthWaitRunner {
         RuntimeHealthWaitRunner(
-            isLaunchdLoaded: isLaunchdLoaded,
+            serviceStates: { services in
+                Dictionary(uniqueKeysWithValues: services.map { service in
+                    (service, healthChecker.launchdState(service))
+                })
+            },
             healthSnapshot: runtimeHealthSnapshot,
-            writeStatus: { status, operation, message in
-                try writeRuntimeStatus(status, operation: operation, message: message)
+            writeStatusBestEffort: { status, operation, message in
+                writeRuntimeStatusBestEffort(
+                    status,
+                    operation: operation,
+                    message: message,
+                    writeStatus: { status, operation, message in
+                        try writeRuntimeStatus(status, operation: operation, message: message)
+                    },
+                    log: log
+                )
             },
             sleep: {
                 sleeper.sleep(forTimeInterval: 3)
