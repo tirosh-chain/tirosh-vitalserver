@@ -2,6 +2,7 @@ import Foundation
 import Core
 import Contracts
 import HostInfrastructure
+import RuntimeWorkflow
 
 struct VMRuntimeConfig: Codable {
     var cpuCount: Int
@@ -133,5 +134,50 @@ extension JSONEncoder {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         return encoder
+    }
+}
+
+extension VMRuntimeConfig: RuntimeInstallMutableVMRuntimeConfiguration {
+    var installCPUCount: Int {
+        get { cpuCount }
+        set { cpuCount = newValue }
+    }
+
+    var installMemoryMiB: UInt64 {
+        get { memoryMiB }
+        set { memoryMiB = newValue }
+    }
+
+    var installNetworkMode: NetworkMode {
+        get { network.mode }
+        set { network.mode = newValue }
+    }
+
+    var installBridgedInterface: String? {
+        get { network.bridgedInterface }
+        set { network.bridgedInterface = newValue }
+    }
+
+    var installPreventSystemSleep: Bool? {
+        get { preventSystemSleep }
+        set { preventSystemSleep = newValue }
+    }
+
+    mutating func setInstallSharedDirectory(_ directory: RuntimeSharedDirectoryConfiguration) {
+        sharedDirectory = SharedDirectoryConfig(
+            hostPath: directory.hostPath,
+            tag: directory.tag,
+            guestMountPath: directory.guestMountPath,
+            readOnly: directory.readOnly
+        )
+    }
+
+    mutating func setInstallVitalFilesDirectory(_ directory: RuntimeSharedDirectoryConfiguration) {
+        vitalFilesDirectory = SharedDirectoryConfig(
+            hostPath: directory.hostPath,
+            tag: directory.tag,
+            guestMountPath: directory.guestMountPath,
+            readOnly: directory.readOnly
+        )
     }
 }

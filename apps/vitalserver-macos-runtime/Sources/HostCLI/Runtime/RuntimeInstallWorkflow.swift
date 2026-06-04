@@ -235,52 +235,50 @@ struct RuntimeInstallWorkflowComposition {
     }
 
     private func configureInstalledVMRuntime(_ settings: InstallSettings) throws {
-        try operations.fileStore.createDirectory(
-            at: context.installedPaths.runtimeDirectory,
-            withIntermediateDirectories: true
-        )
-        try operations.fileStore.createDirectory(
-            at: context.installedPaths.vitalFilesDirectory,
-            withIntermediateDirectories: true
-        )
-        try operations.fileStore.createDirectory(
-            at: context.installedPaths.vrReleaseDirectory,
-            withIntermediateDirectories: true
-        )
-        try operations.fileStore.createDirectory(
-            at: context.installedPaths.hostRunDirectory,
-            withIntermediateDirectories: true
-        )
-
-        var config: VMRuntimeConfig
-        if fileExists(context.paths.config) {
-            config = try VMRuntimeConfig.load(from: context.paths.config, fileStore: operations.fileStore)
-        } else {
-            config = VMRuntimeConfig.default(paths: context.installedPaths)
-        }
-        config.cpuCount = settings.cpuCount
-        config.memoryMiB = UInt64(settings.memoryGiB * 1024)
-        config.network.mode = settings.networkMode
-        if settings.networkMode == .shared {
-            config.network.bridgedInterface = nil
-        }
-        config.sharedDirectory = SharedDirectoryConfig(
-            hostPath: context.installedPaths.dataDirectory.path,
-            tag: Constants.Defaults.sharedDirectoryTag,
-            guestMountPath: Constants.Defaults.sharedDirectoryGuestMountPath,
-            readOnly: false
-        )
-        config.vitalFilesDirectory = SharedDirectoryConfig(
-            hostPath: settings.vitalFilesDirectory,
-            tag: Constants.Defaults.vitalFilesDirectoryTag,
-            guestMountPath: Constants.Defaults.vitalFilesDirectoryGuestMountPath,
-            readOnly: false
-        )
-        config.preventSystemSleep = settings.preventSystemSleep
-        VMRuntimeConfig.ensureRuntimeDefaults(&config, paths: context.installedPaths)
-        let encoded = try JSONEncoder.pretty.encode(config)
-        try operations.fileStore.createDirectory(at: context.paths.config.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try operations.fileStore.writeData(encoded, to: context.paths.config, options: [])
+        try RuntimeInstallVMRuntimeConfigurator<VMRuntimeConfig>(
+            context: RuntimeInstallVMRuntimeConfigurationContext(
+                configURL: context.paths.config,
+                requiredDirectories: [
+                    context.installedPaths.runtimeDirectory,
+                    context.installedPaths.vitalFilesDirectory,
+                    context.installedPaths.vrReleaseDirectory,
+                    context.installedPaths.hostRunDirectory,
+                ]
+            ),
+            operations: RuntimeInstallVMRuntimeConfigurationOperations(
+                createDirectory: { url, withIntermediateDirectories in
+                    try operations.fileStore.createDirectory(at: url, withIntermediateDirectories: withIntermediateDirectories)
+                },
+                fileExists: fileExists,
+                loadConfig: { url in
+                    try VMRuntimeConfig.load(from: url, fileStore: operations.fileStore)
+                },
+                defaultConfig: {
+                    VMRuntimeConfig.default(paths: context.installedPaths)
+                },
+                ensureRuntimeDefaults: { config in
+                    VMRuntimeConfig.ensureRuntimeDefaults(&config, paths: context.installedPaths)
+                },
+                encodeConfig: { config in
+                    try JSONEncoder.pretty.encode(config)
+                },
+                writeData: { data, url, options in
+                    try operations.fileStore.writeData(data, to: url, options: options)
+                }
+            )
+        ).configure(input: RuntimeInstallVMRuntimeConfigurationInput(
+            cpuCount: settings.cpuCount,
+            memoryGiB: settings.memoryGiB,
+            networkMode: settings.networkMode,
+            sharedNetworkMode: .shared,
+            dataDirectoryPath: context.installedPaths.dataDirectory.path,
+            sharedDirectoryTag: Constants.Defaults.sharedDirectoryTag,
+            sharedDirectoryGuestMountPath: Constants.Defaults.sharedDirectoryGuestMountPath,
+            vitalFilesDirectoryPath: settings.vitalFilesDirectory,
+            vitalFilesDirectoryTag: Constants.Defaults.vitalFilesDirectoryTag,
+            vitalFilesDirectoryGuestMountPath: Constants.Defaults.vitalFilesDirectoryGuestMountPath,
+            preventSystemSleep: settings.preventSystemSleep
+        ))
     }
 
     private func createCloudInitSeed(_ settings: InstallSettings) throws {
