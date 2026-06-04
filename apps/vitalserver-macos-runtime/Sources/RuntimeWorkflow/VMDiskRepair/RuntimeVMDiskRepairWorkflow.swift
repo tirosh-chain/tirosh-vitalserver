@@ -1,22 +1,26 @@
-import Foundation
-import Core
 import Contracts
+import Core
+import Foundation
 
-struct RuntimeVMDiskRepairContext {
-    let rootfsBase: URL
-    let vmDisk: URL
-    let backupsDirectory: URL
-    let defaultDiskGiB: Int
-    let bytesPerGiB: UInt64
-    let freeSpaceMarginBytes: UInt64
+public struct RuntimeVMDiskRepairContext {
+    public let rootfsBase: URL
+    public let vmDisk: URL
+    public let backupsDirectory: URL
+    public let defaultDiskGiB: Int
+    public let bytesPerGiB: UInt64
+    public let freeSpaceMarginBytes: UInt64
+    public let gunzipExecutable: String
+    public let truncateExecutable: String
 
-    init(
+    public init(
         rootfsBase: URL,
         vmDisk: URL,
         backupsDirectory: URL,
         defaultDiskGiB: Int,
         bytesPerGiB: UInt64 = 1024 * 1024 * 1024,
-        freeSpaceMarginBytes: UInt64
+        freeSpaceMarginBytes: UInt64,
+        gunzipExecutable: String,
+        truncateExecutable: String
     ) {
         self.rootfsBase = rootfsBase
         self.vmDisk = vmDisk
@@ -24,34 +28,78 @@ struct RuntimeVMDiskRepairContext {
         self.defaultDiskGiB = defaultDiskGiB
         self.bytesPerGiB = bytesPerGiB
         self.freeSpaceMarginBytes = freeSpaceMarginBytes
+        self.gunzipExecutable = gunzipExecutable
+        self.truncateExecutable = truncateExecutable
     }
 }
 
-struct RuntimeVMDiskRepairOperations {
-    let fileExists: (URL) -> Bool
-    let fileSize: (URL) throws -> UInt64
-    let createDirectory: (URL, Bool) throws -> Void
-    let removeItem: (URL) throws -> Void
-    let moveItem: (URL, URL) throws -> Void
-    let requireFreeSpace: (URL, UInt64, String) throws -> Void
-    let runProcessToFile: (String, [String], URL) throws -> Void
-    let runRequired: (String, [String]) throws -> Void
-    let createRedisBackup: () throws -> Void
-    let stopRuntimeServicesForVMDiskReplacement: () throws -> Void
-    let startRuntimeServices: (RuntimeServiceRestartPolicy) throws -> Void
-    let waitForHealth: (RuntimeServiceRestartPolicy) throws -> Void
-    let writeStatus: (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void
-    let timestamp: () -> String
-    let log: (String) -> Void
+public struct RuntimeVMDiskRepairOperations {
+    public let fileExists: (URL) -> Bool
+    public let fileSize: (URL) throws -> UInt64
+    public let createDirectory: (URL, Bool) throws -> Void
+    public let removeItem: (URL) throws -> Void
+    public let moveItem: (URL, URL) throws -> Void
+    public let requireFreeSpace: (URL, UInt64, String) throws -> Void
+    public let runProcessToFile: (String, [String], URL) throws -> Void
+    public let runRequired: (String, [String]) throws -> Void
+    public let createRedisBackup: () throws -> Void
+    public let stopRuntimeServicesForVMDiskReplacement: () throws -> Void
+    public let startRuntimeServices: (RuntimeServiceRestartPolicy) throws -> Void
+    public let waitForHealth: (RuntimeServiceRestartPolicy) throws -> Void
+    public let writeStatus: (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void
+    public let timestamp: () -> String
+    public let log: (String) -> Void
+
+    public init(
+        fileExists: @escaping (URL) -> Bool,
+        fileSize: @escaping (URL) throws -> UInt64,
+        createDirectory: @escaping (URL, Bool) throws -> Void,
+        removeItem: @escaping (URL) throws -> Void,
+        moveItem: @escaping (URL, URL) throws -> Void,
+        requireFreeSpace: @escaping (URL, UInt64, String) throws -> Void,
+        runProcessToFile: @escaping (String, [String], URL) throws -> Void,
+        runRequired: @escaping (String, [String]) throws -> Void,
+        createRedisBackup: @escaping () throws -> Void,
+        stopRuntimeServicesForVMDiskReplacement: @escaping () throws -> Void,
+        startRuntimeServices: @escaping (RuntimeServiceRestartPolicy) throws -> Void,
+        waitForHealth: @escaping (RuntimeServiceRestartPolicy) throws -> Void,
+        writeStatus: @escaping (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void,
+        timestamp: @escaping () -> String,
+        log: @escaping (String) -> Void
+    ) {
+        self.fileExists = fileExists
+        self.fileSize = fileSize
+        self.createDirectory = createDirectory
+        self.removeItem = removeItem
+        self.moveItem = moveItem
+        self.requireFreeSpace = requireFreeSpace
+        self.runProcessToFile = runProcessToFile
+        self.runRequired = runRequired
+        self.createRedisBackup = createRedisBackup
+        self.stopRuntimeServicesForVMDiskReplacement = stopRuntimeServicesForVMDiskReplacement
+        self.startRuntimeServices = startRuntimeServices
+        self.waitForHealth = waitForHealth
+        self.writeStatus = writeStatus
+        self.timestamp = timestamp
+        self.log = log
+    }
 }
 
-struct RuntimeVMDiskRepairRunner {
-    let context: RuntimeVMDiskRepairContext
-    let operations: RuntimeVMDiskRepairOperations
+public struct RuntimeVMDiskRepairRunner {
+    public let context: RuntimeVMDiskRepairContext
+    public let operations: RuntimeVMDiskRepairOperations
 
-    func repair() throws {
+    public init(
+        context: RuntimeVMDiskRepairContext,
+        operations: RuntimeVMDiskRepairOperations
+    ) {
+        self.context = context
+        self.operations = operations
+    }
+
+    public func repair() throws {
         guard operations.fileExists(context.rootfsBase) else {
-            throw LauncherError.missingFile(context.rootfsBase.path)
+            throw RuntimeWorkflowError.operationFailed("missing file: \(context.rootfsBase.path)")
         }
 
         let targetDiskGiB = try targetDiskGiB()
@@ -79,11 +127,11 @@ struct RuntimeVMDiskRepairRunner {
         )
         try operations.writeStatus(.recovering, .repairVMDisk, "Creating replacement VM disk")
         try operations.runProcessToFile(
-            Constants.Commands.gunzip,
+            context.gunzipExecutable,
             ["-c", context.rootfsBase.path],
             temporaryDisk
         )
-        try operations.runRequired(Constants.Commands.truncate, ["-s", "\(targetDiskGiB)G", temporaryDisk.path])
+        try operations.runRequired(context.truncateExecutable, ["-s", "\(targetDiskGiB)G", temporaryDisk.path])
 
         try operations.writeStatus(.recovering, .repairVMDisk, "Archiving current VM disk")
         try operations.stopRuntimeServicesForVMDiskReplacement()
@@ -97,6 +145,7 @@ struct RuntimeVMDiskRepairRunner {
         }
 
         try operations.moveItem(temporaryDisk, context.vmDisk)
+        try requireReplacementDisk(targetDiskGiB: targetDiskGiB)
         operations.log("created replacement vm disk path=\(context.vmDisk.path) size=\(targetDiskGiB) GiB")
 
         try operations.writeStatus(.recovering, .repairVMDisk, "Starting runtime services after VM disk repair")
@@ -125,6 +174,19 @@ struct RuntimeVMDiskRepairRunner {
         let currentBytes = try operations.fileSize(context.vmDisk)
         let currentGiB = Int((currentBytes + context.bytesPerGiB - 1) / context.bytesPerGiB)
         return max(context.defaultDiskGiB, currentGiB)
+    }
+
+    private func requireReplacementDisk(targetDiskGiB: Int) throws {
+        guard operations.fileExists(context.vmDisk) else {
+            throw RuntimeWorkflowError.operationFailed("vm disk repair replacement missing path=\(context.vmDisk.path)")
+        }
+        let expectedBytes = UInt64(targetDiskGiB) * context.bytesPerGiB
+        let actualBytes = try operations.fileSize(context.vmDisk)
+        guard actualBytes >= expectedBytes else {
+            throw RuntimeWorkflowError.operationFailed(
+                "vm disk repair replacement undersized path=\(context.vmDisk.path) expectedBytes=\(expectedBytes) actualBytes=\(actualBytes)"
+            )
+        }
     }
 
     private func sanitizedTimestamp() -> String {

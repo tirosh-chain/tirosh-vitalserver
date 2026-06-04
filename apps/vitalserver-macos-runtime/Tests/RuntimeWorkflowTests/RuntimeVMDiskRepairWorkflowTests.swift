@@ -1,9 +1,10 @@
-import Core
 import Contracts
-@testable import HostCLI
+import Core
+import Foundation
+import RuntimeWorkflow
 import XCTest
 
-final class RuntimeVMDiskRepairRunnerTests: XCTestCase {
+final class RuntimeVMDiskRepairWorkflowTests: XCTestCase {
     func testRepairArchivesCurrentDiskAndCreatesReplacementBeforeRestart() throws {
         let harness = try VMDiskRepairHarness()
         try harness.write(harness.rootfsBase, bytes: 2)
@@ -63,6 +64,21 @@ final class RuntimeVMDiskRepairRunnerTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: try XCTUnwrap(harness.archivedDisk).path))
         XCTAssertTrue(harness.events.contains("status:recovering:repair-vm-disk:Redis backup before VM disk repair failed; current VM disk will be archived before replacement"))
     }
+
+    func testRepairFailsBeforeRestartWhenReplacementDiskIsMissing() throws {
+        let harness = try VMDiskRepairHarness()
+        harness.dropReplacementDiskAfterMove = true
+        try harness.write(harness.rootfsBase, bytes: 2)
+
+        XCTAssertThrowsError(try harness.runner.repair()) { error in
+            XCTAssertEqual(
+                String(describing: error),
+                "vm disk repair replacement missing path=\(harness.vmDisk.path)"
+            )
+        }
+        XCTAssertFalse(harness.events.contains { $0.hasPrefix("start:") })
+        XCTAssertFalse(harness.events.contains { $0.hasPrefix("wait:") })
+    }
 }
 
 private final class VMDiskRepairHarness {
@@ -75,6 +91,7 @@ private final class VMDiskRepairHarness {
     var events: [String] = []
     var archivedDisk: URL?
     var redisBackupError: Error?
+    var dropReplacementDiskAfterMove = false
 
     init() throws {
         root = FileManager.default.temporaryDirectory
@@ -98,7 +115,9 @@ private final class VMDiskRepairHarness {
                 backupsDirectory: backupsDirectory,
                 defaultDiskGiB: 32,
                 bytesPerGiB: bytesPerGiB,
-                freeSpaceMarginBytes: 1024
+                freeSpaceMarginBytes: 1024,
+                gunzipExecutable: "/usr/bin/gunzip",
+                truncateExecutable: "/usr/bin/truncate"
             ),
             operations: RuntimeVMDiskRepairOperations(
                 fileExists: fileExists,
@@ -120,6 +139,9 @@ private final class VMDiskRepairHarness {
                         archivedDisk = destination
                     }
                     try FileManager.default.moveItem(at: source, to: destination)
+                    if dropReplacementDiskAfterMove, destination == vmDisk {
+                        try FileManager.default.removeItem(at: destination)
+                    }
                 },
                 requireFreeSpace: { [self] url, minimumBytes, operation in
                     events.append("space:\(url.lastPathComponent):\(minimumBytes):\(operation)")

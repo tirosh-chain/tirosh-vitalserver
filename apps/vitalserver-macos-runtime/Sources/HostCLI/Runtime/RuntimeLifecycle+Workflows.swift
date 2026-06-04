@@ -1,6 +1,7 @@
 import Foundation
 import Core
 import Contracts
+import RuntimeWorkflow
 
 extension RuntimeLifecycle {
     func runtimeInstallWorkflow() -> RuntimeInstallWorkflowComposition {
@@ -377,7 +378,9 @@ extension RuntimeLifecycle {
                 vmDisk: vmDisk,
                 backupsDirectory: backupsDirectory,
                 defaultDiskGiB: Constants.Defaults.defaultDiskGiB,
-                freeSpaceMarginBytes: Constants.Runtime.freeSpaceMarginBytes
+                freeSpaceMarginBytes: Constants.Runtime.freeSpaceMarginBytes,
+                gunzipExecutable: Constants.Commands.gunzip,
+                truncateExecutable: Constants.Commands.truncate
             ),
             operations: RuntimeVMDiskRepairOperations(
                 fileExists: fileExists,
