@@ -193,7 +193,7 @@ struct RuntimeBundleWorkflow {
             throw LauncherError.bundleVerificationFailed("invalid update bundle archive: \(archiveURL.path)")
         }
 
-        let rootName = try validateBundleArchiveEntries(listResult.stdout)
+        let rootName = try archiveRootDirectory(listResult.stdout)
         try validateBundleArchiveEntryTypes(archiveURL)
         try operations.runRequired(Constants.Commands.tar, ["-xzf", archiveURL.path, "-C", temporaryRoot.path])
         let extractedBundle = temporaryRoot.appendingPathComponent(rootName, isDirectory: true)
@@ -204,38 +204,12 @@ struct RuntimeBundleWorkflow {
         return extractedBundle
     }
 
-    private func validateBundleArchiveEntries(_ output: String) throws -> String {
-        let entries = output.split(whereSeparator: \.isNewline).map(String.init)
-        guard !entries.isEmpty else {
-            throw LauncherError.bundleVerificationFailed("empty update bundle archive")
+    private func archiveRootDirectory(_ output: String) throws -> String {
+        do {
+            return try UpdateBundleArchiveVerifier.rootDirectory(listOutput: output)
+        } catch let error as UpdateBundleArchiveVerificationError {
+            throw LauncherError.bundleVerificationFailed(error.description)
         }
-
-        var rootName: String?
-        for entry in entries {
-            guard !entry.hasPrefix("/"), !entry.contains("\\") else {
-                throw LauncherError.bundleVerificationFailed("unsafe update bundle archive path: \(entry)")
-            }
-            let components = entry
-                .split(separator: "/", omittingEmptySubsequences: true)
-                .map(String.init)
-            guard !components.isEmpty,
-                  !components.contains("."),
-                  !components.contains("..") else {
-                throw LauncherError.bundleVerificationFailed("unsafe update bundle archive path: \(entry)")
-            }
-            if let existingRoot = rootName {
-                guard existingRoot == components[0] else {
-                    throw LauncherError.bundleVerificationFailed("update bundle archive must contain a single root directory")
-                }
-            } else {
-                rootName = components[0]
-            }
-        }
-
-        guard let rootName else {
-            throw LauncherError.bundleVerificationFailed("empty update bundle archive")
-        }
-        return rootName
     }
 
     private func validateBundleArchiveEntryTypes(_ archiveURL: URL) throws {
@@ -243,15 +217,13 @@ struct RuntimeBundleWorkflow {
         guard result.exitCode == 0 else {
             throw LauncherError.bundleVerificationFailed("invalid update bundle archive: \(archiveURL.path)")
         }
-        for line in result.stdout.split(whereSeparator: \.isNewline) {
-            guard let entryType = line.first else {
-                continue
-            }
-            if entryType == "l" || entryType == "h" {
-                throw LauncherError.bundleVerificationFailed(
-                    "update bundle archive must not contain links: \(archiveURL.lastPathComponent)"
-                )
-            }
+        do {
+            try UpdateBundleArchiveVerifier.rejectLinks(
+                verboseListOutput: result.stdout,
+                archiveName: archiveURL.lastPathComponent
+            )
+        } catch let error as UpdateBundleArchiveVerificationError {
+            throw LauncherError.bundleVerificationFailed(error.description)
         }
     }
 
