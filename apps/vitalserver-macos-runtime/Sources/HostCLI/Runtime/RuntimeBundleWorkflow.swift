@@ -61,24 +61,33 @@ struct RuntimeBundleWorkflow {
         defer { materialized.cleanup?() }
         try verifyBundleDirectory(materialized.bundleURL, sourceURL: bundleURL)
         let manifest = try loadManifest(materialized.bundleURL.appendingPathComponent(Constants.Bundle.manifest))
-        let destination = context.bundlesDirectory.appendingPathComponent("update-bundle-\(manifest.version)")
-        let bundleSize = try directorySize(materialized.bundleURL)
-
-        try operations.fileStore.createDirectory(at: context.bundlesDirectory, withIntermediateDirectories: true)
-        if fileExists(destination) || directoryExists(destination) {
-            operations.log("removing existing staged bundle path=\(destination.path)")
-            try operations.fileStore.removeItem(at: destination)
-        }
-        try operations.requireFreeSpace(
-            context.bundlesDirectory,
-            bundleSize + compressedBundleSize(bundleURL) + Constants.Runtime.updateFreeSpaceMarginBytes,
-            .stageBundle
-        )
-        operations.log(
-            "copying bundle to managed storage source=\(materialized.bundleURL.path) destination=\(destination.path) size=\(formatBytes(bundleSize))"
-        )
-        try operations.fileStore.copyItem(at: materialized.bundleURL, to: destination)
-        operations.log("bundle stage completed destination=\(destination.path)")
+        let destination = try RuntimeBundleStager(
+            context: RuntimeBundleStagingContext(
+                bundlesDirectory: context.bundlesDirectory,
+                updateFreeSpaceMarginBytes: Constants.Runtime.updateFreeSpaceMarginBytes
+            ),
+            operations: RuntimeBundleStagingOperations(
+                directorySize: directorySize,
+                compressedSourceSize: compressedBundleSize,
+                fileExists: fileExists,
+                directoryExists: directoryExists,
+                createDirectory: { url, withIntermediateDirectories in
+                    try operations.fileStore.createDirectory(at: url, withIntermediateDirectories: withIntermediateDirectories)
+                },
+                removeItem: { url in
+                    try operations.fileStore.removeItem(at: url)
+                },
+                copyItem: { source, destination in
+                    try operations.fileStore.copyItem(at: source, to: destination)
+                },
+                requireFreeSpace: operations.requireFreeSpace,
+                log: operations.log
+            )
+        ).stage(input: RuntimeBundleStagingInput(
+            sourceURL: bundleURL,
+            bundleURL: materialized.bundleURL,
+            manifestVersion: manifest.version
+        ))
         print("bundle staged: \(destination.path)")
         return destination
     }
