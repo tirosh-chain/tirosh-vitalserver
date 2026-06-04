@@ -2,23 +2,6 @@ import Foundation
 import Core
 import Contracts
 
-struct RuntimeVersionDocument: Encodable {
-    let product: String
-    let runtimeVersion: String
-    let appliedAt: String
-    let bundle: String
-    let rootfsBase: String
-    let vmDisk: String
-}
-
-struct InstalledRuntimeVersionDocument: Encodable {
-    let product: String
-    let runtimeVersion: String
-    let installedAt: String
-    let rootfsBase: String
-    let vmDisk: String
-}
-
 extension GuestRuntimeConfigDocument {
     static func load(from url: URL, fileStore: RuntimeFileReading) throws -> GuestRuntimeConfigDocument {
         guard fileStore.fileExists(url) else {
