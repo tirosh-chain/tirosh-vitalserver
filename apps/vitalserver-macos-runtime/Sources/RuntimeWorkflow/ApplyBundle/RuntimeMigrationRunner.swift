@@ -26,7 +26,9 @@ public struct RuntimeMigrationRunner {
         for migration in migrations {
             let migrationURL = migrationDirectory.appendingPathComponent(migration.name)
             guard isExecutableFile(migrationURL.path) else {
-                throw RuntimeWorkflowError.operationFailed("migration is not executable: \(migration.name)")
+                throw RuntimeWorkflowError.operationFailed(
+                    "bundle verification failed: migration is not executable: \(migration.name)"
+                )
             }
             log("running migration name=\(migration.name) path=\(migrationURL.path)")
             try runRequired(migrationURL.path, [])

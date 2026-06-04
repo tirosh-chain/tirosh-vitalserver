@@ -426,6 +426,17 @@ struct RuntimeBundleWorkflow {
                 guestDeploy: context.installedPaths.deployDirectory,
                 runtimeTools: URL(fileURLWithPath: "/usr/local/bin")
             ),
+            rules: RuntimeArtifactReplacementRules(
+                tarCommand: Constants.Commands.tar,
+                appBundleRoot: Constants.Product.managerAppName,
+                nginxBundleRoot: "nginx",
+                guestDeployRoot: "deploy",
+                runtimeToolsAllowedRootEntries: [
+                    "vitalserver-vm",
+                    "vitalserver-proxy-run",
+                    URL(fileURLWithPath: Constants.InstallPaths.uninstall).lastPathComponent,
+                ]
+            ),
             temporaryDirectory: operations.fileStore.temporaryDirectory,
             fileExists: fileExists,
             directoryExists: directoryExists,

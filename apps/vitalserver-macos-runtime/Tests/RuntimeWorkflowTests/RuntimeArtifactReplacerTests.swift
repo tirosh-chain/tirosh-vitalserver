@@ -1,7 +1,6 @@
-import Foundation
-import Core
 import Contracts
-@testable import HostCLI
+import Foundation
+import RuntimeWorkflow
 import XCTest
 
 final class RuntimeArtifactReplacerTests: XCTestCase {
@@ -160,9 +159,10 @@ final class RuntimeArtifactReplacerTests: XCTestCase {
         XCTAssertThrowsError(try replacer.replace([
             UpdateBundleArtifact(name: "app-bundle.tar.gz", type: .appBundle, sha256: "abc", size: 10),
         ], stagedBundle: URL(fileURLWithPath: "/bundle"))) { error in
-            XCTAssertEqual(String(describing: error), String(describing: LauncherError.bundleVerificationFailed(
-                "path traversal in app-bundle.tar.gz: VitalServer Helper.app/../escape"
-            )))
+            XCTAssertEqual(
+                String(describing: error),
+                "bundle verification failed: path traversal in app-bundle.tar.gz: VitalServer Helper.app/../escape"
+            )
         }
     }
 
@@ -182,9 +182,10 @@ final class RuntimeArtifactReplacerTests: XCTestCase {
         XCTAssertThrowsError(try replacer.replace([
             UpdateBundleArtifact(name: "app-bundle.tar.gz", type: .appBundle, sha256: "abc", size: 10),
         ], stagedBundle: URL(fileURLWithPath: "/bundle"))) { error in
-            XCTAssertEqual(String(describing: error), String(describing: LauncherError.bundleVerificationFailed(
-                "tar.gz must not contain links: app-bundle.tar.gz"
-            )))
+            XCTAssertEqual(
+                String(describing: error),
+                "bundle verification failed: tar.gz must not contain links: app-bundle.tar.gz"
+            )
         }
     }
 
@@ -236,6 +237,17 @@ final class RuntimeArtifactReplacerTests: XCTestCase {
                 nginxBundle: URL(fileURLWithPath: "/Library/Application Support/VitalServerHelper/nginx"),
                 guestDeploy: URL(fileURLWithPath: "/Library/Application Support/VitalServerHelper/vm/data/deploy"),
                 runtimeTools: URL(fileURLWithPath: "/usr/local/bin")
+            ),
+            rules: RuntimeArtifactReplacementRules(
+                tarCommand: "/usr/bin/tar",
+                appBundleRoot: "VitalServer Helper.app",
+                nginxBundleRoot: "nginx",
+                guestDeployRoot: "deploy",
+                runtimeToolsAllowedRootEntries: [
+                    "vitalserver-vm",
+                    "vitalserver-proxy-run",
+                    "tirosh-vitalserver-uninstall",
+                ]
             ),
             temporaryDirectory: URL(fileURLWithPath: "/tmp"),
             fileExists: fileExists,
