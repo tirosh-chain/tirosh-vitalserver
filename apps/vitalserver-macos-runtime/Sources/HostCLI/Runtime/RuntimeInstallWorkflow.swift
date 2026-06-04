@@ -207,28 +207,31 @@ struct RuntimeInstallWorkflowComposition {
     }
 
     private func provisionVMDisk(_ settings: InstallSettings) throws {
-        if !fileExists(context.vmDisk), fileExists(context.rootfsBase) {
-            try operations.requireFreeSpace(
-                context.vmDisk.deletingLastPathComponent(),
-                (try fileSize(context.rootfsBase) * 6) + Constants.Runtime.freeSpaceMarginBytes,
-                "provision-vm-disk"
+        try RuntimeInstallVMDiskProvisioner(
+            context: RuntimeInstallVMDiskProvisioningContext(
+                rootfsBase: context.rootfsBase,
+                vmDisk: context.vmDisk,
+                gunzipExecutable: Constants.Commands.gunzip,
+                truncateExecutable: Constants.Commands.truncate,
+                freeSpaceMarginBytes: Constants.Runtime.freeSpaceMarginBytes
+            ),
+            operations: RuntimeInstallVMDiskProvisioningOperations(
+                fileExists: fileExists,
+                fileSize: { url in
+                    try operations.fileStore.fileSize(url)
+                },
+                requireFreeSpace: operations.requireFreeSpace,
+                removeItem: { url in
+                    try operations.fileStore.removeItem(at: url)
+                },
+                runProcessToFile: operations.runProcessToFile,
+                moveItem: { source, destination in
+                    try operations.fileStore.moveItem(at: source, to: destination)
+                },
+                runRequired: operations.runRequired,
+                log: operations.log
             )
-            let temporary = context.vmDisk.deletingLastPathComponent().appendingPathComponent(".\(context.vmDisk.lastPathComponent).tmp")
-            if fileExists(temporary) {
-                try operations.fileStore.removeItem(at: temporary)
-            }
-            try operations.runProcessToFile(
-                Constants.Commands.gunzip,
-                ["-c", context.rootfsBase.path],
-                temporary
-            )
-            try operations.fileStore.moveItem(at: temporary, to: context.vmDisk)
-            operations.log("created vm disk path=\(context.vmDisk.path) source=\(context.rootfsBase.lastPathComponent)")
-        }
-        guard fileExists(context.vmDisk) else {
-            throw LauncherError.missingFile(context.rootfsBase.path)
-        }
-        try operations.runRequired(Constants.Commands.truncate, ["-s", "\(settings.diskGiB)G", context.vmDisk.path])
+        ).provision(diskGiB: settings.diskGiB)
     }
 
     private func configureInstalledVMRuntime(_ settings: InstallSettings) throws {
@@ -368,7 +371,4 @@ struct RuntimeInstallWorkflowComposition {
         operations.fileStore.directoryExists(url)
     }
 
-    private func fileSize(_ url: URL) throws -> UInt64 {
-        try operations.fileStore.fileSize(url)
-    }
 }
