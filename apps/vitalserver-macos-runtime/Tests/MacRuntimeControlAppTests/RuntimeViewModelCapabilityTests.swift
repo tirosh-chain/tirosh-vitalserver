@@ -120,6 +120,8 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
         var initialSettings = RuntimeSettings()
         initialSettings.proxyPort = 8080
+        initialSettings.vitalServerURL = ""
+        initialSettings.remoteConsoleURL = ""
         initialSettings.publicHost = ""
         initialSettings.publicPort = 8080
         client.settings = initialSettings
@@ -136,23 +138,25 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
 
         XCTAssertEqual(viewModel.settings.publicHost, "")
         XCTAssertEqual(viewModel.settings.publicPort, 18080)
+        XCTAssertEqual(viewModel.settings.vitalServerURL, "")
+        XCTAssertEqual(viewModel.settings.remoteConsoleURL, "")
 
         viewModel.setCustomAdvertisedURL(true)
-        viewModel.settings.publicHost = "hospital.example"
-        viewModel.settings.publicPort = 443
+        viewModel.settings.vitalServerURL = "https://vitaldb.tirosh.ai/"
+        viewModel.settings.remoteConsoleURL = "https://console.tirosh.ai/"
         viewModel.settings.proxyPort = 8080
         viewModel.syncAdvertisedURLWithProxyIfNeeded()
 
-        XCTAssertEqual(viewModel.settings.publicHost, "hospital.example")
-        XCTAssertEqual(viewModel.settings.publicPort, 443)
+        XCTAssertEqual(viewModel.settings.vitalServerURL, "https://vitaldb.tirosh.ai/")
+        XCTAssertEqual(viewModel.settings.remoteConsoleURL, "https://console.tirosh.ai/")
     }
 
     func testDisablingCustomAdvertisedURLClearsOverride() {
         let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
         var initialSettings = RuntimeSettings()
         initialSettings.proxyPort = 8080
-        initialSettings.publicHost = "hospital.example"
-        initialSettings.publicPort = 443
+        initialSettings.vitalServerURL = "https://vitaldb.tirosh.ai/"
+        initialSettings.remoteConsoleURL = "https://console.tirosh.ai/"
         client.settings = initialSettings
         let viewModel = RuntimeViewModel(
             controlClient: client,
@@ -165,6 +169,8 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         viewModel.setCustomAdvertisedURL(false)
 
         XCTAssertFalse(viewModel.useCustomAdvertisedURL)
+        XCTAssertEqual(viewModel.settings.vitalServerURL, "")
+        XCTAssertEqual(viewModel.settings.remoteConsoleURL, "")
         XCTAssertEqual(viewModel.settings.publicHost, "")
         XCTAssertEqual(viewModel.settings.publicPort, 8080)
     }
@@ -724,8 +730,8 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         viewModel.backups = [RuntimeBackup(path: "/backups/backup-001.tar.gz", sizeBytes: 1024)]
         viewModel.selectedBackupPath = "/backups/backup-001.tar.gz"
         viewModel.setCustomAdvertisedURL(true)
-        viewModel.settings.publicHost = "vital.example.test"
-        viewModel.settings.publicPort = 8443
+        viewModel.settings.vitalServerURL = "https://vitaldb.tirosh.ai/"
+        viewModel.settings.remoteConsoleURL = "https://console.tirosh.ai/"
         viewModel.settings.changeAdminPassword = true
         viewModel.settings.adminPassword = "secret"
         viewModel.selectedBundleURL = URL(fileURLWithPath: "/tmp/update-bundle.tar.gz")

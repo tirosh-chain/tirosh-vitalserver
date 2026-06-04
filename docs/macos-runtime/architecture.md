@@ -370,16 +370,16 @@ download Ubuntu cloud image
 병원 Mac mini/Mac Studio는 설치 파일만 받습니다.
 
 ```text
-TiroshVitalServer.pkg
+VitalServerHelper.pkg
   -> /usr/local/bin/vitalserver-vm
   -> /usr/local/bin/vitalserver-proxy-run
   -> /usr/local/bin/tirosh-vitalserver-uninstall
   -> /Applications/VitalServer Helper.app
-  -> /Library/Application Support/TiroshVitalServer/nginx/sbin/nginx
-  -> /Library/LaunchDaemons/com.tirosh.vitalserver-proxy.plist
-  -> /Library/LaunchDaemons/com.tirosh.vitalserver-vm.plist
-  -> /Library/LaunchDaemons/com.tirosh.vitalserver-watchdog.plist
-  -> /Library/Application Support/TiroshVitalServer/vm/runtime/
+  -> /Library/Application Support/VitalServerHelper/nginx/sbin/nginx
+  -> /Library/LaunchDaemons/ai.tirosh.vitalserver.helper.proxy.plist
+  -> /Library/LaunchDaemons/ai.tirosh.vitalserver.helper.vm.plist
+  -> /Library/LaunchDaemons/ai.tirosh.vitalserver.helper.watchdog.plist
+  -> /Library/Application Support/VitalServerHelper/vm/runtime/
        Image
        initrd.img
        rootfs-base.raw.gz
@@ -387,7 +387,7 @@ TiroshVitalServer.pkg
        vm-config.json
        seed.iso
        runtime-version.json
-  -> /Library/Application Support/TiroshVitalServer/vm/data/
+  -> /Library/Application Support/VitalServerHelper/vm/data/
        vital-files/
        vr-release/
 ```
@@ -457,7 +457,7 @@ Single-node self-healing runtime
 2. watchdog LaunchDaemon은 `vitalserver-vm runtime watchdog`을 주기 실행한다.
 3. watchdog은 VM/proxy/HTTP health를 기준으로 VM/proxy를 kickstart하고 `runtime-status.json`을 갱신한다.
 4. guest 내부 Docker Compose stack은 `tirosh-vitalserver-compose.service`로 재부팅 후 재적용된다.
-5. Helper app은 `/Library/Application Support/TiroshVitalServer/status/runtime-status.json`을 읽어 정상/복구중/장애/업데이트중 상태를 표시한다.
+5. Helper app은 `/Library/Application Support/VitalServerHelper/status/runtime-status.json`을 읽어 정상/복구중/장애/업데이트중 상태를 표시한다.
 6. install/update는 free-space preflight를 수행하고, installer/runtime log는 size 기반 rotation을 수행한다.
 7. guest bootstrap은 bundled image load 후 Docker dangling image cleanup을 수행한다.
 
@@ -466,7 +466,7 @@ Single-node self-healing runtime
 운영 상태의 source of truth는 아래 JSON 파일입니다.
 
 ```text
-/Library/Application Support/TiroshVitalServer/status/runtime-status.json
+/Library/Application Support/VitalServerHelper/status/runtime-status.json
 ```
 
 이 파일은 `vitalserver-vm runtime install`, `install-provision`, `health`, `watchdog`, `apply-bundle`, `rollback`이 갱신합니다. Helper app, watchdog, 운영 CLI는 같은 파일을 읽어 상태를 판단합니다.
@@ -496,13 +496,13 @@ Single-node self-healing runtime
 
 ```json
 {
-  "product": "TiroshVitalServer",
+  "product": "VitalServerHelper",
   "status": "healthy",
   "operation": "health",
   "message": "runtime health check passed",
   "updatedAt": "2026-05-21T00:00:00Z",
-  "productRoot": "/Library/Application Support/TiroshVitalServer",
-  "runtimeHome": "/Library/Application Support/TiroshVitalServer/vm",
+  "productRoot": "/Library/Application Support/VitalServerHelper",
+  "runtimeHome": "/Library/Application Support/VitalServerHelper/vm",
   "runtimeVersion": "<version>",
   "vmService": "loaded",
   "proxyService": "loaded",
@@ -516,7 +516,7 @@ Single-node self-healing runtime
   "rootfsBase": "present",
   "vmDisk": "present",
   "failureReasons": [],
-  "latestBackup": "/Library/Application Support/TiroshVitalServer/backups/..."
+  "latestBackup": "/Library/Application Support/VitalServerHelper/backups/..."
 }
 ```
 
@@ -541,12 +541,12 @@ rollback success    -> healthy
 ## GUI와 Package
 
 제품 설치 책임은 `.pkg`에 둡니다. `.dmg`가 필요하면 installer 전달 매체로만 사용하고, DMG root에는
-단일 `Install Tirosh VitalServer.pkg`를 둡니다. PKG가 Helper app/native shell과 host control components를 함께 설치하고,
+단일 `Install VitalServer Helper.pkg`를 둡니다. PKG가 Helper app/native shell과 host control components를 함께 설치하고,
 Helper UI는 설치 이후 상태 확인과 운영 작업을 담당합니다. 장기적으로 이 UI는 Web/PWA primary implementation으로 이동하고 native app은 local runtime host/shell 역할에 집중합니다.
 
 단일 PKG를 기본 배포물로 선택한 이유는 설치 대상이 self-contained app 하나가 아니기 때문입니다.
 이 제품은 `/Applications`에 Helper app을 놓는 것 외에도 `/usr/local/bin` Updater/Supervisor/VM Driver tools,
-`/Library/LaunchDaemons` system services, `/Library/Application Support/TiroshVitalServer` 아래의
+`/Library/LaunchDaemons` system services, `/Library/Application Support/VitalServerHelper` 아래의
 VM Image/runtime asset, host nginx bundle, Docker image bundle을 설치하고 `postinstall`에서 VM disk,
 cloud-init seed, component config, launchd 상태를 provision합니다. 이런 system-wide 설치는 macOS
 Installer가 권한 상승, receipt, MDM/Jamf 배포, CLI 설치(`installer -pkg ... -target /`)를 다룰 수
@@ -560,10 +560,10 @@ host proxy를 부팅 시 자동 실행해야 하므로 `.app`만으로 배포하
 깨진 설치/MDM 배포/제거 경로가 불명확해집니다.
 
 ```text
-TiroshVitalServer.dmg
-  -> Install Tirosh VitalServer.pkg
+VitalServerHelper.dmg
+  -> Install VitalServer Helper.pkg
       -> /Applications/VitalServer Helper.app
-      -> /Library/Application Support/TiroshVitalServer runtime data
+      -> /Library/Application Support/VitalServerHelper runtime data
       -> /usr/local/bin Updater/Supervisor/VM Driver tools
       -> LaunchDaemons
       -> postinstall runtime provisioning
@@ -585,7 +585,7 @@ administrator privilege로 호출합니다.
 
 | 대상 | 책임 |
 |---|---|
-| `Install Tirosh VitalServer.pkg` | 파일 배치, 권한 설정, LaunchDaemon 설치, 최초 runtime provisioning |
+| `Install VitalServer Helper.pkg` | 파일 배치, 권한 설정, LaunchDaemon 설치, 최초 runtime provisioning |
 | `VitalServer Helper.app` | 설치 후 Status/Settings/Update/Logs/About/Advanced/Danger Zone 진입점 |
 | `/usr/local/bin/vitalserver-vm` | 현재 local control binary. Updater, Supervisor, VM Driver 명령을 제공 |
 | `/usr/local/bin/tirosh-vitalserver-uninstall` | 제거 source of truth, Helper/Terminal/MDM 공통 backend |
@@ -599,7 +599,7 @@ open ".tmp/VitalServer Helper.app"
 
 제품 DMG는 drag-and-drop app wrapper가 아니라 installer pkg를 전달합니다.
 `make vm-pkg`는 Helper app을 `/Applications/VitalServer Helper.app` payload로 포함하고,
-`make vm-dmg`는 DMG root에 `Install Tirosh VitalServer.pkg`만 배치합니다.
+`make vm-dmg`는 DMG root에 `Install VitalServer Helper.pkg`만 배치합니다.
 
 현재 배포 기준은 unsigned입니다. `.pkg`와 `.dmg`에 Developer ID 서명/notarization을 적용하지 않습니다. 단, nginx binary와 dylib는 `install_name_tool`로 load path를 수정하므로 실행 가능한 Mach-O 상태를 위해 ad-hoc signing(`codesign --sign -`)만 수행합니다.
 
@@ -800,7 +800,7 @@ Shell
 | PKG scripts | `Support/Packaging/preinstall`, `postinstall`, `proxy-run`, `uninstall` | installer/launchd/uninstall entrypoint wrapper | 복잡한 provisioning 로직 |
 | guest bootstrap | `Support/Guest/bootstrap.sh`, Guest tools wheel, `prepare-airgap-rootfs.sh`, `compose.yaml` | Linux guest 내부 Docker/Compose 구성, edge nginx container, Docker image load, runtime state 기록 | macOS launchd/proxy 관리 |
 
-Shell은 의도적으로 얇게 유지합니다. `postinstall`은 로그를 열고 `VITALSERVER_VM_HOME=/Library/Application Support/TiroshVitalServer/vm vitalserver-vm runtime install-provision`만 호출합니다. 설치 정책은 Swift `RuntimeLifecycle`에 둡니다. Runtime readiness 판단은 `postinstall`이 아니라 watchdog, Helper app, `runtime health` command가 담당합니다.
+Shell은 의도적으로 얇게 유지합니다. `postinstall`은 로그를 열고 `VITALSERVER_VM_HOME=/Library/Application Support/VitalServerHelper/vm vitalserver-vm runtime install-provision`만 호출합니다. 설치 정책은 Swift `RuntimeLifecycle`에 둡니다. Runtime readiness 판단은 `postinstall`이 아니라 watchdog, Helper app, `runtime health` command가 담당합니다.
 
 변경 판단 기준은 아래입니다.
 

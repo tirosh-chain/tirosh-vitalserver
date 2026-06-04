@@ -18,10 +18,10 @@
 
 | 시나리오 | 산출물 | 생성 명령 | 현장 적용 |
 |---|---|---|---|
-| 신규 설치 dev 검증 | `dist/TiroshVitalServer-<version>.dmg` | `make vm-dmg-dev` | release-dev.json 기반 개발 검증 |
-| 신규 설치 release 검증 | `dist/TiroshVitalServer-<version>.dmg` | `make vm-dmg-release` | release.json 기반 release 검증 |
-| `.pkg` 직접 배포 dev 검증 | `dist/TiroshVitalServerVM-<version>.pkg` | `make vm-pkg-dev` | `sudo installer -pkg ... -target /` |
-| `.pkg` 직접 배포 release 검증 | `dist/TiroshVitalServerVM-<version>.pkg` | `make vm-pkg-release` | `sudo installer -pkg ... -target /` |
+| 신규 설치 dev 검증 | `dist/VitalServerHelper-<version>.dmg` | `make vm-dmg-dev` | release-dev.json 기반 개발 검증 |
+| 신규 설치 release 검증 | `dist/VitalServerHelper-<version>.dmg` | `make vm-dmg-release` | release.json 기반 release 검증 |
+| `.pkg` 직접 배포 dev 검증 | `dist/VitalServerHelper-<version>.pkg` | `make vm-pkg-dev` | `sudo installer -pkg ... -target /` |
+| `.pkg` 직접 배포 release 검증 | `dist/VitalServerHelper-<version>.pkg` | `make vm-pkg-release` | `sudo installer -pkg ... -target /` |
 | air-gapped Product Update | `dist/update-bundles/update-bundle-<channel>-product-update-<releaseLabel>.tar.gz` | `make vm-update-bundle-release` | Helper app Update 탭 또는 `vitalserver-vm runtime apply-bundle` |
 | VM Image Update | `dist/update-bundles/update-bundle-<channel>-vm-image-update-<releaseLabel>.tar.gz` | `make vm-rootfs-update-bundle-release` | rootfs-base 교체가 필요한 경우에만 사용 |
 | Product Update bundle 검증 | product update tarball | `make vm-update-bundle-verify-release` | 전달 전 manifest/checksum 검증 |
@@ -118,7 +118,7 @@ make vm-pkg-uninstall-dev
 `make vm-pkg-dev` 생성물:
 
 ```text
-dist/TiroshVitalServerVM-<version>.pkg
+dist/VitalServerHelper-<version>.pkg
 ```
 
 패키징 시간이 길면 압축 단계에서 CPU를 더 쓰도록 설정할 수 있습니다. `rootfs-base.raw.gz`와
@@ -158,7 +158,7 @@ golden VM 부팅과 Swift binary signing이 같은 중간 산출물을 공유하
 전달용 release DMG가 필요하면 `make vm-dmg-release`를 실행합니다. DMG에는 단일 PKG만 들어갑니다.
 
 ```text
-dist/TiroshVitalServer-<version>.dmg
+dist/VitalServerHelper-<version>.dmg
 ```
 
 설치 후 구조:
@@ -168,10 +168,10 @@ dist/TiroshVitalServer-<version>.dmg
 /usr/local/bin/vitalserver-vm
 /usr/local/bin/vitalserver-proxy-run
 /usr/local/bin/tirosh-vitalserver-uninstall
-/Library/LaunchDaemons/com.tirosh.vitalserver-vm.plist
-/Library/LaunchDaemons/com.tirosh.vitalserver-proxy.plist
-/Library/LaunchDaemons/com.tirosh.vitalserver-watchdog.plist
-/Library/Application Support/TiroshVitalServer/
+/Library/LaunchDaemons/ai.tirosh.vitalserver.helper.vm.plist
+/Library/LaunchDaemons/ai.tirosh.vitalserver.helper.proxy.plist
+/Library/LaunchDaemons/ai.tirosh.vitalserver.helper.watchdog.plist
+/Library/Application Support/VitalServerHelper/
   backups/
   logs/
     install.log
@@ -207,19 +207,19 @@ shared/NAT mode에서는 VM IP가 부팅 후에 결정됩니다. 그래서 packa
 
 ```text
 launchd
-  -> com.tirosh.vitalserver-watchdog
+  -> ai.tirosh.vitalserver.helper.watchdog
       -> vitalserver-vm runtime watchdog
       -> health snapshot 확인
       -> 필요 시 VM/proxy launchd kickstart
       -> runtime-status.json 갱신
 
 launchd
-  -> com.tirosh.vitalserver-vm
+  -> ai.tirosh.vitalserver.helper.vm
       -> vitalserver-vm start
       -> VM이 /mnt/tirosh/run/runtime-state.json 기록
 
 launchd
-  -> com.tirosh.vitalserver-proxy
+  -> ai.tirosh.vitalserver.helper.proxy
       -> vitalserver-proxy-run
       -> runtime-state.json 대기
       -> nginx config 렌더링
@@ -231,7 +231,7 @@ launchd
 
 `vm-disk.img`는 sparse disk라 package payload에 그대로 넣으면 `pkgbuild`가 실패할 수 있습니다. 따라서 package에는 immutable base artifact인 `rootfs-base.raw.gz`를 넣고, 설치 시 `postinstall`에서 `vm-disk.img`를 생성합니다.
 
-직접 배포되는 `.pkg`는 fresh install 전용입니다. 이미 `/Library/Application Support/TiroshVitalServer`, Helper app, runtime tools, LaunchDaemon plist, package receipt가 있거나 Host proxy port가 다른 listener에 점유되어 있으면 `preinstall`에서 실패해야 합니다. 기존 설치본의 교체는 Helper app의 update flow가 소유하며, `.pkg` 설치가 기존 `vm-disk.img`나 partially installed runtime을 재사용해서 upgrade처럼 동작하면 안 됩니다.
+직접 배포되는 `.pkg`는 fresh install 전용입니다. 이미 `/Library/Application Support/VitalServerHelper`, Helper app, runtime tools, LaunchDaemon plist, package receipt가 있거나 Host proxy port가 다른 listener에 점유되어 있으면 `preinstall`에서 실패해야 합니다. 기존 설치본의 교체는 Helper app의 update flow가 소유하며, `.pkg` 설치가 기존 `vm-disk.img`나 partially installed runtime을 재사용해서 upgrade처럼 동작하면 안 됩니다.
 
 ## DMG Build 흐름
 
@@ -274,18 +274,18 @@ Fresh install `postinstall`이 실패하면 wrapper는 실패 로그를 `/privat
 | PWA static build | `apps/vitalserver-runtime-pwa/dist/` | Helper app resource로 들어갈 Runtime Control PWA |
 | golden VM home | `.tmp/vitalserver-vm-golden/` | package용 clean rootfs를 만들기 위한 임시 VM home |
 | DMG staging | `.tmp/vitalserver-vm-dmg/` | DMG root에 들어갈 파일 배치 |
-| PKG output | `dist/TiroshVitalServerVM-<version>.pkg` | installer payload |
-| DMG output | `dist/TiroshVitalServer-<version>.dmg` | 사용자 전달 매체 |
+| PKG output | `dist/VitalServerHelper-<version>.pkg` | installer payload |
+| DMG output | `dist/VitalServerHelper-<version>.dmg` | 사용자 전달 매체 |
 
-DMG root에는 `Install Tirosh VitalServer.pkg`만 둡니다. 사용자는 pkg를 열어 macOS Installer로 설치합니다.
+DMG root에는 `Install VitalServer Helper.pkg`만 둡니다. 사용자는 pkg를 열어 macOS Installer로 설치합니다.
 
 ## DMG 설치 흐름
 
 사용자 관점의 설치 순서는 아래입니다.
 
 ```text
-1. TiroshVitalServer-<version>.dmg mount
-2. Install Tirosh VitalServer.pkg 실행
+1. VitalServerHelper-<version>.dmg mount
+2. Install VitalServer Helper.pkg 실행
 3. macOS Installer가 payload 복사
 4. PKG postinstall 실행
 5. Swift runtime install-provision이 runtime instance provision
@@ -296,15 +296,15 @@ DMG root에는 `Install Tirosh VitalServer.pkg`만 둡니다. 사용자는 pkg�
 실제 코드 호출은 아래처럼 이어집니다.
 
 ```text
-Install Tirosh VitalServer.pkg
+Install VitalServer Helper.pkg
   -> payload copy
     -> /Applications/VitalServer Helper.app
     -> /usr/local/bin/vitalserver-vm
     -> /usr/local/bin/vitalserver-proxy-run
-    -> /Library/Application Support/TiroshVitalServer/vm/runtime/rootfs-base.raw.gz
-    -> /Library/Application Support/TiroshVitalServer/vm/data/deploy/*
-    -> /Library/Application Support/TiroshVitalServer/nginx/*
-    -> /Library/LaunchDaemons/com.tirosh.vitalserver-*.plist
+    -> /Library/Application Support/VitalServerHelper/vm/runtime/rootfs-base.raw.gz
+    -> /Library/Application Support/VitalServerHelper/vm/data/deploy/*
+    -> /Library/Application Support/VitalServerHelper/nginx/*
+    -> /Library/LaunchDaemons/ai.tirosh.vitalserver.helper.*.plist
   -> rendered postinstall from Support/Packaging/postinstall.template
     -> vitalserver-vm runtime install-provision
       -> read /private/tmp/tirosh-vitalserver-install.json if present
@@ -329,9 +329,9 @@ VM service가 시작되면 `vitalserver-vm start`가 `vm-config.json`을 읽어 
 Uninstall 로직은 Helper app에 중복 구현하지 않고, 설치된
 `/usr/local/bin/tirosh-vitalserver-uninstall`을 관리자 권한으로 호출합니다. Helper app을 열 수 없는 깨진 설치 상태에서는 같은 command를 Terminal 또는 MDM/Jamf에서 root로 실행합니다.
 
-기본 Uninstall은 먼저 VM 안의 Redis volume에서 복구 가능한 Redis backup을 생성합니다. 이 backup이 완료되지 않으면 제거를 중단합니다. 이후 Helper app, LaunchDaemon, runtime tools, uninstaller, VM disk, package receipt를 제거하지만 `.vital` 파일 경로, logs, rollback backups, Redis backups는 보존합니다. Clean Uninstall은 `--clean`을 전달해 Redis backup 생성과 보존 단계를 건너뛰고 VM 영역, logs, backups, Redis backups, 설정된 vital files directory까지 삭제합니다.
+기본 Uninstall은 먼저 VM 안의 Redis volume에서 복구 가능한 Redis backup을 생성합니다. 이 backup이 완료되지 않으면 제거를 중단합니다. 이후 Helper app, LaunchDaemon, runtime tools, uninstaller, VM disk, package receipt를 제거하지만 `.vital` 파일 경로, logs, rollback backups, Redis backups는 보존합니다. Clean Uninstall은 `--clean`을 전달해 Redis backup 생성과 보존 단계를 건너뛰고 VM 영역, logs, backups, Redis backups, 설정된 vital files directory까지 삭제합니다. Helper UI에서 시작한 uninstall은 관리자 승인 후 background uninstaller를 시작했다는 handoff까지만 표시하고 Helper app을 종료합니다. 실제 cleanup 진행과 실패/완료 로그는 root uninstaller가 `/private/tmp/tirosh-vitalserver-uninstall.log`에 기록합니다.
 
-Fresh install 차단 조건과 uninstall 제거 대상은 같은 계약을 따라야 합니다. `preinstall`이 검사하는 `/Library/Application Support/TiroshVitalServer`, Helper app, runtime tools, uninstaller, LaunchDaemon plist, loaded launchd service, package receipt, Host proxy port listener가 uninstall 이후 남으면 다음 `.pkg` 설치는 실패해야 합니다. Package receipt는 현재 installer receipt인 `com.tirosh.vitalserver.vm`과 product/update contract에서 쓰는 `com.tirosh.vitalserver`를 모두 정리합니다.
+Fresh install 차단 조건과 uninstall 제거 대상은 같은 계약을 따라야 합니다. `preinstall`이 검사하는 `/Library/Application Support/VitalServerHelper`, Helper app, runtime tools, uninstaller, LaunchDaemon plist, loaded launchd service, package receipt, Host proxy port listener가 uninstall 이후 남으면 다음 `.pkg` 설치는 실패해야 합니다. Package receipt는 현재 installer receipt인 `ai.tirosh.vitalserver.helper`만 검사하고 정리합니다.
 
 ```text
 VitalServer Helper.app
@@ -388,11 +388,13 @@ Fallback:
 | `diskGiB` | 32 | 4-512 GiB, 4 GiB 단위. 설치 후에는 증가만 허용 |
 | `networkMode` | `shared` | `shared` 또는 `bridged` |
 | `proxyPort` | 80 | 1-65535, LaunchDaemon plist에 저장하고 Runtime CLI/Helper가 해당 값을 읽음 |
-| `vitalFilesDirectory` | `/Library/Application Support/TiroshVitalServer/vm/data/vital-files` | absolute path |
+| `vitalFilesDirectory` | `/Library/Application Support/VitalServerHelper/vm/data/vital-files` | absolute path |
 | `adminPassword` | `admin` | admin 계정 reset 값. empty가 아니면 guest runtime에 적용 |
 | `vmHostname` | `tirosh-vitalserver` | hostname-safe 문자열 |
-| `publicHost` | empty | single-line 문자열 |
-| `publicPort` | 80 | 1-65535 |
+| `vitalServerURL` | empty | optional absolute `http`/`https` URL. Reverse proxy/HTTPS/domain 운영 시 Status와 runtime advertised URL에 사용 |
+| `remoteConsoleURL` | empty | optional absolute `http`/`https` URL. Remote Console이 VitalServer와 다른 도메인일 때 사용 |
+| `publicHost` | empty | legacy guest compatibility field. `vitalServerURL`이 있으면 Host가 host를 파생 |
+| `publicPort` | 80 | legacy guest compatibility field. `vitalServerURL`이 있으면 Host가 port를 파생 |
 | `startAfterInstall` | true | bool |
 | `startOnBoot` | true | bool |
 
@@ -408,8 +410,8 @@ Fallback:
   "proxyPort": 8080,
   "vitalFilesDirectory": "/Users/Shared/TiroshVitalFiles",
   "adminPassword": "change-me",
-  "publicHost": "vitalserver.local",
-  "publicPort": 8080,
+  "vitalServerURL": "https://vitaldb.tirosh.ai/",
+  "remoteConsoleURL": "https://console.tirosh.ai/",
   "startAfterInstall": true,
   "startOnBoot": true
 }
@@ -419,7 +421,7 @@ Fallback:
 
 ```sh
 sudo install -m 0600 /path/to/install-settings.json /private/tmp/tirosh-vitalserver-install.json
-sudo installer -pkg dist/TiroshVitalServerVM-<version>.pkg -target /
+sudo installer -pkg dist/VitalServerHelper-<version>.pkg -target /
 ```
 
 개발용 Make target은 같은 계약을 `VM_INSTALL_SETTINGS`로 감쌉니다.
@@ -496,13 +498,13 @@ update에서 rootfs base를 교체해도 기존 `vm-disk.img` 내부 OS와 appli
 |---|---|
 | `/usr/local/bin` | VM launcher/runtime lifecycle CLI, proxy runner |
 | `/Library/LaunchDaemons` | VM/proxy 자동 실행 plist |
-| `/Library/Application Support/TiroshVitalServer` | VM image, deploy bundle, nginx runtime |
-| `/Library/Application Support/TiroshVitalServer/logs/install.log` | installer provisioning log, 10 MiB 기준 rotation |
-| `/Library/Application Support/TiroshVitalServer/status/runtime-status.json` | Helper/watchdog용 runtime 상태 |
+| `/Library/Application Support/VitalServerHelper` | VM image, deploy bundle, nginx runtime |
+| `/Library/Application Support/VitalServerHelper/logs/install.log` | installer provisioning log, 10 MiB 기준 rotation |
+| `/Library/Application Support/VitalServerHelper/status/runtime-status.json` | Helper/watchdog용 runtime 상태 |
 
 설치 후 `make vm-installed-health`로 launchd load 상태, VM IP, guest HTTP, host proxy HTTP를 확인합니다.
 
-개발 중 설치/제거를 반복할 때는 `make vm-pkg-uninstall-dev`를 사용합니다. 이 target은 `/Library/Application Support/TiroshVitalServer`, 관련 LaunchDaemon plist, `/usr/local/bin/vitalserver-*`를 제거하므로 운영 환경에서는 사용하지 않습니다.
+개발 중 설치/제거를 반복할 때는 `make vm-pkg-uninstall-dev`를 사용합니다. 이 target은 `/Library/Application Support/VitalServerHelper`, 관련 LaunchDaemon plist, `/usr/local/bin/vitalserver-*`를 제거하므로 운영 환경에서는 사용하지 않습니다.
 
 설치된 Mac mini/Mac Studio에서 사용자가 CLI로 제거할 때는 아래 명령을 사용합니다.
 
@@ -510,7 +512,7 @@ update에서 rootfs base를 교체해도 기존 `vm-disk.img` 내부 OS와 appli
 sudo tirosh-vitalserver-uninstall
 ```
 
-이 명령은 Redis backup을 생성한 뒤 VM/proxy/guest-log-sync/watchdog LaunchDaemon을 unload하고, package가 설치한 runtime 파일과 Helper app을 제거합니다. 기본 모드는 `.vital` 파일 경로, logs, rollback backups, Redis backups를 보존합니다. 완전 삭제가 필요하면 `sudo tirosh-vitalserver-uninstall --clean`을 사용합니다. Clean Uninstall은 Redis backup 보존 없이 VM 영역과 backup 영역까지 제거합니다. GUI 제품에서는 Helper app의 “Uninstall”과 “Clean Uninstall”이 같은 backend command를 호출합니다.
+이 명령은 Redis backup을 생성한 뒤 VM/proxy/guest-log-sync/watchdog LaunchDaemon을 unload하고, package가 설치한 runtime 파일과 Helper app을 제거합니다. 기본 모드는 `.vital` 파일 경로, logs, rollback backups, Redis backups를 보존합니다. 완전 삭제가 필요하면 `sudo tirosh-vitalserver-uninstall --clean`을 사용합니다. Clean Uninstall은 Redis backup 보존 없이 VM 영역과 backup 영역까지 제거합니다. GUI 제품에서는 Helper app의 “Uninstall”과 “Clean Uninstall”이 background uninstaller를 시작한 뒤 종료합니다. 삭제 완료 여부는 `/private/tmp/tirosh-vitalserver-uninstall.log`를 확인합니다.
 
 `.pkg`로 재설치하려면 먼저 uninstall 또는 clean uninstall을 완료해야 합니다. `preinstall`은 stale install artifact를 정리하지 않고 설치 실패로 보고합니다. 삭제와 재설치 책임을 분리해야 fresh install과 update가 서로의 state를 추정하지 않습니다.
 
@@ -568,7 +570,7 @@ Docker image bundle은 guest VM architecture에 맞춰 `linux/arm64`로 생성�
 
 ```text
 .tmp/vitalserver-vm-pkg/docker-images/vitalserver-images.tar.gz
-/Library/Application Support/TiroshVitalServer/vm/data/deploy/docker-images/vitalserver-images.tar.gz
+/Library/Application Support/VitalServerHelper/vm/data/deploy/docker-images/vitalserver-images.tar.gz
 ```
 
 Docker image만으로는 충분하지 않습니다. Guest VM이 처음 부팅될 때 `docker.io`, Docker Compose 같은 runtime package를 apt로 설치해야 한다면 air-gapped 환경에서 실패합니다. 그래서 제품용 package는 개발용 VM disk가 아니라 별도 golden VM home에서 만든 clean rootfs base를 사용합니다. VM 내부 edge nginx는 OS package가 아니라 `nginx:1.24-alpine` container로 실행합니다.
@@ -703,7 +705,7 @@ apply-bundle
   -> runtime-state.json 갱신
 ```
 
-따라서 `bootstrap.sh` 같은 guest deploy 수정은 새 update bundle을 만들면 포함됩니다. 이미 설치된 현장에서는 해당 bundle을 적용해야 실제 `/Library/Application Support/TiroshVitalServer/vm/data/deploy`와 VM 내부 runtime에 반영됩니다.
+따라서 `bootstrap.sh` 같은 guest deploy 수정은 새 update bundle을 만들면 포함됩니다. 이미 설치된 현장에서는 해당 bundle을 적용해야 실제 `/Library/Application Support/VitalServerHelper/vm/data/deploy`와 VM 내부 runtime에 반영됩니다.
 
 설치 후 runtime 설정 변경은 아래 command가 source of truth입니다.
 
@@ -714,7 +716,7 @@ sudo /usr/local/bin/vitalserver-vm runtime configure \
   --network shared \
   --bridged-interface "<interface-id-if-bridged>" \
   --proxy-port 80 \
-  --vital-files-dir "/Library/Application Support/TiroshVitalServer/vm/data/vital-files" \
+  --vital-files-dir "/Library/Application Support/VitalServerHelper/vm/data/vital-files" \
   --public-host "" \
   --public-port 80 \
   --start-on-boot true \
@@ -733,7 +735,7 @@ admin password reset은 VitalServer 본체의 사용자 계정 기능을 확장�
 | CPU, memory, network, bridged interface | `vm-config.json` 갱신 후 restart |
 | proxy port | proxy LaunchDaemon environment 갱신 후 restart |
 | Vital files directory | VM shared directory와 guest runtime config 갱신 후 restart |
-| public host/port, admin password reset | guest `runtime-config.json` 갱신 후 restart |
+| advertised URLs, admin password reset | guest `runtime-config.json`/`runtime-settings.json` 갱신 후 restart |
 | start on boot | `launchctl enable/disable system/<label>`로 VM/proxy/watchdog 정책 갱신 |
 | disk size | 별도 resize/migration flow 필요 |
 | VM hostname | `seed.iso`/guest hostname 재생성 또는 guest migration flow 필요 |

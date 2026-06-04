@@ -40,15 +40,14 @@ final class RuntimeUninstallReadinessPolicyTests: XCTestCase {
             serviceStates: serviceStates(),
             vmProcessState: .stopped,
             packageReceiptStates: [
-                .absent(identifier: "com.tirosh.vitalserver"),
-                .present(identifier: "com.tirosh.vitalserver.vm"),
-                .readFailed(identifier: "com.tirosh.vitalserver.tools", reason: "exitCode=1 stderr=denied"),
+                .present(identifier: "ai.tirosh.vitalserver.helper"),
+                .readFailed(identifier: "ai.tirosh.vitalserver.helper.tools", reason: "exitCode=1 stderr=denied"),
             ]
         ))
 
         XCTAssertEqual(blockers, [
-            "package-receipt-present:identifier=com.tirosh.vitalserver.vm",
-            "package-receipt-read-failed:identifier=com.tirosh.vitalserver.tools reason=exitCode=1 stderr=denied",
+            "package-receipt-present:identifier=ai.tirosh.vitalserver.helper",
+            "package-receipt-read-failed:identifier=ai.tirosh.vitalserver.helper.tools reason=exitCode=1 stderr=denied",
         ])
     }
 
@@ -56,12 +55,12 @@ final class RuntimeUninstallReadinessPolicyTests: XCTestCase {
         let blockers = RuntimeUninstallReadinessPolicy.cleanupArtifactBlockers([
             .absent(path: "/Applications/VitalServer Helper.app"),
             .present(path: "/usr/local/bin/vitalserver-vm"),
-            .inspectFailed(path: "/Library/Application Support/TiroshVitalServer", reason: "permission denied"),
+            .inspectFailed(path: "/Library/Application Support/VitalServerHelper", reason: "permission denied"),
         ])
 
         XCTAssertEqual(blockers, [
             "runtime-artifact-present:path=/usr/local/bin/vitalserver-vm",
-            "runtime-artifact-inspect-failed:path=/Library/Application Support/TiroshVitalServer reason=permission denied",
+            "runtime-artifact-inspect-failed:path=/Library/Application Support/VitalServerHelper reason=permission denied",
         ])
     }
 

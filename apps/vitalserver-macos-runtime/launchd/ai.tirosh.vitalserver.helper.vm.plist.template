@@ -4,19 +4,20 @@
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>com.tirosh.vitalserver-guest-log-sync</string>
+  <string>ai.tirosh.vitalserver.helper.vm</string>
 
   <key>ProgramArguments</key>
   <array>
     <string>${VITALSERVER_VM_BIN}</string>
-    <string>runtime</string>
-    <string>guest-log-sync</string>
+    <string>start</string>
   </array>
 
   <key>EnvironmentVariables</key>
   <dict>
     <key>VITALSERVER_VM_HOME</key>
     <string>${VITALSERVER_VM_HOME}</string>
+    <key>VITALSERVER_VM_DETACHED</key>
+    <string>1</string>
   </dict>
 
   <key>RunAtLoad</key>
@@ -28,10 +29,13 @@
   <key>ThrottleInterval</key>
   <integer>30</integer>
 
+  <key>ExitTimeOut</key>
+  <integer>900</integer>
+
   <key>StandardOutPath</key>
-  <string>${VITALSERVER_RUNTIME_LOGS}/guest-log-sync.out.log</string>
+  <string>${VITALSERVER_RUNTIME_LOGS}/launchd.out.log</string>
 
   <key>StandardErrorPath</key>
-  <string>${VITALSERVER_RUNTIME_LOGS}/guest-log-sync.err.log</string>
+  <string>${VITALSERVER_RUNTIME_LOGS}/launchd.err.log</string>
 </dict>
 </plist>

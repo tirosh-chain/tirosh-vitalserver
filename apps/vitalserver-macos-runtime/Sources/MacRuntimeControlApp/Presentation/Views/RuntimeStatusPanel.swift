@@ -155,41 +155,44 @@ struct RuntimeStatusPanel: View {
 
     private var vitalServerStatusAndURL: some View {
         serviceStatusAndURL(
-            url: vitalServerExternalURL,
+            displayURL: vitalServerDisplayURL,
+            openURL: explicitURL(viewModel.settings.vitalServerURL),
             status: vitalServerAvailability
         )
     }
 
     private var remoteConsoleStatusAndURL: some View {
         serviceStatusAndURL(
-            url: remoteConsoleExternalURL,
+            displayURL: remoteConsoleDisplayURL,
+            openURL: explicitURL(viewModel.settings.remoteConsoleURL),
             status: remoteConsoleAvailability
         )
     }
 
     private func serviceStatusAndURL(
-        url: String?,
+        displayURL: String,
+        openURL: String?,
         status: RuntimeStatusDisplayPolicy.StatusValue
     ) -> some View {
         ViewThatFits(in: .horizontal) {
             HStack(spacing: 12) {
-                if let url {
-                    linkButton(url) {
-                        viewModel.openExternalURL(url)
+                if let openURL {
+                    linkButton(displayURL) {
+                        viewModel.openExternalURL(openURL)
                     }
                 } else {
-                    Text(AppConstants.StatusText.notReported)
+                    Text(displayURL)
                         .fontWeight(.medium)
                 }
                 statusValue(status)
             }
             VStack(alignment: .leading, spacing: 4) {
-                if let url {
-                    linkButton(url) {
-                        viewModel.openExternalURL(url)
+                if let openURL {
+                    linkButton(displayURL) {
+                        viewModel.openExternalURL(openURL)
                     }
                 } else {
-                    Text(AppConstants.StatusText.notReported)
+                    Text(displayURL)
                         .fontWeight(.medium)
                 }
                 statusValue(status)
@@ -197,20 +200,19 @@ struct RuntimeStatusPanel: View {
         }
     }
 
-    private var vitalServerExternalURL: String? {
-        remoteClientHost.map { "http://\($0):\(viewModel.settings.publicPort)/" }
+    private var vitalServerDisplayURL: String {
+        explicitURL(viewModel.settings.vitalServerURL)
+            ?? "http://\(AppConstants.Labels.advertisedURLSameHost):\(viewModel.settings.proxyPort)/"
     }
 
-    private var remoteConsoleExternalURL: String? {
-        remoteClientHost.map { "http://\($0):\(viewModel.settings.runtimeControlPort)/" }
+    private var remoteConsoleDisplayURL: String {
+        explicitURL(viewModel.settings.remoteConsoleURL)
+            ?? "http://\(AppConstants.Labels.advertisedURLSameHost):\(viewModel.settings.runtimeControlPort)/"
     }
 
-    private var remoteClientHost: String? {
-        let configuredHost = viewModel.settings.publicHost.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !configuredHost.isEmpty {
-            return configuredHost
-        }
-        return nil
+    private func explicitURL(_ value: String) -> String? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     private var dataDirectoryValue: some View {

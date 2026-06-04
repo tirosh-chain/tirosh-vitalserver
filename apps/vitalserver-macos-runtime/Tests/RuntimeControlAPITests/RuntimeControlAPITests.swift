@@ -729,7 +729,7 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertEqual(health.statusMessage, "health with 6 CPUs")
         XCTAssertEqual(release.helperVersion, "0.2.0")
         XCTAssertEqual(installInfo.appBundlePath, "/Applications/VitalServer Helper.app")
-        XCTAssertEqual(installInfo.packageIdentifier, "com.tirosh.vitalserver.vm")
+        XCTAssertEqual(installInfo.packageIdentifier, "ai.tirosh.vitalserver.helper")
         XCTAssertEqual(installInfo.backupsPath, "/backups")
         XCTAssertEqual(installInfo.redisBackupsPath, "/runtime/data/backups/redis")
         XCTAssertEqual(observationSnapshot.state, .loaded)
@@ -1808,7 +1808,7 @@ private struct StubRuntimeControlAPIReadHandler: RuntimeControlAPIReadHandler {
                 id: "event-1",
                 eventType: .statusChanged,
                 timestamp: "2026-05-24T00:00:00Z",
-                product: "TiroshVitalServer",
+                product: "VitalServerHelper",
                 status: .healthy,
                 previousStatus: nil,
                 operation: .health,
@@ -2182,7 +2182,7 @@ private final class FakeRuntimeControlClient: RuntimeControlClient, RuntimeHostC
                 id: "event-1",
                 eventType: .statusChanged,
                 timestamp: "2026-05-24T00:00:00Z",
-                product: "TiroshVitalServer",
+                product: "VitalServerHelper",
                 status: .healthy,
                 previousStatus: nil,
                 operation: .health,
@@ -2196,7 +2196,7 @@ private final class FakeRuntimeControlClient: RuntimeControlClient, RuntimeHostC
                 id: "event-2",
                 eventType: .containerObserved,
                 timestamp: "2026-05-24T00:01:00Z",
-                product: "TiroshVitalServer",
+                product: "VitalServerHelper",
                 status: .healthy,
                 previousStatus: nil,
                 operation: .health,
@@ -2210,7 +2210,7 @@ private final class FakeRuntimeControlClient: RuntimeControlClient, RuntimeHostC
                 id: "event-3",
                 eventType: .auditProxyObserved,
                 timestamp: "2026-05-24T00:02:00Z",
-                product: "TiroshVitalServer",
+                product: "VitalServerHelper",
                 status: .healthy,
                 previousStatus: nil,
                 operation: .health,
@@ -2358,7 +2358,7 @@ private final class FakeRuntimeControlClient: RuntimeControlClient, RuntimeHostC
     func loadInstallInfo() -> RuntimeInstallInfo {
         RuntimeInstallInfo(
             appBundlePath: "/Applications/VitalServer Helper.app",
-            packageIdentifier: "com.tirosh.vitalserver.vm",
+            packageIdentifier: "ai.tirosh.vitalserver.helper",
             runtimeHomePath: "/runtime",
             backupsPath: "/backups",
             redisBackupsPath: "/runtime/data/backups/redis"

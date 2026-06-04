@@ -245,8 +245,7 @@ final class RuntimeInstallTransitionPolicyTests: XCTestCase {
             artifactStates: [.absent(path: "/usr/local/bin/vitalserver-vm")],
             serviceStates: freshInstallServiceStates(),
             packageReceiptStates: [
-                .absent(identifier: "com.tirosh.vitalserver.vm"),
-                .absent(identifier: "com.tirosh.vitalserver"),
+                .absent(identifier: "ai.tirosh.vitalserver.helper"),
             ],
             proxyPortState: .clear(port: 80)
         )

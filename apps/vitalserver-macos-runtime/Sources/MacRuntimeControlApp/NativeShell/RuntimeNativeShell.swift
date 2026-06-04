@@ -142,7 +142,7 @@ private final class VitalFilesDirectoryOpenPanelDelegate: NSObject, NSOpenSavePa
     func panel(_ sender: Any, validate url: URL) throws {
         if let message = policy.validationMessage(for: url) {
             throw NSError(
-                domain: "TiroshVitalServer.VitalFilesDirectory",
+                domain: "VitalServerHelper.VitalFilesDirectory",
                 code: 1,
                 userInfo: [NSLocalizedDescriptionKey: message]
             )
@@ -165,7 +165,7 @@ private final class LogExportSavePanelDelegate: NSObject, NSOpenSavePanelDelegat
     func panel(_ sender: Any, validate url: URL) throws {
         if let message = policy.validationMessage(for: url) {
             throw NSError(
-                domain: "TiroshVitalServer.LogExportDestination",
+                domain: "VitalServerHelper.LogExportDestination",
                 code: 1,
                 userInfo: [NSLocalizedDescriptionKey: message]
             )

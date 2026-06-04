@@ -125,6 +125,17 @@ struct RuntimeConfigureRunner {
                 readOnly: false
             )
             guestConfig.vitalFilesDirectory = Constants.Defaults.vitalFilesDirectoryGuestMountPath
+        case .vitalServerURL(let value):
+            guard isValidAdvertisedURL(value) else {
+                throw LauncherError.missingArgument("--vitalserver-url must be empty or an absolute http/https URL")
+            }
+            guestConfig.vitalServerURL = value
+            applyVitalServerURLCompatibilityFields(value, to: &guestConfig)
+        case .remoteConsoleURL(let value):
+            guard isValidAdvertisedURL(value) else {
+                throw LauncherError.missingArgument("--remote-console-url must be empty or an absolute http/https URL")
+            }
+            guestConfig.remoteConsoleURL = value
         case .publicHost(let value):
             guard RuntimeTextValidator.isSingleLine(value) else {
                 throw LauncherError.missingArgument("--public-host must not contain newlines")
@@ -160,6 +171,40 @@ struct RuntimeConfigureRunner {
                 )
             }
             guestConfig.redisBackupRetentionCount = count
+        }
+    }
+
+    private func isValidAdvertisedURL(_ value: String) -> Bool {
+        if value.isEmpty {
+            return true
+        }
+        guard RuntimeTextValidator.isSingleLine(value),
+              let components = URLComponents(string: value),
+              let scheme = components.scheme?.lowercased(),
+              scheme == "http" || scheme == "https",
+              let host = components.host,
+              !host.isEmpty else {
+            return false
+        }
+        if let port = components.port, !(1...65_535).contains(port) {
+            return false
+        }
+        return true
+    }
+
+    private func applyVitalServerURLCompatibilityFields(_ value: String, to guestConfig: inout GuestRuntimeConfigDocument) {
+        guard !value.isEmpty,
+              let components = URLComponents(string: value),
+              let host = components.host else {
+            return
+        }
+        guestConfig.publicHost = host
+        if let port = components.port {
+            guestConfig.publicPort = port
+        } else if components.scheme?.lowercased() == "https" {
+            guestConfig.publicPort = 443
+        } else {
+            guestConfig.publicPort = Constants.Guest.publicPort
         }
     }
 

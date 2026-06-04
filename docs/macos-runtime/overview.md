@@ -51,7 +51,7 @@ v1 기본값은 `shared/NAT VM + macOS host proxy`입니다. 이 구조는 Docke
 
 | 시나리오 | 사용자가 보는 것 | 개발/운영자가 쓰는 것 | 세부 문서 |
 |---|---|---|---|
-| 신규 현장 설치 | `TiroshVitalServer-<version>.dmg` 안의 installer package | `make vm-dmg-release` | [Packaging and Update](packaging.md) |
+| 신규 현장 설치 | `VitalServerHelper-<version>.dmg` 안의 installer package | `make vm-dmg-release` | [Packaging and Update](packaging.md) |
 | 폐쇄망 Product Update | offline product update bundle tarball | `make vm-update-bundle-release`, Helper app Update 탭 | [Packaging and Update](packaging.md) |
 | VM Image Update | offline VM image update bundle tarball | `make vm-rootfs-update-bundle-release`, Danger Zone | [Packaging and Update](packaging.md), [Update](update.md) |
 | 온라인 업데이트 | 같은 update bundle 계약, download source만 온라인 | release hardening 대상 | [Packaging and Update](packaging.md) |
@@ -169,8 +169,8 @@ make vm-down
 
 | 산출물 | 위치 | 용도 |
 |---|---|---|
-| DMG | `dist/TiroshVitalServer-<version>.dmg` | 현장 전달용 설치 매체 |
-| PKG | `dist/TiroshVitalServerVM-<version>.pkg` | 실제 macOS Installer payload |
+| DMG | `dist/VitalServerHelper-<version>.dmg` | 현장 전달용 설치 매체 |
+| PKG | `dist/VitalServerHelper-<version>.pkg` | 실제 macOS Installer payload |
 | Product Update bundle | `dist/update-bundles/update-bundle-<channel>-product-update-<releaseLabel>.tar.gz` | 설치 후 offline/online Product Update 입력 |
 | Helper app | `.tmp/VitalServer Helper.app` 또는 `/Applications/VitalServer Helper.app` | 설치 후 운영 UI |
 | Golden rootfs | `.tmp/vitalserver-vm-pkg/rootfs-base.raw.gz` | air-gapped 설치용 immutable rootfs base |

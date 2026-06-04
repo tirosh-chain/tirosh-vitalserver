@@ -105,7 +105,7 @@ update bundle manifest에는 updater 호환성 판단을 위한 필드를 둡니
 ```json
 {
   "schemaVersion": 3,
-  "product": "com.tirosh.vitalserver",
+  "product": "ai.tirosh.vitalserver.helper",
   "bundleKind": "product-update",
   "channel": "stable",
   "helperVersion": "0.2.0",
@@ -132,7 +132,7 @@ update bundle manifest에는 updater 호환성 판단을 위한 필드를 둡니
 | 필드 | 의미 |
 |---|---|
 | `schemaVersion` | manifest 문법과 required field set의 version. 현재 baseline은 `3` |
-| `product` | bundle이 대상으로 하는 product id. 현재 `com.tirosh.vitalserver` |
+| `product` | bundle이 대상으로 하는 product id. 현재 `ai.tirosh.vitalserver.helper` |
 | `bundleKind` | `product-update` 또는 `vm-image-update` |
 | `channel` | `stable`, `dev` 같은 update channel. 설치된 updater channel과 다르면 preflight에서 거부 |
 | `helperVersion` | 최상위 VitalServer Helper product release version. package-safe numeric version |
@@ -314,9 +314,9 @@ update-bundle-<channel>-<kind>-<releaseLabel>/
 |---|---|---|
 | `app-bundle.tar.gz` | `/Applications/VitalServer Helper.app` | Helper UI 교체. 적용 중 실행 중인 app과 충돌할 수 있어 재실행이 필요 |
 | `runtime-tools.tar.gz` | `/usr/local/bin` | Updater/Supervisor/VM Driver tools, `vitalserver-proxy-run`, uninstall CLI 교체 |
-| `nginx-bundle.tar.gz` | `/Library/Application Support/TiroshVitalServer/nginx` | macOS host proxy binary/config asset 교체 |
-| `guest-deploy.tar.gz` | `/Library/Application Support/TiroshVitalServer/vm/data/deploy` | VM 안에서 참조하는 Compose, guest bin/systemd, nginx config, Docker image bundle 교체 |
-| `rootfs-base.raw.gz` | `/Library/Application Support/TiroshVitalServer/vm/runtime/rootfs-base.raw.gz` | `vm-image-update` bundle에만 포함. 이후 provisioning 기준 base artifact 교체. 기존 `vm-disk.img`에는 자동 전개하지 않음 |
+| `nginx-bundle.tar.gz` | `/Library/Application Support/VitalServerHelper/nginx` | macOS host proxy binary/config asset 교체 |
+| `guest-deploy.tar.gz` | `/Library/Application Support/VitalServerHelper/vm/data/deploy` | VM 안에서 참조하는 Compose, guest bin/systemd, nginx config, Docker image bundle 교체 |
+| `rootfs-base.raw.gz` | `/Library/Application Support/VitalServerHelper/vm/runtime/rootfs-base.raw.gz` | `vm-image-update` bundle에만 포함. 이후 provisioning 기준 base artifact 교체. 기존 `vm-disk.img`에는 자동 전개하지 않음 |
 | `migrations/*` | host runtime command | 설치된 runtime 상태를 바꾸는 executable migration. 기본 bundle에는 cloud-init seed refresh migration이 포함됨 |
 
 중요한 구분은 `rootfs-base.raw.gz`와 `vm-disk.img`입니다.
@@ -669,10 +669,10 @@ Update 실패 시 우선 아래를 봅니다.
 
 ```sh
 tail -f /private/tmp/tirosh-vitalserver-manager-command.log
-cat "/Library/Application Support/TiroshVitalServer/status/runtime-status.json"
-tail -n 200 "/Library/Application Support/TiroshVitalServer/vm/data/run/container-logs.log"
-tail -n 200 "/Library/Application Support/TiroshVitalServer/vm/logs/proxy.err.log"
-cat "/Library/Application Support/TiroshVitalServer/vm/data/run/runtime-state.json"
+cat "/Library/Application Support/VitalServerHelper/status/runtime-status.json"
+tail -n 200 "/Library/Application Support/VitalServerHelper/vm/data/run/container-logs.log"
+tail -n 200 "/Library/Application Support/VitalServerHelper/vm/logs/proxy.err.log"
+cat "/Library/Application Support/VitalServerHelper/vm/data/run/runtime-state.json"
 ```
 
 bundle 자체를 확인할 때:

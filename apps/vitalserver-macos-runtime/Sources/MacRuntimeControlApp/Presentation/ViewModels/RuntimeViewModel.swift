@@ -456,12 +456,16 @@ final class RuntimeViewModel: ObservableObject {
         guard !useCustomAdvertisedURL else {
             return
         }
+        settings.vitalServerURL = ""
+        settings.remoteConsoleURL = ""
         settings.publicHost = ""
         settings.publicPort = settings.proxyPort
     }
 
     private static func usesCustomAdvertisedURL(_ settings: RuntimeSettings) -> Bool {
-        !settings.publicHost.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        !settings.vitalServerURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !settings.remoteConsoleURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !settings.publicHost.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             || settings.publicPort != settings.proxyPort
     }
 

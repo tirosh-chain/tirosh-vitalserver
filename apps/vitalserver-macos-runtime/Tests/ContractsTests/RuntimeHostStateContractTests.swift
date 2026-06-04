@@ -37,10 +37,10 @@ final class RuntimeHostStateContractTests: XCTestCase {
 
     func testRuntimePackageReceiptStateKeepsPresentAndReadFailureDistinctFromAbsent() throws {
         let states: [RuntimePackageReceiptState] = [
-            .present(identifier: "com.tirosh.vitalserver.vm"),
-            .absent(identifier: "com.tirosh.vitalserver"),
-            .readFailed(identifier: "com.tirosh.vitalserver.tools", reason: "exitCode=1 stderr=denied"),
-            .forgetFailed(identifier: "com.tirosh.vitalserver.vm", reason: "exitCode=1 stderr=locked"),
+            .present(identifier: "ai.tirosh.vitalserver.helper"),
+            .absent(identifier: "ai.tirosh.vitalserver.helper.tools"),
+            .readFailed(identifier: "ai.tirosh.vitalserver.helper.tools", reason: "exitCode=1 stderr=denied"),
+            .forgetFailed(identifier: "ai.tirosh.vitalserver.helper", reason: "exitCode=1 stderr=locked"),
         ]
 
         let encoded = try JSONEncoder().encode(states)
@@ -107,9 +107,9 @@ final class RuntimeHostStateContractTests: XCTestCase {
             settingsState: .defaulted(path: "/private/tmp/tirosh-vitalserver-install.json", proxyPort: 80),
             artifactStates: [.present(path: "/usr/local/bin/vitalserver-vm")],
             serviceStates: [
-                RuntimeFreshInstallServiceState(label: "com.tirosh.vitalserver-vm", state: .notLoaded),
+                RuntimeFreshInstallServiceState(label: "ai.tirosh.vitalserver.helper.vm", state: .notLoaded),
             ],
-            packageReceiptStates: [.absent(identifier: "com.tirosh.vitalserver.vm")],
+            packageReceiptStates: [.absent(identifier: "ai.tirosh.vitalserver.helper")],
             proxyPortState: .clear(port: 80)
         )
 

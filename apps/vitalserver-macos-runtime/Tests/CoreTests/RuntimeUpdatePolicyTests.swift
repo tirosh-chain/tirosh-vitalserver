@@ -62,7 +62,7 @@ final class RuntimeUpdatePreflightPolicyTests: XCTestCase {
     ) -> UpdateBundleManifest {
         UpdateBundleManifest(
             schemaVersion: 3,
-            product: "com.tirosh.vitalserver",
+            product: "ai.tirosh.vitalserver.helper",
             channel: channel,
             helperVersion: "1.2.3",
             releaseLabel: "1.2.3",

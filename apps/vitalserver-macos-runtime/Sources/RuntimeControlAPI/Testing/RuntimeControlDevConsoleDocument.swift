@@ -325,7 +325,7 @@ public enum RuntimeControlDevConsoleDocument {
         </div>
         <label>
           Backup path
-          <input id="backupPath" autocomplete="off" placeholder="/Library/Application Support/TiroshVitalServer/backups/...">
+          <input id="backupPath" autocomplete="off" placeholder="/Library/Application Support/VitalServerHelper/backups/...">
         </label>
         <div class="actions">
           <button id="rollbackBackup">Rollback</button>

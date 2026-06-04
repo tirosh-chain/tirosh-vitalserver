@@ -364,7 +364,7 @@ struct RuntimeLogExportSupplementalSource {
             ),
             RuntimeLogExportSupplementalSource(
                 source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.proxyLaunchDaemon),
-                relativeDestination: "diagnostics/host/com.tirosh.vitalserver-proxy.plist"
+                relativeDestination: "diagnostics/host/ai.tirosh.vitalserver.helper.proxy.plist"
             ),
             RuntimeLogExportSupplementalSource(
                 source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.proxyNginxConfig),

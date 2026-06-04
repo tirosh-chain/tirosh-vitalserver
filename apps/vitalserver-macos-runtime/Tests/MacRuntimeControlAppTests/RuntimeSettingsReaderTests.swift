@@ -27,6 +27,8 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         FileManager.default.createFile(atPath: vmDisk.path, contents: Data([0]))
         try """
         {
+          "vitalServerURL": "https://vitaldb.tirosh.ai/",
+          "remoteConsoleURL": "https://console.tirosh.ai/",
           "publicHost": "example.test",
           "publicPort": 8080,
           "redisBackupRetentionCount": 31
@@ -54,6 +56,8 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         XCTAssertEqual(settings.minimumDiskGiB, 1)
         XCTAssertEqual(settings.bridgedInterface, "en0")
         XCTAssertEqual(settings.vitalFilesDirectory, "/Volumes/Vital Files")
+        XCTAssertEqual(settings.vitalServerURL, "https://vitaldb.tirosh.ai/")
+        XCTAssertEqual(settings.remoteConsoleURL, "https://console.tirosh.ai/")
         XCTAssertEqual(settings.publicHost, "example.test")
         XCTAssertEqual(settings.publicPort, 8080)
         XCTAssertEqual(settings.redisBackupRetentionCount, 30)
@@ -274,6 +278,8 @@ final class RuntimeSettingsReaderTests: XCTestCase {
 
         XCTAssertEqual(settings.publicHost, "settings.example.test")
         XCTAssertEqual(settings.publicPort, 8443)
+        XCTAssertEqual(settings.vitalServerURL, "http://settings.example.test:8443/")
+        XCTAssertEqual(settings.remoteConsoleURL, "")
         XCTAssertEqual(settings.redisBackupRetentionCount, 12)
     }
 
@@ -284,6 +290,8 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         settings.diskGiB = 40
         settings.proxyPort = 18080
         settings.vitalFilesDirectory = "/data/vital"
+        settings.vitalServerURL = "https://vitaldb.tirosh.ai/"
+        settings.remoteConsoleURL = "https://console.tirosh.ai/"
         settings.publicHost = "public.test"
         settings.publicPort = 8080
         settings.redisBackupRetentionCount = 20
@@ -302,6 +310,8 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         XCTAssertTrue(arguments.contains("/tmp/password"))
         XCTAssertTrue(arguments.contains(RuntimeAdapterConstants.RuntimeCommand.optionRestart))
         XCTAssertEqual(value(after: RuntimeAdapterConstants.RuntimeCommand.optionProxyPort, in: arguments), "18080")
+        XCTAssertEqual(value(after: RuntimeAdapterConstants.RuntimeCommand.optionVitalServerURL, in: arguments), "https://vitaldb.tirosh.ai/")
+        XCTAssertEqual(value(after: RuntimeAdapterConstants.RuntimeCommand.optionRemoteConsoleURL, in: arguments), "https://console.tirosh.ai/")
         XCTAssertEqual(value(after: RuntimeAdapterConstants.RuntimeCommand.optionRedisBackupRetention, in: arguments), "20")
         XCTAssertEqual(value(after: RuntimeAdapterConstants.RuntimeCommand.optionStartOnBoot, in: arguments), "false")
         XCTAssertEqual(value(after: RuntimeAdapterConstants.RuntimeCommand.optionAutoRecovery, in: arguments), "false")
@@ -397,7 +407,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         try """
         {
           "schemaVersion": 2,
-          "product": "TiroshVitalServer",
+          "product": "VitalServerHelper",
           "status": "healthy",
           "operation": "health",
           "message": "ok",
@@ -476,7 +486,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         try """
         {
           "schemaVersion": 2,
-          "product": "TiroshVitalServer",
+          "product": "VitalServerHelper",
           "status": "healthy",
           "operation": "health",
           "message": "ok",
@@ -599,7 +609,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         try """
         {
           "schemaVersion": 2,
-          "product": "TiroshVitalServer",
+          "product": "VitalServerHelper",
           "status": "healthy",
           "operation": "health",
           "message": "ok",
@@ -662,7 +672,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         try """
         {
           "schemaVersion": 2,
-          "product": "TiroshVitalServer",
+          "product": "VitalServerHelper",
           "status": "healthy",
           "operation": "watchdog",
           "message": "ok",
@@ -867,7 +877,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
             id: id,
             eventType: .statusChanged,
             timestamp: timestamp,
-            product: "TiroshVitalServer",
+            product: "VitalServerHelper",
             status: .healthy,
             previousStatus: nil,
             operation: .health,
@@ -883,7 +893,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         try """
         {
           "schemaVersion": 2,
-          "product": "TiroshVitalServer",
+          "product": "VitalServerHelper",
           "status": "healthy",
           "operation": "health",
           "message": "ok",

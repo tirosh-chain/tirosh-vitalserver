@@ -97,7 +97,7 @@ final class RuntimeViewModelObservabilityRefresherTests: XCTestCase {
             id: id,
             eventType: .statusChanged,
             timestamp: "2026-05-30T00:00:00Z",
-            product: "TiroshVitalServer",
+            product: "VitalServerHelper",
             status: .healthy,
             previousStatus: nil,
             operation: .health,

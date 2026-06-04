@@ -16,6 +16,10 @@ struct RuntimeSettingsValidator {
             || !(1...65_535).contains(settings.runtimeControlPort) {
             return .invalid(AppConstants.StatusText.invalidPort)
         }
+        if !isValidAdvertisedURL(settings.vitalServerURL)
+            || !isValidAdvertisedURL(settings.remoteConsoleURL) {
+            return .invalid(AppConstants.StatusText.invalidAdvertisedURL)
+        }
         if !(AppConstants.SettingsLimits.minimumRedisBackupRetentionCount...AppConstants.SettingsLimits.maximumRedisBackupRetentionCount)
             .contains(settings.redisBackupRetentionCount) {
             return .invalid(AppConstants.StatusText.invalidRedisBackupRetention)
@@ -34,6 +38,26 @@ struct RuntimeSettingsValidator {
 
     private func isLineSafe(_ value: String) -> Bool {
         !value.contains("\n") && !value.contains("\r")
+    }
+
+    private func isValidAdvertisedURL(_ value: String) -> Bool {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            return true
+        }
+        guard trimmed == value,
+              isLineSafe(value),
+              let components = URLComponents(string: value),
+              let scheme = components.scheme?.lowercased(),
+              scheme == "http" || scheme == "https",
+              let host = components.host,
+              !host.isEmpty else {
+            return false
+        }
+        if let port = components.port, !(1...65_535).contains(port) {
+            return false
+        }
+        return true
     }
 }
 

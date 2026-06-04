@@ -95,7 +95,7 @@ enum RuntimeLifecycleCommand: Equatable {
       vitalserver-vm runtime health
       vitalserver-vm runtime guest-log-sync
       vitalserver-vm runtime watchdog
-      vitalserver-vm runtime configure [--cpu <count>] [--memory-gib <gib>] [--disk-gib <gib>] [--network shared|bridged] [--bridged-interface <id>] [--proxy-port <port>] [--vital-files-dir <path>] [--public-host <host>] [--public-port <port>] [--admin-password <password>] [--start-on-boot true|false] [--auto-recovery true|false] [--prevent-system-sleep true|false] [--redis-backup-retention <count>] [--restart]
+      vitalserver-vm runtime configure [--cpu <count>] [--memory-gib <gib>] [--disk-gib <gib>] [--network shared|bridged] [--bridged-interface <id>] [--proxy-port <port>] [--vital-files-dir <path>] [--vitalserver-url <url>] [--remote-console-url <url>] [--public-host <host>] [--public-port <port>] [--admin-password <password>] [--start-on-boot true|false] [--auto-recovery true|false] [--prevent-system-sleep true|false] [--redis-backup-retention <count>] [--restart]
       vitalserver-vm runtime configure [--admin-password-file <path>] [--restart]
       vitalserver-vm runtime verify-bundle <bundle.tar.gz>
       vitalserver-vm runtime stage-bundle <bundle.tar.gz>
@@ -197,6 +197,10 @@ enum RuntimeLifecycleCommand: Equatable {
                 throw LauncherError.missingArgument("--vital-files-dir must be an absolute path")
             }
             return .vitalFilesDirectory(URL(fileURLWithPath: value))
+        case .vitalServerURL:
+            return .vitalServerURL(value)
+        case .remoteConsoleURL:
+            return .remoteConsoleURL(value)
         case .publicHost:
             return .publicHost(value)
         case .publicPort:

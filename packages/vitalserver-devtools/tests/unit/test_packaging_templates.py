@@ -82,22 +82,26 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
     assert "launchctl print" not in preinstall_text
     assert "lsof -nP" not in preinstall_text
     assert "plutil -extract" not in preinstall_text
-    assert "/Library/Application Support/TiroshVitalServer" in rendered
+    assert "/Library/Application Support/VitalServerHelper" in rendered
     assert '"${vm_bin}" runtime install-provision' in postinstall_text
     assert "postinstall_timeout_seconds" not in postinstall_text
     assert "runtime install timed out timeoutSeconds=" not in postinstall_text
     assert "postinstall failure cleanup started" in postinstall_text
     assert "tirosh-vitalserver-postinstall-failure.log" in postinstall_text
     assert (
-        'vm_home="/Library/Application Support/TiroshVitalServer/vm"'
+        'vm_home="/Library/Application Support/VitalServerHelper/vm"'
         in postinstall_text
     )
     assert 'manager_app="/Applications/VitalServer Helper.app"' in postinstall_text
     assert '"${manager_app}"' in postinstall_text
     assert '"${vm_bin}"' in postinstall_text
-    assert "launchctl bootout" not in postinstall_text
+    assert "VitalServer Helper postinstall started" in postinstall_text
+    assert "VitalServer Helper postinstall completed" in postinstall_text
+    assert 'launchctl bootout "system/${label}"' in postinstall_text
+    assert "ai.tirosh.vitalserver.helper.vm" in postinstall_text
+    assert "ai.tirosh.vitalserver.helper.proxy" in postinstall_text
     assert "pkgutil --forget" not in postinstall_text
-    assert "rm -rf" not in postinstall_text
+    assert 'rm -rf "${path}"' in postinstall_text
     assert "runtime install progress status=" not in postinstall_text
     assert "runtime install progress failureReasons=" not in postinstall_text
     assert "runtime_status=" not in postinstall_text
@@ -116,9 +120,13 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
     assert '"${vm_bin}" "runtime" "uninstall"' in uninstall_text
     assert 'command+=("--clean")' in uninstall_text
     assert (
-        'vm_home="/Library/Application Support/TiroshVitalServer/vm"'
+        'vm_home="/Library/Application Support/VitalServerHelper/vm"'
         in uninstall_text
     )
+    assert 'manager_app="/Applications/VitalServer Helper.app"' in uninstall_text
+    assert "wait_for_helper_app_exit" in uninstall_text
+    assert "/usr/bin/pgrep -f --" in uninstall_text
+    assert "Helper app is still running; aborting uninstall before file removal" in uninstall_text
     assert 'VITALSERVER_VM_HOME="${vm_home}" "${command[@]}"' in uninstall_text
     assert "Applications/VitalServer Helper.app" in components.read_text(
         encoding="utf-8"

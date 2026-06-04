@@ -204,8 +204,7 @@ private final class RuntimeInstallWorkflowHarness {
                 RuntimeFreshInstallServiceState(label: $0.label, state: .notLoaded)
             },
             packageReceiptStates: [
-                .absent(identifier: "com.tirosh.vitalserver.vm"),
-                .absent(identifier: "com.tirosh.vitalserver"),
+                .absent(identifier: "ai.tirosh.vitalserver.helper"),
             ],
             proxyPortState: .clear(port: 80)
         )

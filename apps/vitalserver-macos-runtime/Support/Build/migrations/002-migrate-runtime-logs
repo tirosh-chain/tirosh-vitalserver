@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-product_root="/Library/Application Support/TiroshVitalServer"
+product_root="/Library/Application Support/VitalServerHelper"
 vm_home="${VITALSERVER_VM_HOME:-${product_root}/vm}"
 legacy_logs="${vm_home}/logs"
 central_logs="${product_root}/logs/runtime"

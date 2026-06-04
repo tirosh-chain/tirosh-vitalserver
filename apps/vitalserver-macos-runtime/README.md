@@ -85,13 +85,13 @@ make vm-dmg-release
 생성물:
 
 ```text
-dist/TiroshVitalServer-<version>.dmg
+dist/VitalServerHelper-<version>.dmg
 ```
 
 DMG 안에는 단일 installer package가 들어갑니다.
 
 ```text
-Install Tirosh VitalServer.pkg
+Install VitalServer Helper.pkg
 ```
 
 이 package는 Helper app, Swift runtime CLI, host proxy, Linux VM runtime asset, golden rootfs, Docker image bundle, LaunchDaemon을 설치합니다. target Mac은 설치 시점에 인터넷이 없어도 됩니다.
@@ -247,10 +247,10 @@ Update bundle manifest는 `schemaVersion: 3`, `channel`, `helperVersion`, `relea
 | runtime CLI | `/usr/local/bin/vitalserver-vm` |
 | host proxy runner | `/usr/local/bin/vitalserver-proxy-run` |
 | uninstaller | `/usr/local/bin/tirosh-vitalserver-uninstall` |
-| runtime home | `/Library/Application Support/TiroshVitalServer/` |
-| status file | `/Library/Application Support/TiroshVitalServer/status/runtime-status.json` |
-| logs | `/Library/Application Support/TiroshVitalServer/logs/` |
-| LaunchDaemons | `/Library/LaunchDaemons/com.tirosh.vitalserver-*.plist` |
+| runtime home | `/Library/Application Support/VitalServerHelper/` |
+| status file | `/Library/Application Support/VitalServerHelper/status/runtime-status.json` |
+| logs | `/Library/Application Support/VitalServerHelper/logs/` |
+| LaunchDaemons | `/Library/LaunchDaemons/ai.tirosh.vitalserver.helper.*.plist` |
 
 ## 책임 경계
 

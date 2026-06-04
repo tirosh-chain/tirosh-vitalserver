@@ -1,11 +1,11 @@
 {
-  "product": "TiroshVitalServer",
+  "product": "VitalServerHelper",
   "status": "healthy",
   "operation": "health",
   "message": "runtime health check passed",
   "updatedAt": "2026-05-21T12:33:57Z",
-  "productRoot": "/Library/Application Support/TiroshVitalServer",
-  "runtimeHome": "/Library/Application Support/TiroshVitalServer/vm",
+  "productRoot": "/Library/Application Support/VitalServerHelper",
+  "runtimeHome": "/Library/Application Support/VitalServerHelper/vm",
   "runtimeVersion": "0.1.4",
   "vmService": "loaded",
   "proxyService": "loaded",
@@ -19,5 +19,5 @@
   "rootfsBase": "present",
   "vmDisk": "present",
   "failureReasons": [],
-  "latestBackup": "/Library/Application Support/TiroshVitalServer/backups/20260521T123000Z-before-0.1.4"
+  "latestBackup": "/Library/Application Support/VitalServerHelper/backups/20260521T123000Z-before-0.1.4"
 }

@@ -323,7 +323,7 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
             id: id,
             eventType: .statusChanged,
             timestamp: timestamp,
-            product: "TiroshVitalServer",
+            product: "VitalServerHelper",
             status: .healthy,
             previousStatus: nil,
             operation: .health,
@@ -357,7 +357,7 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
     ) throws {
         let document = RuntimeStatusDocument(
             schemaVersion: 2,
-            product: "TiroshVitalServer",
+            product: "VitalServerHelper",
             status: .healthy,
             operation: .health,
             message: "ok",

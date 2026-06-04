@@ -12,7 +12,7 @@ final class RuntimeHostProxyPortCleanerTests: XCTestCase {
             proxyPort: { 80 },
             proxyServiceLoaded: { false },
             expectedProxyNginxPID: { .loaded("123") },
-            ownedNginxPathFragments: ["/Library/Application Support/TiroshVitalServer/nginx"],
+            ownedNginxPathFragments: ["/Library/Application Support/VitalServerHelper/nginx"],
             runProcess: { executable, arguments in
                 commands.append((executable, arguments))
                 if executable == Constants.Commands.lsof {
@@ -40,7 +40,7 @@ final class RuntimeHostProxyPortCleanerTests: XCTestCase {
             proxyPort: { 80 },
             proxyServiceLoaded: { false },
             expectedProxyNginxPID: { .missing },
-            ownedNginxPathFragments: ["/Library/Application Support/TiroshVitalServer/nginx"],
+            ownedNginxPathFragments: ["/Library/Application Support/VitalServerHelper/nginx"],
             runProcess: { executable, arguments in
                 switch executable {
                 case Constants.Commands.lsof:
@@ -51,7 +51,7 @@ final class RuntimeHostProxyPortCleanerTests: XCTestCase {
                 case Constants.Commands.ps:
                     return RuntimeProcessResult(
                         exitCode: 0,
-                        stdout: "/Library/Application Support/TiroshVitalServer/nginx/sbin/nginx -c vitalserver-nginx.conf\n",
+                        stdout: "/Library/Application Support/VitalServerHelper/nginx/sbin/nginx -c vitalserver-nginx.conf\n",
                         stderr: ""
                     )
                 case Constants.Commands.kill:
@@ -75,7 +75,7 @@ final class RuntimeHostProxyPortCleanerTests: XCTestCase {
             proxyPort: { 80 },
             proxyServiceLoaded: { false },
             expectedProxyNginxPID: { .missing },
-            ownedNginxPathFragments: ["/Library/Application Support/TiroshVitalServer/nginx"],
+            ownedNginxPathFragments: ["/Library/Application Support/VitalServerHelper/nginx"],
             runProcess: { executable, _ in
                 if executable == Constants.Commands.lsof {
                     return RuntimeProcessResult(exitCode: 0, stdout: Self.lsof(["httpd", "789"]), stderr: "")
@@ -97,7 +97,7 @@ final class RuntimeHostProxyPortCleanerTests: XCTestCase {
             proxyPort: { 80 },
             proxyServiceLoaded: { false },
             expectedProxyNginxPID: { .missing },
-            ownedNginxPathFragments: ["/Library/Application Support/TiroshVitalServer/nginx"],
+            ownedNginxPathFragments: ["/Library/Application Support/VitalServerHelper/nginx"],
             runProcess: { executable, _ in
                 if executable == Constants.Commands.lsof {
                     return RuntimeProcessResult(exitCode: 1, stdout: "", stderr: "permission denied")
@@ -120,7 +120,7 @@ final class RuntimeHostProxyPortCleanerTests: XCTestCase {
             proxyPort: { 80 },
             proxyServiceLoaded: { false },
             expectedProxyNginxPID: { .missing },
-            ownedNginxPathFragments: ["/Library/Application Support/TiroshVitalServer/nginx"],
+            ownedNginxPathFragments: ["/Library/Application Support/VitalServerHelper/nginx"],
             runProcess: { executable, _ in
                 if executable == Constants.Commands.lsof {
                     return RuntimeProcessResult(exitCode: 1, stdout: "", stderr: "")
@@ -142,7 +142,7 @@ final class RuntimeHostProxyPortCleanerTests: XCTestCase {
             proxyPort: { 80 },
             proxyServiceLoaded: { true },
             expectedProxyNginxPID: { .loaded("123") },
-            ownedNginxPathFragments: ["/Library/Application Support/TiroshVitalServer/nginx"],
+            ownedNginxPathFragments: ["/Library/Application Support/VitalServerHelper/nginx"],
             runProcess: { executable, arguments in
                 switch executable {
                 case Constants.Commands.lsof:
@@ -170,7 +170,7 @@ final class RuntimeHostProxyPortCleanerTests: XCTestCase {
             proxyPort: { 80 },
             proxyServiceLoaded: { false },
             expectedProxyNginxPID: { .readFailed("permission denied") },
-            ownedNginxPathFragments: ["/Library/Application Support/TiroshVitalServer/nginx"],
+            ownedNginxPathFragments: ["/Library/Application Support/VitalServerHelper/nginx"],
             runProcess: { executable, arguments in
                 switch executable {
                 case Constants.Commands.lsof:

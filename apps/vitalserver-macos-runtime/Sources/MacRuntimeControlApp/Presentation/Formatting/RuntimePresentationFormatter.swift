@@ -29,8 +29,8 @@ struct RuntimePresentationFormatter {
         [
             AppConstants.StatusText.applySettingsConfirmation,
             "Proxy port: \(settings.proxyPort)",
-            "Public host: \(settings.publicHost.isEmpty ? "(same host)" : settings.publicHost)",
-            "Public port: \(settings.publicPort)",
+            "VitalServer URL: \(settings.vitalServerURL.isEmpty ? "(default)" : settings.vitalServerURL)",
+            "Remote Console URL: \(settings.remoteConsoleURL.isEmpty ? "(default)" : settings.remoteConsoleURL)",
             "Network mode: \(settings.networkMode.rawValue)",
             "Disk size: \(settings.diskGiB) GiB",
             "Vital files directory: \(settings.vitalFilesDirectory)",

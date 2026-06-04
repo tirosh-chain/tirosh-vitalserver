@@ -4,38 +4,34 @@
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>com.tirosh.vitalserver-vm</string>
+  <string>ai.tirosh.vitalserver.helper.watchdog</string>
 
   <key>ProgramArguments</key>
   <array>
     <string>${VITALSERVER_VM_BIN}</string>
-    <string>start</string>
+    <string>runtime</string>
+    <string>watchdog</string>
   </array>
 
   <key>EnvironmentVariables</key>
   <dict>
     <key>VITALSERVER_VM_HOME</key>
     <string>${VITALSERVER_VM_HOME}</string>
-    <key>VITALSERVER_VM_DETACHED</key>
-    <string>1</string>
   </dict>
 
   <key>RunAtLoad</key>
   <true/>
 
-  <key>KeepAlive</key>
-  <true/>
+  <key>StartInterval</key>
+  <integer>60</integer>
 
   <key>ThrottleInterval</key>
-  <integer>30</integer>
-
-  <key>ExitTimeOut</key>
-  <integer>900</integer>
+  <integer>60</integer>
 
   <key>StandardOutPath</key>
-  <string>${VITALSERVER_RUNTIME_LOGS}/launchd.out.log</string>
+  <string>${VITALSERVER_RUNTIME_LOGS}/watchdog.out.log</string>
 
   <key>StandardErrorPath</key>
-  <string>${VITALSERVER_RUNTIME_LOGS}/launchd.err.log</string>
+  <string>${VITALSERVER_RUNTIME_LOGS}/watchdog.err.log</string>
 </dict>
 </plist>

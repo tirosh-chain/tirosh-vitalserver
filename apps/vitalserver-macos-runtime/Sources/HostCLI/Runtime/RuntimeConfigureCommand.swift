@@ -18,6 +18,8 @@ enum RuntimeConfigureChange: Equatable {
     case bridgedInterface(String)
     case proxyPort(Int)
     case vitalFilesDirectory(URL)
+    case vitalServerURL(String)
+    case remoteConsoleURL(String)
     case publicHost(String)
     case publicPort(Int)
     case adminPassword(String)

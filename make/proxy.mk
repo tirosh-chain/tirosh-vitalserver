@@ -6,8 +6,8 @@ VITALSERVER_HTTP_PORT ?= 18080
 PROXY_UPSTREAM ?= 127.0.0.1:$(VITALSERVER_HTTP_PORT)
 VITALSERVER_TRUST_PROXY ?= 1
 NGINX_BIN ?= $(shell command -v nginx 2>/dev/null || printf "/opt/homebrew/bin/nginx")
-NGINX_CONF ?= /Library/Application Support/TiroshVitalServer/nginx/vitalserver.conf
-NGINX_PREFIX ?= /Library/Application Support/TiroshVitalServer/nginx
+NGINX_CONF ?= /Library/Application Support/VitalServerHelper/nginx/vitalserver.conf
+NGINX_PREFIX ?= /Library/Application Support/VitalServerHelper/nginx
 
 PROXY_ARGS = \
 	--runtime-dir "$(PROXY_RUNTIME_DIR)" \

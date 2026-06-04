@@ -6,6 +6,8 @@ public enum RuntimeConfigureOption: Equatable, Sendable {
     case bridgedInterface
     case proxyPort
     case vitalFilesDirectory
+    case vitalServerURL
+    case remoteConsoleURL
     case publicHost
     case publicPort
     case adminPassword
@@ -33,6 +35,10 @@ public enum RuntimeConfigureOption: Equatable, Sendable {
             self = .proxyPort
         case "--vital-files-dir":
             self = .vitalFilesDirectory
+        case "--vitalserver-url":
+            self = .vitalServerURL
+        case "--remote-console-url":
+            self = .remoteConsoleURL
         case "--public-host":
             self = .publicHost
         case "--public-port":
@@ -72,6 +78,10 @@ public enum RuntimeConfigureOption: Equatable, Sendable {
             return "--proxy-port"
         case .vitalFilesDirectory:
             return "--vital-files-dir"
+        case .vitalServerURL:
+            return "--vitalserver-url"
+        case .remoteConsoleURL:
+            return "--remote-console-url"
         case .publicHost:
             return "--public-host"
         case .publicPort:

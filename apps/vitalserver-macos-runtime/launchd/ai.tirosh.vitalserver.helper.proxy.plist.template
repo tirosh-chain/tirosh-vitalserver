@@ -4,7 +4,7 @@
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>com.tirosh.vitalserver-proxy</string>
+  <string>ai.tirosh.vitalserver.helper.proxy</string>
 
   <key>ProgramArguments</key>
   <array>

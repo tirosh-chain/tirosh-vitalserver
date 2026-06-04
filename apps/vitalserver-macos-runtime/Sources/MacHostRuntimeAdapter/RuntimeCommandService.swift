@@ -33,7 +33,14 @@ enum RuntimeCommandFactory {
     }
 
     static func uninstallCommand(uninstaller: String, clean: Bool) -> String {
-        ([uninstaller] + (clean ? ["--clean"] : [])).map(shellQuote).joined(separator: " ")
+        let command = ([uninstaller] + (clean ? ["--clean"] : [])).map(shellQuote).joined(separator: " ")
+        let logFile = shellQuote(RuntimeAdapterConstants.Paths.uninstallLog)
+        let script = [
+            "mkdir -p \(shellQuote((RuntimeAdapterConstants.Paths.uninstallLog as NSString).deletingLastPathComponent))",
+            "nohup \(command) >> \(logFile) 2>&1 < /dev/null &",
+            "echo \"Background uninstaller started.\""
+        ].joined(separator: "; ")
+        return "/bin/bash -lc \(shellQuote(script))"
     }
 
     static func deleteBackupCommand(url: URL) -> String {
@@ -60,6 +67,10 @@ enum RuntimeCommandFactory {
             settings.publicHost,
             RuntimeAdapterConstants.RuntimeCommand.optionPublicPort,
             String(settings.publicPort),
+            RuntimeAdapterConstants.RuntimeCommand.optionVitalServerURL,
+            settings.vitalServerURL,
+            RuntimeAdapterConstants.RuntimeCommand.optionRemoteConsoleURL,
+            settings.remoteConsoleURL,
             RuntimeAdapterConstants.RuntimeCommand.optionRedisBackupRetention,
             String(settings.redisBackupRetentionCount),
         ]

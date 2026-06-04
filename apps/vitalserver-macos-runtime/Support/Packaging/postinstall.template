@@ -93,11 +93,11 @@ safe_remove_path() {
 
 remove_package_owned_artifacts() {
   local labels=(
-    "com.tirosh.vitalserver-watchdog"
-    "com.tirosh.vitalserver-guest-log-sync"
-    "com.tirosh.vitalserver-proxy"
-    "com.tirosh.vitalserver-vm"
-    "com.tirosh.vitalserver-sleep-prevention"
+    "ai.tirosh.vitalserver.helper.watchdog"
+    "ai.tirosh.vitalserver.helper.guest-log-sync"
+    "ai.tirosh.vitalserver.helper.proxy"
+    "ai.tirosh.vitalserver.helper.vm"
+    "ai.tirosh.vitalserver.helper.sleep-prevention"
   )
   local label plist
 
@@ -117,10 +117,10 @@ remove_package_owned_artifacts() {
   safe_remove_path "${product_root}" || true
 }
 
-log "Tirosh VitalServer postinstall started"
+log "VitalServer Helper postinstall started"
 if [ ! -d "${manager_app}" ]; then
   log "helper app missing path=${manager_app}"
   exit 1
 fi
 VITALSERVER_VM_HOME="${vm_home}" "${vm_bin}" runtime install-provision
-log "Tirosh VitalServer postinstall completed"
+log "VitalServer Helper postinstall completed"

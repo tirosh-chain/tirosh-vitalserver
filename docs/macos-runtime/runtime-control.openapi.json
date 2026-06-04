@@ -260,7 +260,7 @@
                 },
                 "examples": {
                   "statusChanged": {
-                    "value": "id: event-1\nevent: status-changed\ndata: {\"id\":\"event-1\",\"eventType\":\"status-changed\",\"timestamp\":\"2026-05-24T00:00:00Z\",\"product\":\"TiroshVitalServer\",\"status\":\"healthy\",\"operation\":\"health\",\"message\":\"ready\"}\n\n"
+                    "value": "id: event-1\nevent: status-changed\ndata: {\"id\":\"event-1\",\"eventType\":\"status-changed\",\"timestamp\":\"2026-05-24T00:00:00Z\",\"product\":\"VitalServerHelper\",\"status\":\"healthy\",\"operation\":\"health\",\"message\":\"ready\"}\n\n"
                   }
                 }
               }

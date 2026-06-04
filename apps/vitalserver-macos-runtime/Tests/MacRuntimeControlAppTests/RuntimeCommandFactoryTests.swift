@@ -25,6 +25,19 @@ final class RuntimeCommandFactoryTests: XCTestCase {
         XCTAssertEqual(command, "'/bin/rm' '-rf' '--' '/tmp/backup before'")
     }
 
+    func testUninstallCommandStartsBackgroundUninstaller() {
+        let command = RuntimeCommandFactory.uninstallCommand(
+            uninstaller: "/usr/local/bin/tirosh-vitalserver-uninstall",
+            clean: true
+        )
+
+        XCTAssertTrue(command.hasPrefix("/bin/bash -lc "))
+        XCTAssertTrue(command.contains("nohup '\\''/usr/local/bin/tirosh-vitalserver-uninstall'\\'' '\\''--clean'\\''"))
+        XCTAssertTrue(command.contains("/private/tmp/tirosh-vitalserver-uninstall.log"))
+        XCTAssertTrue(command.contains("2>&1 < /dev/null &"))
+        XCTAssertTrue(command.contains("Background uninstaller started."))
+    }
+
     func testCommandWithLogCapturesExitStatus() {
         let command = RuntimeCommandFactory.commandWithLog("echo hello")
 
@@ -41,7 +54,7 @@ final class RuntimeCommandFactoryTests: XCTestCase {
 
         XCTAssertTrue(command.hasPrefix("/bin/bash -lc "))
         XCTAssertTrue(command.contains("port=18080"))
-        XCTAssertTrue(command.contains("kickstart -k system/com.tirosh.vitalserver-proxy"))
+        XCTAssertTrue(command.contains("kickstart -k system/ai.tirosh.vitalserver.helper.proxy"))
     }
 
     func testRuntimeServicesCommandsUseLauncherRuntimeSubcommands() {

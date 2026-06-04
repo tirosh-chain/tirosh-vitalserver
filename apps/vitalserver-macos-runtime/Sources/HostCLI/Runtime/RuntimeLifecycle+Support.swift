@@ -204,7 +204,10 @@ extension RuntimeLifecycle {
             ),
             effects: RuntimeUninstallEffects(
                 createRedisBackup: createRedisBackup,
-                stopRuntimeServices: stopRuntimeServices,
+                stopRuntimeServices: {
+                    try serviceController.disableRuntimeServicesForUninstall()
+                    try stopRuntimeServices()
+                },
                 createDirectory: { url, withIntermediateDirectories in
                     try fileStore.createDirectory(at: url, withIntermediateDirectories: withIntermediateDirectories)
                 },

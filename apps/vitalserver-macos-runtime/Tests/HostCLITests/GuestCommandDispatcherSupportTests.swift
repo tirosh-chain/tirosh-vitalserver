@@ -62,7 +62,8 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
     func testReleaseSyncTargetsGuestToolsRedisRepairUseCase() throws {
         let syncRelease = try readRuntimeSupportFile("Build/sync-release.py")
 
-        XCTAssertTrue(syncRelease.contains("application/redis_repair.py"))
+        XCTAssertTrue(syncRelease.contains("\"packages/vitalserver-guest-tools/src/tirosh_guest_tools/application\""))
+        XCTAssertTrue(syncRelease.contains("\"redis_repair.py\""))
         XCTAssertFalse(syncRelease.contains("tirosh_guest_tools/redis/repair.py"))
     }
 

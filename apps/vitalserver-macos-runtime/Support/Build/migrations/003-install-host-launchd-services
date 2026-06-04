@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-product_root="/Library/Application Support/TiroshVitalServer"
+product_root="/Library/Application Support/VitalServerHelper"
 vm_home="${VITALSERVER_VM_HOME:-${product_root}/vm}"
 runtime_logs="${product_root}/logs/runtime"
 vm_config="${vm_home}/config.json"
 launch_daemons="/Library/LaunchDaemons"
 vm_bin="/usr/local/bin/vitalserver-vm"
-guest_log_sync_label="com.tirosh.vitalserver-guest-log-sync"
+guest_log_sync_label="ai.tirosh.vitalserver.helper.guest-log-sync"
 guest_log_sync_plist="${launch_daemons}/${guest_log_sync_label}.plist"
-sleep_prevention_label="com.tirosh.vitalserver-sleep-prevention"
+sleep_prevention_label="ai.tirosh.vitalserver.helper.sleep-prevention"
 sleep_prevention_plist="${launch_daemons}/${sleep_prevention_label}.plist"
 prevent_system_sleep="true"
 

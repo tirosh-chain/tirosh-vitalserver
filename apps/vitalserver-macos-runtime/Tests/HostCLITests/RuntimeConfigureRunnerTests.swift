@@ -19,8 +19,10 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
                 .network(.shared),
                 .proxyPort(18080),
                 .vitalFilesDirectory(URL(fileURLWithPath: "/data/vital-files")),
-                .publicHost("vitalserver.local"),
+                .publicHost("stale.example"),
                 .publicPort(8080),
+                .vitalServerURL("https://vitaldb.tirosh.ai/"),
+                .remoteConsoleURL("https://console.tirosh.ai/"),
                 .adminPasswordFile(URL(fileURLWithPath: "/tmp/admin-password")),
                 .startOnBoot(false),
                 .autoRecovery(false),
@@ -49,15 +51,19 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
         XCTAssertEqual(vmConfig.preventSystemSleep, false)
 
         let guestConfig = try GuestRuntimeConfigDocument.load(from: harness.paths.guestRuntimeConfig, fileStore: harness.fileStore)
-        XCTAssertEqual(guestConfig.publicHost, "vitalserver.local")
-        XCTAssertEqual(guestConfig.publicPort, 8080)
+        XCTAssertEqual(guestConfig.vitalServerURL, "https://vitaldb.tirosh.ai/")
+        XCTAssertEqual(guestConfig.remoteConsoleURL, "https://console.tirosh.ai/")
+        XCTAssertEqual(guestConfig.publicHost, "vitaldb.tirosh.ai")
+        XCTAssertEqual(guestConfig.publicPort, 443)
         XCTAssertEqual(guestConfig.adminPassword, "secret")
         XCTAssertEqual(guestConfig.vitalFilesDirectory, Constants.Defaults.vitalFilesDirectoryGuestMountPath)
         XCTAssertEqual(guestConfig.redisBackupRetentionCount, 20)
         let settingsData = try XCTUnwrap(harness.fileStore.files[harness.paths.guestRuntimeSettings])
         let guestSettings = try JSONDecoder().decode(GuestRuntimeSettingsDocument.self, from: settingsData)
-        XCTAssertEqual(guestSettings.publicHost, "vitalserver.local")
-        XCTAssertEqual(guestSettings.publicPort, 8080)
+        XCTAssertEqual(guestSettings.vitalServerURL, "https://vitaldb.tirosh.ai/")
+        XCTAssertEqual(guestSettings.remoteConsoleURL, "https://console.tirosh.ai/")
+        XCTAssertEqual(guestSettings.publicHost, "vitaldb.tirosh.ai")
+        XCTAssertEqual(guestSettings.publicPort, 443)
         XCTAssertEqual(guestSettings.redisBackupRetentionCount, 20)
     }
 

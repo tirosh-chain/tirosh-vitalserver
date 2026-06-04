@@ -9,7 +9,7 @@ final class LaunchdRuntimeServiceManagerTests: XCTestCase {
         let runner = LaunchdCommandRunnerSpy(result: RuntimeProcessResult(
             exitCode: 113,
             stdout: "",
-            stderr: "Could not find service \"com.tirosh.vitalserver-vm\" in domain\n"
+            stderr: "Could not find service \"ai.tirosh.vitalserver.helper.vm\" in domain\n"
         ))
         let manager = LaunchdRuntimeServiceManager(commandRunner: runner)
 

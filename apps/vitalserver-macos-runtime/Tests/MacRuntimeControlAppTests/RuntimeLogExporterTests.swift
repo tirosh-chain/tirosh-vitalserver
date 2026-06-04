@@ -21,7 +21,7 @@ final class RuntimeLogExporterTests: XCTestCase {
         XCTAssertTrue(destinations.contains("diagnostics/runtime/vm-config.json"))
         XCTAssertTrue(destinations.contains("diagnostics/runtime/runtime-version.json"))
         XCTAssertTrue(destinations.contains("diagnostics/guest/runtime-config.json"))
-        XCTAssertTrue(destinations.contains("diagnostics/host/com.tirosh.vitalserver-proxy.plist"))
+        XCTAssertTrue(destinations.contains("diagnostics/host/ai.tirosh.vitalserver.helper.proxy.plist"))
         XCTAssertTrue(destinations.contains("diagnostics/host/vitalserver-nginx.conf"))
         XCTAssertTrue(destinations.contains("guest/guest-observability"))
         XCTAssertTrue(destinations.contains("helper-message.log"))

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-product_root="/Library/Application Support/TiroshVitalServer"
+product_root="/Library/Application Support/VitalServerHelper"
 vm_home="${product_root}/vm"
 script_dir="$(cd "$(dirname "$0")" && pwd)"
 preflight_bin="${script_dir}/vitalserver-vm-preinstall"

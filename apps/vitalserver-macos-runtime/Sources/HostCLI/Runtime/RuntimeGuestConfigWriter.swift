@@ -17,6 +17,8 @@ struct RuntimeGuestConfigWriter {
             redisHost: Constants.Guest.redisHost,
             redisPort: Constants.Guest.redisPort,
             trustProxy: true,
+            vitalServerURL: settings.vitalServerURL,
+            remoteConsoleURL: settings.remoteConsoleURL,
             publicHost: settings.publicHost,
             publicPort: settings.publicPort,
             adminPassword: adminPassword,

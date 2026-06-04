@@ -7,7 +7,7 @@ VM이 실제로 어떻게 준비되고 실행되는지 정리합니다. boot ass
 | 질문 | 답 |
 |---|---|
 | runtime source of truth는? | Swift CLI `vitalserver-vm` |
-| 운영 상태 파일은? | `/Library/Application Support/TiroshVitalServer/status/runtime-status.json` |
+| 운영 상태 파일은? | `/Library/Application Support/VitalServerHelper/status/runtime-status.json` |
 | VM config는 어디 있나? | runtime directory의 `vm-config.json` |
 | guest 초기화는 누가 하나? | cloud-init이 `Support/Guest/bootstrap.sh` 실행 |
 | `.vital` 파일은 어디에 두나? | macOS shared directory |
@@ -21,7 +21,7 @@ runtime 단계의 source of truth는 Swift CLI인 `vitalserver-vm`입니다. She
 | install/status/health/configure/update/rollback/watchdog | Swift `RuntimeLifecycle` facade, `Runtime*Workflow`, focused runner |
 | runtime 상태/progress/health 계약 | Swift `Core` contracts, typed enum 상태값 |
 | guest update activation/datastore repair request-result | shared directory JSON contract, `RuntimeGuestGateway` port |
-| runtime 상태 파일 | `/Library/Application Support/TiroshVitalServer/status/runtime-status.json` |
+| runtime 상태 파일 | `/Library/Application Support/VitalServerHelper/status/runtime-status.json` |
 | host proxy runner | `Support/Packaging/proxy-run.template`에서 생성, nginx start/reload loop |
 | Linux guest 내부 구성 | `Support/Guest/bootstrap.sh`, `prepare-airgap-rootfs.sh`, `compose.yaml` |
 
@@ -192,9 +192,13 @@ Guest tools는 `guest-tools.toml`에만 package 운영 default를 둡니다. 로
 `[logging]` section에 선언하고, Python entrypoint는 이를 `logging.config.dictConfig`
 형태로 적용합니다.
 `runtime-config.json`은 Host가 제공하는 실행 계약이므로 `adminPassword`,
-`redisHost`, `redisPort`, `publicHost`, `publicPort`, `trustProxy`,
-`vitalFilesDirectory`, `redisBackupRetentionCount`, `testkitEnabled`가 모두
-명시돼야 합니다. Guest는 이 값을 추론하거나 보정하지 않습니다.
+`redisHost`, `redisPort`, `vitalServerURL`, `remoteConsoleURL`,
+`publicHost`, `publicPort`, `trustProxy`, `vitalFilesDirectory`,
+`redisBackupRetentionCount`, `testkitEnabled`가 모두 명시돼야 합니다.
+Guest는 이 값을 추론하거나 보정하지 않습니다.
+`vitalServerURL`과 `remoteConsoleURL`은 운영자가 등록한 외부 접속 URL을 그대로
+표시하기 위한 Host-owned advertised URL입니다. `publicHost/publicPort`는 guest
+호환을 위해 유지하며, `vitalServerURL`이 있으면 Host가 host/port를 파생합니다.
 초기 install settings가 별도 admin password를 제공하지 않으면 Host install
 settings의 문서화된 기본값인 `admin`을 명시 runtime config로 씁니다.
 

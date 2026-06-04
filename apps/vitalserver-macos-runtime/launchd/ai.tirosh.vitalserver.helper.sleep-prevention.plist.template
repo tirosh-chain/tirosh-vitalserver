@@ -4,7 +4,7 @@
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>com.tirosh.vitalserver-sleep-prevention</string>
+  <string>ai.tirosh.vitalserver.helper.sleep-prevention</string>
 
   <key>ProgramArguments</key>
   <array>

@@ -3,7 +3,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "TiroshVitalServerHelper",
+    name: "VitalServerHelper",
     platforms: [
         .macOS(.v13)
     ],

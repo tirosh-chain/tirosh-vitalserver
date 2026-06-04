@@ -3,7 +3,7 @@ import Core
 import Contracts
 
 public struct InstalledRuntimePaths: Equatable, Sendable {
-    public static let defaultProductRoot = URL(fileURLWithPath: "/Library/Application Support/TiroshVitalServer")
+    public static let defaultProductRoot = URL(fileURLWithPath: "/Library/Application Support/VitalServerHelper")
     public static let defaultInstalled = InstalledRuntimePaths(productRoot: defaultProductRoot)
 
     public let productRoot: URL
@@ -251,7 +251,7 @@ public struct InstalledRuntimePaths: Equatable, Sendable {
     }
 
     public var proxyLaunchDaemon: URL {
-        URL(fileURLWithPath: "/Library/LaunchDaemons/com.tirosh.vitalserver-proxy.plist")
+        URL(fileURLWithPath: "/Library/LaunchDaemons/ai.tirosh.vitalserver.helper.proxy.plist")
     }
 
     public var managerCommandLog: URL {

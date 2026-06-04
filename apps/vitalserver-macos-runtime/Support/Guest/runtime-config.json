@@ -1,5 +1,7 @@
 {
   "adminPassword": "admin",
+  "remoteConsoleURL": "",
+  "vitalServerURL": "",
   "publicHost": "",
   "publicPort": 80,
   "redisHost": "redis",

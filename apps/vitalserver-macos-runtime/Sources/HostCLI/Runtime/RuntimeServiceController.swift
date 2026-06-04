@@ -39,6 +39,23 @@ struct RuntimeServiceController {
         }
     }
 
+    func disableRuntimeServicesForUninstall() throws {
+        log("disabling runtime services before uninstall")
+        for service in RuntimeManagedService.stopOrder {
+            let result = serviceManager.setEnabled(service: service, enabled: false)
+            guard result.exitCode == 0 else {
+                let stderr = result.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !stderr.isEmpty {
+                    log("command stderr executable=\(Constants.Commands.launchctl) stderr=\(stderr)")
+                }
+                log("command failed executable=\(Constants.Commands.launchctl) exitCode=\(result.exitCode)")
+                throw LauncherError.missingArgument(
+                    "command failed: \(Constants.Commands.launchctl) disable system/\(service.label)"
+                )
+            }
+        }
+    }
+
     func stopRuntimeServicesAfterGuestPoweroff() throws {
         log("stopping runtime services after guest poweroff request")
         for service in [RuntimeManagedService.watchdog, .proxy] {

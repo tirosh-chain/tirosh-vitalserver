@@ -7,6 +7,7 @@ exec > >(tee -a "${uninstall_log}") 2>&1
 vm_bin="${VM_BIN}"
 vm_home="${VM_HOME}"
 uninstall="${UNINSTALL}"
+manager_app="${MANAGER_APP}"
 clean=false
 
 log() {
@@ -40,6 +41,31 @@ while [ "$#" -gt 0 ]; do
   esac
   shift
 done
+
+wait_for_helper_app_exit() {
+  local helper_executable="${manager_app}/Contents/MacOS/VitalServer Helper"
+  local attempts=80
+  local index
+
+  if [ ! -x "${helper_executable}" ]; then
+    return 0
+  fi
+
+  for ((index = 0; index < attempts; index++)); do
+    if ! /usr/bin/pgrep -f -- "${helper_executable}" >/dev/null 2>&1; then
+      return 0
+    fi
+    if [ "${index}" -eq 0 ]; then
+      log "waiting for Helper app to exit before uninstall cleanup"
+    fi
+    sleep 0.25
+  done
+
+  log "Helper app is still running; aborting uninstall before file removal"
+  exit 3
+}
+
+wait_for_helper_app_exit
 
 command=("${vm_bin}" "runtime" "uninstall")
 if [ "${clean}" = true ]; then

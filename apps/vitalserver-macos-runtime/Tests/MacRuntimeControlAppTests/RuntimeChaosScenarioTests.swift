@@ -50,7 +50,7 @@ final class RuntimeChaosScenarioTests: XCTestCase {
             id: "jsonl-event",
             eventType: .statusChanged,
             timestamp: "2026-05-31T00:00:00Z",
-            product: "TiroshVitalServer",
+            product: "VitalServerHelper",
             status: .healthy,
             previousStatus: nil,
             operation: .health,

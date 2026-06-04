@@ -37,7 +37,7 @@ final class RuntimeStatusReporterTests: XCTestCase {
     func testWritesProgressAsTypedWorkflowStep() throws {
         let repository = RuntimeStatusRepositorySpy()
         repository.loaded = RuntimeStatusDocumentBuilder.build(RuntimeStatusDocumentInput(
-            product: "TiroshVitalServer",
+            product: "VitalServerHelper",
             status: .healthy,
             operation: .health,
             message: "runtime health check passed",
@@ -123,7 +123,7 @@ final class RuntimeStatusReporterTests: XCTestCase {
     func testStatusValueReadsRepositoryStatus() {
         let repository = RuntimeStatusRepositorySpy()
         repository.loaded = RuntimeStatusDocument(
-            product: "TiroshVitalServer",
+            product: "VitalServerHelper",
             status: .degraded,
             operation: .watchdog,
             message: "watchdog recovery failed",

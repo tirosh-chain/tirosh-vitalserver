@@ -132,11 +132,23 @@ struct SystemRuntimeSettingsReader: RuntimeSettingsReading, @unchecked Sendable 
     }
 
     private func apply(_ guestSettings: GuestRuntimeSettings, to settings: inout RuntimeSettings) {
-        settings.publicHost = guestSettings.publicHost
-        settings.publicPort = guestSettings.publicPort
+        let publicHost = guestSettings.publicHost ?? ""
+        let publicPort = guestSettings.publicPort ?? RuntimeSettings().publicPort
+        settings.vitalServerURL = guestSettings.vitalServerURL
+            ?? Self.legacyVitalServerURL(publicHost: publicHost, publicPort: publicPort)
+        settings.remoteConsoleURL = guestSettings.remoteConsoleURL ?? ""
+        settings.publicHost = publicHost
+        settings.publicPort = publicPort
         if let redisBackupRetentionCount = guestSettings.redisBackupRetentionCount {
             settings.redisBackupRetentionCount = min(max(redisBackupRetentionCount, 1), 30)
         }
+    }
+
+    private static func legacyVitalServerURL(publicHost: String, publicPort: Int) -> String {
+        guard !publicHost.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return ""
+        }
+        return "http://\(publicHost):\(publicPort)/"
     }
 
     private func applyNetworkSettings(_ network: NetworkDocument, to settings: inout RuntimeSettings) {
@@ -263,8 +275,10 @@ private struct SharedDirectoryDocument: Decodable {
 }
 
 private struct GuestRuntimeSettings: Decodable {
-    let publicHost: String
-    let publicPort: Int
+    let vitalServerURL: String?
+    let remoteConsoleURL: String?
+    let publicHost: String?
+    let publicPort: Int?
     let redisBackupRetentionCount: Int?
 
     static func loadResult(path: String, fileStore: RuntimeFileReading) -> RuntimeSettingsLoadResult<GuestRuntimeSettings> {

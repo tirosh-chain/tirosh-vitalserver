@@ -123,7 +123,7 @@ final class RuntimeFreshInstallPreflightRunnerTests: XCTestCase {
                 }
             },
             packageReceiptStates: {
-                [.absent(identifier: "com.tirosh.vitalserver.vm")]
+                [.absent(identifier: "ai.tirosh.vitalserver.helper")]
             },
             proxyPortState: { port in
                 .occupied(port: port, listeners: "nginx/123")

@@ -205,7 +205,7 @@ final class RuntimeManagedOperationGuardTests: XCTestCase {
         updatedAt: String
     ) -> RuntimeStatusDocument {
         RuntimeStatusDocument(
-            product: "TiroshVitalServer",
+            product: "VitalServerHelper",
             status: level,
             operation: operation,
             message: "status",

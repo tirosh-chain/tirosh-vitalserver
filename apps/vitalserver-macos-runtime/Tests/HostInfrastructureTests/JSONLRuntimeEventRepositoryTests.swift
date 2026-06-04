@@ -124,7 +124,7 @@ final class JSONLRuntimeEventRepositoryTests: XCTestCase {
             id: id,
             eventType: .statusChanged,
             timestamp: "2026-05-24T00:00:00Z",
-            product: "TiroshVitalServer",
+            product: "VitalServerHelper",
             status: status,
             previousStatus: nil,
             operation: .health,

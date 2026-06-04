@@ -735,7 +735,7 @@ final class SQLiteRuntimeObservabilityStoreTests: XCTestCase {
             id: id,
             eventType: type,
             timestamp: timestamp,
-            product: "TiroshVitalServer",
+            product: "VitalServerHelper",
             status: .healthy,
             previousStatus: nil,
             operation: .health,

@@ -262,10 +262,10 @@ struct RuntimeAdvancedPanel: View {
                     settingToggle(AppConstants.Labels.customAdvertisedURL, isOn: customAdvertisedURLBinding)
                     settingHelp(AppConstants.Labels.customAdvertisedURLHelp)
                     if viewModel.useCustomAdvertisedURL {
-                        settingTextField(AppConstants.Labels.publicHost, text: $viewModel.settings.publicHost)
-                        settingHelp(AppConstants.Labels.publicHostHelp)
-                        settingPortField(AppConstants.Labels.publicPort, value: $viewModel.settings.publicPort)
-                        settingHelp(AppConstants.Labels.publicPortHelp)
+                        settingTextField(AppConstants.Labels.vitalServerAdvertisedURL, text: $viewModel.settings.vitalServerURL)
+                        settingHelp(AppConstants.Labels.vitalServerURLHelp)
+                        settingTextField(AppConstants.Labels.remoteConsoleAdvertisedURL, text: $viewModel.settings.remoteConsoleURL)
+                        settingHelp(AppConstants.Labels.remoteConsoleAdvertisedURLHelp)
                         advertisedURLPreviewRow(AppConstants.Labels.advertisedURLPreview, value: advertisedURLPreview)
                     } else {
                         advertisedURLPreviewRow(AppConstants.Labels.defaultAdvertisedURL, value: defaultAdvertisedURLPreview)
@@ -334,9 +334,8 @@ struct RuntimeAdvancedPanel: View {
     }
 
     private var advertisedURLPreview: String {
-        let host = viewModel.settings.publicHost.trimmingCharacters(in: .whitespacesAndNewlines)
-        let displayHost = host.isEmpty ? AppConstants.Labels.advertisedURLSameHost : host
-        return "http://\(displayHost):\(viewModel.settings.publicPort)/"
+        let value = viewModel.settings.vitalServerURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.isEmpty ? defaultAdvertisedURLPreview : value
     }
 
     private var defaultAdvertisedURLPreview: String {
@@ -344,7 +343,8 @@ struct RuntimeAdvancedPanel: View {
     }
 
     private var remoteConsoleURLPreview: String {
-        "http://\(AppConstants.Labels.advertisedURLSameHost):\(viewModel.settings.runtimeControlPort)/"
+        let value = viewModel.settings.remoteConsoleURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.isEmpty ? "http://\(AppConstants.Labels.advertisedURLSameHost):\(viewModel.settings.runtimeControlPort)/" : value
     }
 
     private var customAdvertisedURLBinding: Binding<Bool> {

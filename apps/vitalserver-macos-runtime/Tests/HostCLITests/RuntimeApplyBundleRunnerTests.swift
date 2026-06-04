@@ -76,7 +76,7 @@ private final class ApplyBundleHarness {
         stagedBundle: URL(fileURLWithPath: "/tmp/staged-bundle"),
         manifest: UpdateBundleManifest(
             schemaVersion: 3,
-            product: "com.tirosh.vitalserver",
+            product: "ai.tirosh.vitalserver.helper",
             helperVersion: "0.1.4",
             releaseLabel: "0.1.4",
             targetPlatform: "macos-arm64",

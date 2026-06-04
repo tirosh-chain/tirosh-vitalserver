@@ -40,7 +40,7 @@ final class RuntimeEventFactoryTests: XCTestCase {
 
         XCTAssertEqual(event.id, "event-1")
         XCTAssertEqual(event.timestamp, "2026-05-30T00:00:01Z")
-        XCTAssertEqual(event.product, "TiroshVitalServer")
+        XCTAssertEqual(event.product, "VitalServerHelper")
         XCTAssertEqual(event.runtimeVersion, "1.2.3")
         XCTAssertEqual(event.status, .degraded)
         XCTAssertEqual(event.previousStatus, .healthy)
@@ -64,7 +64,7 @@ final class RuntimeEventFactoryTests: XCTestCase {
         XCTAssertEqual(event.id, "event-1")
         XCTAssertEqual(event.source, "host-command")
         XCTAssertEqual(event.timestamp, "2026-05-30T00:00:02Z")
-        XCTAssertEqual(event.product, "TiroshVitalServer")
+        XCTAssertEqual(event.product, "VitalServerHelper")
         XCTAssertEqual(event.runtimeVersion, "1.2.3")
         XCTAssertEqual(event.eventType, .runtimeCommandCompleted)
         XCTAssertEqual(event.operation, .repairProxy)
@@ -75,7 +75,7 @@ final class RuntimeEventFactoryTests: XCTestCase {
         RuntimeEventFactory(
             id: { "event-1" },
             timestamp: { "2026-05-30T00:00:01Z" },
-            product: "TiroshVitalServer",
+            product: "VitalServerHelper",
             runtimeVersion: { "1.2.3" }
         )
     }

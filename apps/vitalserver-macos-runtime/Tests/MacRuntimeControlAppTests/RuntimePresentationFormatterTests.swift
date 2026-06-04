@@ -23,8 +23,8 @@ final class RuntimePresentationFormatterTests: XCTestCase {
     func testApplySettingsConfirmationIncludesOperatorVisibleSettings() {
         var settings = RuntimeSettings()
         settings.proxyPort = 18080
-        settings.publicHost = ""
-        settings.publicPort = 443
+        settings.vitalServerURL = "https://vitaldb.tirosh.ai/"
+        settings.remoteConsoleURL = "https://console.tirosh.ai/"
         settings.networkMode = RuntimeNetworkMode.shared
         settings.diskGiB = 128
         settings.vitalFilesDirectory = "/Users/test/Vital Files"
@@ -36,8 +36,8 @@ final class RuntimePresentationFormatterTests: XCTestCase {
         let confirmation = formatter.applySettingsConfirmation(settings: settings)
 
         XCTAssertTrue(confirmation.contains("Proxy port: 18080"))
-        XCTAssertTrue(confirmation.contains("Public host: (same host)"))
-        XCTAssertTrue(confirmation.contains("Public port: 443"))
+        XCTAssertTrue(confirmation.contains("VitalServer URL: https://vitaldb.tirosh.ai/"))
+        XCTAssertTrue(confirmation.contains("Remote Console URL: https://console.tirosh.ai/"))
         XCTAssertTrue(confirmation.contains("Network mode: shared"))
         XCTAssertTrue(confirmation.contains("Disk size: 128 GiB"))
         XCTAssertTrue(confirmation.contains("Vital files directory: /Users/test/Vital Files"))

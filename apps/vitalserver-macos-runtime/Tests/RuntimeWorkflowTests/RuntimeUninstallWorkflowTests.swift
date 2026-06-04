@@ -17,11 +17,11 @@ final class RuntimeUninstallWorkflowTests: XCTestCase {
             "stop",
             "log:step=stop-launchd-services status=completed",
             "log:step=remove-plists status=started",
-            "remove:/Library/LaunchDaemons/com.tirosh.vitalserver-watchdog.plist",
-            "remove:/Library/LaunchDaemons/com.tirosh.vitalserver-guest-log-sync.plist",
-            "remove:/Library/LaunchDaemons/com.tirosh.vitalserver-proxy.plist",
-            "remove:/Library/LaunchDaemons/com.tirosh.vitalserver-vm.plist",
-            "remove:/Library/LaunchDaemons/com.tirosh.vitalserver-sleep-prevention.plist",
+            "remove:/Library/LaunchDaemons/ai.tirosh.vitalserver.helper.watchdog.plist",
+            "remove:/Library/LaunchDaemons/ai.tirosh.vitalserver.helper.guest-log-sync.plist",
+            "remove:/Library/LaunchDaemons/ai.tirosh.vitalserver.helper.proxy.plist",
+            "remove:/Library/LaunchDaemons/ai.tirosh.vitalserver.helper.vm.plist",
+            "remove:/Library/LaunchDaemons/ai.tirosh.vitalserver.helper.sleep-prevention.plist",
             "log:step=remove-plists status=completed",
             "log:step=remove-installed-files status=started",
             "state:files-removal-started:file removal started:",
@@ -36,10 +36,8 @@ final class RuntimeUninstallWorkflowTests: XCTestCase {
             "log:step=remove-runtime-tools status=completed",
             "log:step=forget-package-receipt status=started",
             "state:receipts-forget-started:package receipt forget started:",
-            "log:forget package receipt identifier=com.tirosh.vitalserver.vm",
-            "forget:com.tirosh.vitalserver.vm",
-            "log:forget package receipt identifier=com.tirosh.vitalserver",
-            "forget:com.tirosh.vitalserver",
+            "log:forget package receipt identifier=ai.tirosh.vitalserver.helper",
+            "forget:ai.tirosh.vitalserver.helper",
             "log:step=forget-package-receipt status=completed",
             "log:uninstall completed",
             "state:completed:uninstall completed:",
@@ -178,7 +176,7 @@ final class RuntimeUninstallWorkflowTests: XCTestCase {
 
     func testReceiptForgetFailureWritesBlockedState() {
         let harness = RuntimeUninstallWorkflowHarness()
-        harness.receiptForgetResults["com.tirosh.vitalserver.vm"] = RuntimeProcessResult(
+        harness.receiptForgetResults["ai.tirosh.vitalserver.helper"] = RuntimeProcessResult(
             exitCode: 1,
             stdout: "",
             stderr: "receipt locked"
@@ -188,7 +186,7 @@ final class RuntimeUninstallWorkflowTests: XCTestCase {
 
         XCTAssertTrue(harness.events.contains {
             $0.contains("state:receipts-forget-blocked")
-                && $0.contains("package-receipt-forget-failed:identifier=com.tirosh.vitalserver.vm")
+                && $0.contains("package-receipt-forget-failed:identifier=ai.tirosh.vitalserver.helper")
                 && $0.contains("stderr=receipt locked")
         })
         XCTAssertFalse(harness.events.contains("state:completed:uninstall completed:"))
@@ -197,15 +195,14 @@ final class RuntimeUninstallWorkflowTests: XCTestCase {
     func testReceiptRemainingAfterForgetWritesBlockedState() {
         let harness = RuntimeUninstallWorkflowHarness()
         harness.receiptStates = [
-            .present(identifier: "com.tirosh.vitalserver.vm"),
-            .absent(identifier: "com.tirosh.vitalserver"),
+            .present(identifier: "ai.tirosh.vitalserver.helper"),
         ]
 
         XCTAssertThrowsError(try harness.runner.run(RuntimeUninstallCommand(clean: true)))
 
         XCTAssertTrue(harness.events.contains {
             $0.contains("state:receipts-forget-blocked")
-                && $0.contains("package-receipt-present:identifier=com.tirosh.vitalserver.vm")
+                && $0.contains("package-receipt-present:identifier=ai.tirosh.vitalserver.helper")
         })
         XCTAssertFalse(harness.events.contains("state:completed:uninstall completed:"))
     }
@@ -223,8 +220,7 @@ private final class RuntimeUninstallWorkflowHarness {
     var vmProcessState: RuntimeVMProcessState = .stopped
     var receiptForgetResults: [String: RuntimeProcessResult] = [:]
     var receiptStates: [RuntimePackageReceiptState] = [
-        .absent(identifier: "com.tirosh.vitalserver.vm"),
-        .absent(identifier: "com.tirosh.vitalserver"),
+        .absent(identifier: "ai.tirosh.vitalserver.helper"),
     ]
     var cleanupArtifactStates: [RuntimeInstallArtifactState]?
     let externalVitalFilesDirectory: String?
@@ -246,11 +242,11 @@ private final class RuntimeUninstallWorkflowHarness {
             "/product/vm/data/backups/redis",
             "/product/vm/data/vital-files",
             "/Applications/VitalServer Helper.app",
-            "/Library/LaunchDaemons/com.tirosh.vitalserver-watchdog.plist",
-            "/Library/LaunchDaemons/com.tirosh.vitalserver-guest-log-sync.plist",
-            "/Library/LaunchDaemons/com.tirosh.vitalserver-proxy.plist",
-            "/Library/LaunchDaemons/com.tirosh.vitalserver-vm.plist",
-            "/Library/LaunchDaemons/com.tirosh.vitalserver-sleep-prevention.plist",
+            "/Library/LaunchDaemons/ai.tirosh.vitalserver.helper.watchdog.plist",
+            "/Library/LaunchDaemons/ai.tirosh.vitalserver.helper.guest-log-sync.plist",
+            "/Library/LaunchDaemons/ai.tirosh.vitalserver.helper.proxy.plist",
+            "/Library/LaunchDaemons/ai.tirosh.vitalserver.helper.vm.plist",
+            "/Library/LaunchDaemons/ai.tirosh.vitalserver.helper.sleep-prevention.plist",
             "/usr/local/bin/vitalserver-vm",
             "/usr/local/bin/vitalserver-proxy-run",
             "/usr/local/bin/tirosh-vitalserver-uninstall",
@@ -359,8 +355,7 @@ private final class RuntimeUninstallWorkflowHarness {
                 }
             ),
             packageReceiptIdentifiers: [
-                "com.tirosh.vitalserver.vm",
-                "com.tirosh.vitalserver",
+                "ai.tirosh.vitalserver.helper",
             ]
         )
     }

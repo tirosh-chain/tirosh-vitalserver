@@ -214,19 +214,19 @@ final class RuntimeUninstallTransitionPolicyTests: XCTestCase {
         let blocked = try RuntimeUninstallTransitionPolicy.transition(
             from: .receiptsForgetStarted,
             event: .packageReceiptsObserved([
-                .present(identifier: "com.tirosh.vitalserver.vm"),
+                .present(identifier: "ai.tirosh.vitalserver.helper"),
             ])
         )
 
         XCTAssertEqual(blocked.state, .receiptsForgetBlocked)
         XCTAssertEqual(blocked.persistedState, .receiptsForgetBlocked)
         XCTAssertEqual(blocked.commands, [])
-        XCTAssertTrue(blocked.blockers.contains("package-receipt-present:identifier=com.tirosh.vitalserver.vm"))
+        XCTAssertTrue(blocked.blockers.contains("package-receipt-present:identifier=ai.tirosh.vitalserver.helper"))
 
         let allowed = try RuntimeUninstallTransitionPolicy.transition(
             from: .receiptsForgetStarted,
             event: .packageReceiptsObserved([
-                .absent(identifier: "com.tirosh.vitalserver.vm"),
+                .absent(identifier: "ai.tirosh.vitalserver.helper"),
             ])
         )
 
@@ -240,18 +240,18 @@ final class RuntimeUninstallTransitionPolicyTests: XCTestCase {
         let cases: [(name: String, state: RuntimePackageReceiptState, blocker: String)] = [
             (
                 "present receipt",
-                .present(identifier: "com.tirosh.vitalserver.vm"),
-                "package-receipt-present:identifier=com.tirosh.vitalserver.vm"
+                .present(identifier: "ai.tirosh.vitalserver.helper"),
+                "package-receipt-present:identifier=ai.tirosh.vitalserver.helper"
             ),
             (
                 "receipt read failed",
-                .readFailed(identifier: "com.tirosh.vitalserver.vm", reason: "pkgutil denied"),
-                "package-receipt-read-failed:identifier=com.tirosh.vitalserver.vm"
+                .readFailed(identifier: "ai.tirosh.vitalserver.helper", reason: "pkgutil denied"),
+                "package-receipt-read-failed:identifier=ai.tirosh.vitalserver.helper"
             ),
             (
                 "receipt forget failed",
-                .forgetFailed(identifier: "com.tirosh.vitalserver.vm", reason: "receipt locked"),
-                "package-receipt-forget-failed:identifier=com.tirosh.vitalserver.vm"
+                .forgetFailed(identifier: "ai.tirosh.vitalserver.helper", reason: "receipt locked"),
+                "package-receipt-forget-failed:identifier=ai.tirosh.vitalserver.helper"
             ),
             (
                 "receipt unknown",

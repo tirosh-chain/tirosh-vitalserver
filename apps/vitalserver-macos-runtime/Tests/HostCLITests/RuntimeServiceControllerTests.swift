@@ -120,6 +120,41 @@ final class RuntimeServiceControllerTests: XCTestCase {
         XCTAssertEqual(serviceManager.stoppedLabels, [RuntimeManagedService.vm.label])
     }
 
+    func testDisableRuntimeServicesForUninstallDisablesStopOrderBeforeCleanup() throws {
+        let serviceManager = ServiceControllerServiceManagerSpy()
+        let controller = RuntimeServiceController(
+            serviceManager: serviceManager,
+            serviceState: { _ in .notLoaded },
+            log: { _ in }
+        )
+
+        try controller.disableRuntimeServicesForUninstall()
+
+        XCTAssertEqual(serviceManager.setEnabledLabels, RuntimeManagedService.stopOrder.map(\.label))
+        XCTAssertEqual(serviceManager.setEnabledValues, Array(repeating: false, count: RuntimeManagedService.stopOrder.count))
+    }
+
+    func testDisableRuntimeServicesForUninstallStopsAtFirstFailure() {
+        let serviceManager = ServiceControllerServiceManagerSpy()
+        serviceManager.setEnabledResults[.proxy] = RuntimeProcessResult(
+            exitCode: 1,
+            stdout: "",
+            stderr: "denied"
+        )
+        let controller = RuntimeServiceController(
+            serviceManager: serviceManager,
+            serviceState: { _ in .notLoaded },
+            log: { _ in }
+        )
+
+        XCTAssertThrowsError(try controller.disableRuntimeServicesForUninstall())
+        XCTAssertEqual(serviceManager.setEnabledLabels, [
+            RuntimeManagedService.watchdog.label,
+            RuntimeManagedService.guestLogSync.label,
+            RuntimeManagedService.proxy.label,
+        ])
+    }
+
     func testStartsOnlyServicesRequestedByRestartPolicy() {
         let serviceManager = ServiceControllerServiceManagerSpy()
         var loaded = Set<RuntimeManagedService>()
@@ -309,6 +344,7 @@ private final class ServiceControllerServiceManagerSpy: RuntimeServiceManager {
     var startedPlists: [String] = []
     var restartedLabels: [String] = []
     var setEnabledLabels: [String] = []
+    var setEnabledValues: [Bool] = []
     var setEnabledResults: [RuntimeManagedService: RuntimeProcessResult] = [:]
     var onStart: (RuntimeManagedService) -> Void = { _ in }
     var onStop: (RuntimeManagedService) -> Void = { _ in }
@@ -334,6 +370,7 @@ private final class ServiceControllerServiceManagerSpy: RuntimeServiceManager {
 
     func setEnabled(service: RuntimeManagedService, enabled: Bool) -> RuntimeProcessResult {
         setEnabledLabels.append(service.label)
+        setEnabledValues.append(enabled)
         return setEnabledResults[service] ?? RuntimeProcessResult(exitCode: 0, stdout: "", stderr: "")
     }
 }
