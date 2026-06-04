@@ -26,7 +26,8 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
     proxy_config_template = root / "infra/macos-nginx/vitalserver.conf.template"
     installer_package_source = (
         root
-        / "packages/vitalserver-devtools/src/tirosh_vitalserver/devtools/adapters/macos_release/installer_package.py"
+        / "packages/vitalserver-devtools/src/tirosh_vitalserver/devtools"
+        / "adapters/macos_release/installer_package.py"
     )
 
     postinstall = tmp_path / "postinstall"
@@ -73,8 +74,9 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
     assert "pkg install supports fresh installs only" in preinstall_text
     assert 'preflight_bin="${script_dir}/vitalserver-vm-preinstall"' in preinstall_text
     assert '"${preflight_bin}" runtime preinstall-check' in preinstall_text
-    assert 'context.pkg_scripts / "vitalserver-vm-preinstall"' in installer_package_source.read_text(
-        encoding="utf-8"
+    assert (
+        'context.pkg_scripts / "vitalserver-vm-preinstall"'
+        in installer_package_source.read_text(encoding="utf-8")
     )
     assert "pkgutil --pkg-info" not in preinstall_text
     assert "launchctl print" not in preinstall_text
@@ -86,7 +88,10 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
     assert "runtime install timed out timeoutSeconds=" not in postinstall_text
     assert "postinstall failure cleanup started" in postinstall_text
     assert "tirosh-vitalserver-postinstall-failure.log" in postinstall_text
-    assert 'vm_home="/Library/Application Support/TiroshVitalServer/vm"' in postinstall_text
+    assert (
+        'vm_home="/Library/Application Support/TiroshVitalServer/vm"'
+        in postinstall_text
+    )
     assert 'manager_app="/Applications/VitalServer Helper.app"' in postinstall_text
     assert '"${manager_app}"' in postinstall_text
     assert '"${vm_bin}"' in postinstall_text
@@ -110,7 +115,10 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
     assert "proxy_temp_path temp/proxy;" in proxy_config_text
     assert '"${vm_bin}" "runtime" "uninstall"' in uninstall_text
     assert 'command+=("--clean")' in uninstall_text
-    assert 'vm_home="/Library/Application Support/TiroshVitalServer/vm"' in uninstall_text
+    assert (
+        'vm_home="/Library/Application Support/TiroshVitalServer/vm"'
+        in uninstall_text
+    )
     assert 'VITALSERVER_VM_HOME="${vm_home}" "${command[@]}"' in uninstall_text
     assert "Applications/VitalServer Helper.app" in components.read_text(
         encoding="utf-8"
