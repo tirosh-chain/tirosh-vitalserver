@@ -4,6 +4,32 @@ import Core
 import XCTest
 
 final class ControlRuntimeServicesUseCaseTests: XCTestCase {
+    func testPlanOwnsServiceControlOperationIntentAndCompletionServices() {
+        let harness = ControlRuntimeServicesUseCaseHarness()
+
+        let repair = harness.useCase.plan(.repairAll)
+        let start = harness.useCase.plan(.startAll)
+        let stop = harness.useCase.plan(.stopAll)
+
+        XCTAssertEqual(repair.operation, .repairServices)
+        XCTAssertEqual(repair.startPolicy, RuntimeRequiredServicePolicy.allRuntimeServices)
+        XCTAssertEqual(repair.stopServices, RuntimeManagedService.stopOrder)
+        XCTAssertEqual(repair.requiredStartedServices, [.vm, .guestLogSync, .proxy, .watchdog])
+        XCTAssertEqual(repair.requiredStoppedServices, RuntimeManagedService.stopOrder)
+
+        XCTAssertEqual(start.operation, .startServices)
+        XCTAssertEqual(start.startPolicy, RuntimeRequiredServicePolicy.allRuntimeServices)
+        XCTAssertEqual(start.stopServices, [])
+        XCTAssertEqual(start.requiredStartedServices, [.vm, .guestLogSync, .proxy, .watchdog])
+        XCTAssertEqual(start.requiredStoppedServices, [])
+
+        XCTAssertEqual(stop.operation, .stopServices)
+        XCTAssertNil(stop.startPolicy)
+        XCTAssertEqual(stop.stopServices, RuntimeManagedService.stopOrder)
+        XCTAssertEqual(stop.requiredStartedServices, [])
+        XCTAssertEqual(stop.requiredStoppedServices, RuntimeManagedService.stopOrder)
+    }
+
     func testStartRequiredServicesExecutesPortAndReturnsExplicitObservation() throws {
         let harness = ControlRuntimeServicesUseCaseHarness()
         let policy = RuntimeServiceRestartPolicy(

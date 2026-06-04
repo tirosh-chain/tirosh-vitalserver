@@ -59,7 +59,7 @@ public struct RuntimeCloudInitSeedWriter {
         self.operations = operations
     }
 
-    public func create(hostname: String) throws {
+    public func create(hostname: String, sshAuthorizedKeys: [String] = []) throws {
         let seedDir = context.runtimeDirectory.appendingPathComponent("cloud-init-seed")
         let seedISO = context.runtimeDirectory.appendingPathComponent(context.seedImageName)
         if operations.directoryExists(seedDir) {
@@ -67,7 +67,11 @@ public struct RuntimeCloudInitSeedWriter {
         }
         try operations.createDirectory(seedDir, true)
         try operations.writeData(metaData(hostname: hostname), seedDir.appendingPathComponent("meta-data"), .atomic)
-        try operations.writeData(userData(hostname: hostname), seedDir.appendingPathComponent("user-data"), .atomic)
+        try operations.writeData(
+            userData(hostname: hostname, sshAuthorizedKeys: sshAuthorizedKeys),
+            seedDir.appendingPathComponent("user-data"),
+            .atomic
+        )
 
         if operations.fileExists(seedISO) {
             try operations.removeItem(seedISO)
@@ -95,12 +99,12 @@ public struct RuntimeCloudInitSeedWriter {
         """.utf8)
     }
 
-    private func userData(hostname: String) -> Data {
+    private func userData(hostname: String, sshAuthorizedKeys: [String]) -> Data {
         Data("""
         #cloud-config
         hostname: \(hostname)
         manage_etc_hosts: true
-        ssh_pwauth: true
+        ssh_pwauth: false
         disable_root: true
         users:
           - default
@@ -108,14 +112,8 @@ public struct RuntimeCloudInitSeedWriter {
             groups: [adm, sudo]
             shell: /bin/bash
             sudo: ALL=(ALL) NOPASSWD:ALL
-            lock_passwd: false
-            ssh_authorized_keys: []
-        chpasswd:
-          expire: false
-          users:
-            - name: ubuntu
-              password: ubuntu
-              type: text
+            lock_passwd: true
+            ssh_authorized_keys:\(sshAuthorizedKeysYAML(sshAuthorizedKeys))
         runcmd:
           - mkdir -p /mnt/tirosh
           - mountpoint -q /mnt/tirosh || mount -t virtiofs tirosh /mnt/tirosh
@@ -124,5 +122,14 @@ public struct RuntimeCloudInitSeedWriter {
           - bash -lc '/mnt/tirosh/deploy/bootstrap.sh > /mnt/tirosh/run/bootstrap.log 2>&1'
 
         """.utf8)
+    }
+
+    private func sshAuthorizedKeysYAML(_ keys: [String]) -> String {
+        guard !keys.isEmpty else {
+            return " []"
+        }
+        return keys
+            .map { "\n              - '\($0.replacingOccurrences(of: "'", with: "''"))'" }
+            .joined()
     }
 }

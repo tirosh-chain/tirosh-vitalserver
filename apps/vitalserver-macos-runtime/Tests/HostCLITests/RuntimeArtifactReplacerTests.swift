@@ -1,6 +1,6 @@
 import Contracts
 import Foundation
-import RuntimeWorkflow
+@testable import HostCLI
 import XCTest
 
 final class RuntimeArtifactReplacerTests: XCTestCase {

@@ -8,7 +8,7 @@ extension GuestRuntimeConfigDocument {
             throw LauncherError.missingFile(url.path)
         }
         let data = try fileStore.readData(url)
-        return try JSONDecoder().decode(GuestRuntimeConfigDocument.self, from: data)
+        return try GuestRuntimeConfigDocumentMigration.decodeCurrentOrLegacy(data)
     }
 
     static var `default`: GuestRuntimeConfigDocument {
@@ -43,6 +43,7 @@ struct InstallSettings {
     var vitalFilesDirectory: String
     var adminPassword: String? = Constants.Guest.defaultAdminPassword
     var vmHostname = Constants.Guest.hostname
+    var sshAuthorizedKeys: [String] = []
     var vitalServerURL = ""
     var remoteConsoleURL = ""
     var publicHost = ""
@@ -65,11 +66,11 @@ struct InstallSettings {
         }
         let data = try fileStore.readData(url)
         let document = try JSONDecoder().decode(InstallSettingsDocument.self, from: data)
-        settings.apply(document: document)
+        try settings.apply(document: document)
         return settings
     }
 
-    private mutating func apply(document: InstallSettingsDocument) {
+    private mutating func apply(document: InstallSettingsDocument) throws {
         if let requestedCPUCount = document.cpuCount,
            requestedCPUCount >= Constants.Defaults.minimumCPUCount,
            requestedCPUCount <= Constants.Defaults.maximumAllowedCPUCount {
@@ -112,6 +113,9 @@ struct InstallSettings {
         if let requestedVMHostname = document.vmHostname,
            isValidHostname(requestedVMHostname) {
             vmHostname = requestedVMHostname
+        }
+        if let requestedSSHAuthorizedKeys = document.sshAuthorizedKeys {
+            sshAuthorizedKeys = try normalizedSSHAuthorizedKeys(requestedSSHAuthorizedKeys)
         }
         if let requestedPublicHost = document.publicHost,
            isLineSafe(requestedPublicHost) {
@@ -188,6 +192,46 @@ struct InstallSettings {
             publicPort = Constants.Guest.publicPort
         }
     }
+
+    private func normalizedSSHAuthorizedKeys(_ values: [String]) throws -> [String] {
+        try values.enumerated().map { index, value in
+            let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard isValidSSHPublicKey(normalized) else {
+                throw LauncherError.missingArgument("install settings sshAuthorizedKeys[\(index)] must be an OpenSSH public key")
+            }
+            return normalized
+        }
+    }
+
+    private func isValidSSHPublicKey(_ value: String) -> Bool {
+        guard isLineSafe(value) else {
+            return false
+        }
+        let parts = value.split(separator: " ", omittingEmptySubsequences: true)
+        guard parts.count >= 2 else {
+            return false
+        }
+        let keyType = String(parts[0])
+        guard isSupportedSSHPublicKeyType(keyType) else {
+            return false
+        }
+        let keyMaterial = String(parts[1])
+        guard !keyMaterial.isEmpty else {
+            return false
+        }
+        let allowedKeyMaterial = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=")
+        return keyMaterial.unicodeScalars.allSatisfy { allowedKeyMaterial.contains($0) }
+    }
+
+    private func isSupportedSSHPublicKeyType(_ value: String) -> Bool {
+        value == "ssh-ed25519"
+            || value == "ssh-rsa"
+            || value == "ecdsa-sha2-nistp256"
+            || value == "ecdsa-sha2-nistp384"
+            || value == "ecdsa-sha2-nistp521"
+            || value == "sk-ssh-ed25519@openssh.com"
+            || value == "sk-ecdsa-sha2-nistp256@openssh.com"
+    }
 }
 
 private struct InstallSettingsDocument: Decodable {
@@ -199,6 +243,7 @@ private struct InstallSettingsDocument: Decodable {
     let vitalFilesDirectory: String?
     let adminPassword: String?
     let vmHostname: String?
+    let sshAuthorizedKeys: [String]?
     let vitalServerURL: String?
     let remoteConsoleURL: String?
     let publicHost: String?

@@ -17,6 +17,7 @@ struct VMRuntimeConfig: Codable {
     var vitalFilesDirectory: SharedDirectoryConfig?
     var autoRecoveryEnabled: Bool? = nil
     var preventSystemSleep: Bool? = nil
+    var sshAuthorizedKeys: [String]? = nil
 
     // The default boot asset names match the Linux kernel/initrd style used by
     // Apple's Linux VM sample and keep the first PoC explicit.
@@ -50,7 +51,8 @@ struct VMRuntimeConfig: Codable {
                 readOnly: false
             ),
             autoRecoveryEnabled: true,
-            preventSystemSleep: true
+            preventSystemSleep: true,
+            sshAuthorizedKeys: []
         )
     }
 
@@ -95,6 +97,9 @@ struct VMRuntimeConfig: Codable {
         }
         if config.preventSystemSleep == nil {
             config.preventSystemSleep = true
+        }
+        if config.sshAuthorizedKeys == nil {
+            config.sshAuthorizedKeys = []
         }
     }
 
@@ -161,6 +166,11 @@ extension VMRuntimeConfig: RuntimeInstallMutableVMRuntimeConfiguration {
     var installPreventSystemSleep: Bool? {
         get { preventSystemSleep }
         set { preventSystemSleep = newValue }
+    }
+
+    var installSSHAuthorizedKeys: [String]? {
+        get { sshAuthorizedKeys }
+        set { sshAuthorizedKeys = newValue }
     }
 
     mutating func setInstallSharedDirectory(_ directory: RuntimeSharedDirectoryConfiguration) {

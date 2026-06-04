@@ -23,18 +23,15 @@ final class WaitForRuntimeHealthUseCaseTests: XCTestCase {
             restartWatchdog: true
         ))
 
-        XCTAssertTrue(observation.vmServiceRequired)
-        XCTAssertTrue(observation.guestLogSyncServiceRequired)
-        XCTAssertTrue(observation.proxyServiceRequired)
-        XCTAssertTrue(observation.watchdogServiceRequired)
-        XCTAssertTrue(observation.vmServiceLoaded)
-        XCTAssertFalse(observation.guestLogSyncServiceLoaded)
-        XCTAssertTrue(observation.proxyServiceLoaded)
-        XCTAssertTrue(observation.watchdogServiceLoaded)
+        XCTAssertEqual(observation.requiredServices, [.vm, .guestLogSync, .proxy, .watchdog])
+        XCTAssertEqual(observation.serviceStates[.vm], .loaded)
+        XCTAssertEqual(observation.serviceStates[.guestLogSync], .notLoaded)
+        XCTAssertEqual(observation.serviceStates[.proxy], .loaded)
+        XCTAssertEqual(observation.serviceStates[.watchdog], .loaded)
         XCTAssertEqual(observation.snapshot.hostProxyHTTP, "200")
     }
 
-    func testMissingServiceStateIsNotTreatedAsLoaded() {
+    func testMissingServiceStateStaysMissingInObservation() {
         let useCase = WaitForRuntimeHealthUseCase(
             ports: RuntimeHealthWaitPorts(
                 serviceStates: { _ in [:] },
@@ -49,7 +46,26 @@ final class WaitForRuntimeHealthUseCaseTests: XCTestCase {
             restartWatchdog: false
         ))
 
-        XCTAssertFalse(observation.vmServiceLoaded)
+        XCTAssertEqual(observation.requiredServices, [.vm])
+        XCTAssertNil(observation.serviceStates[.vm])
+    }
+
+    func testServiceReadFailureStaysExplicitInObservation() {
+        let useCase = WaitForRuntimeHealthUseCase(
+            ports: RuntimeHealthWaitPorts(
+                serviceStates: { _ in [.vm: .permissionDenied("operation not permitted")] },
+                healthSnapshot: { healthSnapshot(reasons: []) }
+            )
+        )
+
+        let observation = useCase.observe(policy: RuntimeServiceRestartPolicy(
+            restartVM: true,
+            restartGuestLogSync: false,
+            restartProxy: false,
+            restartWatchdog: false
+        ))
+
+        XCTAssertEqual(observation.serviceStates[.vm], .permissionDenied("operation not permitted"))
     }
 }
 

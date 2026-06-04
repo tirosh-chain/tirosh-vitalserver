@@ -1,5 +1,5 @@
 import Foundation
-import RuntimeWorkflow
+@testable import HostCLI
 import XCTest
 
 final class RuntimeCloudInitSeedWriterTests: XCTestCase {
@@ -30,8 +30,40 @@ final class RuntimeCloudInitSeedWriterTests: XCTestCase {
         local-hostname: vitalserver
 
         """)
-        XCTAssertTrue(events.writes["/runtime/cloud-init-seed/user-data"]?.contains("hostname: vitalserver") == true)
-        XCTAssertTrue(events.writes["/runtime/cloud-init-seed/user-data"]?.contains("bootstrap.sh > /mnt/tirosh/run/bootstrap.log 2>&1") == true)
+        let userData = try XCTUnwrap(events.writes["/runtime/cloud-init-seed/user-data"])
+        XCTAssertTrue(userData.contains("hostname: vitalserver"))
+        XCTAssertTrue(userData.contains("ssh_pwauth: false"))
+        XCTAssertTrue(userData.contains("lock_passwd: true"))
+        XCTAssertTrue(userData.contains("ssh_authorized_keys: []"))
+        XCTAssertTrue(userData.contains("bootstrap.sh > /mnt/tirosh/run/bootstrap.log 2>&1"))
+        XCTAssertFalse(userData.contains("ssh_pwauth: true"))
+        XCTAssertFalse(userData.contains("chpasswd:"))
+        XCTAssertFalse(userData.contains("password: ubuntu"))
+    }
+
+    func testCreateWritesExplicitSSHAuthorizedKeysWhenProvided() throws {
+        let runtimeDirectory = URL(fileURLWithPath: "/runtime")
+        let events = EventLog()
+        let writer = makeWriter(
+            runtimeDirectory: runtimeDirectory,
+            existingDirectories: [],
+            existingFiles: [],
+            events: events
+        )
+
+        try writer.create(
+            hostname: "vitalserver",
+            sshAuthorizedKeys: [
+                "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEexample operator@example.test",
+                "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQexample operator's key",
+            ]
+        )
+
+        let userData = try XCTUnwrap(events.writes["/runtime/cloud-init-seed/user-data"])
+        XCTAssertTrue(userData.contains("ssh_authorized_keys:"))
+        XCTAssertTrue(userData.contains("- 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEexample operator@example.test'"))
+        XCTAssertTrue(userData.contains("- 'ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQexample operator''s key'"))
+        XCTAssertFalse(userData.contains("password: ubuntu"))
     }
 
     func testCreateDoesNotRemoveAbsentSeedDirectoryOrISO() throws {

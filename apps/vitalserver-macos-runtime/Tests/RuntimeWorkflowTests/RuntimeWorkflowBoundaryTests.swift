@@ -48,6 +48,42 @@ final class RuntimeWorkflowBoundaryTests: XCTestCase {
         }
     }
 
+    func testRuntimeWorkflowDoesNotOwnHostInstallOrBundleEffects() throws {
+        let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .appendingPathComponent("Sources/RuntimeWorkflow")
+        let forbiddenSymbols = [
+            "RuntimeArtifactReplacer",
+            "RuntimeBundleDigestVerifier",
+            "RuntimeBundleDirectoryVerifier",
+            "RuntimeBundleMaterializer",
+            "RuntimeBundleStager",
+            "RuntimeCloudInitSeedWriter",
+            "RuntimeInstallDirectoryPreparer",
+            "RuntimeInstallExecutablePreparer",
+            "RuntimeInstallPermissionConfigurator",
+            "RuntimeInstallSettingsCleaner",
+            "RuntimeInstallStartOnBootPolicyApplier",
+            "RuntimeInstallVMDiskProvisioner",
+            "RuntimeMigrationRunner",
+            "tarExecutable",
+            "hdiutilExecutable",
+            "launchctlExecutable",
+        ]
+
+        let swiftFiles = try swiftFiles(in: root)
+
+        XCTAssertFalse(swiftFiles.isEmpty)
+        for file in swiftFiles {
+            let contents = try String(contentsOf: file, encoding: .utf8)
+            for forbiddenSymbol in forbiddenSymbols {
+                XCTAssertFalse(
+                    contents.contains(forbiddenSymbol),
+                    "\(file.path) must not own host install/apply-bundle effect: \(forbiddenSymbol)"
+                )
+            }
+        }
+    }
+
     func testApplicationDoesNotImportWorkflowOrOuterLayers() throws {
         let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
             .appendingPathComponent("Sources/Application")

@@ -283,7 +283,8 @@ struct RuntimeInstallComposition {
             vitalFilesDirectoryPath: settings.vitalFilesDirectory,
             vitalFilesDirectoryTag: Constants.Defaults.vitalFilesDirectoryTag,
             vitalFilesDirectoryGuestMountPath: Constants.Defaults.vitalFilesDirectoryGuestMountPath,
-            preventSystemSleep: settings.preventSystemSleep
+            preventSystemSleep: settings.preventSystemSleep,
+            sshAuthorizedKeys: settings.sshAuthorizedKeys
         ))
     }
 
@@ -312,7 +313,7 @@ struct RuntimeInstallComposition {
                     "tirosh-\(UUID().uuidString.lowercased())"
                 }
             )
-        ).create(hostname: settings.vmHostname)
+        ).create(hostname: settings.vmHostname, sshAuthorizedKeys: settings.sshAuthorizedKeys)
     }
 
     private func configureInstalledPermissions(_ settings: InstallSettings) throws {

@@ -1,15 +1,6 @@
+import Contracts
 import Core
 import Foundation
-
-public struct RuntimeMaterializedBundle: Equatable, Sendable {
-    public let bundleURL: URL
-    public let temporaryRoot: URL?
-
-    public init(bundleURL: URL, temporaryRoot: URL?) {
-        self.bundleURL = bundleURL
-        self.temporaryRoot = temporaryRoot
-    }
-}
 
 public struct RuntimeBundleMaterializationContext: Equatable, Sendable {
     public let tarExecutable: String

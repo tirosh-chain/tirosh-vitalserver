@@ -70,7 +70,7 @@ public struct RuntimeInstallVMDiskProvisioner {
             try createDiskFromRootfs()
         }
         guard operations.fileExists(context.vmDisk) else {
-            throw RuntimeWorkflowError.operationFailed("missing file: \(context.rootfsBase.path)")
+            throw LauncherError.missingFile(context.rootfsBase.path)
         }
         try operations.runRequired(context.truncateExecutable, ["-s", "\(diskGiB)G", context.vmDisk.path])
     }

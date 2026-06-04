@@ -1,5 +1,5 @@
 import Contracts
-import RuntimeWorkflow
+@testable import HostCLI
 import XCTest
 
 final class RuntimeInstallStartOnBootPolicyApplierTests: XCTestCase {

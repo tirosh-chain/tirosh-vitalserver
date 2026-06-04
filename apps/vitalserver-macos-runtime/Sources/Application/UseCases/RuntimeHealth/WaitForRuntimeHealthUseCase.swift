@@ -22,16 +22,11 @@ public struct WaitForRuntimeHealthUseCase {
     }
 
     public func observe(policy: RuntimeServiceRestartPolicy) -> RuntimeHealthWaitObservation {
+        let requiredServices = RuntimeRequiredServicePolicy.requiredServices(for: policy)
         let states = ports.serviceStates(Self.observedServices)
         return RuntimeHealthWaitObservation(
-            vmServiceRequired: policy.restartVM,
-            guestLogSyncServiceRequired: policy.restartGuestLogSync,
-            proxyServiceRequired: policy.restartProxy,
-            watchdogServiceRequired: policy.restartWatchdog,
-            vmServiceLoaded: states[.vm]?.isLoaded == true,
-            guestLogSyncServiceLoaded: states[.guestLogSync]?.isLoaded == true,
-            proxyServiceLoaded: states[.proxy]?.isLoaded == true,
-            watchdogServiceLoaded: states[.watchdog]?.isLoaded == true,
+            requiredServices: requiredServices,
+            serviceStates: states,
             snapshot: ports.healthSnapshot()
         )
     }

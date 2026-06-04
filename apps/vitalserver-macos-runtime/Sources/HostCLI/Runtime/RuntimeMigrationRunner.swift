@@ -1,5 +1,6 @@
 import Contracts
 import Foundation
+import RuntimeWorkflow
 
 public struct RuntimeMigrationRunner {
     public var isExecutableFile: (String) -> Bool

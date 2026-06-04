@@ -391,6 +391,7 @@ Fallback:
 | `vitalFilesDirectory` | `/Library/Application Support/VitalServerHelper/vm/data/vital-files` | absolute path |
 | `adminPassword` | `admin` | admin 계정 reset 값. empty가 아니면 guest runtime에 적용 |
 | `vmHostname` | `tirosh-vitalserver` | hostname-safe 문자열 |
+| `sshAuthorizedKeys` | `[]` | optional OpenSSH public key 배열. 제공한 key만 cloud-init `ubuntu` 계정에 등록하며 password SSH는 항상 비활성화 |
 | `vitalServerURL` | empty | optional absolute `http`/`https` URL. Reverse proxy/HTTPS/domain 운영 시 Status와 runtime advertised URL에 사용 |
 | `remoteConsoleURL` | empty | optional absolute `http`/`https` URL. Remote Console이 VitalServer와 다른 도메인일 때 사용 |
 | `publicHost` | empty | legacy guest compatibility field. `vitalServerURL`이 있으면 Host가 host를 파생 |
@@ -398,7 +399,7 @@ Fallback:
 | `startAfterInstall` | true | bool |
 | `startOnBoot` | true | bool |
 
-현재 settings JSON은 partial override 계약입니다. 파일을 제공하는 installer UI, MDM, 또는 설치 wrapper는 바꾸고 싶은 필드만 쓰면 됩니다. 누락된 필드는 기본값을 사용하고, 범위를 벗어난 값은 무시합니다.
+현재 settings JSON은 partial override 계약입니다. 파일을 제공하는 installer UI, MDM, 또는 설치 wrapper는 바꾸고 싶은 필드만 쓰면 됩니다. 누락된 필드는 기본값을 사용합니다. 기존 numeric/URL 범위를 벗어난 값은 무시하지만, `sshAuthorizedKeys`처럼 보안 접근 경로를 여는 값이 제공됐는데 형식이 맞지 않으면 설치 설정 로드가 실패합니다.
 
 예시:
 
@@ -410,6 +411,9 @@ Fallback:
   "proxyPort": 8080,
   "vitalFilesDirectory": "/Users/Shared/TiroshVitalFiles",
   "adminPassword": "change-me",
+  "sshAuthorizedKeys": [
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEexample operator@example.test"
+  ],
   "vitalServerURL": "https://vitaldb.tirosh.ai/",
   "remoteConsoleURL": "https://console.tirosh.ai/",
   "startAfterInstall": true,

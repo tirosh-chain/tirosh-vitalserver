@@ -202,6 +202,13 @@ Guest는 이 값을 추론하거나 보정하지 않습니다.
 초기 install settings가 별도 admin password를 제공하지 않으면 Host install
 settings의 문서화된 기본값인 `admin`을 명시 runtime config로 씁니다.
 
+제품 설치 runtime seed는 OS 계정 password 접근을 열지 않습니다. Host는
+cloud-init에 `ssh_pwauth: false`, locked `ubuntu` account, 그리고 install
+settings의 `sshAuthorizedKeys`에 명시된 OpenSSH public key만 기록합니다.
+`sshAuthorizedKeys`가 비어 있으면 guest OS SSH 로그인 경로는 없고, 운영 제어는
+HostCLI/Helper, Runtime Control API, Guest tools request/result 계약을 통해서만
+수행합니다.
+
 Guest tools package는 CLI를 application usecase의 inbound adapter로만 둡니다.
 
 ```text

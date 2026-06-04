@@ -7,15 +7,19 @@ public enum RuntimeServiceLifecycleCommand: Equatable {
     case startAll
     case stopAll
 
-    var operation: RuntimeOperation {
+    var request: RuntimeServiceControlRequest {
         switch self {
         case .repairAll:
-            return .repairServices
+            return .repairAll
         case .startAll:
-            return .startServices
+            return .startAll
         case .stopAll:
-            return .stopServices
+            return .stopAll
         }
+    }
+
+    var operation: RuntimeOperation {
+        request.operation
     }
 }
 
@@ -56,32 +60,39 @@ public struct RuntimeServiceLifecycleWorkflow {
     }
 
     private func repairAll() throws {
-        let policy = RuntimeRequiredServicePolicy.allRuntimeServices
+        let plan = useCase.plan(.repairAll)
+        guard let policy = plan.startPolicy else {
+            throw RuntimeWorkflowError.operationFailed("runtime service repair plan missing start policy")
+        }
         writer.log("runtime services repair requested")
-        try writer.writeStatus(.recovering, .repairServices, "runtime services repair requested")
-        let stopped = try useCase.stopRuntimeServices(observing: RuntimeManagedService.stopOrder)
-        try requireServicesStopped(RuntimeManagedService.stopOrder, observation: stopped)
+        try writer.writeStatus(.recovering, plan.operation, "runtime services repair requested")
+        let stopped = try useCase.stopRuntimeServices(observing: plan.stopServices)
+        try requireServicesStopped(plan.requiredStoppedServices, observation: stopped)
         let started = try useCase.startRequiredServices(policy)
-        try requireServicesLoaded(RuntimeRequiredServicePolicy.requiredServices(for: policy), observation: started)
-        try writer.writeStatus(.recovering, .repairServices, "runtime services repair dispatched")
+        try requireServicesLoaded(plan.requiredStartedServices, observation: started)
+        try writer.writeStatus(.recovering, plan.operation, "runtime services repair dispatched")
         writer.log("runtime services repair dispatched")
     }
 
     private func startAll() throws {
-        let policy = RuntimeRequiredServicePolicy.allRuntimeServices
+        let plan = useCase.plan(.startAll)
+        guard let policy = plan.startPolicy else {
+            throw RuntimeWorkflowError.operationFailed("runtime service start plan missing start policy")
+        }
         writer.log("runtime services start requested")
-        try writer.writeStatus(.recovering, .startServices, "runtime services start requested")
+        try writer.writeStatus(.recovering, plan.operation, "runtime services start requested")
         let observation = try useCase.startRequiredServices(policy)
-        try requireServicesLoaded(RuntimeRequiredServicePolicy.requiredServices(for: policy), observation: observation)
-        try writer.writeStatus(.recovering, .startServices, "runtime services start dispatched")
+        try requireServicesLoaded(plan.requiredStartedServices, observation: observation)
+        try writer.writeStatus(.recovering, plan.operation, "runtime services start dispatched")
         writer.log("runtime services start dispatched")
     }
 
     private func stopAll() throws {
+        let plan = useCase.plan(.stopAll)
         writer.log("runtime services stop requested")
-        let observation = try useCase.stopRuntimeServices(observing: RuntimeManagedService.stopOrder)
-        try requireServicesStopped(RuntimeManagedService.stopOrder, observation: observation)
-        try writer.writeStatus(.degraded, .stopServices, "runtime services stopped")
+        let observation = try useCase.stopRuntimeServices(observing: plan.stopServices)
+        try requireServicesStopped(plan.requiredStoppedServices, observation: observation)
+        try writer.writeStatus(.degraded, plan.operation, "runtime services stopped")
         writer.log("runtime services stopped")
     }
 

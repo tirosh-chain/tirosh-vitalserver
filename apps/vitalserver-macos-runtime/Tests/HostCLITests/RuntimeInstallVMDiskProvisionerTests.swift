@@ -1,5 +1,5 @@
 import Foundation
-import RuntimeWorkflow
+@testable import HostCLI
 import XCTest
 
 final class RuntimeInstallVMDiskProvisionerTests: XCTestCase {

@@ -33,7 +33,7 @@ final class GuestRuntimeConfigDocumentTests: XCTestCase {
         XCTAssertFalse(document.testkitEnabled)
     }
 
-    func testDecodesLegacyVitalServerURLFromExplicitPublicHostAndPort() throws {
+    func testDecodeRequiresExplicitAdvertisedURLs() {
         let json = """
         {
           "vitalserverHttpPort": 18080,
@@ -51,7 +51,30 @@ final class GuestRuntimeConfigDocumentTests: XCTestCase {
         }
         """
 
-        let document = try JSONDecoder().decode(GuestRuntimeConfigDocument.self, from: Data(json.utf8))
+        XCTAssertThrowsError(
+            try JSONDecoder().decode(GuestRuntimeConfigDocument.self, from: Data(json.utf8))
+        )
+    }
+
+    func testMigrationDecodesLegacyVitalServerURLFromExplicitPublicHostAndPort() throws {
+        let json = """
+        {
+          "vitalserverHttpPort": 18080,
+          "redisHost": "redis",
+          "redisPort": 6379,
+          "trustProxy": true,
+          "publicHost": "vitaldb.tirosh.ai",
+          "publicPort": 8080,
+          "adminPassword": "admin",
+          "vitalFilesDirectory": "/mnt/tirosh-vital-files",
+          "redisBackupRetentionCount": 20,
+          "redisUiPort": 18081,
+          "swaggerUiPort": 18082,
+          "testkitEnabled": false
+        }
+        """
+
+        let document = try GuestRuntimeConfigDocumentMigration.decodeCurrentOrLegacy(Data(json.utf8))
 
         XCTAssertEqual(document.vitalServerURL, "http://vitaldb.tirosh.ai:8080/")
         XCTAssertEqual(document.remoteConsoleURL, "")

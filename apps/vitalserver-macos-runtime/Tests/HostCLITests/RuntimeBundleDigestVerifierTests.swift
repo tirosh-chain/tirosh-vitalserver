@@ -1,6 +1,6 @@
 import Core
 import Foundation
-import RuntimeWorkflow
+@testable import HostCLI
 import XCTest
 
 final class RuntimeBundleDigestVerifierTests: XCTestCase {

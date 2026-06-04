@@ -1,7 +1,7 @@
 import Contracts
 import Core
 import Foundation
-import RuntimeWorkflow
+@testable import HostCLI
 import XCTest
 
 final class RuntimeBundleDirectoryVerifierTests: XCTestCase {

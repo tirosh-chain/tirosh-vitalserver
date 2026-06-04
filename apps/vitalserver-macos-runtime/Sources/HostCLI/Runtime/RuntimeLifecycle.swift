@@ -260,13 +260,23 @@ struct RuntimeLifecycle {
             return
         }
         log("refreshing cloud-init seed so guest bootstrap can activate updated deploy bundle")
-        try runtimeCloudInitSeedWriter().create(hostname: Constants.Guest.hostname)
+        try runtimeCloudInitSeedWriter().create(
+            hostname: Constants.Guest.hostname,
+            sshAuthorizedKeys: installedSSHAuthorizedKeys()
+        )
     }
 
     func activateGuestUpdateIfNeeded(_ manifest: UpdateBundleManifest) throws {
         try runtimeGuestActivationWorkflow().activateIfNeeded(manifest: manifest)
     }
 
+}
+
+private extension RuntimeLifecycle {
+    func installedSSHAuthorizedKeys() throws -> [String] {
+        let config = try VMRuntimeConfig.load(from: paths.config, fileStore: fileStore)
+        return config.sshAuthorizedKeys ?? []
+    }
 }
 
 enum RedisBackupResultReader {

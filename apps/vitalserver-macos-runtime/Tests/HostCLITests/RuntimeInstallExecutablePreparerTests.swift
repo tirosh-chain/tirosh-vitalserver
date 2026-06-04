@@ -1,4 +1,4 @@
-import RuntimeWorkflow
+@testable import HostCLI
 import XCTest
 
 final class RuntimeInstallExecutablePreparerTests: XCTestCase {

@@ -1,6 +1,7 @@
 import Contracts
 import Core
 import Foundation
+import RuntimeWorkflow
 
 public struct RuntimeArtifactReplacementDestinations {
     public var managerApp: URL

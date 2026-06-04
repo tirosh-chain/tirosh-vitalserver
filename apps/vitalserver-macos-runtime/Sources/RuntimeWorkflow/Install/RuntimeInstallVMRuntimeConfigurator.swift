@@ -27,6 +27,7 @@ public protocol RuntimeInstallMutableVMRuntimeConfiguration {
     var installNetworkMode: InstallNetworkMode { get set }
     var installBridgedInterface: String? { get set }
     var installPreventSystemSleep: Bool? { get set }
+    var installSSHAuthorizedKeys: [String]? { get set }
 
     mutating func setInstallSharedDirectory(_ directory: RuntimeSharedDirectoryConfiguration)
     mutating func setInstallVitalFilesDirectory(_ directory: RuntimeSharedDirectoryConfiguration)
@@ -44,6 +45,7 @@ public struct RuntimeInstallVMRuntimeConfigurationInput<NetworkMode: Equatable>:
     public let vitalFilesDirectoryTag: String
     public let vitalFilesDirectoryGuestMountPath: String
     public let preventSystemSleep: Bool
+    public let sshAuthorizedKeys: [String]
 
     public init(
         cpuCount: Int,
@@ -56,7 +58,8 @@ public struct RuntimeInstallVMRuntimeConfigurationInput<NetworkMode: Equatable>:
         vitalFilesDirectoryPath: String,
         vitalFilesDirectoryTag: String,
         vitalFilesDirectoryGuestMountPath: String,
-        preventSystemSleep: Bool
+        preventSystemSleep: Bool,
+        sshAuthorizedKeys: [String] = []
     ) {
         self.cpuCount = cpuCount
         self.memoryGiB = memoryGiB
@@ -69,6 +72,7 @@ public struct RuntimeInstallVMRuntimeConfigurationInput<NetworkMode: Equatable>:
         self.vitalFilesDirectoryTag = vitalFilesDirectoryTag
         self.vitalFilesDirectoryGuestMountPath = vitalFilesDirectoryGuestMountPath
         self.preventSystemSleep = preventSystemSleep
+        self.sshAuthorizedKeys = sshAuthorizedKeys
     }
 }
 
@@ -155,6 +159,7 @@ public struct RuntimeInstallVMRuntimeConfigurator<Config: RuntimeInstallMutableV
             readOnly: false
         ))
         config.installPreventSystemSleep = input.preventSystemSleep
+        config.installSSHAuthorizedKeys = input.sshAuthorizedKeys
         operations.ensureRuntimeDefaults(&config)
 
         let encoded = try operations.encodeConfig(config)

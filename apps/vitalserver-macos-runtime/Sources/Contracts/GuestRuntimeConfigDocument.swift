@@ -75,9 +75,8 @@ public struct GuestRuntimeConfigDocument: Codable, Equatable, Sendable {
         let publicPort = try container.decode(Int.self, forKey: .publicPort)
         self.publicHost = publicHost
         self.publicPort = publicPort
-        self.vitalServerURL = try container.decodeIfPresent(String.self, forKey: .vitalServerURL)
-            ?? Self.legacyVitalServerURL(publicHost: publicHost, publicPort: publicPort)
-        self.remoteConsoleURL = try container.decodeIfPresent(String.self, forKey: .remoteConsoleURL) ?? ""
+        self.vitalServerURL = try container.decode(String.self, forKey: .vitalServerURL)
+        self.remoteConsoleURL = try container.decode(String.self, forKey: .remoteConsoleURL)
         self.adminPassword = try container.decode(String.self, forKey: .adminPassword)
         self.vitalFilesDirectory = try container.decode(String.self, forKey: .vitalFilesDirectory)
         self.redisBackupRetentionCount = try container.decode(
@@ -91,8 +90,54 @@ public struct GuestRuntimeConfigDocument: Codable, Equatable, Sendable {
             forKey: .testkitEnabled
         )
     }
+}
 
-    private static func legacyVitalServerURL(publicHost: String, publicPort: Int) -> String {
+public enum GuestRuntimeConfigDocumentMigration {
+    public static func decodeCurrentOrLegacy(_ data: Data, decoder: JSONDecoder = JSONDecoder()) throws -> GuestRuntimeConfigDocument {
+        do {
+            return try decoder.decode(GuestRuntimeConfigDocument.self, from: data)
+        } catch {
+            return try decoder.decode(LegacyGuestRuntimeConfigDocument.self, from: data).migrated()
+        }
+    }
+}
+
+private struct LegacyGuestRuntimeConfigDocument: Decodable {
+    let vitalserverHttpPort: Int
+    let redisHost: String
+    let redisPort: Int
+    let trustProxy: Bool
+    let vitalServerURL: String?
+    let remoteConsoleURL: String?
+    let publicHost: String
+    let publicPort: Int
+    let adminPassword: String
+    let vitalFilesDirectory: String
+    let redisBackupRetentionCount: Int
+    let redisUiPort: Int
+    let swaggerUiPort: Int
+    let testkitEnabled: Bool
+
+    func migrated() -> GuestRuntimeConfigDocument {
+        GuestRuntimeConfigDocument(
+            vitalserverHttpPort: vitalserverHttpPort,
+            redisHost: redisHost,
+            redisPort: redisPort,
+            trustProxy: trustProxy,
+            vitalServerURL: vitalServerURL ?? legacyVitalServerURL(publicHost: publicHost, publicPort: publicPort),
+            remoteConsoleURL: remoteConsoleURL ?? "",
+            publicHost: publicHost,
+            publicPort: publicPort,
+            adminPassword: adminPassword,
+            vitalFilesDirectory: vitalFilesDirectory,
+            redisBackupRetentionCount: redisBackupRetentionCount,
+            redisUiPort: redisUiPort,
+            swaggerUiPort: swaggerUiPort,
+            testkitEnabled: testkitEnabled
+        )
+    }
+
+    private func legacyVitalServerURL(publicHost: String, publicPort: Int) -> String {
         guard !publicHost.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return ""
         }

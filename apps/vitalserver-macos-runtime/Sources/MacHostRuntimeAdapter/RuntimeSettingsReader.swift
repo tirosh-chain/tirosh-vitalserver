@@ -119,23 +119,31 @@ struct SystemRuntimeSettingsReader: RuntimeSettingsReading, @unchecked Sendable 
     }
 
     private func loadLegacyGuestRuntimeConfig(into settings: inout RuntimeSettings) {
-        switch GuestRuntimeSettings.loadResult(path: paths.guestRuntimeConfig, fileStore: fileStore) {
+        switch LegacyGuestRuntimeSettings.loadResult(path: paths.guestRuntimeConfig, fileStore: fileStore) {
         case .loaded(let guestConfig):
-            apply(guestConfig, to: &settings)
+            applyLegacy(guestConfig, to: &settings)
         case .missing:
             break
         case .failed(let message):
-            if !GuestRuntimeSettings.isPermissionDenied(message) {
+            if !LegacyGuestRuntimeSettings.isPermissionDenied(message) {
                 settings.readIssues.append(RuntimeSettingsReadIssue(source: "guestRuntimeConfig", message: message))
             }
         }
     }
 
     private func apply(_ guestSettings: GuestRuntimeSettings, to settings: inout RuntimeSettings) {
+        settings.vitalServerURL = guestSettings.vitalServerURL
+        settings.remoteConsoleURL = guestSettings.remoteConsoleURL
+        settings.publicHost = guestSettings.publicHost
+        settings.publicPort = guestSettings.publicPort
+        settings.redisBackupRetentionCount = min(max(guestSettings.redisBackupRetentionCount, 1), 30)
+    }
+
+    private func applyLegacy(_ guestSettings: LegacyGuestRuntimeSettings, to settings: inout RuntimeSettings) {
         let publicHost = guestSettings.publicHost ?? ""
         let publicPort = guestSettings.publicPort ?? RuntimeSettings().publicPort
         settings.vitalServerURL = guestSettings.vitalServerURL
-            ?? Self.legacyVitalServerURL(publicHost: publicHost, publicPort: publicPort)
+            ?? Self.migrateLegacyVitalServerURL(publicHost: publicHost, publicPort: publicPort)
         settings.remoteConsoleURL = guestSettings.remoteConsoleURL ?? ""
         settings.publicHost = publicHost
         settings.publicPort = publicPort
@@ -144,7 +152,7 @@ struct SystemRuntimeSettingsReader: RuntimeSettingsReading, @unchecked Sendable 
         }
     }
 
-    private static func legacyVitalServerURL(publicHost: String, publicPort: Int) -> String {
+    private static func migrateLegacyVitalServerURL(publicHost: String, publicPort: Int) -> String {
         guard !publicHost.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return ""
         }
@@ -275,11 +283,11 @@ private struct SharedDirectoryDocument: Decodable {
 }
 
 private struct GuestRuntimeSettings: Decodable {
-    let vitalServerURL: String?
-    let remoteConsoleURL: String?
-    let publicHost: String?
-    let publicPort: Int?
-    let redisBackupRetentionCount: Int?
+    let vitalServerURL: String
+    let remoteConsoleURL: String
+    let publicHost: String
+    let publicPort: Int
+    let redisBackupRetentionCount: Int
 
     static func loadResult(path: String, fileStore: RuntimeFileReading) -> RuntimeSettingsLoadResult<GuestRuntimeSettings> {
         let url = URL(fileURLWithPath: path)
@@ -289,6 +297,34 @@ private struct GuestRuntimeSettings: Decodable {
         do {
             let data = try fileStore.readData(url)
             return try .loaded(JSONDecoder().decode(GuestRuntimeSettings.self, from: data))
+        } catch {
+            return .failed(error.localizedDescription)
+        }
+    }
+
+    static func isPermissionDenied(_ message: String) -> Bool {
+        let normalized = message.lowercased()
+        return normalized.contains("permission")
+            || normalized.contains("not permitted")
+            || normalized.contains("operation not permitted")
+    }
+}
+
+private struct LegacyGuestRuntimeSettings: Decodable {
+    let vitalServerURL: String?
+    let remoteConsoleURL: String?
+    let publicHost: String?
+    let publicPort: Int?
+    let redisBackupRetentionCount: Int?
+
+    static func loadResult(path: String, fileStore: RuntimeFileReading) -> RuntimeSettingsLoadResult<LegacyGuestRuntimeSettings> {
+        let url = URL(fileURLWithPath: path)
+        guard fileStore.fileExists(url) else {
+            return .missing
+        }
+        do {
+            let data = try fileStore.readData(url)
+            return try .loaded(JSONDecoder().decode(LegacyGuestRuntimeSettings.self, from: data))
         } catch {
             return .failed(error.localizedDescription)
         }

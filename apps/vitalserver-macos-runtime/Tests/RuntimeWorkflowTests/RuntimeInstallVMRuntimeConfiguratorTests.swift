@@ -14,7 +14,8 @@ final class RuntimeInstallVMRuntimeConfiguratorTests: XCTestCase {
                 installMemoryMiB: 2048,
                 installNetworkMode: .bridged,
                 installBridgedInterface: "en0",
-                installPreventSystemSleep: nil
+                installPreventSystemSleep: nil,
+                installSSHAuthorizedKeys: nil
             ),
             defaultConfig: TestVMConfig(),
             events: events
@@ -27,9 +28,9 @@ final class RuntimeInstallVMRuntimeConfiguratorTests: XCTestCase {
             "mkdir:/vital-files:true",
             "load:/runtime/config/vm.json",
             "defaults",
-            "encode:cpu=4 memory=8192 mode=shared bridge=nil shared=/data vital=/custom-vital sleep=false defaults=true",
+            "encode:cpu=4 memory=8192 mode=shared bridge=nil shared=/data vital=/custom-vital sleep=false keys=1 defaults=true",
             "mkdir:/runtime/config:true",
-            "write:/runtime/config/vm.json:cpu=4 memory=8192 mode=shared bridge=nil shared=/data vital=/custom-vital sleep=false defaults=true",
+            "write:/runtime/config/vm.json:cpu=4 memory=8192 mode=shared bridge=nil shared=/data vital=/custom-vital sleep=false keys=1 defaults=true",
         ])
     }
 
@@ -45,7 +46,8 @@ final class RuntimeInstallVMRuntimeConfiguratorTests: XCTestCase {
                 installMemoryMiB: 1024,
                 installNetworkMode: .shared,
                 installBridgedInterface: "en1",
-                installPreventSystemSleep: true
+                installPreventSystemSleep: true,
+                installSSHAuthorizedKeys: nil
             ),
             events: events
         )
@@ -54,7 +56,7 @@ final class RuntimeInstallVMRuntimeConfiguratorTests: XCTestCase {
 
         XCTAssertFalse(events.values.contains("load:/runtime/config/vm.json"))
         XCTAssertTrue(events.values.contains(
-            "encode:cpu=4 memory=8192 mode=bridged bridge=en1 shared=/data vital=/custom-vital sleep=false defaults=true"
+            "encode:cpu=4 memory=8192 mode=bridged bridge=en1 shared=/data vital=/custom-vital sleep=false keys=1 defaults=true"
         ))
     }
 
@@ -115,7 +117,8 @@ final class RuntimeInstallVMRuntimeConfiguratorTests: XCTestCase {
             vitalFilesDirectoryPath: "/custom-vital",
             vitalFilesDirectoryTag: "vital-files",
             vitalFilesDirectoryGuestMountPath: "/mnt/vital-files",
-            preventSystemSleep: false
+            preventSystemSleep: false,
+            sshAuthorizedKeys: ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEexample operator@example.test"]
         )
     }
 
@@ -128,6 +131,7 @@ final class RuntimeInstallVMRuntimeConfiguratorTests: XCTestCase {
             "shared=\(config.sharedDirectory?.hostPath ?? "nil")",
             "vital=\(config.vitalFilesDirectory?.hostPath ?? "nil")",
             "sleep=\(config.installPreventSystemSleep.map(String.init) ?? "nil")",
+            "keys=\(config.installSSHAuthorizedKeys?.count ?? -1)",
             "defaults=\(config.runtimeDefaultsApplied)",
         ].joined(separator: " ")
     }
@@ -152,6 +156,7 @@ private struct TestVMConfig: RuntimeInstallMutableVMRuntimeConfiguration {
     var installNetworkMode: TestNetworkMode = .shared
     var installBridgedInterface: String?
     var installPreventSystemSleep: Bool?
+    var installSSHAuthorizedKeys: [String]?
     var sharedDirectory: RuntimeSharedDirectoryConfiguration?
     var vitalFilesDirectory: RuntimeSharedDirectoryConfiguration?
     var runtimeDefaultsApplied = false
