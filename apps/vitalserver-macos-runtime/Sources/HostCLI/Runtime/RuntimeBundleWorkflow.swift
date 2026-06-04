@@ -97,58 +97,37 @@ struct RuntimeBundleWorkflow {
     }
 
     private func verifyBundleDirectory(_ bundleURL: URL, sourceURL: URL) throws {
-        let manifestURL = bundleURL.appendingPathComponent(Constants.Bundle.manifest)
-        let checksumsURL = bundleURL.appendingPathComponent(Constants.Bundle.checksums)
-        let signatureURL = bundleURL.appendingPathComponent(Constants.Bundle.signature)
-
-        guard directoryExists(bundleURL) else {
-            throw LauncherError.missingFile(bundleURL.path)
-        }
-        for url in [manifestURL, checksumsURL, signatureURL] {
-            guard fileExists(url) else {
-                throw LauncherError.missingFile(url.path)
-            }
-        }
-
-        let manifest = try loadManifest(manifestURL)
-        let plan = try makeBundleVerificationPlan(manifest)
-        operations.log(
-            "bundle manifest loaded version=\(manifest.version) runtimeVersion=\(manifest.runtimeVersion) artifacts=\(manifest.artifacts.count) migrations=\(manifest.migrations.count)"
-        )
-
-        let checksumMap = try loadChecksums(checksumsURL)
-        for (artifact, fileVerification) in zip(manifest.artifacts, plan.artifactFiles) {
-            let artifactURL = bundleURL.appendingPathComponent(fileVerification.name)
-            guard fileExists(artifactURL) else {
-                throw LauncherError.missingFile(artifactURL.path)
-            }
-
-            operations.log(
-                "verifying artifact type=\(artifact.type.rawValue) name=\(artifact.name) size=\(formatBytes(bundleItemSize(artifact.size)))"
+        try RuntimeBundleDirectoryVerifier(
+            context: RuntimeBundleDirectoryVerificationContext(
+                manifestFileName: Constants.Bundle.manifest,
+                checksumsFileName: Constants.Bundle.checksums,
+                signatureFileName: Constants.Bundle.signature
+            ),
+            operations: RuntimeBundleDirectoryVerificationOperations(
+                requireDirectory: { url in
+                    guard directoryExists(url) else {
+                        throw LauncherError.missingFile(url.path)
+                    }
+                },
+                requireFile: { url in
+                    guard fileExists(url) else {
+                        throw LauncherError.missingFile(url.path)
+                    }
+                },
+                loadManifest: loadManifest,
+                makeVerificationPlan: makeBundleVerificationPlan,
+                loadChecksums: loadChecksums,
+                verifyDigest: { url, fileVerification, checksumMap in
+                    try verifyDigestedFile(
+                        url,
+                        fileVerification: fileVerification,
+                        checksumMap: checksumMap
+                    )
+                },
+                validateArtifactPayload: validateUpdateArtifactPayload,
+                log: operations.log
             )
-            try verifyDigestedFile(
-                artifactURL,
-                fileVerification: fileVerification,
-                checksumMap: checksumMap
-            )
-            try validateUpdateArtifactPayload(artifact, source: artifactURL)
-        }
-
-        for (migration, fileVerification) in zip(manifest.migrations, plan.migrationFiles) {
-            let migrationURL = bundleURL.appendingPathComponent(fileVerification.checksumKey)
-            guard fileExists(migrationURL) else {
-                throw LauncherError.missingFile(migrationURL.path)
-            }
-
-            operations.log("verifying migration name=\(migration.name) size=\(formatBytes(bundleItemSize(migration.size)))")
-            try verifyDigestedFile(
-                migrationURL,
-                fileVerification: fileVerification,
-                checksumMap: checksumMap
-            )
-        }
-
-        operations.log("bundle verification completed path=\(sourceURL.path)")
+        ).verify(bundleURL: bundleURL, sourceURL: sourceURL)
         print("bundle verified: \(sourceURL.path)")
     }
 
