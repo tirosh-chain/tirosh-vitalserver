@@ -1,39 +1,72 @@
-import Foundation
-import Core
 import Contracts
+import Core
+import Foundation
 
-struct RuntimeApplyBundlePreflightRunner {
-    var stageBundle: (URL) throws -> URL
-    var loadManifest: (URL) throws -> UpdateBundleManifest
-    var fileExists: (URL) -> Bool
-    var createDirectory: (URL, Bool) throws -> Void
-    var fileSize: (URL) throws -> UInt64
-    var requireFreeSpace: (URL, UInt64, RuntimeOperation) throws -> Void
-    var checkCompatibility: (UpdateBundleManifest) throws -> Void
-    var serviceRestartPolicy: () -> RuntimeServiceRestartPolicy
-    var runtimeHealthSnapshot: () -> RuntimeHealthSnapshot
-    var requireGuestCapability: (RuntimeGuestCapabilityRequirement) throws -> Void
-    var createBackup: (String) throws -> URL
-    var directorySize: (URL) throws -> UInt64
-    var log: (String) -> Void
+public struct RuntimeApplyBundlePreflightRunner {
+    public var stageBundle: (URL) throws -> URL
+    public var loadManifest: (URL) throws -> UpdateBundleManifest
+    public var fileExists: (URL) -> Bool
+    public var createDirectory: (URL, Bool) throws -> Void
+    public var fileSize: (URL) throws -> UInt64
+    public var requireFreeSpace: (URL, UInt64, RuntimeOperation) throws -> Void
+    public var checkCompatibility: (UpdateBundleManifest) throws -> Void
+    public var serviceRestartPolicy: () -> RuntimeServiceRestartPolicy
+    public var runtimeHealthSnapshot: () -> RuntimeHealthSnapshot
+    public var requireGuestCapability: (RuntimeGuestCapabilityRequirement) throws -> Void
+    public var createBackup: (String) throws -> URL
+    public var directorySize: (URL) throws -> UInt64
+    public var updateFreeSpaceMarginBytes: UInt64
+    public var log: (String) -> Void
 
-    func prepare(bundleURL: URL, backupsDirectory: URL, rootfsBase: URL) throws -> ApplyBundlePreflightContext {
+    public init(
+        stageBundle: @escaping (URL) throws -> URL,
+        loadManifest: @escaping (URL) throws -> UpdateBundleManifest,
+        fileExists: @escaping (URL) -> Bool,
+        createDirectory: @escaping (URL, Bool) throws -> Void,
+        fileSize: @escaping (URL) throws -> UInt64,
+        requireFreeSpace: @escaping (URL, UInt64, RuntimeOperation) throws -> Void,
+        checkCompatibility: @escaping (UpdateBundleManifest) throws -> Void,
+        serviceRestartPolicy: @escaping () -> RuntimeServiceRestartPolicy,
+        runtimeHealthSnapshot: @escaping () -> RuntimeHealthSnapshot,
+        requireGuestCapability: @escaping (RuntimeGuestCapabilityRequirement) throws -> Void,
+        createBackup: @escaping (String) throws -> URL,
+        directorySize: @escaping (URL) throws -> UInt64,
+        updateFreeSpaceMarginBytes: UInt64,
+        log: @escaping (String) -> Void
+    ) {
+        self.stageBundle = stageBundle
+        self.loadManifest = loadManifest
+        self.fileExists = fileExists
+        self.createDirectory = createDirectory
+        self.fileSize = fileSize
+        self.requireFreeSpace = requireFreeSpace
+        self.checkCompatibility = checkCompatibility
+        self.serviceRestartPolicy = serviceRestartPolicy
+        self.runtimeHealthSnapshot = runtimeHealthSnapshot
+        self.requireGuestCapability = requireGuestCapability
+        self.createBackup = createBackup
+        self.directorySize = directorySize
+        self.updateFreeSpaceMarginBytes = updateFreeSpaceMarginBytes
+        self.log = log
+    }
+
+    public func prepare(bundleURL: URL, backupsDirectory: URL, rootfsBase: URL) throws -> ApplyBundlePreflightContext {
         let stagedBundle = try stageBundle(bundleURL)
-        let manifest = try loadManifest(stagedBundle.appendingPathComponent(Constants.Bundle.manifest))
+        let manifest = try loadManifest(stagedBundle.appendingPathComponent(RuntimeFileNames.updateBundleManifest))
         log(
             "bundle apply manifest version=\(manifest.version) runtimeVersion=\(manifest.runtimeVersion) artifacts=\(manifest.artifacts.count) migrations=\(manifest.migrations.count)"
         )
         try checkCompatibility(manifest)
 
         let stagedRootfs = manifest.artifacts.contains { $0.type == .rootfsBase }
-            ? stagedBundle.appendingPathComponent(Constants.Artifacts.rootfsBase)
+            ? stagedBundle.appendingPathComponent(RuntimeFileNames.rootfsBase)
             : nil
         let stagedBundleSize = try directorySize(stagedBundle)
         let rootfsStorage: RuntimeUpdateRootfsStorageInput
         log("bundle apply storage preflight stagedBundle=\(formatBytes(stagedBundleSize))")
         if let stagedRootfs {
             guard fileExists(stagedRootfs) else {
-                throw LauncherError.missingFile(stagedRootfs.path)
+                throw RuntimeWorkflowError.operationFailed("missing file: \(stagedRootfs.path)")
             }
             let installedRootfsSize = try fileSize(rootfsBase)
             let incomingRootfsSize = try fileSize(stagedRootfs)
@@ -51,7 +84,7 @@ struct RuntimeApplyBundlePreflightRunner {
         let storageRequirement = RuntimeUpdatePreflightPolicy.storageRequirement(
             stagedBundleBytes: stagedBundleSize,
             rootfsStorage: rootfsStorage,
-            marginBytes: Constants.Runtime.updateFreeSpaceMarginBytes
+            marginBytes: updateFreeSpaceMarginBytes
         )
         try createDirectory(backupsDirectory, true)
         try requireFreeSpace(
@@ -95,7 +128,7 @@ struct RuntimeApplyBundlePreflightRunner {
         guard blockers.isEmpty else {
             let codes = blockers.map(\.rawValue).joined(separator: ",")
             log("bundle apply blocked by VM guest storage health errors=\(codes)")
-            throw LauncherError.runtimeOperationFailed(
+            throw RuntimeWorkflowError.operationFailed(
                 "VM disk health blocks update; run Repair VM Disk before applying update. errors=\(codes)"
             )
         }

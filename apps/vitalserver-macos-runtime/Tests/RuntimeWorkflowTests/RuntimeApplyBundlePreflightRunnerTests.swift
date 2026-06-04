@@ -1,7 +1,7 @@
 import Foundation
 import Core
 import Contracts
-@testable import HostCLI
+import RuntimeWorkflow
 import XCTest
 
 final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
@@ -10,7 +10,7 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
         let stagedBundle = URL(fileURLWithPath: "/managed/update-bundle-1.2.3")
         let backupsDirectory = URL(fileURLWithPath: "/product/backups")
         let rootfsBase = URL(fileURLWithPath: "/product/runtime/rootfs-base.raw.gz")
-        let stagedRootfs = stagedBundle.appendingPathComponent(Constants.Artifacts.rootfsBase)
+        let stagedRootfs = stagedBundle.appendingPathComponent(RuntimeFileNames.rootfsBase)
         let backup = URL(fileURLWithPath: "/product/backups/backup-before-1.2.3")
         var events: [String] = []
         var requiredSpace: (url: URL, bytes: UInt64, operation: RuntimeOperation)?
@@ -26,7 +26,7 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
                     version: "1.2.3",
                     artifacts: [
                         UpdateBundleArtifact(
-                            name: Constants.Artifacts.rootfsBase,
+                            name: RuntimeFileNames.rootfsBase,
                             type: .rootfsBase,
                             sha256: "abc",
                             size: 20
@@ -72,6 +72,7 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
                 events.append("du:\(url.path)")
                 return 30
             },
+            updateFreeSpaceMarginBytes: updateFreeSpaceMarginBytes,
             log: { _ in }
         )
 
@@ -92,7 +93,7 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
             restartWatchdog: true
         ))
         XCTAssertEqual(requiredSpace?.url, backupsDirectory)
-        XCTAssertEqual(requiredSpace?.bytes, 60 + Constants.Runtime.updateFreeSpaceMarginBytes)
+        XCTAssertEqual(requiredSpace?.bytes, 60 + updateFreeSpaceMarginBytes)
         XCTAssertEqual(requiredSpace?.operation, .applyBundle)
         XCTAssertEqual(events, [
             "stage:/incoming/bundle",
@@ -140,6 +141,7 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
             },
             createBackup: { _ in backup },
             directorySize: { _ in 10 },
+            updateFreeSpaceMarginBytes: updateFreeSpaceMarginBytes,
             log: { _ in }
         )
 
@@ -151,7 +153,7 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
 
         XCTAssertNil(context.stagedRootfs)
         XCTAssertFalse(context.updatesRootfsBase)
-        XCTAssertEqual(requiredSpace, 10 + Constants.Runtime.updateFreeSpaceMarginBytes)
+        XCTAssertEqual(requiredSpace, 10 + updateFreeSpaceMarginBytes)
     }
 
     func testPrepareFailsWhenStagedRootfsIsMissing() {
@@ -163,7 +165,7 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
                     version: "1.2.3",
                     artifacts: [
                         UpdateBundleArtifact(
-                            name: Constants.Artifacts.rootfsBase,
+                            name: RuntimeFileNames.rootfsBase,
                             type: .rootfsBase,
                             sha256: "abc",
                             size: 20
@@ -186,6 +188,7 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
             requireGuestCapability: { _ in },
             createBackup: { _ in URL(fileURLWithPath: "/backup") },
             directorySize: { _ in 0 },
+            updateFreeSpaceMarginBytes: updateFreeSpaceMarginBytes,
             log: { _ in }
         )
 
@@ -194,15 +197,16 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
             backupsDirectory: URL(fileURLWithPath: "/product/backups"),
             rootfsBase: URL(fileURLWithPath: "/product/runtime/rootfs-base.raw.gz")
         )) { error in
-            XCTAssertEqual(String(describing: error), String(describing: LauncherError.missingFile(
-                stagedBundle.appendingPathComponent(Constants.Artifacts.rootfsBase).path
-            )))
+            XCTAssertEqual(
+                String(describing: error),
+                "missing file: \(stagedBundle.appendingPathComponent(RuntimeFileNames.rootfsBase).path)"
+            )
         }
     }
 
     func testPreparePropagatesRootfsSizeReadFailureBeforeFreeSpaceCheck() {
         let stagedBundle = URL(fileURLWithPath: "/managed/update-bundle-1.2.3")
-        let stagedRootfs = stagedBundle.appendingPathComponent(Constants.Artifacts.rootfsBase)
+        let stagedRootfs = stagedBundle.appendingPathComponent(RuntimeFileNames.rootfsBase)
         let rootfsBase = URL(fileURLWithPath: "/product/runtime/rootfs-base.raw.gz")
         let runner = RuntimeApplyBundlePreflightRunner(
             stageBundle: { _ in stagedBundle },
@@ -211,7 +215,7 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
                     version: "1.2.3",
                     artifacts: [
                         UpdateBundleArtifact(
-                            name: Constants.Artifacts.rootfsBase,
+                            name: RuntimeFileNames.rootfsBase,
                             type: .rootfsBase,
                             sha256: "abc",
                             size: 20
@@ -223,7 +227,7 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
             createDirectory: { _, _ in XCTFail("should not create backup directory") },
             fileSize: { url in
                 if url == rootfsBase {
-                    throw LauncherError.missingFile(url.path)
+                    throw RuntimeWorkflowError.operationFailed("missing file: \(url.path)")
                 }
                 return 20
             },
@@ -239,6 +243,7 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
             requireGuestCapability: { _ in },
             createBackup: { _ in URL(fileURLWithPath: "/backup") },
             directorySize: { _ in 30 },
+            updateFreeSpaceMarginBytes: updateFreeSpaceMarginBytes,
             log: { _ in }
         )
 
@@ -247,7 +252,7 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
             backupsDirectory: URL(fileURLWithPath: "/product/backups"),
             rootfsBase: rootfsBase
         )) { error in
-            XCTAssertEqual(String(describing: error), String(describing: LauncherError.missingFile(rootfsBase.path)))
+            XCTAssertEqual(String(describing: error), "missing file: \(rootfsBase.path)")
         }
     }
 
@@ -281,7 +286,7 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
             requireGuestCapability: { capability in
                 events.append("capability:\(capability.rawValue)")
                 if capability == .activateUpdate {
-                    throw LauncherError.runtimeOperationFailed("guest capability missing: \(capability.rawValue)")
+                    throw RuntimeWorkflowError.operationFailed("guest capability missing: \(capability.rawValue)")
                 }
             },
             createBackup: { _ in
@@ -289,6 +294,7 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
                 return URL(fileURLWithPath: "/backup")
             },
             directorySize: { _ in 10 },
+            updateFreeSpaceMarginBytes: updateFreeSpaceMarginBytes,
             log: { _ in }
         )
 
@@ -333,6 +339,7 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
                 return URL(fileURLWithPath: "/backup")
             },
             directorySize: { _ in 10 },
+            updateFreeSpaceMarginBytes: updateFreeSpaceMarginBytes,
             log: { message in events.append("log:\(message)") }
         )
 
@@ -366,7 +373,7 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
     ) -> UpdateBundleManifest {
         UpdateBundleManifest(
             schemaVersion: 3,
-            product: Constants.Product.identifier,
+            product: "ai.tirosh.vitalserver.helper",
             helperVersion: version,
             releaseLabel: version,
             targetPlatform: "macos-arm64",
@@ -378,6 +385,8 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
         )
     }
 }
+
+private let updateFreeSpaceMarginBytes: UInt64 = 2 * 1024 * 1024 * 1024
 
 private func healthySnapshot(vmErrors: [RuntimeVMError] = []) -> RuntimeHealthSnapshot {
     RuntimeHealthSnapshot(

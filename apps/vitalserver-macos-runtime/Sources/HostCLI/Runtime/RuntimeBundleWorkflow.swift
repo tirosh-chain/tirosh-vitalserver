@@ -316,6 +316,7 @@ struct RuntimeBundleWorkflow {
             requireGuestCapability: operations.requireGuestCapability,
             createBackup: operations.createBackup,
             directorySize: directorySize,
+            updateFreeSpaceMarginBytes: Constants.Runtime.updateFreeSpaceMarginBytes,
             log: operations.log
         ).prepare(
             bundleURL: bundleURL,

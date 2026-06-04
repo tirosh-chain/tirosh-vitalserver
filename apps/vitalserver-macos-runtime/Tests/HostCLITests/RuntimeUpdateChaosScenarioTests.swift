@@ -46,6 +46,7 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
                 return URL(fileURLWithPath: "/backup")
             },
             directorySize: { _ in 10 },
+            updateFreeSpaceMarginBytes: Constants.Runtime.updateFreeSpaceMarginBytes,
             log: { _ in }
         )
 

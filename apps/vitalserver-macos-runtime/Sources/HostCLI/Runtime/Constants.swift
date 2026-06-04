@@ -181,7 +181,7 @@ enum Constants {
     }
 
     enum Bundle {
-        static let manifest = "manifest.json"
+        static let manifest = RuntimeFileNames.updateBundleManifest
         static let checksums = "checksums.txt"
         static let signature = "signature"
     }
