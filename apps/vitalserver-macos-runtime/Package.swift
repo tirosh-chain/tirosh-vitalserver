@@ -26,8 +26,12 @@ let package = Package(
             dependencies: ["Contracts"]
         ),
         .target(
-            name: "RuntimeWorkflow",
+            name: "Application",
             dependencies: ["Contracts", "Core"]
+        ),
+        .target(
+            name: "RuntimeWorkflow",
+            dependencies: ["Contracts", "Core", "Application"]
         ),
         .target(
             name: "RuntimeControl",
@@ -50,7 +54,7 @@ let package = Package(
         ),
         .executableTarget(
             name: "HostCLI",
-            dependencies: ["Contracts", "Core", "RuntimeWorkflow", "HostInfrastructure"]
+            dependencies: ["Contracts", "Core", "Application", "RuntimeWorkflow", "HostInfrastructure"]
         ),
         .executableTarget(
             name: "MacRuntimeControlApp",
@@ -68,8 +72,12 @@ let package = Package(
             dependencies: ["Contracts", "Core"]
         ),
         .testTarget(
+            name: "ApplicationTests",
+            dependencies: ["Contracts", "Core", "Application"]
+        ),
+        .testTarget(
             name: "RuntimeWorkflowTests",
-            dependencies: ["Contracts", "Core", "RuntimeWorkflow"]
+            dependencies: ["Contracts", "Core", "Application", "RuntimeWorkflow"]
         ),
         .testTarget(
             name: "RuntimeControlTests",

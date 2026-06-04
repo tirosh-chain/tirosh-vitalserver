@@ -397,6 +397,11 @@ extension RuntimeLifecycle {
         RuntimeServiceControlRunner(
             startRuntimeServices: startRuntimeServices,
             stopRuntimeServices: stopRuntimeServices,
+            serviceStates: { services in
+                Dictionary(uniqueKeysWithValues: services.map { service in
+                    (service, healthChecker.launchdState(service))
+                })
+            },
             writeStatus: runtimeStatusWriterAction(),
             log: log
         )

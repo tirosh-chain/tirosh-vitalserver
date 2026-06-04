@@ -185,3 +185,4 @@ Proceed in small, behavior-preserving slices. Do not start with a broad folder r
 ## Follow-up
 
 - 2026-06-04: Created after repeated install, update, power-off, disk repair, launchd, and guest log sync failures showed that the remaining issue is structural fragmentation around HostCLI runtime workflows, not a single missing branch.
+- 2026-06-05: Started Slice 1 for service lifecycle stabilization. Added the `Application` target with `ControlRuntimeServicesUseCase` and service lifecycle ports, moved service lifecycle command sequencing into `RuntimeWorkflow/ServiceLifecycle`, and introduced `RuntimeRequiredServicePolicy` as the required-service source of truth. HostCLI now wires concrete launchd/status observations into the workflow, while the workflow requires explicit service loaded/stopped observations before reporting service start/repair/stop completion. TS-048 remains active; next slice is runtime health refresh boundary cleanup.

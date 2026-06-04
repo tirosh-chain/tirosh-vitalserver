@@ -48,17 +48,6 @@ public struct RuntimeUninstallPaths {
     }
 }
 
-public enum RuntimeWorkflowError: Error, CustomStringConvertible {
-    case operationFailed(String)
-
-    public var description: String {
-        switch self {
-        case .operationFailed(let message):
-            return message
-        }
-    }
-}
-
 public struct RuntimeUninstallStateReaders {
     public var serviceStates: () -> [RuntimeManagedService: RuntimeServiceState]
     public var vmProcessState: () -> RuntimeVMProcessState
