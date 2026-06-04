@@ -366,13 +366,13 @@ final class RuntimeServiceControllerTests: XCTestCase {
             serviceState: { loaded.contains($0) ? .loaded : .notLoaded },
             prepareForStop: { events.append("prepare:\($0.label)") },
             waitUntilStopped: { events.append("wait:\($0.label)") },
-            waitForVMProcessExitAfterGuestPoweroff: {
-                events.append("wait-vm-process")
+            waitForVMProcessExitAfterGuestPoweroff: { pid in
+                events.append("wait-vm-process:\(pid)")
             },
             log: { _ in }
         )
 
-        try controller.stopRuntimeServicesAfterGuestPoweroff()
+        try controller.stopRuntimeServicesAfterGuestPoweroff(expectedVMProcessID: 123)
 
         XCTAssertEqual(events, [
             "prepare:\(RuntimeManagedService.watchdog.label)",
@@ -381,7 +381,7 @@ final class RuntimeServiceControllerTests: XCTestCase {
             "prepare:\(RuntimeManagedService.proxy.label)",
             "stop:\(RuntimeManagedService.proxy.label)",
             "wait:\(RuntimeManagedService.proxy.label)",
-            "wait-vm-process",
+            "wait-vm-process:123",
             "prepare:\(RuntimeManagedService.guestLogSync.label)",
             "stop:\(RuntimeManagedService.guestLogSync.label)",
             "wait:\(RuntimeManagedService.guestLogSync.label)",

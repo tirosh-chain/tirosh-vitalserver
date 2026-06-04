@@ -60,8 +60,9 @@ struct RuntimeLifecycleComposition {
                     clock: clock
                 )
             },
-            waitForVMProcessExitAfterGuestPoweroff: {
+            waitForVMProcessExitAfterGuestPoweroff: { expectedVMProcessID in
                 try waitForVMProcessExitAfterGuestPoweroff(
+                    expectedVMProcessID: expectedVMProcessID,
                     paths: paths,
                     fileStore: fileStore,
                     clock: clock
@@ -112,19 +113,21 @@ struct RuntimeLifecycleComposition {
     }
 
     private static func waitForVMProcessExitAfterGuestPoweroff(
+        expectedVMProcessID: pid_t,
         paths: LauncherPaths,
         fileStore: RuntimeFileStore,
         clock: RuntimeClock
     ) throws {
-        log("waiting for VM process to exit after guest poweroff request", clock: clock)
-        try ProcessState.waitUntilStopped(
+        log("waiting for VM process to exit after guest poweroff request pid=\(expectedVMProcessID)", clock: clock)
+        try ProcessState.waitUntilObservedProcessStopped(
+            pid: expectedVMProcessID,
             pidFile: paths.pidFile,
             fileStore: fileStore,
             timeoutSeconds: Constants.Runtime.vmStopWaitTimeoutSeconds,
             pollIntervalSeconds: Constants.Runtime.serviceStopPollIntervalSeconds,
             log: { message in log(message, clock: clock) }
         )
-        log("VM process exited after guest poweroff request", clock: clock)
+        log("VM process exited after guest poweroff request pid=\(expectedVMProcessID)", clock: clock)
     }
 
     private static func waitUntilServiceStops(

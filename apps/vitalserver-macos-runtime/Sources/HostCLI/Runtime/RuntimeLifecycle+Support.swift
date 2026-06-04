@@ -88,8 +88,12 @@ extension RuntimeLifecycle {
         log("runtime services stopped for VM disk replacement")
     }
 
-    func stopRuntimeServicesAfterGuestPoweroff() throws {
-        try serviceController.stopRuntimeServicesAfterGuestPoweroff()
+    func runningVMProcessID() throws -> pid_t {
+        try ProcessState.runningPid(pidFile: paths.pidFile, fileStore: fileStore)
+    }
+
+    func stopRuntimeServicesAfterGuestPoweroff(expectedVMProcessID: pid_t) throws {
+        try serviceController.stopRuntimeServicesAfterGuestPoweroff(expectedVMProcessID: expectedVMProcessID)
     }
 
     func startRuntimeServices(

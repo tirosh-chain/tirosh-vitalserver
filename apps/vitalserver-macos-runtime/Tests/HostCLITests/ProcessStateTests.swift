@@ -171,6 +171,68 @@ final class ProcessStateTests: XCTestCase {
         XCTAssertEqual(state, .stopped)
     }
 
+    func testWaitUntilStoppedStateKeepsWaitingForOriginalPidWhenPidFileChanges() {
+        let fileStore = RuntimeFileStoreSpy()
+        let pidFile = URL(fileURLWithPath: "/runtime/run/vitalserver-vm.pid")
+        fileStore.files[pidFile] = Data("123\n".utf8)
+        var probes: [pid_t] = []
+        var logs: [String] = []
+
+        let state = ProcessState.waitUntilStoppedState(
+            pidFile: pidFile,
+            fileStore: fileStore,
+            timeoutSeconds: 1,
+            pollIntervalSeconds: 0.001,
+            processExists: { pid in
+                probes.append(pid)
+                if probes.count == 1 {
+                    fileStore.files[pidFile] = Data("456\n".utf8)
+                    return true
+                }
+                return false
+            },
+            log: { logs.append($0) }
+        )
+
+        XCTAssertEqual(state, .stopped)
+        XCTAssertEqual(probes, [123, 123])
+        XCTAssertEqual(fileStore.files[pidFile], Data("456\n".utf8))
+        XCTAssertTrue(logs.contains { $0.contains("pid file changed") && $0.contains("observedPid=123") && $0.contains("currentPid=456") })
+    }
+
+    func testRequestStopAndWaitKeepsWaitingForSignaledPidWhenPidFileChangesImmediately() throws {
+        let fileStore = RuntimeFileStoreSpy()
+        let pidFile = URL(fileURLWithPath: "/runtime/run/vitalserver-vm.pid")
+        fileStore.files[pidFile] = Data("123\n".utf8)
+        var probes: [pid_t] = []
+        var signals: [(pid_t, Int32)] = []
+
+        try ProcessState.requestStopAndWait(
+            pidFile: pidFile,
+            fileStore: fileStore,
+            timeoutSeconds: 1,
+            pollIntervalSeconds: 0.001,
+            processExists: { pid in
+                probes.append(pid)
+                if probes.count == 1 {
+                    return true
+                }
+                return false
+            },
+            signalProcess: { pid, signal in
+                signals.append((pid, signal))
+                fileStore.files[pidFile] = Data("456\n".utf8)
+                return 0
+            }
+        )
+
+        XCTAssertEqual(signals.count, 1)
+        XCTAssertEqual(signals.first?.0, 123)
+        XCTAssertEqual(signals.first?.1, SIGTERM)
+        XCTAssertEqual(probes, [123, 123])
+        XCTAssertEqual(fileStore.files[pidFile], Data("456\n".utf8))
+    }
+
     func testForceKillAndWaitSignalsProcessAndWaitsUntilStopped() throws {
         let fileStore = RuntimeFileStoreSpy()
         let pidFile = URL(fileURLWithPath: "/runtime/run/vitalserver-vm.pid")
@@ -225,6 +287,43 @@ final class ProcessStateTests: XCTestCase {
         )
 
         XCTAssertEqual(state, .stopTimedOut(pid: 123, timeoutSeconds: 0))
+    }
+
+    func testWaitUntilStoppedStateReportsTimeoutWithOriginalPidWhenPidFileChanges() {
+        let fileStore = RuntimeFileStoreSpy()
+        let pidFile = URL(fileURLWithPath: "/runtime/run/vitalserver-vm.pid")
+        fileStore.files[pidFile] = Data("123\n".utf8)
+
+        let state = ProcessState.waitUntilStoppedState(
+            pidFile: pidFile,
+            fileStore: fileStore,
+            timeoutSeconds: 0,
+            pollIntervalSeconds: 0.001,
+            processExists: { pid in
+                fileStore.files[pidFile] = Data("456\n".utf8)
+                return pid == 123
+            }
+        )
+
+        XCTAssertEqual(state, .stopTimedOut(pid: 123, timeoutSeconds: 0))
+    }
+
+    func testRunningPidFailsWhenPidFileIsStale() {
+        let fileStore = RuntimeFileStoreSpy()
+        let pidFile = URL(fileURLWithPath: "/runtime/run/vitalserver-vm.pid")
+        fileStore.files[pidFile] = Data("123\n".utf8)
+
+        XCTAssertThrowsError(try ProcessState.runningPid(
+            pidFile: pidFile,
+            fileStore: fileStore,
+            processExists: { _ in false }
+        )) { error in
+            guard case LauncherError.runtimeOperationFailed(let message) = error else {
+                return XCTFail("Expected runtimeOperationFailed, got \(error)")
+            }
+            XCTAssertTrue(message.contains("stale"))
+            XCTAssertTrue(message.contains("123"))
+        }
     }
 
     func testWaitUntilStoppedFailsWhenPidFileIsInvalid() {

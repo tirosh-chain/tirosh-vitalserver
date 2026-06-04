@@ -142,13 +142,19 @@ enum ProcessState {
             let errorNumber = errno
             if errorNumber == ESRCH {
                 log("VM process already stopped pid=\(pid); removing pidFile=\(pidFile.path)")
-                removePidFile(pidFile, fileStore: fileStore, log: log)
+                removePidFileIfStillReferences(
+                    pidFile,
+                    expectedPid: pid,
+                    fileStore: fileStore,
+                    log: log
+                )
                 return .stalePid(pid: Int32(pid))
             }
             return .signalFailed(pid: Int32(pid), signal: SIGTERM, errnoCode: Int32(errorNumber))
         }
 
-        return waitUntilStoppedState(
+        return waitUntilObservedProcessStoppedState(
+            pid: pid,
             pidFile: pidFile,
             fileStore: fileStore,
             timeoutSeconds: timeoutSeconds,
@@ -212,13 +218,19 @@ enum ProcessState {
             let errorNumber = errno
             if errorNumber == ESRCH {
                 log("VM process already stopped before forced stop pid=\(pid); removing pidFile=\(pidFile.path)")
-                removePidFile(pidFile, fileStore: fileStore, log: log)
+                removePidFileIfStillReferences(
+                    pidFile,
+                    expectedPid: pid,
+                    fileStore: fileStore,
+                    log: log
+                )
                 return .stalePid(pid: Int32(pid))
             }
             return .signalFailed(pid: Int32(pid), signal: SIGKILL, errnoCode: Int32(errorNumber))
         }
 
-        return waitUntilStoppedState(
+        return waitUntilObservedProcessStoppedState(
+            pid: pid,
             pidFile: pidFile,
             fileStore: fileStore,
             timeoutSeconds: timeoutSeconds,
@@ -246,6 +258,26 @@ enum ProcessState {
         ))
     }
 
+    static func waitUntilObservedProcessStopped(
+        pid: pid_t,
+        pidFile: URL,
+        fileStore: RuntimeFileReading & RuntimeFileWriting = SystemRuntimeFileStore(),
+        timeoutSeconds: TimeInterval,
+        pollIntervalSeconds: TimeInterval = 0.5,
+        processExists: (pid_t) -> Bool = defaultProcessExists,
+        log: (String) -> Void = { print($0) }
+    ) throws {
+        try throwIfBlockingStopState(waitUntilObservedProcessStoppedState(
+            pid: pid,
+            pidFile: pidFile,
+            fileStore: fileStore,
+            timeoutSeconds: timeoutSeconds,
+            pollIntervalSeconds: pollIntervalSeconds,
+            processExists: processExists,
+            log: log
+        ))
+    }
+
     static func waitUntilStoppedState(
         pidFile: URL,
         fileStore: RuntimeFileReading & RuntimeFileWriting = SystemRuntimeFileStore(),
@@ -254,28 +286,85 @@ enum ProcessState {
         processExists: (pid_t) -> Bool = defaultProcessExists,
         log: (String) -> Void = { print($0) }
     ) -> RuntimeVMProcessState {
+        switch readPid(pidFile, fileStore: fileStore) {
+        case .missing:
+            return .pidFileMissing
+        case .loaded(let pid):
+            return waitUntilObservedProcessStoppedState(
+                pid: pid,
+                pidFile: pidFile,
+                fileStore: fileStore,
+                timeoutSeconds: timeoutSeconds,
+                pollIntervalSeconds: pollIntervalSeconds,
+                processExists: processExists,
+                log: log
+            )
+        case .pidFileInvalid(let message):
+            return .pidFileInvalid(message)
+        case .readFailed(let message):
+            return .readFailed(message)
+        }
+    }
+
+    static func runningPid(
+        pidFile: URL,
+        fileStore: RuntimeFileReading = SystemRuntimeFileStore(),
+        processExists: (pid_t) -> Bool = defaultProcessExists
+    ) throws -> pid_t {
+        switch readPid(pidFile, fileStore: fileStore) {
+        case .missing:
+            throw LauncherError.runtimeOperationFailed("VM process pid file is missing; running process state is not proven")
+        case .loaded(let pid):
+            guard processExists(pid) else {
+                throw LauncherError.runtimeOperationFailed("VM process pid file is stale pid=\(pid)")
+            }
+            return pid
+        case .pidFileInvalid(let message), .readFailed(let message):
+            throw LauncherError.runtimeOperationFailed(message)
+        }
+    }
+
+    static func waitUntilObservedProcessStoppedState(
+        pid: pid_t,
+        pidFile: URL,
+        fileStore: RuntimeFileReading & RuntimeFileWriting = SystemRuntimeFileStore(),
+        timeoutSeconds: TimeInterval,
+        pollIntervalSeconds: TimeInterval = 0.5,
+        processExists: (pid_t) -> Bool = defaultProcessExists,
+        log: (String) -> Void = { print($0) }
+    ) -> RuntimeVMProcessState {
         let deadline = Date().addingTimeInterval(timeoutSeconds)
-        var observedPid: pid_t?
+        var loggedReplacementPid: pid_t?
+        var loggedMissingPidFile = false
+
         while true {
-            let pid: pid_t
+            guard processExists(pid) else {
+                removePidFileIfStillReferences(
+                    pidFile,
+                    expectedPid: pid,
+                    fileStore: fileStore,
+                    log: log
+                )
+                return .stopped
+            }
+
             switch readPid(pidFile, fileStore: fileStore) {
             case .missing:
-                if let observedPid, !processExists(observedPid) {
-                    return .stopped
+                if !loggedMissingPidFile {
+                    log("VM process pid file is missing while waiting for observed VM process exit pid=\(pid)")
+                    loggedMissingPidFile = true
                 }
-                return .pidFileMissing
-            case .loaded(let loadedPid):
-                pid = loadedPid
-                observedPid = loadedPid
+            case .loaded(let currentPid):
+                if currentPid != pid, loggedReplacementPid != currentPid {
+                    log("VM process pid file changed while waiting for observed VM process exit observedPid=\(pid) currentPid=\(currentPid)")
+                    loggedReplacementPid = currentPid
+                }
             case .pidFileInvalid(let message):
                 return .pidFileInvalid(message)
             case .readFailed(let message):
                 return .readFailed(message)
             }
-            guard processExists(pid) else {
-                removePidFile(pidFile, fileStore: fileStore, log: log)
-                return .stopped
-            }
+
             guard Date() < deadline else {
                 return .stopTimedOut(pid: Int32(pid), timeoutSeconds: Int(timeoutSeconds))
             }
@@ -298,6 +387,26 @@ enum ProcessState {
             return .loaded(pid)
         } catch {
             return .readFailed("failed to read VM process pid file pidFile=\(pidFile.path) error=\(error.localizedDescription)")
+        }
+    }
+
+    private static func removePidFileIfStillReferences(
+        _ pidFile: URL,
+        expectedPid: pid_t,
+        fileStore: RuntimeFileReading & RuntimeFileWriting,
+        log: (String) -> Void
+    ) {
+        switch readPid(pidFile, fileStore: fileStore) {
+        case .missing:
+            return
+        case .loaded(let currentPid):
+            guard currentPid == expectedPid else {
+                log("VM process pid file now references another process; leaving pidFile=\(pidFile.path) stoppedPid=\(expectedPid) currentPid=\(currentPid)")
+                return
+            }
+            removePidFile(pidFile, fileStore: fileStore, log: log)
+        case .pidFileInvalid(let message), .readFailed(let message):
+            log("VM process stopped; pid file cleanup skipped reason=\(message)")
         }
     }
 

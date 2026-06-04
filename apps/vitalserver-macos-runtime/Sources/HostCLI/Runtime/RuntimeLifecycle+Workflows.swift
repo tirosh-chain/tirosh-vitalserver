@@ -279,6 +279,7 @@ extension RuntimeLifecycle {
                 },
                 startRuntimeServices: startRuntimeServices,
                 stopRuntimeServices: stopRuntimeServices,
+                runningVMProcessID: runningVMProcessID,
                 stopRuntimeServicesAfterGuestPoweroff: stopRuntimeServicesAfterGuestPoweroff,
                 prepareGuestShutdownForUpdate: prepareGuestShutdownForUpdate,
                 clearGuestShutdownPreparation: {
