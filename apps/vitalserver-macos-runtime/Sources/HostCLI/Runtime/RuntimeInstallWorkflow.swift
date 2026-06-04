@@ -93,7 +93,7 @@ struct RuntimeInstallWorkflowComposition {
         )
     }
 
-    private func runtimeInstallStepExecutor() -> RuntimeInstallStepExecutor {
+    private func runtimeInstallStepExecutor() -> RuntimeInstallStepExecutor<InstallSettings> {
         RuntimeInstallStepExecutor(
             prepareInstallDirectories: { settings in
                 try runtimeInstallDirectoryPreparer().prepare(settings: settings)
@@ -123,6 +123,14 @@ struct RuntimeInstallWorkflowComposition {
             },
             applyStartOnBootPolicy: { settings in
                 try applyStartOnBootPolicy(settings)
+            },
+            runtimeServiceRestartPolicy: { settings in
+                RuntimeServiceRestartPolicy(
+                    restartVM: settings.startAfterInstall,
+                    restartGuestLogSync: settings.startAfterInstall,
+                    restartProxy: settings.startAfterInstall,
+                    restartWatchdog: settings.startAfterInstall
+                )
             },
             waitForHealth: operations.waitForHealth,
             cleanupInstallSettings: {

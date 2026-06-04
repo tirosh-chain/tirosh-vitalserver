@@ -1,13 +1,13 @@
-import Core
 import Contracts
-@testable import HostCLI
+import Core
+import RuntimeWorkflow
 import XCTest
 
 final class RuntimeInstallStepExecutorTests: XCTestCase {
     func testExecuteDispatchesInstallStepsToCollaborators() throws {
-        let settings = InstallSettings(vitalFilesDirectory: "/vital-files")
+        let settings = TestInstallSettings(vitalFilesDirectory: "/vital-files")
         var events: [String] = []
-        let executor = RuntimeInstallStepExecutor(
+        let executor = RuntimeInstallStepExecutor<TestInstallSettings>(
             prepareInstallDirectories: { settings in
                 events.append("prepare-directories:\(settings.vitalFilesDirectory)")
             },
@@ -40,6 +40,14 @@ final class RuntimeInstallStepExecutorTests: XCTestCase {
             },
             applyStartOnBootPolicy: { settings in
                 events.append("boot:\(settings.startOnBoot)")
+            },
+            runtimeServiceRestartPolicy: { settings in
+                RuntimeServiceRestartPolicy(
+                    restartVM: settings.startAfterInstall,
+                    restartGuestLogSync: settings.startAfterInstall,
+                    restartProxy: settings.startAfterInstall,
+                    restartWatchdog: settings.startAfterInstall
+                )
             },
             waitForHealth: { policy in
                 events.append("wait-health:\(policy.restartVM):\(policy.restartProxy):\(policy.restartWatchdog)")
@@ -75,7 +83,7 @@ final class RuntimeInstallStepExecutorTests: XCTestCase {
     }
 
     func testRejectsNonInstallStep() {
-        let executor = RuntimeInstallStepExecutor(
+        let executor = RuntimeInstallStepExecutor<TestInstallSettings>(
             prepareInstallDirectories: { _ in },
             rotateRuntimeLogs: {},
             configureDeployEnvironment: { _ in },
@@ -87,6 +95,14 @@ final class RuntimeInstallStepExecutorTests: XCTestCase {
             configureInstalledPermissions: { _ in },
             startInstalledServices: { _ in },
             applyStartOnBootPolicy: { _ in },
+            runtimeServiceRestartPolicy: { _ in
+                RuntimeServiceRestartPolicy(
+                    restartVM: false,
+                    restartGuestLogSync: false,
+                    restartProxy: false,
+                    restartWatchdog: false
+                )
+            },
             waitForHealth: { _ in },
             cleanupInstallSettings: {},
             log: { _ in }
@@ -94,7 +110,19 @@ final class RuntimeInstallStepExecutorTests: XCTestCase {
 
         XCTAssertThrowsError(try executor.execute(
             .stopRuntimeServices,
-            settings: InstallSettings(vitalFilesDirectory: "/vital-files")
-        ))
+            settings: TestInstallSettings(vitalFilesDirectory: "/vital-files")
+        )) { error in
+            XCTAssertEqual(String(describing: error), "unsupported command: install step stop-runtime-services")
+        }
     }
+}
+
+private struct TestInstallSettings {
+    var vitalFilesDirectory: String
+    var diskGiB: Int = 32
+    var cpuCount: Int = 8
+    var vmHostname: String = "tirosh-vitalserver"
+    var proxyPort: Int = 80
+    var startAfterInstall: Bool = true
+    var startOnBoot: Bool = true
 }
