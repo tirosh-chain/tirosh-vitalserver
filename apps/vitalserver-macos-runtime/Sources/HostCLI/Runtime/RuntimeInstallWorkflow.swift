@@ -365,10 +365,17 @@ struct RuntimeInstallWorkflowComposition {
     }
 
     private func cleanupInstallSettings() throws {
-        let settingsFile = URL(fileURLWithPath: InstallSettings.defaultSettingsPath)
-        if fileExists(settingsFile) {
-            try operations.fileStore.removeItem(at: settingsFile)
-        }
+        try RuntimeInstallSettingsCleaner(
+            context: RuntimeInstallSettingsCleanupContext(
+                settingsFile: URL(fileURLWithPath: InstallSettings.defaultSettingsPath)
+            ),
+            operations: RuntimeInstallSettingsCleanupOperations(
+                fileExists: fileExists,
+                removeItem: { url in
+                    try operations.fileStore.removeItem(at: url)
+                }
+            )
+        ).cleanup()
     }
 
     private func fileExists(_ url: URL) -> Bool {
