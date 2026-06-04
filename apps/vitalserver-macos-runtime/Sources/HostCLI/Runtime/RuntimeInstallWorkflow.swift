@@ -140,10 +140,47 @@ struct RuntimeInstallWorkflowComposition {
         )
     }
 
-    private func runtimeInstallDirectoryPreparer() -> RuntimeInstallDirectoryPreparer {
+    private func runtimeInstallDirectoryPreparer() -> RuntimeInstallDirectoryPreparer<InstallSettings> {
         RuntimeInstallDirectoryPreparer(
-            installedPaths: context.installedPaths,
-            fileStore: operations.fileStore
+            context: RuntimeInstallDirectoryPreparationContext(
+                fixedDirectories: [
+                    context.installedPaths.runtimeDirectory,
+                    context.installedPaths.deployDirectory,
+                    context.installedPaths.guestRunDirectory,
+                    context.installedPaths.vrReleaseDirectory,
+                    context.installedPaths.backupsDirectory,
+                    context.installedPaths.redisBackupsDirectory,
+                    context.installedPaths.productLogsDirectory,
+                    context.installedPaths.centralRuntimeLogsDirectory,
+                    context.installedPaths.centralGuestLogsDirectory,
+                    context.installedPaths.logArchiveDirectory,
+                    context.installedPaths.hostRunDirectory,
+                    context.installedPaths.statusDirectory,
+                    context.installedPaths.nginxLogsDirectory,
+                ],
+                staleGuestRunDocuments: [
+                    context.installedPaths.vmIPFile,
+                    context.installedPaths.runtimeState,
+                    context.installedPaths.bootstrapResult,
+                    context.installedPaths.updateActivationResult,
+                    context.installedPaths.updateShutdownResult,
+                    context.installedPaths.datastoreRepairResult,
+                ],
+                vitalFilesDirectory: { settings in
+                    URL(fileURLWithPath: settings.vitalFilesDirectory)
+                }
+            ),
+            operations: RuntimeInstallDirectoryPreparationOperations(
+                createDirectory: { url, withIntermediateDirectories in
+                    try operations.fileStore.createDirectory(at: url, withIntermediateDirectories: withIntermediateDirectories)
+                },
+                fileExists: { url in
+                    operations.fileStore.fileExists(url)
+                },
+                removeItem: { url in
+                    try operations.fileStore.removeItem(at: url)
+                }
+            )
         )
     }
 
