@@ -32,21 +32,75 @@ Health Check는 별도 제품명이 아니라 `Vital Server Helper`가 제공하
 repository 내부 문서와 코드에서 이미 쓰는 `VitalServer Helper` 표기는 package/app
 이름이나 기존 내부 component를 가리킬 때 유지합니다.
 
+## 요구사항 대응
+
+| 요구사항 | 담당 문서 |
+|---|---|
+| K-MFDB 구축 관련 Vital Server Helper 공개/배포 취지 설명 | `release/background.md`, `release/index.md` |
+| Mac 하드웨어 기반 appliance 선택 이유 | `release/mac-hardware-appliance.md`, `dev/architecture.md` |
+| Vital Server Helper가 제공하는 VR 동작 유무 확인 | `release/health-check-service.md`, `dev/health-check-contract.md` |
+| Vital Server Helper가 제공하는 저장 데이터 sanity check | `release/health-check-service.md`, `dev/health-check-contract.md` |
+| 병원 내 사용 모드 기본 지원 | `release/deployment-modes.md`, `release/installation.md` |
+| 병원 외 cloud 사용 모드 선택 지원 | `release/deployment-modes.md`, `dev/architecture.md` |
+| repository package 안의 서비스 소개 | `dev/service-catalog.md`, `dev/package-map.md` |
+| release와 dev 설명 분리 | `release/index.md`, `dev/index.md` |
+
+저장 파일 확장자는 이 repository의 testkit domain policy와 기존 문서 기준
+`.vital`로 문서화합니다. 요구 원문에 있는 `*.vatal` 표기는 release 문서에는
+사용하지 않습니다.
+
+## Release 문서군
+
+release 문서군은 외부 공개와 현장 배포에 필요한 설명만 담습니다.
+
+| 문서 | 독자 | 목적 |
+|---|---|---|
+| `release/index.md` | 전체 공개 독자 | Vital Server Helper 공개 문서의 첫 화면 |
+| `release/background.md` | 연구 과제 관계자, 도입 검토자 | K-MFDB 구축 맥락과 Vital Server Helper 공개 취지 설명 |
+| `release/mac-hardware-appliance.md` | 도입 검토자, 병원 IT 담당자 | Mac 하드웨어 기반 appliance 선택 이유 설명 |
+| `release/health-check-service.md` | 병원 운영자, 병원 IT 담당자 | Vital Server Helper의 Health Check 서비스 설명 |
+| `release/deployment-modes.md` | 병원 IT 담당자, 보안 담당자 | 병원 내/외 사용 모드 구분 |
+| `release/installation.md` | 현장 설치 담당자 | 설치와 초기 확인 절차 안내 |
+| `release/operation.md` | 병원 운영자 | 일상 운영 방법 안내 |
+| `release/troubleshooting.md` | 병원 IT 담당자 | 현장 장애 대응 안내 |
+| `release/release-notes.md` | 전체 공개 독자 | 배포 버전별 변경 사항 안내 |
+
+### Release 작성 기준
+
+`release/index.md`는 서비스 한 줄 설명, 제공 범위, 병원 내 기본 지원, cloud 선택
+지원, 다음 문서 안내를 포함합니다.
+
+`release/background.md`는 저출산 극복 기술개발 중점연구, K-MFDB 구축 맥락,
+VitalDB 기반 병원 데이터 운영 필요성, 공개/배포 목적을 설명합니다.
+
+`release/mac-hardware-appliance.md`는 Mac 하드웨어를 선택한 이유를 주 메시지로
+둡니다. OS, Linux VM, PWA 세부 구조는 dev 문서로 보냅니다.
+
+`release/health-check-service.md`는 VR/VRecorder 동작 유무, `.vital` 파일 sanity
+check, 서비스 상태, 결과 상태의 의미, 향후 확장 가능성을 설명합니다.
+
+`release/deployment-modes.md`는 병원 내 기본 모드와 병원 outbound 허용 시 cloud
+연계 모드를 구분합니다. 네트워크와 보안 전제는 운영자가 판단할 수 있을 정도로
+설명하고, 구현 상세는 dev 문서로 연결합니다.
+
+`release/installation.md`는 DMG/PKG 설치, 초기 설정, Health Check 확인, 기본 URL,
+offline 설치 전제를 다룹니다.
+
+`release/operation.md`는 Helper app Status/Logs/Update 확인, health result 확인,
+update bundle 적용을 다룹니다.
+
+`release/troubleshooting.md`는 증상, 원인, 확인 방법, 조치 방향, 예방 원칙을
+같이 적습니다.
+
 ## Mac 하드웨어 메시지 기준
 
-`release/mac-hardware-appliance.md`는 OS가 아니라 Mac 하드웨어를 선택한 이유를
-주 메시지로 둡니다. macOS는 Host runtime, local proxy, packaging, Helper app을
-구동하기 위한 운영 환경으로만 설명합니다.
-
-release 문서의 핵심 주장은 아래처럼 둡니다.
+`release/mac-hardware-appliance.md`의 핵심 주장은 아래처럼 둡니다.
 
 > Vital Server Helper는 병원 내부망에서 장기간 켜져 있는 현장 appliance를
 > 목표로 한다. Mac을 선택한 주된 이유는 macOS가 아니라 Mac mini/Mac Studio
 > 하드웨어의 QA 일관성, 표준화, 장기 호환성이다. 일반 Linux/Windows PC는
 > 제조사와 부품 조합이 다양해 현장별 검증 범위가 커지지만, Mac 기반 표준
 > 장비는 설치, 검증, 교체, 장애 대응 절차를 좁힐 수 있다.
-
-release 문서의 핵심 메시지는 아래 순서로 작성합니다.
 
 | 메시지 | 설명 방향 |
 |---|---|
@@ -72,57 +126,54 @@ industrial PC가 더 적합할 수 있습니다. Vital Server Helper의 Mac 선�
 - Mac Studio product/spec overview: <https://www.apple.com/mac-studio/>
 - Apple service and parts period after warranty: <https://support.apple.com/en-ca/102772>
 
-## 요구사항 대응
-
-| 요구사항 | 담당 문서 |
-|---|---|
-| K-MFDB 구축 관련 Vital Server Helper 공개/배포 취지 설명 | `release/background.md`, `release/index.md` |
-| Mac 하드웨어 기반 appliance 선택 이유: QA 일관성, 표준화, 검증 범위 축소, 24/7 소형 appliance, 장기 호환성 | `release/mac-hardware-appliance.md`, `dev/architecture.md` |
-| Vital Server Helper가 제공하는 VR 동작 유무 확인 | `release/health-check-service.md`, `dev/health-check-contract.md` |
-| Vital Server Helper가 제공하는 저장 데이터 sanity check | `release/health-check-service.md`, `dev/health-check-contract.md` |
-| 병원 내 사용 모드 기본 지원 | `release/deployment-modes.md`, `release/installation.md` |
-| 병원 외 cloud 사용 모드 선택 지원 | `release/deployment-modes.md`, `dev/architecture.md` |
-| repository package 안의 서비스 소개 | `dev/service-catalog.md`, `dev/package-map.md` |
-| release와 dev 설명 분리 | `release/index.md`, `dev/index.md` |
-
-저장 파일 확장자는 이 repository의 testkit domain policy와 기존 문서 기준
-`.vital`로 문서화합니다. 요구 원문에 있는 `*.vatal` 표기는 release 문서에는
-사용하지 않습니다.
-
-## Release 문서군
-
-release 문서군은 외부 공개와 현장 배포에 필요한 설명만 담습니다.
-
-| 문서 | 독자 | 목적 | 포함 범위 |
-|---|---|---|---|
-| `release/index.md` | 전체 공개 독자 | Vital Server Helper 공개 문서의 첫 화면 | 서비스 한 줄 설명, 제공 범위, 병원 내 기본 지원, cloud 선택 지원, 다음 문서 안내 |
-| `release/background.md` | 연구 과제 관계자, 도입 검토자 | K-MFDB 구축 맥락과 Vital Server Helper 공개 취지 설명 | 저출산 극복 기술개발 중점연구 맥락, VitalDB 기반 병원 데이터 운영 필요성, 공개/배포 목적 |
-| `release/mac-hardware-appliance.md` | 도입 검토자, 병원 IT 담당자 | Mac 하드웨어 기반 appliance 선택 이유 설명 | Apple 하드웨어 QA 일관성, 표준화된 하드웨어 SKU, 검증 범위 축소, 24/7 소형 appliance 운용성, 장기 제품 호환성, Mac mini/Mac Studio 하드웨어 운영 전제. OS, Linux VM, PWA 세부 구조는 dev 문서로 보낸다 |
-| `release/health-check-service.md` | 병원 운영자, 병원 IT 담당자 | Vital Server Helper의 Health Check 서비스가 무엇을 확인하는지 설명 | VR/VRecorder 동작 유무, `.vital` 파일 sanity check, 서비스 상태, 결과 상태의 의미, 확장 가능성 |
-| `release/deployment-modes.md` | 병원 IT 담당자, 보안 담당자 | 병원 내/외 사용 모드 구분 | 병원 내 기본 모드, outbound 허용 시 cloud 연계 모드, network/security 전제 |
-| `release/installation.md` | 현장 설치 담당자 | 설치와 초기 확인 절차 안내 | DMG/PKG 설치, 초기 설정, Health Check 확인, 기본 URL, offline 설치 전제 |
-| `release/operation.md` | 병원 운영자 | 일상 운영 방법 안내 | Helper app Status/Logs/Update 확인, health result 확인, update bundle 적용 |
-| `release/troubleshooting.md` | 병원 IT 담당자 | 현장 장애 대응 안내 | 증상, 원인, 확인 방법, 조치 방향, 예방 원칙 |
-| `release/release-notes.md` | 전체 공개 독자 | 배포 버전별 변경 사항 안내 | release version, 변경된 서비스 범위, 알려진 제한, 업그레이드 주의사항 |
-
 ## Dev 문서군
 
 dev 문서군은 repository 유지보수자가 release 문서를 실제 구현과 연결할 수 있게
 합니다.
 
-| 문서 | 독자 | 목적 | 포함 범위 |
-|---|---|---|---|
-| `dev/index.md` | 개발자 전체 | 내부 문서군 진입점 | service catalog, architecture, build/release/test 문서 안내 |
-| `dev/service-catalog.md` | 신규 개발자, reviewer | repository 안의 서비스 목록과 책임 설명 | `apps/vitalserver`, `apps/vitalserver-macos-runtime`, `apps/vitalserver-runtime-pwa`, `apps/vitaldb-observer`, `apps/vitalserver-audit-proxy`, `packages/*` |
-| `dev/package-map.md` | 개발자, release 담당자 | monorepo package 경계 설명 | app/package/infra/docs 경계, package별 owner, 외부 공개 여부 |
-| `dev/architecture.md` | runtime/API 개발자 | release 모드가 실제 구조에 어떻게 대응되는지 설명 | Mac hardware appliance, Host/Guest, macOS host proxy, Linux VM, Runtime Control API, PWA, observer/testkit 관계. OS보다 하드웨어 운영 특성이 Mac 선택의 주된 근거임을 명시하고, server-class 요구에는 전통적인 server/industrial PC가 더 타당할 수 있음을 경계로 둠. Linux VM은 upstream이 Linux native라서가 아니라 Windows-oriented upstream을 제품용 Linux guest service stack으로 정규화하고 macOS/Linux/Windows host 위에서 동일하게 운용하기 위한 guest 표준화 계층으로 설명 |
-| `dev/health-check-contract.md` | Health Check 구현자 | Health Check 상태 계약 고정 | VR observed/missing/stale/read-failed, `.vital` file found/invalid/decode-failed/permission-failed, empty vs missing 구분 |
-| `dev/api-contracts.md` | API/PWA/testkit 개발자 | 공개/내부 API 문서 위치 안내 | Runtime Control API, VitalDB Observer API, Audit Proxy API, OpenAPI source |
-| `dev/build-and-release.md` | release 담당자 | 배포 artifact 생성 절차 설명 | `make vm-dmg-release`, `make vm-update-bundle-release`, `make install-testkit-release`, artifact 위치 |
-| `dev/testing.md` | 개발자, QA | 검증 절차 설명 | unit/integration test, testkit smoke/load, runtime chaos, Health Check 시나리오 |
-| `dev/troubleshooting.md` | 개발자, 운영 지원자 | 내부 장애 조사 기준 | 기존 `docs/troubleshooting.md`와 케이스 문서 연결, failure pattern 기록 규칙 |
+| 문서 | 독자 | 목적 |
+|---|---|---|
+| `dev/index.md` | 개발자 전체 | 내부 문서군 진입점 |
+| `dev/service-catalog.md` | 신규 개발자, reviewer | repository 안의 서비스 목록과 책임 설명 |
+| `dev/package-map.md` | 개발자, release 담당자 | monorepo package 경계 설명 |
+| `dev/architecture.md` | runtime/API 개발자 | release 모드와 실제 구조의 대응 설명 |
+| `dev/health-check-contract.md` | Health Check 구현자 | Health Check 상태 계약 고정 |
+| `dev/api-contracts.md` | API/PWA/testkit 개발자 | 공개/내부 API 문서 위치 안내 |
+| `dev/build-and-release.md` | release 담당자 | 배포 artifact 생성 절차 설명 |
+| `dev/testing.md` | 개발자, QA | 검증 절차 설명 |
+| `dev/troubleshooting.md` | 개발자, 운영 지원자 | 내부 장애 조사 기준 |
 
-### Dev architecture 작성 기준
+### Dev 작성 기준
+
+`dev/service-catalog.md`는 `apps/vitalserver`, `apps/vitalserver-macos-runtime`,
+`apps/vitalserver-runtime-pwa`, `apps/vitaldb-observer`, `apps/vitalserver-audit-proxy`,
+`packages/*`의 책임을 설명합니다.
+
+`dev/package-map.md`는 app/package/infra/docs 경계, package별 owner, 외부 공개 여부를
+설명합니다.
+
+`dev/architecture.md`는 Mac hardware appliance, Host/Guest, macOS host proxy,
+Linux VM, Runtime Control API, PWA, observer/testkit 관계를 설명합니다. OS보다
+하드웨어 운영 특성이 Mac 선택의 주된 근거임을 명시하고, server-class 요구에는
+전통적인 server/industrial PC가 더 타당할 수 있음을 경계로 둡니다.
+
+`dev/health-check-contract.md`는 VR observed/missing/stale/read-failed, `.vital`
+file found/invalid/decode-failed/permission-failed, empty와 missing 구분을
+고정합니다.
+
+`dev/api-contracts.md`는 Runtime Control API, VitalDB Observer API, Audit Proxy API,
+OpenAPI source 위치를 설명합니다.
+
+`dev/build-and-release.md`는 `make vm-dmg-release`, `make vm-update-bundle-release`,
+`make install-testkit-release`, artifact 위치를 설명합니다.
+
+`dev/testing.md`는 unit/integration test, testkit smoke/load, runtime chaos,
+Health Check 시나리오를 설명합니다.
+
+`dev/troubleshooting.md`는 기존 `docs/troubleshooting.md`와 case 문서를 연결하고,
+failure pattern 기록 규칙을 설명합니다.
+
+## Dev Architecture Details
 
 `dev/architecture.md`에는 Linux VM, host platform, PWA 선택 이유를 기술 문서로
 정리합니다. 이 내용은 release 문서의 주 메시지가 아니므로 `release/`에서는
@@ -135,7 +186,17 @@ Linux VM의 핵심 문장:
 > 표준화 계층이다. upstream VitalServer의 Windows 중심 전제는 wrapper와 guest
 > service stack에서 흡수하고, host별 차이는 VM provider adapter가 처리한다.
 
-Linux guest가 갖는 service runtime 강점:
+### Upstream Compatibility Evidence
+
+| 근거 | 의미 |
+|---|---|
+| `vendor/vitalserver/vitalserver-old/server_start.bat` | upstream 실행 스크립트가 Windows batch 기준 |
+| `vendor/vitalserver/vitalserver-old/install/*.msi` | Node와 Redis 설치물이 Windows MSI 기준 |
+| `vendor/vitalserver/vitalserver-old/service/include/config.js` | 기본 저장 경로가 `Z:/` drive 기준 |
+| `apps/vitalserver/docker/Dockerfile` | wrapper가 Linux container 안에 `Z:` symlink를 만들어 upstream path 전제를 흡수 |
+| `apps/vitalserver/runtime/node-preload.js` | preload가 Redis host/port, CPU-count assumption, admin password 같은 runtime 전제를 보정 |
+
+### Linux Guest Strengths
 
 | 강점 | 설명 방향 |
 |---|---|
@@ -145,7 +206,7 @@ Linux guest가 갖는 service runtime 강점:
 | image/update 재현성 | golden rootfs, cloud-init, Docker image bundle, offline update bundle 같은 appliance 배포 모델과 잘 맞는다는 점을 설명 |
 | upstream 보정 단일화 | upstream의 Windows path, Windows installer, Redis host, CPU-count assumption 같은 전제를 각 host별로 고치지 않고 Linux guest wrapper/preload에서 흡수한다는 점을 설명 |
 
-Host platform별 software 강점과 책임:
+### Host Platform Strengths
 
 | Host | 강점 | Runtime 책임 |
 |---|---|---|
@@ -153,7 +214,7 @@ Host platform별 software 강점과 책임:
 | Linux | KVM/QEMU/libvirt, server-friendly networking, systemd, container runtime 접근성 | VM lifecycle, network bridge/NAT, service manager integration, filesystem sharing |
 | Windows | 병원/기업 IT의 AD/GPO/Intune/SCCM 친화성, Windows Service, Hyper-V, firewall/endpoint security 정책 연동 | VM lifecycle, Windows Service, firewall/NAT, enterprise management integration |
 
-PWA 선택 이유:
+### PWA Rationale
 
 | 이유 | 설명 방향 |
 |---|---|
@@ -233,6 +294,31 @@ nav:
 
 이 순서는 공개 배포 요구사항을 먼저 닫고, 그 다음 release 문서를 구현 계약과
 빌드/검증 절차에 연결하기 위한 순서입니다.
+
+## 읽는 순서
+
+Release 독자는 아래 순서로 읽습니다.
+
+1. `release/index.md`
+2. `release/background.md`
+3. `release/mac-hardware-appliance.md`
+4. `release/health-check-service.md`
+5. `release/deployment-modes.md`
+6. `release/installation.md`
+7. `release/operation.md`
+8. `release/troubleshooting.md`
+
+Dev 독자는 아래 순서로 읽습니다.
+
+1. `dev/index.md`
+2. `dev/service-catalog.md`
+3. `dev/package-map.md`
+4. `dev/architecture.md`
+5. `dev/health-check-contract.md`
+6. `dev/api-contracts.md`
+7. `dev/build-and-release.md`
+8. `dev/testing.md`
+9. `dev/troubleshooting.md`
 
 ## 작성 완료 기준
 
