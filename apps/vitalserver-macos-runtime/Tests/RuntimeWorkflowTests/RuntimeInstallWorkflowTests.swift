@@ -52,7 +52,25 @@ final class RuntimeInstallWorkflowTests: XCTestCase {
             "state:preflight-blocked:full:-:fresh install preflight blocked:install-artifact-present:path=/usr/local/bin/vitalserver-vm"
         ))
         XCTAssertEqual(harness.statuses.last?.level, .critical)
-        XCTAssertTrue(harness.statuses.last?.message.contains("runtime install preflight blocked") == true)
+        XCTAssertTrue(harness.statuses.last?.message.contains("runtime install setup blocked") == true)
+    }
+
+    func testProvisionInstallBlocksWhenInstalledPayloadIsMissing() {
+        let harness = RuntimeInstallWorkflowHarness()
+        harness.provisionPayload = RuntimeInstallProvisionPayloadDocument(
+            passed: false,
+            blockers: ["install-payload-missing:path=/usr/local/bin/vitalserver-vm"],
+            artifactStates: [.absent(path: "/usr/local/bin/vitalserver-vm")]
+        )
+
+        XCTAssertThrowsError(try harness.workflow.run(.provision))
+
+        XCTAssertTrue(harness.executedSteps.isEmpty)
+        XCTAssertTrue(harness.stateEvents.contains(
+            "state:provision-payload-blocked:provision:-:install provision payload blocked:install-payload-missing:path=/usr/local/bin/vitalserver-vm"
+        ))
+        XCTAssertEqual(harness.statuses.last?.level, .critical)
+        XCTAssertTrue(harness.statuses.last?.message.contains("runtime install setup blocked") == true)
     }
 
     func testSettingsLoadFailureWritesFailedStateBeforeRethrowing() {
@@ -105,6 +123,7 @@ private struct TestInstallSettings: Equatable {
 private final class RuntimeInstallWorkflowHarness {
     var settings = TestInstallSettings(vitalFilesDirectory: "/vital-files")
     var preflight: RuntimeFreshInstallPreflightDocument?
+    var provisionPayload: RuntimeInstallProvisionPayloadDocument?
     var loadError: Error?
     var stepErrorStep: RuntimeWorkflowStep?
     var stepError: Error?
@@ -126,6 +145,9 @@ private final class RuntimeInstallWorkflowHarness {
                 },
                 freshInstallPreflight: {
                     self.preflight ?? self.preflightDocument()
+                },
+                provisionPayload: {
+                    self.provisionPayload ?? self.provisionPayloadDocument()
                 }
             ),
             effects: RuntimeInstallEffects(
@@ -186,6 +208,14 @@ private final class RuntimeInstallWorkflowHarness {
                 .absent(identifier: "com.tirosh.vitalserver"),
             ],
             proxyPortState: .clear(port: 80)
+        )
+    }
+
+    func provisionPayloadDocument() -> RuntimeInstallProvisionPayloadDocument {
+        RuntimeInstallProvisionPayloadDocument(
+            passed: true,
+            blockers: [],
+            artifactStates: [.present(path: "/usr/local/bin/vitalserver-vm")]
         )
     }
 }

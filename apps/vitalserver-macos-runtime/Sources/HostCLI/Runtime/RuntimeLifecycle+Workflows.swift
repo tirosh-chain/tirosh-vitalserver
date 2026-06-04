@@ -18,6 +18,13 @@ extension RuntimeLifecycle {
                 freshInstallPreflight: {
                     runtimeFreshInstallPreflightRunner().run()
                 },
+                installProvisionPayload: {
+                    RuntimeInstallProvisionPayloadPolicy.document(
+                        artifactStates: RuntimeInstallArtifactStateReader.states(
+                            paths: installProvisionPayloadPaths().map(\.path)
+                        )
+                    )
+                },
                 writeRuntimeStatus: runtimeStatusWriterAction(),
                 writeRuntimeProgress: runtimeProgressWriterAction(),
                 rotateRuntimeLogs: rotateRuntimeLogs,

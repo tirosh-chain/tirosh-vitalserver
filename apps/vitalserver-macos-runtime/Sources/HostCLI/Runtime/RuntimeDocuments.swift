@@ -167,7 +167,7 @@ struct InstallSettings {
     var networkMode = NetworkMode.shared
     var proxyPort = defaultProxyPort
     var vitalFilesDirectory: String
-    var adminPassword: String?
+    var adminPassword: String? = Constants.Guest.defaultAdminPassword
     var vmHostname = Constants.Guest.hostname
     var publicHost = ""
     var publicPort = Constants.Guest.publicPort

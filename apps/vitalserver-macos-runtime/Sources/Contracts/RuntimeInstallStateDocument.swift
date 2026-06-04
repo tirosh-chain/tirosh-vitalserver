@@ -43,6 +43,8 @@ public enum RuntimeInstallState: Codable, Equatable, Sendable {
     case settingsLoaded
     case preflightVerified
     case preflightBlocked
+    case provisionPayloadVerified
+    case provisionPayloadBlocked
     case stepStarted
     case stepCompleted
     case provisioned
@@ -60,6 +62,10 @@ public enum RuntimeInstallState: Codable, Equatable, Sendable {
             self = .preflightVerified
         case "preflight-blocked":
             self = .preflightBlocked
+        case "provision-payload-verified":
+            self = .provisionPayloadVerified
+        case "provision-payload-blocked":
+            self = .provisionPayloadBlocked
         case "step-started":
             self = .stepStarted
         case "step-completed":
@@ -85,6 +91,10 @@ public enum RuntimeInstallState: Codable, Equatable, Sendable {
             return "preflight-verified"
         case .preflightBlocked:
             return "preflight-blocked"
+        case .provisionPayloadVerified:
+            return "provision-payload-verified"
+        case .provisionPayloadBlocked:
+            return "provision-payload-blocked"
         case .stepStarted:
             return "step-started"
         case .stepCompleted:

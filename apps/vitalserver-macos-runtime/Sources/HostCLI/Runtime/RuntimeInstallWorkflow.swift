@@ -16,6 +16,7 @@ struct RuntimeInstallWorkflowOperations {
     let fileStore: RuntimeFileStore
     let now: () -> Date
     let freshInstallPreflight: () -> RuntimeFreshInstallPreflightDocument
+    let installProvisionPayload: () -> RuntimeInstallProvisionPayloadDocument
     let writeRuntimeStatus: (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void
     let writeRuntimeProgress: (RuntimeStepExecutionEvent) throws -> Void
     let rotateRuntimeLogs: () throws -> Void
@@ -62,7 +63,8 @@ struct RuntimeInstallWorkflowComposition {
                         fileStore: operations.fileStore
                     )
                 },
-                freshInstallPreflight: operations.freshInstallPreflight
+                freshInstallPreflight: operations.freshInstallPreflight,
+                provisionPayload: operations.installProvisionPayload
             ),
             effects: RuntimeInstallEffects(
                 executeStep: { step, settings in

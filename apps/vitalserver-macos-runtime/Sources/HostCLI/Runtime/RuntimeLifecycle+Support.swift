@@ -306,6 +306,10 @@ extension RuntimeLifecycle {
         }
     }
 
+    func installProvisionPayloadPaths() -> [URL] {
+        freshInstallArtifactPaths()
+    }
+
     func reasonText(_ reasons: [RuntimeFailureReason]) -> String {
         RuntimeFailureReasonText.describe(reasons)
     }

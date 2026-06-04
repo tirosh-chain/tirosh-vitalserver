@@ -16,7 +16,7 @@ final class RuntimeInstallTransitionPolicyTests: XCTestCase {
         XCTAssertEqual(decision.message, "runtime install started")
     }
 
-    func testSettingsLoadedRequestsExplicitFreshInstallPreflightRead() throws {
+    func testFullSettingsLoadedRequestsExplicitFreshInstallPreflightRead() throws {
         let decision = try RuntimeInstallTransitionPolicy.transition(
             from: .started,
             event: .settingsLoaded,
@@ -26,6 +26,18 @@ final class RuntimeInstallTransitionPolicyTests: XCTestCase {
         XCTAssertEqual(decision.state, .settingsLoaded)
         XCTAssertEqual(decision.persistedState, .settingsLoaded)
         XCTAssertEqual(decision.commands, [.readFreshInstallPreflight])
+    }
+
+    func testProvisionSettingsLoadedRequestsInstalledPayloadRead() throws {
+        let decision = try RuntimeInstallTransitionPolicy.transition(
+            from: .started,
+            event: .settingsLoaded,
+            context: provisionContext()
+        )
+
+        XCTAssertEqual(decision.state, .settingsLoaded)
+        XCTAssertEqual(decision.persistedState, .settingsLoaded)
+        XCTAssertEqual(decision.commands, [.readProvisionPayload])
     }
 
     func testPreflightBlockersDoNotEmitInstallStepCommand() throws {
@@ -56,6 +68,35 @@ final class RuntimeInstallTransitionPolicyTests: XCTestCase {
         XCTAssertEqual(decision.state, .preflightVerified)
         XCTAssertEqual(decision.persistedState, .preflightVerified)
         XCTAssertEqual(decision.commands, [.executeStep(.loadInstallSettings)])
+    }
+
+    func testProvisionPayloadPresentEmitsFirstPlanStepCommand() throws {
+        let decision = try RuntimeInstallTransitionPolicy.transition(
+            from: .settingsLoaded,
+            event: .provisionPayloadObserved(provisionPayloadDocument()),
+            context: provisionContext()
+        )
+
+        XCTAssertEqual(decision.state, .provisionPayloadVerified)
+        XCTAssertEqual(decision.persistedState, .provisionPayloadVerified)
+        XCTAssertEqual(decision.commands, [.executeStep(.loadInstallSettings)])
+    }
+
+    func testProvisionPayloadMissingBlocksWithoutExecutingInstallStep() throws {
+        let decision = try RuntimeInstallTransitionPolicy.transition(
+            from: .settingsLoaded,
+            event: .provisionPayloadObserved(provisionPayloadDocument(
+                passed: false,
+                blockers: ["install-payload-missing:path=/usr/local/bin/vitalserver-vm"],
+                artifactStates: [.absent(path: "/usr/local/bin/vitalserver-vm")]
+            )),
+            context: provisionContext()
+        )
+
+        XCTAssertEqual(decision.state, .provisionPayloadBlocked)
+        XCTAssertEqual(decision.persistedState, .provisionPayloadBlocked)
+        XCTAssertEqual(decision.commands, [])
+        XCTAssertEqual(decision.blockers, ["install-payload-missing:path=/usr/local/bin/vitalserver-vm"])
     }
 
     func testFullInstallCompletesOnlyAfterLastPlanStep() throws {
@@ -110,7 +151,7 @@ final class RuntimeInstallTransitionPolicyTests: XCTestCase {
         let context = provisionContext()
         var state = try RuntimeInstallTransitionPolicy.transition(
             from: .settingsLoaded,
-            event: .freshInstallPreflightObserved(preflightDocument()),
+            event: .provisionPayloadObserved(provisionPayloadDocument()),
             context: context
         ).state
 
@@ -208,6 +249,18 @@ final class RuntimeInstallTransitionPolicyTests: XCTestCase {
                 .absent(identifier: "com.tirosh.vitalserver"),
             ],
             proxyPortState: .clear(port: 80)
+        )
+    }
+
+    private func provisionPayloadDocument(
+        passed: Bool = true,
+        blockers: [String] = [],
+        artifactStates: [RuntimeInstallArtifactState] = [.present(path: "/usr/local/bin/vitalserver-vm")]
+    ) -> RuntimeInstallProvisionPayloadDocument {
+        RuntimeInstallProvisionPayloadDocument(
+            passed: passed,
+            blockers: blockers,
+            artifactStates: artifactStates
         )
     }
 

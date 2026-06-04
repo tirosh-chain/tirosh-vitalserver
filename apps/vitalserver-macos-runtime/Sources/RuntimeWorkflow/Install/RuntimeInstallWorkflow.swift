@@ -23,13 +23,16 @@ public struct RuntimeInstallCommand: Equatable, Sendable {
 public struct RuntimeInstallStateReaders<Settings> {
     public var loadSettings: () throws -> Settings
     public var freshInstallPreflight: () -> RuntimeFreshInstallPreflightDocument
+    public var provisionPayload: () -> RuntimeInstallProvisionPayloadDocument
 
     public init(
         loadSettings: @escaping () throws -> Settings,
-        freshInstallPreflight: @escaping () -> RuntimeFreshInstallPreflightDocument
+        freshInstallPreflight: @escaping () -> RuntimeFreshInstallPreflightDocument,
+        provisionPayload: @escaping () -> RuntimeInstallProvisionPayloadDocument
     ) {
         self.loadSettings = loadSettings
         self.freshInstallPreflight = freshInstallPreflight
+        self.provisionPayload = provisionPayload
     }
 }
 
@@ -117,23 +120,19 @@ public struct RuntimeInstallWorkflow<Settings> {
             from: startDecision.state,
             event: .settingsLoaded,
             context: context,
-            expectedCommands: [.readFreshInstallPreflight]
+            expectedCommands: setupCommands(command.mode)
         )
 
-        let preflight = readers.freshInstallPreflight()
-        var decision = try transitionAndPersist(
+        var decision = try verifySetup(
             from: settingsDecision.state,
-            event: .freshInstallPreflightObserved(preflight),
-            context: context,
-            expectedCommands: preflight.passed && preflight.blockers.isEmpty
-                ? firstStepCommand(command.plan)
-                : []
+            command: command,
+            context: context
         )
 
         guard decision.blockers.isEmpty else {
-            writeCriticalStatusBestEffort("runtime install preflight blocked: \(decision.blockers.joined(separator: ","))")
+            writeCriticalStatusBestEffort("runtime install setup blocked: \(decision.blockers.joined(separator: ","))")
             throw RuntimeWorkflowError.operationFailed(
-                "runtime install preflight blocked blockers=\(decision.blockers.joined(separator: ","))"
+                "runtime install setup blocked blockers=\(decision.blockers.joined(separator: ","))"
             )
         }
 
@@ -152,11 +151,42 @@ public struct RuntimeInstallWorkflow<Settings> {
                 try writer.writeStatus(command.completionStatus, .install, command.completionMessage)
                 log("\(command.completionMessage) home=\(runtimeHomePath())")
                 return
-            case .loadSettings, .readFreshInstallPreflight:
+            case .loadSettings, .readFreshInstallPreflight, .readProvisionPayload:
                 throw RuntimeWorkflowError.operationFailed(
                     "install workflow command appeared after setup command=\(nextCommand)"
                 )
             }
+        }
+    }
+
+    private func verifySetup(
+        from state: RuntimeInstallWorkflowState,
+        command: RuntimeInstallCommand,
+        context: RuntimeInstallTransitionContext
+    ) throws -> RuntimeInstallTransitionDecision {
+        switch command.mode {
+        case .full:
+            let preflight = readers.freshInstallPreflight()
+            return try transitionAndPersist(
+                from: state,
+                event: .freshInstallPreflightObserved(preflight),
+                context: context,
+                expectedCommands: preflight.passed && preflight.blockers.isEmpty
+                    ? firstStepCommand(command.plan)
+                    : []
+            )
+        case .provision:
+            let payload = readers.provisionPayload()
+            return try transitionAndPersist(
+                from: state,
+                event: .provisionPayloadObserved(payload),
+                context: context,
+                expectedCommands: payload.passed && payload.blockers.isEmpty
+                    ? firstStepCommand(command.plan)
+                    : []
+            )
+        case .unknown:
+            throw RuntimeWorkflowError.operationFailed("install mode unknown value=\(command.mode.rawValue)")
         }
     }
 
@@ -252,6 +282,17 @@ public struct RuntimeInstallWorkflow<Settings> {
             return [.complete]
         }
         return [.executeStep(firstStep)]
+    }
+
+    private func setupCommands(_ mode: RuntimeInstallMode) -> [RuntimeInstallWorkflowCommand] {
+        switch mode {
+        case .full:
+            return [.readFreshInstallPreflight]
+        case .provision:
+            return [.readProvisionPayload]
+        case .unknown:
+            return []
+        }
     }
 
     private func event(

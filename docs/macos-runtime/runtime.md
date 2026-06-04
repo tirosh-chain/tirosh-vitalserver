@@ -195,6 +195,8 @@ Guest tools는 `guest-tools.toml`에만 package 운영 default를 둡니다. 로
 `redisHost`, `redisPort`, `publicHost`, `publicPort`, `trustProxy`,
 `vitalFilesDirectory`, `redisBackupRetentionCount`, `testkitEnabled`가 모두
 명시돼야 합니다. Guest는 이 값을 추론하거나 보정하지 않습니다.
+초기 install settings가 별도 admin password를 제공하지 않으면 Host install
+settings의 문서화된 기본값인 `admin`을 명시 runtime config로 씁니다.
 
 Guest tools package는 CLI를 application usecase의 inbound adapter로만 둡니다.
 

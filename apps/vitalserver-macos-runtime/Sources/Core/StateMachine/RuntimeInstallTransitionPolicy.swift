@@ -16,6 +16,8 @@ public enum RuntimeInstallWorkflowState: Equatable, Sendable {
     case settingsLoaded
     case preflightVerified
     case preflightBlocked
+    case provisionPayloadVerified
+    case provisionPayloadBlocked
     case stepStarted(RuntimeWorkflowStep)
     case stepCompleted(RuntimeWorkflowStep)
     case provisioned
@@ -28,6 +30,7 @@ public enum RuntimeInstallWorkflowEvent: Equatable, Sendable {
     case settingsLoaded
     case settingsLoadFailed(reason: String)
     case freshInstallPreflightObserved(RuntimeFreshInstallPreflightDocument)
+    case provisionPayloadObserved(RuntimeInstallProvisionPayloadDocument)
     case stepStarted(RuntimeWorkflowStep)
     case stepSucceeded(RuntimeWorkflowStep)
     case stepFailed(RuntimeWorkflowStep, reason: String)
@@ -36,6 +39,7 @@ public enum RuntimeInstallWorkflowEvent: Equatable, Sendable {
 public enum RuntimeInstallWorkflowCommand: Equatable, Sendable {
     case loadSettings
     case readFreshInstallPreflight
+    case readProvisionPayload
     case executeStep(RuntimeWorkflowStep)
     case complete
 }
@@ -105,7 +109,7 @@ public enum RuntimeInstallTransitionPolicy {
             return RuntimeInstallTransitionDecision(
                 state: .settingsLoaded,
                 persistedState: .settingsLoaded,
-                commands: [.readFreshInstallPreflight],
+                commands: setupCommands(context),
                 message: "install settings loaded"
             )
 
@@ -118,6 +122,9 @@ public enum RuntimeInstallTransitionPolicy {
             )
 
         case (.settingsLoaded, .freshInstallPreflightObserved(let document)):
+            guard context.mode == .full else {
+                throw error(state: state, event: event, reason: "provision install must not use fresh install preflight")
+            }
             let blockers = preflightBlockers(document)
             guard blockers.isEmpty else {
                 return RuntimeInstallTransitionDecision(
@@ -134,7 +141,33 @@ public enum RuntimeInstallTransitionPolicy {
                 message: "fresh install preflight verified"
             )
 
+        case (.settingsLoaded, .provisionPayloadObserved(let document)):
+            guard context.mode == .provision else {
+                throw error(state: state, event: event, reason: "full install must use fresh install preflight")
+            }
+            let blockers = provisionPayloadBlockers(document)
+            guard blockers.isEmpty else {
+                return RuntimeInstallTransitionDecision(
+                    state: .provisionPayloadBlocked,
+                    persistedState: .provisionPayloadBlocked,
+                    blockers: blockers,
+                    message: "install provision payload blocked"
+                )
+            }
+            return RuntimeInstallTransitionDecision(
+                state: .provisionPayloadVerified,
+                persistedState: .provisionPayloadVerified,
+                commands: firstStepCommand(context.plan),
+                message: "install provision payload verified"
+            )
+
         case (.preflightVerified, .stepStarted(let step)):
+            guard firstStep(context.plan) == step else {
+                throw error(state: state, event: event, reason: "install step is not first plan step")
+            }
+            return stepStartedDecision(step)
+
+        case (.provisionPayloadVerified, .stepStarted(let step)):
             guard firstStep(context.plan) == step else {
                 throw error(state: state, event: event, reason: "install step is not first plan step")
             }
@@ -220,6 +253,27 @@ public enum RuntimeInstallTransitionPolicy {
             return document.blockers
         }
         return ["fresh-install-preflight-failed-without-blockers"]
+    }
+
+    private static func provisionPayloadBlockers(_ document: RuntimeInstallProvisionPayloadDocument) -> [String] {
+        if document.passed, document.blockers.isEmpty {
+            return []
+        }
+        if !document.blockers.isEmpty {
+            return document.blockers
+        }
+        return ["install-provision-payload-failed-without-blockers"]
+    }
+
+    private static func setupCommands(_ context: RuntimeInstallTransitionContext) -> [RuntimeInstallWorkflowCommand] {
+        switch context.mode {
+        case .full:
+            return [.readFreshInstallPreflight]
+        case .provision:
+            return [.readProvisionPayload]
+        case .unknown:
+            return []
+        }
     }
 
     private static func firstStepCommand(_ plan: RuntimeOperationPlan) -> [RuntimeInstallWorkflowCommand] {
