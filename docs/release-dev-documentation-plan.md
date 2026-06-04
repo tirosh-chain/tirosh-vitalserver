@@ -97,7 +97,7 @@ release 문서군은 외부 공개와 현장 배포에 필요한 설명만 담�
 |---|---|---|---|
 | `release/index.md` | 전체 공개 독자 | Vital Server Helper 공개 문서의 첫 화면 | 서비스 한 줄 설명, 제공 범위, 병원 내 기본 지원, cloud 선택 지원, 다음 문서 안내 |
 | `release/background.md` | 연구 과제 관계자, 도입 검토자 | K-MFDB 구축 맥락과 Vital Server Helper 공개 취지 설명 | 저출산 극복 기술개발 중점연구 맥락, VitalDB 기반 병원 데이터 운영 필요성, 공개/배포 목적 |
-| `release/mac-hardware-appliance.md` | 도입 검토자, 병원 IT 담당자 | Mac 하드웨어 기반 appliance 선택 이유 설명 | Apple 하드웨어 QA 일관성, 표준화된 하드웨어 SKU, 검증 범위 축소, 24/7 소형 appliance 운용성, 장기 제품 호환성, Mac mini/Mac Studio 하드웨어 운영 전제. OS는 host runtime과 packaging을 위한 부수 조건으로만 설명 |
+| `release/mac-hardware-appliance.md` | 도입 검토자, 병원 IT 담당자 | Mac 하드웨어 기반 appliance 선택 이유 설명 | Apple 하드웨어 QA 일관성, 표준화된 하드웨어 SKU, 검증 범위 축소, 24/7 소형 appliance 운용성, 장기 제품 호환성, Mac mini/Mac Studio 하드웨어 운영 전제. OS, Linux VM, PWA 세부 구조는 dev 문서로 보낸다 |
 | `release/health-check-service.md` | 병원 운영자, 병원 IT 담당자 | Vital Server Helper의 Health Check 서비스가 무엇을 확인하는지 설명 | VR/VRecorder 동작 유무, `.vital` 파일 sanity check, 서비스 상태, 결과 상태의 의미, 확장 가능성 |
 | `release/deployment-modes.md` | 병원 IT 담당자, 보안 담당자 | 병원 내/외 사용 모드 구분 | 병원 내 기본 모드, outbound 허용 시 cloud 연계 모드, network/security 전제 |
 | `release/installation.md` | 현장 설치 담당자 | 설치와 초기 확인 절차 안내 | DMG/PKG 설치, 초기 설정, Health Check 확인, 기본 URL, offline 설치 전제 |
@@ -115,12 +115,52 @@ dev 문서군은 repository 유지보수자가 release 문서를 실제 구현�
 | `dev/index.md` | 개발자 전체 | 내부 문서군 진입점 | service catalog, architecture, build/release/test 문서 안내 |
 | `dev/service-catalog.md` | 신규 개발자, reviewer | repository 안의 서비스 목록과 책임 설명 | `apps/vitalserver`, `apps/vitalserver-macos-runtime`, `apps/vitalserver-runtime-pwa`, `apps/vitaldb-observer`, `apps/vitalserver-audit-proxy`, `packages/*` |
 | `dev/package-map.md` | 개발자, release 담당자 | monorepo package 경계 설명 | app/package/infra/docs 경계, package별 owner, 외부 공개 여부 |
-| `dev/architecture.md` | runtime/API 개발자 | release 모드가 실제 구조에 어떻게 대응되는지 설명 | Mac hardware appliance, Host/Guest, macOS host proxy, Linux VM, Runtime Control API, observer/testkit 관계. OS보다 하드웨어 운영 특성이 선택의 주된 근거임을 명시하고, server-class 요구에는 전통적인 server/industrial PC가 더 타당할 수 있음을 경계로 둠 |
+| `dev/architecture.md` | runtime/API 개발자 | release 모드가 실제 구조에 어떻게 대응되는지 설명 | Mac hardware appliance, Host/Guest, macOS host proxy, Linux VM, Runtime Control API, PWA, observer/testkit 관계. OS보다 하드웨어 운영 특성이 Mac 선택의 주된 근거임을 명시하고, server-class 요구에는 전통적인 server/industrial PC가 더 타당할 수 있음을 경계로 둠. Linux VM은 upstream이 Linux native라서가 아니라 Windows-oriented upstream을 제품용 Linux guest service stack으로 정규화하고 macOS/Linux/Windows host 위에서 동일하게 운용하기 위한 guest 표준화 계층으로 설명 |
 | `dev/health-check-contract.md` | Health Check 구현자 | Health Check 상태 계약 고정 | VR observed/missing/stale/read-failed, `.vital` file found/invalid/decode-failed/permission-failed, empty vs missing 구분 |
 | `dev/api-contracts.md` | API/PWA/testkit 개발자 | 공개/내부 API 문서 위치 안내 | Runtime Control API, VitalDB Observer API, Audit Proxy API, OpenAPI source |
 | `dev/build-and-release.md` | release 담당자 | 배포 artifact 생성 절차 설명 | `make vm-dmg-release`, `make vm-update-bundle-release`, `make install-testkit-release`, artifact 위치 |
 | `dev/testing.md` | 개발자, QA | 검증 절차 설명 | unit/integration test, testkit smoke/load, runtime chaos, Health Check 시나리오 |
 | `dev/troubleshooting.md` | 개발자, 운영 지원자 | 내부 장애 조사 기준 | 기존 `docs/troubleshooting.md`와 케이스 문서 연결, failure pattern 기록 규칙 |
+
+### Dev architecture 작성 기준
+
+`dev/architecture.md`에는 Linux VM, host platform, PWA 선택 이유를 기술 문서로
+정리합니다. 이 내용은 release 문서의 주 메시지가 아니므로 `release/`에서는
+간단한 운영 모드 설명으로만 남깁니다.
+
+Linux VM의 핵심 문장:
+
+> Linux VM은 host OS를 Linux로 한정하기 위한 선택이 아니라, macOS/Linux/Windows
+> 어디서든 동일한 Vital Server Helper service appliance를 실행하기 위한 guest
+> 표준화 계층이다. upstream VitalServer의 Windows 중심 전제는 wrapper와 guest
+> service stack에서 흡수하고, host별 차이는 VM provider adapter가 처리한다.
+
+Linux guest가 갖는 service runtime 강점:
+
+| 강점 | 설명 방향 |
+|---|---|
+| backend service appliance 운영체제 | Linux를 desktop OS가 아니라 VitalServer backend stack을 고정하는 guest runtime으로 설명 |
+| container/service 생태계 | Docker/Compose, nginx, Redis, Node service, sidecar, observer, testkit을 같은 guest 기준으로 묶기 쉽다는 점을 설명 |
+| headless service 운영 | systemd, journald, timer, log collection, file permission, mount, network namespace 같은 service 운영 모델이 명확하다는 점을 설명 |
+| image/update 재현성 | golden rootfs, cloud-init, Docker image bundle, offline update bundle 같은 appliance 배포 모델과 잘 맞는다는 점을 설명 |
+| upstream 보정 단일화 | upstream의 Windows path, Windows installer, Redis host, CPU-count assumption 같은 전제를 각 host별로 고치지 않고 Linux guest wrapper/preload에서 흡수한다는 점을 설명 |
+
+Host platform별 software 강점과 책임:
+
+| Host | 강점 | Runtime 책임 |
+|---|---|---|
+| macOS | Mac hardware appliance 운영, DMG/PKG, launchd, Apple Virtualization, local Helper app, code signing/notarization | VM lifecycle, host proxy, permission, file picker, update/recovery entrypoint |
+| Linux | KVM/QEMU/libvirt, server-friendly networking, systemd, container runtime 접근성 | VM lifecycle, network bridge/NAT, service manager integration, filesystem sharing |
+| Windows | 병원/기업 IT의 AD/GPO/Intune/SCCM 친화성, Windows Service, Hyper-V, firewall/endpoint security 정책 연동 | VM lifecycle, Windows Service, firewall/NAT, enterprise management integration |
+
+PWA 선택 이유:
+
+| 이유 | 설명 방향 |
+|---|---|
+| cross-platform 운영 UI | macOS/Linux/Windows host마다 native UI를 중복 구현하지 않고 같은 Runtime Control UI를 제공 |
+| local/remote control 통합 | local runtime control과 병원 outbound 허용 시 remote/cloud control을 같은 API contract 뒤에 둠 |
+| 현장 접근성 | Mac 앞이 아니라 병원 내부 PC, tablet, phone browser에서도 상태와 로그를 확인할 수 있게 함 |
+| native shell 책임 축소 | native shell은 설치, 권한, tray/menu, file picker, recovery 같은 host-specific 기능만 맡고 제품 UI는 PWA가 소유 |
 
 ## Service Catalog 초안
 
@@ -184,11 +224,12 @@ nav:
 3. `release/deployment-modes.md`
 4. `release/mac-hardware-appliance.md`
 5. `dev/service-catalog.md`
-6. `dev/health-check-contract.md`
-7. `dev/build-and-release.md`
-8. `release/installation.md`
-9. `release/operation.md`
-10. `dev/testing.md`
+6. `dev/architecture.md`
+7. `dev/health-check-contract.md`
+8. `dev/build-and-release.md`
+9. `release/installation.md`
+10. `release/operation.md`
+11. `dev/testing.md`
 
 이 순서는 공개 배포 요구사항을 먼저 닫고, 그 다음 release 문서를 구현 계약과
 빌드/검증 절차에 연결하기 위한 순서입니다.
@@ -207,10 +248,18 @@ release 문서군은 아래 기준을 만족해야 합니다.
   설명된다.
 - 전통적인 server/industrial PC가 더 타당한 요구 조건을 인정하고, Mac 선택
   논리를 병원 내부망 표준 소형 appliance 범위로 제한한다.
+- Linux VM, host별 VM provider, PWA 선택 이유 같은 구현 구조는 release 문서의
+  주 메시지로 올리지 않고 dev 문서로 연결한다.
 
 dev 문서군은 아래 기준을 만족해야 합니다.
 
 - 각 app/package가 어떤 state를 소유하거나 소비하는지 구분된다.
+- Linux VM이 upstream Linux compatibility 때문이 아니라 Windows-oriented upstream을
+  제품용 Linux guest service stack으로 정규화하기 위한 계층임을 설명한다.
+- Linux guest의 service runtime 강점과 macOS/Linux/Windows host platform별 software
+  강점과 책임을 구분한다.
+- PWA가 host별 native UI 중복을 피하고 local/remote Runtime Control UI를 통합하기
+  위한 primary UI임을 설명한다.
 - Health Check 계약이 Host/Guest/runtime/observer/testkit 책임 경계를 넘지 않는다.
 - `.vital` sanity check 실패가 empty success로 변환되지 않는다는 원칙을 문서화한다.
 - build, release, test 명령이 현재 repository의 Make target과 package 경계에 맞는다.
