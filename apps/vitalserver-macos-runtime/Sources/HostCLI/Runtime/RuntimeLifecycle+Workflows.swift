@@ -382,7 +382,7 @@ extension RuntimeLifecycle {
                 runProcessToFile: runProcessToFile,
                 runRequired: runRequired,
                 createRedisBackup: createRedisBackup,
-                stopRuntimeServices: stopRuntimeServices,
+                stopRuntimeServicesForVMDiskReplacement: stopRuntimeServicesForVMDiskReplacement,
                 startRuntimeServices: startRuntimeServices,
                 waitForHealth: waitForHealth,
                 writeStatus: runtimeStatusWriterAction(),

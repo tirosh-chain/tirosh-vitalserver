@@ -37,7 +37,7 @@ struct RuntimeVMDiskRepairOperations {
     let runProcessToFile: (String, [String], URL) throws -> Void
     let runRequired: (String, [String]) throws -> Void
     let createRedisBackup: () throws -> Void
-    let stopRuntimeServices: () throws -> Void
+    let stopRuntimeServicesForVMDiskReplacement: () throws -> Void
     let startRuntimeServices: (RuntimeServiceRestartPolicy) throws -> Void
     let waitForHealth: (RuntimeServiceRestartPolicy) throws -> Void
     let writeStatus: (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void
@@ -86,7 +86,7 @@ struct RuntimeVMDiskRepairRunner {
         try operations.runRequired(Constants.Commands.truncate, ["-s", "\(targetDiskGiB)G", temporaryDisk.path])
 
         try operations.writeStatus(.recovering, .repairVMDisk, "Archiving current VM disk")
-        try operations.stopRuntimeServices()
+        try operations.stopRuntimeServicesForVMDiskReplacement()
         try operations.createDirectory(archiveDirectory, true)
         if operations.fileExists(context.vmDisk) {
             try operations.moveItem(context.vmDisk, archivedDisk)

@@ -139,6 +139,31 @@ final class ContractsTests: XCTestCase {
         ])
     }
 
+    func testDecodesGuestRuntimeStateDiskHealth() throws {
+        let json = """
+        {
+          "schemaVersion": 1,
+          "vmIP": "192.168.64.2",
+          "guestHTTP": "200",
+          "redisUIHTTP": "200",
+          "swaggerUIHTTP": "200",
+          "updatedAt": "2026-05-24T00:00:00Z",
+          "diskHealth": {
+            "rootFilesystemReadOnly": true,
+            "kernelErrors": [
+              "EXT4-fs error (device vda1): checksum invalid"
+            ]
+          }
+        }
+        """
+        let document = try JSONDecoder().decode(GuestRuntimeStateDocument.self, from: Data(json.utf8))
+
+        XCTAssertEqual(document.diskHealth, GuestDiskHealthDocument(
+            rootFilesystemReadOnly: true,
+            kernelErrors: ["EXT4-fs error (device vda1): checksum invalid"]
+        ))
+    }
+
     func testRuntimeContainerObservationPreservesReadErrors() throws {
         let json = """
         {

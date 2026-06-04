@@ -33,6 +33,7 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
                 events.append("policy")
                 return RuntimeServiceRestartPolicy(restartVM: true, restartProxy: false, restartWatchdog: false)
             },
+            runtimeHealthSnapshot: { self.healthySnapshot() },
             requireGuestCapability: { capability in
                 events.append("capability:\(capability.rawValue)")
                 if capability == .activateUpdate {
@@ -454,6 +455,27 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
             nginxBundle: URL(fileURLWithPath: "/product/nginx"),
             guestDeploy: URL(fileURLWithPath: "/product/vm/data/deploy"),
             runtimeTools: URL(fileURLWithPath: "/usr/local/bin")
+        )
+    }
+
+    private func healthySnapshot() -> RuntimeHealthSnapshot {
+        RuntimeHealthSnapshot(
+            vmExecutable: true,
+            proxyExecutable: true,
+            rootfsBase: .present,
+            vmDisk: .present,
+            vmService: .loaded,
+            proxyService: .loaded,
+            watchdogService: .loaded,
+            vmState: .running,
+            vmErrors: [],
+            vmIP: "192.168.64.2",
+            proxyPort: 80,
+            hostProxyHTTP: "200",
+            guestHTTP: "200",
+            redisUIHTTP: "200",
+            swaggerUIHTTP: "200",
+            failureReasons: []
         )
     }
 }

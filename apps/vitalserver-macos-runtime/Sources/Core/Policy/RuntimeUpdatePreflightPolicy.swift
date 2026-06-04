@@ -64,4 +64,15 @@ public enum RuntimeUpdatePreflightPolicy {
             incomingRootfsBytes: incomingRootfsBytes
         )
     }
+
+    public static func blockingGuestStorageErrors(_ errors: [RuntimeVMError]) -> [RuntimeVMError] {
+        errors.filter { error in
+            switch error {
+            case .diskAttachmentInvalid, .guestFilesystemError, .guestFilesystemReadOnly, .guestDiskIO:
+                return true
+            default:
+                return false
+            }
+        }
+    }
 }

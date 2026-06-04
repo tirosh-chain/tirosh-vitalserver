@@ -833,6 +833,33 @@ final class RuntimeHealthCheckerTests: XCTestCase {
         XCTAssertFalse(snapshot.vmErrors.contains(.guestDiskIO))
     }
 
+    func testSnapshotReportsGuestDiskHealthFromRuntimeStateContract() {
+        let fixture = healthyRuntimeFixture(guestHTTP: "200")
+        fixture.guestGateway.runtimeState = GuestRuntimeStateDocument(
+            vmIP: "192.168.64.2",
+            updatedAt: "2026-05-24T00:00:00Z",
+            bootID: "boot-current",
+            guestHTTP: "200",
+            redisUIHTTP: "200",
+            swaggerUIHTTP: "200",
+            diskHealth: GuestDiskHealthDocument(
+                rootFilesystemReadOnly: true,
+                kernelErrors: [
+                    "EXT4-fs error (device vda1): checksum invalid",
+                    "systemd-journald: Failed to write entry: Input/output error",
+                ]
+            ),
+            vitalDBObservation: healthyVitalDBObservation()
+        )
+
+        let snapshot = fixture.checker.snapshot()
+
+        XCTAssertEqual(snapshot.vmState, .failed)
+        XCTAssertTrue(snapshot.vmErrors.contains(.guestFilesystemReadOnly))
+        XCTAssertTrue(snapshot.vmErrors.contains(.guestFilesystemError))
+        XCTAssertTrue(snapshot.vmErrors.contains(.guestDiskIO))
+    }
+
     private func healthyRuntimeFixture(guestHTTP: String) -> RuntimeHealthCheckerFixture {
         let installedPaths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
         let fileStore = RuntimeFileStoreSpy()

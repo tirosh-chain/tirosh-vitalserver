@@ -43,6 +43,20 @@ class RuntimeResourceUsage:
 
 
 @dataclass(frozen=True)
+class RuntimeDiskHealth:
+    root_filesystem_read_only: bool | None
+    kernel_errors: Sequence[str] | None
+
+    def as_json(self) -> dict[str, object]:
+        return {
+            "rootFilesystemReadOnly": self.root_filesystem_read_only,
+            "kernelErrors": (
+                None if self.kernel_errors is None else list(self.kernel_errors)
+            ),
+        }
+
+
+@dataclass(frozen=True)
 class RuntimeContainerService:
     service: str
     exit_code: int | None
@@ -101,6 +115,7 @@ class GuestRuntimeState:
     probe_errors: Sequence[ProbeError]
     redis_ui_http: RuntimeHTTPProbeStatus | None
     system_disk: RuntimeResourceUsage | None
+    disk_health: RuntimeDiskHealth | None
     swagger_ui_http: RuntimeHTTPProbeStatus | None
     vital_files_disk: RuntimeResourceUsage | None
     vitaldb_observation: Mapping[str, object] | None
@@ -131,6 +146,9 @@ class GuestRuntimeState:
             "redisUIHTTP": http_status_text(self.redis_ui_http),
             "systemDisk": (
                 None if self.system_disk is None else self.system_disk.as_json()
+            ),
+            "diskHealth": (
+                None if self.disk_health is None else self.disk_health.as_json()
             ),
             "swaggerUIHTTP": http_status_text(self.swagger_ui_http),
             "updatedAt": self.updated_at,

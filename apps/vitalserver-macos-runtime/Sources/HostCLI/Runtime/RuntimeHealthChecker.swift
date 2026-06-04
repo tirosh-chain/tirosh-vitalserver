@@ -66,7 +66,7 @@ struct RuntimeHealthChecker {
             swaggerUIHTTP: swaggerUIHTTP,
             containerObservation: .loaded(containerObservation),
             vitalDBObservation: vitalDBObservation,
-            reportedVMErrors: [],
+            reportedVMErrors: guestDiskHealthErrors(guestRuntimeState.freshState),
             configurationFailureReasons: proxyPortRead.failureReasons
                 + guestRuntimeState.failureReasons
                 + vmLifecycle.failureReasons
@@ -193,6 +193,31 @@ struct RuntimeHealthChecker {
             return RuntimeGuestHTTPReadResult(status: .reportedStatus(rawValue), failureReasons: [])
         }
         return RuntimeGuestHTTPReadResult(status: .probeFailed(rawValue), failureReasons: [])
+    }
+
+    private func guestDiskHealthErrors(_ guestState: GuestRuntimeStateDocument?) -> [RuntimeVMError] {
+        guard let diskHealth = guestState?.diskHealth else {
+            return []
+        }
+        var errors: [RuntimeVMError] = []
+        if diskHealth.rootFilesystemReadOnly == true {
+            errors.append(.guestFilesystemReadOnly)
+        }
+        for line in diskHealth.kernelErrors ?? [] {
+            let lowercased = line.lowercased()
+            if lowercased.contains("buffer i/o error")
+                || lowercased.contains(" i/o error")
+                || lowercased.contains("input/output error") {
+                errors.append(.guestDiskIO)
+            }
+            if lowercased.contains("ext4-fs error")
+                || lowercased.contains("checksum invalid")
+                || lowercased.contains("metadata checksum")
+                || lowercased.contains("remounting filesystem read-only") {
+                errors.append(.guestFilesystemError)
+            }
+        }
+        return errors
     }
 
     private func guestBootstrapAssessment(guestState: GuestRuntimeStateDocument?) -> GuestBootstrapAssessment {

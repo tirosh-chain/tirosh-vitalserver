@@ -39,6 +39,8 @@ launchctl print system/com.tirosh.vitalserver-vm | grep "exit timeout"
 
 이 경우 `vm-disk.img`는 mutable 운영 디스크이므로 managed rollback 대상이 아닙니다. rollback은 app bundle, runtime tools, nginx bundle, guest deploy, rootfs base 같은 교체 가능한 artifact를 복원하지만, 이미 손상된 mutable VM disk를 되돌리지는 않습니다.
 
+2026-06-04 재현에서는 packaging workflow도 원인이 될 수 있음을 확인했습니다. `.tmp/vitalserver-vm-golden/run/vm-lifecycle.json`이 `stopping`인 상태였는데도 `.tmp/vitalserver-vm-pkg/rootfs-base.raw.gz`가 생성되어, guest shutdown이 끝났다는 명시적 증명 없이 golden VM disk가 base artifact로 압축되었습니다. `rootfs-ready` marker는 guest 준비가 끝났다는 신호일 뿐 VM disk가 clean shutdown되었다는 신호가 아닙니다.
+
 확인:
 
 ```sh
@@ -65,6 +67,8 @@ launchctl print system/com.tirosh.vitalserver-vm | grep "exit timeout"
 
 guest가 filesystem flush/unmount를 완료하지 못하거나 initrd shutdown에서 특정 프로세스를 기다리며 poweroff를 끝내지 못하는 경우도 있습니다. 이때 host는 guest log marker를 근거로 disk-safe 상태를 추정하지 않습니다. VM process가 timeout 안에 종료되지 않으면 update를 실패로 남기고, disk와 Redis backup 보존 여부를 확인한 뒤 수동 복구 절차를 선택합니다.
 
+Guest runtime state는 `diskHealth` contract로 root filesystem read-only 여부와 kernel disk error line을 보고합니다. Host health는 fresh `runtime-state.json`에 포함된 이 명시적 contract만 사용해 `guest-filesystem-error`, `guest-filesystem-read-only`, `guest-disk-io`를 판단합니다. Update preflight는 이 오류들이 있으면 update를 진행하지 않고 VM disk repair를 요구해야 합니다.
+
 이미 disk 오류가 발생한 설치본에서는 같은 update bundle을 반복 적용하지 않습니다. 먼저 Redis backup이 남아 있는지 확인하고, 가능한 경우 Redis backup을 보존한 뒤 VM disk 복구 또는 재설치를 진행합니다.
 
 ```sh
@@ -78,7 +82,11 @@ Helper 0.1.9 이후에는 수동 VM disk repair를 사용할 수 있습니다. �
 sudo /usr/local/bin/vitalserver-vm runtime repair-vm-disk
 ```
 
+Repair flow는 일반 update stop과 다릅니다. 손상된 VM은 graceful stop이 실패할 수 있으므로 repair는 먼저 정상 stop을 시도하고, 실패하면 VM disk 교체를 위해 VM process를 종료한 뒤 launchd service를 unload합니다. 이 강제 종료 경로는 손상된 disk를 계속 운영하기 위한 경로가 아니라, 기존 disk를 archive하고 새 disk로 교체하기 위한 복구 전용 경로입니다.
+
 주의: VM 내부 Redis volume과 Docker runtime state는 새 disk로 교체됩니다. Redis 데이터가 필요하면 Redis backup을 확인하고 복원 절차를 진행합니다. 호스트의 configured Vital files directory는 VM disk 밖에 있으므로 보존됩니다.
+
+Packaging에서는 `rootfs-base.raw.gz`를 만들기 전에 golden VM lifecycle state가 `stopped`인지 확인해야 합니다. lifecycle document가 없거나 `stopping`, `running`, `failed`이면 base artifact 생성을 중단합니다. Host에 `e2fsck`가 없는 macOS build host에서는 ext4 fsck를 직접 수행하기 어렵기 때문에, 최소한 VM lifecycle stopped proof 없이 rootfs를 압축하지 않는 것이 필수 예방선입니다.
 
 운영 판단:
 
@@ -92,4 +100,5 @@ sudo /usr/local/bin/vitalserver-vm runtime repair-vm-disk
 - 2026-05-28: `004-refresh-vm-shutdown-timeouts` migration이 VM launchd job을 `bootout`하도록 수정했습니다. 다음 runtime start에서 launchd가 plist를 다시 읽어 갱신된 `ExitTimeOut`을 적용합니다. Fix: `2aaef21 fix: reload VM launchd timeout migration`.
 - 2026-05-29: 다른 현장 로그에서 `004-refresh-vm-shutdown-timeouts` migration 자체가 update의 첫 `stop-runtime-services` 이후 실행되므로, 이미 loaded 상태인 VM job의 예전 60초 timeout이 첫 stop에 적용될 수 있음을 확인했습니다. Host CLI가 VM launchd `bootout` 전에 VM process에 직접 graceful stop을 요청하고 process 종료를 기다리도록 수정했습니다.
 - 2026-06-01: guest shutdown이 `systemd-resolved`/initrd finalization에서 330초보다 오래 걸리는 케이스를 확인했습니다. Host CLI와 VM launchd timeout을 900초로 늘렸고, disk-safe marker 기반 force stop fallback은 사용하지 않는 원칙을 문서화했습니다.
+- 2026-06-04: golden VM lifecycle이 `stopping`인데 `rootfs-base.raw.gz`가 생성된 build workflow 문제를 확인했습니다. `rootfs-base` 생성은 golden VM lifecycle `stopped` proof를 요구하도록 변경하고, fresh guest runtime state의 `diskHealth` contract로 update preflight가 VM disk repair 대상 오류를 차단하도록 했습니다.
 - 이미 `EXT4-fs error`, `Aborting journal`, `Remounting filesystem read-only`가 발생한 VM disk는 이 수정만으로 복구되지 않습니다. Redis backup을 먼저 확인하고 VM disk repair/recreate 또는 재설치를 진행합니다.

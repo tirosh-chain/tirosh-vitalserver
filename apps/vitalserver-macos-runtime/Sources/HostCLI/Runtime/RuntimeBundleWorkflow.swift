@@ -309,6 +309,7 @@ struct RuntimeBundleWorkflow {
                     restartWatchdog: operations.isLaunchdLoaded(.watchdog)
                 )
             },
+            runtimeHealthSnapshot: operations.runtimeHealthSnapshot,
             requireGuestCapability: operations.requireGuestCapability,
             createBackup: operations.createBackup,
             directorySize: directorySize,

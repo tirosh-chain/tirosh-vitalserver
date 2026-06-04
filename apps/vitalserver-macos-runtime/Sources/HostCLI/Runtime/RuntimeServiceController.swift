@@ -155,6 +155,20 @@ struct RuntimeServiceController {
         }
     }
 
+    func unloadRuntimeServicesAfterForcedVMStop() {
+        for service in RuntimeManagedService.stopOrder {
+            do {
+                if try unloadIfLoaded(service) {
+                    log("waiting for \(service.displayName) service to unload after forced VM stop label=\(service.label)")
+                    try waitUntilStopped(service)
+                    log("unloaded \(service.displayName) service after forced VM stop label=\(service.label)")
+                }
+            } catch {
+                log("failed to unload \(service.displayName) service after forced VM stop label=\(service.label) error=\(error)")
+            }
+        }
+    }
+
     func setStartOnBoot(_ enabled: Bool) throws {
         for service in RuntimeManagedService.startOrder {
             let result = serviceManager.setEnabled(service: service, enabled: enabled)

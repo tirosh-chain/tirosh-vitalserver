@@ -69,6 +69,25 @@ extension RuntimeLifecycle {
         try serviceController.stopRuntimeServices()
     }
 
+    func stopRuntimeServicesForVMDiskReplacement() throws {
+        do {
+            try stopRuntimeServices()
+            return
+        } catch {
+            log("graceful runtime services stop failed before VM disk replacement; forcing VM process stop error=\(error.localizedDescription)")
+        }
+
+        try ProcessState.forceKillAndWait(
+            pidFile: paths.pidFile,
+            fileStore: fileStore,
+            timeoutSeconds: Constants.Runtime.vmStopWaitTimeoutSeconds,
+            pollIntervalSeconds: Constants.Runtime.serviceStopPollIntervalSeconds,
+            log: log
+        )
+        serviceController.unloadRuntimeServicesAfterForcedVMStop()
+        log("runtime services stopped for VM disk replacement")
+    }
+
     func stopRuntimeServicesAfterGuestPoweroff() throws {
         try serviceController.stopRuntimeServicesAfterGuestPoweroff()
     }

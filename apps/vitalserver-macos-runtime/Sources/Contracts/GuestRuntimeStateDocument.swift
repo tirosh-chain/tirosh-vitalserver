@@ -11,6 +11,7 @@ public struct GuestRuntimeStateDocument: Codable, Equatable, Sendable {
     public let cpuUsagePercent: Double?
     public let memory: ResourceUsage?
     public let systemDisk: ResourceUsage?
+    public let diskHealth: GuestDiskHealthDocument?
     public let vitalFilesDisk: ResourceUsage?
     public let containerServices: [RuntimeContainerServiceObservation]?
     public let probeErrors: [GuestRuntimeProbeError]?
@@ -27,6 +28,7 @@ public struct GuestRuntimeStateDocument: Codable, Equatable, Sendable {
         cpuUsagePercent: Double? = nil,
         memory: ResourceUsage? = nil,
         systemDisk: ResourceUsage? = nil,
+        diskHealth: GuestDiskHealthDocument? = nil,
         vitalFilesDisk: ResourceUsage? = nil,
         containerServices: [RuntimeContainerServiceObservation]? = nil,
         probeErrors: [GuestRuntimeProbeError]? = nil,
@@ -42,12 +44,26 @@ public struct GuestRuntimeStateDocument: Codable, Equatable, Sendable {
         self.cpuUsagePercent = cpuUsagePercent
         self.memory = memory
         self.systemDisk = systemDisk
+        self.diskHealth = diskHealth
         self.vitalFilesDisk = vitalFilesDisk
         self.containerServices = containerServices
         self.probeErrors = probeErrors
         self.vitalDBObservation = vitalDBObservation
     }
 
+}
+
+public struct GuestDiskHealthDocument: Codable, Equatable, Sendable {
+    public let rootFilesystemReadOnly: Bool?
+    public let kernelErrors: [String]?
+
+    public init(
+        rootFilesystemReadOnly: Bool?,
+        kernelErrors: [String]?
+    ) {
+        self.rootFilesystemReadOnly = rootFilesystemReadOnly
+        self.kernelErrors = kernelErrors
+    }
 }
 
 public struct GuestRuntimeProbeError: Codable, Equatable, Sendable {

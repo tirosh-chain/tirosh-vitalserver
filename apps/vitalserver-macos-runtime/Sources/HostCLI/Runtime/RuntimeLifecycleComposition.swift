@@ -101,6 +101,14 @@ struct RuntimeLifecycleComposition {
             log: { message in log(message, clock: clock) }
         )
         log("VM process stopped before launchd unload", clock: clock)
+        do {
+            try RuntimeVMLifecycleStore(
+                url: paths.installed.vmLifecycle,
+                fileStore: fileStore
+            ).write(state: .stopped, message: "VM process stopped before launchd unload")
+        } catch {
+            log("failed to write VM lifecycle stopped state after process stop error=\(error)", clock: clock)
+        }
     }
 
     private static func waitForVMProcessExitAfterGuestPoweroff(

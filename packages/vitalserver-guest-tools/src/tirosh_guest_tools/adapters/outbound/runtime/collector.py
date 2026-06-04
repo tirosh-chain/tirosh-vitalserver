@@ -15,6 +15,7 @@ from tirosh_guest_tools.contracts import RuntimeFileName
 from tirosh_guest_tools.domain.runtime_state import (
     GuestRuntimeState,
     ProbeError,
+    RuntimeDiskHealth,
     RuntimeContainerService,
     RuntimeHTTPProbeStatus,
     RuntimeResourceUsage,
@@ -56,6 +57,7 @@ def collect_runtime_state(
             probe_errors,
         ),
         system_disk=disk_usage("/", probe_errors),
+        disk_health=disk_health(probe_errors),
         swagger_ui_http=runtime_http_status(
             swagger_ui_http,
             "swaggerUIHTTP",
@@ -206,6 +208,64 @@ def disk_usage(
     total = stats.f_frsize * stats.f_blocks
     available = stats.f_frsize * stats.f_bavail
     return RuntimeResourceUsage(used_bytes=max(total - available, 0), total_bytes=total)
+
+
+def disk_health(probe_errors: list[ProbeError]) -> RuntimeDiskHealth:
+    return RuntimeDiskHealth(
+        root_filesystem_read_only=root_filesystem_read_only(probe_errors),
+        kernel_errors=kernel_disk_errors(probe_errors),
+    )
+
+
+def root_filesystem_read_only(probe_errors: list[ProbeError]) -> bool | None:
+    try:
+        text = Path("/proc/mounts").read_text(encoding="utf-8")
+    except OSError as error:
+        append_probe_error(probe_errors, "/proc/mounts", error)
+        return None
+    for line in text.splitlines():
+        parts = line.split()
+        if len(parts) >= 4 and parts[1] == "/":
+            return "ro" in parts[3].split(",")
+    append_probe_error(probe_errors, "/proc/mounts", "root mount missing")
+    return None
+
+
+def kernel_disk_errors(probe_errors: list[ProbeError]) -> tuple[str, ...] | None:
+    try:
+        completed = subprocess.run(
+            ["dmesg", "--ctime"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=3,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        append_probe_error(probe_errors, "dmesg", error)
+        return None
+    if completed.returncode != 0:
+        append_probe_error(
+            probe_errors,
+            "dmesg",
+            completed.stderr.strip() or f"exit {completed.returncode}",
+        )
+        return None
+    return tuple(
+        line
+        for line in completed.stdout.splitlines()[-300:]
+        if kernel_disk_error_line(line)
+    )
+
+
+def kernel_disk_error_line(line: str) -> bool:
+    lowered = line.lower()
+    return (
+        "ext4-fs error" in lowered
+        or "buffer i/o error" in lowered
+        or "metadata checksum" in lowered
+        or "checksum invalid" in lowered
+        or "remounting filesystem read-only" in lowered
+    )
 
 
 def vitaldb_observation(probe_errors: list[ProbeError]) -> dict[str, object] | None:

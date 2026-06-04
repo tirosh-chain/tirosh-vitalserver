@@ -55,6 +55,23 @@ final class RuntimeUpdatePreflightPolicyTests: XCTestCase {
         XCTAssertNil(requirement.incomingRootfsBytes)
     }
 
+    func testBlockingGuestStorageErrorsKeepsOnlyDiskRepairClassErrors() {
+        XCTAssertEqual(
+            RuntimeUpdatePreflightPolicy.blockingGuestStorageErrors([
+                .runtimeStateStale,
+                .guestFilesystemError,
+                .guestHTTP("failed"),
+                .guestFilesystemReadOnly,
+                .guestDiskIO,
+            ]),
+            [
+                .guestFilesystemError,
+                .guestFilesystemReadOnly,
+                .guestDiskIO,
+            ]
+        )
+    }
+
     private func manifest(
         channel: UpdateBundleChannel = .stable,
         targetPlatform: String = "macos-arm64",
