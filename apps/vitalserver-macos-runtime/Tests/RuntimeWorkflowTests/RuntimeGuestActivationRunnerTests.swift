@@ -1,7 +1,7 @@
-import Foundation
-import Core
 import Contracts
-@testable import HostCLI
+import Core
+import Foundation
+import RuntimeWorkflow
 import XCTest
 
 final class RuntimeGuestActivationRunnerTests: XCTestCase {
@@ -72,7 +72,7 @@ final class RuntimeGuestActivationRunnerTests: XCTestCase {
         let runner = makeRunner(
             events: events,
             requireCapability: {
-                throw LauncherError.runtimeOperationFailed("guest capability missing: activate-update")
+                throw RuntimeWorkflowError.operationFailed("guest capability missing: activate-update")
             },
             loadResult: { .missing }
         )
@@ -96,7 +96,7 @@ final class RuntimeGuestActivationRunnerTests: XCTestCase {
         )
 
         XCTAssertThrowsError(try runner.activateIfNeeded(manifest: manifest(artifacts: [.guestDeploy]))) { error in
-            XCTAssertEqual(String(describing: error), String(describing: LauncherError.runtimeHealthFailed))
+            XCTAssertEqual(String(describing: error), "runtime health check failed")
         }
         XCTAssertTrue(events.values.contains("log:guest update activation result failed message=compose failed"))
     }
@@ -142,14 +142,15 @@ final class RuntimeGuestActivationRunnerTests: XCTestCase {
             },
             log: { message in
                 events.append("log:\(message)")
-            }
+            },
+            waitTimeoutSeconds: 180
         )
     }
 
     private func manifest(artifacts: [UpdateBundleArtifactType]) -> UpdateBundleManifest {
         UpdateBundleManifest(
             schemaVersion: 3,
-            product: Constants.Product.identifier,
+            product: "ai.tirosh.vitalserver.helper",
             helperVersion: "1.2.3",
             releaseLabel: "1.2.3",
             targetPlatform: "macos-arm64",

@@ -461,7 +461,8 @@ extension RuntimeLifecycle {
     func runtimeGuestActivationWorkflow() -> RuntimeGuestActivationWorkflow {
         RuntimeGuestActivationWorkflow(
             context: RuntimeGuestActivationWorkflowContext(
-                guestRunDirectory: guestRunDirectory
+                guestRunDirectory: guestRunDirectory,
+                waitTimeoutSeconds: Constants.Runtime.updateActivationWaitTimeoutSeconds
             ),
             operations: RuntimeGuestActivationWorkflowOperations(
                 requireCapability: {
