@@ -1,4 +1,7 @@
 public enum RuntimeFileNames {
+    public static let rootfsBase = "rootfs-base.raw.gz"
+    public static let runtimeVersion = "runtime-version.json"
+    public static let backupManifest = "backup-manifest.json"
     public static let runtimeStatus = "runtime-status.json"
     public static let runtimeEvents = "runtime-events.jsonl"
     public static let runtimeObservabilityDB = "runtime-observability.sqlite"

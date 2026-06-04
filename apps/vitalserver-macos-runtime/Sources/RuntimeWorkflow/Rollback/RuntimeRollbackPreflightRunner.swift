@@ -28,7 +28,7 @@ public struct RuntimeRollbackPreflightRunner {
 
     public func prepare(_ command: RuntimeRollbackCommand) throws -> RollbackPreflightContext {
         let backup = try backupURL(for: command)
-        let backupVersion = backup.appendingPathComponent("runtime-version.json")
+        let backupVersion = backup.appendingPathComponent(RuntimeFileNames.runtimeVersion)
 
         guard directoryExists(backup) else {
             throw RuntimeWorkflowError.operationFailed("missing file: \(backup.path)")
