@@ -334,24 +334,21 @@ struct RuntimeBundleWorkflow {
         fileVerification: UpdateBundleFileVerification,
         checksumMap: [String: String]
     ) throws {
-        operations.log(
-            "checksum started key=\(fileVerification.checksumKey) path=\(url.path) expectedSize=\(formatBytes(bundleItemSize(fileVerification.expectedSize)))"
-        )
-        let actualDigest = try sha256(url)
-        let size = Int(try fileSize(url))
         do {
-            try UpdateBundleVerifier.verifyDigest(
-                checksumKey: fileVerification.checksumKey,
-                expectedSHA256: fileVerification.expectedSHA256,
-                expectedSize: fileVerification.expectedSize,
-                checksumMap: checksumMap,
-                actualSHA256: actualDigest,
-                actualSize: size
-            )
+            try RuntimeBundleDigestVerifier(
+                operations: RuntimeBundleDigestVerificationOperations(
+                    sha256: sha256,
+                    fileSize: fileSize,
+                    log: operations.log
+                )
+            ).verify(input: RuntimeBundleDigestVerificationInput(
+                fileURL: url,
+                fileVerification: fileVerification,
+                checksumMap: checksumMap
+            ))
         } catch let error as UpdateBundleVerificationError {
             throw launcherError(error)
         }
-        operations.log("checksum completed key=\(fileVerification.checksumKey) actualSize=\(formatBytes(bundleItemSize(size)))")
     }
 
     private func launcherError(_ error: UpdateBundleVerificationError) -> LauncherError {
