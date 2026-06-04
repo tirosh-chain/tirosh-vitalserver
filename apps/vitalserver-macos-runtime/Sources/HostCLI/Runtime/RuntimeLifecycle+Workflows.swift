@@ -88,17 +88,33 @@ extension RuntimeLifecycle {
             printStatus: printStatus,
             healthSnapshot: runtimeHealthSnapshot,
             writeStatus: runtimeStatusWriterAction(),
-            recordObservedEvent: { status, operation, message, snapshot in
-                try runtimeObservedEventPublisher().recordObservedEvent(
+            writeStatusBestEffort: { status, operation, message in
+                writeRuntimeStatusBestEffort(
+                    status,
+                    operation: operation,
+                    message: message,
+                    writeStatus: runtimeStatusWriterAction(),
+                    log: log
+                )
+            },
+            recordObservedEventBestEffort: { status, operation, message, snapshot in
+                recordRuntimeObservedEventBestEffort(
                     status,
                     operation: operation,
                     message: message,
                     snapshot: snapshot,
-                    defaultEventType: .healthObserved
+                    recordObservedEvent: { status, operation, message, snapshot in
+                        try runtimeObservedEventPublisher().recordObservedEvent(
+                            status,
+                            operation: operation,
+                            message: message,
+                            snapshot: snapshot,
+                            defaultEventType: .healthObserved
+                        )
+                    },
+                    log: log
                 )
             },
-            reasonText: reasonText,
-            log: log,
             printLine: { line in print(line) }
         )
     }
