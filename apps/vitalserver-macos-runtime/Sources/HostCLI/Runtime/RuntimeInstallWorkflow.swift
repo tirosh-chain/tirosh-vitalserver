@@ -197,13 +197,19 @@ struct RuntimeInstallWorkflowComposition {
     }
 
     private func prepareInstalledExecutables() throws {
-        for path in [
-            Constants.InstallPaths.vmBin,
-            Constants.InstallPaths.proxyRun,
-            context.installedPaths.nginxExecutable.path,
-        ] {
-            try operations.runRequired(Constants.Commands.chmod, ["0755", path])
-        }
+        try RuntimeInstallExecutablePreparer(
+            context: RuntimeInstallExecutablePreparationContext(
+                executablePaths: [
+                    Constants.InstallPaths.vmBin,
+                    Constants.InstallPaths.proxyRun,
+                    context.installedPaths.nginxExecutable.path,
+                ],
+                chmodExecutable: Constants.Commands.chmod
+            ),
+            operations: RuntimeInstallExecutablePreparationOperations(
+                runRequired: operations.runRequired
+            )
+        ).prepare()
     }
 
     private func provisionVMDisk(_ settings: InstallSettings) throws {
