@@ -9,6 +9,7 @@ final class RuntimeHealthWaitRunnerTests: XCTestCase {
 
         try harness.runner.wait(for: RuntimeServiceRestartPolicy(
             restartVM: false,
+            restartGuestLogSync: false,
             restartProxy: false,
             restartWatchdog: false
         ))
@@ -26,6 +27,7 @@ final class RuntimeHealthWaitRunnerTests: XCTestCase {
 
         try harness.runner.wait(for: RuntimeServiceRestartPolicy(
             restartVM: true,
+            restartGuestLogSync: true,
             restartProxy: true,
             restartWatchdog: true
         ))
@@ -41,12 +43,30 @@ final class RuntimeHealthWaitRunnerTests: XCTestCase {
 
         XCTAssertThrowsError(try harness.runner.wait(for: RuntimeServiceRestartPolicy(
             restartVM: true,
+            restartGuestLogSync: true,
             restartProxy: false,
             restartWatchdog: false
         ))) { error in
             XCTAssertEqual(String(describing: error), String(describing: LauncherError.runtimeHealthFailed))
         }
         XCTAssertTrue(harness.events.contains("log:runtime health failed early reason=guest-bootstrap-failed"))
+    }
+
+    func testWaitDoesNotCompleteUntilGuestLogSyncServiceIsLoaded() {
+        let harness = HealthWaitHarness(snapshots: [healthSnapshot(reasons: [])])
+        harness.loadedServices.remove(.guestLogSync)
+
+        XCTAssertThrowsError(try harness.runner.wait(for: RuntimeServiceRestartPolicy(
+            restartVM: false,
+            restartGuestLogSync: true,
+            restartProxy: false,
+            restartWatchdog: false
+        ))) { error in
+            XCTAssertEqual(String(describing: error), String(describing: LauncherError.runtimeHealthFailed))
+        }
+        XCTAssertTrue(harness.events.contains {
+            $0.contains("guest-log-sync-service-not-loaded")
+        })
     }
 }
 
@@ -55,6 +75,7 @@ private final class HealthWaitHarness {
     var events: [String] = []
     var loadedServices = Set([
         RuntimeManagedService.vm,
+        RuntimeManagedService.guestLogSync,
         RuntimeManagedService.proxy,
         RuntimeManagedService.watchdog,
     ])

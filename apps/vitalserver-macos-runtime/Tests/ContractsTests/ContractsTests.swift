@@ -408,6 +408,7 @@ final class ContractsTests: XCTestCase {
         [
           "missing-vm-bin",
           "vm-service-not loaded",
+          "guest-log-sync-service-not-loaded",
           "host-proxy-http-502",
           "guest-http-probe-failed-failed",
           "audit-proxy-http-failed",
@@ -429,27 +430,29 @@ final class ContractsTests: XCTestCase {
 
         XCTAssertEqual(reasons[0], .missingVMBin)
         XCTAssertEqual(reasons[1], .vmService("not loaded"))
-        XCTAssertEqual(reasons[2], .hostProxyHTTP("502"))
-        XCTAssertEqual(reasons[3], .guestHTTPProbeFailed("failed"))
-        XCTAssertEqual(reasons[4], .auditProxyHTTP("failed"))
-        XCTAssertEqual(reasons[5], .containerService(service: "app", state: "unhealthy"))
-        XCTAssertEqual(reasons[6], .containerObservationMissing)
-        XCTAssertEqual(reasons[7], .containerObservationReadFailed("permission_denied"))
-        XCTAssertEqual(reasons[8], .vitalDBAnomaly(kind: "duplicate-ip", subject: "10.0.0.10"))
-        XCTAssertEqual(reasons[9], .vitalDBObservationMissing)
-        XCTAssertEqual(reasons[10], .vitalDBObservationReadFailed("decode_failed"))
-        XCTAssertEqual(reasons[11], .proxyPortInUse(port: 80, listeners: "nginx-1234"))
-        XCTAssertEqual(reasons[12], .hostProxyListenerScanFailed(port: 80, exitCode: 1))
-        XCTAssertEqual(reasons[13], .guestBootstrapResultMissing)
-        XCTAssertEqual(reasons[14], .guestBootstrapResultUnavailable)
-        XCTAssertEqual(reasons[15], .guestBootstrapMissingRuntimePackages)
-        XCTAssertEqual(reasons[16], .unknown("future-reason"))
+        XCTAssertEqual(reasons[2], .guestLogSyncService("not-loaded"))
+        XCTAssertEqual(reasons[3], .hostProxyHTTP("502"))
+        XCTAssertEqual(reasons[4], .guestHTTPProbeFailed("failed"))
+        XCTAssertEqual(reasons[5], .auditProxyHTTP("failed"))
+        XCTAssertEqual(reasons[6], .containerService(service: "app", state: "unhealthy"))
+        XCTAssertEqual(reasons[7], .containerObservationMissing)
+        XCTAssertEqual(reasons[8], .containerObservationReadFailed("permission_denied"))
+        XCTAssertEqual(reasons[9], .vitalDBAnomaly(kind: "duplicate-ip", subject: "10.0.0.10"))
+        XCTAssertEqual(reasons[10], .vitalDBObservationMissing)
+        XCTAssertEqual(reasons[11], .vitalDBObservationReadFailed("decode_failed"))
+        XCTAssertEqual(reasons[12], .proxyPortInUse(port: 80, listeners: "nginx-1234"))
+        XCTAssertEqual(reasons[13], .hostProxyListenerScanFailed(port: 80, exitCode: 1))
+        XCTAssertEqual(reasons[14], .guestBootstrapResultMissing)
+        XCTAssertEqual(reasons[15], .guestBootstrapResultUnavailable)
+        XCTAssertEqual(reasons[16], .guestBootstrapMissingRuntimePackages)
+        XCTAssertEqual(reasons[17], .unknown("future-reason"))
 
         let encoded = try JSONEncoder().encode(reasons)
         let roundTripped = try JSONDecoder().decode([RuntimeFailureReason].self, from: encoded)
         XCTAssertEqual(roundTripped.map(\.rawValue), [
             "missing-vm-bin",
             "vm-service-not loaded",
+            "guest-log-sync-service-not-loaded",
             "host-proxy-http-502",
             "guest-http-probe-failed-failed",
             "audit-proxy-http-failed",

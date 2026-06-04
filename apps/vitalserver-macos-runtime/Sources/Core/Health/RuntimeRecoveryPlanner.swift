@@ -50,6 +50,7 @@ public struct RuntimeRecoveryInput: Equatable {
 public struct RuntimeRecoveryPlan: Equatable {
     public let canRecover: Bool
     public let restartVM: Bool
+    public let restartGuestLogSync: Bool
     public let restartProxy: Bool
     public let restartReasons: [RuntimeRecoveryRestartReason]
     public let blockers: [String]
@@ -57,12 +58,14 @@ public struct RuntimeRecoveryPlan: Equatable {
     public init(
         canRecover: Bool,
         restartVM: Bool,
+        restartGuestLogSync: Bool,
         restartProxy: Bool,
         restartReasons: [RuntimeRecoveryRestartReason] = [],
         blockers: [String] = []
     ) {
         self.canRecover = canRecover
         self.restartVM = restartVM
+        self.restartGuestLogSync = restartGuestLogSync
         self.restartProxy = restartProxy
         self.restartReasons = restartReasons
         self.blockers = blockers
@@ -111,7 +114,12 @@ public enum RuntimeRecoveryPlanner {
               input.proxyExecutable,
               input.rootfsBase == .present,
               input.vmDisk == .present else {
-            return RuntimeRecoveryPlan(canRecover: false, restartVM: false, restartProxy: false)
+            return RuntimeRecoveryPlan(
+                canRecover: false,
+                restartVM: false,
+                restartGuestLogSync: false,
+                restartProxy: false
+            )
         }
 
         let blockers = recoveryBlockers(input)
@@ -119,6 +127,7 @@ public enum RuntimeRecoveryPlanner {
             return RuntimeRecoveryPlan(
                 canRecover: false,
                 restartVM: false,
+                restartGuestLogSync: false,
                 restartProxy: false,
                 blockers: blockers
             )
@@ -150,6 +159,7 @@ public enum RuntimeRecoveryPlanner {
         return RuntimeRecoveryPlan(
             canRecover: true,
             restartVM: !vmRestartReasons.isEmpty,
+            restartGuestLogSync: !vmRestartReasons.isEmpty,
             restartProxy: !proxyRestartReasons.isEmpty,
             restartReasons: vmRestartReasons + proxyRestartReasons
         )

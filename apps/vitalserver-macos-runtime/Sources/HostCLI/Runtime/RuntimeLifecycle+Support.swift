@@ -92,21 +92,42 @@ extension RuntimeLifecycle {
         try serviceController.stopRuntimeServicesAfterGuestPoweroff()
     }
 
-    func startRuntimeServices(restartVM: Bool, restartProxy: Bool, restartWatchdog: Bool) throws {
+    func startRuntimeServices(
+        restartVM: Bool,
+        restartGuestLogSync: Bool,
+        restartProxy: Bool,
+        restartWatchdog: Bool
+    ) throws {
         if restartVM, preventSystemSleepEnabled() {
             try startLaunchdService(.sleepPrevention)
         }
-        try serviceController.startRuntimeServices(restartVM: restartVM, restartProxy: false, restartWatchdog: false)
+        try serviceController.startRuntimeServices(
+            restartVM: restartVM,
+            restartGuestLogSync: restartGuestLogSync,
+            restartProxy: false,
+            restartWatchdog: false
+        )
         if restartProxy {
             try cleanupHostProxyPortBeforeStart()
-            try serviceController.startRuntimeServices(restartVM: false, restartProxy: true, restartWatchdog: false)
+            try serviceController.startRuntimeServices(
+                restartVM: false,
+                restartGuestLogSync: false,
+                restartProxy: true,
+                restartWatchdog: false
+            )
         }
-        try serviceController.startRuntimeServices(restartVM: false, restartProxy: false, restartWatchdog: restartWatchdog)
+        try serviceController.startRuntimeServices(
+            restartVM: false,
+            restartGuestLogSync: false,
+            restartProxy: false,
+            restartWatchdog: restartWatchdog
+        )
     }
 
     func startRuntimeServices(_ policy: RuntimeServiceRestartPolicy) throws {
         try startRuntimeServices(
             restartVM: policy.restartVM,
+            restartGuestLogSync: policy.restartGuestLogSync,
             restartProxy: policy.restartProxy,
             restartWatchdog: policy.restartWatchdog
         )
@@ -135,6 +156,7 @@ extension RuntimeLifecycle {
     func waitForHealth(restartVM: Bool, restartProxy: Bool, restartWatchdog: Bool) throws {
         try runtimeHealthWaitRunner().wait(for: RuntimeServiceRestartPolicy(
             restartVM: restartVM,
+            restartGuestLogSync: restartVM,
             restartProxy: restartProxy,
             restartWatchdog: restartWatchdog
         ))

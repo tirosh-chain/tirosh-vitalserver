@@ -11,26 +11,32 @@ public struct RuntimeHealthWaitConfiguration: Equatable {
 
 public struct RuntimeHealthWaitObservation: Equatable {
     public let vmServiceRequired: Bool
+    public let guestLogSyncServiceRequired: Bool
     public let proxyServiceRequired: Bool
     public let watchdogServiceRequired: Bool
     public let vmServiceLoaded: Bool
+    public let guestLogSyncServiceLoaded: Bool
     public let proxyServiceLoaded: Bool
     public let watchdogServiceLoaded: Bool
     public let snapshot: RuntimeHealthSnapshot
 
     public init(
         vmServiceRequired: Bool,
+        guestLogSyncServiceRequired: Bool,
         proxyServiceRequired: Bool,
         watchdogServiceRequired: Bool,
         vmServiceLoaded: Bool,
+        guestLogSyncServiceLoaded: Bool,
         proxyServiceLoaded: Bool,
         watchdogServiceLoaded: Bool,
         snapshot: RuntimeHealthSnapshot
     ) {
         self.vmServiceRequired = vmServiceRequired
+        self.guestLogSyncServiceRequired = guestLogSyncServiceRequired
         self.proxyServiceRequired = proxyServiceRequired
         self.watchdogServiceRequired = watchdogServiceRequired
         self.vmServiceLoaded = vmServiceLoaded
+        self.guestLogSyncServiceLoaded = guestLogSyncServiceLoaded
         self.proxyServiceLoaded = proxyServiceLoaded
         self.watchdogServiceLoaded = watchdogServiceLoaded
         self.snapshot = snapshot
@@ -94,6 +100,9 @@ public enum RuntimeHealthWaiter {
     private static func pendingRequiredServiceReasons(_ observation: RuntimeHealthWaitObservation) -> [RuntimeFailureReason] {
         if observation.vmServiceRequired, !observation.vmServiceLoaded {
             return [.vmService("not-loaded")]
+        }
+        if observation.guestLogSyncServiceRequired, !observation.guestLogSyncServiceLoaded {
+            return [.guestLogSyncService("not-loaded")]
         }
         if observation.proxyServiceRequired, !observation.proxyServiceLoaded {
             return [.proxyService("not-loaded")]

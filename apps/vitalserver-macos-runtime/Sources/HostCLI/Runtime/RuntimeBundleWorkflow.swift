@@ -305,6 +305,7 @@ struct RuntimeBundleWorkflow {
             serviceRestartPolicy: {
                 RuntimeServiceRestartPolicy(
                     restartVM: operations.isLaunchdLoaded(.vm),
+                    restartGuestLogSync: operations.isLaunchdLoaded(.guestLogSync),
                     restartProxy: operations.isLaunchdLoaded(.proxy),
                     restartWatchdog: operations.isLaunchdLoaded(.watchdog)
                 )

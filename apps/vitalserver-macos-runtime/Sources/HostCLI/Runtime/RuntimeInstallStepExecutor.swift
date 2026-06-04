@@ -46,6 +46,7 @@ struct RuntimeInstallStepExecutor {
         case .waitInstallRuntimeHealth:
             try waitForHealth(RuntimeServiceRestartPolicy(
                 restartVM: settings.startAfterInstall,
+                restartGuestLogSync: settings.startAfterInstall,
                 restartProxy: settings.startAfterInstall,
                 restartWatchdog: settings.startAfterInstall
             ))

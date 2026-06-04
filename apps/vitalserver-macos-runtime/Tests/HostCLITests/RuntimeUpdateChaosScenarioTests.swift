@@ -31,7 +31,7 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
             checkCompatibility: { _ in events.append("compatibility") },
             serviceRestartPolicy: {
                 events.append("policy")
-                return RuntimeServiceRestartPolicy(restartVM: true, restartProxy: false, restartWatchdog: false)
+                return RuntimeServiceRestartPolicy(restartVM: true, restartGuestLogSync: true, restartProxy: false, restartWatchdog: false)
             },
             runtimeHealthSnapshot: { self.healthySnapshot() },
             requireGuestCapability: { capability in
@@ -285,7 +285,7 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
             },
             serviceRestartPolicy: {
                 XCTFail("missing restore artifact should stop before service policy")
-                return RuntimeServiceRestartPolicy(restartVM: false, restartProxy: false, restartWatchdog: false)
+                return RuntimeServiceRestartPolicy(restartVM: false, restartGuestLogSync: false, restartProxy: false, restartWatchdog: false)
             },
             log: { _ in XCTFail("missing restore artifact should stop before logging") }
         )
@@ -431,7 +431,7 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
             manifest: manifest(version: "1.2.3", artifacts: artifacts),
             stagedRootfs: nil,
             backup: URL(fileURLWithPath: "/product/backups/20260531T000000Z-before-1.2.3"),
-            restartPolicy: RuntimeServiceRestartPolicy(restartVM: true, restartProxy: true, restartWatchdog: false)
+            restartPolicy: RuntimeServiceRestartPolicy(restartVM: true, restartGuestLogSync: true, restartProxy: true, restartWatchdog: false)
         )
     }
 
@@ -442,7 +442,7 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
             backupRootfs: backup.appendingPathComponent(Constants.Artifacts.rootfsBase),
             backupVersion: backup.appendingPathComponent(Constants.Artifacts.runtimeVersion),
             restoresRootfsBase: true,
-            restartPolicy: RuntimeServiceRestartPolicy(restartVM: true, restartProxy: false, restartWatchdog: true)
+            restartPolicy: RuntimeServiceRestartPolicy(restartVM: true, restartGuestLogSync: true, restartProxy: false, restartWatchdog: true)
         )
     }
 

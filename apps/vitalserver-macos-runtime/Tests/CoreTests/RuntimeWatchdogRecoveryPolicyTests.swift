@@ -153,6 +153,7 @@ final class RuntimeWatchdogRecoveryPolicyTests: XCTestCase {
                 plan: RuntimeRecoveryPlan(
                     canRecover: true,
                     restartVM: true,
+                    restartGuestLogSync: true,
                     restartProxy: true,
                     restartReasons: [
                         .guestHTTPUnhealthy("503"),

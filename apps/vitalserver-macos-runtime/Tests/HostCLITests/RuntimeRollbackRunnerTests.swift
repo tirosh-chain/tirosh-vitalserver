@@ -61,6 +61,7 @@ private final class RollbackHarness {
         restoresRootfsBase: true,
         restartPolicy: RuntimeServiceRestartPolicy(
             restartVM: true,
+            restartGuestLogSync: true,
             restartProxy: false,
             restartWatchdog: true
         )

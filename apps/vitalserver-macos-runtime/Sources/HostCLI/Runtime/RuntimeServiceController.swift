@@ -87,6 +87,7 @@ struct RuntimeServiceController {
     func startRuntimeServices(_ policy: RuntimeServiceRestartPolicy) throws {
         try startRuntimeServices(
             restartVM: policy.restartVM,
+            restartGuestLogSync: policy.restartGuestLogSync,
             restartProxy: policy.restartProxy,
             restartWatchdog: policy.restartWatchdog
         )
@@ -94,11 +95,14 @@ struct RuntimeServiceController {
 
     func startRuntimeServices(
         restartVM: Bool,
+        restartGuestLogSync: Bool,
         restartProxy: Bool,
         restartWatchdog: Bool
     ) throws {
         if restartVM {
             try startLaunchdService(.vm)
+        }
+        if restartGuestLogSync {
             try startLaunchdService(.guestLogSync)
         }
         if restartProxy {

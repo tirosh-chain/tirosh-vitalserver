@@ -7,7 +7,7 @@ import XCTest
 final class RuntimeRollbackStepExecutorTests: XCTestCase {
     func testExecuteDispatchesRollbackStepsToCollaborators() throws {
         let backup = URL(fileURLWithPath: "/backups/before-1.2.3")
-        let policy = RuntimeServiceRestartPolicy(restartVM: true, restartProxy: true, restartWatchdog: false)
+        let policy = RuntimeServiceRestartPolicy(restartVM: true, restartGuestLogSync: true, restartProxy: true, restartWatchdog: false)
         let preflight = RollbackPreflightContext(
             backup: backup,
             backupRootfs: backup.appendingPathComponent(Constants.Artifacts.rootfsBase),
@@ -76,7 +76,7 @@ final class RuntimeRollbackStepExecutorTests: XCTestCase {
             backupRootfs: backup.appendingPathComponent(Constants.Artifacts.rootfsBase),
             backupVersion: backup.appendingPathComponent(Constants.Artifacts.runtimeVersion),
             restoresRootfsBase: true,
-            restartPolicy: RuntimeServiceRestartPolicy(restartVM: false, restartProxy: false, restartWatchdog: false)
+            restartPolicy: RuntimeServiceRestartPolicy(restartVM: false, restartGuestLogSync: false, restartProxy: false, restartWatchdog: false)
         )
         var events: [String] = []
         let executor = RuntimeRollbackStepExecutor(
@@ -120,7 +120,7 @@ final class RuntimeRollbackStepExecutorTests: XCTestCase {
             backupRootfs: backup.appendingPathComponent(Constants.Artifacts.rootfsBase),
             backupVersion: backup.appendingPathComponent(Constants.Artifacts.runtimeVersion),
             restoresRootfsBase: true,
-            restartPolicy: RuntimeServiceRestartPolicy(restartVM: false, restartProxy: false, restartWatchdog: false)
+            restartPolicy: RuntimeServiceRestartPolicy(restartVM: false, restartGuestLogSync: false, restartProxy: false, restartWatchdog: false)
         )
 
         XCTAssertThrowsError(try executor.execute(

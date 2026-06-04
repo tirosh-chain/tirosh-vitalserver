@@ -58,6 +58,7 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-044 | Runtime uninstall workflow가 phase와 command 계약을 읽기 어렵게 섞음 | Runtime workflow / Readability / StateMachine | implemented | [Runtime uninstall workflow phase and command readability cleanup](troubleshooting/044_runtime-uninstall-workflow-phase-command-readability.md) |
 | TS-045 | Runtime install workflow가 uninstall 수준의 StateMachine 경계를 갖지 않음 | Runtime workflow / Install / StateMachine | implemented | [Runtime install workflow state machine parity](troubleshooting/045_runtime-install-workflow-state-machine-parity.md) |
 | TS-046 | pkg postinstall이 `Service is disabled`로 실패 | Packaging | active | [pkg postinstall fails when launchd service is disabled](troubleshooting/046_pkg-postinstall-launchd-disabled.md) |
+| TS-047 | Guest log sync service만 Stopped로 남음 | Runtime health | active | [Guest log sync service remains stopped after runtime restart](troubleshooting/047_guest-log-sync-stopped-after-restart.md) |
 
 ## Follow-up 규칙
 

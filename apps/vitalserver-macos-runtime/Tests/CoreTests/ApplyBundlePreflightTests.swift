@@ -7,11 +7,13 @@ final class ApplyBundlePreflightTests: XCTestCase {
     func testRestartPolicyReportsWhetherAnyServiceWasRunning() {
         XCTAssertFalse(RuntimeServiceRestartPolicy(
             restartVM: false,
+            restartGuestLogSync: false,
             restartProxy: false,
             restartWatchdog: false
         ).anyServiceWasRunning)
         XCTAssertTrue(RuntimeServiceRestartPolicy(
             restartVM: false,
+            restartGuestLogSync: false,
             restartProxy: true,
             restartWatchdog: false
         ).anyServiceWasRunning)
@@ -44,6 +46,7 @@ final class ApplyBundlePreflightTests: XCTestCase {
             backup: URL(fileURLWithPath: "/tmp/backup"),
             restartPolicy: RuntimeServiceRestartPolicy(
                 restartVM: true,
+                restartGuestLogSync: true,
                 restartProxy: false,
                 restartWatchdog: true
             )

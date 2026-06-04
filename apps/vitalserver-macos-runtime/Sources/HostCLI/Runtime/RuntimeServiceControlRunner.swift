@@ -21,6 +21,7 @@ struct RuntimeServiceControlRunner {
     private func repairAll() throws {
         let policy = RuntimeServiceRestartPolicy(
             restartVM: true,
+            restartGuestLogSync: true,
             restartProxy: true,
             restartWatchdog: true
         )
@@ -35,6 +36,7 @@ struct RuntimeServiceControlRunner {
     private func startAll() throws {
         let policy = RuntimeServiceRestartPolicy(
             restartVM: true,
+            restartGuestLogSync: true,
             restartProxy: true,
             restartWatchdog: true
         )

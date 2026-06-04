@@ -524,6 +524,8 @@ enum AppConstants {
                 return "Missing VM disk"
             case .vmService(let state):
                 return "VM service \(titleCasedStatus(state))"
+            case .guestLogSyncService(let state):
+                return "Guest log sync service \(titleCasedStatus(state))"
             case .proxyService(let state):
                 return "Host proxy service \(titleCasedStatus(state))"
             case .watchdogService(let state):

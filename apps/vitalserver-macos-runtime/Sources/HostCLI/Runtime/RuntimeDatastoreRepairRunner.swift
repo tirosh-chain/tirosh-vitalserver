@@ -40,6 +40,7 @@ struct RuntimeDatastoreRepairRunner {
         try restartWatchdogService()
         try waitForHealth(RuntimeServiceRestartPolicy(
             restartVM: true,
+            restartGuestLogSync: true,
             restartProxy: true,
             restartWatchdog: true
         ))

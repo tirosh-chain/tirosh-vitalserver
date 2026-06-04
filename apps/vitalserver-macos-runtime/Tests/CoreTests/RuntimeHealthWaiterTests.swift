@@ -11,9 +11,11 @@ final class RuntimeHealthWaiterTests: XCTestCase {
             observe: {
                 RuntimeHealthWaitObservation(
                     vmServiceRequired: true,
+                    guestLogSyncServiceRequired: true,
                     proxyServiceRequired: true,
                     watchdogServiceRequired: true,
                     vmServiceLoaded: true,
+                    guestLogSyncServiceLoaded: true,
                     proxyServiceLoaded: true,
                     watchdogServiceLoaded: true,
                     snapshot: healthySnapshot()
@@ -44,6 +46,26 @@ final class RuntimeHealthWaiterTests: XCTestCase {
 
         XCTAssertEqual(result, .healthy)
         XCTAssertEqual(progressReasons, [[.vmService("not-loaded")]])
+        XCTAssertEqual(sleeps, 1)
+    }
+
+    func testRequiredGuestLogSyncServiceMustLoadBeforeSnapshotIsAccepted() {
+        var observations = [
+            observation(guestLogSyncLoaded: false, snapshot: healthySnapshot()),
+            observation(guestLogSyncLoaded: true, snapshot: healthySnapshot()),
+        ]
+        var progressReasons: [[RuntimeFailureReason]] = []
+        var sleeps = 0
+
+        let result = RuntimeHealthWaiter.wait(
+            configuration: RuntimeHealthWaitConfiguration(maxAttempts: 3, progressEveryAttempts: 5),
+            observe: { observations.removeFirst() },
+            onProgress: { progressReasons.append($0) },
+            sleep: { sleeps += 1 }
+        )
+
+        XCTAssertEqual(result, .healthy)
+        XCTAssertEqual(progressReasons, [[.guestLogSyncService("not-loaded")]])
         XCTAssertEqual(sleeps, 1)
     }
 
@@ -161,15 +183,18 @@ final class RuntimeHealthWaiterTests: XCTestCase {
 
     private func observation(
         vmLoaded: Bool = true,
+        guestLogSyncLoaded: Bool = true,
         proxyLoaded: Bool = true,
         watchdogLoaded: Bool = true,
         snapshot: RuntimeHealthSnapshot
     ) -> RuntimeHealthWaitObservation {
         RuntimeHealthWaitObservation(
             vmServiceRequired: true,
+            guestLogSyncServiceRequired: true,
             proxyServiceRequired: true,
             watchdogServiceRequired: true,
             vmServiceLoaded: vmLoaded,
+            guestLogSyncServiceLoaded: guestLogSyncLoaded,
             proxyServiceLoaded: proxyLoaded,
             watchdogServiceLoaded: watchdogLoaded,
             snapshot: snapshot

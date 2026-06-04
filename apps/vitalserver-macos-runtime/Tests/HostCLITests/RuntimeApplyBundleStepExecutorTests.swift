@@ -15,7 +15,7 @@ final class RuntimeApplyBundleStepExecutorTests: XCTestCase {
             UpdateBundleArtifact(name: Constants.Artifacts.rootfsBase, type: .rootfsBase, sha256: "root", size: 1),
             artifact,
         ], migrations: [migration])
-        let policy = RuntimeServiceRestartPolicy(restartVM: true, restartProxy: false, restartWatchdog: true)
+        let policy = RuntimeServiceRestartPolicy(restartVM: true, restartGuestLogSync: true, restartProxy: false, restartWatchdog: true)
         let preflight = ApplyBundlePreflightContext(
             stagedBundle: stagedBundle,
             manifest: manifest,
@@ -112,7 +112,7 @@ final class RuntimeApplyBundleStepExecutorTests: XCTestCase {
             manifest: manifest(version: "1.2.3"),
             stagedRootfs: nil,
             backup: URL(fileURLWithPath: "/backup"),
-            restartPolicy: RuntimeServiceRestartPolicy(restartVM: false, restartProxy: false, restartWatchdog: false)
+            restartPolicy: RuntimeServiceRestartPolicy(restartVM: false, restartGuestLogSync: false, restartProxy: false, restartWatchdog: false)
         )
 
         try executor.execute(
@@ -131,7 +131,7 @@ final class RuntimeApplyBundleStepExecutorTests: XCTestCase {
             ]),
             stagedRootfs: URL(fileURLWithPath: "/staged/rootfs-base.raw.gz"),
             backup: URL(fileURLWithPath: "/backup"),
-            restartPolicy: RuntimeServiceRestartPolicy(restartVM: false, restartProxy: false, restartWatchdog: false)
+            restartPolicy: RuntimeServiceRestartPolicy(restartVM: false, restartGuestLogSync: false, restartProxy: false, restartWatchdog: false)
         )
         let executor = makeExecutor(replaceFile: { _, _ in throw permissionError })
 
@@ -152,7 +152,7 @@ final class RuntimeApplyBundleStepExecutorTests: XCTestCase {
             manifest: manifest(version: "1.2.3", artifacts: [artifact]),
             stagedRootfs: nil,
             backup: URL(fileURLWithPath: "/backup"),
-            restartPolicy: RuntimeServiceRestartPolicy(restartVM: false, restartProxy: false, restartWatchdog: false)
+            restartPolicy: RuntimeServiceRestartPolicy(restartVM: false, restartGuestLogSync: false, restartProxy: false, restartWatchdog: false)
         )
         let executor = makeExecutor(replaceUpdateArtifacts: { artifacts, stagedBundle in
             XCTAssertEqual(artifacts, [artifact])
@@ -195,7 +195,7 @@ final class RuntimeApplyBundleStepExecutorTests: XCTestCase {
             manifest: manifest(version: "1.2.3"),
             stagedRootfs: URL(fileURLWithPath: "/staged/rootfs-base.raw.gz"),
             backup: URL(fileURLWithPath: "/backup"),
-            restartPolicy: RuntimeServiceRestartPolicy(restartVM: true, restartProxy: false, restartWatchdog: false)
+            restartPolicy: RuntimeServiceRestartPolicy(restartVM: true, restartGuestLogSync: true, restartProxy: false, restartWatchdog: false)
         )
 
         try executor.execute(
@@ -230,7 +230,7 @@ final class RuntimeApplyBundleStepExecutorTests: XCTestCase {
             manifest: manifest(version: "1.2.3"),
             stagedRootfs: URL(fileURLWithPath: "/staged/rootfs-base.raw.gz"),
             backup: URL(fileURLWithPath: "/backup"),
-            restartPolicy: RuntimeServiceRestartPolicy(restartVM: false, restartProxy: false, restartWatchdog: false)
+            restartPolicy: RuntimeServiceRestartPolicy(restartVM: false, restartGuestLogSync: false, restartProxy: false, restartWatchdog: false)
         )
 
         XCTAssertThrowsError(try executor.execute(

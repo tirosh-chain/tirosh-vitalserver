@@ -60,7 +60,7 @@ struct RuntimeVMDiskRepairRunner {
         let archiveDirectory = context.backupsDirectory
             .appendingPathComponent("vm-disk-repair-\(sanitizedTimestamp())")
         let archivedDisk = archiveDirectory.appendingPathComponent(context.vmDisk.lastPathComponent)
-        let restartPolicy = RuntimeServiceRestartPolicy(restartVM: true, restartProxy: true, restartWatchdog: true)
+        let restartPolicy = RuntimeServiceRestartPolicy(restartVM: true, restartGuestLogSync: true, restartProxy: true, restartWatchdog: true)
         var archivedDiskPath: String?
 
         operations.log("vm disk repair requested")

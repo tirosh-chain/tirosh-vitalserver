@@ -61,6 +61,7 @@ public enum RuntimeFailureReason: Codable, Equatable, Sendable {
     case missingRootfsBase
     case missingVMDisk
     case vmService(String)
+    case guestLogSyncService(String)
     case proxyService(String)
     case watchdogService(String)
     case hostProxyHTTP(String)
@@ -192,6 +193,8 @@ public enum RuntimeFailureReason: Codable, Equatable, Sendable {
         default:
             if rawValue.hasPrefix("vm-service-") {
                 self = .vmService(String(rawValue.dropFirst("vm-service-".count)))
+            } else if rawValue.hasPrefix("guest-log-sync-service-") {
+                self = .guestLogSyncService(String(rawValue.dropFirst("guest-log-sync-service-".count)))
             } else if rawValue.hasPrefix("proxy-service-") {
                 self = .proxyService(String(rawValue.dropFirst("proxy-service-".count)))
             } else if rawValue.hasPrefix("watchdog-service-") {
@@ -256,6 +259,8 @@ public enum RuntimeFailureReason: Codable, Equatable, Sendable {
             return "missing-vm-disk"
         case .vmService(let state):
             return "vm-service-\(state)"
+        case .guestLogSyncService(let state):
+            return "guest-log-sync-service-\(state)"
         case .proxyService(let state):
             return "proxy-service-\(state)"
         case .watchdogService(let state):
@@ -534,7 +539,7 @@ public extension RuntimeFailureReason {
             return .vmLifecycle
         case .proxyService, .hostProxyHTTP, .proxyPortInUse:
             return .hostProxy
-        case .watchdogService, .runtimeStatusDocumentMissing, .runtimeStatusDocumentStale,
+        case .guestLogSyncService, .watchdogService, .runtimeStatusDocumentMissing, .runtimeStatusDocumentStale,
              .runtimeStatusDocumentInvalid, .observabilityEventStoreUnavailable, .observabilityEventStoreCorrupt,
              .containerObservationMissing, .containerObservationReadFailed:
             return .observability
@@ -569,7 +574,7 @@ public extension RuntimeFailureReason {
 
     var domainSeverity: RuntimeDomainErrorSeverity {
         switch self {
-        case .redisUIHTTP, .swaggerUIHTTP, .watchdogService, .guestRuntimeStateStale,
+        case .redisUIHTTP, .swaggerUIHTTP, .guestLogSyncService, .watchdogService, .guestRuntimeStateStale,
              .runtimeStatusDocumentStale, .observabilityEventStoreUnavailable,
              .vmLifecycleDocumentStale, .vmPidFileStale, .hostProxyListenerScanFailed,
              .httpProbeTimedOut, .httpProbeConnectionRefused, .guestHTTPProbeFailed,
@@ -598,6 +603,8 @@ public extension RuntimeFailureReason {
             return .restartProxyService
         case .watchdogService:
             return .restartWatchdogService
+        case .guestLogSyncService:
+            return .inspectLogs
         case .runtimeStatusDocumentMissing, .runtimeStatusDocumentStale, .runtimeStatusDocumentInvalid,
              .observabilityEventStoreUnavailable, .observabilityEventStoreCorrupt,
              .containerObservationMissing, .containerObservationReadFailed:

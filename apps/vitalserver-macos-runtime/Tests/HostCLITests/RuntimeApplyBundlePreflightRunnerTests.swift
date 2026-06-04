@@ -58,7 +58,7 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
             },
             serviceRestartPolicy: {
                 events.append("policy")
-                return RuntimeServiceRestartPolicy(restartVM: true, restartProxy: false, restartWatchdog: true)
+                return RuntimeServiceRestartPolicy(restartVM: true, restartGuestLogSync: true, restartProxy: false, restartWatchdog: true)
             },
             runtimeHealthSnapshot: { healthySnapshot() },
             requireGuestCapability: { capability in
@@ -87,6 +87,7 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
         XCTAssertEqual(context.backup, backup)
         XCTAssertEqual(context.restartPolicy, RuntimeServiceRestartPolicy(
             restartVM: true,
+            restartGuestLogSync: true,
             restartProxy: false,
             restartWatchdog: true
         ))
@@ -128,7 +129,7 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
             requireFreeSpace: { _, bytes, _ in requiredSpace = bytes },
             checkCompatibility: { _ in },
             serviceRestartPolicy: {
-                RuntimeServiceRestartPolicy(restartVM: false, restartProxy: true, restartWatchdog: false)
+                RuntimeServiceRestartPolicy(restartVM: false, restartGuestLogSync: false, restartProxy: true, restartWatchdog: false)
             },
             runtimeHealthSnapshot: {
                 XCTFail("runtime health should not be checked when VM is not running")
@@ -176,7 +177,7 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
             requireFreeSpace: { _, _, _ in },
             checkCompatibility: { _ in },
             serviceRestartPolicy: {
-                RuntimeServiceRestartPolicy(restartVM: false, restartProxy: false, restartWatchdog: false)
+                RuntimeServiceRestartPolicy(restartVM: false, restartGuestLogSync: false, restartProxy: false, restartWatchdog: false)
             },
             runtimeHealthSnapshot: {
                 XCTFail("runtime health should not be checked after missing rootfs")
@@ -229,7 +230,7 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
             requireFreeSpace: { _, _, _ in XCTFail("should not check free space") },
             checkCompatibility: { _ in },
             serviceRestartPolicy: {
-                RuntimeServiceRestartPolicy(restartVM: false, restartProxy: false, restartWatchdog: false)
+                RuntimeServiceRestartPolicy(restartVM: false, restartGuestLogSync: false, restartProxy: false, restartWatchdog: false)
             },
             runtimeHealthSnapshot: {
                 XCTFail("runtime health should not be checked after rootfs size read failure")
@@ -274,7 +275,7 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
             requireFreeSpace: { _, _, _ in },
             checkCompatibility: { _ in },
             serviceRestartPolicy: {
-                RuntimeServiceRestartPolicy(restartVM: true, restartProxy: false, restartWatchdog: false)
+                RuntimeServiceRestartPolicy(restartVM: true, restartGuestLogSync: true, restartProxy: false, restartWatchdog: false)
             },
             runtimeHealthSnapshot: { healthySnapshot() },
             requireGuestCapability: { capability in
@@ -318,7 +319,7 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
             checkCompatibility: { _ in events.append("compatibility") },
             serviceRestartPolicy: {
                 events.append("policy")
-                return RuntimeServiceRestartPolicy(restartVM: true, restartProxy: false, restartWatchdog: false)
+                return RuntimeServiceRestartPolicy(restartVM: true, restartGuestLogSync: true, restartProxy: false, restartWatchdog: false)
             },
             runtimeHealthSnapshot: {
                 events.append("health")
@@ -353,7 +354,7 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
             "mkdir",
             "space",
             "policy",
-            "log:runtime services before update vm=loaded proxy=not-loaded watchdog=not-loaded",
+            "log:runtime services before update vm=loaded guestLogSync=loaded proxy=not-loaded watchdog=not-loaded",
             "health",
             "log:bundle apply blocked by VM guest storage health errors=vm-guest-filesystem-error",
         ])

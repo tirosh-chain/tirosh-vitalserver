@@ -62,7 +62,7 @@ struct RuntimeApplyBundlePreflightRunner {
 
         let restartPolicy = serviceRestartPolicy()
         log(
-            "runtime services before update vm=\(restartPolicy.restartVM ? "loaded" : "not-loaded") proxy=\(restartPolicy.restartProxy ? "loaded" : "not-loaded") watchdog=\(restartPolicy.restartWatchdog ? "loaded" : "not-loaded")"
+            "runtime services before update vm=\(restartPolicy.restartVM ? "loaded" : "not-loaded") guestLogSync=\(restartPolicy.restartGuestLogSync ? "loaded" : "not-loaded") proxy=\(restartPolicy.restartProxy ? "loaded" : "not-loaded") watchdog=\(restartPolicy.restartWatchdog ? "loaded" : "not-loaded")"
         )
         if restartPolicy.restartVM {
             try requireRuntimeDiskHealthAllowsUpdate()

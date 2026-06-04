@@ -89,6 +89,7 @@ private final class ApplyBundleHarness {
         backup: URL(fileURLWithPath: "/tmp/backup"),
         restartPolicy: RuntimeServiceRestartPolicy(
             restartVM: true,
+            restartGuestLogSync: true,
             restartProxy: true,
             restartWatchdog: false
         )

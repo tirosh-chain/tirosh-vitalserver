@@ -12,6 +12,7 @@ final class RollbackPreflightTests: XCTestCase {
             restoresRootfsBase: true,
             restartPolicy: RuntimeServiceRestartPolicy(
                 restartVM: true,
+                restartGuestLogSync: true,
                 restartProxy: true,
                 restartWatchdog: false
             )

@@ -167,6 +167,7 @@ final class RuntimeServiceControllerTests: XCTestCase {
 
         XCTAssertNoThrow(try controller.startRuntimeServices(RuntimeServiceRestartPolicy(
             restartVM: true,
+            restartGuestLogSync: true,
             restartProxy: false,
             restartWatchdog: true
         )))
@@ -189,6 +190,35 @@ final class RuntimeServiceControllerTests: XCTestCase {
         XCTAssertEqual(serviceManager.setEnabledValues, [true, true, true])
     }
 
+    func testStartsGuestLogSyncWhenOnlyGuestLogSyncIsRequestedByRestartPolicy() {
+        let serviceManager = ServiceControllerServiceManagerSpy()
+        var loaded = Set<RuntimeManagedService>()
+        serviceManager.onStart = { loaded.insert($0) }
+        let controller = RuntimeServiceController(
+            serviceManager: serviceManager,
+            serviceState: { loaded.contains($0) ? .loaded : .notLoaded },
+            log: { _ in }
+        )
+
+        XCTAssertNoThrow(try controller.startRuntimeServices(RuntimeServiceRestartPolicy(
+            restartVM: false,
+            restartGuestLogSync: true,
+            restartProxy: false,
+            restartWatchdog: false
+        )))
+
+        XCTAssertEqual(serviceManager.startedLabels, [
+            RuntimeManagedService.guestLogSync.label,
+        ])
+        XCTAssertEqual(serviceManager.startedPlists, [
+            RuntimeManagedService.guestLogSync.launchDaemonPlist,
+        ])
+        XCTAssertEqual(serviceManager.setEnabledLabels, [
+            RuntimeManagedService.guestLogSync.label,
+        ])
+        XCTAssertEqual(serviceManager.setEnabledValues, [true])
+    }
+
     func testStartRuntimeServicesFailsWhenLaunchdServiceDoesNotLoad() {
         let serviceManager = ServiceControllerServiceManagerSpy()
         var logs: [String] = []
@@ -200,6 +230,7 @@ final class RuntimeServiceControllerTests: XCTestCase {
 
         XCTAssertThrowsError(try controller.startRuntimeServices(RuntimeServiceRestartPolicy(
             restartVM: true,
+            restartGuestLogSync: true,
             restartProxy: false,
             restartWatchdog: false
         ))) { error in
@@ -229,6 +260,7 @@ final class RuntimeServiceControllerTests: XCTestCase {
 
         XCTAssertThrowsError(try controller.startRuntimeServices(RuntimeServiceRestartPolicy(
             restartVM: true,
+            restartGuestLogSync: true,
             restartProxy: false,
             restartWatchdog: false
         ))) { error in
