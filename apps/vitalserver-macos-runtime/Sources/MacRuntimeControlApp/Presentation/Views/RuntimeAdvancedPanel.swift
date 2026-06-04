@@ -75,6 +75,9 @@ struct RuntimeAdvancedPanel: View {
         .onChange(of: viewModel.settings.proxyPort) { _ in
             viewModel.syncAdvertisedURLWithProxyIfNeeded()
         }
+        .onChange(of: viewModel.settings.runtimeControlPort) { _ in
+            viewModel.syncAdvertisedURLWithProxyIfNeeded()
+        }
     }
 
     private var diagnosticsCard: some View {
@@ -317,25 +320,13 @@ struct RuntimeAdvancedPanel: View {
         }
     }
 
-    private var defaultAdvertisedURLPreview: String {
-        "http://\(AppConstants.Labels.advertisedURLSameHost):\(viewModel.settings.proxyPort)/"
-    }
-
-    private var defaultRemoteConsoleURLPreview: String {
-        "http://\(AppConstants.Labels.advertisedURLSameHost):\(viewModel.settings.runtimeControlPort)/"
-    }
-
     private var advertisedServiceURLFields: some View {
         VStack(alignment: .leading, spacing: 10) {
             settingTextField(AppConstants.Labels.vitalServerAdvertisedURL, text: $viewModel.settings.vitalServerURL)
             settingHelp(AppConstants.Labels.vitalServerURLHelp)
-            advertisedURLPreviewRow(AppConstants.Labels.defaultAdvertisedURL, value: defaultAdvertisedURLPreview)
-            settingHelp(AppConstants.Labels.defaultVitalServerURLHelp)
 
             settingTextField(AppConstants.Labels.remoteConsoleAdvertisedURL, text: $viewModel.settings.remoteConsoleURL)
             settingHelp(AppConstants.Labels.remoteConsoleAdvertisedURLHelp)
-            advertisedURLPreviewRow(AppConstants.Labels.defaultAdvertisedURL, value: defaultRemoteConsoleURLPreview)
-            settingHelp(AppConstants.Labels.defaultRemoteConsoleURLHelp)
         }
     }
 
@@ -472,15 +463,6 @@ struct RuntimeAdvancedPanel: View {
                     .clipShape(RoundedRectangle(cornerRadius: 6))
             }
             settingHelp(help)
-        }
-    }
-
-    private func advertisedURLPreviewRow(_ label: String, value: String) -> some View {
-        settingRow(label) {
-            Text(value)
-                .font(.system(.body, design: .monospaced))
-                .fontWeight(.medium)
-                .textSelection(.enabled)
         }
     }
 

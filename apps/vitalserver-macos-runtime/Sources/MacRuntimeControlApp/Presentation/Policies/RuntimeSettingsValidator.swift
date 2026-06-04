@@ -42,10 +42,8 @@ struct RuntimeSettingsValidator {
 
     private func isValidAdvertisedURL(_ value: String) -> Bool {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.isEmpty {
-            return true
-        }
-        guard trimmed == value,
+        guard !trimmed.isEmpty,
+              trimmed == value,
               isLineSafe(value),
               let components = URLComponents(string: value),
               let scheme = components.scheme?.lowercased(),

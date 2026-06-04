@@ -106,6 +106,9 @@ struct RuntimeSettingsPanel: View {
         .onChange(of: viewModel.settings.proxyPort) { _ in
             viewModel.syncAdvertisedURLWithProxyIfNeeded()
         }
+        .onChange(of: viewModel.settings.runtimeControlPort) { _ in
+            viewModel.syncAdvertisedURLWithProxyIfNeeded()
+        }
     }
 
     @ViewBuilder

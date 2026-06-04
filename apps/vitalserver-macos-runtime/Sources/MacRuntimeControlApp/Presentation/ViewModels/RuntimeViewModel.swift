@@ -135,6 +135,8 @@ final class RuntimeViewModel: ObservableObject {
     let navigationCoordinator = RuntimeViewModelNavigationCoordinator()
     private let settingsValidator = RuntimeSettingsValidator()
     private let vitalFilesDirectoryPolicy = RuntimeVitalFilesDirectoryPolicy()
+    private var lastDefaultVitalServerURL = ""
+    private var lastDefaultRemoteConsoleURL = ""
 
     init(
         controlClient: any RuntimeControlClient,
@@ -168,6 +170,7 @@ final class RuntimeViewModel: ObservableObject {
             initialSettings ?? self.controlClient.loadSettings()
         ) ?? (initialSettings ?? self.controlClient.loadSettings())
         self.settings = initialSettings
+        syncAdvertisedServiceURLDefaults()
         self.installationInfo = self.controlClient.loadInstallInfo()
         self.healthNotifications.configure()
         self.helperMessageLog.append(message)
@@ -334,6 +337,7 @@ final class RuntimeViewModel: ObservableObject {
 
     func syncAdvertisedURLWithProxyIfNeeded() {
         normalizeAdvertisedURLSettings()
+        syncAdvertisedServiceURLDefaults()
     }
 
     func repairProxyPort() async {
@@ -442,11 +446,27 @@ final class RuntimeViewModel: ObservableObject {
     private func loadRuntimeSettings() async {
         let nextSettings = await snapshots.loadSettings()
         settings = nextSettings
+        syncAdvertisedServiceURLDefaults()
     }
 
     private func normalizeAdvertisedURLSettings() {
         settings.publicHost = ""
         settings.publicPort = settings.proxyPort
+    }
+
+    private func syncAdvertisedServiceURLDefaults() {
+        let nextDefaultVitalServerURL = AppConstants.Product.vitalServerURL(proxyPort: settings.proxyPort)
+        let nextDefaultRemoteConsoleURL = AppConstants.Product.remoteConsoleURL(port: settings.runtimeControlPort)
+
+        if settings.vitalServerURL.isEmpty || settings.vitalServerURL == lastDefaultVitalServerURL {
+            settings.vitalServerURL = nextDefaultVitalServerURL
+        }
+        if settings.remoteConsoleURL.isEmpty || settings.remoteConsoleURL == lastDefaultRemoteConsoleURL {
+            settings.remoteConsoleURL = nextDefaultRemoteConsoleURL
+        }
+
+        lastDefaultVitalServerURL = nextDefaultVitalServerURL
+        lastDefaultRemoteConsoleURL = nextDefaultRemoteConsoleURL
     }
 
     func refreshBackupList() async {

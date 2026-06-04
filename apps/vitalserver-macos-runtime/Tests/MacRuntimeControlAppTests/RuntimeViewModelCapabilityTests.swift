@@ -136,8 +136,8 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
 
         XCTAssertEqual(viewModel.settings.publicHost, "")
         XCTAssertEqual(viewModel.settings.publicPort, 18080)
-        XCTAssertEqual(viewModel.settings.vitalServerURL, "")
-        XCTAssertEqual(viewModel.settings.remoteConsoleURL, "")
+        XCTAssertEqual(viewModel.settings.vitalServerURL, "http://127.0.0.1:18080/")
+        XCTAssertEqual(viewModel.settings.remoteConsoleURL, "http://127.0.0.1:18321/")
 
         viewModel.settings.vitalServerURL = "https://vitaldb.tirosh.ai/"
         viewModel.settings.remoteConsoleURL = "https://console.tirosh.ai/"
@@ -148,6 +148,24 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertEqual(viewModel.settings.remoteConsoleURL, "https://console.tirosh.ai/")
         XCTAssertEqual(viewModel.settings.publicHost, "")
         XCTAssertEqual(viewModel.settings.publicPort, 8080)
+    }
+
+    func testApplySettingsRejectsClearedAdvertisedServiceURLs() {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+
+        XCTAssertEqual(viewModel.settings.vitalServerURL, "http://127.0.0.1:80/")
+        XCTAssertEqual(viewModel.settings.remoteConsoleURL, "http://127.0.0.1:18321/")
+
+        viewModel.settings.vitalServerURL = ""
+
+        XCTAssertFalse(viewModel.prepareApplySettings())
+        XCTAssertEqual(viewModel.message, AppConstants.StatusText.invalidAdvertisedURL)
+        XCTAssertEqual(viewModel.settings.vitalServerURL, "")
     }
 
     func testApplySettingsNormalizesLegacyAdvertisedHostFieldsWithoutClearingServiceURLs() {
