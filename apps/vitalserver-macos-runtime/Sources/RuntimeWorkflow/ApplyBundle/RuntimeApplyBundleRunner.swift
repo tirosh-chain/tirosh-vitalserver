@@ -1,19 +1,41 @@
-import Foundation
-import Core
 import Contracts
+import Core
+import Foundation
 
-struct RuntimeApplyBundleRunner {
-    var prepareLogs: () throws -> Void
-    var initialHealthSnapshot: () -> RuntimeHealthSnapshot
-    var preparePreflight: (URL) throws -> ApplyBundlePreflightContext
-    var executeStep: (RuntimeWorkflowStep, ApplyBundlePreflightContext) throws -> Void
-    var rollback: (URL) throws -> Void
-    var startRuntimeServices: (RuntimeServiceRestartPolicy) throws -> Void
-    var statusReporter: RuntimeWorkflowStatusReporter
-    var pruneOldRuntimeArtifacts: () throws -> Void
-    var reasonText: ([RuntimeFailureReason]) -> String
+public struct RuntimeApplyBundleRunner {
+    public var prepareLogs: () throws -> Void
+    public var initialHealthSnapshot: () -> RuntimeHealthSnapshot
+    public var preparePreflight: (URL) throws -> ApplyBundlePreflightContext
+    public var executeStep: (RuntimeWorkflowStep, ApplyBundlePreflightContext) throws -> Void
+    public var rollback: (URL) throws -> Void
+    public var startRuntimeServices: (RuntimeServiceRestartPolicy) throws -> Void
+    public var statusReporter: RuntimeWorkflowStatusReporter
+    public var pruneOldRuntimeArtifacts: () throws -> Void
+    public var reasonText: ([RuntimeFailureReason]) -> String
 
-    func run(bundleURL: URL) throws {
+    public init(
+        prepareLogs: @escaping () throws -> Void,
+        initialHealthSnapshot: @escaping () -> RuntimeHealthSnapshot,
+        preparePreflight: @escaping (URL) throws -> ApplyBundlePreflightContext,
+        executeStep: @escaping (RuntimeWorkflowStep, ApplyBundlePreflightContext) throws -> Void,
+        rollback: @escaping (URL) throws -> Void,
+        startRuntimeServices: @escaping (RuntimeServiceRestartPolicy) throws -> Void,
+        statusReporter: RuntimeWorkflowStatusReporter,
+        pruneOldRuntimeArtifacts: @escaping () throws -> Void,
+        reasonText: @escaping ([RuntimeFailureReason]) -> String
+    ) {
+        self.prepareLogs = prepareLogs
+        self.initialHealthSnapshot = initialHealthSnapshot
+        self.preparePreflight = preparePreflight
+        self.executeStep = executeStep
+        self.rollback = rollback
+        self.startRuntimeServices = startRuntimeServices
+        self.statusReporter = statusReporter
+        self.pruneOldRuntimeArtifacts = pruneOldRuntimeArtifacts
+        self.reasonText = reasonText
+    }
+
+    public func run(bundleURL: URL) throws {
         statusReporter.log("bundle apply started input=\(bundleURL.path)")
         try prepareLogs()
         try statusReporter.write(.updating, operation: .applyBundle, message: "bundle apply started")

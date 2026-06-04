@@ -1,8 +1,8 @@
-import Foundation
-import Core
 import Contracts
+import Core
+import Foundation
+import RuntimeWorkflow
 import XCTest
-@testable import HostCLI
 
 final class RuntimeApplyBundleRunnerTests: XCTestCase {
     func testRunExecutesApplyBundlePlanAndWritesHealthyStatus() throws {

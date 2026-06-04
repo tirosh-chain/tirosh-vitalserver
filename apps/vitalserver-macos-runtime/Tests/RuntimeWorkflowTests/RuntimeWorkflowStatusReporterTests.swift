@@ -1,6 +1,6 @@
-import Core
 import Contracts
-@testable import HostCLI
+import Core
+import RuntimeWorkflow
 import XCTest
 
 final class RuntimeWorkflowStatusReporterTests: XCTestCase {
