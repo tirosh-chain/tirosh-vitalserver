@@ -19,98 +19,7 @@ struct InstalledRuntimeVersionDocument: Encodable {
     let vmDisk: String
 }
 
-struct GuestRuntimeConfigDocument: Codable {
-    var vitalserverHttpPort: Int
-    var redisHost: String
-    var redisPort: Int
-    var trustProxy: Bool
-    var vitalServerURL: String
-    var remoteConsoleURL: String
-    var publicHost: String
-    var publicPort: Int
-    var adminPassword: String
-    var vitalFilesDirectory: String
-    var redisBackupRetentionCount: Int
-    var redisUiPort: Int
-    var swaggerUiPort: Int
-    var testkitEnabled: Bool
-
-    enum CodingKeys: String, CodingKey {
-        case vitalserverHttpPort
-        case redisHost
-        case redisPort
-        case trustProxy
-        case vitalServerURL
-        case remoteConsoleURL
-        case publicHost
-        case publicPort
-        case adminPassword
-        case vitalFilesDirectory
-        case redisBackupRetentionCount
-        case redisUiPort
-        case swaggerUiPort
-        case testkitEnabled
-    }
-
-    init(
-        vitalserverHttpPort: Int,
-        redisHost: String,
-        redisPort: Int,
-        trustProxy: Bool,
-        vitalServerURL: String = "",
-        remoteConsoleURL: String = "",
-        publicHost: String,
-        publicPort: Int,
-        adminPassword: String,
-        vitalFilesDirectory: String,
-        redisBackupRetentionCount: Int,
-        redisUiPort: Int,
-        swaggerUiPort: Int,
-        testkitEnabled: Bool
-    ) {
-        self.vitalserverHttpPort = vitalserverHttpPort
-        self.redisHost = redisHost
-        self.redisPort = redisPort
-        self.trustProxy = trustProxy
-        self.vitalServerURL = vitalServerURL
-        self.remoteConsoleURL = remoteConsoleURL
-        self.publicHost = publicHost
-        self.publicPort = publicPort
-        self.adminPassword = adminPassword
-        self.vitalFilesDirectory = vitalFilesDirectory
-        self.redisBackupRetentionCount = redisBackupRetentionCount
-        self.redisUiPort = redisUiPort
-        self.swaggerUiPort = swaggerUiPort
-        self.testkitEnabled = testkitEnabled
-    }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.vitalserverHttpPort = try container.decode(Int.self, forKey: .vitalserverHttpPort)
-        self.redisHost = try container.decode(String.self, forKey: .redisHost)
-        self.redisPort = try container.decode(Int.self, forKey: .redisPort)
-        self.trustProxy = try container.decode(Bool.self, forKey: .trustProxy)
-        let publicHost = try container.decode(String.self, forKey: .publicHost)
-        let publicPort = try container.decode(Int.self, forKey: .publicPort)
-        self.publicHost = publicHost
-        self.publicPort = publicPort
-        self.vitalServerURL = try container.decodeIfPresent(String.self, forKey: .vitalServerURL)
-            ?? Self.legacyVitalServerURL(publicHost: publicHost, publicPort: publicPort)
-        self.remoteConsoleURL = try container.decodeIfPresent(String.self, forKey: .remoteConsoleURL) ?? ""
-        self.adminPassword = try container.decode(String.self, forKey: .adminPassword)
-        self.vitalFilesDirectory = try container.decode(String.self, forKey: .vitalFilesDirectory)
-        self.redisBackupRetentionCount = try container.decode(
-            Int.self,
-            forKey: .redisBackupRetentionCount
-        )
-        self.redisUiPort = try container.decode(Int.self, forKey: .redisUiPort)
-        self.swaggerUiPort = try container.decode(Int.self, forKey: .swaggerUiPort)
-        self.testkitEnabled = try container.decode(
-            Bool.self,
-            forKey: .testkitEnabled
-        )
-    }
-
+extension GuestRuntimeConfigDocument {
     static func load(from url: URL, fileStore: RuntimeFileReading) throws -> GuestRuntimeConfigDocument {
         guard fileStore.fileExists(url) else {
             throw LauncherError.missingFile(url.path)
@@ -135,45 +44,6 @@ struct GuestRuntimeConfigDocument: Codable {
             redisUiPort: Constants.Guest.redisUIPort,
             swaggerUiPort: Constants.Guest.swaggerUIPort,
             testkitEnabled: Constants.testkitContainerIncluded
-        )
-    }
-
-    private static func legacyVitalServerURL(publicHost: String, publicPort: Int) -> String {
-        guard !publicHost.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return ""
-        }
-        return "http://\(publicHost):\(publicPort)/"
-    }
-}
-
-struct GuestRuntimeSettingsDocument: Codable, Equatable {
-    var vitalServerURL: String
-    var remoteConsoleURL: String
-    var publicHost: String
-    var publicPort: Int
-    var redisBackupRetentionCount: Int
-
-    init(
-        vitalServerURL: String,
-        remoteConsoleURL: String,
-        publicHost: String,
-        publicPort: Int,
-        redisBackupRetentionCount: Int
-    ) {
-        self.vitalServerURL = vitalServerURL
-        self.remoteConsoleURL = remoteConsoleURL
-        self.publicHost = publicHost
-        self.publicPort = publicPort
-        self.redisBackupRetentionCount = redisBackupRetentionCount
-    }
-
-    init(runtimeConfig: GuestRuntimeConfigDocument) {
-        self.init(
-            vitalServerURL: runtimeConfig.vitalServerURL,
-            remoteConsoleURL: runtimeConfig.remoteConsoleURL,
-            publicHost: runtimeConfig.publicHost,
-            publicPort: runtimeConfig.publicPort,
-            redisBackupRetentionCount: runtimeConfig.redisBackupRetentionCount
         )
     }
 }
