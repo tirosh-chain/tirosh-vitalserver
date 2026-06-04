@@ -491,36 +491,32 @@ extension RuntimeLifecycle {
     }
 
     func prepareGuestShutdownForUpdate(manifest: UpdateBundleManifest) throws {
-        try RuntimeGuestShutdownRunner(
-            requireCapability: {
-                try requireGuestCapability(.prepareUpdateShutdown)
-            },
-            createRunDirectory: {
-                try fileStore.createDirectory(at: guestRunDirectory, withIntermediateDirectories: true)
-            },
-            removePreviousResult: {
-                try guestGateway.removeUpdateShutdownResult()
-            },
-            requestID: requestIDAction(),
-            timestamp: isoTimestamp,
-            writeRequest: { request in
-                try guestGateway.writeUpdateShutdownRequest(request)
-            },
-            loadResult: {
-                guestGateway.loadUpdateShutdownResultDocument()
-            },
-            reportProgress: { message in
-                writeRuntimeStatusBestEffort(
-                    .updating,
-                    operation: .applyBundle,
-                    message: message,
-                    writeStatus: runtimeStatusWriterAction(),
-                    log: log
-                )
-            },
-            sleep: workflowPollingSleepAction(),
-            log: log
-        ).prepareForUpdate(version: manifest.version)
+        try RuntimeGuestShutdownWorkflow(
+            context: RuntimeGuestShutdownWorkflowContext(
+                guestRunDirectory: guestRunDirectory,
+                waitTimeoutSeconds: Constants.Runtime.updateShutdownWaitTimeoutSeconds
+            ),
+            operations: RuntimeGuestShutdownWorkflowOperations(
+                requireCapability: {
+                    try requireGuestCapability(.prepareUpdateShutdown)
+                },
+                createDirectory: createDirectoryAction(),
+                removePreviousResult: {
+                    try guestGateway.removeUpdateShutdownResult()
+                },
+                writeRequest: { request in
+                    try guestGateway.writeUpdateShutdownRequest(request)
+                },
+                loadResult: {
+                    guestGateway.loadUpdateShutdownResultDocument()
+                },
+                writeStatus: runtimeStatusWriterAction(),
+                requestID: requestIDAction(),
+                timestamp: isoTimestamp,
+                sleep: workflowPollingSleepAction(),
+                log: log
+            )
+        ).prepareForUpdate(manifest: manifest)
     }
 
     func requireGuestCapability(_ capability: RuntimeGuestCapabilityRequirement) throws {

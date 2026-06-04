@@ -1,6 +1,6 @@
 import Contracts
 import Core
-@testable import HostCLI
+import RuntimeWorkflow
 import XCTest
 
 final class RuntimeGuestShutdownRunnerTests: XCTestCase {
@@ -48,7 +48,9 @@ final class RuntimeGuestShutdownRunnerTests: XCTestCase {
             }
         )
 
-        XCTAssertThrowsError(try runner.prepareForUpdate(version: "1.2.3"))
+        XCTAssertThrowsError(try runner.prepareForUpdate(version: "1.2.3")) { error in
+            XCTAssertEqual(String(describing: error), "backup failed")
+        }
         XCTAssertTrue(events.values.contains("log:guest update shutdown result failed message=backup failed"))
     }
 
@@ -57,7 +59,7 @@ final class RuntimeGuestShutdownRunnerTests: XCTestCase {
         let runner = makeRunner(
             events: events,
             requireCapability: {
-                throw LauncherError.runtimeOperationFailed("guest capability missing: prepare-update-shutdown")
+                throw RuntimeWorkflowError.operationFailed("guest capability missing: prepare-update-shutdown")
             },
             loadResult: { .missing }
         )
@@ -105,7 +107,8 @@ final class RuntimeGuestShutdownRunnerTests: XCTestCase {
             },
             log: { message in
                 events.append("log:\(message)")
-            }
+            },
+            waitTimeoutSeconds: 300
         )
     }
 
