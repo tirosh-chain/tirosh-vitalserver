@@ -24,8 +24,8 @@ final class UpdateBundleArchiveVerifierTests: XCTestCase {
         """, .multipleRootDirectories)
     }
 
-    func testRejectLinksFailsForSymlinkAndHardlinkEntries() {
-        assertRejectLinksError(
+    func testRejectUnsupportedEntryTypesFailsForSymlinkAndHardlinkEntries() {
+        assertRejectUnsupportedEntryError(
             """
             drwxr-xr-x  0 root wheel 0 Jan 1 00:00 update-bundle/
             lrwxr-xr-x  0 root wheel 0 Jan 1 00:00 update-bundle/link
@@ -33,7 +33,7 @@ final class UpdateBundleArchiveVerifierTests: XCTestCase {
             .containsLink("update-bundle.tar.gz")
         )
 
-        assertRejectLinksError(
+        assertRejectUnsupportedEntryError(
             """
             hrwxr-xr-x  0 root wheel 0 Jan 1 00:00 update-bundle/hardlink
             """,
@@ -41,8 +41,17 @@ final class UpdateBundleArchiveVerifierTests: XCTestCase {
         )
     }
 
-    func testRejectLinksAllowsDirectoriesAndRegularFiles() throws {
-        try UpdateBundleArchiveVerifier.rejectLinks(
+    func testRejectUnsupportedEntryTypesFailsForUnsupportedEntryTypes() {
+        assertRejectUnsupportedEntryError(
+            """
+            crw-r--r--  0 root wheel 0 Jan 1 00:00 update-bundle/device
+            """,
+            .containsUnsupportedEntry("update-bundle.tar.gz", "c")
+        )
+    }
+
+    func testRejectUnsupportedEntryTypesAllowsDirectoriesAndRegularFiles() throws {
+        try UpdateBundleArchiveVerifier.rejectUnsupportedEntryTypes(
             verboseListOutput: """
             drwxr-xr-x  0 root wheel 0 Jan 1 00:00 update-bundle/
             -rw-r--r--  0 root wheel 0 Jan 1 00:00 update-bundle/manifest.json
@@ -66,14 +75,14 @@ final class UpdateBundleArchiveVerifierTests: XCTestCase {
         }
     }
 
-    private func assertRejectLinksError(
+    private func assertRejectUnsupportedEntryError(
         _ output: String,
         _ expected: UpdateBundleArchiveVerificationError,
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
         XCTAssertThrowsError(
-            try UpdateBundleArchiveVerifier.rejectLinks(
+            try UpdateBundleArchiveVerifier.rejectUnsupportedEntryTypes(
                 verboseListOutput: output,
                 archiveName: "update-bundle.tar.gz"
             ),

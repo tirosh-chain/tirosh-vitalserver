@@ -63,6 +63,7 @@ struct RuntimeConfigureRunner {
                 maximumDiskGiB: Constants.Defaults.maximumDiskGiB,
                 diskStepGiB: Constants.Defaults.diskStepGiB,
                 maximumRedisBackupRetentionCount: Constants.Defaults.maximumRedisBackupRetentionCount,
+                defaultPublicPort: Constants.Guest.publicPort,
                 sharedNetworkMode: .shared,
                 bridgedNetworkMode: .bridged,
                 vitalFilesDirectoryTag: Constants.Defaults.vitalFilesDirectoryTag,

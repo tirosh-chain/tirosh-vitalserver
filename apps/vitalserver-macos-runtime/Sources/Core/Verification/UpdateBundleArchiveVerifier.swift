@@ -3,6 +3,7 @@ public enum UpdateBundleArchiveVerificationError: Error, Equatable, CustomString
     case unsafePath(String)
     case multipleRootDirectories
     case containsLink(String)
+    case containsUnsupportedEntry(String, String)
 
     public var description: String {
         switch self {
@@ -14,6 +15,8 @@ public enum UpdateBundleArchiveVerificationError: Error, Equatable, CustomString
             return "update bundle archive must contain a single root directory"
         case .containsLink(let archiveName):
             return "update bundle archive must not contain links: \(archiveName)"
+        case .containsUnsupportedEntry(let archiveName, let entryType):
+            return "update bundle archive must contain only regular files and directories: \(archiveName) entryType=\(entryType)"
         }
     }
 }
@@ -53,13 +56,19 @@ public enum UpdateBundleArchiveVerifier {
         return rootName
     }
 
-    public static func rejectLinks(verboseListOutput: String, archiveName: String) throws {
+    public static func rejectUnsupportedEntryTypes(verboseListOutput: String, archiveName: String) throws {
         for line in verboseListOutput.split(whereSeparator: \.isNewline) {
             guard let entryType = line.first else {
                 continue
             }
             if entryType == "l" || entryType == "h" {
                 throw UpdateBundleArchiveVerificationError.containsLink(archiveName)
+            }
+            if entryType != "-" && entryType != "d" {
+                throw UpdateBundleArchiveVerificationError.containsUnsupportedEntry(
+                    archiveName,
+                    String(entryType)
+                )
             }
         }
     }

@@ -71,9 +71,38 @@ final class RuntimeConfigureWorkflowTests: XCTestCase {
         ))) { error in
             XCTAssertEqual(
                 error as? RuntimeConfigureWorkflowError,
-                .invalidArgument("--vitalserver-url must be empty or an absolute http/https URL")
+                .invalidArgument("--vitalserver-url must be an absolute http/https URL")
             )
         }
+    }
+
+    func testRejectsEmptyAdvertisedURL() {
+        let harness = Harness()
+
+        XCTAssertThrowsError(try harness.workflow.configure(RuntimeConfigureWorkflowInput(
+            changes: [.remoteConsoleURL("")]
+        ))) { error in
+            XCTAssertEqual(
+                error as? RuntimeConfigureWorkflowError,
+                .invalidArgument("--remote-console-url must be an absolute http/https URL")
+            )
+        }
+    }
+
+    func testVitalServerHTTPURLWithoutExplicitPortUsesDefaultPublicPort() throws {
+        let harness = Harness()
+
+        _ = try harness.workflow.configure(RuntimeConfigureWorkflowInput(
+            changes: [
+                .publicPort(8080),
+                .vitalServerURL("http://vitaldb.tirosh.ai/"),
+            ]
+        ))
+
+        let guestConfig = try harness.savedGuestConfig()
+        XCTAssertEqual(guestConfig.vitalServerURL, "http://vitaldb.tirosh.ai/")
+        XCTAssertEqual(guestConfig.publicHost, "vitaldb.tirosh.ai")
+        XCTAssertEqual(guestConfig.publicPort, 80)
     }
 
     func testRejectsBridgedModeWithoutInterface() {
@@ -108,6 +137,7 @@ final class RuntimeConfigureWorkflowTests: XCTestCase {
                 maximumDiskGiB: 128,
                 diskStepGiB: 4,
                 maximumRedisBackupRetentionCount: 30,
+                defaultPublicPort: 80,
                 sharedNetworkMode: .shared,
                 bridgedNetworkMode: .bridged,
                 vitalFilesDirectoryTag: "vital-files",

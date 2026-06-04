@@ -3,7 +3,7 @@
 > ID: TS-048  
 > Category: Architecture / Runtime workflow / macOS runtime  
 > Owner: macOS runtime application layer  
-> Status: resolved
+> Status: resolved for HostCLI runtime fragmentation; Application usecase catalog completion remains follow-up
 
 ## Symptoms
 
@@ -86,7 +86,7 @@ Proceed in small, behavior-preserving slices. Do not start with a broad folder r
 
    Record each operation as a usecase with an owner, input contract, output contract, required ports, workflow state, and completion condition.
 
-   Initial usecases:
+   Target usecase catalog:
 
    ```text
    InstallRuntimeUseCase
@@ -98,6 +98,8 @@ Proceed in small, behavior-preserving slices. Do not start with a broad folder r
    RefreshRuntimeHealthUseCase
    UninstallRuntimeUseCase
    ```
+
+   TS-048 introduced the first Application usecases for service control and health operations. The remaining user-visible operations still need dedicated Application usecase contracts in a follow-up refactor; this TS closes the HostCLI fragmentation slice, not the full Clean Architecture endpoint.
 
 2. Stabilize service lifecycle first.
 
@@ -227,4 +229,5 @@ Proceed in small, behavior-preserving slices. Do not start with a broad folder r
 - 2026-06-05: Completed Slice 40 for HostCLI composition naming. Renamed the remaining HostCLI install/bundle `Workflow` facades to `RuntimeInstallComposition` and `RuntimeBundleComposition`, including tests and `RuntimeLifecycle` call sites. This keeps HostCLI searchable as composition/adapters instead of implying it owns workflow rules.
 - 2026-06-05: Completed Slice 41 for configure workflow ownership. Added `RuntimeWorkflow/Configure/RuntimeConfigureWorkflow`, moved configure validation, VM/guest config mutation, settings projection, restart decision, and status-preserving invalid argument failures out of HostCLI. HostCLI now parses CLI arguments, maps them to workflow input, supplies config/file/secret/service ports, and maps workflow invalid arguments back to the existing CLI error shape.
 - 2026-06-05: Completed Slice 42 for watchdog workflow ownership. Moved watchdog orchestration into `RuntimeWorkflow/Watchdog`, with recovery wait and human output injected as context/ports. HostCLI now supplies log preparation, health snapshots, proxy liveness, restart effects, lifecycle/status/event writers, sleep, and printing from the composition boundary.
-- 2026-06-05: TS-048 closeout audit passed. `Core`, `Application`, and `RuntimeWorkflow` do not import HostCLI, HostInfrastructure, Mac adapter, or UI layers. `HostCLI/Runtime` has no remaining `*Policy`, `*Document`, or `*Workflow` declarations in the architectural audit search. Remaining HostCLI runtime code is command parsing, composition, concrete state readers/writers, process/filesystem/launchd adapters, and CLI error/output mapping. RuntimeWorkflow command references such as `runProcess`/`launchctl` are injected ports or explicit context values, not direct process ownership. Full macOS runtime verification passed with 995 tests and 0 failures. TS-048 is resolved; future cleanup should be tracked as narrower follow-up TS entries instead of reopening this fragmentation issue.
+- 2026-06-05: TS-048 closeout audit passed. `Core`, `Application`, and `RuntimeWorkflow` do not import HostCLI, HostInfrastructure, Mac adapter, or UI layers. `HostCLI/Runtime` has no remaining `*Policy`, `*Document`, or `*Workflow` declarations in the architectural audit search. Remaining HostCLI runtime code is command parsing, composition, concrete state readers/writers, process/filesystem/launchd adapters, and CLI error/output mapping. RuntimeWorkflow command references such as `runProcess`/`launchctl` are injected ports or explicit context values, not direct process ownership. Full macOS runtime verification passed with 995 tests and 0 failures. TS-048 is resolved for HostCLI runtime fragmentation; remaining operation-level Application usecase catalog work should be tracked as narrower follow-up TS entries instead of reopening this fragmentation issue.
+- 2026-06-05: Review follow-up clarified the TS-048 completion scope, aligned advertised service URL validation across UI and configure workflow, restored explicit HTTP default public-port behavior, hardened update bundle tar entry validation to reject non-file/non-directory entries, and moved uninstall open-file diagnostics command ownership out of workflow code into explicit diagnostics context.

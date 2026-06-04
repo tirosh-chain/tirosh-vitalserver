@@ -72,6 +72,7 @@ public struct RuntimeConfigureWorkflowContext<NetworkMode: Equatable> {
     public let maximumDiskGiB: Int
     public let diskStepGiB: Int
     public let maximumRedisBackupRetentionCount: Int
+    public let defaultPublicPort: Int
     public let sharedNetworkMode: NetworkMode
     public let bridgedNetworkMode: NetworkMode
     public let vitalFilesDirectoryTag: String
@@ -90,6 +91,7 @@ public struct RuntimeConfigureWorkflowContext<NetworkMode: Equatable> {
         maximumDiskGiB: Int,
         diskStepGiB: Int,
         maximumRedisBackupRetentionCount: Int,
+        defaultPublicPort: Int,
         sharedNetworkMode: NetworkMode,
         bridgedNetworkMode: NetworkMode,
         vitalFilesDirectoryTag: String,
@@ -107,6 +109,7 @@ public struct RuntimeConfigureWorkflowContext<NetworkMode: Equatable> {
         self.maximumDiskGiB = maximumDiskGiB
         self.diskStepGiB = diskStepGiB
         self.maximumRedisBackupRetentionCount = maximumRedisBackupRetentionCount
+        self.defaultPublicPort = defaultPublicPort
         self.sharedNetworkMode = sharedNetworkMode
         self.bridgedNetworkMode = bridgedNetworkMode
         self.vitalFilesDirectoryTag = vitalFilesDirectoryTag
@@ -276,13 +279,13 @@ public struct RuntimeConfigureWorkflow<VMConfig: RuntimeConfigureMutableVMRuntim
             guestConfig.vitalFilesDirectory = context.vitalFilesDirectoryGuestMountPath
         case .vitalServerURL(let value):
             guard isValidAdvertisedURL(value) else {
-                throw invalid("--vitalserver-url must be empty or an absolute http/https URL")
+                throw invalid("--vitalserver-url must be an absolute http/https URL")
             }
             guestConfig.vitalServerURL = value
             applyVitalServerURLCompatibilityFields(value, to: &guestConfig)
         case .remoteConsoleURL(let value):
             guard isValidAdvertisedURL(value) else {
-                throw invalid("--remote-console-url must be empty or an absolute http/https URL")
+                throw invalid("--remote-console-url must be an absolute http/https URL")
             }
             guestConfig.remoteConsoleURL = value
         case .publicHost(let value):
@@ -324,10 +327,10 @@ public struct RuntimeConfigureWorkflow<VMConfig: RuntimeConfigureMutableVMRuntim
     }
 
     private func isValidAdvertisedURL(_ value: String) -> Bool {
-        if value.isEmpty {
-            return true
-        }
-        guard RuntimeTextValidator.isSingleLine(value),
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              trimmed == value,
+              RuntimeTextValidator.isSingleLine(value),
               let components = URLComponents(string: value),
               let scheme = components.scheme?.lowercased(),
               scheme == "http" || scheme == "https",
@@ -355,6 +358,8 @@ public struct RuntimeConfigureWorkflow<VMConfig: RuntimeConfigureMutableVMRuntim
             guestConfig.publicPort = port
         } else if components.scheme?.lowercased() == "https" {
             guestConfig.publicPort = 443
+        } else {
+            guestConfig.publicPort = context.defaultPublicPort
         }
     }
 

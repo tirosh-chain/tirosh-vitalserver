@@ -106,6 +106,35 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
         }
     }
 
+    func testConfigureRejectsEmptyAdvertisedURL() throws {
+        let harness = try Harness()
+
+        XCTAssertThrowsError(try harness.runner.configure(RuntimeConfigureCommand(
+            changes: [.vitalServerURL("")]
+        ))) { error in
+            guard case LauncherError.missingArgument(let message) = error else {
+                return XCTFail("expected missingArgument, got \(error)")
+            }
+            XCTAssertEqual(message, "--vitalserver-url must be an absolute http/https URL")
+        }
+    }
+
+    func testHTTPVitalServerURLWithoutExplicitPortResetsPublicPortToDefault() throws {
+        let harness = try Harness()
+
+        _ = try harness.runner.configure(RuntimeConfigureCommand(
+            changes: [
+                .publicPort(8080),
+                .vitalServerURL("http://vitaldb.tirosh.ai/"),
+            ]
+        ))
+
+        let guestConfig = try GuestRuntimeConfigDocument.load(from: harness.paths.guestRuntimeConfig, fileStore: harness.fileStore)
+        XCTAssertEqual(guestConfig.vitalServerURL, "http://vitaldb.tirosh.ai/")
+        XCTAssertEqual(guestConfig.publicHost, "vitaldb.tirosh.ai")
+        XCTAssertEqual(guestConfig.publicPort, Constants.Guest.publicPort)
+    }
+
     func testConfigureFailsWhenGuestRuntimeConfigIsMissing() throws {
         let harness = try Harness()
         harness.fileStore.files[harness.paths.guestRuntimeConfig] = nil

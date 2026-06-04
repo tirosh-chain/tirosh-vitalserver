@@ -117,7 +117,7 @@ public struct RuntimeBundleMaterializer {
             throw operations.invalidArchiveError(archiveURL)
         }
         do {
-            try UpdateBundleArchiveVerifier.rejectLinks(
+            try UpdateBundleArchiveVerifier.rejectUnsupportedEntryTypes(
                 verboseListOutput: result.stdout,
                 archiveName: archiveURL.lastPathComponent
             )

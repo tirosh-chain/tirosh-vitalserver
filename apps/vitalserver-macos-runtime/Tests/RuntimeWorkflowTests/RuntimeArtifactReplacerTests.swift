@@ -189,6 +189,29 @@ final class RuntimeArtifactReplacerTests: XCTestCase {
         }
     }
 
+    func testReplaceRejectsUnsupportedArchiveEntryTypes() {
+        var outputs: [URL: String] = [:]
+        let replacer = makeReplacer(
+            outputs: { outputs },
+            runProcessToFile: { _, arguments, output in
+                if arguments.first == "-tzf" {
+                    outputs[output] = "VitalServer Helper.app/Contents/Info.plist\n"
+                } else {
+                    outputs[output] = "crw-r--r-- 0 root wheel 0 Jan 1 00:00 VitalServer Helper.app/device\n"
+                }
+            }
+        )
+
+        XCTAssertThrowsError(try replacer.replace([
+            UpdateBundleArtifact(name: "app-bundle.tar.gz", type: .appBundle, sha256: "abc", size: 10),
+        ], stagedBundle: URL(fileURLWithPath: "/bundle"))) { error in
+            XCTAssertEqual(
+                String(describing: error),
+                "bundle verification failed: tar.gz must contain only regular files and directories: app-bundle.tar.gz entryType=c"
+            )
+        }
+    }
+
     func testReplaceLogsValidationTemporaryFileCleanupFailures() throws {
         var outputs: [URL: String] = [:]
         var logs: [String] = []

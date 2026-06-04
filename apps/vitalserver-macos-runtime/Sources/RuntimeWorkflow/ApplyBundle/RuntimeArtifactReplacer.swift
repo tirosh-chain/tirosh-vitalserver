@@ -1,4 +1,5 @@
 import Contracts
+import Core
 import Foundation
 
 public struct RuntimeArtifactReplacementDestinations {
@@ -198,15 +199,27 @@ public struct RuntimeArtifactReplacer {
         }
         try runProcessToFile(rules.tarCommand, ["-tvzf", source.path], verboseOutput)
         let verboseText = try readUTF8Text(verboseOutput)
-        for line in verboseText.split(separator: "\n") {
-            guard let entryType = line.first else {
-                continue
-            }
-            if entryType == "l" || entryType == "h" {
-                throw bundleVerificationFailure(
-                    "tar.gz must not contain links: \(source.lastPathComponent)"
-                )
-            }
+        do {
+            try UpdateBundleArchiveVerifier.rejectUnsupportedEntryTypes(
+                verboseListOutput: verboseText,
+                archiveName: source.lastPathComponent
+            )
+        } catch let error as UpdateBundleArchiveVerificationError {
+            throw bundleVerificationFailure(archiveVerificationFailureMessage(error, source: source))
+        }
+    }
+
+    private func archiveVerificationFailureMessage(
+        _ error: UpdateBundleArchiveVerificationError,
+        source: URL
+    ) -> String {
+        switch error {
+        case .containsLink:
+            return "tar.gz must not contain links: \(source.lastPathComponent)"
+        case .containsUnsupportedEntry(_, let entryType):
+            return "tar.gz must contain only regular files and directories: \(source.lastPathComponent) entryType=\(entryType)"
+        case .emptyArchive, .unsafePath, .multipleRootDirectories:
+            return error.description
         }
     }
 

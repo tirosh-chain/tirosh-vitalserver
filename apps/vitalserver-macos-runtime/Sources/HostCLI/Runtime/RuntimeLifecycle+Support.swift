@@ -296,6 +296,7 @@ extension RuntimeLifecycle {
                 contentsOfDirectory: { url in
                     try fileStore.contentsOfDirectory(at: url, skipsHiddenFiles: false)
                 },
+                openFileDiagnosticExecutable: Constants.Commands.lsof,
                 runProcess: runProcess,
                 log: log
             ),

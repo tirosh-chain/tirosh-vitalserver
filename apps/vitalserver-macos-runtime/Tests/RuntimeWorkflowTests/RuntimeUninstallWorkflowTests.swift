@@ -375,6 +375,7 @@ private final class RuntimeUninstallWorkflowHarness {
                     }
                     return []
                 },
+                openFileDiagnosticExecutable: "/usr/sbin/lsof",
                 runProcess: { _, _ in
                     RuntimeProcessResult(exitCode: 1, stdout: "", stderr: "")
                 },
