@@ -292,7 +292,7 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
         )
 
         XCTAssertThrowsError(try runner.prepare(.specificBackup(backup))) { error in
-            XCTAssertEqual(String(describing: error), String(describing: LauncherError.missingFile(missingRootfs.path)))
+            XCTAssertEqual(String(describing: error), "missing file: \(missingRootfs.path)")
         }
     }
 

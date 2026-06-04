@@ -1,6 +1,6 @@
 import Foundation
 
-enum RuntimeRollbackCommand: Equatable {
+public enum RuntimeRollbackCommand: Equatable {
     case latestBackup
     case specificBackup(URL)
 }
