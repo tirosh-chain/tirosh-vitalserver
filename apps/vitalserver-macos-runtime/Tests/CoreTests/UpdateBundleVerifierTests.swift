@@ -104,6 +104,21 @@ final class UpdateBundleVerifierTests: XCTestCase {
         }
     }
 
+    func testChecksumFileParserBuildsChecksumMapAndIgnoresMalformedLines() {
+        let checksums = UpdateBundleChecksumFileParser.parse(
+            "abc123  rootfs-base.raw.gz\n"
+                + "def456\tmigrations/001.sh\n"
+                + "malformed\n"
+                + "ghi789   artifacts/app.tar.gz   \n"
+        )
+
+        XCTAssertEqual(checksums, [
+            "rootfs-base.raw.gz": "abc123",
+            "migrations/001.sh": "def456",
+            "artifacts/app.tar.gz": "ghi789",
+        ])
+    }
+
     private func manifest(
         schemaVersion: Int = 3,
         product: String = "ai.tirosh.vitalserver.helper",
