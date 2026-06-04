@@ -394,6 +394,18 @@ def main() -> int:
         ),
     )
 
+    runtime_wait_stopped = subparsers.add_parser(
+        "macos-runtime-wait-stopped",
+        help="wait until the VM lifecycle document reports stopped",
+    )
+    runtime_wait_stopped.add_argument("--vm-home", type=Path, required=True)
+    runtime_wait_stopped.add_argument("--timeout", type=int, required=True)
+    runtime_wait_stopped.set_defaults(
+        handler=lambda args: macos_runtime_usecases.wait_stopped(
+            runtime_wait_input(args)
+        ),
+    )
+
     runtime_health = subparsers.add_parser(
         "macos-runtime-health",
         help="check local development VM and proxy health",
