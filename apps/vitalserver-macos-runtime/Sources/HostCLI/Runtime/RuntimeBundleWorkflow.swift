@@ -3,6 +3,7 @@ import Foundation
 import HostInfrastructure
 import Core
 import Contracts
+import RuntimeWorkflow
 
 struct RuntimeBundleWorkflowContext {
     let installedPaths: InstalledRuntimePaths

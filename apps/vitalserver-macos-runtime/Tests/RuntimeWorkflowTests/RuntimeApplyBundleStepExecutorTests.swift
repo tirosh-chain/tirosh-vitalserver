@@ -1,18 +1,18 @@
 import Foundation
 import Core
 import Contracts
-@testable import HostCLI
+import RuntimeWorkflow
 import XCTest
 
 final class RuntimeApplyBundleStepExecutorTests: XCTestCase {
     func testExecuteDispatchesApplyBundleStepsToCollaborators() throws {
         let stagedBundle = URL(fileURLWithPath: "/managed/update-bundle-1.2.3")
-        let stagedRootfs = stagedBundle.appendingPathComponent(Constants.Artifacts.rootfsBase)
+        let stagedRootfs = stagedBundle.appendingPathComponent(rootfsBaseName)
         let rootfsBase = URL(fileURLWithPath: "/runtime/rootfs-base.raw.gz")
         let artifact = UpdateBundleArtifact(name: "app.tar.gz", type: .appBundle, sha256: "abc", size: 10)
         let migration = UpdateBundleMigration(name: "001-test", sha256: "def", size: 20)
         let manifest = manifest(version: "1.2.3", artifacts: [
-            UpdateBundleArtifact(name: Constants.Artifacts.rootfsBase, type: .rootfsBase, sha256: "root", size: 1),
+            UpdateBundleArtifact(name: rootfsBaseName, type: .rootfsBase, sha256: "root", size: 1),
             artifact,
         ], migrations: [migration])
         let policy = RuntimeServiceRestartPolicy(restartVM: true, restartGuestLogSync: true, restartProxy: false, restartWatchdog: true)
@@ -94,6 +94,67 @@ final class RuntimeApplyBundleStepExecutorTests: XCTestCase {
         ])
     }
 
+    func testStopRuntimeServicesUsesDirectStopWhenVMWasNotRunning() throws {
+        var events: [String] = []
+        let executor = makeExecutor(
+            stopRuntimeServices: { events.append("stop") },
+            runningVMProcessID: {
+                events.append("pid")
+                return 123
+            },
+            prepareGuestShutdownForUpdate: { _ in events.append("shutdown") },
+            stopRuntimeServicesAfterGuestPoweroff: { _ in events.append("stop-after-poweroff") }
+        )
+
+        try executor.execute(
+            .stopRuntimeServices,
+            preflight: preflight(restartPolicy: RuntimeServiceRestartPolicy(
+                restartVM: false,
+                restartGuestLogSync: true,
+                restartProxy: false,
+                restartWatchdog: false
+            )),
+            rootfsBase: URL(fileURLWithPath: "/runtime/rootfs-base.raw.gz")
+        )
+
+        XCTAssertEqual(events, ["stop"])
+    }
+
+    func testStopRuntimeServicesClearsGuestShutdownPreparationAfterObservedVMStopFailure() {
+        var events: [String] = []
+        let executor = makeExecutor(
+            runningVMProcessID: {
+                events.append("pid")
+                return 123
+            },
+            prepareGuestShutdownForUpdate: { _ in events.append("shutdown") },
+            stopRuntimeServicesAfterGuestPoweroff: { pid in
+                events.append("stop-after-poweroff:\(pid)")
+                throw TestError.vmStopFailed
+            },
+            clearGuestShutdownPreparation: { events.append("clear-shutdown") }
+        )
+
+        XCTAssertThrowsError(try executor.execute(
+            .stopRuntimeServices,
+            preflight: preflight(restartPolicy: RuntimeServiceRestartPolicy(
+                restartVM: true,
+                restartGuestLogSync: true,
+                restartProxy: false,
+                restartWatchdog: false
+            )),
+            rootfsBase: URL(fileURLWithPath: "/runtime/rootfs-base.raw.gz")
+        )) { error in
+            XCTAssertEqual(error as? TestError, .vmStopFailed)
+        }
+        XCTAssertEqual(events, [
+            "pid",
+            "shutdown",
+            "stop-after-poweroff:123",
+            "clear-shutdown",
+        ])
+    }
+
     func testRootfsReplacementStepSkipsWhenBundleDoesNotIncludeRootfs() throws {
         let executor = RuntimeApplyBundleStepExecutor(
             stopRuntimeServices: {},
@@ -133,7 +194,7 @@ final class RuntimeApplyBundleStepExecutorTests: XCTestCase {
         let preflight = ApplyBundlePreflightContext(
             stagedBundle: URL(fileURLWithPath: "/staged"),
             manifest: manifest(version: "1.2.3", artifacts: [
-                UpdateBundleArtifact(name: Constants.Artifacts.rootfsBase, type: .rootfsBase, sha256: "abc", size: 10),
+                UpdateBundleArtifact(name: rootfsBaseName, type: .rootfsBase, sha256: "abc", size: 10),
             ]),
             stagedRootfs: URL(fileURLWithPath: "/staged/rootfs-base.raw.gz"),
             backup: URL(fileURLWithPath: "/backup"),
@@ -183,7 +244,7 @@ final class RuntimeApplyBundleStepExecutorTests: XCTestCase {
             stopRuntimeServicesAfterGuestPoweroff: { _ in },
             prepareGuestShutdownForUpdate: { _ in },
             clearGuestShutdownPreparation: {
-                throw LauncherError.runtimeOperationFailed("clear failed")
+                throw TestError.clearFailed
             },
             createDirectory: { _, _ in },
             fileSize: { _ in 0 },
@@ -248,6 +309,22 @@ final class RuntimeApplyBundleStepExecutorTests: XCTestCase {
         ))
     }
 
+    private var rootfsBaseName: String {
+        "rootfs-base.raw.gz"
+    }
+
+    private func preflight(
+        restartPolicy: RuntimeServiceRestartPolicy
+    ) -> ApplyBundlePreflightContext {
+        ApplyBundlePreflightContext(
+            stagedBundle: URL(fileURLWithPath: "/staged"),
+            manifest: manifest(version: "1.2.3"),
+            stagedRootfs: URL(fileURLWithPath: "/staged/rootfs-base.raw.gz"),
+            backup: URL(fileURLWithPath: "/backup"),
+            restartPolicy: restartPolicy
+        )
+    }
+
     private func manifest(
         version: String,
         artifacts: [UpdateBundleArtifact] = [],
@@ -255,7 +332,7 @@ final class RuntimeApplyBundleStepExecutorTests: XCTestCase {
     ) -> UpdateBundleManifest {
         UpdateBundleManifest(
             schemaVersion: 3,
-            product: Constants.Product.identifier,
+            product: "test-product",
             helperVersion: version,
             releaseLabel: version,
             targetPlatform: "macos-arm64",
@@ -267,15 +344,20 @@ final class RuntimeApplyBundleStepExecutorTests: XCTestCase {
     }
 
     private func makeExecutor(
+        stopRuntimeServices: @escaping () throws -> Void = {},
+        runningVMProcessID: @escaping () throws -> pid_t = { 123 },
+        prepareGuestShutdownForUpdate: @escaping (UpdateBundleManifest) throws -> Void = { _ in },
+        stopRuntimeServicesAfterGuestPoweroff: @escaping (pid_t) throws -> Void = { _ in },
+        clearGuestShutdownPreparation: @escaping () throws -> Void = {},
         replaceFile: @escaping (URL, URL) throws -> Void = { _, _ in },
         replaceUpdateArtifacts: @escaping ([UpdateBundleArtifact], URL) throws -> Void = { _, _ in }
     ) -> RuntimeApplyBundleStepExecutor {
         RuntimeApplyBundleStepExecutor(
-            stopRuntimeServices: {},
-            runningVMProcessID: { 123 },
-            stopRuntimeServicesAfterGuestPoweroff: { _ in },
-            prepareGuestShutdownForUpdate: { _ in },
-            clearGuestShutdownPreparation: {},
+            stopRuntimeServices: stopRuntimeServices,
+            runningVMProcessID: runningVMProcessID,
+            stopRuntimeServicesAfterGuestPoweroff: stopRuntimeServicesAfterGuestPoweroff,
+            prepareGuestShutdownForUpdate: prepareGuestShutdownForUpdate,
+            clearGuestShutdownPreparation: clearGuestShutdownPreparation,
             createDirectory: { _, _ in },
             fileSize: { _ in 10 },
             replaceFile: replaceFile,
@@ -299,4 +381,9 @@ final class RuntimeApplyBundleStepExecutorTests: XCTestCase {
         XCTAssertEqual(nsError.domain, NSCocoaErrorDomain, file: file, line: line)
         XCTAssertEqual(nsError.code, CocoaError.Code.fileWriteNoPermission.rawValue, file: file, line: line)
     }
+}
+
+private enum TestError: Error, Equatable {
+    case vmStopFailed
+    case clearFailed
 }
