@@ -335,19 +335,16 @@ struct RuntimeInstallWorkflowComposition {
     }
 
     private func startInstalledServices(_ settings: InstallSettings) throws {
-        guard settings.startAfterInstall else {
-            operations.log("start after install disabled")
-            return
-        }
-        if settings.preventSystemSleep {
-            try operations.startLaunchdService(.sleepPrevention)
-        }
-        for service in RuntimeManagedService.startOrder {
-            if service == .proxy {
-                try operations.cleanupHostProxyPortBeforeStart()
-            }
-            try operations.startLaunchdService(service)
-        }
+        try RuntimeInstallServiceStarter(
+            operations: RuntimeInstallServiceStartOperations(
+                startLaunchdService: operations.startLaunchdService,
+                cleanupHostProxyPortBeforeStart: operations.cleanupHostProxyPortBeforeStart,
+                log: operations.log
+            )
+        ).start(input: RuntimeInstallServiceStartInput(
+            startAfterInstall: settings.startAfterInstall,
+            preventSystemSleep: settings.preventSystemSleep
+        ))
     }
 
     private func applyStartOnBootPolicy(_ settings: InstallSettings) throws {
