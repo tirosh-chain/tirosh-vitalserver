@@ -38,7 +38,7 @@ struct RuntimeRollbackWorkflow {
         try runtimeRollbackRunner().run(command)
     }
 
-    private func runtimeRollbackRunner() -> RuntimeRollbackRunner {
+    private func runtimeRollbackRunner() -> RuntimeRollbackRunner<RuntimeRollbackCommand> {
         RuntimeRollbackRunner(
             preparePreflight: prepareRollbackPreflight,
             executeStep: executeRollbackStep,

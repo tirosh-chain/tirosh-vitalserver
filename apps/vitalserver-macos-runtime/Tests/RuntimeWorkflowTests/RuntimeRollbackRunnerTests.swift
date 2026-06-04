@@ -1,7 +1,7 @@
-import Foundation
-import Core
 import Contracts
-@testable import HostCLI
+import Core
+import Foundation
+import RuntimeWorkflow
 import XCTest
 
 final class RuntimeRollbackRunnerTests: XCTestCase {
@@ -67,7 +67,7 @@ private final class RollbackHarness {
         )
     )
 
-    var commandSeen: RuntimeRollbackCommand?
+    var commandSeen: RuntimeRollbackTestCommand?
     var statuses: [(level: RuntimeStatusLevel, operation: RuntimeOperation, message: String)] = []
     var progressEvents: [RuntimeStepExecutionEvent] = []
     var executedSteps: [RuntimeWorkflowStep] = []
@@ -75,7 +75,7 @@ private final class RollbackHarness {
     var preflightError: Error?
     var stepError: Error?
 
-    var runner: RuntimeRollbackRunner {
+    var runner: RuntimeRollbackRunner<RuntimeRollbackTestCommand> {
         RuntimeRollbackRunner(
             preparePreflight: { command in
                 self.commandSeen = command
@@ -104,6 +104,10 @@ private final class RollbackHarness {
             }
         )
     }
+}
+
+private enum RuntimeRollbackTestCommand: Equatable {
+    case specificBackup(URL)
 }
 
 private enum TestRollbackError: Error {

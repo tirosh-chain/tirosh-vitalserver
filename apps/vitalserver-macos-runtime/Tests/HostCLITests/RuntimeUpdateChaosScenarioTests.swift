@@ -2,6 +2,7 @@ import Contracts
 import Core
 import Foundation
 import HostInfrastructure
+import RuntimeWorkflow
 @testable import HostCLI
 import XCTest
 
@@ -198,7 +199,7 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
         var statuses: [(level: RuntimeStatusLevel, operation: RuntimeOperation, message: String)] = []
         var progressEvents: [RuntimeStepExecutionEvent] = []
         var executedSteps: [RuntimeWorkflowStep] = []
-        let runner = RuntimeRollbackRunner(
+        let runner = RuntimeRollbackRunner<RuntimeRollbackCommand>(
             preparePreflight: { _ in preflight },
             executeStep: { step, _ in
                 executedSteps.append(step)
