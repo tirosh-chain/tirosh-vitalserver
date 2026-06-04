@@ -4,16 +4,16 @@ import Contracts
 import RuntimeWorkflow
 
 extension RuntimeLifecycle {
-    func runtimeInstallWorkflow() -> RuntimeInstallWorkflowComposition {
-        RuntimeInstallWorkflowComposition(
-            context: RuntimeInstallWorkflowContext(
+    func runtimeInstallComposition() -> RuntimeInstallComposition {
+        RuntimeInstallComposition(
+            context: RuntimeInstallCompositionContext(
                 paths: paths,
                 installedPaths: installedPaths,
                 productRoot: productRoot,
                 rootfsBase: rootfsBase,
                 vmDisk: vmDisk
             ),
-            operations: RuntimeInstallWorkflowOperations(
+            operations: RuntimeInstallCompositionOperations(
                 fileStore: fileStore,
                 now: { clock.now },
                 freshInstallPreflight: {
@@ -178,6 +178,9 @@ extension RuntimeLifecycle {
 
     func runtimeWatchdogRunner() -> RuntimeWatchdogRunner {
         RuntimeWatchdogRunner(
+            context: RuntimeWatchdogContext(
+                recoveryWaitSeconds: Constants.Runtime.watchdogRecoveryWaitSeconds
+            ),
             actions: RuntimeWatchdogActions(
                 prepareLogs: {
                     do {
@@ -255,7 +258,8 @@ extension RuntimeLifecycle {
                     )
                 }
             ),
-            log: log
+            log: log,
+            printLine: { line in print(line) }
         )
     }
 
@@ -295,9 +299,9 @@ extension RuntimeLifecycle {
         )
     }
 
-    func runtimeBundleWorkflow() -> RuntimeBundleWorkflow {
-        RuntimeBundleWorkflow(
-            context: RuntimeBundleWorkflowContext(
+    func runtimeBundleComposition() -> RuntimeBundleComposition {
+        RuntimeBundleComposition(
+            context: RuntimeBundleCompositionContext(
                 installedPaths: installedPaths,
                 bundlesDirectory: bundlesDirectory,
                 backupsDirectory: backupsDirectory,
@@ -305,7 +309,7 @@ extension RuntimeLifecycle {
                 rootfsBase: rootfsBase,
                 vmDisk: vmDisk
             ),
-            operations: RuntimeBundleWorkflowOperations(
+            operations: RuntimeBundleCompositionOperations(
                 fileStore: fileStore,
                 runtimeHealthSnapshot: runtimeHealthSnapshot,
                 rotateRuntimeLogs: rotateRuntimeLogs,

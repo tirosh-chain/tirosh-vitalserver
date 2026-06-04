@@ -5,7 +5,7 @@ import Core
 import Contracts
 import RuntimeWorkflow
 
-struct RuntimeBundleWorkflowContext {
+struct RuntimeBundleCompositionContext {
     let installedPaths: InstalledRuntimePaths
     let bundlesDirectory: URL
     let backupsDirectory: URL
@@ -14,7 +14,7 @@ struct RuntimeBundleWorkflowContext {
     let vmDisk: URL
 }
 
-struct RuntimeBundleWorkflowOperations {
+struct RuntimeBundleCompositionOperations {
     let fileStore: RuntimeFileStore
     let runtimeHealthSnapshot: () -> RuntimeHealthSnapshot
     let rotateRuntimeLogs: () throws -> Void
@@ -43,9 +43,9 @@ struct RuntimeBundleWorkflowOperations {
     let log: (String) -> Void
 }
 
-struct RuntimeBundleWorkflow {
-    let context: RuntimeBundleWorkflowContext
-    let operations: RuntimeBundleWorkflowOperations
+struct RuntimeBundleComposition {
+    let context: RuntimeBundleCompositionContext
+    let operations: RuntimeBundleCompositionOperations
 
     func verifyBundle(_ bundleURL: URL) throws {
         let result = try runtimeBundlePreparationWorkflow().verifyBundle(bundleURL)

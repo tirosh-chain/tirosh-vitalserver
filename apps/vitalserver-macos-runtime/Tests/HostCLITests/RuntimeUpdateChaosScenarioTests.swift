@@ -336,10 +336,10 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
     private func makeWorkflow(
         fileStore: RuntimeFileStore,
         log: @escaping (String) -> Void = { _ in }
-    ) -> RuntimeBundleWorkflow {
+    ) -> RuntimeBundleComposition {
         let installedPaths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
-        return RuntimeBundleWorkflow(
-            context: RuntimeBundleWorkflowContext(
+        return RuntimeBundleComposition(
+            context: RuntimeBundleCompositionContext(
                 installedPaths: installedPaths,
                 bundlesDirectory: URL(fileURLWithPath: "/product/bundles"),
                 backupsDirectory: URL(fileURLWithPath: "/product/backups"),
@@ -347,7 +347,7 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
                 rootfsBase: URL(fileURLWithPath: "/product/rootfs-base.raw.gz"),
                 vmDisk: URL(fileURLWithPath: "/product/vm-disk.img")
             ),
-            operations: RuntimeBundleWorkflowOperations(
+            operations: RuntimeBundleCompositionOperations(
                 fileStore: fileStore,
                 runtimeHealthSnapshot: { Self.healthSnapshot() },
                 rotateRuntimeLogs: {},

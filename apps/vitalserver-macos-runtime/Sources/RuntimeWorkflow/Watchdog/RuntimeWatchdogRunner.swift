@@ -1,42 +1,101 @@
-import Foundation
-import Core
 import Contracts
+import Core
+import Foundation
 
-struct RuntimeWatchdogActions {
-    let prepareLogs: () throws -> Void
-    let activeManagedOperation: () -> RuntimeOperation?
-    let healthSnapshot: () -> RuntimeHealthSnapshot
-    let proxyLivenessHTTP: (Int) -> String
-    let automaticRecoveryEnabled: () -> Bool
-    let restartVMRuntime: () throws -> Void
-    let restartService: (RuntimeManagedService) throws -> Void
-    let markVMLifecycleRunning: (RuntimeVMLifecycleDocument) throws -> Void
-    let sleep: (TimeInterval) -> Void
-    let writeObservedStatus: (RuntimeStatusLevel, RuntimeOperation, String, RuntimeHealthSnapshot) throws -> Void
-    let recordObservedEvent: (RuntimeStatusLevel, RuntimeOperation, String, RuntimeHealthSnapshot, RuntimeEventType) -> Void
-    let recordLifecycleEvent: (RuntimeOperation, String, RuntimeEventType) -> Void
+public struct RuntimeWatchdogContext: Equatable, Sendable {
+    public let recoveryWaitSeconds: TimeInterval
+
+    public init(recoveryWaitSeconds: TimeInterval) {
+        self.recoveryWaitSeconds = recoveryWaitSeconds
+    }
 }
 
-struct RuntimeWatchdogRunner {
+public struct RuntimeWatchdogActions {
+    public let prepareLogs: () throws -> Void
+    public let activeManagedOperation: () -> RuntimeOperation?
+    public let healthSnapshot: () -> RuntimeHealthSnapshot
+    public let proxyLivenessHTTP: (Int) -> String
+    public let automaticRecoveryEnabled: () -> Bool
+    public let restartVMRuntime: () throws -> Void
+    public let restartService: (RuntimeManagedService) throws -> Void
+    public let markVMLifecycleRunning: (RuntimeVMLifecycleDocument) throws -> Void
+    public let sleep: (TimeInterval) -> Void
+    public let writeObservedStatus: (RuntimeStatusLevel, RuntimeOperation, String, RuntimeHealthSnapshot) throws -> Void
+    public let recordObservedEvent: (
+        RuntimeStatusLevel,
+        RuntimeOperation,
+        String,
+        RuntimeHealthSnapshot,
+        RuntimeEventType
+    ) -> Void
+    public let recordLifecycleEvent: (RuntimeOperation, String, RuntimeEventType) -> Void
+
+    public init(
+        prepareLogs: @escaping () throws -> Void,
+        activeManagedOperation: @escaping () -> RuntimeOperation?,
+        healthSnapshot: @escaping () -> RuntimeHealthSnapshot,
+        proxyLivenessHTTP: @escaping (Int) -> String,
+        automaticRecoveryEnabled: @escaping () -> Bool,
+        restartVMRuntime: @escaping () throws -> Void,
+        restartService: @escaping (RuntimeManagedService) throws -> Void,
+        markVMLifecycleRunning: @escaping (RuntimeVMLifecycleDocument) throws -> Void,
+        sleep: @escaping (TimeInterval) -> Void,
+        writeObservedStatus: @escaping (
+            RuntimeStatusLevel,
+            RuntimeOperation,
+            String,
+            RuntimeHealthSnapshot
+        ) throws -> Void,
+        recordObservedEvent: @escaping (
+            RuntimeStatusLevel,
+            RuntimeOperation,
+            String,
+            RuntimeHealthSnapshot,
+            RuntimeEventType
+        ) -> Void,
+        recordLifecycleEvent: @escaping (RuntimeOperation, String, RuntimeEventType) -> Void
+    ) {
+        self.prepareLogs = prepareLogs
+        self.activeManagedOperation = activeManagedOperation
+        self.healthSnapshot = healthSnapshot
+        self.proxyLivenessHTTP = proxyLivenessHTTP
+        self.automaticRecoveryEnabled = automaticRecoveryEnabled
+        self.restartVMRuntime = restartVMRuntime
+        self.restartService = restartService
+        self.markVMLifecycleRunning = markVMLifecycleRunning
+        self.sleep = sleep
+        self.writeObservedStatus = writeObservedStatus
+        self.recordObservedEvent = recordObservedEvent
+        self.recordLifecycleEvent = recordLifecycleEvent
+    }
+}
+
+public struct RuntimeWatchdogRunner {
+    private let context: RuntimeWatchdogContext
     private let actions: RuntimeWatchdogActions
     private let log: (String) -> Void
+    private let printLine: (String) -> Void
 
-    init(
+    public init(
+        context: RuntimeWatchdogContext,
         actions: RuntimeWatchdogActions,
-        log: @escaping (String) -> Void
+        log: @escaping (String) -> Void,
+        printLine: @escaping (String) -> Void
     ) {
+        self.context = context
         self.actions = actions
         self.log = log
+        self.printLine = printLine
     }
 
-    func run() throws {
+    public func run() throws {
         try actions.prepareLogs()
 
         if let activeOperation = actions.activeManagedOperation() {
             let message = "watchdog skipped during active runtime operation operation=\(activeOperation.rawValue)"
             log(message)
             actions.recordLifecycleEvent(.watchdog, message, .watchdogSkipped)
-            print("watchdog: skipped active operation")
+            printLine("watchdog: skipped active operation")
             return
         }
 
@@ -44,7 +103,7 @@ struct RuntimeWatchdogRunner {
         if RuntimeHealthSnapshotPolicy.isHealthy(initial) {
             let finalized = completeHealthyVMLifecycleIfNeeded(initial)
             try actions.writeObservedStatus(.healthy, .watchdog, "runtime watchdog passed", finalized)
-            print("watchdog: ok")
+            printLine("watchdog: ok")
             return
         }
 
@@ -68,7 +127,7 @@ struct RuntimeWatchdogRunner {
         case .healthy:
             let finalized = completeHealthyVMLifecycleIfNeeded(initial)
             try actions.writeObservedStatus(.healthy, .watchdog, "runtime watchdog passed", finalized)
-            print("watchdog: ok")
+            printLine("watchdog: ok")
             return
 
         case .recoveryDisabled(let reason):
@@ -80,7 +139,7 @@ struct RuntimeWatchdogRunner {
                 "watchdog detected unhealthy runtime; automatic recovery is disabled: \(reason)",
                 initial
             )
-            print("watchdog: recovery disabled")
+            printLine("watchdog: recovery disabled")
             return
 
         case .recoveryDeferred(let reason):
@@ -100,7 +159,7 @@ struct RuntimeWatchdogRunner {
                 "watchdog cannot recover missing installed artifacts: \(reason)",
                 initial
             )
-            print("watchdog: critical")
+            printLine("watchdog: critical")
             return
 
         case .recover(let reason, let recoveryPlan):
@@ -124,7 +183,7 @@ struct RuntimeWatchdogRunner {
             snapshot,
             .recoverySuppressed
         )
-        print("watchdog: suppressed")
+        printLine("watchdog: suppressed")
     }
 
     private func completeHealthyVMLifecycleIfNeeded(_ snapshot: RuntimeHealthSnapshot) -> RuntimeHealthSnapshot {
@@ -158,7 +217,7 @@ struct RuntimeWatchdogRunner {
             snapshot,
             .recoveryDeferred
         )
-        print("watchdog: deferred")
+        printLine("watchdog: deferred")
     }
 
     private func recover(
@@ -204,7 +263,7 @@ struct RuntimeWatchdogRunner {
                     initial,
                     .runtimeCommandFailed
                 )
-                print("watchdog: critical")
+                printLine("watchdog: critical")
                 return
             }
         }
@@ -229,16 +288,16 @@ struct RuntimeWatchdogRunner {
                     initial,
                     .runtimeCommandFailed
                 )
-                print("watchdog: critical")
+                printLine("watchdog: critical")
                 return
             }
         }
 
-        actions.sleep(Constants.Runtime.watchdogRecoveryWaitSeconds)
+        actions.sleep(context.recoveryWaitSeconds)
         let recovered = actions.healthSnapshot()
         if RuntimeHealthSnapshotPolicy.isHealthy(recovered) {
             try actions.writeObservedStatus(.healthy, .watchdog, "watchdog recovery completed", recovered)
-            print("watchdog: recovered")
+            printLine("watchdog: recovered")
         } else {
             try actions.writeObservedStatus(
                 .critical,
@@ -246,7 +305,7 @@ struct RuntimeWatchdogRunner {
                 "watchdog recovery failed: \(reasonText(recovered.failureReasons))",
                 recovered
             )
-            print("watchdog: critical")
+            printLine("watchdog: critical")
         }
     }
 

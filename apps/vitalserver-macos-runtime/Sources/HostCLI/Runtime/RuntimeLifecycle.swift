@@ -137,11 +137,11 @@ struct RuntimeLifecycle {
     }
 
     func install() throws {
-        try runtimeInstallWorkflow().install()
+        try runtimeInstallComposition().install()
     }
 
     func installProvision() throws {
-        try runtimeInstallWorkflow().installProvision()
+        try runtimeInstallComposition().installProvision()
     }
 
     func preinstallCheck() throws {
@@ -198,16 +198,16 @@ struct RuntimeLifecycle {
     }
 
     func verifyBundle(_ bundleURL: URL) throws {
-        try runtimeBundleWorkflow().verifyBundle(bundleURL)
+        try runtimeBundleComposition().verifyBundle(bundleURL)
     }
 
     @discardableResult
     func stageBundle(_ bundleURL: URL) throws -> URL {
-        try runtimeBundleWorkflow().stageBundle(bundleURL)
+        try runtimeBundleComposition().stageBundle(bundleURL)
     }
 
     func applyBundle(_ bundleURL: URL) throws {
-        try runtimeBundleWorkflow().applyBundle(bundleURL)
+        try runtimeBundleComposition().applyBundle(bundleURL)
     }
 
     func repairDatastore() throws {

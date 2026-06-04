@@ -6,7 +6,7 @@ import RuntimeWorkflow
 @testable import HostCLI
 import XCTest
 
-final class RuntimeBundleWorkflowTests: XCTestCase {
+final class RuntimeBundleCompositionTests: XCTestCase {
     func testRemoveMaterializedBundleTemporaryRootRecordsCleanupFailure() {
         let fileStore = RuntimeFileStoreSpy()
         fileStore.removeItemError = CocoaError(.fileWriteNoPermission)
@@ -64,10 +64,10 @@ final class RuntimeBundleWorkflowTests: XCTestCase {
         fileStore: RuntimeFileStore,
         rotateRuntimeLogs: @escaping () throws -> Void = {},
         log: @escaping (String) -> Void = { _ in }
-    ) -> RuntimeBundleWorkflow {
+    ) -> RuntimeBundleComposition {
         let installedPaths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
-        return RuntimeBundleWorkflow(
-            context: RuntimeBundleWorkflowContext(
+        return RuntimeBundleComposition(
+            context: RuntimeBundleCompositionContext(
                 installedPaths: installedPaths,
                 bundlesDirectory: URL(fileURLWithPath: "/product/bundles"),
                 backupsDirectory: URL(fileURLWithPath: "/product/backups"),
@@ -75,7 +75,7 @@ final class RuntimeBundleWorkflowTests: XCTestCase {
                 rootfsBase: URL(fileURLWithPath: "/product/rootfs-base.raw.gz"),
                 vmDisk: URL(fileURLWithPath: "/product/vm-disk.img")
             ),
-            operations: RuntimeBundleWorkflowOperations(
+            operations: RuntimeBundleCompositionOperations(
                 fileStore: fileStore,
                 runtimeHealthSnapshot: { Self.healthSnapshot() },
                 rotateRuntimeLogs: rotateRuntimeLogs,

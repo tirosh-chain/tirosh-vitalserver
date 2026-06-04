@@ -181,3 +181,44 @@ extension VMRuntimeConfig: RuntimeInstallMutableVMRuntimeConfiguration {
         )
     }
 }
+
+extension VMRuntimeConfig: RuntimeConfigureMutableVMRuntimeConfiguration {
+    var configureCPUCount: Int {
+        get { cpuCount }
+        set { cpuCount = newValue }
+    }
+
+    var configureMemoryMiB: UInt64 {
+        get { memoryMiB }
+        set { memoryMiB = newValue }
+    }
+
+    var configureNetworkMode: NetworkMode {
+        get { network.mode }
+        set { network.mode = newValue }
+    }
+
+    var configureBridgedInterface: String? {
+        get { network.bridgedInterface }
+        set { network.bridgedInterface = newValue }
+    }
+
+    var configureAutoRecoveryEnabled: Bool? {
+        get { autoRecoveryEnabled }
+        set { autoRecoveryEnabled = newValue }
+    }
+
+    var configurePreventSystemSleep: Bool? {
+        get { preventSystemSleep }
+        set { preventSystemSleep = newValue }
+    }
+
+    mutating func setConfigureVitalFilesDirectory(_ directory: RuntimeSharedDirectoryConfiguration) {
+        vitalFilesDirectory = SharedDirectoryConfig(
+            hostPath: directory.hostPath,
+            tag: directory.tag,
+            guestMountPath: directory.guestMountPath,
+            readOnly: directory.readOnly
+        )
+    }
+}

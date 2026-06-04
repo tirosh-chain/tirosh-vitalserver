@@ -4,7 +4,7 @@ import Core
 import Contracts
 import RuntimeWorkflow
 
-struct RuntimeInstallWorkflowContext {
+struct RuntimeInstallCompositionContext {
     let paths: LauncherPaths
     let installedPaths: InstalledRuntimePaths
     let productRoot: URL
@@ -12,7 +12,7 @@ struct RuntimeInstallWorkflowContext {
     let vmDisk: URL
 }
 
-struct RuntimeInstallWorkflowOperations {
+struct RuntimeInstallCompositionOperations {
     let fileStore: RuntimeFileStore
     let now: () -> Date
     let freshInstallPreflight: () -> RuntimeFreshInstallPreflightDocument
@@ -32,12 +32,12 @@ struct RuntimeInstallWorkflowOperations {
     let log: (String) -> Void
 }
 
-struct RuntimeInstallWorkflowComposition {
-    let context: RuntimeInstallWorkflowContext
-    let operations: RuntimeInstallWorkflowOperations
+struct RuntimeInstallComposition {
+    let context: RuntimeInstallCompositionContext
+    let operations: RuntimeInstallCompositionOperations
 
     func install() throws {
-        try runtimeInstallWorkflow().run(RuntimeInstallCommand(
+        try runtimeInstallComposition().run(RuntimeInstallCommand(
             mode: .full,
             plan: RuntimeOperationPlans.install,
             completionStatus: .healthy,
@@ -46,7 +46,7 @@ struct RuntimeInstallWorkflowComposition {
     }
 
     func installProvision() throws {
-        try runtimeInstallWorkflow().run(RuntimeInstallCommand(
+        try runtimeInstallComposition().run(RuntimeInstallCommand(
             mode: .provision,
             plan: RuntimeOperationPlans.installProvision,
             completionStatus: .degraded,
@@ -54,7 +54,7 @@ struct RuntimeInstallWorkflowComposition {
         ))
     }
 
-    private func runtimeInstallWorkflow() -> RuntimeInstallWorkflow<InstallSettings> {
+    private func runtimeInstallComposition() -> RuntimeInstallWorkflow<InstallSettings> {
         RuntimeInstallWorkflow(
             readers: RuntimeInstallStateReaders(
                 loadSettings: {
