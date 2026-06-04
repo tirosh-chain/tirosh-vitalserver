@@ -102,11 +102,13 @@ uv가 설치된 개발 환경에서는 기존처럼 workspace source를 우선 �
 ## 자주 쓰는 명령
 
 ```sh
-make help            # 자주 쓰는 명령 확인
-make help-runtime    # macOS runtime/package/update/VM 명령 확인
-make help-devtools   # 저수준 build/debug/troubleshooting 명령 확인
-make doctor          # 로컬 도구와 submodule 상태 확인
-make bootstrap       # .env, submodule, proxy config, 선택적 Python workspace 준비
+make help           # 간단한 시작 메뉴 확인
+make help/run       # app, Compose, Swagger 명령 확인
+make help/dist      # macOS package/update 배포 명령 확인
+make help/runtime   # macOS runtime lifecycle 명령 확인
+make help/devtools  # 저수준 build/debug/troubleshooting 명령 확인
+make doctor         # 로컬 도구와 submodule 상태 확인
+make bootstrap      # .env, submodule, proxy config, 선택적 Python workspace 준비
 make testkit/install-release  # uv 없이 release wheel 기반 testkit 설치
 make app/up              # macOS host proxy와 VitalServer stack 실행
 make app/down            # proxy와 Compose stack 중지, Docker volume 유지
@@ -125,8 +127,9 @@ make runtime/chaos/loop  # deterministic chaos scenario 반복 실행
 make dev/check           # lint, typecheck, test 실행
 ```
 
-macOS runtime 설치물, offline update bundle, 개발 VM PoC 관련 명령은 `make help-runtime`에 모아 둡니다.
-proxy 세부 조작이나 VM 단계별 build/debug target은 일반 실행 경로가 아니므로 `make help-devtools`에서
+macOS runtime 설치물, offline update bundle, 개발 VM PoC 관련 명령은 `make help/runtime`과
+`make help/dist`에 모아 둡니다. proxy 세부 조작이나 VM 단계별 build/debug target은 일반 실행 경로가
+아니므로 `make help/proxy`와 `make help/devtools`에서
 확인합니다.
 
 Swagger UI는 아래 주소에서 볼 수 있습니다.
