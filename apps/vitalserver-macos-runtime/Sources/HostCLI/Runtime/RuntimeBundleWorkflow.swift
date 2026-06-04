@@ -137,20 +137,39 @@ struct RuntimeBundleWorkflow {
     }
 
     private func materializeBundleInput(_ bundleURL: URL) throws -> MaterializedBundleInput {
-        if directoryExists(bundleURL) {
-            return MaterializedBundleInput(bundleURL: bundleURL, cleanup: nil)
-        }
-        guard fileExists(bundleURL), isUpdateBundleArchive(bundleURL) else {
-            throw LauncherError.missingFile(bundleURL.path)
-        }
-
-        let temporaryRoot = operations.fileStore.temporaryDirectory
-            .appendingPathComponent("tirosh-update-bundle-\(UUID().uuidString)", isDirectory: true)
-        try operations.fileStore.createDirectory(at: temporaryRoot, withIntermediateDirectories: true)
-        let extractedBundle = try extractBundleArchive(bundleURL, to: temporaryRoot)
+        let materialized = try RuntimeBundleMaterializer(
+            context: RuntimeBundleMaterializationContext(
+                tarExecutable: Constants.Commands.tar
+            ),
+            operations: RuntimeBundleMaterializationOperations(
+                directoryExists: directoryExists,
+                fileExists: fileExists,
+                temporaryRoot: {
+                    operations.fileStore.temporaryDirectory
+                        .appendingPathComponent("tirosh-update-bundle-\(UUID().uuidString)", isDirectory: true)
+                },
+                createDirectory: { url, withIntermediateDirectories in
+                    try operations.fileStore.createDirectory(at: url, withIntermediateDirectories: withIntermediateDirectories)
+                },
+                runProcess: operations.runProcess,
+                runRequired: operations.runRequired,
+                missingFileError: { url in
+                    LauncherError.missingFile(url.path)
+                },
+                invalidArchiveError: { url in
+                    LauncherError.bundleVerificationFailed("invalid update bundle archive: \(url.path)")
+                },
+                archiveValidationError: { error in
+                    LauncherError.bundleVerificationFailed(error.description)
+                },
+                log: operations.log
+            )
+        ).materialize(bundleURL)
         return MaterializedBundleInput(
-            bundleURL: extractedBundle,
-            cleanup: { removeMaterializedBundleTemporaryRoot(temporaryRoot) }
+            bundleURL: materialized.bundleURL,
+            cleanup: materialized.temporaryRoot.map { temporaryRoot in
+                { removeMaterializedBundleTemporaryRoot(temporaryRoot) }
+            }
         )
     }
 
@@ -160,54 +179,6 @@ struct RuntimeBundleWorkflow {
         } catch {
             operations.log("bundle temporary directory cleanup failed path=\(temporaryRoot.path) error=\(error)")
         }
-    }
-
-    private func extractBundleArchive(_ archiveURL: URL, to temporaryRoot: URL) throws -> URL {
-        let listResult = operations.runProcess(Constants.Commands.tar, ["-tzf", archiveURL.path])
-        guard listResult.exitCode == 0 else {
-            let stderr = listResult.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !stderr.isEmpty {
-                operations.log("bundle archive list failed stderr=\(stderr)")
-            }
-            throw LauncherError.bundleVerificationFailed("invalid update bundle archive: \(archiveURL.path)")
-        }
-
-        let rootName = try archiveRootDirectory(listResult.stdout)
-        try validateBundleArchiveEntryTypes(archiveURL)
-        try operations.runRequired(Constants.Commands.tar, ["-xzf", archiveURL.path, "-C", temporaryRoot.path])
-        let extractedBundle = temporaryRoot.appendingPathComponent(rootName, isDirectory: true)
-        guard directoryExists(extractedBundle) else {
-            throw LauncherError.missingFile(extractedBundle.path)
-        }
-        operations.log("bundle archive extracted source=\(archiveURL.path) destination=\(extractedBundle.path)")
-        return extractedBundle
-    }
-
-    private func archiveRootDirectory(_ output: String) throws -> String {
-        do {
-            return try UpdateBundleArchiveVerifier.rootDirectory(listOutput: output)
-        } catch let error as UpdateBundleArchiveVerificationError {
-            throw LauncherError.bundleVerificationFailed(error.description)
-        }
-    }
-
-    private func validateBundleArchiveEntryTypes(_ archiveURL: URL) throws {
-        let result = operations.runProcess(Constants.Commands.tar, ["-tvzf", archiveURL.path])
-        guard result.exitCode == 0 else {
-            throw LauncherError.bundleVerificationFailed("invalid update bundle archive: \(archiveURL.path)")
-        }
-        do {
-            try UpdateBundleArchiveVerifier.rejectLinks(
-                verboseListOutput: result.stdout,
-                archiveName: archiveURL.lastPathComponent
-            )
-        } catch let error as UpdateBundleArchiveVerificationError {
-            throw LauncherError.bundleVerificationFailed(error.description)
-        }
-    }
-
-    private func isUpdateBundleArchive(_ url: URL) -> Bool {
-        url.lastPathComponent.hasSuffix(".tar.gz") || url.lastPathComponent.hasSuffix(".tgz")
     }
 
     private func compressedBundleSize(_ url: URL) throws -> UInt64 {
