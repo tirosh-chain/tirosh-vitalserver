@@ -89,6 +89,57 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         XCTAssertEqual(vitalServer.severity, .warning)
     }
 
+    func testAdvancedServiceHealthShowsUpdatingForTransientServiceChangesDuringUpdate() {
+        let status = RuntimeStatus(
+            runtimeInstalled: true,
+            vmServiceLoaded: false,
+            proxyServiceLoaded: false,
+            guestLogSyncServiceLoaded: false,
+            sleepPreventionServiceLoaded: false,
+            watchdogServiceLoaded: true,
+            runtimeState: .updating,
+            operation: .applyBundle,
+            guestHTTP: "000failed",
+            hostProxyHTTP: nil,
+            redisUIHTTP: "503",
+            swaggerUIHTTP: nil
+        )
+        let observation = RuntimeContainerObservation(
+            auditProxyHTTP: "000",
+            auditProxyStatus: nil,
+            containerLogsPresent: false,
+            containerLogsBytes: 0,
+            composeServices: []
+        )
+
+        let serviceHealth = policy.advancedServiceHealth(status: status, observation: observation)
+
+        XCTAssertEqual(item(AppConstants.Labels.vmService, in: serviceHealth)?.value.text, AppConstants.StatusText.updating)
+        XCTAssertEqual(item(AppConstants.Labels.proxyService, in: serviceHealth)?.value.text, AppConstants.StatusText.updating)
+        XCTAssertEqual(item(AppConstants.Labels.watchdogService, in: serviceHealth)?.value.text, AppConstants.StatusText.updating)
+        XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: serviceHealth)?.value.text, AppConstants.StatusText.updating)
+        XCTAssertEqual(item(GeneratedRelease.hostProxyName, in: serviceHealth)?.value.text, AppConstants.StatusText.updating)
+        XCTAssertEqual(item(AppConstants.Labels.vitalDBObserver, in: serviceHealth)?.value.text, AppConstants.StatusText.updating)
+        XCTAssertEqual(item(GeneratedRelease.redisUIName, in: serviceHealth)?.value.text, AppConstants.StatusText.updating)
+    }
+
+    func testAdvancedServiceHealthPreservesServiceStateReadFailuresDuringUpdate() {
+        let status = RuntimeStatus(
+            runtimeInstalled: true,
+            vmServiceState: .permissionDenied("launchctl denied"),
+            proxyServiceState: .readFailed("launchctl failed"),
+            guestLogSyncServiceState: .unknown("paused"),
+            runtimeState: .updating,
+            operation: .applyBundle
+        )
+
+        let serviceHealth = policy.advancedServiceHealth(status: status, observation: nil)
+
+        XCTAssertEqual(item(AppConstants.Labels.vmService, in: serviceHealth)?.value.text, "Permission denied")
+        XCTAssertEqual(item(AppConstants.Labels.proxyService, in: serviceHealth)?.value.text, "Read failed")
+        XCTAssertEqual(item(AppConstants.Labels.guestLogSyncService, in: serviceHealth)?.value.text, "Paused")
+    }
+
     func testOverallHealthDoesNotInferStartingWhenRuntimeStateIsMissing() {
         let status = RuntimeStatus(
             runtimeInstalled: true,

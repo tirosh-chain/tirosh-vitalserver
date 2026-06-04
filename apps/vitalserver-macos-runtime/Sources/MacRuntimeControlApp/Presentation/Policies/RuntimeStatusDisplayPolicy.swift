@@ -283,7 +283,8 @@ struct RuntimeStatusDisplayPolicy {
     }
 
     func advancedServiceHealth(status: RuntimeStatus, observation: RuntimeContainerObservation?, now: Date = Date()) -> [ServiceHealthItem] {
-        [
+        let updateInProgress = RuntimeActiveOperationPolicy.isUpdateInProgress(status)
+        return [
             serviceStateItem(
                 AppConstants.Labels.runtimeInstallation,
                 isHealthy: status.runtimeInstalled,
@@ -292,57 +293,67 @@ struct RuntimeStatusDisplayPolicy {
             serviceStateItem(
                 AppConstants.Labels.vmService,
                 state: status.vmServiceState,
-                fallbackLoaded: status.vmServiceLoaded
+                fallbackLoaded: status.vmServiceLoaded,
+                updateInProgress: updateInProgress
             ),
             serviceStateItem(
                 AppConstants.Labels.proxyService,
                 state: status.proxyServiceState,
-                fallbackLoaded: status.proxyServiceLoaded
+                fallbackLoaded: status.proxyServiceLoaded,
+                updateInProgress: updateInProgress
             ),
             serviceStateItem(
                 AppConstants.Labels.guestLogSyncService,
                 state: status.guestLogSyncServiceState,
-                fallbackLoaded: status.guestLogSyncServiceLoaded
+                fallbackLoaded: status.guestLogSyncServiceLoaded,
+                updateInProgress: updateInProgress
             ),
             serviceStateItem(
                 AppConstants.Labels.sleepPreventionService,
                 state: status.sleepPreventionServiceState,
-                fallbackLoaded: status.sleepPreventionServiceLoaded
+                fallbackLoaded: status.sleepPreventionServiceLoaded,
+                updateInProgress: updateInProgress
             ),
             serviceStateItem(
                 AppConstants.Labels.watchdogService,
                 state: status.watchdogServiceState,
-                fallbackLoaded: status.watchdogServiceLoaded
+                fallbackLoaded: status.watchdogServiceLoaded,
+                updateInProgress: updateInProgress
             ),
             httpServiceItem(
                 GeneratedRelease.vitalServerName,
                 httpStatus: status.guestHTTP,
                 uptimeText: uptimeText(for: .vitalServer, observation: observation, now: now),
-                action: .openVitalServer
+                action: .openVitalServer,
+                updateInProgress: updateInProgress
             ),
             httpServiceItem(
                 GeneratedRelease.hostProxyName,
                 httpStatus: status.hostProxyHTTP,
                 uptimeText: uptimeText(for: .networkAccess, observation: observation, now: now),
-                action: .openVitalServer
+                action: .openVitalServer,
+                updateInProgress: updateInProgress
             ),
             composeServiceItem(
                 AppConstants.Labels.vitalDBObserver,
                 service: .vitalDBObserver,
                 observation: observation,
-                now: now
+                now: now,
+                updateInProgress: updateInProgress
             ),
             httpServiceItem(
                 GeneratedRelease.redisUIName,
                 httpStatus: status.redisUIHTTP,
                 uptimeText: uptimeText(for: .redisUI, observation: observation, now: now),
-                action: .openRedisUI
+                action: .openRedisUI,
+                updateInProgress: updateInProgress
             ),
             httpServiceItem(
                 GeneratedRelease.swaggerUIName,
                 httpStatus: status.swaggerUIHTTP,
                 uptimeText: uptimeText(for: .swaggerUI, observation: observation, now: now),
-                action: .openSwagger
+                action: .openSwagger,
+                updateInProgress: updateInProgress
             ),
         ]
     }
@@ -394,9 +405,14 @@ struct RuntimeStatusDisplayPolicy {
     private func serviceStateItem(
         _ label: String,
         state: RuntimeServiceState?,
-        fallbackLoaded: Bool?
+        fallbackLoaded: Bool?,
+        updateInProgress: Bool = false
     ) -> ServiceHealthItem {
-        let value = serviceValue(state: state, fallbackLoaded: fallbackLoaded)
+        let value = serviceValue(
+            state: state,
+            fallbackLoaded: fallbackLoaded,
+            updateInProgress: updateInProgress
+        )
         return ServiceHealthItem(
             label: label,
             value: value,
@@ -405,10 +421,17 @@ struct RuntimeStatusDisplayPolicy {
         )
     }
 
-    private func serviceValue(state: RuntimeServiceState?, fallbackLoaded: Bool?) -> StatusValue {
+    private func serviceValue(
+        state: RuntimeServiceState?,
+        fallbackLoaded: Bool?,
+        updateInProgress: Bool = false
+    ) -> StatusValue {
         let text: String
         let severity: Severity
-        if let state {
+        if updateInProgress, shouldDisplayOperationStateInsteadOfServiceState(state) {
+            text = AppConstants.StatusText.updating
+            severity = .warning
+        } else if let state {
             text = AppConstants.StatusText.launchdState(state)
             severity = serviceStateSeverity(state)
         } else if let fallbackLoaded {
@@ -419,6 +442,15 @@ struct RuntimeStatusDisplayPolicy {
             severity = .warning
         }
         return StatusValue(text: text, severity: severity, uptimeText: nil)
+    }
+
+    private func shouldDisplayOperationStateInsteadOfServiceState(_ state: RuntimeServiceState?) -> Bool {
+        switch state {
+        case .readFailed, .permissionDenied, .unknown:
+            return false
+        default:
+            return true
+        }
     }
 
     private func serviceStateSeverity(_ state: RuntimeServiceState) -> Severity {
@@ -436,11 +468,14 @@ struct RuntimeStatusDisplayPolicy {
         _ label: String,
         httpStatus: String?,
         uptimeText: String?,
-        action: ServiceAction
+        action: ServiceAction,
+        updateInProgress: Bool = false
     ) -> ServiceHealthItem {
         ServiceHealthItem(
             label: label,
-            value: httpValue(httpStatus, uptimeText: uptimeText),
+            value: updateInProgress
+                ? updatingValue(uptimeText: uptimeText)
+                : httpValue(httpStatus, uptimeText: uptimeText),
             httpStatus: httpStatus,
             action: action
         )
@@ -450,11 +485,14 @@ struct RuntimeStatusDisplayPolicy {
         _ label: String,
         service: ComposeService,
         observation: RuntimeContainerObservation?,
-        now: Date
+        now: Date,
+        updateInProgress: Bool = false
     ) -> ServiceHealthItem {
         ServiceHealthItem(
             label: label,
-            value: composeValue(for: service, observation: observation, now: now),
+            value: updateInProgress
+                ? updatingValue(uptimeText: nil)
+                : composeValue(for: service, observation: observation, now: now),
             httpStatus: nil,
             action: nil
         )
@@ -464,6 +502,14 @@ struct RuntimeStatusDisplayPolicy {
         StatusValue(
             text: serviceReachabilityLabel(status),
             severity: httpSeverity(status),
+            uptimeText: uptimeText
+        )
+    }
+
+    private func updatingValue(uptimeText: String?) -> StatusValue {
+        StatusValue(
+            text: AppConstants.StatusText.updating,
+            severity: .warning,
             uptimeText: uptimeText
         )
     }
