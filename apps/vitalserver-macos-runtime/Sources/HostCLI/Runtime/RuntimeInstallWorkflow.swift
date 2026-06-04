@@ -282,9 +282,29 @@ struct RuntimeInstallWorkflowComposition {
 
     private func createCloudInitSeed(_ settings: InstallSettings) throws {
         try RuntimeCloudInitSeedWriter(
-            installedPaths: context.installedPaths,
-            fileStore: operations.fileStore,
-            runRequired: operations.runRequired
+            context: RuntimeCloudInitSeedContext(
+                runtimeDirectory: context.installedPaths.runtimeDirectory,
+                seedImageName: Constants.BootAssets.cloudInit,
+                seedVolumeName: "cidata",
+                hdiutilExecutable: Constants.Commands.hdiutil
+            ),
+            operations: RuntimeCloudInitSeedOperations(
+                directoryExists: directoryExists,
+                fileExists: fileExists,
+                removeItem: { url in
+                    try operations.fileStore.removeItem(at: url)
+                },
+                createDirectory: { url, withIntermediateDirectories in
+                    try operations.fileStore.createDirectory(at: url, withIntermediateDirectories: withIntermediateDirectories)
+                },
+                writeData: { data, url, options in
+                    try operations.fileStore.writeData(data, to: url, options: options)
+                },
+                runRequired: operations.runRequired,
+                instanceID: {
+                    "tirosh-\(UUID().uuidString.lowercased())"
+                }
+            )
         ).create(hostname: settings.vmHostname)
     }
 

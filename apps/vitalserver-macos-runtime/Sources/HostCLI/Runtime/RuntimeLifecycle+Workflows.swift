@@ -78,9 +78,27 @@ extension RuntimeLifecycle {
 
     func runtimeCloudInitSeedWriter() -> RuntimeCloudInitSeedWriter {
         RuntimeCloudInitSeedWriter(
-            installedPaths: installedPaths,
-            fileStore: fileStore,
-            runRequired: runRequired
+            context: RuntimeCloudInitSeedContext(
+                runtimeDirectory: installedPaths.runtimeDirectory,
+                seedImageName: Constants.BootAssets.cloudInit,
+                seedVolumeName: "cidata",
+                hdiutilExecutable: Constants.Commands.hdiutil
+            ),
+            operations: RuntimeCloudInitSeedOperations(
+                directoryExists: directoryExists,
+                fileExists: fileExists,
+                removeItem: { url in
+                    try fileStore.removeItem(at: url)
+                },
+                createDirectory: createDirectoryAction(),
+                writeData: { data, url, options in
+                    try fileStore.writeData(data, to: url, options: options)
+                },
+                runRequired: runRequired,
+                instanceID: {
+                    "tirosh-\(UUID().uuidString.lowercased())"
+                }
+            )
         )
     }
 
