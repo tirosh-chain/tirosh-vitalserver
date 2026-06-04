@@ -1,0 +1,187 @@
+# HostCLI runtime workflow boundary fragmentation
+
+> ID: TS-048  
+> Category: Architecture / Runtime workflow / macOS runtime  
+> Owner: macOS runtime application layer  
+> Status: active
+
+## Symptoms
+
+- Runtime service restart, pkg install, update, rollback, repair, and health wait changes frequently touch many files across `Core`, `RuntimeWorkflow`, `HostCLI`, UI, tests, and docs.
+- A small operational rule change, such as requiring `guest-log-sync` after runtime restart, needs edits in service policy, service controller, lifecycle workflow, install/update/rollback/repair paths, status document building, UI labels, and multiple tests.
+- HostCLI runtime files still contain a mixture of command entrypoint composition, application usecase orchestration, workflow sequencing, launchd/process/filesystem effects, and status reporting.
+- Release issues appear as different symptoms, but often share the same structural cause: an operation does not have one explicit owner for required state, effects, and completion criteria.
+- The codebase has useful targets and policies, but contributors still need to inspect several layers to answer simple questions such as "who owns restarting this service?" or "what proves this workflow is complete?"
+
+## Impact
+
+- Changes have a wide blast radius and are hard to review.
+- Release hardening becomes reactive because every field failure can require a new cross-layer patch.
+- Race conditions are easier to introduce when lifecycle state, launchd state, VM state, disk state, and UI status are coordinated from multiple places.
+- Recovery and update behavior can look correct in one path while another path misses the same required side effect.
+- Tests tend to verify the latest bug path instead of enforcing a stable architectural contract.
+
+## Cause
+
+TS-043 introduced a useful `RuntimeWorkflow` boundary, but the current runtime implementation still lacks a stable application structure above the pure domain policies.
+
+The current weak point is not "missing services objects." The weak point is that the responsibilities below are not consistently represented as separate, named layers:
+
+```text
+Bootstrap / composition root
+  Wires concrete adapters and usecases.
+
+Interface adapters
+  Own launchd, process, filesystem, pkgutil, VM runner, guest HTTP, and log effects.
+
+Application usecases
+  Own one user-visible operation contract such as install, update, repair, uninstall,
+  service restart, service health refresh, or disk repair.
+
+Workflow
+  Own operation order, persisted operation state, progress events, and completion gates.
+
+Domain / Core
+  Own pure policies, state machines, transition guards, invariants, and decisions.
+
+Contracts
+  Own explicit documents, commands, events, state values, and failure shapes.
+```
+
+When these roles are mixed inside `HostCLI/Runtime`, the code can still work, but the architecture stops localizing change. A new operational requirement then spreads through multiple workflow branches instead of being added to one usecase contract and one domain decision point.
+
+## Checks
+
+Use these checks before and during the refactor.
+
+```sh
+rg -n "RuntimeLifecycle|RuntimeServiceController|RuntimeServiceRestartPolicy|waitForHealth|restart.*Service|launchctl|pkgutil|FileManager|Process\\(" \
+  apps/vitalserver-macos-runtime/Sources/HostCLI/Runtime \
+  apps/vitalserver-macos-runtime/Sources/RuntimeWorkflow \
+  apps/vitalserver-macos-runtime/Sources/Core
+
+rg -n "struct .*UseCase|final class .*UseCase|protocol .*Port|Workflow|TransitionPolicy|StateMachine" \
+  apps/vitalserver-macos-runtime/Sources/HostCLI/Runtime \
+  apps/vitalserver-macos-runtime/Sources/RuntimeWorkflow \
+  apps/vitalserver-macos-runtime/Sources/Core
+
+rg -n "^import HostInfrastructure|^import HostCLI|^import MacHostRuntimeAdapter|^import MacRuntimeControlApp" \
+  apps/vitalserver-macos-runtime/Sources/Core \
+  apps/vitalserver-macos-runtime/Sources/RuntimeWorkflow
+```
+
+Review smell:
+
+- `HostCLI` decides operation transitions instead of delegating to Core or RuntimeWorkflow.
+- A workflow calls `launchctl`, `pkgutil`, `FileManager`, or process APIs directly instead of using an injected port.
+- UI or status builders infer service state instead of formatting explicit provider state.
+- One required runtime service is listed in more than one unrelated place without a single policy or contract explaining why.
+- A successful command result is treated as proof of final state without a follow-up explicit observation.
+
+## Actions
+
+Proceed in small, behavior-preserving slices. Do not start with a broad folder rewrite.
+
+1. Define the runtime application map.
+
+   Record each operation as a usecase with an owner, input contract, output contract, required ports, workflow state, and completion condition.
+
+   Initial usecases:
+
+   ```text
+   InstallRuntimeUseCase
+   ApplyRuntimeUpdateUseCase
+   RollbackRuntimeUpdateUseCase
+   RepairRuntimeDatastoreUseCase
+   RepairRuntimeVMDiskUseCase
+   ControlRuntimeServicesUseCase
+   RefreshRuntimeHealthUseCase
+   UninstallRuntimeUseCase
+   ```
+
+2. Stabilize service lifecycle first.
+
+   Service lifecycle has caused repeated release-facing symptoms and is narrow enough to extract safely.
+
+   Target shape:
+
+   ```text
+   Core
+     RuntimeServiceRestartPolicy
+     RuntimeRequiredServicePolicy
+
+   RuntimeWorkflow / Application
+     ControlRuntimeServicesUseCase
+     RuntimeServiceLifecycleWorkflow
+     RuntimeServiceLifecyclePorts
+
+   HostCLI / adapters
+     LaunchdRuntimeServiceAdapter
+     RuntimeServiceStatusReader
+     RuntimeLifecycle command composition
+   ```
+
+   The usecase should own "what operation is being requested." Core policy should own "which services are required." Adapters should own "how launchd is called."
+
+3. Move completion gates into workflow contracts.
+
+   Every operation that stops, starts, updates, repairs, or removes runtime state must name the explicit observations required before completion.
+
+   Examples:
+
+   - service restart is complete only after required services are explicitly observed loaded or running
+   - update stop phase is complete only after VM lifecycle is explicitly stopped, not merely after a stop command returns
+   - disk repair is complete only after repair result and disk attachability are explicitly observed
+   - uninstall cleanup is complete only after artifacts and receipts are explicitly observed absent
+
+4. Shrink `RuntimeLifecycle`.
+
+   Keep it as a composition facade and command-facing coordinator. It may wire dependencies and call usecases. It should not own transition rules, completion gates, or direct external effects.
+
+5. Add boundary tests before moving more behavior.
+
+   Required tests:
+
+   - `Core` does not import outer layers.
+   - `RuntimeWorkflow` does not import host infrastructure, UI, or CLI layers.
+   - usecases expose explicit input/output contracts.
+   - required service policy has one tested source of truth.
+   - command success cannot be used as final state without explicit observation where the operation depends on external state.
+
+6. Migrate one operation at a time.
+
+   Recommended order:
+
+   ```text
+   ControlRuntimeServicesUseCase
+   RefreshRuntimeHealthUseCase
+   RepairRuntimeVMDiskUseCase
+   ApplyRuntimeUpdateUseCase
+   RollbackRuntimeUpdateUseCase
+   InstallRuntimeUseCase
+   UninstallRuntimeUseCase
+   ```
+
+   This order starts with the current service-status failures, then moves toward higher-risk update and disk behavior.
+
+## Prevention
+
+- New runtime behavior must enter through a named usecase, not through scattered HostCLI conditionals.
+- A usecase must declare required ports and completion observations before implementation.
+- Domain decisions must remain pure and testable.
+- Adapters must return explicit typed results and failures; they must not convert dependency failure into empty/default success.
+- UI must display explicit state and must not create operational state.
+- Important release failures must add or update a troubleshooting entry with symptom, cause, fix direction, and prevention rule.
+
+## Related Cases
+
+- `TS-030`: Runtime state inference
+- `TS-032`: macOS runtime explicit responsibility review
+- `TS-039`: AGENTS.md fallback audit
+- `TS-043`: RuntimeWorkflow target and layer boundary cleanup
+- `TS-045`: Runtime install workflow state machine parity
+- `TS-047`: Guest log sync service remains stopped after runtime restart
+
+## Follow-up
+
+- 2026-06-04: Created after repeated install, update, power-off, disk repair, launchd, and guest log sync failures showed that the remaining issue is structural fragmentation around HostCLI runtime workflows, not a single missing branch.
