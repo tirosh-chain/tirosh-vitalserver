@@ -34,6 +34,7 @@ VM_GOLDEN_HOME := .tmp/vitalserver-vm-golden
 VM_GOLDEN_RUNTIME_DIR := $(VM_GOLDEN_HOME)/runtime
 
 VM_INSTALL_SETTINGS ?=
+VM_UNINSTALL_ARGS ?=
 
 internal/vm/airgap-rootfs: internal/vm/download internal/vm/stage
 	@rm -f "$(VM_HOME)/data/run/rootfs-ready"
@@ -241,4 +242,4 @@ internal/vm/pkg/install:
 		--install-settings "$(VM_INSTALL_SETTINGS)"
 
 internal/vm/pkg/uninstall/dev:
-	sudo "$(VM_MACOS_RUNTIME_DIR)/Support/Packaging/uninstall-dev.sh"
+	sudo "$(VM_MACOS_RUNTIME_DIR)/Support/Packaging/uninstall-dev.sh" $(VM_UNINSTALL_ARGS)

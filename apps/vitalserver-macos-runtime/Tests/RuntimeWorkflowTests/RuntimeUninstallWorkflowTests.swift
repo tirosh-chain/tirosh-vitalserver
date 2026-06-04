@@ -36,8 +36,7 @@ final class RuntimeUninstallWorkflowTests: XCTestCase {
             "log:step=remove-runtime-tools status=completed",
             "log:step=forget-package-receipt status=started",
             "state:receipts-forget-started:package receipt forget started:",
-            "log:forget package receipt identifier=ai.tirosh.vitalserver.helper",
-            "forget:ai.tirosh.vitalserver.helper",
+            "log:package receipt already absent identifier=ai.tirosh.vitalserver.helper",
             "log:step=forget-package-receipt status=completed",
             "log:uninstall completed",
             "state:completed:uninstall completed:",
@@ -176,6 +175,9 @@ final class RuntimeUninstallWorkflowTests: XCTestCase {
 
     func testReceiptForgetFailureWritesBlockedState() {
         let harness = RuntimeUninstallWorkflowHarness()
+        harness.receiptStates = [
+            .present(identifier: "ai.tirosh.vitalserver.helper"),
+        ]
         harness.receiptForgetResults["ai.tirosh.vitalserver.helper"] = RuntimeProcessResult(
             exitCode: 1,
             stdout: "",
@@ -192,8 +194,22 @@ final class RuntimeUninstallWorkflowTests: XCTestCase {
         XCTAssertFalse(harness.events.contains("state:completed:uninstall completed:"))
     }
 
+    func testPresentReceiptIsForgottenBeforeCompletion() throws {
+        let harness = RuntimeUninstallWorkflowHarness()
+        harness.receiptStates = [
+            .present(identifier: "ai.tirosh.vitalserver.helper"),
+        ]
+
+        try harness.runner.run(RuntimeUninstallCommand(clean: true))
+
+        XCTAssertTrue(harness.events.contains("log:forget package receipt identifier=ai.tirosh.vitalserver.helper"))
+        XCTAssertTrue(harness.events.contains("forget:ai.tirosh.vitalserver.helper"))
+        XCTAssertTrue(harness.events.contains("state:completed:uninstall completed:"))
+    }
+
     func testReceiptRemainingAfterForgetWritesBlockedState() {
         let harness = RuntimeUninstallWorkflowHarness()
+        harness.updateReceiptsOnForget = false
         harness.receiptStates = [
             .present(identifier: "ai.tirosh.vitalserver.helper"),
         ]
@@ -219,6 +235,7 @@ private final class RuntimeUninstallWorkflowHarness {
     var serviceStates: [RuntimeManagedService: RuntimeServiceState]
     var vmProcessState: RuntimeVMProcessState = .stopped
     var receiptForgetResults: [String: RuntimeProcessResult] = [:]
+    var updateReceiptsOnForget = true
     var receiptStates: [RuntimePackageReceiptState] = [
         .absent(identifier: "ai.tirosh.vitalserver.helper"),
     ]
@@ -332,7 +349,18 @@ private final class RuntimeUninstallWorkflowHarness {
                 },
                 forgetPackageReceipt: { identifier in
                     self.events.append("forget:\(identifier)")
-                    return self.receiptForgetResults[identifier] ?? RuntimeProcessResult(exitCode: 0, stdout: "", stderr: "")
+                    let result = self.receiptForgetResults[identifier] ?? RuntimeProcessResult(exitCode: 0, stdout: "", stderr: "")
+                    if result.exitCode == 0 && self.updateReceiptsOnForget {
+                        self.receiptStates = self.receiptStates.map { state in
+                            switch state {
+                            case .present(let existingIdentifier) where existingIdentifier == identifier:
+                                return .absent(identifier: identifier)
+                            default:
+                                return state
+                            }
+                        }
+                    }
+                    return result
                 }
             ),
             writer: RuntimeUninstallStateWriter(

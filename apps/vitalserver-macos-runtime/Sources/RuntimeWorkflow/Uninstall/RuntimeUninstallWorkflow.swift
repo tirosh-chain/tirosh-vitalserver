@@ -320,7 +320,24 @@ public struct RuntimeUninstallWorkflow {
             expectedCommands: []
         )
 
+        let observedReceiptStates = Dictionary(
+            uniqueKeysWithValues: readers.packageReceiptStates().compactMap { state -> (String, RuntimePackageReceiptState)? in
+                switch state {
+                case .present(let identifier),
+                     .absent(let identifier),
+                     .readFailed(let identifier, _),
+                     .forgetFailed(let identifier, _):
+                    return (identifier, state)
+                case .unknown:
+                    return nil
+                }
+            }
+        )
         for identifier in packageReceiptIdentifiers {
+            if case .absent = observedReceiptStates[identifier] {
+                log("package receipt already absent identifier=\(identifier)")
+                continue
+            }
             log("forget package receipt identifier=\(identifier)")
             let result = effects.forgetPackageReceipt(identifier)
             guard result.exitCode == 0 else {
