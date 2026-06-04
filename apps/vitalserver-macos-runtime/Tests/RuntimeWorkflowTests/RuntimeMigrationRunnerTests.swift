@@ -1,7 +1,6 @@
-import Foundation
-import Core
 import Contracts
-@testable import HostCLI
+import Foundation
+import RuntimeWorkflow
 import XCTest
 
 final class RuntimeMigrationRunnerTests: XCTestCase {
@@ -60,9 +59,7 @@ final class RuntimeMigrationRunnerTests: XCTestCase {
         XCTAssertThrowsError(try runner.run([
             UpdateBundleMigration(name: "001-refresh", sha256: "abc", size: 10),
         ], stagedBundle: URL(fileURLWithPath: "/bundle"))) { error in
-            XCTAssertEqual(String(describing: error), String(describing: LauncherError.bundleVerificationFailed(
-                "migration is not executable: 001-refresh"
-            )))
+            XCTAssertEqual(String(describing: error), "migration is not executable: 001-refresh")
         }
     }
 }
