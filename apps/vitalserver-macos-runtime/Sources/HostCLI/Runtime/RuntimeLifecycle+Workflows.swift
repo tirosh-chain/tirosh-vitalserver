@@ -336,7 +336,8 @@ extension RuntimeLifecycle {
     func runtimeDatastoreRepairWorkflow() -> RuntimeDatastoreRepairWorkflow {
         RuntimeDatastoreRepairWorkflow(
             context: RuntimeDatastoreRepairWorkflowContext(
-                guestRunDirectory: guestRunDirectory
+                guestRunDirectory: guestRunDirectory,
+                waitTimeoutSeconds: Constants.Runtime.datastoreRepairWaitTimeoutSeconds
             ),
             operations: RuntimeDatastoreRepairWorkflowOperations(
                 requireCapability: {

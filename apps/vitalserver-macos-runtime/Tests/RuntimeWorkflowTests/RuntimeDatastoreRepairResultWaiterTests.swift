@@ -1,6 +1,6 @@
-import Core
 import Contracts
-@testable import HostCLI
+import Core
+import RuntimeWorkflow
 import XCTest
 
 final class RuntimeDatastoreRepairResultWaiterTests: XCTestCase {
@@ -30,7 +30,7 @@ final class RuntimeDatastoreRepairResultWaiterTests: XCTestCase {
             id: "request-1",
             requestedAt: "2026-05-22T00:00:00Z"
         ))) { error in
-            XCTAssertEqual(String(describing: error), String(describing: LauncherError.runtimeHealthFailed))
+            XCTAssertEqual(String(describing: error), "runtime health check failed")
         }
         XCTAssertTrue(harness.events.contains("status:recovering:repair-datastore:waiting for datastore repair guest worker"))
         XCTAssertTrue(harness.events.contains("log:datastore repair guest result failed message=repair failed"))
@@ -61,7 +61,8 @@ private final class DatastoreRepairResultWaitHarness {
             },
             log: { message in
                 self.events.append("log:\(message)")
-            }
+            },
+            waitTimeoutSeconds: 300
         )
     }
 }
