@@ -50,7 +50,7 @@ PoC 기본 runtime directory는 아래입니다.
 repo 안에서만 테스트하려면:
 
 ```sh
-VITALSERVER_VM_HOME="$PWD/.tmp/vitalserver-vm" make vm-init
+VITALSERVER_VM_HOME="$PWD/.tmp/vitalserver-vm" make devtools/init
 ```
 
 ## VM Config
@@ -85,7 +85,7 @@ VITALSERVER_VM_HOME="$PWD/.tmp/vitalserver-vm" make vm-init
 PoC에서는 Git에 Linux image를 넣지 않습니다.
 
 ```sh
-make vm-download
+make runtime/download
 ```
 
 설정 파일:
@@ -94,7 +94,7 @@ make vm-download
 config/vm-build.toml
 ```
 
-`make vm-download`는 build-machine 전용 Python package인
+`make runtime/download`는 build-machine 전용 Python package인
 `packages/vitalserver-devtools`의 `vitalserver-devtools ubuntu` CLI를 호출합니다.
 
 | 항목 | 기본값 |
@@ -108,7 +108,7 @@ config/vm-build.toml
 root disk 크기를 바꾸려면:
 
 ```sh
-VM_ROOTFS_SIZE=32G make vm-download
+VM_ROOTFS_SIZE=32G make runtime/download
 ```
 
 `VM_ROOTFS_SIZE`의 `G` suffix는 build tool 입력 형식이며 GiB 기준으로 해석합니다. 예를 들어 `32G`는 32 GiB root disk target size입니다.
@@ -120,7 +120,7 @@ VM_ROOTFS_SIZE=32G make vm-download
 NoCloud seed image를 생성합니다.
 
 ```sh
-make vm-cloud-init
+make devtools/cloud-init
 ```
 
 | 항목 | 기본값 |
@@ -152,10 +152,10 @@ uv run --project packages/vitalserver-devtools vitalserver-devtools \
 
 ## Guest Bootstrap
 
-`make vm-stage`는 VM에서 실행할 deployment bundle을 공유 디렉터리에 복사합니다.
+`make devtools/stage`는 VM에서 실행할 deployment bundle을 공유 디렉터리에 복사합니다.
 
 ```sh
-make vm-stage
+make devtools/stage
 ```
 
 | 항목 | 용도 |
@@ -259,10 +259,10 @@ bridged mode는 향후 host nginx 제거, 네트워크 구조 단순화, 또는 
 CLI에서 모드를 바꾸려면:
 
 ```sh
-make vm-network-shared
+make runtime/network/shared
 
-make vm-interfaces
-VM_BRIDGED_INTERFACE=en0 make vm-network-bridged
+make runtime/interfaces
+VM_BRIDGED_INTERFACE=en0 make runtime/network/bridged
 ```
 
 bridged mode 실행은 macOS가 제한하는 network entitlement가 필요합니다. 개발 중에는 shared/NAT mode는 ad-hoc signing으로 실행할 수 있지만, bridged mode는 실제 codesign identity와 entitlement가 준비되어야 합니다.
@@ -270,7 +270,7 @@ bridged mode 실행은 macOS가 제한하는 network entitlement가 필요합니
 ```sh
 VM_BRIDGED_CODESIGN_IDENTITY="Developer ID Application: ..." \
 VM_BRIDGED_INTERFACE=en0 \
-make vm-up-bridged
+make runtime/up-bridged
 ```
 
 shared/NAT mode에서 보이는 `192.168.64.x` IP는 macOS Virtualization NAT DHCP가 부여한 IP입니다. 병원 LAN에서 VRecorder가 접근해야 하는 운영 IP가 아닙니다.
@@ -294,20 +294,20 @@ upstream:
 PoC에서는 VM IP를 확인한 뒤 아래처럼 host proxy upstream을 지정합니다.
 
 ```sh
-make vm-up
+make runtime/up
 ```
 
-`make vm-up`은 VM을 background로 시작하고, guest가 shared directory에 기록한 runtime state와 guest HTTP readiness를 기다린 뒤 host nginx upstream을 `<vm-ip>:80`으로 설정합니다.
+`make runtime/up`은 VM을 background로 시작하고, guest가 shared directory에 기록한 runtime state와 guest HTTP readiness를 기다린 뒤 host nginx upstream을 `<vm-ip>:80`으로 설정합니다.
 
 VM IP만 확인하거나 proxy를 다시 붙이고 싶을 때는 아래 target을 사용합니다.
 
 ```sh
-make vm-health
-make vm-ip
-make vm-proxy-start
+make runtime/health
+make runtime/ip
+make runtime/proxy/start
 ```
 
-`make vm-health`는 VM process, guest가 기록한 IP, VM 내부 HTTP, macOS host proxy HTTP를 한 번에 확인합니다. `502 Bad Gateway`처럼 경로 중간에서 막힐 때 가장 먼저 실행합니다.
+`make runtime/health`는 VM process, guest가 기록한 IP, VM 내부 HTTP, macOS host proxy HTTP를 한 번에 확인합니다. `502 Bad Gateway`처럼 경로 중간에서 막힐 때 가장 먼저 실행합니다.
 
 기존 Docker Compose 개발 경로의 host proxy는 기본 upstream을 그대로 사용합니다.
 
@@ -355,7 +355,7 @@ VM MAC address
       -> 고정된 VM LAN IP
 ```
 
-`make vm-init`은 `runtime/vm-config.json`에 VM MAC address를 생성해 저장합니다. 이 값은 제품 설치 후 유지되어야 합니다.
+`make devtools/init`은 `runtime/vm-config.json`에 VM MAC address를 생성해 저장합니다. 이 값은 제품 설치 후 유지되어야 합니다.
 
 ## VM Identity
 
@@ -382,13 +382,13 @@ v1 기본 구조인 `shared/NAT VM + host nginx`는 bridged networking entitleme
 shared/NAT boot 테스트:
 
 ```sh
-make vm-sign
+make devtools/sign
 ```
 
 bridged network 테스트는 별도 승인 이후에만 진행합니다.
 
 ```sh
-make vm-sign-bridged
+make devtools/sign/bridged
 ```
 
 ### Apple 승인 필요 항목
@@ -414,15 +414,15 @@ make vm-sign-bridged
 - host nginx가 target Mac port 80에서 요청을 받는다.
 - host nginx가 VM 내부 VitalServer로 proxy한다.
 - guest가 VM IP를 shared directory에 기록한다.
-- `make vm-up`이 VM IP를 기다린 뒤 host proxy upstream을 VM으로 설정한다.
+- `make runtime/up`이 VM IP를 기다린 뒤 host proxy upstream을 VM으로 설정한다.
 - host nginx 경유 요청에서 VRecorder 원 IP가 보존된다.
 - Redis `ip_<vrcode>`에 실제 VRecorder IP가 저장된다.
 - Network Settings가 실제 VRecorder IP로 열린다.
-- `make vm-bridged-preflight`가 bridged signing 조건을 설명한다.
+- `make devtools/bridged/preflight`가 bridged signing 조건을 설명한다.
 
 bridged mode는 별도 승인 이후 체크합니다.
 
-- `make vm-interfaces`로 bridged 후보 interface가 보인다.
+- `make runtime/interfaces`로 bridged 후보 interface가 보인다.
 - bridged mode에서 VM이 boot된다.
 - VM이 DHCP로 병원 LAN IP를 받는다.
 - 다른 장비에서 VM IP로 접속할 수 있다.

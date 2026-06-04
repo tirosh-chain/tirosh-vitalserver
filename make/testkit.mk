@@ -1,22 +1,22 @@
-.PHONY: testkit-health testkit-smoke testkit-verify testkit-load testkit-stream
+.PHONY: testkit/health testkit/smoke testkit/verify testkit/load testkit/stream
 .PHONY: require-testkit-runtime
 
 require-testkit-runtime:
 	@$(TESTKIT_RUNNER) --help >/dev/null
 
-testkit-health: require-testkit-runtime
+testkit/health: require-testkit-runtime
 	$(TESTKIT) health
 
-testkit-verify: require-testkit-runtime up
+testkit/verify: require-testkit-runtime app/up
 	$(TESTKIT) verify
 
-testkit-smoke: require-testkit-runtime up
+testkit/smoke: require-testkit-runtime app/up
 	$(TESTKIT) smoke
 
-testkit-load: require-testkit-runtime up
+testkit/load: require-testkit-runtime app/up
 	$(TESTKIT) load
 
-testkit-stream: require-testkit-runtime up
+testkit/stream: require-testkit-runtime app/up
 	@status=0; \
 	$(TESTKIT) stream || status=$$?; \
 	if [ "$$status" = "130" ]; then \

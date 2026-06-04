@@ -10,8 +10,8 @@ VitalServer Helper의 update bundle이 무엇을 바꾸고, 무엇을 보존하�
 | 현장 적용 UI는? | Product Update는 Helper app의 Update 탭, VM Image Update는 Danger Zone |
 | CLI backend는? | `/usr/local/bin/vitalserver-vm runtime apply-bundle` |
 | 검증 기준은? | `manifest.json`, `checksums.txt`, artifact sha256/size |
-| Product Update bundle에 rootfs가 들어가나? | 아니다. `make vm-update-bundle`은 rootfs를 제외한다 |
-| rootfs 포함 bundle은 언제 쓰나? | VM Image/rootfs 자체를 교체해야 할 때 `make vm-rootfs-update-bundle`을 사용한다 |
+| Product Update bundle에 rootfs가 들어가나? | 아니다. `make runtime/update-bundle`은 rootfs를 제외한다 |
+| rootfs 포함 bundle은 언제 쓰나? | VM Image/rootfs 자체를 교체해야 할 때 `make dist/image-update/release`를 사용한다 |
 | mutable VM disk는 교체하나? | 기본적으로 교체하지 않는다 |
 | Redis/Vital files 데이터는 보존하나? | 보존 대상이다 |
 | Docker image bundle만 바꾸면 container가 자동 갱신되나? | update 단계에서 guest-side activation을 실행해야 한다 |
@@ -305,7 +305,7 @@ update-bundle-<channel>-<kind>-<releaseLabel>/
 ```
 
 `rootfs-base.raw.gz`는 Product Update bundle에 포함하지 않습니다. VM Image/rootfs를
-바꾸는 경우에만 `make vm-rootfs-update-bundle`로 별도 bundle을 만들며, 이때 manifest에
+바꾸는 경우에만 `make dist/image-update/release`로 별도 bundle을 만들며, 이때 manifest에
 `rootfs-base` artifact가 추가됩니다.
 
 각 artifact의 의미는 아래와 같습니다.
@@ -640,7 +640,7 @@ Update bundle에 guest activation 보강이 포함되어 있어도, 기존 설�
 
 ```text
 error: missing runtime package in air-gapped rootfs
-The target bootstrap never runs apt-get. Rebuild the package rootfs with make vm-golden-rootfs.
+The target bootstrap never runs apt-get. Rebuild the package rootfs with make devtools/golden-rootfs.
 Required commands/services: curl, docker, docker compose, avahi-daemon, growpart.
 ```
 

@@ -61,14 +61,14 @@ OpenAPI 문서에는 이 proxy server만 노출해서, Swagger의 `Try it out`�
 걸리지 않도록 합니다.
 
 ```sh
-make up            # proxy와 기본 stack 실행
+make app/up            # proxy와 기본 stack 실행
 make open          # VitalServer 브라우저 열기
-make restart       # proxy와 기본 stack 재시작
-make down          # proxy와 전체 Compose stack 중지, Docker volume 유지
-make clean-volumes # proxy와 전체 Compose stack 중지, Docker volume 삭제
+make app/restart       # proxy와 기본 stack 재시작
+make app/down          # proxy와 전체 Compose stack 중지, Docker volume 유지
+make app/clean/volumes # proxy와 전체 Compose stack 중지, Docker volume 삭제
 
-make swagger       # 기본 stack은 건드리지 않고 Swagger UI만 시작
-make swagger-down  # 기본 stack은 유지하고 Swagger UI만 중지
+make swagger/up       # 기본 stack은 건드리지 않고 Swagger UI만 시작
+make swagger/down     # 기본 stack은 유지하고 Swagger UI만 중지
 ```
 
 ## 확인된 upstream 동작
@@ -138,30 +138,30 @@ Web Monitoring의 Socket.IO 접속 주소는 기본적으로 same-origin path(`/
 host nginx config는 아래 명령으로 렌더링합니다.
 
 ```sh
-make proxy-config
+make proxy/config
 ```
 
 렌더링된 config는 macOS host의 nginx 설정에 포함합니다. 이 config는 client가 보낸
 forwarding header를 신뢰하지 않고 host nginx의 `$remote_addr`로 덮어써서 VitalServer에
 전달합니다.
 
-로컬 PoC에서는 Homebrew nginx를 설치한 뒤 `make up`으로 proxy와 Docker backend를 함께 실행합니다.
+로컬 PoC에서는 Homebrew nginx를 설치한 뒤 `make app/up`으로 proxy와 Docker backend를 함께 실행합니다.
 기본 proxy port는 80이므로 nginx 실행 시 관리자 권한이 필요할 수 있습니다.
 
 ```sh
-make up
-make proxy-status
-make down
+make app/up
+make proxy/status
+make app/down
 ```
 
-`make up`은 Docker backend를 loopback으로 올리고, `.tmp/macos-nginx/vitalserver.conf`를 생성한 뒤
+`make app/up`은 Docker backend를 loopback으로 올리고, `.tmp/macos-nginx/vitalserver.conf`를 생성한 뒤
 해당 config로 nginx를 실행합니다. Homebrew service를 등록하거나 launchd를 수정하지 않습니다.
 
 설치형 배포에서는 nginx binary와 config를 macOS host에 설치하고 launchd로 관리합니다.
 LaunchDaemon plist는 아래 명령으로 렌더링합니다.
 
 ```sh
-make proxy-plist
+make proxy/plist
 ```
 
 설치 패키지는 nginx config, launchd plist, deploy `runtime-config.json`을 함께 생성해 container
@@ -203,9 +203,9 @@ Redis에 저장되는 핵심 key는 아래입니다.
 
 ### 실행
 
-- `make up`으로 깨끗한 환경에서 재현 가능하게 실행됩니다.
+- `make app/up`으로 깨끗한 환경에서 재현 가능하게 실행됩니다.
 - 제품 VM의 포트, 관리자 비밀번호, Swagger 포트는 deploy `runtime-config.json`으로 조정합니다.
-- 일회성 override는 `make VITALSERVER_PROXY_PORT=8080 up`처럼 Make 변수로 넘깁니다.
+- 일회성 override는 `VITALSERVER_PROXY_PORT=8080 make app/up`처럼 Make 변수로 넘깁니다.
 - VitalServer fork submodule은 명시적으로 고정하고, 변경 시 submodule commit을 리뷰합니다.
 
 ### API

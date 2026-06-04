@@ -1,19 +1,19 @@
-.PHONY: lint format typecheck test build-testkit check
+.PHONY: dev/lint dev/format dev/typecheck dev/test dev/build-testkit dev/check
 
-lint: require-uv
+dev/lint: require-uv
 	$(DEVTOOLS_RUNNER) python-tool --uv "$(UV)" -- ruff check .
 
-format: require-uv
+dev/format: require-uv
 	$(DEVTOOLS_RUNNER) python-tool --uv "$(UV)" -- ruff format .
 	$(DEVTOOLS_RUNNER) python-tool --uv "$(UV)" -- ruff check --fix .
 
-typecheck: require-uv
+dev/typecheck: require-uv
 	$(DEVTOOLS_RUNNER) python-tool --uv "$(UV)" -- mypy
 
-test: require-uv
+dev/test: require-uv
 	$(DEVTOOLS_RUNNER) python-tool --uv "$(UV)" -- pytest
 
-build-testkit:
+dev/build-testkit:
 	$(DEVTOOLS_RUNNER) python-tool --uv "$(UV)" -- build --out-dir packages/vitalserver-testkit/dist --clear packages/vitalserver-testkit
 
-check: lint typecheck test
+dev/check: dev/lint dev/typecheck dev/test

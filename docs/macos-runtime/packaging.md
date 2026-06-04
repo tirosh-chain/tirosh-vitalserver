@@ -1,6 +1,6 @@
 # VitalServer VM Packaging and Update
 
-빌드 산출물, 설치 흐름, install/update 계약을 정리합니다. `make vm-pkg-dev`/`make vm-pkg-release`, `make vm-dmg-dev`/`make vm-dmg-release`, update bundle, 설치 설정 JSON을 볼 때 사용합니다.
+빌드 산출물, 설치 흐름, install/update 계약을 정리합니다. `make dist/pkg/dev`/`make dist/pkg/release`, `make dist/dmg/dev`/`make dist/dmg/release`, update bundle, 설치 설정 JSON을 볼 때 사용합니다.
 
 ## 이 문서에서 바로 알아야 할 것
 
@@ -18,15 +18,15 @@
 
 | 시나리오 | 산출물 | 생성 명령 | 현장 적용 |
 |---|---|---|---|
-| 신규 설치 dev 검증 | `dist/VitalServerHelper-<version>.dmg` | `make vm-dmg-dev` | release-dev.json 기반 개발 검증 |
-| 신규 설치 release 검증 | `dist/VitalServerHelper-<version>.dmg` | `make vm-dmg-release` | release.json 기반 release 검증 |
-| `.pkg` 직접 배포 dev 검증 | `dist/VitalServerHelper-<version>.pkg` | `make vm-pkg-dev` | `sudo installer -pkg ... -target /` |
-| `.pkg` 직접 배포 release 검증 | `dist/VitalServerHelper-<version>.pkg` | `make vm-pkg-release` | `sudo installer -pkg ... -target /` |
-| air-gapped Product Update | `dist/update-bundles/update-bundle-<channel>-product-update-<releaseLabel>.tar.gz` | `make vm-update-bundle-release` | Helper app Update 탭 또는 `vitalserver-vm runtime apply-bundle` |
-| VM Image Update | `dist/update-bundles/update-bundle-<channel>-vm-image-update-<releaseLabel>.tar.gz` | `make vm-rootfs-update-bundle-release` | rootfs-base 교체가 필요한 경우에만 사용 |
-| Product Update bundle 검증 | product update tarball | `make vm-update-bundle-verify-release` | 전달 전 manifest/checksum 검증 |
-| VM Image Update bundle 검증 | VM image update tarball | `make vm-rootfs-update-bundle-verify-release` | 전달 전 manifest/checksum 검증 |
-| 개발 설치 테스트 | installed runtime | `make vm-pkg-install` | 현재 Mac에 설치 후 `make vm-installed-health` |
+| 신규 설치 dev 검증 | `dist/VitalServerHelper-<version>.dmg` | `make dist/dmg/dev` | release-dev.json 기반 개발 검증 |
+| 신규 설치 release 검증 | `dist/VitalServerHelper-<version>.dmg` | `make dist/dmg/release` | release.json 기반 release 검증 |
+| `.pkg` 직접 배포 dev 검증 | `dist/VitalServerHelper-<version>.pkg` | `make dist/pkg/dev` | `sudo installer -pkg ... -target /` |
+| `.pkg` 직접 배포 release 검증 | `dist/VitalServerHelper-<version>.pkg` | `make dist/pkg/release` | `sudo installer -pkg ... -target /` |
+| air-gapped Product Update | `dist/update-bundles/update-bundle-<channel>-product-update-<releaseLabel>.tar.gz` | `make dist/update/release` | Helper app Update 탭 또는 `vitalserver-vm runtime apply-bundle` |
+| VM Image Update | `dist/update-bundles/update-bundle-<channel>-vm-image-update-<releaseLabel>.tar.gz` | `make dist/image-update/release` | rootfs-base 교체가 필요한 경우에만 사용 |
+| Product Update bundle 검증 | product update tarball | `make dist/update/verify/release` | 전달 전 manifest/checksum 검증 |
+| VM Image Update bundle 검증 | VM image update tarball | `make dist/image-update/verify/release` | 전달 전 manifest/checksum 검증 |
+| 개발 설치 테스트 | installed runtime | `make dist/install/dev` | 현재 Mac에 설치 후 `make dist/installed/health` |
 
 사용자에게 “bundle”로 제공하는 대상은 두 가지입니다. 신규 설치는 `.dmg`/`.pkg`이고, 이미 설치된 현장 업데이트는 `update-bundle-<channel>-<kind>-<releaseLabel>.tar.gz` tarball입니다. air-gapped 환경에서는 이 파일을 USB나 폐쇄망 파일 서버로 전달합니다. 적용 과정과 보존/변경 범위는 [Update](update.md)에 따로 정리합니다.
 
@@ -59,14 +59,14 @@ Runtime 전체 SoT map은 [Runtime observability model](observability.md#source-
 
 `bundle.optionalContainerServices`는 Testkit API처럼 컨테이너로 제공되는 선택 서비스를 포함할지 여부만 표현합니다. 선택 서비스의 image/version/display name은 `services.<name>`에 둡니다. Test 탭의 route, API shape, 화면 정책은 release manifest가 아니라 Test 탭/API 구현이 소유합니다.
 
-Runtime Control PWA는 package/update bundle에 static asset으로 포함됩니다. `make vm-app`,
-`make vm-pkg-*`, `make vm-dmg-*`, `make vm-update-bundle-*`는 `make pwa-build`를 먼저 실행합니다.
-빌드 머신에서는 packaging 전에 한 번 `make pwa-install`을 실행해야 하며, 현장 Mac에는 npm/Vite나
+Runtime Control PWA는 package/update bundle에 static asset으로 포함됩니다. `make devtools/app`,
+`make dist/pkg/*`, `make dist/dmg/*`, `make dist/update/*`는 `make pwa/build`를 먼저 실행합니다.
+빌드 머신에서는 packaging 전에 한 번 `make pwa/install`을 실행해야 하며, 현장 Mac에는 npm/Vite나
 registry 접근이 필요하지 않습니다.
 
 `VitalServer Helper`는 최상위 product release입니다. platform별 build는 같은 Helper release 아래의 variant이며, 세부 변경 범위는 Helper UI, Native Shell, Runtime Control API, Updater, Supervisor, VM Driver, Service Stack, VM Image, VitalServer component version으로 설명합니다.
 
-`make vm-build`는 이 값을 Swift `GeneratedVersion.swift`와 Helper app의 `GeneratedRelease.swift`에 반영하고, `make vm-app`은 app bundle `Info.plist`의 `CFBundleShortVersionString`에 같은 helper version을 씁니다. `make vm-pkg-dev`/`make vm-pkg-release`, `make vm-update-bundle-dev`/`make vm-update-bundle-release`, `make vm-rootfs-update-bundle-dev`/`make vm-rootfs-update-bundle-release`는 release manifest 값을 artifact name, package version, update bundle version, compatibility metadata에 반영합니다. `services.*.displayName`은 Helper UI의 service 표시명 source of truth입니다. 특별한 검증이 아니라면 버전, 표시명, image, update compatibility, optional container service 포함 정책 변경은 이 파일 하나에서 관리합니다.
+`make devtools/build`는 이 값을 Swift `GeneratedVersion.swift`와 Helper app의 `GeneratedRelease.swift`에 반영하고, `make devtools/app`은 app bundle `Info.plist`의 `CFBundleShortVersionString`에 같은 helper version을 씁니다. `make dist/pkg/dev`/`make dist/pkg/release`, `make dist/update/dev`/`make dist/update/release`, `make dist/image-update/dev`/`make dist/image-update/release`는 release manifest 값을 artifact name, package version, update bundle version, compatibility metadata에 반영합니다. `services.*.displayName`은 Helper UI의 service 표시명 source of truth입니다. 특별한 검증이 아니라면 버전, 표시명, image, update compatibility, optional container service 포함 정책 변경은 이 파일 하나에서 관리합니다.
 
 Update bundle manifest는 `schemaVersion: 3`, `channel`, `helperVersion`, `releaseLabel`, `targetPlatform`, `minUpdaterVersion`, `components`를 기준으로 작성합니다. `components`에는 `helperUI`, `updater`, `supervisor`, `vmDriver`, `serviceStack`, `vmImage`, `vitalServer`처럼 실제 변경 범위를 드러내는 version을 넣습니다. platform-specific artifact는 `targetPlatform`과 component version suffix로 제한하고, 공통 Service Stack이나 VM Image는 같은 Helper release 아래에서 platform 간 공유할 수 있습니다.
 
@@ -76,8 +76,8 @@ Update bundle kind는 두 개로 제한합니다.
 
 | bundleKind | 생성 target | UI 위치 | 포함 범위 |
 |---|---|---|---|
-| `product-update` | `make vm-update-bundle-release` | Update 탭 | Helper UI, Native Shell, Runtime Control API, Updater, Supervisor, VM Driver, Service Stack, 개별 service/container, host proxy, migrations |
-| `vm-image-update` | `make vm-rootfs-update-bundle-release` | Danger Zone | VM Image/rootfs/base OS/kernel/initrd class artifact |
+| `product-update` | `make dist/update/release` | Update 탭 | Helper UI, Native Shell, Runtime Control API, Updater, Supervisor, VM Driver, Service Stack, 개별 service/container, host proxy, migrations |
+| `vm-image-update` | `make dist/image-update/release` | Danger Zone | VM Image/rootfs/base OS/kernel/initrd class artifact |
 
 Hotfix, service-only update, updater bridge update는 별도 kind가 아니라 `product-update` metadata로 표현합니다.
 
@@ -105,17 +105,17 @@ Dockerfile, guest deploy `include` 항목을 변경할 때는 Makefile literal�
 
 ## Package 구성
 
-현재 repository의 `make vm-pkg-dev`는 `.pkg`까지 가기 위한 개발 검증용 packaging target입니다.
+현재 repository의 `make dist/pkg/dev`는 `.pkg`까지 가기 위한 개발 검증용 packaging target입니다.
 최종 배포 산출물은 `dist/`에 두고, `.tmp/`는 중간 작업물 전용으로 사용합니다.
 
 ```sh
-make vm-pkg-dev
-make vm-pkg-install
-make vm-installed-health
-make vm-pkg-uninstall-dev
+make dist/pkg/dev
+make dist/install/dev
+make dist/installed/health
+make dist/uninstall/dev
 ```
 
-`make vm-pkg-dev` 생성물:
+`make dist/pkg/dev` 생성물:
 
 ```text
 dist/VitalServerHelper-<version>.pkg
@@ -125,7 +125,7 @@ dist/VitalServerHelper-<version>.pkg
 `vitalserver-images.tar.gz` 생성은 `VM_COMPRESSION_THREADS` 값을 사용합니다.
 
 ```sh
-VM_COMPRESSION_THREADS=8 make vm-pkg-dev
+VM_COMPRESSION_THREADS=8 make dist/pkg/dev
 ```
 
 이 설정은 Python/uv package를 병렬화하는 옵션이 아닙니다. 빌드 머신에 `pigz` binary가 있을 때만
@@ -135,7 +135,7 @@ single-thread로 동작합니다.
 ```sh
 command -v pigz
 brew install pigz
-VM_COMPRESSION_THREADS=8 make vm-pkg-dev
+VM_COMPRESSION_THREADS=8 make dist/pkg/dev
 ```
 
 정상적으로 병렬 압축을 타면 build log에 아래처럼 표시됩니다.
@@ -155,7 +155,7 @@ air-gapped target 환경에는 설치할 필요가 없습니다. `make -j`는 �
 golden VM 부팅과 Swift binary signing이 같은 중간 산출물을 공유하므로 기본 권장 경로는
 `VM_COMPRESSION_THREADS`와 `pigz`로 압축 병목을 줄이는 것입니다.
 
-전달용 release DMG가 필요하면 `make vm-dmg-release`를 실행합니다. DMG에는 단일 PKG만 들어갑니다.
+전달용 release DMG가 필요하면 `make dist/dmg/release`를 실행합니다. DMG에는 단일 PKG만 들어갑니다.
 
 ```text
 dist/VitalServerHelper-<version>.dmg
@@ -235,12 +235,12 @@ launchd
 
 ## DMG Build 흐름
 
-`make vm-dmg-release`는 최종 전달 매체를 만들지만, 실제로는 아래 dependency chain을 실행합니다.
+`make dist/dmg/release`는 최종 전달 매체를 만들지만, 실제로는 아래 dependency chain을 실행합니다.
 
 ```text
-make vm-dmg-release
-  -> make pwa-build               # Runtime Control PWA static assets
-  -> make vm-golden-rootfs         # clean VM disk -> rootfs-base.raw.gz
+make dist/dmg/release
+  -> make pwa/build               # Runtime Control PWA static assets
+  -> make devtools/golden-rootfs         # clean VM disk -> rootfs-base.raw.gz
   -> vitalserver-devtools release-dmg
      -> release-pkg staging/pkgbuild
      -> hdiutil create
@@ -356,9 +356,9 @@ Fallback:
 | 경계 | 호출자 | 피호출자 | 입력 계약 | 출력/부작용 |
 |---|---|---|---|---|
 | build orchestration | `make/vm.mk` | `vitalserver-devtools` | `vm-build.toml`, source tree, optional Make overrides | `.tmp/vitalserver-vm-pkg/*`, `dist/*` |
-| Ubuntu/rootfs build | `make vm-golden-rootfs` | Python `ubuntu`, `cloud-init`, Swift launcher | Ubuntu cloud image, deploy bundle, bootstrap script | clean `vm-disk.img`, compressed `rootfs-base.raw.gz` |
-| nginx bundle | `make vm-nginx-bundle` | Python `nginx-bundle` | pinned macOS nginx binary, expected version | self-contained `nginx/sbin`, `nginx/lib` bundle |
-| Docker image bundle | `make vm-docker-images` | Python `docker-images` | Dockerfile, image list, build platform | `vitalserver-images.tar.gz` |
+| Ubuntu/rootfs build | `make devtools/golden-rootfs` | Python `ubuntu`, `cloud-init`, Swift launcher | Ubuntu cloud image, deploy bundle, bootstrap script | clean `vm-disk.img`, compressed `rootfs-base.raw.gz` |
+| nginx bundle | `make devtools/nginx/bundle` | Python `nginx-bundle` | pinned macOS nginx binary, expected version | self-contained `nginx/sbin`, `nginx/lib` bundle |
+| Docker image bundle | `make devtools/docker/images` | Python `docker-images` | Dockerfile, image list, build platform | `vitalserver-images.tar.gz` |
 | PKG/DMG staging | `vitalserver-devtools release-pkg` / `release-dmg` | Python build CLI, Swift, macOS packaging tools | release manifest, app source, rootfs base, nginx binary, Docker image list, templates | package root under `.tmp/vitalserver-vm-pkg/root`, `dist/*` |
 | install provisioning | PKG `postinstall` | `vitalserver-vm runtime install-provision` | installed payload, optional `/private/tmp/tirosh-vitalserver-install.json` | `vm-disk.img`, `vm-config.json`, `seed.iso`, permissions, launchd services, degraded runtime status until health is observed |
 | runtime status | RuntimeLifecycle | `runtime-status.json` | health/install/update/rollback result | Helper/watchdog-readable status |
@@ -427,7 +427,7 @@ sudo installer -pkg dist/VitalServerHelper-<version>.pkg -target /
 개발용 Make target은 같은 계약을 `VM_INSTALL_SETTINGS`로 감쌉니다.
 
 ```sh
-VM_INSTALL_SETTINGS=/path/to/install-settings.json make vm-pkg-install
+VM_INSTALL_SETTINGS=/path/to/install-settings.json make dist/install/dev
 ```
 
 `postinstall`이 설정을 읽어 runtime provisioning에 반영한 뒤 settings 파일을 삭제합니다.
@@ -456,7 +456,7 @@ install settings JSON
 
 ### Update Bundle 계약
 
-`make vm-update-bundle-release`는 현재 아래 artifact를 만들 수 있습니다.
+`make dist/update/release`는 현재 아래 artifact를 만들 수 있습니다.
 
 | artifact type | 생성 여부 | Swift verify | Swift apply |
 |---|---:|---:|---:|
@@ -502,9 +502,9 @@ update에서 rootfs base를 교체해도 기존 `vm-disk.img` 내부 OS와 appli
 | `/Library/Application Support/VitalServerHelper/logs/install.log` | installer provisioning log, 10 MiB 기준 rotation |
 | `/Library/Application Support/VitalServerHelper/status/runtime-status.json` | Helper/watchdog용 runtime 상태 |
 
-설치 후 `make vm-installed-health`로 launchd load 상태, VM IP, guest HTTP, host proxy HTTP를 확인합니다.
+설치 후 `make dist/installed/health`로 launchd load 상태, VM IP, guest HTTP, host proxy HTTP를 확인합니다.
 
-개발 중 설치/제거를 반복할 때는 `make vm-pkg-uninstall-dev`를 사용합니다. 이 target은 `/Library/Application Support/VitalServerHelper`, 관련 LaunchDaemon plist, `/usr/local/bin/vitalserver-*`를 제거하므로 운영 환경에서는 사용하지 않습니다.
+개발 중 설치/제거를 반복할 때는 `make dist/uninstall/dev`를 사용합니다. 이 target은 `/Library/Application Support/VitalServerHelper`, 관련 LaunchDaemon plist, `/usr/local/bin/vitalserver-*`를 제거하므로 운영 환경에서는 사용하지 않습니다.
 
 설치된 Mac mini/Mac Studio에서 사용자가 CLI로 제거할 때는 아래 명령을 사용합니다.
 
@@ -518,7 +518,7 @@ sudo tirosh-vitalserver-uninstall
 
 ### nginx release artifact
 
-`make vm-pkg-dev`와 `make vm-pkg-release`는 package에 넣을 macOS nginx bundle까지 포함해서 만듭니다. `make vm-nginx-bundle`은 기본적으로 build machine의 nginx를 release artifact cache로 복사한 뒤, `config/vm-build.toml`의 `[nginx]` 설정으로 bundle을 만듭니다. 기본 artifact 경로는 아래입니다.
+`make dist/pkg/dev`와 `make dist/pkg/release`는 package에 넣을 macOS nginx bundle까지 포함해서 만듭니다. `make devtools/nginx/bundle`은 기본적으로 build machine의 nginx를 release artifact cache로 복사한 뒤, `config/vm-build.toml`의 `[nginx]` 설정으로 bundle을 만듭니다. 기본 artifact 경로는 아래입니다.
 
 ```text
 .artifacts/nginx/macos/bin/nginx
@@ -527,13 +527,13 @@ sudo tirosh-vitalserver-uninstall
 이 파일은 repository에 commit하지 않는 build-machine 입력 cache입니다. 로컬 unsigned build에서는 Homebrew nginx를 자동으로 복사해 release artifact를 만듭니다.
 
 ```sh
-make vm-nginx-bundle
+make devtools/nginx/bundle
 ```
 
 기본 source binary는 `/opt/homebrew/opt/nginx/bin/nginx`입니다. 다른 위치에서 artifact cache를 만들려면 source path를 명시합니다.
 
 ```sh
-VM_NGINX_SOURCE_BIN=/path/to/nginx make vm-nginx-artifact
+VM_NGINX_SOURCE_BIN=/path/to/nginx make devtools/nginx/artifact
 ```
 
 build tooling은 이 binary의 `nginx -v` 출력이 선택된 release manifest의 `services.hostProxy.image`와 맞는지 확인한 뒤, 실행 파일과 비시스템 dylib를 package 내부로 복사합니다. artifact cache가 없거나 release manifest와 맞지 않으면 `source_binary_path`에서 캐시를 다시 채웁니다.
@@ -551,10 +551,10 @@ nginx/sbin/nginx
 
 ```sh
 VM_NGINX_BIN=/path/to/nginx \
-make vm-nginx-bundle
+make devtools/nginx/bundle
 ```
 
-air-gapped 제품 package는 외부 Docker registry 없이 container를 시작할 수 있어야 합니다. 현재 package flow는 `make vm-docker-images`로 아래 image를 하나의 bundle로 만들고, 설치 후 guest bootstrap에서 `docker load`를 먼저 수행합니다.
+air-gapped 제품 package는 외부 Docker registry 없이 container를 시작할 수 있어야 합니다. 현재 package flow는 `make devtools/docker/images`로 아래 image를 하나의 bundle로 만들고, 설치 후 guest bootstrap에서 `docker load`를 먼저 수행합니다.
 
 ```text
 vitalserver:2.3.4
@@ -576,23 +576,23 @@ Docker image bundle은 guest VM architecture에 맞춰 `linux/arm64`로 생성�
 Docker image만으로는 충분하지 않습니다. Guest VM이 처음 부팅될 때 `docker.io`, Docker Compose 같은 runtime package를 apt로 설치해야 한다면 air-gapped 환경에서 실패합니다. 그래서 제품용 package는 개발용 VM disk가 아니라 별도 golden VM home에서 만든 clean rootfs base를 사용합니다. VM 내부 edge nginx는 OS package가 아니라 `nginx:1.24-alpine` container로 실행합니다.
 
 ```sh
-make vm-golden-rootfs
-make vm-pkg-dev
+make devtools/golden-rootfs
+make dist/pkg/dev
 ```
 
-기본 package용 rootfs는 `4G`(4 GiB)입니다. `VM_ROOTFS_SIZE`의 `G` suffix는 build tool 입력 형식이며 GiB 기준으로 해석합니다. `make vm-golden-rootfs`는 `.tmp/vitalserver-vm-golden` 아래에서 VM을 임시로 띄우고 `prepare-airgap-rootfs.sh`만 실행한 뒤 `.tmp/vitalserver-vm-pkg/rootfs-base.raw.gz`를 생성합니다. 이 스크립트는 OS package를 설치하고 `/mnt/tirosh/run/rootfs-ready` marker를 기록한 뒤 종료됩니다. Container는 시작하지 않기 때문에 운영 데이터나 Redis volume을 golden rootfs에 섞지 않습니다.
+기본 package용 rootfs는 `4G`(4 GiB)입니다. `VM_ROOTFS_SIZE`의 `G` suffix는 build tool 입력 형식이며 GiB 기준으로 해석합니다. `make devtools/golden-rootfs`는 `.tmp/vitalserver-vm-golden` 아래에서 VM을 임시로 띄우고 `prepare-airgap-rootfs.sh`만 실행한 뒤 `.tmp/vitalserver-vm-pkg/rootfs-base.raw.gz`를 생성합니다. 이 스크립트는 OS package를 설치하고 `/mnt/tirosh/run/rootfs-ready` marker를 기록한 뒤 종료됩니다. Container는 시작하지 않기 때문에 운영 데이터나 Redis volume을 golden rootfs에 섞지 않습니다.
 
-반복 개발 중에는 기존 golden rootfs cache를 재사용합니다. cache가 없으면 `make vm-pkg-dev`가 자동으로 한 번 생성합니다. release 검증처럼 clean rootfs를 반드시 다시 만들려면:
+반복 개발 중에는 기존 golden rootfs cache를 재사용합니다. cache가 없으면 `make dist/pkg/dev`가 자동으로 한 번 생성합니다. release 검증처럼 clean rootfs를 반드시 다시 만들려면:
 
 ```sh
-make vm-pkg-release
-make vm-dmg-release
+make dist/pkg/release
+make dist/dmg/release
 ```
 
 동일한 동작을 변수로 직접 지정할 수도 있습니다.
 
 ```sh
-VM_RECREATE_GOLDEN_ROOTFS=true make vm-pkg-dev
+VM_RECREATE_GOLDEN_ROOTFS=true make dist/pkg/dev
 ```
 
 ## Update Bundle
@@ -600,18 +600,18 @@ VM_RECREATE_GOLDEN_ROOTFS=true make vm-pkg-dev
 온라인/오프라인 업데이트는 같은 bundle tarball을 입력으로 사용합니다.
 
 ```sh
-make vm-update-bundle-release
-make vm-update-bundle-verify-release
+make dist/update/release
+make dist/update/verify/release
 ```
 
 VM Image/rootfs/base OS까지 포함하는 업데이트는 별도 target을 사용합니다. 이 bundle은 `vm-image-update`로 취급하고 Danger Zone에서 다룹니다.
 
 ```sh
-make vm-rootfs-update-bundle-release
-make vm-rootfs-update-bundle-verify-release
+make dist/image-update/release
+make dist/image-update/verify/release
 ```
 
-`make vm-update-bundle-release`는 Product Update artifact staging을 `packages/vitalserver-devtools` CLI에서 수행하고
+`make dist/update/release`는 Product Update artifact staging을 `packages/vitalserver-devtools` CLI에서 수행하고
 `app-bundle.tar.gz`, `runtime-tools.tar.gz`, `nginx-bundle.tar.gz`, `guest-deploy.tar.gz`를 기본 포함합니다.
 `app-bundle.tar.gz`에는 Swift Helper app과 Runtime Control PWA static assets
 (`Contents/Resources/runtime-control-pwa`)가 함께 들어갑니다. 따라서 Helper UI, PWA UI, Native Shell,
@@ -664,7 +664,7 @@ update-bundle-<channel>-<kind>-<releaseLabel>/
   migrations/
 ```
 
-`make vm-rootfs-update-bundle-release`로 만든 bundle에는 위 목록에 `rootfs-base.raw.gz`가 추가됩니다.
+`make dist/image-update/release`로 만든 bundle에는 위 목록에 `rootfs-base.raw.gz`가 추가됩니다.
 
 `manifest.json`은 `schemaVersion: 3`을 사용합니다. `channel`, `helperVersion`, `releaseLabel`은 required입니다. `helperVersion`은 package-safe numeric version이고, `releaseLabel`은 dev/stable artifact identity입니다. `artifacts`와 `migrations`는 모두 `checksums.txt`와 manifest 자체의 sha256/size 값으로 검증됩니다.
 

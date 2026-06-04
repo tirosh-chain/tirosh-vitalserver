@@ -38,17 +38,17 @@ Browser / VRecorder
 
 | 상황 | 실행/확인 |
 |---|---|
-| 개발용 제품 설치 파일을 만들고 싶다 | `make vm-dmg-dev` |
-| release 제품 설치 파일을 만들고 싶다 | `make vm-dmg-release` |
-| 개발용 `.pkg`만 만들고 싶다 | `make vm-pkg-dev` |
-| air-gapped 현장 업데이트 bundle을 만들고 싶다 | `make vm-update-bundle-release` |
-| 만든 update bundle을 검증하고 싶다 | `make vm-update-bundle-verify-release` |
-| 개발용 package를 현재 Mac에 설치해 보고 싶다 | `make vm-pkg-install` |
-| 설치된 runtime 상태를 확인하고 싶다 | `make vm-installed-health` |
-| 권한/update/observability 실패 주입 시나리오를 빠르게 확인하고 싶다 | `make runtime-chaos` |
-| 권한/update/observability 실패 주입 시나리오를 반복 확인하고 싶다 | `make runtime-chaos-loop` |
-| 개발용 설치물을 지우고 싶다 | `make vm-pkg-uninstall-dev` |
-| VM을 직접 띄워 PoC를 확인하고 싶다 | `make vm-up` |
+| 개발용 제품 설치 파일을 만들고 싶다 | `make dist/dmg/dev` |
+| release 제품 설치 파일을 만들고 싶다 | `make dist/dmg/release` |
+| 개발용 `.pkg`만 만들고 싶다 | `make dist/pkg/dev` |
+| air-gapped 현장 업데이트 bundle을 만들고 싶다 | `make dist/update/release` |
+| 만든 update bundle을 검증하고 싶다 | `make dist/update/verify/release` |
+| 개발용 package를 현재 Mac에 설치해 보고 싶다 | `make dist/install/dev` |
+| 설치된 runtime 상태를 확인하고 싶다 | `make dist/installed/health` |
+| 권한/update/observability 실패 주입 시나리오를 빠르게 확인하고 싶다 | `make runtime/chaos` |
+| 권한/update/observability 실패 주입 시나리오를 반복 확인하고 싶다 | `make runtime/chaos/loop` |
+| 개발용 설치물을 지우고 싶다 | `make dist/uninstall/dev` |
+| VM을 직접 띄워 PoC를 확인하고 싶다 | `make runtime/up` |
 
 세부 문서는 [macOS Runtime Overview](../../docs/macos-runtime/overview.md)를 진입점으로 봅니다.
 
@@ -79,7 +79,7 @@ Control API는 observer container를 직접 조회하지 않고 runtime read mod
 완전한 air-gapped 설치물을 만들려면 DMG를 생성합니다.
 
 ```sh
-make vm-dmg-release
+make dist/dmg/release
 ```
 
 생성물:
@@ -101,7 +101,7 @@ package에 들어가는 golden rootfs base는 설치 파일 효율을 위해 기
 반복 개발 중에는 cache를 재사용합니다. release 검증처럼 clean golden rootfs부터 다시 만들려면:
 
 ```sh
-make vm-dmg-release
+make dist/dmg/release
 ```
 
 ### 2. 이미 설치된 현장에 offline update bundle 제공
@@ -109,8 +109,8 @@ make vm-dmg-release
 업데이트 입력 단위는 bundle tarball입니다.
 
 ```sh
-make vm-update-bundle-release
-make vm-update-bundle-verify-release
+make dist/update/release
+make dist/update/verify/release
 ```
 
 기본 release Product Update bundle은 `product-update`용입니다. Helper UI, Updater/Supervisor/VM Driver tools,
@@ -120,8 +120,8 @@ host nginx bundle, Service Stack/guest deploy bundle, migrations만 포함하고
 VM Image/rootfs 자체를 교체해야 하는 드문 업데이트는 별도 target을 사용합니다. 이 흐름은 `vm-image-update`이며 Danger Zone 대상입니다.
 
 ```sh
-make vm-rootfs-update-bundle-release
-make vm-rootfs-update-bundle-verify-release
+make dist/image-update/release
+make dist/image-update/verify/release
 ```
 
 생성 위치:
@@ -141,16 +141,16 @@ sudo /usr/local/bin/vitalserver-vm runtime apply-bundle /path/to/update-bundle-<
 
 update bundle 생성 시에도 artifact 압축은 필요합니다. 기본 Product Update bundle은 Helper UI, Updater/Supervisor/VM Driver tools, host nginx bundle, Service Stack/guest deploy bundle을 각각 `.tar.gz`로 묶습니다. 이 압축은 rootfs 전체를 매번 다시 만드는 것보다 훨씬 가볍고, 기본 bundle에는 rootfs를 넣지 않습니다.
 
-`rootfs-base.raw.gz`는 신규 설치나 VM Image 변경용 artifact입니다. 일반 Product Update의 핵심은 `app-bundle`, `runtime-tools`, `nginx-bundle`, `guest-deploy`, 기본 migration입니다. rootfs 변경이 필요한 경우에만 `make vm-rootfs-update-bundle-release` 또는 `make vm-rootfs-update-bundle-dev`를 사용합니다.
+`rootfs-base.raw.gz`는 신규 설치나 VM Image 변경용 artifact입니다. 일반 Product Update의 핵심은 `app-bundle`, `runtime-tools`, `nginx-bundle`, `guest-deploy`, 기본 migration입니다. rootfs 변경이 필요한 경우에만 `make dist/image-update/release` 또는 `make dist/image-update/dev`를 사용합니다.
 
 `guest-deploy`에 들어간 `bootstrap.sh`, compose, guest systemd, Docker image bundle 수정은 update bundle에 포함됩니다. 적용 시 기본 migration이 cloud-init seed를 갱신하고, 새 runtime은 guest activation request를 통해 VM 내부에서 Docker image load와 compose recreate를 수행합니다.
 
 ### 3. 개발 Mac에 package 설치 테스트
 
 ```sh
-make vm-pkg-dev
-make vm-pkg-install
-make vm-installed-health
+make dist/pkg/dev
+make dist/install/dev
+make dist/installed/health
 ```
 
 설치 후 `/Applications/VitalServer Helper.app`을 열어 상태를 확인합니다. VitalServer 접속 URL은 Helper app Status 탭의 `VitalServer URL`을 사용합니다.
@@ -158,7 +158,7 @@ make vm-installed-health
 개발용 설치물을 지울 때:
 
 ```sh
-make vm-pkg-uninstall-dev
+make dist/uninstall/dev
 ```
 
 Helper app이 열리지 않는 깨진 설치 상태에서는 아래 fallback을 사용합니다.
@@ -172,18 +172,18 @@ sudo /usr/local/bin/tirosh-vitalserver-uninstall
 package 설치 없이 개발 VM을 직접 띄웁니다.
 
 ```sh
-make vm-up
-make vm-health
-make vm-down
+make runtime/up
+make runtime/health
+make runtime/down
 ```
 
-`make vm-up`은 Linux boot asset 준비, cloud-init 생성, guest deploy bundle staging, VM background start, VM IP 대기, host proxy 연결까지 수행합니다.
+`make runtime/up`은 Linux boot asset 준비, cloud-init 생성, guest deploy bundle staging, VM background start, VM IP 대기, host proxy 연결까지 수행합니다.
 
 VM 콘솔을 직접 보고 싶으면:
 
 ```sh
-make vm-prepare
-make vm-start
+make runtime/prepare
+make devtools/start
 ```
 
 ### 5. 패키징 시간이 너무 오래 걸릴 때
@@ -193,7 +193,7 @@ rootfs gzip 압축은 시간이 오래 걸릴 수 있습니다. build machine에
 ```sh
 command -v pigz
 brew install pigz
-VM_COMPRESSION_THREADS=8 make vm-pkg-dev
+VM_COMPRESSION_THREADS=8 make dist/pkg/dev
 ```
 
 `pigz`는 build machine 전용 optional accelerator입니다. 최종 `.pkg`, `.dmg`, air-gapped target Mac에는 필요하지 않습니다. `pigz`가 없으면 Python gzip fallback을 사용합니다.
@@ -215,29 +215,29 @@ Update bundle manifest는 `schemaVersion: 3`, `channel`, `helperVersion`, `relea
 
 `components` map은 `helperUI`, `updater`, `supervisor`, `vmDriver`, `serviceStack`, `vmImage`, `vitalServer`처럼 실제 변경된 계층을 드러냅니다. Helper UI와 VM Driver는 platform-specific이고, Updater/Supervisor는 host platform에 붙어 있으며, Service Stack과 VM Image는 guest/service 쪽 책임으로 구분합니다.
 
-`make vm-build`, `make vm-pkg-dev`/`make vm-pkg-release`, `make vm-update-bundle-dev`/`make vm-update-bundle-release`는 이 값을 읽어 app bundle version, package version, update bundle version, target platform, update compatibility, bundled service image/version/name 표시에 반영합니다. 버전, target platform, Helper UI의 service 표시명, 배포 profile, optional container service 포함 정책을 바꿀 때는 이 파일을 수정합니다.
+`make devtools/build`, `make dist/pkg/dev`/`make dist/pkg/release`, `make dist/update/dev`/`make dist/update/release`는 이 값을 읽어 app bundle version, package version, update bundle version, target platform, update compatibility, bundled service image/version/name 표시에 반영합니다. 버전, target platform, Helper UI의 service 표시명, 배포 profile, optional container service 포함 정책을 바꿀 때는 이 파일을 수정합니다.
 
 ## 주요 명령
 
 | 명령 | 용도 |
 |---|---|
-| `make vm-app` | Helper app bundle 생성 |
-| `make vm-pkg-dev` | release-dev.json 기반 개발 검증용 `.pkg` 생성 |
-| `make vm-dmg-dev` | release-dev.json 기반 개발 검증용 `.dmg` 생성 |
-| `make vm-pkg-release` | release.json 기반 release `.pkg` 생성 |
-| `make vm-dmg-release` | release.json 기반 release `.dmg` 생성 |
-| `make vm-update-bundle-dev` | release-dev.json 기반 Product Update bundle 생성 |
-| `make vm-update-bundle-release` | release.json 기반 Product Update bundle 생성 |
-| `make vm-rootfs-update-bundle-dev` | release-dev.json 기반 VM Image Update bundle 생성 |
-| `make vm-rootfs-update-bundle-release` | release.json 기반 VM Image Update bundle 생성 |
-| `make vm-update-bundle-verify-dev` | dev product update bundle checksum/manifest 검증 |
-| `make vm-update-bundle-verify-release` | release product update bundle checksum/manifest 검증 |
-| `make vm-pkg-install` | 현재 Mac에 개발용 package 설치 |
-| `make vm-installed-health` | 설치된 launchd VM/proxy 상태 확인 |
-| `make vm-pkg-uninstall-dev` | 개발용 설치물 제거 |
-| `make vm-up` | 개발 VM start + host proxy 연결 |
-| `make vm-health` | 개발 VM health 확인 |
-| `make vm-down` | 개발 VM 종료 |
+| `make devtools/app` | Helper app bundle 생성 |
+| `make dist/pkg/dev` | release-dev.json 기반 개발 검증용 `.pkg` 생성 |
+| `make dist/dmg/dev` | release-dev.json 기반 개발 검증용 `.dmg` 생성 |
+| `make dist/pkg/release` | release.json 기반 release `.pkg` 생성 |
+| `make dist/dmg/release` | release.json 기반 release `.dmg` 생성 |
+| `make dist/update/dev` | release-dev.json 기반 Product Update bundle 생성 |
+| `make dist/update/release` | release.json 기반 Product Update bundle 생성 |
+| `make dist/image-update/dev` | release-dev.json 기반 VM Image Update bundle 생성 |
+| `make dist/image-update/release` | release.json 기반 VM Image Update bundle 생성 |
+| `make dist/update/verify/dev` | dev product update bundle checksum/manifest 검증 |
+| `make dist/update/verify/release` | release product update bundle checksum/manifest 검증 |
+| `make dist/install/dev` | 현재 Mac에 개발용 package 설치 |
+| `make dist/installed/health` | 설치된 launchd VM/proxy 상태 확인 |
+| `make dist/uninstall/dev` | 개발용 설치물 제거 |
+| `make runtime/up` | 개발 VM start + host proxy 연결 |
+| `make runtime/health` | 개발 VM health 확인 |
+| `make runtime/down` | 개발 VM 종료 |
 
 ## 설치되는 항목
 
