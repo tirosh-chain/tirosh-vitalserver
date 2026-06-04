@@ -112,6 +112,7 @@ struct RuntimeServiceController {
     func startLaunchdService(_ service: RuntimeManagedService) throws {
         let plist = service.launchDaemonPlist
         log("starting \(service.displayName) service label=\(service.label)")
+        try setLaunchdServiceEnabled(service, enabled: true)
         log("launchd bootstrap label=\(service.label) plist=\(plist)")
         serviceManager.start(service: service, plist: plist)
         guard try isLoaded(service) else {
@@ -199,6 +200,21 @@ struct RuntimeServiceController {
             return true
         }
         return false
+    }
+
+    private func setLaunchdServiceEnabled(_ service: RuntimeManagedService, enabled: Bool) throws {
+        let result = serviceManager.setEnabled(service: service, enabled: enabled)
+        guard result.exitCode == 0 else {
+            let action = enabled ? "enable" : "disable"
+            let stderr = result.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !stderr.isEmpty {
+                log("command stderr executable=\(Constants.Commands.launchctl) stderr=\(stderr)")
+            }
+            log("command failed executable=\(Constants.Commands.launchctl) exitCode=\(result.exitCode)")
+            throw LauncherError.missingArgument(
+                "command failed: \(Constants.Commands.launchctl) \(action) system/\(service.label)"
+            )
+        }
     }
 
     private func isLoaded(_ service: RuntimeManagedService) throws -> Bool {

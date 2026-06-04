@@ -181,6 +181,12 @@ final class RuntimeServiceControllerTests: XCTestCase {
             RuntimeManagedService.guestLogSync.launchDaemonPlist,
             RuntimeManagedService.watchdog.launchDaemonPlist,
         ])
+        XCTAssertEqual(serviceManager.setEnabledLabels, [
+            RuntimeManagedService.vm.label,
+            RuntimeManagedService.guestLogSync.label,
+            RuntimeManagedService.watchdog.label,
+        ])
+        XCTAssertEqual(serviceManager.setEnabledValues, [true, true, true])
     }
 
     func testStartRuntimeServicesFailsWhenLaunchdServiceDoesNotLoad() {
@@ -200,8 +206,39 @@ final class RuntimeServiceControllerTests: XCTestCase {
             XCTAssertTrue(String(describing: error).contains("launchd service failed to load"))
         }
         XCTAssertEqual(serviceManager.startedLabels, [RuntimeManagedService.vm.label])
+        XCTAssertEqual(serviceManager.setEnabledLabels, [RuntimeManagedService.vm.label])
+        XCTAssertEqual(serviceManager.setEnabledValues, [true])
         XCTAssertTrue(logs.contains {
             $0.contains("launchd service failed to load label=\(RuntimeManagedService.vm.label)")
+        })
+    }
+
+    func testStartRuntimeServicesFailsBeforeBootstrapWhenEnableFails() {
+        let serviceManager = ServiceControllerServiceManagerSpy()
+        serviceManager.setEnabledResults[.vm] = RuntimeProcessResult(
+            exitCode: 125,
+            stdout: "",
+            stderr: "Service is disabled"
+        )
+        var logs: [String] = []
+        let controller = RuntimeServiceController(
+            serviceManager: serviceManager,
+            serviceState: { _ in .notLoaded },
+            log: { logs.append($0) }
+        )
+
+        XCTAssertThrowsError(try controller.startRuntimeServices(RuntimeServiceRestartPolicy(
+            restartVM: true,
+            restartProxy: false,
+            restartWatchdog: false
+        ))) { error in
+            XCTAssertTrue(String(describing: error).contains("launchctl enable"))
+        }
+        XCTAssertEqual(serviceManager.setEnabledLabels, [RuntimeManagedService.vm.label])
+        XCTAssertEqual(serviceManager.setEnabledValues, [true])
+        XCTAssertEqual(serviceManager.startedLabels, [])
+        XCTAssertTrue(logs.contains {
+            $0.contains("command stderr executable=\(Constants.Commands.launchctl) stderr=Service is disabled")
         })
     }
 
@@ -220,6 +257,8 @@ final class RuntimeServiceControllerTests: XCTestCase {
 
         XCTAssertEqual(serviceManager.restartedLabels, [RuntimeManagedService.vm.label])
         XCTAssertEqual(serviceManager.startedLabels, [RuntimeManagedService.vm.label])
+        XCTAssertEqual(serviceManager.setEnabledLabels, [RuntimeManagedService.vm.label])
+        XCTAssertEqual(serviceManager.setEnabledValues, [true])
         XCTAssertTrue(logs.contains("launchd service not loaded after restart; starting label=\(RuntimeManagedService.vm.label)"))
     }
 
@@ -254,6 +293,11 @@ final class RuntimeServiceControllerTests: XCTestCase {
             RuntimeManagedService.vm.label,
             RuntimeManagedService.guestLogSync.label,
         ])
+        XCTAssertEqual(serviceManager.setEnabledLabels, [
+            RuntimeManagedService.vm.label,
+            RuntimeManagedService.guestLogSync.label,
+        ])
+        XCTAssertEqual(serviceManager.setEnabledValues, [true, true])
         XCTAssertEqual(serviceManager.restartedLabels, [])
     }
 
