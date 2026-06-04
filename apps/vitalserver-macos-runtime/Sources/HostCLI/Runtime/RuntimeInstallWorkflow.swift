@@ -348,9 +348,18 @@ struct RuntimeInstallWorkflowComposition {
     }
 
     private func applyStartOnBootPolicy(_ settings: InstallSettings) throws {
-        try operations.setStartOnBoot(settings.startOnBoot)
-        let action = settings.preventSystemSleep && settings.startOnBoot ? "enable" : "disable"
-        try operations.runRequired(Constants.Commands.launchctl, [action, "system/\(RuntimeManagedService.sleepPrevention.label)"])
+        try RuntimeInstallStartOnBootPolicyApplier(
+            context: RuntimeInstallStartOnBootPolicyContext(
+                launchctlExecutable: Constants.Commands.launchctl
+            ),
+            operations: RuntimeInstallStartOnBootPolicyOperations(
+                setStartOnBoot: operations.setStartOnBoot,
+                runRequired: operations.runRequired
+            )
+        ).apply(input: RuntimeInstallStartOnBootPolicyInput(
+            startOnBoot: settings.startOnBoot,
+            preventSystemSleep: settings.preventSystemSleep
+        ))
     }
 
     private func cleanupInstallSettings() throws {
