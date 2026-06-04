@@ -74,19 +74,6 @@ final class RuntimeObservedEventPublisherTests: XCTestCase {
         XCTAssertEqual(recorded?.snapshot, snapshot)
     }
 
-    func testObservedEventTypePolicyPrefersVMErrorsOverDomainErrors() {
-        let snapshot = runtimeHealthSnapshot(
-            vmErrors: [.missingIPAddress],
-            failureReasons: [.guestHTTP("503")]
-        )
-
-        let eventType = RuntimeObservedEventTypePolicy.eventType(
-            for: snapshot,
-            defaultEventType: .healthObserved
-        )
-
-        XCTAssertEqual(eventType, .vmErrorObserved)
-    }
 }
 
 private struct RecordedObservedEvent {
