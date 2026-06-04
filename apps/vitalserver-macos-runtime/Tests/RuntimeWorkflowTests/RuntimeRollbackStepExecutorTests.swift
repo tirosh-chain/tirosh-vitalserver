@@ -1,7 +1,7 @@
-import Foundation
-import Core
 import Contracts
-@testable import HostCLI
+import Core
+import Foundation
+import RuntimeWorkflow
 import XCTest
 
 final class RuntimeRollbackStepExecutorTests: XCTestCase {
@@ -10,8 +10,8 @@ final class RuntimeRollbackStepExecutorTests: XCTestCase {
         let policy = RuntimeServiceRestartPolicy(restartVM: true, restartGuestLogSync: true, restartProxy: true, restartWatchdog: false)
         let preflight = RollbackPreflightContext(
             backup: backup,
-            backupRootfs: backup.appendingPathComponent(Constants.Artifacts.rootfsBase),
-            backupVersion: backup.appendingPathComponent(Constants.Artifacts.runtimeVersion),
+            backupRootfs: backup.appendingPathComponent(rootfsBaseName),
+            backupVersion: backup.appendingPathComponent(runtimeVersionName),
             restoresRootfsBase: true,
             restartPolicy: policy
         )
@@ -24,7 +24,7 @@ final class RuntimeRollbackStepExecutorTests: XCTestCase {
             },
             fileExists: { url in
                 events.append("exists:\(url.lastPathComponent)")
-                return url.lastPathComponent == Constants.Artifacts.runtimeVersion
+                return url.lastPathComponent == runtimeVersionName
             },
             writeRuntimeVersion: { version, bundle in
                 events.append("version:\(version):\(bundle.lastPathComponent)")
@@ -73,8 +73,8 @@ final class RuntimeRollbackStepExecutorTests: XCTestCase {
         let backup = URL(fileURLWithPath: "/backups/before-1.2.3")
         let preflight = RollbackPreflightContext(
             backup: backup,
-            backupRootfs: backup.appendingPathComponent(Constants.Artifacts.rootfsBase),
-            backupVersion: backup.appendingPathComponent(Constants.Artifacts.runtimeVersion),
+            backupRootfs: backup.appendingPathComponent(rootfsBaseName),
+            backupVersion: backup.appendingPathComponent(runtimeVersionName),
             restoresRootfsBase: true,
             restartPolicy: RuntimeServiceRestartPolicy(restartVM: false, restartGuestLogSync: false, restartProxy: false, restartWatchdog: false)
         )
@@ -103,24 +103,42 @@ final class RuntimeRollbackStepExecutorTests: XCTestCase {
         XCTAssertEqual(events, ["version:rolled-back:before-1.2.3"])
     }
 
-    func testRejectsNonRollbackStep() {
-        let executor = RuntimeRollbackStepExecutor(
-            stopRuntimeServices: {},
-            replaceFile: { _, _ in },
-            fileExists: { _ in false },
-            writeRuntimeVersion: { _, _ in },
-            restoreBackupPathIfExists: { _, _ in },
-            restoreRuntimeToolsIfExists: { _ in },
-            startRuntimeServices: { _ in },
-            waitForHealth: { _ in }
-        )
+    func testRootfsRestoreRequiresExplicitBackupRootfs() {
+        let executor = makeExecutor(replaceFile: { _, _ in XCTFail("should not replace rootfs without backup rootfs") })
         let backup = URL(fileURLWithPath: "/backup")
         let preflight = RollbackPreflightContext(
             backup: backup,
-            backupRootfs: backup.appendingPathComponent(Constants.Artifacts.rootfsBase),
-            backupVersion: backup.appendingPathComponent(Constants.Artifacts.runtimeVersion),
+            backupRootfs: nil,
+            backupVersion: backup.appendingPathComponent(runtimeVersionName),
+            restoresRootfsBase: false,
+            restartPolicy: stoppedPolicy
+        )
+
+        XCTAssertThrowsError(try executor.execute(
+            .rollbackRestoreRootfsBase,
+            preflight: preflight,
+            rootfsBase: URL(fileURLWithPath: "/runtime/rootfs-base.raw.gz"),
+            runtimeVersion: URL(fileURLWithPath: "/runtime/runtime-version"),
+            managerAppPath: URL(fileURLWithPath: "/Applications/VitalServer Manager.app"),
+            nginxDirectory: URL(fileURLWithPath: "/product/nginx"),
+            deployDirectory: URL(fileURLWithPath: "/product/deploy")
+        )) { error in
+            XCTAssertEqual(
+                String(describing: error),
+                "rollback rootfs restore requested without backup rootfs"
+            )
+        }
+    }
+
+    func testRejectsNonRollbackStep() {
+        let executor = makeExecutor()
+        let backup = URL(fileURLWithPath: "/backup")
+        let preflight = RollbackPreflightContext(
+            backup: backup,
+            backupRootfs: backup.appendingPathComponent(rootfsBaseName),
+            backupVersion: backup.appendingPathComponent(runtimeVersionName),
             restoresRootfsBase: true,
-            restartPolicy: RuntimeServiceRestartPolicy(restartVM: false, restartGuestLogSync: false, restartProxy: false, restartWatchdog: false)
+            restartPolicy: stoppedPolicy
         )
 
         XCTAssertThrowsError(try executor.execute(
@@ -131,6 +149,33 @@ final class RuntimeRollbackStepExecutorTests: XCTestCase {
             managerAppPath: URL(fileURLWithPath: "/Applications/VitalServer Manager.app"),
             nginxDirectory: URL(fileURLWithPath: "/product/nginx"),
             deployDirectory: URL(fileURLWithPath: "/product/deploy")
-        ))
+        )) { error in
+            XCTAssertEqual(
+                String(describing: error),
+                "unsupported command: rollback step stop-runtime-services"
+            )
+        }
+    }
+
+    private var stoppedPolicy: RuntimeServiceRestartPolicy {
+        RuntimeServiceRestartPolicy(restartVM: false, restartGuestLogSync: false, restartProxy: false, restartWatchdog: false)
+    }
+
+    private func makeExecutor(
+        replaceFile: @escaping (URL, URL) throws -> Void = { _, _ in }
+    ) -> RuntimeRollbackStepExecutor {
+        RuntimeRollbackStepExecutor(
+            stopRuntimeServices: {},
+            replaceFile: replaceFile,
+            fileExists: { _ in false },
+            writeRuntimeVersion: { _, _ in },
+            restoreBackupPathIfExists: { _, _ in },
+            restoreRuntimeToolsIfExists: { _ in },
+            startRuntimeServices: { _ in },
+            waitForHealth: { _ in }
+        )
     }
 }
+
+private let rootfsBaseName = "rootfs-base.raw.gz"
+private let runtimeVersionName = "runtime-version.json"

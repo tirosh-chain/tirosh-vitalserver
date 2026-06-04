@@ -1,6 +1,7 @@
 import Foundation
 import Core
 import Contracts
+import RuntimeWorkflow
 
 struct RuntimeRollbackWorkflowContext {
     let rootfsBase: URL
