@@ -7,24 +7,6 @@ import RuntimeWorkflow
 import XCTest
 
 final class RuntimeBundleWorkflowTests: XCTestCase {
-    func testPrepareApplyBundleLogsRecordsDirectoryAndRotationFailures() {
-        let fileStore = RuntimeFileStoreSpy()
-        fileStore.createDirectoryError = CocoaError(.fileWriteNoPermission)
-        var logs: [String] = []
-        let workflow = makeWorkflow(
-            fileStore: fileStore,
-            rotateRuntimeLogs: {
-                throw LauncherError.runtimeOperationFailed("rotation failed")
-            },
-            log: { logs.append($0) }
-        )
-
-        workflow.prepareApplyBundleLogs()
-
-        XCTAssertTrue(logs.contains { $0.contains("bundle apply log directory preparation failed") })
-        XCTAssertTrue(logs.contains { $0.contains("bundle apply log rotation failed") })
-    }
-
     func testRemoveMaterializedBundleTemporaryRootRecordsCleanupFailure() {
         let fileStore = RuntimeFileStoreSpy()
         fileStore.removeItemError = CocoaError(.fileWriteNoPermission)

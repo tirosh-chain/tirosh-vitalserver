@@ -84,8 +84,7 @@ struct RuntimeBundleWorkflow {
     }
 
     func applyBundle(_ bundleURL: URL) throws {
-        try runtimeApplyBundleRunner().run(bundleURL: bundleURL)
-        operations.log("mutable VM disk preserved path=\(context.vmDisk.path)")
+        try runtimeApplyBundleWorkflow().applyBundle(bundleURL)
     }
 
     private func verifyBundleDirectory(_ bundleURL: URL, sourceURL: URL) throws {
@@ -255,104 +254,71 @@ struct RuntimeBundleWorkflow {
         fileExists(url) ? try fileSize(url) : 0
     }
 
-    func prepareApplyBundleLogs() {
-        do {
-            try operations.fileStore.createDirectory(at: context.logsDirectory, withIntermediateDirectories: true)
-        } catch {
-            operations.log("bundle apply log directory preparation failed error=\(error)")
-        }
-        do {
-            try operations.rotateRuntimeLogs()
-        } catch {
-            operations.log("bundle apply log rotation failed error=\(error)")
-        }
-    }
-
-    private func runtimeApplyBundleRunner() -> RuntimeApplyBundleRunner {
-        RuntimeApplyBundleRunner(
-            prepareLogs: {
-                prepareApplyBundleLogs()
-            },
-            initialHealthSnapshot: operations.runtimeHealthSnapshot,
-            preparePreflight: prepareApplyBundlePreflight,
-            executeStep: executeApplyBundleStep,
-            rollback: { backup in
-                try operations.rollback(backup)
-            },
-            startRuntimeServices: operations.startRuntimeServices,
-            statusReporter: operations.statusReporter,
-            pruneOldRuntimeArtifacts: operations.pruneOldRuntimeArtifacts,
-            reasonText: operations.reasonText
+    private func runtimeApplyBundleWorkflow() -> RuntimeApplyBundleWorkflow {
+        RuntimeApplyBundleWorkflow(
+            context: RuntimeApplyBundleWorkflowContext(
+                backupsDirectory: context.backupsDirectory,
+                logsDirectory: context.logsDirectory,
+                rootfsBase: context.rootfsBase,
+                vmDisk: context.vmDisk,
+                updateFreeSpaceMarginBytes: Constants.Runtime.updateFreeSpaceMarginBytes
+            ),
+            operations: RuntimeApplyBundleWorkflowOperations(
+                stageBundle: stageBundle,
+                loadManifest: loadManifest,
+                fileExists: fileExists,
+                createDirectory: { url, withIntermediateDirectories in
+                    try operations.fileStore.createDirectory(at: url, withIntermediateDirectories: withIntermediateDirectories)
+                },
+                fileSize: fileSize,
+                directorySize: directorySize,
+                requireFreeSpace: operations.requireFreeSpace,
+                checkCompatibility: { manifest in
+                    try RuntimeUpdatePreflightPolicy.checkCompatibility(
+                        manifest: manifest,
+                        currentUpdaterVersion: Constants.launcherVersion,
+                        currentChannel: Constants.launcherChannel,
+                        currentPlatform: Constants.Platform.current
+                    )
+                },
+                serviceRestartPolicy: {
+                    RuntimeServiceRestartPolicy(
+                        restartVM: operations.isLaunchdLoaded(.vm),
+                        restartGuestLogSync: operations.isLaunchdLoaded(.guestLogSync),
+                        restartProxy: operations.isLaunchdLoaded(.proxy),
+                        restartWatchdog: operations.isLaunchdLoaded(.watchdog)
+                    )
+                },
+                runtimeHealthSnapshot: operations.runtimeHealthSnapshot,
+                requireGuestCapability: operations.requireGuestCapability,
+                createBackup: operations.createBackup,
+                rotateRuntimeLogs: operations.rotateRuntimeLogs,
+                rollback: { backup in
+                    try operations.rollback(backup)
+                },
+                startRuntimeServices: operations.startRuntimeServices,
+                statusReporter: operations.statusReporter,
+                pruneOldRuntimeArtifacts: operations.pruneOldRuntimeArtifacts,
+                reasonText: operations.reasonText,
+                stopRuntimeServices: operations.stopRuntimeServices,
+                runningVMProcessID: operations.runningVMProcessID,
+                stopRuntimeServicesAfterGuestPoweroff: operations.stopRuntimeServicesAfterGuestPoweroff,
+                prepareGuestShutdownForUpdate: operations.prepareGuestShutdownForUpdate,
+                clearGuestShutdownPreparation: operations.clearGuestShutdownPreparation,
+                replaceFile: operations.replaceFile,
+                replaceUpdateArtifacts: { artifacts, stagedBundle in
+                    try replaceUpdateArtifacts(artifacts, stagedBundle: stagedBundle)
+                },
+                runMigrations: { migrations, stagedBundle in
+                    try runMigrations(migrations, stagedBundle: stagedBundle)
+                },
+                refreshCloudInitSeedIfNeeded: operations.refreshCloudInitSeedIfNeeded,
+                writeRuntimeVersion: operations.writeRuntimeVersion,
+                activateGuestUpdateIfNeeded: operations.activateGuestUpdateIfNeeded,
+                waitForHealth: operations.waitForHealth,
+                log: operations.log
+            )
         )
-    }
-
-    private func prepareApplyBundlePreflight(_ bundleURL: URL) throws -> ApplyBundlePreflightContext {
-        try RuntimeApplyBundlePreflightRunner(
-            stageBundle: stageBundle,
-            loadManifest: loadManifest,
-            fileExists: fileExists,
-            createDirectory: { url, withIntermediateDirectories in
-                try operations.fileStore.createDirectory(at: url, withIntermediateDirectories: withIntermediateDirectories)
-            },
-            fileSize: fileSize,
-            requireFreeSpace: operations.requireFreeSpace,
-            checkCompatibility: { manifest in
-                try RuntimeUpdatePreflightPolicy.checkCompatibility(
-                    manifest: manifest,
-                    currentUpdaterVersion: Constants.launcherVersion,
-                    currentChannel: Constants.launcherChannel,
-                    currentPlatform: Constants.Platform.current
-                )
-            },
-            serviceRestartPolicy: {
-                RuntimeServiceRestartPolicy(
-                    restartVM: operations.isLaunchdLoaded(.vm),
-                    restartGuestLogSync: operations.isLaunchdLoaded(.guestLogSync),
-                    restartProxy: operations.isLaunchdLoaded(.proxy),
-                    restartWatchdog: operations.isLaunchdLoaded(.watchdog)
-                )
-            },
-            runtimeHealthSnapshot: operations.runtimeHealthSnapshot,
-            requireGuestCapability: operations.requireGuestCapability,
-            createBackup: operations.createBackup,
-            directorySize: directorySize,
-            updateFreeSpaceMarginBytes: Constants.Runtime.updateFreeSpaceMarginBytes,
-            log: operations.log
-        ).prepare(
-            bundleURL: bundleURL,
-            backupsDirectory: context.backupsDirectory,
-            rootfsBase: context.rootfsBase
-        )
-    }
-
-    private func executeApplyBundleStep(
-        _ step: RuntimeWorkflowStep,
-        preflight: ApplyBundlePreflightContext
-    ) throws {
-        try RuntimeApplyBundleStepExecutor(
-            stopRuntimeServices: operations.stopRuntimeServices,
-            runningVMProcessID: operations.runningVMProcessID,
-            stopRuntimeServicesAfterGuestPoweroff: operations.stopRuntimeServicesAfterGuestPoweroff,
-            prepareGuestShutdownForUpdate: operations.prepareGuestShutdownForUpdate,
-            clearGuestShutdownPreparation: operations.clearGuestShutdownPreparation,
-            createDirectory: { url, withIntermediateDirectories in
-                try operations.fileStore.createDirectory(at: url, withIntermediateDirectories: withIntermediateDirectories)
-            },
-            fileSize: fileSize,
-            replaceFile: operations.replaceFile,
-            replaceUpdateArtifacts: { artifacts, stagedBundle in
-                try replaceUpdateArtifacts(artifacts, stagedBundle: stagedBundle)
-            },
-            runMigrations: { migrations, stagedBundle in
-                try runMigrations(migrations, stagedBundle: stagedBundle)
-            },
-            refreshCloudInitSeedIfNeeded: operations.refreshCloudInitSeedIfNeeded,
-            writeRuntimeVersion: operations.writeRuntimeVersion,
-            startRuntimeServices: operations.startRuntimeServices,
-            activateGuestUpdateIfNeeded: operations.activateGuestUpdateIfNeeded,
-            waitForHealth: operations.waitForHealth,
-            log: operations.log
-        ).execute(step, preflight: preflight, rootfsBase: context.rootfsBase)
     }
 
     private func loadManifest(_ url: URL) throws -> UpdateBundleManifest {
