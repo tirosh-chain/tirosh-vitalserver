@@ -445,6 +445,57 @@ extension RuntimeLifecycle {
         )
     }
 
+    func runtimeRedisBackupWorkflow() -> RuntimeRedisBackupWorkflow {
+        RuntimeRedisBackupWorkflow(
+            context: RuntimeRedisBackupWorkflowContext(
+                guestRunDirectory: guestRunDirectory,
+                redisBackupsDirectory: installedPaths.redisBackupsDirectory,
+                requestFileName: Constants.Runtime.redisBackupRequestFile,
+                resultFileName: Constants.Runtime.redisBackupResultFile,
+                waitTimeoutSeconds: Constants.Runtime.redisBackupWaitTimeoutSeconds,
+                pollIntervalSeconds: 3
+            ),
+            operations: RuntimeRedisBackupWorkflowOperations(
+                requireCapability: {
+                    try requireGuestCapability(.redisBackup)
+                },
+                createDirectory: { url, withIntermediateDirectories in
+                    try fileStore.createDirectory(at: url, withIntermediateDirectories: withIntermediateDirectories)
+                },
+                removePreviousResult: { url in
+                    if fileStore.fileExists(url) {
+                        try fileStore.removeItem(at: url)
+                    }
+                },
+                writeStatus: { status, operation, message in
+                    try writeRuntimeStatus(status, operation: operation, message: message)
+                },
+                requestID: {
+                    UUID().uuidString
+                },
+                timestamp: isoTimestamp,
+                writeRequest: { request, url in
+                    let encoder = JSONEncoder()
+                    encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+                    try fileStore.writeData(try encoder.encode(request), to: url, options: .atomic)
+                },
+                isVMServiceLoaded: {
+                    isLaunchdLoaded(.vm)
+                },
+                startVMService: {
+                    try startLaunchdService(.vm)
+                },
+                loadResult: { url in
+                    RedisBackupResultReader.load(from: url, fileStore: fileStore)
+                },
+                sleep: { seconds in
+                    sleeper.sleep(forTimeInterval: seconds)
+                },
+                log: log
+            )
+        )
+    }
+
     func runtimeRollbackWorkflow() -> RuntimeRollbackWorkflow {
         RuntimeRollbackWorkflow(
             context: RuntimeRollbackWorkflowContext(

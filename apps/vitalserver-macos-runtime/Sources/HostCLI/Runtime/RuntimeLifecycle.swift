@@ -219,75 +219,15 @@ struct RuntimeLifecycle {
     }
 
     func createRedisBackup() throws {
-        log("redis backup requested")
-        try requireGuestCapability(.redisBackup)
-        try fileStore.createDirectory(at: guestRunDirectory, withIntermediateDirectories: true)
-        try fileStore.createDirectory(
-            at: installedPaths.redisBackupsDirectory,
-            withIntermediateDirectories: true
-        )
-
-        let resultURL = guestRunDirectory.appendingPathComponent(Constants.Runtime.redisBackupResultFile)
-        if fileStore.fileExists(resultURL) {
-            try fileStore.removeItem(at: resultURL)
-        }
-
-        try writeRuntimeStatus(.recovering, operation: .redisBackup, message: "redis backup requested")
-
-        let requestID = UUID().uuidString
-        let requestedAt = isoTimestamp()
-        let requestURL = guestRunDirectory.appendingPathComponent(Constants.Runtime.redisBackupRequestFile)
-        let request = RedisBackupRequestDocument(requestId: requestID, requestedAt: requestedAt)
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        try fileStore.writeData(try encoder.encode(request), to: requestURL, options: .atomic)
-
-        if !isLaunchdLoaded(.vm) {
-            try startLaunchdService(.vm)
-        }
-
-        let maxAttempts = Int(ceil(Constants.Runtime.redisBackupWaitTimeoutSeconds / 3.0))
-        for attempt in 0..<maxAttempts {
-            switch loadRedisBackupResult(from: resultURL) {
-            case .loaded(let result):
-                if let resultRequestId = result.requestId, resultRequestId != requestID {
-                    log("stale redis backup result ignored")
-                } else if result.status == .completed {
-                    let message = result.message ?? "Redis backup completed."
-                    try writeRuntimeStatus(.healthy, operation: .redisBackup, message: message)
-                    print(message)
-                    if let archive = result.archive, !archive.isEmpty {
-                        print("archive: \(archive)")
-                    }
-                    log("redis backup completed")
-                    return
-                } else if result.status == .failed {
-                    let message = result.message ?? "Redis backup failed."
-                    try writeRuntimeStatus(.degraded, operation: .redisBackup, message: message)
-                    throw LauncherError.runtimeOperationFailed(message)
-                } else if attempt % 10 == 0 {
-                    log(result.message ?? "waiting for redis backup")
-                }
-            case .missing:
-                if attempt % 10 == 0 {
-                    log("waiting for redis backup guest worker")
-                }
-            case .failed(let message):
-                let failureMessage = "failed to read redis backup result: \(message)"
-                try writeRuntimeStatus(.degraded, operation: .redisBackup, message: failureMessage)
-                throw LauncherError.runtimeOperationFailed(failureMessage)
+        do {
+            let result = try runtimeRedisBackupWorkflow().createBackup()
+            print(result.message)
+            if let archive = result.archive, !archive.isEmpty {
+                print("archive: \(archive)")
             }
-            if attempt < maxAttempts - 1 {
-                sleeper.sleep(forTimeInterval: 3)
-            }
+        } catch RuntimeWorkflowError.operationFailed(let message) {
+            throw LauncherError.runtimeOperationFailed(message)
         }
-
-        try writeRuntimeStatus(.degraded, operation: .redisBackup, message: "redis backup timed out")
-        throw LauncherError.runtimeOperationFailed("redis backup timed out")
-    }
-
-    private func loadRedisBackupResult(from url: URL) -> RedisBackupResultLoadResult {
-        RedisBackupResultReader.load(from: url, fileStore: fileStore)
     }
 
     func collectGuestLogs() throws {
@@ -329,21 +269,8 @@ struct RuntimeLifecycle {
 
 }
 
-private struct RedisBackupRequestDocument: Encodable {
-    let schemaVersion = 2
-    let requestId: String
-    let requestedAt: String
-    let operation = RuntimeOperation.redisBackup.rawValue
-}
-
-enum RedisBackupResultLoadResult {
-    case missing
-    case loaded(RedisBackupResultDocument)
-    case failed(String)
-}
-
 enum RedisBackupResultReader {
-    static func load(from url: URL, fileStore: RuntimeFileStore) -> RedisBackupResultLoadResult {
+    static func load(from url: URL, fileStore: RuntimeFileStore) -> RuntimeRedisBackupResultLoadResult {
         guard fileStore.fileExists(url) else {
             return .missing
         }
@@ -354,11 +281,4 @@ enum RedisBackupResultReader {
             return .failed(error.localizedDescription)
         }
     }
-}
-
-struct RedisBackupResultDocument: Decodable {
-    let requestId: String?
-    let status: DatastoreRepairStatus
-    let message: String?
-    let archive: String?
 }

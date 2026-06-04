@@ -1,4 +1,5 @@
 import Foundation
+import RuntimeWorkflow
 @testable import HostCLI
 import XCTest
 
