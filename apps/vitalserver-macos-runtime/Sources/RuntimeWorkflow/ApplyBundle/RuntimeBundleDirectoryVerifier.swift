@@ -61,7 +61,8 @@ public struct RuntimeBundleDirectoryVerifier {
         self.operations = operations
     }
 
-    public func verify(bundleURL: URL, sourceURL: URL) throws {
+    @discardableResult
+    public func verify(bundleURL: URL, sourceURL: URL) throws -> UpdateBundleManifest {
         let manifestURL = bundleURL.appendingPathComponent(context.manifestFileName)
         let checksumsURL = bundleURL.appendingPathComponent(context.checksumsFileName)
         let signatureURL = bundleURL.appendingPathComponent(context.signatureFileName)
@@ -98,6 +99,7 @@ public struct RuntimeBundleDirectoryVerifier {
         }
 
         operations.log("bundle verification completed path=\(sourceURL.path)")
+        return manifest
     }
 
     private func formatBytes(_ bytes: UInt64) -> String {

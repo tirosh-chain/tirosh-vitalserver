@@ -60,8 +60,9 @@ final class RuntimeBundleDirectoryVerifierTests: XCTestCase {
             )
         )
 
-        try verifier.verify(bundleURL: bundleURL, sourceURL: sourceURL)
+        let verifiedManifest = try verifier.verify(bundleURL: bundleURL, sourceURL: sourceURL)
 
+        XCTAssertEqual(verifiedManifest, manifest)
         XCTAssertEqual(events, [
             "dir:/bundle",
             "file:/bundle/manifest.json",

@@ -48,20 +48,37 @@ struct RuntimeBundleWorkflow {
     let operations: RuntimeBundleWorkflowOperations
 
     func verifyBundle(_ bundleURL: URL) throws {
-        operations.log("bundle verification started path=\(bundleURL.path)")
-        let materialized = try materializeBundleInput(bundleURL)
-        defer { materialized.cleanup?() }
-        try verifyBundleDirectory(materialized.bundleURL, sourceURL: bundleURL)
+        let result = try runtimeBundlePreparationWorkflow().verifyBundle(bundleURL)
+        print("bundle verified: \(result.sourceURL.path)")
     }
 
     @discardableResult
     func stageBundle(_ bundleURL: URL) throws -> URL {
-        operations.log("bundle stage started source=\(bundleURL.path)")
-        let materialized = try materializeBundleInput(bundleURL)
-        defer { materialized.cleanup?() }
-        try verifyBundleDirectory(materialized.bundleURL, sourceURL: bundleURL)
-        let manifest = try loadManifest(materialized.bundleURL.appendingPathComponent(Constants.Bundle.manifest))
-        let destination = try RuntimeBundleStager(
+        let result = try runtimeBundlePreparationWorkflow().stageBundle(bundleURL)
+        print("bundle staged: \(result.destinationURL.path)")
+        return result.destinationURL
+    }
+
+    func applyBundle(_ bundleURL: URL) throws {
+        try runtimeApplyBundleWorkflow().applyBundle(bundleURL)
+    }
+
+    private func runtimeBundlePreparationWorkflow() -> RuntimeBundlePreparationWorkflow {
+        RuntimeBundlePreparationWorkflow(
+            operations: RuntimeBundlePreparationWorkflowOperations(
+                materialize: { url in
+                    try runtimeBundleMaterializer().materialize(url)
+                },
+                cleanupTemporaryRoot: removeMaterializedBundleTemporaryRoot,
+                verifyDirectory: verifyBundleDirectory,
+                stageBundle: stageMaterializedBundle,
+                log: operations.log
+            )
+        )
+    }
+
+    private func stageMaterializedBundle(_ input: RuntimeBundleStagingInput) throws -> URL {
+        try RuntimeBundleStager(
             context: RuntimeBundleStagingContext(
                 bundlesDirectory: context.bundlesDirectory,
                 updateFreeSpaceMarginBytes: Constants.Runtime.updateFreeSpaceMarginBytes
@@ -83,20 +100,10 @@ struct RuntimeBundleWorkflow {
                 requireFreeSpace: operations.requireFreeSpace,
                 log: operations.log
             )
-        ).stage(input: RuntimeBundleStagingInput(
-            sourceURL: bundleURL,
-            bundleURL: materialized.bundleURL,
-            manifestVersion: manifest.version
-        ))
-        print("bundle staged: \(destination.path)")
-        return destination
+        ).stage(input: input)
     }
 
-    func applyBundle(_ bundleURL: URL) throws {
-        try runtimeApplyBundleWorkflow().applyBundle(bundleURL)
-    }
-
-    private func verifyBundleDirectory(_ bundleURL: URL, sourceURL: URL) throws {
+    private func verifyBundleDirectory(_ bundleURL: URL, sourceURL: URL) throws -> UpdateBundleManifest {
         try RuntimeBundleDirectoryVerifier(
             context: RuntimeBundleDirectoryVerificationContext(
                 manifestFileName: Constants.Bundle.manifest,
@@ -128,16 +135,10 @@ struct RuntimeBundleWorkflow {
                 log: operations.log
             )
         ).verify(bundleURL: bundleURL, sourceURL: sourceURL)
-        print("bundle verified: \(sourceURL.path)")
     }
 
-    private struct MaterializedBundleInput {
-        let bundleURL: URL
-        let cleanup: (() -> Void)?
-    }
-
-    private func materializeBundleInput(_ bundleURL: URL) throws -> MaterializedBundleInput {
-        let materialized = try RuntimeBundleMaterializer(
+    private func runtimeBundleMaterializer() -> RuntimeBundleMaterializer {
+        RuntimeBundleMaterializer(
             context: RuntimeBundleMaterializationContext(
                 tarExecutable: Constants.Commands.tar
             ),
@@ -164,12 +165,6 @@ struct RuntimeBundleWorkflow {
                 },
                 log: operations.log
             )
-        ).materialize(bundleURL)
-        return MaterializedBundleInput(
-            bundleURL: materialized.bundleURL,
-            cleanup: materialized.temporaryRoot.map { temporaryRoot in
-                { removeMaterializedBundleTemporaryRoot(temporaryRoot) }
-            }
         )
     }
 
@@ -389,16 +384,4 @@ struct RuntimeBundleWorkflow {
         try operations.fileStore.recursiveRegularFileSize(at: url, skipsHiddenFiles: true)
     }
 
-    private func formatBytes(_ bytes: UInt64) -> String {
-        let gib = Double(bytes) / 1_073_741_824
-        if gib >= 1 {
-            return String(format: "%.1f GiB", gib)
-        }
-        let mib = Double(bytes) / 1_048_576
-        return String(format: "%.1f MiB", max(mib, 0))
-    }
-
-    private func bundleItemSize(_ bytes: Int) -> UInt64 {
-        UInt64(max(bytes, 0))
-    }
 }
