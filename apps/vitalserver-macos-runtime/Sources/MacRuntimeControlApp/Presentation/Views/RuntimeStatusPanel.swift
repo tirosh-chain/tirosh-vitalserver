@@ -154,65 +154,42 @@ struct RuntimeStatusPanel: View {
     }
 
     private var vitalServerStatusAndURL: some View {
-        serviceStatusAndURL(
-            displayURL: vitalServerDisplayURL,
-            openURL: explicitURL(viewModel.settings.vitalServerURL),
+        let url = viewModel.presentationFormatter.vitalServerStatusURL(settings: viewModel.settings)
+        return serviceStatusAndURL(
+            displayURL: url.displayURL,
+            openURL: url.openURL,
             status: vitalServerAvailability
         )
     }
 
     private var remoteConsoleStatusAndURL: some View {
-        serviceStatusAndURL(
-            displayURL: remoteConsoleDisplayURL,
-            openURL: explicitURL(viewModel.settings.remoteConsoleURL),
+        let url = viewModel.presentationFormatter.remoteConsoleStatusURL(settings: viewModel.settings)
+        return serviceStatusAndURL(
+            displayURL: url.displayURL,
+            openURL: url.openURL,
             status: remoteConsoleAvailability
         )
     }
 
     private func serviceStatusAndURL(
         displayURL: String,
-        openURL: String?,
+        openURL: String,
         status: RuntimeStatusDisplayPolicy.StatusValue
     ) -> some View {
         ViewThatFits(in: .horizontal) {
             HStack(spacing: 12) {
-                if let openURL {
-                    linkButton(displayURL) {
-                        viewModel.openExternalURL(openURL)
-                    }
-                } else {
-                    Text(displayURL)
-                        .fontWeight(.medium)
+                linkButton(displayURL) {
+                    viewModel.openExternalURL(openURL)
                 }
                 statusValue(status)
             }
             VStack(alignment: .leading, spacing: 4) {
-                if let openURL {
-                    linkButton(displayURL) {
-                        viewModel.openExternalURL(openURL)
-                    }
-                } else {
-                    Text(displayURL)
-                        .fontWeight(.medium)
+                linkButton(displayURL) {
+                    viewModel.openExternalURL(openURL)
                 }
                 statusValue(status)
             }
         }
-    }
-
-    private var vitalServerDisplayURL: String {
-        explicitURL(viewModel.settings.vitalServerURL)
-            ?? "http://\(AppConstants.Labels.advertisedURLSameHost):\(viewModel.settings.proxyPort)/"
-    }
-
-    private var remoteConsoleDisplayURL: String {
-        explicitURL(viewModel.settings.remoteConsoleURL)
-            ?? "http://\(AppConstants.Labels.advertisedURLSameHost):\(viewModel.settings.runtimeControlPort)/"
-    }
-
-    private func explicitURL(_ value: String) -> String? {
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
     }
 
     private var dataDirectoryValue: some View {

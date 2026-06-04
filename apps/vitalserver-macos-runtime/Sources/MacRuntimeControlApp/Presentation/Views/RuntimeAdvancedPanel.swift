@@ -253,24 +253,8 @@ struct RuntimeAdvancedPanel: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
 
-                networkSubsection(AppConstants.Labels.sectionRemoteConsoleAccess) {
-                    advertisedURLPreviewRow(AppConstants.Labels.remoteConsoleURL, value: remoteConsoleURLPreview)
-                    settingHelp(AppConstants.Labels.remoteConsoleURLHelp)
-                }
-
                 networkSubsection(AppConstants.Labels.sectionAdvertisedURLOverride) {
-                    settingToggle(AppConstants.Labels.customAdvertisedURL, isOn: customAdvertisedURLBinding)
-                    settingHelp(AppConstants.Labels.customAdvertisedURLHelp)
-                    if viewModel.useCustomAdvertisedURL {
-                        settingTextField(AppConstants.Labels.vitalServerAdvertisedURL, text: $viewModel.settings.vitalServerURL)
-                        settingHelp(AppConstants.Labels.vitalServerURLHelp)
-                        settingTextField(AppConstants.Labels.remoteConsoleAdvertisedURL, text: $viewModel.settings.remoteConsoleURL)
-                        settingHelp(AppConstants.Labels.remoteConsoleAdvertisedURLHelp)
-                        advertisedURLPreviewRow(AppConstants.Labels.advertisedURLPreview, value: advertisedURLPreview)
-                    } else {
-                        advertisedURLPreviewRow(AppConstants.Labels.defaultAdvertisedURL, value: defaultAdvertisedURLPreview)
-                        settingHelp(AppConstants.Labels.defaultAdvertisedURLHelp)
-                    }
+                    advertisedServiceURLFields
                 }
 
                 networkSubsection(AppConstants.Labels.sectionPlannedNetworkFeatures) {
@@ -333,25 +317,26 @@ struct RuntimeAdvancedPanel: View {
         }
     }
 
-    private var advertisedURLPreview: String {
-        let value = viewModel.settings.vitalServerURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        return value.isEmpty ? defaultAdvertisedURLPreview : value
-    }
-
     private var defaultAdvertisedURLPreview: String {
         "http://\(AppConstants.Labels.advertisedURLSameHost):\(viewModel.settings.proxyPort)/"
     }
 
-    private var remoteConsoleURLPreview: String {
-        let value = viewModel.settings.remoteConsoleURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        return value.isEmpty ? "http://\(AppConstants.Labels.advertisedURLSameHost):\(viewModel.settings.runtimeControlPort)/" : value
+    private var defaultRemoteConsoleURLPreview: String {
+        "http://\(AppConstants.Labels.advertisedURLSameHost):\(viewModel.settings.runtimeControlPort)/"
     }
 
-    private var customAdvertisedURLBinding: Binding<Bool> {
-        Binding(
-            get: { viewModel.useCustomAdvertisedURL },
-            set: { viewModel.setCustomAdvertisedURL($0) }
-        )
+    private var advertisedServiceURLFields: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            settingTextField(AppConstants.Labels.vitalServerAdvertisedURL, text: $viewModel.settings.vitalServerURL)
+            settingHelp(AppConstants.Labels.vitalServerURLHelp)
+            advertisedURLPreviewRow(AppConstants.Labels.defaultAdvertisedURL, value: defaultAdvertisedURLPreview)
+            settingHelp(AppConstants.Labels.defaultVitalServerURLHelp)
+
+            settingTextField(AppConstants.Labels.remoteConsoleAdvertisedURL, text: $viewModel.settings.remoteConsoleURL)
+            settingHelp(AppConstants.Labels.remoteConsoleAdvertisedURLHelp)
+            advertisedURLPreviewRow(AppConstants.Labels.defaultAdvertisedURL, value: defaultRemoteConsoleURLPreview)
+            settingHelp(AppConstants.Labels.defaultRemoteConsoleURLHelp)
+        }
     }
 
     private var canApplySettingsForCurrentConnection: Bool {

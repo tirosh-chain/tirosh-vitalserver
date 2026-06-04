@@ -140,7 +140,7 @@ final class RuntimeFileReaderTests: XCTestCase {
         XCTAssertEqual(collector.refreshCount, 1)
     }
 
-    func testLogTextReadsAvailableSourceWhenRefreshFails() throws {
+    func testCommandLogTextReadsSourceWithoutRefreshingLogCollection() throws {
         let collector = FakeRuntimeLogCollector(refreshError: CocoaError(.fileReadNoPermission))
         let reader = SystemRuntimeHostFileReader(
             fileStore: SpecificFileRuntimeFileStore(dataByPath: [
@@ -152,7 +152,8 @@ final class RuntimeFileReaderTests: XCTestCase {
         let logText = reader.logText(sourceID: .command, helperMessage: "Ready", lineLimit: 2)
 
         XCTAssertEqual(logText, "second\nthird")
-        XCTAssertEqual(collector.sourceIDs, [.command])
+        XCTAssertEqual(collector.sourceIDs, [])
+        XCTAssertEqual(collector.refreshCount, 0)
     }
 
     func testLogTextReportsLogFileReadFailure() throws {
@@ -194,7 +195,8 @@ final class RuntimeFileReaderTests: XCTestCase {
         let logText = reader.logText(sourceID: .command, helperMessage: "Ready", lineLimit: 2)
 
         XCTAssertEqual(logText, "second\nthird")
-        XCTAssertEqual(collector.sourceIDs, [.command])
+        XCTAssertEqual(collector.sourceIDs, [])
+        XCTAssertEqual(collector.refreshCount, 0)
     }
 
     func testLogTextCoversDiagnosticLogSourcesWhenFilesAreMissing() {

@@ -6,7 +6,7 @@ import RuntimeControl
 import XCTest
 
 final class RuntimeChaosScenarioTests: XCTestCase {
-    func testUpdateLogRefreshChaosKeepsReadableCommandLogVisible() {
+    func testCommandLogReadDoesNotDependOnCentralLogCollectionPermission() {
         let collector = ChaosFailingRuntimeLogCollector()
         let reader = SystemRuntimeHostFileReader(
             fileStore: ChaosCommandLogFileStore(
@@ -20,8 +20,8 @@ final class RuntimeChaosScenarioTests: XCTestCase {
         let logText = reader.logText(sourceID: RuntimeLogSource.command, helperMessage: "Ready", lineLimit: 2)
 
         XCTAssertEqual(logText, "second\nthird")
-        XCTAssertEqual(collector.sourceIDs, [.command])
-        XCTAssertEqual(collector.refreshCount, 1)
+        XCTAssertEqual(collector.sourceIDs, [])
+        XCTAssertEqual(collector.refreshCount, 0)
     }
 
     func testObservabilityReadChaosReturnsReadErrorInsteadOfEmptySuccess() {

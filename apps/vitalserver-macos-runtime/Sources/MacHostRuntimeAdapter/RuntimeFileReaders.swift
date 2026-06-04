@@ -60,6 +60,8 @@ struct SystemRuntimeHostFileReader: RuntimeHostFileReading, @unchecked Sendable 
         switch sourceID {
         case .helperMessage:
             return logFile(path: RuntimeAdapterConstants.Paths.helperMessageLogFile, lineLimit: lineLimit)
+        case .command:
+            return logFile(path: RuntimeAdapterConstants.Paths.commandLogFile, lineLimit: lineLimit)
         case .containers:
             if !fileStore.fileExists(URL(fileURLWithPath: RuntimeAdapterConstants.Paths.containerLogs)) {
                 let refreshFailure = refreshLogCollectionFailure(sourceID)

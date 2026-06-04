@@ -15,6 +15,9 @@ enum AppConstants {
         static func vitalServerURL(proxyPort: Int) -> String {
             "http://127.0.0.1:\(proxyPort)/"
         }
+        static func remoteConsoleURL(port: Int) -> String {
+            "http://127.0.0.1:\(port)/"
+        }
         static func redisUIURL(proxyPort: Int) -> String {
             "http://127.0.0.1:\(proxyPort)/redis-ui/"
         }
@@ -179,25 +182,22 @@ enum AppConstants {
         static let bridgedInterface = "Bridged interface"
         static let sharedNetworkHelp = "Shared/NAT mode is supported in this build. VitalServer is exposed through the Mac host proxy."
         static let bridgedNetworkHelp = "Bridged mode is planned, but it requires Apple's restricted networking entitlement and is disabled for now."
-        static let sectionRemoteConsoleAccess = "Remote Console access"
         static let sectionAdvertisedURL = "Advertised URL"
-        static let sectionAdvertisedURLOverride = "Advertised URL override"
+        static let sectionAdvertisedURLOverride = "Advertised service URLs"
         static let sectionPlannedNetworkFeatures = "Planned network features"
         static let remoteConsoleURL = "Remote Console URL"
         static let remoteConsoleURLHelp = "Remote browsers open this URL for the Remote Console and Runtime Control API."
-        static let customAdvertisedURL = "Custom advertised URL"
-        static let customAdvertisedURLHelp = "Enable only when clients reach VitalServer or Remote Console through a different external URL than this Mac's host proxy, such as a hospital reverse proxy, NAT port-forward, or HTTPS endpoint."
-        static let defaultAdvertisedURL = "Default advertised URL"
-        static let defaultAdvertisedURLHelp = "Uses the same host clients connected to and the Host proxy port. This is correct for direct Mac-hosted installs."
+        static let defaultAdvertisedURL = "Default URL"
+        static let defaultVitalServerURLHelp = "Leave VitalServer URL empty to advertise the Mac host with the Host proxy port."
+        static let defaultRemoteConsoleURLHelp = "Leave Remote Console URL empty to use the Mac host with the Remote Console port."
         static let vitalServerAdvertisedURL = "VitalServer URL"
         static let vitalServerURLHelp = "External URL that VitalServer should advertise to clients, such as https://vitaldb.tirosh.ai/."
         static let remoteConsoleAdvertisedURL = "Remote Console URL"
         static let remoteConsoleAdvertisedURLHelp = "External URL for Remote Console, such as https://console.tirosh.ai/."
         static let redisBackupRetention = "Redis backups"
         static let redisBackupRetentionHelp = "Number of Redis backup archives to keep in Vital files backups, up to 30. Older archives are pruned after a new verified backup is created."
-        static let advertisedURLPreview = "Advertised URL preview"
         static let advertisedURLSameHost = "(same host)"
-        static let advancedNetworkHelp = "These settings change how clients discover VitalServer beyond the Mac host proxy. Most installs should keep the default advertised URL."
+        static let advancedNetworkHelp = "These settings change how clients discover VitalServer and Remote Console beyond this Mac's direct host proxy URLs."
         static let mdnsName = "mDNS / Bonjour name"
         static let mdnsHelp = "Planned. Would publish a stable .local name such as vitalserver.local from the Mac host."
         static let bridgedNetworking = "Bridged VM networking"
