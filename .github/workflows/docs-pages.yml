@@ -1,4 +1,4 @@
-name: Build Vital Server Helper Docs
+name: Publish Vital Server Helper Docs
 
 on:
   pull_request:
@@ -17,16 +17,14 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
-  group: pages
+  group: vital-server-helper-docs
   cancel-in-progress: false
 
 jobs:
   build:
-    name: Build MkDocs site
+    name: Build and publish MkDocs site
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -43,21 +41,13 @@ jobs:
       - name: Build site
         run: mkdocs build --strict
 
-      - name: Upload Pages artifact
+      - name: Publish to organization Pages repository
         if: github.event_name == 'push'
-        uses: actions/upload-pages-artifact@v3
+        uses: peaceiris/actions-gh-pages@v4
         with:
-          path: site
-
-  deploy:
-    name: Deploy to GitHub Pages
-    if: github.event_name == 'push'
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Deploy Pages artifact
-        id: deployment
-        uses: actions/deploy-pages@v4
+          # Token must have write access to tirosh-chain/tirosh-chain.github.io.
+          personal_token: ${{ secrets.PAGES_DEPLOY_TOKEN }}
+          external_repository: tirosh-chain/tirosh-chain.github.io
+          publish_branch: main
+          publish_dir: site
+          commit_message: "Deploy Vital Server Helper docs from ${{ github.repository }}@${{ github.sha }}"
