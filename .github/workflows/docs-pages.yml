@@ -1,0 +1,55 @@
+name: Publish Vital Server Helper Docs
+
+on:
+  pull_request:
+    paths:
+      - "site-docs/**"
+      - "mkdocs.yml"
+      - ".github/workflows/docs-pages.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "site-docs/**"
+      - "mkdocs.yml"
+      - ".github/workflows/docs-pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vital-server-helper-docs
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build and publish MkDocs site
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install MkDocs
+        run: python -m pip install mkdocs
+
+      - name: Build site
+        run: mkdocs build --strict
+
+      - name: Publish to organization Pages repository
+        if: github.event_name == 'push'
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          # Token must have write access to tirosh-chain/tirosh-chain.github.io.
+          personal_token: ${{ secrets.PAGES_DEPLOY_TOKEN }}
+          external_repository: tirosh-chain/tirosh-chain.github.io
+          publish_branch: main
+          publish_dir: site
+          destination_dir: vitalserver-helper
+          keep_files: true
+          commit_message: "Deploy Vital Server Helper docs from ${{ github.repository }}@${{ github.sha }}"

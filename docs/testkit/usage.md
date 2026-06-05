@@ -8,7 +8,7 @@ VitalServer를 제품으로 사용할 수 있는 수준으로 끌어올리는 �
 현재 주요 역할은 simulated Vital Recorder data 또는 외부 payload를 Socket.IO `send_data`
 event로 보내고, VitalServer와 Redis가 운영에 필요한 형태로 반응하는지 확인하는 것입니다.
 
-upstream VitalServer `2.3.4` 코드 기준 API 목록은 [OpenAPI 문서](openapi.yaml)에
+upstream VitalServer `2.3.4` 코드 기준 API 목록은 [OpenAPI 문서](../api/vitalserver.openapi.yaml)에
 정리되어 있습니다. 실시간 monitor data는 HTTP `POST /api/send`가 아니라 Socket.IO
 `send_data` event로 들어갑니다.
 

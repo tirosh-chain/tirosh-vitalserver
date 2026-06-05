@@ -8,12 +8,12 @@ PWA는 Runtime Control API를 primary boundary로 사용합니다. native shell�
 
 | 문서 | 역할 |
 |---|---|
-| [Architecture](pwa/architecture.md) | PWA 레이어, SoT, API boundary, 테스트 경계 |
-| [Design system](pwa/design-system.md) | Tailwind token, shared UI component, styling ownership |
-| [Responsive layout](pwa/responsive-layout.md) | 24/32인치, iPad, iPhone 대응 기준 |
-| [Swift UI parity](pwa/parity.md) | Swift UI 대비 PWA 기능 parity와 host affordance gap |
-| [Deployment](pwa/deployment.md) | air-gapped 배포, Helper resource 포함, update bundle 영향 |
-| [Testing](pwa/testing.md) | PWA test scope, 검증 명령, responsive smoke test 기준 |
+| [Architecture](architecture.md) | PWA 레이어, SoT, API boundary, 테스트 경계 |
+| [Design system](design-system.md) | Tailwind token, shared UI component, styling ownership |
+| [Responsive layout](responsive-layout.md) | 24/32인치, iPad, iPhone 대응 기준 |
+| [Swift UI parity](parity.md) | Swift UI 대비 PWA 기능 parity와 host affordance gap |
+| [Deployment](deployment.md) | air-gapped 배포, Helper resource 포함, update bundle 영향 |
+| [Testing](testing.md) | PWA test scope, 검증 명령, responsive smoke test 기준 |
 
 ## 목표
 
@@ -30,6 +30,6 @@ PWA는 Runtime Control API를 primary boundary로 사용합니다. native shell�
 
 ## 관련 문서
 
-- [Runtime Control API](macos-runtime/runtime-control-api.md)
-- [Runtime observability model](macos-runtime/observability.md)
-- [ADR 0002: Helper client boundary](adr/0002-helper-client-boundary-for-local-and-remote-runtime.md)
+- [Runtime Control API](../runtime/macos/runtime-control-api.md)
+- [Runtime observability model](../runtime/macos/observability.md)
+- [ADR 0002: Helper client boundary](../adr/0002-helper-client-boundary-for-local-and-remote-runtime.md)

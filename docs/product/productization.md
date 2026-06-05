@@ -6,11 +6,11 @@
 
 관련 문서:
 
-- [문서 지도](index.md): 문서별 역할과 읽는 순서
-- [OpenAPI 문서](openapi.yaml): upstream route를 분석해 정리한 Swagger/OpenAPI 문서
-- [Redis 데이터 구조](redis-data-model.md): 실시간 monitor data가 Redis에 저장되는 방식
-- [Vital Recorder](vrecorder.md): VRecorder 접속 흐름과 Web Monitoring 상태 표시 기준
-- [testkit 사용법](testkit-usage.md): 실시간 수집, upload, health 검증 도구 사용법
+- [문서 지도](../index.md): 문서별 역할과 읽는 순서
+- [OpenAPI 문서](../api/vitalserver.openapi.yaml): upstream route를 분석해 정리한 Swagger/OpenAPI 문서
+- [Redis 데이터 구조](../recorder/redis-data-model.md): 실시간 monitor data가 Redis에 저장되는 방식
+- [Vital Recorder](../recorder/vrecorder.md): VRecorder 접속 흐름과 Web Monitoring 상태 표시 기준
+- [testkit 사용법](../testkit/usage.md): 실시간 수집, upload, health 검증 도구 사용법
 
 ## 목표
 
@@ -80,7 +80,7 @@ upstream VitalServer `2.3.4` 코드를 분석하면서 public 문서와 다른 �
 | 실시간 수집 | `POST /api/send` | Socket.IO `send_data` event |
 | 실시간 payload | JSON body | zlib 압축 JSON |
 | upload | `POST /api/upload` | `POST /upload`, `POST /upload_vital.php` |
-| API 문서 | 별도 Swagger 없음 | 이 repo에서 `docs/openapi.yaml`로 생성 |
+| API 문서 | 별도 Swagger 없음 | 이 repo에서 `docs/api/vitalserver.openapi.yaml`로 생성 |
 | Redis 구조 | 문서화 부족 | `monitor.js`, `db.js` 기준으로 별도 정리 |
 
 제품화 작업에서는 public 문서보다 현재 포함한 upstream code를 우선 기준으로 삼습니다.
@@ -184,7 +184,7 @@ JSON payload를 upstream이 기대하는 형태로 감싼 뒤 전송합니다.
 bed metadata가 조회되는 것입니다.
 
 여러 recorder machine이 동시에 붙는 상황, 반복 전송량, 장시간 streaming 검증은 testkit
-scenario로 재현합니다. 실제 실행 명령과 config 예시는 [testkit 사용법](testkit-usage.md)에
+scenario로 재현합니다. 실제 실행 명령과 config 예시는 [testkit 사용법](../testkit/usage.md)에
 모읍니다.
 
 Redis에 저장되는 핵심 key는 아래입니다.
@@ -195,7 +195,7 @@ Redis에 저장되는 핵심 key는 아래입니다.
 - `devs_<bedid>`, `dtapp_<bedid>`, `ptcon_<bedid>`
 - `dts_<bedid>`, `<bedid><timestamp>`
 
-자세한 key type, TTL, relay 방식은 [Redis 데이터 구조](redis-data-model.md)를 기준으로 봅니다.
+자세한 key type, TTL, relay 방식은 [Redis 데이터 구조](../recorder/redis-data-model.md)를 기준으로 봅니다.
 
 ## 제품화 기준
 
