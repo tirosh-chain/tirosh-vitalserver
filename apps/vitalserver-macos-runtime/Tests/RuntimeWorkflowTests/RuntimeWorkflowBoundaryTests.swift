@@ -111,6 +111,102 @@ final class RuntimeWorkflowBoundaryTests: XCTestCase {
         }
     }
 
+    func testFutureIdealLayerRootsPreserveDependencyDirectionWhenPresent() throws {
+        let sourcesRoot = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .appendingPathComponent("Sources")
+        let layerRules: [(root: String, forbiddenImports: [String])] = [
+            (
+                "Domain",
+                [
+                    "Application",
+                    "Workflow",
+                    "Infrastructure",
+                    "HostAdapters",
+                    "Interfaces",
+                    "Bootstrap",
+                    "HostCLI",
+                    "HostInfrastructure",
+                    "MacHostRuntimeAdapter",
+                    "MacRuntimeControlApp",
+                    "RuntimeControl",
+                    "RuntimeControlAPI",
+                ]
+            ),
+            (
+                "Application",
+                [
+                    "Workflow",
+                    "Infrastructure",
+                    "HostAdapters",
+                    "Interfaces",
+                    "Bootstrap",
+                    "HostCLI",
+                    "HostInfrastructure",
+                    "MacHostRuntimeAdapter",
+                    "MacRuntimeControlApp",
+                    "RuntimeControl",
+                    "RuntimeControlAPI",
+                ]
+            ),
+            (
+                "Workflow",
+                [
+                    "Infrastructure",
+                    "HostAdapters",
+                    "Interfaces",
+                    "Bootstrap",
+                    "HostCLI",
+                    "HostInfrastructure",
+                    "MacHostRuntimeAdapter",
+                    "MacRuntimeControlApp",
+                    "RuntimeControl",
+                    "RuntimeControlAPI",
+                ]
+            ),
+            (
+                "Infrastructure",
+                [
+                    "Interfaces",
+                    "Bootstrap",
+                    "HostCLI",
+                    "MacRuntimeControlApp",
+                    "RuntimeControlAPI",
+                ]
+            ),
+            (
+                "HostAdapters",
+                [
+                    "Interfaces",
+                    "Bootstrap",
+                    "HostCLI",
+                    "MacRuntimeControlApp",
+                    "RuntimeControlAPI",
+                ]
+            ),
+            (
+                "Interfaces",
+                [
+                    "Bootstrap",
+                    "HostAdapters",
+                    "Infrastructure",
+                ]
+            ),
+        ]
+
+        for rule in layerRules {
+            let root = sourcesRoot.appendingPathComponent(rule.root)
+            for file in try swiftFiles(in: root) {
+                let contents = try String(contentsOf: file, encoding: .utf8)
+                for forbiddenImport in rule.forbiddenImports {
+                    XCTAssertFalse(
+                        contents.contains("import \(forbiddenImport)"),
+                        "\(file.path) must not import \(forbiddenImport) from the future ideal layer root \(rule.root)"
+                    )
+                }
+            }
+        }
+    }
+
     private func swiftFiles(in root: URL) throws -> [URL] {
         var isDirectory: ObjCBool = false
         guard FileManager.default.fileExists(atPath: root.path, isDirectory: &isDirectory) else {
