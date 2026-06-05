@@ -50,6 +50,10 @@ source인지 명확하지 않다는 점입니다.
 `vitaldb-observer` observation의 `readIssues`는 Redis audit event, proxy/access log, bed JSON처럼 source별
 read/parse 문제가 있었음을 나타냅니다. 관련 `readIssues`가 있는 빈 `proxyConnections`, 빈 activity, 또는
 부분 recorder/bed snapshot은 실제 관측값 0과 같은 의미가 아닙니다.
+반복되는 audit event parse 실패는 실패 원인과 event count를 보존한 bounded summary로 보고하여, 같은 결함이
+observation payload와 UI 메시지를 무한히 키우지 않게 합니다.
+Recorder activity의 `roomCount`는 해당 버킷에서 받은 `send_data` payload들의 room entry 합계입니다.
+이는 고유 room 수나 현재 연결된 room 수가 아니므로 UI에서는 `Room entries`로 표시합니다.
 
 각 app은 제품 전체 상태를 판단하지 않습니다.
 
@@ -269,7 +273,7 @@ Runtime Control API
 | 범주 | Source | 수집 정보 | Output |
 |---|---|---|---|
 | Recorder | Redis `ip_*`, `utime_*`, `vrver_*`, `info_*`, `vrconf_*` | IP, last seen, version, info, config, online/stale | observation snapshot |
-| Recorder activity | Redis List `vitalserver:audit_events` | recent `send_data` message count, bytes, rooms, first/last activity, rates | observation snapshot |
+| Recorder activity | Redis List `vitalserver:audit_events` | recent `send_data` message count, bytes, room entries, first/last activity, rates | observation snapshot |
 | Bed | Redis `beds`, `beds:*`, `utime_<bed>`, `ptcon_<bed>` | bed name, vrcode, last seen, patient connected | observation snapshot |
 | Device/filter | Redis `devs_*`, `filts_*` | raw device/filter value | observation snapshot |
 | Proxy connection | optional access JSONL | remote address, URI, status, websocket handshake | observation snapshot |

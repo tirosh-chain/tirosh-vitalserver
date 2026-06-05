@@ -79,13 +79,22 @@ final class RuntimeUninstallTransitionPolicyTests: XCTestCase {
     func testStoppedStateMustBeExplicitBeforeFileRemovalCommand() throws {
         let blocked = try RuntimeUninstallTransitionPolicy.transition(
             from: .stopServicesRequested,
-            event: .stoppedStateObserved(readiness(vmProcessState: .pidFileMissing))
+            event: .stoppedStateObserved(readiness(vmProcessState: .pidFileMissing, serviceState: .loaded))
         )
 
         XCTAssertEqual(blocked.state, .serviceStopBlocked)
         XCTAssertEqual(blocked.persistedState, .serviceStopBlocked)
         XCTAssertEqual(blocked.commands, [])
         XCTAssertTrue(blocked.blockers.contains("vm-process-pid-file-missing"))
+
+        let missingPidWithStoppedService = try RuntimeUninstallTransitionPolicy.transition(
+            from: .stopServicesRequested,
+            event: .stoppedStateObserved(readiness(vmProcessState: .pidFileMissing))
+        )
+
+        XCTAssertEqual(missingPidWithStoppedService.state, .stoppedVerified)
+        XCTAssertEqual(missingPidWithStoppedService.commands, [.removeFiles])
+        XCTAssertTrue(missingPidWithStoppedService.blockers.isEmpty)
 
         let allowed = try RuntimeUninstallTransitionPolicy.transition(
             from: .stopServicesRequested,
@@ -101,7 +110,7 @@ final class RuntimeUninstallTransitionPolicyTests: XCTestCase {
         let cases: [(name: String, input: RuntimeUninstallReadinessInput, blocker: String)] = [
             (
                 "vm pid file missing",
-                readiness(vmProcessState: .pidFileMissing),
+                readiness(vmProcessState: .pidFileMissing, serviceState: .loaded),
                 "vm-process-pid-file-missing"
             ),
             (

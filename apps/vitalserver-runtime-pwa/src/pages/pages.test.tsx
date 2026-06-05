@@ -128,6 +128,12 @@ describe("runtime console pages", () => {
     expect(screen.getByText("Overall health")).toBeInTheDocument();
     expect(screen.getByText("Healthy")).toBeInTheDocument();
     expect(screen.getByText("VitalServer")).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "http://vital.example.test/" })
+    ).toHaveAttribute("href", "http://vital.example.test/");
+    expect(
+      screen.getByRole("link", { name: "http://console.example.test/" })
+    ).toHaveAttribute("href", "http://console.example.test/");
     expect(screen.getByText(/2.0 KiB \/ 4.0 KiB/)).toBeInTheDocument();
   });
 
@@ -138,6 +144,8 @@ describe("runtime console pages", () => {
         ...baseOverview,
         settings: {
           ...baseOverview.settings,
+          vitalServerURL: "",
+          remoteConsoleURL: "",
           publicHost: "",
           runtimeControlPort: undefined
         },
@@ -289,6 +297,9 @@ describe("runtime console pages", () => {
     expect(screen.getByText("Known recorders")).toBeInTheDocument();
     expect(screen.getAllByText("VR_A").length).toBeGreaterThan(0);
     expect(screen.getByRole("img", { name: /Packet activity/ })).toBeInTheDocument();
+    expect(screen.getByText("34 B/s")).toBeInTheDocument();
+    expect(screen.getByText("Room entries")).toBeInTheDocument();
+    expect(screen.getByText("Status observations")).toBeInTheDocument();
 
     fireEvent.change(screen.getByPlaceholderText("Search VRecorders"), {
       target: { value: "missing" }
@@ -450,6 +461,48 @@ describe("runtime console pages", () => {
     expect(screen.getByText("Recorder anomaly records are incomplete.")).toBeInTheDocument();
     expect(
       screen.queryByText("No recorder anomalies were reported.")
+    ).not.toBeInTheDocument();
+  });
+
+  it("groups repeated VitalDB audit event read issues", () => {
+    const baseOverview = overview();
+    const vitalDBObservation = {
+      ...baseOverview.vitalDBObservation,
+      anomalies: [],
+      readIssues: [
+        {
+          source: "auditEvents",
+          message: "event 2 was skipped: send_data event is missing rooms_count/roomsCount"
+        },
+        {
+          source: "auditEvents",
+          message: "event 4 was skipped: send_data event is missing rooms_count/roomsCount"
+        },
+        {
+          source: "auditEvents",
+          message: "event 5 was skipped: send_data event is missing rooms_count/roomsCount"
+        }
+      ]
+    };
+    hooks.useRuntimeOverview.mockReturnValue(
+      query({
+        ...baseOverview,
+        vitalDBObservation,
+        vitalDBObservationSnapshot: {
+          state: "loaded",
+          observation: vitalDBObservation,
+          readError: null
+        }
+      })
+    );
+
+    renderPage(<ObservabilityPage />);
+
+    expect(
+      screen.getByText(/auditEvents: 3 events were skipped: send_data event is missing rooms_count\/roomsCount/)
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/event 2 was skipped: send_data event is missing rooms_count\/roomsCount; auditEvents: event 4/)
     ).not.toBeInTheDocument();
   });
 
@@ -921,6 +974,8 @@ function settings() {
     runtimeControlPort: 18321,
     publicHost: "host.local",
     publicPort: 18080,
+    vitalServerURL: "http://vital.example.test/",
+    remoteConsoleURL: "http://console.example.test/",
     adminPassword: "",
     changeAdminPassword: false,
     vitalFilesDirectory: "/Users/shared/vital",

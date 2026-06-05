@@ -42,7 +42,9 @@ public enum RuntimeUninstallReadinessPolicy {
 
         switch input.vmProcessState {
         case .pidFileMissing:
-            blockers.append("vm-process-pid-file-missing")
+            if input.serviceStates[.vm] != .notLoaded {
+                blockers.append("vm-process-pid-file-missing")
+            }
         case .running(let pid):
             blockers.append("vm-process-running:pid=\(pid)")
         case .pidFileInvalid(let reason):

@@ -25,7 +25,7 @@ function createSocketIoAuditService({ audit, vrIdentityStore, metrics, config })
       const pending = context.pending_binary_event;
       context.pending_binary_event = null;
       if (pending.event !== clientSocketEvents.SEND_DATA) return;
-      recordSendData(payload, context, options, { audit });
+      recordSendData(socketIoBinaryAttachmentPayload(payload), context, options, { audit });
     },
   };
 }
@@ -100,6 +100,13 @@ function recordSendData(payload, context, options, { audit }) {
   });
 }
 
+function socketIoBinaryAttachmentPayload(payload) {
+  if (!Buffer.isBuffer(payload) || payload.length === 0) return payload;
+  const engineIoMessagePacketType = 0x04;
+  if (payload[0] !== engineIoMessagePacketType) return payload;
+  return payload.subarray(1);
+}
+
 function recordJoinVr(payload, context, options, { audit, vrIdentityStore, metrics, config }) {
   const vrcode = String(payload || "");
   context.joined_vrcode = vrcode;
@@ -114,4 +121,4 @@ function recordJoinVr(payload, context, options, { audit, vrIdentityStore, metri
   vrIdentityStore.setRecorderIp(vrcode, context.ip && context.ip.selected_ip, config.vitalServer.ipWriteDelayMs);
 }
 
-module.exports = { createSocketIoAuditService };
+module.exports = { createSocketIoAuditService, socketIoBinaryAttachmentPayload };

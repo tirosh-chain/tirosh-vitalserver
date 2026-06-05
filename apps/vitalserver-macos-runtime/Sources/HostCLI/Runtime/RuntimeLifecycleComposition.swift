@@ -153,7 +153,7 @@ struct RuntimeLifecycleComposition {
         guard service == .vm else {
             return
         }
-        try ProcessState.waitUntilStopped(
+        try ProcessState.waitUntilStoppedAfterServiceUnload(
             pidFile: paths.pidFile,
             fileStore: fileStore,
             timeoutSeconds: Constants.Runtime.vmStopWaitTimeoutSeconds,

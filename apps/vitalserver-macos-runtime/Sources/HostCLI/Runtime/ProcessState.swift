@@ -258,6 +258,31 @@ enum ProcessState {
         ))
     }
 
+    static func waitUntilStoppedAfterServiceUnload(
+        pidFile: URL,
+        fileStore: RuntimeFileReading & RuntimeFileWriting = SystemRuntimeFileStore(),
+        timeoutSeconds: TimeInterval,
+        pollIntervalSeconds: TimeInterval = 0.5,
+        processExists: (pid_t) -> Bool = defaultProcessExists,
+        log: (String) -> Void = { print($0) }
+    ) throws {
+        let state = waitUntilStoppedState(
+            pidFile: pidFile,
+            fileStore: fileStore,
+            timeoutSeconds: timeoutSeconds,
+            pollIntervalSeconds: pollIntervalSeconds,
+            processExists: processExists,
+            log: log
+        )
+        switch state {
+        case .pidFileMissing:
+            log("VM process pid file is missing after VM service unload; treating VM stop as complete")
+            return
+        default:
+            try throwIfBlockingStopState(state)
+        }
+    }
+
     static func waitUntilObservedProcessStopped(
         pid: pid_t,
         pidFile: URL,

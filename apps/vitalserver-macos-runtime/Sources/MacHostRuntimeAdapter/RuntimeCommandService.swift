@@ -37,8 +37,7 @@ enum RuntimeCommandFactory {
         let logFile = shellQuote(RuntimeAdapterConstants.Paths.uninstallLog)
         let script = [
             "mkdir -p \(shellQuote((RuntimeAdapterConstants.Paths.uninstallLog as NSString).deletingLastPathComponent))",
-            "nohup \(command) >> \(logFile) 2>&1 < /dev/null &",
-            "echo \"Background uninstaller started.\""
+            "nohup \(command) >> \(logFile) 2>&1 < /dev/null & echo \"Background uninstaller started.\""
         ].joined(separator: "; ")
         return "/bin/bash -lc \(shellQuote(script))"
     }

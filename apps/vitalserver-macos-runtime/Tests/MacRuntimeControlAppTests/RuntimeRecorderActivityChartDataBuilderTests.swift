@@ -87,7 +87,7 @@ final class RuntimeRecorderActivityChartDataBuilderTests: XCTestCase {
         XCTAssertEqual(displayed.map(\.messageCount), [0, 3, 0, 7])
     }
 
-    func testActivityDisplayUsesLatestTimestampAndOwnsSummaryMetrics() {
+    func testActivityDisplayUsesLatestTimestampAndOwnsSummaryMetrics() throws {
         let builder = RuntimeRecorderActivityChartDataBuilder()
         let display = builder.display(
             from: [
@@ -103,6 +103,8 @@ final class RuntimeRecorderActivityChartDataBuilderTests: XCTestCase {
         XCTAssertEqual(display.latestSample?.observedAt, "2026-05-30T00:10:00Z")
         XCTAssertEqual(display.totalPackets, 13)
         XCTAssertEqual(display.latestBucket?.messageCount, 4)
+        let latestBucketBytesPerSecond = try XCTUnwrap(display.latestBucketBytesPerSecond)
+        XCTAssertEqual(latestBucketBytesPerSecond, 40.0 / 60.0, accuracy: 0.001)
     }
 
     func testActivityDisplayKeepsReadFailureDistinctFromEmptyActivity() {

@@ -200,7 +200,7 @@ function RecorderDetails({
           { label: "Patient", value: formatBoolean(recorder.patientConnected) },
           { label: "First seen", value: formatLocalDateTime(recorder.firstSeenAt) },
           { label: "Last seen", value: formatLocalDateTime(recorder.lastSeenAt) },
-          { label: "Observations", value: recorder.observationCount },
+          { label: "Status observations", value: recorder.observationCount },
           {
             label: "Duplicate observations",
             value: recorder.duplicateObservationCount

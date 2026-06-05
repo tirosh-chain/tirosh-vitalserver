@@ -13,6 +13,7 @@ struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
     private let servesTestTools: Bool
     private let statusAnnotator: RuntimeControlStatusAnnotator
     private let scheduleHelperRelaunch: @MainActor () -> Void
+    private let scheduleHelperTermination: @MainActor () -> Void
 
     init(
         commandClient: any RuntimeControlClient,
@@ -21,7 +22,8 @@ struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
         localAPISettings: RuntimeControlLocalAPISettingsCoordinator,
         servesTestTools: Bool,
         runtimeControlStartedAt: Date = Date(),
-        scheduleHelperRelaunch: @escaping @MainActor () -> Void = {}
+        scheduleHelperRelaunch: @escaping @MainActor () -> Void = {},
+        scheduleHelperTermination: @escaping @MainActor () -> Void = {}
     ) {
         self.commandClient = commandClient
         self.hostClient = hostClient
@@ -30,6 +32,7 @@ struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
         self.servesTestTools = servesTestTools
         self.statusAnnotator = RuntimeControlStatusAnnotator(runtimeControlStartedAt: runtimeControlStartedAt)
         self.scheduleHelperRelaunch = scheduleHelperRelaunch
+        self.scheduleHelperTermination = scheduleHelperTermination
     }
 
     func loadCapabilities() async throws -> RuntimeControlCapabilities {
@@ -161,7 +164,11 @@ struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
     }
 
     func uninstallRuntime(clean: Bool) async throws -> RuntimeControlCommandResponse {
-        RuntimeControlCommandResponse(result: try await commandClient.uninstallRuntime(clean: clean))
+        let response = RuntimeControlCommandResponse(result: try await commandClient.uninstallRuntime(clean: clean))
+        if response.result.exitCode == 0 {
+            scheduleHelperTermination()
+        }
+        return response
     }
 
     private func localFileURL(_ reference: RuntimeControlFileReference) throws -> URL {

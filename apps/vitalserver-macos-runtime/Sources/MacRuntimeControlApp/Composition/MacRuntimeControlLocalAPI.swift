@@ -39,7 +39,8 @@ enum MacRuntimeControlLocalAPI {
         servesTestTools: Bool = GeneratedRelease.testEnabled,
         startedAt: Date = Date(),
         stateHandler: (@Sendable (RuntimeControlLocalHTTPServerState) -> Void)? = nil,
-        scheduleHelperRelaunch: @escaping @MainActor () -> Void = {}
+        scheduleHelperRelaunch: @escaping @MainActor () -> Void = {},
+        scheduleHelperTermination: @escaping @MainActor () -> Void = {}
     ) -> RuntimeControlLocalHTTPServer {
         let apiHandler = MacRuntimeControlAPIHandler(
             commandClient: client,
@@ -48,7 +49,8 @@ enum MacRuntimeControlLocalAPI {
             localAPISettings: localAPISettings,
             servesTestTools: servesTestTools,
             runtimeControlStartedAt: startedAt,
-            scheduleHelperRelaunch: scheduleHelperRelaunch
+            scheduleHelperRelaunch: scheduleHelperRelaunch,
+            scheduleHelperTermination: scheduleHelperTermination
         )
         let apiRouter = RuntimeControlAPIRouter(
             handler: apiHandler,

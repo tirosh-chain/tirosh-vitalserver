@@ -189,6 +189,25 @@ extension RuntimeLifecycle {
         ).cleanupBeforeStartingProxy()
     }
 
+    func cleanupHostProxyPortAfterStop() throws {
+        try RuntimeHostProxyPortCleaner(
+            proxyPort: healthChecker.installedProxyPort,
+            proxyServiceLoaded: {
+                isLaunchdLoaded(.proxy)
+            },
+            expectedProxyNginxPID: {
+                healthChecker.readInstalledProxyNginxPID()
+            },
+            ownedNginxPathFragments: [
+                installedPaths.nginxExecutable.path,
+                installedPaths.nginxDirectory.path,
+                "vitalserver-nginx.conf",
+            ],
+            runProcess: runProcess,
+            log: log
+        ).cleanupOwnedListenersAfterProxyStop()
+    }
+
     func runtimeHealthWaitRunner() -> RuntimeHealthWaitRunner {
         RuntimeHealthWaitRunner(
             serviceStates: { services in
@@ -264,6 +283,7 @@ extension RuntimeLifecycle {
                 stopRuntimeServices: {
                     try serviceController.disableRuntimeServicesForUninstall()
                     try stopRuntimeServices()
+                    try cleanupHostProxyPortAfterStop()
                 },
                 createDirectory: { url, withIntermediateDirectories in
                     try fileStore.createDirectory(at: url, withIntermediateDirectories: withIntermediateDirectories)

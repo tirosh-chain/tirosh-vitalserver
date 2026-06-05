@@ -3141,6 +3141,8 @@
           "proxyPort",
           "runtimeControlPort",
           "vitalFilesDirectory",
+          "vitalServerURL",
+          "remoteConsoleURL",
           "publicHost",
           "publicPort",
           "adminPassword",
@@ -3188,6 +3190,12 @@
             "type": "integer"
           },
           "vitalFilesDirectory": {
+            "type": "string"
+          },
+          "vitalServerURL": {
+            "type": "string"
+          },
+          "remoteConsoleURL": {
             "type": "string"
           },
           "publicHost": {

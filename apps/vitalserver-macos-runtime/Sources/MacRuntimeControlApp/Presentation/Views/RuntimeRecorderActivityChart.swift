@@ -16,6 +16,7 @@ struct RuntimeRecorderActivityChartDataBuilder {
                 buckets: [],
                 latestSample: nil,
                 latestBucket: nil,
+                latestBucketBytesPerSecond: nil,
                 totalPackets: nil
             )
         }
@@ -25,6 +26,7 @@ struct RuntimeRecorderActivityChartDataBuilder {
                 buckets: [],
                 latestSample: nil,
                 latestBucket: nil,
+                latestBucketBytesPerSecond: nil,
                 totalPackets: nil
             )
         }
@@ -34,6 +36,7 @@ struct RuntimeRecorderActivityChartDataBuilder {
                 buckets: [],
                 latestSample: nil,
                 latestBucket: nil,
+                latestBucketBytesPerSecond: nil,
                 totalPackets: 0
             )
         }
@@ -54,6 +57,7 @@ struct RuntimeRecorderActivityChartDataBuilder {
                 buckets: [],
                 latestSample: latestSample,
                 latestBucket: nil,
+                latestBucketBytesPerSecond: nil,
                 totalPackets: 0
             )
         }
@@ -64,6 +68,9 @@ struct RuntimeRecorderActivityChartDataBuilder {
             buckets: buckets,
             latestSample: latestSample,
             latestBucket: latestBucket,
+            latestBucketBytesPerSecond: latestBucket.map {
+                Double($0.byteCount) / Double(max($0.bucketSeconds, 1))
+            },
             totalPackets: buckets.reduce(0) { $0 + $1.messageCount }
         )
     }
@@ -200,6 +207,7 @@ struct RuntimeRecorderActivityDisplay {
     let buckets: [RecorderActivityChartBucket]
     let latestSample: RuntimeVitalRecorderActivityPoint?
     let latestBucket: RecorderActivityChartBucket?
+    let latestBucketBytesPerSecond: Double?
     let totalPackets: Int?
 }
 

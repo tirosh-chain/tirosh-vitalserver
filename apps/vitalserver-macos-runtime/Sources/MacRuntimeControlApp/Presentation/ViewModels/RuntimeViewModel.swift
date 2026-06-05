@@ -435,6 +435,10 @@ final class RuntimeViewModel: ObservableObject {
         nativeShell.relaunchHelper()
     }
 
+    func terminateHelper() {
+        nativeShell.terminate()
+    }
+
     private func validateSettings() -> Bool {
         let result = settingsValidator.validate(settings, installedSettings: controlClient.loadSettings())
         if case .invalid(let validationMessage) = result {
@@ -552,6 +556,7 @@ final class RuntimeViewModel: ObservableObject {
 private extension RuntimeViewModel {
     func applyStatusRefreshResult(_ result: RuntimeViewModelStatusRefreshResult) {
         status = result.status
+        containerObservation = result.status.containerObservation
         if let selectedLogSource = result.selectedLogSource {
             self.selectedLogSource = selectedLogSource
         }

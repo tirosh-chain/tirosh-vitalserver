@@ -15,6 +15,7 @@ final class MacRuntimeControlEnvironment: ObservableObject {
     private var restartAPIServerTask: Task<Void, Never>?
     private var retryAPIServerTask: Task<Void, Never>?
     private var relaunchHelperTask: Task<Void, Never>?
+    private var terminateHelperTask: Task<Void, Never>?
     private(set) var apiServerError: Error?
     private var apiServerGeneration = 0
     private var apiServerRetryAttempt = 0
@@ -43,6 +44,7 @@ final class MacRuntimeControlEnvironment: ObservableObject {
         restartAPIServerTask?.cancel()
         retryAPIServerTask?.cancel()
         relaunchHelperTask?.cancel()
+        terminateHelperTask?.cancel()
         apiServer?.stop()
     }
 
@@ -162,6 +164,9 @@ final class MacRuntimeControlEnvironment: ObservableObject {
             },
             scheduleHelperRelaunch: { [weak self] in
                 self?.scheduleHelperRelaunch()
+            },
+            scheduleHelperTermination: { [weak self] in
+                self?.scheduleHelperTermination()
             }
         )
     }
@@ -214,6 +219,14 @@ final class MacRuntimeControlEnvironment: ObservableObject {
         relaunchHelperTask = Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: 1_200_000_000)
             self?.viewModel.relaunchHelper()
+        }
+    }
+
+    private func scheduleHelperTermination() {
+        terminateHelperTask?.cancel()
+        terminateHelperTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            self?.viewModel.terminateHelper()
         }
     }
 

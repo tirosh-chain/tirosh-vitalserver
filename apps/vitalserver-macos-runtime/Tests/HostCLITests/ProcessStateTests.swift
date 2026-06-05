@@ -75,6 +75,28 @@ final class ProcessStateTests: XCTestCase {
         XCTAssertEqual(fileStore.removed, [pidFile])
     }
 
+    func testWaitUntilStoppedAfterServiceUnloadAllowsMissingPidFile() throws {
+        let fileStore = RuntimeFileStoreSpy()
+        let pidFile = URL(fileURLWithPath: "/runtime/run/vitalserver-vm.pid")
+        var logs: [String] = []
+
+        try ProcessState.waitUntilStoppedAfterServiceUnload(
+            pidFile: pidFile,
+            fileStore: fileStore,
+            timeoutSeconds: 1,
+            pollIntervalSeconds: 0.001,
+            processExists: { _ in
+                XCTFail("Missing pid file should not require process probing")
+                return false
+            },
+            log: { logs.append($0) }
+        )
+
+        XCTAssertTrue(logs.contains {
+            $0.contains("pid file is missing after VM service unload")
+        })
+    }
+
     func testInspectReportsRunningProcessState() {
         let fileStore = RuntimeFileStoreSpy()
         let pidFile = URL(fileURLWithPath: "/runtime/run/vitalserver-vm.pid")

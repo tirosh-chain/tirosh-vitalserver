@@ -17,13 +17,27 @@ final class RuntimeUninstallReadinessPolicyTests: XCTestCase {
         ])
     }
 
-    func testMissingPidFileBlocksUninstallCleanup() {
+    func testMissingPidFileDoesNotBlockWhenVMServiceIsExplicitlyNotLoaded() {
         let blockers = RuntimeUninstallReadinessPolicy.blockers(input: RuntimeUninstallReadinessInput(
             serviceStates: serviceStates(),
             vmProcessState: .pidFileMissing
         ))
 
-        XCTAssertEqual(blockers, ["vm-process-pid-file-missing"])
+        XCTAssertEqual(blockers, [])
+    }
+
+    func testMissingPidFileBlocksWhenVMServiceStateIsNotStopped() {
+        let blockers = RuntimeUninstallReadinessPolicy.blockers(input: RuntimeUninstallReadinessInput(
+            serviceStates: serviceStates(overrides: [
+                .vm: .loaded,
+            ]),
+            vmProcessState: .pidFileMissing
+        ))
+
+        XCTAssertEqual(blockers, [
+            "launchd-service-loaded:label=\(RuntimeManagedService.vm.label)",
+            "vm-process-pid-file-missing",
+        ])
     }
 
     func testRunningVMProcessBlocksUninstallCleanup() {
