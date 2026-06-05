@@ -50,4 +50,6 @@ jobs:
           external_repository: tirosh-chain/tirosh-chain.github.io
           publish_branch: main
           publish_dir: site
+          destination_dir: vitalserver-helper
+          keep_files: true
           commit_message: "Deploy Vital Server Helper docs from ${{ github.repository }}@${{ github.sha }}"
