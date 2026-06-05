@@ -32,9 +32,10 @@ final class RuntimeCommandFactoryTests: XCTestCase {
         )
 
         XCTAssertTrue(command.hasPrefix("/bin/bash -lc "))
-        XCTAssertTrue(command.contains("nohup '\\''/usr/local/bin/tirosh-vitalserver-uninstall'\\'' '\\''--clean'\\''"))
-        XCTAssertTrue(command.contains("/private/tmp/tirosh-vitalserver-uninstall.log"))
-        XCTAssertTrue(command.contains("2>&1 < /dev/null &"))
+        XCTAssertFalse(command.contains("nohup"))
+        XCTAssertTrue(command.contains("'\\''/usr/local/bin/tirosh-vitalserver-uninstall'\\'' '\\''--clean'\\'' < /dev/null > /dev/null 2>&1 &"))
+        XCTAssertTrue(command.contains("background_pid=$!"))
+        XCTAssertTrue(command.contains("kill -0"))
         XCTAssertFalse(command.contains("&;"))
         XCTAssertTrue(command.contains("Background uninstaller started."))
     }
