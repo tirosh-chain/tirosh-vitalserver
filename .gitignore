@@ -19,6 +19,7 @@ tmp.txt
 .artifacts/
 .tmp/
 dist/
+site/
 tmp/
 temp/
 .build/

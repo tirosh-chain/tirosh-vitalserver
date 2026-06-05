@@ -7,7 +7,7 @@
 
 ## Case Metadata
 
-- `ID`: `docs/troubleshooting.md` 색인에서 다음 번호를 사용합니다. 한 번 부여한 ID는 파일명이 바뀌어도 유지합니다.
+- `ID`: `docs/troubleshooting/index.md` 색인에서 다음 번호를 사용합니다. 한 번 부여한 ID는 파일명이 바뀌어도 유지합니다.
 - `Category`: 증상이 가장 먼저 분류될 운영 영역입니다. 여러 영역에 걸치면, 사용자가 처음 확인해야 하는 영역을 선택합니다.
 - `Owner`: 원인 분석과 최종 조치 책임을 갖는 코드/운영 경계입니다. 예: `macOS runtime`, `guest bootstrap`, `host proxy`, `VitalServer app`, `testkit`.
 - `Status`: 이 문서의 현재 유효성입니다. 제품 runtime 상태가 아닙니다.

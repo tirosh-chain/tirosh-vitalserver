@@ -45,7 +45,7 @@ Update 탭에서는 적용 중인 현재 step과 Command log tail을 함께 표�
 
 Helper app의 Advanced > Recovery operations에는 `Repair Data Store`가 있습니다. 이 작업은 VM 내부에 복구 요청 파일을 만들고, guest systemd path unit이 Redis AOF 검사/복구와 container 재시작을 수행하게 합니다. update 실패 후 Redis 또는 VitalServer health가 회복되지 않을 때 먼저 시도합니다.
 
-Update 과정의 전체 계약, 보존/변경 범위, 0.1.3 실패 분석은 [Update](../macos-runtime/update.md)를 봅니다.
+Update 과정의 전체 계약, 보존/변경 범위, 0.1.3 실패 분석은 [Update](../runtime/macos/update.md)를 봅니다.
 
 ## Follow-up
 

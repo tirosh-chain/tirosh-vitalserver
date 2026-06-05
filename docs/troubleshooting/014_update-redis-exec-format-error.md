@@ -46,7 +46,7 @@ tar -xOf /tmp/vitalserver-images.tar.gz manifest.json
 
 `guest-deploy`나 Docker image bundle을 바꾸는 update는 반드시 guest activation까지 진행되어야 합니다. 현재 update bundle은 기본 migration으로 cloud-init seed를 갱신하고, 새 runtime은 `activate-update.request`를 통해 VM 안에서 Docker image bundle을 다시 load하고 기존 container를 recreate합니다. 단순히 host shared directory만 교체되면 이전 wrong-arch image cache를 계속 사용할 수 있습니다.
 
-0.1.3에서 확인한 상세 원인은 [Update 문서의 0.1.3 실패 분석](../macos-runtime/update.md#013-실패-분석)에 남겨둡니다.
+0.1.3에서 확인한 상세 원인은 [Update 문서의 0.1.3 실패 분석](../runtime/macos/update.md#013-실패-분석)에 남겨둡니다.
 
 ## Follow-up
 

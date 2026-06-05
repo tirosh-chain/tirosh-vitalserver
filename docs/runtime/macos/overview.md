@@ -17,7 +17,7 @@ Web/PWA Helper UI
                   -> Linux guest Service Stack / VitalServer service
 ```
 
-macOS/Windows native app은 장기적으로 product UI를 소유하지 않고, local runtime host/native shell 역할을 맡습니다. 설치, local service bootstrap, pairing URL/QR, recovery, native picker/dialog 같은 platform-specific 작업은 native shell과 host runtime component에 남깁니다. 자세한 경계는 [Architecture](architecture.md)와 [ADR 0002](../adr/0002-helper-client-boundary-for-local-and-remote-runtime.md)를 봅니다.
+macOS/Windows native app은 장기적으로 product UI를 소유하지 않고, local runtime host/native shell 역할을 맡습니다. 설치, local service bootstrap, pairing URL/QR, recovery, native picker/dialog 같은 platform-specific 작업은 native shell과 host runtime component에 남깁니다. 자세한 경계는 [Architecture](architecture.md)와 [ADR 0002](../../adr/0002-helper-client-boundary-for-local-and-remote-runtime.md)를 봅니다.
 
 현재 v1 macOS runtime의 네트워크 구조는 아래와 같습니다.
 
@@ -55,11 +55,11 @@ v1 기본값은 `shared/NAT VM + macOS host proxy`입니다. 이 구조는 Docke
 | 폐쇄망 Product Update | offline product update bundle tarball | `make vm-update-bundle-release`, Helper app Update 탭 | [Packaging and Update](packaging.md) |
 | VM Image Update | offline VM image update bundle tarball | `make vm-rootfs-update-bundle-release`, Danger Zone | [Packaging and Update](packaging.md), [Update](update.md) |
 | 온라인 업데이트 | 같은 update bundle 계약, download source만 온라인 | release hardening 대상 | [Packaging and Update](packaging.md) |
-| 설치 후 상태 확인 | `/Applications/VitalServer Helper.app` Status 탭 | `make vm-installed-health`, `vitalserver-vm runtime health` | [Runtime](runtime.md), [Troubleshooting](../troubleshooting.md) |
+| 설치 후 상태 확인 | `/Applications/VitalServer Helper.app` Status 탭 | `make vm-installed-health`, `vitalserver-vm runtime health` | [Runtime](runtime.md), [Troubleshooting](../../troubleshooting/index.md) |
 | 운영 설정 변경 | Helper app Settings/Advanced 탭 | `vitalserver-vm runtime configure ... --restart` | [Runtime](runtime.md) |
-| 장애 대응 | Helper app Status/Logs/Advanced/Danger Zone, uninstaller | watchdog log, runtime status, troubleshooting guide | [Troubleshooting](../troubleshooting.md) |
+| 장애 대응 | Helper app Status/Logs/Advanced/Danger Zone, uninstaller | watchdog log, runtime status, troubleshooting guide | [Troubleshooting](../../troubleshooting/index.md) |
 | 개발 VM PoC | package 없이 VM/proxy 직접 실행 | `make vm-up`, `make vm-health`, `make vm-down` | [Runtime](runtime.md) |
-| 구조 판단/리뷰 | 왜 host proxy인지, 책임이 어디인지 | ADR, architecture 문서 | [Architecture](architecture.md), [ADR 0001](../adr/0001-macos-host-proxy-for-vrecorder-ip.md), [ADR 0002](../adr/0002-helper-client-boundary-for-local-and-remote-runtime.md), [ADR 0003](../adr/0003-helper-layer-and-component-version-model.md), [ADR 0004](../adr/0004-product-update-and-vm-image-update-contract.md) |
+| 구조 판단/리뷰 | 왜 host proxy인지, 책임이 어디인지 | ADR, architecture 문서 | [Architecture](architecture.md), [ADR 0001](../../adr/0001-macos-host-proxy-for-vrecorder-ip.md), [ADR 0002](../../adr/0002-helper-client-boundary-for-local-and-remote-runtime.md), [ADR 0003](../../adr/0003-helper-layer-and-component-version-model.md), [ADR 0004](../../adr/0004-product-update-and-vm-image-update-contract.md) |
 
 ## 문서 지도
 
@@ -68,13 +68,13 @@ v1 기본값은 `shared/NAT VM + macOS host proxy`입니다. 이 구조는 Docke
 | [Architecture](architecture.md) | As-is/To-be 구조, shared/NAT + host proxy 선택 이유, 단일 노드 가용성, Web/PWA UI/native shell/host runtime 책임 경계를 볼 때 |
 | [Ideal Layer Migration](ideal-layer-migration.md) | macOS runtime을 Clean Architecture/DDD 레이어로 수렴시키는 #47 migration 순서, target tree, boundary test 전략을 볼 때 |
 | [Runtime Control API](runtime-control-api.md) | PWA 착수 직전 API 계약, OpenAPI, local read-only server, `/runtime/*`와 `/host/*` 경계를 볼 때 |
-| [ADR 0002](../adr/0002-helper-client-boundary-for-local-and-remote-runtime.md) | Web/PWA Helper UI, macOS native shell, local/remote RuntimeControlClient boundary를 볼 때 |
-| [ADR 0003](../adr/0003-helper-layer-and-component-version-model.md) | Helper UI, Native Shell, Runtime Control API, Updater, Supervisor, VM Driver, Service Stack, VM Image layer와 version model을 볼 때 |
-| [ADR 0004](../adr/0004-product-update-and-vm-image-update-contract.md) | Product Update, VM Image Update, two-phase Product Update 계약을 볼 때 |
+| [ADR 0002](../../adr/0002-helper-client-boundary-for-local-and-remote-runtime.md) | Web/PWA Helper UI, macOS native shell, local/remote RuntimeControlClient boundary를 볼 때 |
+| [ADR 0003](../../adr/0003-helper-layer-and-component-version-model.md) | Helper UI, Native Shell, Runtime Control API, Updater, Supervisor, VM Driver, Service Stack, VM Image layer와 version model을 볼 때 |
+| [ADR 0004](../../adr/0004-product-update-and-vm-image-update-contract.md) | Product Update, VM Image Update, two-phase Product Update 계약을 볼 때 |
 | [Packaging and Update](packaging.md) | `make vm-pkg-dev`/`make vm-pkg-release`, `make vm-dmg-dev`/`make vm-dmg-release`, update bundle, install settings, release artifact 흐름을 볼 때 |
 | [Update](update.md) | bundle 적용 과정, 보존/변경되는 항목, guest-side activation, rollback 실패 조건을 볼 때 |
 | [Runtime](runtime.md) | VM boot asset, cloud-init, guest bootstrap, data sharing, network mode, identity/signing 정책을 볼 때 |
-| [Troubleshooting](../troubleshooting.md) | 502, stale pid, cloud-init 재실행, disk full, update 실패, package cleanup, bridged entitlement 문제를 볼 때 |
+| [Troubleshooting](../../troubleshooting/index.md) | 502, stale pid, cloud-init 재실행, disk full, update 실패, package cleanup, bridged entitlement 문제를 볼 때 |
 
 ## 자주 쓰는 명령
 
@@ -196,8 +196,8 @@ make vm-down
 
 처음 보는 개발자는 아래 순서로 읽는 것을 권장합니다.
 
-1. [앱 README](../../apps/vitalserver-macos-runtime/README.md)
+1. [앱 README](https://github.com/tirosh-chain/tirosh-vitalserver/blob/main/apps/vitalserver-macos-runtime/README.md)
 2. [Architecture](architecture.md)
 3. [Packaging and Update](packaging.md)
 4. [Runtime](runtime.md)
-5. [Troubleshooting](../troubleshooting.md)
+5. [Troubleshooting](../../troubleshooting/index.md)
