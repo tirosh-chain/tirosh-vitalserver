@@ -328,7 +328,7 @@ Runtime Control API
 | Runtime state bridge | guest `runtime-state.json` | `tirosh-write-runtime-state` | watchdog/runtime | VM 내부 상태를 host runtime으로 전달하는 bridge |
 | UI display policy | `RuntimeStatusDisplayPolicy`, `RuntimeEventDisplayPolicy` | macOS runtime app | macOS UI | View는 policy 결과를 렌더링만 함 |
 | Runtime Control API contract | OpenAPI + Swift contracts | runtime control boundary | client/UI/testkit/external tools | 외부 연동 계약 SoT |
-| Observer API contract | `docs/openapi/vitaldb-observer.openapi.yaml` | observer app | guest state writer, future tools | observer 내부 API 계약 |
+| Observer API contract | `docs/api/vitaldb-observer.openapi.yaml` | observer app | guest state writer, future tools | observer 내부 API 계약 |
 | Testkit scenario config | `config/testkit.toml` | 개발자 | `scripts/test_vitalserver.py`, testkit | 테스트 실행 파라미터 SoT |
 
 핵심 원칙은 `vitaldb-observer`가 관측을 생산하지만 최종 관측 상태의 owner는 아니라는 점입니다.

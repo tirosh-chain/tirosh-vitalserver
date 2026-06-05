@@ -4,22 +4,23 @@ Vital Server Helper 공개와 배포를 위해 작성할 문서 체계입니다.
 이 문서는 MkDocs nav에 반영할 release/dev 문서군의 독자, 목적, 작성 순서를
 고정합니다.
 
-현재 repository에는 `mkdocs.yml`이 없으므로, 아래의 "MkDocs nav 초안"을
-MkDocs 설정 생성 시 기준으로 사용합니다. 기존 문서 지도에서는 이 문서를
-작성 계획의 source of truth로 둡니다.
+현재 repository의 `mkdocs.yml`은 `site-docs/` 아래 release/dev 문서군을 GitHub Pages
+site nav에 반영합니다. 기존 `docs/` 문서 지도에서는 이 문서를 공개 release/dev 문서
+작성 기준의 source of truth로 둡니다.
 
 ## 독자 구분
 
 | 문서군 | 주 독자 | 문서의 역할 |
 |---|---|---|
-| `release/` | 연구 과제 관계자, 병원 IT 담당자, 병원 운영자, 도입 검토자 | 공개 배포 대상 서비스가 무엇을 제공하고 병원 현장에서 어떻게 설치/운영되는지 설명 |
-| `dev/` | repository 개발자, packaging/release 담당자, runtime/API/testkit 유지보수자 | 서비스 경계, package 책임, Health Check 계약, build/release/test 절차 설명 |
+| `site-docs/release/` | 연구 과제 관계자, 병원 IT 담당자, 병원 운영자, 도입 검토자 | 공개 배포 대상 서비스가 무엇을 제공하고 병원 현장에서 어떻게 설치/운영되는지 설명 |
+| `site-docs/dev/` | 오픈소스 contributor, repository 개발자, packaging/release 담당자, runtime/API/testkit 유지보수자 | 서비스 경계, package 책임, Health Check 계약, build/release/test 절차 설명 |
 
 release 문서는 내부 구현을 설명하지 않습니다. 사용자가 필요한 설치, 운영, 장애
 확인, 지원 모드만 다룹니다.
 
-dev 문서는 외부 홍보 문구를 반복하지 않습니다. 구현 책임, 상태 계약, 실패 의미,
-검증 방법, MkDocs/packaging 반영 기준을 다룹니다.
+dev 문서는 외부 홍보 문구를 반복하지 않습니다. 오픈소스 repository를 이해하고
+기여하기 위한 구현 책임, 상태 계약, 실패 의미, 검증 방법, MkDocs/packaging 반영
+기준을 다룹니다.
 
 ## 명명 기준
 
@@ -170,7 +171,7 @@ OpenAPI source 위치를 설명합니다.
 `dev/testing.md`는 unit/integration test, testkit smoke/load, runtime chaos,
 Health Check 시나리오를 설명합니다.
 
-`dev/troubleshooting.md`는 기존 `docs/troubleshooting.md`와 case 문서를 연결하고,
+`dev/troubleshooting.md`는 기존 `docs/troubleshooting/index.md`와 case 문서를 연결하고,
 failure pattern 기록 규칙을 설명합니다.
 
 ## Dev Architecture Details
@@ -239,10 +240,12 @@ Linux VM의 핵심 문장:
 | `packages/vitalserver-guest-tools` | dev 전용 | Linux guest-side runtime state, update, logs, repair commands |
 | `infra/macos-nginx` | dev 중심, release installation에서 간접 설명 | Mac host proxy config and launchd template |
 
-## MkDocs nav 초안
+## MkDocs nav 기준
 
 ```yaml
-site_name: Tirosh VitalServer
+site_name: Vital Server Helper
+site_url: https://tirosh-chain.github.io/vitalserver-helper/
+docs_dir: site-docs
 
 nav:
   - Home: index.md
@@ -266,16 +269,6 @@ nav:
       - Build and Release: dev/build-and-release.md
       - Testing: dev/testing.md
       - Troubleshooting: dev/troubleshooting.md
-  - Existing Docs:
-      - Current Documentation Map: index.md
-      - Productization Strategy: vitalserver-productization.md
-      - Vital Recorder: vrecorder.md
-      - Testkit Usage: testkit-usage.md
-      - Runtime:
-          - macOS Runtime: vitalserver-macos-runtime.md
-          - Runtime Overview: macos-runtime/overview.md
-          - Runtime Architecture: macos-runtime/architecture.md
-          - Runtime Control API: macos-runtime/runtime-control-api.md
 ```
 
 ## 작성 우선순위

@@ -1,0 +1,39 @@
+site_name: Vital Server Helper
+site_url: https://tirosh-chain.github.io/vitalserver-helper/
+repo_url: https://github.com/tirosh-chain/tirosh-vitalserver
+repo_name: tirosh-chain/tirosh-vitalserver
+docs_dir: site-docs
+site_dir: site
+
+theme:
+  name: mkdocs
+
+markdown_extensions:
+  - admonition
+  - fenced_code
+  - tables
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Release:
+      - Overview: release/index.md
+      - Research Background: release/background.md
+      - Why Mac Hardware: release/mac-hardware-appliance.md
+      - Vital Server Helper Health Check: release/health-check-service.md
+      - Deployment Modes: release/deployment-modes.md
+      - Installation: release/installation.md
+      - Operation: release/operation.md
+      - Troubleshooting: release/troubleshooting.md
+      - Release Notes: release/release-notes.md
+  - Dev:
+      - Overview: dev/index.md
+      - Service Catalog: dev/service-catalog.md
+      - Package Map: dev/package-map.md
+      - Architecture: dev/architecture.md
+      - Health Check Contract: dev/health-check-contract.md
+      - API Contracts: dev/api-contracts.md
+      - Build and Release: dev/build-and-release.md
+      - Testing: dev/testing.md
+      - Troubleshooting: dev/troubleshooting.md

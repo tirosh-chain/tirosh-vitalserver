@@ -272,7 +272,7 @@ PWA 착수 직전까지 현재 branch가 보장해야 하는 compatibility basel
 | Adapter 내부 구현 | command factory, status/settings/file/log reader, privileged runner는 internal 구현 세부로 유지 |
 | API 전환 지점 | PWA client는 `RuntimeControlClient`에 해당하는 HTTP/SSE contract를 보고, 현재 SwiftUI 전환기만 `RuntimeHostClient`로 local host affordance를 같이 사용 |
 | API route/DTO/server | `RuntimeControlAPI` target이 `/runtime/*` runtime control route와 `/host/*` local host affordance route를 분리하고, read-only `/runtime/*`는 local loopback HTTP server로 제공 |
-| OpenAPI 계약 | `docs/macos-runtime/runtime-control.openapi.json`이 Swift endpoint enum과 method/path/access parity test로 검증됨 |
+| OpenAPI 계약 | `docs/runtime/macos/runtime-control.openapi.json`이 Swift endpoint enum과 method/path/access parity test로 검증됨 |
 | 후속 이슈 | write/admin endpoint 구현, auth/pairing 강화, progress client adapter, generated client는 PWA/API 구현 단계에서 진행 |
 
 Repository layout 기준은 아래처럼 둡니다.

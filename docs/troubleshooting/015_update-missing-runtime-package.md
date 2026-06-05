@@ -27,7 +27,7 @@ Product Update bundle은 `rootfs-base.raw.gz`를 포함하거나 교체하지 �
 
 조치:
 
-같은 bundle을 반복 적용하지 말고, 새 package 재설치 또는 별도 VM Image replacement 흐름으로 복구합니다. 운영 데이터 보존 범위는 [Update](../macos-runtime/update.md)의 `0.1.4 update에서 다시 실패하는 경우`를 확인합니다.
+같은 bundle을 반복 적용하지 말고, 새 package 재설치 또는 별도 VM Image replacement 흐름으로 복구합니다. 운영 데이터 보존 범위는 [Update](../runtime/macos/update.md)의 `0.1.4 update에서 다시 실패하는 경우`를 확인합니다.
 
 새 package clean install에서는 `start-installed-services` 이후 runtime이 아직 bootstrapping 중임을 명시 status로 남겨야 합니다. Guest bootstrap prerequisite 실패가 `bootstrap-result.json`에 기록되면 watchdog, Helper app, `runtime health`가 이를 실패 상태로 표시해야 하며, `postinstall`이 guest 상태를 추론해 성공/실패를 대신 판단하면 안 됩니다.
 

@@ -8,7 +8,7 @@
 - Status: active
 - Created: 2026-06-01
 - Related:
-  - [AGENTS.md](../../AGENTS.md)
+  - [AGENTS.md](https://github.com/tirosh-chain/tirosh-vitalserver/blob/main/AGENTS.md)
   - [TS-032 macOS runtime explicit responsibility review](032_macos-runtime-explicit-responsibility-review.md)
   - [TS-038 guest kernel panic watchdog restart loop](038_guest-kernel-panic-watchdog-restart-loop.md)
 
