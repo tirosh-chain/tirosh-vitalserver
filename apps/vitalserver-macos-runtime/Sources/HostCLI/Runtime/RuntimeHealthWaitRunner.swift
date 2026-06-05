@@ -1,55 +1,42 @@
-import Foundation
-import Core
+import Application
 import Contracts
+import Core
+import RuntimeWorkflow
 
 struct RuntimeHealthWaitRunner {
-    var isLaunchdLoaded: (RuntimeManagedService) -> Bool
-    var healthSnapshot: () -> RuntimeHealthSnapshot
-    var writeStatus: (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void
-    var sleep: () -> Void
-    var log: (String) -> Void
+    private let workflow: RuntimeHealthWaitWorkflow
+
+    init(
+        serviceStates: @escaping ([RuntimeManagedService]) -> [RuntimeManagedService: RuntimeServiceState],
+        healthSnapshot: @escaping () -> RuntimeHealthSnapshot,
+        writeStatusBestEffort: @escaping (RuntimeStatusLevel, RuntimeOperation, String) -> Void,
+        sleep: @escaping () -> Void,
+        log: @escaping (String) -> Void
+    ) {
+        self.workflow = RuntimeHealthWaitWorkflow(
+            useCase: WaitForRuntimeHealthUseCase(
+                ports: RuntimeHealthWaitPorts(
+                    serviceStates: serviceStates,
+                    healthSnapshot: healthSnapshot
+                )
+            ),
+            configuration: RuntimeHealthWaitWorkflowConfiguration(
+                timeoutSeconds: Constants.Runtime.waitTimeoutSeconds,
+                pollIntervalSeconds: 3.0,
+                progressEveryAttempts: 5
+            ),
+            writer: RuntimeHealthWaitWriter(
+                writeStatusBestEffort: writeStatusBestEffort,
+                sleep: sleep,
+                log: log
+            )
+        )
+    }
 
     func wait(for policy: RuntimeServiceRestartPolicy) throws {
-        guard policy.restartVM || policy.restartProxy || policy.restartWatchdog else {
-            log("runtime services were not running before apply; skipping health wait")
-            return
-        }
-
-        log("waiting for runtime health timeoutSeconds=\(Constants.Runtime.waitTimeoutSeconds)")
-        let maxAttempts = Int(ceil(Constants.Runtime.waitTimeoutSeconds / 3.0))
-        let waitResult = RuntimeHealthWaiter.wait(
-            configuration: RuntimeHealthWaitConfiguration(maxAttempts: maxAttempts, progressEveryAttempts: 5),
-            observe: {
-                RuntimeHealthWaitObservation(
-                    vmServiceRequired: policy.restartVM,
-                    proxyServiceRequired: policy.restartProxy,
-                    watchdogServiceRequired: policy.restartWatchdog,
-                    vmServiceLoaded: isLaunchdLoaded(.vm),
-                    proxyServiceLoaded: isLaunchdLoaded(.proxy),
-                    watchdogServiceLoaded: isLaunchdLoaded(.watchdog),
-                    snapshot: healthSnapshot()
-                )
-            },
-            onProgress: { reasons in
-                let reasonText = RuntimeFailureReasonText.describe(reasons)
-                log("waiting for runtime health reasons=\(reasonText)")
-                try? writeStatus(
-                    .recovering,
-                    .health,
-                    "waiting for runtime health: \(reasonText)"
-                )
-            },
-            sleep: sleep
-        )
-
-        switch waitResult {
-        case .healthy:
-            let snapshot = healthSnapshot()
-            log("runtime health ok hostProxyHTTP=\(snapshot.hostProxyHTTP)")
-        case .failedEarly(let reason):
-            log("runtime health failed early reason=\(reason.rawValue)")
-            throw LauncherError.runtimeHealthFailed
-        case .timedOut:
+        do {
+            try workflow.wait(for: policy)
+        } catch RuntimeWorkflowError.operationFailed {
             throw LauncherError.runtimeHealthFailed
         }
     }

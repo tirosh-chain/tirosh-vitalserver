@@ -1,6 +1,5 @@
-import Foundation
-import Core
 import Contracts
+import Foundation
 @testable import HostCLI
 import XCTest
 
@@ -80,6 +79,70 @@ final class RuntimeArtifactReplacerTests: XCTestCase {
         XCTAssertTrue(events.contains("run:/usr/bin/tar:-xzf /bundle/runtime-tools.tar.gz -C /usr/local/bin"))
     }
 
+    func testReplacePropagatesExistingDestinationPermissionFailure() {
+        var outputs: [URL: String] = [:]
+        var events: [String] = []
+        let replacer = makeReplacer(
+            outputs: { outputs },
+            fileExists: { $0.path == "/Applications/VitalServer Helper.app" },
+            createDirectory: { url, _ in events.append("mkdir:\(url.path)") },
+            removeItem: { url in
+                events.append("rm:\(url.path)")
+                if url.path == "/Applications/VitalServer Helper.app" {
+                    throw CocoaError(.fileWriteNoPermission)
+                }
+            },
+            moveItem: { source, destination in
+                events.append("mv:\(source.path):\(destination.path)")
+            },
+            runRequired: { executable, arguments in
+                events.append("run:\(executable):\(arguments.joined(separator: " "))")
+            },
+            runProcessToFile: { _, arguments, output in
+                if arguments.first == "-tzf" {
+                    outputs[output] = "VitalServer Helper.app/Contents/Info.plist\n"
+                } else {
+                    outputs[output] = "-rw-r--r-- 0 user group 0 Jan 1 00:00 VitalServer Helper.app/Contents/Info.plist\n"
+                }
+            }
+        )
+
+        XCTAssertThrowsError(try replacer.replace([
+            UpdateBundleArtifact(name: "app-bundle.tar.gz", type: .appBundle, sha256: "abc", size: 10),
+        ], stagedBundle: URL(fileURLWithPath: "/bundle"))) { error in
+            XCTAssertFileWriteNoPermission(error)
+        }
+        XCTAssertTrue(events.contains("rm:/Applications/VitalServer Helper.app"))
+        XCTAssertFalse(events.contains { $0.hasPrefix("mv:") })
+    }
+
+    func testReplacePropagatesTemporaryDirectoryPermissionFailure() {
+        var outputs: [URL: String] = [:]
+        var events: [String] = []
+        let replacer = makeReplacer(
+            outputs: { outputs },
+            createDirectory: { url, _ in
+                events.append("mkdir:\(url.path)")
+                throw CocoaError(.fileWriteNoPermission)
+            },
+            runRequired: { executable, _ in events.append("run:\(executable)") },
+            runProcessToFile: { _, arguments, output in
+                if arguments.first == "-tzf" {
+                    outputs[output] = "VitalServer Helper.app/Contents/Info.plist\n"
+                } else {
+                    outputs[output] = "-rw-r--r-- 0 user group 0 Jan 1 00:00 VitalServer Helper.app/Contents/Info.plist\n"
+                }
+            }
+        )
+
+        XCTAssertThrowsError(try replacer.replace([
+            UpdateBundleArtifact(name: "app-bundle.tar.gz", type: .appBundle, sha256: "abc", size: 10),
+        ], stagedBundle: URL(fileURLWithPath: "/bundle"))) { error in
+            XCTAssertFileWriteNoPermission(error)
+        }
+        XCTAssertEqual(events, ["mkdir:/Applications/.VitalServer Helper.app.update"])
+    }
+
     func testReplaceRejectsPathTraversalInArchive() {
         var outputs: [URL: String] = [:]
         let replacer = makeReplacer(
@@ -96,9 +159,10 @@ final class RuntimeArtifactReplacerTests: XCTestCase {
         XCTAssertThrowsError(try replacer.replace([
             UpdateBundleArtifact(name: "app-bundle.tar.gz", type: .appBundle, sha256: "abc", size: 10),
         ], stagedBundle: URL(fileURLWithPath: "/bundle"))) { error in
-            XCTAssertEqual(String(describing: error), String(describing: LauncherError.bundleVerificationFailed(
-                "path traversal in app-bundle.tar.gz: VitalServer Helper.app/../escape"
-            )))
+            XCTAssertEqual(
+                String(describing: error),
+                "bundle verification failed: path traversal in app-bundle.tar.gz: VitalServer Helper.app/../escape"
+            )
         }
     }
 
@@ -118,10 +182,64 @@ final class RuntimeArtifactReplacerTests: XCTestCase {
         XCTAssertThrowsError(try replacer.replace([
             UpdateBundleArtifact(name: "app-bundle.tar.gz", type: .appBundle, sha256: "abc", size: 10),
         ], stagedBundle: URL(fileURLWithPath: "/bundle"))) { error in
-            XCTAssertEqual(String(describing: error), String(describing: LauncherError.bundleVerificationFailed(
-                "tar.gz must not contain links: app-bundle.tar.gz"
-            )))
+            XCTAssertEqual(
+                String(describing: error),
+                "bundle verification failed: tar.gz must not contain links: app-bundle.tar.gz"
+            )
         }
+    }
+
+    func testReplaceRejectsUnsupportedArchiveEntryTypes() {
+        var outputs: [URL: String] = [:]
+        let replacer = makeReplacer(
+            outputs: { outputs },
+            runProcessToFile: { _, arguments, output in
+                if arguments.first == "-tzf" {
+                    outputs[output] = "VitalServer Helper.app/Contents/Info.plist\n"
+                } else {
+                    outputs[output] = "crw-r--r-- 0 root wheel 0 Jan 1 00:00 VitalServer Helper.app/device\n"
+                }
+            }
+        )
+
+        XCTAssertThrowsError(try replacer.replace([
+            UpdateBundleArtifact(name: "app-bundle.tar.gz", type: .appBundle, sha256: "abc", size: 10),
+        ], stagedBundle: URL(fileURLWithPath: "/bundle"))) { error in
+            XCTAssertEqual(
+                String(describing: error),
+                "bundle verification failed: tar.gz must contain only regular files and directories: app-bundle.tar.gz entryType=c"
+            )
+        }
+    }
+
+    func testReplaceLogsValidationTemporaryFileCleanupFailures() throws {
+        var outputs: [URL: String] = [:]
+        var logs: [String] = []
+        let replacer = makeReplacer(
+            outputs: { outputs },
+            removeItem: { url in
+                if url.path.hasPrefix("/tmp/tirosh-") {
+                    throw CocoaError(.fileWriteNoPermission)
+                }
+            },
+            runProcessToFile: { _, arguments, output in
+                if arguments.first == "-tzf" {
+                    outputs[output] = "VitalServer Helper.app/Contents/Info.plist\n"
+                } else {
+                    outputs[output] = "-rw-r--r-- 0 user group 0 Jan 1 00:00 VitalServer Helper.app/Contents/Info.plist\n"
+                }
+            },
+            log: { logs.append($0) }
+        )
+
+        try replacer.replace([
+            UpdateBundleArtifact(name: "app-bundle.tar.gz", type: .appBundle, sha256: "abc", size: 10),
+        ], stagedBundle: URL(fileURLWithPath: "/bundle"))
+
+        XCTAssertEqual(
+            logs.filter { $0.contains("artifact validation temporary file cleanup failed") }.count,
+            2
+        )
     }
 
     private func makeReplacer(
@@ -139,9 +257,20 @@ final class RuntimeArtifactReplacerTests: XCTestCase {
         RuntimeArtifactReplacer(
             destinations: RuntimeArtifactReplacementDestinations(
                 managerApp: URL(fileURLWithPath: "/Applications/VitalServer Helper.app"),
-                nginxBundle: URL(fileURLWithPath: "/Library/Application Support/TiroshVitalServer/nginx"),
-                guestDeploy: URL(fileURLWithPath: "/Library/Application Support/TiroshVitalServer/vm/data/deploy"),
+                nginxBundle: URL(fileURLWithPath: "/Library/Application Support/VitalServerHelper/nginx"),
+                guestDeploy: URL(fileURLWithPath: "/Library/Application Support/VitalServerHelper/vm/data/deploy"),
                 runtimeTools: URL(fileURLWithPath: "/usr/local/bin")
+            ),
+            rules: RuntimeArtifactReplacementRules(
+                tarCommand: "/usr/bin/tar",
+                appBundleRoot: "VitalServer Helper.app",
+                nginxBundleRoot: "nginx",
+                guestDeployRoot: "deploy",
+                runtimeToolsAllowedRootEntries: [
+                    "vitalserver-vm",
+                    "vitalserver-proxy-run",
+                    "tirosh-vitalserver-uninstall",
+                ]
             ),
             temporaryDirectory: URL(fileURLWithPath: "/tmp"),
             fileExists: fileExists,
@@ -155,5 +284,15 @@ final class RuntimeArtifactReplacerTests: XCTestCase {
             runProcessToFile: runProcessToFile,
             log: log
         )
+    }
+
+    private func XCTAssertFileWriteNoPermission(
+        _ error: Error,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let nsError = error as NSError
+        XCTAssertEqual(nsError.domain, NSCocoaErrorDomain, file: file, line: line)
+        XCTAssertEqual(nsError.code, CocoaError.Code.fileWriteNoPermission.rawValue, file: file, line: line)
     }
 }

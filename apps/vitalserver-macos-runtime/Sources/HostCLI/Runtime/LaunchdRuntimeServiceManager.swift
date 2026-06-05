@@ -14,7 +14,24 @@ struct LaunchdRuntimeServiceManager: RuntimeServiceManager {
             Constants.Commands.launchctl,
             arguments: ["print", "system/\(service.label)"]
         )
-        return result.exitCode == 0 ? .loaded : .notLoaded
+        guard result.exitCode != 0 else {
+            return .loaded
+        }
+
+        let message = commandFailureMessage(result)
+        let lowercased = message.lowercased()
+        if lowercased.contains("could not find service")
+            || lowercased.contains("no such process")
+            || lowercased.contains("not found")
+        {
+            return .notLoaded
+        }
+        if lowercased.contains("permission denied")
+            || lowercased.contains("operation not permitted")
+        {
+            return .permissionDenied(message)
+        }
+        return .readFailed(message)
     }
 
     func start(service: RuntimeManagedService, plist: String) {
@@ -50,5 +67,17 @@ struct LaunchdRuntimeServiceManager: RuntimeServiceManager {
             Constants.Commands.launchctl,
             arguments: [action, "system/\(service.label)"]
         )
+    }
+
+    private func commandFailureMessage(_ result: RuntimeProcessResult) -> String {
+        let stderr = result.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+        let stdout = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !stderr.isEmpty {
+            return "exitCode=\(result.exitCode) stderr=\(stderr)"
+        }
+        if !stdout.isEmpty {
+            return "exitCode=\(result.exitCode) stdout=\(stdout)"
+        }
+        return "exitCode=\(result.exitCode)"
     }
 }

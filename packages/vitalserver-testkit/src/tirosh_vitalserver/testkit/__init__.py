@@ -31,6 +31,14 @@ from .application.usecases.recorder import (
     stream_realtime_payload,
 )
 from .application.usecases.recorder.visibility import wait_for_recorder_visibility
+from .domain.bed import (
+    Bed,
+    BedRecorderAssignment,
+    beds_for_room_names,
+    create_bed,
+    create_beds,
+    require_bed_capacity_for_recorders,
+)
 from .domain.recorder import (
     RecorderRoom,
     RecorderTrackMontype,
@@ -43,6 +51,7 @@ from .domain.recorder import (
     iter_recorder_rooms,
     recorder_payload_size_bytes,
     shift_recorder_payload_time,
+    unique_testkit_vrcode,
 )
 from .domain.signal import (
     DEFAULT_SIGNAL_PROFILE,
@@ -59,6 +68,8 @@ from .schemas.payloads import load_recorder_payload
 
 __all__ = [
     "DEFAULT_SIGNAL_PROFILE",
+    "Bed",
+    "BedRecorderAssignment",
     "PayloadFile",
     "RealtimeSendResult",
     "RealtimeStreamResult",
@@ -77,17 +88,21 @@ __all__ = [
     "__version__",
     "assert_vital_filenames",
     "bed_id_for_room",
+    "beds_for_room_names",
     "build_realtime_message",
     "build_simulated_recorder_payload",
     "build_virtual_recorder_payloads",
     "combine_virtual_recorder_rooms",
     "connect_socketio",
+    "create_bed",
+    "create_beds",
     "encode_realtime_payload",
     "iter_recorder_rooms",
     "iter_vital_files",
     "load_recorder_payload",
     "profile_for_scenario",
     "recorder_payload_size_bytes",
+    "require_bed_capacity_for_recorders",
     "send_realtime_payload",
     "send_realtime_payloads",
     "send_recorder_payloads",
@@ -98,6 +113,7 @@ __all__ = [
     "stream_total_messages_sent",
     "stream_virtual_recorder_payloads",
     "stream_vrecorder_session",
+    "unique_testkit_vrcode",
     "upload_vital_files",
     "wait_for_recorder_visibility",
     "wait_for_server",

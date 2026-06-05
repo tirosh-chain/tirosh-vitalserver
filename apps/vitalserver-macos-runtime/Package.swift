@@ -3,7 +3,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "TiroshVitalServerHelper",
+    name: "VitalServerHelper",
     platforms: [
         .macOS(.v13)
     ],
@@ -26,12 +26,20 @@ let package = Package(
             dependencies: ["Contracts"]
         ),
         .target(
-            name: "RuntimeControl",
+            name: "Application",
             dependencies: ["Contracts", "Core"]
         ),
         .target(
+            name: "RuntimeWorkflow",
+            dependencies: ["Contracts", "Core", "Application"]
+        ),
+        .target(
+            name: "RuntimeControl",
+            dependencies: ["Contracts"]
+        ),
+        .target(
             name: "RuntimeControlAPI",
-            dependencies: ["RuntimeControl", "Core"]
+            dependencies: ["RuntimeControl"]
         ),
         .target(
             name: "HostInfrastructure",
@@ -46,7 +54,7 @@ let package = Package(
         ),
         .executableTarget(
             name: "HostCLI",
-            dependencies: ["Contracts", "Core", "HostInfrastructure"]
+            dependencies: ["Contracts", "Core", "Application", "RuntimeWorkflow", "HostInfrastructure"]
         ),
         .executableTarget(
             name: "MacRuntimeControlApp",
@@ -64,12 +72,20 @@ let package = Package(
             dependencies: ["Contracts", "Core"]
         ),
         .testTarget(
+            name: "ApplicationTests",
+            dependencies: ["Contracts", "Core", "Application"]
+        ),
+        .testTarget(
+            name: "RuntimeWorkflowTests",
+            dependencies: ["Contracts", "Core", "Application", "RuntimeWorkflow"]
+        ),
+        .testTarget(
             name: "RuntimeControlTests",
-            dependencies: ["Contracts", "Core", "RuntimeControl"]
+            dependencies: ["Contracts", "RuntimeControl"]
         ),
         .testTarget(
             name: "RuntimeControlAPITests",
-            dependencies: ["Core", "RuntimeControl", "RuntimeControlAPI"]
+            dependencies: ["Contracts", "RuntimeControl", "RuntimeControlAPI"]
         ),
         .testTarget(
             name: "HostInfrastructureTests",
@@ -77,7 +93,7 @@ let package = Package(
         ),
         .testTarget(
             name: "HostCLITests",
-            dependencies: ["Contracts", "Core", "HostCLI"]
+            dependencies: ["Contracts", "Core", "RuntimeWorkflow", "HostCLI"]
         ),
         .testTarget(
             name: "MacRuntimeControlAppTests",

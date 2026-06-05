@@ -15,6 +15,9 @@ class GuestDeployInclude:
 @dataclass(frozen=True)
 class GuestDeployConfig:
     docker_image_bundle_destination: Path
+    optional_docker_image_bundle_destination: Path | None
+    python_wheel_destination: Path
+    python_wheel_projects: list[Path]
     includes: list[GuestDeployInclude]
 
 

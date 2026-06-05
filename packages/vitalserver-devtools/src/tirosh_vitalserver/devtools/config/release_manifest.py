@@ -23,6 +23,7 @@ def load_release_manifest(path: Path) -> ReleaseManifest:
         vitalserver_version=required_release_string(release, "vitalServerVersion"),
         target_platform=required_release_string(release, "targetPlatform"),
         host_proxy_image=optional_service_string(release, "hostProxy", "image"),
+        optional_container_services=optional_container_services(release),
     )
 
 
@@ -58,3 +59,20 @@ def optional_service_string(
             f"error: invalid release field: services.{service}.{key}"
         )
     return value
+
+
+def optional_container_services(release: dict[str, object]) -> tuple[str, ...]:
+    bundle = release.get("bundle", {})
+    if bundle is None:
+        return ()
+    if not isinstance(bundle, dict):
+        raise SystemExit("error: release field bundle must be an object")
+    value = bundle.get("optionalContainerServices", [])
+    if not isinstance(value, list) or not all(
+        isinstance(item, str) and item for item in value
+    ):
+        raise SystemExit(
+            "error: release field bundle.optionalContainerServices must be "
+            "a string list"
+        )
+    return tuple(value)

@@ -1,9 +1,9 @@
 import Foundation
 import RuntimeControl
-import Core
 
 public enum RuntimeControlHTTPMethod: String, CaseIterable, Codable, Equatable, Sendable {
     case get = "GET"
+    case options = "OPTIONS"
     case post = "POST"
     case put = "PUT"
     case delete = "DELETE"
@@ -18,6 +18,11 @@ public enum RuntimeControlAPIClientAccess: String, Codable, Equatable, Sendable 
     case browserSafe
     case localServerMediated
     case nativeShellOnly
+}
+
+public enum RuntimeControlAPIStreamCapability: String, Codable, Equatable, Sendable {
+    case supported
+    case unsupported
 }
 
 public enum RuntimeControlAPIErrorCode: String, Codable, Equatable, Sendable {
@@ -53,6 +58,9 @@ public enum RuntimeControlAPIEndpoint: String, CaseIterable, Codable, Equatable,
     case vitalDBObservationStream
     case vitalDBRecorders
     case vitalDBRecorder
+    case vitalDBBeds
+    case vitalDBBed
+    case vitalDBRelationships
     case health
     case settings
     case applySettings
@@ -60,8 +68,10 @@ public enum RuntimeControlAPIEndpoint: String, CaseIterable, Codable, Equatable,
     case installInfo
     case startServices
     case stopServices
+    case repairRuntimeServices
     case repairProxy
     case repairDatastore
+    case repairVMDisk
     case createRedisBackup
     case uninstall
     case backups
@@ -100,6 +110,12 @@ public enum RuntimeControlAPIEndpoint: String, CaseIterable, Codable, Equatable,
             return .init(method: .get, path: "/vitaldb/recorders", scope: .runtimeControl)
         case .vitalDBRecorder:
             return .init(method: .get, path: "/vitaldb/recorders/{vrcode}", scope: .runtimeControl)
+        case .vitalDBBeds:
+            return .init(method: .get, path: "/vitaldb/beds", scope: .runtimeControl)
+        case .vitalDBBed:
+            return .init(method: .get, path: "/vitaldb/beds/{bedID}", scope: .runtimeControl)
+        case .vitalDBRelationships:
+            return .init(method: .get, path: "/vitaldb/relationships", scope: .runtimeControl)
         case .health:
             return .init(method: .post, path: "/runtime/health", scope: .runtimeControl)
         case .settings:
@@ -114,10 +130,14 @@ public enum RuntimeControlAPIEndpoint: String, CaseIterable, Codable, Equatable,
             return .init(method: .post, path: "/runtime/services/start", scope: .runtimeControl)
         case .stopServices:
             return .init(method: .post, path: "/runtime/services/stop", scope: .runtimeControl)
+        case .repairRuntimeServices:
+            return .init(method: .post, path: "/runtime/services/repair-runtime", scope: .runtimeControl)
         case .repairProxy:
             return .init(method: .post, path: "/runtime/services/repair-proxy", scope: .runtimeControl)
         case .repairDatastore:
             return .init(method: .post, path: "/runtime/services/repair-datastore", scope: .runtimeControl)
+        case .repairVMDisk:
+            return .init(method: .post, path: "/runtime/services/repair-vm-disk", scope: .runtimeControl)
         case .createRedisBackup:
             return .init(method: .post, path: "/runtime/redis/backups", scope: .runtimeControl)
         case .uninstall:
@@ -149,6 +169,51 @@ public enum RuntimeControlAPIEndpoint: String, CaseIterable, Codable, Equatable,
 }
 
 public extension RuntimeControlAPIEndpoint {
+    var streamCapability: RuntimeControlAPIStreamCapability {
+        switch self {
+        case .overviewStream,
+             .statusStream,
+             .eventStream,
+             .vitalDBObservationStream,
+             .logStream:
+            return .supported
+        case .capabilities,
+             .overview,
+             .status,
+             .events,
+             .vitalDBObservation,
+             .vitalDBRecorders,
+             .vitalDBRecorder,
+             .vitalDBBeds,
+             .vitalDBBed,
+             .vitalDBRelationships,
+             .health,
+             .settings,
+             .applySettings,
+             .release,
+             .installInfo,
+             .startServices,
+             .stopServices,
+             .repairRuntimeServices,
+             .repairProxy,
+             .repairDatastore,
+             .repairVMDisk,
+             .createRedisBackup,
+             .uninstall,
+             .backups,
+             .redisBackups,
+             .restoreRedisBackup,
+             .logText,
+             .updateBundleSummary,
+             .verifyUpdateBundle,
+             .applyUpdateBundle,
+             .rollbackBackup,
+             .deleteBackup,
+             .exportLogs:
+            return .unsupported
+        }
+    }
+
     var clientAccess: RuntimeControlAPIClientAccess {
         switch self {
         case .capabilities,
@@ -162,6 +227,9 @@ public extension RuntimeControlAPIEndpoint {
              .vitalDBObservationStream,
              .vitalDBRecorders,
              .vitalDBRecorder,
+             .vitalDBBeds,
+             .vitalDBBed,
+             .vitalDBRelationships,
              .health,
              .settings,
              .release,
@@ -172,8 +240,10 @@ public extension RuntimeControlAPIEndpoint {
         case .applySettings,
              .startServices,
              .stopServices,
+             .repairRuntimeServices,
              .repairProxy,
              .repairDatastore,
+             .repairVMDisk,
              .createRedisBackup,
              .uninstall,
              .backups,
@@ -209,6 +279,12 @@ public extension RuntimeControlAPIEndpoint {
             return components.count == 3
                 && components[0] == "vitaldb"
                 && components[1] == "recorders"
+                && !components[2].isEmpty
+        case .vitalDBBed:
+            let components = path.split(separator: "/", omittingEmptySubsequences: true)
+            return components.count == 3
+                && components[0] == "vitaldb"
+                && components[1] == "beds"
                 && !components[2].isEmpty
         default:
             return route.path == path
@@ -253,6 +329,39 @@ public struct RuntimeControlErrorResponse: Codable, Equatable, Sendable {
     }
 }
 
+public enum RuntimeControlErrorResponseEncoder {
+    public static func encode(code: RuntimeControlAPIErrorCode, message: String) -> Data {
+        Data("{\"code\":\"\(jsonStringContent(code.rawValue))\",\"message\":\"\(jsonStringContent(message))\"}".utf8)
+    }
+
+    private static func jsonStringContent(_ value: String) -> String {
+        var result = ""
+        for scalar in value.unicodeScalars {
+            switch scalar {
+            case "\"":
+                result += "\\\""
+            case "\\":
+                result += "\\\\"
+            case "\u{08}":
+                result += "\\b"
+            case "\u{0C}":
+                result += "\\f"
+            case "\n":
+                result += "\\n"
+            case "\r":
+                result += "\\r"
+            case "\t":
+                result += "\\t"
+            case let control where control.value < 0x20:
+                result += String(format: "\\u%04X", control.value)
+            default:
+                result.unicodeScalars.append(scalar)
+            }
+        }
+        return result
+    }
+}
+
 public struct RuntimeControlCommandResponse: Codable, Equatable, Sendable {
     public let result: RuntimeCommandResult
 
@@ -287,10 +396,10 @@ public struct RuntimeUninstallRequest: Codable, Equatable, Sendable {
 
 public struct RuntimeLogTextRequest: Codable, Equatable, Sendable {
     public let source: RuntimeLogSource
-    public let helperMessage: String
+    public let helperMessage: String?
     public let lineLimit: Int
 
-    public init(source: RuntimeLogSource, helperMessage: String, lineLimit: Int) {
+    public init(source: RuntimeLogSource, helperMessage: String? = nil, lineLimit: Int) {
         self.source = source
         self.helperMessage = helperMessage
         self.lineLimit = lineLimit

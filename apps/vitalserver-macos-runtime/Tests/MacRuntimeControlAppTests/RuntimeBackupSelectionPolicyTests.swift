@@ -29,7 +29,7 @@ final class RuntimeBackupSelectionPolicyTests: XCTestCase {
             currentSelection: "/backups/20260522T000000Z-before-0.1.3"
         )
 
-        XCTAssertEqual(selected, "")
+        XCTAssertNil(selected)
     }
 
     func testManagedBackupMustBeInsideBackupRootAndUseBackupNameConvention() {

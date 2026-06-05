@@ -4,7 +4,7 @@ import RuntimeControl
 struct RuntimeActiveOperationPolicy {
     static func isUpdateOperation(_ operation: RuntimeOperation?) -> Bool {
         switch operation {
-        case .applyBundle, .activateGuestUpdate:
+        case .applyBundle, .prepareUpdateShutdown, .activateGuestUpdate:
             return true
         default:
             return false

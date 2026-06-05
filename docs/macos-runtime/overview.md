@@ -51,13 +51,13 @@ v1 기본값은 `shared/NAT VM + macOS host proxy`입니다. 이 구조는 Docke
 
 | 시나리오 | 사용자가 보는 것 | 개발/운영자가 쓰는 것 | 세부 문서 |
 |---|---|---|---|
-| 신규 현장 설치 | `TiroshVitalServer-<version>.dmg` 안의 installer package | `make vm-dmg-release` | [Packaging and Update](packaging.md) |
+| 신규 현장 설치 | `VitalServerHelper-<version>.dmg` 안의 installer package | `make vm-dmg-release` | [Packaging and Update](packaging.md) |
 | 폐쇄망 Product Update | offline product update bundle tarball | `make vm-update-bundle-release`, Helper app Update 탭 | [Packaging and Update](packaging.md) |
 | VM Image Update | offline VM image update bundle tarball | `make vm-rootfs-update-bundle-release`, Danger Zone | [Packaging and Update](packaging.md), [Update](update.md) |
 | 온라인 업데이트 | 같은 update bundle 계약, download source만 온라인 | release hardening 대상 | [Packaging and Update](packaging.md) |
-| 설치 후 상태 확인 | `/Applications/VitalServer Helper.app` Status 탭 | `make vm-installed-health`, `vitalserver-vm runtime health` | [Runtime](runtime.md), [Troubleshooting](troubleshooting.md) |
+| 설치 후 상태 확인 | `/Applications/VitalServer Helper.app` Status 탭 | `make vm-installed-health`, `vitalserver-vm runtime health` | [Runtime](runtime.md), [Troubleshooting](../troubleshooting.md) |
 | 운영 설정 변경 | Helper app Settings/Advanced 탭 | `vitalserver-vm runtime configure ... --restart` | [Runtime](runtime.md) |
-| 장애 대응 | Helper app Status/Logs/Advanced/Danger Zone, uninstaller | watchdog log, runtime status, troubleshooting guide | [Troubleshooting](troubleshooting.md) |
+| 장애 대응 | Helper app Status/Logs/Advanced/Danger Zone, uninstaller | watchdog log, runtime status, troubleshooting guide | [Troubleshooting](../troubleshooting.md) |
 | 개발 VM PoC | package 없이 VM/proxy 직접 실행 | `make vm-up`, `make vm-health`, `make vm-down` | [Runtime](runtime.md) |
 | 구조 판단/리뷰 | 왜 host proxy인지, 책임이 어디인지 | ADR, architecture 문서 | [Architecture](architecture.md), [ADR 0001](../adr/0001-macos-host-proxy-for-vrecorder-ip.md), [ADR 0002](../adr/0002-helper-client-boundary-for-local-and-remote-runtime.md), [ADR 0003](../adr/0003-helper-layer-and-component-version-model.md), [ADR 0004](../adr/0004-product-update-and-vm-image-update-contract.md) |
 
@@ -66,6 +66,7 @@ v1 기본값은 `shared/NAT VM + macOS host proxy`입니다. 이 구조는 Docke
 | 문서 | 먼저 볼 때 |
 |---|---|
 | [Architecture](architecture.md) | As-is/To-be 구조, shared/NAT + host proxy 선택 이유, 단일 노드 가용성, Web/PWA UI/native shell/host runtime 책임 경계를 볼 때 |
+| [Ideal Layer Migration](ideal-layer-migration.md) | macOS runtime을 Clean Architecture/DDD 레이어로 수렴시키는 #47 migration 순서, target tree, boundary test 전략을 볼 때 |
 | [Runtime Control API](runtime-control-api.md) | PWA 착수 직전 API 계약, OpenAPI, local read-only server, `/runtime/*`와 `/host/*` 경계를 볼 때 |
 | [ADR 0002](../adr/0002-helper-client-boundary-for-local-and-remote-runtime.md) | Web/PWA Helper UI, macOS native shell, local/remote RuntimeControlClient boundary를 볼 때 |
 | [ADR 0003](../adr/0003-helper-layer-and-component-version-model.md) | Helper UI, Native Shell, Runtime Control API, Updater, Supervisor, VM Driver, Service Stack, VM Image layer와 version model을 볼 때 |
@@ -73,7 +74,7 @@ v1 기본값은 `shared/NAT VM + macOS host proxy`입니다. 이 구조는 Docke
 | [Packaging and Update](packaging.md) | `make vm-pkg-dev`/`make vm-pkg-release`, `make vm-dmg-dev`/`make vm-dmg-release`, update bundle, install settings, release artifact 흐름을 볼 때 |
 | [Update](update.md) | bundle 적용 과정, 보존/변경되는 항목, guest-side activation, rollback 실패 조건을 볼 때 |
 | [Runtime](runtime.md) | VM boot asset, cloud-init, guest bootstrap, data sharing, network mode, identity/signing 정책을 볼 때 |
-| [Troubleshooting](troubleshooting.md) | 502, stale pid, cloud-init 재실행, disk full, package cleanup, bridged entitlement 문제를 볼 때 |
+| [Troubleshooting](../troubleshooting.md) | 502, stale pid, cloud-init 재실행, disk full, update 실패, package cleanup, bridged entitlement 문제를 볼 때 |
 
 ## 자주 쓰는 명령
 
@@ -169,8 +170,8 @@ make vm-down
 
 | 산출물 | 위치 | 용도 |
 |---|---|---|
-| DMG | `dist/TiroshVitalServer-<version>.dmg` | 현장 전달용 설치 매체 |
-| PKG | `dist/TiroshVitalServerVM-<version>.pkg` | 실제 macOS Installer payload |
+| DMG | `dist/VitalServerHelper-<version>.dmg` | 현장 전달용 설치 매체 |
+| PKG | `dist/VitalServerHelper-<version>.pkg` | 실제 macOS Installer payload |
 | Product Update bundle | `dist/update-bundles/update-bundle-<channel>-product-update-<releaseLabel>.tar.gz` | 설치 후 offline/online Product Update 입력 |
 | Helper app | `.tmp/VitalServer Helper.app` 또는 `/Applications/VitalServer Helper.app` | 설치 후 운영 UI |
 | Golden rootfs | `.tmp/vitalserver-vm-pkg/rootfs-base.raw.gz` | air-gapped 설치용 immutable rootfs base |
@@ -199,4 +200,4 @@ make vm-down
 2. [Architecture](architecture.md)
 3. [Packaging and Update](packaging.md)
 4. [Runtime](runtime.md)
-5. [Troubleshooting](troubleshooting.md)
+5. [Troubleshooting](../troubleshooting.md)

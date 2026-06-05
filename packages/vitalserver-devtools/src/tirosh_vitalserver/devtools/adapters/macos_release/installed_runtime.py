@@ -4,6 +4,11 @@ import os
 import subprocess
 from pathlib import Path
 
+from tirosh_vitalserver.devtools.adapters.macos_release.runtime_state import (
+    RuntimeStateReadError,
+    read_runtime_state,
+    read_runtime_state_string,
+)
 from tirosh_vitalserver.devtools.adapters.toolchain.workspace_paths import repo_root
 from tirosh_vitalserver.devtools.application.inputs import (
     InstalledHealthInput,
@@ -29,7 +34,7 @@ def installed_status(config: Path) -> int:
     root = repo_root()
     settings = load_macos_release_settings(config, root)
     product_root = Path(settings.install.product_root)
-    ip_file = product_root / "vm/data/run/vm-ip"
+    vm_home = product_root / "vm"
     status = 0
 
     print("Installed VM runtime")
@@ -46,10 +51,10 @@ def installed_status(config: Path) -> int:
             status = 1
 
     for label, service in [
-        ("launchd vm", "system/com.tirosh.vitalserver-vm"),
-        ("launchd proxy", "system/com.tirosh.vitalserver-proxy"),
-        ("launchd guest log sync", "system/com.tirosh.vitalserver-guest-log-sync"),
-        ("launchd watchdog", "system/com.tirosh.vitalserver-watchdog"),
+        ("launchd vm", "system/ai.tirosh.vitalserver.helper.vm"),
+        ("launchd proxy", "system/ai.tirosh.vitalserver.helper.proxy"),
+        ("launchd guest log sync", "system/ai.tirosh.vitalserver.helper.guest-log-sync"),
+        ("launchd watchdog", "system/ai.tirosh.vitalserver.helper.watchdog"),
     ]:
         if launchd_loaded(service):
             print(f"  {label}: loaded")
@@ -58,17 +63,18 @@ def installed_status(config: Path) -> int:
             status = 1
 
     for label, service in [
-        ("launchd sleep prevention", "system/com.tirosh.vitalserver-sleep-prevention"),
+        ("launchd sleep prevention", "system/ai.tirosh.vitalserver.helper.sleep-prevention"),
     ]:
         if launchd_loaded(service):
             print(f"  {label}: loaded")
         else:
             print(f"  {label}: not loaded (optional)")
 
-    if ip_file.is_file() and ip_file.stat().st_size > 0:
-        print(f"  vm ip: {ip_file.read_text().strip()}")
-    else:
-        print(f"  vm ip: waiting for {ip_file}")
+    try:
+        runtime_state = read_runtime_state(vm_home)
+        print(f"  vm ip: {read_runtime_state_string(runtime_state, 'vmIP', vm_home)}")
+    except RuntimeStateReadError as error:
+        print(f"  vm ip: unavailable: {error}")
         status = 1
 
     return status
@@ -78,13 +84,15 @@ def installed_health(config: Path, proxy_port: str) -> int:
     root = repo_root()
     settings = load_macos_release_settings(config, root)
     product_root = Path(settings.install.product_root)
-    ip_file = product_root / "vm/data/run/vm-ip"
+    vm_home = product_root / "vm"
     status = 0
 
-    if ip_file.is_file() and ip_file.stat().st_size > 0:
-        vm_ip = ip_file.read_text().strip()
-        status |= print_http_status("guest http", f"http://{vm_ip}/")
-    else:
+    try:
+        runtime_state = read_runtime_state(vm_home)
+        guest_http = read_runtime_state_string(runtime_state, "guestHTTP", vm_home)
+        status |= print_reported_http_status("guest http", guest_http)
+    except RuntimeStateReadError as error:
+        print(f"  guest http: unavailable: {error}")
         status = 1
     status |= print_http_status("host proxy", f"http://127.0.0.1:{proxy_port}/")
     return status
@@ -123,4 +131,12 @@ def print_http_status(label: str, url: str) -> int:
         print(f"  {label}: ok {url} -> {code}")
         return 0
     print(f"  {label}: failed {url} -> {code}")
+    return 1
+
+
+def print_reported_http_status(label: str, status: str) -> int:
+    if status.isdigit() and 200 <= int(status) < 400:
+        print(f"  {label}: ok reported={status}")
+        return 0
+    print(f"  {label}: failed reported={status}")
     return 1

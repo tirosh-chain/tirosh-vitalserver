@@ -1,3 +1,5 @@
+import Contracts
+import Foundation
 import RuntimeControl
 import SwiftUI
 
@@ -5,22 +7,16 @@ struct RuntimeRecordersPanel: View {
     @ObservedObject var viewModel: RuntimeViewModel
     @State private var searchText = ""
     @State private var selectedVrcode: String?
+    @State private var showingRecorderHistory = false
+    @State private var activityBucketInterval = RecorderActivityBucketInterval.oneMinute
+    @State private var activityPeriod = RecorderActivityPeriod.lastHour
+    private let activityChartDataBuilder = RuntimeRecorderActivityChartDataBuilder()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             header
-            ViewThatFits(in: .horizontal) {
-                HStack(alignment: .top, spacing: 14) {
-                    recorderList
-                        .frame(minWidth: 520, maxWidth: .infinity, alignment: .topLeading)
-                    recorderDetails
-                        .frame(minWidth: 380, maxWidth: 560, alignment: .topLeading)
-                }
-                VStack(alignment: .leading, spacing: 14) {
-                    recorderList
-                    recorderDetails
-                }
-            }
+            recorderList
+            recorderDetails
         }
     }
 
@@ -31,6 +27,8 @@ struct RuntimeRecordersPanel: View {
                     .font(.headline)
                 Spacer()
                 recorderSearchField
+                Toggle("History", isOn: $showingRecorderHistory)
+                    .toggleStyle(.switch)
                 refreshButton
             }
             VStack(alignment: .leading, spacing: 8) {
@@ -38,6 +36,8 @@ struct RuntimeRecordersPanel: View {
                     .font(.headline)
                 HStack {
                     recorderSearchField
+                    Toggle("History", isOn: $showingRecorderHistory)
+                        .toggleStyle(.switch)
                     refreshButton
                     Spacer()
                 }
@@ -81,6 +81,7 @@ struct RuntimeRecordersPanel: View {
                 selectedRecorderSummary(recorder)
                 recorderActivity(recorder)
                 recorderMetadata(recorder)
+                recorderRelationshipHistory(recorder)
             } else {
                 Text("Select a VRecorder to view activity.")
                     .foregroundStyle(.secondary)
@@ -110,15 +111,19 @@ struct RuntimeRecordersPanel: View {
         ViewThatFits(in: .horizontal) {
             HStack(spacing: 18) {
                 summaryMetric(AppConstants.Labels.knownRecorders, "\(viewModel.vitalRecorders.recorders.count)")
+                summaryMetric("Current", "\(currentRecorders.count)")
                 summaryMetric(AppConstants.Labels.onlineRecorders, "\(count(.online))")
                 summaryMetric(AppConstants.Labels.staleRecorders, "\(count(.stale))")
-                summaryMetric(AppConstants.Labels.recorderAnomalies, "\(viewModel.vitalRecorders.recorders.reduce(0) { $0 + $1.currentAnomalyCount })")
+                summaryMetric("Assignments", "\(viewModel.vitalRelationships.assignments.count)")
+                summaryMetric(AppConstants.Labels.recorderAnomalies, "\(currentRecorders.reduce(0) { $0 + $1.currentAnomalyCount })")
             }
             LazyVGrid(columns: summaryColumns, alignment: .leading, spacing: 8) {
                 summaryMetric(AppConstants.Labels.knownRecorders, "\(viewModel.vitalRecorders.recorders.count)")
+                summaryMetric("Current", "\(currentRecorders.count)")
                 summaryMetric(AppConstants.Labels.onlineRecorders, "\(count(.online))")
                 summaryMetric(AppConstants.Labels.staleRecorders, "\(count(.stale))")
-                summaryMetric(AppConstants.Labels.recorderAnomalies, "\(viewModel.vitalRecorders.recorders.reduce(0) { $0 + $1.currentAnomalyCount })")
+                summaryMetric("Assignments", "\(viewModel.vitalRelationships.assignments.count)")
+                summaryMetric(AppConstants.Labels.recorderAnomalies, "\(currentRecorders.reduce(0) { $0 + $1.currentAnomalyCount })")
             }
         }
     }
@@ -130,9 +135,9 @@ struct RuntimeRecordersPanel: View {
     private var filteredRecorders: [RuntimeVitalRecorderRecord] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !query.isEmpty else {
-            return viewModel.vitalRecorders.recorders
+            return visibleRecorders
         }
-        return viewModel.vitalRecorders.recorders.filter { recorder in
+        return visibleRecorders.filter { recorder in
             [
                 recorder.vrcode,
                 recorder.lastIP,
@@ -145,12 +150,20 @@ struct RuntimeRecordersPanel: View {
         }
     }
 
+    private var currentRecorders: [RuntimeVitalRecorderRecord] {
+        viewModel.vitalRecorders.recorders.filter(\.presentInLatestObservation)
+    }
+
+    private var visibleRecorders: [RuntimeVitalRecorderRecord] {
+        showingRecorderHistory ? viewModel.vitalRecorders.recorders : currentRecorders
+    }
+
     private var selectedRecorder: RuntimeVitalRecorderRecord? {
         if let selectedVrcode,
-           let recorder = viewModel.vitalRecorders.recorders.first(where: { $0.vrcode == selectedVrcode }) {
+           let recorder = visibleRecorders.first(where: { $0.vrcode == selectedVrcode }) {
             return recorder
         }
-        return nil
+        return filteredRecorders.first ?? visibleRecorders.first
     }
 
     private var recorderHeaderRow: some View {
@@ -171,15 +184,15 @@ struct RuntimeRecordersPanel: View {
         } label: {
             HStack(spacing: 12) {
                 tableValue(recorder.vrcode, minWidth: 120, weight: .semibold)
-                Text(recorder.status.rawValue.capitalized)
+                Text(statusLabel(recorder.status))
                     .font(.caption)
                     .fontWeight(.semibold)
                     .foregroundStyle(statusColor(recorder.status))
                     .frame(minWidth: 80, alignment: .leading)
-                tableValue(recorder.lastIP ?? AppConstants.StatusText.unknown, minWidth: 120)
-                tableValue(recorder.bedName ?? recorder.bedID ?? AppConstants.StatusText.unknown, minWidth: 120)
-                tableValue(recorder.lastSeenAt ?? AppConstants.StatusText.unknown, minWidth: 170)
-                tableValue(recorder.currentAnomalyCount == 0 ? "-" : "\(recorder.currentAnomalyCount)", minWidth: 70)
+                tableValue(reportedText(recorder.lastIP, missing: "IP not reported"), minWidth: 120)
+                tableValue(reportedText(recorder.bedName ?? recorder.bedID, missing: "Bed not reported"), minWidth: 120)
+                tableValue(reportedText(recorder.lastSeenAt, missing: "Last seen not reported"), minWidth: 170)
+                tableValue(recorderAnomalyText(recorder), minWidth: 70)
             }
             .padding(10)
             .contentShape(Rectangle())
@@ -208,7 +221,7 @@ struct RuntimeRecordersPanel: View {
                 .font(.title3)
                 .fontWeight(.semibold)
                 .lineLimit(1)
-            Text(recorder.status.rawValue.capitalized)
+            Text(statusLabel(recorder.status))
                 .fontWeight(.semibold)
                 .foregroundStyle(statusColor(recorder.status))
             Spacer()
@@ -224,40 +237,89 @@ struct RuntimeRecordersPanel: View {
     }
 
     private func recorderActivity(_ recorder: RuntimeVitalRecorderRecord) -> some View {
-        let latest = recorder.activityTimeline.last
+        let activityDisplay = activityChartDataBuilder.display(
+            from: recorder.activityTimeline,
+            interval: activityBucketInterval,
+            period: activityPeriod,
+            readError: viewModel.vitalRecorders.activityHistory.readError ?? viewModel.vitalRecorders.readError
+        )
         return VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("Activity")
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                Spacer()
-                if let latest {
-                    Text("Last sample \(viewModel.presentationFormatter.systemTimeText(latest.observedAt))")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 12) {
+                    Text("Activity")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                    Spacer()
+                    if activityDisplay.state.showsControls {
+                        activityControls
+                    }
+                    if let latestSample = activityDisplay.latestSample {
+                        Text("Last sample \(viewModel.presentationFormatter.systemTimeText(latestSample.observedAt))")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                }
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Activity")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                    HStack(spacing: 12) {
+                        if activityDisplay.state.showsControls {
+                            activityControls
+                        }
+                        if let latestSample = activityDisplay.latestSample {
+                            Text("Last sample \(viewModel.presentationFormatter.systemTimeText(latestSample.observedAt))")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
+                        Spacer()
+                    }
                 }
             }
 
-            if recorder.activityTimeline.isEmpty {
+            switch activityDisplay.state {
+            case .readFailed(let readError):
+                Text("Recorder activity history read issue: \(readError)")
+                    .foregroundStyle(.red)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 18)
+            case .notReported:
+                Text("Recorder activity history is not reported.")
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 18)
+            case .emptyTimeline:
                 Text("No recent data activity has been observed for this VRecorder.")
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.vertical, 18)
-            } else {
-                RecorderActivityChart(points: recorder.activityTimeline)
-                    .frame(height: 150)
+            case .noBucketsInPeriod:
+                Text("No data activity has been observed in the selected period.")
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 18)
+            case .available:
+                RecorderActivityChart(
+                    buckets: activityDisplay.buckets,
+                    intervalTitle: activityBucketInterval.title
+                )
+                    .frame(height: 190)
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: 18) {
-                        activityMetric("Data rate", latest.map { formatBytesPerSecond($0.bytesPerSecond) } ?? "-")
-                        activityMetric("Messages", latest.map { "\($0.messageCount)" } ?? "-")
-                        activityMetric("Rooms", latest.map { "\($0.roomCount)" } ?? "-")
+                        activityMetric("Packets", activityDisplay.latestBucket.map { "\($0.messageCount)" } ?? "-")
+                        activityMetric("Total packets", activityDisplay.totalPackets.map(String.init) ?? "-")
+                        activityMetric("Data rate", activityDisplay.latestBucketBytesPerSecond.map(formatBytesPerSecond) ?? "-")
+                        activityMetric("Room entries", activityDisplay.latestBucket.map { "\($0.roomCount)" } ?? "-")
                     }
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 110), spacing: 12)], alignment: .leading, spacing: 8) {
-                        activityMetric("Data rate", latest.map { formatBytesPerSecond($0.bytesPerSecond) } ?? "-")
-                        activityMetric("Messages", latest.map { "\($0.messageCount)" } ?? "-")
-                        activityMetric("Rooms", latest.map { "\($0.roomCount)" } ?? "-")
+                        activityMetric("Packets", activityDisplay.latestBucket.map { "\($0.messageCount)" } ?? "-")
+                        activityMetric("Total packets", activityDisplay.totalPackets.map(String.init) ?? "-")
+                        activityMetric("Data rate", activityDisplay.latestBucketBytesPerSecond.map(formatBytesPerSecond) ?? "-")
+                        activityMetric("Room entries", activityDisplay.latestBucket.map { "\($0.roomCount)" } ?? "-")
                     }
                 }
             }
@@ -268,21 +330,151 @@ struct RuntimeRecordersPanel: View {
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
+    private var activityControls: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 10) {
+                activityPeriodPicker
+                activityBucketPicker
+            }
+            VStack(alignment: .leading, spacing: 8) {
+                activityPeriodPicker
+                activityBucketPicker
+            }
+        }
+    }
+
+    private var activityPeriodPicker: some View {
+        HStack(spacing: 6) {
+            Text("Window")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Picker("", selection: $activityPeriod) {
+                ForEach(RecorderActivityPeriod.allCases) { period in
+                    Text(period.title).tag(period)
+                }
+            }
+            .pickerStyle(.menu)
+            .labelsHidden()
+            .frame(width: 124)
+            .help("Select the activity window shown in the chart.")
+        }
+    }
+
+    private var activityBucketPicker: some View {
+        HStack(spacing: 6) {
+            Text("Bucket")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Picker("", selection: $activityBucketInterval) {
+                ForEach(RecorderActivityBucketInterval.allCases) { interval in
+                    Text(interval.title).tag(interval)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(width: 132)
+            .help("Group packet activity by this interval.")
+        }
+    }
+
     private func recorderMetadata(_ recorder: RuntimeVitalRecorderRecord) -> some View {
         Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 9) {
-            detailRow("IP", recorder.lastIP ?? AppConstants.StatusText.unknown)
-            detailRow(AppConstants.Labels.recorderVersion, recorder.version ?? AppConstants.StatusText.unknown)
-            detailRow(AppConstants.Labels.bed, recorder.bedName ?? recorder.bedID ?? AppConstants.StatusText.unknown)
+            detailRow("IP", reportedText(recorder.lastIP, missing: "IP not reported"))
+            detailRow(AppConstants.Labels.recorderVersion, reportedText(recorder.version, missing: "Version not reported"))
+            detailRow(AppConstants.Labels.bed, reportedText(recorder.bedName ?? recorder.bedID, missing: "Bed not reported"))
+            detailRow("Bed ID", reportedText(linkedBed(for: recorder)?.bedID ?? recorder.bedID, missing: "Bed ID not reported"))
             detailRow(AppConstants.Labels.patient, patientText(recorder.patientConnected))
             detailRow("First seen", viewModel.presentationFormatter.systemTimeText(recorder.firstSeenAt))
             detailRow(AppConstants.Labels.recorderLastSeen, viewModel.presentationFormatter.systemTimeText(recorder.lastSeenAt))
-            detailRow(AppConstants.Labels.observations, "\(recorder.observationCount)")
+            detailRow("Status observations", "\(recorder.observationCount)")
+            detailRow("Duplicate observations", "\(recorder.duplicateObservationCount)")
             detailRow(AppConstants.Labels.recorderAnomalies, "\(recorder.currentAnomalyCount)")
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(nsColor: .controlBackgroundColor))
         .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func recorderRelationshipHistory(_ recorder: RuntimeVitalRecorderRecord) -> some View {
+        let assignments = viewModel.vitalRelationships.assignments
+            .filter { $0.vrcode == recorder.vrcode }
+            .prefix(8)
+        let events = viewModel.vitalRelationships.events
+            .filter { $0.vrcode == recorder.vrcode || $0.previousVrcode == recorder.vrcode }
+            .prefix(8)
+
+        return VStack(alignment: .leading, spacing: 10) {
+            Text("Relationship history")
+                .font(.subheadline)
+                .fontWeight(.semibold)
+            relationshipReadIssue
+            if assignments.isEmpty, events.isEmpty {
+                Text("No recorder relationship history has been observed.")
+                    .foregroundStyle(.secondary)
+                    .padding(.vertical, 8)
+            } else {
+                if !assignments.isEmpty {
+                    relationshipSubsection("Assignments")
+                    ForEach(Array(assignments)) { assignment in
+                        relationshipRow(
+                            title: assignment.bedName ?? assignment.bedID,
+                            detail: "\(viewModel.presentationFormatter.systemTimeText(assignment.startedAt)) - \(viewModel.presentationFormatter.systemTimeText(assignment.endedAt))",
+                            trailing: assignment.status.rawValue.capitalized
+                        )
+                    }
+                }
+                if !events.isEmpty {
+                    relationshipSubsection("Events")
+                    ForEach(Array(events)) { event in
+                        relationshipRow(
+                            title: "\(event.severity.rawValue.capitalized) · \(event.eventType.rawValue)",
+                            detail: event.message,
+                            trailing: viewModel.presentationFormatter.systemTimeText(event.observedAt)
+                        )
+                    }
+                }
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(nsColor: .controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    @ViewBuilder
+    private var relationshipReadIssue: some View {
+        if let readError = viewModel.vitalRelationships.readError {
+            Text("Relationship history read issue: \(readError)")
+                .font(.caption)
+                .foregroundStyle(.red)
+                .textSelection(.enabled)
+        }
+    }
+
+    private func relationshipSubsection(_ title: String) -> some View {
+        Text(title)
+            .font(.caption)
+            .fontWeight(.semibold)
+            .foregroundStyle(.secondary)
+    }
+
+    private func relationshipRow(title: String, detail: String, trailing: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            Text(title)
+                .fontWeight(.semibold)
+                .lineLimit(1)
+                .frame(minWidth: 120, alignment: .leading)
+            Text(detail)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Spacer()
+            Text(trailing)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        .font(.caption)
     }
 
     private func activityMetric(_ label: String, _ value: String) -> some View {
@@ -325,7 +517,14 @@ struct RuntimeRecordersPanel: View {
     }
 
     private func count(_ status: RuntimeVitalRecorderStatus) -> Int {
-        viewModel.vitalRecorders.recorders.filter { $0.status == status }.count
+        currentRecorders.filter { $0.status == status }.count
+    }
+
+    private func recorderAnomalyText(_ recorder: RuntimeVitalRecorderRecord) -> String {
+        if !recorder.presentInLatestObservation {
+            return "History"
+        }
+        return recorder.currentAnomalyCount == 0 ? "-" : "\(recorder.currentAnomalyCount)"
     }
 
     private func statusColor(_ status: RuntimeVitalRecorderStatus) -> Color {
@@ -336,16 +535,48 @@ struct RuntimeRecordersPanel: View {
             return .orange
         case .offline:
             return .secondary
+        case .notObserved:
+            return .secondary
         case .unknown:
             return .secondary
         }
     }
 
-    private func patientText(_ connected: Bool?) -> String {
-        guard let connected else {
+    private func statusLabel(_ status: RuntimeVitalRecorderStatus) -> String {
+        switch status {
+        case .online:
+            return "Online"
+        case .stale:
+            return "Stale"
+        case .offline:
+            return "Offline"
+        case .notObserved:
+            return "Not observed"
+        case .unknown:
             return AppConstants.StatusText.unknown
         }
+    }
+
+    private func linkedBed(for recorder: RuntimeVitalRecorderRecord) -> RuntimeVitalBedRecord? {
+        if let bedID = recorder.bedID,
+           let bed = viewModel.vitalRecorders.beds.first(where: { $0.bedID == bedID }) {
+            return bed
+        }
+        return viewModel.vitalRecorders.beds.first { $0.vrcode == recorder.vrcode }
+    }
+
+    private func patientText(_ connected: Bool?) -> String {
+        guard let connected else {
+            return "Patient connection not reported"
+        }
         return connected ? "Connected" : "Not connected"
+    }
+
+    private func reportedText(_ value: String?, missing: String) -> String {
+        guard let value, !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return missing
+        }
+        return value
     }
 
     private func formatBytesPerSecond(_ value: Double) -> String {
@@ -360,80 +591,5 @@ struct RuntimeRecordersPanel: View {
         formatter.includesCount = true
         return "\(formatter.string(fromByteCount: Int64(boundedValue.rounded())))/s"
     }
-}
 
-private struct RecorderActivityChart: View {
-    let points: [RuntimeVitalRecorderActivityPoint]
-
-    var body: some View {
-        GeometryReader { proxy in
-            let plottedPoints = chartPoints(in: proxy.size)
-            ZStack {
-                chartGrid
-                activityPath(points: plottedPoints)
-                    .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
-                ForEach(Array(plottedPoints.enumerated()), id: \.offset) { _, point in
-                    Circle()
-                        .fill(Color.accentColor)
-                        .frame(width: 6, height: 6)
-                        .position(point)
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-        .background(Color(nsColor: .textBackgroundColor))
-        .clipShape(RoundedRectangle(cornerRadius: 6))
-        .overlay(alignment: .topLeading) {
-            Text("Data rate")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .padding(8)
-        }
-    }
-
-    private var chartGrid: some View {
-        GeometryReader { proxy in
-            Path { path in
-                let height = proxy.size.height
-                let width = proxy.size.width
-                for fraction in [0.25, 0.5, 0.75] {
-                    let y = height * fraction
-                    path.move(to: CGPoint(x: 0, y: y))
-                    path.addLine(to: CGPoint(x: width, y: y))
-                }
-            }
-            .stroke(Color.secondary.opacity(0.12), lineWidth: 1)
-        }
-    }
-
-    private func activityPath(points: [CGPoint]) -> Path {
-        Path { path in
-            guard let first = points.first else {
-                return
-            }
-            path.move(to: first)
-            for point in points.dropFirst() {
-                path.addLine(to: point)
-            }
-        }
-    }
-
-    private func chartPoints(in size: CGSize) -> [CGPoint] {
-        let inset = EdgeInsets(top: 28, leading: 12, bottom: 16, trailing: 12)
-        let width = max(size.width - inset.leading - inset.trailing, 1)
-        let height = max(size.height - inset.top - inset.bottom, 1)
-        let maxValue = max(points.map(\.bytesPerSecond).max() ?? 0, 1)
-
-        return points.enumerated().map { index, point in
-            let x: CGFloat
-            if points.count <= 1 {
-                x = inset.leading + width / 2
-            } else {
-                x = inset.leading + width * CGFloat(index) / CGFloat(points.count - 1)
-            }
-            let normalized = min(max(point.bytesPerSecond / maxValue, 0), 1)
-            let y = inset.top + height - height * CGFloat(normalized)
-            return CGPoint(x: x, y: y)
-        }
-    }
 }

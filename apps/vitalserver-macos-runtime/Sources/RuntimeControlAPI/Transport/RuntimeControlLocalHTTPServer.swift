@@ -6,19 +6,37 @@ public enum RuntimeControlLocalHTTPServerError: Error, Equatable {
     case listenerUnavailable
 }
 
+public enum RuntimeControlLocalHTTPServerState: Equatable, Sendable {
+    case ready(port: UInt16?)
+    case failed(String)
+    case stopped
+}
+
 public struct RuntimeControlLocalHTTPServerConfiguration: Equatable, Sendable {
     public let port: UInt16
     public let servesDevConsole: Bool
+    public let staticFileDirectory: URL?
+    public let bindsToLoopbackOnly: Bool
 
-    public init(port: UInt16, servesDevConsole: Bool = false) {
+    public init(
+        port: UInt16,
+        servesDevConsole: Bool = false,
+        staticFileDirectory: URL? = nil,
+        bindsToLoopbackOnly: Bool = false
+    ) {
         self.port = port
         self.servesDevConsole = servesDevConsole
+        self.staticFileDirectory = staticFileDirectory
+        self.bindsToLoopbackOnly = bindsToLoopbackOnly
     }
 }
 
 public final class RuntimeControlLocalHTTPServer: @unchecked Sendable {
     private let configuration: RuntimeControlLocalHTTPServerConfiguration
     private let router: RuntimeControlAPIRouter
+    private let testKitRouter: RuntimeTestKitAPIRouter?
+    private let staticFileResponder: RuntimeControlStaticFileResponder?
+    private let stateHandler: (@Sendable (RuntimeControlLocalHTTPServerState) -> Void)?
     private let queue: DispatchQueue
     private let queueKey = DispatchSpecificKey<Void>()
     private var listener: NWListener?
@@ -36,10 +54,17 @@ public final class RuntimeControlLocalHTTPServer: @unchecked Sendable {
     public init(
         configuration: RuntimeControlLocalHTTPServerConfiguration,
         router: RuntimeControlAPIRouter,
+        testKitRouter: RuntimeTestKitAPIRouter? = nil,
+        stateHandler: (@Sendable (RuntimeControlLocalHTTPServerState) -> Void)? = nil,
         queue: DispatchQueue = DispatchQueue(label: "tirosh.runtime-control.local-http")
     ) {
         self.configuration = configuration
         self.router = router
+        self.testKitRouter = testKitRouter
+        self.staticFileResponder = configuration.staticFileDirectory.map {
+            RuntimeControlStaticFileResponder(rootDirectory: $0)
+        }
+        self.stateHandler = stateHandler
         self.queue = queue
         self.queue.setSpecific(key: queueKey, value: ())
     }
@@ -56,8 +81,30 @@ public final class RuntimeControlLocalHTTPServer: @unchecked Sendable {
         }
 
         let parameters = NWParameters.tcp
-        parameters.requiredInterfaceType = .loopback
+        if configuration.bindsToLoopbackOnly {
+            parameters.requiredInterfaceType = .loopback
+        }
         let listener = try NWListener(using: parameters, on: port)
+        listener.stateUpdateHandler = { [weak self, weak listener] state in
+            guard let self else {
+                return
+            }
+            switch state {
+            case .ready:
+                self.stateHandler?(.ready(port: listener?.port?.rawValue))
+            case .failed(let error):
+                self.syncOnQueue {
+                    if self.listener === listener {
+                        self.stopLocked()
+                    }
+                }
+                self.stateHandler?(.failed(String(describing: error)))
+            case .cancelled:
+                self.stateHandler?(.stopped)
+            default:
+                break
+            }
+        }
         listener.newConnectionHandler = { [weak self] connection in
             self?.accept(connection)
         }
@@ -154,25 +201,45 @@ public final class RuntimeControlLocalHTTPServer: @unchecked Sendable {
             return
         }
 
-        if configuration.servesDevConsole,
-           let devConsoleResponse = RuntimeControlDevConsoleDocument.response(for: request) {
-            send(devConsoleResponse, on: connection)
+        if request.method == .options {
+            send(preflightResponse(for: request), on: connection)
             return
         }
 
-        Task { @MainActor [router] in
-            switch await router.routeResult(request) {
-            case .response(let response):
-                self.queue.async {
-                    let encoded = RuntimeControlHTTPWireCodec.encodeResponse(response)
-                    connection.send(content: encoded, completion: .contentProcessed { _ in
-                        connection.cancel()
-                    })
-                }
-            case .stream(let stream):
-                self.queue.async {
-                    self.startStream(stream, on: connection)
-                }
+        if configuration.servesDevConsole,
+           let devConsoleResponse = RuntimeControlDevConsoleDocument.response(for: request) {
+            send(corsResponse(devConsoleResponse, for: request), on: connection)
+            return
+        }
+
+        if let staticResponse = staticFileResponder?.response(for: request) {
+            send(corsResponse(staticResponse, for: request), on: connection)
+            return
+        }
+
+        Task { @MainActor [router, testKitRouter] in
+            if let testKitRouter,
+               let result = await testKitRouter.routeResult(request) {
+                self.send(result, for: request, on: connection)
+                return
+            }
+            let result = await router.routeResult(request)
+            self.send(result, for: request, on: connection)
+        }
+    }
+
+    private func send(_ result: RuntimeControlHTTPRouteResult, for request: RuntimeControlHTTPRequest, on connection: NWConnection) {
+        switch result {
+        case .response(let response):
+            queue.async {
+                let encoded = RuntimeControlHTTPWireCodec.encodeResponse(self.corsResponse(response, for: request))
+                connection.send(content: encoded, completion: .contentProcessed { _ in
+                    connection.cancel()
+                })
+            }
+        case .stream(let stream):
+            queue.async {
+                self.startStream(self.corsStream(stream, for: request), on: connection)
             }
         }
     }
@@ -194,7 +261,8 @@ public final class RuntimeControlLocalHTTPServer: @unchecked Sendable {
                     guard !Task.isCancelled else {
                         break
                     }
-                    guard await self.sendData(RuntimeControlServerSentEventCodec.encode(event), on: connection) else {
+                    let data = try RuntimeControlServerSentEventCodec.encode(event)
+                    guard await self.sendData(data, on: connection) else {
                         break
                     }
                 }
@@ -219,5 +287,94 @@ public final class RuntimeControlLocalHTTPServer: @unchecked Sendable {
         connection.send(content: encoded, completion: .contentProcessed { _ in
             connection.cancel()
         })
+    }
+
+    private func preflightResponse(for request: RuntimeControlHTTPRequest) -> RuntimeControlHTTPResponse {
+        RuntimeControlHTTPResponse(
+            status: .noContent,
+            headers: corsHeaders(for: request)
+        )
+    }
+
+    private func corsResponse(
+        _ response: RuntimeControlHTTPResponse,
+        for request: RuntimeControlHTTPRequest
+    ) -> RuntimeControlHTTPResponse {
+        RuntimeControlHTTPResponse(
+            status: response.status,
+            headers: response.headers.merging(corsHeaders(for: request)) { current, _ in current },
+            body: response.body
+        )
+    }
+
+    private func corsStream(
+        _ stream: RuntimeControlHTTPStreamResponse,
+        for request: RuntimeControlHTTPRequest
+    ) -> RuntimeControlHTTPStreamResponse {
+        RuntimeControlHTTPStreamResponse(
+            status: stream.status,
+            headers: stream.headers.merging(corsHeaders(for: request)) { current, _ in current },
+            events: stream.events
+        )
+    }
+
+    private func corsHeaders(for request: RuntimeControlHTTPRequest) -> [String: String] {
+        guard let origin = headerValue("Origin", in: request.headers),
+              isAllowedBrowserOrigin(origin) else {
+            return [:]
+        }
+
+        return [
+            "Access-Control-Allow-Headers": "Accept, Content-Type, X-Runtime-Control-Token",
+            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+            "Access-Control-Allow-Origin": origin,
+            "Access-Control-Max-Age": "600",
+            "Vary": "Origin",
+        ]
+    }
+
+    private func headerValue(_ name: String, in headers: [String: String]) -> String? {
+        headers.first { key, _ in
+            key.caseInsensitiveCompare(name) == .orderedSame
+        }?.value
+    }
+
+    private func isAllowedBrowserOrigin(_ origin: String) -> Bool {
+        guard let components = URLComponents(string: origin),
+              let scheme = components.scheme?.lowercased(),
+              scheme == "http" || scheme == "https",
+              let host = components.host?.lowercased() else {
+            return false
+        }
+
+        if host == "localhost"
+            || host == "::1"
+            || host == "0:0:0:0:0:0:0:1"
+            || host.hasPrefix("127.") {
+            return true
+        }
+
+        if host.hasSuffix(".local") {
+            return true
+        }
+
+        return isPrivateIPv4Address(host)
+    }
+
+    private func isPrivateIPv4Address(_ host: String) -> Bool {
+        let parts = host.split(separator: ".")
+        guard parts.count == 4 else {
+            return false
+        }
+
+        let octets = parts.compactMap { UInt8($0) }
+        guard octets.count == 4 else {
+            return false
+        }
+
+        return octets[0] == 10
+            || (octets[0] == 172 && (16...31).contains(octets[1]))
+            || (octets[0] == 192 && octets[1] == 168)
+            || (octets[0] == 169 && octets[1] == 254)
     }
 }

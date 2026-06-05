@@ -21,7 +21,9 @@ Guest/container 쪽은 목적이 다른 자료가 병렬로 있습니다.
 | 데이터 | 작성자 | 소비자 | 성격 |
 |---|---|---|---|
 | `vm/data/run/runtime-state.json` | guest `tirosh-runtime-state` | host `RuntimeHealthChecker`, Helper status | guest health/resource 스냅샷 |
-| `vm/data/run/container-logs.log` | guest `tirosh-vitalserver-container-logs` | Helper Logs, export logs | `docker compose logs --follow` 수집본 |
+| `vm/data/run/guest-observability/latest.json` | guest `tirosh-guest-observed` | Helper Logs, export logs | guest OS 진단 스냅샷 |
+| `vm/data/run/guest-observability/snapshots/*` | guest `tirosh-guest-observe` | Helper Logs, export logs | phase별 one-shot 진단 |
+| `vm/data/run/container-logs.log` | guest `tirosh-guest-container-logs` | Helper Logs, export logs | `docker compose logs --follow` 수집본 |
 | `/var/log/vitalserver-audit/audit-events.log` | `vitalserver-audit-proxy` | guest/operator diagnostics | command audit 원본 파일 로그 |
 | audit proxy stdout | `vitalserver-audit-proxy` | container log collector | collector 호환 raw event log |
 | Redis List `vitalserver:audit_events` | `vitalserver-audit-proxy` | 운영 조회/디버깅 | Redis 3.2 호환 보조 조회 sink |
@@ -41,8 +43,17 @@ source인지 명확하지 않다는 점입니다.
 - `vitalserver-audit-proxy`는 command audit event를 생성합니다.
 - `vitaldb-observer`는 Redis와 proxy/access log를 읽어 VitalDB observation snapshot을 계산합니다.
 - guest `tirosh-runtime-state`는 guest HTTP/resource snapshot을 생성합니다.
+- guest `tirosh-guest-observed`는 Linux guest OS의 진단 snapshot을 생성합니다.
 - compose service와 container는 stdout/stderr에 raw log를 남깁니다.
 - upstream VitalServer app은 제품 runtime event를 직접 알 필요가 없습니다.
+
+`vitaldb-observer` observation의 `readIssues`는 Redis audit event, proxy/access log, bed JSON처럼 source별
+read/parse 문제가 있었음을 나타냅니다. 관련 `readIssues`가 있는 빈 `proxyConnections`, 빈 activity, 또는
+부분 recorder/bed snapshot은 실제 관측값 0과 같은 의미가 아닙니다.
+반복되는 audit event parse 실패는 실패 원인과 event count를 보존한 bounded summary로 보고하여, 같은 결함이
+observation payload와 UI 메시지를 무한히 키우지 않게 합니다.
+Recorder activity의 `roomCount`는 해당 버킷에서 받은 `send_data` payload들의 room entry 합계입니다.
+이는 고유 room 수나 현재 연결된 room 수가 아니므로 UI에서는 `Room entries`로 표시합니다.
 
 각 app은 제품 전체 상태를 판단하지 않습니다.
 
@@ -50,9 +61,32 @@ source인지 명확하지 않다는 점입니다.
 
 Guest collector는 수집만 담당합니다.
 
-- `tirosh-vitalserver-container-logs`는 `docker compose logs --follow`를 공유 디렉터리로 복사합니다.
+- `tirosh-guest-container-logs`는 `docker compose logs --follow`를 공유 디렉터리로 복사합니다.
+- `tirosh-guest-observed`는 `guest-observability/latest.json`, `history.jsonl`, `events.jsonl`을 공유
+  디렉터리에 씁니다.
+- `tirosh-guest-observe <phase>`는 shutdown/update/repair 같은 전이 지점의 one-shot snapshot과 raw
+  command report를 씁니다.
+- `tirosh-guest-diagnostics`는 operator용 one-shot diagnostic report를 출력합니다.
 - collector는 로그를 해석하거나 status/event로 승격하지 않습니다.
 - `container-logs.log`는 진단용 raw log로 유지합니다.
+- `guest-observability` 산출물은 진단/export 자료이며 update 성공/실패 판단의 contract가 아닙니다.
+
+Guest observability는 Guest tools Python wheel package의 `observability` 서브패키지로 배포합니다.
+
+- package source: `packages/vitalserver-guest-tools`
+- staged wheel: `deploy/python-wheels/tirosh_vitalserver_guest_tools-*.whl`
+- guest venv: `/opt/tirosh/guest-tools/venv`
+- daemon entrypoint: `/usr/local/bin/tirosh-guest-observed`
+- one-shot entrypoint: `/usr/local/bin/tirosh-guest-observe`
+- container log entrypoint: `/usr/local/bin/tirosh-guest-container-logs`
+- diagnostics entrypoint: `/usr/local/bin/tirosh-guest-diagnostics`
+- guest tools config: `/etc/tirosh/guest-tools.toml`
+- systemd units: `Support/Guest/systemd/tirosh-guest-observability.service`,
+  `Support/Guest/systemd/tirosh-vitalserver-container-logs.service`
+
+이 경계가 중요합니다. Guest가 자기 내부 상태를 명시적으로 관측하고 파일로 제공합니다. Host는 그 파일을
+수집하고 export하지만, marker나 snapshot 내용을 근거로 guest state를 추정하거나 update flow를 성공으로
+바꾸지 않습니다.
 
 ### Host watchdog
 
@@ -80,6 +114,37 @@ Watchdog은 raw source를 제품 관점 status/event로 정규화합니다.
 - 조회가 필요한 event/index row는 SQLite read model에도 best-effort로 반영합니다.
 - VitalDB observation snapshot은 `runtime-observability.sqlite`의 `vitaldb_*` namespace에 저장합니다.
 - 자동 복구 판단도 watchdog에서 수행합니다.
+
+### Status, event, recovery decision
+
+Watchdog은 현재 상태 판단과 과거 이력 기록을 분리합니다.
+
+| 구분 | 의미 | SoT/Owner | 사용처 |
+|---|---|---|---|
+| SoT | 각 owner가 작성한 원본 상태/로그 | host runtime, guest worker, launchd | watchdog 입력 |
+| Status | 현재 제품 상태를 정규화한 최신 snapshot | `status/runtime-status.json` | Helper UI, Runtime Control API, watchdog guard |
+| Event | 의미 있는 상태 변화와 판단 이력 | `status/runtime-events.jsonl`, SQLite index | Observability, troubleshooting, API event history |
+| Recovery decision | 이번 watchdog tick에서 어떤 action을 할지에 대한 일회성 판단 | `RuntimeWatchdogRecoveryPolicy` | skip/suppress/recover/action dispatch |
+
+Watchdog은 event history로 복구 여부를 판단하지 않습니다. Event는 append-only history라 중복, 누락,
+순서 문제가 생길 수 있기 때문입니다. 복구 판단은 현재 SoT를 읽어 만든 `RuntimeHealthSnapshot`과
+active operation guard를 기준으로 합니다.
+
+Recovery decision은 아래처럼 나뉩니다.
+
+| Decision | Status/Event | Watchdog action |
+|---|---|---|
+| `healthy` | `healthy` status 기록 | action 없음 |
+| protected operation | `watchdog-skipped` event 기록 | VM/proxy restart 금지 |
+| `recoveryDisabled` | `degraded` status 기록 | action 없음 |
+| `recoverySuppressed` | `critical` status + `recovery-suppressed` event 기록 | VM/proxy restart 금지 |
+| `unrecoverable` | `critical` status 기록 | action 없음 |
+| `recover` | `recovering` status + recovery event 기록 | policy가 허용한 service만 restart |
+
+`recoverySuppressed`는 자동 재시작이 위험한 상태입니다. 예를 들어 launchd/kernel log에서
+`storage device attachment is invalid`, `EXT4-fs error`, `Remounting filesystem read-only`,
+`Input/output error`가 관측되면 VM disk/data 보존이 먼저 필요하므로 watchdog은 VM restart를 반복하지
+않습니다.
 
 ### Runtime Control API
 
@@ -113,6 +178,20 @@ SQLite는 raw log의 대체물이 아니라 API 조회용 index/read model입니
 - SQLite write 실패는 runtime 실패로 보지 않습니다. warning event 또는 diagnostics 대상으로만 둡니다.
 - SQLite 파일은 삭제 가능해야 하고, raw log/JSONL에서 재구축할 수 있어야 합니다.
 - local runtime 특성상 WAL mode를 사용하고, schema migration을 명시적으로 관리합니다.
+- log export는 SQLite main DB뿐 아니라 `runtime-observability.sqlite-wal`,
+  `runtime-observability.sqlite-shm`도 포함해야 합니다. WAL sidecar가 빠지면 최신 read model row가
+  export에서 누락될 수 있습니다.
+
+### Runtime event retention
+
+`runtime-events.jsonl`은 runtime operational event의 1차 SoT입니다. 단일 파일이 무제한 커지면 export,
+API fallback read, 파일 손상 영향 범위가 모두 커지므로 size 기반 rotation을 적용합니다.
+
+- 현재 파일: `status/runtime-events.jsonl`
+- rotated 파일: `status/runtime-events.jsonl.1`, `.2`, ...
+- JSONL read path는 rotated 파일을 오래된 순서부터 읽고 마지막에 현재 파일을 읽습니다.
+- SQLite read model은 조회용 index이므로 JSONL rotation이 있더라도 event SoT 역할을 대신하지 않습니다.
+- log export는 현재 JSONL, rotated JSONL, SQLite main DB, SQLite WAL/SHM sidecar를 함께 포함해야 합니다.
 
 ## Target flow
 
@@ -194,7 +273,7 @@ Runtime Control API
 | 범주 | Source | 수집 정보 | Output |
 |---|---|---|---|
 | Recorder | Redis `ip_*`, `utime_*`, `vrver_*`, `info_*`, `vrconf_*` | IP, last seen, version, info, config, online/stale | observation snapshot |
-| Recorder activity | Redis List `vitalserver:audit_events` | recent `send_data` message count, bytes, rooms, first/last activity, rates | observation snapshot |
+| Recorder activity | Redis List `vitalserver:audit_events` | recent `send_data` message count, bytes, room entries, first/last activity, rates | observation snapshot |
 | Bed | Redis `beds`, `beds:*`, `utime_<bed>`, `ptcon_<bed>` | bed name, vrcode, last seen, patient connected | observation snapshot |
 | Device/filter | Redis `devs_*`, `filts_*` | raw device/filter value | observation snapshot |
 | Proxy connection | optional access JSONL | remote address, URI, status, websocket handshake | observation snapshot |
@@ -256,6 +335,10 @@ Runtime Control API
 최종 VitalDB observation SoT는 watchdog/runtime이 저장하는 `runtime-observability.sqlite`입니다.
 UI나 Runtime Control API는 observer container를 직접 신뢰하지 않고 runtime 계층의 저장 결과를 기준으로
 응답합니다.
+Remote Console의 Observability anomaly detail은 `RuntimeVitalDBObservationSnapshot`을 기준으로
+표시합니다. Snapshot `failed`/`unavailable`은 stale `runtime-status.json` 값으로 대체하지 않고
+read issue 또는 unavailable state로 노출해야 합니다. Status summary는 status document의
+`vitalDBObservation`을 표시할 수 있지만, anomaly detail의 대체 source가 되면 안 됩니다.
 
 ## Canonical source policy
 
@@ -266,7 +349,7 @@ UI나 Runtime Control API는 observer container를 직접 신뢰하지 않고 ru
 | guest service가 살아 있나? | watchdog이 읽은 `runtime-state.json` + HTTP probe 결과 |
 | container가 무슨 로그를 냈나? | `container-logs.log` |
 | VRecorder command가 어떤 흐름으로 전달됐나? | audit proxy event log / Redis List |
-| VRecorder/bed/anomaly 최신 관측 결과는? | `runtime-observability.sqlite`, fallback `runtime-status.json`의 `vitalDBObservation` |
+| VRecorder/bed/anomaly 최신 관측 결과는? | `runtime-observability.sqlite`, API `RuntimeVitalDBObservationSnapshot` |
 | 장애 원인을 제품 상태로 볼 수 있나? | watchdog이 정규화한 `failureReasons`와 runtime event |
 
 ## Event taxonomy
@@ -278,6 +361,12 @@ Runtime event와 command audit event는 분리합니다.
 | runtime operational event | 제품 runtime 상태 전이와 복구 판단 추적 | `status-changed`, `progress-updated`, `health-observed` |
 | command audit event | VRecorder/Web Monitoring command 추적 | `join_vr`, `send_data`, `req_cmd`, `command_dispatch` |
 | raw log | 사람이 보는 진단 정보 | compose logs, launchd logs, proxy logs |
+
+Raw proxy log rows can explain why a previous request failed, but they do not
+own current backend availability state. VitalDB observer keeps parsed proxy
+connections as diagnostic evidence only. Current runtime failure reasons must be
+derived from explicit status/probe contracts owned by watchdog/runtime and guest
+runtime state, not from historical log rows.
 
 Runtime operational event는 watchdog이 생성합니다. Command audit event는 audit proxy가 생성하고 watchdog은
 필요한 경우 요약 상태만 관측합니다.
@@ -296,6 +385,10 @@ Runtime operational event type은 API와 JSONL의 public contract입니다.
 | `vitaldb-anomaly-detected` | watchdog | VitalDB observer가 recorder/bed/proxy anomaly를 계산함 |
 | `recovery-triggered` | watchdog | recovery policy가 복구 작업을 시작함 |
 | `recovery-completed` | watchdog | recovery 작업 후 runtime이 다시 관측됨 |
+| `watchdog-skipped` | watchdog | protected/grace 상태라 recovery를 건너뜀 |
+| `recovery-planned` | watchdog | recovery policy가 service restart 계획을 생성함 |
+| `recovery-suppressed` | watchdog | disk/filesystem 보호 등으로 자동 recovery를 금지함 |
+| `service-restart-dispatched` | watchdog | VM/proxy/guest-log-sync service restart 명령을 보냄 |
 | `runtime-command-started` | host runtime | start/stop/configure/update 등 host command 시작 |
 | `runtime-command-completed` | host runtime | host command 성공 종료 |
 | `runtime-command-failed` | host runtime | host command 실패 종료 |
@@ -329,6 +422,33 @@ vitaldb_observation_snapshots (
   payload_json text not null
 );
 
+vitaldb_bed_assignments (
+  id text primary key,
+  bed_id text not null,
+  bed_name text,
+  vrcode text not null,
+  started_at text not null,
+  ended_at text,
+  last_seen_at text,
+  last_observed_at text not null,
+  status text not null,
+  patient_connected integer,
+  observation_count integer not null
+);
+
+vitaldb_relationship_events (
+  id text primary key,
+  observed_at text not null,
+  event_type text not null,
+  severity text not null,
+  bed_id text,
+  bed_name text,
+  vrcode text,
+  previous_vrcode text,
+  previous_bed_id text,
+  message text not null
+);
+
 runtime_observations (
   id text primary key,
   timestamp text not null,
@@ -359,7 +479,11 @@ audit_event_index (
 );
 ```
 
-초기 구현은 `runtime_events`와 `vitaldb_observation_snapshots`부터 시작했습니다.
+초기 구현은 `runtime_events`, `vitaldb_observation_snapshots`,
+`vitaldb_bed_assignments`, `vitaldb_relationship_events`부터 시작했습니다.
+Bed/VRecorder 관계 read model은 observation snapshot append 시점에 projection합니다. 원본 snapshot은
+canonical source로 유지하고, assignment/event table은 삭제 후 snapshot history에서 다시 만들 수 있는
+derived read model입니다.
 `container_log_index`와 `audit_event_index`는 raw log retention/rotation 정책이 정리된 뒤 ingest합니다.
 
 ## VitalDB observer policy
@@ -373,6 +497,7 @@ audit_event_index (
 | recorder/bed/anomaly 계산 | `vitaldb-observer` |
 | collection/readiness diagnostic stdout 로그 | `vitaldb-observer` |
 | observation history/read model 저장 | watchdog/runtime observability SQLite |
+| bed/VRecorder assignment projection | watchdog/runtime observability SQLite |
 | Helper/PWA 조회 API | Runtime Control API |
 
 이 구조는 수집/계산 장애를 traffic path와 watchdog core loop에서 분리하면서도, 제품이 보는 최종 관측

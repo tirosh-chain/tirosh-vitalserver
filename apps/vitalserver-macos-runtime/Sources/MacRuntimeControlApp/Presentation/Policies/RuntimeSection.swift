@@ -3,6 +3,7 @@ import Foundation
 enum RuntimeSection: CaseIterable, Identifiable {
     case status
     case recorders
+    case beds
     case observability
     case log
     case settings
@@ -21,7 +22,7 @@ enum RuntimeSection: CaseIterable, Identifiable {
     }
 
     static func primarySections(testEnabled: Bool = GeneratedRelease.testEnabled) -> [RuntimeSection] {
-        [.status, .recorders, .observability, .log, .settings, .update]
+        [.status, .recorders, .beds, .observability, .log, .settings, .update]
             .filter { visibleSections(testEnabled: testEnabled).contains($0) }
     }
 
@@ -31,7 +32,7 @@ enum RuntimeSection: CaseIterable, Identifiable {
     }
 
     static func overflowSections(testEnabled: Bool = GeneratedRelease.testEnabled) -> [RuntimeSection] {
-        [.info, .test, .dangerZone]
+        [.info, .dangerZone, .test]
             .filter { visibleSections(testEnabled: testEnabled).contains($0) }
     }
 
@@ -45,6 +46,8 @@ enum RuntimeSection: CaseIterable, Identifiable {
             return AppConstants.Labels.sectionStatus
         case .recorders:
             return AppConstants.Labels.sectionRecorders
+        case .beds:
+            return AppConstants.Labels.sectionBeds
         case .settings:
             return AppConstants.Labels.sectionSettings
         case .update:

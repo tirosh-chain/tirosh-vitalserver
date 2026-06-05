@@ -70,7 +70,7 @@ struct RuntimeStatusDisplayPolicy {
                 uptimeText: nil
             )
         }
-        if status.isReady {
+        if RuntimeReadinessPolicy.isReady(status) {
             return StatusValue(
                 text: AppConstants.StatusText.healthy,
                 severity: .healthy,
@@ -85,22 +85,52 @@ struct RuntimeStatusDisplayPolicy {
             )
         }
         switch status.runtimeState {
+        case .some(.installing):
+            return StatusValue(
+                text: AppConstants.StatusText.installing,
+                severity: .warning,
+                uptimeText: nil
+            )
+        case .some(.updating):
+            return StatusValue(
+                text: AppConstants.StatusText.updating,
+                severity: .warning,
+                uptimeText: nil
+            )
+        case .some(.recovering):
+            return StatusValue(
+                text: AppConstants.StatusText.recovering,
+                severity: .warning,
+                uptimeText: nil
+            )
+        case .some(.healthy):
+            return StatusValue(
+                text: AppConstants.StatusText.needsAttention,
+                severity: .warning,
+                uptimeText: nil
+            )
         case .some(.critical):
             return StatusValue(
                 text: AppConstants.StatusText.critical,
                 severity: .critical,
                 uptimeText: nil
             )
-        case .some(.degraded), .some(.recovering):
+        case .some(.degraded):
             return StatusValue(
                 text: AppConstants.StatusText.needsAttention,
                 severity: .warning,
                 uptimeText: nil
             )
+        case .some(.unknown(let value)):
+            return StatusValue(
+                text: AppConstants.StatusText.runtimeLifecycle(value),
+                severity: .warning,
+                uptimeText: nil
+            )
         default:
             return StatusValue(
-                text: AppConstants.StatusText.starting,
-                severity: .warning,
+                text: AppConstants.StatusText.unknown,
+                severity: .neutral,
                 uptimeText: nil
             )
         }
@@ -108,24 +138,39 @@ struct RuntimeStatusDisplayPolicy {
 
     func vitalServerAvailability(status: RuntimeStatus, observation: RuntimeContainerObservation?, now: Date = Date()) -> StatusValue {
         let text: String
-        if isSuccessfulHTTPStatus(status.hostProxyHTTP) {
-            text = AppConstants.StatusText.reachable
-        } else if RuntimeActiveOperationPolicy.isUpdateInProgress(status) {
+        if RuntimeActiveOperationPolicy.isUpdateInProgress(status) {
             text = AppConstants.StatusText.updating
-        } else if status.runtimeInstalled {
-            text = AppConstants.StatusText.waiting
-        } else {
+        } else if !status.runtimeInstalled {
             text = AppConstants.StatusText.unavailable
+        } else {
+            text = serviceReachabilityLabel(status.hostProxyHTTP)
         }
         return StatusValue(
             text: text,
-            severity: isSuccessfulHTTPStatus(status.hostProxyHTTP) ? .healthy : .warning,
+            severity: RuntimeActiveOperationPolicy.isUpdateInProgress(status) ? .warning : httpSeverity(status.hostProxyHTTP),
             uptimeText: vitalServerUptimeText(status: status, observation: observation, now: now)
         )
     }
 
+    func remoteConsoleAvailability(status: RuntimeStatus, now: Date = Date()) -> StatusValue {
+        remoteConsoleAvailability(
+            http: status.runtimeControlHTTP,
+            startedAt: status.runtimeControlStartedAt,
+            now: now
+        )
+    }
+
+    func remoteConsoleAvailability(http: String?, startedAt: String?, now: Date = Date()) -> StatusValue {
+        let reachable = isSuccessfulHTTPStatus(http)
+        return StatusValue(
+            text: reachable ? AppConstants.StatusText.reachable : AppConstants.StatusText.unavailable,
+            severity: reachable ? .healthy : .warning,
+            uptimeText: formatUptime(nil, startedAt: startedAt, observedAt: nil, now: now)
+        )
+    }
+
     func actionNeeded(status: RuntimeStatus) -> ActionNeededItem? {
-        if status.isReady || isManagedOperationInProgress(status.runtimeState) {
+        if RuntimeReadinessPolicy.isReady(status) || isManagedOperationInProgress(status.runtimeState) {
             return nil
         }
         if !status.runtimeInstalled {
@@ -145,10 +190,10 @@ struct RuntimeStatusDisplayPolicy {
                 severity: primaryReason.domainSeverity == .critical ? .critical : .warning
             )
         }
-        if !status.vmServiceLoaded || !status.proxyServiceLoaded || !isSuccessfulHTTPStatus(status.guestHTTP) || !isSuccessfulHTTPStatus(status.hostProxyHTTP) {
+        if !status.readIssues.isEmpty {
             return ActionNeededItem(
-                title: userFacingProblemTitle(status),
-                recommendedAction: AppConstants.Actions.repairRuntimeServices,
+                title: AppConstants.StatusText.vitalServerNeedsAttention,
+                recommendedAction: AppConstants.Actions.openLogs,
                 severity: .warning
             )
         }
@@ -167,7 +212,7 @@ struct RuntimeStatusDisplayPolicy {
             ),
             HealthItem(
                 label: AppConstants.Labels.vmState,
-                value: vmStateValue(status.vmState, runtimeInstalled: status.runtimeInstalled)
+                value: vmStateValue(status.vmState)
             ),
         ]
         if let vmErrors = status.vmErrors, !vmErrors.isEmpty {
@@ -186,6 +231,16 @@ struct RuntimeStatusDisplayPolicy {
                 value: StatusValue(
                     text: status.failureReasons.map(AppConstants.StatusText.domainError).joined(separator: ", "),
                     severity: status.failureReasons.contains { $0.domainSeverity == .critical } ? .critical : .warning,
+                    uptimeText: nil
+                )
+            ))
+        }
+        if !status.readIssues.isEmpty {
+            items.append(HealthItem(
+                label: AppConstants.Labels.statusReadIssues,
+                value: StatusValue(
+                    text: status.readIssues.map { "\($0.source): \($0.message)" }.joined(separator: ", "),
+                    severity: .warning,
                     uptimeText: nil
                 )
             ))
@@ -221,18 +276,15 @@ struct RuntimeStatusDisplayPolicy {
             ),
             HealthItem(
                 label: AppConstants.Labels.watchdog,
-                value: StatusValue(
-                    text: AppConstants.StatusText.launchdState(loaded: status.watchdogServiceLoaded),
-                    severity: status.watchdogServiceLoaded ? .healthy : .warning,
-                    uptimeText: nil
-                )
+                value: serviceValue(state: status.watchdogServiceState, fallbackLoaded: status.watchdogServiceLoaded)
             ),
         ])
         return items
     }
 
     func advancedServiceHealth(status: RuntimeStatus, observation: RuntimeContainerObservation?, now: Date = Date()) -> [ServiceHealthItem] {
-        [
+        let updateInProgress = RuntimeActiveOperationPolicy.isUpdateInProgress(status)
+        return [
             serviceStateItem(
                 AppConstants.Labels.runtimeInstallation,
                 isHealthy: status.runtimeInstalled,
@@ -240,77 +292,101 @@ struct RuntimeStatusDisplayPolicy {
             ),
             serviceStateItem(
                 AppConstants.Labels.vmService,
-                isHealthy: status.vmServiceLoaded,
-                value: AppConstants.StatusText.launchdState(loaded: status.vmServiceLoaded)
+                state: status.vmServiceState,
+                fallbackLoaded: status.vmServiceLoaded,
+                updateInProgress: updateInProgress
             ),
             serviceStateItem(
                 AppConstants.Labels.proxyService,
-                isHealthy: status.proxyServiceLoaded,
-                value: AppConstants.StatusText.launchdState(loaded: status.proxyServiceLoaded)
+                state: status.proxyServiceState,
+                fallbackLoaded: status.proxyServiceLoaded,
+                updateInProgress: updateInProgress
             ),
             serviceStateItem(
                 AppConstants.Labels.guestLogSyncService,
-                isHealthy: status.guestLogSyncServiceLoaded,
-                value: AppConstants.StatusText.launchdState(loaded: status.guestLogSyncServiceLoaded)
+                state: status.guestLogSyncServiceState,
+                fallbackLoaded: status.guestLogSyncServiceLoaded,
+                updateInProgress: updateInProgress
             ),
             serviceStateItem(
                 AppConstants.Labels.sleepPreventionService,
-                isHealthy: status.sleepPreventionServiceLoaded == true,
-                value: status.sleepPreventionServiceLoaded.map(AppConstants.StatusText.launchdState(loaded:))
-                    ?? AppConstants.StatusText.unavailable
+                state: status.sleepPreventionServiceState,
+                fallbackLoaded: status.sleepPreventionServiceLoaded,
+                updateInProgress: updateInProgress
             ),
             serviceStateItem(
                 AppConstants.Labels.watchdogService,
-                isHealthy: status.watchdogServiceLoaded,
-                value: AppConstants.StatusText.launchdState(loaded: status.watchdogServiceLoaded)
+                state: status.watchdogServiceState,
+                fallbackLoaded: status.watchdogServiceLoaded,
+                updateInProgress: updateInProgress
             ),
             httpServiceItem(
                 GeneratedRelease.vitalServerName,
                 httpStatus: status.guestHTTP,
                 uptimeText: uptimeText(for: .vitalServer, observation: observation, now: now),
-                action: .openVitalServer
+                action: .openVitalServer,
+                updateInProgress: updateInProgress
             ),
             httpServiceItem(
                 GeneratedRelease.hostProxyName,
                 httpStatus: status.hostProxyHTTP,
                 uptimeText: uptimeText(for: .networkAccess, observation: observation, now: now),
-                action: .openVitalServer
+                action: .openVitalServer,
+                updateInProgress: updateInProgress
             ),
             composeServiceItem(
                 AppConstants.Labels.vitalDBObserver,
                 service: .vitalDBObserver,
                 observation: observation,
-                now: now
+                now: now,
+                updateInProgress: updateInProgress
             ),
             httpServiceItem(
                 GeneratedRelease.redisUIName,
                 httpStatus: status.redisUIHTTP,
                 uptimeText: uptimeText(for: .redisUI, observation: observation, now: now),
-                action: .openRedisUI
+                action: .openRedisUI,
+                updateInProgress: updateInProgress
             ),
             httpServiceItem(
                 GeneratedRelease.swaggerUIName,
                 httpStatus: status.swaggerUIHTTP,
                 uptimeText: uptimeText(for: .swaggerUI, observation: observation, now: now),
-                action: .openSwagger
+                action: .openSwagger,
+                updateInProgress: updateInProgress
             ),
         ]
     }
 
     func recorderSummary(status: RuntimeStatus, observation: RuntimeContainerObservation?) -> RecorderSummary {
-        var status = status
-        status.containerObservation = observation
-        let summary = RuntimeVitalRecorderSummary(status: status)
+        let summary = RuntimeVitalRecorderSummary(
+            containerObservation: observation,
+            vitalDBObservation: status.vitalDBObservation
+        )
         return RecorderSummary(
-            activeConnections: "\(summary.activeConnections)",
-            knownRecorders: "\(summary.knownRecorders)",
-            onlineRecorders: "\(summary.onlineRecorders)",
-            staleRecorders: "\(summary.staleRecorders)",
-            knownBeds: "\(summary.knownBeds)",
-            anomalies: "\(summary.recorderAnomalies)",
-            latestRecorder: summary.latestRecorder.map { "\($0.vrcode) \($0.ip ?? AppConstants.StatusText.unknown)" },
+            activeConnections: summary.activeConnections.map(String.init) ?? AppConstants.StatusText.notReported,
+            knownRecorders: reportedRecorderMetric(summary.source, summary.knownRecorders),
+            onlineRecorders: reportedRecorderMetric(summary.source, summary.onlineRecorders),
+            staleRecorders: reportedRecorderMetric(summary.source, summary.staleRecorders),
+            knownBeds: reportedRecorderMetric(summary.source, summary.knownBeds),
+            anomalies: reportedRecorderMetric(summary.source, summary.recorderAnomalies),
+            latestRecorder: summary.latestRecorder.map(latestRecorderText),
             observedAt: summary.observedAt
         )
+    }
+
+    private func reportedRecorderMetric(_ source: RuntimeVitalRecorderSummarySource, _ value: Int?) -> String {
+        guard source == .vitalDBObservation, let value else {
+            return AppConstants.StatusText.notReported
+        }
+        return "\(value)"
+    }
+
+    private func latestRecorderText(_ recorder: RuntimeVitalRecorderReference) -> String {
+        guard let ip = recorder.ip, !ip.isEmpty else {
+            return "\(recorder.vrcode) \(AppConstants.StatusText.notReported)"
+        }
+        return "\(recorder.vrcode) \(ip)"
     }
 
     private func serviceStateItem(_ label: String, isHealthy: Bool, value: String) -> ServiceHealthItem {
@@ -326,15 +402,80 @@ struct RuntimeStatusDisplayPolicy {
         )
     }
 
+    private func serviceStateItem(
+        _ label: String,
+        state: RuntimeServiceState?,
+        fallbackLoaded: Bool?,
+        updateInProgress: Bool = false
+    ) -> ServiceHealthItem {
+        let value = serviceValue(
+            state: state,
+            fallbackLoaded: fallbackLoaded,
+            updateInProgress: updateInProgress
+        )
+        return ServiceHealthItem(
+            label: label,
+            value: value,
+            httpStatus: nil,
+            action: nil
+        )
+    }
+
+    private func serviceValue(
+        state: RuntimeServiceState?,
+        fallbackLoaded: Bool?,
+        updateInProgress: Bool = false
+    ) -> StatusValue {
+        let text: String
+        let severity: Severity
+        if updateInProgress, shouldDisplayOperationStateInsteadOfServiceState(state) {
+            text = AppConstants.StatusText.updating
+            severity = .warning
+        } else if let state {
+            text = AppConstants.StatusText.launchdState(state)
+            severity = serviceStateSeverity(state)
+        } else if let fallbackLoaded {
+            text = AppConstants.StatusText.launchdState(loaded: fallbackLoaded)
+            severity = fallbackLoaded ? .healthy : .warning
+        } else {
+            text = AppConstants.StatusText.unavailable
+            severity = .warning
+        }
+        return StatusValue(text: text, severity: severity, uptimeText: nil)
+    }
+
+    private func shouldDisplayOperationStateInsteadOfServiceState(_ state: RuntimeServiceState?) -> Bool {
+        switch state {
+        case .readFailed, .permissionDenied, .unknown:
+            return false
+        default:
+            return true
+        }
+    }
+
+    private func serviceStateSeverity(_ state: RuntimeServiceState) -> Severity {
+        switch state {
+        case .loaded:
+            return .healthy
+        case .notLoaded, .readFailed, .permissionDenied:
+            return .warning
+        case .unknown:
+            return .neutral
+        }
+    }
+
     private func httpServiceItem(
         _ label: String,
         httpStatus: String?,
         uptimeText: String?,
-        action: ServiceAction
+        action: ServiceAction,
+        updateInProgress: Bool = false
     ) -> ServiceHealthItem {
         ServiceHealthItem(
             label: label,
-            value: httpValue(httpStatus, uptimeText: uptimeText),
+            value: updateInProgress
+                ? updatingValue(uptimeText: uptimeText)
+                : httpValue(httpStatus, uptimeText: uptimeText),
             httpStatus: httpStatus,
             action: action
         )
@@ -344,11 +485,14 @@ struct RuntimeStatusDisplayPolicy {
         _ label: String,
         service: ComposeService,
         observation: RuntimeContainerObservation?,
-        now: Date
+        now: Date,
+        updateInProgress: Bool = false
     ) -> ServiceHealthItem {
         ServiceHealthItem(
             label: label,
-            value: composeValue(for: service, observation: observation, now: now),
+            value: updateInProgress
+                ? updatingValue(uptimeText: nil)
+                : composeValue(for: service, observation: observation, now: now),
             httpStatus: nil,
             action: nil
         )
@@ -357,7 +501,15 @@ struct RuntimeStatusDisplayPolicy {
     private func httpValue(_ status: String?, uptimeText: String?) -> StatusValue {
         StatusValue(
             text: serviceReachabilityLabel(status),
-            severity: isSuccessfulHTTPStatus(status) ? .healthy : .warning,
+            severity: httpSeverity(status),
+            uptimeText: uptimeText
+        )
+    }
+
+    private func updatingValue(uptimeText: String?) -> StatusValue {
+        StatusValue(
+            text: AppConstants.StatusText.updating,
+            severity: .warning,
             uptimeText: uptimeText
         )
     }
@@ -377,21 +529,8 @@ struct RuntimeStatusDisplayPolicy {
         switch action {
         case .installRuntime:
             return AppConstants.Actions.install
-        case .restartProxyService, .repairProxyConfiguration, .freeProxyPort:
-            return AppConstants.Actions.repairProxy
-        case .inspectVitalDBObservation:
-            return AppConstants.Actions.checkRecorders
-        case .restartVMService,
-             .restartWatchdogService,
-             .waitForGuest,
-             .restartGuestAgent,
-             .repairGuestBootstrap,
-             .restartContainerServices,
-             .backupAndRecreateVM,
-             .fixConfiguration,
-             .freeHostResources,
-             .inspectLogs:
-            return AppConstants.Actions.repairRuntimeServices
+        default:
+            return AppConstants.StatusText.domainRecoveryAction(action)
         }
     }
 
@@ -411,7 +550,6 @@ struct RuntimeStatusDisplayPolicy {
         now: Date
     ) -> String? {
         uptimeText(for: .vitalServer, observation: observation, now: now)
-            ?? formatUptime(nil, startedAt: status.startedAt, observedAt: nil, now: now)
     }
 
     private func composeValue(for service: ComposeService, observation: RuntimeContainerObservation?, now: Date) -> StatusValue {
@@ -442,14 +580,14 @@ struct RuntimeStatusDisplayPolicy {
         if let state = observation?.state, !state.isEmpty {
             return AppConstants.StatusText.containerState(state)
         }
-        return AppConstants.StatusText.waiting
+        return AppConstants.StatusText.notReported
     }
 
     private func composeSeverity(_ observation: RuntimeContainerServiceObservation?) -> Severity {
-        if observation?.health == "healthy" {
-            return .healthy
+        guard let observation else {
+            return .neutral
         }
-        if observation?.state == "running", observation?.health == nil {
+        if observation.health == "healthy" {
             return .healthy
         }
         return .warning
@@ -463,14 +601,32 @@ struct RuntimeStatusDisplayPolicy {
     }
 
     private func serviceReachabilityLabel(_ value: String?) -> String {
-        AppConstants.StatusText.reachability(httpStatus: value)
+        guard let value, !value.isEmpty else {
+            return AppConstants.StatusText.notReported
+        }
+        if isSuccessfulHTTPStatus(value) {
+            return AppConstants.StatusText.reachable
+        }
+        if Int(value) != nil {
+            return AppConstants.StatusText.unavailable
+        }
+        if value == "failed" {
+            return AppConstants.StatusText.unreachable
+        }
+        return AppConstants.StatusText.failed
     }
 
-    func vmStateValue(_ value: RuntimeVMState?, runtimeInstalled: Bool) -> StatusValue {
-        let resolvedValue = value ?? (runtimeInstalled ? nil : .notInstalled)
+    private func httpSeverity(_ value: String?) -> Severity {
+        guard let value, !value.isEmpty else {
+            return .neutral
+        }
+        return isSuccessfulHTTPStatus(value) ? .healthy : .warning
+    }
+
+    func vmStateValue(_ value: RuntimeVMState?) -> StatusValue {
         return StatusValue(
-            text: AppConstants.StatusText.vmState(resolvedValue),
-            severity: vmStateSeverity(resolvedValue),
+            text: AppConstants.StatusText.vmState(value),
+            severity: vmStateSeverity(value),
             uptimeText: nil
         )
     }

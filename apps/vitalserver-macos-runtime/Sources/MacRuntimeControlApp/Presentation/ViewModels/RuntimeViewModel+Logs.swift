@@ -23,6 +23,10 @@ extension RuntimeViewModel {
         ) else {
             return
         }
+        if let validationMessage = RuntimeLogExportDestinationPolicy().validationMessage(for: destination) {
+            message = validationMessage
+            return
+        }
 
         isBusy = true
         defer { isBusy = false }
@@ -85,6 +89,7 @@ private enum RuntimeLogOptions {
         RuntimeLogSourceOption(id: .proxyError, title: "Host proxy error"),
         RuntimeLogSourceOption(id: .watchdog, title: "Watchdog"),
         RuntimeLogSourceOption(id: .updateActivation, title: "Update activation"),
+        RuntimeLogSourceOption(id: .updateShutdown, title: "Update shutdown"),
         RuntimeLogSourceOption(id: .containers, title: "Containers"),
     ]
 }

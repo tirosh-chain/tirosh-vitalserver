@@ -9,6 +9,9 @@ from tirosh_vitalserver.devtools.adapters.toolchain.shell_commands import run
 APP_ICON_NAME = "AppIcon.icns"
 APP_INFO_PLIST_NAME = "Info.plist"
 APP_BRAND_IMAGE_NAME = "vitaldb.png"
+PWA_APP_DIR = "apps/vitalserver-runtime-pwa"
+PWA_DIST_DIR = "dist"
+PWA_RESOURCE_DIR = "runtime-control-pwa"
 
 
 def sync_release(root: Path, runtime_dir: Path, release_file: Path) -> None:
@@ -80,9 +83,15 @@ def build_app_bundle(
     info_plist_source = runtime_dir / "Support/App" / APP_INFO_PLIST_NAME
     icon_source = runtime_dir / "Support/App" / APP_ICON_NAME
     brand_image_source = runtime_dir / "Support/App" / APP_BRAND_IMAGE_NAME
+    pwa_dist_source = root / PWA_APP_DIR / PWA_DIST_DIR
     for required in [helper_bin, info_plist_source, icon_source, brand_image_source]:
         if not required.is_file():
             raise SystemExit(f"error: missing app bundle input: {required}")
+    if not (pwa_dist_source / "index.html").is_file():
+        raise SystemExit(
+            "error: missing Runtime Control PWA build output: "
+            f"{pwa_dist_source}. Run: make pwa-build"
+        )
 
     if app_bundle.exists():
         if app_bundle.is_symlink() or not app_bundle.is_dir():
@@ -109,4 +118,9 @@ def build_app_bundle(
     )
     shutil.copy2(icon_source, resources / APP_ICON_NAME)
     shutil.copy2(brand_image_source, resources / APP_BRAND_IMAGE_NAME)
+    shutil.copytree(
+        pwa_dist_source,
+        resources / PWA_RESOURCE_DIR,
+        ignore=shutil.ignore_patterns(".DS_Store", "._*"),
+    )
     run(["codesign", "--force", "--sign", codesign_identity, str(app_bundle)], cwd=root)

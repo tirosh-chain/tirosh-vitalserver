@@ -7,7 +7,7 @@ VM이 실제로 어떻게 준비되고 실행되는지 정리합니다. boot ass
 | 질문 | 답 |
 |---|---|
 | runtime source of truth는? | Swift CLI `vitalserver-vm` |
-| 운영 상태 파일은? | `/Library/Application Support/TiroshVitalServer/status/runtime-status.json` |
+| 운영 상태 파일은? | `/Library/Application Support/VitalServerHelper/status/runtime-status.json` |
 | VM config는 어디 있나? | runtime directory의 `vm-config.json` |
 | guest 초기화는 누가 하나? | cloud-init이 `Support/Guest/bootstrap.sh` 실행 |
 | `.vital` 파일은 어디에 두나? | macOS shared directory |
@@ -21,7 +21,7 @@ runtime 단계의 source of truth는 Swift CLI인 `vitalserver-vm`입니다. She
 | install/status/health/configure/update/rollback/watchdog | Swift `RuntimeLifecycle` facade, `Runtime*Workflow`, focused runner |
 | runtime 상태/progress/health 계약 | Swift `Core` contracts, typed enum 상태값 |
 | guest update activation/datastore repair request-result | shared directory JSON contract, `RuntimeGuestGateway` port |
-| runtime 상태 파일 | `/Library/Application Support/TiroshVitalServer/status/runtime-status.json` |
+| runtime 상태 파일 | `/Library/Application Support/VitalServerHelper/status/runtime-status.json` |
 | host proxy runner | `Support/Packaging/proxy-run.template`에서 생성, nginx start/reload loop |
 | Linux guest 내부 구성 | `Support/Guest/bootstrap.sh`, `prepare-airgap-rootfs.sh`, `compose.yaml` |
 
@@ -50,7 +50,7 @@ PoC 기본 runtime directory는 아래입니다.
 repo 안에서만 테스트하려면:
 
 ```sh
-VITALSERVER_VM_HOME="$PWD/.tmp/vitalserver-vm" make vm-init
+VITALSERVER_VM_HOME="$PWD/.tmp/vitalserver-vm" make devtools/init
 ```
 
 ## VM Config
@@ -85,7 +85,7 @@ VITALSERVER_VM_HOME="$PWD/.tmp/vitalserver-vm" make vm-init
 PoC에서는 Git에 Linux image를 넣지 않습니다.
 
 ```sh
-make vm-download
+make runtime/download
 ```
 
 설정 파일:
@@ -94,7 +94,7 @@ make vm-download
 config/vm-build.toml
 ```
 
-`make vm-download`는 build-machine 전용 Python package인
+`make runtime/download`는 build-machine 전용 Python package인
 `packages/vitalserver-devtools`의 `vitalserver-devtools ubuntu` CLI를 호출합니다.
 
 | 항목 | 기본값 |
@@ -108,7 +108,7 @@ config/vm-build.toml
 root disk 크기를 바꾸려면:
 
 ```sh
-VM_ROOTFS_SIZE=32G make vm-download
+VM_ROOTFS_SIZE=32G make runtime/download
 ```
 
 `VM_ROOTFS_SIZE`의 `G` suffix는 build tool 입력 형식이며 GiB 기준으로 해석합니다. 예를 들어 `32G`는 32 GiB root disk target size입니다.
@@ -120,7 +120,7 @@ VM_ROOTFS_SIZE=32G make vm-download
 NoCloud seed image를 생성합니다.
 
 ```sh
-make vm-cloud-init
+make devtools/cloud-init
 ```
 
 | 항목 | 기본값 |
@@ -148,24 +148,25 @@ uv run --project packages/vitalserver-devtools vitalserver-devtools \
   --ssh-key ~/.ssh/id_ed25519.pub
 ```
 
-기본 password는 build-time seed 편의값입니다. 제품 설치에서는 Helper app wizard 또는 install settings JSON이 설치 대상별 admin password를 runtime config에 전달합니다.
+기본 password는 build-time seed 편의값입니다. 제품 설치에서는 Helper app wizard 또는 install settings JSON이 설치 대상별 admin password를 runtime config에 전달해야 하며, Host install writer는 누락된 admin password를 기본값으로 보정하지 않습니다.
 
 ## Guest Bootstrap
 
-`make vm-stage`는 VM에서 실행할 deployment bundle을 공유 디렉터리에 복사합니다.
+`make devtools/stage`는 VM에서 실행할 deployment bundle을 공유 디렉터리에 복사합니다.
 
 ```sh
-make vm-stage
+make devtools/stage
 ```
 
 | 항목 | 용도 |
 |---|---|
 | `bootstrap.sh` | Linux guest 초기 entrypoint. mount/package 확인 후 `bin/`, `systemd/`, Compose stack 연결 |
-| `bin/*` | runtime env export, runtime state 기록, Compose start/stop, health, diagnostics, Redis backup 명령 |
-| `systemd/*` | runtime state writer, Compose stack, Redis backup timer unit |
+| `python-wheels/*` | Guest tools package. runtime env/state, Compose, health, update, repair, Redis backup, observability 명령 |
+| `guest-tools.toml` | Guest tools 운영 설정. interval/path/compose project 같은 package 설정을 명시 |
+| `systemd/*` | runtime state writer, Compose stack, Redis backup timer, observability daemon unit |
 | `compose.yaml` | VM 내부 VitalServer/Redis/UI/edge nginx Compose stack |
 | `nginx/vitalserver.conf` | Compose edge nginx container 설정 |
-| `runtime-config.json` | VitalServer container/runtime 설정 |
+| `runtime-config.json` | Host-owned VitalServer container/runtime 계약. Guest는 누락/타입 오류를 default로 보정하지 않고 실패로 드러냄 |
 | `apps/vitalserver/docker` | VitalServer image build Dockerfile |
 | `apps/vitalserver/runtime` | VitalServer runtime preload |
 | `vendor/vitalserver/vitalserver-old` | upstream VitalServer source |
@@ -181,10 +182,43 @@ bootstrap 순서:
 1. VirtioFS 공유 디렉터리를 `/mnt/tirosh`에 mount
 2. air-gapped rootfs에 Docker/Compose/avahi/growpart 등 guest 필수 package가 준비됐는지 확인
 3. 준비물이 없으면 `apt-get`을 시도하지 않고 실패 처리
-4. `Support/Guest/bin`, `Support/Guest/systemd` 파일을 guest OS에 설치
-5. bundled Docker image를 load하고 dangling image cleanup 수행
-6. bundled Docker image를 load한 뒤 `docker compose up -d`로 VitalServer/Redis/UI/edge nginx 실행
-7. runtime state에 VM IP와 guest HTTP readiness 기록
+4. `guest-tools.toml`을 `/etc/tirosh/guest-tools.toml`에 설치
+5. Guest tools wheel을 venv에 설치하고 `Support/Guest/systemd` unit을 등록
+6. bundled Docker image를 load하고 dangling image cleanup 수행
+7. bundled Docker image를 load한 뒤 `docker compose up -d`로 VitalServer/Redis/UI/edge nginx 실행
+8. runtime state에 VM IP와 guest HTTP readiness 기록
+
+Guest tools는 `guest-tools.toml`에만 package 운영 default를 둡니다. 로깅 정책도
+`[logging]` section에 선언하고, Python entrypoint는 이를 `logging.config.dictConfig`
+형태로 적용합니다.
+`runtime-config.json`은 Host가 제공하는 실행 계약이므로 `adminPassword`,
+`redisHost`, `redisPort`, `vitalServerURL`, `remoteConsoleURL`,
+`publicHost`, `publicPort`, `trustProxy`, `vitalFilesDirectory`,
+`redisBackupRetentionCount`, `testkitEnabled`가 모두 명시돼야 합니다.
+Guest는 이 값을 추론하거나 보정하지 않습니다.
+`vitalServerURL`과 `remoteConsoleURL`은 운영자가 등록한 외부 접속 URL을 그대로
+표시하기 위한 Host-owned advertised URL입니다. `publicHost/publicPort`는 guest
+호환을 위해 유지하며, `vitalServerURL`이 있으면 Host가 host/port를 파생합니다.
+초기 install settings가 별도 admin password를 제공하지 않으면 Host install
+settings의 문서화된 기본값인 `admin`을 명시 runtime config로 씁니다.
+
+제품 설치 runtime seed는 OS 계정 password 접근을 열지 않습니다. Host는
+cloud-init에 `ssh_pwauth: false`, locked `ubuntu` account, 그리고 install
+settings의 `sshAuthorizedKeys`에 명시된 OpenSSH public key만 기록합니다.
+`sshAuthorizedKeys`가 비어 있으면 guest OS SSH 로그인 경로는 없고, 운영 제어는
+HostCLI/Helper, Runtime Control API, Guest tools request/result 계약을 통해서만
+수행합니다.
+
+Guest tools package는 CLI를 application usecase의 inbound adapter로만 둡니다.
+
+```text
+tirosh_guest_tools/domain       # operation request/result 같은 domain 의미
+tirosh_guest_tools/application  # compose, update, repair, backup, observability usecase
+tirosh_guest_tools/*            # console entrypoint와 Linux integration wrapper
+```
+
+CLI 외의 호출자도 `application` usecase를 직접 호출할 수 있어야 합니다. 따라서 package 내부에서는
+다른 CLI `main()`을 `sys.argv` 변경으로 재호출하지 않습니다.
 
 ## macOS Data Sharing
 
@@ -232,10 +266,10 @@ bridged mode는 향후 host nginx 제거, 네트워크 구조 단순화, 또는 
 CLI에서 모드를 바꾸려면:
 
 ```sh
-make vm-network-shared
+make runtime/network/shared
 
-make vm-interfaces
-VM_BRIDGED_INTERFACE=en0 make vm-network-bridged
+make runtime/interfaces
+VM_BRIDGED_INTERFACE=en0 make runtime/network/bridged
 ```
 
 bridged mode 실행은 macOS가 제한하는 network entitlement가 필요합니다. 개발 중에는 shared/NAT mode는 ad-hoc signing으로 실행할 수 있지만, bridged mode는 실제 codesign identity와 entitlement가 준비되어야 합니다.
@@ -243,7 +277,7 @@ bridged mode 실행은 macOS가 제한하는 network entitlement가 필요합니
 ```sh
 VM_BRIDGED_CODESIGN_IDENTITY="Developer ID Application: ..." \
 VM_BRIDGED_INTERFACE=en0 \
-make vm-up-bridged
+make runtime/up-bridged
 ```
 
 shared/NAT mode에서 보이는 `192.168.64.x` IP는 macOS Virtualization NAT DHCP가 부여한 IP입니다. 병원 LAN에서 VRecorder가 접근해야 하는 운영 IP가 아닙니다.
@@ -267,20 +301,20 @@ upstream:
 PoC에서는 VM IP를 확인한 뒤 아래처럼 host proxy upstream을 지정합니다.
 
 ```sh
-make vm-up
+make runtime/up
 ```
 
-`make vm-up`은 VM을 background로 시작하고, guest가 shared directory에 기록한 runtime state와 guest HTTP readiness를 기다린 뒤 host nginx upstream을 `<vm-ip>:80`으로 설정합니다.
+`make runtime/up`은 VM을 background로 시작하고, guest가 shared directory에 기록한 runtime state와 guest HTTP readiness를 기다린 뒤 host nginx upstream을 `<vm-ip>:80`으로 설정합니다.
 
 VM IP만 확인하거나 proxy를 다시 붙이고 싶을 때는 아래 target을 사용합니다.
 
 ```sh
-make vm-health
-make vm-ip
-make vm-proxy-start
+make runtime/health
+make runtime/ip
+make runtime/proxy/start
 ```
 
-`make vm-health`는 VM process, guest가 기록한 IP, VM 내부 HTTP, macOS host proxy HTTP를 한 번에 확인합니다. `502 Bad Gateway`처럼 경로 중간에서 막힐 때 가장 먼저 실행합니다.
+`make runtime/health`는 VM process, guest가 기록한 IP, VM 내부 HTTP, macOS host proxy HTTP를 한 번에 확인합니다. `502 Bad Gateway`처럼 경로 중간에서 막힐 때 가장 먼저 실행합니다.
 
 기존 Docker Compose 개발 경로의 host proxy는 기본 upstream을 그대로 사용합니다.
 
@@ -328,7 +362,7 @@ VM MAC address
       -> 고정된 VM LAN IP
 ```
 
-`make vm-init`은 `runtime/vm-config.json`에 VM MAC address를 생성해 저장합니다. 이 값은 제품 설치 후 유지되어야 합니다.
+`make devtools/init`은 `runtime/vm-config.json`에 VM MAC address를 생성해 저장합니다. 이 값은 제품 설치 후 유지되어야 합니다.
 
 ## VM Identity
 
@@ -355,13 +389,13 @@ v1 기본 구조인 `shared/NAT VM + host nginx`는 bridged networking entitleme
 shared/NAT boot 테스트:
 
 ```sh
-make vm-sign
+make devtools/sign
 ```
 
 bridged network 테스트는 별도 승인 이후에만 진행합니다.
 
 ```sh
-make vm-sign-bridged
+make devtools/sign/bridged
 ```
 
 ### Apple 승인 필요 항목
@@ -387,15 +421,15 @@ make vm-sign-bridged
 - host nginx가 target Mac port 80에서 요청을 받는다.
 - host nginx가 VM 내부 VitalServer로 proxy한다.
 - guest가 VM IP를 shared directory에 기록한다.
-- `make vm-up`이 VM IP를 기다린 뒤 host proxy upstream을 VM으로 설정한다.
+- `make runtime/up`이 VM IP를 기다린 뒤 host proxy upstream을 VM으로 설정한다.
 - host nginx 경유 요청에서 VRecorder 원 IP가 보존된다.
 - Redis `ip_<vrcode>`에 실제 VRecorder IP가 저장된다.
 - Network Settings가 실제 VRecorder IP로 열린다.
-- `make vm-bridged-preflight`가 bridged signing 조건을 설명한다.
+- `make devtools/bridged/preflight`가 bridged signing 조건을 설명한다.
 
 bridged mode는 별도 승인 이후 체크합니다.
 
-- `make vm-interfaces`로 bridged 후보 interface가 보인다.
+- `make runtime/interfaces`로 bridged 후보 interface가 보인다.
 - bridged mode에서 VM이 boot된다.
 - VM이 DHCP로 병원 LAN IP를 받는다.
 - 다른 장비에서 VM IP로 접속할 수 있다.

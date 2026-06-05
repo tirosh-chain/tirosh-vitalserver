@@ -53,8 +53,23 @@ struct RuntimeStatusPanel: View {
             statusRow(AppConstants.Labels.overallHealth) {
                 healthStatusValue
             }
+            if let statusDocumentError = viewModel.status.statusDocumentError {
+                statusRow(AppConstants.Labels.statusDocument) {
+                    Text(statusDocumentError)
+                        .foregroundStyle(.red)
+                }
+            }
+            if let guestRuntimeStateError = viewModel.status.guestRuntimeStateError {
+                statusRow(AppConstants.Labels.guestRuntimeState) {
+                    Text(guestRuntimeStateError)
+                        .foregroundStyle(.red)
+                }
+            }
             statusRow(GeneratedRelease.vitalServerName) {
                 vitalServerStatusAndURL
+            }
+            statusRow(AppConstants.Labels.runtimeControlPWA) {
+                remoteConsoleStatusAndURL
             }
             statusRow(AppConstants.Labels.dataDirectory) {
                 dataDirectoryValue
@@ -130,19 +145,49 @@ struct RuntimeStatusPanel: View {
         displayPolicy.vitalServerAvailability(status: viewModel.status, observation: viewModel.containerObservation, now: uptimeNow)
     }
 
+    private var remoteConsoleAvailability: RuntimeStatusDisplayPolicy.StatusValue {
+        displayPolicy.remoteConsoleAvailability(
+            http: viewModel.remoteConsoleHTTP ?? viewModel.status.runtimeControlHTTP,
+            startedAt: viewModel.remoteConsoleStartedAt ?? viewModel.status.runtimeControlStartedAt,
+            now: uptimeNow
+        )
+    }
+
     private var vitalServerStatusAndURL: some View {
+        let url = viewModel.presentationFormatter.vitalServerStatusURL(settings: viewModel.settings)
+        return serviceStatusAndURL(
+            displayURL: url.displayURL,
+            openURL: url.openURL,
+            status: vitalServerAvailability
+        )
+    }
+
+    private var remoteConsoleStatusAndURL: some View {
+        let url = viewModel.presentationFormatter.remoteConsoleStatusURL(settings: viewModel.settings)
+        return serviceStatusAndURL(
+            displayURL: url.displayURL,
+            openURL: url.openURL,
+            status: remoteConsoleAvailability
+        )
+    }
+
+    private func serviceStatusAndURL(
+        displayURL: String,
+        openURL: String,
+        status: RuntimeStatusDisplayPolicy.StatusValue
+    ) -> some View {
         ViewThatFits(in: .horizontal) {
             HStack(spacing: 12) {
-                linkButton(AppConstants.Product.vitalServerURL(proxyPort: viewModel.status.proxyPort)) {
-                    viewModel.openVitalServer()
+                linkButton(displayURL) {
+                    viewModel.openExternalURL(openURL)
                 }
-                statusValue(vitalServerAvailability)
+                statusValue(status)
             }
             VStack(alignment: .leading, spacing: 4) {
-                linkButton(AppConstants.Product.vitalServerURL(proxyPort: viewModel.status.proxyPort)) {
-                    viewModel.openVitalServer()
+                linkButton(displayURL) {
+                    viewModel.openExternalURL(openURL)
                 }
-                statusValue(vitalServerAvailability)
+                statusValue(status)
             }
         }
     }
@@ -169,7 +214,10 @@ struct RuntimeStatusPanel: View {
 
     @ViewBuilder
     private var dataDirectoryStatsSuffix: some View {
-        if let stats = viewModel.status.dataDirectoryStats {
+        if let error = viewModel.status.dataDirectoryStatsError {
+            Text(AppConstants.StatusText.dataDirectoryStatsFailed(error))
+                .foregroundStyle(.red)
+        } else if let stats = viewModel.status.dataDirectoryStats {
             Text("\(stats.fileCount) files · \(formatBytes(stats.sizeBytes))")
                 .foregroundStyle(.secondary)
                 .monospacedDigit()
@@ -269,8 +317,10 @@ struct RuntimeStatusPanel: View {
             Text(label)
                 .foregroundStyle(.secondary)
             HStack(spacing: 10) {
-                ProgressView(value: min(max(percent ?? 0, 0), 100), total: 100)
-                    .frame(width: 160)
+                if let percent {
+                    ProgressView(value: min(max(percent, 0), 100), total: 100)
+                        .frame(width: 160)
+                }
                 Text(detail)
                     .fontWeight(.medium)
                     .monospacedDigit()

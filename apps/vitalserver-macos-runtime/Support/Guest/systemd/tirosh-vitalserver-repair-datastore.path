@@ -1,9 +1,0 @@
-[Unit]
-Description=Watch for Tirosh VitalServer datastore repair requests
-
-[Path]
-PathExists=/mnt/tirosh/run/repair-datastore.request
-Unit=tirosh-vitalserver-repair-datastore.service
-
-[Install]
-WantedBy=multi-user.target

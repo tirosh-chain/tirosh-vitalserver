@@ -10,8 +10,8 @@ VitalServer Helper의 update bundle이 무엇을 바꾸고, 무엇을 보존하�
 | 현장 적용 UI는? | Product Update는 Helper app의 Update 탭, VM Image Update는 Danger Zone |
 | CLI backend는? | `/usr/local/bin/vitalserver-vm runtime apply-bundle` |
 | 검증 기준은? | `manifest.json`, `checksums.txt`, artifact sha256/size |
-| Product Update bundle에 rootfs가 들어가나? | 아니다. `make vm-update-bundle`은 rootfs를 제외한다 |
-| rootfs 포함 bundle은 언제 쓰나? | VM Image/rootfs 자체를 교체해야 할 때 `make vm-rootfs-update-bundle`을 사용한다 |
+| Product Update bundle에 rootfs가 들어가나? | 아니다. `make runtime/update-bundle`은 rootfs를 제외한다 |
+| rootfs 포함 bundle은 언제 쓰나? | VM Image/rootfs 자체를 교체해야 할 때 `make dist/image-update/release`를 사용한다 |
 | mutable VM disk는 교체하나? | 기본적으로 교체하지 않는다 |
 | Redis/Vital files 데이터는 보존하나? | 보존 대상이다 |
 | Docker image bundle만 바꾸면 container가 자동 갱신되나? | update 단계에서 guest-side activation을 실행해야 한다 |
@@ -105,7 +105,7 @@ update bundle manifest에는 updater 호환성 판단을 위한 필드를 둡니
 ```json
 {
   "schemaVersion": 3,
-  "product": "com.tirosh.vitalserver",
+  "product": "ai.tirosh.vitalserver.helper",
   "bundleKind": "product-update",
   "channel": "stable",
   "helperVersion": "0.2.0",
@@ -132,7 +132,7 @@ update bundle manifest에는 updater 호환성 판단을 위한 필드를 둡니
 | 필드 | 의미 |
 |---|---|
 | `schemaVersion` | manifest 문법과 required field set의 version. 현재 baseline은 `3` |
-| `product` | bundle이 대상으로 하는 product id. 현재 `com.tirosh.vitalserver` |
+| `product` | bundle이 대상으로 하는 product id. 현재 `ai.tirosh.vitalserver.helper` |
 | `bundleKind` | `product-update` 또는 `vm-image-update` |
 | `channel` | `stable`, `dev` 같은 update channel. 설치된 updater channel과 다르면 preflight에서 거부 |
 | `helperVersion` | 최상위 VitalServer Helper product release version. package-safe numeric version |
@@ -305,7 +305,7 @@ update-bundle-<channel>-<kind>-<releaseLabel>/
 ```
 
 `rootfs-base.raw.gz`는 Product Update bundle에 포함하지 않습니다. VM Image/rootfs를
-바꾸는 경우에만 `make vm-rootfs-update-bundle`로 별도 bundle을 만들며, 이때 manifest에
+바꾸는 경우에만 `make dist/image-update/release`로 별도 bundle을 만들며, 이때 manifest에
 `rootfs-base` artifact가 추가됩니다.
 
 각 artifact의 의미는 아래와 같습니다.
@@ -314,9 +314,9 @@ update-bundle-<channel>-<kind>-<releaseLabel>/
 |---|---|---|
 | `app-bundle.tar.gz` | `/Applications/VitalServer Helper.app` | Helper UI 교체. 적용 중 실행 중인 app과 충돌할 수 있어 재실행이 필요 |
 | `runtime-tools.tar.gz` | `/usr/local/bin` | Updater/Supervisor/VM Driver tools, `vitalserver-proxy-run`, uninstall CLI 교체 |
-| `nginx-bundle.tar.gz` | `/Library/Application Support/TiroshVitalServer/nginx` | macOS host proxy binary/config asset 교체 |
-| `guest-deploy.tar.gz` | `/Library/Application Support/TiroshVitalServer/vm/data/deploy` | VM 안에서 참조하는 Compose, guest bin/systemd, nginx config, Docker image bundle 교체 |
-| `rootfs-base.raw.gz` | `/Library/Application Support/TiroshVitalServer/vm/runtime/rootfs-base.raw.gz` | `vm-image-update` bundle에만 포함. 이후 provisioning 기준 base artifact 교체. 기존 `vm-disk.img`에는 자동 전개하지 않음 |
+| `nginx-bundle.tar.gz` | `/Library/Application Support/VitalServerHelper/nginx` | macOS host proxy binary/config asset 교체 |
+| `guest-deploy.tar.gz` | `/Library/Application Support/VitalServerHelper/vm/data/deploy` | VM 안에서 참조하는 Compose, guest bin/systemd, nginx config, Docker image bundle 교체 |
+| `rootfs-base.raw.gz` | `/Library/Application Support/VitalServerHelper/vm/runtime/rootfs-base.raw.gz` | `vm-image-update` bundle에만 포함. 이후 provisioning 기준 base artifact 교체. 기존 `vm-disk.img`에는 자동 전개하지 않음 |
 | `migrations/*` | host runtime command | 설치된 runtime 상태를 바꾸는 executable migration. 기본 bundle에는 cloud-init seed refresh migration이 포함됨 |
 
 중요한 구분은 `rootfs-base.raw.gz`와 `vm-disk.img`입니다.
@@ -362,7 +362,7 @@ rootfs는 Linux VM의 OS base입니다. 변경 기준은 “Mac host나 guest de
 | Updater/Supervisor/VM Driver Swift CLI 변경 | `runtime-tools.tar.gz` |
 | host nginx binary/config 변경 | `nginx-bundle.tar.gz` |
 | `compose.yaml` 변경 | `guest-deploy.tar.gz` |
-| guest `bootstrap.sh`, `bin/*`, `systemd/*`, `nginx/*.conf` 변경 | `guest-deploy.tar.gz` |
+| guest `bootstrap.sh`, Guest tools wheel, `nginx/*.conf` 변경 | `guest-deploy.tar.gz` |
 | VitalServer container image 변경 | `guest-deploy.tar.gz` 안의 Docker image bundle |
 | OpenAPI/Swagger static file 변경 | `guest-deploy.tar.gz` |
 | update/rollback host 로직 변경 | `runtime-tools.tar.gz` |
@@ -640,7 +640,7 @@ Update bundle에 guest activation 보강이 포함되어 있어도, 기존 설�
 
 ```text
 error: missing runtime package in air-gapped rootfs
-The target bootstrap never runs apt-get. Rebuild the package rootfs with make vm-golden-rootfs.
+The target bootstrap never runs apt-get. Rebuild the package rootfs with make devtools/golden-rootfs.
 Required commands/services: curl, docker, docker compose, avahi-daemon, growpart.
 ```
 
@@ -669,10 +669,10 @@ Update 실패 시 우선 아래를 봅니다.
 
 ```sh
 tail -f /private/tmp/tirosh-vitalserver-manager-command.log
-cat "/Library/Application Support/TiroshVitalServer/status/runtime-status.json"
-tail -n 200 "/Library/Application Support/TiroshVitalServer/vm/data/run/container-logs.log"
-tail -n 200 "/Library/Application Support/TiroshVitalServer/vm/logs/proxy.err.log"
-cat "/Library/Application Support/TiroshVitalServer/vm/data/run/runtime-state.json"
+cat "/Library/Application Support/VitalServerHelper/status/runtime-status.json"
+tail -n 200 "/Library/Application Support/VitalServerHelper/vm/data/run/container-logs.log"
+tail -n 200 "/Library/Application Support/VitalServerHelper/vm/logs/proxy.err.log"
+cat "/Library/Application Support/VitalServerHelper/vm/data/run/runtime-state.json"
 ```
 
 bundle 자체를 확인할 때:

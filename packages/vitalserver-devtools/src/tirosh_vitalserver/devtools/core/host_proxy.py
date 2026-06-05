@@ -19,6 +19,8 @@ def proxy_config_text(port: str, upstream: str, template: str) -> str:
             "${PROXY_UPSTREAM}",
             upstream,
         )
+        .replace("${VITALSERVER_PROXY_NGINX_ACCESS_LOG}", "logs/access.log")
+        .replace("${VITALSERVER_PROXY_NGINX_ERROR_LOG}", "logs/error.log")
     )
 
 

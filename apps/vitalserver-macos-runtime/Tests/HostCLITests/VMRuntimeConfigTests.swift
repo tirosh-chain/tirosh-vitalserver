@@ -1,6 +1,7 @@
 import Foundation
 import Core
 import Contracts
+import HostInfrastructure
 @testable import HostCLI
 import XCTest
 
@@ -28,6 +29,36 @@ final class VMRuntimeConfigTests: XCTestCase {
         XCTAssertEqual(loaded.memoryMiB, expected.memoryMiB)
         XCTAssertEqual(loaded.kernelPath, expected.kernelPath)
         XCTAssertEqual(loaded.network.macAddress, expected.network.macAddress)
+    }
+
+    func testLoadPreservesMissingSSHAuthorizedKeysAsMissingState() throws {
+        let fileStore = RuntimeFileStoreSpy()
+        let configURL = URL(fileURLWithPath: "/runtime/vm-config.json")
+        fileStore.files[configURL] = Data("""
+        {
+          "cpuCount": 4,
+          "memoryMiB": 4096,
+          "kernelPath": "/runtime/kernel",
+          "kernelCommandLine": "console=hvc0",
+          "network": {
+            "mode": "shared"
+          }
+        }
+        """.utf8)
+
+        let loaded = try VMRuntimeConfig.load(from: configURL, fileStore: fileStore)
+
+        XCTAssertNil(loaded.sshAuthorizedKeys)
+    }
+
+    func testEnsureRuntimeDefaultsWritesExplicitEmptySSHAuthorizedKeysWhenMissing() {
+        let paths = InstalledRuntimePaths(runtimeHome: URL(fileURLWithPath: "/runtime-root"))
+        var config = VMRuntimeConfig.default(paths: paths)
+        config.sshAuthorizedKeys = nil
+
+        VMRuntimeConfig.ensureRuntimeDefaults(&config, paths: paths)
+
+        XCTAssertEqual(config.sshAuthorizedKeys, [])
     }
 
     func testValidateBootFilesUsesFileStoreExistence() throws {

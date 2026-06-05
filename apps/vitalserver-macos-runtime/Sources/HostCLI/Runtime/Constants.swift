@@ -4,7 +4,10 @@ import Contracts
 
 enum Constants {
     enum Product {
-        static let identifier = "com.tirosh.vitalserver"
+        static let identifier = "ai.tirosh.vitalserver.helper"
+        static let packageReceiptIdentifiers = [
+            identifier,
+        ]
         static let managerAppName = "VitalServer Helper.app"
         static let managerAppPath = "/Applications/\(managerAppName)"
     }
@@ -35,9 +38,9 @@ enum Constants {
     }
 
     enum Artifacts {
-        static let rootfsBase = "rootfs-base.raw.gz"
-        static let runtimeVersion = "runtime-version.json"
-        static let backupManifest = "backup-manifest.json"
+        static let rootfsBase = RuntimeFileNames.rootfsBase
+        static let runtimeVersion = RuntimeFileNames.runtimeVersion
+        static let backupManifest = RuntimeFileNames.backupManifest
         static let runtimeConfig = "runtime-config.json"
         static let runtimeStatus = RuntimeFileNames.runtimeStatus
     }
@@ -67,8 +70,24 @@ enum Constants {
         static let diskStepGiB = 4
         static let minimumMemoryGiB = 4
         static let maximumMemoryGiB = 64
+        static let reservedHostMemoryGiB = 4
         static let memoryStepGiB = 4
-        static let memoryMiB: UInt64 = 8192
+        static var maximumAllowedMemoryGiB: Int {
+            let physicalMemoryGiB = Int(ProcessInfo.processInfo.physicalMemory / 1_073_741_824)
+            let hostAwareMaximum = physicalMemoryGiB - reservedHostMemoryGiB
+            let cappedMaximum = min(maximumMemoryGiB, hostAwareMaximum)
+            let steppedMaximum = (cappedMaximum / memoryStepGiB) * memoryStepGiB
+            return max(minimumMemoryGiB, steppedMaximum)
+        }
+        static var defaultMemoryGiB: Int {
+            min(8, maximumAllowedMemoryGiB)
+        }
+        static var maximumAllowedMemoryMiB: UInt64 {
+            UInt64(maximumAllowedMemoryGiB * 1024)
+        }
+        static var memoryMiB: UInt64 {
+            UInt64(defaultMemoryGiB * 1024)
+        }
         static let sharedDirectoryTag = "tirosh"
         static let sharedDirectoryGuestMountPath = "/mnt/tirosh"
         static let vitalFilesDirectoryTag = "tirosh-vital-files"
@@ -115,10 +134,18 @@ enum Constants {
         static let updateActivationRequestFile = RuntimeFileNames.updateActivationRequest
         static let updateActivationResultFile = RuntimeFileNames.updateActivationResult
         static let updateActivationLogFile = RuntimeFileNames.updateActivationLog
+        static let updateShutdownRequestFile = RuntimeFileNames.updateShutdownRequest
+        static let updateShutdownResultFile = RuntimeFileNames.updateShutdownResult
+        static let updateShutdownLogFile = RuntimeFileNames.updateShutdownLog
         static let waitTimeoutSeconds = 600.0
+        static let serviceStopWaitTimeoutSeconds = 30.0
+        static let vmStopWaitTimeoutSeconds = 900.0
+        static let serviceStopPollIntervalSeconds = 0.5
         static let datastoreRepairWaitTimeoutSeconds = 300.0
         static let redisBackupWaitTimeoutSeconds = 300.0
         static let updateActivationWaitTimeoutSeconds = 180.0
+        static let updateShutdownWaitTimeoutSeconds = 300.0
+        static let vmBootLifecycleDeadlineSeconds = 600.0
         static let runtimeStateStaleAfterSeconds = 30.0
         static let watchdogRecoveryWaitSeconds = 20.0
         static let watchdogManagedOperationGraceSeconds = 1_800.0
@@ -154,7 +181,7 @@ enum Constants {
     }
 
     enum Bundle {
-        static let manifest = "manifest.json"
+        static let manifest = RuntimeFileNames.updateBundleManifest
         static let checksums = "checksums.txt"
         static let signature = "signature"
     }
@@ -168,6 +195,8 @@ enum Constants {
         static let plistBuddy = "/usr/libexec/PlistBuddy"
         static let chmod = "/bin/chmod"
         static let chown = "/usr/sbin/chown"
+        static let kill = "/bin/kill"
+        static let ps = "/bin/ps"
         static let tar = "/usr/bin/tar"
         static let lsof = "/usr/sbin/lsof"
     }

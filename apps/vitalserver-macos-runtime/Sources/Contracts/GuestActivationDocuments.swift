@@ -6,7 +6,6 @@ public enum GuestActivationStatus: Codable, Equatable, Sendable {
     case completed
     case failed
     case skipped
-    case stale
     case unknown(String)
 
     public init(rawValue: String) {
@@ -21,8 +20,6 @@ public enum GuestActivationStatus: Codable, Equatable, Sendable {
             self = .failed
         case "skipped":
             self = .skipped
-        case "stale":
-            self = .stale
         default:
             self = .unknown(rawValue)
         }
@@ -40,8 +37,6 @@ public enum GuestActivationStatus: Codable, Equatable, Sendable {
             return "failed"
         case .skipped:
             return "skipped"
-        case .stale:
-            return "stale"
         case .unknown(let value):
             return value
         }

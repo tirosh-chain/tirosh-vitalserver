@@ -5,6 +5,7 @@
 # before the request enters Docker, OrbStack, or the Linux VM shared/NAT network.
 
 worker_processes 1;
+error_log "${VITALSERVER_PROXY_NGINX_ERROR_LOG}";
 pid logs/nginx.pid;
 
 events {
@@ -12,8 +13,13 @@ events {
 }
 
 http {
-    access_log logs/access.log;
-    error_log logs/error.log;
+    access_log "${VITALSERVER_PROXY_NGINX_ACCESS_LOG}";
+    error_log "${VITALSERVER_PROXY_NGINX_ERROR_LOG}";
+    client_body_temp_path temp/client_body;
+    proxy_temp_path temp/proxy;
+    fastcgi_temp_path temp/fastcgi;
+    uwsgi_temp_path temp/uwsgi;
+    scgi_temp_path temp/scgi;
 
     map $http_upgrade $connection_upgrade {
         default upgrade;

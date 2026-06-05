@@ -8,6 +8,7 @@ from tirosh_vitalserver.testkit.domain.vital_file import (
     assert_vital_filenames,
     iter_vital_files,
 )
+from tirosh_vitalserver.testkit.errors import InvalidVitalFilenameError
 
 
 def test_iter_vital_files_returns_only_vital_files(tmp_path: Path) -> None:
@@ -34,5 +35,8 @@ def test_assert_vital_filenames_rejects_unknown_shape(tmp_path: Path) -> None:
     vital_file = tmp_path / "DEMO.vital"
     vital_file.write_bytes(b"payload")
 
-    with pytest.raises(ValueError, match="invalid vital filename format"):
+    with pytest.raises(
+        InvalidVitalFilenameError,
+        match="invalid vital filename format",
+    ):
         assert_vital_filenames(iter_vital_files(vital_file))

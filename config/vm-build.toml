@@ -14,11 +14,11 @@ runtime_cli_product_name = "vitalserver-vm"
 bundle_dir = ".tmp/VitalServer Helper.app"
 
 [macos.package]
-identifier = "com.tirosh.vitalserver.vm"
+identifier = "ai.tirosh.vitalserver.helper"
 
 # Filesystem contract for files laid down by the macOS installer.
 [macos.install]
-product_root = "/Library/Application Support/TiroshVitalServer"
+product_root = "/Library/Application Support/VitalServerHelper"
 applications_dir = "/Applications"
 launch_daemons_dir = "/Library/LaunchDaemons"
 vm_cli = "/usr/local/bin/vitalserver-vm"
@@ -29,30 +29,30 @@ uninstall_log = "/private/tmp/tirosh-vitalserver-uninstall.log"
 preserve_tmp_template = "/private/tmp/tirosh-vitalserver-preserve.XXXXXX"
 
 [macos.package.outputs]
-pkg_filename_template = "TiroshVitalServerVM-{releaseLabel}.pkg"
-dmg_filename_template = "TiroshVitalServer-{releaseLabel}.dmg"
-dmg_installer_pkg_name = "Install Tirosh VitalServer.pkg"
+pkg_filename_template = "VitalServerHelper-{releaseLabel}.pkg"
+dmg_filename_template = "VitalServerHelper-{releaseLabel}.dmg"
+dmg_installer_pkg_name = "Install VitalServer Helper.pkg"
 dmg_staging_dir = ".tmp/vitalserver-vm-dmg"
 
 [macos.launchd.vm]
-template_file = "com.tirosh.vitalserver-vm.plist.template"
-installed_plist = "com.tirosh.vitalserver-vm.plist"
+template_file = "ai.tirosh.vitalserver.helper.vm.plist.template"
+installed_plist = "ai.tirosh.vitalserver.helper.vm.plist"
 
 [macos.launchd.proxy]
-template_file = "com.tirosh.vitalserver-proxy.plist.template"
-installed_plist = "com.tirosh.vitalserver-proxy.plist"
+template_file = "ai.tirosh.vitalserver.helper.proxy.plist.template"
+installed_plist = "ai.tirosh.vitalserver.helper.proxy.plist"
 
 [macos.launchd.guest_log_sync]
-template_file = "com.tirosh.vitalserver-guest-log-sync.plist.template"
-installed_plist = "com.tirosh.vitalserver-guest-log-sync.plist"
+template_file = "ai.tirosh.vitalserver.helper.guest-log-sync.plist.template"
+installed_plist = "ai.tirosh.vitalserver.helper.guest-log-sync.plist"
 
 [macos.launchd.sleep_prevention]
-template_file = "com.tirosh.vitalserver-sleep-prevention.plist.template"
-installed_plist = "com.tirosh.vitalserver-sleep-prevention.plist"
+template_file = "ai.tirosh.vitalserver.helper.sleep-prevention.plist.template"
+installed_plist = "ai.tirosh.vitalserver.helper.sleep-prevention.plist"
 
 [macos.launchd.watchdog]
-template_file = "com.tirosh.vitalserver-watchdog.plist.template"
-installed_plist = "com.tirosh.vitalserver-watchdog.plist"
+template_file = "ai.tirosh.vitalserver.helper.watchdog.plist.template"
+installed_plist = "ai.tirosh.vitalserver.helper.watchdog.plist"
 
 [macos.host_proxy.nginx]
 binary_path = ".artifacts/nginx/macos/bin/nginx"
@@ -87,11 +87,14 @@ bootstrap_script = "/mnt/tirosh/deploy/bootstrap.sh"
 [guest.docker_images]
 platform = "linux/arm64"
 bundle_path = ".tmp/vitalserver-vm-pkg/docker-images/vitalserver-images.tar.gz"
+optional_bundle_path = ".tmp/vitalserver-vm-pkg/optional-docker-images/vitalserver-optional-images.tar.gz"
 app_dockerfile = "apps/vitalserver/docker/Dockerfile"
 audit_proxy_image = "vitalserver-audit-proxy:0.1.0"
 audit_proxy_dockerfile = "apps/vitalserver-audit-proxy/Dockerfile"
 vitaldb_observer_image = "vitaldb-observer:0.1.0"
 vitaldb_observer_dockerfile = "apps/vitaldb-observer/Dockerfile"
+testkit_image = "vitalserver-testkit:0.1.1"
+testkit_dockerfile = "packages/vitalserver-testkit/Dockerfile"
 images = [
   "vitalserver:2.3.4",
   "vitalserver-audit-proxy:0.1.0",
@@ -101,14 +104,23 @@ images = [
   "swaggerapi/swagger-ui:v5.17.14",
   "nginx:1.24-alpine",
 ]
+optional_images = [
+  "vitalserver-testkit:0.1.1",
+]
 
 [guest.deploy]
 docker_image_bundle_destination = "docker-images/vitalserver-images.tar.gz"
+optional_docker_image_bundle_destination = "optional-docker-images/vitalserver-optional-images.tar.gz"
+python_wheel_destination = "python-wheels"
+python_wheel_projects = [
+  "packages/vitalserver-guest-tools",
+]
 include = [
   "apps/vitalserver/docker",
   "apps/vitalserver/runtime",
   "apps/vitalserver-audit-proxy",
   "apps/vitaldb-observer",
+  "packages/vitalserver-testkit",
   "vendor/vitalserver/vitalserver-old",
   "docs/openapi.yaml",
   "docs/openapi/audit-proxy.openapi.yaml",

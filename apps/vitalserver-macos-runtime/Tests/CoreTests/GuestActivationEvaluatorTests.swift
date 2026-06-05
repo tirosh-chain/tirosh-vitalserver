@@ -3,10 +3,10 @@ import Contracts
 import XCTest
 
 final class GuestActivationEvaluatorTests: XCTestCase {
-    func testMissingResultWaits() {
+    func testMissingResultIsDistinctFromPendingWorkerState() {
         XCTAssertEqual(
             GuestActivationEvaluator.evaluate(nil),
-            .wait(message: "waiting for guest update activation worker")
+            .missing(message: "waiting for guest update activation worker")
         )
     }
 
@@ -43,23 +43,23 @@ final class GuestActivationEvaluatorTests: XCTestCase {
         )
     }
 
-    func testStaleRequestIdIsIgnored() {
+    func testMismatchedRequestIdFails() {
         XCTAssertEqual(
             GuestActivationEvaluator.evaluate(
                 result(status: .completed, requestId: "old", message: "old done"),
                 expectedRequestId: "new"
             ),
-            .stale(message: "stale guest update activation result")
+            .failed(message: "guest update activation result does not match the current request")
         )
     }
 
-    func testV2ResultMissingRequestIdIsStaleWhenExpectedRequestIdExists() {
+    func testV2ResultMissingRequestIdFailsWhenExpectedRequestIdExists() {
         XCTAssertEqual(
             GuestActivationEvaluator.evaluate(
                 result(schemaVersion: 2, status: .completed, requestId: nil, message: "done"),
                 expectedRequestId: "new"
             ),
-            .stale(message: "guest update activation result is missing requestId")
+            .failed(message: "guest update activation result is missing requestId")
         )
     }
 

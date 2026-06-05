@@ -22,10 +22,17 @@ dist/
 tmp/
 temp/
 .build/
+.cache/
+
+# Node
+node_modules/
 
 # Swift / Xcode
 .swiftpm/
 DerivedData/
+xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
 
 # VM images and local VM runtime
 *.qcow2
@@ -46,10 +53,17 @@ apps/vitalserver-vm-launcher/data/
 
 # Python
 .venv/
+.mypy_cache/
+.pyre/
 .pytest_cache/
 .ruff_cache/
+.tox/
 __pycache__/
 *.py[cod]
+.coverage
+coverage/
+coverage.xml
+htmlcov/
 
 # VitalServer is managed as a git submodule.
 vendor/vitalserver/

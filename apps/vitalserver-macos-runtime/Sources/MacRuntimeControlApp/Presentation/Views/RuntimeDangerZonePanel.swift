@@ -31,13 +31,17 @@ struct RuntimeDangerZonePanel: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-                if !viewModel.backups.isEmpty {
+                if let backupListErrorMessage = viewModel.backupListErrorMessage {
+                    Text(backupListErrorMessage)
+                        .foregroundStyle(.red)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else if !viewModel.backups.isEmpty {
                     Grid(alignment: .leading, horizontalSpacing: 20, verticalSpacing: 10) {
                         settingRow(AppConstants.Labels.rollbackBackup) {
                             Picker("", selection: $viewModel.selectedBackupPath) {
                                 ForEach(viewModel.backups) { backup in
                                     Text("\(backup.name) (\(viewModel.presentationFormatter.backupSizeText(backup)))")
-                                        .tag(backup.path)
+                                        .tag(Optional(backup.path))
                                 }
                             }
                             .labelsHidden()
@@ -69,7 +73,7 @@ struct RuntimeDangerZonePanel: View {
                 }
                 .disabled(
                     viewModel.isBusy
-                        || viewModel.selectedBackupPath.isEmpty
+                        || !viewModel.hasSelectedBackup
                         || !viewModel.capabilities.canRollback
                 )
             }

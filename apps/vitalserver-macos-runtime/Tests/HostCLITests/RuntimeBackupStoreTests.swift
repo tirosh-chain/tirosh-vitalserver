@@ -90,10 +90,29 @@ final class RuntimeBackupStoreTests: XCTestCase {
 
         let manifestPath = "/product/backups/20260522T010203Z-before-0.1.4/backup-manifest.json"
         let manifest = try XCTUnwrap(writtenFiles[manifestPath])
-        XCTAssertTrue(manifest.contains(#""product" : "com.tirosh.vitalserver""#))
+        XCTAssertTrue(manifest.contains(#""product" : "ai.tirosh.vitalserver.helper""#))
         XCTAssertTrue(manifest.contains(#""createdAt" : "2026-05-22T01:02:03Z""#))
         XCTAssertTrue(manifest.contains(#""reason" : "before-0.1.4""#))
+        XCTAssertTrue(manifest.contains(#""rootfsBase" : "rootfs-base.raw.gz""#))
         XCTAssertTrue(manifest.contains(#""vmDiskPreserved" : true"#))
+    }
+
+    func testCreateBackupManifestOmitsRootfsWhenSourceIsMissing() throws {
+        var writtenFiles: [String: String] = [:]
+        let paths = makePaths()
+        let store = makeStore(
+            paths: paths,
+            fileExists: { url in url == paths.runtimeVersion },
+            writeData: { data, url in
+                writtenFiles[url.path] = String(data: data, encoding: .utf8)
+            }
+        )
+
+        _ = try store.createBackup(reason: "before-0.1.4")
+
+        let manifestPath = "/product/backups/20260522T010203Z-before-0.1.4/backup-manifest.json"
+        let manifest = try XCTUnwrap(writtenFiles[manifestPath])
+        XCTAssertFalse(manifest.contains(#""rootfsBase""#))
     }
 
     func testRestoreBackupPathReplacesExistingDestination() throws {
@@ -163,7 +182,7 @@ final class RuntimeBackupStoreTests: XCTestCase {
         ])
     }
 
-    func testLatestBackupSelectsNewestManagedBeforeBackup() {
+    func testLatestBackupSelectsNewestManagedBeforeBackup() throws {
         let store = makeStore(
             childDirectories: { url, nameContains in
                 XCTAssertEqual(url.path, "/product/backups")
@@ -175,7 +194,17 @@ final class RuntimeBackupStoreTests: XCTestCase {
             }
         )
 
-        XCTAssertEqual(store.latestBackup()?.path, "/product/backups/20260522T000000Z-before-0.1.3")
+        XCTAssertEqual(try store.latestBackup()?.path, "/product/backups/20260522T000000Z-before-0.1.3")
+    }
+
+    func testLatestBackupPropagatesReadFailure() {
+        let store = makeStore(
+            childDirectories: { _, _ in
+                throw NSError(domain: "backup-read", code: 1)
+            }
+        )
+
+        XCTAssertThrowsError(try store.latestBackup())
     }
 
     func testRequireLatestBackupFailsWhenNoneExists() {

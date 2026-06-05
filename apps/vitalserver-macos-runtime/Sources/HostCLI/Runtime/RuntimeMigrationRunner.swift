@@ -1,13 +1,23 @@
-import Foundation
-import Core
 import Contracts
+import Foundation
+import RuntimeWorkflow
 
-struct RuntimeMigrationRunner {
-    var isExecutableFile: (String) -> Bool
-    var runRequired: (String, [String]) throws -> Void
-    var log: (String) -> Void
+public struct RuntimeMigrationRunner {
+    public var isExecutableFile: (String) -> Bool
+    public var runRequired: (String, [String]) throws -> Void
+    public var log: (String) -> Void
 
-    func run(_ migrations: [UpdateBundleMigration], stagedBundle: URL) throws {
+    public init(
+        isExecutableFile: @escaping (String) -> Bool,
+        runRequired: @escaping (String, [String]) throws -> Void,
+        log: @escaping (String) -> Void
+    ) {
+        self.isExecutableFile = isExecutableFile
+        self.runRequired = runRequired
+        self.log = log
+    }
+
+    public func run(_ migrations: [UpdateBundleMigration], stagedBundle: URL) throws {
         guard !migrations.isEmpty else {
             log("no migrations to run")
             return
@@ -17,8 +27,8 @@ struct RuntimeMigrationRunner {
         for migration in migrations {
             let migrationURL = migrationDirectory.appendingPathComponent(migration.name)
             guard isExecutableFile(migrationURL.path) else {
-                throw LauncherError.bundleVerificationFailed(
-                    "migration is not executable: \(migration.name)"
+                throw RuntimeWorkflowError.operationFailed(
+                    "bundle verification failed: migration is not executable: \(migration.name)"
                 )
             }
             log("running migration name=\(migration.name) path=\(migrationURL.path)")

@@ -260,7 +260,7 @@
                 },
                 "examples": {
                   "statusChanged": {
-                    "value": "id: event-1\nevent: status-changed\ndata: {\"id\":\"event-1\",\"eventType\":\"status-changed\",\"timestamp\":\"2026-05-24T00:00:00Z\",\"product\":\"TiroshVitalServer\",\"status\":\"healthy\",\"operation\":\"health\",\"message\":\"ready\"}\n\n"
+                    "value": "id: event-1\nevent: status-changed\ndata: {\"id\":\"event-1\",\"eventType\":\"status-changed\",\"timestamp\":\"2026-05-24T00:00:00Z\",\"product\":\"VitalServerHelper\",\"status\":\"healthy\",\"operation\":\"health\",\"message\":\"ready\"}\n\n"
                   }
                 }
               }
@@ -323,7 +323,7 @@
         "operationId": "applyRuntimeSettings",
         "summary": "Apply runtime settings",
         "x-runtime-control-scope": "runtimeControl",
-        "x-runtime-control-implementation": "planned",
+        "x-runtime-control-implementation": "localCommand",
         "x-runtime-control-access": "localServerMediated",
         "requestBody": {
           "required": true,
@@ -341,9 +341,6 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
-          },
-          "501": {
-            "$ref": "#/components/responses/NotImplemented"
           }
         }
       }
@@ -401,14 +398,14 @@
         "operationId": "startRuntimeServices",
         "summary": "Start runtime services",
         "x-runtime-control-scope": "runtimeControl",
-        "x-runtime-control-implementation": "planned",
+        "x-runtime-control-implementation": "localCommand",
         "x-runtime-control-access": "localServerMediated",
         "responses": {
           "200": {
             "$ref": "#/components/responses/CommandResult"
           },
-          "501": {
-            "$ref": "#/components/responses/NotImplemented"
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           }
         }
       }
@@ -418,14 +415,32 @@
         "operationId": "stopRuntimeServices",
         "summary": "Stop runtime services",
         "x-runtime-control-scope": "runtimeControl",
-        "x-runtime-control-implementation": "planned",
+        "x-runtime-control-implementation": "localCommand",
         "x-runtime-control-access": "localServerMediated",
         "responses": {
           "200": {
             "$ref": "#/components/responses/CommandResult"
           },
-          "501": {
-            "$ref": "#/components/responses/NotImplemented"
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/runtime/services/repair-runtime": {
+      "post": {
+        "operationId": "repairRuntimeServices",
+        "summary": "Repair runtime services",
+        "description": "Restarts the VM, guest log sync, host proxy, and watchdog services.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "localCommand",
+        "x-runtime-control-access": "localServerMediated",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/CommandResult"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           }
         }
       }
@@ -435,7 +450,7 @@
         "operationId": "repairRuntimeProxy",
         "summary": "Repair host proxy service",
         "x-runtime-control-scope": "runtimeControl",
-        "x-runtime-control-implementation": "planned",
+        "x-runtime-control-implementation": "localCommand",
         "x-runtime-control-access": "localServerMediated",
         "requestBody": {
           "required": true,
@@ -451,8 +466,8 @@
           "200": {
             "$ref": "#/components/responses/CommandResult"
           },
-          "501": {
-            "$ref": "#/components/responses/NotImplemented"
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           }
         }
       }
@@ -462,14 +477,32 @@
         "operationId": "repairRuntimeDatastore",
         "summary": "Repair datastore",
         "x-runtime-control-scope": "runtimeControl",
-        "x-runtime-control-implementation": "planned",
+        "x-runtime-control-implementation": "localCommand",
         "x-runtime-control-access": "localServerMediated",
         "responses": {
           "200": {
             "$ref": "#/components/responses/CommandResult"
           },
-          "501": {
-            "$ref": "#/components/responses/NotImplemented"
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/runtime/services/repair-vm-disk": {
+      "post": {
+        "operationId": "repairRuntimeVMDisk",
+        "summary": "Repair VM disk",
+        "description": "Archives the current mutable VM disk, recreates it from the installed base image, and restarts runtime services.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "localCommand",
+        "x-runtime-control-access": "localServerMediated",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/CommandResult"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           }
         }
       }
@@ -497,7 +530,7 @@
         "operationId": "uninstallRuntime",
         "summary": "Uninstall runtime",
         "x-runtime-control-scope": "runtimeControl",
-        "x-runtime-control-implementation": "planned",
+        "x-runtime-control-implementation": "localCommand",
         "x-runtime-control-access": "localServerMediated",
         "requestBody": {
           "required": true,
@@ -549,7 +582,7 @@
         "operationId": "deleteHostBackup",
         "summary": "Delete selected local backup",
         "x-runtime-control-scope": "hostAffordance",
-        "x-runtime-control-implementation": "planned",
+        "x-runtime-control-implementation": "localCommand",
         "x-runtime-control-access": "localServerMediated",
         "requestBody": {
           "required": true,
@@ -630,7 +663,7 @@
         "operationId": "readHostLogText",
         "summary": "Read local log text",
         "x-runtime-control-scope": "hostAffordance",
-        "x-runtime-control-implementation": "planned",
+        "x-runtime-control-implementation": "readOnlyLocal",
         "x-runtime-control-access": "localServerMediated",
         "requestBody": {
           "required": true,
@@ -721,7 +754,7 @@
         "operationId": "exportHostLogs",
         "summary": "Export local logs",
         "x-runtime-control-scope": "hostAffordance",
-        "x-runtime-control-implementation": "planned",
+        "x-runtime-control-implementation": "localCommand",
         "x-runtime-control-access": "nativeShellOnly",
         "requestBody": {
           "required": true,
@@ -755,7 +788,7 @@
         "operationId": "summarizeHostUpdateBundle",
         "summary": "Summarize selected update bundle",
         "x-runtime-control-scope": "hostAffordance",
-        "x-runtime-control-implementation": "planned",
+        "x-runtime-control-implementation": "readOnlyLocal",
         "x-runtime-control-access": "localServerMediated",
         "requestBody": {
           "required": true,
@@ -789,7 +822,7 @@
         "operationId": "verifyHostUpdateBundle",
         "summary": "Verify selected update bundle",
         "x-runtime-control-scope": "hostAffordance",
-        "x-runtime-control-implementation": "planned",
+        "x-runtime-control-implementation": "localCommand",
         "x-runtime-control-access": "localServerMediated",
         "requestBody": {
           "required": true,
@@ -816,7 +849,7 @@
         "operationId": "applyHostUpdateBundle",
         "summary": "Apply selected update bundle",
         "x-runtime-control-scope": "hostAffordance",
-        "x-runtime-control-implementation": "planned",
+        "x-runtime-control-implementation": "localCommand",
         "x-runtime-control-access": "localServerMediated",
         "requestBody": {
           "required": true,
@@ -843,7 +876,7 @@
         "operationId": "rollbackHostBackup",
         "summary": "Rollback selected local backup",
         "x-runtime-control-scope": "hostAffordance",
-        "x-runtime-control-implementation": "planned",
+        "x-runtime-control-implementation": "localCommand",
         "x-runtime-control-access": "localServerMediated",
         "requestBody": {
           "required": true,
@@ -900,7 +933,7 @@
       "get": {
         "operationId": "streamVitalDBObservations",
         "summary": "Subscribe to VitalDB observation updates",
-        "description": "Long-lived SSE stream for latest VitalDB observation snapshot changes.",
+        "description": "Long-lived SSE stream for latest VitalDB observation snapshot changes. Each data frame is a JSON encoded RuntimeVitalDBObservationSnapshot so read state and readError are preserved.",
         "x-runtime-control-scope": "runtimeControl",
         "x-runtime-control-implementation": "readOnlyLocal",
         "x-runtime-control-access": "browserSafe",
@@ -911,7 +944,7 @@
               "text/event-stream": {
                 "schema": {
                   "type": "string",
-                  "description": "SSE frames with event=vitaldb-observed."
+                  "description": "SSE frames with event=vitaldb-observed and data=RuntimeVitalDBObservationSnapshot JSON."
                 }
               }
             }
@@ -978,6 +1011,527 @@
                       "type": "null"
                     }
                   ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/vitaldb/beds": {
+      "get": {
+        "operationId": "getVitalDBBeds",
+        "summary": "Read VitalDB bed history by bedID",
+        "description": "Aggregated bed history derived from stored VitalDB observation snapshots. bedID is the bed identity key.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "readOnlyLocal",
+        "x-runtime-control-access": "browserSafe",
+        "responses": {
+          "200": {
+            "description": "VitalDB bed records",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RuntimeVitalBedRecord"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/vitaldb/beds/{bedID}": {
+      "get": {
+        "operationId": "getVitalDBBed",
+        "summary": "Read one VitalDB bed by bedID",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "readOnlyLocal",
+        "x-runtime-control-access": "browserSafe",
+        "parameters": [
+          {
+            "name": "bedID",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "VitalDB bed record, or null when no bed has been observed for the requested bedID.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/RuntimeVitalBedRecord"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/dev/testkit/status": {
+      "get": {
+        "operationId": "getDevTestKitStatus",
+        "summary": "Read TestKit virtual VRecorder status",
+        "description": "Development-only TestKit status used by the native Test tab and PWA console.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "testOnlyLocal",
+        "x-runtime-control-access": "browserSafe",
+        "responses": {
+          "200": {
+            "description": "TestKit status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeTestKitStatus"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/dev/testkit/beds/create": {
+      "post": {
+        "operationId": "createDevTestKitBeds",
+        "summary": "Create TestKit beds",
+        "description": "Development-only route for registering explicit TestKit bed identities before virtual VRecorders are started.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "testOnlyLocal",
+        "x-runtime-control-access": "operatorOnly",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeTestKitCreateBedsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Registered TestKit beds.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RuntimeTestKitBed"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/dev/testkit/beds/delete": {
+      "post": {
+        "operationId": "deleteDevTestKitBeds",
+        "summary": "Delete selected TestKit beds",
+        "description": "Development-only route for deleting selected TestKit bed identities and their matching VitalServer bed records.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "testOnlyLocal",
+        "x-runtime-control-access": "operatorOnly",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeTestKitDeleteBedsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Deleted TestKit beds.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RuntimeTestKitBed"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/dev/testkit/beds/reset": {
+      "post": {
+        "operationId": "resetDevTestKitBeds",
+        "summary": "Reset TestKit beds",
+        "description": "Development-only route for clearing registered TestKit bed identities.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "testOnlyLocal",
+        "x-runtime-control-access": "operatorOnly",
+        "responses": {
+          "200": {
+            "description": "Deleted TestKit beds.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RuntimeTestKitBed"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/dev/testkit/virtual-recorders/start": {
+      "post": {
+        "operationId": "startDevTestKitVirtualRecorders",
+        "summary": "Start TestKit virtual VRecorders",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "testOnlyLocal",
+        "x-runtime-control-access": "operatorOnly",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeTestKitVirtualRecorderStartRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Started TestKit session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeTestKitSession"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/dev/testkit/virtual-recorders/stop": {
+      "post": {
+        "operationId": "stopDevTestKitVirtualRecorders",
+        "summary": "Stop a TestKit virtual VRecorder session",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "testOnlyLocal",
+        "x-runtime-control-access": "operatorOnly",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeTestKitSessionSelectionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Stopped TestKit session or null when no session was selected.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/RuntimeTestKitSession"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/dev/testkit/virtual-recorders/pause": {
+      "post": {
+        "operationId": "pauseDevTestKitVirtualRecorders",
+        "summary": "Pause TestKit virtual VRecorder data transmission",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "testOnlyLocal",
+        "x-runtime-control-access": "operatorOnly",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeTestKitSessionSelectionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Paused TestKit session or null when no session was selected.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/RuntimeTestKitSession"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/dev/testkit/virtual-recorders/resume": {
+      "post": {
+        "operationId": "resumeDevTestKitVirtualRecorders",
+        "summary": "Resume TestKit virtual VRecorder data transmission",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "testOnlyLocal",
+        "x-runtime-control-access": "operatorOnly",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeTestKitSessionSelectionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Resumed TestKit session or null when no session was selected.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/RuntimeTestKitSession"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/dev/testkit/virtual-recorders/restart": {
+      "post": {
+        "operationId": "restartDevTestKitVirtualRecorders",
+        "summary": "Restart a stopped TestKit virtual VRecorder session on selected beds",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "testOnlyLocal",
+        "x-runtime-control-access": "operatorOnly",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeTestKitRestartRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Restarted TestKit session or null when no session was selected.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/RuntimeTestKitSession"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/dev/testkit/virtual-recorders/delete": {
+      "post": {
+        "operationId": "deleteDevTestKitVirtualRecorders",
+        "summary": "Delete a TestKit virtual VRecorder session and cleanup VitalServer recorder registrations",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "testOnlyLocal",
+        "x-runtime-control-access": "operatorOnly",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeTestKitSessionSelectionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Deleted TestKit session or a cleanup-failed session that remains retryable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/RuntimeTestKitSession"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/dev/testkit/virtual-recorders/delete-orphan": {
+      "post": {
+        "operationId": "deleteDevTestKitOrphanVRecorder",
+        "summary": "Delete one orphan VRecorder registration by vrcode",
+        "description": "Test-only cleanup route for VRecorders that remain in VitalServer without a managed TestKit session.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "testOnlyLocal",
+        "x-runtime-control-access": "operatorOnly",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeTestKitRecorderDeletionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Direct VRecorder deletion result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeTestKitRecorderDeletion"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/dev/testkit/virtual-recorders/reset": {
+      "post": {
+        "operationId": "resetDevTestKitVirtualRecorders",
+        "summary": "Reset all TestKit virtual VRecorder sessions",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "testOnlyLocal",
+        "x-runtime-control-access": "operatorOnly",
+        "responses": {
+          "200": {
+            "description": "Updated TestKit status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeTestKitStatus"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/vitaldb/relationships": {
+      "get": {
+        "operationId": "getVitalDBRelationships",
+        "summary": "Read Vital Recorder and bed relationship history",
+        "description": "Derived read model for bed-to-VRecorder assignments and relationship anomalies. Raw VitalDB observation snapshots remain the source of truth.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "readOnlyLocal",
+        "x-runtime-control-access": "browserSafe",
+        "responses": {
+          "200": {
+            "description": "Vital Recorder relationship history",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeVitalRelationshipHistory"
                 }
               }
             }
@@ -1056,6 +1610,8 @@
           "vmIP": "192.168.64.33",
           "guestHTTP": "200",
           "hostProxyHTTP": "200",
+          "runtimeControlHTTP": "200",
+          "runtimeControlStartedAt": "2026-05-26T04:30:00Z",
           "redisUIHTTP": "200",
           "swaggerUIHTTP": "200",
           "dataDirectoryStats": {
@@ -1072,6 +1628,14 @@
         "type": "object",
         "additionalProperties": false,
         "description": "Aggregated PWA read model aligned with the native runtime status UI.",
+        "required": [
+          "status",
+          "settings",
+          "release",
+          "install",
+          "vitalDBObservationSnapshot",
+          "vitalRecorder"
+        ],
         "properties": {
           "status": {
             "$ref": "#/components/schemas/RuntimeStatus"
@@ -1095,15 +1659,62 @@
               }
             ]
           },
+          "vitalDBObservationSnapshot": {
+            "$ref": "#/components/schemas/RuntimeVitalDBObservationSnapshot"
+          },
           "vitalRecorder": {
             "$ref": "#/components/schemas/RuntimeVitalRecorderSummary"
           }
         }
       },
+      "RuntimeVitalDBObservationSnapshot": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Explicit latest VitalDB observation read state. observation remains null when the observability read path has no latest snapshot or failed before producing one.",
+        "required": [
+          "state"
+        ],
+        "properties": {
+          "state": {
+            "$ref": "#/components/schemas/RuntimeVitalDBObservationReadState"
+          },
+          "observation": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/VitalDBObservationDocument"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "readError": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "RuntimeVitalDBObservationReadState": {
+        "type": "string",
+        "enum": [
+          "loaded",
+          "unavailable",
+          "failed"
+        ]
+      },
       "RuntimeVitalRecorderSummary": {
         "type": "object",
         "additionalProperties": false,
-        "description": "PWA-friendly Vital Recorder summary derived from VitalDB observation first, then audit-proxy recorder connections as fallback.",
+        "description": "PWA-friendly Vital Recorder summary derived from VitalDB observation. activeConnections is copied from audit-proxy connection status when available.",
+        "required": [
+          "source"
+        ],
         "properties": {
           "source": {
             "$ref": "#/components/schemas/RuntimeVitalRecorderSummarySource"
@@ -1153,6 +1764,10 @@
       "RuntimeVitalRecorderReference": {
         "type": "object",
         "additionalProperties": false,
+        "required": [
+          "vrcode",
+          "source"
+        ],
         "properties": {
           "vrcode": {
             "type": "string"
@@ -1178,7 +1793,6 @@
         "type": "string",
         "enum": [
           "vitalDBObservation",
-          "auditProxy",
           "unavailable"
         ]
       },
@@ -1186,6 +1800,12 @@
         "type": "object",
         "additionalProperties": false,
         "description": "Aggregated history of VRecorders keyed by vrcode.",
+        "required": [
+          "recorders",
+          "beds",
+          "summary",
+          "activityHistory"
+        ],
         "properties": {
           "updatedAt": {
             "type": [
@@ -1198,12 +1818,141 @@
             "items": {
               "$ref": "#/components/schemas/RuntimeVitalRecorderRecord"
             }
+          },
+          "beds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeVitalBedRecord"
+            }
+          },
+          "summary": {
+            "$ref": "#/components/schemas/RuntimeVitalRecorderHistorySummary"
+          },
+          "activityHistory": {
+            "$ref": "#/components/schemas/RuntimeVitalRecorderActivityHistory"
+          },
+          "readError": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Recorder history read issue. Present when observation/current/activity projection reads failed and the recorders/beds lists may be incomplete."
           }
         }
+      },
+      "RuntimeVitalRecorderHistorySummary": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Provider-owned summary for the derived Vital Recorder and Bed history read model.",
+        "required": [
+          "knownRecorders",
+          "currentRecorders",
+          "onlineRecorders",
+          "staleRecorders",
+          "recorderAnomalies",
+          "knownBeds",
+          "onlineBeds",
+          "staleBeds",
+          "bedAssignments",
+          "bedAnomalies"
+        ],
+        "properties": {
+          "knownRecorders": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "currentRecorders": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "onlineRecorders": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "staleRecorders": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "recorderAnomalies": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "knownBeds": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "onlineBeds": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "staleBeds": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "bedAssignments": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "bedAnomalies": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "RuntimeVitalRecorderActivityHistory": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Metadata for the durable recorder activity bucket projection used by recorder charts.",
+        "required": [
+          "source",
+          "bucketCount"
+        ],
+        "properties": {
+          "source": {
+            "$ref": "#/components/schemas/RuntimeVitalRecorderActivityHistorySource"
+          },
+          "bucketCount": {
+            "type": "integer"
+          },
+          "earliestBucketStartedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "latestBucketStartedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "readError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "RuntimeVitalRecorderActivityHistorySource": {
+        "type": "string",
+        "enum": [
+          "sqliteProjection",
+          "unavailable",
+          "notProvided"
+        ]
       },
       "RuntimeVitalRecorderRecord": {
         "type": "object",
         "additionalProperties": false,
+        "required": [
+          "vrcode",
+          "status",
+          "observationCount",
+          "duplicateObservationCount",
+          "currentAnomalyCount",
+          "presentInLatestObservation"
+        ],
         "properties": {
           "vrcode": {
             "type": "string"
@@ -1257,6 +2006,11 @@
             "type": "integer",
             "minimum": 0
           },
+          "duplicateObservationCount": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Number of extra source recorder observations collapsed because they shared this VRecorder identity."
+          },
           "currentAnomalyCount": {
             "type": "integer",
             "minimum": 0
@@ -1271,6 +2025,10 @@
               }
             ]
           },
+          "presentInLatestObservation": {
+            "type": "boolean",
+            "description": "True when this recorder is present in the latest VitalDB observation snapshot; false means it is historical."
+          },
           "activityTimeline": {
             "type": "array",
             "description": "Chronological activity samples for the VRecorder, derived from VitalDB observer snapshots.",
@@ -1280,10 +2038,53 @@
           }
         }
       },
+      "RuntimeVitalRecorderActivityBucket": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "One recorder activity bucket from the VitalDB observer.",
+        "required": [
+          "bucketStartedAt",
+          "bucketSeconds",
+          "messageCount",
+          "byteCount",
+          "roomCount"
+        ],
+        "properties": {
+          "bucketStartedAt": {
+            "type": "string"
+          },
+          "bucketSeconds": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "messageCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "byteCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "roomCount": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
       "RuntimeVitalRecorderActivityPoint": {
         "type": "object",
         "additionalProperties": false,
         "description": "Windowed VRecorder data activity sample suitable for UI charts.",
+        "required": [
+          "observedAt",
+          "windowSeconds",
+          "messageCount",
+          "byteCount",
+          "roomCount",
+          "messagesPerSecond",
+          "bytesPerSecond",
+          "buckets"
+        ],
         "properties": {
           "observedAt": {
             "type": "string"
@@ -1311,6 +2112,13 @@
           "bytesPerSecond": {
             "type": "number",
             "minimum": 0
+          },
+          "buckets": {
+            "type": "array",
+            "description": "Per-bucket activity values from the latest observer window.",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeVitalRecorderActivityBucket"
+            }
           }
         }
       },
@@ -1320,7 +2128,238 @@
           "online",
           "stale",
           "offline",
+          "notObserved",
           "unknown"
+        ]
+      },
+      "RuntimeVitalBedRecord": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Aggregated history of one VitalDB bed keyed by bedID.",
+        "required": [
+          "bedID",
+          "status",
+          "observationCount",
+          "duplicateObservationCount",
+          "currentAnomalyCount"
+        ],
+        "properties": {
+          "bedID": {
+            "type": "string"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "vrcode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/RuntimeVitalBedStatus"
+          },
+          "patientConnected": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "firstSeenAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastSeenAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "observationCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "duplicateObservationCount": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Number of extra source bed observations collapsed because they shared this bed identity."
+          },
+          "currentAnomalyCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "latestAnomalySeverity": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/VitalDBAnomalySeverity"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "RuntimeVitalBedStatus": {
+        "type": "string",
+        "enum": [
+          "online",
+          "stale",
+          "offline",
+          "notObserved",
+          "unknown"
+        ]
+      },
+      "RuntimeVitalRelationshipHistory": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Derived assignment and relationship event history between VitalDB beds and VRecorders.",
+        "properties": {
+          "assignments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeVitalBedAssignmentRecord"
+            }
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeVitalRelationshipEventRecord"
+            }
+          },
+          "readError": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Relationship projection read issue. Present when assignments or relationship events could not be read completely."
+          }
+        }
+      },
+      "RuntimeVitalBedAssignmentRecord": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "assignmentID": {
+            "type": "string"
+          },
+          "bedID": {
+            "type": "string"
+          },
+          "bedName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "vrcode": {
+            "type": "string"
+          },
+          "startedAt": {
+            "type": "string"
+          },
+          "endedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastSeenAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastObservedAt": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RuntimeVitalBedStatus"
+          },
+          "patientConnected": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "observationCount": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "RuntimeVitalRelationshipEventRecord": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "eventID": {
+            "type": "string"
+          },
+          "observedAt": {
+            "type": "string"
+          },
+          "eventType": {
+            "$ref": "#/components/schemas/RuntimeVitalRelationshipEventType"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/RuntimeVitalRelationshipSeverity"
+          },
+          "bedID": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "bedName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "vrcode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previousVrcode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previousBedID": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "RuntimeVitalRelationshipEventType": {
+        "type": "string",
+        "enum": [
+          "handoff",
+          "duplicateAssignment",
+          "unlinkedBed",
+          "unlinkedRecorder",
+          "staleLink"
+        ]
+      },
+      "RuntimeVitalRelationshipSeverity": {
+        "type": "string",
+        "enum": [
+          "info",
+          "warning",
+          "critical"
         ]
       },
       "VitalDBAnomalySeverity": {
@@ -1370,6 +2409,9 @@
           },
           "canViewReleaseMetadata": {
             "type": "boolean"
+          },
+          "canUseTestTools": {
+            "type": "boolean"
           }
         }
       },
@@ -1410,6 +2452,12 @@
             ]
           },
           "statusMessage": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "statusDocumentError": {
             "type": [
               "string",
               "null"
@@ -1470,6 +2518,20 @@
               "null"
             ]
           },
+          "runtimeControlHTTP": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "HTTP reachability status for the Remote Console and Runtime Control API server."
+          },
+          "runtimeControlStartedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "ISO-8601 UTC timestamp for the Remote Console and Runtime Control API server start time. Clients should derive live uptime from this value."
+          },
           "redisUIHTTP": {
             "type": [
               "string",
@@ -1497,6 +2559,12 @@
           "dataStorage": {
             "$ref": "#/components/schemas/ResourceUsage"
           },
+          "guestRuntimeStateError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "dataDirectoryStats": {
             "oneOf": [
               {
@@ -1505,6 +2573,12 @@
               {
                 "type": "null"
               }
+            ]
+          },
+          "dataDirectoryStatsError": {
+            "type": [
+              "string",
+              "null"
             ]
           },
           "proxyPort": {
@@ -1548,6 +2622,9 @@
       "RuntimeEventHistory": {
         "type": "object",
         "additionalProperties": false,
+        "required": [
+          "events"
+        ],
         "properties": {
           "events": {
             "type": "array",
@@ -1561,12 +2638,31 @@
               "null"
             ],
             "description": "Opaque pagination cursor for the next page. Omitted or null when there is no next page."
+          },
+          "matchingCount": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "Total number of events matching the query before applying limit pagination."
           }
         }
       },
       "RuntimeEventDocument": {
         "type": "object",
         "additionalProperties": false,
+        "required": [
+          "schemaVersion",
+          "id",
+          "source",
+          "eventType",
+          "timestamp",
+          "product",
+          "message",
+          "runtimeVersion",
+          "failureReasons"
+        ],
         "properties": {
           "schemaVersion": {
             "type": "integer"
@@ -1668,6 +2764,8 @@
           "health-observed",
           "recovery-triggered",
           "recovery-completed",
+          "recovery-suppressed",
+          "recovery-deferred",
           "domain-error-observed",
           "vm-error-observed",
           "container-observed",
@@ -1766,6 +2864,11 @@
       "RuntimeContainerObservation": {
         "type": "object",
         "additionalProperties": false,
+        "required": [
+          "auditProxyHTTP",
+          "containerLogsPresent",
+          "composeServices"
+        ],
         "properties": {
           "auditProxyHTTP": {
             "type": "string"
@@ -1780,6 +2883,12 @@
               }
             ]
           },
+          "auditProxyStatusReadError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "runtimeStateUpdatedAt": {
             "type": [
               "string",
@@ -1787,6 +2896,12 @@
             ]
           },
           "runtimeStateFileUpdatedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "runtimeStateFileMetadataError": {
             "type": [
               "string",
               "null"
@@ -1808,17 +2923,41 @@
               "null"
             ]
           },
+          "containerLogsMetadataError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "composeServices": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/RuntimeContainerServiceObservation"
             }
+          },
+          "composeServicesReadError": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
       "RuntimeAuditProxyStatusDocument": {
         "type": "object",
         "additionalProperties": false,
+        "required": [
+          "activeWebSockets",
+          "activeRecorderConnections",
+          "recorders",
+          "httpRequests",
+          "socketIoEventsSeen",
+          "socketIoParseFailures",
+          "auditWriteFailures",
+          "auditFileWriteFailures",
+          "auditStdoutWriteFailures",
+          "redisIpWriteFailures"
+        ],
         "properties": {
           "startedAt": {
             "type": [
@@ -1880,6 +3019,10 @@
       "RuntimeRecorderConnectionObservation": {
         "type": "object",
         "additionalProperties": false,
+        "required": [
+          "vrcode",
+          "activeConnections"
+        ],
         "properties": {
           "vrcode": {
             "type": "string"
@@ -1905,6 +3048,9 @@
       "RuntimeContainerServiceObservation": {
         "type": "object",
         "additionalProperties": false,
+        "required": [
+          "service"
+        ],
         "properties": {
           "service": {
             "type": "string"
@@ -1984,7 +3130,37 @@
       "RuntimeSettings": {
         "type": "object",
         "additionalProperties": false,
+        "required": [
+          "readIssues",
+          "cpuCount",
+          "memoryGiB",
+          "diskGiB",
+          "minimumDiskGiB",
+          "networkMode",
+          "bridgedInterface",
+          "proxyPort",
+          "runtimeControlPort",
+          "vitalFilesDirectory",
+          "vitalServerURL",
+          "remoteConsoleURL",
+          "publicHost",
+          "publicPort",
+          "adminPassword",
+          "changeAdminPassword",
+          "startOnBoot",
+          "startOnBootConfigurable",
+          "autoRecoveryEnabled",
+          "preventSystemSleep",
+          "redisBackupRetentionCount",
+          "restartAfterSave"
+        ],
         "properties": {
+          "readIssues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeSettingsReadIssue"
+            }
+          },
           "cpuCount": {
             "type": "integer"
           },
@@ -2010,7 +3186,16 @@
           "proxyPort": {
             "type": "integer"
           },
+          "runtimeControlPort": {
+            "type": "integer"
+          },
           "vitalFilesDirectory": {
+            "type": "string"
+          },
+          "vitalServerURL": {
+            "type": "string"
+          },
+          "remoteConsoleURL": {
             "type": "string"
           },
           "publicHost": {
@@ -2044,6 +3229,22 @@
             "type": "boolean"
           }
         }
+      },
+      "RuntimeSettingsReadIssue": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "source": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "message"
+        ]
       },
       "RuntimeReleaseInfo": {
         "type": "object",
@@ -2168,6 +3369,9 @@
       },
       "RuntimeApplySettingsRequest": {
         "type": "object",
+        "required": [
+          "settings"
+        ],
         "properties": {
           "settings": {
             "$ref": "#/components/schemas/RuntimeSettings"
@@ -2176,6 +3380,9 @@
       },
       "RuntimeRepairProxyRequest": {
         "type": "object",
+        "required": [
+          "proxyPort"
+        ],
         "properties": {
           "proxyPort": {
             "type": "integer"
@@ -2184,6 +3391,9 @@
       },
       "RuntimeUninstallRequest": {
         "type": "object",
+        "required": [
+          "clean"
+        ],
         "properties": {
           "clean": {
             "type": "boolean"
@@ -2214,12 +3424,21 @@
       },
       "RuntimeLogTextRequest": {
         "type": "object",
+        "required": [
+          "source",
+          "helperMessage",
+          "lineLimit"
+        ],
         "properties": {
           "source": {
             "$ref": "#/components/schemas/RuntimeLogSource"
           },
           "helperMessage": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Legacy helper message field. Send null when the caller is reading the append-only helper message log."
           },
           "lineLimit": {
             "type": "integer"
@@ -2233,14 +3452,20 @@
           "install",
           "command",
           "launcher",
+          "vmLaunchOutput",
+          "vmLaunchError",
           "proxyOutput",
           "proxyError",
+          "watchdog",
           "updateActivation",
           "containers"
         ]
       },
       "RuntimeLogTextResponse": {
         "type": "object",
+        "required": [
+          "text"
+        ],
         "properties": {
           "text": {
             "type": "string"
@@ -2249,6 +3474,9 @@
       },
       "RuntimeLogExportResult": {
         "type": "object",
+        "required": [
+          "destination"
+        ],
         "properties": {
           "destination": {
             "type": "string",
@@ -2274,6 +3502,9 @@
       },
       "RuntimeUpdateBundleSummaryResponse": {
         "type": "object",
+        "required": [
+          "summary"
+        ],
         "properties": {
           "summary": {
             "type": "string"
@@ -2294,7 +3525,8 @@
           "devices",
           "filters",
           "proxyConnections",
-          "anomalies"
+          "anomalies",
+          "readIssues"
         ],
         "properties": {
           "schemaVersion": {
@@ -2347,12 +3579,39 @@
             "items": {
               "$ref": "#/components/schemas/VitalDBAnomalyObservation"
             }
+          },
+          "readIssues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VitalDBObservationReadIssue"
+            }
+          }
+        }
+      },
+      "VitalDBObservationReadIssue": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "source",
+          "message"
+        ],
+        "properties": {
+          "source": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
           }
         }
       },
       "VitalDBRecorderObservation": {
         "type": "object",
         "additionalProperties": false,
+        "required": [
+          "vrcode",
+          "online",
+          "stale"
+        ],
         "properties": {
           "vrcode": {
             "type": "string"
@@ -2409,6 +3668,15 @@
         "type": "object",
         "additionalProperties": false,
         "description": "Recent VRecorder send_data activity summarized from the audit proxy Redis list.",
+        "required": [
+          "windowSeconds",
+          "messageCount",
+          "byteCount",
+          "roomCount",
+          "messagesPerSecond",
+          "bytesPerSecond",
+          "buckets"
+        ],
         "properties": {
           "windowSeconds": {
             "type": "integer",
@@ -2445,12 +3713,54 @@
           "bytesPerSecond": {
             "type": "number",
             "minimum": 0
+          },
+          "buckets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VitalDBRecorderActivityBucket"
+            }
+          }
+        }
+      },
+      "VitalDBRecorderActivityBucket": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "bucketStartedAt",
+          "bucketSeconds",
+          "messageCount",
+          "byteCount",
+          "roomCount"
+        ],
+        "properties": {
+          "bucketStartedAt": {
+            "type": "string"
+          },
+          "bucketSeconds": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "messageCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "byteCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "roomCount": {
+            "type": "integer",
+            "minimum": 0
           }
         }
       },
       "VitalDBBedObservation": {
         "type": "object",
         "additionalProperties": false,
+        "required": [
+          "bedID",
+          "online"
+        ],
         "properties": {
           "bedID": {
             "type": "string"
@@ -2544,9 +3854,509 @@
           }
         }
       },
+      "RuntimeTestKitStatus": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "enabled",
+          "state",
+          "sessions",
+          "beds"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "disabled",
+              "stopped",
+              "starting",
+              "running",
+              "paused",
+              "stopping",
+              "failed"
+            ]
+          },
+          "serviceName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "apiBaseURL": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "recorderTargetURL": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "startedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "activeSession": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RuntimeTestKitSession"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sessions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeTestKitSession"
+            }
+          },
+          "beds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeTestKitBed"
+            }
+          },
+          "lastError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "RuntimeTestKitBed": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "roomName",
+          "bedId"
+        ],
+        "properties": {
+          "roomName": {
+            "type": "string"
+          },
+          "bedId": {
+            "type": "string"
+          }
+        }
+      },
+      "RuntimeTestKitCreateBedsRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "roomNames",
+          "prefix",
+          "adminUserId"
+        ],
+        "properties": {
+          "count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "roomNames": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "prefix": {
+            "type": "string"
+          },
+          "adminUserId": {
+            "type": "string"
+          }
+        }
+      },
+      "RuntimeTestKitDeleteBedsRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "roomNames"
+        ],
+        "properties": {
+          "roomNames": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "RuntimeTestKitVirtualRecorderStartRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "scenario",
+          "signalProfile",
+          "recorders",
+          "bedRoomNames",
+          "version",
+          "intervalSeconds",
+          "shiftTime",
+          "generateFrames"
+        ],
+        "properties": {
+          "scenario": {
+            "type": "string",
+            "enum": [
+              "normal",
+              "multiple_recorders",
+              "burst_traffic",
+              "disconnect_reconnect",
+              "stale_recorder",
+              "signal_anomaly"
+            ]
+          },
+          "signalProfile": {
+            "type": "string",
+            "enum": [
+              "normal",
+              "tachycardia",
+              "desaturation",
+              "artifact",
+              "device_disconnect"
+            ]
+          },
+          "recorders": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "bedRoomNames": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "vrcode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "version": {
+            "type": "string"
+          },
+          "intervalSeconds": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "durationSeconds": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "maxMessages": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "shiftTime": {
+            "type": "boolean"
+          },
+          "generateFrames": {
+            "type": "boolean"
+          }
+        }
+      },
+      "RuntimeTestKitSessionSelectionRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "sessionID"
+        ],
+        "properties": {
+          "sessionID": {
+            "type": "string"
+          }
+        }
+      },
+      "RuntimeTestKitRestartRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "sessionID",
+          "bedRoomNames"
+        ],
+        "properties": {
+          "sessionID": {
+            "type": "string"
+          },
+          "bedRoomNames": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "RuntimeTestKitRecorderDeletionRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "vrcode"
+        ],
+        "properties": {
+          "vrcode": {
+            "type": "string"
+          }
+        }
+      },
+      "RuntimeTestKitSession": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "state",
+          "targetUrl",
+          "recordersRequested",
+          "bedsRequested",
+          "bedRoomNames",
+          "version",
+          "intervalSeconds",
+          "shiftTime",
+          "generateFrames",
+          "defaultScenario",
+          "messagesSent",
+          "bytesSent",
+          "cleanupErrors",
+          "recorders"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "targetUrl": {
+            "type": "string"
+          },
+          "recordersRequested": {
+            "type": "integer"
+          },
+          "bedsRequested": {
+            "type": "integer"
+          },
+          "bedRoomNames": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "vrcode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "version": {
+            "type": "string"
+          },
+          "intervalSeconds": {
+            "type": "number"
+          },
+          "durationSeconds": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "maxMessages": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "shiftTime": {
+            "type": "boolean"
+          },
+          "generateFrames": {
+            "type": "boolean"
+          },
+          "scenario": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "defaultScenario": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "startedAt": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "stoppedAt": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "messagesSent": {
+            "type": "integer"
+          },
+          "bytesSent": {
+            "type": "integer"
+          },
+          "lastError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "cleanupErrors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeTestKitCleanupError"
+            }
+          },
+          "recorders": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeTestKitRecorder"
+            }
+          }
+        }
+      },
+      "RuntimeTestKitCleanupError": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "vrcode",
+          "targetUrl",
+          "error"
+        ],
+        "properties": {
+          "vrcode": {
+            "type": "string"
+          },
+          "targetUrl": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "RuntimeTestKitRecorderDeletion": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "vrcode",
+          "targetUrl",
+          "deleted"
+        ],
+        "properties": {
+          "vrcode": {
+            "type": "string"
+          },
+          "targetUrl": {
+            "type": "string"
+          },
+          "deleted": {
+            "type": "boolean"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "RuntimeTestKitRecorder": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "vrcode",
+          "baseUrl",
+          "connected",
+          "joinSent",
+          "messagesSent",
+          "bytesSent"
+        ],
+        "properties": {
+          "vrcode": {
+            "type": "string"
+          },
+          "baseUrl": {
+            "type": "string"
+          },
+          "localIp": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "connected": {
+            "type": "boolean"
+          },
+          "joinSent": {
+            "type": "boolean"
+          },
+          "joinedAt": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "lastReconnectAt": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "lastSendDataAt": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "messagesSent": {
+            "type": "integer"
+          },
+          "bytesSent": {
+            "type": "integer"
+          }
+        }
+      },
       "VitalDBAnomalyObservation": {
         "type": "object",
         "additionalProperties": false,
+        "required": [
+          "id",
+          "kind",
+          "severity",
+          "observedAt",
+          "subject",
+          "message"
+        ],
         "properties": {
           "id": {
             "type": "string"

@@ -5,9 +5,11 @@ from tirosh_vitalserver.testkit.domain.recorder.simulator.frames import (
 )
 from tirosh_vitalserver.testkit.domain.recorder.simulator.templates import (
     build_simulated_recorder_payload,
+    unique_testkit_vrcode,
 )
 
 __all__ = [
     "build_simulated_recorder_payload",
     "generate_simulated_recorder_payload",
+    "unique_testkit_vrcode",
 ]

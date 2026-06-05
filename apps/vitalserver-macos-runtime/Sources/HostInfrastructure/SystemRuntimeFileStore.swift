@@ -2,7 +2,13 @@ import Foundation
 import Core
 import Contracts
 
-public struct SystemRuntimeFileStore: RuntimeFileStore {
+public enum SystemRuntimeFileStoreError: Error, Equatable, Sendable {
+    case missingFileSize(path: String)
+    case missingDirectoryFlag(path: String)
+    case missingRegularFileFlag(path: String)
+}
+
+public struct SystemRuntimeFileStore: RuntimeFileStore, RuntimeFilePartialReading {
     public init() {}
 
     public var temporaryDirectory: URL {
@@ -29,13 +35,27 @@ public struct SystemRuntimeFileStore: RuntimeFileStore {
         try Data(contentsOf: url)
     }
 
+    public func readData(_ url: URL, offset: UInt64?) throws -> Data {
+        let handle = try FileHandle(forReadingFrom: url)
+        defer {
+            try? handle.close()
+        }
+        if let offset {
+            try handle.seek(toOffset: offset)
+        }
+        return try handle.readToEnd() ?? Data()
+    }
+
     public func readUTF8Text(_ url: URL) throws -> String {
         try String(contentsOf: url, encoding: .utf8)
     }
 
     public func fileSize(_ url: URL) throws -> UInt64 {
         let values = try url.resourceValues(forKeys: [.fileSizeKey])
-        return UInt64(values.fileSize ?? 0)
+        guard let fileSize = values.fileSize else {
+            throw SystemRuntimeFileStoreError.missingFileSize(path: url.path)
+        }
+        return UInt64(fileSize)
     }
 
     public func modificationDate(_ url: URL) throws -> Date {
@@ -100,9 +120,12 @@ public struct SystemRuntimeFileStore: RuntimeFileStore {
             includingPropertiesForKeys: [.isDirectoryKey],
             options: options
         )
-        return contents.filter { item in
-            let values = try? item.resourceValues(forKeys: [.isDirectoryKey])
-            return values?.isDirectory == true && item.lastPathComponent.contains(fragment)
+        return try contents.filter { item in
+            let values = try item.resourceValues(forKeys: [.isDirectoryKey])
+            guard let isDirectory = values.isDirectory else {
+                throw SystemRuntimeFileStoreError.missingDirectoryFlag(path: item.path)
+            }
+            return isDirectory && item.lastPathComponent.contains(fragment)
         }
     }
 
@@ -125,8 +148,14 @@ public struct SystemRuntimeFileStore: RuntimeFileStore {
         var total: UInt64 = 0
         for case let fileURL as URL in enumerator {
             let values = try fileURL.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
-            if values.isRegularFile == true {
-                total += UInt64(values.fileSize ?? 0)
+            guard let isRegularFile = values.isRegularFile else {
+                throw SystemRuntimeFileStoreError.missingRegularFileFlag(path: fileURL.path)
+            }
+            if isRegularFile {
+                guard let fileSize = values.fileSize else {
+                    throw SystemRuntimeFileStoreError.missingFileSize(path: fileURL.path)
+                }
+                total += UInt64(fileSize)
             }
         }
         return total

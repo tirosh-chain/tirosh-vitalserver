@@ -104,6 +104,17 @@ public actor MacHostRuntimeCommandWorker {
         ))
     }
 
+    public func repairVMDisk() async throws -> RuntimeCommandResult {
+        try ensureLauncherIsAvailable()
+        return await runPrivileged(RuntimeCommandFactory.shellCommand(
+            executable: RuntimeAdapterConstants.Paths.launcher,
+            arguments: [
+                RuntimeAdapterConstants.RuntimeCommand.runtime,
+                RuntimeAdapterConstants.RuntimeCommand.repairVMDisk,
+            ]
+        ))
+    }
+
     public func repairRuntimeServices() async throws -> RuntimeCommandResult {
         try ensureLauncherIsAvailable()
         return await runPrivileged(RuntimeCommandFactory.runtimeServicesCommand(action: .repair))

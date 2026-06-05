@@ -1,76 +1,60 @@
 import Foundation
-import Core
-import Contracts
-import HostInfrastructure
 
-struct RuntimeInstallDirectoryPreparer {
-    let installedPaths: InstalledRuntimePaths
-    let fileStore: RuntimeFileStore
-    var now: () -> Date
+public struct RuntimeInstallDirectoryPreparationContext<Settings> {
+    public var fixedDirectories: [URL]
+    public var staleGuestRunDocuments: [URL]
+    public var vitalFilesDirectory: (Settings) -> URL
 
-    func prepare(settings: InstallSettings) throws {
-        let directories = [
-            installedPaths.runtimeDirectory,
-            URL(fileURLWithPath: settings.vitalFilesDirectory),
-            installedPaths.deployDirectory,
-            installedPaths.guestRunDirectory,
-            installedPaths.vrReleaseDirectory,
-            installedPaths.backupsDirectory,
-            installedPaths.redisBackupsDirectory,
-            installedPaths.productLogsDirectory,
-            installedPaths.centralRuntimeLogsDirectory,
-            installedPaths.centralGuestLogsDirectory,
-            installedPaths.logArchiveDirectory,
-            installedPaths.hostRunDirectory,
-            installedPaths.statusDirectory,
-            installedPaths.nginxLogsDirectory,
-        ]
+    public init(
+        fixedDirectories: [URL],
+        staleGuestRunDocuments: [URL],
+        vitalFilesDirectory: @escaping (Settings) -> URL
+    ) {
+        self.fixedDirectories = fixedDirectories
+        self.staleGuestRunDocuments = staleGuestRunDocuments
+        self.vitalFilesDirectory = vitalFilesDirectory
+    }
+}
+
+public struct RuntimeInstallDirectoryPreparationOperations {
+    public var createDirectory: (URL, Bool) throws -> Void
+    public var fileExists: (URL) -> Bool
+    public var removeItem: (URL) throws -> Void
+
+    public init(
+        createDirectory: @escaping (URL, Bool) throws -> Void,
+        fileExists: @escaping (URL) -> Bool,
+        removeItem: @escaping (URL) throws -> Void
+    ) {
+        self.createDirectory = createDirectory
+        self.fileExists = fileExists
+        self.removeItem = removeItem
+    }
+}
+
+public struct RuntimeInstallDirectoryPreparer<Settings> {
+    public var context: RuntimeInstallDirectoryPreparationContext<Settings>
+    public var operations: RuntimeInstallDirectoryPreparationOperations
+
+    public init(
+        context: RuntimeInstallDirectoryPreparationContext<Settings>,
+        operations: RuntimeInstallDirectoryPreparationOperations
+    ) {
+        self.context = context
+        self.operations = operations
+    }
+
+    public func prepare(settings: Settings) throws {
+        let directories = [context.vitalFilesDirectory(settings)] + context.fixedDirectories
         for directory in directories {
-            try fileStore.createDirectory(at: directory, withIntermediateDirectories: true)
+            try operations.createDirectory(directory, true)
         }
-        try migrateLegacyRuntimeLogsToCentral()
+        try removeStaleGuestRunDocuments()
     }
 
-    private func migrateLegacyRuntimeLogsToCentral() throws {
-        let legacyDirectory = installedPaths.logsDirectory
-        let centralRuntimeLogsDirectory = installedPaths.centralRuntimeLogsDirectory
-        guard legacyDirectory != centralRuntimeLogsDirectory,
-              fileStore.directoryExists(legacyDirectory)
-        else {
-            return
+    private func removeStaleGuestRunDocuments() throws {
+        for document in context.staleGuestRunDocuments where operations.fileExists(document) {
+            try operations.removeItem(document)
         }
-
-        let entries = (try? fileStore.contentsOfDirectory(at: legacyDirectory, skipsHiddenFiles: false)) ?? []
-        for entry in entries where fileStore.fileExists(entry) {
-            let destination = uniqueLogMigrationURL(
-                centralRuntimeLogsDirectory.appendingPathComponent(entry.lastPathComponent)
-            )
-            try fileStore.moveItem(at: entry, to: destination)
-        }
-
-        if ((try? fileStore.contentsOfDirectory(at: legacyDirectory, skipsHiddenFiles: false)) ?? []).isEmpty {
-            try fileStore.removeItem(at: legacyDirectory)
-        }
-    }
-
-    private func uniqueLogMigrationURL(_ url: URL) -> URL {
-        guard fileStore.fileExists(url) else {
-            return url
-        }
-        let timestamp = Int(now().timeIntervalSince1970)
-        let migrated = url.deletingLastPathComponent()
-            .appendingPathComponent("legacy-\(url.lastPathComponent).\(timestamp)")
-        guard fileStore.fileExists(migrated) else {
-            return migrated
-        }
-        for index in 1...999 {
-            let candidate = url.deletingLastPathComponent()
-                .appendingPathComponent("legacy-\(url.lastPathComponent).\(timestamp).\(index)")
-            if !fileStore.fileExists(candidate) {
-                return candidate
-            }
-        }
-        return url.deletingLastPathComponent()
-            .appendingPathComponent("legacy-\(url.lastPathComponent).\(timestamp).\(UUID().uuidString)")
     }
 }

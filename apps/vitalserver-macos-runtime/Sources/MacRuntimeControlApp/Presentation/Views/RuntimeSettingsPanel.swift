@@ -9,6 +9,7 @@ struct RuntimeSettingsPanel: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
+                settingsReadIssuesSection
                 settingsSection(AppConstants.Labels.sectionVM) {
                     settingSlider(
                         AppConstants.Labels.cpu,
@@ -20,7 +21,7 @@ struct RuntimeSettingsPanel: View {
                     settingSlider(
                         AppConstants.Labels.memory,
                         value: $viewModel.settings.memoryGiB,
-                        range: AppConstants.SettingsLimits.minimumMemoryGiB...AppConstants.SettingsLimits.maximumMemoryGiB,
+                        range: memoryRange,
                         step: AppConstants.SettingsLimits.memoryStepGiB,
                         suffix: AppConstants.Labels.unitGiB
                     )
@@ -41,6 +42,12 @@ struct RuntimeSettingsPanel: View {
                         networkModeSelector
                     }
                     settingHelp(networkModeHelp)
+                    settingPortField(AppConstants.Labels.proxyPort, value: $viewModel.settings.proxyPort)
+                        .disabled(!viewModel.capabilities.canEditNetworkExposure)
+                    settingHelp(AppConstants.Labels.proxyPortHelp)
+                    settingPortField(AppConstants.Labels.runtimeControlPort, value: $viewModel.settings.runtimeControlPort)
+                        .disabled(!viewModel.capabilities.canEditNetworkExposure)
+                    settingHelp(AppConstants.Labels.runtimeControlPortHelp)
                 }
                 settingsSection(AppConstants.Labels.sectionStorage) {
                     settingDirectoryField(AppConstants.Labels.vitalFilesDirectory, text: $viewModel.settings.vitalFilesDirectory)
@@ -88,9 +95,33 @@ struct RuntimeSettingsPanel: View {
         }
         .onAppear {
             clampCPUCountToSystemLimit()
+            clampMemoryToSystemLimit()
         }
         .onChange(of: viewModel.settings.cpuCount) { _ in
             clampCPUCountToSystemLimit()
+        }
+        .onChange(of: viewModel.settings.memoryGiB) { _ in
+            clampMemoryToSystemLimit()
+        }
+        .onChange(of: viewModel.settings.proxyPort) { _ in
+            viewModel.syncAdvertisedURLWithProxyIfNeeded()
+        }
+        .onChange(of: viewModel.settings.runtimeControlPort) { _ in
+            viewModel.syncAdvertisedURLWithProxyIfNeeded()
+        }
+    }
+
+    @ViewBuilder
+    private var settingsReadIssuesSection: some View {
+        if !viewModel.settings.readIssues.isEmpty {
+            settingsSection(AppConstants.Labels.settingsReadIssues) {
+                ForEach(viewModel.settings.readIssues, id: \.source) { issue in
+                    Text("\(issue.source): \(issue.message)")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
         }
     }
 
@@ -127,6 +158,11 @@ struct RuntimeSettingsPanel: View {
         return minimum...AppConstants.SettingsLimits.maximumAllowedCPUCount
     }
 
+    private var memoryRange: ClosedRange<Int> {
+        let minimum = AppConstants.SettingsLimits.minimumMemoryGiB
+        return minimum...AppConstants.SettingsLimits.maximumAllowedMemoryGiB
+    }
+
     private var canApplySettingsForCurrentConnection: Bool {
         viewModel.capabilities.canEditVMResources
             || viewModel.capabilities.canEditNetworkExposure
@@ -161,6 +197,13 @@ struct RuntimeSettingsPanel: View {
         let clampedCPUCount = min(max(viewModel.settings.cpuCount, cpuCountRange.lowerBound), cpuCountRange.upperBound)
         if viewModel.settings.cpuCount != clampedCPUCount {
             viewModel.settings.cpuCount = clampedCPUCount
+        }
+    }
+
+    private func clampMemoryToSystemLimit() {
+        let clampedMemoryGiB = min(max(viewModel.settings.memoryGiB, memoryRange.lowerBound), memoryRange.upperBound)
+        if viewModel.settings.memoryGiB != clampedMemoryGiB {
+            viewModel.settings.memoryGiB = clampedMemoryGiB
         }
     }
 
@@ -250,10 +293,28 @@ struct RuntimeSettingsPanel: View {
         }
     }
 
+    private func settingPortField(_ label: String, value: Binding<Int>) -> some View {
+        settingRow(label) {
+            TextField("", value: value, formatter: portNumberFormatter)
+                .labelsHidden()
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 120)
+        }
+    }
+
     private func settingToggle(_ label: String, isOn: Binding<Bool>) -> some View {
         settingRow(label) {
             Toggle("", isOn: isOn)
                 .labelsHidden()
         }
+    }
+
+    private var portNumberFormatter: NumberFormatter {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .none
+        formatter.minimum = 1
+        formatter.maximum = 65_535
+        formatter.allowsFloats = false
+        return formatter
     }
 }

@@ -2,10 +2,16 @@ import Foundation
 import Core
 import Contracts
 import HostInfrastructure
+import RuntimeWorkflow
 
 extension RuntimeLifecycle {
     func latestBackup() -> URL? {
-        backupStore().latestBackup()
+        do {
+            return try backupStore().latestBackup()
+        } catch {
+            log("failed to read latest backup error=\(error.localizedDescription)")
+            return nil
+        }
     }
 
     func backupStore() -> RuntimeBackupStore {
@@ -60,33 +66,87 @@ extension RuntimeLifecycle {
     }
 
     func stopRuntimeServices() throws {
-        serviceController.stopRuntimeServices()
+        try serviceController.stopRuntimeServices()
     }
 
-    func startRuntimeServices(restartVM: Bool, restartProxy: Bool, restartWatchdog: Bool) throws {
-        if restartVM, preventSystemSleepEnabled() {
-            startLaunchdService(.sleepPrevention)
+    func stopRuntimeServicesForVMDiskReplacement() throws {
+        do {
+            try stopRuntimeServices()
+            return
+        } catch {
+            log("graceful runtime services stop failed before VM disk replacement; forcing VM process stop error=\(error.localizedDescription)")
         }
-        serviceController.startRuntimeServices(
+
+        try ProcessState.forceKillAndWait(
+            pidFile: paths.pidFile,
+            fileStore: fileStore,
+            timeoutSeconds: Constants.Runtime.vmStopWaitTimeoutSeconds,
+            pollIntervalSeconds: Constants.Runtime.serviceStopPollIntervalSeconds,
+            log: log
+        )
+        serviceController.unloadRuntimeServicesAfterForcedVMStop()
+        log("runtime services stopped for VM disk replacement")
+    }
+
+    func runningVMProcessID() throws -> pid_t {
+        try ProcessState.runningPid(pidFile: paths.pidFile, fileStore: fileStore)
+    }
+
+    func stopRuntimeServicesAfterGuestPoweroff(expectedVMProcessID: pid_t) throws {
+        try serviceController.stopRuntimeServicesAfterGuestPoweroff(expectedVMProcessID: expectedVMProcessID)
+    }
+
+    func startRuntimeServices(
+        restartVM: Bool,
+        restartGuestLogSync: Bool,
+        restartProxy: Bool,
+        restartWatchdog: Bool
+    ) throws {
+        if restartVM, preventSystemSleepEnabled() {
+            try startLaunchdService(.sleepPrevention)
+        }
+        try serviceController.startRuntimeServices(
             restartVM: restartVM,
-            restartProxy: restartProxy,
+            restartGuestLogSync: restartGuestLogSync,
+            restartProxy: false,
+            restartWatchdog: false
+        )
+        if restartProxy {
+            try cleanupHostProxyPortBeforeStart()
+            try serviceController.startRuntimeServices(
+                restartVM: false,
+                restartGuestLogSync: false,
+                restartProxy: true,
+                restartWatchdog: false
+            )
+        }
+        try serviceController.startRuntimeServices(
+            restartVM: false,
+            restartGuestLogSync: false,
+            restartProxy: false,
             restartWatchdog: restartWatchdog
         )
     }
 
     func startRuntimeServices(_ policy: RuntimeServiceRestartPolicy) throws {
-        if policy.restartVM, preventSystemSleepEnabled() {
-            startLaunchdService(.sleepPrevention)
-        }
-        serviceController.startRuntimeServices(policy)
+        try startRuntimeServices(
+            restartVM: policy.restartVM,
+            restartGuestLogSync: policy.restartGuestLogSync,
+            restartProxy: policy.restartProxy,
+            restartWatchdog: policy.restartWatchdog
+        )
     }
 
-    func startLaunchdService(_ service: RuntimeManagedService) {
-        serviceController.startLaunchdService(service)
+    func startLaunchdService(_ service: RuntimeManagedService) throws {
+        try serviceController.startLaunchdService(service)
     }
 
-    func restartLaunchdService(_ service: RuntimeManagedService) {
-        serviceController.restartLaunchdService(service)
+    func restartOrStartLaunchdService(_ service: RuntimeManagedService) throws {
+        try serviceController.restartOrStartLaunchdService(service)
+    }
+
+    func restartVMRuntimeServices() throws {
+        try serviceController.restartVMRuntimeServices()
     }
 
     func stopLaunchdService(_ service: RuntimeManagedService) {
@@ -100,6 +160,7 @@ extension RuntimeLifecycle {
     func waitForHealth(restartVM: Bool, restartProxy: Bool, restartWatchdog: Bool) throws {
         try runtimeHealthWaitRunner().wait(for: RuntimeServiceRestartPolicy(
             restartVM: restartVM,
+            restartGuestLogSync: restartVM,
             restartProxy: restartProxy,
             restartWatchdog: restartWatchdog
         ))
@@ -109,18 +170,225 @@ extension RuntimeLifecycle {
         try runtimeHealthWaitRunner().wait(for: policy)
     }
 
+    func cleanupHostProxyPortBeforeStart() throws {
+        try RuntimeHostProxyPortCleaner(
+            proxyPort: healthChecker.installedProxyPort,
+            proxyServiceLoaded: {
+                isLaunchdLoaded(.proxy)
+            },
+            expectedProxyNginxPID: {
+                healthChecker.readInstalledProxyNginxPID()
+            },
+            ownedNginxPathFragments: [
+                installedPaths.nginxExecutable.path,
+                installedPaths.nginxDirectory.path,
+                "vitalserver-nginx.conf",
+            ],
+            runProcess: runProcess,
+            log: log
+        ).cleanupBeforeStartingProxy()
+    }
+
+    func cleanupHostProxyPortAfterStop() throws {
+        try RuntimeHostProxyPortCleaner(
+            proxyPort: healthChecker.installedProxyPort,
+            proxyServiceLoaded: {
+                isLaunchdLoaded(.proxy)
+            },
+            expectedProxyNginxPID: {
+                healthChecker.readInstalledProxyNginxPID()
+            },
+            ownedNginxPathFragments: [
+                installedPaths.nginxExecutable.path,
+                installedPaths.nginxDirectory.path,
+                "vitalserver-nginx.conf",
+            ],
+            runProcess: runProcess,
+            log: log
+        ).cleanupOwnedListenersAfterProxyStop()
+    }
+
     func runtimeHealthWaitRunner() -> RuntimeHealthWaitRunner {
         RuntimeHealthWaitRunner(
-            isLaunchdLoaded: isLaunchdLoaded,
+            serviceStates: { services in
+                Dictionary(uniqueKeysWithValues: services.map { service in
+                    (service, healthChecker.launchdState(service))
+                })
+            },
             healthSnapshot: runtimeHealthSnapshot,
-            writeStatus: { status, operation, message in
-                try writeRuntimeStatus(status, operation: operation, message: message)
+            writeStatusBestEffort: { status, operation, message in
+                writeRuntimeStatusBestEffort(
+                    status,
+                    operation: operation,
+                    message: message,
+                    writeStatus: { status, operation, message in
+                        try writeRuntimeStatus(status, operation: operation, message: message)
+                    },
+                    log: log
+                )
             },
             sleep: {
                 sleeper.sleep(forTimeInterval: 3)
             },
             log: log
         )
+    }
+
+    func runtimeUninstallRunner() throws -> RuntimeUninstallWorkflow {
+        let vitalFilesDirectoryRead = configuredExternalVitalFilesDirectory()
+        let uninstallPaths = RuntimeUninstallPaths(
+            productRoot: installedPaths.productRoot,
+            managerApp: installedPaths.managerApp,
+            defaultVitalFilesDirectory: installedPaths.vitalFilesDirectory,
+            externalVitalFilesDirectory: vitalFilesDirectoryRead.externalDirectory,
+            configuredVitalFilesDirectoryReadFailure: vitalFilesDirectoryRead.failure,
+            launchDaemonPlists: RuntimeManagedService.stopOrder.map {
+                URL(fileURLWithPath: $0.launchDaemonPlist)
+            },
+            runtimeTools: [
+                installedPaths.launcher,
+                URL(fileURLWithPath: Constants.InstallPaths.proxyRun),
+                installedPaths.uninstaller,
+            ]
+        )
+        return RuntimeUninstallWorkflow(
+            paths: uninstallPaths,
+            readers: RuntimeUninstallStateReaders(
+                serviceStates: {
+                    Dictionary(uniqueKeysWithValues: RuntimeManagedService.stopOrder.map { service in
+                        (service, healthChecker.launchdState(service))
+                    })
+                },
+                vmProcessState: {
+                    ProcessState.inspect(pidFile: paths.pidFile, fileStore: fileStore)
+                },
+                fileExists: fileExists,
+                directoryExists: directoryExists,
+                packageReceiptStates: {
+                    RuntimePackageReceiptStateReader.states(
+                        identifiers: Constants.Product.packageReceiptIdentifiers,
+                        runProcess: { executable, arguments in
+                            runProcess(executable, arguments: arguments)
+                        }
+                    )
+                },
+                cleanupArtifactStates: { clean in
+                    RuntimeInstallArtifactStateReader.states(
+                        paths: cleanupArtifactPaths(clean: clean, paths: uninstallPaths).map(\.path)
+                    )
+                }
+            ),
+            effects: RuntimeUninstallEffects(
+                createRedisBackup: createRedisBackup,
+                stopRuntimeServices: {
+                    try serviceController.disableRuntimeServicesForUninstall()
+                    try stopRuntimeServices()
+                    try cleanupHostProxyPortAfterStop()
+                },
+                createDirectory: { url, withIntermediateDirectories in
+                    try fileStore.createDirectory(at: url, withIntermediateDirectories: withIntermediateDirectories)
+                },
+                removeItem: { url in
+                    try fileStore.removeItem(at: url)
+                },
+                moveItem: { source, destination in
+                    try fileStore.moveItem(at: source, to: destination)
+                },
+                forgetPackageReceipt: { identifier in
+                    runProcess("/usr/sbin/pkgutil", arguments: ["--forget", identifier])
+                }
+            ),
+            writer: RuntimeUninstallStateWriter(
+                writeState: { state, clean, message, blockers in
+                    try RuntimeUninstallStateStore(
+                        url: installedPaths.runtimeUninstallState,
+                        fileStore: fileStore,
+                        now: { clock.now }
+                    ).write(
+                        state: state,
+                        clean: clean,
+                        message: message,
+                        blockers: blockers
+                    )
+                }
+            ),
+            diagnostics: RuntimeUninstallDiagnostics(
+                contentsOfDirectory: { url in
+                    try fileStore.contentsOfDirectory(at: url, skipsHiddenFiles: false)
+                },
+                openFileDiagnosticExecutable: Constants.Commands.lsof,
+                runProcess: runProcess,
+                log: log
+            ),
+            packageReceiptIdentifiers: Constants.Product.packageReceiptIdentifiers
+        )
+    }
+
+    func cleanupArtifactPaths(clean: Bool, paths: RuntimeUninstallPaths) -> [URL] {
+        var artifactPaths = [paths.managerApp]
+        artifactPaths.append(contentsOf: paths.launchDaemonPlists)
+        artifactPaths.append(contentsOf: paths.runtimeTools)
+        if clean {
+            artifactPaths.append(paths.productRoot)
+            if let externalVitalFilesDirectory = paths.externalVitalFilesDirectory {
+                artifactPaths.append(externalVitalFilesDirectory)
+            }
+        }
+        return artifactPaths
+    }
+
+    func runtimeFreshInstallPreflightRunner() -> RuntimeFreshInstallPreflightRunner {
+        RuntimeFreshInstallPreflightRunner(
+            settingsState: {
+                RuntimeInstallSettingsStateReader.state(
+                    path: Constants.InstallPaths.settingsPath,
+                    fileStore: fileStore
+                )
+            },
+            artifactStates: {
+                RuntimeInstallArtifactStateReader.states(paths: freshInstallArtifactPaths().map(\.path))
+            },
+            serviceStates: {
+                RuntimeManagedService.stopOrder.map { service in
+                    RuntimeFreshInstallServiceState(
+                        label: service.label,
+                        state: healthChecker.launchdState(service)
+                    )
+                }
+            },
+            packageReceiptStates: {
+                RuntimePackageReceiptStateReader.states(
+                    identifiers: Constants.Product.packageReceiptIdentifiers,
+                    runProcess: { executable, arguments in
+                        runProcess(executable, arguments: arguments)
+                    }
+                )
+            },
+            proxyPortState: { port in
+                RuntimeHostProxyPortStateReader.state(
+                    port: port,
+                    runProcess: { executable, arguments in
+                        runProcess(executable, arguments: arguments)
+                    }
+                )
+            }
+        )
+    }
+
+    func freshInstallArtifactPaths() -> [URL] {
+        [
+            installedPaths.productRoot,
+            installedPaths.managerApp,
+            installedPaths.launcher,
+            URL(fileURLWithPath: Constants.InstallPaths.proxyRun),
+            installedPaths.uninstaller,
+        ] + RuntimeManagedService.stopOrder.map {
+            URL(fileURLWithPath: $0.launchDaemonPlist)
+        }
+    }
+
+    func installProvisionPayloadPaths() -> [URL] {
+        freshInstallArtifactPaths()
     }
 
     func reasonText(_ reasons: [RuntimeFailureReason]) -> String {
@@ -179,112 +447,87 @@ extension RuntimeLifecycle {
     }
 
     func runtimeVersionValue() -> String {
-        runtimeVersionStore().readVersionValue(default: "unknown")
+        switch runtimeVersionStore().readVersion() {
+        case .loaded(let version):
+            return version
+        case .missing:
+            log("runtime version unavailable reason=missing")
+            return RuntimeVersionStore.missingVersionValue
+        case .failed(let reason):
+            log("runtime version unavailable reason=invalid error=\(reason)")
+            return RuntimeVersionStore.invalidVersionValue
+        }
     }
 
-    func runtimeStatusValue() -> String {
+    func runtimeStatusValue() -> String? {
         statusReporter.statusValue()
     }
 
-    func recordRuntimeEvent(
-        _ status: RuntimeStatusLevel,
-        previousStatus: RuntimeStatusLevel?,
-        operation: RuntimeOperation,
-        message: String,
-        healthSnapshot: RuntimeHealthSnapshot,
-        eventType: RuntimeEventType = .statusChanged,
-        progress: RuntimeProgressDocument? = nil
-    ) throws {
-        let event = RuntimeEventDocument(
-            id: UUID().uuidString,
-            eventType: eventType,
-            timestamp: isoTimestamp(),
-            product: Constants.Product.identifier,
-            status: status,
-            previousStatus: previousStatus,
-            operation: operation,
-            message: message,
-            runtimeVersion: runtimeVersionValue(),
-            vmState: healthSnapshot.vmState,
-            vmErrors: healthSnapshot.vmErrors,
-            failureReasons: healthSnapshot.failureReasons,
-            containerObservation: healthSnapshot.containerObservation,
-            vitalDBObservation: healthSnapshot.vitalDBObservation,
-            progress: progress
+    func runtimeObservedEventPublisher() -> RuntimeObservedEventPublisher {
+        RuntimeObservedEventPublisher(
+            previousStatus: {
+                statusReporter.loadStatus()?.status
+            },
+            recordEvent: { status, previousStatus, operation, message, snapshot, eventType in
+                try runtimeEventPublisher().recordObservedEvent(
+                    status,
+                    previousStatus: previousStatus,
+                    operation: operation,
+                    message: message,
+                    healthSnapshot: snapshot,
+                    eventType: eventType
+                )
+            },
+            recordEventBestEffort: { status, previousStatus, operation, message, snapshot, eventType in
+                runtimeEventPublisher().recordObservedEventBestEffort(
+                    status,
+                    previousStatus: previousStatus,
+                    operation: operation,
+                    message: message,
+                    healthSnapshot: snapshot,
+                    eventType: eventType
+                )
+            }
         )
-        try runtimeObservationRecorder().record(event)
     }
 
-    func recordRuntimeEventBestEffort(
-        _ status: RuntimeStatusLevel,
-        previousStatus: RuntimeStatusLevel?,
-        operation: RuntimeOperation,
-        message: String,
-        healthSnapshot: RuntimeHealthSnapshot,
-        eventType: RuntimeEventType = .statusChanged,
-        progress: RuntimeProgressDocument? = nil
-    ) {
-        let event = RuntimeEventDocument(
-            id: UUID().uuidString,
-            eventType: eventType,
-            timestamp: isoTimestamp(),
-            product: Constants.Product.identifier,
-            status: status,
-            previousStatus: previousStatus,
-            operation: operation,
-            message: message,
-            runtimeVersion: runtimeVersionValue(),
-            vmState: healthSnapshot.vmState,
-            vmErrors: healthSnapshot.vmErrors,
-            failureReasons: healthSnapshot.failureReasons,
-            containerObservation: healthSnapshot.containerObservation,
-            vitalDBObservation: healthSnapshot.vitalDBObservation,
-            progress: progress
+    func runtimeEventPublisher() -> RuntimeEventPublisher {
+        RuntimeEventPublisher(
+            factory: runtimeEventFactory(),
+            recorder: runtimeObservationRecorder()
         )
-        runtimeObservationRecorder().recordBestEffort(event)
-    }
-
-    func recordRuntimeLifecycleEventBestEffort(
-        operation: RuntimeOperation,
-        message: String,
-        eventType: RuntimeEventType
-    ) {
-        let currentStatus = statusReporter.loadStatus()
-        let event = RuntimeEventDocument(
-            id: UUID().uuidString,
-            eventType: eventType,
-            timestamp: isoTimestamp(),
-            product: Constants.Product.identifier,
-            status: currentStatus?.status ?? .unknown("unknown"),
-            previousStatus: currentStatus?.status,
-            operation: operation,
-            message: message,
-            runtimeVersion: runtimeVersionValue(),
-            failureReasons: [],
-            progress: nil
-        )
-        runtimeObservationRecorder().recordBestEffort(event)
     }
 
     func runtimeObservationRecorder() -> RuntimeObservationRecorder {
         RuntimeObservationRecorder(
             eventRepository: CompositeRuntimeEventRepository(
                 primary: JSONLRuntimeEventRepository(url: installedPaths.runtimeEvents),
-                secondary: SQLiteRuntimeEventRepository(url: installedPaths.runtimeObservabilityDB)
+                secondary: SQLiteRuntimeEventRepository(url: installedPaths.runtimeObservabilityDB),
+                log: log
             ),
-            observabilityStore: SQLiteRuntimeObservabilityStore(url: installedPaths.runtimeObservabilityDB),
             log: log
         )
     }
 
-    func domainEventType(for snapshot: RuntimeHealthSnapshot, defaultEventType: RuntimeEventType = .statusChanged) -> RuntimeEventType {
-        if !snapshot.vmErrors.isEmpty {
-            return .vmErrorObserved
-        }
-        if !snapshot.failureReasons.isEmpty {
-            return .domainErrorObserved
-        }
-        return defaultEventType
+    func runtimeEventFactory() -> RuntimeEventFactory {
+        RuntimeEventFactory(
+            timestamp: isoTimestamp,
+            product: Constants.Product.identifier,
+            runtimeVersion: runtimeVersionValue
+        )
+    }
+
+    func vitalDBObservationProjector() -> RuntimeVitalDBObservationProjector {
+        RuntimeVitalDBObservationProjector(
+            appendObservation: { observation in
+                try SQLiteVitalDBObservationRepository(url: installedPaths.runtimeObservabilityDB).append(observation)
+            },
+            log: log
+        )
+    }
+
+    func projectVitalDBObservationBestEffort(_ observation: VitalDBObservationDocument) {
+        vitalDBObservationProjector().projectBestEffort(observation)
     }
 
     func runtimeHealthSnapshot() -> RuntimeHealthSnapshot {
@@ -301,13 +544,29 @@ extension RuntimeLifecycle {
         )
     }
 
+    func runtimeObservedStatusPublisher() -> RuntimeObservedStatusPublisher {
+        RuntimeObservedStatusPublisher(
+            writeStatus: { status, operation, message, progress in
+                try runtimeStatusWriter().writeStatus(
+                    status,
+                    operation: operation,
+                    message: message,
+                    progress: progress
+                )
+            },
+            projectObservation: { observation in
+                projectVitalDBObservationBestEffort(observation)
+            }
+        )
+    }
+
     func writeRuntimeStatus(
         _ status: RuntimeStatusLevel,
         operation: RuntimeOperation,
         message: String,
         progress: RuntimeProgressDocument? = nil
     ) throws {
-        try runtimeStatusWriter().writeStatus(
+        try runtimeObservedStatusPublisher().publishStatus(
             status,
             operation: operation,
             message: message,
@@ -324,15 +583,6 @@ extension RuntimeLifecycle {
         message: String,
         reasonCodes: [String] = []
     ) throws {
-        try runtimeStatusWriter().writeProgress(
-            status,
-            operation: operation,
-            step: step,
-            stepStatus: stepStatus,
-            phase: phase,
-            message: message,
-            reasonCodes: reasonCodes
-        )
         let progress = RuntimeProgressDocument(
             operation: operation,
             phase: phase,
@@ -343,14 +593,27 @@ extension RuntimeLifecycle {
             startedAt: nil,
             updatedAt: isoTimestamp()
         )
-        let previousStatus = statusReporter.loadStatus()?.status
-        recordRuntimeEventBestEffort(
-            status,
-            previousStatus: previousStatus,
-            operation: operation,
+        do {
+            try runtimeStatusWriter().writeProgress(
+                status,
+                operation: operation,
+                step: step,
+                stepStatus: stepStatus,
+                phase: phase,
+                message: message,
+                reasonCodes: reasonCodes
+            )
+        } catch {
+            runtimeEventPublisher().recordProgressEventBestEffort(
+                status: status,
+                message: message,
+                progress: progress
+            )
+            throw error
+        }
+        runtimeEventPublisher().recordProgressEventBestEffort(
+            status: status,
             message: message,
-            healthSnapshot: runtimeHealthSnapshot(),
-            eventType: .progressUpdated,
             progress: progress
         )
     }
@@ -397,7 +660,7 @@ extension RuntimeLifecycle {
             "system/\(RuntimeManagedService.sleepPrevention.label)",
         ])
         if enabled {
-            startLaunchdService(.sleepPrevention)
+            try startLaunchdService(.sleepPrevention)
         } else {
             stopLaunchdService(.sleepPrevention)
         }
@@ -405,10 +668,34 @@ extension RuntimeLifecycle {
     }
 
     func preventSystemSleepEnabled() -> Bool {
-        guard let config = try? VMRuntimeConfig.load(from: paths.config, fileStore: fileStore) else {
-            return true
+        runtimeConfigFlagReader().preventSystemSleepEnabled()
+    }
+
+    func runtimeConfigFlagReader() -> RuntimeConfigFlagReader {
+        RuntimeConfigFlagReader(
+            loadConfig: {
+                try VMRuntimeConfig.load(from: paths.config, fileStore: fileStore)
+            },
+            log: log
+        )
+    }
+
+    func configuredExternalVitalFilesDirectory() -> RuntimeConfiguredExternalVitalFilesDirectoryRead {
+        do {
+            let config = try VMRuntimeConfig.load(from: paths.config, fileStore: fileStore)
+            if let hostPath = config.vitalFilesDirectory?.hostPath, hostPath.hasPrefix("/") {
+                let url = URL(fileURLWithPath: hostPath)
+                guard url.path != installedPaths.vitalFilesDirectory.path else {
+                    return RuntimeConfiguredExternalVitalFilesDirectoryRead(externalDirectory: nil, failure: nil)
+                }
+                return RuntimeConfiguredExternalVitalFilesDirectoryRead(externalDirectory: url, failure: nil)
+            }
+            return RuntimeConfiguredExternalVitalFilesDirectoryRead(externalDirectory: nil, failure: nil)
+        } catch {
+            let reason = error.localizedDescription
+            log("failed to read configured vital files directory error=\(reason)")
+            return RuntimeConfiguredExternalVitalFilesDirectoryRead(externalDirectory: nil, failure: reason)
         }
-        return config.preventSystemSleep ?? true
     }
 
     func runtimeCommandExecutor() -> RuntimeCommandExecutor {
@@ -416,16 +703,11 @@ extension RuntimeLifecycle {
             commandRunner: commandRunner,
             log: log,
             recordCommandEvent: { eventType, executable, arguments, result in
-                let exitSuffix = result.map { " exitCode=\($0.exitCode)" } ?? ""
-                let message = "command \(eventType.rawValue) executable=\(executable) arguments=\(arguments.joined(separator: " "))\(exitSuffix)"
-                let currentStatus = statusReporter.loadStatus()
-                recordRuntimeEventBestEffort(
-                    currentStatus?.status ?? .unknown("unknown"),
-                    previousStatus: currentStatus?.status,
-                    operation: currentStatus?.operation ?? .unknown("command"),
-                    message: message,
-                    healthSnapshot: runtimeHealthSnapshot(),
-                    eventType: eventType
+                runtimeEventPublisher().recordCommandEventBestEffort(
+                    eventType,
+                    executable: executable,
+                    arguments: arguments,
+                    result: result
                 )
             }
         )

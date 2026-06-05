@@ -7,6 +7,8 @@ public struct JSONFileRuntimeGuestGateway: RuntimeGuestGateway {
     public let bootstrapResultURL: URL
     public let updateActivationRequestURL: URL
     public let updateActivationResultURL: URL
+    public let updateShutdownRequestURL: URL
+    public let updateShutdownResultURL: URL
     public let datastoreRepairRequestURL: URL
     public let datastoreRepairResultURL: URL
 
@@ -15,6 +17,8 @@ public struct JSONFileRuntimeGuestGateway: RuntimeGuestGateway {
         bootstrapResultURL: URL,
         updateActivationRequestURL: URL,
         updateActivationResultURL: URL,
+        updateShutdownRequestURL: URL,
+        updateShutdownResultURL: URL,
         datastoreRepairRequestURL: URL,
         datastoreRepairResultURL: URL
     ) {
@@ -22,15 +26,17 @@ public struct JSONFileRuntimeGuestGateway: RuntimeGuestGateway {
         self.bootstrapResultURL = bootstrapResultURL
         self.updateActivationRequestURL = updateActivationRequestURL
         self.updateActivationResultURL = updateActivationResultURL
+        self.updateShutdownRequestURL = updateShutdownRequestURL
+        self.updateShutdownResultURL = updateShutdownResultURL
         self.datastoreRepairRequestURL = datastoreRepairRequestURL
         self.datastoreRepairResultURL = datastoreRepairResultURL
     }
 
-    public func loadRuntimeState() -> GuestRuntimeStateDocument? {
+    public func loadRuntimeStateDocument() -> RuntimeGuestDocumentLoadResult<GuestRuntimeStateDocument> {
         decode(GuestRuntimeStateDocument.self, from: runtimeStateURL)
     }
 
-    public func loadBootstrapResult() -> GuestBootstrapResultDocument? {
+    public func loadBootstrapResultDocument() -> RuntimeGuestDocumentLoadResult<GuestBootstrapResultDocument> {
         decode(GuestBootstrapResultDocument.self, from: bootstrapResultURL)
     }
 
@@ -49,8 +55,27 @@ public struct JSONFileRuntimeGuestGateway: RuntimeGuestGateway {
         )
     }
 
-    public func loadUpdateActivationResult() -> GuestUpdateActivationResultDocument? {
+    public func loadUpdateActivationResultDocument() -> RuntimeGuestDocumentLoadResult<GuestUpdateActivationResultDocument> {
         decode(GuestUpdateActivationResultDocument.self, from: updateActivationResultURL)
+    }
+
+    public func removeUpdateShutdownResult() throws {
+        try removeFileIfPresent(updateShutdownResultURL)
+    }
+
+    public func writeUpdateShutdownRequest(_ request: RuntimeGuestShutdownRequest) throws {
+        try write(
+            GuestUpdateShutdownRequestDocument(
+                requestId: request.id,
+                requestedAt: request.requestedAt,
+                version: request.version
+            ),
+            to: updateShutdownRequestURL
+        )
+    }
+
+    public func loadUpdateShutdownResultDocument() -> RuntimeGuestDocumentLoadResult<GuestUpdateShutdownResultDocument> {
+        decode(GuestUpdateShutdownResultDocument.self, from: updateShutdownResultURL)
     }
 
     public func removeDatastoreRepairResult() throws {
@@ -67,15 +92,20 @@ public struct JSONFileRuntimeGuestGateway: RuntimeGuestGateway {
         )
     }
 
-    public func loadDatastoreRepairResult() -> DatastoreRepairResultDocument? {
+    public func loadDatastoreRepairResultDocument() -> RuntimeGuestDocumentLoadResult<DatastoreRepairResultDocument> {
         decode(DatastoreRepairResultDocument.self, from: datastoreRepairResultURL)
     }
 
-    private func decode<T: Decodable>(_ type: T.Type, from url: URL) -> T? {
-        guard let data = try? Data(contentsOf: url) else {
-            return nil
+    private func decode<T: Decodable>(_ type: T.Type, from url: URL) -> RuntimeGuestDocumentLoadResult<T> {
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            return .missing
         }
-        return try? JSONDecoder().decode(type, from: data)
+        do {
+            let data = try Data(contentsOf: url)
+            return try .loaded(JSONDecoder().decode(type, from: data))
+        } catch {
+            return .failed(error.localizedDescription)
+        }
     }
 
     private func write<T: Encodable>(_ document: T, to url: URL) throws {

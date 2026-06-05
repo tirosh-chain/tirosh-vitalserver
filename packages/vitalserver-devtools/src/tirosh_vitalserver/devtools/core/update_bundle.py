@@ -10,7 +10,7 @@ from tirosh_vitalserver.devtools.core.update_bundle_models import (
     BuildUpdateBundleInput,
 )
 
-PRODUCT_ID = "com.tirosh.vitalserver"
+PRODUCT_ID = "ai.tirosh.vitalserver.helper"
 SUPPORTED_BUNDLE_KINDS = {"product-update", "vm-image-update"}
 SUPPORTED_CHANNELS = {"stable", "dev"}
 

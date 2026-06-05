@@ -5,6 +5,24 @@ from typing import Any
 
 
 @dataclass(frozen=True)
+class RecorderActivityBucket:
+    bucket_started_at: str
+    bucket_seconds: int
+    message_count: int
+    byte_count: int
+    room_count: int
+
+    def as_json(self) -> dict[str, Any]:
+        return {
+            "bucketStartedAt": self.bucket_started_at,
+            "bucketSeconds": self.bucket_seconds,
+            "messageCount": self.message_count,
+            "byteCount": self.byte_count,
+            "roomCount": self.room_count,
+        }
+
+
+@dataclass(frozen=True)
 class RecorderActivityObservation:
     window_seconds: int
     message_count: int
@@ -14,6 +32,7 @@ class RecorderActivityObservation:
     last_seen_at: str | None
     messages_per_second: float
     bytes_per_second: float
+    buckets: list[RecorderActivityBucket] = field(default_factory=list)
 
     def as_json(self) -> dict[str, Any]:
         return {
@@ -25,6 +44,7 @@ class RecorderActivityObservation:
             "lastSeenAt": self.last_seen_at,
             "messagesPerSecond": self.messages_per_second,
             "bytesPerSecond": self.bytes_per_second,
+            "buckets": [bucket.as_json() for bucket in self.buckets],
         }
 
 
@@ -131,6 +151,18 @@ class AnomalyObservation:
 
 
 @dataclass(frozen=True)
+class ObservationReadIssue:
+    source: str
+    message: str
+
+    def as_json(self) -> dict[str, Any]:
+        return {
+            "source": self.source,
+            "message": self.message,
+        }
+
+
+@dataclass(frozen=True)
 class ObservationDocument:
     observed_at: str
     ready: bool
@@ -141,6 +173,7 @@ class ObservationDocument:
     filters: list[RawBedScopedObservation] = field(default_factory=list)
     proxy_connections: list[ProxyConnectionObservation] = field(default_factory=list)
     anomalies: list[AnomalyObservation] = field(default_factory=list)
+    read_issues: list[ObservationReadIssue] = field(default_factory=list)
 
     def as_json(self) -> dict[str, Any]:
         return {
@@ -155,4 +188,5 @@ class ObservationDocument:
             "filters": [item.as_json() for item in self.filters],
             "proxyConnections": [item.as_json() for item in self.proxy_connections],
             "anomalies": [item.as_json() for item in self.anomalies],
+            "readIssues": [item.as_json() for item in self.read_issues],
         }

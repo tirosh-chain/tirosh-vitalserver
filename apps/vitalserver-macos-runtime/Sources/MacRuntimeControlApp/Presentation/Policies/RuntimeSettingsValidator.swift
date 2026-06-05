@@ -11,8 +11,14 @@ struct RuntimeSettingsValidator {
         if settings.diskGiB < installedSettings.diskGiB {
             return .invalid(AppConstants.StatusText.diskDecreaseUnavailable)
         }
-        if !(1...65_535).contains(settings.proxyPort) || !(1...65_535).contains(settings.publicPort) {
+        if !(1...65_535).contains(settings.proxyPort)
+            || !(1...65_535).contains(settings.publicPort)
+            || !(1...65_535).contains(settings.runtimeControlPort) {
             return .invalid(AppConstants.StatusText.invalidPort)
+        }
+        if !isValidAdvertisedURL(settings.vitalServerURL)
+            || !isValidAdvertisedURL(settings.remoteConsoleURL) {
+            return .invalid(AppConstants.StatusText.invalidAdvertisedURL)
         }
         if !(AppConstants.SettingsLimits.minimumRedisBackupRetentionCount...AppConstants.SettingsLimits.maximumRedisBackupRetentionCount)
             .contains(settings.redisBackupRetentionCount) {
@@ -32,6 +38,24 @@ struct RuntimeSettingsValidator {
 
     private func isLineSafe(_ value: String) -> Bool {
         !value.contains("\n") && !value.contains("\r")
+    }
+
+    private func isValidAdvertisedURL(_ value: String) -> Bool {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              trimmed == value,
+              isLineSafe(value),
+              let components = URLComponents(string: value),
+              let scheme = components.scheme?.lowercased(),
+              scheme == "http" || scheme == "https",
+              let host = components.host,
+              !host.isEmpty else {
+            return false
+        }
+        if let port = components.port, !(1...65_535).contains(port) {
+            return false
+        }
+        return true
     }
 }
 

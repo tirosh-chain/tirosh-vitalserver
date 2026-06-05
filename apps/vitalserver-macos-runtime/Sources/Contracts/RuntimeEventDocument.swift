@@ -6,6 +6,8 @@ public enum RuntimeEventType: Codable, Equatable, Sendable {
     case healthObserved
     case recoveryTriggered
     case recoveryCompleted
+    case recoverySuppressed
+    case recoveryDeferred
     case domainErrorObserved
     case vmErrorObserved
     case containerObserved
@@ -24,6 +26,32 @@ public enum RuntimeEventType: Codable, Equatable, Sendable {
     case runtimeCommandFailed
     case unknown(String)
 
+    public static let knownTypes: [RuntimeEventType] = [
+        .statusChanged,
+        .progressUpdated,
+        .healthObserved,
+        .recoveryTriggered,
+        .recoveryCompleted,
+        .recoverySuppressed,
+        .recoveryDeferred,
+        .domainErrorObserved,
+        .vmErrorObserved,
+        .containerObserved,
+        .auditProxyObserved,
+        .vitalDBObserved,
+        .vitalDBObserverUnhealthy,
+        .vitalDBAnomalyDetected,
+        .watchdogSkipped,
+        .recoveryPlanned,
+        .serviceRestartDispatched,
+        .observabilityStoreFailed,
+        .runtimeStatusObserved,
+        .guestStateObserved,
+        .runtimeCommandStarted,
+        .runtimeCommandCompleted,
+        .runtimeCommandFailed,
+    ]
+
     public init(rawValue: String) {
         switch rawValue {
         case "status-changed":
@@ -36,6 +64,10 @@ public enum RuntimeEventType: Codable, Equatable, Sendable {
             self = .recoveryTriggered
         case "recovery-completed":
             self = .recoveryCompleted
+        case "recovery-suppressed":
+            self = .recoverySuppressed
+        case "recovery-deferred":
+            self = .recoveryDeferred
         case "domain-error-observed":
             self = .domainErrorObserved
         case "vm-error-observed":
@@ -85,6 +117,10 @@ public enum RuntimeEventType: Codable, Equatable, Sendable {
             return "recovery-triggered"
         case .recoveryCompleted:
             return "recovery-completed"
+        case .recoverySuppressed:
+            return "recovery-suppressed"
+        case .recoveryDeferred:
+            return "recovery-deferred"
         case .domainErrorObserved:
             return "domain-error-observed"
         case .vmErrorObserved:
@@ -140,9 +176,9 @@ public struct RuntimeEventDocument: Codable, Equatable, Sendable {
     public let eventType: RuntimeEventType
     public let timestamp: String
     public let product: String
-    public let status: RuntimeStatusLevel
+    public let status: RuntimeStatusLevel?
     public let previousStatus: RuntimeStatusLevel?
-    public let operation: RuntimeOperation
+    public let operation: RuntimeOperation?
     public let message: String
     public let runtimeVersion: String
     public let vmState: RuntimeVMState?
@@ -160,9 +196,9 @@ public struct RuntimeEventDocument: Codable, Equatable, Sendable {
         eventType: RuntimeEventType,
         timestamp: String,
         product: String,
-        status: RuntimeStatusLevel,
+        status: RuntimeStatusLevel? = nil,
         previousStatus: RuntimeStatusLevel?,
-        operation: RuntimeOperation,
+        operation: RuntimeOperation? = nil,
         message: String,
         runtimeVersion: String,
         vmState: RuntimeVMState? = nil,
@@ -200,9 +236,9 @@ public struct RuntimeEventDocument: Codable, Equatable, Sendable {
         eventType: RuntimeEventType,
         timestamp: String,
         product: String,
-        status: RuntimeStatusLevel,
+        status: RuntimeStatusLevel? = nil,
         previousStatus: RuntimeStatusLevel?,
-        operation: RuntimeOperation,
+        operation: RuntimeOperation? = nil,
         message: String,
         runtimeVersion: String,
         vmState: RuntimeVMState? = nil,

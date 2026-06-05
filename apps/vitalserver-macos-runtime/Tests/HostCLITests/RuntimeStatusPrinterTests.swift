@@ -80,4 +80,29 @@ final class RuntimeStatusPrinterTests: XCTestCase {
 
         XCTAssertEqual(lines[3], "  latest backup: none")
     }
+
+    func testPrintStatusReportsMissingStatusDocumentExplicitly() {
+        var lines: [String] = []
+        let printer = RuntimeStatusPrinter(
+            productRoot: URL(fileURLWithPath: "/product"),
+            runtimeDirectory: URL(fileURLWithPath: "/runtime"),
+            runtimeStatus: URL(fileURLWithPath: "/runtime/status.json"),
+            rootfsBase: URL(fileURLWithPath: "/runtime/rootfs.img.gz"),
+            vmDisk: URL(fileURLWithPath: "/runtime/vm-disk.raw"),
+            latestBackupPath: { nil },
+            runtimeStatusValue: { nil },
+            runtimeVersionValue: { "unknown" },
+            vmIP: { "waiting" },
+            installedProxyPort: { 8080 },
+            hostProxyHTTP: { _ in "000" },
+            isExecutableFile: { _ in false },
+            fileExists: { _ in false },
+            serviceState: { _ in .notLoaded },
+            printLine: { lines.append($0) }
+        )
+
+        printer.printStatus()
+
+        XCTAssertEqual(lines[5], "  status: missing status document")
+    }
 }

@@ -2,6 +2,11 @@ import Foundation
 import Core
 import Contracts
 
+enum RuntimeStatusReporterError: Error, Equatable {
+    case missingStatusDocumentForProgress
+    case statusDocumentReadFailed(String)
+}
+
 struct RuntimeStatusReporter {
     private let repository: RuntimeStatusRepository
     private let productRoot: URL
@@ -17,12 +22,19 @@ struct RuntimeStatusReporter {
         self.runtimeHome = runtimeHome
     }
 
-    func statusValue() -> String {
-        repository.load()?.status.rawValue ?? "unknown"
+    func statusValue() -> String? {
+        loadStatus()?.status.rawValue
+    }
+
+    func loadStatusResult() -> RuntimeStatusDocumentLoadResult {
+        repository.loadResult()
     }
 
     func loadStatus() -> RuntimeStatusDocument? {
-        repository.load()
+        guard case .loaded(let document) = repository.loadResult() else {
+            return nil
+        }
+        return document
     }
 
     func writeStatus(
@@ -61,17 +73,43 @@ struct RuntimeStatusReporter {
         reasonCodes: [String] = [],
         updatedAt: String,
         runtimeVersion: String,
-        healthSnapshot: RuntimeHealthSnapshot,
         latestBackup: URL?
     ) throws {
-        try writeStatus(
-            status,
+        let current: RuntimeStatusDocument
+        switch repository.loadResult() {
+        case .loaded(let document):
+            current = document
+        case .missing:
+            throw RuntimeStatusReporterError.missingStatusDocumentForProgress
+        case .failed(let message):
+            throw RuntimeStatusReporterError.statusDocumentReadFailed(message)
+        }
+        let document = RuntimeStatusDocument(
+            schemaVersion: current.schemaVersion,
+            product: current.product,
+            status: status,
             operation: operation,
             message: message,
             updatedAt: updatedAt,
+            productRoot: current.productRoot,
+            runtimeHome: current.runtimeHome,
             runtimeVersion: runtimeVersion,
-            healthSnapshot: healthSnapshot,
-            latestBackup: latestBackup,
+            vmService: current.vmService,
+            proxyService: current.proxyService,
+            watchdogService: current.watchdogService,
+            vmState: current.vmState,
+            vmErrors: current.vmErrors,
+            vmIP: current.vmIP,
+            proxyPort: current.proxyPort,
+            hostProxyHTTP: current.hostProxyHTTP,
+            guestHTTP: current.guestHTTP,
+            redisUIHTTP: current.redisUIHTTP,
+            swaggerUIHTTP: current.swaggerUIHTTP,
+            rootfsBase: current.rootfsBase,
+            vmDisk: current.vmDisk,
+            failureReasons: current.failureReasons,
+            domainErrors: current.domainErrors,
+            latestBackup: latestBackup?.path ?? current.latestBackup,
             progress: RuntimeProgressDocument(
                 operation: operation,
                 phase: phase,
@@ -81,7 +119,10 @@ struct RuntimeStatusReporter {
                 reasonCodes: reasonCodes,
                 startedAt: nil,
                 updatedAt: updatedAt
-            )
+            ),
+            containerObservation: current.containerObservation,
+            vitalDBObservation: current.vitalDBObservation
         )
+        try repository.save(document)
     }
 }

@@ -6,11 +6,11 @@ import HostInfrastructure
 
 protocol RuntimeHostFileReading: Sendable {
     func updateBundleSummary(url: URL) -> String
-    func backups(latestBackupPath: String?) -> [RuntimeBackup]
-    func redisBackups() -> [RuntimeBackup]
+    func backups(latestBackupPath: String?) throws -> [RuntimeBackup]
+    func redisBackups() throws -> [RuntimeBackup]
     func logText(sourceID: RuntimeLogSource, helperMessage: String, lineLimit: Int) -> String
     func preferredLogsPath() -> String
-    func vitalFileFolders(root: String) -> [VitalFilesFolder]
+    func vitalFileFolders(root: String) throws -> [VitalFilesFolder]
 }
 
 struct SystemRuntimeHostFileReader: RuntimeHostFileReading, @unchecked Sendable {
@@ -32,43 +32,62 @@ struct SystemRuntimeHostFileReader: RuntimeHostFileReading, @unchecked Sendable 
             return "Archive: \(url.lastPathComponent)\nVerify to inspect manifest and checksums."
         }
         let manifestURL = url.appendingPathComponent("manifest.json")
-        guard let data = try? fileStore.readData(manifestURL),
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return "Missing or invalid manifest.json"
+        guard fileStore.fileExists(manifestURL) else {
+            return "Missing manifest.json"
         }
-        let version = object["version"] as? String ?? "unknown"
-        let artifacts = (object["artifacts"] as? [[String: Any]] ?? [])
-            .compactMap { artifact -> String? in
-                guard let type = artifact["type"] as? String,
-                      let name = artifact["name"] as? String else { return nil }
-                return "\(type): \(name)"
-            }
+        let manifest: UpdateBundleManifest
+        do {
+            let data = try fileStore.readData(manifestURL)
+            manifest = try JSONDecoder().decode(UpdateBundleManifest.self, from: data)
+        } catch {
+            return "Invalid manifest.json: \(error.localizedDescription)"
+        }
+        let artifacts = manifest.artifacts
+            .map { artifact in "\(artifact.type.rawValue): \(artifact.name)" }
             .joined(separator: "\n")
-        return "Version: \(version)\nArtifacts:\n\(artifacts)"
+        return "Version: \(manifest.version)\nArtifacts:\n\(artifacts)"
     }
 
-    func backups(latestBackupPath: String?) -> [RuntimeBackup] {
-        RuntimeBackup.loadAll(latestBackupPath: latestBackupPath, fileStore: fileStore)
+    func backups(latestBackupPath: String?) throws -> [RuntimeBackup] {
+        try RuntimeBackup.loadAll(latestBackupPath: latestBackupPath, fileStore: fileStore)
     }
 
-    func redisBackups() -> [RuntimeBackup] {
-        RuntimeBackup.loadRedisBackups(fileStore: fileStore)
+    func redisBackups() throws -> [RuntimeBackup] {
+        try RuntimeBackup.loadRedisBackups(fileStore: fileStore)
     }
 
     func logText(sourceID: RuntimeLogSource, helperMessage: String, lineLimit: Int) -> String {
         switch sourceID {
         case .helperMessage:
-            return helperMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                ? RuntimeAdapterConstants.StatusText.noLogData
-                : helperMessage
+            return logFile(path: RuntimeAdapterConstants.Paths.helperMessageLogFile, lineLimit: lineLimit)
+        case .command:
+            return logFile(path: RuntimeAdapterConstants.Paths.commandLogFile, lineLimit: lineLimit)
         case .containers:
             if !fileStore.fileExists(URL(fileURLWithPath: RuntimeAdapterConstants.Paths.containerLogs)) {
-                logCollector.refreshLogCollection(sourceID: sourceID)
+                let refreshFailure = refreshLogCollectionFailure(sourceID)
+                let text = logFile(sourceID: sourceID, lineLimit: lineLimit)
+                if text == RuntimeAdapterConstants.StatusText.noLogData, let refreshFailure {
+                    return refreshFailure
+                }
+                return text
             }
             return logFile(sourceID: sourceID, lineLimit: lineLimit)
         default:
-            logCollector.refreshLogCollection(sourceID: sourceID)
-            return logFile(sourceID: sourceID, lineLimit: lineLimit)
+            let refreshFailure = refreshLogCollectionFailure(sourceID)
+            let text = logFile(sourceID: sourceID, lineLimit: lineLimit)
+            if text == RuntimeAdapterConstants.StatusText.noLogData, let refreshFailure {
+                return refreshFailure
+            }
+            return text
+        }
+    }
+
+    private func refreshLogCollectionFailure(_ sourceID: RuntimeLogSource) -> String? {
+        do {
+            try logCollector.refreshLogCollection(sourceID: sourceID)
+            return nil
+        } catch {
+            return "Failed to refresh log collection: \(error.localizedDescription)"
         }
     }
 
@@ -82,69 +101,72 @@ struct SystemRuntimeHostFileReader: RuntimeHostFileReading, @unchecked Sendable 
             return logFile(
                 path: RuntimeAdapterConstants.Paths.commandLog,
                 lineLimit: lineLimit,
-                fallbackPath: RuntimeAdapterConstants.Paths.commandLogFile
+                sourcePath: RuntimeAdapterConstants.Paths.commandLogFile
             )
         case .launcher:
             return logFile(
                 path: (RuntimeAdapterConstants.Paths.runtimeLogs as NSString).appendingPathComponent("launcher.log"),
                 lineLimit: lineLimit,
-                fallbackPath: (RuntimeAdapterConstants.Paths.runtimeLogSources as NSString).appendingPathComponent("launcher.log")
+                sourcePath: (RuntimeAdapterConstants.Paths.runtimeLogSources as NSString).appendingPathComponent("launcher.log")
             )
         case .vmLaunchOutput:
             return logFile(
                 path: (RuntimeAdapterConstants.Paths.runtimeLogs as NSString).appendingPathComponent("launchd.out.log"),
                 lineLimit: lineLimit,
-                fallbackPath: (RuntimeAdapterConstants.Paths.runtimeLogSources as NSString).appendingPathComponent("launchd.out.log")
+                sourcePath: (RuntimeAdapterConstants.Paths.runtimeLogSources as NSString).appendingPathComponent("launchd.out.log")
             )
         case .vmLaunchError:
             return logFile(
                 path: (RuntimeAdapterConstants.Paths.runtimeLogs as NSString).appendingPathComponent("launchd.err.log"),
                 lineLimit: lineLimit,
-                fallbackPath: (RuntimeAdapterConstants.Paths.runtimeLogSources as NSString).appendingPathComponent("launchd.err.log")
+                sourcePath: (RuntimeAdapterConstants.Paths.runtimeLogSources as NSString).appendingPathComponent("launchd.err.log")
             )
         case .proxyOutput:
             return logFile(
                 path: (RuntimeAdapterConstants.Paths.runtimeLogs as NSString).appendingPathComponent("proxy.out.log"),
                 lineLimit: lineLimit,
-                fallbackPath: (RuntimeAdapterConstants.Paths.runtimeLogSources as NSString).appendingPathComponent("proxy.out.log")
+                sourcePath: (RuntimeAdapterConstants.Paths.runtimeLogSources as NSString).appendingPathComponent("proxy.out.log")
             )
         case .proxyError:
             return logFile(
                 path: (RuntimeAdapterConstants.Paths.runtimeLogs as NSString).appendingPathComponent("proxy.err.log"),
                 lineLimit: lineLimit,
-                fallbackPath: (RuntimeAdapterConstants.Paths.runtimeLogSources as NSString).appendingPathComponent("proxy.err.log")
+                sourcePath: (RuntimeAdapterConstants.Paths.runtimeLogSources as NSString).appendingPathComponent("proxy.err.log")
             )
         case .watchdog:
             return logFile(
                 path: (RuntimeAdapterConstants.Paths.runtimeLogs as NSString).appendingPathComponent("watchdog.out.log"),
                 lineLimit: lineLimit,
-                fallbackPath: (RuntimeAdapterConstants.Paths.runtimeLogSources as NSString).appendingPathComponent("watchdog.out.log")
+                sourcePath: (RuntimeAdapterConstants.Paths.runtimeLogSources as NSString).appendingPathComponent("watchdog.out.log")
             )
         case .updateActivation:
             return logFile(
                 path: RuntimeAdapterConstants.Paths.updateActivationLog,
                 lineLimit: lineLimit,
-                fallbackPath: RuntimeAdapterConstants.Paths.updateActivationLogSource
+                sourcePath: RuntimeAdapterConstants.Paths.updateActivationLogSource
+            )
+        case .updateShutdown:
+            return logFile(
+                path: RuntimeAdapterConstants.Paths.updateShutdownLog,
+                lineLimit: lineLimit,
+                sourcePath: RuntimeAdapterConstants.Paths.updateShutdownLogSource
             )
         case .containers:
             return logFile(
                 path: RuntimeAdapterConstants.Paths.containerLogs,
                 lineLimit: lineLimit,
-                fallbackPath: RuntimeAdapterConstants.Paths.containerLogSource
+                sourcePath: RuntimeAdapterConstants.Paths.containerLogSource
             )
         }
     }
 
     func preferredLogsPath() -> String {
-        logCollector.refreshLogCollection()
         return RuntimeAdapterConstants.Paths.productLogs
     }
 
-    func vitalFileFolders(root: String) -> [VitalFilesFolder] {
+    func vitalFileFolders(root: String) throws -> [VitalFilesFolder] {
         let rootURL = URL(fileURLWithPath: root)
-        guard let entries = try? fileStore.contentsOfDirectory(at: rootURL, skipsHiddenFiles: false) else {
-            return []
-        }
+        let entries = try fileStore.contentsOfDirectory(at: rootURL, skipsHiddenFiles: false)
         return entries
             .filter { fileStore.directoryExists($0) }
             .sorted { lhs, rhs in
@@ -155,22 +177,28 @@ struct SystemRuntimeHostFileReader: RuntimeHostFileReading, @unchecked Sendable 
             }
     }
 
-    private func logFile(path: String, lineLimit: Int, fallbackPath: String? = nil) -> String {
+    private func logFile(path: String, lineLimit: Int, sourcePath: String? = nil) -> String {
         let url = URL(fileURLWithPath: path)
         let readableURL: URL
         if fileStore.fileExists(url) {
             readableURL = url
-        } else if let fallbackPath {
-            let fallbackURL = URL(fileURLWithPath: fallbackPath)
-            if fileStore.fileExists(fallbackURL) {
-                readableURL = fallbackURL
+        } else if let sourcePath {
+            let sourceURL = URL(fileURLWithPath: sourcePath)
+            if fileStore.fileExists(sourceURL) {
+                readableURL = sourceURL
             } else {
                 return RuntimeAdapterConstants.StatusText.noLogData
             }
         } else {
             return RuntimeAdapterConstants.StatusText.noLogData
         }
-        guard let content = readTailText(readableURL) else {
+        let content: String?
+        do {
+            content = try readTailText(readableURL)
+        } catch {
+            return "Failed to read log file \(readableURL.path): \(error.localizedDescription)"
+        }
+        guard let content else {
             return RuntimeAdapterConstants.StatusText.noLogData
         }
         let body = tail(content, lineLimit: lineLimit)
@@ -184,21 +212,34 @@ struct SystemRuntimeHostFileReader: RuntimeHostFileReading, @unchecked Sendable 
         return lines.suffix(lineLimit).joined(separator: "\n")
     }
 
-    private func readTailText(_ url: URL) -> String? {
-        guard let handle = try? FileHandle(forReadingFrom: url) else {
+    private func readTailText(_ url: URL) throws -> String? {
+        let fileSize = try fileStore.fileSize(url)
+        let offset = fileSize > Self.logTailReadByteLimit
+            ? fileSize - Self.logTailReadByteLimit
+            : nil
+        let data: Data
+        if let partialReader = fileStore as? RuntimeFilePartialReading {
+            data = try partialReader.readData(url, offset: offset)
+        } else {
+            data = try fileStore.readData(url)
+        }
+        guard !data.isEmpty else {
             return nil
         }
-        defer {
-            try? handle.close()
+        guard let text = String(data: data, encoding: .utf8) else {
+            throw RuntimeHostFileReaderError.invalidUTF8(path: url.path)
         }
+        return text
+    }
+}
 
-        let fileSize = (try? fileStore.fileSize(url)) ?? 0
-        if fileSize > Self.logTailReadByteLimit {
-            try? handle.seek(toOffset: fileSize - Self.logTailReadByteLimit)
+enum RuntimeHostFileReaderError: LocalizedError, Equatable {
+    case invalidUTF8(path: String)
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidUTF8(let path):
+            return "Log file is not valid UTF-8: \(path)"
         }
-        guard let data = try? handle.readToEnd(), !data.isEmpty else {
-            return nil
-        }
-        return String(decoding: data, as: UTF8.self)
     }
 }

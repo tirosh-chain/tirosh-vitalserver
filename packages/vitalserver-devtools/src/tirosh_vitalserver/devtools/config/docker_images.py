@@ -22,7 +22,18 @@ def load_docker_images_config(config: TomlTable, root: Path) -> DockerImagesConf
             root,
             required_string(docker_images, "bundle_path", path=path),
         ),
+        optional_bundle_path=optional_resolved_path(
+            docker_images,
+            root,
+            "optional_bundle_path",
+            path=path,
+        ),
         images=required_string_list(docker_images, "images", path=path),
+        optional_images=optional_string_list(
+            docker_images,
+            "optional_images",
+            path=path,
+        ),
         app_dockerfile=required_string(docker_images, "app_dockerfile", path=path),
         audit_proxy_image=required_string(
             docker_images,
@@ -44,4 +55,43 @@ def load_docker_images_config(config: TomlTable, root: Path) -> DockerImagesConf
             "vitaldb_observer_dockerfile",
             path=path,
         ),
+        testkit_image=required_string(
+            docker_images,
+            "testkit_image",
+            path=path,
+        ),
+        testkit_dockerfile=required_string(
+            docker_images,
+            "testkit_dockerfile",
+            path=path,
+        ),
     )
+
+
+def optional_string_list(
+    config: TomlTable,
+    key: str,
+    *,
+    path: str,
+) -> list[str]:
+    value = config.get(key, [])
+    if not isinstance(value, list) or not all(
+        isinstance(item, str) and item for item in value
+    ):
+        raise SystemExit(f"error: invalid string list config value: {path}.{key}")
+    return value
+
+
+def optional_resolved_path(
+    config: TomlTable,
+    root: Path,
+    key: str,
+    *,
+    path: str,
+) -> Path | None:
+    value = config.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value:
+        raise SystemExit(f"error: invalid string config value: {path}.{key}")
+    return resolve_path(root, value)

@@ -34,6 +34,8 @@ def docker_image_bundle_build_plan(
         audit_proxy_dockerfile=docker_config.audit_proxy_dockerfile,
         vitaldb_observer_image=docker_config.vitaldb_observer_image,
         vitaldb_observer_dockerfile=docker_config.vitaldb_observer_dockerfile,
+        testkit_image=docker_config.testkit_image,
+        testkit_dockerfile=docker_config.testkit_dockerfile,
     )
     return DockerImageBundleBuildPlan(
         image_plan=image_plan,

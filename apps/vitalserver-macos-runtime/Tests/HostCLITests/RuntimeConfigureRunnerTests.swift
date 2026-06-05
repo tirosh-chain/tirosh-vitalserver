@@ -9,17 +9,20 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
     func testConfigureUpdatesRuntimeDocumentsAndRunsRequestedActions() throws {
         let harness = try Harness()
         let cpuCount = Constants.Defaults.minimumCPUCount
+        let memoryGiB = Constants.Defaults.maximumAllowedMemoryGiB
 
         let result = try harness.runner.configure(RuntimeConfigureCommand(
             changes: [
                 .cpu(cpuCount),
-                .memoryGiB(12),
+                .memoryGiB(UInt64(memoryGiB)),
                 .diskGiB(96),
                 .network(.shared),
                 .proxyPort(18080),
                 .vitalFilesDirectory(URL(fileURLWithPath: "/data/vital-files")),
-                .publicHost("vitalserver.local"),
+                .publicHost("stale.example"),
                 .publicPort(8080),
+                .vitalServerURL("https://vitaldb.tirosh.ai/"),
+                .remoteConsoleURL("https://console.tirosh.ai/"),
                 .adminPasswordFile(URL(fileURLWithPath: "/tmp/admin-password")),
                 .startOnBoot(false),
                 .autoRecovery(false),
@@ -40,7 +43,7 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
 
         let vmConfig = try VMRuntimeConfig.load(from: harness.vmConfigURL, fileStore: harness.fileStore)
         XCTAssertEqual(vmConfig.cpuCount, cpuCount)
-        XCTAssertEqual(vmConfig.memoryMiB, 12 * 1024)
+        XCTAssertEqual(vmConfig.memoryMiB, UInt64(memoryGiB * 1024))
         XCTAssertEqual(vmConfig.network.mode, .shared)
         XCTAssertNil(vmConfig.network.bridgedInterface)
         XCTAssertEqual(vmConfig.vitalFilesDirectory?.hostPath, "/data/vital-files")
@@ -48,11 +51,20 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
         XCTAssertEqual(vmConfig.preventSystemSleep, false)
 
         let guestConfig = try GuestRuntimeConfigDocument.load(from: harness.paths.guestRuntimeConfig, fileStore: harness.fileStore)
-        XCTAssertEqual(guestConfig.publicHost, "vitalserver.local")
-        XCTAssertEqual(guestConfig.publicPort, 8080)
+        XCTAssertEqual(guestConfig.vitalServerURL, "https://vitaldb.tirosh.ai/")
+        XCTAssertEqual(guestConfig.remoteConsoleURL, "https://console.tirosh.ai/")
+        XCTAssertEqual(guestConfig.publicHost, "vitaldb.tirosh.ai")
+        XCTAssertEqual(guestConfig.publicPort, 443)
         XCTAssertEqual(guestConfig.adminPassword, "secret")
         XCTAssertEqual(guestConfig.vitalFilesDirectory, Constants.Defaults.vitalFilesDirectoryGuestMountPath)
         XCTAssertEqual(guestConfig.redisBackupRetentionCount, 20)
+        let settingsData = try XCTUnwrap(harness.fileStore.files[harness.paths.guestRuntimeSettings])
+        let guestSettings = try JSONDecoder().decode(GuestRuntimeSettingsDocument.self, from: settingsData)
+        XCTAssertEqual(guestSettings.vitalServerURL, "https://vitaldb.tirosh.ai/")
+        XCTAssertEqual(guestSettings.remoteConsoleURL, "https://console.tirosh.ai/")
+        XCTAssertEqual(guestSettings.publicHost, "vitaldb.tirosh.ai")
+        XCTAssertEqual(guestSettings.publicPort, 443)
+        XCTAssertEqual(guestSettings.redisBackupRetentionCount, 20)
     }
 
     func testConfigureWithoutRestartDoesNotRestartServices() throws {
@@ -91,6 +103,49 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
                 return XCTFail("expected missingArgument, got \(error)")
             }
             XCTAssertEqual(message, "--redis-backup-retention must be between 1 and 30")
+        }
+    }
+
+    func testConfigureRejectsEmptyAdvertisedURL() throws {
+        let harness = try Harness()
+
+        XCTAssertThrowsError(try harness.runner.configure(RuntimeConfigureCommand(
+            changes: [.vitalServerURL("")]
+        ))) { error in
+            guard case LauncherError.missingArgument(let message) = error else {
+                return XCTFail("expected missingArgument, got \(error)")
+            }
+            XCTAssertEqual(message, "--vitalserver-url must be an absolute http/https URL")
+        }
+    }
+
+    func testHTTPVitalServerURLWithoutExplicitPortResetsPublicPortToDefault() throws {
+        let harness = try Harness()
+
+        _ = try harness.runner.configure(RuntimeConfigureCommand(
+            changes: [
+                .publicPort(8080),
+                .vitalServerURL("http://vitaldb.tirosh.ai/"),
+            ]
+        ))
+
+        let guestConfig = try GuestRuntimeConfigDocument.load(from: harness.paths.guestRuntimeConfig, fileStore: harness.fileStore)
+        XCTAssertEqual(guestConfig.vitalServerURL, "http://vitaldb.tirosh.ai/")
+        XCTAssertEqual(guestConfig.publicHost, "vitaldb.tirosh.ai")
+        XCTAssertEqual(guestConfig.publicPort, Constants.Guest.publicPort)
+    }
+
+    func testConfigureFailsWhenGuestRuntimeConfigIsMissing() throws {
+        let harness = try Harness()
+        harness.fileStore.files[harness.paths.guestRuntimeConfig] = nil
+
+        XCTAssertThrowsError(try harness.runner.configure(RuntimeConfigureCommand(
+            changes: [.autoRecovery(false)]
+        ))) { error in
+            guard case LauncherError.missingFile(let path) = error else {
+                return XCTFail("expected missingFile, got \(error)")
+            }
+            XCTAssertEqual(path, harness.paths.guestRuntimeConfig.path)
         }
     }
 

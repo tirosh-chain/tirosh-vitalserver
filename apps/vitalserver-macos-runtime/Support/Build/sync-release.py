@@ -99,6 +99,7 @@ def sync_swift(root, release, release_file):
     vitalserver = require_service(release, "vitalServer")
     audit_proxy = require_service(release, "auditProxy")
     vitaldb_observer = require_service(release, "vitalDBObserver")
+    testkit = require_service(release, "testkit")
     redis = require_service(release, "redis")
     redis_ui = require_service(release, "redisUI")
     swagger_ui = require_service(release, "swaggerUI")
@@ -110,6 +111,7 @@ def sync_swift(root, release, release_file):
         release,
         "services.vitalDBObserver.displayName",
     )
+    testkit_name = require_field(release, "services.testkit.displayName")
     redis_name = require_field(release, "services.redis.displayName")
     redis_ui_name = require_field(release, "services.redisUI.displayName")
     swagger_ui_name = require_field(release, "services.swaggerUI.displayName")
@@ -128,6 +130,7 @@ extension Constants {{
     static let launcherChannel = UpdateBundleChannel(
         rawValue: {swift_string(release_channel)}
     )
+    static let testkitContainerIncluded = {str(testkit_container_included).lower()}
 }}
 """,
     )
@@ -147,6 +150,7 @@ enum GeneratedRelease {{
     static let vitalServerName = {swift_string(vitalserver_name)}
     static let auditProxyName = {swift_string(audit_proxy_name)}
     static let vitalDBObserverName = {swift_string(vitaldb_observer_name)}
+    static let testkitName = {swift_string(testkit_name)}
     static let redisName = {swift_string(redis_name)}
     static let redisUIName = {swift_string(redis_ui_name)}
     static let swaggerUIName = {swift_string(swagger_ui_name)}
@@ -155,6 +159,7 @@ enum GeneratedRelease {{
     static let vitalServerImage = {swift_string(vitalserver["image"])}
     static let auditProxyImage = {swift_string(audit_proxy["image"])}
     static let vitalDBObserverImage = {swift_string(vitaldb_observer["image"])}
+    static let testkitImage = {swift_string(testkit["image"])}
     static let redisImage = {swift_string(redis["image"])}
     static let redisUIImage = {swift_string(redis_ui["image"])}
     static let swaggerUIImage = {swift_string(swagger_ui["image"])}
@@ -162,6 +167,7 @@ enum GeneratedRelease {{
     static let hostProxyImage = {swift_string(host_proxy["image"])}
     static let auditProxyVersion = {swift_string(audit_proxy["version"])}
     static let vitalDBObserverVersion = {swift_string(vitaldb_observer["version"])}
+    static let testkitVersion = {swift_string(testkit["version"])}
     static let redisVersion = {swift_string(redis["version"])}
     static let redisUIVersion = {swift_string(redis_ui["version"])}
     static let swaggerUIVersion = {swift_string(swagger_ui["version"])}
@@ -178,6 +184,7 @@ def sync_compose(root, release):
     vitalserver = require_service(release, "vitalServer")
     audit_proxy = require_service(release, "auditProxy")
     vitaldb_observer = require_service(release, "vitalDBObserver")
+    testkit = require_service(release, "testkit")
     redis = require_service(release, "redis")
     redis_ui = require_service(release, "redisUI")
     swagger_ui = require_service(release, "swaggerUI")
@@ -189,6 +196,7 @@ def sync_compose(root, release):
             f"image: {audit_proxy['image']}"
         ),
         r"image: vitaldb-observer:[^\n]+": f"image: {vitaldb_observer['image']}",
+        r"image: vitalserver-testkit:[^\n]+": f"image: {testkit['image']}",
         r"image: ghcr\.io/joeferner/redis-commander:[^\n]+": (
             f"image: {redis_ui['image']}"
         ),
@@ -208,6 +216,7 @@ def sync_build_config(root, release):
     vitalserver = require_service(release, "vitalServer")
     audit_proxy = require_service(release, "auditProxy")
     vitaldb_observer = require_service(release, "vitalDBObserver")
+    testkit = require_service(release, "testkit")
     redis = require_service(release, "redis")
     redis_ui = require_service(release, "redisUI")
     swagger_ui = require_service(release, "swaggerUI")
@@ -216,11 +225,15 @@ def sync_build_config(root, release):
         r'"vitalserver:[^"]+"': f'"{vitalserver["image"]}"',
         r'\n  "vitalserver-audit-proxy:[^"]+"': f'\n  "{audit_proxy["image"]}"',
         r'\n  "vitaldb-observer:[^"]+"': f'\n  "{vitaldb_observer["image"]}"',
+        r'\n  "vitalserver-testkit:[^"]+"': f'\n  "{testkit["image"]}"',
         r'audit_proxy_image = "vitalserver-audit-proxy:[^"]+"': (
             f'audit_proxy_image = "{audit_proxy["image"]}"'
         ),
         r'vitaldb_observer_image = "vitaldb-observer:[^"]+"': (
             f'vitaldb_observer_image = "{vitaldb_observer["image"]}"'
+        ),
+        r'testkit_image = "vitalserver-testkit:[^"]+"': (
+            f'testkit_image = "{testkit["image"]}"'
         ),
         r'"redis:[^"]+"': f'"{redis["image"]}"',
         r'"ghcr\.io/joeferner/redis-commander:[^"]+"': (
@@ -240,6 +253,9 @@ def sync_build_config(root, release):
 
 
 def sync_guest_scripts(root, release):
+    testkit_container_included = "testkit" in require_field(
+        release, "bundle.optionalContainerServices"
+    )
     bootstrap = root / "Support/Guest/bootstrap.sh"
     content = bootstrap.read_text(encoding="utf-8")
     content = replace(
@@ -254,11 +270,24 @@ def sync_guest_scripts(root, release):
     )
     write_if_changed(bootstrap, content)
 
-    repair_datastore = root / "Support/Guest/bin/tirosh-vitalserver-repair-datastore"
+    runtime_config = root / "Support/Guest/runtime-config.json"
+    content = runtime_config.read_text(encoding="utf-8")
+    content = replace(
+        r'"testkitEnabled": (true|false),',
+        f'"testkitEnabled": {str(testkit_container_included).lower()},',
+        content,
+    )
+    write_if_changed(runtime_config, content)
+
+    repair_datastore = (
+        root.parent.parent
+        / "packages/vitalserver-guest-tools/src/tirosh_guest_tools/application"
+        / "redis_repair.py"
+    )
     content = repair_datastore.read_text(encoding="utf-8")
     content = replace(
-        r"\n    redis:[^ ]+ \\\n",
-        f"\n    {require_service(release, 'redis')['image']} \\\n",
+        r'"redis:[^"]+",',
+        f'"{require_service(release, "redis")["image"]}",',
         content,
     )
     write_if_changed(repair_datastore, content)

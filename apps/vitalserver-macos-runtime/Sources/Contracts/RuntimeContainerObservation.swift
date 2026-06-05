@@ -140,30 +140,42 @@ public struct RuntimeContainerServiceObservation: Codable, Equatable, Sendable {
 public struct RuntimeContainerObservation: Codable, Equatable, Sendable {
     public let auditProxyHTTP: String
     public let auditProxyStatus: RuntimeAuditProxyStatusDocument?
+    public let auditProxyStatusReadError: String?
     public let runtimeStateUpdatedAt: String?
     public let runtimeStateFileUpdatedAt: String?
+    public let runtimeStateFileMetadataError: String?
     public let containerLogsPresent: Bool
     public let containerLogsBytes: UInt64?
     public let containerLogsUpdatedAt: String?
+    public let containerLogsMetadataError: String?
     public let composeServices: [RuntimeContainerServiceObservation]
+    public let composeServicesReadError: String?
 
     public init(
         auditProxyHTTP: String,
         auditProxyStatus: RuntimeAuditProxyStatusDocument?,
+        auditProxyStatusReadError: String? = nil,
         runtimeStateUpdatedAt: String? = nil,
         runtimeStateFileUpdatedAt: String? = nil,
+        runtimeStateFileMetadataError: String? = nil,
         containerLogsPresent: Bool,
         containerLogsBytes: UInt64?,
         containerLogsUpdatedAt: String? = nil,
-        composeServices: [RuntimeContainerServiceObservation] = []
+        containerLogsMetadataError: String? = nil,
+        composeServices: [RuntimeContainerServiceObservation] = [],
+        composeServicesReadError: String? = nil
     ) {
         self.auditProxyHTTP = auditProxyHTTP
         self.auditProxyStatus = auditProxyStatus
+        self.auditProxyStatusReadError = auditProxyStatusReadError
         self.runtimeStateUpdatedAt = runtimeStateUpdatedAt
         self.runtimeStateFileUpdatedAt = runtimeStateFileUpdatedAt
+        self.runtimeStateFileMetadataError = runtimeStateFileMetadataError
         self.containerLogsPresent = containerLogsPresent
         self.containerLogsBytes = containerLogsBytes
         self.containerLogsUpdatedAt = containerLogsUpdatedAt
+        self.containerLogsMetadataError = containerLogsMetadataError
         self.composeServices = composeServices
+        self.composeServicesReadError = composeServicesReadError
     }
 }

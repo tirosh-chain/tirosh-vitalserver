@@ -29,6 +29,7 @@ public enum RuntimeVMError: Codable, Equatable, Sendable {
     case serviceNotLoaded(String)
     case missingIPAddress
     case runtimeStateMissing
+    case runtimeStateInvalid
     case runtimeStateStale
     case launchFailed(String)
     case invalidConfiguration(String)
@@ -38,6 +39,9 @@ public enum RuntimeVMError: Codable, Equatable, Sendable {
     case guestFilesystemReadOnly
     case guestDiskIO
     case guestHTTP(String)
+    case guestHTTPProbeFailed(String)
+    case guestBootstrapResultMissing
+    case guestBootstrapResultUnavailable
     case guestBootstrapMissingRuntimePackages
     case guestBootstrapFailed
     case unknown(String)
@@ -54,6 +58,8 @@ public enum RuntimeVMError: Codable, Equatable, Sendable {
             self = .missingIPAddress
         case "vm-runtime-state-missing":
             self = .runtimeStateMissing
+        case "vm-runtime-state-invalid":
+            self = .runtimeStateInvalid
         case "vm-runtime-state-stale":
             self = .runtimeStateStale
         case "vm-disk-attachment-invalid":
@@ -66,6 +72,10 @@ public enum RuntimeVMError: Codable, Equatable, Sendable {
             self = .guestDiskIO
         case "vm-guest-bootstrap-missing-runtime-packages":
             self = .guestBootstrapMissingRuntimePackages
+        case "vm-guest-bootstrap-result-missing":
+            self = .guestBootstrapResultMissing
+        case "vm-guest-bootstrap-result-unavailable":
+            self = .guestBootstrapResultUnavailable
         case "vm-guest-bootstrap-failed":
             self = .guestBootstrapFailed
         default:
@@ -77,6 +87,8 @@ public enum RuntimeVMError: Codable, Equatable, Sendable {
                 self = .invalidConfiguration(String(rawValue.dropFirst("vm-invalid-configuration-".count)))
             } else if rawValue.hasPrefix("vm-host-resource-unavailable-") {
                 self = .hostResourceUnavailable(String(rawValue.dropFirst("vm-host-resource-unavailable-".count)))
+            } else if rawValue.hasPrefix("vm-guest-http-probe-failed-") {
+                self = .guestHTTPProbeFailed(String(rawValue.dropFirst("vm-guest-http-probe-failed-".count)))
             } else if rawValue.hasPrefix("vm-guest-http-") {
                 self = .guestHTTP(String(rawValue.dropFirst("vm-guest-http-".count)))
             } else {
@@ -99,6 +111,8 @@ public enum RuntimeVMError: Codable, Equatable, Sendable {
             "vm-missing-ip-address"
         case .runtimeStateMissing:
             "vm-runtime-state-missing"
+        case .runtimeStateInvalid:
+            "vm-runtime-state-invalid"
         case .runtimeStateStale:
             "vm-runtime-state-stale"
         case .launchFailed(let reason):
@@ -117,6 +131,12 @@ public enum RuntimeVMError: Codable, Equatable, Sendable {
             "vm-guest-disk-io-error"
         case .guestHTTP(let status):
             "vm-guest-http-\(status)"
+        case .guestHTTPProbeFailed(let status):
+            "vm-guest-http-probe-failed-\(status)"
+        case .guestBootstrapResultMissing:
+            "vm-guest-bootstrap-result-missing"
+        case .guestBootstrapResultUnavailable:
+            "vm-guest-bootstrap-result-unavailable"
         case .guestBootstrapMissingRuntimePackages:
             "vm-guest-bootstrap-missing-runtime-packages"
         case .guestBootstrapFailed:
@@ -144,11 +164,12 @@ public extension RuntimeVMError {
             return .installation
         case .serviceNotLoaded, .launchFailed:
             return .lifecycle
-        case .missingIPAddress, .guestHTTP:
+        case .missingIPAddress, .guestHTTP, .guestHTTPProbeFailed:
             return .networking
-        case .runtimeStateMissing, .runtimeStateStale:
+        case .runtimeStateMissing, .runtimeStateInvalid, .runtimeStateStale:
             return .guestAgent
-        case .guestBootstrapMissingRuntimePackages, .guestBootstrapFailed:
+        case .guestBootstrapResultMissing, .guestBootstrapResultUnavailable,
+             .guestBootstrapMissingRuntimePackages, .guestBootstrapFailed:
             return .guestBootstrap
         case .diskAttachmentInvalid, .guestFilesystemError, .guestFilesystemReadOnly, .guestDiskIO:
             return .guestStorage
@@ -167,10 +188,14 @@ public extension RuntimeVMError {
             return .installRuntime
         case .serviceNotLoaded:
             return .restartVMService
-        case .missingIPAddress, .guestHTTP:
+        case .missingIPAddress, .guestHTTP, .guestHTTPProbeFailed:
             return .waitForGuest
-        case .runtimeStateMissing, .runtimeStateStale:
+        case .runtimeStateMissing, .runtimeStateInvalid, .runtimeStateStale:
             return .restartGuestAgent
+        case .guestBootstrapResultMissing:
+            return .waitForGuest
+        case .guestBootstrapResultUnavailable:
+            return .inspectLogs
         case .guestBootstrapMissingRuntimePackages, .guestBootstrapFailed:
             return .repairGuestBootstrap
         case .diskAttachmentInvalid, .guestFilesystemError, .guestFilesystemReadOnly, .guestDiskIO:

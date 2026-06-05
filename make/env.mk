@@ -4,15 +4,15 @@ ENV_ARGS = \
 	--uv "$(UV)" \
 	--compose "$(COMPOSE)"
 
-.PHONY: bootstrap doctor install-testkit-release require-uv
+.PHONY: bootstrap doctor testkit/install-release require-uv
 
-bootstrap: init
+bootstrap: repo/init
 	$(DEVTOOLS_RUNNER) env-bootstrap $(ENV_ARGS)
 
 doctor:
 	$(DEVTOOLS_RUNNER) env-doctor $(ENV_ARGS)
 
-install-testkit-release:
+testkit/install-release:
 	$(PYTHON) scripts/install_testkit_release.py \
 		--testkit-version "$(TESTKIT_VERSION)" \
 		--testkit-release-tag "$(TESTKIT_RELEASE_TAG)" \

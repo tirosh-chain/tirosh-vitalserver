@@ -11,15 +11,15 @@ public enum RuntimeManagedService: CaseIterable, Equatable, Sendable {
     public var label: String {
         switch self {
         case .vm:
-            "com.tirosh.vitalserver-vm"
+            "ai.tirosh.vitalserver.helper.vm"
         case .proxy:
-            "com.tirosh.vitalserver-proxy"
+            "ai.tirosh.vitalserver.helper.proxy"
         case .guestLogSync:
-            "com.tirosh.vitalserver-guest-log-sync"
+            "ai.tirosh.vitalserver.helper.guest-log-sync"
         case .sleepPrevention:
-            "com.tirosh.vitalserver-sleep-prevention"
+            "ai.tirosh.vitalserver.helper.sleep-prevention"
         case .watchdog:
-            "com.tirosh.vitalserver-watchdog"
+            "ai.tirosh.vitalserver.helper.watchdog"
         }
     }
 }

@@ -6,6 +6,7 @@ import re
 from collections.abc import Iterable
 
 from tirosh_vitalserver.testkit.domain.vital_file.models import PayloadFile
+from tirosh_vitalserver.testkit.errors import InvalidVitalFilenameError
 
 VITAL_FILENAME_RE = re.compile(r"^.+_\d{6}_\d{6}\.vital$")
 
@@ -20,5 +21,4 @@ def assert_vital_filenames(payloads: Iterable[PayloadFile]) -> None:
     ]
 
     if invalid:
-        joined = ", ".join(invalid)
-        raise ValueError(f"invalid vital filename format: {joined}")
+        raise InvalidVitalFilenameError(tuple(invalid))

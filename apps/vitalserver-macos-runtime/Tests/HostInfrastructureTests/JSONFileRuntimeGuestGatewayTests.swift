@@ -32,7 +32,9 @@ final class JSONFileRuntimeGuestGatewayTests: XCTestCase {
         XCTAssertEqual(request["operation"] as? String, "activate-update")
         XCTAssertEqual(request["version"] as? String, "0.1.4")
 
-        let result = try XCTUnwrap(harness.gateway.loadUpdateActivationResult())
+        guard case .loaded(let result) = harness.gateway.loadUpdateActivationResultDocument() else {
+            return XCTFail("Expected loaded update activation result")
+        }
         XCTAssertEqual(result.schemaVersion, 2)
         XCTAssertEqual(result.requestId, "request-1")
         XCTAssertEqual(result.operation, .activateGuestUpdate)
@@ -67,11 +69,56 @@ final class JSONFileRuntimeGuestGatewayTests: XCTestCase {
         XCTAssertEqual(request["requestId"] as? String, "repair-1")
         XCTAssertEqual(request["operation"] as? String, "repair-datastore")
 
-        let result = try XCTUnwrap(harness.gateway.loadDatastoreRepairResult())
+        guard case .loaded(let result) = harness.gateway.loadDatastoreRepairResultDocument() else {
+            return XCTFail("Expected loaded datastore repair result")
+        }
         XCTAssertEqual(result.schemaVersion, 2)
         XCTAssertEqual(result.requestId, "repair-1")
         XCTAssertEqual(result.operation, .repairDatastore)
         XCTAssertEqual(result.status, .running)
+
+        try harness.cleanup()
+    }
+
+    func testWritesUpdateShutdownRequestAndLoadsResult() throws {
+        let harness = try GuestGatewayHarness()
+
+        try harness.gateway.writeUpdateShutdownRequest(RuntimeGuestShutdownRequest(
+            id: "shutdown-1",
+            requestedAt: "2026-05-21T12:33:57Z",
+            version: "0.1.4"
+        ))
+        try harness.writeJSON(
+            """
+            {
+              "schemaVersion": 2,
+              "requestId": "shutdown-1",
+              "operation": "prepare-update-shutdown",
+              "status": "ready",
+              "shutdownPhase": "poweroff-requested",
+              "message": "ready",
+              "redisBackupPath": "/mnt/tirosh/backups/redis/redis.tar.gz",
+              "updatedAt": "2026-05-21T12:34:57Z"
+            }
+            """,
+            to: harness.updateShutdownResultURL
+        )
+
+        let request = try harness.jsonObject(at: harness.updateShutdownRequestURL)
+        XCTAssertEqual(request["schemaVersion"] as? Int, 1)
+        XCTAssertEqual(request["requestId"] as? String, "shutdown-1")
+        XCTAssertEqual(request["operation"] as? String, "prepare-update-shutdown")
+        XCTAssertEqual(request["version"] as? String, "0.1.4")
+
+        guard case .loaded(let result) = harness.gateway.loadUpdateShutdownResultDocument() else {
+            return XCTFail("Expected loaded update shutdown result")
+        }
+        XCTAssertEqual(result.schemaVersion, 2)
+        XCTAssertEqual(result.requestId, "shutdown-1")
+        XCTAssertEqual(result.operation, .prepareUpdateShutdown)
+        XCTAssertEqual(result.status, .ready)
+        XCTAssertEqual(result.shutdownPhase, .poweroffRequested)
+        XCTAssertEqual(result.redisBackupPath, "/mnt/tirosh/backups/redis/redis.tar.gz")
 
         try harness.cleanup()
     }
@@ -92,11 +139,13 @@ final class JSONFileRuntimeGuestGatewayTests: XCTestCase {
             to: harness.runtimeStateURL
         )
         try harness.writeJSON("{}", to: harness.updateActivationResultURL)
+        try harness.writeJSON("{}", to: harness.updateShutdownResultURL)
         try harness.writeJSON("{}", to: harness.datastoreRepairResultURL)
         try harness.writeJSON(
             """
             {
               "schemaVersion": 2,
+              "bootID": "boot-1",
               "operation": "bootstrap",
               "status": "failed",
               "message": "Missing runtime packages.",
@@ -107,18 +156,41 @@ final class JSONFileRuntimeGuestGatewayTests: XCTestCase {
             to: harness.bootstrapResultURL
         )
 
-        let state = try XCTUnwrap(harness.gateway.loadRuntimeState())
+        guard case .loaded(let state) = harness.gateway.loadRuntimeStateDocument() else {
+            return XCTFail("Expected loaded runtime state")
+        }
         XCTAssertEqual(state.vmIP, "192.168.64.2")
         XCTAssertEqual(state.guestHTTP, "200")
-        let bootstrapResult = try XCTUnwrap(harness.gateway.loadBootstrapResult())
+        guard case .loaded(let bootstrapResult) = harness.gateway.loadBootstrapResultDocument() else {
+            return XCTFail("Expected loaded bootstrap result")
+        }
         XCTAssertEqual(bootstrapResult.status, .failed)
+        XCTAssertEqual(bootstrapResult.bootID, "boot-1")
         XCTAssertEqual(bootstrapResult.operation?.rawValue, "bootstrap")
         XCTAssertEqual(bootstrapResult.reasonCodes, [.guestBootstrapMissingRuntimePackages])
 
         try harness.gateway.removeUpdateActivationResult()
+        try harness.gateway.removeUpdateShutdownResult()
         try harness.gateway.removeDatastoreRepairResult()
         XCTAssertFalse(FileManager.default.fileExists(atPath: harness.updateActivationResultURL.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: harness.updateShutdownResultURL.path))
         XCTAssertFalse(FileManager.default.fileExists(atPath: harness.datastoreRepairResultURL.path))
+
+        try harness.cleanup()
+    }
+
+    func testLoadResultReportsMissingAndInvalidGuestDocuments() throws {
+        let harness = try GuestGatewayHarness()
+
+        guard case .missing = harness.gateway.loadUpdateActivationResultDocument() else {
+            return XCTFail("Expected missing update activation result")
+        }
+
+        try harness.writeJSON("not-json", to: harness.updateActivationResultURL)
+        guard case .failed(let message) = harness.gateway.loadUpdateActivationResultDocument() else {
+            return XCTFail("Expected failed update activation result load")
+        }
+        XCTAssertFalse(message.isEmpty)
 
         try harness.cleanup()
     }
@@ -130,6 +202,8 @@ private struct GuestGatewayHarness {
     let bootstrapResultURL: URL
     let updateActivationRequestURL: URL
     let updateActivationResultURL: URL
+    let updateShutdownRequestURL: URL
+    let updateShutdownResultURL: URL
     let datastoreRepairRequestURL: URL
     let datastoreRepairResultURL: URL
     let gateway: JSONFileRuntimeGuestGateway
@@ -141,6 +215,8 @@ private struct GuestGatewayHarness {
         bootstrapResultURL = directory.appendingPathComponent(RuntimeFileNames.bootstrapResult)
         updateActivationRequestURL = directory.appendingPathComponent(RuntimeFileNames.updateActivationRequest)
         updateActivationResultURL = directory.appendingPathComponent(RuntimeFileNames.updateActivationResult)
+        updateShutdownRequestURL = directory.appendingPathComponent(RuntimeFileNames.updateShutdownRequest)
+        updateShutdownResultURL = directory.appendingPathComponent(RuntimeFileNames.updateShutdownResult)
         datastoreRepairRequestURL = directory.appendingPathComponent(RuntimeFileNames.datastoreRepairRequest)
         datastoreRepairResultURL = directory.appendingPathComponent(RuntimeFileNames.datastoreRepairResult)
         gateway = JSONFileRuntimeGuestGateway(
@@ -148,6 +224,8 @@ private struct GuestGatewayHarness {
             bootstrapResultURL: bootstrapResultURL,
             updateActivationRequestURL: updateActivationRequestURL,
             updateActivationResultURL: updateActivationResultURL,
+            updateShutdownRequestURL: updateShutdownRequestURL,
+            updateShutdownResultURL: updateShutdownResultURL,
             datastoreRepairRequestURL: datastoreRepairRequestURL,
             datastoreRepairResultURL: datastoreRepairResultURL
         )

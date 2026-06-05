@@ -11,28 +11,33 @@ struct MacHostRuntimeLogExporter: RuntimeLogExporting, @unchecked Sendable {
     private let fileManager: FileManager
     private let logCollector: RuntimeLogCollecting
     private let productLogsDirectory: URL
-    private let fallbackLogItems: [RuntimeLogExportFallback]
-    private let rotatedFallbackSets: [RuntimeLogExportRotatedFallbackSet]
+    private let supplementalLogItems: [RuntimeLogExportSupplementalSource]
+    private let rotatedSupplementalSets: [RuntimeLogExportRotatedSupplementalSet]
     private let archiveRunner: (String, [String]) async -> RuntimeCommandResult
 
     init(
         fileManager: FileManager = .default,
         logCollector: RuntimeLogCollecting = MacHostRuntimeLogCollector(),
         productLogsDirectory: URL = URL(fileURLWithPath: RuntimeAdapterConstants.Paths.productLogs),
-        fallbackLogItems: [RuntimeLogExportFallback] = RuntimeLogExportFallback.defaultItems(),
-        rotatedFallbackSets: [RuntimeLogExportRotatedFallbackSet] = RuntimeLogExportRotatedFallbackSet.defaultSets(),
+        supplementalLogItems: [RuntimeLogExportSupplementalSource] = RuntimeLogExportSupplementalSource.defaultItems(),
+        rotatedSupplementalSets: [RuntimeLogExportRotatedSupplementalSet] = RuntimeLogExportRotatedSupplementalSet.defaultSets(),
         archiveRunner: @escaping (String, [String]) async -> RuntimeCommandResult = ProcessRunner.run
     ) {
         self.fileManager = fileManager
         self.logCollector = logCollector
         self.productLogsDirectory = productLogsDirectory
-        self.fallbackLogItems = fallbackLogItems
-        self.rotatedFallbackSets = rotatedFallbackSets
+        self.supplementalLogItems = supplementalLogItems
+        self.rotatedSupplementalSets = rotatedSupplementalSets
         self.archiveRunner = archiveRunner
     }
 
     func exportLogs(to destination: URL) async throws -> RuntimeLogExportResult {
-        logCollector.refreshLogCollection()
+        var exportIssues = RuntimeLogExportIssues()
+        do {
+            try logCollector.refreshLogCollection()
+        } catch {
+            exportIssues.collectionIssue = error.localizedDescription
+        }
 
         let stagingRoot = fileManager.temporaryDirectory
             .appendingPathComponent("vitalserver-log-export-\(UUID().uuidString)", isDirectory: true)
@@ -49,8 +54,9 @@ struct MacHostRuntimeLogExporter: RuntimeLogExporting, @unchecked Sendable {
         if !fileManager.fileExists(atPath: bundleRoot.path) {
             try fileManager.createDirectory(at: bundleRoot, withIntermediateDirectories: true)
         }
-        try copyFallbackLogs(to: bundleRoot)
-        try writeExportManifest(to: bundleRoot)
+        try makeStagingBundleWritable(bundleRoot)
+        try copySupplementalLogs(to: bundleRoot, issues: &exportIssues)
+        try writeExportManifest(to: bundleRoot, issues: exportIssues)
 
         let temporaryArchive = stagingRoot.appendingPathComponent(destination.lastPathComponent)
         let result = await archiveRunner(
@@ -77,16 +83,45 @@ struct MacHostRuntimeLogExporter: RuntimeLogExporting, @unchecked Sendable {
         try fileManager.copyItem(at: source, to: destination)
     }
 
-    private func copyFallbackLogs(to bundleRoot: URL) throws {
-        for item in fallbackLogItems {
-            try copyFallbackLog(item, to: bundleRoot)
+    private func makeStagingBundleWritable(_ bundleRoot: URL) throws {
+        try makeStagingItemWritable(bundleRoot, isDirectory: true)
+        guard let enumerator = fileManager.enumerator(
+            at: bundleRoot,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [],
+            errorHandler: nil
+        ) else {
+            return
         }
-        for set in rotatedFallbackSets {
-            try copyRotatedFallbackLogs(set, to: bundleRoot)
+        for case let url as URL in enumerator {
+            let values = try url.resourceValues(forKeys: [.isDirectoryKey])
+            try makeStagingItemWritable(url, isDirectory: values.isDirectory == true)
         }
     }
 
-    private func copyFallbackLog(_ item: RuntimeLogExportFallback, to bundleRoot: URL) throws {
+    private func makeStagingItemWritable(_ url: URL, isDirectory: Bool) throws {
+        let attributes = try fileManager.attributesOfItem(atPath: url.path)
+        guard let permissions = (attributes[.posixPermissions] as? NSNumber)?.uint16Value else {
+            throw RuntimeLogExporterError.missingPOSIXPermissions(path: url.path)
+        }
+        let writablePermissions = Int(permissions | (isDirectory ? 0o700 : 0o600))
+        try fileManager.setAttributes([.posixPermissions: writablePermissions], ofItemAtPath: url.path)
+    }
+
+    private func copySupplementalLogs(to bundleRoot: URL, issues: inout RuntimeLogExportIssues) throws {
+        for item in supplementalLogItems {
+            try copySupplementalLog(item, to: bundleRoot, issues: &issues)
+        }
+        for set in rotatedSupplementalSets {
+            try copyRotatedSupplementalLogs(set, to: bundleRoot)
+        }
+    }
+
+    private func copySupplementalLog(
+        _ item: RuntimeLogExportSupplementalSource,
+        to bundleRoot: URL,
+        issues: inout RuntimeLogExportIssues
+    ) throws {
         guard fileManager.fileExists(atPath: item.source.path) else {
             return
         }
@@ -98,10 +133,14 @@ struct MacHostRuntimeLogExporter: RuntimeLogExporting, @unchecked Sendable {
             at: destination.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
-        try fileManager.copyItem(at: item.source, to: destination)
+        do {
+            try fileManager.copyItem(at: item.source, to: destination)
+        } catch {
+            issues.supplementalIssues[item.relativeDestination] = error.localizedDescription
+        }
     }
 
-    private func copyRotatedFallbackLogs(_ set: RuntimeLogExportRotatedFallbackSet, to bundleRoot: URL) throws {
+    private func copyRotatedSupplementalLogs(_ set: RuntimeLogExportRotatedSupplementalSet, to bundleRoot: URL) throws {
         guard fileManager.fileExists(atPath: set.sourceDirectory.path) else {
             return
         }
@@ -129,18 +168,28 @@ struct MacHostRuntimeLogExporter: RuntimeLogExporting, @unchecked Sendable {
         }
     }
 
-    private func writeExportManifest(to bundleRoot: URL) throws {
+    private func writeExportManifest(to bundleRoot: URL, issues: RuntimeLogExportIssues) throws {
         let manifest = RuntimeLogExportManifest(
             generatedAt: ISO8601DateFormatter().string(from: Date()),
             productLogsDirectory: productLogsDirectory.path,
-            fallbackItems: fallbackLogItems.map { item in
-                RuntimeLogExportManifest.FallbackItem(
+            collectionIssue: issues.collectionIssue,
+            supplementalItems: supplementalLogItems.map { item in
+                let included = fileManager.fileExists(
+                    atPath: bundleRoot.appendingPathComponent(item.relativeDestination).path
+                )
+                let sourcePresent = fileManager.fileExists(atPath: item.source.path)
+                let error = issues.supplementalIssues[item.relativeDestination]
+                return RuntimeLogExportManifest.SupplementalItem(
                     source: item.source.path,
                     relativeDestination: item.relativeDestination,
-                    sourcePresent: fileManager.fileExists(atPath: item.source.path),
-                    included: fileManager.fileExists(
-                        atPath: bundleRoot.appendingPathComponent(item.relativeDestination).path
-                    )
+                    sourcePresent: sourcePresent,
+                    included: included,
+                    status: RuntimeLogExportManifest.SupplementalItem.statusValue(
+                        sourcePresent: sourcePresent,
+                        included: included,
+                        error: error
+                    ),
+                    error: error
                 )
             }
         )
@@ -156,21 +205,53 @@ struct MacHostRuntimeLogExporter: RuntimeLogExporting, @unchecked Sendable {
 }
 
 struct RuntimeLogExportManifest: Codable, Equatable {
-    struct FallbackItem: Codable, Equatable {
+    struct SupplementalItem: Codable, Equatable {
         let source: String
         let relativeDestination: String
         let sourcePresent: Bool
         let included: Bool
+        let status: String
+        let error: String?
+
+        static func statusValue(sourcePresent: Bool, included: Bool, error: String?) -> String {
+            if included {
+                return "included"
+            }
+            if error != nil {
+                return "failed"
+            }
+            if sourcePresent {
+                return "not-included"
+            }
+            return "missing"
+        }
     }
 
     let generatedAt: String
     let productLogsDirectory: String
-    let fallbackItems: [FallbackItem]
+    let collectionIssue: String?
+    let supplementalItems: [SupplementalItem]
+}
+
+private struct RuntimeLogExportIssues {
+    var collectionIssue: String?
+    var supplementalIssues: [String: String] = [:]
+}
+
+enum RuntimeLogExporterError: LocalizedError, Equatable {
+    case missingPOSIXPermissions(path: String)
+
+    var errorDescription: String? {
+        switch self {
+        case .missingPOSIXPermissions(let path):
+            return "POSIX permissions are missing for \(path)"
+        }
+    }
 }
 
 private extension RuntimeCommandResult {
     var localSummary: String {
-        let output = [stdout, stderr]
+        let output = [stdout, stderr, outputIssues.localSummary]
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
             .joined(separator: "\n")
@@ -183,7 +264,14 @@ private extension RuntimeCommandResult {
     }
 }
 
-struct RuntimeLogExportFallback {
+private extension Array where Element == RuntimeCommandOutputIssue {
+    var localSummary: String {
+        map { "\($0.stream.rawValue): \($0.message)" }
+            .joined(separator: "\n")
+    }
+}
+
+struct RuntimeLogExportSupplementalSource {
     let source: URL
     let relativeDestination: String
 
@@ -192,73 +280,97 @@ struct RuntimeLogExportFallback {
         self.relativeDestination = relativeDestination
     }
 
-    static func defaultItems() -> [RuntimeLogExportFallback] {
+    static func defaultItems() -> [RuntimeLogExportSupplementalSource] {
         [
-            RuntimeLogExportFallback(
+            RuntimeLogExportSupplementalSource(
                 source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.bootstrapLogSource),
                 relativeDestination: "guest/\(RuntimeFileNames.bootstrapLog)"
             ),
-            RuntimeLogExportFallback(
+            RuntimeLogExportSupplementalSource(
                 source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.containerLogSource),
                 relativeDestination: "guest/container-logs.log"
             ),
-            RuntimeLogExportFallback(
+            RuntimeLogExportSupplementalSource(
                 source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.updateActivationLogSource),
                 relativeDestination: "guest/\(RuntimeFileNames.updateActivationLog)"
             ),
-            RuntimeLogExportFallback(
+            RuntimeLogExportSupplementalSource(
+                source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.updateShutdownLogSource),
+                relativeDestination: "guest/\(RuntimeFileNames.updateShutdownLog)"
+            ),
+            RuntimeLogExportSupplementalSource(
                 source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.datastoreRepairLogSource),
                 relativeDestination: "guest/\(RuntimeFileNames.datastoreRepairLog)"
             ),
-            RuntimeLogExportFallback(
+            RuntimeLogExportSupplementalSource(
                 source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.redisBackupLogSource),
                 relativeDestination: "guest/\(RuntimeFileNames.redisBackupLog)"
             ),
-            RuntimeLogExportFallback(
+            RuntimeLogExportSupplementalSource(
+                source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.guestObservabilitySource),
+                relativeDestination: "guest/guest-observability"
+            ),
+            RuntimeLogExportSupplementalSource(
                 source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.commandLogFile),
                 relativeDestination: "command.log"
             ),
-            RuntimeLogExportFallback(
+            RuntimeLogExportSupplementalSource(
+                source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.helperMessageLogFile),
+                relativeDestination: "helper-message.log"
+            ),
+            RuntimeLogExportSupplementalSource(
                 source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.runtimeStatus),
                 relativeDestination: "diagnostics/status/\(RuntimeFileNames.runtimeStatus)"
             ),
-            RuntimeLogExportFallback(
+            RuntimeLogExportSupplementalSource(
                 source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.runtimeEvents),
                 relativeDestination: "diagnostics/status/\(RuntimeFileNames.runtimeEvents)"
             ),
-            RuntimeLogExportFallback(
+            RuntimeLogExportSupplementalSource(
                 source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.runtimeObservabilityDB),
                 relativeDestination: "diagnostics/status/\(RuntimeFileNames.runtimeObservabilityDB)"
             ),
-            RuntimeLogExportFallback(
+            RuntimeLogExportSupplementalSource(
+                source: URL(fileURLWithPath: "\(RuntimeAdapterConstants.Paths.runtimeObservabilityDB)-wal"),
+                relativeDestination: "diagnostics/status/\(RuntimeFileNames.runtimeObservabilityDB)-wal"
+            ),
+            RuntimeLogExportSupplementalSource(
+                source: URL(fileURLWithPath: "\(RuntimeAdapterConstants.Paths.runtimeObservabilityDB)-shm"),
+                relativeDestination: "diagnostics/status/\(RuntimeFileNames.runtimeObservabilityDB)-shm"
+            ),
+            RuntimeLogExportSupplementalSource(
                 source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.runtimeState),
                 relativeDestination: "diagnostics/guest/\(RuntimeFileNames.runtimeState)"
             ),
-            RuntimeLogExportFallback(
+            RuntimeLogExportSupplementalSource(
+                source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.vmLifecycle),
+                relativeDestination: "diagnostics/runtime/\(RuntimeFileNames.vmLifecycle)"
+            ),
+            RuntimeLogExportSupplementalSource(
                 source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.vmIPFile),
                 relativeDestination: "diagnostics/guest/\(RuntimeFileNames.vmIP)"
             ),
-            RuntimeLogExportFallback(
+            RuntimeLogExportSupplementalSource(
                 source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.vmConfig),
                 relativeDestination: "diagnostics/runtime/vm-config.json"
             ),
-            RuntimeLogExportFallback(
+            RuntimeLogExportSupplementalSource(
                 source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.runtimeVersion),
                 relativeDestination: "diagnostics/runtime/runtime-version.json"
             ),
-            RuntimeLogExportFallback(
+            RuntimeLogExportSupplementalSource(
                 source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.guestRuntimeConfig),
                 relativeDestination: "diagnostics/guest/runtime-config.json"
             ),
-            RuntimeLogExportFallback(
+            RuntimeLogExportSupplementalSource(
                 source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.proxyLaunchDaemon),
-                relativeDestination: "diagnostics/host/com.tirosh.vitalserver-proxy.plist"
+                relativeDestination: "diagnostics/host/ai.tirosh.vitalserver.helper.proxy.plist"
             ),
-            RuntimeLogExportFallback(
+            RuntimeLogExportSupplementalSource(
                 source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.proxyNginxConfig),
                 relativeDestination: "diagnostics/host/vitalserver-nginx.conf"
             ),
-            RuntimeLogExportFallback(
+            RuntimeLogExportSupplementalSource(
                 source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.proxyNginxPid),
                 relativeDestination: "diagnostics/host/nginx.pid"
             ),
@@ -266,7 +378,7 @@ struct RuntimeLogExportFallback {
     }
 }
 
-struct RuntimeLogExportRotatedFallbackSet {
+struct RuntimeLogExportRotatedSupplementalSet {
     let sourceDirectory: URL
     let sourceFilePrefix: String
     let relativeDestinationDirectory: String
@@ -284,13 +396,20 @@ struct RuntimeLogExportRotatedFallbackSet {
         self.destinationFilePrefix = destinationFilePrefix
     }
 
-    static func defaultSets() -> [RuntimeLogExportRotatedFallbackSet] {
+    static func defaultSets() -> [RuntimeLogExportRotatedSupplementalSet] {
         [
-            RuntimeLogExportRotatedFallbackSet(
+            RuntimeLogExportRotatedSupplementalSet(
                 sourceDirectory: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.guestRunDirectory),
                 sourceFilePrefix: "container-logs.log.",
                 relativeDestinationDirectory: "guest",
                 destinationFilePrefix: "container-logs.log."
+            ),
+            RuntimeLogExportRotatedSupplementalSet(
+                sourceDirectory: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.runtimeEvents)
+                    .deletingLastPathComponent(),
+                sourceFilePrefix: "\(RuntimeFileNames.runtimeEvents).",
+                relativeDestinationDirectory: "diagnostics/status",
+                destinationFilePrefix: "\(RuntimeFileNames.runtimeEvents)."
             ),
         ]
     }

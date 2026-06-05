@@ -30,6 +30,8 @@ extension RuntimeViewModel {
             message = AppConstants.StatusText.updateBundleNotVerified
             return
         }
+        isApplyingUpdateBundle = true
+        defer { isApplyingUpdateBundle = false }
         let didApply = await runClientAction(
             preparingMessage: AppConstants.StatusText.updateBundlePreparing,
             waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
@@ -61,29 +63,13 @@ extension RuntimeViewModel {
         defer { isBusy = false }
 
         message = AppConstants.StatusText.updateBundleVerifying
-        let result: RuntimeCommandResult
-        do {
-            result = try await hostClient.verifyUpdateBundle(url: bundleURL)
-        } catch {
-            selectedBundleVerification = error.localizedDescription
-            selectedBundleVerified = false
-            message = error.localizedDescription
-            return
-        }
-        if result.exitCode == 0 {
-            selectedBundleVerified = true
-            selectedBundleVerification = processMessageFormatter.message(
-                title: AppConstants.StatusText.updateBundleVerified,
-                result: result
-            )
-            message = selectedBundleVerification
-        } else {
-            selectedBundleVerified = false
-            selectedBundleVerification = processMessageFormatter.message(
-                title: AppConstants.StatusText.updateBundleVerificationFailed,
-                result: result
-            )
-            message = selectedBundleVerification
-        }
+        operationDetail = AppConstants.StatusText.updateBundleVerifying
+        let result = await updateBundleVerifier.verify(
+            bundleURL: bundleURL,
+            verifyBundle: { try await self.hostClient.verifyUpdateBundle(url: $0) }
+        )
+        selectedBundleVerified = result.isVerified
+        selectedBundleVerification = result.verification
+        message = result.message
     }
 }

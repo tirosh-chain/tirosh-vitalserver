@@ -179,6 +179,10 @@ def stage_pkg_root(context: PackageContext) -> None:
     stage_guest_deploy(context.guest_deploy_plan)
     render_launchd_templates(context)
     copy_executable(packaging_dir / "preinstall", context.pkg_scripts / "preinstall")
+    copy_executable(
+        context.runtime_cli,
+        context.pkg_scripts / "vitalserver-vm-preinstall",
+    )
     render_packaging_executable(
         context.settings,
         packaging_dir / "postinstall.template",

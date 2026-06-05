@@ -10,6 +10,8 @@ final class RuntimeConfigureContractsTests: XCTestCase {
         XCTAssertEqual(RuntimeConfigureOption(rawValue: "--bridged-interface"), .bridgedInterface)
         XCTAssertEqual(RuntimeConfigureOption(rawValue: "--proxy-port"), .proxyPort)
         XCTAssertEqual(RuntimeConfigureOption(rawValue: "--vital-files-dir"), .vitalFilesDirectory)
+        XCTAssertEqual(RuntimeConfigureOption(rawValue: "--vitalserver-url"), .vitalServerURL)
+        XCTAssertEqual(RuntimeConfigureOption(rawValue: "--remote-console-url"), .remoteConsoleURL)
         XCTAssertEqual(RuntimeConfigureOption(rawValue: "--public-host"), .publicHost)
         XCTAssertEqual(RuntimeConfigureOption(rawValue: "--public-port"), .publicPort)
         XCTAssertEqual(RuntimeConfigureOption(rawValue: "--admin-password"), .adminPassword)

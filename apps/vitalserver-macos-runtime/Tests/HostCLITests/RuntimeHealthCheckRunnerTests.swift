@@ -42,14 +42,30 @@ final class RuntimeHealthCheckRunnerTests: XCTestCase {
             "print:health: failed",
         ])
     }
+
+    func testRunPropagatesHealthyStatusWriteFailure() {
+        let harness = HealthCheckHarness(
+            snapshot: healthSnapshot(reasons: []),
+            writeStatusError: HealthCheckError.statusWriteFailed
+        )
+
+        XCTAssertThrowsError(try harness.runner.run()) { error in
+            XCTAssertEqual(error as? HealthCheckError, .statusWriteFailed)
+        }
+        XCTAssertEqual(harness.events, [
+            "print-status",
+        ])
+    }
 }
 
 private final class HealthCheckHarness {
     let snapshot: RuntimeHealthSnapshot
+    let writeStatusError: Error?
     var events: [String] = []
 
-    init(snapshot: RuntimeHealthSnapshot) {
+    init(snapshot: RuntimeHealthSnapshot, writeStatusError: Error? = nil) {
         self.snapshot = snapshot
+        self.writeStatusError = writeStatusError
     }
 
     var runner: RuntimeHealthCheckRunner {
@@ -61,19 +77,26 @@ private final class HealthCheckHarness {
                 self.snapshot
             },
             writeStatus: { status, operation, message in
+                if let writeStatusError = self.writeStatusError {
+                    throw writeStatusError
+                }
                 self.events.append("status:\(status.rawValue):\(operation.rawValue):\(message)")
             },
-            recordObservedEvent: { status, operation, message, _ in
-                self.events.append("event:\(status.rawValue):\(operation.rawValue):\(message)")
+            writeStatusBestEffort: { status, operation, message in
+                self.events.append("status:\(status.rawValue):\(operation.rawValue):\(message)")
             },
-            reasonText: { reasons in
-                reasons.map(\.rawValue).joined(separator: ",")
+            recordObservedEventBestEffort: { status, operation, message, _ in
+                self.events.append("event:\(status.rawValue):\(operation.rawValue):\(message)")
             },
             printLine: { line in
                 self.events.append("print:\(line)")
             }
         )
     }
+}
+
+private enum HealthCheckError: Error, Equatable {
+    case statusWriteFailed
 }
 
 private func healthSnapshot(reasons: [RuntimeFailureReason]) -> RuntimeHealthSnapshot {
@@ -85,6 +108,7 @@ private func healthSnapshot(reasons: [RuntimeFailureReason]) -> RuntimeHealthSna
         vmService: .loaded,
         proxyService: .loaded,
         watchdogService: .loaded,
+        vmState: reasons.isEmpty ? .running : .unreachable,
         vmErrors: reasons.compactMap { reason in
             if case .vmService(let state) = reason {
                 return .serviceNotLoaded(state)

@@ -7,11 +7,13 @@ final class ApplyBundlePreflightTests: XCTestCase {
     func testRestartPolicyReportsWhetherAnyServiceWasRunning() {
         XCTAssertFalse(RuntimeServiceRestartPolicy(
             restartVM: false,
+            restartGuestLogSync: false,
             restartProxy: false,
             restartWatchdog: false
         ).anyServiceWasRunning)
         XCTAssertTrue(RuntimeServiceRestartPolicy(
             restartVM: false,
+            restartGuestLogSync: false,
             restartProxy: true,
             restartWatchdog: false
         ).anyServiceWasRunning)
@@ -20,7 +22,7 @@ final class ApplyBundlePreflightTests: XCTestCase {
     func testPreflightContextCarriesPreparedInputsForApplyAndRollback() {
         let manifest = UpdateBundleManifest(
             schemaVersion: 3,
-            product: "com.tirosh.vitalserver",
+            product: "ai.tirosh.vitalserver.helper",
             helperVersion: "1.2.3",
             releaseLabel: "1.2.3",
             targetPlatform: "macos-arm64",
@@ -44,6 +46,7 @@ final class ApplyBundlePreflightTests: XCTestCase {
             backup: URL(fileURLWithPath: "/tmp/backup"),
             restartPolicy: RuntimeServiceRestartPolicy(
                 restartVM: true,
+                restartGuestLogSync: true,
                 restartProxy: false,
                 restartWatchdog: true
             )

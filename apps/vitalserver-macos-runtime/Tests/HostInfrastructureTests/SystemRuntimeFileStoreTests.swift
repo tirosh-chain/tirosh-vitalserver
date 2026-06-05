@@ -113,4 +113,62 @@ final class SystemRuntimeFileStoreTests: XCTestCase {
 
         try FileManager.default.removeItem(at: directory)
     }
+
+    func testStorageUsageReturnsUnavailableWhenAvailableCapacityIsMissing() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+        let provider = SystemRuntimeStorageUsageProvider(loadCapacityValues: { _ in
+            RuntimeStorageCapacityValues(
+                total: 100,
+                availableForImportantUsage: nil,
+                available: nil
+            )
+        })
+
+        XCTAssertEqual(provider.storageUsage(for: directory.path), RuntimeStorageUsageResult.unavailable)
+    }
+
+    func testStorageUsageUsesStandardAvailableCapacityWhenImportantCapacityIsMissing() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+        let provider = SystemRuntimeStorageUsageProvider(loadCapacityValues: { _ in
+            RuntimeStorageCapacityValues(
+                total: 100,
+                availableForImportantUsage: nil,
+                available: 40
+            )
+        })
+
+        XCTAssertEqual(
+            provider.storageUsage(for: directory.path),
+            RuntimeStorageUsageResult.loaded(ResourceUsage(usedBytes: 60, totalBytes: 100))
+        )
+    }
+
+    func testStorageUsageReportsResourceValueFailure() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+        let provider = SystemRuntimeStorageUsageProvider(loadCapacityValues: { _ in
+            throw CocoaError(.fileReadNoPermission)
+        })
+
+        switch provider.storageUsage(for: directory.path) {
+        case .failed(let message):
+            XCTAssertFalse(message.isEmpty)
+        case .loaded, .unavailable:
+            XCTFail("Expected failed storage usage result")
+        }
+    }
 }

@@ -33,7 +33,22 @@ enum RuntimeCommandFactory {
     }
 
     static func uninstallCommand(uninstaller: String, clean: Bool) -> String {
-        ([uninstaller] + (clean ? ["--clean"] : [])).map(shellQuote).joined(separator: " ")
+        let command = ([uninstaller] + (clean ? ["--clean"] : [])).map(shellQuote).joined(separator: " ")
+        let startScript = """
+        \(command) < /dev/null > /dev/null 2>&1 &
+        background_pid=$!
+        sleep 0.2
+        if kill -0 "${background_pid}" 2>/dev/null; then
+          echo "Background uninstaller started."
+        else
+          wait "${background_pid}"
+        fi
+        """
+        let script = [
+            "mkdir -p \(shellQuote((RuntimeAdapterConstants.Paths.uninstallLog as NSString).deletingLastPathComponent))",
+            startScript
+        ].joined(separator: "; ")
+        return "/bin/bash -lc \(shellQuote(script))"
     }
 
     static func deleteBackupCommand(url: URL) -> String {
@@ -60,6 +75,10 @@ enum RuntimeCommandFactory {
             settings.publicHost,
             RuntimeAdapterConstants.RuntimeCommand.optionPublicPort,
             String(settings.publicPort),
+            RuntimeAdapterConstants.RuntimeCommand.optionVitalServerURL,
+            settings.vitalServerURL,
+            RuntimeAdapterConstants.RuntimeCommand.optionRemoteConsoleURL,
+            settings.remoteConsoleURL,
             RuntimeAdapterConstants.RuntimeCommand.optionRedisBackupRetention,
             String(settings.redisBackupRetentionCount),
         ]
@@ -154,7 +173,7 @@ enum RuntimeCommandFactory {
             "rm -f \(logFile)",
             "{ \(shellCommand); } > \(logFile) 2>&1",
             "status=$?",
-            "cat \(logFile)",
+            "tail -n 200 \(logFile)",
             "exit $status"
         ].joined(separator: "; ")
         return "/bin/bash -lc \(shellQuote(script))"

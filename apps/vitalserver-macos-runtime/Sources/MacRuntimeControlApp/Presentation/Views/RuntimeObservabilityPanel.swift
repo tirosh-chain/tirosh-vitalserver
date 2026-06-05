@@ -3,10 +3,12 @@ import SwiftUI
 
 struct RuntimeObservabilityPanel: View {
     @ObservedObject var viewModel: RuntimeViewModel
-    @State private var showingRecorderAnomalies = false
-    @State private var showingRuntimeEvents = false
+    @State private var showingRecorderAnomalies = true
 
     private let eventDisplayPolicy = RuntimeEventDisplayPolicy()
+    private let runtimeEventLimitOptions = [25, 50, 100, 200, 500]
+    private let runtimeEventPeriodOptions = RuntimeEventPeriodOption.allCases
+    private let runtimeEventFilterOptions = RuntimeEventFilterOption.allOptions
 
     var body: some View {
         ScrollView {
@@ -40,17 +42,20 @@ struct RuntimeObservabilityPanel: View {
                 metricRow(AppConstants.Labels.vitalDBObserver, observerStatus)
                 metricRow(AppConstants.Labels.guestLogSyncService, viewModel.status.guestLogSyncServiceLoaded ? AppConstants.StatusText.running : AppConstants.StatusText.stopped)
                 metricRow(AppConstants.Labels.recorderObservation, observationTimeText(observation?.observedAt))
-                metricRow(AppConstants.Labels.knownRecorders, "\(observation?.recorders.count ?? 0)")
-                metricRow(AppConstants.Labels.knownBeds, "\(observation?.beds.count ?? 0)")
-                metricRow(AppConstants.Labels.recorderAnomalies, "\(observation?.anomalies.count ?? 0)")
-                metricRow(AppConstants.Labels.runtimeEvents, "\(viewModel.runtimeEvents.events.count)")
+                metricRow(AppConstants.Labels.knownRecorders, observationMetricText(observation?.recorders.count))
+                metricRow(AppConstants.Labels.knownBeds, observationMetricText(observation?.beds.count))
+                metricRow(AppConstants.Labels.recorderAnomalies, observationMetricText(observation?.anomalies.count))
+                metricRow("Runtime events (24h)", "\(viewModel.runtimeEventsLast24HoursCount)")
             }
         }
     }
 
     private var anomalySection: some View {
         observationSection(AppConstants.Labels.recorderAnomalies) {
-            if anomalyRows.isEmpty {
+            vitalDBObservationReadIssue
+            if observation == nil {
+                emptyObservation(AppConstants.StatusText.noVitalRecorderObservations)
+            } else if anomalyRows.isEmpty {
                 emptyObservation(AppConstants.StatusText.noRecorderAnomalies)
             } else {
                 RuntimeDisclosureSection(isExpanded: $showingRecorderAnomalies) {
@@ -69,28 +74,129 @@ struct RuntimeObservabilityPanel: View {
 
     private var runtimeEventsSection: some View {
         observationSection(AppConstants.Labels.runtimeEvents) {
-            RuntimeDisclosureSection(isExpanded: $showingRuntimeEvents) {
-                Text("\(viewModel.runtimeEvents.events.count) events")
-                    .foregroundStyle(.secondary)
-            } content: {
+            VStack(alignment: .leading, spacing: 10) {
+                runtimeEventControls
+                runtimeEventReadIssue
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 8) {
                         ForEach(eventItems) { item in
                             eventRow(item)
                         }
-                        if viewModel.runtimeEvents.events.isEmpty {
+                        if eventItems.isEmpty {
                             emptyObservation(AppConstants.StatusText.noRuntimeEvents)
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .frame(maxHeight: 260)
+                .frame(maxHeight: 360)
             }
         }
     }
 
+    @ViewBuilder
+    private var vitalDBObservationReadIssue: some View {
+        if let readError = viewModel.vitalDBObservationSnapshot.readError {
+            Text("VitalDB observation read issue: \(readError)")
+                .font(.caption)
+                .foregroundStyle(.red)
+                .textSelection(.enabled)
+        }
+    }
+
+    @ViewBuilder
+    private var runtimeEventReadIssue: some View {
+        if let readError = viewModel.runtimeEvents.readError {
+            Text("Runtime event read issue: \(readError)")
+                .font(.caption)
+                .foregroundStyle(.red)
+                .textSelection(.enabled)
+        }
+    }
+
+    private var runtimeEventControls: some View {
+        HStack(spacing: 12) {
+            runtimeEventPeriodControl
+            runtimeEventFilterControl
+            runtimeEventLimitControl
+            Spacer(minLength: 0)
+            Text(runtimeEventSummaryText)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+    }
+
+    private var runtimeEventPeriodControl: some View {
+        HStack(spacing: 8) {
+            Text(AppConstants.Labels.runtimeEventPeriod)
+                .fontWeight(.medium)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+            Picker("", selection: $viewModel.runtimeEventPeriod) {
+                ForEach(runtimeEventPeriodOptions) { option in
+                    Text(option.title).tag(option.id)
+                }
+            }
+            .frame(width: 170)
+            .labelsHidden()
+            .onChange(of: viewModel.runtimeEventPeriod) { _ in
+                Task { await viewModel.refreshRuntimeEvents() }
+            }
+        }
+        .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private var runtimeEventFilterControl: some View {
+        HStack(spacing: 8) {
+            Text(AppConstants.Labels.runtimeEventFilter)
+                .fontWeight(.medium)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+            Picker("", selection: $viewModel.runtimeEventFilter) {
+                ForEach(runtimeEventFilterOptions) { option in
+                    Text(option.title).tag(option.id)
+                }
+            }
+            .frame(width: 230)
+            .labelsHidden()
+            .onChange(of: viewModel.runtimeEventFilter) { _ in
+                Task { await viewModel.refreshRuntimeEvents() }
+            }
+        }
+        .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private var runtimeEventLimitControl: some View {
+        HStack(spacing: 8) {
+            Text(AppConstants.Labels.runtimeEventLimit)
+                .fontWeight(.medium)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+            Picker("", selection: $viewModel.runtimeEventLimit) {
+                ForEach(runtimeEventLimitOptions, id: \.self) { limit in
+                    Text("\(limit)").tag(limit)
+                }
+            }
+            .frame(width: 100)
+            .labelsHidden()
+            .onChange(of: viewModel.runtimeEventLimit) { _ in
+                Task { await viewModel.refreshRuntimeEvents() }
+            }
+        }
+        .fixedSize(horizontal: true, vertical: false)
+    }
+
     private var observation: VitalDBObservationDocument? {
-        viewModel.status.vitalDBObservation
+        switch viewModel.vitalDBObservationSnapshot.state {
+        case .loaded:
+            return viewModel.vitalDBObservationSnapshot.observation
+        case .failed:
+            return nil
+        case .unavailable:
+            return nil
+        }
     }
 
     private var observerStatus: String {
@@ -101,15 +207,42 @@ struct RuntimeObservabilityPanel: View {
     }
 
     private var anomalyRows: [VitalDBAnomalyObservation] {
-        observation?.anomalies ?? []
+        (observation?.anomalies ?? [])
+            .sorted { lhs, rhs in
+                if lhs.severity == rhs.severity {
+                    return lhs.observedAt > rhs.observedAt
+                }
+                return anomalySeverityRank(lhs.severity) > anomalySeverityRank(rhs.severity)
+            }
     }
 
     private var eventItems: [RuntimeEventDisplayPolicy.EventItem] {
-        viewModel.runtimeEvents.events.map(eventDisplayPolicy.item)
+        viewModel.runtimeEvents.events
+            .sorted { lhs, rhs in
+                if lhs.timestamp == rhs.timestamp {
+                    return lhs.id > rhs.id
+                }
+                return lhs.timestamp > rhs.timestamp
+            }
+            .map(eventDisplayPolicy.item)
+    }
+
+    private var runtimeEventSummaryText: String {
+        guard let matchingCount = viewModel.runtimeEvents.matchingCount else {
+            return "\(eventItems.count) events"
+        }
+        if matchingCount == eventItems.count {
+            return "\(eventItems.count) events"
+        }
+        return "\(eventItems.count) shown · \(matchingCount) matching"
     }
 
     private func observationTimeText(_ timestamp: String?) -> String {
         viewModel.presentationFormatter.systemTimeText(timestamp)
+    }
+
+    private func observationMetricText(_ value: Int?) -> String {
+        value.map(String.init) ?? AppConstants.StatusText.notReported
     }
 
     private func anomalyRow(_ anomaly: VitalDBAnomalyObservation) -> some View {
@@ -212,6 +345,19 @@ struct RuntimeObservabilityPanel: View {
         }
     }
 
+    private func anomalySeverityRank(_ severity: VitalDBAnomalySeverity) -> Int {
+        switch severity {
+        case .critical:
+            return 3
+        case .warning:
+            return 2
+        case .info:
+            return 1
+        case .unknown:
+            return 0
+        }
+    }
+
     private func statusColor(_ severity: RuntimeEventDisplayPolicy.Severity) -> Color {
         switch severity {
         case .healthy:
@@ -223,5 +369,29 @@ struct RuntimeObservabilityPanel: View {
         case .neutral:
             return .secondary
         }
+    }
+}
+
+private struct RuntimeEventFilterOption: Identifiable {
+    let id: String
+    let title: String
+
+    static let allOptions = [all] + RuntimeEventType.knownTypes.map {
+        RuntimeEventFilterOption(title: $0.rawValue, eventType: $0)
+    }
+
+    static let all = RuntimeEventFilterOption(
+        id: "",
+        title: AppConstants.StatusText.allRuntimeEvents
+    )
+
+    init(id: String, title: String) {
+        self.id = id
+        self.title = title
+    }
+
+    init(title: String, eventType: RuntimeEventType) {
+        self.id = eventType.rawValue
+        self.title = title
     }
 }

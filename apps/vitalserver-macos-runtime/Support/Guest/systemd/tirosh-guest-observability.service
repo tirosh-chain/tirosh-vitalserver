@@ -1,0 +1,14 @@
+[Unit]
+Description=Tirosh guest observability daemon
+After=local-fs.target
+RequiresMountsFor=/mnt/tirosh
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/tirosh-guest-observed
+Restart=always
+RestartSec=5
+User=root
+
+[Install]
+WantedBy=multi-user.target

@@ -10,13 +10,14 @@
 |---|---|
 | [macOS Runtime Overview](macos-runtime/overview.md) | VM runtime 문서군 전체 지도와 사용자 시나리오 |
 | [Architecture](macos-runtime/architecture.md) | 제품 구조, shared/NAT + host nginx 선택 이유, 단일 노드 가용성 범위, 책임 경계 확인 |
+| [State Machine Traceability](macos-runtime/state-machine-traceability.md) | install/update/recovery/recorder/log 흐름의 상태 전이, invariant, 검증 증거 기준 확인 |
 | [ADR 0002](adr/0002-helper-client-boundary-for-local-and-remote-runtime.md) | Web/PWA Helper UI, macOS native shell, local/remote RuntimeControlClient boundary 확인 |
 | [ADR 0003](adr/0003-helper-layer-and-component-version-model.md) | Helper layer와 component version model 확인 |
 | [ADR 0004](adr/0004-product-update-and-vm-image-update-contract.md) | Product Update, VM Image Update, two-phase Product Update 계약 확인 |
 | [Packaging and Update](macos-runtime/packaging.md) | `make vm-pkg`, `make vm-dmg`, PKG 설치 흐름, install settings, update bundle 계약 확인 |
 | [Update](macos-runtime/update.md) | update bundle 적용 과정, 보존/변경 범위, guest-side activation, rollback 계약 확인 |
 | [Runtime](macos-runtime/runtime.md) | VM boot asset, cloud-init, guest bootstrap, data sharing, network mode, identity/signing 정책 확인 |
-| [Troubleshooting](macos-runtime/troubleshooting.md) | 502, cloud-init 재실행, disk full, bridged entitlement, stale pid 같은 문제 확인 |
+| [Troubleshooting](troubleshooting.md) | 502, cloud-init 재실행, disk full, update 실패, bridged entitlement, stale pid 같은 문제 확인 |
 
 ## 핵심 구조
 
@@ -81,7 +82,8 @@ make vm-down
 |---|---|
 | 문서군 전체 지도 | [macOS Runtime Overview](macos-runtime/overview.md) |
 | 제품 구조와 책임 분리 | [Architecture](macos-runtime/architecture.md) |
+| 상태 전이와 검증 기준 | [State Machine Traceability](macos-runtime/state-machine-traceability.md) |
 | 패키지 산출물과 설치/update 계약 | [Packaging and Update](macos-runtime/packaging.md) |
 | update 적용과 rollback 계약 | [Update](macos-runtime/update.md) |
 | VM runtime 동작과 네트워크 정책 | [Runtime](macos-runtime/runtime.md) |
-| 장애 증상과 조치 | [Troubleshooting](macos-runtime/troubleshooting.md) |
+| 장애 증상과 조치 | [Troubleshooting](troubleshooting.md) |

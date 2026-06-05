@@ -8,6 +8,7 @@ public struct RuntimeHealthSnapshot: Equatable {
     public let vmService: RuntimeServiceState
     public let proxyService: RuntimeServiceState
     public let watchdogService: RuntimeServiceState
+    public let vmLifecycle: RuntimeVMLifecycleDocument?
     public let vmState: RuntimeVMState
     public let vmErrors: [RuntimeVMError]
     public let vmIP: String?
@@ -28,7 +29,8 @@ public struct RuntimeHealthSnapshot: Equatable {
         vmService: RuntimeServiceState,
         proxyService: RuntimeServiceState,
         watchdogService: RuntimeServiceState,
-        vmState: RuntimeVMState = .unknown("unknown"),
+        vmLifecycle: RuntimeVMLifecycleDocument? = nil,
+        vmState: RuntimeVMState,
         vmErrors: [RuntimeVMError] = [],
         vmIP: String?,
         proxyPort: Int,
@@ -47,6 +49,7 @@ public struct RuntimeHealthSnapshot: Equatable {
         self.vmService = vmService
         self.proxyService = proxyService
         self.watchdogService = watchdogService
+        self.vmLifecycle = vmLifecycle
         self.vmState = vmState
         self.vmErrors = vmErrors
         self.vmIP = vmIP
@@ -58,9 +61,5 @@ public struct RuntimeHealthSnapshot: Equatable {
         self.containerObservation = containerObservation
         self.vitalDBObservation = vitalDBObservation
         self.failureReasons = failureReasons
-    }
-
-    public var isHealthy: Bool {
-        failureReasons.isEmpty
     }
 }

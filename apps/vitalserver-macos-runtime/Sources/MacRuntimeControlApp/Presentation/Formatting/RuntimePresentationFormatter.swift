@@ -3,6 +3,27 @@ import Contracts
 import RuntimeControl
 
 struct RuntimePresentationFormatter {
+    struct ServiceURLPresentation: Equatable {
+        let displayURL: String
+        let openURL: String
+    }
+
+    func vitalServerStatusURL(settings: RuntimeSettings) -> ServiceURLPresentation {
+        serviceStatusURL(
+            explicitURL: settings.vitalServerURL,
+            displayFallback: "http://\(AppConstants.Labels.advertisedURLSameHost):\(settings.proxyPort)/",
+            openFallback: AppConstants.Product.vitalServerURL(proxyPort: settings.proxyPort)
+        )
+    }
+
+    func remoteConsoleStatusURL(settings: RuntimeSettings) -> ServiceURLPresentation {
+        serviceStatusURL(
+            explicitURL: settings.remoteConsoleURL,
+            displayFallback: "http://\(AppConstants.Labels.advertisedURLSameHost):\(settings.runtimeControlPort)/",
+            openFallback: AppConstants.Product.remoteConsoleURL(port: settings.runtimeControlPort)
+        )
+    }
+
     func backupSizeText(_ backup: RuntimeBackup) -> String {
         guard let sizeBytes = backup.sizeBytes else {
             return AppConstants.StatusText.unknown
@@ -15,21 +36,22 @@ struct RuntimePresentationFormatter {
         return String(format: "%.1f MiB", max(mib, 0))
     }
 
-    func selectedBundleConfirmation(bundlePath: String) -> String {
-        [
+    func selectedBundleConfirmation(bundlePath: String?) -> String {
+        guard let bundlePath, !bundlePath.isEmpty else {
+            return AppConstants.StatusText.updateBundleConfirmation
+        }
+        return [
             AppConstants.StatusText.updateBundleConfirmation,
             bundlePath,
-        ]
-        .filter { !$0.isEmpty }
-        .joined(separator: "\n\n")
+        ].joined(separator: "\n\n")
     }
 
     func applySettingsConfirmation(settings: RuntimeSettings) -> String {
         [
             AppConstants.StatusText.applySettingsConfirmation,
             "Proxy port: \(settings.proxyPort)",
-            "Public host: \(settings.publicHost.isEmpty ? "(same host)" : settings.publicHost)",
-            "Public port: \(settings.publicPort)",
+            "VitalServer URL: \(settings.vitalServerURL)",
+            "Remote Console URL: \(settings.remoteConsoleURL)",
             "Network mode: \(settings.networkMode.rawValue)",
             "Disk size: \(settings.diskGiB) GiB",
             "Vital files directory: \(settings.vitalFilesDirectory)",
@@ -131,6 +153,18 @@ struct RuntimePresentationFormatter {
         formatter.timeZone = .current
         formatter.dateFormat = "yyyyMMdd-HHmmss"
         return formatter.string(from: date)
+    }
+
+    private func serviceStatusURL(
+        explicitURL: String,
+        displayFallback: String,
+        openFallback: String
+    ) -> ServiceURLPresentation {
+        let trimmed = explicitURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            return ServiceURLPresentation(displayURL: displayFallback, openURL: openFallback)
+        }
+        return ServiceURLPresentation(displayURL: trimmed, openURL: trimmed)
     }
 
     private func stepStatusDisplayName(_ status: RuntimeProgressStepStatus) -> String {

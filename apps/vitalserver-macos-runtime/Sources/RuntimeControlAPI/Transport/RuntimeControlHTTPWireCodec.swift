@@ -93,11 +93,10 @@ public enum RuntimeControlHTTPWireCodec {
     }
 
     public static func badRequestResponse(message: String) -> RuntimeControlHTTPResponse {
-        let error = RuntimeControlErrorResponse(code: .badRequest, message: message)
         return RuntimeControlHTTPResponse(
             status: .badRequest,
             headers: ["Content-Type": "application/json"],
-            body: try? JSONEncoder().encode(error)
+            body: RuntimeControlErrorResponseEncoder.encode(code: .badRequest, message: message)
         )
     }
 
@@ -140,6 +139,8 @@ public enum RuntimeControlHTTPWireCodec {
         switch status {
         case .ok:
             return "OK"
+        case .noContent:
+            return "No Content"
         case .badRequest:
             return "Bad Request"
         case .unauthorized:

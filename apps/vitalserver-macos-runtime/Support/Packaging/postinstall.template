@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-product_root="${PRODUCT_ROOT}"
 vm_home="${VM_HOME}"
+product_root="${PRODUCT_ROOT}"
 install_log="${INSTALL_LOG}"
 vm_bin="${VM_BIN}"
+proxy_run="${PROXY_RUN}"
+uninstall="${UNINSTALL}"
 manager_app="${MANAGER_APP}"
+launch_daemons_dir="${LAUNCH_DAEMONS_DIR}"
+failure_log="/private/tmp/tirosh-vitalserver-postinstall-failure.log"
 max_log_bytes=$((10 * 1024 * 1024))
 keep_log_count=5
 
@@ -35,15 +39,88 @@ log() {
 on_error() {
   local status="$?"
   log "postinstall failed status=${status} command=${BASH_COMMAND}"
+  preserve_failure_log
+  cleanup_failed_fresh_install
   exit "${status}"
 }
 
 trap on_error ERR
 
-log "Tirosh VitalServer postinstall started"
+preserve_failure_log() {
+  if [ -f "${install_log}" ]; then
+    cp -p "${install_log}" "${failure_log}" 2>/dev/null || true
+    log "postinstall failure log preserved path=${failure_log}"
+  fi
+}
+
+cleanup_failed_fresh_install() {
+  log "postinstall failure cleanup started"
+  trap - ERR
+
+  if [ -x "${vm_bin}" ]; then
+    if VITALSERVER_VM_HOME="${vm_home}" "${vm_bin}" runtime stop-services; then
+      log "postinstall failure cleanup stopped runtime services"
+    else
+      local stop_status="$?"
+      log "postinstall failure cleanup service stop skipped status=${stop_status}"
+    fi
+  else
+    log "postinstall failure cleanup service stop unavailable vm_bin=${vm_bin}"
+  fi
+
+  remove_package_owned_artifacts
+  log "postinstall failure cleanup completed"
+
+  trap on_error ERR
+}
+
+safe_remove_path() {
+  local path="$1"
+  case "${path}" in
+    ""|"/"|"/Applications"|"/Library"|"/Library/Application Support"|"/Library/LaunchDaemons"|"/usr"|"/usr/local"|"/usr/local/bin")
+      log "postinstall failure cleanup refused unsafe path=${path}"
+      return 1
+      ;;
+  esac
+
+  if [ -e "${path}" ] || [ -L "${path}" ]; then
+    rm -rf "${path}"
+    log "postinstall failure cleanup removed path=${path}"
+  else
+    log "postinstall failure cleanup absent path=${path}"
+  fi
+}
+
+remove_package_owned_artifacts() {
+  local labels=(
+    "ai.tirosh.vitalserver.helper.watchdog"
+    "ai.tirosh.vitalserver.helper.guest-log-sync"
+    "ai.tirosh.vitalserver.helper.proxy"
+    "ai.tirosh.vitalserver.helper.vm"
+    "ai.tirosh.vitalserver.helper.sleep-prevention"
+  )
+  local label plist
+
+  for label in "${labels[@]}"; do
+    launchctl bootout "system/${label}" >/dev/null 2>&1 || true
+  done
+
+  for label in "${labels[@]}"; do
+    plist="${launch_daemons_dir}/${label}.plist"
+    safe_remove_path "${plist}" || true
+  done
+
+  safe_remove_path "${manager_app}" || true
+  safe_remove_path "${vm_bin}" || true
+  safe_remove_path "${proxy_run}" || true
+  safe_remove_path "${uninstall}" || true
+  safe_remove_path "${product_root}" || true
+}
+
+log "VitalServer Helper postinstall started"
 if [ ! -d "${manager_app}" ]; then
   log "helper app missing path=${manager_app}"
   exit 1
 fi
-VITALSERVER_VM_HOME="${vm_home}" "${vm_bin}" runtime install
-log "Tirosh VitalServer postinstall completed"
+VITALSERVER_VM_HOME="${vm_home}" "${vm_bin}" runtime install-provision
+log "VitalServer Helper postinstall completed"

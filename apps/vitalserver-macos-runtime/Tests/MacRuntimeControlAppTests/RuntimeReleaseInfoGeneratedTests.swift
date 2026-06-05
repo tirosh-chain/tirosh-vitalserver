@@ -15,6 +15,7 @@ final class RuntimeReleaseInfoGeneratedTests: XCTestCase {
             GeneratedRelease.swaggerUIName,
             GeneratedRelease.guestEdgeName,
             GeneratedRelease.hostProxyName,
+            GeneratedRelease.testkitName,
         ])
     }
 }

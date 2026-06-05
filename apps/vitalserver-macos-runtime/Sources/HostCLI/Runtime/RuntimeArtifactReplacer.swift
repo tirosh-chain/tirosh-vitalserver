@@ -1,29 +1,95 @@
-import Foundation
-import Core
 import Contracts
+import Core
+import Foundation
+import RuntimeWorkflow
 
-struct RuntimeArtifactReplacementDestinations {
-    var managerApp: URL
-    var nginxBundle: URL
-    var guestDeploy: URL
-    var runtimeTools: URL
+public struct RuntimeArtifactReplacementDestinations {
+    public var managerApp: URL
+    public var nginxBundle: URL
+    public var guestDeploy: URL
+    public var runtimeTools: URL
+
+    public init(
+        managerApp: URL,
+        nginxBundle: URL,
+        guestDeploy: URL,
+        runtimeTools: URL
+    ) {
+        self.managerApp = managerApp
+        self.nginxBundle = nginxBundle
+        self.guestDeploy = guestDeploy
+        self.runtimeTools = runtimeTools
+    }
 }
 
-struct RuntimeArtifactReplacer {
-    var destinations: RuntimeArtifactReplacementDestinations
-    var temporaryDirectory: URL
-    var fileExists: (URL) -> Bool
-    var directoryExists: (URL) -> Bool
-    var fileSize: (URL) throws -> UInt64
-    var createDirectory: (URL, Bool) throws -> Void
-    var removeItem: (URL) throws -> Void
-    var moveItem: (URL, URL) throws -> Void
-    var readUTF8Text: (URL) throws -> String
-    var runRequired: (String, [String]) throws -> Void
-    var runProcessToFile: (String, [String], URL) throws -> Void
-    var log: (String) -> Void
+public struct RuntimeArtifactReplacementRules {
+    public var tarCommand: String
+    public var appBundleRoot: String
+    public var nginxBundleRoot: String
+    public var guestDeployRoot: String
+    public var runtimeToolsAllowedRootEntries: Set<String>
 
-    func replace(_ artifacts: [UpdateBundleArtifact], stagedBundle: URL) throws {
+    public init(
+        tarCommand: String,
+        appBundleRoot: String,
+        nginxBundleRoot: String,
+        guestDeployRoot: String,
+        runtimeToolsAllowedRootEntries: Set<String>
+    ) {
+        self.tarCommand = tarCommand
+        self.appBundleRoot = appBundleRoot
+        self.nginxBundleRoot = nginxBundleRoot
+        self.guestDeployRoot = guestDeployRoot
+        self.runtimeToolsAllowedRootEntries = runtimeToolsAllowedRootEntries
+    }
+}
+
+public struct RuntimeArtifactReplacer {
+    public var destinations: RuntimeArtifactReplacementDestinations
+    public var rules: RuntimeArtifactReplacementRules
+    public var temporaryDirectory: URL
+    public var fileExists: (URL) -> Bool
+    public var directoryExists: (URL) -> Bool
+    public var fileSize: (URL) throws -> UInt64
+    public var createDirectory: (URL, Bool) throws -> Void
+    public var removeItem: (URL) throws -> Void
+    public var moveItem: (URL, URL) throws -> Void
+    public var readUTF8Text: (URL) throws -> String
+    public var runRequired: (String, [String]) throws -> Void
+    public var runProcessToFile: (String, [String], URL) throws -> Void
+    public var log: (String) -> Void
+
+    public init(
+        destinations: RuntimeArtifactReplacementDestinations,
+        rules: RuntimeArtifactReplacementRules,
+        temporaryDirectory: URL,
+        fileExists: @escaping (URL) -> Bool,
+        directoryExists: @escaping (URL) -> Bool,
+        fileSize: @escaping (URL) throws -> UInt64,
+        createDirectory: @escaping (URL, Bool) throws -> Void,
+        removeItem: @escaping (URL) throws -> Void,
+        moveItem: @escaping (URL, URL) throws -> Void,
+        readUTF8Text: @escaping (URL) throws -> String,
+        runRequired: @escaping (String, [String]) throws -> Void,
+        runProcessToFile: @escaping (String, [String], URL) throws -> Void,
+        log: @escaping (String) -> Void
+    ) {
+        self.destinations = destinations
+        self.rules = rules
+        self.temporaryDirectory = temporaryDirectory
+        self.fileExists = fileExists
+        self.directoryExists = directoryExists
+        self.fileSize = fileSize
+        self.createDirectory = createDirectory
+        self.removeItem = removeItem
+        self.moveItem = moveItem
+        self.readUTF8Text = readUTF8Text
+        self.runRequired = runRequired
+        self.runProcessToFile = runProcessToFile
+        self.log = log
+    }
+
+    public func replace(_ artifacts: [UpdateBundleArtifact], stagedBundle: URL) throws {
         for artifact in artifacts where artifact.type != .rootfsBase {
             let source = stagedBundle.appendingPathComponent(artifact.name)
             log(
@@ -40,33 +106,29 @@ struct RuntimeArtifactReplacer {
             case .runtimeTools:
                 try extractTarGz(source, destination: destinations.runtimeTools)
             default:
-                throw LauncherError.bundleVerificationFailed("unsupported artifact type: \(artifact.type.rawValue)")
+                throw bundleVerificationFailure("unsupported artifact type: \(artifact.type.rawValue)")
             }
             log("artifact replacement completed type=\(artifact.type.rawValue) name=\(artifact.name)")
         }
     }
 
-    func validatePayload(_ artifact: UpdateBundleArtifact, source: URL) throws {
+    public func validatePayload(_ artifact: UpdateBundleArtifact, source: URL) throws {
         switch artifact.type {
         case .rootfsBase:
             return
         case .appBundle:
-            try validateTarGz(source, requiredTopLevel: Constants.Product.managerAppName)
+            try validateTarGz(source, requiredTopLevel: rules.appBundleRoot)
         case .nginxBundle:
-            try validateTarGz(source, requiredTopLevel: "nginx")
+            try validateTarGz(source, requiredTopLevel: rules.nginxBundleRoot)
         case .guestDeploy:
-            try validateTarGz(source, requiredTopLevel: "deploy")
+            try validateTarGz(source, requiredTopLevel: rules.guestDeployRoot)
         case .runtimeTools:
             try validateTarGz(
                 source,
-                allowedRootEntries: [
-                    "vitalserver-vm",
-                    "vitalserver-proxy-run",
-                    URL(fileURLWithPath: Constants.InstallPaths.uninstall).lastPathComponent,
-                ]
+                allowedRootEntries: rules.runtimeToolsAllowedRootEntries
             )
         default:
-            throw LauncherError.bundleVerificationFailed("unsupported artifact type: \(artifact.type.rawValue)")
+            throw bundleVerificationFailure("unsupported artifact type: \(artifact.type.rawValue)")
         }
     }
 
@@ -80,7 +142,7 @@ struct RuntimeArtifactReplacer {
             try removeItem(temporary)
         }
         try createDirectory(temporary, true)
-        try runRequired(Constants.Commands.tar, ["-xzf", source.path, "-C", temporary.path, "--strip-components", "1"])
+        try runRequired(rules.tarCommand, ["-xzf", source.path, "-C", temporary.path, "--strip-components", "1"])
         if fileExists(destination) || directoryExists(destination) {
             try removeItem(destination)
         }
@@ -93,7 +155,7 @@ struct RuntimeArtifactReplacer {
             "archive extraction started source=\(source.path) destination=\(destination.path) size=\(formatBytes(try fileSize(source)))"
         )
         try createDirectory(destination, true)
-        try runRequired(Constants.Commands.tar, ["-xzf", source.path, "-C", destination.path])
+        try runRequired(rules.tarCommand, ["-xzf", source.path, "-C", destination.path])
         log("archive extraction completed destination=\(destination.path)")
     }
 
@@ -105,27 +167,27 @@ struct RuntimeArtifactReplacer {
         let listOutput = temporaryDirectory
             .appendingPathComponent("tirosh-\(UUID().uuidString)-tar-list.txt")
         defer {
-            try? removeItem(listOutput)
+            removeTemporaryValidationOutput(listOutput)
         }
-        try runProcessToFile(Constants.Commands.tar, ["-tzf", source.path], listOutput)
+        try runProcessToFile(rules.tarCommand, ["-tzf", source.path], listOutput)
         let entries = try readUTF8Text(listOutput)
             .split(separator: "\n")
             .map(String.init)
             .filter { !$0.isEmpty }
         guard !entries.isEmpty else {
-            throw LauncherError.bundleVerificationFailed("empty tar.gz: \(source.lastPathComponent)")
+            throw bundleVerificationFailure("empty tar.gz: \(source.lastPathComponent)")
         }
 
         for entry in entries {
             try validateTarEntryName(entry, source: source)
             let rootEntry = entry.split(separator: "/", omittingEmptySubsequences: true).first.map(String.init) ?? entry
             if let requiredTopLevel, rootEntry != requiredTopLevel {
-                throw LauncherError.bundleVerificationFailed(
+                throw bundleVerificationFailure(
                     "unexpected top-level entry in \(source.lastPathComponent): \(rootEntry)"
                 )
             }
             if let allowedRootEntries, !allowedRootEntries.contains(rootEntry) {
-                throw LauncherError.bundleVerificationFailed(
+                throw bundleVerificationFailure(
                     "unexpected root entry in \(source.lastPathComponent): \(rootEntry)"
                 )
             }
@@ -134,30 +196,54 @@ struct RuntimeArtifactReplacer {
         let verboseOutput = temporaryDirectory
             .appendingPathComponent("tirosh-\(UUID().uuidString)-tar-verbose.txt")
         defer {
-            try? removeItem(verboseOutput)
+            removeTemporaryValidationOutput(verboseOutput)
         }
-        try runProcessToFile(Constants.Commands.tar, ["-tvzf", source.path], verboseOutput)
+        try runProcessToFile(rules.tarCommand, ["-tvzf", source.path], verboseOutput)
         let verboseText = try readUTF8Text(verboseOutput)
-        for line in verboseText.split(separator: "\n") {
-            guard let entryType = line.first else {
-                continue
-            }
-            if entryType == "l" || entryType == "h" {
-                throw LauncherError.bundleVerificationFailed(
-                    "tar.gz must not contain links: \(source.lastPathComponent)"
-                )
-            }
+        do {
+            try UpdateBundleArchiveVerifier.rejectUnsupportedEntryTypes(
+                verboseListOutput: verboseText,
+                archiveName: source.lastPathComponent
+            )
+        } catch let error as UpdateBundleArchiveVerificationError {
+            throw bundleVerificationFailure(archiveVerificationFailureMessage(error, source: source))
+        }
+    }
+
+    private func archiveVerificationFailureMessage(
+        _ error: UpdateBundleArchiveVerificationError,
+        source: URL
+    ) -> String {
+        switch error {
+        case .containsLink:
+            return "tar.gz must not contain links: \(source.lastPathComponent)"
+        case .containsUnsupportedEntry(_, let entryType):
+            return "tar.gz must contain only regular files and directories: \(source.lastPathComponent) entryType=\(entryType)"
+        case .emptyArchive, .unsafePath, .multipleRootDirectories:
+            return error.description
+        }
+    }
+
+    private func removeTemporaryValidationOutput(_ url: URL) {
+        do {
+            try removeItem(url)
+        } catch {
+            log("artifact validation temporary file cleanup failed path=\(url.path) error=\(error)")
         }
     }
 
     private func validateTarEntryName(_ entry: String, source: URL) throws {
         if entry.hasPrefix("/") || entry.contains("\0") {
-            throw LauncherError.bundleVerificationFailed("unsafe tar entry in \(source.lastPathComponent): \(entry)")
+            throw bundleVerificationFailure("unsafe tar entry in \(source.lastPathComponent): \(entry)")
         }
         let components = entry.split(separator: "/", omittingEmptySubsequences: false)
         if components.contains("..") {
-            throw LauncherError.bundleVerificationFailed("path traversal in \(source.lastPathComponent): \(entry)")
+            throw bundleVerificationFailure("path traversal in \(source.lastPathComponent): \(entry)")
         }
+    }
+
+    private func bundleVerificationFailure(_ message: String) -> RuntimeWorkflowError {
+        .operationFailed("bundle verification failed: \(message)")
     }
 
     private func bundleItemSize(_ size: Int) -> UInt64 {

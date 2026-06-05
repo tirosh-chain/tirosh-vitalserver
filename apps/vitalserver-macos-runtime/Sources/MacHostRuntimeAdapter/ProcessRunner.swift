@@ -29,7 +29,8 @@ enum ProcessRunner {
             return RuntimeCommandResult(
                 exitCode: process.terminationStatus,
                 stdout: captured.stdout,
-                stderr: captured.stderr
+                stderr: captured.stderr,
+                outputIssues: captured.outputIssues
             )
         } catch {
             return RuntimeCommandResult(exitCode: 1, stdout: "", stderr: error.localizedDescription)
@@ -63,16 +64,42 @@ private final class ProcessOutputCollector: @unchecked Sendable {
         stderr.fileHandleForReading.readabilityHandler = nil
     }
 
-    func capturedOutput() -> (stdout: String, stderr: String) {
+    func capturedOutput() -> (
+        stdout: String,
+        stderr: String,
+        outputIssues: [RuntimeCommandOutputIssue]
+    ) {
         drain(stdout.fileHandleForReading, stream: .stdout)
         drain(stderr.fileHandleForReading, stream: .stderr)
 
         lock.lock()
         defer { lock.unlock() }
+        let stdout = decodeOutput(stdoutData, stream: .stdout)
+        let stderr = decodeOutput(stderrData, stream: .stderr)
         return (
-            stdout: String(data: stdoutData, encoding: .utf8) ?? "",
-            stderr: String(data: stderrData, encoding: .utf8) ?? ""
+            stdout: stdout.text,
+            stderr: stderr.text,
+            outputIssues: [stdout.issue, stderr.issue].compactMap { $0 }
         )
+    }
+
+    private func decodeOutput(
+        _ data: Data,
+        stream: RuntimeCommandOutputStream
+    ) -> (text: String, issue: RuntimeCommandOutputIssue?) {
+        guard !data.isEmpty else {
+            return ("", nil)
+        }
+        guard let text = String(data: data, encoding: .utf8) else {
+            return (
+                "",
+                RuntimeCommandOutputIssue(
+                    stream: stream,
+                    message: "command \(stream.rawValue) is not valid UTF-8"
+                )
+            )
+        }
+        return (text, nil)
     }
 
     private func drain(_ handle: FileHandle, stream: OutputStream) {

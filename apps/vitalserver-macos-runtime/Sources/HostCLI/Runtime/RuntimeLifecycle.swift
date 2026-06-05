@@ -2,6 +2,7 @@ import Foundation
 import Core
 import Contracts
 import HostInfrastructure
+import RuntimeWorkflow
 
 struct RuntimeLifecycle {
     let paths: LauncherPaths
@@ -82,10 +83,6 @@ struct RuntimeLifecycle {
         installedPaths.runtimeDirectory.appendingPathComponent(Constants.Artifacts.runtimeVersion)
     }
 
-    var vmIPFile: URL {
-        installedPaths.vmIPFile
-    }
-
     var guestRunDirectory: URL {
         installedPaths.guestRunDirectory
     }
@@ -94,6 +91,10 @@ struct RuntimeLifecycle {
         switch try RuntimeLifecycleCommand.parse(arguments) {
         case .install:
             try install()
+        case .installProvision:
+            try installProvision()
+        case .preinstallCheck:
+            try preinstallCheck()
         case .status:
             printStatus()
         case .health:
@@ -116,12 +117,16 @@ struct RuntimeLifecycle {
             try createRedisBackup()
         case .repairDatastore:
             try repairDatastore()
+        case .repairVMDisk:
+            try repairVMDisk()
         case .repairServices:
             try repairServices()
         case .startServices:
             try startServices()
         case .stopServices:
             try stopServices()
+        case .uninstall(let command):
+            try uninstall(command)
         case .help:
             printUsage()
         }
@@ -132,7 +137,24 @@ struct RuntimeLifecycle {
     }
 
     func install() throws {
-        try runtimeInstallWorkflow().install()
+        try runtimeInstallComposition().install()
+    }
+
+    func installProvision() throws {
+        try runtimeInstallComposition().installProvision()
+    }
+
+    func preinstallCheck() throws {
+        let document = runtimeFreshInstallPreflightRunner().run()
+        let data = try JSONEncoder.pretty.encode(document)
+        if let text = String(data: data, encoding: .utf8) {
+            print(text)
+        }
+        guard document.passed else {
+            throw LauncherError.runtimeOperationFailed(
+                "fresh install preflight blocked blockers=\(document.blockers.joined(separator: ","))"
+            )
+        }
     }
 
     func printStatus() {
@@ -140,7 +162,11 @@ struct RuntimeLifecycle {
     }
 
     func health() throws {
-        try? collectGuestLogs()
+        do {
+            try collectGuestLogs()
+        } catch {
+            log("health guest log collection failed error=\(error.localizedDescription)")
+        }
         try runtimeHealthCheckRunner().run()
     }
 
@@ -172,87 +198,36 @@ struct RuntimeLifecycle {
     }
 
     func verifyBundle(_ bundleURL: URL) throws {
-        try runtimeBundleWorkflow().verifyBundle(bundleURL)
+        try runtimeBundleComposition().verifyBundle(bundleURL)
     }
 
     @discardableResult
     func stageBundle(_ bundleURL: URL) throws -> URL {
-        try runtimeBundleWorkflow().stageBundle(bundleURL)
+        try runtimeBundleComposition().stageBundle(bundleURL)
     }
 
     func applyBundle(_ bundleURL: URL) throws {
-        try runtimeBundleWorkflow().applyBundle(bundleURL)
+        try runtimeBundleComposition().applyBundle(bundleURL)
     }
 
     func repairDatastore() throws {
         try runtimeDatastoreRepairWorkflow().repair()
     }
 
-    func createRedisBackup() throws {
-        log("redis backup requested")
-        try fileStore.createDirectory(at: guestRunDirectory, withIntermediateDirectories: true)
-        try fileStore.createDirectory(
-            at: installedPaths.redisBackupsDirectory,
-            withIntermediateDirectories: true
-        )
-
-        let resultURL = guestRunDirectory.appendingPathComponent(Constants.Runtime.redisBackupResultFile)
-        if fileStore.fileExists(resultURL) {
-            try fileStore.removeItem(at: resultURL)
-        }
-
-        try writeRuntimeStatus(.recovering, operation: .redisBackup, message: "redis backup requested")
-
-        let requestID = UUID().uuidString
-        let requestedAt = isoTimestamp()
-        let requestURL = guestRunDirectory.appendingPathComponent(Constants.Runtime.redisBackupRequestFile)
-        let request = RedisBackupRequestDocument(requestId: requestID, requestedAt: requestedAt)
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        try fileStore.writeData(try encoder.encode(request), to: requestURL, options: .atomic)
-
-        if !isLaunchdLoaded(.vm) {
-            startLaunchdService(.vm)
-        }
-
-        let maxAttempts = Int(ceil(Constants.Runtime.redisBackupWaitTimeoutSeconds / 3.0))
-        for attempt in 0..<maxAttempts {
-            if let result = loadRedisBackupResult(from: resultURL) {
-                if let resultRequestId = result.requestId, resultRequestId != requestID {
-                    log("stale redis backup result ignored")
-                } else if result.status == .completed {
-                    let message = result.message ?? "Redis backup completed."
-                    try writeRuntimeStatus(.healthy, operation: .redisBackup, message: message)
-                    print(message)
-                    if let archive = result.archive, !archive.isEmpty {
-                        print("archive: \(archive)")
-                    }
-                    log("redis backup completed")
-                    return
-                } else if result.status == .failed {
-                    let message = result.message ?? "Redis backup failed."
-                    try writeRuntimeStatus(.degraded, operation: .redisBackup, message: message)
-                    throw LauncherError.runtimeOperationFailed(message)
-                } else if attempt % 10 == 0 {
-                    log(result.message ?? "waiting for redis backup")
-                }
-            } else if attempt % 10 == 0 {
-                log("waiting for redis backup guest worker")
-            }
-            if attempt < maxAttempts - 1 {
-                sleeper.sleep(forTimeInterval: 3)
-            }
-        }
-
-        try writeRuntimeStatus(.degraded, operation: .redisBackup, message: "redis backup timed out")
-        throw LauncherError.runtimeOperationFailed("redis backup timed out")
+    func repairVMDisk() throws {
+        try runtimeVMDiskRepairRunner().repair()
     }
 
-    private func loadRedisBackupResult(from url: URL) -> RedisBackupResultDocument? {
-        guard let data = try? fileStore.readData(url) else {
-            return nil
+    func createRedisBackup() throws {
+        do {
+            let result = try runtimeRedisBackupWorkflow().createBackup()
+            print(result.message)
+            if let archive = result.archive, !archive.isEmpty {
+                print("archive: \(archive)")
+            }
+        } catch RuntimeWorkflowError.operationFailed(let message) {
+            throw LauncherError.runtimeOperationFailed(message)
         }
-        return try? JSONDecoder().decode(RedisBackupResultDocument.self, from: data)
     }
 
     func collectGuestLogs() throws {
@@ -271,6 +246,10 @@ struct RuntimeLifecycle {
         try runtimeServiceControlRunner().run(.stopAll)
     }
 
+    func uninstall(_ command: RuntimeUninstallCommand) throws {
+        try runtimeUninstallRunner().run(command)
+    }
+
     func rollback(_ command: RuntimeRollbackCommand) throws {
         try runtimeRollbackWorkflow().rollback(command)
     }
@@ -281,7 +260,10 @@ struct RuntimeLifecycle {
             return
         }
         log("refreshing cloud-init seed so guest bootstrap can activate updated deploy bundle")
-        try runtimeCloudInitSeedWriter().create(hostname: Constants.Guest.hostname)
+        try runtimeCloudInitSeedWriter().create(
+            hostname: Constants.Guest.hostname,
+            sshAuthorizedKeys: installedSSHAuthorizedKeys()
+        )
     }
 
     func activateGuestUpdateIfNeeded(_ manifest: UpdateBundleManifest) throws {
@@ -290,16 +272,23 @@ struct RuntimeLifecycle {
 
 }
 
-private struct RedisBackupRequestDocument: Encodable {
-    let schemaVersion = 2
-    let requestId: String
-    let requestedAt: String
-    let operation = RuntimeOperation.redisBackup.rawValue
+private extension RuntimeLifecycle {
+    func installedSSHAuthorizedKeys() throws -> [String] {
+        let config = try VMRuntimeConfig.load(from: paths.config, fileStore: fileStore)
+        return config.sshAuthorizedKeys ?? []
+    }
 }
 
-private struct RedisBackupResultDocument: Decodable {
-    let requestId: String?
-    let status: DatastoreRepairStatus
-    let message: String?
-    let archive: String?
+enum RedisBackupResultReader {
+    static func load(from url: URL, fileStore: RuntimeFileStore) -> RuntimeRedisBackupResultLoadResult {
+        guard fileStore.fileExists(url) else {
+            return .missing
+        }
+        do {
+            let data = try fileStore.readData(url)
+            return try .loaded(JSONDecoder().decode(RedisBackupResultDocument.self, from: data))
+        } catch {
+            return .failed(error.localizedDescription)
+        }
+    }
 }

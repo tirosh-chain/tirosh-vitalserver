@@ -56,11 +56,17 @@ struct RuntimeStorageMaintenance {
     }
 
     private func pruneOldDirectories(in directory: URL, keep: Int, requiredNameFragment: String) throws {
-        guard let matchingDirectories = try? fileStore.childDirectories(
-            at: directory,
-            nameContains: requiredNameFragment,
-            skipsHiddenFiles: true
-        ) else {
+        let matchingDirectories: [URL]
+        do {
+            matchingDirectories = try fileStore.childDirectories(
+                at: directory,
+                nameContains: requiredNameFragment,
+                skipsHiddenFiles: true
+            )
+        } catch {
+            log(
+                "runtime artifact prune skipped directory=\(directory.path) requiredNameFragment=\(requiredNameFragment) error=\(error)"
+            )
             return
         }
         let directories = matchingDirectories.sorted { $0.lastPathComponent < $1.lastPathComponent }

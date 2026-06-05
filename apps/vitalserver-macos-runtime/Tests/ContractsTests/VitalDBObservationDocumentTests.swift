@@ -24,7 +24,16 @@ final class VitalDBObservationDocumentTests: XCTestCase {
                         firstSeenAt: "2026-05-25T00:00:01Z",
                         lastSeenAt: "2026-05-25T00:00:10Z",
                         messagesPerSecond: 0.04,
-                        bytesPerSecond: 13.7
+                        bytesPerSecond: 13.7,
+                        buckets: [
+                            VitalDBRecorderActivityBucket(
+                                bucketStartedAt: "2026-05-25T00:00:00Z",
+                                bucketSeconds: 60,
+                                messageCount: 12,
+                                byteCount: 4096,
+                                roomCount: 4
+                            ),
+                        ]
                     )
                 ),
             ],
@@ -37,6 +46,12 @@ final class VitalDBObservationDocumentTests: XCTestCase {
                     subject: "10.0.0.10",
                     message: "duplicate-ip"
                 ),
+            ],
+            readIssues: [
+                VitalDBObservationReadIssue(
+                    source: "proxyAccessLog",
+                    message: "proxy access log is not valid UTF-8"
+                ),
             ]
         )
 
@@ -45,12 +60,52 @@ final class VitalDBObservationDocumentTests: XCTestCase {
 
         XCTAssertEqual(decoded, document)
         XCTAssertEqual(decoded.recorders.first?.activity?.byteCount, 4096)
+        XCTAssertEqual(decoded.recorders.first?.activity?.buckets.first?.messageCount, 12)
         XCTAssertEqual(decoded.anomalies.first?.kind.rawValue, "duplicate-ip")
+        XCTAssertEqual(decoded.readIssues, document.readIssues)
+    }
+
+    func testObservationDocumentDecodesLegacyPayloadWithoutReadIssues() throws {
+        let payload = """
+        {
+          "schemaVersion": 1,
+          "source": "vitaldb-observer",
+          "observedAt": "2026-05-25T00:00:00Z",
+          "ready": true,
+          "recorderOnlineThresholdSeconds": 120,
+          "recorders": [],
+          "beds": [],
+          "devices": [],
+          "filters": [],
+          "proxyConnections": [],
+          "anomalies": []
+        }
+        """.data(using: .utf8)!
+
+        let decoded = try JSONDecoder().decode(VitalDBObservationDocument.self, from: payload)
+
+        XCTAssertEqual(decoded.readIssues, [])
     }
 
     func testRuntimeEventTypeIncludesVitalDBObservationEvents() {
         XCTAssertEqual(RuntimeEventType(rawValue: "vitaldb-observed"), .vitalDBObserved)
         XCTAssertEqual(RuntimeEventType(rawValue: "vitaldb-observer-unhealthy"), .vitalDBObserverUnhealthy)
         XCTAssertEqual(RuntimeEventType(rawValue: "vitaldb-anomaly-detected"), .vitalDBAnomalyDetected)
+    }
+
+    func testRecorderActivityBucketQueryClampsLimitAndPreservesFilters() {
+        let query = VitalDBRecorderActivityBucketQuery(
+            vrcode: "VR_A",
+            since: "2026-05-25T00:00:00Z",
+            until: "2026-05-25T00:10:00Z",
+            limit: 100_000
+        )
+
+        XCTAssertEqual(query.vrcode, "VR_A")
+        XCTAssertEqual(query.since, "2026-05-25T00:00:00Z")
+        XCTAssertEqual(query.until, "2026-05-25T00:10:00Z")
+        XCTAssertEqual(query.limit, 50_000)
+        XCTAssertEqual(VitalDBRecorderActivityBucketQuery(vrcode: "", limit: -1).vrcode, nil)
+        XCTAssertEqual(VitalDBRecorderActivityBucketQuery(limit: -1).limit, 0)
     }
 }

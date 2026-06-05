@@ -70,4 +70,25 @@ final class RuntimeEventDisplayPolicyTests: XCTestCase {
             "Failure reasons: Host proxy port 80 in use by nginx-1234 (Free host proxy port)"
         )
     }
+
+    func testEventItemAllowsCommandEventsWithoutRuntimeStatusContext() {
+        let event = RuntimeEventDocument(
+            id: "event-3",
+            source: "host-command",
+            eventType: .runtimeCommandStarted,
+            timestamp: "2026-05-30T01:00:00Z",
+            product: "VitalServer Helper",
+            previousStatus: nil,
+            message: "command started",
+            runtimeVersion: "0.1.9",
+            failureReasons: [],
+            progress: nil
+        )
+
+        let item = policy.item(for: event)
+
+        XCTAssertEqual(item.status, "Unknown")
+        XCTAssertEqual(item.statusSeverity, .neutral)
+        XCTAssertEqual(item.operation, "Unknown")
+    }
 }

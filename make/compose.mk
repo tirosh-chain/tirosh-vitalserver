@@ -1,6 +1,6 @@
-.PHONY: build app-build app-rebuild up down restart logs ps shell config clean clean-volumes
+.PHONY: app/build app/rebuild app/up app/down app/restart app/logs app/ps app/shell app/config app/clean app/clean/volumes
 .PHONY: open
-.PHONY: swagger swagger-down
+.PHONY: swagger/up swagger/down
 
 COMPOSE_ARGS = \
 	--compose "$(COMPOSE)" \
@@ -10,53 +10,50 @@ COMPOSE_ARGS = \
 	--redis-port "$(VITALSERVER_REDIS_PORT)" \
 	--trust-proxy "$(VITALSERVER_TRUST_PROXY)"
 
-build: init
+app/build: repo/init
 	$(DEVTOOLS_RUNNER) compose $(COMPOSE_ARGS) -- build
 
-app-build: init
-	$(DEVTOOLS_RUNNER) compose $(COMPOSE_ARGS) -- build app
-
-app-rebuild: init
+app/rebuild: repo/init
 	$(DEVTOOLS_RUNNER) compose $(COMPOSE_ARGS) -- build app
 	$(DEVTOOLS_RUNNER) compose $(COMPOSE_ARGS) -- up -d --no-deps --force-recreate app
 
-up: init proxy-test
+app/up: repo/init proxy/test
 	$(DEVTOOLS_RUNNER) compose $(COMPOSE_ARGS) -- up -d
-	$(MAKE) proxy-run
+	$(MAKE) proxy/run
 
-down:
-	$(MAKE) proxy-stop
+app/down:
+	$(MAKE) proxy/stop
 	$(DEVTOOLS_RUNNER) compose $(COMPOSE_ARGS) -- down
 
-restart: down
-	$(MAKE) up
+app/restart: app/down
+	$(MAKE) app/up
 
-logs:
+app/logs:
 	$(DEVTOOLS_RUNNER) compose $(COMPOSE_ARGS) -- logs -f
 
-ps:
+app/ps:
 	$(DEVTOOLS_RUNNER) compose $(COMPOSE_ARGS) -- ps
 
 open:
 	$(DEVTOOLS_RUNNER) open --port "$(VITALSERVER_PROXY_PORT)"
 
-shell:
+app/shell:
 	$(DEVTOOLS_RUNNER) compose $(COMPOSE_ARGS) -- exec app sh
 
-config:
+app/config:
 	$(DEVTOOLS_RUNNER) compose $(COMPOSE_ARGS) -- config
 
-clean-volumes:
-	$(MAKE) proxy-stop
+app/clean/volumes:
+	$(MAKE) proxy/stop
 	$(DEVTOOLS_RUNNER) compose $(COMPOSE_ARGS) -- down --volumes
 
-clean:
-	$(MAKE) proxy-clean
+app/clean:
+	$(MAKE) proxy/clean
 	$(DEVTOOLS_RUNNER) compose $(COMPOSE_ARGS) -- down --volumes --remove-orphans --rmi local
 
-swagger:
+swagger/up:
 	$(DEVTOOLS_RUNNER) compose $(COMPOSE_ARGS) -- --profile swagger up -d --no-deps swagger-ui
 	@printf "Swagger UI: http://localhost:$${SWAGGER_UI_PORT:-8082}\n"
 
-swagger-down:
+swagger/down:
 	$(DEVTOOLS_RUNNER) compose $(COMPOSE_ARGS) -- --profile swagger stop swagger-ui

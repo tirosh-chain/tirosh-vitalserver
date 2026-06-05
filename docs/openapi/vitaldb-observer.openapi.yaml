@@ -70,6 +70,7 @@ components:
         - filters
         - proxyConnections
         - anomalies
+        - readIssues
       properties:
         schemaVersion:
           type: integer
@@ -105,6 +106,20 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/VitalDBAnomalyObservation"
+        readIssues:
+          type: array
+          items:
+            $ref: "#/components/schemas/VitalDBObservationReadIssue"
+    VitalDBObservationReadIssue:
+      type: object
+      required:
+        - source
+        - message
+      properties:
+        source:
+          type: string
+        message:
+          type: string
     VitalDBRecorderObservation:
       type: object
       properties:

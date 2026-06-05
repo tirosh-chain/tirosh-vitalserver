@@ -6,7 +6,7 @@
   <key>CFBundleExecutable</key>
   <string>VitalServer Helper</string>
   <key>CFBundleIdentifier</key>
-  <string>com.tirosh.vitalserver.app</string>
+  <string>ai.tirosh.vitalserver.helper</string>
   <key>CFBundleName</key>
   <string>VitalServer Helper</string>
   <key>CFBundleDisplayName</key>

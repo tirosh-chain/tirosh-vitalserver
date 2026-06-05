@@ -153,6 +153,88 @@ public struct VitalDBRecorderObservation: Codable, Equatable, Sendable {
     }
 }
 
+public struct VitalDBRecorderActivityBucket: Codable, Equatable, Sendable {
+    public let bucketStartedAt: String
+    public let bucketSeconds: Int
+    public let messageCount: Int
+    public let byteCount: Int
+    public let roomCount: Int
+
+    public init(
+        bucketStartedAt: String,
+        bucketSeconds: Int,
+        messageCount: Int,
+        byteCount: Int,
+        roomCount: Int = 0
+    ) {
+        self.bucketStartedAt = bucketStartedAt
+        self.bucketSeconds = bucketSeconds
+        self.messageCount = messageCount
+        self.byteCount = byteCount
+        self.roomCount = roomCount
+    }
+}
+
+public struct VitalDBRecorderActivityBucketRecord: Codable, Equatable, Sendable {
+    public let vrcode: String
+    public let bucketStartedAt: String
+    public let bucketSeconds: Int
+    public let messageCount: Int
+    public let byteCount: Int
+    public let roomCount: Int
+    public let firstObservedAt: String
+    public let lastObservedAt: String
+
+    public init(
+        vrcode: String,
+        bucketStartedAt: String,
+        bucketSeconds: Int,
+        messageCount: Int,
+        byteCount: Int,
+        roomCount: Int = 0,
+        firstObservedAt: String,
+        lastObservedAt: String
+    ) {
+        self.vrcode = vrcode
+        self.bucketStartedAt = bucketStartedAt
+        self.bucketSeconds = bucketSeconds
+        self.messageCount = messageCount
+        self.byteCount = byteCount
+        self.roomCount = roomCount
+        self.firstObservedAt = firstObservedAt
+        self.lastObservedAt = lastObservedAt
+    }
+
+    public var bucket: VitalDBRecorderActivityBucket {
+        VitalDBRecorderActivityBucket(
+            bucketStartedAt: bucketStartedAt,
+            bucketSeconds: bucketSeconds,
+            messageCount: messageCount,
+            byteCount: byteCount,
+            roomCount: roomCount
+        )
+    }
+}
+
+public struct VitalDBRecorderActivityBucketQuery: Codable, Equatable, Sendable {
+    public let vrcode: String?
+    public let since: String?
+    public let until: String?
+    public let limit: Int
+
+    public init(
+        vrcode: String? = nil,
+        since: String? = nil,
+        until: String? = nil,
+        limit: Int = 10_000
+    ) {
+        self.vrcode = vrcode?.isEmpty == true ? nil : vrcode
+        self.since = since
+        self.until = until
+        self.limit = min(max(limit, 0), 50_000)
+    }
+}
+
 public struct VitalDBRecorderActivityObservation: Codable, Equatable, Sendable {
     public let windowSeconds: Int
     public let messageCount: Int
@@ -162,6 +244,7 @@ public struct VitalDBRecorderActivityObservation: Codable, Equatable, Sendable {
     public let lastSeenAt: String?
     public let messagesPerSecond: Double
     public let bytesPerSecond: Double
+    public let buckets: [VitalDBRecorderActivityBucket]
 
     public init(
         windowSeconds: Int,
@@ -171,7 +254,8 @@ public struct VitalDBRecorderActivityObservation: Codable, Equatable, Sendable {
         firstSeenAt: String? = nil,
         lastSeenAt: String? = nil,
         messagesPerSecond: Double = 0,
-        bytesPerSecond: Double = 0
+        bytesPerSecond: Double = 0,
+        buckets: [VitalDBRecorderActivityBucket] = []
     ) {
         self.windowSeconds = windowSeconds
         self.messageCount = messageCount
@@ -181,6 +265,32 @@ public struct VitalDBRecorderActivityObservation: Codable, Equatable, Sendable {
         self.lastSeenAt = lastSeenAt
         self.messagesPerSecond = messagesPerSecond
         self.bytesPerSecond = bytesPerSecond
+        self.buckets = buckets
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case windowSeconds
+        case messageCount
+        case byteCount
+        case roomCount
+        case firstSeenAt
+        case lastSeenAt
+        case messagesPerSecond
+        case bytesPerSecond
+        case buckets
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        windowSeconds = try container.decode(Int.self, forKey: .windowSeconds)
+        messageCount = try container.decode(Int.self, forKey: .messageCount)
+        byteCount = try container.decode(Int.self, forKey: .byteCount)
+        roomCount = try container.decodeIfPresent(Int.self, forKey: .roomCount) ?? 0
+        firstSeenAt = try container.decodeIfPresent(String.self, forKey: .firstSeenAt)
+        lastSeenAt = try container.decodeIfPresent(String.self, forKey: .lastSeenAt)
+        messagesPerSecond = try container.decodeIfPresent(Double.self, forKey: .messagesPerSecond) ?? 0
+        bytesPerSecond = try container.decodeIfPresent(Double.self, forKey: .bytesPerSecond) ?? 0
+        buckets = try container.decodeIfPresent([VitalDBRecorderActivityBucket].self, forKey: .buckets) ?? []
     }
 }
 
@@ -285,6 +395,16 @@ public struct VitalDBAnomalyObservation: Codable, Equatable, Sendable {
     }
 }
 
+public struct VitalDBObservationReadIssue: Codable, Equatable, Sendable {
+    public let source: String
+    public let message: String
+
+    public init(source: String, message: String) {
+        self.source = source
+        self.message = message
+    }
+}
+
 public struct VitalDBObservationDocument: Codable, Equatable, Sendable {
     public let schemaVersion: Int
     public let source: String
@@ -297,6 +417,7 @@ public struct VitalDBObservationDocument: Codable, Equatable, Sendable {
     public let filters: [VitalDBFilterObservation]
     public let proxyConnections: [VitalDBProxyConnectionObservation]
     public let anomalies: [VitalDBAnomalyObservation]
+    public let readIssues: [VitalDBObservationReadIssue]
 
     public init(
         schemaVersion: Int = 1,
@@ -309,7 +430,8 @@ public struct VitalDBObservationDocument: Codable, Equatable, Sendable {
         devices: [VitalDBDeviceObservation] = [],
         filters: [VitalDBFilterObservation] = [],
         proxyConnections: [VitalDBProxyConnectionObservation] = [],
-        anomalies: [VitalDBAnomalyObservation] = []
+        anomalies: [VitalDBAnomalyObservation] = [],
+        readIssues: [VitalDBObservationReadIssue] = []
     ) {
         self.schemaVersion = schemaVersion
         self.source = source
@@ -322,5 +444,61 @@ public struct VitalDBObservationDocument: Codable, Equatable, Sendable {
         self.filters = filters
         self.proxyConnections = proxyConnections
         self.anomalies = anomalies
+        self.readIssues = readIssues
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case schemaVersion
+        case source
+        case observedAt
+        case ready
+        case recorderOnlineThresholdSeconds
+        case recorders
+        case beds
+        case devices
+        case filters
+        case proxyConnections
+        case anomalies
+        case readIssues
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
+        source = try container.decode(String.self, forKey: .source)
+        observedAt = try container.decode(String.self, forKey: .observedAt)
+        ready = try container.decode(Bool.self, forKey: .ready)
+        recorderOnlineThresholdSeconds = try container.decode(
+            Int.self,
+            forKey: .recorderOnlineThresholdSeconds
+        )
+        recorders = try container.decode(
+            [VitalDBRecorderObservation].self,
+            forKey: .recorders
+        )
+        beds = try container.decode(
+            [VitalDBBedObservation].self,
+            forKey: .beds
+        )
+        devices = try container.decode(
+            [VitalDBDeviceObservation].self,
+            forKey: .devices
+        )
+        filters = try container.decode(
+            [VitalDBFilterObservation].self,
+            forKey: .filters
+        )
+        proxyConnections = try container.decode(
+            [VitalDBProxyConnectionObservation].self,
+            forKey: .proxyConnections
+        )
+        anomalies = try container.decode(
+            [VitalDBAnomalyObservation].self,
+            forKey: .anomalies
+        )
+        readIssues = try container.decodeIfPresent(
+            [VitalDBObservationReadIssue].self,
+            forKey: .readIssues
+        ) ?? []
     }
 }

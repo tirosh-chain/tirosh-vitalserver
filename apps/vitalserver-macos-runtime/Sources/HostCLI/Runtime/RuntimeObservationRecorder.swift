@@ -1,33 +1,26 @@
 import Core
 import Contracts
 import Foundation
-import HostInfrastructure
 
 struct RuntimeObservationRecorder {
-    let eventRepository: any RuntimeEventRepository
-    let observabilityStore: SQLiteRuntimeObservabilityStore
+    let eventRepository: any RuntimeEventRecording
     let log: (String) -> Void
 
     init(
-        eventRepository: any RuntimeEventRepository,
-        observabilityStore: SQLiteRuntimeObservabilityStore,
+        eventRepository: any RuntimeEventRecording,
         log: @escaping (String) -> Void
     ) {
         self.eventRepository = eventRepository
-        self.observabilityStore = observabilityStore
         self.log = log
     }
 
-    func record(_ event: RuntimeEventDocument) throws {
+    func recordEvent(_ event: RuntimeEventDocument) throws {
         try eventRepository.append(event)
-        if let vitalDBObservation = event.vitalDBObservation {
-            try? observabilityStore.append(vitalDBObservation)
-        }
     }
 
-    func recordBestEffort(_ event: RuntimeEventDocument) {
+    func recordEventBestEffort(_ event: RuntimeEventDocument) {
         do {
-            try record(event)
+            try recordEvent(event)
         } catch {
             log("observability event recording failed eventType=\(event.eventType.rawValue) error=\(error.localizedDescription)")
         }

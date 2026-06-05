@@ -110,16 +110,28 @@ struct Launcher {
         let fileStore = SystemRuntimeFileStore()
         let config = try VMRuntimeConfig.load(from: paths.config, fileStore: fileStore)
         try VMRuntimeConfig.validateBootFiles(config, fileStore: fileStore)
+        let lifecycleStore = RuntimeVMLifecycleStore(url: paths.installed.vmLifecycle, fileStore: fileStore)
+        try lifecycleStore.write(
+            state: .starting,
+            operation: .startServices,
+            message: "VM process start requested",
+            bootWindowSeconds: Constants.Runtime.vmBootLifecycleDeadlineSeconds
+        )
         try removeStaleRuntimeState(paths: paths, fileStore: fileStore)
         try ProcessState.writeCurrentPid(pidFile: paths.pidFile, fileStore: fileStore)
 
         let configurationFactory = VMConfigurationFactory(fileStore: fileStore)
         let vmConfiguration = try configurationFactory.build(from: config)
         let virtualMachine = VZVirtualMachine(configuration: vmConfiguration)
-        let delegate = VirtualMachineDelegate(pidFile: paths.pidFile, fileStore: fileStore)
+        let delegate = VirtualMachineDelegate(
+            pidFile: paths.pidFile,
+            lifecycleStore: lifecycleStore,
+            fileStore: fileStore
+        )
         let terminationHandler = VirtualMachineTerminationHandler(
             virtualMachine: virtualMachine,
             pidFile: paths.pidFile,
+            lifecycleStore: lifecycleStore,
             fileStore: fileStore
         )
         virtualMachine.delegate = delegate
@@ -129,9 +141,29 @@ struct Launcher {
         virtualMachine.start { result in
             switch result {
             case .success:
+                do {
+                    try lifecycleStore.write(
+                        state: .bootstrapping,
+                        operation: .startServices,
+                        message: "VM process started; waiting for guest runtime",
+                        bootWindowSeconds: Constants.Runtime.vmBootLifecycleDeadlineSeconds
+                    )
+                } catch {
+                    fputs("failed to write VM lifecycle bootstrapping state: \(error)\n", stderr)
+                }
                 print("vitalserver VM started")
             case let .failure(error):
                 ProcessState.removePidFile(paths.pidFile, fileStore: fileStore)
+                do {
+                    try lifecycleStore.write(
+                        state: .failed,
+                        operation: .startServices,
+                        terminalReason: vmStartFailureReason(error),
+                        message: error.localizedDescription
+                    )
+                } catch {
+                    fputs("failed to write VM lifecycle failed state: \(error)\n", stderr)
+                }
                 fputs("failed to start VM: \(error)\n", stderr)
                 Foundation.exit(1)
             }
@@ -154,6 +186,14 @@ struct Launcher {
                 print("removed stale runtime state: \(url.path)")
             }
         }
+    }
+
+    private func vmStartFailureReason(_ error: Error) -> RuntimeVMLifecycleTerminalReason {
+        let nsError = error as NSError
+        if nsError.domain == "VZErrorDomain", nsError.code == 2 {
+            return .diskAttachmentInvalid
+        }
+        return .launchFailed
     }
 
     func listInterfaces() {
@@ -225,8 +265,12 @@ struct Launcher {
                 }
                 config.cpuCount = cpu
             case "--memory-mib":
-                guard let memory = UInt64(value), memory >= 1024 else {
-                    throw LauncherError.missingArgument("--memory-mib must be at least 1024")
+                guard let memory = UInt64(value),
+                      memory >= UInt64(Constants.Defaults.minimumMemoryGiB * 1024),
+                      memory <= Constants.Defaults.maximumAllowedMemoryMiB else {
+                    throw LauncherError.missingArgument(
+                        "--memory-mib must be between \(Constants.Defaults.minimumMemoryGiB * 1024) and \(Constants.Defaults.maximumAllowedMemoryMiB)"
+                    )
                 }
                 config.memoryMiB = memory
             case "--network":
@@ -320,6 +364,7 @@ struct Launcher {
               vitalserver-vm interfaces
               vitalserver-vm configure --cpu <count> --memory-mib <mib> --network shared --vital-files-dir <path>
               vitalserver-vm runtime install
+              vitalserver-vm runtime install-provision
               vitalserver-vm runtime status
               vitalserver-vm runtime health
               vitalserver-vm runtime guest-log-sync

@@ -1,54 +1,47 @@
+import Application
 import Core
 import Contracts
+import RuntimeWorkflow
 
 struct RuntimeServiceControlRunner {
-    var startRuntimeServices: (RuntimeServiceRestartPolicy) throws -> Void
-    var stopRuntimeServices: () throws -> Void
-    var writeStatus: (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void
-    var log: (String) -> Void
+    private let workflow: RuntimeServiceLifecycleWorkflow
+
+    init(
+        startRuntimeServices: @escaping (RuntimeServiceRestartPolicy) throws -> Void,
+        stopRuntimeServices: @escaping () throws -> Void,
+        serviceStates: @escaping ([RuntimeManagedService]) throws -> [RuntimeManagedService: RuntimeServiceState],
+        writeStatus: @escaping (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void,
+        log: @escaping (String) -> Void
+    ) {
+        self.workflow = RuntimeServiceLifecycleWorkflow(
+            useCase: ControlRuntimeServicesUseCase(
+                ports: RuntimeServiceControlPorts(
+                    startRuntimeServices: startRuntimeServices,
+                    stopRuntimeServices: stopRuntimeServices,
+                    serviceStates: serviceStates
+                )
+            ),
+            writer: RuntimeServiceLifecycleWriter(
+                writeStatus: writeStatus,
+                log: log
+            )
+        )
+    }
 
     func run(_ command: RuntimeServiceControlCommand) throws {
-        switch command {
+        try workflow.run(command.lifecycleCommand)
+    }
+}
+
+private extension RuntimeServiceControlCommand {
+    var lifecycleCommand: RuntimeServiceLifecycleCommand {
+        switch self {
         case .repairAll:
-            try repairAll()
+            return .repairAll
         case .startAll:
-            try startAll()
+            return .startAll
         case .stopAll:
-            try stopAll()
+            return .stopAll
         }
-    }
-
-    private func repairAll() throws {
-        let policy = RuntimeServiceRestartPolicy(
-            restartVM: true,
-            restartProxy: true,
-            restartWatchdog: true
-        )
-        log("runtime services repair requested")
-        try writeStatus(.recovering, .repairServices, "runtime services repair requested")
-        try stopRuntimeServices()
-        try startRuntimeServices(policy)
-        try writeStatus(.recovering, .repairServices, "runtime services repair dispatched")
-        log("runtime services repair dispatched")
-    }
-
-    private func startAll() throws {
-        let policy = RuntimeServiceRestartPolicy(
-            restartVM: true,
-            restartProxy: true,
-            restartWatchdog: true
-        )
-        log("runtime services start requested")
-        try writeStatus(.recovering, .startServices, "runtime services start requested")
-        try startRuntimeServices(policy)
-        try writeStatus(.recovering, .startServices, "runtime services start dispatched")
-        log("runtime services start dispatched")
-    }
-
-    private func stopAll() throws {
-        log("runtime services stop requested")
-        try stopRuntimeServices()
-        try writeStatus(.degraded, .stopServices, "runtime services stopped")
-        log("runtime services stopped")
     }
 }

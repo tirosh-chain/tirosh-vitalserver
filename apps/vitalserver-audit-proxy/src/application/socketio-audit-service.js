@@ -20,11 +20,19 @@ function createSocketIoAuditService({ audit, vrIdentityStore, metrics, config })
         inspectSocketIoPacket(packet, direction, context, options, { audit, vrIdentityStore, metrics, config });
       }
     },
+    inspectBinary(payload, direction, context, options = {}) {
+      if (direction !== "client" || !context.pending_binary_event) return;
+      const pending = context.pending_binary_event;
+      context.pending_binary_event = null;
+      if (pending.event !== clientSocketEvents.SEND_DATA) return;
+      recordSendData(socketIoBinaryAttachmentPayload(payload), context, options, { audit });
+    },
   };
 }
 
 function inspectSocketIoPacket(packet, direction, context, options, dependencies) {
-  if (!packet.startsWith("42")) return;
+  const isBinaryEvent = packet.startsWith("45");
+  if (!packet.startsWith("42") && !isBinaryEvent) return;
   const start = packet.indexOf("[");
   if (start < 0) return;
 
@@ -47,13 +55,11 @@ function inspectSocketIoPacket(packet, direction, context, options, dependencies
   }
 
   if (direction === "client" && event === clientSocketEvents.SEND_DATA) {
-    dependencies.audit.record(auditEventTypes.SEND_DATA, {
-      request_id: context.request_id,
-      connection_id: context.connection_id,
-      vrcode: context.joined_vrcode || undefined,
-      truncated: Boolean(options.truncated),
-      payload_summary: summarizeSendData(payload),
-    });
+    if (isBinaryEvent) {
+      context.pending_binary_event = { event };
+      return;
+    }
+    recordSendData(payload, context, options, dependencies);
     return;
   }
 
@@ -84,6 +90,23 @@ function inspectSocketIoPacket(packet, direction, context, options, dependencies
   }
 }
 
+function recordSendData(payload, context, options, { audit }) {
+  audit.record(auditEventTypes.SEND_DATA, {
+    request_id: context.request_id,
+    connection_id: context.connection_id,
+    vrcode: context.joined_vrcode || undefined,
+    truncated: Boolean(options.truncated),
+    payload_summary: summarizeSendData(payload),
+  });
+}
+
+function socketIoBinaryAttachmentPayload(payload) {
+  if (!Buffer.isBuffer(payload) || payload.length === 0) return payload;
+  const engineIoMessagePacketType = 0x04;
+  if (payload[0] !== engineIoMessagePacketType) return payload;
+  return payload.subarray(1);
+}
+
 function recordJoinVr(payload, context, options, { audit, vrIdentityStore, metrics, config }) {
   const vrcode = String(payload || "");
   context.joined_vrcode = vrcode;
@@ -98,4 +121,4 @@ function recordJoinVr(payload, context, options, { audit, vrIdentityStore, metri
   vrIdentityStore.setRecorderIp(vrcode, context.ip && context.ip.selected_ip, config.vitalServer.ipWriteDelayMs);
 }
 
-module.exports = { createSocketIoAuditService };
+module.exports = { createSocketIoAuditService, socketIoBinaryAttachmentPayload };

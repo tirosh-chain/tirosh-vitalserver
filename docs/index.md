@@ -8,11 +8,14 @@
 | 목적 | 먼저 볼 문서 |
 |---|---|
 | 제품 전체 맥락을 잡기 | [VitalServer 제품화 전략](vitalserver-productization.md) |
+| Vital Server Helper 공개/배포용 release/dev 문서 작성 계획 보기 | [Vital Server Helper Release/Dev Documentation Plan](release-dev-documentation-plan.md) |
 | VRecorder가 VitalServer에 어떻게 붙는지 보기 | [Vital Recorder](vrecorder.md) |
 | command audit event 계약 확인하기 | [VitalServer command audit](vitalserver-command-audit.md) |
 | testkit으로 검증 실행하기 | [Testkit 사용법](testkit-usage.md) |
 | Redis key와 relay 근거 보기 | [Redis 데이터 구조](redis-data-model.md) |
 | Mac mini VM runtime/package 이해하기 | [VitalServer macOS Runtime](vitalserver-macos-runtime.md) |
+| runtime operation 상태 전이 검증 기준 보기 | [Runtime State Machine Traceability](macos-runtime/state-machine-traceability.md) |
+| Runtime Control PWA 구현 기준 보기 | [Runtime Control PWA](pwa.md) |
 | runtime status/event/log/index 수집 책임 보기 | [Runtime observability model](macos-runtime/observability.md) |
 | branch와 tag 운영 기준 보기 | [Branch 운영 기준](branching.md) |
 
@@ -23,6 +26,7 @@
 | 문서 | 역할 |
 |---|---|
 | [VitalServer 제품화 전략](vitalserver-productization.md) | 저장소의 목표, upstream 동작, 제품화 기준, 아직 비어 있는 영역 |
+| [Vital Server Helper Release/Dev Documentation Plan](release-dev-documentation-plan.md) | Vital Server Helper 공개/배포를 위한 release/dev 독자 구분, 작성 대상 문서, MkDocs nav 초안 |
 | [ADR 0001](adr/0001-macos-host-proxy-for-vrecorder-ip.md) | macOS host proxy로 VRecorder 원 IP를 보존하기로 한 결정 |
 | [ADR 0002](adr/0002-helper-client-boundary-for-local-and-remote-runtime.md) | Web/PWA primary UI와 local/remote RuntimeControlClient boundary 결정 |
 | [ADR 0003](adr/0003-helper-layer-and-component-version-model.md) | VitalServer Helper layer와 component version model 결정 |
@@ -44,6 +48,18 @@
 |---|---|
 | [Testkit 사용법](testkit-usage.md) | `vitalserver-testkit` CLI와 검증 시나리오 실행 방법 |
 
+### Runtime Control PWA
+
+| 문서 | 역할 |
+|---|---|
+| [Runtime Control PWA](pwa.md) | PWA 문서군 진입점과 목표/비목표 |
+| [PWA Architecture](pwa/architecture.md) | PWA 레이어, source of truth, Runtime Control API boundary |
+| [PWA Design system](pwa/design-system.md) | Tailwind token, shared UI component, styling ownership |
+| [PWA Responsive layout](pwa/responsive-layout.md) | 24/32인치, iPad, iPhone 대응 기준 |
+| [PWA Swift UI parity](pwa/parity.md) | Swift UI와 PWA 기능 parity, host affordance gap |
+| [PWA Deployment](pwa/deployment.md) | air-gapped 배포, Helper resource 포함, update bundle 영향 |
+| [PWA Testing](pwa/testing.md) | PWA test scope, 검증 명령, responsive smoke test 기준 |
+
 ### Mac mini VM Runtime
 
 VM runtime 문서는 [VitalServer macOS Runtime](vitalserver-macos-runtime.md)를 진입점으로 봅니다.
@@ -53,12 +69,13 @@ VM runtime 문서는 [VitalServer macOS Runtime](vitalserver-macos-runtime.md)�
 | [VitalServer macOS Runtime](vitalserver-macos-runtime.md) | VM runtime 문서군의 빠른 지도 |
 | [macOS Runtime Overview](macos-runtime/overview.md) | VM runtime 세부 문서의 한눈에 보기와 사용자 시나리오 |
 | [Architecture](macos-runtime/architecture.md) | 제품 구조, 단일 노드 가용성, Web/PWA UI/native shell/host runtime 책임 경계 |
+| [State Machine Traceability](macos-runtime/state-machine-traceability.md) | install/update/recovery/recorder/log 흐름의 상태, 이벤트, guard, invariant, 검증 기준 |
 | [Runtime Control API](macos-runtime/runtime-control-api.md) | PWA 직전 Runtime Control API 계약, OpenAPI, local read-only server 경계 |
 | [Runtime observability model](macos-runtime/observability.md) | runtime status/event/log/index 수집 책임, watchdog 중심 정규화와 SQLite read model 기준 |
 | [Packaging and Update](macos-runtime/packaging.md) | PKG/DMG 빌드, 설치 흐름, install settings, update bundle 계약 |
 | [Update](macos-runtime/update.md) | update bundle 적용 과정, 보존/변경 범위, guest-side activation, rollback 계약 |
 | [Runtime](macos-runtime/runtime.md) | boot asset, cloud-init, guest bootstrap, network/identity/signing 정책 |
-| [Troubleshooting](macos-runtime/troubleshooting.md) | PoC와 패키징 중 확인한 증상과 조치 |
+| [Troubleshooting](troubleshooting.md) | PoC와 패키징 중 확인한 증상과 조치 |
 | [ADR 0002](adr/0002-helper-client-boundary-for-local-and-remote-runtime.md) | Web/PWA Helper UI, macOS native shell, local/remote RuntimeControlClient boundary |
 | [ADR 0003](adr/0003-helper-layer-and-component-version-model.md) | Helper UI, Native Shell, Runtime Control API, Updater, Supervisor, VM Driver, Service Stack, VM Image layer와 version model |
 | [ADR 0004](adr/0004-product-update-and-vm-image-update-contract.md) | Product Update, VM Image Update, two-phase Product Update 구분 |

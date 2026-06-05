@@ -10,12 +10,13 @@ final class RuntimeHealthWaiterTests: XCTestCase {
             configuration: RuntimeHealthWaitConfiguration(maxAttempts: 3, progressEveryAttempts: 2),
             observe: {
                 RuntimeHealthWaitObservation(
-                    vmServiceRequired: true,
-                    proxyServiceRequired: true,
-                    watchdogServiceRequired: true,
-                    vmServiceLoaded: true,
-                    proxyServiceLoaded: true,
-                    watchdogServiceLoaded: true,
+                    requiredServices: [.vm, .guestLogSync, .proxy, .watchdog],
+                    serviceStates: [
+                        .vm: .loaded,
+                        .guestLogSync: .loaded,
+                        .proxy: .loaded,
+                        .watchdog: .loaded,
+                    ],
                     snapshot: healthySnapshot()
                 )
             },
@@ -47,6 +48,114 @@ final class RuntimeHealthWaiterTests: XCTestCase {
         XCTAssertEqual(sleeps, 1)
     }
 
+    func testRequiredGuestLogSyncServiceMustLoadBeforeSnapshotIsAccepted() {
+        var observations = [
+            observation(guestLogSyncLoaded: false, snapshot: healthySnapshot()),
+            observation(guestLogSyncLoaded: true, snapshot: healthySnapshot()),
+        ]
+        var progressReasons: [[RuntimeFailureReason]] = []
+        var sleeps = 0
+
+        let result = RuntimeHealthWaiter.wait(
+            configuration: RuntimeHealthWaitConfiguration(maxAttempts: 3, progressEveryAttempts: 5),
+            observe: { observations.removeFirst() },
+            onProgress: { progressReasons.append($0) },
+            sleep: { sleeps += 1 }
+        )
+
+        XCTAssertEqual(result, .healthy)
+        XCTAssertEqual(progressReasons, [[.guestLogSyncService("not-loaded")]])
+        XCTAssertEqual(sleeps, 1)
+    }
+
+    func testRequiredServiceReadFailuresRemainDistinctFromNotLoaded() {
+        var progressReasons: [[RuntimeFailureReason]] = []
+
+        let result = RuntimeHealthWaiter.wait(
+            configuration: RuntimeHealthWaitConfiguration(maxAttempts: 1, progressEveryAttempts: 1),
+            observe: {
+                observation(
+                    vmState: .readFailed("exitCode=1 stderr=operation not permitted"),
+                    snapshot: healthySnapshot()
+                )
+            },
+            onProgress: { progressReasons.append($0) },
+            sleep: {}
+        )
+
+        XCTAssertEqual(
+            result,
+            .timedOut([.vmService("read-failed:exitCode=1 stderr=operation not permitted")])
+        )
+        XCTAssertEqual(
+            progressReasons,
+            [[.vmService("read-failed:exitCode=1 stderr=operation not permitted")]]
+        )
+    }
+
+    func testMissingRequiredServiceStateRemainsDistinctFromNotLoaded() {
+        let result = RuntimeHealthWaiter.wait(
+            configuration: RuntimeHealthWaitConfiguration(maxAttempts: 1, progressEveryAttempts: 1),
+            observe: {
+                RuntimeHealthWaitObservation(
+                    requiredServices: [.proxy],
+                    serviceStates: [:],
+                    snapshot: healthySnapshot()
+                )
+            },
+            onProgress: { _ in },
+            sleep: {}
+        )
+
+        XCTAssertEqual(result, .timedOut([.proxyService("missing")]))
+    }
+
+    func testRequiredServicePendingKeepsSnapshotFailureReasonsObservable() {
+        var progressReasons: [[RuntimeFailureReason]] = []
+        var sleeps = 0
+
+        let result = RuntimeHealthWaiter.wait(
+            configuration: RuntimeHealthWaitConfiguration(maxAttempts: 2, progressEveryAttempts: 1),
+            observe: {
+                observation(
+                    vmLoaded: false,
+                    snapshot: unhealthySnapshot(reasons: [.hostProxyHTTP("502")])
+                )
+            },
+            onProgress: { progressReasons.append($0) },
+            sleep: { sleeps += 1 }
+        )
+
+        XCTAssertEqual(result, .timedOut([.vmService("not-loaded"), .hostProxyHTTP("502")]))
+        XCTAssertEqual(progressReasons, [
+            [.vmService("not-loaded"), .hostProxyHTTP("502")],
+            [.vmService("not-loaded"), .hostProxyHTTP("502")],
+        ])
+        XCTAssertEqual(sleeps, 2)
+    }
+
+    func testGuestBootstrapFailureFailsEarlyEvenWhenRequiredServiceIsPending() {
+        var sleeps = 0
+
+        let result = RuntimeHealthWaiter.wait(
+            configuration: RuntimeHealthWaitConfiguration(maxAttempts: 3, progressEveryAttempts: 1),
+            observe: {
+                observation(
+                    vmLoaded: false,
+                    snapshot: unhealthySnapshot(reasons: [
+                        .vmService("not-loaded"),
+                        .guestBootstrapFailed,
+                    ])
+                )
+            },
+            onProgress: { _ in XCTFail("bootstrap failure should fail before progress") },
+            sleep: { sleeps += 1 }
+        )
+
+        XCTAssertEqual(result, .failedEarly(.guestBootstrapFailed))
+        XCTAssertEqual(sleeps, 0)
+    }
+
     func testGuestBootstrapFailureFailsEarly() {
         var sleeps = 0
 
@@ -54,7 +163,7 @@ final class RuntimeHealthWaiterTests: XCTestCase {
             configuration: RuntimeHealthWaitConfiguration(maxAttempts: 3, progressEveryAttempts: 1),
             observe: {
                 observation(snapshot: unhealthySnapshot(reasons: [
-                    .guestHTTP("bootstrap-pending"),
+                    .guestHTTP(RuntimeHTTPStatusText.bootstrapPending),
                     .guestBootstrapMissingRuntimePackages,
                 ]))
             },
@@ -66,7 +175,7 @@ final class RuntimeHealthWaiterTests: XCTestCase {
         XCTAssertEqual(sleeps, 0)
     }
 
-    func testTimesOutWithLastReasonsAndProgressCadence() {
+    func testTimesOutWithAccumulatedReasonsAndProgressCadence() {
         var attempt = 0
         var progressReasons: [[RuntimeFailureReason]] = []
         var sleeps = 0
@@ -81,7 +190,12 @@ final class RuntimeHealthWaiterTests: XCTestCase {
             sleep: { sleeps += 1 }
         )
 
-        XCTAssertEqual(result, .timedOut([.hostProxyHTTP("503")]))
+        XCTAssertEqual(result, .timedOut([
+            .hostProxyHTTP("500"),
+            .hostProxyHTTP("501"),
+            .hostProxyHTTP("502"),
+            .hostProxyHTTP("503"),
+        ]))
         XCTAssertEqual(progressReasons, [
             [.hostProxyHTTP("500")],
             [.hostProxyHTTP("502")],
@@ -89,28 +203,56 @@ final class RuntimeHealthWaiterTests: XCTestCase {
         XCTAssertEqual(sleeps, 4)
     }
 
+    func testMissingSnapshotFailureReasonsRemainObservableOnTimeout() {
+        let result = RuntimeHealthWaiter.wait(
+            configuration: RuntimeHealthWaitConfiguration(maxAttempts: 1, progressEveryAttempts: 1),
+            observe: {
+                observation(snapshot: unhealthySnapshot(
+                    vmIP: nil,
+                    reasons: []
+                ))
+            },
+            onProgress: { _ in },
+            sleep: {}
+        )
+
+        XCTAssertEqual(
+            result,
+            .timedOut([.unknown(RuntimeHealthSnapshotPolicy.missingFailureReasons)])
+        )
+    }
+
     private func observation(
         vmLoaded: Bool = true,
+        guestLogSyncLoaded: Bool = true,
         proxyLoaded: Bool = true,
         watchdogLoaded: Bool = true,
+        vmState: RuntimeServiceState? = nil,
+        guestLogSyncState: RuntimeServiceState? = nil,
+        proxyState: RuntimeServiceState? = nil,
+        watchdogState: RuntimeServiceState? = nil,
         snapshot: RuntimeHealthSnapshot
     ) -> RuntimeHealthWaitObservation {
         RuntimeHealthWaitObservation(
-            vmServiceRequired: true,
-            proxyServiceRequired: true,
-            watchdogServiceRequired: true,
-            vmServiceLoaded: vmLoaded,
-            proxyServiceLoaded: proxyLoaded,
-            watchdogServiceLoaded: watchdogLoaded,
+            requiredServices: [.vm, .guestLogSync, .proxy, .watchdog],
+            serviceStates: [
+                .vm: vmState ?? (vmLoaded ? .loaded : .notLoaded),
+                .guestLogSync: guestLogSyncState ?? (guestLogSyncLoaded ? .loaded : .notLoaded),
+                .proxy: proxyState ?? (proxyLoaded ? .loaded : .notLoaded),
+                .watchdog: watchdogState ?? (watchdogLoaded ? .loaded : .notLoaded),
+            ],
             snapshot: snapshot
         )
     }
 
     private func healthySnapshot() -> RuntimeHealthSnapshot {
-        unhealthySnapshot(reasons: [])
+        unhealthySnapshot(vmIP: "192.168.64.2", reasons: [])
     }
 
-    private func unhealthySnapshot(reasons: [RuntimeFailureReason]) -> RuntimeHealthSnapshot {
+    private func unhealthySnapshot(
+        vmIP: String? = "192.168.64.2",
+        reasons: [RuntimeFailureReason]
+    ) -> RuntimeHealthSnapshot {
         RuntimeHealthSnapshot(
             vmExecutable: true,
             proxyExecutable: true,
@@ -119,7 +261,8 @@ final class RuntimeHealthWaiterTests: XCTestCase {
             vmService: .loaded,
             proxyService: .loaded,
             watchdogService: .loaded,
-            vmIP: "192.168.64.2",
+            vmState: reasons.isEmpty ? .running : .unreachable,
+            vmIP: vmIP,
             proxyPort: 80,
             hostProxyHTTP: "200",
             guestHTTP: "200",
