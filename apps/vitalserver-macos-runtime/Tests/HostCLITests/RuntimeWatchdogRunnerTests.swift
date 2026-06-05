@@ -1,5 +1,6 @@
 import Core
 import Contracts
+import RuntimeWorkflow
 @testable import HostCLI
 import XCTest
 
@@ -201,6 +202,9 @@ private final class WatchdogHarness {
 
     var runner: RuntimeWatchdogRunner {
         RuntimeWatchdogRunner(
+            context: RuntimeWatchdogContext(
+                recoveryWaitSeconds: Constants.Runtime.watchdogRecoveryWaitSeconds
+            ),
             actions: RuntimeWatchdogActions(
                 prepareLogs: {
                     self.prepareLogCalls += 1
@@ -244,7 +248,8 @@ private final class WatchdogHarness {
             ),
             log: { message in
                 self.logs.append(message)
-            }
+            },
+            printLine: { _ in }
         )
     }
 }

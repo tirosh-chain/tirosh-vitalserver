@@ -1,18 +1,19 @@
 import Foundation
 import Core
 import Contracts
+import RuntimeWorkflow
 
 extension RuntimeLifecycle {
-    func runtimeInstallWorkflow() -> RuntimeInstallWorkflowComposition {
-        RuntimeInstallWorkflowComposition(
-            context: RuntimeInstallWorkflowContext(
+    func runtimeInstallComposition() -> RuntimeInstallComposition {
+        RuntimeInstallComposition(
+            context: RuntimeInstallCompositionContext(
                 paths: paths,
                 installedPaths: installedPaths,
                 productRoot: productRoot,
                 rootfsBase: rootfsBase,
                 vmDisk: vmDisk
             ),
-            operations: RuntimeInstallWorkflowOperations(
+            operations: RuntimeInstallCompositionOperations(
                 fileStore: fileStore,
                 now: { clock.now },
                 freshInstallPreflight: {
@@ -77,9 +78,27 @@ extension RuntimeLifecycle {
 
     func runtimeCloudInitSeedWriter() -> RuntimeCloudInitSeedWriter {
         RuntimeCloudInitSeedWriter(
-            installedPaths: installedPaths,
-            fileStore: fileStore,
-            runRequired: runRequired
+            context: RuntimeCloudInitSeedContext(
+                runtimeDirectory: installedPaths.runtimeDirectory,
+                seedImageName: Constants.BootAssets.cloudInit,
+                seedVolumeName: "cidata",
+                hdiutilExecutable: Constants.Commands.hdiutil
+            ),
+            operations: RuntimeCloudInitSeedOperations(
+                directoryExists: directoryExists,
+                fileExists: fileExists,
+                removeItem: { url in
+                    try fileStore.removeItem(at: url)
+                },
+                createDirectory: createDirectoryAction(),
+                writeData: { data, url, options in
+                    try fileStore.writeData(data, to: url, options: options)
+                },
+                runRequired: runRequired,
+                instanceID: {
+                    "tirosh-\(UUID().uuidString.lowercased())"
+                }
+            )
         )
     }
 
@@ -88,17 +107,33 @@ extension RuntimeLifecycle {
             printStatus: printStatus,
             healthSnapshot: runtimeHealthSnapshot,
             writeStatus: runtimeStatusWriterAction(),
-            recordObservedEvent: { status, operation, message, snapshot in
-                try runtimeObservedEventPublisher().recordObservedEvent(
+            writeStatusBestEffort: { status, operation, message in
+                writeRuntimeStatusBestEffort(
+                    status,
+                    operation: operation,
+                    message: message,
+                    writeStatus: runtimeStatusWriterAction(),
+                    log: log
+                )
+            },
+            recordObservedEventBestEffort: { status, operation, message, snapshot in
+                recordRuntimeObservedEventBestEffort(
                     status,
                     operation: operation,
                     message: message,
                     snapshot: snapshot,
-                    defaultEventType: .healthObserved
+                    recordObservedEvent: { status, operation, message, snapshot in
+                        try runtimeObservedEventPublisher().recordObservedEvent(
+                            status,
+                            operation: operation,
+                            message: message,
+                            snapshot: snapshot,
+                            defaultEventType: .healthObserved
+                        )
+                    },
+                    log: log
                 )
             },
-            reasonText: reasonText,
-            log: log,
             printLine: { line in print(line) }
         )
     }
@@ -143,6 +178,9 @@ extension RuntimeLifecycle {
 
     func runtimeWatchdogRunner() -> RuntimeWatchdogRunner {
         RuntimeWatchdogRunner(
+            context: RuntimeWatchdogContext(
+                recoveryWaitSeconds: Constants.Runtime.watchdogRecoveryWaitSeconds
+            ),
             actions: RuntimeWatchdogActions(
                 prepareLogs: {
                     do {
@@ -220,7 +258,8 @@ extension RuntimeLifecycle {
                     )
                 }
             ),
-            log: log
+            log: log,
+            printLine: { line in print(line) }
         )
     }
 
@@ -260,9 +299,9 @@ extension RuntimeLifecycle {
         )
     }
 
-    func runtimeBundleWorkflow() -> RuntimeBundleWorkflow {
-        RuntimeBundleWorkflow(
-            context: RuntimeBundleWorkflowContext(
+    func runtimeBundleComposition() -> RuntimeBundleComposition {
+        RuntimeBundleComposition(
+            context: RuntimeBundleCompositionContext(
                 installedPaths: installedPaths,
                 bundlesDirectory: bundlesDirectory,
                 backupsDirectory: backupsDirectory,
@@ -270,7 +309,7 @@ extension RuntimeLifecycle {
                 rootfsBase: rootfsBase,
                 vmDisk: vmDisk
             ),
-            operations: RuntimeBundleWorkflowOperations(
+            operations: RuntimeBundleCompositionOperations(
                 fileStore: fileStore,
                 runtimeHealthSnapshot: runtimeHealthSnapshot,
                 rotateRuntimeLogs: rotateRuntimeLogs,
@@ -319,7 +358,8 @@ extension RuntimeLifecycle {
     func runtimeDatastoreRepairWorkflow() -> RuntimeDatastoreRepairWorkflow {
         RuntimeDatastoreRepairWorkflow(
             context: RuntimeDatastoreRepairWorkflowContext(
-                guestRunDirectory: guestRunDirectory
+                guestRunDirectory: guestRunDirectory,
+                waitTimeoutSeconds: Constants.Runtime.datastoreRepairWaitTimeoutSeconds
             ),
             operations: RuntimeDatastoreRepairWorkflowOperations(
                 requireCapability: {
@@ -361,7 +401,9 @@ extension RuntimeLifecycle {
                 vmDisk: vmDisk,
                 backupsDirectory: backupsDirectory,
                 defaultDiskGiB: Constants.Defaults.defaultDiskGiB,
-                freeSpaceMarginBytes: Constants.Runtime.freeSpaceMarginBytes
+                freeSpaceMarginBytes: Constants.Runtime.freeSpaceMarginBytes,
+                gunzipExecutable: Constants.Commands.gunzip,
+                truncateExecutable: Constants.Commands.truncate
             ),
             operations: RuntimeVMDiskRepairOperations(
                 fileExists: fileExists,
@@ -397,8 +439,64 @@ extension RuntimeLifecycle {
         RuntimeServiceControlRunner(
             startRuntimeServices: startRuntimeServices,
             stopRuntimeServices: stopRuntimeServices,
+            serviceStates: { services in
+                Dictionary(uniqueKeysWithValues: services.map { service in
+                    (service, healthChecker.launchdState(service))
+                })
+            },
             writeStatus: runtimeStatusWriterAction(),
             log: log
+        )
+    }
+
+    func runtimeRedisBackupWorkflow() -> RuntimeRedisBackupWorkflow {
+        RuntimeRedisBackupWorkflow(
+            context: RuntimeRedisBackupWorkflowContext(
+                guestRunDirectory: guestRunDirectory,
+                redisBackupsDirectory: installedPaths.redisBackupsDirectory,
+                requestFileName: Constants.Runtime.redisBackupRequestFile,
+                resultFileName: Constants.Runtime.redisBackupResultFile,
+                waitTimeoutSeconds: Constants.Runtime.redisBackupWaitTimeoutSeconds,
+                pollIntervalSeconds: 3
+            ),
+            operations: RuntimeRedisBackupWorkflowOperations(
+                requireCapability: {
+                    try requireGuestCapability(.redisBackup)
+                },
+                createDirectory: { url, withIntermediateDirectories in
+                    try fileStore.createDirectory(at: url, withIntermediateDirectories: withIntermediateDirectories)
+                },
+                removePreviousResult: { url in
+                    if fileStore.fileExists(url) {
+                        try fileStore.removeItem(at: url)
+                    }
+                },
+                writeStatus: { status, operation, message in
+                    try writeRuntimeStatus(status, operation: operation, message: message)
+                },
+                requestID: {
+                    UUID().uuidString
+                },
+                timestamp: isoTimestamp,
+                writeRequest: { request, url in
+                    let encoder = JSONEncoder()
+                    encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+                    try fileStore.writeData(try encoder.encode(request), to: url, options: .atomic)
+                },
+                isVMServiceLoaded: {
+                    isLaunchdLoaded(.vm)
+                },
+                startVMService: {
+                    try startLaunchdService(.vm)
+                },
+                loadResult: { url in
+                    RedisBackupResultReader.load(from: url, fileStore: fileStore)
+                },
+                sleep: { seconds in
+                    sleeper.sleep(forTimeInterval: seconds)
+                },
+                log: log
+            )
         )
     }
 
@@ -437,7 +535,8 @@ extension RuntimeLifecycle {
     func runtimeGuestActivationWorkflow() -> RuntimeGuestActivationWorkflow {
         RuntimeGuestActivationWorkflow(
             context: RuntimeGuestActivationWorkflowContext(
-                guestRunDirectory: guestRunDirectory
+                guestRunDirectory: guestRunDirectory,
+                waitTimeoutSeconds: Constants.Runtime.updateActivationWaitTimeoutSeconds
             ),
             operations: RuntimeGuestActivationWorkflowOperations(
                 requireCapability: {
@@ -465,36 +564,32 @@ extension RuntimeLifecycle {
     }
 
     func prepareGuestShutdownForUpdate(manifest: UpdateBundleManifest) throws {
-        try RuntimeGuestShutdownRunner(
-            requireCapability: {
-                try requireGuestCapability(.prepareUpdateShutdown)
-            },
-            createRunDirectory: {
-                try fileStore.createDirectory(at: guestRunDirectory, withIntermediateDirectories: true)
-            },
-            removePreviousResult: {
-                try guestGateway.removeUpdateShutdownResult()
-            },
-            requestID: requestIDAction(),
-            timestamp: isoTimestamp,
-            writeRequest: { request in
-                try guestGateway.writeUpdateShutdownRequest(request)
-            },
-            loadResult: {
-                guestGateway.loadUpdateShutdownResultDocument()
-            },
-            reportProgress: { message in
-                writeRuntimeStatusBestEffort(
-                    .updating,
-                    operation: .applyBundle,
-                    message: message,
-                    writeStatus: runtimeStatusWriterAction(),
-                    log: log
-                )
-            },
-            sleep: workflowPollingSleepAction(),
-            log: log
-        ).prepareForUpdate(version: manifest.version)
+        try RuntimeGuestShutdownWorkflow(
+            context: RuntimeGuestShutdownWorkflowContext(
+                guestRunDirectory: guestRunDirectory,
+                waitTimeoutSeconds: Constants.Runtime.updateShutdownWaitTimeoutSeconds
+            ),
+            operations: RuntimeGuestShutdownWorkflowOperations(
+                requireCapability: {
+                    try requireGuestCapability(.prepareUpdateShutdown)
+                },
+                createDirectory: createDirectoryAction(),
+                removePreviousResult: {
+                    try guestGateway.removeUpdateShutdownResult()
+                },
+                writeRequest: { request in
+                    try guestGateway.writeUpdateShutdownRequest(request)
+                },
+                loadResult: {
+                    guestGateway.loadUpdateShutdownResultDocument()
+                },
+                writeStatus: runtimeStatusWriterAction(),
+                requestID: requestIDAction(),
+                timestamp: isoTimestamp,
+                sleep: workflowPollingSleepAction(),
+                log: log
+            )
+        ).prepareForUpdate(manifest: manifest)
     }
 
     func requireGuestCapability(_ capability: RuntimeGuestCapabilityRequirement) throws {

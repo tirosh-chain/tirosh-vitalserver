@@ -2,26 +2,6 @@ import Core
 import Contracts
 import Foundation
 
-struct RuntimeFreshInstallPreflightRunner {
-    var settingsState: () -> RuntimeInstallSettingsState
-    var artifactStates: () -> [RuntimeInstallArtifactState]
-    var serviceStates: () -> [RuntimeFreshInstallServiceState]
-    var packageReceiptStates: () -> [RuntimePackageReceiptState]
-    var proxyPortState: (Int) -> RuntimeHostProxyPortState
-
-    func run() -> RuntimeFreshInstallPreflightDocument {
-        let settings = settingsState()
-        let proxyState = settings.proxyPort.map(proxyPortState)
-        return RuntimeFreshInstallPreflightPolicy.document(input: RuntimeFreshInstallPreflightInput(
-            settingsState: settings,
-            artifactStates: artifactStates(),
-            serviceStates: serviceStates(),
-            packageReceiptStates: packageReceiptStates(),
-            proxyPortState: proxyState
-        ))
-    }
-}
-
 enum RuntimeInstallSettingsStateReader {
     static func state(
         path: String,

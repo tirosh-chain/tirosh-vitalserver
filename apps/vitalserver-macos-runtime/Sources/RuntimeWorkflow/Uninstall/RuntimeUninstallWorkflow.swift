@@ -48,17 +48,6 @@ public struct RuntimeUninstallPaths {
     }
 }
 
-public enum RuntimeWorkflowError: Error, CustomStringConvertible {
-    case operationFailed(String)
-
-    public var description: String {
-        switch self {
-        case .operationFailed(let message):
-            return message
-        }
-    }
-}
-
 public struct RuntimeUninstallStateReaders {
     public var serviceStates: () -> [RuntimeManagedService: RuntimeServiceState]
     public var vmProcessState: () -> RuntimeVMProcessState
@@ -121,15 +110,18 @@ public struct RuntimeUninstallStateWriter {
 
 public struct RuntimeUninstallDiagnostics {
     public var contentsOfDirectory: (URL) throws -> [URL]
+    public var openFileDiagnosticExecutable: String
     public var runProcess: (String, [String]) -> RuntimeProcessResult
     public var log: (String) -> Void
 
     public init(
         contentsOfDirectory: @escaping (URL) throws -> [URL],
+        openFileDiagnosticExecutable: String,
         runProcess: @escaping (String, [String]) -> RuntimeProcessResult,
         log: @escaping (String) -> Void
     ) {
         self.contentsOfDirectory = contentsOfDirectory
+        self.openFileDiagnosticExecutable = openFileDiagnosticExecutable
         self.runProcess = runProcess
         self.log = log
     }
@@ -471,7 +463,7 @@ public struct RuntimeUninstallWorkflow {
         } catch {
             log("removal diagnostic contents read failed target=\(target.path) error=\(error.localizedDescription)")
         }
-        let result = diagnostics.runProcess("/usr/sbin/lsof", ["+D", target.path])
+        let result = diagnostics.runProcess(diagnostics.openFileDiagnosticExecutable, ["+D", target.path])
         if result.exitCode == 0 {
             for line in result.stdout.split(separator: "\n").prefix(200) {
                 log("removal diagnostic open file \(line)")

@@ -1,4 +1,5 @@
 import Foundation
+import Contracts
 
 struct RuntimeVersionStore {
     static let missingVersionValue = "missing-version"

@@ -2,6 +2,7 @@ import Foundation
 import Core
 import Contracts
 import HostInfrastructure
+import RuntimeWorkflow
 
 struct VMRuntimeConfig: Codable {
     var cpuCount: Int
@@ -16,6 +17,7 @@ struct VMRuntimeConfig: Codable {
     var vitalFilesDirectory: SharedDirectoryConfig?
     var autoRecoveryEnabled: Bool? = nil
     var preventSystemSleep: Bool? = nil
+    var sshAuthorizedKeys: [String]? = nil
 
     // The default boot asset names match the Linux kernel/initrd style used by
     // Apple's Linux VM sample and keep the first PoC explicit.
@@ -49,7 +51,8 @@ struct VMRuntimeConfig: Codable {
                 readOnly: false
             ),
             autoRecoveryEnabled: true,
-            preventSystemSleep: true
+            preventSystemSleep: true,
+            sshAuthorizedKeys: []
         )
     }
 
@@ -95,6 +98,9 @@ struct VMRuntimeConfig: Codable {
         if config.preventSystemSleep == nil {
             config.preventSystemSleep = true
         }
+        if config.sshAuthorizedKeys == nil {
+            config.sshAuthorizedKeys = []
+        }
     }
 
     private static func generateMacAddress() -> String {
@@ -133,5 +139,96 @@ extension JSONEncoder {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         return encoder
+    }
+}
+
+extension VMRuntimeConfig: RuntimeInstallMutableVMRuntimeConfiguration {
+    var installCPUCount: Int {
+        get { cpuCount }
+        set { cpuCount = newValue }
+    }
+
+    var installMemoryMiB: UInt64 {
+        get { memoryMiB }
+        set { memoryMiB = newValue }
+    }
+
+    var installNetworkMode: NetworkMode {
+        get { network.mode }
+        set { network.mode = newValue }
+    }
+
+    var installBridgedInterface: String? {
+        get { network.bridgedInterface }
+        set { network.bridgedInterface = newValue }
+    }
+
+    var installPreventSystemSleep: Bool? {
+        get { preventSystemSleep }
+        set { preventSystemSleep = newValue }
+    }
+
+    var installSSHAuthorizedKeys: [String]? {
+        get { sshAuthorizedKeys }
+        set { sshAuthorizedKeys = newValue }
+    }
+
+    mutating func setInstallSharedDirectory(_ directory: RuntimeSharedDirectoryConfiguration) {
+        sharedDirectory = SharedDirectoryConfig(
+            hostPath: directory.hostPath,
+            tag: directory.tag,
+            guestMountPath: directory.guestMountPath,
+            readOnly: directory.readOnly
+        )
+    }
+
+    mutating func setInstallVitalFilesDirectory(_ directory: RuntimeSharedDirectoryConfiguration) {
+        vitalFilesDirectory = SharedDirectoryConfig(
+            hostPath: directory.hostPath,
+            tag: directory.tag,
+            guestMountPath: directory.guestMountPath,
+            readOnly: directory.readOnly
+        )
+    }
+}
+
+extension VMRuntimeConfig: RuntimeConfigureMutableVMRuntimeConfiguration {
+    var configureCPUCount: Int {
+        get { cpuCount }
+        set { cpuCount = newValue }
+    }
+
+    var configureMemoryMiB: UInt64 {
+        get { memoryMiB }
+        set { memoryMiB = newValue }
+    }
+
+    var configureNetworkMode: NetworkMode {
+        get { network.mode }
+        set { network.mode = newValue }
+    }
+
+    var configureBridgedInterface: String? {
+        get { network.bridgedInterface }
+        set { network.bridgedInterface = newValue }
+    }
+
+    var configureAutoRecoveryEnabled: Bool? {
+        get { autoRecoveryEnabled }
+        set { autoRecoveryEnabled = newValue }
+    }
+
+    var configurePreventSystemSleep: Bool? {
+        get { preventSystemSleep }
+        set { preventSystemSleep = newValue }
+    }
+
+    mutating func setConfigureVitalFilesDirectory(_ directory: RuntimeSharedDirectoryConfiguration) {
+        vitalFilesDirectory = SharedDirectoryConfig(
+            hostPath: directory.hostPath,
+            tag: directory.tag,
+            guestMountPath: directory.guestMountPath,
+            readOnly: directory.readOnly
+        )
     }
 }

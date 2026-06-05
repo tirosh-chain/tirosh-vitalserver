@@ -10,14 +10,13 @@ final class RuntimeHealthWaiterTests: XCTestCase {
             configuration: RuntimeHealthWaitConfiguration(maxAttempts: 3, progressEveryAttempts: 2),
             observe: {
                 RuntimeHealthWaitObservation(
-                    vmServiceRequired: true,
-                    guestLogSyncServiceRequired: true,
-                    proxyServiceRequired: true,
-                    watchdogServiceRequired: true,
-                    vmServiceLoaded: true,
-                    guestLogSyncServiceLoaded: true,
-                    proxyServiceLoaded: true,
-                    watchdogServiceLoaded: true,
+                    requiredServices: [.vm, .guestLogSync, .proxy, .watchdog],
+                    serviceStates: [
+                        .vm: .loaded,
+                        .guestLogSync: .loaded,
+                        .proxy: .loaded,
+                        .watchdog: .loaded,
+                    ],
                     snapshot: healthySnapshot()
                 )
             },
@@ -67,6 +66,48 @@ final class RuntimeHealthWaiterTests: XCTestCase {
         XCTAssertEqual(result, .healthy)
         XCTAssertEqual(progressReasons, [[.guestLogSyncService("not-loaded")]])
         XCTAssertEqual(sleeps, 1)
+    }
+
+    func testRequiredServiceReadFailuresRemainDistinctFromNotLoaded() {
+        var progressReasons: [[RuntimeFailureReason]] = []
+
+        let result = RuntimeHealthWaiter.wait(
+            configuration: RuntimeHealthWaitConfiguration(maxAttempts: 1, progressEveryAttempts: 1),
+            observe: {
+                observation(
+                    vmState: .readFailed("exitCode=1 stderr=operation not permitted"),
+                    snapshot: healthySnapshot()
+                )
+            },
+            onProgress: { progressReasons.append($0) },
+            sleep: {}
+        )
+
+        XCTAssertEqual(
+            result,
+            .timedOut([.vmService("read-failed:exitCode=1 stderr=operation not permitted")])
+        )
+        XCTAssertEqual(
+            progressReasons,
+            [[.vmService("read-failed:exitCode=1 stderr=operation not permitted")]]
+        )
+    }
+
+    func testMissingRequiredServiceStateRemainsDistinctFromNotLoaded() {
+        let result = RuntimeHealthWaiter.wait(
+            configuration: RuntimeHealthWaitConfiguration(maxAttempts: 1, progressEveryAttempts: 1),
+            observe: {
+                RuntimeHealthWaitObservation(
+                    requiredServices: [.proxy],
+                    serviceStates: [:],
+                    snapshot: healthySnapshot()
+                )
+            },
+            onProgress: { _ in },
+            sleep: {}
+        )
+
+        XCTAssertEqual(result, .timedOut([.proxyService("missing")]))
     }
 
     func testRequiredServicePendingKeepsSnapshotFailureReasonsObservable() {
@@ -186,17 +227,20 @@ final class RuntimeHealthWaiterTests: XCTestCase {
         guestLogSyncLoaded: Bool = true,
         proxyLoaded: Bool = true,
         watchdogLoaded: Bool = true,
+        vmState: RuntimeServiceState? = nil,
+        guestLogSyncState: RuntimeServiceState? = nil,
+        proxyState: RuntimeServiceState? = nil,
+        watchdogState: RuntimeServiceState? = nil,
         snapshot: RuntimeHealthSnapshot
     ) -> RuntimeHealthWaitObservation {
         RuntimeHealthWaitObservation(
-            vmServiceRequired: true,
-            guestLogSyncServiceRequired: true,
-            proxyServiceRequired: true,
-            watchdogServiceRequired: true,
-            vmServiceLoaded: vmLoaded,
-            guestLogSyncServiceLoaded: guestLogSyncLoaded,
-            proxyServiceLoaded: proxyLoaded,
-            watchdogServiceLoaded: watchdogLoaded,
+            requiredServices: [.vm, .guestLogSync, .proxy, .watchdog],
+            serviceStates: [
+                .vm: vmState ?? (vmLoaded ? .loaded : .notLoaded),
+                .guestLogSync: guestLogSyncState ?? (guestLogSyncLoaded ? .loaded : .notLoaded),
+                .proxy: proxyState ?? (proxyLoaded ? .loaded : .notLoaded),
+                .watchdog: watchdogState ?? (watchdogLoaded ? .loaded : .notLoaded),
+            ],
             snapshot: snapshot
         )
     }

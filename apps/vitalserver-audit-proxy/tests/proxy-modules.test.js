@@ -136,6 +136,59 @@ test("socket.io auditor summarizes binary send_data attachments", () => {
   });
 });
 
+test("socket.io auditor removes engine.io message prefix from binary send_data attachments", () => {
+  const records = [];
+  const auditor = createSocketIoAuditService({
+    audit: { record: (eventType, fields) => records.push({ eventType, fields }) },
+    vrIdentityStore: { setRecorderIp: () => {} },
+    metrics: metrics(),
+    config: { vitalServer: { ipWriteDelayMs: 0 } },
+  });
+  const context = contextFor("VR_A");
+  context.joined_vrcode = "VR_A";
+  const payload = zlib.deflateSync(JSON.stringify({
+    vrcode: "VR_A",
+    ver: "2.3.4",
+    rooms: { a: {}, b: {}, c: {}, d: {} },
+  }));
+  const engineIoMessagePayload = Buffer.concat([Buffer.from([0x04]), payload]);
+
+  auditor.inspect('451-["send_data",{"_placeholder":true,"num":0}]', "client", context);
+  auditor.inspectBinary(engineIoMessagePayload, "client", context);
+
+  assert.strictEqual(records[0].eventType, auditEventTypes.SEND_DATA);
+  assert.deepStrictEqual(records[0].fields.payload_summary, {
+    payload_type: "buffer",
+    bytes: payload.length,
+    vrcode: "VR_A",
+    version: "2.3.4",
+    rooms_count: 4,
+  });
+});
+
+test("socket.io auditor preserves non-engine.io binary send_data decode failures", () => {
+  const records = [];
+  const auditor = createSocketIoAuditService({
+    audit: { record: (eventType, fields) => records.push({ eventType, fields }) },
+    vrIdentityStore: { setRecorderIp: () => {} },
+    metrics: metrics(),
+    config: { vitalServer: { ipWriteDelayMs: 0 } },
+  });
+  const context = contextFor("VR_A");
+  context.joined_vrcode = "VR_A";
+  const invalidPayload = Buffer.concat([Buffer.from([0x05]), Buffer.from("not-zlib")]);
+
+  auditor.inspect('451-["send_data",{"_placeholder":true,"num":0}]', "client", context);
+  auditor.inspectBinary(invalidPayload, "client", context);
+
+  assert.strictEqual(records[0].eventType, auditEventTypes.SEND_DATA);
+  assert.deepStrictEqual(records[0].fields.payload_summary, {
+    payload_type: "buffer",
+    bytes: invalidPayload.length,
+    decode_error: "incorrect header check",
+  });
+});
+
 test("socket.io auditor correlates req_cmd and dispatch", () => {
   const records = [];
   const auditor = createSocketIoAuditService({

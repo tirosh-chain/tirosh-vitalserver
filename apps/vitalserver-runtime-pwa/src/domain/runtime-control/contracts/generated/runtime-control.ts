@@ -1218,6 +1218,8 @@ export interface components {
             proxyPort: number;
             runtimeControlPort: number;
             vitalFilesDirectory: string;
+            vitalServerURL: string;
+            remoteConsoleURL: string;
             publicHost: string;
             publicPort: number;
             adminPassword: string;

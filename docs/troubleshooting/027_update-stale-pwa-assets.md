@@ -26,10 +26,14 @@ ls -la "/Applications/VitalServer Helper.app/Contents/Resources/runtime-control-
 - update bundle이 최신 PWA `dist`를 포함하지 않았다.
 - update apply가 `app-bundle.tar.gz`를 교체했지만 PWA를 띄운 브라우저 세션이 이전 JS runtime을 계속 실행했다.
 - PWA 경로로 update apply를 호출한 뒤 Helper app이 재실행되지 않아 새 app bundle의 리소스와 실행 중인 Helper 프로세스가 어긋났다.
+- update bundle에는 최신 `app-bundle.tar.gz`가 들어있지만 apply가 `stop-runtime-services` 같은 선행 단계에서 실패했고,
+  rollback이 `/Applications/VitalServer Helper.app`을 이전 backup app bundle로 복구했다.
 
 조치:
 
 - update bundle 생성은 `make vm-update-bundle-*` 경로를 사용합니다. 이 target은 `pwa-build`를 선행 실행합니다.
+- 먼저 Runtime Events에서 `operation=apply-bundle`의 `step failed`와 이어지는 `operation=rollback` 여부를 확인합니다.
+  rollback이 있었다면 runtime health가 다시 healthy여도 최신 PWA가 적용된 것이 아닙니다.
 - 적용 후 `curl http://127.0.0.1:18321/`의 asset hash가 `apps/vitalserver-runtime-pwa/dist/index.html`과 같은지 확인합니다.
 - PWA에서 update apply가 성공하면 Helper가 재실행되고, PWA 화면은 잠시 뒤 reload되어 새 bundle을 로드해야 합니다.
 

@@ -189,12 +189,43 @@ extension RuntimeLifecycle {
         ).cleanupBeforeStartingProxy()
     }
 
+    func cleanupHostProxyPortAfterStop() throws {
+        try RuntimeHostProxyPortCleaner(
+            proxyPort: healthChecker.installedProxyPort,
+            proxyServiceLoaded: {
+                isLaunchdLoaded(.proxy)
+            },
+            expectedProxyNginxPID: {
+                healthChecker.readInstalledProxyNginxPID()
+            },
+            ownedNginxPathFragments: [
+                installedPaths.nginxExecutable.path,
+                installedPaths.nginxDirectory.path,
+                "vitalserver-nginx.conf",
+            ],
+            runProcess: runProcess,
+            log: log
+        ).cleanupOwnedListenersAfterProxyStop()
+    }
+
     func runtimeHealthWaitRunner() -> RuntimeHealthWaitRunner {
         RuntimeHealthWaitRunner(
-            isLaunchdLoaded: isLaunchdLoaded,
+            serviceStates: { services in
+                Dictionary(uniqueKeysWithValues: services.map { service in
+                    (service, healthChecker.launchdState(service))
+                })
+            },
             healthSnapshot: runtimeHealthSnapshot,
-            writeStatus: { status, operation, message in
-                try writeRuntimeStatus(status, operation: operation, message: message)
+            writeStatusBestEffort: { status, operation, message in
+                writeRuntimeStatusBestEffort(
+                    status,
+                    operation: operation,
+                    message: message,
+                    writeStatus: { status, operation, message in
+                        try writeRuntimeStatus(status, operation: operation, message: message)
+                    },
+                    log: log
+                )
             },
             sleep: {
                 sleeper.sleep(forTimeInterval: 3)
@@ -252,6 +283,7 @@ extension RuntimeLifecycle {
                 stopRuntimeServices: {
                     try serviceController.disableRuntimeServicesForUninstall()
                     try stopRuntimeServices()
+                    try cleanupHostProxyPortAfterStop()
                 },
                 createDirectory: { url, withIntermediateDirectories in
                     try fileStore.createDirectory(at: url, withIntermediateDirectories: withIntermediateDirectories)
@@ -284,6 +316,7 @@ extension RuntimeLifecycle {
                 contentsOfDirectory: { url in
                     try fileStore.contentsOfDirectory(at: url, skipsHiddenFiles: false)
                 },
+                openFileDiagnosticExecutable: Constants.Commands.lsof,
                 runProcess: runProcess,
                 log: log
             ),

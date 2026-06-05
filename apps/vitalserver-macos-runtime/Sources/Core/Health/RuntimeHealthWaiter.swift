@@ -10,35 +10,17 @@ public struct RuntimeHealthWaitConfiguration: Equatable {
 }
 
 public struct RuntimeHealthWaitObservation: Equatable {
-    public let vmServiceRequired: Bool
-    public let guestLogSyncServiceRequired: Bool
-    public let proxyServiceRequired: Bool
-    public let watchdogServiceRequired: Bool
-    public let vmServiceLoaded: Bool
-    public let guestLogSyncServiceLoaded: Bool
-    public let proxyServiceLoaded: Bool
-    public let watchdogServiceLoaded: Bool
+    public let requiredServices: [RuntimeManagedService]
+    public let serviceStates: [RuntimeManagedService: RuntimeServiceState]
     public let snapshot: RuntimeHealthSnapshot
 
     public init(
-        vmServiceRequired: Bool,
-        guestLogSyncServiceRequired: Bool,
-        proxyServiceRequired: Bool,
-        watchdogServiceRequired: Bool,
-        vmServiceLoaded: Bool,
-        guestLogSyncServiceLoaded: Bool,
-        proxyServiceLoaded: Bool,
-        watchdogServiceLoaded: Bool,
+        requiredServices: [RuntimeManagedService],
+        serviceStates: [RuntimeManagedService: RuntimeServiceState],
         snapshot: RuntimeHealthSnapshot
     ) {
-        self.vmServiceRequired = vmServiceRequired
-        self.guestLogSyncServiceRequired = guestLogSyncServiceRequired
-        self.proxyServiceRequired = proxyServiceRequired
-        self.watchdogServiceRequired = watchdogServiceRequired
-        self.vmServiceLoaded = vmServiceLoaded
-        self.guestLogSyncServiceLoaded = guestLogSyncServiceLoaded
-        self.proxyServiceLoaded = proxyServiceLoaded
-        self.watchdogServiceLoaded = watchdogServiceLoaded
+        self.requiredServices = requiredServices
+        self.serviceStates = serviceStates
         self.snapshot = snapshot
     }
 }
@@ -98,19 +80,52 @@ public enum RuntimeHealthWaiter {
     }
 
     private static func pendingRequiredServiceReasons(_ observation: RuntimeHealthWaitObservation) -> [RuntimeFailureReason] {
-        if observation.vmServiceRequired, !observation.vmServiceLoaded {
-            return [.vmService("not-loaded")]
+        observation.requiredServices.compactMap { service in
+            guard let state = observation.serviceStates[service] else {
+                return serviceFailureReason(service, state: nil)
+            }
+            guard state != .loaded else {
+                return nil
+            }
+            return serviceFailureReason(service, state: state)
         }
-        if observation.guestLogSyncServiceRequired, !observation.guestLogSyncServiceLoaded {
-            return [.guestLogSyncService("not-loaded")]
+    }
+
+    private static func serviceFailureReason(
+        _ service: RuntimeManagedService,
+        state: RuntimeServiceState?
+    ) -> RuntimeFailureReason {
+        let stateToken = serviceStateFailureToken(state)
+        switch service {
+        case .vm:
+            return .vmService(stateToken)
+        case .guestLogSync:
+            return .guestLogSyncService(stateToken)
+        case .proxy:
+            return .proxyService(stateToken)
+        case .watchdog:
+            return .watchdogService(stateToken)
+        case .sleepPrevention:
+            return .unknown("sleep-prevention-service-\(stateToken)")
         }
-        if observation.proxyServiceRequired, !observation.proxyServiceLoaded {
-            return [.proxyService("not-loaded")]
+    }
+
+    private static func serviceStateFailureToken(_ state: RuntimeServiceState?) -> String {
+        guard let state else {
+            return "missing"
         }
-        if observation.watchdogServiceRequired, !observation.watchdogServiceLoaded {
-            return [.watchdogService("not-loaded")]
+        switch state {
+        case .loaded:
+            return "loaded"
+        case .notLoaded:
+            return "not-loaded"
+        case .readFailed(let reason):
+            return reason.isEmpty ? "read-failed" : "read-failed:\(reason)"
+        case .permissionDenied(let reason):
+            return reason.isEmpty ? "permission-denied" : "permission-denied:\(reason)"
+        case .unknown(let value):
+            return value.isEmpty ? "unknown" : "unknown:\(value)"
         }
-        return []
     }
 
     private static func explicitSnapshotFailureReasons(_ snapshot: RuntimeHealthSnapshot) -> [RuntimeFailureReason] {

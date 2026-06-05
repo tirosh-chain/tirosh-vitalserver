@@ -136,8 +136,8 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
 
         XCTAssertEqual(viewModel.settings.publicHost, "")
         XCTAssertEqual(viewModel.settings.publicPort, 18080)
-        XCTAssertEqual(viewModel.settings.vitalServerURL, "")
-        XCTAssertEqual(viewModel.settings.remoteConsoleURL, "")
+        XCTAssertEqual(viewModel.settings.vitalServerURL, "http://127.0.0.1:18080/")
+        XCTAssertEqual(viewModel.settings.remoteConsoleURL, "http://127.0.0.1:18321/")
 
         viewModel.settings.vitalServerURL = "https://vitaldb.tirosh.ai/"
         viewModel.settings.remoteConsoleURL = "https://console.tirosh.ai/"
@@ -148,6 +148,24 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertEqual(viewModel.settings.remoteConsoleURL, "https://console.tirosh.ai/")
         XCTAssertEqual(viewModel.settings.publicHost, "")
         XCTAssertEqual(viewModel.settings.publicPort, 8080)
+    }
+
+    func testApplySettingsRejectsClearedAdvertisedServiceURLs() {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+
+        XCTAssertEqual(viewModel.settings.vitalServerURL, "http://127.0.0.1:80/")
+        XCTAssertEqual(viewModel.settings.remoteConsoleURL, "http://127.0.0.1:18321/")
+
+        viewModel.settings.vitalServerURL = ""
+
+        XCTAssertFalse(viewModel.prepareApplySettings())
+        XCTAssertEqual(viewModel.message, AppConstants.StatusText.invalidAdvertisedURL)
+        XCTAssertEqual(viewModel.settings.vitalServerURL, "")
     }
 
     func testApplySettingsNormalizesLegacyAdvertisedHostFieldsWithoutClearingServiceURLs() {
@@ -317,6 +335,37 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertEqual(client.loadHealthStatusCount, 1)
         XCTAssertEqual(client.loadRuntimeEventsCount, 0)
         XCTAssertEqual(client.loadVitalDBRecordersCount, 0)
+    }
+
+    func testHealthRefreshUpdatesContainerObservationForServiceHealth() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let observation = RuntimeContainerObservation(
+            auditProxyHTTP: "200",
+            auditProxyStatus: nil,
+            runtimeStateUpdatedAt: "2026-06-05T00:00:00Z",
+            runtimeStateFileUpdatedAt: "2026-06-05T00:00:00Z",
+            containerLogsPresent: true,
+            containerLogsBytes: 1,
+            composeServices: [
+                RuntimeContainerServiceObservation(
+                    service: "vitaldb-observer",
+                    state: "running",
+                    health: "healthy",
+                    exitCode: 0,
+                    uptimeSeconds: 42
+                ),
+            ]
+        )
+        client.healthStatus = RuntimeStatus(containerObservation: observation)
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+
+        await viewModel.refreshHealthStatus()
+
+        XCTAssertEqual(viewModel.containerObservation, observation)
     }
 
     func testVitalRecorderRefreshUpdatesCurrentObservationSnapshot() async {
@@ -972,6 +1021,8 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     var verifiedBundleURLs: [URL] = []
     var exportLogDestinationURLs: [URL] = []
     var settings = RuntimeSettings()
+    var status = RuntimeStatus()
+    var healthStatus = RuntimeStatus()
     var vitalDBObservation: VitalDBObservationDocument?
 
     init(capabilities: RuntimeControlCapabilities) {
@@ -984,12 +1035,12 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
 
     func loadStatus(settings: RuntimeSettings) -> RuntimeStatus {
         loadStatusCount += 1
-        return RuntimeStatus()
+        return status
     }
 
     func loadHealthStatus(settings: RuntimeSettings) async -> RuntimeStatus {
         loadHealthStatusCount += 1
-        return RuntimeStatus()
+        return healthStatus
     }
 
     func loadRuntimeEvents(limit: Int) -> RuntimeEventHistory {

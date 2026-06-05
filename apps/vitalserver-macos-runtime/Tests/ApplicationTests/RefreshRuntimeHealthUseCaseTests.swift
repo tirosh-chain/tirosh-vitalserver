@@ -1,0 +1,78 @@
+import Application
+import Contracts
+import XCTest
+
+final class RefreshRuntimeHealthUseCaseTests: XCTestCase {
+    func testRefreshReturnsHealthyDecisionWhenSnapshotIsHealthy() {
+        let useCase = RefreshRuntimeHealthUseCase(
+            ports: RuntimeHealthRefreshPorts(healthSnapshot: {
+                healthSnapshot(reasons: [])
+            })
+        )
+
+        let decision = useCase.refresh()
+
+        XCTAssertTrue(decision.healthy)
+        XCTAssertEqual(decision.status, .healthy)
+        XCTAssertEqual(decision.operation, .health)
+        XCTAssertEqual(decision.statusMessage, "runtime health check passed")
+        XCTAssertNil(decision.observedEventMessage)
+        XCTAssertEqual(decision.outputLine, "health: ok")
+    }
+
+    func testRefreshReturnsUnhealthyDecisionWithVMErrorMessage() {
+        let useCase = RefreshRuntimeHealthUseCase(
+            ports: RuntimeHealthRefreshPorts(healthSnapshot: {
+                healthSnapshot(reasons: [.vmService("not-loaded")])
+            })
+        )
+
+        let decision = useCase.refresh()
+
+        XCTAssertFalse(decision.healthy)
+        XCTAssertEqual(decision.status, .degraded)
+        XCTAssertEqual(decision.statusMessage, "runtime health check failed: vm-service-not-loaded")
+        XCTAssertEqual(decision.observedEventMessage, "runtime VM errors observed: vm-service-state-not-loaded")
+        XCTAssertEqual(decision.outputLine, "health: failed")
+    }
+
+    func testRefreshReturnsUnhealthyDecisionWithDomainErrorMessage() {
+        let useCase = RefreshRuntimeHealthUseCase(
+            ports: RuntimeHealthRefreshPorts(healthSnapshot: {
+                healthSnapshot(reasons: [.auditProxyHTTP("failed")])
+            })
+        )
+
+        let decision = useCase.refresh()
+
+        XCTAssertFalse(decision.healthy)
+        XCTAssertEqual(decision.statusMessage, "runtime health check failed: audit-proxy-http-failed")
+        XCTAssertEqual(decision.observedEventMessage, "runtime domain errors observed: audit-proxy-http-failed")
+    }
+}
+
+private func healthSnapshot(reasons: [RuntimeFailureReason]) -> RuntimeHealthSnapshot {
+    RuntimeHealthSnapshot(
+        vmExecutable: true,
+        proxyExecutable: true,
+        rootfsBase: .present,
+        vmDisk: .present,
+        vmService: .loaded,
+        proxyService: .loaded,
+        watchdogService: .loaded,
+        vmState: reasons.isEmpty ? .running : .unreachable,
+        vmErrors: reasons.compactMap { reason in
+            if case .vmService(let state) = reason {
+                return .serviceNotLoaded(state)
+            }
+            return nil
+        },
+        vmIP: "192.168.64.2",
+        proxyPort: 18080,
+        hostProxyHTTP: "200",
+        guestHTTP: "200",
+        redisUIHTTP: "200",
+        swaggerUIHTTP: "200",
+        failureReasons: reasons
+    )
+}

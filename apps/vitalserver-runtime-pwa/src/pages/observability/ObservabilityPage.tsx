@@ -311,6 +311,8 @@ type VitalDBObservationRead =
       state: "notReported";
     };
 
+type VitalDBObservationReadIssue = VitalDBObservationDocument["readIssues"][number];
+
 function selectVitalDBObservationRead(
   overview: RuntimeControlOverview | undefined
 ): VitalDBObservationRead {
@@ -386,11 +388,44 @@ function vitalDBObservationAnomalyReadIssue(
   }
   const observationIssues =
     read.observation.readIssues.length > 0
-      ? read.observation.readIssues
-          .map((issue) => `${issue.source}: ${issue.message}`)
-          .join("; ")
+      ? formatVitalDBObservationReadIssues(read.observation.readIssues)
       : null;
   return [read.readError, observationIssues].filter(Boolean).join("; ") || null;
+}
+
+function formatVitalDBObservationReadIssues(
+  issues: VitalDBObservationReadIssue[]
+): string {
+  const groups = new Map<
+    string,
+    { source: string; message: string; count: number }
+  >();
+  for (const issue of issues) {
+    const message = skippedAuditEventReason(issue.message) ?? issue.message;
+    const key = `${issue.source}\u0000${message}`;
+    const group = groups.get(key);
+    if (group) {
+      group.count += 1;
+    } else {
+      groups.set(key, { source: issue.source, message, count: 1 });
+    }
+  }
+
+  const formatted = Array.from(groups.values()).map((group) =>
+    group.count === 1
+      ? `${group.source}: ${group.message}`
+      : `${group.source}: ${group.count} events were skipped: ${group.message}`
+  );
+  const visible = formatted.slice(0, 5);
+  const omittedCount = formatted.length - visible.length;
+  if (omittedCount > 0) {
+    visible.push(`${omittedCount} additional read issue groups were omitted`);
+  }
+  return visible.join("; ");
+}
+
+function skippedAuditEventReason(message: string): string | null {
+  return /^event \d+ was skipped: (.+)$/.exec(message)?.[1] ?? null;
 }
 
 type RuntimeEventsRead =

@@ -241,6 +241,107 @@ def test_collector_reports_audit_source_read_issues() -> None:
     ]
 
 
+def test_collector_groups_repeated_audit_event_read_issues() -> None:
+    now = time.time()
+    collector = VitalDBCollector(
+        redis_client=FakeRedis(
+            values={
+                "ip_VR_A": "10.0.0.10",
+                "utime_VR_A": str(now - 1),
+            },
+            sets={"vrs": ["VR_A"]},
+            lists={
+                "vitalserver:audit_events": [
+                    json.dumps(
+                        {
+                            "event_type": "send_data",
+                            "ts": _iso(now - 10),
+                            "payload_summary": {
+                                "vrcode": "VR_A",
+                                "bytes": 12,
+                            },
+                        }
+                    ),
+                    json.dumps(
+                        {
+                            "event_type": "send_data",
+                            "ts": _iso(now - 9),
+                            "payload_summary": {
+                                "vrcode": "VR_A",
+                                "bytes": 13,
+                            },
+                        }
+                    ),
+                    json.dumps(
+                        {
+                            "event_type": "send_data",
+                            "ts": _iso(now - 8),
+                            "payload_summary": {
+                                "vrcode": "VR_A",
+                                "bytes": 14,
+                            },
+                        }
+                    ),
+                ]
+            },
+        ),
+        settings=_settings(),
+    )
+
+    document = collector.collect().as_json()
+
+    assert _read_issue_messages(document, "auditEvents") == [
+        (
+            "3 events were skipped: send_data event is missing "
+            "rooms_count/roomsCount (first events: 0, 1, 2)"
+        )
+    ]
+
+
+def test_collector_ignores_stale_malformed_send_data_activity_events() -> None:
+    now = time.time()
+    collector = VitalDBCollector(
+        redis_client=FakeRedis(
+            values={
+                "ip_VR_A": "10.0.0.10",
+                "utime_VR_A": str(now - 1),
+            },
+            sets={"vrs": ["VR_A"]},
+            lists={
+                "vitalserver:audit_events": [
+                    json.dumps(
+                        {
+                            "event_type": "send_data",
+                            "ts": _iso(now - 400),
+                            "payload_summary": {
+                                "vrcode": "VR_A",
+                                "bytes": 12,
+                            },
+                        }
+                    ),
+                    json.dumps(
+                        {
+                            "event_type": "send_data",
+                            "ts": _iso(now - 10),
+                            "payload_summary": {
+                                "vrcode": "VR_A",
+                                "bytes": 13,
+                                "rooms_count": 1,
+                            },
+                        }
+                    ),
+                ]
+            },
+        ),
+        settings=_settings(),
+    )
+
+    document = collector.collect().as_json()
+
+    assert document["recorders"][0]["activity"]["messageCount"] == 1
+    assert _read_issue_messages(document, "auditEvents") == []
+
+
 def test_collector_reports_invalid_audit_timestamp() -> None:
     collector = VitalDBCollector(
         redis_client=FakeRedis(

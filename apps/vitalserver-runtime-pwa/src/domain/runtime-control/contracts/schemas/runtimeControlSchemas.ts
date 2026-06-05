@@ -120,6 +120,8 @@ export const runtimeSettingsSchema = z
     proxyPort: z.number(),
     runtimeControlPort: z.number(),
     vitalFilesDirectory: z.string(),
+    vitalServerURL: z.string(),
+    remoteConsoleURL: z.string(),
     publicHost: z.string(),
     publicPort: z.number(),
     adminPassword: z.string(),

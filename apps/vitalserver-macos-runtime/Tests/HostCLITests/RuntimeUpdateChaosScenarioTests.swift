@@ -2,6 +2,7 @@ import Contracts
 import Core
 import Foundation
 import HostInfrastructure
+import RuntimeWorkflow
 @testable import HostCLI
 import XCTest
 
@@ -45,6 +46,7 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
                 return URL(fileURLWithPath: "/backup")
             },
             directorySize: { _ in 10 },
+            updateFreeSpaceMarginBytes: Constants.Runtime.updateFreeSpaceMarginBytes,
             log: { _ in }
         )
 
@@ -198,7 +200,7 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
         var statuses: [(level: RuntimeStatusLevel, operation: RuntimeOperation, message: String)] = []
         var progressEvents: [RuntimeStepExecutionEvent] = []
         var executedSteps: [RuntimeWorkflowStep] = []
-        let runner = RuntimeRollbackRunner(
+        let runner = RuntimeRollbackRunner<RuntimeRollbackCommand>(
             preparePreflight: { _ in preflight },
             executeStep: { step, _ in
                 executedSteps.append(step)
@@ -291,7 +293,7 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
         )
 
         XCTAssertThrowsError(try runner.prepare(.specificBackup(backup))) { error in
-            XCTAssertEqual(String(describing: error), String(describing: LauncherError.missingFile(missingRootfs.path)))
+            XCTAssertEqual(String(describing: error), "missing file: \(missingRootfs.path)")
         }
     }
 
@@ -334,10 +336,10 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
     private func makeWorkflow(
         fileStore: RuntimeFileStore,
         log: @escaping (String) -> Void = { _ in }
-    ) -> RuntimeBundleWorkflow {
+    ) -> RuntimeBundleComposition {
         let installedPaths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
-        return RuntimeBundleWorkflow(
-            context: RuntimeBundleWorkflowContext(
+        return RuntimeBundleComposition(
+            context: RuntimeBundleCompositionContext(
                 installedPaths: installedPaths,
                 bundlesDirectory: URL(fileURLWithPath: "/product/bundles"),
                 backupsDirectory: URL(fileURLWithPath: "/product/backups"),
@@ -345,7 +347,7 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
                 rootfsBase: URL(fileURLWithPath: "/product/rootfs-base.raw.gz"),
                 vmDisk: URL(fileURLWithPath: "/product/vm-disk.img")
             ),
-            operations: RuntimeBundleWorkflowOperations(
+            operations: RuntimeBundleCompositionOperations(
                 fileStore: fileStore,
                 runtimeHealthSnapshot: { Self.healthSnapshot() },
                 rotateRuntimeLogs: {},

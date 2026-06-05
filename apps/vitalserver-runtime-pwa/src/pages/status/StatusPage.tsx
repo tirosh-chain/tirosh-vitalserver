@@ -46,16 +46,8 @@ function StatusOverview({ overview }: { overview: RuntimeControlOverview }) {
   const state = status?.runtimeState;
   const stats = status?.dataDirectoryStats;
   const vitalRecorder = overview.vitalRecorder;
-  const vitalServerURL = overview.settings
-    ? runtimeURL({
-        host: overview.settings.publicHost,
-        port: overview.settings.publicPort
-      })
-    : null;
-  const remoteConsolePort =
-    typeof overview.settings?.runtimeControlPort === "number"
-      ? `Port ${overview.settings.runtimeControlPort}`
-      : NOT_REPORTED;
+  const vitalServerURL = advertisedVitalServerURL(overview);
+  const remoteConsoleURL = advertisedRemoteConsoleURL(overview);
 
   return (
     <div className="page-stack">
@@ -104,7 +96,13 @@ function StatusOverview({ overview }: { overview: RuntimeControlOverview }) {
             },
             {
               label: "Remote Console",
-              value: remoteConsolePort,
+              value: remoteConsoleURL ? (
+                <a href={remoteConsoleURL} target="_blank" rel="noreferrer">
+                  {remoteConsoleURL}
+                </a>
+              ) : (
+                NOT_REPORTED
+              ),
               detail: serviceStatusDetail(
                 status?.runtimeControlHTTP,
                 status?.runtimeControlStartedAt
@@ -200,6 +198,35 @@ function StatusOverview({ overview }: { overview: RuntimeControlOverview }) {
       </Panel>
     </div>
   );
+}
+
+function advertisedVitalServerURL(
+  overview: RuntimeControlOverview
+): string | null {
+  const advertised = overview.settings?.vitalServerURL?.trim();
+  if (advertised) {
+    return advertised;
+  }
+  if (!overview.settings) {
+    return null;
+  }
+  return runtimeURL({
+    host: overview.settings.publicHost,
+    port: overview.settings.publicPort
+  });
+}
+
+function advertisedRemoteConsoleURL(
+  overview: RuntimeControlOverview
+): string | null {
+  const advertised = overview.settings?.remoteConsoleURL?.trim();
+  if (advertised) {
+    return advertised;
+  }
+  if (typeof overview.settings?.runtimeControlPort !== "number") {
+    return null;
+  }
+  return `http://127.0.0.1:${overview.settings.runtimeControlPort}/`;
 }
 
 function serviceStatusDetail(

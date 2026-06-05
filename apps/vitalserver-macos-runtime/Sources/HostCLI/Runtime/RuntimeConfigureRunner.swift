@@ -1,7 +1,8 @@
-import Foundation
-import Core
 import Contracts
+import Core
+import Foundation
 import HostInfrastructure
+import RuntimeWorkflow
 
 struct RuntimeConfigureActions {
     var resizeVMDiskIfNeeded: (Int) throws -> Void
@@ -39,179 +40,119 @@ struct RuntimeConfigureRunner {
     }
 
     func configure(_ command: RuntimeConfigureCommand) throws -> RuntimeConfigureResult {
-        var vmConfig = try VMRuntimeConfig.load(from: configURL, fileStore: fileStore)
-        let runtimeConfigURL = installedPaths.guestRuntimeConfig
-        var guestConfig = try GuestRuntimeConfigDocument.load(from: runtimeConfigURL, fileStore: fileStore)
-
-        for change in command.changes {
-            try apply(change, vmConfig: &vmConfig, guestConfig: &guestConfig)
+        do {
+            let result = try runtimeConfigureWorkflow().configure(command.workflowInput)
+            return RuntimeConfigureResult(restart: result.restart)
+        } catch RuntimeConfigureWorkflowError.invalidArgument(let message) {
+            throw LauncherError.missingArgument(message)
         }
-
-        try validate(vmConfig)
-        VMRuntimeConfig.ensureRuntimeDefaults(&vmConfig, paths: installedPaths)
-        try fileStore.writeData(try JSONEncoder.pretty.encode(vmConfig), to: configURL, options: .atomic)
-        try fileStore.writeData(try JSONEncoder.pretty.encode(guestConfig), to: runtimeConfigURL, options: .atomic)
-        try fileStore.writeData(
-            try JSONEncoder.pretty.encode(GuestRuntimeSettingsDocument(runtimeConfig: guestConfig)),
-            to: installedPaths.guestRuntimeSettings,
-            options: .atomic
-        )
-        try actions.restrictSecretFile(runtimeConfigURL)
-        log("runtime configuration updated restart=\(command.restart)")
-
-        if command.restart {
-            try actions.restartRuntimeServices()
-        }
-        return RuntimeConfigureResult(restart: command.restart)
     }
 
-    private func apply(
-        _ change: RuntimeConfigureChange,
-        vmConfig: inout VMRuntimeConfig,
-        guestConfig: inout GuestRuntimeConfigDocument
-    ) throws {
-        switch change {
-        case .cpu(let cpu):
-            guard cpu >= Constants.Defaults.minimumCPUCount,
-                  cpu <= Constants.Defaults.maximumAllowedCPUCount else {
-                throw LauncherError.missingArgument(
-                    "--cpu must be between \(Constants.Defaults.minimumCPUCount) and \(Constants.Defaults.maximumAllowedCPUCount)"
-                )
-            }
-            vmConfig.cpuCount = cpu
-        case .memoryGiB(let memoryGiB):
-            guard stride(
-                    from: Constants.Defaults.minimumMemoryGiB,
-                    through: Constants.Defaults.maximumAllowedMemoryGiB,
-                    by: Constants.Defaults.memoryStepGiB
-                  ).contains(Int(memoryGiB)) else {
-                throw LauncherError.missingArgument(
-                    "--memory-gib must be between \(Constants.Defaults.minimumMemoryGiB) and \(Constants.Defaults.maximumAllowedMemoryGiB) in \(Constants.Defaults.memoryStepGiB) GiB steps"
-                )
-            }
-            vmConfig.memoryMiB = memoryGiB * 1024
-        case .diskGiB(let diskGiB):
-            guard stride(
-                    from: Constants.Defaults.minimumDiskGiB,
-                    through: Constants.Defaults.maximumDiskGiB,
-                    by: Constants.Defaults.diskStepGiB
-                  ).contains(diskGiB) else {
-                throw LauncherError.missingArgument(
-                    "--disk-gib must be between \(Constants.Defaults.minimumDiskGiB) and \(Constants.Defaults.maximumDiskGiB) in \(Constants.Defaults.diskStepGiB) GiB steps"
-                )
-            }
-            try actions.resizeVMDiskIfNeeded(diskGiB)
-        case .network(let mode):
-            vmConfig.network.mode = mode
-            if mode == .shared {
-                vmConfig.network.bridgedInterface = nil
-            }
-        case .bridgedInterface(let value):
-            guard RuntimeTextValidator.isSingleLine(value), !value.isEmpty else {
-                throw LauncherError.missingArgument("--bridged-interface must not be empty or contain newlines")
-            }
-            vmConfig.network.bridgedInterface = value
-        case .proxyPort(let port):
-            guard (1...65_535).contains(port) else {
-                throw LauncherError.missingArgument("--proxy-port must be between 1 and 65535")
-            }
-            try actions.setInstalledProxyPort(port)
-        case .vitalFilesDirectory(let url):
-            try fileStore.createDirectory(at: url, withIntermediateDirectories: true)
-            vmConfig.vitalFilesDirectory = SharedDirectoryConfig(
-                hostPath: url.path,
-                tag: Constants.Defaults.vitalFilesDirectoryTag,
-                guestMountPath: Constants.Defaults.vitalFilesDirectoryGuestMountPath,
-                readOnly: false
+    private func runtimeConfigureWorkflow() -> RuntimeConfigureWorkflow<VMRuntimeConfig> {
+        RuntimeConfigureWorkflow(
+            context: RuntimeConfigureWorkflowContext(
+                vmConfigURL: configURL,
+                guestRuntimeConfigURL: installedPaths.guestRuntimeConfig,
+                guestRuntimeSettingsURL: installedPaths.guestRuntimeSettings,
+                minimumCPUCount: Constants.Defaults.minimumCPUCount,
+                maximumAllowedCPUCount: Constants.Defaults.maximumAllowedCPUCount,
+                minimumMemoryGiB: Constants.Defaults.minimumMemoryGiB,
+                maximumAllowedMemoryGiB: Constants.Defaults.maximumAllowedMemoryGiB,
+                memoryStepGiB: Constants.Defaults.memoryStepGiB,
+                minimumDiskGiB: Constants.Defaults.minimumDiskGiB,
+                maximumDiskGiB: Constants.Defaults.maximumDiskGiB,
+                diskStepGiB: Constants.Defaults.diskStepGiB,
+                maximumRedisBackupRetentionCount: Constants.Defaults.maximumRedisBackupRetentionCount,
+                defaultPublicPort: Constants.Guest.publicPort,
+                sharedNetworkMode: .shared,
+                bridgedNetworkMode: .bridged,
+                vitalFilesDirectoryTag: Constants.Defaults.vitalFilesDirectoryTag,
+                vitalFilesDirectoryGuestMountPath: Constants.Defaults.vitalFilesDirectoryGuestMountPath
+            ),
+            operations: RuntimeConfigureWorkflowOperations(
+                loadVMConfig: { url in
+                    try VMRuntimeConfig.load(from: url, fileStore: fileStore)
+                },
+                loadGuestRuntimeConfig: { url in
+                    try GuestRuntimeConfigDocument.load(from: url, fileStore: fileStore)
+                },
+                encodeVMConfig: { config in
+                    try JSONEncoder.pretty.encode(config)
+                },
+                encodeGuestRuntimeConfig: { config in
+                    try JSONEncoder.pretty.encode(config)
+                },
+                encodeGuestRuntimeSettings: { settings in
+                    try JSONEncoder.pretty.encode(settings)
+                },
+                writeData: { data, url, options in
+                    try fileStore.writeData(data, to: url, options: options)
+                },
+                createDirectory: { url, withIntermediateDirectories in
+                    try fileStore.createDirectory(at: url, withIntermediateDirectories: withIntermediateDirectories)
+                },
+                resizeVMDiskIfNeeded: actions.resizeVMDiskIfNeeded,
+                setInstalledProxyPort: actions.setInstalledProxyPort,
+                readSecretFile: actions.readSecretFile,
+                restrictSecretFile: actions.restrictSecretFile,
+                setStartOnBoot: actions.setStartOnBoot,
+                setSystemSleepPrevention: actions.setSystemSleepPrevention,
+                restartRuntimeServices: actions.restartRuntimeServices,
+                ensureRuntimeDefaults: { config in
+                    VMRuntimeConfig.ensureRuntimeDefaults(&config, paths: installedPaths)
+                },
+                log: log
             )
-            guestConfig.vitalFilesDirectory = Constants.Defaults.vitalFilesDirectoryGuestMountPath
+        )
+    }
+}
+
+private extension RuntimeConfigureCommand {
+    var workflowInput: RuntimeConfigureWorkflowInput<NetworkMode> {
+        RuntimeConfigureWorkflowInput(
+            changes: changes.map(\.workflowChange),
+            restart: restart
+        )
+    }
+}
+
+private extension RuntimeConfigureChange {
+    var workflowChange: RuntimeConfigureWorkflowChange<NetworkMode> {
+        switch self {
+        case .cpu(let value):
+            return .cpu(value)
+        case .memoryGiB(let value):
+            return .memoryGiB(value)
+        case .diskGiB(let value):
+            return .diskGiB(value)
+        case .network(let value):
+            return .network(value)
+        case .bridgedInterface(let value):
+            return .bridgedInterface(value)
+        case .proxyPort(let value):
+            return .proxyPort(value)
+        case .vitalFilesDirectory(let value):
+            return .vitalFilesDirectory(value)
         case .vitalServerURL(let value):
-            guard isValidAdvertisedURL(value) else {
-                throw LauncherError.missingArgument("--vitalserver-url must be empty or an absolute http/https URL")
-            }
-            guestConfig.vitalServerURL = value
-            applyVitalServerURLCompatibilityFields(value, to: &guestConfig)
+            return .vitalServerURL(value)
         case .remoteConsoleURL(let value):
-            guard isValidAdvertisedURL(value) else {
-                throw LauncherError.missingArgument("--remote-console-url must be empty or an absolute http/https URL")
-            }
-            guestConfig.remoteConsoleURL = value
+            return .remoteConsoleURL(value)
         case .publicHost(let value):
-            guard RuntimeTextValidator.isSingleLine(value) else {
-                throw LauncherError.missingArgument("--public-host must not contain newlines")
-            }
-            guestConfig.publicHost = value
-        case .publicPort(let port):
-            guard (1...65_535).contains(port) else {
-                throw LauncherError.missingArgument("--public-port must be between 1 and 65535")
-            }
-            guestConfig.publicPort = port
+            return .publicHost(value)
+        case .publicPort(let value):
+            return .publicPort(value)
         case .adminPassword(let value):
-            guard !value.isEmpty, RuntimeTextValidator.isSingleLine(value) else {
-                throw LauncherError.missingArgument("--admin-password must not be empty or contain newlines")
-            }
-            guestConfig.adminPassword = value
-        case .adminPasswordFile(let url):
-            let password = try actions.readSecretFile(url)
-            guard !password.isEmpty, RuntimeTextValidator.isSingleLine(password) else {
-                throw LauncherError.missingArgument("--admin-password-file must contain a non-empty single-line password")
-            }
-            guestConfig.adminPassword = password
-        case .startOnBoot(let enabled):
-            try actions.setStartOnBoot(enabled)
-        case .autoRecovery(let enabled):
-            vmConfig.autoRecoveryEnabled = enabled
-        case .preventSystemSleep(let enabled):
-            vmConfig.preventSystemSleep = enabled
-            try actions.setSystemSleepPrevention(enabled)
-        case .redisBackupRetention(let count):
-            guard (1...Constants.Defaults.maximumRedisBackupRetentionCount).contains(count) else {
-                throw LauncherError.missingArgument(
-                    "--redis-backup-retention must be between 1 and \(Constants.Defaults.maximumRedisBackupRetentionCount)"
-                )
-            }
-            guestConfig.redisBackupRetentionCount = count
-        }
-    }
-
-    private func isValidAdvertisedURL(_ value: String) -> Bool {
-        if value.isEmpty {
-            return true
-        }
-        guard RuntimeTextValidator.isSingleLine(value),
-              let components = URLComponents(string: value),
-              let scheme = components.scheme?.lowercased(),
-              scheme == "http" || scheme == "https",
-              let host = components.host,
-              !host.isEmpty else {
-            return false
-        }
-        if let port = components.port, !(1...65_535).contains(port) {
-            return false
-        }
-        return true
-    }
-
-    private func applyVitalServerURLCompatibilityFields(_ value: String, to guestConfig: inout GuestRuntimeConfigDocument) {
-        guard !value.isEmpty,
-              let components = URLComponents(string: value),
-              let host = components.host else {
-            return
-        }
-        guestConfig.publicHost = host
-        if let port = components.port {
-            guestConfig.publicPort = port
-        } else if components.scheme?.lowercased() == "https" {
-            guestConfig.publicPort = 443
-        } else {
-            guestConfig.publicPort = Constants.Guest.publicPort
-        }
-    }
-
-    private func validate(_ vmConfig: VMRuntimeConfig) throws {
-        if vmConfig.network.mode == .bridged,
-           vmConfig.network.bridgedInterface?.isEmpty != false {
-            throw LauncherError.missingArgument("--bridged-interface is required when --network bridged")
+            return .adminPassword(value)
+        case .adminPasswordFile(let value):
+            return .adminPasswordFile(value)
+        case .startOnBoot(let value):
+            return .startOnBoot(value)
+        case .autoRecovery(let value):
+            return .autoRecovery(value)
+        case .preventSystemSleep(let value):
+            return .preventSystemSleep(value)
+        case .redisBackupRetention(let value):
+            return .redisBackupRetention(value)
         }
     }
 }

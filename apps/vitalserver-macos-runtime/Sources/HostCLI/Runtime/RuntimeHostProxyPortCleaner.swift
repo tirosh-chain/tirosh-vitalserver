@@ -55,6 +55,45 @@ struct RuntimeHostProxyPortCleaner {
         log("proxy port cleanup completed port=\(port)")
     }
 
+    func cleanupOwnedListenersAfterProxyStop() throws {
+        let port = proxyPort()
+        let listeners = try portListeners(port: port)
+        guard !listeners.isEmpty else {
+            log("proxy port cleanup after stop skipped; no listeners on port \(port)")
+            return
+        }
+
+        let expectedPID = try readExpectedProxyNginxPID()
+        let classified = classify(listeners, expectedPID: expectedPID)
+        if !classified.external.isEmpty {
+            let description = classified.external.map { "\($0.command)-\($0.pid)" }.joined(separator: ",")
+            log("proxy port cleanup after stop leaving external listeners port=\(port) listeners=\(description)")
+        }
+        guard !classified.ownedNginx.isEmpty else {
+            return
+        }
+
+        log("proxy port cleanup after stop stopping owned nginx listeners port=\(port) pids=\(classified.ownedNginx.joined(separator: ","))")
+        terminate(classified.ownedNginx, signal: "-TERM")
+        sleep(1)
+        let remainingOwned = classify(try portListeners(port: port), expectedPID: expectedPID).ownedNginx
+        if !remainingOwned.isEmpty {
+            log("proxy port cleanup after stop force stopping owned nginx listeners port=\(port) pids=\(remainingOwned.joined(separator: ","))")
+            terminate(remainingOwned, signal: "-KILL")
+            sleep(1)
+        }
+
+        let remaining = classify(try portListeners(port: port), expectedPID: expectedPID).ownedNginx
+        guard remaining.isEmpty else {
+            let description = remaining.map { "nginx-\($0)" }.joined(separator: ",")
+            log("proxy port cleanup after stop could not stop owned listeners port=\(port) listeners=\(description)")
+            throw LauncherError.runtimeOperationFailed(
+                "proxy port \(port) is still held by VitalServer nginx listener(s): \(description). Retry clean uninstall."
+            )
+        }
+        log("proxy port cleanup after stop completed port=\(port)")
+    }
+
     private func portListeners(port: Int) throws -> [PortListener] {
         let result = runProcess(Constants.Commands.lsof, ["-nP", "-iTCP:\(port)", "-sTCP:LISTEN"])
         guard result.exitCode == 0 else {

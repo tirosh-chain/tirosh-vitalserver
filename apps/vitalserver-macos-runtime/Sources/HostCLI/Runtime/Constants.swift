@@ -38,9 +38,9 @@ enum Constants {
     }
 
     enum Artifacts {
-        static let rootfsBase = "rootfs-base.raw.gz"
-        static let runtimeVersion = "runtime-version.json"
-        static let backupManifest = "backup-manifest.json"
+        static let rootfsBase = RuntimeFileNames.rootfsBase
+        static let runtimeVersion = RuntimeFileNames.runtimeVersion
+        static let backupManifest = RuntimeFileNames.backupManifest
         static let runtimeConfig = "runtime-config.json"
         static let runtimeStatus = RuntimeFileNames.runtimeStatus
     }
@@ -181,7 +181,7 @@ enum Constants {
     }
 
     enum Bundle {
-        static let manifest = "manifest.json"
+        static let manifest = RuntimeFileNames.updateBundleManifest
         static let checksums = "checksums.txt"
         static let signature = "signature"
     }

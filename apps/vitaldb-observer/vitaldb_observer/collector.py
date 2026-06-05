@@ -155,28 +155,38 @@ class VitalDBCollector:
         window_seconds = max(self._settings.recorder_activity_window_seconds, 1)
         window_started_at = _parse_iso(observed_at) - timedelta(seconds=window_seconds)
         builders: dict[str, _ActivityBuilder] = {}
+        skipped_events: dict[str, list[int]] = {}
         for index, raw_event in enumerate(events):
             try:
-                parsed = _parse_audit_event(raw_event)
+                event = _parse_audit_event_document(raw_event)
             except ValueError as error:
-                _append_read_issue(
-                    read_issues,
-                    "auditEvents",
-                    f"event {index} was skipped: {error}",
+                _record_skipped_audit_event(skipped_events, index, str(error))
+                continue
+            if _audit_event_type(event) != "send_data":
+                continue
+            timestamp = _audit_event_timestamp(event)
+            if timestamp is None or timestamp == "":
+                _record_skipped_audit_event(
+                    skipped_events,
+                    index,
+                    "send_data event is missing timestamp",
                 )
                 continue
-            if parsed["event_type"] != "send_data":
-                continue
             try:
-                event_time = _parse_iso(parsed["timestamp"])
+                event_time = _parse_iso(timestamp)
             except ValueError as error:
-                _append_read_issue(
-                    read_issues,
-                    "auditEvents",
-                    f"send_data event {index} has invalid timestamp: {error}",
+                _record_skipped_audit_event(
+                    skipped_events,
+                    index,
+                    f"send_data event has invalid timestamp: {error}",
                 )
                 continue
             if event_time < window_started_at:
+                continue
+            try:
+                parsed = _parse_send_data_audit_event(event, timestamp=timestamp)
+            except ValueError as error:
+                _record_skipped_audit_event(skipped_events, index, str(error))
                 continue
             vrcode = parsed["vrcode"]
             builder = builders.setdefault(
@@ -189,6 +199,7 @@ class VitalDBCollector:
                 byte_count=parsed["byte_count"],
                 room_count=parsed["room_count"],
             )
+        _append_skipped_audit_event_issues(read_issues, skipped_events)
         return {
             vrcode: builder.observation()
             for vrcode, builder in builders.items()
@@ -386,23 +397,35 @@ def _tail_lines(path: Path, max_bytes: int) -> list[str]:
     return data.decode("utf-8").splitlines()
 
 
-def _parse_audit_event(raw_value: str) -> dict[str, Any]:
+def _parse_audit_event_document(raw_value: str) -> dict[str, Any]:
     try:
         event = json.loads(raw_value)
     except json.JSONDecodeError as error:
         raise ValueError(f"invalid JSON: {error}") from error
     if not isinstance(event, dict):
         raise ValueError("JSON value must be an object")
+    return event
 
-    payload_summary = event.get("payload_summary") or event.get("payloadSummary")
-    if not isinstance(payload_summary, dict):
-        payload_summary = {}
 
-    event_type = (
+def _audit_event_type(event: dict[str, Any]) -> str:
+    return (
         _string_value(event, "event_type")
         or _string_value(event, "eventType")
         or ""
     )
+
+
+def _audit_event_timestamp(event: dict[str, Any]) -> str | None:
+    return (
+        _string_value(event, "ts")
+        or _string_value(event, "observedAt")
+        or _string_value(event, "timestamp")
+    )
+
+
+def _parse_audit_event(raw_value: str) -> dict[str, Any]:
+    event = _parse_audit_event_document(raw_value)
+    event_type = _audit_event_type(event)
     if event_type != "send_data":
         return {
             "event_type": event_type,
@@ -411,19 +434,25 @@ def _parse_audit_event(raw_value: str) -> dict[str, Any]:
             "byte_count": 0,
             "room_count": 0,
         }
-    timestamp = (
-        _string_value(event, "ts")
-        or _string_value(event, "observedAt")
-        or _string_value(event, "timestamp")
-    )
-    vrcode = _string_value(payload_summary, "vrcode") or _string_value(event, "vrcode")
+    timestamp = _audit_event_timestamp(event)
     if timestamp is None or timestamp == "":
         raise ValueError("send_data event is missing timestamp")
+    return _parse_send_data_audit_event(event, timestamp=timestamp)
+
+
+def _parse_send_data_audit_event(
+    event: dict[str, Any], *, timestamp: str
+) -> dict[str, Any]:
+    payload_summary = event.get("payload_summary") or event.get("payloadSummary")
+    if not isinstance(payload_summary, dict):
+        payload_summary = {}
+
+    vrcode = _string_value(payload_summary, "vrcode") or _string_value(event, "vrcode")
     if vrcode is None or vrcode == "":
         raise ValueError("send_data event is missing vrcode")
 
     return {
-        "event_type": event_type,
+        "event_type": "send_data",
         "timestamp": timestamp,
         "vrcode": vrcode,
         "byte_count": _required_non_negative_int(
@@ -607,6 +636,38 @@ def _append_read_issue(
     issue = ObservationReadIssue(source=source, message=message)
     if issue not in read_issues:
         read_issues.append(issue)
+
+
+def _record_skipped_audit_event(
+    skipped_events: dict[str, list[int]],
+    index: int,
+    reason: str,
+) -> None:
+    skipped_events.setdefault(reason, []).append(index)
+
+
+def _append_skipped_audit_event_issues(
+    read_issues: list[ObservationReadIssue],
+    skipped_events: dict[str, list[int]],
+) -> None:
+    for reason, indexes in skipped_events.items():
+        if len(indexes) == 1:
+            _append_read_issue(
+                read_issues,
+                "auditEvents",
+                f"event {indexes[0]} was skipped: {reason}",
+            )
+            continue
+        first_events = ", ".join(str(index) for index in indexes[:5])
+        suffix = "" if len(indexes) <= 5 else f", +{len(indexes) - 5} more"
+        _append_read_issue(
+            read_issues,
+            "auditEvents",
+            (
+                f"{len(indexes)} events were skipped: {reason} "
+                f"(first events: {first_events}{suffix})"
+            ),
+        )
 
 
 def _is_recorder_identity(value: str, *, bed_ids: set[str]) -> bool:

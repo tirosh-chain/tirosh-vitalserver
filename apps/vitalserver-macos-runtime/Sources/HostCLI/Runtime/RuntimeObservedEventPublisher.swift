@@ -1,4 +1,5 @@
 import Contracts
+import Core
 
 struct RuntimeObservedEventPublisher {
     let previousStatus: () -> RuntimeStatusLevel?
@@ -68,20 +69,5 @@ struct RuntimeObservedEventPublisher {
             snapshot,
             eventType
         )
-    }
-}
-
-enum RuntimeObservedEventTypePolicy {
-    static func eventType(
-        for snapshot: RuntimeHealthSnapshot,
-        defaultEventType: RuntimeEventType = .statusChanged
-    ) -> RuntimeEventType {
-        if !snapshot.vmErrors.isEmpty {
-            return .vmErrorObserved
-        }
-        if !snapshot.failureReasons.isEmpty {
-            return .domainErrorObserved
-        }
-        return defaultEventType
     }
 }

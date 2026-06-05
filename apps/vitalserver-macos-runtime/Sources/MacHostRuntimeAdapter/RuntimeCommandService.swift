@@ -34,11 +34,19 @@ enum RuntimeCommandFactory {
 
     static func uninstallCommand(uninstaller: String, clean: Bool) -> String {
         let command = ([uninstaller] + (clean ? ["--clean"] : [])).map(shellQuote).joined(separator: " ")
-        let logFile = shellQuote(RuntimeAdapterConstants.Paths.uninstallLog)
+        let startScript = """
+        \(command) < /dev/null > /dev/null 2>&1 &
+        background_pid=$!
+        sleep 0.2
+        if kill -0 "${background_pid}" 2>/dev/null; then
+          echo "Background uninstaller started."
+        else
+          wait "${background_pid}"
+        fi
+        """
         let script = [
             "mkdir -p \(shellQuote((RuntimeAdapterConstants.Paths.uninstallLog as NSString).deletingLastPathComponent))",
-            "nohup \(command) >> \(logFile) 2>&1 < /dev/null &",
-            "echo \"Background uninstaller started.\""
+            startScript
         ].joined(separator: "; ")
         return "/bin/bash -lc \(shellQuote(script))"
     }

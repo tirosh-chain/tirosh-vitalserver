@@ -91,6 +91,61 @@ final class RuntimeHostProxyPortCleanerTests: XCTestCase {
         }
     }
 
+    func testCleanupAfterProxyStopStopsOwnedNginxAndLeavesExternalListener() throws {
+        var lsofCalls = 0
+        var killed: [[String]] = []
+        var logs: [String] = []
+        let cleaner = RuntimeHostProxyPortCleaner(
+            proxyPort: { 80 },
+            proxyServiceLoaded: { false },
+            expectedProxyNginxPID: { .missing },
+            ownedNginxPathFragments: ["/Library/Application Support/VitalServerHelper/nginx"],
+            runProcess: { executable, arguments in
+                switch executable {
+                case Constants.Commands.lsof:
+                    lsofCalls += 1
+                    if lsofCalls == 1 {
+                        return RuntimeProcessResult(
+                            exitCode: 0,
+                            stdout: Self.lsof([
+                                ["nginx", "456"],
+                                ["httpd", "789"],
+                            ]),
+                            stderr: ""
+                        )
+                    }
+                    return RuntimeProcessResult(
+                        exitCode: 0,
+                        stdout: Self.lsof([["httpd", "789"]]),
+                        stderr: ""
+                    )
+                case Constants.Commands.ps:
+                    if arguments.contains("456") {
+                        return RuntimeProcessResult(
+                            exitCode: 0,
+                            stdout: "/Library/Application Support/VitalServerHelper/nginx/sbin/nginx -c vitalserver-nginx.conf\n",
+                            stderr: ""
+                        )
+                    }
+                    return RuntimeProcessResult(exitCode: 0, stdout: "/usr/sbin/httpd\n", stderr: "")
+                case Constants.Commands.kill:
+                    killed.append(arguments)
+                    return RuntimeProcessResult(exitCode: 0, stdout: "", stderr: "")
+                default:
+                    return RuntimeProcessResult(exitCode: 0, stdout: "", stderr: "")
+                }
+            },
+            sleep: { _ in },
+            log: { logs.append($0) }
+        )
+
+        try cleaner.cleanupOwnedListenersAfterProxyStop()
+
+        XCTAssertEqual(killed, [["-TERM", "456"]])
+        XCTAssertTrue(logs.contains { $0.contains("leaving external listeners port=80 listeners=httpd-789") })
+        XCTAssertTrue(logs.contains { $0.contains("proxy port cleanup after stop completed port=80") })
+    }
+
     func testThrowsWhenPortListenerScanFails() {
         var logs: [String] = []
         let cleaner = RuntimeHostProxyPortCleaner(
@@ -194,9 +249,13 @@ final class RuntimeHostProxyPortCleanerTests: XCTestCase {
     }
 
     private static func lsof(_ listener: [String]) -> String {
+        lsof([listener])
+    }
+
+    private static func lsof(_ listeners: [[String]]) -> String {
         """
         COMMAND PID USER FD TYPE DEVICE SIZE/OFF NODE NAME
-        \(listener[0]) \(listener[1]) root 6u IPv4 0x1 0t0 TCP *:80 (LISTEN)
+        \(listeners.map { "\($0[0]) \($0[1]) root 6u IPv4 0x1 0t0 TCP *:80 (LISTEN)" }.joined(separator: "\n"))
         """
     }
 }

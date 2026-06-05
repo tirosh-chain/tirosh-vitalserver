@@ -63,6 +63,7 @@ final class RuntimeServiceControlRunnerTests: XCTestCase {
 private final class ServiceControlHarness {
     var events: [String] = []
     var startError: Error?
+    var serviceStates: [RuntimeManagedService: RuntimeServiceState] = [:]
 
     var runner: RuntimeServiceControlRunner {
         RuntimeServiceControlRunner(
@@ -71,9 +72,20 @@ private final class ServiceControlHarness {
                 if let startError = self.startError {
                     throw startError
                 }
+                for service in RuntimeRequiredServicePolicy.requiredServices(for: policy) {
+                    self.serviceStates[service] = .loaded
+                }
             },
             stopRuntimeServices: {
                 self.events.append("stop")
+                for service in RuntimeManagedService.stopOrder {
+                    self.serviceStates[service] = .notLoaded
+                }
+            },
+            serviceStates: { services in
+                Dictionary(uniqueKeysWithValues: services.map { service in
+                    (service, self.serviceStates[service] ?? .notLoaded)
+                })
             },
             writeStatus: { status, operation, message in
                 self.events.append("status:\(status.rawValue):\(operation.rawValue):\(message)")

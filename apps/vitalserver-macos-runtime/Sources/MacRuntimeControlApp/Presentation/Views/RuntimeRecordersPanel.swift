@@ -312,14 +312,14 @@ struct RuntimeRecordersPanel: View {
                     HStack(spacing: 18) {
                         activityMetric("Packets", activityDisplay.latestBucket.map { "\($0.messageCount)" } ?? "-")
                         activityMetric("Total packets", activityDisplay.totalPackets.map(String.init) ?? "-")
-                        activityMetric("Data rate", activityDisplay.latestSample.map { formatBytesPerSecond($0.bytesPerSecond) } ?? "-")
-                        activityMetric("Rooms", activityDisplay.latestBucket.map { "\($0.roomCount)" } ?? "-")
+                        activityMetric("Data rate", activityDisplay.latestBucketBytesPerSecond.map(formatBytesPerSecond) ?? "-")
+                        activityMetric("Room entries", activityDisplay.latestBucket.map { "\($0.roomCount)" } ?? "-")
                     }
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 110), spacing: 12)], alignment: .leading, spacing: 8) {
                         activityMetric("Packets", activityDisplay.latestBucket.map { "\($0.messageCount)" } ?? "-")
                         activityMetric("Total packets", activityDisplay.totalPackets.map(String.init) ?? "-")
-                        activityMetric("Data rate", activityDisplay.latestSample.map { formatBytesPerSecond($0.bytesPerSecond) } ?? "-")
-                        activityMetric("Rooms", activityDisplay.latestBucket.map { "\($0.roomCount)" } ?? "-")
+                        activityMetric("Data rate", activityDisplay.latestBucketBytesPerSecond.map(formatBytesPerSecond) ?? "-")
+                        activityMetric("Room entries", activityDisplay.latestBucket.map { "\($0.roomCount)" } ?? "-")
                     }
                 }
             }
@@ -386,7 +386,7 @@ struct RuntimeRecordersPanel: View {
             detailRow(AppConstants.Labels.patient, patientText(recorder.patientConnected))
             detailRow("First seen", viewModel.presentationFormatter.systemTimeText(recorder.firstSeenAt))
             detailRow(AppConstants.Labels.recorderLastSeen, viewModel.presentationFormatter.systemTimeText(recorder.lastSeenAt))
-            detailRow(AppConstants.Labels.observations, "\(recorder.observationCount)")
+            detailRow("Status observations", "\(recorder.observationCount)")
             detailRow("Duplicate observations", "\(recorder.duplicateObservationCount)")
             detailRow(AppConstants.Labels.recorderAnomalies, "\(recorder.currentAnomalyCount)")
         }

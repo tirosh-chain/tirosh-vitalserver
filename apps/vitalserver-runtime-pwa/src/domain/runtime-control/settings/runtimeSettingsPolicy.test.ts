@@ -37,6 +37,8 @@ function fullSettings(overrides = {}) {
     proxyPort: 80,
     runtimeControlPort: 18321,
     vitalFilesDirectory: "/Users/shared/vital",
+    vitalServerURL: "http://127.0.0.1:80/",
+    remoteConsoleURL: "http://127.0.0.1:18321/",
     publicHost: "",
     publicPort: 80,
     adminPassword: "",

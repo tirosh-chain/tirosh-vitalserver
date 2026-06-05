@@ -391,6 +391,7 @@ Fallback:
 | `vitalFilesDirectory` | `/Library/Application Support/VitalServerHelper/vm/data/vital-files` | absolute path |
 | `adminPassword` | `admin` | admin 계정 reset 값. empty가 아니면 guest runtime에 적용 |
 | `vmHostname` | `tirosh-vitalserver` | hostname-safe 문자열 |
+| `sshAuthorizedKeys` | `[]` | optional OpenSSH public key 배열. 제공한 key만 cloud-init `ubuntu` 계정에 등록하며 password SSH는 항상 비활성화 |
 | `vitalServerURL` | empty | optional absolute `http`/`https` URL. Reverse proxy/HTTPS/domain 운영 시 Status와 runtime advertised URL에 사용 |
 | `remoteConsoleURL` | empty | optional absolute `http`/`https` URL. Remote Console이 VitalServer와 다른 도메인일 때 사용 |
 | `publicHost` | empty | legacy guest compatibility field. `vitalServerURL`이 있으면 Host가 host를 파생 |
@@ -398,7 +399,7 @@ Fallback:
 | `startAfterInstall` | true | bool |
 | `startOnBoot` | true | bool |
 
-현재 settings JSON은 partial override 계약입니다. 파일을 제공하는 installer UI, MDM, 또는 설치 wrapper는 바꾸고 싶은 필드만 쓰면 됩니다. 누락된 필드는 기본값을 사용하고, 범위를 벗어난 값은 무시합니다.
+현재 settings JSON은 partial override 계약입니다. 파일을 제공하는 installer UI, MDM, 또는 설치 wrapper는 바꾸고 싶은 필드만 쓰면 됩니다. 누락된 필드는 기본값을 사용합니다. 기존 numeric/URL 범위를 벗어난 값은 무시하지만, `sshAuthorizedKeys`처럼 보안 접근 경로를 여는 값이 제공됐는데 형식이 맞지 않으면 설치 설정 로드가 실패합니다.
 
 예시:
 
@@ -410,6 +411,9 @@ Fallback:
   "proxyPort": 8080,
   "vitalFilesDirectory": "/Users/Shared/TiroshVitalFiles",
   "adminPassword": "change-me",
+  "sshAuthorizedKeys": [
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEexample operator@example.test"
+  ],
   "vitalServerURL": "https://vitaldb.tirosh.ai/",
   "remoteConsoleURL": "https://console.tirosh.ai/",
   "startAfterInstall": true,
@@ -717,6 +721,8 @@ sudo /usr/local/bin/vitalserver-vm runtime configure \
   --bridged-interface "<interface-id-if-bridged>" \
   --proxy-port 80 \
   --vital-files-dir "/Library/Application Support/VitalServerHelper/vm/data/vital-files" \
+  --vitalserver-url "http://127.0.0.1:80/" \
+  --remote-console-url "http://127.0.0.1:18321/" \
   --public-host "" \
   --public-port 80 \
   --start-on-boot true \
@@ -724,7 +730,7 @@ sudo /usr/local/bin/vitalserver-vm runtime configure \
   --restart
 ```
 
-이 command는 `vm-config.json`, deploy `runtime-config.json`, proxy LaunchDaemon plist, launchd enable/disable 정책을 갱신하고 `--restart`가 있으면 VM/proxy/watchdog을 kickstart합니다. Helper app의 Settings tab도 이 command를 호출합니다. Helper app의 admin password 입력은 기존 값을 표시하지 않고, 운영자용 admin password reset을 선택했을 때만 `/private/tmp` 아래 0600 임시 파일을 만들고 `--admin-password-file`을 전달합니다. CLI의 `--admin-password`는 개발/수동 복구용으로 남기지만, 운영 UI에서는 argv/log 노출을 줄이기 위해 file 입력을 사용합니다.
+이 command는 `vm-config.json`, deploy `runtime-config.json`, proxy LaunchDaemon plist, launchd enable/disable 정책을 갱신하고 `--restart`가 있으면 VM/proxy/watchdog을 kickstart합니다. Helper app의 Settings tab도 이 command를 호출합니다. Helper UI는 advertised service URL 입력에 local 기본 URL을 채우며, Apply 시 빈 값이나 absolute `http`/`https` URL 형식이 아닌 값은 실패시킵니다. remote client가 접속해야 하는 운영 환경에서는 `127.0.0.1` 기본값을 외부에서 도달 가능한 URL로 바꿔야 합니다. Helper app의 admin password 입력은 기존 값을 표시하지 않고, 운영자용 admin password reset을 선택했을 때만 `/private/tmp` 아래 0600 임시 파일을 만들고 `--admin-password-file`을 전달합니다. CLI의 `--admin-password`는 개발/수동 복구용으로 남기지만, 운영 UI에서는 argv/log 노출을 줄이기 위해 file 입력을 사용합니다.
 
 admin password reset은 VitalServer 본체의 사용자 계정 기능을 확장하거나 수정하는 기능이 아닙니다. VitalServer UI의 비밀번호 변경은 현재 비밀번호를 아는 사용자가 본인 계정을 변경하는 흐름이고, Helper의 reset은 설치/운영 관리자가 `admin` 계정을 복구하거나 초기화하기 위한 패키징 레벨의 유지보수 기능입니다. 위험도가 높은 설정이므로 향후 운영 정책에 따라 Helper UI에서 제거하고 CLI 또는 recovery flow로만 남길 수 있습니다. deploy `runtime-config.json`은 admin reset 값을 포함하므로 install/configure 직후 0600 권한으로 제한합니다.
 

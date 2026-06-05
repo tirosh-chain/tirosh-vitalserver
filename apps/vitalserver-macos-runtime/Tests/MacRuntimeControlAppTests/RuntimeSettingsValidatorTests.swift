@@ -55,6 +55,50 @@ final class RuntimeSettingsValidatorTests: XCTestCase {
         )
     }
 
+    func testRejectsMissingAdvertisedServiceURLs() {
+        var settings = validSettings()
+        settings.vitalServerURL = ""
+
+        XCTAssertEqual(
+            validator.validate(settings, installedSettings: installedSettings()),
+            .invalid(AppConstants.StatusText.invalidAdvertisedURL)
+        )
+
+        settings = validSettings()
+        settings.remoteConsoleURL = ""
+
+        XCTAssertEqual(
+            validator.validate(settings, installedSettings: installedSettings()),
+            .invalid(AppConstants.StatusText.invalidAdvertisedURL)
+        )
+    }
+
+    func testRejectsInvalidAdvertisedServiceURLs() {
+        var settings = validSettings()
+        settings.vitalServerURL = "vitaldb.tirosh.ai"
+
+        XCTAssertEqual(
+            validator.validate(settings, installedSettings: installedSettings()),
+            .invalid(AppConstants.StatusText.invalidAdvertisedURL)
+        )
+
+        settings = validSettings()
+        settings.remoteConsoleURL = "ftp://console.tirosh.ai/"
+
+        XCTAssertEqual(
+            validator.validate(settings, installedSettings: installedSettings()),
+            .invalid(AppConstants.StatusText.invalidAdvertisedURL)
+        )
+
+        settings = validSettings()
+        settings.vitalServerURL = " https://vitaldb.tirosh.ai/ "
+
+        XCTAssertEqual(
+            validator.validate(settings, installedSettings: installedSettings()),
+            .invalid(AppConstants.StatusText.invalidAdvertisedURL)
+        )
+    }
+
     func testRejectsRedisBackupRetentionOutsideRange() {
         var settings = validSettings()
         settings.redisBackupRetentionCount = 31
@@ -126,6 +170,8 @@ final class RuntimeSettingsValidatorTests: XCTestCase {
         settings.proxyPort = 18080
         settings.publicPort = 80
         settings.vitalFilesDirectory = "/Users/test/Vital Files"
+        settings.vitalServerURL = "http://127.0.0.1:18080/"
+        settings.remoteConsoleURL = "http://127.0.0.1:18321/"
         settings.networkMode = RuntimeNetworkMode.shared
         settings.changeAdminPassword = false
         settings.adminPassword = ""

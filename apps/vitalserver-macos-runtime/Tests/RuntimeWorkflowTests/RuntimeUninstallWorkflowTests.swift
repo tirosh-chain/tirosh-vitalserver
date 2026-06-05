@@ -145,6 +145,7 @@ final class RuntimeUninstallWorkflowTests: XCTestCase {
 
     func testUninstallDoesNotRemoveFilesWhenStoppedStateIsNotProven() {
         let harness = RuntimeUninstallWorkflowHarness()
+        harness.serviceStates[.vm] = .loaded
         harness.vmProcessState = .pidFileMissing
 
         XCTAssertThrowsError(try harness.runner.run(RuntimeUninstallCommand(clean: true)))
@@ -155,6 +156,17 @@ final class RuntimeUninstallWorkflowTests: XCTestCase {
         })
         XCTAssertFalse(harness.events.contains("log:step=remove-installed-files status=started"))
         XCTAssertFalse(harness.events.contains("state:completed:uninstall completed:"))
+    }
+
+    func testUninstallRemovesFilesWhenPidFileIsMissingAndVMServiceIsNotLoaded() throws {
+        let harness = RuntimeUninstallWorkflowHarness()
+        harness.vmProcessState = .pidFileMissing
+
+        try harness.runner.run(RuntimeUninstallCommand(clean: true))
+
+        XCTAssertTrue(harness.events.contains("log:step=remove-installed-files status=started"))
+        XCTAssertTrue(harness.events.contains("remove:/product"))
+        XCTAssertTrue(harness.events.contains("state:completed:uninstall completed:"))
     }
 
     func testCleanUninstallDoesNotCompleteWhenCleanupArtifactRemains() {
@@ -375,6 +387,7 @@ private final class RuntimeUninstallWorkflowHarness {
                     }
                     return []
                 },
+                openFileDiagnosticExecutable: "/usr/sbin/lsof",
                 runProcess: { _, _ in
                     RuntimeProcessResult(exitCode: 1, stdout: "", stderr: "")
                 },

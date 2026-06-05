@@ -90,6 +90,37 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         XCTAssertEqual(settings.proxyPort, RuntimeSettings().proxyPort)
     }
 
+    func testMigratesLegacyGuestRuntimeConfigAdvertisedURLWhenRuntimeSettingsIsMissing() throws {
+        let directory = try temporaryDirectory()
+        let guestConfig = directory.appendingPathComponent("runtime-config.json")
+        try """
+        {
+          "publicHost": "legacy.example.test",
+          "publicPort": 8080,
+          "redisBackupRetentionCount": 12
+        }
+        """.write(to: guestConfig, atomically: true, encoding: .utf8)
+
+        let reader = SystemRuntimeSettingsReader(
+            paths: RuntimeSettingsPaths(
+                vmConfig: directory.appendingPathComponent("missing-vm-config.json").path,
+                vmDisk: directory.appendingPathComponent("missing-disk.img").path,
+                guestRuntimeSettings: directory.appendingPathComponent("missing-runtime-settings.json").path,
+                guestRuntimeConfig: guestConfig.path,
+                proxyLaunchDaemon: directory.appendingPathComponent("missing-proxy.plist").path
+            ),
+            runCommand: startOnBootCommand()
+        )
+
+        let settings = reader.load()
+
+        XCTAssertEqual(settings.publicHost, "legacy.example.test")
+        XCTAssertEqual(settings.publicPort, 8080)
+        XCTAssertEqual(settings.vitalServerURL, "http://legacy.example.test:8080/")
+        XCTAssertEqual(settings.remoteConsoleURL, "")
+        XCTAssertEqual(settings.redisBackupRetentionCount, 12)
+    }
+
     func testReportsMissingVMConfigProviderFields() throws {
         let directory = try temporaryDirectory()
         let vmConfig = directory.appendingPathComponent("vm-config.json")
@@ -250,6 +281,8 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         let guestConfig = directory.appendingPathComponent("runtime-config.json")
         try """
         {
+          "vitalServerURL": "https://settings.example.test/",
+          "remoteConsoleURL": "https://console.settings.example.test/",
           "publicHost": "settings.example.test",
           "publicPort": 8443,
           "redisBackupRetentionCount": 12
@@ -278,8 +311,8 @@ final class RuntimeSettingsReaderTests: XCTestCase {
 
         XCTAssertEqual(settings.publicHost, "settings.example.test")
         XCTAssertEqual(settings.publicPort, 8443)
-        XCTAssertEqual(settings.vitalServerURL, "http://settings.example.test:8443/")
-        XCTAssertEqual(settings.remoteConsoleURL, "")
+        XCTAssertEqual(settings.vitalServerURL, "https://settings.example.test/")
+        XCTAssertEqual(settings.remoteConsoleURL, "https://console.settings.example.test/")
         XCTAssertEqual(settings.redisBackupRetentionCount, 12)
     }
 
