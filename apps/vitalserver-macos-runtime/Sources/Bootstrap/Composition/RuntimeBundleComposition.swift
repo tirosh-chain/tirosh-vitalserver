@@ -149,7 +149,7 @@ public struct RuntimeBundleComposition {
                 materialize: { url in
                     try runtimeBundleMaterializer().materialize(url)
                 },
-                cleanupTemporaryRoot: removeMaterializedBundleTemporaryRoot,
+                executeMaterializationCleanupPlan: executeMaterializationCleanupPlan,
                 verifyDirectory: verifyBundleDirectory,
                 stageBundle: stageMaterializedBundle,
                 log: operations.log
@@ -255,6 +255,15 @@ public struct RuntimeBundleComposition {
             operations.log(
                 "bundle temporary directory cleanup failed path=\(temporaryRoot.path) error=\(RuntimeErrorDescription.describe(error))"
             )
+        }
+    }
+
+    private func executeMaterializationCleanupPlan(_ plan: RuntimeBundleMaterializationCleanupPlan) {
+        switch plan {
+        case .none:
+            return
+        case .cleanupTemporaryRoot(let temporaryRoot):
+            removeMaterializedBundleTemporaryRoot(temporaryRoot)
         }
     }
 

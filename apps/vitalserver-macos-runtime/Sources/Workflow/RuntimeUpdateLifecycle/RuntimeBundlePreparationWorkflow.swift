@@ -36,20 +36,20 @@ public struct RuntimeBundlePreparationStageResult: Equatable, Sendable {
 
 public struct RuntimeBundlePreparationWorkflowOperations {
     public let materialize: (URL) throws -> RuntimeMaterializedBundle
-    public let cleanupTemporaryRoot: (URL) -> Void
+    public let executeMaterializationCleanupPlan: (RuntimeBundleMaterializationCleanupPlan) -> Void
     public let verifyDirectory: (URL, URL) throws -> UpdateBundleManifest
     public let stageBundle: (RuntimeBundleStagingInput) throws -> URL
     public let log: (String) -> Void
 
     public init(
         materialize: @escaping (URL) throws -> RuntimeMaterializedBundle,
-        cleanupTemporaryRoot: @escaping (URL) -> Void,
+        executeMaterializationCleanupPlan: @escaping (RuntimeBundleMaterializationCleanupPlan) -> Void,
         verifyDirectory: @escaping (URL, URL) throws -> UpdateBundleManifest,
         stageBundle: @escaping (RuntimeBundleStagingInput) throws -> URL,
         log: @escaping (String) -> Void
     ) {
         self.materialize = materialize
-        self.cleanupTemporaryRoot = cleanupTemporaryRoot
+        self.executeMaterializationCleanupPlan = executeMaterializationCleanupPlan
         self.verifyDirectory = verifyDirectory
         self.stageBundle = stageBundle
         self.log = log
@@ -98,11 +98,8 @@ public struct RuntimeBundlePreparationWorkflow {
     }
 
     private func cleanupTemporaryRootIfNeeded(_ materialized: RuntimeMaterializedBundle) {
-        switch useCase.bundleMaterializationCleanupPlan(materialized: materialized) {
-        case .none:
-            return
-        case .cleanupTemporaryRoot(let temporaryRoot):
-            operations.cleanupTemporaryRoot(temporaryRoot)
-        }
+        operations.executeMaterializationCleanupPlan(
+            useCase.bundleMaterializationCleanupPlan(materialized: materialized)
+        )
     }
 }

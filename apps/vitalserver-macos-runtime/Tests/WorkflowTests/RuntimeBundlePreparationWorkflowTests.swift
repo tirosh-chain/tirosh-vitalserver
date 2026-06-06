@@ -1,3 +1,4 @@
+import Application
 import Contracts
 import Foundation
 import Workflow
@@ -153,7 +154,9 @@ final class RuntimeBundlePreparationWorkflowTests: XCTestCase {
         RuntimeBundlePreparationWorkflow(
             operations: RuntimeBundlePreparationWorkflowOperations(
                 materialize: materialize,
-                cleanupTemporaryRoot: cleanupTemporaryRoot,
+                executeMaterializationCleanupPlan: { plan in
+                    executeMaterializationCleanupPlan(plan, cleanupTemporaryRoot: cleanupTemporaryRoot)
+                },
                 verifyDirectory: verifyDirectory,
                 stageBundle: stageBundle,
                 log: log
@@ -178,4 +181,16 @@ final class RuntimeBundlePreparationWorkflowTests: XCTestCase {
 
 private enum TestBundlePreparationWorkflowError: Error, Equatable {
     case verifyFailed
+}
+
+private func executeMaterializationCleanupPlan(
+    _ plan: RuntimeBundleMaterializationCleanupPlan,
+    cleanupTemporaryRoot: (URL) -> Void
+) {
+    switch plan {
+    case .none:
+        return
+    case .cleanupTemporaryRoot(let temporaryRoot):
+        cleanupTemporaryRoot(temporaryRoot)
+    }
 }

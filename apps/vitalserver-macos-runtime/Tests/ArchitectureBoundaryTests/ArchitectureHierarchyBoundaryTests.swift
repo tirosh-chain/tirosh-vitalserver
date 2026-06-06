@@ -520,6 +520,9 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         let forbiddenTokens = [
             "guard let temporaryRoot",
             "materialized.temporaryRoot",
+            "switch useCase.bundleMaterializationCleanupPlan",
+            "case .none",
+            "case .cleanupTemporaryRoot",
         ]
 
         for token in forbiddenTokens {
