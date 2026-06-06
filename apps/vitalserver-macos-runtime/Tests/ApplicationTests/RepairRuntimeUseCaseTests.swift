@@ -98,6 +98,53 @@ final class RepairRuntimeUseCaseTests: XCTestCase {
         XCTAssertEqual(plan.archivedDisk, URL(fileURLWithPath: "/runtime/backups/vm-disk-repair-20260606T051011Z/vm-disk.img"))
     }
 
+    func testPlansVMDiskReplacementBuildCommandsWithoutWorkflowArgumentConstruction() throws {
+        let useCase = RepairRuntimeUseCase()
+        let vmDisk = URL(fileURLWithPath: "/runtime/vm/vm-disk.img")
+        let backupsDirectory = URL(fileURLWithPath: "/runtime/backups")
+        let executionPlan = useCase.vmDiskExecutionPlan(
+            vmDisk: vmDisk,
+            backupsDirectory: backupsDirectory,
+            timestamp: "2026-06-06T05:10:11Z"
+        )
+        let repairPlan = try useCase.planVMDiskRepair(for: input(
+            rootfsBaseSizeBytes: 2,
+            currentVMDiskSizeBytes: 40 * 1024
+        ))
+
+        let buildPlan = useCase.vmDiskReplacementBuildPlan(
+            rootfsBase: URL(fileURLWithPath: "/runtime/rootfs-base.raw.gz"),
+            vmDisk: vmDisk,
+            backupsDirectory: backupsDirectory,
+            gunzipExecutable: "/usr/bin/gunzip",
+            truncateExecutable: "/usr/bin/truncate",
+            repairPlan: repairPlan,
+            executionPlan: executionPlan
+        )
+
+        XCTAssertEqual(buildPlan.vmDiskDirectory.path, "/runtime/vm")
+        XCTAssertEqual(buildPlan.backupsDirectory, backupsDirectory)
+        XCTAssertEqual(buildPlan.temporaryDisk, URL(fileURLWithPath: "/runtime/vm/.vm-disk.img.repair.tmp"))
+        XCTAssertEqual(buildPlan.freeSpaceDirectory.path, "/runtime/vm")
+        XCTAssertEqual(buildPlan.requiredFreeSpaceBytes, 1036)
+        XCTAssertEqual(buildPlan.operation, .repairVMDisk)
+        XCTAssertEqual(
+            buildPlan.decompression,
+            RepairRuntimeProcessOutputPlan(
+                executable: "/usr/bin/gunzip",
+                arguments: ["-c", "/runtime/rootfs-base.raw.gz"],
+                output: URL(fileURLWithPath: "/runtime/vm/.vm-disk.img.repair.tmp")
+            )
+        )
+        XCTAssertEqual(
+            buildPlan.resize,
+            RepairRuntimeProcessPlan(
+                executable: "/usr/bin/truncate",
+                arguments: ["-s", "40G", "/runtime/vm/.vm-disk.img.repair.tmp"]
+            )
+        )
+    }
+
     func testReplacementDiskVerificationPreservesMissingAndUndersizedFailures() {
         let useCase = RepairRuntimeUseCase()
 

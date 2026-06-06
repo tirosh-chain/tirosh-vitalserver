@@ -109,28 +109,37 @@ public struct RuntimeVMDiskRepairRunner {
             backupsDirectory: context.backupsDirectory,
             timestamp: operations.timestamp()
         )
+        let buildPlan = useCase.vmDiskReplacementBuildPlan(
+            rootfsBase: context.rootfsBase,
+            vmDisk: context.vmDisk,
+            backupsDirectory: context.backupsDirectory,
+            gunzipExecutable: context.gunzipExecutable,
+            truncateExecutable: context.truncateExecutable,
+            repairPlan: plan,
+            executionPlan: executionPlan
+        )
         var archivedDiskPath: String?
 
         try report(useCase.vmDiskRepairRequestedPlan())
         try createRedisBackupBestEffort()
-        try operations.createDirectory(context.vmDisk.deletingLastPathComponent(), true)
-        try operations.createDirectory(context.backupsDirectory, true)
-        if operations.fileExists(executionPlan.temporaryDisk) {
-            try operations.removeItem(executionPlan.temporaryDisk)
+        try operations.createDirectory(buildPlan.vmDiskDirectory, true)
+        try operations.createDirectory(buildPlan.backupsDirectory, true)
+        if operations.fileExists(buildPlan.temporaryDisk) {
+            try operations.removeItem(buildPlan.temporaryDisk)
         }
 
         try operations.requireFreeSpace(
-            context.vmDisk.deletingLastPathComponent(),
-            plan.requiredFreeSpaceBytes,
-            plan.operation.rawValue
+            buildPlan.freeSpaceDirectory,
+            buildPlan.requiredFreeSpaceBytes,
+            buildPlan.operation.rawValue
         )
         try writeStatus(useCase.vmDiskReplacementCreationStatusPlan())
         try operations.runProcessToFile(
-            context.gunzipExecutable,
-            ["-c", context.rootfsBase.path],
-            executionPlan.temporaryDisk
+            buildPlan.decompression.executable,
+            buildPlan.decompression.arguments,
+            buildPlan.decompression.output
         )
-        try operations.runRequired(context.truncateExecutable, ["-s", "\(plan.targetDiskGiB)G", executionPlan.temporaryDisk.path])
+        try operations.runRequired(buildPlan.resize.executable, buildPlan.resize.arguments)
 
         try writeStatus(useCase.vmDiskArchiveStatusPlan())
         try operations.stopRuntimeServicesForVMDiskReplacement()

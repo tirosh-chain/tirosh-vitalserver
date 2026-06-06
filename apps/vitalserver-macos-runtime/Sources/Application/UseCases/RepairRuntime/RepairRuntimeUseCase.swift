@@ -69,6 +69,59 @@ public struct RepairRuntimeVMDiskExecutionPlan: Equatable, Sendable {
     }
 }
 
+public struct RepairRuntimeProcessOutputPlan: Equatable, Sendable {
+    public let executable: String
+    public let arguments: [String]
+    public let output: URL
+
+    public init(executable: String, arguments: [String], output: URL) {
+        self.executable = executable
+        self.arguments = arguments
+        self.output = output
+    }
+}
+
+public struct RepairRuntimeProcessPlan: Equatable, Sendable {
+    public let executable: String
+    public let arguments: [String]
+
+    public init(executable: String, arguments: [String]) {
+        self.executable = executable
+        self.arguments = arguments
+    }
+}
+
+public struct RepairRuntimeVMDiskReplacementBuildPlan: Equatable, Sendable {
+    public let vmDiskDirectory: URL
+    public let backupsDirectory: URL
+    public let temporaryDisk: URL
+    public let freeSpaceDirectory: URL
+    public let requiredFreeSpaceBytes: UInt64
+    public let operation: RuntimeOperation
+    public let decompression: RepairRuntimeProcessOutputPlan
+    public let resize: RepairRuntimeProcessPlan
+
+    public init(
+        vmDiskDirectory: URL,
+        backupsDirectory: URL,
+        temporaryDisk: URL,
+        freeSpaceDirectory: URL,
+        requiredFreeSpaceBytes: UInt64,
+        operation: RuntimeOperation,
+        decompression: RepairRuntimeProcessOutputPlan,
+        resize: RepairRuntimeProcessPlan
+    ) {
+        self.vmDiskDirectory = vmDiskDirectory
+        self.backupsDirectory = backupsDirectory
+        self.temporaryDisk = temporaryDisk
+        self.freeSpaceDirectory = freeSpaceDirectory
+        self.requiredFreeSpaceBytes = requiredFreeSpaceBytes
+        self.operation = operation
+        self.decompression = decompression
+        self.resize = resize
+    }
+}
+
 public struct RepairRuntimeVMDiskReplacementObservation: Equatable, Sendable {
     public let path: String
     public let exists: Bool
@@ -251,6 +304,34 @@ public struct RepairRuntimeUseCase {
                 .appendingPathComponent(".\(vmDisk.lastPathComponent).repair.tmp"),
             archiveDirectory: archiveDirectory,
             archivedDisk: archiveDirectory.appendingPathComponent(vmDisk.lastPathComponent)
+        )
+    }
+
+    public func vmDiskReplacementBuildPlan(
+        rootfsBase: URL,
+        vmDisk: URL,
+        backupsDirectory: URL,
+        gunzipExecutable: String,
+        truncateExecutable: String,
+        repairPlan: RepairRuntimeVMDiskPlan,
+        executionPlan: RepairRuntimeVMDiskExecutionPlan
+    ) -> RepairRuntimeVMDiskReplacementBuildPlan {
+        RepairRuntimeVMDiskReplacementBuildPlan(
+            vmDiskDirectory: vmDisk.deletingLastPathComponent(),
+            backupsDirectory: backupsDirectory,
+            temporaryDisk: executionPlan.temporaryDisk,
+            freeSpaceDirectory: vmDisk.deletingLastPathComponent(),
+            requiredFreeSpaceBytes: repairPlan.requiredFreeSpaceBytes,
+            operation: repairPlan.operation,
+            decompression: RepairRuntimeProcessOutputPlan(
+                executable: gunzipExecutable,
+                arguments: ["-c", rootfsBase.path],
+                output: executionPlan.temporaryDisk
+            ),
+            resize: RepairRuntimeProcessPlan(
+                executable: truncateExecutable,
+                arguments: ["-s", "\(repairPlan.targetDiskGiB)G", executionPlan.temporaryDisk.path]
+            )
         )
     }
 

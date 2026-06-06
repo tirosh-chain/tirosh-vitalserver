@@ -193,6 +193,16 @@ final class UninstallRuntimeUseCaseTests: XCTestCase {
         XCTAssertEqual(useCase.removalDiagnosticOpenFileLogMessage(line: "proc file"), "removal diagnostic open file proc file")
         XCTAssertEqual(useCase.removalDiagnosticOpenFileStderrLogMessage(stderr: "lsof failed"), "removal diagnostic lsof stderr=lsof failed")
         XCTAssertEqual(
+            useCase.removalDiagnosticOpenFilePlan(
+                executable: "/usr/sbin/lsof",
+                target: URL(fileURLWithPath: "/runtime/product")
+            ),
+            UninstallRuntimeProcessPlan(
+                executable: "/usr/sbin/lsof",
+                arguments: ["+D", "/runtime/product"]
+            )
+        )
+        XCTAssertEqual(
             useCase.packageReceiptVerificationFailedMessage(blockers: ["receipt-present"]),
             "package receipt forget verification failed blockers=receipt-present"
         )

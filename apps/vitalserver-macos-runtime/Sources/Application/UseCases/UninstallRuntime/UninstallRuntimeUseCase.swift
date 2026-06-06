@@ -70,6 +70,16 @@ public enum UninstallRuntimeWorkflowLogStepStatus: String, Sendable {
     case completed
 }
 
+public struct UninstallRuntimeProcessPlan: Equatable, Sendable {
+    public let executable: String
+    public let arguments: [String]
+
+    public init(executable: String, arguments: [String]) {
+        self.executable = executable
+        self.arguments = arguments
+    }
+}
+
 public struct UninstallRuntimeUseCase {
     public init() {}
 
@@ -208,6 +218,10 @@ public struct UninstallRuntimeUseCase {
 
     public func removalDiagnosticOpenFileStderrLogMessage(stderr: String) -> String {
         "removal diagnostic lsof stderr=\(stderr)"
+    }
+
+    public func removalDiagnosticOpenFilePlan(executable: String, target: URL) -> UninstallRuntimeProcessPlan {
+        UninstallRuntimeProcessPlan(executable: executable, arguments: ["+D", target.path])
     }
 
     public func packageReceiptStateMap(

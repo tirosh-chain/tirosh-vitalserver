@@ -479,7 +479,11 @@ public struct RuntimeUninstallWorkflow {
                 reason: error.localizedDescription
             ))
         }
-        let result = diagnostics.runProcess(diagnostics.openFileDiagnosticExecutable, ["+D", target.path])
+        let openFilePlan = useCase.removalDiagnosticOpenFilePlan(
+            executable: diagnostics.openFileDiagnosticExecutable,
+            target: target
+        )
+        let result = diagnostics.runProcess(openFilePlan.executable, openFilePlan.arguments)
         if result.exitCode == 0 {
             for line in result.stdout.split(separator: "\n").prefix(200) {
                 log(useCase.removalDiagnosticOpenFileLogMessage(line: String(line)))
