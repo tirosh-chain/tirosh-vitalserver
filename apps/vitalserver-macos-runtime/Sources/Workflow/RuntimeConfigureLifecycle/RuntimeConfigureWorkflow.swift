@@ -37,37 +37,23 @@ public struct RuntimeConfigureDocumentWriter<VMConfig: ConfigureRuntimeMutableVM
 }
 
 public struct RuntimeConfigureEffects<VMConfig: ConfigureRuntimeMutableVMRuntimeConfiguration> {
-    public var createDirectory: (URL, Bool) throws -> Void
-    public var resizeVMDiskIfNeeded: (Int) throws -> Void
-    public var setInstalledProxyPort: (Int) throws -> Void
-    public var readSecretFile: (URL) throws -> String
-    public var restrictSecretFile: (URL) throws -> Void
-    public var setStartOnBoot: (Bool) throws -> Void
-    public var setSystemSleepPrevention: (Bool) throws -> Void
-    public var restartRuntimeServices: () throws -> Void
+    public var resolveSecretFileChanges: (
+        ConfigureRuntimeRequest<VMConfig.ConfigureNetworkMode>
+    ) throws -> ConfigureRuntimeRequest<VMConfig.ConfigureNetworkMode>
+    public var executeEffects: ([ConfigureRuntimeEffect]) throws -> Void
     public var ensureRuntimeDefaults: (inout VMConfig) -> Void
     public var log: (String) -> Void
 
     public init(
-        createDirectory: @escaping (URL, Bool) throws -> Void,
-        resizeVMDiskIfNeeded: @escaping (Int) throws -> Void,
-        setInstalledProxyPort: @escaping (Int) throws -> Void,
-        readSecretFile: @escaping (URL) throws -> String,
-        restrictSecretFile: @escaping (URL) throws -> Void,
-        setStartOnBoot: @escaping (Bool) throws -> Void,
-        setSystemSleepPrevention: @escaping (Bool) throws -> Void,
-        restartRuntimeServices: @escaping () throws -> Void,
+        resolveSecretFileChanges: @escaping (
+            ConfigureRuntimeRequest<VMConfig.ConfigureNetworkMode>
+        ) throws -> ConfigureRuntimeRequest<VMConfig.ConfigureNetworkMode>,
+        executeEffects: @escaping ([ConfigureRuntimeEffect]) throws -> Void,
         ensureRuntimeDefaults: @escaping (inout VMConfig) -> Void,
         log: @escaping (String) -> Void
     ) {
-        self.createDirectory = createDirectory
-        self.resizeVMDiskIfNeeded = resizeVMDiskIfNeeded
-        self.setInstalledProxyPort = setInstalledProxyPort
-        self.readSecretFile = readSecretFile
-        self.restrictSecretFile = restrictSecretFile
-        self.setStartOnBoot = setStartOnBoot
-        self.setSystemSleepPrevention = setSystemSleepPrevention
-        self.restartRuntimeServices = restartRuntimeServices
+        self.resolveSecretFileChanges = resolveSecretFileChanges
+        self.executeEffects = executeEffects
         self.ensureRuntimeDefaults = ensureRuntimeDefaults
         self.log = log
     }
@@ -95,7 +81,7 @@ public struct RuntimeConfigureWorkflow<VMConfig: ConfigureRuntimeMutableVMRuntim
         _ request: ConfigureRuntimeRequest<VMConfig.ConfigureNetworkMode>,
         context: ConfigureRuntimeContext<VMConfig.ConfigureNetworkMode>
     ) throws -> ConfigureRuntimeResult {
-        let resolvedRequest = try resolveSecretFileChanges(in: request)
+        let resolvedRequest = try effects.resolveSecretFileChanges(request)
         let currentVMConfig = try readers.loadVMConfig(context.vmConfigURL)
         let currentGuestRuntimeConfig = try readers.loadGuestRuntimeConfig(context.guestRuntimeConfigURL)
         let plan = try useCase.plan(
@@ -106,7 +92,7 @@ public struct RuntimeConfigureWorkflow<VMConfig: ConfigureRuntimeMutableVMRuntim
         )
         let effectPlan = useCase.effectExecutionPlan(plan.effects)
 
-        try executeEffects(effectPlan.preWriteEffects)
+        try effects.executeEffects(effectPlan.preWriteEffects)
 
         var vmConfig = plan.vmConfig
         effects.ensureRuntimeDefaults(&vmConfig)
@@ -123,45 +109,7 @@ public struct RuntimeConfigureWorkflow<VMConfig: ConfigureRuntimeMutableVMRuntim
         )
         effects.log(plan.logMessage)
 
-        try executeEffects(effectPlan.postWriteEffects)
+        try effects.executeEffects(effectPlan.postWriteEffects)
         return ConfigureRuntimeResult(restart: plan.restart)
-    }
-
-    private func resolveSecretFileChanges(
-        in request: ConfigureRuntimeRequest<VMConfig.ConfigureNetworkMode>
-    ) throws -> ConfigureRuntimeRequest<VMConfig.ConfigureNetworkMode> {
-        let changes = try request.changes.map { change in
-            switch change {
-            case .adminPasswordFile(let url):
-                return try useCase.resolvedAdminPasswordChange(from: ConfigureRuntimeSecretFileInput(
-                    path: url.path,
-                    contents: effects.readSecretFile(url)
-                ))
-            default:
-                return change
-            }
-        }
-        return ConfigureRuntimeRequest(changes: changes, restart: request.restart)
-    }
-
-    private func executeEffects(_ plannedEffects: [ConfigureRuntimeEffect]) throws {
-        for effect in plannedEffects {
-            switch effect {
-            case .createDirectory(let url, let withIntermediateDirectories):
-                try effects.createDirectory(url, withIntermediateDirectories)
-            case .resizeVMDiskIfNeeded(let diskGiB):
-                try effects.resizeVMDiskIfNeeded(diskGiB)
-            case .setInstalledProxyPort(let port):
-                try effects.setInstalledProxyPort(port)
-            case .setStartOnBoot(let enabled):
-                try effects.setStartOnBoot(enabled)
-            case .setSystemSleepPrevention(let enabled):
-                try effects.setSystemSleepPrevention(enabled)
-            case .restrictSecretFile(let url):
-                try effects.restrictSecretFile(url)
-            case .restartRuntimeServices:
-                try effects.restartRuntimeServices()
-            }
-        }
     }
 }

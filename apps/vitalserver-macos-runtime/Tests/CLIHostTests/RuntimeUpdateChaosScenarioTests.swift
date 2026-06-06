@@ -165,7 +165,7 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
         var rollbackBackup: URL?
         var restartedPolicy: RuntimeServiceRestartPolicy?
         var logs: [String] = []
-        let runner = RuntimeApplyBundleRunner(
+        let operations = ApplyRuntimeBundleOperations(
             prepareLogs: {},
             initialHealthSnapshot: { Self.healthSnapshot() },
             executeInitialHealthWarningPlan: { plan in
@@ -200,22 +200,23 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
                     message: failedPlan.statusMessage
                 ))
             },
-            statusReporter: RuntimeWorkflowStatusReporter(
-                writeStatus: { level, operation, message in
-                    statuses.append((level, operation, message))
-                },
-                writeProgress: { event in
-                    progressEvents.append(event)
-                },
-                log: { message in
-                    logs.append(message)
-                }
-            ),
+            writeStatus: { level, operation, message in
+                statuses.append((level, operation, message))
+            },
+            publishProgress: { event in
+                progressEvents.append(event)
+            },
             pruneOldRuntimeArtifacts: {},
-            describeError: RuntimeErrorDescription.describe
+            describeError: RuntimeErrorDescription.describe,
+            log: { message in
+                logs.append(message)
+            }
         )
 
-        XCTAssertThrowsError(try runner.run(bundleURL: URL(fileURLWithPath: "/incoming/update-bundle"))) { error in
+        XCTAssertThrowsError(try ApplyRuntimeBundleUseCase().run(
+            input: ApplyRuntimeBundleInput(bundleURL: URL(fileURLWithPath: "/incoming/update-bundle")),
+            operations: operations
+        )) { error in
             XCTAssertEqual(String(describing: error), "applyArtifactWriteDenied")
         }
 

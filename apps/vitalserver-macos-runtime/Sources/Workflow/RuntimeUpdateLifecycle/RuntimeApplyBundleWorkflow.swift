@@ -79,22 +79,29 @@ public struct RuntimeApplyBundleWorkflow {
     }
 
     public func applyBundle(_ bundleURL: URL) throws {
-        try runtimeApplyBundleRunner().run(bundleURL: bundleURL)
+        try applyRuntimeBundleUseCaseRun(bundleURL)
         operations.log(UpdateRuntimeUseCase().mutableVMDiskPreservedLogMessage(path: context.vmDisk.path))
     }
 
-    private func runtimeApplyBundleRunner() -> RuntimeApplyBundleRunner {
-        RuntimeApplyBundleRunner(
-            prepareLogs: { operations.prepareLogs(context.logsDirectory) },
-            initialHealthSnapshot: operations.runtimeHealthSnapshot,
-            executeInitialHealthWarningPlan: operations.executeInitialHealthWarningPlan,
-            preparePreflight: prepareApplyBundlePreflight,
-            executePreflightFailurePlan: operations.executePreflightFailurePlan,
-            executeStep: executeApplyBundleStep,
-            executeFailureRecoveryPlan: operations.executeFailureRecoveryPlan,
-            statusReporter: operations.statusReporter,
-            pruneOldRuntimeArtifacts: operations.pruneOldRuntimeArtifacts,
-            describeError: operations.describeError
+    private func applyRuntimeBundleUseCaseRun(_ bundleURL: URL) throws {
+        try ApplyRuntimeBundleUseCase().run(
+            input: ApplyRuntimeBundleInput(bundleURL: bundleURL),
+            operations: ApplyRuntimeBundleOperations(
+                prepareLogs: { operations.prepareLogs(context.logsDirectory) },
+                initialHealthSnapshot: operations.runtimeHealthSnapshot,
+                executeInitialHealthWarningPlan: operations.executeInitialHealthWarningPlan,
+                preparePreflight: prepareApplyBundlePreflight,
+                executePreflightFailurePlan: operations.executePreflightFailurePlan,
+                executeStep: executeApplyBundleStep,
+                executeFailureRecoveryPlan: operations.executeFailureRecoveryPlan,
+                writeStatus: { status, operation, message in
+                    try operations.statusReporter.write(status, operation: operation, message: message)
+                },
+                publishProgress: operations.statusReporter.publishProgress,
+                pruneOldRuntimeArtifacts: operations.pruneOldRuntimeArtifacts,
+                describeError: operations.describeError,
+                log: operations.statusReporter.log
+            )
         )
     }
 

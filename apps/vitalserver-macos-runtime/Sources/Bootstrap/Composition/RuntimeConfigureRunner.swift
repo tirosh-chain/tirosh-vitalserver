@@ -170,22 +170,57 @@ public struct RuntimeConfigureRunner {
                 }
             ),
             effects: RuntimeConfigureEffects(
-                createDirectory: { url, withIntermediateDirectories in
-                    try fileStore.createDirectory(at: url, withIntermediateDirectories: withIntermediateDirectories)
+                resolveSecretFileChanges: { request in
+                    try resolveSecretFileChanges(in: request)
                 },
-                resizeVMDiskIfNeeded: actions.resizeVMDiskIfNeeded,
-                setInstalledProxyPort: actions.setInstalledProxyPort,
-                readSecretFile: actions.readSecretFile,
-                restrictSecretFile: actions.restrictSecretFile,
-                setStartOnBoot: actions.setStartOnBoot,
-                setSystemSleepPrevention: actions.setSystemSleepPrevention,
-                restartRuntimeServices: actions.restartRuntimeServices,
+                executeEffects: { effects in
+                    try executeConfigureEffects(effects)
+                },
                 ensureRuntimeDefaults: { config in
                     VMRuntimeConfigComposition.ensureRuntimeDefaults(&config, paths: installedPaths)
                 },
                 log: log
             )
         )
+    }
+
+    private func resolveSecretFileChanges(
+        in request: ConfigureRuntimeRequest<RuntimeNetworkMode>
+    ) throws -> ConfigureRuntimeRequest<RuntimeNetworkMode> {
+        let useCase = ConfigureRuntimeUseCase<VMRuntimeConfig>()
+        let changes = try request.changes.map { change in
+            switch change {
+            case .adminPasswordFile(let url):
+                return try useCase.resolvedAdminPasswordChange(from: ConfigureRuntimeSecretFileInput(
+                    path: url.path,
+                    contents: actions.readSecretFile(url)
+                ))
+            default:
+                return change
+            }
+        }
+        return ConfigureRuntimeRequest(changes: changes, restart: request.restart)
+    }
+
+    private func executeConfigureEffects(_ plannedEffects: [ConfigureRuntimeEffect]) throws {
+        for effect in plannedEffects {
+            switch effect {
+            case .createDirectory(let url, let withIntermediateDirectories):
+                try fileStore.createDirectory(at: url, withIntermediateDirectories: withIntermediateDirectories)
+            case .resizeVMDiskIfNeeded(let diskGiB):
+                try actions.resizeVMDiskIfNeeded(diskGiB)
+            case .setInstalledProxyPort(let port):
+                try actions.setInstalledProxyPort(port)
+            case .setStartOnBoot(let enabled):
+                try actions.setStartOnBoot(enabled)
+            case .setSystemSleepPrevention(let enabled):
+                try actions.setSystemSleepPrevention(enabled)
+            case .restrictSecretFile(let url):
+                try actions.restrictSecretFile(url)
+            case .restartRuntimeServices:
+                try actions.restartRuntimeServices()
+            }
+        }
     }
 
     private func configureRuntimeContext() -> ConfigureRuntimeContext<RuntimeNetworkMode> {

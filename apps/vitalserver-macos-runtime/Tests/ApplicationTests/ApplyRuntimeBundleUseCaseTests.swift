@@ -2,15 +2,14 @@ import Contracts
 import Application
 import Domain
 import Foundation
-import Workflow
 import XCTest
 import Errors
 
-final class RuntimeApplyBundleRunnerTests: XCTestCase {
+final class ApplyRuntimeBundleUseCaseTests: XCTestCase {
     func testRunExecutesApplyBundlePlanAndWritesHealthyStatus() throws {
         let harness = ApplyBundleHarness()
 
-        try harness.runner.run(bundleURL: harness.inputBundle)
+        try harness.run()
 
         XCTAssertEqual(harness.executedSteps, RuntimeOperationPlans.applyBundle(updatesRootfsBase: false).steps)
         XCTAssertEqual(harness.statuses.last?.level, .healthy)
@@ -24,7 +23,7 @@ final class RuntimeApplyBundleRunnerTests: XCTestCase {
         let harness = ApplyBundleHarness()
         harness.preflightError = TestApplyBundleError.preflight
 
-        XCTAssertThrowsError(try harness.runner.run(bundleURL: harness.inputBundle))
+        XCTAssertThrowsError(try harness.run())
 
         XCTAssertTrue(harness.executedSteps.isEmpty)
         XCTAssertEqual(harness.statuses.last?.level, .critical)
@@ -37,7 +36,7 @@ final class RuntimeApplyBundleRunnerTests: XCTestCase {
         let harness = ApplyBundleHarness()
         harness.stepError = TestApplyBundleError.step
 
-        XCTAssertThrowsError(try harness.runner.run(bundleURL: harness.inputBundle))
+        XCTAssertThrowsError(try harness.run())
 
         XCTAssertEqual(harness.recoveryPlans.map(\.backup), [harness.preflight.backup])
         XCTAssertEqual(harness.rollbackBackup, harness.preflight.backup)
@@ -53,7 +52,7 @@ final class RuntimeApplyBundleRunnerTests: XCTestCase {
         harness.stepError = TestApplyBundleError.step
         harness.rollbackError = TestApplyBundleError.rollback
 
-        XCTAssertThrowsError(try harness.runner.run(bundleURL: harness.inputBundle))
+        XCTAssertThrowsError(try harness.run())
 
         XCTAssertEqual(harness.recoveryPlans.map(\.restartPolicy), [harness.preflight.restartPolicy])
         XCTAssertEqual(harness.restartedPolicy, harness.preflight.restartPolicy)
@@ -67,7 +66,7 @@ final class RuntimeApplyBundleRunnerTests: XCTestCase {
         let harness = ApplyBundleHarness()
         harness.pruneError = TestApplyBundleError.prune
 
-        try harness.runner.run(bundleURL: harness.inputBundle)
+        try harness.run()
 
         XCTAssertEqual(harness.pruneCount, 1)
         XCTAssertEqual(harness.statuses.last?.level, .healthy)
@@ -117,8 +116,15 @@ private final class ApplyBundleHarness {
     var rollbackError: Error?
     var pruneError: Error?
 
-    var runner: RuntimeApplyBundleRunner {
-        RuntimeApplyBundleRunner(
+    func run() throws {
+        try ApplyRuntimeBundleUseCase().run(
+            input: ApplyRuntimeBundleInput(bundleURL: inputBundle),
+            operations: operations
+        )
+    }
+
+    var operations: ApplyRuntimeBundleOperations {
+        ApplyRuntimeBundleOperations(
             prepareLogs: {},
             initialHealthSnapshot: {
                 RuntimeHealthSnapshot(
@@ -193,17 +199,12 @@ private final class ApplyBundleHarness {
                     message: plan.rollbackCompletedPlan.message
                 ))
             },
-            statusReporter: RuntimeWorkflowStatusReporter(
-                writeStatus: { level, operation, message in
-                    self.statuses.append((level: level, operation: operation, message: message))
-                },
-                writeProgress: { event in
-                    self.progressEvents.append(event)
-                },
-                log: { message in
-                    self.logs.append(message)
-                }
-            ),
+            writeStatus: { level, operation, message in
+                self.statuses.append((level: level, operation: operation, message: message))
+            },
+            publishProgress: { event in
+                self.progressEvents.append(event)
+            },
             pruneOldRuntimeArtifacts: {
                 self.pruneCount += 1
                 if let pruneError = self.pruneError {
@@ -212,6 +213,9 @@ private final class ApplyBundleHarness {
             },
             describeError: { error in
                 "described:\(String(describing: error))"
+            },
+            log: { message in
+                self.logs.append(message)
             }
         )
     }

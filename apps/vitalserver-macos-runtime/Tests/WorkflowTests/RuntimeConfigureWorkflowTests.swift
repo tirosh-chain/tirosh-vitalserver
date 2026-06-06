@@ -134,33 +134,11 @@ final class RuntimeConfigureWorkflowTests: XCTestCase {
                 }
             ),
             effects: RuntimeConfigureEffects(
-                createDirectory: { url, withIntermediateDirectories in
-                    self.preWriteEffects.append("mkdir:\(url.path):\(withIntermediateDirectories)")
+                resolveSecretFileChanges: { request in
+                    try self.resolveSecretFileChanges(in: request)
                 },
-                resizeVMDiskIfNeeded: { diskGiB in
-                    self.preWriteEffects.append("resize:\(diskGiB)")
-                },
-                setInstalledProxyPort: { port in
-                    self.preWriteEffects.append("proxy:\(port)")
-                },
-                readSecretFile: { url in
-                    self.readSecretFiles.append(url)
-                    if let secretFileError = self.secretFileError {
-                        throw secretFileError
-                    }
-                    return self.secretFileContents
-                },
-                restrictSecretFile: { url in
-                    self.postWriteEffects.append("restrict:\(url.path)")
-                },
-                setStartOnBoot: { enabled in
-                    self.preWriteEffects.append("start-on-boot:\(enabled)")
-                },
-                setSystemSleepPrevention: { enabled in
-                    self.preWriteEffects.append("sleep:\(enabled)")
-                },
-                restartRuntimeServices: {
-                    self.postWriteEffects.append("restart")
+                executeEffects: { effects in
+                    try self.executeEffects(effects)
                 },
                 ensureRuntimeDefaults: { _ in },
                 log: { message in
@@ -168,6 +146,49 @@ final class RuntimeConfigureWorkflowTests: XCTestCase {
                 }
             )
         )
+
+        func resolveSecretFileChanges(
+            in request: ConfigureRuntimeRequest<ConfigureWorkflowTestNetworkMode>
+        ) throws -> ConfigureRuntimeRequest<ConfigureWorkflowTestNetworkMode> {
+            let useCase = ConfigureRuntimeUseCase<ConfigureWorkflowTestVMConfig>()
+            let changes = try request.changes.map { change in
+                switch change {
+                case .adminPasswordFile(let url):
+                    readSecretFiles.append(url)
+                    if let secretFileError {
+                        throw secretFileError
+                    }
+                    return try useCase.resolvedAdminPasswordChange(from: ConfigureRuntimeSecretFileInput(
+                        path: url.path,
+                        contents: secretFileContents
+                    ))
+                default:
+                    return change
+                }
+            }
+            return ConfigureRuntimeRequest(changes: changes, restart: request.restart)
+        }
+
+        func executeEffects(_ effects: [ConfigureRuntimeEffect]) throws {
+            for effect in effects {
+                switch effect {
+                case .createDirectory(let url, let withIntermediateDirectories):
+                    preWriteEffects.append("mkdir:\(url.path):\(withIntermediateDirectories)")
+                case .resizeVMDiskIfNeeded(let diskGiB):
+                    preWriteEffects.append("resize:\(diskGiB)")
+                case .setInstalledProxyPort(let port):
+                    preWriteEffects.append("proxy:\(port)")
+                case .restrictSecretFile(let url):
+                    postWriteEffects.append("restrict:\(url.path)")
+                case .setStartOnBoot(let enabled):
+                    preWriteEffects.append("start-on-boot:\(enabled)")
+                case .setSystemSleepPrevention(let enabled):
+                    preWriteEffects.append("sleep:\(enabled)")
+                case .restartRuntimeServices:
+                    postWriteEffects.append("restart")
+                }
+            }
+        }
 
         var vmConfig = ConfigureWorkflowTestVMConfig(
             configureCPUCount: 2,

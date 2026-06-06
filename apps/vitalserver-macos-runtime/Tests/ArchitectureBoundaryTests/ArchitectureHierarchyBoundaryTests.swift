@@ -340,6 +340,28 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         }
     }
 
+    func testRuntimeConfigureWorkflowDoesNotOwnSecretResolutionOrEffectExecutionDetails() throws {
+        let file = packageRoot().appendingPathComponent(
+            "Sources/Workflow/RuntimeConfigureLifecycle/RuntimeConfigureWorkflow.swift"
+        )
+        let text = try String(contentsOf: file, encoding: .utf8)
+        let forbiddenTokens = [
+            "readSecretFile",
+            "switch change",
+            "case .adminPasswordFile",
+            "switch effect",
+            "case .createDirectory",
+            "case .restartRuntimeServices",
+        ]
+
+        for token in forbiddenTokens {
+            XCTAssertFalse(
+                text.contains(token),
+                "RuntimeConfigureWorkflow must delegate secret resolution and effect execution instead of owning \(token)"
+            )
+        }
+    }
+
     func testRuntimeInstallWorkflowDoesNotOwnSetupModeOrErrorReasonSelection() throws {
         let file = packageRoot().appendingPathComponent(
             "Sources/Workflow/RuntimeInstallLifecycle/RuntimeInstallWorkflow.swift"
@@ -648,30 +670,36 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         }
     }
 
-    func testRuntimeApplyBundleRunnerDoesNotInterpretInitialHealthWarningDirectly() throws {
+    func testRuntimeApplyBundleWorkflowDoesNotOwnApplyRunDecisionFlow() throws {
         let file = packageRoot().appendingPathComponent(
-            "Sources/Workflow/RuntimeUpdateLifecycle/RuntimeApplyBundleRunner.swift"
+            "Sources/Workflow/RuntimeUpdateLifecycle/RuntimeApplyBundleWorkflow.swift"
         )
         let text = try String(contentsOf: file, encoding: .utf8)
         let forbiddenTokens = [
-            "initialHealthDecision",
-            "warningMessage",
-            "if let warning",
+            "RuntimeApplyBundleRunner",
+            "RuntimeOperationPlanRunner.run",
+            "applyBundlePreflightFailurePlan",
+            "applyBundleFailureRecoveryPlan",
+            "applyBundleArtifactCleanupFailedLogMessage",
+            "planApplyBundle",
+            "pruneOldRuntimeArtifactsBestEffort",
         ]
 
         for token in forbiddenTokens {
             XCTAssertFalse(
                 text.contains(token),
-                "RuntimeApplyBundleRunner must execute UseCase initial health warning plans instead of interpreting \(token) directly"
+                "RuntimeApplyBundleWorkflow must delegate apply run decisions instead of owning \(token)"
             )
         }
     }
 
-    func testRuntimeApplyBundleRunnerDoesNotExecuteFailureRecoveryDirectly() throws {
-        let file = packageRoot().appendingPathComponent(
-            "Sources/Workflow/RuntimeUpdateLifecycle/RuntimeApplyBundleRunner.swift"
-        )
-        let text = try String(contentsOf: file, encoding: .utf8)
+    func testRuntimeUpdateLifecycleDoesNotContainApplyBundleRunner() throws {
+        let updateWorkflowRoot = packageRoot().appendingPathComponent("Sources/Workflow/RuntimeUpdateLifecycle")
+        let fileNames = Set(try swiftFiles(root: updateWorkflowRoot).map(\.lastPathComponent))
+        XCTAssertFalse(fileNames.contains("RuntimeApplyBundleRunner.swift"))
+
+        let workflowFile = updateWorkflowRoot.appendingPathComponent("RuntimeApplyBundleWorkflow.swift")
+        let text = try String(contentsOf: workflowFile, encoding: .utf8)
         let forbiddenTokens = [
             "applyBundleRollbackStartedPlan",
             "applyBundleRollbackCompletedStatusPlan",
@@ -687,7 +715,7 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         for token in forbiddenTokens {
             XCTAssertFalse(
                 text.contains(token),
-                "RuntimeApplyBundleRunner must delegate failure recovery plans instead of owning \(token)"
+                "RuntimeApplyBundleWorkflow must delegate failure recovery plans instead of owning \(token)"
             )
         }
     }
