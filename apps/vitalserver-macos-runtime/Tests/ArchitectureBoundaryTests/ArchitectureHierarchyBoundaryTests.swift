@@ -265,6 +265,21 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         }
     }
 
+    func testWorkflowDoesNotCallDomainPolicyOrReasonFormatterDirectly() throws {
+        let workflowRoot = packageRoot().appendingPathComponent("Sources/Workflow")
+        for file in try swiftFiles(root: workflowRoot) {
+            let text = try String(contentsOf: file, encoding: .utf8)
+            XCTAssertFalse(
+                containsRegex(#"Runtime[A-Za-z0-9]+Policy\."#, in: text),
+                "Workflow must call Application usecases instead of Domain policy static methods directly: \(file.path)"
+            )
+            XCTAssertFalse(
+                text.contains("RuntimeFailureReasonText.describe"),
+                "Workflow must call Application usecases instead of formatting failure reasons directly: \(file.path)"
+            )
+        }
+    }
+
     private func packageRoot() -> URL {
         URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
     }
@@ -401,6 +416,10 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
 
     private func containsConcreteProcessInvocation(_ text: String) -> Bool {
         let pattern = #"(^|[^A-Za-z0-9_])Process\s*\("#
+        return containsRegex(pattern, in: text)
+    }
+
+    private func containsRegex(_ pattern: String, in text: String) -> Bool {
         guard let regex = try? NSRegularExpression(pattern: pattern) else {
             return false
         }

@@ -83,7 +83,7 @@ public struct RuntimeApplyBundlePreflightRunner {
             rootfsStorage = .unchanged
             log("bundle apply storage preflight rootfsBase=unchanged")
         }
-        let storageRequirement = RuntimeUpdatePreflightPolicy.storageRequirement(
+        let storageRequirement = useCase.storageRequirement(
             stagedBundleBytes: stagedBundleSize,
             rootfsStorage: rootfsStorage,
             marginBytes: updateFreeSpaceMarginBytes

@@ -261,6 +261,18 @@ public struct UpdateRuntimeUseCase {
         )
     }
 
+    public func storageRequirement(
+        stagedBundleBytes: UInt64,
+        rootfsStorage: RuntimeUpdateRootfsStorageInput,
+        marginBytes: UInt64
+    ) -> RuntimeUpdateStorageRequirement {
+        RuntimeUpdatePreflightPolicy.storageRequirement(
+            stagedBundleBytes: stagedBundleBytes,
+            rootfsStorage: rootfsStorage,
+            marginBytes: marginBytes
+        )
+    }
+
     public func stopPlan(restartPolicy: RuntimeServiceRestartPolicy) -> ApplyRuntimeBundleStopPlan {
         ApplyRuntimeBundleStopPlan(preparesGuestShutdown: restartPolicy.restartVM)
     }

@@ -1,5 +1,5 @@
+import Application
 import Contracts
-import Domain
 import Foundation
 import Errors
 
@@ -19,6 +19,9 @@ public struct RuntimeManagedOperationGuard {
     private let now: () -> Date
     private let graceSeconds: TimeInterval
     private let log: (String) -> Void
+    private var useCase: WatchdogRuntimeUseCase {
+        WatchdogRuntimeUseCase()
+    }
 
     public init(
         statusReporter: RuntimeStatusReporter,
@@ -42,50 +45,36 @@ public struct RuntimeManagedOperationGuard {
     }
 
     private func activeStatusOperation() -> RuntimeOperation? {
-        let status: RuntimeStatusDocument
         switch statusReporter.loadStatusResult() {
         case .loaded(let document):
-            status = document
+            return operation(from: useCase.statusManagedOperationGuardPlan(
+                status: document,
+                now: now(),
+                graceSeconds: graceSeconds
+            ))
         case .missing:
             return nil
         case .failed(let message):
-            log("watchdog active operation guard ignored status read failure error=\(message)")
-            return nil
+            return operation(from: useCase.statusReadFailureGuardPlan(reason: message))
         }
-        guard status.status == .installing || status.status == .updating || status.status == .recovering else {
-            return nil
-        }
-        guard RuntimeManagedOperationPolicy.isProtectedFromWatchdogRecovery(status.operation) else {
-            return nil
-        }
-        guard let updatedAt = ISO8601DateFormatter().date(from: status.updatedAt) else {
-            log("watchdog active operation guard ignored invalid updatedAt operation=\(status.operation.rawValue) updatedAt=\(status.updatedAt)")
-            return nil
-        }
-        let age = now().timeIntervalSince(updatedAt)
-        if age > graceSeconds {
-            log("watchdog active operation guard expired operation=\(status.operation.rawValue) ageSeconds=\(String(format: "%.0f", age))")
-            return nil
-        }
-        return status.operation
     }
 
     private func activeBootstrapOperation() -> RuntimeOperation? {
         guard let bootstrap = activeGuestBootstrap() else {
             return nil
         }
-        guard let updatedAt = bootstrap.updatedAt else {
-            log("watchdog guest bootstrap guard active without updatedAt operation=\(bootstrap.operation.rawValue)")
-            return bootstrap.operation
+        return operation(from: useCase.guestBootstrapManagedOperationGuardPlan(
+            operation: bootstrap.operation,
+            updatedAt: bootstrap.updatedAt,
+            now: now(),
+            graceSeconds: graceSeconds
+        ))
+    }
+
+    private func operation(from plan: WatchdogRuntimeManagedOperationGuardPlan) -> RuntimeOperation? {
+        if let logMessage = plan.logMessage {
+            log(logMessage)
         }
-        let age = now().timeIntervalSince(updatedAt)
-        if age > graceSeconds {
-            log(
-                "watchdog guest bootstrap guard expired operation=\(bootstrap.operation.rawValue) "
-                    + "ageSeconds=\(String(format: "%.0f", age))"
-            )
-            return nil
-        }
-        return bootstrap.operation
+        return plan.activeOperation
     }
 }

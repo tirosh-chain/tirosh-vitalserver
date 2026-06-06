@@ -78,6 +78,22 @@ public struct InstallRuntimeUseCase {
         )
     }
 
+    public func freshInstallPreflightDocument(
+        settingsState: RuntimeInstallSettingsState,
+        artifactStates: [RuntimeInstallArtifactState],
+        serviceStates: [RuntimeFreshInstallServiceState],
+        packageReceiptStates: [RuntimePackageReceiptState],
+        proxyPortState: RuntimeHostProxyPortState?
+    ) -> RuntimeFreshInstallPreflightDocument {
+        RuntimeFreshInstallPreflightPolicy.document(input: RuntimeFreshInstallPreflightInput(
+            settingsState: settingsState,
+            artifactStates: artifactStates,
+            serviceStates: serviceStates,
+            packageReceiptStates: packageReceiptStates,
+            proxyPortState: proxyPortState
+        ))
+    }
+
     public func settingsLoadFailedStatusMessage(error: Error) -> String {
         "runtime install failed: \(error)"
     }

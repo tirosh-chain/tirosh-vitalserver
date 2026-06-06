@@ -48,7 +48,7 @@ public struct RuntimeRecoveryInput: Equatable {
     }
 }
 
-public struct RuntimeRecoveryPlan: Equatable {
+public struct RuntimeRecoveryPlan: Equatable, Sendable {
     public let canRecover: Bool
     public let restartVM: Bool
     public let restartGuestLogSync: Bool

@@ -1,5 +1,5 @@
+import Application
 import Contracts
-import Domain
 import Errors
 
 public struct RuntimeObservedEventPublisher {
@@ -20,6 +20,9 @@ public struct RuntimeObservedEventPublisher {
         RuntimeHealthSnapshot,
         RuntimeEventType
     ) -> Void
+    private var useCase: RefreshRuntimeHealthUseCase {
+        RefreshRuntimeHealthUseCase()
+    }
 
     public init(
         previousStatus: @escaping () -> RuntimeStatusLevel?,
@@ -58,7 +61,7 @@ public struct RuntimeObservedEventPublisher {
             operation,
             message,
             snapshot,
-            RuntimeObservedEventTypePolicy.eventType(for: snapshot, defaultEventType: defaultEventType)
+            useCase.observedEventType(snapshot: snapshot, defaultEventType: defaultEventType)
         )
     }
 
@@ -75,7 +78,7 @@ public struct RuntimeObservedEventPublisher {
             operation,
             message,
             snapshot,
-            RuntimeObservedEventTypePolicy.eventType(for: snapshot, defaultEventType: defaultEventType)
+            useCase.observedEventType(snapshot: snapshot, defaultEventType: defaultEventType)
         )
     }
 

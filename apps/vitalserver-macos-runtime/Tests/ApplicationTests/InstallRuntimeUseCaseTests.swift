@@ -97,6 +97,25 @@ final class InstallRuntimeUseCaseTests: XCTestCase {
         XCTAssertEqual(useCase.stepCompletedLogMessage(.startInstalledServices), "step=start-installed-services status=completed")
     }
 
+    func testFreshInstallPreflightDocumentPreservesExplicitInputStatesWithoutWorkflowPolicyCall() {
+        let useCase = InstallRuntimeUseCase()
+
+        let document = useCase.freshInstallPreflightDocument(
+            settingsState: .defaulted(path: "/settings.json", proxyPort: 80),
+            artifactStates: [.absent(path: "/usr/local/bin/vitalserver-vm")],
+            serviceStates: RuntimeManagedService.stopOrder.map { service in
+                RuntimeFreshInstallServiceState(label: service.label, state: .notLoaded)
+            },
+            packageReceiptStates: [.absent(identifier: "ai.tirosh.vitalserver.helper")],
+            proxyPortState: nil
+        )
+
+        XCTAssertFalse(document.passed)
+        XCTAssertEqual(document.proxyPort, 80)
+        XCTAssertEqual(document.proxyPortState, nil)
+        XCTAssertEqual(document.blockers, ["host-proxy-port-state-missing:port=80"])
+    }
+
     func testSetupObservationCommandsUseFirstPlanStepOnlyWhenExplicitlyPassed() throws {
         let useCase = InstallRuntimeUseCase()
         let fullPlan = useCase.plan(for: InstallRuntimeRequest(mode: .full))

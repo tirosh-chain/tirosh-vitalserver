@@ -100,12 +100,12 @@ public struct RuntimeHealthWaitWorkflow {
                 )
             },
             onProgress: { reasons in
-                let reasonText = RuntimeFailureReasonText.describe(reasons)
-                writer.log("waiting for runtime health reasons=\(reasonText)")
+                let progressPlan = useCase.progressPlan(reasons: reasons)
+                writer.log(progressPlan.logMessage)
                 writer.writeStatusBestEffort(
-                    .recovering,
-                    .health,
-                    "waiting for runtime health: \(reasonText)"
+                    progressPlan.status,
+                    progressPlan.operation,
+                    progressPlan.statusMessage
                 )
             },
             sleep: writer.sleep
@@ -114,15 +114,13 @@ public struct RuntimeHealthWaitWorkflow {
         switch waitResult {
         case .healthy:
             let snapshot = reader.healthSnapshot()
-            writer.log("runtime health ok hostProxyHTTP=\(snapshot.hostProxyHTTP)")
+            writer.log(useCase.healthyLogMessage(snapshot: snapshot))
         case .failedEarly(let reason):
-            writer.log("runtime health failed early reason=\(reason.rawValue)")
-            throw RuntimeHealthWaitWorkflowError.operationFailed(
-                "runtime health failed early reason=\(reason.rawValue)"
-            )
+            let message = useCase.failedEarlyMessage(reason: reason)
+            writer.log(message)
+            throw RuntimeHealthWaitWorkflowError.operationFailed(message)
         case .timedOut(let reasons):
-            let reasonText = RuntimeFailureReasonText.describe(reasons)
-            throw RuntimeHealthWaitWorkflowError.operationFailed("runtime health timed out reasons=\(reasonText)")
+            throw RuntimeHealthWaitWorkflowError.operationFailed(useCase.timedOutFailureMessage(reasons: reasons))
         }
     }
 }

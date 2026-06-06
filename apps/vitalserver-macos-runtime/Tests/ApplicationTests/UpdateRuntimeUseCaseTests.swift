@@ -131,6 +131,37 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
         )
     }
 
+    func testStorageRequirementIsPlannedByUseCaseFromExplicitRootfsState() {
+        let useCase = UpdateRuntimeUseCase()
+
+        XCTAssertEqual(
+            useCase.storageRequirement(
+                stagedBundleBytes: 100,
+                rootfsStorage: .unchanged,
+                marginBytes: 10
+            ),
+            RuntimeUpdateStorageRequirement(
+                requiredBytes: 110,
+                stagedBundleBytes: 100,
+                installedRootfsBytes: nil,
+                incomingRootfsBytes: nil
+            )
+        )
+        XCTAssertEqual(
+            useCase.storageRequirement(
+                stagedBundleBytes: 100,
+                rootfsStorage: .replacing(installedRootfsBytes: 20, incomingRootfsBytes: 30),
+                marginBytes: 10
+            ),
+            RuntimeUpdateStorageRequirement(
+                requiredBytes: 160,
+                stagedBundleBytes: 100,
+                installedRootfsBytes: 20,
+                incomingRootfsBytes: 30
+            )
+        )
+    }
+
     func testDiskHealthDecisionAllowsUpdateWithoutGuestStorageBlockers() {
         let useCase = UpdateRuntimeUseCase()
 

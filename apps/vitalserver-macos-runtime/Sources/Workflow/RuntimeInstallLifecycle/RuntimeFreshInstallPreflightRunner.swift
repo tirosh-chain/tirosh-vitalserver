@@ -1,6 +1,5 @@
+import Application
 import Contracts
-import Domain
-import Errors
 
 public struct RuntimeFreshInstallPreflightRunner {
     public var settingsState: () -> RuntimeInstallSettingsState
@@ -8,6 +7,9 @@ public struct RuntimeFreshInstallPreflightRunner {
     public var serviceStates: () -> [RuntimeFreshInstallServiceState]
     public var packageReceiptStates: () -> [RuntimePackageReceiptState]
     public var proxyPortState: (Int) -> RuntimeHostProxyPortState
+    private var useCase: InstallRuntimeUseCase {
+        InstallRuntimeUseCase()
+    }
 
     public init(
         settingsState: @escaping () -> RuntimeInstallSettingsState,
@@ -26,12 +28,12 @@ public struct RuntimeFreshInstallPreflightRunner {
     public func run() -> RuntimeFreshInstallPreflightDocument {
         let settings = settingsState()
         let proxyState = settings.proxyPort.map(proxyPortState)
-        return RuntimeFreshInstallPreflightPolicy.document(input: RuntimeFreshInstallPreflightInput(
+        return useCase.freshInstallPreflightDocument(
             settingsState: settings,
             artifactStates: artifactStates(),
             serviceStates: serviceStates(),
             packageReceiptStates: packageReceiptStates(),
             proxyPortState: proxyState
-        ))
+        )
     }
 }

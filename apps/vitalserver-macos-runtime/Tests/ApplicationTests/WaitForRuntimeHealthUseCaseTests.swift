@@ -101,6 +101,29 @@ final class WaitForRuntimeHealthUseCaseTests: XCTestCase {
 
         XCTAssertEqual(observation.serviceStates[.vm], .permissionDenied("operation not permitted"))
     }
+
+    func testUseCaseOwnsWaitProgressAndFailureMessages() {
+        let useCase = WaitForRuntimeHealthUseCase()
+
+        let progress = useCase.progressPlan(reasons: [.hostProxyHTTP("503")])
+
+        XCTAssertEqual(progress.status, .recovering)
+        XCTAssertEqual(progress.operation, .health)
+        XCTAssertEqual(progress.logMessage, "waiting for runtime health reasons=host-proxy-http-503")
+        XCTAssertEqual(progress.statusMessage, "waiting for runtime health: host-proxy-http-503")
+        XCTAssertEqual(
+            useCase.healthyLogMessage(snapshot: healthSnapshot(reasons: [])),
+            "runtime health ok hostProxyHTTP=200"
+        )
+        XCTAssertEqual(
+            useCase.failedEarlyMessage(reason: .vmService("not-loaded")),
+            "runtime health failed early reason=vm-service-not-loaded"
+        )
+        XCTAssertEqual(
+            useCase.timedOutFailureMessage(reasons: [.guestHTTP("000")]),
+            "runtime health timed out reasons=guest-http-000"
+        )
+    }
 }
 
 private func healthSnapshot(reasons: [RuntimeFailureReason]) -> RuntimeHealthSnapshot {

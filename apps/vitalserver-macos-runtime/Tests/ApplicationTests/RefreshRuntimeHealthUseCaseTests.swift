@@ -38,6 +38,25 @@ final class RefreshRuntimeHealthUseCaseTests: XCTestCase {
         XCTAssertEqual(decision.statusMessage, "runtime health check failed: audit-proxy-http-failed")
         XCTAssertEqual(decision.observedEventMessage, "runtime domain errors observed: audit-proxy-http-failed")
     }
+
+    func testObservedEventTypeIsSelectedByUseCaseFromSnapshot() {
+        let useCase = RefreshRuntimeHealthUseCase()
+
+        XCTAssertEqual(
+            useCase.observedEventType(
+                snapshot: healthSnapshot(reasons: [.guestHTTP("503")]),
+                defaultEventType: .healthObserved
+            ),
+            .domainErrorObserved
+        )
+        XCTAssertEqual(
+            useCase.observedEventType(
+                snapshot: healthSnapshot(reasons: []),
+                defaultEventType: .healthObserved
+            ),
+            .healthObserved
+        )
+    }
 }
 
 private func healthSnapshot(reasons: [RuntimeFailureReason]) -> RuntimeHealthSnapshot {

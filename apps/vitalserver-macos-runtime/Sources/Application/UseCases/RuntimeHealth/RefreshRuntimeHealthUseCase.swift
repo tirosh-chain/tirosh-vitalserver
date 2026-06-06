@@ -58,6 +58,13 @@ public struct RefreshRuntimeHealthUseCase {
         )
     }
 
+    public func observedEventType(
+        snapshot: RuntimeHealthSnapshot,
+        defaultEventType: RuntimeEventType
+    ) -> RuntimeEventType {
+        RuntimeObservedEventTypePolicy.eventType(for: snapshot, defaultEventType: defaultEventType)
+    }
+
     private func observedErrorLabel(_ snapshot: RuntimeHealthSnapshot) -> String {
         snapshot.vmErrors.isEmpty ? "runtime domain errors" : "runtime VM errors"
     }
