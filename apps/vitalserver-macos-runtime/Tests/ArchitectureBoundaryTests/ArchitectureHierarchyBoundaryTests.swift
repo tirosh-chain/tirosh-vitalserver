@@ -280,6 +280,17 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         }
     }
 
+    func testRuntimeUpdateWorkflowDoesNotInterpretOperationStepsDirectly() throws {
+        let updateWorkflowRoot = packageRoot().appendingPathComponent("Sources/Workflow/RuntimeUpdateLifecycle")
+        for file in try swiftFiles(root: updateWorkflowRoot) {
+            let text = try String(contentsOf: file, encoding: .utf8)
+            XCTAssertFalse(
+                text.contains("switch step"),
+                "RuntimeUpdateLifecycle Workflow must ask UseCase for step execution plans instead of interpreting RuntimeWorkflowStep directly: \(file.path)"
+            )
+        }
+    }
+
     private func packageRoot() -> URL {
         URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
     }
