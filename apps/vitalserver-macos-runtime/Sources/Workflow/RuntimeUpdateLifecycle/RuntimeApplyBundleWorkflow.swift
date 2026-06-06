@@ -36,6 +36,7 @@ public struct RuntimeApplyBundleWorkflowOperations {
     public var checkCompatibility: (UpdateBundleManifest) throws -> Void
     public var serviceRestartPolicy: () -> RuntimeServiceRestartPolicy
     public var runtimeHealthSnapshot: () -> RuntimeHealthSnapshot
+    public var executeInitialHealthWarningPlan: (ApplyRuntimeBundleInitialHealthWarningPlan) throws -> Void
     public var executePreflightCapabilityInstruction: (ApplyRuntimeBundlePreflightCapabilityInstruction) throws -> Void
     public var createBackup: (String) throws -> URL
     public var rotateRuntimeLogs: () throws -> Void
@@ -57,6 +58,7 @@ public struct RuntimeApplyBundleWorkflowOperations {
         checkCompatibility: @escaping (UpdateBundleManifest) throws -> Void,
         serviceRestartPolicy: @escaping () -> RuntimeServiceRestartPolicy,
         runtimeHealthSnapshot: @escaping () -> RuntimeHealthSnapshot,
+        executeInitialHealthWarningPlan: @escaping (ApplyRuntimeBundleInitialHealthWarningPlan) throws -> Void,
         executePreflightCapabilityInstruction: @escaping (ApplyRuntimeBundlePreflightCapabilityInstruction) throws -> Void,
         createBackup: @escaping (String) throws -> URL,
         rotateRuntimeLogs: @escaping () throws -> Void,
@@ -77,6 +79,7 @@ public struct RuntimeApplyBundleWorkflowOperations {
         self.checkCompatibility = checkCompatibility
         self.serviceRestartPolicy = serviceRestartPolicy
         self.runtimeHealthSnapshot = runtimeHealthSnapshot
+        self.executeInitialHealthWarningPlan = executeInitialHealthWarningPlan
         self.executePreflightCapabilityInstruction = executePreflightCapabilityInstruction
         self.createBackup = createBackup
         self.rotateRuntimeLogs = rotateRuntimeLogs
@@ -111,6 +114,7 @@ public struct RuntimeApplyBundleWorkflow {
         RuntimeApplyBundleRunner(
             prepareLogs: prepareApplyBundleLogs,
             initialHealthSnapshot: operations.runtimeHealthSnapshot,
+            executeInitialHealthWarningPlan: operations.executeInitialHealthWarningPlan,
             preparePreflight: prepareApplyBundlePreflight,
             executeStep: executeApplyBundleStep,
             rollback: operations.rollback,

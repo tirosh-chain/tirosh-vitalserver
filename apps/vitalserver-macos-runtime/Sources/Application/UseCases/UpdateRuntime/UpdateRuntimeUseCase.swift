@@ -13,6 +13,11 @@ public struct ApplyRuntimeBundleInitialHealthDecision: Equatable, Sendable {
     }
 }
 
+public enum ApplyRuntimeBundleInitialHealthWarningPlan: Equatable, Sendable {
+    case continueWithoutWarning
+    case continueWithWarning(String)
+}
+
 public struct ApplyRuntimeBundlePlan: Equatable, Sendable {
     public let operationPlan: RuntimeOperationPlan
 
@@ -442,6 +447,16 @@ public struct UpdateRuntimeUseCase {
             shouldWarn: true,
             warningMessage: "bundle apply preflight warning runtime unhealthy reasons=\(reasonText)"
         )
+    }
+
+    public func initialHealthWarningPlan(
+        snapshot: RuntimeHealthSnapshot
+    ) -> ApplyRuntimeBundleInitialHealthWarningPlan {
+        let decision = initialHealthDecision(snapshot: snapshot)
+        guard let warningMessage = decision.warningMessage else {
+            return .continueWithoutWarning
+        }
+        return .continueWithWarning(warningMessage)
     }
 
     public func planApplyBundle(for preflight: ApplyBundlePreflightContext) -> ApplyRuntimeBundlePlan {

@@ -299,6 +299,7 @@ public struct RuntimeBundleComposition {
                     )
                 },
                 runtimeHealthSnapshot: operations.runtimeHealthSnapshot,
+                executeInitialHealthWarningPlan: executeInitialHealthWarningPlan,
                 executePreflightCapabilityInstruction: executePreflightCapabilityInstruction,
                 createBackup: operations.createBackup,
                 rotateRuntimeLogs: operations.rotateRuntimeLogs,
@@ -354,6 +355,15 @@ public struct RuntimeBundleComposition {
             try requireRuntimeDiskHealthAllowsUpdate()
         case .requireGuestCapability(let capability):
             try operations.requireGuestCapability(capability)
+        }
+    }
+
+    private func executeInitialHealthWarningPlan(_ plan: ApplyRuntimeBundleInitialHealthWarningPlan) {
+        switch plan {
+        case .continueWithoutWarning:
+            return
+        case .continueWithWarning(let logMessage):
+            operations.log(logMessage)
         }
     }
 

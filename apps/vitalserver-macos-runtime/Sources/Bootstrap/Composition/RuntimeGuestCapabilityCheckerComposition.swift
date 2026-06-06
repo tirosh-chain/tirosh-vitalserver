@@ -9,7 +9,19 @@ public enum RuntimeGuestCapabilityCheckerComposition {
         RuntimeGuestCapabilityChecker(
             loadRuntimeState: {
                 guestGateway.loadRuntimeStateDocument()
+            },
+            executeRequirementPlan: { plan in
+                try executeRequirementPlan(plan)
             }
         )
+    }
+
+    private static func executeRequirementPlan(_ plan: RuntimeGuestCapabilityRequirementPlan) throws {
+        switch plan {
+        case .supported:
+            return
+        case .failed(let failure):
+            throw failure
+        }
     }
 }

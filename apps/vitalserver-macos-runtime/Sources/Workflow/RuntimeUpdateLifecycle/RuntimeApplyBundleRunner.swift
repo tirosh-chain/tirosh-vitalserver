@@ -7,6 +7,7 @@ import Errors
 public struct RuntimeApplyBundleRunner {
     public var prepareLogs: () throws -> Void
     public var initialHealthSnapshot: () -> RuntimeHealthSnapshot
+    public var executeInitialHealthWarningPlan: (ApplyRuntimeBundleInitialHealthWarningPlan) throws -> Void
     public var preparePreflight: (URL) throws -> ApplyBundlePreflightContext
     public var executeStep: (RuntimeWorkflowStep, ApplyBundlePreflightContext) throws -> Void
     public var rollback: (URL) throws -> Void
@@ -21,6 +22,7 @@ public struct RuntimeApplyBundleRunner {
     public init(
         prepareLogs: @escaping () throws -> Void,
         initialHealthSnapshot: @escaping () -> RuntimeHealthSnapshot,
+        executeInitialHealthWarningPlan: @escaping (ApplyRuntimeBundleInitialHealthWarningPlan) throws -> Void,
         preparePreflight: @escaping (URL) throws -> ApplyBundlePreflightContext,
         executeStep: @escaping (RuntimeWorkflowStep, ApplyBundlePreflightContext) throws -> Void,
         rollback: @escaping (URL) throws -> Void,
@@ -31,6 +33,7 @@ public struct RuntimeApplyBundleRunner {
     ) {
         self.prepareLogs = prepareLogs
         self.initialHealthSnapshot = initialHealthSnapshot
+        self.executeInitialHealthWarningPlan = executeInitialHealthWarningPlan
         self.preparePreflight = preparePreflight
         self.executeStep = executeStep
         self.rollback = rollback
@@ -46,13 +49,7 @@ public struct RuntimeApplyBundleRunner {
         try prepareLogs()
         try write(startedPlan)
 
-        let initialHealth = initialHealthSnapshot()
-        let initialHealthDecision = useCase.initialHealthDecision(
-            snapshot: initialHealth
-        )
-        if let warningMessage = initialHealthDecision.warningMessage {
-            statusReporter.log(warningMessage)
-        }
+        try executeInitialHealthWarningPlan(useCase.initialHealthWarningPlan(snapshot: initialHealthSnapshot()))
 
         let preflight: ApplyBundlePreflightContext
         do {

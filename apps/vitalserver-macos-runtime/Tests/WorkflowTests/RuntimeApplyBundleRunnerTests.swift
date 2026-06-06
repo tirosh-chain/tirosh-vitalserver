@@ -134,6 +134,11 @@ private final class ApplyBundleHarness {
                     failureReasons: []
                 )
             },
+            executeInitialHealthWarningPlan: { plan in
+                if case .continueWithWarning(let message) = plan {
+                    self.logs.append(message)
+                }
+            },
             preparePreflight: { _ in
                 if let preflightError = self.preflightError {
                     throw preflightError

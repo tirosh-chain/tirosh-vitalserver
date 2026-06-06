@@ -102,9 +102,9 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
     }
 
     func testGuestCapabilityReadChaosPreservesReadFailureReason() {
-        let checker = RuntimeGuestCapabilityChecker(loadRuntimeState: {
-            .failed("permission denied")
-        })
+        let checker = RuntimeGuestCapabilityCheckerComposition.make(
+            guestGateway: RuntimeUpdateChaosGuestGateway(result: .failed("permission denied"))
+        )
 
         XCTAssertThrowsError(try checker.require(.prepareUpdateShutdown)) { error in
             XCTAssertEqual(
@@ -165,6 +165,11 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
         let runner = RuntimeApplyBundleRunner(
             prepareLogs: {},
             initialHealthSnapshot: { Self.healthSnapshot() },
+            executeInitialHealthWarningPlan: { plan in
+                if case .continueWithWarning(let warningLogMessage) = plan {
+                    logs.append(warningLogMessage)
+                }
+            },
             preparePreflight: { _ in preflight },
             executeStep: { step, _ in
                 executedSteps.append(step)
@@ -518,6 +523,29 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
             failureReasons: []
         )
     }
+}
+
+private final class RuntimeUpdateChaosGuestGateway: RuntimeGuestGateway {
+    let result: RuntimeGuestDocumentLoadResult<GuestRuntimeStateDocument>
+
+    init(result: RuntimeGuestDocumentLoadResult<GuestRuntimeStateDocument>) {
+        self.result = result
+    }
+
+    func loadRuntimeStateDocument() -> RuntimeGuestDocumentLoadResult<GuestRuntimeStateDocument> {
+        result
+    }
+
+    func loadBootstrapResultDocument() -> RuntimeGuestDocumentLoadResult<GuestBootstrapResultDocument> { .missing }
+    func removeUpdateActivationResult() throws {}
+    func writeUpdateActivationRequest(_ request: RuntimeGuestActivationRequest) throws {}
+    func loadUpdateActivationResultDocument() -> RuntimeGuestDocumentLoadResult<GuestUpdateActivationResultDocument> { .missing }
+    func removeUpdateShutdownResult() throws {}
+    func writeUpdateShutdownRequest(_ request: RuntimeGuestShutdownRequest) throws {}
+    func loadUpdateShutdownResultDocument() -> RuntimeGuestDocumentLoadResult<GuestUpdateShutdownResultDocument> { .missing }
+    func removeDatastoreRepairResult() throws {}
+    func writeDatastoreRepairRequest(_ request: RuntimeDatastoreRepairRequest) throws {}
+    func loadDatastoreRepairResultDocument() -> RuntimeGuestDocumentLoadResult<DatastoreRepairResultDocument> { .missing }
 }
 
 private enum RuntimeChaosError: Error, CustomStringConvertible {

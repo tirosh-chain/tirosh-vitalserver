@@ -15,6 +15,10 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
 
         XCTAssertFalse(decision.shouldWarn)
         XCTAssertNil(decision.warningMessage)
+        XCTAssertEqual(
+            useCase.initialHealthWarningPlan(snapshot: healthSnapshot(reasons: [])),
+            .continueWithoutWarning
+        )
     }
 
     func testInitialHealthDecisionWarnsFromExplicitFailureReasons() {
@@ -28,6 +32,10 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
         XCTAssertEqual(
             decision.warningMessage,
             "bundle apply preflight warning runtime unhealthy reasons=host-proxy-http-000"
+        )
+        XCTAssertEqual(
+            useCase.initialHealthWarningPlan(snapshot: healthSnapshot(reasons: [.hostProxyHTTP("000")])),
+            .continueWithWarning("bundle apply preflight warning runtime unhealthy reasons=host-proxy-http-000")
         )
     }
 

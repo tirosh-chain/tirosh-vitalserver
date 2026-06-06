@@ -490,6 +490,25 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         }
     }
 
+    func testRuntimeApplyBundleRunnerDoesNotInterpretInitialHealthWarningDirectly() throws {
+        let file = packageRoot().appendingPathComponent(
+            "Sources/Workflow/RuntimeUpdateLifecycle/RuntimeApplyBundleRunner.swift"
+        )
+        let text = try String(contentsOf: file, encoding: .utf8)
+        let forbiddenTokens = [
+            "initialHealthDecision",
+            "warningMessage",
+            "if let warning",
+        ]
+
+        for token in forbiddenTokens {
+            XCTAssertFalse(
+                text.contains(token),
+                "RuntimeApplyBundleRunner must execute UseCase initial health warning plans instead of interpreting \(token) directly"
+            )
+        }
+    }
+
     func testRuntimeBundlePreparationWorkflowDoesNotInterpretTemporaryRootDirectly() throws {
         let file = packageRoot().appendingPathComponent(
             "Sources/Workflow/RuntimeUpdateLifecycle/RuntimeBundlePreparationWorkflow.swift"
@@ -517,6 +536,10 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             "guestCapabilityDecision",
             "decision.failure",
             "if let failure",
+            "switch useCase",
+            "case .supported",
+            "case .failed",
+            "throw failure",
         ]
 
         for token in forbiddenTokens {

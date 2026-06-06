@@ -134,6 +134,11 @@ private final class ApplyBundleWorkflowHarness {
                 runtimeHealthSnapshot: {
                     Self.healthSnapshot()
                 },
+                executeInitialHealthWarningPlan: { plan in
+                    if case .continueWithWarning(let message) = plan {
+                        self.logs.append(message)
+                    }
+                },
                 executePreflightCapabilityInstruction: { _ in
                     XCTFail("preflight capability instruction should not run when VM is not being restarted and bundle has no guest deploy")
                 },
