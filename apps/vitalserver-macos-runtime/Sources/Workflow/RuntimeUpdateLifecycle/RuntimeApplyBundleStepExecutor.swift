@@ -66,13 +66,18 @@ public struct RuntimeApplyBundleStepExecutor {
         preflight: ApplyBundlePreflightContext,
         rootfsBase: URL
     ) throws {
-        switch step {
-        case .stopRuntimeServices:
-            let stopPlan = useCase.stopPlan(restartPolicy: preflight.restartPolicy)
-            if stopPlan.preparesGuestShutdown {
+        let executionPlan = useCase.applyBundleStepExecutionPlan(
+            step: step,
+            preflight: preflight,
+            rootfsBase: rootfsBase
+        )
+
+        switch executionPlan {
+        case .stopRuntimeServices(let preparesGuestShutdown, let manifest):
+            if preparesGuestShutdown {
                 let expectedVMProcessID = try runningVMProcessID()
                 log(useCase.capturedVMProcessBeforeGuestUpdateShutdownLogMessage(processID: expectedVMProcessID))
-                try prepareGuestShutdownForUpdate(preflight.manifest)
+                try prepareGuestShutdownForUpdate(manifest)
                 do {
                     defer { clearGuestShutdownPreparationAfterRuntimeStop() }
                     try stopRuntimeServicesAfterGuestPoweroff(expectedVMProcessID)
@@ -80,11 +85,7 @@ public struct RuntimeApplyBundleStepExecutor {
                 return
             }
             try stopRuntimeServices()
-        case .replaceRootfsBase:
-            let rootfsPlan = useCase.rootfsReplacementPlan(
-                stagedRootfs: preflight.stagedRootfs,
-                rootfsBase: rootfsBase
-            )
+        case .replaceRootfsBase(let rootfsPlan):
             guard let stagedRootfs = rootfsPlan.stagedRootfs, rootfsPlan.shouldReplace else {
                 if let skippedLogMessage = rootfsPlan.skippedLogMessage {
                     log(skippedLogMessage)
@@ -100,24 +101,22 @@ public struct RuntimeApplyBundleStepExecutor {
             log(executionPlan.startedLogMessage)
             try replaceFile(stagedRootfs, rootfsPlan.rootfsBase)
             log(executionPlan.completedLogMessage)
-        case .replaceUpdateArtifacts:
-            try replaceUpdateArtifacts(preflight.manifest.artifacts, preflight.stagedBundle)
-        case .runMigrations:
-            try runMigrations(preflight.manifest.migrations, preflight.stagedBundle)
-        case .refreshCloudInitSeed:
-            try refreshCloudInitSeedIfNeeded(preflight.manifest)
-        case .writeRuntimeVersion:
-            try writeRuntimeVersion(preflight.manifest.version, preflight.stagedBundle)
-        case .startRuntimeServices:
-            try startRuntimeServices(preflight.restartPolicy)
-        case .activateGuestUpdate:
-            try activateGuestUpdateIfNeeded(preflight.manifest)
-        case .waitRuntimeHealth:
-            try waitForHealth(preflight.restartPolicy)
-        default:
-            throw RuntimeApplyBundleWorkflowError.operationFailed(
-                useCase.unsupportedApplyBundleStepFailureMessage(step: step)
-            )
+        case .replaceUpdateArtifacts(let artifacts, let stagedBundle):
+            try replaceUpdateArtifacts(artifacts, stagedBundle)
+        case .runMigrations(let migrations, let stagedBundle):
+            try runMigrations(migrations, stagedBundle)
+        case .refreshCloudInitSeed(let manifest):
+            try refreshCloudInitSeedIfNeeded(manifest)
+        case .writeRuntimeVersion(let version, let stagedBundle):
+            try writeRuntimeVersion(version, stagedBundle)
+        case .startRuntimeServices(let restartPolicy):
+            try startRuntimeServices(restartPolicy)
+        case .activateGuestUpdate(let manifest):
+            try activateGuestUpdateIfNeeded(manifest)
+        case .waitRuntimeHealth(let restartPolicy):
+            try waitForHealth(restartPolicy)
+        case .unsupported(let failureMessage):
+            throw RuntimeApplyBundleWorkflowError.operationFailed(failureMessage)
         }
     }
 

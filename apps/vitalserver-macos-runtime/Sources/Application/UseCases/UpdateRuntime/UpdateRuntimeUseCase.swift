@@ -108,6 +108,19 @@ public struct ApplyRuntimeBundleRootfsReplacementExecutionPlan: Equatable, Senda
     }
 }
 
+public enum ApplyRuntimeBundleStepExecutionPlan: Equatable, Sendable {
+    case stopRuntimeServices(preparesGuestShutdown: Bool, manifest: UpdateBundleManifest)
+    case replaceRootfsBase(ApplyRuntimeBundleRootfsReplacementPlan)
+    case replaceUpdateArtifacts(artifacts: [UpdateBundleArtifact], stagedBundle: URL)
+    case runMigrations(migrations: [UpdateBundleMigration], stagedBundle: URL)
+    case refreshCloudInitSeed(manifest: UpdateBundleManifest)
+    case writeRuntimeVersion(version: String, stagedBundle: URL)
+    case startRuntimeServices(RuntimeServiceRestartPolicy)
+    case activateGuestUpdate(manifest: UpdateBundleManifest)
+    case waitRuntimeHealth(RuntimeServiceRestartPolicy)
+    case unsupported(failureMessage: String)
+}
+
 public struct RollbackRuntimePlan: Equatable, Sendable {
     public let operationPlan: RuntimeOperationPlan
 
@@ -174,6 +187,22 @@ public struct RollbackRuntimeManagedArtifactRestorePlan: Equatable, Sendable {
         self.directoryRestores = directoryRestores
         self.runtimeToolsBackup = runtimeToolsBackup
     }
+}
+
+public enum RollbackRuntimeStepExecutionPlan: Equatable, Sendable {
+    case stopRuntimeServices
+    case restoreRootfsBase(source: URL, destination: URL)
+    case restoreRuntimeVersion(RollbackRuntimeVersionRestoreDecision)
+    case restoreUpdateArtifacts(RollbackRuntimeManagedArtifactRestorePlan)
+    case startRuntimeServices(RuntimeServiceRestartPolicy)
+    case waitRuntimeHealth(RuntimeServiceRestartPolicy)
+    case failed(failureMessage: String)
+    case unsupported(failureMessage: String)
+}
+
+public enum RollbackRuntimeStepRequiredInput: Equatable, Sendable {
+    case none
+    case backupVersionExists(URL)
 }
 
 public struct UpdateRuntimeStatusPlan: Equatable, Sendable {
@@ -490,6 +519,50 @@ public struct UpdateRuntimeUseCase {
         )
     }
 
+    public func applyBundleStepExecutionPlan(
+        step: RuntimeWorkflowStep,
+        preflight: ApplyBundlePreflightContext,
+        rootfsBase: URL
+    ) -> ApplyRuntimeBundleStepExecutionPlan {
+        switch step {
+        case .stopRuntimeServices:
+            return .stopRuntimeServices(
+                preparesGuestShutdown: stopPlan(restartPolicy: preflight.restartPolicy).preparesGuestShutdown,
+                manifest: preflight.manifest
+            )
+        case .replaceRootfsBase:
+            return .replaceRootfsBase(rootfsReplacementPlan(
+                stagedRootfs: preflight.stagedRootfs,
+                rootfsBase: rootfsBase
+            ))
+        case .replaceUpdateArtifacts:
+            return .replaceUpdateArtifacts(
+                artifacts: preflight.manifest.artifacts,
+                stagedBundle: preflight.stagedBundle
+            )
+        case .runMigrations:
+            return .runMigrations(
+                migrations: preflight.manifest.migrations,
+                stagedBundle: preflight.stagedBundle
+            )
+        case .refreshCloudInitSeed:
+            return .refreshCloudInitSeed(manifest: preflight.manifest)
+        case .writeRuntimeVersion:
+            return .writeRuntimeVersion(
+                version: preflight.manifest.version,
+                stagedBundle: preflight.stagedBundle
+            )
+        case .startRuntimeServices:
+            return .startRuntimeServices(preflight.restartPolicy)
+        case .activateGuestUpdate:
+            return .activateGuestUpdate(manifest: preflight.manifest)
+        case .waitRuntimeHealth:
+            return .waitRuntimeHealth(preflight.restartPolicy)
+        default:
+            return .unsupported(failureMessage: unsupportedApplyBundleStepFailureMessage(step: step))
+        }
+    }
+
     public func unsupportedApplyBundleStepFailureMessage(step: RuntimeWorkflowStep) -> String {
         "unsupported command: apply-bundle step \(step.rawValue)"
     }
@@ -630,6 +703,59 @@ public struct UpdateRuntimeUseCase {
             ],
             runtimeToolsBackup: backup.appendingPathComponent(UpdateBundleArtifactType.runtimeTools.rawValue)
         )
+    }
+
+    public func rollbackStepExecutionPlan(
+        step: RuntimeWorkflowStep,
+        preflight: RollbackPreflightContext,
+        rootfsBase: URL,
+        runtimeVersion: URL,
+        managerAppPath: URL,
+        nginxDirectory: URL,
+        deployDirectory: URL,
+        backupVersionExists: Bool
+    ) -> RollbackRuntimeStepExecutionPlan {
+        switch step {
+        case .rollbackStopRuntimeServices:
+            return .stopRuntimeServices
+        case .rollbackRestoreRootfsBase:
+            guard let backupRootfs = preflight.backupRootfs else {
+                return .failed(failureMessage: rollbackRootfsRestoreMissingBackupRootfsFailureMessage())
+            }
+            return .restoreRootfsBase(source: backupRootfs, destination: rootfsBase)
+        case .rollbackRestoreRuntimeVersion:
+            return .restoreRuntimeVersion(rollbackVersionRestoreDecision(
+                backupVersion: preflight.backupVersion,
+                runtimeVersion: runtimeVersion,
+                backupVersionExists: backupVersionExists,
+                backup: preflight.backup
+            ))
+        case .rollbackRestoreUpdateArtifacts:
+            return .restoreUpdateArtifacts(rollbackManagedArtifactRestorePlan(
+                backup: preflight.backup,
+                managerAppPath: managerAppPath,
+                nginxDirectory: nginxDirectory,
+                deployDirectory: deployDirectory
+            ))
+        case .rollbackStartRuntimeServices:
+            return .startRuntimeServices(preflight.restartPolicy)
+        case .rollbackWaitRuntimeHealth:
+            return .waitRuntimeHealth(preflight.restartPolicy)
+        default:
+            return .unsupported(failureMessage: unsupportedRollbackStepFailureMessage(step: step))
+        }
+    }
+
+    public func rollbackStepRequiredInput(
+        step: RuntimeWorkflowStep,
+        preflight: RollbackPreflightContext
+    ) -> RollbackRuntimeStepRequiredInput {
+        switch step {
+        case .rollbackRestoreRuntimeVersion:
+            return .backupVersionExists(preflight.backupVersion)
+        default:
+            return .none
+        }
     }
 
     public func guestActivationPlan(

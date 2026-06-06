@@ -46,36 +46,37 @@ public struct RuntimeRollbackStepExecutor {
         nginxDirectory: URL,
         deployDirectory: URL
     ) throws {
-        switch step {
-        case .rollbackStopRuntimeServices:
+        let backupVersionExists: Bool
+        switch useCase.rollbackStepRequiredInput(step: step, preflight: preflight) {
+        case .none:
+            backupVersionExists = false
+        case .backupVersionExists(let backupVersion):
+            backupVersionExists = fileExists(backupVersion)
+        }
+        let executionPlan = useCase.rollbackStepExecutionPlan(
+            step: step,
+            preflight: preflight,
+            rootfsBase: rootfsBase,
+            runtimeVersion: runtimeVersion,
+            managerAppPath: managerAppPath,
+            nginxDirectory: nginxDirectory,
+            deployDirectory: deployDirectory,
+            backupVersionExists: backupVersionExists
+        )
+
+        switch executionPlan {
+        case .stopRuntimeServices:
             try stopRuntimeServices()
-        case .rollbackRestoreRootfsBase:
-            guard let backupRootfs = preflight.backupRootfs else {
-                throw RuntimeRollbackWorkflowError.operationFailed(
-                    useCase.rollbackRootfsRestoreMissingBackupRootfsFailureMessage()
-                )
-            }
-            try replaceFile(backupRootfs, rootfsBase)
-        case .rollbackRestoreRuntimeVersion:
-            let decision = useCase.rollbackVersionRestoreDecision(
-                backupVersion: preflight.backupVersion,
-                runtimeVersion: runtimeVersion,
-                backupVersionExists: fileExists(preflight.backupVersion),
-                backup: preflight.backup
-            )
+        case .restoreRootfsBase(let source, let destination):
+            try replaceFile(source, destination)
+        case .restoreRuntimeVersion(let decision):
             switch decision {
             case .restoreBackupVersion(let source, let destination):
                 try replaceFile(source, destination)
             case .writeExplicitRollbackMarker(let version, let destinationDirectory):
                 try writeRuntimeVersion(version, destinationDirectory)
             }
-        case .rollbackRestoreUpdateArtifacts:
-            let restorePlan = useCase.rollbackManagedArtifactRestorePlan(
-                backup: preflight.backup,
-                managerAppPath: managerAppPath,
-                nginxDirectory: nginxDirectory,
-                deployDirectory: deployDirectory
-            )
+        case .restoreUpdateArtifacts(let restorePlan):
             for artifact in restorePlan.directoryRestores {
                 try restoreBackupPathIfExists(
                     artifact.backupPath,
@@ -85,14 +86,12 @@ public struct RuntimeRollbackStepExecutor {
             try restoreRuntimeToolsIfExists(
                 restorePlan.runtimeToolsBackup
             )
-        case .rollbackStartRuntimeServices:
-            try startRuntimeServices(preflight.restartPolicy)
-        case .rollbackWaitRuntimeHealth:
-            try waitForHealth(preflight.restartPolicy)
-        default:
-            throw RuntimeRollbackWorkflowError.operationFailed(
-                useCase.unsupportedRollbackStepFailureMessage(step: step)
-            )
+        case .startRuntimeServices(let restartPolicy):
+            try startRuntimeServices(restartPolicy)
+        case .waitRuntimeHealth(let restartPolicy):
+            try waitForHealth(restartPolicy)
+        case .failed(let failureMessage), .unsupported(let failureMessage):
+            throw RuntimeRollbackWorkflowError.operationFailed(failureMessage)
         }
     }
 }

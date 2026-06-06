@@ -373,6 +373,77 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
         )
     }
 
+    func testApplyBundleStepExecutionPlansKeepStepInterpretationOutOfWorkflow() {
+        let useCase = UpdateRuntimeUseCase()
+        let stagedBundle = URL(fileURLWithPath: "/tmp/staged")
+        let stagedRootfs = stagedBundle.appendingPathComponent(RuntimeFileNames.rootfsBase)
+        let rootfsBase = URL(fileURLWithPath: "/runtime/rootfs-base.raw.gz")
+        let artifact = UpdateBundleArtifact(name: "app.tar.gz", type: .appBundle, sha256: "abc", size: 10)
+        let migration = UpdateBundleMigration(name: "001-test", sha256: "def", size: 20)
+        let manifest = UpdateBundleManifest(
+            schemaVersion: 1,
+            product: "vitalserver",
+            helperVersion: "1.0.0",
+            releaseLabel: "test",
+            targetPlatform: "macos",
+            components: [:],
+            createdAt: "2026-06-06T00:00:00Z",
+            artifacts: [artifact],
+            migrations: [migration]
+        )
+        let restartPolicy = RuntimeServiceRestartPolicy(
+            restartVM: true,
+            restartGuestLogSync: false,
+            restartProxy: true,
+            restartWatchdog: false
+        )
+        let preflight = ApplyBundlePreflightContext(
+            stagedBundle: stagedBundle,
+            manifest: manifest,
+            stagedRootfs: stagedRootfs,
+            backup: URL(fileURLWithPath: "/tmp/backup"),
+            restartPolicy: restartPolicy
+        )
+
+        XCTAssertEqual(
+            useCase.applyBundleStepExecutionPlan(
+                step: .stopRuntimeServices,
+                preflight: preflight,
+                rootfsBase: rootfsBase
+            ),
+            .stopRuntimeServices(preparesGuestShutdown: true, manifest: manifest)
+        )
+        XCTAssertEqual(
+            useCase.applyBundleStepExecutionPlan(
+                step: .replaceRootfsBase,
+                preflight: preflight,
+                rootfsBase: rootfsBase
+            ),
+            .replaceRootfsBase(ApplyRuntimeBundleRootfsReplacementPlan(
+                stagedRootfs: stagedRootfs,
+                rootfsBase: rootfsBase,
+                shouldReplace: true,
+                skippedLogMessage: nil
+            ))
+        )
+        XCTAssertEqual(
+            useCase.applyBundleStepExecutionPlan(
+                step: .runMigrations,
+                preflight: preflight,
+                rootfsBase: rootfsBase
+            ),
+            .runMigrations(migrations: [migration], stagedBundle: stagedBundle)
+        )
+        XCTAssertEqual(
+            useCase.applyBundleStepExecutionPlan(
+                step: .loadInstallSettings,
+                preflight: preflight,
+                rootfsBase: rootfsBase
+            ),
+            .unsupported(failureMessage: "unsupported command: apply-bundle step load-install-settings")
+        )
+    }
+
     func testRollbackPlanIncludesRootfsRestoreWhenPreflightRestoresRootfs() {
         let useCase = UpdateRuntimeUseCase()
 
@@ -431,6 +502,105 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
                 restoredBackupLogMessage: "rollback restored backup=/runtime/backups/backup-1",
                 preservedVMDiskLogMessage: "mutable VM disk preserved path=/runtime/vm/vm-disk.img"
             )
+        )
+    }
+
+    func testRollbackStepExecutionPlansKeepStepInterpretationOutOfWorkflow() {
+        let useCase = UpdateRuntimeUseCase()
+        let backup = URL(fileURLWithPath: "/runtime/backups/backup-1")
+        let backupRootfs = backup.appendingPathComponent(RuntimeFileNames.rootfsBase)
+        let preflight = RollbackPreflightContext(
+            backup: backup,
+            backupRootfs: backupRootfs,
+            backupVersion: backup.appendingPathComponent(RuntimeFileNames.runtimeVersion),
+            restoresRootfsBase: true,
+            restartPolicy: restartPolicy()
+        )
+        let rootfsBase = URL(fileURLWithPath: "/runtime/rootfs-base.raw.gz")
+        let runtimeVersion = URL(fileURLWithPath: "/runtime/runtime-version.json")
+        let managerAppPath = URL(fileURLWithPath: "/Applications/VitalServer.app")
+        let nginxDirectory = URL(fileURLWithPath: "/runtime/nginx")
+        let deployDirectory = URL(fileURLWithPath: "/runtime/deploy")
+
+        XCTAssertEqual(
+            useCase.rollbackStepExecutionPlan(
+                step: .rollbackRestoreRootfsBase,
+                preflight: preflight,
+                rootfsBase: rootfsBase,
+                runtimeVersion: runtimeVersion,
+                managerAppPath: managerAppPath,
+                nginxDirectory: nginxDirectory,
+                deployDirectory: deployDirectory,
+                backupVersionExists: true
+            ),
+            .restoreRootfsBase(source: backupRootfs, destination: rootfsBase)
+        )
+        XCTAssertEqual(
+            useCase.rollbackStepRequiredInput(
+                step: .rollbackRestoreRuntimeVersion,
+                preflight: preflight
+            ),
+            .backupVersionExists(backup.appendingPathComponent(RuntimeFileNames.runtimeVersion))
+        )
+        XCTAssertEqual(
+            useCase.rollbackStepRequiredInput(
+                step: .rollbackStopRuntimeServices,
+                preflight: preflight
+            ),
+            .none
+        )
+        XCTAssertEqual(
+            useCase.rollbackStepExecutionPlan(
+                step: .rollbackRestoreRuntimeVersion,
+                preflight: preflight,
+                rootfsBase: rootfsBase,
+                runtimeVersion: runtimeVersion,
+                managerAppPath: managerAppPath,
+                nginxDirectory: nginxDirectory,
+                deployDirectory: deployDirectory,
+                backupVersionExists: false
+            ),
+            .restoreRuntimeVersion(.writeExplicitRollbackMarker(version: "rolled-back", destinationDirectory: backup))
+        )
+        XCTAssertEqual(
+            useCase.rollbackStepRequiredInput(
+                step: .rollbackRestoreRuntimeVersion,
+                preflight: preflight
+            ),
+            .backupVersionExists(backup.appendingPathComponent(RuntimeFileNames.runtimeVersion))
+        )
+        XCTAssertEqual(
+            useCase.rollbackStepRequiredInput(
+                step: .rollbackRestoreRootfsBase,
+                preflight: preflight
+            ),
+            .none
+        )
+        XCTAssertEqual(
+            useCase.rollbackStepExecutionPlan(
+                step: .rollbackRestoreRootfsBase,
+                preflight: rollbackPreflight(restoresRootfsBase: false),
+                rootfsBase: rootfsBase,
+                runtimeVersion: runtimeVersion,
+                managerAppPath: managerAppPath,
+                nginxDirectory: nginxDirectory,
+                deployDirectory: deployDirectory,
+                backupVersionExists: true
+            ),
+            .failed(failureMessage: "rollback rootfs restore requested without backup rootfs")
+        )
+        XCTAssertEqual(
+            useCase.rollbackStepExecutionPlan(
+                step: .stopRuntimeServices,
+                preflight: preflight,
+                rootfsBase: rootfsBase,
+                runtimeVersion: runtimeVersion,
+                managerAppPath: managerAppPath,
+                nginxDirectory: nginxDirectory,
+                deployDirectory: deployDirectory,
+                backupVersionExists: true
+            ),
+            .unsupported(failureMessage: "unsupported command: rollback step stop-runtime-services")
         )
     }
 
