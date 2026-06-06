@@ -205,9 +205,6 @@ private final class WatchdogHarness {
 
     var runner: RuntimeWatchdogRunner {
         RuntimeWatchdogRunner(
-            context: RuntimeWatchdogContext(
-                recoveryWaitSeconds: watchdogRecoveryWaitSeconds
-            ),
             actions: RuntimeWatchdogActions(
                 prepareLogs: {
                     self.prepareLogCalls += 1
@@ -229,24 +226,8 @@ private final class WatchdogHarness {
                 automaticRecoveryEnabled: {
                     self.automaticRecoveryEnabled
                 },
-                restartVMRuntime: {
-                    self.vmRuntimeRestartCalls += 1
-                },
-                restartService: { label in
-                    self.restartedServices.append(label)
-                },
-                markVMLifecycleRunning: { lifecycle in
-                    self.runningLifecycleStates.append(lifecycle.state)
-                },
-                sleep: { interval in
-                    self.sleepCalls.append(interval)
-                },
-                writeObservedStatus: { status, operation, message, snapshot in
-                    self.writtenStatuses.append((status, operation, message))
-                    self.observedStatuses.append((status, operation, message, snapshot))
-                },
-                recordObservedEvent: { status, operation, message, snapshot, eventType in
-                    self.observedEvents.append((status, operation, message, snapshot, eventType))
+                executeRecoveryDecision: { decision, snapshot in
+                    try self.executeRecoveryDecision(decision, snapshot: snapshot)
                 },
                 recordLifecycleEvent: { operation, message, eventType in
                     self.lifecycleEvents.append((operation, message, eventType))
@@ -301,6 +282,67 @@ private final class WatchdogHarness {
         lifecycleEvents.append((.watchdog, plan.eventMessage, .statusChanged))
         healthCalls += 1
         return snapshots.removeFirst()
+    }
+
+    private func executeRecoveryDecision(
+        _ decision: WatchdogRuntimeRecoveryDecision,
+        snapshot: RuntimeHealthSnapshot
+    ) throws {
+        switch decision {
+        case .healthy(let plan):
+            let finalized = completeHealthyVMLifecycleIfNeeded(snapshot)
+            writtenStatuses.append((.healthy, .watchdog, plan.statusMessage))
+            observedStatuses.append((.healthy, .watchdog, plan.statusMessage, finalized))
+        case .recoveryDisabled(let plan):
+            writeTerminalRecoveryStatus(plan, snapshot: snapshot)
+        case .recoveryDeferred(let plan):
+            writeObservedStatus(plan, snapshot: snapshot)
+        case .recoverySuppressed(let plan):
+            writeObservedStatus(plan, snapshot: snapshot)
+        case .unrecoverable(let plan):
+            writeTerminalRecoveryStatus(plan, snapshot: snapshot)
+        case .recover(let plan):
+            try recover(plan, initial: snapshot)
+        }
+    }
+
+    private func writeTerminalRecoveryStatus(
+        _ plan: WatchdogRuntimeTerminalRecoveryPlan,
+        snapshot: RuntimeHealthSnapshot
+    ) {
+        logs.append(plan.detectedLogMessage)
+        writtenStatuses.append((.recovering, .watchdog, plan.startedStatusMessage))
+        observedStatuses.append((.recovering, .watchdog, plan.startedStatusMessage, snapshot))
+        writtenStatuses.append((plan.finalStatus, .watchdog, plan.finalStatusMessage))
+        observedStatuses.append((plan.finalStatus, .watchdog, plan.finalStatusMessage, snapshot))
+    }
+
+    private func recover(
+        _ plan: WatchdogRuntimeRecoveryExecutionPlan,
+        initial: RuntimeHealthSnapshot
+    ) throws {
+        let useCase = WatchdogRuntimeUseCase()
+        logs.append(plan.detectedLogMessage)
+        writtenStatuses.append((.recovering, .watchdog, plan.startedStatusMessage))
+        observedStatuses.append((.recovering, .watchdog, plan.startedStatusMessage, initial))
+        logs.append(plan.planLogMessage)
+        observedEvents.append((.recovering, .watchdog, plan.plannedEventMessage, initial, .recoveryPlanned))
+
+        if let vmRestartEventMessage = plan.vmRestartEventMessage {
+            observedEvents.append((.recovering, .watchdog, vmRestartEventMessage, initial, .serviceRestartDispatched))
+            vmRuntimeRestartCalls += 1
+        }
+        if let proxyRestartEventMessage = plan.proxyRestartEventMessage {
+            observedEvents.append((.recovering, .watchdog, proxyRestartEventMessage, initial, .serviceRestartDispatched))
+            restartedServices.append(.proxy)
+        }
+
+        sleepCalls.append(watchdogRecoveryWaitSeconds)
+        healthCalls += 1
+        let recovered = snapshots.removeFirst()
+        let completionPlan = useCase.recoveryCompletionPlan(recovered)
+        writtenStatuses.append((completionPlan.status, .watchdog, completionPlan.message))
+        observedStatuses.append((completionPlan.status, .watchdog, completionPlan.message, recovered))
     }
 }
 

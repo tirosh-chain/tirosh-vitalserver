@@ -377,6 +377,31 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         }
     }
 
+    func testRuntimeWatchdogRunnerDoesNotInterpretRecoveryDecisionDirectly() throws {
+        let file = packageRoot().appendingPathComponent(
+            "Sources/Workflow/RuntimeWatchdog/RuntimeWatchdogRunner.swift"
+        )
+        let text = try String(contentsOf: file, encoding: .utf8)
+        let forbiddenTokens = [
+            "switch useCase.recoveryDecision",
+            "case .healthy(let plan):",
+            "case .recoveryDisabled(let plan):",
+            "case .recoveryDeferred(let plan):",
+            "case .recoverySuppressed(let plan):",
+            "case .unrecoverable(let plan):",
+            "case .recover(let plan):",
+            "WatchdogRuntimeRecoveryExecutionPlan",
+            "WatchdogRuntimeTerminalRecoveryPlan",
+        ]
+
+        for token in forbiddenTokens {
+            XCTAssertFalse(
+                text.contains(token),
+                "RuntimeWatchdogRunner must delegate recovery decision execution instead of owning \(token)"
+            )
+        }
+    }
+
     func testRuntimeUpdateWorkflowDoesNotInterpretRollbackBackupSelectionDirectly() throws {
         let updateWorkflowRoot = packageRoot().appendingPathComponent("Sources/Workflow/RuntimeUpdateLifecycle")
         let forbiddenTokens = [

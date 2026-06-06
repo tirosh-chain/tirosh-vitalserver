@@ -104,9 +104,6 @@ public enum RuntimeWatchdogRunnerComposition {
         operations: RuntimeWatchdogRunnerCompositionOperations
     ) -> RuntimeWatchdogRunner {
         RuntimeWatchdogRunner(
-            context: RuntimeWatchdogContext(
-                recoveryWaitSeconds: Constants.Runtime.watchdogRecoveryWaitSeconds
-            ),
             actions: RuntimeWatchdogActions(
                 prepareLogs: {
                     prepareLogs(context: context, operations: operations)
@@ -125,26 +122,14 @@ public enum RuntimeWatchdogRunnerComposition {
                     operations.httpStatusCode(Constants.Runtime.proxyLivenessURL(port: port))
                 },
                 automaticRecoveryEnabled: operations.automaticRecoveryEnabled,
-                restartVMRuntime: operations.restartVMRuntime,
-                restartService: operations.restartService,
-                markVMLifecycleRunning: { lifecycle in
-                    let timestamp = operations.now()
-                    try RuntimeVMLifecycleStore(
-                        url: context.installedPaths.vmLifecycle,
-                        fileStore: operations.fileStore,
-                        now: { timestamp }
-                    ).write(
-                        state: .running,
-                        operation: lifecycle.operation,
-                        message: "Guest runtime reported healthy"
+                executeRecoveryDecision: { decision, snapshot in
+                    try executeRecoveryDecision(
+                        decision,
+                        snapshot: snapshot,
+                        context: context,
+                        operations: operations
                     )
                 },
-                sleep: operations.sleep,
-                writeObservedStatus: { status, operation, message, snapshot in
-                    try operations.writeRuntimeStatus(status, operation, message)
-                    operations.recordObservedStatus(status, operation, message, snapshot)
-                },
-                recordObservedEvent: operations.recordObservedEvent,
                 recordLifecycleEvent: operations.recordLifecycleEvent
             ),
             log: operations.log,
@@ -217,6 +202,115 @@ public enum RuntimeWatchdogRunnerComposition {
             operations.log(useCase.lifecycleMarkFailedLogMessage(error: error))
             return snapshot
         }
+    }
+
+    private static func executeRecoveryDecision(
+        _ decision: WatchdogRuntimeRecoveryDecision,
+        snapshot: RuntimeHealthSnapshot,
+        context: RuntimeWatchdogRunnerCompositionContext,
+        operations: RuntimeWatchdogRunnerCompositionOperations
+    ) throws {
+        switch decision {
+        case .healthy(let plan):
+            let finalized = completeHealthyVMLifecycleIfNeeded(snapshot, context: context, operations: operations)
+            try operations.writeRuntimeStatus(.healthy, .watchdog, plan.statusMessage)
+            operations.recordObservedStatus(.healthy, .watchdog, plan.statusMessage, finalized)
+            operations.printLine(plan.printMessage)
+        case .recoveryDisabled(let plan):
+            try writeTerminalRecoveryStatus(plan, snapshot: snapshot, operations: operations)
+        case .recoveryDeferred(let plan):
+            try writeObservedStatus(plan, snapshot: snapshot, operations: operations)
+        case .recoverySuppressed(let plan):
+            try writeObservedStatus(plan, snapshot: snapshot, operations: operations)
+        case .unrecoverable(let plan):
+            try writeTerminalRecoveryStatus(plan, snapshot: snapshot, operations: operations)
+        case .recover(let plan):
+            try recover(plan, initial: snapshot, operations: operations)
+        }
+    }
+
+    private static func writeTerminalRecoveryStatus(
+        _ plan: WatchdogRuntimeTerminalRecoveryPlan,
+        snapshot: RuntimeHealthSnapshot,
+        operations: RuntimeWatchdogRunnerCompositionOperations
+    ) throws {
+        operations.log(plan.detectedLogMessage)
+        try operations.writeRuntimeStatus(.recovering, .watchdog, plan.startedStatusMessage)
+        operations.recordObservedStatus(.recovering, .watchdog, plan.startedStatusMessage, snapshot)
+        try operations.writeRuntimeStatus(plan.finalStatus, .watchdog, plan.finalStatusMessage)
+        operations.recordObservedStatus(plan.finalStatus, .watchdog, plan.finalStatusMessage, snapshot)
+        operations.printLine(plan.printMessage)
+    }
+
+    private static func recover(
+        _ plan: WatchdogRuntimeRecoveryExecutionPlan,
+        initial: RuntimeHealthSnapshot,
+        operations: RuntimeWatchdogRunnerCompositionOperations
+    ) throws {
+        let useCase = WatchdogRuntimeUseCase()
+        operations.log(plan.detectedLogMessage)
+        try operations.writeRuntimeStatus(.recovering, .watchdog, plan.startedStatusMessage)
+        operations.recordObservedStatus(.recovering, .watchdog, plan.startedStatusMessage, initial)
+        operations.log(plan.planLogMessage)
+        operations.recordObservedEvent(
+            .recovering,
+            .watchdog,
+            plan.plannedEventMessage,
+            initial,
+            .recoveryPlanned
+        )
+
+        if let vmRestartEventMessage = plan.vmRestartEventMessage {
+            operations.recordObservedEvent(
+                .recovering,
+                .watchdog,
+                vmRestartEventMessage,
+                initial,
+                .serviceRestartDispatched
+            )
+            do {
+                try operations.restartVMRuntime()
+            } catch {
+                let failurePlan = useCase.commandFailurePlan(service: .vm, error: error)
+                try writeCommandFailure(failurePlan, snapshot: initial, operations: operations)
+                return
+            }
+        }
+        if let proxyRestartEventMessage = plan.proxyRestartEventMessage {
+            operations.recordObservedEvent(
+                .recovering,
+                .watchdog,
+                proxyRestartEventMessage,
+                initial,
+                .serviceRestartDispatched
+            )
+            do {
+                try operations.restartService(.proxy)
+            } catch {
+                let failurePlan = useCase.commandFailurePlan(service: .proxy, error: error)
+                try writeCommandFailure(failurePlan, snapshot: initial, operations: operations)
+                return
+            }
+        }
+
+        operations.sleep(Constants.Runtime.watchdogRecoveryWaitSeconds)
+        let recovered = operations.healthSnapshot()
+        let completionPlan = useCase.recoveryCompletionPlan(recovered)
+        try operations.writeRuntimeStatus(completionPlan.status, .watchdog, completionPlan.message)
+        operations.recordObservedStatus(completionPlan.status, .watchdog, completionPlan.message, recovered)
+        operations.printLine(completionPlan.printMessage)
+    }
+
+    private static func writeCommandFailure(
+        _ plan: WatchdogRuntimeCommandFailurePlan,
+        snapshot: RuntimeHealthSnapshot,
+        operations: RuntimeWatchdogRunnerCompositionOperations
+    ) throws {
+        operations.log(plan.message)
+        try operations.writeRuntimeStatus(plan.status, .watchdog, plan.message)
+        operations.recordObservedStatus(plan.status, .watchdog, plan.message, snapshot)
+        operations.recordObservedEvent(plan.status, .watchdog, plan.message, snapshot, plan.eventType)
+        operations.printLine(plan.printMessage)
     }
 
     private static func prepareLogs(
