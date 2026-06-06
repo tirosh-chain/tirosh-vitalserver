@@ -13,7 +13,6 @@ public struct RuntimeApplyBundleRunner {
     public var startRuntimeServices: (RuntimeServiceRestartPolicy) throws -> Void
     public var statusReporter: RuntimeWorkflowStatusReporter
     public var pruneOldRuntimeArtifacts: () throws -> Void
-    public var reasonText: ([RuntimeFailureReason]) -> String
     private var useCase: UpdateRuntimeUseCase {
         UpdateRuntimeUseCase()
     }
@@ -26,8 +25,7 @@ public struct RuntimeApplyBundleRunner {
         rollback: @escaping (URL) throws -> Void,
         startRuntimeServices: @escaping (RuntimeServiceRestartPolicy) throws -> Void,
         statusReporter: RuntimeWorkflowStatusReporter,
-        pruneOldRuntimeArtifacts: @escaping () throws -> Void,
-        reasonText: @escaping ([RuntimeFailureReason]) -> String
+        pruneOldRuntimeArtifacts: @escaping () throws -> Void
     ) {
         self.prepareLogs = prepareLogs
         self.initialHealthSnapshot = initialHealthSnapshot
@@ -37,7 +35,6 @@ public struct RuntimeApplyBundleRunner {
         self.startRuntimeServices = startRuntimeServices
         self.statusReporter = statusReporter
         self.pruneOldRuntimeArtifacts = pruneOldRuntimeArtifacts
-        self.reasonText = reasonText
     }
 
     public func run(bundleURL: URL) throws {
@@ -47,8 +44,7 @@ public struct RuntimeApplyBundleRunner {
 
         let initialHealth = initialHealthSnapshot()
         let initialHealthDecision = useCase.initialHealthDecision(
-            snapshot: initialHealth,
-            reasonText: reasonText(initialHealth.failureReasons)
+            snapshot: initialHealth
         )
         if let warningMessage = initialHealthDecision.warningMessage {
             statusReporter.log(warningMessage)

@@ -179,8 +179,7 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
                     logs.append(message)
                 }
             ),
-            pruneOldRuntimeArtifacts: {},
-            reasonText: { $0.map(\.rawValue).joined(separator: ", ") }
+            pruneOldRuntimeArtifacts: {}
         )
 
         XCTAssertThrowsError(try runner.run(bundleURL: URL(fileURLWithPath: "/incoming/update-bundle"))) { error in
@@ -382,7 +381,6 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
                     log: log
                 ),
                 pruneOldRuntimeArtifacts: {},
-                reasonText: { _ in "" },
                 requireFreeSpace: { _, _, _ in },
                 runProcess: { _, _ in RuntimeProcessResult(exitCode: 0, stdout: "", stderr: "") },
                 runRequired: { _, _ in },

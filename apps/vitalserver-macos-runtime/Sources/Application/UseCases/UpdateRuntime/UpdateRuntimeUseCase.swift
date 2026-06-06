@@ -207,8 +207,7 @@ public struct UpdateRuntimeUseCase {
     public init() {}
 
     public func initialHealthDecision(
-        snapshot: RuntimeHealthSnapshot,
-        reasonText: String
+        snapshot: RuntimeHealthSnapshot
     ) -> ApplyRuntimeBundleInitialHealthDecision {
         guard !RuntimeHealthSnapshotPolicy.isHealthy(snapshot) else {
             return ApplyRuntimeBundleInitialHealthDecision(
@@ -216,6 +215,7 @@ public struct UpdateRuntimeUseCase {
                 warningMessage: nil
             )
         }
+        let reasonText = RuntimeFailureReasonText.describe(snapshot.failureReasons)
         return ApplyRuntimeBundleInitialHealthDecision(
             shouldWarn: true,
             warningMessage: "bundle apply preflight warning runtime unhealthy reasons=\(reasonText)"

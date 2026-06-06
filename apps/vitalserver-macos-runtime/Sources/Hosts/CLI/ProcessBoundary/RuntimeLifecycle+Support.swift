@@ -272,10 +272,6 @@ extension RuntimeLifecycle {
         freshInstallArtifactPaths()
     }
 
-    func reasonText(_ reasons: [RuntimeFailureReason]) -> String {
-        RuntimeFailureReasonText.describe(reasons)
-    }
-
     func rotateRuntimeLogs() throws {
         try RuntimeLogRotator(
             logsDirectory: logsDirectory,

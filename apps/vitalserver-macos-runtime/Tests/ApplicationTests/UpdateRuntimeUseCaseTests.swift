@@ -10,8 +10,7 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
         let useCase = UpdateRuntimeUseCase()
 
         let decision = useCase.initialHealthDecision(
-            snapshot: healthSnapshot(reasons: []),
-            reasonText: "should-not-leak"
+            snapshot: healthSnapshot(reasons: [])
         )
 
         XCTAssertFalse(decision.shouldWarn)
@@ -22,8 +21,7 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
         let useCase = UpdateRuntimeUseCase()
 
         let decision = useCase.initialHealthDecision(
-            snapshot: healthSnapshot(reasons: [.hostProxyHTTP("000")]),
-            reasonText: "host-proxy-http-000"
+            snapshot: healthSnapshot(reasons: [.hostProxyHTTP("000")])
         )
 
         XCTAssertTrue(decision.shouldWarn)

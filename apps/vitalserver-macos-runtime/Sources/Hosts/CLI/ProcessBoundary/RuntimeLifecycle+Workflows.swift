@@ -257,7 +257,6 @@ extension RuntimeLifecycle {
                         bundlesDirectory: bundlesDirectory
                     )
                 },
-                reasonText: reasonText,
                 requireFreeSpace: { url, minimumBytes, operation in
                     try storageMaintenance().requireFreeSpace(
                         at: url,

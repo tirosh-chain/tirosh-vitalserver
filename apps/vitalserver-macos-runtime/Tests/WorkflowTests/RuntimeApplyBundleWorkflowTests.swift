@@ -154,9 +154,6 @@ private final class ApplyBundleWorkflowHarness {
                 pruneOldRuntimeArtifacts: {
                     self.pruneCount += 1
                 },
-                reasonText: { reasons in
-                    reasons.map(\.rawValue).joined(separator: ", ")
-                },
                 stopRuntimeServices: {
                     self.stepCalls.append("stopRuntimeServices")
                 },

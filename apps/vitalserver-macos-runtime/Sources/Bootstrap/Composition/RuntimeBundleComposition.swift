@@ -48,7 +48,6 @@ public struct RuntimeBundleCompositionOperations {
     let createBackup: (String) throws -> URL
     let statusReporter: RuntimeWorkflowStatusReporter
     let pruneOldRuntimeArtifacts: () throws -> Void
-    let reasonText: ([RuntimeFailureReason]) -> String
     let requireFreeSpace: (URL, UInt64, RuntimeOperation) throws -> Void
     let runProcess: (String, [String]) -> RuntimeProcessResult
     let runRequired: (String, [String]) throws -> Void
@@ -76,7 +75,6 @@ public struct RuntimeBundleCompositionOperations {
         createBackup: @escaping (String) throws -> URL,
         statusReporter: RuntimeWorkflowStatusReporter,
         pruneOldRuntimeArtifacts: @escaping () throws -> Void,
-        reasonText: @escaping ([RuntimeFailureReason]) -> String,
         requireFreeSpace: @escaping (URL, UInt64, RuntimeOperation) throws -> Void,
         runProcess: @escaping (String, [String]) -> RuntimeProcessResult,
         runRequired: @escaping (String, [String]) throws -> Void,
@@ -103,7 +101,6 @@ public struct RuntimeBundleCompositionOperations {
         self.createBackup = createBackup
         self.statusReporter = statusReporter
         self.pruneOldRuntimeArtifacts = pruneOldRuntimeArtifacts
-        self.reasonText = reasonText
         self.requireFreeSpace = requireFreeSpace
         self.runProcess = runProcess
         self.runRequired = runRequired
@@ -308,7 +305,6 @@ public struct RuntimeBundleComposition {
                 startRuntimeServices: operations.startRuntimeServices,
                 statusReporter: operations.statusReporter,
                 pruneOldRuntimeArtifacts: operations.pruneOldRuntimeArtifacts,
-                reasonText: operations.reasonText,
                 stopRuntimeServices: operations.stopRuntimeServices,
                 runningVMProcessID: operations.runningVMProcessID,
                 stopRuntimeServicesAfterGuestPoweroff: operations.stopRuntimeServicesAfterGuestPoweroff,

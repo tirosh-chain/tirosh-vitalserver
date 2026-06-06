@@ -43,7 +43,6 @@ public struct RuntimeApplyBundleWorkflowOperations {
     public var startRuntimeServices: (RuntimeServiceRestartPolicy) throws -> Void
     public var statusReporter: RuntimeWorkflowStatusReporter
     public var pruneOldRuntimeArtifacts: () throws -> Void
-    public var reasonText: ([RuntimeFailureReason]) -> String
     public var stopRuntimeServices: () throws -> Void
     public var runningVMProcessID: () throws -> pid_t
     public var stopRuntimeServicesAfterGuestPoweroff: (pid_t) throws -> Void
@@ -76,7 +75,6 @@ public struct RuntimeApplyBundleWorkflowOperations {
         startRuntimeServices: @escaping (RuntimeServiceRestartPolicy) throws -> Void,
         statusReporter: RuntimeWorkflowStatusReporter,
         pruneOldRuntimeArtifacts: @escaping () throws -> Void,
-        reasonText: @escaping ([RuntimeFailureReason]) -> String,
         stopRuntimeServices: @escaping () throws -> Void,
         runningVMProcessID: @escaping () throws -> pid_t,
         stopRuntimeServicesAfterGuestPoweroff: @escaping (pid_t) throws -> Void,
@@ -108,7 +106,6 @@ public struct RuntimeApplyBundleWorkflowOperations {
         self.startRuntimeServices = startRuntimeServices
         self.statusReporter = statusReporter
         self.pruneOldRuntimeArtifacts = pruneOldRuntimeArtifacts
-        self.reasonText = reasonText
         self.stopRuntimeServices = stopRuntimeServices
         self.runningVMProcessID = runningVMProcessID
         self.stopRuntimeServicesAfterGuestPoweroff = stopRuntimeServicesAfterGuestPoweroff
@@ -151,8 +148,7 @@ public struct RuntimeApplyBundleWorkflow {
             rollback: operations.rollback,
             startRuntimeServices: operations.startRuntimeServices,
             statusReporter: operations.statusReporter,
-            pruneOldRuntimeArtifacts: operations.pruneOldRuntimeArtifacts,
-            reasonText: operations.reasonText
+            pruneOldRuntimeArtifacts: operations.pruneOldRuntimeArtifacts
         )
     }
 

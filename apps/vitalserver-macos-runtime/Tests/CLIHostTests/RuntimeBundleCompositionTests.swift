@@ -97,7 +97,6 @@ final class RuntimeBundleCompositionTests: XCTestCase {
                     log: log
                 ),
                 pruneOldRuntimeArtifacts: {},
-                reasonText: { _ in "" },
                 requireFreeSpace: { _, _, _ in },
                 runProcess: { _, _ in RuntimeProcessResult(exitCode: 0, stdout: "", stderr: "") },
                 runRequired: { _, _ in },

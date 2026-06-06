@@ -167,9 +167,6 @@ private final class ApplyBundleHarness {
                 if let pruneError = self.pruneError {
                     throw pruneError
                 }
-            },
-            reasonText: { reasons in
-                reasons.map(\.rawValue).joined(separator: ", ")
             }
         )
     }
