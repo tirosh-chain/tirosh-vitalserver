@@ -58,14 +58,11 @@ public struct RuntimeApplyBundlePreflightRunner {
     public func prepare(bundleURL: URL, backupsDirectory: URL, rootfsBase: URL) throws -> ApplyBundlePreflightContext {
         let stagedBundle = try stageBundle(bundleURL)
         let manifest = try loadManifest(stagedBundle.appendingPathComponent(RuntimeFileNames.updateBundleManifest))
-        log(
-            "bundle apply manifest version=\(manifest.version) runtimeVersion=\(manifest.runtimeVersion) artifacts=\(manifest.artifacts.count) migrations=\(manifest.migrations.count)"
-        )
+        let manifestPlan = useCase.preflightManifestPlan(stagedBundle: stagedBundle, manifest: manifest)
+        log(manifestPlan.manifestLogMessage)
         try checkCompatibility(manifest)
 
-        let stagedRootfs = manifest.artifacts.contains { $0.type == .rootfsBase }
-            ? stagedBundle.appendingPathComponent(RuntimeFileNames.rootfsBase)
-            : nil
+        let stagedRootfs = manifestPlan.stagedRootfs
         let stagedBundleSize = try directorySize(stagedBundle)
         let rootfsStorage: RuntimeUpdateRootfsStorageInput
         log("bundle apply storage preflight stagedBundle=\(formatBytes(stagedBundleSize))")
@@ -110,8 +107,8 @@ public struct RuntimeApplyBundlePreflightRunner {
         for capability in capabilityPlan.requiredGuestCapabilities {
             try requireGuestCapability(capability)
         }
-        log("creating managed backup reason=before-\(manifest.version)")
-        let backup = try createBackup("before-\(manifest.version)")
+        log(manifestPlan.backupStartedLogMessage)
+        let backup = try createBackup(manifestPlan.backupReason)
         log("backup created path=\(backup.path) size=\(formatBytes(try directorySize(backup)))")
 
         return ApplyBundlePreflightContext(

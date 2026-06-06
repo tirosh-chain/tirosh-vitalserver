@@ -44,9 +44,8 @@ public struct RuntimeRollbackPreflightRunner {
         }
 
         let restartPolicy = serviceRestartPolicy()
-        log(
-            "rollback preflight backup=\(backup.path) vm=\(restartPolicy.restartVM ? "loaded" : "not-loaded") guestLogSync=\(restartPolicy.restartGuestLogSync ? "loaded" : "not-loaded") proxy=\(restartPolicy.restartProxy ? "loaded" : "not-loaded") watchdog=\(restartPolicy.restartWatchdog ? "loaded" : "not-loaded")"
-        )
+        let preflightPlan = useCase.rollbackPreflightPlan(backup: backup, restartPolicy: restartPolicy)
+        log(preflightPlan.serviceRestartLogMessage)
 
         return RollbackPreflightContext(
             backup: backupPlan.backup,

@@ -53,6 +53,40 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
         XCTAssertEqual(plan.operationPlan, RuntimeOperationPlans.applyBundle(updatesRootfsBase: false))
     }
 
+    func testPreflightManifestPlanDerivesExplicitRootfsAndBackupReasonFromManifest() {
+        let useCase = UpdateRuntimeUseCase()
+        let stagedBundle = URL(fileURLWithPath: "/tmp/staged")
+
+        let plan = useCase.preflightManifestPlan(
+            stagedBundle: stagedBundle,
+            manifest: manifest(artifacts: [
+                UpdateBundleArtifact(name: "rootfs-base.raw.gz", type: .rootfsBase, sha256: "abc", size: 10),
+            ])
+        )
+
+        XCTAssertEqual(plan.stagedRootfs, stagedBundle.appendingPathComponent(RuntimeFileNames.rootfsBase))
+        XCTAssertEqual(
+            plan.manifestLogMessage,
+            "bundle apply manifest version=test runtimeVersion=1.0.0 artifacts=1 migrations=0"
+        )
+        XCTAssertEqual(plan.backupReason, "before-test")
+        XCTAssertEqual(plan.backupStartedLogMessage, "creating managed backup reason=before-test")
+    }
+
+    func testPreflightManifestPlanPreservesMissingRootfsArtifactAsNoStagedRootfs() {
+        let useCase = UpdateRuntimeUseCase()
+
+        let plan = useCase.preflightManifestPlan(
+            stagedBundle: URL(fileURLWithPath: "/tmp/staged"),
+            manifest: manifest(artifacts: [
+                UpdateBundleArtifact(name: "app.tar.gz", type: .appBundle, sha256: "abc", size: 10),
+            ])
+        )
+
+        XCTAssertNil(plan.stagedRootfs)
+        XCTAssertEqual(plan.backupReason, "before-test")
+    }
+
     func testPreflightCapabilityPlanRequiresShutdownOnlyWhenVMWillRestart() {
         let useCase = UpdateRuntimeUseCase()
 
@@ -128,6 +162,37 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
         )
     }
 
+    func testStopPlanPreparesGuestShutdownOnlyWhenVMWillRestart() {
+        let useCase = UpdateRuntimeUseCase()
+
+        XCTAssertTrue(useCase.stopPlan(restartPolicy: RuntimeServiceRestartPolicy(
+            restartVM: true,
+            restartGuestLogSync: false,
+            restartProxy: false,
+            restartWatchdog: false
+        )).preparesGuestShutdown)
+        XCTAssertFalse(useCase.stopPlan(restartPolicy: restartPolicy()).preparesGuestShutdown)
+    }
+
+    func testRootfsReplacementPlanKeepsMissingRootfsAsExplicitSkip() {
+        let useCase = UpdateRuntimeUseCase()
+        let rootfsBase = URL(fileURLWithPath: "/runtime/rootfs-base.raw")
+
+        let skipPlan = useCase.rootfsReplacementPlan(stagedRootfs: nil, rootfsBase: rootfsBase)
+        let replacePlan = useCase.rootfsReplacementPlan(
+            stagedRootfs: URL(fileURLWithPath: "/tmp/rootfs-base.raw.gz"),
+            rootfsBase: rootfsBase
+        )
+
+        XCTAssertFalse(skipPlan.shouldReplace)
+        XCTAssertNil(skipPlan.stagedRootfs)
+        XCTAssertEqual(skipPlan.rootfsBase, rootfsBase)
+        XCTAssertEqual(skipPlan.skippedLogMessage, "rootfs-base replacement skipped; bundle does not include rootfs-base")
+        XCTAssertTrue(replacePlan.shouldReplace)
+        XCTAssertEqual(replacePlan.stagedRootfs, URL(fileURLWithPath: "/tmp/rootfs-base.raw.gz"))
+        XCTAssertNil(replacePlan.skippedLogMessage)
+    }
+
     func testRollbackPlanIncludesRootfsRestoreWhenPreflightRestoresRootfs() {
         let useCase = UpdateRuntimeUseCase()
 
@@ -176,6 +241,83 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
         XCTAssertNil(plan.backupRootfs)
         XCTAssertEqual(plan.backupVersion, backup.appendingPathComponent(RuntimeFileNames.runtimeVersion))
         XCTAssertFalse(plan.restoresRootfsBase)
+    }
+
+    func testRollbackPreflightPlanFormatsRestartPolicyFromExplicitServiceState() {
+        let useCase = UpdateRuntimeUseCase()
+        let backup = URL(fileURLWithPath: "/runtime/backups/backup-1")
+
+        let plan = useCase.rollbackPreflightPlan(
+            backup: backup,
+            restartPolicy: RuntimeServiceRestartPolicy(
+                restartVM: true,
+                restartGuestLogSync: false,
+                restartProxy: true,
+                restartWatchdog: false
+            )
+        )
+
+        XCTAssertEqual(
+            plan.serviceRestartLogMessage,
+            "rollback preflight backup=/runtime/backups/backup-1 vm=loaded guestLogSync=not-loaded proxy=loaded watchdog=not-loaded"
+        )
+    }
+
+    func testRollbackVersionRestoreDecisionPreservesMissingBackupVersionAsExplicitMarkerWrite() {
+        let useCase = UpdateRuntimeUseCase()
+        let backup = URL(fileURLWithPath: "/runtime/backups/backup-1")
+        let backupVersion = backup.appendingPathComponent(RuntimeFileNames.runtimeVersion)
+        let runtimeVersion = URL(fileURLWithPath: "/runtime/version.json")
+
+        XCTAssertEqual(
+            useCase.rollbackVersionRestoreDecision(
+                backupVersion: backupVersion,
+                runtimeVersion: runtimeVersion,
+                backupVersionExists: true,
+                backup: backup
+            ),
+            .restoreBackupVersion(source: backupVersion, destination: runtimeVersion)
+        )
+        XCTAssertEqual(
+            useCase.rollbackVersionRestoreDecision(
+                backupVersion: backupVersion,
+                runtimeVersion: runtimeVersion,
+                backupVersionExists: false,
+                backup: backup
+            ),
+            .writeExplicitRollbackMarker(version: "rolled-back", destinationDirectory: backup)
+        )
+    }
+
+    func testRollbackManagedArtifactRestorePlanMapsExplicitBackupArtifacts() {
+        let useCase = UpdateRuntimeUseCase()
+        let backup = URL(fileURLWithPath: "/runtime/backups/backup-1")
+
+        let plan = useCase.rollbackManagedArtifactRestorePlan(
+            backup: backup,
+            managerAppPath: URL(fileURLWithPath: "/Applications/VitalServer.app"),
+            nginxDirectory: URL(fileURLWithPath: "/runtime/nginx"),
+            deployDirectory: URL(fileURLWithPath: "/runtime/deploy")
+        )
+
+        XCTAssertEqual(plan.directoryRestores, [
+            RollbackRuntimeManagedArtifactRestore(
+                backupPath: backup.appendingPathComponent(UpdateBundleArtifactType.appBundle.rawValue),
+                restoreDestination: URL(fileURLWithPath: "/Applications/VitalServer.app")
+            ),
+            RollbackRuntimeManagedArtifactRestore(
+                backupPath: backup.appendingPathComponent(UpdateBundleArtifactType.nginxBundle.rawValue),
+                restoreDestination: URL(fileURLWithPath: "/runtime/nginx")
+            ),
+            RollbackRuntimeManagedArtifactRestore(
+                backupPath: backup.appendingPathComponent(UpdateBundleArtifactType.guestDeploy.rawValue),
+                restoreDestination: URL(fileURLWithPath: "/runtime/deploy")
+            ),
+        ])
+        XCTAssertEqual(
+            plan.runtimeToolsBackup,
+            backup.appendingPathComponent(UpdateBundleArtifactType.runtimeTools.rawValue)
+        )
     }
 
     func testGuestActivationPlanRequiresActivationOnlyForGuestDeployArtifact() {

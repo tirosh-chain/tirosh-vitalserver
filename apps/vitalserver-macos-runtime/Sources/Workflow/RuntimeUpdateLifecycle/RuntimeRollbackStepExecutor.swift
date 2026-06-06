@@ -1,3 +1,4 @@
+import Application
 import Contracts
 import Domain
 import Foundation
@@ -12,6 +13,9 @@ public struct RuntimeRollbackStepExecutor {
     public var restoreRuntimeToolsIfExists: (URL) throws -> Void
     public var startRuntimeServices: (RuntimeServiceRestartPolicy) throws -> Void
     public var waitForHealth: (RuntimeServiceRestartPolicy) throws -> Void
+    private var useCase: UpdateRuntimeUseCase {
+        UpdateRuntimeUseCase()
+    }
 
     public init(
         stopRuntimeServices: @escaping () throws -> Void,
@@ -51,24 +55,33 @@ public struct RuntimeRollbackStepExecutor {
             }
             try replaceFile(backupRootfs, rootfsBase)
         case .rollbackRestoreRuntimeVersion:
-            if fileExists(preflight.backupVersion) {
-                try replaceFile(preflight.backupVersion, runtimeVersion)
-            } else {
-                try writeRuntimeVersion("rolled-back", preflight.backup)
+            let decision = useCase.rollbackVersionRestoreDecision(
+                backupVersion: preflight.backupVersion,
+                runtimeVersion: runtimeVersion,
+                backupVersionExists: fileExists(preflight.backupVersion),
+                backup: preflight.backup
+            )
+            switch decision {
+            case .restoreBackupVersion(let source, let destination):
+                try replaceFile(source, destination)
+            case .writeExplicitRollbackMarker(let version, let destinationDirectory):
+                try writeRuntimeVersion(version, destinationDirectory)
             }
         case .rollbackRestoreUpdateArtifacts:
-            for artifact in RuntimeRollbackManagedBackupArtifact.directoryArtifacts {
+            let restorePlan = useCase.rollbackManagedArtifactRestorePlan(
+                backup: preflight.backup,
+                managerAppPath: managerAppPath,
+                nginxDirectory: nginxDirectory,
+                deployDirectory: deployDirectory
+            )
+            for artifact in restorePlan.directoryRestores {
                 try restoreBackupPathIfExists(
-                    artifact.backupPath(in: preflight.backup),
-                    artifact.restoreDestination(
-                        managerAppPath: managerAppPath,
-                        nginxDirectory: nginxDirectory,
-                        deployDirectory: deployDirectory
-                    )
+                    artifact.backupPath,
+                    artifact.restoreDestination
                 )
             }
             try restoreRuntimeToolsIfExists(
-                preflight.backup.appendingPathComponent(UpdateBundleArtifactType.runtimeTools.rawValue)
+                restorePlan.runtimeToolsBackup
             )
         case .rollbackStartRuntimeServices:
             try startRuntimeServices(preflight.restartPolicy)
@@ -76,48 +89,6 @@ public struct RuntimeRollbackStepExecutor {
             try waitForHealth(preflight.restartPolicy)
         default:
             throw RuntimeRollbackWorkflowError.operationFailed("unsupported command: rollback step \(step.rawValue)")
-        }
-    }
-}
-
-private enum RuntimeRollbackManagedBackupArtifact {
-    case appBundle
-    case nginxBundle
-    case guestDeploy
-
-    static let directoryArtifacts: [RuntimeRollbackManagedBackupArtifact] = [
-        .appBundle,
-        .nginxBundle,
-        .guestDeploy,
-    ]
-
-    private var updateArtifactType: UpdateBundleArtifactType {
-        switch self {
-        case .appBundle:
-            return .appBundle
-        case .nginxBundle:
-            return .nginxBundle
-        case .guestDeploy:
-            return .guestDeploy
-        }
-    }
-
-    func backupPath(in backup: URL) -> URL {
-        backup.appendingPathComponent(updateArtifactType.rawValue)
-    }
-
-    func restoreDestination(
-        managerAppPath: URL,
-        nginxDirectory: URL,
-        deployDirectory: URL
-    ) -> URL {
-        switch self {
-        case .appBundle:
-            return managerAppPath
-        case .nginxBundle:
-            return nginxDirectory
-        case .guestDeploy:
-            return deployDirectory
         }
     }
 }

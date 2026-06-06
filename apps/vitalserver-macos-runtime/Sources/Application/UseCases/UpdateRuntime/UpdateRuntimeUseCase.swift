@@ -37,6 +37,25 @@ public struct ApplyRuntimeBundlePreflightCapabilityPlan: Equatable, Sendable {
     }
 }
 
+public struct ApplyRuntimeBundlePreflightManifestPlan: Equatable, Sendable {
+    public let stagedRootfs: URL?
+    public let manifestLogMessage: String
+    public let backupReason: String
+    public let backupStartedLogMessage: String
+
+    public init(
+        stagedRootfs: URL?,
+        manifestLogMessage: String,
+        backupReason: String,
+        backupStartedLogMessage: String
+    ) {
+        self.stagedRootfs = stagedRootfs
+        self.manifestLogMessage = manifestLogMessage
+        self.backupReason = backupReason
+        self.backupStartedLogMessage = backupStartedLogMessage
+    }
+}
+
 public struct ApplyRuntimeBundleDiskHealthDecision: Equatable, Sendable {
     public let canApplyUpdate: Bool
     public let blockers: [RuntimeVMError]
@@ -56,11 +75,46 @@ public struct ApplyRuntimeBundleDiskHealthDecision: Equatable, Sendable {
     }
 }
 
+public struct ApplyRuntimeBundleStopPlan: Equatable, Sendable {
+    public let preparesGuestShutdown: Bool
+
+    public init(preparesGuestShutdown: Bool) {
+        self.preparesGuestShutdown = preparesGuestShutdown
+    }
+}
+
+public struct ApplyRuntimeBundleRootfsReplacementPlan: Equatable, Sendable {
+    public let stagedRootfs: URL?
+    public let rootfsBase: URL
+    public let shouldReplace: Bool
+    public let skippedLogMessage: String?
+
+    public init(
+        stagedRootfs: URL?,
+        rootfsBase: URL,
+        shouldReplace: Bool,
+        skippedLogMessage: String?
+    ) {
+        self.stagedRootfs = stagedRootfs
+        self.rootfsBase = rootfsBase
+        self.shouldReplace = shouldReplace
+        self.skippedLogMessage = skippedLogMessage
+    }
+}
+
 public struct RollbackRuntimePlan: Equatable, Sendable {
     public let operationPlan: RuntimeOperationPlan
 
     public init(operationPlan: RuntimeOperationPlan) {
         self.operationPlan = operationPlan
+    }
+}
+
+public struct RollbackRuntimePreflightPlan: Equatable, Sendable {
+    public let serviceRestartLogMessage: String
+
+    public init(serviceRestartLogMessage: String) {
+        self.serviceRestartLogMessage = serviceRestartLogMessage
     }
 }
 
@@ -80,6 +134,34 @@ public struct RollbackRuntimeBackupPlan: Equatable, Sendable {
         self.backupRootfs = backupRootfs
         self.backupVersion = backupVersion
         self.restoresRootfsBase = restoresRootfsBase
+    }
+}
+
+public enum RollbackRuntimeVersionRestoreDecision: Equatable, Sendable {
+    case restoreBackupVersion(source: URL, destination: URL)
+    case writeExplicitRollbackMarker(version: String, destinationDirectory: URL)
+}
+
+public struct RollbackRuntimeManagedArtifactRestore: Equatable, Sendable {
+    public let backupPath: URL
+    public let restoreDestination: URL
+
+    public init(backupPath: URL, restoreDestination: URL) {
+        self.backupPath = backupPath
+        self.restoreDestination = restoreDestination
+    }
+}
+
+public struct RollbackRuntimeManagedArtifactRestorePlan: Equatable, Sendable {
+    public let directoryRestores: [RollbackRuntimeManagedArtifactRestore]
+    public let runtimeToolsBackup: URL
+
+    public init(
+        directoryRestores: [RollbackRuntimeManagedArtifactRestore],
+        runtimeToolsBackup: URL
+    ) {
+        self.directoryRestores = directoryRestores
+        self.runtimeToolsBackup = runtimeToolsBackup
     }
 }
 
@@ -146,6 +228,20 @@ public struct UpdateRuntimeUseCase {
         )
     }
 
+    public func preflightManifestPlan(
+        stagedBundle: URL,
+        manifest: UpdateBundleManifest
+    ) -> ApplyRuntimeBundlePreflightManifestPlan {
+        ApplyRuntimeBundlePreflightManifestPlan(
+            stagedRootfs: manifest.artifacts.contains { $0.type == .rootfsBase }
+                ? stagedBundle.appendingPathComponent(RuntimeFileNames.rootfsBase)
+                : nil,
+            manifestLogMessage: "bundle apply manifest version=\(manifest.version) runtimeVersion=\(manifest.runtimeVersion) artifacts=\(manifest.artifacts.count) migrations=\(manifest.migrations.count)",
+            backupReason: "before-\(manifest.version)",
+            backupStartedLogMessage: "creating managed backup reason=before-\(manifest.version)"
+        )
+    }
+
     public func preflightCapabilityPlan(
         manifest: UpdateBundleManifest,
         restartPolicy: RuntimeServiceRestartPolicy
@@ -162,6 +258,22 @@ public struct UpdateRuntimeUseCase {
             requiresRuntimeDiskHealthCheck: restartPolicy.restartVM,
             requiredGuestCapabilities: capabilities,
             serviceRestartLogMessage: "runtime services before update vm=\(loadedText(restartPolicy.restartVM)) guestLogSync=\(loadedText(restartPolicy.restartGuestLogSync)) proxy=\(loadedText(restartPolicy.restartProxy)) watchdog=\(loadedText(restartPolicy.restartWatchdog))"
+        )
+    }
+
+    public func stopPlan(restartPolicy: RuntimeServiceRestartPolicy) -> ApplyRuntimeBundleStopPlan {
+        ApplyRuntimeBundleStopPlan(preparesGuestShutdown: restartPolicy.restartVM)
+    }
+
+    public func rootfsReplacementPlan(
+        stagedRootfs: URL?,
+        rootfsBase: URL
+    ) -> ApplyRuntimeBundleRootfsReplacementPlan {
+        ApplyRuntimeBundleRootfsReplacementPlan(
+            stagedRootfs: stagedRootfs,
+            rootfsBase: rootfsBase,
+            shouldReplace: stagedRootfs != nil,
+            skippedLogMessage: stagedRootfs == nil ? "rootfs-base replacement skipped; bundle does not include rootfs-base" : nil
         )
     }
 
@@ -193,6 +305,15 @@ public struct UpdateRuntimeUseCase {
         )
     }
 
+    public func rollbackPreflightPlan(
+        backup: URL,
+        restartPolicy: RuntimeServiceRestartPolicy
+    ) -> RollbackRuntimePreflightPlan {
+        RollbackRuntimePreflightPlan(
+            serviceRestartLogMessage: "rollback preflight backup=\(backup.path) vm=\(loadedText(restartPolicy.restartVM)) guestLogSync=\(loadedText(restartPolicy.restartGuestLogSync)) proxy=\(loadedText(restartPolicy.restartProxy)) watchdog=\(loadedText(restartPolicy.restartWatchdog))"
+        )
+    }
+
     public func rollbackBackupPlan(
         backup: URL,
         manifest: BackupManifest
@@ -203,6 +324,43 @@ public struct UpdateRuntimeUseCase {
             backupRootfs: backupRootfs,
             backupVersion: backup.appendingPathComponent(RuntimeFileNames.runtimeVersion),
             restoresRootfsBase: backupRootfs != nil
+        )
+    }
+
+    public func rollbackVersionRestoreDecision(
+        backupVersion: URL,
+        runtimeVersion: URL,
+        backupVersionExists: Bool,
+        backup: URL
+    ) -> RollbackRuntimeVersionRestoreDecision {
+        if backupVersionExists {
+            return .restoreBackupVersion(source: backupVersion, destination: runtimeVersion)
+        }
+        return .writeExplicitRollbackMarker(version: "rolled-back", destinationDirectory: backup)
+    }
+
+    public func rollbackManagedArtifactRestorePlan(
+        backup: URL,
+        managerAppPath: URL,
+        nginxDirectory: URL,
+        deployDirectory: URL
+    ) -> RollbackRuntimeManagedArtifactRestorePlan {
+        RollbackRuntimeManagedArtifactRestorePlan(
+            directoryRestores: [
+                RollbackRuntimeManagedArtifactRestore(
+                    backupPath: backup.appendingPathComponent(UpdateBundleArtifactType.appBundle.rawValue),
+                    restoreDestination: managerAppPath
+                ),
+                RollbackRuntimeManagedArtifactRestore(
+                    backupPath: backup.appendingPathComponent(UpdateBundleArtifactType.nginxBundle.rawValue),
+                    restoreDestination: nginxDirectory
+                ),
+                RollbackRuntimeManagedArtifactRestore(
+                    backupPath: backup.appendingPathComponent(UpdateBundleArtifactType.guestDeploy.rawValue),
+                    restoreDestination: deployDirectory
+                ),
+            ],
+            runtimeToolsBackup: backup.appendingPathComponent(UpdateBundleArtifactType.runtimeTools.rawValue)
         )
     }
 

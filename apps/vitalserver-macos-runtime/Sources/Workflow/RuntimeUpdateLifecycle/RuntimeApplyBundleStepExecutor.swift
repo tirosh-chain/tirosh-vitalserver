@@ -1,3 +1,4 @@
+import Application
 import Contracts
 import Domain
 import Foundation
@@ -20,6 +21,9 @@ public struct RuntimeApplyBundleStepExecutor {
     public var activateGuestUpdateIfNeeded: (UpdateBundleManifest) throws -> Void
     public var waitForHealth: (RuntimeServiceRestartPolicy) throws -> Void
     public var log: (String) -> Void
+    private var useCase: UpdateRuntimeUseCase {
+        UpdateRuntimeUseCase()
+    }
 
     public init(
         stopRuntimeServices: @escaping () throws -> Void,
@@ -64,7 +68,8 @@ public struct RuntimeApplyBundleStepExecutor {
     ) throws {
         switch step {
         case .stopRuntimeServices:
-            if preflight.restartPolicy.restartVM {
+            let stopPlan = useCase.stopPlan(restartPolicy: preflight.restartPolicy)
+            if stopPlan.preparesGuestShutdown {
                 let expectedVMProcessID = try runningVMProcessID()
                 log("captured VM process before guest update shutdown pid=\(expectedVMProcessID)")
                 try prepareGuestShutdownForUpdate(preflight.manifest)
@@ -76,16 +81,22 @@ public struct RuntimeApplyBundleStepExecutor {
             }
             try stopRuntimeServices()
         case .replaceRootfsBase:
-            guard let stagedRootfs = preflight.stagedRootfs else {
-                log("rootfs-base replacement skipped; bundle does not include rootfs-base")
+            let rootfsPlan = useCase.rootfsReplacementPlan(
+                stagedRootfs: preflight.stagedRootfs,
+                rootfsBase: rootfsBase
+            )
+            guard let stagedRootfs = rootfsPlan.stagedRootfs, rootfsPlan.shouldReplace else {
+                if let skippedLogMessage = rootfsPlan.skippedLogMessage {
+                    log(skippedLogMessage)
+                }
                 return
             }
-            try createDirectory(rootfsBase.deletingLastPathComponent(), true)
+            try createDirectory(rootfsPlan.rootfsBase.deletingLastPathComponent(), true)
             log(
-                "replacing rootfs-base source=\(stagedRootfs.path) destination=\(rootfsBase.path) size=\(formatBytes(try fileSize(stagedRootfs)))"
+                "replacing rootfs-base source=\(stagedRootfs.path) destination=\(rootfsPlan.rootfsBase.path) size=\(formatBytes(try fileSize(stagedRootfs)))"
             )
-            try replaceFile(stagedRootfs, rootfsBase)
-            log("rootfs-base replaced destination=\(rootfsBase.path)")
+            try replaceFile(stagedRootfs, rootfsPlan.rootfsBase)
+            log("rootfs-base replaced destination=\(rootfsPlan.rootfsBase.path)")
         case .replaceUpdateArtifacts:
             try replaceUpdateArtifacts(preflight.manifest.artifacts, preflight.stagedBundle)
         case .runMigrations:
