@@ -1,3 +1,4 @@
+import Application
 import Contracts
 import Domain
 import Foundation
@@ -15,6 +16,9 @@ public struct RuntimeGuestShutdownRunner {
     public var sleep: () -> Void
     public var log: (String) -> Void
     public var waitTimeoutSeconds: Double
+    private var useCase: UpdateRuntimeUseCase {
+        UpdateRuntimeUseCase()
+    }
 
     public init(
         requireCapability: @escaping () throws -> Void,
@@ -43,18 +47,19 @@ public struct RuntimeGuestShutdownRunner {
     }
 
     public func prepareForUpdate(version: String) throws {
-        log("guest update shutdown requested version=\(version)")
+        let plan = useCase.guestShutdownPlan(version: version)
+        log(plan.requestedLogMessage)
         try requireCapability()
         try createRunDirectory()
         try removePreviousResult()
-        let request = RuntimeGuestShutdownRequest(
-            id: requestID(),
-            requestedAt: timestamp(),
-            version: version
+        let request = useCase.guestShutdownRequest(
+            plan: plan,
+            requestID: requestID(),
+            requestedAt: timestamp()
         )
         try writeRequest(request)
         try waitForShutdownReady(request)
-        log("guest update shutdown ready version=\(version)")
+        log(plan.readyLogMessage)
     }
 
     private func waitForShutdownReady(_ request: RuntimeGuestShutdownRequest) throws {

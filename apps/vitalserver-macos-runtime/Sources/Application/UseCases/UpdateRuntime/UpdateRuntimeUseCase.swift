@@ -105,6 +105,22 @@ public struct RuntimeGuestActivationPlan: Equatable, Sendable {
     }
 }
 
+public struct RuntimeGuestShutdownPlan: Equatable, Sendable {
+    public let version: String
+    public let requestedLogMessage: String
+    public let readyLogMessage: String
+
+    public init(
+        version: String,
+        requestedLogMessage: String,
+        readyLogMessage: String
+    ) {
+        self.version = version
+        self.requestedLogMessage = requestedLogMessage
+        self.readyLogMessage = readyLogMessage
+    }
+}
+
 public struct UpdateRuntimeUseCase {
     public init() {}
 
@@ -222,6 +238,26 @@ public struct UpdateRuntimeUseCase {
             return nil
         }
         return RuntimeGuestActivationRequest(
+            id: requestID,
+            requestedAt: requestedAt,
+            version: plan.version
+        )
+    }
+
+    public func guestShutdownPlan(version: String) -> RuntimeGuestShutdownPlan {
+        RuntimeGuestShutdownPlan(
+            version: version,
+            requestedLogMessage: "guest update shutdown requested version=\(version)",
+            readyLogMessage: "guest update shutdown ready version=\(version)"
+        )
+    }
+
+    public func guestShutdownRequest(
+        plan: RuntimeGuestShutdownPlan,
+        requestID: String,
+        requestedAt: String
+    ) -> RuntimeGuestShutdownRequest {
+        RuntimeGuestShutdownRequest(
             id: requestID,
             requestedAt: requestedAt,
             version: plan.version

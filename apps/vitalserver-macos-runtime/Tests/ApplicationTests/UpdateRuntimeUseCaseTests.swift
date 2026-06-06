@@ -228,6 +228,24 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
         XCTAssertEqual(request?.requestedAt, "2026-06-06T00:00:00Z")
         XCTAssertEqual(request?.version, "test")
     }
+
+    func testGuestShutdownPlanAndRequestUseExplicitVersionRequestState() {
+        let useCase = UpdateRuntimeUseCase()
+
+        let plan = useCase.guestShutdownPlan(version: "1.2.3")
+        let request = useCase.guestShutdownRequest(
+            plan: plan,
+            requestID: "request-1",
+            requestedAt: "2026-06-06T00:00:00Z"
+        )
+
+        XCTAssertEqual(plan.version, "1.2.3")
+        XCTAssertEqual(plan.requestedLogMessage, "guest update shutdown requested version=1.2.3")
+        XCTAssertEqual(plan.readyLogMessage, "guest update shutdown ready version=1.2.3")
+        XCTAssertEqual(request.id, "request-1")
+        XCTAssertEqual(request.requestedAt, "2026-06-06T00:00:00Z")
+        XCTAssertEqual(request.version, "1.2.3")
+    }
 }
 
 private func applyBundlePreflight(stagedRootfs: URL?) -> ApplyBundlePreflightContext {
