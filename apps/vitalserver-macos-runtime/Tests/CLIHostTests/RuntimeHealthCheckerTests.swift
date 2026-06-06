@@ -5,7 +5,6 @@ import Contracts
 import Domain
 import OutboundAdapters
 import InboundAdapters
-import Workflow
 @testable import CLIHost
 import XCTest
 import Errors

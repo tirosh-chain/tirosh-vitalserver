@@ -1,10 +1,10 @@
 import Application
 import Contracts
-import Workflow
 import Errors
 
 public struct RuntimeHealthCheckRunner {
-    private let workflow: RuntimeHealthRefreshWorkflow
+    private let useCase: RefreshRuntimeHealthUseCase
+    private let operations: RefreshRuntimeHealthOperations
     public var printStatus: () throws -> Void
     public var printLine: (String) -> Void
 
@@ -21,16 +21,12 @@ public struct RuntimeHealthCheckRunner {
         ) -> Void,
         printLine: @escaping (String) -> Void
     ) {
-        self.workflow = RuntimeHealthRefreshWorkflow(
-            useCase: RefreshRuntimeHealthUseCase(),
-            reader: RuntimeHealthRefreshReader(
-                healthSnapshot: healthSnapshot
-            ),
-            writer: RuntimeHealthRefreshWriter(
-                writeStatus: writeStatus,
-                writeStatusBestEffort: writeStatusBestEffort,
-                recordObservedEventBestEffort: recordObservedEventBestEffort
-            )
+        self.useCase = RefreshRuntimeHealthUseCase()
+        self.operations = RefreshRuntimeHealthOperations(
+            healthSnapshot: healthSnapshot,
+            writeStatus: writeStatus,
+            writeStatusBestEffort: writeStatusBestEffort,
+            recordObservedEventBestEffort: recordObservedEventBestEffort
         )
         self.printStatus = printStatus
         self.printLine = printLine
@@ -39,9 +35,9 @@ public struct RuntimeHealthCheckRunner {
     public func run() throws {
         try printStatus()
         do {
-            let decision = try workflow.refresh()
+            let decision = try useCase.refresh(operations: operations)
             printLine(decision.outputLine)
-        } catch RuntimeHealthRefreshWorkflowError.operationFailed {
+        } catch RefreshRuntimeHealthUseCaseError.operationFailed {
             printLine("health: failed")
             throw RuntimeHealthCheckRunnerError.runtimeHealthFailed
         }

@@ -5,7 +5,6 @@ import Contracts
 import Domain
 import OutboundAdapters
 import InboundAdapters
-import Workflow
 import Errors
 
 public struct RuntimeBundleCompositionContext {
@@ -146,7 +145,11 @@ public struct RuntimeBundleComposition {
     }
 
     public func applyBundle(_ bundleURL: URL) throws {
-        try runtimeApplyBundleWorkflow().applyBundle(bundleURL)
+        try ApplyRuntimeBundleUseCase().run(
+            input: ApplyRuntimeBundleInput(bundleURL: bundleURL),
+            operations: applyRuntimeBundleOperations()
+        )
+        operations.log(UpdateRuntimeUseCase().mutableVMDiskPreservedLogMessage(path: context.vmDisk.path))
     }
 
     private func runtimeBundlePreparationOperations() -> RuntimeBundlePreparationOperations {
@@ -275,29 +278,43 @@ public struct RuntimeBundleComposition {
         fileExists(url) ? try fileSize(url) : 0
     }
 
-    private func runtimeApplyBundleWorkflow() -> RuntimeApplyBundleWorkflow {
-        RuntimeApplyBundleWorkflow(
-            context: RuntimeApplyBundleWorkflowContext(
-                backupsDirectory: context.backupsDirectory,
-                logsDirectory: context.logsDirectory,
-                rootfsBase: context.rootfsBase,
-                vmDisk: context.vmDisk,
-                updateFreeSpaceMarginBytes: Constants.Runtime.updateFreeSpaceMarginBytes
-            ),
-            operations: RuntimeApplyBundleWorkflowOperations(
-                executePreflight: executeApplyBundlePreflight,
-                runtimeHealthSnapshot: operations.runtimeHealthSnapshot,
-                executeInitialHealthWarningPlan: executeInitialHealthWarningPlan,
-                executePreflightFailurePlan: executeApplyBundlePreflightFailurePlan,
-                prepareLogs: prepareApplyBundleLogs,
-                executeFailureRecoveryPlan: executeApplyBundleFailureRecoveryPlan,
-                statusReporter: operations.statusReporter,
-                pruneOldRuntimeArtifacts: operations.pruneOldRuntimeArtifacts,
-                executeApplyBundleStepPlan: executeApplyBundleStepPlan,
-                describeError: RuntimeErrorDescription.describe,
-                log: operations.log
-            )
+    private func applyRuntimeBundleOperations() -> ApplyRuntimeBundleOperations {
+        ApplyRuntimeBundleOperations(
+            prepareLogs: {
+                prepareApplyBundleLogs(context.logsDirectory)
+            },
+            initialHealthSnapshot: operations.runtimeHealthSnapshot,
+            executeInitialHealthWarningPlan: executeInitialHealthWarningPlan,
+            preparePreflight: { bundleURL in
+                try executeApplyBundlePreflight(ApplyRuntimeBundlePreflightInput(
+                    bundleURL: bundleURL,
+                    backupsDirectory: context.backupsDirectory,
+                    rootfsBase: context.rootfsBase,
+                    updateFreeSpaceMarginBytes: Constants.Runtime.updateFreeSpaceMarginBytes
+                ))
+            },
+            executePreflightFailurePlan: executeApplyBundlePreflightFailurePlan,
+            executeStep: executeApplyBundleStep,
+            executeFailureRecoveryPlan: executeApplyBundleFailureRecoveryPlan,
+            writeStatus: { status, operation, message in
+                try operations.statusReporter.write(status, operation: operation, message: message)
+            },
+            publishProgress: operations.statusReporter.publishProgress,
+            pruneOldRuntimeArtifacts: operations.pruneOldRuntimeArtifacts,
+            describeError: RuntimeErrorDescription.describe,
+            log: operations.statusReporter.log
         )
+    }
+
+    private func executeApplyBundleStep(
+        _ step: RuntimeWorkflowStep,
+        preflight: ApplyBundlePreflightContext
+    ) throws {
+        try executeApplyBundleStepPlan(UpdateRuntimeUseCase().applyBundleStepExecutionPlan(
+            step: step,
+            preflight: preflight,
+            rootfsBase: context.rootfsBase
+        ))
     }
 
     private func executeApplyBundlePreflight(
@@ -396,7 +413,7 @@ public struct RuntimeBundleComposition {
         case .planned(let plan):
             return plan
         case .failed(let message):
-            throw RuntimeApplyBundleWorkflowError.operationFailed(message)
+            throw ApplyRuntimeBundleCompositionError.operationFailed(message)
         }
     }
 
@@ -475,7 +492,7 @@ public struct RuntimeBundleComposition {
             return
         case .blocked(_, let logMessage, let failureMessage):
             operations.log(logMessage)
-            throw RuntimeApplyBundleWorkflowError.operationFailed(failureMessage)
+            throw ApplyRuntimeBundleCompositionError.operationFailed(failureMessage)
         }
     }
 
@@ -500,7 +517,7 @@ public struct RuntimeBundleComposition {
         case .waitRuntimeHealth(let restartPolicy):
             try operations.waitForHealth(restartPolicy)
         case .unsupported(let failureMessage):
-            throw RuntimeApplyBundleWorkflowError.operationFailed(failureMessage)
+            throw ApplyRuntimeBundleCompositionError.operationFailed(failureMessage)
         }
     }
 

@@ -1,5 +1,4 @@
 import Contracts
-import Workflow
 import Errors
 
 public enum RuntimeWorkflowStatusReporterComposition {

@@ -1,7 +1,6 @@
 import Contracts
 import Foundation
 import InboundAdapters
-import Workflow
 import Errors
 
 public struct RuntimeHealthCheckRunnerCompositionOperations {

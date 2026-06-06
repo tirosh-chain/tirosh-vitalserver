@@ -2,7 +2,6 @@ import Application
 import Contracts
 import Foundation
 import OutboundAdapters
-import Workflow
 import Errors
 
 public struct RuntimeUninstallCompositionContext {
@@ -55,11 +54,48 @@ public struct RuntimeUninstallCompositionOperations {
     }
 }
 
+public struct RuntimeUninstallRunner {
+    private let paths: RuntimeUninstallPaths
+    private let readers: RuntimeUninstallStateReaders
+    private let effects: RuntimeUninstallEffects
+    private let writer: RuntimeUninstallStateWriter
+    private let diagnostics: RuntimeUninstallDiagnostics
+    private let packageReceiptIdentifiers: [String]
+
+    public init(
+        paths: RuntimeUninstallPaths,
+        readers: RuntimeUninstallStateReaders,
+        effects: RuntimeUninstallEffects,
+        writer: RuntimeUninstallStateWriter,
+        diagnostics: RuntimeUninstallDiagnostics,
+        packageReceiptIdentifiers: [String]
+    ) {
+        self.paths = paths
+        self.readers = readers
+        self.effects = effects
+        self.writer = writer
+        self.diagnostics = diagnostics
+        self.packageReceiptIdentifiers = packageReceiptIdentifiers
+    }
+
+    public func run(_ command: RuntimeUninstallCommand) throws {
+        try RunUninstallRuntimeUseCase().run(
+            command,
+            paths: paths,
+            readers: readers,
+            effects: effects,
+            writer: writer,
+            diagnostics: diagnostics,
+            packageReceiptIdentifiers: packageReceiptIdentifiers
+        )
+    }
+}
+
 public enum RuntimeUninstallComposition {
     public static func make(
         context: RuntimeUninstallCompositionContext,
         operations: RuntimeUninstallCompositionOperations
-    ) -> RuntimeUninstallWorkflow {
+    ) -> RuntimeUninstallRunner {
         let vitalFilesDirectoryRead = operations.configuredExternalVitalFilesDirectory()
         let uninstallPaths = RuntimeUninstallPaths(
             productRoot: context.installedPaths.productRoot,
@@ -76,7 +112,7 @@ public enum RuntimeUninstallComposition {
                 context.installedPaths.uninstaller,
             ]
         )
-        return RuntimeUninstallWorkflow(
+        return RuntimeUninstallRunner(
             paths: uninstallPaths,
             readers: RuntimeUninstallStateReaders(
                 serviceStates: {
@@ -308,7 +344,7 @@ public enum RuntimeUninstallComposition {
         operations: RuntimeUninstallCompositionOperations
     ) throws {
         guard target.path != "/" else {
-            throw RuntimeUninstallWorkflowError.operationFailed(
+            throw UninstallRuntimeUseCaseError.operationFailed(
                 useCase.unsafeRemovalTargetFailureMessage(path: target.path)
             )
         }
@@ -323,7 +359,7 @@ public enum RuntimeUninstallComposition {
         }
         if exists(target, operations: operations) {
             logRemovalDiagnostics(target, useCase: useCase, operations: operations)
-            throw RuntimeUninstallWorkflowError.operationFailed(
+            throw UninstallRuntimeUseCaseError.operationFailed(
                 useCase.removalIncompleteFailureMessage(path: target.path)
             )
         }

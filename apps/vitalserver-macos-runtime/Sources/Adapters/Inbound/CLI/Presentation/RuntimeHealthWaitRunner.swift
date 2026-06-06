@@ -1,39 +1,40 @@
 import Application
 import Contracts
 import Domain
-import Workflow
 import Errors
 
 public struct RuntimeHealthWaitRunner {
-    private let workflow: RuntimeHealthWaitWorkflow
+    private let useCase: WaitForRuntimeHealthUseCase
+    private let context: RuntimeHealthWaitExecutionContext
+    private let operations: RuntimeHealthWaitOperations
 
     public init(
-        configuration: RuntimeHealthWaitWorkflowConfiguration,
+        context: RuntimeHealthWaitExecutionContext,
         serviceStates: @escaping ([RuntimeManagedService]) -> [RuntimeManagedService: RuntimeServiceState],
         healthSnapshot: @escaping () -> RuntimeHealthSnapshot,
         writeStatusBestEffort: @escaping (RuntimeStatusLevel, RuntimeOperation, String) -> Void,
         sleep: @escaping () -> Void,
         log: @escaping (String) -> Void
     ) {
-        self.workflow = RuntimeHealthWaitWorkflow(
-            useCase: WaitForRuntimeHealthUseCase(),
-            reader: RuntimeHealthWaitReader(
-                serviceStates: serviceStates,
-                healthSnapshot: healthSnapshot
-            ),
-            configuration: configuration,
-            writer: RuntimeHealthWaitWriter(
-                writeStatusBestEffort: writeStatusBestEffort,
-                sleep: sleep,
-                log: log
-            )
+        self.useCase = WaitForRuntimeHealthUseCase()
+        self.context = context
+        self.operations = RuntimeHealthWaitOperations(
+            serviceStates: serviceStates,
+            healthSnapshot: healthSnapshot,
+            writeStatusBestEffort: writeStatusBestEffort,
+            sleep: sleep,
+            log: log
         )
     }
 
     public func wait(for policy: RuntimeServiceRestartPolicy) throws {
         do {
-            try workflow.wait(for: policy)
-        } catch RuntimeHealthWaitWorkflowError.operationFailed {
+            try useCase.wait(
+                policy: policy,
+                context: context,
+                operations: operations
+            )
+        } catch RuntimeHealthWaitUseCaseError.operationFailed {
             throw RuntimeHealthWaitRunnerError.runtimeHealthFailed
         }
     }

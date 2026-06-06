@@ -1,6 +1,6 @@
+import Application
 import Contracts
 import Foundation
-import Workflow
 import Errors
 
 public enum RuntimeLifecycleCommand: Equatable {

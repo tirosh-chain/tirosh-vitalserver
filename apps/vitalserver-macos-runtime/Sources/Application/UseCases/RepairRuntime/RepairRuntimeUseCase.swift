@@ -313,6 +313,45 @@ public struct RepairRuntimeWaitResultPlan: Equatable, Sendable {
     }
 }
 
+public struct DatastoreRepairWaitExecutionContext: Equatable, Sendable {
+    public let waitTimeoutSeconds: Double
+    public let pollIntervalSeconds: Double
+    public let progressEveryAttempts: Int
+
+    public init(
+        waitTimeoutSeconds: Double,
+        pollIntervalSeconds: Double,
+        progressEveryAttempts: Int
+    ) {
+        self.waitTimeoutSeconds = waitTimeoutSeconds
+        self.pollIntervalSeconds = pollIntervalSeconds
+        self.progressEveryAttempts = progressEveryAttempts
+    }
+}
+
+public struct DatastoreRepairWaitOperations {
+    public let loadResult: () -> RuntimeGuestDocumentLoadResult<DatastoreRepairResultDocument>
+    public let writeStatusBestEffort: (RuntimeStatusLevel, RuntimeOperation, String) -> Void
+    public let sleep: () -> Void
+    public let log: (String) -> Void
+
+    public init(
+        loadResult: @escaping () -> RuntimeGuestDocumentLoadResult<DatastoreRepairResultDocument>,
+        writeStatusBestEffort: @escaping (RuntimeStatusLevel, RuntimeOperation, String) -> Void,
+        sleep: @escaping () -> Void,
+        log: @escaping (String) -> Void
+    ) {
+        self.loadResult = loadResult
+        self.writeStatusBestEffort = writeStatusBestEffort
+        self.sleep = sleep
+        self.log = log
+    }
+}
+
+public enum DatastoreRepairWaitExecutionOutcome: Equatable, Sendable {
+    case completed
+}
+
 public struct RepairRuntimeFailureStatusPlan: Equatable, Sendable {
     public let status: RuntimeStatusLevel
     public let operation: RuntimeOperation
@@ -568,6 +607,39 @@ public struct RepairRuntimeUseCase {
         }
     }
 
+    @discardableResult
+    public func waitForDatastoreRepairResult(
+        request: RuntimeDatastoreRepairRequest,
+        context: DatastoreRepairWaitExecutionContext,
+        operations: DatastoreRepairWaitOperations
+    ) throws -> DatastoreRepairWaitExecutionOutcome {
+        operations.log(datastoreRepairWaitStartedLogMessage(timeoutSeconds: context.waitTimeoutSeconds))
+        let waitResult = DatastoreRepairWaiter.wait(
+            expectedRequestId: request.id,
+            configuration: datastoreRepairWaitConfiguration(context),
+            loadResult: operations.loadResult,
+            onProgress: { message in
+                let progressPlan = datastoreRepairWaitProgressPlan(message: message)
+                operations.log(message)
+                operations.writeStatusBestEffort(
+                    progressPlan.status,
+                    progressPlan.operation,
+                    progressPlan.message
+                )
+            },
+            sleep: operations.sleep
+        )
+
+        let resultPlan = datastoreRepairWaitResultPlan(waitResult)
+        if let logMessage = resultPlan.logMessage {
+            operations.log(logMessage)
+        }
+        if let failureMessage = resultPlan.failureMessage {
+            throw RepairRuntimeUseCaseError.operationFailed(failureMessage)
+        }
+        return .completed
+    }
+
     public func redisBackupRequestedPlan() -> RepairRuntimeLoggedStatusPlan {
         RepairRuntimeLoggedStatusPlan(
             logMessage: "redis backup requested",
@@ -720,6 +792,15 @@ public struct RepairRuntimeUseCase {
             throw RepairRuntimeUseCaseError.operationFailed("required free space calculation overflowed")
         }
         return added.partialValue
+    }
+
+    private func datastoreRepairWaitConfiguration(
+        _ context: DatastoreRepairWaitExecutionContext
+    ) -> DatastoreRepairWaitConfiguration {
+        DatastoreRepairWaitConfiguration(
+            maxAttempts: Int(ceil(context.waitTimeoutSeconds / context.pollIntervalSeconds)),
+            progressEveryAttempts: context.progressEveryAttempts
+        )
     }
 
     private func sanitizedTimestamp(_ timestamp: String) -> String {

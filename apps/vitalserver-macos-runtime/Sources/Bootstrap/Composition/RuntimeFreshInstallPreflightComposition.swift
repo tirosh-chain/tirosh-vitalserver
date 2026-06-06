@@ -3,7 +3,6 @@ import Contracts
 import Domain
 import Foundation
 import OutboundAdapters
-import Workflow
 import Errors
 
 public struct RuntimeFreshInstallPreflightCompositionContext {
@@ -34,8 +33,8 @@ public enum RuntimeFreshInstallPreflightComposition {
     public static func make(
         context: RuntimeFreshInstallPreflightCompositionContext,
         operations: RuntimeFreshInstallPreflightCompositionOperations
-    ) -> RuntimeFreshInstallPreflightRunner {
-        RuntimeFreshInstallPreflightRunner(
+    ) -> FreshInstallPreflightOperations {
+        FreshInstallPreflightOperations(
             settingsState: {
                 RuntimeInstallSettingsStateReader.state(
                     path: Constants.InstallPaths.settingsPath,

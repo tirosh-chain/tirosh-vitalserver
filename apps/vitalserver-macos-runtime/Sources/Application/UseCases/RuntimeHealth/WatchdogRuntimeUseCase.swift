@@ -194,6 +194,25 @@ public struct WatchdogRuntimeUseCase {
     }
 
     public func statusManagedOperationGuardPlan(
+        loadResult: RuntimeStatusDocumentLoadResult,
+        now: Date,
+        graceSeconds: TimeInterval
+    ) -> WatchdogRuntimeManagedOperationGuardPlan {
+        switch loadResult {
+        case .loaded(let document):
+            return statusManagedOperationGuardPlan(
+                status: document,
+                now: now,
+                graceSeconds: graceSeconds
+            )
+        case .missing:
+            return WatchdogRuntimeManagedOperationGuardPlan(activeOperation: nil, logMessage: nil)
+        case .failed(let message):
+            return statusReadFailureGuardPlan(reason: message)
+        }
+    }
+
+    public func statusManagedOperationGuardPlan(
         status: RuntimeStatusDocument,
         now: Date,
         graceSeconds: TimeInterval

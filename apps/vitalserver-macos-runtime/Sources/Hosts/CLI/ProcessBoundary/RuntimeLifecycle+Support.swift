@@ -5,7 +5,6 @@ import Contracts
 import Domain
 import OutboundAdapters
 import InboundAdapters
-import Workflow
 import Errors
 
 extension RuntimeLifecycle {
@@ -222,7 +221,7 @@ extension RuntimeLifecycle {
         )
     }
 
-    func runtimeUninstallRunner() throws -> RuntimeUninstallWorkflow {
+    func runtimeUninstallRunner() throws -> RuntimeUninstallRunner {
         RuntimeUninstallComposition.make(
             context: RuntimeUninstallCompositionContext(
                 installedPaths: installedPaths,
@@ -247,7 +246,11 @@ extension RuntimeLifecycle {
         )
     }
 
-    func runtimeFreshInstallPreflightRunner() -> RuntimeFreshInstallPreflightRunner {
+    func runtimeFreshInstallPreflight() -> RuntimeFreshInstallPreflightDocument {
+        FreshInstallPreflightUseCase().run(operations: runtimeFreshInstallPreflightOperations())
+    }
+
+    func runtimeFreshInstallPreflightOperations() -> FreshInstallPreflightOperations {
         RuntimeFreshInstallPreflightComposition.make(
             context: RuntimeFreshInstallPreflightCompositionContext(
                 installedPaths: installedPaths

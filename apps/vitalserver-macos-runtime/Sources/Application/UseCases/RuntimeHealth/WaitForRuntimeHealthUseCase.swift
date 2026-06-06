@@ -1,6 +1,7 @@
 import Contracts
 import Domain
 import Errors
+import Foundation
 
 public struct RuntimeHealthWaitPlan: Equatable {
     public let policy: RuntimeServiceRestartPolicy
@@ -41,6 +42,49 @@ public struct RuntimeHealthWaitProgressPlan: Equatable {
         self.logMessage = logMessage
         self.statusMessage = statusMessage
     }
+}
+
+public struct RuntimeHealthWaitExecutionContext: Equatable {
+    public let timeoutSeconds: Double
+    public let pollIntervalSeconds: Double
+    public let progressEveryAttempts: Int
+
+    public init(
+        timeoutSeconds: Double,
+        pollIntervalSeconds: Double,
+        progressEveryAttempts: Int
+    ) {
+        self.timeoutSeconds = timeoutSeconds
+        self.pollIntervalSeconds = pollIntervalSeconds
+        self.progressEveryAttempts = progressEveryAttempts
+    }
+}
+
+public struct RuntimeHealthWaitOperations {
+    public let serviceStates: ([RuntimeManagedService]) -> [RuntimeManagedService: RuntimeServiceState]
+    public let healthSnapshot: () -> RuntimeHealthSnapshot
+    public let writeStatusBestEffort: (RuntimeStatusLevel, RuntimeOperation, String) -> Void
+    public let sleep: () -> Void
+    public let log: (String) -> Void
+
+    public init(
+        serviceStates: @escaping ([RuntimeManagedService]) -> [RuntimeManagedService: RuntimeServiceState],
+        healthSnapshot: @escaping () -> RuntimeHealthSnapshot,
+        writeStatusBestEffort: @escaping (RuntimeStatusLevel, RuntimeOperation, String) -> Void,
+        sleep: @escaping () -> Void,
+        log: @escaping (String) -> Void
+    ) {
+        self.serviceStates = serviceStates
+        self.healthSnapshot = healthSnapshot
+        self.writeStatusBestEffort = writeStatusBestEffort
+        self.sleep = sleep
+        self.log = log
+    }
+}
+
+public enum RuntimeHealthWaitExecutionOutcome: Equatable {
+    case completed
+    case skipped
 }
 
 public struct WaitForRuntimeHealthUseCase {
@@ -111,5 +155,73 @@ public struct WaitForRuntimeHealthUseCase {
 
     public func timedOutFailureMessage(reasons: [RuntimeFailureReason]) -> String {
         "runtime health timed out reasons=\(RuntimeFailureReasonText.describe(reasons))"
+    }
+
+    @discardableResult
+    public func wait(
+        policy: RuntimeServiceRestartPolicy,
+        context: RuntimeHealthWaitExecutionContext,
+        operations: RuntimeHealthWaitOperations
+    ) throws -> RuntimeHealthWaitExecutionOutcome {
+        let plan = plan(policy: policy, timeoutSeconds: context.timeoutSeconds)
+        guard plan.shouldWait else {
+            if let skippedMessage = plan.skippedMessage {
+                operations.log(skippedMessage)
+            }
+            return .skipped
+        }
+
+        if let startedMessage = plan.startedMessage {
+            operations.log(startedMessage)
+        }
+        let waitResult = RuntimeHealthWaiter.wait(
+            configuration: waitConfiguration(context),
+            observe: {
+                observation(
+                    policy: plan.policy,
+                    serviceStates: operations.serviceStates(plan.observedServices),
+                    snapshot: operations.healthSnapshot()
+                )
+            },
+            onProgress: { reasons in
+                let progressPlan = progressPlan(reasons: reasons)
+                operations.log(progressPlan.logMessage)
+                operations.writeStatusBestEffort(
+                    progressPlan.status,
+                    progressPlan.operation,
+                    progressPlan.statusMessage
+                )
+            },
+            sleep: operations.sleep
+        )
+
+        try execute(waitResult, operations: operations)
+        return .completed
+    }
+
+    private func waitConfiguration(
+        _ context: RuntimeHealthWaitExecutionContext
+    ) -> RuntimeHealthWaitConfiguration {
+        RuntimeHealthWaitConfiguration(
+            maxAttempts: Int(ceil(context.timeoutSeconds / context.pollIntervalSeconds)),
+            progressEveryAttempts: context.progressEveryAttempts
+        )
+    }
+
+    private func execute(
+        _ waitResult: RuntimeHealthWaitResult,
+        operations: RuntimeHealthWaitOperations
+    ) throws {
+        switch waitResult {
+        case .healthy:
+            let snapshot = operations.healthSnapshot()
+            operations.log(healthyLogMessage(snapshot: snapshot))
+        case .failedEarly(let reason):
+            let message = failedEarlyMessage(reason: reason)
+            operations.log(message)
+            throw RuntimeHealthWaitUseCaseError.operationFailed(message)
+        case .timedOut(let reasons):
+            throw RuntimeHealthWaitUseCaseError.operationFailed(timedOutFailureMessage(reasons: reasons))
+        }
     }
 }

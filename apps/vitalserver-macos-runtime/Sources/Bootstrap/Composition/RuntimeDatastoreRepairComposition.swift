@@ -2,7 +2,6 @@ import Application
 import Contracts
 import Domain
 import Foundation
-import Workflow
 import Errors
 
 public struct RuntimeDatastoreRepairCompositionContext {
@@ -74,13 +73,13 @@ public struct RuntimeDatastoreRepairComposition {
         self.operations = operations
     }
 
-    public func workflow() -> RuntimeDatastoreRepairWorkflow {
-        RuntimeDatastoreRepairWorkflow(
-            context: RuntimeDatastoreRepairWorkflowContext(
+    public func repair() throws {
+        try RunDatastoreRepairUseCase().repair(
+            context: RunDatastoreRepairContext(
                 guestRunDirectory: context.guestRunDirectory,
                 waitTimeoutSeconds: Constants.Runtime.datastoreRepairWaitTimeoutSeconds
             ),
-            operations: RuntimeDatastoreRepairWorkflowOperations(
+            operations: RunDatastoreRepairOperations(
                 requireCapability: operations.requireCapability,
                 createDirectory: { url, withIntermediateDirectories in
                     try operations.fileStore.createDirectory(
@@ -104,11 +103,30 @@ public struct RuntimeDatastoreRepairComposition {
                 restartWatchdogService: operations.restartWatchdogService,
                 waitForHealth: operations.waitForHealth,
                 writeStatus: operations.writeStatus,
+                writeStatusBestEffort: { status, operation, message in
+                    writeStatusBestEffort(status, operation: operation, message: message)
+                },
                 requestID: operations.requestID,
                 timestamp: operations.timestamp,
                 sleep: operations.sleep,
                 log: operations.log
             )
         )
+    }
+
+    private func writeStatusBestEffort(
+        _ status: RuntimeStatusLevel,
+        operation: RuntimeOperation,
+        message: String
+    ) {
+        do {
+            try operations.writeStatus(status, operation, message)
+        } catch {
+            operations.log(RuntimeWorkflowUseCase().statusWriteFailedLogMessage(
+                status: status,
+                operation: operation,
+                reason: RuntimeErrorDescription.describe(error)
+            ))
+        }
     }
 }

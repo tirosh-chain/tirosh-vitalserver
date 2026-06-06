@@ -4,7 +4,6 @@ import OutboundAdapters
 import Contracts
 import Domain
 import InboundAdapters
-import Workflow
 import Errors
 
 private typealias InstallSettings = RuntimeInstallSettings
@@ -105,36 +104,44 @@ public struct RuntimeInstallComposition {
         let plan = installRuntimeUseCase().plan(for: InstallRuntimeRequest(
             mode: .full
         ))
-        try runtimeInstallComposition().run(plan)
+        try RunInstallRuntimeUseCase().run(
+            plan,
+            context: InstallRuntimeExecutionContext(runtimeHomePath: context.paths.home.path),
+            operations: installRuntimeOperations()
+        )
     }
 
     public func installProvision() throws {
         let plan = installRuntimeUseCase().plan(for: InstallRuntimeRequest(
             mode: .provision
         ))
-        try runtimeInstallComposition().run(plan)
+        try RunInstallRuntimeUseCase().run(
+            plan,
+            context: InstallRuntimeExecutionContext(runtimeHomePath: context.paths.home.path),
+            operations: installRuntimeOperations()
+        )
     }
 
     private func installRuntimeUseCase() -> InstallRuntimeUseCase {
         InstallRuntimeUseCase()
     }
 
-    private func runtimeInstallComposition() -> RuntimeInstallWorkflow<InstallSettings> {
-        RuntimeInstallWorkflow(
-            readers: RuntimeInstallStateReaders(
+    private func installRuntimeOperations() -> InstallRuntimeOperations<InstallSettings> {
+        InstallRuntimeOperations(
+            readers: InstallRuntimeStateReaders(
                 loadSettings: {
                     try loadInstallSettings()
                 },
                 freshInstallPreflight: operations.freshInstallPreflight,
                 provisionPayload: operations.installProvisionPayload
             ),
-            effects: RuntimeInstallEffects(
-                executeStep: { step, settings in
-                    try runtimeInstallStepExecutor().execute(step, settings: settings)
+            effects: InstallRuntimeEffects(
+                executeStepPlan: { plan, settings in
+                    try executeInstallStepPlan(plan, settings: settings)
                 },
                 describeError: RuntimeErrorDescription.describe
             ),
-            writer: RuntimeInstallStateWriter(
+            writer: InstallRuntimeStateWriter(
                 writeState: { state, mode, currentStep, message, blockers in
                     try RuntimeInstallStateStore(
                         url: context.installedPaths.runtimeInstallState,
@@ -151,8 +158,7 @@ public struct RuntimeInstallComposition {
                 writeStatus: operations.writeRuntimeStatus,
                 writeProgress: operations.writeRuntimeProgress
             ),
-            diagnostics: RuntimeInstallDiagnostics(log: operations.log),
-                runtimeHomePath: { context.paths.home.path }
+            diagnostics: InstallRuntimeDiagnostics(log: operations.log)
         )
     }
 
@@ -187,12 +193,6 @@ public struct RuntimeInstallComposition {
             minimumDiskGiB: Constants.Defaults.minimumDiskGiB,
             maximumDiskGiB: Constants.Defaults.maximumDiskGiB,
             diskStepGiB: Constants.Defaults.diskStepGiB
-        )
-    }
-
-    private func runtimeInstallStepExecutor() -> RuntimeInstallStepExecutor<InstallSettings> {
-        RuntimeInstallStepExecutor(
-            executeStepPlan: executeInstallStepPlan
         )
     }
 

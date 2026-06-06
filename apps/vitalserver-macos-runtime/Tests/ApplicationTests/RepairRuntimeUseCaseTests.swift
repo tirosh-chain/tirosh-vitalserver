@@ -327,6 +327,108 @@ final class RepairRuntimeUseCaseTests: XCTestCase {
         )
     }
 
+    func testWaitForDatastoreRepairResultExecutesPortsAndCompletes() throws {
+        var results: [RuntimeGuestDocumentLoadResult<DatastoreRepairResultDocument>] = [
+            .missing,
+            .loaded(datastoreRepairResult(status: .running, requestId: "request-1", message: "repairing")),
+            .loaded(datastoreRepairResult(status: .completed, requestId: "request-1", message: "done")),
+        ]
+        var events: [String] = []
+        let operations = DatastoreRepairWaitOperations(
+            loadResult: {
+                events.append("load")
+                if results.count > 1 {
+                    return results.removeFirst()
+                }
+                return results[0]
+            },
+            writeStatusBestEffort: { status, operation, message in
+                events.append("status:\(status.rawValue):\(operation.rawValue):\(message)")
+            },
+            sleep: { events.append("sleep") },
+            log: { message in events.append("log:\(message)") }
+        )
+
+        let outcome = try RepairRuntimeUseCase().waitForDatastoreRepairResult(
+            request: RuntimeDatastoreRepairRequest(id: "request-1", requestedAt: "2026-05-22T00:00:00Z"),
+            context: DatastoreRepairWaitExecutionContext(
+                waitTimeoutSeconds: 9,
+                pollIntervalSeconds: 3,
+                progressEveryAttempts: 1
+            ),
+            operations: operations
+        )
+
+        XCTAssertEqual(outcome, .completed)
+        XCTAssertEqual(events, [
+            "log:waiting for datastore repair result timeoutSeconds=9.0",
+            "load",
+            "log:waiting for datastore repair guest worker",
+            "status:recovering:repair-datastore:waiting for datastore repair guest worker",
+            "sleep",
+            "load",
+            "log:repairing",
+            "status:recovering:repair-datastore:repairing",
+            "sleep",
+            "load",
+            "log:datastore repair guest result completed message=done",
+        ])
+    }
+
+    func testWaitForDatastoreRepairResultPreservesReadFailureAndTimeoutMeanings() {
+        var failedEvents: [String] = []
+        let failedOperations = DatastoreRepairWaitOperations(
+            loadResult: { .failed("permission denied") },
+            writeStatusBestEffort: { _, _, _ in XCTFail("read failure should stop before progress status") },
+            sleep: { XCTFail("read failure should stop before sleep") },
+            log: { message in failedEvents.append("log:\(message)") }
+        )
+
+        XCTAssertThrowsError(try RepairRuntimeUseCase().waitForDatastoreRepairResult(
+            request: RuntimeDatastoreRepairRequest(id: "request-1", requestedAt: "2026-05-22T00:00:00Z"),
+            context: DatastoreRepairWaitExecutionContext(
+                waitTimeoutSeconds: 3,
+                pollIntervalSeconds: 3,
+                progressEveryAttempts: 1
+            ),
+            operations: failedOperations
+        )) { error in
+            XCTAssertEqual(error as? RepairRuntimeUseCaseError, .operationFailed("runtime health check failed"))
+        }
+        XCTAssertEqual(failedEvents, [
+            "log:waiting for datastore repair result timeoutSeconds=3.0",
+            "log:datastore repair guest result failed message=failed to read datastore repair result: permission denied",
+        ])
+
+        var timeoutStatuses: [String] = []
+        var timeoutSleeps = 0
+        let timeoutOperations = DatastoreRepairWaitOperations(
+            loadResult: { .missing },
+            writeStatusBestEffort: { status, operation, message in
+                timeoutStatuses.append("status:\(status.rawValue):\(operation.rawValue):\(message)")
+            },
+            sleep: { timeoutSleeps += 1 },
+            log: { _ in }
+        )
+
+        XCTAssertThrowsError(try RepairRuntimeUseCase().waitForDatastoreRepairResult(
+            request: RuntimeDatastoreRepairRequest(id: "request-1", requestedAt: "2026-05-22T00:00:00Z"),
+            context: DatastoreRepairWaitExecutionContext(
+                waitTimeoutSeconds: 6,
+                pollIntervalSeconds: 3,
+                progressEveryAttempts: 1
+            ),
+            operations: timeoutOperations
+        )) { error in
+            XCTAssertEqual(error as? RepairRuntimeUseCaseError, .operationFailed("runtime health check failed"))
+        }
+        XCTAssertEqual(timeoutStatuses, [
+            "status:recovering:repair-datastore:waiting for datastore repair guest worker",
+            "status:recovering:repair-datastore:waiting for datastore repair guest worker",
+        ])
+        XCTAssertEqual(timeoutSleeps, 1)
+    }
+
     func testRedisBackupResultDecisionPreservesStaleMissingFailedAndDefaultDisplayMessages() {
         let useCase = RepairRuntimeUseCase()
 
@@ -494,6 +596,21 @@ final class RepairRuntimeUseCaseTests: XCTestCase {
             status: status,
             message: message,
             archive: archive
+        )
+    }
+
+    private func datastoreRepairResult(
+        status: DatastoreRepairStatus,
+        requestId: String,
+        message: String
+    ) -> DatastoreRepairResultDocument {
+        DatastoreRepairResultDocument(
+            schemaVersion: 1,
+            requestId: requestId,
+            operation: .repairDatastore,
+            status: status,
+            message: message,
+            updatedAt: "2026-05-22T00:00:00Z"
         )
     }
 

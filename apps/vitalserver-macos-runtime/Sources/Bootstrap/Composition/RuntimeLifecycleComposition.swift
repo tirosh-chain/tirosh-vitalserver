@@ -3,7 +3,6 @@ import Foundation
 import Contracts
 import OutboundAdapters
 import InboundAdapters
-import Workflow
 import Errors
 
 public struct RuntimeLifecycleComposition {

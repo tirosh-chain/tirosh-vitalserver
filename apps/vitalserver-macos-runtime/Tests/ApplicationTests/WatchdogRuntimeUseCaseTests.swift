@@ -160,6 +160,37 @@ final class WatchdogRuntimeUseCaseTests: XCTestCase {
         )
     }
 
+    func testStatusManagedOperationGuardPlanPreservesLoadResultMeanings() {
+        let useCase = WatchdogRuntimeUseCase()
+        let now = date("2026-05-22T00:05:00Z")
+
+        let loaded = useCase.statusManagedOperationGuardPlan(
+            loadResult: .loaded(status(level: .updating, operation: .applyBundle, updatedAt: "2026-05-22T00:00:00Z")),
+            now: now,
+            graceSeconds: 1_800
+        )
+        let missing = useCase.statusManagedOperationGuardPlan(
+            loadResult: .missing,
+            now: now,
+            graceSeconds: 1_800
+        )
+        let failed = useCase.statusManagedOperationGuardPlan(
+            loadResult: .failed("permission denied"),
+            now: now,
+            graceSeconds: 1_800
+        )
+
+        XCTAssertEqual(loaded.activeOperation, .applyBundle)
+        XCTAssertNil(loaded.logMessage)
+        XCTAssertNil(missing.activeOperation)
+        XCTAssertNil(missing.logMessage)
+        XCTAssertNil(failed.activeOperation)
+        XCTAssertEqual(
+            failed.logMessage,
+            "watchdog active operation guard ignored status read failure error=permission denied"
+        )
+    }
+
     func testGuestBootstrapGuardKeepsMissingUpdatedAtExplicitlyActive() {
         let useCase = WatchdogRuntimeUseCase()
 

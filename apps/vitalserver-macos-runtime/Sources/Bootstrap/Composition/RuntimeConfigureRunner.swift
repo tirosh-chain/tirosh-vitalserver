@@ -3,7 +3,6 @@ import Contracts
 import Foundation
 import OutboundAdapters
 import InboundAdapters
-import Workflow
 import Errors
 
 public struct RuntimeConfigureActions {
@@ -135,9 +134,10 @@ public struct RuntimeConfigureRunner {
 
     public func configure(_ command: RuntimeConfigureCommand) throws -> RuntimeConfigureResult {
         do {
-            let result = try runtimeConfigureWorkflow().configure(
+            let result = try RunConfigureRuntimeUseCase<VMRuntimeConfig>().configure(
                 command.configureRuntimeRequest,
-                context: configureRuntimeContext()
+                context: configureRuntimeContext(),
+                operations: configureRuntimeOperations()
             )
             return RuntimeConfigureResult(restart: result.restart)
         } catch ConfigureRuntimeError.invalidArgument(let message) {
@@ -145,9 +145,9 @@ public struct RuntimeConfigureRunner {
         }
     }
 
-    private func runtimeConfigureWorkflow() -> RuntimeConfigureWorkflow<VMRuntimeConfig> {
-        RuntimeConfigureWorkflow(
-            readers: RuntimeConfigureStateReaders(
+    private func configureRuntimeOperations() -> ConfigureRuntimeOperations<VMRuntimeConfig> {
+        ConfigureRuntimeOperations(
+            readers: ConfigureRuntimeStateReaders(
                 loadVMConfig: { url in
                     try VMRuntimeConfigComposition.load(from: url, fileStore: fileStore)
                 },
@@ -155,7 +155,7 @@ public struct RuntimeConfigureRunner {
                     try loadGuestRuntimeConfig(from: url)
                 }
             ),
-            writer: RuntimeConfigureDocumentWriter(
+            writer: ConfigureRuntimeDocumentWriter(
                 encodeVMConfig: { config in
                     try prettyJSONEncoder().encode(config)
                 },
@@ -169,7 +169,7 @@ public struct RuntimeConfigureRunner {
                     try fileStore.writeData(data, to: url, options: options)
                 }
             ),
-            effects: RuntimeConfigureEffects(
+            effects: ConfigureRuntimeEffects(
                 resolveSecretFileChanges: { request in
                     try resolveSecretFileChanges(in: request)
                 },

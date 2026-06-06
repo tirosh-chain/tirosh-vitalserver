@@ -3,7 +3,6 @@ import Contracts
 import Domain
 import Foundation
 import OutboundAdapters
-import Workflow
 import Errors
 
 public struct RuntimeRollbackCompositionContext {
@@ -60,13 +59,21 @@ public struct RuntimeRollbackCompositionOperations {
     }
 }
 
-public enum RuntimeRollbackComposition {
+public struct RuntimeRollbackComposition {
+    let context: RuntimeRollbackCompositionContext
+    let operations: RuntimeRollbackCompositionOperations
+
     public static func make(
         context: RuntimeRollbackCompositionContext,
         operations: RuntimeRollbackCompositionOperations
-    ) -> RuntimeRollbackWorkflow {
-        RuntimeRollbackWorkflow(
-            context: RuntimeRollbackWorkflowContext(
+    ) -> RuntimeRollbackComposition {
+        RuntimeRollbackComposition(context: context, operations: operations)
+    }
+
+    public func rollback(_ command: RuntimeRollbackCommand) throws {
+        try RollbackRuntimeUseCase().run(
+            command,
+            context: RollbackRuntimeExecutionContext(
                 rootfsBase: context.installedPaths.runtimeDirectory.appendingPathComponent(Constants.Artifacts.rootfsBase),
                 runtimeVersion: context.installedPaths.runtimeDirectory.appendingPathComponent(Constants.Artifacts.runtimeVersion),
                 vmDisk: context.installedPaths.runtimeDirectory.appendingPathComponent(Constants.BootAssets.disk),
@@ -74,7 +81,7 @@ public enum RuntimeRollbackComposition {
                 nginxDirectory: context.installedPaths.nginxDirectory,
                 deployDirectory: context.installedPaths.deployDirectory
             ),
-            operations: RuntimeRollbackWorkflowOperations(
+            operations: RollbackRuntimeOperations(
                 resolveBackupSelection: { selection in
                     switch selection {
                     case .latestBackup:
@@ -83,39 +90,24 @@ public enum RuntimeRollbackComposition {
                         return backup
                     }
                 },
-                resolveBackupDirectory: { backup in
-                    try executeBackupDirectoryDecision(UpdateRuntimeUseCase().rollbackBackupDirectoryDecision(
-                        observation: RollbackRuntimeBackupDirectoryObservation(
-                            backup: backup,
-                            directoryExists: operations.fileStore.directoryExists(backup)
-                        )
-                    ))
-                },
-                resolveBackupRootfs: { backupPlan in
-                    try executeBackupRootfsDecision(UpdateRuntimeUseCase().rollbackBackupRootfsDecision(
-                        observation: RollbackRuntimeBackupRootfsObservation(
-                            backupPlan: backupPlan,
-                            backupRootfsExists: backupPlan.backupRootfs.map(operations.fileStore.fileExists)
-                        )
-                    ))
+                observeBackupDirectory: { backup in
+                    RollbackRuntimeBackupDirectoryObservation(
+                        backup: backup,
+                        directoryExists: operations.fileStore.directoryExists(backup)
+                    )
                 },
                 loadBackupManifest: RuntimeBackupManifestLoader(fileStore: operations.fileStore).load,
-                isLaunchdLoaded: operations.isLaunchdLoaded,
-                planRollbackStepExecution: { step, preflight, stepContext in
-                    let useCase = UpdateRuntimeUseCase()
-                    let requiredInput = useCase.rollbackStepRequiredInput(step: step, preflight: preflight)
-                    return useCase.rollbackStepExecutionPlan(
-                        step: step,
-                        preflight: preflight,
-                        rootfsBase: stepContext.rootfsBase,
-                        runtimeVersion: stepContext.runtimeVersion,
-                        managerAppPath: stepContext.managerAppPath,
-                        nginxDirectory: stepContext.nginxDirectory,
-                        deployDirectory: stepContext.deployDirectory,
-                        observation: rollbackStepRequiredInputObservation(
-                            requiredInput: requiredInput,
-                            fileStore: operations.fileStore
-                        )
+                observeBackupRootfs: { backupPlan in
+                    RollbackRuntimeBackupRootfsObservation(
+                        backupPlan: backupPlan,
+                        backupRootfsExists: backupPlan.backupRootfs.map(operations.fileStore.fileExists)
+                    )
+                },
+                serviceRestartPolicy: serviceRestartPolicy,
+                observeStepRequiredInput: { _, _, requiredInput in
+                    rollbackStepRequiredInputObservation(
+                        requiredInput: requiredInput,
+                        fileStore: operations.fileStore
                     )
                 },
                 executeRollbackStepPlan: { plan in
@@ -128,7 +120,16 @@ public enum RuntimeRollbackComposition {
         )
     }
 
-    private static func rollbackStepRequiredInputObservation(
+    private func serviceRestartPolicy() -> RuntimeServiceRestartPolicy {
+        RuntimeServiceRestartPolicy(
+            restartVM: operations.isLaunchdLoaded(.vm),
+            restartGuestLogSync: operations.isLaunchdLoaded(.guestLogSync),
+            restartProxy: operations.isLaunchdLoaded(.proxy),
+            restartWatchdog: operations.isLaunchdLoaded(.watchdog)
+        )
+    }
+
+    private func rollbackStepRequiredInputObservation(
         requiredInput: RollbackRuntimeStepRequiredInput,
         fileStore: RuntimeFileStore
     ) -> RollbackRuntimeStepRequiredInputObservation {
@@ -146,29 +147,7 @@ public enum RuntimeRollbackComposition {
         }
     }
 
-    private static func executeBackupDirectoryDecision(
-        _ decision: RollbackRuntimeBackupDirectoryDecision
-    ) throws -> URL {
-        switch decision {
-        case .loadManifest(let backup):
-            return backup
-        case .failed(let message):
-            throw RuntimeRollbackWorkflowError.operationFailed(message)
-        }
-    }
-
-    private static func executeBackupRootfsDecision(
-        _ decision: RollbackRuntimeBackupRootfsDecision
-    ) throws -> RollbackRuntimeBackupPlan {
-        switch decision {
-        case .proceed(let plan):
-            return plan
-        case .failed(let message):
-            throw RuntimeRollbackWorkflowError.operationFailed(message)
-        }
-    }
-
-    private static func executeRollbackStepPlan(
+    private func executeRollbackStepPlan(
         _ plan: RollbackRuntimeStepExecutionPlan,
         operations: RuntimeRollbackCompositionOperations
     ) throws {
@@ -192,11 +171,11 @@ public enum RuntimeRollbackComposition {
         case .waitRuntimeHealth(let restartPolicy):
             try operations.waitForHealth(restartPolicy)
         case .failed(let failureMessage), .unsupported(let failureMessage):
-            throw RuntimeRollbackWorkflowError.operationFailed(failureMessage)
+            throw RollbackRuntimeUseCaseError.operationFailed(failureMessage)
         }
     }
 
-    private static func executeRollbackVersionRestoreDecision(
+    private func executeRollbackVersionRestoreDecision(
         _ decision: RollbackRuntimeVersionRestoreDecision,
         operations: RuntimeRollbackCompositionOperations
     ) throws {

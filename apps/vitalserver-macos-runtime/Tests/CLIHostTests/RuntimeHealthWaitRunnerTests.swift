@@ -3,7 +3,6 @@ import Contracts
 import Domain
 import InboundAdapters
 @testable import CLIHost
-import Workflow
 import XCTest
 import Errors
 
@@ -90,7 +89,7 @@ private final class HealthWaitHarness {
 
     var runner: RuntimeHealthWaitRunner {
         RuntimeHealthWaitRunner(
-            configuration: RuntimeHealthWaitWorkflowConfiguration(
+            context: RuntimeHealthWaitExecutionContext(
                 timeoutSeconds: 9.0,
                 pollIntervalSeconds: 3.0,
                 progressEveryAttempts: 5

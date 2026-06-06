@@ -1,7 +1,6 @@
 import Contracts
 import Application
 import Domain
-import Workflow
 import XCTest
 import Errors
 
@@ -203,9 +202,9 @@ private final class WatchdogHarness {
         self.snapshots = snapshots
     }
 
-    var runner: RuntimeWatchdogRunner {
-        RuntimeWatchdogRunner(
-            actions: RuntimeWatchdogActions(
+    var runner: WatchdogHarnessRunner {
+        WatchdogHarnessRunner(
+            operations: RunWatchdogRuntimeOperations(
                 prepareLogs: {
                     self.prepareLogCalls += 1
                 },
@@ -243,7 +242,7 @@ private final class WatchdogHarness {
     private func executeInitialSnapshotDecision(
         _ decision: WatchdogRuntimeInitialSnapshotDecision,
         snapshot: RuntimeHealthSnapshot
-    ) throws -> RuntimeWatchdogInitialSnapshotExecutionResult {
+    ) throws -> RunWatchdogRuntimeInitialSnapshotExecutionResult {
         switch decision {
         case .healthy(let plan):
             let finalized = completeHealthyVMLifecycleIfNeeded(snapshot)
@@ -343,6 +342,20 @@ private final class WatchdogHarness {
         let completionPlan = useCase.recoveryCompletionPlan(recovered)
         writtenStatuses.append((completionPlan.status, .watchdog, completionPlan.message))
         observedStatuses.append((completionPlan.status, .watchdog, completionPlan.message, recovered))
+    }
+}
+
+private struct WatchdogHarnessRunner {
+    let operations: RunWatchdogRuntimeOperations
+    let log: (String) -> Void
+    let printLine: (String) -> Void
+
+    func run() throws {
+        try RunWatchdogRuntimeUseCase().run(
+            operations: operations,
+            log: log,
+            printLine: printLine
+        )
     }
 }
 

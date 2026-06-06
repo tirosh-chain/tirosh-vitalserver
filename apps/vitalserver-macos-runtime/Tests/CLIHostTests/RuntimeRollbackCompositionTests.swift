@@ -4,7 +4,6 @@ import Contracts
 import Domain
 import Foundation
 import OutboundAdapters
-import Workflow
 import XCTest
 
 final class RuntimeRollbackCompositionTests: XCTestCase {

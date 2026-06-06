@@ -5,7 +5,6 @@ import Bootstrap
 import Contracts
 import Domain
 import InboundAdapters
-import Workflow
 import Errors
 
 extension RuntimeLifecycle {
@@ -22,7 +21,7 @@ extension RuntimeLifecycle {
                 fileStore: fileStore,
                 now: { clock.now },
                 freshInstallPreflight: {
-                    runtimeFreshInstallPreflightRunner().run()
+                    runtimeFreshInstallPreflight()
                 },
                 installProvisionPayload: {
                     RuntimeInstallProvisionPayloadPolicy.document(
@@ -116,7 +115,7 @@ extension RuntimeLifecycle {
         runtimeConfigFlagReader().automaticRecoveryEnabled()
     }
 
-    func runtimeManagedOperationGuard() -> RuntimeManagedOperationGuard {
+    func runtimeManagedOperationGuard() -> RuntimeManagedOperationGuardComposition {
         RuntimeManagedOperationGuardComposition.make(
             statusReporter: statusReporter,
             guestGateway: guestGateway,
@@ -125,8 +124,8 @@ extension RuntimeLifecycle {
         )
     }
 
-    func runtimeWatchdogRunner() -> RuntimeWatchdogRunner {
-        RuntimeWatchdogRunnerComposition.make(
+    func runtimeWatchdogRunner() -> RuntimeWatchdogRunnerComposition {
+        RuntimeWatchdogRunnerComposition(
             context: RuntimeWatchdogRunnerCompositionContext(
                 installedPaths: installedPaths,
                 logsDirectory: logsDirectory
@@ -278,7 +277,7 @@ extension RuntimeLifecycle {
         )
     }
 
-    func runtimeDatastoreRepairWorkflow() -> RuntimeDatastoreRepairWorkflow {
+    func runtimeDatastoreRepairComposition() -> RuntimeDatastoreRepairComposition {
         RuntimeDatastoreRepairComposition(
             context: RuntimeDatastoreRepairCompositionContext(
                 guestRunDirectory: guestRunDirectory
@@ -305,11 +304,11 @@ extension RuntimeLifecycle {
                 sleep: workflowPollingSleepAction(),
                 log: log
             )
-        ).workflow()
+        )
     }
 
-    func runtimeVMDiskRepairRunner() -> RuntimeVMDiskRepairRunner {
-        RuntimeVMDiskRepairComposition.make(
+    func runtimeVMDiskRepairComposition() -> RuntimeVMDiskRepairComposition {
+        RuntimeVMDiskRepairComposition(
             context: RuntimeVMDiskRepairCompositionContext(
                 installedPaths: installedPaths
             ),
@@ -381,7 +380,7 @@ extension RuntimeLifecycle {
         )
     }
 
-    func runtimeRollbackWorkflow() -> RuntimeRollbackWorkflow {
+    func runtimeRollbackComposition() -> RuntimeRollbackComposition {
         RuntimeRollbackComposition.make(
             context: RuntimeRollbackCompositionContext(
                 installedPaths: installedPaths

@@ -4,7 +4,6 @@ import Bootstrap
 import Contracts
 import Domain
 import OutboundAdapters
-import Workflow
 @testable import CLIHost
 import XCTest
 import Errors

@@ -34,15 +34,6 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             "Domain/Invariants",
             "Application/Ports",
             "Application/UseCases",
-            "Workflow/RuntimeConfigureLifecycle",
-            "Workflow/RuntimeHealth",
-            "Workflow/RuntimeInstallLifecycle",
-            "Workflow/RuntimeRepairLifecycle",
-            "Workflow/RuntimeServiceLifecycle",
-            "Workflow/RuntimeShared",
-            "Workflow/RuntimeUninstallLifecycle",
-            "Workflow/RuntimeUpdateLifecycle",
-            "Workflow/RuntimeWatchdog",
             "Adapters/Inbound/CLI/Commands",
             "Adapters/Inbound/CLI/Parsing",
             "Adapters/Inbound/CLI/Presentation",
@@ -132,6 +123,29 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         for legacyTarget in ["Adapters", "Infrastructure", "HostAdapters", "HostCLI", "MacHostRuntimeAdapter"] {
             XCTAssertFalse(manifest.contains("name: \"\(legacyTarget)\""), "\(legacyTarget) target must not remain")
         }
+    }
+
+    func testWorkflowSourceContainsOnlyLayerMarker() throws {
+        let workflowRoot = packageRoot().appendingPathComponent("Sources/Workflow")
+        let fileNames = Set(try swiftFiles(root: workflowRoot).map(\.lastPathComponent))
+
+        XCTAssertEqual(
+            fileNames,
+            ["WorkflowLayerMarker.swift"],
+            "Workflow must not own execution, IO helpers, or orchestration after responsibilities move inward/outward"
+        )
+    }
+
+    func testWorkflowTestTargetDoesNotRemain() throws {
+        let manifest = try String(
+            contentsOf: packageRoot().appendingPathComponent("Package.swift"),
+            encoding: .utf8
+        )
+
+        XCTAssertFalse(
+            manifest.contains("name: \"WorkflowTests\""),
+            "Tests must follow the owning layer after Workflow execution is removed"
+        )
     }
 
     func testLegacyLayerVocabularyDoesNotLeakIntoRuntimeSourcesTestsOrSupportFiles() throws {
@@ -320,65 +334,84 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         }
     }
 
-    func testRuntimeInstallStepExecutorDoesNotInterpretStepExecutionPlansDirectly() throws {
-        let file = packageRoot().appendingPathComponent(
-            "Sources/Workflow/RuntimeInstallLifecycle/RuntimeInstallStepExecutor.swift"
-        )
-        let text = try String(contentsOf: file, encoding: .utf8)
-        let forbiddenTokens = [
-            "switch InstallRuntimeUseCase().stepExecutionPlan",
-            "case .prepareInstallDirectories",
-            "case .unsupported",
-            "RuntimeInstallStepExecutionError",
+    func testRuntimeInstallLifecycleExecutionDoesNotRemainInWorkflow() throws {
+        let forbiddenFiles = [
+            "Sources/Workflow/RuntimeInstallLifecycle/RuntimeFreshInstallPreflightRunner.swift",
+            "Sources/Workflow/RuntimeInstallLifecycle/RuntimeInstallStepExecutor.swift",
+            "Sources/Workflow/RuntimeInstallLifecycle/RuntimeInstallWorkflow.swift",
+            "Sources/Errors/Definitions/RuntimeInstallWorkflowError.swift",
         ]
 
-        for token in forbiddenTokens {
+        for relativePath in forbiddenFiles {
             XCTAssertFalse(
-                text.contains(token),
-                "RuntimeInstallStepExecutor must delegate UseCase step execution plans instead of interpreting \(token) directly"
+                FileManager.default.fileExists(atPath: packageRoot().appendingPathComponent(relativePath).path),
+                "Install execution belongs in Application usecases and Bootstrap adapters, not Workflow: \(relativePath)"
             )
         }
     }
 
-    func testRuntimeConfigureWorkflowDoesNotOwnSecretResolutionOrEffectExecutionDetails() throws {
-        let file = packageRoot().appendingPathComponent(
-            "Sources/Workflow/RuntimeConfigureLifecycle/RuntimeConfigureWorkflow.swift"
+    func testRuntimeInstallLifecycleWorkflowDirectoryHasNoExecutionFiles() throws {
+        let installWorkflowRoot = packageRoot().appendingPathComponent("Sources/Workflow/RuntimeInstallLifecycle")
+        XCTAssertTrue(
+            try swiftFiles(root: installWorkflowRoot).isEmpty,
+            "RuntimeInstallLifecycle execution belongs in Application usecases and Bootstrap composition, not Workflow"
         )
-        let text = try String(contentsOf: file, encoding: .utf8)
-        let forbiddenTokens = [
-            "readSecretFile",
-            "switch change",
-            "case .adminPasswordFile",
-            "switch effect",
-            "case .createDirectory",
-            "case .restartRuntimeServices",
+    }
+
+    func testRuntimeConfigureExecutionDoesNotRemainInWorkflow() {
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: packageRoot()
+                    .appendingPathComponent("Sources/Workflow/RuntimeConfigureLifecycle/RuntimeConfigureWorkflow.swift")
+                    .path
+            ),
+            "Runtime configure execution belongs in Application usecase and Bootstrap composition, not Workflow"
+        )
+    }
+
+    func testRuntimeHealthWaitExecutionDoesNotRemainInWorkflow() {
+        let root = packageRoot()
+        let forbiddenFiles = [
+            "Sources/Workflow/RuntimeHealth/RuntimeHealthWaitWorkflow.swift",
+            "Sources/Errors/Definitions/RuntimeHealthWaitWorkflowError.swift",
         ]
 
-        for token in forbiddenTokens {
+        for path in forbiddenFiles {
             XCTAssertFalse(
-                text.contains(token),
-                "RuntimeConfigureWorkflow must delegate secret resolution and effect execution instead of owning \(token)"
+                FileManager.default.fileExists(atPath: root.appendingPathComponent(path).path),
+                "\(path) must not own runtime health wait execution"
             )
         }
     }
 
-    func testRuntimeInstallWorkflowDoesNotOwnSetupModeOrErrorReasonSelection() throws {
-        let file = packageRoot().appendingPathComponent(
-            "Sources/Workflow/RuntimeInstallLifecycle/RuntimeInstallWorkflow.swift"
-        )
-        let text = try String(contentsOf: file, encoding: .utf8)
-        let forbiddenTokens = [
-            "switch installPlan.mode",
-            "setupReadCommands(for: installPlan)",
-            "expectedCommandsAfterFreshInstallPreflight",
-            "expectedCommandsAfterProvisionPayload",
-            "error.localizedDescription",
+    func testRuntimeHealthRefreshExecutionDoesNotRemainInWorkflow() {
+        let root = packageRoot()
+        let forbiddenFiles = [
+            "Sources/Workflow/RuntimeHealth/RuntimeHealthRefreshWorkflow.swift",
+            "Sources/Errors/Definitions/RuntimeHealthRefreshWorkflowError.swift",
         ]
 
-        for token in forbiddenTokens {
+        for path in forbiddenFiles {
             XCTAssertFalse(
-                text.contains(token),
-                "RuntimeInstallWorkflow must execute explicit setup commands and receive error reasons instead of owning \(token)"
+                FileManager.default.fileExists(atPath: root.appendingPathComponent(path).path),
+                "\(path) must not own runtime health refresh execution"
+            )
+        }
+    }
+
+    func testRuntimeDatastoreRepairExecutionDoesNotRemainInWorkflow() {
+        let root = packageRoot()
+        let forbiddenFiles = [
+            "Sources/Workflow/RuntimeRepairLifecycle/RuntimeDatastoreRepairWorkflow.swift",
+            "Sources/Workflow/RuntimeRepairLifecycle/RuntimeDatastoreRepairRunner.swift",
+            "Sources/Workflow/RuntimeRepairLifecycle/RuntimeDatastoreRepairResultWaiter.swift",
+            "Sources/Errors/Definitions/RuntimeDatastoreRepairWorkflowError.swift",
+        ]
+
+        for path in forbiddenFiles {
+            XCTAssertFalse(
+                FileManager.default.fileExists(atPath: root.appendingPathComponent(path).path),
+                "\(path) must not own datastore repair execution"
             )
         }
     }
@@ -413,101 +446,46 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         }
     }
 
-    func testRuntimeVMDiskRepairWorkflowDoesNotOwnFileObservationOrReplacementExecution() throws {
-        let file = packageRoot().appendingPathComponent(
-            "Sources/Workflow/RuntimeRepairLifecycle/RuntimeVMDiskRepairWorkflow.swift"
-        )
-        let text = try String(contentsOf: file, encoding: .utf8)
-        let forbiddenTokens = [
-            "fileExists",
-            "fileSize",
-            "removeItem",
-            "moveItem",
-            "createRedisBackup",
-            "stopRuntimeServicesForVMDiskReplacement",
-            "startRuntimeServices",
-            "waitForHealth",
-            "RepairRuntimeVMDiskReplacementObservation",
-            "error.localizedDescription",
+    func testRuntimeVMDiskRepairExecutionDoesNotRemainInWorkflow() {
+        let root = packageRoot()
+        let forbiddenFiles = [
+            "Sources/Workflow/RuntimeRepairLifecycle/RuntimeVMDiskRepairWorkflow.swift",
+            "Sources/Errors/Definitions/RuntimeVMDiskRepairWorkflowError.swift",
         ]
 
-        for token in forbiddenTokens {
+        for path in forbiddenFiles {
             XCTAssertFalse(
-                text.contains(token),
-                "RuntimeVMDiskRepairWorkflow must delegate file observation and replacement execution instead of owning \(token)"
+                FileManager.default.fileExists(atPath: root.appendingPathComponent(path).path),
+                "\(path) must not own VM disk repair execution"
             )
         }
     }
 
-    func testRuntimeUninstallWorkflowDoesNotOwnFileRemovalOrReceiptExecution() throws {
-        let file = packageRoot().appendingPathComponent(
-            "Sources/Workflow/RuntimeUninstallLifecycle/RuntimeUninstallWorkflow.swift"
-        )
-        let text = try String(contentsOf: file, encoding: .utf8)
-        let forbiddenTokens = [
-            "fileExists",
-            "directoryExists",
-            "createDirectory",
-            "removeItem",
-            "moveItem",
-            "contentsOfDirectory",
-            "runProcess",
-            "receiptForgetDecision",
-            "RuntimeUninstallPreservedPath",
-            "removalDiagnosticOpenFilePlan",
-            "RuntimeUninstallFileRemovalExecutionResult",
-            "RuntimeUninstallReceiptForgetExecutionResult",
-            "switch effects.executeFileRemoval",
-            "switch effects.executeReceiptForgetting",
+    func testRuntimeUninstallExecutionDoesNotRemainInWorkflow() {
+        let root = packageRoot()
+        let forbiddenFiles = [
+            "Sources/Workflow/RuntimeUninstallLifecycle/RuntimeUninstallWorkflow.swift",
+            "Sources/Errors/Definitions/RuntimeUninstallWorkflowError.swift",
         ]
 
-        for token in forbiddenTokens {
+        for path in forbiddenFiles {
             XCTAssertFalse(
-                text.contains(token),
-                "RuntimeUninstallWorkflow must delegate file removal and receipt execution instead of owning \(token)"
+                FileManager.default.fileExists(atPath: root.appendingPathComponent(path).path),
+                "\(path) must not own runtime uninstall execution"
             )
         }
     }
 
-    func testRuntimeWatchdogRunnerDoesNotInterpretInitialSnapshotDecisionDirectly() throws {
-        let file = packageRoot().appendingPathComponent(
-            "Sources/Workflow/RuntimeWatchdog/RuntimeWatchdogRunner.swift"
-        )
-        let text = try String(contentsOf: file, encoding: .utf8)
-        let forbiddenTokens = [
-            "switch useCase.initialSnapshotDecision",
-            "case .needsRecoveryProbe:",
+    func testRuntimeWatchdogWorkflowRunnerAndGuardAreMovedToUseCases() throws {
+        let files = [
+            "Sources/Workflow/RuntimeWatchdog/RuntimeWatchdogRunner.swift",
+            "Sources/Workflow/RuntimeWatchdog/RuntimeManagedOperationGuard.swift",
         ]
 
-        for token in forbiddenTokens {
+        for file in files {
             XCTAssertFalse(
-                text.contains(token),
-                "RuntimeWatchdogRunner must delegate initial snapshot decision execution instead of owning \(token)"
-            )
-        }
-    }
-
-    func testRuntimeWatchdogRunnerDoesNotInterpretRecoveryDecisionDirectly() throws {
-        let file = packageRoot().appendingPathComponent(
-            "Sources/Workflow/RuntimeWatchdog/RuntimeWatchdogRunner.swift"
-        )
-        let text = try String(contentsOf: file, encoding: .utf8)
-        let forbiddenTokens = [
-            "switch useCase.recoveryDecision",
-            "case .healthy(let plan):",
-            "case .recoveryDisabled(let plan):",
-            "case .recoveryDeferred(let plan):",
-            "case .recoverySuppressed(let plan):",
-            "case .unrecoverable(let plan):",
-            "case .recover(let plan):",
-            "WatchdogRuntimeRecoveryExecutionPlan",
-            "WatchdogRuntimeTerminalRecoveryPlan",
-        ]
-
-        for token in forbiddenTokens {
-            XCTAssertFalse(
-                text.contains(token),
-                "RuntimeWatchdogRunner must delegate recovery decision execution instead of owning \(token)"
+                FileManager.default.fileExists(atPath: packageRoot().appendingPathComponent(file).path),
+                "RuntimeWatchdog runner/guard orchestration must live in Application UseCases, not Workflow: \(file)"
             )
         }
     }
@@ -581,145 +559,14 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         }
     }
 
-    func testRuntimeApplyBundleWorkflowDoesNotOwnPreflightExecutionDetails() throws {
-        let file = packageRoot().appendingPathComponent(
-            "Sources/Workflow/RuntimeUpdateLifecycle/RuntimeApplyBundleWorkflow.swift"
-        )
-        let text = try String(contentsOf: file, encoding: .utf8)
-        let forbiddenTokens = [
-            "RuntimeApplyBundlePreflightRunner",
-            "stageBundle:",
-            "loadStagedManifest:",
-            "resolveRootfsStorage:",
-            "createDirectory:",
-            "directorySize:",
-            "requireFreeSpace:",
-            "checkCompatibility:",
-            "serviceRestartPolicy:",
-            "executePreflightCapabilityInstruction:",
-            "createBackup:",
-        ]
-
-        for token in forbiddenTokens {
-            XCTAssertFalse(
-                text.contains(token),
-                "RuntimeApplyBundleWorkflow must delegate preflight execution instead of owning \(token)"
-            )
-        }
-    }
-
-    func testRuntimeApplyBundleStepExecutorDoesNotOwnApplyBundleEffects() throws {
-        let file = packageRoot().appendingPathComponent(
-            "Sources/Workflow/RuntimeUpdateLifecycle/RuntimeApplyBundleStepExecutor.swift"
-        )
-        let text = try String(contentsOf: file, encoding: .utf8)
-        let forbiddenTokens = [
-            "fileSize",
-            "stagedRootfsBytes: try",
-            "rootfsReplacementExecutionPlan(stagedRootfs:",
-            "switch executionPlan",
-            "switch stopPlan",
-            "switch rootfsPlan",
-            "case .stopRuntimeServices",
-            "case .replaceRootfsBase",
-            "case .replaceUpdateArtifacts",
-            "case .runMigrations",
-            "case .refreshCloudInitSeed",
-            "case .writeRuntimeVersion",
-            "case .startRuntimeServices",
-            "case .activateGuestUpdate",
-            "case .waitRuntimeHealth",
-            "runningVMProcessID",
-            "stopRuntimeServicesAfterGuestPoweroff",
-            "prepareGuestShutdownForUpdate",
-            "clearGuestShutdownPreparation",
-            "observeRootfsReplacement",
-            "replaceFile",
-            "replaceUpdateArtifacts",
-            "runMigrations",
-            "refreshCloudInitSeedIfNeeded",
-            "writeRuntimeVersion",
-            "activateGuestUpdateIfNeeded",
-            "waitForHealth",
-        ]
-
-        for token in forbiddenTokens {
-            XCTAssertFalse(
-                text.contains(token),
-                "RuntimeApplyBundleStepExecutor must create a UseCase plan and pass it to an execution port instead of owning \(token)"
-            )
-        }
-    }
-
-    func testRuntimeApplyBundleWorkflowDoesNotOwnApplyRunDecisionFlow() throws {
-        let file = packageRoot().appendingPathComponent(
-            "Sources/Workflow/RuntimeUpdateLifecycle/RuntimeApplyBundleWorkflow.swift"
-        )
-        let text = try String(contentsOf: file, encoding: .utf8)
-        let forbiddenTokens = [
-            "RuntimeApplyBundleRunner",
-            "RuntimeOperationPlanRunner.run",
-            "applyBundlePreflightFailurePlan",
-            "applyBundleFailureRecoveryPlan",
-            "applyBundleArtifactCleanupFailedLogMessage",
-            "planApplyBundle",
-            "pruneOldRuntimeArtifactsBestEffort",
-        ]
-
-        for token in forbiddenTokens {
-            XCTAssertFalse(
-                text.contains(token),
-                "RuntimeApplyBundleWorkflow must delegate apply run decisions instead of owning \(token)"
-            )
-        }
-    }
-
-    func testRuntimeUpdateLifecycleDoesNotContainApplyBundleRunner() throws {
+    func testRuntimeUpdateLifecycleWorkflowDirectoryHasNoExecutionFiles() throws {
         let updateWorkflowRoot = packageRoot().appendingPathComponent("Sources/Workflow/RuntimeUpdateLifecycle")
         let fileNames = Set(try swiftFiles(root: updateWorkflowRoot).map(\.lastPathComponent))
-        XCTAssertFalse(fileNames.contains("RuntimeApplyBundleRunner.swift"))
 
-        let workflowFile = updateWorkflowRoot.appendingPathComponent("RuntimeApplyBundleWorkflow.swift")
-        let text = try String(contentsOf: workflowFile, encoding: .utf8)
-        let forbiddenTokens = [
-            "applyBundleRollbackStartedPlan",
-            "applyBundleRollbackCompletedStatusPlan",
-            "applyBundleRollbackFailedPlan",
-            "applyBundleRollbackFailureServiceRestartFailedLogMessage",
-            "startRuntimeServicesBestEffort",
-            "try rollback(",
-            "try startRuntimeServices(",
-            "writeBestEffort",
-            "failedPlan.status",
-        ]
-
-        for token in forbiddenTokens {
-            XCTAssertFalse(
-                text.contains(token),
-                "RuntimeApplyBundleWorkflow must delegate failure recovery plans instead of owning \(token)"
-            )
-        }
-    }
-
-    func testRuntimeApplyBundleWorkflowDoesNotOwnLogPreparationEffects() throws {
-        let file = packageRoot().appendingPathComponent(
-            "Sources/Workflow/RuntimeUpdateLifecycle/RuntimeApplyBundleWorkflow.swift"
+        XCTAssertTrue(
+            fileNames.isEmpty,
+            "RuntimeUpdateLifecycle execution belongs in Application usecases and Bootstrap adapters, not Workflow: \(fileNames.sorted())"
         )
-        let text = try String(contentsOf: file, encoding: .utf8)
-        let forbiddenTokens = [
-            "rotateRuntimeLogs",
-            "applyBundleLogDirectoryPreparationFailedLogMessage",
-            "applyBundleLogRotationFailedLogMessage",
-            "operations.describeError(error)",
-            "try operations.createDirectory(context.logsDirectory",
-        ]
-
-        for token in forbiddenTokens {
-            XCTAssertFalse(
-                text.contains(token),
-                "RuntimeApplyBundleWorkflow must delegate log preparation execution instead of owning \(token)"
-            )
-        }
     }
 
     func testRuntimeBundlePreparationWorkflowDoesNotExist() throws {
@@ -744,63 +591,19 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         )
     }
 
-    func testRuntimeRollbackPreflightRunnerDoesNotOwnBackupFileObservation() throws {
-        let file = packageRoot().appendingPathComponent(
-            "Sources/Workflow/RuntimeUpdateLifecycle/RuntimeRollbackPreflightRunner.swift"
-        )
-        let text = try String(contentsOf: file, encoding: .utf8)
-        let forbiddenTokens = [
-            "fileExists",
-            "directoryExists",
-            "rollbackBackupRootfsObservationRequirement",
-            "rollbackBackupDirectoryDecision",
-            "rollbackBackupRootfsDecision",
-            "RollbackRuntimeBackupDirectoryDecision",
-            "RollbackRuntimeBackupRootfsDecision",
-            "RollbackRuntimeBackupDirectoryObservation",
-            "RollbackRuntimeBackupRootfsObservation",
-            "case .loadManifest",
-            "case .proceed",
-            "case .failed",
+    func testRuntimeRollbackExecutionDoesNotRemainInWorkflow() throws {
+        let forbiddenFiles = [
+            "Sources/Workflow/RuntimeUpdateLifecycle/RuntimeRollbackPreflightRunner.swift",
+            "Sources/Workflow/RuntimeUpdateLifecycle/RuntimeRollbackRunner.swift",
+            "Sources/Workflow/RuntimeUpdateLifecycle/RuntimeRollbackStepExecutor.swift",
+            "Sources/Workflow/RuntimeUpdateLifecycle/RuntimeRollbackWorkflow.swift",
+            "Sources/Errors/Definitions/RuntimeRollbackWorkflowError.swift",
         ]
 
-        for token in forbiddenTokens {
+        for relativePath in forbiddenFiles {
             XCTAssertFalse(
-                text.contains(token),
-                "RuntimeRollbackPreflightRunner must receive explicit backup observations from a port instead of using \(token)"
-            )
-        }
-    }
-
-    func testRuntimeRollbackStepExecutorDoesNotOwnRequiredInputObservation() throws {
-        let file = packageRoot().appendingPathComponent(
-            "Sources/Workflow/RuntimeUpdateLifecycle/RuntimeRollbackStepExecutor.swift"
-        )
-        let text = try String(contentsOf: file, encoding: .utf8)
-        let forbiddenTokens = [
-            "fileExists",
-            "case .backupVersionExists",
-            "switch useCase.rollbackStepRequiredInput",
-            "rollbackStepRequiredInput",
-            "rollbackStepExecutionPlan(",
-            "RollbackRuntimeStepRequiredInputObservation",
-            "switch executionPlan",
-            "case .stopRuntimeServices",
-            "case .restoreRootfsBase",
-            "case .restoreRuntimeVersion",
-            "case .restoreUpdateArtifacts",
-            "case .startRuntimeServices",
-            "case .waitRuntimeHealth",
-            "replaceFile",
-            "restoreBackupPathIfExists",
-            "restoreRuntimeToolsIfExists",
-            "writeRuntimeVersion",
-        ]
-
-        for token in forbiddenTokens {
-            XCTAssertFalse(
-                text.contains(token),
-                "RuntimeRollbackStepExecutor must receive explicit required-input observations from a port instead of using \(token)"
+                FileManager.default.fileExists(atPath: packageRoot().appendingPathComponent(relativePath).path),
+                "Rollback execution belongs in Application usecase and Bootstrap adapters, not Workflow: \(relativePath)"
             )
         }
     }

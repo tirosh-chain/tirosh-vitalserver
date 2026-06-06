@@ -5,7 +5,6 @@ import Domain
 import Foundation
 import OutboundAdapters
 import InboundAdapters
-import Workflow
 @testable import CLIHost
 import XCTest
 import Errors
@@ -235,12 +234,44 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
         let preflight = rollbackPreflight()
         var statuses: [(level: RuntimeStatusLevel, operation: RuntimeOperation, message: String)] = []
         var progressEvents: [RuntimeStepExecutionEvent] = []
-        var executedSteps: [RuntimeWorkflowStep] = []
-        let runner = RuntimeRollbackRunner<RuntimeRollbackCommand>(
-            preparePreflight: { _ in preflight },
-            executeStep: { step, _ in
-                executedSteps.append(step)
-                if step == .rollbackRestoreRootfsBase {
+        var executedPlans: [RollbackRuntimeStepExecutionPlan] = []
+        let useCase = RollbackRuntimeUseCase()
+        let context = RollbackRuntimeExecutionContext(
+            rootfsBase: URL(fileURLWithPath: "/runtime/rootfs-base.raw.gz"),
+            runtimeVersion: URL(fileURLWithPath: "/runtime/runtime-version.json"),
+            vmDisk: URL(fileURLWithPath: "/product/vm/vm-disk.img"),
+            managerAppPath: URL(fileURLWithPath: "/Applications/VitalServer Manager.app"),
+            nginxDirectory: URL(fileURLWithPath: "/product/nginx"),
+            deployDirectory: URL(fileURLWithPath: "/product/deploy")
+        )
+        let operations = RollbackRuntimeOperations(
+            resolveBackupSelection: { _ in preflight.backup },
+            observeBackupDirectory: { backup in
+                RollbackRuntimeBackupDirectoryObservation(backup: backup, directoryExists: true)
+            },
+            loadBackupManifest: { _ in
+                BackupManifest(
+                    product: Constants.Product.identifier,
+                    createdAt: "2026-05-31T00:00:00Z",
+                    reason: "before-1.2.3",
+                    rootfsBase: Constants.Artifacts.rootfsBase,
+                    vmDisk: Constants.BootAssets.disk,
+                    vmDiskPreserved: true
+                )
+            },
+            observeBackupRootfs: { plan in
+                RollbackRuntimeBackupRootfsObservation(backupPlan: plan, backupRootfsExists: true)
+            },
+            serviceRestartPolicy: { preflight.restartPolicy },
+            observeStepRequiredInput: { _, _, requiredInput in
+                RollbackRuntimeStepRequiredInputObservation(
+                    requiredInput: requiredInput,
+                    backupVersionExists: true
+                )
+            },
+            executeRollbackStepPlan: { plan in
+                executedPlans.append(plan)
+                if case .restoreRootfsBase = plan {
                     throw RuntimeChaosError.rollbackRestoreDenied
                 }
             },
@@ -250,15 +281,14 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
             writeProgress: { event in
                 progressEvents.append(event)
             },
-            vmDiskPath: { "/product/vm/vm-disk.img" },
             log: { _ in }
         )
 
-        XCTAssertThrowsError(try runner.run(.specificBackup(preflight.backup))) { error in
+        XCTAssertThrowsError(try useCase.run(.specificBackup(preflight.backup), context: context, operations: operations)) { error in
             XCTAssertEqual(String(describing: error), "rollbackRestoreDenied")
         }
 
-        XCTAssertEqual(executedSteps, [.rollbackStopRuntimeServices, .rollbackRestoreRootfsBase])
+        XCTAssertEqual(executedPlans.map(rollbackChaosPlanStep), [.rollbackStopRuntimeServices, .rollbackRestoreRootfsBase])
         XCTAssertEqual(progressEvents.last?.step, .rollbackRestoreRootfsBase)
         XCTAssertEqual(progressEvents.last?.stepStatus, .failed)
         XCTAssertEqual(statuses.last?.level, .recovering)
@@ -304,7 +334,7 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
     func testRollbackPreflightChaosStopsWhenRestoreArtifactIsMissing() {
         let backup = URL(fileURLWithPath: "/product/backups/20260531T000000Z-before-1.2.3")
         let missingRootfs = backup.appendingPathComponent(Constants.Artifacts.rootfsBase)
-        let runner = RuntimeRollbackPreflightRunner(
+        let operations = RollbackRuntimeOperations(
             resolveBackupSelection: { selection in
                 switch selection {
                 case .specificBackup(let selectedBackup):
@@ -314,16 +344,13 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
                     return URL(fileURLWithPath: "/unused")
                 }
             },
-            resolveBackupDirectory: { selectedBackup in
-                try executeRollbackBackupDirectoryDecision(selectedBackup == backup
-                    ? .loadManifest(selectedBackup)
-                    : .failed(message: "missing file: \(selectedBackup.path)")
+            observeBackupDirectory: { selectedBackup in
+                RollbackRuntimeBackupDirectoryObservation(
+                    backup: selectedBackup,
+                    directoryExists: selectedBackup == backup
                 )
             },
-            resolveBackupRootfs: { _ in
-                throw RuntimeRollbackWorkflowError.operationFailed("missing file: \(missingRootfs.path)")
-            },
-            loadManifest: { _ in
+            loadBackupManifest: { _ in
                 BackupManifest(
                     product: Constants.Product.identifier,
                     createdAt: "2026-05-31T00:00:00Z",
@@ -333,14 +360,23 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
                     vmDiskPreserved: true
                 )
             },
+            observeBackupRootfs: { plan in
+                RollbackRuntimeBackupRootfsObservation(backupPlan: plan, backupRootfsExists: false)
+            },
             serviceRestartPolicy: {
                 XCTFail("missing restore artifact should stop before service policy")
                 return RuntimeServiceRestartPolicy(restartVM: false, restartGuestLogSync: false, restartProxy: false, restartWatchdog: false)
             },
+            observeStepRequiredInput: { _, _, requiredInput in
+                RollbackRuntimeStepRequiredInputObservation(requiredInput: requiredInput, backupVersionExists: false)
+            },
+            executeRollbackStepPlan: { _ in XCTFail("missing restore artifact should stop before step execution") },
+            writeStatus: { _, _, _ in },
+            writeProgress: { _ in },
             log: { _ in XCTFail("missing restore artifact should stop before logging") }
         )
 
-        XCTAssertThrowsError(try runner.prepare(.specificBackup(backup))) { error in
+        XCTAssertThrowsError(try RollbackRuntimeUseCase().preparePreflight(.specificBackup(backup), operations: operations)) { error in
             XCTAssertEqual(String(describing: error), "missing file: \(missingRootfs.path)")
         }
     }
@@ -565,14 +601,22 @@ private final class RuntimeUpdateChaosGuestGateway: RuntimeGuestGateway {
     func loadDatastoreRepairResultDocument() -> RuntimeGuestDocumentLoadResult<DatastoreRepairResultDocument> { .missing }
 }
 
-private func executeRollbackBackupDirectoryDecision(
-    _ decision: RollbackRuntimeBackupDirectoryDecision
-) throws -> URL {
-    switch decision {
-    case .loadManifest(let backup):
-        return backup
-    case .failed(let message):
-        throw RuntimeRollbackWorkflowError.operationFailed(message)
+private func rollbackChaosPlanStep(_ plan: RollbackRuntimeStepExecutionPlan) -> RuntimeWorkflowStep {
+    switch plan {
+    case .stopRuntimeServices:
+        return .rollbackStopRuntimeServices
+    case .restoreRootfsBase:
+        return .rollbackRestoreRootfsBase
+    case .restoreRuntimeVersion:
+        return .rollbackRestoreRuntimeVersion
+    case .restoreUpdateArtifacts:
+        return .rollbackRestoreUpdateArtifacts
+    case .startRuntimeServices:
+        return .rollbackStartRuntimeServices
+    case .waitRuntimeHealth:
+        return .rollbackWaitRuntimeHealth
+    case .failed, .unsupported:
+        return .unknown("rollback-plan-failed")
     }
 }
 

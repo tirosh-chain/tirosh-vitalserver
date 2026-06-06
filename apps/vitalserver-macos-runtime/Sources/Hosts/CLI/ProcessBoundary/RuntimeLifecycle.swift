@@ -5,7 +5,6 @@ import Contracts
 import Domain
 import OutboundAdapters
 import InboundAdapters
-import Workflow
 import Errors
 
 struct RuntimeLifecycle {
@@ -149,7 +148,7 @@ struct RuntimeLifecycle {
     }
 
     func preinstallCheck() throws {
-        let document = runtimeFreshInstallPreflightRunner().run()
+        let document = runtimeFreshInstallPreflight()
         let data = try JSONEncoder.pretty.encode(document)
         if let text = String(data: data, encoding: .utf8) {
             print(text)
@@ -215,11 +214,11 @@ struct RuntimeLifecycle {
     }
 
     func repairDatastore() throws {
-        try runtimeDatastoreRepairWorkflow().repair()
+        try runtimeDatastoreRepairComposition().repair()
     }
 
     func repairVMDisk() throws {
-        try runtimeVMDiskRepairRunner().repair()
+        try runtimeVMDiskRepairComposition().repair()
     }
 
     func createRedisBackup() throws {
@@ -255,7 +254,7 @@ struct RuntimeLifecycle {
     }
 
     func rollback(_ command: RuntimeRollbackCommand) throws {
-        try runtimeRollbackWorkflow().rollback(command)
+        try runtimeRollbackComposition().rollback(command)
     }
 
     func refreshCloudInitSeedIfNeeded(_ manifest: UpdateBundleManifest) throws {

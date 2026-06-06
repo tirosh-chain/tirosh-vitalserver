@@ -37,11 +37,11 @@ let package = Package(
         ),
         .target(
             name: "Workflow",
-            dependencies: ["Contracts", "Errors", "Domain", "Application"]
+            dependencies: []
         ),
         .target(
             name: "InboundAdapters",
-            dependencies: ["Contracts", "Errors", "Domain", "Application", "Workflow", "RuntimeControl"],
+            dependencies: ["Contracts", "Errors", "Domain", "Application", "RuntimeControl"],
             path: "Sources/Adapters/Inbound"
         ),
         .target(
@@ -59,7 +59,6 @@ let package = Package(
                 "Errors",
                 "Domain",
                 "Application",
-                "Workflow",
                 "InboundAdapters",
                 "OutboundAdapters",
             ]
@@ -76,7 +75,6 @@ let package = Package(
                 "Errors",
                 "Domain",
                 "Application",
-                "Workflow",
                 "InboundAdapters",
                 "OutboundAdapters",
                 "Bootstrap",
@@ -108,13 +106,12 @@ let package = Package(
             dependencies: ["Contracts", "Errors", "Domain", "Application"]
         ),
         .testTarget(
-            name: "WorkflowTests",
+            name: "BootstrapTests",
             dependencies: [
                 "Contracts",
                 "Errors",
                 "Domain",
                 "Application",
-                "Workflow",
                 "InboundAdapters",
                 "OutboundAdapters",
                 "Bootstrap",
@@ -127,7 +124,6 @@ let package = Package(
                 "Errors",
                 "Domain",
                 "Application",
-                "Workflow",
                 "InboundAdapters",
                 "OutboundAdapters",
                 "Bootstrap",
@@ -139,7 +135,7 @@ let package = Package(
         ),
         .testTarget(
             name: "InboundAdaptersTests",
-            dependencies: ["Contracts", "Errors", "RuntimeControl", "InboundAdapters"]
+            dependencies: ["Contracts", "Errors", "Application", "RuntimeControl", "InboundAdapters"]
         ),
         .testTarget(
             name: "OutboundAdaptersTests",
@@ -152,7 +148,6 @@ let package = Package(
                 "Errors",
                 "Domain",
                 "Application",
-                "Workflow",
                 "InboundAdapters",
                 "OutboundAdapters",
                 "Bootstrap",

@@ -1,8 +1,8 @@
+import Application
 import Contracts
 import Domain
 import Foundation
 import InboundAdapters
-import Workflow
 import Errors
 
 public struct RuntimeHealthWaitRunnerCompositionOperations {
@@ -32,7 +32,7 @@ public enum RuntimeHealthWaitRunnerComposition {
         operations: RuntimeHealthWaitRunnerCompositionOperations
     ) -> RuntimeHealthWaitRunner {
         RuntimeHealthWaitRunner(
-            configuration: RuntimeHealthWaitWorkflowConfiguration(
+            context: RuntimeHealthWaitExecutionContext(
                 timeoutSeconds: Constants.Runtime.waitTimeoutSeconds,
                 pollIntervalSeconds: 3.0,
                 progressEveryAttempts: 5

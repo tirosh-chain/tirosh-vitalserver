@@ -2,7 +2,6 @@ import Application
 import Contracts
 import Foundation
 import OutboundAdapters
-import Workflow
 import Errors
 
 public struct RuntimeWatchdogRunnerCompositionContext {
@@ -98,20 +97,28 @@ public struct RuntimeWatchdogRunnerCompositionOperations {
     }
 }
 
-public enum RuntimeWatchdogRunnerComposition {
-    public static func make(
+public struct RuntimeWatchdogRunnerComposition {
+    private let context: RuntimeWatchdogRunnerCompositionContext
+    private let operations: RuntimeWatchdogRunnerCompositionOperations
+
+    public init(
         context: RuntimeWatchdogRunnerCompositionContext,
         operations: RuntimeWatchdogRunnerCompositionOperations
-    ) -> RuntimeWatchdogRunner {
-        RuntimeWatchdogRunner(
-            actions: RuntimeWatchdogActions(
+    ) {
+        self.context = context
+        self.operations = operations
+    }
+
+    public func run() throws {
+        try RunWatchdogRuntimeUseCase().run(
+            operations: RunWatchdogRuntimeOperations(
                 prepareLogs: {
-                    prepareLogs(context: context, operations: operations)
+                    Self.prepareLogs(context: context, operations: operations)
                 },
                 activeManagedOperation: operations.activeManagedOperation,
                 healthSnapshot: operations.healthSnapshot,
                 executeInitialSnapshotDecision: { decision, snapshot in
-                    try executeInitialSnapshotDecision(
+                    try Self.executeInitialSnapshotDecision(
                         decision,
                         snapshot: snapshot,
                         context: context,
@@ -123,7 +130,7 @@ public enum RuntimeWatchdogRunnerComposition {
                 },
                 automaticRecoveryEnabled: operations.automaticRecoveryEnabled,
                 executeRecoveryDecision: { decision, snapshot in
-                    try executeRecoveryDecision(
+                    try Self.executeRecoveryDecision(
                         decision,
                         snapshot: snapshot,
                         context: context,
@@ -142,7 +149,7 @@ public enum RuntimeWatchdogRunnerComposition {
         snapshot: RuntimeHealthSnapshot,
         context: RuntimeWatchdogRunnerCompositionContext,
         operations: RuntimeWatchdogRunnerCompositionOperations
-    ) throws -> RuntimeWatchdogInitialSnapshotExecutionResult {
+    ) throws -> RunWatchdogRuntimeInitialSnapshotExecutionResult {
         switch decision {
         case .healthy(let plan):
             let finalized = completeHealthyVMLifecycleIfNeeded(snapshot, context: context, operations: operations)

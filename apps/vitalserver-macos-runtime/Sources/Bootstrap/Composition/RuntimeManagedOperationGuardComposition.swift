@@ -2,24 +2,43 @@ import Application
 import Contracts
 import Foundation
 import OutboundAdapters
-import Workflow
 import Errors
 
-public enum RuntimeManagedOperationGuardComposition {
+public struct RuntimeManagedOperationGuardComposition {
+    private let graceSeconds: TimeInterval
+    private let operations: GuardManagedRuntimeOperationOperations
+
+    public init(
+        graceSeconds: TimeInterval,
+        operations: GuardManagedRuntimeOperationOperations
+    ) {
+        self.graceSeconds = graceSeconds
+        self.operations = operations
+    }
+
     public static func make(
         statusReporter: RuntimeStatusReporter,
         guestGateway: RuntimeGuestGateway,
         now: @escaping () -> Date,
         log: @escaping (String) -> Void
-    ) -> RuntimeManagedOperationGuard {
-        RuntimeManagedOperationGuard(
-            loadStatus: statusReporter.loadStatusResult,
-            activeGuestBootstrap: {
-                activeGuestBootstrap(guestGateway: guestGateway, log: log)
-            },
-            now: now,
+    ) -> RuntimeManagedOperationGuardComposition {
+        RuntimeManagedOperationGuardComposition(
             graceSeconds: Constants.Runtime.watchdogManagedOperationGraceSeconds,
-            log: log
+            operations: GuardManagedRuntimeOperationOperations(
+                loadStatus: statusReporter.loadStatusResult,
+                activeGuestBootstrap: {
+                    activeGuestBootstrap(guestGateway: guestGateway, log: log)
+                },
+                now: now,
+                log: log
+            )
+        )
+    }
+
+    public func activeOperation() -> RuntimeOperation? {
+        GuardManagedRuntimeOperationUseCase().activeOperation(
+            graceSeconds: graceSeconds,
+            operations: operations
         )
     }
 

@@ -3,7 +3,6 @@ import Contracts
 import Domain
 import Foundation
 import OutboundAdapters
-import Workflow
 import Errors
 
 public struct RuntimeVMDiskRepairCompositionContext {
@@ -54,12 +53,20 @@ public struct RuntimeVMDiskRepairCompositionOperations {
     }
 }
 
-public enum RuntimeVMDiskRepairComposition {
-    public static func make(
+public struct RuntimeVMDiskRepairComposition {
+    let context: RuntimeVMDiskRepairCompositionContext
+    let operations: RuntimeVMDiskRepairCompositionOperations
+
+    public init(
         context: RuntimeVMDiskRepairCompositionContext,
         operations: RuntimeVMDiskRepairCompositionOperations
-    ) -> RuntimeVMDiskRepairRunner {
-        let runnerContext = RuntimeVMDiskRepairContext(
+    ) {
+        self.context = context
+        self.operations = operations
+    }
+
+    public func repair() throws {
+        let repairContext = RunVMDiskRepairContext(
             rootfsBase: context.installedPaths.runtimeDirectory.appendingPathComponent(Constants.Artifacts.rootfsBase),
             vmDisk: context.installedPaths.runtimeDirectory.appendingPathComponent(Constants.BootAssets.disk),
             backupsDirectory: context.installedPaths.backupsDirectory,
@@ -68,9 +75,9 @@ public enum RuntimeVMDiskRepairComposition {
             gunzipExecutable: Constants.Commands.gunzip,
             truncateExecutable: Constants.Commands.truncate
         )
-        return RuntimeVMDiskRepairRunner(
-            context: runnerContext,
-            operations: RuntimeVMDiskRepairOperations(
+        try RunVMDiskRepairUseCase().repair(
+            context: repairContext,
+            operations: RunVMDiskRepairOperations(
                 observeRepairInput: { repairContext in
                     try observeRepairInput(repairContext, fileStore: operations.fileStore)
                 },
@@ -79,7 +86,7 @@ public enum RuntimeVMDiskRepairComposition {
                         plan,
                         executionPlan: executionPlan,
                         buildPlan: buildPlan,
-                        context: runnerContext,
+                        context: repairContext,
                         operations: operations
                     )
                 },
@@ -88,8 +95,8 @@ public enum RuntimeVMDiskRepairComposition {
         )
     }
 
-    private static func observeRepairInput(
-        _ context: RuntimeVMDiskRepairContext,
+    private func observeRepairInput(
+        _ context: RunVMDiskRepairContext,
         fileStore: RuntimeFileStore
     ) throws -> RepairRuntimeVMDiskInput {
         let rootfsBaseExists = fileStore.fileExists(context.rootfsBase)
@@ -111,11 +118,11 @@ public enum RuntimeVMDiskRepairComposition {
         )
     }
 
-    private static func executeRepairPlan(
+    private func executeRepairPlan(
         _ plan: RepairRuntimeVMDiskPlan,
         executionPlan: RepairRuntimeVMDiskExecutionPlan,
         buildPlan: RepairRuntimeVMDiskReplacementBuildPlan,
-        context: RuntimeVMDiskRepairContext,
+        context: RunVMDiskRepairContext,
         operations: RuntimeVMDiskRepairCompositionOperations
     ) throws {
         let useCase = RepairRuntimeUseCase()
@@ -173,9 +180,9 @@ public enum RuntimeVMDiskRepairComposition {
         }
     }
 
-    private static func requireReplacementDisk(
+    private func requireReplacementDisk(
         targetDiskGiB: Int,
-        context: RuntimeVMDiskRepairContext,
+        context: RunVMDiskRepairContext,
         operations: RuntimeVMDiskRepairCompositionOperations
     ) throws {
         let exists = operations.fileStore.fileExists(context.vmDisk)
@@ -188,7 +195,7 @@ public enum RuntimeVMDiskRepairComposition {
         ))
     }
 
-    private static func createRedisBackupBestEffort(
+    private func createRedisBackupBestEffort(
         useCase: RepairRuntimeUseCase,
         operations: RuntimeVMDiskRepairCompositionOperations
     ) throws {
@@ -197,11 +204,14 @@ public enum RuntimeVMDiskRepairComposition {
             try operations.createRedisBackup()
             try report(useCase.vmDiskRedisBackupCompletedPlan(), operations: operations)
         } catch {
-            try report(useCase.vmDiskRedisBackupFailedPlan(reason: error.localizedDescription), operations: operations)
+            try report(
+                useCase.vmDiskRedisBackupFailedPlan(reason: RuntimeErrorDescription.describe(error)),
+                operations: operations
+            )
         }
     }
 
-    private static func report(
+    private func report(
         _ plan: RepairRuntimeLoggedStatusPlan,
         operations: RuntimeVMDiskRepairCompositionOperations
     ) throws {
@@ -209,7 +219,7 @@ public enum RuntimeVMDiskRepairComposition {
         try operations.writeStatus(plan.status, plan.operation, plan.statusMessage)
     }
 
-    private static func writeStatus(
+    private func writeStatus(
         _ plan: RepairRuntimeStatusPlan,
         operations: RuntimeVMDiskRepairCompositionOperations
     ) throws {

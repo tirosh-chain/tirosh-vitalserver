@@ -30,8 +30,61 @@ public struct RuntimeHealthRefreshDecision: Equatable {
     }
 }
 
+public struct RefreshRuntimeHealthOperations {
+    public let healthSnapshot: () -> RuntimeHealthSnapshot
+    public let writeStatus: (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void
+    public let writeStatusBestEffort: (RuntimeStatusLevel, RuntimeOperation, String) -> Void
+    public let recordObservedEventBestEffort: (
+        RuntimeStatusLevel,
+        RuntimeOperation,
+        String,
+        RuntimeHealthSnapshot
+    ) -> Void
+
+    public init(
+        healthSnapshot: @escaping () -> RuntimeHealthSnapshot,
+        writeStatus: @escaping (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void,
+        writeStatusBestEffort: @escaping (RuntimeStatusLevel, RuntimeOperation, String) -> Void,
+        recordObservedEventBestEffort: @escaping (
+            RuntimeStatusLevel,
+            RuntimeOperation,
+            String,
+            RuntimeHealthSnapshot
+        ) -> Void
+    ) {
+        self.healthSnapshot = healthSnapshot
+        self.writeStatus = writeStatus
+        self.writeStatusBestEffort = writeStatusBestEffort
+        self.recordObservedEventBestEffort = recordObservedEventBestEffort
+    }
+}
+
 public struct RefreshRuntimeHealthUseCase {
     public init() {}
+
+    public func refresh(operations: RefreshRuntimeHealthOperations) throws -> RuntimeHealthRefreshDecision {
+        let decision = decision(snapshot: operations.healthSnapshot())
+
+        guard decision.healthy else {
+            operations.writeStatusBestEffort(
+                decision.status,
+                decision.operation,
+                decision.statusMessage
+            )
+            if let observedEventMessage = decision.observedEventMessage {
+                operations.recordObservedEventBestEffort(
+                    decision.status,
+                    decision.operation,
+                    observedEventMessage,
+                    decision.snapshot
+                )
+            }
+            throw RefreshRuntimeHealthUseCaseError.operationFailed(decision.statusMessage)
+        }
+
+        try operations.writeStatus(decision.status, decision.operation, decision.statusMessage)
+        return decision
+    }
 
     public func decision(snapshot: RuntimeHealthSnapshot) -> RuntimeHealthRefreshDecision {
         guard !RuntimeHealthSnapshotPolicy.isHealthy(snapshot) else {

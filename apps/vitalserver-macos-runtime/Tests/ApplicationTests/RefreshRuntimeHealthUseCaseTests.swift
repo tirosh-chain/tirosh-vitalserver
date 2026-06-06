@@ -57,6 +57,62 @@ final class RefreshRuntimeHealthUseCaseTests: XCTestCase {
             .healthObserved
         )
     }
+
+    func testRefreshExecutionWritesHealthyStatus() throws {
+        let sink = RefreshHealthEventSink()
+        let operations = operations(
+            snapshot: healthSnapshot(reasons: []),
+            sink: sink
+        )
+
+        let decision = try RefreshRuntimeHealthUseCase().refresh(operations: operations)
+
+        XCTAssertTrue(decision.healthy)
+        XCTAssertEqual(sink.events, [
+            "status:healthy:health:runtime health check passed",
+        ])
+    }
+
+    func testRefreshExecutionWritesUnhealthyStatusAndEventBestEffortBeforeFailing() {
+        let sink = RefreshHealthEventSink()
+        let operations = operations(
+            snapshot: healthSnapshot(reasons: [.auditProxyHTTP("failed")]),
+            sink: sink
+        )
+
+        XCTAssertThrowsError(try RefreshRuntimeHealthUseCase().refresh(operations: operations)) { error in
+            XCTAssertEqual(
+                error as? RefreshRuntimeHealthUseCaseError,
+                .operationFailed("runtime health check failed: audit-proxy-http-failed")
+            )
+        }
+        XCTAssertEqual(sink.events, [
+            "best-effort-status:degraded:health:runtime health check failed: audit-proxy-http-failed",
+            "best-effort-event:degraded:health:runtime domain errors observed: audit-proxy-http-failed",
+        ])
+    }
+
+    private func operations(
+        snapshot: RuntimeHealthSnapshot,
+        sink: RefreshHealthEventSink
+    ) -> RefreshRuntimeHealthOperations {
+        RefreshRuntimeHealthOperations(
+            healthSnapshot: { snapshot },
+            writeStatus: { status, operation, message in
+                sink.events.append("status:\(status.rawValue):\(operation.rawValue):\(message)")
+            },
+            writeStatusBestEffort: { status, operation, message in
+                sink.events.append("best-effort-status:\(status.rawValue):\(operation.rawValue):\(message)")
+            },
+            recordObservedEventBestEffort: { status, operation, message, _ in
+                sink.events.append("best-effort-event:\(status.rawValue):\(operation.rawValue):\(message)")
+            }
+        )
+    }
+}
+
+private final class RefreshHealthEventSink {
+    var events: [String] = []
 }
 
 private func healthSnapshot(reasons: [RuntimeFailureReason]) -> RuntimeHealthSnapshot {

@@ -3,7 +3,6 @@ import Bootstrap
 import Application
 import Contracts
 import Domain
-import Workflow
 @testable import CLIHost
 import XCTest
 import Errors
@@ -189,13 +188,15 @@ final class RuntimeManagedOperationGuardTests: XCTestCase {
         activeGuestBootstrap: RuntimeGuestBootstrapOperation? = nil,
         now: String,
         log: @escaping (String) -> Void = { _ in }
-    ) -> RuntimeManagedOperationGuard {
-        RuntimeManagedOperationGuard(
-            loadStatus: repository.loadResult,
-            activeGuestBootstrap: { activeGuestBootstrap },
-            now: { ISO8601DateFormatter().date(from: now)! },
+    ) -> RuntimeManagedOperationGuardComposition {
+        RuntimeManagedOperationGuardComposition(
             graceSeconds: 1_800,
-            log: log
+            operations: GuardManagedRuntimeOperationOperations(
+                loadStatus: repository.loadResult,
+                activeGuestBootstrap: { activeGuestBootstrap },
+                now: { ISO8601DateFormatter().date(from: now)! },
+                log: log
+            )
         )
     }
 
