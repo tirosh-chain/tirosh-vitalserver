@@ -5,6 +5,43 @@ import XCTest
 import Errors
 
 final class WaitForRuntimeHealthUseCaseTests: XCTestCase {
+    func testPlansSkipWhenNoRuntimeServiceWasRunning() {
+        let useCase = WaitForRuntimeHealthUseCase()
+
+        let plan = useCase.plan(
+            policy: RuntimeServiceRestartPolicy(
+                restartVM: false,
+                restartGuestLogSync: false,
+                restartProxy: false,
+                restartWatchdog: false
+            ),
+            timeoutSeconds: 30
+        )
+
+        XCTAssertFalse(plan.shouldWait)
+        XCTAssertEqual(plan.observedServices, [])
+        XCTAssertEqual(plan.skippedMessage, "runtime services were not running before apply; skipping health wait")
+        XCTAssertNil(plan.startedMessage)
+    }
+
+    func testPlansWaitFromExplicitRestartPolicy() {
+        let useCase = WaitForRuntimeHealthUseCase()
+        let policy = RuntimeServiceRestartPolicy(
+            restartVM: true,
+            restartGuestLogSync: false,
+            restartProxy: true,
+            restartWatchdog: false
+        )
+
+        let plan = useCase.plan(policy: policy, timeoutSeconds: 45)
+
+        XCTAssertTrue(plan.shouldWait)
+        XCTAssertEqual(plan.policy, policy)
+        XCTAssertEqual(plan.observedServices, [.vm, .guestLogSync, .proxy, .watchdog])
+        XCTAssertNil(plan.skippedMessage)
+        XCTAssertEqual(plan.startedMessage, "waiting for runtime health timeoutSeconds=45.0")
+    }
+
     func testObserveBuildsExplicitWaitObservationFromServiceStatesAndSnapshot() {
         let useCase = WaitForRuntimeHealthUseCase()
         let states = Dictionary(uniqueKeysWithValues: useCase.observedServices().map { service in

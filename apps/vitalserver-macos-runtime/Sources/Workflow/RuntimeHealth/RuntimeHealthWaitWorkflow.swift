@@ -75,18 +75,27 @@ public struct RuntimeHealthWaitWorkflow {
     }
 
     public func wait(for policy: RuntimeServiceRestartPolicy) throws {
-        guard policy.anyServiceWasRunning else {
-            writer.log("runtime services were not running before apply; skipping health wait")
+        let plan = useCase.plan(
+            policy: policy,
+            timeoutSeconds: configuration.timeoutSeconds
+        )
+
+        guard plan.shouldWait else {
+            if let skippedMessage = plan.skippedMessage {
+                writer.log(skippedMessage)
+            }
             return
         }
 
-        writer.log("waiting for runtime health timeoutSeconds=\(configuration.timeoutSeconds)")
+        if let startedMessage = plan.startedMessage {
+            writer.log(startedMessage)
+        }
         let waitResult = RuntimeHealthWaiter.wait(
             configuration: configuration.waitConfiguration,
             observe: {
                 useCase.observation(
-                    policy: policy,
-                    serviceStates: reader.serviceStates(useCase.observedServices()),
+                    policy: plan.policy,
+                    serviceStates: reader.serviceStates(plan.observedServices),
                     snapshot: reader.healthSnapshot()
                 )
             },
