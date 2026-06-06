@@ -166,6 +166,105 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         }
     }
 
+    func testLayerImportDirectionStaysInward() throws {
+        let root = packageRoot().appendingPathComponent("Sources")
+        let checks: [(String, Set<String>)] = [
+            (
+                "Contracts/Shared",
+                ["Errors", "Domain", "Application", "Workflow", "InboundAdapters", "OutboundAdapters", "Bootstrap", "RuntimeControl", "CLIHost", "MacControlPanelHost"]
+            ),
+            (
+                "Contracts/RuntimeControl",
+                ["Domain", "Application", "Workflow", "InboundAdapters", "OutboundAdapters", "Bootstrap", "CLIHost", "MacControlPanelHost"]
+            ),
+            (
+                "Errors",
+                ["Domain", "Application", "Workflow", "InboundAdapters", "OutboundAdapters", "Bootstrap", "RuntimeControl", "CLIHost", "MacControlPanelHost"]
+            ),
+            (
+                "Domain",
+                ["Application", "Workflow", "InboundAdapters", "OutboundAdapters", "Bootstrap", "RuntimeControl", "CLIHost", "MacControlPanelHost"]
+            ),
+            (
+                "Application",
+                ["Workflow", "InboundAdapters", "OutboundAdapters", "Bootstrap", "RuntimeControl", "CLIHost", "MacControlPanelHost"]
+            ),
+            (
+                "Workflow",
+                ["InboundAdapters", "OutboundAdapters", "Bootstrap", "CLIHost", "MacControlPanelHost"]
+            ),
+        ]
+
+        for (layerPath, forbiddenImports) in checks {
+            let layerRoot = root.appendingPathComponent(layerPath)
+            for file in try swiftFiles(root: layerRoot) {
+                let imports = try importedModules(in: file)
+                let forbidden = imports.intersection(forbiddenImports)
+                XCTAssertTrue(
+                    forbidden.isEmpty,
+                    "\(layerPath) must not import outward modules \(forbidden.sorted()) in \(file.path)"
+                )
+            }
+        }
+    }
+
+    func testApplicationUseCasesAreStatelessStructsWithoutOwnedPorts() throws {
+        let useCaseRoot = packageRoot().appendingPathComponent("Sources/Application/UseCases")
+        let useCaseFiles = try swiftFiles(root: useCaseRoot)
+            .filter { $0.lastPathComponent.hasSuffix("UseCase.swift") }
+        XCTAssertFalse(useCaseFiles.isEmpty, "Application/UseCases must contain explicit usecase files")
+
+        for file in useCaseFiles {
+            let text = try String(contentsOf: file, encoding: .utf8)
+            XCTAssertFalse(
+                text.contains("class ") && text.contains("UseCase"),
+                "Usecases must not be class declarations: \(file.path)"
+            )
+
+            let body = try useCaseStructBody(in: text, file: file)
+            XCTAssertFalse(body.contains("ports."), "Usecases must not own or call ports directly: \(file.path)")
+            XCTAssertFalse(body.contains("Ports"), "Usecases must not own port bundles: \(file.path)")
+
+            for token in [
+                "FileManager",
+                "Process(",
+                "URLSession",
+                "Data(contentsOf",
+                "String(contentsOf",
+            ] {
+                XCTAssertFalse(body.contains(token), "Usecases must not perform direct IO/effects via \(token): \(file.path)")
+            }
+
+            for line in topLevelLines(in: body) {
+                let trimmed = line.trimmingCharacters(in: .whitespaces)
+                XCTAssertFalse(
+                    storedPropertyPatternMatches(trimmed),
+                    "Usecase structs must remain stateless and not declare stored properties: \(file.path) line=\(trimmed)"
+                )
+            }
+        }
+    }
+
+    func testWorkflowDoesNotOwnConcreteHostEffects() throws {
+        let workflowRoot = packageRoot().appendingPathComponent("Sources/Workflow")
+        for file in try swiftFiles(root: workflowRoot) {
+            let text = try String(contentsOf: file, encoding: .utf8)
+            for token in [
+                "FileManager.default",
+                "URLSession",
+                "import Virtualization",
+                "import SQLite3",
+                "VZVirtual",
+            ] {
+                XCTAssertFalse(text.contains(token), "Workflow must use ports/operations instead of concrete host effect \(token): \(file.path)")
+            }
+            XCTAssertFalse(
+                containsConcreteProcessInvocation(text),
+                "Workflow must use ports/operations instead of constructing Process directly: \(file.path)"
+            )
+        }
+    }
+
     private func packageRoot() -> URL {
         URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
     }
@@ -221,5 +320,91 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
                 "template",
             ].contains(file.pathExtension) || file.lastPathComponent.contains(".template")
         }
+    }
+
+    private func swiftFiles(root: URL) throws -> [URL] {
+        try swiftPackageFiles(root: root).filter { $0.pathExtension == "swift" }
+    }
+
+    private func importedModules(in file: URL) throws -> Set<String> {
+        let text = try String(contentsOf: file, encoding: .utf8)
+        return Set(text.split(separator: "\n").compactMap { line in
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard trimmed.hasPrefix("import ") || trimmed.hasPrefix("@testable import ") else {
+                return nil
+            }
+            return String(trimmed.split(separator: " ").last ?? "")
+        })
+    }
+
+    private func useCaseStructBody(in text: String, file: URL) throws -> String {
+        let pattern = #"public\s+struct\s+\w+UseCase(?:<[^>]+>)?\s*\{"#
+        let regex = try NSRegularExpression(pattern: pattern)
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        guard let match = regex.firstMatch(in: text, range: range),
+              let matchRange = Range(match.range, in: text),
+              let openBraceIndex = text[matchRange].lastIndex(of: "{") else {
+            XCTFail("Usecase file must declare public struct ...UseCase: \(file.path)")
+            return ""
+        }
+
+        let bodyStart = text.index(after: openBraceIndex)
+        var depth = 1
+        var index = bodyStart
+        while index < text.endIndex {
+            let character = text[index]
+            if character == "{" {
+                depth += 1
+            } else if character == "}" {
+                depth -= 1
+                if depth == 0 {
+                    return String(text[bodyStart..<index])
+                }
+            }
+            index = text.index(after: index)
+        }
+
+        XCTFail("Usecase struct body must be balanced: \(file.path)")
+        return ""
+    }
+
+    private func topLevelLines(in body: String) -> [String] {
+        var depth = 1
+        var lines: [String] = []
+        for line in body.split(separator: "\n", omittingEmptySubsequences: false) {
+            if depth == 1 {
+                lines.append(String(line))
+            }
+            for character in line {
+                if character == "{" {
+                    depth += 1
+                } else if character == "}" {
+                    depth -= 1
+                }
+            }
+        }
+        return lines
+    }
+
+    private func storedPropertyPatternMatches(_ line: String) -> Bool {
+        line.hasPrefix("let ")
+            || line.hasPrefix("var ")
+            || line.hasPrefix("public let ")
+            || line.hasPrefix("public var ")
+            || line.hasPrefix("internal let ")
+            || line.hasPrefix("internal var ")
+            || line.hasPrefix("private let ")
+            || line.hasPrefix("private var ")
+            || line.hasPrefix("fileprivate let ")
+            || line.hasPrefix("fileprivate var ")
+    }
+
+    private func containsConcreteProcessInvocation(_ text: String) -> Bool {
+        let pattern = #"(^|[^A-Za-z0-9_])Process\s*\("#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else {
+            return false
+        }
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        return regex.firstMatch(in: text, range: range) != nil
     }
 }
