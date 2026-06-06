@@ -7,13 +7,12 @@ import Errors
 public struct RuntimeApplyBundlePreflightRunner {
     public var stageBundle: (URL) throws -> URL
     public var loadStagedManifest: (URL) throws -> UpdateBundleManifest
-    public var observeRootfsStorage: (URL, URL) throws -> ApplyRuntimeBundleRootfsStorageObservation
+    public var resolveRootfsStorage: (ApplyRuntimeBundleRootfsStorageObservationPlan) throws -> ApplyRuntimeBundleRootfsStorageDecision
     public var createDirectory: (URL, Bool) throws -> Void
     public var requireFreeSpace: (URL, UInt64, RuntimeOperation) throws -> Void
     public var checkCompatibility: (UpdateBundleManifest) throws -> Void
     public var serviceRestartPolicy: () -> RuntimeServiceRestartPolicy
-    public var runtimeHealthSnapshot: () -> RuntimeHealthSnapshot
-    public var requireGuestCapability: (RuntimeGuestCapabilityRequirement) throws -> Void
+    public var executeCapabilityInstruction: (ApplyRuntimeBundlePreflightCapabilityInstruction) throws -> Void
     public var createBackup: (String) throws -> URL
     public var directorySize: (URL) throws -> UInt64
     public var updateFreeSpaceMarginBytes: UInt64
@@ -25,13 +24,12 @@ public struct RuntimeApplyBundlePreflightRunner {
     public init(
         stageBundle: @escaping (URL) throws -> URL,
         loadStagedManifest: @escaping (URL) throws -> UpdateBundleManifest,
-        observeRootfsStorage: @escaping (URL, URL) throws -> ApplyRuntimeBundleRootfsStorageObservation,
+        resolveRootfsStorage: @escaping (ApplyRuntimeBundleRootfsStorageObservationPlan) throws -> ApplyRuntimeBundleRootfsStorageDecision,
         createDirectory: @escaping (URL, Bool) throws -> Void,
         requireFreeSpace: @escaping (URL, UInt64, RuntimeOperation) throws -> Void,
         checkCompatibility: @escaping (UpdateBundleManifest) throws -> Void,
         serviceRestartPolicy: @escaping () -> RuntimeServiceRestartPolicy,
-        runtimeHealthSnapshot: @escaping () -> RuntimeHealthSnapshot,
-        requireGuestCapability: @escaping (RuntimeGuestCapabilityRequirement) throws -> Void,
+        executeCapabilityInstruction: @escaping (ApplyRuntimeBundlePreflightCapabilityInstruction) throws -> Void,
         createBackup: @escaping (String) throws -> URL,
         directorySize: @escaping (URL) throws -> UInt64,
         updateFreeSpaceMarginBytes: UInt64,
@@ -39,13 +37,12 @@ public struct RuntimeApplyBundlePreflightRunner {
     ) {
         self.stageBundle = stageBundle
         self.loadStagedManifest = loadStagedManifest
-        self.observeRootfsStorage = observeRootfsStorage
+        self.resolveRootfsStorage = resolveRootfsStorage
         self.createDirectory = createDirectory
         self.requireFreeSpace = requireFreeSpace
         self.checkCompatibility = checkCompatibility
         self.serviceRestartPolicy = serviceRestartPolicy
-        self.runtimeHealthSnapshot = runtimeHealthSnapshot
-        self.requireGuestCapability = requireGuestCapability
+        self.executeCapabilityInstruction = executeCapabilityInstruction
         self.createBackup = createBackup
         self.directorySize = directorySize
         self.updateFreeSpaceMarginBytes = updateFreeSpaceMarginBytes
@@ -61,22 +58,15 @@ public struct RuntimeApplyBundlePreflightRunner {
 
         let stagedRootfs = manifestPlan.stagedRootfs
         let stagedBundleSize = try directorySize(stagedBundle)
-        let rootfsStorage: RuntimeUpdateRootfsStorageInput
         log(useCase.storagePreflightStagedBundleLogMessage(stagedBundleBytes: stagedBundleSize))
-        switch useCase.rootfsStorageObservationPlan(stagedRootfs: stagedRootfs, rootfsBase: rootfsBase) {
-        case .unchanged(let rootfsStoragePlan):
-            rootfsStorage = rootfsStoragePlan.rootfsStorage
-            log(rootfsStoragePlan.logMessage)
-        case .replacing(let stagedRootfs, let rootfsBase):
-            switch useCase.rootfsStorageDecision(
-                observation: try observeRootfsStorage(stagedRootfs, rootfsBase)
-            ) {
-            case .planned(let rootfsStoragePlan):
-                rootfsStorage = rootfsStoragePlan.rootfsStorage
-                log(rootfsStoragePlan.logMessage)
-            case .failed(let message):
-                throw RuntimeApplyBundleWorkflowError.operationFailed(message)
-            }
+        let rootfsStoragePlan = useCase.rootfsStorageObservationPlan(stagedRootfs: stagedRootfs, rootfsBase: rootfsBase)
+        let rootfsStorage: RuntimeUpdateRootfsStorageInput
+        switch try resolveRootfsStorage(rootfsStoragePlan) {
+        case .planned(let rootfsStoragePreflightPlan):
+            rootfsStorage = rootfsStoragePreflightPlan.rootfsStorage
+            log(rootfsStoragePreflightPlan.logMessage)
+        case .failed(let message):
+            throw RuntimeApplyBundleWorkflowError.operationFailed(message)
         }
         let storageRequirement = useCase.storageRequirement(
             stagedBundleBytes: stagedBundleSize,
@@ -97,12 +87,7 @@ public struct RuntimeApplyBundlePreflightRunner {
         )
         log(capabilityPlan.serviceRestartLogMessage)
         for instruction in capabilityPlan.instructions {
-            switch instruction {
-            case .requireRuntimeDiskHealthAllowsUpdate:
-                try requireRuntimeDiskHealthAllowsUpdate()
-            case .requireGuestCapability(let capability):
-                try requireGuestCapability(capability)
-            }
+            try executeCapabilityInstruction(instruction)
         }
         log(manifestPlan.backupStartedLogMessage)
         let backup = try createBackup(manifestPlan.backupReason)
@@ -115,16 +100,5 @@ public struct RuntimeApplyBundlePreflightRunner {
             backup: backup,
             restartPolicy: restartPolicy
         )
-    }
-
-    private func requireRuntimeDiskHealthAllowsUpdate() throws {
-        let decision = useCase.diskHealthDecision(snapshot: runtimeHealthSnapshot())
-        switch decision {
-        case .allowed:
-            return
-        case .blocked(_, let logMessage, let failureMessage):
-            log(logMessage)
-            throw RuntimeApplyBundleWorkflowError.operationFailed(failureMessage)
-        }
     }
 }

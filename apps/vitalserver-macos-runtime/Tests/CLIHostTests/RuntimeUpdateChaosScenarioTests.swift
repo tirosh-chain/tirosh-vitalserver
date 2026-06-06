@@ -29,14 +29,14 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
                     ]
                 )
             },
-            observeRootfsStorage: { _, _ in
-                XCTFail("rootfs storage should not be observed")
-                return ApplyRuntimeBundleRootfsStorageObservation(
-                    stagedRootfs: URL(fileURLWithPath: "/unused"),
-                    stagedRootfsExists: false,
-                    installedRootfsBytes: nil,
-                    incomingRootfsBytes: nil
-                )
+            resolveRootfsStorage: { plan in
+                switch plan {
+                case .unchanged(let rootfsStoragePlan):
+                    return .planned(rootfsStoragePlan)
+                case .replacing:
+                    XCTFail("rootfs storage should not be observed")
+                    return .failed(message: "unexpected rootfs storage observation")
+                }
             },
             createDirectory: { _, _ in events.append("mkdir") },
             requireFreeSpace: { _, _, _ in events.append("space") },
@@ -45,11 +45,15 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
                 events.append("policy")
                 return RuntimeServiceRestartPolicy(restartVM: true, restartGuestLogSync: true, restartProxy: false, restartWatchdog: false)
             },
-            runtimeHealthSnapshot: { self.healthySnapshot() },
-            requireGuestCapability: { capability in
-                events.append("capability:\(capability.rawValue)")
-                if capability == .activateUpdate {
-                    throw LauncherError.runtimeOperationFailed("guest capability missing: \(capability.rawValue)")
+            executeCapabilityInstruction: { instruction in
+                switch instruction {
+                case .requireRuntimeDiskHealthAllowsUpdate:
+                    return
+                case .requireGuestCapability(let capability):
+                    events.append("capability:\(capability.rawValue)")
+                    if capability == .activateUpdate {
+                        throw LauncherError.runtimeOperationFailed("guest capability missing: \(capability.rawValue)")
+                    }
                 }
             },
             createBackup: { _ in

@@ -424,6 +424,13 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             "fileExists",
             "fileSize",
             "ApplyRuntimeBundleRootfsStorageObservation(",
+            "case .unchanged",
+            "case .replacing",
+            "rootfsStorageDecision(",
+            "runtimeHealthSnapshot()",
+            "diskHealthDecision(",
+            "case .requireRuntimeDiskHealthAllowsUpdate",
+            "case .requireGuestCapability",
         ]
 
         for token in forbiddenTokens {
@@ -467,6 +474,25 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             XCTAssertFalse(
                 text.contains(token),
                 "RuntimeBundlePreparationWorkflow must execute UseCase cleanup plans instead of interpreting \(token) directly"
+            )
+        }
+    }
+
+    func testRuntimeGuestCapabilityCheckerDoesNotInterpretCapabilityDecisionDirectly() throws {
+        let file = packageRoot().appendingPathComponent(
+            "Sources/Workflow/RuntimeUpdateLifecycle/RuntimeGuestCapabilityChecker.swift"
+        )
+        let text = try String(contentsOf: file, encoding: .utf8)
+        let forbiddenTokens = [
+            "guestCapabilityDecision",
+            "decision.failure",
+            "if let failure",
+        ]
+
+        for token in forbiddenTokens {
+            XCTAssertFalse(
+                text.contains(token),
+                "RuntimeGuestCapabilityChecker must execute UseCase capability plans instead of interpreting \(token) directly"
             )
         }
     }

@@ -414,6 +414,11 @@ public struct RuntimeGuestCapabilityDecision: Equatable, Sendable {
     }
 }
 
+public enum RuntimeGuestCapabilityRequirementPlan: Equatable, Sendable {
+    case supported
+    case failed(RuntimeGuestCapabilityCheckError)
+}
+
 public struct UpdateRuntimeUseCase {
     public init() {}
 
@@ -1192,6 +1197,20 @@ public struct UpdateRuntimeUseCase {
                 )
             )
         }
+    }
+
+    public func guestCapabilityRequirementPlan(
+        loadResult: RuntimeGuestDocumentLoadResult<GuestRuntimeStateDocument>,
+        capability: RuntimeGuestCapabilityRequirement
+    ) -> RuntimeGuestCapabilityRequirementPlan {
+        let decision = guestCapabilityDecision(
+            loadResult: loadResult,
+            capability: capability
+        )
+        guard let failure = decision.failure else {
+            return .supported
+        }
+        return .failed(failure)
     }
 
     private func loadedText(_ loaded: Bool) -> String {

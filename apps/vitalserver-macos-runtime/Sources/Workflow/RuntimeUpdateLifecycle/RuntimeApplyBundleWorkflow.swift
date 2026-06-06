@@ -29,7 +29,7 @@ public struct RuntimeApplyBundleWorkflowContext {
 public struct RuntimeApplyBundleWorkflowOperations {
     public var stageBundle: (URL) throws -> URL
     public var loadStagedManifest: (URL) throws -> UpdateBundleManifest
-    public var observeRootfsStorage: (URL, URL) throws -> ApplyRuntimeBundleRootfsStorageObservation
+    public var resolveRootfsStorage: (ApplyRuntimeBundleRootfsStorageObservationPlan) throws -> ApplyRuntimeBundleRootfsStorageDecision
     public var createDirectory: (URL, Bool) throws -> Void
     public var observeRootfsReplacement: (URL, URL) throws -> ApplyRuntimeBundleRootfsReplacementObservation
     public var directorySize: (URL) throws -> UInt64
@@ -37,7 +37,7 @@ public struct RuntimeApplyBundleWorkflowOperations {
     public var checkCompatibility: (UpdateBundleManifest) throws -> Void
     public var serviceRestartPolicy: () -> RuntimeServiceRestartPolicy
     public var runtimeHealthSnapshot: () -> RuntimeHealthSnapshot
-    public var requireGuestCapability: (RuntimeGuestCapabilityRequirement) throws -> Void
+    public var executePreflightCapabilityInstruction: (ApplyRuntimeBundlePreflightCapabilityInstruction) throws -> Void
     public var createBackup: (String) throws -> URL
     public var rotateRuntimeLogs: () throws -> Void
     public var rollback: (URL) throws -> Void
@@ -62,7 +62,7 @@ public struct RuntimeApplyBundleWorkflowOperations {
     public init(
         stageBundle: @escaping (URL) throws -> URL,
         loadStagedManifest: @escaping (URL) throws -> UpdateBundleManifest,
-        observeRootfsStorage: @escaping (URL, URL) throws -> ApplyRuntimeBundleRootfsStorageObservation,
+        resolveRootfsStorage: @escaping (ApplyRuntimeBundleRootfsStorageObservationPlan) throws -> ApplyRuntimeBundleRootfsStorageDecision,
         createDirectory: @escaping (URL, Bool) throws -> Void,
         observeRootfsReplacement: @escaping (URL, URL) throws -> ApplyRuntimeBundleRootfsReplacementObservation,
         directorySize: @escaping (URL) throws -> UInt64,
@@ -70,7 +70,7 @@ public struct RuntimeApplyBundleWorkflowOperations {
         checkCompatibility: @escaping (UpdateBundleManifest) throws -> Void,
         serviceRestartPolicy: @escaping () -> RuntimeServiceRestartPolicy,
         runtimeHealthSnapshot: @escaping () -> RuntimeHealthSnapshot,
-        requireGuestCapability: @escaping (RuntimeGuestCapabilityRequirement) throws -> Void,
+        executePreflightCapabilityInstruction: @escaping (ApplyRuntimeBundlePreflightCapabilityInstruction) throws -> Void,
         createBackup: @escaping (String) throws -> URL,
         rotateRuntimeLogs: @escaping () throws -> Void,
         rollback: @escaping (URL) throws -> Void,
@@ -94,7 +94,7 @@ public struct RuntimeApplyBundleWorkflowOperations {
     ) {
         self.stageBundle = stageBundle
         self.loadStagedManifest = loadStagedManifest
-        self.observeRootfsStorage = observeRootfsStorage
+        self.resolveRootfsStorage = resolveRootfsStorage
         self.createDirectory = createDirectory
         self.observeRootfsReplacement = observeRootfsReplacement
         self.directorySize = directorySize
@@ -102,7 +102,7 @@ public struct RuntimeApplyBundleWorkflowOperations {
         self.checkCompatibility = checkCompatibility
         self.serviceRestartPolicy = serviceRestartPolicy
         self.runtimeHealthSnapshot = runtimeHealthSnapshot
-        self.requireGuestCapability = requireGuestCapability
+        self.executePreflightCapabilityInstruction = executePreflightCapabilityInstruction
         self.createBackup = createBackup
         self.rotateRuntimeLogs = rotateRuntimeLogs
         self.rollback = rollback
@@ -178,13 +178,12 @@ public struct RuntimeApplyBundleWorkflow {
         try RuntimeApplyBundlePreflightRunner(
             stageBundle: operations.stageBundle,
             loadStagedManifest: operations.loadStagedManifest,
-            observeRootfsStorage: operations.observeRootfsStorage,
+            resolveRootfsStorage: operations.resolveRootfsStorage,
             createDirectory: operations.createDirectory,
             requireFreeSpace: operations.requireFreeSpace,
             checkCompatibility: operations.checkCompatibility,
             serviceRestartPolicy: operations.serviceRestartPolicy,
-            runtimeHealthSnapshot: operations.runtimeHealthSnapshot,
-            requireGuestCapability: operations.requireGuestCapability,
+            executeCapabilityInstruction: operations.executePreflightCapabilityInstruction,
             createBackup: operations.createBackup,
             directorySize: operations.directorySize,
             updateFreeSpaceMarginBytes: context.updateFreeSpaceMarginBytes,

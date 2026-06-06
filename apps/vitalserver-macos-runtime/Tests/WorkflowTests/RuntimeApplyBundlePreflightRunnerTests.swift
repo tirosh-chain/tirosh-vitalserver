@@ -36,15 +36,17 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
                     ]
                 )
             },
-            observeRootfsStorage: { observedStagedRootfs, observedRootfsBase in
-                XCTAssertEqual(observedStagedRootfs, stagedRootfs)
-                XCTAssertEqual(observedRootfsBase, rootfsBase)
-                return ApplyRuntimeBundleRootfsStorageObservation(
-                    stagedRootfs: stagedRootfs,
-                    stagedRootfsExists: true,
-                    installedRootfsBytes: 10,
-                    incomingRootfsBytes: 20
-                )
+            resolveRootfsStorage: { plan in
+                try resolveRootfsStorage(plan) { observedStagedRootfs, observedRootfsBase in
+                    XCTAssertEqual(observedStagedRootfs, stagedRootfs)
+                    XCTAssertEqual(observedRootfsBase, rootfsBase)
+                    return ApplyRuntimeBundleRootfsStorageObservation(
+                        stagedRootfs: stagedRootfs,
+                        stagedRootfsExists: true,
+                        installedRootfsBytes: 10,
+                        incomingRootfsBytes: 20
+                    )
+                }
             },
             createDirectory: { url, withIntermediateDirectories in
                 events.append("mkdir:\(url.path):\(withIntermediateDirectories)")
@@ -59,9 +61,14 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
                 events.append("policy")
                 return RuntimeServiceRestartPolicy(restartVM: true, restartGuestLogSync: true, restartProxy: false, restartWatchdog: true)
             },
-            runtimeHealthSnapshot: { healthySnapshot() },
-            requireGuestCapability: { capability in
-                events.append("capability:\(capability.rawValue)")
+            executeCapabilityInstruction: { instruction in
+                try executeCapabilityInstruction(
+                    instruction,
+                    healthSnapshot: { healthySnapshot() },
+                    requireGuestCapability: { capability in
+                        events.append("capability:\(capability.rawValue)")
+                    }
+                )
             },
             createBackup: { reason in
                 events.append("backup:\(reason)")
@@ -117,14 +124,16 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
         let runner = RuntimeApplyBundlePreflightRunner(
             stageBundle: { _ in stagedBundle },
             loadStagedManifest: { _ in self.manifest(version: "1.2.3") },
-            observeRootfsStorage: { _, _ in
-                XCTFail("rootfs storage should not be observed")
-                return ApplyRuntimeBundleRootfsStorageObservation(
-                    stagedRootfs: URL(fileURLWithPath: "/unused"),
-                    stagedRootfsExists: false,
-                    installedRootfsBytes: nil,
-                    incomingRootfsBytes: nil
-                )
+            resolveRootfsStorage: { plan in
+                try resolveRootfsStorage(plan) { _, _ in
+                    XCTFail("rootfs storage should not be observed")
+                    return ApplyRuntimeBundleRootfsStorageObservation(
+                        stagedRootfs: URL(fileURLWithPath: "/unused"),
+                        stagedRootfsExists: false,
+                        installedRootfsBytes: nil,
+                        incomingRootfsBytes: nil
+                    )
+                }
             },
             createDirectory: { _, _ in },
             requireFreeSpace: { _, bytes, _ in requiredSpace = bytes },
@@ -132,12 +141,17 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
             serviceRestartPolicy: {
                 RuntimeServiceRestartPolicy(restartVM: false, restartGuestLogSync: false, restartProxy: true, restartWatchdog: false)
             },
-            runtimeHealthSnapshot: {
-                XCTFail("runtime health should not be checked when VM is not running")
-                return healthySnapshot()
-            },
-            requireGuestCapability: { _ in
-                XCTFail("guest capability should not be required")
+            executeCapabilityInstruction: { instruction in
+                try executeCapabilityInstruction(
+                    instruction,
+                    healthSnapshot: {
+                        XCTFail("runtime health should not be checked when VM is not running")
+                        return healthySnapshot()
+                    },
+                    requireGuestCapability: { _ in
+                        XCTFail("guest capability should not be required")
+                    }
+                )
             },
             createBackup: { _ in backup },
             directorySize: { _ in 10 },
@@ -173,13 +187,15 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
                     ]
                 )
             },
-            observeRootfsStorage: { stagedRootfs, _ in
-                ApplyRuntimeBundleRootfsStorageObservation(
-                    stagedRootfs: stagedRootfs,
-                    stagedRootfsExists: false,
-                    installedRootfsBytes: nil,
-                    incomingRootfsBytes: nil
-                )
+            resolveRootfsStorage: { plan in
+                try resolveRootfsStorage(plan) { stagedRootfs, _ in
+                    ApplyRuntimeBundleRootfsStorageObservation(
+                        stagedRootfs: stagedRootfs,
+                        stagedRootfsExists: false,
+                        installedRootfsBytes: nil,
+                        incomingRootfsBytes: nil
+                    )
+                }
             },
             createDirectory: { _, _ in XCTFail("should not create backup directory") },
             requireFreeSpace: { _, _, _ in },
@@ -187,11 +203,16 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
             serviceRestartPolicy: {
                 RuntimeServiceRestartPolicy(restartVM: false, restartGuestLogSync: false, restartProxy: false, restartWatchdog: false)
             },
-            runtimeHealthSnapshot: {
-                XCTFail("runtime health should not be checked after missing rootfs")
-                return healthySnapshot()
+            executeCapabilityInstruction: { instruction in
+                try executeCapabilityInstruction(
+                    instruction,
+                    healthSnapshot: {
+                        XCTFail("runtime health should not be checked after missing rootfs")
+                        return healthySnapshot()
+                    },
+                    requireGuestCapability: { _ in }
+                )
             },
-            requireGuestCapability: { _ in },
             createBackup: { _ in URL(fileURLWithPath: "/backup") },
             directorySize: { _ in 0 },
             updateFreeSpaceMarginBytes: updateFreeSpaceMarginBytes,
@@ -229,10 +250,12 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
                     ]
                 )
             },
-            observeRootfsStorage: { observedStagedRootfs, observedRootfsBase in
-                XCTAssertEqual(observedStagedRootfs, stagedRootfs)
-                XCTAssertEqual(observedRootfsBase, rootfsBase)
-                throw RuntimeApplyBundleWorkflowError.operationFailed("missing file: \(rootfsBase.path)")
+            resolveRootfsStorage: { plan in
+                try resolveRootfsStorage(plan) { observedStagedRootfs, observedRootfsBase in
+                    XCTAssertEqual(observedStagedRootfs, stagedRootfs)
+                    XCTAssertEqual(observedRootfsBase, rootfsBase)
+                    throw RuntimeApplyBundleWorkflowError.operationFailed("missing file: \(rootfsBase.path)")
+                }
             },
             createDirectory: { _, _ in XCTFail("should not create backup directory") },
             requireFreeSpace: { _, _, _ in XCTFail("should not check free space") },
@@ -240,11 +263,16 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
             serviceRestartPolicy: {
                 RuntimeServiceRestartPolicy(restartVM: false, restartGuestLogSync: false, restartProxy: false, restartWatchdog: false)
             },
-            runtimeHealthSnapshot: {
-                XCTFail("runtime health should not be checked after rootfs size read failure")
-                return healthySnapshot()
+            executeCapabilityInstruction: { instruction in
+                try executeCapabilityInstruction(
+                    instruction,
+                    healthSnapshot: {
+                        XCTFail("runtime health should not be checked after rootfs size read failure")
+                        return healthySnapshot()
+                    },
+                    requireGuestCapability: { _ in }
+                )
             },
-            requireGuestCapability: { _ in },
             createBackup: { _ in URL(fileURLWithPath: "/backup") },
             directorySize: { _ in 30 },
             updateFreeSpaceMarginBytes: updateFreeSpaceMarginBytes,
@@ -278,13 +306,15 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
                     ]
                 )
             },
-            observeRootfsStorage: { stagedRootfs, _ in
-                ApplyRuntimeBundleRootfsStorageObservation(
-                    stagedRootfs: stagedRootfs,
-                    stagedRootfsExists: false,
-                    installedRootfsBytes: nil,
-                    incomingRootfsBytes: nil
-                )
+            resolveRootfsStorage: { plan in
+                try resolveRootfsStorage(plan) { stagedRootfs, _ in
+                    ApplyRuntimeBundleRootfsStorageObservation(
+                        stagedRootfs: stagedRootfs,
+                        stagedRootfsExists: false,
+                        installedRootfsBytes: nil,
+                        incomingRootfsBytes: nil
+                    )
+                }
             },
             createDirectory: { _, _ in events.append("mkdir") },
             requireFreeSpace: { _, _, _ in },
@@ -292,12 +322,17 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
             serviceRestartPolicy: {
                 RuntimeServiceRestartPolicy(restartVM: true, restartGuestLogSync: true, restartProxy: false, restartWatchdog: false)
             },
-            runtimeHealthSnapshot: { healthySnapshot() },
-            requireGuestCapability: { capability in
-                events.append("capability:\(capability.rawValue)")
-                if capability == .activateUpdate {
-                    throw RuntimeApplyBundleWorkflowError.operationFailed("guest capability missing: \(capability.rawValue)")
-                }
+            executeCapabilityInstruction: { instruction in
+                try executeCapabilityInstruction(
+                    instruction,
+                    healthSnapshot: { healthySnapshot() },
+                    requireGuestCapability: { capability in
+                        events.append("capability:\(capability.rawValue)")
+                        if capability == .activateUpdate {
+                            throw RuntimeApplyBundleWorkflowError.operationFailed("guest capability missing: \(capability.rawValue)")
+                        }
+                    }
+                )
             },
             createBackup: { _ in
                 events.append("backup")
@@ -328,14 +363,16 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
         let runner = RuntimeApplyBundlePreflightRunner(
             stageBundle: { _ in stagedBundle },
             loadStagedManifest: { _ in self.manifest(version: "1.2.3") },
-            observeRootfsStorage: { _, _ in
-                XCTFail("rootfs storage should not be observed")
-                return ApplyRuntimeBundleRootfsStorageObservation(
-                    stagedRootfs: URL(fileURLWithPath: "/unused"),
-                    stagedRootfsExists: false,
-                    installedRootfsBytes: nil,
-                    incomingRootfsBytes: nil
-                )
+            resolveRootfsStorage: { plan in
+                try resolveRootfsStorage(plan) { _, _ in
+                    XCTFail("rootfs storage should not be observed")
+                    return ApplyRuntimeBundleRootfsStorageObservation(
+                        stagedRootfs: URL(fileURLWithPath: "/unused"),
+                        stagedRootfsExists: false,
+                        installedRootfsBytes: nil,
+                        incomingRootfsBytes: nil
+                    )
+                }
             },
             createDirectory: { _, _ in events.append("mkdir") },
             requireFreeSpace: { _, _, _ in events.append("space") },
@@ -344,12 +381,18 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
                 events.append("policy")
                 return RuntimeServiceRestartPolicy(restartVM: true, restartGuestLogSync: true, restartProxy: false, restartWatchdog: false)
             },
-            runtimeHealthSnapshot: {
-                events.append("health")
-                return healthySnapshot(vmErrors: [.guestFilesystemError])
-            },
-            requireGuestCapability: { capability in
-                events.append("capability:\(capability.rawValue)")
+            executeCapabilityInstruction: { instruction in
+                try executeCapabilityInstruction(
+                    instruction,
+                    healthSnapshot: {
+                        events.append("health")
+                        return healthySnapshot(vmErrors: [.guestFilesystemError])
+                    },
+                    requireGuestCapability: { capability in
+                        events.append("capability:\(capability.rawValue)")
+                    },
+                    log: { message in events.append("log:\(message)") }
+                )
             },
             createBackup: { reason in
                 events.append("backup:\(reason)")
@@ -404,6 +447,40 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
 }
 
 private let updateFreeSpaceMarginBytes: UInt64 = 2 * 1024 * 1024 * 1024
+
+private func resolveRootfsStorage(
+    _ plan: ApplyRuntimeBundleRootfsStorageObservationPlan,
+    observe: (URL, URL) throws -> ApplyRuntimeBundleRootfsStorageObservation
+) throws -> ApplyRuntimeBundleRootfsStorageDecision {
+    switch plan {
+    case .unchanged(let rootfsStoragePlan):
+        return .planned(rootfsStoragePlan)
+    case .replacing(let stagedRootfs, let rootfsBase):
+        return UpdateRuntimeUseCase().rootfsStorageDecision(
+            observation: try observe(stagedRootfs, rootfsBase)
+        )
+    }
+}
+
+private func executeCapabilityInstruction(
+    _ instruction: ApplyRuntimeBundlePreflightCapabilityInstruction,
+    healthSnapshot: () -> RuntimeHealthSnapshot,
+    requireGuestCapability: (RuntimeGuestCapabilityRequirement) throws -> Void,
+    log: (String) -> Void = { _ in }
+) throws {
+    switch instruction {
+    case .requireRuntimeDiskHealthAllowsUpdate:
+        switch UpdateRuntimeUseCase().diskHealthDecision(snapshot: healthSnapshot()) {
+        case .allowed:
+            return
+        case .blocked(_, let logMessage, let failureMessage):
+            log(logMessage)
+            throw RuntimeApplyBundleWorkflowError.operationFailed(failureMessage)
+        }
+    case .requireGuestCapability(let capability):
+        try requireGuestCapability(capability)
+    }
+}
 
 private func healthySnapshot(vmErrors: [RuntimeVMError] = []) -> RuntimeHealthSnapshot {
     RuntimeHealthSnapshot(

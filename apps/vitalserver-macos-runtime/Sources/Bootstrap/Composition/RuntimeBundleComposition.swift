@@ -276,7 +276,7 @@ public struct RuntimeBundleComposition {
                 loadStagedManifest: { stagedBundle in
                     try loadManifest(stagedBundle.appendingPathComponent(Constants.Bundle.manifest))
                 },
-                observeRootfsStorage: observeRootfsStorage,
+                resolveRootfsStorage: resolveRootfsStorage,
                 createDirectory: { url, withIntermediateDirectories in
                     try operations.fileStore.createDirectory(at: url, withIntermediateDirectories: withIntermediateDirectories)
                 },
@@ -300,7 +300,7 @@ public struct RuntimeBundleComposition {
                     )
                 },
                 runtimeHealthSnapshot: operations.runtimeHealthSnapshot,
-                requireGuestCapability: operations.requireGuestCapability,
+                executePreflightCapabilityInstruction: executePreflightCapabilityInstruction,
                 createBackup: operations.createBackup,
                 rotateRuntimeLogs: operations.rotateRuntimeLogs,
                 rollback: { backup in
@@ -347,6 +347,42 @@ public struct RuntimeBundleComposition {
             installedRootfsBytes: stagedRootfsExists ? try fileSize(rootfsBase) : nil,
             incomingRootfsBytes: stagedRootfsExists ? try fileSize(stagedRootfs) : nil
         )
+    }
+
+    private func resolveRootfsStorage(
+        plan: ApplyRuntimeBundleRootfsStorageObservationPlan
+    ) throws -> ApplyRuntimeBundleRootfsStorageDecision {
+        switch plan {
+        case .unchanged(let rootfsStoragePlan):
+            return .planned(rootfsStoragePlan)
+        case .replacing(let stagedRootfs, let rootfsBase):
+            return UpdateRuntimeUseCase().rootfsStorageDecision(
+                observation: try observeRootfsStorage(stagedRootfs: stagedRootfs, rootfsBase: rootfsBase)
+            )
+        }
+    }
+
+    private func executePreflightCapabilityInstruction(
+        _ instruction: ApplyRuntimeBundlePreflightCapabilityInstruction
+    ) throws {
+        switch instruction {
+        case .requireRuntimeDiskHealthAllowsUpdate:
+            try requireRuntimeDiskHealthAllowsUpdate()
+        case .requireGuestCapability(let capability):
+            try operations.requireGuestCapability(capability)
+        }
+    }
+
+    private func requireRuntimeDiskHealthAllowsUpdate() throws {
+        let useCase = UpdateRuntimeUseCase()
+        let decision = useCase.diskHealthDecision(snapshot: operations.runtimeHealthSnapshot())
+        switch decision {
+        case .allowed:
+            return
+        case .blocked(_, let logMessage, let failureMessage):
+            operations.log(logMessage)
+            throw RuntimeApplyBundleWorkflowError.operationFailed(failureMessage)
+        }
     }
 
     private func observeRootfsReplacement(

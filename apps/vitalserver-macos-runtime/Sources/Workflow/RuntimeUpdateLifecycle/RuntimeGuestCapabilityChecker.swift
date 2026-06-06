@@ -13,11 +13,13 @@ public struct RuntimeGuestCapabilityChecker {
     }
 
     public func require(_ capability: RuntimeGuestCapabilityRequirement) throws {
-        let decision = useCase.guestCapabilityDecision(
+        switch useCase.guestCapabilityRequirementPlan(
             loadResult: loadRuntimeState(),
             capability: capability
-        )
-        if let failure = decision.failure {
+        ) {
+        case .supported:
+            return
+        case .failed(let failure):
             throw failure
         }
     }

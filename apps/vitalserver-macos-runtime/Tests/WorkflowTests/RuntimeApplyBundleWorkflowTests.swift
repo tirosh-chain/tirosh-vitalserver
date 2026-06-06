@@ -104,13 +104,16 @@ private final class ApplyBundleWorkflowHarness {
                     self.loadedManifests.append(url)
                     return self.manifest
                 },
-                observeRootfsStorage: { stagedRootfs, _ in
-                    ApplyRuntimeBundleRootfsStorageObservation(
-                        stagedRootfs: stagedRootfs,
-                        stagedRootfsExists: true,
-                        installedRootfsBytes: 1,
-                        incomingRootfsBytes: 1
-                    )
+                resolveRootfsStorage: { plan in
+                    switch plan {
+                    case .unchanged(let rootfsStoragePlan):
+                        return .planned(rootfsStoragePlan)
+                    case .replacing(let stagedRootfs, _):
+                        return .planned(ApplyRuntimeBundleRootfsStoragePreflightPlan(
+                            rootfsStorage: .replacing(installedRootfsBytes: 1, incomingRootfsBytes: 1),
+                            logMessage: "rootfs storage observed \(stagedRootfs.lastPathComponent)"
+                        ))
+                    }
                 },
                 createDirectory: { url, withIntermediateDirectories in
                     if let error = self.createDirectoryErrors[url] {
@@ -138,8 +141,8 @@ private final class ApplyBundleWorkflowHarness {
                 runtimeHealthSnapshot: {
                     Self.healthSnapshot()
                 },
-                requireGuestCapability: { _ in
-                    XCTFail("guest capability should not be required when VM is not being restarted and bundle has no guest deploy")
+                executePreflightCapabilityInstruction: { _ in
+                    XCTFail("preflight capability instruction should not run when VM is not being restarted and bundle has no guest deploy")
                 },
                 createBackup: { reason in
                     self.backupReasons.append(reason)

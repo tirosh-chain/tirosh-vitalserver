@@ -1165,6 +1165,13 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
             RuntimeGuestCapabilityDecision(isSupported: true, failure: nil)
         )
         XCTAssertEqual(
+            useCase.guestCapabilityRequirementPlan(
+                loadResult: .loaded(supportedState),
+                capability: .prepareUpdateShutdown
+            ),
+            .supported
+        )
+        XCTAssertEqual(
             useCase.guestCapabilityDecision(
                 loadResult: .loaded(unsupportedState),
                 capability: .prepareUpdateShutdown
@@ -1173,6 +1180,13 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
                 isSupported: false,
                 failure: .missingCapability("prepare-update-shutdown")
             )
+        )
+        XCTAssertEqual(
+            useCase.guestCapabilityRequirementPlan(
+                loadResult: .loaded(unsupportedState),
+                capability: .prepareUpdateShutdown
+            ),
+            .failed(.missingCapability("prepare-update-shutdown"))
         )
         XCTAssertEqual(
             useCase.guestCapabilityDecision(
