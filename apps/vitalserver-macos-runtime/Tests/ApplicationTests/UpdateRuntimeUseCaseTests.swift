@@ -6,6 +6,33 @@ import XCTest
 import Errors
 
 final class UpdateRuntimeUseCaseTests: XCTestCase {
+    func testInitialHealthDecisionDoesNotWarnWhenRuntimeIsHealthy() {
+        let useCase = UpdateRuntimeUseCase()
+
+        let decision = useCase.initialHealthDecision(
+            snapshot: healthSnapshot(reasons: []),
+            reasonText: "should-not-leak"
+        )
+
+        XCTAssertFalse(decision.shouldWarn)
+        XCTAssertNil(decision.warningMessage)
+    }
+
+    func testInitialHealthDecisionWarnsFromExplicitFailureReasons() {
+        let useCase = UpdateRuntimeUseCase()
+
+        let decision = useCase.initialHealthDecision(
+            snapshot: healthSnapshot(reasons: [.hostProxyHTTP("000")]),
+            reasonText: "host-proxy-http-000"
+        )
+
+        XCTAssertTrue(decision.shouldWarn)
+        XCTAssertEqual(
+            decision.warningMessage,
+            "bundle apply preflight warning runtime unhealthy reasons=host-proxy-http-000"
+        )
+    }
+
     func testApplyBundlePlanIncludesRootfsReplacementWhenPreflightHasRootfs() {
         let useCase = UpdateRuntimeUseCase()
 
@@ -83,5 +110,25 @@ private func restartPolicy() -> RuntimeServiceRestartPolicy {
         restartGuestLogSync: false,
         restartProxy: false,
         restartWatchdog: false
+    )
+}
+
+private func healthSnapshot(reasons: [RuntimeFailureReason]) -> RuntimeHealthSnapshot {
+    RuntimeHealthSnapshot(
+        vmExecutable: true,
+        proxyExecutable: true,
+        rootfsBase: .present,
+        vmDisk: .present,
+        vmService: .loaded,
+        proxyService: .loaded,
+        watchdogService: .loaded,
+        vmState: reasons.isEmpty ? .running : .unreachable,
+        vmIP: "192.168.64.2",
+        proxyPort: 18080,
+        hostProxyHTTP: reasons.isEmpty ? "200" : "000",
+        guestHTTP: "200",
+        redisUIHTTP: "200",
+        swaggerUIHTTP: "200",
+        failureReasons: reasons
     )
 }
