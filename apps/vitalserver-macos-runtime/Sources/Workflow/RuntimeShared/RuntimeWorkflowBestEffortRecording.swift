@@ -1,3 +1,4 @@
+import Application
 import Contracts
 import Errors
 
@@ -11,9 +12,11 @@ public func writeRuntimeStatusBestEffort(
     do {
         try writeStatus(status, operation, message)
     } catch {
-        log(
-            "failed to write runtime status " +
-                "status=\(status.rawValue) operation=\(operation.rawValue) error=\(error)"
+        log(RuntimeWorkflowUseCase().statusWriteFailedLogMessage(
+            status: status,
+            operation: operation,
+            reason: String(describing: error)
+        )
         )
     }
 }
@@ -26,9 +29,10 @@ public func writeRuntimeProgressBestEffort(
     do {
         try writeProgress(event)
     } catch {
-        log(
-            "failed to write runtime progress " +
-                "step=\(event.step.rawValue) stepStatus=\(event.stepStatus.rawValue) error=\(error)"
+        log(RuntimeWorkflowUseCase().progressWriteFailedLogMessage(
+            event: event,
+            reason: String(describing: error)
+        )
         )
     }
 }
@@ -44,9 +48,11 @@ public func recordRuntimeObservedEventBestEffort(
     do {
         try recordObservedEvent(status, operation, message, snapshot)
     } catch {
-        log(
-            "failed to record runtime observed event " +
-                "status=\(status.rawValue) operation=\(operation.rawValue) error=\(error)"
+        log(RuntimeWorkflowUseCase().observedEventRecordFailedLogMessage(
+            status: status,
+            operation: operation,
+            reason: String(describing: error)
+        )
         )
     }
 }

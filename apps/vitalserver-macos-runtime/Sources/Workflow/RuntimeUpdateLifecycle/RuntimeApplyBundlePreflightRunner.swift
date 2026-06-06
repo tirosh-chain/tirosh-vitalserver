@@ -65,23 +65,25 @@ public struct RuntimeApplyBundlePreflightRunner {
         let stagedRootfs = manifestPlan.stagedRootfs
         let stagedBundleSize = try directorySize(stagedBundle)
         let rootfsStorage: RuntimeUpdateRootfsStorageInput
-        log("bundle apply storage preflight stagedBundle=\(formatBytes(stagedBundleSize))")
+        log(useCase.storagePreflightStagedBundleLogMessage(stagedBundleBytes: stagedBundleSize))
         if let stagedRootfs {
             guard fileExists(stagedRootfs) else {
-                throw RuntimeApplyBundleWorkflowError.operationFailed("missing file: \(stagedRootfs.path)")
+                throw RuntimeApplyBundleWorkflowError.operationFailed(
+                    useCase.missingFileFailureMessage(path: stagedRootfs.path)
+                )
             }
             let installedRootfsSize = try fileSize(rootfsBase)
             let incomingRootfsSize = try fileSize(stagedRootfs)
-            rootfsStorage = .replacing(
+            let rootfsStoragePlan = useCase.replacingRootfsStoragePreflightPlan(
                 installedRootfsBytes: installedRootfsSize,
                 incomingRootfsBytes: incomingRootfsSize
             )
-            log(
-                "bundle apply storage preflight installedRootfs=\(formatBytes(installedRootfsSize)) incomingRootfs=\(formatBytes(incomingRootfsSize))"
-            )
+            rootfsStorage = rootfsStoragePlan.rootfsStorage
+            log(rootfsStoragePlan.logMessage)
         } else {
-            rootfsStorage = .unchanged
-            log("bundle apply storage preflight rootfsBase=unchanged")
+            let rootfsStoragePlan = useCase.unchangedRootfsStoragePreflightPlan()
+            rootfsStorage = rootfsStoragePlan.rootfsStorage
+            log(rootfsStoragePlan.logMessage)
         }
         let storageRequirement = useCase.storageRequirement(
             stagedBundleBytes: stagedBundleSize,
@@ -109,7 +111,7 @@ public struct RuntimeApplyBundlePreflightRunner {
         }
         log(manifestPlan.backupStartedLogMessage)
         let backup = try createBackup(manifestPlan.backupReason)
-        log("backup created path=\(backup.path) size=\(formatBytes(try directorySize(backup)))")
+        log(useCase.backupCreatedLogMessage(backupPath: backup.path, backupBytes: try directorySize(backup)))
 
         return ApplyBundlePreflightContext(
             stagedBundle: stagedBundle,
@@ -120,18 +122,14 @@ public struct RuntimeApplyBundlePreflightRunner {
         )
     }
 
-    private func formatBytes(_ bytes: UInt64) -> String {
-        let mib = Double(bytes) / 1_048_576
-        return String(format: "%.1f MiB", max(mib, 0))
-    }
-
     private func requireRuntimeDiskHealthAllowsUpdate() throws {
         let decision = useCase.diskHealthDecision(snapshot: runtimeHealthSnapshot())
-        guard decision.canApplyUpdate else {
-            if let blockedLogMessage = decision.blockedLogMessage {
-                log(blockedLogMessage)
-            }
-            throw RuntimeApplyBundleWorkflowError.operationFailed(decision.failureMessage ?? "VM disk health blocks update")
+        switch decision {
+        case .allowed:
+            return
+        case .blocked(_, let logMessage, let failureMessage):
+            log(logMessage)
+            throw RuntimeApplyBundleWorkflowError.operationFailed(failureMessage)
         }
     }
 }

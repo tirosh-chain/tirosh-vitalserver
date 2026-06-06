@@ -35,12 +35,16 @@ public struct RuntimeRollbackPreflightRunner {
         let backup = try backupURL(for: command)
 
         guard directoryExists(backup) else {
-            throw RuntimeRollbackWorkflowError.operationFailed("missing file: \(backup.path)")
+            throw RuntimeRollbackWorkflowError.operationFailed(
+                useCase.missingFileFailureMessage(path: backup.path)
+            )
         }
         let manifest = try loadManifest(backup)
         let backupPlan = useCase.rollbackBackupPlan(backup: backup, manifest: manifest)
         if let backupRootfs = backupPlan.backupRootfs, !fileExists(backupRootfs) {
-            throw RuntimeRollbackWorkflowError.operationFailed("missing file: \(backupRootfs.path)")
+            throw RuntimeRollbackWorkflowError.operationFailed(
+                useCase.missingFileFailureMessage(path: backupRootfs.path)
+            )
         }
 
         let restartPolicy = serviceRestartPolicy()
@@ -57,7 +61,7 @@ public struct RuntimeRollbackPreflightRunner {
     }
 
     private func backupURL(for command: RuntimeRollbackCommand) throws -> URL {
-        switch command {
+        switch useCase.rollbackBackupSelection(command: command) {
         case .latestBackup:
             return try requireLatestBackup()
         case .specificBackup(let url):

@@ -71,7 +71,7 @@ public struct RuntimeApplyBundleStepExecutor {
             let stopPlan = useCase.stopPlan(restartPolicy: preflight.restartPolicy)
             if stopPlan.preparesGuestShutdown {
                 let expectedVMProcessID = try runningVMProcessID()
-                log("captured VM process before guest update shutdown pid=\(expectedVMProcessID)")
+                log(useCase.capturedVMProcessBeforeGuestUpdateShutdownLogMessage(processID: expectedVMProcessID))
                 try prepareGuestShutdownForUpdate(preflight.manifest)
                 do {
                     defer { clearGuestShutdownPreparationAfterRuntimeStop() }
@@ -92,11 +92,14 @@ public struct RuntimeApplyBundleStepExecutor {
                 return
             }
             try createDirectory(rootfsPlan.rootfsBase.deletingLastPathComponent(), true)
-            log(
-                "replacing rootfs-base source=\(stagedRootfs.path) destination=\(rootfsPlan.rootfsBase.path) size=\(formatBytes(try fileSize(stagedRootfs)))"
+            let executionPlan = useCase.rootfsReplacementExecutionPlan(
+                stagedRootfs: stagedRootfs,
+                rootfsBase: rootfsPlan.rootfsBase,
+                stagedRootfsBytes: try fileSize(stagedRootfs)
             )
+            log(executionPlan.startedLogMessage)
             try replaceFile(stagedRootfs, rootfsPlan.rootfsBase)
-            log("rootfs-base replaced destination=\(rootfsPlan.rootfsBase.path)")
+            log(executionPlan.completedLogMessage)
         case .replaceUpdateArtifacts:
             try replaceUpdateArtifacts(preflight.manifest.artifacts, preflight.stagedBundle)
         case .runMigrations:
@@ -112,20 +115,17 @@ public struct RuntimeApplyBundleStepExecutor {
         case .waitRuntimeHealth:
             try waitForHealth(preflight.restartPolicy)
         default:
-            throw RuntimeApplyBundleWorkflowError.operationFailed("unsupported command: apply-bundle step \(step.rawValue)")
+            throw RuntimeApplyBundleWorkflowError.operationFailed(
+                useCase.unsupportedApplyBundleStepFailureMessage(step: step)
+            )
         }
-    }
-
-    private func formatBytes(_ bytes: UInt64) -> String {
-        let mib = Double(bytes) / 1_048_576
-        return String(format: "%.1f MiB", max(mib, 0))
     }
 
     private func clearGuestShutdownPreparationAfterRuntimeStop() {
         do {
             try clearGuestShutdownPreparation()
         } catch {
-            log("guest shutdown preparation cleanup failed error=\(error)")
+            log(useCase.guestShutdownPreparationCleanupFailedLogMessage(reason: String(describing: error)))
         }
     }
 }

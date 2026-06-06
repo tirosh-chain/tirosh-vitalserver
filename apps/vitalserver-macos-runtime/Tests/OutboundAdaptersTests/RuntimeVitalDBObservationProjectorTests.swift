@@ -1,6 +1,5 @@
 import Contracts
-import Workflow
-@testable import CLIHost
+import OutboundAdapters
 import XCTest
 import Errors
 

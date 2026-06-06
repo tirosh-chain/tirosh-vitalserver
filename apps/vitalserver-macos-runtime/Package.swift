@@ -46,7 +46,7 @@ let package = Package(
         ),
         .target(
             name: "OutboundAdapters",
-            dependencies: ["Contracts", "Errors", "Domain", "Application", "Workflow", "RuntimeControl"],
+            dependencies: ["Contracts", "Errors", "Domain", "Application", "RuntimeControl"],
             path: "Sources/Adapters/Outbound",
             linkerSettings: [
                 .linkedLibrary("sqlite3")
@@ -143,7 +143,7 @@ let package = Package(
         ),
         .testTarget(
             name: "OutboundAdaptersTests",
-            dependencies: ["Contracts", "Errors", "Domain", "Application", "Workflow", "RuntimeControl", "OutboundAdapters"]
+            dependencies: ["Contracts", "Errors", "Domain", "Application", "RuntimeControl", "OutboundAdapters"]
         ),
         .testTarget(
             name: "CLIHostTests",

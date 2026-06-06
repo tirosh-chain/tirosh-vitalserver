@@ -1,19 +1,19 @@
 import Foundation
-import Bootstrap
 import Application
 import Contracts
 import Domain
-import Workflow
-@testable import CLIHost
+import OutboundAdapters
 import XCTest
 import Errors
 
 final class RuntimeStatusReporterTests: XCTestCase {
+    private let productIdentifier = "VitalServerHelper"
+
     func testWritesStatusDocumentThroughRepository() throws {
         let repository = RuntimeStatusRepositorySpy()
         let reporter = RuntimeStatusReporter(
             repository: repository,
-            productIdentifier: Constants.Product.identifier,
+            productIdentifier: productIdentifier,
             productRoot: URL(fileURLWithPath: "/product"),
             runtimeHome: URL(fileURLWithPath: "/product/vm")
         )
@@ -55,7 +55,7 @@ final class RuntimeStatusReporterTests: XCTestCase {
         ))
         let reporter = RuntimeStatusReporter(
             repository: repository,
-            productIdentifier: Constants.Product.identifier,
+            productIdentifier: productIdentifier,
             productRoot: URL(fileURLWithPath: "/product"),
             runtimeHome: URL(fileURLWithPath: "/product/vm")
         )
@@ -83,7 +83,7 @@ final class RuntimeStatusReporterTests: XCTestCase {
     func testWriteProgressRequiresExistingStatusDocument() {
         let reporter = RuntimeStatusReporter(
             repository: RuntimeStatusRepositorySpy(),
-            productIdentifier: Constants.Product.identifier,
+            productIdentifier: productIdentifier,
             productRoot: URL(fileURLWithPath: "/product"),
             runtimeHome: URL(fileURLWithPath: "/product/vm")
         )
@@ -108,7 +108,7 @@ final class RuntimeStatusReporterTests: XCTestCase {
         repository.result = .failed("not-json")
         let reporter = RuntimeStatusReporter(
             repository: repository,
-            productIdentifier: Constants.Product.identifier,
+            productIdentifier: productIdentifier,
             productRoot: URL(fileURLWithPath: "/product"),
             runtimeHome: URL(fileURLWithPath: "/product/vm")
         )
@@ -156,7 +156,7 @@ final class RuntimeStatusReporterTests: XCTestCase {
 
         let reporter = RuntimeStatusReporter(
             repository: repository,
-            productIdentifier: Constants.Product.identifier,
+            productIdentifier: productIdentifier,
             productRoot: URL(fileURLWithPath: "/product"),
             runtimeHome: URL(fileURLWithPath: "/product/vm")
         )
@@ -167,7 +167,7 @@ final class RuntimeStatusReporterTests: XCTestCase {
     func testStatusValueReturnsNilWhenStatusDocumentIsMissing() {
         let reporter = RuntimeStatusReporter(
             repository: RuntimeStatusRepositorySpy(),
-            productIdentifier: Constants.Product.identifier,
+            productIdentifier: productIdentifier,
             productRoot: URL(fileURLWithPath: "/product"),
             runtimeHome: URL(fileURLWithPath: "/product/vm")
         )

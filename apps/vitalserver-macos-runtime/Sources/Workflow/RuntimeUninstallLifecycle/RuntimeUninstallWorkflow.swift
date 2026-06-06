@@ -191,7 +191,7 @@ public struct RuntimeUninstallWorkflow {
             return state
         }
 
-        log("step=create-redis-backup status=started")
+        log(useCase.stepLogMessage(step: "create-redis-backup", status: "started"))
         let backupRequestDecision = try transitionAndPersist(
             from: state,
             event: .redisBackupRequested,
@@ -200,7 +200,7 @@ public struct RuntimeUninstallWorkflow {
         )
         do {
             try effects.createRedisBackup()
-            log("step=create-redis-backup status=completed")
+            log(useCase.stepLogMessage(step: "create-redis-backup", status: "completed"))
             let backupCompletedDecision = try transitionAndPersist(
                 from: backupRequestDecision.state,
                 event: .redisBackupSucceeded,
@@ -209,7 +209,7 @@ public struct RuntimeUninstallWorkflow {
             )
             return backupCompletedDecision.state
         } catch {
-            log("standard uninstall aborted because Redis backup did not complete error=\(error.localizedDescription)")
+            log(useCase.redisBackupAbortLogMessage(reason: error.localizedDescription))
             let decision = try transitionAndPersist(
                 from: backupRequestDecision.state,
                 event: .redisBackupFailed(reason: error.localizedDescription),
@@ -225,7 +225,7 @@ public struct RuntimeUninstallWorkflow {
         from state: RuntimeUninstallWorkflowState,
         clean: Bool
     ) throws -> RuntimeUninstallTransitionDecision {
-        log("step=stop-launchd-services status=started")
+        log(useCase.stepLogMessage(step: "stop-launchd-services", status: "started"))
         let stopRequestDecision = try transitionAndPersist(
             from: state,
             event: .stopServicesRequested,
@@ -246,7 +246,7 @@ public struct RuntimeUninstallWorkflow {
             )
             throw error
         }
-        log("step=stop-launchd-services status=completed")
+        log(useCase.stepLogMessage(step: "stop-launchd-services", status: "completed"))
         return try verifyRuntimeStopped(from: stopRequestDecision.state, clean: clean)
     }
 
@@ -255,15 +255,15 @@ public struct RuntimeUninstallWorkflow {
         command: RuntimeUninstallCommand
     ) throws -> RuntimeUninstallTransitionDecision {
         try requireCommands([.removeFiles], in: stoppedDecision)
-        log("step=remove-plists status=started")
+        log(useCase.stepLogMessage(step: "remove-plists", status: "started"))
         for plist in paths.launchDaemonPlists {
             try removeIfPresent(plist)
         }
-        log("step=remove-plists status=completed")
+        log(useCase.stepLogMessage(step: "remove-plists", status: "completed"))
 
         let preserved = command.clean ? nil : try preserveUserData()
         do {
-            log("step=remove-installed-files status=started")
+            log(useCase.stepLogMessage(step: "remove-installed-files", status: "started"))
             let fileRemovalDecision = try transitionAndPersist(
                 from: stoppedDecision.state,
                 event: .filesRemovalStarted,
@@ -271,37 +271,37 @@ public struct RuntimeUninstallWorkflow {
                 expectedCommands: []
             )
             try removeInstalledFiles(clean: command.clean)
-            log("step=remove-installed-files status=completed")
+            log(useCase.stepLogMessage(step: "remove-installed-files", status: "completed"))
 
-            log("step=remove-runtime-tools status=started")
+            log(useCase.stepLogMessage(step: "remove-runtime-tools", status: "started"))
             for tool in paths.runtimeTools {
                 try removeIfPresent(tool)
             }
-            log("step=remove-runtime-tools status=completed")
+            log(useCase.stepLogMessage(step: "remove-runtime-tools", status: "completed"))
             let cleanupDecision = try verifyCleanupArtifacts(from: fileRemovalDecision.state, clean: command.clean)
 
             if let preserved {
-                log("step=restore-preserved-user-data status=started")
+                log(useCase.stepLogMessage(step: "restore-preserved-user-data", status: "started"))
                 try restorePreservedPaths(preserved)
-                log("step=restore-preserved-user-data status=completed")
+                log(useCase.stepLogMessage(step: "restore-preserved-user-data", status: "completed"))
             }
 
             return cleanupDecision
         } catch {
             var preservedRestoreFailureReason: String?
             if let preserved {
-                log("restoring preserved user data after uninstall failure")
+                log(useCase.restoringPreservedUserDataAfterFailureLogMessage())
                 do {
                     try restorePreservedPaths(preserved)
                 } catch {
-                    log("preserved user data restore failed error=\(error.localizedDescription)")
+                    log(useCase.preservedUserDataRestoreFailedLogMessage(reason: error.localizedDescription))
                     preservedRestoreFailureReason = error.localizedDescription
                 }
             }
             try writer.writeState(
                 .filesRemovalBlocked,
                 command.clean,
-                "file removal blocked",
+                useCase.fileRemovalBlockedMessage(),
                 useCase.fileRemovalBlockers(
                     removalFailureReason: error.localizedDescription,
                     preservedRestoreFailureReason: preservedRestoreFailureReason
@@ -316,7 +316,7 @@ public struct RuntimeUninstallWorkflow {
         clean: Bool
     ) throws -> RuntimeUninstallTransitionDecision {
         try requireCommands([.forgetPackageReceipts], in: cleanupDecision)
-        log("step=forget-package-receipt status=started")
+        log(useCase.stepLogMessage(step: "forget-package-receipt", status: "started"))
         let receiptsStartDecision = try transitionAndPersist(
             from: cleanupDecision.state,
             event: .receiptsForgetStarted,
@@ -356,7 +356,7 @@ public struct RuntimeUninstallWorkflow {
             try requireCommands([], in: receiptDecision)
             try writePersistedState(receiptDecision, clean: clean)
             throw RuntimeUninstallWorkflowError.operationFailed(
-                "package receipt forget verification failed blockers=\(receiptDecision.blockers.joined(separator: ","))"
+                useCase.packageReceiptVerificationFailedMessage(blockers: receiptDecision.blockers)
             )
         }
         return receiptDecision
@@ -367,13 +367,13 @@ public struct RuntimeUninstallWorkflow {
         clean: Bool
     ) throws {
         try requireCommands([.complete], in: receiptDecision)
-        log("step=forget-package-receipt status=completed")
-        log("uninstall completed")
+        log(useCase.stepLogMessage(step: "forget-package-receipt", status: "completed"))
+        log(useCase.completedLogMessage())
         try writePersistedState(receiptDecision, clean: clean)
     }
 
     private func preserveUserData() throws -> RuntimeUninstallPreservedPaths {
-        log("step=preserve-user-data status=started")
+        log(useCase.stepLogMessage(step: "preserve-user-data", status: "started"))
         let preserveRoot = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("tirosh-vitalserver-uninstall-\(UUID().uuidString)")
         try effects.createDirectory(preserveRoot, true)
@@ -395,7 +395,7 @@ public struct RuntimeUninstallWorkflow {
             log(configuredDirectoryReadFailureLogMessage)
         }
 
-        log("step=preserve-user-data status=completed")
+        log(useCase.stepLogMessage(step: "preserve-user-data", status: "completed"))
         return RuntimeUninstallPreservedPaths(root: preserveRoot, items: items)
     }
 
@@ -412,7 +412,7 @@ public struct RuntimeUninstallWorkflow {
         try removeIfPresent(destination)
         try effects.moveItem(source, destination)
         items.append(RuntimeUninstallPreservedPath(source: source, destination: destination))
-        log("preserved source=\(source.path)")
+        log(useCase.preservedSourceLogMessage(path: source.path))
     }
 
     private func restorePreservedPaths(_ preserved: RuntimeUninstallPreservedPaths) throws {
@@ -420,7 +420,7 @@ public struct RuntimeUninstallWorkflow {
             try effects.createDirectory(item.source.deletingLastPathComponent(), true)
             try removeIfPresent(item.source)
             try effects.moveItem(item.destination, item.source)
-            log("restored preserved=\(item.source.path)")
+            log(useCase.restoredPreservedLogMessage(path: item.source.path))
         }
         try removeIfPresent(preserved.root)
     }
@@ -443,7 +443,9 @@ public struct RuntimeUninstallWorkflow {
 
     private func safeRemove(_ target: URL) throws {
         guard target.path != "/" else {
-            throw RuntimeUninstallWorkflowError.operationFailed("refusing unsafe removal target=/")
+            throw RuntimeUninstallWorkflowError.operationFailed(
+                useCase.unsafeRemovalTargetFailureMessage(path: target.path)
+            )
         }
         guard exists(target) else {
             return
@@ -456,28 +458,35 @@ public struct RuntimeUninstallWorkflow {
         }
         if exists(target) {
             logRemovalDiagnostics(target)
-            throw RuntimeUninstallWorkflowError.operationFailed("removal incomplete target=\(target.path)")
+            throw RuntimeUninstallWorkflowError.operationFailed(
+                useCase.removalIncompleteFailureMessage(path: target.path)
+            )
         }
     }
 
     private func logRemovalDiagnostics(_ target: URL) {
-        log("removal diagnostic target=\(target.path)")
+        log(useCase.removalDiagnosticTargetLogMessage(path: target.path))
         do {
             let items = try diagnostics.contentsOfDirectory(target)
             for item in items.prefix(200) {
-                log("removal diagnostic residual path=\(item.path)")
+                log(useCase.removalDiagnosticResidualLogMessage(path: item.path))
             }
         } catch {
-            log("removal diagnostic contents read failed target=\(target.path) error=\(error.localizedDescription)")
+            log(useCase.removalDiagnosticContentsReadFailedLogMessage(
+                path: target.path,
+                reason: error.localizedDescription
+            ))
         }
         let result = diagnostics.runProcess(diagnostics.openFileDiagnosticExecutable, ["+D", target.path])
         if result.exitCode == 0 {
             for line in result.stdout.split(separator: "\n").prefix(200) {
-                log("removal diagnostic open file \(line)")
+                log(useCase.removalDiagnosticOpenFileLogMessage(line: String(line)))
             }
         }
         if !result.stderr.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            log("removal diagnostic lsof stderr=\(result.stderr.trimmingCharacters(in: .whitespacesAndNewlines))")
+            log(useCase.removalDiagnosticOpenFileStderrLogMessage(
+                stderr: result.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+            ))
         }
     }
 
@@ -511,7 +520,7 @@ public struct RuntimeUninstallWorkflow {
         guard decision.blockers.isEmpty else {
             try writePersistedState(decision, clean: clean)
             throw RuntimeUninstallWorkflowError.operationFailed(
-                "runtime stop state blocked blockers=\(decision.blockers.joined(separator: ","))"
+                useCase.runtimeStopBlockedFailureMessage(blockers: decision.blockers)
             )
         }
         return decision
@@ -529,7 +538,7 @@ public struct RuntimeUninstallWorkflow {
         guard decision.blockers.isEmpty else {
             try writePersistedState(decision, clean: clean)
             throw RuntimeUninstallWorkflowError.operationFailed(
-                "runtime cleanup artifacts remain blockers=\(decision.blockers.joined(separator: ","))"
+                useCase.cleanupArtifactsRemainFailureMessage(blockers: decision.blockers)
             )
         }
         return decision

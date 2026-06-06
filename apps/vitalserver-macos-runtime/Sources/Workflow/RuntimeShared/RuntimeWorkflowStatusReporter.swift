@@ -1,3 +1,4 @@
+import Application
 import Contracts
 import Errors
 
@@ -5,6 +6,9 @@ public struct RuntimeWorkflowStatusReporter {
     public var writeStatus: (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void
     public var writeProgress: (RuntimeStepExecutionEvent) throws -> Void
     public var log: (String) -> Void
+    private var useCase: RuntimeWorkflowUseCase {
+        RuntimeWorkflowUseCase()
+    }
 
     public init(
         writeStatus: @escaping (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void,
@@ -39,7 +43,7 @@ public struct RuntimeWorkflowStatusReporter {
     }
 
     public func publishProgress(_ event: RuntimeStepExecutionEvent) {
-        log("step=\(event.step.rawValue) status=\(event.stepStatus.rawValue)")
+        log(useCase.progressLogMessage(event: event))
         writeRuntimeProgressBestEffort(event, writeProgress: writeProgress, log: log)
     }
 }

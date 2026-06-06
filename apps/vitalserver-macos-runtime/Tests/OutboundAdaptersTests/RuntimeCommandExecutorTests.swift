@@ -2,8 +2,7 @@ import Foundation
 import Application
 import Contracts
 import Domain
-import Workflow
-@testable import CLIHost
+import OutboundAdapters
 import XCTest
 import Errors
 

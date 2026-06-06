@@ -1,8 +1,7 @@
 import Contracts
-import Workflow
+import OutboundAdapters
 import XCTest
 import Errors
-@testable import CLIHost
 
 final class RuntimeEventFactoryTests: XCTestCase {
     func testObservedStatusEventCarriesHealthSnapshotContext() {

@@ -1,3 +1,4 @@
+import Application
 import Contracts
 import Domain
 import Foundation
@@ -83,6 +84,9 @@ public struct RuntimeRollbackWorkflowOperations {
 public struct RuntimeRollbackWorkflow {
     public let context: RuntimeRollbackWorkflowContext
     public let operations: RuntimeRollbackWorkflowOperations
+    private var useCase: UpdateRuntimeUseCase {
+        UpdateRuntimeUseCase()
+    }
 
     public init(
         context: RuntimeRollbackWorkflowContext,
@@ -108,14 +112,17 @@ public struct RuntimeRollbackWorkflow {
     }
 
     private func prepareRollbackPreflight(_ command: RuntimeRollbackCommand) throws -> RollbackPreflightContext {
-        try RuntimeRollbackPreflightRunner(
+        let useCase = useCase
+        return try RuntimeRollbackPreflightRunner(
             requireLatestBackup: operations.requireLatestBackup,
             directoryExists: operations.directoryExists,
             fileExists: operations.fileExists,
             loadManifest: { backup in
                 let manifestURL = backup.appendingPathComponent(RuntimeFileNames.backupManifest)
                 guard operations.fileExists(manifestURL) else {
-                    throw RuntimeRollbackWorkflowError.operationFailed("missing file: \(manifestURL.path)")
+                    throw RuntimeRollbackWorkflowError.operationFailed(
+                        useCase.missingFileFailureMessage(path: manifestURL.path)
+                    )
                 }
                 let data = try operations.readData(manifestURL)
                 return try JSONDecoder().decode(BackupManifest.self, from: data)

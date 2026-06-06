@@ -1,3 +1,4 @@
+import Application
 import Contracts
 import Domain
 import Foundation
@@ -136,7 +137,7 @@ public struct RuntimeApplyBundleWorkflow {
 
     public func applyBundle(_ bundleURL: URL) throws {
         try runtimeApplyBundleRunner().run(bundleURL: bundleURL)
-        operations.log("mutable VM disk preserved path=\(context.vmDisk.path)")
+        operations.log(UpdateRuntimeUseCase().mutableVMDiskPreservedLogMessage(path: context.vmDisk.path))
     }
 
     private func runtimeApplyBundleRunner() -> RuntimeApplyBundleRunner {
@@ -156,12 +157,16 @@ public struct RuntimeApplyBundleWorkflow {
         do {
             try operations.createDirectory(context.logsDirectory, true)
         } catch {
-            operations.log("bundle apply log directory preparation failed error=\(error)")
+            operations.log(UpdateRuntimeUseCase().applyBundleLogDirectoryPreparationFailedLogMessage(
+                reason: String(describing: error)
+            ))
         }
         do {
             try operations.rotateRuntimeLogs()
         } catch {
-            operations.log("bundle apply log rotation failed error=\(error)")
+            operations.log(UpdateRuntimeUseCase().applyBundleLogRotationFailedLogMessage(
+                reason: String(describing: error)
+            ))
         }
     }
 

@@ -1,6 +1,6 @@
 import Contracts
 import Foundation
-import Workflow
+import OutboundAdapters
 import XCTest
 import Errors
 

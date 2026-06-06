@@ -88,7 +88,9 @@ public struct RuntimeRollbackStepExecutor {
         case .rollbackWaitRuntimeHealth:
             try waitForHealth(preflight.restartPolicy)
         default:
-            throw RuntimeRollbackWorkflowError.operationFailed("unsupported command: rollback step \(step.rawValue)")
+            throw RuntimeRollbackWorkflowError.operationFailed(
+                useCase.unsupportedRollbackStepFailureMessage(step: step)
+            )
         }
     }
 }

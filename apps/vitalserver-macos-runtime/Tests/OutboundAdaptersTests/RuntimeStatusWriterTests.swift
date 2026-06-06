@@ -1,9 +1,7 @@
 import Application
-import Bootstrap
 import Contracts
 import Domain
-import Workflow
-@testable import CLIHost
+import OutboundAdapters
 import XCTest
 import Errors
 
@@ -14,7 +12,7 @@ final class RuntimeStatusWriterTests: XCTestCase {
         let snapshot = healthSnapshot(vitalDBObservation: observation)
         let reporter = RuntimeStatusReporter(
             repository: repository,
-            productIdentifier: Constants.Product.identifier,
+            productIdentifier: "VitalServerHelper",
             productRoot: URL(fileURLWithPath: "/product"),
             runtimeHome: URL(fileURLWithPath: "/product/vm")
         )

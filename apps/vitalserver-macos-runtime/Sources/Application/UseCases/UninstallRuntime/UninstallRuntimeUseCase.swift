@@ -70,6 +70,14 @@ public struct UninstallRuntimeUseCase {
         !clean
     }
 
+    public func stepLogMessage(step: String, status: String) -> String {
+        "step=\(step) status=\(status)"
+    }
+
+    public func redisBackupAbortLogMessage(reason: String) -> String {
+        "standard uninstall aborted because Redis backup did not complete error=\(reason)"
+    }
+
     public func preservePlan(
         productRoot: URL,
         defaultVitalFilesDirectory: URL,
@@ -131,6 +139,54 @@ public struct UninstallRuntimeUseCase {
         return blockers
     }
 
+    public func restoringPreservedUserDataAfterFailureLogMessage() -> String {
+        "restoring preserved user data after uninstall failure"
+    }
+
+    public func preservedUserDataRestoreFailedLogMessage(reason: String) -> String {
+        "preserved user data restore failed error=\(reason)"
+    }
+
+    public func fileRemovalBlockedMessage() -> String {
+        "file removal blocked"
+    }
+
+    public func preservedSourceLogMessage(path: String) -> String {
+        "preserved source=\(path)"
+    }
+
+    public func restoredPreservedLogMessage(path: String) -> String {
+        "restored preserved=\(path)"
+    }
+
+    public func unsafeRemovalTargetFailureMessage(path: String) -> String {
+        "refusing unsafe removal target=\(path)"
+    }
+
+    public func removalIncompleteFailureMessage(path: String) -> String {
+        "removal incomplete target=\(path)"
+    }
+
+    public func removalDiagnosticTargetLogMessage(path: String) -> String {
+        "removal diagnostic target=\(path)"
+    }
+
+    public func removalDiagnosticResidualLogMessage(path: String) -> String {
+        "removal diagnostic residual path=\(path)"
+    }
+
+    public func removalDiagnosticContentsReadFailedLogMessage(path: String, reason: String) -> String {
+        "removal diagnostic contents read failed target=\(path) error=\(reason)"
+    }
+
+    public func removalDiagnosticOpenFileLogMessage(line: String) -> String {
+        "removal diagnostic open file \(line)"
+    }
+
+    public func removalDiagnosticOpenFileStderrLogMessage(stderr: String) -> String {
+        "removal diagnostic lsof stderr=\(stderr)"
+    }
+
     public func packageReceiptStateMap(
         _ states: [RuntimePackageReceiptState]
     ) -> [String: RuntimePackageReceiptState] {
@@ -171,6 +227,22 @@ public struct UninstallRuntimeUseCase {
 
     public func packageReceiptForgetFailureMessage(identifier: String, reason: String) -> String {
         "package receipt forget failed identifier=\(identifier) \(reason)"
+    }
+
+    public func packageReceiptVerificationFailedMessage(blockers: [String]) -> String {
+        "package receipt forget verification failed blockers=\(blockers.joined(separator: ","))"
+    }
+
+    public func runtimeStopBlockedFailureMessage(blockers: [String]) -> String {
+        "runtime stop state blocked blockers=\(blockers.joined(separator: ","))"
+    }
+
+    public func cleanupArtifactsRemainFailureMessage(blockers: [String]) -> String {
+        "runtime cleanup artifacts remain blockers=\(blockers.joined(separator: ","))"
+    }
+
+    public func completedLogMessage() -> String {
+        "uninstall completed"
     }
 
     public func transition(

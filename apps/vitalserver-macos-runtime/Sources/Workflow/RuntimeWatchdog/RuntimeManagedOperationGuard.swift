@@ -14,7 +14,7 @@ public struct RuntimeGuestBootstrapOperation {
 }
 
 public struct RuntimeManagedOperationGuard {
-    private let statusReporter: RuntimeStatusReporter
+    private let loadStatus: () -> RuntimeStatusDocumentLoadResult
     private let activeGuestBootstrap: () -> RuntimeGuestBootstrapOperation?
     private let now: () -> Date
     private let graceSeconds: TimeInterval
@@ -24,13 +24,13 @@ public struct RuntimeManagedOperationGuard {
     }
 
     public init(
-        statusReporter: RuntimeStatusReporter,
+        loadStatus: @escaping () -> RuntimeStatusDocumentLoadResult,
         activeGuestBootstrap: @escaping () -> RuntimeGuestBootstrapOperation? = { nil },
         now: @escaping () -> Date,
         graceSeconds: TimeInterval,
         log: @escaping (String) -> Void
     ) {
-        self.statusReporter = statusReporter
+        self.loadStatus = loadStatus
         self.activeGuestBootstrap = activeGuestBootstrap
         self.now = now
         self.graceSeconds = graceSeconds
@@ -45,7 +45,7 @@ public struct RuntimeManagedOperationGuard {
     }
 
     private func activeStatusOperation() -> RuntimeOperation? {
-        switch statusReporter.loadStatusResult() {
+        switch loadStatus() {
         case .loaded(let document):
             return operation(from: useCase.statusManagedOperationGuardPlan(
                 status: document,

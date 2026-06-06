@@ -1,7 +1,6 @@
 import Foundation
 import Application
 import Contracts
-import Workflow
 import Errors
 
 public enum RedisBackupResultReader {

@@ -191,12 +191,7 @@ final class RuntimeManagedOperationGuardTests: XCTestCase {
         log: @escaping (String) -> Void = { _ in }
     ) -> RuntimeManagedOperationGuard {
         RuntimeManagedOperationGuard(
-            statusReporter: RuntimeStatusReporter(
-                repository: repository,
-                productIdentifier: Constants.Product.identifier,
-                productRoot: URL(fileURLWithPath: "/product"),
-                runtimeHome: URL(fileURLWithPath: "/product/vm")
-            ),
+            loadStatus: repository.loadResult,
             activeGuestBootstrap: { activeGuestBootstrap },
             now: { ISO8601DateFormatter().date(from: now)! },
             graceSeconds: 1_800,

@@ -1,10 +1,9 @@
 import Application
 import Contracts
 import Domain
-import Workflow
+import OutboundAdapters
 import XCTest
 import Errors
-@testable import CLIHost
 
 final class RuntimeObservationRecorderTests: XCTestCase {
     func testRecordWritesEventOnly() throws {

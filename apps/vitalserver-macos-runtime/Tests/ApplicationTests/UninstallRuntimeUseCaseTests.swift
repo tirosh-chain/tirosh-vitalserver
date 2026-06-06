@@ -157,4 +157,45 @@ final class UninstallRuntimeUseCaseTests: XCTestCase {
             "package receipt forget failed identifier=pkg exitCode=1"
         )
     }
+
+    func testWorkflowMessagesComeFromUseCase() {
+        let useCase = UninstallRuntimeUseCase()
+
+        XCTAssertEqual(useCase.stepLogMessage(step: "remove-plists", status: "started"), "step=remove-plists status=started")
+        XCTAssertEqual(
+            useCase.redisBackupAbortLogMessage(reason: "backup failed"),
+            "standard uninstall aborted because Redis backup did not complete error=backup failed"
+        )
+        XCTAssertEqual(useCase.restoringPreservedUserDataAfterFailureLogMessage(), "restoring preserved user data after uninstall failure")
+        XCTAssertEqual(
+            useCase.preservedUserDataRestoreFailedLogMessage(reason: "restore failed"),
+            "preserved user data restore failed error=restore failed"
+        )
+        XCTAssertEqual(useCase.fileRemovalBlockedMessage(), "file removal blocked")
+        XCTAssertEqual(useCase.preservedSourceLogMessage(path: "/product/logs"), "preserved source=/product/logs")
+        XCTAssertEqual(useCase.restoredPreservedLogMessage(path: "/product/logs"), "restored preserved=/product/logs")
+        XCTAssertEqual(useCase.unsafeRemovalTargetFailureMessage(path: "/"), "refusing unsafe removal target=/")
+        XCTAssertEqual(useCase.removalIncompleteFailureMessage(path: "/product"), "removal incomplete target=/product")
+        XCTAssertEqual(useCase.removalDiagnosticTargetLogMessage(path: "/product"), "removal diagnostic target=/product")
+        XCTAssertEqual(useCase.removalDiagnosticResidualLogMessage(path: "/product/file"), "removal diagnostic residual path=/product/file")
+        XCTAssertEqual(
+            useCase.removalDiagnosticContentsReadFailedLogMessage(path: "/product", reason: "denied"),
+            "removal diagnostic contents read failed target=/product error=denied"
+        )
+        XCTAssertEqual(useCase.removalDiagnosticOpenFileLogMessage(line: "proc file"), "removal diagnostic open file proc file")
+        XCTAssertEqual(useCase.removalDiagnosticOpenFileStderrLogMessage(stderr: "lsof failed"), "removal diagnostic lsof stderr=lsof failed")
+        XCTAssertEqual(
+            useCase.packageReceiptVerificationFailedMessage(blockers: ["receipt-present"]),
+            "package receipt forget verification failed blockers=receipt-present"
+        )
+        XCTAssertEqual(
+            useCase.runtimeStopBlockedFailureMessage(blockers: ["vm-running"]),
+            "runtime stop state blocked blockers=vm-running"
+        )
+        XCTAssertEqual(
+            useCase.cleanupArtifactsRemainFailureMessage(blockers: ["artifact-present"]),
+            "runtime cleanup artifacts remain blockers=artifact-present"
+        )
+        XCTAssertEqual(useCase.completedLogMessage(), "uninstall completed")
+    }
 }

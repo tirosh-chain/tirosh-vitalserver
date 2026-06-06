@@ -1,6 +1,7 @@
 import Application
 import Contracts
 import Foundation
+import OutboundAdapters
 import Workflow
 import Errors
 
@@ -12,7 +13,7 @@ public enum RuntimeManagedOperationGuardComposition {
         log: @escaping (String) -> Void
     ) -> RuntimeManagedOperationGuard {
         RuntimeManagedOperationGuard(
-            statusReporter: statusReporter,
+            loadStatus: statusReporter.loadStatusResult,
             activeGuestBootstrap: {
                 activeGuestBootstrap(guestGateway: guestGateway, log: log)
             },

@@ -119,6 +119,18 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
             useCase.applyBundleRollbackFailureServiceRestartFailedLogMessage(reason: "launchd failed"),
             "failed to restart runtime services after rollback failure error=launchd failed"
         )
+        XCTAssertEqual(
+            useCase.applyBundleLogDirectoryPreparationFailedLogMessage(reason: "permission denied"),
+            "bundle apply log directory preparation failed error=permission denied"
+        )
+        XCTAssertEqual(
+            useCase.applyBundleLogRotationFailedLogMessage(reason: "rotate failed"),
+            "bundle apply log rotation failed error=rotate failed"
+        )
+        XCTAssertEqual(
+            useCase.mutableVMDiskPreservedLogMessage(path: "/runtime/vm-disk.img"),
+            "mutable VM disk preserved path=/runtime/vm-disk.img"
+        )
     }
 
     func testPreflightManifestPlanDerivesExplicitRootfsAndBackupReasonFromManifest() {
@@ -230,15 +242,46 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
         )
     }
 
+    func testStoragePreflightPlansFormatSizesAndMissingFileFromExplicitInputs() {
+        let useCase = UpdateRuntimeUseCase()
+
+        XCTAssertEqual(
+            useCase.storagePreflightStagedBundleLogMessage(stagedBundleBytes: 2_097_152),
+            "bundle apply storage preflight stagedBundle=2.0 MiB"
+        )
+
+        let replacingPlan = useCase.replacingRootfsStoragePreflightPlan(
+            installedRootfsBytes: 1_048_576,
+            incomingRootfsBytes: 3_145_728
+        )
+        XCTAssertEqual(
+            replacingPlan.rootfsStorage,
+            .replacing(installedRootfsBytes: 1_048_576, incomingRootfsBytes: 3_145_728)
+        )
+        XCTAssertEqual(
+            replacingPlan.logMessage,
+            "bundle apply storage preflight installedRootfs=1.0 MiB incomingRootfs=3.0 MiB"
+        )
+
+        let unchangedPlan = useCase.unchangedRootfsStoragePreflightPlan()
+        XCTAssertEqual(unchangedPlan.rootfsStorage, .unchanged)
+        XCTAssertEqual(unchangedPlan.logMessage, "bundle apply storage preflight rootfsBase=unchanged")
+        XCTAssertEqual(
+            useCase.missingFileFailureMessage(path: "/runtime/missing-rootfs.raw.gz"),
+            "missing file: /runtime/missing-rootfs.raw.gz"
+        )
+        XCTAssertEqual(
+            useCase.backupCreatedLogMessage(backupPath: "/runtime/backups/backup-1", backupBytes: 1_048_576),
+            "backup created path=/runtime/backups/backup-1 size=1.0 MiB"
+        )
+    }
+
     func testDiskHealthDecisionAllowsUpdateWithoutGuestStorageBlockers() {
         let useCase = UpdateRuntimeUseCase()
 
         let decision = useCase.diskHealthDecision(snapshot: healthSnapshot(reasons: []))
 
-        XCTAssertTrue(decision.canApplyUpdate)
-        XCTAssertEqual(decision.blockers, [])
-        XCTAssertNil(decision.blockedLogMessage)
-        XCTAssertNil(decision.failureMessage)
+        XCTAssertEqual(decision, .allowed)
     }
 
     func testDiskHealthDecisionBlocksGuestStorageErrorsWithoutFallback() {
@@ -249,15 +292,13 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
             vmErrors: [.guestFilesystemError]
         ))
 
-        XCTAssertFalse(decision.canApplyUpdate)
-        XCTAssertEqual(decision.blockers, [.guestFilesystemError])
         XCTAssertEqual(
-            decision.blockedLogMessage,
-            "bundle apply blocked by VM guest storage health errors=vm-guest-filesystem-error"
-        )
-        XCTAssertEqual(
-            decision.failureMessage,
-            "VM disk health blocks update; run Repair VM Disk before applying update. errors=vm-guest-filesystem-error"
+            decision,
+            .blocked(
+                blockers: [.guestFilesystemError],
+                logMessage: "bundle apply blocked by VM guest storage health errors=vm-guest-filesystem-error",
+                failureMessage: "VM disk health blocks update; run Repair VM Disk before applying update. errors=vm-guest-filesystem-error"
+            )
         )
     }
 
@@ -290,6 +331,42 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
         XCTAssertTrue(replacePlan.shouldReplace)
         XCTAssertEqual(replacePlan.stagedRootfs, URL(fileURLWithPath: "/tmp/rootfs-base.raw.gz"))
         XCTAssertNil(replacePlan.skippedLogMessage)
+    }
+
+    func testApplyBundleStepExecutionMessagesComeFromUseCase() {
+        let useCase = UpdateRuntimeUseCase()
+        let stagedRootfs = URL(fileURLWithPath: "/staged/rootfs-base.raw.gz")
+        let rootfsBase = URL(fileURLWithPath: "/runtime/rootfs-base.raw.gz")
+        let executionPlan = useCase.rootfsReplacementExecutionPlan(
+            stagedRootfs: stagedRootfs,
+            rootfsBase: rootfsBase,
+            stagedRootfsBytes: 1_048_576
+        )
+
+        XCTAssertEqual(
+            useCase.capturedVMProcessBeforeGuestUpdateShutdownLogMessage(processID: 123),
+            "captured VM process before guest update shutdown pid=123"
+        )
+        XCTAssertEqual(
+            executionPlan.startedLogMessage,
+            "replacing rootfs-base source=/staged/rootfs-base.raw.gz destination=/runtime/rootfs-base.raw.gz size=1.0 MiB"
+        )
+        XCTAssertEqual(
+            executionPlan.completedLogMessage,
+            "rootfs-base replaced destination=/runtime/rootfs-base.raw.gz"
+        )
+        XCTAssertEqual(
+            useCase.unsupportedApplyBundleStepFailureMessage(step: .loadInstallSettings),
+            "unsupported command: apply-bundle step load-install-settings"
+        )
+        XCTAssertEqual(
+            useCase.unsupportedRollbackStepFailureMessage(step: .loadInstallSettings),
+            "unsupported command: rollback step load-install-settings"
+        )
+        XCTAssertEqual(
+            useCase.guestShutdownPreparationCleanupFailedLogMessage(reason: "permission denied"),
+            "guest shutdown preparation cleanup failed error=permission denied"
+        )
     }
 
     func testRollbackPlanIncludesRootfsRestoreWhenPreflightRestoresRootfs() {
@@ -381,6 +458,30 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
         XCTAssertNil(plan.backupRootfs)
         XCTAssertEqual(plan.backupVersion, backup.appendingPathComponent(RuntimeFileNames.runtimeVersion))
         XCTAssertFalse(plan.restoresRootfsBase)
+    }
+
+    func testRollbackBackupSelectionKeepsCommandInterpretationOutOfWorkflow() {
+        let useCase = UpdateRuntimeUseCase()
+        let backup = URL(fileURLWithPath: "/runtime/backups/backup-1")
+
+        XCTAssertEqual(useCase.rollbackBackupSelection(command: .latestBackup), .latestBackup)
+        XCTAssertEqual(
+            useCase.rollbackBackupSelection(command: .specificBackup(backup)),
+            .specificBackup(backup)
+        )
+    }
+
+    func testBundlePreparationMessagesComeFromUseCase() {
+        let useCase = UpdateRuntimeUseCase()
+
+        XCTAssertEqual(
+            useCase.bundleVerificationStartedLogMessage(sourcePath: "/input/update-bundle.tar.gz"),
+            "bundle verification started path=/input/update-bundle.tar.gz"
+        )
+        XCTAssertEqual(
+            useCase.bundleStageStartedLogMessage(sourcePath: "/input/update-bundle.tar.gz"),
+            "bundle stage started source=/input/update-bundle.tar.gz"
+        )
     }
 
     func testRollbackPreflightPlanFormatsRestartPolicyFromExplicitServiceState() {
@@ -585,6 +686,70 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
             RuntimeGuestWaitResultPlan(
                 logMessage: nil,
                 failureMessage: "guest update shutdown timed out"
+            )
+        )
+    }
+
+    func testGuestCapabilityDecisionPreservesLoadedMissingAndFailedStateSeparately() {
+        let useCase = UpdateRuntimeUseCase()
+        let supportedState = GuestRuntimeStateDocument(
+            capabilities: GuestRuntimeCapabilities(
+                prepareUpdateShutdown: true,
+                activateUpdate: false,
+                redisBackup: false,
+                repairDatastore: false
+            ),
+            vmIP: "192.168.64.2",
+            guestHTTP: nil,
+            redisUIHTTP: nil,
+            swaggerUIHTTP: nil
+        )
+        let unsupportedState = GuestRuntimeStateDocument(
+            capabilities: nil,
+            vmIP: "192.168.64.2",
+            guestHTTP: nil,
+            redisUIHTTP: nil,
+            swaggerUIHTTP: nil
+        )
+
+        XCTAssertEqual(
+            useCase.guestCapabilityDecision(
+                loadResult: .loaded(supportedState),
+                capability: .prepareUpdateShutdown
+            ),
+            RuntimeGuestCapabilityDecision(isSupported: true, failure: nil)
+        )
+        XCTAssertEqual(
+            useCase.guestCapabilityDecision(
+                loadResult: .loaded(unsupportedState),
+                capability: .prepareUpdateShutdown
+            ),
+            RuntimeGuestCapabilityDecision(
+                isSupported: false,
+                failure: .missingCapability("prepare-update-shutdown")
+            )
+        )
+        XCTAssertEqual(
+            useCase.guestCapabilityDecision(
+                loadResult: .missing,
+                capability: .activateUpdate
+            ),
+            RuntimeGuestCapabilityDecision(
+                isSupported: false,
+                failure: .missingRuntimeState("activate-update")
+            )
+        )
+        XCTAssertEqual(
+            useCase.guestCapabilityDecision(
+                loadResult: .failed("permission denied"),
+                capability: .activateUpdate
+            ),
+            RuntimeGuestCapabilityDecision(
+                isSupported: false,
+                failure: .runtimeStateReadFailed(
+                    capability: "activate-update",
+                    reason: "permission denied"
+                )
             )
         )
     }

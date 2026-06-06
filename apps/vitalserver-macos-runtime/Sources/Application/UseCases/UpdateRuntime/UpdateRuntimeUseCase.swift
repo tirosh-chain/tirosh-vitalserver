@@ -56,22 +56,18 @@ public struct ApplyRuntimeBundlePreflightManifestPlan: Equatable, Sendable {
     }
 }
 
-public struct ApplyRuntimeBundleDiskHealthDecision: Equatable, Sendable {
-    public let canApplyUpdate: Bool
-    public let blockers: [RuntimeVMError]
-    public let blockedLogMessage: String?
-    public let failureMessage: String?
+public enum ApplyRuntimeBundleDiskHealthDecision: Equatable, Sendable {
+    case allowed
+    case blocked(blockers: [RuntimeVMError], logMessage: String, failureMessage: String)
+}
 
-    public init(
-        canApplyUpdate: Bool,
-        blockers: [RuntimeVMError],
-        blockedLogMessage: String?,
-        failureMessage: String?
-    ) {
-        self.canApplyUpdate = canApplyUpdate
-        self.blockers = blockers
-        self.blockedLogMessage = blockedLogMessage
-        self.failureMessage = failureMessage
+public struct ApplyRuntimeBundleRootfsStoragePreflightPlan: Equatable, Sendable {
+    public let rootfsStorage: RuntimeUpdateRootfsStorageInput
+    public let logMessage: String
+
+    public init(rootfsStorage: RuntimeUpdateRootfsStorageInput, logMessage: String) {
+        self.rootfsStorage = rootfsStorage
+        self.logMessage = logMessage
     }
 }
 
@@ -99,6 +95,16 @@ public struct ApplyRuntimeBundleRootfsReplacementPlan: Equatable, Sendable {
         self.rootfsBase = rootfsBase
         self.shouldReplace = shouldReplace
         self.skippedLogMessage = skippedLogMessage
+    }
+}
+
+public struct ApplyRuntimeBundleRootfsReplacementExecutionPlan: Equatable, Sendable {
+    public let startedLogMessage: String
+    public let completedLogMessage: String
+
+    public init(startedLogMessage: String, completedLogMessage: String) {
+        self.startedLogMessage = startedLogMessage
+        self.completedLogMessage = completedLogMessage
     }
 }
 
@@ -135,6 +141,11 @@ public struct RollbackRuntimeBackupPlan: Equatable, Sendable {
         self.backupVersion = backupVersion
         self.restoresRootfsBase = restoresRootfsBase
     }
+}
+
+public enum RollbackRuntimeBackupSelection: Equatable, Sendable {
+    case latestBackup
+    case specificBackup(URL)
 }
 
 public enum RollbackRuntimeVersionRestoreDecision: Equatable, Sendable {
@@ -264,6 +275,16 @@ public struct RuntimeGuestWaitResultPlan: Equatable, Sendable {
     }
 }
 
+public struct RuntimeGuestCapabilityDecision: Equatable, Sendable {
+    public let isSupported: Bool
+    public let failure: RuntimeGuestCapabilityCheckError?
+
+    public init(isSupported: Bool, failure: RuntimeGuestCapabilityCheckError?) {
+        self.isSupported = isSupported
+        self.failure = failure
+    }
+}
+
 public struct UpdateRuntimeUseCase {
     public init() {}
 
@@ -349,6 +370,18 @@ public struct UpdateRuntimeUseCase {
         "failed to restart runtime services after rollback failure error=\(reason)"
     }
 
+    public func applyBundleLogDirectoryPreparationFailedLogMessage(reason: String) -> String {
+        "bundle apply log directory preparation failed error=\(reason)"
+    }
+
+    public func applyBundleLogRotationFailedLogMessage(reason: String) -> String {
+        "bundle apply log rotation failed error=\(reason)"
+    }
+
+    public func mutableVMDiskPreservedLogMessage(path: String) -> String {
+        "mutable VM disk preserved path=\(path)"
+    }
+
     public func preflightManifestPlan(
         stagedBundle: URL,
         manifest: UpdateBundleManifest
@@ -394,6 +427,38 @@ public struct UpdateRuntimeUseCase {
         )
     }
 
+    public func storagePreflightStagedBundleLogMessage(stagedBundleBytes: UInt64) -> String {
+        "bundle apply storage preflight stagedBundle=\(formatBytes(stagedBundleBytes))"
+    }
+
+    public func replacingRootfsStoragePreflightPlan(
+        installedRootfsBytes: UInt64,
+        incomingRootfsBytes: UInt64
+    ) -> ApplyRuntimeBundleRootfsStoragePreflightPlan {
+        ApplyRuntimeBundleRootfsStoragePreflightPlan(
+            rootfsStorage: .replacing(
+                installedRootfsBytes: installedRootfsBytes,
+                incomingRootfsBytes: incomingRootfsBytes
+            ),
+            logMessage: "bundle apply storage preflight installedRootfs=\(formatBytes(installedRootfsBytes)) incomingRootfs=\(formatBytes(incomingRootfsBytes))"
+        )
+    }
+
+    public func unchangedRootfsStoragePreflightPlan() -> ApplyRuntimeBundleRootfsStoragePreflightPlan {
+        ApplyRuntimeBundleRootfsStoragePreflightPlan(
+            rootfsStorage: .unchanged,
+            logMessage: "bundle apply storage preflight rootfsBase=unchanged"
+        )
+    }
+
+    public func missingFileFailureMessage(path: String) -> String {
+        "missing file: \(path)"
+    }
+
+    public func backupCreatedLogMessage(backupPath: String, backupBytes: UInt64) -> String {
+        "backup created path=\(backupPath) size=\(formatBytes(backupBytes))"
+    }
+
     public func stopPlan(restartPolicy: RuntimeServiceRestartPolicy) -> ApplyRuntimeBundleStopPlan {
         ApplyRuntimeBundleStopPlan(preparesGuestShutdown: restartPolicy.restartVM)
     }
@@ -410,24 +475,45 @@ public struct UpdateRuntimeUseCase {
         )
     }
 
+    public func capturedVMProcessBeforeGuestUpdateShutdownLogMessage(processID: pid_t) -> String {
+        "captured VM process before guest update shutdown pid=\(processID)"
+    }
+
+    public func rootfsReplacementExecutionPlan(
+        stagedRootfs: URL,
+        rootfsBase: URL,
+        stagedRootfsBytes: UInt64
+    ) -> ApplyRuntimeBundleRootfsReplacementExecutionPlan {
+        ApplyRuntimeBundleRootfsReplacementExecutionPlan(
+            startedLogMessage: "replacing rootfs-base source=\(stagedRootfs.path) destination=\(rootfsBase.path) size=\(formatBytes(stagedRootfsBytes))",
+            completedLogMessage: "rootfs-base replaced destination=\(rootfsBase.path)"
+        )
+    }
+
+    public func unsupportedApplyBundleStepFailureMessage(step: RuntimeWorkflowStep) -> String {
+        "unsupported command: apply-bundle step \(step.rawValue)"
+    }
+
+    public func unsupportedRollbackStepFailureMessage(step: RuntimeWorkflowStep) -> String {
+        "unsupported command: rollback step \(step.rawValue)"
+    }
+
+    public func guestShutdownPreparationCleanupFailedLogMessage(reason: String) -> String {
+        "guest shutdown preparation cleanup failed error=\(reason)"
+    }
+
     public func diskHealthDecision(
         snapshot: RuntimeHealthSnapshot
     ) -> ApplyRuntimeBundleDiskHealthDecision {
         let blockers = RuntimeUpdatePreflightPolicy.blockingGuestStorageErrors(snapshot.vmErrors)
         guard !blockers.isEmpty else {
-            return ApplyRuntimeBundleDiskHealthDecision(
-                canApplyUpdate: true,
-                blockers: [],
-                blockedLogMessage: nil,
-                failureMessage: nil
-            )
+            return .allowed
         }
 
         let codes = blockers.map(\.rawValue).joined(separator: ",")
-        return ApplyRuntimeBundleDiskHealthDecision(
-            canApplyUpdate: false,
+        return .blocked(
             blockers: blockers,
-            blockedLogMessage: "bundle apply blocked by VM guest storage health errors=\(codes)",
+            logMessage: "bundle apply blocked by VM guest storage health errors=\(codes)",
             failureMessage: "VM disk health blocks update; run Repair VM Disk before applying update. errors=\(codes)"
         )
     }
@@ -486,6 +572,23 @@ public struct UpdateRuntimeUseCase {
             backupVersion: backup.appendingPathComponent(RuntimeFileNames.runtimeVersion),
             restoresRootfsBase: backupRootfs != nil
         )
+    }
+
+    public func rollbackBackupSelection(command: RuntimeRollbackCommand) -> RollbackRuntimeBackupSelection {
+        switch command {
+        case .latestBackup:
+            return .latestBackup
+        case .specificBackup(let url):
+            return .specificBackup(url)
+        }
+    }
+
+    public func bundleVerificationStartedLogMessage(sourcePath: String) -> String {
+        "bundle verification started path=\(sourcePath)"
+    }
+
+    public func bundleStageStartedLogMessage(sourcePath: String) -> String {
+        "bundle stage started source=\(sourcePath)"
     }
 
     public func rollbackVersionRestoreDecision(
@@ -635,7 +738,43 @@ public struct UpdateRuntimeUseCase {
         }
     }
 
+    public func guestCapabilityDecision(
+        loadResult: RuntimeGuestDocumentLoadResult<GuestRuntimeStateDocument>,
+        capability: RuntimeGuestCapabilityRequirement
+    ) -> RuntimeGuestCapabilityDecision {
+        switch loadResult {
+        case .loaded(let state):
+            guard let capabilities = state.capabilities,
+                  capability.isSupported(by: capabilities)
+            else {
+                return RuntimeGuestCapabilityDecision(
+                    isSupported: false,
+                    failure: .missingCapability(capability.rawValue)
+                )
+            }
+            return RuntimeGuestCapabilityDecision(isSupported: true, failure: nil)
+        case .missing:
+            return RuntimeGuestCapabilityDecision(
+                isSupported: false,
+                failure: .missingRuntimeState(capability.rawValue)
+            )
+        case .failed(let message):
+            return RuntimeGuestCapabilityDecision(
+                isSupported: false,
+                failure: .runtimeStateReadFailed(
+                    capability: capability.rawValue,
+                    reason: message
+                )
+            )
+        }
+    }
+
     private func loadedText(_ loaded: Bool) -> String {
         loaded ? "loaded" : "not-loaded"
+    }
+
+    private func formatBytes(_ bytes: UInt64) -> String {
+        let mib = Double(bytes) / 1_048_576
+        return String(format: "%.1f MiB", max(mib, 0))
     }
 }

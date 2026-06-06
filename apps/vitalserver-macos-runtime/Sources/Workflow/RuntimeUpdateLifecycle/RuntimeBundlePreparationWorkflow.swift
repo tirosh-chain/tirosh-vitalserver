@@ -1,3 +1,4 @@
+import Application
 import Contracts
 import Foundation
 import Errors
@@ -57,13 +58,16 @@ public struct RuntimeBundlePreparationWorkflowOperations {
 
 public struct RuntimeBundlePreparationWorkflow {
     public let operations: RuntimeBundlePreparationWorkflowOperations
+    private var useCase: UpdateRuntimeUseCase {
+        UpdateRuntimeUseCase()
+    }
 
     public init(operations: RuntimeBundlePreparationWorkflowOperations) {
         self.operations = operations
     }
 
     public func verifyBundle(_ sourceURL: URL) throws -> RuntimeBundlePreparationVerification {
-        operations.log("bundle verification started path=\(sourceURL.path)")
+        operations.log(useCase.bundleVerificationStartedLogMessage(sourcePath: sourceURL.path))
         let materialized = try operations.materialize(sourceURL)
         defer { cleanupTemporaryRootIfNeeded(materialized) }
         let manifest = try operations.verifyDirectory(materialized.bundleURL, sourceURL)
@@ -76,7 +80,7 @@ public struct RuntimeBundlePreparationWorkflow {
 
     @discardableResult
     public func stageBundle(_ sourceURL: URL) throws -> RuntimeBundlePreparationStageResult {
-        operations.log("bundle stage started source=\(sourceURL.path)")
+        operations.log(useCase.bundleStageStartedLogMessage(sourcePath: sourceURL.path))
         let materialized = try operations.materialize(sourceURL)
         defer { cleanupTemporaryRootIfNeeded(materialized) }
         let manifest = try operations.verifyDirectory(materialized.bundleURL, sourceURL)

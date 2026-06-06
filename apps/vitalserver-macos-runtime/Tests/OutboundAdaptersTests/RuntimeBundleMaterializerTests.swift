@@ -1,7 +1,7 @@
 import Contracts
 import Domain
 import Foundation
-import Workflow
+import OutboundAdapters
 import XCTest
 import Errors
 

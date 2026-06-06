@@ -1,10 +1,9 @@
 import Contracts
 import Application
 import Domain
-import Workflow
+import OutboundAdapters
 import XCTest
 import Errors
-@testable import CLIHost
 
 final class RuntimeEventPublisherTests: XCTestCase {
     func testRecordObservedEventWritesFactoryEvent() throws {
