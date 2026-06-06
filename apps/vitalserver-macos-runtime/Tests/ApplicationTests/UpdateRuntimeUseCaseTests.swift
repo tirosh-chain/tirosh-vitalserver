@@ -829,6 +829,7 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
 
     func testBundlePreparationMessagesComeFromUseCase() {
         let useCase = UpdateRuntimeUseCase()
+        let temporaryRoot = URL(fileURLWithPath: "/tmp/materialized")
 
         XCTAssertEqual(
             useCase.bundleVerificationStartedLogMessage(sourcePath: "/input/update-bundle.tar.gz"),
@@ -837,6 +838,20 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
         XCTAssertEqual(
             useCase.bundleStageStartedLogMessage(sourcePath: "/input/update-bundle.tar.gz"),
             "bundle stage started source=/input/update-bundle.tar.gz"
+        )
+        XCTAssertEqual(
+            useCase.bundleMaterializationCleanupPlan(materialized: RuntimeMaterializedBundle(
+                bundleURL: URL(fileURLWithPath: "/input/update-bundle"),
+                temporaryRoot: nil
+            )),
+            .none
+        )
+        XCTAssertEqual(
+            useCase.bundleMaterializationCleanupPlan(materialized: RuntimeMaterializedBundle(
+                bundleURL: URL(fileURLWithPath: "/tmp/update-bundle"),
+                temporaryRoot: temporaryRoot
+            )),
+            .cleanupTemporaryRoot(temporaryRoot)
         )
     }
 
@@ -1013,6 +1028,14 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
             "waiting for guest update activation result timeoutSeconds=180.0"
         )
         XCTAssertEqual(
+            useCase.guestActivationWaitConfiguration(timeoutSeconds: 180),
+            GuestActivationWaitConfiguration(maxAttempts: 60, progressEveryAttempts: 5)
+        )
+        XCTAssertEqual(
+            useCase.guestActivationWaitConfiguration(timeoutSeconds: 1),
+            GuestActivationWaitConfiguration(maxAttempts: 1, progressEveryAttempts: 5)
+        )
+        XCTAssertEqual(
             useCase.guestActivationRequiredRequestMissingFailureMessage(),
             "guest activation request missing for required activation"
         )
@@ -1080,6 +1103,14 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
         XCTAssertEqual(
             useCase.guestShutdownWaitStartedLogMessage(timeoutSeconds: 300),
             "waiting for guest update shutdown result timeoutSeconds=300.0"
+        )
+        XCTAssertEqual(
+            useCase.guestShutdownWaitConfiguration(timeoutSeconds: 300),
+            GuestShutdownWaitConfiguration(maxAttempts: 100, progressEveryAttempts: 5)
+        )
+        XCTAssertEqual(
+            useCase.guestShutdownWaitConfiguration(timeoutSeconds: 1),
+            GuestShutdownWaitConfiguration(maxAttempts: 1, progressEveryAttempts: 5)
         )
         XCTAssertEqual(
             useCase.guestShutdownWaitResultPlan(.ready(message: "poweroff requested")),

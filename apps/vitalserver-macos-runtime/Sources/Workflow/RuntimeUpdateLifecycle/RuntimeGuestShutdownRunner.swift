@@ -66,13 +66,9 @@ public struct RuntimeGuestShutdownRunner {
 
     private func waitForShutdownReady(_ request: RuntimeGuestShutdownRequest) throws {
         log(useCase.guestShutdownWaitStartedLogMessage(timeoutSeconds: waitTimeoutSeconds))
-        let maxAttempts = Int(ceil(waitTimeoutSeconds / 3.0))
         let waitResult = GuestShutdownWaiter.wait(
             expectedRequestId: request.id,
-            configuration: GuestShutdownWaitConfiguration(
-                maxAttempts: maxAttempts,
-                progressEveryAttempts: 5
-            ),
+            configuration: useCase.guestShutdownWaitConfiguration(timeoutSeconds: waitTimeoutSeconds),
             loadResult: loadResult,
             onProgress: { message in
                 log(message)

@@ -21,6 +21,11 @@ public struct ApplyRuntimeBundlePlan: Equatable, Sendable {
     }
 }
 
+public enum RuntimeBundleMaterializationCleanupPlan: Equatable, Sendable {
+    case none
+    case cleanupTemporaryRoot(URL)
+}
+
 public struct ApplyRuntimeBundlePreflightCapabilityPlan: Equatable, Sendable {
     public let instructions: [ApplyRuntimeBundlePreflightCapabilityInstruction]
     public let serviceRestartLogMessage: String
@@ -854,6 +859,15 @@ public struct UpdateRuntimeUseCase {
         "bundle stage started source=\(sourcePath)"
     }
 
+    public func bundleMaterializationCleanupPlan(
+        materialized: RuntimeMaterializedBundle
+    ) -> RuntimeBundleMaterializationCleanupPlan {
+        guard let temporaryRoot = materialized.temporaryRoot else {
+            return .none
+        }
+        return .cleanupTemporaryRoot(temporaryRoot)
+    }
+
     public func rollbackVersionRestoreDecision(
         backupVersion: URL,
         runtimeVersion: URL,
@@ -1043,6 +1057,13 @@ public struct UpdateRuntimeUseCase {
         "waiting for guest update activation result timeoutSeconds=\(timeoutSeconds)"
     }
 
+    public func guestActivationWaitConfiguration(timeoutSeconds: Double) -> GuestActivationWaitConfiguration {
+        GuestActivationWaitConfiguration(
+            maxAttempts: Int(ceil(timeoutSeconds / 3.0)),
+            progressEveryAttempts: 5
+        )
+    }
+
     public func guestActivationRequiredRequestMissingFailureMessage() -> String {
         "guest activation request missing for required activation"
     }
@@ -1111,6 +1132,13 @@ public struct UpdateRuntimeUseCase {
 
     public func guestShutdownWaitStartedLogMessage(timeoutSeconds: Double) -> String {
         "waiting for guest update shutdown result timeoutSeconds=\(timeoutSeconds)"
+    }
+
+    public func guestShutdownWaitConfiguration(timeoutSeconds: Double) -> GuestShutdownWaitConfiguration {
+        GuestShutdownWaitConfiguration(
+            maxAttempts: Int(ceil(timeoutSeconds / 3.0)),
+            progressEveryAttempts: 5
+        )
     }
 
     public func guestShutdownWaitResultPlan(

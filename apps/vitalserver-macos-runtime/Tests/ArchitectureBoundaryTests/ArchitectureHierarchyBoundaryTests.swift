@@ -350,6 +350,8 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             "completedLogMessage",
             "guard let request",
             "!isVMServiceLoaded",
+            "ceil(",
+            "GuestActivationWaitConfiguration(",
         ]
 
         for token in forbiddenTokens {
@@ -369,6 +371,8 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             "guestShutdownPlan",
             "requestedLogMessage",
             "readyLogMessage",
+            "ceil(",
+            "GuestShutdownWaitConfiguration(",
         ]
 
         for token in forbiddenTokens {
@@ -445,6 +449,24 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             XCTAssertFalse(
                 text.contains(token),
                 "RuntimeApplyBundleStepExecutor must receive explicit rootfs replacement observations from a port instead of using \(token)"
+            )
+        }
+    }
+
+    func testRuntimeBundlePreparationWorkflowDoesNotInterpretTemporaryRootDirectly() throws {
+        let file = packageRoot().appendingPathComponent(
+            "Sources/Workflow/RuntimeUpdateLifecycle/RuntimeBundlePreparationWorkflow.swift"
+        )
+        let text = try String(contentsOf: file, encoding: .utf8)
+        let forbiddenTokens = [
+            "guard let temporaryRoot",
+            "materialized.temporaryRoot",
+        ]
+
+        for token in forbiddenTokens {
+            XCTAssertFalse(
+                text.contains(token),
+                "RuntimeBundlePreparationWorkflow must execute UseCase cleanup plans instead of interpreting \(token) directly"
             )
         }
     }

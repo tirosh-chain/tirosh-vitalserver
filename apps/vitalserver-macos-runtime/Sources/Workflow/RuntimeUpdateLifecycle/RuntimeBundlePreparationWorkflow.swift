@@ -98,9 +98,11 @@ public struct RuntimeBundlePreparationWorkflow {
     }
 
     private func cleanupTemporaryRootIfNeeded(_ materialized: RuntimeMaterializedBundle) {
-        guard let temporaryRoot = materialized.temporaryRoot else {
+        switch useCase.bundleMaterializationCleanupPlan(materialized: materialized) {
+        case .none:
             return
+        case .cleanupTemporaryRoot(let temporaryRoot):
+            operations.cleanupTemporaryRoot(temporaryRoot)
         }
-        operations.cleanupTemporaryRoot(temporaryRoot)
     }
 }

@@ -86,13 +86,9 @@ public struct RuntimeGuestActivationRunner {
 
     private func waitForActivationResult(_ request: RuntimeGuestActivationRequest) throws {
         log(useCase.guestActivationWaitStartedLogMessage(timeoutSeconds: waitTimeoutSeconds))
-        let maxAttempts = Int(ceil(waitTimeoutSeconds / 3.0))
         let waitResult = GuestActivationWaiter.wait(
             expectedRequestId: request.id,
-            configuration: GuestActivationWaitConfiguration(
-                maxAttempts: maxAttempts,
-                progressEveryAttempts: 5
-            ),
+            configuration: useCase.guestActivationWaitConfiguration(timeoutSeconds: waitTimeoutSeconds),
             loadResult: loadResult,
             onProgress: { message in
                 log(message)
