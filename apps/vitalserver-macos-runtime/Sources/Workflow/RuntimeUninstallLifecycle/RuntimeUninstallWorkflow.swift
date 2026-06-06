@@ -166,15 +166,19 @@ public struct RuntimeUninstallWorkflow {
     }
 
     private func start(_ command: RuntimeUninstallCommand) throws -> RuntimeUninstallWorkflowState {
-        log("uninstall started clean=\(command.clean)")
+        let plan = useCase.startPlan(
+            clean: command.clean,
+            configuredDirectoryReadFailure: paths.configuredVitalFilesDirectoryReadFailure
+        )
+        log(plan.startedLogMessage)
         let startDecision = try transitionAndPersist(
             from: .notStarted,
             event: .start(clean: command.clean),
             clean: command.clean,
             expectedCommands: []
         )
-        if let readFailure = paths.configuredVitalFilesDirectoryReadFailure {
-            log("configured vital files directory unavailable reason=\(readFailure)")
+        if let configuredDirectoryReadFailureLogMessage = plan.configuredDirectoryReadFailureLogMessage {
+            log(configuredDirectoryReadFailureLogMessage)
         }
         return startDecision.state
     }
@@ -183,7 +187,7 @@ public struct RuntimeUninstallWorkflow {
         _ command: RuntimeUninstallCommand,
         from state: RuntimeUninstallWorkflowState
     ) throws -> RuntimeUninstallWorkflowState {
-        guard !command.clean else {
+        guard useCase.shouldCreateRedisBackup(clean: command.clean) else {
             return state
         }
 
@@ -284,21 +288,24 @@ public struct RuntimeUninstallWorkflow {
 
             return cleanupDecision
         } catch {
-            var blockers = ["file-removal-failed:reason=\(error.localizedDescription)"]
+            var preservedRestoreFailureReason: String?
             if let preserved {
                 log("restoring preserved user data after uninstall failure")
                 do {
                     try restorePreservedPaths(preserved)
                 } catch {
                     log("preserved user data restore failed error=\(error.localizedDescription)")
-                    blockers.append("restore-preserved-user-data-failed:reason=\(error.localizedDescription)")
+                    preservedRestoreFailureReason = error.localizedDescription
                 }
             }
             try writer.writeState(
                 .filesRemovalBlocked,
                 command.clean,
                 "file removal blocked",
-                blockers
+                useCase.fileRemovalBlockers(
+                    removalFailureReason: error.localizedDescription,
+                    preservedRestoreFailureReason: preservedRestoreFailureReason
+                )
             )
             throw error
         }
@@ -317,28 +324,18 @@ public struct RuntimeUninstallWorkflow {
             expectedCommands: []
         )
 
-        let observedReceiptStates = Dictionary(
-            uniqueKeysWithValues: readers.packageReceiptStates().compactMap { state -> (String, RuntimePackageReceiptState)? in
-                switch state {
-                case .present(let identifier),
-                     .absent(let identifier),
-                     .readFailed(let identifier, _),
-                     .forgetFailed(let identifier, _):
-                    return (identifier, state)
-                case .unknown:
-                    return nil
-                }
-            }
-        )
+        let observedReceiptStates = useCase.packageReceiptStateMap(readers.packageReceiptStates())
         for identifier in packageReceiptIdentifiers {
-            if case .absent = observedReceiptStates[identifier] {
-                log("package receipt already absent identifier=\(identifier)")
+            switch useCase.receiptForgetDecision(identifier: identifier, observedReceiptStates: observedReceiptStates) {
+            case .skip(let logMessage):
+                log(logMessage)
                 continue
+            case .forget(let logMessage):
+                log(logMessage)
             }
-            log("forget package receipt identifier=\(identifier)")
             let result = effects.forgetPackageReceipt(identifier)
             guard result.exitCode == 0 else {
-                let reason = processFailureReason(result)
+                let reason = useCase.processFailureReason(result)
                 _ = try transitionAndPersist(
                     from: receiptsStartDecision.state,
                     event: .receiptForgetFailed(identifier: identifier, reason: reason),
@@ -346,7 +343,7 @@ public struct RuntimeUninstallWorkflow {
                     expectedCommands: []
                 )
                 throw RuntimeUninstallWorkflowError.operationFailed(
-                    "package receipt forget failed identifier=\(identifier) \(reason)"
+                    useCase.packageReceiptForgetFailureMessage(identifier: identifier, reason: reason)
                 )
             }
         }
@@ -382,21 +379,20 @@ public struct RuntimeUninstallWorkflow {
         try effects.createDirectory(preserveRoot, true)
 
         var items: [RuntimeUninstallPreservedPath] = []
-        try preservePath(paths.productRoot.appendingPathComponent("logs"), preserveRoot, "logs", into: &items)
-        try preservePath(paths.productRoot.appendingPathComponent("backups"), preserveRoot, "backups", into: &items)
-        try preservePath(
-            paths.productRoot.appendingPathComponent("vm/data/backups/redis"),
-            preserveRoot,
-            "redis-backups",
-            into: &items
+        let plan = useCase.preservePlan(
+            productRoot: paths.productRoot,
+            defaultVitalFilesDirectory: paths.defaultVitalFilesDirectory,
+            externalVitalFilesDirectory: paths.externalVitalFilesDirectory,
+            configuredVitalFilesDirectoryReadFailure: paths.configuredVitalFilesDirectoryReadFailure
         )
-        if let externalVitalFilesDirectory = paths.externalVitalFilesDirectory {
-            log("preserved external vital files directory=\(externalVitalFilesDirectory.path)")
-        } else {
-            if let readFailure = paths.configuredVitalFilesDirectoryReadFailure {
-                log("preserving default vital files directory because configured external directory is unavailable reason=\(readFailure)")
-            }
-            try preservePath(paths.defaultVitalFilesDirectory, preserveRoot, "vital-files", into: &items)
+        for candidate in plan.candidates {
+            try preservePath(candidate.source, preserveRoot, candidate.token, into: &items)
+        }
+        if let externalDirectoryLogMessage = plan.externalDirectoryLogMessage {
+            log(externalDirectoryLogMessage)
+        }
+        if let configuredDirectoryReadFailureLogMessage = plan.configuredDirectoryReadFailureLogMessage {
+            log(configuredDirectoryReadFailureLogMessage)
         }
 
         log("step=preserve-user-data status=completed")
@@ -430,12 +426,18 @@ public struct RuntimeUninstallWorkflow {
     }
 
     private func removeInstalledFiles(clean: Bool) throws {
-        try safeRemove(paths.managerApp)
-        try safeRemove(paths.productRoot)
-        if clean, let externalVitalFilesDirectory = paths.externalVitalFilesDirectory {
-            try safeRemove(externalVitalFilesDirectory)
-        } else if clean, let readFailure = paths.configuredVitalFilesDirectoryReadFailure {
-            log("skipping external vital files directory cleanup because configured path is unavailable reason=\(readFailure)")
+        let plan = useCase.removalPlan(
+            clean: clean,
+            managerApp: paths.managerApp,
+            productRoot: paths.productRoot,
+            externalVitalFilesDirectory: paths.externalVitalFilesDirectory,
+            configuredVitalFilesDirectoryReadFailure: paths.configuredVitalFilesDirectoryReadFailure
+        )
+        for target in plan.targets {
+            try safeRemove(target)
+        }
+        if let skippedExternalDirectoryLogMessage = plan.skippedExternalDirectoryLogMessage {
+            log(skippedExternalDirectoryLogMessage)
         }
     }
 
@@ -581,17 +583,6 @@ public struct RuntimeUninstallWorkflow {
         diagnostics.log(message)
     }
 
-    private func processFailureReason(_ result: RuntimeProcessResult) -> String {
-        let stderr = result.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
-        let stdout = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !stderr.isEmpty {
-            return "exitCode=\(result.exitCode) stderr=\(stderr)"
-        }
-        if !stdout.isEmpty {
-            return "exitCode=\(result.exitCode) stdout=\(stdout)"
-        }
-        return "exitCode=\(result.exitCode)"
-    }
 }
 
 private struct RuntimeUninstallPreservedPaths {
