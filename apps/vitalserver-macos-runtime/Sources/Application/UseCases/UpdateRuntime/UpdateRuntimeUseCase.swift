@@ -180,9 +180,32 @@ public enum RollbackRuntimeBackupDirectoryDecision: Equatable, Sendable {
     case failed(message: String)
 }
 
+public struct RollbackRuntimeBackupDirectoryObservation: Equatable, Sendable {
+    public let backup: URL
+    public let directoryExists: Bool
+
+    public init(backup: URL, directoryExists: Bool) {
+        self.backup = backup
+        self.directoryExists = directoryExists
+    }
+}
+
 public enum RollbackRuntimeBackupRootfsObservationRequirement: Equatable, Sendable {
     case none
     case fileExists(URL)
+}
+
+public struct RollbackRuntimeBackupRootfsObservation: Equatable, Sendable {
+    public let backupPlan: RollbackRuntimeBackupPlan
+    public let backupRootfsExists: Bool?
+
+    public init(
+        backupPlan: RollbackRuntimeBackupPlan,
+        backupRootfsExists: Bool?
+    ) {
+        self.backupPlan = backupPlan
+        self.backupRootfsExists = backupRootfsExists
+    }
 }
 
 public enum RollbackRuntimeBackupRootfsDecision: Equatable, Sendable {
@@ -232,6 +255,19 @@ public enum RollbackRuntimeStepExecutionPlan: Equatable, Sendable {
 public enum RollbackRuntimeStepRequiredInput: Equatable, Sendable {
     case none
     case backupVersionExists(URL)
+}
+
+public struct RollbackRuntimeStepRequiredInputObservation: Equatable, Sendable {
+    public let requiredInput: RollbackRuntimeStepRequiredInput
+    public let backupVersionExists: Bool
+
+    public init(
+        requiredInput: RollbackRuntimeStepRequiredInput,
+        backupVersionExists: Bool
+    ) {
+        self.requiredInput = requiredInput
+        self.backupVersionExists = backupVersionExists
+    }
 }
 
 public struct UpdateRuntimeStatusPlan: Equatable, Sendable {
@@ -735,6 +771,15 @@ public struct UpdateRuntimeUseCase {
         return .loadManifest(backup)
     }
 
+    public func rollbackBackupDirectoryDecision(
+        observation: RollbackRuntimeBackupDirectoryObservation
+    ) -> RollbackRuntimeBackupDirectoryDecision {
+        rollbackBackupDirectoryDecision(
+            backup: observation.backup,
+            directoryExists: observation.directoryExists
+        )
+    }
+
     public func rollbackBackupRootfsObservationRequirement(
         backupPlan: RollbackRuntimeBackupPlan
     ) -> RollbackRuntimeBackupRootfsObservationRequirement {
@@ -755,6 +800,15 @@ public struct UpdateRuntimeUseCase {
             return .failed(message: missingFileFailureMessage(path: backupRootfs.path))
         }
         return .proceed(backupPlan)
+    }
+
+    public func rollbackBackupRootfsDecision(
+        observation: RollbackRuntimeBackupRootfsObservation
+    ) -> RollbackRuntimeBackupRootfsDecision {
+        rollbackBackupRootfsDecision(
+            backupPlan: observation.backupPlan,
+            backupRootfsExists: observation.backupRootfsExists
+        )
     }
 
     public func rollbackBackupSelection(command: RuntimeRollbackCommand) -> RollbackRuntimeBackupSelection {
@@ -850,6 +904,31 @@ public struct UpdateRuntimeUseCase {
         default:
             return .unsupported(failureMessage: unsupportedRollbackStepFailureMessage(step: step))
         }
+    }
+
+    public func rollbackStepExecutionPlan(
+        step: RuntimeWorkflowStep,
+        preflight: RollbackPreflightContext,
+        rootfsBase: URL,
+        runtimeVersion: URL,
+        managerAppPath: URL,
+        nginxDirectory: URL,
+        deployDirectory: URL,
+        observation: RollbackRuntimeStepRequiredInputObservation
+    ) -> RollbackRuntimeStepExecutionPlan {
+        guard observation.requiredInput == rollbackStepRequiredInput(step: step, preflight: preflight) else {
+            return .failed(failureMessage: "rollback step required input observation does not match required input")
+        }
+        return rollbackStepExecutionPlan(
+            step: step,
+            preflight: preflight,
+            rootfsBase: rootfsBase,
+            runtimeVersion: runtimeVersion,
+            managerAppPath: managerAppPath,
+            nginxDirectory: nginxDirectory,
+            deployDirectory: deployDirectory,
+            backupVersionExists: observation.backupVersionExists
+        )
     }
 
     public func rollbackStepRequiredInput(

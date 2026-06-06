@@ -9,7 +9,6 @@ import Errors
 final class RuntimeRollbackWorkflowTests: XCTestCase {
     func testRollbackRunsPreflightPlanAndStepAdapters() throws {
         let backup = URL(fileURLWithPath: "/product/backups/before-1.2.3")
-        let manifestURL = backup.appendingPathComponent(RuntimeFileNames.backupManifest)
         let backupRootfs = backup.appendingPathComponent(RuntimeFileNames.rootfsBase)
         let backupVersion = backup.appendingPathComponent(RuntimeFileNames.runtimeVersion)
         var events: [String] = []
@@ -28,8 +27,32 @@ final class RuntimeRollbackWorkflowTests: XCTestCase {
                         throw TestError.unexpectedLatestBackup
                     }
                 },
-                directoryExists: { $0 == backup },
-                fileExists: { [manifestURL, backupRootfs, backupVersion].contains($0) },
+                observeBackupDirectory: { selectedBackup in
+                    RollbackRuntimeBackupDirectoryObservation(
+                        backup: selectedBackup,
+                        directoryExists: selectedBackup == backup
+                    )
+                },
+                observeBackupRootfs: { backupPlan in
+                    RollbackRuntimeBackupRootfsObservation(
+                        backupPlan: backupPlan,
+                        backupRootfsExists: backupPlan.backupRootfs == backupRootfs
+                    )
+                },
+                observeRequiredInput: { requiredInput in
+                    switch requiredInput {
+                    case .none:
+                        return RollbackRuntimeStepRequiredInputObservation(
+                            requiredInput: requiredInput,
+                            backupVersionExists: false
+                        )
+                    case .backupVersionExists(let requiredBackupVersion):
+                        return RollbackRuntimeStepRequiredInputObservation(
+                            requiredInput: requiredInput,
+                            backupVersionExists: requiredBackupVersion == backupVersion
+                        )
+                    }
+                },
                 loadBackupManifest: { url in
                     events.append("manifest:\(url.lastPathComponent)")
                     return backupManifest(rootfsBase: RuntimeFileNames.rootfsBase)
@@ -117,8 +140,26 @@ final class RuntimeRollbackWorkflowTests: XCTestCase {
                         throw TestError.unexpectedLatestBackup
                     }
                 },
-                directoryExists: { $0 == backup },
-                fileExists: { _ in false },
+                observeBackupDirectory: { selectedBackup in
+                    RollbackRuntimeBackupDirectoryObservation(
+                        backup: selectedBackup,
+                        directoryExists: selectedBackup == backup
+                    )
+                },
+                observeBackupRootfs: { backupPlan in
+                    XCTFail("missing manifest should stop before rootfs observation")
+                    return RollbackRuntimeBackupRootfsObservation(
+                        backupPlan: backupPlan,
+                        backupRootfsExists: false
+                    )
+                },
+                observeRequiredInput: { requiredInput in
+                    XCTFail("missing manifest should stop before rollback step input observation")
+                    return RollbackRuntimeStepRequiredInputObservation(
+                        requiredInput: requiredInput,
+                        backupVersionExists: false
+                    )
+                },
                 loadBackupManifest: { _ in
                     throw RuntimeBackupManifestLoaderError.missingFile(
                         path: backup.appendingPathComponent(RuntimeFileNames.backupManifest).path

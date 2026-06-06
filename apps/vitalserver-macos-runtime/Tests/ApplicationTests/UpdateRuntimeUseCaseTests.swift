@@ -626,6 +626,41 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
             .restoreRuntimeVersion(.writeExplicitRollbackMarker(version: "rolled-back", destinationDirectory: backup))
         )
         XCTAssertEqual(
+            useCase.rollbackStepExecutionPlan(
+                step: .rollbackRestoreRuntimeVersion,
+                preflight: preflight,
+                rootfsBase: rootfsBase,
+                runtimeVersion: runtimeVersion,
+                managerAppPath: managerAppPath,
+                nginxDirectory: nginxDirectory,
+                deployDirectory: deployDirectory,
+                observation: RollbackRuntimeStepRequiredInputObservation(
+                    requiredInput: .backupVersionExists(backup.appendingPathComponent(RuntimeFileNames.runtimeVersion)),
+                    backupVersionExists: true
+                )
+            ),
+            .restoreRuntimeVersion(.restoreBackupVersion(
+                source: backup.appendingPathComponent(RuntimeFileNames.runtimeVersion),
+                destination: runtimeVersion
+            ))
+        )
+        XCTAssertEqual(
+            useCase.rollbackStepExecutionPlan(
+                step: .rollbackRestoreRuntimeVersion,
+                preflight: preflight,
+                rootfsBase: rootfsBase,
+                runtimeVersion: runtimeVersion,
+                managerAppPath: managerAppPath,
+                nginxDirectory: nginxDirectory,
+                deployDirectory: deployDirectory,
+                observation: RollbackRuntimeStepRequiredInputObservation(
+                    requiredInput: .none,
+                    backupVersionExists: true
+                )
+            ),
+            .failed(failureMessage: "rollback step required input observation does not match required input")
+        )
+        XCTAssertEqual(
             useCase.rollbackStepRequiredInput(
                 step: .rollbackRestoreRuntimeVersion,
                 preflight: preflight
@@ -714,8 +749,24 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
             .loadManifest(backup)
         )
         XCTAssertEqual(
+            useCase.rollbackBackupDirectoryDecision(observation: RollbackRuntimeBackupDirectoryObservation(
+                backup: backup,
+                directoryExists: true
+            )),
+            .loadManifest(backup)
+        )
+        XCTAssertEqual(
             useCase.rollbackBackupDirectoryDecision(backup: backup, directoryExists: false),
             .failed(message: "missing file: /runtime/backups/backup-1")
+        )
+        XCTAssertEqual(
+            useCase.rollbackBackupDirectoryDecision(
+                observation: RollbackRuntimeBackupDirectoryObservation(
+                    backup: backup,
+                    directoryExists: true
+                )
+            ),
+            .loadManifest(backup)
         )
         XCTAssertEqual(
             useCase.rollbackBackupRootfsObservationRequirement(backupPlan: backupPlan),
@@ -727,6 +778,22 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
                 backupRootfsExists: false
             ),
             .failed(message: "missing file: /runtime/backups/backup-1/rootfs-base.raw.gz")
+        )
+        XCTAssertEqual(
+            useCase.rollbackBackupRootfsDecision(observation: RollbackRuntimeBackupRootfsObservation(
+                backupPlan: backupPlan,
+                backupRootfsExists: false
+            )),
+            .failed(message: "missing file: /runtime/backups/backup-1/rootfs-base.raw.gz")
+        )
+        XCTAssertEqual(
+            useCase.rollbackBackupRootfsDecision(
+                observation: RollbackRuntimeBackupRootfsObservation(
+                    backupPlan: backupPlan,
+                    backupRootfsExists: true
+                )
+            ),
+            .proceed(backupPlan)
         )
         XCTAssertEqual(
             useCase.rollbackBackupRootfsObservationRequirement(backupPlan: noRootfsPlan),

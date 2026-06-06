@@ -7,7 +7,7 @@ import Errors
 public struct RuntimeRollbackStepExecutor {
     public var stopRuntimeServices: () throws -> Void
     public var replaceFile: (URL, URL) throws -> Void
-    public var fileExists: (URL) -> Bool
+    public var observeRequiredInput: (RollbackRuntimeStepRequiredInput) -> RollbackRuntimeStepRequiredInputObservation
     public var writeRuntimeVersion: (String, URL) throws -> Void
     public var restoreBackupPathIfExists: (URL, URL) throws -> Void
     public var restoreRuntimeToolsIfExists: (URL) throws -> Void
@@ -20,7 +20,7 @@ public struct RuntimeRollbackStepExecutor {
     public init(
         stopRuntimeServices: @escaping () throws -> Void,
         replaceFile: @escaping (URL, URL) throws -> Void,
-        fileExists: @escaping (URL) -> Bool,
+        observeRequiredInput: @escaping (RollbackRuntimeStepRequiredInput) -> RollbackRuntimeStepRequiredInputObservation,
         writeRuntimeVersion: @escaping (String, URL) throws -> Void,
         restoreBackupPathIfExists: @escaping (URL, URL) throws -> Void,
         restoreRuntimeToolsIfExists: @escaping (URL) throws -> Void,
@@ -29,7 +29,7 @@ public struct RuntimeRollbackStepExecutor {
     ) {
         self.stopRuntimeServices = stopRuntimeServices
         self.replaceFile = replaceFile
-        self.fileExists = fileExists
+        self.observeRequiredInput = observeRequiredInput
         self.writeRuntimeVersion = writeRuntimeVersion
         self.restoreBackupPathIfExists = restoreBackupPathIfExists
         self.restoreRuntimeToolsIfExists = restoreRuntimeToolsIfExists
@@ -46,13 +46,7 @@ public struct RuntimeRollbackStepExecutor {
         nginxDirectory: URL,
         deployDirectory: URL
     ) throws {
-        let backupVersionExists: Bool
-        switch useCase.rollbackStepRequiredInput(step: step, preflight: preflight) {
-        case .none:
-            backupVersionExists = false
-        case .backupVersionExists(let backupVersion):
-            backupVersionExists = fileExists(backupVersion)
-        }
+        let requiredInput = useCase.rollbackStepRequiredInput(step: step, preflight: preflight)
         let executionPlan = useCase.rollbackStepExecutionPlan(
             step: step,
             preflight: preflight,
@@ -61,7 +55,7 @@ public struct RuntimeRollbackStepExecutor {
             managerAppPath: managerAppPath,
             nginxDirectory: nginxDirectory,
             deployDirectory: deployDirectory,
-            backupVersionExists: backupVersionExists
+            observation: observeRequiredInput(requiredInput)
         )
 
         switch executionPlan {

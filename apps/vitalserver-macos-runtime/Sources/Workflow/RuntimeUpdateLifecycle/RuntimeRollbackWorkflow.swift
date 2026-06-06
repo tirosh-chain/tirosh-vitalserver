@@ -31,8 +31,9 @@ public struct RuntimeRollbackWorkflowContext {
 
 public struct RuntimeRollbackWorkflowOperations {
     public let resolveBackupSelection: (RollbackRuntimeBackupSelection) throws -> URL
-    public let directoryExists: (URL) -> Bool
-    public let fileExists: (URL) -> Bool
+    public let observeBackupDirectory: (URL) -> RollbackRuntimeBackupDirectoryObservation
+    public let observeBackupRootfs: (RollbackRuntimeBackupPlan) -> RollbackRuntimeBackupRootfsObservation
+    public let observeRequiredInput: (RollbackRuntimeStepRequiredInput) -> RollbackRuntimeStepRequiredInputObservation
     public let loadBackupManifest: (URL) throws -> BackupManifest
     public let isLaunchdLoaded: (RuntimeManagedService) -> Bool
     public let stopRuntimeServices: () throws -> Void
@@ -48,8 +49,9 @@ public struct RuntimeRollbackWorkflowOperations {
 
     public init(
         resolveBackupSelection: @escaping (RollbackRuntimeBackupSelection) throws -> URL,
-        directoryExists: @escaping (URL) -> Bool,
-        fileExists: @escaping (URL) -> Bool,
+        observeBackupDirectory: @escaping (URL) -> RollbackRuntimeBackupDirectoryObservation,
+        observeBackupRootfs: @escaping (RollbackRuntimeBackupPlan) -> RollbackRuntimeBackupRootfsObservation,
+        observeRequiredInput: @escaping (RollbackRuntimeStepRequiredInput) -> RollbackRuntimeStepRequiredInputObservation,
         loadBackupManifest: @escaping (URL) throws -> BackupManifest,
         isLaunchdLoaded: @escaping (RuntimeManagedService) -> Bool,
         stopRuntimeServices: @escaping () throws -> Void,
@@ -64,8 +66,9 @@ public struct RuntimeRollbackWorkflowOperations {
         log: @escaping (String) -> Void
     ) {
         self.resolveBackupSelection = resolveBackupSelection
-        self.directoryExists = directoryExists
-        self.fileExists = fileExists
+        self.observeBackupDirectory = observeBackupDirectory
+        self.observeBackupRootfs = observeBackupRootfs
+        self.observeRequiredInput = observeRequiredInput
         self.loadBackupManifest = loadBackupManifest
         self.isLaunchdLoaded = isLaunchdLoaded
         self.stopRuntimeServices = stopRuntimeServices
@@ -111,8 +114,8 @@ public struct RuntimeRollbackWorkflow {
     private func prepareRollbackPreflight(_ command: RuntimeRollbackCommand) throws -> RollbackPreflightContext {
         return try RuntimeRollbackPreflightRunner(
             resolveBackupSelection: operations.resolveBackupSelection,
-            directoryExists: operations.directoryExists,
-            fileExists: operations.fileExists,
+            observeBackupDirectory: operations.observeBackupDirectory,
+            observeBackupRootfs: operations.observeBackupRootfs,
             loadManifest: operations.loadBackupManifest,
             serviceRestartPolicy: {
                 RuntimeServiceRestartPolicy(
@@ -133,7 +136,7 @@ public struct RuntimeRollbackWorkflow {
         let executor = RuntimeRollbackStepExecutor(
             stopRuntimeServices: operations.stopRuntimeServices,
             replaceFile: operations.replaceFile,
-            fileExists: operations.fileExists,
+            observeRequiredInput: operations.observeRequiredInput,
             writeRuntimeVersion: operations.writeRuntimeVersion,
             restoreBackupPathIfExists: operations.restoreBackupPathIfExists,
             restoreRuntimeToolsIfExists: operations.restoreRuntimeToolsIfExists,

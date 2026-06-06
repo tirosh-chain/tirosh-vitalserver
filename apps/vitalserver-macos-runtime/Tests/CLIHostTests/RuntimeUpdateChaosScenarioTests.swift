@@ -288,8 +288,18 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
                     return URL(fileURLWithPath: "/unused")
                 }
             },
-            directoryExists: { url in url == backup },
-            fileExists: { _ in false },
+            observeBackupDirectory: { selectedBackup in
+                RollbackRuntimeBackupDirectoryObservation(
+                    backup: selectedBackup,
+                    directoryExists: selectedBackup == backup
+                )
+            },
+            observeBackupRootfs: { backupPlan in
+                RollbackRuntimeBackupRootfsObservation(
+                    backupPlan: backupPlan,
+                    backupRootfsExists: false
+                )
+            },
             loadManifest: { _ in
                 BackupManifest(
                     product: Constants.Product.identifier,

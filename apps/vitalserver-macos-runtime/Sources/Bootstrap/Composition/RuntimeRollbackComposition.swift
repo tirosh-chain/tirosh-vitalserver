@@ -83,8 +83,32 @@ public enum RuntimeRollbackComposition {
                         return backup
                     }
                 },
-                directoryExists: operations.fileStore.directoryExists,
-                fileExists: operations.fileStore.fileExists,
+                observeBackupDirectory: { backup in
+                    RollbackRuntimeBackupDirectoryObservation(
+                        backup: backup,
+                        directoryExists: operations.fileStore.directoryExists(backup)
+                    )
+                },
+                observeBackupRootfs: { backupPlan in
+                    RollbackRuntimeBackupRootfsObservation(
+                        backupPlan: backupPlan,
+                        backupRootfsExists: backupPlan.backupRootfs.map(operations.fileStore.fileExists)
+                    )
+                },
+                observeRequiredInput: { requiredInput in
+                    switch requiredInput {
+                    case .none:
+                        return RollbackRuntimeStepRequiredInputObservation(
+                            requiredInput: requiredInput,
+                            backupVersionExists: false
+                        )
+                    case .backupVersionExists(let backupVersion):
+                        return RollbackRuntimeStepRequiredInputObservation(
+                            requiredInput: requiredInput,
+                            backupVersionExists: operations.fileStore.fileExists(backupVersion)
+                        )
+                    }
+                },
                 loadBackupManifest: RuntimeBackupManifestLoader(fileStore: operations.fileStore).load,
                 isLaunchdLoaded: operations.isLaunchdLoaded,
                 stopRuntimeServices: operations.stopRuntimeServices,

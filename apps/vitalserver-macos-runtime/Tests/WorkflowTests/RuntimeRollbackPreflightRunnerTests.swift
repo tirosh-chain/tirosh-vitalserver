@@ -23,13 +23,19 @@ final class RuntimeRollbackPreflightRunnerTests: XCTestCase {
                     return URL(fileURLWithPath: "/unused")
                 }
             },
-            directoryExists: { url in
+            observeBackupDirectory: { url in
                 events.append("directory:\(url.path)")
-                return url == requestedBackup
+                return RollbackRuntimeBackupDirectoryObservation(
+                    backup: url,
+                    directoryExists: url == requestedBackup
+                )
             },
-            fileExists: { url in
-                events.append("file:\(url.path)")
-                return url == backupRootfs
+            observeBackupRootfs: { plan in
+                events.append("file:\(plan.backupRootfs?.path ?? "none")")
+                return RollbackRuntimeBackupRootfsObservation(
+                    backupPlan: plan,
+                    backupRootfsExists: plan.backupRootfs == backupRootfs
+                )
             },
             loadManifest: { url in
                 events.append("manifest:\(url.path)")
@@ -81,13 +87,19 @@ final class RuntimeRollbackPreflightRunnerTests: XCTestCase {
                     return URL(fileURLWithPath: "/unused")
                 }
             },
-            directoryExists: { url in
+            observeBackupDirectory: { url in
                 events.append("directory:\(url.path)")
-                return url == latestBackup
+                return RollbackRuntimeBackupDirectoryObservation(
+                    backup: url,
+                    directoryExists: url == latestBackup
+                )
             },
-            fileExists: { url in
-                events.append("file:\(url.path)")
-                return url == backupRootfs
+            observeBackupRootfs: { plan in
+                events.append("file:\(plan.backupRootfs?.path ?? "none")")
+                return RollbackRuntimeBackupRootfsObservation(
+                    backupPlan: plan,
+                    backupRootfsExists: plan.backupRootfs == backupRootfs
+                )
             },
             loadManifest: { url in
                 events.append("manifest:\(url.path)")
@@ -124,10 +136,12 @@ final class RuntimeRollbackPreflightRunnerTests: XCTestCase {
         let requestedBackup = URL(fileURLWithPath: "/product/backups/missing")
         let runner = RuntimeRollbackPreflightRunner(
             resolveBackupSelection: { _ in requestedBackup },
-            directoryExists: { _ in false },
-            fileExists: { _ in
-                XCTFail("missing backup directory should stop before file checks")
-                return false
+            observeBackupDirectory: { backup in
+                RollbackRuntimeBackupDirectoryObservation(backup: backup, directoryExists: false)
+            },
+            observeBackupRootfs: { plan in
+                XCTFail("missing backup directory should stop before rootfs observation")
+                return RollbackRuntimeBackupRootfsObservation(backupPlan: plan, backupRootfsExists: nil)
             },
             loadManifest: { _ in
                 XCTFail("missing backup directory should stop before manifest load")
@@ -150,8 +164,12 @@ final class RuntimeRollbackPreflightRunnerTests: XCTestCase {
         let missingRootfs = requestedBackup.appendingPathComponent(rootfsBaseName)
         let runner = RuntimeRollbackPreflightRunner(
             resolveBackupSelection: { _ in requestedBackup },
-            directoryExists: { _ in true },
-            fileExists: { _ in false },
+            observeBackupDirectory: { backup in
+                RollbackRuntimeBackupDirectoryObservation(backup: backup, directoryExists: true)
+            },
+            observeBackupRootfs: { plan in
+                RollbackRuntimeBackupRootfsObservation(backupPlan: plan, backupRootfsExists: false)
+            },
             loadManifest: { _ in self.backupManifest(rootfsBase: rootfsBaseName) },
             serviceRestartPolicy: {
                 XCTFail("missing rootfs should stop before service policy")
@@ -170,10 +188,14 @@ final class RuntimeRollbackPreflightRunnerTests: XCTestCase {
         var events: [String] = []
         let runner = RuntimeRollbackPreflightRunner(
             resolveBackupSelection: { _ in requestedBackup },
-            directoryExists: { _ in true },
-            fileExists: { url in
-                events.append("file:\(url.path)")
-                return false
+            observeBackupDirectory: { backup in
+                RollbackRuntimeBackupDirectoryObservation(backup: backup, directoryExists: true)
+            },
+            observeBackupRootfs: { plan in
+                if let backupRootfs = plan.backupRootfs {
+                    events.append("file:\(backupRootfs.path)")
+                }
+                return RollbackRuntimeBackupRootfsObservation(backupPlan: plan, backupRootfsExists: nil)
             },
             loadManifest: { _ in self.backupManifest(rootfsBase: nil) },
             serviceRestartPolicy: {

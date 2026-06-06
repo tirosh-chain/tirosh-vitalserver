@@ -1,3 +1,4 @@
+import Application
 import Contracts
 import Domain
 import Foundation
@@ -23,9 +24,20 @@ final class RuntimeRollbackStepExecutorTests: XCTestCase {
             replaceFile: { source, destination in
                 events.append("replace:\(source.lastPathComponent):\(destination.lastPathComponent)")
             },
-            fileExists: { url in
-                events.append("exists:\(url.lastPathComponent)")
-                return url.lastPathComponent == runtimeVersionName
+            observeRequiredInput: { requiredInput in
+                switch requiredInput {
+                case .none:
+                    return RollbackRuntimeStepRequiredInputObservation(
+                        requiredInput: requiredInput,
+                        backupVersionExists: false
+                    )
+                case .backupVersionExists(let backupVersion):
+                    events.append("exists:\(backupVersion.lastPathComponent)")
+                    return RollbackRuntimeStepRequiredInputObservation(
+                        requiredInput: requiredInput,
+                        backupVersionExists: backupVersion.lastPathComponent == runtimeVersionName
+                    )
+                }
             },
             writeRuntimeVersion: { version, bundle in
                 events.append("version:\(version):\(bundle.lastPathComponent)")
@@ -83,7 +95,12 @@ final class RuntimeRollbackStepExecutorTests: XCTestCase {
         let executor = RuntimeRollbackStepExecutor(
             stopRuntimeServices: {},
             replaceFile: { _, _ in events.append("replace") },
-            fileExists: { _ in false },
+            observeRequiredInput: { requiredInput in
+                RollbackRuntimeStepRequiredInputObservation(
+                    requiredInput: requiredInput,
+                    backupVersionExists: false
+                )
+            },
             writeRuntimeVersion: { version, bundle in events.append("version:\(version):\(bundle.lastPathComponent)") },
             restoreBackupPathIfExists: { _, _ in },
             restoreRuntimeToolsIfExists: { _ in },
@@ -168,7 +185,12 @@ final class RuntimeRollbackStepExecutorTests: XCTestCase {
         RuntimeRollbackStepExecutor(
             stopRuntimeServices: {},
             replaceFile: replaceFile,
-            fileExists: { _ in false },
+            observeRequiredInput: { requiredInput in
+                RollbackRuntimeStepRequiredInputObservation(
+                    requiredInput: requiredInput,
+                    backupVersionExists: false
+                )
+            },
             writeRuntimeVersion: { _, _ in },
             restoreBackupPathIfExists: { _, _ in },
             restoreRuntimeToolsIfExists: { _ in },

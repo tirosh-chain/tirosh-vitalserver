@@ -424,6 +424,44 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         }
     }
 
+    func testRuntimeRollbackPreflightRunnerDoesNotOwnBackupFileObservation() throws {
+        let file = packageRoot().appendingPathComponent(
+            "Sources/Workflow/RuntimeUpdateLifecycle/RuntimeRollbackPreflightRunner.swift"
+        )
+        let text = try String(contentsOf: file, encoding: .utf8)
+        let forbiddenTokens = [
+            "fileExists",
+            "directoryExists",
+            "rollbackBackupRootfsObservationRequirement",
+        ]
+
+        for token in forbiddenTokens {
+            XCTAssertFalse(
+                text.contains(token),
+                "RuntimeRollbackPreflightRunner must receive explicit backup observations from a port instead of using \(token)"
+            )
+        }
+    }
+
+    func testRuntimeRollbackStepExecutorDoesNotOwnRequiredInputObservation() throws {
+        let file = packageRoot().appendingPathComponent(
+            "Sources/Workflow/RuntimeUpdateLifecycle/RuntimeRollbackStepExecutor.swift"
+        )
+        let text = try String(contentsOf: file, encoding: .utf8)
+        let forbiddenTokens = [
+            "fileExists",
+            "case .backupVersionExists",
+            "switch useCase.rollbackStepRequiredInput",
+        ]
+
+        for token in forbiddenTokens {
+            XCTAssertFalse(
+                text.contains(token),
+                "RuntimeRollbackStepExecutor must receive explicit required-input observations from a port instead of using \(token)"
+            )
+        }
+    }
+
     private func packageRoot() -> URL {
         URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
     }

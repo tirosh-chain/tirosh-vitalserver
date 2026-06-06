@@ -6,8 +6,8 @@ import Errors
 
 public struct RuntimeRollbackPreflightRunner {
     public var resolveBackupSelection: (RollbackRuntimeBackupSelection) throws -> URL
-    public var directoryExists: (URL) -> Bool
-    public var fileExists: (URL) -> Bool
+    public var observeBackupDirectory: (URL) -> RollbackRuntimeBackupDirectoryObservation
+    public var observeBackupRootfs: (RollbackRuntimeBackupPlan) -> RollbackRuntimeBackupRootfsObservation
     public var loadManifest: (URL) throws -> BackupManifest
     public var serviceRestartPolicy: () -> RuntimeServiceRestartPolicy
     public var log: (String) -> Void
@@ -17,15 +17,15 @@ public struct RuntimeRollbackPreflightRunner {
 
     public init(
         resolveBackupSelection: @escaping (RollbackRuntimeBackupSelection) throws -> URL,
-        directoryExists: @escaping (URL) -> Bool,
-        fileExists: @escaping (URL) -> Bool,
+        observeBackupDirectory: @escaping (URL) -> RollbackRuntimeBackupDirectoryObservation,
+        observeBackupRootfs: @escaping (RollbackRuntimeBackupPlan) -> RollbackRuntimeBackupRootfsObservation,
         loadManifest: @escaping (URL) throws -> BackupManifest,
         serviceRestartPolicy: @escaping () -> RuntimeServiceRestartPolicy,
         log: @escaping (String) -> Void
     ) {
         self.resolveBackupSelection = resolveBackupSelection
-        self.directoryExists = directoryExists
-        self.fileExists = fileExists
+        self.observeBackupDirectory = observeBackupDirectory
+        self.observeBackupRootfs = observeBackupRootfs
         self.loadManifest = loadManifest
         self.serviceRestartPolicy = serviceRestartPolicy
         self.log = log
@@ -34,7 +34,7 @@ public struct RuntimeRollbackPreflightRunner {
     public func prepare(_ command: RuntimeRollbackCommand) throws -> RollbackPreflightContext {
         let backup = try resolveBackupSelection(useCase.rollbackBackupSelection(command: command))
 
-        switch useCase.rollbackBackupDirectoryDecision(backup: backup, directoryExists: directoryExists(backup)) {
+        switch useCase.rollbackBackupDirectoryDecision(observation: observeBackupDirectory(backup)) {
         case .loadManifest:
             break
         case .failed(let message):
@@ -43,18 +43,8 @@ public struct RuntimeRollbackPreflightRunner {
 
         let manifest = try loadManifest(backup)
         let backupPlan = useCase.rollbackBackupPlan(backup: backup, manifest: manifest)
-        let backupRootfsExists: Bool?
-        switch useCase.rollbackBackupRootfsObservationRequirement(backupPlan: backupPlan) {
-        case .none:
-            backupRootfsExists = nil
-        case .fileExists(let backupRootfs):
-            backupRootfsExists = fileExists(backupRootfs)
-        }
         let resolvedBackupPlan: RollbackRuntimeBackupPlan
-        switch useCase.rollbackBackupRootfsDecision(
-            backupPlan: backupPlan,
-            backupRootfsExists: backupRootfsExists
-        ) {
+        switch useCase.rollbackBackupRootfsDecision(observation: observeBackupRootfs(backupPlan)) {
         case .proceed(let plan):
             resolvedBackupPlan = plan
         case .failed(let message):
