@@ -84,6 +84,128 @@ final class RepairRuntimeUseCaseTests: XCTestCase {
         }
     }
 
+    func testPlansVMDiskExecutionPathsFromExplicitTimestamp() {
+        let useCase = RepairRuntimeUseCase()
+
+        let plan = useCase.vmDiskExecutionPlan(
+            vmDisk: URL(fileURLWithPath: "/runtime/vm/vm-disk.img"),
+            backupsDirectory: URL(fileURLWithPath: "/runtime/backups"),
+            timestamp: "2026-06-06T05:10:11Z"
+        )
+
+        XCTAssertEqual(plan.temporaryDisk, URL(fileURLWithPath: "/runtime/vm/.vm-disk.img.repair.tmp"))
+        XCTAssertEqual(plan.archiveDirectory, URL(fileURLWithPath: "/runtime/backups/vm-disk-repair-20260606T051011Z"))
+        XCTAssertEqual(plan.archivedDisk, URL(fileURLWithPath: "/runtime/backups/vm-disk-repair-20260606T051011Z/vm-disk.img"))
+    }
+
+    func testReplacementDiskVerificationPreservesMissingAndUndersizedFailures() {
+        let useCase = RepairRuntimeUseCase()
+
+        XCTAssertThrowsError(try useCase.requireReplacementDisk(RepairRuntimeVMDiskReplacementObservation(
+            path: "/runtime/vm/vm-disk.img",
+            exists: false,
+            actualBytes: nil,
+            targetDiskGiB: 32,
+            bytesPerGiB: 1024
+        ))) { error in
+            XCTAssertEqual(
+                error as? RepairRuntimeUseCaseError,
+                .operationFailed("vm disk repair replacement missing path=/runtime/vm/vm-disk.img")
+            )
+        }
+        XCTAssertThrowsError(try useCase.requireReplacementDisk(RepairRuntimeVMDiskReplacementObservation(
+            path: "/runtime/vm/vm-disk.img",
+            exists: true,
+            actualBytes: 1024,
+            targetDiskGiB: 2,
+            bytesPerGiB: 1024
+        ))) { error in
+            XCTAssertEqual(
+                error as? RepairRuntimeUseCaseError,
+                .operationFailed("vm disk repair replacement undersized path=/runtime/vm/vm-disk.img expectedBytes=2048 actualBytes=1024")
+            )
+        }
+    }
+
+    func testCompletionMessagesPreserveArchivePresence() {
+        let useCase = RepairRuntimeUseCase()
+
+        let withoutArchive = useCase.vmDiskCompletionMessages(archivedDiskPath: nil)
+        let withArchive = useCase.vmDiskCompletionMessages(archivedDiskPath: "/runtime/backups/vm-disk.img")
+
+        XCTAssertEqual(withoutArchive.healthy, "VM disk repaired.")
+        XCTAssertEqual(withoutArchive.degraded, "VM disk was recreated, but runtime health check failed.")
+        XCTAssertEqual(withArchive.healthy, "VM disk repaired. Previous disk archive: /runtime/backups/vm-disk.img")
+        XCTAssertEqual(
+            withArchive.degraded,
+            "VM disk was recreated, but runtime health check failed. Previous disk archive: /runtime/backups/vm-disk.img"
+        )
+    }
+
+    func testDatastoreRepairPlanBuildsRequestAndRestartPolicyWithoutWorkflowState() {
+        let useCase = RepairRuntimeUseCase()
+
+        let plan = useCase.datastoreRepairPlan()
+        let request = useCase.datastoreRepairRequest(
+            requestID: "request-1",
+            requestedAt: "2026-06-06T00:00:00Z"
+        )
+
+        XCTAssertEqual(plan.requestedLogMessage, "datastore repair requested")
+        XCTAssertEqual(plan.completedStatusMessage, "datastore repair completed")
+        XCTAssertEqual(
+            plan.restartPolicy,
+            RuntimeServiceRestartPolicy(restartVM: true, restartGuestLogSync: true, restartProxy: true, restartWatchdog: true)
+        )
+        XCTAssertEqual(request.id, "request-1")
+        XCTAssertEqual(request.requestedAt, "2026-06-06T00:00:00Z")
+    }
+
+    func testRedisBackupResultDecisionPreservesStaleMissingFailedAndDefaultDisplayMessages() {
+        let useCase = RepairRuntimeUseCase()
+
+        XCTAssertEqual(
+            useCase.redisBackupResultDecision(
+                loadResult: .loaded(redisResult(status: .completed, requestId: "old", message: "done")),
+                expectedRequestID: "request-1",
+                shouldReportProgress: true
+            ),
+            .ignoreStaleResult(logMessage: "stale redis backup result ignored")
+        )
+        XCTAssertEqual(
+            useCase.redisBackupResultDecision(
+                loadResult: .loaded(redisResult(status: .completed, requestId: "request-1", message: nil, archive: "redis.tar.gz")),
+                expectedRequestID: "request-1",
+                shouldReportProgress: true
+            ),
+            .completed(message: "Redis backup completed.", archive: "redis.tar.gz")
+        )
+        XCTAssertEqual(
+            useCase.redisBackupResultDecision(
+                loadResult: .loaded(redisResult(status: .failed, requestId: "request-1", message: nil)),
+                expectedRequestID: "request-1",
+                shouldReportProgress: true
+            ),
+            .failed(message: "Redis backup failed.")
+        )
+        XCTAssertEqual(
+            useCase.redisBackupResultDecision(
+                loadResult: .missing,
+                expectedRequestID: "request-1",
+                shouldReportProgress: true
+            ),
+            .waiting(logMessage: "waiting for redis backup guest worker")
+        )
+        XCTAssertEqual(
+            useCase.redisBackupResultDecision(
+                loadResult: .failed("permission denied"),
+                expectedRequestID: "request-1",
+                shouldReportProgress: true
+            ),
+            .readFailed(message: "failed to read redis backup result: permission denied")
+        )
+    }
+
     private func input(
         rootfsBasePath: String = "/runtime/rootfs-base.raw.gz",
         rootfsBaseExists: Bool = true,
@@ -101,6 +223,20 @@ final class RepairRuntimeUseCaseTests: XCTestCase {
             defaultDiskGiB: defaultDiskGiB,
             bytesPerGiB: bytesPerGiB,
             freeSpaceMarginBytes: freeSpaceMarginBytes
+        )
+    }
+
+    private func redisResult(
+        status: DatastoreRepairStatus,
+        requestId: String?,
+        message: String?,
+        archive: String? = nil
+    ) -> RedisBackupResultDocument {
+        RedisBackupResultDocument(
+            requestId: requestId,
+            status: status,
+            message: message,
+            archive: archive
         )
     }
 }

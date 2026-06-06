@@ -104,11 +104,11 @@ public struct RuntimeVMDiskRepairRunner {
 
     public func repair() throws {
         let plan = try repairPlan()
-        let temporaryDisk = context.vmDisk.deletingLastPathComponent()
-            .appendingPathComponent(".\(context.vmDisk.lastPathComponent).repair.tmp")
-        let archiveDirectory = context.backupsDirectory
-            .appendingPathComponent("vm-disk-repair-\(sanitizedTimestamp())")
-        let archivedDisk = archiveDirectory.appendingPathComponent(context.vmDisk.lastPathComponent)
+        let executionPlan = useCase.vmDiskExecutionPlan(
+            vmDisk: context.vmDisk,
+            backupsDirectory: context.backupsDirectory,
+            timestamp: operations.timestamp()
+        )
         var archivedDiskPath: String?
 
         operations.log("vm disk repair requested")
@@ -116,8 +116,8 @@ public struct RuntimeVMDiskRepairRunner {
         try createRedisBackupBestEffort()
         try operations.createDirectory(context.vmDisk.deletingLastPathComponent(), true)
         try operations.createDirectory(context.backupsDirectory, true)
-        if operations.fileExists(temporaryDisk) {
-            try operations.removeItem(temporaryDisk)
+        if operations.fileExists(executionPlan.temporaryDisk) {
+            try operations.removeItem(executionPlan.temporaryDisk)
         }
 
         try operations.requireFreeSpace(
@@ -129,22 +129,22 @@ public struct RuntimeVMDiskRepairRunner {
         try operations.runProcessToFile(
             context.gunzipExecutable,
             ["-c", context.rootfsBase.path],
-            temporaryDisk
+            executionPlan.temporaryDisk
         )
-        try operations.runRequired(context.truncateExecutable, ["-s", "\(plan.targetDiskGiB)G", temporaryDisk.path])
+        try operations.runRequired(context.truncateExecutable, ["-s", "\(plan.targetDiskGiB)G", executionPlan.temporaryDisk.path])
 
         try operations.writeStatus(.recovering, .repairVMDisk, "Archiving current VM disk")
         try operations.stopRuntimeServicesForVMDiskReplacement()
-        try operations.createDirectory(archiveDirectory, true)
+        try operations.createDirectory(executionPlan.archiveDirectory, true)
         if plan.shouldArchiveCurrentDisk {
-            try operations.moveItem(context.vmDisk, archivedDisk)
-            archivedDiskPath = archivedDisk.path
-            operations.log("archived vm disk path=\(archivedDisk.path)")
+            try operations.moveItem(context.vmDisk, executionPlan.archivedDisk)
+            archivedDiskPath = executionPlan.archivedDisk.path
+            operations.log("archived vm disk path=\(executionPlan.archivedDisk.path)")
         } else {
             operations.log("vm disk missing; creating replacement without archive")
         }
 
-        try operations.moveItem(temporaryDisk, context.vmDisk)
+        try operations.moveItem(executionPlan.temporaryDisk, context.vmDisk)
         try requireReplacementDisk(targetDiskGiB: plan.targetDiskGiB)
         operations.log("created replacement vm disk path=\(context.vmDisk.path) size=\(plan.targetDiskGiB) GiB")
 
@@ -152,16 +152,18 @@ public struct RuntimeVMDiskRepairRunner {
         try operations.startRuntimeServices(plan.restartPolicy)
         do {
             try operations.waitForHealth(plan.restartPolicy)
+            let messages = useCase.vmDiskCompletionMessages(archivedDiskPath: archivedDiskPath)
             try operations.writeStatus(
                 .healthy,
                 .repairVMDisk,
-                completionMessage(archivedDiskPath: archivedDiskPath)
+                messages.healthy
             )
         } catch {
+            let messages = useCase.vmDiskCompletionMessages(archivedDiskPath: archivedDiskPath)
             try operations.writeStatus(
                 .degraded,
                 .repairVMDisk,
-                failedHealthMessage(archivedDiskPath: archivedDiskPath)
+                messages.degraded
             )
             throw error
         }
@@ -188,22 +190,14 @@ public struct RuntimeVMDiskRepairRunner {
     }
 
     private func requireReplacementDisk(targetDiskGiB: Int) throws {
-        guard operations.fileExists(context.vmDisk) else {
-            throw RuntimeVMDiskRepairWorkflowError.operationFailed("vm disk repair replacement missing path=\(context.vmDisk.path)")
-        }
-        let expectedBytes = UInt64(targetDiskGiB) * context.bytesPerGiB
-        let actualBytes = try operations.fileSize(context.vmDisk)
-        guard actualBytes >= expectedBytes else {
-            throw RuntimeVMDiskRepairWorkflowError.operationFailed(
-                "vm disk repair replacement undersized path=\(context.vmDisk.path) expectedBytes=\(expectedBytes) actualBytes=\(actualBytes)"
-            )
-        }
-    }
-
-    private func sanitizedTimestamp() -> String {
-        operations.timestamp()
-            .replacingOccurrences(of: ":", with: "")
-            .replacingOccurrences(of: "-", with: "")
+        let exists = operations.fileExists(context.vmDisk)
+        try useCase.requireReplacementDisk(RepairRuntimeVMDiskReplacementObservation(
+            path: context.vmDisk.path,
+            exists: exists,
+            actualBytes: exists ? try operations.fileSize(context.vmDisk) : nil,
+            targetDiskGiB: targetDiskGiB,
+            bytesPerGiB: context.bytesPerGiB
+        ))
     }
 
     private func createRedisBackupBestEffort() throws {
@@ -222,17 +216,4 @@ public struct RuntimeVMDiskRepairRunner {
         }
     }
 
-    private func completionMessage(archivedDiskPath: String?) -> String {
-        guard let archivedDiskPath else {
-            return "VM disk repaired."
-        }
-        return "VM disk repaired. Previous disk archive: \(archivedDiskPath)"
-    }
-
-    private func failedHealthMessage(archivedDiskPath: String?) -> String {
-        guard let archivedDiskPath else {
-            return "VM disk was recreated, but runtime health check failed."
-        }
-        return "VM disk was recreated, but runtime health check failed. Previous disk archive: \(archivedDiskPath)"
-    }
 }

@@ -1,12 +1,7 @@
+import Application
 import Contracts
 import Foundation
 import Errors
-
-public enum RuntimeRedisBackupResultLoadResult: Equatable, Sendable {
-    case missing
-    case loaded(RedisBackupResultDocument)
-    case failed(String)
-}
 
 public struct RuntimeRedisBackupWorkflowContext: Equatable, Sendable {
     public let guestRunDirectory: URL
@@ -89,6 +84,9 @@ public struct RuntimeRedisBackupWorkflowOperations {
 public struct RuntimeRedisBackupWorkflow {
     public let context: RuntimeRedisBackupWorkflowContext
     public let operations: RuntimeRedisBackupWorkflowOperations
+    private var useCase: RepairRuntimeUseCase {
+        RepairRuntimeUseCase()
+    }
 
     public init(
         context: RuntimeRedisBackupWorkflowContext,
@@ -123,30 +121,28 @@ public struct RuntimeRedisBackupWorkflow {
 
         let maxAttempts = Int(ceil(context.waitTimeoutSeconds / context.pollIntervalSeconds))
         for attempt in 0..<maxAttempts {
-            switch operations.loadResult(resultURL) {
-            case .loaded(let result):
-                if let resultRequestId = result.requestId, resultRequestId != requestID {
-                    operations.log("stale redis backup result ignored")
-                } else if result.status == .completed {
-                    let message = result.message ?? "Redis backup completed."
-                    try operations.writeStatus(.healthy, .redisBackup, message)
-                    operations.log("redis backup completed")
-                    return RuntimeRedisBackupResult(message: message, archive: result.archive)
-                } else if result.status == .failed {
-                    let message = result.message ?? "Redis backup failed."
-                    try operations.writeStatus(.degraded, .redisBackup, message)
-                    throw RuntimeRedisBackupWorkflowError.operationFailed(message)
-                } else if attempt % 10 == 0 {
-                    operations.log(result.message ?? "waiting for redis backup")
-                }
-            case .missing:
-                if attempt % 10 == 0 {
-                    operations.log("waiting for redis backup guest worker")
-                }
+            let decision = useCase.redisBackupResultDecision(
+                loadResult: operations.loadResult(resultURL),
+                expectedRequestID: requestID,
+                shouldReportProgress: attempt % 10 == 0
+            )
+            switch decision {
+            case .ignoreStaleResult(let logMessage):
+                operations.log(logMessage)
+            case .completed(let message, let archive):
+                try operations.writeStatus(.healthy, .redisBackup, message)
+                operations.log("redis backup completed")
+                return RuntimeRedisBackupResult(message: message, archive: archive)
             case .failed(let message):
-                let failureMessage = "failed to read redis backup result: \(message)"
-                try operations.writeStatus(.degraded, .redisBackup, failureMessage)
-                throw RuntimeRedisBackupWorkflowError.operationFailed(failureMessage)
+                try operations.writeStatus(.degraded, .redisBackup, message)
+                throw RuntimeRedisBackupWorkflowError.operationFailed(message)
+            case .waiting(let logMessage):
+                if let logMessage {
+                    operations.log(logMessage)
+                }
+            case .readFailed(let message):
+                try operations.writeStatus(.degraded, .redisBackup, message)
+                throw RuntimeRedisBackupWorkflowError.operationFailed(message)
             }
             if attempt < maxAttempts - 1 {
                 operations.sleep(context.pollIntervalSeconds)

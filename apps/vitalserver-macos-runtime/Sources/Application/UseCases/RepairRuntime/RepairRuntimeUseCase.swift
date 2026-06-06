@@ -1,5 +1,6 @@
 import Contracts
 import Domain
+import Foundation
 import Errors
 
 public struct RepairRuntimeVMDiskInput: Equatable, Sendable {
@@ -52,6 +53,90 @@ public struct RepairRuntimeVMDiskPlan: Equatable, Sendable {
     }
 }
 
+public struct RepairRuntimeVMDiskExecutionPlan: Equatable, Sendable {
+    public let temporaryDisk: URL
+    public let archiveDirectory: URL
+    public let archivedDisk: URL
+
+    public init(
+        temporaryDisk: URL,
+        archiveDirectory: URL,
+        archivedDisk: URL
+    ) {
+        self.temporaryDisk = temporaryDisk
+        self.archiveDirectory = archiveDirectory
+        self.archivedDisk = archivedDisk
+    }
+}
+
+public struct RepairRuntimeVMDiskReplacementObservation: Equatable, Sendable {
+    public let path: String
+    public let exists: Bool
+    public let actualBytes: UInt64?
+    public let targetDiskGiB: Int
+    public let bytesPerGiB: UInt64
+
+    public init(
+        path: String,
+        exists: Bool,
+        actualBytes: UInt64?,
+        targetDiskGiB: Int,
+        bytesPerGiB: UInt64
+    ) {
+        self.path = path
+        self.exists = exists
+        self.actualBytes = actualBytes
+        self.targetDiskGiB = targetDiskGiB
+        self.bytesPerGiB = bytesPerGiB
+    }
+}
+
+public struct RepairRuntimeVMDiskCompletionMessages: Equatable, Sendable {
+    public let healthy: String
+    public let degraded: String
+
+    public init(healthy: String, degraded: String) {
+        self.healthy = healthy
+        self.degraded = degraded
+    }
+}
+
+public struct RepairRuntimeDatastorePlan: Equatable, Sendable {
+    public let requestedLogMessage: String
+    public let requestedStatusMessage: String
+    public let completedLogMessage: String
+    public let completedStatusMessage: String
+    public let restartPolicy: RuntimeServiceRestartPolicy
+
+    public init(
+        requestedLogMessage: String,
+        requestedStatusMessage: String,
+        completedLogMessage: String,
+        completedStatusMessage: String,
+        restartPolicy: RuntimeServiceRestartPolicy
+    ) {
+        self.requestedLogMessage = requestedLogMessage
+        self.requestedStatusMessage = requestedStatusMessage
+        self.completedLogMessage = completedLogMessage
+        self.completedStatusMessage = completedStatusMessage
+        self.restartPolicy = restartPolicy
+    }
+}
+
+public enum RuntimeRedisBackupResultLoadResult: Equatable, Sendable {
+    case missing
+    case loaded(RedisBackupResultDocument)
+    case failed(String)
+}
+
+public enum RepairRuntimeRedisBackupResultDecision: Equatable, Sendable {
+    case ignoreStaleResult(logMessage: String)
+    case completed(message: String, archive: String?)
+    case failed(message: String)
+    case waiting(logMessage: String?)
+    case readFailed(message: String)
+}
+
 public struct RepairRuntimeUseCase {
     public init() {}
 
@@ -91,6 +176,94 @@ public struct RepairRuntimeUseCase {
         )
     }
 
+    public func vmDiskExecutionPlan(
+        vmDisk: URL,
+        backupsDirectory: URL,
+        timestamp: String
+    ) -> RepairRuntimeVMDiskExecutionPlan {
+        let archiveDirectory = backupsDirectory.appendingPathComponent("vm-disk-repair-\(sanitizedTimestamp(timestamp))")
+        return RepairRuntimeVMDiskExecutionPlan(
+            temporaryDisk: vmDisk.deletingLastPathComponent()
+                .appendingPathComponent(".\(vmDisk.lastPathComponent).repair.tmp"),
+            archiveDirectory: archiveDirectory,
+            archivedDisk: archiveDirectory.appendingPathComponent(vmDisk.lastPathComponent)
+        )
+    }
+
+    public func requireReplacementDisk(_ observation: RepairRuntimeVMDiskReplacementObservation) throws {
+        guard observation.exists else {
+            throw RepairRuntimeUseCaseError.operationFailed("vm disk repair replacement missing path=\(observation.path)")
+        }
+        guard let actualBytes = observation.actualBytes else {
+            throw RepairRuntimeUseCaseError.operationFailed("vm disk repair replacement size missing path=\(observation.path)")
+        }
+        let expectedBytes = UInt64(observation.targetDiskGiB) * observation.bytesPerGiB
+        guard actualBytes >= expectedBytes else {
+            throw RepairRuntimeUseCaseError.operationFailed(
+                "vm disk repair replacement undersized path=\(observation.path) expectedBytes=\(expectedBytes) actualBytes=\(actualBytes)"
+            )
+        }
+    }
+
+    public func vmDiskCompletionMessages(archivedDiskPath: String?) -> RepairRuntimeVMDiskCompletionMessages {
+        guard let archivedDiskPath else {
+            return RepairRuntimeVMDiskCompletionMessages(
+                healthy: "VM disk repaired.",
+                degraded: "VM disk was recreated, but runtime health check failed."
+            )
+        }
+        return RepairRuntimeVMDiskCompletionMessages(
+            healthy: "VM disk repaired. Previous disk archive: \(archivedDiskPath)",
+            degraded: "VM disk was recreated, but runtime health check failed. Previous disk archive: \(archivedDiskPath)"
+        )
+    }
+
+    public func datastoreRepairPlan() -> RepairRuntimeDatastorePlan {
+        RepairRuntimeDatastorePlan(
+            requestedLogMessage: "datastore repair requested",
+            requestedStatusMessage: "datastore repair requested",
+            completedLogMessage: "datastore repair completed",
+            completedStatusMessage: "datastore repair completed",
+            restartPolicy: RuntimeServiceRestartPolicy(
+                restartVM: true,
+                restartGuestLogSync: true,
+                restartProxy: true,
+                restartWatchdog: true
+            )
+        )
+    }
+
+    public func datastoreRepairRequest(
+        requestID: String,
+        requestedAt: String
+    ) -> RuntimeDatastoreRepairRequest {
+        RuntimeDatastoreRepairRequest(id: requestID, requestedAt: requestedAt)
+    }
+
+    public func redisBackupResultDecision(
+        loadResult: RuntimeRedisBackupResultLoadResult,
+        expectedRequestID: String,
+        shouldReportProgress: Bool
+    ) -> RepairRuntimeRedisBackupResultDecision {
+        switch loadResult {
+        case .loaded(let result):
+            if let resultRequestId = result.requestId, resultRequestId != expectedRequestID {
+                return .ignoreStaleResult(logMessage: "stale redis backup result ignored")
+            }
+            if result.status == .completed {
+                return .completed(message: result.message ?? "Redis backup completed.", archive: result.archive)
+            }
+            if result.status == .failed {
+                return .failed(message: result.message ?? "Redis backup failed.")
+            }
+            return .waiting(logMessage: shouldReportProgress ? result.message ?? "waiting for redis backup" : nil)
+        case .missing:
+            return .waiting(logMessage: shouldReportProgress ? "waiting for redis backup guest worker" : nil)
+        case .failed(let message):
+            return .readFailed(message: "failed to read redis backup result: \(message)")
+        }
+    }
+
     private func targetDiskGiB(
         currentVMDiskSizeBytes: UInt64?,
         defaultDiskGiB: Int,
@@ -116,5 +289,11 @@ public struct RepairRuntimeUseCase {
             throw RepairRuntimeUseCaseError.operationFailed("required free space calculation overflowed")
         }
         return added.partialValue
+    }
+
+    private func sanitizedTimestamp(_ timestamp: String) -> String {
+        timestamp
+            .replacingOccurrences(of: ":", with: "")
+            .replacingOccurrences(of: "-", with: "")
     }
 }

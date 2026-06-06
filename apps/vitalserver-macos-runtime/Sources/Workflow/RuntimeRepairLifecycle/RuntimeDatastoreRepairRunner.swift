@@ -1,3 +1,4 @@
+import Application
 import Contracts
 import Domain
 import Errors
@@ -18,6 +19,9 @@ public struct RuntimeDatastoreRepairRunner {
     public var makeRequestID: () -> String
     public var timestamp: () -> String
     public var log: (String) -> Void
+    private var useCase: RepairRuntimeUseCase {
+        RepairRuntimeUseCase()
+    }
 
     public init(
         requireCapability: @escaping () throws -> Void,
@@ -54,13 +58,17 @@ public struct RuntimeDatastoreRepairRunner {
     }
 
     public func run() throws {
-        log("datastore repair requested")
+        let plan = useCase.datastoreRepairPlan()
+        log(plan.requestedLogMessage)
         try requireCapability()
         try prepareGuestRunDirectory()
         try removePreviousResult()
-        try writeStatus(.recovering, .repairDatastore, "datastore repair requested")
+        try writeStatus(.recovering, .repairDatastore, plan.requestedStatusMessage)
 
-        let request = RuntimeDatastoreRepairRequest(id: makeRequestID(), requestedAt: timestamp())
+        let request = useCase.datastoreRepairRequest(
+            requestID: makeRequestID(),
+            requestedAt: timestamp()
+        )
         try writeRequest(request)
 
         if isVMServiceLoaded() {
@@ -72,13 +80,8 @@ public struct RuntimeDatastoreRepairRunner {
         try waitForResult(request)
         try restartProxyService()
         try restartWatchdogService()
-        try waitForHealth(RuntimeServiceRestartPolicy(
-            restartVM: true,
-            restartGuestLogSync: true,
-            restartProxy: true,
-            restartWatchdog: true
-        ))
-        try writeStatus(.healthy, .repairDatastore, "datastore repair completed")
-        log("datastore repair completed")
+        try waitForHealth(plan.restartPolicy)
+        try writeStatus(.healthy, .repairDatastore, plan.completedStatusMessage)
+        log(plan.completedLogMessage)
     }
 }
