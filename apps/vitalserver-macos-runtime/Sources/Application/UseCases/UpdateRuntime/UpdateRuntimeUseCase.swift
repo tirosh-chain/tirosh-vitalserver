@@ -203,6 +203,16 @@ public struct RuntimeGuestShutdownPlan: Equatable, Sendable {
     }
 }
 
+public struct RuntimeGuestWaitResultPlan: Equatable, Sendable {
+    public let logMessage: String?
+    public let failureMessage: String?
+
+    public init(logMessage: String?, failureMessage: String?) {
+        self.logMessage = logMessage
+        self.failureMessage = failureMessage
+    }
+}
+
 public struct UpdateRuntimeUseCase {
     public init() {}
 
@@ -414,6 +424,32 @@ public struct UpdateRuntimeUseCase {
         )
     }
 
+    public func guestActivationWaitStartedLogMessage(timeoutSeconds: Double) -> String {
+        "waiting for guest update activation result timeoutSeconds=\(timeoutSeconds)"
+    }
+
+    public func guestActivationWaitResultPlan(
+        _ result: GuestActivationWaitResult
+    ) -> RuntimeGuestWaitResultPlan {
+        switch result {
+        case .completed(let message):
+            return RuntimeGuestWaitResultPlan(
+                logMessage: "guest update activation result completed message=\(message)",
+                failureMessage: nil
+            )
+        case .failed(let message):
+            return RuntimeGuestWaitResultPlan(
+                logMessage: "guest update activation result failed message=\(message)",
+                failureMessage: "runtime health check failed"
+            )
+        case .timedOut:
+            return RuntimeGuestWaitResultPlan(
+                logMessage: nil,
+                failureMessage: "runtime health check failed"
+            )
+        }
+    }
+
     public func guestShutdownPlan(version: String) -> RuntimeGuestShutdownPlan {
         RuntimeGuestShutdownPlan(
             version: version,
@@ -432,6 +468,32 @@ public struct UpdateRuntimeUseCase {
             requestedAt: requestedAt,
             version: plan.version
         )
+    }
+
+    public func guestShutdownWaitStartedLogMessage(timeoutSeconds: Double) -> String {
+        "waiting for guest update shutdown result timeoutSeconds=\(timeoutSeconds)"
+    }
+
+    public func guestShutdownWaitResultPlan(
+        _ result: GuestShutdownWaitResult
+    ) -> RuntimeGuestWaitResultPlan {
+        switch result {
+        case .ready(let message):
+            return RuntimeGuestWaitResultPlan(
+                logMessage: "guest update shutdown result ready message=\(message)",
+                failureMessage: nil
+            )
+        case .failed(let message):
+            return RuntimeGuestWaitResultPlan(
+                logMessage: "guest update shutdown result failed message=\(message)",
+                failureMessage: message
+            )
+        case .timedOut:
+            return RuntimeGuestWaitResultPlan(
+                logMessage: nil,
+                failureMessage: "guest update shutdown timed out"
+            )
+        }
     }
 
     private func loadedText(_ loaded: Bool) -> String {

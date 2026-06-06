@@ -97,7 +97,8 @@ public struct RuntimeRedisBackupWorkflow {
     }
 
     public func createBackup() throws -> RuntimeRedisBackupResult {
-        operations.log("redis backup requested")
+        let requestedPlan = useCase.redisBackupRequestedPlan()
+        operations.log(requestedPlan.logMessage)
         try operations.requireCapability()
         try operations.createDirectory(context.guestRunDirectory, true)
         try operations.createDirectory(context.redisBackupsDirectory, true)
@@ -105,7 +106,11 @@ public struct RuntimeRedisBackupWorkflow {
         let resultURL = context.guestRunDirectory.appendingPathComponent(context.resultFileName)
         try operations.removePreviousResult(resultURL)
 
-        try operations.writeStatus(.recovering, .redisBackup, "redis backup requested")
+        try operations.writeStatus(
+            requestedPlan.status,
+            requestedPlan.operation,
+            requestedPlan.statusMessage
+        )
 
         let requestID = operations.requestID()
         let request = RedisBackupRequestDocument(
@@ -131,7 +136,7 @@ public struct RuntimeRedisBackupWorkflow {
                 operations.log(logMessage)
             case .completed(let message, let archive):
                 try operations.writeStatus(.healthy, .redisBackup, message)
-                operations.log("redis backup completed")
+                operations.log(useCase.redisBackupCompletedLogMessage())
                 return RuntimeRedisBackupResult(message: message, archive: archive)
             case .failed(let message):
                 try operations.writeStatus(.degraded, .redisBackup, message)
@@ -149,7 +154,12 @@ public struct RuntimeRedisBackupWorkflow {
             }
         }
 
-        try operations.writeStatus(.degraded, .redisBackup, "redis backup timed out")
-        throw RuntimeRedisBackupWorkflowError.operationFailed("redis backup timed out")
+        let timedOutPlan = useCase.redisBackupTimedOutPlan()
+        try operations.writeStatus(
+            timedOutPlan.status,
+            timedOutPlan.operation,
+            timedOutPlan.statusMessage
+        )
+        throw RuntimeRedisBackupWorkflowError.operationFailed(timedOutPlan.failureMessage)
     }
 }

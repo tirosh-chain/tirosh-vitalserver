@@ -87,7 +87,7 @@ public struct RuntimeGuestActivationRunner {
     }
 
     private func waitForActivationResult(_ request: RuntimeGuestActivationRequest) throws {
-        log("waiting for guest update activation result timeoutSeconds=\(waitTimeoutSeconds)")
+        log(useCase.guestActivationWaitStartedLogMessage(timeoutSeconds: waitTimeoutSeconds))
         let maxAttempts = Int(ceil(waitTimeoutSeconds / 3.0))
         let waitResult = GuestActivationWaiter.wait(
             expectedRequestId: request.id,
@@ -103,15 +103,12 @@ public struct RuntimeGuestActivationRunner {
             sleep: sleep
         )
 
-        switch waitResult {
-        case .completed(let message):
-            log("guest update activation result completed message=\(message)")
-            return
-        case .failed(let message):
-            log("guest update activation result failed message=\(message)")
-            throw RuntimeGuestActivationWorkflowError.operationFailed("runtime health check failed")
-        case .timedOut:
-            throw RuntimeGuestActivationWorkflowError.operationFailed("runtime health check failed")
+        let resultPlan = useCase.guestActivationWaitResultPlan(waitResult)
+        if let logMessage = resultPlan.logMessage {
+            log(logMessage)
+        }
+        if let failureMessage = resultPlan.failureMessage {
+            throw RuntimeGuestActivationWorkflowError.operationFailed(failureMessage)
         }
     }
 }

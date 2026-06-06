@@ -63,7 +63,7 @@ public struct RuntimeGuestShutdownRunner {
     }
 
     private func waitForShutdownReady(_ request: RuntimeGuestShutdownRequest) throws {
-        log("waiting for guest update shutdown result timeoutSeconds=\(waitTimeoutSeconds)")
+        log(useCase.guestShutdownWaitStartedLogMessage(timeoutSeconds: waitTimeoutSeconds))
         let maxAttempts = Int(ceil(waitTimeoutSeconds / 3.0))
         let waitResult = GuestShutdownWaiter.wait(
             expectedRequestId: request.id,
@@ -79,14 +79,12 @@ public struct RuntimeGuestShutdownRunner {
             sleep: sleep
         )
 
-        switch waitResult {
-        case .ready(let message):
-            log("guest update shutdown result ready message=\(message)")
-        case .failed(let message):
-            log("guest update shutdown result failed message=\(message)")
-            throw RuntimeGuestShutdownWorkflowError.operationFailed(message)
-        case .timedOut:
-            throw RuntimeGuestShutdownWorkflowError.operationFailed("guest update shutdown timed out")
+        let resultPlan = useCase.guestShutdownWaitResultPlan(waitResult)
+        if let logMessage = resultPlan.logMessage {
+            log(logMessage)
+        }
+        if let failureMessage = resultPlan.failureMessage {
+            throw RuntimeGuestShutdownWorkflowError.operationFailed(failureMessage)
         }
     }
 }

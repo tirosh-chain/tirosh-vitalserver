@@ -1,3 +1,4 @@
+import Application
 import Contracts
 import Domain
 import Foundation
@@ -9,6 +10,9 @@ public struct RuntimeDatastoreRepairResultWaiter {
     public var sleep: () -> Void
     public var log: (String) -> Void
     public var waitTimeoutSeconds: Double
+    private var useCase: RepairRuntimeUseCase {
+        RepairRuntimeUseCase()
+    }
 
     public init(
         loadResult: @escaping () -> RuntimeGuestDocumentLoadResult<DatastoreRepairResultDocument>,
@@ -25,7 +29,7 @@ public struct RuntimeDatastoreRepairResultWaiter {
     }
 
     public func wait(for request: RuntimeDatastoreRepairRequest) throws {
-        log("waiting for datastore repair result timeoutSeconds=\(waitTimeoutSeconds)")
+        log(useCase.datastoreRepairWaitStartedLogMessage(timeoutSeconds: waitTimeoutSeconds))
         let maxAttempts = Int(ceil(waitTimeoutSeconds / 3.0))
         let waitResult = DatastoreRepairWaiter.wait(
             expectedRequestId: request.id,
@@ -35,11 +39,12 @@ public struct RuntimeDatastoreRepairResultWaiter {
             ),
             loadResult: loadResult,
             onProgress: { message in
+                let progressPlan = useCase.datastoreRepairWaitProgressPlan(message: message)
                 log(message)
                 writeRuntimeStatusBestEffort(
-                    .recovering,
-                    operation: .repairDatastore,
-                    message: message,
+                    progressPlan.status,
+                    operation: progressPlan.operation,
+                    message: progressPlan.message,
                     writeStatus: writeStatus,
                     log: log
                 )
@@ -47,15 +52,12 @@ public struct RuntimeDatastoreRepairResultWaiter {
             sleep: sleep
         )
 
-        switch waitResult {
-        case .completed(let message):
-            log("datastore repair guest result completed message=\(message)")
-            return
-        case .failed(let message):
-            log("datastore repair guest result failed message=\(message)")
-            throw RuntimeDatastoreRepairWorkflowError.operationFailed("runtime health check failed")
-        case .timedOut:
-            throw RuntimeDatastoreRepairWorkflowError.operationFailed("runtime health check failed")
+        let resultPlan = useCase.datastoreRepairWaitResultPlan(waitResult)
+        if let logMessage = resultPlan.logMessage {
+            log(logMessage)
+        }
+        if let failureMessage = resultPlan.failureMessage {
+            throw RuntimeDatastoreRepairWorkflowError.operationFailed(failureMessage)
         }
     }
 }

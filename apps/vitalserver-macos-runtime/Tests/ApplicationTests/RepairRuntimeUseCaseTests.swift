@@ -161,6 +161,44 @@ final class RepairRuntimeUseCaseTests: XCTestCase {
         XCTAssertEqual(request.requestedAt, "2026-06-06T00:00:00Z")
     }
 
+    func testDatastoreRepairWaitPlansPreserveProgressFailedAndTimeoutMeanings() {
+        let useCase = RepairRuntimeUseCase()
+
+        XCTAssertEqual(
+            useCase.datastoreRepairWaitStartedLogMessage(timeoutSeconds: 300),
+            "waiting for datastore repair result timeoutSeconds=300.0"
+        )
+        XCTAssertEqual(
+            useCase.datastoreRepairWaitProgressPlan(message: "waiting for datastore repair guest worker"),
+            RepairRuntimeStatusPlan(
+                status: .recovering,
+                operation: .repairDatastore,
+                message: "waiting for datastore repair guest worker"
+            )
+        )
+        XCTAssertEqual(
+            useCase.datastoreRepairWaitResultPlan(.completed(message: "done")),
+            RepairRuntimeWaitResultPlan(
+                logMessage: "datastore repair guest result completed message=done",
+                failureMessage: nil
+            )
+        )
+        XCTAssertEqual(
+            useCase.datastoreRepairWaitResultPlan(.failed(message: "repair failed")),
+            RepairRuntimeWaitResultPlan(
+                logMessage: "datastore repair guest result failed message=repair failed",
+                failureMessage: "runtime health check failed"
+            )
+        )
+        XCTAssertEqual(
+            useCase.datastoreRepairWaitResultPlan(.timedOut),
+            RepairRuntimeWaitResultPlan(
+                logMessage: nil,
+                failureMessage: "runtime health check failed"
+            )
+        )
+    }
+
     func testRedisBackupResultDecisionPreservesStaleMissingFailedAndDefaultDisplayMessages() {
         let useCase = RepairRuntimeUseCase()
 
@@ -203,6 +241,30 @@ final class RepairRuntimeUseCaseTests: XCTestCase {
                 shouldReportProgress: true
             ),
             .readFailed(message: "failed to read redis backup result: permission denied")
+        )
+    }
+
+    func testRedisBackupLifecyclePlansKeepStatusAndFailureMessagesOutOfWorkflow() {
+        let useCase = RepairRuntimeUseCase()
+
+        XCTAssertEqual(
+            useCase.redisBackupRequestedPlan(),
+            RepairRuntimeLoggedStatusPlan(
+                logMessage: "redis backup requested",
+                status: .recovering,
+                operation: .redisBackup,
+                statusMessage: "redis backup requested"
+            )
+        )
+        XCTAssertEqual(useCase.redisBackupCompletedLogMessage(), "redis backup completed")
+        XCTAssertEqual(
+            useCase.redisBackupTimedOutPlan(),
+            RepairRuntimeFailureStatusPlan(
+                status: .degraded,
+                operation: .redisBackup,
+                statusMessage: "redis backup timed out",
+                failureMessage: "redis backup timed out"
+            )
         )
     }
 

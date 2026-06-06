@@ -137,6 +137,70 @@ public enum RepairRuntimeRedisBackupResultDecision: Equatable, Sendable {
     case readFailed(message: String)
 }
 
+public struct RepairRuntimeStatusPlan: Equatable, Sendable {
+    public let status: RuntimeStatusLevel
+    public let operation: RuntimeOperation
+    public let message: String
+
+    public init(
+        status: RuntimeStatusLevel,
+        operation: RuntimeOperation,
+        message: String
+    ) {
+        self.status = status
+        self.operation = operation
+        self.message = message
+    }
+}
+
+public struct RepairRuntimeLoggedStatusPlan: Equatable, Sendable {
+    public let logMessage: String
+    public let status: RuntimeStatusLevel
+    public let operation: RuntimeOperation
+    public let statusMessage: String
+
+    public init(
+        logMessage: String,
+        status: RuntimeStatusLevel,
+        operation: RuntimeOperation,
+        statusMessage: String
+    ) {
+        self.logMessage = logMessage
+        self.status = status
+        self.operation = operation
+        self.statusMessage = statusMessage
+    }
+}
+
+public struct RepairRuntimeWaitResultPlan: Equatable, Sendable {
+    public let logMessage: String?
+    public let failureMessage: String?
+
+    public init(logMessage: String?, failureMessage: String?) {
+        self.logMessage = logMessage
+        self.failureMessage = failureMessage
+    }
+}
+
+public struct RepairRuntimeFailureStatusPlan: Equatable, Sendable {
+    public let status: RuntimeStatusLevel
+    public let operation: RuntimeOperation
+    public let statusMessage: String
+    public let failureMessage: String
+
+    public init(
+        status: RuntimeStatusLevel,
+        operation: RuntimeOperation,
+        statusMessage: String,
+        failureMessage: String
+    ) {
+        self.status = status
+        self.operation = operation
+        self.statusMessage = statusMessage
+        self.failureMessage = failureMessage
+    }
+}
+
 public struct RepairRuntimeUseCase {
     public init() {}
 
@@ -238,6 +302,62 @@ public struct RepairRuntimeUseCase {
         requestedAt: String
     ) -> RuntimeDatastoreRepairRequest {
         RuntimeDatastoreRepairRequest(id: requestID, requestedAt: requestedAt)
+    }
+
+    public func datastoreRepairWaitStartedLogMessage(timeoutSeconds: Double) -> String {
+        "waiting for datastore repair result timeoutSeconds=\(timeoutSeconds)"
+    }
+
+    public func datastoreRepairWaitProgressPlan(message: String) -> RepairRuntimeStatusPlan {
+        RepairRuntimeStatusPlan(
+            status: .recovering,
+            operation: .repairDatastore,
+            message: message
+        )
+    }
+
+    public func datastoreRepairWaitResultPlan(
+        _ result: DatastoreRepairWaitResult
+    ) -> RepairRuntimeWaitResultPlan {
+        switch result {
+        case .completed(let message):
+            return RepairRuntimeWaitResultPlan(
+                logMessage: "datastore repair guest result completed message=\(message)",
+                failureMessage: nil
+            )
+        case .failed(let message):
+            return RepairRuntimeWaitResultPlan(
+                logMessage: "datastore repair guest result failed message=\(message)",
+                failureMessage: "runtime health check failed"
+            )
+        case .timedOut:
+            return RepairRuntimeWaitResultPlan(
+                logMessage: nil,
+                failureMessage: "runtime health check failed"
+            )
+        }
+    }
+
+    public func redisBackupRequestedPlan() -> RepairRuntimeLoggedStatusPlan {
+        RepairRuntimeLoggedStatusPlan(
+            logMessage: "redis backup requested",
+            status: .recovering,
+            operation: .redisBackup,
+            statusMessage: "redis backup requested"
+        )
+    }
+
+    public func redisBackupCompletedLogMessage() -> String {
+        "redis backup completed"
+    }
+
+    public func redisBackupTimedOutPlan() -> RepairRuntimeFailureStatusPlan {
+        RepairRuntimeFailureStatusPlan(
+            status: .degraded,
+            operation: .redisBackup,
+            statusMessage: "redis backup timed out",
+            failureMessage: "redis backup timed out"
+        )
     }
 
     public func redisBackupResultDecision(

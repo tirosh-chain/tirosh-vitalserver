@@ -400,6 +400,36 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
         XCTAssertEqual(request?.version, "test")
     }
 
+    func testGuestActivationWaitResultPlanPreservesFailureAndTimeoutWithoutWorkflowJudgement() {
+        let useCase = UpdateRuntimeUseCase()
+
+        XCTAssertEqual(
+            useCase.guestActivationWaitStartedLogMessage(timeoutSeconds: 180),
+            "waiting for guest update activation result timeoutSeconds=180.0"
+        )
+        XCTAssertEqual(
+            useCase.guestActivationWaitResultPlan(.completed(message: "done")),
+            RuntimeGuestWaitResultPlan(
+                logMessage: "guest update activation result completed message=done",
+                failureMessage: nil
+            )
+        )
+        XCTAssertEqual(
+            useCase.guestActivationWaitResultPlan(.failed(message: "compose failed")),
+            RuntimeGuestWaitResultPlan(
+                logMessage: "guest update activation result failed message=compose failed",
+                failureMessage: "runtime health check failed"
+            )
+        )
+        XCTAssertEqual(
+            useCase.guestActivationWaitResultPlan(.timedOut),
+            RuntimeGuestWaitResultPlan(
+                logMessage: nil,
+                failureMessage: "runtime health check failed"
+            )
+        )
+    }
+
     func testGuestShutdownPlanAndRequestUseExplicitVersionRequestState() {
         let useCase = UpdateRuntimeUseCase()
 
@@ -416,6 +446,36 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
         XCTAssertEqual(request.id, "request-1")
         XCTAssertEqual(request.requestedAt, "2026-06-06T00:00:00Z")
         XCTAssertEqual(request.version, "1.2.3")
+    }
+
+    func testGuestShutdownWaitResultPlanPreservesGuestFailureAndTimeoutSeparately() {
+        let useCase = UpdateRuntimeUseCase()
+
+        XCTAssertEqual(
+            useCase.guestShutdownWaitStartedLogMessage(timeoutSeconds: 300),
+            "waiting for guest update shutdown result timeoutSeconds=300.0"
+        )
+        XCTAssertEqual(
+            useCase.guestShutdownWaitResultPlan(.ready(message: "poweroff requested")),
+            RuntimeGuestWaitResultPlan(
+                logMessage: "guest update shutdown result ready message=poweroff requested",
+                failureMessage: nil
+            )
+        )
+        XCTAssertEqual(
+            useCase.guestShutdownWaitResultPlan(.failed(message: "backup failed")),
+            RuntimeGuestWaitResultPlan(
+                logMessage: "guest update shutdown result failed message=backup failed",
+                failureMessage: "backup failed"
+            )
+        )
+        XCTAssertEqual(
+            useCase.guestShutdownWaitResultPlan(.timedOut),
+            RuntimeGuestWaitResultPlan(
+                logMessage: nil,
+                failureMessage: "guest update shutdown timed out"
+            )
+        )
     }
 }
 
