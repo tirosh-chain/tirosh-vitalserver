@@ -313,7 +313,7 @@ public struct RuntimeHealthChecker {
 
     private func proxyPortFailureReasons(port: Int) -> [RuntimeFailureReason] {
         guard fileStore.isExecutableFile(atPath: context.lsofPath) else {
-            return []
+            return [.hostProxyListenerScanUnavailable]
         }
         let expectedNginxPID = readInstalledProxyNginxPID()
         let result = commandRunner.run(

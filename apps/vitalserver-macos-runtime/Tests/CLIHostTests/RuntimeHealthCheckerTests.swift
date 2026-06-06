@@ -561,6 +561,25 @@ final class RuntimeHealthCheckerTests: XCTestCase {
         }
     }
 
+    func testSnapshotReportsHostProxyListenerScanUnavailableWhenLsofIsMissing() {
+        let installedPaths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
+        let fileStore = RuntimeFileStoreSpy()
+        let commandRunner = RuntimeCommandRunnerSpy()
+        commandRunner.results[Constants.Commands.plistBuddy] = RuntimeProcessResult(exitCode: 0, stdout: "8080\n", stderr: "")
+        let checker = RuntimeHealthChecker(
+            installedPaths: installedPaths,
+            fileStore: fileStore,
+            serviceManager: RuntimeServiceManagerSpy(),
+            commandRunner: commandRunner,
+            httpProber: RuntimeHTTPProberSpy(),
+            guestGateway: RuntimeGuestGatewaySpy()
+        )
+
+        let snapshot = checker.snapshot()
+
+        XCTAssertTrue(snapshot.failureReasons.contains(.hostProxyListenerScanUnavailable))
+    }
+
     func testSnapshotReportsHostProxyListenerScanFailure() {
         let installedPaths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
         let fileStore = RuntimeFileStoreSpy()

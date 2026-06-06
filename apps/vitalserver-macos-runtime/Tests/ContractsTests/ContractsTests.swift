@@ -420,6 +420,7 @@ final class ContractsTests: XCTestCase {
           "vitaldb-observation-missing",
           "vitaldb-observation-read-failed-decode_failed",
           "proxy-port-80-in-use-by-nginx-1234",
+          "host-proxy-listener-scan-unavailable",
           "host-proxy-listener-scan-failed-port-80-exit-1",
           "guest-bootstrap-result-missing",
           "guest-bootstrap-result-unavailable",
@@ -442,11 +443,12 @@ final class ContractsTests: XCTestCase {
         XCTAssertEqual(reasons[10], .vitalDBObservationMissing)
         XCTAssertEqual(reasons[11], .vitalDBObservationReadFailed("decode_failed"))
         XCTAssertEqual(reasons[12], .proxyPortInUse(port: 80, listeners: "nginx-1234"))
-        XCTAssertEqual(reasons[13], .hostProxyListenerScanFailed(port: 80, exitCode: 1))
-        XCTAssertEqual(reasons[14], .guestBootstrapResultMissing)
-        XCTAssertEqual(reasons[15], .guestBootstrapResultUnavailable)
-        XCTAssertEqual(reasons[16], .guestBootstrapMissingRuntimePackages)
-        XCTAssertEqual(reasons[17], .unknown("future-reason"))
+        XCTAssertEqual(reasons[13], .hostProxyListenerScanUnavailable)
+        XCTAssertEqual(reasons[14], .hostProxyListenerScanFailed(port: 80, exitCode: 1))
+        XCTAssertEqual(reasons[15], .guestBootstrapResultMissing)
+        XCTAssertEqual(reasons[16], .guestBootstrapResultUnavailable)
+        XCTAssertEqual(reasons[17], .guestBootstrapMissingRuntimePackages)
+        XCTAssertEqual(reasons[18], .unknown("future-reason"))
 
         let encoded = try JSONEncoder().encode(reasons)
         let roundTripped = try JSONDecoder().decode([RuntimeFailureReason].self, from: encoded)
@@ -464,6 +466,7 @@ final class ContractsTests: XCTestCase {
             "vitaldb-observation-missing",
             "vitaldb-observation-read-failed-decode_failed",
             "proxy-port-80-in-use-by-nginx-1234",
+            "host-proxy-listener-scan-unavailable",
             "host-proxy-listener-scan-failed-port-80-exit-1",
             "guest-bootstrap-result-missing",
             "guest-bootstrap-result-unavailable",
@@ -513,6 +516,10 @@ final class ContractsTests: XCTestCase {
 
         XCTAssertEqual(RuntimeFailureReason.hostProxyConfigInvalid.domainCategory, .hostProxy)
         XCTAssertEqual(RuntimeFailureReason.hostProxyConfigInvalid.recoveryAction, .repairProxyConfiguration)
+
+        XCTAssertEqual(RuntimeFailureReason.hostProxyListenerScanUnavailable.domainCategory, .hostProxy)
+        XCTAssertEqual(RuntimeFailureReason.hostProxyListenerScanUnavailable.domainSeverity, .warning)
+        XCTAssertEqual(RuntimeFailureReason.hostProxyListenerScanUnavailable.recoveryAction, .inspectLogs)
 
         XCTAssertEqual(RuntimeFailureReason.hostProxyListenerScanFailed(port: 80, exitCode: 1).domainCategory, .hostProxy)
         XCTAssertEqual(RuntimeFailureReason.hostProxyListenerScanFailed(port: 80, exitCode: 1).domainSeverity, .warning)

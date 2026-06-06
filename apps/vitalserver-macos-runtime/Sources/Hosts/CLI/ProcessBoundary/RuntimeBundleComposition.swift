@@ -165,7 +165,7 @@ public struct RuntimeBundleComposition {
             input: ApplyRuntimeBundleInput(bundleURL: bundleURL),
             operations: applyRuntimeBundleOperations()
         )
-        operations.log(UpdateRuntimeUseCase().mutableVMDiskPreservedLogMessage(path: context.vmDisk.path))
+        operations.log(ApplyRuntimeBundleUseCase().mutableVMDiskPreservedLogMessage(path: context.vmDisk.path))
     }
 
     private func runtimeBundlePreparationOperations() -> RuntimeBundlePreparationOperations {
@@ -304,14 +304,14 @@ public struct RuntimeBundleComposition {
         do {
             try operations.fileStore.createDirectory(at: logsDirectory, withIntermediateDirectories: true)
         } catch {
-            operations.log(UpdateRuntimeUseCase().applyBundleLogDirectoryPreparationFailedLogMessage(
+            operations.log(ApplyRuntimeBundleUseCase().applyBundleLogDirectoryPreparationFailedLogMessage(
                 reason: RuntimeErrorDescription.describe(error)
             ))
         }
         do {
             try operations.rotateRuntimeLogs()
         } catch {
-            operations.log(UpdateRuntimeUseCase().applyBundleLogRotationFailedLogMessage(
+            operations.log(ApplyRuntimeBundleUseCase().applyBundleLogRotationFailedLogMessage(
                 reason: RuntimeErrorDescription.describe(error)
             ))
         }

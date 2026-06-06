@@ -58,15 +58,18 @@ public struct RuntimeGuestActivationWorkflowActions {
 }
 
 public struct RuntimeGuestActivationWorkflow {
-    public init() {}
+    private let useCase: RuntimeGuestActivationUseCase
+
+    public init(useCase: RuntimeGuestActivationUseCase = RuntimeGuestActivationUseCase()) {
+        self.useCase = useCase
+    }
 
     public func activateIfNeeded(
         manifest: UpdateBundleManifest,
         context: RuntimeGuestActivationWorkflowContext,
         actions: RuntimeGuestActivationWorkflowActions
     ) throws {
-        let updateUseCase = UpdateRuntimeUseCase()
-        switch updateUseCase.guestActivationExecutionPlan(manifest: manifest) {
+        switch useCase.executionPlan(manifest: manifest) {
         case .skip(let logMessage):
             actions.log(logMessage)
         case .activate(let version, let requestLog, let completionLog):
@@ -74,23 +77,22 @@ public struct RuntimeGuestActivationWorkflow {
             try actions.requireCapability()
             try actions.createGuestRunDirectory(context.guestRunDirectory)
             try actions.removeActivationResult()
-            let request = updateUseCase.guestActivationRequest(
+            let request = useCase.request(
                 version: version,
                 requestID: actions.requestID(),
                 requestedAt: actions.timestamp()
             )
             try actions.writeActivationRequest(request)
-            try startVMServiceIfNeeded(updateUseCase: updateUseCase, actions: actions)
-            try waitForActivationResult(request, context: context, updateUseCase: updateUseCase, actions: actions)
+            try startVMServiceIfNeeded(actions: actions)
+            try waitForActivationResult(request, context: context, actions: actions)
             actions.log(completionLog)
         }
     }
 
     private func startVMServiceIfNeeded(
-        updateUseCase: UpdateRuntimeUseCase,
         actions: RuntimeGuestActivationWorkflowActions
     ) throws {
-        switch updateUseCase.guestActivationVMStartPlan(isVMServiceLoaded: actions.isVMServiceLoaded()) {
+        switch useCase.vmStartPlan(isVMServiceLoaded: actions.isVMServiceLoaded()) {
         case .alreadyLoaded:
             return
         case .startService:
@@ -101,26 +103,49 @@ public struct RuntimeGuestActivationWorkflow {
     private func waitForActivationResult(
         _ request: RuntimeGuestActivationRequest,
         context: RuntimeGuestActivationWorkflowContext,
-        updateUseCase: UpdateRuntimeUseCase,
         actions: RuntimeGuestActivationWorkflowActions
     ) throws {
-        actions.log(updateUseCase.guestActivationWaitStartedLogMessage(
+        actions.log(useCase.waitStartedLogMessage(
             timeoutSeconds: context.waitTimeoutSeconds
         ))
-        let waitResult = GuestActivationWaiter.wait(
-            expectedRequestId: request.id,
-            configuration: updateUseCase.guestActivationWaitConfiguration(
-                timeoutSeconds: context.waitTimeoutSeconds
-            ),
-            loadResult: actions.loadActivationResult,
-            onProgress: { message in
-                actions.log(message)
-                actions.writeProgressStatus(.recovering, .activateGuestUpdate, message)
-            },
-            sleep: actions.sleep
+        let configuration = try useCase.waitConfiguration(
+            timeoutSeconds: context.waitTimeoutSeconds
         )
+        for attempt in 0..<configuration.maxAttempts {
+            let outcome = GuestActivationWaiter.evaluateAttempt(
+                expectedRequestId: request.id,
+                configuration: configuration,
+                attempt: attempt,
+                loadResult: actions.loadActivationResult()
+            )
+            switch outcome {
+            case .completed(let message):
+                try executeWaitResultPlan(
+                    useCase.waitResultExecutionPlan(.completed(message: message)),
+                    actions: actions
+                )
+                return
+            case .failed(let message):
+                try executeWaitResultPlan(
+                    useCase.waitResultExecutionPlan(.failed(message: message)),
+                    actions: actions
+                )
+                return
+            case .waiting(let message, let shouldPublishProgress):
+                if shouldPublishProgress {
+                    actions.log(message)
+                    actions.writeProgressStatus(.recovering, .activateGuestUpdate, message)
+                }
+                if attempt < configuration.maxAttempts - 1 {
+                    actions.sleep()
+                }
+            }
+        }
 
-        try executeWaitResultPlan(updateUseCase.guestActivationWaitResultExecutionPlan(waitResult), actions: actions)
+        try executeWaitResultPlan(
+            useCase.waitResultExecutionPlan(.timedOut),
+            actions: actions
+        )
     }
 
     private func executeWaitResultPlan(

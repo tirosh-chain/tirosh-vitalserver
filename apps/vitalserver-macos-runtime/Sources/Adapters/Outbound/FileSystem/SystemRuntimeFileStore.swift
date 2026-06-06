@@ -55,7 +55,10 @@ public struct SystemRuntimeFileStore: RuntimeFileStore, RuntimeFilePartialReadin
 
     public func modificationDate(_ url: URL) throws -> Date {
         let values = try url.resourceValues(forKeys: [.contentModificationDateKey])
-        return values.contentModificationDate ?? Date(timeIntervalSince1970: 0)
+        guard let modificationDate = values.contentModificationDate else {
+            throw SystemRuntimeFileStoreError.missingModificationDate(path: url.path)
+        }
+        return modificationDate
     }
 
     public func writeData(_ data: Data, to url: URL, options: Data.WritingOptions = []) throws {
@@ -126,7 +129,9 @@ public struct SystemRuntimeFileStore: RuntimeFileStore, RuntimeFilePartialReadin
 
     public func fileSystemAttributes(forPath path: String) throws -> RuntimeFileSystemAttributes {
         let attributes = try FileManager.default.attributesOfFileSystem(forPath: path)
-        let freeBytes = (attributes[.systemFreeSize] as? NSNumber)?.uint64Value ?? 0
+        guard let freeBytes = (attributes[.systemFreeSize] as? NSNumber)?.uint64Value else {
+            throw SystemRuntimeFileStoreError.missingFileSystemFreeSize(path: path)
+        }
         return RuntimeFileSystemAttributes(freeBytes: freeBytes)
     }
 

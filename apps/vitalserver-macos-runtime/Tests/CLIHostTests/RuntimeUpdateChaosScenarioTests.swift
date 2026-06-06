@@ -330,34 +330,40 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
     }
 
     func testGuestResultChaosSeparatesInvalidResultFromTimeout() {
-        let invalidResult = GuestActivationWaiter.wait(
+        let invalidResult = GuestActivationWaiter.evaluateAttempt(
             expectedRequestId: "request-current",
             configuration: GuestActivationWaitConfiguration(maxAttempts: 1, progressEveryAttempts: 1),
-            loadResult: {
-                .loaded(GuestUpdateActivationResultDocument(
+            attempt: 0,
+            loadResult: .loaded(GuestUpdateActivationResultDocument(
                     schemaVersion: 2,
                     requestId: "request-stale",
                     operation: .activateGuestUpdate,
                     status: .completed,
                     message: "stale success",
                     updatedAt: "2026-05-31T00:00:00Z"
-                ))
-            },
-            onProgress: { _ in },
-            sleep: {}
+            ))
         )
         var progressMessages: [String] = []
         var sleepCount = 0
-        let timeoutResult = GuestActivationWaiter.wait(
-            expectedRequestId: "request-current",
-            configuration: GuestActivationWaitConfiguration(maxAttempts: 2, progressEveryAttempts: 1),
-            loadResult: { .missing },
-            onProgress: { progressMessages.append($0) },
-            sleep: { sleepCount += 1 }
-        )
+        let configuration = GuestActivationWaitConfiguration(maxAttempts: 2, progressEveryAttempts: 1)
+        for attempt in 0..<configuration.maxAttempts {
+            let outcome = GuestActivationWaiter.evaluateAttempt(
+                expectedRequestId: "request-current",
+                configuration: configuration,
+                attempt: attempt,
+                loadResult: .missing
+            )
+            if case .waiting(let message, let shouldPublishProgress) = outcome {
+                if shouldPublishProgress {
+                    progressMessages.append(message)
+                }
+                if attempt < configuration.maxAttempts - 1 {
+                    sleepCount += 1
+                }
+            }
+        }
 
         XCTAssertEqual(invalidResult, .failed(message: "guest update activation result does not match the current request"))
-        XCTAssertEqual(timeoutResult, .timedOut)
         XCTAssertEqual(progressMessages, [
             "waiting for guest update activation worker",
             "waiting for guest update activation worker",

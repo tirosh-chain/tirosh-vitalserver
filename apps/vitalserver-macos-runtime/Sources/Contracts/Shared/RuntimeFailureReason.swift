@@ -95,6 +95,7 @@ public enum RuntimeFailureReason: Codable, Equatable, Sendable {
     case launchdServiceCrashed(service: String, exitCode: Int)
     case launchdServiceThrottled(service: String)
     case hostProxyListenerMismatch(port: Int, listeners: String)
+    case hostProxyListenerScanUnavailable
     case hostProxyListenerScanFailed(port: Int, exitCode: Int)
     case hostProxyConfigInvalid
     case httpProbeTimedOut(target: String)
@@ -188,6 +189,8 @@ public enum RuntimeFailureReason: Codable, Equatable, Sendable {
             self = .vmProcessExited
         case "host-proxy-config-invalid":
             self = .hostProxyConfigInvalid
+        case "host-proxy-listener-scan-unavailable":
+            self = .hostProxyListenerScanUnavailable
         case "vitaldb-observation-stale":
             self = .vitalDBObservationStale
         default:
@@ -327,6 +330,8 @@ public enum RuntimeFailureReason: Codable, Equatable, Sendable {
             return "launchd-service-\(service)-throttled"
         case .hostProxyListenerMismatch(let port, let listeners):
             return "host-proxy-listener-mismatch-port-\(port)-listeners-\(listeners)"
+        case .hostProxyListenerScanUnavailable:
+            return "host-proxy-listener-scan-unavailable"
         case .hostProxyListenerScanFailed(let port, let exitCode):
             return "host-proxy-listener-scan-failed-port-\(port)-exit-\(exitCode)"
         case .hostProxyConfigInvalid:
@@ -548,7 +553,8 @@ public extension RuntimeFailureReason {
         case .vmLifecycleDocumentInvalid, .vmLifecycleDocumentStale,
              .vmPidFileStale, .vmProcessExited, .launchdServiceCrashed, .launchdServiceThrottled:
             return .vmLifecycle
-        case .hostProxyListenerMismatch, .hostProxyListenerScanFailed, .hostProxyConfigInvalid:
+        case .hostProxyListenerMismatch, .hostProxyListenerScanUnavailable,
+             .hostProxyListenerScanFailed, .hostProxyConfigInvalid:
             return .hostProxy
         case .httpProbeTimedOut, .httpProbeConnectionRefused:
             return .guestNetworking
@@ -576,7 +582,8 @@ public extension RuntimeFailureReason {
         switch self {
         case .redisUIHTTP, .swaggerUIHTTP, .guestLogSyncService, .watchdogService, .guestRuntimeStateStale,
              .runtimeStatusDocumentStale, .observabilityEventStoreUnavailable,
-             .vmLifecycleDocumentStale, .vmPidFileStale, .hostProxyListenerScanFailed,
+             .vmLifecycleDocumentStale, .vmPidFileStale, .hostProxyListenerScanUnavailable,
+             .hostProxyListenerScanFailed,
              .httpProbeTimedOut, .httpProbeConnectionRefused, .guestHTTPProbeFailed,
              .containerObservationMissing, .containerObservationReadFailed,
              .vitalDBObservationMissing, .vitalDBObservationReadFailed, .vitalDBObservationStale:
@@ -617,7 +624,7 @@ public extension RuntimeFailureReason {
             return .inspectLogs
         case .hostProxyListenerMismatch:
             return .freeProxyPort
-        case .hostProxyListenerScanFailed:
+        case .hostProxyListenerScanUnavailable, .hostProxyListenerScanFailed:
             return .inspectLogs
         case .hostProxyConfigInvalid:
             return .repairProxyConfiguration

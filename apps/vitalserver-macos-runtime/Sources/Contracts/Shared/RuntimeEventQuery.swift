@@ -30,7 +30,14 @@ public struct RuntimeEventQuery: Equatable, Sendable {
     }
 }
 
+public enum RuntimeEventPageState: String, Equatable, Sendable {
+    case loaded
+    case partiallyLoaded
+    case readFailed
+}
+
 public struct RuntimeEventPage: Equatable, Sendable {
+    public let state: RuntimeEventPageState
     public let events: [RuntimeEventDocument]
     public let nextCursor: RuntimeEventCursor?
     public let matchingCount: Int?
@@ -40,11 +47,27 @@ public struct RuntimeEventPage: Equatable, Sendable {
         events: [RuntimeEventDocument],
         nextCursor: RuntimeEventCursor? = nil,
         matchingCount: Int? = nil,
+        state: RuntimeEventPageState? = nil,
         readError: String? = nil
     ) {
+        self.state = state ?? Self.defaultState(events: events, readError: readError)
         self.events = events
         self.nextCursor = nextCursor
         self.matchingCount = matchingCount
         self.readError = readError
+    }
+
+    public static func failed(readError: String) -> RuntimeEventPage {
+        RuntimeEventPage(events: [], state: .readFailed, readError: readError)
+    }
+
+    private static func defaultState(
+        events: [RuntimeEventDocument],
+        readError: String?
+    ) -> RuntimeEventPageState {
+        guard readError != nil else {
+            return .loaded
+        }
+        return events.isEmpty ? .readFailed : .partiallyLoaded
     }
 }

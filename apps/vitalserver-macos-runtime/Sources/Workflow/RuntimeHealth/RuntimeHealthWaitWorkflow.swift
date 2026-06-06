@@ -71,56 +71,72 @@ public struct RuntimeHealthWaitWorkflow {
         if let startedMessage = plan.startedMessage {
             actions.log(startedMessage)
         }
-        let waitResult = RuntimeHealthWaiter.wait(
-            configuration: waitConfiguration(context),
-            observe: {
-                useCase.observation(
-                    policy: plan.policy,
-                    serviceStates: actions.serviceStates(plan.observedServices),
-                    snapshot: actions.healthSnapshot()
-                )
-            },
-            onProgress: { reasons in
-                let progressPlan = useCase.progressPlan(reasons: reasons)
-                actions.log(progressPlan.logMessage)
-                actions.writeStatusBestEffort(
-                    progressPlan.status,
-                    progressPlan.operation,
-                    progressPlan.statusMessage
-                )
-            },
-            sleep: {
-                actions.sleep(context.pollIntervalSeconds)
-            }
-        )
+        let configuration = try waitConfiguration(context)
+        var state = RuntimeHealthWaitState()
 
-        try execute(waitResult, actions: actions)
-        return .completed
+        for attempt in 0..<configuration.maxAttempts {
+            let observation = useCase.observation(
+                policy: plan.policy,
+                serviceStates: actions.serviceStates(plan.observedServices),
+                snapshot: actions.healthSnapshot()
+            )
+            switch RuntimeHealthWaiter.evaluateAttempt(
+                configuration: configuration,
+                attempt: attempt,
+                state: state,
+                observation: observation
+            ) {
+            case .healthy:
+                actions.log(useCase.healthyLogMessage(snapshot: observation.snapshot))
+                return .completed
+            case .failedEarly(let reason):
+                let message = useCase.failedEarlyMessage(reason: reason)
+                actions.log(message)
+                throw RuntimeHealthWaitUseCaseError.operationFailed(message)
+            case .waiting(let nextState, let progress):
+                state = nextState
+                if let progress {
+                    let progressPlan = useCase.progressPlan(reasons: progress.reasons)
+                    actions.log(progressPlan.logMessage)
+                    actions.writeStatusBestEffort(
+                        progressPlan.status,
+                        progressPlan.operation,
+                        progressPlan.statusMessage
+                    )
+                }
+                if attempt < configuration.maxAttempts - 1 {
+                    actions.sleep(context.pollIntervalSeconds)
+                }
+            }
+        }
+
+        throw RuntimeHealthWaitUseCaseError.operationFailed(
+            useCase.timedOutFailureMessage(reasons: state.accumulatedReasons)
+        )
     }
 
     private func waitConfiguration(
         _ context: RuntimeHealthWaitWorkflowContext
-    ) -> RuntimeHealthWaitConfiguration {
-        RuntimeHealthWaitConfiguration(
+    ) throws -> RuntimeHealthWaitConfiguration {
+        guard context.timeoutSeconds.isFinite, context.timeoutSeconds > 0 else {
+            throw RuntimeHealthWaitUseCaseError.operationFailed(
+                "invalid runtime health wait configuration: timeoutSeconds must be positive"
+            )
+        }
+        guard context.pollIntervalSeconds.isFinite, context.pollIntervalSeconds > 0 else {
+            throw RuntimeHealthWaitUseCaseError.operationFailed(
+                "invalid runtime health wait configuration: pollIntervalSeconds must be positive"
+            )
+        }
+        guard context.progressEveryAttempts > 0 else {
+            throw RuntimeHealthWaitUseCaseError.operationFailed(
+                "invalid runtime health wait configuration: progressEveryAttempts must be positive"
+            )
+        }
+        return RuntimeHealthWaitConfiguration(
             maxAttempts: Int(ceil(context.timeoutSeconds / context.pollIntervalSeconds)),
             progressEveryAttempts: context.progressEveryAttempts
         )
     }
 
-    private func execute(
-        _ waitResult: RuntimeHealthWaitResult,
-        actions: RuntimeHealthWaitWorkflowActions
-    ) throws {
-        switch waitResult {
-        case .healthy:
-            let snapshot = actions.healthSnapshot()
-            actions.log(useCase.healthyLogMessage(snapshot: snapshot))
-        case .failedEarly(let reason):
-            let message = useCase.failedEarlyMessage(reason: reason)
-            actions.log(message)
-            throw RuntimeHealthWaitUseCaseError.operationFailed(message)
-        case .timedOut(let reasons):
-            throw RuntimeHealthWaitUseCaseError.operationFailed(useCase.timedOutFailureMessage(reasons: reasons))
-        }
-    }
 }

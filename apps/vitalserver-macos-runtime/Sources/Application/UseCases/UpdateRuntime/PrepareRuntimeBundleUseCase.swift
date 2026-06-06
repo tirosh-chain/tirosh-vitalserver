@@ -1,6 +1,11 @@
 import Contracts
 import Foundation
 
+public enum RuntimeBundleMaterializationCleanupPlan: Equatable, Sendable {
+    case none
+    case cleanupTemporaryRoot(URL)
+}
+
 public struct RuntimeBundlePreparationVerification: Equatable, Sendable {
     public let sourceURL: URL
     public let bundleURL: URL
@@ -61,10 +66,9 @@ public struct PrepareRuntimeBundleUseCase {
         _ sourceURL: URL,
         operations: RuntimeBundlePreparationOperations
     ) throws -> RuntimeBundlePreparationVerification {
-        let useCase = UpdateRuntimeUseCase()
-        operations.log(useCase.bundleVerificationStartedLogMessage(sourcePath: sourceURL.path))
+        operations.log(bundleVerificationStartedLogMessage(sourcePath: sourceURL.path))
         let materialized = try operations.materialize(sourceURL)
-        defer { cleanupTemporaryRootIfNeeded(materialized, operations: operations, useCase: useCase) }
+        defer { cleanupTemporaryRootIfNeeded(materialized, operations: operations) }
         let manifest = try operations.verifyDirectory(materialized.bundleURL, sourceURL)
         return RuntimeBundlePreparationVerification(
             sourceURL: sourceURL,
@@ -78,10 +82,9 @@ public struct PrepareRuntimeBundleUseCase {
         _ sourceURL: URL,
         operations: RuntimeBundlePreparationOperations
     ) throws -> RuntimeBundlePreparationStageResult {
-        let useCase = UpdateRuntimeUseCase()
-        operations.log(useCase.bundleStageStartedLogMessage(sourcePath: sourceURL.path))
+        operations.log(bundleStageStartedLogMessage(sourcePath: sourceURL.path))
         let materialized = try operations.materialize(sourceURL)
-        defer { cleanupTemporaryRootIfNeeded(materialized, operations: operations, useCase: useCase) }
+        defer { cleanupTemporaryRootIfNeeded(materialized, operations: operations) }
         let manifest = try operations.verifyDirectory(materialized.bundleURL, sourceURL)
         let destination = try operations.stageBundle(RuntimeBundleStagingInput(
             sourceURL: sourceURL,
@@ -96,13 +99,29 @@ public struct PrepareRuntimeBundleUseCase {
         )
     }
 
+    public func bundleVerificationStartedLogMessage(sourcePath: String) -> String {
+        "bundle verification started path=\(sourcePath)"
+    }
+
+    public func bundleStageStartedLogMessage(sourcePath: String) -> String {
+        "bundle stage started source=\(sourcePath)"
+    }
+
+    public func bundleMaterializationCleanupPlan(
+        materialized: RuntimeMaterializedBundle
+    ) -> RuntimeBundleMaterializationCleanupPlan {
+        guard let temporaryRoot = materialized.temporaryRoot else {
+            return .none
+        }
+        return .cleanupTemporaryRoot(temporaryRoot)
+    }
+
     private func cleanupTemporaryRootIfNeeded(
         _ materialized: RuntimeMaterializedBundle,
-        operations: RuntimeBundlePreparationOperations,
-        useCase: UpdateRuntimeUseCase
+        operations: RuntimeBundlePreparationOperations
     ) {
         operations.executeMaterializationCleanupPlan(
-            useCase.bundleMaterializationCleanupPlan(materialized: materialized)
+            bundleMaterializationCleanupPlan(materialized: materialized)
         )
     }
 }

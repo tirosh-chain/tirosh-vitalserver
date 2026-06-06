@@ -84,14 +84,14 @@ public struct RuntimeVMDiskRepairWorkflow {
         context: RuntimeVMDiskRepairContext,
         operations: RuntimeVMDiskRepairOperations
     ) throws {
-        let useCase = RepairRuntimeUseCase()
-        let plan = try useCase.planVMDiskRepair(for: observeRepairInput(context, operations: operations))
-        let executionPlan = useCase.vmDiskExecutionPlan(
+        let useCase = RuntimeVMDiskRepairUseCase()
+        let plan = try useCase.planRepair(for: observeRepairInput(context, operations: operations))
+        let executionPlan = useCase.executionPlan(
             vmDisk: context.vmDisk,
             backupsDirectory: context.backupsDirectory,
             timestamp: operations.timestamp()
         )
-        let buildPlan = useCase.vmDiskReplacementBuildPlan(
+        let buildPlan = useCase.replacementBuildPlan(
             rootfsBase: context.rootfsBase,
             vmDisk: context.vmDisk,
             backupsDirectory: context.backupsDirectory,
@@ -136,11 +136,11 @@ public struct RuntimeVMDiskRepairWorkflow {
         buildPlan: RepairRuntimeVMDiskReplacementBuildPlan,
         context: RuntimeVMDiskRepairContext,
         operations: RuntimeVMDiskRepairOperations,
-        useCase: RepairRuntimeUseCase
+        useCase: RuntimeVMDiskRepairUseCase
     ) throws {
         var archivedDiskPath: String?
 
-        try report(useCase.vmDiskRepairRequestedPlan(), operations: operations)
+        try report(useCase.requestedPlan(), operations: operations)
         try createRedisBackupBestEffort(useCase: useCase, operations: operations)
         try operations.createDirectory(buildPlan.vmDiskDirectory, true)
         try operations.createDirectory(buildPlan.backupsDirectory, true)
@@ -153,35 +153,35 @@ public struct RuntimeVMDiskRepairWorkflow {
             buildPlan.requiredFreeSpaceBytes,
             buildPlan.operation.rawValue
         )
-        try writeStatus(useCase.vmDiskReplacementCreationStatusPlan(), operations: operations)
+        try writeStatus(useCase.replacementCreationStatusPlan(), operations: operations)
         try operations.createReplacementVMDisk(buildPlan)
 
-        try writeStatus(useCase.vmDiskArchiveStatusPlan(), operations: operations)
+        try writeStatus(useCase.archiveStatusPlan(), operations: operations)
         try operations.stopRuntimeServicesForVMDiskReplacement()
         try operations.createDirectory(executionPlan.archiveDirectory, true)
         if plan.shouldArchiveCurrentDisk {
             try operations.moveItem(context.vmDisk, executionPlan.archivedDisk)
             archivedDiskPath = executionPlan.archivedDisk.path
-            operations.log(useCase.vmDiskArchivedLogMessage(archivedDiskPath: executionPlan.archivedDisk.path))
+            operations.log(useCase.archivedLogMessage(archivedDiskPath: executionPlan.archivedDisk.path))
         } else {
-            operations.log(useCase.vmDiskMissingArchiveLogMessage())
+            operations.log(useCase.missingArchiveLogMessage())
         }
 
         try operations.moveItem(executionPlan.temporaryDisk, context.vmDisk)
         try requireReplacementDisk(targetDiskGiB: plan.targetDiskGiB, context: context, operations: operations, useCase: useCase)
-        operations.log(useCase.vmDiskReplacementCreatedLogMessage(
+        operations.log(useCase.replacementCreatedLogMessage(
             vmDiskPath: context.vmDisk.path,
             targetDiskGiB: plan.targetDiskGiB
         ))
 
-        try writeStatus(useCase.vmDiskStartServicesStatusPlan(), operations: operations)
+        try writeStatus(useCase.startServicesStatusPlan(), operations: operations)
         try operations.startRuntimeServices(plan.restartPolicy)
         do {
             try operations.waitForHealth(plan.restartPolicy)
-            let messages = useCase.vmDiskCompletionMessages(archivedDiskPath: archivedDiskPath)
+            let messages = useCase.completionMessages(archivedDiskPath: archivedDiskPath)
             try operations.writeStatus(.healthy, .repairVMDisk, messages.healthy)
         } catch {
-            let messages = useCase.vmDiskCompletionMessages(archivedDiskPath: archivedDiskPath)
+            let messages = useCase.completionMessages(archivedDiskPath: archivedDiskPath)
             try operations.writeStatus(.degraded, .repairVMDisk, messages.degraded)
             throw error
         }
@@ -191,7 +191,7 @@ public struct RuntimeVMDiskRepairWorkflow {
         targetDiskGiB: Int,
         context: RuntimeVMDiskRepairContext,
         operations: RuntimeVMDiskRepairOperations,
-        useCase: RepairRuntimeUseCase
+        useCase: RuntimeVMDiskRepairUseCase
     ) throws {
         let exists = operations.fileExists(context.vmDisk)
         try useCase.requireReplacementDisk(RepairRuntimeVMDiskReplacementObservation(
@@ -204,16 +204,16 @@ public struct RuntimeVMDiskRepairWorkflow {
     }
 
     private func createRedisBackupBestEffort(
-        useCase: RepairRuntimeUseCase,
+        useCase: RuntimeVMDiskRepairUseCase,
         operations: RuntimeVMDiskRepairOperations
     ) throws {
-        try writeStatus(useCase.vmDiskRedisBackupStartedStatusPlan(), operations: operations)
+        try writeStatus(useCase.redisBackupStartedStatusPlan(), operations: operations)
         switch operations.createRedisBackup() {
         case .completed:
-            try report(useCase.vmDiskRedisBackupCompletedPlan(), operations: operations)
+            try report(useCase.redisBackupCompletedPlan(), operations: operations)
         case .failed(let reason):
             try report(
-                useCase.vmDiskRedisBackupFailedPlan(reason: reason),
+                useCase.redisBackupFailedPlan(reason: reason),
                 operations: operations
             )
         }

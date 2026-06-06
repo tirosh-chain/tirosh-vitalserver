@@ -64,6 +64,7 @@ final class SQLiteRuntimeObservabilityStoreTests: XCTestCase {
 
         let page = store.query(RuntimeEventQuery(limit: 10))
 
+        XCTAssertEqual(page.state, .readFailed)
         XCTAssertEqual(page.events, [])
         XCTAssertNotNil(page.readError)
     }
@@ -76,6 +77,7 @@ final class SQLiteRuntimeObservabilityStoreTests: XCTestCase {
 
         let page = store.query(RuntimeEventQuery(limit: 10))
 
+        XCTAssertEqual(page.state, .readFailed)
         XCTAssertEqual(page.events, [])
         XCTAssertNotNil(page.readError)
         XCTAssertFalse(FileManager.default.fileExists(atPath: directory.path))
@@ -113,6 +115,7 @@ final class SQLiteRuntimeObservabilityStoreTests: XCTestCase {
 
         let page = harness.store.query(RuntimeEventQuery(limit: 10))
 
+        XCTAssertEqual(page.state, .readFailed)
         XCTAssertEqual(page.events, [])
         XCTAssertTrue(page.readError?.contains("decodeFailed") == true)
     }
@@ -216,6 +219,7 @@ final class SQLiteRuntimeObservabilityStoreTests: XCTestCase {
 
         let page = repository.query(RuntimeEventQuery(limit: 10))
 
+        XCTAssertEqual(page.state, .partiallyLoaded)
         XCTAssertEqual(page.events.map(\.id), ["event-1"])
         XCTAssertNotNil(page.readError)
         XCTAssertEqual(sqlite.query(RuntimeEventQuery(limit: 10)).events, [])
@@ -338,6 +342,7 @@ final class SQLiteRuntimeObservabilityStoreTests: XCTestCase {
 
         let page = repository.query(RuntimeEventQuery(limit: 10))
 
+        XCTAssertEqual(page.state, .partiallyLoaded)
         XCTAssertEqual(page.events.map(\.id), ["event-1"])
         XCTAssertEqual(page.matchingCount, 1)
         XCTAssertNotNil(page.readError)

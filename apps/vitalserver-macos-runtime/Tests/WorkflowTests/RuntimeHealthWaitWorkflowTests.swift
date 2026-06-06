@@ -70,6 +70,34 @@ final class RuntimeHealthWaitWorkflowTests: XCTestCase {
                 "runtime health timed out reasons=host-proxy-http-000, guest-http-000"
             )
         }
+        XCTAssertEqual(timedOut.events.filter { $0 == "sleep:3.0" }.count, 1)
+    }
+
+    func testWaitRejectsInvalidConfigurationWithoutSleepingOrReadingState() {
+        let invalidPoll = HealthWaitWorkflowHarness(snapshots: [
+            healthSnapshot(reasons: [.hostProxyHTTP("000")]),
+        ])
+
+        XCTAssertThrowsError(try invalidPoll.workflow.wait(
+            policy: RuntimeServiceRestartPolicy(
+                restartVM: true,
+                restartGuestLogSync: false,
+                restartProxy: false,
+                restartWatchdog: false
+            ),
+            context: RuntimeHealthWaitWorkflowContext(
+                timeoutSeconds: 6,
+                pollIntervalSeconds: 0,
+                progressEveryAttempts: 1
+            ),
+            actions: invalidPoll.actions
+        )) { error in
+            XCTAssertEqual(
+                String(describing: error),
+                "invalid runtime health wait configuration: pollIntervalSeconds must be positive"
+            )
+        }
+        XCTAssertTrue(invalidPoll.events.allSatisfy { !$0.hasPrefix("sleep:") })
     }
 }
 

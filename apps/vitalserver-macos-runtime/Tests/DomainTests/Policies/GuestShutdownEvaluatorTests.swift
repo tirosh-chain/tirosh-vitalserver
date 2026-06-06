@@ -87,7 +87,7 @@ final class GuestShutdownEvaluatorTests: XCTestCase {
         var progress: [String] = []
         var sleepCount = 0
 
-        let waitResult = GuestShutdownWaiter.wait(
+        let waitResult = runGuestShutdownWait(
             expectedRequestId: "request-1",
             configuration: GuestShutdownWaitConfiguration(maxAttempts: 5, progressEveryAttempts: 1),
             loadResult: { results.removeFirst() },
@@ -101,7 +101,7 @@ final class GuestShutdownEvaluatorTests: XCTestCase {
     }
 
     func testWaiterFailsOnReadFailure() {
-        let waitResult = GuestShutdownWaiter.wait(
+        let waitResult = runGuestShutdownWait(
             expectedRequestId: "request-1",
             configuration: GuestShutdownWaitConfiguration(maxAttempts: 2, progressEveryAttempts: 1),
             loadResult: { .failed("invalid json") },
@@ -128,4 +128,34 @@ final class GuestShutdownEvaluatorTests: XCTestCase {
             updatedAt: "2026-05-22T00:00:00Z"
         )
     }
+}
+
+private func runGuestShutdownWait(
+    expectedRequestId: String,
+    configuration: GuestShutdownWaitConfiguration,
+    loadResult: () -> RuntimeGuestDocumentLoadResult<GuestUpdateShutdownResultDocument>,
+    onProgress: (String) -> Void,
+    sleep: () -> Void
+) -> GuestShutdownWaitResult {
+    for attempt in 0..<configuration.maxAttempts {
+        switch GuestShutdownWaiter.evaluateAttempt(
+            expectedRequestId: expectedRequestId,
+            configuration: configuration,
+            attempt: attempt,
+            loadResult: loadResult()
+        ) {
+        case .ready(let message):
+            return .ready(message: message)
+        case .failed(let message):
+            return .failed(message: message)
+        case .waiting(let message, let shouldPublishProgress):
+            if shouldPublishProgress {
+                onProgress(message)
+            }
+            if attempt < configuration.maxAttempts - 1 {
+                sleep()
+            }
+        }
+    }
+    return .timedOut
 }

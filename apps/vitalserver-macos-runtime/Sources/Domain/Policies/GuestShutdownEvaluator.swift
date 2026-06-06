@@ -24,6 +24,12 @@ public struct GuestShutdownWaitConfiguration: Equatable {
     }
 }
 
+public enum GuestShutdownWaitAttemptOutcome: Equatable {
+    case ready(message: String)
+    case failed(message: String)
+    case waiting(message: String, shouldPublishProgress: Bool)
+}
+
 public enum GuestShutdownEvaluator {
     public static func evaluate(
         _ result: GuestUpdateShutdownResultDocument?,
@@ -75,42 +81,31 @@ public enum GuestShutdownEvaluator {
 }
 
 public enum GuestShutdownWaiter {
-    public static func wait(
+    public static func evaluateAttempt(
         expectedRequestId: String,
         configuration: GuestShutdownWaitConfiguration,
-        loadResult: () -> RuntimeGuestDocumentLoadResult<GuestUpdateShutdownResultDocument>,
-        onProgress: (String) -> Void,
-        sleep: () -> Void
-    ) -> GuestShutdownWaitResult {
-        for attempt in 0..<configuration.maxAttempts {
-            let decision: GuestShutdownDecision
-            switch loadResult() {
-            case .missing:
-                decision = GuestShutdownEvaluator.evaluate(nil, expectedRequestId: expectedRequestId)
-            case .loaded(let result):
-                decision = GuestShutdownEvaluator.evaluate(result, expectedRequestId: expectedRequestId)
-            case .failed(let message):
-                decision = .failed(message: "failed to read guest update shutdown result: \(message)")
-            }
-            switch decision {
-            case .ready(let message):
-                return .ready(message: message)
-            case .failed(let message):
-                return .failed(message: message)
-            case .missing(let message):
-                if attempt % configuration.progressEveryAttempts == 0 {
-                    onProgress(message)
-                }
-            case .wait(let message):
-                if attempt % configuration.progressEveryAttempts == 0 {
-                    onProgress(message)
-                }
-            }
-
-            if attempt < configuration.maxAttempts - 1 {
-                sleep()
-            }
+        attempt: Int,
+        loadResult: RuntimeGuestDocumentLoadResult<GuestUpdateShutdownResultDocument>
+    ) -> GuestShutdownWaitAttemptOutcome {
+        let decision: GuestShutdownDecision
+        switch loadResult {
+        case .missing:
+            decision = GuestShutdownEvaluator.evaluate(nil, expectedRequestId: expectedRequestId)
+        case .loaded(let result):
+            decision = GuestShutdownEvaluator.evaluate(result, expectedRequestId: expectedRequestId)
+        case .failed(let message):
+            decision = .failed(message: "failed to read guest update shutdown result: \(message)")
         }
-        return .timedOut
+        switch decision {
+        case .ready(let message):
+            return .ready(message: message)
+        case .failed(let message):
+            return .failed(message: message)
+        case .missing(let message), .wait(let message):
+            return .waiting(
+                message: message,
+                shouldPublishProgress: attempt % configuration.progressEveryAttempts == 0
+            )
+        }
     }
 }

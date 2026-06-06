@@ -25,6 +25,12 @@ public struct GuestActivationWaitConfiguration: Equatable {
     }
 }
 
+public enum GuestActivationWaitAttemptOutcome: Equatable {
+    case completed(message: String)
+    case failed(message: String)
+    case waiting(message: String, shouldPublishProgress: Bool)
+}
+
 public enum GuestActivationEvaluator {
     public static func evaluate(
         _ result: GuestUpdateActivationResultDocument?,
@@ -62,42 +68,31 @@ public enum GuestActivationEvaluator {
 }
 
 public enum GuestActivationWaiter {
-    public static func wait(
+    public static func evaluateAttempt(
         expectedRequestId: String,
         configuration: GuestActivationWaitConfiguration,
-        loadResult: () -> RuntimeGuestDocumentLoadResult<GuestUpdateActivationResultDocument>,
-        onProgress: (String) -> Void,
-        sleep: () -> Void
-    ) -> GuestActivationWaitResult {
-        for attempt in 0..<configuration.maxAttempts {
-            let decision: GuestActivationDecision
-            switch loadResult() {
-            case .missing:
-                decision = GuestActivationEvaluator.evaluate(nil, expectedRequestId: expectedRequestId)
-            case .loaded(let result):
-                decision = GuestActivationEvaluator.evaluate(result, expectedRequestId: expectedRequestId)
-            case .failed(let message):
-                decision = .failed(message: "failed to read guest update activation result: \(message)")
-            }
-            switch decision {
-            case .completed(let message):
-                return .completed(message: message)
-            case .failed(let message):
-                return .failed(message: message)
-            case .missing(let message):
-                if attempt % configuration.progressEveryAttempts == 0 {
-                    onProgress(message)
-                }
-            case .wait(let message):
-                if attempt % configuration.progressEveryAttempts == 0 {
-                    onProgress(message)
-                }
-            }
-
-            if attempt < configuration.maxAttempts - 1 {
-                sleep()
-            }
+        attempt: Int,
+        loadResult: RuntimeGuestDocumentLoadResult<GuestUpdateActivationResultDocument>
+    ) -> GuestActivationWaitAttemptOutcome {
+        let decision: GuestActivationDecision
+        switch loadResult {
+        case .missing:
+            decision = GuestActivationEvaluator.evaluate(nil, expectedRequestId: expectedRequestId)
+        case .loaded(let result):
+            decision = GuestActivationEvaluator.evaluate(result, expectedRequestId: expectedRequestId)
+        case .failed(let message):
+            decision = .failed(message: "failed to read guest update activation result: \(message)")
         }
-        return .timedOut
+        switch decision {
+        case .completed(let message):
+            return .completed(message: message)
+        case .failed(let message):
+            return .failed(message: message)
+        case .missing(let message), .wait(let message):
+            return .waiting(
+                message: message,
+                shouldPublishProgress: attempt % configuration.progressEveryAttempts == 0
+            )
+        }
     }
 }

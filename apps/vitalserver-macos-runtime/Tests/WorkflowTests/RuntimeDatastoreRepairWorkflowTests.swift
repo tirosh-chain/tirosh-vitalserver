@@ -137,6 +137,22 @@ final class RuntimeDatastoreRepairWorkflowTests: XCTestCase {
         ))
         XCTAssertEqual(timeoutSleepCount(harness.events), 1)
     }
+
+    func testRepairWaitRejectsInvalidTimeoutBeforePollingGuestResult() {
+        let harness = DatastoreRepairHarness(
+            waitTimeoutSeconds: 0,
+            results: [.missing]
+        )
+
+        XCTAssertThrowsError(try harness.repair()) { error in
+            XCTAssertEqual(
+                error as? RepairRuntimeUseCaseError,
+                .operationFailed("invalid datastore repair wait configuration: waitTimeoutSeconds must be positive")
+            )
+        }
+        XCTAssertFalse(harness.events.contains("sleep"))
+        XCTAssertFalse(harness.events.contains("status:recovering:repair-datastore:waiting for datastore repair guest worker"))
+    }
 }
 
 private final class DatastoreRepairHarness {

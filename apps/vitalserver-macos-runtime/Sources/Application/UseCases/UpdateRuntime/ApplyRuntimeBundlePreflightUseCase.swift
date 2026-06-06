@@ -71,6 +71,87 @@ public struct ApplyRuntimeBundlePreflightOperations {
     }
 }
 
+public struct ApplyRuntimeBundlePreflightCapabilityPlan: Equatable, Sendable {
+    public let instructions: [ApplyRuntimeBundlePreflightCapabilityInstruction]
+    public let serviceRestartLogMessage: String
+
+    public init(
+        instructions: [ApplyRuntimeBundlePreflightCapabilityInstruction],
+        serviceRestartLogMessage: String
+    ) {
+        self.instructions = instructions
+        self.serviceRestartLogMessage = serviceRestartLogMessage
+    }
+}
+
+public enum ApplyRuntimeBundlePreflightCapabilityInstruction: Equatable, Sendable {
+    case requireRuntimeDiskHealthAllowsUpdate
+    case requireGuestCapability(RuntimeGuestCapabilityRequirement)
+}
+
+public struct ApplyRuntimeBundlePreflightManifestPlan: Equatable, Sendable {
+    public let stagedRootfs: URL?
+    public let manifestLogMessage: String
+    public let backupReason: String
+    public let backupStartedLogMessage: String
+
+    public init(
+        stagedRootfs: URL?,
+        manifestLogMessage: String,
+        backupReason: String,
+        backupStartedLogMessage: String
+    ) {
+        self.stagedRootfs = stagedRootfs
+        self.manifestLogMessage = manifestLogMessage
+        self.backupReason = backupReason
+        self.backupStartedLogMessage = backupStartedLogMessage
+    }
+}
+
+public enum ApplyRuntimeBundleDiskHealthDecision: Equatable, Sendable {
+    case allowed
+    case blocked(blockers: [RuntimeVMError], logMessage: String, failureMessage: String)
+}
+
+public struct ApplyRuntimeBundleRootfsStoragePreflightPlan: Equatable, Sendable {
+    public let rootfsStorage: RuntimeUpdateRootfsStorageInput
+    public let logMessage: String
+
+    public init(rootfsStorage: RuntimeUpdateRootfsStorageInput, logMessage: String) {
+        self.rootfsStorage = rootfsStorage
+        self.logMessage = logMessage
+    }
+}
+
+public enum ApplyRuntimeBundleRootfsStorageObservationPlan: Equatable, Sendable {
+    case unchanged(ApplyRuntimeBundleRootfsStoragePreflightPlan)
+    case replacing(stagedRootfs: URL, rootfsBase: URL)
+}
+
+public struct ApplyRuntimeBundleRootfsStorageObservation: Equatable, Sendable {
+    public let stagedRootfs: URL
+    public let stagedRootfsExists: Bool
+    public let installedRootfsBytes: UInt64?
+    public let incomingRootfsBytes: UInt64?
+
+    public init(
+        stagedRootfs: URL,
+        stagedRootfsExists: Bool,
+        installedRootfsBytes: UInt64?,
+        incomingRootfsBytes: UInt64?
+    ) {
+        self.stagedRootfs = stagedRootfs
+        self.stagedRootfsExists = stagedRootfsExists
+        self.installedRootfsBytes = installedRootfsBytes
+        self.incomingRootfsBytes = incomingRootfsBytes
+    }
+}
+
+public enum ApplyRuntimeBundleRootfsStorageDecision: Equatable, Sendable {
+    case planned(ApplyRuntimeBundleRootfsStoragePreflightPlan)
+    case failed(message: String)
+}
+
 public struct ApplyRuntimeBundlePreflightUseCase {
     public init() {}
 
@@ -78,10 +159,9 @@ public struct ApplyRuntimeBundlePreflightUseCase {
         input: ApplyRuntimeBundlePreflightInput,
         operations: ApplyRuntimeBundlePreflightOperations
     ) throws -> ApplyBundlePreflightContext {
-        let update = UpdateRuntimeUseCase()
         let stagedBundle = try operations.stageBundle(input.bundleURL)
         let manifest = try operations.loadStagedManifest(stagedBundle)
-        let manifestPlan = update.preflightManifestPlan(stagedBundle: stagedBundle, manifest: manifest)
+        let manifestPlan = preflightManifestPlan(stagedBundle: stagedBundle, manifest: manifest)
         operations.log(manifestPlan.manifestLogMessage)
         try RuntimeUpdatePreflightPolicy.checkCompatibility(
             manifest: manifest,
@@ -92,19 +172,18 @@ public struct ApplyRuntimeBundlePreflightUseCase {
 
         let stagedRootfs = manifestPlan.stagedRootfs
         let stagedBundleSize = try operations.directorySize(stagedBundle)
-        operations.log(update.storagePreflightStagedBundleLogMessage(stagedBundleBytes: stagedBundleSize))
-        let rootfsStoragePlan = update.rootfsStorageObservationPlan(
+        operations.log(storagePreflightStagedBundleLogMessage(stagedBundleBytes: stagedBundleSize))
+        let rootfsStoragePlan = rootfsStorageObservationPlan(
             stagedRootfs: stagedRootfs,
             rootfsBase: input.rootfsBase
         )
         let rootfsStoragePreflightPlan = try resolveRootfsStorage(
             rootfsStoragePlan,
-            operations: operations,
-            update: update
+            operations: operations
         )
         let rootfsStorage = rootfsStoragePreflightPlan.rootfsStorage
         operations.log(rootfsStoragePreflightPlan.logMessage)
-        let storageRequirement = update.storageRequirement(
+        let storageRequirement = storageRequirement(
             stagedBundleBytes: stagedBundleSize,
             rootfsStorage: rootfsStorage,
             marginBytes: input.updateFreeSpaceMarginBytes
@@ -117,7 +196,7 @@ public struct ApplyRuntimeBundlePreflightUseCase {
         )
 
         let restartPolicy = operations.serviceRestartPolicy()
-        let capabilityPlan = update.preflightCapabilityPlan(
+        let capabilityPlan = preflightCapabilityPlan(
             manifest: manifest,
             restartPolicy: restartPolicy
         )
@@ -125,13 +204,12 @@ public struct ApplyRuntimeBundlePreflightUseCase {
         for instruction in capabilityPlan.instructions {
             try executeCapabilityInstruction(
                 instruction,
-                operations: operations,
-                update: update
+                operations: operations
             )
         }
         operations.log(manifestPlan.backupStartedLogMessage)
         let backup = try operations.createBackup(manifestPlan.backupReason)
-        operations.log(update.backupCreatedLogMessage(
+        operations.log(backupCreatedLogMessage(
             backupPath: backup.path,
             backupBytes: try operations.directorySize(backup)
         ))
@@ -145,17 +223,136 @@ public struct ApplyRuntimeBundlePreflightUseCase {
         )
     }
 
+    public func preflightManifestPlan(
+        stagedBundle: URL,
+        manifest: UpdateBundleManifest
+    ) -> ApplyRuntimeBundlePreflightManifestPlan {
+        ApplyRuntimeBundlePreflightManifestPlan(
+            stagedRootfs: manifest.artifacts.contains { $0.type == .rootfsBase }
+                ? stagedBundle.appendingPathComponent(RuntimeFileNames.rootfsBase)
+                : nil,
+            manifestLogMessage: "bundle apply manifest version=\(manifest.version) runtimeVersion=\(manifest.runtimeVersion) artifacts=\(manifest.artifacts.count) migrations=\(manifest.migrations.count)",
+            backupReason: "before-\(manifest.version)",
+            backupStartedLogMessage: "creating managed backup reason=before-\(manifest.version)"
+        )
+    }
+
+    public func preflightCapabilityPlan(
+        manifest: UpdateBundleManifest,
+        restartPolicy: RuntimeServiceRestartPolicy
+    ) -> ApplyRuntimeBundlePreflightCapabilityPlan {
+        var instructions: [ApplyRuntimeBundlePreflightCapabilityInstruction] = []
+        if restartPolicy.restartVM {
+            instructions.append(.requireRuntimeDiskHealthAllowsUpdate)
+            instructions.append(.requireGuestCapability(.prepareUpdateShutdown))
+        }
+        if manifest.artifacts.contains(where: { $0.type == .guestDeploy }) {
+            instructions.append(.requireGuestCapability(.activateUpdate))
+        }
+
+        return ApplyRuntimeBundlePreflightCapabilityPlan(
+            instructions: instructions,
+            serviceRestartLogMessage: "runtime services before update vm=\(loadedText(restartPolicy.restartVM)) guestLogSync=\(loadedText(restartPolicy.restartGuestLogSync)) proxy=\(loadedText(restartPolicy.restartProxy)) watchdog=\(loadedText(restartPolicy.restartWatchdog))"
+        )
+    }
+
+    public func storageRequirement(
+        stagedBundleBytes: UInt64,
+        rootfsStorage: RuntimeUpdateRootfsStorageInput,
+        marginBytes: UInt64
+    ) -> RuntimeUpdateStorageRequirement {
+        RuntimeUpdatePreflightPolicy.storageRequirement(
+            stagedBundleBytes: stagedBundleBytes,
+            rootfsStorage: rootfsStorage,
+            marginBytes: marginBytes
+        )
+    }
+
+    public func storagePreflightStagedBundleLogMessage(stagedBundleBytes: UInt64) -> String {
+        "bundle apply storage preflight stagedBundle=\(formatBytes(stagedBundleBytes))"
+    }
+
+    public func replacingRootfsStoragePreflightPlan(
+        installedRootfsBytes: UInt64,
+        incomingRootfsBytes: UInt64
+    ) -> ApplyRuntimeBundleRootfsStoragePreflightPlan {
+        ApplyRuntimeBundleRootfsStoragePreflightPlan(
+            rootfsStorage: .replacing(
+                installedRootfsBytes: installedRootfsBytes,
+                incomingRootfsBytes: incomingRootfsBytes
+            ),
+            logMessage: "bundle apply storage preflight installedRootfs=\(formatBytes(installedRootfsBytes)) incomingRootfs=\(formatBytes(incomingRootfsBytes))"
+        )
+    }
+
+    public func unchangedRootfsStoragePreflightPlan() -> ApplyRuntimeBundleRootfsStoragePreflightPlan {
+        ApplyRuntimeBundleRootfsStoragePreflightPlan(
+            rootfsStorage: .unchanged,
+            logMessage: "bundle apply storage preflight rootfsBase=unchanged"
+        )
+    }
+
+    public func rootfsStorageObservationPlan(
+        stagedRootfs: URL?,
+        rootfsBase: URL
+    ) -> ApplyRuntimeBundleRootfsStorageObservationPlan {
+        guard let stagedRootfs else {
+            return .unchanged(unchangedRootfsStoragePreflightPlan())
+        }
+        return .replacing(stagedRootfs: stagedRootfs, rootfsBase: rootfsBase)
+    }
+
+    public func rootfsStorageDecision(
+        observation: ApplyRuntimeBundleRootfsStorageObservation
+    ) -> ApplyRuntimeBundleRootfsStorageDecision {
+        guard observation.stagedRootfsExists else {
+            return .failed(message: missingFileFailureMessage(path: observation.stagedRootfs.path))
+        }
+        guard let installedRootfsBytes = observation.installedRootfsBytes,
+              let incomingRootfsBytes = observation.incomingRootfsBytes
+        else {
+            return .failed(message: "missing rootfs storage observation")
+        }
+        return .planned(replacingRootfsStoragePreflightPlan(
+            installedRootfsBytes: installedRootfsBytes,
+            incomingRootfsBytes: incomingRootfsBytes
+        ))
+    }
+
+    public func missingFileFailureMessage(path: String) -> String {
+        "missing file: \(path)"
+    }
+
+    public func backupCreatedLogMessage(backupPath: String, backupBytes: UInt64) -> String {
+        "backup created path=\(backupPath) size=\(formatBytes(backupBytes))"
+    }
+
+    public func diskHealthDecision(
+        snapshot: RuntimeHealthSnapshot
+    ) -> ApplyRuntimeBundleDiskHealthDecision {
+        let blockers = RuntimeUpdatePreflightPolicy.blockingGuestStorageErrors(snapshot.vmErrors)
+        guard !blockers.isEmpty else {
+            return .allowed
+        }
+
+        let codes = blockers.map(\.rawValue).joined(separator: ",")
+        return .blocked(
+            blockers: blockers,
+            logMessage: "bundle apply blocked by VM guest storage health errors=\(codes)",
+            failureMessage: "VM disk health blocks update; run Repair VM Disk before applying update. errors=\(codes)"
+        )
+    }
+
     private func resolveRootfsStorage(
         _ plan: ApplyRuntimeBundleRootfsStorageObservationPlan,
-        operations: ApplyRuntimeBundlePreflightOperations,
-        update: UpdateRuntimeUseCase
+        operations: ApplyRuntimeBundlePreflightOperations
     ) throws -> ApplyRuntimeBundleRootfsStoragePreflightPlan {
         let decision: ApplyRuntimeBundleRootfsStorageDecision
         switch plan {
         case .unchanged(let rootfsStoragePlan):
             decision = .planned(rootfsStoragePlan)
         case .replacing(let stagedRootfs, let rootfsBase):
-            decision = update.rootfsStorageDecision(
+            decision = rootfsStorageDecision(
                 observation: try operations.observeRootfsStorage(stagedRootfs, rootfsBase)
             )
         }
@@ -170,12 +367,11 @@ public struct ApplyRuntimeBundlePreflightUseCase {
 
     private func executeCapabilityInstruction(
         _ instruction: ApplyRuntimeBundlePreflightCapabilityInstruction,
-        operations: ApplyRuntimeBundlePreflightOperations,
-        update: UpdateRuntimeUseCase
+        operations: ApplyRuntimeBundlePreflightOperations
     ) throws {
         switch instruction {
         case .requireRuntimeDiskHealthAllowsUpdate:
-            let decision = update.diskHealthDecision(snapshot: operations.runtimeHealthSnapshot())
+            let decision = diskHealthDecision(snapshot: operations.runtimeHealthSnapshot())
             switch decision {
             case .allowed:
                 return
@@ -186,5 +382,14 @@ public struct ApplyRuntimeBundlePreflightUseCase {
         case .requireGuestCapability(let capability):
             try operations.requireGuestCapability(capability)
         }
+    }
+
+    private func loadedText(_ loaded: Bool) -> String {
+        loaded ? "loaded" : "not-loaded"
+    }
+
+    private func formatBytes(_ bytes: UInt64) -> String {
+        let mib = Double(bytes) / 1_048_576
+        return String(format: "%.1f MiB", max(mib, 0))
     }
 }

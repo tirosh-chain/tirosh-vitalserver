@@ -125,7 +125,7 @@ public struct RollbackRuntimeWorkflow {
         context: RollbackRuntimeExecutionContext,
         operations: RollbackRuntimeOperations
     ) throws {
-        let useCase = UpdateRuntimeUseCase()
+        let useCase = RollbackRuntimeUseCase()
         let preflight = try preparePreflight(command, operations: operations, useCase: useCase)
         let startedPlan = useCase.rollbackStartedPlan(backupPath: preflight.backup.path)
         operations.log(startedPlan.logMessage)
@@ -167,7 +167,7 @@ public struct RollbackRuntimeWorkflow {
         _ command: RuntimeRollbackCommand,
         operations: RollbackRuntimeOperations
     ) throws -> RollbackPreflightContext {
-        try preparePreflight(command, operations: operations, useCase: UpdateRuntimeUseCase())
+        try preparePreflight(command, operations: operations, useCase: RollbackRuntimeUseCase())
     }
 
     public func executeStep(
@@ -176,13 +176,13 @@ public struct RollbackRuntimeWorkflow {
         context: RollbackRuntimeStepExecutionContext,
         operations: RollbackRuntimeOperations
     ) throws {
-        try executeStep(step, preflight: preflight, context: context, operations: operations, useCase: UpdateRuntimeUseCase())
+        try executeStep(step, preflight: preflight, context: context, operations: operations, useCase: RollbackRuntimeUseCase())
     }
 
     private func preparePreflight(
         _ command: RuntimeRollbackCommand,
         operations: RollbackRuntimeOperations,
-        useCase: UpdateRuntimeUseCase
+        useCase: RollbackRuntimeUseCase
     ) throws -> RollbackPreflightContext {
         let backup = try operations.resolveBackupSelection(useCase.rollbackBackupSelection(command: command))
         let manifestBackup = try executeBackupDirectoryDecision(
@@ -212,7 +212,7 @@ public struct RollbackRuntimeWorkflow {
         preflight: RollbackPreflightContext,
         context: RollbackRuntimeStepExecutionContext,
         operations: RollbackRuntimeOperations,
-        useCase: UpdateRuntimeUseCase
+        useCase: RollbackRuntimeUseCase
     ) throws {
         let requiredInput = useCase.rollbackStepRequiredInput(step: step, preflight: preflight)
         let executionPlan = useCase.rollbackStepExecutionPlan(

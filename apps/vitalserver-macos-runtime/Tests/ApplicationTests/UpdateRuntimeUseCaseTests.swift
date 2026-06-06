@@ -7,7 +7,7 @@ import Errors
 
 final class UpdateRuntimeUseCaseTests: XCTestCase {
     func testInitialHealthDecisionDoesNotWarnWhenRuntimeIsHealthy() {
-        let useCase = UpdateRuntimeUseCase()
+        let useCase = ApplyRuntimeBundleUseCase()
 
         let decision = useCase.initialHealthDecision(
             snapshot: healthSnapshot(reasons: [])
@@ -22,7 +22,7 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
     }
 
     func testInitialHealthDecisionWarnsFromExplicitFailureReasons() {
-        let useCase = UpdateRuntimeUseCase()
+        let useCase = ApplyRuntimeBundleUseCase()
 
         let decision = useCase.initialHealthDecision(
             snapshot: healthSnapshot(reasons: [.hostProxyHTTP("000")])
@@ -40,7 +40,7 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
     }
 
     func testApplyBundlePlanIncludesRootfsReplacementWhenPreflightHasRootfs() {
-        let useCase = UpdateRuntimeUseCase()
+        let useCase = ApplyRuntimeBundleUseCase()
 
         let plan = useCase.planApplyBundle(for: applyBundlePreflight(stagedRootfs: URL(fileURLWithPath: "/tmp/rootfs")))
 
@@ -50,7 +50,7 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
     }
 
     func testApplyBundlePlanSkipsRootfsReplacementWhenPreflightHasNoRootfs() {
-        let useCase = UpdateRuntimeUseCase()
+        let useCase = ApplyRuntimeBundleUseCase()
 
         let plan = useCase.planApplyBundle(for: applyBundlePreflight(stagedRootfs: nil))
 
@@ -60,7 +60,7 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
     }
 
     func testApplyBundleLifecyclePlansKeepFailureAndRollbackStatusOutOfWorkflow() {
-        let useCase = UpdateRuntimeUseCase()
+        let useCase = ApplyRuntimeBundleUseCase()
 
         XCTAssertEqual(
             useCase.applyBundleStartedPlan(inputPath: "/tmp/bundle.tar.gz"),
@@ -139,7 +139,7 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
     }
 
     func testApplyBundleCompletionAndBestEffortLogPlansUseExplicitInputs() {
-        let useCase = UpdateRuntimeUseCase()
+        let useCase = ApplyRuntimeBundleUseCase()
 
         XCTAssertEqual(
             useCase.applyBundleCompletedPlan(version: "1.2.3", stagedBundlePath: "/runtime/staged/bundle"),
@@ -173,7 +173,7 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
     }
 
     func testPreflightManifestPlanDerivesExplicitRootfsAndBackupReasonFromManifest() {
-        let useCase = UpdateRuntimeUseCase()
+        let useCase = ApplyRuntimeBundlePreflightUseCase()
         let stagedBundle = URL(fileURLWithPath: "/tmp/staged")
 
         let plan = useCase.preflightManifestPlan(
@@ -193,7 +193,7 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
     }
 
     func testPreflightManifestPlanPreservesMissingRootfsArtifactAsNoStagedRootfs() {
-        let useCase = UpdateRuntimeUseCase()
+        let useCase = ApplyRuntimeBundlePreflightUseCase()
 
         let plan = useCase.preflightManifestPlan(
             stagedBundle: URL(fileURLWithPath: "/tmp/staged"),
@@ -207,7 +207,7 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
     }
 
     func testPreflightCapabilityPlanRequiresShutdownOnlyWhenVMWillRestart() {
-        let useCase = UpdateRuntimeUseCase()
+        let useCase = ApplyRuntimeBundlePreflightUseCase()
 
         let plan = useCase.preflightCapabilityPlan(
             manifest: manifest(artifacts: []),
@@ -230,7 +230,7 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
     }
 
     func testPreflightCapabilityPlanRequiresActivationWhenBundleHasGuestDeploy() {
-        let useCase = UpdateRuntimeUseCase()
+        let useCase = ApplyRuntimeBundlePreflightUseCase()
 
         let plan = useCase.preflightCapabilityPlan(
             manifest: manifest(artifacts: [
@@ -254,7 +254,7 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
     }
 
     func testStorageRequirementIsPlannedByUseCaseFromExplicitRootfsState() {
-        let useCase = UpdateRuntimeUseCase()
+        let useCase = ApplyRuntimeBundlePreflightUseCase()
 
         XCTAssertEqual(
             useCase.storageRequirement(
@@ -285,7 +285,7 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
     }
 
     func testStoragePreflightPlansFormatSizesAndMissingFileFromExplicitInputs() {
-        let useCase = UpdateRuntimeUseCase()
+        let useCase = ApplyRuntimeBundlePreflightUseCase()
 
         XCTAssertEqual(
             useCase.storagePreflightStagedBundleLogMessage(stagedBundleBytes: 2_097_152),
@@ -319,7 +319,7 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
     }
 
     func testRootfsStorageObservationDecisionKeepsFileExistenceInterpretationOutOfWorkflow() {
-        let useCase = UpdateRuntimeUseCase()
+        let useCase = ApplyRuntimeBundlePreflightUseCase()
         let stagedRootfs = URL(fileURLWithPath: "/staged/rootfs-base.raw.gz")
         let rootfsBase = URL(fileURLWithPath: "/runtime/rootfs-base.raw.gz")
 
@@ -361,7 +361,7 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
     }
 
     func testDiskHealthDecisionAllowsUpdateWithoutGuestStorageBlockers() {
-        let useCase = UpdateRuntimeUseCase()
+        let useCase = ApplyRuntimeBundlePreflightUseCase()
 
         let decision = useCase.diskHealthDecision(snapshot: healthSnapshot(reasons: []))
 
@@ -369,7 +369,7 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
     }
 
     func testDiskHealthDecisionBlocksGuestStorageErrorsWithoutFallback() {
-        let useCase = UpdateRuntimeUseCase()
+        let useCase = ApplyRuntimeBundlePreflightUseCase()
 
         let decision = useCase.diskHealthDecision(snapshot: healthSnapshot(
             reasons: [.init(vmError: .guestFilesystemError)],
@@ -387,7 +387,7 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
     }
 
     func testStopExecutionPlanPreparesGuestShutdownOnlyWhenVMWillRestart() {
-        let useCase = UpdateRuntimeUseCase()
+        let useCase = ApplyRuntimeBundleUseCase()
         let manifest = manifest(artifacts: [])
 
         XCTAssertEqual(
@@ -409,7 +409,7 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
     }
 
     func testRootfsReplacementPlanKeepsMissingRootfsAsExplicitSkip() {
-        let useCase = UpdateRuntimeUseCase()
+        let useCase = ApplyRuntimeBundleUseCase()
         let rootfsBase = URL(fileURLWithPath: "/runtime/rootfs-base.raw")
         let stagedRootfs = URL(fileURLWithPath: "/tmp/rootfs-base.raw.gz")
 
@@ -427,7 +427,8 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
     }
 
     func testApplyBundleStepExecutionMessagesComeFromUseCase() {
-        let useCase = UpdateRuntimeUseCase()
+        let useCase = ApplyRuntimeBundleUseCase()
+        let rollbackUseCase = RollbackRuntimeUseCase()
         let stagedRootfs = URL(fileURLWithPath: "/staged/rootfs-base.raw.gz")
         let rootfsBase = URL(fileURLWithPath: "/runtime/rootfs-base.raw.gz")
         let executionPlan = useCase.rootfsReplacementExecutionPlan(
@@ -461,11 +462,11 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
             "unsupported command: apply-bundle step load-install-settings"
         )
         XCTAssertEqual(
-            useCase.unsupportedRollbackStepFailureMessage(step: .loadInstallSettings),
+            rollbackUseCase.unsupportedRollbackStepFailureMessage(step: .loadInstallSettings),
             "unsupported command: rollback step load-install-settings"
         )
         XCTAssertEqual(
-            useCase.rollbackRootfsRestoreMissingBackupRootfsFailureMessage(),
+            rollbackUseCase.rollbackRootfsRestoreMissingBackupRootfsFailureMessage(),
             "rollback rootfs restore requested without backup rootfs"
         )
         XCTAssertEqual(
@@ -475,7 +476,7 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
     }
 
     func testApplyBundleStepExecutionPlansKeepStepInterpretationOutOfWorkflow() {
-        let useCase = UpdateRuntimeUseCase()
+        let useCase = ApplyRuntimeBundleUseCase()
         let stagedBundle = URL(fileURLWithPath: "/tmp/staged")
         let stagedRootfs = stagedBundle.appendingPathComponent(RuntimeFileNames.rootfsBase)
         let rootfsBase = URL(fileURLWithPath: "/runtime/rootfs-base.raw.gz")
@@ -555,7 +556,7 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
     }
 
     func testRollbackPlanIncludesRootfsRestoreWhenPreflightRestoresRootfs() {
-        let useCase = UpdateRuntimeUseCase()
+        let useCase = RollbackRuntimeUseCase()
 
         let plan = useCase.planRollback(for: rollbackPreflight(restoresRootfsBase: true))
 
@@ -565,7 +566,7 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
     }
 
     func testRollbackPlanSkipsRootfsRestoreWhenPreflightDoesNotRestoreRootfs() {
-        let useCase = UpdateRuntimeUseCase()
+        let useCase = RollbackRuntimeUseCase()
 
         let plan = useCase.planRollback(for: rollbackPreflight(restoresRootfsBase: false))
 
@@ -575,7 +576,7 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
     }
 
     func testRollbackLifecyclePlansKeepStatusAndProgressMessagesOutOfWorkflow() {
-        let useCase = UpdateRuntimeUseCase()
+        let useCase = RollbackRuntimeUseCase()
         let event = RuntimeStepExecutionEvent(
             operation: .rollback,
             status: .recovering,
@@ -616,7 +617,7 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
     }
 
     func testRollbackStepExecutionPlansKeepStepInterpretationOutOfWorkflow() {
-        let useCase = UpdateRuntimeUseCase()
+        let useCase = RollbackRuntimeUseCase()
         let backup = URL(fileURLWithPath: "/runtime/backups/backup-1")
         let backupRootfs = backup.appendingPathComponent(RuntimeFileNames.rootfsBase)
         let preflight = RollbackPreflightContext(
@@ -750,7 +751,7 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
     }
 
     func testRollbackBackupPlanPreservesManifestRootfsAsExplicitRestoreState() {
-        let useCase = UpdateRuntimeUseCase()
+        let useCase = RollbackRuntimeUseCase()
         let backup = URL(fileURLWithPath: "/runtime/backups/backup-1")
 
         let plan = useCase.rollbackBackupPlan(
@@ -765,7 +766,7 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
     }
 
     func testRollbackBackupPlanPreservesMissingRootfsAsNoRestoreWithoutFallback() {
-        let useCase = UpdateRuntimeUseCase()
+        let useCase = RollbackRuntimeUseCase()
         let backup = URL(fileURLWithPath: "/runtime/backups/backup-1")
 
         let plan = useCase.rollbackBackupPlan(
@@ -780,7 +781,7 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
     }
 
     func testRollbackPreflightDecisionsKeepBackupExistenceInterpretationOutOfWorkflow() {
-        let useCase = UpdateRuntimeUseCase()
+        let useCase = RollbackRuntimeUseCase()
         let backup = URL(fileURLWithPath: "/runtime/backups/backup-1")
         let backupPlan = useCase.rollbackBackupPlan(
             backup: backup,
@@ -856,7 +857,7 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
     }
 
     func testRollbackBackupSelectionKeepsCommandInterpretationOutOfWorkflow() {
-        let useCase = UpdateRuntimeUseCase()
+        let useCase = RollbackRuntimeUseCase()
         let backup = URL(fileURLWithPath: "/runtime/backups/backup-1")
 
         XCTAssertEqual(useCase.rollbackBackupSelection(command: .latestBackup), .latestBackup)
@@ -867,7 +868,7 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
     }
 
     func testBundlePreparationMessagesComeFromUseCase() {
-        let useCase = UpdateRuntimeUseCase()
+        let useCase = PrepareRuntimeBundleUseCase()
         let temporaryRoot = URL(fileURLWithPath: "/tmp/materialized")
 
         XCTAssertEqual(
@@ -895,7 +896,7 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
     }
 
     func testRollbackPreflightPlanFormatsRestartPolicyFromExplicitServiceState() {
-        let useCase = UpdateRuntimeUseCase()
+        let useCase = RollbackRuntimeUseCase()
         let backup = URL(fileURLWithPath: "/runtime/backups/backup-1")
 
         let plan = useCase.rollbackPreflightPlan(
@@ -915,7 +916,7 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
     }
 
     func testRollbackVersionRestoreDecisionPreservesMissingBackupVersionAsExplicitMarkerWrite() {
-        let useCase = UpdateRuntimeUseCase()
+        let useCase = RollbackRuntimeUseCase()
         let backup = URL(fileURLWithPath: "/runtime/backups/backup-1")
         let backupVersion = backup.appendingPathComponent(RuntimeFileNames.runtimeVersion)
         let runtimeVersion = URL(fileURLWithPath: "/runtime/version.json")
@@ -941,7 +942,7 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
     }
 
     func testRollbackManagedArtifactRestorePlanMapsExplicitBackupArtifacts() {
-        let useCase = UpdateRuntimeUseCase()
+        let useCase = RollbackRuntimeUseCase()
         let backup = URL(fileURLWithPath: "/runtime/backups/backup-1")
 
         let plan = useCase.rollbackManagedArtifactRestorePlan(
@@ -972,9 +973,9 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
     }
 
     func testGuestActivationPlanRequiresActivationOnlyForGuestDeployArtifact() {
-        let useCase = UpdateRuntimeUseCase()
+        let useCase = RuntimeGuestActivationUseCase()
 
-        let plan = useCase.guestActivationPlan(manifest: manifest(artifacts: [
+        let plan = useCase.plan(manifest: manifest(artifacts: [
             UpdateBundleArtifact(name: "guest-deploy.tar.gz", type: .guestDeploy, sha256: "abc", size: 10),
         ]))
 
@@ -986,12 +987,12 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
     }
 
     func testGuestActivationPlanPreservesNoGuestDeployAsExplicitSkipWithoutRequestFallback() {
-        let useCase = UpdateRuntimeUseCase()
+        let useCase = RuntimeGuestActivationUseCase()
 
-        let plan = useCase.guestActivationPlan(manifest: manifest(artifacts: [
+        let plan = useCase.plan(manifest: manifest(artifacts: [
             UpdateBundleArtifact(name: "app.tar.gz", type: .appBundle, sha256: "abc", size: 10),
         ]))
-        let request = useCase.guestActivationRequest(
+        let request = useCase.request(
             plan: plan,
             requestID: "request-1",
             requestedAt: "2026-06-06T00:00:00Z"
@@ -1006,12 +1007,12 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
     }
 
     func testGuestActivationRequestUsesExplicitRequestStateAndPlannedVersion() {
-        let useCase = UpdateRuntimeUseCase()
-        let plan = useCase.guestActivationPlan(manifest: manifest(artifacts: [
+        let useCase = RuntimeGuestActivationUseCase()
+        let plan = useCase.plan(manifest: manifest(artifacts: [
             UpdateBundleArtifact(name: "guest-deploy.tar.gz", type: .guestDeploy, sha256: "abc", size: 10),
         ]))
 
-        let request = useCase.guestActivationRequest(
+        let request = useCase.request(
             plan: plan,
             requestID: "request-1",
             requestedAt: "2026-06-06T00:00:00Z"
@@ -1023,16 +1024,16 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
     }
 
     func testGuestActivationExecutionPlanKeepsActivationJudgementOutOfWorkflow() {
-        let useCase = UpdateRuntimeUseCase()
+        let useCase = RuntimeGuestActivationUseCase()
 
         XCTAssertEqual(
-            useCase.guestActivationExecutionPlan(manifest: manifest(artifacts: [
+            useCase.executionPlan(manifest: manifest(artifacts: [
                 UpdateBundleArtifact(name: "app.tar.gz", type: .appBundle, sha256: "abc", size: 10),
             ])),
             .skip(logMessage: "guest update activation not required")
         )
         XCTAssertEqual(
-            useCase.guestActivationExecutionPlan(manifest: manifest(artifacts: [
+            useCase.executionPlan(manifest: manifest(artifacts: [
                 UpdateBundleArtifact(name: "guest-deploy.tar.gz", type: .guestDeploy, sha256: "abc", size: 10),
             ])),
             .activate(
@@ -1044,9 +1045,9 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
     }
 
     func testGuestActivationRequestAndVMStartPlansUseExplicitInputs() {
-        let useCase = UpdateRuntimeUseCase()
+        let useCase = RuntimeGuestActivationUseCase()
 
-        let request = useCase.guestActivationRequest(
+        let request = useCase.request(
             version: "1.2.3",
             requestID: "request-1",
             requestedAt: "2026-06-06T00:00:00Z"
@@ -1055,78 +1056,84 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
         XCTAssertEqual(request.id, "request-1")
         XCTAssertEqual(request.requestedAt, "2026-06-06T00:00:00Z")
         XCTAssertEqual(request.version, "1.2.3")
-        XCTAssertEqual(useCase.guestActivationVMStartPlan(isVMServiceLoaded: true), .alreadyLoaded)
-        XCTAssertEqual(useCase.guestActivationVMStartPlan(isVMServiceLoaded: false), .startService)
+        XCTAssertEqual(useCase.vmStartPlan(isVMServiceLoaded: true), .alreadyLoaded)
+        XCTAssertEqual(useCase.vmStartPlan(isVMServiceLoaded: false), .startService)
     }
 
-    func testGuestActivationWaitResultPlanPreservesFailureAndTimeoutWithoutWorkflowJudgement() {
-        let useCase = UpdateRuntimeUseCase()
+    func testGuestActivationWaitResultPlanPreservesFailureAndTimeoutWithoutWorkflowJudgement() throws {
+        let useCase = RuntimeGuestActivationUseCase()
 
         XCTAssertEqual(
-            useCase.guestActivationWaitStartedLogMessage(timeoutSeconds: 180),
+            useCase.waitStartedLogMessage(timeoutSeconds: 180),
             "waiting for guest update activation result timeoutSeconds=180.0"
         )
         XCTAssertEqual(
-            useCase.guestActivationWaitConfiguration(timeoutSeconds: 180),
+            try useCase.waitConfiguration(timeoutSeconds: 180),
             GuestActivationWaitConfiguration(maxAttempts: 60, progressEveryAttempts: 5)
         )
         XCTAssertEqual(
-            useCase.guestActivationWaitConfiguration(timeoutSeconds: 1),
+            try useCase.waitConfiguration(timeoutSeconds: 1),
             GuestActivationWaitConfiguration(maxAttempts: 1, progressEveryAttempts: 5)
         )
+        XCTAssertThrowsError(try useCase.waitConfiguration(timeoutSeconds: 0)) { error in
+            XCTAssertEqual(
+                error as? RuntimeGuestUpdateUseCaseError,
+                .operationFailed("invalid guest activation wait configuration: timeoutSeconds must be positive")
+            )
+        }
         XCTAssertEqual(
-            useCase.guestActivationRequiredRequestMissingFailureMessage(),
+            useCase.requiredRequestMissingFailureMessage(),
             "guest activation request missing for required activation"
         )
         XCTAssertEqual(
-            useCase.guestActivationWaitResultPlan(.completed(message: "done")),
+            useCase.waitResultPlan(.completed(message: "done")),
             RuntimeGuestWaitResultPlan(
                 logMessage: "guest update activation result completed message=done",
                 failureMessage: nil
             )
         )
         XCTAssertEqual(
-            useCase.guestActivationWaitResultExecutionPlan(.completed(message: "done")),
+            useCase.waitResultExecutionPlan(.completed(message: "done")),
             .completed(logMessage: "guest update activation result completed message=done")
         )
         XCTAssertEqual(
-            useCase.guestActivationWaitResultPlan(.failed(message: "compose failed")),
+            useCase.waitResultPlan(.failed(message: "compose failed")),
             RuntimeGuestWaitResultPlan(
                 logMessage: "guest update activation result failed message=compose failed",
                 failureMessage: "runtime health check failed"
             )
         )
         XCTAssertEqual(
-            useCase.guestActivationWaitResultExecutionPlan(.failed(message: "compose failed")),
+            useCase.waitResultExecutionPlan(.failed(message: "compose failed")),
             .failed(
                 logMessage: "guest update activation result failed message=compose failed",
                 failureMessage: "runtime health check failed"
             )
         )
         XCTAssertEqual(
-            useCase.guestActivationWaitResultPlan(.timedOut),
+            useCase.waitResultPlan(.timedOut),
             RuntimeGuestWaitResultPlan(
                 logMessage: nil,
                 failureMessage: "runtime health check failed"
             )
         )
         XCTAssertEqual(
-            useCase.guestActivationWaitResultExecutionPlan(.timedOut),
+            useCase.waitResultExecutionPlan(.timedOut),
             .failedWithoutLog(failureMessage: "runtime health check failed")
         )
     }
 
     func testGuestShutdownPlanAndRequestUseExplicitVersionRequestState() {
-        let useCase = UpdateRuntimeUseCase()
+        let useCase = RuntimeGuestShutdownUseCase()
 
-        let plan = useCase.guestShutdownPlan(version: "1.2.3")
-        let executionPlan = useCase.guestShutdownExecutionPlan(version: "1.2.3")
-        let request = useCase.guestShutdownRequest(
+        let plan = useCase.plan(version: "1.2.3")
+        let executionPlan = useCase.executionPlan(version: "1.2.3")
+        let request = useCase.request(
             plan: plan,
             requestID: "request-1",
             requestedAt: "2026-06-06T00:00:00Z"
         )
-        let versionRequest = useCase.guestShutdownRequest(
+        let versionRequest = useCase.request(
             version: "1.2.3",
             requestID: "request-2",
             requestedAt: "2026-06-06T00:00:01Z"
@@ -1151,61 +1158,67 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
         XCTAssertEqual(versionRequest.version, "1.2.3")
     }
 
-    func testGuestShutdownWaitResultPlanPreservesGuestFailureAndTimeoutSeparately() {
-        let useCase = UpdateRuntimeUseCase()
+    func testGuestShutdownWaitResultPlanPreservesGuestFailureAndTimeoutSeparately() throws {
+        let useCase = RuntimeGuestShutdownUseCase()
 
         XCTAssertEqual(
-            useCase.guestShutdownWaitStartedLogMessage(timeoutSeconds: 300),
+            useCase.waitStartedLogMessage(timeoutSeconds: 300),
             "waiting for guest update shutdown result timeoutSeconds=300.0"
         )
         XCTAssertEqual(
-            useCase.guestShutdownWaitConfiguration(timeoutSeconds: 300),
+            try useCase.waitConfiguration(timeoutSeconds: 300),
             GuestShutdownWaitConfiguration(maxAttempts: 100, progressEveryAttempts: 5)
         )
         XCTAssertEqual(
-            useCase.guestShutdownWaitConfiguration(timeoutSeconds: 1),
+            try useCase.waitConfiguration(timeoutSeconds: 1),
             GuestShutdownWaitConfiguration(maxAttempts: 1, progressEveryAttempts: 5)
         )
+        XCTAssertThrowsError(try useCase.waitConfiguration(timeoutSeconds: 0)) { error in
+            XCTAssertEqual(
+                error as? RuntimeGuestUpdateUseCaseError,
+                .operationFailed("invalid guest shutdown wait configuration: timeoutSeconds must be positive")
+            )
+        }
         XCTAssertEqual(
-            useCase.guestShutdownWaitResultPlan(.ready(message: "poweroff requested")),
+            useCase.waitResultPlan(.ready(message: "poweroff requested")),
             RuntimeGuestWaitResultPlan(
                 logMessage: "guest update shutdown result ready message=poweroff requested",
                 failureMessage: nil
             )
         )
         XCTAssertEqual(
-            useCase.guestShutdownWaitResultExecutionPlan(.ready(message: "poweroff requested")),
+            useCase.waitResultExecutionPlan(.ready(message: "poweroff requested")),
             .completed(logMessage: "guest update shutdown result ready message=poweroff requested")
         )
         XCTAssertEqual(
-            useCase.guestShutdownWaitResultPlan(.failed(message: "backup failed")),
+            useCase.waitResultPlan(.failed(message: "backup failed")),
             RuntimeGuestWaitResultPlan(
                 logMessage: "guest update shutdown result failed message=backup failed",
                 failureMessage: "backup failed"
             )
         )
         XCTAssertEqual(
-            useCase.guestShutdownWaitResultExecutionPlan(.failed(message: "backup failed")),
+            useCase.waitResultExecutionPlan(.failed(message: "backup failed")),
             .failed(
                 logMessage: "guest update shutdown result failed message=backup failed",
                 failureMessage: "backup failed"
             )
         )
         XCTAssertEqual(
-            useCase.guestShutdownWaitResultPlan(.timedOut),
+            useCase.waitResultPlan(.timedOut),
             RuntimeGuestWaitResultPlan(
                 logMessage: nil,
                 failureMessage: "guest update shutdown timed out"
             )
         )
         XCTAssertEqual(
-            useCase.guestShutdownWaitResultExecutionPlan(.timedOut),
+            useCase.waitResultExecutionPlan(.timedOut),
             .failedWithoutLog(failureMessage: "guest update shutdown timed out")
         )
     }
 
     func testGuestCapabilityDecisionPreservesLoadedMissingAndFailedStateSeparately() {
-        let useCase = UpdateRuntimeUseCase()
+        let useCase = RequireRuntimeGuestCapabilityUseCase()
         let supportedState = GuestRuntimeStateDocument(
             capabilities: GuestRuntimeCapabilities(
                 prepareUpdateShutdown: true,

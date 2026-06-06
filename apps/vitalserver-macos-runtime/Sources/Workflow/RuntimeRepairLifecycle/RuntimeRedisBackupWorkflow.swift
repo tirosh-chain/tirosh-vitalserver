@@ -73,9 +73,9 @@ public struct RuntimeRedisBackupWorkflowActions {
 }
 
 public struct RuntimeRedisBackupWorkflow {
-    private let useCase: RepairRuntimeUseCase
+    private let useCase: RuntimeRedisBackupUseCase
 
-    public init(useCase: RepairRuntimeUseCase = RepairRuntimeUseCase()) {
+    public init(useCase: RuntimeRedisBackupUseCase = RuntimeRedisBackupUseCase()) {
         self.useCase = useCase
     }
 
@@ -83,7 +83,7 @@ public struct RuntimeRedisBackupWorkflow {
         context: RuntimeRedisBackupWorkflowContext,
         actions: RuntimeRedisBackupWorkflowActions
     ) throws -> RuntimeRedisBackupResult {
-        let requestedPlan = useCase.redisBackupRequestedPlan()
+        let requestedPlan = useCase.requestedPlan()
         actions.log(requestedPlan.logMessage)
         try actions.requireCapability()
         try actions.createDirectory(context.guestRunDirectory, true)
@@ -112,7 +112,7 @@ public struct RuntimeRedisBackupWorkflow {
 
         let maxAttempts = Int(ceil(context.waitTimeoutSeconds / context.pollIntervalSeconds))
         for attempt in 0..<maxAttempts {
-            let decision = useCase.redisBackupResultDecision(
+            let decision = useCase.resultDecision(
                 loadResult: actions.loadResult(resultURL),
                 expectedRequestID: requestID,
                 shouldReportProgress: attempt % 10 == 0
@@ -125,7 +125,7 @@ public struct RuntimeRedisBackupWorkflow {
             }
         }
 
-        let timedOutPlan = useCase.redisBackupTimedOutPlan()
+        let timedOutPlan = useCase.timedOutPlan()
         try actions.writeStatus(
             timedOutPlan.status,
             timedOutPlan.operation,
@@ -144,7 +144,7 @@ public struct RuntimeRedisBackupWorkflow {
             return nil
         case .completed(let message, let archive):
             try actions.writeStatus(.healthy, .redisBackup, message)
-            actions.log(useCase.redisBackupCompletedLogMessage())
+            actions.log(useCase.completedLogMessage())
             return RuntimeRedisBackupResult(message: message, archive: archive)
         case .failed(let message):
             try actions.writeStatus(.degraded, .redisBackup, message)

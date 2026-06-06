@@ -132,120 +132,10 @@ public struct RepairRuntimeVMDiskCompletionMessages: Equatable, Sendable {
     }
 }
 
-public struct RepairRuntimeDatastorePlan: Equatable, Sendable {
-    public let requestedLogMessage: String
-    public let requestedStatusMessage: String
-    public let completedLogMessage: String
-    public let completedStatusMessage: String
-    public let restartPolicy: RuntimeServiceRestartPolicy
-
-    public init(
-        requestedLogMessage: String,
-        requestedStatusMessage: String,
-        completedLogMessage: String,
-        completedStatusMessage: String,
-        restartPolicy: RuntimeServiceRestartPolicy
-    ) {
-        self.requestedLogMessage = requestedLogMessage
-        self.requestedStatusMessage = requestedStatusMessage
-        self.completedLogMessage = completedLogMessage
-        self.completedStatusMessage = completedStatusMessage
-        self.restartPolicy = restartPolicy
-    }
-}
-
-public enum RuntimeRedisBackupResultLoadResult: Equatable, Sendable {
-    case missing
-    case loaded(RedisBackupResultDocument)
-    case failed(String)
-}
-
-public enum RepairRuntimeRedisBackupResultDecision: Equatable, Sendable {
-    case ignoreStaleResult(logMessage: String)
-    case completed(message: String, archive: String?)
-    case failed(message: String)
-    case waiting(logMessage: String?)
-    case readFailed(message: String)
-}
-
-public struct RuntimeRedisBackupResult: Equatable, Sendable {
-    public let message: String
-    public let archive: String?
-
-    public init(message: String, archive: String?) {
-        self.message = message
-        self.archive = archive
-    }
-}
-
-public struct RepairRuntimeStatusPlan: Equatable, Sendable {
-    public let status: RuntimeStatusLevel
-    public let operation: RuntimeOperation
-    public let message: String
-
-    public init(
-        status: RuntimeStatusLevel,
-        operation: RuntimeOperation,
-        message: String
-    ) {
-        self.status = status
-        self.operation = operation
-        self.message = message
-    }
-}
-
-public struct RepairRuntimeLoggedStatusPlan: Equatable, Sendable {
-    public let logMessage: String
-    public let status: RuntimeStatusLevel
-    public let operation: RuntimeOperation
-    public let statusMessage: String
-
-    public init(
-        logMessage: String,
-        status: RuntimeStatusLevel,
-        operation: RuntimeOperation,
-        statusMessage: String
-    ) {
-        self.logMessage = logMessage
-        self.status = status
-        self.operation = operation
-        self.statusMessage = statusMessage
-    }
-}
-
-public struct RepairRuntimeWaitResultPlan: Equatable, Sendable {
-    public let logMessage: String?
-    public let failureMessage: String?
-
-    public init(logMessage: String?, failureMessage: String?) {
-        self.logMessage = logMessage
-        self.failureMessage = failureMessage
-    }
-}
-
-public struct RepairRuntimeFailureStatusPlan: Equatable, Sendable {
-    public let status: RuntimeStatusLevel
-    public let operation: RuntimeOperation
-    public let statusMessage: String
-    public let failureMessage: String
-
-    public init(
-        status: RuntimeStatusLevel,
-        operation: RuntimeOperation,
-        statusMessage: String,
-        failureMessage: String
-    ) {
-        self.status = status
-        self.operation = operation
-        self.statusMessage = statusMessage
-        self.failureMessage = failureMessage
-    }
-}
-
-public struct RepairRuntimeUseCase {
+public struct RuntimeVMDiskRepairUseCase {
     public init() {}
 
-    public func planVMDiskRepair(for input: RepairRuntimeVMDiskInput) throws -> RepairRuntimeVMDiskPlan {
+    public func planRepair(for input: RepairRuntimeVMDiskInput) throws -> RepairRuntimeVMDiskPlan {
         guard input.rootfsBaseExists else {
             throw RepairRuntimeUseCaseError.operationFailed("missing file: \(input.rootfsBasePath)")
         }
@@ -281,7 +171,7 @@ public struct RepairRuntimeUseCase {
         )
     }
 
-    public func vmDiskExecutionPlan(
+    public func executionPlan(
         vmDisk: URL,
         backupsDirectory: URL,
         timestamp: String
@@ -295,7 +185,7 @@ public struct RepairRuntimeUseCase {
         )
     }
 
-    public func vmDiskReplacementBuildPlan(
+    public func replacementBuildPlan(
         rootfsBase: URL,
         vmDisk: URL,
         backupsDirectory: URL,
@@ -329,7 +219,7 @@ public struct RepairRuntimeUseCase {
         }
     }
 
-    public func vmDiskRepairRequestedPlan() -> RepairRuntimeLoggedStatusPlan {
+    public func requestedPlan() -> RepairRuntimeLoggedStatusPlan {
         RepairRuntimeLoggedStatusPlan(
             logMessage: "vm disk repair requested",
             status: .recovering,
@@ -338,7 +228,7 @@ public struct RepairRuntimeUseCase {
         )
     }
 
-    public func vmDiskReplacementCreationStatusPlan() -> RepairRuntimeStatusPlan {
+    public func replacementCreationStatusPlan() -> RepairRuntimeStatusPlan {
         RepairRuntimeStatusPlan(
             status: .recovering,
             operation: .repairVMDisk,
@@ -346,7 +236,7 @@ public struct RepairRuntimeUseCase {
         )
     }
 
-    public func vmDiskArchiveStatusPlan() -> RepairRuntimeStatusPlan {
+    public func archiveStatusPlan() -> RepairRuntimeStatusPlan {
         RepairRuntimeStatusPlan(
             status: .recovering,
             operation: .repairVMDisk,
@@ -354,19 +244,19 @@ public struct RepairRuntimeUseCase {
         )
     }
 
-    public func vmDiskArchivedLogMessage(archivedDiskPath: String) -> String {
+    public func archivedLogMessage(archivedDiskPath: String) -> String {
         "archived vm disk path=\(archivedDiskPath)"
     }
 
-    public func vmDiskMissingArchiveLogMessage() -> String {
+    public func missingArchiveLogMessage() -> String {
         "vm disk missing; creating replacement without archive"
     }
 
-    public func vmDiskReplacementCreatedLogMessage(vmDiskPath: String, targetDiskGiB: Int) -> String {
+    public func replacementCreatedLogMessage(vmDiskPath: String, targetDiskGiB: Int) -> String {
         "created replacement vm disk path=\(vmDiskPath) size=\(targetDiskGiB) GiB"
     }
 
-    public func vmDiskStartServicesStatusPlan() -> RepairRuntimeStatusPlan {
+    public func startServicesStatusPlan() -> RepairRuntimeStatusPlan {
         RepairRuntimeStatusPlan(
             status: .recovering,
             operation: .repairVMDisk,
@@ -374,7 +264,7 @@ public struct RepairRuntimeUseCase {
         )
     }
 
-    public func vmDiskCompletionMessages(archivedDiskPath: String?) -> RepairRuntimeVMDiskCompletionMessages {
+    public func completionMessages(archivedDiskPath: String?) -> RepairRuntimeVMDiskCompletionMessages {
         guard let archivedDiskPath else {
             return RepairRuntimeVMDiskCompletionMessages(
                 healthy: "VM disk repaired.",
@@ -387,7 +277,7 @@ public struct RepairRuntimeUseCase {
         )
     }
 
-    public func vmDiskRedisBackupStartedStatusPlan() -> RepairRuntimeStatusPlan {
+    public func redisBackupStartedStatusPlan() -> RepairRuntimeStatusPlan {
         RepairRuntimeStatusPlan(
             status: .recovering,
             operation: .repairVMDisk,
@@ -395,7 +285,7 @@ public struct RepairRuntimeUseCase {
         )
     }
 
-    public func vmDiskRedisBackupCompletedPlan() -> RepairRuntimeLoggedStatusPlan {
+    public func redisBackupCompletedPlan() -> RepairRuntimeLoggedStatusPlan {
         RepairRuntimeLoggedStatusPlan(
             logMessage: "redis backup before vm disk repair completed",
             status: .recovering,
@@ -404,115 +294,13 @@ public struct RepairRuntimeUseCase {
         )
     }
 
-    public func vmDiskRedisBackupFailedPlan(reason: String) -> RepairRuntimeLoggedStatusPlan {
+    public func redisBackupFailedPlan(reason: String) -> RepairRuntimeLoggedStatusPlan {
         RepairRuntimeLoggedStatusPlan(
             logMessage: "redis backup before vm disk repair failed error=\(reason); continuing with VM disk archive",
             status: .recovering,
             operation: .repairVMDisk,
             statusMessage: "Redis backup before VM disk repair failed; current VM disk will be archived before replacement"
         )
-    }
-
-    public func datastoreRepairPlan() -> RepairRuntimeDatastorePlan {
-        RepairRuntimeDatastorePlan(
-            requestedLogMessage: "datastore repair requested",
-            requestedStatusMessage: "datastore repair requested",
-            completedLogMessage: "datastore repair completed",
-            completedStatusMessage: "datastore repair completed",
-            restartPolicy: RuntimeServiceRestartPolicy(
-                restartVM: true,
-                restartGuestLogSync: true,
-                restartProxy: true,
-                restartWatchdog: true
-            )
-        )
-    }
-
-    public func datastoreRepairRequest(
-        requestID: String,
-        requestedAt: String
-    ) -> RuntimeDatastoreRepairRequest {
-        RuntimeDatastoreRepairRequest(id: requestID, requestedAt: requestedAt)
-    }
-
-    public func datastoreRepairWaitStartedLogMessage(timeoutSeconds: Double) -> String {
-        "waiting for datastore repair result timeoutSeconds=\(timeoutSeconds)"
-    }
-
-    public func datastoreRepairWaitProgressPlan(message: String) -> RepairRuntimeStatusPlan {
-        RepairRuntimeStatusPlan(
-            status: .recovering,
-            operation: .repairDatastore,
-            message: message
-        )
-    }
-
-    public func datastoreRepairWaitResultPlan(
-        _ result: DatastoreRepairWaitResult
-    ) -> RepairRuntimeWaitResultPlan {
-        switch result {
-        case .completed(let message):
-            return RepairRuntimeWaitResultPlan(
-                logMessage: "datastore repair guest result completed message=\(message)",
-                failureMessage: nil
-            )
-        case .failed(let message):
-            return RepairRuntimeWaitResultPlan(
-                logMessage: "datastore repair guest result failed message=\(message)",
-                failureMessage: "runtime health check failed"
-            )
-        case .timedOut:
-            return RepairRuntimeWaitResultPlan(
-                logMessage: nil,
-                failureMessage: "runtime health check failed"
-            )
-        }
-    }
-
-    public func redisBackupRequestedPlan() -> RepairRuntimeLoggedStatusPlan {
-        RepairRuntimeLoggedStatusPlan(
-            logMessage: "redis backup requested",
-            status: .recovering,
-            operation: .redisBackup,
-            statusMessage: "redis backup requested"
-        )
-    }
-
-    public func redisBackupCompletedLogMessage() -> String {
-        "redis backup completed"
-    }
-
-    public func redisBackupTimedOutPlan() -> RepairRuntimeFailureStatusPlan {
-        RepairRuntimeFailureStatusPlan(
-            status: .degraded,
-            operation: .redisBackup,
-            statusMessage: "redis backup timed out",
-            failureMessage: "redis backup timed out"
-        )
-    }
-
-    public func redisBackupResultDecision(
-        loadResult: RuntimeRedisBackupResultLoadResult,
-        expectedRequestID: String,
-        shouldReportProgress: Bool
-    ) -> RepairRuntimeRedisBackupResultDecision {
-        switch loadResult {
-        case .loaded(let result):
-            if let resultRequestId = result.requestId, resultRequestId != expectedRequestID {
-                return .ignoreStaleResult(logMessage: "stale redis backup result ignored")
-            }
-            if result.status == .completed {
-                return .completed(message: result.message ?? "Redis backup completed.", archive: result.archive)
-            }
-            if result.status == .failed {
-                return .failed(message: result.message ?? "Redis backup failed.")
-            }
-            return .waiting(logMessage: shouldReportProgress ? result.message ?? "waiting for redis backup" : nil)
-        case .missing:
-            return .waiting(logMessage: shouldReportProgress ? "waiting for redis backup guest worker" : nil)
-        case .failed(let message):
-            return .readFailed(message: "failed to read redis backup result: \(message)")
-        }
     }
 
     private func targetDiskGiB(

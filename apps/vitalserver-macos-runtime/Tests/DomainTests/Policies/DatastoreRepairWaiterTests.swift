@@ -13,7 +13,7 @@ final class DatastoreRepairWaiterTests: XCTestCase {
         ]
         var sleepCount = 0
 
-        let waitResult = DatastoreRepairWaiter.wait(
+        let waitResult = runDatastoreRepairWait(
             expectedRequestId: "request-1",
             configuration: DatastoreRepairWaitConfiguration(maxAttempts: 5, progressEveryAttempts: 1),
             loadResult: { results.removeFirst() },
@@ -28,7 +28,7 @@ final class DatastoreRepairWaiterTests: XCTestCase {
     func testFailsImmediatelyOnFailedResult() {
         var sleepCount = 0
 
-        let waitResult = DatastoreRepairWaiter.wait(
+        let waitResult = runDatastoreRepairWait(
             expectedRequestId: "request-1",
             configuration: DatastoreRepairWaitConfiguration(maxAttempts: 5, progressEveryAttempts: 1),
             loadResult: { .loaded(result(status: .failed, requestId: "request-1", message: "failed")) },
@@ -44,7 +44,7 @@ final class DatastoreRepairWaiterTests: XCTestCase {
         var progressMessages: [String] = []
         var sleepCount = 0
 
-        let waitResult = DatastoreRepairWaiter.wait(
+        let waitResult = runDatastoreRepairWait(
             expectedRequestId: "request-1",
             configuration: DatastoreRepairWaitConfiguration(maxAttempts: 5, progressEveryAttempts: 2),
             loadResult: { .missing },
@@ -62,7 +62,7 @@ final class DatastoreRepairWaiterTests: XCTestCase {
     }
 
     func testMismatchedRequestResultFailsImmediately() {
-        let waitResult = DatastoreRepairWaiter.wait(
+        let waitResult = runDatastoreRepairWait(
             expectedRequestId: "request-1",
             configuration: DatastoreRepairWaitConfiguration(maxAttempts: 2, progressEveryAttempts: 1),
             loadResult: { .loaded(result(status: .completed, requestId: "old", message: "old done")) },
@@ -74,7 +74,7 @@ final class DatastoreRepairWaiterTests: XCTestCase {
     }
 
     func testReadFailureFailsImmediately() {
-        let waitResult = DatastoreRepairWaiter.wait(
+        let waitResult = runDatastoreRepairWait(
             expectedRequestId: "request-1",
             configuration: DatastoreRepairWaitConfiguration(maxAttempts: 2, progressEveryAttempts: 1),
             loadResult: { .failed("decode failed") },
@@ -99,4 +99,34 @@ final class DatastoreRepairWaiterTests: XCTestCase {
             updatedAt: "2026-05-21T12:33:57Z"
         )
     }
+}
+
+private func runDatastoreRepairWait(
+    expectedRequestId: String,
+    configuration: DatastoreRepairWaitConfiguration,
+    loadResult: () -> RuntimeGuestDocumentLoadResult<DatastoreRepairResultDocument>,
+    onProgress: (String) -> Void,
+    sleep: () -> Void
+) -> DatastoreRepairWaitResult {
+    for attempt in 0..<configuration.maxAttempts {
+        switch DatastoreRepairWaiter.evaluateAttempt(
+            expectedRequestId: expectedRequestId,
+            configuration: configuration,
+            attempt: attempt,
+            loadResult: loadResult()
+        ) {
+        case .completed(let message):
+            return .completed(message: message)
+        case .failed(let message):
+            return .failed(message: message)
+        case .waiting(let message, let shouldPublishProgress):
+            if shouldPublishProgress {
+                onProgress(message)
+            }
+            if attempt < configuration.maxAttempts - 1 {
+                sleep()
+            }
+        }
+    }
+    return .timedOut
 }

@@ -6,9 +6,9 @@ import Errors
 
 final class RepairRuntimeUseCaseTests: XCTestCase {
     func testPlansVMDiskRepairFromExplicitDiskState() throws {
-        let useCase = RepairRuntimeUseCase()
+        let useCase = RuntimeVMDiskRepairUseCase()
 
-        let plan = try useCase.planVMDiskRepair(for: input(
+        let plan = try useCase.planRepair(for: input(
             rootfsBaseSizeBytes: 2,
             currentVMDiskSizeBytes: 40 * 1024
         ))
@@ -24,18 +24,18 @@ final class RepairRuntimeUseCaseTests: XCTestCase {
     }
 
     func testPlansDefaultSizeWhenCurrentVMDiskIsMissing() throws {
-        let useCase = RepairRuntimeUseCase()
+        let useCase = RuntimeVMDiskRepairUseCase()
 
-        let plan = try useCase.planVMDiskRepair(for: input(currentVMDiskSizeBytes: nil))
+        let plan = try useCase.planRepair(for: input(currentVMDiskSizeBytes: nil))
 
         XCTAssertEqual(plan.targetDiskGiB, 32)
         XCTAssertFalse(plan.shouldArchiveCurrentDisk)
     }
 
     func testRejectsMissingRootfsBaseWithoutCreatingFallbackState() {
-        let useCase = RepairRuntimeUseCase()
+        let useCase = RuntimeVMDiskRepairUseCase()
 
-        XCTAssertThrowsError(try useCase.planVMDiskRepair(for: input(rootfsBaseExists: false))) { error in
+        XCTAssertThrowsError(try useCase.planRepair(for: input(rootfsBaseExists: false))) { error in
             XCTAssertEqual(
                 error as? RepairRuntimeUseCaseError,
                 .operationFailed("missing file: /runtime/rootfs-base.raw.gz")
@@ -44,9 +44,9 @@ final class RepairRuntimeUseCaseTests: XCTestCase {
     }
 
     func testRejectsEmptyRootfsBaseAsInvalidInput() {
-        let useCase = RepairRuntimeUseCase()
+        let useCase = RuntimeVMDiskRepairUseCase()
 
-        XCTAssertThrowsError(try useCase.planVMDiskRepair(for: input(rootfsBaseSizeBytes: 0))) { error in
+        XCTAssertThrowsError(try useCase.planRepair(for: input(rootfsBaseSizeBytes: 0))) { error in
             XCTAssertEqual(
                 error as? RepairRuntimeUseCaseError,
                 .operationFailed("rootfs base is empty path=/runtime/rootfs-base.raw.gz")
@@ -55,15 +55,15 @@ final class RepairRuntimeUseCaseTests: XCTestCase {
     }
 
     func testRejectsInvalidDiskUnitInputs() {
-        let useCase = RepairRuntimeUseCase()
+        let useCase = RuntimeVMDiskRepairUseCase()
 
-        XCTAssertThrowsError(try useCase.planVMDiskRepair(for: input(defaultDiskGiB: 0))) { error in
+        XCTAssertThrowsError(try useCase.planRepair(for: input(defaultDiskGiB: 0))) { error in
             XCTAssertEqual(
                 error as? RepairRuntimeUseCaseError,
                 .operationFailed("default VM disk size must be positive")
             )
         }
-        XCTAssertThrowsError(try useCase.planVMDiskRepair(for: input(bytesPerGiB: 0))) { error in
+        XCTAssertThrowsError(try useCase.planRepair(for: input(bytesPerGiB: 0))) { error in
             XCTAssertEqual(
                 error as? RepairRuntimeUseCaseError,
                 .operationFailed("bytes per GiB must be positive")
@@ -72,9 +72,9 @@ final class RepairRuntimeUseCaseTests: XCTestCase {
     }
 
     func testRejectsRequiredFreeSpaceOverflow() {
-        let useCase = RepairRuntimeUseCase()
+        let useCase = RuntimeVMDiskRepairUseCase()
 
-        XCTAssertThrowsError(try useCase.planVMDiskRepair(for: input(
+        XCTAssertThrowsError(try useCase.planRepair(for: input(
             rootfsBaseSizeBytes: UInt64.max / 6 + 1
         ))) { error in
             XCTAssertEqual(
@@ -85,9 +85,9 @@ final class RepairRuntimeUseCaseTests: XCTestCase {
     }
 
     func testPlansVMDiskExecutionPathsFromExplicitTimestamp() {
-        let useCase = RepairRuntimeUseCase()
+        let useCase = RuntimeVMDiskRepairUseCase()
 
-        let plan = useCase.vmDiskExecutionPlan(
+        let plan = useCase.executionPlan(
             vmDisk: URL(fileURLWithPath: "/runtime/vm/vm-disk.img"),
             backupsDirectory: URL(fileURLWithPath: "/runtime/backups"),
             timestamp: "2026-06-06T05:10:11Z"
@@ -99,20 +99,20 @@ final class RepairRuntimeUseCaseTests: XCTestCase {
     }
 
     func testPlansVMDiskReplacementBuildInputsWithoutWorkflowArgumentConstruction() throws {
-        let useCase = RepairRuntimeUseCase()
+        let useCase = RuntimeVMDiskRepairUseCase()
         let vmDisk = URL(fileURLWithPath: "/runtime/vm/vm-disk.img")
         let backupsDirectory = URL(fileURLWithPath: "/runtime/backups")
-        let executionPlan = useCase.vmDiskExecutionPlan(
+        let executionPlan = useCase.executionPlan(
             vmDisk: vmDisk,
             backupsDirectory: backupsDirectory,
             timestamp: "2026-06-06T05:10:11Z"
         )
-        let repairPlan = try useCase.planVMDiskRepair(for: input(
+        let repairPlan = try useCase.planRepair(for: input(
             rootfsBaseSizeBytes: 2,
             currentVMDiskSizeBytes: 40 * 1024
         ))
 
-        let buildPlan = useCase.vmDiskReplacementBuildPlan(
+        let buildPlan = useCase.replacementBuildPlan(
             rootfsBase: URL(fileURLWithPath: "/runtime/rootfs-base.raw.gz"),
             vmDisk: vmDisk,
             backupsDirectory: backupsDirectory,
@@ -131,7 +131,7 @@ final class RepairRuntimeUseCaseTests: XCTestCase {
     }
 
     func testReplacementDiskVerificationPreservesMissingAndUndersizedFailures() {
-        let useCase = RepairRuntimeUseCase()
+        let useCase = RuntimeVMDiskRepairUseCase()
 
         XCTAssertThrowsError(try useCase.requireReplacementDisk(RepairRuntimeVMDiskReplacementObservation(
             path: "/runtime/vm/vm-disk.img",
@@ -160,10 +160,10 @@ final class RepairRuntimeUseCaseTests: XCTestCase {
     }
 
     func testVMDiskRepairLifecyclePlansKeepOperationMessagesOutOfWorkflow() {
-        let useCase = RepairRuntimeUseCase()
+        let useCase = RuntimeVMDiskRepairUseCase()
 
         XCTAssertEqual(
-            useCase.vmDiskRepairRequestedPlan(),
+            useCase.requestedPlan(),
             RepairRuntimeLoggedStatusPlan(
                 logMessage: "vm disk repair requested",
                 status: .recovering,
@@ -172,7 +172,7 @@ final class RepairRuntimeUseCaseTests: XCTestCase {
             )
         )
         XCTAssertEqual(
-            useCase.vmDiskReplacementCreationStatusPlan(),
+            useCase.replacementCreationStatusPlan(),
             RepairRuntimeStatusPlan(
                 status: .recovering,
                 operation: .repairVMDisk,
@@ -180,7 +180,7 @@ final class RepairRuntimeUseCaseTests: XCTestCase {
             )
         )
         XCTAssertEqual(
-            useCase.vmDiskArchiveStatusPlan(),
+            useCase.archiveStatusPlan(),
             RepairRuntimeStatusPlan(
                 status: .recovering,
                 operation: .repairVMDisk,
@@ -188,7 +188,7 @@ final class RepairRuntimeUseCaseTests: XCTestCase {
             )
         )
         XCTAssertEqual(
-            useCase.vmDiskStartServicesStatusPlan(),
+            useCase.startServicesStatusPlan(),
             RepairRuntimeStatusPlan(
                 status: .recovering,
                 operation: .repairVMDisk,
@@ -196,24 +196,24 @@ final class RepairRuntimeUseCaseTests: XCTestCase {
             )
         )
         XCTAssertEqual(
-            useCase.vmDiskArchivedLogMessage(archivedDiskPath: "/runtime/backups/vm-disk.img"),
+            useCase.archivedLogMessage(archivedDiskPath: "/runtime/backups/vm-disk.img"),
             "archived vm disk path=/runtime/backups/vm-disk.img"
         )
         XCTAssertEqual(
-            useCase.vmDiskMissingArchiveLogMessage(),
+            useCase.missingArchiveLogMessage(),
             "vm disk missing; creating replacement without archive"
         )
         XCTAssertEqual(
-            useCase.vmDiskReplacementCreatedLogMessage(vmDiskPath: "/runtime/vm/vm-disk.img", targetDiskGiB: 64),
+            useCase.replacementCreatedLogMessage(vmDiskPath: "/runtime/vm/vm-disk.img", targetDiskGiB: 64),
             "created replacement vm disk path=/runtime/vm/vm-disk.img size=64 GiB"
         )
     }
 
     func testVMDiskRedisBackupBestEffortPlansReportDegradedContinuationExplicitly() {
-        let useCase = RepairRuntimeUseCase()
+        let useCase = RuntimeVMDiskRepairUseCase()
 
         XCTAssertEqual(
-            useCase.vmDiskRedisBackupStartedStatusPlan(),
+            useCase.redisBackupStartedStatusPlan(),
             RepairRuntimeStatusPlan(
                 status: .recovering,
                 operation: .repairVMDisk,
@@ -221,7 +221,7 @@ final class RepairRuntimeUseCaseTests: XCTestCase {
             )
         )
         XCTAssertEqual(
-            useCase.vmDiskRedisBackupCompletedPlan(),
+            useCase.redisBackupCompletedPlan(),
             RepairRuntimeLoggedStatusPlan(
                 logMessage: "redis backup before vm disk repair completed",
                 status: .recovering,
@@ -230,7 +230,7 @@ final class RepairRuntimeUseCaseTests: XCTestCase {
             )
         )
         XCTAssertEqual(
-            useCase.vmDiskRedisBackupFailedPlan(reason: "permission denied"),
+            useCase.redisBackupFailedPlan(reason: "permission denied"),
             RepairRuntimeLoggedStatusPlan(
                 logMessage: "redis backup before vm disk repair failed error=permission denied; continuing with VM disk archive",
                 status: .recovering,
@@ -241,10 +241,10 @@ final class RepairRuntimeUseCaseTests: XCTestCase {
     }
 
     func testCompletionMessagesPreserveArchivePresence() {
-        let useCase = RepairRuntimeUseCase()
+        let useCase = RuntimeVMDiskRepairUseCase()
 
-        let withoutArchive = useCase.vmDiskCompletionMessages(archivedDiskPath: nil)
-        let withArchive = useCase.vmDiskCompletionMessages(archivedDiskPath: "/runtime/backups/vm-disk.img")
+        let withoutArchive = useCase.completionMessages(archivedDiskPath: nil)
+        let withArchive = useCase.completionMessages(archivedDiskPath: "/runtime/backups/vm-disk.img")
 
         XCTAssertEqual(withoutArchive.healthy, "VM disk repaired.")
         XCTAssertEqual(withoutArchive.degraded, "VM disk was recreated, but runtime health check failed.")
@@ -256,10 +256,10 @@ final class RepairRuntimeUseCaseTests: XCTestCase {
     }
 
     func testDatastoreRepairPlanBuildsRequestAndRestartPolicyWithoutWorkflowState() {
-        let useCase = RepairRuntimeUseCase()
+        let useCase = RuntimeDatastoreRepairUseCase()
 
-        let plan = useCase.datastoreRepairPlan()
-        let request = useCase.datastoreRepairRequest(
+        let plan = useCase.plan()
+        let request = useCase.request(
             requestID: "request-1",
             requestedAt: "2026-06-06T00:00:00Z"
         )
@@ -275,14 +275,14 @@ final class RepairRuntimeUseCaseTests: XCTestCase {
     }
 
     func testDatastoreRepairWaitPlansPreserveProgressFailedAndTimeoutMeanings() {
-        let useCase = RepairRuntimeUseCase()
+        let useCase = RuntimeDatastoreRepairUseCase()
 
         XCTAssertEqual(
-            useCase.datastoreRepairWaitStartedLogMessage(timeoutSeconds: 300),
+            useCase.waitStartedLogMessage(timeoutSeconds: 300),
             "waiting for datastore repair result timeoutSeconds=300.0"
         )
         XCTAssertEqual(
-            useCase.datastoreRepairWaitProgressPlan(message: "waiting for datastore repair guest worker"),
+            useCase.waitProgressPlan(message: "waiting for datastore repair guest worker"),
             RepairRuntimeStatusPlan(
                 status: .recovering,
                 operation: .repairDatastore,
@@ -290,21 +290,21 @@ final class RepairRuntimeUseCaseTests: XCTestCase {
             )
         )
         XCTAssertEqual(
-            useCase.datastoreRepairWaitResultPlan(.completed(message: "done")),
+            useCase.waitResultPlan(.completed(message: "done")),
             RepairRuntimeWaitResultPlan(
                 logMessage: "datastore repair guest result completed message=done",
                 failureMessage: nil
             )
         )
         XCTAssertEqual(
-            useCase.datastoreRepairWaitResultPlan(.failed(message: "repair failed")),
+            useCase.waitResultPlan(.failed(message: "repair failed")),
             RepairRuntimeWaitResultPlan(
                 logMessage: "datastore repair guest result failed message=repair failed",
                 failureMessage: "runtime health check failed"
             )
         )
         XCTAssertEqual(
-            useCase.datastoreRepairWaitResultPlan(.timedOut),
+            useCase.waitResultPlan(.timedOut),
             RepairRuntimeWaitResultPlan(
                 logMessage: nil,
                 failureMessage: "runtime health check failed"
@@ -313,10 +313,10 @@ final class RepairRuntimeUseCaseTests: XCTestCase {
     }
 
     func testRedisBackupResultDecisionPreservesStaleMissingFailedAndDefaultDisplayMessages() {
-        let useCase = RepairRuntimeUseCase()
+        let useCase = RuntimeRedisBackupUseCase()
 
         XCTAssertEqual(
-            useCase.redisBackupResultDecision(
+            useCase.resultDecision(
                 loadResult: .loaded(redisResult(status: .completed, requestId: "old", message: "done")),
                 expectedRequestID: "request-1",
                 shouldReportProgress: true
@@ -324,7 +324,7 @@ final class RepairRuntimeUseCaseTests: XCTestCase {
             .ignoreStaleResult(logMessage: "stale redis backup result ignored")
         )
         XCTAssertEqual(
-            useCase.redisBackupResultDecision(
+            useCase.resultDecision(
                 loadResult: .loaded(redisResult(status: .completed, requestId: "request-1", message: nil, archive: "redis.tar.gz")),
                 expectedRequestID: "request-1",
                 shouldReportProgress: true
@@ -332,7 +332,7 @@ final class RepairRuntimeUseCaseTests: XCTestCase {
             .completed(message: "Redis backup completed.", archive: "redis.tar.gz")
         )
         XCTAssertEqual(
-            useCase.redisBackupResultDecision(
+            useCase.resultDecision(
                 loadResult: .loaded(redisResult(status: .failed, requestId: "request-1", message: nil)),
                 expectedRequestID: "request-1",
                 shouldReportProgress: true
@@ -340,7 +340,7 @@ final class RepairRuntimeUseCaseTests: XCTestCase {
             .failed(message: "Redis backup failed.")
         )
         XCTAssertEqual(
-            useCase.redisBackupResultDecision(
+            useCase.resultDecision(
                 loadResult: .missing,
                 expectedRequestID: "request-1",
                 shouldReportProgress: true
@@ -348,7 +348,7 @@ final class RepairRuntimeUseCaseTests: XCTestCase {
             .waiting(logMessage: "waiting for redis backup guest worker")
         )
         XCTAssertEqual(
-            useCase.redisBackupResultDecision(
+            useCase.resultDecision(
                 loadResult: .failed("permission denied"),
                 expectedRequestID: "request-1",
                 shouldReportProgress: true
@@ -358,10 +358,10 @@ final class RepairRuntimeUseCaseTests: XCTestCase {
     }
 
     func testRedisBackupLifecyclePlansKeepStatusAndFailureMessagesOutOfWorkflow() {
-        let useCase = RepairRuntimeUseCase()
+        let useCase = RuntimeRedisBackupUseCase()
 
         XCTAssertEqual(
-            useCase.redisBackupRequestedPlan(),
+            useCase.requestedPlan(),
             RepairRuntimeLoggedStatusPlan(
                 logMessage: "redis backup requested",
                 status: .recovering,
@@ -369,9 +369,9 @@ final class RepairRuntimeUseCaseTests: XCTestCase {
                 statusMessage: "redis backup requested"
             )
         )
-        XCTAssertEqual(useCase.redisBackupCompletedLogMessage(), "redis backup completed")
+        XCTAssertEqual(useCase.completedLogMessage(), "redis backup completed")
         XCTAssertEqual(
-            useCase.redisBackupTimedOutPlan(),
+            useCase.timedOutPlan(),
             RepairRuntimeFailureStatusPlan(
                 status: .degraded,
                 operation: .redisBackup,

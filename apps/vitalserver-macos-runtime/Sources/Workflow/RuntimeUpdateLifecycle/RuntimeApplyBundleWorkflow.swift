@@ -104,7 +104,7 @@ public struct RuntimeApplyBundleWorkflow {
         input: ApplyRuntimeBundleInput,
         operations: ApplyRuntimeBundleOperations
     ) throws {
-        let update = UpdateRuntimeUseCase()
+        let update = ApplyRuntimeBundleUseCase()
         let startedPlan = update.applyBundleStartedPlan(inputPath: input.bundleURL.path)
         operations.log(startedPlan.logMessage)
         try operations.prepareLogs()
@@ -153,7 +153,7 @@ public struct RuntimeApplyBundleWorkflow {
 
     private func pruneOldRuntimeArtifactsBestEffort(
         operations: ApplyRuntimeBundleOperations,
-        update: UpdateRuntimeUseCase
+        update: ApplyRuntimeBundleUseCase
     ) {
         do {
             try operations.pruneOldRuntimeArtifacts()
@@ -197,7 +197,7 @@ public struct RuntimeApplyBundleWorkflow {
     private func executeFailureRecoveryPlan(
         _ plan: ApplyRuntimeBundleFailureRecoveryPlan,
         operations: ApplyRuntimeBundleOperations,
-        update: UpdateRuntimeUseCase
+        update: ApplyRuntimeBundleUseCase
     ) {
         operations.log(plan.rollbackStartedPlan.logMessage)
         operations.writeBestEffortStatus(
@@ -230,7 +230,7 @@ public struct RuntimeApplyBundleWorkflow {
     private func startRuntimeServicesBestEffort(
         _ policy: RuntimeServiceRestartPolicy,
         operations: ApplyRuntimeBundleOperations,
-        update: UpdateRuntimeUseCase
+        update: ApplyRuntimeBundleUseCase
     ) {
         do {
             try operations.startRuntimeServices(policy)
@@ -245,7 +245,7 @@ public struct RuntimeApplyBundleWorkflow {
         _ step: RuntimeWorkflowStep,
         preflight: ApplyBundlePreflightContext,
         operations: ApplyRuntimeBundleOperations,
-        update: UpdateRuntimeUseCase
+        update: ApplyRuntimeBundleUseCase
     ) throws {
         try executeApplyBundleStepPlan(update.applyBundleStepExecutionPlan(
             step: step,
@@ -257,7 +257,7 @@ public struct RuntimeApplyBundleWorkflow {
     private func executeApplyBundleStepPlan(
         _ executionPlan: ApplyRuntimeBundleStepExecutionPlan,
         operations: ApplyRuntimeBundleOperations,
-        update: UpdateRuntimeUseCase
+        update: ApplyRuntimeBundleUseCase
     ) throws {
         switch executionPlan {
         case .stopRuntimeServices(let stopPlan):
@@ -286,7 +286,7 @@ public struct RuntimeApplyBundleWorkflow {
     private func executeApplyBundleStopPlan(
         _ stopPlan: ApplyRuntimeBundleStopExecutionPlan,
         operations: ApplyRuntimeBundleOperations,
-        update: UpdateRuntimeUseCase
+        update: ApplyRuntimeBundleUseCase
     ) throws {
         switch stopPlan {
         case .prepareGuestShutdownAndStopServicesAfterPoweroff(let manifest):
@@ -307,7 +307,7 @@ public struct RuntimeApplyBundleWorkflow {
     private func executeApplyBundleRootfsReplacementPlan(
         _ rootfsPlan: ApplyRuntimeBundleRootfsReplacementPlan,
         operations: ApplyRuntimeBundleOperations,
-        update: UpdateRuntimeUseCase
+        update: ApplyRuntimeBundleUseCase
     ) throws {
         switch rootfsPlan {
         case .skip(let logMessage):
@@ -328,7 +328,7 @@ public struct RuntimeApplyBundleWorkflow {
 
     private func clearGuestShutdownPreparationAfterRuntimeStop(
         operations: ApplyRuntimeBundleOperations,
-        update: UpdateRuntimeUseCase
+        update: ApplyRuntimeBundleUseCase
     ) {
         do {
             try operations.clearGuestShutdownPreparation()

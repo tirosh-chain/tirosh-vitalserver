@@ -82,15 +82,15 @@ public struct RuntimeDatastoreRepairWorkflow {
         context: RunDatastoreRepairContext,
         operations: RunDatastoreRepairOperations
     ) throws {
-        let useCase = RepairRuntimeUseCase()
-        let plan = useCase.datastoreRepairPlan()
+        let useCase = RuntimeDatastoreRepairUseCase()
+        let plan = useCase.plan()
         operations.log(plan.requestedLogMessage)
         try operations.requireCapability()
         try operations.createDirectory(context.guestRunDirectory, true)
         try operations.removePreviousResult()
         try operations.writeStatus(.recovering, .repairDatastore, plan.requestedStatusMessage)
 
-        let request = useCase.datastoreRepairRequest(
+        let request = useCase.request(
             requestID: operations.requestID(),
             requestedAt: operations.timestamp()
         )
@@ -120,32 +120,51 @@ public struct RuntimeDatastoreRepairWorkflow {
     }
 
     private func waitForDatastoreRepairResult(
-        useCase: RepairRuntimeUseCase,
+        useCase: RuntimeDatastoreRepairUseCase,
         request: RuntimeDatastoreRepairRequest,
         context: RuntimeDatastoreRepairWaitContext,
         operations: RunDatastoreRepairOperations
     ) throws {
-        operations.log(useCase.datastoreRepairWaitStartedLogMessage(timeoutSeconds: context.waitTimeoutSeconds))
-        let waitResult = DatastoreRepairWaiter.wait(
-            expectedRequestId: request.id,
-            configuration: datastoreRepairWaitConfiguration(context),
-            loadResult: operations.loadResult,
-            onProgress: { message in
-                let progressPlan = useCase.datastoreRepairWaitProgressPlan(message: message)
-                operations.log(message)
-                writeRuntimeStatusBestEffort(
-                    progressPlan.status,
-                    operation: progressPlan.operation,
-                    message: progressPlan.message,
-                    writeStatus: operations.writeStatus,
-                    describeError: operations.describeError,
-                    log: operations.log
-                )
-            },
-            sleep: operations.sleep
-        )
+        operations.log(useCase.waitStartedLogMessage(timeoutSeconds: context.waitTimeoutSeconds))
+        let configuration = try datastoreRepairWaitConfiguration(context)
+        var waitResult: DatastoreRepairWaitResult?
+        for attempt in 0..<configuration.maxAttempts {
+            let outcome = DatastoreRepairWaiter.evaluateAttempt(
+                expectedRequestId: request.id,
+                configuration: configuration,
+                attempt: attempt,
+                loadResult: operations.loadResult()
+            )
+            switch outcome {
+            case .completed(let message):
+                waitResult = .completed(message: message)
+                break
+            case .failed(let message):
+                waitResult = .failed(message: message)
+                break
+            case .waiting(let message, let shouldPublishProgress):
+                if shouldPublishProgress {
+                    let progressPlan = useCase.waitProgressPlan(message: message)
+                    operations.log(message)
+                    writeRuntimeStatusBestEffort(
+                        progressPlan.status,
+                        operation: progressPlan.operation,
+                        message: progressPlan.message,
+                        writeStatus: operations.writeStatus,
+                        describeError: operations.describeError,
+                        log: operations.log
+                    )
+                }
+                if attempt < configuration.maxAttempts - 1 {
+                    operations.sleep()
+                }
+            }
+            if waitResult != nil {
+                break
+            }
+        }
 
-        let resultPlan = useCase.datastoreRepairWaitResultPlan(waitResult)
+        let resultPlan = useCase.waitResultPlan(waitResult ?? .timedOut)
         if let logMessage = resultPlan.logMessage {
             operations.log(logMessage)
         }
@@ -156,8 +175,23 @@ public struct RuntimeDatastoreRepairWorkflow {
 
     private func datastoreRepairWaitConfiguration(
         _ context: RuntimeDatastoreRepairWaitContext
-    ) -> DatastoreRepairWaitConfiguration {
-        DatastoreRepairWaitConfiguration(
+    ) throws -> DatastoreRepairWaitConfiguration {
+        guard context.waitTimeoutSeconds.isFinite, context.waitTimeoutSeconds > 0 else {
+            throw RepairRuntimeUseCaseError.operationFailed(
+                "invalid datastore repair wait configuration: waitTimeoutSeconds must be positive"
+            )
+        }
+        guard context.pollIntervalSeconds.isFinite, context.pollIntervalSeconds > 0 else {
+            throw RepairRuntimeUseCaseError.operationFailed(
+                "invalid datastore repair wait configuration: pollIntervalSeconds must be positive"
+            )
+        }
+        guard context.progressEveryAttempts > 0 else {
+            throw RepairRuntimeUseCaseError.operationFailed(
+                "invalid datastore repair wait configuration: progressEveryAttempts must be positive"
+            )
+        }
+        return DatastoreRepairWaitConfiguration(
             maxAttempts: Int(ceil(context.waitTimeoutSeconds / context.pollIntervalSeconds)),
             progressEveryAttempts: context.progressEveryAttempts
         )

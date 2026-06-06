@@ -33,52 +33,54 @@ public enum RuntimeHealthWaitResult: Equatable {
     case timedOut([RuntimeFailureReason])
 }
 
+public struct RuntimeHealthWaitState: Equatable {
+    public let accumulatedReasons: [RuntimeFailureReason]
+
+    public init(accumulatedReasons: [RuntimeFailureReason] = []) {
+        self.accumulatedReasons = accumulatedReasons
+    }
+}
+
+public struct RuntimeHealthWaitProgress: Equatable {
+    public let reasons: [RuntimeFailureReason]
+
+    public init(reasons: [RuntimeFailureReason]) {
+        self.reasons = reasons
+    }
+}
+
+public enum RuntimeHealthWaitAttemptOutcome: Equatable {
+    case healthy
+    case failedEarly(RuntimeFailureReason)
+    case waiting(state: RuntimeHealthWaitState, progress: RuntimeHealthWaitProgress?)
+}
+
 public enum RuntimeHealthWaiter {
-    public static func wait(
+    public static func evaluateAttempt(
         configuration: RuntimeHealthWaitConfiguration,
-        observe: () -> RuntimeHealthWaitObservation,
-        onProgress: ([RuntimeFailureReason]) -> Void,
-        sleep: () -> Void
-    ) -> RuntimeHealthWaitResult {
-        var accumulatedReasons: [RuntimeFailureReason] = []
+        attempt: Int,
+        state: RuntimeHealthWaitState,
+        observation: RuntimeHealthWaitObservation
+    ) -> RuntimeHealthWaitAttemptOutcome {
+        let pendingServiceReasons = pendingRequiredServiceReasons(observation)
+        let snapshotReasons = explicitSnapshotFailureReasons(observation.snapshot)
+        let currentReasons = uniqueReasons(pendingServiceReasons + snapshotReasons)
 
-        for attempt in 0..<configuration.maxAttempts {
-            let observation = observe()
-            let pendingServiceReasons = pendingRequiredServiceReasons(observation)
-            let snapshotReasons = explicitSnapshotFailureReasons(observation.snapshot)
-            let currentReasons = uniqueReasons(pendingServiceReasons + snapshotReasons)
-
-            if let bootstrapFailure = currentReasons.first(where: { $0.isGuestBootstrapFailure }) {
-                return .failedEarly(bootstrapFailure)
-            }
-
-            if !pendingServiceReasons.isEmpty {
-                accumulatedReasons = uniqueReasons(accumulatedReasons + currentReasons)
-                publishProgressIfNeeded(
-                    attempt: attempt,
-                    configuration: configuration,
-                    reasons: currentReasons,
-                    onProgress: onProgress
-                )
-                sleep()
-                continue
-            }
-
-            if RuntimeHealthSnapshotPolicy.isHealthy(observation.snapshot) {
-                return .healthy
-            }
-
-            accumulatedReasons = uniqueReasons(accumulatedReasons + currentReasons)
-            publishProgressIfNeeded(
-                attempt: attempt,
-                configuration: configuration,
-                reasons: currentReasons,
-                onProgress: onProgress
-            )
-            sleep()
+        if let bootstrapFailure = currentReasons.first(where: { $0.isGuestBootstrapFailure }) {
+            return .failedEarly(bootstrapFailure)
         }
 
-        return .timedOut(accumulatedReasons)
+        if pendingServiceReasons.isEmpty, RuntimeHealthSnapshotPolicy.isHealthy(observation.snapshot) {
+            return .healthy
+        }
+
+        let nextState = RuntimeHealthWaitState(
+            accumulatedReasons: uniqueReasons(state.accumulatedReasons + currentReasons)
+        )
+        let progress = shouldPublishProgress(attempt: attempt, configuration: configuration)
+            ? RuntimeHealthWaitProgress(reasons: currentReasons)
+            : nil
+        return .waiting(state: nextState, progress: progress)
     }
 
     private static func pendingRequiredServiceReasons(_ observation: RuntimeHealthWaitObservation) -> [RuntimeFailureReason] {
@@ -145,15 +147,11 @@ public enum RuntimeHealthWaiter {
         return result
     }
 
-    private static func publishProgressIfNeeded(
+    private static func shouldPublishProgress(
         attempt: Int,
-        configuration: RuntimeHealthWaitConfiguration,
-        reasons: [RuntimeFailureReason],
-        onProgress: ([RuntimeFailureReason]) -> Void
-    ) {
-        if attempt == 0 || attempt % configuration.progressEveryAttempts == 0 {
-            onProgress(reasons)
-        }
+        configuration: RuntimeHealthWaitConfiguration
+    ) -> Bool {
+        attempt == 0 || attempt % configuration.progressEveryAttempts == 0
     }
 }
 

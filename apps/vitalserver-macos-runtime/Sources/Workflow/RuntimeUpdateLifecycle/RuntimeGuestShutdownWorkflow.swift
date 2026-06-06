@@ -52,7 +52,11 @@ public struct RuntimeGuestShutdownWorkflowActions {
 }
 
 public struct RuntimeGuestShutdownWorkflow {
-    public init() {}
+    private let useCase: RuntimeGuestShutdownUseCase
+
+    public init(useCase: RuntimeGuestShutdownUseCase = RuntimeGuestShutdownUseCase()) {
+        self.useCase = useCase
+    }
 
     public func prepareForUpdate(
         manifest: UpdateBundleManifest,
@@ -67,20 +71,19 @@ public struct RuntimeGuestShutdownWorkflow {
         context: RuntimeGuestShutdownWorkflowContext,
         actions: RuntimeGuestShutdownWorkflowActions
     ) throws {
-        let updateUseCase = UpdateRuntimeUseCase()
-        switch updateUseCase.guestShutdownExecutionPlan(version: version) {
+        switch useCase.executionPlan(version: version) {
         case .prepare(let version, let requestLog, let readyLog):
             actions.log(requestLog)
             try actions.requireCapability()
             try actions.createGuestRunDirectory(context.guestRunDirectory)
             try actions.removeShutdownResult()
-            let request = updateUseCase.guestShutdownRequest(
+            let request = useCase.request(
                 version: version,
                 requestID: actions.requestID(),
                 requestedAt: actions.timestamp()
             )
             try actions.writeShutdownRequest(request)
-            try waitForShutdownReady(request, context: context, updateUseCase: updateUseCase, actions: actions)
+            try waitForShutdownReady(request, context: context, actions: actions)
             actions.log(readyLog)
         }
     }
@@ -88,26 +91,49 @@ public struct RuntimeGuestShutdownWorkflow {
     private func waitForShutdownReady(
         _ request: RuntimeGuestShutdownRequest,
         context: RuntimeGuestShutdownWorkflowContext,
-        updateUseCase: UpdateRuntimeUseCase,
         actions: RuntimeGuestShutdownWorkflowActions
     ) throws {
-        actions.log(updateUseCase.guestShutdownWaitStartedLogMessage(
+        actions.log(useCase.waitStartedLogMessage(
             timeoutSeconds: context.waitTimeoutSeconds
         ))
-        let waitResult = GuestShutdownWaiter.wait(
-            expectedRequestId: request.id,
-            configuration: updateUseCase.guestShutdownWaitConfiguration(
-                timeoutSeconds: context.waitTimeoutSeconds
-            ),
-            loadResult: actions.loadShutdownResult,
-            onProgress: { message in
-                actions.log(message)
-                actions.writeProgressStatus(.updating, .applyBundle, message)
-            },
-            sleep: actions.sleep
+        let configuration = try useCase.waitConfiguration(
+            timeoutSeconds: context.waitTimeoutSeconds
         )
+        for attempt in 0..<configuration.maxAttempts {
+            let outcome = GuestShutdownWaiter.evaluateAttempt(
+                expectedRequestId: request.id,
+                configuration: configuration,
+                attempt: attempt,
+                loadResult: actions.loadShutdownResult()
+            )
+            switch outcome {
+            case .ready(let message):
+                try executeWaitResultPlan(
+                    useCase.waitResultExecutionPlan(.ready(message: message)),
+                    actions: actions
+                )
+                return
+            case .failed(let message):
+                try executeWaitResultPlan(
+                    useCase.waitResultExecutionPlan(.failed(message: message)),
+                    actions: actions
+                )
+                return
+            case .waiting(let message, let shouldPublishProgress):
+                if shouldPublishProgress {
+                    actions.log(message)
+                    actions.writeProgressStatus(.updating, .applyBundle, message)
+                }
+                if attempt < configuration.maxAttempts - 1 {
+                    actions.sleep()
+                }
+            }
+        }
 
-        try executeWaitResultPlan(updateUseCase.guestShutdownWaitResultExecutionPlan(waitResult), actions: actions)
+        try executeWaitResultPlan(
+            useCase.waitResultExecutionPlan(.timedOut),
+            actions: actions
+        )
     }
 
     private func executeWaitResultPlan(

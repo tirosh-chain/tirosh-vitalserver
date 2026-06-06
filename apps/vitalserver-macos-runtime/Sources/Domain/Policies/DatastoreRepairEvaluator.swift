@@ -25,6 +25,12 @@ public struct DatastoreRepairWaitConfiguration: Equatable {
     }
 }
 
+public enum DatastoreRepairWaitAttemptOutcome: Equatable {
+    case completed(message: String)
+    case failed(message: String)
+    case waiting(message: String, shouldPublishProgress: Bool)
+}
+
 public enum DatastoreRepairEvaluator {
     public static func evaluate(
         _ result: DatastoreRepairResultDocument?,
@@ -62,42 +68,31 @@ public enum DatastoreRepairEvaluator {
 }
 
 public enum DatastoreRepairWaiter {
-    public static func wait(
+    public static func evaluateAttempt(
         expectedRequestId: String,
         configuration: DatastoreRepairWaitConfiguration,
-        loadResult: () -> RuntimeGuestDocumentLoadResult<DatastoreRepairResultDocument>,
-        onProgress: (String) -> Void,
-        sleep: () -> Void
-    ) -> DatastoreRepairWaitResult {
-        for attempt in 0..<configuration.maxAttempts {
-            let decision: DatastoreRepairDecision
-            switch loadResult() {
-            case .missing:
-                decision = DatastoreRepairEvaluator.evaluate(nil, expectedRequestId: expectedRequestId)
-            case .loaded(let result):
-                decision = DatastoreRepairEvaluator.evaluate(result, expectedRequestId: expectedRequestId)
-            case .failed(let message):
-                decision = .failed(message: "failed to read datastore repair result: \(message)")
-            }
-            switch decision {
-            case .completed(let message):
-                return .completed(message: message)
-            case .failed(let message):
-                return .failed(message: message)
-            case .missing(let message):
-                if attempt % configuration.progressEveryAttempts == 0 {
-                    onProgress(message)
-                }
-            case .wait(let message):
-                if attempt % configuration.progressEveryAttempts == 0 {
-                    onProgress(message)
-                }
-            }
-
-            if attempt < configuration.maxAttempts - 1 {
-                sleep()
-            }
+        attempt: Int,
+        loadResult: RuntimeGuestDocumentLoadResult<DatastoreRepairResultDocument>
+    ) -> DatastoreRepairWaitAttemptOutcome {
+        let decision: DatastoreRepairDecision
+        switch loadResult {
+        case .missing:
+            decision = DatastoreRepairEvaluator.evaluate(nil, expectedRequestId: expectedRequestId)
+        case .loaded(let result):
+            decision = DatastoreRepairEvaluator.evaluate(result, expectedRequestId: expectedRequestId)
+        case .failed(let message):
+            decision = .failed(message: "failed to read datastore repair result: \(message)")
         }
-        return .timedOut
+        switch decision {
+        case .completed(let message):
+            return .completed(message: message)
+        case .failed(let message):
+            return .failed(message: message)
+        case .missing(let message), .wait(let message):
+            return .waiting(
+                message: message,
+                shouldPublishProgress: attempt % configuration.progressEveryAttempts == 0
+            )
+        }
     }
 }

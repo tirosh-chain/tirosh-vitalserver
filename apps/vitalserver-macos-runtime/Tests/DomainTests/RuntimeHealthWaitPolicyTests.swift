@@ -5,7 +5,7 @@ import Errors
 
 final class RuntimeHealthWaitPolicyTests: XCTestCase {
     func testWaitRequiresExplicitRequiredServiceLoadedState() {
-        let result = RuntimeHealthWaiter.wait(
+        let result = runRuntimeHealthWait(
             configuration: RuntimeHealthWaitConfiguration(maxAttempts: 1, progressEveryAttempts: 1),
             observe: {
                 RuntimeHealthWaitObservation(
@@ -25,7 +25,7 @@ final class RuntimeHealthWaitPolicyTests: XCTestCase {
     }
 
     func testWaitKeepsExplicitFailureStateWithoutFailureReasonsVisible() {
-        let result = RuntimeHealthWaiter.wait(
+        let result = runRuntimeHealthWait(
             configuration: RuntimeHealthWaitConfiguration(maxAttempts: 1, progressEveryAttempts: 1),
             observe: {
                 RuntimeHealthWaitObservation(
@@ -43,6 +43,35 @@ final class RuntimeHealthWaitPolicyTests: XCTestCase {
             .timedOut([.unknown(RuntimeHealthSnapshotPolicy.missingFailureReasons)])
         )
     }
+}
+
+private func runRuntimeHealthWait(
+    configuration: RuntimeHealthWaitConfiguration,
+    observe: () -> RuntimeHealthWaitObservation,
+    onProgress: ([RuntimeFailureReason]) -> Void,
+    sleep: () -> Void
+) -> RuntimeHealthWaitResult {
+    var state = RuntimeHealthWaitState()
+    for attempt in 0..<configuration.maxAttempts {
+        switch RuntimeHealthWaiter.evaluateAttempt(
+            configuration: configuration,
+            attempt: attempt,
+            state: state,
+            observation: observe()
+        ) {
+        case .healthy:
+            return .healthy
+        case .failedEarly(let reason):
+            return .failedEarly(reason)
+        case .waiting(let nextState, let progress):
+            state = nextState
+            if let progress {
+                onProgress(progress.reasons)
+            }
+            sleep()
+        }
+    }
+    return .timedOut(state.accumulatedReasons)
 }
 
 private func healthSnapshot(

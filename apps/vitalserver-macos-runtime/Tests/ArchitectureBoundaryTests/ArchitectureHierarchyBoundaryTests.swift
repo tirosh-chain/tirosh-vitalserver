@@ -398,6 +398,25 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         }
     }
 
+    func testDomainPoliciesDoNotOwnPollingOrEffectClosures() throws {
+        let domainRoot = packageRoot().appendingPathComponent("Sources/Domain")
+        for file in try swiftFiles(root: domainRoot) {
+            let text = try String(contentsOf: file, encoding: .utf8)
+            for token in [
+                "sleep:",
+                "onProgress:",
+                "observe:",
+                "loadResult: () ->",
+                "Thread.sleep",
+            ] {
+                XCTAssertFalse(
+                    text.contains(token),
+                    "Domain must return pure decisions; polling/effect closure \(token) belongs in Workflow/Application: \(file.path)"
+                )
+            }
+        }
+    }
+
     func testBootstrapDoesNotOwnCommandExecutionDetails() throws {
         let bootstrapRoot = packageRoot().appendingPathComponent("Sources/Bootstrap")
         for file in try swiftFiles(root: bootstrapRoot) {
@@ -661,6 +680,46 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             FileManager.default.fileExists(atPath: file.path),
             "Datastore repair concrete execution belongs at the Host process boundary, not Bootstrap"
         )
+    }
+
+    func testRepairRuntimeUseCasesStaySplitByOperationResponsibility() throws {
+        let root = packageRoot()
+        let requiredFiles = [
+            "Sources/Application/UseCases/RepairRuntime/RepairRuntimeSharedPlans.swift",
+            "Sources/Application/UseCases/RepairRuntime/RuntimeVMDiskRepairUseCase.swift",
+            "Sources/Application/UseCases/RepairRuntime/RuntimeDatastoreRepairUseCase.swift",
+            "Sources/Application/UseCases/RepairRuntime/RuntimeRedisBackupUseCase.swift",
+        ]
+
+        for path in requiredFiles {
+            XCTAssertTrue(
+                FileManager.default.fileExists(atPath: root.appendingPathComponent(path).path),
+                "RepairRuntime usecase responsibility must stay operation-specific: \(path)"
+            )
+        }
+
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: root.appendingPathComponent(
+                    "Sources/Application/UseCases/RepairRuntime/RepairRuntimeUseCase.swift"
+                ).path
+            ),
+            "RepairRuntimeUseCase must not return as a mixed VM disk/datastore/Redis backup planning bucket"
+        )
+
+        let scannedRoots = [
+            root.appendingPathComponent("Sources"),
+            root.appendingPathComponent("Tests"),
+        ]
+        let files = try scannedRoots.flatMap { try sourceLikeFiles(root: $0) }
+            .filter { !$0.path.contains("/Tests/ArchitectureBoundaryTests/") }
+        for file in files {
+            let text = try String(contentsOf: file, encoding: .utf8)
+            XCTAssertFalse(
+                text.contains("RepairRuntimeUseCase("),
+                "Callers must depend on operation-specific repair usecases instead of RepairRuntimeUseCase: \(file.path)"
+            )
+        }
     }
 
     func testRuntimeServiceLifecycleExecutionDoesNotRemainInWorkflow() throws {
@@ -1141,6 +1200,7 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         }
 
         let forbiddenFiles = [
+            "Sources/Application/UseCases/UpdateRuntime/RuntimeGuestUpdateUseCase.swift",
             "Sources/Application/UseCases/UpdateRuntime/RuntimeGuestUpdateUseCases.swift",
             "Sources/Workflow/RuntimeUpdateLifecycle/RuntimeGuestActivationRunner.swift",
             "Sources/Workflow/RuntimeUpdateLifecycle/RuntimeGuestShutdownRunner.swift",
@@ -1154,6 +1214,92 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             XCTAssertFalse(
                 FileManager.default.fileExists(atPath: packageRoot().appendingPathComponent(relativePath).path),
                 "Guest update activation/shutdown workflow must not use obsolete placement or workflow-specific errors: \(relativePath)"
+            )
+        }
+    }
+
+    func testRuntimeUpdatePlanningStaysSplitByOperationResponsibility() throws {
+        let root = packageRoot()
+        let requiredFiles = [
+            "Sources/Application/UseCases/UpdateRuntime/ApplyRuntimeBundleUseCase.swift",
+            "Sources/Application/UseCases/UpdateRuntime/ApplyRuntimeBundlePreflightUseCase.swift",
+            "Sources/Application/UseCases/UpdateRuntime/PrepareRuntimeBundleUseCase.swift",
+            "Sources/Application/UseCases/UpdateRuntime/RequireRuntimeGuestCapabilityUseCase.swift",
+            "Sources/Application/UseCases/UpdateRuntime/RollbackRuntimeUseCase.swift",
+            "Sources/Application/UseCases/UpdateRuntime/RuntimeGuestActivationUseCase.swift",
+            "Sources/Application/UseCases/UpdateRuntime/RuntimeGuestShutdownUseCase.swift",
+            "Sources/Application/UseCases/UpdateRuntime/RuntimeGuestUpdateSharedPlans.swift",
+            "Sources/Application/UseCases/UpdateRuntime/UpdateRuntimeSharedPlans.swift",
+        ]
+
+        for path in requiredFiles {
+            XCTAssertTrue(
+                FileManager.default.fileExists(atPath: root.appendingPathComponent(path).path),
+                "Runtime update planning must stay operation-specific: \(path)"
+            )
+        }
+
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: root.appendingPathComponent("Sources/Application/UseCases/UpdateRuntime/UpdateRuntimeUseCase.swift").path
+            ),
+            "UpdateRuntimeUseCase must not return as a mixed apply/rollback/guest planning bucket"
+        )
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: root.appendingPathComponent("Sources/Application/UseCases/UpdateRuntime/RuntimeGuestUpdateUseCase.swift").path
+            ),
+            "RuntimeGuestUpdateUseCase must not return as a mixed activation/shutdown planning bucket"
+        )
+
+        let applyFile = root.appendingPathComponent(
+            "Sources/Application/UseCases/UpdateRuntime/ApplyRuntimeBundleUseCase.swift"
+        )
+        let preflightFile = root.appendingPathComponent(
+            "Sources/Application/UseCases/UpdateRuntime/ApplyRuntimeBundlePreflightUseCase.swift"
+        )
+        let applyText = try String(contentsOf: applyFile, encoding: .utf8)
+        let preflightText = try String(contentsOf: preflightFile, encoding: .utf8)
+        let preflightJudgementTokens = [
+            "preflightManifestPlan(",
+            "preflightCapabilityPlan(",
+            "storageRequirement(",
+            "storagePreflightStagedBundleLogMessage(",
+            "replacingRootfsStoragePreflightPlan(",
+            "unchangedRootfsStoragePreflightPlan(",
+            "rootfsStorageObservationPlan(",
+            "rootfsStorageDecision(",
+            "missingFileFailureMessage(",
+            "backupCreatedLogMessage(",
+            "diskHealthDecision(",
+        ]
+
+        for token in preflightJudgementTokens {
+            XCTAssertFalse(
+                applyText.contains(token),
+                "ApplyRuntimeBundleUseCase must not reabsorb apply preflight judgement: \(token)"
+            )
+            XCTAssertTrue(
+                preflightText.contains(token),
+                "ApplyRuntimeBundlePreflightUseCase must own apply preflight judgement: \(token)"
+            )
+        }
+
+        let scannedRoots = [
+            root.appendingPathComponent("Sources"),
+            root.appendingPathComponent("Tests"),
+        ]
+        let files = try scannedRoots.flatMap { try sourceLikeFiles(root: $0) }
+            .filter { !$0.path.contains("/Tests/ArchitectureBoundaryTests/") }
+        for file in files {
+            let text = try String(contentsOf: file, encoding: .utf8)
+            XCTAssertFalse(
+                text.contains("UpdateRuntimeUseCase("),
+                "Callers must depend on operation-specific update usecases instead of UpdateRuntimeUseCase: \(file.path)"
+            )
+            XCTAssertFalse(
+                text.contains("RuntimeGuestUpdateUseCase("),
+                "Callers must depend on activation/shutdown-specific guest update usecases instead of RuntimeGuestUpdateUseCase: \(file.path)"
             )
         }
     }

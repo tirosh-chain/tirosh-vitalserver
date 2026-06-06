@@ -13,7 +13,7 @@ final class GuestActivationWaiterTests: XCTestCase {
         ]
         var sleepCount = 0
 
-        let waitResult = GuestActivationWaiter.wait(
+        let waitResult = runGuestActivationWait(
             expectedRequestId: "request-1",
             configuration: GuestActivationWaitConfiguration(maxAttempts: 5, progressEveryAttempts: 1),
             loadResult: { results.removeFirst() },
@@ -28,7 +28,7 @@ final class GuestActivationWaiterTests: XCTestCase {
     func testFailsImmediatelyOnFailedResult() {
         var sleepCount = 0
 
-        let waitResult = GuestActivationWaiter.wait(
+        let waitResult = runGuestActivationWait(
             expectedRequestId: "request-1",
             configuration: GuestActivationWaitConfiguration(maxAttempts: 5, progressEveryAttempts: 1),
             loadResult: { .loaded(result(status: .failed, requestId: "request-1", message: "failed")) },
@@ -44,7 +44,7 @@ final class GuestActivationWaiterTests: XCTestCase {
         var progressMessages: [String] = []
         var sleepCount = 0
 
-        let waitResult = GuestActivationWaiter.wait(
+        let waitResult = runGuestActivationWait(
             expectedRequestId: "request-1",
             configuration: GuestActivationWaitConfiguration(maxAttempts: 5, progressEveryAttempts: 2),
             loadResult: { .missing },
@@ -62,7 +62,7 @@ final class GuestActivationWaiterTests: XCTestCase {
     }
 
     func testMismatchedRequestResultFailsImmediately() {
-        let waitResult = GuestActivationWaiter.wait(
+        let waitResult = runGuestActivationWait(
             expectedRequestId: "request-1",
             configuration: GuestActivationWaitConfiguration(maxAttempts: 2, progressEveryAttempts: 1),
             loadResult: { .loaded(result(status: .completed, requestId: "old", message: "old done")) },
@@ -74,7 +74,7 @@ final class GuestActivationWaiterTests: XCTestCase {
     }
 
     func testReadFailureFailsImmediately() {
-        let waitResult = GuestActivationWaiter.wait(
+        let waitResult = runGuestActivationWait(
             expectedRequestId: "request-1",
             configuration: GuestActivationWaitConfiguration(maxAttempts: 2, progressEveryAttempts: 1),
             loadResult: { .failed("permission denied") },
@@ -99,4 +99,34 @@ final class GuestActivationWaiterTests: XCTestCase {
             updatedAt: "2026-05-21T12:33:57Z"
         )
     }
+}
+
+private func runGuestActivationWait(
+    expectedRequestId: String,
+    configuration: GuestActivationWaitConfiguration,
+    loadResult: () -> RuntimeGuestDocumentLoadResult<GuestUpdateActivationResultDocument>,
+    onProgress: (String) -> Void,
+    sleep: () -> Void
+) -> GuestActivationWaitResult {
+    for attempt in 0..<configuration.maxAttempts {
+        switch GuestActivationWaiter.evaluateAttempt(
+            expectedRequestId: expectedRequestId,
+            configuration: configuration,
+            attempt: attempt,
+            loadResult: loadResult()
+        ) {
+        case .completed(let message):
+            return .completed(message: message)
+        case .failed(let message):
+            return .failed(message: message)
+        case .waiting(let message, let shouldPublishProgress):
+            if shouldPublishProgress {
+                onProgress(message)
+            }
+            if attempt < configuration.maxAttempts - 1 {
+                sleep()
+            }
+        }
+    }
+    return .timedOut
 }

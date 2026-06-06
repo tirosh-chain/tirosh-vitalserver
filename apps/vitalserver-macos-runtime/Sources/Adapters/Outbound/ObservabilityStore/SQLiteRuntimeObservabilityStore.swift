@@ -267,7 +267,7 @@ public struct SQLiteRuntimeObservabilityStore {
                 )
             }
         } catch {
-            return RuntimeEventPage(events: [], readError: String(describing: error))
+            return .failed(readError: String(describing: error))
         }
     }
 

@@ -92,6 +92,7 @@ final class JSONLRuntimeEventRepositoryTests: XCTestCase {
 
         let page = repository.query(RuntimeEventQuery(limit: 10))
 
+        XCTAssertEqual(page.state, .partiallyLoaded)
         XCTAssertEqual(page.events.map(\.id), ["event-1"])
         XCTAssertEqual(page.matchingCount, 1)
         XCTAssertNotNil(page.readError)

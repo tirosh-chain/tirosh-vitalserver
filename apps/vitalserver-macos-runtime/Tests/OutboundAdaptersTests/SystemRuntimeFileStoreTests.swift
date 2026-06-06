@@ -35,8 +35,22 @@ final class SystemRuntimeFileStoreTests: XCTestCase {
         XCTAssertEqual(try store.readUTF8Text(file), "hello")
         XCTAssertEqual(try store.readData(file), Data("hello".utf8))
         XCTAssertEqual(try store.fileSize(file), 5)
+        XCTAssertGreaterThan(try store.modificationDate(file).timeIntervalSince1970, 0)
 
         try FileManager.default.removeItem(at: directory)
+    }
+
+    func testFileSystemAttributesRequireExplicitFreeSize() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let store = SystemRuntimeFileStore()
+
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        XCTAssertGreaterThan(try store.fileSystemAttributes(forPath: directory.path).freeBytes, 0)
     }
 
     func testWritesCopiesMovesListsAndRemovesFiles() throws {
