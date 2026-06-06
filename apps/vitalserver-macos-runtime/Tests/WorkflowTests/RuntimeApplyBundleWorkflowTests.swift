@@ -42,8 +42,9 @@ final class RuntimeApplyBundleWorkflowTests: XCTestCase {
         try harness.workflow.applyBundle(harness.inputBundle)
 
         XCTAssertEqual(harness.statuses.last?.level, .healthy)
-        XCTAssertTrue(harness.logs.contains { $0.contains("bundle apply log directory preparation failed") })
-        XCTAssertTrue(harness.logs.contains { $0.contains("bundle apply log rotation failed") })
+        XCTAssertEqual(harness.preparedLogDirectories, [harness.logsDirectory])
+        XCTAssertTrue(harness.logs.contains { $0.contains("prepare-log-dir-failed") })
+        XCTAssertTrue(harness.logs.contains { $0.contains("rotate-failed") })
     }
 }
 
@@ -83,6 +84,7 @@ private final class ApplyBundleWorkflowHarness {
     var statuses: [(level: RuntimeStatusLevel, operation: RuntimeOperation, message: String)] = []
     var progressEvents: [RuntimeStepExecutionEvent] = []
     var logs: [String] = []
+    var preparedLogDirectories: [URL] = []
     var pruneCount = 0
     var rotateRuntimeLogsError: Error?
 
@@ -149,9 +151,15 @@ private final class ApplyBundleWorkflowHarness {
                     self.backupReasons.append(reason)
                     return self.backup
                 },
-                rotateRuntimeLogs: {
+                prepareLogs: { url in
+                    self.preparedLogDirectories.append(url)
+                    if let error = self.createDirectoryErrors[url] {
+                        self.logs.append("prepare-log-dir-failed:\(error)")
+                    } else {
+                        self.createdDirectories.append((url: url, withIntermediateDirectories: true))
+                    }
                     if let error = self.rotateRuntimeLogsError {
-                        throw error
+                        self.logs.append("rotate-failed:\(error)")
                     }
                 },
                 executeFailureRecoveryPlan: { _ in

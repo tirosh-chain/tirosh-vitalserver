@@ -646,6 +646,27 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         }
     }
 
+    func testRuntimeApplyBundleWorkflowDoesNotOwnLogPreparationEffects() throws {
+        let file = packageRoot().appendingPathComponent(
+            "Sources/Workflow/RuntimeUpdateLifecycle/RuntimeApplyBundleWorkflow.swift"
+        )
+        let text = try String(contentsOf: file, encoding: .utf8)
+        let forbiddenTokens = [
+            "rotateRuntimeLogs",
+            "applyBundleLogDirectoryPreparationFailedLogMessage",
+            "applyBundleLogRotationFailedLogMessage",
+            "operations.describeError(error)",
+            "try operations.createDirectory(context.logsDirectory",
+        ]
+
+        for token in forbiddenTokens {
+            XCTAssertFalse(
+                text.contains(token),
+                "RuntimeApplyBundleWorkflow must delegate log preparation execution instead of owning \(token)"
+            )
+        }
+    }
+
     func testRuntimeBundlePreparationWorkflowDoesNotInterpretTemporaryRootDirectly() throws {
         let file = packageRoot().appendingPathComponent(
             "Sources/Workflow/RuntimeUpdateLifecycle/RuntimeBundlePreparationWorkflow.swift"

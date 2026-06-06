@@ -312,7 +312,7 @@ public struct RuntimeBundleComposition {
                 executePreflightCapabilityInstruction: executePreflightCapabilityInstruction,
                 executePreflightFailurePlan: executeApplyBundlePreflightFailurePlan,
                 createBackup: operations.createBackup,
-                rotateRuntimeLogs: operations.rotateRuntimeLogs,
+                prepareLogs: prepareApplyBundleLogs,
                 executeFailureRecoveryPlan: executeApplyBundleFailureRecoveryPlan,
                 statusReporter: operations.statusReporter,
                 pruneOldRuntimeArtifacts: operations.pruneOldRuntimeArtifacts,
@@ -321,6 +321,23 @@ public struct RuntimeBundleComposition {
                 log: operations.log
             )
         )
+    }
+
+    private func prepareApplyBundleLogs(_ logsDirectory: URL) {
+        do {
+            try operations.fileStore.createDirectory(at: logsDirectory, withIntermediateDirectories: true)
+        } catch {
+            operations.log(UpdateRuntimeUseCase().applyBundleLogDirectoryPreparationFailedLogMessage(
+                reason: RuntimeErrorDescription.describe(error)
+            ))
+        }
+        do {
+            try operations.rotateRuntimeLogs()
+        } catch {
+            operations.log(UpdateRuntimeUseCase().applyBundleLogRotationFailedLogMessage(
+                reason: RuntimeErrorDescription.describe(error)
+            ))
+        }
     }
 
     private func loadManifest(_ url: URL) throws -> UpdateBundleManifest {

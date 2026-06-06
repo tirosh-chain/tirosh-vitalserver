@@ -40,7 +40,7 @@ public struct RuntimeApplyBundleWorkflowOperations {
     public var executePreflightCapabilityInstruction: (ApplyRuntimeBundlePreflightCapabilityInstruction) throws -> Void
     public var executePreflightFailurePlan: (ApplyRuntimeBundlePreflightFailurePlan) -> Void
     public var createBackup: (String) throws -> URL
-    public var rotateRuntimeLogs: () throws -> Void
+    public var prepareLogs: (URL) -> Void
     public var executeFailureRecoveryPlan: (ApplyRuntimeBundleFailureRecoveryPlan) -> Void
     public var statusReporter: RuntimeWorkflowStatusReporter
     public var pruneOldRuntimeArtifacts: () throws -> Void
@@ -62,7 +62,7 @@ public struct RuntimeApplyBundleWorkflowOperations {
         executePreflightCapabilityInstruction: @escaping (ApplyRuntimeBundlePreflightCapabilityInstruction) throws -> Void,
         executePreflightFailurePlan: @escaping (ApplyRuntimeBundlePreflightFailurePlan) -> Void,
         createBackup: @escaping (String) throws -> URL,
-        rotateRuntimeLogs: @escaping () throws -> Void,
+        prepareLogs: @escaping (URL) -> Void,
         executeFailureRecoveryPlan: @escaping (ApplyRuntimeBundleFailureRecoveryPlan) -> Void,
         statusReporter: RuntimeWorkflowStatusReporter,
         pruneOldRuntimeArtifacts: @escaping () throws -> Void,
@@ -83,7 +83,7 @@ public struct RuntimeApplyBundleWorkflowOperations {
         self.executePreflightCapabilityInstruction = executePreflightCapabilityInstruction
         self.executePreflightFailurePlan = executePreflightFailurePlan
         self.createBackup = createBackup
-        self.rotateRuntimeLogs = rotateRuntimeLogs
+        self.prepareLogs = prepareLogs
         self.executeFailureRecoveryPlan = executeFailureRecoveryPlan
         self.statusReporter = statusReporter
         self.pruneOldRuntimeArtifacts = pruneOldRuntimeArtifacts
@@ -112,7 +112,7 @@ public struct RuntimeApplyBundleWorkflow {
 
     private func runtimeApplyBundleRunner() -> RuntimeApplyBundleRunner {
         RuntimeApplyBundleRunner(
-            prepareLogs: prepareApplyBundleLogs,
+            prepareLogs: { operations.prepareLogs(context.logsDirectory) },
             initialHealthSnapshot: operations.runtimeHealthSnapshot,
             executeInitialHealthWarningPlan: operations.executeInitialHealthWarningPlan,
             preparePreflight: prepareApplyBundlePreflight,
@@ -123,23 +123,6 @@ public struct RuntimeApplyBundleWorkflow {
             pruneOldRuntimeArtifacts: operations.pruneOldRuntimeArtifacts,
             describeError: operations.describeError
         )
-    }
-
-    private func prepareApplyBundleLogs() {
-        do {
-            try operations.createDirectory(context.logsDirectory, true)
-        } catch {
-            operations.log(UpdateRuntimeUseCase().applyBundleLogDirectoryPreparationFailedLogMessage(
-                reason: operations.describeError(error)
-            ))
-        }
-        do {
-            try operations.rotateRuntimeLogs()
-        } catch {
-            operations.log(UpdateRuntimeUseCase().applyBundleLogRotationFailedLogMessage(
-                reason: operations.describeError(error)
-            ))
-        }
     }
 
     private func prepareApplyBundlePreflight(_ bundleURL: URL) throws -> ApplyBundlePreflightContext {
