@@ -6,8 +6,8 @@ import Errors
 
 public struct RuntimeRollbackPreflightRunner {
     public var resolveBackupSelection: (RollbackRuntimeBackupSelection) throws -> URL
-    public var resolveBackupDirectory: (URL) -> RollbackRuntimeBackupDirectoryDecision
-    public var resolveBackupRootfs: (RollbackRuntimeBackupPlan) -> RollbackRuntimeBackupRootfsDecision
+    public var resolveBackupDirectory: (URL) throws -> URL
+    public var resolveBackupRootfs: (RollbackRuntimeBackupPlan) throws -> RollbackRuntimeBackupPlan
     public var loadManifest: (URL) throws -> BackupManifest
     public var serviceRestartPolicy: () -> RuntimeServiceRestartPolicy
     public var log: (String) -> Void
@@ -17,8 +17,8 @@ public struct RuntimeRollbackPreflightRunner {
 
     public init(
         resolveBackupSelection: @escaping (RollbackRuntimeBackupSelection) throws -> URL,
-        resolveBackupDirectory: @escaping (URL) -> RollbackRuntimeBackupDirectoryDecision,
-        resolveBackupRootfs: @escaping (RollbackRuntimeBackupPlan) -> RollbackRuntimeBackupRootfsDecision,
+        resolveBackupDirectory: @escaping (URL) throws -> URL,
+        resolveBackupRootfs: @escaping (RollbackRuntimeBackupPlan) throws -> RollbackRuntimeBackupPlan,
         loadManifest: @escaping (URL) throws -> BackupManifest,
         serviceRestartPolicy: @escaping () -> RuntimeServiceRestartPolicy,
         log: @escaping (String) -> Void
@@ -33,23 +33,10 @@ public struct RuntimeRollbackPreflightRunner {
 
     public func prepare(_ command: RuntimeRollbackCommand) throws -> RollbackPreflightContext {
         let backup = try resolveBackupSelection(useCase.rollbackBackupSelection(command: command))
-
-        switch resolveBackupDirectory(backup) {
-        case .loadManifest:
-            break
-        case .failed(let message):
-            throw RuntimeRollbackWorkflowError.operationFailed(message)
-        }
-
-        let manifest = try loadManifest(backup)
+        let manifestBackup = try resolveBackupDirectory(backup)
+        let manifest = try loadManifest(manifestBackup)
         let backupPlan = useCase.rollbackBackupPlan(backup: backup, manifest: manifest)
-        let resolvedBackupPlan: RollbackRuntimeBackupPlan
-        switch resolveBackupRootfs(backupPlan) {
-        case .proceed(let plan):
-            resolvedBackupPlan = plan
-        case .failed(let message):
-            throw RuntimeRollbackWorkflowError.operationFailed(message)
-        }
+        let resolvedBackupPlan = try resolveBackupRootfs(backupPlan)
 
         let restartPolicy = serviceRestartPolicy()
         let preflightPlan = useCase.rollbackPreflightPlan(backup: backup, restartPolicy: restartPolicy)

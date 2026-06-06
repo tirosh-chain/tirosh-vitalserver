@@ -432,6 +432,9 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             "ApplyRuntimeBundleRootfsStorageObservation(",
             "case .unchanged",
             "case .replacing",
+            "ApplyRuntimeBundleRootfsStorageDecision",
+            "case .planned",
+            "case .failed",
             "rootfsStorageDecision(",
             "runtimeHealthSnapshot()",
             "diskHealthDecision(",
@@ -561,8 +564,13 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             "rollbackBackupRootfsObservationRequirement",
             "rollbackBackupDirectoryDecision",
             "rollbackBackupRootfsDecision",
+            "RollbackRuntimeBackupDirectoryDecision",
+            "RollbackRuntimeBackupRootfsDecision",
             "RollbackRuntimeBackupDirectoryObservation",
             "RollbackRuntimeBackupRootfsObservation",
+            "case .loadManifest",
+            "case .proceed",
+            "case .failed",
         ]
 
         for token in forbiddenTokens {

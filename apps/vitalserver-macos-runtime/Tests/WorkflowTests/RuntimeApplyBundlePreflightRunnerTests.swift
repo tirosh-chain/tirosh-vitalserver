@@ -451,14 +451,21 @@ private let updateFreeSpaceMarginBytes: UInt64 = 2 * 1024 * 1024 * 1024
 private func resolveRootfsStorage(
     _ plan: ApplyRuntimeBundleRootfsStorageObservationPlan,
     observe: (URL, URL) throws -> ApplyRuntimeBundleRootfsStorageObservation
-) throws -> ApplyRuntimeBundleRootfsStorageDecision {
+) throws -> ApplyRuntimeBundleRootfsStoragePreflightPlan {
+    let decision: ApplyRuntimeBundleRootfsStorageDecision
     switch plan {
     case .unchanged(let rootfsStoragePlan):
-        return .planned(rootfsStoragePlan)
+        decision = .planned(rootfsStoragePlan)
     case .replacing(let stagedRootfs, let rootfsBase):
-        return UpdateRuntimeUseCase().rootfsStorageDecision(
+        decision = UpdateRuntimeUseCase().rootfsStorageDecision(
             observation: try observe(stagedRootfs, rootfsBase)
         )
+    }
+    switch decision {
+    case .planned(let rootfsStoragePlan):
+        return rootfsStoragePlan
+    case .failed(let message):
+        throw RuntimeApplyBundleWorkflowError.operationFailed(message)
     }
 }
 

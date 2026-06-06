@@ -7,7 +7,7 @@ import Errors
 public struct RuntimeApplyBundlePreflightRunner {
     public var stageBundle: (URL) throws -> URL
     public var loadStagedManifest: (URL) throws -> UpdateBundleManifest
-    public var resolveRootfsStorage: (ApplyRuntimeBundleRootfsStorageObservationPlan) throws -> ApplyRuntimeBundleRootfsStorageDecision
+    public var resolveRootfsStorage: (ApplyRuntimeBundleRootfsStorageObservationPlan) throws -> ApplyRuntimeBundleRootfsStoragePreflightPlan
     public var createDirectory: (URL, Bool) throws -> Void
     public var requireFreeSpace: (URL, UInt64, RuntimeOperation) throws -> Void
     public var checkCompatibility: (UpdateBundleManifest) throws -> Void
@@ -24,7 +24,7 @@ public struct RuntimeApplyBundlePreflightRunner {
     public init(
         stageBundle: @escaping (URL) throws -> URL,
         loadStagedManifest: @escaping (URL) throws -> UpdateBundleManifest,
-        resolveRootfsStorage: @escaping (ApplyRuntimeBundleRootfsStorageObservationPlan) throws -> ApplyRuntimeBundleRootfsStorageDecision,
+        resolveRootfsStorage: @escaping (ApplyRuntimeBundleRootfsStorageObservationPlan) throws -> ApplyRuntimeBundleRootfsStoragePreflightPlan,
         createDirectory: @escaping (URL, Bool) throws -> Void,
         requireFreeSpace: @escaping (URL, UInt64, RuntimeOperation) throws -> Void,
         checkCompatibility: @escaping (UpdateBundleManifest) throws -> Void,
@@ -60,14 +60,9 @@ public struct RuntimeApplyBundlePreflightRunner {
         let stagedBundleSize = try directorySize(stagedBundle)
         log(useCase.storagePreflightStagedBundleLogMessage(stagedBundleBytes: stagedBundleSize))
         let rootfsStoragePlan = useCase.rootfsStorageObservationPlan(stagedRootfs: stagedRootfs, rootfsBase: rootfsBase)
-        let rootfsStorage: RuntimeUpdateRootfsStorageInput
-        switch try resolveRootfsStorage(rootfsStoragePlan) {
-        case .planned(let rootfsStoragePreflightPlan):
-            rootfsStorage = rootfsStoragePreflightPlan.rootfsStorage
-            log(rootfsStoragePreflightPlan.logMessage)
-        case .failed(let message):
-            throw RuntimeApplyBundleWorkflowError.operationFailed(message)
-        }
+        let rootfsStoragePreflightPlan = try resolveRootfsStorage(rootfsStoragePlan)
+        let rootfsStorage = rootfsStoragePreflightPlan.rootfsStorage
+        log(rootfsStoragePreflightPlan.logMessage)
         let storageRequirement = useCase.storageRequirement(
             stagedBundleBytes: stagedBundleSize,
             rootfsStorage: rootfsStorage,

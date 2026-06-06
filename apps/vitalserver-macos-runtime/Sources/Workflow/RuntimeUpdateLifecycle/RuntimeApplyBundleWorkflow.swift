@@ -29,7 +29,7 @@ public struct RuntimeApplyBundleWorkflowContext {
 public struct RuntimeApplyBundleWorkflowOperations {
     public var stageBundle: (URL) throws -> URL
     public var loadStagedManifest: (URL) throws -> UpdateBundleManifest
-    public var resolveRootfsStorage: (ApplyRuntimeBundleRootfsStorageObservationPlan) throws -> ApplyRuntimeBundleRootfsStorageDecision
+    public var resolveRootfsStorage: (ApplyRuntimeBundleRootfsStorageObservationPlan) throws -> ApplyRuntimeBundleRootfsStoragePreflightPlan
     public var createDirectory: (URL, Bool) throws -> Void
     public var directorySize: (URL) throws -> UInt64
     public var requireFreeSpace: (URL, UInt64, RuntimeOperation) throws -> Void
@@ -51,7 +51,7 @@ public struct RuntimeApplyBundleWorkflowOperations {
     public init(
         stageBundle: @escaping (URL) throws -> URL,
         loadStagedManifest: @escaping (URL) throws -> UpdateBundleManifest,
-        resolveRootfsStorage: @escaping (ApplyRuntimeBundleRootfsStorageObservationPlan) throws -> ApplyRuntimeBundleRootfsStorageDecision,
+        resolveRootfsStorage: @escaping (ApplyRuntimeBundleRootfsStorageObservationPlan) throws -> ApplyRuntimeBundleRootfsStoragePreflightPlan,
         createDirectory: @escaping (URL, Bool) throws -> Void,
         directorySize: @escaping (URL) throws -> UInt64,
         requireFreeSpace: @escaping (URL, UInt64, RuntimeOperation) throws -> Void,

@@ -107,12 +107,12 @@ private final class ApplyBundleWorkflowHarness {
                 resolveRootfsStorage: { plan in
                     switch plan {
                     case .unchanged(let rootfsStoragePlan):
-                        return .planned(rootfsStoragePlan)
+                        return rootfsStoragePlan
                     case .replacing(let stagedRootfs, _):
-                        return .planned(ApplyRuntimeBundleRootfsStoragePreflightPlan(
+                        return ApplyRuntimeBundleRootfsStoragePreflightPlan(
                             rootfsStorage: .replacing(installedRootfsBytes: 1, incomingRootfsBytes: 1),
                             logMessage: "rootfs storage observed \(stagedRootfs.lastPathComponent)"
-                        ))
+                        )
                     }
                 },
                 createDirectory: { url, withIntermediateDirectories in

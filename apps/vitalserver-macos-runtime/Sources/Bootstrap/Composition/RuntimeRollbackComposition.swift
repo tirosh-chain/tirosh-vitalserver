@@ -84,20 +84,20 @@ public enum RuntimeRollbackComposition {
                     }
                 },
                 resolveBackupDirectory: { backup in
-                    UpdateRuntimeUseCase().rollbackBackupDirectoryDecision(
+                    try executeBackupDirectoryDecision(UpdateRuntimeUseCase().rollbackBackupDirectoryDecision(
                         observation: RollbackRuntimeBackupDirectoryObservation(
                             backup: backup,
                             directoryExists: operations.fileStore.directoryExists(backup)
                         )
-                    )
+                    ))
                 },
                 resolveBackupRootfs: { backupPlan in
-                    UpdateRuntimeUseCase().rollbackBackupRootfsDecision(
+                    try executeBackupRootfsDecision(UpdateRuntimeUseCase().rollbackBackupRootfsDecision(
                         observation: RollbackRuntimeBackupRootfsObservation(
                             backupPlan: backupPlan,
                             backupRootfsExists: backupPlan.backupRootfs.map(operations.fileStore.fileExists)
                         )
-                    )
+                    ))
                 },
                 loadBackupManifest: RuntimeBackupManifestLoader(fileStore: operations.fileStore).load,
                 isLaunchdLoaded: operations.isLaunchdLoaded,
@@ -143,6 +143,28 @@ public enum RuntimeRollbackComposition {
                 requiredInput: requiredInput,
                 backupVersionExists: fileStore.fileExists(backupVersion)
             )
+        }
+    }
+
+    private static func executeBackupDirectoryDecision(
+        _ decision: RollbackRuntimeBackupDirectoryDecision
+    ) throws -> URL {
+        switch decision {
+        case .loadManifest(let backup):
+            return backup
+        case .failed(let message):
+            throw RuntimeRollbackWorkflowError.operationFailed(message)
+        }
+    }
+
+    private static func executeBackupRootfsDecision(
+        _ decision: RollbackRuntimeBackupRootfsDecision
+    ) throws -> RollbackRuntimeBackupPlan {
+        switch decision {
+        case .proceed(let plan):
+            return plan
+        case .failed(let message):
+            throw RuntimeRollbackWorkflowError.operationFailed(message)
         }
     }
 

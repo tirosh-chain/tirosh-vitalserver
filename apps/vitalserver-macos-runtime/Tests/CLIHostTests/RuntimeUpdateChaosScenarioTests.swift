@@ -32,10 +32,10 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
             resolveRootfsStorage: { plan in
                 switch plan {
                 case .unchanged(let rootfsStoragePlan):
-                    return .planned(rootfsStoragePlan)
+                    return rootfsStoragePlan
                 case .replacing:
                     XCTFail("rootfs storage should not be observed")
-                    return .failed(message: "unexpected rootfs storage observation")
+                    throw LauncherError.runtimeOperationFailed("unexpected rootfs storage observation")
                 }
             },
             createDirectory: { _, _ in events.append("mkdir") },
@@ -299,12 +299,13 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
                 }
             },
             resolveBackupDirectory: { selectedBackup in
-                selectedBackup == backup
+                try executeRollbackBackupDirectoryDecision(selectedBackup == backup
                     ? .loadManifest(selectedBackup)
                     : .failed(message: "missing file: \(selectedBackup.path)")
+                )
             },
             resolveBackupRootfs: { _ in
-                .failed(message: "missing file: \(missingRootfs.path)")
+                throw RuntimeRollbackWorkflowError.operationFailed("missing file: \(missingRootfs.path)")
             },
             loadManifest: { _ in
                 BackupManifest(
@@ -546,6 +547,17 @@ private final class RuntimeUpdateChaosGuestGateway: RuntimeGuestGateway {
     func removeDatastoreRepairResult() throws {}
     func writeDatastoreRepairRequest(_ request: RuntimeDatastoreRepairRequest) throws {}
     func loadDatastoreRepairResultDocument() -> RuntimeGuestDocumentLoadResult<DatastoreRepairResultDocument> { .missing }
+}
+
+private func executeRollbackBackupDirectoryDecision(
+    _ decision: RollbackRuntimeBackupDirectoryDecision
+) throws -> URL {
+    switch decision {
+    case .loadManifest(let backup):
+        return backup
+    case .failed(let message):
+        throw RuntimeRollbackWorkflowError.operationFailed(message)
+    }
 }
 
 private enum RuntimeChaosError: Error, CustomStringConvertible {

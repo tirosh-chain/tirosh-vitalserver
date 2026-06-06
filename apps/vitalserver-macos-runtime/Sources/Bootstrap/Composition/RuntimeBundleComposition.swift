@@ -336,14 +336,27 @@ public struct RuntimeBundleComposition {
 
     private func resolveRootfsStorage(
         plan: ApplyRuntimeBundleRootfsStorageObservationPlan
-    ) throws -> ApplyRuntimeBundleRootfsStorageDecision {
+    ) throws -> ApplyRuntimeBundleRootfsStoragePreflightPlan {
+        let decision: ApplyRuntimeBundleRootfsStorageDecision
         switch plan {
         case .unchanged(let rootfsStoragePlan):
-            return .planned(rootfsStoragePlan)
+            decision = .planned(rootfsStoragePlan)
         case .replacing(let stagedRootfs, let rootfsBase):
-            return UpdateRuntimeUseCase().rootfsStorageDecision(
+            decision = UpdateRuntimeUseCase().rootfsStorageDecision(
                 observation: try observeRootfsStorage(stagedRootfs: stagedRootfs, rootfsBase: rootfsBase)
             )
+        }
+        return try executeRootfsStorageDecision(decision)
+    }
+
+    private func executeRootfsStorageDecision(
+        _ decision: ApplyRuntimeBundleRootfsStorageDecision
+    ) throws -> ApplyRuntimeBundleRootfsStoragePreflightPlan {
+        switch decision {
+        case .planned(let plan):
+            return plan
+        case .failed(let message):
+            throw RuntimeApplyBundleWorkflowError.operationFailed(message)
         }
     }
 

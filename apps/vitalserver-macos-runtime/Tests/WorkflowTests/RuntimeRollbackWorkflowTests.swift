@@ -28,14 +28,16 @@ final class RuntimeRollbackWorkflowTests: XCTestCase {
                     }
                 },
                 resolveBackupDirectory: { selectedBackup in
-                    selectedBackup == backup
+                    try executeBackupDirectoryDecision(selectedBackup == backup
                         ? .loadManifest(selectedBackup)
                         : .failed(message: "missing file: \(selectedBackup.path)")
+                    )
                 },
                 resolveBackupRootfs: { backupPlan in
-                    backupPlan.backupRootfs == backupRootfs
+                    try executeBackupRootfsDecision(backupPlan.backupRootfs == backupRootfs
                         ? .proceed(backupPlan)
                         : .failed(message: "missing file: \(backupPlan.backupRootfs?.path ?? "unknown")")
+                    )
                 },
                 loadBackupManifest: { url in
                     events.append("manifest:\(url.lastPathComponent)")
@@ -114,13 +116,14 @@ final class RuntimeRollbackWorkflowTests: XCTestCase {
                     }
                 },
                 resolveBackupDirectory: { selectedBackup in
-                    selectedBackup == backup
+                    try executeBackupDirectoryDecision(selectedBackup == backup
                         ? .loadManifest(selectedBackup)
                         : .failed(message: "missing file: \(selectedBackup.path)")
+                    )
                 },
                 resolveBackupRootfs: { backupPlan in
                     XCTFail("missing manifest should stop before rootfs observation")
-                    return .proceed(backupPlan)
+                    return backupPlan
                 },
                 loadBackupManifest: { _ in
                     throw RuntimeBackupManifestLoaderError.missingFile(
@@ -184,6 +187,28 @@ private func backupManifest(rootfsBase: String?) -> BackupManifest {
         vmDisk: "vm-disk.img",
         vmDiskPreserved: true
     )
+}
+
+private func executeBackupDirectoryDecision(
+    _ decision: RollbackRuntimeBackupDirectoryDecision
+) throws -> URL {
+    switch decision {
+    case .loadManifest(let backup):
+        return backup
+    case .failed(let message):
+        throw RuntimeRollbackWorkflowError.operationFailed(message)
+    }
+}
+
+private func executeBackupRootfsDecision(
+    _ decision: RollbackRuntimeBackupRootfsDecision
+) throws -> RollbackRuntimeBackupPlan {
+    switch decision {
+    case .proceed(let plan):
+        return plan
+    case .failed(let message):
+        throw RuntimeRollbackWorkflowError.operationFailed(message)
+    }
 }
 
 private func rollbackPlanLabel(_ plan: RollbackRuntimeStepExecutionPlan) -> String {

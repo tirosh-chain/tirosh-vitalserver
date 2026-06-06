@@ -31,8 +31,8 @@ public struct RuntimeRollbackWorkflowContext {
 
 public struct RuntimeRollbackWorkflowOperations {
     public let resolveBackupSelection: (RollbackRuntimeBackupSelection) throws -> URL
-    public let resolveBackupDirectory: (URL) -> RollbackRuntimeBackupDirectoryDecision
-    public let resolveBackupRootfs: (RollbackRuntimeBackupPlan) -> RollbackRuntimeBackupRootfsDecision
+    public let resolveBackupDirectory: (URL) throws -> URL
+    public let resolveBackupRootfs: (RollbackRuntimeBackupPlan) throws -> RollbackRuntimeBackupPlan
     public let loadBackupManifest: (URL) throws -> BackupManifest
     public let isLaunchdLoaded: (RuntimeManagedService) -> Bool
     public let planRollbackStepExecution: (
@@ -47,8 +47,8 @@ public struct RuntimeRollbackWorkflowOperations {
 
     public init(
         resolveBackupSelection: @escaping (RollbackRuntimeBackupSelection) throws -> URL,
-        resolveBackupDirectory: @escaping (URL) -> RollbackRuntimeBackupDirectoryDecision,
-        resolveBackupRootfs: @escaping (RollbackRuntimeBackupPlan) -> RollbackRuntimeBackupRootfsDecision,
+        resolveBackupDirectory: @escaping (URL) throws -> URL,
+        resolveBackupRootfs: @escaping (RollbackRuntimeBackupPlan) throws -> RollbackRuntimeBackupPlan,
         loadBackupManifest: @escaping (URL) throws -> BackupManifest,
         isLaunchdLoaded: @escaping (RuntimeManagedService) -> Bool,
         planRollbackStepExecution: @escaping (
