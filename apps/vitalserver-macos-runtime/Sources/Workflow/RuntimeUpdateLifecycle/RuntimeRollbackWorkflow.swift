@@ -33,7 +33,7 @@ public struct RuntimeRollbackWorkflowOperations {
     public let requireLatestBackup: () throws -> URL
     public let directoryExists: (URL) -> Bool
     public let fileExists: (URL) -> Bool
-    public let readData: (URL) throws -> Data
+    public let loadBackupManifest: (URL) throws -> BackupManifest
     public let isLaunchdLoaded: (RuntimeManagedService) -> Bool
     public let stopRuntimeServices: () throws -> Void
     public let startRuntimeServices: (RuntimeServiceRestartPolicy) throws -> Void
@@ -50,7 +50,7 @@ public struct RuntimeRollbackWorkflowOperations {
         requireLatestBackup: @escaping () throws -> URL,
         directoryExists: @escaping (URL) -> Bool,
         fileExists: @escaping (URL) -> Bool,
-        readData: @escaping (URL) throws -> Data,
+        loadBackupManifest: @escaping (URL) throws -> BackupManifest,
         isLaunchdLoaded: @escaping (RuntimeManagedService) -> Bool,
         stopRuntimeServices: @escaping () throws -> Void,
         startRuntimeServices: @escaping (RuntimeServiceRestartPolicy) throws -> Void,
@@ -66,7 +66,7 @@ public struct RuntimeRollbackWorkflowOperations {
         self.requireLatestBackup = requireLatestBackup
         self.directoryExists = directoryExists
         self.fileExists = fileExists
-        self.readData = readData
+        self.loadBackupManifest = loadBackupManifest
         self.isLaunchdLoaded = isLaunchdLoaded
         self.stopRuntimeServices = stopRuntimeServices
         self.startRuntimeServices = startRuntimeServices
@@ -84,9 +84,6 @@ public struct RuntimeRollbackWorkflowOperations {
 public struct RuntimeRollbackWorkflow {
     public let context: RuntimeRollbackWorkflowContext
     public let operations: RuntimeRollbackWorkflowOperations
-    private var useCase: UpdateRuntimeUseCase {
-        UpdateRuntimeUseCase()
-    }
 
     public init(
         context: RuntimeRollbackWorkflowContext,
@@ -112,21 +109,11 @@ public struct RuntimeRollbackWorkflow {
     }
 
     private func prepareRollbackPreflight(_ command: RuntimeRollbackCommand) throws -> RollbackPreflightContext {
-        let useCase = useCase
         return try RuntimeRollbackPreflightRunner(
             requireLatestBackup: operations.requireLatestBackup,
             directoryExists: operations.directoryExists,
             fileExists: operations.fileExists,
-            loadManifest: { backup in
-                let manifestURL = backup.appendingPathComponent(RuntimeFileNames.backupManifest)
-                guard operations.fileExists(manifestURL) else {
-                    throw RuntimeRollbackWorkflowError.operationFailed(
-                        useCase.missingFileFailureMessage(path: manifestURL.path)
-                    )
-                }
-                let data = try operations.readData(manifestURL)
-                return try JSONDecoder().decode(BackupManifest.self, from: data)
-            },
+            loadManifest: operations.loadBackupManifest,
             serviceRestartPolicy: {
                 RuntimeServiceRestartPolicy(
                     restartVM: operations.isLaunchdLoaded(.vm),

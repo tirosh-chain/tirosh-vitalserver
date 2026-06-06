@@ -21,9 +21,9 @@ final class RuntimeRollbackWorkflowTests: XCTestCase {
                 requireLatestBackup: { throw TestError.unexpectedLatestBackup },
                 directoryExists: { $0 == backup },
                 fileExists: { [manifestURL, backupRootfs, backupVersion].contains($0) },
-                readData: { url in
-                    events.append("read:\(url.lastPathComponent)")
-                    return try JSONEncoder().encode(backupManifest(rootfsBase: RuntimeFileNames.rootfsBase))
+                loadBackupManifest: { url in
+                    events.append("manifest:\(url.lastPathComponent)")
+                    return backupManifest(rootfsBase: RuntimeFileNames.rootfsBase)
                 },
                 isLaunchdLoaded: { service in
                     events.append("loaded:\(serviceName(service))")
@@ -76,7 +76,7 @@ final class RuntimeRollbackWorkflowTests: XCTestCase {
             RuntimeOperationPlans.rollback.steps
         )
         XCTAssertEqual(events, [
-            "read:backup-manifest.json",
+            "manifest:before-1.2.3",
             "loaded:vm",
             "loaded:guest-log-sync",
             "loaded:proxy",
@@ -102,7 +102,11 @@ final class RuntimeRollbackWorkflowTests: XCTestCase {
                 requireLatestBackup: { throw TestError.unexpectedLatestBackup },
                 directoryExists: { $0 == backup },
                 fileExists: { _ in false },
-                readData: { _ in throw TestError.unexpectedRead },
+                loadBackupManifest: { _ in
+                    throw RuntimeBackupManifestLoaderError.missingFile(
+                        path: backup.appendingPathComponent(RuntimeFileNames.backupManifest).path
+                    )
+                },
                 isLaunchdLoaded: { _ in false },
                 stopRuntimeServices: { stopped = true },
                 startRuntimeServices: { _ in },
@@ -166,5 +170,4 @@ private func backupManifest(rootfsBase: String?) -> BackupManifest {
 
 private enum TestError: Error {
     case unexpectedLatestBackup
-    case unexpectedRead
 }

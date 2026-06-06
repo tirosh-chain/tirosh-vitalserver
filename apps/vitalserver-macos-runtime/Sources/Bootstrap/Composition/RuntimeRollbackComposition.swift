@@ -78,7 +78,7 @@ public enum RuntimeRollbackComposition {
                 requireLatestBackup: operations.requireLatestBackup,
                 directoryExists: operations.fileStore.directoryExists,
                 fileExists: operations.fileStore.fileExists,
-                readData: operations.fileStore.readData,
+                loadBackupManifest: RuntimeBackupManifestLoader(fileStore: operations.fileStore).load,
                 isLaunchdLoaded: operations.isLaunchdLoaded,
                 stopRuntimeServices: operations.stopRuntimeServices,
                 startRuntimeServices: operations.startRuntimeServices,
