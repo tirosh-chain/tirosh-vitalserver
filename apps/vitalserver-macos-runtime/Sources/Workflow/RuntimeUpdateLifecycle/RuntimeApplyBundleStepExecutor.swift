@@ -73,8 +73,9 @@ public struct RuntimeApplyBundleStepExecutor {
         )
 
         switch executionPlan {
-        case .stopRuntimeServices(let preparesGuestShutdown, let manifest):
-            if preparesGuestShutdown {
+        case .stopRuntimeServices(let stopPlan):
+            switch stopPlan {
+            case .prepareGuestShutdownAndStopServicesAfterPoweroff(let manifest):
                 let expectedVMProcessID = try runningVMProcessID()
                 log(useCase.capturedVMProcessBeforeGuestUpdateShutdownLogMessage(processID: expectedVMProcessID))
                 try prepareGuestShutdownForUpdate(manifest)
@@ -83,24 +84,25 @@ public struct RuntimeApplyBundleStepExecutor {
                     try stopRuntimeServicesAfterGuestPoweroff(expectedVMProcessID)
                 }
                 return
+            case .stopServicesDirectly:
+                try stopRuntimeServices()
             }
-            try stopRuntimeServices()
         case .replaceRootfsBase(let rootfsPlan):
-            guard let stagedRootfs = rootfsPlan.stagedRootfs, rootfsPlan.shouldReplace else {
-                if let skippedLogMessage = rootfsPlan.skippedLogMessage {
-                    log(skippedLogMessage)
-                }
+            switch rootfsPlan {
+            case .skip(let logMessage):
+                log(logMessage)
                 return
+            case .replace(let stagedRootfs, let rootfsBase):
+                try createDirectory(rootfsBase.deletingLastPathComponent(), true)
+                let executionPlan = useCase.rootfsReplacementExecutionPlan(
+                    stagedRootfs: stagedRootfs,
+                    rootfsBase: rootfsBase,
+                    stagedRootfsBytes: try fileSize(stagedRootfs)
+                )
+                log(executionPlan.startedLogMessage)
+                try replaceFile(stagedRootfs, rootfsBase)
+                log(executionPlan.completedLogMessage)
             }
-            try createDirectory(rootfsPlan.rootfsBase.deletingLastPathComponent(), true)
-            let executionPlan = useCase.rootfsReplacementExecutionPlan(
-                stagedRootfs: stagedRootfs,
-                rootfsBase: rootfsPlan.rootfsBase,
-                stagedRootfsBytes: try fileSize(stagedRootfs)
-            )
-            log(executionPlan.startedLogMessage)
-            try replaceFile(stagedRootfs, rootfsPlan.rootfsBase)
-            log(executionPlan.completedLogMessage)
         case .replaceUpdateArtifacts(let artifacts, let stagedBundle):
             try replaceUpdateArtifacts(artifacts, stagedBundle)
         case .runMigrations(let migrations, let stagedBundle):

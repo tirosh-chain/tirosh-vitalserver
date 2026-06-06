@@ -272,9 +272,14 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
         let backup = URL(fileURLWithPath: "/product/backups/20260531T000000Z-before-1.2.3")
         let missingRootfs = backup.appendingPathComponent(Constants.Artifacts.rootfsBase)
         let runner = RuntimeRollbackPreflightRunner(
-            requireLatestBackup: {
-                XCTFail("specific backup should not resolve latest backup")
-                return URL(fileURLWithPath: "/unused")
+            resolveBackupSelection: { selection in
+                switch selection {
+                case .specificBackup(let selectedBackup):
+                    return selectedBackup
+                case .latestBackup:
+                    XCTFail("specific backup should not resolve latest backup")
+                    return URL(fileURLWithPath: "/unused")
+                }
             },
             directoryExists: { url in url == backup },
             fileExists: { _ in false },

@@ -1,3 +1,4 @@
+import Application
 import Contracts
 import Domain
 import Foundation
@@ -12,9 +13,15 @@ final class RuntimeRollbackPreflightRunnerTests: XCTestCase {
         var events: [String] = []
 
         let runner = RuntimeRollbackPreflightRunner(
-            requireLatestBackup: {
-                XCTFail("requested backup should not resolve latest backup")
-                return URL(fileURLWithPath: "/unused")
+            resolveBackupSelection: { selection in
+                events.append("selection:\(selectionLabel(selection))")
+                switch selection {
+                case .specificBackup(let backup):
+                    return backup
+                case .latestBackup:
+                    XCTFail("requested backup should not resolve latest backup")
+                    return URL(fileURLWithPath: "/unused")
+                }
             },
             directoryExists: { url in
                 events.append("directory:\(url.path)")
@@ -48,6 +55,7 @@ final class RuntimeRollbackPreflightRunnerTests: XCTestCase {
             restartWatchdog: true
         ))
         XCTAssertEqual(events, [
+            "selection:specific:/product/backups/backup-1",
             "directory:/product/backups/backup-1",
             "manifest:/product/backups/backup-1",
             "file:/product/backups/backup-1/rootfs-base.raw.gz",
@@ -56,15 +64,22 @@ final class RuntimeRollbackPreflightRunnerTests: XCTestCase {
         ])
     }
 
-    func testPrepareFallsBackToLatestBackup() throws {
+    func testPrepareResolvesLatestBackupSelectionThroughPort() throws {
         let latestBackup = URL(fileURLWithPath: "/product/backups/latest")
         let backupRootfs = latestBackup.appendingPathComponent(rootfsBaseName)
         var events: [String] = []
 
         let runner = RuntimeRollbackPreflightRunner(
-            requireLatestBackup: {
-                events.append("latest")
-                return latestBackup
+            resolveBackupSelection: { selection in
+                events.append("selection:\(selectionLabel(selection))")
+                switch selection {
+                case .latestBackup:
+                    events.append("latest")
+                    return latestBackup
+                case .specificBackup:
+                    XCTFail("latest command should not request a specific backup")
+                    return URL(fileURLWithPath: "/unused")
+                }
             },
             directoryExists: { url in
                 events.append("directory:\(url.path)")
@@ -95,6 +110,7 @@ final class RuntimeRollbackPreflightRunnerTests: XCTestCase {
             restartWatchdog: false
         ))
         XCTAssertEqual(events, [
+            "selection:latest",
             "latest",
             "directory:/product/backups/latest",
             "manifest:/product/backups/latest",
@@ -107,7 +123,7 @@ final class RuntimeRollbackPreflightRunnerTests: XCTestCase {
     func testPrepareFailsWhenBackupDirectoryIsMissing() {
         let requestedBackup = URL(fileURLWithPath: "/product/backups/missing")
         let runner = RuntimeRollbackPreflightRunner(
-            requireLatestBackup: { URL(fileURLWithPath: "/unused") },
+            resolveBackupSelection: { _ in requestedBackup },
             directoryExists: { _ in false },
             fileExists: { _ in
                 XCTFail("missing backup directory should stop before file checks")
@@ -133,7 +149,7 @@ final class RuntimeRollbackPreflightRunnerTests: XCTestCase {
         let requestedBackup = URL(fileURLWithPath: "/product/backups/backup-1")
         let missingRootfs = requestedBackup.appendingPathComponent(rootfsBaseName)
         let runner = RuntimeRollbackPreflightRunner(
-            requireLatestBackup: { URL(fileURLWithPath: "/unused") },
+            resolveBackupSelection: { _ in requestedBackup },
             directoryExists: { _ in true },
             fileExists: { _ in false },
             loadManifest: { _ in self.backupManifest(rootfsBase: rootfsBaseName) },
@@ -153,7 +169,7 @@ final class RuntimeRollbackPreflightRunnerTests: XCTestCase {
         let requestedBackup = URL(fileURLWithPath: "/product/backups/backup-1")
         var events: [String] = []
         let runner = RuntimeRollbackPreflightRunner(
-            requireLatestBackup: { URL(fileURLWithPath: "/unused") },
+            resolveBackupSelection: { _ in requestedBackup },
             directoryExists: { _ in true },
             fileExists: { url in
                 events.append("file:\(url.path)")
@@ -188,3 +204,12 @@ final class RuntimeRollbackPreflightRunnerTests: XCTestCase {
 
 private let rootfsBaseName = "rootfs-base.raw.gz"
 private let runtimeVersionName = "runtime-version.json"
+
+private func selectionLabel(_ selection: RollbackRuntimeBackupSelection) -> String {
+    switch selection {
+    case .latestBackup:
+        return "latest"
+    case .specificBackup(let backup):
+        return "specific:\(backup.path)"
+    }
+}

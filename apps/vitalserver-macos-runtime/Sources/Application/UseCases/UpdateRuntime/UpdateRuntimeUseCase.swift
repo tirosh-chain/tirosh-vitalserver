@@ -71,31 +71,14 @@ public struct ApplyRuntimeBundleRootfsStoragePreflightPlan: Equatable, Sendable 
     }
 }
 
-public struct ApplyRuntimeBundleStopPlan: Equatable, Sendable {
-    public let preparesGuestShutdown: Bool
-
-    public init(preparesGuestShutdown: Bool) {
-        self.preparesGuestShutdown = preparesGuestShutdown
-    }
+public enum ApplyRuntimeBundleStopExecutionPlan: Equatable, Sendable {
+    case stopServicesDirectly
+    case prepareGuestShutdownAndStopServicesAfterPoweroff(manifest: UpdateBundleManifest)
 }
 
-public struct ApplyRuntimeBundleRootfsReplacementPlan: Equatable, Sendable {
-    public let stagedRootfs: URL?
-    public let rootfsBase: URL
-    public let shouldReplace: Bool
-    public let skippedLogMessage: String?
-
-    public init(
-        stagedRootfs: URL?,
-        rootfsBase: URL,
-        shouldReplace: Bool,
-        skippedLogMessage: String?
-    ) {
-        self.stagedRootfs = stagedRootfs
-        self.rootfsBase = rootfsBase
-        self.shouldReplace = shouldReplace
-        self.skippedLogMessage = skippedLogMessage
-    }
+public enum ApplyRuntimeBundleRootfsReplacementPlan: Equatable, Sendable {
+    case skip(logMessage: String)
+    case replace(stagedRootfs: URL, rootfsBase: URL)
 }
 
 public struct ApplyRuntimeBundleRootfsReplacementExecutionPlan: Equatable, Sendable {
@@ -138,7 +121,7 @@ public enum ApplyRuntimeBundleRootfsStorageDecision: Equatable, Sendable {
 }
 
 public enum ApplyRuntimeBundleStepExecutionPlan: Equatable, Sendable {
-    case stopRuntimeServices(preparesGuestShutdown: Bool, manifest: UpdateBundleManifest)
+    case stopRuntimeServices(ApplyRuntimeBundleStopExecutionPlan)
     case replaceRootfsBase(ApplyRuntimeBundleRootfsReplacementPlan)
     case replaceUpdateArtifacts(artifacts: [UpdateBundleArtifact], stagedBundle: URL)
     case runMigrations(migrations: [UpdateBundleMigration], stagedBundle: URL)
@@ -559,20 +542,24 @@ public struct UpdateRuntimeUseCase {
         "backup created path=\(backupPath) size=\(formatBytes(backupBytes))"
     }
 
-    public func stopPlan(restartPolicy: RuntimeServiceRestartPolicy) -> ApplyRuntimeBundleStopPlan {
-        ApplyRuntimeBundleStopPlan(preparesGuestShutdown: restartPolicy.restartVM)
+    public func stopExecutionPlan(
+        restartPolicy: RuntimeServiceRestartPolicy,
+        manifest: UpdateBundleManifest
+    ) -> ApplyRuntimeBundleStopExecutionPlan {
+        guard restartPolicy.restartVM else {
+            return .stopServicesDirectly
+        }
+        return .prepareGuestShutdownAndStopServicesAfterPoweroff(manifest: manifest)
     }
 
     public func rootfsReplacementPlan(
         stagedRootfs: URL?,
         rootfsBase: URL
     ) -> ApplyRuntimeBundleRootfsReplacementPlan {
-        ApplyRuntimeBundleRootfsReplacementPlan(
-            stagedRootfs: stagedRootfs,
-            rootfsBase: rootfsBase,
-            shouldReplace: stagedRootfs != nil,
-            skippedLogMessage: stagedRootfs == nil ? "rootfs-base replacement skipped; bundle does not include rootfs-base" : nil
-        )
+        guard let stagedRootfs else {
+            return .skip(logMessage: "rootfs-base replacement skipped; bundle does not include rootfs-base")
+        }
+        return .replace(stagedRootfs: stagedRootfs, rootfsBase: rootfsBase)
     }
 
     public func capturedVMProcessBeforeGuestUpdateShutdownLogMessage(processID: pid_t) -> String {
@@ -597,10 +584,10 @@ public struct UpdateRuntimeUseCase {
     ) -> ApplyRuntimeBundleStepExecutionPlan {
         switch step {
         case .stopRuntimeServices:
-            return .stopRuntimeServices(
-                preparesGuestShutdown: stopPlan(restartPolicy: preflight.restartPolicy).preparesGuestShutdown,
+            return .stopRuntimeServices(stopExecutionPlan(
+                restartPolicy: preflight.restartPolicy,
                 manifest: preflight.manifest
-            )
+            ))
         case .replaceRootfsBase:
             return .replaceRootfsBase(rootfsReplacementPlan(
                 stagedRootfs: preflight.stagedRootfs,

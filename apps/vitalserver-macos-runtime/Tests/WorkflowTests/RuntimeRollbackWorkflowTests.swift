@@ -1,3 +1,4 @@
+import Application
 import Contracts
 import Domain
 import Foundation
@@ -18,7 +19,15 @@ final class RuntimeRollbackWorkflowTests: XCTestCase {
         let workflow = RuntimeRollbackWorkflow(
             context: context(),
             operations: RuntimeRollbackWorkflowOperations(
-                requireLatestBackup: { throw TestError.unexpectedLatestBackup },
+                resolveBackupSelection: { selection in
+                    events.append("selection:\(selectionLabel(selection))")
+                    switch selection {
+                    case .specificBackup(let selectedBackup):
+                        return selectedBackup
+                    case .latestBackup:
+                        throw TestError.unexpectedLatestBackup
+                    }
+                },
                 directoryExists: { $0 == backup },
                 fileExists: { [manifestURL, backupRootfs, backupVersion].contains($0) },
                 loadBackupManifest: { url in
@@ -76,6 +85,7 @@ final class RuntimeRollbackWorkflowTests: XCTestCase {
             RuntimeOperationPlans.rollback.steps
         )
         XCTAssertEqual(events, [
+            "selection:specific:/product/backups/before-1.2.3",
             "manifest:before-1.2.3",
             "loaded:vm",
             "loaded:guest-log-sync",
@@ -99,7 +109,14 @@ final class RuntimeRollbackWorkflowTests: XCTestCase {
         let workflow = RuntimeRollbackWorkflow(
             context: context(),
             operations: RuntimeRollbackWorkflowOperations(
-                requireLatestBackup: { throw TestError.unexpectedLatestBackup },
+                resolveBackupSelection: { selection in
+                    switch selection {
+                    case .specificBackup(let selectedBackup):
+                        return selectedBackup
+                    case .latestBackup:
+                        throw TestError.unexpectedLatestBackup
+                    }
+                },
                 directoryExists: { $0 == backup },
                 fileExists: { _ in false },
                 loadBackupManifest: { _ in
@@ -170,4 +187,13 @@ private func backupManifest(rootfsBase: String?) -> BackupManifest {
 
 private enum TestError: Error {
     case unexpectedLatestBackup
+}
+
+private func selectionLabel(_ selection: RollbackRuntimeBackupSelection) -> String {
+    switch selection {
+    case .latestBackup:
+        return "latest"
+    case .specificBackup(let backup):
+        return "specific:\(backup.path)"
+    }
 }

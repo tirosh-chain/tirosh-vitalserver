@@ -30,7 +30,7 @@ public struct RuntimeRollbackWorkflowContext {
 }
 
 public struct RuntimeRollbackWorkflowOperations {
-    public let requireLatestBackup: () throws -> URL
+    public let resolveBackupSelection: (RollbackRuntimeBackupSelection) throws -> URL
     public let directoryExists: (URL) -> Bool
     public let fileExists: (URL) -> Bool
     public let loadBackupManifest: (URL) throws -> BackupManifest
@@ -47,7 +47,7 @@ public struct RuntimeRollbackWorkflowOperations {
     public let log: (String) -> Void
 
     public init(
-        requireLatestBackup: @escaping () throws -> URL,
+        resolveBackupSelection: @escaping (RollbackRuntimeBackupSelection) throws -> URL,
         directoryExists: @escaping (URL) -> Bool,
         fileExists: @escaping (URL) -> Bool,
         loadBackupManifest: @escaping (URL) throws -> BackupManifest,
@@ -63,7 +63,7 @@ public struct RuntimeRollbackWorkflowOperations {
         writeProgress: @escaping (RuntimeStepExecutionEvent) throws -> Void,
         log: @escaping (String) -> Void
     ) {
-        self.requireLatestBackup = requireLatestBackup
+        self.resolveBackupSelection = resolveBackupSelection
         self.directoryExists = directoryExists
         self.fileExists = fileExists
         self.loadBackupManifest = loadBackupManifest
@@ -110,7 +110,7 @@ public struct RuntimeRollbackWorkflow {
 
     private func prepareRollbackPreflight(_ command: RuntimeRollbackCommand) throws -> RollbackPreflightContext {
         return try RuntimeRollbackPreflightRunner(
-            requireLatestBackup: operations.requireLatestBackup,
+            resolveBackupSelection: operations.resolveBackupSelection,
             directoryExists: operations.directoryExists,
             fileExists: operations.fileExists,
             loadManifest: operations.loadBackupManifest,

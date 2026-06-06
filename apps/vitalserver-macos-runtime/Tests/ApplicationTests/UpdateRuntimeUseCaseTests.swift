@@ -344,35 +344,44 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
         )
     }
 
-    func testStopPlanPreparesGuestShutdownOnlyWhenVMWillRestart() {
+    func testStopExecutionPlanPreparesGuestShutdownOnlyWhenVMWillRestart() {
         let useCase = UpdateRuntimeUseCase()
+        let manifest = manifest(artifacts: [])
 
-        XCTAssertTrue(useCase.stopPlan(restartPolicy: RuntimeServiceRestartPolicy(
-            restartVM: true,
-            restartGuestLogSync: false,
-            restartProxy: false,
-            restartWatchdog: false
-        )).preparesGuestShutdown)
-        XCTAssertFalse(useCase.stopPlan(restartPolicy: restartPolicy()).preparesGuestShutdown)
+        XCTAssertEqual(
+            useCase.stopExecutionPlan(
+                restartPolicy: RuntimeServiceRestartPolicy(
+                    restartVM: true,
+                    restartGuestLogSync: false,
+                    restartProxy: false,
+                    restartWatchdog: false
+                ),
+                manifest: manifest
+            ),
+            .prepareGuestShutdownAndStopServicesAfterPoweroff(manifest: manifest)
+        )
+        XCTAssertEqual(
+            useCase.stopExecutionPlan(restartPolicy: restartPolicy(), manifest: manifest),
+            .stopServicesDirectly
+        )
     }
 
     func testRootfsReplacementPlanKeepsMissingRootfsAsExplicitSkip() {
         let useCase = UpdateRuntimeUseCase()
         let rootfsBase = URL(fileURLWithPath: "/runtime/rootfs-base.raw")
+        let stagedRootfs = URL(fileURLWithPath: "/tmp/rootfs-base.raw.gz")
 
         let skipPlan = useCase.rootfsReplacementPlan(stagedRootfs: nil, rootfsBase: rootfsBase)
         let replacePlan = useCase.rootfsReplacementPlan(
-            stagedRootfs: URL(fileURLWithPath: "/tmp/rootfs-base.raw.gz"),
+            stagedRootfs: stagedRootfs,
             rootfsBase: rootfsBase
         )
 
-        XCTAssertFalse(skipPlan.shouldReplace)
-        XCTAssertNil(skipPlan.stagedRootfs)
-        XCTAssertEqual(skipPlan.rootfsBase, rootfsBase)
-        XCTAssertEqual(skipPlan.skippedLogMessage, "rootfs-base replacement skipped; bundle does not include rootfs-base")
-        XCTAssertTrue(replacePlan.shouldReplace)
-        XCTAssertEqual(replacePlan.stagedRootfs, URL(fileURLWithPath: "/tmp/rootfs-base.raw.gz"))
-        XCTAssertNil(replacePlan.skippedLogMessage)
+        XCTAssertEqual(
+            skipPlan,
+            .skip(logMessage: "rootfs-base replacement skipped; bundle does not include rootfs-base")
+        )
+        XCTAssertEqual(replacePlan, .replace(stagedRootfs: stagedRootfs, rootfsBase: rootfsBase))
     }
 
     func testApplyBundleStepExecutionMessagesComeFromUseCase() {
@@ -453,7 +462,7 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
                 preflight: preflight,
                 rootfsBase: rootfsBase
             ),
-            .stopRuntimeServices(preparesGuestShutdown: true, manifest: manifest)
+            .stopRuntimeServices(.prepareGuestShutdownAndStopServicesAfterPoweroff(manifest: manifest))
         )
         XCTAssertEqual(
             useCase.applyBundleStepExecutionPlan(
@@ -461,12 +470,21 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
                 preflight: preflight,
                 rootfsBase: rootfsBase
             ),
-            .replaceRootfsBase(ApplyRuntimeBundleRootfsReplacementPlan(
-                stagedRootfs: stagedRootfs,
-                rootfsBase: rootfsBase,
-                shouldReplace: true,
-                skippedLogMessage: nil
-            ))
+            .replaceRootfsBase(.replace(stagedRootfs: stagedRootfs, rootfsBase: rootfsBase))
+        )
+        XCTAssertEqual(
+            useCase.applyBundleStepExecutionPlan(
+                step: .replaceRootfsBase,
+                preflight: ApplyBundlePreflightContext(
+                    stagedBundle: stagedBundle,
+                    manifest: manifest,
+                    stagedRootfs: nil,
+                    backup: URL(fileURLWithPath: "/tmp/backup"),
+                    restartPolicy: restartPolicy
+                ),
+                rootfsBase: rootfsBase
+            ),
+            .replaceRootfsBase(.skip(logMessage: "rootfs-base replacement skipped; bundle does not include rootfs-base"))
         )
         XCTAssertEqual(
             useCase.applyBundleStepExecutionPlan(

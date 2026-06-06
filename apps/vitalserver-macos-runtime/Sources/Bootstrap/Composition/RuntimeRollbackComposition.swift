@@ -75,7 +75,14 @@ public enum RuntimeRollbackComposition {
                 deployDirectory: context.installedPaths.deployDirectory
             ),
             operations: RuntimeRollbackWorkflowOperations(
-                requireLatestBackup: operations.requireLatestBackup,
+                resolveBackupSelection: { selection in
+                    switch selection {
+                    case .latestBackup:
+                        return try operations.requireLatestBackup()
+                    case .specificBackup(let backup):
+                        return backup
+                    }
+                },
                 directoryExists: operations.fileStore.directoryExists,
                 fileExists: operations.fileStore.fileExists,
                 loadBackupManifest: RuntimeBackupManifestLoader(fileStore: operations.fileStore).load,

@@ -302,6 +302,25 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         }
     }
 
+    func testRuntimeUpdateWorkflowDoesNotInterpretRollbackBackupSelectionDirectly() throws {
+        let updateWorkflowRoot = packageRoot().appendingPathComponent("Sources/Workflow/RuntimeUpdateLifecycle")
+        let forbiddenTokens = [
+            "backupURL(for:",
+            "case .latestBackup",
+            "case .specificBackup",
+        ]
+
+        for file in try swiftFiles(root: updateWorkflowRoot) {
+            let text = try String(contentsOf: file, encoding: .utf8)
+            for token in forbiddenTokens {
+                XCTAssertFalse(
+                    text.contains(token),
+                    "RuntimeUpdateLifecycle Workflow must pass rollback backup selections to a port instead of interpreting \(token) directly: \(file.path)"
+                )
+            }
+        }
+    }
+
     func testRuntimeUpdateWorkflowDoesNotInterpretPreflightFileObservationsDirectly() throws {
         let updateWorkflowRoot = packageRoot().appendingPathComponent("Sources/Workflow/RuntimeUpdateLifecycle")
         let forbiddenTokens = [
@@ -313,6 +332,11 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             "!fileExists",
             "!directoryExists",
             "RuntimeFileNames.updateBundleManifest",
+            "shouldReplace",
+            "guard let stagedRootfs",
+            "stagedRootfs == nil",
+            "stagedRootfs != nil",
+            "preparesGuestShutdown",
         ]
 
         for file in try swiftFiles(root: updateWorkflowRoot) {
