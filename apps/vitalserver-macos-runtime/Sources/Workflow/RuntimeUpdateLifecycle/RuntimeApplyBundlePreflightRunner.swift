@@ -6,7 +6,7 @@ import Errors
 
 public struct RuntimeApplyBundlePreflightRunner {
     public var stageBundle: (URL) throws -> URL
-    public var loadManifest: (URL) throws -> UpdateBundleManifest
+    public var loadStagedManifest: (URL) throws -> UpdateBundleManifest
     public var fileExists: (URL) -> Bool
     public var createDirectory: (URL, Bool) throws -> Void
     public var fileSize: (URL) throws -> UInt64
@@ -25,7 +25,7 @@ public struct RuntimeApplyBundlePreflightRunner {
 
     public init(
         stageBundle: @escaping (URL) throws -> URL,
-        loadManifest: @escaping (URL) throws -> UpdateBundleManifest,
+        loadStagedManifest: @escaping (URL) throws -> UpdateBundleManifest,
         fileExists: @escaping (URL) -> Bool,
         createDirectory: @escaping (URL, Bool) throws -> Void,
         fileSize: @escaping (URL) throws -> UInt64,
@@ -40,7 +40,7 @@ public struct RuntimeApplyBundlePreflightRunner {
         log: @escaping (String) -> Void
     ) {
         self.stageBundle = stageBundle
-        self.loadManifest = loadManifest
+        self.loadStagedManifest = loadStagedManifest
         self.fileExists = fileExists
         self.createDirectory = createDirectory
         self.fileSize = fileSize
@@ -57,7 +57,7 @@ public struct RuntimeApplyBundlePreflightRunner {
 
     public func prepare(bundleURL: URL, backupsDirectory: URL, rootfsBase: URL) throws -> ApplyBundlePreflightContext {
         let stagedBundle = try stageBundle(bundleURL)
-        let manifest = try loadManifest(stagedBundle.appendingPathComponent(RuntimeFileNames.updateBundleManifest))
+        let manifest = try loadStagedManifest(stagedBundle)
         let manifestPlan = useCase.preflightManifestPlan(stagedBundle: stagedBundle, manifest: manifest)
         log(manifestPlan.manifestLogMessage)
         try checkCompatibility(manifest)

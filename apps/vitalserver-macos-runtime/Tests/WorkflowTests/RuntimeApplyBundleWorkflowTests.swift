@@ -12,7 +12,7 @@ final class RuntimeApplyBundleWorkflowTests: XCTestCase {
         try harness.workflow.applyBundle(harness.inputBundle)
 
         XCTAssertEqual(harness.stageBundleInputs, [harness.inputBundle])
-        XCTAssertEqual(harness.loadedManifests, [harness.stagedBundle.appendingPathComponent(RuntimeFileNames.updateBundleManifest)])
+        XCTAssertEqual(harness.loadedManifests, [harness.stagedBundle])
         XCTAssertEqual(harness.createdDirectories.map(\.url), [harness.logsDirectory, harness.backupsDirectory])
         XCTAssertEqual(harness.freeSpaceRequests.map(\.operation), [.applyBundle])
         XCTAssertEqual(harness.backupReasons, ["before-0.2.0"])
@@ -99,7 +99,7 @@ private final class ApplyBundleWorkflowHarness {
                     self.stageBundleInputs.append(url)
                     return self.stagedBundle
                 },
-                loadManifest: { url in
+                loadStagedManifest: { url in
                     self.loadedManifests.append(url)
                     return self.manifest
                 },

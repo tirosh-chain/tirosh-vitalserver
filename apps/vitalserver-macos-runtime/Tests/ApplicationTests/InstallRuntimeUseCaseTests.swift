@@ -101,6 +101,29 @@ final class InstallRuntimeUseCaseTests: XCTestCase {
         XCTAssertEqual(useCase.stepCompletedLogMessage(.startInstalledServices), "step=start-installed-services status=completed")
     }
 
+    func testStepExecutionPlanKeepsStepInterpretationOutOfWorkflow() {
+        let useCase = InstallRuntimeUseCase()
+
+        XCTAssertEqual(useCase.stepExecutionPlan(.loadInstallSettings), .log("install settings loaded"))
+        XCTAssertEqual(useCase.stepExecutionPlan(.prepareInstallDirectories), .prepareInstallDirectories)
+        XCTAssertEqual(useCase.stepExecutionPlan(.rotateRuntimeLogs), .rotateRuntimeLogs)
+        XCTAssertEqual(useCase.stepExecutionPlan(.configureGuestRuntimeConfig), .configureDeployEnvironment)
+        XCTAssertEqual(useCase.stepExecutionPlan(.prepareInstalledExecutables), .prepareInstalledExecutables)
+        XCTAssertEqual(useCase.stepExecutionPlan(.provisionVMDisk), .provisionVMDisk)
+        XCTAssertEqual(useCase.stepExecutionPlan(.configureVMRuntime), .configureInstalledVMRuntime)
+        XCTAssertEqual(useCase.stepExecutionPlan(.createCloudInitSeed), .createCloudInitSeed)
+        XCTAssertEqual(useCase.stepExecutionPlan(.writeInstallRuntimeVersion), .writeInstalledRuntimeVersion)
+        XCTAssertEqual(useCase.stepExecutionPlan(.configureInstalledPermissions), .configureInstalledPermissions)
+        XCTAssertEqual(useCase.stepExecutionPlan(.startInstalledServices), .startInstalledServices)
+        XCTAssertEqual(useCase.stepExecutionPlan(.applyStartOnBootPolicy), .applyStartOnBootPolicy)
+        XCTAssertEqual(useCase.stepExecutionPlan(.waitInstallRuntimeHealth), .waitInstallRuntimeHealth)
+        XCTAssertEqual(useCase.stepExecutionPlan(.cleanupInstallSettings), .cleanupInstallSettings)
+        XCTAssertEqual(
+            useCase.stepExecutionPlan(.stopRuntimeServices),
+            .unsupported(message: "unsupported command: install step stop-runtime-services")
+        )
+    }
+
     func testFreshInstallPreflightDocumentPreservesExplicitInputStatesWithoutWorkflowPolicyCall() {
         let useCase = InstallRuntimeUseCase()
 

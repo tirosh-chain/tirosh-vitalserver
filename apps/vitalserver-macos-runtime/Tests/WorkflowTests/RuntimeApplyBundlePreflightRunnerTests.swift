@@ -21,7 +21,7 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
                 events.append("stage:\(url.path)")
                 return stagedBundle
             },
-            loadManifest: { url in
+            loadStagedManifest: { url in
                 events.append("manifest:\(url.lastPathComponent)")
                 return self.manifest(
                     version: "1.2.3",
@@ -98,7 +98,7 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
         XCTAssertEqual(requiredSpace?.operation, .applyBundle)
         XCTAssertEqual(events, [
             "stage:/incoming/bundle",
-            "manifest:manifest.json",
+            "manifest:update-bundle-1.2.3",
             "compatibility:1.2.3",
             "du:/managed/update-bundle-1.2.3",
             "mkdir:/product/backups:true",
@@ -118,7 +118,7 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
 
         let runner = RuntimeApplyBundlePreflightRunner(
             stageBundle: { _ in stagedBundle },
-            loadManifest: { _ in self.manifest(version: "1.2.3") },
+            loadStagedManifest: { _ in self.manifest(version: "1.2.3") },
             fileExists: { _ in
                 XCTFail("rootfs existence should not be checked")
                 return false
@@ -161,7 +161,7 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
         let stagedBundle = URL(fileURLWithPath: "/managed/update-bundle-1.2.3")
         let runner = RuntimeApplyBundlePreflightRunner(
             stageBundle: { _ in stagedBundle },
-            loadManifest: { _ in
+            loadStagedManifest: { _ in
                 self.manifest(
                     version: "1.2.3",
                     artifacts: [
@@ -211,7 +211,7 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
         let rootfsBase = URL(fileURLWithPath: "/product/runtime/rootfs-base.raw.gz")
         let runner = RuntimeApplyBundlePreflightRunner(
             stageBundle: { _ in stagedBundle },
-            loadManifest: { _ in
+            loadStagedManifest: { _ in
                 self.manifest(
                     version: "1.2.3",
                     artifacts: [
@@ -262,7 +262,7 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
         var events: [String] = []
         let runner = RuntimeApplyBundlePreflightRunner(
             stageBundle: { _ in stagedBundle },
-            loadManifest: { _ in
+            loadStagedManifest: { _ in
                 self.manifest(
                     version: "1.2.3",
                     artifacts: [
@@ -318,7 +318,7 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
         var events: [String] = []
         let runner = RuntimeApplyBundlePreflightRunner(
             stageBundle: { _ in stagedBundle },
-            loadManifest: { _ in self.manifest(version: "1.2.3") },
+            loadStagedManifest: { _ in self.manifest(version: "1.2.3") },
             fileExists: { _ in false },
             createDirectory: { _, _ in events.append("mkdir") },
             fileSize: { _ in 0 },

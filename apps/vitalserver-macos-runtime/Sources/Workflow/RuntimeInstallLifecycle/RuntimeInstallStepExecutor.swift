@@ -1,4 +1,5 @@
 import Contracts
+import Application
 import Domain
 import Errors
 
@@ -54,24 +55,24 @@ public struct RuntimeInstallStepExecutor<Settings> {
     }
 
     public func execute(_ step: RuntimeWorkflowStep, settings: Settings) throws {
-        switch step {
-        case .loadInstallSettings:
-            log("install settings loaded")
+        switch InstallRuntimeUseCase().stepExecutionPlan(step) {
+        case .log(let message):
+            log(message)
         case .prepareInstallDirectories:
             try prepareInstallDirectories(settings)
         case .rotateRuntimeLogs:
             try rotateRuntimeLogs()
-        case .configureGuestRuntimeConfig:
+        case .configureDeployEnvironment:
             try configureDeployEnvironment(settings)
         case .prepareInstalledExecutables:
             try prepareInstalledExecutables()
         case .provisionVMDisk:
             try provisionVMDisk(settings)
-        case .configureVMRuntime:
+        case .configureInstalledVMRuntime:
             try configureInstalledVMRuntime(settings)
         case .createCloudInitSeed:
             try createCloudInitSeed(settings)
-        case .writeInstallRuntimeVersion:
+        case .writeInstalledRuntimeVersion:
             try writeInstalledRuntimeVersion()
         case .configureInstalledPermissions:
             try configureInstalledPermissions(settings)
@@ -83,8 +84,8 @@ public struct RuntimeInstallStepExecutor<Settings> {
             try waitForHealth(runtimeServiceRestartPolicy(settings))
         case .cleanupInstallSettings:
             try cleanupInstallSettings()
-        default:
-            throw RuntimeInstallStepExecutionError(step: step)
+        case .unsupported(let message):
+            throw RuntimeInstallStepExecutionError(message)
         }
     }
 }

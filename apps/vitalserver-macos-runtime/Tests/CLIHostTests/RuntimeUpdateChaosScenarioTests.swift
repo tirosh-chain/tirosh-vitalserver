@@ -16,7 +16,7 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
         var events: [String] = []
         let runner = RuntimeApplyBundlePreflightRunner(
             stageBundle: { _ in stagedBundle },
-            loadManifest: { _ in
+            loadStagedManifest: { _ in
                 self.manifest(
                     version: "1.2.3",
                     artifacts: [

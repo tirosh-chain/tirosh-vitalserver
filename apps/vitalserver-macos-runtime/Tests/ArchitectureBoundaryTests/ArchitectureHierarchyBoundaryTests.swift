@@ -280,6 +280,17 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         }
     }
 
+    func testWorkflowDoesNotInterpretOperationStepsDirectly() throws {
+        let workflowRoot = packageRoot().appendingPathComponent("Sources/Workflow")
+        for file in try swiftFiles(root: workflowRoot) {
+            let text = try String(contentsOf: file, encoding: .utf8)
+            XCTAssertFalse(
+                text.contains("switch step"),
+                "Workflow must ask UseCase for step execution plans instead of interpreting RuntimeWorkflowStep directly: \(file.path)"
+            )
+        }
+    }
+
     func testRuntimeUpdateWorkflowDoesNotInterpretOperationStepsDirectly() throws {
         let updateWorkflowRoot = packageRoot().appendingPathComponent("Sources/Workflow/RuntimeUpdateLifecycle")
         for file in try swiftFiles(root: updateWorkflowRoot) {
@@ -301,6 +312,7 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             "guard directoryExists",
             "!fileExists",
             "!directoryExists",
+            "RuntimeFileNames.updateBundleManifest",
         ]
 
         for file in try swiftFiles(root: updateWorkflowRoot) {

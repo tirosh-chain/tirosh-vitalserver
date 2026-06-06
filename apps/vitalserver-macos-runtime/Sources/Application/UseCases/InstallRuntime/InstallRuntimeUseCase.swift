@@ -42,6 +42,24 @@ public struct InstallRuntimeStartPlan: Equatable, Sendable {
     }
 }
 
+public enum InstallRuntimeStepExecutionPlan: Equatable, Sendable {
+    case log(String)
+    case prepareInstallDirectories
+    case rotateRuntimeLogs
+    case configureDeployEnvironment
+    case prepareInstalledExecutables
+    case provisionVMDisk
+    case configureInstalledVMRuntime
+    case createCloudInitSeed
+    case writeInstalledRuntimeVersion
+    case configureInstalledPermissions
+    case startInstalledServices
+    case applyStartOnBootPolicy
+    case waitInstallRuntimeHealth
+    case cleanupInstallSettings
+    case unsupported(message: String)
+}
+
 public struct InstallRuntimeUseCase {
     public init() {}
 
@@ -76,6 +94,41 @@ public struct InstallRuntimeUseCase {
             logMessage: "runtime install started home=\(runtimeHomePath)",
             statusMessage: "runtime install started"
         )
+    }
+
+    public func stepExecutionPlan(_ step: RuntimeWorkflowStep) -> InstallRuntimeStepExecutionPlan {
+        switch step {
+        case .loadInstallSettings:
+            return .log("install settings loaded")
+        case .prepareInstallDirectories:
+            return .prepareInstallDirectories
+        case .rotateRuntimeLogs:
+            return .rotateRuntimeLogs
+        case .configureGuestRuntimeConfig:
+            return .configureDeployEnvironment
+        case .prepareInstalledExecutables:
+            return .prepareInstalledExecutables
+        case .provisionVMDisk:
+            return .provisionVMDisk
+        case .configureVMRuntime:
+            return .configureInstalledVMRuntime
+        case .createCloudInitSeed:
+            return .createCloudInitSeed
+        case .writeInstallRuntimeVersion:
+            return .writeInstalledRuntimeVersion
+        case .configureInstalledPermissions:
+            return .configureInstalledPermissions
+        case .startInstalledServices:
+            return .startInstalledServices
+        case .applyStartOnBootPolicy:
+            return .applyStartOnBootPolicy
+        case .waitInstallRuntimeHealth:
+            return .waitInstallRuntimeHealth
+        case .cleanupInstallSettings:
+            return .cleanupInstallSettings
+        default:
+            return .unsupported(message: "unsupported command: install step \(step.rawValue)")
+        }
     }
 
     public func freshInstallPreflightDocument(

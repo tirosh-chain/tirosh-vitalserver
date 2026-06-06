@@ -271,7 +271,9 @@ public struct RuntimeBundleComposition {
             ),
             operations: RuntimeApplyBundleWorkflowOperations(
                 stageBundle: stageBundle,
-                loadManifest: loadManifest,
+                loadStagedManifest: { stagedBundle in
+                    try loadManifest(stagedBundle.appendingPathComponent(Constants.Bundle.manifest))
+                },
                 fileExists: fileExists,
                 createDirectory: { url, withIntermediateDirectories in
                     try operations.fileStore.createDirectory(at: url, withIntermediateDirectories: withIntermediateDirectories)

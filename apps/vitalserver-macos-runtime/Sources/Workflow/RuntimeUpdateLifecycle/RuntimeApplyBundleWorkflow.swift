@@ -28,7 +28,7 @@ public struct RuntimeApplyBundleWorkflowContext {
 
 public struct RuntimeApplyBundleWorkflowOperations {
     public var stageBundle: (URL) throws -> URL
-    public var loadManifest: (URL) throws -> UpdateBundleManifest
+    public var loadStagedManifest: (URL) throws -> UpdateBundleManifest
     public var fileExists: (URL) -> Bool
     public var createDirectory: (URL, Bool) throws -> Void
     public var fileSize: (URL) throws -> UInt64
@@ -60,7 +60,7 @@ public struct RuntimeApplyBundleWorkflowOperations {
 
     public init(
         stageBundle: @escaping (URL) throws -> URL,
-        loadManifest: @escaping (URL) throws -> UpdateBundleManifest,
+        loadStagedManifest: @escaping (URL) throws -> UpdateBundleManifest,
         fileExists: @escaping (URL) -> Bool,
         createDirectory: @escaping (URL, Bool) throws -> Void,
         fileSize: @escaping (URL) throws -> UInt64,
@@ -91,7 +91,7 @@ public struct RuntimeApplyBundleWorkflowOperations {
         log: @escaping (String) -> Void
     ) {
         self.stageBundle = stageBundle
-        self.loadManifest = loadManifest
+        self.loadStagedManifest = loadStagedManifest
         self.fileExists = fileExists
         self.createDirectory = createDirectory
         self.fileSize = fileSize
@@ -173,7 +173,7 @@ public struct RuntimeApplyBundleWorkflow {
     private func prepareApplyBundlePreflight(_ bundleURL: URL) throws -> ApplyBundlePreflightContext {
         try RuntimeApplyBundlePreflightRunner(
             stageBundle: operations.stageBundle,
-            loadManifest: operations.loadManifest,
+            loadStagedManifest: operations.loadStagedManifest,
             fileExists: operations.fileExists,
             createDirectory: operations.createDirectory,
             fileSize: operations.fileSize,
