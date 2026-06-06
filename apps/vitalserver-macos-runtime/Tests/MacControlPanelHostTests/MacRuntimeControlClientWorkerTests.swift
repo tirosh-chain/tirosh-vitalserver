@@ -7,7 +7,7 @@ import Errors
 @testable import InboundAdapters
 
 @MainActor
-final class MacHostRuntimeAdapterWorkerTests: XCTestCase {
+final class MacRuntimeControlClientWorkerTests: XCTestCase {
     func testReadWorkerDelegatesReadModelsToInjectedReaders() async throws {
         let statusReader = AdapterStubStatusReader()
         let observabilityReader = AdapterStubObservabilityReader()

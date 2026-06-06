@@ -72,7 +72,7 @@ if [ "${clean}" = true ]; then
   command+=("--clean")
 fi
 
-log "delegating uninstall to HostCLI clean=${clean}"
+log "delegating uninstall to CLIHost clean=${clean}"
 VITALSERVER_VM_HOME="${vm_home}" "${command[@]}"
 
 log "step=remove-uninstaller status=started"

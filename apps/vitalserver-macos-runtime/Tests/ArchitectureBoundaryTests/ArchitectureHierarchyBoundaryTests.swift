@@ -134,6 +134,36 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         }
     }
 
+    func testLegacyLayerVocabularyDoesNotLeakIntoRuntimeSourcesTestsOrSupportFiles() throws {
+        let root = packageRoot()
+        let forbidden = [
+            "HostCLI",
+            "MacHostRuntimeAdapter",
+            "MacRuntimeControlApp",
+            "InfrastructureLayerMarker",
+            "HostAdaptersLayerMarker",
+        ]
+        let scannedRoots = [
+            root.appendingPathComponent("Sources"),
+            root.appendingPathComponent("Tests"),
+            root.appendingPathComponent("Support"),
+            root.appendingPathComponent("README.md"),
+        ]
+
+        let files = try scannedRoots.flatMap { try sourceLikeFiles(root: $0) }
+            .filter { !$0.path.contains("/Tests/ArchitectureBoundaryTests/") }
+
+        for file in files {
+            let text = try String(contentsOf: file, encoding: .utf8)
+            for token in forbidden {
+                XCTAssertFalse(
+                    text.contains(token),
+                    "\(token) must not remain in \(file.path)"
+                )
+            }
+        }
+    }
+
     private func packageRoot() -> URL {
         URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
     }
@@ -167,5 +197,27 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             let values = try url.resourceValues(forKeys: [.isRegularFileKey])
             return values.isRegularFile == true ? url : nil
         } ?? []
+    }
+
+    private func sourceLikeFiles(root: URL) throws -> [URL] {
+        var isDirectory = ObjCBool(false)
+        guard FileManager.default.fileExists(atPath: root.path, isDirectory: &isDirectory) else {
+            return []
+        }
+        let files: [URL]
+        if isDirectory.boolValue {
+            files = try swiftPackageFiles(root: root)
+        } else {
+            files = [root]
+        }
+        return files.filter { file in
+            [
+                "swift",
+                "md",
+                "py",
+                "sh",
+                "template",
+            ].contains(file.pathExtension) || file.lastPathComponent.contains(".template")
+        }
     }
 }

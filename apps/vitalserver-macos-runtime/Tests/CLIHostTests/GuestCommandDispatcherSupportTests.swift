@@ -89,7 +89,7 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
         XCTAssertFalse(postinstall.contains("pgrep -f"))
     }
 
-    func testPreinstallDelegatesFreshInstallStateCheckToHostCLI() throws {
+    func testPreinstallDelegatesFreshInstallStateCheckToCLIHost() throws {
         let preinstall = try readRuntimeSupportFile("Packaging/preinstall")
 
         XCTAssertTrue(preinstall.contains("preflight_bin=\"${script_dir}/vitalserver-vm-preinstall\""))

@@ -6,7 +6,7 @@ import XCTest
 import Errors
 
 final class RuntimeGuestConfigDocumentReaderTests: XCTestCase {
-    func testLoadReportsMissingFileAsTypedInfrastructureError() {
+    func testLoadReportsMissingFileAsTypedOutboundAdapterError() {
         let fileStore = FileReaderStub()
         let url = URL(fileURLWithPath: "/guest/runtime-config.json")
 

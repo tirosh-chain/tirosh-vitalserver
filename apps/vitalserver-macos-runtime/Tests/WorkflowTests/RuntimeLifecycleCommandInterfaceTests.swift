@@ -24,7 +24,7 @@ final class RuntimeLifecycleCommandInterfaceTests: XCTestCase {
         )))
     }
 
-    func testReportsTypedParseErrorsWithoutHostCLIErrorDependency() {
+    func testReportsTypedParseErrorsWithoutCLIHostErrorDependency() {
         XCTAssertThrowsError(try RuntimeLifecycleCommand.parseArguments(["configure", "--cpu"])) { error in
             XCTAssertEqual(
                 error as? RuntimeLifecycleCommandParseError,
