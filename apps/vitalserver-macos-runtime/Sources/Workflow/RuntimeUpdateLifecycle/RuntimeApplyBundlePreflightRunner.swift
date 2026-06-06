@@ -1,3 +1,4 @@
+import Application
 import Contracts
 import Domain
 import Foundation
@@ -18,6 +19,9 @@ public struct RuntimeApplyBundlePreflightRunner {
     public var directorySize: (URL) throws -> UInt64
     public var updateFreeSpaceMarginBytes: UInt64
     public var log: (String) -> Void
+    private var useCase: UpdateRuntimeUseCase {
+        UpdateRuntimeUseCase()
+    }
 
     public init(
         stageBundle: @escaping (URL) throws -> URL,
@@ -95,15 +99,16 @@ public struct RuntimeApplyBundlePreflightRunner {
         )
 
         let restartPolicy = serviceRestartPolicy()
-        log(
-            "runtime services before update vm=\(restartPolicy.restartVM ? "loaded" : "not-loaded") guestLogSync=\(restartPolicy.restartGuestLogSync ? "loaded" : "not-loaded") proxy=\(restartPolicy.restartProxy ? "loaded" : "not-loaded") watchdog=\(restartPolicy.restartWatchdog ? "loaded" : "not-loaded")"
+        let capabilityPlan = useCase.preflightCapabilityPlan(
+            manifest: manifest,
+            restartPolicy: restartPolicy
         )
-        if restartPolicy.restartVM {
+        log(capabilityPlan.serviceRestartLogMessage)
+        if capabilityPlan.requiresRuntimeDiskHealthCheck {
             try requireRuntimeDiskHealthAllowsUpdate()
-            try requireGuestCapability(.prepareUpdateShutdown)
         }
-        if manifest.artifacts.contains(where: { $0.type == .guestDeploy }) {
-            try requireGuestCapability(.activateUpdate)
+        for capability in capabilityPlan.requiredGuestCapabilities {
+            try requireGuestCapability(capability)
         }
         log("creating managed backup reason=before-\(manifest.version)")
         let backup = try createBackup("before-\(manifest.version)")
@@ -124,14 +129,12 @@ public struct RuntimeApplyBundlePreflightRunner {
     }
 
     private func requireRuntimeDiskHealthAllowsUpdate() throws {
-        let snapshot = runtimeHealthSnapshot()
-        let blockers = RuntimeUpdatePreflightPolicy.blockingGuestStorageErrors(snapshot.vmErrors)
-        guard blockers.isEmpty else {
-            let codes = blockers.map(\.rawValue).joined(separator: ",")
-            log("bundle apply blocked by VM guest storage health errors=\(codes)")
-            throw RuntimeApplyBundleWorkflowError.operationFailed(
-                "VM disk health blocks update; run Repair VM Disk before applying update. errors=\(codes)"
-            )
+        let decision = useCase.diskHealthDecision(snapshot: runtimeHealthSnapshot())
+        guard decision.canApplyUpdate else {
+            if let blockedLogMessage = decision.blockedLogMessage {
+                log(blockedLogMessage)
+            }
+            throw RuntimeApplyBundleWorkflowError.operationFailed(decision.failureMessage ?? "VM disk health blocks update")
         }
     }
 }

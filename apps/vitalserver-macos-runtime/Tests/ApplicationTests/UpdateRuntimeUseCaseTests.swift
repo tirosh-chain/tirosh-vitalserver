@@ -53,6 +53,81 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
         XCTAssertEqual(plan.operationPlan, RuntimeOperationPlans.applyBundle(updatesRootfsBase: false))
     }
 
+    func testPreflightCapabilityPlanRequiresShutdownOnlyWhenVMWillRestart() {
+        let useCase = UpdateRuntimeUseCase()
+
+        let plan = useCase.preflightCapabilityPlan(
+            manifest: manifest(artifacts: []),
+            restartPolicy: RuntimeServiceRestartPolicy(
+                restartVM: true,
+                restartGuestLogSync: true,
+                restartProxy: false,
+                restartWatchdog: true
+            )
+        )
+
+        XCTAssertTrue(plan.requiresRuntimeDiskHealthCheck)
+        XCTAssertEqual(plan.requiredGuestCapabilities, [.prepareUpdateShutdown])
+        XCTAssertEqual(
+            plan.serviceRestartLogMessage,
+            "runtime services before update vm=loaded guestLogSync=loaded proxy=not-loaded watchdog=loaded"
+        )
+    }
+
+    func testPreflightCapabilityPlanRequiresActivationWhenBundleHasGuestDeploy() {
+        let useCase = UpdateRuntimeUseCase()
+
+        let plan = useCase.preflightCapabilityPlan(
+            manifest: manifest(artifacts: [
+                UpdateBundleArtifact(
+                    name: "guest-deploy.tar.gz",
+                    type: .guestDeploy,
+                    sha256: "abc",
+                    size: 10
+                ),
+            ]),
+            restartPolicy: restartPolicy()
+        )
+
+        XCTAssertFalse(plan.requiresRuntimeDiskHealthCheck)
+        XCTAssertEqual(plan.requiredGuestCapabilities, [.activateUpdate])
+        XCTAssertEqual(
+            plan.serviceRestartLogMessage,
+            "runtime services before update vm=not-loaded guestLogSync=not-loaded proxy=not-loaded watchdog=not-loaded"
+        )
+    }
+
+    func testDiskHealthDecisionAllowsUpdateWithoutGuestStorageBlockers() {
+        let useCase = UpdateRuntimeUseCase()
+
+        let decision = useCase.diskHealthDecision(snapshot: healthSnapshot(reasons: []))
+
+        XCTAssertTrue(decision.canApplyUpdate)
+        XCTAssertEqual(decision.blockers, [])
+        XCTAssertNil(decision.blockedLogMessage)
+        XCTAssertNil(decision.failureMessage)
+    }
+
+    func testDiskHealthDecisionBlocksGuestStorageErrorsWithoutFallback() {
+        let useCase = UpdateRuntimeUseCase()
+
+        let decision = useCase.diskHealthDecision(snapshot: healthSnapshot(
+            reasons: [.init(vmError: .guestFilesystemError)],
+            vmErrors: [.guestFilesystemError]
+        ))
+
+        XCTAssertFalse(decision.canApplyUpdate)
+        XCTAssertEqual(decision.blockers, [.guestFilesystemError])
+        XCTAssertEqual(
+            decision.blockedLogMessage,
+            "bundle apply blocked by VM guest storage health errors=vm-guest-filesystem-error"
+        )
+        XCTAssertEqual(
+            decision.failureMessage,
+            "VM disk health blocks update; run Repair VM Disk before applying update. errors=vm-guest-filesystem-error"
+        )
+    }
+
     func testRollbackPlanIncludesRootfsRestoreWhenPreflightRestoresRootfs() {
         let useCase = UpdateRuntimeUseCase()
 
@@ -94,6 +169,20 @@ private func applyBundlePreflight(stagedRootfs: URL?) -> ApplyBundlePreflightCon
     )
 }
 
+private func manifest(artifacts: [UpdateBundleArtifact]) -> UpdateBundleManifest {
+    UpdateBundleManifest(
+        schemaVersion: 1,
+        product: "vitalserver",
+        helperVersion: "1.0.0",
+        releaseLabel: "test",
+        targetPlatform: "macos",
+        components: [:],
+        createdAt: "2026-06-06T00:00:00Z",
+        artifacts: artifacts,
+        migrations: []
+    )
+}
+
 private func rollbackPreflight(restoresRootfsBase: Bool) -> RollbackPreflightContext {
     RollbackPreflightContext(
         backup: URL(fileURLWithPath: "/tmp/backup"),
@@ -113,7 +202,10 @@ private func restartPolicy() -> RuntimeServiceRestartPolicy {
     )
 }
 
-private func healthSnapshot(reasons: [RuntimeFailureReason]) -> RuntimeHealthSnapshot {
+private func healthSnapshot(
+    reasons: [RuntimeFailureReason],
+    vmErrors: [RuntimeVMError] = []
+) -> RuntimeHealthSnapshot {
     RuntimeHealthSnapshot(
         vmExecutable: true,
         proxyExecutable: true,
@@ -123,6 +215,7 @@ private func healthSnapshot(reasons: [RuntimeFailureReason]) -> RuntimeHealthSna
         proxyService: .loaded,
         watchdogService: .loaded,
         vmState: reasons.isEmpty ? .running : .unreachable,
+        vmErrors: vmErrors,
         vmIP: "192.168.64.2",
         proxyPort: 18080,
         hostProxyHTTP: reasons.isEmpty ? "200" : "000",

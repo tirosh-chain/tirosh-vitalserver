@@ -1,4 +1,4 @@
-public enum RuntimeGuestCapabilityRequirement: String {
+public enum RuntimeGuestCapabilityRequirement: String, Sendable {
     case prepareUpdateShutdown = "prepare-update-shutdown"
     case activateUpdate = "activate-update"
     case redisBackup = "redis-backup"
