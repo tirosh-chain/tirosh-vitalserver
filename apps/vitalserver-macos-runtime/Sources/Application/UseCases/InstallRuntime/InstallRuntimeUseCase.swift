@@ -147,8 +147,8 @@ public struct InstallRuntimeUseCase {
         ))
     }
 
-    public func settingsLoadFailedStatusMessage(error: Error) -> String {
-        "runtime install failed: \(error)"
+    public func settingsLoadFailedStatusMessage(reason: String) -> String {
+        "runtime install failed: \(reason)"
     }
 
     public func setupBlockedStatusMessage(blockers: [String]) -> String {
@@ -165,6 +165,10 @@ public struct InstallRuntimeUseCase {
 
     public func postSetupCommandFailureMessage(_ command: RuntimeInstallWorkflowCommand) -> String {
         "install workflow command appeared after setup command=\(command)"
+    }
+
+    public func setupReadCommandFailureMessage(_ command: RuntimeInstallWorkflowCommand) -> String {
+        "install workflow expected setup read command command=\(command)"
     }
 
     public func unknownInstallModeFailureMessage(_ mode: RuntimeInstallMode) -> String {
@@ -199,24 +203,24 @@ public struct InstallRuntimeUseCase {
         "step completed: \(step.rawValue)"
     }
 
-    public func stepFailedMessage(_ step: RuntimeWorkflowStep, error: Error) -> String {
-        "step failed: \(step.rawValue): \(error)"
+    public func stepFailedMessage(_ step: RuntimeWorkflowStep, reason: String) -> String {
+        "step failed: \(step.rawValue): \(reason)"
     }
 
     public func stepCompletedLogMessage(_ step: RuntimeWorkflowStep) -> String {
         "step=\(step.rawValue) status=completed"
     }
 
-    public func installFailedStatusMessage(error: Error) -> String {
-        "runtime install failed: \(error)"
+    public func installFailedStatusMessage(reason: String) -> String {
+        "runtime install failed: \(reason)"
     }
 
-    public func progressWriteFailedLogMessage(event: RuntimeStepExecutionEvent, error: Error) -> String {
-        "runtime install progress write failed step=\(event.step.rawValue) status=\(event.stepStatus.rawValue) error=\(error.localizedDescription)"
+    public func progressWriteFailedLogMessage(event: RuntimeStepExecutionEvent, reason: String) -> String {
+        "runtime install progress write failed step=\(event.step.rawValue) status=\(event.stepStatus.rawValue) error=\(reason)"
     }
 
-    public func criticalStatusWriteFailedLogMessage(error: Error) -> String {
-        "runtime install status write failed status=critical error=\(error.localizedDescription)"
+    public func criticalStatusWriteFailedLogMessage(reason: String) -> String {
+        "runtime install status write failed status=critical error=\(reason)"
     }
 
     public func transition(
@@ -244,6 +248,22 @@ public struct InstallRuntimeUseCase {
             return [.readProvisionPayload]
         case .unknown(let value):
             throw InstallRuntimeUseCaseError.operationFailed("install mode unknown value=\(value)")
+        }
+    }
+
+    public func setupReadCommand(
+        from decision: RuntimeInstallTransitionDecision
+    ) throws -> RuntimeInstallWorkflowCommand {
+        guard decision.commands.count == 1, let command = decision.commands.first else {
+            throw InstallRuntimeUseCaseError.operationFailed(
+                "install workflow expected single setup read command state=\(decision.state) commands=\(decision.commands)"
+            )
+        }
+        switch command {
+        case .readFreshInstallPreflight, .readProvisionPayload:
+            return command
+        case .loadSettings, .executeStep, .complete:
+            throw InstallRuntimeUseCaseError.operationFailed(setupReadCommandFailureMessage(command))
         }
     }
 

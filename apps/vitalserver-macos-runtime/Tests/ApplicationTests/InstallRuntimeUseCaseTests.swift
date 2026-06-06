@@ -89,6 +89,10 @@ final class InstallRuntimeUseCaseTests: XCTestCase {
             "install workflow command appeared after setup command=loadSettings"
         )
         XCTAssertEqual(
+            useCase.setupReadCommandFailureMessage(.complete),
+            "install workflow expected setup read command command=complete"
+        )
+        XCTAssertEqual(
             useCase.unknownInstallModeFailureMessage(.unknown("future")),
             "install mode unknown value=future"
         )
@@ -98,7 +102,20 @@ final class InstallRuntimeUseCaseTests: XCTestCase {
         XCTAssertEqual(event.step, .startInstalledServices)
         XCTAssertEqual(event.message, "step started: start-installed-services")
         XCTAssertEqual(useCase.stepCompletedMessage(.startInstalledServices), "step completed: start-installed-services")
+        XCTAssertEqual(
+            useCase.stepFailedMessage(.startInstalledServices, reason: "denied"),
+            "step failed: start-installed-services: denied"
+        )
         XCTAssertEqual(useCase.stepCompletedLogMessage(.startInstalledServices), "step=start-installed-services status=completed")
+        XCTAssertEqual(useCase.installFailedStatusMessage(reason: "denied"), "runtime install failed: denied")
+        XCTAssertEqual(
+            useCase.progressWriteFailedLogMessage(event: event, reason: "disk full"),
+            "runtime install progress write failed step=start-installed-services status=started error=disk full"
+        )
+        XCTAssertEqual(
+            useCase.criticalStatusWriteFailedLogMessage(reason: "denied"),
+            "runtime install status write failed status=critical error=denied"
+        )
     }
 
     func testStepExecutionPlanKeepsStepInterpretationOutOfWorkflow() {
@@ -183,6 +200,59 @@ final class InstallRuntimeUseCaseTests: XCTestCase {
             ),
             []
         )
+    }
+
+    func testSetupReadCommandIsSelectedFromExplicitTransitionDecision() throws {
+        let useCase = InstallRuntimeUseCase()
+
+        XCTAssertEqual(
+            try useCase.setupReadCommand(from: RuntimeInstallTransitionDecision(
+                state: .settingsLoaded,
+                commands: [.readFreshInstallPreflight]
+            )),
+            .readFreshInstallPreflight
+        )
+        XCTAssertEqual(
+            try useCase.setupReadCommand(from: RuntimeInstallTransitionDecision(
+                state: .settingsLoaded,
+                commands: [.readProvisionPayload]
+            )),
+            .readProvisionPayload
+        )
+    }
+
+    func testSetupReadCommandRejectsMissingMultipleOrNonSetupCommandsWithoutFallback() {
+        let useCase = InstallRuntimeUseCase()
+
+        XCTAssertThrowsError(try useCase.setupReadCommand(from: RuntimeInstallTransitionDecision(
+            state: .settingsLoaded,
+            commands: []
+        ))) { error in
+            XCTAssertEqual(
+                error as? InstallRuntimeUseCaseError,
+                .operationFailed("install workflow expected single setup read command state=settingsLoaded commands=[]")
+            )
+        }
+        XCTAssertThrowsError(try useCase.setupReadCommand(from: RuntimeInstallTransitionDecision(
+            state: .settingsLoaded,
+            commands: [.readFreshInstallPreflight, .readProvisionPayload]
+        ))) { error in
+            XCTAssertEqual(
+                error as? InstallRuntimeUseCaseError,
+                .operationFailed(
+                    "install workflow expected single setup read command state=settingsLoaded commands=[Domain.RuntimeInstallWorkflowCommand.readFreshInstallPreflight, Domain.RuntimeInstallWorkflowCommand.readProvisionPayload]"
+                )
+            )
+        }
+        XCTAssertThrowsError(try useCase.setupReadCommand(from: RuntimeInstallTransitionDecision(
+            state: .settingsLoaded,
+            commands: [.complete]
+        ))) { error in
+            XCTAssertEqual(
+                error as? InstallRuntimeUseCaseError,
+                .operationFailed("install workflow expected setup read command command=complete")
+            )
+        }
     }
 
     func testSetupObservationCommandsRejectWrongModeWithoutFallback() {

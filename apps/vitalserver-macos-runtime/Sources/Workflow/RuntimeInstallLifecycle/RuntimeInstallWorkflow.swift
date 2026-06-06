@@ -22,11 +22,14 @@ public struct RuntimeInstallStateReaders<Settings> {
 
 public struct RuntimeInstallEffects<Settings> {
     public var executeStep: (RuntimeWorkflowStep, Settings) throws -> Void
+    public var describeError: (Error) -> String
 
     public init(
-        executeStep: @escaping (RuntimeWorkflowStep, Settings) throws -> Void
+        executeStep: @escaping (RuntimeWorkflowStep, Settings) throws -> Void,
+        describeError: @escaping (Error) -> String
     ) {
         self.executeStep = executeStep
+        self.describeError = describeError
     }
 }
 
@@ -94,26 +97,25 @@ public struct RuntimeInstallWorkflow<Settings> {
         do {
             settings = try readers.loadSettings()
         } catch {
+            let reason = effects.describeError(error)
             _ = try transitionAndPersist(
                 from: startDecision.state,
-                event: .settingsLoadFailed(reason: error.localizedDescription),
+                event: .settingsLoadFailed(reason: reason),
                 context: context,
                 expectedCommands: []
             )
-            writeCriticalStatusBestEffort(useCase.settingsLoadFailedStatusMessage(error: error))
+            writeCriticalStatusBestEffort(useCase.settingsLoadFailedStatusMessage(reason: reason))
             throw error
         }
 
         let settingsDecision = try transitionAndPersist(
             from: startDecision.state,
             event: .settingsLoaded,
-            context: context,
-            expectedCommands: try useCase.setupReadCommands(for: installPlan)
+            context: context
         )
 
         var decision = try verifySetup(
-            from: settingsDecision.state,
-            installPlan: installPlan,
+            from: settingsDecision,
             context: context
         )
 
@@ -148,35 +150,29 @@ public struct RuntimeInstallWorkflow<Settings> {
     }
 
     private func verifySetup(
-        from state: RuntimeInstallWorkflowState,
-        installPlan: InstallRuntimePlan,
+        from decision: RuntimeInstallTransitionDecision,
         context: RuntimeInstallTransitionContext
     ) throws -> RuntimeInstallTransitionDecision {
-        switch installPlan.mode {
-        case .full:
+        let setupCommand = try useCase.setupReadCommand(from: decision)
+        switch setupCommand {
+        case .readFreshInstallPreflight:
             let preflight = readers.freshInstallPreflight()
             return try transitionAndPersist(
-                from: state,
+                from: decision.state,
                 event: .freshInstallPreflightObserved(preflight),
-                context: context,
-                expectedCommands: try useCase.expectedCommandsAfterFreshInstallPreflight(
-                    preflight,
-                    plan: installPlan
-                )
+                context: context
             )
-        case .provision:
+        case .readProvisionPayload:
             let payload = readers.provisionPayload()
             return try transitionAndPersist(
-                from: state,
+                from: decision.state,
                 event: .provisionPayloadObserved(payload),
-                context: context,
-                expectedCommands: try useCase.expectedCommandsAfterProvisionPayload(
-                    payload,
-                    plan: installPlan
-                )
+                context: context
             )
-        case .unknown:
-            throw RuntimeInstallWorkflowError.operationFailed(useCase.unknownInstallModeFailureMessage(installPlan.mode))
+        case .loadSettings, .executeStep, .complete:
+            throw RuntimeInstallWorkflowError.operationFailed(
+                useCase.setupReadCommandFailureMessage(setupCommand)
+            )
         }
     }
 
@@ -218,21 +214,22 @@ public struct RuntimeInstallWorkflow<Settings> {
             log(useCase.stepCompletedLogMessage(step))
             return decision
         } catch {
+            let reason = effects.describeError(error)
             writeProgressBestEffort(
                 useCase.stepProgressEvent(
                     step: step,
                     stepStatus: .failed,
                     phase: .failed,
-                    message: useCase.stepFailedMessage(step, error: error)
+                    message: useCase.stepFailedMessage(step, reason: reason)
                 )
             )
             _ = try transitionAndPersist(
                 from: startedDecision.state,
-                event: .stepFailed(step, reason: error.localizedDescription),
+                event: .stepFailed(step, reason: reason),
                 context: context,
                 expectedCommands: []
             )
-            writeCriticalStatusBestEffort(useCase.installFailedStatusMessage(error: error))
+            writeCriticalStatusBestEffort(useCase.installFailedStatusMessage(reason: reason))
             throw error
         }
     }
@@ -280,7 +277,10 @@ public struct RuntimeInstallWorkflow<Settings> {
         do {
             try writer.writeProgress(event)
         } catch {
-            log(useCase.progressWriteFailedLogMessage(event: event, error: error))
+            log(useCase.progressWriteFailedLogMessage(
+                event: event,
+                reason: effects.describeError(error)
+            ))
         }
     }
 
@@ -288,7 +288,7 @@ public struct RuntimeInstallWorkflow<Settings> {
         do {
             try writer.writeStatus(.critical, .install, message)
         } catch {
-            log(useCase.criticalStatusWriteFailedLogMessage(error: error))
+            log(useCase.criticalStatusWriteFailedLogMessage(reason: effects.describeError(error)))
         }
     }
 

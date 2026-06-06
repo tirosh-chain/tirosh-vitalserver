@@ -1,10 +1,28 @@
-import Application
 import Contracts
 import Domain
 import Foundation
 import Errors
 
-public struct RuntimeApplyBundlePreflightRunner {
+public struct ApplyRuntimeBundlePreflightInput: Equatable, Sendable {
+    public let bundleURL: URL
+    public let backupsDirectory: URL
+    public let rootfsBase: URL
+    public let updateFreeSpaceMarginBytes: UInt64
+
+    public init(
+        bundleURL: URL,
+        backupsDirectory: URL,
+        rootfsBase: URL,
+        updateFreeSpaceMarginBytes: UInt64
+    ) {
+        self.bundleURL = bundleURL
+        self.backupsDirectory = backupsDirectory
+        self.rootfsBase = rootfsBase
+        self.updateFreeSpaceMarginBytes = updateFreeSpaceMarginBytes
+    }
+}
+
+public struct ApplyRuntimeBundlePreflightOperations {
     public var stageBundle: (URL) throws -> URL
     public var loadStagedManifest: (URL) throws -> UpdateBundleManifest
     public var resolveRootfsStorage: (ApplyRuntimeBundleRootfsStorageObservationPlan) throws -> ApplyRuntimeBundleRootfsStoragePreflightPlan
@@ -15,11 +33,7 @@ public struct RuntimeApplyBundlePreflightRunner {
     public var executeCapabilityInstruction: (ApplyRuntimeBundlePreflightCapabilityInstruction) throws -> Void
     public var createBackup: (String) throws -> URL
     public var directorySize: (URL) throws -> UInt64
-    public var updateFreeSpaceMarginBytes: UInt64
     public var log: (String) -> Void
-    private var useCase: UpdateRuntimeUseCase {
-        UpdateRuntimeUseCase()
-    }
 
     public init(
         stageBundle: @escaping (URL) throws -> URL,
@@ -32,7 +46,6 @@ public struct RuntimeApplyBundlePreflightRunner {
         executeCapabilityInstruction: @escaping (ApplyRuntimeBundlePreflightCapabilityInstruction) throws -> Void,
         createBackup: @escaping (String) throws -> URL,
         directorySize: @escaping (URL) throws -> UInt64,
-        updateFreeSpaceMarginBytes: UInt64,
         log: @escaping (String) -> Void
     ) {
         self.stageBundle = stageBundle
@@ -45,48 +58,61 @@ public struct RuntimeApplyBundlePreflightRunner {
         self.executeCapabilityInstruction = executeCapabilityInstruction
         self.createBackup = createBackup
         self.directorySize = directorySize
-        self.updateFreeSpaceMarginBytes = updateFreeSpaceMarginBytes
         self.log = log
     }
+}
 
-    public func prepare(bundleURL: URL, backupsDirectory: URL, rootfsBase: URL) throws -> ApplyBundlePreflightContext {
-        let stagedBundle = try stageBundle(bundleURL)
-        let manifest = try loadStagedManifest(stagedBundle)
-        let manifestPlan = useCase.preflightManifestPlan(stagedBundle: stagedBundle, manifest: manifest)
-        log(manifestPlan.manifestLogMessage)
-        try checkCompatibility(manifest)
+public struct ApplyRuntimeBundlePreflightUseCase {
+    public init() {}
+
+    public func prepare(
+        input: ApplyRuntimeBundlePreflightInput,
+        operations: ApplyRuntimeBundlePreflightOperations
+    ) throws -> ApplyBundlePreflightContext {
+        let update = UpdateRuntimeUseCase()
+        let stagedBundle = try operations.stageBundle(input.bundleURL)
+        let manifest = try operations.loadStagedManifest(stagedBundle)
+        let manifestPlan = update.preflightManifestPlan(stagedBundle: stagedBundle, manifest: manifest)
+        operations.log(manifestPlan.manifestLogMessage)
+        try operations.checkCompatibility(manifest)
 
         let stagedRootfs = manifestPlan.stagedRootfs
-        let stagedBundleSize = try directorySize(stagedBundle)
-        log(useCase.storagePreflightStagedBundleLogMessage(stagedBundleBytes: stagedBundleSize))
-        let rootfsStoragePlan = useCase.rootfsStorageObservationPlan(stagedRootfs: stagedRootfs, rootfsBase: rootfsBase)
-        let rootfsStoragePreflightPlan = try resolveRootfsStorage(rootfsStoragePlan)
+        let stagedBundleSize = try operations.directorySize(stagedBundle)
+        operations.log(update.storagePreflightStagedBundleLogMessage(stagedBundleBytes: stagedBundleSize))
+        let rootfsStoragePlan = update.rootfsStorageObservationPlan(
+            stagedRootfs: stagedRootfs,
+            rootfsBase: input.rootfsBase
+        )
+        let rootfsStoragePreflightPlan = try operations.resolveRootfsStorage(rootfsStoragePlan)
         let rootfsStorage = rootfsStoragePreflightPlan.rootfsStorage
-        log(rootfsStoragePreflightPlan.logMessage)
-        let storageRequirement = useCase.storageRequirement(
+        operations.log(rootfsStoragePreflightPlan.logMessage)
+        let storageRequirement = update.storageRequirement(
             stagedBundleBytes: stagedBundleSize,
             rootfsStorage: rootfsStorage,
-            marginBytes: updateFreeSpaceMarginBytes
+            marginBytes: input.updateFreeSpaceMarginBytes
         )
-        try createDirectory(backupsDirectory, true)
-        try requireFreeSpace(
-            backupsDirectory,
+        try operations.createDirectory(input.backupsDirectory, true)
+        try operations.requireFreeSpace(
+            input.backupsDirectory,
             storageRequirement.requiredBytes,
             .applyBundle
         )
 
-        let restartPolicy = serviceRestartPolicy()
-        let capabilityPlan = useCase.preflightCapabilityPlan(
+        let restartPolicy = operations.serviceRestartPolicy()
+        let capabilityPlan = update.preflightCapabilityPlan(
             manifest: manifest,
             restartPolicy: restartPolicy
         )
-        log(capabilityPlan.serviceRestartLogMessage)
+        operations.log(capabilityPlan.serviceRestartLogMessage)
         for instruction in capabilityPlan.instructions {
-            try executeCapabilityInstruction(instruction)
+            try operations.executeCapabilityInstruction(instruction)
         }
-        log(manifestPlan.backupStartedLogMessage)
-        let backup = try createBackup(manifestPlan.backupReason)
-        log(useCase.backupCreatedLogMessage(backupPath: backup.path, backupBytes: try directorySize(backup)))
+        operations.log(manifestPlan.backupStartedLogMessage)
+        let backup = try operations.createBackup(manifestPlan.backupReason)
+        operations.log(update.backupCreatedLogMessage(
+            backupPath: backup.path,
+            backupBytes: try operations.directorySize(backup)
+        ))
 
         return ApplyBundlePreflightContext(
             stagedBundle: stagedBundle,

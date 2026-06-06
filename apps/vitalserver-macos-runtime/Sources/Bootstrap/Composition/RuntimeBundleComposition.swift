@@ -281,6 +281,27 @@ public struct RuntimeBundleComposition {
                 updateFreeSpaceMarginBytes: Constants.Runtime.updateFreeSpaceMarginBytes
             ),
             operations: RuntimeApplyBundleWorkflowOperations(
+                executePreflight: executeApplyBundlePreflight,
+                runtimeHealthSnapshot: operations.runtimeHealthSnapshot,
+                executeInitialHealthWarningPlan: executeInitialHealthWarningPlan,
+                executePreflightFailurePlan: executeApplyBundlePreflightFailurePlan,
+                prepareLogs: prepareApplyBundleLogs,
+                executeFailureRecoveryPlan: executeApplyBundleFailureRecoveryPlan,
+                statusReporter: operations.statusReporter,
+                pruneOldRuntimeArtifacts: operations.pruneOldRuntimeArtifacts,
+                executeApplyBundleStepPlan: executeApplyBundleStepPlan,
+                describeError: RuntimeErrorDescription.describe,
+                log: operations.log
+            )
+        )
+    }
+
+    private func executeApplyBundlePreflight(
+        _ input: ApplyRuntimeBundlePreflightInput
+    ) throws -> ApplyBundlePreflightContext {
+        try ApplyRuntimeBundlePreflightUseCase().prepare(
+            input: input,
+            operations: ApplyRuntimeBundlePreflightOperations(
                 stageBundle: stageBundle,
                 loadStagedManifest: { stagedBundle in
                     try loadManifest(stagedBundle.appendingPathComponent(Constants.Bundle.manifest))
@@ -289,7 +310,6 @@ public struct RuntimeBundleComposition {
                 createDirectory: { url, withIntermediateDirectories in
                     try operations.fileStore.createDirectory(at: url, withIntermediateDirectories: withIntermediateDirectories)
                 },
-                directorySize: directorySize,
                 requireFreeSpace: operations.requireFreeSpace,
                 checkCompatibility: { manifest in
                     try RuntimeUpdatePreflightPolicy.checkCompatibility(
@@ -307,17 +327,9 @@ public struct RuntimeBundleComposition {
                         restartWatchdog: operations.isLaunchdLoaded(.watchdog)
                     )
                 },
-                runtimeHealthSnapshot: operations.runtimeHealthSnapshot,
-                executeInitialHealthWarningPlan: executeInitialHealthWarningPlan,
-                executePreflightCapabilityInstruction: executePreflightCapabilityInstruction,
-                executePreflightFailurePlan: executeApplyBundlePreflightFailurePlan,
+                executeCapabilityInstruction: executePreflightCapabilityInstruction,
                 createBackup: operations.createBackup,
-                prepareLogs: prepareApplyBundleLogs,
-                executeFailureRecoveryPlan: executeApplyBundleFailureRecoveryPlan,
-                statusReporter: operations.statusReporter,
-                pruneOldRuntimeArtifacts: operations.pruneOldRuntimeArtifacts,
-                executeApplyBundleStepPlan: executeApplyBundleStepPlan,
-                describeError: RuntimeErrorDescription.describe,
+                directorySize: directorySize,
                 log: operations.log
             )
         )

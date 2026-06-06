@@ -2,11 +2,10 @@ import Foundation
 import Application
 import Contracts
 import Domain
-import Workflow
 import XCTest
 import Errors
 
-final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
+final class ApplyRuntimeBundlePreflightUseCaseTests: XCTestCase {
     func testPrepareBuildsPreflightContextInOrder() throws {
         let inputBundle = URL(fileURLWithPath: "/incoming/bundle")
         let stagedBundle = URL(fileURLWithPath: "/managed/update-bundle-1.2.3")
@@ -17,7 +16,7 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
         var events: [String] = []
         var requiredSpace: (url: URL, bytes: UInt64, operation: RuntimeOperation)?
 
-        let runner = RuntimeApplyBundlePreflightRunner(
+        let operations = ApplyRuntimeBundlePreflightOperations(
             stageBundle: { url in
                 events.append("stage:\(url.path)")
                 return stagedBundle
@@ -78,14 +77,17 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
                 events.append("du:\(url.path)")
                 return 30
             },
-            updateFreeSpaceMarginBytes: updateFreeSpaceMarginBytes,
             log: { _ in }
         )
 
-        let context = try runner.prepare(
-            bundleURL: inputBundle,
-            backupsDirectory: backupsDirectory,
-            rootfsBase: rootfsBase
+        let context = try ApplyRuntimeBundlePreflightUseCase().prepare(
+            input: ApplyRuntimeBundlePreflightInput(
+                bundleURL: inputBundle,
+                backupsDirectory: backupsDirectory,
+                rootfsBase: rootfsBase,
+                updateFreeSpaceMarginBytes: updateFreeSpaceMarginBytes
+            ),
+            operations: operations
         )
 
         XCTAssertEqual(context.stagedBundle, stagedBundle)
@@ -121,7 +123,7 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
         let backup = URL(fileURLWithPath: "/product/backups/backup-before-1.2.3")
         var requiredSpace: UInt64?
 
-        let runner = RuntimeApplyBundlePreflightRunner(
+        let operations = ApplyRuntimeBundlePreflightOperations(
             stageBundle: { _ in stagedBundle },
             loadStagedManifest: { _ in self.manifest(version: "1.2.3") },
             resolveRootfsStorage: { plan in
@@ -155,14 +157,17 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
             },
             createBackup: { _ in backup },
             directorySize: { _ in 10 },
-            updateFreeSpaceMarginBytes: updateFreeSpaceMarginBytes,
             log: { _ in }
         )
 
-        let context = try runner.prepare(
-            bundleURL: inputBundle,
-            backupsDirectory: backupsDirectory,
-            rootfsBase: URL(fileURLWithPath: "/product/runtime/rootfs-base.raw.gz")
+        let context = try ApplyRuntimeBundlePreflightUseCase().prepare(
+            input: ApplyRuntimeBundlePreflightInput(
+                bundleURL: inputBundle,
+                backupsDirectory: backupsDirectory,
+                rootfsBase: URL(fileURLWithPath: "/product/runtime/rootfs-base.raw.gz"),
+                updateFreeSpaceMarginBytes: updateFreeSpaceMarginBytes
+            ),
+            operations: operations
         )
 
         XCTAssertNil(context.stagedRootfs)
@@ -172,7 +177,7 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
 
     func testPrepareFailsWhenStagedRootfsIsMissing() {
         let stagedBundle = URL(fileURLWithPath: "/managed/update-bundle-1.2.3")
-        let runner = RuntimeApplyBundlePreflightRunner(
+        let operations = ApplyRuntimeBundlePreflightOperations(
             stageBundle: { _ in stagedBundle },
             loadStagedManifest: { _ in
                 self.manifest(
@@ -215,14 +220,17 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
             },
             createBackup: { _ in URL(fileURLWithPath: "/backup") },
             directorySize: { _ in 0 },
-            updateFreeSpaceMarginBytes: updateFreeSpaceMarginBytes,
             log: { _ in }
         )
 
-        XCTAssertThrowsError(try runner.prepare(
-            bundleURL: URL(fileURLWithPath: "/incoming/bundle"),
-            backupsDirectory: URL(fileURLWithPath: "/product/backups"),
-            rootfsBase: URL(fileURLWithPath: "/product/runtime/rootfs-base.raw.gz")
+        XCTAssertThrowsError(try ApplyRuntimeBundlePreflightUseCase().prepare(
+            input: ApplyRuntimeBundlePreflightInput(
+                bundleURL: URL(fileURLWithPath: "/incoming/bundle"),
+                backupsDirectory: URL(fileURLWithPath: "/product/backups"),
+                rootfsBase: URL(fileURLWithPath: "/product/runtime/rootfs-base.raw.gz"),
+                updateFreeSpaceMarginBytes: updateFreeSpaceMarginBytes
+            ),
+            operations: operations
         )) { error in
             XCTAssertEqual(
                 String(describing: error),
@@ -235,7 +243,7 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
         let stagedBundle = URL(fileURLWithPath: "/managed/update-bundle-1.2.3")
         let stagedRootfs = stagedBundle.appendingPathComponent(RuntimeFileNames.rootfsBase)
         let rootfsBase = URL(fileURLWithPath: "/product/runtime/rootfs-base.raw.gz")
-        let runner = RuntimeApplyBundlePreflightRunner(
+        let operations = ApplyRuntimeBundlePreflightOperations(
             stageBundle: { _ in stagedBundle },
             loadStagedManifest: { _ in
                 self.manifest(
@@ -254,7 +262,7 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
                 try resolveRootfsStorage(plan) { observedStagedRootfs, observedRootfsBase in
                     XCTAssertEqual(observedStagedRootfs, stagedRootfs)
                     XCTAssertEqual(observedRootfsBase, rootfsBase)
-                    throw RuntimeApplyBundleWorkflowError.operationFailed("missing file: \(rootfsBase.path)")
+                    throw LauncherError.runtimeOperationFailed("missing file: \(rootfsBase.path)")
                 }
             },
             createDirectory: { _, _ in XCTFail("should not create backup directory") },
@@ -275,14 +283,17 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
             },
             createBackup: { _ in URL(fileURLWithPath: "/backup") },
             directorySize: { _ in 30 },
-            updateFreeSpaceMarginBytes: updateFreeSpaceMarginBytes,
             log: { _ in }
         )
 
-        XCTAssertThrowsError(try runner.prepare(
-            bundleURL: URL(fileURLWithPath: "/incoming/bundle"),
-            backupsDirectory: URL(fileURLWithPath: "/product/backups"),
-            rootfsBase: rootfsBase
+        XCTAssertThrowsError(try ApplyRuntimeBundlePreflightUseCase().prepare(
+            input: ApplyRuntimeBundlePreflightInput(
+                bundleURL: URL(fileURLWithPath: "/incoming/bundle"),
+                backupsDirectory: URL(fileURLWithPath: "/product/backups"),
+                rootfsBase: rootfsBase,
+                updateFreeSpaceMarginBytes: updateFreeSpaceMarginBytes
+            ),
+            operations: operations
         )) { error in
             XCTAssertEqual(String(describing: error), "missing file: \(rootfsBase.path)")
         }
@@ -291,7 +302,7 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
     func testPrepareRequiresGuestCapabilitiesBeforeCreatingBackup() {
         let stagedBundle = URL(fileURLWithPath: "/managed/update-bundle-1.2.3")
         var events: [String] = []
-        let runner = RuntimeApplyBundlePreflightRunner(
+        let operations = ApplyRuntimeBundlePreflightOperations(
             stageBundle: { _ in stagedBundle },
             loadStagedManifest: { _ in
                 self.manifest(
@@ -329,7 +340,7 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
                     requireGuestCapability: { capability in
                         events.append("capability:\(capability.rawValue)")
                         if capability == .activateUpdate {
-                            throw RuntimeApplyBundleWorkflowError.operationFailed("guest capability missing: \(capability.rawValue)")
+                            throw LauncherError.runtimeOperationFailed("guest capability missing: \(capability.rawValue)")
                         }
                     }
                 )
@@ -339,14 +350,17 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
                 return URL(fileURLWithPath: "/backup")
             },
             directorySize: { _ in 10 },
-            updateFreeSpaceMarginBytes: updateFreeSpaceMarginBytes,
             log: { _ in }
         )
 
-        XCTAssertThrowsError(try runner.prepare(
-            bundleURL: URL(fileURLWithPath: "/incoming/bundle"),
-            backupsDirectory: URL(fileURLWithPath: "/product/backups"),
-            rootfsBase: URL(fileURLWithPath: "/product/runtime/rootfs-base.raw.gz")
+        XCTAssertThrowsError(try ApplyRuntimeBundlePreflightUseCase().prepare(
+            input: ApplyRuntimeBundlePreflightInput(
+                bundleURL: URL(fileURLWithPath: "/incoming/bundle"),
+                backupsDirectory: URL(fileURLWithPath: "/product/backups"),
+                rootfsBase: URL(fileURLWithPath: "/product/runtime/rootfs-base.raw.gz"),
+                updateFreeSpaceMarginBytes: updateFreeSpaceMarginBytes
+            ),
+            operations: operations
         )) { error in
             XCTAssertEqual(String(describing: error), "guest capability missing: activate-update")
         }
@@ -360,7 +374,7 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
     func testPrepareBlocksUpdateWhenGuestStorageHealthRequiresVMDiskRepair() {
         let stagedBundle = URL(fileURLWithPath: "/managed/update-bundle-1.2.3")
         var events: [String] = []
-        let runner = RuntimeApplyBundlePreflightRunner(
+        let operations = ApplyRuntimeBundlePreflightOperations(
             stageBundle: { _ in stagedBundle },
             loadStagedManifest: { _ in self.manifest(version: "1.2.3") },
             resolveRootfsStorage: { plan in
@@ -399,14 +413,17 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
                 return URL(fileURLWithPath: "/backup")
             },
             directorySize: { _ in 10 },
-            updateFreeSpaceMarginBytes: updateFreeSpaceMarginBytes,
             log: { message in events.append("log:\(message)") }
         )
 
-        XCTAssertThrowsError(try runner.prepare(
-            bundleURL: URL(fileURLWithPath: "/incoming/bundle"),
-            backupsDirectory: URL(fileURLWithPath: "/product/backups"),
-            rootfsBase: URL(fileURLWithPath: "/product/runtime/rootfs-base.raw.gz")
+        XCTAssertThrowsError(try ApplyRuntimeBundlePreflightUseCase().prepare(
+            input: ApplyRuntimeBundlePreflightInput(
+                bundleURL: URL(fileURLWithPath: "/incoming/bundle"),
+                backupsDirectory: URL(fileURLWithPath: "/product/backups"),
+                rootfsBase: URL(fileURLWithPath: "/product/runtime/rootfs-base.raw.gz"),
+                updateFreeSpaceMarginBytes: updateFreeSpaceMarginBytes
+            ),
+            operations: operations
         )) { error in
             XCTAssertEqual(
                 String(describing: error),
@@ -465,7 +482,7 @@ private func resolveRootfsStorage(
     case .planned(let rootfsStoragePlan):
         return rootfsStoragePlan
     case .failed(let message):
-        throw RuntimeApplyBundleWorkflowError.operationFailed(message)
+        throw LauncherError.runtimeOperationFailed(message)
     }
 }
 
@@ -482,7 +499,7 @@ private func executeCapabilityInstruction(
             return
         case .blocked(_, let logMessage, let failureMessage):
             log(logMessage)
-            throw RuntimeApplyBundleWorkflowError.operationFailed(failureMessage)
+            throw LauncherError.runtimeOperationFailed(failureMessage)
         }
     case .requireGuestCapability(let capability):
         try requireGuestCapability(capability)

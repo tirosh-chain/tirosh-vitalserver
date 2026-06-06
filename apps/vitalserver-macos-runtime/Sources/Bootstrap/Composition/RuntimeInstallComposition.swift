@@ -131,7 +131,8 @@ public struct RuntimeInstallComposition {
             effects: RuntimeInstallEffects(
                 executeStep: { step, settings in
                     try runtimeInstallStepExecutor().execute(step, settings: settings)
-                }
+                },
+                describeError: RuntimeErrorDescription.describe
             ),
             writer: RuntimeInstallStateWriter(
                 writeState: { state, mode, currentStep, message, blockers in

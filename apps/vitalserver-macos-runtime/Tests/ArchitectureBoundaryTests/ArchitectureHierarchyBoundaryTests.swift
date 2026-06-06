@@ -285,6 +285,7 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         for file in try swiftFiles(root: workflowRoot) {
             let text = try String(contentsOf: file, encoding: .utf8)
             let forbiddenTokens = [
+                "error.localizedDescription",
                 "String(describing:",
                 #"\(error)"#,
             ]
@@ -335,6 +336,27 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             XCTAssertFalse(
                 text.contains(token),
                 "RuntimeInstallStepExecutor must delegate UseCase step execution plans instead of interpreting \(token) directly"
+            )
+        }
+    }
+
+    func testRuntimeInstallWorkflowDoesNotOwnSetupModeOrErrorReasonSelection() throws {
+        let file = packageRoot().appendingPathComponent(
+            "Sources/Workflow/RuntimeInstallLifecycle/RuntimeInstallWorkflow.swift"
+        )
+        let text = try String(contentsOf: file, encoding: .utf8)
+        let forbiddenTokens = [
+            "switch installPlan.mode",
+            "setupReadCommands(for: installPlan)",
+            "expectedCommandsAfterFreshInstallPreflight",
+            "expectedCommandsAfterProvisionPayload",
+            "error.localizedDescription",
+        ]
+
+        for token in forbiddenTokens {
+            XCTAssertFalse(
+                text.contains(token),
+                "RuntimeInstallWorkflow must execute explicit setup commands and receive error reasons instead of owning \(token)"
             )
         }
     }
@@ -556,31 +578,29 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         }
     }
 
-    func testRuntimeApplyBundlePreflightRunnerDoesNotOwnRootfsFileObservation() throws {
+    func testRuntimeApplyBundleWorkflowDoesNotOwnPreflightExecutionDetails() throws {
         let file = packageRoot().appendingPathComponent(
-            "Sources/Workflow/RuntimeUpdateLifecycle/RuntimeApplyBundlePreflightRunner.swift"
+            "Sources/Workflow/RuntimeUpdateLifecycle/RuntimeApplyBundleWorkflow.swift"
         )
         let text = try String(contentsOf: file, encoding: .utf8)
         let forbiddenTokens = [
-            "fileExists",
-            "fileSize",
-            "ApplyRuntimeBundleRootfsStorageObservation(",
-            "case .unchanged",
-            "case .replacing",
-            "ApplyRuntimeBundleRootfsStorageDecision",
-            "case .planned",
-            "case .failed",
-            "rootfsStorageDecision(",
-            "runtimeHealthSnapshot()",
-            "diskHealthDecision(",
-            "case .requireRuntimeDiskHealthAllowsUpdate",
-            "case .requireGuestCapability",
+            "RuntimeApplyBundlePreflightRunner",
+            "stageBundle:",
+            "loadStagedManifest:",
+            "resolveRootfsStorage:",
+            "createDirectory:",
+            "directorySize:",
+            "requireFreeSpace:",
+            "checkCompatibility:",
+            "serviceRestartPolicy:",
+            "executePreflightCapabilityInstruction:",
+            "createBackup:",
         ]
 
         for token in forbiddenTokens {
             XCTAssertFalse(
                 text.contains(token),
-                "RuntimeApplyBundlePreflightRunner must receive explicit rootfs storage observations from a port instead of using \(token)"
+                "RuntimeApplyBundleWorkflow must delegate preflight execution instead of owning \(token)"
             )
         }
     }

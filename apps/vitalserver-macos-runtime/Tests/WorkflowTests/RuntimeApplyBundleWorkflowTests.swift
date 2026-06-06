@@ -12,11 +12,15 @@ final class RuntimeApplyBundleWorkflowTests: XCTestCase {
 
         try harness.workflow.applyBundle(harness.inputBundle)
 
-        XCTAssertEqual(harness.stageBundleInputs, [harness.inputBundle])
-        XCTAssertEqual(harness.loadedManifests, [harness.stagedBundle])
-        XCTAssertEqual(harness.createdDirectories.map(\.url), [harness.logsDirectory, harness.backupsDirectory])
-        XCTAssertEqual(harness.freeSpaceRequests.map(\.operation), [.applyBundle])
-        XCTAssertEqual(harness.backupReasons, ["before-0.2.0"])
+        XCTAssertEqual(harness.preflightInputs, [
+            ApplyRuntimeBundlePreflightInput(
+                bundleURL: harness.inputBundle,
+                backupsDirectory: harness.backupsDirectory,
+                rootfsBase: harness.rootfsBase,
+                updateFreeSpaceMarginBytes: 10
+            ),
+        ])
+        XCTAssertEqual(harness.createdDirectories.map(\.url), [harness.logsDirectory])
         XCTAssertEqual(harness.stepCalls, [
             "stopRuntimeServices:direct",
             "replaceUpdateArtifacts",
@@ -74,12 +78,9 @@ private final class ApplyBundleWorkflowHarness {
         migrations: []
     )
 
-    var stageBundleInputs: [URL] = []
-    var loadedManifests: [URL] = []
+    var preflightInputs: [ApplyRuntimeBundlePreflightInput] = []
     var createdDirectories: [(url: URL, withIntermediateDirectories: Bool)] = []
     var createDirectoryErrors: [URL: Error] = [:]
-    var freeSpaceRequests: [(url: URL, bytes: UInt64, operation: RuntimeOperation)] = []
-    var backupReasons: [String] = []
     var stepCalls: [String] = []
     var statuses: [(level: RuntimeStatusLevel, operation: RuntimeOperation, message: String)] = []
     var progressEvents: [RuntimeStepExecutionEvent] = []
@@ -98,40 +99,15 @@ private final class ApplyBundleWorkflowHarness {
                 updateFreeSpaceMarginBytes: 10
             ),
             operations: RuntimeApplyBundleWorkflowOperations(
-                stageBundle: { url in
-                    self.stageBundleInputs.append(url)
-                    return self.stagedBundle
-                },
-                loadStagedManifest: { url in
-                    self.loadedManifests.append(url)
-                    return self.manifest
-                },
-                resolveRootfsStorage: { plan in
-                    switch plan {
-                    case .unchanged(let rootfsStoragePlan):
-                        return rootfsStoragePlan
-                    case .replacing(let stagedRootfs, _):
-                        return ApplyRuntimeBundleRootfsStoragePreflightPlan(
-                            rootfsStorage: .replacing(installedRootfsBytes: 1, incomingRootfsBytes: 1),
-                            logMessage: "rootfs storage observed \(stagedRootfs.lastPathComponent)"
-                        )
-                    }
-                },
-                createDirectory: { url, withIntermediateDirectories in
-                    if let error = self.createDirectoryErrors[url] {
-                        throw error
-                    }
-                    self.createdDirectories.append((url: url, withIntermediateDirectories: withIntermediateDirectories))
-                },
-                directorySize: { url in
-                    url == self.backup ? 5 : 42
-                },
-                requireFreeSpace: { url, bytes, operation in
-                    self.freeSpaceRequests.append((url: url, bytes: bytes, operation: operation))
-                },
-                checkCompatibility: { _ in },
-                serviceRestartPolicy: {
-                    self.restartPolicy
+                executePreflight: { input in
+                    self.preflightInputs.append(input)
+                    return ApplyBundlePreflightContext(
+                        stagedBundle: self.stagedBundle,
+                        manifest: self.manifest,
+                        stagedRootfs: nil,
+                        backup: self.backup,
+                        restartPolicy: self.restartPolicy
+                    )
                 },
                 runtimeHealthSnapshot: {
                     Self.healthSnapshot()
@@ -141,15 +117,8 @@ private final class ApplyBundleWorkflowHarness {
                         self.logs.append(message)
                     }
                 },
-                executePreflightCapabilityInstruction: { _ in
-                    XCTFail("preflight capability instruction should not run when VM is not being restarted and bundle has no guest deploy")
-                },
                 executePreflightFailurePlan: { _ in
                     XCTFail("preflight failure should not run on successful apply")
-                },
-                createBackup: { reason in
-                    self.backupReasons.append(reason)
-                    return self.backup
                 },
                 prepareLogs: { url in
                     self.preparedLogDirectories.append(url)

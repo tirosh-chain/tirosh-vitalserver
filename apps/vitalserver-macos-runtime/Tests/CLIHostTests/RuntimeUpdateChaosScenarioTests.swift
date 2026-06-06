@@ -14,7 +14,7 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
     func testGuestCapabilityChaosStopsPreflightBeforeManagedBackup() {
         let stagedBundle = URL(fileURLWithPath: "/managed/update-bundle-1.2.3")
         var events: [String] = []
-        let runner = RuntimeApplyBundlePreflightRunner(
+        let operations = ApplyRuntimeBundlePreflightOperations(
             stageBundle: { _ in stagedBundle },
             loadStagedManifest: { _ in
                 self.manifest(
@@ -61,14 +61,17 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
                 return URL(fileURLWithPath: "/backup")
             },
             directorySize: { _ in 10 },
-            updateFreeSpaceMarginBytes: Constants.Runtime.updateFreeSpaceMarginBytes,
             log: { _ in }
         )
 
-        XCTAssertThrowsError(try runner.prepare(
-            bundleURL: URL(fileURLWithPath: "/incoming/bundle"),
-            backupsDirectory: URL(fileURLWithPath: "/product/backups"),
-            rootfsBase: URL(fileURLWithPath: "/product/runtime/rootfs-base.raw.gz")
+        XCTAssertThrowsError(try ApplyRuntimeBundlePreflightUseCase().prepare(
+            input: ApplyRuntimeBundlePreflightInput(
+                bundleURL: URL(fileURLWithPath: "/incoming/bundle"),
+                backupsDirectory: URL(fileURLWithPath: "/product/backups"),
+                rootfsBase: URL(fileURLWithPath: "/product/runtime/rootfs-base.raw.gz"),
+                updateFreeSpaceMarginBytes: Constants.Runtime.updateFreeSpaceMarginBytes
+            ),
+            operations: operations
         )) { error in
             XCTAssertEqual(String(describing: error), "guest capability missing: activate-update")
         }

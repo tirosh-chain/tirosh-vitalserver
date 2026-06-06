@@ -27,19 +27,10 @@ public struct RuntimeApplyBundleWorkflowContext {
 }
 
 public struct RuntimeApplyBundleWorkflowOperations {
-    public var stageBundle: (URL) throws -> URL
-    public var loadStagedManifest: (URL) throws -> UpdateBundleManifest
-    public var resolveRootfsStorage: (ApplyRuntimeBundleRootfsStorageObservationPlan) throws -> ApplyRuntimeBundleRootfsStoragePreflightPlan
-    public var createDirectory: (URL, Bool) throws -> Void
-    public var directorySize: (URL) throws -> UInt64
-    public var requireFreeSpace: (URL, UInt64, RuntimeOperation) throws -> Void
-    public var checkCompatibility: (UpdateBundleManifest) throws -> Void
-    public var serviceRestartPolicy: () -> RuntimeServiceRestartPolicy
+    public var executePreflight: (ApplyRuntimeBundlePreflightInput) throws -> ApplyBundlePreflightContext
     public var runtimeHealthSnapshot: () -> RuntimeHealthSnapshot
     public var executeInitialHealthWarningPlan: (ApplyRuntimeBundleInitialHealthWarningPlan) throws -> Void
-    public var executePreflightCapabilityInstruction: (ApplyRuntimeBundlePreflightCapabilityInstruction) throws -> Void
     public var executePreflightFailurePlan: (ApplyRuntimeBundlePreflightFailurePlan) -> Void
-    public var createBackup: (String) throws -> URL
     public var prepareLogs: (URL) -> Void
     public var executeFailureRecoveryPlan: (ApplyRuntimeBundleFailureRecoveryPlan) -> Void
     public var statusReporter: RuntimeWorkflowStatusReporter
@@ -49,19 +40,10 @@ public struct RuntimeApplyBundleWorkflowOperations {
     public var log: (String) -> Void
 
     public init(
-        stageBundle: @escaping (URL) throws -> URL,
-        loadStagedManifest: @escaping (URL) throws -> UpdateBundleManifest,
-        resolveRootfsStorage: @escaping (ApplyRuntimeBundleRootfsStorageObservationPlan) throws -> ApplyRuntimeBundleRootfsStoragePreflightPlan,
-        createDirectory: @escaping (URL, Bool) throws -> Void,
-        directorySize: @escaping (URL) throws -> UInt64,
-        requireFreeSpace: @escaping (URL, UInt64, RuntimeOperation) throws -> Void,
-        checkCompatibility: @escaping (UpdateBundleManifest) throws -> Void,
-        serviceRestartPolicy: @escaping () -> RuntimeServiceRestartPolicy,
+        executePreflight: @escaping (ApplyRuntimeBundlePreflightInput) throws -> ApplyBundlePreflightContext,
         runtimeHealthSnapshot: @escaping () -> RuntimeHealthSnapshot,
         executeInitialHealthWarningPlan: @escaping (ApplyRuntimeBundleInitialHealthWarningPlan) throws -> Void,
-        executePreflightCapabilityInstruction: @escaping (ApplyRuntimeBundlePreflightCapabilityInstruction) throws -> Void,
         executePreflightFailurePlan: @escaping (ApplyRuntimeBundlePreflightFailurePlan) -> Void,
-        createBackup: @escaping (String) throws -> URL,
         prepareLogs: @escaping (URL) -> Void,
         executeFailureRecoveryPlan: @escaping (ApplyRuntimeBundleFailureRecoveryPlan) -> Void,
         statusReporter: RuntimeWorkflowStatusReporter,
@@ -70,19 +52,10 @@ public struct RuntimeApplyBundleWorkflowOperations {
         describeError: @escaping (Error) -> String,
         log: @escaping (String) -> Void
     ) {
-        self.stageBundle = stageBundle
-        self.loadStagedManifest = loadStagedManifest
-        self.resolveRootfsStorage = resolveRootfsStorage
-        self.createDirectory = createDirectory
-        self.directorySize = directorySize
-        self.requireFreeSpace = requireFreeSpace
-        self.checkCompatibility = checkCompatibility
-        self.serviceRestartPolicy = serviceRestartPolicy
+        self.executePreflight = executePreflight
         self.runtimeHealthSnapshot = runtimeHealthSnapshot
         self.executeInitialHealthWarningPlan = executeInitialHealthWarningPlan
-        self.executePreflightCapabilityInstruction = executePreflightCapabilityInstruction
         self.executePreflightFailurePlan = executePreflightFailurePlan
-        self.createBackup = createBackup
         self.prepareLogs = prepareLogs
         self.executeFailureRecoveryPlan = executeFailureRecoveryPlan
         self.statusReporter = statusReporter
@@ -126,24 +99,12 @@ public struct RuntimeApplyBundleWorkflow {
     }
 
     private func prepareApplyBundlePreflight(_ bundleURL: URL) throws -> ApplyBundlePreflightContext {
-        try RuntimeApplyBundlePreflightRunner(
-            stageBundle: operations.stageBundle,
-            loadStagedManifest: operations.loadStagedManifest,
-            resolveRootfsStorage: operations.resolveRootfsStorage,
-            createDirectory: operations.createDirectory,
-            requireFreeSpace: operations.requireFreeSpace,
-            checkCompatibility: operations.checkCompatibility,
-            serviceRestartPolicy: operations.serviceRestartPolicy,
-            executeCapabilityInstruction: operations.executePreflightCapabilityInstruction,
-            createBackup: operations.createBackup,
-            directorySize: operations.directorySize,
-            updateFreeSpaceMarginBytes: context.updateFreeSpaceMarginBytes,
-            log: operations.log
-        ).prepare(
+        try operations.executePreflight(ApplyRuntimeBundlePreflightInput(
             bundleURL: bundleURL,
             backupsDirectory: context.backupsDirectory,
-            rootfsBase: context.rootfsBase
-        )
+            rootfsBase: context.rootfsBase,
+            updateFreeSpaceMarginBytes: context.updateFreeSpaceMarginBytes
+        ))
     }
 
     private func executeApplyBundleStep(

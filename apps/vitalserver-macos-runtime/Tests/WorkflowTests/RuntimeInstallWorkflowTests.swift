@@ -158,6 +158,9 @@ private final class RuntimeInstallWorkflowHarness {
                     if self.stepErrorStep == step, let error = self.stepError {
                         throw error
                     }
+                },
+                describeError: { error in
+                    error.localizedDescription
                 }
             ),
             writer: RuntimeInstallStateWriter(
