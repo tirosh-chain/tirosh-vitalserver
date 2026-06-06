@@ -17,18 +17,67 @@ final class ControlRuntimeServicesUseCaseTests: XCTestCase {
         XCTAssertEqual(repair.stopServices, RuntimeManagedService.stopOrder)
         XCTAssertEqual(repair.requiredStartedServices, [.vm, .guestLogSync, .proxy, .watchdog])
         XCTAssertEqual(repair.requiredStoppedServices, RuntimeManagedService.stopOrder)
+        XCTAssertEqual(repair.requestedLogMessage, "runtime services repair requested")
+        XCTAssertEqual(
+            repair.requestedStatusPlan,
+            RuntimeServiceControlStatusPlan(
+                logMessage: "runtime services repair requested",
+                status: .recovering,
+                operation: .repairServices,
+                statusMessage: "runtime services repair requested"
+            )
+        )
+        XCTAssertEqual(
+            repair.completedStatusPlan,
+            RuntimeServiceControlStatusPlan(
+                logMessage: "runtime services repair dispatched",
+                status: .recovering,
+                operation: .repairServices,
+                statusMessage: "runtime services repair dispatched"
+            )
+        )
 
         XCTAssertEqual(start.operation, .startServices)
         XCTAssertEqual(start.startPolicy, RuntimeRequiredServicePolicy.allRuntimeServices)
         XCTAssertEqual(start.stopServices, [])
         XCTAssertEqual(start.requiredStartedServices, [.vm, .guestLogSync, .proxy, .watchdog])
         XCTAssertEqual(start.requiredStoppedServices, [])
+        XCTAssertEqual(start.requestedLogMessage, "runtime services start requested")
+        XCTAssertEqual(
+            start.requestedStatusPlan,
+            RuntimeServiceControlStatusPlan(
+                logMessage: "runtime services start requested",
+                status: .recovering,
+                operation: .startServices,
+                statusMessage: "runtime services start requested"
+            )
+        )
+        XCTAssertEqual(
+            start.completedStatusPlan,
+            RuntimeServiceControlStatusPlan(
+                logMessage: "runtime services start dispatched",
+                status: .recovering,
+                operation: .startServices,
+                statusMessage: "runtime services start dispatched"
+            )
+        )
 
         XCTAssertEqual(stop.operation, .stopServices)
         XCTAssertNil(stop.startPolicy)
         XCTAssertEqual(stop.stopServices, RuntimeManagedService.stopOrder)
         XCTAssertEqual(stop.requiredStartedServices, [])
         XCTAssertEqual(stop.requiredStoppedServices, RuntimeManagedService.stopOrder)
+        XCTAssertEqual(stop.requestedLogMessage, "runtime services stop requested")
+        XCTAssertNil(stop.requestedStatusPlan)
+        XCTAssertEqual(
+            stop.completedStatusPlan,
+            RuntimeServiceControlStatusPlan(
+                logMessage: "runtime services stopped",
+                status: .degraded,
+                operation: .stopServices,
+                statusMessage: "runtime services stopped"
+            )
+        )
     }
 
     func testRequireServicesLoadedFailsWhenRequiredServiceIsNotLoaded() {

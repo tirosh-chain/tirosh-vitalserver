@@ -51,6 +51,76 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
         XCTAssertEqual(plan.operationPlan, RuntimeOperationPlans.applyBundle(updatesRootfsBase: false))
     }
 
+    func testApplyBundleLifecyclePlansKeepFailureAndRollbackStatusOutOfWorkflow() {
+        let useCase = UpdateRuntimeUseCase()
+
+        XCTAssertEqual(
+            useCase.applyBundleStartedPlan(inputPath: "/tmp/bundle.tar.gz"),
+            UpdateRuntimeLoggedStatusPlan(
+                logMessage: "bundle apply started input=/tmp/bundle.tar.gz",
+                status: .updating,
+                operation: .applyBundle,
+                statusMessage: "bundle apply started"
+            )
+        )
+        XCTAssertEqual(
+            useCase.applyBundlePreflightFailedStatusPlan(reason: "manifest missing"),
+            UpdateRuntimeStatusPlan(
+                status: .critical,
+                operation: .applyBundle,
+                message: "bundle apply preflight failed: manifest missing"
+            )
+        )
+        XCTAssertEqual(
+            useCase.applyBundleRollbackStartedPlan(reason: "replace failed"),
+            UpdateRuntimeLoggedStatusPlan(
+                logMessage: "bundle apply failed; rolling back error=replace failed",
+                status: .recovering,
+                operation: .applyBundle,
+                statusMessage: "bundle apply failed; rolling back: replace failed"
+            )
+        )
+        XCTAssertEqual(
+            useCase.applyBundleRollbackCompletedStatusPlan(reason: "replace failed"),
+            UpdateRuntimeStatusPlan(
+                status: .degraded,
+                operation: .applyBundle,
+                message: "bundle apply failed; rollback completed: replace failed"
+            )
+        )
+        XCTAssertEqual(
+            useCase.applyBundleRollbackFailedPlan(reason: "rollback failed"),
+            UpdateRuntimeLoggedStatusPlan(
+                logMessage: "bundle apply rollback failed error=rollback failed",
+                status: .critical,
+                operation: .applyBundle,
+                statusMessage: "bundle apply failed and rollback failed: rollback failed"
+            )
+        )
+    }
+
+    func testApplyBundleCompletionAndBestEffortLogPlansUseExplicitInputs() {
+        let useCase = UpdateRuntimeUseCase()
+
+        XCTAssertEqual(
+            useCase.applyBundleCompletedPlan(version: "1.2.3", stagedBundlePath: "/runtime/staged/bundle"),
+            UpdateRuntimeLoggedStatusPlan(
+                logMessage: "bundle applied path=/runtime/staged/bundle",
+                status: .healthy,
+                operation: .applyBundle,
+                statusMessage: "bundle applied: 1.2.3"
+            )
+        )
+        XCTAssertEqual(
+            useCase.applyBundleArtifactCleanupFailedLogMessage(reason: "permission denied"),
+            "runtime artifact cleanup failed after bundle apply error=permission denied"
+        )
+        XCTAssertEqual(
+            useCase.applyBundleRollbackFailureServiceRestartFailedLogMessage(reason: "launchd failed"),
+            "failed to restart runtime services after rollback failure error=launchd failed"
+        )
+    }
+
     func testPreflightManifestPlanDerivesExplicitRootfsAndBackupReasonFromManifest() {
         let useCase = UpdateRuntimeUseCase()
         let stagedBundle = URL(fileURLWithPath: "/tmp/staged")
@@ -240,6 +310,47 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
         XCTAssertEqual(plan.operationPlan.operation, .rollback)
         XCTAssertFalse(plan.operationPlan.steps.contains(.rollbackRestoreRootfsBase))
         XCTAssertEqual(plan.operationPlan, RuntimeOperationPlans.rollback(restoresRootfsBase: false))
+    }
+
+    func testRollbackLifecyclePlansKeepStatusAndProgressMessagesOutOfWorkflow() {
+        let useCase = UpdateRuntimeUseCase()
+        let event = RuntimeStepExecutionEvent(
+            operation: .rollback,
+            status: .recovering,
+            step: .rollbackRestoreRuntimeVersion,
+            stepStatus: .completed,
+            phase: .running,
+            message: "restored"
+        )
+
+        XCTAssertEqual(
+            useCase.rollbackStartedPlan(backupPath: "/runtime/backups/backup-1"),
+            UpdateRuntimeLoggedStatusPlan(
+                logMessage: "rollback started backup=/runtime/backups/backup-1",
+                status: .recovering,
+                operation: .rollback,
+                statusMessage: "rollback started"
+            )
+        )
+        XCTAssertEqual(
+            useCase.rollbackProgressLogMessage(event: event),
+            "step=rollback-restore-runtime-version status=completed"
+        )
+        XCTAssertEqual(
+            useCase.rollbackCompletedPlan(
+                backupPath: "/runtime/backups/backup-1",
+                vmDiskPath: "/runtime/vm/vm-disk.img"
+            ),
+            RollbackRuntimeCompletionPlan(
+                statusPlan: UpdateRuntimeStatusPlan(
+                    status: .healthy,
+                    operation: .rollback,
+                    message: "rollback completed"
+                ),
+                restoredBackupLogMessage: "rollback restored backup=/runtime/backups/backup-1",
+                preservedVMDiskLogMessage: "mutable VM disk preserved path=/runtime/vm/vm-disk.img"
+            )
+        )
     }
 
     func testRollbackBackupPlanPreservesManifestRootfsAsExplicitRestoreState() {

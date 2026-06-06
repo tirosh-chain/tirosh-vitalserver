@@ -269,6 +269,51 @@ public struct RepairRuntimeUseCase {
         }
     }
 
+    public func vmDiskRepairRequestedPlan() -> RepairRuntimeLoggedStatusPlan {
+        RepairRuntimeLoggedStatusPlan(
+            logMessage: "vm disk repair requested",
+            status: .recovering,
+            operation: .repairVMDisk,
+            statusMessage: "VM disk repair requested"
+        )
+    }
+
+    public func vmDiskReplacementCreationStatusPlan() -> RepairRuntimeStatusPlan {
+        RepairRuntimeStatusPlan(
+            status: .recovering,
+            operation: .repairVMDisk,
+            message: "Creating replacement VM disk"
+        )
+    }
+
+    public func vmDiskArchiveStatusPlan() -> RepairRuntimeStatusPlan {
+        RepairRuntimeStatusPlan(
+            status: .recovering,
+            operation: .repairVMDisk,
+            message: "Archiving current VM disk"
+        )
+    }
+
+    public func vmDiskArchivedLogMessage(archivedDiskPath: String) -> String {
+        "archived vm disk path=\(archivedDiskPath)"
+    }
+
+    public func vmDiskMissingArchiveLogMessage() -> String {
+        "vm disk missing; creating replacement without archive"
+    }
+
+    public func vmDiskReplacementCreatedLogMessage(vmDiskPath: String, targetDiskGiB: Int) -> String {
+        "created replacement vm disk path=\(vmDiskPath) size=\(targetDiskGiB) GiB"
+    }
+
+    public func vmDiskStartServicesStatusPlan() -> RepairRuntimeStatusPlan {
+        RepairRuntimeStatusPlan(
+            status: .recovering,
+            operation: .repairVMDisk,
+            message: "Starting runtime services after VM disk repair"
+        )
+    }
+
     public func vmDiskCompletionMessages(archivedDiskPath: String?) -> RepairRuntimeVMDiskCompletionMessages {
         guard let archivedDiskPath else {
             return RepairRuntimeVMDiskCompletionMessages(
@@ -279,6 +324,32 @@ public struct RepairRuntimeUseCase {
         return RepairRuntimeVMDiskCompletionMessages(
             healthy: "VM disk repaired. Previous disk archive: \(archivedDiskPath)",
             degraded: "VM disk was recreated, but runtime health check failed. Previous disk archive: \(archivedDiskPath)"
+        )
+    }
+
+    public func vmDiskRedisBackupStartedStatusPlan() -> RepairRuntimeStatusPlan {
+        RepairRuntimeStatusPlan(
+            status: .recovering,
+            operation: .repairVMDisk,
+            message: "Creating Redis backup before VM disk repair"
+        )
+    }
+
+    public func vmDiskRedisBackupCompletedPlan() -> RepairRuntimeLoggedStatusPlan {
+        RepairRuntimeLoggedStatusPlan(
+            logMessage: "redis backup before vm disk repair completed",
+            status: .recovering,
+            operation: .repairVMDisk,
+            statusMessage: "Redis backup completed before VM disk repair"
+        )
+    }
+
+    public func vmDiskRedisBackupFailedPlan(reason: String) -> RepairRuntimeLoggedStatusPlan {
+        RepairRuntimeLoggedStatusPlan(
+            logMessage: "redis backup before vm disk repair failed error=\(reason); continuing with VM disk archive",
+            status: .recovering,
+            operation: .repairVMDisk,
+            statusMessage: "Redis backup before VM disk repair failed; current VM disk will be archived before replacement"
         )
     }
 

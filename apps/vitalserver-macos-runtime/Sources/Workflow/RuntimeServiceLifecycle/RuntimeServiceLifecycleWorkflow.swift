@@ -81,35 +81,42 @@ public struct RuntimeServiceLifecycleWorkflow {
 
     private func repairAll() throws {
         let plan = useCase.plan(.repairAll)
-        writer.log("runtime services repair requested")
-        try writer.writeStatus(.recovering, plan.operation, "runtime services repair requested")
+        try reportRequested(plan)
         try effects.stopRuntimeServices()
         try requireServicesStopped(plan.requiredStoppedServices)
         let policy = try useCase.requireStartPolicy(in: plan, operationName: "repair")
         try effects.startRuntimeServices(policy)
         try requireServicesLoaded(plan.requiredStartedServices)
-        try writer.writeStatus(.recovering, plan.operation, "runtime services repair dispatched")
-        writer.log("runtime services repair dispatched")
+        try reportCompleted(plan.completedStatusPlan)
     }
 
     private func startAll() throws {
         let plan = useCase.plan(.startAll)
-        writer.log("runtime services start requested")
-        try writer.writeStatus(.recovering, plan.operation, "runtime services start requested")
+        try reportRequested(plan)
         let policy = try useCase.requireStartPolicy(in: plan, operationName: "start")
         try effects.startRuntimeServices(policy)
         try requireServicesLoaded(plan.requiredStartedServices)
-        try writer.writeStatus(.recovering, plan.operation, "runtime services start dispatched")
-        writer.log("runtime services start dispatched")
+        try reportCompleted(plan.completedStatusPlan)
     }
 
     private func stopAll() throws {
         let plan = useCase.plan(.stopAll)
-        writer.log("runtime services stop requested")
+        try reportRequested(plan)
         try effects.stopRuntimeServices()
         try requireServicesStopped(plan.requiredStoppedServices)
-        try writer.writeStatus(.degraded, plan.operation, "runtime services stopped")
-        writer.log("runtime services stopped")
+        try reportCompleted(plan.completedStatusPlan)
+    }
+
+    private func reportRequested(_ plan: RuntimeServiceControlPlan) throws {
+        writer.log(plan.requestedLogMessage)
+        if let statusPlan = plan.requestedStatusPlan {
+            try writer.writeStatus(statusPlan.status, statusPlan.operation, statusPlan.statusMessage)
+        }
+    }
+
+    private func reportCompleted(_ plan: RuntimeServiceControlStatusPlan) throws {
+        try writer.writeStatus(plan.status, plan.operation, plan.statusMessage)
+        writer.log(plan.logMessage)
     }
 
     private func requireServicesLoaded(_ services: [RuntimeManagedService]) throws {

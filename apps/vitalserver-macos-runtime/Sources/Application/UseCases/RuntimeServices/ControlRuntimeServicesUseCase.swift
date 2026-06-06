@@ -34,6 +34,9 @@ public struct RuntimeServiceControlPlan: Equatable {
     public let stopServices: [RuntimeManagedService]
     public let requiredStartedServices: [RuntimeManagedService]
     public let requiredStoppedServices: [RuntimeManagedService]
+    public let requestedLogMessage: String
+    public let requestedStatusPlan: RuntimeServiceControlStatusPlan?
+    public let completedStatusPlan: RuntimeServiceControlStatusPlan
 
     public init(
         request: RuntimeServiceControlRequest,
@@ -41,7 +44,10 @@ public struct RuntimeServiceControlPlan: Equatable {
         startPolicy: RuntimeServiceRestartPolicy?,
         stopServices: [RuntimeManagedService],
         requiredStartedServices: [RuntimeManagedService],
-        requiredStoppedServices: [RuntimeManagedService]
+        requiredStoppedServices: [RuntimeManagedService],
+        requestedLogMessage: String,
+        requestedStatusPlan: RuntimeServiceControlStatusPlan?,
+        completedStatusPlan: RuntimeServiceControlStatusPlan
     ) {
         self.request = request
         self.operation = operation
@@ -49,6 +55,28 @@ public struct RuntimeServiceControlPlan: Equatable {
         self.stopServices = stopServices
         self.requiredStartedServices = requiredStartedServices
         self.requiredStoppedServices = requiredStoppedServices
+        self.requestedLogMessage = requestedLogMessage
+        self.requestedStatusPlan = requestedStatusPlan
+        self.completedStatusPlan = completedStatusPlan
+    }
+}
+
+public struct RuntimeServiceControlStatusPlan: Equatable {
+    public let logMessage: String
+    public let status: RuntimeStatusLevel
+    public let operation: RuntimeOperation
+    public let statusMessage: String
+
+    public init(
+        logMessage: String,
+        status: RuntimeStatusLevel,
+        operation: RuntimeOperation,
+        statusMessage: String
+    ) {
+        self.logMessage = logMessage
+        self.status = status
+        self.operation = operation
+        self.statusMessage = statusMessage
     }
 }
 
@@ -74,7 +102,20 @@ public struct ControlRuntimeServicesUseCase {
                 startPolicy: allRuntimeServices,
                 stopServices: RuntimeManagedService.stopOrder,
                 requiredStartedServices: allRequiredServices,
-                requiredStoppedServices: RuntimeManagedService.stopOrder
+                requiredStoppedServices: RuntimeManagedService.stopOrder,
+                requestedLogMessage: "runtime services repair requested",
+                requestedStatusPlan: RuntimeServiceControlStatusPlan(
+                    logMessage: "runtime services repair requested",
+                    status: .recovering,
+                    operation: .repairServices,
+                    statusMessage: "runtime services repair requested"
+                ),
+                completedStatusPlan: RuntimeServiceControlStatusPlan(
+                    logMessage: "runtime services repair dispatched",
+                    status: .recovering,
+                    operation: .repairServices,
+                    statusMessage: "runtime services repair dispatched"
+                )
             )
         case .startAll:
             return RuntimeServiceControlPlan(
@@ -83,7 +124,20 @@ public struct ControlRuntimeServicesUseCase {
                 startPolicy: allRuntimeServices,
                 stopServices: [],
                 requiredStartedServices: allRequiredServices,
-                requiredStoppedServices: []
+                requiredStoppedServices: [],
+                requestedLogMessage: "runtime services start requested",
+                requestedStatusPlan: RuntimeServiceControlStatusPlan(
+                    logMessage: "runtime services start requested",
+                    status: .recovering,
+                    operation: .startServices,
+                    statusMessage: "runtime services start requested"
+                ),
+                completedStatusPlan: RuntimeServiceControlStatusPlan(
+                    logMessage: "runtime services start dispatched",
+                    status: .recovering,
+                    operation: .startServices,
+                    statusMessage: "runtime services start dispatched"
+                )
             )
         case .stopAll:
             return RuntimeServiceControlPlan(
@@ -92,7 +146,15 @@ public struct ControlRuntimeServicesUseCase {
                 startPolicy: nil,
                 stopServices: RuntimeManagedService.stopOrder,
                 requiredStartedServices: [],
-                requiredStoppedServices: RuntimeManagedService.stopOrder
+                requiredStoppedServices: RuntimeManagedService.stopOrder,
+                requestedLogMessage: "runtime services stop requested",
+                requestedStatusPlan: nil,
+                completedStatusPlan: RuntimeServiceControlStatusPlan(
+                    logMessage: "runtime services stopped",
+                    status: .degraded,
+                    operation: .stopServices,
+                    statusMessage: "runtime services stopped"
+                )
             )
         }
     }

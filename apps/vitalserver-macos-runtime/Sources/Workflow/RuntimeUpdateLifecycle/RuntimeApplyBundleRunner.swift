@@ -38,9 +38,10 @@ public struct RuntimeApplyBundleRunner {
     }
 
     public func run(bundleURL: URL) throws {
-        statusReporter.log("bundle apply started input=\(bundleURL.path)")
+        let startedPlan = useCase.applyBundleStartedPlan(inputPath: bundleURL.path)
+        statusReporter.log(startedPlan.logMessage)
         try prepareLogs()
-        try statusReporter.write(.updating, operation: .applyBundle, message: "bundle apply started")
+        try write(startedPlan)
 
         let initialHealth = initialHealthSnapshot()
         let initialHealthDecision = useCase.initialHealthDecision(
@@ -54,10 +55,11 @@ public struct RuntimeApplyBundleRunner {
         do {
             preflight = try preparePreflight(bundleURL)
         } catch {
+            let failedPlan = useCase.applyBundlePreflightFailedStatusPlan(reason: "\(error)")
             statusReporter.writeBestEffort(
-                .critical,
-                operation: .applyBundle,
-                message: "bundle apply preflight failed: \(error)"
+                failedPlan.status,
+                operation: failedPlan.operation,
+                message: failedPlan.message
             )
             throw error
         }
@@ -75,42 +77,49 @@ public struct RuntimeApplyBundleRunner {
                 }
             )
         } catch {
-            statusReporter.log("bundle apply failed; rolling back error=\(error)")
+            let rollbackStartedPlan = useCase.applyBundleRollbackStartedPlan(reason: "\(error)")
+            statusReporter.log(rollbackStartedPlan.logMessage)
             statusReporter.writeBestEffort(
-                .recovering,
-                operation: .applyBundle,
-                message: "bundle apply failed; rolling back: \(error)"
+                rollbackStartedPlan.status,
+                operation: rollbackStartedPlan.operation,
+                message: rollbackStartedPlan.statusMessage
             )
             do {
                 try rollback(preflight.backup)
                 try startRuntimeServices(preflight.restartPolicy)
+                let rollbackCompletedPlan = useCase.applyBundleRollbackCompletedStatusPlan(reason: "\(error)")
                 statusReporter.writeBestEffort(
-                    .degraded,
-                    operation: .applyBundle,
-                    message: "bundle apply failed; rollback completed: \(error)"
+                    rollbackCompletedPlan.status,
+                    operation: rollbackCompletedPlan.operation,
+                    message: rollbackCompletedPlan.message
                 )
             } catch {
-                statusReporter.log("bundle apply rollback failed error=\(error)")
+                let rollbackFailedPlan = useCase.applyBundleRollbackFailedPlan(reason: "\(error)")
+                statusReporter.log(rollbackFailedPlan.logMessage)
                 startRuntimeServicesBestEffort(preflight.restartPolicy)
                 statusReporter.writeBestEffort(
-                    .critical,
-                    operation: .applyBundle,
-                    message: "bundle apply failed and rollback failed: \(error)"
+                    rollbackFailedPlan.status,
+                    operation: rollbackFailedPlan.operation,
+                    message: rollbackFailedPlan.statusMessage
                 )
             }
             throw error
         }
 
         pruneOldRuntimeArtifactsBestEffort()
-        try statusReporter.write(.healthy, operation: .applyBundle, message: "bundle applied: \(preflight.manifest.version)")
-        statusReporter.log("bundle applied path=\(preflight.stagedBundle.path)")
+        let completedPlan = useCase.applyBundleCompletedPlan(
+            version: preflight.manifest.version,
+            stagedBundlePath: preflight.stagedBundle.path
+        )
+        try write(completedPlan)
+        statusReporter.log(completedPlan.logMessage)
     }
 
     private func pruneOldRuntimeArtifactsBestEffort() {
         do {
             try pruneOldRuntimeArtifacts()
         } catch {
-            statusReporter.log("runtime artifact cleanup failed after bundle apply error=\(error)")
+            statusReporter.log(useCase.applyBundleArtifactCleanupFailedLogMessage(reason: "\(error)"))
         }
     }
 
@@ -118,7 +127,11 @@ public struct RuntimeApplyBundleRunner {
         do {
             try startRuntimeServices(policy)
         } catch {
-            statusReporter.log("failed to restart runtime services after rollback failure error=\(error)")
+            statusReporter.log(useCase.applyBundleRollbackFailureServiceRestartFailedLogMessage(reason: "\(error)"))
         }
+    }
+
+    private func write(_ plan: UpdateRuntimeLoggedStatusPlan) throws {
+        try statusReporter.write(plan.status, operation: plan.operation, message: plan.statusMessage)
     }
 }

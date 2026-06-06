@@ -127,6 +127,87 @@ final class RepairRuntimeUseCaseTests: XCTestCase {
         }
     }
 
+    func testVMDiskRepairLifecyclePlansKeepOperationMessagesOutOfWorkflow() {
+        let useCase = RepairRuntimeUseCase()
+
+        XCTAssertEqual(
+            useCase.vmDiskRepairRequestedPlan(),
+            RepairRuntimeLoggedStatusPlan(
+                logMessage: "vm disk repair requested",
+                status: .recovering,
+                operation: .repairVMDisk,
+                statusMessage: "VM disk repair requested"
+            )
+        )
+        XCTAssertEqual(
+            useCase.vmDiskReplacementCreationStatusPlan(),
+            RepairRuntimeStatusPlan(
+                status: .recovering,
+                operation: .repairVMDisk,
+                message: "Creating replacement VM disk"
+            )
+        )
+        XCTAssertEqual(
+            useCase.vmDiskArchiveStatusPlan(),
+            RepairRuntimeStatusPlan(
+                status: .recovering,
+                operation: .repairVMDisk,
+                message: "Archiving current VM disk"
+            )
+        )
+        XCTAssertEqual(
+            useCase.vmDiskStartServicesStatusPlan(),
+            RepairRuntimeStatusPlan(
+                status: .recovering,
+                operation: .repairVMDisk,
+                message: "Starting runtime services after VM disk repair"
+            )
+        )
+        XCTAssertEqual(
+            useCase.vmDiskArchivedLogMessage(archivedDiskPath: "/runtime/backups/vm-disk.img"),
+            "archived vm disk path=/runtime/backups/vm-disk.img"
+        )
+        XCTAssertEqual(
+            useCase.vmDiskMissingArchiveLogMessage(),
+            "vm disk missing; creating replacement without archive"
+        )
+        XCTAssertEqual(
+            useCase.vmDiskReplacementCreatedLogMessage(vmDiskPath: "/runtime/vm/vm-disk.img", targetDiskGiB: 64),
+            "created replacement vm disk path=/runtime/vm/vm-disk.img size=64 GiB"
+        )
+    }
+
+    func testVMDiskRedisBackupBestEffortPlansReportDegradedContinuationExplicitly() {
+        let useCase = RepairRuntimeUseCase()
+
+        XCTAssertEqual(
+            useCase.vmDiskRedisBackupStartedStatusPlan(),
+            RepairRuntimeStatusPlan(
+                status: .recovering,
+                operation: .repairVMDisk,
+                message: "Creating Redis backup before VM disk repair"
+            )
+        )
+        XCTAssertEqual(
+            useCase.vmDiskRedisBackupCompletedPlan(),
+            RepairRuntimeLoggedStatusPlan(
+                logMessage: "redis backup before vm disk repair completed",
+                status: .recovering,
+                operation: .repairVMDisk,
+                statusMessage: "Redis backup completed before VM disk repair"
+            )
+        )
+        XCTAssertEqual(
+            useCase.vmDiskRedisBackupFailedPlan(reason: "permission denied"),
+            RepairRuntimeLoggedStatusPlan(
+                logMessage: "redis backup before vm disk repair failed error=permission denied; continuing with VM disk archive",
+                status: .recovering,
+                operation: .repairVMDisk,
+                statusMessage: "Redis backup before VM disk repair failed; current VM disk will be archived before replacement"
+            )
+        )
+    }
+
     func testCompletionMessagesPreserveArchivePresence() {
         let useCase = RepairRuntimeUseCase()
 

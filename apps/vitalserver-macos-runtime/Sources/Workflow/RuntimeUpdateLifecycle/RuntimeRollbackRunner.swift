@@ -33,8 +33,9 @@ public struct RuntimeRollbackRunner<RollbackCommand> {
 
     public func run(_ command: RollbackCommand) throws {
         let preflight = try preparePreflight(command)
-        log("rollback started backup=\(preflight.backup.path)")
-        try writeStatus(.recovering, .rollback, "rollback started")
+        let startedPlan = useCase.rollbackStartedPlan(backupPath: preflight.backup.path)
+        log(startedPlan.logMessage)
+        try writeStatus(startedPlan.status, startedPlan.operation, startedPlan.statusMessage)
 
         let plan = useCase.planRollback(for: preflight)
         try RuntimeOperationPlanRunner.run(
@@ -44,13 +45,21 @@ public struct RuntimeRollbackRunner<RollbackCommand> {
                 try executeStep(step, preflight)
             },
             publish: { event in
-                log("step=\(event.step.rawValue) status=\(event.stepStatus.rawValue)")
+                log(useCase.rollbackProgressLogMessage(event: event))
                 writeRuntimeProgressBestEffort(event, writeProgress: writeProgress, log: log)
             }
         )
 
-        try writeStatus(.healthy, .rollback, "rollback completed")
-        log("rollback restored backup=\(preflight.backup.path)")
-        log("mutable VM disk preserved path=\(vmDiskPath())")
+        let completedPlan = useCase.rollbackCompletedPlan(
+            backupPath: preflight.backup.path,
+            vmDiskPath: vmDiskPath()
+        )
+        try writeStatus(
+            completedPlan.statusPlan.status,
+            completedPlan.statusPlan.operation,
+            completedPlan.statusPlan.message
+        )
+        log(completedPlan.restoredBackupLogMessage)
+        log(completedPlan.preservedVMDiskLogMessage)
     }
 }

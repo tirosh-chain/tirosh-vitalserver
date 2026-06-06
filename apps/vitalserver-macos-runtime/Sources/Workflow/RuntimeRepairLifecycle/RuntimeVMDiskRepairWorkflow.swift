@@ -111,8 +111,7 @@ public struct RuntimeVMDiskRepairRunner {
         )
         var archivedDiskPath: String?
 
-        operations.log("vm disk repair requested")
-        try operations.writeStatus(.recovering, .repairVMDisk, "VM disk repair requested")
+        try report(useCase.vmDiskRepairRequestedPlan())
         try createRedisBackupBestEffort()
         try operations.createDirectory(context.vmDisk.deletingLastPathComponent(), true)
         try operations.createDirectory(context.backupsDirectory, true)
@@ -125,7 +124,7 @@ public struct RuntimeVMDiskRepairRunner {
             plan.requiredFreeSpaceBytes,
             plan.operation.rawValue
         )
-        try operations.writeStatus(.recovering, .repairVMDisk, "Creating replacement VM disk")
+        try writeStatus(useCase.vmDiskReplacementCreationStatusPlan())
         try operations.runProcessToFile(
             context.gunzipExecutable,
             ["-c", context.rootfsBase.path],
@@ -133,22 +132,25 @@ public struct RuntimeVMDiskRepairRunner {
         )
         try operations.runRequired(context.truncateExecutable, ["-s", "\(plan.targetDiskGiB)G", executionPlan.temporaryDisk.path])
 
-        try operations.writeStatus(.recovering, .repairVMDisk, "Archiving current VM disk")
+        try writeStatus(useCase.vmDiskArchiveStatusPlan())
         try operations.stopRuntimeServicesForVMDiskReplacement()
         try operations.createDirectory(executionPlan.archiveDirectory, true)
         if plan.shouldArchiveCurrentDisk {
             try operations.moveItem(context.vmDisk, executionPlan.archivedDisk)
             archivedDiskPath = executionPlan.archivedDisk.path
-            operations.log("archived vm disk path=\(executionPlan.archivedDisk.path)")
+            operations.log(useCase.vmDiskArchivedLogMessage(archivedDiskPath: executionPlan.archivedDisk.path))
         } else {
-            operations.log("vm disk missing; creating replacement without archive")
+            operations.log(useCase.vmDiskMissingArchiveLogMessage())
         }
 
         try operations.moveItem(executionPlan.temporaryDisk, context.vmDisk)
         try requireReplacementDisk(targetDiskGiB: plan.targetDiskGiB)
-        operations.log("created replacement vm disk path=\(context.vmDisk.path) size=\(plan.targetDiskGiB) GiB")
+        operations.log(useCase.vmDiskReplacementCreatedLogMessage(
+            vmDiskPath: context.vmDisk.path,
+            targetDiskGiB: plan.targetDiskGiB
+        ))
 
-        try operations.writeStatus(.recovering, .repairVMDisk, "Starting runtime services after VM disk repair")
+        try writeStatus(useCase.vmDiskStartServicesStatusPlan())
         try operations.startRuntimeServices(plan.restartPolicy)
         do {
             try operations.waitForHealth(plan.restartPolicy)
@@ -201,19 +203,22 @@ public struct RuntimeVMDiskRepairRunner {
     }
 
     private func createRedisBackupBestEffort() throws {
-        try operations.writeStatus(.recovering, .repairVMDisk, "Creating Redis backup before VM disk repair")
+        try writeStatus(useCase.vmDiskRedisBackupStartedStatusPlan())
         do {
             try operations.createRedisBackup()
-            operations.log("redis backup before vm disk repair completed")
-            try operations.writeStatus(.recovering, .repairVMDisk, "Redis backup completed before VM disk repair")
+            try report(useCase.vmDiskRedisBackupCompletedPlan())
         } catch {
-            operations.log("redis backup before vm disk repair failed error=\(error.localizedDescription); continuing with VM disk archive")
-            try operations.writeStatus(
-                .recovering,
-                .repairVMDisk,
-                "Redis backup before VM disk repair failed; current VM disk will be archived before replacement"
-            )
+            try report(useCase.vmDiskRedisBackupFailedPlan(reason: error.localizedDescription))
         }
+    }
+
+    private func report(_ plan: RepairRuntimeLoggedStatusPlan) throws {
+        operations.log(plan.logMessage)
+        try operations.writeStatus(plan.status, plan.operation, plan.statusMessage)
+    }
+
+    private func writeStatus(_ plan: RepairRuntimeStatusPlan) throws {
+        try operations.writeStatus(plan.status, plan.operation, plan.message)
     }
 
 }

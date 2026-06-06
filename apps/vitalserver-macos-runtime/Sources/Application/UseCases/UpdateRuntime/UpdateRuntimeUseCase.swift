@@ -165,6 +165,57 @@ public struct RollbackRuntimeManagedArtifactRestorePlan: Equatable, Sendable {
     }
 }
 
+public struct UpdateRuntimeStatusPlan: Equatable, Sendable {
+    public let status: RuntimeStatusLevel
+    public let operation: RuntimeOperation
+    public let message: String
+
+    public init(
+        status: RuntimeStatusLevel,
+        operation: RuntimeOperation,
+        message: String
+    ) {
+        self.status = status
+        self.operation = operation
+        self.message = message
+    }
+}
+
+public struct UpdateRuntimeLoggedStatusPlan: Equatable, Sendable {
+    public let logMessage: String
+    public let status: RuntimeStatusLevel
+    public let operation: RuntimeOperation
+    public let statusMessage: String
+
+    public init(
+        logMessage: String,
+        status: RuntimeStatusLevel,
+        operation: RuntimeOperation,
+        statusMessage: String
+    ) {
+        self.logMessage = logMessage
+        self.status = status
+        self.operation = operation
+        self.statusMessage = statusMessage
+    }
+}
+
+public struct RollbackRuntimeCompletionPlan: Equatable, Sendable {
+    public let statusPlan: UpdateRuntimeStatusPlan
+    public let restoredBackupLogMessage: String
+    public let preservedVMDiskLogMessage: String
+
+    public init(
+        statusPlan: UpdateRuntimeStatusPlan,
+        restoredBackupLogMessage: String,
+        preservedVMDiskLogMessage: String
+    ) {
+        self.statusPlan = statusPlan
+        self.restoredBackupLogMessage = restoredBackupLogMessage
+        self.preservedVMDiskLogMessage = preservedVMDiskLogMessage
+    }
+}
+
 public struct RuntimeGuestActivationPlan: Equatable, Sendable {
     public let requiresActivation: Bool
     public let version: String
@@ -236,6 +287,66 @@ public struct UpdateRuntimeUseCase {
         ApplyRuntimeBundlePlan(
             operationPlan: RuntimeOperationPlans.applyBundle(updatesRootfsBase: preflight.updatesRootfsBase)
         )
+    }
+
+    public func applyBundleStartedPlan(inputPath: String) -> UpdateRuntimeLoggedStatusPlan {
+        UpdateRuntimeLoggedStatusPlan(
+            logMessage: "bundle apply started input=\(inputPath)",
+            status: .updating,
+            operation: .applyBundle,
+            statusMessage: "bundle apply started"
+        )
+    }
+
+    public func applyBundlePreflightFailedStatusPlan(reason: String) -> UpdateRuntimeStatusPlan {
+        UpdateRuntimeStatusPlan(
+            status: .critical,
+            operation: .applyBundle,
+            message: "bundle apply preflight failed: \(reason)"
+        )
+    }
+
+    public func applyBundleRollbackStartedPlan(reason: String) -> UpdateRuntimeLoggedStatusPlan {
+        UpdateRuntimeLoggedStatusPlan(
+            logMessage: "bundle apply failed; rolling back error=\(reason)",
+            status: .recovering,
+            operation: .applyBundle,
+            statusMessage: "bundle apply failed; rolling back: \(reason)"
+        )
+    }
+
+    public func applyBundleRollbackCompletedStatusPlan(reason: String) -> UpdateRuntimeStatusPlan {
+        UpdateRuntimeStatusPlan(
+            status: .degraded,
+            operation: .applyBundle,
+            message: "bundle apply failed; rollback completed: \(reason)"
+        )
+    }
+
+    public func applyBundleRollbackFailedPlan(reason: String) -> UpdateRuntimeLoggedStatusPlan {
+        UpdateRuntimeLoggedStatusPlan(
+            logMessage: "bundle apply rollback failed error=\(reason)",
+            status: .critical,
+            operation: .applyBundle,
+            statusMessage: "bundle apply failed and rollback failed: \(reason)"
+        )
+    }
+
+    public func applyBundleCompletedPlan(version: String, stagedBundlePath: String) -> UpdateRuntimeLoggedStatusPlan {
+        UpdateRuntimeLoggedStatusPlan(
+            logMessage: "bundle applied path=\(stagedBundlePath)",
+            status: .healthy,
+            operation: .applyBundle,
+            statusMessage: "bundle applied: \(version)"
+        )
+    }
+
+    public func applyBundleArtifactCleanupFailedLogMessage(reason: String) -> String {
+        "runtime artifact cleanup failed after bundle apply error=\(reason)"
+    }
+
+    public func applyBundleRollbackFailureServiceRestartFailedLogMessage(reason: String) -> String {
+        "failed to restart runtime services after rollback failure error=\(reason)"
     }
 
     public func preflightManifestPlan(
@@ -324,6 +435,34 @@ public struct UpdateRuntimeUseCase {
     public func planRollback(for preflight: RollbackPreflightContext) -> RollbackRuntimePlan {
         RollbackRuntimePlan(
             operationPlan: RuntimeOperationPlans.rollback(restoresRootfsBase: preflight.restoresRootfsBase)
+        )
+    }
+
+    public func rollbackStartedPlan(backupPath: String) -> UpdateRuntimeLoggedStatusPlan {
+        UpdateRuntimeLoggedStatusPlan(
+            logMessage: "rollback started backup=\(backupPath)",
+            status: .recovering,
+            operation: .rollback,
+            statusMessage: "rollback started"
+        )
+    }
+
+    public func rollbackProgressLogMessage(event: RuntimeStepExecutionEvent) -> String {
+        "step=\(event.step.rawValue) status=\(event.stepStatus.rawValue)"
+    }
+
+    public func rollbackCompletedPlan(
+        backupPath: String,
+        vmDiskPath: String
+    ) -> RollbackRuntimeCompletionPlan {
+        RollbackRuntimeCompletionPlan(
+            statusPlan: UpdateRuntimeStatusPlan(
+                status: .healthy,
+                operation: .rollback,
+                message: "rollback completed"
+            ),
+            restoredBackupLogMessage: "rollback restored backup=\(backupPath)",
+            preservedVMDiskLogMessage: "mutable VM disk preserved path=\(vmDiskPath)"
         )
     }
 
