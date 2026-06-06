@@ -274,7 +274,7 @@ public struct RuntimeBundleComposition {
                 loadStagedManifest: { stagedBundle in
                     try loadManifest(stagedBundle.appendingPathComponent(Constants.Bundle.manifest))
                 },
-                fileExists: fileExists,
+                observeRootfsStorage: observeRootfsStorage,
                 createDirectory: { url, withIntermediateDirectories in
                     try operations.fileStore.createDirectory(at: url, withIntermediateDirectories: withIntermediateDirectories)
                 },
@@ -332,6 +332,19 @@ public struct RuntimeBundleComposition {
     private func loadManifest(_ url: URL) throws -> UpdateBundleManifest {
         let data = try operations.fileStore.readData(url)
         return try JSONDecoder().decode(UpdateBundleManifest.self, from: data)
+    }
+
+    private func observeRootfsStorage(
+        stagedRootfs: URL,
+        rootfsBase: URL
+    ) throws -> ApplyRuntimeBundleRootfsStorageObservation {
+        let stagedRootfsExists = fileExists(stagedRootfs)
+        return ApplyRuntimeBundleRootfsStorageObservation(
+            stagedRootfs: stagedRootfs,
+            stagedRootfsExists: stagedRootfsExists,
+            installedRootfsBytes: stagedRootfsExists ? try fileSize(rootfsBase) : nil,
+            incomingRootfsBytes: stagedRootfsExists ? try fileSize(stagedRootfs) : nil
+        )
     }
 
     private func loadChecksums(_ url: URL) throws -> [String: String] {

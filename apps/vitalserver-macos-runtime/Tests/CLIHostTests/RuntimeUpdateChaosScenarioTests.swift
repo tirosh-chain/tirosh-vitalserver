@@ -29,9 +29,16 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
                     ]
                 )
             },
-            fileExists: { _ in false },
+            observeRootfsStorage: { _, _ in
+                XCTFail("rootfs storage should not be observed")
+                return ApplyRuntimeBundleRootfsStorageObservation(
+                    stagedRootfs: URL(fileURLWithPath: "/unused"),
+                    stagedRootfsExists: false,
+                    installedRootfsBytes: nil,
+                    incomingRootfsBytes: nil
+                )
+            },
             createDirectory: { _, _ in events.append("mkdir") },
-            fileSize: { _ in 0 },
             requireFreeSpace: { _, _, _ in events.append("space") },
             checkCompatibility: { _ in events.append("compatibility") },
             serviceRestartPolicy: {

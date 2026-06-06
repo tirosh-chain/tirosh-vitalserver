@@ -280,6 +280,17 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         }
     }
 
+    func testWorkflowDoesNotDescribeErrorsDirectly() throws {
+        let workflowRoot = packageRoot().appendingPathComponent("Sources/Workflow")
+        for file in try swiftFiles(root: workflowRoot) {
+            let text = try String(contentsOf: file, encoding: .utf8)
+            XCTAssertFalse(
+                text.contains("String(describing:"),
+                "Workflow must use Errors/Application contracts instead of formatting Error directly: \(file.path)"
+            )
+        }
+    }
+
     func testWorkflowDoesNotInterpretOperationStepsDirectly() throws {
         let workflowRoot = packageRoot().appendingPathComponent("Sources/Workflow")
         for file in try swiftFiles(root: workflowRoot) {
@@ -391,6 +402,25 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
                     "RuntimeUpdateLifecycle Workflow must pass explicit file observations to UseCase/Adapters instead of interpreting \(token) directly: \(file.path)"
                 )
             }
+        }
+    }
+
+    func testRuntimeApplyBundlePreflightRunnerDoesNotOwnRootfsFileObservation() throws {
+        let file = packageRoot().appendingPathComponent(
+            "Sources/Workflow/RuntimeUpdateLifecycle/RuntimeApplyBundlePreflightRunner.swift"
+        )
+        let text = try String(contentsOf: file, encoding: .utf8)
+        let forbiddenTokens = [
+            "fileExists",
+            "fileSize",
+            "ApplyRuntimeBundleRootfsStorageObservation(",
+        ]
+
+        for token in forbiddenTokens {
+            XCTAssertFalse(
+                text.contains(token),
+                "RuntimeApplyBundlePreflightRunner must receive explicit rootfs storage observations from a port instead of using \(token)"
+            )
         }
     }
 

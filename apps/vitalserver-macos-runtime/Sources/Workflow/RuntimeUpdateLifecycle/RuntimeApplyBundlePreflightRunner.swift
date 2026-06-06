@@ -7,9 +7,8 @@ import Errors
 public struct RuntimeApplyBundlePreflightRunner {
     public var stageBundle: (URL) throws -> URL
     public var loadStagedManifest: (URL) throws -> UpdateBundleManifest
-    public var fileExists: (URL) -> Bool
+    public var observeRootfsStorage: (URL, URL) throws -> ApplyRuntimeBundleRootfsStorageObservation
     public var createDirectory: (URL, Bool) throws -> Void
-    public var fileSize: (URL) throws -> UInt64
     public var requireFreeSpace: (URL, UInt64, RuntimeOperation) throws -> Void
     public var checkCompatibility: (UpdateBundleManifest) throws -> Void
     public var serviceRestartPolicy: () -> RuntimeServiceRestartPolicy
@@ -26,9 +25,8 @@ public struct RuntimeApplyBundlePreflightRunner {
     public init(
         stageBundle: @escaping (URL) throws -> URL,
         loadStagedManifest: @escaping (URL) throws -> UpdateBundleManifest,
-        fileExists: @escaping (URL) -> Bool,
+        observeRootfsStorage: @escaping (URL, URL) throws -> ApplyRuntimeBundleRootfsStorageObservation,
         createDirectory: @escaping (URL, Bool) throws -> Void,
-        fileSize: @escaping (URL) throws -> UInt64,
         requireFreeSpace: @escaping (URL, UInt64, RuntimeOperation) throws -> Void,
         checkCompatibility: @escaping (UpdateBundleManifest) throws -> Void,
         serviceRestartPolicy: @escaping () -> RuntimeServiceRestartPolicy,
@@ -41,9 +39,8 @@ public struct RuntimeApplyBundlePreflightRunner {
     ) {
         self.stageBundle = stageBundle
         self.loadStagedManifest = loadStagedManifest
-        self.fileExists = fileExists
+        self.observeRootfsStorage = observeRootfsStorage
         self.createDirectory = createDirectory
-        self.fileSize = fileSize
         self.requireFreeSpace = requireFreeSpace
         self.checkCompatibility = checkCompatibility
         self.serviceRestartPolicy = serviceRestartPolicy
@@ -71,16 +68,8 @@ public struct RuntimeApplyBundlePreflightRunner {
             rootfsStorage = rootfsStoragePlan.rootfsStorage
             log(rootfsStoragePlan.logMessage)
         case .replacing(let stagedRootfs, let rootfsBase):
-            let stagedRootfsExists = fileExists(stagedRootfs)
-            let installedRootfsBytes = stagedRootfsExists ? try fileSize(rootfsBase) : nil
-            let incomingRootfsBytes = stagedRootfsExists ? try fileSize(stagedRootfs) : nil
             switch useCase.rootfsStorageDecision(
-                observation: ApplyRuntimeBundleRootfsStorageObservation(
-                    stagedRootfs: stagedRootfs,
-                    stagedRootfsExists: stagedRootfsExists,
-                    installedRootfsBytes: installedRootfsBytes,
-                    incomingRootfsBytes: incomingRootfsBytes
-                )
+                observation: try observeRootfsStorage(stagedRootfs, rootfsBase)
             ) {
             case .planned(let rootfsStoragePlan):
                 rootfsStorage = rootfsStoragePlan.rootfsStorage

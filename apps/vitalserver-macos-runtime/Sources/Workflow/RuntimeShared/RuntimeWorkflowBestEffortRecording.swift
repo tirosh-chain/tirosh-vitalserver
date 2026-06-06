@@ -15,7 +15,7 @@ public func writeRuntimeStatusBestEffort(
         log(RuntimeWorkflowUseCase().statusWriteFailedLogMessage(
             status: status,
             operation: operation,
-            reason: String(describing: error)
+            reason: RuntimeErrorDescription.describe(error)
         )
         )
     }
@@ -31,7 +31,7 @@ public func writeRuntimeProgressBestEffort(
     } catch {
         log(RuntimeWorkflowUseCase().progressWriteFailedLogMessage(
             event: event,
-            reason: String(describing: error)
+            reason: RuntimeErrorDescription.describe(error)
         )
         )
     }
@@ -51,7 +51,7 @@ public func recordRuntimeObservedEventBestEffort(
         log(RuntimeWorkflowUseCase().observedEventRecordFailedLogMessage(
             status: status,
             operation: operation,
-            reason: String(describing: error)
+            reason: RuntimeErrorDescription.describe(error)
         )
         )
     }

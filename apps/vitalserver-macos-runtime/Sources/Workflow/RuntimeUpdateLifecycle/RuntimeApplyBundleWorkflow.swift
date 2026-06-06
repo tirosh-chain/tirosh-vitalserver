@@ -29,7 +29,7 @@ public struct RuntimeApplyBundleWorkflowContext {
 public struct RuntimeApplyBundleWorkflowOperations {
     public var stageBundle: (URL) throws -> URL
     public var loadStagedManifest: (URL) throws -> UpdateBundleManifest
-    public var fileExists: (URL) -> Bool
+    public var observeRootfsStorage: (URL, URL) throws -> ApplyRuntimeBundleRootfsStorageObservation
     public var createDirectory: (URL, Bool) throws -> Void
     public var fileSize: (URL) throws -> UInt64
     public var directorySize: (URL) throws -> UInt64
@@ -62,7 +62,7 @@ public struct RuntimeApplyBundleWorkflowOperations {
     public init(
         stageBundle: @escaping (URL) throws -> URL,
         loadStagedManifest: @escaping (URL) throws -> UpdateBundleManifest,
-        fileExists: @escaping (URL) -> Bool,
+        observeRootfsStorage: @escaping (URL, URL) throws -> ApplyRuntimeBundleRootfsStorageObservation,
         createDirectory: @escaping (URL, Bool) throws -> Void,
         fileSize: @escaping (URL) throws -> UInt64,
         directorySize: @escaping (URL) throws -> UInt64,
@@ -94,7 +94,7 @@ public struct RuntimeApplyBundleWorkflowOperations {
     ) {
         self.stageBundle = stageBundle
         self.loadStagedManifest = loadStagedManifest
-        self.fileExists = fileExists
+        self.observeRootfsStorage = observeRootfsStorage
         self.createDirectory = createDirectory
         self.fileSize = fileSize
         self.directorySize = directorySize
@@ -177,9 +177,8 @@ public struct RuntimeApplyBundleWorkflow {
         try RuntimeApplyBundlePreflightRunner(
             stageBundle: operations.stageBundle,
             loadStagedManifest: operations.loadStagedManifest,
-            fileExists: operations.fileExists,
+            observeRootfsStorage: operations.observeRootfsStorage,
             createDirectory: operations.createDirectory,
-            fileSize: operations.fileSize,
             requireFreeSpace: operations.requireFreeSpace,
             checkCompatibility: operations.checkCompatibility,
             serviceRestartPolicy: operations.serviceRestartPolicy,

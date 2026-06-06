@@ -1,4 +1,5 @@
 import Foundation
+import Application
 import Contracts
 import Domain
 import Workflow
@@ -35,21 +36,18 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
                     ]
                 )
             },
-            fileExists: { url in
-                url == stagedRootfs
+            observeRootfsStorage: { observedStagedRootfs, observedRootfsBase in
+                XCTAssertEqual(observedStagedRootfs, stagedRootfs)
+                XCTAssertEqual(observedRootfsBase, rootfsBase)
+                return ApplyRuntimeBundleRootfsStorageObservation(
+                    stagedRootfs: stagedRootfs,
+                    stagedRootfsExists: true,
+                    installedRootfsBytes: 10,
+                    incomingRootfsBytes: 20
+                )
             },
             createDirectory: { url, withIntermediateDirectories in
                 events.append("mkdir:\(url.path):\(withIntermediateDirectories)")
-            },
-            fileSize: { url in
-                switch url {
-                case rootfsBase:
-                    return 10
-                case stagedRootfs:
-                    return 20
-                default:
-                    return 5
-                }
             },
             requireFreeSpace: { url, bytes, operation in
                 requiredSpace = (url, bytes, operation)
@@ -119,15 +117,16 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
         let runner = RuntimeApplyBundlePreflightRunner(
             stageBundle: { _ in stagedBundle },
             loadStagedManifest: { _ in self.manifest(version: "1.2.3") },
-            fileExists: { _ in
-                XCTFail("rootfs existence should not be checked")
-                return false
+            observeRootfsStorage: { _, _ in
+                XCTFail("rootfs storage should not be observed")
+                return ApplyRuntimeBundleRootfsStorageObservation(
+                    stagedRootfs: URL(fileURLWithPath: "/unused"),
+                    stagedRootfsExists: false,
+                    installedRootfsBytes: nil,
+                    incomingRootfsBytes: nil
+                )
             },
             createDirectory: { _, _ in },
-            fileSize: { _ in
-                XCTFail("rootfs size should not be checked")
-                return 0
-            },
             requireFreeSpace: { _, bytes, _ in requiredSpace = bytes },
             checkCompatibility: { _ in },
             serviceRestartPolicy: {
@@ -174,9 +173,15 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
                     ]
                 )
             },
-            fileExists: { _ in false },
+            observeRootfsStorage: { stagedRootfs, _ in
+                ApplyRuntimeBundleRootfsStorageObservation(
+                    stagedRootfs: stagedRootfs,
+                    stagedRootfsExists: false,
+                    installedRootfsBytes: nil,
+                    incomingRootfsBytes: nil
+                )
+            },
             createDirectory: { _, _ in XCTFail("should not create backup directory") },
-            fileSize: { _ in 0 },
             requireFreeSpace: { _, _, _ in },
             checkCompatibility: { _ in },
             serviceRestartPolicy: {
@@ -224,14 +229,12 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
                     ]
                 )
             },
-            fileExists: { url in url == stagedRootfs },
-            createDirectory: { _, _ in XCTFail("should not create backup directory") },
-            fileSize: { url in
-                if url == rootfsBase {
-                    throw RuntimeApplyBundleWorkflowError.operationFailed("missing file: \(url.path)")
-                }
-                return 20
+            observeRootfsStorage: { observedStagedRootfs, observedRootfsBase in
+                XCTAssertEqual(observedStagedRootfs, stagedRootfs)
+                XCTAssertEqual(observedRootfsBase, rootfsBase)
+                throw RuntimeApplyBundleWorkflowError.operationFailed("missing file: \(rootfsBase.path)")
             },
+            createDirectory: { _, _ in XCTFail("should not create backup directory") },
             requireFreeSpace: { _, _, _ in XCTFail("should not check free space") },
             checkCompatibility: { _ in },
             serviceRestartPolicy: {
@@ -275,9 +278,15 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
                     ]
                 )
             },
-            fileExists: { _ in false },
+            observeRootfsStorage: { stagedRootfs, _ in
+                ApplyRuntimeBundleRootfsStorageObservation(
+                    stagedRootfs: stagedRootfs,
+                    stagedRootfsExists: false,
+                    installedRootfsBytes: nil,
+                    incomingRootfsBytes: nil
+                )
+            },
             createDirectory: { _, _ in events.append("mkdir") },
-            fileSize: { _ in 0 },
             requireFreeSpace: { _, _, _ in },
             checkCompatibility: { _ in },
             serviceRestartPolicy: {
@@ -319,9 +328,16 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
         let runner = RuntimeApplyBundlePreflightRunner(
             stageBundle: { _ in stagedBundle },
             loadStagedManifest: { _ in self.manifest(version: "1.2.3") },
-            fileExists: { _ in false },
+            observeRootfsStorage: { _, _ in
+                XCTFail("rootfs storage should not be observed")
+                return ApplyRuntimeBundleRootfsStorageObservation(
+                    stagedRootfs: URL(fileURLWithPath: "/unused"),
+                    stagedRootfsExists: false,
+                    installedRootfsBytes: nil,
+                    incomingRootfsBytes: nil
+                )
+            },
             createDirectory: { _, _ in events.append("mkdir") },
-            fileSize: { _ in 0 },
             requireFreeSpace: { _, _, _ in events.append("space") },
             checkCompatibility: { _ in events.append("compatibility") },
             serviceRestartPolicy: {

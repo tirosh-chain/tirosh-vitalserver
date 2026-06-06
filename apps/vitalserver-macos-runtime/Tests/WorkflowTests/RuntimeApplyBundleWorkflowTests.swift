@@ -1,4 +1,5 @@
 import Contracts
+import Application
 import Domain
 import Foundation
 import Workflow
@@ -103,7 +104,14 @@ private final class ApplyBundleWorkflowHarness {
                     self.loadedManifests.append(url)
                     return self.manifest
                 },
-                fileExists: { _ in true },
+                observeRootfsStorage: { stagedRootfs, _ in
+                    ApplyRuntimeBundleRootfsStorageObservation(
+                        stagedRootfs: stagedRootfs,
+                        stagedRootfsExists: true,
+                        installedRootfsBytes: 1,
+                        incomingRootfsBytes: 1
+                    )
+                },
                 createDirectory: { url, withIntermediateDirectories in
                     if let error = self.createDirectoryErrors[url] {
                         throw error
