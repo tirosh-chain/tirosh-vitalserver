@@ -43,28 +43,28 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
         if let vmIP = next.vmIP {
             let read = await httpStatus(
                 source: "guestHTTP",
-                url: RuntimeAdapterConstants.Product.guestHealthURL(vmIP: vmIP)
+                url: RuntimeControlClientConstants.Product.guestHealthURL(vmIP: vmIP)
             )
             next.guestHTTP = read.status
             next.appendStatusReadIssue(read.issue)
         }
         let hostProxyRead = await httpStatus(
             source: "hostProxyHTTP",
-            url: RuntimeAdapterConstants.Product.hostProxyHealthURL(proxyPort: next.proxyPort)
+            url: RuntimeControlClientConstants.Product.hostProxyHealthURL(proxyPort: next.proxyPort)
         )
         next.hostProxyHTTP = hostProxyRead.status
         next.appendStatusReadIssue(hostProxyRead.issue)
 
         let redisRead = await httpStatus(
             source: "redisUIHTTP",
-            url: RuntimeAdapterConstants.Product.redisUIURL(proxyPort: next.proxyPort)
+            url: RuntimeControlClientConstants.Product.redisUIURL(proxyPort: next.proxyPort)
         )
         next.redisUIHTTP = redisRead.status
         next.appendStatusReadIssue(redisRead.issue)
 
         let swaggerRead = await httpStatus(
             source: "swaggerUIHTTP",
-            url: RuntimeAdapterConstants.Product.swaggerURL(proxyPort: next.proxyPort)
+            url: RuntimeControlClientConstants.Product.swaggerURL(proxyPort: next.proxyPort)
         )
         next.swaggerUIHTTP = swaggerRead.status
         next.appendStatusReadIssue(swaggerRead.issue)
@@ -72,7 +72,7 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
         return withDataDirectoryMetrics(next, settings: settings)
     }
 
-    func loadBaseStatus(configuredProxyPort: Int = RuntimeAdapterConstants.Product.defaultProxyPort) -> RuntimeStatus {
+    func loadBaseStatus(configuredProxyPort: Int = RuntimeControlClientConstants.Product.defaultProxyPort) -> RuntimeStatus {
         let statusRead = RuntimeStatusDocumentReader(
             url: URL(fileURLWithPath: paths.runtimeStatus)
         ).load()
@@ -96,7 +96,7 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
 
     private func httpStatus(source: String, url: String) async -> RuntimeHTTPStatusRead {
         let result = await runCommand(
-            RuntimeAdapterConstants.Commands.curl,
+            RuntimeControlClientConstants.Commands.curl,
             ["-sS", "-L", "-o", "/dev/null", "-w", "%{http_code}", "--max-time", "5", url]
         )
         let code = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -165,7 +165,7 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
 
     private func launchdServiceState(_ service: RuntimeManagedService) -> RuntimeServiceState {
         let result = runSyncCommand(
-            RuntimeAdapterConstants.Commands.launchctl,
+            RuntimeControlClientConstants.Commands.launchctl,
             ["print", "system/\(service.label)"]
         )
         guard result.exitCode != 0 else {

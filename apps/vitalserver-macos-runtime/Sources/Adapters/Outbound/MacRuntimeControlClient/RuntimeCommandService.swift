@@ -15,7 +15,7 @@ struct SystemPrivilegedCommandRunner: PrivilegedCommandRunning {
     func run(shellCommand: String) async -> RuntimeCommandResult {
         let loggedCommand = RuntimeCommandFactory.commandWithLog(shellCommand)
         let script = #"do shell script "\#(RuntimeCommandFactory.appleScriptEscaped(loggedCommand))" with administrator privileges"#
-        return await ProcessRunner.run(RuntimeAdapterConstants.Commands.osascript, arguments: ["-e", script])
+        return await ProcessRunner.run(RuntimeControlClientConstants.Commands.osascript, arguments: ["-e", script])
     }
 }
 
@@ -26,9 +26,9 @@ enum RuntimeCommandFactory {
 
     static func shellCommand(executable: String, arguments: [String]) -> String {
         var parts: [String] = []
-        if executable == RuntimeAdapterConstants.Paths.launcher {
-            parts.append(shellQuote(RuntimeAdapterConstants.Commands.env))
-            parts.append("\(RuntimeAdapterConstants.Environment.vmHome)=\(shellQuote(RuntimeAdapterConstants.Paths.vmHome))")
+        if executable == RuntimeControlClientConstants.Paths.launcher {
+            parts.append(shellQuote(RuntimeControlClientConstants.Commands.env))
+            parts.append("\(RuntimeControlClientConstants.Environment.vmHome)=\(shellQuote(RuntimeControlClientConstants.Paths.vmHome))")
         }
         parts += ([executable] + arguments).map(shellQuote)
         return parts.joined(separator: " ")
@@ -47,69 +47,69 @@ enum RuntimeCommandFactory {
         fi
         """
         let script = [
-            "mkdir -p \(shellQuote((RuntimeAdapterConstants.Paths.uninstallLog as NSString).deletingLastPathComponent))",
+            "mkdir -p \(shellQuote((RuntimeControlClientConstants.Paths.uninstallLog as NSString).deletingLastPathComponent))",
             startScript
         ].joined(separator: "; ")
         return "/bin/bash -lc \(shellQuote(script))"
     }
 
     static func deleteBackupCommand(url: URL) -> String {
-        shellCommand(executable: RuntimeAdapterConstants.Commands.rm, arguments: ["-rf", "--", url.path])
+        shellCommand(executable: RuntimeControlClientConstants.Commands.rm, arguments: ["-rf", "--", url.path])
     }
 
     static func configureRuntimeArguments(settings: RuntimeSettings, adminPasswordFile: String? = nil) -> [String] {
         var arguments = [
-            RuntimeAdapterConstants.RuntimeCommand.runtime,
-            RuntimeAdapterConstants.RuntimeCommand.configure,
-            RuntimeAdapterConstants.RuntimeCommand.optionCPU,
+            RuntimeControlClientConstants.RuntimeCommand.runtime,
+            RuntimeControlClientConstants.RuntimeCommand.configure,
+            RuntimeControlClientConstants.RuntimeCommand.optionCPU,
             String(settings.cpuCount),
-            RuntimeAdapterConstants.RuntimeCommand.optionMemoryGiB,
+            RuntimeControlClientConstants.RuntimeCommand.optionMemoryGiB,
             String(settings.memoryGiB),
-            RuntimeAdapterConstants.RuntimeCommand.optionDiskGiB,
+            RuntimeControlClientConstants.RuntimeCommand.optionDiskGiB,
             String(settings.diskGiB),
-            RuntimeAdapterConstants.RuntimeCommand.optionNetwork,
+            RuntimeControlClientConstants.RuntimeCommand.optionNetwork,
             settings.networkMode.rawValue,
-            RuntimeAdapterConstants.RuntimeCommand.optionProxyPort,
+            RuntimeControlClientConstants.RuntimeCommand.optionProxyPort,
             String(settings.proxyPort),
-            RuntimeAdapterConstants.RuntimeCommand.optionVitalFilesDirectory,
+            RuntimeControlClientConstants.RuntimeCommand.optionVitalFilesDirectory,
             settings.vitalFilesDirectory,
-            RuntimeAdapterConstants.RuntimeCommand.optionPublicHost,
+            RuntimeControlClientConstants.RuntimeCommand.optionPublicHost,
             settings.publicHost,
-            RuntimeAdapterConstants.RuntimeCommand.optionPublicPort,
+            RuntimeControlClientConstants.RuntimeCommand.optionPublicPort,
             String(settings.publicPort),
-            RuntimeAdapterConstants.RuntimeCommand.optionVitalServerURL,
+            RuntimeControlClientConstants.RuntimeCommand.optionVitalServerURL,
             settings.vitalServerURL,
-            RuntimeAdapterConstants.RuntimeCommand.optionRemoteConsoleURL,
+            RuntimeControlClientConstants.RuntimeCommand.optionRemoteConsoleURL,
             settings.remoteConsoleURL,
-            RuntimeAdapterConstants.RuntimeCommand.optionRedisBackupRetention,
+            RuntimeControlClientConstants.RuntimeCommand.optionRedisBackupRetention,
             String(settings.redisBackupRetentionCount),
         ]
         if settings.startOnBootConfigurable {
             arguments += [
-                RuntimeAdapterConstants.RuntimeCommand.optionStartOnBoot,
+                RuntimeControlClientConstants.RuntimeCommand.optionStartOnBoot,
                 settings.startOnBoot
-                    ? RuntimeAdapterConstants.RuntimeCommand.boolTrue
-                    : RuntimeAdapterConstants.RuntimeCommand.boolFalse,
+                    ? RuntimeControlClientConstants.RuntimeCommand.boolTrue
+                    : RuntimeControlClientConstants.RuntimeCommand.boolFalse,
             ]
         }
         arguments += [
-            RuntimeAdapterConstants.RuntimeCommand.optionAutoRecovery,
+            RuntimeControlClientConstants.RuntimeCommand.optionAutoRecovery,
             settings.autoRecoveryEnabled
-                ? RuntimeAdapterConstants.RuntimeCommand.boolTrue
-                : RuntimeAdapterConstants.RuntimeCommand.boolFalse,
-            RuntimeAdapterConstants.RuntimeCommand.optionPreventSystemSleep,
+                ? RuntimeControlClientConstants.RuntimeCommand.boolTrue
+                : RuntimeControlClientConstants.RuntimeCommand.boolFalse,
+            RuntimeControlClientConstants.RuntimeCommand.optionPreventSystemSleep,
             settings.preventSystemSleep
-                ? RuntimeAdapterConstants.RuntimeCommand.boolTrue
-                : RuntimeAdapterConstants.RuntimeCommand.boolFalse,
+                ? RuntimeControlClientConstants.RuntimeCommand.boolTrue
+                : RuntimeControlClientConstants.RuntimeCommand.boolFalse,
         ]
         if settings.networkMode == .bridged, !settings.bridgedInterface.isEmpty {
-            arguments += [RuntimeAdapterConstants.RuntimeCommand.optionBridgedInterface, settings.bridgedInterface]
+            arguments += [RuntimeControlClientConstants.RuntimeCommand.optionBridgedInterface, settings.bridgedInterface]
         }
         if let adminPasswordFile {
-            arguments += [RuntimeAdapterConstants.RuntimeCommand.optionAdminPasswordFile, adminPasswordFile]
+            arguments += [RuntimeControlClientConstants.RuntimeCommand.optionAdminPasswordFile, adminPasswordFile]
         }
         if settings.restartAfterSave {
-            arguments.append(RuntimeAdapterConstants.RuntimeCommand.optionRestart)
+            arguments.append(RuntimeControlClientConstants.RuntimeCommand.optionRestart)
         }
         return arguments
     }
@@ -119,15 +119,15 @@ enum RuntimeCommandFactory {
         set -euo pipefail
         port=\(proxyPort)
         echo "Checking TCP port ${port}..."
-        if [ ! -x \(shellQuote(RuntimeAdapterConstants.Commands.lsof)) ]; then
+        if [ ! -x \(shellQuote(RuntimeControlClientConstants.Commands.lsof)) ]; then
           echo "lsof is not available"
           exit 1
         fi
         expected_nginx_pid=""
-        if [ -s \(shellQuote(RuntimeAdapterConstants.Paths.proxyNginxPid)) ]; then
-          expected_nginx_pid="$(cat \(shellQuote(RuntimeAdapterConstants.Paths.proxyNginxPid)) 2>/dev/null || true)"
+        if [ -s \(shellQuote(RuntimeControlClientConstants.Paths.proxyNginxPid)) ]; then
+          expected_nginx_pid="$(cat \(shellQuote(RuntimeControlClientConstants.Paths.proxyNginxPid)) 2>/dev/null || true)"
         fi
-        listeners="$(\(shellQuote(RuntimeAdapterConstants.Commands.lsof)) -nP -iTCP:${port} -sTCP:LISTEN 2>/dev/null || true)"
+        listeners="$(\(shellQuote(RuntimeControlClientConstants.Commands.lsof)) -nP -iTCP:${port} -sTCP:LISTEN 2>/dev/null || true)"
         if [ -n "${listeners}" ]; then
           printf "%s\\n" "${listeners}"
         else
@@ -151,9 +151,9 @@ enum RuntimeCommandFactory {
           exit 2
         fi
         echo "Restarting host proxy service..."
-        \(shellQuote(RuntimeAdapterConstants.Commands.launchctl)) kickstart -k system/\(RuntimeManagedService.proxy.label)
+        \(shellQuote(RuntimeControlClientConstants.Commands.launchctl)) kickstart -k system/\(RuntimeManagedService.proxy.label)
         sleep 2
-        \(shellQuote(RuntimeAdapterConstants.Commands.launchctl)) print system/\(RuntimeManagedService.proxy.label) >/dev/null
+        \(shellQuote(RuntimeControlClientConstants.Commands.launchctl)) print system/\(RuntimeManagedService.proxy.label) >/dev/null
         echo "Host proxy service restarted."
         """
         return "/bin/bash -lc \(shellQuote(script))"
@@ -161,16 +161,16 @@ enum RuntimeCommandFactory {
 
     static func runtimeServicesCommand(action: RuntimeServicesAction) -> String {
         shellCommand(
-            executable: RuntimeAdapterConstants.Paths.launcher,
+            executable: RuntimeControlClientConstants.Paths.launcher,
             arguments: [
-                RuntimeAdapterConstants.RuntimeCommand.runtime,
+                RuntimeControlClientConstants.RuntimeCommand.runtime,
                 action.runtimeCommand,
             ]
         )
     }
 
     static func commandWithLog(_ shellCommand: String) -> String {
-        let logFile = shellQuote(RuntimeAdapterConstants.Paths.commandLogFile)
+        let logFile = shellQuote(RuntimeControlClientConstants.Paths.commandLogFile)
         let script = [
             "rm -f \(logFile)",
             "{ \(shellCommand); } > \(logFile) 2>&1",
@@ -196,11 +196,11 @@ enum RuntimeServicesAction {
     var runtimeCommand: String {
         switch self {
         case .start:
-            return RuntimeAdapterConstants.RuntimeCommand.startServices
+            return RuntimeControlClientConstants.RuntimeCommand.startServices
         case .stop:
-            return RuntimeAdapterConstants.RuntimeCommand.stopServices
+            return RuntimeControlClientConstants.RuntimeCommand.stopServices
         case .repair:
-            return RuntimeAdapterConstants.RuntimeCommand.repairServices
+            return RuntimeControlClientConstants.RuntimeCommand.repairServices
         }
     }
 }

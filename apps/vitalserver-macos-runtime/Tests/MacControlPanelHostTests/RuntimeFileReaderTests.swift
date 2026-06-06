@@ -104,7 +104,7 @@ final class RuntimeFileReaderTests: XCTestCase {
     func testHelperMessageLogTextReadsPersistedHelperMessageLog() {
         let reader = SystemRuntimeHostFileReader(
             fileStore: SpecificFileRuntimeFileStore(dataByPath: [
-                RuntimeAdapterConstants.Paths.helperMessageLogFile: Data("first\nsecond\nthird".utf8),
+                RuntimeControlClientConstants.Paths.helperMessageLogFile: Data("first\nsecond\nthird".utf8),
             ])
         )
 
@@ -148,7 +148,7 @@ final class RuntimeFileReaderTests: XCTestCase {
         let collector = FakeRuntimeLogCollector(refreshError: CocoaError(.fileReadNoPermission))
         let reader = SystemRuntimeHostFileReader(
             fileStore: SpecificFileRuntimeFileStore(dataByPath: [
-                RuntimeAdapterConstants.Paths.commandLogFile: Data("first\nsecond\nthird".utf8),
+                RuntimeControlClientConstants.Paths.commandLogFile: Data("first\nsecond\nthird".utf8),
             ]),
             logCollector: collector
         )
@@ -167,13 +167,13 @@ final class RuntimeFileReaderTests: XCTestCase {
         let logText = reader.logText(sourceID: .install, helperMessage: "Ready", lineLimit: 10)
 
         XCTAssertTrue(logText.hasPrefix("Failed to read log file "))
-        XCTAssertTrue(logText.contains(RuntimeAdapterConstants.Paths.installLog))
+        XCTAssertTrue(logText.contains(RuntimeControlClientConstants.Paths.installLog))
     }
 
     func testLogTextReportsInvalidUTF8LogFile() throws {
         let reader = SystemRuntimeHostFileReader(
             fileStore: SpecificFileRuntimeFileStore(dataByPath: [
-                RuntimeAdapterConstants.Paths.installLog: Data([0xff]),
+                RuntimeControlClientConstants.Paths.installLog: Data([0xff]),
             ]),
             logCollector: FakeRuntimeLogCollector()
         )
@@ -181,7 +181,7 @@ final class RuntimeFileReaderTests: XCTestCase {
         let logText = reader.logText(sourceID: .install, helperMessage: "Ready", lineLimit: 10)
 
         XCTAssertTrue(logText.hasPrefix("Failed to read log file "))
-        XCTAssertTrue(logText.contains(RuntimeAdapterConstants.Paths.installLog))
+        XCTAssertTrue(logText.contains(RuntimeControlClientConstants.Paths.installLog))
         XCTAssertFalse(logText.contains(AppConstants.StatusText.noLogData))
     }
 
@@ -191,7 +191,7 @@ final class RuntimeFileReaderTests: XCTestCase {
         let collector = FakeRuntimeLogCollector()
         let reader = SystemRuntimeHostFileReader(
             fileStore: SpecificFileRuntimeFileStore(dataByPath: [
-                RuntimeAdapterConstants.Paths.commandLogFile: logData,
+                RuntimeControlClientConstants.Paths.commandLogFile: logData,
             ]),
             logCollector: collector
         )
@@ -220,7 +220,7 @@ final class RuntimeFileReaderTests: XCTestCase {
         ] {
             XCTAssertEqual(
                 reader.logText(sourceID: sourceID, helperMessage: "Ready", lineLimit: 10),
-                RuntimeAdapterConstants.StatusText.noLogData,
+                RuntimeControlClientConstants.StatusText.noLogData,
                 "Expected no data for \(sourceID.rawValue)"
             )
         }
@@ -235,19 +235,19 @@ final class RuntimeFileReaderTests: XCTestCase {
 
         XCTAssertEqual(
             missingReader.logText(sourceID: .containers, helperMessage: "Ready", lineLimit: 10),
-            RuntimeAdapterConstants.StatusText.noLogData
+            RuntimeControlClientConstants.StatusText.noLogData
         )
         XCTAssertEqual(missingCollector.sourceIDs, [.containers])
 
         let existingCollector = FakeRuntimeLogCollector()
         let existingReader = SystemRuntimeHostFileReader(
-            fileStore: SpecificFileRuntimeFileStore(existingFiles: [RuntimeAdapterConstants.Paths.containerLogs]),
+            fileStore: SpecificFileRuntimeFileStore(existingFiles: [RuntimeControlClientConstants.Paths.containerLogs]),
             logCollector: existingCollector
         )
 
         XCTAssertEqual(
             existingReader.logText(sourceID: .containers, helperMessage: "Ready", lineLimit: 10),
-            RuntimeAdapterConstants.StatusText.noLogData
+            RuntimeControlClientConstants.StatusText.noLogData
         )
         XCTAssertEqual(existingCollector.refreshCount, 0)
     }
@@ -264,7 +264,7 @@ final class RuntimeFileReaderTests: XCTestCase {
     func testPreferredLogsPathReturnsProductLogsDirectory() {
         XCTAssertEqual(
             SystemRuntimeHostFileReader().preferredLogsPath(),
-            RuntimeAdapterConstants.Paths.productLogs
+            RuntimeControlClientConstants.Paths.productLogs
         )
     }
 
@@ -409,9 +409,9 @@ private final class FailingDirectoryRuntimeFileStore: RuntimeFileStore {
 private final class BackupSizeFailingRuntimeFileStore: RuntimeFileStore {
     var temporaryDirectory = URL(fileURLWithPath: "/tmp")
 
-    private let backupDirectory = URL(fileURLWithPath: RuntimeAdapterConstants.Paths.backups)
+    private let backupDirectory = URL(fileURLWithPath: RuntimeControlClientConstants.Paths.backups)
         .appendingPathComponent("20260530T000000Z-before-0.1.9")
-    private let redisBackup = URL(fileURLWithPath: RuntimeAdapterConstants.Paths.redisBackups)
+    private let redisBackup = URL(fileURLWithPath: RuntimeControlClientConstants.Paths.redisBackups)
         .appendingPathComponent("redis-20260530T000000Z.tar.gz")
 
     func fileExists(_ url: URL) -> Bool { true }

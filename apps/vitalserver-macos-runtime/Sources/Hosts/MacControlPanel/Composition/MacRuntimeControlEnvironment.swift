@@ -7,8 +7,8 @@ import Errors
 @MainActor
 final class MacRuntimeControlEnvironment: ObservableObject {
     let viewModel: RuntimeViewModel
-    private let client: MacHostRuntimeClient
-    private let readWorker: MacHostRuntimeReadWorker
+    private let client: MacRuntimeControlClient
+    private let readWorker: MacRuntimeControlReadWorker
     private let testKitController: any RuntimeTestKitControlling
     private let localAPISettings: RuntimeControlLocalAPISettingsCoordinator
     private let servesTestTools: Bool
@@ -23,8 +23,8 @@ final class MacRuntimeControlEnvironment: ObservableObject {
 
     init(
         viewModel: RuntimeViewModel,
-        client: MacHostRuntimeClient,
-        readWorker: MacHostRuntimeReadWorker,
+        client: MacRuntimeControlClient,
+        readWorker: MacRuntimeControlReadWorker,
         testKitController: any RuntimeTestKitControlling,
         localAPISettings: RuntimeControlLocalAPISettingsCoordinator,
         servesTestTools: Bool
@@ -50,9 +50,9 @@ final class MacRuntimeControlEnvironment: ObservableObject {
     }
 
     static func live() -> MacRuntimeControlEnvironment {
-        let readWorker = MacHostRuntimeReadWorker(releaseInfo: .generated)
-        let commandWorker = MacHostRuntimeCommandWorker()
-        let client = MacHostRuntimeClient(releaseInfo: .generated, commandWorker: commandWorker)
+        let readWorker = MacRuntimeControlReadWorker(releaseInfo: .generated)
+        let commandWorker = MacRuntimeControlCommandWorker()
+        let client = MacRuntimeControlClient(releaseInfo: .generated, commandWorker: commandWorker)
         let localAPISettings = RuntimeControlLocalAPISettingsCoordinator(
             store: UserDefaultsRuntimeControlLocalAPISettingsStore.shared
         )

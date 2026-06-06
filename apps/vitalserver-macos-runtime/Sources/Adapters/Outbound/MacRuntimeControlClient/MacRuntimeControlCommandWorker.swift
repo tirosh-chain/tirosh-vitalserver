@@ -4,7 +4,7 @@ import Errors
 
 /// Owns host mutations and privileged runtime commands.
 /// SwiftUI and the development API call through this actor so MainActor only coordinates UI state.
-public actor MacHostRuntimeCommandWorker {
+public actor MacRuntimeControlCommandWorker {
     private let privilegedCommandRunner: any PrivilegedCommandRunning
     private let actionEnvironment: any RuntimeActionEnvironment
     private let logExporter: any RuntimeLogExporting
@@ -13,7 +13,7 @@ public actor MacHostRuntimeCommandWorker {
         self.init(
             privilegedCommandRunner: SystemPrivilegedCommandRunner(),
             actionEnvironment: SystemRuntimeActionEnvironment(),
-            logExporter: MacHostRuntimeLogExporter()
+            logExporter: MacRuntimeControlLogExporter()
         )
     }
 
@@ -29,15 +29,15 @@ public actor MacHostRuntimeCommandWorker {
 
     public func verifyUpdateBundle(url: URL) async throws -> RuntimeCommandResult {
         try ensureLauncherIsAvailable()
-        return await actionEnvironment.verifyBundle(launcher: RuntimeAdapterConstants.Paths.launcher, bundleURL: url)
+        return await actionEnvironment.verifyBundle(launcher: RuntimeControlClientConstants.Paths.launcher, bundleURL: url)
     }
 
     public func uninstallRuntime(clean: Bool) async throws -> RuntimeCommandResult {
-        guard actionEnvironment.isExecutable(atPath: RuntimeAdapterConstants.Paths.uninstaller) else {
+        guard actionEnvironment.isExecutable(atPath: RuntimeControlClientConstants.Paths.uninstaller) else {
             throw RuntimeClientError.missingUninstaller
         }
         return await runPrivileged(RuntimeCommandFactory.uninstallCommand(
-            uninstaller: RuntimeAdapterConstants.Paths.uninstaller,
+            uninstaller: RuntimeControlClientConstants.Paths.uninstaller,
             clean: clean
         ))
     }
@@ -54,7 +54,7 @@ public actor MacHostRuntimeCommandWorker {
             }
         }
         return await runPrivileged(RuntimeCommandFactory.shellCommand(
-            executable: RuntimeAdapterConstants.Paths.launcher,
+            executable: RuntimeControlClientConstants.Paths.launcher,
             arguments: RuntimeCommandFactory.configureRuntimeArguments(
                 settings: settings,
                 adminPasswordFile: adminPasswordFile?.path
@@ -65,10 +65,10 @@ public actor MacHostRuntimeCommandWorker {
     public func applyUpdateBundle(url: URL) async throws -> RuntimeCommandResult {
         try ensureLauncherIsAvailable()
         return await runPrivileged(RuntimeCommandFactory.shellCommand(
-            executable: RuntimeAdapterConstants.Paths.launcher,
+            executable: RuntimeControlClientConstants.Paths.launcher,
             arguments: [
-                RuntimeAdapterConstants.RuntimeCommand.runtime,
-                RuntimeAdapterConstants.RuntimeCommand.applyBundle,
+                RuntimeControlClientConstants.RuntimeCommand.runtime,
+                RuntimeControlClientConstants.RuntimeCommand.applyBundle,
                 url.path,
             ]
         ))
@@ -77,10 +77,10 @@ public actor MacHostRuntimeCommandWorker {
     public func rollbackRuntime(backupURL: URL) async throws -> RuntimeCommandResult {
         try ensureLauncherIsAvailable()
         return await runPrivileged(RuntimeCommandFactory.shellCommand(
-            executable: RuntimeAdapterConstants.Paths.launcher,
+            executable: RuntimeControlClientConstants.Paths.launcher,
             arguments: [
-                RuntimeAdapterConstants.RuntimeCommand.runtime,
-                RuntimeAdapterConstants.RuntimeCommand.rollback,
+                RuntimeControlClientConstants.RuntimeCommand.runtime,
+                RuntimeControlClientConstants.RuntimeCommand.rollback,
                 backupURL.path,
             ]
         ))
@@ -97,10 +97,10 @@ public actor MacHostRuntimeCommandWorker {
     public func repairDatastore() async throws -> RuntimeCommandResult {
         try ensureLauncherIsAvailable()
         return await runPrivileged(RuntimeCommandFactory.shellCommand(
-            executable: RuntimeAdapterConstants.Paths.launcher,
+            executable: RuntimeControlClientConstants.Paths.launcher,
             arguments: [
-                RuntimeAdapterConstants.RuntimeCommand.runtime,
-                RuntimeAdapterConstants.RuntimeCommand.repairDatastore,
+                RuntimeControlClientConstants.RuntimeCommand.runtime,
+                RuntimeControlClientConstants.RuntimeCommand.repairDatastore,
             ]
         ))
     }
@@ -108,10 +108,10 @@ public actor MacHostRuntimeCommandWorker {
     public func repairVMDisk() async throws -> RuntimeCommandResult {
         try ensureLauncherIsAvailable()
         return await runPrivileged(RuntimeCommandFactory.shellCommand(
-            executable: RuntimeAdapterConstants.Paths.launcher,
+            executable: RuntimeControlClientConstants.Paths.launcher,
             arguments: [
-                RuntimeAdapterConstants.RuntimeCommand.runtime,
-                RuntimeAdapterConstants.RuntimeCommand.repairVMDisk,
+                RuntimeControlClientConstants.RuntimeCommand.runtime,
+                RuntimeControlClientConstants.RuntimeCommand.repairVMDisk,
             ]
         ))
     }
@@ -124,10 +124,10 @@ public actor MacHostRuntimeCommandWorker {
     public func createRedisBackup() async throws -> RuntimeCommandResult {
         try ensureLauncherIsAvailable()
         return await runPrivileged(RuntimeCommandFactory.shellCommand(
-            executable: RuntimeAdapterConstants.Paths.launcher,
+            executable: RuntimeControlClientConstants.Paths.launcher,
             arguments: [
-                RuntimeAdapterConstants.RuntimeCommand.runtime,
-                RuntimeAdapterConstants.RuntimeCommand.redisBackup,
+                RuntimeControlClientConstants.RuntimeCommand.runtime,
+                RuntimeControlClientConstants.RuntimeCommand.redisBackup,
             ]
         ))
     }
@@ -147,7 +147,7 @@ public actor MacHostRuntimeCommandWorker {
     }
 
     private func ensureLauncherIsAvailable() throws {
-        guard actionEnvironment.isExecutable(atPath: RuntimeAdapterConstants.Paths.launcher) else {
+        guard actionEnvironment.isExecutable(atPath: RuntimeControlClientConstants.Paths.launcher) else {
             throw RuntimeClientError.missingLauncher
         }
     }

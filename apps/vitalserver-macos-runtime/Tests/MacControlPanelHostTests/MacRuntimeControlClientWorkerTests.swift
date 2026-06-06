@@ -13,7 +13,7 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
         let observabilityReader = AdapterStubObservabilityReader()
         let fileReader = AdapterStubFileReader()
         let settingsReader = AdapterStubSettingsReader()
-        let worker = MacHostRuntimeReadWorker(
+        let worker = MacRuntimeControlReadWorker(
             releaseInfo: RuntimeReleaseInfo(
                 helperVersion: "helper",
                 minimumUpdaterVersion: "1",
@@ -63,7 +63,7 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
         let runner = AdapterFakePrivilegedCommandRunner()
         let environment = AdapterFakeActionEnvironment()
         let exporter = AdapterFakeLogExporter()
-        let commandWorker = MacHostRuntimeCommandWorker(
+        let commandWorker = MacRuntimeControlCommandWorker(
             privilegedCommandRunner: runner,
             actionEnvironment: environment,
             logExporter: exporter
@@ -74,7 +74,7 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
             vitalServerVersion: "runtime",
             services: []
         )
-        let client = MacHostRuntimeClient(
+        let client = MacRuntimeControlClient(
             releaseInfo: releaseInfo,
             statusReader: AdapterStubStatusReader(),
             observabilityReader: AdapterStubObservabilityReader(),
@@ -134,7 +134,7 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
     }
 
     func testCommandWorkerReportsMissingExecutableBoundaries() async {
-        let worker = MacHostRuntimeCommandWorker(
+        let worker = MacRuntimeControlCommandWorker(
             privilegedCommandRunner: AdapterFakePrivilegedCommandRunner(),
             actionEnvironment: AdapterFakeActionEnvironment(executablePaths: []),
             logExporter: AdapterFakeLogExporter()
@@ -144,13 +144,13 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
             _ = try await worker.verifyUpdateBundle(url: URL(fileURLWithPath: "/bundle"))
             XCTFail("Expected missing launcher")
         } catch {
-            XCTAssertEqual((error as? RuntimeClientError)?.errorDescription, RuntimeAdapterConstants.StatusText.missingLauncher)
+            XCTAssertEqual((error as? RuntimeClientError)?.errorDescription, RuntimeControlClientConstants.StatusText.missingLauncher)
         }
         do {
             _ = try await worker.uninstallRuntime(clean: false)
             XCTFail("Expected missing uninstaller")
         } catch {
-            XCTAssertEqual((error as? RuntimeClientError)?.errorDescription, RuntimeAdapterConstants.StatusText.missingUninstaller)
+            XCTAssertEqual((error as? RuntimeClientError)?.errorDescription, RuntimeControlClientConstants.StatusText.missingUninstaller)
         }
     }
 }
@@ -251,8 +251,8 @@ private final class AdapterFakeActionEnvironment: RuntimeActionEnvironment, @unc
     private var protectedRemovedPasswordFiles: [URL] = []
 
     init(executablePaths: Set<String> = [
-        RuntimeAdapterConstants.Paths.launcher,
-        RuntimeAdapterConstants.Paths.uninstaller,
+        RuntimeControlClientConstants.Paths.launcher,
+        RuntimeControlClientConstants.Paths.uninstaller,
     ]) {
         self.executablePaths = executablePaths
     }

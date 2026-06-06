@@ -6,7 +6,7 @@ import Domain
 import Errors
 
 @MainActor
-public struct MacHostRuntimeClient: RuntimeControlClient, RuntimeHostClient {
+public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
     public let capabilities = RuntimeControlCapabilities()
 
     private let releaseInfo: RuntimeReleaseInfo
@@ -14,7 +14,7 @@ public struct MacHostRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     private let observabilityReader: RuntimeObservabilityReading
     private let fileReader: RuntimeHostFileReading
     private let settingsReader: RuntimeSettingsReading
-    private let commandWorker: MacHostRuntimeCommandWorker
+    private let commandWorker: MacRuntimeControlCommandWorker
 
     public init(
         releaseInfo: RuntimeReleaseInfo
@@ -26,13 +26,13 @@ public struct MacHostRuntimeClient: RuntimeControlClient, RuntimeHostClient {
             observabilityReader: SystemRuntimeObservabilityReader.live(paths: paths),
             fileReader: SystemRuntimeHostFileReader(),
             settingsReader: SystemRuntimeSettingsReader(),
-            commandWorker: MacHostRuntimeCommandWorker()
+            commandWorker: MacRuntimeControlCommandWorker()
         )
     }
 
     public init(
         releaseInfo: RuntimeReleaseInfo,
-        commandWorker: MacHostRuntimeCommandWorker
+        commandWorker: MacRuntimeControlCommandWorker
     ) {
         let paths = RuntimePaths()
         self.init(
@@ -51,7 +51,7 @@ public struct MacHostRuntimeClient: RuntimeControlClient, RuntimeHostClient {
         observabilityReader: RuntimeObservabilityReading = SystemRuntimeObservabilityReader.live(paths: RuntimePaths()),
         fileReader: RuntimeHostFileReading = SystemRuntimeHostFileReader(),
         settingsReader: RuntimeSettingsReading = SystemRuntimeSettingsReader(),
-        commandWorker: MacHostRuntimeCommandWorker = MacHostRuntimeCommandWorker()
+        commandWorker: MacRuntimeControlCommandWorker = MacRuntimeControlCommandWorker()
     ) {
         self.releaseInfo = releaseInfo
         self.statusReader = statusReader
@@ -194,10 +194,10 @@ public struct MacHostRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     public func loadInstallInfo() -> RuntimeInstallInfo {
         RuntimeInstallInfo(
             appBundlePath: Bundle.main.bundlePath,
-            packageIdentifier: RuntimeAdapterConstants.Product.packageIdentifier,
-            runtimeHomePath: RuntimeAdapterConstants.Paths.vmHome,
-            backupsPath: RuntimeAdapterConstants.Paths.backups,
-            redisBackupsPath: RuntimeAdapterConstants.Paths.redisBackups
+            packageIdentifier: RuntimeControlClientConstants.Product.packageIdentifier,
+            runtimeHomePath: RuntimeControlClientConstants.Paths.vmHome,
+            backupsPath: RuntimeControlClientConstants.Paths.backups,
+            redisBackupsPath: RuntimeControlClientConstants.Paths.redisBackups
         )
     }
 

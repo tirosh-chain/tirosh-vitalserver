@@ -65,7 +65,7 @@ final class RuntimeLogExporterTests: XCTestCase {
         var archivedContainerLog: String?
         var archivedRotatedContainerLog: String?
         var archivedManifest: RuntimeLogExportManifest?
-        let exporter = MacHostRuntimeLogExporter(
+        let exporter = MacRuntimeControlLogExporter(
             logCollector: collector,
             productLogsDirectory: productLogs,
             supplementalLogItems: [
@@ -141,7 +141,7 @@ final class RuntimeLogExporterTests: XCTestCase {
         )
 
         var archivedBootstrapLog: String?
-        let exporter = MacHostRuntimeLogExporter(
+        let exporter = MacRuntimeControlLogExporter(
             logCollector: FakeRuntimeLogCollectorForExport(),
             productLogsDirectory: productLogs,
             supplementalLogItems: [
@@ -186,7 +186,7 @@ final class RuntimeLogExporterTests: XCTestCase {
         }
 
         var archivedContainerLog: String?
-        let exporter = MacHostRuntimeLogExporter(
+        let exporter = MacRuntimeControlLogExporter(
             logCollector: FakeRuntimeLogCollectorForExport(),
             productLogsDirectory: productLogs,
             supplementalLogItems: [
@@ -219,7 +219,7 @@ final class RuntimeLogExporterTests: XCTestCase {
         try FileManager.default.createDirectory(at: productLogs, withIntermediateDirectories: true)
 
         var archivedManifest: RuntimeLogExportManifest?
-        let exporter = MacHostRuntimeLogExporter(
+        let exporter = MacRuntimeControlLogExporter(
             logCollector: FailingRuntimeLogCollectorForExport(),
             productLogsDirectory: productLogs,
             supplementalLogItems: [],
@@ -251,7 +251,7 @@ final class RuntimeLogExporterTests: XCTestCase {
         try FileManager.default.createDirectory(at: productLogs, withIntermediateDirectories: true)
         try "old archive".write(to: destination, atomically: true, encoding: .utf8)
 
-        let exporter = MacHostRuntimeLogExporter(
+        let exporter = MacRuntimeControlLogExporter(
             logCollector: FakeRuntimeLogCollectorForExport(),
             productLogsDirectory: productLogs,
             supplementalLogItems: [],
@@ -275,7 +275,7 @@ final class RuntimeLogExporterTests: XCTestCase {
         let destination = root.appendingPathComponent("export.zip")
         try FileManager.default.createDirectory(at: productLogs, withIntermediateDirectories: true)
 
-        let exporter = MacHostRuntimeLogExporter(
+        let exporter = MacRuntimeControlLogExporter(
             logCollector: FakeRuntimeLogCollectorForExport(),
             productLogsDirectory: productLogs,
             supplementalLogItems: [],
@@ -299,7 +299,7 @@ final class RuntimeLogExporterTests: XCTestCase {
         let destination = root.appendingPathComponent("export.zip")
         try FileManager.default.createDirectory(at: productLogs, withIntermediateDirectories: true)
 
-        let exporter = MacHostRuntimeLogExporter(
+        let exporter = MacRuntimeControlLogExporter(
             logCollector: FakeRuntimeLogCollectorForExport(),
             productLogsDirectory: productLogs,
             supplementalLogItems: [],
@@ -323,7 +323,7 @@ final class RuntimeLogExporterTests: XCTestCase {
         let destination = root.appendingPathComponent("export.zip")
         try FileManager.default.createDirectory(at: productLogs, withIntermediateDirectories: true)
 
-        let exporter = MacHostRuntimeLogExporter(
+        let exporter = MacRuntimeControlLogExporter(
             logCollector: FakeRuntimeLogCollectorForExport(),
             productLogsDirectory: productLogs,
             supplementalLogItems: [],
@@ -364,7 +364,7 @@ final class RuntimeLogExporterTests: XCTestCase {
         }
 
         var archivedManifest: RuntimeLogExportManifest?
-        let exporter = MacHostRuntimeLogExporter(
+        let exporter = MacRuntimeControlLogExporter(
             logCollector: FakeRuntimeLogCollectorForExport(),
             productLogsDirectory: productLogs,
             supplementalLogItems: [

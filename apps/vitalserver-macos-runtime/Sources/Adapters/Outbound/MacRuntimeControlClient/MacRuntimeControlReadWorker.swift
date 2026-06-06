@@ -7,7 +7,7 @@ import Errors
 
 /// Owns read-only host snapshots that may touch disk, SQLite, logs, or subprocess-backed health checks.
 /// SwiftUI and the development API call through this actor so MainActor only publishes results.
-public actor MacHostRuntimeReadWorker {
+public actor MacRuntimeControlReadWorker {
     private let releaseInfo: RuntimeReleaseInfo
     private let statusReader: any RuntimeStatusReading
     private let observabilityReader: any RuntimeObservabilityReading
@@ -99,10 +99,10 @@ public actor MacHostRuntimeReadWorker {
     public func loadInstallInfo() -> RuntimeInstallInfo {
         RuntimeInstallInfo(
             appBundlePath: Bundle.main.bundlePath,
-            packageIdentifier: RuntimeAdapterConstants.Product.packageIdentifier,
-            runtimeHomePath: RuntimeAdapterConstants.Paths.vmHome,
-            backupsPath: RuntimeAdapterConstants.Paths.backups,
-            redisBackupsPath: RuntimeAdapterConstants.Paths.redisBackups
+            packageIdentifier: RuntimeControlClientConstants.Product.packageIdentifier,
+            runtimeHomePath: RuntimeControlClientConstants.Paths.vmHome,
+            backupsPath: RuntimeControlClientConstants.Paths.backups,
+            redisBackupsPath: RuntimeControlClientConstants.Paths.redisBackups
         )
     }
 }

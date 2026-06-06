@@ -10,7 +10,7 @@ extension RuntimeBackup {
         latestBackupPath: String? = nil,
         fileStore: RuntimeFileStore = SystemRuntimeFileStore()
     ) throws -> [RuntimeBackup] {
-        let directory = URL(fileURLWithPath: RuntimeAdapterConstants.Paths.backups)
+        let directory = URL(fileURLWithPath: RuntimeControlClientConstants.Paths.backups)
         let discovered = try fileStore.childDirectories(
             at: directory,
             nameContains: "-before-",
@@ -24,7 +24,7 @@ extension RuntimeBackup {
     }
 
     static func loadRedisBackups(fileStore: RuntimeFileStore = SystemRuntimeFileStore()) throws -> [RuntimeBackup] {
-        let directory = URL(fileURLWithPath: RuntimeAdapterConstants.Paths.redisBackups)
+        let directory = URL(fileURLWithPath: RuntimeControlClientConstants.Paths.redisBackups)
         let discovered = try fileStore.contentsOfDirectory(at: directory, skipsHiddenFiles: true)
             .filter { $0.lastPathComponent.hasPrefix("redis-") && $0.lastPathComponent.hasSuffix(".tar.gz") }
             .map { RuntimeBackup(path: $0.path, sizeBytes: try fileSize($0, fileStore: fileStore)) }

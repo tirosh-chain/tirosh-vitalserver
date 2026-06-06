@@ -138,10 +138,12 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         let root = packageRoot()
         let forbidden = [
             "HostCLI",
+            "MacHostRuntime",
             "MacHostRuntimeAdapter",
             "MacRuntimeControlApp",
             "InfrastructureLayerMarker",
             "HostAdaptersLayerMarker",
+            "RuntimeAdapterConstants",
         ]
         let scannedRoots = [
             root.appendingPathComponent("Sources"),

@@ -10,18 +10,18 @@ protocol RuntimeSettingsReading: Sendable {
 }
 
 struct RuntimeSettingsPaths {
-    var vmConfig = RuntimeAdapterConstants.Paths.vmConfig
-    var vmDisk = RuntimeAdapterConstants.Paths.vmDisk
-    var guestRuntimeSettings = RuntimeAdapterConstants.Paths.guestRuntimeSettings
-    var guestRuntimeConfig = RuntimeAdapterConstants.Paths.guestRuntimeConfig
-    var proxyLaunchDaemon = RuntimeAdapterConstants.Paths.proxyLaunchDaemon
+    var vmConfig = RuntimeControlClientConstants.Paths.vmConfig
+    var vmDisk = RuntimeControlClientConstants.Paths.vmDisk
+    var guestRuntimeSettings = RuntimeControlClientConstants.Paths.guestRuntimeSettings
+    var guestRuntimeConfig = RuntimeControlClientConstants.Paths.guestRuntimeConfig
+    var proxyLaunchDaemon = RuntimeControlClientConstants.Paths.proxyLaunchDaemon
 
     init(
-        vmConfig: String = RuntimeAdapterConstants.Paths.vmConfig,
-        vmDisk: String = RuntimeAdapterConstants.Paths.vmDisk,
-        guestRuntimeSettings: String = RuntimeAdapterConstants.Paths.guestRuntimeSettings,
-        guestRuntimeConfig: String = RuntimeAdapterConstants.Paths.guestRuntimeConfig,
-        proxyLaunchDaemon: String = RuntimeAdapterConstants.Paths.proxyLaunchDaemon
+        vmConfig: String = RuntimeControlClientConstants.Paths.vmConfig,
+        vmDisk: String = RuntimeControlClientConstants.Paths.vmDisk,
+        guestRuntimeSettings: String = RuntimeControlClientConstants.Paths.guestRuntimeSettings,
+        guestRuntimeConfig: String = RuntimeControlClientConstants.Paths.guestRuntimeConfig,
+        proxyLaunchDaemon: String = RuntimeControlClientConstants.Paths.proxyLaunchDaemon
     ) {
         self.vmConfig = vmConfig
         self.vmDisk = vmDisk
@@ -187,7 +187,7 @@ struct SystemRuntimeSettingsReader: RuntimeSettingsReading, @unchecked Sendable 
 
     private func startOnBootEnabled() -> RuntimeSettingsLoadResult<Bool> {
         let result = runCommand(
-            RuntimeAdapterConstants.Commands.launchctl,
+            RuntimeControlClientConstants.Commands.launchctl,
             ["print-disabled", "system"]
         )
         guard result.exitCode == 0 else {

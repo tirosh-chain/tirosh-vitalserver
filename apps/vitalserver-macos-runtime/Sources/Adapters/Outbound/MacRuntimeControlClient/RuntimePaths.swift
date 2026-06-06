@@ -14,12 +14,12 @@ struct RuntimePaths {
     let runtimeObservabilityDB: String
 
     init(
-        launcher: String = RuntimeAdapterConstants.Paths.launcher,
-        uninstaller: String = RuntimeAdapterConstants.Paths.uninstaller,
-        runtimeState: String = RuntimeAdapterConstants.Paths.runtimeState,
-        runtimeStatus: String = RuntimeAdapterConstants.Paths.runtimeStatus,
-        runtimeEvents: String = RuntimeAdapterConstants.Paths.runtimeEvents,
-        runtimeObservabilityDB: String = RuntimeAdapterConstants.Paths.runtimeObservabilityDB
+        launcher: String = RuntimeControlClientConstants.Paths.launcher,
+        uninstaller: String = RuntimeControlClientConstants.Paths.uninstaller,
+        runtimeState: String = RuntimeControlClientConstants.Paths.runtimeState,
+        runtimeStatus: String = RuntimeControlClientConstants.Paths.runtimeStatus,
+        runtimeEvents: String = RuntimeControlClientConstants.Paths.runtimeEvents,
+        runtimeObservabilityDB: String = RuntimeControlClientConstants.Paths.runtimeObservabilityDB
     ) {
         self.launcher = launcher
         self.uninstaller = uninstaller

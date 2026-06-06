@@ -32,8 +32,8 @@ enum RuntimeControlLocalAPIConstants {
 @MainActor
 enum MacRuntimeControlLocalAPI {
     static func make(
-        client: MacHostRuntimeClient,
-        readWorker: MacHostRuntimeReadWorker,
+        client: MacRuntimeControlClient,
+        readWorker: MacRuntimeControlReadWorker,
         testKitController: any RuntimeTestKitControlling,
         port: Int,
         localAPISettings: RuntimeControlLocalAPISettingsCoordinator,

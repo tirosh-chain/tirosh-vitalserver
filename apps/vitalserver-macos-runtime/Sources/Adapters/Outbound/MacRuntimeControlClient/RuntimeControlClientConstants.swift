@@ -5,7 +5,7 @@ import Contracts
 import Domain
 import Errors
 
-enum RuntimeAdapterConstants {
+enum RuntimeControlClientConstants {
     enum Product {
         static let defaultProxyPort = 80
         static let packageIdentifier = "ai.tirosh.vitalserver.helper"

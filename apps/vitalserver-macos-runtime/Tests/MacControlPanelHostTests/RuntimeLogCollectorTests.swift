@@ -35,7 +35,7 @@ final class RuntimeLogCollectorTests: XCTestCase {
             encoding: .utf8
         )
 
-        let collector = MacHostRuntimeLogCollector(
+        let collector = MacRuntimeControlLogCollector(
             fileStore: SystemRuntimeFileStore(),
             copies: [],
             directoryCopies: [
@@ -59,7 +59,7 @@ final class RuntimeLogCollectorTests: XCTestCase {
         let destination = root.appendingPathComponent("central/runtime/source.log")
         try "hello\nworld\n".write(to: source, atomically: true, encoding: .utf8)
 
-        let collector = MacHostRuntimeLogCollector(
+        let collector = MacRuntimeControlLogCollector(
             fileStore: SystemRuntimeFileStore(),
             copies: [RuntimeLogCopy(source: source, destination: destination, archivePrefix: "source.log")],
             directoryCopies: [],
@@ -85,7 +85,7 @@ final class RuntimeLogCollectorTests: XCTestCase {
         try "line 1\n".write(to: destination, atomically: true, encoding: .utf8)
         try "line 1\nline 2\n".write(to: source, atomically: true, encoding: .utf8)
 
-        let collector = MacHostRuntimeLogCollector(
+        let collector = MacRuntimeControlLogCollector(
             fileStore: SystemRuntimeFileStore(),
             copies: [RuntimeLogCopy(source: source, destination: destination, archivePrefix: "source.log")],
             directoryCopies: [],
@@ -110,7 +110,7 @@ final class RuntimeLogCollectorTests: XCTestCase {
         try "old line\n".write(to: destination, atomically: true, encoding: .utf8)
         try "new line 1\nnew line 2\n".write(to: source, atomically: true, encoding: .utf8)
 
-        let collector = MacHostRuntimeLogCollector(
+        let collector = MacRuntimeControlLogCollector(
             fileStore: SystemRuntimeFileStore(),
             copies: [RuntimeLogCopy(source: source, destination: destination, archivePrefix: "source.log")],
             directoryCopies: [],
@@ -136,7 +136,7 @@ final class RuntimeLogCollectorTests: XCTestCase {
         )
         try "old-log".write(to: destination, atomically: true, encoding: .utf8)
 
-        let collector = MacHostRuntimeLogCollector(
+        let collector = MacRuntimeControlLogCollector(
             fileStore: SystemRuntimeFileStore(),
             copies: [RuntimeLogCopy(source: source, destination: destination, archivePrefix: "source.log")],
             directoryCopies: [],
@@ -188,7 +188,7 @@ final class RuntimeLogCollectorTests: XCTestCase {
             encoding: .utf8
         )
 
-        let collector = MacHostRuntimeLogCollector(
+        let collector = MacRuntimeControlLogCollector(
             fileStore: SystemRuntimeFileStore(),
             copies: [
                 RuntimeLogCopy(
@@ -240,7 +240,7 @@ final class RuntimeLogCollectorTests: XCTestCase {
         try "launcher".write(to: launcherSource, atomically: true, encoding: .utf8)
         try "proxy".write(to: proxySource, atomically: true, encoding: .utf8)
 
-        let collector = MacHostRuntimeLogCollector(
+        let collector = MacRuntimeControlLogCollector(
             fileStore: SystemRuntimeFileStore(),
             copies: [
                 RuntimeLogCopy(source: launcherSource, destination: launcherDestination, archivePrefix: "launcher.log"),
@@ -273,7 +273,7 @@ final class RuntimeLogCollectorTests: XCTestCase {
         try "launch error".write(to: launchErrorSource, atomically: true, encoding: .utf8)
         try "watchdog".write(to: watchdogSource, atomically: true, encoding: .utf8)
 
-        let collector = MacHostRuntimeLogCollector(
+        let collector = MacRuntimeControlLogCollector(
             fileStore: SystemRuntimeFileStore(),
             copies: [
                 RuntimeLogCopy(source: launchOutputSource, destination: launchOutputDestination, archivePrefix: "launchd.out.log"),
@@ -298,7 +298,7 @@ final class RuntimeLogCollectorTests: XCTestCase {
     func testRefreshPropagatesExistingLogReadFailure() {
         let source = URL(fileURLWithPath: "/source.log")
         let destination = URL(fileURLWithPath: "/central/source.log")
-        let collector = MacHostRuntimeLogCollector(
+        let collector = MacRuntimeControlLogCollector(
             fileStore: FailingLogCollectionFileStore(existingFiles: [source, destination]),
             copies: [RuntimeLogCopy(source: source, destination: destination, archivePrefix: "source.log")],
             directoryCopies: [],

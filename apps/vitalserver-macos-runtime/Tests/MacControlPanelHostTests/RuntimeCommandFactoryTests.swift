@@ -8,10 +8,10 @@ import Errors
 final class RuntimeCommandFactoryTests: XCTestCase {
     func testShellCommandQuotesArgumentsAndInjectsVMHomeForLauncher() {
         let command = RuntimeCommandFactory.shellCommand(
-            executable: RuntimeAdapterConstants.Paths.launcher,
+            executable: RuntimeControlClientConstants.Paths.launcher,
             arguments: [
-                RuntimeAdapterConstants.RuntimeCommand.runtime,
-                RuntimeAdapterConstants.RuntimeCommand.applyBundle,
+                RuntimeControlClientConstants.RuntimeCommand.runtime,
+                RuntimeControlClientConstants.RuntimeCommand.applyBundle,
                 "/tmp/bundle with 'quote'",
             ]
         )

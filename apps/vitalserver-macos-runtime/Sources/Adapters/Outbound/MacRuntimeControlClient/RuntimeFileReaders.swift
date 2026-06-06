@@ -22,7 +22,7 @@ struct SystemRuntimeHostFileReader: RuntimeHostFileReading, @unchecked Sendable 
 
     init(
         fileStore: RuntimeFileStore = SystemRuntimeFileStore(),
-        logCollector: RuntimeLogCollecting = MacHostRuntimeLogCollector()
+        logCollector: RuntimeLogCollecting = MacRuntimeControlLogCollector()
     ) {
         self.fileStore = fileStore
         self.logCollector = logCollector
@@ -60,14 +60,14 @@ struct SystemRuntimeHostFileReader: RuntimeHostFileReading, @unchecked Sendable 
     func logText(sourceID: RuntimeLogSource, helperMessage: String, lineLimit: Int) -> String {
         switch sourceID {
         case .helperMessage:
-            return logFile(path: RuntimeAdapterConstants.Paths.helperMessageLogFile, lineLimit: lineLimit)
+            return logFile(path: RuntimeControlClientConstants.Paths.helperMessageLogFile, lineLimit: lineLimit)
         case .command:
-            return logFile(path: RuntimeAdapterConstants.Paths.commandLogFile, lineLimit: lineLimit)
+            return logFile(path: RuntimeControlClientConstants.Paths.commandLogFile, lineLimit: lineLimit)
         case .containers:
-            if !fileStore.fileExists(URL(fileURLWithPath: RuntimeAdapterConstants.Paths.containerLogs)) {
+            if !fileStore.fileExists(URL(fileURLWithPath: RuntimeControlClientConstants.Paths.containerLogs)) {
                 let refreshFailure = refreshLogCollectionFailure(sourceID)
                 let text = logFile(sourceID: sourceID, lineLimit: lineLimit)
-                if text == RuntimeAdapterConstants.StatusText.noLogData, let refreshFailure {
+                if text == RuntimeControlClientConstants.StatusText.noLogData, let refreshFailure {
                     return refreshFailure
                 }
                 return text
@@ -76,7 +76,7 @@ struct SystemRuntimeHostFileReader: RuntimeHostFileReading, @unchecked Sendable 
         default:
             let refreshFailure = refreshLogCollectionFailure(sourceID)
             let text = logFile(sourceID: sourceID, lineLimit: lineLimit)
-            if text == RuntimeAdapterConstants.StatusText.noLogData, let refreshFailure {
+            if text == RuntimeControlClientConstants.StatusText.noLogData, let refreshFailure {
                 return refreshFailure
             }
             return text
@@ -95,74 +95,74 @@ struct SystemRuntimeHostFileReader: RuntimeHostFileReading, @unchecked Sendable 
     private func logFile(sourceID: RuntimeLogSource, lineLimit: Int) -> String {
         switch sourceID {
         case .helperMessage:
-            return RuntimeAdapterConstants.StatusText.noLogData
+            return RuntimeControlClientConstants.StatusText.noLogData
         case .install:
-            return logFile(path: RuntimeAdapterConstants.Paths.installLog, lineLimit: lineLimit)
+            return logFile(path: RuntimeControlClientConstants.Paths.installLog, lineLimit: lineLimit)
         case .command:
             return logFile(
-                path: RuntimeAdapterConstants.Paths.commandLog,
+                path: RuntimeControlClientConstants.Paths.commandLog,
                 lineLimit: lineLimit,
-                sourcePath: RuntimeAdapterConstants.Paths.commandLogFile
+                sourcePath: RuntimeControlClientConstants.Paths.commandLogFile
             )
         case .launcher:
             return logFile(
-                path: (RuntimeAdapterConstants.Paths.runtimeLogs as NSString).appendingPathComponent("launcher.log"),
+                path: (RuntimeControlClientConstants.Paths.runtimeLogs as NSString).appendingPathComponent("launcher.log"),
                 lineLimit: lineLimit,
-                sourcePath: (RuntimeAdapterConstants.Paths.runtimeLogSources as NSString).appendingPathComponent("launcher.log")
+                sourcePath: (RuntimeControlClientConstants.Paths.runtimeLogSources as NSString).appendingPathComponent("launcher.log")
             )
         case .vmLaunchOutput:
             return logFile(
-                path: (RuntimeAdapterConstants.Paths.runtimeLogs as NSString).appendingPathComponent("launchd.out.log"),
+                path: (RuntimeControlClientConstants.Paths.runtimeLogs as NSString).appendingPathComponent("launchd.out.log"),
                 lineLimit: lineLimit,
-                sourcePath: (RuntimeAdapterConstants.Paths.runtimeLogSources as NSString).appendingPathComponent("launchd.out.log")
+                sourcePath: (RuntimeControlClientConstants.Paths.runtimeLogSources as NSString).appendingPathComponent("launchd.out.log")
             )
         case .vmLaunchError:
             return logFile(
-                path: (RuntimeAdapterConstants.Paths.runtimeLogs as NSString).appendingPathComponent("launchd.err.log"),
+                path: (RuntimeControlClientConstants.Paths.runtimeLogs as NSString).appendingPathComponent("launchd.err.log"),
                 lineLimit: lineLimit,
-                sourcePath: (RuntimeAdapterConstants.Paths.runtimeLogSources as NSString).appendingPathComponent("launchd.err.log")
+                sourcePath: (RuntimeControlClientConstants.Paths.runtimeLogSources as NSString).appendingPathComponent("launchd.err.log")
             )
         case .proxyOutput:
             return logFile(
-                path: (RuntimeAdapterConstants.Paths.runtimeLogs as NSString).appendingPathComponent("proxy.out.log"),
+                path: (RuntimeControlClientConstants.Paths.runtimeLogs as NSString).appendingPathComponent("proxy.out.log"),
                 lineLimit: lineLimit,
-                sourcePath: (RuntimeAdapterConstants.Paths.runtimeLogSources as NSString).appendingPathComponent("proxy.out.log")
+                sourcePath: (RuntimeControlClientConstants.Paths.runtimeLogSources as NSString).appendingPathComponent("proxy.out.log")
             )
         case .proxyError:
             return logFile(
-                path: (RuntimeAdapterConstants.Paths.runtimeLogs as NSString).appendingPathComponent("proxy.err.log"),
+                path: (RuntimeControlClientConstants.Paths.runtimeLogs as NSString).appendingPathComponent("proxy.err.log"),
                 lineLimit: lineLimit,
-                sourcePath: (RuntimeAdapterConstants.Paths.runtimeLogSources as NSString).appendingPathComponent("proxy.err.log")
+                sourcePath: (RuntimeControlClientConstants.Paths.runtimeLogSources as NSString).appendingPathComponent("proxy.err.log")
             )
         case .watchdog:
             return logFile(
-                path: (RuntimeAdapterConstants.Paths.runtimeLogs as NSString).appendingPathComponent("watchdog.out.log"),
+                path: (RuntimeControlClientConstants.Paths.runtimeLogs as NSString).appendingPathComponent("watchdog.out.log"),
                 lineLimit: lineLimit,
-                sourcePath: (RuntimeAdapterConstants.Paths.runtimeLogSources as NSString).appendingPathComponent("watchdog.out.log")
+                sourcePath: (RuntimeControlClientConstants.Paths.runtimeLogSources as NSString).appendingPathComponent("watchdog.out.log")
             )
         case .updateActivation:
             return logFile(
-                path: RuntimeAdapterConstants.Paths.updateActivationLog,
+                path: RuntimeControlClientConstants.Paths.updateActivationLog,
                 lineLimit: lineLimit,
-                sourcePath: RuntimeAdapterConstants.Paths.updateActivationLogSource
+                sourcePath: RuntimeControlClientConstants.Paths.updateActivationLogSource
             )
         case .updateShutdown:
             return logFile(
-                path: RuntimeAdapterConstants.Paths.updateShutdownLog,
+                path: RuntimeControlClientConstants.Paths.updateShutdownLog,
                 lineLimit: lineLimit,
-                sourcePath: RuntimeAdapterConstants.Paths.updateShutdownLogSource
+                sourcePath: RuntimeControlClientConstants.Paths.updateShutdownLogSource
             )
         case .containers:
             return logFile(
-                path: RuntimeAdapterConstants.Paths.containerLogs,
+                path: RuntimeControlClientConstants.Paths.containerLogs,
                 lineLimit: lineLimit,
-                sourcePath: RuntimeAdapterConstants.Paths.containerLogSource
+                sourcePath: RuntimeControlClientConstants.Paths.containerLogSource
             )
         }
     }
 
     func preferredLogsPath() -> String {
-        return RuntimeAdapterConstants.Paths.productLogs
+        return RuntimeControlClientConstants.Paths.productLogs
     }
 
     func vitalFileFolders(root: String) throws -> [VitalFilesFolder] {
@@ -188,10 +188,10 @@ struct SystemRuntimeHostFileReader: RuntimeHostFileReading, @unchecked Sendable 
             if fileStore.fileExists(sourceURL) {
                 readableURL = sourceURL
             } else {
-                return RuntimeAdapterConstants.StatusText.noLogData
+                return RuntimeControlClientConstants.StatusText.noLogData
             }
         } else {
-            return RuntimeAdapterConstants.StatusText.noLogData
+            return RuntimeControlClientConstants.StatusText.noLogData
         }
         let content: String?
         do {
@@ -200,11 +200,11 @@ struct SystemRuntimeHostFileReader: RuntimeHostFileReading, @unchecked Sendable 
             return "Failed to read log file \(readableURL.path): \(error.localizedDescription)"
         }
         guard let content else {
-            return RuntimeAdapterConstants.StatusText.noLogData
+            return RuntimeControlClientConstants.StatusText.noLogData
         }
         let body = tail(content, lineLimit: lineLimit)
         return body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? RuntimeAdapterConstants.StatusText.noLogData
+            ? RuntimeControlClientConstants.StatusText.noLogData
             : body
     }
 

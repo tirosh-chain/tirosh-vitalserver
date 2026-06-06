@@ -264,7 +264,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
                 proxyLaunchDaemon: "/missing/proxy.plist"
             ),
             runCommand: { executable, arguments in
-                XCTAssertEqual(executable, RuntimeAdapterConstants.Commands.launchctl)
+                XCTAssertEqual(executable, RuntimeControlClientConstants.Commands.launchctl)
                 XCTAssertEqual(arguments, ["print-disabled", "system"])
                 return RuntimeCommandResult(exitCode: 1, stdout: "", stderr: "launchctl denied")
             }
@@ -341,17 +341,17 @@ final class RuntimeSettingsReaderTests: XCTestCase {
             adminPasswordFile: "/tmp/password"
         )
 
-        XCTAssertEqual(arguments.first, RuntimeAdapterConstants.RuntimeCommand.runtime)
-        XCTAssertTrue(arguments.contains(RuntimeAdapterConstants.RuntimeCommand.optionAdminPasswordFile))
+        XCTAssertEqual(arguments.first, RuntimeControlClientConstants.RuntimeCommand.runtime)
+        XCTAssertTrue(arguments.contains(RuntimeControlClientConstants.RuntimeCommand.optionAdminPasswordFile))
         XCTAssertTrue(arguments.contains("/tmp/password"))
-        XCTAssertTrue(arguments.contains(RuntimeAdapterConstants.RuntimeCommand.optionRestart))
-        XCTAssertEqual(value(after: RuntimeAdapterConstants.RuntimeCommand.optionProxyPort, in: arguments), "18080")
-        XCTAssertEqual(value(after: RuntimeAdapterConstants.RuntimeCommand.optionVitalServerURL, in: arguments), "https://vitaldb.tirosh.ai/")
-        XCTAssertEqual(value(after: RuntimeAdapterConstants.RuntimeCommand.optionRemoteConsoleURL, in: arguments), "https://console.tirosh.ai/")
-        XCTAssertEqual(value(after: RuntimeAdapterConstants.RuntimeCommand.optionRedisBackupRetention, in: arguments), "20")
-        XCTAssertEqual(value(after: RuntimeAdapterConstants.RuntimeCommand.optionStartOnBoot, in: arguments), "false")
-        XCTAssertEqual(value(after: RuntimeAdapterConstants.RuntimeCommand.optionAutoRecovery, in: arguments), "false")
-        XCTAssertEqual(value(after: RuntimeAdapterConstants.RuntimeCommand.optionPreventSystemSleep, in: arguments), "false")
+        XCTAssertTrue(arguments.contains(RuntimeControlClientConstants.RuntimeCommand.optionRestart))
+        XCTAssertEqual(value(after: RuntimeControlClientConstants.RuntimeCommand.optionProxyPort, in: arguments), "18080")
+        XCTAssertEqual(value(after: RuntimeControlClientConstants.RuntimeCommand.optionVitalServerURL, in: arguments), "https://vitaldb.tirosh.ai/")
+        XCTAssertEqual(value(after: RuntimeControlClientConstants.RuntimeCommand.optionRemoteConsoleURL, in: arguments), "https://console.tirosh.ai/")
+        XCTAssertEqual(value(after: RuntimeControlClientConstants.RuntimeCommand.optionRedisBackupRetention, in: arguments), "20")
+        XCTAssertEqual(value(after: RuntimeControlClientConstants.RuntimeCommand.optionStartOnBoot, in: arguments), "false")
+        XCTAssertEqual(value(after: RuntimeControlClientConstants.RuntimeCommand.optionAutoRecovery, in: arguments), "false")
+        XCTAssertEqual(value(after: RuntimeControlClientConstants.RuntimeCommand.optionPreventSystemSleep, in: arguments), "false")
     }
 
     func testStatusReaderReportsDataDirectoryStats() throws {
@@ -861,8 +861,8 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         XCTAssertNotNil(history.readError)
     }
 
-    func testMacHostRuntimeClientUsesSeparateStatusAndObservabilityReaders() {
-        let client = MacHostRuntimeClient(
+    func testMacRuntimeControlClientUsesSeparateStatusAndObservabilityReaders() {
+        let client = MacRuntimeControlClient(
             releaseInfo: .generated,
             statusReader: StubStatusReader(),
             observabilityReader: StubObservabilityReader()

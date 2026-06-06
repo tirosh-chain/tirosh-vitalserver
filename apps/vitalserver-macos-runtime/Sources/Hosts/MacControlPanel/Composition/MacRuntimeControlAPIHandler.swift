@@ -9,7 +9,7 @@ import Errors
 struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
     private let commandClient: any RuntimeControlClient
     private let hostClient: any RuntimeHostClient
-    private let readWorker: MacHostRuntimeReadWorker
+    private let readWorker: MacRuntimeControlReadWorker
     private let localAPISettings: RuntimeControlLocalAPISettingsCoordinator
     private let servesTestTools: Bool
     private let statusAnnotator: RuntimeControlStatusAnnotator
@@ -19,7 +19,7 @@ struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
     init(
         commandClient: any RuntimeControlClient,
         hostClient: any RuntimeHostClient,
-        readWorker: MacHostRuntimeReadWorker,
+        readWorker: MacRuntimeControlReadWorker,
         localAPISettings: RuntimeControlLocalAPISettingsCoordinator,
         servesTestTools: Bool,
         runtimeControlStartedAt: Date = Date(),

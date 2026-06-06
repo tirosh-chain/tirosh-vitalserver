@@ -9,7 +9,7 @@ protocol RuntimeLogExporting: Sendable {
     func exportLogs(to destination: URL) async throws -> RuntimeLogExportResult
 }
 
-struct MacHostRuntimeLogExporter: RuntimeLogExporting, @unchecked Sendable {
+struct MacRuntimeControlLogExporter: RuntimeLogExporting, @unchecked Sendable {
     private let fileManager: FileManager
     private let logCollector: RuntimeLogCollecting
     private let productLogsDirectory: URL
@@ -19,8 +19,8 @@ struct MacHostRuntimeLogExporter: RuntimeLogExporting, @unchecked Sendable {
 
     init(
         fileManager: FileManager = .default,
-        logCollector: RuntimeLogCollecting = MacHostRuntimeLogCollector(),
-        productLogsDirectory: URL = URL(fileURLWithPath: RuntimeAdapterConstants.Paths.productLogs),
+        logCollector: RuntimeLogCollecting = MacRuntimeControlLogCollector(),
+        productLogsDirectory: URL = URL(fileURLWithPath: RuntimeControlClientConstants.Paths.productLogs),
         supplementalLogItems: [RuntimeLogExportSupplementalSource] = RuntimeLogExportSupplementalSource.defaultItems(),
         rotatedSupplementalSets: [RuntimeLogExportRotatedSupplementalSet] = RuntimeLogExportRotatedSupplementalSet.defaultSets(),
         archiveRunner: @escaping (String, [String]) async -> RuntimeCommandResult = ProcessRunner.run
@@ -62,7 +62,7 @@ struct MacHostRuntimeLogExporter: RuntimeLogExporting, @unchecked Sendable {
 
         let temporaryArchive = stagingRoot.appendingPathComponent(destination.lastPathComponent)
         let result = await archiveRunner(
-            RuntimeAdapterConstants.Commands.ditto,
+            RuntimeControlClientConstants.Commands.ditto,
             ["-c", "-k", "--sequesterRsrc", "--keepParent", bundleRoot.path, temporaryArchive.path]
         )
         guard result.exitCode == 0 else {
@@ -274,95 +274,95 @@ struct RuntimeLogExportSupplementalSource {
     static func defaultItems() -> [RuntimeLogExportSupplementalSource] {
         [
             RuntimeLogExportSupplementalSource(
-                source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.bootstrapLogSource),
+                source: URL(fileURLWithPath: RuntimeControlClientConstants.Paths.bootstrapLogSource),
                 relativeDestination: "guest/\(RuntimeFileNames.bootstrapLog)"
             ),
             RuntimeLogExportSupplementalSource(
-                source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.containerLogSource),
+                source: URL(fileURLWithPath: RuntimeControlClientConstants.Paths.containerLogSource),
                 relativeDestination: "guest/container-logs.log"
             ),
             RuntimeLogExportSupplementalSource(
-                source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.updateActivationLogSource),
+                source: URL(fileURLWithPath: RuntimeControlClientConstants.Paths.updateActivationLogSource),
                 relativeDestination: "guest/\(RuntimeFileNames.updateActivationLog)"
             ),
             RuntimeLogExportSupplementalSource(
-                source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.updateShutdownLogSource),
+                source: URL(fileURLWithPath: RuntimeControlClientConstants.Paths.updateShutdownLogSource),
                 relativeDestination: "guest/\(RuntimeFileNames.updateShutdownLog)"
             ),
             RuntimeLogExportSupplementalSource(
-                source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.datastoreRepairLogSource),
+                source: URL(fileURLWithPath: RuntimeControlClientConstants.Paths.datastoreRepairLogSource),
                 relativeDestination: "guest/\(RuntimeFileNames.datastoreRepairLog)"
             ),
             RuntimeLogExportSupplementalSource(
-                source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.redisBackupLogSource),
+                source: URL(fileURLWithPath: RuntimeControlClientConstants.Paths.redisBackupLogSource),
                 relativeDestination: "guest/\(RuntimeFileNames.redisBackupLog)"
             ),
             RuntimeLogExportSupplementalSource(
-                source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.guestObservabilitySource),
+                source: URL(fileURLWithPath: RuntimeControlClientConstants.Paths.guestObservabilitySource),
                 relativeDestination: "guest/guest-observability"
             ),
             RuntimeLogExportSupplementalSource(
-                source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.commandLogFile),
+                source: URL(fileURLWithPath: RuntimeControlClientConstants.Paths.commandLogFile),
                 relativeDestination: "command.log"
             ),
             RuntimeLogExportSupplementalSource(
-                source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.helperMessageLogFile),
+                source: URL(fileURLWithPath: RuntimeControlClientConstants.Paths.helperMessageLogFile),
                 relativeDestination: "helper-message.log"
             ),
             RuntimeLogExportSupplementalSource(
-                source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.runtimeStatus),
+                source: URL(fileURLWithPath: RuntimeControlClientConstants.Paths.runtimeStatus),
                 relativeDestination: "diagnostics/status/\(RuntimeFileNames.runtimeStatus)"
             ),
             RuntimeLogExportSupplementalSource(
-                source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.runtimeEvents),
+                source: URL(fileURLWithPath: RuntimeControlClientConstants.Paths.runtimeEvents),
                 relativeDestination: "diagnostics/status/\(RuntimeFileNames.runtimeEvents)"
             ),
             RuntimeLogExportSupplementalSource(
-                source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.runtimeObservabilityDB),
+                source: URL(fileURLWithPath: RuntimeControlClientConstants.Paths.runtimeObservabilityDB),
                 relativeDestination: "diagnostics/status/\(RuntimeFileNames.runtimeObservabilityDB)"
             ),
             RuntimeLogExportSupplementalSource(
-                source: URL(fileURLWithPath: "\(RuntimeAdapterConstants.Paths.runtimeObservabilityDB)-wal"),
+                source: URL(fileURLWithPath: "\(RuntimeControlClientConstants.Paths.runtimeObservabilityDB)-wal"),
                 relativeDestination: "diagnostics/status/\(RuntimeFileNames.runtimeObservabilityDB)-wal"
             ),
             RuntimeLogExportSupplementalSource(
-                source: URL(fileURLWithPath: "\(RuntimeAdapterConstants.Paths.runtimeObservabilityDB)-shm"),
+                source: URL(fileURLWithPath: "\(RuntimeControlClientConstants.Paths.runtimeObservabilityDB)-shm"),
                 relativeDestination: "diagnostics/status/\(RuntimeFileNames.runtimeObservabilityDB)-shm"
             ),
             RuntimeLogExportSupplementalSource(
-                source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.runtimeState),
+                source: URL(fileURLWithPath: RuntimeControlClientConstants.Paths.runtimeState),
                 relativeDestination: "diagnostics/guest/\(RuntimeFileNames.runtimeState)"
             ),
             RuntimeLogExportSupplementalSource(
-                source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.vmLifecycle),
+                source: URL(fileURLWithPath: RuntimeControlClientConstants.Paths.vmLifecycle),
                 relativeDestination: "diagnostics/runtime/\(RuntimeFileNames.vmLifecycle)"
             ),
             RuntimeLogExportSupplementalSource(
-                source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.vmIPFile),
+                source: URL(fileURLWithPath: RuntimeControlClientConstants.Paths.vmIPFile),
                 relativeDestination: "diagnostics/guest/\(RuntimeFileNames.vmIP)"
             ),
             RuntimeLogExportSupplementalSource(
-                source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.vmConfig),
+                source: URL(fileURLWithPath: RuntimeControlClientConstants.Paths.vmConfig),
                 relativeDestination: "diagnostics/runtime/vm-config.json"
             ),
             RuntimeLogExportSupplementalSource(
-                source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.runtimeVersion),
+                source: URL(fileURLWithPath: RuntimeControlClientConstants.Paths.runtimeVersion),
                 relativeDestination: "diagnostics/runtime/runtime-version.json"
             ),
             RuntimeLogExportSupplementalSource(
-                source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.guestRuntimeConfig),
+                source: URL(fileURLWithPath: RuntimeControlClientConstants.Paths.guestRuntimeConfig),
                 relativeDestination: "diagnostics/guest/runtime-config.json"
             ),
             RuntimeLogExportSupplementalSource(
-                source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.proxyLaunchDaemon),
+                source: URL(fileURLWithPath: RuntimeControlClientConstants.Paths.proxyLaunchDaemon),
                 relativeDestination: "diagnostics/host/ai.tirosh.vitalserver.helper.proxy.plist"
             ),
             RuntimeLogExportSupplementalSource(
-                source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.proxyNginxConfig),
+                source: URL(fileURLWithPath: RuntimeControlClientConstants.Paths.proxyNginxConfig),
                 relativeDestination: "diagnostics/host/vitalserver-nginx.conf"
             ),
             RuntimeLogExportSupplementalSource(
-                source: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.proxyNginxPid),
+                source: URL(fileURLWithPath: RuntimeControlClientConstants.Paths.proxyNginxPid),
                 relativeDestination: "diagnostics/host/nginx.pid"
             ),
         ]
@@ -390,13 +390,13 @@ struct RuntimeLogExportRotatedSupplementalSet {
     static func defaultSets() -> [RuntimeLogExportRotatedSupplementalSet] {
         [
             RuntimeLogExportRotatedSupplementalSet(
-                sourceDirectory: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.guestRunDirectory),
+                sourceDirectory: URL(fileURLWithPath: RuntimeControlClientConstants.Paths.guestRunDirectory),
                 sourceFilePrefix: "container-logs.log.",
                 relativeDestinationDirectory: "guest",
                 destinationFilePrefix: "container-logs.log."
             ),
             RuntimeLogExportRotatedSupplementalSet(
-                sourceDirectory: URL(fileURLWithPath: RuntimeAdapterConstants.Paths.runtimeEvents)
+                sourceDirectory: URL(fileURLWithPath: RuntimeControlClientConstants.Paths.runtimeEvents)
                     .deletingLastPathComponent(),
                 sourceFilePrefix: "\(RuntimeFileNames.runtimeEvents).",
                 relativeDestinationDirectory: "diagnostics/status",

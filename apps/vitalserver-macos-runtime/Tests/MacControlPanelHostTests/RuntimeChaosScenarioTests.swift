@@ -14,7 +14,7 @@ final class RuntimeChaosScenarioTests: XCTestCase {
         let reader = SystemRuntimeHostFileReader(
             fileStore: ChaosCommandLogFileStore(
                 textByPath: [
-                    RuntimeAdapterConstants.Paths.commandLogFile: "first\nsecond\nthird",
+                    RuntimeControlClientConstants.Paths.commandLogFile: "first\nsecond\nthird",
                 ]
             ),
             logCollector: collector
@@ -131,7 +131,7 @@ final class RuntimeChaosScenarioTests: XCTestCase {
         }
 
         var archivedManifest: RuntimeLogExportManifest?
-        let exporter = MacHostRuntimeLogExporter(
+        let exporter = MacRuntimeControlLogExporter(
             logCollector: ChaosFailingExportLogCollector(),
             productLogsDirectory: productLogs,
             supplementalLogItems: [
@@ -201,7 +201,7 @@ final class RuntimeChaosScenarioTests: XCTestCase {
 
     func testCleanUninstallResidueChaosStopsAtMissingUninstallerBoundary() async {
         let runner = ChaosPrivilegedCommandRunner()
-        let worker = MacHostRuntimeCommandWorker(
+        let worker = MacRuntimeControlCommandWorker(
             privilegedCommandRunner: runner,
             actionEnvironment: ChaosActionEnvironment(executablePaths: []),
             logExporter: ChaosNoopLogExporter()
@@ -211,7 +211,7 @@ final class RuntimeChaosScenarioTests: XCTestCase {
             _ = try await worker.uninstallRuntime(clean: true)
             XCTFail("Expected missing uninstaller")
         } catch {
-            XCTAssertEqual((error as? RuntimeClientError)?.errorDescription, RuntimeAdapterConstants.StatusText.missingUninstaller)
+            XCTAssertEqual((error as? RuntimeClientError)?.errorDescription, RuntimeControlClientConstants.StatusText.missingUninstaller)
         }
         XCTAssertEqual(runner.commands, [])
     }
