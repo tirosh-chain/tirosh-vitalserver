@@ -176,7 +176,7 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
                 vitalFilesDirectory: nil
             )
             fileStore.files[vmConfigURL] = try JSONEncoder().encode(vmConfig)
-            fileStore.files[paths.guestRuntimeConfig] = try JSONEncoder().encode(GuestRuntimeConfigDocument.default)
+            fileStore.files[paths.guestRuntimeConfig] = try JSONEncoder().encode(Self.defaultGuestRuntimeConfig())
             fileStore.files[URL(fileURLWithPath: "/tmp/admin-password")] = Data("secret".utf8)
 
             runner = RuntimeConfigureRunner(
@@ -211,6 +211,25 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
                     }
                 ),
                 log: { _ in }
+            )
+        }
+
+        private static func defaultGuestRuntimeConfig() -> GuestRuntimeConfigDocument {
+            GuestRuntimeConfigDocument(
+                vitalserverHttpPort: Constants.Guest.vitalserverHTTPPort,
+                redisHost: Constants.Guest.redisHost,
+                redisPort: Constants.Guest.redisPort,
+                trustProxy: true,
+                vitalServerURL: "",
+                remoteConsoleURL: "",
+                publicHost: "",
+                publicPort: Constants.Guest.publicPort,
+                adminPassword: Constants.Guest.defaultAdminPassword,
+                vitalFilesDirectory: Constants.Defaults.vitalFilesDirectoryGuestMountPath,
+                redisBackupRetentionCount: Constants.Defaults.redisBackupRetentionCount,
+                redisUiPort: Constants.Guest.redisUIPort,
+                swaggerUiPort: Constants.Guest.swaggerUIPort,
+                testkitEnabled: Constants.testkitContainerIncluded
             )
         }
     }

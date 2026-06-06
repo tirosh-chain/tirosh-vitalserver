@@ -1,234 +1,40 @@
-import Foundation
-import Core
+import Application
+import Bootstrap
 import Contracts
-import HostInfrastructure
-import RuntimeWorkflow
+import HostAdapters
+import Infrastructure
+import Foundation
 
-struct VMRuntimeConfig: Codable {
-    var cpuCount: Int
-    var memoryMiB: UInt64
-    var kernelPath: String
-    var initialRamdiskPath: String?
-    var diskPath: String?
-    var cloudInitPath: String?
-    var kernelCommandLine: String
-    var network: NetworkConfig
-    var sharedDirectory: SharedDirectoryConfig?
-    var vitalFilesDirectory: SharedDirectoryConfig?
-    var autoRecoveryEnabled: Bool? = nil
-    var preventSystemSleep: Bool? = nil
-    var sshAuthorizedKeys: [String]? = nil
+typealias VMRuntimeConfig = HostAdapters.VMRuntimeConfig
+typealias VMRuntimeConfigReadError = HostAdapters.VMRuntimeConfigReadError
+typealias VMRuntimeBootFileValidationError = HostAdapters.VMRuntimeBootFileValidationError
+typealias NetworkConfig = HostAdapters.NetworkConfig
+typealias SharedDirectoryConfig = HostAdapters.SharedDirectoryConfig
 
-    // The default boot asset names match the Linux kernel/initrd style used by
-    // Apple's Linux VM sample and keep the first PoC explicit.
+extension VMRuntimeConfig {
     static func `default`(paths: InstalledRuntimePaths) -> VMRuntimeConfig {
-        return VMRuntimeConfig(
-            cpuCount: min(
-                max(ProcessInfo.processInfo.processorCount / 2, Constants.Defaults.minimumCPUCount),
-                Constants.Defaults.maximumAllowedCPUCount
-            ),
-            memoryMiB: Constants.Defaults.memoryMiB,
-            kernelPath: paths.runtimeDirectory.appendingPathComponent(Constants.BootAssets.kernel).path,
-            initialRamdiskPath: paths.runtimeDirectory.appendingPathComponent(Constants.BootAssets.initialRamdisk).path,
-            diskPath: paths.runtimeDirectory.appendingPathComponent(Constants.BootAssets.disk).path,
-            cloudInitPath: paths.runtimeDirectory.appendingPathComponent(Constants.BootAssets.cloudInit).path,
-            kernelCommandLine: Constants.BootAssets.commandLine,
-            network: NetworkConfig(
-                mode: .shared,
-                bridgedInterface: nil,
-                macAddress: Self.generateMacAddress()
-            ),
-            sharedDirectory: SharedDirectoryConfig(
-                hostPath: paths.dataDirectory.path,
-                tag: Constants.Defaults.sharedDirectoryTag,
-                guestMountPath: Constants.Defaults.sharedDirectoryGuestMountPath,
-                readOnly: false
-            ),
-            vitalFilesDirectory: SharedDirectoryConfig(
-                hostPath: paths.vitalFilesDirectory.path,
-                tag: Constants.Defaults.vitalFilesDirectoryTag,
-                guestMountPath: Constants.Defaults.vitalFilesDirectoryGuestMountPath,
-                readOnly: false
-            ),
-            autoRecoveryEnabled: true,
-            preventSystemSleep: true,
-            sshAuthorizedKeys: []
-        )
+        VMRuntimeConfigComposition.defaultConfig(paths: paths)
     }
 
     static func load(from url: URL, fileStore: RuntimeFileReading) throws -> VMRuntimeConfig {
-        guard fileStore.fileExists(url) else {
-            throw LauncherError.missingConfig(url)
-        }
-        let data = try fileStore.readData(url)
-        return try JSONDecoder().decode(VMRuntimeConfig.self, from: data)
+        try VMRuntimeConfigComposition.load(from: url, fileStore: fileStore)
     }
 
-    // Validate before touching Virtualization.framework so errors stay readable.
     static func validateBootFiles(_ config: VMRuntimeConfig, fileStore: RuntimeFileReading) throws {
-        for path in [config.kernelPath, config.initialRamdiskPath, config.diskPath].compactMap({ $0 }) {
-            guard fileStore.fileExists(URL(fileURLWithPath: path)) else {
-                throw LauncherError.missingFile(path)
-            }
-        }
+        try VMRuntimeConfigComposition.validateBootFiles(config, fileStore: fileStore)
     }
 
     static func ensureNetworkIdentity(_ config: inout VMRuntimeConfig) {
-        if config.network.macAddress == nil || config.network.macAddress?.isEmpty == true {
-            config.network.macAddress = generateMacAddress()
-        }
+        VMRuntimeConfigComposition.ensureNetworkIdentity(&config)
     }
 
     static func ensureRuntimeDefaults(_ config: inout VMRuntimeConfig, paths: InstalledRuntimePaths) {
-        ensureNetworkIdentity(&config)
-        if config.cloudInitPath == nil || config.cloudInitPath?.isEmpty == true {
-            config.cloudInitPath = paths.runtimeDirectory.appendingPathComponent(Constants.BootAssets.cloudInit).path
-        }
-        if config.vitalFilesDirectory == nil {
-            config.vitalFilesDirectory = SharedDirectoryConfig(
-                hostPath: paths.vitalFilesDirectory.path,
-                tag: Constants.Defaults.vitalFilesDirectoryTag,
-                guestMountPath: Constants.Defaults.vitalFilesDirectoryGuestMountPath,
-                readOnly: false
-            )
-        }
-        if config.autoRecoveryEnabled == nil {
-            config.autoRecoveryEnabled = true
-        }
-        if config.preventSystemSleep == nil {
-            config.preventSystemSleep = true
-        }
-        if config.sshAuthorizedKeys == nil {
-            config.sshAuthorizedKeys = []
-        }
+        VMRuntimeConfigComposition.ensureRuntimeDefaults(&config, paths: paths)
     }
-
-    private static func generateMacAddress() -> String {
-        let bytes = [
-            Constants.Network.localMacPrefix0,
-            UInt8.random(in: 0...255),
-            UInt8.random(in: 0...255),
-            UInt8.random(in: 0...255),
-            UInt8.random(in: 0...255),
-            UInt8.random(in: 0...255),
-        ]
-        return bytes.map { String(format: "%02x", $0) }.joined(separator: ":")
-    }
-}
-
-struct NetworkConfig: Codable {
-    var mode: NetworkMode
-    var bridgedInterface: String?
-    var macAddress: String?
-}
-
-struct SharedDirectoryConfig: Codable {
-    var hostPath: String
-    var tag: String
-    var guestMountPath: String
-    var readOnly: Bool
-}
-
-enum NetworkMode: String, Codable {
-    case shared
-    case bridged
 }
 
 extension JSONEncoder {
     static var pretty: JSONEncoder {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        return encoder
-    }
-}
-
-extension VMRuntimeConfig: RuntimeInstallMutableVMRuntimeConfiguration {
-    var installCPUCount: Int {
-        get { cpuCount }
-        set { cpuCount = newValue }
-    }
-
-    var installMemoryMiB: UInt64 {
-        get { memoryMiB }
-        set { memoryMiB = newValue }
-    }
-
-    var installNetworkMode: NetworkMode {
-        get { network.mode }
-        set { network.mode = newValue }
-    }
-
-    var installBridgedInterface: String? {
-        get { network.bridgedInterface }
-        set { network.bridgedInterface = newValue }
-    }
-
-    var installPreventSystemSleep: Bool? {
-        get { preventSystemSleep }
-        set { preventSystemSleep = newValue }
-    }
-
-    var installSSHAuthorizedKeys: [String]? {
-        get { sshAuthorizedKeys }
-        set { sshAuthorizedKeys = newValue }
-    }
-
-    mutating func setInstallSharedDirectory(_ directory: RuntimeSharedDirectoryConfiguration) {
-        sharedDirectory = SharedDirectoryConfig(
-            hostPath: directory.hostPath,
-            tag: directory.tag,
-            guestMountPath: directory.guestMountPath,
-            readOnly: directory.readOnly
-        )
-    }
-
-    mutating func setInstallVitalFilesDirectory(_ directory: RuntimeSharedDirectoryConfiguration) {
-        vitalFilesDirectory = SharedDirectoryConfig(
-            hostPath: directory.hostPath,
-            tag: directory.tag,
-            guestMountPath: directory.guestMountPath,
-            readOnly: directory.readOnly
-        )
-    }
-}
-
-extension VMRuntimeConfig: RuntimeConfigureMutableVMRuntimeConfiguration {
-    var configureCPUCount: Int {
-        get { cpuCount }
-        set { cpuCount = newValue }
-    }
-
-    var configureMemoryMiB: UInt64 {
-        get { memoryMiB }
-        set { memoryMiB = newValue }
-    }
-
-    var configureNetworkMode: NetworkMode {
-        get { network.mode }
-        set { network.mode = newValue }
-    }
-
-    var configureBridgedInterface: String? {
-        get { network.bridgedInterface }
-        set { network.bridgedInterface = newValue }
-    }
-
-    var configureAutoRecoveryEnabled: Bool? {
-        get { autoRecoveryEnabled }
-        set { autoRecoveryEnabled = newValue }
-    }
-
-    var configurePreventSystemSleep: Bool? {
-        get { preventSystemSleep }
-        set { preventSystemSleep = newValue }
-    }
-
-    mutating func setConfigureVitalFilesDirectory(_ directory: RuntimeSharedDirectoryConfiguration) {
-        vitalFilesDirectory = SharedDirectoryConfig(
-            hostPath: directory.hostPath,
-            tag: directory.tag,
-            guestMountPath: directory.guestMountPath,
-            readOnly: directory.readOnly
-        )
+        VMRuntimeConfigComposition.prettyJSONEncoder()
     }
 }

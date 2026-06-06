@@ -1,7 +1,7 @@
 import Application
 import Contracts
-import Core
-import RuntimeWorkflow
+import Domain
+import Workflow
 import XCTest
 
 final class RuntimeHealthWaitWorkflowTests: XCTestCase {

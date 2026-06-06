@@ -1,6 +1,6 @@
 import Contracts
 import Foundation
-@testable import HostCLI
+import Workflow
 import XCTest
 
 final class RuntimeMigrationRunnerTests: XCTestCase {

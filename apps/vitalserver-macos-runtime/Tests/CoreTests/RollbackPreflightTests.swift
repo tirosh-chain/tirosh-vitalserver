@@ -1,6 +1,6 @@
 import Foundation
-import Core
 import Contracts
+import Domain
 import XCTest
 
 final class RollbackPreflightTests: XCTestCase {

@@ -1,15 +1,4 @@
-import Foundation
-import Core
-import Contracts
+import HostAdapters
 
-struct SystemRuntimeClock: RuntimeClock {
-    var now: Date {
-        Date()
-    }
-}
-
-struct ThreadRuntimeSleeper: RuntimeSleeper {
-    func sleep(forTimeInterval interval: TimeInterval) {
-        Thread.sleep(forTimeInterval: interval)
-    }
-}
+typealias SystemRuntimeClock = HostAdapters.SystemRuntimeClock
+typealias ThreadRuntimeSleeper = HostAdapters.ThreadRuntimeSleeper

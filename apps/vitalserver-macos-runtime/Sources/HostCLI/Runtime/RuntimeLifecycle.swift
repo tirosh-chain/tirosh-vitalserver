@@ -2,7 +2,7 @@ import Foundation
 import Core
 import Contracts
 import HostInfrastructure
-import RuntimeWorkflow
+import Workflow
 
 struct RuntimeLifecycle {
     let paths: LauncherPaths
@@ -225,7 +225,7 @@ struct RuntimeLifecycle {
             if let archive = result.archive, !archive.isEmpty {
                 print("archive: \(archive)")
             }
-        } catch RuntimeWorkflowError.operationFailed(let message) {
+        } catch RuntimeRedisBackupWorkflowError.operationFailed(let message) {
             throw LauncherError.runtimeOperationFailed(message)
         }
     }
@@ -276,19 +276,5 @@ private extension RuntimeLifecycle {
     func installedSSHAuthorizedKeys() throws -> [String] {
         let config = try VMRuntimeConfig.load(from: paths.config, fileStore: fileStore)
         return config.sshAuthorizedKeys ?? []
-    }
-}
-
-enum RedisBackupResultReader {
-    static func load(from url: URL, fileStore: RuntimeFileStore) -> RuntimeRedisBackupResultLoadResult {
-        guard fileStore.fileExists(url) else {
-            return .missing
-        }
-        do {
-            let data = try fileStore.readData(url)
-            return try .loaded(JSONDecoder().decode(RedisBackupResultDocument.self, from: data))
-        } catch {
-            return .failed(error.localizedDescription)
-        }
     }
 }

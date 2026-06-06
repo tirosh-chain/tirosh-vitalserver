@@ -1,7 +1,6 @@
 import Contracts
-import Core
 import Foundation
-import RuntimeWorkflow
+import Workflow
 import XCTest
 
 final class RuntimeGuestActivationRunnerTests: XCTestCase {
@@ -72,7 +71,7 @@ final class RuntimeGuestActivationRunnerTests: XCTestCase {
         let runner = makeRunner(
             events: events,
             requireCapability: {
-                throw RuntimeWorkflowError.operationFailed("guest capability missing: activate-update")
+                throw RuntimeGuestActivationWorkflowError.operationFailed("guest capability missing: activate-update")
             },
             loadResult: { .missing }
         )

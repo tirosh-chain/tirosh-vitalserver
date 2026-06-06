@@ -1,5 +1,5 @@
 import Foundation
-import RuntimeWorkflow
+import Contracts
 @testable import HostCLI
 import XCTest
 

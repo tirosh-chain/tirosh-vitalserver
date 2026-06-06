@@ -1,6 +1,6 @@
 import Application
 import Contracts
-import RuntimeWorkflow
+import Workflow
 import XCTest
 
 final class RuntimeHealthRefreshWorkflowTests: XCTestCase {

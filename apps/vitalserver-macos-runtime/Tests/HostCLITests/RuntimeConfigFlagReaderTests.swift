@@ -4,7 +4,7 @@ import XCTest
 
 final class RuntimeConfigFlagReaderTests: XCTestCase {
     func testReadsConfiguredFlags() {
-        let harness = ConfigFlagHarness(config: runtimeConfig(
+        let harness = ConfigFlagHarness(flags: runtimeConfig(
             autoRecoveryEnabled: false,
             preventSystemSleep: false
         ))
@@ -15,7 +15,7 @@ final class RuntimeConfigFlagReaderTests: XCTestCase {
     }
 
     func testDefaultsAndLogsWhenFlagIsMissing() {
-        let harness = ConfigFlagHarness(config: runtimeConfig(
+        let harness = ConfigFlagHarness(flags: runtimeConfig(
             autoRecoveryEnabled: nil,
             preventSystemSleep: nil
         ))
@@ -39,22 +39,22 @@ final class RuntimeConfigFlagReaderTests: XCTestCase {
 }
 
 private final class ConfigFlagHarness {
-    let config: VMRuntimeConfig?
+    let flags: RuntimeConfigFlagValues?
     let loadError: Error?
     var logs: [String] = []
 
-    init(config: VMRuntimeConfig? = nil, loadError: Error? = nil) {
-        self.config = config
+    init(flags: RuntimeConfigFlagValues? = nil, loadError: Error? = nil) {
+        self.flags = flags
         self.loadError = loadError
     }
 
     var reader: RuntimeConfigFlagReader {
         RuntimeConfigFlagReader(
-            loadConfig: {
+            loadFlags: {
                 if let loadError = self.loadError {
                     throw loadError
                 }
-                return self.config ?? runtimeConfig()
+                return self.flags ?? runtimeConfigFlags()
             },
             log: { message in
                 self.logs.append(message)
@@ -66,11 +66,21 @@ private final class ConfigFlagHarness {
 private func runtimeConfig(
     autoRecoveryEnabled: Bool? = true,
     preventSystemSleep: Bool? = true
-) -> VMRuntimeConfig {
-    var config = VMRuntimeConfig.default(paths: .defaultInstalled)
-    config.autoRecoveryEnabled = autoRecoveryEnabled
-    config.preventSystemSleep = preventSystemSleep
-    return config
+) -> RuntimeConfigFlagValues {
+    runtimeConfigFlags(
+        autoRecoveryEnabled: autoRecoveryEnabled,
+        preventSystemSleep: preventSystemSleep
+    )
+}
+
+private func runtimeConfigFlags(
+    autoRecoveryEnabled: Bool? = true,
+    preventSystemSleep: Bool? = true
+) -> RuntimeConfigFlagValues {
+    RuntimeConfigFlagValues(
+        autoRecoveryEnabled: autoRecoveryEnabled,
+        preventSystemSleep: preventSystemSleep
+    )
 }
 
 private enum ConfigFlagError: Error {

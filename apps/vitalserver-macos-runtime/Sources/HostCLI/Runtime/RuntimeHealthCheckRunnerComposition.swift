@@ -1,0 +1,4 @@
+import Bootstrap
+
+typealias RuntimeHealthCheckRunnerCompositionOperations = Bootstrap.RuntimeHealthCheckRunnerCompositionOperations
+typealias RuntimeHealthCheckRunnerComposition = Bootstrap.RuntimeHealthCheckRunnerComposition

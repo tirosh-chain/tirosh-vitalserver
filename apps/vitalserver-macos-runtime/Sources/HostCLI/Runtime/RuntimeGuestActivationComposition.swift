@@ -1,0 +1,5 @@
+import Bootstrap
+
+typealias RuntimeGuestActivationCompositionContext = Bootstrap.RuntimeGuestActivationCompositionContext
+typealias RuntimeGuestActivationCompositionOperations = Bootstrap.RuntimeGuestActivationCompositionOperations
+typealias RuntimeGuestActivationComposition = Bootstrap.RuntimeGuestActivationComposition

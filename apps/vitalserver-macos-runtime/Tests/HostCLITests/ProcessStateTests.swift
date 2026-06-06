@@ -162,8 +162,8 @@ final class ProcessStateTests: XCTestCase {
             processExists: { _ in XCTFail("Missing pid file should fail before process probing"); return false },
             signalProcess: { _, _ in XCTFail("Missing pid file should fail before signaling"); return 0 }
         )) { error in
-            guard case LauncherError.runtimeOperationFailed(let message) = error else {
-                return XCTFail("Expected runtimeOperationFailed, got \(error)")
+            guard case ProcessStateError.runtimeOperationFailed(let message) = error else {
+                return XCTFail("Expected ProcessStateError.runtimeOperationFailed, got \(error)")
             }
             XCTAssertTrue(message.contains("pid file is missing"))
         }
@@ -340,8 +340,8 @@ final class ProcessStateTests: XCTestCase {
             fileStore: fileStore,
             processExists: { _ in false }
         )) { error in
-            guard case LauncherError.runtimeOperationFailed(let message) = error else {
-                return XCTFail("Expected runtimeOperationFailed, got \(error)")
+            guard case ProcessStateError.runtimeOperationFailed(let message) = error else {
+                return XCTFail("Expected ProcessStateError.runtimeOperationFailed, got \(error)")
             }
             XCTAssertTrue(message.contains("stale"))
             XCTAssertTrue(message.contains("123"))
@@ -360,8 +360,8 @@ final class ProcessStateTests: XCTestCase {
             pollIntervalSeconds: 0.001,
             processExists: { _ in false }
         )) { error in
-            guard case LauncherError.runtimeOperationFailed(let message) = error else {
-                return XCTFail("Expected runtimeOperationFailed, got \(error)")
+            guard case ProcessStateError.runtimeOperationFailed(let message) = error else {
+                return XCTFail("Expected ProcessStateError.runtimeOperationFailed, got \(error)")
             }
             XCTAssertTrue(message.contains("invalid VM process pid file"))
         }
@@ -380,8 +380,8 @@ final class ProcessStateTests: XCTestCase {
             processExists: { _ in false },
             signalProcess: { _, _ in XCTFail("Invalid pid file should fail before signaling"); return 0 }
         )) { error in
-            guard case LauncherError.runtimeOperationFailed(let message) = error else {
-                return XCTFail("Expected runtimeOperationFailed, got \(error)")
+            guard case ProcessStateError.runtimeOperationFailed(let message) = error else {
+                return XCTFail("Expected ProcessStateError.runtimeOperationFailed, got \(error)")
             }
             XCTAssertTrue(message.contains("invalid VM process pid file"))
         }

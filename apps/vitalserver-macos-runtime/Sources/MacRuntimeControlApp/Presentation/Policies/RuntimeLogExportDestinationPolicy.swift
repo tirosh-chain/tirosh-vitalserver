@@ -1,4 +1,9 @@
 import Foundation
+import Interfaces
+
+typealias RuntimeLogExportDirectoryState = Interfaces.RuntimeLogExportDirectoryState
+typealias RuntimeLogExportDestinationFacts = Interfaces.RuntimeLogExportDestinationFacts
+typealias RuntimeLogExportDestinationValidationResult = Interfaces.RuntimeLogExportDestinationValidationResult
 
 protocol RuntimePathPermissionFileManaging {
     func fileExists(atPath path: String, isDirectory: UnsafeMutablePointer<ObjCBool>?) -> Bool
@@ -9,50 +14,18 @@ extension FileManager: RuntimePathPermissionFileManaging {}
 
 struct RuntimeLogExportDestinationPolicy {
     private let fileManager: RuntimePathPermissionFileManaging
+    private let destinationPolicy = Interfaces.RuntimeLogExportDestinationPolicy()
 
     init(fileManager: RuntimePathPermissionFileManaging = FileManager.default) {
         self.fileManager = fileManager
     }
 
     func validationMessage(for url: URL) -> String? {
-        guard url.isFileURL, !url.path.isEmpty else {
-            return AppConstants.StatusText.logExportDestinationInvalid
-        }
-
-        let standardized = url.standardizedFileURL
-        if isExistingDirectory(standardized) {
-            return AppConstants.StatusText.logExportDestinationDirectory
-        }
-
-        if standardized.pathExtension.lowercased() != "zip" {
-            return AppConstants.StatusText.logExportDestinationInvalid
-        }
-
-        let parent = standardized.deletingLastPathComponent()
-        guard canUseDirectory(parent) else {
-            return AppConstants.StatusText.logExportDestinationProtected
-        }
-
-        guard let writableDirectory = nearestExistingDirectory(from: parent) else {
-            return AppConstants.StatusText.logExportDestinationInvalid
-        }
-
-        guard fileManager.isWritableFile(atPath: writableDirectory.path) else {
-            return AppConstants.StatusText.logExportDestinationNotWritable
-        }
-
-        return nil
+        validationMessage(for: destinationPolicy.validationResult(for: destinationFacts(for: url)))
     }
 
     func canNavigateDirectory(_ url: URL) -> Bool {
-        canUseDirectory(url.standardizedFileURL)
-    }
-
-    private func canUseDirectory(_ url: URL) -> Bool {
-        let path = url.standardizedFileURL.path
-        return !isICloudDrivePath(path)
-            && !isProtectedUserPath(path)
-            && !isSystemManagedPath(path)
+        destinationPolicy.canNavigateDirectoryPath(url.standardizedFileURL.path)
     }
 
     private func isExistingDirectory(_ url: URL) -> Bool {
@@ -77,34 +50,40 @@ struct RuntimeLogExportDestinationPolicy {
         }
     }
 
-    private func isICloudDrivePath(_ path: String) -> Bool {
-        path.contains("/Library/Mobile Documents/")
-            || path.hasSuffix("/Library/Mobile Documents")
+    private func destinationFacts(for url: URL) -> RuntimeLogExportDestinationFacts {
+        let standardized = url.standardizedFileURL
+        let parent = standardized.deletingLastPathComponent()
+        return RuntimeLogExportDestinationFacts(
+            isFileURL: url.isFileURL,
+            path: standardized.path,
+            pathExtension: standardized.pathExtension,
+            isExistingDirectoryDestination: isExistingDirectory(standardized),
+            nearestExistingDirectory: nearestExistingDirectoryState(from: parent)
+        )
     }
 
-    private func isProtectedUserPath(_ path: String) -> Bool {
-        let components = URL(fileURLWithPath: path).standardizedFileURL.pathComponents
-        guard components.count >= 4,
-              components[0] == "/",
-              components[1] == "Users" else {
-            return false
+    private func nearestExistingDirectoryState(from url: URL) -> RuntimeLogExportDirectoryState? {
+        guard let directory = nearestExistingDirectory(from: url) else {
+            return nil
         }
-        return ["Desktop", "Documents"].contains(components[3])
+        return RuntimeLogExportDirectoryState(
+            path: directory.path,
+            isWritable: fileManager.isWritableFile(atPath: directory.path)
+        )
     }
 
-    private func isSystemManagedPath(_ path: String) -> Bool {
-        path == "/"
-            || path == "/Applications"
-            || path.hasPrefix("/Applications/")
-            || path == "/Library"
-            || path.hasPrefix("/Library/")
-            || path == "/System"
-            || path.hasPrefix("/System/")
-            || path == "/bin"
-            || path.hasPrefix("/bin/")
-            || path == "/sbin"
-            || path.hasPrefix("/sbin/")
-            || path == "/usr"
-            || (path.hasPrefix("/usr/") && !path.hasPrefix("/usr/local/"))
+    private func validationMessage(for result: RuntimeLogExportDestinationValidationResult) -> String? {
+        switch result {
+        case .valid:
+            return nil
+        case .invalidDestination:
+            return AppConstants.StatusText.logExportDestinationInvalid
+        case .existingDirectoryDestination:
+            return AppConstants.StatusText.logExportDestinationDirectory
+        case .protectedDirectory:
+            return AppConstants.StatusText.logExportDestinationProtected
+        case .parentDirectoryNotWritable:
+            return AppConstants.StatusText.logExportDestinationNotWritable
+        }
     }
 }

@@ -1,5 +1,5 @@
 import Contracts
-import Core
+import Domain
 
 public struct RuntimeHealthRefreshPorts {
     public var healthSnapshot: () -> RuntimeHealthSnapshot

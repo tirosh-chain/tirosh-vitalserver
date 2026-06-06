@@ -1,5 +1,5 @@
 import Contracts
-import Core
+import Domain
 
 public struct RuntimeHealthWaitPorts {
     public var serviceStates: ([RuntimeManagedService]) -> [RuntimeManagedService: RuntimeServiceState]

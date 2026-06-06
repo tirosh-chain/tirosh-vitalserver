@@ -1,6 +1,6 @@
 import Contracts
 import Foundation
-import RuntimeWorkflow
+import Workflow
 import XCTest
 
 final class RuntimeBundlePreparationWorkflowTests: XCTestCase {

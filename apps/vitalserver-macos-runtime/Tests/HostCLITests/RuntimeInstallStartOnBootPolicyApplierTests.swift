@@ -1,5 +1,5 @@
 import Contracts
-@testable import HostCLI
+import HostAdapters
 import XCTest
 
 final class RuntimeInstallStartOnBootPolicyApplierTests: XCTestCase {

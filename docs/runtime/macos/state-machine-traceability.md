@@ -29,20 +29,21 @@ traceability 증거를 고정하는 것입니다. AGENTS.md 기준에 따라 sta
 | Layer | 해야 하는 일 | 하지 말아야 하는 일 |
 |---|---|---|
 | `Contracts` | persisted state document, event, command/result DTO를 정의 | Host/Guest 내부 구현을 import |
-| `Core` | pure transition policy, guard, invariant를 계산 | filesystem/process/network/log 읽기 |
-| `RuntimeWorkflow` | explicit state를 port로 읽고 Core command를 실행 순서에 맞게 소비 | 상태를 absence/log/probe로 추론 |
+| `Domain` | 최종 구조의 pure transition policy, guard, invariant를 계산 | filesystem/process/network/log 읽기 |
+| `Core` | 전환기 legacy import compatibility shim을 제공 | policy/model/port ownership, filesystem/process/network/log 읽기 |
+| `RuntimeWorkflow` | explicit state를 `Application/Ports`로 읽고 `Domain` decision을 실행 순서에 맞게 소비 | 상태를 absence/log/probe로 추론 |
 | `HostInfrastructure` | host file/process/SQLite/shared directory read/write 결과를 typed result로 제공 | dependency failure를 empty/default success로 변환 |
 | `RuntimeControlAPI` | transport response에서 read state/error semantics를 보존 | command/read failure를 성공 payload로 축소 |
 | UI/PWA | explicit state를 표시하고 operator action을 요청 | domain state, recovery decision, operation transition 생성 |
 
 ## Current Traceability Map
 
-| Flow | Current owner | Persisted/read document | Core policy | Workflow/API surface | Primary verification |
+| Flow | Current owner | Persisted/read document | Domain/Core policy | Workflow/API surface | Primary verification |
 |---|---|---|---|---|---|
-| Install | Host runtime | `RuntimeInstallStateDocument` | `RuntimeInstallTransitionPolicy` | `RuntimeWorkflow/Install`, `HostCLI install` | `RuntimeInstallTransitionPolicyTests`, `RuntimeInstallWorkflowTests` |
-| Uninstall | Host runtime | `RuntimeUninstallStateDocument` | `RuntimeUninstallTransitionPolicy` | `RuntimeWorkflow/Uninstall`, `HostCLI uninstall` | `RuntimeUninstallTransitionPolicyTests`, `RuntimeUninstallWorkflowTests` |
+| Install | Host runtime | `RuntimeInstallStateDocument` | Domain `RuntimeInstallTransitionPolicy`, Domain `RuntimeOperationPlan` | `Workflow/RuntimeInstallLifecycle`, `HostCLI install` | `DomainRuntimeInstallTransitionPolicyTests`, `RuntimeInstallTransitionPolicyTests`, `RuntimeInstallWorkflowTests` |
+| Uninstall | Host runtime | `RuntimeUninstallStateDocument` | Domain `RuntimeUninstallTransitionPolicy`, Domain `RuntimeUninstallReadinessPolicy` | `Workflow/RuntimeUninstallLifecycle`, `HostCLI uninstall` | `DomainRuntimeUninstallTransitionPolicyTests`, `RuntimeUninstallTransitionPolicyTests`, `RuntimeUninstallWorkflowTests` |
 | Product update | Host updater + guest activation result | `runtime-status.json`, `activate-update.request`, `activate-update-result.json`, `runtime-version.json` | update preflight and compatibility policies | `apply-bundle`, `/host/update-bundles/*` | update preflight, bundle verifier, activation result tests |
-| Watchdog recovery | Host watchdog | `runtime-status.json`, `runtime-events.jsonl`, health snapshot inputs | `RuntimeWatchdogRecoveryPolicy`, health policies | watchdog loop, `/runtime/status`, `/runtime/events` | recovery policy and observability tests |
+| Watchdog recovery | Host watchdog | `runtime-status.json`, `runtime-events.jsonl`, health snapshot inputs | Domain `RuntimeWatchdogRecoveryPolicy`, health policies | Workflow `RuntimeWatchdogRunner`, `/runtime/status`, `/runtime/events` | recovery policy and observability tests |
 | Guest operation result | Guest operation script | guest request/result JSON documents | guest activation/shutdown/datastore evaluators | Host guest gateway readers | guest evaluator and result gateway tests |
 | Vital Recorder read model | VitalDB observer + host observability projection | latest observation snapshot, SQLite projection | recorder summary/history construction policy | `/vitaldb/recorders`, `/runtime/overview` | RuntimeControl contract tests, PWA schema tests |
 | Log collection/export | Host log collector/exporter | raw logs, helper message log, JSONL, SQLite sidecars | no domain transition policy | `/host/logs/read`, `/host/logs/export` | log collector/exporter tests |
@@ -67,7 +68,7 @@ Diagnostics:
 
 - Install state document.
 - command log.
-- runtime status/progress event.
+- runtime status/progress event. `RuntimeStepExecutionEvent` is a shared `Contracts` value, not a `Core`-owned transition rule.
 - package preinstall/postinstall logs.
 
 ### Uninstall
@@ -75,7 +76,7 @@ Diagnostics:
 Owner:
 
 - Host runtime owns uninstall operation state.
-- Core transition policy owns the phase/command rules.
+- Domain transition policy owns the phase/command rules. `Core` exposes compatibility aliases during migration.
 
 Invariants:
 
@@ -95,7 +96,7 @@ Diagnostics:
 
 Owner:
 
-- Host updater owns bundle verification, staging, backup, host artifact replacement, rollback decision, and status writes.
+- Domain owns bundle verification policy. Workflow owns bundle materialization, verification, staging, host artifact replacement order, rollback decision, and status write sequencing. Host adapters supply concrete filesystem/process effects.
 - Guest activation script owns guest activation result document.
 
 States:

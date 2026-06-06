@@ -13,6 +13,9 @@ final class RuntimeHostProxyPortCleanerTests: XCTestCase {
             proxyServiceLoaded: { false },
             expectedProxyNginxPID: { .loaded("123") },
             ownedNginxPathFragments: ["/Library/Application Support/VitalServerHelper/nginx"],
+            lsofPath: Constants.Commands.lsof,
+            psPath: Constants.Commands.ps,
+            killPath: Constants.Commands.kill,
             runProcess: { executable, arguments in
                 commands.append((executable, arguments))
                 if executable == Constants.Commands.lsof {
@@ -41,6 +44,9 @@ final class RuntimeHostProxyPortCleanerTests: XCTestCase {
             proxyServiceLoaded: { false },
             expectedProxyNginxPID: { .missing },
             ownedNginxPathFragments: ["/Library/Application Support/VitalServerHelper/nginx"],
+            lsofPath: Constants.Commands.lsof,
+            psPath: Constants.Commands.ps,
+            killPath: Constants.Commands.kill,
             runProcess: { executable, arguments in
                 switch executable {
                 case Constants.Commands.lsof:
@@ -76,6 +82,9 @@ final class RuntimeHostProxyPortCleanerTests: XCTestCase {
             proxyServiceLoaded: { false },
             expectedProxyNginxPID: { .missing },
             ownedNginxPathFragments: ["/Library/Application Support/VitalServerHelper/nginx"],
+            lsofPath: Constants.Commands.lsof,
+            psPath: Constants.Commands.ps,
+            killPath: Constants.Commands.kill,
             runProcess: { executable, _ in
                 if executable == Constants.Commands.lsof {
                     return RuntimeProcessResult(exitCode: 0, stdout: Self.lsof(["httpd", "789"]), stderr: "")
@@ -100,6 +109,9 @@ final class RuntimeHostProxyPortCleanerTests: XCTestCase {
             proxyServiceLoaded: { false },
             expectedProxyNginxPID: { .missing },
             ownedNginxPathFragments: ["/Library/Application Support/VitalServerHelper/nginx"],
+            lsofPath: Constants.Commands.lsof,
+            psPath: Constants.Commands.ps,
+            killPath: Constants.Commands.kill,
             runProcess: { executable, arguments in
                 switch executable {
                 case Constants.Commands.lsof:
@@ -153,6 +165,9 @@ final class RuntimeHostProxyPortCleanerTests: XCTestCase {
             proxyServiceLoaded: { false },
             expectedProxyNginxPID: { .missing },
             ownedNginxPathFragments: ["/Library/Application Support/VitalServerHelper/nginx"],
+            lsofPath: Constants.Commands.lsof,
+            psPath: Constants.Commands.ps,
+            killPath: Constants.Commands.kill,
             runProcess: { executable, _ in
                 if executable == Constants.Commands.lsof {
                     return RuntimeProcessResult(exitCode: 1, stdout: "", stderr: "permission denied")
@@ -176,6 +191,9 @@ final class RuntimeHostProxyPortCleanerTests: XCTestCase {
             proxyServiceLoaded: { false },
             expectedProxyNginxPID: { .missing },
             ownedNginxPathFragments: ["/Library/Application Support/VitalServerHelper/nginx"],
+            lsofPath: Constants.Commands.lsof,
+            psPath: Constants.Commands.ps,
+            killPath: Constants.Commands.kill,
             runProcess: { executable, _ in
                 if executable == Constants.Commands.lsof {
                     return RuntimeProcessResult(exitCode: 1, stdout: "", stderr: "")
@@ -198,6 +216,9 @@ final class RuntimeHostProxyPortCleanerTests: XCTestCase {
             proxyServiceLoaded: { true },
             expectedProxyNginxPID: { .loaded("123") },
             ownedNginxPathFragments: ["/Library/Application Support/VitalServerHelper/nginx"],
+            lsofPath: Constants.Commands.lsof,
+            psPath: Constants.Commands.ps,
+            killPath: Constants.Commands.kill,
             runProcess: { executable, arguments in
                 switch executable {
                 case Constants.Commands.lsof:
@@ -226,6 +247,9 @@ final class RuntimeHostProxyPortCleanerTests: XCTestCase {
             proxyServiceLoaded: { false },
             expectedProxyNginxPID: { .readFailed("permission denied") },
             ownedNginxPathFragments: ["/Library/Application Support/VitalServerHelper/nginx"],
+            lsofPath: Constants.Commands.lsof,
+            psPath: Constants.Commands.ps,
+            killPath: Constants.Commands.kill,
             runProcess: { executable, arguments in
                 switch executable {
                 case Constants.Commands.lsof:

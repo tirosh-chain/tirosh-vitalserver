@@ -1,0 +1,3 @@
+import Bootstrap
+
+typealias RuntimeManagedOperationGuardComposition = Bootstrap.RuntimeManagedOperationGuardComposition

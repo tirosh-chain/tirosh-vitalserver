@@ -1,0 +1,4 @@
+import Bootstrap
+
+typealias RuntimeStatusWriterCompositionOperations = Bootstrap.RuntimeStatusWriterCompositionOperations
+typealias RuntimeStatusWriterComposition = Bootstrap.RuntimeStatusWriterComposition

@@ -189,6 +189,7 @@ final class RuntimeManagedOperationGuardTests: XCTestCase {
         RuntimeManagedOperationGuard(
             statusReporter: RuntimeStatusReporter(
                 repository: repository,
+                productIdentifier: Constants.Product.identifier,
                 productRoot: URL(fileURLWithPath: "/product"),
                 runtimeHome: URL(fileURLWithPath: "/product/vm")
             ),

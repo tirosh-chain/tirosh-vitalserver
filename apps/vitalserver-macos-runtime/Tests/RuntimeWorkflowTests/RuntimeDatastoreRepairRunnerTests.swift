@@ -1,6 +1,5 @@
 import Contracts
-import Core
-import RuntimeWorkflow
+import Workflow
 import XCTest
 
 final class RuntimeDatastoreRepairRunnerTests: XCTestCase {
@@ -52,7 +51,7 @@ final class RuntimeDatastoreRepairRunnerTests: XCTestCase {
 
     func testRunStopsBeforeWritingRequestWhenCapabilityIsMissing() {
         let harness = DatastoreRepairHarness()
-        harness.capabilityError = RuntimeWorkflowError.operationFailed("guest capability missing: repair-datastore")
+        harness.capabilityError = RuntimeDatastoreRepairWorkflowError.operationFailed("guest capability missing: repair-datastore")
 
         XCTAssertThrowsError(try harness.runner.run()) { error in
             XCTAssertEqual(String(describing: error), "guest capability missing: repair-datastore")

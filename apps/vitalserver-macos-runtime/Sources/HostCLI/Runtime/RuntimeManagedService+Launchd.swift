@@ -1,23 +1,12 @@
-import Core
+import Bootstrap
 import Contracts
 
 extension RuntimeManagedService {
     var launchDaemonPlist: String {
-        "\(Constants.InstallPaths.launchDaemons)/\(label).plist"
+        RuntimeManagedServicePaths.launchDaemonPlist(self)
     }
 
     var displayName: String {
-        switch self {
-        case .vm:
-            "VM"
-        case .proxy:
-            "proxy"
-        case .guestLogSync:
-            "guest log sync"
-        case .sleepPrevention:
-            "sleep prevention"
-        case .watchdog:
-            "watchdog"
-        }
+        RuntimeManagedServicePaths.displayName(self)
     }
 }

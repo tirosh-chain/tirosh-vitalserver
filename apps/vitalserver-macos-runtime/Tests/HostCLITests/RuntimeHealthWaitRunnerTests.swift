@@ -1,6 +1,7 @@
 import Core
 import Contracts
 @testable import HostCLI
+import Workflow
 import XCTest
 
 final class RuntimeHealthWaitRunnerTests: XCTestCase {
@@ -47,7 +48,7 @@ final class RuntimeHealthWaitRunnerTests: XCTestCase {
             restartProxy: false,
             restartWatchdog: false
         ))) { error in
-            XCTAssertEqual(String(describing: error), String(describing: LauncherError.runtimeHealthFailed))
+            XCTAssertEqual(String(describing: error), String(describing: RuntimeHealthWaitRunnerError.runtimeHealthFailed))
         }
         XCTAssertTrue(harness.events.contains("log:runtime health failed early reason=guest-bootstrap-failed"))
     }
@@ -62,7 +63,7 @@ final class RuntimeHealthWaitRunnerTests: XCTestCase {
             restartProxy: false,
             restartWatchdog: false
         ))) { error in
-            XCTAssertEqual(String(describing: error), String(describing: LauncherError.runtimeHealthFailed))
+            XCTAssertEqual(String(describing: error), String(describing: RuntimeHealthWaitRunnerError.runtimeHealthFailed))
         }
         XCTAssertTrue(harness.events.contains {
             $0.contains("guest-log-sync-service-not-loaded")
@@ -86,6 +87,11 @@ private final class HealthWaitHarness {
 
     var runner: RuntimeHealthWaitRunner {
         RuntimeHealthWaitRunner(
+            configuration: RuntimeHealthWaitWorkflowConfiguration(
+                timeoutSeconds: 9.0,
+                pollIntervalSeconds: 3.0,
+                progressEveryAttempts: 5
+            ),
             serviceStates: { services in
                 Dictionary(uniqueKeysWithValues: services.map { service in
                     (service, self.loadedServices.contains(service) ? .loaded : .notLoaded)

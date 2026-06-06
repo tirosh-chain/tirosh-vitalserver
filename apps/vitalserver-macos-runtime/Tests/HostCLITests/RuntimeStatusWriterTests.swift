@@ -10,6 +10,7 @@ final class RuntimeStatusWriterTests: XCTestCase {
         let snapshot = healthSnapshot(vitalDBObservation: observation)
         let reporter = RuntimeStatusReporter(
             repository: repository,
+            productIdentifier: Constants.Product.identifier,
             productRoot: URL(fileURLWithPath: "/product"),
             runtimeHome: URL(fileURLWithPath: "/product/vm")
         )

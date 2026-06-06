@@ -1,0 +1,5 @@
+import Bootstrap
+
+typealias RuntimeVersionStoreCompositionContext = Bootstrap.RuntimeVersionStoreCompositionContext
+typealias RuntimeVersionStoreCompositionOperations = Bootstrap.RuntimeVersionStoreCompositionOperations
+typealias RuntimeVersionStoreComposition = Bootstrap.RuntimeVersionStoreComposition

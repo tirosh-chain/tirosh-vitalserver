@@ -1,4 +1,3 @@
-import Contracts
-public protocol RuntimeHTTPProber {
-    func statusCode(url: String) -> String
-}
+import Application
+
+public typealias RuntimeHTTPProber = Application.RuntimeHTTPProber

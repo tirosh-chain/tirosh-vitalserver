@@ -1,0 +1,5 @@
+import Bootstrap
+
+typealias RuntimeRedisBackupCompositionContext = Bootstrap.RuntimeRedisBackupCompositionContext
+typealias RuntimeRedisBackupCompositionOperations = Bootstrap.RuntimeRedisBackupCompositionOperations
+typealias RuntimeRedisBackupComposition = Bootstrap.RuntimeRedisBackupComposition

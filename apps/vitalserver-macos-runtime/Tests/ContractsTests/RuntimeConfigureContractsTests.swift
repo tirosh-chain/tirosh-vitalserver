@@ -40,6 +40,14 @@ final class RuntimeConfigureContractsTests: XCTestCase {
         XCTAssertNil(RuntimeBooleanParser.parse("maybe"))
     }
 
+    func testRuntimeNetworkModePreservesSharedAndBridgedValues() {
+        XCTAssertEqual(RuntimeNetworkMode(rawValue: "shared"), .shared)
+        XCTAssertEqual(RuntimeNetworkMode(rawValue: "bridged"), .bridged)
+        XCTAssertNil(RuntimeNetworkMode(rawValue: "host"))
+        XCTAssertEqual(RuntimeNetworkMode.shared.rawValue, "shared")
+        XCTAssertEqual(RuntimeNetworkMode.bridged.rawValue, "bridged")
+    }
+
     func testTextValidatorRejectsNewlines() {
         XCTAssertTrue(RuntimeTextValidator.isSingleLine("value"))
         XCTAssertFalse(RuntimeTextValidator.isSingleLine("line\nbreak"))

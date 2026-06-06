@@ -1,11 +1,4 @@
-import Contracts
+import Application
 
-public enum RuntimeStorageUsageResult: Equatable, Sendable {
-    case unavailable
-    case loaded(ResourceUsage)
-    case failed(String)
-}
-
-public protocol RuntimeStorageUsageProviding {
-    func storageUsage(for path: String) -> RuntimeStorageUsageResult
-}
+public typealias RuntimeStorageUsageResult = Application.RuntimeStorageUsageResult
+public typealias RuntimeStorageUsageProviding = Application.RuntimeStorageUsageProviding

@@ -29,7 +29,8 @@ final class RuntimeBackupStoreTests: XCTestCase {
             RuntimeManagedBackupArtifact.nginxBundle.restoreDestination(
                 managerAppPath: paths.managerApp,
                 nginxDirectory: paths.nginxBundle,
-                deployDirectory: paths.guestDeploy
+                deployDirectory: paths.guestDeploy,
+                runtimeToolsDirectory: paths.runtimeTools
             ),
             paths.nginxBundle
         )
@@ -211,7 +212,7 @@ final class RuntimeBackupStoreTests: XCTestCase {
         let store = makeStore(childDirectories: { _, _ in [] })
 
         XCTAssertThrowsError(try store.requireLatestBackup()) { error in
-            XCTAssertEqual(String(describing: error), String(describing: LauncherError.missingArgument("no backups available")))
+            XCTAssertEqual(error as? RuntimeBackupStoreError, .noBackupsAvailable)
         }
     }
 
@@ -242,6 +243,18 @@ final class RuntimeBackupStoreTests: XCTestCase {
     ) -> RuntimeBackupStore {
         RuntimeBackupStore(
             paths: paths ?? makePaths(),
+            metadata: RuntimeBackupStoreMetadata(
+                productIdentifier: "ai.tirosh.vitalserver.helper",
+                rootfsBaseName: "rootfs-base.raw.gz",
+                runtimeVersionName: "runtime-version.json",
+                backupManifestName: "backup-manifest.json",
+                vmDiskName: "vm-disk.img",
+                runtimeToolPaths: [
+                    URL(fileURLWithPath: Constants.InstallPaths.vmBin),
+                    URL(fileURLWithPath: Constants.InstallPaths.proxyRun),
+                    URL(fileURLWithPath: Constants.InstallPaths.uninstall),
+                ]
+            ),
             timestamp: { "20260522T010203Z" },
             isoTimestamp: { "2026-05-22T01:02:03Z" },
             fileExists: fileExists,

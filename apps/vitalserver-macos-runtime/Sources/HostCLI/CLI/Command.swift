@@ -1,22 +1,3 @@
-enum Command: String {
-    case initialize = "init"
-    case start
-    case stop
-    case status
-    case network
-    case interfaces
-    case configure
-    case runtime
-    case clean
-    case version
-    case help
+import Interfaces
 
-    static let helpAliases = ["--help", "-h"]
-
-    static func parse(_ value: String) -> Command? {
-        if helpAliases.contains(value) {
-            return .help
-        }
-        return Command(rawValue: value)
-    }
-}
+typealias Command = Interfaces.Command

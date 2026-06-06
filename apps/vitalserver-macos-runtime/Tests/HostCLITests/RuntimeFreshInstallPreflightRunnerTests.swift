@@ -9,6 +9,7 @@ final class RuntimeFreshInstallPreflightRunnerTests: XCTestCase {
 
         let state = RuntimeInstallSettingsStateReader.state(
             path: "/private/tmp/tirosh-vitalserver-install.json",
+            defaultProxyPort: InstallSettings.defaultProxyPort,
             fileStore: fileStore
         )
 
@@ -23,7 +24,11 @@ final class RuntimeFreshInstallPreflightRunnerTests: XCTestCase {
         let url = URL(fileURLWithPath: "/private/tmp/tirosh-vitalserver-install.json")
         fileStore.files[url] = Data(#"{"proxyPort":8080}"#.utf8)
 
-        let state = RuntimeInstallSettingsStateReader.state(path: url.path, fileStore: fileStore)
+        let state = RuntimeInstallSettingsStateReader.state(
+            path: url.path,
+            defaultProxyPort: InstallSettings.defaultProxyPort,
+            fileStore: fileStore
+        )
 
         XCTAssertEqual(state, .loaded(path: url.path, proxyPort: 8080))
     }
@@ -33,7 +38,11 @@ final class RuntimeFreshInstallPreflightRunnerTests: XCTestCase {
         let url = URL(fileURLWithPath: "/private/tmp/tirosh-vitalserver-install.json")
         fileStore.files[url] = Data(#"{"proxyPort":70000}"#.utf8)
 
-        let state = RuntimeInstallSettingsStateReader.state(path: url.path, fileStore: fileStore)
+        let state = RuntimeInstallSettingsStateReader.state(
+            path: url.path,
+            defaultProxyPort: InstallSettings.defaultProxyPort,
+            fileStore: fileStore
+        )
 
         XCTAssertEqual(
             state,
@@ -46,7 +55,11 @@ final class RuntimeFreshInstallPreflightRunnerTests: XCTestCase {
         let url = URL(fileURLWithPath: "/private/tmp/tirosh-vitalserver-install.json")
         fileStore.files[url] = Data(#"{"proxyPort":"80"}"#.utf8)
 
-        let state = RuntimeInstallSettingsStateReader.state(path: url.path, fileStore: fileStore)
+        let state = RuntimeInstallSettingsStateReader.state(
+            path: url.path,
+            defaultProxyPort: InstallSettings.defaultProxyPort,
+            fileStore: fileStore
+        )
 
         guard case .invalid(let path, let reason) = state else {
             return XCTFail("expected invalid settings state, got \(state)")
@@ -83,10 +96,10 @@ final class RuntimeFreshInstallPreflightRunnerTests: XCTestCase {
     }
 
     func testProxyPortReaderDistinguishesClearOccupiedAndInspectFailed() {
-        let clear = RuntimeHostProxyPortStateReader.state(port: 80) { _, _ in
+        let clear = RuntimeHostProxyPortStateReader.state(port: 80, lsofPath: Constants.Commands.lsof) { _, _ in
             RuntimeProcessResult(exitCode: 1, stdout: "", stderr: "")
         }
-        let occupied = RuntimeHostProxyPortStateReader.state(port: 80) { _, _ in
+        let occupied = RuntimeHostProxyPortStateReader.state(port: 80, lsofPath: Constants.Commands.lsof) { _, _ in
             RuntimeProcessResult(
                 exitCode: 0,
                 stdout: """
@@ -97,7 +110,7 @@ final class RuntimeFreshInstallPreflightRunnerTests: XCTestCase {
                 stderr: ""
             )
         }
-        let failed = RuntimeHostProxyPortStateReader.state(port: 80) { _, _ in
+        let failed = RuntimeHostProxyPortStateReader.state(port: 80, lsofPath: Constants.Commands.lsof) { _, _ in
             RuntimeProcessResult(exitCode: 2, stdout: "", stderr: "permission denied")
         }
 

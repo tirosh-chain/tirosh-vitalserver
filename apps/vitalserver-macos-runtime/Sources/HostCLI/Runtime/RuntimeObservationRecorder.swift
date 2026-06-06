@@ -1,28 +1,3 @@
-import Core
-import Contracts
-import Foundation
+import Workflow
 
-struct RuntimeObservationRecorder {
-    let eventRepository: any RuntimeEventRecording
-    let log: (String) -> Void
-
-    init(
-        eventRepository: any RuntimeEventRecording,
-        log: @escaping (String) -> Void
-    ) {
-        self.eventRepository = eventRepository
-        self.log = log
-    }
-
-    func recordEvent(_ event: RuntimeEventDocument) throws {
-        try eventRepository.append(event)
-    }
-
-    func recordEventBestEffort(_ event: RuntimeEventDocument) {
-        do {
-            try recordEvent(event)
-        } catch {
-            log("observability event recording failed eventType=\(event.eventType.rawValue) error=\(error.localizedDescription)")
-        }
-    }
-}
+typealias RuntimeObservationRecorder = Workflow.RuntimeObservationRecorder

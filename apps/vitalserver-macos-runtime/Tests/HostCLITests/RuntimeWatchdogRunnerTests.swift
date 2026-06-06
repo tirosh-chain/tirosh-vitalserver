@@ -1,8 +1,9 @@
-import Core
 import Contracts
-import RuntimeWorkflow
-@testable import HostCLI
+import Domain
+import Workflow
 import XCTest
+
+private let watchdogRecoveryWaitSeconds = 20.0
 
 final class RuntimeWatchdogRunnerTests: XCTestCase {
     func testSkipsRecoveryDuringActiveManagedOperation() throws {
@@ -93,7 +94,7 @@ final class RuntimeWatchdogRunnerTests: XCTestCase {
         XCTAssertEqual(harness.proxyLivenessPorts, [80])
         XCTAssertEqual(harness.vmRuntimeRestartCalls, 1)
         XCTAssertEqual(harness.restartedServices, [.proxy])
-        XCTAssertEqual(harness.sleepCalls, [Constants.Runtime.watchdogRecoveryWaitSeconds])
+        XCTAssertEqual(harness.sleepCalls, [watchdogRecoveryWaitSeconds])
         XCTAssertEqual(harness.writtenStatuses.map(\.status), [.recovering, .healthy])
         XCTAssertEqual(harness.observedStatuses.map(\.status), [.recovering, .healthy])
         XCTAssertEqual(harness.observedEvents.map(\.eventType), [
@@ -203,7 +204,7 @@ private final class WatchdogHarness {
     var runner: RuntimeWatchdogRunner {
         RuntimeWatchdogRunner(
             context: RuntimeWatchdogContext(
-                recoveryWaitSeconds: Constants.Runtime.watchdogRecoveryWaitSeconds
+                recoveryWaitSeconds: watchdogRecoveryWaitSeconds
             ),
             actions: RuntimeWatchdogActions(
                 prepareLogs: {

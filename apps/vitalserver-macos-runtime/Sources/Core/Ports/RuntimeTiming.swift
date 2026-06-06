@@ -1,10 +1,4 @@
-import Contracts
-import Foundation
+import Application
 
-public protocol RuntimeClock {
-    var now: Date { get }
-}
-
-public protocol RuntimeSleeper {
-    func sleep(forTimeInterval interval: TimeInterval)
-}
+public typealias RuntimeClock = Application.RuntimeClock
+public typealias RuntimeSleeper = Application.RuntimeSleeper

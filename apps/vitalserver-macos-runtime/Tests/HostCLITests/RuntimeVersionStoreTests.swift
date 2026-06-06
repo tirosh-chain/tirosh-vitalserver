@@ -88,6 +88,11 @@ final class RuntimeVersionStoreTests: XCTestCase {
     ) -> RuntimeVersionStore {
         RuntimeVersionStore(
             versionFile: URL(fileURLWithPath: "/product/vm/runtime/runtime-version.json"),
+            metadata: RuntimeVersionStoreMetadata(
+                productIdentifier: "ai.tirosh.vitalserver.helper",
+                rootfsBase: "rootfs-base.raw.gz",
+                vmDisk: "vm-disk.img"
+            ),
             timestamp: { "2026-05-22T01:02:03Z" },
             fileExists: fileExists,
             createDirectory: createDirectory,

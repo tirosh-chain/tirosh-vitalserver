@@ -15,6 +15,8 @@ final class RuntimeServiceControllerTests: XCTestCase {
         let controller = RuntimeServiceController(
             serviceManager: serviceManager,
             serviceState: { loaded.contains($0) ? .loaded : .notLoaded },
+            launchDaemonPlist: { $0.launchDaemonPlist },
+            launchctlPath: Constants.Commands.launchctl,
             log: { _ in }
         )
 
@@ -39,6 +41,8 @@ final class RuntimeServiceControllerTests: XCTestCase {
             serviceManager: serviceManager,
             serviceState: { loaded.contains($0) ? .loaded : .notLoaded },
             waitUntilStopped: { waitedLabels.append($0.label) },
+            launchDaemonPlist: { $0.launchDaemonPlist },
+            launchctlPath: Constants.Commands.launchctl,
             log: { _ in }
         )
 
@@ -64,6 +68,8 @@ final class RuntimeServiceControllerTests: XCTestCase {
             serviceState: { loaded.contains($0) ? .loaded : .notLoaded },
             prepareForStop: { events.append("prepare:\($0.label)") },
             waitUntilStopped: { events.append("wait:\($0.label)") },
+            launchDaemonPlist: { $0.launchDaemonPlist },
+            launchctlPath: Constants.Commands.launchctl,
             log: { _ in }
         )
 
@@ -82,6 +88,8 @@ final class RuntimeServiceControllerTests: XCTestCase {
             serviceManager: serviceManager,
             serviceState: { $0 == .vm ? .loaded : .notLoaded },
             prepareForStop: { _ in throw LauncherError.runtimeOperationFailed("graceful stop failed") },
+            launchDaemonPlist: { $0.launchDaemonPlist },
+            launchctlPath: Constants.Commands.launchctl,
             log: { _ in }
         )
 
@@ -95,6 +103,8 @@ final class RuntimeServiceControllerTests: XCTestCase {
         let controller = RuntimeServiceController(
             serviceManager: serviceManager,
             serviceState: { $0 == .watchdog ? .readFailed("exitCode=1 stderr=permission") : .notLoaded },
+            launchDaemonPlist: { $0.launchDaemonPlist },
+            launchctlPath: Constants.Commands.launchctl,
             log: { logs.append($0) }
         )
 
@@ -113,6 +123,8 @@ final class RuntimeServiceControllerTests: XCTestCase {
             serviceManager: serviceManager,
             serviceState: { $0 == .vm ? .loaded : .notLoaded },
             waitUntilStopped: { _ in throw LauncherError.runtimeOperationFailed("still running") },
+            launchDaemonPlist: { $0.launchDaemonPlist },
+            launchctlPath: Constants.Commands.launchctl,
             log: { _ in }
         )
 
@@ -125,6 +137,8 @@ final class RuntimeServiceControllerTests: XCTestCase {
         let controller = RuntimeServiceController(
             serviceManager: serviceManager,
             serviceState: { _ in .notLoaded },
+            launchDaemonPlist: { $0.launchDaemonPlist },
+            launchctlPath: Constants.Commands.launchctl,
             log: { _ in }
         )
 
@@ -144,6 +158,8 @@ final class RuntimeServiceControllerTests: XCTestCase {
         let controller = RuntimeServiceController(
             serviceManager: serviceManager,
             serviceState: { _ in .notLoaded },
+            launchDaemonPlist: { $0.launchDaemonPlist },
+            launchctlPath: Constants.Commands.launchctl,
             log: { _ in }
         )
 
@@ -162,6 +178,8 @@ final class RuntimeServiceControllerTests: XCTestCase {
         let controller = RuntimeServiceController(
             serviceManager: serviceManager,
             serviceState: { loaded.contains($0) ? .loaded : .notLoaded },
+            launchDaemonPlist: { $0.launchDaemonPlist },
+            launchctlPath: Constants.Commands.launchctl,
             log: { _ in }
         )
 
@@ -197,6 +215,8 @@ final class RuntimeServiceControllerTests: XCTestCase {
         let controller = RuntimeServiceController(
             serviceManager: serviceManager,
             serviceState: { loaded.contains($0) ? .loaded : .notLoaded },
+            launchDaemonPlist: { $0.launchDaemonPlist },
+            launchctlPath: Constants.Commands.launchctl,
             log: { _ in }
         )
 
@@ -225,6 +245,8 @@ final class RuntimeServiceControllerTests: XCTestCase {
         let controller = RuntimeServiceController(
             serviceManager: serviceManager,
             serviceState: { _ in .notLoaded },
+            launchDaemonPlist: { $0.launchDaemonPlist },
+            launchctlPath: Constants.Commands.launchctl,
             log: { logs.append($0) }
         )
 
@@ -255,6 +277,8 @@ final class RuntimeServiceControllerTests: XCTestCase {
         let controller = RuntimeServiceController(
             serviceManager: serviceManager,
             serviceState: { _ in .notLoaded },
+            launchDaemonPlist: { $0.launchDaemonPlist },
+            launchctlPath: Constants.Commands.launchctl,
             log: { logs.append($0) }
         )
 
@@ -282,6 +306,8 @@ final class RuntimeServiceControllerTests: XCTestCase {
         let controller = RuntimeServiceController(
             serviceManager: serviceManager,
             serviceState: { loaded.contains($0) ? .loaded : .notLoaded },
+            launchDaemonPlist: { $0.launchDaemonPlist },
+            launchctlPath: Constants.Commands.launchctl,
             log: { logs.append($0) }
         )
 
@@ -308,6 +334,8 @@ final class RuntimeServiceControllerTests: XCTestCase {
             serviceState: { loaded.contains($0) ? .loaded : .notLoaded },
             prepareForStop: { events.append("prepare:\($0.label)") },
             waitUntilStopped: { events.append("wait:\($0.label)") },
+            launchDaemonPlist: { $0.launchDaemonPlist },
+            launchctlPath: Constants.Commands.launchctl,
             log: { _ in }
         )
 
@@ -339,6 +367,8 @@ final class RuntimeServiceControllerTests: XCTestCase {
             serviceManager: serviceManager,
             serviceState: { $0 == .vm ? .loaded : .notLoaded },
             prepareForStop: { _ in throw LauncherError.runtimeOperationFailed("graceful stop failed") },
+            launchDaemonPlist: { $0.launchDaemonPlist },
+            launchctlPath: Constants.Commands.launchctl,
             log: { _ in }
         )
 
@@ -369,6 +399,8 @@ final class RuntimeServiceControllerTests: XCTestCase {
             waitForVMProcessExitAfterGuestPoweroff: { pid in
                 events.append("wait-vm-process:\(pid)")
             },
+            launchDaemonPlist: { $0.launchDaemonPlist },
+            launchctlPath: Constants.Commands.launchctl,
             log: { _ in }
         )
 
@@ -403,6 +435,8 @@ final class RuntimeServiceControllerTests: XCTestCase {
         let controller = RuntimeServiceController(
             serviceManager: serviceManager,
             serviceState: { _ in .notLoaded },
+            launchDaemonPlist: { $0.launchDaemonPlist },
+            launchctlPath: Constants.Commands.launchctl,
             log: { _ in }
         )
 

@@ -2,7 +2,7 @@ import Contracts
 import Core
 import Foundation
 import HostInfrastructure
-import RuntimeWorkflow
+import Workflow
 @testable import HostCLI
 import XCTest
 
@@ -303,6 +303,18 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
         var wroteManifest = false
         let store = RuntimeBackupStore(
             paths: paths,
+            metadata: RuntimeBackupStoreMetadata(
+                productIdentifier: "ai.tirosh.vitalserver.helper",
+                rootfsBaseName: "rootfs-base.raw.gz",
+                runtimeVersionName: "runtime-version.json",
+                backupManifestName: "backup-manifest.json",
+                vmDiskName: "vm-disk.img",
+                runtimeToolPaths: [
+                    URL(fileURLWithPath: Constants.InstallPaths.vmBin),
+                    URL(fileURLWithPath: Constants.InstallPaths.proxyRun),
+                    URL(fileURLWithPath: Constants.InstallPaths.uninstall),
+                ]
+            ),
             timestamp: { "20260531T000000Z" },
             isoTimestamp: { "2026-05-31T00:00:00Z" },
             fileExists: { url in url == paths.rootfsBase },

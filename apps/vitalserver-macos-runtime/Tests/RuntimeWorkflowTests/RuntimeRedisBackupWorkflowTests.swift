@@ -1,6 +1,6 @@
 import Contracts
 import Foundation
-import RuntimeWorkflow
+import Workflow
 import XCTest
 
 final class RuntimeRedisBackupWorkflowTests: XCTestCase {
@@ -95,7 +95,7 @@ final class RuntimeRedisBackupWorkflowTests: XCTestCase {
     }
 
     private func errorDescription(_ error: Error) -> String {
-        if case RuntimeWorkflowError.operationFailed(let message) = error {
+        if case RuntimeRedisBackupWorkflowError.operationFailed(let message) = error {
             return message
         }
         return String(describing: error)

@@ -1,7 +1,7 @@
 import Contracts
-import Core
+import Domain
 import Foundation
-import RuntimeWorkflow
+import Workflow
 import XCTest
 
 final class RuntimeApplyBundleWorkflowTests: XCTestCase {

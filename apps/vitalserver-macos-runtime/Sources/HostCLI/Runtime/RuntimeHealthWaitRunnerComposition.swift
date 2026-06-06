@@ -1,0 +1,4 @@
+import Bootstrap
+
+typealias RuntimeHealthWaitRunnerCompositionOperations = Bootstrap.RuntimeHealthWaitRunnerCompositionOperations
+typealias RuntimeHealthWaitRunnerComposition = Bootstrap.RuntimeHealthWaitRunnerComposition

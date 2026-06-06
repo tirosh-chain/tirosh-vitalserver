@@ -2,7 +2,7 @@ import Foundation
 import Core
 import Contracts
 import HostInfrastructure
-import RuntimeWorkflow
+import Workflow
 
 extension RuntimeLifecycle {
     func latestBackup() -> URL? {
@@ -15,45 +15,31 @@ extension RuntimeLifecycle {
     }
 
     func backupStore() -> RuntimeBackupStore {
-        RuntimeBackupStore(
-            paths: RuntimeBackupStorePaths(
-                backupsDirectory: backupsDirectory,
-                rootfsBase: rootfsBase,
-                runtimeVersion: runtimeVersion,
-                managerApp: URL(fileURLWithPath: Constants.Product.managerAppPath),
-                nginxBundle: installedPaths.nginxDirectory,
-                guestDeploy: installedPaths.deployDirectory,
-                runtimeTools: URL(fileURLWithPath: "/usr/local/bin")
+        RuntimeBackupStoreComposition.make(
+            context: RuntimeBackupStoreCompositionContext(
+                installedPaths: installedPaths
             ),
-            timestamp: backupTimestamp,
-            isoTimestamp: isoTimestamp,
-            fileExists: fileExists,
-            directoryExists: directoryExists,
-            createDirectory: { url, withIntermediateDirectories in
-                try fileStore.createDirectory(at: url, withIntermediateDirectories: withIntermediateDirectories)
-            },
-            copyItem: { source, destination in try fileStore.copyItem(at: source, to: destination) },
-            removeItem: { url in try fileStore.removeItem(at: url) },
-            writeData: { data, url in try fileStore.writeData(data, to: url, options: []) },
-            contentsOfDirectory: { url in try fileStore.contentsOfDirectory(at: url, skipsHiddenFiles: false) },
-            childDirectories: { url, fragment in
-                try fileStore.childDirectories(at: url, nameContains: fragment, skipsHiddenFiles: true)
-            },
-            chmodExecutable: { url in try runRequired(Constants.Commands.chmod, arguments: ["0755", url.path]) },
-            log: log
+            operations: RuntimeBackupStoreCompositionOperations(
+                fileStore: fileStore,
+                timestamp: backupTimestamp,
+                isoTimestamp: isoTimestamp,
+                runRequired: { executable, arguments in
+                    _ = try runRequired(executable, arguments: arguments)
+                },
+                log: log
+            )
         )
     }
 
     func runtimeVersionStore() -> RuntimeVersionStore {
-        RuntimeVersionStore(
-            versionFile: runtimeVersion,
-            timestamp: isoTimestamp,
-            fileExists: fileExists,
-            createDirectory: { url, withIntermediateDirectories in
-                try fileStore.createDirectory(at: url, withIntermediateDirectories: withIntermediateDirectories)
-            },
-            readData: { url in try fileStore.readData(url) },
-            writeData: { data, url in try fileStore.writeData(data, to: url, options: []) }
+        RuntimeVersionStoreComposition.make(
+            context: RuntimeVersionStoreCompositionContext(
+                installedPaths: installedPaths
+            ),
+            operations: RuntimeVersionStoreCompositionOperations(
+                fileStore: fileStore,
+                timestamp: isoTimestamp
+            )
         )
     }
 
@@ -184,6 +170,9 @@ extension RuntimeLifecycle {
                 installedPaths.nginxDirectory.path,
                 "vitalserver-nginx.conf",
             ],
+            lsofPath: Constants.Commands.lsof,
+            psPath: Constants.Commands.ps,
+            killPath: Constants.Commands.kill,
             runProcess: runProcess,
             log: log
         ).cleanupBeforeStartingProxy()
@@ -203,188 +192,76 @@ extension RuntimeLifecycle {
                 installedPaths.nginxDirectory.path,
                 "vitalserver-nginx.conf",
             ],
+            lsofPath: Constants.Commands.lsof,
+            psPath: Constants.Commands.ps,
+            killPath: Constants.Commands.kill,
             runProcess: runProcess,
             log: log
         ).cleanupOwnedListenersAfterProxyStop()
     }
 
     func runtimeHealthWaitRunner() -> RuntimeHealthWaitRunner {
-        RuntimeHealthWaitRunner(
-            serviceStates: { services in
-                Dictionary(uniqueKeysWithValues: services.map { service in
-                    (service, healthChecker.launchdState(service))
-                })
-            },
-            healthSnapshot: runtimeHealthSnapshot,
-            writeStatusBestEffort: { status, operation, message in
-                writeRuntimeStatusBestEffort(
-                    status,
-                    operation: operation,
-                    message: message,
-                    writeStatus: { status, operation, message in
-                        try writeRuntimeStatus(status, operation: operation, message: message)
-                    },
-                    log: log
-                )
-            },
-            sleep: {
-                sleeper.sleep(forTimeInterval: 3)
-            },
-            log: log
+        RuntimeHealthWaitRunnerComposition.make(
+            operations: RuntimeHealthWaitRunnerCompositionOperations(
+                serviceState: { service in
+                    healthChecker.launchdState(service)
+                },
+                healthSnapshot: runtimeHealthSnapshot,
+                writeStatus: { status, operation, message in
+                    try writeRuntimeStatus(status, operation: operation, message: message)
+                },
+                sleep: { interval in
+                    sleeper.sleep(forTimeInterval: interval)
+                },
+                log: log
+            )
         )
     }
 
     func runtimeUninstallRunner() throws -> RuntimeUninstallWorkflow {
-        let vitalFilesDirectoryRead = configuredExternalVitalFilesDirectory()
-        let uninstallPaths = RuntimeUninstallPaths(
-            productRoot: installedPaths.productRoot,
-            managerApp: installedPaths.managerApp,
-            defaultVitalFilesDirectory: installedPaths.vitalFilesDirectory,
-            externalVitalFilesDirectory: vitalFilesDirectoryRead.externalDirectory,
-            configuredVitalFilesDirectoryReadFailure: vitalFilesDirectoryRead.failure,
-            launchDaemonPlists: RuntimeManagedService.stopOrder.map {
-                URL(fileURLWithPath: $0.launchDaemonPlist)
-            },
-            runtimeTools: [
-                installedPaths.launcher,
-                URL(fileURLWithPath: Constants.InstallPaths.proxyRun),
-                installedPaths.uninstaller,
-            ]
-        )
-        return RuntimeUninstallWorkflow(
-            paths: uninstallPaths,
-            readers: RuntimeUninstallStateReaders(
-                serviceStates: {
-                    Dictionary(uniqueKeysWithValues: RuntimeManagedService.stopOrder.map { service in
-                        (service, healthChecker.launchdState(service))
-                    })
-                },
-                vmProcessState: {
-                    ProcessState.inspect(pidFile: paths.pidFile, fileStore: fileStore)
-                },
-                fileExists: fileExists,
-                directoryExists: directoryExists,
-                packageReceiptStates: {
-                    RuntimePackageReceiptStateReader.states(
-                        identifiers: Constants.Product.packageReceiptIdentifiers,
-                        runProcess: { executable, arguments in
-                            runProcess(executable, arguments: arguments)
-                        }
-                    )
-                },
-                cleanupArtifactStates: { clean in
-                    RuntimeInstallArtifactStateReader.states(
-                        paths: cleanupArtifactPaths(clean: clean, paths: uninstallPaths).map(\.path)
-                    )
-                }
+        RuntimeUninstallComposition.make(
+            context: RuntimeUninstallCompositionContext(
+                installedPaths: installedPaths,
+                pidFile: paths.pidFile
             ),
-            effects: RuntimeUninstallEffects(
+            operations: RuntimeUninstallCompositionOperations(
+                fileStore: fileStore,
+                configuredExternalVitalFilesDirectory: configuredExternalVitalFilesDirectory,
+                serviceState: { service in
+                    healthChecker.launchdState(service)
+                },
                 createRedisBackup: createRedisBackup,
-                stopRuntimeServices: {
+                disableRuntimeServicesForUninstall: {
                     try serviceController.disableRuntimeServicesForUninstall()
-                    try stopRuntimeServices()
-                    try cleanupHostProxyPortAfterStop()
                 },
-                createDirectory: { url, withIntermediateDirectories in
-                    try fileStore.createDirectory(at: url, withIntermediateDirectories: withIntermediateDirectories)
-                },
-                removeItem: { url in
-                    try fileStore.removeItem(at: url)
-                },
-                moveItem: { source, destination in
-                    try fileStore.moveItem(at: source, to: destination)
-                },
-                forgetPackageReceipt: { identifier in
-                    runProcess("/usr/sbin/pkgutil", arguments: ["--forget", identifier])
-                }
-            ),
-            writer: RuntimeUninstallStateWriter(
-                writeState: { state, clean, message, blockers in
-                    try RuntimeUninstallStateStore(
-                        url: installedPaths.runtimeUninstallState,
-                        fileStore: fileStore,
-                        now: { clock.now }
-                    ).write(
-                        state: state,
-                        clean: clean,
-                        message: message,
-                        blockers: blockers
-                    )
-                }
-            ),
-            diagnostics: RuntimeUninstallDiagnostics(
-                contentsOfDirectory: { url in
-                    try fileStore.contentsOfDirectory(at: url, skipsHiddenFiles: false)
-                },
-                openFileDiagnosticExecutable: Constants.Commands.lsof,
+                stopRuntimeServices: stopRuntimeServices,
+                cleanupHostProxyPortAfterStop: cleanupHostProxyPortAfterStop,
                 runProcess: runProcess,
+                now: { clock.now },
                 log: log
-            ),
-            packageReceiptIdentifiers: Constants.Product.packageReceiptIdentifiers
+            )
         )
-    }
-
-    func cleanupArtifactPaths(clean: Bool, paths: RuntimeUninstallPaths) -> [URL] {
-        var artifactPaths = [paths.managerApp]
-        artifactPaths.append(contentsOf: paths.launchDaemonPlists)
-        artifactPaths.append(contentsOf: paths.runtimeTools)
-        if clean {
-            artifactPaths.append(paths.productRoot)
-            if let externalVitalFilesDirectory = paths.externalVitalFilesDirectory {
-                artifactPaths.append(externalVitalFilesDirectory)
-            }
-        }
-        return artifactPaths
     }
 
     func runtimeFreshInstallPreflightRunner() -> RuntimeFreshInstallPreflightRunner {
-        RuntimeFreshInstallPreflightRunner(
-            settingsState: {
-                RuntimeInstallSettingsStateReader.state(
-                    path: Constants.InstallPaths.settingsPath,
-                    fileStore: fileStore
-                )
-            },
-            artifactStates: {
-                RuntimeInstallArtifactStateReader.states(paths: freshInstallArtifactPaths().map(\.path))
-            },
-            serviceStates: {
-                RuntimeManagedService.stopOrder.map { service in
-                    RuntimeFreshInstallServiceState(
-                        label: service.label,
-                        state: healthChecker.launchdState(service)
-                    )
+        RuntimeFreshInstallPreflightComposition.make(
+            context: RuntimeFreshInstallPreflightCompositionContext(
+                installedPaths: installedPaths
+            ),
+            operations: RuntimeFreshInstallPreflightCompositionOperations(
+                fileStore: fileStore,
+                serviceState: { service in
+                    healthChecker.launchdState(service)
+                },
+                runProcess: { executable, arguments in
+                    runProcess(executable, arguments: arguments)
                 }
-            },
-            packageReceiptStates: {
-                RuntimePackageReceiptStateReader.states(
-                    identifiers: Constants.Product.packageReceiptIdentifiers,
-                    runProcess: { executable, arguments in
-                        runProcess(executable, arguments: arguments)
-                    }
-                )
-            },
-            proxyPortState: { port in
-                RuntimeHostProxyPortStateReader.state(
-                    port: port,
-                    runProcess: { executable, arguments in
-                        runProcess(executable, arguments: arguments)
-                    }
-                )
-            }
+            )
         )
     }
 
     func freshInstallArtifactPaths() -> [URL] {
-        [
-            installedPaths.productRoot,
-            installedPaths.managerApp,
-            installedPaths.launcher,
-            URL(fileURLWithPath: Constants.InstallPaths.proxyRun),
-            installedPaths.uninstaller,
-        ] + RuntimeManagedService.stopOrder.map {
-            URL(fileURLWithPath: $0.launchDaemonPlist)
-        }
+        RuntimeFreshInstallPreflightComposition.freshInstallArtifactPaths(installedPaths: installedPaths)
     }
 
     func installProvisionPayloadPaths() -> [URL] {
@@ -399,6 +276,25 @@ extension RuntimeLifecycle {
         try RuntimeLogRotator(
             logsDirectory: logsDirectory,
             fileStore: fileStore,
+            configuration: RuntimeLogRotationConfiguration(
+                fileNames: [
+                    "launcher.log",
+                    "launchd.out.log",
+                    "launchd.err.log",
+                    "proxy.out.log",
+                    "proxy.err.log",
+                    "proxy-nginx.access.log",
+                    "proxy-nginx.error.log",
+                    "guest-log-sync.out.log",
+                    "guest-log-sync.err.log",
+                    "sleep-prevention.out.log",
+                    "sleep-prevention.err.log",
+                    "watchdog.out.log",
+                    "watchdog.err.log",
+                ],
+                maxBytes: Constants.Runtime.logRotationMaxBytes,
+                keepCount: Constants.Runtime.logRotationKeepCount
+            ),
             log: log
         ).rotate()
     }
@@ -426,7 +322,14 @@ extension RuntimeLifecycle {
     }
 
     func storageMaintenance() -> RuntimeStorageMaintenance {
-        RuntimeStorageMaintenance(fileStore: fileStore, log: log)
+        RuntimeStorageMaintenance(
+            fileStore: fileStore,
+            configuration: RuntimeStorageMaintenanceConfiguration(
+                backupKeepCount: Constants.Runtime.backupKeepCount,
+                stagedBundleKeepCount: Constants.Runtime.stagedBundleKeepCount
+            ),
+            log: log
+        )
     }
 
     func isoTimestamp() -> String {
@@ -535,12 +438,14 @@ extension RuntimeLifecycle {
     }
 
     func runtimeStatusWriter() -> RuntimeStatusWriter {
-        RuntimeStatusWriter(
-            reporter: statusReporter,
-            timestamp: isoTimestamp,
-            runtimeVersion: runtimeVersionValue,
-            healthSnapshot: runtimeHealthSnapshot,
-            latestBackup: latestBackup
+        RuntimeStatusWriterComposition.make(
+            operations: RuntimeStatusWriterCompositionOperations(
+                reporter: statusReporter,
+                timestamp: isoTimestamp,
+                runtimeVersion: runtimeVersionValue,
+                healthSnapshot: runtimeHealthSnapshot,
+                latestBackup: latestBackup
+            )
         )
     }
 
@@ -673,8 +578,12 @@ extension RuntimeLifecycle {
 
     func runtimeConfigFlagReader() -> RuntimeConfigFlagReader {
         RuntimeConfigFlagReader(
-            loadConfig: {
-                try VMRuntimeConfig.load(from: paths.config, fileStore: fileStore)
+            loadFlags: {
+                let config = try VMRuntimeConfig.load(from: paths.config, fileStore: fileStore)
+                return RuntimeConfigFlagValues(
+                    autoRecoveryEnabled: config.autoRecoveryEnabled,
+                    preventSystemSleep: config.preventSystemSleep
+                )
             },
             log: log
         )

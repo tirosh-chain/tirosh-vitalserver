@@ -1,7 +1,7 @@
 import Foundation
-import Core
 import Contracts
-import RuntimeWorkflow
+import Domain
+import Workflow
 import XCTest
 
 final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
@@ -227,7 +227,7 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
             createDirectory: { _, _ in XCTFail("should not create backup directory") },
             fileSize: { url in
                 if url == rootfsBase {
-                    throw RuntimeWorkflowError.operationFailed("missing file: \(url.path)")
+                    throw RuntimeApplyBundleWorkflowError.operationFailed("missing file: \(url.path)")
                 }
                 return 20
             },
@@ -286,7 +286,7 @@ final class RuntimeApplyBundlePreflightRunnerTests: XCTestCase {
             requireGuestCapability: { capability in
                 events.append("capability:\(capability.rawValue)")
                 if capability == .activateUpdate {
-                    throw RuntimeWorkflowError.operationFailed("guest capability missing: \(capability.rawValue)")
+                    throw RuntimeApplyBundleWorkflowError.operationFailed("guest capability missing: \(capability.rawValue)")
                 }
             },
             createBackup: { _ in

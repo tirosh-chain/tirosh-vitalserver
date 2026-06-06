@@ -6,7 +6,7 @@ final class RuntimeReleaseInfoGeneratedTests: XCTestCase {
     func testGeneratedReleaseInfoUsesGeneratedServiceDisplayNames() {
         let services = RuntimeReleaseInfo.generated.services
 
-        XCTAssertEqual(services.map(\.name), [
+        var expectedNames = [
             GeneratedRelease.vitalServerName,
             GeneratedRelease.auditProxyName,
             GeneratedRelease.vitalDBObserverName,
@@ -15,7 +15,11 @@ final class RuntimeReleaseInfoGeneratedTests: XCTestCase {
             GeneratedRelease.swaggerUIName,
             GeneratedRelease.guestEdgeName,
             GeneratedRelease.hostProxyName,
-            GeneratedRelease.testkitName,
-        ])
+        ]
+        if GeneratedRelease.testkitContainerIncluded {
+            expectedNames.append(GeneratedRelease.testkitName)
+        }
+
+        XCTAssertEqual(services.map(\.name), expectedNames)
     }
 }

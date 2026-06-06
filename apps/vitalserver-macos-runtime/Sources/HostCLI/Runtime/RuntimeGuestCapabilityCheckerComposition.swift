@@ -1,0 +1,3 @@
+import Bootstrap
+
+typealias RuntimeGuestCapabilityCheckerComposition = Bootstrap.RuntimeGuestCapabilityCheckerComposition

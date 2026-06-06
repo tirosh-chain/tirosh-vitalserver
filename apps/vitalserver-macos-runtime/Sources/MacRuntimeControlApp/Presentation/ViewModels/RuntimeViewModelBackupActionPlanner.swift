@@ -1,14 +1,10 @@
-import Foundation
+import Interfaces
 
-struct RuntimeViewModelBackupActionPlan: Equatable {
-    let backupURL: URL
-}
+typealias RuntimeViewModelBackupActionPlan = Interfaces.RuntimeViewModelBackupActionPlan
+typealias RuntimeViewModelBackupActionPlanFailure = Interfaces.RuntimeViewModelBackupActionPlanFailure
+typealias RuntimeViewModelBackupActionPlanner = Interfaces.RuntimeViewModelBackupActionPlanner
 
-enum RuntimeViewModelBackupActionPlanFailure: Error, Equatable {
-    case missingBackup
-    case backupsRootNotReported
-    case invalidBackup
-
+extension RuntimeViewModelBackupActionPlanFailure {
     var message: String {
         switch self {
         case .missingBackup:
@@ -18,38 +14,5 @@ enum RuntimeViewModelBackupActionPlanFailure: Error, Equatable {
         case .invalidBackup:
             return AppConstants.StatusText.invalidBackup
         }
-    }
-}
-
-struct RuntimeViewModelBackupActionPlanner {
-    var backupSelectionPolicy = RuntimeBackupSelectionPolicy()
-
-    func rollbackPlan(selectedBackupPath: String?) -> Result<RuntimeViewModelBackupActionPlan, RuntimeViewModelBackupActionPlanFailure> {
-        guard let selectedBackupPath else {
-            return .failure(.missingBackup)
-        }
-        return .success(RuntimeViewModelBackupActionPlan(
-            backupURL: URL(fileURLWithPath: selectedBackupPath)
-        ))
-    }
-
-    func deletePlan(
-        selectedBackupPath: String?,
-        backupsPath: String?
-    ) -> Result<RuntimeViewModelBackupActionPlan, RuntimeViewModelBackupActionPlanFailure> {
-        guard let selectedBackupPath else {
-            return .failure(.missingBackup)
-        }
-        guard let backupsPath else {
-            return .failure(.backupsRootNotReported)
-        }
-        let backupURL = URL(fileURLWithPath: selectedBackupPath)
-        guard backupSelectionPolicy.isManagedBackupURL(
-            backupURL,
-            backupsRoot: URL(fileURLWithPath: backupsPath)
-        ) else {
-            return .failure(.invalidBackup)
-        }
-        return .success(RuntimeViewModelBackupActionPlan(backupURL: backupURL))
     }
 }

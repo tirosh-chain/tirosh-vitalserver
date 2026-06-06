@@ -1,6 +1,6 @@
 import Application
 import Contracts
-import Core
+import Domain
 import XCTest
 
 final class ControlRuntimeServicesUseCaseTests: XCTestCase {

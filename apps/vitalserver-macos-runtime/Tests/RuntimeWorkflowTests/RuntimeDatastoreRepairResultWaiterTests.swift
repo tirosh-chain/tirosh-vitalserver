@@ -1,6 +1,5 @@
 import Contracts
-import Core
-import RuntimeWorkflow
+import Workflow
 import XCTest
 
 final class RuntimeDatastoreRepairResultWaiterTests: XCTestCase {

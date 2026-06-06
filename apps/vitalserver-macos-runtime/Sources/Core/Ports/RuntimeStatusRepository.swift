@@ -1,13 +1,4 @@
-import Contracts
-import Foundation
+import Application
 
-public enum RuntimeStatusDocumentLoadResult: Equatable, Sendable {
-    case missing
-    case loaded(RuntimeStatusDocument)
-    case failed(String)
-}
-
-public protocol RuntimeStatusRepository {
-    func loadResult() -> RuntimeStatusDocumentLoadResult
-    func save(_ document: RuntimeStatusDocument) throws
-}
+public typealias RuntimeStatusDocumentLoadResult = Application.RuntimeStatusDocumentLoadResult
+public typealias RuntimeStatusRepository = Application.RuntimeStatusRepository

@@ -1,7 +1,7 @@
 import Contracts
-import Core
+import Domain
 import Foundation
-@testable import HostCLI
+import Workflow
 import XCTest
 
 final class RuntimeBundleMaterializerTests: XCTestCase {

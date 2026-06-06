@@ -9,7 +9,14 @@ final class RuntimeStorageMaintenanceTests: XCTestCase {
         let fileStore = RuntimeFileStoreSpy()
         fileStore.childDirectoriesError = CocoaError(.fileReadNoPermission)
         var logs: [String] = []
-        let maintenance = RuntimeStorageMaintenance(fileStore: fileStore, log: { logs.append($0) })
+        let maintenance = RuntimeStorageMaintenance(
+            fileStore: fileStore,
+            configuration: RuntimeStorageMaintenanceConfiguration(
+                backupKeepCount: 2,
+                stagedBundleKeepCount: 2
+            ),
+            log: { logs.append($0) }
+        )
 
         try maintenance.pruneOldRuntimeArtifacts(
             backupsDirectory: URL(fileURLWithPath: "/runtime/backups"),

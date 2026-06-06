@@ -1,5 +1,3 @@
-enum RuntimeServiceControlCommand: Equatable {
-    case repairAll
-    case startAll
-    case stopAll
-}
+import Interfaces
+
+typealias RuntimeServiceControlCommand = Interfaces.RuntimeServiceControlCommand

@@ -22,16 +22,47 @@ let package = Package(
             name: "Contracts"
         ),
         .target(
-            name: "Core",
+            name: "Domain",
             dependencies: ["Contracts"]
         ),
         .target(
-            name: "Application",
-            dependencies: ["Contracts", "Core"]
+            name: "Core",
+            dependencies: ["Contracts", "Domain", "Application"]
         ),
         .target(
-            name: "RuntimeWorkflow",
-            dependencies: ["Contracts", "Core", "Application"]
+            name: "Application",
+            dependencies: ["Contracts", "Domain"]
+        ),
+        .target(
+            name: "Workflow",
+            dependencies: ["Contracts", "Domain", "Application"]
+        ),
+        .target(
+            name: "Infrastructure",
+            dependencies: ["Contracts", "Domain", "Application", "Workflow"],
+            linkerSettings: [
+                .linkedLibrary("sqlite3")
+            ]
+        ),
+        .target(
+            name: "HostAdapters",
+            dependencies: ["Contracts", "Domain", "Application", "Workflow"]
+        ),
+        .target(
+            name: "Interfaces",
+            dependencies: ["Contracts", "Domain", "Application", "Workflow", "RuntimeControl"]
+        ),
+        .target(
+            name: "Bootstrap",
+            dependencies: [
+                "Contracts",
+                "Domain",
+                "Application",
+                "Workflow",
+                "Infrastructure",
+                "HostAdapters",
+                "Interfaces",
+            ]
         ),
         .target(
             name: "RuntimeControl",
@@ -39,14 +70,11 @@ let package = Package(
         ),
         .target(
             name: "RuntimeControlAPI",
-            dependencies: ["RuntimeControl"]
+            dependencies: ["Interfaces"]
         ),
         .target(
             name: "HostInfrastructure",
-            dependencies: ["Contracts", "Core"],
-            linkerSettings: [
-                .linkedLibrary("sqlite3")
-            ]
+            dependencies: ["Infrastructure"]
         ),
         .target(
             name: "MacHostRuntimeAdapter",
@@ -54,11 +82,21 @@ let package = Package(
         ),
         .executableTarget(
             name: "HostCLI",
-            dependencies: ["Contracts", "Core", "Application", "RuntimeWorkflow", "HostInfrastructure"]
+            dependencies: [
+                "Contracts",
+                "Core",
+                "Domain",
+                "Application",
+                "Workflow",
+                "HostInfrastructure",
+                "HostAdapters",
+                "Interfaces",
+                "Bootstrap",
+            ]
         ),
         .executableTarget(
             name: "MacRuntimeControlApp",
-            dependencies: ["Contracts", "RuntimeControl", "RuntimeControlAPI", "MacHostRuntimeAdapter"]
+            dependencies: ["Contracts", "RuntimeControl", "RuntimeControlAPI", "MacHostRuntimeAdapter", "Interfaces"]
         ),
         .testTarget(
             name: "ContractsTests",
@@ -72,12 +110,26 @@ let package = Package(
             dependencies: ["Contracts", "Core"]
         ),
         .testTarget(
+            name: "DomainTests",
+            dependencies: ["Contracts", "Domain"]
+        ),
+        .testTarget(
             name: "ApplicationTests",
-            dependencies: ["Contracts", "Core", "Application"]
+            dependencies: ["Contracts", "Domain", "Application"]
         ),
         .testTarget(
             name: "RuntimeWorkflowTests",
-            dependencies: ["Contracts", "Core", "Application", "RuntimeWorkflow"]
+            dependencies: [
+                "Contracts",
+                "Core",
+                "Domain",
+                "Application",
+                "Workflow",
+                "Infrastructure",
+                "HostAdapters",
+                "Interfaces",
+                "Bootstrap",
+            ]
         ),
         .testTarget(
             name: "RuntimeControlTests",
@@ -93,7 +145,7 @@ let package = Package(
         ),
         .testTarget(
             name: "HostCLITests",
-            dependencies: ["Contracts", "Core", "RuntimeWorkflow", "HostCLI"]
+            dependencies: ["Contracts", "Core", "Workflow", "HostAdapters", "HostCLI"]
         ),
         .testTarget(
             name: "MacRuntimeControlAppTests",

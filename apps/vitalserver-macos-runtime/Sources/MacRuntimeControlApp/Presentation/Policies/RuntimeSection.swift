@@ -1,43 +1,26 @@
-import Foundation
+import Interfaces
 
-enum RuntimeSection: CaseIterable, Identifiable {
-    case status
-    case recorders
-    case beds
-    case observability
-    case log
-    case settings
-    case update
-    case info
-    case advanced
-    case test
-    case dangerZone
+typealias RuntimeSection = Interfaces.RuntimeSection
 
-    var id: Self { self }
-
-    static func visibleSections(testEnabled: Bool = GeneratedRelease.testEnabled) -> [RuntimeSection] {
-        allCases.filter { section in
-            section != .test || testEnabled
-        }
+extension RuntimeSection {
+    static func visibleSections() -> [RuntimeSection] {
+        visibleSections(testEnabled: GeneratedRelease.testEnabled)
     }
 
-    static func primarySections(testEnabled: Bool = GeneratedRelease.testEnabled) -> [RuntimeSection] {
-        [.status, .recorders, .beds, .observability, .log, .settings, .update]
-            .filter { visibleSections(testEnabled: testEnabled).contains($0) }
+    static func primarySections() -> [RuntimeSection] {
+        primarySections(testEnabled: GeneratedRelease.testEnabled)
     }
 
-    static func utilitySections(testEnabled: Bool = GeneratedRelease.testEnabled) -> [RuntimeSection] {
-        [.advanced]
-            .filter { visibleSections(testEnabled: testEnabled).contains($0) }
+    static func utilitySections() -> [RuntimeSection] {
+        utilitySections(testEnabled: GeneratedRelease.testEnabled)
     }
 
-    static func overflowSections(testEnabled: Bool = GeneratedRelease.testEnabled) -> [RuntimeSection] {
-        [.info, .dangerZone, .test]
-            .filter { visibleSections(testEnabled: testEnabled).contains($0) }
+    static func overflowSections() -> [RuntimeSection] {
+        overflowSections(testEnabled: GeneratedRelease.testEnabled)
     }
 
-    static func sectionIsInOverflow(_ section: RuntimeSection, testEnabled: Bool = GeneratedRelease.testEnabled) -> Bool {
-        overflowSections(testEnabled: testEnabled).contains(section)
+    static func sectionIsInOverflow(_ section: RuntimeSection) -> Bool {
+        sectionIsInOverflow(section, testEnabled: GeneratedRelease.testEnabled)
     }
 
     var title: String {

@@ -27,7 +27,7 @@ final class RuntimeCommandExecutorTests: XCTestCase {
         XCTAssertThrowsError(try harness.executor.runRequired("/bin/tool", ["--flag"])) { error in
             XCTAssertEqual(
                 String(describing: error),
-                String(describing: LauncherError.missingArgument("command failed: /bin/tool --flag"))
+                String(describing: RuntimeCommandExecutionError.commandFailed("command failed: /bin/tool --flag"))
             )
         }
         XCTAssertEqual(harness.logs, [

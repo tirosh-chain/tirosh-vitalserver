@@ -20,7 +20,7 @@ final class RuntimeHealthCheckRunnerTests: XCTestCase {
         let harness = HealthCheckHarness(snapshot: healthSnapshot(reasons: [.vmService("not-loaded")]))
 
         XCTAssertThrowsError(try harness.runner.run()) { error in
-            XCTAssertEqual(String(describing: error), String(describing: LauncherError.runtimeHealthFailed))
+            XCTAssertEqual(String(describing: error), String(describing: RuntimeHealthCheckRunnerError.runtimeHealthFailed))
         }
         XCTAssertEqual(harness.events, [
             "print-status",

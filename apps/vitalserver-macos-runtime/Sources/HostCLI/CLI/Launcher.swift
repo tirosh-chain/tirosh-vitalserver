@@ -120,15 +120,26 @@ struct Launcher {
         try removeStaleRuntimeState(paths: paths, fileStore: fileStore)
         try ProcessState.writeCurrentPid(pidFile: paths.pidFile, fileStore: fileStore)
 
-        let configurationFactory = VMConfigurationFactory(fileStore: fileStore)
-        let vmConfiguration = try configurationFactory.build(from: config)
+        let configurationFactory = VMConfigurationFactory.hostCLI(fileStore: fileStore)
+        let vmConfiguration: VZVirtualMachineConfiguration
+        do {
+            vmConfiguration = try configurationFactory.build(from: config)
+        } catch VMConfigurationFactoryError.invalidMacAddress(let value) {
+            throw LauncherError.invalidMacAddress(value)
+        } catch VMConfigurationFactoryError.missingBridgedInterface {
+            throw LauncherError.missingArgument("bridged network requires `bridgedInterface` in vm-config.json")
+        } catch VMConfigurationFactoryError.noBridgedInterfaces {
+            throw LauncherError.noBridgedInterfaces
+        } catch VMConfigurationFactoryError.bridgedInterfaceUnavailable(let interface) {
+            throw LauncherError.bridgedInterfaceUnavailable(interface)
+        }
         let virtualMachine = VZVirtualMachine(configuration: vmConfiguration)
-        let delegate = VirtualMachineDelegate(
+        let delegate = VirtualMachineDelegate.hostCLI(
             pidFile: paths.pidFile,
             lifecycleStore: lifecycleStore,
             fileStore: fileStore
         )
-        let terminationHandler = VirtualMachineTerminationHandler(
+        let terminationHandler = VirtualMachineTerminationHandler.hostCLI(
             virtualMachine: virtualMachine,
             pidFile: paths.pidFile,
             lifecycleStore: lifecycleStore,

@@ -1,0 +1,57 @@
+public protocol RuntimeStatusHTTPValueVocabulary: RuntimeStatusReachabilityLabelVocabulary {
+    var updatingText: String { get }
+}
+
+public struct RuntimeStatusHTTPValue: Equatable, Sendable {
+    public let text: String
+    public let severity: RuntimeStatusReachabilityPolicy.Severity
+    public let uptimeText: String?
+
+    public init(
+        text: String,
+        severity: RuntimeStatusReachabilityPolicy.Severity,
+        uptimeText: String?
+    ) {
+        self.text = text
+        self.severity = severity
+        self.uptimeText = uptimeText
+    }
+}
+
+public struct RuntimeStatusHTTPValuePolicy {
+    private let reachabilityPolicy = RuntimeStatusReachabilityPolicy()
+    private let labelPolicy: RuntimeStatusReachabilityLabelPolicy
+    private let vocabulary: any RuntimeStatusHTTPValueVocabulary
+
+    public init(vocabulary: any RuntimeStatusHTTPValueVocabulary) {
+        self.vocabulary = vocabulary
+        self.labelPolicy = RuntimeStatusReachabilityLabelPolicy(vocabulary: vocabulary)
+    }
+
+    public func serviceValue(
+        httpStatus: String?,
+        uptimeText: String?,
+        updateInProgress: Bool = false
+    ) -> RuntimeStatusHTTPValue {
+        if updateInProgress {
+            return updatingValue(uptimeText: uptimeText)
+        }
+        return httpValue(httpStatus, uptimeText: uptimeText)
+    }
+
+    public func httpValue(_ status: String?, uptimeText: String?) -> RuntimeStatusHTTPValue {
+        RuntimeStatusHTTPValue(
+            text: labelPolicy.serviceReachabilityLabel(status),
+            severity: reachabilityPolicy.httpSeverity(status),
+            uptimeText: uptimeText
+        )
+    }
+
+    public func updatingValue(uptimeText: String?) -> RuntimeStatusHTTPValue {
+        RuntimeStatusHTTPValue(
+            text: vocabulary.updatingText,
+            severity: .warning,
+            uptimeText: uptimeText
+        )
+    }
+}

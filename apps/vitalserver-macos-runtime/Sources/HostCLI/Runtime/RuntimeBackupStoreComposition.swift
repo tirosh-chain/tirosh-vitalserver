@@ -1,0 +1,5 @@
+import Bootstrap
+
+typealias RuntimeBackupStoreCompositionContext = Bootstrap.RuntimeBackupStoreCompositionContext
+typealias RuntimeBackupStoreCompositionOperations = Bootstrap.RuntimeBackupStoreCompositionOperations
+typealias RuntimeBackupStoreComposition = Bootstrap.RuntimeBackupStoreComposition

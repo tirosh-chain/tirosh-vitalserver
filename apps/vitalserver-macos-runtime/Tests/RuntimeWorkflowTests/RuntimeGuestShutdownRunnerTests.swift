@@ -1,6 +1,5 @@
 import Contracts
-import Core
-import RuntimeWorkflow
+import Workflow
 import XCTest
 
 final class RuntimeGuestShutdownRunnerTests: XCTestCase {
@@ -59,7 +58,7 @@ final class RuntimeGuestShutdownRunnerTests: XCTestCase {
         let runner = makeRunner(
             events: events,
             requireCapability: {
-                throw RuntimeWorkflowError.operationFailed("guest capability missing: prepare-update-shutdown")
+                throw RuntimeGuestShutdownWorkflowError.operationFailed("guest capability missing: prepare-update-shutdown")
             },
             loadResult: { .missing }
         )

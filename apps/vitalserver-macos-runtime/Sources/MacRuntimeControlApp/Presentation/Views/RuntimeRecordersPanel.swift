@@ -11,6 +11,7 @@ struct RuntimeRecordersPanel: View {
     @State private var activityBucketInterval = RecorderActivityBucketInterval.oneMinute
     @State private var activityPeriod = RecorderActivityPeriod.lastHour
     private let activityChartDataBuilder = RuntimeRecorderActivityChartDataBuilder()
+    private let displayPolicy = RuntimeVitalRecorderDisplayPolicy()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -521,40 +522,22 @@ struct RuntimeRecordersPanel: View {
     }
 
     private func recorderAnomalyText(_ recorder: RuntimeVitalRecorderRecord) -> String {
-        if !recorder.presentInLatestObservation {
-            return "History"
-        }
-        return recorder.currentAnomalyCount == 0 ? "-" : "\(recorder.currentAnomalyCount)"
+        displayPolicy.recorderAnomalyText(recorder)
     }
 
     private func statusColor(_ status: RuntimeVitalRecorderStatus) -> Color {
-        switch status {
-        case .online:
+        switch displayPolicy.statusTone(status) {
+        case .active:
             return .green
-        case .stale:
+        case .warning:
             return .orange
-        case .offline:
-            return .secondary
-        case .notObserved:
-            return .secondary
-        case .unknown:
+        case .neutral:
             return .secondary
         }
     }
 
     private func statusLabel(_ status: RuntimeVitalRecorderStatus) -> String {
-        switch status {
-        case .online:
-            return "Online"
-        case .stale:
-            return "Stale"
-        case .offline:
-            return "Offline"
-        case .notObserved:
-            return "Not observed"
-        case .unknown:
-            return AppConstants.StatusText.unknown
-        }
+        displayPolicy.statusText(status)
     }
 
     private func linkedBed(for recorder: RuntimeVitalRecorderRecord) -> RuntimeVitalBedRecord? {
@@ -566,30 +549,15 @@ struct RuntimeRecordersPanel: View {
     }
 
     private func patientText(_ connected: Bool?) -> String {
-        guard let connected else {
-            return "Patient connection not reported"
-        }
-        return connected ? "Connected" : "Not connected"
+        displayPolicy.patientText(connected)
     }
 
     private func reportedText(_ value: String?, missing: String) -> String {
-        guard let value, !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return missing
-        }
-        return value
+        displayPolicy.reportedText(value, missing: missing)
     }
 
     private func formatBytesPerSecond(_ value: Double) -> String {
-        let boundedValue = max(value, 0)
-        if boundedValue < 1, boundedValue > 0 {
-            return String(format: "%.2f B/s", boundedValue)
-        }
-        let formatter = ByteCountFormatter()
-        formatter.allowedUnits = [.useBytes, .useKB, .useMB, .useGB]
-        formatter.countStyle = .binary
-        formatter.includesUnit = true
-        formatter.includesCount = true
-        return "\(formatter.string(fromByteCount: Int64(boundedValue.rounded())))/s"
+        displayPolicy.bytesPerSecondText(value)
     }
 
 }

@@ -160,7 +160,7 @@ struct SystemRuntimeSettingsReader: RuntimeSettingsReading, @unchecked Sendable 
     }
 
     private func applyNetworkSettings(_ network: NetworkDocument, to settings: inout RuntimeSettings) {
-        guard let networkMode = RuntimeNetworkMode(rawValue: network.mode) else {
+        guard let networkMode = RuntimeControl.RuntimeNetworkMode(rawValue: network.mode) else {
             settings.readIssues.append(RuntimeSettingsReadIssue(
                 source: "vmConfig.network.mode",
                 message: "network mode is invalid: \(network.mode)"

@@ -1,5 +1,6 @@
 import Foundation
-import RuntimeWorkflow
+import Contracts
+import Workflow
 import XCTest
 
 final class RuntimeInstallVMRuntimeConfiguratorTests: XCTestCase {

@@ -1,0 +1,4 @@
+import Bootstrap
+
+typealias RuntimeServiceControlCompositionOperations = Bootstrap.RuntimeServiceControlCompositionOperations
+typealias RuntimeServiceControlComposition = Bootstrap.RuntimeServiceControlComposition

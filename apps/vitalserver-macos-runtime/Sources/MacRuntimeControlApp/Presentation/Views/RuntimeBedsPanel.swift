@@ -5,6 +5,7 @@ struct RuntimeBedsPanel: View {
     @ObservedObject var viewModel: RuntimeViewModel
     @State private var searchText = ""
     @State private var selectedBedID: String?
+    private let displayPolicy = RuntimeVitalRecorderDisplayPolicy()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -348,46 +349,25 @@ struct RuntimeBedsPanel: View {
     }
 
     private func statusColor(_ status: RuntimeVitalBedStatus) -> Color {
-        switch status {
-        case .online:
+        switch displayPolicy.statusTone(status) {
+        case .active:
             return .green
-        case .stale:
+        case .warning:
             return .orange
-        case .offline:
-            return .secondary
-        case .notObserved:
-            return .secondary
-        case .unknown:
+        case .neutral:
             return .secondary
         }
     }
 
     private func statusLabel(_ status: RuntimeVitalBedStatus) -> String {
-        switch status {
-        case .online:
-            return "Online"
-        case .stale:
-            return "Stale"
-        case .offline:
-            return "Offline"
-        case .notObserved:
-            return "Not observed"
-        case .unknown:
-            return AppConstants.StatusText.unknown
-        }
+        displayPolicy.statusText(status)
     }
 
     private func patientText(_ connected: Bool?) -> String {
-        guard let connected else {
-            return "Patient connection not reported"
-        }
-        return connected ? "Connected" : "Not connected"
+        displayPolicy.patientText(connected)
     }
 
     private func reportedText(_ value: String?, missing: String) -> String {
-        guard let value, !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return missing
-        }
-        return value
+        displayPolicy.reportedText(value, missing: missing)
     }
 }

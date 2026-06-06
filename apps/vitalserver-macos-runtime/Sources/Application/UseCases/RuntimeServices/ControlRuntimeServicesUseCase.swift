@@ -1,5 +1,5 @@
 import Contracts
-import Core
+import Domain
 
 public struct RuntimeServiceControlPorts {
     public var startRuntimeServices: (RuntimeServiceRestartPolicy) throws -> Void

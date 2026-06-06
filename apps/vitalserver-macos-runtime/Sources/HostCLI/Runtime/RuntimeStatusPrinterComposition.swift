@@ -1,0 +1,5 @@
+import Bootstrap
+
+typealias RuntimeStatusPrinterCompositionContext = Bootstrap.RuntimeStatusPrinterCompositionContext
+typealias RuntimeStatusPrinterCompositionOperations = Bootstrap.RuntimeStatusPrinterCompositionOperations
+typealias RuntimeStatusPrinterComposition = Bootstrap.RuntimeStatusPrinterComposition

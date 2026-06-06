@@ -1,4 +1,4 @@
-@testable import HostCLI
+import HostAdapters
 import XCTest
 
 final class RuntimeInstallExecutablePreparerTests: XCTestCase {

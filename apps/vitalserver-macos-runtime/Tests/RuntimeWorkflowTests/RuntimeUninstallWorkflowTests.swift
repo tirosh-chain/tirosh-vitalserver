@@ -1,6 +1,6 @@
 import Core
 import Contracts
-import RuntimeWorkflow
+import Workflow
 import XCTest
 
 final class RuntimeUninstallWorkflowTests: XCTestCase {

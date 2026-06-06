@@ -16,12 +16,13 @@ final class RuntimeGuestConfigWriterTests: XCTestCase {
                 restricted.append(url)
             }
         )
-        var settings = InstallSettings(vitalFilesDirectory: "/custom/vital-files")
-        settings.publicHost = "vital.example.test"
-        settings.publicPort = 8080
-        settings.adminPassword = "custom-secret"
+        let runtimeConfig = makeRuntimeConfig(
+            publicHost: "vital.example.test",
+            publicPort: 8080,
+            adminPassword: "custom-secret"
+        )
 
-        try writer.writeInstallConfig(settings: settings)
+        try writer.write(runtimeConfig: runtimeConfig)
 
         let data = try XCTUnwrap(fileStore.files[paths.guestRuntimeConfig])
         let document = try JSONDecoder().decode(GuestRuntimeConfigDocument.self, from: data)
@@ -41,7 +42,7 @@ final class RuntimeGuestConfigWriterTests: XCTestCase {
         XCTAssertEqual(restricted, [paths.guestRuntimeConfig])
     }
 
-    func testWriteInstallConfigUsesDefaultAdminPassword() throws {
+    func testWriteInstallConfigWritesExplicitDefaultAdminPassword() throws {
         let fileStore = RuntimeFileStoreSpy()
         let paths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
         let writer = RuntimeGuestConfigWriter(
@@ -50,33 +51,33 @@ final class RuntimeGuestConfigWriterTests: XCTestCase {
             restrictSecretFile: { _ in }
         )
 
-        try writer.writeInstallConfig(settings: InstallSettings(vitalFilesDirectory: "/custom/vital-files"))
+        try writer.write(runtimeConfig: makeRuntimeConfig(adminPassword: Constants.Guest.defaultAdminPassword))
 
         let data = try XCTUnwrap(fileStore.files[paths.guestRuntimeConfig])
         let document = try JSONDecoder().decode(GuestRuntimeConfigDocument.self, from: data)
         XCTAssertEqual(document.adminPassword, Constants.Guest.defaultAdminPassword)
     }
 
-    func testWriteInstallConfigRequiresAdminPassword() throws {
-        let fileStore = RuntimeFileStoreSpy()
-        let paths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
-        let writer = RuntimeGuestConfigWriter(
-            installedPaths: paths,
-            fileStore: fileStore,
-            restrictSecretFile: { _ in }
+    private func makeRuntimeConfig(
+        publicHost: String = "",
+        publicPort: Int = Constants.Guest.publicPort,
+        adminPassword: String
+    ) -> GuestRuntimeConfigDocument {
+        GuestRuntimeConfigDocument(
+            vitalserverHttpPort: Constants.Guest.vitalserverHTTPPort,
+            redisHost: Constants.Guest.redisHost,
+            redisPort: Constants.Guest.redisPort,
+            trustProxy: true,
+            vitalServerURL: "",
+            remoteConsoleURL: "",
+            publicHost: publicHost,
+            publicPort: publicPort,
+            adminPassword: adminPassword,
+            vitalFilesDirectory: Constants.Defaults.vitalFilesDirectoryGuestMountPath,
+            redisBackupRetentionCount: Constants.Defaults.redisBackupRetentionCount,
+            redisUiPort: Constants.Guest.redisUIPort,
+            swaggerUiPort: Constants.Guest.swaggerUIPort,
+            testkitEnabled: Constants.testkitContainerIncluded
         )
-        var settings = InstallSettings(vitalFilesDirectory: "/custom/vital-files")
-        settings.adminPassword = nil
-
-        XCTAssertThrowsError(
-            try writer.writeInstallConfig(settings: settings)
-        ) { error in
-            guard case LauncherError.missingArgument(let message) = error else {
-                return XCTFail("expected missingArgument, got \(error)")
-            }
-            XCTAssertEqual(message, "install settings adminPassword is required")
-        }
-        XCTAssertNil(fileStore.files[paths.guestRuntimeConfig])
     }
-
 }
