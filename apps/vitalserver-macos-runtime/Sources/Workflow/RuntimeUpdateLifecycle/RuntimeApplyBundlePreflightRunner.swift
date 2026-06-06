@@ -107,11 +107,13 @@ public struct RuntimeApplyBundlePreflightRunner {
             restartPolicy: restartPolicy
         )
         log(capabilityPlan.serviceRestartLogMessage)
-        if capabilityPlan.requiresRuntimeDiskHealthCheck {
-            try requireRuntimeDiskHealthAllowsUpdate()
-        }
-        for capability in capabilityPlan.requiredGuestCapabilities {
-            try requireGuestCapability(capability)
+        for instruction in capabilityPlan.instructions {
+            switch instruction {
+            case .requireRuntimeDiskHealthAllowsUpdate:
+                try requireRuntimeDiskHealthAllowsUpdate()
+            case .requireGuestCapability(let capability):
+                try requireGuestCapability(capability)
+            }
         }
         log(manifestPlan.backupStartedLogMessage)
         let backup = try createBackup(manifestPlan.backupReason)

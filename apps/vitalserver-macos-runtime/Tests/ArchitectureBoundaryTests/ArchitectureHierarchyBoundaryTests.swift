@@ -343,6 +343,25 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         }
     }
 
+    func testRuntimeGuestShutdownWorkflowDoesNotInterpretShutdownStateDirectly() throws {
+        let file = packageRoot().appendingPathComponent(
+            "Sources/Workflow/RuntimeUpdateLifecycle/RuntimeGuestShutdownRunner.swift"
+        )
+        let text = try String(contentsOf: file, encoding: .utf8)
+        let forbiddenTokens = [
+            "guestShutdownPlan",
+            "requestedLogMessage",
+            "readyLogMessage",
+        ]
+
+        for token in forbiddenTokens {
+            XCTAssertFalse(
+                text.contains(token),
+                "RuntimeGuestShutdownRunner must execute UseCase shutdown plans instead of interpreting \(token) directly"
+            )
+        }
+    }
+
     func testRuntimeUpdateWorkflowDoesNotInterpretPreflightFileObservationsDirectly() throws {
         let updateWorkflowRoot = packageRoot().appendingPathComponent("Sources/Workflow/RuntimeUpdateLifecycle")
         let forbiddenTokens = [
@@ -360,6 +379,8 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             "stagedRootfs != nil",
             "preparesGuestShutdown",
             "String(describing:",
+            "requiresRuntimeDiskHealthCheck",
+            "requiredGuestCapabilities",
         ]
 
         for file in try swiftFiles(root: updateWorkflowRoot) {

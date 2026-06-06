@@ -47,19 +47,21 @@ public struct RuntimeGuestShutdownRunner {
     }
 
     public func prepareForUpdate(version: String) throws {
-        let plan = useCase.guestShutdownPlan(version: version)
-        log(plan.requestedLogMessage)
-        try requireCapability()
-        try createRunDirectory()
-        try removePreviousResult()
-        let request = useCase.guestShutdownRequest(
-            plan: plan,
-            requestID: requestID(),
-            requestedAt: timestamp()
-        )
-        try writeRequest(request)
-        try waitForShutdownReady(request)
-        log(plan.readyLogMessage)
+        switch useCase.guestShutdownExecutionPlan(version: version) {
+        case .prepare(let version, let requestLog, let readyLog):
+            log(requestLog)
+            try requireCapability()
+            try createRunDirectory()
+            try removePreviousResult()
+            let request = useCase.guestShutdownRequest(
+                version: version,
+                requestID: requestID(),
+                requestedAt: timestamp()
+            )
+            try writeRequest(request)
+            try waitForShutdownReady(request)
+            log(readyLog)
+        }
     }
 
     private func waitForShutdownReady(_ request: RuntimeGuestShutdownRequest) throws {

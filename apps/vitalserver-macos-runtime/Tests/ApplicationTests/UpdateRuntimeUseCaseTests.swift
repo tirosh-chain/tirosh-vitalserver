@@ -180,8 +180,10 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
             )
         )
 
-        XCTAssertTrue(plan.requiresRuntimeDiskHealthCheck)
-        XCTAssertEqual(plan.requiredGuestCapabilities, [.prepareUpdateShutdown])
+        XCTAssertEqual(plan.instructions, [
+            .requireRuntimeDiskHealthAllowsUpdate,
+            .requireGuestCapability(.prepareUpdateShutdown),
+        ])
         XCTAssertEqual(
             plan.serviceRestartLogMessage,
             "runtime services before update vm=loaded guestLogSync=loaded proxy=not-loaded watchdog=loaded"
@@ -203,8 +205,9 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
             restartPolicy: restartPolicy()
         )
 
-        XCTAssertFalse(plan.requiresRuntimeDiskHealthCheck)
-        XCTAssertEqual(plan.requiredGuestCapabilities, [.activateUpdate])
+        XCTAssertEqual(plan.instructions, [
+            .requireGuestCapability(.activateUpdate),
+        ])
         XCTAssertEqual(
             plan.serviceRestartLogMessage,
             "runtime services before update vm=not-loaded guestLogSync=not-loaded proxy=not-loaded watchdog=not-loaded"
@@ -965,18 +968,35 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
         let useCase = UpdateRuntimeUseCase()
 
         let plan = useCase.guestShutdownPlan(version: "1.2.3")
+        let executionPlan = useCase.guestShutdownExecutionPlan(version: "1.2.3")
         let request = useCase.guestShutdownRequest(
             plan: plan,
             requestID: "request-1",
             requestedAt: "2026-06-06T00:00:00Z"
         )
+        let versionRequest = useCase.guestShutdownRequest(
+            version: "1.2.3",
+            requestID: "request-2",
+            requestedAt: "2026-06-06T00:00:01Z"
+        )
 
         XCTAssertEqual(plan.version, "1.2.3")
         XCTAssertEqual(plan.requestedLogMessage, "guest update shutdown requested version=1.2.3")
         XCTAssertEqual(plan.readyLogMessage, "guest update shutdown ready version=1.2.3")
+        XCTAssertEqual(
+            executionPlan,
+            .prepare(
+                version: "1.2.3",
+                requestLog: "guest update shutdown requested version=1.2.3",
+                readyLog: "guest update shutdown ready version=1.2.3"
+            )
+        )
         XCTAssertEqual(request.id, "request-1")
         XCTAssertEqual(request.requestedAt, "2026-06-06T00:00:00Z")
         XCTAssertEqual(request.version, "1.2.3")
+        XCTAssertEqual(versionRequest.id, "request-2")
+        XCTAssertEqual(versionRequest.requestedAt, "2026-06-06T00:00:01Z")
+        XCTAssertEqual(versionRequest.version, "1.2.3")
     }
 
     func testGuestShutdownWaitResultPlanPreservesGuestFailureAndTimeoutSeparately() {

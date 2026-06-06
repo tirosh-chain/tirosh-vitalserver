@@ -22,19 +22,21 @@ public struct ApplyRuntimeBundlePlan: Equatable, Sendable {
 }
 
 public struct ApplyRuntimeBundlePreflightCapabilityPlan: Equatable, Sendable {
-    public let requiresRuntimeDiskHealthCheck: Bool
-    public let requiredGuestCapabilities: [RuntimeGuestCapabilityRequirement]
+    public let instructions: [ApplyRuntimeBundlePreflightCapabilityInstruction]
     public let serviceRestartLogMessage: String
 
     public init(
-        requiresRuntimeDiskHealthCheck: Bool,
-        requiredGuestCapabilities: [RuntimeGuestCapabilityRequirement],
+        instructions: [ApplyRuntimeBundlePreflightCapabilityInstruction],
         serviceRestartLogMessage: String
     ) {
-        self.requiresRuntimeDiskHealthCheck = requiresRuntimeDiskHealthCheck
-        self.requiredGuestCapabilities = requiredGuestCapabilities
+        self.instructions = instructions
         self.serviceRestartLogMessage = serviceRestartLogMessage
     }
+}
+
+public enum ApplyRuntimeBundlePreflightCapabilityInstruction: Equatable, Sendable {
+    case requireRuntimeDiskHealthAllowsUpdate
+    case requireGuestCapability(RuntimeGuestCapabilityRequirement)
 }
 
 public struct ApplyRuntimeBundlePreflightManifestPlan: Equatable, Sendable {
@@ -331,6 +333,10 @@ public struct RuntimeGuestShutdownPlan: Equatable, Sendable {
     }
 }
 
+public enum RuntimeGuestShutdownExecutionPlan: Equatable, Sendable {
+    case prepare(version: String, requestLog: String, readyLog: String)
+}
+
 public struct RuntimeGuestWaitResultPlan: Equatable, Sendable {
     public let logMessage: String?
     public let failureMessage: String?
@@ -466,17 +472,17 @@ public struct UpdateRuntimeUseCase {
         manifest: UpdateBundleManifest,
         restartPolicy: RuntimeServiceRestartPolicy
     ) -> ApplyRuntimeBundlePreflightCapabilityPlan {
-        var capabilities: [RuntimeGuestCapabilityRequirement] = []
+        var instructions: [ApplyRuntimeBundlePreflightCapabilityInstruction] = []
         if restartPolicy.restartVM {
-            capabilities.append(.prepareUpdateShutdown)
+            instructions.append(.requireRuntimeDiskHealthAllowsUpdate)
+            instructions.append(.requireGuestCapability(.prepareUpdateShutdown))
         }
         if manifest.artifacts.contains(where: { $0.type == .guestDeploy }) {
-            capabilities.append(.activateUpdate)
+            instructions.append(.requireGuestCapability(.activateUpdate))
         }
 
         return ApplyRuntimeBundlePreflightCapabilityPlan(
-            requiresRuntimeDiskHealthCheck: restartPolicy.restartVM,
-            requiredGuestCapabilities: capabilities,
+            instructions: instructions,
             serviceRestartLogMessage: "runtime services before update vm=\(loadedText(restartPolicy.restartVM)) guestLogSync=\(loadedText(restartPolicy.restartGuestLogSync)) proxy=\(loadedText(restartPolicy.restartProxy)) watchdog=\(loadedText(restartPolicy.restartWatchdog))"
         )
     }
@@ -966,6 +972,14 @@ public struct UpdateRuntimeUseCase {
         )
     }
 
+    public func guestShutdownExecutionPlan(version: String) -> RuntimeGuestShutdownExecutionPlan {
+        .prepare(
+            version: version,
+            requestLog: "guest update shutdown requested version=\(version)",
+            readyLog: "guest update shutdown ready version=\(version)"
+        )
+    }
+
     public func guestShutdownRequest(
         plan: RuntimeGuestShutdownPlan,
         requestID: String,
@@ -975,6 +989,18 @@ public struct UpdateRuntimeUseCase {
             id: requestID,
             requestedAt: requestedAt,
             version: plan.version
+        )
+    }
+
+    public func guestShutdownRequest(
+        version: String,
+        requestID: String,
+        requestedAt: String
+    ) -> RuntimeGuestShutdownRequest {
+        RuntimeGuestShutdownRequest(
+            id: requestID,
+            requestedAt: requestedAt,
+            version: version
         )
     }
 
