@@ -890,6 +890,43 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
         XCTAssertEqual(request?.version, "test")
     }
 
+    func testGuestActivationExecutionPlanKeepsActivationJudgementOutOfWorkflow() {
+        let useCase = UpdateRuntimeUseCase()
+
+        XCTAssertEqual(
+            useCase.guestActivationExecutionPlan(manifest: manifest(artifacts: [
+                UpdateBundleArtifact(name: "app.tar.gz", type: .appBundle, sha256: "abc", size: 10),
+            ])),
+            .skip(logMessage: "guest update activation not required")
+        )
+        XCTAssertEqual(
+            useCase.guestActivationExecutionPlan(manifest: manifest(artifacts: [
+                UpdateBundleArtifact(name: "guest-deploy.tar.gz", type: .guestDeploy, sha256: "abc", size: 10),
+            ])),
+            .activate(
+                version: "test",
+                requestedLogMessage: "guest update activation requested version=test",
+                completedLogMessage: "guest update activation completed version=test"
+            )
+        )
+    }
+
+    func testGuestActivationRequestAndVMStartPlansUseExplicitInputs() {
+        let useCase = UpdateRuntimeUseCase()
+
+        let request = useCase.guestActivationRequest(
+            version: "1.2.3",
+            requestID: "request-1",
+            requestedAt: "2026-06-06T00:00:00Z"
+        )
+
+        XCTAssertEqual(request.id, "request-1")
+        XCTAssertEqual(request.requestedAt, "2026-06-06T00:00:00Z")
+        XCTAssertEqual(request.version, "1.2.3")
+        XCTAssertEqual(useCase.guestActivationVMStartPlan(isVMServiceLoaded: true), .alreadyLoaded)
+        XCTAssertEqual(useCase.guestActivationVMStartPlan(isVMServiceLoaded: false), .startService)
+    }
+
     func testGuestActivationWaitResultPlanPreservesFailureAndTimeoutWithoutWorkflowJudgement() {
         let useCase = UpdateRuntimeUseCase()
 

@@ -321,6 +321,28 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         }
     }
 
+    func testRuntimeGuestActivationWorkflowDoesNotInterpretActivationStateDirectly() throws {
+        let file = packageRoot().appendingPathComponent(
+            "Sources/Workflow/RuntimeUpdateLifecycle/RuntimeGuestActivationRunner.swift"
+        )
+        let text = try String(contentsOf: file, encoding: .utf8)
+        let forbiddenTokens = [
+            "requiresActivation",
+            "skippedLogMessage",
+            "requestedLogMessage",
+            "completedLogMessage",
+            "guard let request",
+            "!isVMServiceLoaded",
+        ]
+
+        for token in forbiddenTokens {
+            XCTAssertFalse(
+                text.contains(token),
+                "RuntimeGuestActivationRunner must execute UseCase activation plans instead of interpreting \(token) directly"
+            )
+        }
+    }
+
     func testRuntimeUpdateWorkflowDoesNotInterpretPreflightFileObservationsDirectly() throws {
         let updateWorkflowRoot = packageRoot().appendingPathComponent("Sources/Workflow/RuntimeUpdateLifecycle")
         let forbiddenTokens = [
@@ -337,6 +359,7 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             "stagedRootfs == nil",
             "stagedRootfs != nil",
             "preparesGuestShutdown",
+            "String(describing:",
         ]
 
         for file in try swiftFiles(root: updateWorkflowRoot) {

@@ -53,38 +53,34 @@ public struct RuntimeGuestActivationRunner {
     }
 
     public func activateIfNeeded(manifest: UpdateBundleManifest) throws {
-        let plan = useCase.guestActivationPlan(manifest: manifest)
-        guard plan.requiresActivation else {
-            if let skippedLogMessage = plan.skippedLogMessage {
-                log(skippedLogMessage)
-            }
+        let executionPlan = useCase.guestActivationExecutionPlan(manifest: manifest)
+        switch executionPlan {
+        case .skip(let logMessage):
+            log(logMessage)
             return
-        }
-
-        if let requestedLogMessage = plan.requestedLogMessage {
-            log(requestedLogMessage)
-        }
-        try requireCapability()
-        try createRunDirectory()
-        try removePreviousResult()
-        guard let request = useCase.guestActivationRequest(
-            plan: plan,
-            requestID: requestID(),
-            requestedAt: timestamp()
-        ) else {
-            throw RuntimeGuestActivationWorkflowError.operationFailed(
-                useCase.guestActivationRequiredRequestMissingFailureMessage()
+        case .activate(let version, let requestLog, let completionLog):
+            log(requestLog)
+            try requireCapability()
+            try createRunDirectory()
+            try removePreviousResult()
+            let request = useCase.guestActivationRequest(
+                version: version,
+                requestID: requestID(),
+                requestedAt: timestamp()
             )
+            try writeRequest(request)
+            try startVMServiceIfNeeded()
+            try waitForActivationResult(request)
+            log(completionLog)
         }
-        try writeRequest(request)
+    }
 
-        if !isVMServiceLoaded() {
+    private func startVMServiceIfNeeded() throws {
+        switch useCase.guestActivationVMStartPlan(isVMServiceLoaded: isVMServiceLoaded()) {
+        case .alreadyLoaded:
+            return
+        case .startService:
             try startVMService()
-        }
-
-        try waitForActivationResult(request)
-        if let completedLogMessage = plan.completedLogMessage {
-            log(completedLogMessage)
         }
     }
 

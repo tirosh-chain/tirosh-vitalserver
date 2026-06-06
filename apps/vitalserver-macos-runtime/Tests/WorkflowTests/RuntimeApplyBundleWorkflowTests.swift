@@ -191,6 +191,7 @@ private final class ApplyBundleWorkflowHarness {
                 waitForHealth: { _ in
                     self.stepCalls.append("waitForHealth")
                 },
+                describeError: { String(describing: $0) },
                 log: { message in
                     self.logs.append(message)
                 }

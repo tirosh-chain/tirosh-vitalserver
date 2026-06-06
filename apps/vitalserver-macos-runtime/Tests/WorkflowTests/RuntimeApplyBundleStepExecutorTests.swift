@@ -70,6 +70,7 @@ final class RuntimeApplyBundleStepExecutorTests: XCTestCase {
             waitForHealth: { policy in
                 events.append("wait:\(policy.restartVM):\(policy.restartProxy):\(policy.restartWatchdog)")
             },
+            describeError: { String(describing: $0) },
             log: { _ in }
         )
 
@@ -173,6 +174,7 @@ final class RuntimeApplyBundleStepExecutorTests: XCTestCase {
             startRuntimeServices: { _ in },
             activateGuestUpdateIfNeeded: { _ in },
             waitForHealth: { _ in },
+            describeError: { String(describing: $0) },
             log: { _ in }
         )
         let preflight = ApplyBundlePreflightContext(
@@ -257,6 +259,7 @@ final class RuntimeApplyBundleStepExecutorTests: XCTestCase {
             startRuntimeServices: { _ in },
             activateGuestUpdateIfNeeded: { _ in },
             waitForHealth: { _ in },
+            describeError: { String(describing: $0) },
             log: { logs.append($0) }
         )
         let preflight = ApplyBundlePreflightContext(
@@ -293,6 +296,7 @@ final class RuntimeApplyBundleStepExecutorTests: XCTestCase {
             startRuntimeServices: { _ in },
             activateGuestUpdateIfNeeded: { _ in },
             waitForHealth: { _ in },
+            describeError: { String(describing: $0) },
             log: { _ in }
         )
         let preflight = ApplyBundlePreflightContext(
@@ -369,6 +373,7 @@ final class RuntimeApplyBundleStepExecutorTests: XCTestCase {
             startRuntimeServices: { _ in },
             activateGuestUpdateIfNeeded: { _ in },
             waitForHealth: { _ in },
+            describeError: { String(describing: $0) },
             log: { _ in }
         )
     }

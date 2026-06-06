@@ -20,6 +20,7 @@ public struct RuntimeApplyBundleStepExecutor {
     public var startRuntimeServices: (RuntimeServiceRestartPolicy) throws -> Void
     public var activateGuestUpdateIfNeeded: (UpdateBundleManifest) throws -> Void
     public var waitForHealth: (RuntimeServiceRestartPolicy) throws -> Void
+    public var describeError: (Error) -> String
     public var log: (String) -> Void
     private var useCase: UpdateRuntimeUseCase {
         UpdateRuntimeUseCase()
@@ -41,6 +42,7 @@ public struct RuntimeApplyBundleStepExecutor {
         startRuntimeServices: @escaping (RuntimeServiceRestartPolicy) throws -> Void,
         activateGuestUpdateIfNeeded: @escaping (UpdateBundleManifest) throws -> Void,
         waitForHealth: @escaping (RuntimeServiceRestartPolicy) throws -> Void,
+        describeError: @escaping (Error) -> String,
         log: @escaping (String) -> Void
     ) {
         self.stopRuntimeServices = stopRuntimeServices
@@ -58,6 +60,7 @@ public struct RuntimeApplyBundleStepExecutor {
         self.startRuntimeServices = startRuntimeServices
         self.activateGuestUpdateIfNeeded = activateGuestUpdateIfNeeded
         self.waitForHealth = waitForHealth
+        self.describeError = describeError
         self.log = log
     }
 
@@ -126,7 +129,7 @@ public struct RuntimeApplyBundleStepExecutor {
         do {
             try clearGuestShutdownPreparation()
         } catch {
-            log(useCase.guestShutdownPreparationCleanupFailedLogMessage(reason: String(describing: error)))
+            log(useCase.guestShutdownPreparationCleanupFailedLogMessage(reason: describeError(error)))
         }
     }
 }

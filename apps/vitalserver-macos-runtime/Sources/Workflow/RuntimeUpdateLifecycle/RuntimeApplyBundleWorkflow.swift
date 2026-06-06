@@ -56,6 +56,7 @@ public struct RuntimeApplyBundleWorkflowOperations {
     public var writeRuntimeVersion: (String, URL) throws -> Void
     public var activateGuestUpdateIfNeeded: (UpdateBundleManifest) throws -> Void
     public var waitForHealth: (RuntimeServiceRestartPolicy) throws -> Void
+    public var describeError: (Error) -> String
     public var log: (String) -> Void
 
     public init(
@@ -88,6 +89,7 @@ public struct RuntimeApplyBundleWorkflowOperations {
         writeRuntimeVersion: @escaping (String, URL) throws -> Void,
         activateGuestUpdateIfNeeded: @escaping (UpdateBundleManifest) throws -> Void,
         waitForHealth: @escaping (RuntimeServiceRestartPolicy) throws -> Void,
+        describeError: @escaping (Error) -> String,
         log: @escaping (String) -> Void
     ) {
         self.stageBundle = stageBundle
@@ -119,6 +121,7 @@ public struct RuntimeApplyBundleWorkflowOperations {
         self.writeRuntimeVersion = writeRuntimeVersion
         self.activateGuestUpdateIfNeeded = activateGuestUpdateIfNeeded
         self.waitForHealth = waitForHealth
+        self.describeError = describeError
         self.log = log
     }
 }
@@ -158,14 +161,14 @@ public struct RuntimeApplyBundleWorkflow {
             try operations.createDirectory(context.logsDirectory, true)
         } catch {
             operations.log(UpdateRuntimeUseCase().applyBundleLogDirectoryPreparationFailedLogMessage(
-                reason: String(describing: error)
+                reason: operations.describeError(error)
             ))
         }
         do {
             try operations.rotateRuntimeLogs()
         } catch {
             operations.log(UpdateRuntimeUseCase().applyBundleLogRotationFailedLogMessage(
-                reason: String(describing: error)
+                reason: operations.describeError(error)
             ))
         }
     }
@@ -213,6 +216,7 @@ public struct RuntimeApplyBundleWorkflow {
             startRuntimeServices: operations.startRuntimeServices,
             activateGuestUpdateIfNeeded: operations.activateGuestUpdateIfNeeded,
             waitForHealth: operations.waitForHealth,
+            describeError: operations.describeError,
             log: operations.log
         ).execute(step, preflight: preflight, rootfsBase: context.rootfsBase)
     }

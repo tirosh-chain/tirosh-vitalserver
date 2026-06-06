@@ -323,6 +323,7 @@ public struct RuntimeBundleComposition {
                 writeRuntimeVersion: operations.writeRuntimeVersion,
                 activateGuestUpdateIfNeeded: operations.activateGuestUpdateIfNeeded,
                 waitForHealth: operations.waitForHealth,
+                describeError: { String(describing: $0) },
                 log: operations.log
             )
         )

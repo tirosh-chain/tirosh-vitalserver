@@ -305,6 +305,16 @@ public struct RuntimeGuestActivationPlan: Equatable, Sendable {
     }
 }
 
+public enum RuntimeGuestActivationExecutionPlan: Equatable, Sendable {
+    case skip(logMessage: String)
+    case activate(version: String, requestedLogMessage: String, completedLogMessage: String)
+}
+
+public enum RuntimeGuestActivationVMStartPlan: Equatable, Sendable {
+    case alreadyLoaded
+    case startService
+}
+
 public struct RuntimeGuestShutdownPlan: Equatable, Sendable {
     public let version: String
     public let requestedLogMessage: String
@@ -871,6 +881,20 @@ public struct UpdateRuntimeUseCase {
         )
     }
 
+    public func guestActivationExecutionPlan(
+        manifest: UpdateBundleManifest
+    ) -> RuntimeGuestActivationExecutionPlan {
+        let requiresActivation = manifest.artifacts.contains(where: { $0.type == .guestDeploy })
+        guard requiresActivation else {
+            return .skip(logMessage: "guest update activation not required")
+        }
+        return .activate(
+            version: manifest.version,
+            requestedLogMessage: "guest update activation requested version=\(manifest.version)",
+            completedLogMessage: "guest update activation completed version=\(manifest.version)"
+        )
+    }
+
     public func guestActivationRequest(
         plan: RuntimeGuestActivationPlan,
         requestID: String,
@@ -884,6 +908,24 @@ public struct UpdateRuntimeUseCase {
             requestedAt: requestedAt,
             version: plan.version
         )
+    }
+
+    public func guestActivationRequest(
+        version: String,
+        requestID: String,
+        requestedAt: String
+    ) -> RuntimeGuestActivationRequest {
+        RuntimeGuestActivationRequest(
+            id: requestID,
+            requestedAt: requestedAt,
+            version: version
+        )
+    }
+
+    public func guestActivationVMStartPlan(
+        isVMServiceLoaded: Bool
+    ) -> RuntimeGuestActivationVMStartPlan {
+        isVMServiceLoaded ? .alreadyLoaded : .startService
     }
 
     public func guestActivationWaitStartedLogMessage(timeoutSeconds: Double) -> String {
