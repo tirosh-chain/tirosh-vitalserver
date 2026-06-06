@@ -276,6 +276,48 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
         )
     }
 
+    func testRootfsStorageObservationDecisionKeepsFileExistenceInterpretationOutOfWorkflow() {
+        let useCase = UpdateRuntimeUseCase()
+        let stagedRootfs = URL(fileURLWithPath: "/staged/rootfs-base.raw.gz")
+        let rootfsBase = URL(fileURLWithPath: "/runtime/rootfs-base.raw.gz")
+
+        XCTAssertEqual(
+            useCase.rootfsStorageObservationPlan(stagedRootfs: nil, rootfsBase: rootfsBase),
+            .unchanged(ApplyRuntimeBundleRootfsStoragePreflightPlan(
+                rootfsStorage: .unchanged,
+                logMessage: "bundle apply storage preflight rootfsBase=unchanged"
+            ))
+        )
+        XCTAssertEqual(
+            useCase.rootfsStorageObservationPlan(stagedRootfs: stagedRootfs, rootfsBase: rootfsBase),
+            .replacing(stagedRootfs: stagedRootfs, rootfsBase: rootfsBase)
+        )
+        XCTAssertEqual(
+            useCase.rootfsStorageDecision(observation: ApplyRuntimeBundleRootfsStorageObservation(
+                stagedRootfs: stagedRootfs,
+                stagedRootfsExists: false,
+                installedRootfsBytes: nil,
+                incomingRootfsBytes: nil
+            )),
+            .failed(message: "missing file: /staged/rootfs-base.raw.gz")
+        )
+        XCTAssertEqual(
+            useCase.rootfsStorageDecision(observation: ApplyRuntimeBundleRootfsStorageObservation(
+                stagedRootfs: stagedRootfs,
+                stagedRootfsExists: true,
+                installedRootfsBytes: 1_048_576,
+                incomingRootfsBytes: 3_145_728
+            )),
+            .planned(ApplyRuntimeBundleRootfsStoragePreflightPlan(
+                rootfsStorage: .replacing(
+                    installedRootfsBytes: 1_048_576,
+                    incomingRootfsBytes: 3_145_728
+                ),
+                logMessage: "bundle apply storage preflight installedRootfs=1.0 MiB incomingRootfs=3.0 MiB"
+            ))
+        )
+    }
+
     func testDiskHealthDecisionAllowsUpdateWithoutGuestStorageBlockers() {
         let useCase = UpdateRuntimeUseCase()
 
@@ -632,6 +674,50 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
         XCTAssertNil(plan.backupRootfs)
         XCTAssertEqual(plan.backupVersion, backup.appendingPathComponent(RuntimeFileNames.runtimeVersion))
         XCTAssertFalse(plan.restoresRootfsBase)
+    }
+
+    func testRollbackPreflightDecisionsKeepBackupExistenceInterpretationOutOfWorkflow() {
+        let useCase = UpdateRuntimeUseCase()
+        let backup = URL(fileURLWithPath: "/runtime/backups/backup-1")
+        let backupPlan = useCase.rollbackBackupPlan(
+            backup: backup,
+            manifest: backupManifest(rootfsBase: RuntimeFileNames.rootfsBase)
+        )
+        let noRootfsPlan = useCase.rollbackBackupPlan(
+            backup: backup,
+            manifest: backupManifest(rootfsBase: nil)
+        )
+
+        XCTAssertEqual(
+            useCase.rollbackBackupDirectoryDecision(backup: backup, directoryExists: true),
+            .loadManifest(backup)
+        )
+        XCTAssertEqual(
+            useCase.rollbackBackupDirectoryDecision(backup: backup, directoryExists: false),
+            .failed(message: "missing file: /runtime/backups/backup-1")
+        )
+        XCTAssertEqual(
+            useCase.rollbackBackupRootfsObservationRequirement(backupPlan: backupPlan),
+            .fileExists(backup.appendingPathComponent(RuntimeFileNames.rootfsBase))
+        )
+        XCTAssertEqual(
+            useCase.rollbackBackupRootfsDecision(
+                backupPlan: backupPlan,
+                backupRootfsExists: false
+            ),
+            .failed(message: "missing file: /runtime/backups/backup-1/rootfs-base.raw.gz")
+        )
+        XCTAssertEqual(
+            useCase.rollbackBackupRootfsObservationRequirement(backupPlan: noRootfsPlan),
+            .none
+        )
+        XCTAssertEqual(
+            useCase.rollbackBackupRootfsDecision(
+                backupPlan: noRootfsPlan,
+                backupRootfsExists: nil
+            ),
+            .proceed(noRootfsPlan)
+        )
     }
 
     func testRollbackBackupSelectionKeepsCommandInterpretationOutOfWorkflow() {

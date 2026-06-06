@@ -66,24 +66,28 @@ public struct RuntimeApplyBundlePreflightRunner {
         let stagedBundleSize = try directorySize(stagedBundle)
         let rootfsStorage: RuntimeUpdateRootfsStorageInput
         log(useCase.storagePreflightStagedBundleLogMessage(stagedBundleBytes: stagedBundleSize))
-        if let stagedRootfs {
-            guard fileExists(stagedRootfs) else {
-                throw RuntimeApplyBundleWorkflowError.operationFailed(
-                    useCase.missingFileFailureMessage(path: stagedRootfs.path)
+        switch useCase.rootfsStorageObservationPlan(stagedRootfs: stagedRootfs, rootfsBase: rootfsBase) {
+        case .unchanged(let rootfsStoragePlan):
+            rootfsStorage = rootfsStoragePlan.rootfsStorage
+            log(rootfsStoragePlan.logMessage)
+        case .replacing(let stagedRootfs, let rootfsBase):
+            let stagedRootfsExists = fileExists(stagedRootfs)
+            let installedRootfsBytes = stagedRootfsExists ? try fileSize(rootfsBase) : nil
+            let incomingRootfsBytes = stagedRootfsExists ? try fileSize(stagedRootfs) : nil
+            switch useCase.rootfsStorageDecision(
+                observation: ApplyRuntimeBundleRootfsStorageObservation(
+                    stagedRootfs: stagedRootfs,
+                    stagedRootfsExists: stagedRootfsExists,
+                    installedRootfsBytes: installedRootfsBytes,
+                    incomingRootfsBytes: incomingRootfsBytes
                 )
+            ) {
+            case .planned(let rootfsStoragePlan):
+                rootfsStorage = rootfsStoragePlan.rootfsStorage
+                log(rootfsStoragePlan.logMessage)
+            case .failed(let message):
+                throw RuntimeApplyBundleWorkflowError.operationFailed(message)
             }
-            let installedRootfsSize = try fileSize(rootfsBase)
-            let incomingRootfsSize = try fileSize(stagedRootfs)
-            let rootfsStoragePlan = useCase.replacingRootfsStoragePreflightPlan(
-                installedRootfsBytes: installedRootfsSize,
-                incomingRootfsBytes: incomingRootfsSize
-            )
-            rootfsStorage = rootfsStoragePlan.rootfsStorage
-            log(rootfsStoragePlan.logMessage)
-        } else {
-            let rootfsStoragePlan = useCase.unchangedRootfsStoragePreflightPlan()
-            rootfsStorage = rootfsStoragePlan.rootfsStorage
-            log(rootfsStoragePlan.logMessage)
         }
         let storageRequirement = useCase.storageRequirement(
             stagedBundleBytes: stagedBundleSize,

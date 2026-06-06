@@ -291,6 +291,29 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         }
     }
 
+    func testRuntimeUpdateWorkflowDoesNotInterpretPreflightFileObservationsDirectly() throws {
+        let updateWorkflowRoot = packageRoot().appendingPathComponent("Sources/Workflow/RuntimeUpdateLifecycle")
+        let forbiddenTokens = [
+            "missingFileFailureMessage",
+            "replacingRootfsStoragePreflightPlan",
+            "unchangedRootfsStoragePreflightPlan",
+            "guard fileExists",
+            "guard directoryExists",
+            "!fileExists",
+            "!directoryExists",
+        ]
+
+        for file in try swiftFiles(root: updateWorkflowRoot) {
+            let text = try String(contentsOf: file, encoding: .utf8)
+            for token in forbiddenTokens {
+                XCTAssertFalse(
+                    text.contains(token),
+                    "RuntimeUpdateLifecycle Workflow must pass explicit file observations to UseCase/Adapters instead of interpreting \(token) directly: \(file.path)"
+                )
+            }
+        }
+    }
+
     private func packageRoot() -> URL {
         URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
     }

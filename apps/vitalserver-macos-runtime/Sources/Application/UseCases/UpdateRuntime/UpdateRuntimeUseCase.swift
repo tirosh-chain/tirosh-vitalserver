@@ -108,6 +108,35 @@ public struct ApplyRuntimeBundleRootfsReplacementExecutionPlan: Equatable, Senda
     }
 }
 
+public enum ApplyRuntimeBundleRootfsStorageObservationPlan: Equatable, Sendable {
+    case unchanged(ApplyRuntimeBundleRootfsStoragePreflightPlan)
+    case replacing(stagedRootfs: URL, rootfsBase: URL)
+}
+
+public struct ApplyRuntimeBundleRootfsStorageObservation: Equatable, Sendable {
+    public let stagedRootfs: URL
+    public let stagedRootfsExists: Bool
+    public let installedRootfsBytes: UInt64?
+    public let incomingRootfsBytes: UInt64?
+
+    public init(
+        stagedRootfs: URL,
+        stagedRootfsExists: Bool,
+        installedRootfsBytes: UInt64?,
+        incomingRootfsBytes: UInt64?
+    ) {
+        self.stagedRootfs = stagedRootfs
+        self.stagedRootfsExists = stagedRootfsExists
+        self.installedRootfsBytes = installedRootfsBytes
+        self.incomingRootfsBytes = incomingRootfsBytes
+    }
+}
+
+public enum ApplyRuntimeBundleRootfsStorageDecision: Equatable, Sendable {
+    case planned(ApplyRuntimeBundleRootfsStoragePreflightPlan)
+    case failed(message: String)
+}
+
 public enum ApplyRuntimeBundleStepExecutionPlan: Equatable, Sendable {
     case stopRuntimeServices(preparesGuestShutdown: Bool, manifest: UpdateBundleManifest)
     case replaceRootfsBase(ApplyRuntimeBundleRootfsReplacementPlan)
@@ -159,6 +188,21 @@ public struct RollbackRuntimeBackupPlan: Equatable, Sendable {
 public enum RollbackRuntimeBackupSelection: Equatable, Sendable {
     case latestBackup
     case specificBackup(URL)
+}
+
+public enum RollbackRuntimeBackupDirectoryDecision: Equatable, Sendable {
+    case loadManifest(URL)
+    case failed(message: String)
+}
+
+public enum RollbackRuntimeBackupRootfsObservationRequirement: Equatable, Sendable {
+    case none
+    case fileExists(URL)
+}
+
+public enum RollbackRuntimeBackupRootfsDecision: Equatable, Sendable {
+    case proceed(RollbackRuntimeBackupPlan)
+    case failed(message: String)
 }
 
 public enum RollbackRuntimeVersionRestoreDecision: Equatable, Sendable {
@@ -480,6 +524,33 @@ public struct UpdateRuntimeUseCase {
         )
     }
 
+    public func rootfsStorageObservationPlan(
+        stagedRootfs: URL?,
+        rootfsBase: URL
+    ) -> ApplyRuntimeBundleRootfsStorageObservationPlan {
+        guard let stagedRootfs else {
+            return .unchanged(unchangedRootfsStoragePreflightPlan())
+        }
+        return .replacing(stagedRootfs: stagedRootfs, rootfsBase: rootfsBase)
+    }
+
+    public func rootfsStorageDecision(
+        observation: ApplyRuntimeBundleRootfsStorageObservation
+    ) -> ApplyRuntimeBundleRootfsStorageDecision {
+        guard observation.stagedRootfsExists else {
+            return .failed(message: missingFileFailureMessage(path: observation.stagedRootfs.path))
+        }
+        guard let installedRootfsBytes = observation.installedRootfsBytes,
+              let incomingRootfsBytes = observation.incomingRootfsBytes
+        else {
+            return .failed(message: "missing rootfs storage observation")
+        }
+        return .planned(replacingRootfsStoragePreflightPlan(
+            installedRootfsBytes: installedRootfsBytes,
+            incomingRootfsBytes: incomingRootfsBytes
+        ))
+    }
+
     public func missingFileFailureMessage(path: String) -> String {
         "missing file: \(path)"
     }
@@ -649,6 +720,38 @@ public struct UpdateRuntimeUseCase {
             backupVersion: backup.appendingPathComponent(RuntimeFileNames.runtimeVersion),
             restoresRootfsBase: backupRootfs != nil
         )
+    }
+
+    public func rollbackBackupDirectoryDecision(
+        backup: URL,
+        directoryExists: Bool
+    ) -> RollbackRuntimeBackupDirectoryDecision {
+        guard directoryExists else {
+            return .failed(message: missingFileFailureMessage(path: backup.path))
+        }
+        return .loadManifest(backup)
+    }
+
+    public func rollbackBackupRootfsObservationRequirement(
+        backupPlan: RollbackRuntimeBackupPlan
+    ) -> RollbackRuntimeBackupRootfsObservationRequirement {
+        guard let backupRootfs = backupPlan.backupRootfs else {
+            return .none
+        }
+        return .fileExists(backupRootfs)
+    }
+
+    public func rollbackBackupRootfsDecision(
+        backupPlan: RollbackRuntimeBackupPlan,
+        backupRootfsExists: Bool?
+    ) -> RollbackRuntimeBackupRootfsDecision {
+        guard let backupRootfs = backupPlan.backupRootfs else {
+            return .proceed(backupPlan)
+        }
+        guard backupRootfsExists == true else {
+            return .failed(message: missingFileFailureMessage(path: backupRootfs.path))
+        }
+        return .proceed(backupPlan)
     }
 
     public func rollbackBackupSelection(command: RuntimeRollbackCommand) -> RollbackRuntimeBackupSelection {

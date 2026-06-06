@@ -34,17 +34,31 @@ public struct RuntimeRollbackPreflightRunner {
     public func prepare(_ command: RuntimeRollbackCommand) throws -> RollbackPreflightContext {
         let backup = try backupURL(for: command)
 
-        guard directoryExists(backup) else {
-            throw RuntimeRollbackWorkflowError.operationFailed(
-                useCase.missingFileFailureMessage(path: backup.path)
-            )
+        switch useCase.rollbackBackupDirectoryDecision(backup: backup, directoryExists: directoryExists(backup)) {
+        case .loadManifest:
+            break
+        case .failed(let message):
+            throw RuntimeRollbackWorkflowError.operationFailed(message)
         }
+
         let manifest = try loadManifest(backup)
         let backupPlan = useCase.rollbackBackupPlan(backup: backup, manifest: manifest)
-        if let backupRootfs = backupPlan.backupRootfs, !fileExists(backupRootfs) {
-            throw RuntimeRollbackWorkflowError.operationFailed(
-                useCase.missingFileFailureMessage(path: backupRootfs.path)
-            )
+        let backupRootfsExists: Bool?
+        switch useCase.rollbackBackupRootfsObservationRequirement(backupPlan: backupPlan) {
+        case .none:
+            backupRootfsExists = nil
+        case .fileExists(let backupRootfs):
+            backupRootfsExists = fileExists(backupRootfs)
+        }
+        let resolvedBackupPlan: RollbackRuntimeBackupPlan
+        switch useCase.rollbackBackupRootfsDecision(
+            backupPlan: backupPlan,
+            backupRootfsExists: backupRootfsExists
+        ) {
+        case .proceed(let plan):
+            resolvedBackupPlan = plan
+        case .failed(let message):
+            throw RuntimeRollbackWorkflowError.operationFailed(message)
         }
 
         let restartPolicy = serviceRestartPolicy()
@@ -52,10 +66,10 @@ public struct RuntimeRollbackPreflightRunner {
         log(preflightPlan.serviceRestartLogMessage)
 
         return RollbackPreflightContext(
-            backup: backupPlan.backup,
-            backupRootfs: backupPlan.backupRootfs,
-            backupVersion: backupPlan.backupVersion,
-            restoresRootfsBase: backupPlan.restoresRootfsBase,
+            backup: resolvedBackupPlan.backup,
+            backupRootfs: resolvedBackupPlan.backupRootfs,
+            backupVersion: resolvedBackupPlan.backupVersion,
+            restoresRootfsBase: resolvedBackupPlan.restoresRootfsBase,
             restartPolicy: restartPolicy
         )
     }
